@@ -115,7 +115,9 @@ function startRig(sessionPreset: string | null = "race-oval", telemetryPreset: s
   }
 
   controller.setConnected(true);
-  initializeSimEventsIracing(getEventBus(), controller as unknown as SDKController, silentLogger);
+  initializeSimEventsIracing(getEventBus(), controller as unknown as SDKController, silentLogger, {
+    onStepError: "rethrow",
+  });
   controller.tickOnce();
 
   const rig: Rig = { controller, trace: [], events: [] };

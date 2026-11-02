@@ -571,7 +571,7 @@ function runChain(ticks: ReadonlyArray<TelemetryData>): {
     };
 
     diffPitLane(state, tick, TrackType.RoadCourse, now, emit);
-    diffPitReadback(state, tick, now, emit, pending);
+    diffPitReadback(state, tick, now, emit, pending, false);
     diffTireWear(state, tick, emit, pending, updateStallVisit(state, tick, pending));
     diffTireTemps(state, tick);
 

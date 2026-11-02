@@ -217,6 +217,7 @@ import {
 import { type ILogger, silentLogger } from "@iracedeck/logger";
 
 import type { TranslatorState } from "../state.js";
+import { runUnitsDirectly, type UnitRunner } from "../tick-steps.js";
 import { coerceSettingNumber } from "./setting-number.js";
 import type { EmitFn } from "./types.js";
 
@@ -561,6 +562,18 @@ export const OPPONENT_FLAGS_EVENTS = ["opponentFlag.flagged"] as const satisfies
  * Advance the per-car penalty-flag store and run the announce qualifier for
  * the current tick (issues #936, #1274). `sessionInfo` names the car
  * (`carNumber`); `logger` takes the #1273 debug lines.
+ *
+ * Each car's store advance and each car's qualification is a unit (#1559),
+ * run through `runUnit`: a car whose unit throws (one odd row) is left out of
+ * the tick, and the rest of the field still announces. A qualification unit
+ * writes its car's latches and cooldowns last and hands its lines and
+ * announces back to the step, which plays them in order through the burst
+ * aggregation, field-wide state that stays in the step. So a throw drops that
+ * car's announce for the tick and it is qualified again on the next one, with
+ * its effective mask put back to the previous tick's, so the retry keeps the
+ * trigger the dropped announce had.
+ *
+ * @param runUnit - The translator's step runner, so one car's throw costs that car only. Defaults to {@link runUnitsDirectly}, which catches nothing
  */
 export function diffOpponentFlags(
   state: TranslatorState,
@@ -577,6 +590,7 @@ export function diffOpponentFlags(
   now: number,
   emit: EmitFn<(typeof OPPONENT_FLAGS_EVENTS)[number]>,
   logger: ILogger = silentLogger,
+  runUnit: UnitRunner = runUnitsDirectly,
 ): void {
   // Prune the aggregation window every tick; a quiet window ends the episode.
   if (state.opponentFlagRecentEntries.length > 0) {
@@ -613,8 +627,12 @@ export function diffOpponentFlags(
   // before this tick's loop overwrites `effectiveMask` — the raised-vs-
   // entered-range transition detector below.
   const prevEffective: number[] = [];
-
-  for (let i = 0; i < raw.length; i++) {
+  // The car the units below read, set by their loops: one closure per tick
+  // rather than one per car.
+  let i = 0;
+  // One car's store advance. Every field it writes is level-based, so a throw
+  // half-way is rewritten whole on the next tick.
+  const advanceStore = (): void => {
     const masked = (raw[i] ?? 0) & PENALTY_FLAG_MASK;
 
     bits[i] = masked;
@@ -645,6 +663,13 @@ export function diffOpponentFlags(
     }
 
     effectiveMask[i] = newEffective;
+  };
+  // The cars whose store advance threw this tick: their store is half-written,
+  // so they are not qualified this tick. `null` (no allocation) when none threw.
+  let storeFailed: number[] | null = null;
+
+  for (i = 0; i < raw.length; i++) {
+    if (!runUnit(emit, advanceStore)) (storeFailed ??= []).push(i);
   }
 
   bits.length = raw.length;
@@ -670,19 +695,27 @@ export function diffOpponentFlags(
   // below latches or stamps while it holds, so a flag still up when the
   // player rejoins announces then (`entered-range`), if the car qualifies.
   const playerInPits = isPlayerInPits(telemetry, playerCarIdx);
+  // What one car's qualification decided, in order: its debug lines and its
+  // announces. The step plays them once the car's unit completes (the
+  // aggregation is field-wide, so it stays in the step), and drops them with
+  // the unit when it throws. Reused for every car.
+  const actions: FlagAction[] = [];
+  // One car's qualification. It writes the car's episode latches and
+  // cooldowns last, after everything that can throw, so a throw leaves the
+  // car to be qualified again on the next tick.
+  const qualify = (): void => {
+    actions.length = 0;
 
-  for (let i = 0; i < raw.length; i++) {
-    if (i === playerCarIdx || i === paceCarIdx) continue;
+    if (i === playerCarIdx || i === paceCarIdx) return;
 
     // Only an effectively-active flag whose episode has not announced yet is
     // pending — skip the qualification (and its gap lookup) for everyone else.
     const pending = (effectiveMask[i] ?? 0) & ~announced[i];
 
-    if (pending === 0) continue;
+    if (pending === 0) return;
 
     const range = (rangeSeconds ??= sanitizeOpponentFlagRangeSeconds(resolvers.getRangeSeconds()));
-
-    player ??= resolvePlayerStanding(telemetry, frozenPositions, playerCarIdx, isMultiClass);
+    const standing = (player ??= resolvePlayerStanding(telemetry, frozenPositions, playerCarIdx, isMultiClass));
 
     // Opt-outs are enforced HERE, not only at the audio layer: a disabled
     // subject must never stamp state, consume the aggregation budget, or
@@ -714,7 +747,7 @@ export function diffOpponentFlags(
           : assess(
               telemetry,
               frozenPositions,
-              player,
+              standing,
               playerCarIdx,
               i,
               isMultiClass,
@@ -724,8 +757,12 @@ export function diffOpponentFlags(
             );
     // Resolved lazily: only an announce or a first held-back line needs it.
     let carNumber: string | null | undefined;
+    // The car's episode latch and held-back log latch as this pass leaves
+    // them, written back at the end.
+    let announcedMask = announced[i];
+    let heldBackLoggedMask = heldBackLogged[i];
 
-    // Worst first, so a worse flag latched this pass is in `announced[i]` by
+    // Worst first, so a worse flag latched this pass is in `announcedMask` by
     // the time a lesser one asks (see `OPPONENT_FLAG_SEVERITY`).
     for (const def of OPPONENT_FLAG_DEFS_BY_SEVERITY) {
       if ((pending & def.bit) === 0) continue; // not effectively active, or episode already announced
@@ -743,12 +780,12 @@ export function diffOpponentFlags(
         // One call per car: the worst flag (see the module header).
         const worse = enabled & MORE_SEVERE_MASK[def.key];
 
-        outrankedBy = worse & announced[i];
+        outrankedBy = worse & announcedMask;
 
         if (outrankedBy !== 0) {
           // A worse flag's episode already covers the car: latch silently —
           // no cooldown (nothing was spoken) and no window entry.
-          announced[i] |= def.bit;
+          announcedMask |= def.bit;
           heldBack = "outranked";
         } else if ((worse & bits[i] & ~effectiveMask[i]) !== 0) {
           // A worse flag's raw bit is up but still inside its hold: wait for
@@ -760,16 +797,18 @@ export function diffOpponentFlags(
 
       if (heldBack !== null) {
         // The #1273 held-back line — once per (car, flag) episode, never per tick.
-        if ((heldBackLogged[i] & def.bit) === 0) {
-          heldBackLogged[i] |= def.bit;
+        if ((heldBackLoggedMask & def.bit) === 0) {
+          heldBackLoggedMask |= def.bit;
           carNumber ??= getCarNumberFromSessionInfo(sessionInfo, i);
 
           const by = outrankedBy !== 0 ? ` outrankedBy=${mostSevere(outrankedBy)}` : "";
 
-          logger.debug(
-            `Opponent flag held back: flag=${def.flag} reason=${heldBack}${by} ` +
+          actions.push({
+            kind: "log",
+            message:
+              `Opponent flag held back: flag=${def.flag} reason=${heldBack}${by} ` +
               describeCar(telemetry, i, carNumber, raw[i] ?? 0, assessment, range),
-          );
+          });
         }
 
         continue;
@@ -785,71 +824,140 @@ export function diffOpponentFlags(
       const trigger = activatedThisTick ? ("raised" as const) : ("entered-range" as const);
       // A further flag on a car that already has an announced flag this
       // episode — evaluated BEFORE this flag's own latch bit is set.
-      const isEscalation = (announced[i] & ~def.bit) !== 0;
+      const isEscalation = (announcedMask & ~def.bit) !== 0;
 
-      announced[i] |= def.bit;
-      cooldownUntil[def.key][i] = now + OPPONENT_FLAG_CAR_COOLDOWN_MS;
-
-      // Distinct-car window bookkeeping: refresh the car's entry if it's
-      // already listed (keeping the episode alive), add it otherwise — the
-      // collapse threshold counts CARS, never per-(car, flag) announces.
-      const existing = state.opponentFlagRecentEntries.find((e) => e.carIdx === i);
-
-      if (existing) {
-        existing.at = now;
-      } else {
-        state.opponentFlagRecentEntries.push({ at: now, carIdx: i });
-      }
-
-      // Escalations bypass the collapse entirely (see the module header) —
-      // they play individually even while the aggregate episode is open and
-      // never trip the distinct-car threshold themselves.
-      const individually =
-        isEscalation ||
-        (!state.opponentFlagAggregateAnnounced &&
-          state.opponentFlagRecentEntries.length < OPPONENT_FLAG_AGGREGATE_THRESHOLD);
-
+      announcedMask |= def.bit;
       carNumber ??= getCarNumberFromSessionInfo(sessionInfo, i);
-
-      const carTail =
-        `relation=${qualified.relation} trigger=${trigger} ` +
-        describeCar(telemetry, i, carNumber, raw[i] ?? 0, qualified, range);
-
-      if (individually) {
-        logger.debug(`Opponent flag announced: flag=${def.flag} ${carTail}`);
-        emit({
-          event: "opponentFlag.flagged",
-          data: {
-            relation: qualified.relation,
-            carIdx: i,
-            flag: def.flag,
-            trigger,
-            isMultiClass,
-            position: qualified.carPos,
-            ...(carNumber !== null ? { carNumber } : {}),
-            gapSeconds: qualified.gapSeconds,
-          },
-        });
-        continue;
-      }
-
-      // Collapsed: the announce that reaches the threshold speaks the
-      // aggregate tail, once per episode, and its line says so — naming the
-      // car that tripped it; later ones stay silent while the episode flag
-      // is set, each logged as held back.
-      if (!state.opponentFlagAggregateAnnounced) {
-        state.opponentFlagAggregateAnnounced = true;
-        logger.debug(
-          `Opponent flag aggregate announced: cars=${state.opponentFlagRecentEntries.length} flag=${def.flag} ${carTail}`,
-        );
-        emit({ event: "opponentFlag.flagged", data: { relation: "others" } });
-        continue;
-      }
-
-      if ((heldBackLogged[i] & def.bit) === 0) {
-        heldBackLogged[i] |= def.bit;
-        logger.debug(`Opponent flag held back: flag=${def.flag} reason=collapsed ${carTail}`);
-      }
+      actions.push({
+        kind: "announce",
+        def,
+        qualified,
+        trigger,
+        isEscalation,
+        carNumber,
+        carTail:
+          `relation=${qualified.relation} trigger=${trigger} ` +
+          describeCar(telemetry, i, carNumber, raw[i] ?? 0, qualified, range),
+      });
     }
+
+    // The car's latches and cooldowns, last.
+    announced[i] = announcedMask;
+    heldBackLogged[i] = heldBackLoggedMask;
+
+    for (const action of actions) {
+      if (action.kind === "announce") cooldownUntil[action.def.key][i] = now + OPPONENT_FLAG_CAR_COOLDOWN_MS;
+    }
+  };
+
+  for (i = 0; i < raw.length; i++) {
+    if (storeFailed !== null && storeFailed.includes(i)) continue;
+
+    // A unit that threw drops what it decided: nothing below plays it. The
+    // car is qualified again on the next tick, so it gets back the effective
+    // mask the previous tick left: a flag that became effectively active on
+    // this tick is then still read as activated, and announced as `raised`
+    // rather than `entered-range`. Nothing reads the mask between ticks.
+    if (!runUnit(emit, qualify)) {
+      effectiveMask[i] = prevEffective[i] ?? 0;
+      continue;
+    }
+
+    for (const action of actions) {
+      if (action.kind === "log") {
+        logger.debug(action.message);
+        continue;
+      }
+
+      announceFlag(state, i, action, isMultiClass, now, emit, logger);
+    }
+  }
+}
+
+/** What one car's qualification decided (see `diffOpponentFlags`): a debug line, or an announce. */
+type FlagAction =
+  | { kind: "log"; message: string }
+  | {
+      kind: "announce";
+      def: (typeof OPPONENT_FLAG_DEFS)[number];
+      qualified: Qualified;
+      trigger: "raised" | "entered-range";
+      isEscalation: boolean;
+      carNumber: string | null;
+      /** The relation, trigger and car-describing tail every line about this announce ends with. */
+      carTail: string;
+    };
+
+/**
+ * The burst aggregation for one qualified announce (the #622 shape): field-wide,
+ * so it runs in the step rather than in the car's unit.
+ */
+function announceFlag(
+  state: TranslatorState,
+  carIdx: number,
+  action: Extract<FlagAction, { kind: "announce" }>,
+  isMultiClass: boolean,
+  now: number,
+  emit: EmitFn<(typeof OPPONENT_FLAGS_EVENTS)[number]>,
+  logger: ILogger,
+): void {
+  const { def, qualified, trigger, isEscalation, carNumber, carTail } = action;
+  // Distinct-car window bookkeeping: refresh the car's entry if it's
+  // already listed (keeping the episode alive), add it otherwise — the
+  // collapse threshold counts CARS, never per-(car, flag) announces.
+  const existing = state.opponentFlagRecentEntries.find((e) => e.carIdx === carIdx);
+
+  if (existing) {
+    existing.at = now;
+  } else {
+    state.opponentFlagRecentEntries.push({ at: now, carIdx });
+  }
+
+  // Escalations bypass the collapse entirely (see the module header) —
+  // they play individually even while the aggregate episode is open and
+  // never trip the distinct-car threshold themselves.
+  const individually =
+    isEscalation ||
+    (!state.opponentFlagAggregateAnnounced &&
+      state.opponentFlagRecentEntries.length < OPPONENT_FLAG_AGGREGATE_THRESHOLD);
+
+  if (individually) {
+    logger.debug(`Opponent flag announced: flag=${def.flag} ${carTail}`);
+    emit({
+      event: "opponentFlag.flagged",
+      data: {
+        relation: qualified.relation,
+        carIdx,
+        flag: def.flag,
+        trigger,
+        isMultiClass,
+        position: qualified.carPos,
+        ...(carNumber !== null ? { carNumber } : {}),
+        gapSeconds: qualified.gapSeconds,
+      },
+    });
+
+    return;
+  }
+
+  // Collapsed: the announce that reaches the threshold speaks the
+  // aggregate tail, once per episode, and its line says so — naming the
+  // car that tripped it; later ones stay silent while the episode flag
+  // is set, each logged as held back.
+  if (!state.opponentFlagAggregateAnnounced) {
+    state.opponentFlagAggregateAnnounced = true;
+    logger.debug(
+      `Opponent flag aggregate announced: cars=${state.opponentFlagRecentEntries.length} flag=${def.flag} ${carTail}`,
+    );
+    emit({ event: "opponentFlag.flagged", data: { relation: "others" } });
+
+    return;
+  }
+
+  const heldBackLogged = state.opponentFlagHeldBackLoggedMask;
+
+  if ((heldBackLogged[carIdx] & def.bit) === 0) {
+    heldBackLogged[carIdx] |= def.bit;
+    logger.debug(`Opponent flag held back: flag=${def.flag} reason=collapsed ${carTail}`);
   }
 }

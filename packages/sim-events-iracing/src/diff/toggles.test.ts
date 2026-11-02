@@ -39,11 +39,16 @@ type Tick = {
   onPitRoad?: boolean;
 };
 
-function feed(
+function feed(state: TranslatorState, now: number, tick: Tick = {}) {
+  return step(state, now, tick).events;
+}
+
+/** One tick: its events and what `diffToggles` returned, whether the fuel plan changed. */
+function step(
   state: TranslatorState,
   now: number,
   { flags = 0, auto, onTrack = true, inStall = false, onPitRoad = false }: Tick = {},
-) {
+): { events: PendingEvent[]; fuelPlanChanged: boolean } {
   const events: PendingEvent[] = [];
   const telemetry = {
     PitSvFlags: flags,
@@ -52,9 +57,9 @@ function feed(
     OnPitRoad: onPitRoad,
     ...(auto === undefined ? {} : { dpFuelAutoFillActive: auto }),
   } as TelemetryData;
-  diffToggles(state, telemetry, now, (e) => events.push(e));
+  const fuelPlanChanged = diffToggles(state, telemetry, now, (e) => events.push(e));
 
-  return events;
+  return { events, fuelPlanChanged };
 }
 
 /** A state seeded on track with the given flags (and auto-fuel reading), at t=0. */
@@ -397,29 +402,36 @@ describe("diffToggles — auto-fuel (issue #474)", () => {
     });
   });
 
-  describe("fuelPlanChangedThisTick — the recap's signal for a silent change", () => {
-    it("is set on the tick a silenced fuel change settles, and only that tick", () => {
+  describe("the returned fuel-plan flag — the recap's signal for a silent change (#1559)", () => {
+    it("is true on the tick a silenced fuel change settles, and only that tick", () => {
       const state = seeded(0, 1);
 
-      feed(state, T_EDGE, { flags: PitSvFlags.FuelFill, auto: 1 });
-      expect(state.fuelPlanChangedThisTick).toBe(false);
+      expect(step(state, T_EDGE, { flags: PitSvFlags.FuelFill, auto: 1 }).fuelPlanChanged).toBe(false);
 
-      expect(feed(state, T_SETTLE, { flags: PitSvFlags.FuelFill, auto: 1 })).toEqual([]);
-      expect(state.fuelPlanChangedThisTick).toBe(true);
+      expect(step(state, T_SETTLE, { flags: PitSvFlags.FuelFill, auto: 1 })).toEqual({
+        events: [],
+        fuelPlanChanged: true,
+      });
 
-      feed(state, T_SETTLE + 10, { flags: PitSvFlags.FuelFill, auto: 1 });
-      expect(state.fuelPlanChangedThisTick).toBe(false);
+      expect(step(state, T_SETTLE + 10, { flags: PitSvFlags.FuelFill, auto: 1 }).fuelPlanChanged).toBe(false);
     });
 
-    it("is set for an announced fuel change too, and cleared by a seeding tick", () => {
+    it("is true for an announced fuel change too, and false on a seeding tick", () => {
       const state = seeded(0, 0);
 
       feed(state, T_EDGE, { flags: PitSvFlags.FuelFill, auto: 0 });
-      expect(feed(state, T_SETTLE, { flags: PitSvFlags.FuelFill, auto: 0 })).toEqual([MANUAL_FUEL_ON]);
-      expect(state.fuelPlanChangedThisTick).toBe(true);
+      expect(step(state, T_SETTLE, { flags: PitSvFlags.FuelFill, auto: 0 })).toEqual({
+        events: [MANUAL_FUEL_ON],
+        fuelPlanChanged: true,
+      });
 
-      feed(state, T_SETTLE + 10, { flags: PitSvFlags.FuelFill, auto: 0, inStall: true });
-      expect(state.fuelPlanChangedThisTick).toBe(false);
+      expect(step(state, T_SETTLE + 10, { flags: PitSvFlags.FuelFill, auto: 0, inStall: true }).fuelPlanChanged).toBe(
+        false,
+      );
+    });
+
+    it("is false on the first tick, which seeds", () => {
+      expect(step(createInitialState(), 0, { flags: PitSvFlags.FuelFill }).fuelPlanChanged).toBe(false);
     });
   });
 

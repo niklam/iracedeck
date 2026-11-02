@@ -200,7 +200,7 @@ describe("the replay recorders, through initializeSimEventsIracing", () => {
       const timed = vi.fn();
       getEventBus().subscribe("replay.lapStarted", started);
       getEventBus().subscribe("replay.lapTimed", timed);
-      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
       controller.__tick(lapTick({ completed: [4, 4, 4, -1], lastLapTime: [91.5, 92.5, 93.5, -1] })); // seed
       controller.__tick(lapTick({ completed: [5, 4, 4, -1], lastLapTime: [91.5, 92.5, 93.5, -1], frame: 36_305 }));
@@ -233,7 +233,7 @@ describe("the replay recorders, through initializeSimEventsIracing", () => {
       const controller = createMockController();
       controller.__setSessionInfo(liveSession());
       const seen = recordLaps();
-      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
       controller.__tick(lapTick({ completed: [4, 4, 4, -1] })); // seed
       controller.__tick(lapTick({ completed: [4, 4, 4, -1] }));
@@ -261,7 +261,7 @@ describe("the replay recorders, through initializeSimEventsIracing", () => {
       const controller = createMockController();
       controller.__setSessionInfo(liveSession("replay"));
       const seen = recordLaps();
-      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
       controller.__tick(lapTick({ completed: [4, 4, 4, -1] }));
       controller.__tick(lapTick({ completed: [5, 4, 4, -1] }));
@@ -274,7 +274,7 @@ describe("the replay recorders, through initializeSimEventsIracing", () => {
       const controller = createMockController();
       controller.__setSessionInfo(liveSession());
       const seen = recordLaps();
-      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
       controller.__tick(lapTick({ completed: [4, 4, 4, -1] }));
       controller.__tick(lapTick({ completed: [4, 4, 4, 0] }));
@@ -320,7 +320,7 @@ describe("the replay recorders, through initializeSimEventsIracing", () => {
         const controller = createMockController();
         controller.__setSessionInfo(fixtureSession());
         const seen = recordLaps();
-        initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+        initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
         for (const tick of ticks) {
           controller.__tick(lapTick({ completed: tick.CarIdxLapCompleted, frame: frameOf(tick.t) }));
@@ -341,7 +341,7 @@ describe("the replay recorders, through initializeSimEventsIracing", () => {
         const controller = createMockController();
         controller.__setSessionInfo(fixtureSession());
         const seen = recordLaps();
-        initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+        initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
         for (const tick of ticks) {
           controller.__tick(lapTick({ completed: tick.CarIdxLapCompleted, frame: frameOf(tick.t) }));
@@ -415,7 +415,7 @@ describe("the replay recorders, through initializeSimEventsIracing", () => {
       controller.__setSessionInfo(raceSession());
       const handler = vi.fn();
       getEventBus().subscribe("replay.greenFlag", handler);
-      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
       controller.__tick(greenTick({ state: SessionState.ParadeLaps })); // seed
       controller.__tick(greenTick({ state: SessionState.ParadeLaps }));
@@ -441,7 +441,7 @@ describe("the replay recorders, through initializeSimEventsIracing", () => {
       const controller = createMockController();
       controller.__setSessionInfo(raceSession());
       const logger = createMockLogger();
-      initializeSimEventsIracing(getEventBus(), controller, logger);
+      initializeSimEventsIracing(getEventBus(), controller, logger, { onStepError: "rethrow" });
 
       controller.__tick(greenTick({ state: SessionState.Warmup }));
       controller.__tick(greenTick({ flags: RESTART, frame: 30_215, time: 512.433 }));
@@ -458,7 +458,7 @@ describe("the replay recorders, through initializeSimEventsIracing", () => {
       const controller = createMockController();
       controller.__setSessionInfo(raceSession());
       const seen = recordGreens();
-      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
       controller.__tick(greenTick({ state: SessionState.ParadeLaps })); // seed
       controller.__tick(greenTick({ state: SessionState.ParadeLaps }));
@@ -487,7 +487,7 @@ describe("the replay recorders, through initializeSimEventsIracing", () => {
       const controller = createMockController();
       controller.__setSessionInfo(raceSession());
       const seen = recordGreens();
-      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
       controller.__tick(greenTick({})); // seed
       controller.__tick(greenTick({ flags: WAVING }));
@@ -511,7 +511,7 @@ describe("the replay recorders, through initializeSimEventsIracing", () => {
       const controller = createMockController();
       controller.__setSessionInfo(raceSession("replay"));
       const seen = recordGreens();
-      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
       controller.__tick(greenTick({ state: SessionState.ParadeLaps }));
       controller.__tick(greenTick({ state: SessionState.ParadeLaps }));
@@ -536,7 +536,7 @@ describe("the replay recorders, through initializeSimEventsIracing", () => {
       const stream: string[] = [];
       getEventBus().subscribe("replay.greenFlag", (ev) => stream.push(`${ev.event}:${ev.data.kind}@${ev.data.frame}`));
       getEventBus().subscribe("caution.restarted", (ev) => stream.push(ev.event));
-      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
       controller.__tick(greenTick({})); // seed
       controller.__tick(greenTick({ flags: WAVING, frame: 71_000 }));
@@ -551,7 +551,7 @@ describe("the replay recorders, through initializeSimEventsIracing", () => {
       const controller = createMockController();
       controller.__setSessionInfo({ ...raceSession(), SessionInfo: { Sessions: [{ SessionType: "Practice" }] } });
       const seen = recordGreens();
-      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
       controller.__tick(greenTick({ state: SessionState.GetInCar }));
       controller.__tick(greenTick({ state: SessionState.GetInCar }));
@@ -625,7 +625,7 @@ describe("the replay recorders, through initializeSimEventsIracing", () => {
       controller.__setSessionInfo(liveSession());
       const handler = vi.fn();
       getEventBus().subscribe("replay.sessionStarted", handler);
-      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
       controller.__tick(garageTick({ frame: 156_000, time: 600 }));
       const second = garageTick({ frame: 156_001, time: 600 + 1 / 60 });
@@ -641,7 +641,7 @@ describe("the replay recorders, through initializeSimEventsIracing", () => {
       const controller = createMockController();
       controller.__setSessionInfo(liveSession());
       const seen = recordStarts();
-      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
       controller.__tick(carTick({ frame: 156_000, time: 600 }));
       controller.__tick(carTick({ frame: 156_001, time: 600 + 1 / 60 }));
@@ -665,7 +665,7 @@ describe("the replay recorders, through initializeSimEventsIracing", () => {
       const controller = createMockController();
       controller.__setSessionInfo(liveSession());
       const seen = recordStarts();
-      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
       controller.__tick(garageTick({ frame: 156_000, time: 600 }));
       controller.__tick(garageTick({ frame: 156_001, time: 600 + 1 / 60 }));
@@ -685,7 +685,7 @@ describe("the replay recorders, through initializeSimEventsIracing", () => {
       const controller = createMockController();
       controller.__setSessionInfo(liveSession());
       const seen = recordStarts();
-      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
       controller.__tick(garageTick({ frame: 156_000, time: 600, toEnd: 27_630 }));
       controller.__tick(garageTick({ frame: 156_001, time: 600 + 1 / 60, toEnd: 27_630 }));
@@ -697,7 +697,7 @@ describe("the replay recorders, through initializeSimEventsIracing", () => {
       const controller = createMockController();
       controller.__setSessionInfo(liveSession("replay"));
       const seen = recordStarts();
-      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
       controller.__tick(garageTick({ frame: 156_000, time: 600 }));
       controller.__tick(garageTick({ frame: 156_001, time: 600 + 1 / 60 }));
@@ -711,7 +711,7 @@ describe("the replay recorders, through initializeSimEventsIracing", () => {
       const controller = createMockController();
       controller.__setSessionInfo(liveSession());
       const seen = recordStarts();
-      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
       controller.__tick(garageTick({ frame: 156_000, time: 600 }));
       controller.__tick(garageTick({ frame: 156_001, time: 600 + 1 / 60 }));
@@ -734,7 +734,7 @@ describe("the replay recorders, through initializeSimEventsIracing", () => {
       const controller = createMockController();
       controller.__setSessionInfo(liveSession("replay"));
       const seen = recordStarts();
-      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
       // Scrubbed back: the controller learns it is a saved replay.
       controller.__tick(garageTick({ frame: 156_000, time: 600, toEnd: 27_630 }));
@@ -752,7 +752,7 @@ describe("the replay recorders, through initializeSimEventsIracing", () => {
       const controller = createMockController();
       controller.__setSessionInfo(liveSession());
       const logger = createMockLogger();
-      initializeSimEventsIracing(getEventBus(), controller, logger);
+      initializeSimEventsIracing(getEventBus(), controller, logger, { onStepError: "rethrow" });
 
       controller.__tick(carTick({ frame: 36_000, time: 0 }));
       controller.__tick(carTick({ frame: 36_001, time: 1 / 60 }));
@@ -810,7 +810,7 @@ describe("the replay recorders, through initializeSimEventsIracing", () => {
       controller.__setSessionInfo(liveSession([0, 2]));
       const handler = vi.fn();
       getEventBus().subscribe("replay.incident", handler);
-      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
       controller.__tick(incidentTick({ player: 0 })); // seed
       const rise = incidentTick({ player: 2, frame: 41_007 });
@@ -838,7 +838,7 @@ describe("the replay recorders, through initializeSimEventsIracing", () => {
       const controller = createMockController();
       controller.__setSessionInfo(liveSession([0, 0]));
       const seen = recordIncidents();
-      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
       controller.__tick(incidentTick({ player: 0 })); // seed
       controller.__tick(incidentTick({ player: 0, replay: true }));
@@ -861,7 +861,7 @@ describe("the replay recorders, through initializeSimEventsIracing", () => {
       const controller = createMockController();
       controller.__setSessionInfo(liveSession([0, 0], "replay"));
       const seen = recordIncidents();
-      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
       controller.__tick(incidentTick({ player: 0 }));
       controller.__tick(incidentTick({ player: 2 }));
@@ -887,7 +887,7 @@ describe("the replay recorders, through initializeSimEventsIracing", () => {
       bus.subscribe("replay.greenFlag", (ev) => stream.push(ev.event));
       bus.subscribe("replay.sessionStarted", (ev) => stream.push(ev.event));
       bus.subscribe("replay.incident", (ev) => stream.push(ev.event));
-      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
       const base = { SessionNum: 0, SessionUniqueID: 1, IsReplayPlaying: false };
       controller.__tick(

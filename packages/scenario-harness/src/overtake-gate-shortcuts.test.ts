@@ -168,7 +168,7 @@ describe("the racing-speed step, run the way the UI runs it", () => {
     // all. Only the step's own `tick` can put the patch in front of a publish.
     const controller = new MockSDKController({ onSubscriberError: "rethrow" });
     controller.setConnected(true);
-    initializeSimEventsIracing(bus, controller as unknown as SDKController, silentLogger);
+    initializeSimEventsIracing(bus, controller as unknown as SDKController, silentLogger, { onStepError: "rethrow" });
     controller.tickOnce();
 
     app = await createServer({
@@ -300,7 +300,7 @@ describe("the car an overtake or gap shortcut leaves on track changes no other s
     }
 
     controller.setConnected(true);
-    initializeSimEventsIracing(bus, controller as unknown as SDKController, silentLogger);
+    initializeSimEventsIracing(bus, controller as unknown as SDKController, silentLogger, { onStepError: "rethrow" });
     controller.start();
 
     if (before === null) vi.advanceTimersByTime(LISTEN_MS);

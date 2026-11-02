@@ -32,8 +32,9 @@
  * user toggles (the seed-during-stall branch in `diffToggles` silently
  * absorbs the crew's bit-clears), which is exactly the signal we want. One
  * plan change publishes no event at all — the fuel request moving while
- * auto-fuel is armed (issue #474) — and reaches this module through
- * `state.fuelPlanChangedThisTick` instead.
+ * auto-fuel is armed (issue #474) — and reaches this module as the
+ * `fuelPlanChanged` argument instead, the value `diffToggles` returns that tick
+ * (#1559).
  */
 import type { PitReadbackSnapshot, SimEventName } from "@iracedeck/event-bus";
 import {
@@ -157,12 +158,17 @@ const USER_TOGGLE_EVENTS = new Set<PendingEvent["event"]>([
 /** The events {@link diffPitReadback} emits (issue #1499): its emitter's type, and its row in `TICK_ORDER`. */
 export const PIT_READBACK_EVENTS = ["pitService.readbackRequested"] as const satisfies readonly SimEventName[];
 
+/**
+ * @param pending - The tick's events so far, read for `pitLane.approaching` and the user toggles
+ * @param fuelPlanChanged - Whether the fuel request settled into a new state this tick: `diffToggles`' return value, `false` when it threw
+ */
 export function diffPitReadback(
   state: TranslatorState,
   telemetry: TelemetryData,
   now: number,
   emit: EmitFn<(typeof PIT_READBACK_EVENTS)[number]>,
   pending: ReadonlyArray<PendingEvent>,
+  fuelPlanChanged: boolean,
 ): void {
   // `state.lastOnPitRoad` was just updated by `diffPitLane` earlier in the
   // tick — it carries the CURRENT tick's value. We track our own previous
@@ -212,12 +218,12 @@ export function diffPitReadback(
     state.pitReadbackExitFireAt = 0;
     state.pitReadbackPreStartFireAt = 0;
     emit({ event: "pitService.readbackRequested", data: { reason: "entry" } });
-  } else if (onPitRoad && (state.fuelPlanChangedThisTick || pending.some((p) => USER_TOGGLE_EVENTS.has(p.event)))) {
+  } else if (onPitRoad && (fuelPlanChanged || pending.some((p) => USER_TOGGLE_EVENTS.has(p.event)))) {
     // While on pit road, any user-intent toggle event refires the
     // readback. Family preemption (`family: "pit-readback"`) cuts the
     // in-flight readback cleanly.
     //
-    // `fuelPlanChangedThisTick` carries the fuel changes that publish no
+    // `fuelPlanChanged` carries the fuel changes that publish no
     // event at all: while auto-fuel is armed the CALLOUT is silent (issue
     // #474), since the sim writes that bit itself and a confirmation there
     // would be a phantom one — but the recap is a different promise. Without

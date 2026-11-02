@@ -263,7 +263,7 @@ export function useHeardRig(clipMs: ClipDurations): HeardRig {
         JSON.parse(readFileSync(join(PRESETS_DIR, "session", `${sessionPreset}.json`), "utf8")) as SessionInfo,
       );
       controller.setConnected(true);
-      initializeSimEventsIracing(bus, controller as unknown as SDKController, silentLogger);
+      initializeSimEventsIracing(bus, controller as unknown as SDKController, silentLogger, { onStepError: "rethrow" });
 
       if (ticking) controller.start();
       else controller.tickOnce();

@@ -201,14 +201,16 @@ function wideEmitters(source: string): string[] {
 
 /**
  * The exported functions in one module's source whose parameters take an
- * emitter (`EmitFn<…>`). Each is a stage the translator can call, so each
- * needs its own row — a second function sharing its module's list would
- * otherwise publish from a position the table never names. Parameters are
- * read to the matching parenthesis, since a callback-typed parameter carries
- * parentheses of its own.
+ * emitter (`EmitFn<…>`, or a type alias the module declares for one). Each is
+ * a stage the translator can call, so each needs its own row — a second
+ * function sharing its module's list would otherwise publish from a position
+ * the table never names. Parameters are read to the matching parenthesis,
+ * since a callback-typed parameter carries parentheses of its own.
  */
 function exportedEmitters(source: string): string[] {
   const names: string[] = [];
+  const aliases = [...source.matchAll(/\btype (\w+)\s*=\s*EmitFn</g)].map((m) => m[1]!);
+  const emitterType = new RegExp(`EmitFn<${aliases.map((a) => `|\\b${a}\\b`).join("")}`);
 
   for (const m of source.matchAll(/export function (\w+)\s*(?:<[^>]*>)?\s*\(/g)) {
     let depth = 1;
@@ -221,7 +223,7 @@ function exportedEmitters(source: string): string[] {
       i++;
     }
 
-    if (/EmitFn</.test(source.slice(m.index + m[0].length, i))) names.push(m[1]!);
+    if (emitterType.test(source.slice(m.index + m[0].length, i))) names.push(m[1]!);
   }
 
   return names;
@@ -231,18 +233,25 @@ function exportedEmitters(source: string): string[] {
  * The `emit` arguments in `translator.ts` — the pending emitter handed to a
  * call. Each must be a call of a pending row; one handed to anything else (a
  * translator-local helper typed over the whole union, which no `diff/` scan
- * sees) would queue events from a position the table never names.
+ * sees) would queue events from a position the table never names. The live
+ * half's own step functions (`handleLiveSteps`, `handleOrderSteps`, #1559) take
+ * the emitter only to hand it on, and their bodies are counted, so the calls
+ * of them are not.
  */
 function pendingEmitArgs(source: string): number {
-  return [...source.matchAll(/\bemit\s*[,)]/g)].length;
+  const withoutStepHelpers = source.replace(/\bhandle\w+Steps\([^;]*;/g, "");
+
+  return [...withoutStepHelpers.matchAll(/\bemit\s*[,)]/g)].length;
 }
 
 /**
- * Every `publish(self, …)` call in `translator.ts`, by what TICK_ORDER needs
- * to know of it: a literal event (a translator stage), a `(ev) => publish(self,
- * ev, …)` forwarder handed to a direct diff stage, the flush of `pending`
- * (`publish(self, p, …)`), or anything else, which the table cannot place.
- * Also counts `bus.publish` calls, of which `publish()` itself is the one.
+ * Every publish site in `translator.ts`, by what TICK_ORDER needs to know of
+ * it: a literal event (a translator stage), published by `publish(self, …)` or
+ * emitted by a translator-local direct step through its `emitNow` (#1559); the
+ * `publishNow` forwarder, the one sink of the direct steps; the flush of
+ * `pending` (`publish(self, p, …)`); or anything else, which the table cannot
+ * place. Also names the direct steps (`steps.direct("<name>", …)`) and counts
+ * `bus.publish` calls, of which `publish()` itself is the one.
  */
 function classifyPublishSites(source: string): {
   literals: string[];
@@ -250,6 +259,7 @@ function classifyPublishSites(source: string): {
   flushes: number;
   other: string[];
   busPublishes: number;
+  directSteps: string[];
 } {
   const literals: string[] = [];
   const other: string[] = [];
@@ -261,30 +271,52 @@ function classifyPublishSites(source: string): {
     const literal = /^\{\s*event:\s*"([^"]+)"/.exec(rest)?.[1];
 
     if (literal !== undefined) literals.push(literal);
-    else if (/^ev,/.test(rest) && /\(ev\)\s*=>\s*$/.test(source.slice(0, m.index))) forwards++;
+    else if (
+      /^ev,/.test(rest) &&
+      /\bpublishNow\s*=\s*\(ev(?::\s*PendingEvent)?\)(?::\s*void)?\s*=>\s*$/.test(source.slice(0, m.index))
+    )
+      forwards++;
     else if (/^p,/.test(rest)) flushes++;
     else other.push(`publish(self, ${rest.slice(0, 40).split("\n")[0]}`);
   }
 
-  return { literals, forwards, flushes, other, busPublishes: [...source.matchAll(/\.bus\.publish\(/g)].length };
+  for (const m of source.matchAll(/\bemitNow\(\s*\{\s*event:\s*"([^"]+)"/g)) literals.push(m[1]!);
+
+  return {
+    literals,
+    forwards,
+    flushes,
+    other,
+    busPublishes: [...source.matchAll(/\.bus\.publish\(/g)].length,
+    directSteps: [...source.matchAll(/\bsteps\.direct\(\s*"(\w+)"/g)].map((m) => m[1]!),
+  };
 }
 
 /**
  * The publish sites in `replay-recorder.ts`, by what REPLAY_RECORDER_ORDER
- * needs to know of them: its `publish(bus, …)` calls (the one `emit`
- * forwarder every recorder is handed), its `bus.publish` calls (of which
- * `publish()` itself is the one), the `emit` arguments it hands out, and how
- * often each named stage is called. Anything else that publishes — a literal
- * event, a second forwarder, a helper handed `emit` — shows as a surplus.
+ * needs to know of them: its `publish(bus, …)` calls (the one `publishNow`
+ * sink every direct step is handed), its `bus.publish` calls (of which
+ * `publish()` itself is the one), the `emit` mentions — each step's
+ * `(emit) => <stage>(…, emit, …)`, two per step (#1559) — the direct steps by
+ * name, and how often each named stage is called. Anything else that
+ * publishes — a literal event, a second forwarder, a helper handed `emit` —
+ * shows as a surplus.
  */
 function classifyRecorderPublishSites(
   source: string,
   stages: readonly string[],
-): { publishCalls: number; busPublishes: number; emitArgs: number; stageCalls: Record<string, number> } {
+): {
+  publishCalls: number;
+  busPublishes: number;
+  emitArgs: number;
+  directSteps: string[];
+  stageCalls: Record<string, number>;
+} {
   return {
     publishCalls: [...source.matchAll(/\bpublish\(\s*bus\s*,/g)].length,
     busPublishes: [...source.matchAll(/\bbus\.publish\(/g)].length,
     emitArgs: [...source.matchAll(/\bemit\s*[,)]/g)].length,
+    directSteps: [...source.matchAll(/\bsteps\.direct\(\s*"(\w+)",\s*publishNow\s*,/g)].map((m) => m[1]!),
     stageCalls: Object.fromEntries(
       stages.map((stage) => [stage, [...source.matchAll(new RegExp(`\\b${stage}\\(`, "g"))].length]),
     ),
@@ -523,7 +555,7 @@ describe("TICK_ORDER", () => {
     harness.probe.active = false;
     harness.probe.events = new Map(CONTROLLER_TICK_ORDER.filter(isModuleStage).map((s) => [s.stage, s.events[0]!]));
     controller = createController();
-    initializeSimEventsIracing(createRecordingBus(), controller, silentLogger);
+    initializeSimEventsIracing(createRecordingBus(), controller, silentLogger, { onStepError: "rethrow" });
   });
 
   afterEach(() => {
@@ -574,7 +606,7 @@ describe("TICK_ORDER", () => {
       _resetSimEventsIracing();
       const subscribe = vi.spyOn(controller, "subscribe");
 
-      initializeSimEventsIracing(createRecordingBus(), controller, silentLogger);
+      initializeSimEventsIracing(createRecordingBus(), controller, silentLogger, { onStepError: "rethrow" });
 
       expect(subscribe.mock.calls.map(([id]) => id)).toEqual(SUBSCRIBERS.map((s) => s.id));
       expect(CONTROLLER_TICK_ORDER).toEqual([...TICK_ORDER, ...REPLAY_RECORDER_ORDER]);
@@ -724,16 +756,23 @@ describe("TICK_ORDER", () => {
       const direct = new Set(TICK_ORDER.filter((s) => s.source === "translator.ts").flatMap((s) => s.events));
 
       // Five literal sites today: the two teardown publishes, driver.firstOnTrack
-      // and the two session.changed paths. Zero would mean the scan is broken.
+      // (emitted by its direct step) and the two session.changed paths. Zero
+      // would mean the scan is broken.
       expect(sites.literals.length).toBeGreaterThan(0);
       expect(sites.literals.filter((e) => !direct.has(e as SimEventName))).toEqual([]);
       expect([...direct].filter((e) => !sites.literals.includes(e))).toEqual([]);
-      // Every other call is one the table already places: a forwarder handed
-      // to a direct diff stage, or the end-of-tick flush of `pending`.
+      // Every other call is one the table already places: the one sink of the
+      // direct steps, or the end-of-tick flush of `pending`.
       expect(sites.other).toEqual([]);
-      expect(sites.forwards).toBe(TICK_ORDER.filter((s) => isModuleStage(s) && s.via === "direct").length);
+      expect(sites.forwards).toBe(1);
       expect(sites.flushes).toBe(1);
       expect(sites.busPublishes).toBe(1);
+      // And the direct steps are the table's direct rows that name a function,
+      // in its order (#1559): the module stage's probe proves it publishes
+      // directly, and the literal check above covers the translator's own.
+      expect(sites.directSteps).toEqual(
+        TICK_ORDER.filter((s) => s.via === "direct" && /^\w+$/.test(s.stage)).map((s) => s.stage),
+      );
     });
 
     // The recorder's side of the same proof (#1468): every publish it makes
@@ -747,7 +786,8 @@ describe("TICK_ORDER", () => {
       expect(stages.length).toBeGreaterThan(0);
       expect(sites.busPublishes).toBe(1);
       expect(sites.publishCalls).toBe(1);
-      expect(sites.emitArgs).toBe(REPLAY_RECORDER_ORDER.length);
+      expect(sites.emitArgs).toBe(2 * REPLAY_RECORDER_ORDER.length);
+      expect(sites.directSteps).toEqual(stages);
       expect(sites.stageCalls).toEqual(Object.fromEntries(stages.map((s) => [s, 1])));
       expect(REPLAY_RECORDER_ORDER.every((s) => s.via === "direct" && isModuleStage(s))).toBe(true);
     });
@@ -775,6 +815,11 @@ describe("TICK_ORDER", () => {
         "function localHelper(emit: EmitFn<(typeof FOO_EVENTS)[number]>) {}\n";
 
       expect(exportedEmitters(source)).toEqual(["diffFoo", "diffBar"]);
+      // An emitter typed through the module's own alias counts too.
+      const aliased =
+        "type FooEmit = EmitFn<(typeof FOO_EVENTS)[number]>;\nexport function diffBaz(emit: FooEmit) {}\n";
+      expect(exportedEmitters(aliased)).toEqual(["diffBaz"]);
+      expect(exportedEmitters("type FooEmit = EmitFn<X>;\nexport function readBaz(e: FooEmitter) {}\n")).toEqual([]);
     });
 
     it("the pending-emitter count sees a translator-local receiver", () => {
@@ -783,24 +828,34 @@ describe("TICK_ORDER", () => {
       expect(pendingEmitArgs(calls)).toBe(2);
       expect(pendingEmitArgs(`${calls}queueLocal(t, emit);\n`)).toBe(3);
       expect(pendingEmitArgs("const emit = (ev: PendingEvent): void => {};")).toBe(0);
+      // The live half's own step functions hand the emitter on; only their bodies count.
+      expect(pendingEmitArgs(`${calls}handleLiveSteps(self, t, info, now, pending, emit);\n`)).toBe(2);
+      expect(pendingEmitArgs(`${calls}handleOrderSteps(self, t, emit, {\n  a: 1,\n});\nqueueLocal(emit);\n`)).toBe(3);
     });
 
     it("the publish-site scan reports a call the table cannot place", () => {
       const placed =
         'publish(self, { event: "radar.changed", data: {} }, t, now);\n' +
-        "diffX(s, (ev) => publish(self, ev, t, now));\n" +
+        "const publishNow = (ev: PendingEvent): void => publish(self, ev, t, now);\n" +
+        'steps.direct("diffX", publishNow, (emitNow) => diffX(s, emitNow));\n' +
+        'emitNow({ event: "driver.firstOnTrack", data: {} });\n' +
         "for (const p of pending) publish(self, p, t, now);\n" +
         "self.bus.publish(envelope);\n";
 
       expect(classifyPublishSites(placed)).toEqual({
-        literals: ["radar.changed"],
+        literals: ["radar.changed", "driver.firstOnTrack"],
         forwards: 1,
         flushes: 1,
         other: [],
         busPublishes: 1,
+        directSteps: ["diffX"],
       });
       expect(classifyPublishSites(`${placed}publish(self, ended, t, now);\n`).other).toEqual([
         "publish(self, ended, t, now);",
+      ]);
+      // A forwarder that is not the direct steps' sink is one the table cannot place.
+      expect(classifyPublishSites(`${placed}diffY(s, (ev) => publish(self, ev, t, now));\n`).other).toEqual([
+        "publish(self, ev, t, now));",
       ]);
       expect(classifyPublishSites(`${placed}self.bus.publish(extra);\n`).busPublishes).toBe(2);
     });
@@ -907,22 +962,23 @@ describe("TICK_ORDER", () => {
     it("the recorder publish-site scan reports a publish the table cannot place", () => {
       const stages = ["diffA", "diffB"];
       const placed =
-        "const emit = (p: PendingEvent): void => publish(bus, p, t);\n" +
-        "diffA(s, t, emit);\n" +
-        "diffB(s, t, i, emit, logger);\n" +
+        "const publishNow = (p: PendingEvent): void => publish(bus, p, t);\n" +
+        'steps.direct("diffA", publishNow, (emit) => diffA(s, t, emit));\n' +
+        'steps.direct("diffB", publishNow, (emit) => diffB(s, t, i, emit, logger));\n' +
         "function publish(bus: IEventBus, p: PendingEvent): void {\n  bus.publish(envelope);\n}\n";
 
       expect(classifyRecorderPublishSites(placed, stages)).toEqual({
         publishCalls: 1,
         busPublishes: 1,
-        emitArgs: 2,
+        emitArgs: 4,
+        directSteps: ["diffA", "diffB"],
         stageCalls: { diffA: 1, diffB: 1 },
       });
       expect(classifyRecorderPublishSites(`${placed}bus.publish(extra);\n`, stages).busPublishes).toBe(2);
       expect(
         classifyRecorderPublishSites(`${placed}publish(bus, { event: "replay.x" }, t);\n`, stages).publishCalls,
       ).toBe(2);
-      expect(classifyRecorderPublishSites(`${placed}helper(t, emit);\n`, stages).emitArgs).toBe(3);
+      expect(classifyRecorderPublishSites(`${placed}helper(t, emit);\n`, stages).emitArgs).toBe(5);
       expect(classifyRecorderPublishSites(`${placed}diffA(s, t, emit);\n`, stages).stageCalls.diffA).toBe(2);
     });
 

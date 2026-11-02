@@ -46,11 +46,20 @@
  * replay included, never reaches this diff since #1324 (the translator's guard
  * reads the controller's debounced replay state), so the `replayOnlySession`
  * gate it carried from #604 went.
+ *
+ * **Each car's detection and classification is a unit** (#1559), run through
+ * the `runUnit` the translator hands in: a car whose classification throws
+ * (one odd telemetry row) is left out of the tick and the rest of the field
+ * still announces. The emit loop, the aggregation and the baseline advance
+ * after it are field-wide and stay in the step. The advance skips a car whose
+ * unit threw, so its entry is detected again on the next tick; and since the
+ * baselines advance after the loops, a throw in the step is retried as well.
  */
 import type { SimEventName } from "@iracedeck/event-bus";
 import { classPositionFromOrder, type TelemetryData, TrkLoc } from "@iracedeck/iracing-sdk";
 
 import type { TranslatorState } from "../state.js";
+import { runUnitsDirectly, type UnitRunner } from "../tick-steps.js";
 import { isRacingSurface } from "./track-surface.js";
 import type { EmitFn } from "./types.js";
 
@@ -135,6 +144,9 @@ function classify(
 /** The events {@link diffOpponentPit} emits (issue #1499): its emitter's type, and its row in `TICK_ORDER`. */
 export const OPPONENT_PIT_EVENTS = ["opponentPit.entered"] as const satisfies readonly SimEventName[];
 
+/**
+ * @param runUnit - Runs each car's detection and classification as a unit (#1559): the translator's step runner, so one car's throw costs that car only. Defaults to {@link runUnitsDirectly}, which catches nothing
+ */
 export function diffOpponentPit(
   state: TranslatorState,
   telemetry: TelemetryData,
@@ -147,6 +159,7 @@ export function diffOpponentPit(
   frozenPositions: number[],
   now: number,
   emit: EmitFn<(typeof OPPONENT_PIT_EVENTS)[number]>,
+  runUnit: UnitRunner = runUnitsDirectly,
 ): void {
   // Prune the aggregation window every tick; a quiet window ends the episode.
   if (state.opponentPitRecentEntries.length > 0) {
@@ -173,26 +186,35 @@ export function diffOpponentPit(
 
   const prev = state.opponentPitLastSurface;
   const gated = !isRaceSession || preGreen || postRace || playerCarIdx < 0;
+  // The cars whose unit threw this tick: their baselines stay put, so the entry
+  // is detected again next tick. `null` (no allocation) on a tick nothing threw.
+  let failed: number[] | null = null;
 
   if (!gated) {
     const lc = telemetry.CarIdxLapCompleted;
     const dp = telemetry.CarIdxLapDistPct;
     const qualifying: Array<{ carIdx: number; c: Classification }> = [];
-
-    for (let i = 0; i < ts.length; i++) {
-      if (i === playerCarIdx || i === paceCarIdx) continue;
+    // The car the unit below reads, set by the loop: one closure per tick rather
+    // than one per car. The unit emits nothing; it qualifies the car or not.
+    let i = 0;
+    const detect = (): void => {
+      if (i === playerCarIdx || i === paceCarIdx) return;
 
       // Off pit road and in the world — the only surface a pit entry starts from (#1212).
-      if (ts[i] !== TrkLoc.AproachingPits || !isRacingSurface(prev[i])) continue;
+      if (ts[i] !== TrkLoc.AproachingPits || !isRacingSurface(prev[i])) return;
 
       // In-world test (the race-finish.ts shape) — blipped/vanished cars skip.
-      if ((lc?.[i] ?? -1) < 0 || (dp?.[i] ?? -1) < 0) continue;
+      if ((lc?.[i] ?? -1) < 0 || (dp?.[i] ?? -1) < 0) return;
 
-      if (now < (state.opponentPitCarCooldownUntil[i] ?? 0)) continue;
+      if (now < (state.opponentPitCarCooldownUntil[i] ?? 0)) return;
 
       const c = classify(telemetry, frozenPositions, playerCarIdx, i, isMultiClass);
 
       if (c) qualifying.push({ carIdx: i, c });
+    };
+
+    for (i = 0; i < ts.length; i++) {
+      if (!runUnit(emit, detect)) (failed ??= []).push(i);
     }
 
     // Leader-first within the tick — the leader's individual line must never
@@ -233,9 +255,10 @@ export function diffOpponentPit(
   // transition during a non-race / pre-green / post-race window
   // never replays once the gate opens. Element-wise copy, no per-tick
   // allocation (the other diffs' baseline convention). A `NotInWorld` tick
-  // leaves the car's last in-world surface in place (#1212).
+  // leaves the car's last in-world surface in place (#1212), and so does a car
+  // whose unit threw (#1559).
   for (let i = 0; i < ts.length; i++) {
-    if (ts[i] !== TrkLoc.NotInWorld) prev[i] = ts[i];
+    if (ts[i] !== TrkLoc.NotInWorld && (failed === null || !failed.includes(i))) prev[i] = ts[i];
   }
 
   prev.length = ts.length;

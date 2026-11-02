@@ -6,13 +6,13 @@
  */
 import type { IEventBus } from "@iracedeck/event-bus";
 import type { ReplayState, TelemetryCallback, TelemetryData } from "@iracedeck/iracing-sdk";
-import { type ILogger, silentLogger } from "@iracedeck/logger";
+import { createErrorBoundary, type ILogger, silentLogger } from "@iracedeck/logger";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { REPLAY_LAPS_EVENTS } from "./diff/replay-laps.js";
 import type { EmitFn } from "./diff/types.js";
 import type { ReplayRecorderState } from "./replay-recorder-state.js";
-import { createInitialReplayRecorderState } from "./replay-recorder-state.js";
+import { createInitialReplayRecorderState, resetReplayRecorderBaselines } from "./replay-recorder-state.js";
 import {
   REPLAY_RECORDER_SUBSCRIPTION_ID,
   type ReplayRecorder,
@@ -140,7 +140,12 @@ describe("startReplayRecorder", () => {
     bus = { publish } as unknown as IEventBus;
     logger = { ...silentLogger };
     fake = createController();
-    recorder = startReplayRecorder(bus, fake.controller as unknown as ReplayRecorderController, logger);
+    recorder = startReplayRecorder(
+      bus,
+      fake.controller as unknown as ReplayRecorderController,
+      logger,
+      createErrorBoundary({ logger, policy: "rethrow" }),
+    );
   });
 
   afterEach(() => {
@@ -183,7 +188,12 @@ describe("startReplayRecorder", () => {
         throw new Error("bad session info");
       };
 
-      const started = startReplayRecorder(bus, failing.controller as unknown as ReplayRecorderController, logger);
+      const started = startReplayRecorder(
+        bus,
+        failing.controller as unknown as ReplayRecorderController,
+        logger,
+        createErrorBoundary({ logger, policy: "rethrow" }),
+      );
 
       expect(failing.controller.unsubscribe).not.toHaveBeenCalled();
       started.stop();
@@ -211,11 +221,12 @@ describe("startReplayRecorder", () => {
 
       expect(fake.controller.getReplayState).toHaveBeenCalledTimes(1);
       const args = Object.fromEntries(recorderArgs.map((r) => [r.name, r.args]));
-      expect(args.laps).toEqual([telemetry, info, true, expect.any(Function)]);
+      // The lap and incident records also get the step boundary's unit runner (#1559).
+      expect(args.laps).toEqual([telemetry, info, true, expect.any(Function), expect.any(Function)]);
       expect(args.greens).toEqual([telemetry, info, true, expect.any(Function), logger]);
       // The session record reads the controller's sticky saved-replay answer.
       expect(args.sessions).toEqual([telemetry, info, true, true, expect.any(Function), logger]);
-      expect(args.incidents).toEqual([telemetry, info, true, expect.any(Function)]);
+      expect(args.incidents).toEqual([telemetry, info, true, expect.any(Function), expect.any(Function)]);
     });
 
     it("runs nothing on a connected tick without telemetry", () => {
@@ -397,6 +408,36 @@ describe("startReplayRecorder", () => {
       fake.deliver(tick(0));
 
       expect(take()).toEqual([...RECORDERS, "reset"]);
+    });
+  });
+
+  // The recorder's tests run its steps under "rethrow" (#1559): a step's throw
+  // is held until the four have run, and a throw in the frame is not replaced.
+  describe('under the "rethrow" step policy', () => {
+    it("throws a recorder's held error once all four have run", () => {
+      onLaps.current = () => {
+        throw new Error("lap record broke");
+      };
+
+      expect(() => fake.deliver(tick(0))).toThrow("lap record broke");
+      expect(take()).toEqual(RECORDERS);
+    });
+
+    it("lets a frame throw after a step's surface itself, and carries the step's error into no later tick", () => {
+      fake.deliver(tick(0));
+      onLaps.current = () => {
+        throw new Error("lap record broke");
+      };
+      // Into a replay: the entry reset after the four recorders is the frame.
+      fake.setReplay({ inReplay: true });
+      vi.mocked(resetReplayRecorderBaselines).mockImplementationOnce(() => {
+        throw new Error("frame broke");
+      });
+
+      expect(() => fake.deliver(tick(0))).toThrow("frame broke");
+
+      onLaps.current = null;
+      expect(() => fake.deliver(tick(0))).not.toThrow();
     });
   });
 });

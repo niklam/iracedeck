@@ -221,12 +221,23 @@ export const TOGGLES_EVENTS = [
   "tireService.compoundChanged",
 ] as const satisfies readonly SimEventName[];
 
+/**
+ * Step the pit-service and car-control toggles for one tick.
+ *
+ * @returns Whether the fuel REQUEST settled into a new state on this tick,
+ * published or silenced. `diffPitReadback` takes it in the same tick to refresh
+ * the pit-road recap for a change the callout deliberately says nothing about:
+ * the fuel request's own `pitService.toggled` is suppressed while auto-fuel is
+ * armed (issue #474). A returned value rather than a state field (#1559,
+ * decision 4), so a throw here can never leave an earlier tick's `true` for the
+ * readback to read.
+ */
 export function diffToggles(
   state: TranslatorState,
   telemetry: TelemetryData,
   now: number,
   emit: EmitFn<(typeof TOGGLES_EVENTS)[number]>,
-): void {
+): boolean {
   const pitSvFlags = telemetry.PitSvFlags ?? 0;
   const limiter = isPitLimiterEngaged(telemetry);
   const p2p = telemetry.P2P_Status === true;
@@ -266,9 +277,8 @@ export function diffToggles(
     // than a rule about one event, and a line about a switch made before one
     // of those would arrive with no context left to make sense of it.
     state.autoFuelSwitchHeld = null;
-    state.fuelPlanChangedThisTick = false;
 
-    return;
+    return false;
   }
 
   // ── Auto-fuel switched on / off (issue #474), phase 1: decide ──────────
@@ -338,9 +348,8 @@ export function diffToggles(
 
   // The fuel debounce only ever settles into a value that differs from its
   // baseline, so this IS "the fuel request settled this tick" — published or
-  // silenced. `diffPitReadback` reads it to refresh the pit-road recap for a
-  // change the callout deliberately said nothing about.
-  state.fuelPlanChangedThisTick = nextBaselineFuel !== fuelBaselineBefore;
+  // silenced: the value this function returns.
+  const fuelPlanChanged = nextBaselineFuel !== fuelBaselineBefore;
 
   // Phase 3: announce the switch, once the fuel request is STABLE, so
   // `refuel` is the plan the switch leaves behind rather than a bit still in
@@ -485,4 +494,6 @@ export function diffToggles(
   state.lastLimiterActive = limiter;
   state.lastP2PActive = p2p;
   state.lastDrsActive = drs;
+
+  return fuelPlanChanged;
 }

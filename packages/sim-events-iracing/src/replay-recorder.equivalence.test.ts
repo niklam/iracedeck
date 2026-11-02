@@ -845,7 +845,7 @@ function runTape(tape: Tape): RecordedEvent[] {
   const controller = new FakeSdkController();
 
   vi.setSystemTime(BASE_MS);
-  initializeSimEventsIracing(bus, controller as unknown as SDKController, silentLogger);
+  initializeSimEventsIracing(bus, controller as unknown as SDKController, silentLogger, { onStepError: "rethrow" });
 
   tape.steps.forEach((s, i) => {
     step = i;

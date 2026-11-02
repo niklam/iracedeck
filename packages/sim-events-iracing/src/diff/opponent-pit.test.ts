@@ -1,7 +1,9 @@
 import { TrkLoc } from "@iracedeck/iracing-sdk";
+import { createErrorBoundary, type ILogger, silentLogger } from "@iracedeck/logger";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { createInitialState, type TranslatorState } from "../state.js";
+import { TickSteps } from "../tick-steps.js";
 import { diffOpponentPit, OPPONENT_PIT_AGGREGATE_WINDOW_MS, OPPONENT_PIT_CAR_COOLDOWN_MS } from "./opponent-pit.js";
 import type { PendingEvent } from "./types.js";
 
@@ -507,5 +509,101 @@ describe("diffOpponentPit", () => {
 
     expect(run(state, bare, 1000)).toEqual([]);
     expect(state.opponentPitInitialized).toBe(false);
+  });
+
+  describe("one car's throw costs that car only (#1559)", () => {
+    /**
+     * The translator's runner over a real #1558 boundary: the diff runs as a live
+     * step into `pending` and each car's detection as a unit.
+     */
+    function runGuarded(t: MutableField, now: number, positions: number[]) {
+      const errors: string[] = [];
+      const logger: ILogger = {
+        ...silentLogger,
+        error: (message) => {
+          errors.push(message);
+        },
+      };
+      const steps = new TickSteps({ boundary: createErrorBoundary({ logger, now: () => 0 }), prefix: "translator:" });
+      const pending: PendingEvent[] = [];
+
+      steps.live("diffOpponentPit", pending, () =>
+        diffOpponentPit(
+          state,
+          t as never,
+          PLAYER,
+          null,
+          true,
+          false,
+          false,
+          false,
+          positions,
+          now,
+          (ev) => pending.push(ev),
+          steps.runUnit,
+        ),
+      );
+
+      return { events: pending, errors };
+    }
+
+    /** {@link POSITIONS} whose entry for `carIdx` throws while `fault.on`: only that car's classification reads it. */
+    function faultyPositions(carIdx: number, fault: { on: boolean }): number[] {
+      const positions = POSITIONS.slice();
+
+      Object.defineProperty(positions, carIdx, {
+        get: () => {
+          if (fault.on) throw new Error("odd position row");
+
+          return POSITIONS[carIdx];
+        },
+      });
+
+      return positions;
+    }
+
+    it("still announces another car's entry while classifying one car throws, and the failing car's next tick", () => {
+      const fault = { on: true };
+      const positions = faultyPositions(3, fault);
+
+      runGuarded(makeField(), 1000, positions);
+      const t = makeField();
+      t.CarIdxTrackSurface[3] = TrkLoc.AproachingPits; // P3, ahead — its classification throws
+      t.CarIdxTrackSurface[4] = TrkLoc.AproachingPits; // P5, behind
+
+      const faulted = runGuarded(t, 2000, positions);
+
+      expect(faulted.events).toEqual([
+        {
+          event: "opponentPit.entered",
+          data: { relation: "behind", carIdx: 4, position: 5, isMultiClass: false },
+        },
+      ]);
+      expect(faulted.errors).toHaveLength(1);
+      expect(faulted.errors[0]).toContain("translator:diffOpponentPit");
+      // The failing car's baseline stays on track; the announced car's moves on.
+      expect(state.opponentPitLastSurface[3]).toBe(TrkLoc.OnTrack);
+      expect(state.opponentPitLastSurface[4]).toBe(TrkLoc.AproachingPits);
+
+      fault.on = false;
+
+      expect(runGuarded(t, 2100, positions).events).toEqual([
+        {
+          event: "opponentPit.entered",
+          data: { relation: "ahead", carIdx: 3, position: 3, isMultiClass: false },
+        },
+      ]);
+      expect(runGuarded(t, 2200, positions).events).toEqual([]);
+    });
+
+    it("lets the throw out with the default runner, so the diff's own tests stay loud", () => {
+      const positions = faultyPositions(3, { on: true });
+
+      run(state, makeField(), 1000, { positions });
+      const t = makeField();
+      t.CarIdxTrackSurface[3] = TrkLoc.AproachingPits;
+
+      expect(() => run(state, t, 2000, { positions })).toThrow("odd position row");
+    });
   });
 });

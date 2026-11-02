@@ -47,7 +47,7 @@ import {
   type TelemetryData,
   TrkLoc,
 } from "@iracedeck/iracing-sdk";
-import { type ILogger, silentLogger } from "@iracedeck/logger";
+import { createErrorBoundary, type ErrorPolicy, type ILogger, silentLogger } from "@iracedeck/logger";
 import { type CornerMarker, resolveCornerMarkers } from "@iracedeck/track-data";
 
 import { type CautionGapMeasurement, measureCautionGap } from "./diff/caution-gap.js";
@@ -69,7 +69,7 @@ import {
   type FuelStats,
 } from "./diff/fuel-laps.js";
 import { diffGaps, GAP_DEFAULT_ALERT_THRESHOLD_S, GAP_DEFAULT_MIN_CHANGE_S, readPairGap } from "./diff/gaps.js";
-import { diffIncidents, resolveCollisionCarValue } from "./diff/incidents.js";
+import { COLLISION_CAR_VALUE_PAVEMENT, diffIncidents, resolveCollisionCarValue } from "./diff/incidents.js";
 import { diffLaps } from "./diff/laps.js";
 import { diffLeaderWhite } from "./diff/leader-white.js";
 import { diffLifecycle } from "./diff/lifecycle.js";
@@ -100,7 +100,7 @@ import { diffTireWear } from "./diff/tire-wear.js";
 import { diffToggles } from "./diff/toggles.js";
 import { diffTrackGaps } from "./diff/track-gaps.js";
 import { diffTrackWetness, resolveReportedTrackWetness } from "./diff/track-wetness.js";
-import type { PendingEvent } from "./diff/types.js";
+import type { EmitFn, PendingEvent } from "./diff/types.js";
 import { calculateCanonicalRacePositions } from "./race-order.js";
 import { type ReplayRecorder, startReplayRecorder } from "./replay-recorder.js";
 import {
@@ -123,15 +123,32 @@ import {
   type RollingStartFormation,
   type TranslatorState,
 } from "./state.js";
+import { TICK_STEP_KEYS_PER_ID, TickSteps, VALUE_UNAVAILABLE } from "./tick-steps.js";
 import {
   isOvalTrack,
   parseTrackLengthMeters,
   resolveTrackDirection,
   resolveTrackType,
   type TrackDirection,
+  TrackType,
 } from "./track-type.js";
 
 const SUBSCRIPTION_ID = "__sim-events-iracing__";
+
+/**
+ * The global cap of the step boundary's reporter table (#1559, decision 7): four
+ * throw sites ({@link TICK_STEP_KEYS_PER_ID}, #1558's per-id cap) for every id the
+ * boundary can report — each step and value of the translator's `handleTick`
+ * (`translator:<function>`), the tick listeners (`translator:onTranslatorTick`) and the
+ * replay recorder's four steps (`replay-recorder:<function>`), which share the
+ * boundary. With room for every id's sites the global cap can never be what hides
+ * one step's first error. `tick-steps.source.test.ts` counts the ids in both
+ * `handleTick`s and fails until this number matches; a new step changes it.
+ */
+export const TRANSLATOR_REPORTER_MAX_KEYS = 55 * TICK_STEP_KEYS_PER_ID;
+
+/** The step name every {@link onTranslatorTick} listener is called under: one id, `translator:onTranslatorTick`. */
+const TICK_LISTENER_STEP = "onTranslatorTick";
 
 type TranslatorInstance = {
   bus: IEventBus;
@@ -182,6 +199,14 @@ type TranslatorInstance = {
    * detected. Reset only by `handleDisconnect`.
    */
   sessionIdentity: SessionIdentityBaseline;
+  /**
+   * The last good answer of each value a tick hands from one step to the next
+   * (#1559, decision 3), by the value's name: what a value whose resolver throws
+   * falls back to. It belongs to the session the identity above names, so
+   * `resetPerSessionState` and `handleDisconnect` clear it, and the replay wipe,
+   * which keeps the session, leaves it.
+   */
+  lastValues: Map<string, unknown>;
   /**
    * `driver.firstOnTrack` tracking — session-scoped (issue #564), not
    * connection-scoped. Kept on the instance (not `TranslatorState`) so it
@@ -277,14 +302,25 @@ type TranslatorInstance = {
    * subscription and the recorder's start. Stopped by `_resetSimEventsIracing`.
    */
   replayRecorder: ReplayRecorder | null;
+  /**
+   * The step boundary of every tick (#1559): each step and value of
+   * `handleTick`, and each tick listener, runs through it under
+   * `translator:<function>`. It wraps this instance's own #1558 error boundary,
+   * which the replay recorder shares; both are built by
+   * `initializeSimEventsIracing` and dropped with the instance.
+   */
+  steps: TickSteps;
 };
 
 /**
- * Optional wiring for {@link initializeSimEventsIracing} (issue #838).
- * Settings-backed knobs the diffs read live — injected as closures so this
- * package stays independent of `@iracedeck/deck-core`.
+ * The settings-backed half of {@link SimEventsIracingOptions} (issue #838):
+ * knobs the diffs read live, injected as closures so this package stays
+ * independent of `@iracedeck/deck-core`. A plugin builds every one of them from
+ * the global settings (`race-engineer-wiring`'s `createIracingTranslatorOptions`,
+ * typed `Required<…>` of this so a new knob fails its typecheck until it is
+ * built there).
  */
-export type SimEventsIracingOptions = {
+export type SimEventsIracingSettingsOptions = {
   /**
    * Live-read margin (laps) subtracted from the raw laps-of-fuel-left
    * estimate before the spoken count is derived. Plugins compose it from
@@ -330,6 +366,26 @@ export type SimEventsIracingOptions = {
   getOpponentFlagRangeSeconds?: () => number;
 };
 
+/**
+ * Optional wiring for {@link initializeSimEventsIracing}: the settings-backed
+ * knobs, and the step boundary's policy and clock (#1559), which no setting
+ * backs and every plugin build leaves at their defaults.
+ */
+export type SimEventsIracingOptions = SimEventsIracingSettingsOptions & {
+  /**
+   * What a step of a tick that throws does (#1559, decision 8), #1558's policy
+   * type. `"report"`, the default and what every plugin build runs, reports the
+   * throw through the bounded reporter (one `error` line per throw site, repeats
+   * summarised) and the tick carries on without that step's events. `"rethrow"`
+   * reports nothing: every step still runs and the flush still happens, then
+   * the first error is thrown out of the translator's controller callback. A test
+   * that drives ticks chooses `"rethrow"`, so a diff that starts throwing fails it.
+   */
+  onStepError?: ErrorPolicy;
+  /** The step reporter's clock, in milliseconds. Default: `Date.now()`, read on every call. A test passes a fake. */
+  errorClock?: () => number;
+};
+
 let instance: TranslatorInstance | null = null;
 
 /**
@@ -338,9 +394,6 @@ let instance: TranslatorInstance | null = null;
  * is kept; {@link _resetSimEventsIracing} clears it.
  */
 const tickListeners = new Set<() => void>();
-
-/** The listeners whose last call threw, so a listener failing every tick logs once, not at the tick rate. */
-const failingTickListeners = new Set<() => void>();
 
 /**
  * Registers `listener` to run at the end of the translator's own controller
@@ -352,42 +405,34 @@ const failingTickListeners = new Set<() => void>();
  * only have had the subscription order. It also runs when the translator
  * throws on the callback, before the throw goes on to the controller. A
  * listener that throws is skipped: the next listener and the translator's
- * next tick still run. It is logged on the first throw of a run of failing
- * calls, and again only after a call of it has succeeded. Returns the
- * unsubscribe.
+ * next tick still run. Every listener is called through the translator's step
+ * boundary (#1559) under one id, `translator:onTranslatorTick`, so a throw is
+ * reported as a step's is: one `error` line per throw site, repeats counted and
+ * summarised once a minute, recovery declared after a quiet minute. Under the
+ * `"rethrow"` policy the throw is held and thrown out of the translator's
+ * callback once every listener has run. Returns the unsubscribe.
  */
 export function onTranslatorTick(listener: () => void): () => void {
   tickListeners.add(listener);
 
   return () => {
     tickListeners.delete(listener);
-    failingTickListeners.delete(listener);
   };
 }
 
 /**
- * Run every {@link onTranslatorTick} listener, each isolated from the others.
- * Over a snapshot, so a listener registered during the pass (or one that
- * unsubscribes and registers again) is first called on the next update, never
- * twice on this one; one unsubscribed during the pass is not called.
+ * Run every {@link onTranslatorTick} listener, each isolated from the others by
+ * the step boundary, under `translator:onTranslatorTick`. Over a snapshot, so a
+ * listener registered during the pass (or one that unsubscribes and registers
+ * again) is first called on the next update, never twice on this one; one
+ * unsubscribed during the pass is not called. The id is fixed, so a listener
+ * that unsubscribes and then throws leaves nothing to forget.
  */
-function notifyTickListeners(logger: ILogger): void {
+function notifyTickListeners(steps: TickSteps): void {
   for (const listener of [...tickListeners]) {
     if (!tickListeners.has(listener)) continue;
 
-    try {
-      listener();
-      failingTickListeners.delete(listener);
-    } catch (error) {
-      if (failingTickListeners.has(listener)) continue;
-
-      // One that unsubscribed before throwing is logged but not remembered as
-      // failing, so a later registration of it logs its own first throw.
-      if (tickListeners.has(listener)) failingTickListeners.add(listener);
-
-      logger.error("Translator tick listener failed");
-      logger.debug(`Listener error: ${String(error)}`);
-    }
+    steps.run(TICK_LISTENER_STEP, listener);
   }
 }
 
@@ -406,6 +451,17 @@ export function initializeSimEventsIracing(
     throw new Error("sim-events-iracing already initialized. initializeSimEventsIracing() should only be called once.");
   }
 
+  // The step boundary (#1559, decision 7): per instance, never at module scope,
+  // so two inits after `_resetSimEventsIracing` share no counts. It is the
+  // translator's own reporter table, apart from the controller's, shared with
+  // the replay recorder below.
+  const boundary = createErrorBoundary({
+    logger,
+    policy: options.onStepError,
+    now: options.errorClock,
+    maxKeys: TRANSLATOR_REPORTER_MAX_KEYS,
+  });
+
   const self: TranslatorInstance = {
     bus: eventBus,
     controller: sdkController,
@@ -418,6 +474,7 @@ export function initializeSimEventsIracing(
     pitSpeedLimitKey: "",
     lastTickInReplay: false,
     sessionIdentity: createSessionIdentityBaseline(),
+    lastValues: new Map(),
     firstOnTrackSeeded: false,
     firstOnTrackFired: false,
     freshConnectFireChecked: false,
@@ -434,27 +491,31 @@ export function initializeSimEventsIracing(
     },
     opponentFlagLogger: logger.createScope("OpponentFlags"),
     replayRecorder: null,
+    steps: new TickSteps({ boundary, prefix: "translator:" }),
   };
 
   instance = self;
 
   sdkController.subscribe(SUBSCRIPTION_ID, (telemetry, isConnected) => {
+    let completed = false;
+
     try {
-      if (!isConnected) {
-        handleDisconnect(self);
-
-        return;
-      }
-
-      if (!telemetry) return;
-
-      self.latestTelemetry = telemetry;
-      handleTick(self, telemetry);
+      handleCallback(self, telemetry, isConnected);
+      completed = true;
     } finally {
-      // After the translator, on every path out of this callback (#1500). The
-      // controller does not isolate its subscribers, so a throw above still
-      // skips the subscribers after this one; these listeners still see it.
-      notifyTickListeners(self.logger);
+      // After the translator, on every path out of this callback (#1500), a
+      // throw from the tick's frame included (#1559, decision 1). Since #1558
+      // the controller isolates each subscriber, so such a throw costs this
+      // callback only: the replay recorder after it still runs. The listeners
+      // still see it. Then, under the `"rethrow"` policy, the first error a step
+      // or a listener held is thrown, after the whole tick has run (decision 8),
+      // unless the frame threw: that throw is already on its way out and must
+      // not be replaced, so the held error is dropped. Under `"report"` nothing
+      // is held.
+      notifyTickListeners(self.steps);
+
+      if (completed) self.steps.finish();
+      else self.steps.discard();
     }
   });
 
@@ -463,10 +524,26 @@ export function initializeSimEventsIracing(
   // runs the translator's tick first and the recorder's second: on one tick
   // the bus sees the translator's publishes, then the recorder's
   // (`CONTROLLER_TICK_ORDER` in `tick-order.ts`). The logger is the
-  // translator's own, unscoped, as the recorders had it inside `handleTick`.
-  self.replayRecorder = startReplayRecorder(eventBus, sdkController, logger);
+  // translator's own, unscoped, as the recorders had it inside `handleTick`,
+  // and so is the error boundary (#1559, decision 10): one reporter table and
+  // one policy for both subscribers' steps.
+  self.replayRecorder = startReplayRecorder(eventBus, sdkController, logger, boundary);
 
   logger.info("sim-events-iracing translator initialized");
+}
+
+/** One controller callback of the translator: a disconnect, a connected callback without telemetry, or a tick. */
+function handleCallback(self: TranslatorInstance, telemetry: TelemetryData | null, isConnected: boolean): void {
+  if (!isConnected) {
+    handleDisconnect(self);
+
+    return;
+  }
+
+  if (!telemetry) return;
+
+  self.latestTelemetry = telemetry;
+  handleTick(self, telemetry);
 }
 
 /** Returns the latest telemetry snapshot, or null if never received / disconnected. */
@@ -1956,7 +2033,6 @@ export function _resetSimEventsIracing(): void {
 
   instance = null;
   tickListeners.clear();
-  failingTickListeners.clear();
 }
 
 // ── Internals ──────────────────────────────────────────────────────────────
@@ -2007,6 +2083,8 @@ function handleDisconnect(self: TranslatorInstance): void {
   self.pitSpeedLimitMps = 0;
   self.pitSpeedLimitKey = "";
   self.sessionIdentity = createSessionIdentityBaseline();
+  // The values' last answers belong to the session that just ended (#1559).
+  self.lastValues.clear();
   // `driver.firstOnTrack` seeding is reset only here (not on session change)
   // so a mid-drive reconnect seeds silently and doesn't synthesize a welcome.
   // Session-change resets clear only `firstOnTrackFired` — see
@@ -2303,6 +2381,9 @@ function resetPerSessionState(self: TranslatorInstance, telemetry: TelemetryData
   Object.assign(self.state, preservedLifecycle, preservedAcrossSessions);
 
   self.firstOnTrackFired = false;
+  // A value's last answer is the old session's; the new one starts from the
+  // absent-session-info answers (#1559, decision 3).
+  self.lastValues.clear();
 
   // Fuel lap history (issue #465): don't wipe here — the previous session's
   // consumption stays readable while the driver sits in the garage planning
@@ -2328,8 +2409,16 @@ function resetPerSessionState(self: TranslatorInstance, telemetry: TelemetryData
  * the garage / replay seeds `false` and fires on the genuine transition.
  * Tracking lives on the instance (not `TranslatorState`) so the replay
  * guard's per-tick resets can't re-run the seed and swallow the event.
+ *
+ * A pre-guard step (#1559): it emits through `emitNow`, the step boundary's
+ * buffer, which publishes when the step returns.
  */
-function diffFirstOnTrack(self: TranslatorInstance, telemetry: TelemetryData, inReplay: boolean): void {
+function diffFirstOnTrack(
+  self: TranslatorInstance,
+  telemetry: TelemetryData,
+  inReplay: boolean,
+  emitNow: EmitFn<"driver.firstOnTrack">,
+): void {
   const liveOnTrack = (telemetry.IsOnTrack ?? false) && !inReplay;
 
   if (!self.firstOnTrackSeeded) {
@@ -2341,7 +2430,7 @@ function diffFirstOnTrack(self: TranslatorInstance, telemetry: TelemetryData, in
 
   if (!self.firstOnTrackFired && liveOnTrack) {
     self.firstOnTrackFired = true;
-    publish(self, { event: "driver.firstOnTrack", data: {} }, telemetry, Date.now());
+    emitNow({ event: "driver.firstOnTrack", data: {} });
   }
 }
 
@@ -2542,6 +2631,16 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
 
   self.sessionIdentity = advanceSessionIdentity(self.sessionIdentity, identity);
 
+  // The steps of the tick (#1559). Everything above is the frame (decision 1):
+  // it rewrites the state every step below reads and retries itself on a
+  // throw, so it is not split. From here every call is a step, named by its
+  // function and run through the step boundary, so a throw costs that step's
+  // events for the tick and nothing else; `tick-steps.source.test.ts` checks
+  // that no call below is made outside one. A pre-guard step publishes
+  // directly, through `publishNow`, when it returns.
+  const steps = self.steps;
+  const publishNow = (ev: PendingEvent): void => publish(self, ev, telemetry, Date.now());
+
   // Standing-start numeric countdown (issue #829). Runs on every tick BEFORE
   // the replay guard: the countdown is the "get in the car" reminder, and
   // iRacing reports `IsReplayPlaying: true` while the user sits in the garage
@@ -2553,18 +2652,20 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
   // post-guard (`diffStartLights` below) — out of the car at lights-out means
   // the start was missed, so "go, go, go" would be noise.
   if (!replayOnlySession) {
-    diffStartCountdown(
-      self.state,
-      telemetry,
-      self.controller.getSessionInfo() as Record<string, unknown> | null,
-      (ev) => publish(self, ev, telemetry, Date.now()),
+    steps.direct("diffStartCountdown", publishNow, (emitNow) =>
+      diffStartCountdown(
+        self.state,
+        telemetry,
+        self.controller.getSessionInfo() as Record<string, unknown> | null,
+        emitNow,
+      ),
     );
   }
 
   // `driver.firstOnTrack` is detected on every tick — including replay ticks
   // — so the genuine garage/replay → live-on-track transition is never
   // missed. Must run before the replay guard's early return below.
-  diffFirstOnTrack(self, telemetry, inReplay);
+  steps.direct("diffFirstOnTrack", publishNow, (emitNow) => diffFirstOnTrack(self, telemetry, inReplay, emitNow));
 
   // The tire temperatures a run ends with (issue #254): iRacing refreshes them
   // on the very tick the driver leaves the car, and that tick is the first one
@@ -2574,7 +2675,7 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
   // then drops them, which ends the run. Never in a saved replay, where the
   // guard clears the reading instead.
   if (inReplay && !self.lastTickInReplay && !replayState.replayOnlySession) {
-    readTireTempsLeavingCar(self.state, telemetry);
+    steps.run("readTireTempsLeavingCar", () => readTireTempsLeavingCar(self.state, telemetry));
   }
 
   // Suppress every semantic event while a replay is on screen. The
@@ -2631,19 +2732,63 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
   };
 
   const sessionInfo = self.controller.getSessionInfo() as Record<string, unknown> | null;
-  const sessionType = resolveSessionType(sessionInfo, telemetry);
+
+  // The flush runs whatever happens below (#1559, decision 5): every step that
+  // completed has its events published in call order, even when a throw
+  // escapes the step boundaries (glue code between steps).
+  try {
+    handleLiveSteps(self, telemetry, sessionInfo, now, pending, emit);
+  } finally {
+    for (const p of pending) {
+      publish(self, p, telemetry, now);
+    }
+  }
+}
+
+/**
+ * The live half of a tick (#1559): every step past the replay guard, each run
+ * through the step boundary, pushing its events into `pending`. A step that
+ * throws is truncated out of `pending` and reported as `translator:<function>`;
+ * the steps after it still run. A value a step hands on is resolved in its own
+ * boundary and falls back as decision 3 of the #1559 spec says: to its last
+ * value this session (`self.lastValues`), else to its resolver's answer for
+ * absent session info; the canonical order and the stall visit have no
+ * fallback, and their consumers are skipped for the tick.
+ */
+function handleLiveSteps(
+  self: TranslatorInstance,
+  telemetry: TelemetryData,
+  sessionInfo: Record<string, unknown> | null,
+  now: number,
+  pending: PendingEvent[],
+  emit: (ev: PendingEvent) => void,
+): void {
+  const steps = self.steps;
+  const values = self.lastValues;
+  const sessionType = steps.value("resolveSessionType", values, "", () => resolveSessionType(sessionInfo, telemetry));
   const isRaceSession = sessionType === "Race";
-  const playerCarIdx = resolvePlayerCarIdx(sessionInfo);
-  const pitSpeedLimitMps = resolvePitSpeedLimit(self, sessionInfo, telemetry);
+  const playerCarIdx = steps.value("resolvePlayerCarIdx", values, -1, () => resolvePlayerCarIdx(sessionInfo));
+  const pitSpeedLimitMps = steps.value("resolvePitSpeedLimit", values, self.pitSpeedLimitMps, () =>
+    resolvePitSpeedLimit(self, sessionInfo, telemetry),
+  );
   // Track discipline drives the pit-entry emission edge in diffPitLane (dirt
   // ovals fire on pit-road drive-in; everything else on approach-zone entry).
-  const trackType = resolveTrackType(sessionInfo);
+  const trackType = steps.value("resolveTrackType", values, TrackType.Unknown, () => resolveTrackType(sessionInfo));
+  // Read once for the tick (#1559): `diffLaps`, the two opponent diffs,
+  // `diffFastestLap` and `diffOvertakes` take the multi-class flag, and the two
+  // opponent diffs, `diffFastestLap` and the two gap diffs the pace car.
+  const isMultiClass = steps.value<boolean | null>("resolveIsMultiClass", values, null, () =>
+    resolveIsMultiClass(sessionInfo),
+  );
+  const paceCarIdx = steps.value<number | null>("resolvePaceCarIdx", values, null, () =>
+    resolvePaceCarIdx(sessionInfo),
+  );
 
   // Diff modules. Their emits are flushed in call order at the end of the
   // tick, so a reorder of any diff call here (or above the guard), or a new
   // call handed `emit`, must update `TICK_ORDER` (`tick-order.ts`, issue
   // #1499); `tick-order.test.ts` fails until it does. The orders that matter are explained at each call.
-  diffLifecycle(self.state, telemetry, emit);
+  steps.live("diffLifecycle", pending, () => diffLifecycle(self.state, telemetry, emit));
   // Checkered deferral (issue #771): the leader guard on the winner grace
   // consumes the canonical live order (`.claude/rules/race-positions.md`),
   // falling back to the official position only when no live order exists —
@@ -2663,14 +2808,25 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
   // and a lap emitted on that tick is never revisited — run after, the winner's
   // finish would be missed. It also puts `flag.checkered.raised` ahead of
   // `race.finished` when both land on one tick, the order they are spoken in.
-  diffFlags(
-    self.state,
-    telemetry,
-    now,
-    emit,
-    isRaceSession,
-    isRaceSession && resolvePlayerIsLeader(self, telemetry, playerCarIdx, sessionInfo, isRaceSession),
-    sessionType.includes("Practice") || sessionType.includes("Testing"),
+  //
+  // The leader flag is a value of its own (#1559): on a throw it is `false`,
+  // never its last value, which leaves the checkered to the player's own
+  // crossing, the normal path, and keeps an order fault from costing the flags.
+  const playerIsLeader =
+    isRaceSession &&
+    steps.fallbackValue("resolvePlayerIsLeader", false, () =>
+      resolvePlayerIsLeader(self, telemetry, playerCarIdx, sessionInfo, isRaceSession),
+    );
+  steps.live("diffFlags", pending, () =>
+    diffFlags(
+      self.state,
+      telemetry,
+      now,
+      emit,
+      isRaceSession,
+      playerIsLeader,
+      sessionType.includes("Practice") || sessionType.includes("Testing"),
+    ),
   );
   // Lap completion (issue #555). Runs alongside diffLifecycle since they
   // share the lap counter; classified session type passed through so the
@@ -2699,16 +2855,24 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
   // `(lap, lapTime, lapIsValid) => boolean` and never imports that module. A
   // lap it passes leaves a claim `diffFastestLap` publishes further down this
   // tick, after `lap.completed` in the same flush.
-  const playerResults = resolvePlayerResultsSnapshot(sessionInfo, playerCarIdx, telemetry.SessionNum ?? 0);
-  diffLaps(
-    self.state,
-    telemetry,
-    classifyLapSessionType(sessionType),
-    resolveIsMultiClass(sessionInfo),
-    playerResults,
-    now,
-    emit,
-    createFastestLapJudge(self.state, telemetry, sessionInfo, playerCarIdx, isRaceSession),
+  //
+  // The standings snapshot falls back to `null` on a throw, never to its last
+  // value (#1559): `null` is "the standings have not caught up, wait", while a
+  // last snapshot would hand the diff the previous lap's standings as this lap's.
+  const playerResults = steps.fallbackValue("resolvePlayerResultsSnapshot", null, () =>
+    resolvePlayerResultsSnapshot(sessionInfo, playerCarIdx, telemetry.SessionNum ?? 0),
+  );
+  steps.live("diffLaps", pending, () =>
+    diffLaps(
+      self.state,
+      telemetry,
+      classifyLapSessionType(sessionType),
+      isMultiClass,
+      playerResults,
+      now,
+      emit,
+      createFastestLapJudge(self.state, telemetry, sessionInfo, playerCarIdx, isRaceSession),
+    ),
   );
   // `diffLimiter` runs BEFORE `diffPitLane` for two reasons. It reads
   // `state.lastInPitStall` to detect the just-left-stall transition, which
@@ -2719,8 +2883,8 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
   // gate already keeps the two off the same tick (it emits nothing once the
   // car is off pit road, the tick `pitLane.exited` fires on), so the order is
   // the second guard.
-  diffLimiter(self.state, telemetry, pitSpeedLimitMps, now, emit);
-  diffPitLane(self.state, telemetry, trackType, now, emit);
+  steps.live("diffLimiter", pending, () => diffLimiter(self.state, telemetry, pitSpeedLimitMps, now, emit));
+  steps.live("diffPitLane", pending, () => diffPitLane(self.state, telemetry, trackType, now, emit));
   // Start-light gantry edges (issue #480). Sits beside diffFlags (after the
   // replay guard — the gantry lines are in-car only) and reads the
   // already-resolved `sessionInfo` for the standing-start gate. The numeric
@@ -2734,22 +2898,29 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
   // after it whatever the order. It is still load-bearing for `diffFlags`'
   // green suppression, which reads the phase alone; the full reasoning is at
   // the `diffCaution` call further down.
-  diffStartLights(self.state, telemetry, sessionInfo, emit, now);
+  steps.live("diffStartLights", pending, () => diffStartLights(self.state, telemetry, sessionInfo, emit, now));
   // Rolling-start "one pace lap to go" (issue #657) — a start/finish-crossing
   // heuristic, NOT iRacing's `OneLapToGreen` edge. Reads `sessionInfo` for the
   // standing-start guard, beside the other formation diffs.
-  diffPaceLaps(self.state, telemetry, sessionInfo, emit);
+  steps.live("diffPaceLaps", pending, () => diffPaceLaps(self.state, telemetry, sessionInfo, emit));
   // Rolling-start "pace car is moving" (issue #660) — fires at the ParadeLaps
   // ENTRY edge (field released into the formation lap), unlike diffPaceLaps
   // which fires later after a start/finish crossing completes the first pace lap.
-  diffRollingStart(self.state, telemetry, sessionInfo, emit);
+  steps.live("diffRollingStart", pending, () => diffRollingStart(self.state, telemetry, sessionInfo, emit));
   // Pit window open/closed (issue #655) — emits `pitsOpen.changed` on a real
   // `PitsOpen` boolean transition. `isRaceSession` keeps it out of practice /
   // qualifying; a paused or frame-scrubbed saved replay, which reads
   // `IsReplayPlaying === false` while `SimMode === "replay"`, never gets past
   // the guard above since #1324, so the diff's own replay-only gate went.
-  diffPitsOpen(self.state, telemetry, isRaceSession, emit);
-  diffToggles(self.state, telemetry, now, emit);
+  steps.live("diffPitsOpen", pending, () => diffPitsOpen(self.state, telemetry, isRaceSession, emit));
+  // Whether the fuel plan changed this tick, for `diffPitReadback` (#1559,
+  // decision 4): a value the toggle diff returns rather than a state field, so a
+  // throw in it leaves `false` (no change seen) instead of the previous tick's
+  // answer, which would fire a second readback.
+  let fuelPlanChanged = false;
+  steps.live("diffToggles", pending, () => {
+    fuelPlanChanged = diffToggles(self.state, telemetry, now, emit);
+  });
   // diffPitStatus emits `pitService.statusChanged` for in-progress / complete
   // / positioning / can't-fix-that transitions (issue #479), and
   // `pitService.stopEmpty` when a short `PitstopActive` pulse falls while the
@@ -2758,38 +2929,54 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
   // pit-service event group. `now` drives the positioning-error repeat
   // cadence and its movement hold (issue #951) and the pulse's duration bound
   // (issue #1180) — the `diffPitLane` / `diffLimiter` threading precedent.
-  diffPitStatus(self.state, telemetry, now, emit);
+  steps.live("diffPitStatus", pending, () => diffPitStatus(self.state, telemetry, now, emit));
   // diffPitReadback runs after diffToggles so it sees the per-tick toggle
   // emissions (`pitService.toggled` / `tireService.changed` /
   // `tireService.compoundChanged`) in `pending` — those signal user intent
   // and trigger an `entry-refire` readback.
-  diffPitReadback(self.state, telemetry, now, emit, pending);
+  steps.live("diffPitReadback", pending, () =>
+    diffPitReadback(self.state, telemetry, now, emit, pending, fuelPlanChanged),
+  );
   // How the car reached its stall (issues #1108, #254): a drive-in or a
   // placement. Resolved ONCE per tick, from `diffPitLane`'s edges in `pending`,
-  // and handed to the diff that asks whether a stall visit is a pit stop.
-  const stallVisit = updateStallVisit(self.state, telemetry, pending);
+  // and handed to the diff that asks whether a stall visit is a pit stop. It has
+  // no fallback (#1559): when it throws, `diffTireWear` is skipped for the tick.
+  const stallVisit = steps.requiredValue("updateStallVisit", () => updateStallVisit(self.state, telemetry, pending));
+
   // The tire wear of a stop (issue #1108) rides the exit readback: it reads the
   // stall visit above and the exit `pitService.readbackRequested` out of
   // `pending`, so it must run immediately after `diffPitReadback` — pushed
   // after it, the report is always flushed behind the readback of the same tick.
-  diffTireWear(self.state, telemetry, emit, pending, stallVisit);
+  if (stallVisit.ok) {
+    const visit = stallVisit.value;
+
+    steps.live("diffTireWear", pending, () => diffTireWear(self.state, telemetry, emit, pending, visit));
+  }
+
   // The tire temperatures of the last stop (issue #254) — tracker-only, no
   // events: it reads the values once, on the tick it finds them refreshed with
   // the car standing in its box after a run — a stop, a tow or a reset alike,
   // so it does not ask the stall visit which. Leaving the car is read ahead of
   // the replay guard above. Read via `getLastStopTireTemps()`.
-  diffTireTemps(self.state, telemetry);
+  steps.run("diffTireTemps", () => diffTireTemps(self.state, telemetry));
   // The discipline-resolved collision-car value (Sporting Code §3.5.1:
   // 4x pavement / 2x dirt) feeds the spoken incident value (#938).
-  diffIncidents(self.state, telemetry, now, emit, resolveCollisionCarValue(sessionInfo), self.logger);
-  diffDamage(self.state, telemetry, now, emit);
+  const collisionCarValue = steps.value("resolveCollisionCarValue", values, COLLISION_CAR_VALUE_PAVEMENT, () =>
+    resolveCollisionCarValue(sessionInfo),
+  );
+  steps.live("diffIncidents", pending, () =>
+    diffIncidents(self.state, telemetry, now, emit, collisionCarValue, self.logger),
+  );
+  steps.live("diffDamage", pending, () => diffDamage(self.state, telemetry, now, emit));
   // Overtake gain/loss (issue #574). Track length powers the 10 m physical-gap
   // gate; resolved here so the diff stays out of session-info parsing. `null`
   // when the YAML hasn't been parsed yet — the diff treats it as "no gap data"
   // and lets emissions through without gating on gap. `isMultiClass` is the
   // same value passed to `diffLaps`; the overtake payload mirrors `lap.completed`
   // so multi-class consumers can branch on class vs overall.
-  const trackLengthMeters = resolveTrackLengthMeters(self.state, sessionInfo, telemetry);
+  const trackLengthMeters = steps.value("resolveTrackLengthMeters", values, self.state.trackLengthMeters, () =>
+    resolveTrackLengthMeters(self.state, sessionInfo, telemetry),
+  );
   // Effective starting grid position (1-indexed) — the same value the
   // race-start callout announces (`resolveStartingGridPosition`, #568). CLASS
   // grid slot in a multi-class race, overall otherwise (#599). The overtake
@@ -2798,7 +2985,9 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
   // follow-up); the diff applies the seed in the matching detection space
   // (class in multi-class, overall otherwise). `null` until session info /
   // qualifying results are parsed.
-  const startingGridPosition = sessionInfo ? (resolveStartingGridPosition(sessionInfo) ?? null) : null;
+  const startingGridPosition = steps.value<number | null>("resolveStartingGridPosition", values, null, () =>
+    sessionInfo ? (resolveStartingGridPosition(sessionInfo) ?? null) : null,
+  );
   // Self-managed running order (issue #603). iRacing zeroes a car's
   // lc/dp/ts to -1 the instant it's NotInWorld and teleports dp on a tow, so
   // we maintain a per-car last-known on-track score ourselves and freeze cars
@@ -2806,12 +2995,158 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
   // Subsumes the earlier per-symptom patches (checkered finished-freeze,
   // tow `-isTowed`, NotInWorld-blink churn). Runs every tick before the frozen
   // positions are read.
-  updatePositionTracking(self.state, telemetry);
+  const tracked = steps.run("updatePositionTracking", () => updatePositionTracking(self.state, telemetry));
   // Before the green flag of a race the lap-progress order ranks nobody (every
   // `CarIdxLapCompleted` is -1 until the car crosses S/F), so the canonical
   // order falls back to the qualifying grid there — issue #974, see
   // `race-order.ts`. Everywhere else this IS `calculateFrozenRacePositions`.
-  const canonicalPositions = resolveCanonicalOrder(self.state, telemetry, sessionInfo, isRaceSession);
+  //
+  // The order has no fallback (#1559, decision 3): when it, or the tracking it
+  // is read from, throws, its six consumers below are not called this tick — an
+  // order computed from half-written anchors is not the canonical one, and a
+  // stale one would present the field as it was while the traces move on. A
+  // skipped step advances no baseline, so it sees the change on the next tick
+  // it runs. `diffFuelLapsLeft` still runs, its leader-lap closure answering
+  // `null` (no leader known, the player's own average is its fallback).
+  const order = tracked
+    ? steps.requiredValue("resolveCanonicalOrder", () =>
+        resolveCanonicalOrder(self.state, telemetry, sessionInfo, isRaceSession),
+      )
+    : VALUE_UNAVAILABLE;
+
+  if (order.ok) {
+    handleOrderSteps(self, telemetry, sessionInfo, now, pending, emit, {
+      canonicalPositions: order.value,
+      isRaceSession,
+      playerCarIdx,
+      paceCarIdx,
+      isMultiClass,
+      trackLengthMeters,
+      startingGridPosition,
+    });
+  }
+
+  // Track-order gaps outside a race (issue #1515): the cars physically ahead
+  // and behind on the road in practice, warmup, testing and open qualifying,
+  // for `getTrackGaps()`. Its gate and `diffGaps`' are disjoint, so only one
+  // of the two stores grows in a session. Publishes no event.
+  steps.run("diffTrackGaps", () =>
+    diffTrackGaps(self.state, telemetry, sessionType, sessionInfo, playerCarIdx, paceCarIdx, trackLengthMeters),
+  );
+  // Pit-box count-in (issue #600). Reuses the cached `trackLengthMeters` to
+  // convert the LapDistPct→box gap into meters; the box itself comes from
+  // `DriverInfo.DriverPitTrkPct`. Runs after the track-length resolution above.
+  const pitBoxTrkPct = steps.value<number | null>("resolvePitBoxTrkPct", values, null, () =>
+    resolvePitBoxTrkPct(sessionInfo),
+  );
+  steps.live("diffPitBoxCountdown", pending, () =>
+    diffPitBoxCountdown(self.state, telemetry, pitBoxTrkPct, trackLengthMeters, emit),
+  );
+  // Corner-name callouts (issue #888). Practice/test only — the diff gates on
+  // the classified session type (diff-side per #655, so the harness can fire
+  // the event directly). Reuses the cached trackLengthMeters for the
+  // speed→lap-fraction conversion; markers resolve from the bundled
+  // lovely-track-data snapshot keyed by WeekendInfo.TrackName. An empty raw
+  // session type means session info hasn't resolved — stay silent.
+  const cornerMarkers = steps.value("resolveCornerMarkersCached", values, self.state.cornerMarkers, () =>
+    resolveCornerMarkersCached(self.state, sessionInfo, telemetry),
+  );
+  steps.live("diffCornerName", pending, () =>
+    diffCornerName(
+      self.state,
+      telemetry,
+      sessionType !== "" && classifySessionType(sessionType) === "practice",
+      cornerMarkers,
+      trackLengthMeters,
+      self.getCornerCalloutLeadSeconds,
+      emit,
+    ),
+  );
+  // Laps-of-fuel-left callout crossings (issue #838). Reads the SAME
+  // validated estimator as Session Info's Laps to Empty (issue #748), over
+  // the same default window, so the spoken count tracks the display. Runs
+  // after diffFlags so the race-coverage suppression (#866) reads a
+  // same-tick-fresh `whiteLastLapFired` final-lap latch. Without a canonical
+  // order this tick the leader's lap time is unknown (#1559).
+  const leaderPositions = order.ok ? order.value : null;
+  steps.live("diffFuelLapsLeft", pending, () =>
+    diffFuelLapsLeft(
+      self.state,
+      telemetry,
+      isRaceSession,
+      () => fuelLapsLeftStats(self),
+      self.getFuelLapsLeftMarginLaps,
+      () => (leaderPositions === null ? null : resolveLeaderLapTimeS(telemetry, leaderPositions)),
+      emit,
+    ),
+  );
+
+  // Validated per-lap fuel history (issue #465) — tracker-only, no events.
+  // Deliberately NOT race-gated: consumption stats are just as useful on a
+  // practice long run. Read via `getFuelStats()`. A paused / frame-scrubbed
+  // saved replay (`IsReplayPlaying === false` while `SimMode === "replay"`)
+  // used to need its own gate here, since feeding that replay-timeline
+  // telemetry into the tracker would record bogus laps or trip the
+  // session-restart fence on a backward scrub; since #1324 the guard above
+  // treats every tick of a saved replay as a replay visit, with the same
+  // `resumePartial` gap the entry edge sets.
+  steps.run("diffFuelLaps", () => diffFuelLaps(self.fuelLaps, telemetry));
+
+  steps.live("diffRadar", pending, () => diffRadar(self.state, telemetry, emit));
+  // Sequenced deliberately AFTER `diffRadar` (issue #912). Both publish onto
+  // `AudioChannel.Radar`, and the pending array is flushed in push order, so
+  // pushing first would publish `pitSpeeding.started` before radar's
+  // `changed → clear` — the radar engine's `forceClear()` calls
+  // `stopChannel(AudioChannel.Radar)`, which would then cut this cue's opening
+  // tick. Entering pit road alongside another car is the ordinary case, not a
+  // corner one, and the opening tick is the whole point of the feature.
+  //
+  // A REPEATING cue fed replay-timeline telemetry would be worse than
+  // `diffPitsOpen` or `diffFuelLaps` fed it: parking a replay on a frame where
+  // the car is over the pit limit would beep over the replay UI until it was
+  // scrubbed away. The diff carried its own replay-only term for the paused
+  // saved replay until #1324; now the guard above keeps every replay tick out,
+  // and `publishActiveStateTeardown` on the entry edge ends an episode in
+  // flight rather than stranding it.
+  steps.live("diffPitSpeeding", pending, () => diffPitSpeeding(self.state, telemetry, pitSpeedLimitMps, now, emit));
+  steps.live("diffTrackWetness", pending, () => diffTrackWetness(self.state, telemetry, emit));
+}
+
+/** What {@link handleOrderSteps} reads besides the tick: the values `handleLiveSteps` resolved. */
+type OrderStepValues = {
+  canonicalPositions: number[];
+  isRaceSession: boolean;
+  playerCarIdx: number;
+  paceCarIdx: number | null;
+  isMultiClass: boolean | null;
+  trackLengthMeters: number | null;
+  startingGridPosition: number | null;
+};
+
+/**
+ * The steps that consume the tick's canonical order (#1559, decision 3), in
+ * their call order: called only on a tick whose order resolved, so each is
+ * handed the canonical order and never a substitute.
+ */
+function handleOrderSteps(
+  self: TranslatorInstance,
+  telemetry: TelemetryData,
+  sessionInfo: Record<string, unknown> | null,
+  now: number,
+  pending: PendingEvent[],
+  emit: (ev: PendingEvent) => void,
+  values: OrderStepValues,
+): void {
+  const steps = self.steps;
+  const {
+    canonicalPositions,
+    isRaceSession,
+    playerCarIdx,
+    paceCarIdx,
+    isMultiClass,
+    trackLengthMeters,
+    startingGridPosition,
+  } = values;
 
   // The full-course caution sequence (issue #1127). MUST run AFTER
   // `diffStartLights` AND `diffFlags`: a restart carries `StartGo`, and the
@@ -2859,26 +3194,32 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
   // tests in `translator.test.ts`). Leaving a replay for a live session is a
   // disconnect (`handleDisconnect`) or a session change
   // (`resetPerSessionState`), and both recreate the state whole.
-  diffCaution(self.state, telemetry, sessionInfo, canonicalPositions, emit, { now, trackLengthMeters });
+  steps.live("diffCaution", pending, () =>
+    diffCaution(self.state, telemetry, sessionInfo, canonicalPositions, emit, { now, trackLengthMeters }),
+  );
 
   // Opponent pit entries (issue #622) — consumes the same canonical frozen
   // order as diffOvertakes on the same tick. Race-only gating is diff-side
   // (the diffPitsOpen precedent) plus pre-green (#647 — grid/formation
   // positions are meaningless) and post-race (the whole field pits after the
   // checkered) gates; the pace car drives into the pits when picking up the
-  // field and must never announce.
-  diffOpponentPit(
-    self.state,
-    telemetry,
-    playerCarIdx,
-    resolvePaceCarIdx(sessionInfo),
-    isRaceSession,
-    isPreGreen(telemetry),
-    isPostRace(telemetry),
-    resolveIsMultiClass(sessionInfo) === true,
-    canonicalPositions,
-    now,
-    emit,
+  // field and must never announce. Each car's detection and classification is
+  // a unit of its own (#1559), so one car with an odd row cannot silence the field.
+  steps.live("diffOpponentPit", pending, () =>
+    diffOpponentPit(
+      self.state,
+      telemetry,
+      playerCarIdx,
+      paceCarIdx,
+      isRaceSession,
+      isPreGreen(telemetry),
+      isPostRace(telemetry),
+      isMultiClass === true,
+      canonicalPositions,
+      now,
+      emit,
+      steps.runUnit,
+    ),
   );
 
   // The fastest lap of the race (issue #1571) — the class record over every
@@ -2893,17 +3234,19 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
   // names the car (`carNumber`), as for the opponent flags. The scan holds
   // while the player's own crossing awaits `diffLaps`' emit (read off
   // `lastLapCompletedCounter`), on the tick's `now`, bounded.
-  diffFastestLap(
-    self.state,
-    telemetry,
-    sessionInfo,
-    playerCarIdx,
-    resolvePaceCarIdx(sessionInfo),
-    isRaceSession,
-    resolveIsMultiClass(sessionInfo),
-    canonicalPositions,
-    emit,
-    now,
+  steps.live("diffFastestLap", pending, () =>
+    diffFastestLap(
+      self.state,
+      telemetry,
+      sessionInfo,
+      playerCarIdx,
+      paceCarIdx,
+      isRaceSession,
+      isMultiClass,
+      canonicalPositions,
+      emit,
+      now,
+    ),
   );
 
   // Opponent penalty flags (issues #936, #1274) — advances the per-car flag
@@ -2915,22 +3258,26 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
   // a crawling car) from the traces `diffGaps` last advanced (one tick old
   // here, which a seconds-scale range cannot notice), and the per-flag
   // opt-in resolver is enforced here so disabled subjects never feed the
-  // aggregation. Session info names the car (`carNumber`).
-  diffOpponentFlags(
-    self.state,
-    telemetry,
-    sessionInfo,
-    playerCarIdx,
-    resolvePaceCarIdx(sessionInfo),
-    isRaceSession,
-    isPreGreen(telemetry),
-    isPostRace(telemetry),
-    resolveIsMultiClass(sessionInfo) === true,
-    canonicalPositions,
-    self.opponentFlagResolvers,
-    now,
-    emit,
-    self.opponentFlagLogger,
+  // aggregation. Session info names the car (`carNumber`). The per-car store
+  // advance and qualification run each car as a unit (#1559).
+  steps.live("diffOpponentFlags", pending, () =>
+    diffOpponentFlags(
+      self.state,
+      telemetry,
+      sessionInfo,
+      playerCarIdx,
+      paceCarIdx,
+      isRaceSession,
+      isPreGreen(telemetry),
+      isPostRace(telemetry),
+      isMultiClass === true,
+      canonicalPositions,
+      self.opponentFlagResolvers,
+      now,
+      emit,
+      self.opponentFlagLogger,
+      steps.runUnit,
+    ),
   );
 
   // Leader's white flag (issue #936) — detected by lap counting against the
@@ -2938,28 +3285,32 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
   // anyone but the leader themselves). Consumes the same canonical frozen
   // order as the diffs above; runs directly after diffOpponentFlags since
   // both read the leader-relative race-limit fields.
-  diffLeaderWhite(
-    self.state,
-    telemetry,
-    playerCarIdx,
-    isRaceSession,
-    isPreGreen(telemetry),
-    isPostRace(telemetry),
-    canonicalPositions,
-    emit,
+  steps.live("diffLeaderWhite", pending, () =>
+    diffLeaderWhite(
+      self.state,
+      telemetry,
+      playerCarIdx,
+      isRaceSession,
+      isPreGreen(telemetry),
+      isPostRace(telemetry),
+      canonicalPositions,
+      emit,
+    ),
   );
 
-  diffOvertakes(
-    self.state,
-    telemetry,
-    playerCarIdx,
-    isRaceSession,
-    resolveIsMultiClass(sessionInfo),
-    trackLengthMeters,
-    now,
-    emit,
-    startingGridPosition,
-    canonicalPositions,
+  steps.live("diffOvertakes", pending, () =>
+    diffOvertakes(
+      self.state,
+      telemetry,
+      playerCarIdx,
+      isRaceSession,
+      isMultiClass,
+      trackLengthMeters,
+      now,
+      emit,
+      startingGridPosition,
+      canonicalPositions,
+    ),
   );
   // Gap tracking (issue #933): crossing-time traces + class-neighbor live
   // gaps + relevance/threshold callout events. Consumes the same canonical
@@ -2968,105 +3319,27 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
   // laps-remaining estimate caps the closing-announcement horizon (a catch
   // that completes after the checkered is never announced) — see
   // `resolveGapLapsRemaining`. `diffLeaderWhite` ran earlier this tick, so
-  // the post-expiry crossing marker is current.
-  const gapLapsRemaining = resolveGapLapsRemaining(
-    telemetry,
-    canonicalPositions,
-    self.state.leaderWhitePostExpiryCrossed,
+  // the post-expiry crossing marker is current. The estimate is read from
+  // telemetry for this one diff, so it is part of its step (#1559).
+  steps.live("diffGaps", pending, () =>
+    diffGaps(
+      self.state,
+      telemetry,
+      isRaceSession,
+      playerCarIdx,
+      paceCarIdx,
+      canonicalPositions,
+      self.getGapAlertThresholdSeconds,
+      emit,
+      resolveGapLapsRemaining(telemetry, canonicalPositions, self.state.leaderWhitePostExpiryCrossed),
+      self.getGapMinChangeSeconds,
+      trackLengthMeters,
+      // `diffCaution` ran earlier this tick, so this is the current phase —
+      // which is what keeps a gap call off the very tick a caution is thrown
+      // and lets the restart mark stop on the green's own tick (issue #1171).
+      self.state.cautionPhase !== "none",
+    ),
   );
-
-  // Resolved once for both gap diffs below.
-  const paceCarIdx = resolvePaceCarIdx(sessionInfo);
-
-  diffGaps(
-    self.state,
-    telemetry,
-    isRaceSession,
-    playerCarIdx,
-    paceCarIdx,
-    canonicalPositions,
-    self.getGapAlertThresholdSeconds,
-    emit,
-    gapLapsRemaining,
-    self.getGapMinChangeSeconds,
-    trackLengthMeters,
-    // `diffCaution` ran earlier this tick, so this is the current phase —
-    // which is what keeps a gap call off the very tick a caution is thrown
-    // and lets the restart mark stop on the green's own tick (issue #1171).
-    self.state.cautionPhase !== "none",
-  );
-  // Track-order gaps outside a race (issue #1515): the cars physically ahead
-  // and behind on the road in practice, warmup, testing and open qualifying,
-  // for `getTrackGaps()`. Its gate and `diffGaps`' are disjoint, so only one
-  // of the two stores grows in a session. Publishes no event.
-  diffTrackGaps(self.state, telemetry, sessionType, sessionInfo, playerCarIdx, paceCarIdx, trackLengthMeters);
-  // Pit-box count-in (issue #600). Reuses the cached `trackLengthMeters` to
-  // convert the LapDistPct→box gap into meters; the box itself comes from
-  // `DriverInfo.DriverPitTrkPct`. Runs after the track-length resolution above.
-  diffPitBoxCountdown(self.state, telemetry, resolvePitBoxTrkPct(sessionInfo), trackLengthMeters, emit);
-  // Corner-name callouts (issue #888). Practice/test only — the diff gates on
-  // the classified session type (diff-side per #655, so the harness can fire
-  // the event directly). Reuses the cached trackLengthMeters for the
-  // speed→lap-fraction conversion; markers resolve from the bundled
-  // lovely-track-data snapshot keyed by WeekendInfo.TrackName. An empty raw
-  // session type means session info hasn't resolved — stay silent.
-  diffCornerName(
-    self.state,
-    telemetry,
-    sessionType !== "" && classifySessionType(sessionType) === "practice",
-    resolveCornerMarkersCached(self.state, sessionInfo, telemetry),
-    trackLengthMeters,
-    self.getCornerCalloutLeadSeconds,
-    emit,
-  );
-  // Laps-of-fuel-left callout crossings (issue #838). Reads the SAME
-  // validated estimator as Session Info's Laps to Empty (issue #748), over
-  // the same default window, so the spoken count tracks the display. Runs
-  // after diffFlags so the race-coverage suppression (#866) reads a
-  // same-tick-fresh `whiteLastLapFired` final-lap latch.
-  diffFuelLapsLeft(
-    self.state,
-    telemetry,
-    isRaceSession,
-    () => fuelLapsLeftStats(self),
-    self.getFuelLapsLeftMarginLaps,
-    () => resolveLeaderLapTimeS(telemetry, canonicalPositions),
-    emit,
-  );
-
-  // Validated per-lap fuel history (issue #465) — tracker-only, no events.
-  // Deliberately NOT race-gated: consumption stats are just as useful on a
-  // practice long run. Read via `getFuelStats()`. A paused / frame-scrubbed
-  // saved replay (`IsReplayPlaying === false` while `SimMode === "replay"`)
-  // used to need its own gate here, since feeding that replay-timeline
-  // telemetry into the tracker would record bogus laps or trip the
-  // session-restart fence on a backward scrub; since #1324 the guard above
-  // treats every tick of a saved replay as a replay visit, with the same
-  // `resumePartial` gap the entry edge sets.
-  diffFuelLaps(self.fuelLaps, telemetry);
-
-  diffRadar(self.state, telemetry, emit);
-  // Sequenced deliberately AFTER `diffRadar` (issue #912). Both publish onto
-  // `AudioChannel.Radar`, and the pending array is flushed in push order, so
-  // pushing first would publish `pitSpeeding.started` before radar's
-  // `changed → clear` — the radar engine's `forceClear()` calls
-  // `stopChannel(AudioChannel.Radar)`, which would then cut this cue's opening
-  // tick. Entering pit road alongside another car is the ordinary case, not a
-  // corner one, and the opening tick is the whole point of the feature.
-  //
-  // A REPEATING cue fed replay-timeline telemetry would be worse than
-  // `diffPitsOpen` or `diffFuelLaps` fed it: parking a replay on a frame where
-  // the car is over the pit limit would beep over the replay UI until it was
-  // scrubbed away. The diff carried its own replay-only term for the paused
-  // saved replay until #1324; now the guard above keeps every replay tick out,
-  // and `publishActiveStateTeardown` on the entry edge ends an episode in
-  // flight rather than stranding it.
-  diffPitSpeeding(self.state, telemetry, pitSpeedLimitMps, now, emit);
-  diffTrackWetness(self.state, telemetry, emit);
-
-  for (const p of pending) {
-    publish(self, p, telemetry, now);
-  }
 }
 
 function publish(self: TranslatorInstance, pending: PendingEvent, telemetry: TelemetryData, timestamp: number): void {

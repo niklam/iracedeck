@@ -207,22 +207,22 @@ describe("sim-events-iracing translator", () => {
     it("initializes once and subscribes to the controller", () => {
       const controller = createMockController();
       const subscribeSpy = vi.spyOn(controller, "subscribe");
-      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
       expect(isSimEventsIracingInitialized()).toBe(true);
       expect(subscribeSpy).toHaveBeenCalledWith("__sim-events-iracing__", expect.any(Function));
     });
 
     it("throws on double initialization", () => {
       const controller = createMockController();
-      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
-      expect(() => initializeSimEventsIracing(getEventBus(), controller, createMockLogger())).toThrow(
-        "already initialized",
-      );
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
+      expect(() =>
+        initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" }),
+      ).toThrow("already initialized");
     });
 
     it("stores the latest telemetry snapshot per tick", () => {
       const controller = createMockController();
-      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
       const t = telemetry({ Lap: 3 });
       controller.__tick(t);
       expect(getLatestTelemetry()).toBe(t);
@@ -230,7 +230,7 @@ describe("sim-events-iracing translator", () => {
 
     it("clears state on disconnect", () => {
       const controller = createMockController();
-      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
       controller.__tick(telemetry({ OnPitRoad: true }));
       controller.__tick(null, false);
       expect(getLatestTelemetry()).toBeNull();
@@ -264,7 +264,7 @@ describe("sim-events-iracing translator", () => {
     it("derives class position from the live order, not the lagging official field", () => {
       const controller = createMockController();
       controller.__setSessionInfo(multiClassSessionInfo);
-      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
       // Official PlayerCarClassPosition is deliberately stale (9) to prove the
       // derived value wins.
@@ -283,7 +283,7 @@ describe("sim-events-iracing translator", () => {
     it("falls back to PlayerCarClassPosition when CarIdxClass is unavailable", () => {
       const controller = createMockController();
       controller.__setSessionInfo(multiClassSessionInfo);
-      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
       controller.__tick(multiClassTelemetry({ CarIdxClass: undefined, PlayerCarClassPosition: 5 }));
 
@@ -305,7 +305,7 @@ describe("sim-events-iracing translator", () => {
           ],
         },
       });
-      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
       // Overall: car1 P1, car2 P2, car0 P3, car3 P4 (multi-class field).
       controller.__tick(
@@ -325,7 +325,7 @@ describe("sim-events-iracing translator", () => {
     it("returns null for unranked cars and invalid indices", () => {
       const controller = createMockController();
       controller.__setSessionInfo({ DriverInfo: { DriverCarIdx: 0 } });
-      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
       controller.__tick(
         telemetry({
@@ -344,7 +344,7 @@ describe("sim-events-iracing translator", () => {
     it("returns null before the flag store's first tick", () => {
       const controller = createMockController();
       controller.__setSessionInfo({ DriverInfo: { DriverCarIdx: 0 } });
-      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
       // A tick with no CarIdxSessionFlags never seeds the store.
       controller.__tick(telemetry({ CarIdxSessionFlags: undefined }));
@@ -355,7 +355,7 @@ describe("sim-events-iracing translator", () => {
     it("returns the sparse flagged-car list — penalty bits only, player's own car included, table-decoded", () => {
       const controller = createMockController();
       controller.__setSessionInfo({ DriverInfo: { DriverCarIdx: 0 } });
-      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
       controller.__tick(
         telemetry({
@@ -424,7 +424,7 @@ describe("sim-events-iracing translator", () => {
       const handler = vi.fn();
       bus.subscribe("opponentFlag.flagged", handler);
       controller.__setSessionInfo(raceSession());
-      initializeSimEventsIracing(bus, controller, createMockLogger());
+      initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
 
       drive(controller, 2.5);
 
@@ -446,7 +446,7 @@ describe("sim-events-iracing translator", () => {
       const handler = vi.fn();
       bus.subscribe("opponentFlag.flagged", handler);
       controller.__setSessionInfo(raceSession());
-      initializeSimEventsIracing(bus, controller, createMockLogger());
+      initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
 
       drive(controller, 3.5);
 
@@ -460,7 +460,10 @@ describe("sim-events-iracing translator", () => {
       let range = 2;
       bus.subscribe("opponentFlag.flagged", handler);
       controller.__setSessionInfo(raceSession());
-      initializeSimEventsIracing(bus, controller, createMockLogger(), { getOpponentFlagRangeSeconds: () => range });
+      initializeSimEventsIracing(bus, controller, createMockLogger(), {
+        onStepError: "rethrow",
+        getOpponentFlagRangeSeconds: () => range,
+      });
 
       drive(controller, 2.5);
       expect(handler).not.toHaveBeenCalled();
@@ -484,7 +487,7 @@ describe("sim-events-iracing translator", () => {
         const handler = vi.fn();
         bus.subscribe("opponentFlag.flagged", handler);
         controller.__setSessionInfo(raceSession());
-        initializeSimEventsIracing(bus, controller, createMockLogger());
+        initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
 
         // Wall clock in quarter seconds, session clock in whole seconds: the
         // traces the wipe cleared are readable again two ticks after it,
@@ -552,7 +555,7 @@ describe("sim-events-iracing translator", () => {
       const handler = vi.fn();
       bus.subscribe("opponentFlag.flagged", handler);
       controller.__setSessionInfo(raceSessionWithTrack());
-      initializeSimEventsIracing(bus, controller, createMockLogger());
+      initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
 
       // 5 m/s: the crossing time to car1 is 6 s, which the 3 s range rejects.
       driveCrawler(controller, 5, 30);
@@ -571,7 +574,10 @@ describe("sim-events-iracing translator", () => {
       const handler = vi.fn();
       bus.subscribe("opponentFlag.flagged", handler);
       controller.__setSessionInfo(raceSessionWithTrack());
-      initializeSimEventsIracing(bus, controller, createMockLogger(), { getOpponentFlagRangeSeconds: () => 5 });
+      initializeSimEventsIracing(bus, controller, createMockLogger(), {
+        onStepError: "rethrow",
+        getOpponentFlagRangeSeconds: () => 5,
+      });
 
       // 15 m/s, 70 m ahead: crossing 70 / 15 s; the ETA would have read 1.75 s.
       driveCrawler(controller, 15, 70);
@@ -586,7 +592,7 @@ describe("sim-events-iracing translator", () => {
       const handler = vi.fn();
       bus.subscribe("opponentFlag.flagged", handler);
       controller.__setSessionInfo(raceSession());
-      initializeSimEventsIracing(bus, controller, createMockLogger());
+      initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
 
       driveCrawler(controller, 5, 30);
 
@@ -599,7 +605,7 @@ describe("sim-events-iracing translator", () => {
       const logger = createMockLogger();
       vi.mocked(logger.createScope).mockReturnValue(scoped);
       controller.__setSessionInfo(raceSession());
-      initializeSimEventsIracing(getEventBus(), controller, logger);
+      initializeSimEventsIracing(getEventBus(), controller, logger, { onStepError: "rethrow" });
 
       drive(controller, 2.5);
 
@@ -617,7 +623,7 @@ describe("sim-events-iracing translator", () => {
     it("returns the live per-car race order (1-based, indexed by carIdx)", () => {
       const controller = createMockController();
       controller.__setSessionInfo({ DriverInfo: { DriverCarIdx: 0 } });
-      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
       // Lap scores: car0=10.0, car1=10.5, car2=10.2, car3=9.5 → P1 car1, P2 car2, P3 car0, P4 car3.
       controller.__tick(
@@ -638,7 +644,7 @@ describe("sim-events-iracing translator", () => {
 
     it("returns null before any telemetry has arrived", () => {
       const controller = createMockController();
-      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
       expect(getLiveRacePositions()).toBeNull();
     });
@@ -674,7 +680,7 @@ describe("sim-events-iracing translator", () => {
     it("serves the whole field its grid slot during the parade lap", () => {
       const controller = createMockController();
       controller.__setSessionInfo(raceSessionWithGrid());
-      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
       controller.__tick(paradeLap());
 
@@ -684,7 +690,7 @@ describe("sim-events-iracing translator", () => {
     it("reports the player's grid slot and class slot pre-green", () => {
       const controller = createMockController();
       controller.__setSessionInfo(raceSessionWithGrid());
-      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
       controller.__tick(paradeLap());
 
@@ -697,7 +703,7 @@ describe("sim-events-iracing translator", () => {
       const practice = raceSessionWithGrid();
       practice.SessionInfo = { Sessions: [{ SessionNum: 0, SessionType: "Practice" }] };
       controller.__setSessionInfo(practice);
-      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
       // Same pre-green state, but a stale qualifying grid must not surface here.
       // The lap distances deliberately rank the field the exact INVERSE of the
@@ -718,7 +724,7 @@ describe("sim-events-iracing translator", () => {
     it("rolls to the live running order once the green flies", () => {
       const controller = createMockController();
       controller.__setSessionInfo(raceSessionWithGrid());
-      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
       controller.__tick(paradeLap());
       controller.__tick(
@@ -744,7 +750,7 @@ describe("sim-events-iracing translator", () => {
       const handler = vi.fn();
       bus.subscribe("overtake.completed", handler);
       controller.__setSessionInfo(raceSessionWithGrid());
-      initializeSimEventsIracing(bus, controller, createMockLogger());
+      initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
 
       controller.__tick(paradeLap());
       controller.__tick(paradeLap());
@@ -883,7 +889,7 @@ describe("sim-events-iracing translator", () => {
           ],
         },
       });
-      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
       expect(getStartingGridPosition()).toEqual({ overall: 3, class: 3 });
     });
@@ -911,7 +917,7 @@ describe("sim-events-iracing translator", () => {
           ],
         },
       });
-      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
       expect(getStartingGridPosition()).toEqual({ overall: 3, class: 2 });
     });
@@ -919,7 +925,7 @@ describe("sim-events-iracing translator", () => {
     it("returns null when qualifying results are unavailable", () => {
       const controller = createMockController();
       controller.__setSessionInfo({ DriverInfo: { DriverCarIdx: 0 } });
-      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
       expect(getStartingGridPosition()).toBeNull();
     });
@@ -930,7 +936,7 @@ describe("sim-events-iracing translator", () => {
         DriverInfo: { DriverCarIdx: 7 },
         QualifyResultsInfo: { Results: [{ CarIdx: 0, Position: 0 }] },
       });
-      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
       expect(getStartingGridPosition()).toBeNull();
     });
@@ -952,7 +958,7 @@ describe("sim-events-iracing translator", () => {
           Results: [null, { CarIdx: 2, Position: 0 }, null, { CarIdx: 0, Position: 1 }],
         },
       });
-      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
       expect(getStartingGridPosition()).toEqual({ overall: 2, class: 2 });
     });
@@ -962,7 +968,7 @@ describe("sim-events-iracing translator", () => {
     it("returns undefined before any telemetry tick", () => {
       const controller = createMockController();
       controller.__setSessionInfo({ DriverInfo: { DriverSetupName: "qualifying.sto" } });
-      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
       expect(getDriverSetupName()).toBeUndefined();
     });
@@ -970,7 +976,7 @@ describe("sim-events-iracing translator", () => {
     it("returns the setup name from session YAML once connected", () => {
       const controller = createMockController();
       controller.__setSessionInfo({ DriverInfo: { DriverSetupName: "qualifying.sto" } });
-      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
       controller.__tick(telemetry());
 
@@ -979,7 +985,7 @@ describe("sim-events-iracing translator", () => {
 
     it("returns undefined when the field is missing, empty, or session info is null", () => {
       const controller = createMockController();
-      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
       controller.__tick(telemetry());
 
       controller.__setSessionInfo(null);
@@ -1006,7 +1012,7 @@ describe("sim-events-iracing translator", () => {
 
       const controller = createMockController();
       controller.__setSessionInfo(sessionInfo("full", ["Race"]));
-      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
       expect(getSessionKind()).toBeNull();
     });
@@ -1014,7 +1020,7 @@ describe("sim-events-iracing translator", () => {
     it("classifies the session SessionNum names", () => {
       const controller = createMockController();
       controller.__setSessionInfo(sessionInfo("full", ["Practice", "Lone Qualify", "Race"]));
-      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
       controller.__tick(telemetry({ SessionNum: 0 }));
       expect(getSessionKind()).toBe("practice");
@@ -1029,7 +1035,7 @@ describe("sim-events-iracing translator", () => {
     it("returns replay in a saved replay, whatever the session type", () => {
       const controller = createMockController();
       controller.__setSessionInfo(sessionInfo("replay", ["Race"]));
-      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
       controller.__tick(telemetry());
 
@@ -1039,7 +1045,7 @@ describe("sim-events-iracing translator", () => {
     it("returns null for an unknown session type or missing session info", () => {
       const controller = createMockController();
       controller.__setSessionInfo(sessionInfo("full", ["Heat Race"]));
-      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
       controller.__tick(telemetry());
 
       expect(getSessionKind()).toBeNull();
@@ -1051,7 +1057,7 @@ describe("sim-events-iracing translator", () => {
     it("returns null again after a disconnect", () => {
       const controller = createMockController();
       controller.__setSessionInfo(sessionInfo("full", ["Offline Testing"]));
-      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
       controller.__tick(telemetry());
       expect(getSessionKind()).toBe("test");
 
@@ -1110,7 +1116,7 @@ describe("sim-events-iracing translator", () => {
     it("returns null before the player has taken the checkered flag", () => {
       const controller = createMockController();
       controller.__setSessionInfo(raceSessionInfo());
-      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
       controller.__tick(telemetry({ LapCompleted: 4, LapLastLapTime: 62, LapBestLapTime: 62 }));
 
@@ -1120,7 +1126,7 @@ describe("sim-events-iracing translator", () => {
     it("returns the player's official result once they have finished", () => {
       const controller = createMockController();
       controller.__setSessionInfo(raceSessionInfo());
-      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
       finishRace(controller);
 
@@ -1131,7 +1137,7 @@ describe("sim-events-iracing translator", () => {
     it("follows the official results row after the finish, not a snapshot", () => {
       const controller = createMockController();
       controller.__setSessionInfo(raceSessionInfo());
-      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
       finishRace(controller);
       // A steward's decision moves the player down the official results.
@@ -1143,7 +1149,7 @@ describe("sim-events-iracing translator", () => {
     it("reports unknown fields while the results row has not caught up to the finishing lap", () => {
       const controller = createMockController();
       controller.__setSessionInfo(raceSessionInfo());
-      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
       finishRace(controller);
       controller.__setSessionInfo(raceSessionInfo(9, 8, 4));
@@ -1158,7 +1164,7 @@ describe("sim-events-iracing translator", () => {
     it("records the winner's finish when the crossing, the flag and the emit share a tick", () => {
       const controller = createMockController();
       controller.__setSessionInfo(raceSessionInfo(1, 0));
-      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
       controller.__tick(telemetry({ LapCompleted: 4, LapLastLapTime: 62, LapBestLapTime: 62, PlayerCarPosition: 1 }));
       controller.__tick(
@@ -1179,7 +1185,7 @@ describe("sim-events-iracing translator", () => {
     it("never answers for another session", () => {
       const controller = createMockController();
       controller.__setSessionInfo(raceSessionInfo());
-      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
       finishRace(controller);
 
@@ -1189,7 +1195,7 @@ describe("sim-events-iracing translator", () => {
     it("survives a replay visit after the finish", () => {
       const controller = createMockController();
       controller.__setSessionInfo(raceSessionInfo());
-      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
       finishRace(controller);
 
@@ -1210,7 +1216,7 @@ describe("sim-events-iracing translator", () => {
     it("is null before the translator is initialized and before its first live tick", () => {
       expect(isDamageRepairNeeded()).toBeNull();
 
-      initializeSimEventsIracing(getEventBus(), createMockController(), createMockLogger());
+      initializeSimEventsIracing(getEventBus(), createMockController(), createMockLogger(), { onStepError: "rethrow" });
 
       expect(isDamageRepairNeeded()).toBeNull();
     });
@@ -1218,7 +1224,7 @@ describe("sim-events-iracing translator", () => {
     it("answers the SETTLED state: a raw flicker of the repair bits changes nothing either way", () => {
       vi.useFakeTimers();
       const controller = createMockController();
-      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
       controller.__tick(telemetry());
       expect(isDamageRepairNeeded()).toBe(false);
@@ -1255,7 +1261,7 @@ describe("sim-events-iracing translator", () => {
 
     it("seeds from the first live tick and returns to null on a disconnect", () => {
       const controller = createMockController();
-      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
       // Connecting mid-damage: known damage, seeded rather than announced.
       controller.__tick(telemetry({ EngineWarnings: DAMAGED }));
@@ -1285,7 +1291,7 @@ describe("sim-events-iracing translator", () => {
 
     it("tracks per-lap fuel consumption through handleTick", () => {
       const controller = createMockController();
-      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
       driveOneCleanLap(controller);
 
@@ -1297,7 +1303,7 @@ describe("sim-events-iracing translator", () => {
 
     it("clears the stats on disconnect", () => {
       const controller = createMockController();
-      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
       driveOneCleanLap(controller);
 
@@ -1310,7 +1316,7 @@ describe("sim-events-iracing translator", () => {
 
     it("preserves the stats across a replay/garage visit", () => {
       const controller = createMockController();
-      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
       driveOneCleanLap(controller);
 
@@ -1332,7 +1338,7 @@ describe("sim-events-iracing translator", () => {
 
     it("ignores paused replay-only ticks (IsReplayPlaying false while SimMode is replay)", () => {
       const controller = createMockController();
-      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
       driveOneCleanLap(controller);
 
@@ -1357,7 +1363,7 @@ describe("sim-events-iracing translator", () => {
 
     it("defers the session-change wipe until the driver is back in the car", () => {
       const controller = createMockController();
-      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
       driveOneCleanLap(controller);
 
@@ -1386,7 +1392,7 @@ describe("sim-events-iracing translator", () => {
       const bus = getEventBus();
       const handler = vi.fn();
       bus.subscribe("flag.checkered.raised", handler);
-      initializeSimEventsIracing(bus, controller, createMockLogger());
+      initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
 
       // Live mid-lap, then the checkered flies — deferred, nothing spoken yet.
       controller.__tick(telemetry({ LapCompleted: 5, LapDistPct: 0.4 }));
@@ -1460,7 +1466,7 @@ describe("sim-events-iracing translator", () => {
       controller.__setSessionInfo(sessionInfo);
       const bus = getEventBus();
       const publish = vi.spyOn(bus, "publish");
-      initializeSimEventsIracing(bus, controller, createMockLogger());
+      initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
 
       const tick = (t: TelemetryData, times = 1): void => {
         for (let n = 0; n < times; n++) {
@@ -1617,7 +1623,7 @@ describe("sim-events-iracing translator", () => {
       const bus = getEventBus();
       const handler = vi.fn();
       bus.subscribe("pitLane.entered", handler);
-      initializeSimEventsIracing(bus, controller, createMockLogger());
+      initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
 
       controller.__tick(telemetry({ OnPitRoad: false }));
       controller.__tick(telemetry({ OnPitRoad: true }));
@@ -1634,7 +1640,7 @@ describe("sim-events-iracing translator", () => {
       const bus = getEventBus();
       const handler = vi.fn();
       bus.subscribe("pitLane.exited", handler);
-      initializeSimEventsIracing(bus, controller, createMockLogger());
+      initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
 
       controller.__tick(telemetry({ OnPitRoad: true }));
       controller.__tick(telemetry({ OnPitRoad: false }));
@@ -1647,7 +1653,7 @@ describe("sim-events-iracing translator", () => {
       const bus = getEventBus();
       const handler = vi.fn();
       bus.subscribe("pitStall.departed", handler);
-      initializeSimEventsIracing(bus, controller, createMockLogger());
+      initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
 
       controller.__tick(telemetry({ OnPitRoad: true, PlayerCarInPitStall: true }));
       controller.__tick(telemetry({ OnPitRoad: true, PlayerCarInPitStall: false }));
@@ -1660,7 +1666,7 @@ describe("sim-events-iracing translator", () => {
       const bus = getEventBus();
       const handler = vi.fn();
       bus.subscribe("pitLane.approaching", handler);
-      initializeSimEventsIracing(bus, controller, createMockLogger());
+      initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
 
       // Seed on track.
       controller.__tick(telemetry({ PlayerTrackSurface: TrkLoc.OnTrack }));
@@ -1679,7 +1685,7 @@ describe("sim-events-iracing translator", () => {
       const stallEntered = vi.fn();
       bus.subscribe("pitLane.entered", entered);
       bus.subscribe("pitStall.entered", stallEntered);
-      initializeSimEventsIracing(bus, controller, createMockLogger());
+      initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
 
       // Reconnect while serviced in the stall — must not replay the
       // entry transitions.
@@ -1695,7 +1701,7 @@ describe("sim-events-iracing translator", () => {
       const bus = getEventBus();
       const handler = vi.fn();
       bus.subscribe("pitLane.approaching", handler);
-      initializeSimEventsIracing(bus, controller, createMockLogger());
+      initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
 
       // Reconnect mid-approach — treated like "exiting" so we wait for a
       // full lap back on track before arming again.
@@ -1711,7 +1717,7 @@ describe("sim-events-iracing translator", () => {
       const bus = getEventBus();
       const handler = vi.fn();
       bus.subscribe("pitLane.approaching", handler);
-      initializeSimEventsIracing(bus, controller, createMockLogger());
+      initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
 
       controller.__tick(telemetry({ PlayerTrackSurface: TrkLoc.OnTrack }));
       controller.__tick(telemetry({ PlayerTrackSurface: TrkLoc.AproachingPits }));
@@ -1725,7 +1731,7 @@ describe("sim-events-iracing translator", () => {
       const bus = getEventBus();
       const handler = vi.fn();
       bus.subscribe("pitLane.approaching", handler);
-      initializeSimEventsIracing(bus, controller, createMockLogger());
+      initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
 
       controller.__tick(telemetry({ PlayerTrackSurface: TrkLoc.OnTrack }));
       controller.__tick(telemetry({ PlayerTrackSurface: TrkLoc.AproachingPits }));
@@ -1739,7 +1745,7 @@ describe("sim-events-iracing translator", () => {
       const bus = getEventBus();
       const handler = vi.fn();
       bus.subscribe("pitLane.approaching", handler);
-      initializeSimEventsIracing(bus, controller, createMockLogger());
+      initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
 
       // Seed on track, off pit road. The approach zone is bypassed on dirt ovals.
       controller.__tick(telemetry({ OnPitRoad: false, PlayerTrackSurface: TrkLoc.OnTrack }));
@@ -1757,7 +1763,7 @@ describe("sim-events-iracing translator", () => {
       const bus = getEventBus();
       const handler = vi.fn();
       bus.subscribe("pitLane.approaching", handler);
-      initializeSimEventsIracing(bus, controller, createMockLogger());
+      initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
 
       // Seed on track.
       controller.__tick(telemetry({ OnPitRoad: false, PlayerTrackSurface: TrkLoc.OnTrack }));
@@ -1776,7 +1782,7 @@ describe("sim-events-iracing translator", () => {
       const bus = getEventBus();
       const handler = vi.fn();
       bus.subscribe("pitLane.approaching", handler);
-      initializeSimEventsIracing(bus, controller, createMockLogger());
+      initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
 
       // Seed on track → drive in (fires once) → drive back out (must not re-fire).
       controller.__tick(telemetry({ OnPitRoad: false, PlayerTrackSurface: TrkLoc.OnTrack }));
@@ -1795,7 +1801,7 @@ describe("sim-events-iracing translator", () => {
       const bus = getEventBus();
       const handler = vi.fn();
       bus.subscribe("flag.yellow.raised", handler);
-      initializeSimEventsIracing(bus, controller, createMockLogger());
+      initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
 
       controller.__tick(telemetry({ SessionFlags: 0 }));
       controller.__tick(telemetry({ SessionFlags: Flags.Yellow }));
@@ -1810,7 +1816,7 @@ describe("sim-events-iracing translator", () => {
       const bus = getEventBus();
       const handler = vi.fn();
       bus.subscribe("flag.yellow.raised", handler);
-      initializeSimEventsIracing(bus, controller, createMockLogger());
+      initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
 
       controller.__tick(telemetry({ SessionFlags: 0 }));
       controller.__tick(telemetry({ SessionFlags: Flags.Caution }));
@@ -1825,7 +1831,7 @@ describe("sim-events-iracing translator", () => {
       const bus = getEventBus();
       const handler = vi.fn();
       bus.subscribe("flag.yellow.cleared", handler);
-      initializeSimEventsIracing(bus, controller, createMockLogger());
+      initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
 
       controller.__tick(telemetry({ SessionFlags: Flags.Yellow }));
       controller.__tick(telemetry({ SessionFlags: Flags.Yellow }));
@@ -1850,7 +1856,7 @@ describe("sim-events-iracing translator", () => {
       const greenHandler = vi.fn();
       bus.subscribe("flag.blue.raised", blueHandler);
       bus.subscribe("flag.green.raised", greenHandler);
-      initializeSimEventsIracing(bus, controller, createMockLogger());
+      initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
 
       controller.__tick(telemetry({ SessionFlags: 0 }));
       controller.__tick(telemetry({ SessionFlags: Flags.Green | Flags.Blue }));
@@ -1866,7 +1872,7 @@ describe("sim-events-iracing translator", () => {
       const bus = getEventBus();
       const handler = vi.fn();
       bus.subscribe("pitService.toggled", handler);
-      initializeSimEventsIracing(bus, controller, createMockLogger());
+      initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
 
       controller.__tick(telemetry({ PitSvFlags: 0 }));
       controller.__tick(telemetry({ PitSvFlags: PitSvFlags.FuelFill }));
@@ -1886,7 +1892,7 @@ describe("sim-events-iracing translator", () => {
       const bus = getEventBus();
       const handler = vi.fn();
       bus.subscribe("pitService.toggled", handler);
-      initializeSimEventsIracing(bus, controller, createMockLogger());
+      initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
 
       controller.__tick(telemetry({ PitSvFlags: 0 }));
       // User taps fuel rapidly — three observed flips, all within the debounce window.
@@ -1915,7 +1921,7 @@ describe("sim-events-iracing translator", () => {
       const handler = vi.fn();
       bus.subscribe("pitService.toggled", handler);
       bus.subscribe("tireService.changed", handler);
-      initializeSimEventsIracing(bus, controller, createMockLogger());
+      initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
 
       // On track, no pit selections — baseline.
       controller.__tick(telemetry({ PitSvFlags: 0 }));
@@ -1965,7 +1971,7 @@ describe("sim-events-iracing translator", () => {
       const bus = getEventBus();
       const handler = vi.fn();
       bus.subscribe("pitService.toggled", handler);
-      initializeSimEventsIracing(bus, controller, createMockLogger());
+      initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
 
       // Baseline: fuel off. User toggles on then back off, all within window.
       controller.__tick(telemetry({ PitSvFlags: 0 }));
@@ -1989,7 +1995,7 @@ describe("sim-events-iracing translator", () => {
       const autoFuel = vi.fn();
       bus.subscribe("pitService.toggled", toggled);
       bus.subscribe("pitService.autoFuelSwitched", autoFuel);
-      initializeSimEventsIracing(bus, controller, createMockLogger());
+      initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
 
       // The driver has asked for fuel with auto-fuel off. At pit approach —
       // still off pit road — the sim arms auto-fuel and clears that request in
@@ -2018,7 +2024,7 @@ describe("sim-events-iracing translator", () => {
       bus.subscribe("pitService.toggled", toggled);
       bus.subscribe("pitService.autoFuelSwitched", autoFuel);
       bus.subscribe("pitService.readbackRequested", readback);
-      initializeSimEventsIracing(bus, controller, createMockLogger());
+      initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
 
       controller.__tick(telemetry({ PitSvFlags: 0, dpFuelAutoFillActive: 1 }));
       controller.__tick(telemetry({ PitSvFlags: PitSvFlags.FuelFill, dpFuelAutoFillActive: 1 }));
@@ -2039,7 +2045,7 @@ describe("sim-events-iracing translator", () => {
       const autoFuel = vi.fn();
       bus.subscribe("pitService.toggled", toggled);
       bus.subscribe("pitService.autoFuelSwitched", autoFuel);
-      initializeSimEventsIracing(bus, controller, createMockLogger());
+      initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
 
       vi.useFakeTimers();
       const t0 = Date.now();
@@ -2078,7 +2084,7 @@ describe("sim-events-iracing translator", () => {
       bus.subscribe("pitService.toggled", toggled);
       bus.subscribe("pitService.autoFuelSwitched", autoFuel);
       bus.subscribe("pitService.readbackRequested", readback);
-      initializeSimEventsIracing(bus, controller, createMockLogger());
+      initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
 
       // On pit road with auto-fuel armed and fuel queued, the driver cancels
       // the fuel. No line — but the recap must stop saying "we're taking fuel".
@@ -2104,7 +2110,7 @@ describe("sim-events-iracing translator", () => {
       const bus = getEventBus();
       const handler = vi.fn();
       bus.subscribe("carControl.drsToggled", handler);
-      initializeSimEventsIracing(bus, controller, createMockLogger());
+      initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
 
       controller.__tick(telemetry({ DRS_Status: 0 }));
       controller.__tick(telemetry({ DRS_Status: 2 }));
@@ -2118,7 +2124,7 @@ describe("sim-events-iracing translator", () => {
       const bus = getEventBus();
       const handler = vi.fn();
       bus.subscribe("tireService.changed", handler);
-      initializeSimEventsIracing(bus, controller, createMockLogger());
+      initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
 
       controller.__tick(telemetry({ PitSvFlags: 0 }));
       controller.__tick(telemetry({ PitSvFlags: PitSvFlags.LFTireChange | PitSvFlags.RFTireChange }));
@@ -2141,7 +2147,7 @@ describe("sim-events-iracing translator", () => {
       const bus = getEventBus();
       const handler = vi.fn();
       bus.subscribe("tireService.changed", handler);
-      initializeSimEventsIracing(bus, controller, createMockLogger());
+      initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
 
       const allTires =
         PitSvFlags.LFTireChange | PitSvFlags.RFTireChange | PitSvFlags.LRTireChange | PitSvFlags.RRTireChange;
@@ -2173,7 +2179,7 @@ describe("sim-events-iracing translator", () => {
       const bus = getEventBus();
       const handler = vi.fn();
       bus.subscribe("tireService.compoundChanged", handler);
-      initializeSimEventsIracing(bus, controller, createMockLogger());
+      initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
 
       const allTires =
         PitSvFlags.LFTireChange | PitSvFlags.RFTireChange | PitSvFlags.LRTireChange | PitSvFlags.RRTireChange;
@@ -2196,7 +2202,7 @@ describe("sim-events-iracing translator", () => {
       const bus = getEventBus();
       const handler = vi.fn();
       bus.subscribe("tireService.compoundChanged", handler);
-      initializeSimEventsIracing(bus, controller, createMockLogger());
+      initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
 
       const allTires =
         PitSvFlags.LFTireChange | PitSvFlags.RFTireChange | PitSvFlags.LRTireChange | PitSvFlags.RRTireChange;
@@ -2219,7 +2225,7 @@ describe("sim-events-iracing translator", () => {
       const tireHandler = vi.fn();
       bus.subscribe("tireService.compoundChanged", compoundHandler);
       bus.subscribe("tireService.changed", tireHandler);
-      initializeSimEventsIracing(bus, controller, createMockLogger());
+      initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
 
       const allTires =
         PitSvFlags.LFTireChange | PitSvFlags.RFTireChange | PitSvFlags.LRTireChange | PitSvFlags.RRTireChange;
@@ -2245,7 +2251,7 @@ describe("sim-events-iracing translator", () => {
       const bus = getEventBus();
       const tireHandler = vi.fn();
       bus.subscribe("tireService.changed", tireHandler);
-      initializeSimEventsIracing(bus, controller, createMockLogger());
+      initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
 
       const allTires =
         PitSvFlags.LFTireChange | PitSvFlags.RFTireChange | PitSvFlags.LRTireChange | PitSvFlags.RRTireChange;
@@ -2275,7 +2281,7 @@ describe("sim-events-iracing translator", () => {
       const bus = getEventBus();
       const handler = vi.fn();
       bus.subscribe("tireService.compoundChanged", handler);
-      initializeSimEventsIracing(bus, controller, createMockLogger());
+      initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
 
       controller.__tick(telemetry({ PitSvTireCompound: 0 }));
       // Enter the stall — every tick re-seeds state including compound.
@@ -2302,7 +2308,7 @@ describe("sim-events-iracing translator", () => {
       const tireHandler = vi.fn();
       bus.subscribe("tireService.compoundChanged", compoundHandler);
       bus.subscribe("tireService.changed", tireHandler);
-      initializeSimEventsIracing(bus, controller, createMockLogger());
+      initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
 
       const allTires =
         PitSvFlags.LFTireChange | PitSvFlags.RFTireChange | PitSvFlags.LRTireChange | PitSvFlags.RRTireChange;
@@ -2349,7 +2355,7 @@ describe("sim-events-iracing translator", () => {
       const bus = getEventBus();
       const handler = vi.fn();
       bus.subscribe("limiter.missing", handler);
-      initializeSimEventsIracing(bus, controller, createMockLogger());
+      initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
 
       controller.__tick(telemetry({ OnPitRoad: false, Speed: 50 }));
       controller.__tick(telemetry({ OnPitRoad: true, Speed: 50, EngineWarnings: 0 }));
@@ -2362,7 +2368,7 @@ describe("sim-events-iracing translator", () => {
       const bus = getEventBus();
       const handler = vi.fn();
       bus.subscribe("limiter.dropped", handler);
-      initializeSimEventsIracing(bus, controller, createMockLogger());
+      initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
 
       controller.__tick(telemetry({ OnPitRoad: false }));
       controller.__tick(telemetry({ OnPitRoad: true, Speed: 20, EngineWarnings: EngineWarnings.PitSpeedLimiter }));
@@ -2376,7 +2382,7 @@ describe("sim-events-iracing translator", () => {
       const bus = getEventBus();
       const handler = vi.fn();
       bus.subscribe("limiter.missing", handler);
-      initializeSimEventsIracing(bus, controller, createMockLogger());
+      initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
 
       // Replay begins in pit lane with limiter off — must not fire limiter.missing.
       controller.__tick(telemetry({ OnPitRoad: true, Speed: 20, EngineWarnings: 0 }));
@@ -2406,7 +2412,7 @@ describe("sim-events-iracing translator", () => {
       const bus = getEventBus();
       const started = vi.fn();
       bus.subscribe("pitSpeeding.started", started);
-      initializeSimEventsIracing(bus, controller, createMockLogger());
+      initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
 
       // No seeding tick. Unlike the limiter diff above, this one is
       // level-driven: a driver already over the limit when the plugin starts
@@ -2421,7 +2427,7 @@ describe("sim-events-iracing translator", () => {
       const bus = getEventBus();
       const ended = vi.fn();
       bus.subscribe("pitSpeeding.ended", ended);
-      initializeSimEventsIracing(bus, controller, createMockLogger());
+      initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
 
       controller.__tick(telemetry({ OnPitRoad: true, Speed: SPEEDING }));
       expect(ended).not.toHaveBeenCalled();
@@ -2436,7 +2442,7 @@ describe("sim-events-iracing translator", () => {
       const bus = getEventBus();
       const ended = vi.fn();
       bus.subscribe("pitSpeeding.ended", ended);
-      initializeSimEventsIracing(bus, controller, createMockLogger());
+      initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
 
       controller.__tick(telemetry({ OnPitRoad: true, Speed: SPEEDING }));
       // The replay guard returns before the diffs run, so without the teardown
@@ -2453,7 +2459,7 @@ describe("sim-events-iracing translator", () => {
       const ended = vi.fn();
       bus.subscribe("pitSpeeding.started", started);
       bus.subscribe("pitSpeeding.ended", ended);
-      initializeSimEventsIracing(bus, controller, createMockLogger());
+      initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
 
       controller.__tick(telemetry({ SessionNum: 0, OnPitRoad: true, Speed: SPEEDING }));
       expect(started).toHaveBeenCalledTimes(1);
@@ -2476,7 +2482,7 @@ describe("sim-events-iracing translator", () => {
       const bus = getEventBus();
       const started = vi.fn();
       bus.subscribe("pitSpeeding.started", started);
-      initializeSimEventsIracing(bus, controller, createMockLogger());
+      initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
 
       controller.__tick(telemetry({ OnPitRoad: true, Speed: 200 }));
 
@@ -2508,7 +2514,7 @@ describe("sim-events-iracing translator", () => {
       const bus = getEventBus();
       const started = vi.fn();
       bus.subscribe("pitSpeeding.started", started);
-      initializeSimEventsIracing(bus, controller, createMockLogger());
+      initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
 
       // 20.1168 m/s is exactly 45.00 mph. Parsing "72.42" gives 20.116667,
       // so before the fix this speed was "over the limit" and fired.
@@ -2523,7 +2529,7 @@ describe("sim-events-iracing translator", () => {
       const bus = getEventBus();
       const started = vi.fn();
       bus.subscribe("pitSpeeding.started", started);
-      initializeSimEventsIracing(bus, controller, createMockLogger());
+      initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
 
       // Just OUTSIDE the top of the window: 72.42 + 0.005 is the corrected
       // threshold, so 0.01 km/h beyond it must still fire. Pinning the near
@@ -2540,7 +2546,7 @@ describe("sim-events-iracing translator", () => {
       const bus = getEventBus();
       const started = vi.fn();
       bus.subscribe("pitSpeeding.started", started);
-      initializeSimEventsIracing(bus, controller, createMockLogger());
+      initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
 
       // With no published decimals we cannot tell an exact 60 from a rounded
       // one, and half a unit would be 0.5 km/h — a blanket grace margin on
@@ -2557,7 +2563,7 @@ describe("sim-events-iracing translator", () => {
       const bus = getEventBus();
       const started = vi.fn();
       bus.subscribe("pitSpeeding.started", started);
-      initializeSimEventsIracing(bus, controller, createMockLogger());
+      initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
 
       // `pitSpeedLimitMps > 0` is the "limit unknown, stay disarmed" sentinel.
       // Adding the rounding window to a 0 would arm the cue against a ~0
@@ -2573,7 +2579,7 @@ describe("sim-events-iracing translator", () => {
       const bus = getEventBus();
       const started = vi.fn();
       bus.subscribe("pitSpeeding.started", started);
-      initializeSimEventsIracing(bus, controller, createMockLogger());
+      initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
 
       // Pinned at the boundary rather than comfortably over: 1 kph above the
       // limit would pass even if the window were far wider than intended.
@@ -2591,7 +2597,7 @@ describe("sim-events-iracing translator", () => {
       const bus = getEventBus();
       const started = vi.fn();
       bus.subscribe("pitSpeeding.started", started);
-      initializeSimEventsIracing(bus, controller, createMockLogger());
+      initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
 
       // The other side of the same boundary. Together the pair pins the window
       // to its intended 0.005 kph in both directions — neither wider nor
@@ -2607,7 +2613,7 @@ describe("sim-events-iracing translator", () => {
       const bus = getEventBus();
       const started = vi.fn();
       bus.subscribe("pitSpeeding.started", started);
-      initializeSimEventsIracing(bus, controller, createMockLogger());
+      initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
 
       controller.__tick(telemetry({ OnPitRoad: true, Speed: 60 / 3.6, EngineWarnings: 0 }));
 
@@ -2621,7 +2627,7 @@ describe("sim-events-iracing translator", () => {
       const bus = getEventBus();
       const handler = vi.fn();
       bus.subscribe("flag.yellow.cleared", handler);
-      initializeSimEventsIracing(bus, controller, createMockLogger());
+      initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
 
       controller.__tick(telemetry({ SessionFlags: 0 }));
       controller.__tick(telemetry({ SessionFlags: 0 }));
@@ -2655,7 +2661,7 @@ describe("sim-events-iracing translator", () => {
       const bus = getEventBus();
       const handler = vi.fn();
       bus.subscribe("pitLane.approaching", handler);
-      initializeSimEventsIracing(bus, controller, createMockLogger());
+      initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
 
       // Sequence: on pit road → enter approach zone (exiting) → back on track.
       controller.__tick(telemetry({ OnPitRoad: true, PlayerTrackSurface: TrkLoc.OffTrack }));
@@ -2682,7 +2688,7 @@ describe("sim-events-iracing translator", () => {
         SessionInfo: { Sessions: [{ SessionType: "Race" }] },
         DriverInfo: { DriverCarIdx: 0 },
       });
-      initializeSimEventsIracing(bus, controller, createMockLogger());
+      initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
 
       const mockPositions = {
         CarIdxClassPosition: [0],
@@ -2723,7 +2729,7 @@ describe("sim-events-iracing translator", () => {
         SessionInfo: { Sessions: [{ SessionType: "Race" }] },
         DriverInfo: { DriverCarIdx: 0 },
       });
-      initializeSimEventsIracing(bus, controller, createMockLogger());
+      initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
 
       // Build two validated laps (~2 L / ~90 s each) through the real #465
       // tracker: each boundary pairs the LapDistPct wrap with the Lap counter
@@ -2785,7 +2791,7 @@ describe("sim-events-iracing translator", () => {
         SessionInfo: { Sessions: [{ SessionType: "Race" }] },
         DriverInfo: { DriverCarIdx: 0 },
       });
-      initializeSimEventsIracing(bus, controller, createMockLogger());
+      initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
 
       // Leader (carIdx 1) runs two laps ahead of the player (carIdx 0).
       const field = (playerLap: number, playerPct: number): Partial<TelemetryData> => ({
@@ -2865,7 +2871,7 @@ describe("sim-events-iracing translator", () => {
       const ended = vi.fn();
       bus.subscribe("offTrack.started", started);
       bus.subscribe("offTrack.ended", ended);
-      initializeSimEventsIracing(bus, controller, createMockLogger());
+      initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
 
       controller.__tick(telemetry({ PlayerTrackSurface: TrkLoc.OnTrack }));
       controller.__tick(telemetry({ PlayerTrackSurface: TrkLoc.OffTrack }));
@@ -2881,7 +2887,7 @@ describe("sim-events-iracing translator", () => {
       const bus = getEventBus();
       const handler = vi.fn();
       bus.subscribe("incident.occurred", handler);
-      initializeSimEventsIracing(bus, controller, createMockLogger());
+      initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
 
       controller.__tick(telemetry({ PlayerCarMyIncidentCount: 0 }));
       controller.__tick(telemetry({ PlayerCarMyIncidentCount: 0 }));
@@ -2913,7 +2919,7 @@ describe("sim-events-iracing translator", () => {
         occurredSeenInsideScored = order.includes("occurred");
         order.push(`scored:${(ev as SimEventOf<"incident.scored">).data.delta}`);
       });
-      initializeSimEventsIracing(bus, controller, createMockLogger());
+      initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
 
       controller.__tick(telemetry({ PlayerCarMyIncidentCount: 0 }));
       controller.__tick(telemetry({ PlayerCarMyIncidentCount: 1, PlayerIncidents: IncidentFlags.RepOffTrack }));
@@ -2935,7 +2941,7 @@ describe("sim-events-iracing translator", () => {
       bus.subscribe("incident.scored", () => order.push("scored"));
       bus.subscribe("incident.occurred", () => order.push("occurred"));
       bus.subscribe("damage.repairNeeded.raised", () => order.push("damage"));
-      initializeSimEventsIracing(bus, controller, createMockLogger());
+      initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
 
       const damaged = EngineWarnings.MandRepNeeded;
       controller.__tick(telemetry({ PlayerCarMyIncidentCount: 0 }));
@@ -2968,7 +2974,7 @@ describe("sim-events-iracing translator", () => {
       const occurred = vi.fn();
       bus.subscribe("incident.scored", scored);
       bus.subscribe("incident.occurred", occurred);
-      initializeSimEventsIracing(bus, controller, createMockLogger());
+      initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
 
       controller.__tick(telemetry({ PlayerCarMyIncidentCount: 0 }));
       controller.__tick(telemetry({ PlayerCarMyIncidentCount: 1, PlayerIncidents: 0 }));
@@ -2986,7 +2992,7 @@ describe("sim-events-iracing translator", () => {
       const bus = getEventBus();
       const handler = vi.fn();
       bus.subscribe("incident.occurred", handler);
-      initializeSimEventsIracing(bus, controller, createMockLogger());
+      initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
 
       // A typical iRacing crash arrives as a stream of count increments over
       // a few hundred ms, each the MARGINAL upgrade toward the sequence's
@@ -3021,7 +3027,7 @@ describe("sim-events-iracing translator", () => {
       const bus = getEventBus();
       const handler = vi.fn();
       bus.subscribe("incident.occurred", handler);
-      initializeSimEventsIracing(bus, controller, createMockLogger());
+      initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
 
       controller.__tick(telemetry({ PlayerCarMyIncidentCount: 0 }));
       controller.__tick(telemetry({ PlayerCarMyIncidentCount: 1, PlayerIncidents: IncidentFlags.RepOffTrack }));
@@ -3048,7 +3054,7 @@ describe("sim-events-iracing translator", () => {
       const bus = getEventBus();
       const handler = vi.fn();
       bus.subscribe("incident.occurred", handler);
-      initializeSimEventsIracing(bus, controller, createMockLogger());
+      initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
 
       // Count bumps but the report byte is RepNoReport — stay silent so a
       // future iRacing-side type addition doesn't get an unclassified callout.
@@ -3069,7 +3075,7 @@ describe("sim-events-iracing translator", () => {
       const bus = getEventBus();
       const started = vi.fn();
       bus.subscribe("offTrack.started", started);
-      initializeSimEventsIracing(bus, controller, createMockLogger());
+      initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
 
       // Reconnect while the car is already off track — no real transition
       // happened, so the translator must seed quietly.
@@ -3084,7 +3090,7 @@ describe("sim-events-iracing translator", () => {
       const bus = getEventBus();
       const ended = vi.fn();
       bus.subscribe("offTrack.ended", ended);
-      initializeSimEventsIracing(bus, controller, createMockLogger());
+      initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
 
       controller.__tick(telemetry({ IsOnTrack: true, PlayerTrackSurface: TrkLoc.OffTrack }));
       controller.__tick(telemetry({ IsOnTrack: true, PlayerTrackSurface: TrkLoc.OnTrack }));
@@ -3099,7 +3105,7 @@ describe("sim-events-iracing translator", () => {
       const bus = getEventBus();
       const handler = vi.fn();
       bus.subscribe("radar.changed", handler);
-      initializeSimEventsIracing(bus, controller, createMockLogger());
+      initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
 
       controller.__tick(telemetry({ CarLeftRight: CarLeftRight.Off }));
       controller.__tick(telemetry({ CarLeftRight: CarLeftRight.CarLeft }));
@@ -3114,7 +3120,7 @@ describe("sim-events-iracing translator", () => {
       const bus = getEventBus();
       const handler = vi.fn();
       bus.subscribe("radar.changed", handler);
-      initializeSimEventsIracing(bus, controller, createMockLogger());
+      initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
 
       // Seed → active left.
       controller.__tick(telemetry({ CarLeftRight: CarLeftRight.Off }));
@@ -3137,7 +3143,7 @@ describe("sim-events-iracing translator", () => {
       const bus = getEventBus();
       const handler = vi.fn();
       bus.subscribe("radar.changed", handler);
-      initializeSimEventsIracing(bus, controller, createMockLogger());
+      initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
 
       controller.__tick(telemetry({ CarLeftRight: CarLeftRight.Off }));
       controller.__tick(null, false);
@@ -3152,7 +3158,7 @@ describe("sim-events-iracing translator", () => {
       const bus = getEventBus();
       const handler = vi.fn();
       bus.subscribe("driver.firstOnTrack", handler);
-      initializeSimEventsIracing(bus, controller, createMockLogger());
+      initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
 
       controller.__tick(telemetry({ IsOnTrack: false }));
       controller.__tick(telemetry({ IsOnTrack: true }));
@@ -3166,7 +3172,7 @@ describe("sim-events-iracing translator", () => {
       const bus = getEventBus();
       const handler = vi.fn();
       bus.subscribe("engine.startup", handler);
-      initializeSimEventsIracing(bus, controller, createMockLogger());
+      initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
 
       controller.__tick(telemetry({ RPM: 0 }));
       controller.__tick(telemetry({ RPM: 1200 }));
@@ -3179,7 +3185,7 @@ describe("sim-events-iracing translator", () => {
       const bus = getEventBus();
       const handler = vi.fn();
       bus.subscribe("lap.started", handler);
-      initializeSimEventsIracing(bus, controller, createMockLogger());
+      initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
 
       controller.__tick(telemetry({ Lap: 1 }));
       controller.__tick(telemetry({ Lap: 2 }));
@@ -3194,7 +3200,7 @@ describe("sim-events-iracing translator", () => {
       const bus = getEventBus();
       const handler = vi.fn();
       bus.subscribe("session.changed", handler);
-      initializeSimEventsIracing(bus, controller, createMockLogger());
+      initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
 
       controller.__tick(telemetry({ SessionNum: 0 }));
       controller.__tick(telemetry({ SessionNum: 1 }));
@@ -3216,7 +3222,7 @@ describe("sim-events-iracing translator", () => {
       const bus = getEventBus();
       const handler = vi.fn();
       bus.subscribe("session.changed", handler);
-      initializeSimEventsIracing(bus, controller, createMockLogger());
+      initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
 
       // Tick 1: qualifying live.
       controller.__tick(telemetry({ SessionNum: 1, IsReplayPlaying: false, IsOnTrack: true }));
@@ -3241,7 +3247,7 @@ describe("sim-events-iracing translator", () => {
       const bus = getEventBus();
       const handler = vi.fn();
       bus.subscribe("session.changed", handler);
-      initializeSimEventsIracing(bus, controller, createMockLogger());
+      initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
 
       controller.__tick(telemetry({ SessionNum: 0, IsReplayPlaying: false }));
       controller.__tick(telemetry({ SessionNum: 1, IsReplayPlaying: false }));
@@ -3266,7 +3272,7 @@ describe("sim-events-iracing translator", () => {
         const bus = getEventBus();
         const handler = vi.fn();
         bus.subscribe("session.changed", handler);
-        initializeSimEventsIracing(bus, controller, createMockLogger());
+        initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
 
         // Seed the tracker, then scrub the replay across a session boundary.
         controller.__tick(telemetry({ SessionNum: 0, IsReplayPlaying: true, IsOnTrack: false }));
@@ -3287,7 +3293,7 @@ describe("sim-events-iracing translator", () => {
         const bus = getEventBus();
         const handler = vi.fn();
         bus.subscribe("session.changed", handler);
-        initializeSimEventsIracing(bus, controller, createMockLogger());
+        initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
 
         controller.__tick(
           telemetry({ SessionNum: 0, SessionState: SessionState.GetInCar, IsReplayPlaying: true, IsOnTrack: false }),
@@ -3308,7 +3314,7 @@ describe("sim-events-iracing translator", () => {
         const bus = getEventBus();
         const handler = vi.fn();
         bus.subscribe("session.changed", handler);
-        initializeSimEventsIracing(bus, controller, createMockLogger());
+        initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
 
         // Tick 1: replay-only, no synthesis.
         controller.__tick(
@@ -3344,7 +3350,7 @@ describe("sim-events-iracing translator", () => {
         const bus = getEventBus();
         const handler = vi.fn();
         bus.subscribe("session.changed", handler);
-        initializeSimEventsIracing(bus, controller, createMockLogger());
+        initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
 
         // Tick 1: live in qualifying. Seeds lastObservedSessionNum=1.
         controller.__tick(telemetry({ SessionNum: 1, IsReplayPlaying: false, IsOnTrack: true }));
@@ -3382,7 +3388,7 @@ describe("sim-events-iracing translator", () => {
         const bus = getEventBus();
         const handler = vi.fn();
         bus.subscribe("session.changed", handler);
-        initializeSimEventsIracing(bus, controller, createMockLogger());
+        initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
 
         controller.__tick(telemetry({ SessionNum: 1, IsReplayPlaying: false, IsOnTrack: true }));
         // Transient replay tick during session load.
@@ -3415,7 +3421,7 @@ describe("sim-events-iracing translator", () => {
           const bus = getEventBus();
           const handler = vi.fn();
           bus.subscribe("session.changed", handler);
-          initializeSimEventsIracing(bus, controller, createMockLogger());
+          initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
           // Seed: live in the registration practice. The fresh-connect
           // synthesis may fire here; only what follows is under test.
           controller.__tick(live());
@@ -3527,7 +3533,7 @@ describe("sim-events-iracing translator", () => {
           const bus = getEventBus();
           const handler = vi.fn();
           bus.subscribe("session.changed", handler);
-          initializeSimEventsIracing(bus, controller, createMockLogger());
+          initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
           controller.__tick(live());
           handler.mockClear();
 
@@ -3606,7 +3612,7 @@ describe("sim-events-iracing translator", () => {
           const controller = createMockController();
           controller.__setSessionInfo(REPLAY_SESSION_INFO);
           const logger = createMockLogger();
-          initializeSimEventsIracing(getEventBus(), controller, logger);
+          initializeSimEventsIracing(getEventBus(), controller, logger, { onStepError: "rethrow" });
 
           for (let i = 0; i < 5; i++) replayTick(controller);
 
@@ -3620,7 +3626,7 @@ describe("sim-events-iracing translator", () => {
           const handler = vi.fn();
           bus.subscribe("session.changed", handler);
           const logger = createMockLogger();
-          initializeSimEventsIracing(bus, controller, logger);
+          initializeSimEventsIracing(bus, controller, logger, { onStepError: "rethrow" });
 
           // Episode 1: two replay-only ticks — one log line.
           replayTick(controller);
@@ -3650,7 +3656,7 @@ describe("sim-events-iracing translator", () => {
           const controller = createMockController();
           controller.__setSessionInfo(REPLAY_SESSION_INFO);
           const logger = createMockLogger();
-          initializeSimEventsIracing(getEventBus(), controller, logger);
+          initializeSimEventsIracing(getEventBus(), controller, logger, { onStepError: "rethrow" });
 
           // Episode 1: two replay-only ticks — one log line.
           replayTick(controller);
@@ -3671,7 +3677,7 @@ describe("sim-events-iracing translator", () => {
           const controller = createMockController();
           controller.__setSessionInfo(REPLAY_SESSION_INFO);
           const logger = createMockLogger();
-          initializeSimEventsIracing(getEventBus(), controller, logger);
+          initializeSimEventsIracing(getEventBus(), controller, logger, { onStepError: "rethrow" });
 
           // Episode 1: two replay-only ticks — one log line.
           replayTick(controller);
@@ -3695,7 +3701,7 @@ describe("sim-events-iracing translator", () => {
           const bus = getEventBus();
           const handler = vi.fn();
           bus.subscribe("session.changed", handler);
-          initializeSimEventsIracing(bus, controller, createMockLogger());
+          initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
 
           for (let i = 0; i < 5; i++) replayTick(controller);
 
@@ -3746,7 +3752,7 @@ describe("sim-events-iracing translator", () => {
         const bus = getEventBus();
         const handler = vi.fn();
         bus.subscribe("session.changed", handler);
-        initializeSimEventsIracing(bus, controller, createMockLogger());
+        initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
 
         controller.__tick(telemetry({ SessionNum: 0, SessionState: state }));
 
@@ -3765,7 +3771,7 @@ describe("sim-events-iracing translator", () => {
         const bus = getEventBus();
         const handler = vi.fn();
         bus.subscribe("session.changed", handler);
-        initializeSimEventsIracing(bus, controller, createMockLogger());
+        initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
 
         controller.__tick(telemetry({ SessionNum: 0, SessionState: state }));
 
@@ -3782,7 +3788,7 @@ describe("sim-events-iracing translator", () => {
         const bus = getEventBus();
         const handler = vi.fn();
         bus.subscribe("session.changed", handler);
-        initializeSimEventsIracing(bus, controller, createMockLogger());
+        initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
 
         controller.__tick(telemetry({ SessionNum: 0, SessionState: SessionState.Racing }));
         expect(handler).not.toHaveBeenCalled();
@@ -3798,7 +3804,7 @@ describe("sim-events-iracing translator", () => {
         const bus = getEventBus();
         const handler = vi.fn();
         bus.subscribe("session.changed", handler);
-        initializeSimEventsIracing(bus, controller, createMockLogger());
+        initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
 
         // Telemetry settling: SessionState=Invalid for a few ticks.
         controller.__tick(telemetry({ SessionNum: 0, SessionState: SessionState.Invalid }));
@@ -3826,7 +3832,7 @@ describe("sim-events-iracing translator", () => {
         const bus = getEventBus();
         const handler = vi.fn();
         bus.subscribe("session.changed", handler);
-        initializeSimEventsIracing(bus, controller, createMockLogger());
+        initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
 
         controller.__tick(telemetry({ SessionNum: 0, SessionState: state }));
 
@@ -3846,7 +3852,7 @@ describe("sim-events-iracing translator", () => {
         const bus = getEventBus();
         const handler = vi.fn();
         bus.subscribe("session.changed", handler);
-        initializeSimEventsIracing(bus, controller, createMockLogger());
+        initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
 
         controller.__tick(telemetry({ SessionNum: 0, SessionState: state }));
 
@@ -3861,7 +3867,7 @@ describe("sim-events-iracing translator", () => {
         const bus = getEventBus();
         const handler = vi.fn();
         bus.subscribe("session.changed", handler);
-        initializeSimEventsIracing(bus, controller, createMockLogger());
+        initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
 
         // Connect mid-practice (Racing) — fires.
         controller.__tick(telemetry({ SessionNum: 0, SessionState: SessionState.Racing }));
@@ -3886,7 +3892,7 @@ describe("sim-events-iracing translator", () => {
         const bus = getEventBus();
         const handler = vi.fn();
         bus.subscribe("session.changed", handler);
-        initializeSimEventsIracing(bus, controller, createMockLogger());
+        initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
 
         controller.__tick(telemetry({ SessionNum: 0, SessionState: state }));
         expect(handler).not.toHaveBeenCalled();
@@ -3902,7 +3908,7 @@ describe("sim-events-iracing translator", () => {
         const bus = getEventBus();
         const handler = vi.fn();
         bus.subscribe("session.changed", handler);
-        initializeSimEventsIracing(bus, controller, createMockLogger());
+        initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
 
         // Telemetry settling: SessionState=Invalid for a few ticks — no latch.
         controller.__tick(telemetry({ SessionNum: 0, SessionState: SessionState.Invalid }));
@@ -3925,7 +3931,7 @@ describe("sim-events-iracing translator", () => {
         const bus = getEventBus();
         const handler = vi.fn();
         bus.subscribe("session.changed", handler);
-        initializeSimEventsIracing(bus, controller, createMockLogger());
+        initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
 
         controller.__tick(telemetry({ SessionNum: 0, SessionState: SessionState.GetInCar }));
 
@@ -3937,7 +3943,7 @@ describe("sim-events-iracing translator", () => {
         const bus = getEventBus();
         const handler = vi.fn();
         bus.subscribe("session.changed", handler);
-        initializeSimEventsIracing(bus, controller, createMockLogger());
+        initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
 
         // First tick: session info not loaded yet (raw type ""). Latch open.
         controller.__tick(telemetry({ SessionNum: 0, SessionState: SessionState.GetInCar }));
@@ -3965,7 +3971,7 @@ describe("sim-events-iracing translator", () => {
         const bus = getEventBus();
         const handler = vi.fn();
         bus.subscribe("session.changed", handler);
-        initializeSimEventsIracing(bus, controller, createMockLogger());
+        initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
 
         // Fresh-connect into race 1 — synthesis fires.
         controller.__tick(telemetry({ SessionNum: 0, SessionState: SessionState.GetInCar }));
@@ -3986,7 +3992,7 @@ describe("sim-events-iracing translator", () => {
         const bus = getEventBus();
         const handler = vi.fn();
         bus.subscribe("session.changed", handler);
-        initializeSimEventsIracing(bus, controller, createMockLogger());
+        initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
 
         // First connect into practice at Racing — synthesis fires and latches.
         controller.__tick(telemetry({ SessionNum: 0, SessionState: SessionState.Racing }));
@@ -4008,7 +4014,7 @@ describe("sim-events-iracing translator", () => {
       const bus = getEventBus();
       const handler = vi.fn();
       bus.subscribe("engine.startup", handler);
-      initializeSimEventsIracing(bus, controller, createMockLogger());
+      initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
 
       // Reconnecting while the engine is already running is not a startup.
       controller.__tick(telemetry({ RPM: 3500 }));
@@ -4022,7 +4028,7 @@ describe("sim-events-iracing translator", () => {
       const bus = getEventBus();
       const handler = vi.fn();
       bus.subscribe("driver.firstOnTrack", handler);
-      initializeSimEventsIracing(bus, controller, createMockLogger());
+      initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
 
       // Reconnect mid-session with the driver already on track — the
       // once-per-session event must not re-fire.
@@ -4041,7 +4047,7 @@ describe("sim-events-iracing translator", () => {
       const bus = getEventBus();
       const handler = vi.fn();
       bus.subscribe("driver.firstOnTrack", handler);
-      initializeSimEventsIracing(bus, controller, createMockLogger());
+      initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
 
       // In the session menu / garage: iRacing is in replay, not on track.
       controller.__tick(telemetry({ IsReplayPlaying: true, IsOnTrack: false }));
@@ -4063,7 +4069,7 @@ describe("sim-events-iracing translator", () => {
       const bus = getEventBus();
       const handler = vi.fn();
       bus.subscribe("driver.firstOnTrack", handler);
-      initializeSimEventsIracing(bus, controller, createMockLogger());
+      initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
 
       // A replay frame can have IsOnTrack true, but the driver isn't live.
       controller.__tick(telemetry({ IsReplayPlaying: true, IsOnTrack: true }));
@@ -4077,7 +4083,7 @@ describe("sim-events-iracing translator", () => {
       const bus = getEventBus();
       const handler = vi.fn();
       bus.subscribe("driver.firstOnTrack", handler);
-      initializeSimEventsIracing(bus, controller, createMockLogger());
+      initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
 
       controller.__tick(telemetry({ SessionNum: 0, IsReplayPlaying: true, IsOnTrack: false }));
       elapseReplayGrace();
@@ -4099,7 +4105,7 @@ describe("sim-events-iracing translator", () => {
       const bus = getEventBus();
       const handler = vi.fn();
       bus.subscribe("driver.firstOnTrack", handler);
-      initializeSimEventsIracing(bus, controller, createMockLogger());
+      initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
 
       // Practice: on track, callout fires.
       controller.__tick(telemetry({ SessionNum: 0, IsOnTrack: false }));
@@ -4120,7 +4126,7 @@ describe("sim-events-iracing translator", () => {
       const bus = getEventBus();
       const handler = vi.fn();
       bus.subscribe("driver.firstOnTrack", handler);
-      initializeSimEventsIracing(bus, controller, createMockLogger());
+      initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
 
       // Practice: drive out, callout fires.
       controller.__tick(telemetry({ SessionNum: 0, IsReplayPlaying: true, IsOnTrack: false }));
@@ -4150,7 +4156,7 @@ describe("sim-events-iracing translator", () => {
       const bus = getEventBus();
       const handler = vi.fn();
       bus.subscribe("session.changed", handler);
-      initializeSimEventsIracing(bus, controller, createMockLogger());
+      initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
 
       controller.__tick(telemetry({ SessionNum: 0 }));
       controller.__tick(telemetry({ SessionNum: 1 }));
@@ -4171,7 +4177,7 @@ describe("sim-events-iracing translator", () => {
       const bus = getEventBus();
       const handler = vi.fn();
       bus.subscribe("radar.changed", handler);
-      initializeSimEventsIracing(bus, controller, createMockLogger());
+      initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
 
       // Practice: car appears on the left, radar emits left.
       controller.__tick(telemetry({ SessionNum: 0, CarLeftRight: CarLeftRight.Off }));
@@ -4200,7 +4206,7 @@ describe("sim-events-iracing translator", () => {
       const bus = getEventBus();
       const handler = vi.fn();
       bus.subscribe("carControl.p2pToggled", handler);
-      initializeSimEventsIracing(bus, controller, createMockLogger());
+      initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
 
       // Practice: P2P off → on (rising edge fires once).
       controller.__tick(telemetry({ SessionNum: 0, P2P_Status: false }));
@@ -4221,7 +4227,7 @@ describe("sim-events-iracing translator", () => {
       const bus = getEventBus();
       const handler = vi.fn();
       bus.subscribe("lap.started", handler);
-      initializeSimEventsIracing(bus, controller, createMockLogger());
+      initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
 
       // End of practice on lap 12, then race starts at lap 1.
       controller.__tick(telemetry({ Lap: 12 }));
@@ -4239,7 +4245,7 @@ describe("sim-events-iracing translator", () => {
     function qualController(): MockController {
       const controller = createMockController();
       controller.__setSessionInfo(QUAL_SESSION_INFO);
-      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
       return controller;
     }
@@ -4330,14 +4336,14 @@ describe("sim-events-iracing translator", () => {
     it("returns null before any telemetry tick", () => {
       const controller = createMockController();
       controller.__setSessionInfo(SESSION_INFO);
-      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
       expect(getSessionStartConditions()).toBeNull();
     });
 
     it("returns null when session info is unavailable", () => {
       const controller = createMockController();
-      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
       controller.__tick(telemetry({ TrackWetness: TrackWetness.Dry, TrackTempCrew: 25, AirTemp: 18 }));
 
@@ -4347,7 +4353,7 @@ describe("sim-events-iracing translator", () => {
     it("reports wetness null (snapshot kept) while track wetness is still Unknown", () => {
       const controller = createMockController();
       controller.__setSessionInfo(SESSION_INFO);
-      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
       controller.__tick(telemetry({ TrackWetness: TrackWetness.Unknown, TrackTempCrew: 25, AirTemp: 18 }));
 
@@ -4362,7 +4368,7 @@ describe("sim-events-iracing translator", () => {
     it("reports wetness null when TrackWetness is out of range", () => {
       const controller = createMockController();
       controller.__setSessionInfo(SESSION_INFO);
-      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
       controller.__tick(telemetry({ TrackWetness: 99, TrackTempCrew: 25, AirTemp: 18 }));
 
@@ -4372,7 +4378,7 @@ describe("sim-events-iracing translator", () => {
     it("reports wetness null for a non-integer TrackWetness, which no clip names", () => {
       const controller = createMockController();
       controller.__setSessionInfo(SESSION_INFO);
-      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
       controller.__tick(telemetry({ TrackWetness: 2.5, TrackTempCrew: 25, AirTemp: 18 }));
 
@@ -4382,7 +4388,7 @@ describe("sim-events-iracing translator", () => {
     it("reports trackTemp null when TrackTempCrew is missing, keeping the other fields", () => {
       const controller = createMockController();
       controller.__setSessionInfo(SESSION_INFO);
-      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
       controller.__tick(telemetry({ TrackWetness: TrackWetness.Dry, AirTemp: 18 }));
 
@@ -4396,7 +4402,7 @@ describe("sim-events-iracing translator", () => {
     it("reports airTemp null when AirTemp is not finite, keeping the other fields", () => {
       const controller = createMockController();
       controller.__setSessionInfo(SESSION_INFO);
-      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
       controller.__tick(telemetry({ TrackWetness: TrackWetness.Dry, TrackTempCrew: 25, AirTemp: Number.NaN }));
 
@@ -4410,7 +4416,7 @@ describe("sim-events-iracing translator", () => {
     it("resolves metric conditions (km/h, Celsius) and rounds temps", () => {
       const controller = createMockController();
       controller.__setSessionInfo(SESSION_INFO);
-      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
       controller.__tick(
         telemetry({
@@ -4435,7 +4441,7 @@ describe("sim-events-iracing translator", () => {
     it("converts to imperial (mph, Fahrenheit) when DisplayUnits is English", () => {
       const controller = createMockController();
       controller.__setSessionInfo(SESSION_INFO);
-      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
       controller.__tick(
         telemetry({
@@ -4461,7 +4467,7 @@ describe("sim-events-iracing translator", () => {
     it("defaults to metric when DisplayUnits is absent", () => {
       const controller = createMockController();
       controller.__setSessionInfo(SESSION_INFO);
-      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
       controller.__tick(telemetry({ TrackWetness: TrackWetness.Dry, TrackTempCrew: 25, AirTemp: 18 }));
 
@@ -4484,7 +4490,7 @@ describe("sim-events-iracing translator", () => {
         SessionInfo: { Sessions: [{ SessionType: sessionType }] },
         WeekendInfo: { TrackID: 42, TrackPitSpeedLimit: "80.00 kph" },
       });
-      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
       controller.__tick(telemetry({ TrackWetness: TrackWetness.Dry, TrackTempCrew: 25, AirTemp: 18 }));
 
@@ -4512,14 +4518,14 @@ describe("sim-events-iracing translator", () => {
     it("returns null before any telemetry tick", () => {
       const controller = createMockController();
       controller.__setSessionInfo(SESSION_INFO_P7);
-      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
       expect(getRaceStartConditions()).toBeNull();
     });
 
     it("returns null when session info is unavailable", () => {
       const controller = createMockController();
-      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
       controller.__tick(telemetry({ TrackWetness: TrackWetness.Dry, TrackTempCrew: 25, AirTemp: 18 }));
 
@@ -4529,7 +4535,7 @@ describe("sim-events-iracing translator", () => {
     it("reports wetness null (snapshot kept) while track wetness is still Unknown", () => {
       const controller = createMockController();
       controller.__setSessionInfo(SESSION_INFO_P7);
-      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
       controller.__tick(telemetry({ TrackWetness: TrackWetness.Unknown, TrackTempCrew: 25, AirTemp: 18 }));
 
@@ -4544,7 +4550,7 @@ describe("sim-events-iracing translator", () => {
     it("reports wetness null when TrackWetness is out of range", () => {
       const controller = createMockController();
       controller.__setSessionInfo(SESSION_INFO_P7);
-      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
       controller.__tick(telemetry({ TrackWetness: 99, TrackTempCrew: 25, AirTemp: 18 }));
 
@@ -4554,7 +4560,7 @@ describe("sim-events-iracing translator", () => {
     it("reports wetness null for a non-integer TrackWetness, which no clip names", () => {
       const controller = createMockController();
       controller.__setSessionInfo(SESSION_INFO_P7);
-      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
       controller.__tick(telemetry({ TrackWetness: 2.5, TrackTempCrew: 25, AirTemp: 18 }));
 
@@ -4564,7 +4570,7 @@ describe("sim-events-iracing translator", () => {
     it("reports trackTemp null when TrackTempCrew is missing, keeping the other fields", () => {
       const controller = createMockController();
       controller.__setSessionInfo(SESSION_INFO_P7);
-      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
       controller.__tick(telemetry({ TrackWetness: TrackWetness.Dry, AirTemp: 18 }));
 
@@ -4578,7 +4584,7 @@ describe("sim-events-iracing translator", () => {
     it("reports airTemp null when AirTemp is not finite, keeping the other fields", () => {
       const controller = createMockController();
       controller.__setSessionInfo(SESSION_INFO_P7);
-      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
       controller.__tick(telemetry({ TrackWetness: TrackWetness.Dry, TrackTempCrew: 25, AirTemp: Number.NaN }));
 
@@ -4592,7 +4598,7 @@ describe("sim-events-iracing translator", () => {
     it("resolves metric conditions (Celsius) and reads grid position from QualifyResultsInfo", () => {
       const controller = createMockController();
       controller.__setSessionInfo(SESSION_INFO_P7);
-      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
       controller.__tick(
         telemetry({
@@ -4615,7 +4621,7 @@ describe("sim-events-iracing translator", () => {
     it("converts to Fahrenheit when DisplayUnits is English", () => {
       const controller = createMockController();
       controller.__setSessionInfo(sessionInfoWithGridPosition(1));
-      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
       controller.__tick(
         telemetry({
@@ -4644,7 +4650,7 @@ describe("sim-events-iracing translator", () => {
         DriverInfo: { DriverCarIdx: 0 },
         // No QualifyResultsInfo.
       });
-      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
       controller.__tick(
         telemetry({
@@ -4665,7 +4671,7 @@ describe("sim-events-iracing translator", () => {
         DriverInfo: { DriverCarIdx: 99 },
         QualifyResultsInfo: { Results: [{ CarIdx: 0, Position: 1 }] },
       });
-      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
       controller.__tick(telemetry({ TrackWetness: TrackWetness.Dry, TrackTempCrew: 25, AirTemp: 18 }));
 
@@ -4675,7 +4681,7 @@ describe("sim-events-iracing translator", () => {
     it("ignores telemetry.PlayerCarPosition (which reads 0 in the garage / pre-grid)", () => {
       const controller = createMockController();
       controller.__setSessionInfo(SESSION_INFO_P7);
-      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
       // Real-world pre-grid: telemetry.PlayerCarPosition reads 0, but the
       // grid position from QualifyResultsInfo (P7) is what we want to speak.
@@ -4699,7 +4705,7 @@ describe("sim-events-iracing translator", () => {
         DriverInfo: { DriverCarIdx: 0 },
         QualifyResultsInfo: { Results: [{ CarIdx: 0, Position: 0 }] },
       });
-      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
       controller.__tick(telemetry({ TrackWetness: TrackWetness.Dry, TrackTempCrew: 25, AirTemp: 18 }));
 
@@ -4714,7 +4720,7 @@ describe("sim-events-iracing translator", () => {
         DriverInfo: { DriverCarIdx: 0 },
         QualifyResultsInfo: { Results: [{ CarIdx: 0, Position: -1 }] },
       });
-      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
       controller.__tick(telemetry({ TrackWetness: TrackWetness.Dry, TrackTempCrew: 25, AirTemp: 18 }));
 
@@ -4724,7 +4730,7 @@ describe("sim-events-iracing translator", () => {
     it("does not include sessionType in the snapshot (scenario gates on getSessionType separately)", () => {
       const controller = createMockController();
       controller.__setSessionInfo(sessionInfoWithGridPosition(5));
-      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
       controller.__tick(telemetry({ TrackWetness: TrackWetness.Dry, TrackTempCrew: 25, AirTemp: 18 }));
 
@@ -4761,7 +4767,7 @@ describe("sim-events-iracing translator", () => {
           ],
         },
       });
-      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
       controller.__tick(telemetry({ TrackWetness: TrackWetness.Dry, TrackTempCrew: 25, AirTemp: 18 }));
 
@@ -4791,7 +4797,7 @@ describe("sim-events-iracing translator", () => {
           ],
         },
       });
-      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
       controller.__tick(telemetry({ TrackWetness: TrackWetness.Dry, TrackTempCrew: 25, AirTemp: 18 }));
 
@@ -4821,7 +4827,7 @@ describe("sim-events-iracing translator", () => {
           ],
         },
       });
-      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
       controller.__tick(telemetry({ TrackWetness: TrackWetness.Dry, TrackTempCrew: 25, AirTemp: 18 }));
 
@@ -4836,7 +4842,7 @@ describe("sim-events-iracing translator", () => {
       const bus = getEventBus();
       const handler = vi.fn();
       bus.subscribe("pitLane.entered", handler);
-      initializeSimEventsIracing(bus, controller, createMockLogger());
+      initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
 
       const t = telemetry({ OnPitRoad: false });
       controller.__tick(t);
@@ -4925,7 +4931,7 @@ describe("sim-events-iracing translator", () => {
       bus.subscribe("lap.completed", handler);
       // Standings reflect the lap the driver is about to complete.
       controller.__setSessionInfo(singleClassSessionInfo(/* playerLapsComplete */ 1, /* playerPosition */ 5));
-      initializeSimEventsIracing(bus, controller, createMockLogger());
+      initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
 
       // Seed tick.
       controller.__tick(telemetry({ LapCompleted: 0, LapLastLapTime: 0 }));
@@ -4948,7 +4954,7 @@ describe("sim-events-iracing translator", () => {
       controller.__setSessionInfo(
         multiClassSessionInfo(/* playerLapsComplete */ 1, /* playerPosition */ 4, /* playerClassPosition */ 1),
       );
-      initializeSimEventsIracing(bus, controller, createMockLogger());
+      initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
 
       controller.__tick(telemetry({ LapCompleted: 0, LapLastLapTime: 0 }));
       controller.__tick(telemetry({ LapCompleted: 1, LapLastLapTime: 63.4, LapBestLapTime: 63.4 }));
@@ -5003,7 +5009,7 @@ describe("sim-events-iracing translator", () => {
       controller.__setSessionInfo(STANDING_RACE_SESSION);
       const handler = vi.fn();
       getEventBus().subscribe("startLight.countdown.raised", handler);
-      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
       controller.__tick(liveTick(95)); // first-tick observation
       controller.__tick(liveTick(94)); // seeds ceiling
@@ -5017,7 +5023,7 @@ describe("sim-events-iracing translator", () => {
       controller.__setSessionInfo(STANDING_RACE_SESSION);
       const handler = vi.fn();
       getEventBus().subscribe("startLight.countdown.raised", handler);
-      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
       controller.__tick(garageTick(95)); // first-tick observation (also the replay-entry wipe tick)
       controller.__tick(garageTick(94)); // seeds ceiling on a replay-mode tick
@@ -5032,7 +5038,7 @@ describe("sim-events-iracing translator", () => {
       controller.__setSessionInfo(STANDING_RACE_SESSION);
       const handler = vi.fn();
       getEventBus().subscribe("startLight.countdown.raised", handler);
-      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
       controller.__tick(liveTick(95)); // first-tick observation
       controller.__tick(liveTick(94)); // seeds ceiling=94 live
@@ -5050,7 +5056,7 @@ describe("sim-events-iracing translator", () => {
       controller.__setSessionInfo(STANDING_RACE_SESSION);
       const handler = vi.fn();
       getEventBus().subscribe("startLight.countdown.raised", handler);
-      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
       controller.__tick(garageTick(95)); // first-tick observation
       controller.__tick(garageTick(94)); // seeds ceiling
@@ -5071,7 +5077,7 @@ describe("sim-events-iracing translator", () => {
       });
       const handler = vi.fn();
       getEventBus().subscribe("startLight.countdown.raised", handler);
-      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
       controller.__tick(garageTick(95));
       controller.__tick(garageTick(58));
@@ -5217,7 +5223,7 @@ describe("sim-events-iracing translator", () => {
       const controller = createMockController();
       controller.__setSessionInfo(ovalRace());
       const seen = recordStream();
-      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
       driveFullCaution(controller);
 
@@ -5238,7 +5244,7 @@ describe("sim-events-iracing translator", () => {
       const controller = createMockController();
       controller.__setSessionInfo(ovalRace());
       const seen = recordStream();
-      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
       driveFullCaution(controller);
 
@@ -5252,7 +5258,7 @@ describe("sim-events-iracing translator", () => {
       const controller = createMockController();
       controller.__setSessionInfo(ovalRace());
       const seen = recordStream();
-      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
       controller.__tick(cautionTick({ flags: RACING }));
       controller.__tick(cautionTick({ flags: RESTART }));
@@ -5272,7 +5278,7 @@ describe("sim-events-iracing translator", () => {
       const seen = recordStream();
       const greens: string[] = [];
       getEventBus().subscribe("flag.green.raised", () => greens.push("flag.green.raised"));
-      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
       controller.__tick(cautionTick({ flags: RACING }));
       controller.__tick(cautionTick({ flags: WAVING }));
@@ -5289,7 +5295,7 @@ describe("sim-events-iracing translator", () => {
       const seen = recordStream();
       const greens: string[] = [];
       getEventBus().subscribe("flag.green.raised", () => greens.push("flag.green.raised"));
-      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
       controller.__tick(cautionTick({ flags: RACING }));
       controller.__tick(cautionTick({ flags: RACING | Flags.Green }));
@@ -5366,7 +5372,7 @@ describe("sim-events-iracing translator", () => {
         const controller = createMockController();
         controller.__setSessionInfo(ovalRace());
         const seen = recordGapEvents();
-        initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+        initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
         const k = closeToTheThreshold(controller);
 
@@ -5382,7 +5388,7 @@ describe("sim-events-iracing translator", () => {
         const controller = createMockController();
         controller.__setSessionInfo(ovalRace());
         const seen = recordGapEvents();
-        initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+        initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
         const k = closeToTheThreshold(controller);
 
@@ -5394,7 +5400,7 @@ describe("sim-events-iracing translator", () => {
       it("the restart mark moves on the tick the caution is thrown and stops on the green's own tick", () => {
         const controller = createMockController();
         controller.__setSessionInfo(ovalRace());
-        initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+        initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
         controller.__tick(gapTick(0, 2, RACING));
         controller.__tick(gapTick(1, 2, RACING));
@@ -5416,7 +5422,7 @@ describe("sim-events-iracing translator", () => {
       it("a replay glance on the restart lap keeps the restart mark, so the lap is still the restart lap", () => {
         const controller = createMockController();
         controller.__setSessionInfo(ovalRace());
-        initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+        initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
         controller.__tick(gapTick(0, 2, RACING));
         controller.__tick(gapTick(1, 2, WAVING));
@@ -5448,7 +5454,7 @@ describe("sim-events-iracing translator", () => {
       const controller = createMockController();
       controller.__setSessionInfo(ovalRace());
       const seen = recordStream();
-      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
       // A caution that is already static when the diff first sees it re-anchors
       // on the leader outright, so ONE later crossing is an extra lap.
@@ -5490,7 +5496,7 @@ describe("sim-events-iracing translator", () => {
       it("expose the episode only while a caution is out — one id from thrown to restarted, a new one for the next", () => {
         const controller = createMockController();
         controller.__setSessionInfo(ovalRace());
-        initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+        initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
         controller.__tick(cautionTick({ flags: RACING }));
         expect(getCautionEpisode()).toBeNull();
@@ -5515,7 +5521,7 @@ describe("sim-events-iracing translator", () => {
       it("expose the phase itself — and the boolean is that phase not being none", () => {
         const controller = createMockController();
         controller.__setSessionInfo(ovalRace());
-        initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+        initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
         controller.__tick(cautionTick({ flags: RACING }));
         expect(getCautionPhase()).toBe("none");
@@ -5539,7 +5545,7 @@ describe("sim-events-iracing translator", () => {
         // One expansion of a caution callout asks up to five times.
         const controller = createMockController();
         controller.__setSessionInfo(ovalRace());
-        initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+        initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
         controller.__tick(cautionTick({ flags: STATIC }));
         const first = getPaceLineup();
@@ -5557,7 +5563,7 @@ describe("sim-events-iracing translator", () => {
       it("report nothing before the first tick", () => {
         const controller = createMockController();
         controller.__setSessionInfo(ovalRace());
-        initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+        initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
         expect(isUnderFullCourseCaution()).toBe(false);
         expect(getPaceLineup()).toBeNull();
@@ -5566,7 +5572,7 @@ describe("sim-events-iracing translator", () => {
       it("track the episode from thrown to restarted", () => {
         const controller = createMockController();
         controller.__setSessionInfo(ovalRace());
-        initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+        initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
         controller.__tick(cautionTick({ flags: RACING }));
         expect(isUnderFullCourseCaution()).toBe(false);
@@ -5584,7 +5590,7 @@ describe("sim-events-iracing translator", () => {
       it("read the lineup live, off the latest tick", () => {
         const controller = createMockController();
         controller.__setSessionInfo(ovalRace());
-        initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+        initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
         controller.__tick(cautionTick({ flags: STATIC }));
 
@@ -5608,7 +5614,7 @@ describe("sim-events-iracing translator", () => {
         // `true`) shows up here and nowhere else.
         const controller = createMockController();
         controller.__setSessionInfo(ovalRace({ WeekendInfo: { Category: "Road", TrackType: "road course" } }));
-        initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+        initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
         controller.__tick(cautionTick({ flags: STATIC }));
 
@@ -5622,7 +5628,7 @@ describe("sim-events-iracing translator", () => {
         // elsewhere mean "the field is not lined up" rather than "we forgot".
         const controller = createMockController();
         controller.__setSessionInfo(ovalRace());
-        initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+        initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
         // The first tick only seeds the diff, so the episode needs a second one
         // to reach a phase at all.
@@ -5712,7 +5718,7 @@ describe("sim-events-iracing translator", () => {
           laps.push({ t: now, lap: ev.data.lap, wasCaution: ev.data.wasCaution }),
         );
         getEventBus().subscribe("caution.restarted", () => restarts.push(now));
-        initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+        initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
         for (const tick of oval) {
           now = tick.t;
@@ -5762,7 +5768,7 @@ describe("sim-events-iracing translator", () => {
         const controller = createMockController();
         controller.__setSessionInfo(ovalRace());
         const seen = recordStream();
-        initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+        initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
         glanceAtReplay(controller);
 
@@ -5785,7 +5791,7 @@ describe("sim-events-iracing translator", () => {
         const controller = createMockController();
         controller.__setSessionInfo(ovalRace());
         const seen = recordStream();
-        initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+        initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
         glanceAtReplay(controller);
 
@@ -5804,7 +5810,7 @@ describe("sim-events-iracing translator", () => {
         // glance at the replay must not look like a new caution to it.
         const controller = createMockController();
         controller.__setSessionInfo(ovalRace());
-        initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+        initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
         controller.__tick(cautionTick({ flags: RACING }));
         controller.__tick(cautionTick({ flags: WAVING }));
@@ -5859,7 +5865,7 @@ describe("sim-events-iracing translator", () => {
       const controller = createMockController();
       const seen = recordPitStream();
 
-      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
       // The capture records a tick only on a change; the sim keeps ticking in
       // between with the same values, and past its end (stop 2's pit exit) long
@@ -5923,7 +5929,7 @@ describe("sim-events-iracing translator", () => {
           controller.__tick(telemetry({ ...WORN, SessionNum: sessionNum, ...overrides }));
         };
 
-        initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+        initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
         tickAt(0, {});
         tickAt(1, { PlayerTrackSurface: TrkLoc.AproachingPits });
@@ -6028,7 +6034,7 @@ describe("sim-events-iracing translator", () => {
       const controller = createMockController();
 
       controller.__setSessionInfo(sessionInfo);
-      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
       return controller;
     }
@@ -6540,7 +6546,7 @@ describe("sim-events-iracing translator", () => {
 
       const seen = recordFormation();
 
-      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
       return { controller, seen };
     }
@@ -7015,7 +7021,7 @@ describe("sim-events-iracing translator", () => {
         getEventBus().subscribe(name, () => seen.push(name));
       }
 
-      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
       const tick: Drive["tick"] = (f = {}, ms = 100) => {
         vi.advanceTimersByTime(ms);
@@ -7581,7 +7587,7 @@ describe("sim-events-iracing translator", () => {
     function start(info: Record<string, unknown> = raceInfo()): MockController {
       const controller = createMockController();
       controller.__setSessionInfo(info);
-      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
       return controller;
     }

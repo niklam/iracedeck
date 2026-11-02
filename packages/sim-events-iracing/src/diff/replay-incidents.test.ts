@@ -1,9 +1,27 @@
 import type { TelemetryData } from "@iracedeck/iracing-sdk";
-import { beforeEach, describe, expect, it } from "vitest";
+import { createErrorBoundary, type ILogger, silentLogger } from "@iracedeck/logger";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createInitialReplayRecorderState, type ReplayRecorderState } from "../replay-recorder-state.js";
+import { TickSteps } from "../tick-steps.js";
 import { diffReplayIncidents } from "./replay-incidents.js";
 import type { PendingEvent } from "./types.js";
+
+/** The car whose `CarNumberRaw` lookup throws, standing in for an odd roster row (#1559); −1 for none. */
+const fault = vi.hoisted(() => ({ carIdx: -1 }));
+
+vi.mock("@iracedeck/iracing-sdk", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@iracedeck/iracing-sdk")>();
+
+  return {
+    ...actual,
+    getCarNumberRawFromSessionInfo: (info: unknown, carIdx: number): number | null => {
+      if (carIdx === fault.carIdx) throw new Error("odd roster row");
+
+      return actual.getCarNumberRawFromSessionInfo(info, carIdx);
+    },
+  };
+});
 
 type Row = Record<string, unknown>;
 
@@ -82,6 +100,7 @@ describe("diffReplayIncidents", () => {
 
   beforeEach(() => {
     state = createInitialReplayRecorderState();
+    fault.carIdx = -1;
   });
 
   function run(telemetry: TelemetryData, info: Row | null = sessionInfo([0, 0, 0]), inReplay = false): PendingEvent[] {
@@ -307,5 +326,88 @@ describe("diffReplayIncidents", () => {
     const t = { ...tick({ player: 1 }), SessionTime: undefined } as TelemetryData;
 
     expect(run(t)).toEqual([incident(0, 7, 1, "telemetry", 30_000, 0)]);
+  });
+
+  describe("one car's throw costs that car only (#1559)", () => {
+    /**
+     * The replay recorder's runner over a real #1558 boundary: the diff runs as a
+     * direct step and each car as a unit, so a throw is caught and reported.
+     */
+    function guarded() {
+      const errors: string[] = [];
+      const logger: ILogger = {
+        ...silentLogger,
+        error: (message) => {
+          errors.push(message);
+        },
+      };
+      const steps = new TickSteps({
+        boundary: createErrorBoundary({ logger, now: () => 0 }),
+        prefix: "replay-recorder:",
+      });
+      const runGuarded = (telemetry: TelemetryData, info: Row): PendingEvent[] => {
+        const out: PendingEvent[] = [];
+
+        steps.direct(
+          "diffReplayIncidents",
+          (ev: PendingEvent) => out.push(ev),
+          (emit) => diffReplayIncidents(state, telemetry, info, false, emit, steps.runUnit),
+        );
+
+        return out;
+      };
+
+      return { errors, runGuarded };
+    }
+
+    it("publishes the other cars' rises, and the failing car's on the next tick once the fault is gone", () => {
+      const { errors, runGuarded } = guarded();
+      const rose = sessionInfo([0, 4, 1]);
+
+      runGuarded(tick({ player: 0 }), sessionInfo([0, 0, 0]));
+      fault.carIdx = 1;
+
+      expect(runGuarded(tick({ player: 2 }), rose)).toEqual([
+        incident(0, 7, 2, "telemetry"),
+        incident(2, 3042, 1, "sessionInfo"),
+      ]);
+      expect(errors).toHaveLength(1);
+      expect(errors[0]).toContain("replay-recorder:diffReplayIncidents");
+      // Car 1 keeps its previous reading; the others move on.
+      expect(state.replayIncidentsLastCarReadings.map((r) => r?.count)).toEqual([undefined, 0, 1]);
+      expect(state.replayIncidentsLastPlayerCount).toBe(2);
+
+      fault.carIdx = -1;
+
+      // The same roster object, so its memoised reading was not touched by the hold-back.
+      expect(runGuarded(tick({ player: 2, frame: 30_001 }), rose)).toEqual([
+        incident(1, 42, 4, "sessionInfo", 30_001),
+      ]);
+      expect(runGuarded(tick({ player: 2 }), rose)).toEqual([]);
+    });
+
+    it("runs the driver's own rise as a unit too: the other cars still publish, and the driver's rise comes next tick", () => {
+      const { runGuarded } = guarded();
+      const rose = sessionInfo([0, 4, 0]);
+
+      runGuarded(tick({ player: 0 }), sessionInfo([0, 0, 0]));
+      fault.carIdx = 0;
+
+      expect(runGuarded(tick({ player: 2 }), rose)).toEqual([incident(1, 42, 4, "sessionInfo")]);
+      expect(state.replayIncidentsLastPlayerCount).toBe(0);
+
+      fault.carIdx = -1;
+
+      expect(runGuarded(tick({ player: 2, frame: 30_001 }), rose)).toEqual([
+        incident(0, 7, 2, "telemetry", 30_001),
+      ]);
+    });
+
+    it("lets the throw out with the default runner, so the diff's own tests stay loud", () => {
+      run(tick({ player: 0 }), sessionInfo([0, 0, 0]));
+      fault.carIdx = 2;
+
+      expect(() => run(tick({ player: 0 }), sessionInfo([0, 0, 1]))).toThrow("odd roster row");
+    });
   });
 });
