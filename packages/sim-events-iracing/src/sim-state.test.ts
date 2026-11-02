@@ -24,8 +24,9 @@ import type { ILogger } from "@iracedeck/logger";
 import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { FUEL_LAPS_LEFT_WINDOW_LAPS } from "./diff/fuel-laps-left.js";
+import { FUEL_LAPS_LEFT_WINDOW_LAPS, isFuelRaceCovered } from "./diff/fuel-laps-left.js";
 import { createFuelLapTracker, type FuelLap } from "./diff/fuel-laps.js";
+import { type LeaderFinish, predictLeaderChequeredS } from "./leader-finish.js";
 import { buildSimState, simStateHeadline, type SimStateParts, type SimStateSnapshot } from "./sim-state.js";
 import { createInitialState } from "./state.js";
 import { TrackDirection } from "./track-type.js";
@@ -180,7 +181,7 @@ function fuelParts(overrides: Partial<SimStateParts["fuel"]> = {}): SimStatePart
     stats: { lastLap: 2, avg: 2, avgLapTime: null, samples: 2 },
     tracker: createFuelLapTracker(),
     getMarginLaps: () => 0.3,
-    getLeaderLapTimeS: () => null,
+    getLeaderFinish: () => ({ lapTimeS: null, chequeredInS: null }),
     ...overrides,
   };
 }
@@ -462,10 +463,71 @@ describe("readSimState — the laps-of-fuel-left figure", () => {
 
     const { now } = read().fuel.lapsLeft;
 
-    // ceil((400 + 2 × 60 − 0.45 × 87.5) / 87.5) = 6; the player's own pace
-    // in the leader's place would give ceil((400 + 175 − 39.375) / 87.5) = 7.
+    // The leader's chequered (#1405): ε = 0.03 + 0.01 × 400 / 60, white
+    // k = ceil(400 / 60 + 0.55 + ε) = 8, chequered (9 − 0.55) × 60 = 507 s;
+    // then ceil(507 / 87.5 + 0.55 + ε) − 1 = 6. The player's own pace in the
+    // leader's place would put the chequered at (7 − 0.55) × 87.5 s and give 7.
     expect(now!.timedLapsAfterCurrent).toBe(6);
     expect(now!.remainingLaps).toBe(6);
+  });
+
+  it("covers by the diff's own verdict on the tick the diff judged (issue #1405)", () => {
+    // A 0.4 margin, so the post-margin count and the tank disagree.
+    const { controller } = start(RACE_SESSION, { getFuelLapsLeftMarginLaps: () => 0.4 });
+    const spoken: string[] = [];
+    const limits = { SessionLapsRemainEx: 2, SessionTimeRemain: IRSDK_UNLIMITED_TIME };
+
+    getEventBus().subscribe("fuel.lapsLeft.crossed", (ev) => spoken.push(ev.event));
+    getEventBus().subscribe("fuel.lapsLeft.raceCovered", (ev) => spoken.push(ev.event));
+    // The limit arrives with the sample, so the full tank before it has no
+    // race distance to draw an enough-fuel confirmation from.
+    driveTwoValidLaps(controller);
+    controller.__tick(telemetry({ Lap: 4, LapDistPct: 0.45, SessionTime: 200, FuelLevel: 3.4, ...limits }));
+    controller.__tick(telemetry({ Lap: 4, LapDistPct: 0.55, SessionTime: 210, FuelLevel: 3.3, ...limits }));
+
+    const { now, announced } = read().fuel.lapsLeft;
+
+    // 3.3 / 1.95 = 1.69 laps of fuel less the margin counts 0 full laps after
+    // this one, short of the 1 still to run — but the tank covers the 1.45
+    // left with 5 % to spare, so the diff sampled this tick and said nothing.
+    expect(announced.lastSampledLap).toBe(4);
+    expect(spoken).toEqual([]);
+    expect(now).toMatchObject({ count: 0, remainingLaps: 1, covered: true, coverageSkipped: null });
+    expect(now!.covered).toBe(isFuelRaceCovered(now!, 1));
+  });
+
+  it("reads the leader's post-expiry crossing for the chequered prediction, as the diff does", () => {
+    const { controller } = start();
+    // The leader (car 1) laps in 60 s, the player in 87.5 s; a timed race.
+    const field = (leaderLapsDone: number, leaderPct: number, timeRemainS: number): Partial<TelemetryData> => ({
+      SessionState: SessionState.Racing,
+      SessionLapsRemainEx: IRSDK_UNLIMITED_LAPS,
+      SessionTimeRemain: timeRemainS,
+      CarIdxLapCompleted: [3, leaderLapsDone],
+      CarIdxLapDistPct: [0.3, leaderPct],
+      CarIdxTrackSurface: [TrkLoc.OnTrack, TrkLoc.OnTrack],
+      CarIdxLastLapTime: [88, 60],
+      CarIdxBestLapTime: [87, 60],
+    });
+
+    driveTwoValidLaps(controller, field(5, 0.5, 400));
+    // The clock runs out with the leader near the line, held for two ticks so
+    // `diffLeaderWhite` confirms it, then the leader crosses: the white.
+    controller.__tick(telemetry({ Lap: 4, LapDistPct: 0.3, SessionTime: 190, FuelLevel: 20, ...field(5, 0.95, -1) }));
+    controller.__tick(telemetry({ Lap: 4, LapDistPct: 0.32, SessionTime: 191, FuelLevel: 20, ...field(5, 0.97, -2) }));
+    controller.__tick(telemetry({ Lap: 4, LapDistPct: 0.7, SessionTime: 192, FuelLevel: 20, ...field(6, 0.02, -3) }));
+
+    const state = read();
+    const latest = telemetry({ Lap: 4, LapDistPct: 0.7, ...field(6, 0.02, -3) });
+    // Chequered (1 − 0.02) × 60 = 58.8 s → ceil(58.8 / 87.5 + 0.7 + 0.03) − 1
+    // = 1. Read without the marker, (2 − 0.02) × 60 = 118.8 s would give 2.
+    const onWhiteLap = predictLeaderChequeredS(latest, [2, 1], 60, true);
+    const beforeWhite = predictLeaderChequeredS(latest, [2, 1], 60, false);
+
+    expect(state.raw.state.leaderWhitePostExpiryCrossed).toBe(true);
+    expect(onWhiteLap).toBeCloseTo(58.8, 9);
+    expect(beforeWhite).toBeCloseTo(118.8, 9);
+    expect(state.fuel.lapsLeft.now!.timedLapsAfterCurrent).toBe(1);
   });
 
   it("has no figure without a validated average, or with an unusable fuel level or lap position", () => {
@@ -860,7 +922,7 @@ describe("readSimState — a replay-wiped translator", () => {
 
 describe("buildSimState", () => {
   it("shapes the parts without calling the leader-lap resolver when the clock is unlimited", () => {
-    const getLeaderLapTimeS = vi.fn(() => 60);
+    const getLeaderFinish = vi.fn((): LeaderFinish => ({ lapTimeS: 60, chequeredInS: null }));
     const history = [validLap(1, 2, 90), validLap(2, 2, 90)];
     const state = build({
       telemetry: telemetry({
@@ -873,14 +935,14 @@ describe("buildSimState", () => {
       fuel: fuelParts({
         stats: { lastLap: 2, avg: 2, avgLapTime: 90, samples: 2 },
         tracker: { ...createFuelLapTracker(), history },
-        getLeaderLapTimeS,
+        getLeaderFinish,
       }),
     });
 
     expect(state.sessionTick).toBe(9);
     expect(state.fuel.history).toBe(history);
     expect(state.fuel.lapsLeft.now).toMatchObject({ rawLapsLeft: 5, count: 4, unclampedCount: 4, covered: false });
-    expect(getLeaderLapTimeS).not.toHaveBeenCalled();
+    expect(getLeaderFinish).not.toHaveBeenCalled();
   });
 
   it("reads the announce latches from the translator state", () => {
@@ -948,19 +1010,19 @@ describe("buildSimState", () => {
 
     it("does not read the margin or the leader's pace when there is no answer", () => {
       const getMarginLaps = vi.fn(() => 0.3);
-      const getLeaderLapTimeS = vi.fn(() => 60);
+      const getLeaderFinish = vi.fn((): LeaderFinish => ({ lapTimeS: 60, chequeredInS: null }));
 
       build({
         telemetry: inputs({ Lap: -1, LapDistPct: -1, SessionTimeRemain: 400 }),
         fuel: fuelParts({
           stats: { lastLap: 2, avg: 2, avgLapTime: 90, samples: 2 },
           getMarginLaps,
-          getLeaderLapTimeS,
+          getLeaderFinish,
         }),
       });
 
       expect(getMarginLaps).not.toHaveBeenCalled();
-      expect(getLeaderLapTimeS).not.toHaveBeenCalled();
+      expect(getLeaderFinish).not.toHaveBeenCalled();
     });
   });
 
@@ -981,13 +1043,13 @@ describe("buildSimState", () => {
 
     it("is not worked out on the player's final lap, and the leader's pace is not asked for", () => {
       const translatorState = createInitialState();
-      const getLeaderLapTimeS = vi.fn(() => 60);
+      const getLeaderFinish = vi.fn((): LeaderFinish => ({ lapTimeS: 60, chequeredInS: null }));
 
       translatorState.playerFinalLapStarted = true;
 
       const state = build({
         telemetry: finalLap,
-        fuel: fuelParts({ stats: timedStats, getLeaderLapTimeS }),
+        fuel: fuelParts({ stats: timedStats, getLeaderFinish }),
         state: translatorState,
       });
 
@@ -1004,7 +1066,7 @@ describe("buildSimState", () => {
         covered: null,
         coverageSkipped: "final-lap",
       });
-      expect(getLeaderLapTimeS).not.toHaveBeenCalled();
+      expect(getLeaderFinish).not.toHaveBeenCalled();
     });
 
     it("is worked out on the same tick before the player has crossed under the white", () => {
