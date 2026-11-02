@@ -129,7 +129,13 @@ function suiteBindings(sourceFile) {
     if (!ts.isImportDeclaration(statement)) continue;
     if (!ts.isStringLiteral(statement.moduleSpecifier) || statement.moduleSpecifier.text !== SUITE_MODULE) continue;
     const clause = statement.importClause;
-    if (!clause || clause.isTypeOnly || !clause.namedBindings || !ts.isNamedImports(clause.namedBindings)) continue;
+    if (
+      !clause ||
+      clause.phaseModifier === ts.SyntaxKind.TypeKeyword ||
+      !clause.namedBindings ||
+      !ts.isNamedImports(clause.namedBindings)
+    )
+      continue;
     for (const element of clause.namedBindings.elements) {
       if (element.isTypeOnly) continue;
       if ((element.propertyName ?? element.name).text === SUITE_EXPORT) names.push(element.name.text);
