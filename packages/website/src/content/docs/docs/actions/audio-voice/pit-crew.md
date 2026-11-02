@@ -326,18 +326,20 @@ Toggle the whole feature from **Race Engineer Callouts → Setup Warning**. It f
 A couple of seconds after you cross the start/finish line, the Race Engineer can tell you the time of the lap you just completed. Three callouts do that, each with its own switch under **Race Engineer Callouts → Lap Time**, and on any one lap you hear **at most one** of them, in this order:
 
 1. **Fastest lap of the race** — your lap is the fastest anyone in your class has run in this race.
-2. **New best lap** — your lap is your best of the session so far.
-3. **Every lap** — any other lap.
+2. **New best lap** — iRacing took your lap as your best of the session so far.
+3. **Every lap** — any other lap iRacing counted.
 
-The first one that applies speaks for the lap and the others stay quiet. When that callout is switched off, or the voice you've chosen has no line for it, the lap goes to the next one down: with **Fastest lap of the race** off, a fastest lap of the race is still read out as your best lap, and with only **Every lap** on you hear every lap, your best ones included.
+The first one that applies speaks for the lap and the others stay quiet. When that callout is switched off, or the voice you've chosen has no line for it, the lap goes to the next one down: with **Fastest lap of the race** off, a fastest lap of the race is still read out as your best lap, and with only **Every lap** on you hear every lap iRacing counts, your best ones included.
 
-None of them speaks on the final lap of a race, where the race-end result takes the floor, or while a [full-course caution](#full-course-caution) is out. Lap times of 11 minutes or longer stay silent too — the engineer never speaks a partial readout.
+None of them speaks on the final lap of a race, where the race-end result takes the floor, or while a [full-course caution](#full-course-caution) is out. Lap times of 11 minutes or longer stay silent too — the engineer never speaks a partial readout. A lap iRacing doesn't count, such as a track-limits cut, stays silent as well: iRacing gives it no time, so there is nothing to read.
 
 **Default (Short callouts)** makes all three calls in fewer words — *"Last lap. One forty-five point two three seven."*, *"Fastest lap for you. One twenty-three point four."*, *"Fastest lap for car five. One twenty-three point four."*
 
 ### Best lap
 
-The engineer announces your lap time when you just set a new personal best — *"That was your best lap yet. One minute, twenty-three point four seconds."* The first valid lap of a session uses a different intro since there's no prior best to beat — *"That lap was one minute, twenty-three point four seconds."*
+The engineer announces your lap time when you just set a new personal best — *"That was your best lap yet. One minute, twenty-three point four seconds."* The first best lap of a session uses a different intro since there's no prior best to beat — *"That lap was one minute, twenty-three point four seconds."*
+
+Your best lap is iRacing's: the engineer calls a lap your best exactly when iRacing takes it as your best lap. A lap with an off-track that iRacing still counts can be your best; a lap iRacing doesn't count, such as a track-limits cut, never is. Nor is the lap you start a race on: iRacing times it from the green but doesn't take it as a best lap, so it goes to [Every lap](#every-lap) instead.
 
 Sub-1-minute laps skip the minute clip — *"That was your best lap yet. Thirty-four point eight seconds."* The lap time is announced to one decimal place (rounded to the nearest tenth). The minute-clip range stops at 10 for now; the minute coverage will expand in follow-up releases.
 
@@ -347,7 +349,7 @@ Besides the final lap of a race and a caution, the best-lap callout is also sile
 
 Any lap you complete that neither the best-lap nor the fastest-lap call speaks for, in practice, qualifying and races, is read out the way a timing screen shows it, to the thousandth — *"Last lap was. One forty-five point two three seven."* The engineer varies the opening (*"That one was …"*, *"You did a …"*), a lap under a minute starts with the seconds — *"Last lap was. Fifty-eight point oh four one."* — and trailing zeros are left off, so 1:23.450 is *"one twenty-three point four five"*.
 
-It stays quiet on laps that don't say anything about your pace: an out-lap (a lap you start on pit road), an in-lap (a lap on which you drive into the pits), and, like the best-lap call, the lap that ends a caution. A lap iRacing doesn't count, such as a track-limits cut, is still read out — you hear the time you drove.
+It stays quiet on laps that don't say anything about your pace: an out-lap (a lap you start on pit road), an in-lap (a lap on which you drive into the pits), and, like the best-lap call, the lap that ends a caution. A lap iRacing doesn't count, such as a track-limits cut, isn't read out at all: iRacing gives it no time.
 
 This is the least urgent line on the radio, so fuel, flag and position calls go first. If the lap time has to wait so long that you've completed another lap in the meantime, it's dropped rather than read out a lap late.
 
@@ -361,7 +363,7 @@ In races, the engineer tells you whenever a car in your class sets a new fastest
 - **The car in front of you, or behind you** — *"The car in front of you just set the fastest lap. One twenty-three point four. Gap is one point two seconds."* (or *"The car behind you …"*). The gap is added when that car is still your neighbour, on the same lap as you, and the gap is under a minute.
 - **Any other car**, by number and position — *"Car five in pee six just set the fastest lap of the race. One twenty-three point four."*
 
-"In front of you" and "behind you" mean your neighbours in the class standings, as in the [gap callouts](#gap-callouts-car-ahead--car-behind), not the car nearest to you on track, and the positions are read at the moment the line is spoken. In a multi-class race everything here is about your class: another class's laps never count, and "the leader" is your class leader. A lap iRacing doesn't count can't set the record.
+"In front of you" and "behind you" mean your neighbours in the class standings, as in the [gap callouts](#gap-callouts-car-ahead--car-behind), not the car nearest to you on track, and the positions are read at the moment the line is spoken. In a multi-class race everything here is about your class: another class's laps never count, and "the leader" is your class leader. A lap of yours can set the record only when iRacing takes it as your best lap, so neither a lap iRacing doesn't count, such as a track-limits cut, nor the lap you start the race on, which iRacing doesn't take as a best, is ever announced as the fastest lap of the race.
 
 The first laps of a race are noisy — one car after another lowers the record — so a fastest lap set on a car's own first or second lap is never announced. It still counts, so the first call you hear is for a lap that beat everything run so far. If you set it yourself on your first or second lap, you hear the best-lap call instead.
 
@@ -391,13 +393,13 @@ In qualifying the wording follows the standings-after-lap-time model: *"That put
 
 In race the wording is always *"We're currently pee N."* regardless of direction — race standings come from overtakes and pit stops, not lap times, so "that puts us to" reads wrong there. The pole call doesn't apply in race either. The every-3-laps race-status callout below handles hold-position updates, and the final lap stays silent so the race-end result has the floor. Practice and test sessions stay silent entirely.
 
-When iRacing flags the just-completed lap as invalid (track-limits cut, pit-lane violation, etc.) the engineer prefixes the readout with *"That lap didn't count."* and always uses the "currently" framing — *"That lap didn't count. We're currently pee five."* — so you know the time was thrown out. The invalid-lap prefix overrides the pole and "puts us to" branches even if standings shifted on paper from other drivers' laps.
+When iRacing doesn't count the qualifying lap you just completed (a track-limits cut, say), the engineer opens the readout with *"That lap didn't count."* and always uses the "currently" framing — *"That lap didn't count. We're currently pee five."* — so you know the time was thrown out. You hear it on every lap iRacing throws out, even when your position holds, and it overrides the pole and "puts us to" branches even if standings shifted on paper from other drivers' laps. When you have no counted lap yet, so there is no position to give, *"That lap didn't count."* plays on its own. A lap iRacing counts never gets this line, even one with an off-track or one that ends on pit road.
 
 The callout is silent while a [full-course caution](#full-course-caution) is out, and for the lap that ends one, which you complete a few seconds after the green. The running order freezes under yellow and iRacing's official positions then catch up to it, which used to read as a handful of places changing hands on a lap where nobody passed anybody. The caution's own position call, on the last lap before the green, gives you your race position instead, by which time the order has settled.
 
 ## Race Position Status (every 3 laps)
 
-During race sessions, the Race Engineer announces your current position every 3 laps as long as your position holds — *"We're currently pee five."* The lap counter resets every time your effective position changes, so a gain or loss restarts the cadence cleanly. When you're running first, you get a dedicated line — *"We're still leading the race. Keep it up."* — instead of the generic status. In a multi-class race this tracks your **class** position, so leading your class plays *"We're still leading our class. Keep it up."*
+During race sessions, the Race Engineer announces your current position every 3 laps as long as your position holds — *"We're currently pee five."* The lap counter resets every time your effective position changes, so a gain or loss restarts the cadence cleanly. Every lap you complete counts toward the three, a lap iRacing doesn't count included. When you're running first, you get a dedicated line — *"We're still leading the race. Keep it up."* — instead of the generic status. In a multi-class race this tracks your **class** position, so leading your class plays *"We're still leading our class. Keep it up."*
 
 The status is suppressed on the final lap; the race-end callout speaks the result there instead. Qualifying, practice, and test sessions stay silent — the qualifying position-change callout already covers those.
 
@@ -411,6 +413,8 @@ When you cross start/finish under the checkered flag in a race session, the Race
 - **P2** — *"Niklas, that's second place. Very well done."*
 - **P3** — *"Niklas, we made it to the podium. We're third. Well done."*
 - **P4 and below** — *"Niklas, the race is over. The final result for us is pee seven."*
+
+The result comes on that last lap even when iRacing doesn't count it, such as a track-limits cut on the final lap.
 
 In multi-class series the engineer reads your class position, not the overall — winning your class always plays the *"we won!"* line even if you crossed the line behind faster cars from another class. Disabling this in the Settings window silences only the final-result line; the periodic status callout above remains independent.
 
@@ -669,13 +673,13 @@ Under **Telemetry Connect**, one callout is toggleable, enabled by default:
 
 Under **Lap Time**, three callouts are toggleable, all enabled by default (see [Lap Time](#lap-time) above for the full behavior, and for which one speaks when more than one applies):
 
-- **New best lap** (`calloutEnabledLapTimeBestLap`) — the post-S/F announcement of your lap time when you set a new personal best (or complete the first valid lap of the session). With it off, that lap goes to **Every lap** when that is on.
-- **Every lap** (`calloutEnabledLapTimeEveryLap`) — every completed lap no other lap-time call speaks for, in any session, read to the thousandth; out-laps and in-laps stay silent.
+- **New best lap** (`calloutEnabledLapTimeBestLap`) — the post-S/F announcement of your lap time when iRacing takes your lap as a new personal best (or as your first best of the session). With it off, that lap goes to **Every lap** when that is on.
+- **Every lap** (`calloutEnabledLapTimeEveryLap`) — every completed lap iRacing counts that no other lap-time call speaks for, in any session, read to the thousandth; out-laps and in-laps stay silent.
 - **Fastest lap of the race** (`calloutEnabledFastestLap`) — races only: a new fastest lap of the race in your class, whoever set it, from each car's third lap on. With it off, a fastest lap of the race you set yourself is read out by **New best lap** instead.
 
 Under **Position**, one callout is toggleable, enabled by default:
 
-- **Position changed** — the qualifying / race per-lap callout that fires when your effective position changes (improvement, worsening, or first-fix), plus the qualifying-only pole call and hold-position status. Disabling this silences only the per-change announcement; the every-3-laps race-status callout below stays independent.
+- **Position changed** — the qualifying / race per-lap callout that fires when your effective position changes (improvement, worsening, or first-fix), plus the qualifying-only pole call, hold-position status and *"That lap didn't count."* line. Disabling this silences only the per-change announcement; the every-3-laps race-status callout below stays independent.
 
 Under **Qualifying**, one callout is toggleable, enabled by default (see [Qualifying Lap Invalidation](#qualifying-lap-invalidation) above for the full behavior):
 
