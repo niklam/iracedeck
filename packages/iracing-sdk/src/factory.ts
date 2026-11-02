@@ -5,7 +5,7 @@
  * For testing, instantiate classes directly with mock dependencies.
  */
 import { IRacingNative } from "@iracedeck/iracing-native";
-import { ILogger, silentLogger } from "@iracedeck/logger";
+import { type ErrorPolicy, ILogger, silentLogger } from "@iracedeck/logger";
 
 import {
   CameraCommand,
@@ -59,6 +59,15 @@ export interface SDKFactoryOptions {
    * focus-before-input function here; this package cannot import it.
    */
   beforeKeystrokes?: () => void;
+  /**
+   * What a telemetry subscriber's throw does in the controller (#1558); see
+   * `SDKControllerOptions.onSubscriberError`. Defaults to `"report"`:
+   * the throw is logged, bounded, and every other subscriber still gets the
+   * tick. Plugin builds leave it unset, since a crash costs the driver the
+   * whole plugin; a test that wants a subscriber's throw to surface passes
+   * `"rethrow"`.
+   */
+  onSubscriberError?: ErrorPolicy;
 }
 
 /**
@@ -105,7 +114,9 @@ export function createCommands(
 export function createSDK(logger: ILogger = silentLogger, options: SDKFactoryOptions = {}): SDKBundle {
   const native = new IRacingNative();
   const sdk = new IRacingSDK(native, logger.createScope("IRacingSDK"));
-  const controller = new SDKController(sdk, logger.createScope("SDKController"));
+  const controller = new SDKController(sdk, logger.createScope("SDKController"), {
+    onSubscriberError: options.onSubscriberError,
+  });
   const commands = createCommands(native, logger, options);
 
   return { sdk, controller, commands };
