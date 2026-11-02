@@ -17,7 +17,7 @@
  *   - sentinel session-info-absent (undefined sessionType) omits the field
  *   - session reset (LapCompleted decreases) does not synthesize an event
  */
-import { Flags, IRSDK_UNLIMITED_LAPS, IRSDK_UNLIMITED_TIME, type TelemetryData } from "@iracedeck/iracing-sdk";
+import { Flags, IRSDK_UNLIMITED_LAPS, IRSDK_UNLIMITED_TIME, type TelemetryData, TrkLoc } from "@iracedeck/iracing-sdk";
 import type { ILogger } from "@iracedeck/logger";
 import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
@@ -1772,6 +1772,24 @@ describe("diffLaps — refused laps (issue #1582)", () => {
     at(counted, 5016, lapTick(2, 82));
     at(counted, 12_000, lapTick(2, 82));
     expect(lapEvents(counted.events)).toHaveLength(1);
+  });
+
+  it("reports a counted lap still waiting for standings as its own count across a reset to the pits", () => {
+    const ctx = seeded();
+    const best = { LapBestLap: 2, LapBestLapTime: 78 };
+    const waiting: PlayerResultsForLap = { lapsComplete: 1, position: 4, classPosition: 3 };
+    at(ctx, 1000, lapTick(2, BEST), waiting);
+    at(ctx, 1300, lapTick(2, 78, best), waiting);
+    expect(lapEvents(ctx.events)).toHaveLength(0);
+
+    // The reset: the car leaves the world and the counter reads 0 for a tick.
+    at(ctx, 1500, lapTick(0, 78, { ...best, PlayerTrackSurface: TrkLoc.NotInWorld }), waiting);
+    expect(lapEvents(ctx.events)).toHaveLength(0);
+    at(ctx, 1516, lapTick(2, 78, { ...best, PlayerTrackSurface: TrkLoc.InPitStall }), synced(4));
+
+    const laps = lapEvents(ctx.events);
+    expect(laps).toHaveLength(1);
+    expect(laps[0].data).toMatchObject({ lap: 2, lapTime: 78, isBest: true });
   });
 
   it("emits nothing for a seed on -1", () => {

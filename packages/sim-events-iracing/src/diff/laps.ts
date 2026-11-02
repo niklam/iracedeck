@@ -60,8 +60,12 @@
  *     Wait for the field to change. The theoretical-identical-time edge
  *     case would stall the diff but is so improbable for real driving
  *     that the simplicity is worth it.
- *   - A reset to the pits drops `LapCompleted` to 0 for a tick and puts it
- *     back: the count last emitted for, so nothing to report.
+ *   - A reset to the pits takes the car out of the world for a tick or more
+ *     (`PlayerTrackSurface` `NotInWorld`), `LapCompleted` reading 0 meanwhile,
+ *     and puts the count back. Those ticks are no crossing and no lap: the
+ *     crossing record and the emit skip them, so a lap still waiting for its
+ *     standings is reported as its own count once the car is back, never as
+ *     `lap: 0`.
  *
  * Snapshot:
  *   - `bestLapTime` / `previousBestLapTime`: iRacing's best after this lap
@@ -91,6 +95,7 @@ import {
   resolveLapsRemaining,
   resolveTimeRemainingS,
   type TelemetryData,
+  TrkLoc,
 } from "@iracedeck/iracing-sdk";
 import { type ILogger, silentLogger } from "@iracedeck/logger";
 
@@ -274,6 +279,14 @@ export function diffLaps(
   //
   // The seed records no crossing — a plugin started mid-lap has not seen one
   // — only the reading it starts from.
+  //
+  // A reset to the pits (issue #1582, second read): while the car is out of
+  // the world `LapCompleted` reads 0, which is neither a crossing nor the lap
+  // it would report. Skipping those ticks here keeps a counted lap that is
+  // still waiting for its standings from being emitted as `lap: 0` (and so
+  // not as the best it was) on the reset tick. The seed still runs on one.
+  if (state.lapCompletedInitialized && telemetry.PlayerTrackSurface === TrkLoc.NotInWorld) return;
+
   const checkeredUp = hasFlag(telemetry.SessionFlags ?? 0, Flags.Checkered);
   const crossing = state.lapCrossing;
 
