@@ -16,7 +16,7 @@ If you are picking up an issue, read this first. In the agent team (#1520) the P
 | 4   | Implement, committing as you go                            | Niklas approves each clip and icon | below, and the topic rules for what you touched                  |
 | 5   | `install` → `build` → `typecheck` → `format` → `lint` → `test`, by hand | all green    | `@.claude/rules/testing.md`, `@.claude/rules/code-style.md`                  |
 | 6   | Document it on the website                                 | required if user-facing | `@.claude/rules/website-action-docs.md`, `@.claude/rules/changelog.md`       |
-| 7   | Run the code review, then the second read where it applies | —                       | `@.claude/rules/code-review.md`                                             |
+| 7   | Run the code review, the second read where it applies, then the CodeRabbit CLI | —   | `@.claude/rules/code-review.md`                                             |
 | 8   | Manual testing                                             | **blocks the PR**       | below                                                                       |
 | 9   | Push, open the PR                                          | —                       | `@.claude/rules/build-and-commit.md`                                        |
 | 10  | Babysit the review                                         | every thread answered   | below                                                                       |
@@ -70,9 +70,9 @@ Nobody is asked whether to run it: the issue lead runs it at the level from the 
 
 Findings are candidates: verify each against the code, apply the ones that hold, and say which you declined and why — after a fresh judge has ruled on each decline (`@.claude/rules/code-review.md`).
 
-Some diffs then get the second read, on the code with those findings applied. `@.claude/rules/code-review.md` says which, and why it is not a second full review.
+Some diffs then get the second read, on the code with those findings applied. `@.claude/rules/code-review.md` says which, and why it is not a second full review. Every branch then gets the CodeRabbit CLI round, which that rule also covers; it may overlap the manual test, but the head the PR opens at must be one it reviewed.
 
-Review before **manual testing**, not after, because a finding can change what there is to test.
+Run the code review and the second read before **manual testing**, not after, because a finding can change what there is to test.
 
 ### Manual testing gates the PR (8)
 
