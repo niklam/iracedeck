@@ -134,7 +134,14 @@ export class SDKController {
   constructor(sdk: IRacingSDK, logger: ILogger = silentLogger, options: SDKControllerOptions = {}) {
     this.sdk = sdk;
     this.logger = logger;
-    this.boundary = createErrorBoundary({ logger, now: options.now, policy: options.onSubscriberError });
+    // A subscriber that unsubscribes itself and then throws leaves no error
+    // keys behind: its `unsubscribe` ran before the throw was reported.
+    this.boundary = createErrorBoundary({
+      logger,
+      now: options.now,
+      policy: options.onSubscriberError,
+      isRegistered: (id) => this.subscribers.has(id),
+    });
   }
 
   /**

@@ -908,6 +908,67 @@ describe("SDKController subscriber isolation (#1558)", () => {
     });
   });
 
+  describe("a subscriber that unsubscribes itself and then throws", () => {
+    /** As many self-unsubscribing throwers as the reporter's shared cap of 32 error sites holds; `live` comes after. */
+    const THROWERS = 32;
+
+    /** A callback for `id` that, while `armed()` says so, unsubscribes its own id and then throws. */
+    function leaving(id: string, armed: () => boolean = () => true): TelemetryCallback {
+      return () => {
+        if (!armed()) return;
+
+        controller.unsubscribe(id);
+        throw new Error(`${id} failed`);
+      };
+    }
+
+    /** Every reporter line is an `error`, the last one `live`'s first: no thrower took a slot in the cap. */
+    function expectLiveStillLoggedInFull(): void {
+      const reported = reporterLines(lines);
+
+      expect(reported.map((line) => line.level)).toEqual(Array<LogLine["level"]>(THROWERS + 1).fill("error"));
+      expect(reported.at(-1)!.message).toMatch(/^live threw: Error: live failed\n/);
+    }
+
+    it("in subscribe's immediate call, leaves no error keys behind to fill the shared cap", () => {
+      controller.subscribe("keep", vi.fn());
+
+      for (let n = 0; n < THROWERS; n++) {
+        expect(() => controller.subscribe(`gone-${n}`, leaving(`gone-${n}`))).not.toThrow();
+      }
+
+      controller.subscribe(
+        "live",
+        subscriber("live", () => true),
+      );
+
+      expectLiveStillLoggedInFull();
+    });
+
+    it("in a tick's delivery, leaves no error keys behind to fill the shared cap", () => {
+      let tick = 0;
+      vi.mocked(mockSdk.getTelemetry).mockImplementation(() => ({ SessionTick: ++tick }) as TelemetryData);
+      let armed = false;
+      controller.subscribe("keep", vi.fn());
+
+      for (let n = 0; n < THROWERS; n++) {
+        controller.subscribe(
+          `gone-${n}`,
+          leaving(`gone-${n}`, () => armed),
+        );
+      }
+
+      controller.subscribe(
+        "live",
+        subscriber("live", () => armed),
+      );
+      armed = true;
+      expect(() => vi.advanceTimersByTime(TELEMETRY_INTERVAL_MS)).not.toThrow();
+
+      expectLiveStillLoggedInFull();
+    });
+  });
+
   describe("subscribe's immediate telemetry read", () => {
     it("reports a throwing read as controller:update, still notifies the subscriber, and returns normally", () => {
       controller.subscribe("a", vi.fn());

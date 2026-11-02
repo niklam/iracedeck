@@ -299,6 +299,122 @@ describe("createErrorBoundary", () => {
     });
   });
 
+  describe("isRegistered", () => {
+    /**
+     * A dispatcher whose callbacks can unregister themselves: `registered` is its map,
+     * and `unregisterThenThrow` is a callback that removes its own id (as a subscriber
+     * calling `unsubscribe(ownId)` does) and then throws in the same call.
+     */
+    function dispatcher(overrides: Partial<ErrorBoundaryOptions> = {}) {
+      const registered = new Set<string>();
+      const rig = setup({ isRegistered: (id) => registered.has(id), ...overrides });
+      const unregisterThenThrow =
+        (id: string): (() => void) =>
+        () => {
+          registered.delete(id);
+          throw new Error(`${id} failed`);
+        };
+
+      return { ...rig, registered, unregisterThenThrow };
+    }
+
+    /** One more id than the default 32-key cap holds. */
+    const PAST_THE_CAP = 33;
+
+    it("call: forgets an id that unregistered itself before throwing, so it holds no slot in the key cap", () => {
+      const { boundary, lines, registered, unregisterThenThrow } = dispatcher();
+
+      for (let n = 0; n < PAST_THE_CAP; n++) {
+        const id = `gone-${n}`;
+
+        registered.add(id);
+        boundary.call(id, unregisterThenThrow(id));
+      }
+
+      registered.add("live");
+      boundary.call("live", () => {
+        throw new Error("live failed");
+      });
+
+      // Every throw kept its error line, and the live id's first error is one too, not a cap warning.
+      expect(lines.map((line) => line.level)).toEqual(Array<Level>(PAST_THE_CAP + 1).fill("error"));
+      expect(lines.at(-1)!.message).toMatch(/^live threw: Error: live failed/);
+    });
+
+    it("callEach: forgets an id that unregistered itself before throwing, so it holds no slot in the key cap", () => {
+      const { boundary, lines, registered, unregisterThenThrow } = dispatcher();
+      const callbacks = new Map<string, () => void>();
+
+      for (let n = 0; n < PAST_THE_CAP; n++) {
+        const id = `gone-${n}`;
+
+        registered.add(id);
+        callbacks.set(id, unregisterThenThrow(id));
+      }
+
+      callbacks.set("live", () => {
+        throw new Error("live failed");
+      });
+      registered.add("live");
+
+      expect(boundary.callEach(callbacks, invoke)).toBeUndefined();
+      expect(lines.map((line) => line.level)).toEqual(Array<Level>(PAST_THE_CAP + 1).fill("error"));
+      expect(lines.at(-1)!.message).toMatch(/^live threw: Error: live failed/);
+    });
+
+    it("keeps a registered id's state, so its repeat is counted rather than logged again", () => {
+      const { boundary, lines, registered } = dispatcher();
+      const failing = (): void => {
+        throw new Error("sub failed");
+      };
+
+      registered.add("sub");
+      boundary.call("sub", failing);
+      boundary.callEach([["sub", failing]], invoke);
+
+      expect(lines.map((line) => line.level)).toEqual(["error"]);
+    });
+
+    it("is never asked about run's ids, which are the dispatcher's own", () => {
+      const isRegistered = vi.fn(() => false);
+      const { boundary, lines } = setup({ isRegistered });
+      const failing = (): HeldError => {
+        throw new Error("poll failed");
+      };
+
+      boundary.run("controller:update", failing);
+      boundary.run("controller:update", failing);
+
+      expect(isRegistered).not.toHaveBeenCalled();
+      expect(lines.map((line) => line.level)).toEqual(["error"]);
+    });
+
+    it("counts an id as registered when isRegistered throws, and never throws itself", () => {
+      const { boundary, lines } = setup({
+        isRegistered: () => {
+          throw new Error("lookup failed");
+        },
+      });
+      const failing = (): void => {
+        throw new Error("sub failed");
+      };
+
+      expect(boundary.call("sub", failing)).toBeUndefined();
+      expect(boundary.call("sub", failing)).toBeUndefined();
+      expect(lines.map((line) => line.level)).toEqual(["error"]);
+    });
+
+    it('under "rethrow", holds the throw of a callback that unregistered itself', () => {
+      const { boundary, lines, registered, unregisterThenThrow } = dispatcher({ policy: "rethrow" });
+
+      registered.add("sub");
+      const held = boundary.call("sub", unregisterThenThrow("sub"));
+
+      expect(() => throwHeld(held)).toThrow("sub failed");
+      expect(lines).toEqual([]);
+    });
+  });
+
   describe("options", () => {
     it("passes the reporter's options through", () => {
       const { boundary, lines, advance } = setup({ windowMs: 1_000 });

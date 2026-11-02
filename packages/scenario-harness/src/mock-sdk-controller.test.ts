@@ -403,6 +403,35 @@ describe("MockSDKController", () => {
       expect(logger.lines.filter((line) => line.level === "error")).toHaveLength(2);
     });
 
+    it("leaves no error keys behind for a subscriber that unsubscribes itself and then throws", () => {
+      const logger = recordingLogger();
+      const controller = new MockSDKController({ logger });
+      // The reporter's shared cap holds 32 error sites; one key per thrower would fill it.
+      const throwers = 32;
+      let armed = false;
+      const leaving = (id: string, always: boolean) => () => {
+        if (!always && !armed) return;
+
+        controller.unsubscribe(id);
+        throw new Error(`${id} failed`);
+      };
+
+      // Half leave from the subscribe-time call, half from a tick's fan-out.
+      for (let n = 0; n < throwers / 2; n++) controller.subscribe(`now-${n}`, leaving(`now-${n}`, true));
+
+      for (let n = 0; n < throwers / 2; n++) controller.subscribe(`tick-${n}`, leaving(`tick-${n}`, false));
+
+      controller.subscribe("live", () => {
+        if (armed) throw new Error("live failed");
+      });
+      armed = true;
+
+      expect(() => controller.tickOnce()).not.toThrow();
+
+      expect(logger.lines.map((line) => line.level)).toEqual(Array<string>(throwers + 1).fill("error"));
+      expect(logger.lines.at(-1)!.message).toMatch(/^live threw: Error: live failed\n/);
+    });
+
     it("under the rethrow policy calls every subscriber, then throws the first error", () => {
       const controller = new MockSDKController({ onSubscriberError: "rethrow" });
       const order: string[] = [];

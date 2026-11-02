@@ -138,7 +138,14 @@ export class MockSDKController {
     this.telemetry = options.initialTelemetry ?? defaultTelemetry();
     this.tickIntervalMs = options.tickIntervalMs ?? DEFAULT_TICK_INTERVAL_MS;
     this.logger = options.logger ?? silentLogger;
-    this.boundary = createErrorBoundary({ logger: this.logger, now: options.now, policy: options.onSubscriberError });
+    // As on the real controller: a subscriber that unsubscribes itself and
+    // then throws leaves no error keys behind.
+    this.boundary = createErrorBoundary({
+      logger: this.logger,
+      now: options.now,
+      policy: options.onSubscriberError,
+      isRegistered: (id) => this.subscribers.has(id),
+    });
   }
 
   // ── SDKController surface (structural — translator only uses these) ────────

@@ -55,6 +55,19 @@ export interface ErrorBoundaryOptions extends Omit<BoundedErrorReporterOptions, 
   policy?: ErrorPolicy;
   /** The reporter's clock, in milliseconds. Defaults to `Date.now()`, read on every call. */
   now?: () => number;
+  /**
+   * Whether the callback id `id` is still registered with the dispatcher. Asked only
+   * after a {@link ErrorBoundary.call} or {@link ErrorBoundary.callEach} callback threw
+   * and the throw was reported, never by {@link ErrorBoundary.run}, whose ids are the
+   * dispatcher's own. When it answers `false` the boundary forgets the id at once.
+   *
+   * It covers a callback that unregisters itself and then throws in the same call: the
+   * dispatcher's `forget` ran while the id had nothing recorded, so the report that
+   * follows would create state that no later `succeeded` or `forget` ever drops, and its
+   * keys would hold slots in the shared key cap for the life of the process. Without it,
+   * every id is treated as registered.
+   */
+  isRegistered?: (id: string) => boolean;
 }
 
 export interface ErrorBoundary {
@@ -87,7 +100,7 @@ export interface ErrorBoundary {
 
 /** Create a boundary. The ids are the caller's; a dispatcher prefixes its own work's ids. */
 export function createErrorBoundary(options: ErrorBoundaryOptions): ErrorBoundary {
-  const { policy: requested, now, ...reporterOptions } = options;
+  const { policy: requested, now, isRegistered, ...reporterOptions } = options;
   const policy: ErrorPolicy = requested === "rethrow" ? "rethrow" : "report";
   const reporter = createBoundedErrorReporter({ ...reporterOptions, now: now ?? (() => Date.now()) });
 
@@ -99,11 +112,33 @@ export function createErrorBoundary(options: ErrorBoundaryOptions): ErrorBoundar
     return undefined;
   };
 
+  /** `isRegistered`, kept from throwing: an id it cannot answer for counts as registered. */
+  const stillRegistered = (id: string): boolean => {
+    try {
+      return isRegistered === undefined || isRegistered(id);
+    } catch {
+      return true;
+    }
+  };
+
+  /**
+   * {@link caught} for a callback's throw: a callback that unregistered itself before
+   * throwing leaves no reporter state behind (see `ErrorBoundaryOptions.isRegistered`).
+   * The report is still written first, so its `error` line is not lost.
+   */
+  const callbackCaught = (id: string, error: unknown): HeldError => {
+    const held = caught(id, error);
+
+    if (held === undefined && !stillRegistered(id)) reporter.forget(id);
+
+    return held;
+  };
+
   const call = (id: string, callback: () => void): HeldError => {
     try {
       callback();
     } catch (error) {
-      return caught(id, error);
+      return callbackCaught(id, error);
     }
 
     reporter.succeeded(id);
@@ -127,7 +162,7 @@ export function createErrorBoundary(options: ErrorBoundaryOptions): ErrorBoundar
         } catch (error) {
           // Handle the throw first, then keep the earliest: `first ??= caught(…)` would
           // skip handling every throw after the first held one.
-          const held = caught(id, error);
+          const held = callbackCaught(id, error);
 
           first ??= held;
           continue;
