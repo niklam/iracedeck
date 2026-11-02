@@ -18,7 +18,17 @@ export interface OverlayFlag {
 
 export interface SimConnection {
   isConnected(): boolean;
-  /** Called once per sim tick, and on connection changes, with the current connection state. */
+  /**
+   * Called once per sim tick, and on connection changes, with the current
+   * connection state. A connection may also call `onTick` as it registers it.
+   *
+   * The contract every `deck-<sim>` connection must honour (#1558): a throw
+   * from `onTick` never reaches the caller — not from `subscribe`, nor from
+   * any other method whose call runs subscribers — and never stops another
+   * subscriber from being called. The connection isolates it, reports it, and
+   * keeps the failing subscriber subscribed. iRacing's connection gets this
+   * from its SDK controller's error boundary.
+   */
   subscribe(id: string, onTick: (isConnected: boolean) => void): void;
   unsubscribe(id: string): void;
   /**
@@ -78,10 +88,12 @@ export function initializeSimConnection(connection: SimConnection): void {
   pendingSubscriptions.clear();
 
   // A connection may notify a subscriber as it registers it (iRacing's does),
-  // so a throwing callback surfaces here. Replay every queued subscription
-  // regardless, keep the one that threw (it is registered; only its first
-  // notification failed), and rethrow the first failure afterwards so it is
-  // not swallowed.
+  // and under the `subscribe` contract a throwing callback never surfaces
+  // here. This aggregation is a defence against a connection that breaks the
+  // contract: replay every queued subscription regardless, keep the one whose
+  // `subscribe` threw (it is registered; only its first notification failed),
+  // and rethrow the first failure afterwards so the broken contract is not
+  // swallowed.
   const failures: unknown[] = [];
 
   for (const [id, onTick] of queued) {

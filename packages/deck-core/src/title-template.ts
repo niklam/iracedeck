@@ -27,7 +27,9 @@ export function titleHasTemplate(text: string | undefined): boolean {
  * without a sim.
  *
  * Never throws: `BaseAction`'s title tick runs inside the sim's subscriber
- * fan-out, where a throw would skip every later subscriber, every frame.
+ * fan-out every frame. The connection isolates a subscriber's throw (see
+ * `SimConnection.subscribe`), but a throw here would still cost that key the
+ * rest of its tick, every frame.
  */
 export function resolveTitleTemplate(text: string): string {
   if (!text.includes("{{")) return text;
