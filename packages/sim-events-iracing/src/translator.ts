@@ -103,7 +103,12 @@ import { diffToggles } from "./diff/toggles.js";
 import { diffTrackGaps } from "./diff/track-gaps.js";
 import { diffTrackWetness, resolveReportedTrackWetness } from "./diff/track-wetness.js";
 import type { EmitFn, PendingEvent } from "./diff/types.js";
-import { type LeaderFinish, leaderWhiteCrossingIndex, predictLeaderChequeredS } from "./leader-finish.js";
+import {
+  isClockExpiryConfirmed,
+  type LeaderFinish,
+  leaderWhiteCrossingIndex,
+  predictLeaderChequeredS,
+} from "./leader-finish.js";
 import { calculateCanonicalRacePositions } from "./race-order.js";
 import { type ReplayRecorder, startReplayRecorder } from "./replay-recorder.js";
 import {
@@ -1911,20 +1916,21 @@ function fuelLapsLeftStats(self: TranslatorInstance): FuelStats {
  * #880, #1405): their recent lap time ({@link resolveLeaderLapTimeS}) and the
  * predicted seconds until their chequered flag (`predictLeaderChequeredS`),
  * over the canonical live order. One definition for `handleTick` and
- * {@link readSimState}, like {@link fuelLapsLeftStats}.
- *
- * @param leaderCrossedSinceExpiry - `state.leaderWhitePostExpiryCrossed` after this tick's `diffLeaderWhite`
+ * {@link readSimState}, like {@link fuelLapsLeftStats}, so the two read the
+ * same expired-clock state: the confirmation count `diffFuelLapsLeft` has
+ * already advanced for the tick (`fuelCalloutClockExpiredTicks`) and the
+ * post-expiry crossing marker `diffLeaderWhite` left
+ * (`leaderWhitePostExpiryCrossed`).
  */
-function fuelLeaderFinish(
-  telemetry: TelemetryData,
-  positions: number[],
-  leaderCrossedSinceExpiry: boolean,
-): LeaderFinish {
+function fuelLeaderFinish(telemetry: TelemetryData, positions: number[], state: TranslatorState): LeaderFinish {
   const lapTimeS = resolveLeaderLapTimeS(telemetry, positions);
 
   return {
     lapTimeS,
-    chequeredInS: predictLeaderChequeredS(telemetry, positions, lapTimeS, leaderCrossedSinceExpiry),
+    chequeredInS: predictLeaderChequeredS(telemetry, positions, lapTimeS, {
+      confirmed: isClockExpiryConfirmed(state.fuelCalloutClockExpiredTicks),
+      leaderCrossed: state.leaderWhitePostExpiryCrossed,
+    }),
   };
 }
 
@@ -2014,12 +2020,14 @@ export function readSimState(): SimStateSnapshot {
         getMarginLaps: self.getFuelLapsLeftMarginLaps,
         // The expression `handleTick` hands `diffFuelLapsLeft`, over the same
         // canonical order (`resolveCanonicalOrder`, read here through its
-        // public accessor) and the post-expiry marker the latest tick's
-        // `diffLeaderWhite` left. `positions` is null only without telemetry,
-        // where there is no estimate to ask for.
+        // public accessor) and the expired-clock state the latest tick left:
+        // `diffFuelLapsLeft`'s confirmation count and `diffLeaderWhite`'s
+        // post-expiry marker, read after the tick as the diff read them in
+        // it. `positions` is null only without telemetry, where there is no
+        // estimate to ask for.
         getLeaderFinish: () =>
           telemetry !== null && positions !== null
-            ? fuelLeaderFinish(telemetry, positions, state.leaderWhitePostExpiryCrossed)
+            ? fuelLeaderFinish(telemetry, positions, state)
             : { lapTimeS: null, chequeredInS: null },
       },
       order: {
@@ -3127,7 +3135,7 @@ function handleLiveSteps(
       () =>
         leaderPositions === null
           ? { lapTimeS: null, chequeredInS: null }
-          : fuelLeaderFinish(telemetry, leaderPositions, self.state.leaderWhitePostExpiryCrossed),
+          : fuelLeaderFinish(telemetry, leaderPositions, self.state),
       emit,
     ),
   );

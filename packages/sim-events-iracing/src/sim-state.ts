@@ -75,7 +75,8 @@ export type SimFuelCoverageSkip = "not-a-race-session" | "race-over" | "final-la
 /**
  * What the laps-of-fuel-left callout's formula gives for one tick: every step
  * of the count, then the remaining race distance it is compared with and the
- * verdict — `covered` is the diff's own `isFuelRaceCovered` (issue #1405).
+ * verdict — `covered` is the diff's own `isFuelRaceCovered` (issue #1405),
+ * which is true on the last lap (`remainingLaps` 0) whatever the tank holds.
  *
  * The count stands in any session. The comparison does not: where it has no
  * meaningful answer its four keys are `null` and `coverageSkipped` says why.

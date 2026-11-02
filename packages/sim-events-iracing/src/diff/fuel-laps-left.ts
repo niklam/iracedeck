@@ -41,9 +41,10 @@
  *     direction; clamped to ≥ 1 while the white flies before the player's
  *     own crossing, when the player still runs their own full white lap)
  *     and the timed estimate (the player's crossings up to their first at
- *     or after the leader's PREDICTED chequered flag, `leader-finish.ts`;
- *     when that cannot be predicted, the bound `SessionTimeRemain +
- *     2 × leaderLap`). The verdict is on the TANK, not the post-margin
+ *     or after the leader's PREDICTED chequered flag, `leader-finish.ts`,
+ *     which reads an expired clock only once it has held for two ticks;
+ *     when that cannot be predicted, a running clock's bound
+ *     `SessionTimeRemain + 2 × leaderLap`, and unknown for an expired one). The verdict is on the TANK, not the post-margin
  *     count ({@link isFuelRaceCovered}, #1405): the raw laps of fuel must
  *     cover the rest of this lap and every lap after it with
  *     `FUEL_COVERAGE_ERROR` to spare. The margin protects a pit decision
@@ -54,7 +55,11 @@
  *     `IRSDK_UNLIMITED_TIME` sentinels, no validated lap-time average)
  *     keeps announcing — but the final-lap and post-race gates are
  *     UNCONDITIONAL: even a genuinely-short estimate stays silent there, a
- *     deliberate trade-off (#866 review). The announced floor is NOT
+ *     deliberate trade-off (#866 review). The same holds when the binding
+ *     distance leaves no lap after the current one (`remainingLaps === 0`,
+ *     the verdict's own rule): a lapped or slower-class player whose own
+ *     final-lap latch has not fired is on their last lap all the same. The
+ *     announced floor is NOT
  *     advanced by a suppression, so coverage is re-evaluated every lap and a
  *     burn-rate spike that shrinks the estimate below the race distance
  *     still announces on the earlier laps.
@@ -90,7 +95,7 @@ import {
   type TelemetryData,
 } from "@iracedeck/iracing-sdk";
 
-import { fuelFinishToleranceLaps, type LeaderFinish } from "../leader-finish.js";
+import { countClockExpiredTicks, fuelFinishToleranceLaps, type LeaderFinish } from "../leader-finish.js";
 import type { TranslatorState } from "../state.js";
 import type { FuelStats } from "./fuel-laps.js";
 import type { EmitFn } from "./types.js";
@@ -276,9 +281,13 @@ export function resolveFuelRaceCoverage(
   // (unknown leader fraction or lap time, the leader in the pits) a running
   // clock falls back to the bound `timeRemain + 2 × leaderLap` — white at
   // most one leader lap after expiry, plus the white lap — with the player's
-  // own validated average standing in for an unknown leader lap; an expired
-  // clock with no prediction leaves the side unknown. Ignorance keeps the
-  // cautious answer: counting too few laps would silence a warning.
+  // own validated average standing in for an unknown leader lap. A clock
+  // reading at or below zero with no prediction leaves the side unknown:
+  // whether it is a real expiry the prediction has not confirmed yet or a
+  // one-tick blip mid-race (the #666 transient), it is no duration to bound
+  // by, and bounding a blip by two leader laps would end the race there.
+  // Ignorance keeps the cautious answer: counting too few laps would
+  // silence a warning.
   //
   // The player takes the chequered at their first crossing at or after the
   // leader's. With the player's average lap `P` and lap fraction `f_p`,
@@ -304,13 +313,13 @@ export function resolveFuelRaceCoverage(
     const leaderChequeredS =
       typeof predicted === "number" && Number.isFinite(predicted) && predicted >= 0
         ? predicted
-        : timeRemain !== null
+        : !clockExpired && timeRemain !== null
           ? timeRemain + 2 * leaderLap
           : null;
 
     if (leaderChequeredS !== null) {
-      // `t` is 0 once the clock has expired (a negative reading is not a
-      // duration), leaving only the fixed part of the tolerance.
+      // `t` is 0 once the clock has expired, leaving only the fixed part of
+      // the tolerance.
       const tolerance = fuelFinishToleranceLaps(clockExpired ? 0 : (timeRemain ?? 0), leaderLap);
       const playerPct = 1 - lapFractionRemaining;
 
@@ -347,6 +356,18 @@ function isPositiveFinite(value: number | null): value is number {
  * covered finishes into warnings. An unknown distance (`Infinity`) is never
  * covered.
  *
+ * **No lap after the current one (`remainingLaps === 0`) is always
+ * "covered"**, whatever the tank says: the player is on their last lap, and
+ * at the estimator's precision a shortage call there is more often noise
+ * than a real splash-and-dash opportunity — the #866 trade-off behind the
+ * diff's unconditional final-lap silence. That silence keys on the player's
+ * own `playerFinalLapStarted` latch, which a lapped or slower-class player
+ * may not have set when the race distance already ends with this lap; this
+ * rule covers them, and being part of the verdict, it holds for the
+ * Telemetry Snapshot's `covered` too. The enough-fuel confirmation keeps its
+ * own guard (a full lap in hand by the unclamped count), so a short tank
+ * still gets no confirmation here.
+ *
  * @param estimate - the tick's {@link estimateFuelLapsLeft} result
  * @param remainingLaps - {@link FuelRaceCoverage}'s binding distance, full laps after the current one
  */
@@ -355,6 +376,8 @@ export function isFuelRaceCovered(
   remainingLaps: number,
 ): boolean {
   if (!Number.isFinite(remainingLaps)) return false;
+
+  if (remainingLaps === 0) return true;
 
   return estimate.rawLapsLeft >= (estimate.lapFractionRemaining + remainingLaps) * (1 + FUEL_COVERAGE_ERROR);
 }
@@ -383,6 +406,13 @@ export function diffFuelLapsLeft(
   getLeaderFinish: () => LeaderFinish,
   emit: EmitFn<(typeof FUEL_LAPS_LEFT_EVENTS)[number]>,
 ): void {
+  // The expired-clock confirmation (issue #1405), counted on EVERY tick this
+  // diff sees, before any early return, so the count is consecutive ticks —
+  // a session type, invalid input or the sampling gates never freeze it. The
+  // leader's chequered prediction (`getLeaderFinish`) reads it later in this
+  // same call; the Telemetry Snapshot reads it after the tick.
+  state.fuelCalloutClockExpiredTicks = countClockExpiredTicks(telemetry, state.fuelCalloutClockExpiredTicks);
+
   if (!isRaceSession) return;
 
   const fuelLevel = telemetry.FuelLevel;
@@ -454,7 +484,9 @@ export function diffFuelLapsLeft(
   // #1405): when the tank covers the remaining race distance there is
   // nothing to refuel for. The distance is `resolveFuelRaceCoverage`'s — the
   // two limits and which of them binds are worked out there — and the
-  // verdict is `isFuelRaceCovered`'s, on the raw tank with no lap margin.
+  // verdict is `isFuelRaceCovered`'s, on the raw tank with no lap margin,
+  // and silent whatever the tank when no lap is left after this one (the
+  // #866 trade-off, for a player whose own final-lap latch has not fired).
   const { remainingLaps } = resolveFuelRaceCoverage(telemetry, stats, estimate.lapFractionRemaining, getLeaderFinish);
 
   if (isFuelRaceCovered(estimate, remainingLaps)) {
