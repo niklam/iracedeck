@@ -36,8 +36,8 @@
  * It deliberately does NOT own a consumer's precision adjustments — the fuel
  * estimate's white-flag clamp, its lap-fraction subtraction, its prediction
  * of the leader's chequered flag (`leader-finish.ts` in `sim-events-iracing`,
- * #1405) and the `+2 × leaderLap` bound it falls back to when the leader's
- * finish cannot be predicted. Those describe how well that one estimate knows
+ * #1405) and the `+2 × leaderLap` bound it falls back to while the clock is
+ * still running and the leader's finish cannot be predicted. Those describe how well that one estimate knows
  * its own side and stay with it; what is shared is the policy of comparing the
  * two sides once each is expressed in laps.
  */
@@ -88,7 +88,8 @@ export function resolveLapsRemaining(t: TelemetryData | null | undefined): numbe
  * still implies is each consumer's own estimate (the fuel callouts predict
  * the leader's chequered flag from their lap fraction and pace, in
  * `sim-events-iracing`'s `leader-finish.ts`, and fall back to a bound of
- * `+2 × leaderLap` when the leader cannot be read).
+ * `+2 × leaderLap` while the clock is still running and the leader cannot be
+ * read).
  *
  * @param t - The latest telemetry snapshot, or null/undefined when unavailable
  * @returns the seconds remaining (≥ 0), or null when the time side is unknown or unlimited
@@ -110,8 +111,9 @@ export function resolveTimeRemainingS(t: TelemetryData | null | undefined): numb
  * two-tick confirmation). As a duration a negative reading is nonsense, which
  * is why {@link resolveTimeRemainingS} calls it unknown; a consumer that
  * models the run to the flag, as the fuel estimate's leader prediction does
- * (#1405), reads the raw field itself to tell an expired clock apart. Shown
- * to the driver, unknown renders as `UNLIM` or a
+ * (#1405), reads the raw field itself to tell an expired clock apart, and
+ * trusts an expired reading only once it has held for two ticks. Shown to
+ * the driver, unknown renders as `UNLIM` or a
  * blank — the opposite of an expired clock — so everything that shows the
  * time side reads it through here: a key face, and a template, whose text
  * may also go out in a chat macro. A mid-race blip therefore reads `0` for
