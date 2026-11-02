@@ -95,7 +95,12 @@ import {
   type TelemetryData,
 } from "@iracedeck/iracing-sdk";
 
-import { countClockExpiredTicks, fuelFinishToleranceLaps, type LeaderFinish } from "../leader-finish.js";
+import {
+  countClockExpiredTicks,
+  fuelFinishToleranceLaps,
+  isClockExpiredReading,
+  type LeaderFinish,
+} from "../leader-finish.js";
 import type { TranslatorState } from "../state.js";
 import type { FuelStats } from "./fuel-laps.js";
 import type { EmitFn } from "./types.js";
@@ -223,7 +228,8 @@ export type FuelRaceCoverage = {
 
 /**
  * The remaining race distance for the race-coverage determination (issue
- * #866, extended by #880), as one pure function shared by the diff and the
+ * #866, extended by #880; the timed side a prediction since #1405), as one
+ * pure function shared by the diff and the
  * Telemetry Snapshot's state reader (issue #1387). Two independently-known
  * limits; whichever ends the race sooner binds (a session can carry BOTH a
  * lap and a time limit, #866 limitation 1), and each suppresses only on a
@@ -300,8 +306,7 @@ export function resolveFuelRaceCoverage(
   // best lap, canonical live order). The averages exclude caution laps (see
   // `FuelLap.wasCaution`), so a long caution can neither deflate the burn
   // rate nor inflate the lap time into a false "enough fuel".
-  const rawClock = telemetry.SessionTimeRemain;
-  const clockExpired = typeof rawClock === "number" && Number.isFinite(rawClock) && rawClock <= 0;
+  const clockExpired = isClockExpiredReading(telemetry);
   const timeRemain = resolveTimeRemainingS(telemetry);
   const playerLap = stats.avgLapTime;
   let timedLapsAfterCurrent: number | null = null;
