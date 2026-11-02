@@ -1,10 +1,11 @@
 import { OpponentPenaltyFlag } from "@iracedeck/event-bus";
 import { Flags } from "@iracedeck/iracing-native";
 import { TrkLoc } from "@iracedeck/iracing-sdk";
-import type { ILogger } from "@iracedeck/logger";
+import { createErrorBoundary, type ILogger, silentLogger } from "@iracedeck/logger";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createInitialState, type TranslatorState } from "../state.js";
+import { TickSteps, type UnitRunner } from "../tick-steps.js";
 import {
   diffOpponentFlags,
   OPPONENT_FLAG_BLACK_HOLD_MS,
@@ -77,6 +78,7 @@ type RunOptions = Partial<{
   range: number | (() => number);
   sessionInfo: Record<string, unknown> | null;
   logger: ILogger;
+  runUnit: UnitRunner;
 }>;
 
 function run(state: TranslatorState, telemetry: MutableField, now: number, opts: RunOptions = {}): PendingEvent[] {
@@ -102,6 +104,7 @@ function run(state: TranslatorState, telemetry: MutableField, now: number, opts:
     now,
     (ev) => out.push(ev),
     opts.logger,
+    opts.runUnit,
   );
 
   return out;
@@ -1266,6 +1269,137 @@ describe("diffOpponentFlags", () => {
 
       run(state, t, 6000, { logger });
       expect(logger.debug).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe("one car's throw costs that car only (#1559)", () => {
+    /**
+     * The translator's runner over a real #1558 boundary: the diff runs as a step
+     * and each car's store advance and qualification as a unit.
+     */
+    function guarded() {
+      const errors: string[] = [];
+      const logger: ILogger = {
+        ...silentLogger,
+        error: (message) => {
+          errors.push(message);
+        },
+      };
+      const steps = new TickSteps({ boundary: createErrorBoundary({ logger, now: () => 0 }), prefix: "translator:" });
+      const runGuarded = (t: MutableField, now: number, opts: RunOptions = {}): PendingEvent[] => {
+        let events: PendingEvent[] = [];
+
+        steps.run("diffOpponentFlags", () => {
+          events = run(state, t, now, { ...opts, runUnit: steps.runUnit });
+        });
+
+        return events;
+      };
+
+      return { errors, runGuarded };
+    }
+
+    /** The race gap, throwing for `carIdx` while `fault.on`: only that car's qualification reads it. */
+    function faultyGap(carIdx: number, fault: { on: boolean }): GapResolver {
+      return (ahead, behind) => {
+        if (fault.on && (ahead === carIdx || behind === carIdx)) throw new Error("odd gap row");
+
+        return DEFAULT_GAP;
+      };
+    }
+
+    it("announces the other cars while qualifying one car throws, and the failing car on the next tick", () => {
+      const fault = { on: true };
+      const gap = faultyGap(3, fault);
+      const { errors, runGuarded } = guarded();
+      const t = makeField();
+
+      runGuarded(t, 1000, { gap });
+      t.CarIdxSessionFlags[3] = Flags.Repair; // P3, ahead: its gap lookup throws
+      t.CarIdxSessionFlags[4] = Flags.Repair; // P5, behind
+
+      expect(runGuarded(t, 2000, { gap })).toEqual([flagged(4, OpponentPenaltyFlag.Repair, "behind", 5)]);
+      expect(errors).toHaveLength(1);
+      expect(errors[0]).toContain("translator:diffOpponentFlags");
+      // The failing car latched nothing and started no cooldown, so it is qualified again.
+      expect(state.opponentFlagAnnouncedMask[3]).toBe(0);
+      expect(state.opponentFlagCooldownUntil.repair[3] ?? 0).toBe(0);
+      expect(state.opponentFlagRecentEntries.map((e) => e.carIdx)).toEqual([4]);
+
+      fault.on = false;
+
+      // A tick late, so the flag was already up: `entered-range` rather than `raised`.
+      expect(runGuarded(t, 2100, { gap })).toEqual([
+        flagged(3, OpponentPenaltyFlag.Repair, "ahead", 3, { trigger: "entered-range" }),
+      ]);
+      expect(runGuarded(t, 2200, { gap })).toEqual([]);
+    });
+
+    it("writes no line for the failing car and keeps the other cars' lines in order", () => {
+      const fault = { on: true };
+      const gap = faultyGap(3, fault);
+      const { runGuarded } = guarded();
+      const debug: string[] = [];
+      const logger: ILogger = {
+        ...silentLogger,
+        debug: (message) => {
+          debug.push(message);
+        },
+      };
+      const t = makeField();
+
+      runGuarded(t, 1000, { gap, logger });
+      t.CarIdxSessionFlags[3] = Flags.Repair;
+      t.CarIdxSessionFlags[4] = Flags.Repair;
+      t.CarIdxSessionFlags[6] = Flags.Repair; // P7: outside the positions, held back
+      runGuarded(t, 2000, { gap, logger });
+
+      expect(debug).toHaveLength(2);
+      expect(debug[0]).toContain("Opponent flag announced");
+      expect(debug[0]).toContain("carIdx=4 ");
+      expect(debug[1]).toContain("reason=outside-positions");
+      expect(debug[1]).toContain("carIdx=6 ");
+    });
+
+    it("skips a car whose store advance threw, still advancing and announcing the others", () => {
+      const fault = { on: false };
+      const { errors, runGuarded } = guarded();
+      const t = makeField();
+      let car3Flags = 0;
+
+      // Car 3's raw flags throw while the fault is on: its store advance is the first reader.
+      Object.defineProperty(t.CarIdxSessionFlags, 3, {
+        get: () => {
+          if (fault.on) throw new Error("odd flags row");
+
+          return car3Flags;
+        },
+      });
+
+      runGuarded(t, 1000);
+      car3Flags = Flags.Repair;
+      t.CarIdxSessionFlags[4] = Flags.Repair;
+      fault.on = true;
+
+      expect(runGuarded(t, 2000)).toEqual([flagged(4, OpponentPenaltyFlag.Repair, "behind", 5)]);
+      expect(errors).toHaveLength(1);
+      expect(state.opponentFlagBits[4]).toBe(Flags.Repair);
+      expect(state.opponentFlagBits[3]).toBe(0);
+
+      fault.on = false;
+
+      // Its store never saw the flag up, so on the first tick it does it is raised.
+      expect(runGuarded(t, 2100)).toEqual([flagged(3, OpponentPenaltyFlag.Repair, "ahead", 3)]);
+    });
+
+    it("lets the throw out with the default runner, so the diff's own tests stay loud", () => {
+      const gap = faultyGap(3, { on: true });
+      const t = makeField();
+
+      run(state, t, 1000, { gap });
+      t.CarIdxSessionFlags[3] = Flags.Repair;
+
+      expect(() => run(state, t, 2000, { gap })).toThrow("odd gap row");
     });
   });
 });
