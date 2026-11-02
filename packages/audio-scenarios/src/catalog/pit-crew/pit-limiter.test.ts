@@ -390,6 +390,23 @@ describe("pit-limiter delayed re-checks read the engaged bit, not the toggle val
     expect(admits(LIMITER_MISSING, BIT_ONLY_ON_PIT_ROAD)).toBe(false);
   });
 
+  // The translator's limiter diff says nothing in the pit stall; the gate
+  // does not either, so a missing warning queued before the car stopped
+  // cannot drain at a car sitting in its box.
+  it("limiter-missing: bit clear in the pit stall — does NOT fire and its gate refuses", () => {
+    const inStall = { ...DISENGAGED_ON_PIT_ROAD, PlayerCarInPitStall: true };
+
+    expect(firesLive(LIMITER_MISSING, "limiter.missing", inStall)).toBe(false);
+    expect(admits(LIMITER_MISSING, inStall)).toBe(false);
+  });
+
+  it("limiter-missing: bit clear on pit road outside the pit stall — fires and its gate admits", () => {
+    const outsideStall = { ...DISENGAGED_ON_PIT_ROAD, PlayerCarInPitStall: false };
+
+    expect(firesLive(LIMITER_MISSING, "limiter.missing", outsideStall)).toBe(true);
+    expect(admits(LIMITER_MISSING, outsideStall)).toBe(true);
+  });
+
   it("the published conditions read the bit too", () => {
     const conds = new Map<string, () => boolean>();
     const defineCond = (name: string, fn: () => boolean): void => {

@@ -1939,7 +1939,7 @@
       "weightBand": "NORMAL",
       "queueable": true,
       "interrupt": false,
-      "speakGate": "The pit limiter is still off on pit road when the warning comes to speak, in a car that has one.",
+      "speakGate": "The pit limiter is still off on pit road outside the pit stall when the warning comes to speak, in a car that has one.",
       "endsOn": null,
       "base": "pit-crew",
       "comment": "The car is on pit road without its limiter engaged, a couple of seconds after the pit-entry reminder went unheeded — an escalation, not a duplicate.",
@@ -5715,7 +5715,7 @@
       },
       {
         "name": "limiter.stillMissingOnPitRoad",
-        "description": "The car has a pit limiter and it is still NOT engaged on pit road, according to live telemetry when the line comes to speak — a couple of seconds after the pit-entry reminder. The engine already asks this at speak time (it is the warning's own gate), so wrapping the body in it changes nothing; it is here for a pack that wants the warning silent on its own terms. False on a car without a limiter or when telemetry is unavailable.",
+        "description": "The car has a pit limiter and it is still NOT engaged on pit road outside the pit stall, according to live telemetry when the line comes to speak — a couple of seconds after the pit-entry reminder. The engine already asks this at speak time (it is the warning's own gate), so wrapping the body in it changes nothing; it is here for a pack that wants the warning silent on its own terms. False on a car without a limiter or when telemetry is unavailable.",
         "usedBy": []
       },
       {

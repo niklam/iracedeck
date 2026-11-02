@@ -2530,6 +2530,22 @@ describe("pit-limiter / no-limiter family registration (issue #1051)", () => {
       expect(played("pit-limiter/on-track")).toBe(false);
     });
 
+    // ...and the car pulls into its stall while the line waits, the limiter
+    // still off: the translator says nothing in the stall, and neither does
+    // the gate (issue #1548).
+    it("limiter-missing's gate refuses at the drain once the car is in its pit stall (issue #1548)", () => {
+      queueThenDrain(
+        "limiter.missing",
+        STILL_MISSING_ON_PIT_ROAD,
+        { ...STILL_MISSING_ON_PIT_ROAD, PlayerCarInPitStall: true },
+        LIMITER_MISSING_DELAY_MS,
+      );
+
+      expectQueuedThenDrained("pit-crew.limiter-missing");
+      expect(voiceClipsPlayed()).toContain(OCCUPIER_CLIP);
+      expect(played("pit-limiter/missing")).toBe(false);
+    });
+
     // ...and the limiter engages while the line waits, with the toggle still off.
     it("limiter-missing's gate refuses at the drain when the limiter engages with the toggle off (issue #1548)", () => {
       queueThenDrain("limiter.missing", STILL_MISSING_ON_PIT_ROAD, BIT_ONLY_ON_PIT_ROAD, LIMITER_MISSING_DELAY_MS);
