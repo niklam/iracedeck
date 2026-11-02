@@ -71,11 +71,18 @@
  * - **The pace car is skipped** (`resolvePaceCarIdx`), and so is a car the
  *   session YAML cannot name: the record is verified by `carNumberRaw` at
  *   lookup, so an entry without one could never answer.
+ * - **Each car is a unit** (#1559): its lap time and crossing run through the
+ *   `runUnit` the replay recorder hands in, and the car's baselines and its
+ *   wait are written last, after everything that can throw. So a throw on one
+ *   car drops that car's events for the tick and leaves its baseline where it
+ *   was: the crossing is read again, and published, on the next tick. The
+ *   other cars' crossings are published as usual.
  */
 import type { SimEventName } from "@iracedeck/event-bus";
 import { getCarNumberRawFromSessionInfo, type TelemetryData } from "@iracedeck/iracing-sdk";
 
 import type { ReplayLapTimeWait, ReplayRecorderState } from "../replay-recorder-state.js";
+import { runUnitsDirectly, type UnitRunner } from "../tick-steps.js";
 import { resolvePaceCarIdx } from "./pace-laps.js";
 import { resolveReplayRecordTick, resolveSubSessionId } from "./replay-record-gate.js";
 import type { EmitFn } from "./types.js";
@@ -118,12 +125,18 @@ function seed(
 /** The events {@link diffReplayLaps} emits (issue #1499): its emitter's type, and its row in `REPLAY_RECORDER_ORDER`. */
 export const REPLAY_LAPS_EVENTS = ["replay.lapStarted", "replay.lapTimed"] as const satisfies readonly SimEventName[];
 
+type ReplayLapsEmit = EmitFn<(typeof REPLAY_LAPS_EVENTS)[number]>;
+
+/**
+ * @param runUnit - Runs each car as a unit (#1559): the replay recorder's step runner, so one car's throw costs that car only. Defaults to {@link runUnitsDirectly}, which catches nothing
+ */
 export function diffReplayLaps(
   state: ReplayRecorderState,
   telemetry: TelemetryData,
   sessionInfo: Record<string, unknown> | null,
   inReplay: boolean,
-  emit: EmitFn<(typeof REPLAY_LAPS_EVENTS)[number]>,
+  emit: ReplayLapsEmit,
+  runUnit: UnitRunner = runUnitsDirectly,
 ): void {
   const completed = telemetry.CarIdxLapCompleted;
   const live = resolveReplayRecordTick(telemetry, inReplay);
@@ -154,19 +167,30 @@ export function diffReplayLaps(
   // for a field that crosses the line once a lap is wasted on the other 59 ticks.
   let identity: { subSessionId: number; paceCarIdx: number | null } | null = null;
 
-  for (let carIdx = 0; carIdx < completed.length; carIdx++) {
+  // The car the unit below reads, set by the loop: one closure per tick rather
+  // than one per car.
+  let carIdx = 0;
+  // One car's lap time and crossing. Everything that can throw comes first; the
+  // car's wait and baselines are written last, so a throw leaves them for the
+  // next tick to read again.
+  const car = (carEmit: ReplayLapsEmit): void => {
     const cur = completed[carIdx];
     // A car slot the seed did not see (the array grew) has no baseline.
     const prev: number | undefined = prevCompleted[carIdx];
     const timeS = lastLapTime?.[carIdx];
     const wait = waits[carIdx] ?? null;
+    // What the car's wait becomes, written at the end: `writeWait` when it is
+    // replaced (or closed), `tickWait` when the open one only counts down.
+    let nextWait: ReplayLapTimeWait | null = wait;
+    let writeWait = false;
+    let tickWait = false;
 
     // The open lap-time wait, checked before the crossing so a refresh that
     // lands on a crossing tick is still read against the pre-crossing baseline.
     if (wait !== null) {
       if (typeof timeS === "number" && timeS > 0 && timeS !== wait.baselineS) {
         identity ??= { subSessionId: resolveSubSessionId(sessionInfo), paceCarIdx: resolvePaceCarIdx(sessionInfo) };
-        emit({
+        carEmit({
           event: "replay.lapTimed",
           data: {
             subSessionId: identity.subSessionId,
@@ -177,16 +201,20 @@ export function diffReplayLaps(
             timeMs: Math.round(timeS * 1000),
           },
         });
-        waits[carIdx] = null;
+        nextWait = null;
+        writeWait = true;
       } else if (wait.ticksLeft <= 1) {
-        waits[carIdx] = null;
+        nextWait = null;
+        writeWait = true;
       } else {
-        wait.ticksLeft -= 1;
+        tickWait = true;
       }
     }
 
     if (prev !== undefined && cur !== prev) {
       const crossing = (prev >= 0 && cur === prev + 1) || (prev === -1 && cur === 0);
+
+      writeWait = true;
 
       if (crossing) {
         identity ??= { subSessionId: resolveSubSessionId(sessionInfo), paceCarIdx: resolvePaceCarIdx(sessionInfo) };
@@ -194,7 +222,7 @@ export function diffReplayLaps(
           carIdx === identity.paceCarIdx ? null : getCarNumberRawFromSessionInfo(sessionInfo, carIdx);
 
         if (carNumberRaw !== null) {
-          emit({
+          carEmit({
             event: "replay.lapStarted",
             data: {
               subSessionId: identity.subSessionId,
@@ -211,19 +239,28 @@ export function diffReplayLaps(
           // A crossing from a scored lap opens the wait for that lap's time; the
           // first crossing (−1 → 0) completed nothing. Either way the previous
           // wait — an older lap the sim never timed inside its budget — closes.
-          const opened: ReplayLapTimeWait | null =
+          nextWait =
             prev >= 0 ? { lap: cur, baselineS: prevLapTime[carIdx] ?? 0, ticksLeft: REPLAY_LAP_TIME_WAIT_TICKS } : null;
-          waits[carIdx] = opened;
         } else {
-          waits[carIdx] = null;
+          nextWait = null;
         }
       } else {
         // Not a crossing the replay can show — re-seed the car silently.
-        waits[carIdx] = null;
+        nextWait = null;
       }
+    }
+
+    // The writes, last. A replaced wait is written whole; one that only counts
+    // down is decremented in place (a replaced one is dropped, not counted).
+    if (writeWait) {
+      waits[carIdx] = nextWait;
+    } else if (tickWait && wait !== null) {
+      wait.ticksLeft -= 1;
     }
 
     prevCompleted[carIdx] = cur;
     prevLapTime[carIdx] = typeof timeS === "number" ? timeS : (prevLapTime[carIdx] ?? 0);
-  }
+  };
+
+  for (carIdx = 0; carIdx < completed.length; carIdx++) runUnit(emit, car);
 }

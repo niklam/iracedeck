@@ -1,7 +1,9 @@
 import type { TelemetryData } from "@iracedeck/iracing-sdk";
+import { createErrorBoundary, type ILogger, silentLogger } from "@iracedeck/logger";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { createInitialReplayRecorderState, type ReplayRecorderState } from "../replay-recorder-state.js";
+import { TickSteps } from "../tick-steps.js";
 import { diffReplayLaps, REPLAY_LAP_TIME_WAIT_TICKS } from "./replay-laps.js";
 import type { PendingEvent } from "./types.js";
 
@@ -274,6 +276,132 @@ describe("diffReplayLaps", () => {
       expect(run(state, tick({ completed: [0, 1, 0, -1], uniqueId: 5 })).map((e) => e.data)).toEqual([
         { ...IDENTITY, sessionUniqueId: 5, carIdx: 1, carNumberRaw: 42, userId: 200, lap: 2, frame: 30_000 },
       ]);
+    });
+  });
+
+  describe("one car's throw costs that car only (#1559)", () => {
+    /**
+     * The replay recorder's runner over a real #1558 boundary: the diff runs as a
+     * direct step and each car as a unit, so a throw is caught and reported.
+     */
+    function guarded() {
+      const errors: string[] = [];
+      const logger: ILogger = {
+        ...silentLogger,
+        error: (message) => {
+          errors.push(message);
+        },
+      };
+      const steps = new TickSteps({
+        boundary: createErrorBoundary({ logger, now: () => 0 }),
+        prefix: "replay-recorder:",
+      });
+      const runGuarded = (telemetry: TelemetryData, sessionInfo: Record<string, unknown>): PendingEvent[] => {
+        const out: PendingEvent[] = [];
+
+        steps.direct(
+          "diffReplayLaps",
+          (ev: PendingEvent) => out.push(ev),
+          (emit) => diffReplayLaps(state, telemetry, sessionInfo, false, emit, steps.runUnit),
+        );
+
+        return out;
+      };
+
+      return { errors, runGuarded };
+    }
+
+    /** {@link SESSION_INFO} whose car-1 row throws on `UserID` while `fault.on`, read only by car 1's crossing. */
+    function faultySessionInfo(fault: { on: boolean }): Record<string, unknown> {
+      const driverInfo = SESSION_INFO.DriverInfo as { PaceCarIdx: number; Drivers: Array<Record<string, unknown>> };
+
+      return {
+        ...SESSION_INFO,
+        DriverInfo: {
+          ...driverInfo,
+          Drivers: driverInfo.Drivers.map((row) =>
+            row.CarIdx !== 1
+              ? row
+              : {
+                  CarIdx: 1,
+                  CarNumberRaw: 42,
+                  get UserID(): number {
+                    if (fault.on) throw new Error("odd roster row");
+
+                    return 200;
+                  },
+                },
+          ),
+        },
+      };
+    }
+
+    it("publishes the other cars' crossings, and the failing car's on the next tick once the fault is gone", () => {
+      const fault = { on: true };
+      const sessionInfo = faultySessionInfo(fault);
+      const { errors, runGuarded } = guarded();
+
+      runGuarded(tick(), sessionInfo);
+
+      const faulted = runGuarded(tick({ completed: [5, 5, 5, -1], frame: 36_305 }), sessionInfo);
+
+      expect(faulted.map((e) => e.data)).toEqual([
+        { ...IDENTITY, carIdx: 0, carNumberRaw: 7, userId: 100, lap: 6, frame: 36_305 },
+        { ...IDENTITY, carIdx: 2, carNumberRaw: 3042, userId: 300, lap: 6, frame: 36_305 },
+      ]);
+      expect(errors).toHaveLength(1);
+      expect(errors[0]).toContain("replay-recorder:diffReplayLaps");
+      // The failing car's baseline did not move, and it opened no wait.
+      expect(state.replayLapsLastCompleted).toEqual([5, 4, 5, -1]);
+      expect(state.replayLapsTimeWait[1]).toBeUndefined();
+
+      fault.on = false;
+
+      expect(runGuarded(tick({ completed: [5, 5, 5, -1], frame: 36_306 }), sessionInfo)).toEqual([
+        {
+          event: "replay.lapStarted",
+          data: { ...IDENTITY, carIdx: 1, carNumberRaw: 42, userId: 200, lap: 6, frame: 36_306 },
+        },
+      ]);
+      expect(state.replayLapsLastCompleted).toEqual([5, 5, 5, -1]);
+      // Nothing is published twice once every car has caught up.
+      expect(runGuarded(tick({ completed: [5, 5, 5, -1] }), sessionInfo)).toEqual([]);
+    });
+
+    it("keeps the failing car's open lap-time wait, so a time refreshed on the faulted tick is still published", () => {
+      const fault = { on: false };
+      const sessionInfo = faultySessionInfo(fault);
+      const { runGuarded } = guarded();
+
+      runGuarded(tick(), sessionInfo);
+      // Every car crosses: each opens a wait for its lap-5 time.
+      expect(runGuarded(tick({ completed: [5, 5, 5, -1] }), sessionInfo)).toHaveLength(3);
+
+      // Car 1's time refreshes on the tick it crosses again, and its crossing throws:
+      // the lap time it emitted first is dropped with it, and the wait stays open.
+      fault.on = true;
+      const refreshed = { completed: [5, 6, 5, -1], lastLapTime: [91.5, 92.25, 93.5, -1] };
+
+      expect(runGuarded(tick({ ...refreshed, frame: 40_000 }), sessionInfo)).toEqual([]);
+      expect(state.replayLapsTimeWait[1]).toEqual({ lap: 5, baselineS: 92.5, ticksLeft: REPLAY_LAP_TIME_WAIT_TICKS });
+
+      fault.on = false;
+
+      expect(runGuarded(tick({ ...refreshed, frame: 40_001 }), sessionInfo)).toEqual([
+        { event: "replay.lapTimed", data: { ...IDENTITY, carIdx: 1, lap: 5, timeMs: 92_250 } },
+        {
+          event: "replay.lapStarted",
+          data: { ...IDENTITY, carIdx: 1, carNumberRaw: 42, userId: 200, lap: 7, frame: 40_001 },
+        },
+      ]);
+    });
+
+    it("lets the throw out with the default runner, so the diff's own tests stay loud", () => {
+      const sessionInfo = faultySessionInfo({ on: true });
+
+      run(state, tick(), { sessionInfo });
+
+      expect(() => run(state, tick({ completed: [5, 5, 5, -1] }), { sessionInfo })).toThrow("odd roster row");
     });
   });
 });
