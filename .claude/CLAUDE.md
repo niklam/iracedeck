@@ -68,7 +68,7 @@ High-level guidance
 - **Stage reviews by the seams, not by the task list.** `.claude/rules/code-review.md` ("How reviews are staged inside an issue") is the rule; in one line: review a task before another task builds on its output, verify small fix diffs yourself, and give the whole branch exactly one full read — the `/code-review` — at the end, followed by the second read on the kinds of diff that rule names.
 - **Worktrees are per issue, not per agent.** An issue is solved in one `../ir-<issue>` worktree; several agents may work inside it, and the coordinator keeps them from colliding: disjoint files, `git commit --only -F <msg> -- <paths>` (the index is shared; the pre-commit step formats and stages only the committed paths, so a sibling's save mid-hook stays out — #1402), and each worker runs tests only on its OWN files — a directory-wide `pnpm test` picks up a sibling's half-edited file and reads as a red the worker then chases (#1138 cost ~4× on two tasks this way). The hook refuses `isolation: "worktree"` on a spawn, because one issue fragmented across trees is one nobody is tracking. Multi-agent *workflows* are a separate, much heavier tier and still need an explicit per-use request; none of the above authorises them.
 - Keep rules focused: one topic per markdown file.
-- Use `paths` frontmatter in rules when a rule applies only to certain files. Only the process rules (issue workflow, build and commit, review, hooks, specs, changelog, testing, code style, terminology) load in every session; every topic rule is path-scoped, because the always-loaded set must stay under Claude Code's 150k-char limit. Never start a rule with a lone `---`: the loader reads frontmatter up to the next `---` anywhere, table rows included, and silently drops everything in between. `scripts/claude-rules-frontmatter.test.mjs` guards both.
+- Use `paths` frontmatter in rules when a rule applies only to certain files. Only the process rules (issue workflow, build and commit, review, hooks, specs, changelog, testing, code style, terminology) load in every session; every topic rule is path-scoped, because the always-loaded set must stay under Claude Code's 150k-char limit; the repo keeps it 10k below its own 130k budget, so a regrowth fails before the edge (#1501). Never start a rule with a lone `---`: the loader reads frontmatter up to the next `---` anywhere, table rows included, and silently drops everything in between. `scripts/claude-rules-frontmatter.test.mjs` guards the budget and the frontmatter.
 - **Keep documentation in sync with reality.** When code changes alter conventions, patterns, APIs, or workflows described in any `CLAUDE.md` or `.claude/rules/` file, update those files in the same change. Stale instructions cause repeated mistakes.
 - **Keep `README.md` in sync with reality** — project structure, action count, features, development workflow — in the same change.
 - **Keep the developer Architecture page in sync with reality.** When a change alters packages or their boundaries, the two abstraction seams (`event-bus`, `IDeckPlatformAdapter`), runtime data/control flow, the internal dependency graph, or adds/removes a sim translator or device adapter, update the hand-maintained Mermaid diagrams and prose in `packages/website/src/content/docs/docs/development/architecture.md` in the same change.
@@ -85,7 +85,7 @@ You can import or reference specific rule files from other markdown using `@.cla
 
 **Always loaded** (no `paths` frontmatter):
 
-- `build-and-commit.md` — worktree workflow, pre-commit checks, build commands, dependency build-script decisions and pinned pnpm versions, conventional commits, issue labels and the Roadmap board, merging, post-merge cleanup, releasing and the voice-pack publishing rules.
+- `build-and-commit.md` — worktree workflow, pre-commit checks, build commands, dependency build-script decisions and pinned pnpm versions, conventional commits, issue labels and the Roadmap board's lanes, merging, post-merge cleanup, releasing and the voice-pack publishing rules.
 - `changelog.md` — when and how to add a changelog fragment in `changelog.d/`: the format, weight and order, one change per fragment, and how a fragment is checked.
 - `code-review.md` — the effort-level table, targeting the worktree, report-only, and how reviews are staged inside an issue.
 - `code-style.md` — formatting, linting, types, Zod, exact versions, tsconfig inheritance, fenced-code languages.
@@ -93,11 +93,12 @@ You can import or reference specific rule files from other markdown using `@.cla
 - `issue-workflow.md` — the order an issue is worked in and which steps are gates. **Read this first when picking up an issue.**
 - `specs-and-plans.md` — every feature/enhancement gets a spec committed to `master`; plans are never committed. Naming, header, required sections, freeze-after-ship.
 - `terminology-and-refs.md` — project terminology (including the "Mode" label rule) and external references.
-- `testing.md` — Vitest conventions, `pnpm typecheck`, native mocks in tests, the native config loader, action-test patterns.
+- `testing.md` — Vitest conventions, `pnpm typecheck`, native mocks in tests, the native config loader, typing test doubles; pointers to the action-test patterns and the 3221226505 worker crash.
 
 **Path-scoped** (loaded when matching files are touched):
 
 - `action-documentation.md` — action doc format: settings, keyboard and icon-state tables, communication method.
+- `action-tests.md` — mocking `deck-core`, `settings` and `deck-iracing` in a test, the canonical action-test structure, settings literals and protected members.
 - `black-box-icons.md` — black box key icon design.
 - `changelog-internals.md` — how fragments are composed, the fold into `changelog.mdx` at a stable release, the gitignored `changelog.json` and the machine-read format of the dated sections.
 - `encoders-and-touchscreen.md` — dials and the touch strip: platform facts, release-time press classification, the hold preview, dial-action rules.
@@ -107,6 +108,7 @@ You can import or reference specific rule files from other markdown using `@.cla
 - `key-icon-types.md` — Default / Black Box / Inverted key icon layouts and labels.
 - `keyboard-shortcuts.md` — SDK-first, binding architecture, atomic sequences, window focus modes, cross-package sync.
 - `logging.md` — log levels, info vs debug, `createScope()`, the `debugLogging` toggle, file logging and retention.
+- `node-version.md` — the `.nvmrc` pin and the Node 24.15.0 worker crash (exit code 3221226505) it fixes.
 - `pi-templates.md` — PI EJS templates: layout, partials, shared CSS, Rollup config, key-binding JSON.
 - `platform-feature-flags.md` — build-time flags per plugin, `feature-flags.local.json`, and the development voice root (the `IRACEDECK_DEV_VOICES` opt-in, the `dev.local.json` override, the `stage:dev-voices` build task).
 - `plugin-structure.md` — plugin naming, Rollup config and log policy, native externals and the runtime `bin/package.json`, licenses, the shell `plugin.ts` and the startup phases.
@@ -114,9 +116,11 @@ You can import or reference specific rule files from other markdown using `@.cla
 - `race-engineer-callouts.md` — adding or modifying a Race Engineer callout end to end.
 - `race-engineer-callout-examples.md` — one entry per past callout and the pattern it established.
 - `race-positions.md` — the canonical live race order every position consumer must use.
+- `roadmap-board.md` — how Roadmap cards move: the four hook moves, the helpers and what they refuse, `Planned` / `Next` / `Done`.
 - `sdpi-components.md` — `sdpi-components` reference.
 - `settings-window.md` — the dedicated settings window: server, guard, bridges, page, and its rules.
 - `stream-deck-actions.md` — action requirements, `ird-*` components, conditional visibility, dial support, per-mode comms.
 - `svg-platform-compatibility.md` — the resvg SVG baseline and the `pngRasterization` caveat.
+- `turbo-cache.md` — what turbo hashes (task inputs, `scripts/turbo-inputs.test.mjs`) and how CI keeps its cache.
 - `website-action-docs.md` — website action page format (canonical example: `tire-service.md`).
 - `website-screenshots.md` — settings-window screenshots come from `pnpm capture:settings`.

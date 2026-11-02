@@ -96,7 +96,7 @@ Full requirements (base class, UUID export, event types, Zod usage, super calls,
 
 #### 2. Unit tests — `packages/iracing-actions/src/actions/{action-name}/{action-name}.test.ts`
 
-Must mock `@iracedeck/deck-core`, and `@iracedeck/settings` for the global-settings names such as `getGlobalSettings` and `getGlobalColors`, before importing — the canonical mock block (including the binding-dispatch stubs `setActiveBinding` / `tapBinding` / `holdBinding` / `releaseBinding`) is in `.claude/rules/testing.md`. Actions that pass `bindingMissing` into icon generation must additionally stub `isBindingMissing` on the mock `ConnectionStateAwareAction`. See `packages/iracing-actions/src/actions/splits-delta-cycle/splits-delta-cycle.test.ts` for the full pattern.
+Must mock `@iracedeck/deck-core`, and `@iracedeck/settings` for the global-settings names such as `getGlobalSettings` and `getGlobalColors`, before importing — the canonical mock block (including the binding-dispatch stubs `setActiveBinding` / `tapBinding` / `holdBinding` / `releaseBinding`) is in `.claude/rules/action-tests.md`. Actions that pass `bindingMissing` into icon generation must additionally stub `isBindingMissing` on the mock `ConnectionStateAwareAction`. See `packages/iracing-actions/src/actions/splits-delta-cycle/splits-delta-cycle.test.ts` for the full pattern.
 
 #### 3. Icon SVGs — `packages/icons/{action-name}/*.svg`
 
