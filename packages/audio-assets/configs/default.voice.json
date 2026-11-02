@@ -33844,7 +33844,7 @@
       ]
     },
     "pit-crew.position-change": {
-      "comment": "The driver's position after a completed lap, in one of three shapes: an invalidated qualifying lap says \"That lap didn't count\", then \"We're currently\" and the position; a lap that put the driver on pole says the pole line alone; every other lap says the intro (\"That puts us to\" for a gain in qualifying, \"We're currently\" otherwise, and always in a race) and the position, read live in a race. Practice stays silent, and a race hold is left to the race-status update.",
+      "comment": "The driver's position after a completed lap, in one of three shapes: a qualifying lap the sim did not count says \"That lap didn't count\", then \"We're currently\" and the position when there is one (on a first lap there is none, and the first sentence plays alone); a lap that put the driver on pole says the pole line alone; every other lap says the intro (\"That puts us to\" for a gain in qualifying, \"We're currently\" otherwise, and always in a race) and the position, read live in a race. Practice stays silent, and a race hold is left to the race-status update.",
       "test": "Harness → Position → Improved 5 → 3, Worsened 3 → 5, First Valid Lap P1, Qualifying P1 (pole), Holding P1 (qualifying, slow lap), Unchanged P5 (non-PB lap) or the Invalid lap, … buttons (all qualifying). The race branch is mute in the harness (no live position) — In-sim: complete a race lap having gained or lost a place.",
       "sequence": [
         {
@@ -33852,9 +33852,7 @@
           "of": {
             "invalid-lap": [
               "pool:position-invalid-lap/that-lap-didnt-count",
-              "pool:position-intro-worse/currently",
-              "{{position.number}}"
-            ],
+              { "optional": ["pool:position-intro-worse/currently", "{{position.number}}"] }],
             "pole": ["{{position.pole}}"],
             "standard": ["{{position.intro}}", "{{position.number}}"]
           }
