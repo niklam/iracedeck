@@ -2843,9 +2843,10 @@ describe("sim-events-iracing translator", () => {
     }
 
     it("suppresses and reassures when the LEADER's pace says the clock ends the race within the tank (issue #880)", () => {
-      // Fast leader (60 s): checkered bound 5 + 2×60 = 125 s →
-      // ceil((125 − 39.4) / 87.5) = 1 lap to run; count 2 covers it with a
-      // lap in hand, so the confirmation fires.
+      // Fast leader (60 s, 55 % round): white at their first crossing, 27 s
+      // away, chequered at (2 − 0.55) × 60 = 87 s (#1405) →
+      // ceil(87 / 87.5 + 0.55 + 0.031) − 1 = 1 lap to run; the tank covers
+      // it and count 2 has a lap in hand, so the confirmation fires.
       const { crossed, covered } = runTimedRaceToSample(60);
 
       expect(crossed).not.toHaveBeenCalled();
@@ -2853,10 +2854,11 @@ describe("sim-events-iracing translator", () => {
     });
 
     it("keeps warning when the LEADER's slow pace stretches the timed race past the tank (issue #880)", () => {
-      // Slow leader (200 s): checkered bound 5 + 2×200 = 405 s →
-      // ceil((405 − 39.4) / 87.5) = 5 laps to run; count 2 falls short — the
-      // warning must still fire. A resolver that fell back to the player's
-      // 87.5 s average would wrongly suppress.
+      // Slow leader (200 s): chequered at (2 − 0.55) × 200 = 290 s →
+      // ceil(290 / 87.5 + 0.55 + 0.03) − 1 = 3 laps to run; 3.54 laps of
+      // fuel fall short of 3.45 × 1.05 — the warning must still fire. A
+      // resolver that fell back to the player's 87.5 s average would wrongly
+      // suppress.
       const { crossed, covered } = runTimedRaceToSample(200);
 
       expect(crossed).toHaveBeenCalledTimes(1);

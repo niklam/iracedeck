@@ -103,7 +103,7 @@ import { diffToggles } from "./diff/toggles.js";
 import { diffTrackGaps } from "./diff/track-gaps.js";
 import { diffTrackWetness, resolveReportedTrackWetness } from "./diff/track-wetness.js";
 import type { EmitFn, PendingEvent } from "./diff/types.js";
-import { leaderWhiteCrossingIndex } from "./leader-finish.js";
+import { type LeaderFinish, leaderWhiteCrossingIndex, predictLeaderChequeredS } from "./leader-finish.js";
 import { calculateCanonicalRacePositions } from "./race-order.js";
 import { type ReplayRecorder, startReplayRecorder } from "./replay-recorder.js";
 import {
@@ -1908,6 +1908,28 @@ function fuelLapsLeftStats(self: TranslatorInstance): FuelStats {
 }
 
 /**
+ * The race leader as the laps-of-fuel-left race coverage reads them (issues
+ * #880, #1405): their recent lap time ({@link resolveLeaderLapTimeS}) and the
+ * predicted seconds until their chequered flag (`predictLeaderChequeredS`),
+ * over the canonical live order. One definition for `handleTick` and
+ * {@link readSimState}, like {@link fuelLapsLeftStats}.
+ *
+ * @param leaderCrossedSinceExpiry - `state.leaderWhitePostExpiryCrossed` after this tick's `diffLeaderWhite`
+ */
+function fuelLeaderFinish(
+  telemetry: TelemetryData,
+  positions: number[],
+  leaderCrossedSinceExpiry: boolean,
+): LeaderFinish {
+  const lapTimeS = resolveLeaderLapTimeS(telemetry, positions);
+
+  return {
+    lapTimeS,
+    chequeredInS: predictLeaderChequeredS(telemetry, positions, lapTimeS, leaderCrossedSinceExpiry),
+  };
+}
+
+/**
  * The translator's state for a Telemetry Snapshot (issue #1387): what it had
  * computed as of its latest tick — the fuel history and the laps-of-fuel-left
  * figure, the live order, the gaps, the caution — then the whole
@@ -1930,7 +1952,7 @@ function fuelLapsLeftStats(self: TranslatorInstance): FuelStats {
  * holds it, because `diffFuelLapsLeft` computes it as locals at its mid-lap
  * sample — and is made from that diff's own inputs: the stats of
  * {@link fuelLapsLeftStats}, the instance's margin closure, and
- * {@link resolveLeaderLapTimeS} over the canonical order. The shaping is
+ * {@link fuelLeaderFinish} over the canonical order. The shaping is
  * `buildSimState` in `sim-state.ts`.
  *
  * **The result holds live objects** (the lap history, the gap traces, the
@@ -1993,10 +2015,13 @@ export function readSimState(): SimStateSnapshot {
         getMarginLaps: self.getFuelLapsLeftMarginLaps,
         // The expression `handleTick` hands `diffFuelLapsLeft`, over the same
         // canonical order (`resolveCanonicalOrder`, read here through its
-        // public accessor). `positions` is null only without telemetry, where
-        // there is no estimate to ask for.
-        getLeaderLapTimeS: () =>
-          telemetry !== null && positions !== null ? resolveLeaderLapTimeS(telemetry, positions) : null,
+        // public accessor) and the post-expiry marker the latest tick's
+        // `diffLeaderWhite` left. `positions` is null only without telemetry,
+        // where there is no estimate to ask for.
+        getLeaderFinish: () =>
+          telemetry !== null && positions !== null
+            ? fuelLeaderFinish(telemetry, positions, state.leaderWhitePostExpiryCrossed)
+            : { lapTimeS: null, chequeredInS: null },
       },
       order: {
         positions,
@@ -3089,8 +3114,10 @@ function handleLiveSteps(
   // validated estimator as Session Info's Laps to Empty (issue #748), over
   // the same default window, so the spoken count tracks the display. Runs
   // after diffFlags so the race-coverage suppression (#866) reads a
-  // same-tick-fresh `whiteLastLapFired` final-lap latch. Without a canonical
-  // order this tick the leader's lap time is unknown (#1559).
+  // same-tick-fresh `whiteLastLapFired` final-lap latch, and after
+  // diffLeaderWhite so the leader's chequered prediction (#1405) reads a
+  // current post-expiry crossing marker. Without a canonical order this tick
+  // the leader is unknown (#1559).
   const leaderPositions = order.ok ? order.value : null;
   steps.live("diffFuelLapsLeft", pending, () =>
     diffFuelLapsLeft(
@@ -3099,7 +3126,10 @@ function handleLiveSteps(
       isRaceSession,
       () => fuelLapsLeftStats(self),
       self.getFuelLapsLeftMarginLaps,
-      () => (leaderPositions === null ? null : resolveLeaderLapTimeS(telemetry, leaderPositions)),
+      () =>
+        leaderPositions === null
+          ? { lapTimeS: null, chequeredInS: null }
+          : fuelLeaderFinish(telemetry, leaderPositions, self.state.leaderWhitePostExpiryCrossed),
       emit,
     ),
   );
