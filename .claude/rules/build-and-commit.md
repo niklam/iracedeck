@@ -157,7 +157,7 @@ Pull Requests
 - Mark checklist items as complete (`[x]`) or incomplete (`[ ]`) as appropriate.
 - Use `N/A` for sections that don't apply (e.g., "Related Issue" for infra work with no issue).
 - Build, test, and lint checks are handled by CI — they are not in the PR checklist.
-- **Before creating a PR, the issue lead runs the code review without asking** (#1520): the `/code-review` skill at the level from the table in `@.claude/rules/code-review.md` — `xhigh` is not the default — pointed at the worktree that holds the work rather than `master`, then the second read where that rule says. The review reports only — never `--fix`; verify each finding and apply the ones that hold as your own edits before opening the PR.
+- **Before creating a PR, the issue lead runs the code review without asking** (#1520): the `/code-review` skill at the level from the table in `@.claude/rules/code-review.md` — `xhigh` is not the default — pointed at the worktree that holds the work rather than `master`, then the second read where that rule says, then the CodeRabbit CLI round. The review reports only — never `--fix`; verify each finding and apply the ones that hold as your own edits before opening the PR.
 
 ### PR Labels
 
