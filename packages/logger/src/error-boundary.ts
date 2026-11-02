@@ -119,12 +119,21 @@ export function createErrorBoundary(options: ErrorBoundaryOptions): ErrorBoundar
     callEach<T>(callbacks: Iterable<readonly [string, T]>, invoke: (callback: T, id: string) => void): HeldError {
       let first: HeldError;
 
+      // `call` inlined: this runs for every subscriber on every tick, and wrapping each
+      // in a closure for `call` would allocate one per callback per delivery.
       for (const [id, callback] of callbacks) {
-        // Call first, then keep the earliest: `first ??= call(…)` would stop calling
-        // callbacks once one had been held.
-        const held = call(id, () => invoke(callback, id));
+        try {
+          invoke(callback, id);
+        } catch (error) {
+          // Handle the throw first, then keep the earliest: `first ??= caught(…)` would
+          // skip handling every throw after the first held one.
+          const held = caught(id, error);
 
-        first ??= held;
+          first ??= held;
+          continue;
+        }
+
+        reporter.succeeded(id);
       }
 
       return first;
