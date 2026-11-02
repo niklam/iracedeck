@@ -1056,7 +1056,7 @@ describe("SDKController subscriber isolation (#1558)", () => {
       expect(reported[0].message).toMatch(/^broken-action threw: RangeError: index \d+ out of range\n\s+at /);
       // At t=60 s: subscribe's notification plus 6000 polls since the error line.
       expect(reported[1].message).toMatch(
-        /^broken-action threw 6001 more times in the last 60s, latest at (at )?\S.*: RangeError: index \d+ out of range$/,
+        /^broken-action threw 6001 more times in the last 60s, latest at (?!at )\S.*: RangeError: index \d+ out of range$/,
       );
       // At t=150 s, 60 s after the last throw: 2 + 9000 polls in all.
       expect(reported[2].message).toBe("broken-action recovered: no errors for 60s, after 9002 times in all");

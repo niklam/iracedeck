@@ -615,7 +615,7 @@ describe("describeThrowable", () => {
   it("keys an error on its first stack frame and keeps the full stack as detail", () => {
     const described = describeThrowable(errorAt("fn (file.ts:10:5)", "bad 12"));
 
-    expect(described.site).toBe("at fn (file.ts:10:5)");
+    expect(described.site).toBe("fn (file.ts:10:5)");
     expect(described.detail).toContain("deep.ts");
     expect(described.summary).toBe("Error: bad 12");
   });
@@ -624,7 +624,7 @@ describe("describeThrowable", () => {
     const error = new Error("line one\nline two");
     error.stack = "Error: line one\nline two\n    at real (r.ts:1:1)";
 
-    expect(describeThrowable(error).site).toBe("at real (r.ts:1:1)");
+    expect(describeThrowable(error).site).toBe("real (r.ts:1:1)");
     expect(describeThrowable(error).summary).toBe("Error: line one");
   });
 

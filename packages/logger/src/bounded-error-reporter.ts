@@ -166,12 +166,15 @@ function describeObject(value: object): string {
   return safeString(value);
 }
 
-/** The first `at …` line of a V8 stack, trimmed, or `undefined` when there is none. */
+/**
+ * The first `at …` line of a V8 stack, trimmed and without its `at ` (the log lines say
+ * "at <site>" themselves), or `undefined` when there is none.
+ */
 function firstFrame(stack: string): string | undefined {
   for (const line of stack.split("\n")) {
     const trimmed = line.trim();
 
-    if (trimmed.startsWith("at ")) return trimmed;
+    if (trimmed.startsWith("at ")) return trimmed.slice(3);
   }
 
   return undefined;
