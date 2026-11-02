@@ -128,6 +128,6 @@ After ten runs on real branches, add up `H` from the PR bodies' tally lines. If 
 - this directory;
 - `.claude/rules/code-review.md` — the section *The second read* and its clause in the last sentence of rule 4 in *How reviews are staged inside an issue*;
 - `.claude/rules/issue-workflow.md` — the second-read clause in the step 7 row and the second-read sentences under *(7)*;
-- `.claude/skills/issue-lead/SKILL.md` — item 2 of step 7, the count of rounds in item 4 and the `second read` source in its judged-declines line;
+- `.claude/skills/issue-lead/SKILL.md` — item 2 of step 7, the count of rounds in item 4, the `second read` source in its judged-declines line and the second-read tally line in step 9's PR body;
 - `.claude/rules/build-and-commit.md` — the second-read clause in the code-review ask;
 - `.claude/CLAUDE.md` — the second-read clause at the end of the *Stage reviews by the seams* line.
