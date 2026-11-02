@@ -1,6 +1,6 @@
 # Fastest lap of the race
 
-> **Issue:** [#1571](https://github.com/niklam/iracedeck/issues/1571) · **Supersedes:** _none_ · **Superseded by:** _none_
+> **Issue:** [#1571](https://github.com/niklam/iracedeck/issues/1571) · **Supersedes:** _none_ · **Superseded by:** [the #1582 spec](2026-11-02-issue-1582-judge-lap-by-iracing.md), decision 2 only
 >
 > Point-in-time design record. The code and `.claude/rules/` are the truth; this is not documentation.
 
