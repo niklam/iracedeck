@@ -32,6 +32,6 @@ The order inside a milestone he has planned is delegated to the PO (#1520): it k
 
 ## `Done` and the field itself
 
-`Done` is a release step, not a merge step: cutting a stable release closes its milestone and moves every card of that milestone from `Testing` to `Done` (*Releasing* in `build-and-commit.md`), with `setBoardStatus`, which takes a card into `Done` from `Testing` only.
+`Done` is a release step, not a merge step: cutting a stable release closes its milestone and moves every card of that milestone from `Testing` to `Done` — the step and its helper call are in *Releasing* in `build-and-commit.md`.
 
 Lanes need the `project` token scope (`gh auth refresh -s project,read:project`). Never rewrite the `Status` field's option list through the API — the hook refuses it, because `updateProjectV2Field` replaces the options and regenerates their ids, which clears every card's lane; add a lane in the UI instead.

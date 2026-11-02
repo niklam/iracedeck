@@ -54,7 +54,7 @@ describe(".claude/rules frontmatter", () => {
     console.info(`always-loaded instructions: ${total} of ${REPO_BUDGET} chars, ${REPO_BUDGET - total} headroom`);
     expect(
       total,
-      `always loaded: ${REPO_BUDGET - total} chars of headroom, under the ${HEADROOM_FLOOR} floor; path-scope a topic section (#1501). CLAUDE.md (${claudeMd.length}), ${listing}`,
+      `always loaded: ${total} chars, ${total - (REPO_BUDGET - HEADROOM_FLOOR)} over the ${REPO_BUDGET - HEADROOM_FLOOR} line (the ${REPO_BUDGET} budget less its ${HEADROOM_FLOOR} floor); path-scope a topic section (#1501). CLAUDE.md (${claudeMd.length}), ${listing}`,
     ).toBeLessThanOrEqual(REPO_BUDGET - HEADROOM_FLOOR);
   });
 });

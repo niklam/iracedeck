@@ -1,6 +1,9 @@
 ---
 paths:
   - "turbo.json"
+  - "tsconfig*.json"
+  - "packages/*/tsconfig*.json"
+  - "scripts/lib/**"
   - "scripts/turbo-inputs*"
   - "scripts/prune-turbo-cache*"
   - "packages/*/package.json"
