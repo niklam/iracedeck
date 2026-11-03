@@ -704,15 +704,15 @@ describe("ContextEventOrder", () => {
 
       await vi.advanceTimersByTimeAsync(1);
 
-      expect(calls).toEqual([
-        "willAppear",
-        "keyDown",
-        "keyDown:done",
-        "keyUp",
-        "keyUp:done",
-        "willDisappear",
-        "willDisappear:done",
-      ]);
+      // The keyDown runs at once; the keyUp keeps the second it arrived after
+      // it, and the disappear waits for the keyUp as before — two timers while
+      // they do: the keyUp's spacing and the disappear's re-armed wait.
+      expect(calls).toEqual(["willAppear", "keyDown", "keyDown:done"]);
+      expect(vi.getTimerCount()).toBe(2);
+
+      await vi.advanceTimersByTimeAsync(1_000);
+
+      expect(calls.slice(3)).toEqual(["keyUp", "keyUp:done", "willDisappear", "willDisappear:done"]);
       expect(logger.warn).toHaveBeenCalledTimes(1);
       expect(vi.getTimerCount()).toBe(0);
     });
@@ -757,6 +757,211 @@ describe("ContextEventOrder", () => {
       enqueue("ctx", "willAppear");
       enqueue("ctx", "keyDown");
 
+      expect(vi.getTimerCount()).toBe(0);
+    });
+  });
+
+  describe("an input that waited keeps the spacing it arrived with", () => {
+    /** Tasks that record their kind and start time relative to the test's start; the exclusive one is gated. */
+    function createTimeline() {
+      const { order } = createRecorder();
+      const t0 = performance.now();
+      const ran: Array<[string, number]> = [];
+      const task = (label: string, gate?: Promise<void>) => (): Promise<void> | void => {
+        ran.push([label, performance.now() - t0]);
+
+        return gate;
+      };
+
+      return { order, ran, task };
+    }
+
+    it("a keyDown and keyUp released together by an appear keep the hold between them", async () => {
+      useFakeClock();
+      const { order, ran, task } = createTimeline();
+      const appear = gate();
+
+      order.enqueue("ctx", "willAppear", task("willAppear", appear.promise));
+      await vi.advanceTimersByTimeAsync(100);
+      order.enqueue("ctx", "keyDown", task("keyDown"));
+      await vi.advanceTimersByTimeAsync(800);
+      order.enqueue("ctx", "keyUp", task("keyUp"));
+      await vi.advanceTimersByTimeAsync(1100);
+
+      appear.open();
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(ran).toEqual([
+        ["willAppear", 0],
+        ["keyDown", 2000],
+      ]);
+      expect(vi.getTimerCount()).toBe(1);
+
+      await vi.advanceTimersByTimeAsync(799);
+
+      expect(ran).toHaveLength(2);
+
+      await vi.advanceTimersByTimeAsync(1);
+
+      expect(ran.at(-1)).toEqual(["keyUp", 2800]);
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it("a burst of rotates behind an appear keeps its spacing", async () => {
+      useFakeClock();
+      const { order, ran, task } = createTimeline();
+      const appear = gate();
+
+      order.enqueue("ctx", "willAppear", task("willAppear", appear.promise));
+      await vi.advanceTimersByTimeAsync(100);
+      order.enqueue("ctx", "dialRotate", task("rotate-1"));
+      await vi.advanceTimersByTimeAsync(50);
+      order.enqueue("ctx", "dialRotate", task("rotate-2"));
+      await vi.advanceTimersByTimeAsync(50);
+      order.enqueue("ctx", "dialRotate", task("rotate-3"));
+      await vi.advanceTimersByTimeAsync(800);
+
+      appear.open();
+      await vi.advanceTimersByTimeAsync(100);
+
+      expect(ran).toEqual([
+        ["willAppear", 0],
+        ["rotate-1", 1000],
+        ["rotate-2", 1050],
+        ["rotate-3", 1100],
+      ]);
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it("an input with nothing ahead still runs synchronously inside enqueue, and after a delayed chain too", async () => {
+      useFakeClock();
+      const { order, ran, task } = createTimeline();
+      const appear = gate();
+
+      order.enqueue("ctx", "willAppear", task("willAppear", appear.promise));
+      await vi.advanceTimersByTimeAsync(100);
+      order.enqueue("ctx", "keyDown", task("keyDown"));
+      await vi.advanceTimersByTimeAsync(800);
+      order.enqueue("ctx", "keyUp", task("keyUp"));
+      await vi.advanceTimersByTimeAsync(1100);
+      appear.open();
+      await vi.advanceTimersByTimeAsync(800);
+
+      expect(ran.at(-1)).toEqual(["keyUp", 2800]);
+
+      // The press after the delayed chain is not shifted: it runs inside the enqueue call.
+      await vi.advanceTimersByTimeAsync(2200);
+      order.enqueue("ctx", "keyDown", task("keyDown-2"));
+
+      expect(ran.at(-1)).toEqual(["keyDown-2", 5000]);
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it("a disappear arriving after the keyUp waits for the delayed keyUp", async () => {
+      useFakeClock();
+      const { order, ran, task } = createTimeline();
+      const appear = gate();
+
+      order.enqueue("ctx", "willAppear", task("willAppear", appear.promise));
+      await vi.advanceTimersByTimeAsync(100);
+      order.enqueue("ctx", "keyDown", task("keyDown"));
+      await vi.advanceTimersByTimeAsync(800);
+      order.enqueue("ctx", "keyUp", task("keyUp"));
+      await vi.advanceTimersByTimeAsync(600);
+      order.enqueue("ctx", "willDisappear", task("willDisappear"));
+      await vi.advanceTimersByTimeAsync(500);
+
+      appear.open();
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(ran.map(([label]) => label)).toEqual(["willAppear", "keyDown"]);
+
+      await vi.advanceTimersByTimeAsync(800);
+
+      expect(ran.slice(2)).toEqual([
+        ["keyUp", 2800],
+        ["willDisappear", 2800],
+      ]);
+      expect(order.size).toBe(0);
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it("a release keeps its spacing from its press even when only the press was late", async () => {
+      useFakeClock();
+      const { order, ran, task } = createTimeline();
+      const appear = gate();
+
+      order.enqueue("ctx", "willAppear", task("willAppear", appear.promise));
+      await vi.advanceTimersByTimeAsync(100);
+      order.enqueue("ctx", "keyDown", task("keyDown"));
+      await vi.advanceTimersByTimeAsync(400);
+      appear.open();
+      await vi.advanceTimersByTimeAsync(400);
+
+      expect(ran.at(-1)).toEqual(["keyDown", 500]);
+
+      // Nothing ahead of the keyUp, yet the hold was 800 ms and stays 800 ms.
+      order.enqueue("ctx", "keyUp", task("keyUp"));
+
+      expect(ran).toHaveLength(2);
+      expect(vi.getTimerCount()).toBe(1);
+
+      await vi.advanceTimersByTimeAsync(400);
+
+      expect(ran.at(-1)).toEqual(["keyUp", 1300]);
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it("an input arriving while the previous one is still delayed keeps its spacing from it", async () => {
+      useFakeClock();
+      const { order, ran, task } = createTimeline();
+      const appear = gate();
+
+      order.enqueue("ctx", "willAppear", task("willAppear", appear.promise));
+      await vi.advanceTimersByTimeAsync(100);
+      order.enqueue("ctx", "dialRotate", task("rotate-1"));
+      await vi.advanceTimersByTimeAsync(400);
+      order.enqueue("ctx", "dialRotate", task("rotate-2"));
+      await vi.advanceTimersByTimeAsync(500);
+      appear.open();
+      await vi.advanceTimersByTimeAsync(0);
+
+      // rotate-1 at 1000, rotate-2 due at 1400; a third arrives at 1200 while rotate-2 sleeps.
+      await vi.advanceTimersByTimeAsync(200);
+      order.enqueue("ctx", "dialRotate", task("rotate-3"));
+      await vi.advanceTimersByTimeAsync(1000);
+
+      expect(ran.slice(1)).toEqual([
+        ["rotate-1", 1000],
+        ["rotate-2", 1400],
+        ["rotate-3", 2100],
+      ]);
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it("a delayed input holds an exclusive event behind it without being abandoned, and the limit runs from its real start", async () => {
+      useFakeClock();
+      const { order, ran, task } = createTimeline();
+      const appear = gate();
+      const press = gate();
+
+      order.enqueue("ctx", "willAppear", task("willAppear", appear.promise));
+      await vi.advanceTimersByTimeAsync(100);
+      order.enqueue("ctx", "keyDown", task("keyDown"));
+      await vi.advanceTimersByTimeAsync(800);
+      order.enqueue("ctx", "keyUp", task("keyUp", press.promise));
+      await vi.advanceTimersByTimeAsync(100);
+      order.enqueue("ctx", "willDisappear", task("willDisappear"));
+      await vi.advanceTimersByTimeAsync(1000);
+      appear.open();
+      // keyUp starts at 2800 and hangs; the disappear abandons it 10 s after that start, not after 2000.
+      await vi.advanceTimersByTimeAsync(800 + CONTEXT_EVENT_WAIT_LIMIT_MS - 1);
+
+      expect(ran.map(([label]) => label)).toEqual(["willAppear", "keyDown", "keyUp"]);
+
+      await vi.advanceTimersByTimeAsync(1);
+
+      expect(ran.at(-1)).toEqual(["willDisappear", 2800 + CONTEXT_EVENT_WAIT_LIMIT_MS]);
       expect(vi.getTimerCount()).toBe(0);
     });
   });

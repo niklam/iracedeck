@@ -18,6 +18,16 @@
  * - **Input kinds** — `keyDown`, `keyUp`, `dialDown`, `dialUp`, `dialRotate`,
  *   `touchTap` — wait for earlier exclusive events only, never for earlier
  *   input, so two presses still run concurrently.
+ * - **An input that waited keeps the spacing it arrived with.** Two inputs
+ *   released together by one exclusive event would otherwise run back to
+ *   back, and a hold measured between them (`withPressSounds`, the dial
+ *   release classifier, dial acceleration's tick intervals) would read as
+ *   0 ms. An input does not start sooner after the previous input of its
+ *   context started than it arrived after that one arrived; it sleeps the
+ *   remainder, pending all the while, so an exclusive event behind it waits
+ *   for it. A release keeps its spacing from its press even when only the
+ *   press was late; any other input with nothing ahead starts at arrival,
+ *   which is where a context's delay ends.
  * - A task with nothing ahead runs **synchronously inside the enqueue call**,
  *   so an event that overlaps nothing reaches the handler at exactly the moment
  *   it does today.
@@ -100,19 +110,31 @@ export function isExclusiveContextEventKind(kind: ContextEventKind): boolean {
 interface Entry {
   readonly kind: ContextEventKind;
   readonly exclusive: boolean;
+  /** `performance.now()` at the enqueue. */
+  readonly arrivedAt: number;
+  /** For an input: the input of the context that arrived before it, whose spacing it may have to keep. */
+  readonly previousInput: Entry | undefined;
   /** Resolves when the task settles (either way) or is abandoned; never rejects. */
   readonly done: Promise<void>;
   readonly release: () => void;
-  /** `performance.now()` when the task started running; `undefined` while it waits. */
+  /** When the task is scheduled to start; set once nothing is ahead of it. */
+  startAt: number | undefined;
+  /** `performance.now()` when the task started running; `undefined` while it waits or is delayed. */
   startedAt: number | undefined;
   settled: boolean;
   abandoned: boolean;
 }
 
-/** One context's chain: its liveness and the tasks still worth waiting for. */
+/** One context's chain: its liveness, the tasks still worth waiting for, and the last input for spacing. */
 interface ContextRecord {
   live: boolean;
   readonly pending: Entry[];
+  lastInput: Entry | undefined;
+}
+
+/** Whether `kind` is the release of a press that `previous` began: the pair whose spacing is a hold. */
+function isReleaseOf(kind: ContextEventKind, previous: ContextEventKind): boolean {
+  return (kind === "keyUp" && previous === "keyDown") || (kind === "dialUp" && previous === "dialDown");
 }
 
 const noop = (): void => undefined;
@@ -184,10 +206,11 @@ function handled<T>(promise: Promise<T>): Promise<T> {
  * handler's promise.
  *
  * Memory: a record lives while its context is live or a task of it is pending,
- * and is pruned when neither holds. A record whose last task hangs is pruned
- * only when that task settles, abandoned or not, since the task is what is
- * pending. `everAppeared` grows with distinct context ids, which a host reuses
- * across page switches.
+ * and is pruned when neither holds. A task is pending until it settles or is
+ * abandoned, whichever comes first, so a record whose last task hangs is pruned
+ * when a waiter abandons that task, or when it settles if nothing ever waited.
+ * `everAppeared` grows with distinct context ids, which a host reuses across
+ * page switches.
  */
 export class ContextEventOrder {
   private readonly records = new Map<string, ContextRecord>();
@@ -234,9 +257,22 @@ export class ContextEventOrder {
     const done = new Promise<void>((resolve) => {
       release = resolve;
     });
-    const entry: Entry = { kind, exclusive, done, release, startedAt: undefined, settled: false, abandoned: false };
+    const entry: Entry = {
+      kind,
+      exclusive,
+      arrivedAt: performance.now(),
+      previousInput: exclusive ? undefined : record.lastInput,
+      done,
+      release,
+      startAt: undefined,
+      startedAt: undefined,
+      settled: false,
+      abandoned: false,
+    };
 
     record.pending.push(entry);
+
+    if (!exclusive) record.lastInput = entry;
 
     const settle = (): void => {
       entry.settled = true;
@@ -274,11 +310,53 @@ export class ContextEventOrder {
       return result;
     };
 
-    if (ahead.length === 0) return run();
+    // Nothing is ahead any more: run now, or — for an input that must keep the
+    // spacing it arrived with — after the remainder of that spacing.
+    const start = (): Promise<void> => {
+      const now = performance.now();
+      const startAt = this.spacedStart(entry, ahead.length > 0, now);
+
+      entry.startAt = startAt;
+
+      // A remainder under a millisecond is run now: no timer is finer, and two
+      // inputs of one synchronous tick must not take a macrotask hop apart.
+      if (startAt - now < 1) return run();
+
+      return handled(
+        new Promise<void>((resolve) => {
+          setTimeout(() => resolve(run()), startAt - now);
+        }),
+      );
+    };
+
+    if (ahead.length === 0) return start();
 
     // The chained promise is a new one: it adopts the task's rejection, and a
     // caller that discards it must not make that an unhandled rejection.
-    return handled(this.waitBehind(context, entry, ahead).then(run));
+    return handled(this.waitBehind(context, entry, ahead).then(start));
+  }
+
+  /**
+   * When an input may start, `now` or later: not sooner after the previous
+   * input of its context starts than it arrived after that input arrived
+   * (`startAt >= previous.startAt + (arrivedAt - previous.arrivedAt)`), so two
+   * inputs released together by one exclusive event keep the interval the user
+   * put between them. The rule applies to an input that waited, to one whose
+   * previous input has not started yet (it is delayed by this rule itself) and
+   * to a release following its press (`keyUp` after `keyDown`, `dialUp` after
+   * `dialDown`), whose spacing is the hold even when the press alone was late.
+   * Any other input with nothing ahead starts at arrival: that is where a
+   * context's delay ends, so a slow appear costs the presses that overlapped
+   * it and not every press after it.
+   */
+  private spacedStart(entry: Entry, waited: boolean, now: number): number {
+    const previous = entry.previousInput;
+
+    if (previous?.startAt === undefined) return now;
+
+    const keepsSpacing = waited || previous.startedAt === undefined || isReleaseOf(entry.kind, previous.kind);
+
+    return keepsSpacing ? Math.max(now, previous.startAt + (entry.arrivedAt - previous.arrivedAt)) : now;
   }
 
   /**
@@ -311,7 +389,7 @@ export class ContextEventOrder {
         return existing;
       }
 
-      const record: ContextRecord = { live: true, pending: [] };
+      const record: ContextRecord = { live: true, pending: [], lastInput: undefined };
 
       this.records.set(context, record);
 
