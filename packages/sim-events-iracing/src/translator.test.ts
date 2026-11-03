@@ -5839,9 +5839,10 @@ describe("sim-events-iracing translator", () => {
     // replay or the garage (the translator treats both alike), or a fresh
     // connect — leaves no edge to see, and the phase never reaches one to go:
     // no last-lap position call, and in variant B a "Two to green" spoken with
-    // one to go already showing. Whether `caution.oneLapToGreen` is published
-    // late on recovery is an open product decision, so these assert only the
-    // phase and the checkpoint.
+    // one to go already showing. The recovery reports it late: the seed leaves
+    // the flag out of its baseline, so the first live tick back publishes
+    // `caution.oneLapToGreen` through the same branch as a watched rise — true
+    // for as long as the flag is up — and the checkpoint follows at 35%.
     describe("missed one-to-go (issue #1395)", () => {
       /** A caution tick with the player's own lap distance, which the last-lap checkpoint reads. */
       function at(flags: number, lapDistPct: number, replay?: boolean): TelemetryData {
@@ -5880,21 +5881,51 @@ describe("sim-events-iracing translator", () => {
         elapseReplayGrace();
 
         controller.__tick(at(ONE_TO_GO, 0.1)); // the seed tick back
+        expect(seen).not.toContain("caution.oneLapToGreen"); // the seed itself stays silent
         controller.__tick(at(ONE_TO_GO, 0.2)); // the following live tick
         const phaseAfterReturn = getCautionPhase();
 
         controller.__tick(at(ONE_TO_GO, 0.3));
         controller.__tick(at(ONE_TO_GO, 0.4)); // up through 35% of the player's lap
 
-        expect({ phaseAfterReturn, checkpoints: checkpoints.count }).toEqual({
-          phaseAfterReturn: "one-to-go",
-          checkpoints: 1,
-        });
+        expect({
+          phaseAfterReturn,
+          checkpoints: checkpoints.count,
+          oneToGo: seen.filter((e) => e === "caution.oneLapToGreen").length,
+          fieldCaught: seen.filter((e) => e === "caution.fieldCaught").length,
+        }).toEqual({ phaseAfterReturn: "one-to-go", checkpoints: 1, oneToGo: 1, fieldCaught: 1 });
+      });
+
+      it("a glance during the one-to-go lap neither repeats the call nor loses the checkpoint", () => {
+        const controller = createMockController();
+        controller.__setSessionInfo(ovalRace());
+        const seen = recordStream();
+        const checkpoints = countCheckpoints();
+        initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
+
+        controller.__tick(at(RACING, 0.9));
+        controller.__tick(at(WAVING, 0.9));
+        controller.__tick(at(STATIC, 0.9));
+        controller.__tick(at(ONE_TO_GO, 0.95)); // watched live
+        expect(getCautionPhase()).toBe("one-to-go");
+
+        controller.__tick(at(ONE_TO_GO, 0.1, true));
+        elapseReplayGrace();
+        controller.__tick(at(ONE_TO_GO, 0.1)); // the seed tick back
+        controller.__tick(at(ONE_TO_GO, 0.2));
+        controller.__tick(at(ONE_TO_GO, 0.4)); // up through 35% of the player's lap
+
+        expect({
+          phase: getCautionPhase(),
+          checkpoints: checkpoints.count,
+          oneToGo: seen.filter((e) => e === "caution.oneLapToGreen").length,
+        }).toEqual({ phase: "one-to-go", checkpoints: 1, oneToGo: 1 });
       });
 
       it("variant B: a caution left waving and found at one to go is never 'caught' when the pickup is published", () => {
         const controller = createMockController();
         controller.__setSessionInfo(ovalRace());
+        const seen = recordStream();
         const checkpoints = countCheckpoints();
         // What the field-caught contract's `where` reads: the phase at the
         // moment the event is published.
@@ -5921,16 +5952,26 @@ describe("sim-events-iracing translator", () => {
         controller.__tick(at(ONE_TO_GO, 0.3));
         controller.__tick(at(ONE_TO_GO, 0.4)); // up through 35% of the player's lap
 
-        expect({ phaseAtFieldCaught, phaseAfterPickupTick, checkpoints: checkpoints.count }).toEqual({
-          phaseAtFieldCaught: phaseAtFieldCaught.map(() => "one-to-go"),
+        // The pickup and one to go land on one tick, as on a road course: the
+        // pickup IS published, but with the phase already at one to go, so the
+        // field-caught callout's `where` keeps "Two to green" silent.
+        expect({
+          phaseAtFieldCaught,
+          phaseAfterPickupTick,
+          checkpoints: checkpoints.count,
+          oneToGo: seen.filter((e) => e === "caution.oneLapToGreen").length,
+        }).toEqual({
+          phaseAtFieldCaught: ["one-to-go"],
           phaseAfterPickupTick: "one-to-go",
           checkpoints: 1,
+          oneToGo: 1,
         });
       });
 
       it("fresh connect: a first-ever tick already at one to go reaches one-to-go and its checkpoint", () => {
         const controller = createMockController();
         controller.__setSessionInfo(ovalRace());
+        const seen = recordStream();
         const checkpoints = countCheckpoints();
         initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
@@ -5941,9 +5982,12 @@ describe("sim-events-iracing translator", () => {
         controller.__tick(at(ONE_TO_GO, 0.3));
         controller.__tick(at(ONE_TO_GO, 0.4)); // up through 35% of the player's lap
 
-        expect({ phaseAfterConnect, checkpoints: checkpoints.count }).toEqual({
+        // Entered caught silently (a pickup it never watched), then the late
+        // one to go — never "Two to green".
+        expect({ phaseAfterConnect, checkpoints: checkpoints.count, seen }).toEqual({
           phaseAfterConnect: "one-to-go",
           checkpoints: 1,
+          seen: ["caution.oneLapToGreen"],
         });
       });
 

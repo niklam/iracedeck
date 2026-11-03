@@ -1011,6 +1011,18 @@ function diffPaceCar(
  * a legitimate `StartGo` rising edge and lose the race-start line for good.
  * Expiring here emits nothing and can therefore re-report nothing; it only
  * declines to carry a caution the flags say is over.
+ *
+ * And the seed keeps ONE flag out of its baseline: `OneLapToGreen` (a phase
+ * preserved at `"one-to-go"` is not told again, since the rise only counts
+ * while caught). Unlike the pickup, which
+ * reports a moment that has passed, one to go reports a state that stays true
+ * while its flag is up, and its rise is the only way into `"one-to-go"` and
+ * the only thing that arms the last lap's checkpoint. So a flag that rose
+ * while the driver was away is reported late on the first tick back, through
+ * the same branch as a watched rise (issue #1395). Variant B of that issue (a
+ * phase preserved as `"waving"`, back to a static caution with one to go
+ * already up) then lands the pickup and one to go on one tick, the road-course
+ * shape the field-caught callout already stays silent for.
  */
 function diffCautionEpisode(
   state: TranslatorState,
@@ -1036,7 +1048,15 @@ function diffCautionEpisode(
     typeof telemetry.LapDistPct === "number" && telemetry.LapDistPct >= 0 ? telemetry.LapDistPct : null;
 
   if (seeding) {
-    state.cautionLastFlags = flags;
+    // The one-to-go bit is the one flag the seed does NOT take as already
+    // seen. The rise is the only way into "one-to-go", so a flag that went up
+    // while the driver was away (a replay glance, the garage, a reconnect on
+    // the last caution lap) would otherwise never be reported, and the last
+    // lap's checkpoint never armed. Left out of the baseline, the next tick
+    // reads it as the rise it would have been live (issue #1395). A phase
+    // preserved at "one-to-go" is not told twice: the rise counts only while
+    // caught.
+    state.cautionLastFlags = flags & ~Flags.OneLapToGreen;
     state.cautionLeaderLapCompleted = leaderLap;
     state.cautionLastLapDistPct = lapDistPct;
 
