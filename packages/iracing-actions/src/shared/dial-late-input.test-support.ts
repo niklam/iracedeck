@@ -52,9 +52,13 @@ interface LateInputDrivers<C extends { id: string }> {
  * The release that completes a `down`: with it the live case proves a down
  * arrived (its release fires the press gesture), and the late case proves a
  * release after a dropped down fires nothing. Omitted only with the reason,
- * for a surface whose press gestures fire nothing.
+ * for a surface whose press gestures fire nothing; such a surface says instead
+ * how to tell that a down landed (its context recorded the press), so the live
+ * case still proves the down driver reaches it.
  */
-type UpDriver<C> = { up(ctx: C): Promise<void>; noUp?: never } | { up?: never; noUp: string };
+type UpDriver<C> =
+  | { up(ctx: C): Promise<void>; noUp?: never; downLanded?: never }
+  | { up?: never; noUp: string; downLanded(ctx: C): boolean };
 
 /**
  * A touch on `ctx` (`hold` for a long touch), with acting settings. Omitted
@@ -205,6 +209,7 @@ export function describeLateInput<C extends { id: string }>(suite: LateInputSuit
           await suite.down(ctx);
 
           expect(suite.contexts().has(ctx.id)).toBe(true);
+          expect(suite.downLanded?.(ctx), "the down driver never reached the surface").toBe(true);
         });
       }
 

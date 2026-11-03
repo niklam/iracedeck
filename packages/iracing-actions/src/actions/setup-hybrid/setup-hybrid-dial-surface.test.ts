@@ -184,6 +184,7 @@ describe("SetupHybrid dial surface", () => {
     rotate: (ctx) => action.onDialRotate(rotateEvent(ctx, lateInputSettings, 1) as never),
     down: (ctx) => action.onDialDown(basicEvent(ctx, lateInputSettings) as never),
     noUp: "the surface offers only the None gesture, so a release fires nothing",
+    downLanded: (ctx) => (action["dialSurface"]["contextsState"].get(ctx.id)?.pressStart ?? 0) !== 0,
     noTouchTap: "the surface offers only the None gesture, so a touch fires nothing",
     contexts: () => action["dialSurface"]["contextsState"],
     sent: (ctx) => ({

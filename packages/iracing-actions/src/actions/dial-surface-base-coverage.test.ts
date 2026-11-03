@@ -42,6 +42,25 @@ const NO_TOUCH_TAP: Readonly<Record<string, string>> = {
   "audio-controls/audio-dial-surface.ts": "Audio Controls has no touch gesture",
 };
 
+type LateInputOptOut = "noUp" | "noTouchTap";
+
+/**
+ * The surfaces whose test file may skip a late-input driver, each with the
+ * drivers it skips and why. Any other test file that writes `noUp:` or
+ * `noTouchTap:` fails, so a surface with gestures cannot opt out unnoticed.
+ */
+const LATE_INPUT_OPT_OUTS: Readonly<Record<string, { skips: readonly LateInputOptOut[]; reason: string }>> = {
+  "audio-controls/audio-dial-surface.ts": { skips: ["noTouchTap"], reason: "it declares no touchTap" },
+  "setup-engine/setup-engine-dial-surface.ts": {
+    skips: ["noUp", "noTouchTap"],
+    reason: "its gesture slots offer only None, so neither a release nor a touch fires anything",
+  },
+  "setup-hybrid/setup-hybrid-dial-surface.ts": {
+    skips: ["noUp", "noTouchTap"],
+    reason: "its gesture slots offer only None, so neither a release nor a touch fires anything",
+  },
+};
+
 const INPUT_MEMBERS = ["rotate", "down", "touchTap"] as const;
 type InputMemberName = (typeof INPUT_MEMBERS)[number];
 
@@ -538,6 +557,15 @@ function lateInputProblems(testText: string): string[] {
   return problems;
 }
 
+/** A late-input driver the test file skips (`noUp:` / `noTouchTap:`) must be one its surface is allow-listed to skip. */
+function optOutProblems(testText: string, allowed: readonly LateInputOptOut[]): string[] {
+  const { code } = scanSource(testText);
+
+  return (["noUp", "noTouchTap"] as const)
+    .filter((key) => new RegExp(`\\b${key}\\s*:`).test(code) && !allowed.includes(key))
+    .map((key) => `skips a late-input driver with ${key}, but its surface has no LATE_INPUT_OPT_OUTS entry for it`);
+}
+
 // ---------------------------------------------------------------------------
 // The real tree
 // ---------------------------------------------------------------------------
@@ -595,7 +623,11 @@ describe("dial surface base coverage (#1589)", () => {
   it("names only surfaces that exist in its allow-lists", () => {
     const files = surfaces.map((s) => s.file);
 
-    for (const file of [...Object.keys(DIAL_SURFACE_BASE_ONLY), ...Object.keys(NO_TOUCH_TAP)]) {
+    for (const file of [
+      ...Object.keys(DIAL_SURFACE_BASE_ONLY),
+      ...Object.keys(NO_TOUCH_TAP),
+      ...Object.keys(LATE_INPUT_OPT_OUTS),
+    ]) {
       expect(files, `allow-list entry ${file} names no surface`).toContain(file);
     }
   });
@@ -618,13 +650,20 @@ describe("dial surface base coverage (#1589)", () => {
         return;
       }
 
-      expect(members, `${surface.file} declares ${name} ${members.length} times`).toHaveLength(1);
+      expect(
+        members,
+        `${surface.file} declares ${name} ${members.length} times as a method at member indentation (an arrow-function property is not found)`,
+      ).toHaveLength(1);
       expect(gateProblems(members[0], name)).toEqual([]);
     });
 
     it("runs the shared late-input suite in its test file", () => {
       expect(surface.testText, `${surface.testFile} is missing`).toBeDefined();
       expect(lateInputProblems(surface.testText ?? "")).toEqual([]);
+    });
+
+    it("skips only the late-input drivers its surface is allow-listed to skip", () => {
+      expect(optOutProblems(surface.testText ?? "", LATE_INPUT_OPT_OUTS[surface.file]?.skips ?? [])).toEqual([]);
     });
   });
 });
@@ -954,5 +993,14 @@ describe("dial surface base coverage: positive control", () => {
     ).not.toEqual([]);
     // Called twice.
     expect(lateInputProblems(LATE_INPUT_TEST_OK.replace(/^\}\);$/m, "  describeLateInput({});\n});"))).not.toEqual([]);
+  });
+
+  it("flags a skipped late-input driver its surface is not allow-listed to skip", () => {
+    const skipping = LATE_INPUT_TEST_OK.replace(/ {2}describeLateInput\(\{/, '  describeLateInput({ noTouchTap: "x",');
+
+    expect(optOutProblems(LATE_INPUT_TEST_OK, [])).toEqual([]);
+    expect(optOutProblems(skipping, [])).not.toEqual([]);
+    expect(optOutProblems(skipping, ["noTouchTap"])).toEqual([]);
+    expect(optOutProblems(skipping.replace("noTouchTap", "noUp"), ["noTouchTap"])).not.toEqual([]);
   });
 });
