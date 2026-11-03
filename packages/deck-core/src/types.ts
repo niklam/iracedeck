@@ -243,16 +243,18 @@ export interface IDeckPlatformAdapter extends SettingsHost {
    * input, so two presses still run concurrently. A context is live from the
    * arrival of its `willAppear` to the arrival of its `willDisappear`; input,
    * a settings change or a second disappear for a context that is not live
-   * never reaches the handler, nor does a `willAppear` for a context that is
-   * already live, and a re-appear after a disappear runs after the teardown
-   * it follows. Input for a context the host never appeared is dropped, or —
-   * on a host that sends input with no prior appear (Ulanzi) — runs after an
-   * appear the adapter enqueues for it, and the host's own late `willAppear`
-   * for that context is then delivered as `onDidReceiveSettings` carrying the
-   * frame's settings, ordered as an exclusive event; a context that has
-   * disappeared is never revived. An event that overlaps nothing reaches the handler
-   * synchronously at arrival. A wait is bounded by `CONTEXT_EVENT_WAIT_LIMIT_MS`
-   * per task ahead.
+   * never reaches the handler, and a re-appear after a disappear runs after
+   * the teardown it follows. Two rules hold on every host: input, a settings
+   * change or a step for a context the host never appeared is dropped (no
+   * adapter synthesises an appear for it: no host hands over the context's
+   * settings with the input, and an appear with empty settings would let the
+   * action's first-appearance write wipe the key's stored settings); and a
+   * host `willAppear` for a context that is already live never calls
+   * `onWillAppear` — the adapter delivers it as `onDidReceiveSettings` carrying
+   * that frame's settings, ordered as an exclusive event. A context that has
+   * disappeared is never revived. An event that overlaps nothing reaches the
+   * handler synchronously at arrival. A wait is bounded by
+   * `CONTEXT_EVENT_WAIT_LIMIT_MS` per task ahead.
    *
    * The guarantee is part of implementing this interface, and it is checked:
    * every adapter's tests run `CONTEXT_EVENT_ORDER_SCENARIOS` from

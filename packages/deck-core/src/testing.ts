@@ -16,7 +16,6 @@ export {
   type ContextEventOrderAdapter,
   type ContextEventOrderHarness,
   type ContextEventOrderHostEvent,
-  type ContextEventOrderNeverAppearedPolicy,
   type ContextEventOrderPayload,
   type ContextEventOrderScenario,
 } from "./context-event-order-scenarios.js";

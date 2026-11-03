@@ -18,8 +18,8 @@ import {
  * The suite's lasting positive controls (#1597, decision 6): every scenario is
  * run against the reference adapters and its outcome on each is pinned, so a
  * scenario edited into a no-op — one that passes on the unordered reference
- * too — turns this red, and the ordered references prove the suite is
- * passable at all, under both never-appeared policies.
+ * too — turns this red, and the ordered reference proves the suite is
+ * passable at all.
  */
 
 type Outcome = "pass" | "fail";
@@ -114,7 +114,7 @@ const EXPECTED: Record<string, ExpectedOutcomes> = {
     inTaskLiveness: pass,
     lateAppearDrop: pass,
   },
-  // Every drop-policy reference delivers the second appear; the appear-first one without the rule drops the settings.
+  // The chain references deliver the second appear as an appear; the ordered one without the rule drops the settings.
   "a willAppear for a context that is already live": {
     unordered: fail,
     serial: fail,
@@ -166,12 +166,8 @@ describe("the ordering contract suite against the reference adapters", () => {
   });
 
   describe.each(CONTEXT_EVENT_ORDER_SCENARIOS)("$name", (scenario) => {
-    it("passes on the reference built on ContextEventOrder (drop policy)", async () => {
-      await expect(scenario.run(new OrderedReferenceAdapter("drop").harness())).resolves.toBeUndefined();
-    });
-
-    it("passes on the reference built on ContextEventOrder (appear-first policy)", async () => {
-      await expect(scenario.run(new OrderedReferenceAdapter("appear-first").harness())).resolves.toBeUndefined();
+    it("passes on the reference built on ContextEventOrder", async () => {
+      await expect(scenario.run(new OrderedReferenceAdapter().harness())).resolves.toBeUndefined();
     });
 
     it.each(Object.keys(FAILING_REFERENCES) as FailingReference[])(
@@ -200,18 +196,11 @@ describe("the ordering contract suite against the reference adapters", () => {
     await expect(dropped?.run(deaf)).rejects.toThrow(/delivery check before a drop check/);
   });
 
-  it("the never-appeared scenario fails on an adapter that declares the other policy", async () => {
-    const before = CONTEXT_EVENT_ORDER_SCENARIOS.find((s) => s.name.startsWith("input before any appear"));
-    const dropsButSaysAppearFirst = {
-      ...new OrderedReferenceAdapter("drop").harness(),
-      neverAppeared: "appear-first" as const,
-    };
-    const appearsButSaysDrop = {
-      ...new OrderedReferenceAdapter("appear-first").harness(),
-      neverAppeared: "drop" as const,
-    };
+  it("the late-appear scenario names the missing settings call when the appear is dropped", async () => {
+    const late = CONTEXT_EVENT_ORDER_SCENARIOS.find((s) => s.name.startsWith("a willAppear for a context"));
 
-    await expect(before?.run(dropsButSaysAppearFirst)).rejects.toThrow(/appear-first/);
-    await expect(before?.run(appearsButSaysDrop)).rejects.toThrow(/never reaches the handler/);
+    await expect(late?.run(new LateAppearDropReferenceAdapter().harness())).rejects.toThrow(
+      /ordered as exclusive: expected handler calls \[willAppear, willAppear:done, keyDown, keyDown:done, didReceiveSettings, didReceiveSettings:done\] but saw \[willAppear, willAppear:done, keyDown, keyDown:done\]/,
+    );
   });
 });

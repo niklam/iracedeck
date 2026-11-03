@@ -25,10 +25,10 @@
  *   its `willAppear` to the arrival of its `willDisappear`. Input, a settings
  *   change, a step or a second `willDisappear` for a context that is not live
  *   is dropped at arrival and logged, and so is a `willAppear` for a context
- *   that is already live (an adapter that appeared the context itself checks
- *   `isLive` at arrival and turns the host's late appear into what it needs).
- *   A re-appear after a disappear stays on the same chain, so it runs after the
- *   teardown it follows.
+ *   that is already live — a safety net: every adapter checks `isLive` at
+ *   arrival first and delivers that appear as a `didReceiveSettings` with the
+ *   frame's settings. A re-appear after a disappear stays on the same chain, so
+ *   it runs after the teardown it follows.
  * - A task that **throws** settles like any other: the events behind it run,
  *   and the promise returned to the caller rejects with the handler's error.
  * - A wait is bounded by {@link CONTEXT_EVENT_WAIT_LIMIT_MS} per task ahead: a
@@ -154,12 +154,20 @@ function handled<T>(promise: Promise<T>): Promise<T> {
  * void this.order.enqueue(context, "step:promoteToEncoder", () => promote(context));
  * await this.order.enqueue(context, "dialRotate", () => handler.onDialRotate?.(wrapRotate(data)));
  *
- * // A host that sends input for a context it never appeared (Ulanzi): appear
- * // it first, so the input runs after the appear on a live context.
- * if (!this.order.isLive(context) && !this.order.hasAppeared(context)) {
- *   void this.order.enqueue(context, "willAppear", () => handler.onWillAppear?.(wrapEvent(data)));
+ * // A host willAppear for a context that is already live is a settings change,
+ * // not a second appear: every adapter converts it at arrival, so the order's
+ * // own drop of a live willAppear is a safety net no adapter should reach.
+ * if (this.order.isLive(context)) {
+ *   return this.order.enqueue(context, "didReceiveSettings", () => handler.onDidReceiveSettings?.(wrapEvent(data)));
  * }
+ * await this.order.enqueue(context, "willAppear", () => handler.onWillAppear?.(wrapEvent(data)));
  * ```
+ *
+ * Input, a settings change or a step for a context the host never appeared is
+ * dropped on every host, with the once-per-context warn line: an adapter never
+ * synthesises an appear for it, since no host hands it the context's settings
+ * with the input, and an appear with empty settings would let the action's
+ * first-appearance write wipe the key's stored settings.
  *
  * `enqueue` returns the task's own promise, so a host's dispatch logging sees
  * the handler's error as before; it returns `undefined` when the event was
@@ -203,18 +211,6 @@ export class ContextEventOrder {
    */
   isLive(context: string): boolean {
     return this.records.get(context)?.live ?? false;
-  }
-
-  /**
-   * Whether a `willAppear` for `context` has ever arrived, live or not. With
-   * {@link isLive} it tells the two not-live states apart: a context that has
-   * disappeared (`hasAppeared` true) keeps dropping its late events — reviving
-   * it would bring back the #1329 leak — while a host that sends input for a
-   * context it never appeared (`hasAppeared` false; UlanziStudio does) lets
-   * the adapter enqueue an appear for it ahead of the input instead.
-   */
-  hasAppeared(context: string): boolean {
-    return this.everAppeared.has(context);
   }
 
   /**

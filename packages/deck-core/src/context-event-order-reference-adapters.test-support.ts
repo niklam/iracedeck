@@ -18,13 +18,12 @@
  *   only after the disappear handler has run, the shape the adapters had —
  *   and read at arrival. The disappear-arrival scenario must fail on it.
  * - {@link OrderedReferenceAdapter} routes every event through
- *   `ContextEventOrder`, as the real adapters do, under either never-appeared
- *   policy — under appear-first the host's late appear for a live context is a
- *   settings change: the pattern an adapter's `registerAction` follows, and
- *   the proof that every scenario is passable.
- * - {@link LateAppearDropReferenceAdapter} is the appear-first one without
- *   that rule, dropping the host's late appear. The late-appear scenario must
- *   fail on it.
+ *   `ContextEventOrder`, as the real adapters do, and delivers a host appear
+ *   for a live context as a settings change: the pattern an adapter's
+ *   `registerAction` follows, and the proof that every scenario is passable.
+ * - {@link LateAppearDropReferenceAdapter} is the ordered one without that
+ *   rule, letting the order drop the host's late appear. The late-appear
+ *   scenario must fail on it.
  *
  * They implement {@link ContextEventOrderAdapter}, the slice of the platform
  * adapter the suite drives, not `IDeckPlatformAdapter` itself: declaring that
@@ -36,11 +35,9 @@ import type { ILogger } from "@iracedeck/logger";
 
 import {
   CONTEXT_EVENT_ORDER_HOST_EVENTS,
-  CONTEXT_EVENT_ORDER_INPUT_EVENTS,
   type ContextEventOrderAdapter,
   type ContextEventOrderHarness,
   type ContextEventOrderHostEvent,
-  type ContextEventOrderNeverAppearedPolicy,
   type ContextEventOrderPayload,
 } from "./context-event-order-scenarios.js";
 import { ContextEventOrder } from "./context-event-order.js";
@@ -116,8 +113,6 @@ function dispatch(
   }
 }
 
-const INPUTS: ReadonlySet<ContextEventOrderHostEvent> = new Set(CONTEXT_EVENT_ORDER_INPUT_EVENTS);
-
 /** The registration, controller and broadcast bookkeeping the references share. */
 abstract class ReferenceAdapter implements ContextEventOrderAdapter {
   protected readonly handlers = new Map<string, IDeckActionHandler>();
@@ -142,12 +137,11 @@ abstract class ReferenceAdapter implements ContextEventOrderAdapter {
     this.dialRotateCallbacks.push(callback);
   }
 
-  /** The harness the suite runs over this adapter: every host event, the policy, events to every registered handler. */
-  harness(neverAppeared: ContextEventOrderNeverAppearedPolicy = "drop"): ContextEventOrderHarness {
+  /** The harness the suite runs over this adapter: every host event, events to every registered handler. */
+  harness(): ContextEventOrderHarness {
     return {
       adapter: this,
       hostEvents: CONTEXT_EVENT_ORDER_HOST_EVENTS,
-      neverAppeared,
       emit: (event, context, payload = {}) => {
         if (event === "willAppear" && payload.controller !== undefined) {
           this.controllers.set(context, payload.controller);
@@ -292,17 +286,13 @@ export class InTaskLivenessReferenceAdapter extends SerialReferenceAdapter {
   }
 }
 
-/** The pattern a real adapter follows: broadcasts behind `isLive`, every handler call through `enqueue`. */
+/**
+ * The pattern a real adapter follows: broadcasts behind `isLive`, every handler
+ * call through `enqueue`, and a host `willAppear` for a live context delivered
+ * as a settings change.
+ */
 export class OrderedReferenceAdapter extends ReferenceAdapter {
-  private readonly order = new ContextEventOrder(silentLogger);
-
-  constructor(private readonly neverAppeared: ContextEventOrderNeverAppearedPolicy = "drop") {
-    super();
-  }
-
-  override harness(): ContextEventOrderHarness {
-    return super.harness(this.neverAppeared);
-  }
+  protected readonly order = new ContextEventOrder(silentLogger);
 
   protected emit(
     handler: IDeckActionHandler,
@@ -310,23 +300,12 @@ export class OrderedReferenceAdapter extends ReferenceAdapter {
     context: string,
     payload: ContextEventOrderPayload,
   ): void {
-    // Input for a context the host never appeared: appear it first (Ulanzi).
-    // A context that has disappeared is not revived.
-    if (
-      this.neverAppeared === "appear-first" &&
-      INPUTS.has(event) &&
-      !this.order.isLive(context) &&
-      !this.order.hasAppeared(context)
-    ) {
-      void this.order.enqueue(context, "willAppear", () => this.call(handler, "willAppear", context, {}));
-    }
-
     if (this.order.isLive(context)) this.broadcast(event);
 
-    // On an appear-first host the host's own appear arrives after the adapter
-    // appeared the context on input: a settings change, not a second appear
-    // (the order would drop it, frame settings included).
-    if (this.neverAppeared === "appear-first" && event === "willAppear" && this.order.isLive(context)) {
+    // A host appear for a context that is already live is a settings change,
+    // not a second appear: converted at arrival, so the order's own drop of a
+    // live willAppear (frame settings included) is a safety net never reached.
+    if (event === "willAppear" && this.order.isLive(context)) {
       void this.order.enqueue(context, "didReceiveSettings", () =>
         this.call(handler, "didReceiveSettings", context, payload),
       );
@@ -341,27 +320,17 @@ export class OrderedReferenceAdapter extends ReferenceAdapter {
 }
 
 /**
- * The ordered appear-first reference without the late-appear rule: the host's
- * own `willAppear` for a context appeared on input is dropped (the order's
- * default), frame settings included. The late-appear scenario must fail on it.
+ * The ordered reference without the live-appear rule: a host `willAppear` for
+ * a context that is already live reaches the order unconverted and is dropped
+ * there, frame settings included. The late-appear scenario must fail on it.
  */
-export class LateAppearDropReferenceAdapter extends ReferenceAdapter {
-  private readonly order = new ContextEventOrder(silentLogger);
-
-  override harness(): ContextEventOrderHarness {
-    return super.harness("appear-first");
-  }
-
-  protected emit(
+export class LateAppearDropReferenceAdapter extends OrderedReferenceAdapter {
+  protected override emit(
     handler: IDeckActionHandler,
     event: ContextEventOrderHostEvent,
     context: string,
     payload: ContextEventOrderPayload,
   ): void {
-    if (INPUTS.has(event) && !this.order.isLive(context) && !this.order.hasAppeared(context)) {
-      void this.order.enqueue(context, "willAppear", () => this.call(handler, "willAppear", context, {}));
-    }
-
     if (this.order.isLive(context)) this.broadcast(event);
 
     void this.order.enqueue(context, event, () => this.call(handler, event, context, payload));

@@ -392,27 +392,6 @@ describe("ContextEventOrder", () => {
       ]);
     });
 
-    it("hasAppeared tells a disappeared context from one that never appeared", async () => {
-      const { order, enqueue } = createRecorder();
-
-      expect(order.hasAppeared("ctx")).toBe(false);
-      expect(order.isLive("ctx")).toBe(false);
-
-      enqueue("ctx", "willAppear");
-
-      expect(order.hasAppeared("ctx")).toBe(true);
-      expect(order.isLive("ctx")).toBe(true);
-
-      enqueue("ctx", "willDisappear");
-      await flush();
-
-      // Pruned, yet still known to have appeared: its late events keep being dropped.
-      expect(order.size).toBe(0);
-      expect(order.hasAppeared("ctx")).toBe(true);
-      expect(order.isLive("ctx")).toBe(false);
-      expect(order.hasAppeared("other")).toBe(false);
-    });
-
     it("drops a willAppear for a context that is already live, at debug, keeping it live", async () => {
       const { order, logger, calls, enqueue } = createRecorder();
       const appear = gate();
