@@ -5839,10 +5839,11 @@ describe("sim-events-iracing translator", () => {
     // replay or the garage (the translator treats both alike), or a fresh
     // connect — leaves no edge to see, and the phase never reaches one to go:
     // no last-lap position call, and in variant B a "Two to green" spoken with
-    // one to go already showing. The recovery reports it late: the seed leaves
-    // the flag out of its baseline, so the first live tick back publishes
-    // `caution.oneLapToGreen` through the same branch as a watched rise — true
-    // for as long as the flag is up — and the checkpoint follows at 35%.
+    // one to go already showing. The recovery reports it late: one to go is
+    // read as a level ("caught" with the flag up), so the first live tick back
+    // publishes `caution.oneLapToGreen` through the same branch as a watched
+    // rise — true for as long as the flag is up — and the checkpoint follows
+    // at 35%.
     describe("missed one-to-go (issue #1395)", () => {
       /** A caution tick with the player's own lap distance, which the last-lap checkpoint reads. */
       function at(flags: number, lapDistPct: number, replay?: boolean): TelemetryData {
@@ -5965,6 +5966,32 @@ describe("sim-events-iracing translator", () => {
           phaseAfterPickupTick: "one-to-go",
           checkpoints: 1,
           oneToGo: 1,
+        });
+      });
+
+      it("a one to go that rises while the waving bit is still set is reported at the pickup, not lost", () => {
+        // Watched live, no replay: the rise lands on a tick the phase is still
+        // "waving", so an edge test consumed it there and never saw it again.
+        const controller = createMockController();
+        controller.__setSessionInfo(ovalRace());
+        const seen = recordStream();
+        const checkpoints = countCheckpoints();
+        initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
+
+        controller.__tick(at(RACING, 0.1));
+        controller.__tick(at(WAVING, 0.1));
+        controller.__tick(at(WAVING | Flags.OneLapToGreen, 0.1)); // still waving: no pickup yet
+        expect(getCautionPhase()).toBe("waving");
+        controller.__tick(at(ONE_TO_GO, 0.2)); // the pickup tick
+        const phaseAfterPickupTick = getCautionPhase();
+
+        controller.__tick(at(ONE_TO_GO, 0.3));
+        controller.__tick(at(ONE_TO_GO, 0.4)); // up through 35% of the player's lap
+
+        expect({ phaseAfterPickupTick, checkpoints: checkpoints.count, seen }).toEqual({
+          phaseAfterPickupTick: "one-to-go",
+          checkpoints: 1,
+          seen: ["caution.fieldCaught", "caution.oneLapToGreen"],
         });
       });
 

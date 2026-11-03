@@ -197,9 +197,8 @@ describe("diffStartLights — a restart is not a race start (issue #1127)", () =
 
     diffStartLights(state, before, STANDING_SESSION, () => {}); // seed the gantry baseline
     diffCaution(state, before, null, null, () => {}); // seed the caution baselines
-    // …and take the phase through "caught" to "one-to-go": the seed leaves
-    // the flag out of its baseline, so the one already up is reported late
-    // (issue #1395).
+    // …and take the phase through "caught" to "one-to-go": one to go is read
+    // as a level, so the flag already up is reported late (issue #1395).
     diffCaution(state, before, null, null, () => {});
     expect(state.cautionPhase).toBe("one-to-go");
 

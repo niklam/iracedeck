@@ -53,7 +53,9 @@
  *   have seen to report, so a plugin started mid-caution — and a discipline
  *   whose cautions may not wave first — is never told the field has just been
  *   caught.
- * - **One to go** — `OneLapToGreen` rises while caught. It is not a terminal
+ * - **One to go** — `OneLapToGreen` is up while caught: read as a level, so a
+ *   rise the diff did not watch is reported late rather than lost (issue
+ *   #1395, see {@link diffCautionEpisode}). It is not a terminal
  *   phase: the flag WITHDRAWN while the caution is still out — a waved-off
  *   restart, or a caution extended after one to go was shown — returns the
  *   episode to caught, so the next leader crossing without the flag is an
@@ -999,8 +1001,9 @@ function diffPaceCar(
  * The caution's own phases: the pickup, the laps behind the pace car, one to
  * go, and the restart. Seeds the flag and crossing baselines silently — and the
  * phase is deliberately NOT re-seeded from nothing, so the value preserved
- * across a replay wipe survives and a fresh connect reports only the
- * transitions it actually watched.
+ * across a replay wipe survives and a fresh connect reports none of the
+ * MOMENTS it did not watch (the pickup above all). One to go is the exception,
+ * because it is a state rather than a moment — see the last paragraph.
  *
  * The seed does apply ONE rule to the phase, though: it expires a phase the
  * flags contradict. A glance at the replay is preserved-phase's whole reason —
@@ -1012,17 +1015,22 @@ function diffPaceCar(
  * Expiring here emits nothing and can therefore re-report nothing; it only
  * declines to carry a caution the flags say is over.
  *
- * And the seed keeps ONE flag out of its baseline: `OneLapToGreen` (a phase
- * preserved at `"one-to-go"` is not told again, since the rise only counts
- * while caught). Unlike the pickup, which
- * reports a moment that has passed, one to go reports a state that stays true
- * while its flag is up, and its rise is the only way into `"one-to-go"` and
- * the only thing that arms the last lap's checkpoint. So a flag that rose
- * while the driver was away is reported late on the first tick back, through
- * the same branch as a watched rise (issue #1395). Variant B of that issue (a
- * phase preserved as `"waving"`, back to a static caution with one to go
- * already up) then lands the pickup and one to go on one tick, the road-course
- * shape the field-caught callout already stays silent for.
+ * One to go is LEVEL-armed, not edge-armed (issue #1395): `"caught"` with
+ * `OneLapToGreen` up IS one to go, whatever the flag did on the ticks this
+ * diff did not watch. Unlike the pickup, which reports a moment that has
+ * passed, one to go reports a state that stays true while its flag is up, and
+ * it is the only way into `"one-to-go"` and the only thing that arms the last
+ * lap's checkpoint. An edge test lost it for the rest of the caution whenever
+ * the rise fell outside a watched tick pair: across a replay glance or the
+ * garage (the seed copies the flag into the baseline), on a plugin start or
+ * reconnect during the one-to-green lap, or on a tick the phase was still
+ * `"waving"`. Read as a level, such a flag is reported late on the first tick
+ * the phase is `"caught"`, through the same branch as a watched rise. It still
+ * fires once per one to go: the branch moves the phase on, and only the flag
+ * withdrawn returns it to `"caught"`. A phase preserved at `"one-to-go"` is not
+ * told again. A phase preserved as `"waving"` and found at one to go lands the
+ * pickup and one to go on one tick, the road-course shape the field-caught
+ * callout already stays silent for.
  */
 function diffCautionEpisode(
   state: TranslatorState,
@@ -1048,15 +1056,7 @@ function diffCautionEpisode(
     typeof telemetry.LapDistPct === "number" && telemetry.LapDistPct >= 0 ? telemetry.LapDistPct : null;
 
   if (seeding) {
-    // The one-to-go bit is the one flag the seed does NOT take as already
-    // seen. The rise is the only way into "one-to-go", so a flag that went up
-    // while the driver was away (a replay glance, the garage, a reconnect on
-    // the last caution lap) would otherwise never be reported, and the last
-    // lap's checkpoint never armed. Left out of the baseline, the next tick
-    // reads it as the rise it would have been live (issue #1395). A phase
-    // preserved at "one-to-go" is not told twice: the rise counts only while
-    // caught.
-    state.cautionLastFlags = flags & ~Flags.OneLapToGreen;
+    state.cautionLastFlags = flags;
     state.cautionLeaderLapCompleted = leaderLap;
     state.cautionLastLapDistPct = lapDistPct;
 
@@ -1156,7 +1156,8 @@ function diffCautionEpisode(
   // on the tick that armed it (see {@link diffLastLapCheckpoint}).
   let armedThisTick = false;
 
-  if (oneToGo && !hasFlag(wasFlags, Flags.OneLapToGreen) && state.cautionPhase === "caught") {
+  // A level, not an edge — see the function comment (issue #1395).
+  if (oneToGo && state.cautionPhase === "caught") {
     emit({ event: "caution.oneLapToGreen", data: {} });
     state.cautionPhase = "one-to-go";
     // Arm the last lap's checkpoint. Armed HERE rather than on the phase
