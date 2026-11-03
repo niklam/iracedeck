@@ -240,14 +240,16 @@ export const REPLAY_LIVE_EDGE_MAX_FRAMES = 120;
 export interface ReplayState {
   /**
    * Whether a replay is on screen: the tick read `IsReplayPlaying === true`,
-   * the last tick that did is less than {@link REPLAY_EXIT_GRACE_MS} ago, or
+   * the last tick that did is less than {@link REPLAY_EXIT_GRACE_MS} ago, a
+   * seek of the plugin's own holds that sighting ({@link seekHeldUntil}), or
    * the session is a saved replay. Entering a replay counts at once.
    */
   readonly inReplay: boolean;
   /**
    * The frame on screen: `ReplayFrameNum` on a replay tick, the last frame a
-   * replay tick showed through the grace, and `ReplayFrameNumEnd` live, as in
-   * {@link resolveReplayFrame}. Null when the field is missing or not finite.
+   * replay tick showed through the grace and the seek hold, and
+   * `ReplayFrameNumEnd` live, as in {@link resolveReplayFrame}. Null when the
+   * field is missing or not finite.
    */
   readonly frame: number | null;
   /** Whether the loaded session is a saved replay (`WeekendInfo.SimMode === "replay"`), never live. */
@@ -273,6 +275,18 @@ export interface ReplayState {
    * unrecorded, and the next seek's blip without a grace.
    */
   readonly liveExitAt: number | null;
+  /**
+   * Until when (ms, this state's clock) a seek of the plugin's own holds the
+   * replay sighting, or null (#1429). While iRacing carries a seek out the
+   * tick reads as the car (`IsReplayPlaying` false, `ReplayFrameNum` 0) until
+   * the cursor lands, which outlasts the grace on a long jump or a sustained
+   * dial spin; the replay engine, which knows its own seek is under way,
+   * sets this through {@link replaySeekHeld}. It only extends a sighting the
+   * ticks made: with no sighting it is inert, so it never makes the car read
+   * as a replay. Its end, by lapse or by release, is where the grace restarts
+   * from. {@link replayLeftForLive} clears it.
+   */
+  readonly seekHeldUntil: number | null;
 }
 
 /** The state before any tick: live, no frame, nothing sighted. */
@@ -286,6 +300,7 @@ export function initialReplayState(): ReplayState {
     replaySeenAt: null,
     replaySeenFrame: null,
     liveExitAt: null,
+    seekHeldUntil: null,
   };
 }
 
@@ -294,9 +309,24 @@ function finiteFrame(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
-/** Whether the last replay sighting is still inside the grace at `nowMs`. */
+/**
+ * Whether the last replay sighting still holds at `nowMs`: inside the grace,
+ * which runs from the later of the sighting and the seek hold's end (#1429),
+ * so a standing hold keeps it and its end restarts the grace. No sighting, no
+ * hold: the seek hold never makes a replay out of nothing.
+ */
 function withinReplayGrace(state: ReplayState, nowMs: number): boolean {
-  return state.replaySeenAt !== null && nowMs - state.replaySeenAt < REPLAY_EXIT_GRACE_MS;
+  if (state.replaySeenAt === null) return false;
+
+  const graceFrom =
+    state.seekHeldUntil === null ? state.replaySeenAt : Math.max(state.replaySeenAt, state.seekHeldUntil);
+
+  return nowMs - graceFrom < REPLAY_EXIT_GRACE_MS;
+}
+
+/** Whether a seek hold stands at `nowMs`: set and not yet ended. */
+function seekHoldStands(state: ReplayState, nowMs: number): boolean {
+  return state.seekHeldUntil !== null && nowMs < state.seekHeldUntil;
 }
 
 /**
@@ -363,24 +393,61 @@ export function nextReplayState(
 
   if (!tickReplayPlaying && !withinReplayGrace(stepped, nowMs) && !replayOnlySession) {
     // Left for the car: the grace has run out (or a live exit dropped it), so
-    // the sighting goes, and any pending live exit has now happened.
-    return replayStateAt({ ...stepped, replaySeenAt: null, replaySeenFrame: null, liveExitAt: null }, nowMs);
+    // the sighting goes, and any pending live exit has now happened. A seek
+    // hold that stands survives only where there was no sighting to hold (a
+    // jump sent from the car, whose first replay tick it then extends); one
+    // that has ended goes with the sighting (#1429).
+    return replayStateAt(
+      {
+        ...stepped,
+        replaySeenAt: null,
+        replaySeenFrame: null,
+        liveExitAt: null,
+        seekHeldUntil: seekHoldStands(stepped, nowMs) ? stepped.seekHeldUntil : null,
+      },
+      nowMs,
+    );
   }
 
   return replayStateAt(stepped, nowMs);
 }
 
 /**
+ * The state after the replay engine says how long a seek of its own still
+ * holds the replay (#1429): `untilMs` is the time on this state's clock it
+ * holds until, or null when none is under way. A later time sets or moves the
+ * hold, a shorter one shortens it. Null, or a time not after `nowMs`, while a
+ * hold stands releases it at `nowMs`, so the exit grace restarts from the
+ * release rather than from the last replay tick: the engine settles a landing
+ * on a reading of its own, fresher than the last tick stepped here, and the
+ * hand-over from the hold to the ticks is then seamless. With no hold
+ * standing it changes nothing.
+ *
+ * The hold only extends a sighting the ticks made (see
+ * {@link withinReplayGrace}); it never makes the car read as a replay.
+ * `nowMs` is the call's time, injectable for tests.
+ */
+export function replaySeekHeld(state: ReplayState, untilMs: number | null, nowMs: number): ReplayState {
+  let { seekHeldUntil } = state;
+
+  if (untilMs !== null && untilMs > nowMs) seekHeldUntil = untilMs;
+  else if (seekHoldStands(state, nowMs)) seekHeldUntil = nowMs;
+
+  return replayStateAt(seekHeldUntil === state.seekHeldUntil ? state : { ...state, seekHeldUntil }, nowMs);
+}
+
+/**
  * The state after the plugin's own `goToEnd` was sent (#1230, #1324). In a
  * session that can go live the command leaves the replay for the car at once,
- * so the sighting is dropped and no grace follows: a false read straight
- * after it is the car, not the post-seek blip, and holding the old replay
- * frame would file a marker at that frame instead of the live edge. Until the
- * first tick that has left the replay, replay ticks are not recorded: they
- * are the ticks before iRacing applies the command. In a saved replay the same
- * command only seeks to the end of the file and the replay stays open, so the
- * state is returned as is. Call it only for a command that was actually sent;
- * `nowMs` is the send time, injectable for tests.
+ * so the sighting is dropped and no grace follows, and a seek hold goes with
+ * it (#1429): a false read straight after it is the car, not the post-seek
+ * blip, and holding the old replay frame would file a marker at that frame
+ * instead of the live edge. Until the first tick that has left the replay,
+ * replay ticks are not recorded: they are the ticks before iRacing applies
+ * the command. In a saved replay the same command only seeks to the end of
+ * the file and the replay stays open, so the state is returned as is. Call it
+ * only for a command that was actually sent; `nowMs` is the send time,
+ * injectable for tests.
  */
 export function replayLeftForLive(state: ReplayState, nowMs: number): ReplayState {
   if (state.replayOnlySession) return state;
@@ -392,6 +459,7 @@ export function replayLeftForLive(state: ReplayState, nowMs: number): ReplayStat
     replaySeenAt: null,
     replaySeenFrame: null,
     liveExitAt: nowMs,
+    seekHeldUntil: null,
   };
 }
 

@@ -14,6 +14,7 @@ import {
   nextReplayState,
   REPLAY_EXIT_GRACE_MS,
   replayLeftForLive,
+  replaySeekHeld,
   type ReplayState,
   replayStateAt,
   resolveReplayFrame,
@@ -497,6 +498,148 @@ describe("telemetry-features", () => {
         const state = run([[replayTick(500), 0]], SAVED_REPLAY);
 
         expect(replayLeftForLive(state, 0)).toBe(state);
+      });
+
+      it("clears a seek hold, so the jump to live is not held as a seek (#1429)", () => {
+        const held = replaySeekHeld(run([[replayTick(500), 0]]), 60_000, 10);
+        const left = replayLeftForLive(held, 20);
+        const next = nextReplayState(left, liveTick(900), LIVE_SESSION, 50);
+
+        expect(left.seekHeldUntil).toBeNull();
+        expect(next).toMatchObject({ inReplay: false, frame: 900 });
+      });
+    });
+
+    // A seek of the plugin's own reads as the car until the cursor lands: a
+    // long jump outlasts the grace, and a sustained spin leaves the flag true
+    // only in windows of a tick or two (#1429).
+    describe("replaySeekHeld (#1429)", () => {
+      /** The ticks of a seek under way, every 50 ms from `fromMs` to `toMs` inclusive, over `state`. */
+      function seeking(state: ReplayState, fromMs: number, toMs: number, sessionInfo: unknown = LIVE_SESSION) {
+        let next = state;
+
+        for (let t = fromMs; t <= toMs; t += 50) next = nextReplayState(next, liveTick(900), sessionInfo, t);
+
+        return next;
+      }
+
+      it("holds the replay and its last frame past the grace while the hold stands", () => {
+        const held = replaySeekHeld(run([[replayTick(500), 0]]), 5_000, 10);
+        const midSeek = seeking(held, 50, 4_950);
+
+        expect(midSeek).toMatchObject({ inReplay: true, frame: 500, replaySeenAt: 0 });
+        expect(replayStateAt(midSeek, 4_999)).toMatchObject({ inReplay: true, frame: 500 });
+      });
+
+      it("restarts the grace from the hold's end when it lapses", () => {
+        const midSeek = seeking(replaySeekHeld(run([[replayTick(500), 0]]), 5_000, 10), 50, 5_950);
+        const left = nextReplayState(midSeek, liveTick(901), LIVE_SESSION, 6_000);
+
+        expect(midSeek).toMatchObject({ inReplay: true, frame: 500 });
+        expect(replayStateAt(midSeek, 5_999)).toMatchObject({ inReplay: true, frame: 500 });
+        expect(left).toMatchObject({ inReplay: false, frame: 901, replaySeenAt: null, seekHeldUntil: null });
+      });
+
+      it("never makes the car read as a replay: with no sighting it is inert", () => {
+        const fromCar = replaySeekHeld(run([[liveTick(900), 0]]), 5_000, 10);
+        const later = seeking(fromCar, 50, 2_000);
+
+        expect(fromCar).toMatchObject({ inReplay: false, frame: 900 });
+        expect(later).toMatchObject({ inReplay: false, frame: 900 });
+      });
+
+      it("extends the first replay tick of a jump sent from the car, which the hold outlived the live ticks for", () => {
+        const fromCar = seeking(replaySeekHeld(run([[liveTick(900), 0]]), 5_000, 10), 50, 300);
+        const entered = nextReplayState(fromCar, replayTick(500), LIVE_SESSION, 350);
+        const midSeek = seeking(entered, 400, 3_000);
+
+        expect(fromCar.seekHeldUntil).toBe(5_000);
+        expect(midSeek).toMatchObject({ inReplay: true, frame: 500 });
+      });
+
+      it("records the replay ticks a spin shows in its windows, so the frame held is the latest", () => {
+        const held = replaySeekHeld(run([[replayTick(500), 0]]), 60_000, 10);
+        const spun = nextReplayState(seeking(held, 50, 2_000), replayTick(4_500), LIVE_SESSION, 2_050);
+        const after = seeking(spun, 2_100, 4_000);
+
+        expect(after).toMatchObject({ inReplay: true, frame: 4_500, replaySeenAt: 2_050 });
+      });
+
+      it.each([
+        ["null", null],
+        ["a time not after the call", 3_000],
+      ])("releases a standing hold for %s, and the grace restarts from the release", (_label, untilMs) => {
+        const midSeek = seeking(replaySeekHeld(run([[replayTick(500), 0]]), 60_000, 10), 50, 3_000);
+        const released = replaySeekHeld(midSeek, untilMs, 3_000);
+
+        expect(released.seekHeldUntil).toBe(3_000);
+        expect(replayStateAt(released, 3_999)).toMatchObject({ inReplay: true, frame: 500 });
+        expect(nextReplayState(released, liveTick(901), LIVE_SESSION, 4_000)).toMatchObject({
+          inReplay: false,
+          frame: 901,
+        });
+      });
+
+      it("hands over from the hold to the ticks: a landing read after the release is the replay at once", () => {
+        const midSeek = seeking(replaySeekHeld(run([[replayTick(500), 0]]), 60_000, 10), 50, 3_000);
+        const landed = nextReplayState(replaySeekHeld(midSeek, null, 3_010), replayTick(90_000), LIVE_SESSION, 3_050);
+
+        expect(landed).toMatchObject({ inReplay: true, frame: 90_000, replaySeenAt: 3_050 });
+      });
+
+      it("moves a standing hold to a later time, and shortens it to an earlier one still to come", () => {
+        const held = replaySeekHeld(
+          run([
+            [replayTick(500), 0],
+            [liveTick(900), 50],
+          ]),
+          3_000,
+          10,
+        );
+        const longer = replaySeekHeld(held, 8_000, 100);
+        const shorter = replaySeekHeld(longer, 2_000, 200);
+
+        expect(longer.seekHeldUntil).toBe(8_000);
+        expect(shorter.seekHeldUntil).toBe(2_000);
+        expect(replayStateAt(shorter, 2_999).inReplay).toBe(true);
+        expect(replayStateAt(shorter, 3_000).inReplay).toBe(false);
+      });
+
+      it("changes nothing on a release with no hold standing", () => {
+        const state = run([
+          [replayTick(500), 0],
+          [liveTick(900), 300],
+        ]);
+        const lapsed = replaySeekHeld(
+          run([
+            [replayTick(500), 0],
+            [liveTick(900), 50],
+          ]),
+          1_000,
+          10,
+        );
+
+        expect(replaySeekHeld(state, null, 400)).toBe(state);
+        expect(replaySeekHeld(lapsed, null, 1_500).seekHeldUntil).toBe(1_000);
+        expect(replayStateAt(replaySeekHeld(lapsed, null, 1_500), 2_000).inReplay).toBe(false);
+      });
+
+      it("leaves a saved replay in the replay throughout, holding its frame through the seek and the grace after", () => {
+        const midSeek = seeking(
+          replaySeekHeld(run([[replayTick(500), 0]], SAVED_REPLAY), 5_000, 10),
+          50,
+          4_950,
+          SAVED_REPLAY,
+        );
+        const past = nextReplayState(
+          midSeek,
+          telemetry({ IsReplayPlaying: false, ReplayFrameNum: 777, ReplayFrameNumEnd: 100 }),
+          SAVED_REPLAY,
+          6_000,
+        );
+
+        expect(midSeek).toMatchObject({ inReplay: true, frame: 500 });
+        expect(past).toMatchObject({ inReplay: true, frame: 777 });
       });
     });
   });

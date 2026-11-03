@@ -199,6 +199,7 @@ export {
   REPLAY_EXIT_GRACE_MS,
   REPLAY_LIVE_EDGE_MAX_FRAMES,
   replayLeftForLive,
+  replaySeekHeld,
   type ReplayState,
   replayStateAt,
   resolveReplayFrame,

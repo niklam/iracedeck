@@ -509,6 +509,21 @@ export class SDKController {
   }
 
   /**
+   * Tells the replay state how long a seek of the plugin's own still holds
+   * the replay (#1429): `remainingMs` from `nowMs`, or null once none is
+   * under way. While iRacing carries out a seek the ticks read as the car
+   * until the cursor lands, which outlasts the exit grace on a long jump or
+   * a sustained dial spin; the replay engine's command gate, which knows its
+   * seek is out, says so here at the end of each of its changes. The hold
+   * only extends a replay the ticks have sighted, never makes one, and its
+   * release restarts the grace. A remaining duration, not a time, so the
+   * engine's clock need not be this one. `nowMs` is injectable for tests.
+   */
+  noteReplaySeekHold(remainingMs: number | null, nowMs: number = Date.now()): void {
+    this.replayState.holdForSeek(remainingMs, nowMs);
+  }
+
+  /**
    * Get the current template context (lazy-built, cached per tick).
    * Returns null when not connected or no telemetry available.
    */

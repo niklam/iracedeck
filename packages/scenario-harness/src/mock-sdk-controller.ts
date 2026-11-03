@@ -252,6 +252,11 @@ export class MockSDKController {
     this.replayState.noteLeftForLive(nowMs);
   }
 
+  /** The real controller's seek hold (#1429), by the same tracker rule; nothing in the harness pushes one today. */
+  noteReplaySeekHold(remainingMs: number | null, nowMs: number = Date.now()): void {
+    this.replayState.holdForSeek(remainingMs, nowMs);
+  }
+
   // ── Harness-only API ───────────────────────────────────────────────────────
 
   /** Toggle the simulated connection. Disconnect notifies subscribers with `(null, false)`. */
