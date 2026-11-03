@@ -1,6 +1,7 @@
 import { applyBindingWarning } from "@iracedeck/deck-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { describeLateInput } from "../../shared/dial-late-input.test-support.js";
 import { AudioControls } from "./audio-controls.js";
 import { buildAudioTriggerDescription, renderAudioKnobSvg, renderAudioStripSvg } from "./audio-dial-surface.js";
 
@@ -899,7 +900,7 @@ describe("AudioDialSurface (through AudioControls)", () => {
   });
 
   describe("a late input event never re-creates a disappeared context (#1329)", () => {
-    function contexts(): Map<string, unknown> {
+    function contexts(): ReadonlyMap<string, unknown> {
       return action["dialSurface"]["contextsState"];
     }
 
@@ -954,6 +955,35 @@ describe("AudioDialSurface (through AudioControls)", () => {
       expect(mockStepRaceEngineerVolumeBy).toHaveBeenCalledWith(3);
       await flush();
     });
+  });
+
+  const lateInputSettings = { dial: { category: "voice-chat", pressAction: "push-to-talk" } };
+
+  describeLateInput({
+    appear: async (id) => {
+      const ctx = dialAction(id);
+      await action.onWillAppear(ev(ctx, lateInputSettings));
+
+      return ctx;
+    },
+    disappear: (ctx) => action.onWillDisappear(ev(ctx, lateInputSettings)),
+    rotate: (ctx) => action.onDialRotate(ev(ctx, lateInputSettings, { ticks: 1 })),
+    down: (ctx) => action.onDialDown(ev(ctx, lateInputSettings)),
+    up: (ctx) => action.onDialUp(ev(ctx, lateInputSettings)),
+    noTouchTap: "Audio Controls has no touch gesture: its dial surface declares no touchTap",
+    contexts: () => action["dialSurface"]["contextsState"],
+    sent: (ctx) => ({
+      tapBinding: mockTapBinding,
+      holdBinding: mockHoldBinding,
+      releaseBinding: mockReleaseBinding,
+      stepRaceEngineerVolumeBy: mockStepRaceEngineerVolumeBy,
+      stepRadarVolumeBy: mockStepRadarVolumeBy,
+      setDialCanvas: ctx.setDialCanvas,
+      setFeedback: ctx.setFeedback,
+      setImage: ctx.setImage,
+      setTriggerDescription: ctx.setTriggerDescription,
+      setSettings: ctx.setSettings,
+    }),
   });
 
   describe("global-settings echo", () => {
