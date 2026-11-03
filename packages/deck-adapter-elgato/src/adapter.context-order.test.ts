@@ -225,10 +225,6 @@ function createHarness(): ContextEventOrderHarness {
   return {
     adapter: new ElgatoPlatformAdapter(fake.sd),
     hostEvents: CONTEXT_EVENT_ORDER_HOST_EVENTS,
-    // The SDK delivers input only for a context in its action store, so a
-    // context the host never appeared gets nothing; the adapter drops it at
-    // arrival as well, which is what this harness measures.
-    neverAppeared: "drop",
     emit: fake.emit,
   };
 }
@@ -317,6 +313,25 @@ describe("ElgatoPlatformAdapter per-context ordering, Elgato specifics (#1597)",
     expect(handler.onDidReceiveSettings).not.toHaveBeenCalled();
     expect(handler.onWillDisappear).not.toHaveBeenCalled();
     expect(fake.log.warn).not.toHaveBeenCalled();
+  });
+
+  it("delivers a second willAppear for a live context as one settings change carrying its settings", async () => {
+    const handler = { onWillAppear: vi.fn(), onDidReceiveSettings: vi.fn() };
+    const { fake } = setup(handler);
+
+    fake.emit("willAppear", "ctx-1", { settings: { mode: "first" } });
+    fake.emit("willAppear", "ctx-1", { settings: { mode: "second" } });
+    await Promise.resolve();
+
+    expect(handler.onWillAppear).toHaveBeenCalledOnce();
+    expect(handler.onWillAppear.mock.calls[0][0].payload.settings).toEqual({ mode: "first" });
+    expect(handler.onDidReceiveSettings).toHaveBeenCalledOnce();
+    expect(handler.onDidReceiveSettings.mock.calls[0][0].action.id).toBe("ctx-1");
+    expect(handler.onDidReceiveSettings.mock.calls[0][0].payload.settings).toEqual({ mode: "second" });
+    expect(fake.scopes).toContain("Lifecycle");
+    expect(fake.log.debug).toHaveBeenCalledWith(
+      "Context ctx-1: willAppear arrived while live, delivered as a settings change",
+    );
   });
 
   it("logs a drop for a context that never appeared through its own ContextEventOrder scope, warning once", () => {

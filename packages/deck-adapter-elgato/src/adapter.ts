@@ -534,13 +534,19 @@ export class ElgatoPlatformAdapter implements IDeckPlatformAdapter {
    * inside the SDK callback, as before. An event the order drops (a context
    * that is not live) resolves to nothing.
    *
+   * A `willAppear` for a context that is already live at arrival is not a
+   * second appear: it is enqueued as an exclusive `didReceiveSettings`
+   * carrying that frame's settings, and logged at debug on the `Lifecycle`
+   * scope. The SDK is not expected to send one, but the rule is every
+   * adapter's (#1597).
+   *
    * One `BridgeAction` per UUID: a second registration of the same UUID
    * replaces the handler — the one registered when an event arrives is the one
    * its task calls — rather than adding a second SDK action, as the other
    * adapters' one-handler-per-UUID maps do. The SDK has no way to unregister an
    * action, and two bridges for one UUID would both enqueue every event of a
    * context on the one shared order, where the second `willAppear` of a live
-   * context is dropped.
+   * context would reach the handler as a settings change.
    *
    * The adapter keeps no per-context state of its own: the SDK's action store
    * carries the controller and the settings, and the event wraps the SDK's
@@ -557,6 +563,8 @@ export class ElgatoPlatformAdapter implements IDeckPlatformAdapter {
     const handlers = this.handlers;
     /** The handler registered for `uuid` when an event arrives. */
     const current = (): IDeckActionHandler<T> => handlers.get(uuid) as IDeckActionHandler<T>;
+    /** Created on use, like the other occasional scopes here: the case it logs should never occur. */
+    const lifecycleLog = (): ILogger => this.createLogger("Lifecycle");
 
     // Create a SingletonAction subclass that delegates to the handler.
     // Set manifestId directly instead of using the @action decorator to avoid
@@ -578,6 +586,14 @@ export class ElgatoPlatformAdapter implements IDeckPlatformAdapter {
         const payload = ev.payload;
 
         const handler = current();
+
+        if (order.isLive(action.id)) {
+          lifecycleLog().debug(`Context ${action.id}: willAppear arrived while live, delivered as a settings change`);
+
+          return order.enqueue(action.id, "didReceiveSettings", () =>
+            handler.onDidReceiveSettings?.(wrapEvent({ action, payload }) as IDeckDidReceiveSettingsEvent<T>),
+          );
+        }
 
         return order.enqueue(action.id, "willAppear", () =>
           handler.onWillAppear?.(wrapEvent({ action, payload }) as IDeckWillAppearEvent<T>),
