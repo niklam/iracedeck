@@ -18,6 +18,17 @@ import {
 } from "./telemetry-features.js";
 import type { TelemetryData } from "./types.js";
 
+/**
+ * A seek hold as the replay engine tells it (#1429): for `remainingMs` more,
+ * and never past the last replay sighting plus `maxPastSightingMs`, the
+ * longest any seek on the tape can take. A duration rather than a time, so
+ * the engine's clock and the tracker's need not be the same clock.
+ */
+export interface ReplaySeekHold {
+  readonly remainingMs: number;
+  readonly maxPastSightingMs: number;
+}
+
 export class ReplayStateTracker {
   private state: ReplayState = initialReplayState();
 
@@ -44,15 +55,17 @@ export class ReplayStateTracker {
 
   /**
    * Applies `replaySeekHeld` (#1429): a seek of the replay engine's own holds
-   * the replay sighting for `remainingMs` more from `nowMs`, or, for null or
-   * a duration that is not positive, none is under way any more. A remaining
-   * duration rather than a time, so the engine's clock and this one need not
-   * be the same clock.
+   * the replay sighting for `hold.remainingMs` more from `nowMs`, capped at
+   * the last sighting plus `hold.maxPastSightingMs`, or, for null or a
+   * duration that is not positive, none is under way any more.
    */
-  holdForSeek(remainingMs: number | null, nowMs: number = Date.now()): void {
-    const untilMs = remainingMs !== null && remainingMs > 0 ? nowMs + remainingMs : null;
+  holdForSeek(hold: ReplaySeekHold | null, nowMs: number = Date.now()): void {
+    const until =
+      hold !== null && hold.remainingMs > 0
+        ? { untilMs: nowMs + hold.remainingMs, maxPastSightingMs: hold.maxPastSightingMs }
+        : null;
 
-    this.state = replaySeekHeld(this.state, untilMs, nowMs);
+    this.state = replaySeekHeld(this.state, until, nowMs);
   }
 
   /** Back to live with nothing sighted — what a dropped connection means. */

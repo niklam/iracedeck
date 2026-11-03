@@ -12,13 +12,13 @@
  * in for stepping per poll. No telemetry steps nothing. Never imported by
  * production code.
  */
-import { type ReplayState, ReplayStateTracker, type TelemetryData } from "@iracedeck/iracing-sdk";
+import { type ReplaySeekHold, type ReplayState, ReplayStateTracker, type TelemetryData } from "@iracedeck/iracing-sdk";
 
 /** The controller members the replay surfaces and the engine read and tell the state through. */
 export interface SteppedReplayState {
   getReplayState(nowMs?: number): ReplayState;
   noteReplayLeftForLive(nowMs?: number): void;
-  noteReplaySeekHold(remainingMs: number | null, nowMs?: number): void;
+  noteReplaySeekHold(hold: ReplaySeekHold | null, nowMs?: number): void;
 }
 
 export function steppedReplayState(
@@ -38,8 +38,8 @@ export function steppedReplayState(
     noteReplayLeftForLive(nowMs: number = Date.now()): void {
       tracker.noteLeftForLive(nowMs);
     },
-    noteReplaySeekHold(remainingMs: number | null, nowMs: number = Date.now()): void {
-      tracker.holdForSeek(remainingMs, nowMs);
+    noteReplaySeekHold(hold: ReplaySeekHold | null, nowMs: number = Date.now()): void {
+      tracker.holdForSeek(hold, nowMs);
     },
   };
 }

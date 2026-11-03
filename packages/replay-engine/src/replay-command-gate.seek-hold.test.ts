@@ -5,7 +5,7 @@ import { pressReplayCommand, replaySearchMayRunMs } from "./replay-command-gate.
 import { fakeReplay, type FakeReplay, type FakeReplayOptions } from "./replay-command-gate.test-support.js";
 import { _configureReplayEngine, type ReplayEngineController } from "./replay-engine-env.js";
 import { resetEngine } from "./replay-engine-reset.test-support.js";
-import { pendingReplayTarget } from "./replay-position-state.js";
+import { pendingReplayTarget, REPLAY_TARGET_GIVE_UP_MS, replayTargetGiveUpMs } from "./replay-position-state.js";
 import { steppedReplayState } from "./replay-state.test-support.js";
 
 /**
@@ -24,20 +24,25 @@ const LIVE_SESSION = { WeekendInfo: { SimMode: "full" } };
 
 let sim: FakeReplay;
 let connected: boolean;
+/** The remaining time of every hold the gate told, null for a release. */
 let holds: (number | null)[];
+/** The cap past the last sighting told with each, null for a release. */
+let caps: (number | null)[];
 
 /** The gate over a fake replay, with every hold it tells recorded in {@link holds}. */
 function setUp(options: FakeReplayOptions = {}): FakeReplay {
   sim = fakeReplay(options);
   holds = [];
+  caps = [];
   _configureReplayEngine({
     settings: engineSettings,
     replay: () => sim.replay,
     readTelemetry: () => sim.telemetry(),
     inReplay: () => true,
     connected: () => connected,
-    seekHold: (remainingMs) => {
-      holds.push(remainingMs);
+    seekHold: (hold) => {
+      holds.push(hold?.remainingMs ?? null);
+      caps.push(hold?.maxPastSightingMs ?? null);
     },
     now: () => Date.now(),
   });
@@ -175,6 +180,56 @@ describe("replay command gate: the replay state's seek hold (#1429)", () => {
 
     expect(sim.calls).toEqual(["goToStart"]);
     expect(holds).toEqual([couldRunMs]);
+  });
+
+  describe("the cap past the last sighting: the longest seek the tape allows", () => {
+    it("is the jump wait across the whole tape, by the last replay reading", () => {
+      // Six hours of tape: frame 2 000 with 1 294 000 frames left.
+      setUp({ frame: 2_000 });
+
+      press({ kind: "jump", frame: 1_200_000 });
+
+      expect(caps).toEqual([replayTargetGiveUpMs(1_296_000)]);
+      expect(caps[0]).toBeGreaterThan(REPLAY_TARGET_GIVE_UP_MS);
+    });
+
+    it("is REPLAY_TARGET_GIVE_UP_MS on a short tape, and when no reading has said how long the tape is", () => {
+      setUp({ frame: 2_000, end: 6_000 });
+      press({ kind: "jump", frame: 4_000 });
+
+      expect(caps).toEqual([REPLAY_TARGET_GIVE_UP_MS]);
+
+      resetEngine({ settings: engineSettings });
+      const unsized = setUp({ frame: 2_000 });
+      const read = unsized.telemetry.bind(unsized);
+
+      vi.spyOn(unsized, "telemetry").mockImplementation(
+        () => ({ ...read(), ReplayFrameNumEnd: undefined }) as TelemetryData,
+      );
+      press({ kind: "jump", frame: 1_200_000 });
+
+      expect(caps).toEqual([REPLAY_TARGET_GIVE_UP_MS]);
+    });
+
+    it("is told again when it changes though the hold's time does not", async () => {
+      let left = 1_294_000;
+      const sized = setUp({ frame: 2_000 });
+      const read = sized.telemetry.bind(sized);
+
+      vi.spyOn(sized, "telemetry").mockImplementation(() => {
+        const t = read();
+
+        return (t.IsReplayPlaying === true ? { ...t, ReplayFrameNumEnd: left } : t) as TelemetryData;
+      });
+      press({ kind: "search", search: "nextLap" });
+      // The tape grew under a live session's replay: the next poll reads it longer, and the cap follows.
+      left += 600_000;
+      await wait(100);
+
+      expect(holds).toHaveLength(2);
+      expect(holds[1]).toBeLessThan(holds[0] ?? 0);
+      expect(caps).toEqual([replayTargetGiveUpMs(1_296_000), replayTargetGiveUpMs(1_896_000)]);
+    });
   });
 
   describe("over the SDK's own replay state", () => {

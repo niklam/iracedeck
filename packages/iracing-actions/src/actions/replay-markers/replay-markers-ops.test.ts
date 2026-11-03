@@ -279,7 +279,7 @@ describe("the replay state survives the post-seek blip (#1230, read from the con
   describe("a seek of the plugin's own holds the replay past the grace (#1429)", () => {
     it("a press 1.5 s into the seek, with the hold standing, is in the replay, at the frame held", () => {
       read(replayAt(4_000), 10_000);
-      replay.noteReplaySeekHold(20_000, 10_010);
+      replay.noteReplaySeekHold({ remainingMs: 20_000, maxPastSightingMs: 21_000 }, 10_010);
       read(notPlaying, 10_500);
 
       const context = read(notPlaying, 11_500);
@@ -290,14 +290,14 @@ describe("the replay state survives the post-seek blip (#1230, read from the con
 
     it("the hold never makes the car a replay", () => {
       read(notPlaying, 10_000);
-      replay.noteReplaySeekHold(20_000, 10_010);
+      replay.noteReplaySeekHold({ remainingMs: 20_000, maxPastSightingMs: 21_000 }, 10_010);
 
       expect(read(notPlaying, 11_500)).toMatchObject({ inReplay: false, frame: 90_000 });
     });
 
     it("released, the grace runs from the release: past it the press is from the car", () => {
       read(replayAt(4_000), 10_000);
-      replay.noteReplaySeekHold(20_000, 10_010);
+      replay.noteReplaySeekHold({ remainingMs: 20_000, maxPastSightingMs: 21_000 }, 10_010);
       read(notPlaying, 11_500);
       replay.noteReplaySeekHold(null, 12_000);
 
@@ -307,7 +307,7 @@ describe("the replay state survives the post-seek blip (#1230, read from the con
 
     it("a jump to live clears the hold: the next false read is the car at once", () => {
       read(replayAt(4_000), 10_000);
-      replay.noteReplaySeekHold(20_000, 10_010);
+      replay.noteReplaySeekHold({ remainingMs: 20_000, maxPastSightingMs: 21_000 }, 10_010);
       replay.noteReplayLeftForLive(10_020);
 
       expect(read(notPlaying, 10_050)).toMatchObject({ inReplay: false, frame: 90_000 });
@@ -324,7 +324,7 @@ describe("the replay state survives the post-seek blip (#1230, read from the con
         configureEngine({
           readTelemetry: () => telemetry,
           inReplay: () => replay.getReplayState().inReplay,
-          seekHold: (remainingMs) => replay.noteReplaySeekHold(remainingMs),
+          seekHold: (hold) => replay.noteReplaySeekHold(hold),
         });
         read(paused, Date.now());
 

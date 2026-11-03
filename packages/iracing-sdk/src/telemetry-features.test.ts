@@ -15,6 +15,7 @@ import {
   REPLAY_EXIT_GRACE_MS,
   replayLeftForLive,
   replaySeekHeld,
+  type ReplaySeekHoldUntil,
   type ReplayState,
   replayStateAt,
   resolveReplayFrame,
@@ -35,6 +36,11 @@ const liveTick = (end: number): TelemetryData =>
 
 const LIVE_SESSION = { WeekendInfo: { SimMode: "full" } };
 const SAVED_REPLAY = { WeekendInfo: { SimMode: "replay" } };
+
+/** A seek hold until `untilMs`, its cap past the sighting (`maxPastSightingMs`) a minute unless a case says otherwise (#1429). */
+function holding(untilMs: number, maxPastSightingMs = 60_000): ReplaySeekHoldUntil {
+  return { untilMs, maxPastSightingMs };
+}
 
 /** Steps `state` through `ticks`, each `[telemetry, nowMs]`, in a live session unless `sessionInfo` says otherwise. */
 function run(ticks: readonly [TelemetryData, number][], sessionInfo: unknown = LIVE_SESSION): ReplayState {
@@ -501,7 +507,7 @@ describe("telemetry-features", () => {
       });
 
       it("clears a seek hold, so the jump to live is not held as a seek (#1429)", () => {
-        const held = replaySeekHeld(run([[replayTick(500), 0]]), 60_000, 10);
+        const held = replaySeekHeld(run([[replayTick(500), 0]]), holding(60_000), 10);
         const left = replayLeftForLive(held, 20);
         const next = nextReplayState(left, liveTick(900), LIVE_SESSION, 50);
 
@@ -524,7 +530,7 @@ describe("telemetry-features", () => {
       }
 
       it("holds the replay and its last frame past the grace while the hold stands", () => {
-        const held = replaySeekHeld(run([[replayTick(500), 0]]), 5_000, 10);
+        const held = replaySeekHeld(run([[replayTick(500), 0]]), holding(5_000), 10);
         const midSeek = seeking(held, 50, 4_950);
 
         expect(midSeek).toMatchObject({ inReplay: true, frame: 500, replaySeenAt: 0 });
@@ -532,7 +538,7 @@ describe("telemetry-features", () => {
       });
 
       it("restarts the grace from the hold's end when it lapses", () => {
-        const midSeek = seeking(replaySeekHeld(run([[replayTick(500), 0]]), 5_000, 10), 50, 5_950);
+        const midSeek = seeking(replaySeekHeld(run([[replayTick(500), 0]]), holding(5_000), 10), 50, 5_950);
         const left = nextReplayState(midSeek, liveTick(901), LIVE_SESSION, 6_000);
 
         expect(midSeek).toMatchObject({ inReplay: true, frame: 500 });
@@ -541,7 +547,7 @@ describe("telemetry-features", () => {
       });
 
       it("never makes the car read as a replay: with no sighting it is inert", () => {
-        const fromCar = replaySeekHeld(run([[liveTick(900), 0]]), 5_000, 10);
+        const fromCar = replaySeekHeld(run([[liveTick(900), 0]]), holding(5_000), 10);
         const later = seeking(fromCar, 50, 2_000);
 
         expect(fromCar).toMatchObject({ inReplay: false, frame: 900 });
@@ -549,7 +555,7 @@ describe("telemetry-features", () => {
       });
 
       it("extends the first replay tick of a jump sent from the car, which the hold outlived the live ticks for", () => {
-        const fromCar = seeking(replaySeekHeld(run([[liveTick(900), 0]]), 5_000, 10), 50, 300);
+        const fromCar = seeking(replaySeekHeld(run([[liveTick(900), 0]]), holding(5_000), 10), 50, 300);
         const entered = nextReplayState(fromCar, replayTick(500), LIVE_SESSION, 350);
         const midSeek = seeking(entered, 400, 3_000);
 
@@ -558,7 +564,7 @@ describe("telemetry-features", () => {
       });
 
       it("records the replay ticks a spin shows in its windows, so the frame held is the latest", () => {
-        const held = replaySeekHeld(run([[replayTick(500), 0]]), 60_000, 10);
+        const held = replaySeekHeld(run([[replayTick(500), 0]]), holding(60_000), 10);
         const spun = nextReplayState(seeking(held, 50, 2_000), replayTick(4_500), LIVE_SESSION, 2_050);
         const after = seeking(spun, 2_100, 4_000);
 
@@ -569,8 +575,8 @@ describe("telemetry-features", () => {
         ["null", null],
         ["a time not after the call", 3_000],
       ])("releases a standing hold for %s, and the grace restarts from the release", (_label, untilMs) => {
-        const midSeek = seeking(replaySeekHeld(run([[replayTick(500), 0]]), 60_000, 10), 50, 3_000);
-        const released = replaySeekHeld(midSeek, untilMs, 3_000);
+        const midSeek = seeking(replaySeekHeld(run([[replayTick(500), 0]]), holding(60_000), 10), 50, 3_000);
+        const released = replaySeekHeld(midSeek, untilMs === null ? null : holding(untilMs), 3_000);
 
         expect(released.seekHeldUntil).toBe(3_000);
         expect(replayStateAt(released, 3_999)).toMatchObject({ inReplay: true, frame: 500 });
@@ -581,7 +587,7 @@ describe("telemetry-features", () => {
       });
 
       it("hands over from the hold to the ticks: a landing read after the release is the replay at once", () => {
-        const midSeek = seeking(replaySeekHeld(run([[replayTick(500), 0]]), 60_000, 10), 50, 3_000);
+        const midSeek = seeking(replaySeekHeld(run([[replayTick(500), 0]]), holding(60_000), 10), 50, 3_000);
         const landed = nextReplayState(replaySeekHeld(midSeek, null, 3_010), replayTick(90_000), LIVE_SESSION, 3_050);
 
         expect(landed).toMatchObject({ inReplay: true, frame: 90_000, replaySeenAt: 3_050 });
@@ -593,11 +599,11 @@ describe("telemetry-features", () => {
             [replayTick(500), 0],
             [liveTick(900), 50],
           ]),
-          3_000,
+          holding(3_000),
           10,
         );
-        const longer = replaySeekHeld(held, 8_000, 100);
-        const shorter = replaySeekHeld(longer, 2_000, 200);
+        const longer = replaySeekHeld(held, holding(8_000), 100);
+        const shorter = replaySeekHeld(longer, holding(2_000), 200);
 
         expect(longer.seekHeldUntil).toBe(8_000);
         expect(shorter.seekHeldUntil).toBe(2_000);
@@ -615,7 +621,7 @@ describe("telemetry-features", () => {
             [replayTick(500), 0],
             [liveTick(900), 50],
           ]),
-          1_000,
+          holding(1_000),
           10,
         );
 
@@ -626,7 +632,7 @@ describe("telemetry-features", () => {
 
       it("leaves a saved replay in the replay throughout, holding its frame through the seek and the grace after", () => {
         const midSeek = seeking(
-          replaySeekHeld(run([[replayTick(500), 0]], SAVED_REPLAY), 5_000, 10),
+          replaySeekHeld(run([[replayTick(500), 0]], SAVED_REPLAY), holding(5_000), 10),
           50,
           4_950,
           SAVED_REPLAY,
@@ -640,6 +646,68 @@ describe("telemetry-features", () => {
 
         expect(midSeek).toMatchObject({ inReplay: true, frame: 500 });
         expect(past).toMatchObject({ inReplay: true, frame: 777 });
+      });
+
+      describe("the cap past the last sighting", () => {
+        it("ends the hold, and the grace after it, the cap past the last sighting however late the hold asks for", () => {
+          const midSeek = seeking(replaySeekHeld(run([[replayTick(500), 0]]), holding(60_000, 3_000), 10), 50, 2_950);
+
+          expect(midSeek).toMatchObject({ inReplay: true, frame: 500 });
+          expect(replayStateAt(midSeek, 2_999).inReplay).toBe(true);
+          expect(nextReplayState(midSeek, liveTick(901), LIVE_SESSION, 3_000)).toMatchObject({
+            inReplay: false,
+            frame: 901,
+            seekHeldUntil: null,
+            seekHoldMaxPastSightingMs: null,
+          });
+        });
+
+        it("stops moves sent from the car from renewing it: a later hold over a stale sighting adds nothing", () => {
+          // In the replay at 0, then the car; each second the held state lets another move out, whose hold asks for more.
+          let state = replaySeekHeld(run([[replayTick(500), 0]]), holding(3_010, 3_000), 10);
+          const taken: number[] = [];
+
+          for (let t = 1_000; t <= 8_000; t += 1_000) {
+            state = seeking(state, t - 950, t);
+
+            if (state.inReplay) {
+              taken.push(t);
+              state = replaySeekHeld(state, holding(t + 3_000, 3_000), t);
+            }
+          }
+
+          // Taken until the cap past the sighting at 0, and never again.
+          expect(taken).toEqual([1_000, 2_000]);
+          expect(state).toMatchObject({ inReplay: false, replaySeenAt: null });
+        });
+
+        it("re-anchors on each new sighting, so a hold with replay ticks in it runs to its own end", () => {
+          const held = replaySeekHeld(run([[replayTick(500), 0]]), holding(8_000, 3_000), 10);
+          const spun = [2_000, 4_000, 6_000].reduce(
+            (state, t) => nextReplayState(seeking(state, t - 1_950, t - 50), replayTick(t), LIVE_SESSION, t),
+            held,
+          );
+          const after = seeking(spun, 6_050, 8_950);
+
+          expect(after).toMatchObject({ inReplay: true, frame: 6_000 });
+          expect(nextReplayState(after, liveTick(901), LIVE_SESSION, 9_000).inReplay).toBe(false);
+        });
+
+        it("never cuts the plain grace short, whatever the cap", () => {
+          const released = replaySeekHeld(replaySeekHeld(run([[replayTick(500), 0]]), holding(5_000, 10), 5), null, 6);
+
+          expect(replayStateAt(seeking(released, 50, 950), 999).inReplay).toBe(true);
+        });
+
+        it("caps a hold set from the car from the first sighting it extends", () => {
+          const fromCar = seeking(replaySeekHeld(run([[liveTick(900), 0]]), holding(60_000, 3_000), 10), 50, 300);
+          const entered = nextReplayState(fromCar, replayTick(500), LIVE_SESSION, 350);
+
+          expect(replayStateAt(seeking(entered, 400, 3_300), 3_349).inReplay).toBe(true);
+          expect(nextReplayState(seeking(entered, 400, 3_300), liveTick(901), LIVE_SESSION, 3_350).inReplay).toBe(
+            false,
+          );
+        });
       });
     });
   });

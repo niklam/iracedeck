@@ -8,7 +8,7 @@
  * Until it is configured the engine reads nothing (no telemetry, no replay
  * on screen, connected) and refuses to send.
  */
-import type { ReplayPosMode, SDKController, TelemetryData } from "@iracedeck/iracing-sdk";
+import type { ReplayPosMode, ReplaySeekHold, SDKController, TelemetryData } from "@iracedeck/iracing-sdk";
 import { type ILogger, silentLogger } from "@iracedeck/logger";
 
 /** The replay commands the gate sends; the `replay` of deck-iracing's `getCommands()` is one. */
@@ -83,10 +83,11 @@ export interface ReplayEngineReads {
   leftForLive(): void;
   /**
    * Tells the debounced replay state how long a seek of the plugin's own
-   * still holds the replay, in ms from now, or null for none (#1429). The
-   * gate's, at the end of each of its changes.
+   * still holds the replay, in ms from now, and how far past the last replay
+   * sighting it may reach at most, or null for none (#1429). The gate's, at
+   * the end of each of its changes.
    */
-  seekHold(remainingMs: number | null): void;
+  seekHold(hold: ReplaySeekHold | null): void;
 }
 
 function notConfigured(): never {
@@ -134,9 +135,9 @@ const derivedReads: ReplayEngineReads = {
       // No controller: nothing reads the replay state either.
     }
   },
-  seekHold: (remainingMs) => {
+  seekHold: (hold) => {
     try {
-      env.controller?.noteReplaySeekHold(remainingMs);
+      env.controller?.noteReplaySeekHold(hold);
     } catch {
       // As for leftForLive: a hold that cannot be told only leaves the grace as it was.
     }

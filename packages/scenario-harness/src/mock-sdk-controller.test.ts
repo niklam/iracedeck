@@ -446,7 +446,7 @@ describe("MockSDKController", () => {
       controller.mutateTelemetry({ IsReplayPlaying: true, ReplayFrameNum: 1200 });
       controller.tickOnce();
 
-      controller.noteReplaySeekHold(5_000);
+      controller.noteReplaySeekHold({ remainingMs: 5_000, maxPastSightingMs: 10_000 });
       controller.mutateTelemetry({ IsReplayPlaying: false });
       vi.advanceTimersByTime(REPLAY_EXIT_GRACE_MS * 3);
       controller.tickOnce();

@@ -1,7 +1,7 @@
 import type { TelemetryData } from "@iracedeck/iracing-native";
 import { describe, expect, it } from "vitest";
 
-import { ReplayStateTracker } from "./replay-state-tracker.js";
+import { type ReplaySeekHold, ReplayStateTracker } from "./replay-state-tracker.js";
 import { REPLAY_EXIT_GRACE_MS } from "./telemetry-features.js";
 
 const replayTick = (frame: number): TelemetryData =>
@@ -10,6 +10,9 @@ const liveTick = (end: number): TelemetryData =>
   ({ IsReplayPlaying: false, ReplayFrameNum: 0, ReplayFrameNumEnd: end }) as TelemetryData;
 
 const LIVE_SESSION = { WeekendInfo: { SimMode: "full" } };
+
+/** A seek hold for `remainingMs`, capped a minute past the sighting unless a case says otherwise (#1429). */
+const hold = (remainingMs: number, maxPastSightingMs = 60_000): ReplaySeekHold => ({ remainingMs, maxPastSightingMs });
 const SAVED_REPLAY = { WeekendInfo: { SimMode: "replay" } };
 
 describe("ReplayStateTracker (#1324)", () => {
@@ -52,7 +55,7 @@ describe("ReplayStateTracker (#1324)", () => {
     const tracker = new ReplayStateTracker();
 
     tracker.step(replayTick(500), LIVE_SESSION, 0);
-    tracker.holdForSeek(5_000, 100);
+    tracker.holdForSeek(hold(5_000), 100);
     tracker.step(liveTick(900), LIVE_SESSION, 3_000);
 
     expect(tracker.read(3_000)).toMatchObject({ inReplay: true, frame: 500, seekHeldUntil: 5_100 });
@@ -68,11 +71,22 @@ describe("ReplayStateTracker (#1324)", () => {
     const tracker = new ReplayStateTracker();
 
     tracker.step(replayTick(500), LIVE_SESSION, 0);
-    tracker.holdForSeek(60_000, 10);
+    tracker.holdForSeek(hold(60_000), 10);
     tracker.step(liveTick(900), LIVE_SESSION, 3_000);
-    tracker.holdForSeek(remainingMs, 3_000);
+    tracker.holdForSeek(remainingMs === null ? null : hold(remainingMs), 3_000);
 
     expect(tracker.read(3_999)).toMatchObject({ inReplay: true, frame: 500 });
+    expect(tracker.read(4_000)).toMatchObject({ inReplay: false, frame: 900 });
+  });
+
+  it("holdForSeek passes the cap: the hold ends that far past the last sighting", () => {
+    const tracker = new ReplayStateTracker();
+
+    tracker.step(replayTick(500), LIVE_SESSION, 0);
+    tracker.holdForSeek(hold(60_000, 4_000), 100);
+    tracker.step(liveTick(900), LIVE_SESSION, 3_000);
+
+    expect(tracker.read(3_999)).toMatchObject({ inReplay: true, seekHoldMaxPastSightingMs: 4_000 });
     expect(tracker.read(4_000)).toMatchObject({ inReplay: false, frame: 900 });
   });
 
@@ -80,7 +94,7 @@ describe("ReplayStateTracker (#1324)", () => {
     const tracker = new ReplayStateTracker();
 
     tracker.step(liveTick(900), LIVE_SESSION, 0);
-    tracker.holdForSeek(5_000, 10);
+    tracker.holdForSeek(hold(5_000), 10);
 
     expect(tracker.read(20)).toMatchObject({ inReplay: false, frame: 900 });
   });
@@ -89,7 +103,7 @@ describe("ReplayStateTracker (#1324)", () => {
     const tracker = new ReplayStateTracker();
 
     tracker.step(replayTick(500), LIVE_SESSION, 0);
-    tracker.holdForSeek(60_000, 10);
+    tracker.holdForSeek(hold(60_000), 10);
     tracker.noteLeftForLive(20);
     tracker.step(liveTick(900), LIVE_SESSION, 50);
 
@@ -100,7 +114,7 @@ describe("ReplayStateTracker (#1324)", () => {
     const tracker = new ReplayStateTracker();
 
     tracker.step(replayTick(500), LIVE_SESSION, 0);
-    tracker.holdForSeek(60_000, 10);
+    tracker.holdForSeek(hold(60_000), 10);
     tracker.reset();
 
     expect(tracker.read(20)).toMatchObject({ inReplay: false, seekHeldUntil: null, replaySeenAt: null });
@@ -131,7 +145,7 @@ describe("ReplayStateTracker (#1324)", () => {
     const before = Date.now();
 
     tracker.step(replayTick(500), LIVE_SESSION);
-    tracker.holdForSeek(60_000);
+    tracker.holdForSeek(hold(60_000));
 
     expect(tracker.read().seekHeldUntil).toBeGreaterThanOrEqual(before + 60_000);
   });

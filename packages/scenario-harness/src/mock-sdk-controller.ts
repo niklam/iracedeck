@@ -32,6 +32,7 @@
  * pattern the existing translator tests use.
  */
 import {
+  type ReplaySeekHold,
   type ReplayState,
   ReplayStateTracker,
   type SessionInfo,
@@ -253,8 +254,8 @@ export class MockSDKController {
   }
 
   /** The real controller's seek hold (#1429), by the same tracker rule; nothing in the harness pushes one today. */
-  noteReplaySeekHold(remainingMs: number | null, nowMs: number = Date.now()): void {
-    this.replayState.holdForSeek(remainingMs, nowMs);
+  noteReplaySeekHold(hold: ReplaySeekHold | null, nowMs: number = Date.now()): void {
+    this.replayState.holdForSeek(hold, nowMs);
   }
 
   // ── Harness-only API ───────────────────────────────────────────────────────

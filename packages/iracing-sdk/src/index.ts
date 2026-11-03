@@ -200,12 +200,13 @@ export {
   REPLAY_LIVE_EDGE_MAX_FRAMES,
   replayLeftForLive,
   replaySeekHeld,
+  type ReplaySeekHoldUntil,
   type ReplayState,
   replayStateAt,
   resolveReplayFrame,
   type TireChangeGranularity,
 } from "./telemetry-features.js";
-export { ReplayStateTracker } from "./replay-state-tracker.js";
+export { type ReplaySeekHold, ReplayStateTracker } from "./replay-state-tracker.js";
 
 // Session limits (#1109) — sentinel decoding and the whichever-ends-sooner
 // rule shared by the fuel callouts, Session Info and the template context,

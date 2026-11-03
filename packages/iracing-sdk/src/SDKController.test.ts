@@ -546,7 +546,7 @@ describe("SDKController", () => {
       vi.mocked(mockSdk.getTelemetry).mockReturnValue(replayTick(2, 500));
       vi.advanceTimersByTime(TELEMETRY_INTERVAL_MS);
 
-      controller.noteReplaySeekHold(10_000);
+      controller.noteReplaySeekHold({ remainingMs: 10_000, maxPastSightingMs: 21_000 });
 
       vi.mocked(mockSdk.getTelemetry).mockReturnValue(liveTick(3, 900));
       vi.advanceTimersByTime(3_000);
@@ -567,9 +567,12 @@ describe("SDKController", () => {
       vi.advanceTimersByTime(TELEMETRY_INTERVAL_MS);
       const now = Date.now();
 
-      controller.noteReplaySeekHold(2_000, now);
+      controller.noteReplaySeekHold({ remainingMs: 2_000, maxPastSightingMs: 3_000 }, now);
 
-      expect(controller.getReplayState(now).seekHeldUntil).toBe(now + 2_000);
+      expect(controller.getReplayState(now)).toMatchObject({
+        seekHeldUntil: now + 2_000,
+        seekHoldMaxPastSightingMs: 3_000,
+      });
     });
 
     it("resets on a disconnect noticed by the reconnect poll, so no grace outlives the connection", () => {

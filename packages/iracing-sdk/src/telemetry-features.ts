@@ -284,9 +284,35 @@ export interface ReplayState {
    * sets this through {@link replaySeekHeld}. It only extends a sighting the
    * ticks made: with no sighting it is inert, so it never makes the car read
    * as a replay. Its end, by lapse or by release, is where the grace restarts
-   * from. {@link replayLeftForLive} clears it.
+   * from, and {@link seekHoldMaxPastSightingMs} caps both. As asked for, not
+   * capped: the cap is applied when the state is read, against the sighting
+   * of that moment. {@link replayLeftForLive} clears it.
    */
   readonly seekHeldUntil: number | null;
+  /**
+   * How far past the last replay sighting (ms) the seek hold, and the grace
+   * after it, may keep the replay, or null with no hold ever set (#1429): the
+   * longest any seek on the tape can take, which the engine works out from
+   * the tape's length. It is what stops moves sent from the car from renewing
+   * the hold for ever: while the state holds, a dial still sends, and iRacing
+   * ignores a replay command from the car, so each move would push a later
+   * hold over a sighting that never comes again. Each new sighting re-anchors
+   * the cap, so a sustained spin, whose landings sight the replay every
+   * ~400 ms, and a long jump, held from its send while the sighting is fresh,
+   * are not cut short. Never below {@link REPLAY_EXIT_GRACE_MS} in effect: the
+   * plain grace is never shortened by it.
+   */
+  readonly seekHoldMaxPastSightingMs: number | null;
+}
+
+/**
+ * A seek hold as the replay engine asks for it (#1429): it holds for
+ * `untilMs` on the state's clock, and never past the last replay sighting
+ * plus `maxPastSightingMs`, the longest any seek on the tape can take.
+ */
+export interface ReplaySeekHoldUntil {
+  readonly untilMs: number;
+  readonly maxPastSightingMs: number;
 }
 
 /** The state before any tick: live, no frame, nothing sighted. */
@@ -301,6 +327,7 @@ export function initialReplayState(): ReplayState {
     replaySeenFrame: null,
     liveExitAt: null,
     seekHeldUntil: null,
+    seekHoldMaxPastSightingMs: null,
   };
 }
 
@@ -310,23 +337,48 @@ function finiteFrame(value: unknown): number | null {
 }
 
 /**
- * Whether the last replay sighting still holds at `nowMs`: inside the grace,
- * which runs from the later of the sighting and the seek hold's end (#1429),
- * so a standing hold keeps it and its end restarts the grace. No sighting, no
- * hold: the seek hold never makes a replay out of nothing.
+ * When the seek hold ends (#1429): its own time, capped at the last replay
+ * sighting plus {@link ReplayState.seekHoldMaxPastSightingMs}; uncapped with
+ * no sighting, where it is inert. Null with no hold.
  */
-function withinReplayGrace(state: ReplayState, nowMs: number): boolean {
-  if (state.replaySeenAt === null) return false;
+function seekHoldEnd(state: ReplayState): number | null {
+  const { seekHeldUntil, replaySeenAt, seekHoldMaxPastSightingMs } = state;
 
-  const graceFrom =
-    state.seekHeldUntil === null ? state.replaySeenAt : Math.max(state.replaySeenAt, state.seekHeldUntil);
+  if (seekHeldUntil === null) return null;
 
-  return nowMs - graceFrom < REPLAY_EXIT_GRACE_MS;
+  if (replaySeenAt === null || seekHoldMaxPastSightingMs === null) return seekHeldUntil;
+
+  return Math.min(seekHeldUntil, replaySeenAt + seekHoldMaxPastSightingMs);
 }
 
-/** Whether a seek hold stands at `nowMs`: set and not yet ended. */
+/**
+ * Whether the last replay sighting still holds at `nowMs`: inside the grace,
+ * which runs from the later of the sighting and the seek hold's end (#1429),
+ * so a standing hold keeps it and its end restarts the grace, and never past
+ * the sighting plus the hold's cap, which bounds the grace after the hold as
+ * well as the hold. No sighting, no hold: the seek hold never makes a replay
+ * out of nothing.
+ */
+function withinReplayGrace(state: ReplayState, nowMs: number): boolean {
+  const seenAt = state.replaySeenAt;
+
+  if (seenAt === null) return false;
+
+  const holdEnd = seekHoldEnd(state);
+
+  if (holdEnd === null) return nowMs - seenAt < REPLAY_EXIT_GRACE_MS;
+
+  const cap = state.seekHoldMaxPastSightingMs;
+  const capAt = cap === null ? Infinity : seenAt + Math.max(cap, REPLAY_EXIT_GRACE_MS);
+
+  return nowMs - Math.max(seenAt, holdEnd) < REPLAY_EXIT_GRACE_MS && nowMs < capAt;
+}
+
+/** Whether a seek hold stands at `nowMs`: set, and its capped end not yet reached. */
 function seekHoldStands(state: ReplayState, nowMs: number): boolean {
-  return state.seekHeldUntil !== null && nowMs < state.seekHeldUntil;
+  const end = seekHoldEnd(state);
+
+  return end !== null && nowMs < end;
 }
 
 /**
@@ -403,7 +455,7 @@ export function nextReplayState(
         replaySeenAt: null,
         replaySeenFrame: null,
         liveExitAt: null,
-        seekHeldUntil: seekHoldStands(stepped, nowMs) ? stepped.seekHeldUntil : null,
+        ...(seekHoldStands(stepped, nowMs) ? {} : { seekHeldUntil: null, seekHoldMaxPastSightingMs: null }),
       },
       nowMs,
     );
@@ -414,26 +466,36 @@ export function nextReplayState(
 
 /**
  * The state after the replay engine says how long a seek of its own still
- * holds the replay (#1429): `untilMs` is the time on this state's clock it
- * holds until, or null when none is under way. A later time sets or moves the
- * hold, a shorter one shortens it. Null, or a time not after `nowMs`, while a
- * hold stands releases it at `nowMs`, so the exit grace restarts from the
- * release rather than from the last replay tick: the engine settles a landing
- * on a reading of its own, fresher than the last tick stepped here, and the
- * hand-over from the hold to the ticks is then seamless. With no hold
- * standing it changes nothing.
+ * holds the replay (#1429): `hold.untilMs` is the time on this state's clock
+ * it holds until, capped at the last replay sighting plus
+ * `hold.maxPastSightingMs`, or null when none is under way. A later time sets
+ * or moves the hold, a shorter one shortens it, and the cap given with it
+ * replaces the last. Null, or a time not after `nowMs`, while a hold stands
+ * releases it at `nowMs`, so the exit grace restarts from the release rather
+ * than from the last replay tick: the engine settles a landing on a reading
+ * of its own, fresher than the last tick stepped here, and the hand-over from
+ * the hold to the ticks is then seamless. With no hold standing it changes
+ * nothing.
  *
  * The hold only extends a sighting the ticks made (see
- * {@link withinReplayGrace}); it never makes the car read as a replay.
- * `nowMs` is the call's time, injectable for tests.
+ * {@link withinReplayGrace}); it never makes the car read as a replay, and
+ * the cap keeps moves sent from the car from renewing it past the longest
+ * seek the tape allows. `nowMs` is the call's time, injectable for tests.
  */
-export function replaySeekHeld(state: ReplayState, untilMs: number | null, nowMs: number): ReplayState {
-  let { seekHeldUntil } = state;
+export function replaySeekHeld(state: ReplayState, hold: ReplaySeekHoldUntil | null, nowMs: number): ReplayState {
+  let { seekHeldUntil, seekHoldMaxPastSightingMs } = state;
 
-  if (untilMs !== null && untilMs > nowMs) seekHeldUntil = untilMs;
-  else if (seekHoldStands(state, nowMs)) seekHeldUntil = nowMs;
+  if (hold !== null && hold.untilMs > nowMs) {
+    seekHeldUntil = hold.untilMs;
+    seekHoldMaxPastSightingMs = hold.maxPastSightingMs;
+  } else if (seekHoldStands(state, nowMs)) {
+    seekHeldUntil = nowMs;
+  }
 
-  return replayStateAt(seekHeldUntil === state.seekHeldUntil ? state : { ...state, seekHeldUntil }, nowMs);
+  const unchanged =
+    seekHeldUntil === state.seekHeldUntil && seekHoldMaxPastSightingMs === state.seekHoldMaxPastSightingMs;
+
+  return replayStateAt(unchanged ? state : { ...state, seekHeldUntil, seekHoldMaxPastSightingMs }, nowMs);
 }
 
 /**
@@ -460,6 +522,7 @@ export function replayLeftForLive(state: ReplayState, nowMs: number): ReplayStat
     replaySeenFrame: null,
     liveExitAt: nowMs,
     seekHeldUntil: null,
+    seekHoldMaxPastSightingMs: null,
   };
 }
 
