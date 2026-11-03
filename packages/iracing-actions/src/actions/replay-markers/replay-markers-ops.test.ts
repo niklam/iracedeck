@@ -273,6 +273,79 @@ describe("the replay state survives the post-seek blip (#1230, read from the con
 
     expect(read(notPlaying, 11_010)).toMatchObject({ inReplay: false, frame: 90_000 });
   });
+
+  // A long seek reads as the car until it lands, longer than the grace: the
+  // plugin's own seek holds the replay in the controller's state (#1429).
+  describe("a seek of the plugin's own holds the replay past the grace (#1429)", () => {
+    it("a press 1.5 s into the seek, with the hold standing, is in the replay, at the frame held", () => {
+      read(replayAt(4_000), 10_000);
+      replay.noteReplaySeekHold(20_000, 10_010);
+      read(notPlaying, 10_500);
+
+      const context = read(notPlaying, 11_500);
+
+      expect(context).toMatchObject({ inReplay: true, frame: 4_000 });
+      expect(resolveJumpTarget("next", context)?.frame).toBe(5_000);
+    });
+
+    it("the hold never makes the car a replay", () => {
+      read(notPlaying, 10_000);
+      replay.noteReplaySeekHold(20_000, 10_010);
+
+      expect(read(notPlaying, 11_500)).toMatchObject({ inReplay: false, frame: 90_000 });
+    });
+
+    it("released, the grace runs from the release: past it the press is from the car", () => {
+      read(replayAt(4_000), 10_000);
+      replay.noteReplaySeekHold(20_000, 10_010);
+      read(notPlaying, 11_500);
+      replay.noteReplaySeekHold(null, 12_000);
+
+      expect(read(notPlaying, 12_000 + REPLAY_EXIT_GRACE_MS - 1)).toMatchObject({ inReplay: true, frame: 4_000 });
+      expect(read(notPlaying, 12_000 + REPLAY_EXIT_GRACE_MS)).toMatchObject({ inReplay: false, frame: 90_000 });
+    });
+
+    it("a jump to live clears the hold: the next false read is the car at once", () => {
+      read(replayAt(4_000), 10_000);
+      replay.noteReplaySeekHold(20_000, 10_010);
+      replay.noteReplayLeftForLive(10_020);
+
+      expect(read(notPlaying, 10_050)).toMatchObject({ inReplay: false, frame: 90_000 });
+    });
+
+    it("a marker jump's own seek is what holds it: the gate tells the state, and a press mid-seek is in the replay", async () => {
+      vi.useFakeTimers({ now: PRESS_AT });
+
+      try {
+        const paused = { ...replayAt(4_000), ReplayPlaySpeed: 0, ReplayPlaySlowMotion: false } as TelemetryData;
+        const setPlayPosition = vi.fn((_mode: ReplayPosMode, _frame: number): boolean => true);
+
+        vi.mocked(getCommands).mockReturnValue({ replay: { setPlayPosition } } as never);
+        configureEngine({
+          readTelemetry: () => telemetry,
+          inReplay: () => replay.getReplayState().inReplay,
+          seekHold: (remainingMs) => replay.noteReplaySeekHold(remainingMs),
+        });
+        read(paused, Date.now());
+
+        void jumpToMarkerFrame("next", 1_200_000, () => telemetry);
+        expect(setPlayPosition).toHaveBeenCalledWith(ReplayPosMode.Begin, 1_200_000);
+
+        // The seek of 1 196 000 frames reads as the car for about 10 s; the press comes 1.5 s in.
+        telemetry = notPlaying;
+        await vi.advanceTimersByTimeAsync(1_500);
+
+        const context = read(notPlaying, Date.now());
+
+        expect(context).toMatchObject({ inReplay: true, frame: 4_000 });
+        expect(resolveJumpTarget("next", context)?.frame).toBe(5_000);
+      } finally {
+        resetEngine();
+        vi.mocked(getCommands).mockReset();
+        vi.useRealTimers();
+      }
+    });
+  });
 });
 
 /** A replay speed as telemetry reports it. */
