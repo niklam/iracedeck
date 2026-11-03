@@ -57,6 +57,15 @@
  *   press decides with a speed sent the moment before. A press says whether
  *   its send is the speed the dial's Play resumes (`rememberSpeed`); a
  *   command the slot sends later always is.
+ * - **The replay state holds through its seeks** (#1429): while iRacing carries
+ *   out a seek its ticks read as the car until the cursor lands, which
+ *   outlasts the SDK's one-second exit grace on a long jump or a sustained
+ *   spin. At the end of every change the gate tells the controller how long
+ *   a seek of its own still holds the replay (`noteReplaySeekHold`): a
+ *   target whose seek has gone out for the rest of its own wait, a search on
+ *   its way for the rest of the time it could be running, the longer of the
+ *   two, and none once neither stands. A go to end never holds: it leaves the
+ *   replay for live, which `leftForLive` says instead.
  *
  * A one-shot press goes through {@link pressReplayCommand}, which takes the
  * replay cursor (`replay-cursor.ts`) as every command did before. A long-running
@@ -450,6 +459,13 @@ const sameRunEnds = new Map<string, ReplayGateEndReason>();
 /** The speeds sent in the running change, in the order they went out, for the speed state's listeners once it is complete. */
 let sentSpeeds: ReplaySpeed[] = [];
 
+/**
+ * The seek hold last told to the controller (#1429), as the time on the engine
+ * clock it runs until, or null for none: a change that leaves it as it was
+ * tells nothing, so a poll under a long jump is no write per tick.
+ */
+let toldSeekHoldUntil: number | null = null;
+
 /** Runs `listener` on every change of any token's view. Returns the unsubscribe. */
 export function subscribeReplayGate(listener: (notice: ReplayGateNotice) => void): () => void {
   listeners.add(listener);
@@ -487,8 +503,47 @@ function batch<T>(now: number, change: () => T): T {
     if (batchDepth === 0) {
       publish();
       noteSentSpeeds();
+      tellSeekHold();
     }
   }
+}
+
+/**
+ * Until when (engine clock) a seek of the gate's own holds the replay
+ * (#1429), or null: a target whose seek has gone out holds it for its own
+ * wait (`giveUpMs` from the send), a search on its way for the time it could
+ * be running, and the longer of the two wins. A target not yet sent (a replay
+ * jump's pause window) has no seek out, and a go to end leaves the replay
+ * for live, so neither holds. A time already passed is none.
+ */
+function seekHoldUntil(now: number): number | null {
+  const target = pendingReplayTarget();
+  const targetUntil = target !== null && target.sent ? target.sentAt + target.giveUpMs : null;
+  const searchUntil =
+    search !== null && search.onItsWay && !search.landed && search.kind !== "go-to-end"
+      ? search.sentAt + search.couldRunMs
+      : null;
+  const holds = [targetUntil, searchUntil].filter((until): until is number => until !== null);
+  const until = holds.length === 0 ? null : Math.max(...holds);
+
+  return until !== null && until > now ? until : null;
+}
+
+/**
+ * Tells the controller the seek hold as the change just completed leaves it
+ * (#1429), after the views and the speeds are out, as a duration from now, so
+ * the SDK's clock need not be the engine's. Only a change of it is told: a
+ * landing, a give-up, a clear or a disconnect releases it (null), and the
+ * release restarts the SDK's exit grace from that moment.
+ */
+function tellSeekHold(): void {
+  const now = engineNow();
+  const until = seekHoldUntil(now);
+
+  if (until === toldSeekHoldUntil) return;
+
+  toldSeekHoldUntil = until;
+  engineReads().seekHold(until === null ? null : until - now);
 }
 
 /**
@@ -2593,6 +2648,7 @@ export function _resetReplayCommandGate(): void {
   batchEnds.clear();
   sameRunEnds.clear();
   sentSpeeds = [];
+  toldSeekHoldUntil = null;
   batchDepth = 0;
   clearReplayTarget();
 }

@@ -51,6 +51,7 @@ export function replayLeftController(reads: ReplayLeftControllerReads): WatchedR
     getReplayState: () => reads.replayState() as ReplayState,
     getConnectionStatus: connected,
     noteReplayLeftForLive: () => {},
+    noteReplaySeekHold: () => {},
     subscribe,
     unsubscribe,
   } as unknown as ReplayEngineController;

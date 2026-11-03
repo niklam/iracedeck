@@ -42,6 +42,7 @@ export type ReplayEngineController = Pick<
   | "getReplayState"
   | "getConnectionStatus"
   | "noteReplayLeftForLive"
+  | "noteReplaySeekHold"
   | "subscribe"
   | "unsubscribe"
 >;
@@ -80,6 +81,12 @@ export interface ReplayEngineReads {
   connected(): boolean;
   /** Tells the debounced replay state that the plugin itself left the replay for live (#1324). */
   leftForLive(): void;
+  /**
+   * Tells the debounced replay state how long a seek of the plugin's own
+   * still holds the replay, in ms from now, or null for none (#1429). The
+   * gate's, at the end of each of its changes.
+   */
+  seekHold(remainingMs: number | null): void;
 }
 
 function notConfigured(): never {
@@ -127,6 +134,13 @@ const derivedReads: ReplayEngineReads = {
       // No controller: nothing reads the replay state either.
     }
   },
+  seekHold: (remainingMs) => {
+    try {
+      env.controller?.noteReplaySeekHold(remainingMs);
+    } catch {
+      // As for leftForLive: a hold that cannot be told only leaves the grace as it was.
+    }
+  },
 };
 
 let reads: ReplayEngineReads = derivedReads;
@@ -151,8 +165,8 @@ export function setReplayEngineEnv(next: ReplayEngineEnv): void {
  * {@link ReplayEngineReads} key replaces the read the controller would give.
  */
 export function _configureReplayEngine(overrides: Partial<ReplayEngineEnv> & Partial<ReplayEngineReads>): void {
-  const { readTelemetry, inReplay, connected, leftForLive, ...envOverrides } = overrides;
-  const readOverrides: Partial<ReplayEngineReads> = { readTelemetry, inReplay, connected, leftForLive };
+  const { readTelemetry, inReplay, connected, leftForLive, seekHold, ...envOverrides } = overrides;
+  const readOverrides: Partial<ReplayEngineReads> = { readTelemetry, inReplay, connected, leftForLive, seekHold };
 
   env = { ...UNCONFIGURED, ...definedOnly(envOverrides) };
   reads = { ...derivedReads, ...definedOnly(readOverrides) };

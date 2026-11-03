@@ -24,6 +24,7 @@ function fakeController(
     getReplayState: vi.fn(() => ({ inReplay: true })),
     getConnectionStatus: vi.fn(() => false),
     noteReplayLeftForLive: vi.fn(),
+    noteReplaySeekHold: vi.fn(),
     subscribe: vi.fn(),
     unsubscribe: vi.fn(),
     ...overrides,
@@ -57,6 +58,7 @@ describe("replay engine env (#1467)", () => {
     expect(engineReads().inReplay()).toBe(false);
     expect(engineReads().connected()).toBe(true);
     expect(() => engineReads().leftForLive()).not.toThrow();
+    expect(() => engineReads().seekHold(1_000)).not.toThrow();
     expect(() => engineEnv().replay()).toThrow("replay engine not configured");
     expect(() => engineEnv().camera()).toThrow("replay engine not configured");
     expect(engineEnv().controller).toBeNull();
@@ -75,6 +77,10 @@ describe("replay engine env (#1467)", () => {
     expect(engineReads().connected()).toBe(false);
     engineReads().leftForLive();
     expect(controller.noteReplayLeftForLive).toHaveBeenCalledTimes(1);
+    engineReads().seekHold(2_500);
+    engineReads().seekHold(null);
+    expect(controller.noteReplaySeekHold).toHaveBeenNthCalledWith(1, 2_500);
+    expect(controller.noteReplaySeekHold).toHaveBeenNthCalledWith(2, null);
 
     const boom = vi.fn(() => {
       throw new Error("no sdk");
@@ -86,6 +92,7 @@ describe("replay engine env (#1467)", () => {
           getReplayState: boom,
           getConnectionStatus: boom,
           noteReplayLeftForLive: boom,
+          noteReplaySeekHold: boom,
         }),
       }),
     );
@@ -94,8 +101,9 @@ describe("replay engine env (#1467)", () => {
     expect(engineReads().inReplay()).toBe(false);
     expect(engineReads().connected()).toBe(true);
     expect(() => engineReads().leftForLive()).not.toThrow();
+    expect(() => engineReads().seekHold(1_000)).not.toThrow();
     // Positive control: each read did reach the throwing controller.
-    expect(boom).toHaveBeenCalledTimes(4);
+    expect(boom).toHaveBeenCalledTimes(5);
   });
 
   it("reads the settings closures at the time of use", () => {

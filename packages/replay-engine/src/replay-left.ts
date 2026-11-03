@@ -11,8 +11,14 @@
  * and the lap walks.
  *
  * **The edge is held through the plugin's own seek.** In a live session the
- * debounced state gives the replay up about a second into any long seek the
- * plugin makes itself; a lap walk's first probe on a long tape is one. So
+ * debounced state gave the replay up about a second into any long seek the
+ * plugin makes itself; a lap walk's first probe on a long tape is one. Since
+ * #1429 the state itself holds through a seek the gate knows to be out (a
+ * sent target for its own wait, a search on its way for the time it could be
+ * running; `noteReplaySeekHold`), so such an edge no longer falls mid-seek.
+ * The holds here stay for what that does not cover: a seek that shows with no
+ * target, a target whose seek has not gone out, and a target still standing
+ * once the state's hold and grace have run out. So
  * while the state reads false and a move of the plugin's own stands, `left`
  * waits: a position target that has not read back holds it for that target's
  * own wait (`giveUpMs`), counted from the edge or, for a target sent after it

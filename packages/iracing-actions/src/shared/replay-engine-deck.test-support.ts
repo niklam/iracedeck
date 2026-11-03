@@ -44,6 +44,7 @@ const deckController: ReplayEngineController = {
   getReplayState: onEachCall("getReplayState"),
   getConnectionStatus: onEachCall("getConnectionStatus"),
   noteReplayLeftForLive: onEachCall("noteReplayLeftForLive"),
+  noteReplaySeekHold: onEachCall("noteReplaySeekHold"),
   subscribe: onEachCall("subscribe"),
   unsubscribe: onEachCall("unsubscribe"),
 };
