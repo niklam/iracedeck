@@ -200,9 +200,8 @@ export class UlanziPlatformAdapter implements IDeckPlatformAdapter {
   /**
    * Contexts known to be Encoders this process, set at arrival: a context that
    * delivered dial input (its promotion step is enqueued at that moment, so a
-   * burst queues behind one step instead of starting another), one appeared
-   * with an explicit `payload.controller` of `Encoder`, or one the adapter
-   * appeared itself as an Encoder on dial input with no prior `add`. Unlike
+   * burst queues behind one step instead of starting another), or one appeared
+   * with an explicit `payload.controller` of `Encoder`. Unlike
    * {@link contextControllers} this survives willDisappear, so a dial that
    * re-appears (a page switch is `clear` then `add`) is an Encoder from its
    * willAppear rather than from its next dial event (#1530). Never pruned, on
@@ -222,7 +221,7 @@ export class UlanziPlatformAdapter implements IDeckPlatformAdapter {
    */
   private readonly order: ContextEventOrder;
 
-  /** Logger for controller detection (the #1530 promotion line, the #1597 synthetic appear). */
+  /** Logger for controller detection (the #1530 promotion line). */
   private readonly controllerLog: ILogger;
 
   /** Callbacks registered via {@link onDidReceiveGlobalSettings} (fan-out list). */
@@ -447,26 +446,24 @@ export class UlanziPlatformAdapter implements IDeckPlatformAdapter {
    *
    * What only Ulanzi adds to the shared order:
    *
-   * - **Input with no prior `add` appears the context first** (decision 3's
-   *   fallback). UlanziStudio sends input for a context a plugin process never
-   *   got an `add` for — the process started with keys already on the deck
-   *   (measured on the SDK simulator for #1597). Such a context is appeared
-   *   synthetically ahead of the input, as an Encoder when the first input is a
-   *   dial event (it goes into {@link knownEncoderContexts}, so no promotion
-   *   follows) and a Keypad otherwise. A context that has appeared and then
-   *   disappeared is not revived: the primitive drops its input, or the #1329
-   *   leak returns.
-   * - **An `add` for a live context is a settings change.** The host's own
-   *   `add` arriving after a synthetic appear is not a second appear; it is
-   *   enqueued as `didReceiveSettings` with the frame's settings.
+   * - **Input for a context with no prior `add` is dropped by the order**, with
+   *   its once-per-context warn, as on every host. UlanziStudio does send such
+   *   input — a plugin process that starts with keys already on the deck gets
+   *   no `add` replay on the SDK simulator (measured for #1597) — but a
+   *   synthetic appear was rejected: input frames carry no settings and the
+   *   cache is empty in a fresh process, so the appear would run with `{}` and
+   *   `BaseAction.onWillAppear`'s first-appearance `setSettings` would replace
+   *   the key's stored configuration on the host. A dead press until the next
+   *   page switch is the lesser harm.
+   * - **An `add` for a live context is a settings change**, not a second
+   *   appear: enqueued as `didReceiveSettings` with the frame's settings.
    * - **The Keypad → Encoder promotion is one exclusive step**, enqueued at a
    *   dial event's arrival ahead of that event (#1530, decision 5).
    * - **Every input task reads its settings when it runs**: the client's
    *   write-through cache (#1236), falling back to the frame's. An appear and a
    *   settings change keep the frame's own settings.
    * - **Broadcasts fire at arrival, for a live context only**, like Elgato's
-   *   SDK-wide listeners. The synthetic appear is enqueued before that check,
-   *   so a never-appeared input's broadcast fires.
+   *   SDK-wide listeners.
    */
   registerAction<T>(uuid: string, handler: IDeckActionHandler<T>): void {
     type Frame = UlanziEvent & { context: string };
@@ -548,42 +545,14 @@ export class UlanziPlatformAdapter implements IDeckPlatformAdapter {
     };
 
     /**
-     * Input for a context the host never sent an `add` for: appear it first,
-     * ahead of the input (decision 3's Ulanzi fallback). Only a context that
-     * NEVER appeared; one that has disappeared is dropped by the order itself.
-     * Logged at info once per context: this is the visible trace of the
-     * appear-before-input assumption failing on this host, and a support log
-     * at the default level must show it.
-     */
-    const appearIfNeverAdded = (data: Frame, controller: "Keypad" | "Encoder"): void => {
-      const { context } = data;
-
-      if (this.order.isLive(context) || this.order.hasAppeared(context)) return;
-
-      this.controllerLog.info(`Synthesised willAppear for ${context}: input arrived before any add`);
-
-      if (controller === "Encoder") this.knownEncoderContexts.add(context);
-
-      // Discarded on purpose: a discarded enqueue result is safe (never an
-      // unhandled rejection) but silent, and a synthetic appear's failure is
-      // this adapter's to log, as the promotion's is.
-      void this.order
-        .enqueue(context, "willAppear", () => appear(withSettings(data, settingsNow(data), "willAppear"), controller))
-        ?.catch((error: unknown) => {
-          this.controllerLog.error(`Context ${context}: synthetic willAppear as ${controller} failed: ${error}`);
-        });
-    };
-
-    /**
-     * A dial event's arrival: appear a never-added context as an Encoder, fire
-     * the broadcast for a live context, enqueue the promotion step for a live
-     * context not yet known as an Encoder, then the event itself. The step is
-     * discarded on purpose — it logs its own failures and never rejects.
+     * A dial event's arrival: fire the broadcast for a live context and enqueue
+     * the promotion step for a live context not yet known as an Encoder; the
+     * event itself is enqueued by the caller. The step is discarded on purpose:
+     * it logs its own failures and never rejects. A context that is not live
+     * gets neither, and the order drops the event itself.
      */
     const dialArrived = (data: Frame, broadcasts: readonly (() => void)[]): void => {
       const { context } = data;
-
-      appearIfNeverAdded(data, "Encoder");
 
       if (this.order.isLive(context)) {
         for (const cb of broadcasts) cb();
@@ -598,9 +567,9 @@ export class UlanziPlatformAdapter implements IDeckPlatformAdapter {
     // willAppear — the host's `add`. Its controller is decided at arrival: an
     // explicit one wins (forward compatibility); otherwise a context known as an
     // Encoder is one, and any other is a Keypad until it delivers dial input
-    // (#1530). For a context that is already live — the host replaying its
-    // `add` after the adapter appeared the context on input — this is a
-    // settings change, not a second appear.
+    // (#1530). For a context that is already live — a host re-sending the
+    // `add` of a key it has already added — this is a settings change, not a
+    // second appear.
     this.client.onActionEvent(uuid, "willAppear", (data) => {
       if (!data.context) return;
 
@@ -665,13 +634,11 @@ export class UlanziPlatformAdapter implements IDeckPlatformAdapter {
       );
     });
 
-    // keyDown — appear a never-added context, broadcast (for window focus), then the handler.
+    // keyDown — broadcast (for window focus) for a live context, then the handler.
     this.client.onActionEvent(uuid, "keyDown", (data) => {
       if (!data.context) return;
 
       const frame = data as Frame;
-
-      appearIfNeverAdded(frame, "Keypad");
 
       if (this.order.isLive(frame.context)) for (const cb of this.keyDownCallbacks) cb();
 
@@ -687,8 +654,6 @@ export class UlanziPlatformAdapter implements IDeckPlatformAdapter {
       if (!data.context) return;
 
       const frame = data as Frame;
-
-      appearIfNeverAdded(frame, "Keypad");
 
       return this.order.enqueue(frame.context, "keyUp", () =>
         handler.onKeyUp?.(

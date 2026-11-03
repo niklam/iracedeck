@@ -369,9 +369,19 @@ describe("UlanziPlatformAdapter", () => {
       expect(ev.payload.settings).toEqual({ mode: "direct" });
     });
 
+    /** Appear `context` first: input for a context that never appeared is dropped (#1597). */
+    const appearContext = (context: string) =>
+      actionEventHandler("willAppear")({
+        event: "willAppear",
+        action: "com.test.action",
+        context,
+        payload: { settings: {} },
+      });
+
     it("should call handler.onKeyDown with wrapped event", async () => {
-      const handler: IDeckActionHandler = { onKeyDown: vi.fn() };
+      const handler: IDeckActionHandler = { onWillAppear: vi.fn(), onKeyDown: vi.fn() };
       adapter.registerAction("com.test.action", handler);
+      await appearContext("ctx-456");
 
       const keyDownCall = actionEventHandler("keyDown");
 
@@ -388,8 +398,9 @@ describe("UlanziPlatformAdapter", () => {
     });
 
     it("should call handler.onDialRotate with ticks", async () => {
-      const handler: IDeckActionHandler = { onDialRotate: vi.fn() };
+      const handler: IDeckActionHandler = { onWillAppear: vi.fn(), onDialRotate: vi.fn() };
       adapter.registerAction("com.test.action", handler);
+      await appearContext("ctx-789");
 
       const dialRotateCall = actionEventHandler("dialRotate");
 
@@ -407,8 +418,9 @@ describe("UlanziPlatformAdapter", () => {
     });
 
     it("defaults onDialRotate pressed to false when the frame omits it", async () => {
-      const handler: IDeckActionHandler = { onDialRotate: vi.fn() };
+      const handler: IDeckActionHandler = { onWillAppear: vi.fn(), onDialRotate: vi.fn() };
       adapter.registerAction("com.test.action", handler);
+      await appearContext("ctx-789");
 
       const dialRotateCall = actionEventHandler("dialRotate");
 
@@ -513,14 +525,14 @@ describe("UlanziPlatformAdapter", () => {
   // until it delivers dial input; the adapter then re-appears it as an Encoder
   // so the action builds its dial surface before the input reaches it (#1530).
   // Since #1597 that promotion is one exclusive step of deck-core's
-  // ContextEventOrder, and input for a context the host never sent an `add`
-  // for appears the context first. The generic ordering rules are the contract
-  // suite in adapter.order-contract.test.ts; what is here is Ulanzi's own.
+  // ContextEventOrder, which also drops input for a context the host never
+  // sent an `add` for. The generic ordering rules are the contract suite in
+  // adapter.order-contract.test.ts; what is here is Ulanzi's own.
   describe("controller from dial input (#1530)", () => {
     const UUID = "com.test.action";
     const CTX = "com.test.action___3___abc";
 
-    /** An adapter over a spy logger, so the lines the promotion and the synthetic appear log can be read. */
+    /** An adapter over a spy logger, so the lines the promotion and the order's drops log can be read. */
     const adapterWithSpyLogger = () => {
       const logger: ILogger = {
         trace: vi.fn(),
@@ -986,69 +998,44 @@ describe("UlanziPlatformAdapter", () => {
       expect(calls[2]).toMatchObject({ isDial: false, isKey: true });
     });
 
-    // UlanziStudio sends input for a context a plugin process never got an
-    // `add` for: the process started with keys already on the deck (measured
-    // on the SDK simulator for #1597). Such a context is appeared before the
-    // input runs, as an Encoder when the input is a dial event.
-    it("appears a context that never got an add as an Encoder before its first dial input, with no promotion", async () => {
+    // UlanziStudio does send input for a context a plugin process never got an
+    // `add` for (a process started with keys already on the deck, measured on
+    // the SDK simulator for #1597). It is dropped all the same: input frames
+    // carry no settings and the cache is empty in a fresh process, so an appear
+    // synthesised for it would run with `{}` and the base appear's first
+    // `setSettings` would wipe the key's stored configuration on the host.
+    it("drops dial input for a context that never appeared, with the warn line, and never remembers it as a dial", async () => {
       const logger = adapterWithSpyLogger();
       const { handler, calls, hooks } = recordingHandler();
       adapter.registerAction(UUID, handler);
 
-      await rotate(1, { mode: "brake-bias" });
+      await rotate(1);
       await rotate(2);
 
-      expect(hooks()).toEqual(["onWillAppear", "onDialRotate", "onDialRotate"]);
-      expect(calls[0]).toMatchObject({ isDial: true, isKey: false, settings: { mode: "brake-bias" } });
-      expect(calls[1]).toMatchObject({ isDial: true, ticks: 1 });
-      expect(calls[2]).toMatchObject({ isDial: true, ticks: 2 });
-      expect(infoLines(logger, "Synthesised")).toEqual([
-        [`Synthesised willAppear for ${CTX}: input arrived before any add`],
+      expect(hooks()).toEqual([]);
+      expect(vi.mocked(logger.warn).mock.calls).toEqual([
+        [`Dropped dialRotate for ${CTX}: it never appeared (the host sent no willAppear for it)`],
       ]);
       expect(infoLines(logger, "#1530")).toEqual([]);
+
+      // Not remembered as a dial: its add appears it as a Keypad.
+      await appear();
+
+      expect(hooks()).toEqual(["onWillAppear"]);
+      expect(calls[0]).toMatchObject({ isDial: false, isKey: true });
     });
 
-    it("appears a context that never got an add as a Keypad before its first key press", async () => {
+    it("delivers a host add for a context that is already live as a settings change, not a second appear", async () => {
       const { handler, calls, hooks } = recordingHandler();
       adapter.registerAction(UUID, handler);
 
-      await nonDial("keyDown", { mode: "cached" });
-
-      expect(hooks()).toEqual(["onWillAppear", "onKeyDown"]);
-      expect(calls[0]).toMatchObject({ isDial: false, isKey: true, settings: { mode: "cached" } });
-      expect(calls[1]).toMatchObject({ isKey: true });
-
-      // A Keypad, so a later dial event promotes it like any other.
-      await rotate(1);
-
-      expect(hooks()).toEqual(["onWillAppear", "onKeyDown", "onWillDisappear", "onWillAppear", "onDialRotate"]);
-      expect(calls[4].isDial).toBe(true);
-    });
-
-    it("turns the host's add for a context the adapter appeared on input into a settings change, not a second appear", async () => {
-      const { handler, calls, hooks } = recordingHandler();
-      adapter.registerAction(UUID, handler);
-
-      await nonDial("keyDown", { mode: "cached" });
-      await appear({ settings: { mode: "from-add" } });
+      await appear({ settings: { mode: "first-add" } });
+      await appear({ settings: { mode: "second-add" } });
       await nonDial("keyUp");
 
-      expect(hooks()).toEqual(["onWillAppear", "onKeyDown", "onDidReceiveSettings", "onKeyUp"]);
-      expect(calls[2]).toMatchObject({ isKey: true, settings: { mode: "from-add" } });
+      expect(hooks()).toEqual(["onWillAppear", "onDidReceiveSettings", "onKeyUp"]);
+      expect(calls[1]).toMatchObject({ isKey: true, settings: { mode: "second-add" } });
       expect(handler.onWillAppear).toHaveBeenCalledOnce();
-    });
-
-    it("logs a synthetic appear that rejects and still delivers the input behind it", async () => {
-      const logger = adapterWithSpyLogger();
-      const { handler, hooks } = recordingHandler();
-      adapter.registerAction(UUID, handler);
-      handler.onWillAppear.mockRejectedValueOnce(new Error("synthetic boom"));
-
-      await nonDial("keyDown");
-
-      expect(hooks()).toEqual(["onKeyDown"]);
-      expect(logger.error).toHaveBeenCalledOnce();
-      expect(vi.mocked(logger.error).mock.calls[0][0]).toContain("synthetic boom");
     });
 
     it("tears down the Encoder when a disappear arrives while the promotion waits for the Keypad appear", async () => {

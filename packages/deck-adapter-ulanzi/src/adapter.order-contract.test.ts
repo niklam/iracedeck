@@ -4,11 +4,6 @@
  * and drives host events the way `UlanziClient.routeEvent` does: the one
  * registration matching the frame is called synchronously, with the frame
  * already normalised and its settings backfilled.
- *
- * UlanziStudio sends input for a context it never sent an `add` for (a plugin
- * process that starts with keys already on the deck; measured on the SDK
- * simulator for #1597), so the harness declares the `appear-first` policy: the
- * adapter appears such a context before the input runs.
  */
 import {
   CONTEXT_EVENT_ORDER_ACTION_UUID,
@@ -66,7 +61,6 @@ function createHarness(): ContextEventOrderHarness {
   return {
     adapter,
     hostEvents: ULANZI_HOST_EVENTS,
-    neverAppeared: "appear-first",
     emit(event, context, payload = {}) {
       // The real client's `routeEvent` awaits every registration matching a
       // frame in turn, so only the first is reached synchronously. Each
