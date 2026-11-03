@@ -47,12 +47,16 @@
  *   and the gate reports per token whether something of it is under way or
  *   waiting ({@link subscribeReplayGate}). It adds no behaviour: the gate
  *   sends the same commands in the same order with and without a listener.
- * - **Every speed it sends is the speed state's** (#1467): a speed, a pause
- *   or a playback step that went out is recorded in `replay-speed-state.ts`
- *   once the change that sent it is complete, so every surface reads one
- *   record of the replay speed. A press says whether its send is the speed
- *   the dial's Play resumes (`rememberSpeed`); a command the slot sends later
- *   always is.
+ * - **Every speed it sends is the speed state's** (#1467, #1427): a speed, a
+ *   pause or a playback step that went out is recorded in
+ *   `replay-speed-state.ts` the moment it goes out, as the one pending speed,
+ *   with the speed the reading showed then; the listeners are told once the
+ *   change that sent it is complete. The gate keeps no speed record of its
+ *   own: "is the replay moving" reads that pending speed over the reading
+ *   (`pendingReplaySpeed`), which a cursor take does not drop for it, so a
+ *   press decides with a speed sent the moment before. A press says whether
+ *   its send is the speed the dial's Play resumes (`rememberSpeed`); a
+ *   command the slot sends later always is.
  *
  * A one-shot press goes through {@link pressReplayCommand}, which takes the
  * replay cursor (`replay-cursor.ts`) as every command did before. A long-running
@@ -68,9 +72,9 @@ import type { ILogger } from "@iracedeck/logger";
 import { now as engineNow, pollUntil } from "./engine-clock.js";
 import {
   cancelReplayCursorOwner,
+  capturedJumpSpeed,
   claimReplayCursor,
   onReplayCursorTaken,
-  pendingReplayJumpSpeed,
   type ReplayCursorClaim,
 } from "./replay-cursor.js";
 import { engineEnv, engineLogger, engineReads, type ReplayCommandSurface } from "./replay-engine-env.js";
@@ -91,7 +95,7 @@ import {
 } from "./replay-position-state.js";
 import { followsPlayback, readReplay, type ReplayReading } from "./replay-reading.js";
 import { isPaused, isSeeking, replaySeekWaitMs } from "./replay-seek.js";
-import { noteReplaySpeedSent } from "./replay-speed-state.js";
+import { announceReplaySpeedSent, pendingReplaySpeed, recordReplaySpeedSent } from "./replay-speed-state.js";
 import {
   HOLD_GAP_MS,
   readFastestLapSearchDelayMs,
@@ -191,9 +195,6 @@ const SEARCH_BEHIND_JUMP_READS = 3;
 
 // What a tick says about the replay (`readReplay`) and how far playback carries a frame (`followsPlayback`) are
 // `replay-reading.ts`'s, shared with the paced search (#1450).
-
-/** How long a gate-sent speed stands in for a reading that does not show it yet (ms), for "is the replay moving". */
-const SPEED_SENT_HOLD_MS = 200;
 
 interface Sample {
   readonly frame: number;
@@ -355,8 +356,6 @@ function setFate(id: number, fate: ReplayTargetFate): void {
     fates.delete(oldest);
   }
 }
-/** The last playing speed the gate sent, for "is the replay moving" before a reading shows it. */
-let speedSent: { readonly speed: ReplaySpeed; readonly at: number } | null = null;
 /** Whether the latest reading showed a seek nobody recorded (the witness). */
 let witness = false;
 /** The last reading that was the replay's, for a takeover with no frame on screen. */
@@ -448,15 +447,8 @@ const batchEnds = new Map<string, ReplayGateFactEnd[]>();
  */
 const sameRunEnds = new Map<string, ReplayGateEndReason>();
 
-/** A speed the gate sent inside the running change, for the speed state once the change is complete. */
-interface SentSpeed {
-  readonly speed: ReplaySpeed;
-  readonly at: number;
-  readonly rememberSpeed: boolean;
-}
-
-/** The speeds sent in the running change, in the order they went out. */
-let sentSpeeds: SentSpeed[] = [];
+/** The speeds sent in the running change, in the order they went out, for the speed state's listeners once it is complete. */
+let sentSpeeds: ReplaySpeed[] = [];
 
 /** Runs `listener` on every change of any token's view. Returns the unsubscribe. */
 export function subscribeReplayGate(listener: (notice: ReplayGateNotice) => void): () => void {
@@ -500,24 +492,29 @@ function batch<T>(now: number, change: () => T): T {
 }
 
 /**
- * Hands the speeds sent in the change just completed to the speed state, whose
- * listeners redraw the surfaces: after the gate's own state is settled and
+ * Tells the speed state's listeners, which redraw the surfaces, of the speeds
+ * sent in the change just completed: after the gate's own state is settled and
  * published, so a listener that reads the gate reads it whole. A send made by
- * a listener goes out in a change of its own, which notes it itself.
+ * a listener goes out in a change of its own, which announces it itself.
  */
 function noteSentSpeeds(): void {
   const due = sentSpeeds;
 
   sentSpeeds = [];
 
-  for (const sent of due) noteReplaySpeedSent(sent.speed, sent.at, { rememberSpeed: sent.rememberSpeed });
+  for (const speed of due) announceReplaySpeedSent(speed);
 }
 
-/** Records a speed that went out, for the speed state at the end of the change. */
-function noteSpeedSent(speed: ReplaySpeed, now: number, rememberSpeed: boolean): void {
-  sentSpeeds.push({ speed, at: now, rememberSpeed });
+/**
+ * Records a speed that went out in the speed state at once, so the gate's
+ * next read of "is the replay moving" sees it, with the speed `reading`
+ * showed as it went out; its listeners are told at the end of the change.
+ */
+function noteSpeedSent(speed: ReplaySpeed, now: number, rememberSpeed: boolean, reading: ReplayReading | null): void {
+  recordReplaySpeedSent(speed, now, { rememberSpeed, telemetrySpeed: reading?.speed ?? null });
+  sentSpeeds.push(speed);
 
-  // Every send runs inside a change today; one outside it is noted at once.
+  // Every send runs inside a change today; one outside it is announced at once.
   if (batchDepth === 0) noteSentSpeeds();
 }
 
@@ -682,33 +679,20 @@ export function replaySearchMayRunMs(telemetry: TelemetryData | null, direction:
   return replaySeekWaitMs(distance, floorMs);
 }
 
-/** The speed the replay has now: a gate-sent speed telemetry does not show yet, else the reading's. */
+/**
+ * The speed the replay has now: a speed just sent that the reading does not
+ * show yet (the speed state's one pending speed, whoever sent it and whoever
+ * has taken the cursor since), else the reading's.
+ */
 function currentSpeed(reading: ReplayReading | null, now: number): ReplaySpeed {
-  if (speedSent !== null && now - speedSent.at < SPEED_SENT_HOLD_MS) {
-    if (reading?.speed == null || !isSameSpeed(reading.speed, speedSent.speed)) return speedSent.speed;
-  }
-
-  const pending = pendingReplayJumpSpeed();
-
-  if (pending !== null && pending.appliedAt !== null && now - pending.appliedAt < SPEED_SENT_HOLD_MS) {
-    if (reading?.speed == null || !isSameSpeed(reading.speed, pending)) return { ...pending };
-  }
-
-  return reading?.speed ?? { speed: 0, slowMotion: false };
+  return pendingReplaySpeed(reading?.speed ?? null, now) ?? reading?.speed ?? { speed: 0, slowMotion: false };
 }
 
-/** Whether the gate, or a replay jump's playback step, has just sent a playing speed telemetry does not show yet. */
-function startingToMove(now: number): boolean {
-  if (speedSent !== null && speedSent.speed.speed !== 0 && now - speedSent.at < SPEED_SENT_HOLD_MS) return true;
+/** Whether a playing speed was just sent — by any press, or a replay jump's playback step — that the reading does not show yet. */
+function startingToMove(reading: ReplayReading | null, now: number): boolean {
+  const pending = pendingReplaySpeed(reading?.speed ?? null, now);
 
-  const applied = pendingReplayJumpSpeed();
-
-  return (
-    applied !== null &&
-    applied.appliedAt !== null &&
-    applied.speed !== 0 &&
-    now - applied.appliedAt < SPEED_SENT_HOLD_MS
-  );
+  return pending !== null && pending.speed !== 0;
 }
 
 function recordSearch(
@@ -882,7 +866,7 @@ function dispatch(
 
       // A step into a replay that reads paused lands one frame on; one that still reads playing lands
       // wherever the pause catches it, and records nothing. The reading's own speed, not a pause just sent.
-      if (ok && reading !== null && reading.rate === 0 && !startingToMove(now)) {
+      if (ok && reading !== null && reading.rate === 0 && !startingToMove(reading, now)) {
         const frame = reading.frame + command.direction;
         const last = reading.left === undefined ? Infinity : reading.frame + reading.left - 1;
 
@@ -895,20 +879,14 @@ function dispatch(
       const ok = sendRaw("pause", command.send ?? ((r) => r.pause()));
 
       // Paused from now, for "is the replay moving", until the reading shows it.
-      if (ok) {
-        speedSent = { speed: { speed: 0, slowMotion: false }, at: now };
-        noteSpeedSent({ speed: 0, slowMotion: false }, now, rememberSpeed);
-      }
+      if (ok) noteSpeedSent({ speed: 0, slowMotion: false }, now, rememberSpeed, reading);
 
       return ok;
     }
     case "speed": {
       const ok = sendRaw("setPlaySpeed", command.send ?? ((r) => r.setPlaySpeed(command.speed, command.slowMotion)));
 
-      if (ok) {
-        speedSent = { speed: { speed: command.speed, slowMotion: command.slowMotion }, at: now };
-        noteSpeedSent({ speed: command.speed, slowMotion: command.slowMotion }, now, rememberSpeed);
-      }
+      if (ok) noteSpeedSent({ speed: command.speed, slowMotion: command.slowMotion }, now, rememberSpeed, reading);
 
       return ok;
     }
@@ -1635,7 +1613,7 @@ export function pressReplayCommand(command: ReplayGateCommand, options: ReplayPr
 
     const before = held;
     // Read before the take: taking the cursor clears the speed the jump captured.
-    const capturedBySequence = before !== null ? pendingReplayJumpSpeed() : null;
+    const capturedBySequence = before !== null ? capturedJumpSpeed() : null;
 
     takeCursor(options.by, options.origin);
     result = decide(command, options, telemetry, now, before, capturedBySequence);
@@ -2605,7 +2583,6 @@ export function _resetReplayCommandGate(): void {
   owed = null;
   jumpsByTarget.clear();
   fates.clear();
-  speedSent = null;
   witness = false;
   lastReplay = null;
   busySince = null;

@@ -75,7 +75,6 @@ import {
   isRaceStartUnavailable,
   LAP_START_APPROACH_FRAMES,
   lastListedSessionNum,
-  noteTelemetrySpeed,
   observeIncidentSearch,
   onReplaySpeedChanged,
   parseSpeedSetting,
@@ -673,9 +672,6 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
 
     this.sdkController.subscribe(ev.action.id, (telemetry: TelemetryData | null) => {
       const speed = this.holdTickSpeed(telemetry);
-
-      this.rememberReplaySpeed(telemetry, speed);
-
       const storedSettings = this.activeContexts.get(ev.action.id);
 
       // The speed is the engine's one record over this tick's reading — the
@@ -807,32 +803,17 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
   }
 
   /**
-   * One telemetry tick for a dial context. Its replay speed is decoded once
-   * for both uses: the speed Play/Pause resumes, and the dial's own screen,
-   * which is handed the tick so comparing its frame costs no telemetry read
-   * and redraws only on a change.
+   * One telemetry tick for a dial context. Its replay speed is decoded once,
+   * and the dial's own screen is handed the tick so comparing its frame costs
+   * no telemetry read and redraws only on a change. The speed Play/Pause
+   * resumes is not fed from here: the replay engine feeds every tick in a
+   * replay to its speed state itself (`replay-speed-feed.ts`, #1427), whether
+   * or not a Replay Control context is on screen.
    */
   private onDialTelemetry(contextId: string, telemetry: TelemetryData | null): void {
     const speed = this.holdTickSpeed(telemetry);
 
-    this.rememberReplaySpeed(telemetry, speed);
     this.dialSurface.onTick(contextId, { telemetry, speed });
-  }
-
-  /**
-   * Feeds one tick to the speed the dial's Play/Pause resumes
-   * (`replay-speed-state.ts`). Every context of this action calls it, keys
-   * included, so a speed set and paused while only keys are on the page is
-   * remembered when a dial's page comes back. Only while a replay is on
-   * screen: out of one, `ReplayPlaySpeed` says nothing about a replay. A speed
-   * set while no Replay Control context is visible at all is still not seen.
-   * `current` is the tick's speed where the caller has already decoded it.
-   */
-  private rememberReplaySpeed(
-    telemetry: TelemetryData | null,
-    current = telemetry ? replaySpeedFromTelemetry(telemetry) : null,
-  ): void {
-    if (current && this.sdkController.getReplayState().inReplay) noteTelemetrySpeed(current, Date.now());
   }
 
   /**

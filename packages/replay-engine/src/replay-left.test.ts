@@ -140,7 +140,8 @@ describe("replayLeft (#1467)", () => {
     configureReplayEngine(engineOver(second.controller));
 
     expect(first.unsubscribe).toHaveBeenCalledWith("replay-engine");
-    expect(second.subscribe).toHaveBeenCalledTimes(1);
+    // The watch, and beside it the speed state's tick feed (#1427): one subscription each.
+    expect(second.subscribe.mock.calls.map(([id]) => id)).toEqual(["replay-engine", "replay-engine-speed"]);
 
     inReplay = false;
     telemetry = DRIVING;

@@ -38,14 +38,17 @@
  * headed there whoever holds the cursor. It replaced the pending landing that
  * Replay Markers kept here (#1230).
  *
- * The module keeps the one **pending jump speed** (#1276): the speed the replay had before
- * a jump that is still under way, or the speed a finished jump left it at until
- * telemetry shows it. A jump pauses a moving replay before it seeks, so a
- * second jump pressed meanwhile would read "paused" and remember that instead
- * of the speed the driver chose. It is one value, cleared by anything else
- * that takes the cursor: a speed or pause command from any key
- * is the driver's new choice. The rule for when it still stands is the jump
- * sequence's own (`replay-jump-playback.ts`).
+ * The module keeps the one **captured jump speed** (#1276, #1427): the speed
+ * the replay had before a jump that is still under way — the speed that jump
+ * will restore, not a record of the current speed. A jump pauses a moving
+ * replay before it seeks, so a second jump pressed meanwhile would read
+ * "paused" and remember that instead of the speed the driver chose; it
+ * inherits this instead. It lives apart from the pending speed
+ * (`replay-speed-state.ts`, where the jump's own pause is recorded like any
+ * send) so that pause cannot clobber it. It is one value, cleared by anything
+ * that takes the cursor — a speed or pause command from any key is the
+ * driver's new choice — and by the jump itself once it has applied its speed
+ * or ended (`replay-jump-playback.ts`).
  *
  * Whether a replay is on screen is not kept here: the debounced replay state
  * (#1324), which holds "in a replay" through the ~300 ms post-seek blip and
@@ -56,6 +59,7 @@
  * Deliberately in-memory and process-wide: every action runs in one plugin
  * process, and nothing here belongs in persisted settings.
  */
+import type { ReplaySpeed } from "./replay-jump-speed.js";
 
 /** What a claimant holds while it drives the cursor. */
 export interface ReplayCursorClaim {
@@ -109,15 +113,7 @@ class Claim implements ReplayCursorClaim {
 
 let current: Claim | null = null;
 
-/** The speed a jump found, or left, in the units `setPlaySpeed` takes. */
-export interface ReplayJumpSpeed {
-  readonly speed: number;
-  readonly slowMotion: boolean;
-  /** `null` while the jump that captured the speed is still under way; `Date.now()` at the moment a jump applied it. */
-  readonly appliedAt: number | null;
-}
-
-let jumpSpeed: ReplayJumpSpeed | null = null;
+let jumpSpeed: ReplaySpeed | null = null;
 
 /**
  * Who is told when the cursor is taken. Module wiring, registered once at
@@ -128,7 +124,7 @@ const takenListeners = new Set<(by: string) => void>();
 /**
  * Runs `listener` whenever something takes the cursor — a claim, or any
  * one-shot command's {@link cancelReplayCursorOwner}. For a module that keeps its own "what this plugin last
- * sent the replay" value (the Replay Control dial's pending speed, #1316):
+ * sent the replay" value (the speed state's pending speed, #1316, #1427):
  * every replay command of every action takes the cursor first, so this is the
  * one place such a value is superseded. The listener is told who took it: the
  * new claim's owner, or the `by` of a cancel. Returns the unsubscribe.
@@ -165,7 +161,7 @@ export function claimReplayCursor(owner: string, onCancelled?: (by: string) => v
 /**
  * Cancel the in-flight claim, if any, before sending a one-shot cursor command.
  * Returns the cancelled owner's name, or `null` when nothing was in flight.
- * Idempotent: a claim already cancelled is not renamed. Clears the pending
+ * Idempotent: a claim already cancelled is not renamed. Clears the captured
  * jump speed, claim or no claim: the command about to be sent is the driver's
  * own choice of what the replay does next.
  */
@@ -188,7 +184,7 @@ export function cancelReplayCursorOwner(by: string): string | null {
  * Cancel the in-flight claim only when its owner is one of `owners` (#801):
  * since #1428 / #1435 the lap walks stopped because the replay was left
  * (`cancelLapWalks`, `replay-left.ts`); a camera switch interrupts instead.
- * A cancel is a take, as {@link cancelReplayCursorOwner}'s: the pending jump
+ * A cancel is a take, as {@link cancelReplayCursorOwner}'s: the captured jump
  * speed is cleared and `onReplayCursorTaken` is told. Any other owner is left
  * standing, and then nothing is cleared or told. Returns the cancelled
  * owner's name, or `null`.
@@ -206,7 +202,7 @@ export function cancelReplayCursorOwnerIf(owners: readonly string[], by: string)
  * (#1428 / #1435): a camera switch stopping a lap walk, whose searches would
  * follow the new car. Unlike a cancel it does not take the cursor: the claim
  * stays current with `interruptedBy` set, so its holder can still put the
- * replay back, and the pending jump speed, the dial's pending speed and the
+ * replay back, and the captured jump speed, the pending speed and the
  * `onReplayCursorTaken` listeners are left alone. Returns the interrupted
  * owner's name, or `null` when no such claim stood, it was already
  * interrupted, or its holder had ended its interrupts.
@@ -238,18 +234,18 @@ export function currentReplayCursorOwner(): string | null {
   return current === null || current.cancelledBy !== null ? null : current.owner;
 }
 
-/** Records the speed a jump captured (`appliedAt` null) or applied (`appliedAt` the moment it did). */
-export function recordReplayJumpSpeed(speed: ReplayJumpSpeed): void {
+/** Records the speed a jump starting now captured: the record itself, so its jump can tell it from a later one's. */
+export function recordCapturedJumpSpeed(speed: ReplaySpeed): void {
   jumpSpeed = speed;
 }
 
-/** The pending jump speed, or `null` once something else took the cursor. Whether it still stands is the caller's rule. */
-export function pendingReplayJumpSpeed(): ReplayJumpSpeed | null {
+/** The speed a jump still under way captured, or `null` once something took the cursor or that jump applied its speed or ended. */
+export function capturedJumpSpeed(): ReplaySpeed | null {
   return jumpSpeed;
 }
 
-/** Drops the pending jump speed: telemetry shows it, the hold ran out, or the jump that captured it gave up. */
-export function clearReplayJumpSpeed(): void {
+/** Drops the captured jump speed: its jump applied its speed, or ended without. */
+export function clearCapturedJumpSpeed(): void {
   jumpSpeed = null;
 }
 

@@ -476,6 +476,8 @@ describe("the paced search runner (#801)", () => {
       _resetReplayCommandGate();
       _resetReplayCursor();
       _resetReplayPositionState();
+      // The speed the first run sent last is the pending speed (#1427), which the gate no longer keeps itself.
+      _resetReplaySpeedState();
       setUp();
       turn("lap", 1);
 

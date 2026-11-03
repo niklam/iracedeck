@@ -34,17 +34,18 @@ import {
 } from "./replay-command-gate.js";
 import { fakeReplay, type FakeReplay } from "./replay-command-gate.test-support.js";
 import {
+  capturedJumpSpeed,
   claimReplayCursor,
   currentReplayCursorOwner,
   onReplayCursorTaken,
-  pendingReplayJumpSpeed,
-  recordReplayJumpSpeed,
+  recordCapturedJumpSpeed,
   type ReplayCursorClaim,
 } from "./replay-cursor.js";
 import { _configureReplayEngine } from "./replay-engine-env.js";
 import { resetEngine } from "./replay-engine-reset.test-support.js";
 import { watchReplayLeft } from "./replay-left.test-support.js";
-import { noteReplaySpeedSent, resolveLiveSpeed } from "./replay-speed-state.js";
+import { resolveLiveSpeed } from "./replay-speed-state.js";
+import { noteReplaySpeedSent } from "./replay-speed-state.test-support.js";
 import { REPLAY_JUMP_MAX_WAIT_MS } from "./replay-timing.js";
 
 let debug: Mock<(message: string) => void>;
@@ -735,27 +736,27 @@ describe("lap-walk owners", () => {
     }
   });
 
-  it("interruptLapWalks leaves the pending jump speed, the dial's pending speed and the cursor-taken listeners alone", () => {
+  it("interruptLapWalks leaves the captured jump speed, the pending speed and the cursor-taken listeners alone", () => {
     const listener = vi.fn();
     const at = Date.now();
 
     claimReplayCursor(FASTEST_LAP_WALK_OWNER);
-    recordReplayJumpSpeed({ speed: 2, slowMotion: false, appliedAt: null });
-    // The dial's pending speed: a send the telemetry has not shown yet.
+    recordCapturedJumpSpeed({ speed: 2, slowMotion: false });
+    // The pending speed: a send the telemetry has not shown yet.
     noteReplaySpeedSent({ speed: 8, slowMotion: false }, at, { rememberSpeed: true });
     const unsubscribe = onReplayCursorTaken(listener);
 
     interruptLapWalks("next-car");
 
-    expect(pendingReplayJumpSpeed()).toEqual({ speed: 2, slowMotion: false, appliedAt: null });
+    expect(capturedJumpSpeed()).toEqual({ speed: 2, slowMotion: false });
     expect(resolveLiveSpeed({ speed: 0, slowMotion: false }, at)).toEqual({ speed: 8, slowMotion: false });
     expect(listener).not.toHaveBeenCalled();
     unsubscribe();
 
-    // A cancel, by contrast, takes the cursor and clears both.
+    // A cancel, by contrast, takes the cursor: it clears the captured speed and supersedes the pending one for the surfaces.
     cancelLapWalks("frame-forward");
 
-    expect(pendingReplayJumpSpeed()).toBeNull();
+    expect(capturedJumpSpeed()).toBeNull();
     expect(resolveLiveSpeed({ speed: 0, slowMotion: false }, at)).toEqual({ speed: 0, slowMotion: false });
   });
 });

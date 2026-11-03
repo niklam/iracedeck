@@ -18,10 +18,9 @@ export { REPLAY_TARGET_GIVE_UP_MS, type ReplayPosition } from "./replay-position
 export { isSeeking, type ReplaySeekSample } from "./replay-seek.js";
 export { REPLAY_JUMP_MAX_WAIT_MS } from "./replay-timing.js";
 export {
-  DIAL_SPEED_HOLD_MS,
   keepDialPendingSpeed,
-  noteTelemetrySpeed,
   onReplaySpeedChanged,
+  REPLAY_SPEED_HOLD_MS,
   rememberedSpeed,
   reverseRememberedSpeed,
 } from "./replay-speed-state.js";

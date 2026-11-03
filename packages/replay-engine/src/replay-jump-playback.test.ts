@@ -1,8 +1,10 @@
-import { ReplayPosMode, replaySpeedToSdk, type TelemetryData } from "@iracedeck/iracing-sdk";
+import { ReplayPosMode, replaySpeedFromTelemetry, replaySpeedToSdk, type TelemetryData } from "@iracedeck/iracing-sdk";
+import { silentLogger } from "@iracedeck/logger";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { type ReplayGateFactEnd, subscribeReplayGate } from "./replay-command-gate.js";
-import { cancelReplayCursorOwner, currentReplayCursorOwner, pendingReplayJumpSpeed } from "./replay-cursor.js";
+import { pressReplayCommand, type ReplayGateFactEnd, subscribeReplayGate } from "./replay-command-gate.js";
+import { cancelReplayCursorOwner, capturedJumpSpeed, currentReplayCursorOwner } from "./replay-cursor.js";
+import { configureReplayEngine } from "./replay-engine-configure.js";
 import { _configureReplayEngine } from "./replay-engine-env.js";
 import { resetEngine } from "./replay-engine-reset.test-support.js";
 import {
@@ -10,7 +12,6 @@ import {
   beginReplayJump,
   captureReplaySpeed,
   describeReplayJump,
-  JUMP_SPEED_HOLD_MS,
   noteReplayJumpLanded,
   readReplayJumpPlayback,
   type ReplayJumpOutcome,
@@ -18,7 +19,14 @@ import {
   resolveReplayJumpSpeed,
   runReplayJump,
 } from "./replay-jump-playback.js";
-import { onReplaySpeedChanged, rememberedSpeed } from "./replay-speed-state.js";
+import { replayLeftController } from "./replay-left.test-support.js";
+import {
+  keepDialPendingSpeed,
+  onReplaySpeedChanged,
+  rememberedSpeed,
+  REPLAY_SPEED_HOLD_MS,
+} from "./replay-speed-state.js";
+import { noteReplaySpeedSent } from "./replay-speed-state.test-support.js";
 
 /** The replay settings the cases set, read by the engine through its env (#1467). */
 const mockSettings = vi.fn((): Record<string, unknown> => ({}));
@@ -30,6 +38,13 @@ const engineSettings = {
   replayJumpPlayback: () => engineSetting("replayJumpPlayback"),
   fastestLapSearchDelayMs: () => engineSetting("fastestLapSearchDelayMs"),
 };
+
+/** The speed a sample shows, as telemetry alone says it: unreadable and 0x are paused. */
+function shownBy(sample: TelemetryData | null): ReplaySpeed {
+  const speed = sample === null ? null : replaySpeedFromTelemetry(sample);
+
+  return speed === null || speed.speed === 0 ? PAUSED : speed;
+}
 
 /** Telemetry as iRacing reports a speed on a replay: raw value plus the slow-motion flag. */
 function telemetryAt(speed: ReplaySpeed, frame = 90_000): TelemetryData {
@@ -95,7 +110,7 @@ function fakeSim(initial: ReplaySpeed, options: { frame?: number; lagMs?: number
     refuse,
     ignore,
     readTelemetry: (): TelemetryData => ({ ...sample }),
-    speed: (): ReplaySpeed => captureReplaySpeed(null, sample, 0),
+    speed: (): ReplaySpeed => shownBy(sample),
   };
 
   activeSim = { replay: withConveniences(replay), readTelemetry: sim.readTelemetry };
@@ -162,44 +177,42 @@ describe("replay-jump-playback (#1276)", () => {
 
   describe("captureReplaySpeed", () => {
     it("reads the exact speed from telemetry, slow motion decoded", () => {
-      expect(captureReplaySpeed(null, telemetryAt(PAUSED), 0)).toEqual(PAUSED);
-      expect(captureReplaySpeed(null, telemetryAt(NORMAL), 0)).toEqual(NORMAL);
-      expect(captureReplaySpeed(null, telemetryAt(REWIND_8), 0)).toEqual(REWIND_8);
+      expect(captureReplaySpeed(telemetryAt(PAUSED), 0)).toEqual(PAUSED);
+      expect(captureReplaySpeed(telemetryAt(NORMAL), 0)).toEqual(NORMAL);
+      expect(captureReplaySpeed(telemetryAt(REWIND_8), 0)).toEqual(REWIND_8);
       // iRacing reports 1/4x as raw 3 with the slow-motion flag (#1202).
-      expect(captureReplaySpeed(null, { ReplayPlaySpeed: 3, ReplayPlaySlowMotion: true } as TelemetryData, 0)).toEqual(
+      expect(captureReplaySpeed({ ReplayPlaySpeed: 3, ReplayPlaySlowMotion: true } as TelemetryData, 0)).toEqual(
         QUARTER,
       );
     });
 
     it("takes an unreadable speed as paused", () => {
-      expect(captureReplaySpeed(null, null, 0)).toEqual(PAUSED);
-      expect(captureReplaySpeed(null, {} as TelemetryData, 0)).toEqual(PAUSED);
+      expect(captureReplaySpeed(null, 0)).toEqual(PAUSED);
+      expect(captureReplaySpeed({} as TelemetryData, 0)).toEqual(PAUSED);
     });
 
     it("a paused replay has no slow-motion flag to remember", () => {
-      expect(captureReplaySpeed(null, { ReplayPlaySpeed: 0, ReplayPlaySlowMotion: true } as TelemetryData, 0)).toEqual(
+      expect(captureReplaySpeed({ ReplayPlaySpeed: 0, ReplayPlaySlowMotion: true } as TelemetryData, 0)).toEqual(
         PAUSED,
       );
     });
 
-    it("inherits the speed of a jump still under way, whatever telemetry reads and however long ago", () => {
-      const pending = { ...FORWARD_8, appliedAt: null };
+    it("reads a speed just sent, whoever sent it, until telemetry shows it (#1427)", () => {
+      noteReplaySpeedSent(NORMAL, 10_000, { rememberSpeed: false, telemetrySpeed: PAUSED });
 
-      expect(captureReplaySpeed(pending, telemetryAt(PAUSED), 1_000_000)).toEqual(FORWARD_8);
-    });
+      expect(captureReplaySpeed(telemetryAt(PAUSED), 10_030)).toEqual(NORMAL);
+      expect(captureReplaySpeed(null, 10_030)).toEqual(NORMAL);
 
-    it("reads the speed a jump just applied until telemetry shows it", () => {
-      const pending = { ...NORMAL, appliedAt: 10_000 };
-
-      expect(captureReplaySpeed(pending, telemetryAt(PAUSED), 10_030)).toEqual(NORMAL);
-      expect(captureReplaySpeed(pending, null, 10_030)).toEqual(NORMAL);
+      // Shown: telemetry is the witness again, of a change made since too.
+      expect(captureReplaySpeed(telemetryAt(NORMAL), 10_040)).toEqual(NORMAL);
+      expect(captureReplaySpeed(telemetryAt(QUARTER), 10_050)).toEqual(QUARTER);
     });
 
     it("goes back to telemetry once the hold has run out", () => {
-      const pending = { ...NORMAL, appliedAt: 10_000 };
+      noteReplaySpeedSent(NORMAL, 10_000, { rememberSpeed: false, telemetrySpeed: PAUSED });
 
-      expect(captureReplaySpeed(pending, telemetryAt(PAUSED), 10_000 + JUMP_SPEED_HOLD_MS - 1)).toEqual(NORMAL);
-      expect(captureReplaySpeed(pending, telemetryAt(PAUSED), 10_000 + JUMP_SPEED_HOLD_MS)).toEqual(PAUSED);
+      expect(captureReplaySpeed(telemetryAt(PAUSED), 10_000 + REPLAY_SPEED_HOLD_MS - 1)).toEqual(NORMAL);
+      expect(captureReplaySpeed(telemetryAt(PAUSED), 10_000 + REPLAY_SPEED_HOLD_MS)).toEqual(PAUSED);
     });
   });
 
@@ -359,7 +372,7 @@ describe("replay-jump-playback (#1276)", () => {
 
       expect(outcome).toMatchObject({ kind: "stopped", reason: "after-landing-failed" });
       expect(sim.calls).toEqual(["speed 0", "seek 64401"]);
-      expect(pendingReplayJumpSpeed()).toBeNull();
+      expect(capturedJumpSpeed()).toBeNull();
     });
 
     describe("when the landing times out", () => {
@@ -382,7 +395,7 @@ describe("replay-jump-playback (#1276)", () => {
           expect(sim.calls).toEqual(["speed 0", "seek 64401"]);
           expect(sim.speed()).toEqual(PAUSED);
           // What it captured does not outlive it: the next press reads the paused replay.
-          expect(pendingReplayJumpSpeed()).toBeNull();
+          expect(capturedJumpSpeed()).toBeNull();
           expect(currentReplayCursorOwner()).toBeNull();
         },
       );
@@ -651,7 +664,7 @@ describe("replay-jump-playback (#1276)", () => {
         jump.end();
 
         expect(sim.calls).toEqual(["speed 0", "seek 64401"]);
-        expect(pendingReplayJumpSpeed()).toBeNull();
+        expect(capturedJumpSpeed()).toBeNull();
       });
 
       it("a jump cancelled before it ran sends nothing", async () => {
@@ -811,9 +824,9 @@ describe("replay-jump-playback (#1276)", () => {
 
         first.end();
 
-        expect(pendingReplayJumpSpeed()).toEqual({ ...NORMAL, appliedAt: null });
+        expect(capturedJumpSpeed()).toEqual(NORMAL);
         second.end();
-        expect(pendingReplayJumpSpeed()).toBeNull();
+        expect(capturedJumpSpeed()).toBeNull();
       });
 
       it("a jump pressed before telemetry shows the speed the last one applied still remembers that speed", async () => {
@@ -853,13 +866,102 @@ describe("replay-jump-playback (#1276)", () => {
 
         // Changed outside the plugin (iRacing's own replay bar): telemetry is the only witness.
         sim.replay.setPlaySpeed(2, true);
-        await vi.advanceTimersByTimeAsync(JUMP_SPEED_HOLD_MS);
+        await vi.advanceTimersByTimeAsync(REPLAY_SPEED_HOLD_MS);
 
         const second = beginReplayJump("next", sim.readTelemetry());
 
         expect(second.captured).toEqual({ speed: 2, slowMotion: true });
         second.end();
       });
+    });
+  });
+
+  describe("the speed before the press is the one pending speed (#1427)", () => {
+    const TWO_X: ReplaySpeed = { speed: 2, slowMotion: false };
+
+    it("a speed key sent just before is captured: paused, Play, Next Marker under Remember", async () => {
+      setMode("remember");
+      const sim = fakeSim(PAUSED, { lagMs: 40 });
+
+      // A Multi Action's first key: Play, sent at once.
+      expect(pressReplayCommand({ kind: "speed", speed: 1, slowMotion: false }, { by: "play-pause" })).toEqual({
+        kind: "sent",
+        ok: true,
+      });
+
+      // Its second key, a few milliseconds later: telemetry still reads paused.
+      const jump = beginReplayJump("replay-markers-next", sim.readTelemetry(), undefined, Date.now(), {
+        frame: 64_401,
+      });
+
+      expect(jump.captured).toEqual(NORMAL);
+
+      const outcome = runReplayJump(jump, { frame: 64_401, readTelemetry: sim.readTelemetry });
+
+      // The replay is starting to play: it is paused before the seek, never run past it.
+      expect(sim.calls).toEqual(["speed 1", "speed 0"]);
+      await expect(settle(outcome)).resolves.toEqual({ kind: "landed", speed: NORMAL, command: "sent" });
+      jump.end();
+      expect(sim.calls).toEqual(["speed 1", "speed 0", "seek 64401", "speed 1"]);
+    });
+
+    it("a dial detent sent just before is captured", () => {
+      const sim = fakeSim(NORMAL, { lagMs: 40 });
+
+      // The dial's Speed Control turn, as the dial presses it: its own take keeps what it sent.
+      keepDialPendingSpeed(() =>
+        pressReplayCommand({ kind: "speed", speed: 2, slowMotion: false }, { by: "dial-speed", rememberSpeed: true }),
+      );
+
+      const jump = beginReplayJump("replay-markers-next", sim.readTelemetry());
+
+      expect(sim.speed()).toEqual(NORMAL);
+      expect(jump.captured).toEqual(TWO_X);
+      jump.end();
+    });
+
+    it("a speed changed outside the plugin once telemetry has shown the applied speed is the next jump's", async () => {
+      const sim = fakeSim(NORMAL);
+      const controller = replayLeftController({
+        replayState: () => ({ inReplay: true }),
+        telemetry: sim.readTelemetry,
+      });
+
+      // As the plugin configures it: the engine feeds itself every tick over the controller.
+      configureReplayEngine({
+        controller: controller.controller,
+        replay: () => activeSim.replay as never,
+        camera: () => ({ switchNum: () => true }),
+        now: () => Date.now(),
+        logger: silentLogger,
+        settings: engineSettings,
+      });
+
+      const first = beginReplayJump("next", sim.readTelemetry());
+      const outcome = runReplayJump(first, { frame: 64_401, readTelemetry: sim.readTelemetry });
+
+      // The controller's poll, until the speed the jump applied shows in telemetry.
+      let shown = false;
+
+      for (let i = 0; i < 100 && !shown; i++) {
+        await vi.advanceTimersByTimeAsync(10);
+        controller.tick();
+        shown = sim.calls.includes("speed 1") && sim.speed().speed === 1;
+      }
+
+      expect(shown).toBe(true);
+      await expect(outcome).resolves.toEqual({ kind: "landed", speed: NORMAL, command: "sent" });
+      first.end();
+
+      // iRacing's own replay bar, well inside the 200 ms the applied speed used to be held for.
+      sim.replay.setPlaySpeed(2, true);
+      await vi.advanceTimersByTimeAsync(30);
+      controller.tick();
+
+      const second = beginReplayJump("next", sim.readTelemetry());
+
+      expect(second.captured).toEqual({ speed: 2, slowMotion: true });
+      second.end();
     });
   });
 

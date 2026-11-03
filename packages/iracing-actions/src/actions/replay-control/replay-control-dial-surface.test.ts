@@ -7,16 +7,15 @@ import {
 } from "@iracedeck/iracing-sdk";
 import {
   currentReplayCursorOwner,
-  DIAL_SPEED_HOLD_MS,
   getReplayGateRecord,
   getReplayGateView,
   isReplayMoveUnderWay,
   lastListedSessionNum,
-  noteTelemetrySpeed,
   onReplaySpeedChanged,
   pressReplayCommand,
   type RecordStepSource,
   rememberedSpeed,
+  REPLAY_SPEED_HOLD_MS,
   REPLAY_TARGET_GIVE_UP_MS,
   type ReplayGateNotice,
   subscribeReplayGate,
@@ -28,6 +27,7 @@ import {
   claimReplayCursor,
   FASTEST_LAP_WALK_OWNER,
   noteReplaySpeedSent,
+  noteTelemetrySpeed,
   RACE_START_WALK_OWNER,
 } from "@iracedeck/replay-engine/testing";
 import type { ReplaySessionStore } from "@iracedeck/replay-store";
@@ -552,11 +552,11 @@ describe("ReplayControlDialSurface", () => {
       expect(shownValue(lastBox(ctx))).toBe("2x");
     });
 
-    it("after DIAL_SPEED_HOLD_MS the telemetry speed is the live one again", async () => {
+    it("after REPLAY_SPEED_HOLD_MS the telemetry speed is the live one again", async () => {
       const { surface, ctx, d } = await onScreen(speed(1));
 
       surface.rotate(ctx as never, d, 1, false);
-      await vi.advanceTimersByTimeAsync(DIAL_SPEED_HOLD_MS);
+      await vi.advanceTimersByTimeAsync(REPLAY_SPEED_HOLD_MS);
       surface.rotate(ctx as never, d, 1, false);
 
       expect(mocks.setPlaySpeed).toHaveBeenLastCalledWith(2, false);
@@ -693,7 +693,7 @@ describe("ReplayControlDialSurface", () => {
       await settle();
       host.telemetry.mockClear();
 
-      await vi.advanceTimersByTimeAsync(DIAL_SPEED_HOLD_MS + 150);
+      await vi.advanceTimersByTimeAsync(REPLAY_SPEED_HOLD_MS + 150);
 
       expect(shownValue(lastBox(ctx))).toBe("PAUSED");
       expect(host.telemetry).toHaveBeenCalledTimes(1);
@@ -783,7 +783,7 @@ describe("ReplayControlDialSurface", () => {
       // The pause lands on a frame that does not advance SessionTick: a fresh
       // read reports 0, and no subscriber is told.
       nowPlaying(PAUSED);
-      await vi.advanceTimersByTimeAsync(DIAL_SPEED_HOLD_MS + 150);
+      await vi.advanceTimersByTimeAsync(REPLAY_SPEED_HOLD_MS + 150);
 
       expect(shownValue(lastBox(ctx))).toBe("PAUSED");
       expect(shownCaption(lastBox(ctx))).toBe("► 1x");
@@ -797,7 +797,7 @@ describe("ReplayControlDialSurface", () => {
 
   describe("a send iRacing does not act on", () => {
     /** The hold, the lapse timer's margin and a throttle window. */
-    const PAST_THE_LAPSE = DIAL_SPEED_HOLD_MS + 150;
+    const PAST_THE_LAPSE = REPLAY_SPEED_HOLD_MS + 150;
 
     it("comes off the dial when the hold runs out, with no tick to say so", async () => {
       noteTelemetrySpeed(speed(2), Date.now());
@@ -1002,7 +1002,7 @@ describe("ReplayControlDialSurface", () => {
       expect(io.liveSpeed()).toEqual(PAUSED);
       // The tick still says 4x: the pause holds, like a sent speed does.
       surface.onTick(ctx.id, tickOf());
-      await vi.advanceTimersByTimeAsync(DIAL_SPEED_HOLD_MS - 1);
+      await vi.advanceTimersByTimeAsync(REPLAY_SPEED_HOLD_MS - 1);
       expect(io.liveSpeed()).toEqual(PAUSED);
       expect(sentSpeeds).toEqual([PAUSED]);
     });
@@ -3897,7 +3897,7 @@ describe("ReplayControlDialSurface — the busy look (#1437)", () => {
       });
 
       await press(surface, ctx, d, 600);
-      await settle(DIAL_SPEED_HOLD_MS);
+      await settle(REPLAY_SPEED_HOLD_MS);
       await press(surface, ctx, d);
 
       expect(seen).toEqual(["jump-to-live drawsWorking=true", "pause drawsWorking=false"]);
@@ -3998,7 +3998,7 @@ describe("ReplayControlDialSurface — the busy look (#1437)", () => {
 
         // A speed gesture first, so the dial is registered drawing no working.
         await press(surface, ctx, d);
-        await settle(DIAL_SPEED_HOLD_MS);
+        await settle(REPLAY_SPEED_HOLD_MS);
 
         expect(busy.surfaces.get("dial-1")?.drawsWorking).toBe(false);
 
@@ -4043,7 +4043,7 @@ describe("ReplayControlDialSurface — the busy look (#1437)", () => {
       const { surface, ctx } = await onScreen(speed(1), d);
 
       await press(surface, ctx, d);
-      await settle(DIAL_SPEED_HOLD_MS);
+      await settle(REPLAY_SPEED_HOLD_MS);
       expect(busy.surfaces.get("dial-1")?.drawsWorking).toBe(false);
 
       // The replay plays again, so the search below runs as on a playing replay.
@@ -4114,7 +4114,7 @@ describe("ReplayControlDialSurface — the busy look (#1437)", () => {
         };
 
         await press(surface, ctx, d);
-        await settle(DIAL_SPEED_HOLD_MS);
+        await settle(REPLAY_SPEED_HOLD_MS);
         expect(busy.surfaces.get("dial-1")?.drawsWorking).toBe(false);
 
         host.jumpToLive.mockImplementation(record);
