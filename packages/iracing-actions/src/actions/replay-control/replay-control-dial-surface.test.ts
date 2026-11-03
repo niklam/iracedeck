@@ -1694,10 +1694,11 @@ describe("ReplayControlDialSurface", () => {
         surface.rotate(ctx as never, d, 2, false);
       }
 
-      // Each accepted turn sent a jump and renewed its own target; the hold still ended on time: the state's
-      // cap past the last sighting is REPLAY_TARGET_GIVE_UP_MS on a tape whose length no reading said (#1429).
-      expect(mocks.setPlayPosition.mock.calls.length).toBeLessThanOrEqual(3);
-      expect(mocks.setPlayPosition.mock.calls.length).toBeGreaterThanOrEqual(2);
+      // Each accepted turn sent a jump and renewed its own target; the hold still ended on time (#1429): the
+      // state's cap past the last sighting is REPLAY_TARGET_GIVE_UP_MS on a tape whose length no reading said,
+      // and its grace follows, so turns at 1, 2 and 3 s are taken and none from 4 s. That is the old clause's
+      // real bound too: its sighting was stamped while the debounced state read true, a second past the tick.
+      expect(mocks.setPlayPosition.mock.calls.length).toBe(4);
     });
 
     it("on a long tape the bound on turns from the car grows with the tape, and still ends (#1429)", async () => {
@@ -1718,10 +1719,12 @@ describe("ReplayControlDialSurface", () => {
         sentBy.push(mocks.setPlayPosition.mock.calls.length);
       }
 
-      // Far more than the short tape's three, every turn inside the cap taken, and none once it has passed.
+      // Far more than the short tape's four: every turn inside the cap and the grace after it taken, none after.
+      const taken = Math.ceil((cap + REPLAY_EXIT_GRACE_MS) / 1_000) - 1;
+
       expect(cap).toBeGreaterThan(REPLAY_TARGET_GIVE_UP_MS * 5);
-      expect(sentBy[Math.floor(cap / 1_000) - 2]).toBe(Math.floor(cap / 1_000));
-      expect(sentBy.at(-1)).toBe(sentBy[Math.ceil(cap / 1_000)]);
+      expect(sentBy[taken - 1]).toBe(1 + taken);
+      expect(sentBy.at(-1)).toBe(1 + taken);
       expect(state.getReplayState().inReplay).toBe(false);
     });
 

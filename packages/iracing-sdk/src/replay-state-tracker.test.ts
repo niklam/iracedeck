@@ -79,15 +79,16 @@ describe("ReplayStateTracker (#1324)", () => {
     expect(tracker.read(4_000)).toMatchObject({ inReplay: false, frame: 900 });
   });
 
-  it("holdForSeek passes the cap: the hold ends that far past the last sighting", () => {
+  it("holdForSeek passes the cap: the hold ends that far past the last sighting, and the grace follows", () => {
     const tracker = new ReplayStateTracker();
 
     tracker.step(replayTick(500), LIVE_SESSION, 0);
     tracker.holdForSeek(hold(60_000, 4_000), 100);
     tracker.step(liveTick(900), LIVE_SESSION, 3_000);
 
-    expect(tracker.read(3_999)).toMatchObject({ inReplay: true, seekHoldMaxPastSightingMs: 4_000 });
-    expect(tracker.read(4_000)).toMatchObject({ inReplay: false, frame: 900 });
+    // Held to the cap at 4 000, then a full grace.
+    expect(tracker.read(4_999)).toMatchObject({ inReplay: true, seekHoldMaxPastSightingMs: 4_000 });
+    expect(tracker.read(5_000)).toMatchObject({ inReplay: false, frame: 900 });
   });
 
   it("holdForSeek never makes a replay from the car", () => {

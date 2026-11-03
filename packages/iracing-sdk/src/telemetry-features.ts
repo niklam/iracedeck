@@ -283,24 +283,25 @@ export interface ReplayState {
    * dial spin; the replay engine, which knows its own seek is under way,
    * sets this through {@link replaySeekHeld}. It only extends a sighting the
    * ticks made: with no sighting it is inert, so it never makes the car read
-   * as a replay. Its end, by lapse or by release, is where the grace restarts
-   * from, and {@link seekHoldMaxPastSightingMs} caps both. As asked for, not
-   * capped: the cap is applied when the state is read, against the sighting
-   * of that moment. {@link replayLeftForLive} clears it.
+   * as a replay. {@link seekHoldMaxPastSightingMs} caps it, and its end, by
+   * lapse, release or cap, is where a full grace restarts from. As asked for,
+   * not capped: the cap is applied when the state is read, against the
+   * sighting of that moment. {@link replayLeftForLive} clears it.
    */
   readonly seekHeldUntil: number | null;
   /**
-   * How far past the last replay sighting (ms) the seek hold, and the grace
-   * after it, may keep the replay, or null with no hold ever set (#1429): the
-   * longest any seek on the tape can take, which the engine works out from
-   * the tape's length. It is what stops moves sent from the car from renewing
-   * the hold for ever: while the state holds, a dial still sends, and iRacing
-   * ignores a replay command from the car, so each move would push a later
-   * hold over a sighting that never comes again. Each new sighting re-anchors
-   * the cap, so a sustained spin, whose landings sight the replay every
-   * ~400 ms, and a long jump, held from its send while the sighting is fresh,
-   * are not cut short. Never below {@link REPLAY_EXIT_GRACE_MS} in effect: the
-   * plain grace is never shortened by it.
+   * How far past the last replay sighting (ms) the seek hold may reach, or
+   * null with no hold ever set (#1429): the longest any seek on the tape can
+   * take, which the engine works out from the tape's length. It is what stops
+   * moves sent from the car from renewing the hold for ever: while the state
+   * holds, a dial still sends, and iRacing ignores a replay command from the
+   * car, so each move would push a later hold over a sighting that never
+   * comes again. The grace after the hold is not capped: it renews nothing,
+   * and a read-back that releases a hold near its capped end still gets its
+   * full second. So the replay holds at most the cap plus the grace past the
+   * last sighting. Each new sighting re-anchors the cap, so a sustained spin,
+   * whose landings sight the replay every ~400 ms, and a long jump, held from
+   * its send while the sighting is fresh, are not cut short.
    */
   readonly seekHoldMaxPastSightingMs: number | null;
 }
@@ -353,11 +354,9 @@ function seekHoldEnd(state: ReplayState): number | null {
 
 /**
  * Whether the last replay sighting still holds at `nowMs`: inside the grace,
- * which runs from the later of the sighting and the seek hold's end (#1429),
- * so a standing hold keeps it and its end restarts the grace, and never past
- * the sighting plus the hold's cap, which bounds the grace after the hold as
- * well as the hold. No sighting, no hold: the seek hold never makes a replay
- * out of nothing.
+ * which runs from the later of the sighting and the seek hold's capped end
+ * (#1429), so a standing hold keeps it and its end restarts a full grace. No
+ * sighting, no hold: the seek hold never makes a replay out of nothing.
  */
 function withinReplayGrace(state: ReplayState, nowMs: number): boolean {
   const seenAt = state.replaySeenAt;
@@ -366,12 +365,7 @@ function withinReplayGrace(state: ReplayState, nowMs: number): boolean {
 
   const holdEnd = seekHoldEnd(state);
 
-  if (holdEnd === null) return nowMs - seenAt < REPLAY_EXIT_GRACE_MS;
-
-  const cap = state.seekHoldMaxPastSightingMs;
-  const capAt = cap === null ? Infinity : seenAt + Math.max(cap, REPLAY_EXIT_GRACE_MS);
-
-  return nowMs - Math.max(seenAt, holdEnd) < REPLAY_EXIT_GRACE_MS && nowMs < capAt;
+  return nowMs - (holdEnd === null ? seenAt : Math.max(seenAt, holdEnd)) < REPLAY_EXIT_GRACE_MS;
 }
 
 /** Whether a seek hold stands at `nowMs`: set, and its capped end not yet reached. */

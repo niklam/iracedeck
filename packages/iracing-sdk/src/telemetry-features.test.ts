@@ -649,12 +649,13 @@ describe("telemetry-features", () => {
       });
 
       describe("the cap past the last sighting", () => {
-        it("ends the hold, and the grace after it, the cap past the last sighting however late the hold asks for", () => {
-          const midSeek = seeking(replaySeekHeld(run([[replayTick(500), 0]]), holding(60_000, 3_000), 10), 50, 2_950);
+        it("ends the hold the cap past the last sighting however late it asks, and a full grace follows that end", () => {
+          // The grace after the hold is not capped: it renews nothing, so the replay holds the cap plus the grace.
+          const midSeek = seeking(replaySeekHeld(run([[replayTick(500), 0]]), holding(60_000, 3_000), 10), 50, 3_950);
 
           expect(midSeek).toMatchObject({ inReplay: true, frame: 500 });
-          expect(replayStateAt(midSeek, 2_999).inReplay).toBe(true);
-          expect(nextReplayState(midSeek, liveTick(901), LIVE_SESSION, 3_000)).toMatchObject({
+          expect(replayStateAt(midSeek, 3_999).inReplay).toBe(true);
+          expect(nextReplayState(midSeek, liveTick(901), LIVE_SESSION, 4_000)).toMatchObject({
             inReplay: false,
             frame: 901,
             seekHeldUntil: null,
@@ -676,12 +677,12 @@ describe("telemetry-features", () => {
             }
           }
 
-          // Taken until the cap past the sighting at 0, and never again.
-          expect(taken).toEqual([1_000, 2_000]);
+          // Taken until the cap past the sighting at 0 and the grace after it, 4 s, and never again.
+          expect(taken).toEqual([1_000, 2_000, 3_000]);
           expect(state).toMatchObject({ inReplay: false, replaySeenAt: null });
         });
 
-        it("re-anchors on each new sighting, so a hold with replay ticks in it runs to its own end", () => {
+        it("re-anchors on each new sighting, so a hold with replay ticks in it runs to its own end and its grace", () => {
           const held = replaySeekHeld(run([[replayTick(500), 0]]), holding(8_000, 3_000), 10);
           const spun = [2_000, 4_000, 6_000].reduce(
             (state, t) => nextReplayState(seeking(state, t - 1_950, t - 50), replayTick(t), LIVE_SESSION, t),
@@ -693,18 +694,13 @@ describe("telemetry-features", () => {
           expect(nextReplayState(after, liveTick(901), LIVE_SESSION, 9_000).inReplay).toBe(false);
         });
 
-        it("never cuts the plain grace short, whatever the cap", () => {
-          const released = replaySeekHeld(replaySeekHeld(run([[replayTick(500), 0]]), holding(5_000, 10), 5), null, 6);
-
-          expect(replayStateAt(seeking(released, 50, 950), 999).inReplay).toBe(true);
-        });
-
         it("caps a hold set from the car from the first sighting it extends", () => {
           const fromCar = seeking(replaySeekHeld(run([[liveTick(900), 0]]), holding(60_000, 3_000), 10), 50, 300);
           const entered = nextReplayState(fromCar, replayTick(500), LIVE_SESSION, 350);
 
-          expect(replayStateAt(seeking(entered, 400, 3_300), 3_349).inReplay).toBe(true);
-          expect(nextReplayState(seeking(entered, 400, 3_300), liveTick(901), LIVE_SESSION, 3_350).inReplay).toBe(
+          // Capped at 350 + 3 000, then the grace.
+          expect(replayStateAt(seeking(entered, 400, 4_300), 4_349).inReplay).toBe(true);
+          expect(nextReplayState(seeking(entered, 400, 4_300), liveTick(901), LIVE_SESSION, 4_350).inReplay).toBe(
             false,
           );
         });
