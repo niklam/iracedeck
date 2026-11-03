@@ -17,7 +17,6 @@ import {
   type HoldPreview,
   type IDeckActionContext,
   NOOP_HOLD_PREVIEW,
-  type PressShape,
   svgToDataUri,
 } from "@iracedeck/deck-core";
 import type { TelemetryData } from "@iracedeck/iracing-sdk";
@@ -25,10 +24,10 @@ import type { ILogger } from "@iracedeck/logger";
 
 import { toggleStateFromLevel } from "../../icons/status-bar.js";
 import { renderDialBox, resolveDialBoxColors } from "../../shared/dial-box.js";
-import { type DialInputEvent, hasDialInputContext } from "../../shared/dial-context.js";
 import { pushDialNameIcon } from "../../shared/dial-name-icon.js";
 import type { DialPendingPreview } from "../../shared/dial-preview.js";
-import { classifyDialReleaseForHost, dialGestureShape, touchGestureShape } from "../../shared/dial-release.js";
+import { classifyDialReleaseForHost } from "../../shared/dial-release.js";
+import { type DialGestures, gestureSlots, ReleaseDialSurfaceBase } from "../../shared/dial-surface-base.js";
 import { formatViewValue, type ViewSettingId } from "../../shared/setup-view.js";
 import {
   type GestureSlot,
@@ -237,10 +236,10 @@ export interface SetupBrakesDialHost {
  * lifecycle/input event here and forwards telemetry ticks per subscribed
  * context.
  */
-export class SetupBrakesDialSurface {
-  private readonly contextsState = new Map<string, SetupBrakesDialContext>();
-
-  constructor(private readonly host: SetupBrakesDialHost) {}
+export class SetupBrakesDialSurface extends ReleaseDialSurfaceBase<SetupBrakesDialContext, SetupBrakesSettings> {
+  constructor(protected override readonly host: SetupBrakesDialHost) {
+    super();
+  }
 
   async willAppear(action: IDeckActionContext, settings: SetupBrakesSettings): Promise<void> {
     const ctx = this.ensureContext(action, settings);
@@ -257,7 +256,7 @@ export class SetupBrakesDialSurface {
     // The context is gone, so a frame pushed at it would be wasted: tear the
     // preview down without reverting.
     this.contextsState.get(actionId)?.holdPreview.dispose();
-    this.contextsState.delete(actionId);
+    this.forgetContext(actionId);
   }
 
   async didReceiveSettings(action: IDeckActionContext, settings: SetupBrakesSettings): Promise<void> {
@@ -298,32 +297,6 @@ export class SetupBrakesDialSurface {
 
     const direction: SetupBrakesDirection = ticks > 0 ? "increase" : "decrease";
     await this.dispatchRotation(ctx, direction);
-  }
-
-  /**
-   * The press shape of a dial press (#269): released, with the gestures the
-   * release fires and the threshold it classifies with, or `none` when no
-   * context would take the press. `down` and `touchTap` refresh the context from these settings, so they are the ones the release and the touch read.
-   */
-  pressShape(action: IDeckActionContext, settings: SetupBrakesSettings): PressShape {
-    if (!this.contextsState.has(action.id)) return { kind: "none" };
-
-    return dialGestureShape({
-      pressGesture: settings.dial.pressAction,
-      longPressGesture: settings.dial.longPressAction,
-      thresholdMs: getDualPressThresholdMs(),
-    });
-  }
-
-  /** The press shape of a touch (#269): the slot `touchTap` fires for it, or `none`. */
-  touchShape(action: IDeckActionContext, settings: SetupBrakesSettings, hold: boolean): PressShape {
-    if (!this.contextsState.has(action.id)) return { kind: "none" };
-
-    return touchGestureShape({
-      tapGesture: settings.dial.tapAction,
-      longTouchGesture: settings.dial.longTouchAction,
-      hold,
-    });
   }
 
   down(action: IDeckActionContext, settings: SetupBrakesSettings): void {
@@ -428,53 +401,36 @@ export class SetupBrakesDialSurface {
     }
   }
 
-  /**
-   * The context an INPUT event (rotate, down, touchTap) acts on: the existing
-   * one, refreshed exactly as {@link ensureContext} refreshes it, or `undefined`
-   * — never a new one (#1329). A late event the host delivers after
-   * `willDisappear` is dropped here, before it can re-create the entry or act
-   * on a context that is gone.
-   */
-  private inputContext(
-    action: IDeckActionContext,
-    settings: SetupBrakesSettings,
-    event: DialInputEvent,
-  ): SetupBrakesDialContext | undefined {
-    return hasDialInputContext(this.contextsState, action.id, event, this.host.logger)
-      ? this.ensureContext(action, settings)
-      : undefined;
-  }
-
-  /**
-   * Look up or create the per-context state — for the LIFECYCLE events
-   * (`willAppear`, `didReceiveSettings`) only. Input events go through
-   * {@link inputContext}, which never creates a context (#1329).
-   */
-  private ensureContext(action: IDeckActionContext, settings: SetupBrakesSettings): SetupBrakesDialContext {
-    let ctx = this.contextsState.get(action.id);
-
-    if (!ctx) {
-      ctx = {
-        settings,
-        action,
-        pressStart: 0,
-        rotatedWhilePressed: false,
-        lastRenderSig: null,
-        lastChangeRenderAt: 0,
-        preview: null,
-        // Replaced immediately below — the preview's callbacks close over the
-        // very context being built. On a host with no long press the
-        // no-op is what stays.
-        holdPreview: NOOP_HOLD_PREVIEW,
-      };
-      ctx.holdPreview = this.createPreview(ctx);
-      this.contextsState.set(action.id, ctx);
-    } else {
-      ctx.action = action;
-      ctx.settings = settings;
-    }
+  protected override createContext(action: IDeckActionContext, settings: SetupBrakesSettings): SetupBrakesDialContext {
+    const ctx: SetupBrakesDialContext = {
+      settings,
+      action,
+      pressStart: 0,
+      rotatedWhilePressed: false,
+      lastRenderSig: null,
+      lastChangeRenderAt: 0,
+      preview: null,
+      // Replaced immediately below — the preview's callbacks close over the
+      // very context being built. On a host with no long press the
+      // no-op is what stays.
+      holdPreview: NOOP_HOLD_PREVIEW,
+    };
+    ctx.holdPreview = this.createPreview(ctx);
 
     return ctx;
+  }
+
+  protected override refreshContext(
+    ctx: SetupBrakesDialContext,
+    action: IDeckActionContext,
+    settings: SetupBrakesSettings,
+  ): void {
+    ctx.action = action;
+    ctx.settings = settings;
+  }
+
+  protected override dialGestures(_ctx: SetupBrakesDialContext, settings: SetupBrakesSettings): DialGestures {
+    return gestureSlots(settings.dial);
   }
 
   /** The per-context hold preview, or the no-op where there is no long press. */

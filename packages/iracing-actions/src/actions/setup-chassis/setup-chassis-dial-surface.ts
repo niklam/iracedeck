@@ -21,7 +21,6 @@ import {
   type IDeckActionContext,
   isSimHubReachable,
   NOOP_HOLD_PREVIEW,
-  type PressShape,
   svgToDataUri,
 } from "@iracedeck/deck-core";
 import type { TelemetryData } from "@iracedeck/iracing-sdk";
@@ -30,11 +29,11 @@ import z from "zod";
 
 import { showBlackBox } from "../../shared/black-box.js";
 import { dialAppearanceFields, renderDialBox, resolveDialBoxColors } from "../../shared/dial-box.js";
-import { type DialInputEvent, hasDialInputContext } from "../../shared/dial-context.js";
 import { pushDialNameIcon } from "../../shared/dial-name-icon.js";
 import { persistDialPatch } from "../../shared/dial-persist.js";
 import type { DialPendingPreview } from "../../shared/dial-preview.js";
-import { classifyDialReleaseForHost, dialGestureShape, touchGestureShape } from "../../shared/dial-release.js";
+import { classifyDialReleaseForHost } from "../../shared/dial-release.js";
+import { type DialGestures, gestureSlots, ReleaseDialSurfaceBase } from "../../shared/dial-surface-base.js";
 import {
   formatViewValue,
   type UnitsPreference,
@@ -364,10 +363,10 @@ export interface SetupChassisDialHost {
   isBindingKeyboardBound(key: string): boolean;
 }
 
-export class SetupChassisDialSurface {
-  private readonly contextsState = new Map<string, SetupChassisDialContext>();
-
-  constructor(private readonly host: SetupChassisDialHost) {}
+export class SetupChassisDialSurface extends ReleaseDialSurfaceBase<SetupChassisDialContext, DialSettings> {
+  constructor(protected override readonly host: SetupChassisDialHost) {
+    super();
+  }
 
   async willAppear(action: IDeckActionContext, dial: DialSettings): Promise<void> {
     const ctx = this.ensureContext(action, dial);
@@ -383,7 +382,7 @@ export class SetupChassisDialSurface {
     // The context is gone, so a frame pushed at it would be wasted: tear the
     // preview down without reverting.
     this.contextsState.get(actionId)?.holdPreview.dispose();
-    this.contextsState.delete(actionId);
+    this.forgetContext(actionId);
   }
 
   async didReceiveSettings(action: IDeckActionContext, dial: DialSettings): Promise<void> {
@@ -416,32 +415,6 @@ export class SetupChassisDialSurface {
 
     const direction: SetupChassisDirection = ticks > 0 ? "increase" : "decrease";
     await this.dispatchRotation(ctx, direction);
-  }
-
-  /**
-   * The press shape of a dial press (#269): released, with the gestures the
-   * release fires and the threshold it classifies with, or `none` when no
-   * context would take the press. Read from the context, not the event: an input event does not refresh this surface's settings, so the release and the touch read the stored ones.
-   */
-  pressShape(action: IDeckActionContext, _dial: DialSettings): PressShape {
-    const ctx = this.contextsState.get(action.id);
-
-    if (!ctx) return { kind: "none" };
-
-    return dialGestureShape({
-      pressGesture: ctx.dial.pressAction,
-      longPressGesture: ctx.dial.longPressAction,
-      thresholdMs: getDualPressThresholdMs(),
-    });
-  }
-
-  /** The press shape of a touch (#269): the slot `touchTap` fires for it, or `none`. */
-  touchShape(action: IDeckActionContext, _dial: DialSettings, hold: boolean): PressShape {
-    const ctx = this.contextsState.get(action.id);
-
-    if (!ctx) return { kind: "none" };
-
-    return touchGestureShape({ tapGesture: ctx.dial.tapAction, longTouchGesture: ctx.dial.longTouchAction, hold });
   }
 
   down(action: IDeckActionContext, dial: DialSettings): void {
@@ -534,58 +507,48 @@ export class SetupChassisDialSurface {
     }
   }
 
-  /**
-   * The context an INPUT event (rotate, down, touchTap) acts on: the existing
-   * one, refreshed exactly as {@link ensureContext} refreshes it, or `undefined`
-   * — never a new one (#1329). A late event the host delivers after
-   * `willDisappear` is dropped here, before it can re-create the entry or act
-   * on a context that is gone.
-   */
-  private inputContext(
-    action: IDeckActionContext,
-    dial: DialSettings,
-    event: DialInputEvent,
-  ): SetupChassisDialContext | undefined {
-    return hasDialInputContext(this.contextsState, action.id, event, this.host.logger)
-      ? this.ensureContext(action, dial)
-      : undefined;
+  protected override createContext(action: IDeckActionContext, dial: DialSettings): SetupChassisDialContext {
+    const ctx: SetupChassisDialContext = {
+      dial,
+      action,
+      pressStart: 0,
+      rotatedWhilePressed: false,
+      lastRenderSig: null,
+      lastChangeRenderAt: 0,
+      preview: null,
+      previewSetting: null,
+      // Replaced immediately below — the preview's callbacks close over the
+      // very context being built. On a host with no long press the
+      // no-op is what stays.
+      holdPreview: NOOP_HOLD_PREVIEW,
+    };
+    ctx.holdPreview = this.createPreview(ctx);
+
+    return ctx;
   }
 
   /**
-   * Look up or create the per-context state — for the LIFECYCLE events
-   * (`willAppear`, `didReceiveSettings`) only; input events go through
-   * {@link inputContext}, which never creates one (#1329). An EXISTING context
-   * keeps its `dial` — settings changes only flow in through `willAppear` /
-   * `didReceiveSettings` (which assign `ctx.dial` explicitly). Event payloads
-   * must not refresh it: hosts with per-context settings caches can deliver
-   * stale settings in dial events, which would silently undo the
-   * `toggle-spring-side` gesture's plugin-side setSettings (#953).
+   * An EXISTING context keeps its `dial` (rule 10) — settings changes only flow
+   * in through `willAppear` / `didReceiveSettings` (which assign `ctx.dial`
+   * explicitly). Event payloads must not refresh it: hosts with per-context
+   * settings caches can deliver stale settings in dial events, which would
+   * silently undo the `toggle-spring-side` gesture's plugin-side setSettings
+   * (#953).
    */
-  private ensureContext(action: IDeckActionContext, dial: DialSettings): SetupChassisDialContext {
-    let ctx = this.contextsState.get(action.id);
+  protected override refreshContext(
+    ctx: SetupChassisDialContext,
+    action: IDeckActionContext,
+    _dial: DialSettings,
+  ): void {
+    ctx.action = action;
+  }
 
-    if (!ctx) {
-      ctx = {
-        dial,
-        action,
-        pressStart: 0,
-        rotatedWhilePressed: false,
-        lastRenderSig: null,
-        lastChangeRenderAt: 0,
-        preview: null,
-        previewSetting: null,
-        // Replaced immediately below — the preview's callbacks close over the
-        // very context being built. On a host with no long press the
-        // no-op is what stays.
-        holdPreview: NOOP_HOLD_PREVIEW,
-      };
-      ctx.holdPreview = this.createPreview(ctx);
-      this.contextsState.set(action.id, ctx);
-    } else {
-      ctx.action = action;
-    }
-
-    return ctx;
+  /**
+   * Read from the context, not the event: an input event does not refresh this
+   * surface's settings, so the release and the touch read the stored ones.
+   */
+  protected override dialGestures(ctx: SetupChassisDialContext, _dial: DialSettings): DialGestures {
+    return gestureSlots(ctx.dial);
   }
 
   /** The per-context hold preview, or the no-op where there is no long press. */
