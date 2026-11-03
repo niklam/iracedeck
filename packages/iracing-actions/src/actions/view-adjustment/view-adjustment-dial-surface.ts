@@ -25,7 +25,6 @@ import {
   type DeckTriggerDescription,
   getDualPressThresholdMs,
   type IDeckActionContext,
-  type PressShape,
   svgToDataUri,
 } from "@iracedeck/deck-core";
 import type { TelemetryData } from "@iracedeck/iracing-sdk";
@@ -33,9 +32,9 @@ import type { ILogger } from "@iracedeck/logger";
 import z from "zod";
 
 import { dialAppearanceFields, renderDialBox, resolveDialBoxColors } from "../../shared/dial-box.js";
-import { type DialInputEvent, hasDialInputContext } from "../../shared/dial-context.js";
 import { pushDialNameIcon } from "../../shared/dial-name-icon.js";
-import { classifyDialReleaseForHost, dialGestureShape, touchGestureShape } from "../../shared/dial-release.js";
+import { classifyDialReleaseForHost } from "../../shared/dial-release.js";
+import { type DialGestures, gestureSlots, ReleaseDialSurfaceBase } from "../../shared/dial-surface-base.js";
 import { bringPointerToSim } from "../../shared/mouse-to-sim.js";
 
 /** Minimum gap (ms) between change-driven feedback pushes (≤10 pushes/s/dial). */
@@ -248,10 +247,10 @@ export interface ViewAdjustmentDialHost {
  * the dial screen. The owning action routes every dial lifecycle/input
  * event here and forwards telemetry ticks per subscribed context.
  */
-export class ViewAdjustmentDialSurface {
-  private readonly contextsState = new Map<string, ViewAdjustmentDialContext>();
-
-  constructor(private readonly host: ViewAdjustmentDialHost) {}
+export class ViewAdjustmentDialSurface extends ReleaseDialSurfaceBase<ViewAdjustmentDialContext, DialSettings> {
+  constructor(protected override readonly host: ViewAdjustmentDialHost) {
+    super();
+  }
 
   async willAppear(action: IDeckActionContext, dial: DialSettings): Promise<void> {
     const ctx = this.ensureContext(action, dial);
@@ -263,7 +262,7 @@ export class ViewAdjustmentDialSurface {
   }
 
   willDisappear(actionId: string): void {
-    this.contextsState.delete(actionId);
+    this.forgetContext(actionId);
   }
 
   async didReceiveSettings(action: IDeckActionContext, dial: DialSettings): Promise<void> {
@@ -288,28 +287,6 @@ export class ViewAdjustmentDialSurface {
     const direction: ViewAdjustmentDirection = ticks > 0 ? "increase" : "decrease";
     const taps = Math.min(Math.abs(ticks), MAX_TAPS_PER_EVENT);
     await this.dispatchRotation(ctx, direction, taps);
-  }
-
-  /**
-   * The press shape of a dial press (#269): released, with the gestures the
-   * release fires and the threshold it classifies with, or `none` when no
-   * context would take the press. `down` and `touchTap` refresh the context from these settings, so they are the ones the release and the touch read.
-   */
-  pressShape(action: IDeckActionContext, dial: DialSettings): PressShape {
-    if (!this.contextsState.has(action.id)) return { kind: "none" };
-
-    return dialGestureShape({
-      pressGesture: dial.pressAction,
-      longPressGesture: dial.longPressAction,
-      thresholdMs: getDualPressThresholdMs(),
-    });
-  }
-
-  /** The press shape of a touch (#269): the slot `touchTap` fires for it, or `none`. */
-  touchShape(action: IDeckActionContext, dial: DialSettings, hold: boolean): PressShape {
-    if (!this.contextsState.has(action.id)) return { kind: "none" };
-
-    return touchGestureShape({ tapGesture: dial.tapAction, longTouchGesture: dial.longTouchAction, hold });
   }
 
   down(action: IDeckActionContext, dial: DialSettings): void {
@@ -391,47 +368,28 @@ export class ViewAdjustmentDialSurface {
     }
   }
 
-  /**
-   * The context an INPUT event (rotate, down, touchTap) acts on: the existing
-   * one, refreshed exactly as {@link ensureContext} refreshes it, or `undefined`
-   * — never a new one (#1329). A late event the host delivers after
-   * `willDisappear` is dropped here, before it can re-create the entry or act
-   * on a context that is gone.
-   */
-  private inputContext(
-    action: IDeckActionContext,
-    dial: DialSettings,
-    event: DialInputEvent,
-  ): ViewAdjustmentDialContext | undefined {
-    return hasDialInputContext(this.contextsState, action.id, event, this.host.logger)
-      ? this.ensureContext(action, dial)
-      : undefined;
+  protected override createContext(action: IDeckActionContext, dial: DialSettings): ViewAdjustmentDialContext {
+    return {
+      dial,
+      action,
+      pressStart: 0,
+      rotatedWhilePressed: false,
+      lastRenderSig: null,
+      lastChangeRenderAt: 0,
+    };
   }
 
-  /**
-   * Look up or create the per-context state — for the LIFECYCLE events
-   * (`willAppear`, `didReceiveSettings`) only. Input events go through
-   * {@link inputContext}, which never creates a context (#1329).
-   */
-  private ensureContext(action: IDeckActionContext, dial: DialSettings): ViewAdjustmentDialContext {
-    let ctx = this.contextsState.get(action.id);
+  protected override refreshContext(
+    ctx: ViewAdjustmentDialContext,
+    action: IDeckActionContext,
+    dial: DialSettings,
+  ): void {
+    ctx.action = action;
+    ctx.dial = dial;
+  }
 
-    if (!ctx) {
-      ctx = {
-        dial,
-        action,
-        pressStart: 0,
-        rotatedWhilePressed: false,
-        lastRenderSig: null,
-        lastChangeRenderAt: 0,
-      };
-      this.contextsState.set(action.id, ctx);
-    } else {
-      ctx.action = action;
-      ctx.dial = dial;
-    }
-
-    return ctx;
+  protected override dialGestures(_ctx: ViewAdjustmentDialContext, dial: DialSettings): DialGestures {
+    return gestureSlots(dial);
   }
 
   private async dispatchRotation(
