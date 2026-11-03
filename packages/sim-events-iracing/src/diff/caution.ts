@@ -1030,7 +1030,10 @@ function diffPaceCar(
  * withdrawn returns it to `"caught"`. A phase preserved at `"one-to-go"` is not
  * told again. A phase preserved as `"waving"` and found at one to go lands the
  * pickup and one to go on one tick, the road-course shape the field-caught
- * callout already stays silent for.
+ * callout already stays silent for. A late report that finds `GreenHeld`
+ * already up (the green some fifteen seconds off) moves the phase on
+ * SILENTLY, with no position call: a lap's warning with seconds left is not
+ * one.
  */
 function diffCautionEpisode(
   state: TranslatorState,
@@ -1158,14 +1161,23 @@ function diffCautionEpisode(
 
   // A level, not an edge — see the function comment (issue #1395).
   if (oneToGo && state.cautionPhase === "caught") {
-    emit({ event: "caution.oneLapToGreen", data: {} });
     state.cautionPhase = "one-to-go";
-    // Arm the last lap's checkpoint. Armed HERE rather than on the phase
-    // alone, so a phase that merely survived (a replay glance preserves it)
-    // owes nothing it has not been told to owe — and re-armed on every rise,
-    // so a re-raised one-to-go gets its own position call.
-    state.cautionCheckpointArmed = true;
-    armedThisTick = true;
+
+    // Reported unless it is LATE (a flag this tick pair did not see rise) and
+    // `GreenHeld` is already up: the green is then about fifteen seconds off
+    // in both captures, and "One lap to green" there is a lap's warning given
+    // with seconds left. The phase still moves on, so the field-caught
+    // callout stays silent too; only the line and its position call go. A
+    // watched rise is reported whatever else is set.
+    if (!hasFlag(wasFlags, Flags.OneLapToGreen) || !hasFlag(flags, Flags.GreenHeld)) {
+      emit({ event: "caution.oneLapToGreen", data: {} });
+      // Arm the last lap's checkpoint. Armed HERE rather than on the phase
+      // alone, so a phase that merely survived (a replay glance preserves it)
+      // owes nothing it has not been told to owe — and re-armed on every
+      // rise, so a re-raised one-to-go gets its own position call.
+      state.cautionCheckpointArmed = true;
+      armedThisTick = true;
+    }
     // Reaching the branch below means a caution bit is still set, and the
     // expiry above is what guarantees it: with neither bit set the phase has
     // already returned to "none". It does NOT mean the `Caution` bit

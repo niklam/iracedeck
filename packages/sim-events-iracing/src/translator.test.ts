@@ -5995,6 +5995,70 @@ describe("sim-events-iracing translator", () => {
         });
       });
 
+      it.each([
+        ["caught", STATIC],
+        ["waving", WAVING],
+      ] as const)(
+        "a late report from a phase kept as %s that finds GreenHeld already up moves on silently",
+        (_kept, before) => {
+          // GreenHeld is up about fifteen seconds before the green in both
+          // captures: a lap's warning there would come with seconds left.
+          const HELD = ONE_TO_GO | Flags.GreenHeld;
+          const controller = createMockController();
+          controller.__setSessionInfo(ovalRace());
+          const seen = recordStream();
+          const checkpoints = countCheckpoints();
+          const phaseAtFieldCaught: string[] = [];
+          getEventBus().subscribe("caution.fieldCaught", () => {
+            phaseAtFieldCaught.push(getCautionPhase());
+          });
+          initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
+
+          controller.__tick(at(RACING, 0.1));
+          controller.__tick(at(WAVING, 0.1));
+
+          if (before === STATIC) controller.__tick(at(STATIC, 0.1));
+
+          phaseAtFieldCaught.length = 0;
+
+          controller.__tick(at(before, 0.1, true));
+          controller.__tick(at(HELD, 0.7, true));
+          elapseReplayGrace();
+          controller.__tick(at(HELD, 0.8)); // the seed tick back
+          controller.__tick(at(HELD, 0.9));
+          controller.__tick(at(HELD, 0.2)); // the player's own crossing…
+          controller.__tick(at(HELD, 0.4)); // …and up through 35%
+
+          expect({
+            phase: getCautionPhase(),
+            checkpoints: checkpoints.count,
+            oneToGo: seen.filter((e) => e === "caution.oneLapToGreen").length,
+            phaseAtFieldCaught,
+          }).toEqual({
+            phase: "one-to-go",
+            checkpoints: 0,
+            oneToGo: 0,
+            // A pickup published here finds the phase already at one to go,
+            // so "Two to green" stays silent as well.
+            phaseAtFieldCaught: before === WAVING ? ["one-to-go"] : [],
+          });
+        },
+      );
+
+      it("a watched rise is reported even when GreenHeld comes up with it", () => {
+        const controller = createMockController();
+        controller.__setSessionInfo(ovalRace());
+        const seen = recordStream();
+        initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
+
+        controller.__tick(at(RACING, 0.1));
+        controller.__tick(at(WAVING, 0.1));
+        controller.__tick(at(STATIC, 0.1));
+        controller.__tick(at(ONE_TO_GO | Flags.GreenHeld, 0.1));
+
+        expect(seen.filter((e) => e === "caution.oneLapToGreen")).toHaveLength(1);
+      });
+
       it("fresh connect: a first-ever tick already at one to go reaches one-to-go and its checkpoint", () => {
         const controller = createMockController();
         controller.__setSessionInfo(ovalRace());
