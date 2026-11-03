@@ -64,8 +64,15 @@ const LATE_INPUT_OPT_OUTS: Readonly<Record<string, { skips: readonly LateInputOp
 const INPUT_MEMBERS = ["rotate", "down", "touchTap"] as const;
 type InputMemberName = (typeof INPUT_MEMBERS)[number];
 
-/** Members the base owns: a surface that declares one has stepped around it. */
-const BASE_OWNED_MEMBERS = ["inputContext", "ensureContext", "forgetContext"] as const;
+/**
+ * Members the base owns: a surface that declares one has stepped around it. An
+ * overridden `contextsState` getter would hand the release press shapes a map
+ * other than the one `ensureContext` / `forgetContext` write.
+ */
+const BASE_OWNED_MEMBERS = ["inputContext", "ensureContext", "forgetContext", "contextsState", "contextMap"] as const;
+
+/** The lifecycle members, the only ones that may create a context through `ensureContext`. */
+const LIFECYCLE_MEMBERS = ["willAppear", "didReceiveSettings"] as const;
 /** Members `ReleaseDialSurfaceBase` owns; a `DialSurfaceBase`-only surface may declare them (rule 12). */
 const RELEASE_OWNED_MEMBERS = ["pressShape", "touchShape"] as const;
 
@@ -422,14 +429,22 @@ interface InputMember {
   statements: string[] | undefined;
   /** The body's code, comments stripped. */
   bodyCode: string;
+  /** The offsets of the body's `{` and `}` in the source (both -1 for a bodiless declaration). */
+  bodyOpen: number;
+  bodyClose: number;
+}
+
+/** The input members of a surface: see {@link classMembers}. */
+function inputMembers(text: string, name: InputMemberName): InputMember[] {
+  return classMembers(text, name);
 }
 
 /**
- * Every declaration of `name` at member indentation, read to its body however
- * many lines the signature spans: the parameter list to its matching `)`,
- * then any return type to the first `{` (a body) or `;` (none) outside it.
+ * Every method declaration of `name` at member indentation, read to its body
+ * however many lines the signature spans: the parameter list to its matching
+ * `)`, then any return type to the first `{` (a body) or `;` (none) outside it.
  */
-function inputMembers(text: string, name: InputMemberName): InputMember[] {
+function classMembers(text: string, name: string): InputMember[] {
   const scanned = scanSource(text);
   const { code, masked } = scanned;
   const pattern = new RegExp(
@@ -457,7 +472,14 @@ function inputMembers(text: string, name: InputMemberName): InputMember[] {
     }
 
     if (bodyOpen === -1) {
-      members.push({ line: lineOf(text, match.index), params, statements: undefined, bodyCode: "" });
+      members.push({
+        line: lineOf(text, match.index),
+        params,
+        statements: undefined,
+        bodyCode: "",
+        bodyOpen: -1,
+        bodyClose: -1,
+      });
       continue;
     }
 
@@ -469,10 +491,51 @@ function inputMembers(text: string, name: InputMemberName): InputMember[] {
       params,
       statements: splitStatements(scanned, bodyOpen + 1, end),
       bodyCode: code.slice(bodyOpen + 1, end),
+      bodyOpen,
+      bodyClose: end,
     });
   }
 
   return members;
+}
+
+/**
+ * A context is created only by a lifecycle event. Every `ensureContext` token in
+ * the code (comments and strings aside) must lie inside the body of
+ * `willAppear` or `didReceiveSettings`, so an input path cannot reach it
+ * through a helper; no `ensureContext` / `willAppear` / `didReceiveSettings`
+ * may be named in a string (a computed `this["…"]`); and the surface never
+ * reaches its own lifecycle members through `this`, which would let an input
+ * path run them.
+ */
+function lifecycleProblems(text: string): string[] {
+  const { code, masked } = scanSource(text);
+  const lifecycleBodies = LIFECYCLE_MEMBERS.flatMap((name) => classMembers(text, name)).filter(
+    (m) => m.bodyOpen !== -1,
+  );
+  const problems: string[] = [];
+
+  for (const match of masked.matchAll(/\bensureContext\b/g)) {
+    const inside = lifecycleBodies.some((m) => match.index > m.bodyOpen && match.index < m.bodyClose);
+
+    if (!inside) {
+      problems.push(
+        `names ensureContext at line ${lineOf(text, match.index)}, outside willAppear and didReceiveSettings: only a lifecycle event may create a context`,
+      );
+    }
+  }
+
+  for (const match of code.matchAll(/(["'`])(ensureContext|willAppear|didReceiveSettings)\1/g)) {
+    problems.push(`names ${match[2]} in a string at line ${lineOf(text, match.index)}`);
+  }
+
+  for (const match of masked.matchAll(/\bthis\s*\.\s*(willAppear|didReceiveSettings)\b/g)) {
+    problems.push(
+      `reaches this.${match[1]} at line ${lineOf(text, match.index)}: a lifecycle member is the host's to call, never the surface's`,
+    );
+  }
+
+  return problems;
 }
 
 function escapeRegExp(text: string): string {
@@ -557,12 +620,21 @@ function lateInputProblems(testText: string): string[] {
   return problems;
 }
 
-/** A late-input driver the test file skips (`noUp:` / `noTouchTap:`) must be one its surface is allow-listed to skip. */
+/**
+ * A late-input driver the test file skips must be one its surface is
+ * allow-listed to skip. Any `noUp` / `noTouchTap` identifier in the code (a
+ * key, a shorthand property, a variable) or the name quoted in a string (a
+ * computed key) counts as a skip, whatever form the opt-out takes.
+ */
 function optOutProblems(testText: string, allowed: readonly LateInputOptOut[]): string[] {
-  const { code } = scanSource(testText);
+  const { code, masked } = scanSource(testText);
 
   return (["noUp", "noTouchTap"] as const)
-    .filter((key) => new RegExp(`\\b${key}\\s*:`).test(code) && !allowed.includes(key))
+    .filter(
+      (key) =>
+        (new RegExp(`\\b${key}\\b`).test(masked) || new RegExp(`(["'\`])${key}\\1`).test(code)) &&
+        !allowed.includes(key),
+    )
     .map((key) => `skips a late-input driver with ${key}, but its surface has no LATE_INPUT_OPT_OUTS entry for it`);
 }
 
@@ -609,8 +681,52 @@ function encoderUuids(): string[] {
   return manifest.Actions.filter((a) => a.Controllers?.includes("Encoder")).map((a) => a.UUID);
 }
 
+/** The action folders whose non-test sources declare this UUID constant (`export const X_UUID = "…"`), as `press-shape-coverage.test.ts` finds them. */
+function foldersDeclaringUuid(uuid: string): string[] {
+  const pattern = new RegExp(`_UUID\\s*=\\s*"${escapeRegExp(uuid)}"`);
+  const folders = new Set<string>();
+
+  for (const dir of readdirSync(ACTIONS_DIR, { withFileTypes: true })) {
+    if (!dir.isDirectory()) continue;
+
+    for (const file of readdirSync(join(ACTIONS_DIR, dir.name))) {
+      if (!file.endsWith(".ts") || file.endsWith(".test.ts") || file.includes(".test-")) continue;
+
+      if (pattern.test(readFileSync(join(ACTIONS_DIR, dir.name, file), "utf8"))) folders.add(dir.name);
+    }
+  }
+
+  return [...folders];
+}
+
+/**
+ * The surfaces are tied to the encoders by folder, not only by count: each
+ * folder that declares an `Encoder` action holds a `*-dial-surface.ts`, and
+ * each folder holding one declares an `Encoder` action. Without it, a new dial
+ * whose surface is named otherwise plus a stray surface elsewhere would keep
+ * both counts equal.
+ */
+function encoderFolderProblem(
+  folder: string,
+  encoderFolders: ReadonlySet<string>,
+  surfaceFolders: ReadonlySet<string>,
+): string | undefined {
+  if (encoderFolders.has(folder) && !surfaceFolders.has(folder)) {
+    return `${folder}/ declares an Encoder action but holds no *-dial-surface.ts`;
+  }
+
+  if (surfaceFolders.has(folder) && !encoderFolders.has(folder)) {
+    return `${folder}/ holds a *-dial-surface.ts but declares no Encoder action in the Elgato manifest`;
+  }
+
+  return undefined;
+}
+
 const surfaces = dialSurfaces();
 const encoders = encoderUuids();
+const encoderFolderMatches = encoders.map((uuid) => [uuid, foldersDeclaringUuid(uuid)] as const);
+const encoderFolders = new Set(encoderFolderMatches.flatMap(([, folders]) => folders));
+const surfaceFolders = new Set(surfaces.map((s) => s.file.split("/")[0]));
 
 describe("dial surface base coverage (#1589)", () => {
   it("finds one dial surface per Encoder action in the Elgato manifest", () => {
@@ -619,6 +735,17 @@ describe("dial surface base coverage (#1589)", () => {
     expect(encoders.length).toBeGreaterThanOrEqual(18);
     expect(surfaces.map((s) => s.file)).toHaveLength(encoders.length);
   });
+
+  it.each(encoderFolderMatches)("finds the one action folder that declares %s", (uuid, folders) => {
+    expect(folders, `the action folders declaring ${uuid}`).toHaveLength(1);
+  });
+
+  it.each([...new Set([...encoderFolders, ...surfaceFolders])].sort())(
+    "pairs %s/ with an Encoder action and a dial surface",
+    (folder) => {
+      expect(encoderFolderProblem(folder, encoderFolders, surfaceFolders)).toBeUndefined();
+    },
+  );
 
   it("names only surfaces that exist in its allow-lists", () => {
     const files = surfaces.map((s) => s.file);
@@ -639,6 +766,10 @@ describe("dial surface base coverage (#1589)", () => {
 
     it("declares none of the base's members and never names the gate function", () => {
       expect(memberProblems(surface.text)).toEqual([]);
+    });
+
+    it("creates a context only from willAppear and didReceiveSettings", () => {
+      expect(lifecycleProblems(surface.text)).toEqual([]);
     });
 
     it.each(INPUT_MEMBERS)("%s reaches its context only through the gate", (name) => {
@@ -735,7 +866,27 @@ const OTHER_MEMBERS = `  protected override dialGestures(_ctx: PlantContext, dia
     return gestureSlots(dial);
   }`;
 
-const MIGRATED = plant(RELEASE, ROTATE_OK, DOWN_OK, TOUCH_TAP_OK, OTHER_MEMBERS);
+/** The lifecycle members, the one place `ensureContext` may be named. */
+const LIFECYCLE_OK = `  async willAppear(action: IDeckActionContext, dial: DialSettings): Promise<void> {
+    const ctx = this.ensureContext(action, dial);
+
+    await this.render(ctx);
+  }
+
+  async didReceiveSettings(action: IDeckActionContext, dial: DialSettings): Promise<void> {
+    await this.render(this.ensureContext(action, dial));
+  }`;
+
+const MIGRATED = plant(RELEASE, LIFECYCLE_OK, ROTATE_OK, DOWN_OK, TOUCH_TAP_OK, OTHER_MEMBERS);
+
+/** A rotate that passes the gate and then does `work`. */
+function rotateAfterGate(work: string): string {
+  return rotateWith(`    const ctx = this.inputContext(action, dial, "rotate");
+
+    if (!ctx) return;
+
+    ${work}`);
+}
 
 function rotateWith(
   body: string,
@@ -1002,5 +1153,73 @@ describe("dial surface base coverage: positive control", () => {
     expect(optOutProblems(skipping, [])).not.toEqual([]);
     expect(optOutProblems(skipping, ["noTouchTap"])).toEqual([]);
     expect(optOutProblems(skipping.replace("noTouchTap", "noUp"), ["noTouchTap"])).not.toEqual([]);
+  });
+
+  it("counts a shorthand, computed or quoted opt-out key as a skip", () => {
+    const shorthand = LATE_INPUT_TEST_OK.replace(
+      / {2}describeLateInput\(\{/,
+      '  const noUp = "no release gesture";\n  describeLateInput({ noUp, downLanded,',
+    );
+    const computed = LATE_INPUT_TEST_OK.replace(
+      / {2}describeLateInput\(\{/,
+      '  describeLateInput({ ["noTouchTap"]: "x",',
+    );
+    const backtick = LATE_INPUT_TEST_OK.replace(/ {2}describeLateInput\(\{/, "  describeLateInput({ [`noUp`]: 'x',");
+
+    for (const text of [shorthand, computed, backtick]) {
+      expect(optOutProblems(text, [])).not.toEqual([]);
+    }
+
+    expect(optOutProblems(shorthand, ["noUp"])).toEqual([]);
+    expect(optOutProblems(computed, ["noTouchTap"])).toEqual([]);
+  });
+
+  it("flags ensureContext reached outside willAppear and didReceiveSettings", () => {
+    const helper = `  private ctxFor(action: IDeckActionContext, dial: DialSettings): PlantContext {
+    return this.ensureContext(action, dial);
+  }`;
+    const computedHelper = `  private ctxFor(action: IDeckActionContext, dial: DialSettings): PlantContext {
+    return this["ensureContext"](action, dial);
+  }`;
+
+    expect(lifecycleProblems(MIGRATED)).toEqual([]);
+    // A rotate that passes its gate, then reaches ensureContext through a helper.
+    const throughHelper = plant(RELEASE, LIFECYCLE_OK, rotateAfterGate("await this.ctxFor(action, dial);"), helper);
+
+    expect(rotateGateProblems(throughHelper)).toEqual([]);
+    expect(lifecycleProblems(throughHelper)).not.toEqual([]);
+    expect(
+      lifecycleProblems(
+        plant(RELEASE, LIFECYCLE_OK, rotateAfterGate("void this.ctxFor(action, dial);"), computedHelper),
+      ),
+    ).not.toEqual([]);
+
+    // Or by running a lifecycle member itself.
+    for (const call of ["await this.didReceiveSettings(action, dial);", "await this.willAppear(action, dial);"]) {
+      expect(lifecycleProblems(plant(RELEASE, LIFECYCLE_OK, rotateAfterGate(call))), call).not.toEqual([]);
+    }
+  });
+
+  it("flags an overridden contextsState getter, and a contextMap of the surface's own", () => {
+    const getter = `  protected override get contextsState(): ReadonlyMap<string, PlantContext> {
+    return this.mine;
+  }`;
+    const field = "  private readonly contextMap = new Map<string, PlantContext>();";
+
+    expect(memberProblems(plant(RELEASE, ROTATE_OK, getter))).not.toEqual([]);
+    expect(memberProblems(plant(RELEASE, ROTATE_OK, field))).not.toEqual([]);
+    // Reading the inherited getter is what every surface does.
+    expect(memberProblems(plant(RELEASE, rotateAfterGate("this.contextsState.get(action.id);")))).toEqual([]);
+  });
+
+  it("ties each surface to an Encoder action by folder, not only by count", () => {
+    // A new dial whose surface is named otherwise, plus a stray surface elsewhere: both counts stay at two.
+    const encoderSet = new Set(["setup-aero", "new-dial"]);
+    const surfaceSet = new Set(["setup-aero", "stray"]);
+
+    expect(encoderSet.size).toBe(surfaceSet.size);
+    expect(encoderFolderProblem("setup-aero", encoderSet, surfaceSet)).toBeUndefined();
+    expect(encoderFolderProblem("new-dial", encoderSet, surfaceSet)).toContain("new-dial/");
+    expect(encoderFolderProblem("stray", encoderSet, surfaceSet)).toContain("stray/");
   });
 });

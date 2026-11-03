@@ -65,13 +65,20 @@ export function gestureSlots(dial: {
  * (the `dial` sub-object for most surfaces, the whole settings for some).
  */
 export abstract class DialSurfaceBase<Ctx extends { action: IDeckActionContext }, S> {
-  /** Per-context state, keyed by action id. Private: only `ensureContext` and `forgetContext` write it. */
+  /**
+   * Per-context state, keyed by action id. Private: only `ensureContext` and
+   * `forgetContext` write it, and the gate in `inputContext` reads it directly,
+   * so the gate and the writes see one map whatever a subclass declares.
+   */
   private readonly contextMap = new Map<string, Ctx>();
 
   /**
    * The read-only view every surface reads (`get`, `has`, `values`, `size`). It
    * is the live map itself, so a test's `surface["contextsState"]` reads current
-   * state; a `set`, `delete` or `clear` through it is a type error.
+   * state; a `set`, `delete` or `clear` through it is a type error. The release
+   * press shapes read the map through it, so a surface must not override it;
+   * the coverage guard (`actions/dial-surface-base-coverage.test.ts`) refuses
+   * one that does.
    */
   protected get contextsState(): ReadonlyMap<string, Ctx> {
     return this.contextMap;
@@ -126,7 +133,7 @@ export abstract class DialSurfaceBase<Ctx extends { action: IDeckActionContext }
    * `hasDialInputContext`, in the one wording the whole family uses.
    */
   protected inputContext(action: IDeckActionContext, settings: S, event: DialInputEvent): Ctx | undefined {
-    return hasDialInputContext(this.contextsState, action.id, event, this.host.logger)
+    return hasDialInputContext(this.contextMap, action.id, event, this.host.logger)
       ? this.ensureContext(action, settings)
       : undefined;
   }
