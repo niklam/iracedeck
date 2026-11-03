@@ -23,7 +23,6 @@ import {
   type HoldPreview,
   type IDeckActionContext,
   NOOP_HOLD_PREVIEW,
-  type PressShape,
   resolvePairedAction,
   svgToDataUri,
 } from "@iracedeck/deck-core";
@@ -40,13 +39,13 @@ import type { SessionInfo, TelemetryData } from "@iracedeck/iracing-sdk";
 import type { ILogger } from "@iracedeck/logger";
 
 import { borderColorForState, type ToggleState } from "../../icons/status-bar.js";
-import { type DialInputEvent, hasDialInputContext } from "../../shared/dial-context.js";
 import { fitValueFontSize } from "../../shared/dial-fit.js";
 import { KNOB_BOX_HEIGHT, KNOB_BOX_WIDTH } from "../../shared/dial-knob-box.js";
 import { pushDialNameIcon } from "../../shared/dial-name-icon.js";
 import { persistDialPatch } from "../../shared/dial-persist.js";
 import { type DialPendingPreview, renderPendingBar } from "../../shared/dial-preview.js";
-import { classifyDialReleaseForHost, dialGestureShape, touchGestureShape } from "../../shared/dial-release.js";
+import { classifyDialReleaseForHost } from "../../shared/dial-release.js";
+import { type DialGestures, gestureSlots, ReleaseDialSurfaceBase } from "../../shared/dial-surface-base.js";
 import type { FuelPipeline } from "./fuel-pipeline.js";
 import {
   type DialGestureSlot,
@@ -1022,18 +1021,18 @@ export function buildTriggerDescription(dial: DialSettings): DeckTriggerDescript
  * dial-side behavior. The owning action routes events here after parsing
  * settings, and forwards telemetry ticks per subscribed context.
  */
-export class FuelDialSurface {
-  private contextsState = new Map<string, FuelDialContext>();
-
+export class FuelDialSurface extends ReleaseDialSurfaceBase<FuelDialContext, FuelServiceSettings> {
   constructor(
-    private readonly host: FuelDialHost,
+    protected override readonly host: FuelDialHost,
     private readonly pipeline: FuelPipeline,
     /**
      * The action's fuel step check (#1314), shared with the keypad: Add Amount
      * sends through its move rule, Target Amount through its floor rule (#1483).
      */
     private readonly stepper: FuelStepper,
-  ) {}
+  ) {
+    super();
+  }
 
   async willAppear(action: IDeckActionContext, settings: FuelServiceSettings): Promise<void> {
     const ctx = this.ensureContext(action, settings);
@@ -1058,7 +1057,7 @@ export class FuelDialSurface {
       this.clearTimers(ctx);
     }
 
-    this.contextsState.delete(actionId);
+    this.forgetContext(actionId);
   }
 
   async didReceiveSettings(action: IDeckActionContext, settings: FuelServiceSettings): Promise<void> {
@@ -1112,7 +1111,7 @@ export class FuelDialSurface {
 
     if (!ctx) return;
 
-    // Everything below reads ctx.settings, never the event payload (see ensureContext).
+    // Everything below reads ctx.settings, never the event payload (see refreshContext).
     const dial = ctx.settings.dial;
 
     // Push + Turn: a pressed rotation dispatches the configured bidirectional
@@ -1184,36 +1183,6 @@ export class FuelDialSurface {
     this.scheduleSend(ctx);
   }
 
-  /**
-   * The press shape of a dial press (#269): released, with the gestures the
-   * release fires and the threshold it classifies with, or `none` when no
-   * context would take the press. Read from the context, not the event: an input event does not refresh this surface's settings, so the release and the touch read the stored ones.
-   */
-  pressShape(action: IDeckActionContext, _settings: FuelServiceSettings): PressShape {
-    const ctx = this.contextsState.get(action.id);
-
-    if (!ctx) return { kind: "none" };
-
-    return dialGestureShape({
-      pressGesture: ctx.settings.dial.pressAction,
-      longPressGesture: ctx.settings.dial.longPressAction,
-      thresholdMs: getDualPressThresholdMs(),
-    });
-  }
-
-  /** The press shape of a touch (#269): the slot `touchTap` fires for it, or `none`. */
-  touchShape(action: IDeckActionContext, _settings: FuelServiceSettings, hold: boolean): PressShape {
-    const ctx = this.contextsState.get(action.id);
-
-    if (!ctx) return { kind: "none" };
-
-    return touchGestureShape({
-      tapGesture: ctx.settings.dial.tapAction,
-      longTouchGesture: ctx.settings.dial.longTouchAction,
-      hold,
-    });
-  }
-
   down(action: IDeckActionContext, settings: FuelServiceSettings): void {
     const ctx = this.inputContext(action, settings, "down");
 
@@ -1280,7 +1249,7 @@ export class FuelDialSurface {
     if (!__FEATURE_DIAL_EXTENDED_GESTURES__) return;
 
     // Read the gesture from ctx.settings, not the event payload — the same
-    // stale-settings model `up()` follows (see ensureContext).
+    // stale-settings model `up()` follows (see refreshContext).
     const ctx = this.inputContext(action, settings, "touchTap");
 
     if (!ctx) return;
@@ -1724,74 +1693,69 @@ export class FuelDialSurface {
   }
 
   /**
-   * The context an INPUT event (rotate, down, touchTap) acts on: the existing
-   * one, refreshed exactly as {@link ensureContext} refreshes it, or `undefined`
-   * — never a new one (#1329). A late event the host delivers after
-   * `willDisappear` is dropped here, before it can re-create the entry, arm the
-   * hold preview or draw on a context that is gone.
+   * A new context for a lifecycle event (`willAppear`, `didReceiveSettings`),
+   * built whole with its hold preview; the base stores it. Input events never
+   * create one (#1329).
    */
-  private inputContext(
-    action: IDeckActionContext,
-    settings: FuelServiceSettings,
-    event: DialInputEvent,
-  ): FuelDialContext | undefined {
-    return hasDialInputContext(this.contextsState, action.id, event, this.host.logger)
-      ? this.ensureContext(action, settings)
-      : undefined;
+  protected override createContext(action: IDeckActionContext, settings: FuelServiceSettings): FuelDialContext {
+    const created: FuelDialContext = {
+      settings,
+      action,
+      dialValueLtr: 0,
+      lastUserActivity: 0,
+      pressStart: 0,
+      rotatedWhilePressed: false,
+      displayTimer: null,
+      lastRenderSig: null,
+      lastChangeRenderAt: 0,
+      lastSentWholeAdd: null,
+      unreachableBankLtr: null,
+      fillToSends: 0,
+      checkedFloorLtr: null,
+      throttle: { timer: null, pendingLtr: null, lastSentLtr: null },
+      marginThrottle: { timer: null, pendingTicks: 0 },
+      preview: null,
+      holdPreview: NOOP_HOLD_PREVIEW,
+    };
+    // The real helper only under the touch-strip flag (#1120): its closures
+    // draw on the strip, and the non-Elgato bundles have no strip to draw on,
+    // so terser folds the constant and drops them there.
+    created.holdPreview = __FEATURE_DIAL_EXTENDED_GESTURES__
+      ? createHoldPreview({
+          // The SAME value the release classifier reads, read at press time —
+          // the preview appears at exactly the instant a release counts as long.
+          thresholdMs: () => getDualPressThresholdMs(),
+          onThreshold: () => this.showHoldPreview(created),
+          onCancel: () => this.revertHoldPreview(created),
+        })
+      : NOOP_HOLD_PREVIEW;
+
+    return created;
   }
 
   /**
-   * Look up or create the per-context state — for the LIFECYCLE events
-   * (`willAppear`, `didReceiveSettings`) only; input events go through
-   * {@link inputContext}, which never creates one. An EXISTING context keeps its
-   * `settings` — settings changes only flow in through `willAppear` /
-   * `didReceiveSettings` (which assign `ctx.settings` explicitly). Event
-   * payloads must not refresh it: hosts with per-context settings caches can
-   * deliver stale settings in dial events, which would silently undo the
-   * `switch-mode` gesture's plugin-side setSettings (#957, the #953 model).
+   * An EXISTING context keeps its `settings` (rule 10): settings changes only
+   * flow in through `willAppear` / `didReceiveSettings`, which assign
+   * `ctx.settings` explicitly. Event payloads must not refresh it: hosts with
+   * per-context settings caches can deliver stale settings in dial events,
+   * which would silently undo the `switch-mode` gesture's plugin-side
+   * setSettings (#957, the #953 model). So only the action is refreshed.
    */
-  private ensureContext(action: IDeckActionContext, settings: FuelServiceSettings): FuelDialContext {
-    let ctx = this.contextsState.get(action.id);
+  protected override refreshContext(
+    ctx: FuelDialContext,
+    action: IDeckActionContext,
+    _settings: FuelServiceSettings,
+  ): void {
+    ctx.action = action;
+  }
 
-    if (!ctx) {
-      const created: FuelDialContext = {
-        settings,
-        action,
-        dialValueLtr: 0,
-        lastUserActivity: 0,
-        pressStart: 0,
-        rotatedWhilePressed: false,
-        displayTimer: null,
-        lastRenderSig: null,
-        lastChangeRenderAt: 0,
-        lastSentWholeAdd: null,
-        unreachableBankLtr: null,
-        fillToSends: 0,
-        checkedFloorLtr: null,
-        throttle: { timer: null, pendingLtr: null, lastSentLtr: null },
-        marginThrottle: { timer: null, pendingTicks: 0 },
-        preview: null,
-        holdPreview: NOOP_HOLD_PREVIEW,
-      };
-      // The real helper only under the touch-strip flag (#1120): its closures
-      // draw on the strip, and the non-Elgato bundles have no strip to draw on,
-      // so terser folds the constant and drops them there.
-      created.holdPreview = __FEATURE_DIAL_EXTENDED_GESTURES__
-        ? createHoldPreview({
-            // The SAME value the release classifier reads, read at press time —
-            // the preview appears at exactly the instant a release counts as long.
-            thresholdMs: () => getDualPressThresholdMs(),
-            onThreshold: () => this.showHoldPreview(created),
-            onCancel: () => this.revertHoldPreview(created),
-          })
-        : NOOP_HOLD_PREVIEW;
-      ctx = created;
-      this.contextsState.set(action.id, ctx);
-    } else {
-      ctx.action = action;
-    }
-
-    return ctx;
+  /**
+   * The gestures this context fires, read from the context, not the event: an
+   * input event does not refresh this surface's settings, so the release and
+   * the touch read the stored ones.
+   */
+  protected override dialGestures(ctx: FuelDialContext, _settings: FuelServiceSettings): DialGestures {
+    return gestureSlots(ctx.settings.dial);
   }
 
   private effectiveDisplayUnits(ctx: FuelDialContext): number {
