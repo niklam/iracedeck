@@ -238,12 +238,16 @@ export class VSDPlatformAdapter implements IDeckPlatformAdapter {
   /** Scope for the adapter's own protocol normalisation (the dropped host `dialUp`). */
   private readonly dialLogger: ILogger;
 
+  /** Scope for lifecycle normalisation (a `willAppear` for a live context). */
+  private readonly lifecycleLogger: ILogger;
+
   constructor(logger?: ILogger, logDir?: string) {
     this.fileSink = logDir ? new FileSink(logDir) : null;
     this.logLocation = logDir ? { kind: "daily", dir: logDir } : undefined;
     const log = logger ?? this.buildLogger("VSD");
     this.client = new VSDClient(parseConnectionParams(), log.createScope("WebSocket"));
     this.dialLogger = log.createScope("Dial");
+    this.lifecycleLogger = log.createScope("Lifecycle");
     this.order = new ContextEventOrder(log.createScope("EventOrder"));
   }
 
@@ -371,11 +375,27 @@ export class VSDPlatformAdapter implements IDeckPlatformAdapter {
     // The default only satisfies the type.
     const controllerOf = (context: string): ControllerType => this.contextControllers.get(context) ?? "Keypad";
 
-    // willAppear — the task records the controller, then calls the handler.
+    // willAppear — the task records the controller, then calls the handler. A
+    // willAppear for a context that is already live at arrival is not a second
+    // appear (#1597): it is delivered as a settings change carrying the frame's
+    // settings, exclusive like any other, and the context keeps the controller
+    // it appeared as, read when the task runs.
     this.client.onActionEvent(uuid, "willAppear", async (data) => {
       if (!data.context) return;
 
       const event = data as VSDEvent & { context: string };
+
+      if (this.order.isLive(event.context)) {
+        this.lifecycleLogger.debug(
+          `Context ${event.context}: willAppear arrived while live, delivered as a settings change`,
+        );
+
+        await this.order.enqueue(event.context, "didReceiveSettings", () =>
+          handler.onDidReceiveSettings?.(wrapEvent<T>(this.client, event, controllerOf(event.context))),
+        );
+
+        return;
+      }
 
       await this.order.enqueue(event.context, "willAppear", () => {
         this.contextControllers.set(

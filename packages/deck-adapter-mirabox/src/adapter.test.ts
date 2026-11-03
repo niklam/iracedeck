@@ -121,7 +121,6 @@ describe("VSDPlatformAdapter", () => {
       const harness: ContextEventOrderHarness = {
         adapter: orderedAdapter,
         hostEvents: MIRABOX_HOST_EVENTS,
-        neverAppeared: "drop",
         emit(event, context, payload = {}) {
           // The real client's `routeEvent` awaits every registration matching a
           // frame in turn, so only the first is reached synchronously. Each
@@ -363,6 +362,43 @@ describe("VSDPlatformAdapter", () => {
       const ev = (handler.onWillAppear as ReturnType<typeof vi.fn>).mock.calls[0][0];
       expect(ev.action.id).toBe("ctx-123");
       expect(ev.payload.settings).toEqual({ mode: "direct" });
+    });
+
+    it("delivers a willAppear for a live context as a settings change with its settings (#1597)", async () => {
+      const debug = vi.fn();
+      const scoped = { debug, warn: vi.fn(), createScope: () => scoped } as unknown as ILogger;
+      mockInstances.length = 0;
+      const logged = new VSDPlatformAdapter(scoped);
+      const loggedClient = mockInstances[0];
+      const handler: IDeckActionHandler = { onWillAppear: vi.fn(), onDidReceiveSettings: vi.fn() };
+      logged.registerAction("com.test.action", handler);
+
+      const willAppear = (loggedClient.onActionEvent.mock.calls as ActionEventCall[]).find(
+        (c) => c[1] === "willAppear",
+      );
+      await willAppear?.[2]({
+        event: "willAppear",
+        action: "com.test.action",
+        context: "ctx-twice",
+        payload: { settings: { mode: "first" }, controller: "Knob" },
+      });
+      await willAppear?.[2]({
+        event: "willAppear",
+        action: "com.test.action",
+        context: "ctx-twice",
+        payload: { settings: { mode: "second" }, controller: "Keypad" },
+      });
+
+      expect(handler.onWillAppear).toHaveBeenCalledOnce();
+      expect(handler.onDidReceiveSettings).toHaveBeenCalledOnce();
+      const ev = (handler.onDidReceiveSettings as ReturnType<typeof vi.fn>).mock.calls[0][0];
+      expect(ev.action.id).toBe("ctx-twice");
+      expect(ev.payload.settings).toEqual({ mode: "second" });
+      // The controller the context appeared as, not the second frame's.
+      expect(ev.action.isDial()).toBe(true);
+      expect(debug).toHaveBeenCalledWith(
+        "Context ctx-twice: willAppear arrived while live, delivered as a settings change",
+      );
     });
 
     it("should call handler.onKeyDown with wrapped event", async () => {
