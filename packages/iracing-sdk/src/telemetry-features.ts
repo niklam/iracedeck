@@ -468,8 +468,11 @@ export function nextReplayState(
  * releases it at `nowMs`, so the exit grace restarts from the release rather
  * than from the last replay tick: the engine settles a landing on a reading
  * of its own, fresher than the last tick stepped here, and the hand-over from
- * the hold to the ticks is then seamless. With no hold standing it changes
- * nothing.
+ * the hold to the ticks is then seamless. A release that comes after the
+ * capped end still brings the asked-for time down to `nowMs`: left in the
+ * future, the next sighting would re-anchor the cap and revive a hold the
+ * engine has already let go of and will not release again. With no hold
+ * standing the grace is left as it was.
  *
  * The hold only extends a sighting the ticks made (see
  * {@link withinReplayGrace}); it never makes the car read as a replay, and
@@ -482,7 +485,9 @@ export function replaySeekHeld(state: ReplayState, hold: ReplaySeekHoldUntil | n
   if (hold !== null && hold.untilMs > nowMs) {
     seekHeldUntil = hold.untilMs;
     seekHoldMaxPastSightingMs = hold.maxPastSightingMs;
-  } else if (seekHoldStands(state, nowMs)) {
+  } else if (seekHeldUntil !== null && seekHeldUntil > nowMs) {
+    // While it stands this restarts the grace from now; past the capped end
+    // `seekHoldEnd` stays the capped end, and only the revival goes.
     seekHeldUntil = nowMs;
   }
 

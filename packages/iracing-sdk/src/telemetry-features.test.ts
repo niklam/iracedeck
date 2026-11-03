@@ -694,6 +694,21 @@ describe("telemetry-features", () => {
           expect(nextReplayState(after, liveTick(901), LIVE_SESSION, 9_000).inReplay).toBe(false);
         });
 
+        it("a release after the capped end leaves nothing a later sighting could revive", () => {
+          // Held to 60 s, capped at 3 s past the sighting at 0; released at 3 500, inside the grace after the cap.
+          const released = replaySeekHeld(
+            seeking(replaySeekHeld(run([[replayTick(500), 0]]), holding(60_000, 3_000), 10), 50, 3_450),
+            null,
+            3_500,
+          );
+          const landed = nextReplayState(released, replayTick(9_000), LIVE_SESSION, 3_550);
+
+          // The landing tick re-anchors the cap; the hold must not stand again over it.
+          expect(released.seekHeldUntil).toBe(3_500);
+          expect(replayStateAt(landed, 4_549).inReplay).toBe(true);
+          expect(nextReplayState(landed, liveTick(901), LIVE_SESSION, 4_550).inReplay).toBe(false);
+        });
+
         it("caps a hold set from the car from the first sighting it extends", () => {
           const fromCar = seeking(replaySeekHeld(run([[liveTick(900), 0]]), holding(60_000, 3_000), 10), 50, 300);
           const entered = nextReplayState(fromCar, replayTick(500), LIVE_SESSION, 350);
