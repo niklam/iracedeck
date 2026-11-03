@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CAR_CYCLE_BINDING_KEY_LIST } from "../../shared/car-cycle-bindings.js";
 import { computeCarNumberTarget } from "../../shared/car-cycling.js";
 import { resolveDialBoxColors } from "../../shared/dial-box.js";
+import { describeLateInput } from "../../shared/dial-late-input.test-support.js";
 import { describePressShapes } from "../../shared/press-shape.test-support.js";
 import {
   buildTriggerDescription,
@@ -1291,6 +1292,54 @@ describe("CameraDialSurface", () => {
       expect(surface["contextsState"].has("live")).toBe(true);
       expect(host.focusCarNumber).toHaveBeenCalled();
       expect(host.focusOnMostExciting).toHaveBeenCalled();
+    });
+  });
+
+  describe("the shared late-input suite (#1589)", () => {
+    const lateInputSettings = () =>
+      dial({
+        mode: "car-number",
+        pressAction: "focus-my-car",
+        longPressAction: "focus-on-incident",
+        tapAction: "focus-on-most-exciting",
+        longTouchAction: "focus-on-leader",
+      });
+
+    let host: ReturnType<typeof makeHost>;
+    let surface: CameraDialSurface;
+
+    beforeEach(() => {
+      host = makeHost();
+      surface = new CameraDialSurface(host as never);
+    });
+
+    describeLateInput({
+      appear: async (id) => {
+        const ctx = dialContext(id);
+        await surface.willAppear(ctx as never, lateInputSettings());
+
+        return ctx;
+      },
+      disappear: async (ctx) => surface.willDisappear(ctx.id),
+      rotate: async (ctx) => surface.rotate(ctx as never, lateInputSettings(), 1, false),
+      down: async (ctx) => surface.down(ctx as never, lateInputSettings()),
+      up: (ctx) => surface.up(ctx.id),
+      touchTap: (ctx, hold) => surface.touchTap(ctx as never, lateInputSettings(), hold),
+      contexts: () => surface["contextsState"],
+      sent: (ctx) => ({
+        cycle: host.cycle,
+        focusCarNumber: host.focusCarNumber,
+        focusMyCar: host.focusMyCar,
+        changeCamera: host.changeCamera,
+        focusOnLeader: host.focusOnLeader,
+        focusOnIncident: host.focusOnIncident,
+        focusOnMostExciting: host.focusOnMostExciting,
+        setDialCanvas: ctx.setDialCanvas,
+        setFeedback: ctx.setFeedback,
+        setImage: ctx.setImage,
+        setTriggerDescription: ctx.setTriggerDescription,
+        setSettings: ctx.setSettings,
+      }),
     });
   });
 

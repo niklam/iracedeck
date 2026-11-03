@@ -106,7 +106,6 @@ import {
   type HoldPreview,
   type IDeckActionContext,
   NOOP_HOLD_PREVIEW,
-  type PressShape,
   STREAM_DOCK_KNOB_CANVAS,
   svgToDataUri,
 } from "@iracedeck/deck-core";
@@ -124,11 +123,11 @@ import { z } from "zod";
 import { CAR_CYCLE_BINDING_KEY_LIST } from "../../shared/car-cycle-bindings.js";
 import { computeCarNumberTarget } from "../../shared/car-cycling.js";
 import { dialAppearanceFields, type DialBoxColors, resolveDialBoxColors } from "../../shared/dial-box.js";
-import { type DialInputEvent, hasDialInputContext } from "../../shared/dial-context.js";
 import { fitValueFontSize } from "../../shared/dial-fit.js";
 import { pushDialNameIcon } from "../../shared/dial-name-icon.js";
 import { type DialPendingPreview, PENDING_BAR_HEIGHT, renderPendingBar } from "../../shared/dial-preview.js";
-import { classifyDialReleaseForHost, dialGestureShape, touchGestureShape } from "../../shared/dial-release.js";
+import { classifyDialReleaseForHost } from "../../shared/dial-release.js";
+import { type DialGestures, gestureSlots, ReleaseDialSurfaceBase } from "../../shared/dial-surface-base.js";
 import {
   carNumberRawAtPosition,
   computeRacePositionTarget,
@@ -1010,10 +1009,10 @@ export interface CameraDialHost {
  * lifecycle/input event here and forwards telemetry ticks per subscribed
  * context.
  */
-export class CameraDialSurface {
-  private readonly contextsState = new Map<string, CameraDialContext>();
-
-  constructor(private readonly host: CameraDialHost) {}
+export class CameraDialSurface extends ReleaseDialSurfaceBase<CameraDialContext, DialSettings> {
+  constructor(protected override readonly host: CameraDialHost) {
+    super();
+  }
 
   async willAppear(action: IDeckActionContext, dial: DialSettings): Promise<void> {
     const ctx = this.ensureContext(action, dial);
@@ -1035,7 +1034,7 @@ export class CameraDialSurface {
     // Tear the hold timer down without a revert frame: the context is gone,
     // so a push at it would be wasted.
     this.contextsState.get(actionId)?.holdPreview.dispose();
-    this.contextsState.delete(actionId);
+    this.forgetContext(actionId);
   }
 
   async didReceiveSettings(action: IDeckActionContext, dial: DialSettings): Promise<void> {
@@ -1081,28 +1080,6 @@ export class CameraDialSurface {
     this.dispatchRotation(ctx.action.id, dial.mode, direction);
     this.host.logger.info("Camera dial rotated");
     this.host.logger.debug(`${dial.mode} ${direction}`);
-  }
-
-  /**
-   * The press shape of a dial press (#269): released, with the gestures the
-   * release fires and the threshold it classifies with, or `none` when no
-   * context would take the press. `down` and `touchTap` refresh the context from these settings, so they are the ones the release and the touch read.
-   */
-  pressShape(action: IDeckActionContext, dial: DialSettings): PressShape {
-    if (!this.contextsState.has(action.id)) return { kind: "none" };
-
-    return dialGestureShape({
-      pressGesture: dial.pressAction,
-      longPressGesture: dial.longPressAction,
-      thresholdMs: getDualPressThresholdMs(),
-    });
-  }
-
-  /** The press shape of a touch (#269): the slot `touchTap` fires for it, or `none`. */
-  touchShape(action: IDeckActionContext, dial: DialSettings, hold: boolean): PressShape {
-    if (!this.contextsState.has(action.id)) return { kind: "none" };
-
-    return touchGestureShape({ tapGesture: dial.tapAction, longTouchGesture: dial.longTouchAction, hold });
   }
 
   down(action: IDeckActionContext, dial: DialSettings): void {
@@ -1206,59 +1183,37 @@ export class CameraDialSurface {
     }
   }
 
-  /**
-   * The context an INPUT event (rotate, down, touchTap) acts on: the existing
-   * one, refreshed exactly as {@link ensureContext} refreshes it, or `undefined`
-   * — never a new one (#1329). A late event the host delivers after
-   * `willDisappear` is dropped here, before it can re-create the entry or act
-   * on a context that is gone.
-   */
-  private inputContext(
-    action: IDeckActionContext,
-    dial: DialSettings,
-    event: DialInputEvent,
-  ): CameraDialContext | undefined {
-    return hasDialInputContext(this.contextsState, action.id, event, this.host.logger)
-      ? this.ensureContext(action, dial)
-      : undefined;
+  protected override createContext(action: IDeckActionContext, dial: DialSettings): CameraDialContext {
+    const created: CameraDialContext = {
+      dial,
+      action,
+      pressStart: 0,
+      rotatedWhilePressed: false,
+      lastRenderSig: null,
+      lastChangeRenderAt: 0,
+      preview: null,
+      holdPreview: NOOP_HOLD_PREVIEW,
+    };
+    // The real helper only where there is a strip to draw on; the constant
+    // folds at build time, so the other bundles never carry the timer.
+    created.holdPreview = __FEATURE_DIAL_EXTENDED_GESTURES__
+      ? createHoldPreview({
+          onThreshold: () => this.showHoldPreview(created),
+          onCancel: () => this.hideHoldPreview(created),
+          thresholdMs: () => getDualPressThresholdMs(),
+        })
+      : NOOP_HOLD_PREVIEW;
+
+    return created;
   }
 
-  /**
-   * Look up or create the per-context state — for the LIFECYCLE events
-   * (`willAppear`, `didReceiveSettings`) only. Input events go through
-   * {@link inputContext}, which never creates a context (#1329).
-   */
-  private ensureContext(action: IDeckActionContext, dial: DialSettings): CameraDialContext {
-    let ctx = this.contextsState.get(action.id);
+  protected override refreshContext(ctx: CameraDialContext, action: IDeckActionContext, dial: DialSettings): void {
+    ctx.action = action;
+    ctx.dial = dial;
+  }
 
-    if (!ctx) {
-      const created: CameraDialContext = {
-        dial,
-        action,
-        pressStart: 0,
-        rotatedWhilePressed: false,
-        lastRenderSig: null,
-        lastChangeRenderAt: 0,
-        preview: null,
-        holdPreview: NOOP_HOLD_PREVIEW,
-      };
-      // The real helper only where there is a strip to draw on; the constant
-      // folds at build time, so the other bundles never carry the timer.
-      created.holdPreview = __FEATURE_DIAL_EXTENDED_GESTURES__
-        ? createHoldPreview({
-            onThreshold: () => this.showHoldPreview(created),
-            onCancel: () => this.hideHoldPreview(created),
-            thresholdMs: () => getDualPressThresholdMs(),
-          })
-        : NOOP_HOLD_PREVIEW;
-      ctx = created;
-      this.contextsState.set(action.id, ctx);
-    } else {
-      ctx.action = action;
-      ctx.dial = dial;
-    }
-
-    return ctx;
+  protected override dialGestures(_ctx: CameraDialContext, dial: DialSettings): DialGestures {
+    return gestureSlots(dial);
   }
 
   /**
