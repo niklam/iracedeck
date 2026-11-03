@@ -467,7 +467,7 @@ export class SetupChassisDialSurface extends ReleaseDialSurfaceBase<SetupChassis
     if (!__FEATURE_DIAL_EXTENDED_GESTURES__) return;
 
     // Read the gesture from ctx.dial, not the event payload — the same
-    // stale-settings model `up()` follows (see ensureContext).
+    // stale-settings model `up()` follows (see refreshContext).
     const ctx = this.inputContext(action, dial, "touchTap");
 
     if (!ctx) return;
