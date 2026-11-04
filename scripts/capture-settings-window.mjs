@@ -19,8 +19,9 @@
  * left as it was, and the run says so and exits 1.
  *
  * The run ends by itself (#1544): the capture shuts the browser down over the
- * DevTools Protocol and waits for its process, and the profile is removed with
- * a bounded retry of our own.
+ * DevTools Protocol and waits for its process, the profile is removed with a
+ * bounded retry of our own, and a tripwire armed after the last line fails the
+ * run loudly, naming what holds it, if anything still keeps the process alive.
  *
  * This file is the composition root — it resolves the real server, browser and
  * filesystem and hands them to `captureSettingsWindow`, which contains the
@@ -35,6 +36,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { captureSettingsWindow } from "./lib/settings-window-capture/capture.mjs";
 import { connectCdp, waitForDebuggerUrl, waitForDevToolsPort } from "./lib/settings-window-capture/cdp.mjs";
+import { armExitTripwire } from "./lib/settings-window-capture/exit-tripwire.mjs";
 import { isProcessAlive, killProcessTree } from "./lib/settings-window-capture/process-tree.mjs";
 import { removeProfileDir } from "./lib/settings-window-capture/profile-dir.mjs";
 import { buildSeedSettings, buildSeedUpdateStatus } from "./lib/settings-window-capture/seed.mjs";
@@ -188,3 +190,6 @@ for (const { file, label, reason } of skipped) {
 }
 
 if (skipped.length > 0) process.exitCode = 1;
+
+// Last, after every line: a healthy run has exited before this can fire.
+armExitTripwire();
