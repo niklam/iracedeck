@@ -1836,15 +1836,10 @@ describe("Cycle Car and the dial's car-number mode agree on a missing CamCarIdx 
     };
   }
 
-  function sdk(action: CameraControls) {
-    return (
-      action as unknown as {
-        sdkController: {
-          getCurrentTelemetry: ReturnType<typeof vi.fn>;
-          getSessionInfo: ReturnType<typeof vi.fn>;
-        };
-      }
-    ).sdkController;
+  /** Feeds the action's controller this telemetry and an empty session. */
+  function mockSim(action: CameraControls, telemetry: TelemetryData): void {
+    vi.mocked(action["sdkController"].getCurrentTelemetry).mockReturnValue(telemetry);
+    vi.mocked(action["sdkController"].getSessionInfo).mockReturnValue({});
   }
 
   /** A field with no pace car: car index 0 is a competitor, #3. */
@@ -1863,10 +1858,9 @@ describe("Cycle Car and the dial's car-number mode agree on a missing CamCarIdx 
     vi.mocked(getAllCarNumbers).mockReturnValue([]);
   });
 
-  async function pressNext(telemetry: Record<string, unknown>): Promise<void> {
+  async function pressNext(telemetry: TelemetryData): Promise<void> {
     const action = new CameraControls();
-    sdk(action).getCurrentTelemetry.mockReturnValue(telemetry);
-    sdk(action).getSessionInfo.mockReturnValue({});
+    mockSim(action, telemetry);
 
     await action.onKeyDown({
       action: { id: "k1" },
@@ -1889,8 +1883,7 @@ describe("Cycle Car and the dial's car-number mode agree on a missing CamCarIdx 
 
   it("the dial's car-number mode lands on the same car as the keypad for a missing CamCarIdx", async () => {
     const action = new CameraControls();
-    sdk(action).getCurrentTelemetry.mockReturnValue({ CamGroupNumber: 9, CamCameraNumber: 2 });
-    sdk(action).getSessionInfo.mockReturnValue({});
+    mockSim(action, { CamGroupNumber: 9, CamCameraNumber: 2 });
     const settings = { dial: { mode: "car-number" } };
 
     await action.onWillAppear({ action: dialContext(), payload: { settings } } as never);
