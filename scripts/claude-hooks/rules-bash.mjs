@@ -126,29 +126,72 @@ const SPEC_SECTIONS = [
 /** The `> **Issue:** … **Supersedes:** … **Superseded by:** …` block. */
 const SPEC_HEADER = /^>\s*\*\*Issue:\*\*.*\*\*Supersedes:\*\*.*\*\*Superseded by:\*\*/m;
 
+/** A line's leading spaces, its list markers (`- `, `1. `, `- 1. `) and what follows. */
+const LINE_LEAD = /^( *)((?:(?:[-+*]|\d{1,9}[.)]) +)*)(.*)$/;
+
 /**
- * Text no heading can come from, as CommonMark reads it: a fenced code block,
- * from its opening run of backticks or tildes to a closing run of the same
- * character with nothing after it — or to the end of the spec when it never
- * closes — and an HTML comment block, which hides what it holds the same way,
- * through the rest of the line that closes it (`-->`, or the empty `<!-->` and
- * `<!--->`). Either may open inside a list item (`- ```markdown`, `1. <!--`),
- * whose content is indented to the item. A backtick opener carries no backtick
- * in its info string (```` ```js``` is inline ```` is prose). One pass, so
- * whichever opens first wins: a fence inside a comment, or a comment opener
- * inside a fence, is just text. Until #1391's review an unclosed fence, a
- * closing line with an info string (` ```js `) or the other fence character, a
- * commented-out `## Testing` and the text after a `-->` all left a heading the
+ * The spec's lines without the ones no heading can come from, as CommonMark
+ * reads them: a fenced code block, from its opening run of backticks or tildes
+ * to a closing run of the same character, at least as long, with nothing after
+ * it — or to the end of the spec when it never closes — and an HTML comment
+ * block, which hides what it holds the same way, through the whole line that
+ * closes it (`-->`, or the empty `<!-->` and `<!--->`). A backtick opener
+ * carries no backtick in its info string (```` ```js``` is inline ```` is
+ * prose). One pass, so whichever opens first wins: a fence inside a comment,
+ * or a comment opener inside a fence, is just text.
+ *
+ * Indentation is judged against the container, which a regex cannot track
+ * (#1391, CodeRabbit on PR #1610): an opener or closer is indented at most
+ * three spaces past the column its container's content starts at — 0 at the
+ * top level, or the column after the list marker of the item it sits in, on
+ * the marker's own line (`- ```markdown`) or on a line indented to the item.
+ * So a top-level `    ```` is indented code, not a fence, and inside a fence
+ * opened at the top level a `    ```` is content, not its close. The list
+ * tracking is the minimum that needs: the last item's content column, dropped
+ * when a line indented less than it follows a blank line or is a heading.
+ * Until #1391's reviews an unclosed fence, a closing line with an info string
+ * (` ```js `) or the other fence character, a commented-out `## Testing`, the
+ * text after a `-->` and a fence opened in a list item all left a heading the
  * spec does not render.
  */
-const INERT_BLOCK = (() => {
-  const lead = String.raw`^[ \t]*(?:(?:[-+*]|\d{1,9}[.)])[ \t]+)*`;
-  const end = String.raw`$(?![\s\S])`;
-  const backtickFence = String.raw`(\`{3,})[^\`\n]*\n[\s\S]*?(?:^[ \t]*\1\`*[ \t]*$|${end})`;
-  const tildeFence = String.raw`(~{3,})[^\n]*\n[\s\S]*?(?:^[ \t]*\2~*[ \t]*$|${end})`;
-  const comment = String.raw`<!--(?:-?>|[\s\S]*?(?:-->|${end}))[^\n]*`;
-  return new RegExp(`${lead}(?:${backtickFence}|${tildeFence}|${comment})`, "gm");
-})();
+function withoutInertBlocks(text) {
+  const kept = [];
+  let fence = null;
+  let inComment = false;
+  let listColumn = null;
+  let previousBlank = true;
+  for (const line of text.split("\n")) {
+    const blank = /^\s*$/.test(line);
+    if (inComment) {
+      if (line.includes("-->")) inComment = false;
+    } else if (fence) {
+      const close = line.match(/^( *)(`{3,}|~{3,}) *$/);
+      if (
+        close &&
+        close[2][0] === fence.char &&
+        close[2].length >= fence.length &&
+        close[1].length <= fence.closeIndent
+      )
+        fence = null;
+    } else {
+      const [, indent, markers, rest] = line.match(LINE_LEAD);
+      if (markers) listColumn = indent.length + markers.length;
+      else if (!blank && listColumn !== null && indent.length < listColumn && (previousBlank || rest.startsWith("#")))
+        listColumn = null;
+      const container = markers ? listColumn : listColumn !== null && indent.length >= listColumn ? listColumn : 0;
+      const relative = markers ? 0 : indent.length - container;
+      const opener = relative <= 3 ? rest.match(/^(`{3,})[^`]*$|^(~{3,})/) : null;
+      if (opener) {
+        const run = opener[1] ?? opener[2];
+        fence = { char: run[0], length: run.length, closeIndent: container + 3 };
+      } else if (relative <= 3 && rest.startsWith("<!--")) {
+        inComment = !/^<!--(?:-?>|.*-->)/.test(rest);
+      } else kept.push(line);
+    }
+    previousBlank = blank;
+  }
+  return kept.join("\n");
+}
 
 /**
  * A heading's name: its text without inline HTML (`## Testing <!-- TODO -->`,
@@ -181,10 +224,13 @@ function headingName(text) {
 function specHeadings(text) {
   // Line endings as CommonMark has them: CRLF and a bare CR end a line, and
   // U+2028 / U+2029 do not, though a JavaScript `^` would start a line there.
-  const body = text
+  // A tab indents to the next multiple of four; specs indent with spaces, so
+  // four spaces is close enough for the column a fence is judged at.
+  const normalised = text
     .replace(/\r\n?/g, "\n")
     .replace(/[\u2028\u2029]/g, " ")
-    .replace(INERT_BLOCK, "");
+    .replace(/\t/g, "    ");
+  const body = withoutInertBlocks(normalised);
   return [
     ...[...body.matchAll(/^ {0,3}#{2,6}[ \t]+(.+)$/gm)].map((m) => m[1].replace(/\s+#+\s*$/, "")),
     ...[...body.matchAll(/^\*\*([^*\n]+?)\*\*[:.]?\s*$/gm)].map((m) => m[1]),

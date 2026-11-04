@@ -1500,6 +1500,32 @@ describe("git commit", () => {
             "a Testing or Verification section",
           ]);
       });
+      // CodeRabbit on PR #1610: indentation is judged against the container.
+      it("takes a top-level fence indented four spaces for indented code, in either direction", () => {
+        expect(missingSpecParts([HEADER, "# T", "## Out of scope", "    ```", "## Testing", "y"].join("\n\n"))).toEqual(
+          [],
+        );
+        expect(
+          missingSpecParts([HEADER, "# T", "## Out of scope", "```\n    ```\n## Testing\n```"].join("\n\n")),
+        ).toEqual(["a Testing or Verification section"]);
+      });
+      it("opens and closes a fence indented to its list item", () => {
+        expect(
+          missingSpecParts(
+            [HEADER, "# T", "## Out of scope", "1. Build:", "    ```bash\n    ## Testing\n    ```"].join("\n\n"),
+          ),
+        ).toEqual(["a Testing or Verification section"]);
+        expect(
+          missingSpecParts(
+            [HEADER, "# T", "## Out of scope", "1. Build:", "    ```bash\n    pnpm build\n    ```", "## Testing"].join(
+              "\n\n",
+            ),
+          ),
+        ).toEqual([]);
+        expect(
+          missingSpecParts([HEADER, "# T", "## Out of scope", "- item", "x", "    ```", "## Testing"].join("\n\n")),
+        ).toEqual([]);
+      });
       it("ends a comment at an empty <!--> and takes a backtick line with a backtick in it for prose", () => {
         for (const before of ["<!-->", "<!--->", "```js``` is inline"])
           expect(
