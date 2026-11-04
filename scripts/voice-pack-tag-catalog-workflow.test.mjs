@@ -18,11 +18,12 @@
  * positive-controlled against a mutated copy, since an assertion that cannot
  * fail proves nothing. The step itself is run for real, extracted from the
  * YAML, against a local HTTP stand-in for the live catalog and, for the
- * withdrawal cases, throwaway git origins it fetches master from. It runs through
+ * withdrawal cases, in a shallow checkout of a release tag, as actions/checkout
+ * leaves one, cloned from a throwaway origin it fetches master from. It runs through
  * `runStepAsync`: the stand-in answers on this process's event loop, which a
  * synchronous spawn would hold for the whole run.
  */
-import { existsSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { createServer } from "node:http";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -36,6 +37,8 @@ const CHECK_STEP = "Refuse a voice-pack catalog behind the live one";
 const BUILD_STEP = "Build website";
 const LIVE_URL = "https://iracedeck.com/voice-catalog.json";
 const CATALOG = "packages/audio-assets/catalog";
+/** The tag a release deploys, which every case with an origin checks out. */
+const RELEASE_TAG = "v1.0.0";
 /** The commit a between-releases publish deploys the catalog of, as publish-voice-packs.yml passes it. */
 const PUBLISH_REF = "0123456789abcdef0123456789abcdef01234567";
 
@@ -224,18 +227,24 @@ describe.skipIf(BASH === undefined)("the catalog check step, run against a live 
    * directory at all when it is empty), or in `cwd`. The stand-in answers as
    * `live` says: `{ packs }` is a 200 with that catalog, anything else a route
    * as above. `url` overrides where the step looks; `env` adds to its environment.
-   * `origin`, a URL, makes the fresh directory a git repository fetching from
-   * it; without one the directory is no repository at all, and git is kept
-   * from finding one above it.
+   * `origin`, one of `origins` below, makes the fresh directory what CI runs
+   * the step in: actions/checkout's shallow, single-commit checkout of the
+   * release tag, cloned from that origin, with the tag's catalog replaced by
+   * `deploy`. Without one the directory is no repository at all, and git is
+   * kept from finding one above it.
    */
   async function check({ deploy, live, url, env = {}, cwd, origin }) {
     const id = ++cases;
     const root = cwd ?? path.join(box.work, `case-${id}`);
-    mkdirSync(root, { recursive: true });
     if (origin !== undefined) {
-      box.git(root, "init", "-q");
-      box.git(root, "remote", "add", "origin", origin);
+      box.git(box.work, "clone", "-q", "--depth=1", "--branch", RELEASE_TAG, origin.url, root);
+      // Shallow only from a URL (a plain path clones whole), and with no FETCH_HEAD, which `fetched` reads.
+      expect(box.git(root, "rev-parse", "--is-shallow-repository")).toBe("true");
+      expect(existsSync(path.join(root, ".git", "FETCH_HEAD"))).toBe(false);
+      rmSync(path.join(root, CATALOG), { recursive: true, force: true });
+      if (origin.remoteUrl !== undefined) box.git(root, "remote", "set-url", "origin", origin.remoteUrl);
     }
+    mkdirSync(root, { recursive: true });
     if (deploy) writeCatalog(root, deploy);
     const route = `/case-${id}/voice-catalog.json`;
     if (live) routes.set(route, live.packs ? { status: 200, body: liveBody(live.packs) } : live);
@@ -331,23 +340,32 @@ describe.skipIf(BASH === undefined)("the catalog check step, run against a live 
   });
 
   /**
-   * Throwaway origins the withdrawal path fetches master from, by name: `{ url, sha }`
-   * (`sha` the tip of the branch it was made on). `unreachable` names no repository.
+   * Throwaway origins the withdrawal path fetches master from, by name: `{ url, sha }`.
+   * Each has a release commit tagged `RELEASE_TAG`, which a case checks out,
+   * then a commit on its branch carrying `files` alone, whose sha is `sha`.
+   * `unreachable` is cloned from a real origin, then pointed at `remoteUrl`,
+   * where no repository is.
    */
   const origins = {};
 
   beforeAll(() => {
+    const entries = (catalog) =>
+      Object.fromEntries(Object.entries(catalog).map(([id, value]) => [`${CATALOG}/${id}.json`, entryText(value)]));
     const makeOrigin = (name, { branch = "master", files }) => {
       const dirOf = path.join(box.work, "origins", name);
       mkdirSync(dirOf, { recursive: true });
       box.git(dirOf, "init", "-q", "-b", branch);
+      const release = { "site.txt": "released site\n", ...entries({ default: "1.0.0", legacy: "1.2.0" }) };
+      for (const [rel, text] of Object.entries(release)) writeFile(dirOf, rel, text);
+      box.git(dirOf, "add", "-A");
+      box.git(dirOf, "commit", "-q", "-m", "the release");
+      box.git(dirOf, "tag", RELEASE_TAG);
+      box.git(dirOf, "rm", "-r", "-q", ".");
       for (const [rel, text] of Object.entries(files)) writeFile(dirOf, rel, text);
       box.git(dirOf, "add", "-A");
       box.git(dirOf, "commit", "-q", "-m", name);
       origins[name] = { url: pathToFileURL(dirOf).href, sha: box.git(dirOf, "rev-parse", "HEAD") };
     };
-    const entries = (catalog) =>
-      Object.fromEntries(Object.entries(catalog).map(([id, value]) => [`${CATALOG}/${id}.json`, entryText(value)]));
 
     // Master keeps `legacy`, at a version far below any live one: only the file's presence counts.
     makeOrigin("keeps", { files: entries({ default: "1.0.0", legacy: "0.0.1", fresh: "1.0.0" }) });
@@ -356,7 +374,10 @@ describe.skipIf(BASH === undefined)("the catalog check step, run against a live 
     makeOrigin("no-master", { branch: "main", files: entries({ default: "1.0.0" }) });
     makeOrigin("no-catalog", { files: { "site.txt": "a master without a catalog directory\n" } });
     makeOrigin("catalog-file", { files: { [CATALOG]: "a file where the directory should be\n" } });
-    origins.unreachable = { url: pathToFileURL(path.join(box.work, "origins", "no-such-origin")).href };
+    origins.unreachable = {
+      url: origins.withdrew.url,
+      remoteUrl: pathToFileURL(path.join(box.work, "origins", "no-such-origin")).href,
+    };
   }, 60_000);
 
   /** Whether the step's run left a FETCH_HEAD in the case's repository: whether it fetched at all. */
@@ -372,7 +393,7 @@ describe.skipIf(BASH === undefined)("the catalog check step, run against a live 
 
   it("refuses a live pack missing from the deploy that master still carries: deploying would remove it", async () => {
     const run = await check({
-      origin: origins.keeps.url,
+      origin: origins.keeps,
       deploy: { default: "1.4.0" },
       live: { packs: { default: "1.4.0", fresh: "1.0.0" } },
     });
@@ -394,7 +415,7 @@ describe.skipIf(BASH === undefined)("the catalog check step, run against a live 
   describe("a live pack missing from the deploy: master decides whether it was withdrawn", { timeout: 60_000 }, () => {
     it("passes with a warning when master's catalog lacks the pack too", async () => {
       const run = await check({
-        origin: origins.withdrew.url,
+        origin: origins.withdrew,
         deploy: { default: "1.0.0" },
         live: { packs: { default: "1.0.0", legacy: "1.2.0" } },
       });
@@ -409,7 +430,7 @@ describe.skipIf(BASH === undefined)("the catalog check step, run against a live 
 
     it("refuses when master still carries the pack, whatever version master has", async () => {
       const run = await check({
-        origin: origins.keeps.url,
+        origin: origins.keeps,
         deploy: { default: "1.0.0" },
         live: { packs: { default: "1.0.0", legacy: "1.2.0" } },
       });
@@ -426,7 +447,7 @@ describe.skipIf(BASH === undefined)("the catalog check step, run against a live 
     it("on a between-releases publish, names master, not a release branch, as what decides", async () => {
       // master gained the pack after the commit this publish verified and deploys.
       const run = await check({
-        origin: origins.keeps.url,
+        origin: origins.keeps,
         deploy: { default: "1.0.0" },
         live: { packs: { default: "1.0.0", legacy: "1.2.0" } },
         env: { CATALOG_REF: PUBLISH_REF },
@@ -452,7 +473,7 @@ describe.skipIf(BASH === undefined)("the catalog check step, run against a live 
       ["there is no repository to fetch into", undefined, "not a git repository"],
     ])("refuses, failing closed, when %s", async (_kind, originName, reason) => {
       const run = await check({
-        origin: originName === undefined ? undefined : origins[originName].url,
+        origin: originName === undefined ? undefined : origins[originName],
         deploy: { default: "1.0.0" },
         live: { packs: { default: "1.0.0", legacy: "1.2.0" } },
       });
@@ -467,7 +488,7 @@ describe.skipIf(BASH === undefined)("the catalog check step, run against a live 
 
     it("does not fetch master when no live pack is missing", async () => {
       const run = await check({
-        origin: origins.withdrew.url,
+        origin: origins.withdrew,
         deploy: { default: "1.0.0", legacy: "1.2.0" },
         live: { packs: { default: "1.0.0", legacy: "1.2.0" } },
       });
@@ -479,7 +500,7 @@ describe.skipIf(BASH === undefined)("the catalog check step, run against a live 
 
     it("passes a deploy carrying every live pack even when origin cannot be reached", async () => {
       const run = await check({
-        origin: origins.unreachable.url,
+        origin: origins.unreachable,
         deploy: { default: "1.0.0" },
         live: { packs: { default: "1.0.0" } },
       });
@@ -489,7 +510,7 @@ describe.skipIf(BASH === undefined)("the catalog check step, run against a live 
 
     it("refuses a version rollback even when master has withdrawn the pack, without asking master", async () => {
       const run = await check({
-        origin: origins.withdrew.url,
+        origin: origins.withdrew,
         deploy: { legacy: "1.4.0" },
         live: { packs: { legacy: "1.5.0" } },
       });
@@ -501,7 +522,7 @@ describe.skipIf(BASH === undefined)("the catalog check step, run against a live 
 
     it("reports a withdrawal and a pack behind together, and refuses", async () => {
       const run = await check({
-        origin: origins.withdrew.url,
+        origin: origins.withdrew,
         deploy: { default: "1.0.0", other: "1.0.0" },
         live: { packs: { default: "1.0.0", legacy: "1.2.0", other: "1.1.0" } },
       });
