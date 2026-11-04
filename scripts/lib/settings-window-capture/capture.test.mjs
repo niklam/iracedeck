@@ -2,6 +2,10 @@ import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  BROWSER_CLOSE_TIMEOUT_MS,
+  BROWSER_EXIT_POLL_MS,
+  BROWSER_EXIT_TIMEOUT_MS,
+  BROWSER_KILL_TIMEOUT_MS,
   captureSettingsWindow,
   createSeedSettingsHost,
   PAGE_LOAD_TIMEOUT_MS,
@@ -25,6 +29,11 @@ const SIZE = { width: 1172, height: 788 };
  * on every tab, or on the one pane it names.
  * `imagesReply` replaces the whole reply to that check, for a page that cannot
  * answer it at all.
+ *
+ * `processInfo` is what `SystemInfo.getProcessInfo` lists (the browser is pid
+ * 4242 by default; an Error makes the command fail), and `browserClose` how
+ * `Browser.close` answers: `"ok"`, `"throw"` or `"hang"`. `close` is recorded
+ * among the commands, so the order of the two can be seen.
  */
 function createFakeCdp({
   missingPane,
@@ -33,6 +42,11 @@ function createFakeCdp({
   imagesLoadAfter,
   imagesBroken = false,
   imagesReply,
+  processInfo = [
+    { type: "browser", id: BROWSER_PID, cpuTime: 0 },
+    { type: "renderer", id: 5150, cpuTime: 0 },
+  ],
+  browserClose = "ok",
 } = {}) {
   const sent = [];
   const listeners = [];
@@ -47,7 +61,9 @@ function createFakeCdp({
     get listenersAtLoadEvent() {
       return listenersAtLoadEvent;
     },
-    close: vi.fn(),
+    close: vi.fn(() => {
+      sent.push({ method: "close", params: {} });
+    }),
     // `noEvents` models a connection that delivers no protocol events at all;
     // the capture must fall back to its timeout rather than hang.
     onEvent: noEvents
@@ -63,6 +79,20 @@ function createFakeCdp({
         }),
     send: vi.fn(async (method, params) => {
       sent.push({ method, params });
+
+      if (method === "SystemInfo.getProcessInfo") {
+        if (processInfo instanceof Error) throw processInfo;
+
+        return { processInfo };
+      }
+
+      if (method === "Browser.close") {
+        if (browserClose === "throw") throw new Error("The Chromium debugger connection closed unexpectedly");
+
+        if (browserClose === "hang") return new Promise(() => {});
+
+        return {};
+      }
 
       if (method === "Target.createTarget") return { targetId: "T1" };
 
@@ -109,18 +139,31 @@ function createFakeCdp({
   };
 }
 
+/** The browser's own pid in the fake's process list — never the launcher's. */
+const BROWSER_PID = 4242;
+
+/**
+ * Deps over a fake CDP. The browser's process is gone at the first check
+ * unless `processAlive` is overridden; `kill` is the launcher's.
+ */
 function createDeps(overrides = {}) {
   const cdp = overrides.cdp ?? createFakeCdp();
   const close = vi.fn(async () => {});
   const kill = vi.fn();
   const writeFile = vi.fn(async () => {});
+  const processAlive = vi.fn(() => false);
+  const killTree = vi.fn(async () => {});
 
   return {
     cdp,
     close,
     kill,
     writeFile,
+    processAlive,
+    killTree,
     deps: {
+      processAlive,
+      killTree,
       startServer: vi.fn(async () => ({ url: "http://127.0.0.1:1234/?t=secret", close })),
       launchBrowser: vi.fn(async () => ({ port: 9222, kill })),
       debuggerUrl: vi.fn(async () => "ws://127.0.0.1:9222/devtools/browser/x"),
@@ -265,12 +308,13 @@ describe("captureSettingsWindow", () => {
   });
 
   it("still closes the browser and server when a capture fails", async () => {
-    const { deps, cdp, kill, close } = createDeps({ cdp: createFakeCdp({ missingPane: "general" }) });
+    const { deps, cdp, processAlive, close } = createDeps({ cdp: createFakeCdp({ missingPane: "general" }) });
 
     await expect(captureSettingsWindow(OPTIONS, deps)).rejects.toThrow();
 
+    expect(cdp.sent.map((c) => c.method)).toContain("Browser.close");
     expect(cdp.close).toHaveBeenCalled();
-    expect(kill).toHaveBeenCalled();
+    expect(processAlive).toHaveBeenCalledWith(BROWSER_PID);
     expect(close).toHaveBeenCalled();
   });
 });
@@ -318,7 +362,13 @@ describe("captureSettingsWindow: waiting for a tab's images", () => {
   }
 
   it("polls at an interval no other pause uses, so the counts below count only polls", () => {
-    expect([TAB_SETTLE_MS, PAGE_SETTLE_MS, PAGE_LOAD_TIMEOUT_MS]).not.toContain(PANE_IMAGES_POLL_MS);
+    expect([
+      TAB_SETTLE_MS,
+      PAGE_SETTLE_MS,
+      PAGE_LOAD_TIMEOUT_MS,
+      BROWSER_EXIT_POLL_MS,
+      BROWSER_CLOSE_TIMEOUT_MS,
+    ]).not.toContain(PANE_IMAGES_POLL_MS);
     expect(PANE_IMAGES_TIMEOUT_MS % PANE_IMAGES_POLL_MS).toBe(0);
   });
 
@@ -378,8 +428,12 @@ describe("captureSettingsWindow: waiting for a tab's images", () => {
 
     await captureSettingsWindow({ ...OPTIONS, tabs: [TABS[0]] }, deps);
 
+    // From the click to the screenshot; teardown's own pause and commands follow it.
     const afterClick = cdp.sent
-      .slice(cdp.sent.findIndex((c) => c.method === "Runtime.evaluate"))
+      .slice(
+        cdp.sent.findIndex((c) => c.method === "Runtime.evaluate"),
+        cdp.sent.findIndex((c) => c.method === "Page.captureScreenshot") + 1,
+      )
       .map((c) =>
         c.method === "delay"
           ? `delay ${c.params.ms}`
@@ -483,7 +537,7 @@ describe("captureSettingsWindow: waiting for a tab's images", () => {
       ["no result at all", {}, /on the General tab have loaded: it answered undefined/],
       ["a state it does not have", { result: { value: "ready" } }, /it answered "ready"/],
     ])("is an error naming the tab, not an image still loading: %s", async (_what, imagesReply, message) => {
-      const { deps, cdp, polls, writeFile, kill, close } = createTimedDeps({ imagesReply });
+      const { deps, cdp, polls, writeFile, close } = createTimedDeps({ imagesReply });
 
       await expect(captureSettingsWindow(OPTIONS, deps)).rejects.toThrow(message);
 
@@ -491,8 +545,242 @@ describe("captureSettingsWindow: waiting for a tab's images", () => {
       expect(steps(cdp)).toEqual(["click", "images?"]);
       expect(polls()).toBe(0);
       expect(writeFile).not.toHaveBeenCalled();
-      expect(kill).toHaveBeenCalled();
+      expect(cdp.close).toHaveBeenCalled();
       expect(close).toHaveBeenCalled();
     });
+  });
+});
+
+// The process spawn() starts can be only a launcher: Edge's hands off to the
+// real headless browser and exits, so killing it stopped nothing, the browser
+// kept its profile locked, and the profile's removal never finished (#1544).
+// Teardown asks the browser itself to close and waits for its own process.
+describe("captureSettingsWindow: shutting the browser down", () => {
+  /**
+   * Deps whose `delay` records what it was asked for and returns at once —
+   * bar the wait for Browser.close's reply, which yields to the next macrotask
+   * first, as a 5 s timer would lose to an answer that is already on its way.
+   */
+  function createTeardownDeps({ cdp: cdpOptions, ...overrides } = {}) {
+    const delays = [];
+    const log = vi.fn();
+    const made = createDeps({
+      cdp: createFakeCdp(cdpOptions),
+      deps: {
+        delay: async (ms) => {
+          delays.push(ms);
+
+          if (ms === BROWSER_CLOSE_TIMEOUT_MS) await new Promise((resolve) => setImmediate(resolve));
+        },
+        log,
+      },
+    });
+
+    Object.assign(made.deps, overrides);
+
+    return {
+      ...made,
+      log,
+      /** How many times teardown paused between two checks of the browser's process. */
+      exitPolls: () => delays.filter((ms) => ms === BROWSER_EXIT_POLL_MS).length,
+      warnings: () => log.mock.calls.map(([message]) => message).filter((message) => message.startsWith("Warning")),
+    };
+  }
+
+  it("polls at an interval no capture pause uses, and gives the kill a bound of its own", () => {
+    expect([TAB_SETTLE_MS, PAGE_SETTLE_MS, PAGE_LOAD_TIMEOUT_MS, PANE_IMAGES_POLL_MS]).not.toContain(
+      BROWSER_EXIT_POLL_MS,
+    );
+    expect(BROWSER_EXIT_TIMEOUT_MS % BROWSER_EXIT_POLL_MS).toBe(0);
+    expect(BROWSER_KILL_TIMEOUT_MS % BROWSER_EXIT_POLL_MS).toBe(0);
+  });
+
+  it("learns the browser's own process as soon as it is connected", async () => {
+    const { deps, cdp } = createTeardownDeps();
+
+    await captureSettingsWindow(OPTIONS, deps);
+
+    const methods = cdp.sent.map((c) => c.method);
+    expect(methods[0]).toBe("SystemInfo.getProcessInfo");
+    expect(methods.indexOf("SystemInfo.getProcessInfo")).toBeLessThan(methods.indexOf("Target.createTarget"));
+  });
+
+  it("sends Browser.close before closing the socket, and nothing after it", async () => {
+    const { deps, cdp } = createTeardownDeps();
+
+    await captureSettingsWindow(OPTIONS, deps);
+
+    expect(cdp.sent.map((c) => c.method).slice(-2)).toEqual(["Browser.close", "close"]);
+    expect(cdp.close).toHaveBeenCalledTimes(1);
+  });
+
+  it("waits for the browser's own process to exit before stopping the server", async () => {
+    const order = [];
+    let checks = 0;
+    const processAlive = vi.fn((pid) => {
+      order.push(`alive? ${pid}`);
+      checks += 1;
+
+      return checks <= 3;
+    });
+    const { deps, close, killTree, kill, exitPolls, warnings } = createTeardownDeps({ processAlive });
+    close.mockImplementation(async () => {
+      order.push("server.close");
+    });
+
+    await captureSettingsWindow(OPTIONS, deps);
+
+    // The browser's pid from getProcessInfo, never the launcher's.
+    expect(processAlive.mock.calls.every(([pid]) => pid === BROWSER_PID)).toBe(true);
+    expect(order).toEqual([...Array(4).fill(`alive? ${BROWSER_PID}`), "server.close"]);
+    expect(exitPolls()).toBe(3);
+    expect(killTree).not.toHaveBeenCalled();
+    expect(kill).not.toHaveBeenCalled();
+    expect(warnings()).toEqual([]);
+  });
+
+  it("kills the real browser's tree when it outlives the bound, and says so", async () => {
+    let killed = false;
+    const processAlive = vi.fn(() => !killed);
+    const killTree = vi.fn(async () => {
+      killed = true;
+    });
+    const { deps, kill, close, exitPolls, warnings } = createTeardownDeps({ processAlive, killTree });
+
+    await captureSettingsWindow(OPTIONS, deps);
+
+    // Exactly the bound's worth of waiting, then the kill, aimed at the browser.
+    expect(exitPolls()).toBe(BROWSER_EXIT_TIMEOUT_MS / BROWSER_EXIT_POLL_MS);
+    expect(killTree).toHaveBeenCalledTimes(1);
+    expect(killTree).toHaveBeenCalledWith(BROWSER_PID);
+    expect(kill).not.toHaveBeenCalled();
+    expect(warnings()).toEqual([
+      `Warning: the browser (pid ${BROWSER_PID}) did not close cleanly (it had not exited ` +
+        `${BROWSER_EXIT_TIMEOUT_MS} ms after Browser.close), so its process tree was killed.`,
+    ]);
+    expect(close).toHaveBeenCalled();
+  });
+
+  it("names a browser that survives even the kill, and still stops the server", async () => {
+    const processAlive = vi.fn(() => true);
+    const killTree = vi.fn(async () => {
+      throw new Error("Access is denied.");
+    });
+    const { deps, close, exitPolls, warnings } = createTeardownDeps({ processAlive, killTree });
+
+    await captureSettingsWindow(OPTIONS, deps);
+
+    // Both waits run to their bounds and no further.
+    expect(exitPolls()).toBe((BROWSER_EXIT_TIMEOUT_MS + BROWSER_KILL_TIMEOUT_MS) / BROWSER_EXIT_POLL_MS);
+    expect(warnings()).toHaveLength(1);
+    expect(warnings()[0]).toMatch(new RegExp(`the browser \\(pid ${BROWSER_PID}\\) is still running`));
+    expect(warnings()[0]).toMatch(/killing it failed: Error: Access is denied\./);
+    expect(close).toHaveBeenCalled();
+  });
+
+  it("still closes the socket and the server when Browser.close throws on a dead socket", async () => {
+    const { deps, cdp, close, processAlive, warnings } = createTeardownDeps({ cdp: { browserClose: "throw" } });
+
+    await captureSettingsWindow(OPTIONS, deps);
+
+    expect(cdp.close).toHaveBeenCalled();
+    expect(processAlive).toHaveBeenCalledWith(BROWSER_PID);
+    // The browser went anyway, so a failed request to close is no news.
+    expect(warnings()).toEqual([]);
+    expect(close).toHaveBeenCalled();
+  });
+
+  it("reports why Browser.close failed when the browser then has to be killed", async () => {
+    let killed = false;
+    const { deps, warnings } = createTeardownDeps({
+      cdp: { browserClose: "throw" },
+      processAlive: () => !killed,
+      killTree: async () => {
+        killed = true;
+      },
+    });
+
+    await captureSettingsWindow(OPTIONS, deps);
+
+    expect(warnings()).toHaveLength(1);
+    expect(warnings()[0]).toMatch(/did not close cleanly \(Browser\.close failed: Error: The Chromium debugger/);
+  });
+
+  it("does not wait on a Browser.close that never answers", async () => {
+    const { deps, cdp, close, processAlive } = createTeardownDeps({ cdp: { browserClose: "hang" } });
+
+    await captureSettingsWindow(OPTIONS, deps);
+
+    expect(cdp.close).toHaveBeenCalled();
+    expect(processAlive).toHaveBeenCalledWith(BROWSER_PID);
+    expect(close).toHaveBeenCalled();
+  });
+
+  it("still stops the server when closing the socket throws too", async () => {
+    const cdp = createFakeCdp({ browserClose: "throw" });
+    cdp.close.mockImplementation(() => {
+      throw new Error("socket already gone");
+    });
+    const log = vi.fn();
+    const { deps, close } = createDeps({ cdp, deps: { log } });
+
+    await captureSettingsWindow(OPTIONS, deps);
+
+    expect(log).toHaveBeenCalledWith("Warning: could not close the debugger connection: Error: socket already gone");
+    expect(close).toHaveBeenCalled();
+  });
+
+  // Without the browser's pid there is nothing to wait on: the capture is still
+  // taken, Browser.close still sent, and the launcher's own kill (right for a
+  // browser that is its own launcher, a no-op for one that has exited) is all
+  // that is left. The run says the exit was not confirmed.
+  it.each([
+    ["the command fails", new Error("SystemInfo.getProcessInfo was not found"), /SystemInfo\.getProcessInfo failed/],
+    ["it lists no browser", [{ type: "renderer", id: 5150 }], /listed no browser process/],
+  ])("degrades to the launcher's kill when %s", async (_what, processInfo, reason) => {
+    const { deps, cdp, kill, close, processAlive, killTree, writeFile, warnings } = createTeardownDeps({
+      cdp: { processInfo },
+    });
+
+    await captureSettingsWindow(OPTIONS, deps);
+
+    expect(writeFile).toHaveBeenCalledTimes(TABS.length);
+    expect(cdp.sent.map((c) => c.method).slice(-2)).toEqual(["Browser.close", "close"]);
+    expect(kill).toHaveBeenCalled();
+    expect(processAlive).not.toHaveBeenCalled();
+    expect(killTree).not.toHaveBeenCalled();
+    expect(warnings()).toHaveLength(1);
+    expect(warnings()[0]).toMatch(reason);
+    expect(warnings()[0]).toMatch(/its exit was not confirmed/);
+    expect(close).toHaveBeenCalled();
+  });
+
+  it("falls back to the launcher's kill when the debugger never connected", async () => {
+    const { deps, kill, close, warnings } = createTeardownDeps({
+      connect: vi.fn(async () => {
+        throw new Error("Could not connect to the Chromium debugger");
+      }),
+    });
+
+    await expect(captureSettingsWindow(OPTIONS, deps)).rejects.toThrow(/Could not connect/);
+
+    expect(kill).toHaveBeenCalled();
+    expect(warnings()).toHaveLength(1);
+    expect(warnings()[0]).toMatch(/the debugger connection was never made/);
+    expect(warnings()[0]).toMatch(/there was no debugger connection to send Browser\.close on/);
+    expect(close).toHaveBeenCalled();
+  });
+
+  it("has nothing to stop, and says nothing, when the browser never launched", async () => {
+    const { deps, close, warnings } = createTeardownDeps({
+      launchBrowser: vi.fn(async () => {
+        throw new Error("ENOENT");
+      }),
+    });
+
+    await expect(captureSettingsWindow(OPTIONS, deps)).rejects.toThrow(/ENOENT/);
+
+    expect(warnings()).toEqual([]);
+    expect(close).toHaveBeenCalled();
   });
 });

@@ -56,6 +56,27 @@ export const PANE_IMAGES_STATE_EXPRESSION = `(() => {
   return images.some((img) => img.naturalWidth === 0) ? "broken" : "loaded";
 })()`;
 
+/**
+ * How long `Browser.close` may take to answer before teardown stops waiting for
+ * the reply (#1544). The reply is not what decides anything: whether the
+ * browser's process has gone is, so a browser that never answers costs this
+ * bound and then the wait below, never the life of the process.
+ */
+export const BROWSER_CLOSE_TIMEOUT_MS = 5_000;
+
+/**
+ * How long the browser's own process may take to exit once asked to close
+ * before its tree is killed (#1544). Headless Edge took about 3 s on the
+ * machine #1544 was measured on, flushing its profile first.
+ */
+export const BROWSER_EXIT_TIMEOUT_MS = 10_000;
+
+/** How long to wait for the browser's process to go after killing its tree. */
+export const BROWSER_KILL_TIMEOUT_MS = 5_000;
+
+/** How often the browser's process is checked while either of those waits runs. */
+export const BROWSER_EXIT_POLL_MS = 50;
+
 /** Pause after the page's load event, before the first capture. */
 export const PAGE_SETTLE_MS = 1500;
 
@@ -199,6 +220,152 @@ async function waitForPaneImages(cdp, sessionId, delay, tab) {
 }
 
 /**
+ * Ask the browser which process is its own (#1544).
+ *
+ * The process the composition root spawned is not necessarily the browser:
+ * Edge's `msedge.exe` is a launcher that hands off to the real headless browser
+ * and exits, leaving that browser orphaned, so the launcher's pid and handle
+ * stop nothing. `SystemInfo.getProcessInfo` reports every process the browser
+ * runs, and the one typed `"browser"` is the one whose exit ends the tree.
+ *
+ * @param {any} cdp
+ * @returns {Promise<{pid: number} | {pid: undefined, reason: string}>} The pid,
+ *   or why it could not be learned — never a throw, since a capture can still
+ *   be taken without it; only teardown's proof that the browser exited is lost.
+ */
+async function identifyBrowserProcess(cdp) {
+  try {
+    const reply = await cdp.send("SystemInfo.getProcessInfo");
+    const entry = Array.isArray(reply?.processInfo)
+      ? reply.processInfo.find((info) => info?.type === "browser")
+      : undefined;
+
+    if (Number.isInteger(entry?.id) && entry.id > 0) return { pid: entry.id };
+
+    return { pid: undefined, reason: "SystemInfo.getProcessInfo listed no browser process" };
+  } catch (error) {
+    return { pid: undefined, reason: `SystemInfo.getProcessInfo failed: ${String(error)}` };
+  }
+}
+
+/**
+ * Wait until `pid` has exited, or the bound is reached, checking through the
+ * injected `delay` and counting the time asked for rather than reading a clock,
+ * as {@link waitForPaneImages} does.
+ *
+ * @param {number} pid
+ * @param {number} timeoutMs
+ * @param {(pid: number) => boolean} processAlive
+ * @param {(ms: number) => Promise<void>} delay
+ * @returns {Promise<boolean>} Whether the process has gone.
+ */
+async function waitForProcessExit(pid, timeoutMs, processAlive, delay) {
+  for (let waited = 0; ; waited += BROWSER_EXIT_POLL_MS) {
+    if (!processAlive(pid)) return true;
+
+    if (waited >= timeoutMs) return false;
+
+    await delay(BROWSER_EXIT_POLL_MS);
+  }
+}
+
+/**
+ * Shut the browser down and prove it has gone (#1544).
+ *
+ * `Browser.close` over the protocol first, because it reaches the browser
+ * whatever process the launcher handed off to, and lets it flush and release
+ * its profile — killing it instead is what left the profile locked. Bounded,
+ * so a browser that is dead or hung cannot hold teardown. Then the socket is
+ * closed, whatever that command did. Then the browser's own process is waited
+ * for; one still alive at the bound has its tree killed and is waited for
+ * again. Every step that fails is a Warning, and nothing here throws.
+ *
+ * Without the browser's pid (`browserProcess.pid` undefined) its exit cannot
+ * be confirmed: the launcher's own `kill` is all that is left, which stops a
+ * browser that is its own launcher and is a no-op on one that has exited.
+ *
+ * @param {object} state
+ * @param {any} state.cdp - Undefined when the connection was never made.
+ * @param {{kill?: () => void} | undefined} state.browser
+ * @param {{pid: number | undefined, reason?: string}} state.browserProcess
+ * @param {object} deps
+ * @param {(pid: number) => boolean} deps.processAlive
+ * @param {(pid: number) => Promise<void> | void} deps.killTree
+ * @param {(ms: number) => Promise<void>} deps.delay
+ * @param {(message: string) => void} deps.log
+ */
+async function shutDownBrowser({ cdp, browser, browserProcess }, { processAlive, killTree, delay, log }) {
+  /** Why the browser was not shut down cleanly, if it then outlives the wait. */
+  let closeProblem;
+
+  if (cdp) {
+    // Through a `then`, so even a send that throws synchronously becomes a
+    // rejection here and cannot skip closing the socket below.
+    const reply = Promise.resolve()
+      .then(() => cdp.send("Browser.close"))
+      .then(
+        () => undefined,
+        (error) => `Browser.close failed: ${String(error)}`,
+      );
+    const timeout = delay(BROWSER_CLOSE_TIMEOUT_MS).then(
+      () => `Browser.close had no reply after ${BROWSER_CLOSE_TIMEOUT_MS} ms`,
+    );
+
+    closeProblem = await Promise.race([reply, timeout]);
+
+    try {
+      cdp.close();
+    } catch (error) {
+      log(`Warning: could not close the debugger connection: ${String(error)}`);
+    }
+  } else {
+    closeProblem = "there was no debugger connection to send Browser.close on";
+  }
+
+  const { pid } = browserProcess;
+
+  if (pid === undefined) {
+    try {
+      browser?.kill?.();
+    } catch (error) {
+      log(`Warning: could not stop the launched browser process: ${String(error)}`);
+    }
+
+    if (browser) {
+      log(
+        `Warning: the browser's own process could not be identified (${browserProcess.reason}), so its exit ` +
+          `was not confirmed${closeProblem ? `, and ${closeProblem}` : ""}. A headless browser may still be running.`,
+      );
+    }
+
+    return;
+  }
+
+  if (await waitForProcessExit(pid, BROWSER_EXIT_TIMEOUT_MS, processAlive, delay)) return;
+
+  let killProblem = "";
+
+  try {
+    await killTree(pid);
+  } catch (error) {
+    killProblem = `; killing it failed: ${String(error)}`;
+  }
+
+  const why = closeProblem ?? `it had not exited ${BROWSER_EXIT_TIMEOUT_MS} ms after Browser.close`;
+
+  if (await waitForProcessExit(pid, BROWSER_KILL_TIMEOUT_MS, processAlive, delay)) {
+    log(`Warning: the browser (pid ${pid}) did not close cleanly (${why}), so its process tree was killed.`);
+
+    return;
+  }
+
+  log(
+    `Warning: the browser (pid ${pid}) is still running: ${why}, and it outlived killing its process tree` +
+      `${killProblem}. Stop it by hand.`,
+  );
+}
+
+/**
  * A tab whose screenshot was not taken, because an image on it never arrived.
  *
  * @typedef {object} SkippedCapture
@@ -225,10 +392,20 @@ async function waitForPaneImages(cdp, sessionId, delay, tab) {
  * @param {readonly import("./tabs.mjs").SettingsWindowTab[]} [options.tabs]
  * @param {object} deps - Injected collaborators.
  * @param {(opts: object) => Promise<{url: string, close: () => Promise<void>}>} deps.startServer
- * @param {() => Promise<{port: number, kill: () => void}>} deps.launchBrowser
+ * @param {() => Promise<{port: number, kill?: () => void}>} deps.launchBrowser - Starts
+ *   the browser and reports its debugging port. `kill` stops the process it
+ *   spawned, which may be only a launcher that has already handed off and
+ *   exited (Edge's is), so teardown uses it only when the browser's own pid
+ *   could not be learned over CDP.
  * @param {(port: number) => Promise<string>} deps.debuggerUrl
  * @param {(url: string) => Promise<any>} deps.connect
  * @param {(file: string, data: Buffer) => Promise<void>} deps.writeFile
+ * @param {(pid: number) => boolean} deps.processAlive - Whether a process
+ *   still runs; teardown polls the browser's own pid with it after
+ *   `Browser.close`.
+ * @param {(pid: number) => Promise<void> | void} deps.killTree - Kill a process
+ *   and its children; teardown's fallback for a browser that outlives
+ *   {@link BROWSER_EXIT_TIMEOUT_MS} after `Browser.close`.
  * @param {(ms: number) => Promise<void>} [deps.delay]
  * @param {(message: string) => void} [deps.log]
  * @returns {Promise<{written: string[], skipped: SkippedCapture[]}>} The files
@@ -251,6 +428,8 @@ export async function captureSettingsWindow(options, deps) {
     debuggerUrl,
     connect,
     writeFile,
+    processAlive,
+    killTree,
     // unref'd: the settings server and the CDP socket keep the loop alive for
     // the whole capture, so nothing can exit early — but a fallback timer left
     // pending by a race that resolved early can never hold the process open
@@ -282,9 +461,11 @@ export async function captureSettingsWindow(options, deps) {
 
   log(`Settings server listening; page at ${server.url.replace(/t=[^&]+/, "t=…")}`);
 
-  /** @type {{port: number, kill: () => void} | undefined} */
+  /** @type {{port: number, kill?: () => void} | undefined} */
   let browser;
   let cdp;
+  /** @type {{pid: number | undefined, reason?: string}} */
+  let browserProcess = { pid: undefined, reason: "the debugger connection was never made" };
   /** @type {string[]} */
   const written = [];
   /** @type {SkippedCapture[]} */
@@ -295,6 +476,9 @@ export async function captureSettingsWindow(options, deps) {
     // to launch must still reach `server.close()` in the finally.
     browser = await launchBrowser();
     cdp = await connect(await debuggerUrl(browser.port));
+    // Learned now, while the browser is certainly answering, so teardown can
+    // prove the browser has gone however the capture itself ends.
+    browserProcess = await identifyBrowserProcess(cdp);
 
     const { targetId } = await cdp.send("Target.createTarget", { url: "about:blank" });
     const { sessionId } = await cdp.send("Target.attachToTarget", { targetId, flatten: true });
@@ -376,12 +560,16 @@ export async function captureSettingsWindow(options, deps) {
       log(`Captured ${tab.label} → ${tab.file}`);
     }
   } finally {
-    // Isolated, not sequential: a throw from any one of these would otherwise
-    // skip the rest, leaving a headless Chromium running and the settings
-    // server holding its port for the life of the process.
+    // Isolated, not sequential: a throw from either would otherwise skip the
+    // other, leaving a headless browser running or the settings server holding
+    // its port for the life of the process. The browser goes first: while its
+    // exit is waited for, the still-listening server is what keeps the event
+    // loop alive under the unref'd delays.
     for (const [what, step] of [
-      ["close the debugger connection", () => cdp?.close()],
-      ["stop the browser", () => browser?.kill()],
+      [
+        "shut the browser down",
+        () => shutDownBrowser({ cdp, browser, browserProcess }, { processAlive, killTree, delay, log }),
+      ],
       ["stop the settings server", () => server.close()],
     ]) {
       try {
