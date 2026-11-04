@@ -54,6 +54,8 @@ Consequences when editing that file — none of these apply to test files or pac
 
 To run a subset, pass the filter through the root script — `pnpm test <path>` — so it keeps the native loader. The hook refuses `pnpm exec vitest`, which silently falls back to the bundling loader.
 
+**Package aliases (#1375).** The config's `resolve.alias` points every `@iracedeck/*` export that builds into `dist/` — each `exports` subpath, or `main` without one — at the source file it is built from, so no test runs against a stale build; a subpath goes before its bare package, since Vite matches a string alias as a prefix in order. `scripts/vitest-alias-coverage.test.mjs` fails on a missing alias, one to a missing file or an unexported specifier, and a misordered one. An entry deliberately left on `dist/` is named in its `RESOLVED_TO_DIST` with the reason (today only `scenario-harness`, whose `main` is the harness's start script); a stale name there fails too.
+
 ## Per-package runs (#1021)
 
 `pnpm --filter <pkg> test`, `pnpm --filter <pkg> test:watch` and `pnpm test` inside a package directory all work, and run exactly the root suite filtered to that package. Every package with a `src/**/*.test.ts` carries the same two scripts, byte for byte:

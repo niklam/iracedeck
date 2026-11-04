@@ -45,6 +45,11 @@ const packageSrc = (pkg: string, sub = "src/index.ts"): string => resolve(import
 export default defineConfig({
   plugins: [svgPlugin()],
   resolve: {
+    // Every `@iracedeck/*` export that builds into `dist/` resolves to the
+    // source it is built from, so no test runs against a stale build. A subpath
+    // comes before its bare package: Vite matches a string alias as a prefix, in
+    // order. `scripts/vitest-alias-coverage.test.mjs` fails on a missing, stale
+    // or misordered entry (#1375).
     alias: {
       "@iracedeck/app-constants": packageSrc("app-constants"),
       "@iracedeck/app-updates": packageSrc("app-updates"),
@@ -55,6 +60,9 @@ export default defineConfig({
       "@iracedeck/audio-service": packageSrc("audio-service"),
       "@iracedeck/callout-script": packageSrc("callout-script"),
       "@iracedeck/callout-settings": packageSrc("callout-settings"),
+      "@iracedeck/deck-adapter-elgato": packageSrc("deck-adapter-elgato"),
+      "@iracedeck/deck-adapter-mirabox": packageSrc("deck-adapter-mirabox"),
+      "@iracedeck/deck-adapter-ulanzi": packageSrc("deck-adapter-ulanzi"),
       "@iracedeck/deck-core": packageSrc("deck-core"),
       "@iracedeck/deck-iracing": packageSrc("deck-iracing"),
       "@iracedeck/diagnostics": packageSrc("diagnostics"),
@@ -65,6 +73,7 @@ export default defineConfig({
       "@iracedeck/iracing-native": packageSrc("iracing-native"),
       "@iracedeck/logger": packageSrc("logger"),
       "@iracedeck/race-engineer-wiring": packageSrc("race-engineer-wiring"),
+      "@iracedeck/rasterizer": packageSrc("rasterizer"),
       "@iracedeck/replay-engine/testing": packageSrc("replay-engine", "src/testing.ts"),
       "@iracedeck/replay-engine": packageSrc("replay-engine"),
       "@iracedeck/replay-store": packageSrc("replay-store"),
