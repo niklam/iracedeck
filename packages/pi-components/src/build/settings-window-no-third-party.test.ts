@@ -5,6 +5,7 @@ import url from "node:url";
 import { describe, expect, it } from "vitest";
 
 import { discoverPlugins } from "../../../../scripts/lib/plugin-config-shape.mjs";
+import { SETTINGS_WINDOW_PAGE } from "./action-templates.test-support.js";
 import { readSupportPartialConstants } from "./support-partial-constants.js";
 import { findThirdPartyReferences, type ThirdPartyReference } from "./third-party-references.js";
 
@@ -30,7 +31,7 @@ import { findThirdPartyReferences, type ThirdPartyReference } from "./third-part
  */
 const partialsDir = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), "../../partials");
 const repoRoot = path.resolve(partialsDir, "../../..");
-const windowPage = path.join(repoRoot, "packages/iracing-actions/src/actions/settings-window/settings-window.ejs");
+const windowPage = SETTINGS_WINDOW_PAGE;
 
 /**
  * Every image the window may load from another site. Adding one is a decision

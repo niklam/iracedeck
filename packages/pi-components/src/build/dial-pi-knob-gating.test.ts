@@ -4,7 +4,7 @@ import path from "node:path";
 import url from "node:url";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
-import { actionPropertyInspectors, ACTIONS_DIR } from "./action-templates.js";
+import { actionPropertyInspectors, ACTIONS_DIR } from "./action-templates.test-support.js";
 import { piTemplatePlugin } from "./pi-template-plugin.mjs";
 
 /**

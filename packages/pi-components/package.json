@@ -19,6 +19,7 @@
     "@iracedeck/callout-script": "workspace:*",
     "@iracedeck/callout-settings": "workspace:*",
     "@iracedeck/fetch-utils": "workspace:*",
+    "@iracedeck/iracing-actions": "workspace:*",
     "@iracedeck/settings": "workspace:*",
     "@rollup/plugin-node-resolve": "16.0.3",
     "@rollup/plugin-terser": "1.0.0",

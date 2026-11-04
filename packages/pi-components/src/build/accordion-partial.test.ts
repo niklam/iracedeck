@@ -6,6 +6,7 @@ import path from "node:path";
 import url from "node:url";
 import { describe, expect, it } from "vitest";
 
+import { ACTIONS_DIR } from "./action-templates.test-support.js";
 import { loadCalloutPiGroups } from "./callout-pi-groups.mjs";
 
 /** The rows exactly as the build reads them: from the built registry, in a fresh process. */
@@ -26,7 +27,7 @@ function render(template: string, data: Record<string, unknown> = {}): string {
 // build resolves that from iracing-actions' data dir — point the tests there.
 const dataRequire = (spec: string): unknown => {
   const rel = spec.replace(/^\.\//, "");
-  const file = path.resolve(partialsDir, "../../iracing-actions/src/actions", rel);
+  const file = path.resolve(ACTIONS_DIR, rel);
 
   return JSON.parse(readFileSync(file, "utf-8"));
 };

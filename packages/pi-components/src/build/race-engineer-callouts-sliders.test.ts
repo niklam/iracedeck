@@ -5,6 +5,7 @@ import path from "node:path";
 import url from "node:url";
 import { describe, expect, it } from "vitest";
 
+import { SETTINGS_WINDOW_PAGE } from "./action-templates.test-support.js";
 import { loadCalloutPiGroups } from "./callout-pi-groups.mjs";
 
 /**
@@ -22,10 +23,7 @@ import { loadCalloutPiGroups } from "./callout-pi-groups.mjs";
  * every platform, so rendering the partial covers what each of them ships.
  */
 const partialsDir = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), "../../partials");
-const settingsWindowTemplate = path.resolve(
-  partialsDir,
-  "../../iracing-actions/src/actions/settings-window/settings-window.ejs",
-);
+const settingsWindowTemplate = SETTINGS_WINDOW_PAGE;
 
 /** The numeric settings the translator also clamps; the card must render a slider for each. */
 const TRANSLATOR_CLAMPED = [

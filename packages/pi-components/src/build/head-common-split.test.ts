@@ -3,7 +3,7 @@ import path from "node:path";
 import url from "node:url";
 import { describe, expect, it } from "vitest";
 
-import { ACTIONS_DIR, actionTemplates } from "./action-templates.js";
+import { actionTemplates, SETTINGS_WINDOW_PAGE } from "./action-templates.test-support.js";
 
 /**
  * #1003 split head-common.ejs in two.
@@ -24,7 +24,7 @@ const read = (file: string): string => readFileSync(file, "utf-8");
 
 const headCommon = read(path.join(partialsDir, "head-common.ejs"));
 const windowScripts = read(path.join(partialsDir, "settings-window-scripts.ejs"));
-const settingsWindow = read(path.join(ACTIONS_DIR, "settings-window/settings-window.ejs"));
+const settingsWindow = read(SETTINGS_WINDOW_PAGE);
 
 /** Hooks that only ever exist on the settings window's page. */
 const WINDOW_ONLY_HOOKS = [

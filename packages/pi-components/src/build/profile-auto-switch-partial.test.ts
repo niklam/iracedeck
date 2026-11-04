@@ -11,6 +11,8 @@ import path from "node:path";
 import url from "node:url";
 import { describe, expect, it } from "vitest";
 
+import { ACTIONS_DATA_DIR, SETTINGS_WINDOW_PAGE } from "./action-templates.test-support.js";
+
 /**
  * Renders the REAL `partials/global-profile-auto-switch.ejs` (#1111), the
  * settings window's "Automatically switch to profile" card.
@@ -24,13 +26,8 @@ import { describe, expect, it } from "vitest";
  */
 const partialsDir = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), "../../partials");
 const templatePath = path.join(partialsDir, "global-profile-auto-switch.ejs");
-const windowTemplate = path.resolve(
-  partialsDir,
-  "../../iracing-actions/src/actions/settings-window/settings-window.ejs",
-);
-const realProfiles = JSON.parse(
-  readFileSync(path.resolve(partialsDir, "../../iracing-actions/src/actions/data/profiles.json"), "utf-8"),
-) as ProfileRow[];
+const windowTemplate = SETTINGS_WINDOW_PAGE;
+const realProfiles = JSON.parse(readFileSync(path.join(ACTIONS_DATA_DIR, "profiles.json"), "utf-8")) as ProfileRow[];
 
 type ProfileRow = { name: string; deviceType?: number; displayName?: string };
 

@@ -1050,6 +1050,9 @@ importers:
       '@iracedeck/fetch-utils':
         specifier: workspace:*
         version: link:../fetch-utils
+      '@iracedeck/iracing-actions':
+        specifier: workspace:*
+        version: link:../iracing-actions
       '@iracedeck/settings':
         specifier: workspace:*
         version: link:../settings

@@ -4,6 +4,8 @@ import path from "node:path";
 import url from "node:url";
 import { describe, expect, it } from "vitest";
 
+import { ACTIONS_DATA_DIR } from "./action-templates.test-support.js";
+
 /**
  * Renders the REAL `partials/settings-window-getting-started.ejs` (not a fixture).
  *
@@ -14,8 +16,7 @@ import { describe, expect, it } from "vitest";
  * Profiles PROSE everywhere, the Profiles CONTROL only where that tab exists.
  */
 const partialsDir = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), "../../partials");
-const repoRoot = path.resolve(partialsDir, "../../..");
-const DATA = path.join(repoRoot, "packages/iracing-actions/src/actions/data/getting-started.json");
+const DATA = path.join(ACTIONS_DATA_DIR, "getting-started.json");
 
 const FIXTURE = {
   _meta: { generatedFrom: "…", generatedBy: "…", note: "…" },

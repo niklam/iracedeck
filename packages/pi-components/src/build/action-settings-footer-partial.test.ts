@@ -3,7 +3,7 @@ import path from "node:path";
 import url from "node:url";
 import { describe, expect, it } from "vitest";
 
-import { actionPropertyInspectors } from "./action-templates.js";
+import { actionPropertyInspectors } from "./action-templates.test-support.js";
 
 /**
  * `action-settings-footer.ejs` (#1024) — the way through to the iRaceDeck

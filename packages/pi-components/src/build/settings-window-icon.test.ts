@@ -8,6 +8,7 @@ import {
   pluginConfigShapeProblems,
   readPluginPackage,
 } from "../../../../scripts/lib/plugin-config-shape.mjs";
+import { SETTINGS_WINDOW_PAGE } from "./action-templates.test-support.js";
 import { browserDir, SETTINGS_WINDOW_ICON } from "./index.mjs";
 
 /**
@@ -27,7 +28,7 @@ import { browserDir, SETTINGS_WINDOW_ICON } from "./index.mjs";
  */
 const packageRoot = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), "../..");
 const repoRoot = path.resolve(packageRoot, "../..");
-const windowPage = path.join(repoRoot, "packages/iracing-actions/src/actions/settings-window/settings-window.ejs");
+const windowPage = SETTINGS_WINDOW_PAGE;
 
 /**
  * The shared plugin factory (#1349): the one place a plugin build copies this

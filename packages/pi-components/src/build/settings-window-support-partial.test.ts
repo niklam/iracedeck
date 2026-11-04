@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 
 import { parseNavPanes } from "../../../../scripts/lib/settings-window-capture/tabs.mjs";
 import { resolveExternalUrl } from "../components/external-links.js";
+import { SETTINGS_WINDOW_PAGE } from "./action-templates.test-support.js";
 import { readSupportPartialConstants } from "./support-partial-constants.js";
 
 /**
@@ -20,12 +21,8 @@ import { readSupportPartialConstants } from "./support-partial-constants.js";
  * here.
  */
 const partialsDir = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), "../../partials");
-const repoRoot = path.resolve(partialsDir, "../../..");
 const partialSource = readFileSync(path.join(partialsDir, "settings-window-support.ejs"), "utf-8");
-const pageSource = readFileSync(
-  path.join(repoRoot, "packages/iracing-actions/src/actions/settings-window/settings-window.ejs"),
-  "utf-8",
-);
+const pageSource = readFileSync(SETTINGS_WINDOW_PAGE, "utf-8");
 
 /** The partial takes no data: its three URLs are its own. */
 function render(): string {

@@ -4,6 +4,8 @@ import path from "node:path";
 import url from "node:url";
 import { describe, expect, it } from "vitest";
 
+import { SETTINGS_WINDOW_PAGE } from "./action-templates.test-support.js";
+
 /**
  * Renders the REAL `partials/voice-packs.ejs` (#1145), which took over the block
  * `race-engineer-settings.ejs` rendered for the settings window since #1034.
@@ -20,10 +22,7 @@ import { describe, expect, it } from "vitest";
  */
 const partialsDir = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), "../../partials");
 const templatePath = path.join(partialsDir, "voice-packs.ejs");
-const windowTemplate = path.resolve(
-  partialsDir,
-  "../../iracing-actions/src/actions/settings-window/settings-window.ejs",
-);
+const windowTemplate = SETTINGS_WINDOW_PAGE;
 
 function render(locals: Record<string, unknown>): string {
   return ejs.render(readFileSync(templatePath, "utf-8"), locals, { filename: templatePath });

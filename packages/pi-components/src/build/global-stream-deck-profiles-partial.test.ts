@@ -4,6 +4,8 @@ import path from "node:path";
 import url from "node:url";
 import { describe, expect, it } from "vitest";
 
+import { ACTIONS_DATA_DIR } from "./action-templates.test-support.js";
+
 /**
  * Renders the REAL `partials/global-stream-deck-profiles.ejs` (#736, #992,
  * #1457). In the settings window each template row carries the device types it
@@ -14,9 +16,7 @@ import { describe, expect, it } from "vitest";
  */
 const partialsDir = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), "../../partials");
 const templatePath = path.join(partialsDir, "global-stream-deck-profiles.ejs");
-const realProfiles = JSON.parse(
-  readFileSync(path.resolve(partialsDir, "../../iracing-actions/src/actions/data/profiles.json"), "utf-8"),
-) as ProfileRow[];
+const realProfiles = JSON.parse(readFileSync(path.join(ACTIONS_DATA_DIR, "profiles.json"), "utf-8")) as ProfileRow[];
 
 type ProfileRow = { name: string; deviceType?: number; displayName?: string };
 

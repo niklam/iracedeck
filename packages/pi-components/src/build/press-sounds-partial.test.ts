@@ -4,6 +4,8 @@ import path from "node:path";
 import url from "node:url";
 import { describe, expect, it } from "vitest";
 
+import { SETTINGS_WINDOW_PAGE } from "./action-templates.test-support.js";
+
 /**
  * The Press Sounds card (#269). Its select writes `pressSound`, a persisted
  * global setting, so the key and the four stored values are a contract with
@@ -13,10 +15,7 @@ import { describe, expect, it } from "vitest";
  * both sides are literals that cannot import each other, so they are pinned here.
  */
 const partialsDir = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), "../../partials");
-const settingsWindowEjs = path.resolve(
-  partialsDir,
-  "../../iracing-actions/src/actions/settings-window/settings-window.ejs",
-);
+const settingsWindowEjs = SETTINGS_WINDOW_PAGE;
 
 function render(template: string): string {
   return ejs.render(template, {}, { views: [partialsDir], filename: path.join(partialsDir, "_test.ejs") });

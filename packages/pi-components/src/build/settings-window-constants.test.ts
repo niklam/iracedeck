@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 
 import { SETTINGS_WINDOW_FLAG as COMPONENTS_FLAG } from "../components/settings-window-context.js";
 import { SETTINGS_WINDOW_FLAG as BRIDGE_FLAG } from "../settings-window-bridge/index.js";
+import { SETTINGS_WINDOW_PAGE } from "./action-templates.test-support.js";
 
 /**
  * Pins between values that cannot share one declaration. A Property Inspector
@@ -80,13 +81,11 @@ describe("settings-window warning id (#1005)", () => {
  * strips, the injected one unfiltered.
  */
 describe("settings-window page withholds the settings-window banners (#1014)", () => {
-  const actions = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "iracing-actions", "src", "actions");
-
   // Read lazily, like the `read()` helper the sibling describe uses: a page
   // that moves should fail ONE named test, not throw during collection and
   // take the unrelated constant pins in this file down with it.
   const strip = (): string => {
-    const page = readFileSync(join(actions, "settings-window", "settings-window.ejs"), "utf8");
+    const page = readFileSync(SETTINGS_WINDOW_PAGE, "utf8");
 
     return /<ird-warnings\s[^>]*>/.exec(page)?.[0] ?? "";
   };
