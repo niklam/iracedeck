@@ -6,7 +6,6 @@ import { diffReplayGreens } from "./replay-greens.js";
 import { diffReplayLaps } from "./replay-laps.js";
 import {
   LIVE_EDGE_MAX_FRAMES,
-  readSubSessionId,
   resolveReplayLiveTick,
   resolveReplayRecordTick,
   resolveSubSessionId,
@@ -179,34 +178,25 @@ describe("resolveReplayLiveTick (issue #1426)", () => {
   });
 });
 
+// The reader's own contract is tested beside it, in @iracedeck/iracing-sdk's
+// session-utils.test.ts (#1591); these pin what the recorder stamps.
 describe("resolveSubSessionId", () => {
   it("reads WeekendInfo.SubSessionID", () => {
     expect(resolveSubSessionId({ WeekendInfo: { SubSessionID: 86697546 } })).toBe(86697546);
   });
 
-  it("reads 0 when the session info, the section or the field is absent or not a finite number", () => {
+  // #1591: the store's opener reads a numeric string as its number, so the
+  // recorder must stamp that number too, or the store drops every event.
+  it("stamps a numeric string as its number, the id the store's opener opens the record under", () => {
+    expect(resolveSubSessionId({ WeekendInfo: { SubSessionID: "86697546" } })).toBe(86697546);
+  });
+
+  it("reads 0 when the session info, the section or the field is absent or not readable", () => {
     expect(resolveSubSessionId(null)).toBe(0);
     expect(resolveSubSessionId({})).toBe(0);
     expect(resolveSubSessionId({ WeekendInfo: {} })).toBe(0);
-    expect(resolveSubSessionId({ WeekendInfo: { SubSessionID: "86697546" } })).toBe(0);
+    expect(resolveSubSessionId({ WeekendInfo: { SubSessionID: "abc" } })).toBe(0);
     expect(resolveSubSessionId({ WeekendInfo: { SubSessionID: Number.NaN } })).toBe(0);
-  });
-});
-
-// Issue #1509: the translator's session identity needs absence told apart
-// from an offline session's real 0.
-describe("readSubSessionId", () => {
-  it("reads WeekendInfo.SubSessionID, a real 0 included", () => {
-    expect(readSubSessionId({ WeekendInfo: { SubSessionID: 86697546 } })).toBe(86697546);
-    expect(readSubSessionId({ WeekendInfo: { SubSessionID: 0 } })).toBe(0);
-  });
-
-  it("reads null when the session info, the section or the field is absent or not a finite number", () => {
-    expect(readSubSessionId(null)).toBeNull();
-    expect(readSubSessionId({})).toBeNull();
-    expect(readSubSessionId({ WeekendInfo: {} })).toBeNull();
-    expect(readSubSessionId({ WeekendInfo: { SubSessionID: "86697546" } })).toBeNull();
-    expect(readSubSessionId({ WeekendInfo: { SubSessionID: Number.NaN } })).toBeNull();
   });
 });
 

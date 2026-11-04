@@ -51,7 +51,12 @@
  * `CarIdxLapCompleted`) adds its own condition on top; it never loosens this
  * one.
  */
-import { REPLAY_LIVE_EDGE_MAX_FRAMES, resolveReplayFrame, type TelemetryData } from "@iracedeck/iracing-sdk";
+import {
+  readSubSessionId,
+  REPLAY_LIVE_EDGE_MAX_FRAMES,
+  resolveReplayFrame,
+  type TelemetryData,
+} from "@iracedeck/iracing-sdk";
 
 /** The identity and frame of an eligible tick — see {@link resolveReplayRecordTick} and {@link resolveReplayLiveTick}. */
 export type ReplayRecordTick = {
@@ -140,20 +145,12 @@ export function resolveReplayLiveTick(
 }
 
 /**
- * `WeekendInfo.SubSessionID`, or `null` when the session info, its
- * `WeekendInfo` or the id is not readable. The session-identity rule (issue
- * #1509, `session-identity.ts`) reads it this way: an offline session genuinely reads
- * 0, so a transition tick with no session info must not read as a change to
- * offline and back.
+ * The `SubSessionID` every `replay.*` event is stamped with: the shared
+ * reader's (`readSubSessionId` in @iracedeck/iracing-sdk, #1591), which the
+ * store's opener and the session-identity rule read too, so the record the
+ * store holds open and the id an event carries cannot disagree. 0 when it is
+ * not readable; an offline session reads 0 too.
  */
-export function readSubSessionId(sessionInfo: Record<string, unknown> | null): number | null {
-  const weekend = sessionInfo?.WeekendInfo as Record<string, unknown> | undefined;
-  const id = weekend?.SubSessionID;
-
-  return typeof id === "number" && Number.isFinite(id) ? id : null;
-}
-
-/** `WeekendInfo.SubSessionID`; 0 when absent — an offline session reads 0 too. */
 export function resolveSubSessionId(sessionInfo: Record<string, unknown> | null): number {
   return readSubSessionId(sessionInfo) ?? 0;
 }

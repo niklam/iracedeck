@@ -19,7 +19,6 @@ import {
   DELETE_WINDOW_DEFAULT,
   generateReplayMarkersSvg,
   pickMarkerToDelete,
-  readSubSessionId,
   REPLAY_MARKERS_UUID,
   ReplayMarkers,
   ReplayMarkersDialSettings,
@@ -580,18 +579,6 @@ describe("ReplayMarkers", () => {
         frame: 0,
         sessionTimeMs: 0,
       });
-    });
-  });
-
-  describe("readSubSessionId", () => {
-    it.each([
-      [{ WeekendInfo: { SubSessionID: 123 } }, 123],
-      [{ WeekendInfo: { SubSessionID: "456" } }, 456],
-      [{ WeekendInfo: { SubSessionID: 0 } }, 0],
-      [{ WeekendInfo: {} }, undefined],
-      [null, undefined],
-    ])("%j → %j", (info, expected) => {
-      expect(readSubSessionId(info)).toBe(expected);
     });
   });
 

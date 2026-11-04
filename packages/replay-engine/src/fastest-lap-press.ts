@@ -12,7 +12,7 @@
  * (`lap-walk.ts`). Either way the press ends as the **Replay jump playback**
  * setting says (#1276).
  */
-import { getCarNumberRawFromSessionInfo, type TelemetryData } from "@iracedeck/iracing-sdk";
+import { getCarNumberRawFromSessionInfo, readSubSessionId, type TelemetryData } from "@iracedeck/iracing-sdk";
 import {
   getReplaySessionStore,
   isReplaySessionStoreInitialized,
@@ -72,16 +72,6 @@ export function findResultsPosition(
   const positions = session?.ResultsPositions as Array<Record<string, unknown>> | undefined;
 
   return positions?.find((p) => (p?.CarIdx as number | undefined) === carIdx);
-}
-
-/** `WeekendInfo.SubSessionID` as a finite number, else undefined (nothing loaded yet). */
-export function readSubSessionId(sessionInfo: unknown): number | undefined {
-  const weekend = (sessionInfo as Record<string, unknown> | undefined)?.WeekendInfo as
-    Record<string, unknown> | undefined;
-  const raw = weekend?.SubSessionID;
-  const value = typeof raw === "number" ? raw : typeof raw === "string" && raw.trim() !== "" ? Number(raw) : NaN;
-
-  return Number.isFinite(value) ? value : undefined;
 }
 
 /** `DriverInfo.Drivers[].UserID` for a car, else 0 — stored for a person reading the file, never matched on. */
@@ -298,7 +288,7 @@ export function pressJumpToFastestLap(request: {
   // to look the lap number up; the `SessionUniqueID` pair tells two
   // instances of one `SessionNum` apart (a restart within a sim run).
   const sessionUniqueId = typeof telemetry?.SessionUniqueID === "number" ? telemetry.SessionUniqueID : null;
-  const subSessionId = readSubSessionId(sessionInfo);
+  const subSessionId = readSubSessionId(sessionInfo) ?? undefined;
 
   logger.info("Jump to fastest lap executed");
   logger.debug(

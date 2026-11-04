@@ -16,7 +16,7 @@
  * that was pressed hands its own to {@link followMarkerJump}, which writes how
  * the jump ended in the wording every replay jump shares.
  */
-import { REPLAY_EXIT_GRACE_MS, type ReplayState, type TelemetryData } from "@iracedeck/iracing-sdk";
+import { readSubSessionId, REPLAY_EXIT_GRACE_MS, type ReplayState, type TelemetryData } from "@iracedeck/iracing-sdk";
 import type { ILogger } from "@iracedeck/logger";
 import {
   beginReplayJump,
@@ -124,21 +124,6 @@ export function pickMarkerToDelete(
   return best;
 }
 
-/**
- * @internal Exported for testing
- *
- * `WeekendInfo.SubSessionID` as a finite number, else undefined — the store
- * then takes the call for its active session.
- */
-export function readSubSessionId(sessionInfo: unknown): number | undefined {
-  const weekend = (sessionInfo as Record<string, unknown> | null | undefined)?.WeekendInfo as
-    Record<string, unknown> | undefined;
-  const raw = weekend?.SubSessionID;
-  const value = typeof raw === "number" ? raw : typeof raw === "string" && raw.trim() !== "" ? Number(raw) : NaN;
-
-  return Number.isFinite(value) ? value : undefined;
-}
-
 /** Everything a press reads before it acts: telemetry and its frame, the store, and the SubSessionID scope. */
 export interface ReplayContext {
   ok: true;
@@ -209,7 +194,7 @@ export function readReplayContext(source: ReplayContextSource, nowMs: number = D
     inReplay: state.inReplay,
     frame: state.frame,
     store: source.getStore(),
-    scope: subSessionId === undefined ? undefined : { subSessionId },
+    scope: subSessionId === null ? undefined : { subSessionId },
   };
 }
 

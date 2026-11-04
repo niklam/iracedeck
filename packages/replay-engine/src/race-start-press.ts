@@ -17,7 +17,7 @@
  * claims the cursor under RACE_START_JUMP_OWNER for its single waited jump,
  * and under RACE_START_WALK_OWNER while it searches.
  */
-import type { TelemetryData } from "@iracedeck/iracing-sdk";
+import { readSubSessionId, type TelemetryData } from "@iracedeck/iracing-sdk";
 import {
   getReplaySessionStore,
   type GreenLookup,
@@ -25,13 +25,7 @@ import {
   isReplaySessionStoreInitialized,
 } from "@iracedeck/replay-store";
 
-import {
-  carNumberRawByIdx,
-  type LapPressResult,
-  lookupRecordedLapStart,
-  readSubSessionId,
-  readUserId,
-} from "./fastest-lap-press.js";
+import { carNumberRawByIdx, type LapPressResult, lookupRecordedLapStart, readUserId } from "./fastest-lap-press.js";
 import {
   acceptsGreenFallbackLanding,
   greenApproachFrame,
@@ -134,7 +128,7 @@ export function pressJumpToRaceStart(request: { readonly origin: string }): LapP
     return { kind: "refused", reason: "replay not open" };
   }
 
-  const subSessionId = readSubSessionId(sessionInfo);
+  const subSessionId = readSubSessionId(sessionInfo) ?? undefined;
 
   logger.info("Jump to race start executed");
   logger.debug(

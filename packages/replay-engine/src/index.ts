@@ -29,7 +29,7 @@ export { isRaceStartUnavailable, lastListedSessionNum } from "./green-flag-targe
 export { type CameraSwitchOptions, requestCameraSwitch } from "./camera-switch-waiter.js";
 export { runJumpToFrame } from "./lap-press.js";
 export { LAP_START_APPROACH_FRAMES } from "./lap-walk.js";
-export { type LapPressResult, pressJumpToFastestLap, readSubSessionId } from "./fastest-lap-press.js";
+export { type LapPressResult, pressJumpToFastestLap } from "./fastest-lap-press.js";
 export { canJumpToRaceStart, pressJumpToRaceStart } from "./race-start-press.js";
 export { formatLapOfLaps, sessionLapCount } from "./replay-lap-count.js";
 export { formatPlayCaption, formatSpeedDisplay, parseSpeedSetting } from "./replay-speed-format.js";
