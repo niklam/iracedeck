@@ -233,6 +233,7 @@ export {
   getPlayerCarNumberFromSessionInfo,
   getAllCarNumbers,
   isReplayOnlySession,
+  readSubSessionId,
 } from "./session-utils.js";
 
 // Telemetry snapshot formatting utilities

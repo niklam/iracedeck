@@ -10,7 +10,58 @@ import {
   getCarNumberRawFromSessionInfo,
   getPlayerCarNumberFromSessionInfo,
   isReplayOnlySession,
+  readSubSessionId,
 } from "./session-utils.js";
+
+describe("readSubSessionId (#1591)", () => {
+  const withId = (id: unknown) => ({ WeekendInfo: { SubSessionID: id } });
+
+  it("reads a finite number, an offline session's real 0 included", () => {
+    expect(readSubSessionId(withId(86697546))).toBe(86697546);
+    expect(readSubSessionId(withId(0))).toBe(0);
+  });
+
+  it("reads a non-blank numeric string as its number, as the store's opener always has", () => {
+    expect(readSubSessionId(withId("86697546"))).toBe(86697546);
+    expect(readSubSessionId(withId(" 42 "))).toBe(42);
+    expect(readSubSessionId(withId("0"))).toBe(0);
+  });
+
+  it("is null when the session info is null, undefined or not an object", () => {
+    expect(readSubSessionId(null)).toBeNull();
+    expect(readSubSessionId(undefined)).toBeNull();
+    expect(readSubSessionId("86697546")).toBeNull();
+    expect(readSubSessionId(86697546)).toBeNull();
+  });
+
+  it("is null when WeekendInfo is absent or not an object", () => {
+    expect(readSubSessionId({})).toBeNull();
+    expect(readSubSessionId({ WeekendInfo: null })).toBeNull();
+    expect(readSubSessionId({ WeekendInfo: "86697546" })).toBeNull();
+  });
+
+  it("is null when the id is absent, null or neither a number nor a string", () => {
+    expect(readSubSessionId({ WeekendInfo: {} })).toBeNull();
+    expect(readSubSessionId(withId(undefined))).toBeNull();
+    expect(readSubSessionId(withId(null))).toBeNull();
+    expect(readSubSessionId(withId(true))).toBeNull();
+    expect(readSubSessionId(withId({}))).toBeNull();
+  });
+
+  it("is null for a number that is not finite", () => {
+    expect(readSubSessionId(withId(Number.NaN))).toBeNull();
+    expect(readSubSessionId(withId(Number.POSITIVE_INFINITY))).toBeNull();
+    expect(readSubSessionId(withId(Number.NEGATIVE_INFINITY))).toBeNull();
+  });
+
+  it("is null for a blank or non-numeric string", () => {
+    expect(readSubSessionId(withId(""))).toBeNull();
+    expect(readSubSessionId(withId("   "))).toBeNull();
+    expect(readSubSessionId(withId("abc"))).toBeNull();
+    expect(readSubSessionId(withId("42abc"))).toBeNull();
+    expect(readSubSessionId(withId("Infinity"))).toBeNull();
+  });
+});
 
 describe("isReplayOnlySession (#604, #1324)", () => {
   it("is true for a saved replay, where WeekendInfo.SimMode reads replay", () => {
