@@ -12,12 +12,20 @@ name: Publish voice packs
 # pack and verify against the committed catalog entry, upload nothing — which
 # is how to confirm the runner reproduces a maintainer's bytes before tagging.
 #
+# Publishing runs from master only (#1392); the dry run is open to any ref.
+# From a stale ref a publish would verify that ref's own older entry, find it
+# already published and deploy it, regressing the live catalog with every
+# check green; from a branch it would release an archive no master commit
+# carries.
+#
 # The website deploy below is deliberately NOT a deploy of master. The site
 # only ever ships from a release tag, which is what keeps documentation for
 # unreleased features off iracedeck.com; so it is built from the latest stable
-# plugin release with only packages/audio-assets/catalog/ taken from the ref
-# this run was dispatched on. What goes live is the site exactly as released
-# plus the catalog as it is now.
+# plugin release with only packages/audio-assets/catalog/ taken from master —
+# from the very commit this run packed and verified (github.sha), and only
+# while master's catalog has not moved since (the check is in
+# firebase-hosting-release.yml). What goes live is the site exactly as
+# released plus the catalog as it is now.
 
 on:
   workflow_dispatch:
@@ -40,6 +48,23 @@ jobs:
     outputs:
       stable_tag: ${{ steps.stable.outputs.tag }}
     steps:
+      # First, before anything is installed, packed or uploaded: a publish
+      # dispatched from any ref but master fails red here rather than being
+      # skipped, which would read green (#1392). A dry run skips the step.
+      # scripts/voice-pack-publish-workflow.test.mjs runs this script.
+      - name: Refuse to publish from a ref other than master
+        if: inputs.publish
+        shell: bash
+        env:
+          DISPATCHED_REF: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+          if [ "$DISPATCHED_REF" != "refs/heads/master" ]; then
+            echo "::error::Voice packs are published from master only, and this run was dispatched on $DISPATCHED_REF. Dispatch it from master, or turn publish off for a dry run."
+            exit 1
+          fi
+          echo "Publishing from $DISPATCHED_REF."
+
       - uses: actions/checkout@v7
 
       - uses: pnpm/action-setup@v6
@@ -95,14 +120,19 @@ jobs:
             throw "The latest GitHub release is '$tag', not a stable plugin release (vX.Y.Z); refusing to deploy the website from it."
           }
           "tag=$tag" | Out-File -Append -FilePath $env:GITHUB_OUTPUT
-          Write-Host "Website will be built from $tag with the catalog from $env:GITHUB_REF"
+          Write-Host "Website will be built from $tag with the catalog from $env:GITHUB_SHA ($env:GITHUB_REF)"
 
+  # `catalog_ref` is the commit `pack` checked out and verified, never the
+  # branch: the branch tip at deploy time can carry an entry nobody verified
+  # (#1392). The master condition is belt and braces: while the pack job's
+  # first step refuses a publish off master, `needs: [pack]` already skips
+  # this job. It is what still holds if that step is ever moved or dropped.
   deploy-website:
     needs: [pack]
-    if: inputs.publish
+    if: inputs.publish && github.ref == 'refs/heads/master'
     uses: ./.github/workflows/firebase-hosting-release.yml
     secrets: inherit
     with:
       version: ${{ needs.pack.outputs.stable_tag }}
       ref: ${{ needs.pack.outputs.stable_tag }}
-      catalog_ref: ${{ github.ref }}
+      catalog_ref: ${{ github.sha }}

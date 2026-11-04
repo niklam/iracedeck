@@ -14,35 +14,51 @@
  *
  * Two passes, and the first must finish for every pack before the second
  * starts for any: with two packs, a repo-state error in the second must not
- * leave the first's release created and the run red. Each pass stops at its
- * first failure.
+ * leave the first's release created and the run red. So every check that
+ * needs only the repository is in pass 1, and pass 2 holds only what needs
+ * GitHub's answer. Each pass stops at its first failure.
  *
- * Pass 1, per pack — pack, copy, verify:
+ * Pass 1 opens with one check over the whole catalog, before any pack is built:
  *
- *   1. Pack with `packVoice` into a SCRATCH directory, catalog entry to scratch
+ *   1. Every committed `packages/audio-assets/catalog/<id>.json` must belong to
+ *      a pack in `VOICE_PACKS` (#1392). The website's catalog generator
+ *      publishes EVERY entry in that directory, while this script packs and
+ *      verifies only the packs the list names, so an entry outside it — a pack
+ *      dropped from voice-packs.mjs with its entry left behind, or an entry
+ *      added by hand — would go live with nothing checking it. voice-packs.mjs
+ *      calls itself the one list, every entry of which is published, so such an
+ *      entry is a repo-state error like a mismatched one. It does not depend on
+ *      the archives' bytes, so it runs before the first pack: a refusal costs no
+ *      encoding time.
+ *
+ * Then, per pack — pack, copy, verify:
+ *
+ *   2. Pack with `packVoice` into a SCRATCH directory, catalog entry to scratch
  *      too. The committed `packages/audio-assets/catalog/<id>.json` is never
  *      rewritten here — CI has no business committing.
- *   2. Copy the archive to `--out` — BEFORE checking it. The one run whose
+ *   3. Copy the archive to `--out` — BEFORE checking it. The one run whose
  *      archive the maintainer needs to inspect is the red one, where the runner
  *      did not reproduce the committed bytes, and the scratch copy is gone by
  *      the time the process exits.
- *   3. The fresh sha256, byte count and url must equal the committed entry.
+ *   4. The fresh sha256, byte count and url must equal the committed entry.
  *      Anything else is a repo-state error that needs a commit anyway
  *      (`pack:voice`, a version bump if the clips changed), so it fails before
  *      anything is published — and before the plugin attach step, which keeps
  *      the tag clean. The url is checked because the hash does not cover it: a
  *      committed url that drifted would go live pointing where nothing uploads.
  *
- * A dry run ends there. Pass 2, per pack, with `--publish` only:
+ * Pass 1 runs the same on a dry run: catching a repo-state error before a tag
+ * does is what the dry run is for. A dry run ends there. Pass 2, per pack, with
+ * `--publish` only:
  *
- *   4. No `voices-<id>-<version>` release yet → create it, with `--latest=false`,
+ *   5. No `voices-<id>-<version>` release yet → create it, with `--latest=false`,
  *      and attach the archive. Release without the asset → upload. Asset present
  *      → download and hash it: the same bytes is a re-run or a later plugin
  *      release with no pack change, skip; different bytes is a forgotten version
  *      bump, fail. A published version's bytes never change. A DRAFT release is
  *      refused outright: it is what an interrupted create leaves behind, an
  *      upload into it would report "published" while every download 404s.
- *   5. On all three paths — created, uploaded, and already published alike:
+ *   6. On all three paths — created, uploaded, and already published alike:
  *      `gh release edit --latest=false` on the tag, then read back which
  *      release the repository calls latest and fail loudly if it is ours
  *      (`assertNotLatest`, which explains why the create flag is not trusted
@@ -58,7 +74,7 @@
  */
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import url from "node:url";
@@ -74,6 +90,9 @@ export const DEFAULT_OUT_DIR = "packed/voice-packs";
 /** The committed entries, as the failure messages name them. */
 const COMMITTED_ENTRY_DIR = "packages/audio-assets/catalog";
 
+/** The pack list, as the failure messages name it. */
+const VOICE_PACKS_FILE = "packages/audio-assets/src/build/voice-packs.mjs";
+
 const USAGE = "usage: node scripts/publish-voice-packs.mjs [--publish] [--out <dir>]";
 
 /**
@@ -88,6 +107,8 @@ const USAGE = "usage: node scripts/publish-voice-packs.mjs [--publish] [--out <d
  * `gh` is the ONE runner for every gh call — the tests assert on its argv.
  *
  * @typedef {object} PublishDeps
+ * @property {() => string[]} listCommittedEntryIds — the id of every committed
+ *   catalog entry the website would publish (`listCatalogEntryIds`)
  * @property {(pack: VoicePackDefinition) => Promise<{ entry: ArchiveIdentity; archivePath: string }>} pack
  * @property {(id: string) => ArchiveIdentity | null} readCommittedEntry
  * @property {(dir: string) => void} ensureDir
@@ -134,6 +155,27 @@ export function resolveTargetSha(env) {
   return env.GITHUB_SHA ? env.GITHUB_SHA : undefined;
 }
 
+/**
+ * The id of every committed catalog entry in `dir`, sorted: each `.json`
+ * file's name without the extension. The filter is the website's own
+ * (`buildVoiceCatalogData` in scripts/lib/voice-catalog-data.mjs, which this
+ * script cannot import: it loads the voice-packs TS source and needs `tsx`), so
+ * these are exactly the entries the website would publish — and that generator
+ * refuses an entry whose `id` differs from its file name, which is what makes
+ * the file name the id. A missing directory is no entries, as it is there.
+ *
+ * @param {string} dir
+ * @returns {string[]}
+ */
+export function listCatalogEntryIds(dir) {
+  if (!existsSync(dir)) return [];
+
+  return readdirSync(dir)
+    .filter((name) => name.endsWith(".json"))
+    .map((name) => name.slice(0, -".json".length))
+    .sort();
+}
+
 /** @param {VoicePackDefinition} pack */
 export function releaseTitle(pack) {
   return `Voice pack: ${pack.label} ${pack.version}`;
@@ -170,6 +212,32 @@ function assertArchiveName(pack, archivePath) {
         "gh names an asset after the file it uploads, so the archive must already carry that name",
     );
   }
+}
+
+/**
+ * Step 1 (see the header): refuse every committed entry that belongs to no
+ * pack this run verifies, naming each file — sorted, so the message reads the
+ * same on every machine — and the two ways out.
+ *
+ * @param {readonly VoicePackDefinition[]} packs
+ * @param {readonly string[]} entryIds
+ */
+function assertEveryEntryHasAPack(packs, entryIds) {
+  const packIds = new Set(packs.map((pack) => pack.id));
+  const orphans = entryIds.filter((id) => !packIds.has(id)).sort();
+
+  if (orphans.length === 0) return;
+
+  const files = orphans.map((id) => `${COMMITTED_ENTRY_DIR}/${id}.json`).join(", ");
+  const subject =
+    orphans.length === 1 ? "A committed catalog entry belongs" : `${orphans.length} committed catalog entries belong`;
+
+  throw new Error(
+    `${subject} to no pack in VOICE_PACKS: ${files}. The website publishes every entry in ${COMMITTED_ENTRY_DIR}, ` +
+      "but this script packs and verifies only the packs VOICE_PACKS lists, so nothing would check such an entry " +
+      `before it went live. For each: delete the entry to withdraw its pack, or add the pack to ${VOICE_PACKS_FILE} ` +
+      'and regenerate its entry with "pnpm --filter @iracedeck/audio-assets pack:voice". Nothing was packed or published.',
+  );
 }
 
 /**
@@ -400,8 +468,9 @@ function publishArchive(deps, pack, archivePath, fresh, { scratchDir, targetSha 
  * The orchestrator: two passes, each over every pack in order and each
  * stopping at its first failure — see the header for why the first must
  * finish for every pack before the second touches any release. Pure apart from
- * what `deps` does; rejects with a message naming the pack and the fix, which
- * `main` turns into exit code 1.
+ * what `deps` does; rejects with a message naming the pack (or, for an entry
+ * that belongs to none, the entry's file) and the fix, which `main` turns into
+ * exit code 1.
  *
  * @param {object} options
  * @param {readonly VoicePackDefinition[]} options.packs
@@ -413,6 +482,7 @@ function publishArchive(deps, pack, archivePath, fresh, { scratchDir, targetSha 
  * @returns {Promise<PackResult[]>}
  */
 export async function publishVoicePacks({ packs, publish, outDir, scratchDir, targetSha, deps }) {
+  assertEveryEntryHasAPack(packs, deps.listCommittedEntryIds());
   deps.ensureDir(outDir);
 
   /** @type {VerifiedPack[]} */
@@ -492,6 +562,7 @@ async function main() {
       scratchDir,
       targetSha: resolveTargetSha(process.env),
       deps: {
+        listCommittedEntryIds: () => listCatalogEntryIds(CATALOG_DIR),
         // Stage, archive and catalog entry all land in scratch; `cacheDir` is
         // left unset so the packer reads the build's shared clip cache — the
         // very bytes the plugins ship.
