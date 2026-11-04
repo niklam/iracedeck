@@ -51,6 +51,9 @@ jobs:
 
       # `--no-overlay` so a pack withdrawn on master (its entry deleted) is
       # removed here too; the default overlay mode only adds and overwrites.
+      # The one exception is deliberate (#1392): withdrawing the LAST pack
+      # deletes the directory, which this step refuses below rather than put
+      # an empty, unverified catalog live; that ships with the next tag.
       # The checkout must also be able to BUILD a catalog: a tag older than
       # the catalog generator would deploy green with no catalog at all.
       #
