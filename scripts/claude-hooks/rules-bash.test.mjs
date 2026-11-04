@@ -4051,7 +4051,10 @@ describe("every git trap reads git's global options (#1606)", () => {
 
   it.each(ALL)("the tag-push ask, the diff trap and the MSYS show trap read git %s", (g) => {
     expect(asks(`git ${g} push origin v3.2.0`)).toMatch(/release/);
-    expect(asks(`git ${g} push --tags`)).toMatch(/release/);
+    // A bare push names no refspec, so the integration rule needs the current
+    // branch, which a --git-dir hides; that rule's deny wins over the ask.
+    if (g.startsWith("--git-dir")) expect(deny(`git ${g} push --tags`)).toMatch(/--git-dir/);
+    else expect(asks(`git ${g} push --tags`)).toMatch(/release/);
     expect(deny(`git ${g} diff master..HEAD`)).toMatch(/wrong question|three dots/);
     expect(deny(`git ${g} show origin/master:.claude/x.md`)).toMatch(/MSYS/);
   });
@@ -4069,4 +4072,76 @@ describe("every git trap reads git's global options (#1606)", () => {
 
   it("the post-hook's worktree trigger reads them too", () =>
     expect(worktreeAddTarget("git -c core.x=y --no-pager worktree add ../ir-5 -b fix/5-x")).toBe("../ir-5"));
+
+  // Where the command runs: every `-C` in order, each against the one before,
+  // as git applies them, with a quoted value whole.
+  describe("the directory a git command acts on", () => {
+    const INTEGRATION = tree("ir-integration");
+    const IR5 = tree("ir-5");
+    const inTree = (o = {}) =>
+      ctx({ branch: (d) => (d === INTEGRATION ? "integration" : d === IR5 ? "fix/5-x" : "master"), ...o });
+
+    it.each([
+      "git -C ../ir-integration push",
+      `"git" -C ../ir-integration push`,
+      "git.exe -C ../ir-integration push",
+      "git -c a=b -C ../ir-integration push",
+      `git --no-pager -C "../ir-integration" push`,
+      "git -C .. -C ir-integration push",
+      "git -C ../ir-5 -C ../ir-integration push",
+      "cd ../ir-5 && git -C ../ir-integration push -u origin HEAD",
+    ])("denies a bare push from the integration tree: %s", (c) => expect(deny(c, inTree())).toMatch(/never pushed/));
+
+    it("passes a push whose last -C leaves the integration tree", () => {
+      passes("git -C ../ir-integration -C ../ir-5 push", inTree());
+      passes("git -C ../ir-integration/.. -C master push", inTree());
+    });
+
+    it("judges a commit in the tree its last -C names", () => {
+      const spec = (o) => inTree({ staged: () => ["docs/superpowers/specs/a.md"], ...o });
+      expect(deny("git -C ../master -C ../ir-5 commit -m x", spec())).toMatch(/on fix\/5-x/);
+      passes("git -C ../ir-5 -C ../master commit -m x", spec());
+      expect(deny(`git -c a=b -C "../ir-5" commit -m x`, spec())).toMatch(/on fix\/5-x/);
+      expect(deny("git -C ../ir\\-5 commit -m x", spec())).toMatch(/on fix\/5-x/);
+    });
+
+    it("resolves a worktree add against every -C", () => {
+      // The first -C alone would put each target on the other side of the rule.
+      expect(deny("git -C .. -C master worktree add ir-1 -b fix/1-x")).toMatch(/siblings/);
+      passes("git -C ../ir-5 -C .. worktree add ir-1 -b fix/1-x");
+      passes("git -c x=y -C ../ir-5 -C .. worktree add ir-1 -b fix/1-x");
+    });
+
+    it.each([
+      "git --git-dir=../ir-5/.git commit -m x",
+      "git --git-dir ../ir-5/.git commit -m x",
+      "git --work-tree=../ir-5 commit -m x",
+      "git -C ../master --work-tree ../ir-5 commit -m x",
+      "GIT_DIR=../ir-5/.git git commit -m x",
+      "env GIT_WORK_TREE=../ir-5 git commit -m x",
+      "export GIT_DIR=../ir-5/.git; git commit -m x",
+      "git_dir=x git commit -m x",
+    ])("refuses a commit whose repository or work tree is named apart: %s", (c) =>
+      expect(deny(c, inTree())).toMatch(/--git-dir, --work-tree, GIT_DIR or GIT_WORK_TREE.*git -C <dir> commit/),
+    );
+
+    it("refuses a bare push and a worktree add under a --git-dir, and reads only the text otherwise", () => {
+      expect(deny("git --git-dir=x push", inTree())).toMatch(/git -C <dir> push/);
+      expect(deny("GIT_DIR=x git push -u origin HEAD", inTree())).toMatch(/git -C <dir> push/);
+      expect(deny("git --git-dir=x worktree add ../ir-1 -b fix/1-x")).toMatch(/git -C <dir> worktree add/);
+      // A refspec says what is pushed whatever the repository; the work tree is no push's business.
+      passes("git --git-dir=x push origin master", inTree());
+      passes("git --work-tree=x push", inTree());
+      passes("git --work-tree=x worktree add ../ir-1 -b fix/1-x");
+      expect(asks("git --git-dir=x push origin v3.2.0")).toMatch(/release/);
+      expect(deny("git --git-dir=x diff master..HEAD")).toMatch(/three dots/);
+    });
+
+    it("does not take a GIT_DIR in a quoted string or after the command for one", () => {
+      passes(`echo "GIT_DIR=x" && git commit -m x`, inTree());
+      passes(`git commit -m "GIT_DIR=x"`, inTree());
+      passes("git commit -m x; export GIT_DIR=y", inTree());
+      passes("MY_GIT_DIR=x git commit -m x", inTree());
+    });
+  });
 });

@@ -5,12 +5,14 @@
  *
  * {@link maskInert} lexes a command as bash reads it and blanks its inert text
  * at the same length, and {@link view} trusts that mask only when the lexer is
- * sure of it and no string is handed to a shell. On top of it, {@link cmd}
- * anchors a regex to command position; {@link matchesAt} and
- * {@link chainCommands} find a command in the masked text and read its
- * arguments from the raw text at the same index; {@link gitCwd},
- * {@link optionDir} and {@link resolveDir} follow the `cd`s and `-C`s that
- * move the directory it runs in; and {@link words}, {@link shellWords},
+ * sure of it and no string is handed to a shell, and rewrites each program
+ * word to the plain name it runs (`gh.exe`, `"gh"`, `/usr/bin/gh` → `gh`,
+ * #1606). On top of it, {@link cmd} anchors a regex to command position,
+ * and {@link GIT_GLOBALS} carries a git command past its global options;
+ * {@link matchesAt} and {@link chainCommands} find a command in the masked
+ * text and read its arguments from the raw text at the same index;
+ * {@link gitCwd}, {@link gitPlaceAt} and {@link resolveDir} follow the `cd`s
+ * and `-C`s that move the directory it runs in; and {@link words}, {@link shellWords},
  * {@link commandWords} and {@link powershellAsBash} read its words as bash
  * and PowerShell read them. The rules in `rules-bash.mjs` and the
  * package-script interpreter in `script-runs.mjs` both read through it, and
@@ -639,7 +641,6 @@ const PS_CD_RE = new RegExp(
 const cdRe = (shell) => (shell === POWERSHELL ? PS_CD_RE : CD_RE);
 /** `cd -` / `cd +` go back or forward in a history the hook cannot see: the directory stays put. */
 const HISTORY_DIR = new Set(["-", "+"]);
-export const GIT_C_RE = new RegExp(String.raw`\bgit\s+-C\s+${QUOTED_ARG}`, "d");
 
 /** Git Bash's spelling of a drive, `/c/…` or `/cygdrive/c/…`, for `C:\…`. */
 const GIT_BASH_DRIVE = /^(?:\/cygdrive)?\/([a-zA-Z])(?=\/|$)/;
@@ -672,10 +673,10 @@ function argIn(command, text, a, b, re) {
 /**
  * The working directory of the git command a rule matched: the session cwd,
  * moved by every `cd <dir>` chained AHEAD of that command, then by the
- * command's own `git -C <dir>`. Pass the rule's own `cmd(...)` regex as `re`
- * so the `-C` is read off the segment it matched and never off a later
- * command in the chain — `git worktree add ../ir-5 … && git -C ../ir-5 log`
- * used to resolve the new tree against itself, fail the repo-root lookup
+ * command's own `-C`s ({@link gitPlace}). Pass the rule's own `cmd(...)`
+ * regex as `re` so the `-C` is read off the segment it matched and never off
+ * a later command in the chain — `git worktree add ../ir-5 … && git -C ../ir-5
+ * log` used to resolve the new tree against itself, fail the repo-root lookup
  * there, and deny the add as "inside the repo". The `cd` walk is what lets a
  * session whose cwd is `master` be judged on the tree it pushes from:
  * `cd ../ir-1143 && git push` used to ask with "branch master".
@@ -685,7 +686,15 @@ function argIn(command, text, a, b, re) {
  * `git -C ../master` quoted in a commit message moves nothing (#1321 review).
  * `shell` picks the `cd` spellings and the path reading ({@link resolveDir}).
  */
-export function gitCwd(command, cwd, re, shell = BASH) {
+export const gitCwd = (command, cwd, re, shell = BASH) => gitPlace(command, cwd, re, shell).dir;
+
+/**
+ * Where the git command a rule matched runs, as {@link gitCwd} finds it, and
+ * whether its global options or its environment move what it acts on
+ * ({@link gitPlaceAt}): `{ dir, movesRepo, movesTree }`. Without `re`, the
+ * first git command of the whole command is read.
+ */
+export function gitPlace(command, cwd, re, shell = BASH) {
   const text = trustedMask(command);
   const segs = ranges(text, CHAIN).filter(([a, b]) => command.slice(a, b).trim());
   const at = re ? segs.findIndex(([a, b]) => re.test(text.slice(a, b))) : -1;
@@ -695,8 +704,70 @@ export function gitCwd(command, cwd, re, shell = BASH) {
     if (dir && !HISTORY_DIR.has(dir)) base = resolveDir(base, dir, { shell });
   }
   const [a, b] = at >= 0 ? segs[at] : [0, command.length];
-  const dir = argIn(command, text, a, b, GIT_C_RE);
-  return dir ? resolveDir(base, dir, { shell }) : base;
+  const from = at >= 0 ? a + Math.max(0, text.slice(a, b).search(re)) : a;
+  return gitPlaceAt(command, from, base, shell, b);
+}
+
+/** The program word `git` in the rewritten text, wherever a word starts. */
+const GIT_WORD = /(?<![^\s|;&()\x60])git(?=\s)/g;
+/** `GIT_DIR` or `GIT_WORK_TREE` assigned or exported, in bash or as PowerShell's `$env:`; the environment is case-blind on Windows. */
+const GIT_ENV = /(?<!\w)GIT_(DIR|WORK_TREE)\s*=/gi;
+
+/**
+ * Where the git command whose text starts at `start` runs (#1606), as
+ * `{ dir, movesRepo, movesTree }`: `base` (the directory its `cd`s left it
+ * in, a {@link chainCommands} `base`) moved by every `-C` among its global
+ * options in order, each against the one before, as git applies them
+ * ({@link gitGlobals}). `movesRepo` is set when a `--git-dir` or a `GIT_DIR`
+ * names its repository, and `movesTree` when a `--work-tree` or a
+ * `GIT_WORK_TREE` names its work tree: the repository is then not the one the
+ * directory holds, so a rule that reads that repository's branch, index or
+ * files cannot know what the command acts on. A `GIT_DIR` or
+ * `GIT_WORK_TREE` anywhere in the live text ahead of the command counts, as a
+ * prefix, an `export` or an assignment to a variable the environment may
+ * already carry. `end` bounds where the git word is looked for.
+ */
+export function gitPlaceAt(command, start, base, shell = BASH, end = command.length) {
+  const text = trustedMask(command);
+  GIT_WORD.lastIndex = start;
+  const word = GIT_WORD.exec(text);
+  if (!word || word.index >= end) return { dir: base, movesRepo: false, movesTree: false };
+  const options = gitGlobals(command, word.index + word[0].length);
+  let dir = base;
+  for (const d of options.dirs) dir = resolveDir(dir, d, { shell });
+  const env = new Set([...text.slice(0, word.index).matchAll(GIT_ENV)].map((m) => m[1].toUpperCase()));
+  return {
+    dir,
+    movesRepo: options.gitDir !== undefined || env.has("DIR"),
+    movesTree: options.workTree !== undefined || env.has("WORK_TREE"),
+  };
+}
+
+/**
+ * The global options of the git command whose program word ends at `from`
+ * (`GIT_GLOBALS`, #1606), read in the rewritten text and their values from
+ * the raw text at the same indices, unquoted: `{ dirs, gitDir, workTree }`,
+ * every `-C` in order and the last `--git-dir` and `--work-tree`. A value that
+ * expands is kept as written, quotes stripped, as the hook has always read
+ * one.
+ */
+export function gitGlobals(command, from) {
+  const text = trustedMask(command);
+  const option = new RegExp(String.raw`\s+${GIT_OPTION}`, "yd");
+  const out = { dirs: [], gitDir: undefined, workTree: undefined };
+  option.lastIndex = from;
+  for (let m; (m = option.exec(text));) {
+    const name = m[1] ?? m[3];
+    const at = m.indices[2] ?? m.indices[4];
+    if (!name || !at) continue;
+    const raw = command.slice(at[0], at[1]);
+    const chars = decodeWord(raw);
+    const value = chars.some((x) => x.live) ? raw.replace(/["']/g, "") : chars.map((x) => x.c).join("");
+    if (name === "-C") out.dirs.push(value);
+    else if (name === "--git-dir") out.gitDir = value;
+    else if (name === "--work-tree") out.workTree = value;
+  }
+  return out;
 }
 
 /**
@@ -762,13 +833,6 @@ export function* chainCommands(command, cwd, re, shell = BASH) {
     const dir = argIn(command, text, a, b, cdRe(shell));
     if (dir && !HISTORY_DIR.has(dir)) base = resolveDir(base, dir, { shell });
   }
-}
-
-/** `base` moved by the directory option `re` (a {@link QUOTED_ARG} regex) finds in `text`, read off its quotes. */
-export function optionDir(text, re, base, shell) {
-  const m = re.exec(text);
-  const dir = m && (m[2] ?? m[3] ?? m[4]);
-  return dir ? resolveDir(base, dir, { shell }) : base;
 }
 
 /** Splits a command into rough words, respecting simple quotes. A value glued to its quote (`--x="a b"`) needs {@link shellWords}. */

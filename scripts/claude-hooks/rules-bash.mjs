@@ -34,14 +34,14 @@ import {
   cmd,
   COMMAND_LEAD,
   commandEnd,
-  GIT_C_RE,
   GIT_GLOBALS,
   gitCwd,
+  gitPlace,
+  gitPlaceAt,
   has,
   maskInert,
   matchAt,
   matchesAt,
-  optionDir,
   POWERSHELL,
   powershellAsBash,
   programStart,
@@ -271,6 +271,17 @@ const specExistsFor = (files, issue) => files.some((f) => new RegExp(`-issue-${i
  * its own prefix again.
  */
 const gitVerb = (verb) => cmd(new RegExp(`git${GIT_GLOBALS}${verb}`));
+
+/**
+ * The deny for a git command whose repository or work tree is named apart
+ * from the directory it runs in (`--git-dir`, `--work-tree`, `GIT_DIR`,
+ * `GIT_WORK_TREE`; `gitPlaceAt` in `shell-lexer.mjs`), from a rule that reads
+ * that repository's branch, index or files (#1606): the hook asks git in the
+ * directory, so it would judge another repository than the one the command
+ * acts on.
+ */
+const movedRepo = (verb) =>
+  `This \`git ${verb}\` names its repository or work tree with --git-dir, --work-tree, GIT_DIR or GIT_WORK_TREE, so the hook cannot tell which branch, index and files it acts on. Run it as \`git -C <dir> ${verb} …\` in the tree itself instead (#1606).`;
 
 /** The git shapes whose rules read a `-C`; exported so the post-hook scopes the same way. */
 export const GIT_PUSH = gitVerb(String.raw`push\b`);
@@ -830,12 +841,20 @@ export const rules = [
     // it runs in, so `cd ../ir-integration && git push` is caught.
     name: "git push: the integration branch is never pushed",
     test: (c, ctx) => {
-      for (const { base, head, args } of chainCommands(c, ctx.cwd, GIT_PUSH, ctx.shell)) {
-        const dir = optionDir(head, GIT_C_RE, base, ctx.shell);
+      for (const { base, start, args } of chainCommands(c, ctx.cwd, GIT_PUSH, ctx.shell)) {
+        // Every `-C`, in order (#1606). The push reads the current branch only
+        // when no refspec names one, and only then does a `--git-dir` or
+        // `GIT_DIR`, which hides whose branch that is, refuse it.
+        const { dir, movesRepo } = gitPlaceAt(c, start, base, ctx.shell);
+        let unknown = false;
         const fromIntegration = () =>
-          ctx.branch(dir) === INTEGRATION_BRANCH || path.basename(ctx.toplevel?.(dir) ?? dir) === INTEGRATION_TREE;
+          movesRepo
+            ? (unknown = true)
+            : ctx.branch(dir) === INTEGRATION_BRANCH || path.basename(ctx.toplevel?.(dir) ?? dir) === INTEGRATION_TREE;
         if (pushReachesIntegration(words(args), fromIntegration))
-          return `The \`${INTEGRATION_BRANCH}\` branch is local and never pushed: it is origin/${MAIN_BRANCH} plus the branches under manual test, rebuilt by scripts/integration-build.mjs (#1520). Push each issue branch from its own ../ir-<issue> tree.`;
+          return unknown
+            ? movedRepo("push")
+            : `The \`${INTEGRATION_BRANCH}\` branch is local and never pushed: it is origin/${MAIN_BRANCH} plus the branches under manual test, rebuilt by scripts/integration-build.mjs (#1520). Push each issue branch from its own ../ir-<issue> tree.`;
       }
       return null;
     },
@@ -968,7 +987,10 @@ export const rules = [
       // Every commit at command position, each in the tree its own `cd`s and
       // `-C` land in, so a harmless first commit cannot shield a later one (#1594).
       for (const commit of chainCommands(c, ctx.cwd, GIT_COMMIT, ctx.shell)) {
-        const dir = optionDir(commit.head, GIT_C_RE, commit.base, ctx.shell);
+        // Every `-C`, in order; a repository or work tree named apart from the
+        // directory leaves the branch, the index and the files unknown (#1606).
+        const { dir, movesRepo, movesTree } = gitPlaceAt(c, commit.start, commit.base, ctx.shell);
+        if (movesRepo || movesTree) return movedRepo("commit");
         const branch = ctx.branch(dir);
         const selection = commitSelection(c, commit, ctx, dir);
         const committed = [...selection.keys()];
@@ -1031,7 +1053,8 @@ export const rules = [
       if (!has(c, GIT_COMMIT)) return null;
       // Each commit in the tree its own `cd`s and `-C` land in, as for the spec rule (#1594 review).
       for (const commit of chainCommands(c, ctx.cwd, GIT_COMMIT, ctx.shell)) {
-        const dir = optionDir(commit.head, GIT_C_RE, commit.base, ctx.shell);
+        const { dir, movesRepo, movesTree } = gitPlaceAt(c, commit.start, commit.base, ctx.shell);
+        if (movesRepo || movesTree) return movedRepo("commit");
         for (const from of manifestSources(c, commit, ctx, dir)) {
           const text = ctx.committedText?.(dir, ELGATO_MANIFEST, from);
           if (text === undefined) continue;
@@ -1055,7 +1078,9 @@ export const rules = [
     test: (c, ctx) => {
       const target = worktreeAddTarget(c);
       if (!target) return null;
-      const dir = gitCwd(c, ctx.cwd, GIT_WORKTREE_ADD, ctx.shell);
+      // The repository the tree joins decides where it belongs (#1606).
+      const { dir, movesRepo } = gitPlace(c, ctx.cwd, GIT_WORKTREE_ADD, ctx.shell);
+      if (movesRepo) return movedRepo("worktree add");
       const resolved = resolveDir(dir, target, { shell: ctx.shell });
       // A true sibling, not merely "outside master": the main root is the
       // checkout the git-common-dir belongs to, so a tree nested inside
@@ -1365,7 +1390,7 @@ function addsAhead(command, commit, ctx) {
     .filter((add) => add.at < commit.at)
     .map((add) => ({
       args: gitArgs(argTokens(command, add.at), ADD_OPTIONS),
-      dir: optionDir(add.head, GIT_C_RE, add.base, ctx.shell),
+      dir: gitPlaceAt(command, add.start, add.base, ctx.shell).dir,
     }));
 }
 

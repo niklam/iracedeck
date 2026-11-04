@@ -1,3 +1,4 @@
+import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
@@ -386,6 +387,51 @@ describe("git's global options (#1606)", () => {
   ])("does not take an argument or a mention for the verb: %s", (command) =>
     expect(verb("commit").test(trustedMask(command))).toBe(false),
   );
+
+  it("gitCwd reads every -C in order, each against the one before, with a quoted value whole", () => {
+    const status = cmd(new RegExp(String.raw`git${lexer.GIT_GLOBALS}status\b`));
+    expect(gitCwd("git -C a -C b status", MASTER, status)).toBe(path.join(MASTER, "a", "b"));
+    expect(gitCwd("git -C ../ir-5 -C packages status", MASTER, status)).toBe(tree("ir-5", "packages"));
+    expect(gitCwd("git -c x=y -C ../ir-5 status", MASTER, status)).toBe(tree("ir-5"));
+    expect(gitCwd(`git --no-pager -C "../ir 5" status`, MASTER, status)).toBe(tree("ir 5"));
+    expect(gitCwd("git -C '../ir 5' status", MASTER, status)).toBe(tree("ir 5"));
+    expect(gitCwd("git -C ../ir\\ 5 status", MASTER, status)).toBe(tree("ir 5"));
+    expect(gitCwd(`"git" -C ../ir-5 status`, MASTER, status)).toBe(tree("ir-5"));
+    expect(gitCwd("cd ../ir-5 && git -C ../ir-6 -C .. status", MASTER, status)).toBe(REPO);
+  });
+
+  it("gitPlace says when --git-dir, --work-tree or their variables move the repository", () => {
+    const place = (c) => lexer.gitPlace?.(c, MASTER);
+    expect(place("git status")).toEqual({ dir: MASTER, movesRepo: false, movesTree: false });
+    expect(place("git --git-dir=x status")).toMatchObject({ movesRepo: true, movesTree: false });
+    expect(place("git --git-dir x status")).toMatchObject({ movesRepo: true });
+    expect(place("GIT_DIR=x git status")).toMatchObject({ movesRepo: true });
+    expect(place("$env:GIT_DIR = 'x'; git status")).toMatchObject({ movesRepo: true });
+    expect(place("git --work-tree=x status")).toMatchObject({ movesRepo: false, movesTree: true });
+    expect(place("export GIT_WORK_TREE=x; git status")).toMatchObject({ movesTree: true });
+    expect(place(`echo "GIT_DIR=x" && git status`)).toMatchObject({ movesRepo: false });
+  });
+
+  // The per-rule prefixes drifted apart once (only worktree remove knew `-c`);
+  // every git regex is built on GIT_GLOBALS, and this keeps it that way.
+  it("no hook module hand-rolls git's prefix before a verb", () => {
+    const drift = /git\\s[+*]\(?(?:\?:)?(?:-[Cc]\b|[a-z])/;
+    for (const shape of [
+      String.raw`cmd(/git\s+(-C\s+\S+\s+)?push\b/)`,
+      String.raw`cmd(/git\s+(?:-c\s+\S+\s+)?worktree\s+remove/)`,
+      String.raw`cmd(/git\s+show\b/)`,
+      String.raw`new RegExp(String.raw${"`"}\bgit\s+-C\s+x${"`"})`,
+    ])
+      expect(drift.test(shape), shape).toBe(true);
+    expect(drift.test(String.raw`gitVerb(String.raw${"`"}push\b${"`"})`)).toBe(false);
+    const dir = import.meta.dirname;
+    const modules = readdirSync(dir).filter((f) => f.endsWith(".mjs") && !f.endsWith(".test.mjs"));
+    expect(modules).toContain("rules-bash.mjs");
+    for (const f of modules)
+      readFileSync(path.join(dir, f), "utf8")
+        .split("\n")
+        .forEach((line, k) => expect(drift.test(line), `${f}:${k + 1}: ${line.trim()}`).toBe(false));
+  });
 
   it("reads a long run of options in linear time", () => {
     for (const n of [30, 4000])
