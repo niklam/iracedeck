@@ -89,7 +89,7 @@ const SECTION_NAMES = {
     String.raw`what\s+(?:this(?:\s+[\w-]+)?|it|we)\s+(?:deliberately\s+)?(?:does|do)\s+not\s+(?:do|cover|include|ship|change)`,
   ],
   testing: [
-    String.raw`(?:(?:manual|unit|integration|build|regression|acceptance|end-to-end|e2e|hardware|device|sim|in-sim)\s+)?(?:tests?|testing|verification)(?:\s+(?:plan|strategy))?`,
+    String.raw`(?:(?:manual|unit|integration|build|regression|acceptance|end-to-end|e2e|hardware|device|sim|in-sim)\s+)?(?:tests?|testing|verification)(?:\s+(?:plan|strategy|approach|steps|cases|matrix|checklist|results))?`,
     String.raw`verify`,
     // The PR template's own section name, and its past-tense forms.
     String.raw`how\s+to\s+(?:test|verify)`,
@@ -102,7 +102,12 @@ const SECTION_NAMES = {
 // it; then at most a parenthetical (one level of nesting), an issue reference
 // and one tail — a dash, or a comma, colon, semicolon or full stop that ends
 // the heading or is followed by a space. `Test position` and `test.ts is
-// replaced` are not the section, so a bare word after the name never is.
+// replaced` are not the section, so a bare word after the name is not either,
+// beyond the closed list of nouns a test section is named with (`Test cases`,
+// `Testing approach`). The punctuation tail is free on purpose: the corpus's
+// real sections use it (`Unit tests, one per rule`, `Verification — results`),
+// and a heading that OPENS with the section's name and a stop reads as that
+// section to the spec's reader too.
 const ANY_SECTION_NAME = `(?:${[...SECTION_NAMES.scope, ...SECTION_NAMES.testing].join("|")})`;
 const SECTION_NUMBER = String.raw`(?:\d+(?:\.\d+)*\.?\s+)?`;
 const SECTION_JOINER = String.raw`\s+(?:and|&|\/)\s+`;
@@ -123,20 +128,35 @@ const SPEC_HEADER = /^>\s*\*\*Issue:\*\*.*\*\*Supersedes:\*\*.*\*\*Superseded by
 
 /**
  * Text no heading can come from, as CommonMark reads it: a fenced code block,
- * from its opening run of backticks or tildes to a closing run with nothing
- * after it — or to the end of the spec when it never closes — and an HTML
- * comment block, which hides what it holds the same way, to its `-->` or the
- * end. One pass, so whichever opens first wins: a fence inside a comment, or a
- * comment opener inside a fence, is just text. Until #1391's review an unclosed
- * fence, a closing line with an info string (` ```js `) and a commented-out
- * `## Testing` all left a heading the spec does not render.
+ * from its opening run of backticks or tildes to a closing run of the same
+ * character with nothing after it — or to the end of the spec when it never
+ * closes — and an HTML comment block, which hides what it holds the same way,
+ * through the rest of the line that closes it (`-->`, or the empty `<!-->` and
+ * `<!--->`). Either may open inside a list item (`- ```markdown`, `1. <!--`),
+ * whose content is indented to the item. A backtick opener carries no backtick
+ * in its info string (```` ```js``` is inline ```` is prose). One pass, so
+ * whichever opens first wins: a fence inside a comment, or a comment opener
+ * inside a fence, is just text. Until #1391's review an unclosed fence, a
+ * closing line with an info string (` ```js `) or the other fence character, a
+ * commented-out `## Testing` and the text after a `-->` all left a heading the
+ * spec does not render.
  */
-const INERT_BLOCK =
-  /^(?: {0,3}(`{3,}|~{3,})[^\n]*\n[\s\S]*?(?:^ {0,3}\1[`~]*[ \t]*$|$(?![\s\S]))| {0,3}<!--[\s\S]*?(?:-->|$(?![\s\S])))/gm;
+const INERT_BLOCK = (() => {
+  const lead = String.raw`^[ \t]*(?:(?:[-+*]|\d{1,9}[.)])[ \t]+)*`;
+  const end = String.raw`$(?![\s\S])`;
+  const backtickFence = String.raw`(\`{3,})[^\`\n]*\n[\s\S]*?(?:^[ \t]*\1\`*[ \t]*$|${end})`;
+  const tildeFence = String.raw`(~{3,})[^\n]*\n[\s\S]*?(?:^[ \t]*\2~*[ \t]*$|${end})`;
+  const comment = String.raw`<!--(?:-?>|[\s\S]*?(?:-->|${end}))[^\n]*`;
+  return new RegExp(`${lead}(?:${backtickFence}|${tildeFence}|${comment})`, "gm");
+})();
 
-/** A heading's name: its text without emphasis wrapping the whole of it (`**Testing**`, `***Testing***`). */
+/**
+ * A heading's name: its text without inline HTML (`## Testing <!-- TODO -->`,
+ * an `<a id>` anchor) and without emphasis wrapping the whole of it
+ * (`**Testing**`, `***Testing***`).
+ */
 function headingName(text) {
-  let name = text.trim();
+  let name = text.replace(/<!--.*?-->|<\/?[A-Za-z][^<>]*>/g, "").trim();
   for (let was; was !== name;) {
     was = name;
     name = name.replace(/^(\*\*|__|\*|_)(.+)\1$/, "$2").trim();
@@ -159,7 +179,12 @@ function headingName(text) {
  * underlined with `---`) are not read: no spec uses them.
  */
 function specHeadings(text) {
-  const body = text.replace(INERT_BLOCK, "");
+  // Line endings as CommonMark has them: CRLF and a bare CR end a line, and
+  // U+2028 / U+2029 do not, though a JavaScript `^` would start a line there.
+  const body = text
+    .replace(/\r\n?/g, "\n")
+    .replace(/[\u2028\u2029]/g, " ")
+    .replace(INERT_BLOCK, "");
   return [
     ...[...body.matchAll(/^ {0,3}#{2,6}[ \t]+(.+)$/gm)].map((m) => m[1].replace(/\s+#+\s*$/, "")),
     ...[...body.matchAll(/^\*\*([^*\n]+?)\*\*[:.]?\s*$/gm)].map((m) => m[1]),

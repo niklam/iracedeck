@@ -1486,6 +1486,47 @@ describe("git commit", () => {
             "a Testing or Verification section",
           ]);
       });
+      // The second read of #1391: each is text CommonMark does not render as a heading.
+      it("does not read the rest of a comment's closing line, or a fence or comment opened in a list item", () => {
+        for (const tail of [
+          "<!-- TODO --> ## Testing",
+          "<!--\ndraft\n--> ## Testing",
+          "<!-- x -->**Testing**",
+          "- ```markdown\n  ## Testing\n  ```",
+          "1. <!--\n   ## Testing\n   -->",
+          "```bash\n```~\n## Testing\n```",
+        ])
+          expect(missingSpecParts([HEADER, "# T", "## Out of scope", "x", tail].join("\n\n")), tail).toEqual([
+            "a Testing or Verification section",
+          ]);
+      });
+      it("ends a comment at an empty <!--> and takes a backtick line with a backtick in it for prose", () => {
+        for (const before of ["<!-->", "<!--->", "```js``` is inline"])
+          expect(
+            missingSpecParts([HEADER, "# T", "## Out of scope", before, "## Testing", "y"].join("\n\n")),
+            before,
+          ).toEqual([]);
+      });
+      it("accepts a test section named with a closing noun or carrying inline HTML", () => {
+        for (const h of [
+          "## Testing approach",
+          "## Verification steps",
+          "## Test cases",
+          "## Testing <!-- TODO -->",
+          '## Testing <a id="testing"></a>',
+        ])
+          expect(missingSpecParts([HEADER, "# T", "## Out of scope", "x", h, "y"].join("\n\n")), h).toEqual([]);
+      });
+      it("reads line endings as CommonMark does: a bare CR ends a line, a line separator does not", () => {
+        expect(missingSpecParts([HEADER, "# T", "## Out of scope", "x", "## Testing", "y"].join("\r\r"))).toEqual([]);
+        expect(missingSpecParts([HEADER, "# T", "## Out of scope", "x", "```\r## Testing\r```"].join("\r\r"))).toEqual([
+          "a Testing or Verification section",
+        ]);
+        for (const sep of [String.fromCharCode(0x2028), String.fromCharCode(0x2029)])
+          expect(missingSpecParts([HEADER, "# T", "## Out of scope", `x${sep}## Testing`].join("\n\n"))).toEqual([
+            "a Testing or Verification section",
+          ]);
+      });
       it("says in the deny that the heading must be the section's name", () =>
         expect(
           deny("git commit -m x", spec([HEADER, "# Testing the model", "## Out of scope", "x"].join("\n\n"))),
