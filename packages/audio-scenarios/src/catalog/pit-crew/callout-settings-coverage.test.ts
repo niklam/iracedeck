@@ -65,18 +65,94 @@ import { SCENARIO_ID_TO_RACE_STATUS_ID } from "./race-status.js";
 import { SCENARIO_ID_TO_PIT_READBACK_ID } from "./readback.js";
 import { SCENARIO_ID_TO_SESSION_START_ID } from "./session-start.js";
 
+// Vite's `import.meta.glob`, typed for the one form the completeness check
+// uses, as `sim-events-iracing`'s tick-order test does: this package's tests
+// carry no Vite client typings.
+declare global {
+  interface ImportMeta {
+    glob(patterns: string | readonly string[], options: { eager: true }): Record<string, Record<string, unknown>>;
+  }
+}
+
 interface GatedFamily {
   readonly name: string;
   readonly scenarios: Readonly<Record<string, string>>;
   readonly family: CalloutFamily;
 }
 
+/** What {@link scenarioMapCoverage} needs of a row: its name, to report it, and its map, to match it. */
+interface MapRow {
+  readonly name: string;
+  readonly scenarios: object;
+}
+
+/** How the rows cover the `SCENARIO_ID_TO_*` maps the modules export. */
+interface MapCoverage {
+  /** The distinct maps exported, a map re-exported by the barrel counted once. */
+  readonly exported: number;
+  /** Export names of every map no row names. */
+  readonly missing: string[];
+  /** Names of rows whose map is none of the exports. */
+  readonly stray: string[];
+  /** Names of rows whose map an earlier row already names. */
+  readonly repeated: string[];
+}
+
+/** The export-name prefix every scenario → callout id map carries. */
+const SCENARIO_MAP_PREFIX = "SCENARIO_ID_TO_";
+
+/**
+ * Match `rows` to the `SCENARIO_ID_TO_*` maps `modules` export, by object
+ * identity rather than by a row's `name`: a map re-exported from the barrel is
+ * one map, and a row holding a copy of a map does not cover it.
+ */
+function scenarioMapCoverage(
+  modules: Readonly<Record<string, Readonly<Record<string, unknown>>>>,
+  rows: readonly MapRow[],
+): MapCoverage {
+  const names = new Map<object, Set<string>>();
+
+  for (const exports of Object.values(modules)) {
+    for (const [name, value] of Object.entries(exports)) {
+      if (!name.startsWith(SCENARIO_MAP_PREFIX) || typeof value !== "object" || value === null) continue;
+
+      names.set(value, (names.get(value) ?? new Set()).add(name));
+    }
+  }
+
+  const covered = new Set<object>();
+  const stray: string[] = [];
+  const repeated: string[] = [];
+
+  for (const { name, scenarios } of rows) {
+    if (!names.has(scenarios)) stray.push(name);
+    else if (covered.has(scenarios)) repeated.push(name);
+    else covered.add(scenarios);
+  }
+
+  const missing = [...names]
+    .filter(([map]) => !covered.has(map))
+    .map(([, exportNames]) => [...exportNames].sort().join(" = "))
+    .sort();
+
+  return { exported: names.size, missing, stray, repeated };
+}
+
+/**
+ * Every non-test module of the folder. Each is already reachable from the
+ * barrel, so this loads nothing the imports above do not; test files and
+ * their helpers are left out, since loading one would register its tests here.
+ */
+const PIT_CREW_MODULES = import.meta.glob(["./*.ts", "!./*.test.ts", "!./*.test-*.ts"], { eager: true });
+
 /**
  * Contract id → key, at the source (#1350): every scenario a family gates
  * resolves to a registry key, and every id of a scenario-backed family is
  * reached by at least one scenario.
  *
- * One row per `SCENARIO_ID_TO_*` map. The registry families with no such map,
+ * One row per `SCENARIO_ID_TO_*` map, which the completeness check below holds
+ * to every such map a module of this folder exports (#1591), so a new family
+ * cannot go unchecked by leaving its row out. The registry families with no such map,
  * and how each is gated instead:
  *
  * - `SPOTTER_CALLOUTS` (`cars`, `still-there`) and `PIT_SPEEDING_CALLOUTS`
@@ -136,5 +212,73 @@ describe.each(GATED)("$name scenarios", ({ scenarios, family }) => {
 
   it("reach every callout id of the family", () => {
     expect(new Set(Object.values(scenarios))).toEqual(new Set(Object.keys(family.callouts)));
+  });
+});
+
+describe("GATED names every SCENARIO_ID_TO_* map (#1591)", () => {
+  it("discovers the folder's modules and no test file", () => {
+    const paths = Object.keys(PIT_CREW_MODULES);
+
+    expect(paths, "the barrel, which re-exports most maps").toContain("./index.ts");
+    expect(
+      paths.filter((path) => /\.test[.-]/.test(path)),
+      "test modules the glob would load",
+    ).toEqual([]);
+  });
+
+  it("gives every map exactly one row, and every row a map", () => {
+    const coverage = scenarioMapCoverage(PIT_CREW_MODULES, GATED);
+
+    // The vacuity floor: a glob matching nothing would leave nothing to miss.
+    expect(coverage.exported, "SCENARIO_ID_TO_* maps exported by the folder").toBeGreaterThan(0);
+    expect(coverage.missing, "maps with no GATED row").toEqual([]);
+    expect(coverage.stray, "GATED rows whose map no module exports").toEqual([]);
+    expect(coverage.repeated, "GATED rows naming a map another row names").toEqual([]);
+  });
+
+  describe("the comparison (positive controls)", () => {
+    const a = { "pit-crew.a": "a" };
+    const modules = {
+      "./a.ts": { SCENARIO_ID_TO_A_ID: a, A_SCENARIO_IDS: ["pit-crew.a"] },
+      "./index.ts": { SCENARIO_ID_TO_A_ID: a },
+    };
+    const rows: MapRow[] = [{ name: "a", scenarios: a }];
+
+    it("counts a map the barrel re-exports once, and passes when its row is there", () => {
+      expect(scenarioMapCoverage(modules, rows)).toEqual({ exported: 1, missing: [], stray: [], repeated: [] });
+    });
+
+    it("reports an exported map with no row", () => {
+      const withX = { ...modules, "./x.ts": { SCENARIO_ID_TO_X_ID: { "pit-crew.x": "x" } } };
+
+      expect(scenarioMapCoverage(withX, rows)).toEqual({
+        exported: 2,
+        missing: ["SCENARIO_ID_TO_X_ID"],
+        stray: [],
+        repeated: [],
+      });
+    });
+
+    it("reports a row whose map no module exports, matching by identity rather than by contents", () => {
+      const withStray: MapRow[] = [...rows, { name: "copy-of-a", scenarios: { ...a } }];
+
+      expect(scenarioMapCoverage(modules, withStray)).toEqual({
+        exported: 1,
+        missing: [],
+        stray: ["copy-of-a"],
+        repeated: [],
+      });
+    });
+
+    it("reports a second row for the same map", () => {
+      const twice: MapRow[] = [...rows, { name: "a-again", scenarios: a }];
+
+      expect(scenarioMapCoverage(modules, twice)).toEqual({
+        exported: 1,
+        missing: [],
+        stray: [],
+        repeated: ["a-again"],
+      });
+    });
   });
 });
