@@ -1751,6 +1751,82 @@ describe("git commit", () => {
     ).toMatch(/pnpm-lock/));
   it("allows it once the lockfile is staged", () =>
     passes("git commit -m x", ctx({ staged: () => ["package.json", "pnpm-lock.yaml"], modified: () => [] })));
+
+  // #1594: the files a commit records are read from the `git commit` at command
+  // position. A `commit` or `git add` mentioned anywhere else in the chain — an
+  // echo, a quoted string, the commit message — used to pick the selection.
+  describe("reads the selection from the commit at command position (#1594)", () => {
+    const A = "docs/superpowers/specs/a.md";
+    const HEADER = "> **Issue:** [#9](u) · **Supersedes:** _none_ · **Superseded by:** _none_";
+    const whole = [HEADER, "# T", "## Out of scope", "none", "## Testing", "vitest"].join("\n\n");
+    const onBranch = (o = {}) => ctx({ branch: () => "ir-1", ...o });
+
+    it("a quoted `commit -- <path>` ahead of the commit is no pathspec — the issue's reproduction", () =>
+      expect(deny('echo "commit -- notes.md" && git commit -m x', onBranch({ staged: () => [A] }))).toMatch(
+        /never on a feature branch/,
+      ));
+    it("a commit message mentioning `commit -- <path>` is no pathspec", () =>
+      expect(deny('git commit -m "fix commit -- notes.md"', onBranch({ staged: () => [A] }))).toMatch(
+        /never on a feature branch/,
+      ));
+    it("a quoted `commit -am` ahead of the commit is no -a", () =>
+      passes('echo "commit -am x" && git commit -m x', onBranch({ modified: () => [A] })));
+    it("a `-a` inside the commit message is no -a", () =>
+      passes('git commit -m "use -a here"', onBranch({ modified: () => [A] })));
+    it("reads -a as a parsed flag, inside a short cluster or on its own", () => {
+      for (const c of ["git commit -qa -m x", "git commit -a -m x", "git commit --all -m x"])
+        expect(deny(c, onBranch({ modified: () => [A] })), c).toMatch(/never on a feature branch/);
+    });
+    it("a quoted `git add` is no add", () =>
+      passes(`echo "git add ${A}" && git commit -m x`, onBranch({ untracked: () => [A] })));
+    it("an add after the commit is no add", () =>
+      passes(`git commit -m x && git add ${A}`, onBranch({ untracked: () => [A] })));
+    it("reads a pathspec given without `--`", () =>
+      expect(deny(`git commit -m x ${A}`, onBranch())).toMatch(/never on a feature branch/));
+    it("selects the files under a directory pathspec", () =>
+      expect(
+        deny("git commit -m x -- docs/superpowers/specs/", ctx({ modified: () => [A], committedText: () => "# T" })),
+      ).toMatch(/a\.md is missing/));
+    it("adds the staged files to a pathspec under -i", () => {
+      for (const c of ["git commit -i -m x -- src/x.ts", "git commit --include -m x src/x.ts"])
+        expect(deny(c, onBranch({ staged: () => [A] })), c).toMatch(/never on a feature branch/);
+    });
+    it("leaves a staged spec out of a pathspec without -i", () => {
+      for (const c of ["git commit -m x src/x.ts", "git commit --only -m x src/x.ts"])
+        passes(c, onBranch({ staged: () => [A] }));
+    });
+    it("judges every commit in the chain, not only the first", () =>
+      expect(deny(`git commit -m x -- src/x.ts && git commit -m y -- ${A}`, onBranch())).toMatch(
+        /never on a feature branch/,
+      ));
+    it("judges each commit in the tree its own `cd` or `-C` lands in", () => {
+      const branch = (d) => (d.endsWith("ir-1") ? "ir-1" : "master");
+      expect(deny(`git commit -m x -- ${A} && cd ../ir-1 && git commit -m y -- ${A}`, ctx({ branch }))).toMatch(
+        /on ir-1/,
+      );
+      expect(deny(`git commit -m x -- ${A} && git -C ../ir-1 commit -m y -- ${A}`, ctx({ branch }))).toMatch(/on ir-1/);
+    });
+
+    describe("errs to deny when the selection cannot be read", () => {
+      it("a substitution as the pathspec", () =>
+        expect(deny('git commit -m x -- "$F"', onBranch({ staged: () => [A] }))).toMatch(/never on a feature branch/));
+      it("--pathspec-from-file", () =>
+        expect(deny("git commit -m x --pathspec-from-file list.txt", onBranch({ modified: () => [A] }))).toMatch(
+          /never on a feature branch/,
+        ));
+      it("an earlier add whose operand is a substitution", () =>
+        expect(deny('git add "$F" && git commit -m x', onBranch({ untracked: () => [A] }))).toMatch(
+          /never on a feature branch/,
+        ));
+      it("reads each spec from both copies, denying when either fails", () => {
+        const split = (index, worktree) =>
+          ctx({ staged: () => [A], committedText: (_d, _f, from) => (from === "index" ? index : worktree) });
+        expect(deny('git commit -m x -- "$F"', split(whole, "# T"))).toMatch(/a\.md is missing/);
+        expect(deny('git commit -m x -- "$F"', split("# T", whole))).toMatch(/a\.md is missing/);
+        passes('git commit -m x -- "$F"', split(whole, whole));
+      });
+    });
+  });
 });
 
 describe("git commit: the Elgato manifest never carries a Debug key (#1338)", () => {
