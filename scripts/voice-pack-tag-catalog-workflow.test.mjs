@@ -7,18 +7,22 @@
  * already deployed, and nothing would go red: the older archive is still
  * published. `firebase-hosting-release.yml`'s deploying job therefore fetches
  * the live catalog as its last step before the deploy and refuses when any
- * live pack is missing from the catalog it deploys or at a lower version. The
- * base is the live catalog rather than master's, because master routinely
- * carries a pack bump that is not live yet (the spec's amendment).
+ * live pack is at a lower version in the catalog it deploys. The base is the
+ * live catalog rather than master's, because master routinely carries a pack
+ * bump that is not live yet (the spec's amendment). A live pack missing from
+ * the deploy is the one question master answers: it passes, with a warning,
+ * only when master's catalog lacks it too, a withdrawal; master is fetched only
+ * then, and a master that cannot be read refuses.
  *
  * The step's place in the job is asserted over the parsed YAML, each assertion
  * positive-controlled against a mutated copy, since an assertion that cannot
  * fail proves nothing. The step itself is run for real, extracted from the
- * YAML, against a local HTTP stand-in for the live catalog. It runs through
+ * YAML, against a local HTTP stand-in for the live catalog and, for the
+ * withdrawal cases, throwaway git origins it fetches master from. It runs through
  * `runStepAsync`: the stand-in answers on this process's event loop, which a
  * synchronous spawn would hold for the whole run.
  */
-import { mkdirSync } from "node:fs";
+import { existsSync, mkdirSync } from "node:fs";
 import { createServer } from "node:http";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -204,17 +208,28 @@ describe.skipIf(BASH === undefined)("the catalog check step, run against a live 
    * directory at all when it is empty), or in `cwd`. The stand-in answers as
    * `live` says: `{ packs }` is a 200 with that catalog, anything else a route
    * as above. `url` overrides where the step looks; `env` adds to its environment.
+   * `origin`, a URL, makes the fresh directory a git repository fetching from
+   * it; without one the directory is no repository at all, and git is kept
+   * from finding one above it.
    */
-  async function check({ deploy, live, url, env = {}, cwd }) {
+  async function check({ deploy, live, url, env = {}, cwd, origin }) {
     const id = ++cases;
     const root = cwd ?? path.join(box.work, `case-${id}`);
     mkdirSync(root, { recursive: true });
+    if (origin !== undefined) {
+      box.git(root, "init", "-q");
+      box.git(root, "remote", "add", "origin", origin);
+    }
     if (deploy) writeCatalog(root, deploy);
     const route = `/case-${id}/voice-catalog.json`;
     if (live) routes.set(route, live.packs ? { status: 200, body: liveBody(live.packs) } : live);
     const liveUrl = url ?? `${base}${route}`;
-    const { status, output } = await box.runStepAsync(step.run, root, { LIVE_CATALOG_URL: liveUrl, ...env });
-    return { status, output, lines: output.split(/\r?\n/), liveUrl };
+    const { status, output } = await box.runStepAsync(step.run, root, {
+      LIVE_CATALOG_URL: liveUrl,
+      GIT_CEILING_DIRECTORIES: box.work,
+      ...env,
+    });
+    return { status, output, lines: output.split(/\r?\n/), liveUrl, root };
   }
 
   /** The one line naming pack `id`'s problem, asserted to be its error annotation. */
@@ -279,9 +294,57 @@ describe.skipIf(BASH === undefined)("the catalog check step, run against a live 
     expect(run.status).toBe(0);
   });
 
-  it("refuses a live pack missing from the deploy: deploying would remove it", async () => {
-    const run = await check({ deploy: { default: "1.4.0" }, live: { packs: { default: "1.4.0", fresh: "1.0.0" } } });
-    expect(errorFor(run, "fresh")).toContain("is missing in this deploy but live at 1.0.0");
+  /**
+   * Throwaway origins the withdrawal path fetches master from, by name: `{ url, sha }`
+   * (`sha` the tip of the branch it was made on). `unreachable` names no repository.
+   */
+  const origins = {};
+
+  beforeAll(() => {
+    const makeOrigin = (name, { branch = "master", files }) => {
+      const dirOf = path.join(box.work, "origins", name);
+      mkdirSync(dirOf, { recursive: true });
+      box.git(dirOf, "init", "-q", "-b", branch);
+      for (const [rel, text] of Object.entries(files)) writeFile(dirOf, rel, text);
+      box.git(dirOf, "add", "-A");
+      box.git(dirOf, "commit", "-q", "-m", name);
+      origins[name] = { url: pathToFileURL(dirOf).href, sha: box.git(dirOf, "rev-parse", "HEAD") };
+    };
+    const entries = (catalog) =>
+      Object.fromEntries(Object.entries(catalog).map(([id, value]) => [`${CATALOG}/${id}.json`, entryText(value)]));
+
+    // Master keeps `legacy`, at a version far below any live one: only the file's presence counts.
+    makeOrigin("keeps", { files: entries({ default: "1.0.0", legacy: "0.0.1", fresh: "1.0.0" }) });
+    // Master has withdrawn `legacy` (and never had `other`).
+    makeOrigin("withdrew", { files: entries({ default: "1.0.0" }) });
+    makeOrigin("no-master", { branch: "main", files: entries({ default: "1.0.0" }) });
+    makeOrigin("no-catalog", { files: { "site.txt": "a master without a catalog directory\n" } });
+    makeOrigin("catalog-file", { files: { [CATALOG]: "a file where the directory should be\n" } });
+    origins.unreachable = { url: pathToFileURL(path.join(box.work, "origins", "no-such-origin")).href };
+  }, 60_000);
+
+  /** Whether the step's run left a FETCH_HEAD in the case's repository: whether it fetched at all. */
+  const fetched = (run) => existsSync(path.join(run.root, ".git", "FETCH_HEAD"));
+
+  /** The one line naming pack `id`, asserted to be its warning annotation. */
+  function warningFor({ lines, output }, id) {
+    const named = lines.filter((line) => line.includes(`"${id}"`));
+    expect(named, `exactly one line names "${id}" in:\n${output}`).toHaveLength(1);
+    expect(named[0].startsWith(`::warning file=${CATALOG}/${id}.json::`), named[0]).toBe(true);
+    return named[0];
+  }
+
+  it("refuses a live pack missing from the deploy that master still carries: deploying would remove it", async () => {
+    const run = await check({
+      origin: origins.keeps.url,
+      deploy: { default: "1.4.0" },
+      live: { packs: { default: "1.4.0", fresh: "1.0.0" } },
+    });
+    const line = errorFor(run, "fresh");
+    expect(line).toContain("is missing in this deploy but live at 1.0.0");
+    expect(line).toContain(
+      `master (${origins.keeps.sha}) still carries ${CATALOG}/fresh.json, so it was not withdrawn`,
+    );
     expect(okLine(run, "default")).toBeDefined();
     expect(run.status).toBe(1);
   });
@@ -290,6 +353,105 @@ describe.skipIf(BASH === undefined)("the catalog check step, run against a live 
     const run = await check({ deploy: {}, live: { packs: { default: "1.4.0" } } });
     expect(errorFor(run, "default")).toContain("is missing in this deploy");
     expect(run.status).toBe(1);
+  });
+
+  describe("a live pack missing from the deploy: master decides whether it was withdrawn", { timeout: 60_000 }, () => {
+    it("passes with a warning when master's catalog lacks the pack too", async () => {
+      const run = await check({
+        origin: origins.withdrew.url,
+        deploy: { default: "1.0.0" },
+        live: { packs: { default: "1.0.0", legacy: "1.2.0" } },
+      });
+      const line = warningFor(run, "legacy");
+      expect(line).toContain(`live at 1.2.0 (${run.liveUrl}), is not in this deploy`);
+      expect(line).toContain(`master (${origins.withdrew.sha}) has withdrawn it too`);
+      expect(run.output).not.toContain("::error");
+      expect(run.output).toContain("1 compared, 1 withdrawn.");
+      expect(fetched(run)).toBe(true);
+      expect(run.status).toBe(0);
+    });
+
+    it("refuses when master still carries the pack, whatever version master has", async () => {
+      const run = await check({
+        origin: origins.keeps.url,
+        deploy: { default: "1.0.0" },
+        live: { packs: { default: "1.0.0", legacy: "1.2.0" } },
+      });
+      const line = errorFor(run, "legacy");
+      expect(line).toContain("is missing in this deploy but live at 1.2.0");
+      expect(line).toContain(`master (${origins.keeps.sha}) still carries ${CATALOG}/legacy.json`);
+      expect(line).toContain('To keep it, bring pack "legacy" from master onto the release branch');
+      expect(line).toContain(`To withdraw it, delete ${CATALOG}/legacy.json on master first, then re-run.`);
+      expect(run.output).not.toContain("::warning");
+      expect(run.status).toBe(1);
+    });
+
+    it.each([
+      ["origin has no master", "no-master", "couldn't find remote ref refs/heads/master"],
+      ["origin cannot be reached", "unreachable", "Could not read from remote repository"],
+      ["master has no catalog directory", "no-catalog", `has no ${CATALOG} at all`],
+      ["master's catalog is a file", "catalog-file", `${CATALOG} (`],
+      ["there is no repository to fetch into", undefined, "not a git repository"],
+    ])("refuses, failing closed, when %s", async (_kind, originName, reason) => {
+      const run = await check({
+        origin: originName === undefined ? undefined : origins[originName].url,
+        deploy: { default: "1.0.0" },
+        live: { packs: { default: "1.0.0", legacy: "1.2.0" } },
+      });
+      const line = errorFor(run, "legacy");
+      expect(line).toContain("is missing in this deploy but live at 1.2.0");
+      expect(line).toContain("master could not be read, so its withdrawal cannot be confirmed");
+      expect(line).toContain(reason);
+      if (originName === "catalog-file") expect(line).toContain("is a blob, not a directory");
+      expect(run.output).not.toContain("::warning");
+      expect(run.status).toBe(1);
+    });
+
+    it("does not fetch master when no live pack is missing", async () => {
+      const run = await check({
+        origin: origins.withdrew.url,
+        deploy: { default: "1.0.0", legacy: "1.2.0" },
+        live: { packs: { default: "1.0.0", legacy: "1.2.0" } },
+      });
+      expect(fetched(run)).toBe(false);
+      expect(run.output).not.toContain("::");
+      expect(run.output).toContain("2 compared.");
+      expect(run.status).toBe(0);
+    });
+
+    it("passes a deploy carrying every live pack even when origin cannot be reached", async () => {
+      const run = await check({
+        origin: origins.unreachable.url,
+        deploy: { default: "1.0.0" },
+        live: { packs: { default: "1.0.0" } },
+      });
+      expect(run.output).not.toContain("::");
+      expect(run.status).toBe(0);
+    });
+
+    it("refuses a version rollback even when master has withdrawn the pack, without asking master", async () => {
+      const run = await check({
+        origin: origins.withdrew.url,
+        deploy: { legacy: "1.4.0" },
+        live: { packs: { legacy: "1.5.0" } },
+      });
+      expect(errorFor(run, "legacy")).toContain("is at 1.4.0 in this deploy but live at 1.5.0");
+      expect(run.output).not.toContain("::warning");
+      expect(fetched(run)).toBe(false);
+      expect(run.status).toBe(1);
+    });
+
+    it("reports a withdrawal and a pack behind together, and refuses", async () => {
+      const run = await check({
+        origin: origins.withdrew.url,
+        deploy: { default: "1.0.0", other: "1.0.0" },
+        live: { packs: { default: "1.0.0", legacy: "1.2.0", other: "1.1.0" } },
+      });
+      expect(warningFor(run, "legacy")).toContain(`master (${origins.withdrew.sha}) has withdrawn it too`);
+      expect(errorFor(run, "other")).toContain("is at 1.0.0 in this deploy but live at 1.1.0");
+      errorLine(run, "1 voice-pack catalog entry in this deploy cannot be deployed");
+      expect(run.status).toBe(1);
+    });
   });
 
   it("reports every problem, not only the first", async () => {
