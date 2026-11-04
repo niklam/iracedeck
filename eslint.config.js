@@ -179,11 +179,19 @@ export default [
     // @iracedeck/deck-iracing (#1351); the packages split out of deck-core keep
     // the same boundary (#1367), and since #1375 every package named in
     // SIM_NEUTRAL_PACKAGES does: settings beneath deck-core, voice-packs, the
-    // event-bus catalog, the three deck adapters and the leaves. Every .ts and
-    // .mjs file of the package, not only src/, tests included. The subpath
-    // pattern closes a deep import, which iracing-sdk and iracing-native allow
-    // because they declare no `exports`, as the plugin-shell block below does
-    // (#1500). Type-only imports included.
+    // event-bus catalog, the three deck adapters and the leaves. The block holds
+    // every .ts and .mjs file of the package, tests included, and src/ is not
+    // its edge: `pnpm lint` reads every .mjs in the repo, and a tracked .ts
+    // outside packages/*/src, which its globs miss, fails
+    // scripts/lint-format-coverage.test.mjs. It does not hold what no lint gate
+    // here reads at all: the website's .astro pages and its
+    // scripts/generate-icon-gallery.mts, where no lint refuses a sim import.
+    // That is a gap in what the repo lints, not in this block, and naming .mts
+    // here would not close it: the TypeScript parser block above takes
+    // **/*.ts only and `pnpm lint` passes no .mts, so the pattern would match a
+    // file nothing lints. The subpath pattern closes a deep import, which
+    // iracing-sdk and iracing-native allow because they declare no `exports`,
+    // as the plugin-shell block below does (#1500). Type-only imports included.
     // scripts/deck-core-sim-boundary.test.mjs proves this rule fires in each.
     files: SIM_NEUTRAL_PACKAGES.flatMap((dir) => [`packages/${dir}/**/*.ts`, `packages/${dir}/**/*.mjs`]),
     rules: {

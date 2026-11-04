@@ -94,8 +94,10 @@ describe("deck-core sim boundary", () => {
       );
     }
 
-    // The block covers the whole package, not only src/: a build script or a
-    // config written as .mjs is held too.
+    // The block reaches past src/ for every .ts and .mjs file of the package: a
+    // build script or a config written as .mjs is held too. It holds no
+    // .astro or .mts file, which no lint gate here reads (see the block's
+    // comment in eslint.config.js).
     it(
       `refuses a sim import in an .mjs file outside ${dir}/src`,
       async () => {
