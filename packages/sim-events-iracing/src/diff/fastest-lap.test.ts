@@ -6,7 +6,7 @@
 import { SessionState, type TelemetryData } from "@iracedeck/iracing-sdk";
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { createInitialState, type TranslatorState } from "../state.js";
+import { createFastestLapState, type FastestLapState, resetFastestLapBaselines } from "../state.js";
 import {
   createFastestLapJudge,
   diffFastestLap,
@@ -65,13 +65,15 @@ type RunOptions = Partial<{
   sessionInfo: Record<string, unknown> | null;
   /** The tick's clock (ms); only the hold reads it. */
   now: number;
+  /** The count `diffLaps` last emitted for, as `handleTick` hands it; `null` (the default) while it is unseeded. */
+  lapsJudgedThrough: number | null;
 }>;
 
-function run(state: TranslatorState, field: Field, opts: RunOptions = {}): PendingEvent[] {
+function run(slice: FastestLapState, field: Field, opts: RunOptions = {}): PendingEvent[] {
   const out: PendingEvent[] = [];
 
   diffFastestLap(
-    state,
+    slice,
     field as unknown as TelemetryData,
     opts.sessionInfo === undefined ? SESSION_INFO : opts.sessionInfo,
     opts.player ?? PLAYER,
@@ -81,6 +83,7 @@ function run(state: TranslatorState, field: Field, opts: RunOptions = {}): Pendi
     opts.positions ?? POSITIONS,
     (ev) => out.push(ev),
     opts.now ?? 0,
+    opts.lapsJudgedThrough ?? null,
   );
 
   return out;
@@ -93,13 +96,13 @@ function fastestLapEvents(events: PendingEvent[]): Array<Extract<PendingEvent, {
 }
 
 /** A race in progress: car 1 holds a 90.0, car 2 a 91.0, car 3 nothing yet, the player a 92.0. */
-function seededState(): { state: TranslatorState; field: Field } {
-  const state = createInitialState();
+function seededSlice(): { slice: FastestLapState; field: Field } {
+  const slice = createFastestLapState();
   const field = makeField({ CarIdxBestLapTime: [92, 90, 91, -1, -1] });
 
-  expect(run(state, field)).toEqual([]);
+  expect(run(slice, field)).toEqual([]);
 
-  return { state, field };
+  return { slice, field };
 }
 
 describe("isEligibleRecordLap", () => {
@@ -125,30 +128,30 @@ describe("isEligibleRecordLap", () => {
 
 describe("diffFastestLap — seeding", () => {
   it("seeds silently on the first eligible tick of a mid-race connect, the player's car included, and stays silent on the same values", () => {
-    const { state, field } = seededState();
+    const { slice, field } = seededSlice();
 
-    expect(state.fastestLapRecord).toEqual({ lapTime: 90, carIdx: 1, isPlayer: false, carNumber: "07" });
-    expect(state.fastestLapBaselines).toEqual([92, 90, 91, 0, 0]);
-    expect(state.fastestLapRaceSeeded).toBe(true);
-    expect(run(state, field)).toEqual([]);
+    expect(slice.record).toEqual({ lapTime: 90, carIdx: 1, isPlayer: false, carNumber: "07" });
+    expect(slice.baselines).toEqual([92, 90, 91, 0, 0]);
+    expect(slice.raceSeeded).toBe(true);
+    expect(run(slice, field)).toEqual([]);
   });
 
   it("the player's own best is the record on the first seed when it is the class minimum", () => {
-    const state = createInitialState();
+    const slice = createFastestLapState();
 
-    expect(run(state, makeField({ CarIdxBestLapTime: [89, 90, 91, -1, -1] }))).toEqual([]);
-    expect(state.fastestLapRecord).toEqual({ lapTime: 89, carIdx: PLAYER, isPlayer: true, carNumber: "1" });
+    expect(run(slice, makeField({ CarIdxBestLapTime: [89, 90, 91, -1, -1] }))).toEqual([]);
+    expect(slice.record).toEqual({ lapTime: 89, carIdx: PLAYER, isPlayer: true, carNumber: "1" });
   });
 
   it("seeds with no record when no car has an eligible time, then takes the first eligible best as a record with no previous", () => {
-    const state = createInitialState();
+    const slice = createFastestLapState();
     const field = makeField();
 
-    expect(run(state, field)).toEqual([]);
-    expect(state.fastestLapRecord).toBeNull();
+    expect(run(slice, field)).toEqual([]);
+    expect(slice.record).toBeNull();
 
     field.CarIdxBestLapTime[2] = 95;
-    const events = fastestLapEvents(run(state, field));
+    const events = fastestLapEvents(run(slice, field));
 
     expect(events).toHaveLength(1);
     expect(events[0]!.previous).toBeUndefined();
@@ -156,31 +159,31 @@ describe("diffFastestLap — seeding", () => {
   });
 
   it("a pre-green tick neither seeds nor emits; the first tick past the green seeds (the positive control)", () => {
-    const state = createInitialState();
+    const slice = createFastestLapState();
     const field = makeField({ SessionState: SessionState.ParadeLaps, CarIdxBestLapTime: [-1, 90, -1, -1, -1] });
 
-    expect(run(state, field)).toEqual([]);
-    expect(state.fastestLapBaselinesSeeded).toBe(false);
-    expect(state.fastestLapRecord).toBeNull();
+    expect(run(slice, field)).toEqual([]);
+    expect(slice.baselinesSeeded).toBe(false);
+    expect(slice.record).toBeNull();
 
     field.SessionState = SessionState.Racing;
 
-    expect(run(state, field)).toEqual([]);
-    expect(state.fastestLapBaselinesSeeded).toBe(true);
-    expect(state.fastestLapRecord).toMatchObject({ carIdx: 1, lapTime: 90 });
+    expect(run(slice, field)).toEqual([]);
+    expect(slice.baselinesSeeded).toBe(true);
+    expect(slice.record).toMatchObject({ carIdx: 1, lapTime: 90 });
   });
 
   it("a practice session never seeds or emits, while the same ticks in a race do", () => {
-    const practice = createInitialState();
+    const practice = createFastestLapState();
     const field = makeField({ CarIdxBestLapTime: [-1, 90, -1, -1, -1] });
 
     expect(run(practice, field, { isRace: false })).toEqual([]);
     field.CarIdxBestLapTime[2] = 85;
     expect(run(practice, field, { isRace: false })).toEqual([]);
-    expect(practice.fastestLapRecord).toBeNull();
-    expect(practice.fastestLapBaselinesSeeded).toBe(false);
+    expect(practice.record).toBeNull();
+    expect(practice.baselinesSeeded).toBe(false);
 
-    const race = createInitialState();
+    const race = createFastestLapState();
     const again = makeField({ CarIdxBestLapTime: [-1, 90, -1, -1, -1] });
     expect(run(race, again)).toEqual([]);
     again.CarIdxBestLapTime[2] = 85;
@@ -188,30 +191,30 @@ describe("diffFastestLap — seeding", () => {
   });
 
   it("a count below 1 keeps a car's best out of the first seed's record while its baseline absorbs the value", () => {
-    const state = createInitialState();
+    const slice = createFastestLapState();
     // Car 1 has a best from a lap the counter says it has not completed (a parade lap carried into lap 0).
     const field = makeField({ CarIdxLapCompleted: [3, 0, 3, 3, 3], CarIdxBestLapTime: [-1, 80, 91, -1, -1] });
 
-    expect(run(state, field)).toEqual([]);
-    expect(state.fastestLapRecord).toMatchObject({ carIdx: 2, lapTime: 91 });
-    expect(state.fastestLapBaselines[1]).toBe(80);
+    expect(run(slice, field)).toEqual([]);
+    expect(slice.record).toMatchObject({ carIdx: 2, lapTime: 91 });
+    expect(slice.baselines[1]).toBe(80);
   });
 
   it("does not scan while the player's carIdx is unresolved", () => {
-    const state = createInitialState();
+    const slice = createFastestLapState();
     const field = makeField({ CarIdxBestLapTime: [-1, 90, -1, -1, -1] });
 
-    expect(run(state, field, { player: -1 })).toEqual([]);
-    expect(state.fastestLapBaselinesSeeded).toBe(false);
+    expect(run(slice, field, { player: -1 })).toEqual([]);
+    expect(slice.baselinesSeeded).toBe(false);
   });
 });
 
 describe("diffFastestLap — the scan", () => {
-  let state: TranslatorState;
+  let slice: FastestLapState;
   let field: Field;
 
   beforeEach(() => {
-    ({ state, field } = seededState());
+    ({ slice, field } = seededSlice());
   });
 
   it("a car's best falling below the record emits one event with the holder, the lap, the beaten record, the car number, the positions and the player's lap count", () => {
@@ -219,7 +222,7 @@ describe("diffFastestLap — the scan", () => {
     field.CarIdxLapCompleted[2] = 4;
     field.LapCompleted = 3;
 
-    const events = fastestLapEvents(run(state, field));
+    const events = fastestLapEvents(run(slice, field));
 
     expect(events).toEqual([
       {
@@ -235,41 +238,41 @@ describe("diffFastestLap — the scan", () => {
         isMultiClass: false,
       },
     ]);
-    expect(state.fastestLapRecord).toEqual({ lapTime: 89.5, carIdx: 2, isPlayer: false, carNumber: "22" });
-    expect(state.fastestLapBaselines[2]).toBe(89.5);
+    expect(slice.record).toEqual({ lapTime: 89.5, carIdx: 2, isPlayer: false, carNumber: "22" });
+    expect(slice.baselines[2]).toBe(89.5);
   });
 
   it("a car's best falling but staying above the record updates its baseline and emits nothing", () => {
     field.CarIdxBestLapTime[2] = 90.5;
 
-    expect(run(state, field)).toEqual([]);
-    expect(state.fastestLapBaselines[2]).toBe(90.5);
-    expect(state.fastestLapRecord).toMatchObject({ carIdx: 1, lapTime: 90 });
+    expect(run(slice, field)).toEqual([]);
+    expect(slice.baselines[2]).toBe(90.5);
+    expect(slice.record).toMatchObject({ carIdx: 1, lapTime: 90 });
   });
 
   it("a value of -1 or 0 changes neither a baseline nor the record", () => {
     field.CarIdxBestLapTime[2] = -1;
     field.CarIdxBestLapTime[1] = 0;
 
-    expect(run(state, field)).toEqual([]);
-    expect(state.fastestLapBaselines).toEqual([92, 90, 91, 0, 0]);
-    expect(state.fastestLapRecord).toMatchObject({ carIdx: 1, lapTime: 90 });
+    expect(run(slice, field)).toEqual([]);
+    expect(slice.baselines).toEqual([92, 90, 91, 0, 0]);
+    expect(slice.record).toMatchObject({ carIdx: 1, lapTime: 90 });
   });
 
   it("a record holder whose value turns -1 keeps the record: a slower car's next best does not take it, a faster one does", () => {
     // Car 1 leaves the world.
     field.CarIdxBestLapTime[1] = -1;
-    expect(run(state, field)).toEqual([]);
-    expect(state.fastestLapRecord).toMatchObject({ carIdx: 1, lapTime: 90 });
+    expect(run(slice, field)).toEqual([]);
+    expect(slice.record).toMatchObject({ carIdx: 1, lapTime: 90 });
 
     // Car 2 improves to 90.5: faster than every remaining car, slower than the record.
     field.CarIdxBestLapTime[2] = 90.5;
-    expect(run(state, field)).toEqual([]);
-    expect(state.fastestLapRecord).toMatchObject({ carIdx: 1, lapTime: 90 });
+    expect(run(slice, field)).toEqual([]);
+    expect(slice.record).toMatchObject({ carIdx: 1, lapTime: 90 });
 
     // The positive control: car 2 beats the departed holder's time.
     field.CarIdxBestLapTime[2] = 89.9;
-    const events = fastestLapEvents(run(state, field));
+    const events = fastestLapEvents(run(slice, field));
     expect(events).toHaveLength(1);
     expect(events[0]).toMatchObject({ carIdx: 2, lapTime: 89.9, previous: { carIdx: 1, lapTime: 90 } });
   });
@@ -278,13 +281,13 @@ describe("diffFastestLap — the scan", () => {
     field.SessionState = SessionState.ParadeLaps;
     field.CarIdxBestLapTime[2] = 85;
 
-    expect(run(state, field)).toEqual([]);
-    expect(state.fastestLapRecord).toMatchObject({ carIdx: 1, lapTime: 90 });
+    expect(run(slice, field)).toEqual([]);
+    expect(slice.record).toMatchObject({ carIdx: 1, lapTime: 90 });
     // Pre-green nothing moves, the baseline included.
-    expect(state.fastestLapBaselines[2]).toBe(91);
+    expect(slice.baselines[2]).toBe(91);
 
     field.SessionState = SessionState.Racing;
-    const events = fastestLapEvents(run(state, field));
+    const events = fastestLapEvents(run(slice, field));
     expect(events).toHaveLength(1);
     expect(events[0]).toMatchObject({ carIdx: 2, lapTime: 85 });
   });
@@ -293,16 +296,16 @@ describe("diffFastestLap — the scan", () => {
     field.CarIdxLapCompleted[2] = 0;
     field.CarIdxBestLapTime[2] = 85;
 
-    expect(run(state, field)).toEqual([]);
-    expect(state.fastestLapBaselines[2]).toBe(85);
-    expect(state.fastestLapRecord).toMatchObject({ carIdx: 1, lapTime: 90 });
+    expect(run(slice, field)).toEqual([]);
+    expect(slice.baselines[2]).toBe(85);
+    expect(slice.record).toMatchObject({ carIdx: 1, lapTime: 90 });
 
     // The parade lap carried into lap 1: still not a record.
     field.CarIdxLapCompleted[2] = 1;
-    expect(run(state, field)).toEqual([]);
+    expect(run(slice, field)).toEqual([]);
 
     field.CarIdxBestLapTime[2] = 84;
-    const events = fastestLapEvents(run(state, field));
+    const events = fastestLapEvents(run(slice, field));
     expect(events).toHaveLength(1);
     expect(events[0]).toMatchObject({ carIdx: 2, lap: 1, lapTime: 84 });
   });
@@ -313,11 +316,11 @@ describe("diffFastestLap — the scan", () => {
     field.CarIdxBestLapTime[PACE] = 70;
     field.CarIdxClass[PACE] = 100;
 
-    expect(run(state, field)).toEqual([]);
-    expect(state.fastestLapRecord).toMatchObject({ carIdx: 1, lapTime: 90 });
+    expect(run(slice, field)).toEqual([]);
+    expect(slice.record).toMatchObject({ carIdx: 1, lapTime: 90 });
 
     field.CarIdxBestLapTime[2] = 80;
-    const events = fastestLapEvents(run(state, field));
+    const events = fastestLapEvents(run(slice, field));
     expect(events).toHaveLength(1);
     expect(events[0]).toMatchObject({ carIdx: 2, lapTime: 80 });
   });
@@ -326,23 +329,23 @@ describe("diffFastestLap — the scan", () => {
     field.CarIdxBestLapTime[2] = 89;
     field.CarIdxBestLapTime[3] = 88;
 
-    const events = fastestLapEvents(run(state, field));
+    const events = fastestLapEvents(run(slice, field));
 
     expect(events).toHaveLength(1);
     expect(events[0]).toMatchObject({ carIdx: 3, lapTime: 88, previous: { carIdx: 1, lapTime: 90 } });
-    expect(state.fastestLapBaselines[2]).toBe(89);
-    expect(state.fastestLapRecord).toMatchObject({ carIdx: 3, lapTime: 88 });
+    expect(slice.baselines[2]).toBe(89);
+    expect(slice.record).toMatchObject({ carIdx: 3, lapTime: 88 });
   });
 
   it("omits the car number for a car with no session-info row, and the previous holder's when it had none", () => {
     field.CarIdxBestLapTime[3] = 89;
-    const first = fastestLapEvents(run(state, field))[0]!;
+    const first = fastestLapEvents(run(slice, field))[0]!;
 
     expect(first.carNumber).toBeUndefined();
     expect(first.previous).toEqual({ carIdx: 1, lapTime: 90, isPlayer: false, carNumber: "07" });
 
     field.CarIdxBestLapTime[2] = 88;
-    const second = fastestLapEvents(run(state, field))[0]!;
+    const second = fastestLapEvents(run(slice, field))[0]!;
 
     expect(second.carNumber).toBe("22");
     expect(second.previous).toEqual({ carIdx: 3, lapTime: 89, isPlayer: false });
@@ -351,7 +354,7 @@ describe("diffFastestLap — the scan", () => {
   it("omits a position the canonical order does not rank, and isMultiClass when it is unknown", () => {
     field.CarIdxBestLapTime[2] = 89;
 
-    const events = fastestLapEvents(run(state, field, { positions: [0, 1, 0, 0, 0], multi: null }));
+    const events = fastestLapEvents(run(slice, field, { positions: [0, 1, 0, 0, 0], multi: null }));
 
     expect(events).toHaveLength(1);
     expect(events[0]!.position).toBeUndefined();
@@ -367,11 +370,11 @@ describe("diffFastestLap — the scan", () => {
       CarIdxLapCompleted: [3, 3, 3, 3, 3, 3, 3],
       CarIdxBestLapTime: [92, 90, 91, -1, -1, 70, 71],
     });
-    const fresh = createInitialState();
+    const fresh = createFastestLapState();
 
     expect(run(fresh, multi, { positions, multi: true })).toEqual([]);
     // The other class's faster laps never made the record.
-    expect(fresh.fastestLapRecord).toMatchObject({ carIdx: 1, lapTime: 90 });
+    expect(fresh.record).toMatchObject({ carIdx: 1, lapTime: 90 });
 
     multi.CarIdxBestLapTime[2] = 89;
     const events = fastestLapEvents(run(fresh, multi, { positions, multi: true }));
@@ -383,24 +386,24 @@ describe("diffFastestLap — the scan", () => {
   it("a later refresh of the player's own best emits nothing: the player is never scanned", () => {
     field.CarIdxBestLapTime[PLAYER] = 80;
 
-    expect(run(state, field)).toEqual([]);
-    expect(state.fastestLapRecord).toMatchObject({ carIdx: 1, lapTime: 90 });
+    expect(run(slice, field)).toEqual([]);
+    expect(slice.record).toMatchObject({ carIdx: 1, lapTime: 90 });
     // The baseline still follows it, so nothing is ever "new" for the player.
-    expect(state.fastestLapBaselines[PLAYER]).toBe(80);
+    expect(slice.baselines[PLAYER]).toBe(80);
   });
 });
 
 describe("the player's judge (decision 2)", () => {
-  let state: TranslatorState;
+  let slice: FastestLapState;
   let field: Field;
 
   beforeEach(() => {
-    ({ state, field } = seededState());
+    ({ slice, field } = seededSlice());
   });
 
   function judge(lap: number, lapTime: number, opts: RunOptions = {}): boolean {
     return createFastestLapJudge(
-      state,
+      slice,
       field as unknown as TelemetryData,
       opts.sessionInfo === undefined ? SESSION_INFO : opts.sessionInfo,
       opts.player ?? PLAYER,
@@ -410,8 +413,8 @@ describe("the player's judge (decision 2)", () => {
 
   it("a faster lap takes the record for the player and leaves the claim", () => {
     expect(judge(4, 89.5)).toBe(true);
-    expect(state.fastestLapRecord).toEqual({ lapTime: 89.5, carIdx: PLAYER, isPlayer: true, carNumber: "1" });
-    expect(state.fastestLapClaim).toEqual({
+    expect(slice.record).toEqual({ lapTime: 89.5, carIdx: PLAYER, isPlayer: true, carNumber: "1" });
+    expect(slice.claim).toEqual({
       lap: 4,
       record: { lapTime: 89.5, carIdx: PLAYER, isPlayer: true, carNumber: "1" },
       previous: { lapTime: 90, carIdx: 1, isPlayer: false, carNumber: "07" },
@@ -425,47 +428,47 @@ describe("the player's judge (decision 2)", () => {
     ["an unresolved player", 4, 89.5, { player: -1 }],
   ] as const)("refuses %s, leaving the record and no claim", (_name, lap, lapTime, opts) => {
     expect(judge(lap, lapTime, opts)).toBe(false);
-    expect(state.fastestLapRecord).toMatchObject({ carIdx: 1, lapTime: 90 });
-    expect(state.fastestLapClaim).toBeNull();
+    expect(slice.record).toMatchObject({ carIdx: 1, lapTime: 90 });
+    expect(slice.claim).toBeNull();
   });
 
   it("refuses a pre-green tick", () => {
     field.SessionState = SessionState.ParadeLaps;
 
     expect(judge(4, 89.5)).toBe(false);
-    expect(state.fastestLapClaim).toBeNull();
+    expect(slice.claim).toBeNull();
   });
 
   it("refuses the lap-0 parade crossing through the shared predicate, while the same lap as lap 1 claims (the positive control)", () => {
-    const empty = createInitialState();
+    const empty = createFastestLapState();
     const parade = makeField({ CarIdxBestLapTime: [-1, -1, -1, -1, -1] });
     expect(run(empty, parade)).toEqual([]);
-    expect(empty.fastestLapRecord).toBeNull();
+    expect(empty.record).toBeNull();
 
     const judgeOn = (lap: number): boolean =>
       createFastestLapJudge(empty, parade as unknown as TelemetryData, SESSION_INFO, PLAYER, true)(lap, 200);
 
     expect(judgeOn(0)).toBe(false);
-    expect(empty.fastestLapRecord).toBeNull();
+    expect(empty.record).toBeNull();
     expect(judgeOn(1)).toBe(true);
-    expect(empty.fastestLapRecord).toMatchObject({ isPlayer: true, lapTime: 200 });
+    expect(empty.record).toMatchObject({ isPlayer: true, lapTime: 200 });
   });
 
   it("the first timed lap of the class claims with no previous", () => {
-    const empty = createInitialState();
+    const empty = createFastestLapState();
     const parade = makeField();
     run(empty, parade);
 
     expect(resolvePlayerFastestLap(empty, parade as unknown as TelemetryData, SESSION_INFO, PLAYER, true, 1, 95)).toBe(
       true,
     );
-    expect(empty.fastestLapClaim).toMatchObject({ lap: 1, previous: null });
+    expect(empty.claim).toMatchObject({ lap: 1, previous: null });
   });
 
   it("the claim is published on the same tick, right away, with the player's lap as the lap count, then cleared", () => {
     judge(4, 89.5);
 
-    const events = fastestLapEvents(run(state, field));
+    const events = fastestLapEvents(run(slice, field));
 
     expect(events).toEqual([
       {
@@ -481,26 +484,26 @@ describe("the player's judge (decision 2)", () => {
         isMultiClass: false,
       },
     ]);
-    expect(state.fastestLapClaim).toBeNull();
-    expect(run(state, field)).toEqual([]);
+    expect(slice.claim).toBeNull();
+    expect(run(slice, field)).toEqual([]);
   });
 
   it("a claim is published before any gate of the diff: on a non-race or pre-green tick too, and never on the next tick", () => {
     judge(4, 89.5);
     field.SessionState = SessionState.ParadeLaps;
 
-    expect(fastestLapEvents(run(state, field, { isRace: false }))).toHaveLength(1);
-    expect(state.fastestLapClaim).toBeNull();
-    expect(run(state, field, { isRace: false })).toEqual([]);
-    expect(run(state, field)).toEqual([]);
+    expect(fastestLapEvents(run(slice, field, { isRace: false }))).toHaveLength(1);
+    expect(slice.claim).toBeNull();
+    expect(run(slice, field, { isRace: false })).toEqual([]);
+    expect(run(slice, field)).toEqual([]);
   });
 
   it("a remote car beating the player's record names the player as the beaten holder", () => {
     judge(4, 89.5);
-    run(state, field);
+    run(slice, field);
 
     field.CarIdxBestLapTime[2] = 89;
-    const events = fastestLapEvents(run(state, field));
+    const events = fastestLapEvents(run(slice, field));
 
     expect(events).toHaveLength(1);
     expect(events[0]!.previous).toEqual({ carIdx: PLAYER, lapTime: 89.5, isPlayer: true, carNumber: "1" });
@@ -508,118 +511,143 @@ describe("the player's judge (decision 2)", () => {
 
   it("the player's best refreshing to the claimed time afterwards emits nothing", () => {
     judge(4, 89.5);
-    run(state, field);
+    run(slice, field);
     field.CarIdxBestLapTime[PLAYER] = 89.5;
 
-    expect(run(state, field)).toEqual([]);
+    expect(run(slice, field)).toEqual([]);
   });
 });
 
 describe("diffFastestLap — across a replay glance (the baselines re-seed, the record survives)", () => {
   /**
-   * What `wipeStateForReplay` does to this diff's state: the baselines and
-   * the hold go, the record and its first-seed mark stay. The hold goes
-   * because `diffLaps` re-seeds on the way back, so a crossing pending at the
-   * flip is never emitted and there is nothing to wait for.
+   * What `wipeStateForReplay` does to this diff's slice, through
+   * `resetFastestLapBaselines` (issue #1588): the baselines and the hold go,
+   * the record and its first-seed mark stay. The hold goes because
+   * `diffLaps` re-seeds on the way back, so a crossing pending at the flip is
+   * never emitted and there is nothing to wait for.
    */
-  function glance(state: TranslatorState): void {
-    state.fastestLapBaselines = [];
-    state.fastestLapBaselinesSeeded = false;
-    state.fastestLapHold = null;
+  function glance(slice: FastestLapState): void {
+    Object.assign(slice, resetFastestLapBaselines(slice));
   }
 
   it("re-seeds silently and absorbs a remote car whose best fell below the kept record during the glance, as the holder", () => {
-    const { state, field } = seededState();
-    glance(state);
+    const { slice, field } = seededSlice();
+    glance(slice);
     field.CarIdxBestLapTime[2] = 89;
 
-    expect(run(state, field)).toEqual([]);
-    expect(state.fastestLapRecord).toEqual({ lapTime: 89, carIdx: 2, isPlayer: false, carNumber: "22" });
-    expect(state.fastestLapBaselines).toEqual([92, 90, 89, 0, 0]);
+    expect(run(slice, field)).toEqual([]);
+    expect(slice.record).toEqual({ lapTime: 89, carIdx: 2, isPlayer: false, carNumber: "22" });
+    expect(slice.baselines).toEqual([92, 90, 89, 0, 0]);
   });
 
   it("does not read the player's best on a re-seed, while a connect's first seed does (the positive control)", () => {
-    const { state, field } = seededState();
-    glance(state);
+    const { slice, field } = seededSlice();
+    glance(slice);
     field.CarIdxBestLapTime[PLAYER] = 80;
 
-    expect(run(state, field)).toEqual([]);
-    expect(state.fastestLapRecord).toMatchObject({ carIdx: 1, lapTime: 90 });
+    expect(run(slice, field)).toEqual([]);
+    expect(slice.record).toMatchObject({ carIdx: 1, lapTime: 90 });
 
-    const fresh = createInitialState();
+    const fresh = createFastestLapState();
     expect(run(fresh, field)).toEqual([]);
-    expect(fresh.fastestLapRecord).toMatchObject({ carIdx: PLAYER, lapTime: 80, isPlayer: true });
+    expect(fresh.record).toMatchObject({ carIdx: PLAYER, lapTime: 80, isPlayer: true });
   });
 
   it("a glance before any eligible lap still counts as the first seed, so the way back excludes the player", () => {
-    const state = createInitialState();
+    const slice = createFastestLapState();
     const field = makeField();
-    expect(run(state, field)).toEqual([]);
-    expect(state.fastestLapRecord).toBeNull();
-    expect(state.fastestLapRaceSeeded).toBe(true);
+    expect(run(slice, field)).toEqual([]);
+    expect(slice.record).toBeNull();
+    expect(slice.raceSeeded).toBe(true);
 
-    glance(state);
+    glance(slice);
     field.CarIdxBestLapTime[PLAYER] = 80;
-    expect(run(state, field)).toEqual([]);
-    expect(state.fastestLapRecord).toBeNull();
+    expect(run(slice, field)).toEqual([]);
+    expect(slice.record).toBeNull();
   });
 
   it("a departed holder keeps the record across the glance: a car slower than it but faster than the rest emits nothing, a faster one emits", () => {
-    const { state, field } = seededState();
-    glance(state);
+    const { slice, field } = seededSlice();
+    glance(slice);
     field.CarIdxBestLapTime[1] = -1;
 
-    expect(run(state, field)).toEqual([]);
-    expect(state.fastestLapRecord).toMatchObject({ carIdx: 1, lapTime: 90 });
+    expect(run(slice, field)).toEqual([]);
+    expect(slice.record).toMatchObject({ carIdx: 1, lapTime: 90 });
 
     field.CarIdxBestLapTime[2] = 90.5;
-    expect(run(state, field)).toEqual([]);
+    expect(run(slice, field)).toEqual([]);
 
     field.CarIdxBestLapTime[2] = 89.9;
-    const events = fastestLapEvents(run(state, field));
+    const events = fastestLapEvents(run(slice, field));
     expect(events).toHaveLength(1);
     expect(events[0]).toMatchObject({ carIdx: 2, lapTime: 89.9, previous: { carIdx: 1, lapTime: 90 } });
   });
 
   it("a hold pending at the glance does not survive it: the lap diff re-seeds on the way back, the baselines re-seed, and the scan runs", () => {
-    const { state, field } = seededState();
-    state.lapCompletedInitialized = true;
-    state.lastLapCompletedCounter = 3;
+    const { slice, field } = seededSlice();
+    let lapsJudgedThrough = 3;
     field.LapCompleted = 4;
-    expect(run(state, field, { now: 1000 })).toEqual([]);
-    expect(state.fastestLapHold).toEqual({ lap: 4, since: 1000 });
+    expect(run(slice, field, { now: 1000, lapsJudgedThrough })).toEqual([]);
+    expect(slice.hold).toEqual({ lap: 4, since: 1000 });
 
-    glance(state);
+    glance(slice);
     // `diffLaps` re-seeds on the current count: the pending crossing is never emitted.
-    state.lastLapCompletedCounter = 4;
+    lapsJudgedThrough = 4;
     field.CarIdxBestLapTime[2] = 89;
 
     // The re-seed, silent, absorbs car 2 as the holder; no hold is left.
-    expect(run(state, field, { now: 60_000 })).toEqual([]);
-    expect(state.fastestLapRecord).toMatchObject({ carIdx: 2, lapTime: 89 });
-    expect(state.fastestLapHold).toBeNull();
+    expect(run(slice, field, { now: 60_000, lapsJudgedThrough })).toEqual([]);
+    expect(slice.record).toMatchObject({ carIdx: 2, lapTime: 89 });
+    expect(slice.hold).toBeNull();
 
     // The positive control: the scan is live again.
     field.CarIdxBestLapTime[3] = 88;
-    expect(fastestLapEvents(run(state, field, { now: 60_100 }))).toHaveLength(1);
+    expect(fastestLapEvents(run(slice, field, { now: 60_100, lapsJudgedThrough }))).toHaveLength(1);
+  });
+});
+
+describe("resetFastestLapBaselines (issue #1588)", () => {
+  it("carries the record by reference and the first-seed mark, and returns the other four fields fresh from the factory", () => {
+    const record = { lapTime: 89.5, carIdx: PLAYER, isPlayer: true, carNumber: "1" };
+    const slice: FastestLapState = {
+      record,
+      raceSeeded: true,
+      baselines: [92, 90, 91, 0, 0],
+      baselinesSeeded: true,
+      claim: { lap: 4, record, previous: null },
+      hold: { lap: 5, since: 1000 },
+    };
+
+    const kept = resetFastestLapBaselines(slice);
+    const fresh = createFastestLapState();
+
+    expect(kept.record).toBe(record);
+    expect(kept.raceSeeded).toBe(true);
+    expect({ ...kept, record: fresh.record, raceSeeded: fresh.raceSeeded }).toEqual(fresh);
+    // A new object: the slice handed in is left as it was, and the kept baselines are not its array.
+    expect(kept).not.toBe(slice);
+    expect(kept.baselines).not.toBe(slice.baselines);
+    expect(slice.baselines).toEqual([92, 90, 91, 0, 0]);
   });
 });
 
 describe("diffFastestLap — the hold while the player's lap awaits judgement", () => {
   const CROSS_AT = 10_000;
-  let state: TranslatorState;
+  let slice: FastestLapState;
   let field: Field;
+  /** What `handleTick` hands the diff: the count `diffLaps` last emitted for, `null` while it is unseeded. */
+  let lapsJudgedThrough: number | null;
 
   /** `diffLaps` emits the player's lap: the judge runs on its payload and the count it last emitted for catches up. */
   function lapEmitted(lap: number, lapTime: number): boolean {
     const passed = createFastestLapJudge(
-      state,
+      slice,
       field as unknown as TelemetryData,
       SESSION_INFO,
       PLAYER,
       true,
     )(lap, lapTime);
-    state.lastLapCompletedCounter = lap;
+    lapsJudgedThrough = lap;
 
     return passed;
   }
@@ -630,43 +658,42 @@ describe("diffFastestLap — the hold while the player's lap awaits judgement", 
   }
 
   beforeEach(() => {
-    ({ state, field } = seededState());
+    ({ slice, field } = seededSlice());
     // `diffLaps` is seeded and has emitted the player's lap 3: an 89.9 that took the record from car 1.
-    state.lapCompletedInitialized = true;
     expect(lapEmitted(3, 89.9)).toBe(true);
-    expect(fastestLapEvents(run(state, field, { now: CROSS_AT - 5000 }))).toHaveLength(1);
-    expect(state.fastestLapRecord).toMatchObject({ isPlayer: true, lapTime: 89.9 });
-    expect(state.fastestLapHold).toBeNull();
+    expect(fastestLapEvents(run(slice, field, { lapsJudgedThrough, now: CROSS_AT - 5000 }))).toHaveLength(1);
+    expect(slice.record).toMatchObject({ isPlayer: true, lapTime: 89.9 });
+    expect(slice.hold).toBeNull();
   });
 
   it("the trigger: a rival's best inside the wait, slower than the player's unjudged lap, is announced neither during the hold nor after the player's lap is judged", () => {
     playerCrosses(4);
-    expect(run(state, field, { now: CROSS_AT })).toEqual([]);
-    expect(state.fastestLapHold).toEqual({ lap: 4, since: CROSS_AT });
+    expect(run(slice, field, { lapsJudgedThrough, now: CROSS_AT })).toEqual([]);
+    expect(slice.hold).toEqual({ lap: 4, since: CROSS_AT });
 
     // 0.8 s later car 2 crosses with an 89.7: below the 89.9 record, above the player's unjudged 89.6.
     field.CarIdxBestLapTime[2] = 89.7;
     field.CarIdxLapCompleted[2] = 5;
-    expect(run(state, field, { now: CROSS_AT + 800 })).toEqual([]);
+    expect(run(slice, field, { lapsJudgedThrough, now: CROSS_AT + 800 })).toEqual([]);
     // Nothing moved: not the baseline, not the record.
-    expect(state.fastestLapBaselines[2]).toBe(91);
-    expect(state.fastestLapRecord).toMatchObject({ isPlayer: true, lapTime: 89.9 });
+    expect(slice.baselines[2]).toBe(91);
+    expect(slice.record).toMatchObject({ isPlayer: true, lapTime: 89.9 });
 
     // `lap.completed` lands: the player's 89.6 is judged, then the scan resumes on the same tick.
     expect(lapEmitted(4, 89.6)).toBe(true);
-    const events = fastestLapEvents(run(state, field, { now: CROSS_AT + 1000 }));
+    const events = fastestLapEvents(run(slice, field, { lapsJudgedThrough, now: CROSS_AT + 1000 }));
 
     expect(events).toHaveLength(1);
     expect(events[0]).toMatchObject({ carIdx: PLAYER, isPlayer: true, lap: 4, lapTime: 89.6 });
     // Car 2's 89.7 was read against the 89.6: absorbed, no record.
-    expect(state.fastestLapBaselines[2]).toBe(89.7);
-    expect(state.fastestLapRecord).toMatchObject({ isPlayer: true, lapTime: 89.6 });
-    expect(state.fastestLapHold).toBeNull();
-    expect(run(state, field, { now: CROSS_AT + 1100 })).toEqual([]);
+    expect(slice.baselines[2]).toBe(89.7);
+    expect(slice.record).toMatchObject({ isPlayer: true, lapTime: 89.6 });
+    expect(slice.hold).toBeNull();
+    expect(run(slice, field, { lapsJudgedThrough, now: CROSS_AT + 1100 })).toEqual([]);
 
     // The positive control: with no crossing pending, a rival below the record is announced on its own tick.
     field.CarIdxBestLapTime[3] = 89.5;
-    const control = fastestLapEvents(run(state, field, { now: CROSS_AT + 1200 }));
+    const control = fastestLapEvents(run(slice, field, { lapsJudgedThrough, now: CROSS_AT + 1200 }));
 
     expect(control).toHaveLength(1);
     expect(control[0]).toMatchObject({
@@ -678,14 +705,14 @@ describe("diffFastestLap — the hold while the player's lap awaits judgement", 
 
   it("a rival faster than the player's unjudged lap is announced after the player's event, on the same tick's scan, as taking the record from the player", () => {
     playerCrosses(4);
-    expect(run(state, field, { now: CROSS_AT })).toEqual([]);
+    expect(run(slice, field, { lapsJudgedThrough, now: CROSS_AT })).toEqual([]);
 
     field.CarIdxBestLapTime[2] = 89.5;
     field.CarIdxLapCompleted[2] = 5;
-    expect(run(state, field, { now: CROSS_AT + 800 })).toEqual([]);
+    expect(run(slice, field, { lapsJudgedThrough, now: CROSS_AT + 800 })).toEqual([]);
 
     expect(lapEmitted(4, 89.6)).toBe(true);
-    const events = fastestLapEvents(run(state, field, { now: CROSS_AT + 1000 }));
+    const events = fastestLapEvents(run(slice, field, { lapsJudgedThrough, now: CROSS_AT + 1000 }));
 
     expect(events.map((e) => [e.carIdx, e.lapTime])).toEqual([
       [PLAYER, 89.6],
@@ -695,20 +722,20 @@ describe("diffFastestLap — the hold while the player's lap awaits judgement", 
       lap: 5,
       previous: { carIdx: PLAYER, lapTime: 89.6, isPlayer: true, carNumber: "1" },
     });
-    expect(state.fastestLapRecord).toMatchObject({ carIdx: 2, lapTime: 89.5, isPlayer: false });
+    expect(slice.record).toMatchObject({ carIdx: 2, lapTime: 89.5, isPlayer: false });
   });
 
   it("a crossing that never emits releases the scan at the bound, and the rival's lower best is announced then", () => {
     playerCrosses(4);
-    expect(run(state, field, { now: CROSS_AT })).toEqual([]);
+    expect(run(slice, field, { lapsJudgedThrough, now: CROSS_AT })).toEqual([]);
 
     field.CarIdxBestLapTime[2] = 89.7;
-    expect(run(state, field, { now: CROSS_AT + 800 })).toEqual([]);
+    expect(run(slice, field, { lapsJudgedThrough, now: CROSS_AT + 800 })).toEqual([]);
     // Still held one millisecond short of the bound.
-    expect(run(state, field, { now: CROSS_AT + FASTEST_LAP_HOLD_MAX_MS - 1 })).toEqual([]);
-    expect(state.fastestLapBaselines[2]).toBe(91);
+    expect(run(slice, field, { lapsJudgedThrough, now: CROSS_AT + FASTEST_LAP_HOLD_MAX_MS - 1 })).toEqual([]);
+    expect(slice.baselines[2]).toBe(91);
 
-    const events = fastestLapEvents(run(state, field, { now: CROSS_AT + FASTEST_LAP_HOLD_MAX_MS }));
+    const events = fastestLapEvents(run(slice, field, { lapsJudgedThrough, now: CROSS_AT + FASTEST_LAP_HOLD_MAX_MS }));
 
     expect(events).toHaveLength(1);
     expect(events[0]).toMatchObject({
@@ -719,7 +746,9 @@ describe("diffFastestLap — the hold while the player's lap awaits judgement", 
 
     // The scan stays released for the same unjudged crossing: a later lowering is announced at once.
     field.CarIdxBestLapTime[3] = 89.4;
-    expect(fastestLapEvents(run(state, field, { now: CROSS_AT + FASTEST_LAP_HOLD_MAX_MS + 10_000 }))).toHaveLength(1);
+    expect(
+      fastestLapEvents(run(slice, field, { lapsJudgedThrough, now: CROSS_AT + FASTEST_LAP_HOLD_MAX_MS + 10_000 })),
+    ).toHaveLength(1);
   });
 
   it("the bound is the time-refresh allowance plus the standings wait: past the longest a lap.completed can trail the crossing", () => {
@@ -729,31 +758,31 @@ describe("diffFastestLap — the hold while the player's lap awaits judgement", 
 
   it("the control: a rival's record while the player is not mid-crossing is announced on its own tick", () => {
     field.CarIdxBestLapTime[2] = 89.7;
-    const events = fastestLapEvents(run(state, field, { now: CROSS_AT }));
+    const events = fastestLapEvents(run(slice, field, { lapsJudgedThrough, now: CROSS_AT }));
 
     expect(events).toHaveLength(1);
     expect(events[0]).toMatchObject({ carIdx: 2, lapTime: 89.7, previous: { isPlayer: true, lapTime: 89.9 } });
-    expect(state.fastestLapHold).toBeNull();
+    expect(slice.hold).toBeNull();
   });
 
   it("the next crossing starts a new hold after a released one, and a judged slower lap releases it without a claim", () => {
     playerCrosses(4);
-    run(state, field, { now: CROSS_AT });
+    run(slice, field, { lapsJudgedThrough, now: CROSS_AT });
     const released = CROSS_AT + FASTEST_LAP_HOLD_MAX_MS;
 
     // Released: a value above the record advances its baseline, proving the scan ran.
     field.CarIdxBestLapTime[2] = 90.5;
-    expect(run(state, field, { now: released })).toEqual([]);
-    expect(state.fastestLapBaselines[2]).toBe(90.5);
+    expect(run(slice, field, { lapsJudgedThrough, now: released })).toEqual([]);
+    expect(slice.baselines[2]).toBe(90.5);
 
     playerCrosses(5);
     field.CarIdxBestLapTime[2] = 89.7;
-    expect(run(state, field, { now: released + 100 })).toEqual([]);
-    expect(state.fastestLapHold).toEqual({ lap: 5, since: released + 100 });
-    expect(state.fastestLapBaselines[2]).toBe(90.5);
+    expect(run(slice, field, { lapsJudgedThrough, now: released + 100 })).toEqual([]);
+    expect(slice.hold).toEqual({ lap: 5, since: released + 100 });
+    expect(slice.baselines[2]).toBe(90.5);
 
     expect(lapEmitted(5, 95)).toBe(false);
-    const events = fastestLapEvents(run(state, field, { now: released + 200 }));
+    const events = fastestLapEvents(run(slice, field, { lapsJudgedThrough, now: released + 200 }));
 
     expect(events).toHaveLength(1);
     expect(events[0]).toMatchObject({ carIdx: 2, lapTime: 89.7, previous: { isPlayer: true, lapTime: 89.9 } });
@@ -761,38 +790,37 @@ describe("diffFastestLap — the hold while the player's lap awaits judgement", 
 
   it("never holds for a lap-0 crossing, which the judge refuses whatever its time, nor while the lap diff is not seeded", () => {
     // Lap 0: the count ran ahead of a pace lap's -1, but no lap-0 time can enter the record.
-    state.lastLapCompletedCounter = -1;
+    lapsJudgedThrough = -1;
     playerCrosses(0);
     field.CarIdxBestLapTime[2] = 89.7;
-    expect(fastestLapEvents(run(state, field, { now: CROSS_AT }))).toHaveLength(1);
-    expect(state.fastestLapHold).toBeNull();
+    expect(fastestLapEvents(run(slice, field, { lapsJudgedThrough, now: CROSS_AT }))).toHaveLength(1);
+    expect(slice.hold).toBeNull();
 
     // The lap diff not seeded: it seeds on the current count and never emits for this crossing.
-    state.lapCompletedInitialized = false;
-    state.lastLapCompletedCounter = 3;
+    lapsJudgedThrough = null;
     playerCrosses(4);
     field.CarIdxBestLapTime[3] = 89.5;
-    expect(fastestLapEvents(run(state, field, { now: CROSS_AT + 100 }))).toHaveLength(1);
-    expect(state.fastestLapHold).toBeNull();
+    expect(fastestLapEvents(run(slice, field, { lapsJudgedThrough, now: CROSS_AT + 100 }))).toHaveLength(1);
+    expect(slice.hold).toBeNull();
 
     // The positive control: seeded, the same crossing holds.
-    state.lapCompletedInitialized = true;
+    lapsJudgedThrough = 3;
     field.CarIdxBestLapTime[1] = 89;
-    expect(run(state, field, { now: CROSS_AT + 200 })).toEqual([]);
-    expect(state.fastestLapHold).toEqual({ lap: 4, since: CROSS_AT + 200 });
-    expect(state.fastestLapBaselines[1]).toBe(90);
+    expect(run(slice, field, { lapsJudgedThrough, now: CROSS_AT + 200 })).toEqual([]);
+    expect(slice.hold).toEqual({ lap: 4, since: CROSS_AT + 200 });
+    expect(slice.baselines[1]).toBe(90);
   });
 
   it("a pre-green tick keeps its behaviour under a pending crossing: nothing moves, and the hold starts on the first green tick", () => {
     playerCrosses(4);
     field.SessionState = SessionState.ParadeLaps;
     field.CarIdxBestLapTime[2] = 89.7;
-    expect(run(state, field, { now: CROSS_AT })).toEqual([]);
-    expect(state.fastestLapHold).toBeNull();
-    expect(state.fastestLapBaselines[2]).toBe(91);
+    expect(run(slice, field, { lapsJudgedThrough, now: CROSS_AT })).toEqual([]);
+    expect(slice.hold).toBeNull();
+    expect(slice.baselines[2]).toBe(91);
 
     field.SessionState = SessionState.Racing;
-    expect(run(state, field, { now: CROSS_AT + 100 })).toEqual([]);
-    expect(state.fastestLapHold).toEqual({ lap: 4, since: CROSS_AT + 100 });
+    expect(run(slice, field, { lapsJudgedThrough, now: CROSS_AT + 100 })).toEqual([]);
+    expect(slice.hold).toEqual({ lap: 4, since: CROSS_AT + 100 });
   });
 });
