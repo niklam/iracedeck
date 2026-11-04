@@ -1,10 +1,12 @@
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import url from "node:url";
 import { describe, expect, it, vi } from "vitest";
 
 import {
   DEFAULT_OUT_DIR,
+  listCatalogEntryIds,
   parseArgs,
   publishVoicePacks,
   releaseNotes,
@@ -76,18 +78,22 @@ const LATEST_IS_PLUGIN = { ok: true, stdout: JSON.stringify({ tagName: "v3.1.0" 
  * @param {object} [options]
  * @param {Record<string, { ok: boolean; stdout?: string; stderr?: string }>} [options.gh]
  * @param {object | null | ((id: string) => object | null)} [options.entry] — the committed entry (`null` = missing)
+ * @param {string[]} [options.entryIds] — the ids of the committed entry files; left out, `run` lists exactly
+ *   the packs it is given, the state of a healthy repository
  * @param {string} [options.downloadedSha] — what the published asset hashes to
  * @param {(pack: object) => string} [options.archivePathFor] — where the fake packer says it wrote
  */
 function fakeDeps({
   gh = {},
   entry = committedEntry(),
+  entryIds,
   downloadedSha = SHA,
   archivePathFor = (pack) => path.join(SCRATCH_DIR, "pack", `${pack.id}-${pack.version}.zip`),
 } = {}) {
   const committed = typeof entry === "function" ? entry : () => entry;
   const script = { latest: LATEST_IS_PLUGIN, ...gh };
   const deps = {
+    ...(entryIds === undefined ? {} : { listCommittedEntryIds: vi.fn(() => entryIds) }),
     pack: vi.fn(async (pack) => ({ entry: freshEntry(pack), archivePath: archivePathFor(pack) })),
     readCommittedEntry: vi.fn(committed),
     ensureDir: vi.fn(),
@@ -118,6 +124,9 @@ const EDIT_NOT_LATEST = ["release", "edit", TAG, "--latest=false"];
 const VIEW_LATEST = ["release", "view", "--json", "tagName"];
 
 function run(deps, { publish = false, targetSha, packs = [PACK] } = {}) {
+  // Unless the test named the committed entries, there is one per pack run.
+  deps.listCommittedEntryIds ??= vi.fn(() => packs.map((pack) => pack.id));
+
   return publishVoicePacks({ packs, publish, outDir: OUT_DIR, scratchDir: SCRATCH_DIR, targetSha, deps });
 }
 
@@ -167,6 +176,35 @@ describe("resolveTargetSha", () => {
     expect(resolveTargetSha({ GITHUB_SHA: "abc123" })).toBe("abc123");
     expect(resolveTargetSha({ GITHUB_SHA: "" })).toBeUndefined();
     expect(resolveTargetSha({})).toBeUndefined();
+  });
+});
+
+describe("listCatalogEntryIds", () => {
+  // The same filter as the website's catalog generator, so the ids listed are
+  // exactly the entries that would be published.
+  it("lists each .json file's name without the extension, sorted, and no other file", () => {
+    const dir = mkdtempSync(path.join(os.tmpdir(), "ird-catalog-ids-"));
+
+    try {
+      writeFileSync(path.join(dir, "zeta.json"), "{}");
+      writeFileSync(path.join(dir, "default.json"), "{}");
+      writeFileSync(path.join(dir, "notes.txt"), "");
+      writeFileSync(path.join(dir, "draft.json.bak"), "");
+
+      expect(listCatalogEntryIds(dir)).toEqual(["default", "zeta"]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("is no entries when the directory does not exist, as it is for the website", () => {
+    const dir = mkdtempSync(path.join(os.tmpdir(), "ird-catalog-ids-"));
+
+    try {
+      expect(listCatalogEntryIds(path.join(dir, "catalog"))).toEqual([]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
 
@@ -265,6 +303,81 @@ describe("publishVoicePacks — pack and verify", () => {
     expect(message).toContain(ASSET);
     expect(deps.copyArchive).not.toHaveBeenCalled();
     expect(deps.gh).not.toHaveBeenCalled();
+  });
+});
+
+// The website's catalog generator publishes EVERY entry in the catalog
+// directory, while this script verifies only the packs VOICE_PACKS lists — so
+// an entry outside that list (a pack dropped from voice-packs.mjs with its
+// entry left behind, or one added by hand) would go live with nothing checking
+// it. It is a repo-state error like a mismatched entry, and it does not depend
+// on the bytes, so it fails before the first pack is built: nothing packed,
+// copied or asked of gh, on a dry run as on a publish.
+describe("publishVoicePacks — a committed entry for no pack (#1392)", () => {
+  it.each([
+    ["a dry run", false],
+    ["a publish", true],
+  ])("refuses it on %s, naming the file and both fixes, before packing anything", async (_, publish) => {
+    const deps = fakeDeps({ gh: RELEASE_MISSING, entryIds: ["default", "retired"] });
+
+    const message = await failure(run(deps, { publish }));
+
+    expect(message).toContain(
+      "A committed catalog entry belongs to no pack in VOICE_PACKS: packages/audio-assets/catalog/retired.json.",
+    );
+    expect(message).not.toContain("catalog/default.json");
+    expect(message).toContain("delete the entry to withdraw its pack");
+    expect(message).toContain(
+      'add the pack to packages/audio-assets/src/build/voice-packs.mjs and regenerate its entry with "pnpm --filter @iracedeck/audio-assets pack:voice"',
+    );
+    expect(deps.listCommittedEntryIds).toHaveBeenCalledTimes(1);
+    expect(deps.ensureDir).not.toHaveBeenCalled();
+    expect(deps.pack).not.toHaveBeenCalled();
+    expect(deps.readCommittedEntry).not.toHaveBeenCalled();
+    expect(deps.copyArchive).not.toHaveBeenCalled();
+    expect(deps.gh).not.toHaveBeenCalled();
+  });
+
+  it("names every such entry, sorted, when there are several", async () => {
+    const deps = fakeDeps({ entryIds: ["zeta", "default", "alpha"] });
+
+    const message = await failure(run(deps));
+
+    expect(message).toContain(
+      "2 committed catalog entries belong to no pack in VOICE_PACKS: " +
+        "packages/audio-assets/catalog/alpha.json, packages/audio-assets/catalog/zeta.json.",
+    );
+    expect(message).not.toContain("catalog/default.json");
+    expect(deps.pack).not.toHaveBeenCalled();
+  });
+
+  // Judged against the packs the run is given, not a list of its own: "other"
+  // is in no real VOICE_PACKS.
+  it("passes when the committed entries are exactly the packs, in whatever order they are listed", async () => {
+    const deps = fakeDeps({
+      gh: RELEASE_MISSING,
+      entryIds: ["other", "default"],
+      entry: (id) => committedEntry(freshEntry({ ...PACK, id })),
+    });
+
+    const results = await run(deps, { publish: true, packs: [PACK, OTHER] });
+
+    expect(deps.listCommittedEntryIds).toHaveBeenCalledTimes(1);
+    expect(results.map((result) => [result.id, result.outcome])).toEqual([
+      ["default", "published"],
+      ["other", "published"],
+    ]);
+  });
+
+  // The reverse — a pack with no committed entry — is not this check's: the
+  // per-pack verification refuses it, with the fresh entry to commit.
+  it("leaves a pack with no committed entry to the per-pack verification", async () => {
+    const deps = fakeDeps({ entryIds: [], entry: null });
+
+    const message = await failure(run(deps));
+
+    expect(message).toMatch(/^default: no committed catalog entry at packages\/audio-assets\/catalog\/default\.json/);
+    expect(deps.pack).toHaveBeenCalledTimes(1);
   });
 });
 
