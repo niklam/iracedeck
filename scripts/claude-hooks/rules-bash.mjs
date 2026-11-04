@@ -941,50 +941,55 @@ export const rules = [
     name: "git commit: specs go to master only, with their sections and no control bytes; a dirty lockfile rides with its package.json",
     test: (c, ctx) => {
       if (!has(c, GIT_COMMIT)) return null;
-      const dir = gitCwd(c, ctx.cwd, GIT_COMMIT, ctx.shell);
-      const branch = ctx.branch(dir);
-      const { files: committed, fromIndex } = commitSelection(c, ctx, dir);
-      if (branch && branch !== MAIN_BRANCH) {
+      // Every commit at command position, each in the tree its own `cd`s and
+      // `-C` land in, so a harmless first commit cannot shield a later one (#1594).
+      for (const commit of chainCommands(c, ctx.cwd, GIT_COMMIT, ctx.shell)) {
+        const dir = optionDir(commit.head, GIT_C_RE, commit.base, ctx.shell);
+        const branch = ctx.branch(dir);
+        const selection = commitSelection(c, commit, ctx, dir);
+        const committed = [...selection.keys()];
         const specs = committed.filter((f) => f.startsWith(SPEC_DIR));
-        if (specs.length)
+        if (branch && branch !== MAIN_BRANCH && specs.length)
           return `A spec commits to ${MAIN_BRANCH} as its own docs(specs) commit, never on a feature branch (${specs.join(", ")} on ${branch}). See .claude/rules/specs-and-plans.md.`;
+        // The commit is where a spec's bytes are knowable and its author is still
+        // holding it. Two things pass on purpose (#1193): a spec ALREADY in HEAD,
+        // because the requirement is forward-only like #621's naming convention
+        // and `specs-and-plans.md` protects editing a spec freely before it ships
+        // — 30 of the 64 post-policy specs were amended, and none of those edits
+        // is the moment to demand a section the spec was never asked for; and
+        // text the hook cannot read, because a spec is never blocked over bytes
+        // the hook failed to find. The bytes are read from where the commit will
+        // take them — the index, the working copy, or both when the selection
+        // cannot be read, per `commitSelection`.
+        //
+        // The control-byte check is the exception to forward-only: it covers an
+        // amendment too. A push that changes only specs starts no CI run (#1466),
+        // so `scripts/no-control-bytes.test.mjs` no longer sees a spec until the
+        // next code push, and the commit is the last place it is caught in time.
+        for (const f of specs)
+          for (const from of selection.get(f)) {
+            const text = ctx.committedText?.(dir, f, from);
+            if (text === undefined) continue;
+            const problems = [];
+            const found = findControlByte(text);
+            if (found)
+              problems.push(
+                `${f} has a raw control byte 0x${found.code} on line ${found.line}. Write it as an escape (\\x${found.code}) — a spec-only push runs no CI, so nothing after this commit would catch it (#1466, #1103).`,
+              );
+            const missing = ctx.tracked?.(dir, f) ? [] : missingSpecParts(text);
+            if (missing.length)
+              problems.push(
+                `${f} is missing ${missing.join(" and ")}. A spec carries the header block, an Out of scope section and a Testing/Verification section — each a heading below the title that IS the section's name (\`## Testing\`, \`## 5. Out of scope\`), not a title or heading that mentions it. See .claude/rules/specs-and-plans.md.`,
+              );
+            if (problems.length) return problems.join(" ");
+          }
+        if (
+          committed.some((f) => /(^|\/)package\.json$/.test(f)) &&
+          !committed.includes("pnpm-lock.yaml") &&
+          ctx.modified(dir).includes("pnpm-lock.yaml")
+        )
+          return "pnpm-lock.yaml is modified but not in this commit while a package.json is. Stage the lockfile too — local builds pass via hoisting, CI's --frozen-lockfile fails every job at once.";
       }
-      // The commit is where a spec's bytes are knowable and its author is still
-      // holding it. Two things pass on purpose (#1193): a spec ALREADY in HEAD,
-      // because the requirement is forward-only like #621's naming convention
-      // and `specs-and-plans.md` protects editing a spec freely before it ships
-      // — 30 of the 64 post-policy specs were amended, and none of those edits
-      // is the moment to demand a section the spec was never asked for; and
-      // text the hook cannot read, because a spec is never blocked over bytes
-      // the hook failed to find. The bytes are read from where the commit will
-      // take them — the index or the working copy, per `commitSelection`.
-      //
-      // The control-byte check is the exception to forward-only: it covers an
-      // amendment too. A push that changes only specs starts no CI run (#1466),
-      // so `scripts/no-control-bytes.test.mjs` no longer sees a spec until the
-      // next code push, and the commit is the last place it is caught in time.
-      for (const f of committed.filter((x) => x.startsWith(SPEC_DIR))) {
-        const text = ctx.committedText?.(dir, f, fromIndex.has(f) ? "index" : "worktree");
-        if (text === undefined) continue;
-        const problems = [];
-        const found = findControlByte(text);
-        if (found)
-          problems.push(
-            `${f} has a raw control byte 0x${found.code} on line ${found.line}. Write it as an escape (\\x${found.code}) — a spec-only push runs no CI, so nothing after this commit would catch it (#1466, #1103).`,
-          );
-        const missing = ctx.tracked?.(dir, f) ? [] : missingSpecParts(text);
-        if (missing.length)
-          problems.push(
-            `${f} is missing ${missing.join(" and ")}. A spec carries the header block, an Out of scope section and a Testing/Verification section — each a heading below the title that IS the section's name (\`## Testing\`, \`## 5. Out of scope\`), not a title or heading that mentions it. See .claude/rules/specs-and-plans.md.`,
-          );
-        if (problems.length) return problems.join(" ");
-      }
-      if (
-        committed.some((f) => /(^|\/)package\.json$/.test(f)) &&
-        !committed.includes("pnpm-lock.yaml") &&
-        ctx.modified(dir).includes("pnpm-lock.yaml")
-      )
-        return "pnpm-lock.yaml is modified but not in this commit while a package.json is. Stage the lockfile too — local builds pass via hoisting, CI's --frozen-lockfile fails every job at once.";
       return null;
     },
   },
@@ -1000,8 +1005,9 @@ export const rules = [
     name: "git commit: the Elgato manifest never carries a Debug key",
     test: (c, ctx) => {
       if (!has(c, GIT_COMMIT)) return null;
-      const dir = gitCwd(c, ctx.cwd, GIT_COMMIT, ctx.shell);
-      for (const commit of matchesAt(c, GIT_COMMIT)) {
+      // Each commit in the tree its own `cd`s and `-C` land in, as for the spec rule (#1594 review).
+      for (const commit of chainCommands(c, ctx.cwd, GIT_COMMIT, ctx.shell)) {
+        const dir = optionDir(commit.head, GIT_C_RE, commit.base, ctx.shell);
         for (const from of manifestSources(c, commit, ctx, dir)) {
           const text = ctx.committedText?.(dir, ELGATO_MANIFEST, from);
           if (text === undefined) continue;
@@ -1251,83 +1257,190 @@ function chainWords(text) {
 const asPath = (p) => p.replace(/\\/g, "/");
 
 /**
- * What `git commit` would include, and where each file's bytes come from.
+ * What the `git commit` matched as `commit` (a {@link chainCommands} result,
+ * judged in `dir`) would record, and where each file's bytes come from: a Map
+ * from each repo-relative file to the copies a rule must read — `["index"]`,
+ * `["worktree"]`, or both when the hook cannot tell which.
  *
- * `files`: an explicit `--only` pathspec, else what is staged plus what a
- * `git add` EARLIER IN THE SAME COMMAND stages — the hook runs before any of
- * the chain does, so those paths are not staged yet when it looks (`-a` folds
- * in the modified files too).
+ * The commit's words are read at the commit itself, located in the trusted mask
+ * and taken raw at that index ({@link argTokens}, {@link gitArgs}), as
+ * {@link manifestSources} does. The selection used to be read off the raw
+ * command: the first mention of `commit` anywhere — an echo, a quoted string,
+ * the message — picked the arguments, and a quoted `-a` or `git add` counted,
+ * so `echo "commit -- notes.md" && git commit -m x` committed a staged spec on
+ * a feature branch unjudged (#1594).
  *
- * `fromIndex`: the files a plain commit takes from the index AS IT STANDS NOW —
- * staged before this command and not re-added by it (#1193 review). Every other
- * file is committed from the working copy: a pathspec commit and `-a` take it
- * directly, and a chained `git add` puts it in the index first. A rule that
- * reads a file's bytes must read them from where they will be committed, or a
- * staged spec is judged on an edit made after it was staged.
+ * - Operands, with or without `--` (git takes `git commit <path>` as a pathspec
+ *   too), commit those paths from the WORKING copy; a directory operand selects
+ *   every staged, modified or untracked file under it ({@link pathspecFiles}).
+ *   `-i`/`--include` adds what a plain commit takes, from where it takes it.
+ * - `-a`/`--all`, read as a parsed flag (`-am`, `-qa`, `-a -m`), commits what is
+ *   staged, added and modified, from the working copy.
+ * - Otherwise what is staged plus what a `git add` chained AHEAD of this commit
+ *   stages — the hook runs before any of the chain does, so those paths are not
+ *   staged yet when it looks. A file staged before the command and not re-added
+ *   by it is committed from the index AS IT STANDS NOW (#1193 review), every
+ *   other from the working copy, which the chained add puts in the index first.
+ *   An add after the commit, or one only quoted or echoed, stages nothing for it.
+ * - A substitution where an option or a path could be, or
+ *   `--pathspec-from-file`, on the commit or on an add ahead of it, leaves the
+ *   selection unreadable: every staged, added, modified and untracked file is
+ *   taken, each from both copies, so a spec is denied when either copy fails.
+ *
+ * A rule that reads a file's bytes must read them from where they will be
+ * committed, or a staged spec is judged on an edit made after it was staged.
  */
-function commitSelection(command, ctx, dir) {
-  // Tokenised, not a line regex: a quoted commit message spans lines, and the
-  // `--` that follows it sits on the message's last line.
-  const afterCommit = chainWords(command.slice(command.search(/\bcommit\b/)));
-  const dash = afterCommit.indexOf("--");
-  if (dash >= 0) return { files: afterCommit.slice(dash + 1).map(asPath), fromIndex: new Set() };
-  const added = [...command.matchAll(/\bgit\s+(?:-C\s+\S+\s+)?add\s+(.+)$/gm)].flatMap((m) =>
-    addedFiles(chainWords(m[1]), ctx, dir),
-  );
-  const before = ctx.staged(dir);
-  if (has(command, /\bcommit\b[^|&;]*\s(-a|--all|-am|-a[a-zA-Z]+)\b/))
-    return { files: [...new Set([...before, ...added, ...ctx.modified(dir)])], fromIndex: new Set() };
-  const reAdded = new Set(added);
-  return { files: [...new Set([...before, ...added])], fromIndex: new Set(before.filter((f) => !reAdded.has(f))) };
+function commitSelection(command, commit, ctx, dir) {
+  const args = commitArgs(command, commit);
+  const adds = addsAhead(command, commit, ctx);
+  const unreadable = (a) => a.unknown || a.long.has("--pathspec-from-file");
+  const staged = ctx.staged(dir);
+  const added = adds.filter((a) => !unreadable(a.args)).flatMap((a) => addedFiles(a.args, ctx, a.dir));
+  const selection = new Map();
+  const take = (files, from) => {
+    for (const f of files) selection.set(f, from);
+  };
+  if (unreadable(args) || adds.some((a) => unreadable(a.args))) {
+    take([...staged, ...added, ...ctx.modified(dir), ...(ctx.untracked?.(dir) ?? [])], ["index", "worktree"]);
+    return selection;
+  }
+  const plain = () => {
+    const fromIndex = new Set(staged.filter((f) => !added.includes(f)));
+    for (const f of new Set([...staged, ...added])) selection.set(f, fromIndex.has(f) ? ["index"] : ["worktree"]);
+  };
+  if (args.operands.length) {
+    if (args.short.has("i") || args.long.has("--include")) plain();
+    const candidates = [...new Set([...staged, ...ctx.modified(dir), ...(ctx.untracked?.(dir) ?? [])])];
+    take(
+      args.operands.flatMap((t) => pathspecFiles(t, candidates, ctx, dir)),
+      ["worktree"],
+    );
+  } else if (args.short.has("a") || args.long.has("--all"))
+    take([...staged, ...added, ...ctx.modified(dir)], ["worktree"]);
+  else plain();
+  return selection;
+}
+
+/** The words of the `git commit` matched as `commit` (a {@link chainCommands} result), parsed by {@link gitArgs}. */
+const commitArgs = (command, commit) => gitArgs(argTokens(command, commit.at), COMMIT_OPTIONS);
+
+/**
+ * Every `git add` at command position chained AHEAD of the `git commit` matched
+ * as `commit`, as `{ args, dir }`: its words parsed by {@link gitArgs}, and the
+ * directory it runs in — the session cwd moved by the `cd`s ahead of it and its
+ * own `-C`, as for the commit. An operand is resolved in the add's own directory
+ * (#1594 review: `cd docs && git add superpowers/specs/x.md && cd .. && git commit`
+ * read it against the commit's, and missed the spec). `staged`, `modified` and
+ * `untracked` are repo-root-relative, so an add in the same repository yields
+ * paths the commit's lists compare with; one in another repository can only
+ * over-match, which errs to deny. An add after the commit, or one only quoted
+ * or echoed, is none. Shared by {@link commitSelection} and {@link manifestSources}.
+ */
+function addsAhead(command, commit, ctx) {
+  return [...chainCommands(command, ctx.cwd, GIT_ADD, ctx.shell)]
+    .filter((add) => add.at < commit.at)
+    .map((add) => ({
+      args: gitArgs(argTokens(command, add.at), ADD_OPTIONS),
+      dir: optionDir(add.head, GIT_C_RE, add.base, ctx.shell),
+    }));
 }
 
 /**
- * The files one `git add <args>` stages. An operand names a file OR a
- * directory, so each is matched against the files that differ from the index —
- * modified and untracked — as itself or as a prefix (#1193 review: a new spec
- * staged by `git add -A`, `git add .` or `git add docs/superpowers/specs/` used
- * to reach no rule at all). `.`, and `-A`/`--all`/`-u` with no operand, select
- * every candidate; `-u`/`--update` leaves untracked files out. An operand that
- * matches nothing is kept as written — a file already staged, a glob, a path
- * outside this model — which is exactly what the rules saw before.
+ * The files one `git add` (its words parsed by {@link gitArgs}) stages. An
+ * operand names a file OR a directory, so each is matched against the files
+ * that differ from the index — modified and untracked — as itself or as a
+ * prefix (#1193 review: a new spec staged by `git add -A`, `git add .` or
+ * `git add docs/superpowers/specs/` used to reach no rule at all), through
+ * {@link pathspecFiles}. `-A`/`--all`/`-u` with no operand select every
+ * candidate; `-u`/`--update` leaves untracked files out. The caller handles an
+ * add whose words cannot be read.
  */
 function addedFiles(args, ctx, dir) {
-  const flags = args.filter((w) => w.startsWith("-"));
-  const operands = args.filter((w) => !w.startsWith("-")).map(asPath);
-  const updateOnly = flags.some((f) => /^(-u|--update)$/.test(f));
+  const flag = (short, long) => short.some((f) => args.short.has(f)) || long.some((f) => args.long.has(f));
+  const updateOnly = flag(["u"], ["--update"]);
   const candidates = [...ctx.modified(dir), ...(updateOnly ? [] : (ctx.untracked?.(dir) ?? []))];
-  if (!operands.length) return flags.some((f) => /^(-A|--all|-u|--update)$/.test(f)) ? candidates : [];
-  return operands.flatMap((o) => {
-    const p = o.replace(/^\.\//, "").replace(/\/+$/, "");
-    if (p === "." || p === "") return candidates;
-    const hits = candidates.filter((f) => f === p || f.startsWith(`${p}/`));
-    return hits.length ? hits : [o];
-  });
+  if (!args.operands.length) return flag(["A", "u"], ["--all", "--update"]) ? candidates : [];
+  return args.operands.flatMap((t) => pathspecFiles(t, candidates, ctx, dir));
+}
+
+/**
+ * The files among `candidates` (repo-relative) that a pathspec operand selects:
+ * itself, or every candidate under it as a directory. `.` or the repo root, a
+ * glob, a `:(magic)` pathspec and a substitution select every candidate — the
+ * hook evaluates none of those, and erring that way costs a deny only when a
+ * candidate carries something to deny. An operand that matches nothing is kept
+ * as its path — a file already staged, a path outside this model — so a rule
+ * still sees the name.
+ */
+function pathspecFiles(token, candidates, ctx, dir) {
+  const rel = pathspecPath(token, ctx, dir);
+  if (rel === undefined || rel === "" || rel === ".") return candidates;
+  const hits = candidates.filter((f) => f === rel || f.startsWith(`${rel}/`));
+  return hits.length ? hits : [rel];
+}
+
+/**
+ * A pathspec operand as a repo-relative path, read relative to the command's
+ * cwd `dir`; `undefined` for one the hook does not evaluate — a glob, a
+ * `:(magic)` pathspec or a substitution.
+ */
+function pathspecPath(token, ctx, dir) {
+  if (!token.known) return undefined;
+  const op = token.value;
+  if (/[*?[]/.test(op) || op.startsWith(":")) return undefined;
+  const top = ctx.toplevel?.(dir);
+  return asPath(top ? path.relative(top, resolveDir(dir, op, { shell: ctx.shell })) : op)
+    .replace(/^\.\//, "")
+    .replace(/\/+$/, "");
 }
 
 /**
  * The words of one command, from `from` (just past its verb) to the end of that
- * command, as `{ value, known }`. Found in the `flat` text, where every quote,
- * substitution, heredoc body and comment is blanked — so a multi-line
- * `-m "$(cat <<'EOF' … EOF)"` is ONE word and the `-- <paths>` after it are
- * still read — and each word's value taken from the raw text: a plain word
- * as written, a quoted one unquoted, one with a `$` or backtick outside single
- * quotes as `known: false` (its value is decided at run time), and heredoc bodies and comments
- * dropped as data. When the mask is not trusted the raw command is tokenised
- * instead, respecting simple quotes, as the older rules do.
+ * command, as `{ value, known }`. The command ends where `commandEnd` in
+ * `shell-lexer.mjs` says, in the trusted-masked text: at a chain separator, or
+ * at the `)` or backtick that closes the subshell or substitution it runs in —
+ * a `(git commit -m x -- <path>)` used to read `<path>)` as its operand
+ * (#1594 review) — while a substitution among its own arguments, parens and all,
+ * stays inside it. That text is then lexed on its own, as `issueEdits` does, and
+ * the words found in its `flat` text, where every quote, substitution, heredoc
+ * body and comment is blanked — so a multi-line `-m "$(cat <<'EOF' … EOF)"` is
+ * ONE word and the `-- <paths>` after it are still read, and a command inside a
+ * substitution, which the whole command's flat text blanks, is read too. Each
+ * word's value is taken from the raw text: a plain word as written, a quoted one
+ * unquoted, one with a `$` or backtick outside single quotes as `known: false`
+ * (its value is decided at run time), and heredoc bodies and comments dropped as
+ * data. When the command's own text does not lex (a heredoc whose body follows
+ * it), the whole command's lexing is used for it — unless that blanks the
+ * command's own spaces, as it does inside a substitution, where the words cannot
+ * be read and one `known: false` token stands for them, so the selection is
+ * unreadable (#1594 second read). A backtick counts as opening a substitution
+ * only when no odd run of backslashes escapes it. When the mask is not trusted
+ * the raw command is tokenised instead, respecting simple quotes, as the older
+ * rules do.
  */
 function argTokens(command, from) {
   const { text, flat, trusted } = view(command);
   if (!trusted) return chainWords(command.slice(from)).map((value) => ({ value, known: true }));
-  // `2>&1` and `&>` are redirections, not a background `&`.
-  const sep = /&&|\|\||[;|\n]|(?<![<>])&(?!>)/g;
-  sep.lastIndex = from;
-  const end = sep.exec(flat)?.index ?? command.length;
+  // Live backticks ahead of it: an odd count means it runs inside a backtick
+  // substitution. The mask keeps an escaped `\`` live, so one preceded by an
+  // odd run of live backslashes is a character, not a substitution (#1594 second read).
+  const ticks = [...text.slice(0, from).matchAll(/\x60/g)].filter(
+    (m) => text.slice(0, m.index).match(/\\*$/)[0].length % 2 === 0,
+  );
+  const end = commandEnd(text, from, ticks.length % 2 === 1);
+  const own = maskInert(command.slice(from, end));
+  if (!own.sure) {
+    // The whole command's flat text blanks a substitution, spaces and all, so
+    // inside one it gives a single blank word for the whole command: its words
+    // cannot be read, and an unreadable word makes the selection unreadable.
+    for (let i = from; i < end; i++) if (flat[i] === "_" && /\s/.test(text[i])) return [{ value: "", known: false }];
+  }
+  const [ownFlat, ownText] = own.sure ? [own.flat, own.masked] : [flat.slice(from, end), text.slice(from, end)];
   const out = [];
-  for (const m of flat.slice(from, end).matchAll(/\S+/g)) {
+  for (const m of ownFlat.matchAll(/\S+/g)) {
     const a = from + m.index;
     const raw = command.slice(a, a + m[0].length);
-    const masked = text.slice(a, a + m[0].length);
+    const masked = ownText.slice(m.index, m.index + m[0].length);
     // A `$` or backtick outside single quotes expands at run time: `"$P"`, `$(…)`, `${x}`.
     const expands = /[$`]/.test(raw.replace(/'[^']*'/g, ""));
     if (m[0] !== raw && /^_+$/.test(masked)) continue;
@@ -1338,10 +1451,14 @@ function argTokens(command, from) {
   return out;
 }
 
-/** `git commit` options whose value is the NEXT word when not attached; `-S` and `-u` only ever take one attached. */
-const COMMIT_VALUE_SHORT = "mFCct";
-const COMMIT_ATTACHED_SHORT = "Su";
-const COMMIT_VALUE_LONG = new Set([
+/**
+ * How {@link gitArgs} reads one git command's options: `valueShort` and
+ * `valueLong` take the NEXT word as their value when it is not attached,
+ * `attachedShort` only ever takes one attached, and `long` is every long option
+ * the command has (from `git <cmd> -h`, git 2.56), against which an abbreviated
+ * one is resolved as git resolves it (#1594 second read).
+ */
+const COMMIT_VALUE_LONG = [
   "--message",
   "--file",
   "--reuse-message",
@@ -1354,7 +1471,72 @@ const COMMIT_VALUE_LONG = new Set([
   "--cleanup",
   "--trailer",
   "--pathspec-from-file",
-]);
+  "--unified",
+  "--inter-hunk-context",
+];
+const COMMIT_OPTIONS = {
+  valueShort: "mFCctU",
+  attachedShort: "Su",
+  valueLong: new Set(COMMIT_VALUE_LONG),
+  long: new Set([
+    ...COMMIT_VALUE_LONG,
+    "--quiet",
+    "--verbose",
+    "--reset-author",
+    "--signoff",
+    "--edit",
+    "--status",
+    "--gpg-sign",
+    "--all",
+    "--include",
+    "--interactive",
+    "--patch",
+    "--only",
+    "--no-verify",
+    "--verify",
+    "--dry-run",
+    "--short",
+    "--branch",
+    "--ahead-behind",
+    "--porcelain",
+    "--long",
+    "--null",
+    "--amend",
+    "--no-post-rewrite",
+    "--post-rewrite",
+    "--untracked-files",
+    "--pathspec-file-nul",
+    "--allow-empty",
+    "--allow-empty-message",
+  ]),
+};
+const ADD_VALUE_LONG = ["--unified", "--inter-hunk-context", "--chmod", "--pathspec-from-file"];
+const ADD_OPTIONS = {
+  valueShort: "U",
+  attachedShort: "",
+  valueLong: new Set(ADD_VALUE_LONG),
+  long: new Set([
+    ...ADD_VALUE_LONG,
+    "--dry-run",
+    "--verbose",
+    "--interactive",
+    "--patch",
+    "--auto-advance",
+    "--edit",
+    "--force",
+    "--update",
+    "--renormalize",
+    "--resolved",
+    "--intent-to-add",
+    "--all",
+    "--ignore-removal",
+    "--refresh",
+    "--ignore-errors",
+    "--ignore-missing",
+    "--sparse",
+    "--pathspec-file-nul",
+  ]),
+};
 
 /** A redirection operator standing alone, whose target is the next word. */
 const BARE_REDIRECT = /^\d*(?:<<-?|<<<|<>|<&|>&|>>|>\||&>>?|<|>)$/;
@@ -1406,30 +1588,36 @@ function pushReachesIntegration(tokens, fromIntegration) {
 }
 
 /**
- * A git command's words split into options and pathspec operands: `long` and
- * `short` hold the option names seen (a short cluster's letters one by one),
- * an option's value is skipped, redirections and their targets are skipped,
- * and every word after `--` is an operand. `unknown` is set when a word that is
- * not an option's value carries a substitution — it could be anything.
+ * A git command's words (from {@link argTokens}) split into options and
+ * pathspec operands, read with the command's `options` ({@link COMMIT_OPTIONS},
+ * {@link ADD_OPTIONS}): `long` and `short` hold the option names seen (a short
+ * cluster's letters one by one, a long one as git resolves an abbreviation,
+ * {@link longName}), an option's value is skipped, and every word after `--` is
+ * an operand. A redirection and its target are the shell's, before `--` or
+ * after it, whatever the target expands to: `2>$null` or `>"$f"` read as an
+ * operand made every selection unreadable (#1594 second read). `unknown` is set
+ * when a word that is not an option's value carries a substitution — it could
+ * be anything — and for a long option git would refuse as unknown or ambiguous,
+ * since one the hook does not model might take the next word as its value.
  */
-function gitArgs(tokens, valueShort = "", attachedShort = "", valueLong = new Set()) {
+function gitArgs(tokens, { valueShort = "", attachedShort = "", valueLong = new Set(), long } = {}) {
   const res = { long: new Set(), short: new Set(), operands: [], unknown: false };
+  let dashed = false;
   for (let i = 0; i < tokens.length; i++) {
     const { value: w, known } = tokens[i];
-    // An option is still read by its name; only its attached value is unknown.
-    if (!known && !w.startsWith("-")) {
-      res.unknown = true;
-      continue;
-    }
     if (/^(?:\d*[<>]|&>)/.test(w)) {
       if (BARE_REDIRECT.test(w)) i++;
-    } else if (w === "--") {
-      res.operands.push(...tokens.slice(i + 1));
-      break;
-    } else if (w.startsWith("--")) {
-      const name = w.split("=")[0];
-      res.long.add(name);
-      if (!w.includes("=") && valueLong.has(name)) i++;
+    } else if (dashed) res.operands.push(tokens[i]);
+    // An option is still read by its name; only its attached value is unknown.
+    else if (!known && !w.startsWith("-")) res.unknown = true;
+    else if (w === "--") dashed = true;
+    else if (w.startsWith("--")) {
+      const name = longName(w.split("=")[0], long);
+      if (name === undefined) res.unknown = true;
+      else {
+        res.long.add(name);
+        if (!w.includes("=") && valueLong.has(name)) i++;
+      }
     } else if (/^-[^-]/.test(w)) {
       for (let k = 1; k < w.length; k++) {
         res.short.add(w[k]);
@@ -1446,6 +1634,24 @@ function gitArgs(tokens, valueShort = "", attachedShort = "", valueLong = new Se
 }
 
 /**
+ * A long option as git resolves it among `known` (#1594 second read): itself,
+ * the one option it is a prefix of — git takes any unique abbreviation, so
+ * `--mess "add thing"` is `--message` and its value, not a pathspec — or the
+ * `--no-` negation of either. `undefined` when git would refuse it as unknown
+ * or ambiguous. Without `known` every name stands as written.
+ */
+function longName(name, known) {
+  if (!known || known.has(name)) return name;
+  const hits = [...known].filter((k) => k.startsWith(name));
+  if (hits.length === 1) return hits[0];
+  if (hits.length === 0 && name.startsWith("--no-")) {
+    const positive = longName(`--${name.slice(5)}`, known);
+    return positive && `--no-${positive.slice(2)}`;
+  }
+  return undefined;
+}
+
+/**
  * Whether a pathspec operand, relative to the command's cwd `dir`, selects
  * the repo-relative `target`: as itself, as a directory above it, or as the
  * whole tree. A glob or a `:(magic)` pathspec is taken to select it — the hook
@@ -1453,14 +1659,8 @@ function gitArgs(tokens, valueShort = "", attachedShort = "", valueLong = new Se
  * target would really carry something to deny.
  */
 function pathspecCovers(token, target, ctx, dir) {
-  if (!token.known) return true;
-  const op = token.value;
-  if (/[*?[]/.test(op) || op.startsWith(":")) return true;
-  const top = ctx.toplevel?.(dir);
-  const rel = asPath(top ? path.relative(top, resolveDir(dir, op, { shell: ctx.shell })) : op)
-    .replace(/^\.\//, "")
-    .replace(/\/+$/, "");
-  if (rel === "" || rel === ".") return true;
+  const rel = pathspecPath(token, ctx, dir);
+  if (rel === undefined || rel === "" || rel === ".") return true;
   if (rel.startsWith("../")) return false;
   return target === rel || target.startsWith(`${rel}/`);
 }
@@ -1468,46 +1668,44 @@ function pathspecCovers(token, target, ctx, dir) {
 const GIT_ADD = cmd(/git\s+(?:-C\s+\S+\s+)?add\b/);
 
 /**
- * Where the `git commit` matched as `commit` takes the Elgato manifest's bytes
- * from: `[]` when it does not commit the manifest at all, `["index"]` for the
- * staged copy, `["worktree"]` for the working copy, both when it cannot tell.
+ * Where the `git commit` matched as `commit` (a {@link chainCommands} result,
+ * judged in `dir`) takes the Elgato manifest's bytes from: `[]` when it does
+ * not commit the manifest at all, `["index"]` for the staged copy,
+ * `["worktree"]` for the working copy, both when it cannot tell.
  *
  * - A pathspec (`git commit [--only] [--] <paths>`) commits those paths from
  *   the WORKING copy; a staged manifest outside it is left out, unless
  *   `-i`/`--include` adds the staged files too.
  * - `-a`/`--all` commits every tracked file from the working copy.
- * - A `git add` chained ahead of the commit that selects the manifest stages
- *   the working copy before the commit runs (the hook runs before both).
+ * - A `git add` chained ahead of the commit that selects the manifest, read in
+ *   its own directory ({@link addsAhead}), stages the working copy before the
+ *   commit runs (the hook runs before both).
  * - Otherwise a plain commit takes the INDEX, and only when the manifest is
  *   staged — so a manifest dirty with the key but not staged passes.
  * - A substitution standing where an option or a path could be, and
- *   `--pathspec-from-file`, leave the selection unknown: both copies are read.
+ *   `--pathspec-from-file`, on the commit or on an add ahead of it, leave the
+ *   selection unknown: both copies are read.
  */
 function manifestSources(command, commit, ctx, dir) {
-  // GIT_COMMIT and GIT_ADD both end on their verb, so a match ends where the verb does.
-  const args = gitArgs(
-    argTokens(command, commit.index + commit[0].length),
-    COMMIT_VALUE_SHORT,
-    COMMIT_ATTACHED_SHORT,
-    COMMIT_VALUE_LONG,
-  );
+  const args = commitArgs(command, commit);
   if (args.unknown || args.long.has("--pathspec-from-file")) return ["index", "worktree"];
-  const covers = (t) => pathspecCovers(t, ELGATO_MANIFEST, ctx, dir);
+  const covers = (d) => (t) => pathspecCovers(t, ELGATO_MANIFEST, ctx, d);
   if (args.operands.length) {
-    if (args.operands.some(covers)) return ["worktree"];
+    if (args.operands.some(covers(dir))) return ["worktree"];
     if (!(args.short.has("i") || args.long.has("--include"))) return [];
   } else if (args.short.has("a") || args.long.has("--all")) return ["worktree"];
-  const added = [...matchesAt(command, GIT_ADD)]
-    .filter((m) => m.index < commit.index)
-    .some((m) => {
-      const a = gitArgs(argTokens(command, m.index + m[0].length));
-      if (a.unknown || a.long.has("--pathspec-from-file")) return true;
-      if (a.operands.length) return a.operands.some(covers);
-      return (
-        ["A", "u", "p", "i", "e"].some((f) => a.short.has(f)) ||
-        ["--all", "--update", "--patch", "--interactive", "--edit"].some((f) => a.long.has(f))
-      );
-    });
+  const adds = addsAhead(command, commit, ctx);
+  // An add whose selection is only decided at run time may or may not stage the
+  // manifest, so the commit may take either copy: a manifest staged with the key
+  // and cleaned since, then `git add "$F" && git commit`, records the staged one.
+  if (adds.some(({ args: a }) => a.unknown || a.long.has("--pathspec-from-file"))) return ["index", "worktree"];
+  const added = adds.some(({ args: a, dir: addDir }) => {
+    if (a.operands.length) return a.operands.some(covers(addDir));
+    return (
+      ["A", "u", "p", "i", "e"].some((f) => a.short.has(f)) ||
+      ["--all", "--update", "--patch", "--interactive", "--edit"].some((f) => a.long.has(f))
+    );
+  });
   if (added) return ["worktree"];
   return ctx.staged(dir).includes(ELGATO_MANIFEST) ? ["index"] : [];
 }
