@@ -256,6 +256,10 @@ describe("post rules", () => {
       expect(mergeRepo({ ref: "5" }, undefined)).toBeUndefined();
       expect(mergeRepo({ ref: "5", repo: null }, "e/f")).toBeNull();
       expect(mergeRepo({ ref: "5" }, null)).toBeNull();
+      // An empty value is none to gh: `-R ''` falls through to GH_REPO (#1393).
+      expect(mergeRepo({ ref: "5", repo: "" }, "e/f")).toBe("e/f");
+      expect(mergeRepo({ ref: "5", repo: "" }, "")).toBeUndefined();
+      expect(mergeRepo({ ref: "5" }, "")).toBeUndefined();
       expect(mergeRepo({ repo: "github.com/c/d" })).toBe("c/d");
       expect(mergeRepo({ repo: "https://github.com/c/d.git" })).toBe("c/d");
       expect(mergeRepo({ repo: "git@github.com:niklam/iracedeck.git" })).toBe("niklam/iracedeck");

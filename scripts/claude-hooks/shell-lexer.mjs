@@ -419,6 +419,26 @@ export function gitCwd(command, cwd, re, shell = BASH) {
 }
 
 /**
+ * Where the segment holding the first `re` match starts, split as
+ * {@link gitCwd} splits, when every segment ahead of it is a `cd <dir>` that
+ * {@link gitCwd} follows (`cd -` and `cd +` are not); `-1` when anything else
+ * comes first or nothing matches. The merge gate's fail-closed check (#1393):
+ * any other command ahead of a merge could change what gh resolves it to —
+ * the repository, the checkout, the branch — after the gate has read it.
+ */
+export function startAfterCds(command, re, shell = BASH) {
+  const text = trustedMask(command);
+  const segs = ranges(text, CHAIN).filter(([a, b]) => text.slice(a, b).trim());
+  const at = segs.findIndex(([a, b]) => re.test(text.slice(a, b)));
+  if (at < 0) return -1;
+  const followed = segs.slice(0, at).every(([a, b]) => {
+    const dir = argIn(command, text, a, b, cdRe(shell));
+    return dir && !HISTORY_DIR.has(dir);
+  });
+  return followed ? segs[at][0] : -1;
+}
+
+/**
  * Every command `re` (a {@link cmd} regex) finds at command position, in chain
  * order, each with `base` — the session cwd moved by the `cd`s chained ahead of
  * it, as in {@link gitCwd} — and, read raw, `head` (the matched text) and

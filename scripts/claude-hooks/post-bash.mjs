@@ -24,7 +24,14 @@ import {
   setBoardStatus,
   setHookDeadline,
 } from "./lib.mjs";
-import { firstMerge, GIT_WORKTREE_ADD, issueEdits, issueFromWorktreePath, worktreeAddTarget } from "./rules-bash.mjs";
+import {
+  firstMerge,
+  GH_PR_MERGE,
+  GIT_WORKTREE_ADD,
+  issueEdits,
+  issueFromWorktreePath,
+  worktreeAddTarget,
+} from "./rules-bash.mjs";
 import {
   assignedGhRepo,
   boardIssues,
@@ -43,10 +50,10 @@ import {
 } from "./rules-post.mjs";
 import { BASH, chainCommands, gitCwd, POWERSHELL, powershellAsBash, resolveDir, trustedMask } from "./shell-lexer.mjs";
 
-// Unanchored, as `firstMerge` is: anchored, a merge behind a wrapper the anchor
-// does not know matched no segment, and `gitCwd` then walked every `cd` in the
-// chain, those after the merge included.
-const GH_PR_MERGE = /\bgh\s+pr\s+merge\b/;
+// `GH_PR_MERGE` (from rules-bash.mjs) is unanchored, as `firstMerge` is:
+// anchored, a merge behind a wrapper the anchor does not know matched no
+// segment, and `gitCwd` then walked every `cd` in the chain, those after the
+// merge included.
 const GH_ISSUE_CREATE = /\bgh\s+issue\s+create\b/;
 /** A `setBoardStatus` line that read the card's lane, whatever it then did — every other line may be the deadline's doing. */
 const BOARD_ANSWERED = / moved | would move | already in |; not moving /;

@@ -44,6 +44,7 @@ import {
   powershellAsBash,
   ranges,
   resolveDir,
+  startAfterCds,
   trustedMask,
   view,
   words,
@@ -159,7 +160,11 @@ export const coderabbitReviews = (reviews) =>
   );
 
 /** A `gh pr merge` in the masked text: where the gate reads the repository and directory from. */
-const GH_PR_MERGE = /\bgh\s+pr\s+merge\b/;
+export const GH_PR_MERGE = /\bgh\s+pr\s+merge\b/;
+/** A lone `&` that backgrounds a command: not `&&`, nor a redirect's `>&`, `<&` or `&>`. */
+const BACKGROUND = /(?<![<>&])&(?![>&])/;
+/** gh's repository and host variables, any case: Windows hands gh its environment case-blind. */
+const GH_ENV = /(?<![A-Za-z0-9_])gh_(?:repo|host)(?![A-Za-z0-9_])/gi;
 
 /** `gh pr merge` flags that take a value, so the value is never read as the PR or as a flag. */
 const MERGE_VALUE_FLAGS = new Set([
@@ -286,9 +291,22 @@ export function parseMerge({ raw, flat, trusted }) {
       }
       continue;
     }
-    if (/^-R[^=]/.test(t.shape)) {
-      // gh's short flag with its value attached: `-Rowner/repo`.
-      repo = plainValue({ word: t.word.slice(2), shape: t.shape.slice(2) });
+    if (/^-[^-]./.test(t.shape)) {
+      // gh's short flags as pflag reads them (#1393): combined (`-ds`,
+      // `-dR owner/repo`), with the value of the first one that takes one
+      // attached (`-Rowner/repo`, `-R=owner/repo`) or in the next word.
+      for (let j = 1; j < t.shape.length; j++) {
+        const name = `-${t.shape[j]}`;
+        if (!MERGE_VALUE_FLAGS.has(name)) {
+          flags.add(name);
+          continue;
+        }
+        const rest = t.shape.length - (j + 1);
+        const from = rest > 1 && t.shape[j + 1] === "=" ? j + 2 : j + 1;
+        const value = rest > 0 ? { word: t.word.slice(from), shape: t.shape.slice(from) } : tokens[++k];
+        if (name === "-R") repo = plainValue(value);
+        break;
+      }
       continue;
     }
     const eq = t.shape.indexOf("=");
@@ -642,6 +660,10 @@ export const rules = [
   {
     name: "gh pr merge: approval and checks are verified at the current head",
     test: (c, ctx) => {
+      // `--repo` / `-R` is a flag of `gh pr` itself, so cobra also takes it
+      // ahead of `merge`, where the shape below never matches (#1393).
+      if (has(c, cmd(/gh\s+pr\s+-[^;&|\n]*?\bmerge\b/)))
+        return "Write a merge as `gh pr merge <pr> …`, with every flag after `merge`: a flag between `pr` and `merge` hides the merge from this gate (#1393).";
       if (!has(c, cmd(/gh\s+pr\s+merge\b/))) return null;
       // One merge per command, judged on its own words: the rule used to read
       // the first merge of a chain and honour `--admin` anywhere in the string.
@@ -655,13 +677,27 @@ export const rules = [
         return "Could not read this `gh pr merge`'s own arguments (a quoted or substituted PR, or a merge inside a substitution or heredoc); run it on its own with the PR number or URL as a plain word.";
       const ref = merge.ref;
       // The gate judges a PR of HOME_REPO only, and the PR it reads must be the
-      // one gh will merge (#1393). The repository is taken in gh's order — a PR
-      // URL, then `--repo` / `-R`, then a `GH_REPO` that reaches the merge — and
-      // anything else, or a value the hook cannot read, is refused before gh is
-      // asked: reading this repository's PR of the same number is how a merge in
-      // another repository passed on checks nobody ran there.
+      // one gh will merge (#1393): reading this repository's PR of the same
+      // number is how a merge in another repository passed on checks nobody ran
+      // there. The gate reads before the command runs, so nothing may come ahead
+      // of the merge that could change what gh resolves it to — an export, a
+      // branch switch, a `pushd` — but a plain `cd <dir>`, which it follows.
+      const start = startAfterCds(c, GH_PR_MERGE, ctx.shell);
       const masked = trustedMask(c);
       const at = GH_PR_MERGE.exec(masked)?.index ?? c.length;
+      if (start < 0 || BACKGROUND.test(masked.slice(0, at)))
+        return "Run `gh pr merge` as its own command, with nothing ahead of it but a plain `cd <dir> &&`: anything else could change which repository or PR gh merges after this gate has read it (#1393).";
+      // Its own prefix may name the repository as `GH_REPO=<owner/repo>`, never a
+      // host, a directory, or a spelling the gate does not read.
+      const prefix = c.slice(start, at);
+      if (
+        /(?:^|\s)(?:-C|--chdir)(?=[=\s]|$)/.test(prefix) ||
+        [...prefix.matchAll(GH_ENV)].some((m) => !prefix.startsWith("GH_REPO=", m.index))
+      )
+        return "This `gh pr merge` sets GH_HOST, a working directory, or a GH_REPO the gate cannot read in its own prefix; name the repository with `-R` on the merge, or leave it out (#1393).";
+      // The repository in gh's order — a PR URL, then `--repo` / `-R`, then a
+      // `GH_REPO` — refused before gh is asked when it is not HOME_REPO or
+      // cannot be read.
       const named = mergeRepo(merge, assignedGhRepo(c.slice(0, at), masked.slice(0, at)));
       if (named === null)
         return `Could not read the repository this \`gh pr merge\` names (a \`--repo\` / \`-R\` or \`GH_REPO\` that is not a plain value); the merge gate judges ${HOME_REPO} PRs only, so name it as a plain word or leave it out.`;
