@@ -40,13 +40,12 @@ const SCOPE = "@iracedeck/";
  * `@iracedeck/<pkg>/<subpath>`). An entry here that stops being needed — the
  * package or subpath is gone, it is now aliased, or it now points at source —
  * fails the suite, so the list cannot rot.
+ *
+ * Empty since #1375: its one entry, `@iracedeck/scenario-harness`, named the
+ * harness's start script as a `main` no package imported, and the package
+ * dropped `main` and `types` instead — it is run, never imported.
  */
-const RESOLVED_TO_DIST = {
-  "@iracedeck/scenario-harness":
-    "its `main` (dist/main.js) is the harness server's start script, not a library entry: importing " +
-    "it boots a server and installs signal handlers, no package depends on it and no test imports it, " +
-    "so an alias would only advertise an import nobody may make.",
-};
+const RESOLVED_TO_DIST = {};
 
 /** Export conditions in the order Vitest's resolver prefers them for a Node test. */
 const CONDITIONS = ["import", "node", "default", "require"];
