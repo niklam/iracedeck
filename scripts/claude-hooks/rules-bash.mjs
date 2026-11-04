@@ -436,11 +436,13 @@ export function firstMerge(command) {
  * the program a bare regex can see (`gh.exe`, `"gh"`, `GH`), and the larger of
  * it and the count in the rewritten text wins (#1606): a quoted path to gh is
  * seen only by the second, a merge inside a string handed to nothing only by
- * the first.
+ * the first. Only the program's case is folded: `pr merge` is gh's own
+ * subcommand, in lower case, so `GH PR MERGE` in a body is no merge (#1606
+ * review).
  */
 const mergeMentions = (command) =>
   Math.max(
-    (command.match(/\bgh(?:\.exe)?\b["']?\s+pr\s+merge\b/gi) ?? []).length,
+    (command.match(/\b[Gg][Hh](?:\.[Ee][Xx][Ee])?\b["']?\s+pr\s+merge\b/g) ?? []).length,
     (view(command).text.match(/\bgh\s+pr\s+merge\b/g) ?? []).length,
   );
 

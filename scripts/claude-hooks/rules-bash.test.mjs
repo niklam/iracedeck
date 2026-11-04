@@ -4281,4 +4281,14 @@ describe("the program-word rewrite's review round (#1606)", () => {
       expect(deny(`${gh} pr merge 5 --squash`, ps({ prView: unapproved }))).toMatch(/REVIEW_REQUIRED/);
     },
   );
+
+  // The raw one-merge backstop folds the case of the program only: `pr merge`
+  // is gh's subcommand, spelled in lower case.
+  it("counts a merge's mention in another case as no second merge", () => {
+    passes(`gh pr merge 5 --squash --body 'GH PR MERGE later'`, ctx({ prView: green }));
+    passes(`gh pr merge 5 --squash --body 'Gh Pr Merge later'`, ctx({ prView: green }));
+    expect(deny(`gh pr merge 5 --squash --body "$(GH.EXE pr merge 6)"`, ctx({ prView: green }))).toMatch(
+      /One `gh pr merge` per command/,
+    );
+  });
 });
