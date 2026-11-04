@@ -63,10 +63,19 @@
  * wipe, the baselines do not (`wipeStateForReplay`).
  *
  * **A change to the car ahead** is `rollingStart.lineup.changed`, the mirror
- * of `diffLineup` in `diff/caution.ts`. The follow car is held rather than
- * diffed against the previous tick, because the lineup can go unreadable for a
- * tick — no session info, a player the grid has not placed — and a gap is an
- * absence of news rather than a change. Three things it does not report: the
+ * of `diffLineup` in `diff/caution.ts`. A change is iRacing's PUBLISHED lineup
+ * changing the car ahead: a car leaving it, or iRacing reassigning the slots.
+ * An AI car passing another on track while the slots stay put changes no
+ * published variable, nor does iRacing's on-screen "catch up" prompt naming a
+ * car further up the line, so neither is reported (issue #1550). In
+ * `__fixtures__/rolling-start-formation-20261104.json` the prompt read "Catch
+ * up 69", a car four rows up, while every slot ahead of the player held and
+ * two cars in his line ran up to 61 m out of their row order.
+ *
+ * The follow car is held rather than diffed against the previous tick,
+ * because the lineup can go unreadable for a tick — no session info, a player
+ * the grid has not placed — and a gap is an absence of news rather than a
+ * change. Three more things it does not report: the
  * formation's first lineup, which answers "who do I form up behind" rather
  * than changing it; a follow car it cannot name; and anything outside the
  * formation, where the lineup is not even resolved — so on every racing tick
