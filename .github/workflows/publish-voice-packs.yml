@@ -124,8 +124,9 @@ jobs:
 
   # `catalog_ref` is the commit `pack` checked out and verified, never the
   # branch: the branch tip at deploy time can carry an entry nobody verified
-  # (#1392). The master condition repeats the pack job's guard, so a deploy
-  # job re-run on its own cannot step round it.
+  # (#1392). The master condition is belt and braces: while the pack job's
+  # first step refuses a publish off master, `needs: [pack]` already skips
+  # this job. It is what still holds if that step is ever moved or dropped.
   deploy-website:
     needs: [pack]
     if: inputs.publish && github.ref == 'refs/heads/master'

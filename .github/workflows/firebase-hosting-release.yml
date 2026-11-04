@@ -35,6 +35,15 @@ permissions:
 jobs:
   build_and_deploy:
     runs-on: ubuntu-latest
+    # One live deploy at a time, from every caller (#1392). The overlay below
+    # checks master's catalog and the deploy follows minutes later; without
+    # this, an older run that passed its check could finish after a newer one
+    # and put its catalog back. Queued, never cancelled in flight: GitHub
+    # keeps one pending run per group, so a third deploy replaces the pending
+    # one, which then shows as cancelled and is dispatched again if needed.
+    concurrency:
+      group: firebase-hosting-live
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v7
         with:
@@ -73,7 +82,7 @@ jobs:
           catalog_tree="$(git rev-parse --verify --quiet "$catalog_commit:$catalog_dir" || true)"
           master_tree="$(git rev-parse --verify --quiet "$master_commit:$catalog_dir" || true)"
           if [ -z "$catalog_tree" ]; then
-            echo "::error::$CATALOG_REF ($catalog_commit) has no $catalog_dir; there is no catalog to deploy."
+            echo "::error::$catalog_commit has no $catalog_dir; there is no catalog to deploy."
             exit 1
           fi
           if [ "$catalog_tree" != "$master_tree" ]; then

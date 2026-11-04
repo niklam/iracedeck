@@ -47,16 +47,23 @@ function stepNamed(doc, job, name) {
 /**
  * A bash that runs the steps as the runner would. On Windows that is Git's own
  * bash, found from git's exec path: a bare `bash` there can be WSL's, which
- * sees a different filesystem and a different git.
+ * sees a different filesystem and a different git. Undefined when none is
+ * found, which the first test below turns red rather than letting the
+ * behavioural tests skip in silence.
  */
 function findBash() {
   if (process.platform !== "win32") return "bash";
-  const execPath = execFileSync("git", ["--exec-path"], { encoding: "utf8" }).trim();
-  const gitRoot = path.resolve(execPath, "..", "..", "..");
+  const git = spawnSync("git", ["--exec-path"], { encoding: "utf8" });
+  if (git.status !== 0) return undefined;
+  const gitRoot = path.resolve(git.stdout.trim(), "..", "..", "..");
   return [path.join(gitRoot, "bin", "bash.exe"), path.join(gitRoot, "usr", "bin", "bash.exe")].find(existsSync);
 }
 
 const BASH = findBash();
+
+it("finds a bash to run the workflow steps with", () => {
+  expect(BASH, "no bash found (on Windows: Git for Windows' bin/bash.exe beside git)").toBeDefined();
+});
 
 let work;
 let isolatedEnv;
@@ -140,6 +147,13 @@ describe(`${HOSTING_WORKFLOW}'s overlay step (#1392)`, () => {
     expect(step.if).toBe("inputs.catalog_ref");
     expect(step.env).toEqual({ CATALOG_REF: "${{ inputs.catalog_ref }}" });
     expect(step.run).not.toContain("${{");
+  });
+
+  it("deploys one run at a time and never cancels one in flight, so a check is not overtaken by an older deploy", () => {
+    expect(readWorkflow(HOSTING_WORKFLOW).jobs.build_and_deploy.concurrency).toEqual({
+      group: "firebase-hosting-live",
+      "cancel-in-progress": false,
+    });
   });
 });
 
@@ -242,7 +256,7 @@ describe.skipIf(BASH === undefined)("the overlay step, run against a fetched ori
 
   it("refuses a commit with no catalog at all", () => {
     const { status, output } = overlay(sha.noCatalog);
-    expect(output).toContain(`::error::${sha.noCatalog} (${sha.noCatalog}) has no ${CATALOG}`);
+    expect(output).toContain(`::error::${sha.noCatalog} has no ${CATALOG}`);
     expect(status).toBe(1);
   });
 
