@@ -8,8 +8,8 @@
 import manifestJson from "@iracedeck/audio-assets/manifest.json" with { type: "json" };
 import defaultScript from "@iracedeck/audio-assets/voice/default/callouts.json" with { type: "json" };
 import shawnScript from "@iracedeck/audio-assets/voice/shawn/callouts.json" with { type: "json" };
-import type { IAudioService } from "@iracedeck/audio-service";
 import { AudioChannel } from "@iracedeck/audio-service";
+import { createFakeAudio } from "@iracedeck/audio-service/testing";
 import type { CalloutScript, CalloutScriptEntry } from "@iracedeck/callout-script";
 import { calloutKey, FASTEST_LAP_CALLOUTS, LAP_TIME_CALLOUTS } from "@iracedeck/callout-settings";
 import type { IEventBus, SimEventName, SimEventOf } from "@iracedeck/event-bus";
@@ -69,34 +69,6 @@ function createMockBus(): IEventBus & { publishEvent: (name: SimEventName, data:
       } as SimEventOf<SimEventName>);
     },
   };
-}
-
-function createFakeAudio(): IAudioService & { end: (channel: AudioChannel) => void } {
-  const callbacks = new Map<AudioChannel, () => void>();
-
-  return {
-    init: vi.fn(() => true),
-    destroy: vi.fn(),
-    playOnChannel: vi.fn(() => true),
-    stopChannel: vi.fn((channel: AudioChannel) => callbacks.delete(channel)),
-    stopAllChannels: vi.fn(),
-    setChannelVolume: vi.fn(),
-    setBusVolume: vi.fn(),
-    getBusVolume: vi.fn(() => 1.0),
-    isChannelPlaying: vi.fn(() => false),
-    onChannelComplete: vi.fn((channel: AudioChannel, cb: () => void) => callbacks.set(channel, cb)),
-    playVoiceSequence: vi.fn(),
-    cancelVoiceSequence: vi.fn(),
-    onVoiceSequenceComplete: vi.fn(),
-    seekChannelRandom: vi.fn(),
-    getAudioDevices: vi.fn(() => []),
-    setAudioDevice: vi.fn(() => true),
-    end: (channel: AudioChannel) => {
-      const cb = callbacks.get(channel);
-      callbacks.delete(channel);
-      cb?.();
-    },
-  } as unknown as IAudioService & { end: (channel: AudioChannel) => void };
 }
 
 const LAP_TIME_IDS = ["pit-crew.fastest-lap-race", "pit-crew.lap-time-best", "pit-crew.lap-time-last"] as const;
@@ -209,9 +181,9 @@ describe("one lap, one lap time — the real registerPitCrew over both first-par
 
       function flush(): void {
         for (let i = 0; i < 80; i++) {
-          audio.end(AudioChannel.Voice);
-          audio.end(AudioChannel.SFX);
-          audio.end(AudioChannel.Ambient);
+          audio._triggerChannelEnd(AudioChannel.Voice);
+          audio._triggerChannelEnd(AudioChannel.SFX);
+          audio._triggerChannelEnd(AudioChannel.Ambient);
           vi.advanceTimersByTime(1000);
         }
       }

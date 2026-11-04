@@ -37,7 +37,6 @@
  */
 import manifestJson from "@iracedeck/audio-assets/manifest.json" with { type: "json" };
 import defaultScript from "@iracedeck/audio-assets/voice/default/callouts.json" with { type: "json" };
-import type { IAudioService } from "@iracedeck/audio-service";
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import type { CalloutScript } from "@iracedeck/callout-script";
 import { CAUTION_CALLOUTS } from "@iracedeck/callout-settings";
@@ -56,6 +55,7 @@ import { _resetPitSpeedingEngine } from "./pit-speeding-engine.js";
 import { resetQualifyingInvalidationLatch } from "./qualifying-invalidation.js";
 import { _resetRadarEngine } from "./radar-engine.js";
 import { _resetSpotterEngine } from "./spotter-engine.js";
+import { createTimedAudio } from "./timed-audio.test-util.js";
 
 // The sim reads the registration is handed (#1378): a race, a rolling start,
 // no latest tick, and a repair still needed when the damage line comes to speak.
@@ -134,56 +134,6 @@ function createMockBus(): IEventBus {
   } as unknown as IEventBus;
 }
 
-/** An audio service whose clips end on the (fake) clock, after their length. */
-function createTimedAudio(): IAudioService {
-  const callbacks = new Map<AudioChannel, () => void>();
-  const timers = new Map<AudioChannel, ReturnType<typeof setTimeout>>();
-
-  const stop = (channel: AudioChannel): void => {
-    clearTimeout(timers.get(channel));
-    timers.delete(channel);
-    callbacks.delete(channel);
-  };
-
-  return {
-    init: vi.fn(() => true),
-    destroy: vi.fn(),
-    playOnChannel: vi.fn((channel: AudioChannel, _path: string) => {
-      clearTimeout(timers.get(channel));
-      timers.set(
-        channel,
-        setTimeout(
-          () => {
-            const cb = callbacks.get(channel);
-
-            timers.delete(channel);
-            callbacks.delete(channel);
-            cb?.();
-          },
-          channel === AudioChannel.SFX ? SFX_CLIP_MS : voiceClipMs,
-        ),
-      );
-
-      return true;
-    }),
-    stopChannel: vi.fn(stop),
-    stopAllChannels: vi.fn(),
-    setChannelVolume: vi.fn(),
-    setBusVolume: vi.fn(),
-    getBusVolume: vi.fn(() => 1.0),
-    isChannelPlaying: vi.fn(() => false),
-    onChannelComplete: vi.fn((channel: AudioChannel, cb: () => void) => {
-      callbacks.set(channel, cb);
-    }),
-    playVoiceSequence: vi.fn(),
-    cancelVoiceSequence: vi.fn(),
-    onVoiceSequenceComplete: vi.fn(),
-    seekChannelRandom: vi.fn(),
-    getAudioDevices: vi.fn(() => []),
-    setAudioDevice: vi.fn(() => true),
-  } as unknown as IAudioService;
-}
-
 let bus: IEventBus;
 
 beforeEach(() => {
@@ -197,7 +147,13 @@ beforeEach(() => {
   _resetLastIncidentPoints();
   resetQualifyingInvalidationLatch();
   bus = createMockBus();
-  initializeAudioScenarios(bus, createTimedAudio(), MANIFEST, mockLogger as never, () => VOICE);
+  initializeAudioScenarios(
+    bus,
+    createTimedAudio((channel) => (channel === AudioChannel.SFX ? SFX_CLIP_MS : voiceClipMs)),
+    MANIFEST,
+    mockLogger as never,
+    () => VOICE,
+  );
   registerPitCrew(bus, {
     ...SIM_READS,
     logger: mockLogger as never,

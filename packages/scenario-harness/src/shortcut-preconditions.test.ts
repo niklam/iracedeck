@@ -1,4 +1,4 @@
-import type { IAudioService } from "@iracedeck/audio-service";
+import { createFakeAudio } from "@iracedeck/audio-service/testing";
 import { _resetEventBus, getEventBus, initializeEventBus } from "@iracedeck/event-bus";
 import type { SessionInfo, TelemetryData } from "@iracedeck/iracing-sdk";
 import { silentLogger } from "@iracedeck/logger";
@@ -435,7 +435,7 @@ describe("POST /api/shortcut/start", () => {
       controller,
       adapter: {} as unknown as MockPlatformAdapter,
       bus: getEventBus(),
-      audio: { setPlaybackObserver: () => {} } as unknown as IAudioService,
+      audio: createFakeAudio(),
       packageRoot: PACKAGE_ROOT,
       logger: silentLogger,
       refreshAudioAssets: async () => {},

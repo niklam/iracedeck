@@ -49,8 +49,7 @@ import { PUBLISHED_VOICE_IDS } from "@iracedeck/audio-assets/build";
 import manifestJson from "@iracedeck/audio-assets/manifest.json" with { type: "json" };
 import defaultScript from "@iracedeck/audio-assets/voice/default/callouts.json" with { type: "json" };
 import shawnScript from "@iracedeck/audio-assets/voice/shawn/callouts.json" with { type: "json" };
-import type { IAudioService } from "@iracedeck/audio-service";
-import { AudioChannel } from "@iracedeck/audio-service";
+import { createFakeAudio } from "@iracedeck/audio-service/testing";
 import {
   type CalloutScript,
   collectLiteralClips,
@@ -188,27 +187,6 @@ function createBus(): IEventBus {
       for (const handler of Array.from(handlers.get(event.event as SimEventName) ?? [])) handler(event);
     },
   };
-}
-
-function createFakeAudio(): IAudioService {
-  return {
-    init: vi.fn(() => true),
-    destroy: vi.fn(),
-    playOnChannel: vi.fn(() => true),
-    stopChannel: vi.fn(),
-    stopAllChannels: vi.fn(),
-    setChannelVolume: vi.fn(),
-    setBusVolume: vi.fn(),
-    getBusVolume: vi.fn(() => 1.0),
-    isChannelPlaying: vi.fn(() => false),
-    onChannelComplete: vi.fn((_channel: AudioChannel, _cb: () => void) => {}),
-    playVoiceSequence: vi.fn(),
-    cancelVoiceSequence: vi.fn(),
-    onVoiceSequenceComplete: vi.fn(),
-    seekChannelRandom: vi.fn(),
-    getAudioDevices: vi.fn(() => []),
-    setAudioDevice: vi.fn(() => true),
-  } as unknown as IAudioService;
 }
 
 let engine: IScenarioEngine;

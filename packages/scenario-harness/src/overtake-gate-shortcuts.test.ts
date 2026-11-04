@@ -18,7 +18,7 @@
  */
 import { _resetAudioScenarios, initializeAudioScenarios } from "@iracedeck/audio-scenarios";
 import { overtakeContextAllows, type OvertakeGateResolver, registerPitCrew } from "@iracedeck/audio-scenarios/pit-crew";
-import type { IAudioService } from "@iracedeck/audio-service";
+import { createFakeAudio } from "@iracedeck/audio-service/testing";
 import { _resetEventBus, getEventBus, initializeEventBus, type SimEventName } from "@iracedeck/event-bus";
 import type { SDKController, SessionInfo } from "@iracedeck/iracing-sdk";
 import { silentLogger } from "@iracedeck/logger";
@@ -83,11 +83,13 @@ describe("which shortcuts the overtake gate decides", () => {
     vi.useFakeTimers();
 
     const bus = initializeEventBus(silentLogger);
-    // Every method a no-op spy: the gate answers `null`, which refuses, so no
-    // gated line plays; whatever else a publish triggers only needs to not throw.
-    const audio = new Proxy({} as Record<string, unknown>, {
-      get: (target, key: string) => (target[key] ??= vi.fn()),
-    }) as unknown as IAudioService;
+    // The gate answers `null`, which refuses, so no gated line plays. Every
+    // other play fails at once, so no line holds its bus across the scan: a
+    // gated fire deferred behind a held bus would be asked its gate only once
+    // the bus frees, which here would be never, and go uncounted.
+    const audio = createFakeAudio();
+
+    audio.playOnChannel.mockReturnValue(false);
 
     initializeAudioScenarios(bus, audio, getAudioAssetsManifest(), silentLogger, () => "default");
     registerPitCrew(bus, { getOvertakeGate: gate });
@@ -175,7 +177,7 @@ describe("the racing-speed step, run the way the UI runs it", () => {
       controller,
       adapter: {} as unknown as MockPlatformAdapter,
       bus,
-      audio: { setPlaybackObserver: () => {} } as unknown as IAudioService,
+      audio: createFakeAudio(),
       packageRoot: PACKAGE_ROOT,
       logger: silentLogger,
       refreshAudioAssets: async () => {},

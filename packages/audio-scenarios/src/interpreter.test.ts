@@ -1,5 +1,5 @@
-import type { IAudioService } from "@iracedeck/audio-service";
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
+import { createFakeAudio, type FakeAudio } from "@iracedeck/audio-service/testing";
 import type { CalloutScript } from "@iracedeck/callout-script";
 import type { IEventBus, SimEventMap, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import { _resetEventBus, initializeEventBus } from "@iracedeck/event-bus";
@@ -61,67 +61,6 @@ function createMockBus(): IEventBus & { publishEvent: (name: SimEventName, data?
       } as SimEventOf<SimEventName>);
     },
   };
-}
-
-type FakeAudio = IAudioService & {
-  _triggerChannelEnd: (channel: AudioChannel) => void;
-  _completions: (() => void)[];
-  _played: { channel: AudioChannel; path: string; loop: boolean }[];
-  _stopped: AudioChannel[];
-};
-
-/**
- * Fake audio-service that records calls and lets tests drive channel-complete
- * callbacks manually. Fires for synchronous clip playback via `_triggerChannelEnd`.
- */
-function createFakeAudio(): FakeAudio {
-  const callbacks: Record<AudioChannel, (() => void) | null> = {
-    [AudioChannel.Ambient]: null,
-    [AudioChannel.SFX]: null,
-    [AudioChannel.Voice]: null,
-    [AudioChannel.Radar]: null,
-    [AudioChannel.Feedback]: null,
-  };
-  const played: { channel: AudioChannel; path: string; loop: boolean }[] = [];
-  const stopped: AudioChannel[] = [];
-
-  const audio = {
-    init: vi.fn(() => true),
-    destroy: vi.fn(),
-    playOnChannel: vi.fn((channel: AudioChannel, path: string, loop = false) => {
-      played.push({ channel, path, loop });
-
-      return true;
-    }),
-    stopChannel: vi.fn((channel: AudioChannel) => {
-      stopped.push(channel);
-      callbacks[channel] = null;
-    }),
-    stopAllChannels: vi.fn(),
-    setChannelVolume: vi.fn(),
-    setBusVolume: vi.fn(),
-    getBusVolume: vi.fn(() => 1.0),
-    isChannelPlaying: vi.fn(() => false),
-    onChannelComplete: vi.fn((channel: AudioChannel, cb: () => void) => {
-      callbacks[channel] = cb;
-    }),
-    playVoiceSequence: vi.fn(),
-    cancelVoiceSequence: vi.fn(),
-    onVoiceSequenceComplete: vi.fn(),
-    seekChannelRandom: vi.fn(),
-    getAudioDevices: vi.fn(() => []),
-    setAudioDevice: vi.fn(() => true),
-    _triggerChannelEnd: (channel: AudioChannel) => {
-      const cb = callbacks[channel];
-      callbacks[channel] = null;
-      cb?.();
-    },
-    _completions: [],
-    _played: played,
-    _stopped: stopped,
-  } as unknown as FakeAudio;
-
-  return audio;
 }
 
 const manifest: AudioAssetsManifest = {

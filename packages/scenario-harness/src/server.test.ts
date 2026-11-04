@@ -1,4 +1,4 @@
-import type { IAudioService } from "@iracedeck/audio-service";
+import { createFakeAudio } from "@iracedeck/audio-service/testing";
 import { _resetEventBus, getEventBus, initializeEventBus } from "@iracedeck/event-bus";
 import { silentLogger } from "@iracedeck/logger";
 import type { FastifyInstance } from "fastify";
@@ -21,7 +21,7 @@ describe("POST /api/bus/publish", () => {
       controller: new MockSDKController(),
       adapter: {} as unknown as MockPlatformAdapter,
       bus: getEventBus(),
-      audio: { setPlaybackObserver: () => {} } as unknown as IAudioService,
+      audio: createFakeAudio(),
       packageRoot: PACKAGE_ROOT,
       logger: silentLogger,
       refreshAudioAssets: async () => {},
@@ -102,7 +102,7 @@ describe("POST /api/telemetry", () => {
       controller,
       adapter: {} as unknown as MockPlatformAdapter,
       bus: getEventBus(),
-      audio: { setPlaybackObserver: () => {} } as unknown as IAudioService,
+      audio: createFakeAudio(),
       packageRoot: PACKAGE_ROOT,
       logger: silentLogger,
       refreshAudioAssets: async () => {},

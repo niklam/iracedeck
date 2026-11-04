@@ -10,8 +10,8 @@
  */
 import manifestJson from "@iracedeck/audio-assets/manifest.json" with { type: "json" };
 import defaultScript from "@iracedeck/audio-assets/voice/default/callouts.json" with { type: "json" };
-import type { IAudioService } from "@iracedeck/audio-service";
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
+import { createFakeAudio, type FakeAudio } from "@iracedeck/audio-service/testing";
 import { type CalloutScript, type ScriptStep } from "@iracedeck/callout-script";
 import { SESSION_START_CALLOUTS } from "@iracedeck/callout-settings";
 import type { IEventBus, SessionStartSnapshot, SimEventName, SimEventOf } from "@iracedeck/event-bus";
@@ -93,55 +93,6 @@ function createMockBus(): IEventBus & {
       } as SimEventOf<SimEventName>);
     },
   };
-}
-
-type FakeAudio = IAudioService & {
-  _triggerChannelEnd: (channel: AudioChannel) => void;
-  _played: { channel: AudioChannel; path: string }[];
-};
-
-function createFakeAudio(): FakeAudio {
-  const callbacks: Record<AudioChannel, (() => void) | null> = {
-    [AudioChannel.Ambient]: null,
-    [AudioChannel.SFX]: null,
-    [AudioChannel.Voice]: null,
-    [AudioChannel.Radar]: null,
-    [AudioChannel.Feedback]: null,
-  };
-  const played: { channel: AudioChannel; path: string }[] = [];
-
-  return {
-    init: vi.fn(() => true),
-    destroy: vi.fn(),
-    playOnChannel: vi.fn((channel: AudioChannel, path: string) => {
-      played.push({ channel, path });
-
-      return true;
-    }),
-    stopChannel: vi.fn((channel: AudioChannel) => {
-      callbacks[channel] = null;
-    }),
-    stopAllChannels: vi.fn(),
-    setChannelVolume: vi.fn(),
-    setBusVolume: vi.fn(),
-    getBusVolume: vi.fn(() => 1.0),
-    isChannelPlaying: vi.fn(() => false),
-    onChannelComplete: vi.fn((channel: AudioChannel, cb: () => void) => {
-      callbacks[channel] = cb;
-    }),
-    playVoiceSequence: vi.fn(),
-    cancelVoiceSequence: vi.fn(),
-    onVoiceSequenceComplete: vi.fn(),
-    seekChannelRandom: vi.fn(),
-    getAudioDevices: vi.fn(() => []),
-    setAudioDevice: vi.fn(() => true),
-    _triggerChannelEnd: (channel: AudioChannel) => {
-      const cb = callbacks[channel];
-      callbacks[channel] = null;
-      cb?.();
-    },
-    _played: played,
-  } as unknown as FakeAudio;
 }
 
 function flush(audio: FakeAudio, iterations = 60): void {

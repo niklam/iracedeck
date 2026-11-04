@@ -2,10 +2,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { _resetBackgroundTest, isBackgroundTestInFlight, playBackgroundTest } from "./background-test.js";
 
-const hoisted = vi.hoisted(() => {
-  const playOnChannel = vi.fn<(...args: unknown[]) => boolean>().mockReturnValue(true);
-  const stopChannel = vi.fn();
-  const audio = { playOnChannel, stopChannel };
+const hoisted = await vi.hoisted(async () => {
+  const { createFakeAudio } = await import("@iracedeck/audio-service/testing");
+  const audio = createFakeAudio();
+  const { playOnChannel, stopChannel } = audio;
   const getAudio = vi.fn(() => audio);
 
   return { playOnChannel, stopChannel, getAudio };

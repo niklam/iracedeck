@@ -4,7 +4,6 @@
  * reader, and the source guard that keeps a new family from holding state the
  * snapshot cannot see.
  */
-import type { IAudioService } from "@iracedeck/audio-service";
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import type { IEventBus, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import { readdirSync, readFileSync } from "node:fs";
@@ -45,12 +44,11 @@ import { _resetRadarEngine, readRadarDebugState, setRadarEnabled, subscribeRadar
 import { buildRollingStartContracts, readRollingStartDebugState } from "./rolling-start.js";
 import { _resetSpotterEngine, readSpotterDebugState } from "./spotter-engine.js";
 
-const fakeAudio = vi.hoisted(() => ({
-  playOnChannel: vi.fn(() => true),
-  stopChannel: vi.fn(),
-  onChannelComplete: vi.fn(),
-  seekChannelRandom: vi.fn(),
-}));
+const fakeAudio = await vi.hoisted(async () => {
+  const { createFakeAudio } = await import("@iracedeck/audio-service/testing");
+
+  return createFakeAudio();
+});
 
 // The radar, pit-speeding and Background Test code reaches the mixer through
 // `getAudio()`; the enums stay the real ones.
@@ -157,7 +155,7 @@ let activeVoice: string | null;
 let voiceRead: () => string | null;
 
 function startEngine(): IScenarioEngine {
-  return initializeAudioScenarios(bus, fakeAudio as unknown as IAudioService, manifest, undefined, () => voiceRead());
+  return initializeAudioScenarios(bus, fakeAudio, manifest, undefined, () => voiceRead());
 }
 
 /** The initialised arm of the reader's result, or a failed test. */
@@ -213,7 +211,7 @@ describe("readRaceEngineerState", () => {
 
     expect(fresh.readRaceEngineerState()).toStrictEqual({ initialized: false });
 
-    interpreter.initializeAudioScenarios(bus, fakeAudio as unknown as IAudioService, manifest);
+    interpreter.initializeAudioScenarios(bus, fakeAudio, manifest);
 
     try {
       const state = fresh.readRaceEngineerState();
@@ -505,7 +503,7 @@ describe("a part that cannot be read fails alone", () => {
 
   it("logs nothing for a part that failed", () => {
     const logger = { trace: vi.fn(), debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
-    const engine = initializeAudioScenarios(bus, fakeAudio as unknown as IAudioService, manifest, logger as never);
+    const engine = initializeAudioScenarios(bus, fakeAudio, manifest, logger as never);
 
     for (const level of Object.values(logger)) level.mockClear();
 

@@ -1,7 +1,7 @@
 import manifestJson from "@iracedeck/audio-assets/manifest.json" with { type: "json" };
 import defaultScript from "@iracedeck/audio-assets/voice/default/callouts.json" with { type: "json" };
-import type { IAudioService } from "@iracedeck/audio-service";
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
+import { createFakeAudio, type FakeAudio } from "@iracedeck/audio-service/testing";
 import { type CalloutScript } from "@iracedeck/callout-script";
 import type { IEventBus, RadarState, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import type { TelemetryData } from "@iracedeck/iracing-sdk";
@@ -39,59 +39,6 @@ const sim = {
 };
 
 // ─── Fake audio service (records plays, drives channel-complete manually) ───
-
-type FakeAudio = IAudioService & {
-  _played: { channel: AudioChannel; path: string; loop: boolean }[];
-  _stopped: AudioChannel[];
-  _triggerChannelEnd: (channel: AudioChannel) => void;
-};
-
-function createFakeAudio(): FakeAudio {
-  const callbacks: Record<AudioChannel, (() => void) | null> = {
-    [AudioChannel.Ambient]: null,
-    [AudioChannel.SFX]: null,
-    [AudioChannel.Voice]: null,
-    [AudioChannel.Radar]: null,
-    [AudioChannel.Feedback]: null,
-  };
-  const played: { channel: AudioChannel; path: string; loop: boolean }[] = [];
-  const stopped: AudioChannel[] = [];
-
-  return {
-    init: vi.fn(() => true),
-    destroy: vi.fn(),
-    playOnChannel: vi.fn((channel: AudioChannel, path: string, loop = false) => {
-      played.push({ channel, path, loop });
-
-      return true;
-    }),
-    stopChannel: vi.fn((channel: AudioChannel) => {
-      stopped.push(channel);
-      callbacks[channel] = null;
-    }),
-    stopAllChannels: vi.fn(),
-    setChannelVolume: vi.fn(),
-    setBusVolume: vi.fn(),
-    getBusVolume: vi.fn(() => 1.0),
-    isChannelPlaying: vi.fn(() => false),
-    onChannelComplete: vi.fn((channel: AudioChannel, cb: () => void) => {
-      callbacks[channel] = cb;
-    }),
-    playVoiceSequence: vi.fn(),
-    cancelVoiceSequence: vi.fn(),
-    onVoiceSequenceComplete: vi.fn(),
-    seekChannelRandom: vi.fn(),
-    getAudioDevices: vi.fn(() => []),
-    setAudioDevice: vi.fn(() => true),
-    _played: played,
-    _stopped: stopped,
-    _triggerChannelEnd: (channel: AudioChannel) => {
-      const cb = callbacks[channel];
-      callbacks[channel] = null;
-      cb?.();
-    },
-  } as unknown as FakeAudio;
-}
 
 // The spotter's clip catalog is code-enumerated, but fire-time expansion
 // checks every clip against the manifest for the active voice (issue #835) —

@@ -8,8 +8,8 @@
  * each pinned with a positive control beside the refusal.
  */
 import defaultScript from "@iracedeck/audio-assets/voice/default/callouts.json" with { type: "json" };
-import type { IAudioService } from "@iracedeck/audio-service";
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
+import { createFakeAudio, type FakeAudio } from "@iracedeck/audio-service/testing";
 import { type CalloutScript, type CalloutScriptEntry, collectScriptReferences } from "@iracedeck/callout-script";
 import { FASTEST_LAP_CALLOUTS, LAP_TIME_CALLOUTS } from "@iracedeck/callout-settings";
 import type { IEventBus, SimEventName, SimEventOf } from "@iracedeck/event-bus";
@@ -85,45 +85,6 @@ function createMockBus(): IEventBus & { publishEvent: (name: SimEventName, data:
       } as SimEventOf<SimEventName>);
     },
   };
-}
-
-type FakeAudio = IAudioService & {
-  end: (channel: AudioChannel) => void;
-  played: { channel: AudioChannel; path: string }[];
-};
-
-function createFakeAudio(): FakeAudio {
-  const callbacks = new Map<AudioChannel, () => void>();
-  const played: { channel: AudioChannel; path: string }[] = [];
-
-  return {
-    init: vi.fn(() => true),
-    destroy: vi.fn(),
-    playOnChannel: vi.fn((channel: AudioChannel, path: string) => {
-      played.push({ channel, path });
-
-      return true;
-    }),
-    stopChannel: vi.fn((channel: AudioChannel) => callbacks.delete(channel)),
-    stopAllChannels: vi.fn(),
-    setChannelVolume: vi.fn(),
-    setBusVolume: vi.fn(),
-    getBusVolume: vi.fn(() => 1.0),
-    isChannelPlaying: vi.fn(() => false),
-    onChannelComplete: vi.fn((channel: AudioChannel, cb: () => void) => callbacks.set(channel, cb)),
-    playVoiceSequence: vi.fn(),
-    cancelVoiceSequence: vi.fn(),
-    onVoiceSequenceComplete: vi.fn(),
-    seekChannelRandom: vi.fn(),
-    getAudioDevices: vi.fn(() => []),
-    setAudioDevice: vi.fn(() => true),
-    end: (channel: AudioChannel) => {
-      const cb = callbacks.get(channel);
-      callbacks.delete(channel);
-      cb?.();
-    },
-    played,
-  } as unknown as FakeAudio;
 }
 
 /**
@@ -252,15 +213,15 @@ function bestLap(overrides: Partial<LapCompletedSnapshot> = {}): LapCompletedSna
 
 function flush(iterations = 60): void {
   for (let i = 0; i < iterations; i++) {
-    audio.end(AudioChannel.Voice);
-    audio.end(AudioChannel.SFX);
+    audio._triggerChannelEnd(AudioChannel.Voice);
+    audio._triggerChannelEnd(AudioChannel.SFX);
     vi.advanceTimersByTime(1000);
   }
 }
 
 /** The voice clips played, as `<group>/<base>` with a take suffix dropped. */
 function line(): string[] {
-  return audio.played
+  return audio._played
     .filter((p) => p.channel === AudioChannel.Voice)
     .map((p) =>
       p.path
@@ -385,7 +346,7 @@ describe("the line before the time (#1163)", () => {
 
     for (const holder of Object.keys(FOR) as FastestLapHolder[]) {
       for (const lapTime of TIMES) {
-        audio.played.length = 0;
+        audio._played.length = 0;
         fire(record({ ...FOR[holder], lapTime }));
 
         // Only the key's own line plays, never another key's (the positive
@@ -405,7 +366,7 @@ describe("the line before the time (#1163)", () => {
     fire(record({ position: 1, lapTime: 245.0 }));
     expect(line()).toEqual(["fastest-lap/leader", "lap-time-clock/4m05", "lap-time-tenths/0"]);
 
-    audio.played.length = 0;
+    audio._played.length = 0;
     fire(record({ position: 1, lapTime: 120.0 }));
     expect(line()).toEqual(["fastest-lap/leader", "lap-time-clock/2m00", "lap-time-tenths/0"]);
   });
@@ -420,7 +381,7 @@ describe("the line before the time (#1163)", () => {
     fire(record({ position: 1, lapTime: 59.96 }));
     expect(line()).toEqual(["fastest-lap/leader", "lap-time-clock/1m00", "lap-time-tenths/0"]);
 
-    audio.played.length = 0;
+    audio._played.length = 0;
     fire(record({ position: 1, lapTime: 59.94 }));
     expect(line()).toEqual(["fastest-lap/leader", "lap-time-second/59", "lap-time-tenths/9"]);
   });
@@ -550,12 +511,12 @@ describe("the gap clause", () => {
 
     for (let i = 0; i < 20 && !line().includes("lap-time-tenths/4"); i++) {
       vi.advanceTimersByTime(0);
-      audio.end(AudioChannel.SFX);
-      audio.end(AudioChannel.Voice);
+      audio._triggerChannelEnd(AudioChannel.SFX);
+      audio._triggerChannelEnd(AudioChannel.Voice);
     }
 
     expect(line().at(-1)).toBe("lap-time-tenths/4");
-    audio.end(AudioChannel.Voice);
+    audio._triggerChannelEnd(AudioChannel.Voice);
   }
 
   it('does not join the tenths to "Gap is": the clause opens after a 150 ms pause', () => {
@@ -574,7 +535,7 @@ describe("the gap clause", () => {
     playThroughTheTenths(record({ position: 3, playerPosition: 4 }));
 
     // The close tick follows at once, with no pause held for a clause that is not there.
-    expect(audio.played.at(-1)).toEqual({ channel: AudioChannel.SFX, path: "sfx/IRD-tick-close.mp3" });
+    expect(audio._played.at(-1)).toEqual({ channel: AudioChannel.SFX, path: "sfx/IRD-tick-close.mp3", loop: false });
   });
 
   it("is left out when the neighbour is another car, a lap away, a minute or more away or on the other side", () => {
@@ -586,7 +547,7 @@ describe("the gap clause", () => {
     ];
 
     for (const [label, g] of cases) {
-      audio.played.length = 0;
+      audio._played.length = 0;
       liveGaps = g;
       fire(record({ position: 3, playerPosition: 4 }));
 
@@ -596,7 +557,7 @@ describe("the gap clause", () => {
 
   it("is left out for behind too when the neighbour behind is another car or a lap away", () => {
     for (const g of [gaps("behind", 9, 1.2), gaps("behind", 3, 1.2, -1)]) {
-      audio.played.length = 0;
+      audio._played.length = 0;
       liveGaps = g;
       fire(record({ position: 5, playerPosition: 4 }));
 
@@ -744,7 +705,7 @@ describe("waiting for the radio", () => {
   it("a newer record replaces the line about the old one in flight", () => {
     bus.publishEvent("fastestLap.set", record({ carIdx: 3, carNumber: "5", position: 6 }));
     // The old line has started: its first voice clip is out.
-    audio.end(AudioChannel.SFX);
+    audio._triggerChannelEnd(AudioChannel.SFX);
     expect(line()).toEqual(["car-number/5"]);
 
     bus.publishEvent("fastestLap.set", record({ carIdx: 7, carNumber: "7", position: 8, lapTime: 82.1 }));

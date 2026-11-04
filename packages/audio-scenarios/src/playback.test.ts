@@ -4,8 +4,8 @@
  * hears — no scheduler, no expansion, no pool store beyond the manifest
  * accessor the ambient loop reads.
  */
-import type { IAudioService } from "@iracedeck/audio-service";
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
+import { createFakeAudio } from "@iracedeck/audio-service/testing";
 import type { ILogger } from "@iracedeck/logger";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -92,30 +92,30 @@ function harness(): Harness {
     throwing: new Set(),
     manifest: { clips: [], ambientLoop: LOOP_A, ticks: { open: TICK_OPEN, close: TICK_CLOSE } },
   };
-  const audio = {
-    playOnChannel: (channel: AudioChannel, path: string, loop = false): boolean => {
-      if (h.throwing.has(path)) throw new Error(`cannot play ${path}`);
+  const audio = createFakeAudio();
 
-      events.push(["play", channel, path, loop]);
+  audio.playOnChannel.mockImplementation((channel, path, loop = false) => {
+    if (h.throwing.has(path)) throw new Error(`cannot play ${path}`);
 
-      return !h.failing.has(path);
-    },
-    stopChannel: (channel: AudioChannel): void => {
-      // What the fire being stopped says of itself at this moment — the
-      // Voice bus's, which every fire here plays on.
-      const active = buses.peek(AudioBus.Voice)?.transport.active ?? null;
-      events.push(["stop", channel, { cancelled: active === null ? null : active.cancelled }]);
+    events.push(["play", channel, path, loop]);
 
-      if (h.stopCompletesSynchronously) h.complete(channel);
-    },
-    onChannelComplete: (channel: AudioChannel, cb: () => void): void => {
-      events.push(["onChannelComplete", channel]);
-      callbacks.set(channel, cb);
-    },
-    seekChannelRandom: (channel: AudioChannel): void => {
-      events.push(["seek", channel]);
-    },
-  } as unknown as IAudioService;
+    return !h.failing.has(path);
+  });
+  audio.stopChannel.mockImplementation((channel) => {
+    // What the fire being stopped says of itself at this moment — the
+    // Voice bus's, which every fire here plays on.
+    const active = buses.peek(AudioBus.Voice)?.transport.active ?? null;
+    events.push(["stop", channel, { cancelled: active === null ? null : active.cancelled }]);
+
+    if (h.stopCompletesSynchronously) h.complete(channel);
+  });
+  audio.onChannelComplete.mockImplementation((channel, cb) => {
+    events.push(["onChannelComplete", channel]);
+    callbacks.set(channel, cb);
+  });
+  audio.seekChannelRandom.mockImplementation((channel) => {
+    events.push(["seek", channel]);
+  });
   const listener: PlaybackListener = {
     busTaken: (bus) => events.push(["busTaken", bus, { activeId: activeId(bus) }]),
     fireFinished: (bus, id) => events.push(["fireFinished", bus, id, { activeId: activeId(bus) }]),

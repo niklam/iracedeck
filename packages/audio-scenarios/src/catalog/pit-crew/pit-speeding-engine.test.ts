@@ -19,10 +19,10 @@ import {
 
 // ─── Hoisted mocks ─────────────────────────────────────────────────────────
 
-const hoisted = vi.hoisted(() => {
-  const playOnChannel = vi.fn<(...args: unknown[]) => boolean>().mockReturnValue(true);
-  const stopChannel = vi.fn();
-  const audio = { playOnChannel, stopChannel, onChannelComplete: vi.fn() };
+const hoisted = await vi.hoisted(async () => {
+  const { createFakeAudio } = await import("@iracedeck/audio-service/testing");
+  const audio = createFakeAudio();
+  const { playOnChannel, stopChannel } = audio;
   const getAudio = vi.fn(() => audio);
 
   const busHandlers = new Map<string, Set<(ev: unknown) => void>>();

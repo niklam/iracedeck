@@ -13,3 +13,7 @@ The device opens on demand and the stream stops after an idle window, so an open
 ## Clip resolution
 
 Clips resolve against ordered audio roots. Since #1144 a pack root is bound to its own voices: `voice/<pack>::<voice>/…` is served only by that pack, and the ordered walk (which serves the sfx) never reaches a bound root.
+
+## The test fake
+
+`@iracedeck/audio-service/testing` (`src/testing.ts`, #1504) is for tests only: it imports `vitest`, and `testing.test.ts` fails on any production source in `packages/` that imports it. Its `createFakeAudio()` is the one fake of `IAudioService`, used by every Race Engineer test that hands the engine an audio service (`audio-scenarios`, `scenario-harness`): each member is a `vi.fn`, and its type is a mapped type over the interface, so a member added to the service fails to compile there, once, until the fake implements it. Plays and stops are recorded (`_played`, `_stopped`), a clip ends only when a test calls `_triggerChannelEnd(channel)`, and `_reset()` clears both. A test that needs more sets it on the one member through the mock (`mockReturnValue`, `mockImplementation`), never on the shared fake; to extend a default rather than replace it, keep `getMockImplementation()` and call it from the override, as the clocked fakes do.

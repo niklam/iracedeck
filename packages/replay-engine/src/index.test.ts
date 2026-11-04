@@ -24,9 +24,9 @@ function testHooksIn(names: readonly string[]): string[] {
 /** An import of the testing entry, static, dynamic or re-exported. */
 const TESTING_IMPORT = /["']@iracedeck\/replay-engine\/testing["']/;
 
-/** True for a test, a test-support module or anything under a `test-support` directory. */
+/** True for a test, a test-support module, a test utility or anything under a `test-support` directory. */
 function isTestSource(path: string): boolean {
-  return /\.test\.ts$|\.test-support\.ts$/.test(path) || path.split(sep).includes("test-support");
+  return /\.test\.ts$|\.test-support\.ts$|\.test-util\.ts$/.test(path) || path.split(sep).includes("test-support");
 }
 
 /** Every `.ts` file under each package's `src/`, absolute. */
