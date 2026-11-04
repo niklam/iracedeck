@@ -354,16 +354,19 @@ export default probe;
 // start-up. Measured 2026-09-01: ~8.5s per `astro check` run on a built tree.
 const PROBE_RUNS_MS = 2 * SCRIPT_TIMEOUT_MS + 60_000;
 
-// How long a run waits for the lock: one other run's full probe, the longest a
-// live holder can legitimately keep it.
-const PROBE_LOCK_WAIT_MS = PROBE_RUNS_MS;
-
-// A lock older than this is stale even if its pid is alive: Windows reuses a
-// killed worker's pid quickly, and without this the next run would wait out its
-// whole deadline on an unrelated process and fail. `spawnSync`'s own timeouts
-// bound how long a live run can hold the lock (`PROBE_RUNS_MS`); the margin is
-// for the work around the two spawns.
+// A lock older than this is stale even if its pid is alive. Windows reuses a
+// killed worker's pid quickly, so liveness alone would never let a killed run's
+// lock go while that pid belongs to some unrelated process. `spawnSync`'s own
+// timeouts bound how long a live run can hold the lock (`PROBE_RUNS_MS`); the
+// margin is for the work around the two spawns.
 const PROBE_LOCK_MAX_HOLD_MS = PROBE_RUNS_MS + 60_000;
+
+// How long a run waits for the lock: longer than `PROBE_LOCK_MAX_HOLD_MS`, so a
+// waiter always outlasts any holder it would eventually judge stale. A rerun
+// straight after a kill can find the killed run's pid reused and alive; with a
+// shorter wait it would give up just before that lock turned stale, and fail.
+// `acquireProbeLock` refuses a wait shorter than the hold limit.
+const PROBE_LOCK_WAIT_MS = PROBE_LOCK_MAX_HOLD_MS + 10_000;
 
 // The test's own timeout clears the lock wait AND both runs, or it could fire
 // while an inner budget was still doing its job and report the wrong failure.
