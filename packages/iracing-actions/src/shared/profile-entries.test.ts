@@ -1,6 +1,64 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
-import { profileEntriesEqual, type ProfileEntry } from "./profile-entries.js";
+import {
+  availableProfilesForDevice,
+  deviceProfileEntries,
+  profileEntriesEqual,
+  type ProfileEntry,
+} from "./profile-entries.js";
+
+vi.mock("../actions/data/profiles.json", () => ({
+  default: [
+    { name: "iRaceDeck Default XL", deviceType: 2, displayName: "iRaceDeck Default" },
+    { name: "iRaceDeck Replay XL", deviceType: 2, displayName: "iRaceDeck Replay" },
+    { name: "iRaceDeck Race Admin Per Car XL", deviceType: 2, displayName: "iRaceDeck Race Admin Per Car" },
+    { name: "iRaceDeck Car Selector XL", deviceType: 2, displayName: "iRaceDeck Car Selector" },
+    { name: "iRaceDeck Pit Actions Mini", deviceType: 1, displayName: "iRaceDeck Pit Actions" },
+  ],
+}));
+
+describe("availableProfilesForDevice", () => {
+  it("filters the generated profiles by device type, returning manifest names in file order", () => {
+    expect(availableProfilesForDevice(2)).toEqual([
+      "iRaceDeck Default XL",
+      "iRaceDeck Replay XL",
+      "iRaceDeck Race Admin Per Car XL",
+      "iRaceDeck Car Selector XL",
+    ]);
+    expect(availableProfilesForDevice(1)).toEqual(["iRaceDeck Pit Actions Mini"]);
+  });
+
+  it("returns empty for a device type that ships no bundled profile", () => {
+    expect(availableProfilesForDevice(99)).toEqual([]);
+  });
+
+  it("returns empty when the device type is unknown", () => {
+    expect(availableProfilesForDevice(undefined)).toEqual([]);
+  });
+});
+
+describe("deviceProfileEntries", () => {
+  it("pairs each manifest name with its clean display label (#753)", () => {
+    expect(deviceProfileEntries(2)).toEqual([
+      { name: "iRaceDeck Default XL", label: "iRaceDeck Default" },
+      { name: "iRaceDeck Replay XL", label: "iRaceDeck Replay" },
+      { name: "iRaceDeck Race Admin Per Car XL", label: "iRaceDeck Race Admin Per Car" },
+      { name: "iRaceDeck Car Selector XL", label: "iRaceDeck Car Selector" },
+    ]);
+    expect(deviceProfileEntries(1)).toEqual([{ name: "iRaceDeck Pit Actions Mini", label: "iRaceDeck Pit Actions" }]);
+  });
+
+  it("returns empty for an unknown or profile-less device type", () => {
+    expect(deviceProfileEntries(undefined)).toEqual([]);
+    expect(deviceProfileEntries(99)).toEqual([]);
+  });
+
+  it("lists the same manifest names as availableProfilesForDevice, so a PI choice resolves at press time", () => {
+    for (const deviceType of [1, 2, 99]) {
+      expect(deviceProfileEntries(deviceType).map((e) => e.name)).toEqual(availableProfilesForDevice(deviceType));
+    }
+  });
+});
 
 describe("profileEntriesEqual", () => {
   const entries: ProfileEntry[] = [
