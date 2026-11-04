@@ -525,4 +525,10 @@ describe("the program-word rewrite's review round (#1606)", () => {
         expect(Date.now() - started, `${n} × "${unit}"`).toBeLessThan(200);
       }
   });
+
+  it('decodes bash\'s locale string `$"…"` as a double-quoted one', () => {
+    expect(trustedMask(`$"gh" pr`)).toBe(`   gh pr`);
+    expect(trustedMask(`$"/usr/bin/GH" pr`)).toBe(`${" ".repeat(12)}gh pr`);
+    expect(lexer.unreadablePrograms(`$"$GH" pr`)).toEqual([{ start: 0, end: 6, word: `$"$GH"` }]);
+  });
 });

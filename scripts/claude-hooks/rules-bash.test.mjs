@@ -4264,4 +4264,11 @@ describe("the program-word rewrite's review round (#1606)", () => {
       passes("git -c core.worktree=x push origin master");
     });
   });
+
+  // `$"…"` is bash's locale string: a double-quoted string, translated.
+  it("reads a locale string's program as the gh it spells", () => {
+    passes(`$"gh" pr merge 5 --squash`, ctx({ prView: green }));
+    expect(deny(`$"gh" pr merge 5 --squash`, ctx({ prView: unapproved }))).toMatch(/REVIEW_REQUIRED/);
+    expect(deny(`$"$GH" pr merge 5 --squash`)).toMatch(/judged as gh/);
+  });
 });

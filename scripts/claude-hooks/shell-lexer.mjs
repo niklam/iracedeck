@@ -495,6 +495,9 @@ export function decodeWord(w) {
         else if (ANSI_PLAIN[w[++k]] !== undefined) lit(ANSI_PLAIN[w[k]], k);
         else live("\\", k);
       i = k + 1;
+    } else if (ch === "$" && w[i + 1] === '"') {
+      // A locale string, `$"…"`: double-quoted text bash may translate (#1606 review).
+      i++;
     } else if (ch === '"') {
       let k = i + 1;
       while (k < w.length && w[k] !== '"') {
