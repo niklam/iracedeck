@@ -2050,6 +2050,19 @@ describe("git commit: the Elgato manifest never carries a Debug key (#1338)", ()
     }
   });
 
+  // PR #1619 review: an add decided at run time may not stage the manifest at
+  // all, so a copy staged with the key and cleaned since is what gets committed.
+  it("reads both copies when an add ahead of the commit is decided at run time", () => {
+    for (const command of [
+      'git add "$F" && git commit -m x',
+      "git add --pathspec-from-file=f && git commit -m x",
+    ]) {
+      const c = repo({ staged: () => [M], index: ON, worktree: OFF });
+      expect(deny(command, c), command).toMatch(/staged copy/);
+      expect(c.reads).toContain("index");
+    }
+  });
+
   it("does not mistake an option's value or an attached option for a flag", () => {
     const c = dirtyOn();
     // `-m` takes "-a"; `-S` carries its key id attached; `-C HEAD` reuses a message.

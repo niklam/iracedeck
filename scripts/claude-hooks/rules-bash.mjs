@@ -1683,7 +1683,8 @@ const GIT_ADD = cmd(/git\s+(?:-C\s+\S+\s+)?add\b/);
  * - Otherwise a plain commit takes the INDEX, and only when the manifest is
  *   staged — so a manifest dirty with the key but not staged passes.
  * - A substitution standing where an option or a path could be, and
- *   `--pathspec-from-file`, leave the selection unknown: both copies are read.
+ *   `--pathspec-from-file`, on the commit or on an add ahead of it, leave the
+ *   selection unknown: both copies are read.
  */
 function manifestSources(command, commit, ctx, dir) {
   const args = commitArgs(command, commit);
@@ -1693,8 +1694,12 @@ function manifestSources(command, commit, ctx, dir) {
     if (args.operands.some(covers(dir))) return ["worktree"];
     if (!(args.short.has("i") || args.long.has("--include"))) return [];
   } else if (args.short.has("a") || args.long.has("--all")) return ["worktree"];
-  const added = addsAhead(command, commit, ctx).some(({ args: a, dir: addDir }) => {
-    if (a.unknown || a.long.has("--pathspec-from-file")) return true;
+  const adds = addsAhead(command, commit, ctx);
+  // An add whose selection is only decided at run time may or may not stage the
+  // manifest, so the commit may take either copy: a manifest staged with the key
+  // and cleaned since, then `git add "$F" && git commit`, records the staged one.
+  if (adds.some(({ args: a }) => a.unknown || a.long.has("--pathspec-from-file"))) return ["index", "worktree"];
+  const added = adds.some(({ args: a, dir: addDir }) => {
     if (a.operands.length) return a.operands.some(covers(addDir));
     return (
       ["A", "u", "p", "i", "e"].some((f) => a.short.has(f)) ||
