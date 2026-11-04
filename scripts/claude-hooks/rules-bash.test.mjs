@@ -293,6 +293,7 @@ describe("gh pr merge", () => {
   const head = "1111111111111111111111111111111111111111";
   const green = () => ({
     number: 7,
+    url: "https://github.com/niklam/iracedeck/pull/7",
     state: "OPEN",
     headRefOid: head,
     headRefName: "ir-7",
@@ -350,6 +351,203 @@ describe("gh pr merge", () => {
     pr.reviews = [{ author: { login: "niklam" }, state: "COMMENTED", commit: { oid: head } }];
     expect(deny("gh pr merge 7 --squash", ctx({ prView: () => pr }))).toMatch(/no CodeRabbit review/);
   });
+  // #1393 (with #1534): the gate judges a niklam/iracedeck PR only, and the PR it
+  // reads is the one gh will merge — never this repository's PR of the same number.
+  describe("the repository the merge is in", () => {
+    /** A green home PR, recording every read as `[ref, dir, repo]`. */
+    const arrange = (pr = green, extra = {}) => {
+      const reads = [];
+      const c = ctx({
+        prView: (...args) => {
+          reads.push(args);
+          return pr();
+        },
+        ...extra,
+      });
+      return { c, reads };
+    };
+
+    it("passes a merge that names this repository, in every spelling gh takes", () => {
+      for (const command of [
+        "gh pr merge 7 --squash -R niklam/iracedeck",
+        "gh pr merge 7 --squash --repo NikLam/iRaceDeck",
+        "gh pr merge 7 --squash --repo=niklam/iracedeck",
+        "gh pr merge 7 --squash -Rniklam/iracedeck",
+        "gh pr merge 7 --squash -R github.com/niklam/iracedeck",
+        "gh pr merge 7 --squash -R https://github.com/niklam/iracedeck.git",
+        "gh pr merge 7 --squash -R 'niklam/iracedeck'",
+        "gh pr merge 7 -dsR niklam/iracedeck",
+        "GH_REPO=niklam/iracedeck gh pr merge 7 --squash",
+        "env GH_REPO=niklam/iracedeck gh pr merge 7 --squash",
+        "timeout 120 gh pr merge 7 --squash",
+        "gh pr merge 7 --squash 2>&1",
+        "gh pr merge 7 --squash && git pull || echo failed",
+        "cd ../ir-7 && gh pr merge 7 --squash -R niklam/iracedeck",
+        "cd ../ir-7; GH_REPO=niklam/iracedeck gh pr merge 7 --squash",
+        "gh pr merge https://github.com/niklam/iracedeck/pull/7 --squash",
+      ]) {
+        const { c } = arrange();
+        expect(checkBash(command, c), command).toBeNull();
+      }
+    });
+
+    it("hands the named repository to the read as GH_REPO, and a URL reads as itself", () => {
+      const named = arrange();
+      passes("GH_REPO=niklam/iracedeck gh pr merge --squash", named.c);
+      expect(named.reads).toEqual([[undefined, MASTER, "niklam/iracedeck"]]);
+      const url = arrange();
+      passes("gh pr merge https://github.com/niklam/iracedeck/pull/7 --squash -R niklam/iracedeck", url.c);
+      expect(url.reads).toEqual([["https://github.com/niklam/iracedeck/pull/7", MASTER, undefined]]);
+      const bare = arrange();
+      passes("gh pr merge 7 --squash", bare.c);
+      expect(bare.reads).toEqual([["7", MASTER, undefined]]);
+    });
+
+    it("refuses a merge that names another repository, before reading any PR", () => {
+      for (const command of [
+        "gh pr merge 7 --squash -R someone/other",
+        "gh pr merge -R someone/other 7 --squash",
+        "gh pr merge 7 --squash --repo someone/other",
+        "gh pr merge 7 --squash --repo=someone/other",
+        "gh pr merge 7 --squash -Rsomeone/other",
+        "gh pr merge 7 --squash -R ghe.example.com/niklam/iracedeck",
+        "gh pr merge 7 --squash -R niklam/iracedeck -R someone/other",
+        // pflag's combined short flags: -d (delete-branch), then -R and its value.
+        "gh pr merge 7 --squash -dR someone/other",
+        "gh pr merge 7 --squash -dRsomeone/other",
+        "gh pr merge 7 --squash -dR=someone/other",
+        "GH_REPO=someone/other gh pr merge 7 --squash",
+        "env GH_REPO=someone/other gh pr merge 7 --squash",
+        // An empty --repo is no repository to gh, which then reads GH_REPO.
+        "GH_REPO=someone/other gh pr merge 7 --squash -R ''",
+        "gh pr merge https://github.com/someone/other/pull/7 --squash",
+        // A URL wins over --repo, as it does in gh.
+        "gh pr merge https://github.com/someone/other/pull/7 --squash -R niklam/iracedeck",
+      ]) {
+        const { c, reads } = arrange();
+        expect(deny(command, c), command).toMatch(/targets someone\/other|targets ghe\.example\.com/);
+        expect(reads, command).toEqual([]);
+      }
+    });
+
+    it("refuses a repository it cannot read, before reading any PR", () => {
+      for (const command of [
+        `gh pr merge 7 --squash -R "$REPO"`,
+        "gh pr merge 7 --squash --repo=$REPO",
+        "gh pr merge 7 --squash -R",
+        "GH_REPO=$REPO gh pr merge 7 --squash",
+      ]) {
+        const { c, reads } = arrange();
+        expect(deny(command, c), command).toMatch(/Could not read the repository/);
+        expect(reads, command).toEqual([]);
+      }
+    });
+
+    // The gate reads before the command runs, so a command ahead of the merge
+    // could change what gh resolves it to after the read (#1393 review).
+    it("refuses anything but a plain cd ahead of the merge, before reading any PR", () => {
+      for (const command of [
+        "export GH_REPO=someone/other; gh pr merge 7 --squash",
+        "export GH_REPO=niklam/iracedeck && gh pr merge 7 --squash",
+        // An exported variable stays exported when assigned again.
+        "export GH_REPO=niklam/iracedeck; GH_REPO=someone/other; gh pr merge 7 --squash",
+        "export A=1 GH_REPO=someone/other; gh pr merge 7 --squash",
+        "declare -gx GH_REPO=someone/other; gh pr merge 7 --squash",
+        "export -- GH_REPO=someone/other; gh pr merge 7 --squash",
+        "set -a; GH_REPO=someone/other; gh pr merge 7 --squash",
+        "GH_REPO=someone/other; export GH_REPO; gh pr merge 7 --squash",
+        "GH_REPO=someone/other gh pr view 7 && gh pr merge 7 --squash",
+        "git switch other-branch && gh pr merge --squash",
+        "gh repo set-default someone/other && gh pr merge 7 --squash",
+        "pushd ../other && gh pr merge 7 --squash",
+        "(cd ../other && gh pr merge 7 --squash)",
+        "{ cd ../other; gh pr merge 7 --squash; }",
+        "cd ../other 2>/dev/null && gh pr merge 7 --squash",
+        "if cd ../other; then gh pr merge 7 --squash; fi",
+        "cd - && gh pr merge 7 --squash",
+        "cd ../other & gh pr merge 7 --squash",
+        "# merge it\ncd ../ir-7 & cd ../other && gh pr merge 7 --squash",
+        // A pipeline runs each command in its own subshell: the cd never reaches gh.
+        "cd ../ir-99 | gh pr merge --squash",
+        // Run beside the merge, a command can switch the branch or remote gh reads.
+        "gh pr merge --squash & git -C ../ir-99 log -1",
+        "gh pr merge --squash & git checkout feature-x",
+        "gh pr merge 5 --squash | git remote set-url origin https://github.com/someone/other",
+        "gh pr merge 5 --squash |& tail -3",
+      ]) {
+        const { c, reads } = arrange();
+        expect(deny(command, c), command).toMatch(/as its own command/);
+        expect(reads, command).toEqual([]);
+      }
+    });
+
+    it("refuses a PowerShell environment write or directory change ahead of the merge", () => {
+      for (const command of [
+        "$env:GH_REPO = 'someone/other'; gh pr merge 7 --squash",
+        "$env:GH_REPO = 'niklam/iracedeck'; gh pr merge 7 --squash",
+        "${env:GH_REPO} = 'someone/other'; gh pr merge 7 --squash",
+        "Set-Item Env:GH_REPO someone/other; gh pr merge 7 --squash",
+        "[Environment]::SetEnvironmentVariable('GH_REPO', 'someone/other'); gh pr merge 7 --squash",
+        "Push-Location ../other; gh pr merge 7 --squash",
+      ]) {
+        const { c, reads } = arrange(green, { shell: POWERSHELL });
+        expect(deny(command, c), command).toMatch(/as its own command/);
+        expect(reads, command).toEqual([]);
+      }
+      passes("Set-Location ../ir-7; gh pr merge 7 --squash", arrange(green, { shell: POWERSHELL }).c);
+    });
+
+    it("refuses a host, a working directory, a git variable or a wrapper's option in the merge's own prefix", () => {
+      for (const command of [
+        "GH_HOST=ghe.example.com gh pr merge 7 --squash -R niklam/iracedeck",
+        "GH_REPO=niklam/iracedeck GH_HOST=ghe.example.com gh pr merge 7 --squash",
+        "env -C ../other gh pr merge 7 --squash",
+        "env -C../other gh pr merge 7 --squash",
+        "env --chdir=../other gh pr merge 7 --squash",
+        "env --c=../other gh pr merge 7 --squash",
+        "GIT_DIR=../other/.git gh pr merge 7 --squash",
+        "git_work_tree=../other gh pr merge 7 --squash",
+        // Dropping an inherited GH_REPO the gate's own read still sees.
+        "env -i PATH=/bin gh pr merge 7 --squash",
+        "env -uGH_REPO gh pr merge 7 --squash",
+        "xargs -afile gh pr merge --squash",
+        // Windows hands gh its environment case-blind.
+        "gh_repo=someone/other gh pr merge 7 --squash",
+      ]) {
+        const { c, reads } = arrange();
+        expect(deny(command, c), command).toMatch(/prefix the gate cannot read whole/);
+        expect(reads, command).toEqual([]);
+      }
+    });
+
+    it("refuses a flag between `gh` and `merge`, which hid the merge from the gate", () => {
+      for (const command of [
+        "gh pr -R someone/other merge 7 --squash",
+        "gh pr --repo niklam/iracedeck merge 7 --squash",
+        "gh pr --repo=someone/other merge 7",
+        "gh -R niklam/iracedeck pr merge 5 --squash",
+        "gh --repo someone/other pr merge 5 --squash",
+      ])
+        expect(deny(command, arrange().c), command).toMatch(/every flag after `merge`/);
+      passes("gh pr -R niklam/iracedeck view 7 --json url");
+    });
+
+    it("reads the PR where the merge runs, so a chained cd moves the read", () => {
+      const { c, reads } = arrange();
+      passes("cd ../ir-7 && gh pr merge --squash", c);
+      expect(reads).toEqual([[undefined, tree("ir-7"), undefined]]);
+    });
+
+    it("refuses a PR gh read in another repository — an inherited GH_REPO or another checkout", () => {
+      const foreign = () => ({ ...green(), url: "https://github.com/someone/other/pull/7" });
+      expect(deny("gh pr merge 7 --squash", arrange(foreign).c)).toMatch(
+        /someone\/other\/pull\/7 is in someone\/other, not niklam\/iracedeck/,
+      );
+      expect(deny("cd ../other && gh pr merge --squash", arrange(foreign).c)).toMatch(/is in someone\/other/);
+      const unknown = () => ({ ...green(), url: undefined });
+      expect(deny("gh pr merge 7 --squash", arrange(unknown).c)).toMatch(/an unknown repository/);
+    });
+  });
   // #1307: a head that is a pure rebase of the commit CodeRabbit last reviewed.
   describe("a pure rebase of the reviewed head", () => {
     const reviewedOid = "2222222222222222222222222222222222222222";
@@ -394,7 +592,8 @@ describe("gh pr merge", () => {
       const { c, calls } = arrange(clean);
       passes(pinned, c);
       expect(calls.replay).toEqual([{ reviewed: reviewedOid, head, base: baseOid, dir: MASTER }]);
-      expect(calls.timeline).toEqual([[7, "2026-10-03T10:00:00Z", MASTER]]);
+      // The timeline is asked of the repository the PR's URL proved (#1393 review).
+      expect(calls.timeline).toEqual([[7, "2026-10-03T10:00:00Z", MASTER, "niklam/iracedeck"]]);
     });
 
     it("refuses a short --match-head-commit prefix — GitHub takes only a full sha", () =>
@@ -408,8 +607,12 @@ describe("gh pr merge", () => {
     });
 
     it("refuses a pin that is not the merge's own: in another command, a comment or a body text", () => {
+      // In another command ahead of the merge it is refused by the chain rule (#1393).
+      expect(deny(`echo --match-head-commit ${head}; gh pr merge 7 --squash`, arrange(clean).c)).toMatch(
+        /as its own command/,
+      );
       for (const command of [
-        `echo --match-head-commit ${head}; gh pr merge 7 --squash`,
+        `gh pr merge 7 --squash; echo --match-head-commit ${head}`,
         `gh pr merge 7 --squash # --match-head-commit ${head}`,
         `gh pr merge 7 --squash --body "--match-head-commit ${head}"`,
       ])
@@ -687,8 +890,8 @@ describe("gh pr merge", () => {
       // comment reviewed 9fe7aa1a5..4d33e1f32, and 9fe7aa1a5 is the approval.
       const { c, calls } = arrange({ replay: { ...clean, differing: ["a.ts"] } });
       passes(pinned1290, c);
-      expect(calls.comments).toEqual([[1290, MASTER]]);
-      expect(calls.timeline).toEqual([[1290, "2026-09-30T18:38:58Z", MASTER]]);
+      expect(calls.comments).toEqual([[1290, MASTER, "niklam/iracedeck"]]);
+      expect(calls.timeline).toEqual([[1290, "2026-09-30T18:38:58Z", MASTER, "niklam/iracedeck"]]);
       expect(calls.replay).toHaveLength(0);
     });
 
@@ -879,7 +1082,7 @@ describe("gh pr merge", () => {
         passes(pinned, c);
         expect(calls.replay).toEqual([{ reviewed: S, head, base, dir: MASTER }]);
         // The base-moved check keeps the review object's own, earlier time.
-        expect(calls.timeline).toEqual([[1290, "2026-09-30T18:38:58Z", MASTER]]);
+        expect(calls.timeline).toEqual([[1290, "2026-09-30T18:38:58Z", MASTER, "niklam/iracedeck"]]);
       });
 
       it("names S in a refusal, saying it came from the summary", () =>
@@ -1023,14 +1226,23 @@ describe("gh pr merge", () => {
   });
 
   it("checks a merge behind a shell keyword or a command wrapper, not only at a bare command position", () => {
+    // A keyword's condition is a command ahead of the merge, which the chain rule refuses (#1393).
+    for (const command of ["if true; then gh pr merge 7 --squash; fi", "while x; do gh pr merge 7 --squash; done"])
+      expect(deny(command, ctx({ prView: green }))).toMatch(/as its own command/);
+    // A wrapper's option or a gh variable can move what gh merges, so the prefix check refuses it (#1393).
     for (const command of [
-      "if true; then gh pr merge 7 --squash; fi",
-      "while x; do gh pr merge 7 --squash; done",
       "env GH_DEBUG=1 gh pr merge 7 --squash",
       "env -i gh pr merge 7 --squash",
       "env -u GH_TOKEN -i PATH=/bin gh pr merge 7 --squash",
       "exec -a merger gh pr merge 7 --squash",
       "time -p gh pr merge 7 --squash",
+    ])
+      expect(deny(command, ctx({ prView: green }))).toMatch(/prefix the gate cannot read whole/);
+    for (const command of [
+      "env DEBUG=1 PATH=/bin gh pr merge 7 --squash",
+      "exec gh pr merge 7 --squash",
+      "time gh pr merge 7 --squash",
+      "timeout 120 gh pr merge 7 --squash",
       "nohup gh pr merge 7 --squash",
       "! gh pr merge 7 --squash",
     ])
@@ -1071,7 +1283,8 @@ describe("gh pr merge", () => {
       baseChangedSince: () => false,
       replayRebase: () => ({ ok: true, differing: ["c.json"], conflicted: ["c.json"], lineMismatch: [] }),
     });
-    const v = asks(`git push origin v3.6.0 && gh pr merge 7 --squash --match-head-commit ${head}`, c);
+    // The merge leads: nothing but a `cd` may come ahead of one (#1393).
+    const v = asks(`gh pr merge 7 --squash --match-head-commit ${head} && git push origin v3.6.0`, c);
     expect(v).toMatch(/Pushing a tag cuts a release/);
     expect(v).toMatch(/conflicted in c\.json/);
   });
@@ -2882,8 +3095,8 @@ describe("a mention is not a command (#1321)", () => {
       "echo 'quoted' && gh pr merge 7 --squash",
     ])
       // A merge inside a substitution mid-command is caught but cannot be isolated
-      // or read; either way it is refused.
-      expect(deny(command)).toMatch(/refusing to merge blind|Could not isolate|Could not read this/);
+      // or read; either way it is refused, and so is one behind another command (#1393).
+      expect(deny(command)).toMatch(/refusing to merge blind|Could not isolate|Could not read this|as its own command/);
     deny(`echo "done" && pnpm exec vitest run`);
   });
 
@@ -2904,13 +3117,14 @@ describe("a mention is not a command (#1321)", () => {
 // is a command from that review; the real ones must get the verdict the
 // pre-#1321 hook gave them, the mentions must pass.
 describe("the mask fails closed (#1321 review)", () => {
-  const REAL = /refusing to merge blind|Could not isolate|Could not read this|One `gh pr merge`/;
+  const REAL = /refusing to merge blind|Could not isolate|Could not read this|One `gh pr merge`|as its own command/;
   const merges = (commands, c = ctx()) => {
     for (const command of commands) expect(deny(command, c), command).toMatch(REAL);
   };
   const linked = ctx({ linkTargets: () => [{ host: "Stream Deck", target: tree("ir-1013", "plugin") }] });
   const green = () => ({
     number: 7,
+    url: "https://github.com/niklam/iracedeck/pull/7",
     state: "OPEN",
     headRefOid: "1".repeat(40),
     headRefName: "ir-7",

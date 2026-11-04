@@ -242,12 +242,14 @@ export function normalizeRepo(named) {
  * The repository a `gh pr merge` names, in gh's order: a PR URL, then
  * `--repo` / `-R` (`merge.repo` from `parseMerge`), then a `GH_REPO` the
  * command assigns ({@link normalizeRepo}). `null` when one is named but not
- * readable; `undefined` when none is, and gh resolves the checkout's own.
+ * readable; `undefined` when none is, and gh resolves the checkout's own. An
+ * empty value counts as none, as gh reads it: `-R ''` falls through to
+ * `GH_REPO` (#1393).
  */
 export function mergeRepo(merge, envRepo) {
   const fromUrl = repoOfUrl(merge.ref);
   if (fromUrl) return fromUrl;
-  const named = merge.repo !== undefined ? merge.repo : envRepo;
+  const named = merge.repo !== undefined && merge.repo !== "" ? merge.repo : envRepo === "" ? undefined : envRepo;
   return named == null ? named : normalizeRepo(named);
 }
 
