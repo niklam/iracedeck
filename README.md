@@ -200,7 +200,7 @@ packages/
 | `@iracedeck/plugin-runtime` | The composition root all three plugins share: startup phases and the shared action list |
 | `@iracedeck/plugin-build` | Build-only: `createPluginRollupConfig`, the one Rollup config the three plugins share |
 | `@iracedeck/pi-components` | Shared PI web components, EJS partials, Rollup EJS plugin, and the Ulanzi + settings-window bridges |
-| `@iracedeck/iracing-plugin-stream-deck` | Elgato Stream Deck plugin: shell over `plugin-runtime`, PI templates, manifest, bundled profiles |
+| `@iracedeck/iracing-plugin-stream-deck` | Elgato Stream Deck plugin: shell over `plugin-runtime`, manifest, bundled profiles |
 | `@iracedeck/iracing-plugin-mirabox` | Mirabox plugin: shell over `plugin-runtime` for Mirabox devices |
 | `@iracedeck/iracing-plugin-ulanzi` | Ulanzi Deck plugin: shell over `plugin-runtime` for Ulanzi devices |
 | **Website** | |
