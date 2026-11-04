@@ -857,6 +857,54 @@ describe("ContextEventOrder", () => {
       expect(vi.getTimerCount()).toBe(0);
     });
 
+    it("a press that waits briefly behind a later exclusive event inherits no delay from an earlier, settled one", async () => {
+      useFakeClock();
+      const { order, ran, task } = createTimeline();
+      const appear = gate();
+      const settings = gate();
+
+      order.enqueue("ctx", "willAppear", task("willAppear", appear.promise));
+      await vi.advanceTimersByTimeAsync(100);
+      order.enqueue("ctx", "keyDown", task("keyDown"));
+      await vi.advanceTimersByTimeAsync(1900);
+      appear.open();
+      await vi.advanceTimersByTimeAsync(0);
+
+      // The first press was delayed 1900 ms and has settled.
+      expect(ran.at(-1)).toEqual(["keyDown", 2000]);
+
+      await vi.advanceTimersByTimeAsync(3000);
+      order.enqueue("ctx", "didReceiveSettings", task("didReceiveSettings", settings.promise));
+      await vi.advanceTimersByTimeAsync(10);
+      order.enqueue("ctx", "keyDown", task("keyDown-2"));
+      await vi.advanceTimersByTimeAsync(10);
+      settings.open();
+      await vi.advanceTimersByTimeAsync(0);
+
+      // It starts when the settings change settles, not 1900 ms after its arrival.
+      expect(ran.at(-1)).toEqual(["keyDown-2", 5020]);
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it("an input lets go of the input before it once its start is scheduled", async () => {
+      useFakeClock();
+      const { order, task } = createTimeline();
+      const appear = gate();
+
+      order.enqueue("ctx", "willAppear", task("willAppear", appear.promise));
+      order.enqueue("ctx", "keyDown", task("keyDown"));
+      await vi.advanceTimersByTimeAsync(100);
+      order.enqueue("ctx", "keyUp", task("keyUp"));
+      appear.open();
+      await vi.advanceTimersByTimeAsync(200);
+
+      // The context stays live, so its record and last input stay; the chain behind them must not.
+      const record = order["records"].get("ctx");
+
+      expect(record?.lastInput?.startAt).toBeDefined();
+      expect(record?.lastInput?.previousInput).toBeUndefined();
+    });
+
     it("a disappear arriving after the keyUp waits for the delayed keyUp", async () => {
       useFakeClock();
       const { order, ran, task } = createTimeline();

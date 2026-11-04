@@ -112,8 +112,19 @@ interface Entry {
   readonly exclusive: boolean;
   /** `performance.now()` at the enqueue. */
   readonly arrivedAt: number;
-  /** For an input: the input of the context that arrived before it, whose spacing it may have to keep. */
-  readonly previousInput: Entry | undefined;
+  /**
+   * For an input: the input of the context that arrived before it, whose
+   * spacing it may have to keep. Cleared once this input's start is scheduled,
+   * the only point that reads it, so a live context does not keep every input
+   * it ever received reachable through the chain.
+   */
+  previousInput: Entry | undefined;
+  /**
+   * Whether {@link previousInput} was still pending (not settled, not
+   * abandoned) when this input arrived: only then are the two one burst, so a
+   * delay that input had is not handed on to an input arriving long after it.
+   */
+  readonly previousPendingAtArrival: boolean;
   /** Resolves when the task settles (either way) or is abandoned; never rejects. */
   readonly done: Promise<void>;
   readonly release: () => void;
@@ -262,6 +273,8 @@ export class ContextEventOrder {
       exclusive,
       arrivedAt: performance.now(),
       previousInput: exclusive ? undefined : record.lastInput,
+      previousPendingAtArrival:
+        !exclusive && record.lastInput !== undefined && !record.lastInput.settled && !record.lastInput.abandoned,
       done,
       release,
       startAt: undefined,
@@ -317,6 +330,9 @@ export class ContextEventOrder {
       const startAt = this.spacedStart(entry, ahead.length > 0, now);
 
       entry.startAt = startAt;
+      // Read only by spacedStart, just now: keeping it would chain every input
+      // the context ever received.
+      entry.previousInput = undefined;
 
       // A remainder under a millisecond is run now: no timer is finer, and two
       // inputs of one synchronous tick must not take a macrotask hop apart.
@@ -341,20 +357,24 @@ export class ContextEventOrder {
    * input of its context starts than it arrived after that input arrived
    * (`startAt >= previous.startAt + (arrivedAt - previous.arrivedAt)`), so two
    * inputs released together by one exclusive event keep the interval the user
-   * put between them. The rule applies to an input that waited, to one whose
-   * previous input has not started yet (it is delayed by this rule itself) and
-   * to a release following its press (`keyUp` after `keyDown`, `dialUp` after
-   * `dialDown`), whose spacing is the hold even when the press alone was late.
-   * Any other input with nothing ahead starts at arrival: that is where a
+   * put between them. The rule applies to a release following its press
+   * (`keyUp` after `keyDown`, `dialUp` after `dialDown`), whose spacing is the
+   * hold even when the press alone was late; and, when the previous input was
+   * still pending as this one arrived (one burst), to an input that waited or
+   * whose previous input has not started yet (delayed by this rule itself).
+   * Any other input starts as soon as nothing is ahead of it: that is where a
    * context's delay ends, so a slow appear costs the presses that overlapped
-   * it and not every press after it.
+   * it and not every press after it, and a press that waits briefly behind a
+   * later exclusive event does not inherit a delay from long ago.
    */
   private spacedStart(entry: Entry, waited: boolean, now: number): number {
     const previous = entry.previousInput;
 
     if (previous?.startAt === undefined) return now;
 
-    const keepsSpacing = waited || previous.startedAt === undefined || isReleaseOf(entry.kind, previous.kind);
+    const keepsSpacing =
+      isReleaseOf(entry.kind, previous.kind) ||
+      (entry.previousPendingAtArrival && (waited || previous.startedAt === undefined));
 
     return keepsSpacing ? Math.max(now, previous.startAt + (entry.arrivedAt - previous.arrivedAt)) : now;
   }
