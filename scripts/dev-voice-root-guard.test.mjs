@@ -158,8 +158,9 @@ describe("the development voice root is build-time only (#1143, #1214)", () => {
     it("runs after the audio-assets build (the packer shares its processed-clip cache) and the one package it imports", () => {
       expect(task?.dependsOn).toContain("@iracedeck/audio-assets#build");
       // The packer's only workspace import is @iracedeck/callout-script, read
-      // from its built dist. `^build` would also wait on deck-core and the
-      // rest of audio-assets' devDependencies, none of which the packer loads.
+      // from its built dist. `^build` would also wait on audio-assets' other
+      // workspace dependencies — voice-packs and track-data, both test-only —
+      // and everything below them, none of which the packer loads.
       expect(task?.dependsOn).toContain("@iracedeck/callout-script#build");
       expect(task?.dependsOn).not.toContain("^build");
     });
