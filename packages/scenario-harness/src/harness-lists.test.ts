@@ -37,13 +37,13 @@
  */
 import { _resetAudioScenarios, type ContractReport, initializeAudioScenarios } from "@iracedeck/audio-scenarios";
 import { registerPitCrew } from "@iracedeck/audio-scenarios/pit-crew";
-import type { IAudioService } from "@iracedeck/audio-service";
+import { createFakeAudio } from "@iracedeck/audio-service/testing";
 import { _resetEventBus, initializeEventBus, type SimEventName } from "@iracedeck/event-bus";
 import { silentLogger } from "@iracedeck/logger";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { getAudioAssetsManifest } from "./bootstrap-settings.js";
 import { EVENT_TEMPLATES } from "./event-names.js";
@@ -174,9 +174,7 @@ describe("every callout can be auditioned from the harness (#1376)", () => {
   beforeAll(() => {
     const bus = initializeEventBus(silentLogger);
     // Registration only: nothing is published, so the audio service is never asked for anything that matters.
-    const audio = new Proxy({} as Record<string, unknown>, {
-      get: (target, key: string) => (target[key] ??= vi.fn()),
-    }) as unknown as IAudioService;
+    const audio = createFakeAudio();
     const engine = initializeAudioScenarios(bus, audio, getAudioAssetsManifest(), silentLogger, () => "default");
 
     registerPitCrew(bus, {});

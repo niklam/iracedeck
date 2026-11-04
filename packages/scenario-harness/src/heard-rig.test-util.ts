@@ -19,7 +19,8 @@
  * on one bus and the translator is the part restarted per test.
  */
 import { _resetAudioScenarios, getScenarioEngine, initializeAudioScenarios } from "@iracedeck/audio-scenarios";
-import { AudioChannel, type IAudioService } from "@iracedeck/audio-service";
+import { AudioChannel } from "@iracedeck/audio-service";
+import { createFakeAudio, type FakeAudio } from "@iracedeck/audio-service/testing";
 import {
   _resetEventBus,
   type IEventBus,
@@ -64,23 +65,20 @@ export type ClipDurations = readonly (readonly [pattern: RegExp, ms: number])[];
 /** A clip no pattern names — the radio frame's two ticks, mostly. */
 const OTHER_CLIP_MS = 300;
 
-type Played = { channel: AudioChannel; path: string };
-
-type FakeAudio = IAudioService & { played: Played[] };
-
 /**
- * The audio service, with the device replaced by a clock: a clip "plays" for
- * its duration of the fake timers' time and then completes. The engine
- * registers its completion callback before it starts a clip, so the callback
- * that is current when the clip ends is the one for that clip unless the
- * channel was stopped or restarted meanwhile, which the per-channel token
+ * The shared fake audio service, with the device replaced by a clock: a clip
+ * "plays" for its duration of the fake timers' time and then completes. The
+ * engine registers its completion callback before it starts a clip, so the
+ * callback that is current when the clip ends is the one for that clip unless
+ * the channel was stopped or restarted meanwhile, which the per-channel token
  * tells apart.
  */
-function createFakeAudio(clipMs: ClipDurations): FakeAudio {
-  const played: Played[] = [];
-  const callbacks = new Map<AudioChannel, () => void>();
+function createClockedAudio(clipMs: ClipDurations): FakeAudio {
+  const audio = createFakeAudio();
   const tokens = new Map<AudioChannel, number>();
   const playing = new Set<AudioChannel>();
+  const play = audio.playOnChannel.getMockImplementation();
+  const stop = audio.stopChannel.getMockImplementation();
   const nextToken = (channel: AudioChannel): number => {
     const token = (tokens.get(channel) ?? 0) + 1;
 
@@ -89,51 +87,33 @@ function createFakeAudio(clipMs: ClipDurations): FakeAudio {
     return token;
   };
 
-  const audio: Partial<IAudioService> & { played: Played[] } = {
-    played,
-    init: () => true,
-    destroy: () => {},
-    playOnChannel: (channel, path, loop) => {
-      const token = nextToken(channel);
+  audio.playOnChannel.mockImplementation((channel, path, loop) => {
+    const token = nextToken(channel);
+    const started = play?.(channel, path, loop) ?? true;
 
-      played.push({ channel, path });
-      playing.add(channel);
+    playing.add(channel);
 
-      if (loop === true) return true;
+    if (loop === true) return started;
 
-      const ms = clipMs.find(([pattern]) => pattern.test(path.replaceAll("\\", "/")))?.[1] ?? OTHER_CLIP_MS;
+    const ms = clipMs.find(([pattern]) => pattern.test(path.replaceAll("\\", "/")))?.[1] ?? OTHER_CLIP_MS;
 
-      setTimeout(() => {
-        if (tokens.get(channel) !== token) return;
+    setTimeout(() => {
+      if (tokens.get(channel) !== token) return;
 
-        const done = callbacks.get(channel);
-
-        playing.delete(channel);
-        callbacks.delete(channel);
-        done?.();
-      }, ms);
-
-      return true;
-    },
-    stopChannel: (channel) => {
-      nextToken(channel);
       playing.delete(channel);
-      callbacks.delete(channel);
-    },
-    stopAllChannels: () => {},
-    setChannelVolume: () => {},
-    setBusVolume: () => {},
-    getBusVolume: () => 1,
-    isChannelPlaying: (channel) => playing.has(channel),
-    onChannelComplete: (channel, callback) => {
-      callbacks.set(channel, callback);
-    },
-    seekChannelRandom: () => {},
-    getAudioDevices: () => [],
-    setAudioDevice: () => true,
-  };
+      audio._triggerChannelEnd(channel);
+    }, ms);
 
-  return audio as FakeAudio;
+    return started;
+  });
+  audio.stopChannel.mockImplementation((channel) => {
+    nextToken(channel);
+    playing.delete(channel);
+    stop?.(channel);
+  });
+  audio.isChannelPlaying.mockImplementation((channel) => playing.has(channel));
+
+  return audio;
 }
 
 /** The shortcut with this id, or a thrown error naming it. */
@@ -185,7 +165,7 @@ export function useHeardRig(clipMs: ClipDurations): HeardRig {
 
   beforeAll(async () => {
     bus = initializeEventBus(silentLogger);
-    audio = createFakeAudio(clipMs);
+    audio = createClockedAudio(clipMs);
 
     const adapter = new MockPlatformAdapter(silentLogger);
     const voices = seedGlobalSettings(adapter);
@@ -214,7 +194,7 @@ export function useHeardRig(clipMs: ClipDurations): HeardRig {
     _resetSimEventsIracing();
     // Whatever is still waiting is refused or played out before the next test.
     vi.advanceTimersByTime(60_000);
-    audio.played.length = 0;
+    audio._played.length = 0;
   });
 
   const running = (): MockSDKController => {
@@ -243,7 +223,7 @@ export function useHeardRig(clipMs: ClipDurations): HeardRig {
   };
 
   const clipsOn = (channel: AudioChannel): string[] =>
-    audio.played
+    audio._played
       .filter((p) => p.channel === channel)
       .map((p) => {
         const path = p.path.replaceAll("\\", "/");
@@ -269,7 +249,7 @@ export function useHeardRig(clipMs: ClipDurations): HeardRig {
       else controller.tickOnce();
 
       vi.advanceTimersByTime(500);
-      audio.played.length = 0;
+      audio._played.length = 0;
     },
     apply,
     publish,
@@ -289,7 +269,7 @@ export function useHeardRig(clipMs: ClipDurations): HeardRig {
     heardAndCleared: () => {
       const clips = heard();
 
-      audio.played.length = 0;
+      audio._played.length = 0;
 
       return clips;
     },
