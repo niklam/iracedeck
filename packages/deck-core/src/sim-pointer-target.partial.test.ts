@@ -17,8 +17,8 @@ import { describe, expect, it } from "vitest";
  * default changed on one side of the pair and not the other would show the user
  * one value and apply another. The values live in `@iracedeck/app-constants`
  * (`sim-pointer-target.ts`), whose tests have no Node typings to read a file
- * with, so the guard lives here — reading a sibling package's file by relative
- * path, the same way `pi-components/src/build` reads `iracing-actions`.
+ * with, so the guard lives here — reading the two pages from the repo root, since
+ * neither `pi-components` nor `iracing-actions` exports them.
  */
 const repoRoot = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), "../../..");
 const partial = readFileSync(
