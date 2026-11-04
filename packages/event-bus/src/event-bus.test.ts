@@ -1,7 +1,14 @@
-import type { ILogger } from "@iracedeck/logger";
+import { DEFAULT_MAX_ERROR_KEYS, DEFAULT_MAX_ERROR_KEYS_PER_ID, type ILogger } from "@iracedeck/logger";
 import { afterEach, describe, expect, expectTypeOf, it, vi } from "vitest";
 
-import { _resetEventBus, getEventBus, initializeEventBus, isEventBusInitialized } from "./event-bus.js";
+import {
+  _resetEventBus,
+  EVENT_BUS_ERROR_ID_PREFIX,
+  EVENT_BUS_REPORTER_MAX_KEYS,
+  getEventBus,
+  initializeEventBus,
+  isEventBusInitialized,
+} from "./event-bus.js";
 import type { FlagScope, SimEvent, SimEventName, SimEventOf } from "./event-catalog.js";
 
 function createMockLogger(): ILogger {
@@ -270,6 +277,7 @@ describe("EventBus", () => {
       expect(good).toHaveBeenCalled();
       expect(logger.error).toHaveBeenCalledTimes(1);
       const logged = calls(logger.error)[0];
+      expect(logged.startsWith(EVENT_BUS_ERROR_ID_PREFIX)).toBe(true);
       expect(logged).toMatch(/^event-bus:pitLane\.entered#1 \(bad\) threw: /);
       expect(logged).toContain("boom");
     });
@@ -465,37 +473,43 @@ describe("EventBus", () => {
         ]);
       });
 
-      it("leaves nothing to flush for a handler that unsubscribes itself and then throws", () => {
+      it("keeps no keys for a handler that unsubscribes itself and then throws", () => {
         const logger = createMockLogger();
         const bus = initializeEventBus(logger, { errorClock: clock });
-        const other = throwingHandler();
-        const handler = vi.fn(() => {
-          bus.unsubscribe("pitLane.entered", handler);
-          throw new Error("after leaving");
-        });
 
-        bus.subscribe("pitLane.entered", handler);
-        bus.subscribe("pitLane.entered", other);
+        // Enough of them to fill the whole table, were their keys kept.
+        for (let h = 0; h < EVENT_BUS_REPORTER_MAX_KEYS; h++) {
+          const leaving = (): void => {
+            bus.unsubscribe("pitLane.entered", leaving);
+            throw new Error("after leaving");
+          };
+
+          bus.subscribe("pitLane.entered", leaving);
+        }
+
         bus.publish(envelope("pitLane.entered"));
 
-        expect(logger.error).toHaveBeenCalledTimes(2);
+        expect(logger.error).toHaveBeenCalledTimes(EVENT_BUS_REPORTER_MAX_KEYS);
 
-        // Had its keys survived, its id would still count toward the reporter's
-        // table; the only observable trace is that no later forget or recovery
-        // ever names it.
-        bus.unsubscribe("pitLane.entered", other);
-        now = 120_000;
+        // With their keys gone the table has room: a new handler's first throw is
+        // still a full error line, not a "reached the cap" warning.
+        bus.subscribe("pitLane.entered", throwingHandler());
         bus.publish(envelope("pitLane.entered"));
 
-        expect([...calls(logger.warn), ...calls(logger.info)].filter((line) => line.includes("#1"))).toEqual([]);
+        expect(logger.error).toHaveBeenCalledTimes(EVENT_BUS_REPORTER_MAX_KEYS + 1);
+        expect(logger.warn).not.toHaveBeenCalled();
       });
 
-      it("has room for more failing handlers than #1558's default global cap", () => {
+      it("has room for every throw site of 64 handlers, past #1558's default global cap", () => {
         const logger = createMockLogger();
         const bus = initializeEventBus(logger, { errorClock: clock });
+        const handlers = EVENT_BUS_REPORTER_MAX_KEYS / DEFAULT_MAX_ERROR_KEYS_PER_ID;
 
-        // 40 handlers, four throw sites each: 160 keys, past #1558's default of 32.
-        for (let h = 0; h < 40; h++) {
+        expect(handlers).toBe(64);
+        expect(EVENT_BUS_REPORTER_MAX_KEYS).toBeGreaterThan(DEFAULT_MAX_ERROR_KEYS);
+
+        // Four throw sites each, every one a key.
+        for (let h = 0; h < handlers; h++) {
           bus.subscribe("pitLane.entered", (ev) => {
             const site = ev.timestamp;
 
@@ -513,7 +527,7 @@ describe("EventBus", () => {
           bus.publish({ ...envelope("pitLane.entered"), timestamp: site });
         }
 
-        expect(logger.error).toHaveBeenCalledTimes(160);
+        expect(logger.error).toHaveBeenCalledTimes(EVENT_BUS_REPORTER_MAX_KEYS);
         expect(logger.warn).not.toHaveBeenCalled();
       });
     });

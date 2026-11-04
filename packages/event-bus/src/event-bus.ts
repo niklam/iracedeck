@@ -96,15 +96,26 @@ function functionName(handler: AnyHandler): string {
   }
 }
 
+/** One subscription: the id it is reported under, and its handler. */
+type Subscription = readonly [id: string, handler: AnyHandler];
+
 class EventBus implements IEventBus {
   /**
-   * Each event name's handlers, in subscription order, with the id each is
-   * reported under. The id is fixed when the handler is subscribed and never
-   * reused: a handler unsubscribed and subscribed again gets a new number, so
-   * its first throw after that is a first occurrence, logged in full.
+   * Each event name's subscriptions, in subscription order. Copy-on-write:
+   * `subscribe` and `unsubscribe` replace a name's array and never mutate
+   * one, so `publish` iterates the array it read without copying it, a
+   * handler unsubscribed during dispatch is still called on that publish, and
+   * one subscribed during dispatch is first called on the next.
+   *
+   * An id is fixed when its handler is subscribed and never reused: a handler
+   * unsubscribed and subscribed again gets a new number, so its first throw
+   * after that is a first occurrence, logged in full.
    */
-  private readonly handlers = new Map<SimEventName, Map<AnyHandler, string>>();
-  /** Every id with a live subscription, for the boundary's `isRegistered`. */
+  private readonly subscriptions = new Map<SimEventName, readonly Subscription[]>();
+  /**
+   * Every id with a live subscription, for the boundary's `isRegistered`.
+   * Changed only in {@link setSubscriptions}, beside the arrays it mirrors.
+   */
   private readonly liveIds = new Set<string>();
   /** The last registration number handed out. */
   private registrations = 0;
@@ -112,8 +123,10 @@ class EventBus implements IEventBus {
   private readonly boundary: ErrorBoundary;
 
   constructor(logger: ILogger, options: EventBusOptions) {
-    // A handler that unsubscribes itself and then throws leaves no error keys
-    // behind: its `unsubscribe` ran before the throw was reported.
+    // `isRegistered` covers a handler that unsubscribes itself and then
+    // throws: its `unsubscribe` forgot an id that had nothing recorded yet, so
+    // the boundary forgets it again once the throw is reported, and it holds
+    // no keys in the table afterwards.
     this.boundary = createErrorBoundary({
       logger,
       policy: options.onHandlerError,
@@ -124,62 +137,58 @@ class EventBus implements IEventBus {
   }
 
   publish<T extends SimEventName>(event: SimEventOf<T>): void {
-    const name = event.event as SimEventName;
-    const registered = this.handlers.get(name);
+    const snapshot = this.subscriptions.get(event.event as SimEventName);
 
-    if (!registered || registered.size === 0) return;
-
-    // Snapshot so handlers that unsubscribe (their own or others') during
-    // dispatch don't mutate the map we're iterating, and a handler subscribed
-    // during dispatch is first called on the next publish.
-    const snapshot = Array.from(registered, ([handler, id]) => [id, handler] as const);
+    if (snapshot === undefined) return;
 
     throwHeld(this.boundary.callEach(snapshot, (handler) => handler(event as SimEventOf<SimEventName>)));
   }
 
   subscribe<T extends SimEventName>(name: T, handler: EventHandler<T>): () => void {
-    let registered = this.handlers.get(name);
-
-    if (!registered) {
-      registered = new Map();
-      this.handlers.set(name, registered);
-    }
-
+    const current = this.subscriptions.get(name) ?? [];
     const anyHandler = handler as AnyHandler;
 
     // Subscribing a handler that is already subscribed to this name is a
     // no-op: it keeps its place and its id.
-    if (!registered.has(anyHandler)) {
+    if (!current.some(([, existing]) => existing === anyHandler)) {
       this.registrations++;
 
       const fn = functionName(anyHandler);
       const id = `${EVENT_BUS_ERROR_ID_PREFIX}${name}#${this.registrations}${fn === "" ? "" : ` (${fn})`}`;
 
-      registered.set(anyHandler, id);
-      this.liveIds.add(id);
+      this.setSubscriptions(name, [...current, [id, anyHandler]], { added: id });
     }
 
     return () => this.unsubscribe(name, handler);
   }
 
   unsubscribe<T extends SimEventName>(name: T, handler: EventHandler<T>): void {
-    const registered = this.handlers.get(name);
+    const current = this.subscriptions.get(name);
+    const removed = current?.find(([, existing]) => existing === (handler as AnyHandler));
 
-    if (!registered) return;
+    if (current === undefined || removed === undefined) return;
 
-    const id = registered.get(handler as AnyHandler);
-
-    if (id === undefined) return;
-
-    registered.delete(handler as AnyHandler);
-    this.liveIds.delete(id);
+    this.setSubscriptions(
+      name,
+      current.filter((subscription) => subscription !== removed),
+      { removed: removed[0] },
+    );
     // Flushes the handler's unreported counts as one `warn` line and drops its
     // keys, so handlers that come and go do not fill the reporter's table.
-    this.boundary.forget(id);
+    this.boundary.forget(removed[0]);
+  }
 
-    if (registered.size === 0) {
-      this.handlers.delete(name);
-    }
+  /** Replace a name's subscriptions (dropping the entry when empty) and keep {@link liveIds} in step. */
+  private setSubscriptions(
+    name: SimEventName,
+    next: readonly Subscription[],
+    change: { added: string } | { removed: string },
+  ): void {
+    if (next.length === 0) this.subscriptions.delete(name);
+    else this.subscriptions.set(name, next);
+
+    if ("added" in change) this.liveIds.add(change.added);
+    else this.liveIds.delete(change.removed);
   }
 }
 
