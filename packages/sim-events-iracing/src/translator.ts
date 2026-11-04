@@ -3042,7 +3042,15 @@ function handleLiveSteps(
   // for `getTrackGaps()`. Its gate and `diffGaps`' are disjoint, so only one
   // of the two stores grows in a session. Publishes no event.
   steps.run("diffTrackGaps", () =>
-    diffTrackGaps(self.state, telemetry, sessionType, sessionInfo, playerCarIdx, paceCarIdx, trackLengthMeters),
+    diffTrackGaps(
+      self.state.trackGaps,
+      telemetry,
+      sessionType,
+      sessionInfo,
+      playerCarIdx,
+      paceCarIdx,
+      trackLengthMeters,
+    ),
   );
   // Pit-box count-in (issue #600). Reuses the cached `trackLengthMeters` to
   // convert the LapDistPct→box gap into meters; the box itself comes from
