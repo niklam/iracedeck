@@ -415,11 +415,13 @@ export const MAX_CONFLICTED_LINE_CHECKS = 20;
  * (`BaseRefForcePushedEvent`) in its timeline. Either makes commits that were
  * base-side at review time look like part of the reviewed change.
  * `undefined` when gh cannot answer, which the merge gate treats as yes.
+ * `opts` go to {@link run}: the gate passes the PR's repository as `GH_REPO`,
+ * so `{owner}` / `{repo}` are never another checkout's (#1393).
  */
-export function baseChangedSince(number, sinceIso, dir) {
+export function baseChangedSince(number, sinceIso, dir, opts) {
   const query =
     "query($owner:String!,$repo:String!,$n:Int!){repository(owner:$owner,name:$repo){pullRequest(number:$n){timelineItems(itemTypes:[BASE_REF_CHANGED_EVENT,BASE_REF_FORCE_PUSHED_EVENT],last:50){nodes{... on BaseRefChangedEvent{createdAt} ... on BaseRefForcePushedEvent{createdAt}}}}}}";
-  const nodes = ghGraphql(query, { n: number }, dir)?.repository?.pullRequest?.timelineItems?.nodes;
+  const nodes = ghGraphql(query, { n: number }, dir, opts)?.repository?.pullRequest?.timelineItems?.nodes;
   if (!Array.isArray(nodes)) return undefined;
   return nodes.some((x) => typeof x?.createdAt === "string" && x.createdAt > (sinceIso ?? ""));
 }
@@ -467,10 +469,11 @@ export function ghGraphql(query, variables, dir, opts) {
  * cannot answer, which the gate treats as no summary; a failed history read
  * leaves the history off, which `readSummary` refuses. The buffer is raised
  * because a hundred bodies can pass spawnSync's 1 MiB default, and a cut-off
- * read must fail rather than parse.
+ * read must fail rather than parse. `opts` go to {@link run}, as for
+ * {@link baseChangedSince}.
  */
-export function prComments(number, dir) {
-  const big = { maxBuffer: 64 * 1024 * 1024 };
+export function prComments(number, dir, opts) {
+  const big = { ...opts, maxBuffer: 64 * 1024 * 1024 };
   const query = `query($owner:String!,$repo:String!,$n:Int!){repository(owner:$owner,name:$repo){pullRequest(number:$n){comments(first:${MAX_COMMENTS}){totalCount pageInfo{hasNextPage} nodes{id author{login __typename} editor{login __typename} isMinimized createdAt lastEditedAt body}}}}}`;
   const comments = ghGraphql(query, { n: number }, dir, big)?.repository?.pullRequest?.comments;
   if (!comments) return undefined;

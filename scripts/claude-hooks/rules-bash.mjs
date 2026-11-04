@@ -492,8 +492,12 @@ function unreviewedHeadVerdict(merge, pr, bot, ctx, isBackMerge) {
   // GitHub takes only a full sha here, so a prefix would be a merge that can never go through.
   if (!FULL_SHA.test(merge.pin ?? "") || merge.pin !== head)
     return `${notAtHead} — the newest one is at a previous head ${lastObject.slice(0, 9) || "(no commit)"}. The summary and rebase checks decide about this exact head, so pin it: add \`--match-head-commit ${head}\`.`;
-  const summary = readSummary(ctx.prComments?.(pr.number, ctx.cwd), head);
-  const moved = ctx.baseChangedSince?.(pr.number, newest.submittedAt, ctx.cwd);
+  // Asked of the repository the PR's URL proved, never whatever the cwd's
+  // checkout or an inherited GH_REPO resolves `{owner}/{repo}` to: another
+  // repository's PR of the same number has its own timeline (#1393 review).
+  const repo = repoOfUrl(pr.url);
+  const summary = readSummary(ctx.prComments?.(pr.number, ctx.cwd, repo), head);
+  const moved = ctx.baseChangedSince?.(pr.number, newest.submittedAt, ctx.cwd, repo);
   if (moved !== false) {
     const atNewest = `${notAtHead} — the newest one is at a previous head ${lastObject.slice(0, 9) || "(no commit)"}`;
     return moved

@@ -104,14 +104,15 @@ if (typeof command === "string" && command.trim()) {
           "number,url,state,headRefOid,headRefName,baseRefName,baseRefOid,reviewDecision,mergeStateStatus,statusCheckRollup,reviews",
         ],
         dir,
-        repo ? { env: { GH_REPO: repo } } : undefined,
+        repoEnv(repo),
       ),
     ),
     // The merge gate's pure-rebase check (#1307).
     replayRebase,
-    baseChangedSince: memo(baseChangedSince),
+    // Both read the repository the gate confirmed, as GH_REPO (#1393).
+    baseChangedSince: memo((n, since, dir, repo) => baseChangedSince(n, since, dir, repoEnv(repo))),
     // CodeRabbit's summary comment, read only for a head without a review object of its own (#1386).
-    prComments: memo(prComments),
+    prComments: memo((n, dir, repo) => prComments(n, dir, repoEnv(repo))),
   };
   let verdict;
   try {
@@ -152,6 +153,11 @@ function packageDirs(root) {
   } catch {
     return [];
   }
+}
+
+/** `run` options that hand gh `repo` as `GH_REPO`; none without one. */
+function repoEnv(repo) {
+  return repo ? { env: { GH_REPO: repo } } : undefined;
 }
 
 function lines(res) {

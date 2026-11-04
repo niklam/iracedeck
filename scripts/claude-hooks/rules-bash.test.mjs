@@ -573,7 +573,8 @@ describe("gh pr merge", () => {
       const { c, calls } = arrange(clean);
       passes(pinned, c);
       expect(calls.replay).toEqual([{ reviewed: reviewedOid, head, base: baseOid, dir: MASTER }]);
-      expect(calls.timeline).toEqual([[7, "2026-10-03T10:00:00Z", MASTER]]);
+      // The timeline is asked of the repository the PR's URL proved (#1393 review).
+      expect(calls.timeline).toEqual([[7, "2026-10-03T10:00:00Z", MASTER, "niklam/iracedeck"]]);
     });
 
     it("refuses a short --match-head-commit prefix — GitHub takes only a full sha", () =>
@@ -870,8 +871,8 @@ describe("gh pr merge", () => {
       // comment reviewed 9fe7aa1a5..4d33e1f32, and 9fe7aa1a5 is the approval.
       const { c, calls } = arrange({ replay: { ...clean, differing: ["a.ts"] } });
       passes(pinned1290, c);
-      expect(calls.comments).toEqual([[1290, MASTER]]);
-      expect(calls.timeline).toEqual([[1290, "2026-09-30T18:38:58Z", MASTER]]);
+      expect(calls.comments).toEqual([[1290, MASTER, "niklam/iracedeck"]]);
+      expect(calls.timeline).toEqual([[1290, "2026-09-30T18:38:58Z", MASTER, "niklam/iracedeck"]]);
       expect(calls.replay).toHaveLength(0);
     });
 
@@ -1062,7 +1063,7 @@ describe("gh pr merge", () => {
         passes(pinned, c);
         expect(calls.replay).toEqual([{ reviewed: S, head, base, dir: MASTER }]);
         // The base-moved check keeps the review object's own, earlier time.
-        expect(calls.timeline).toEqual([[1290, "2026-09-30T18:38:58Z", MASTER]]);
+        expect(calls.timeline).toEqual([[1290, "2026-09-30T18:38:58Z", MASTER, "niklam/iracedeck"]]);
       });
 
       it("names S in a refusal, saying it came from the summary", () =>
