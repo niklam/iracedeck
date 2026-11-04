@@ -60,6 +60,8 @@ const SIM_NEUTRAL_MESSAGE =
   'A sim-neutral package (SIM_NEUTRAL_PACKAGES in eslint.config.js) must not depend on a simulator: reach the sim through deck-core\'s SimConnection interface, the event-bus catalog or an injected delegate, and put iRacing code in an iRacing package such as @iracedeck/deck-iracing (#1351, #1367, #1375).';
 const PI_COMPONENTS_MESSAGE =
   'iracing-actions is bundled into every plugin, and @iracedeck/pi-components (with ./testing, which loads ejs and node:fs, and ./build) is only its tests\' devDependency: import it from a *.test.ts or *.test-support.ts file only (#1375).';
+const TEST_SUPPORT_MESSAGE =
+  'A *.test-support.ts module may import @iracedeck/pi-components/testing (with ejs and node:fs), so a non-test iracing-actions source importing one would bundle that into every plugin: import it from a *.test.ts or *.test-support.ts file only (#1375).';
 const SHELL_SIM_MESSAGE =
   'A plugin shell must not depend on a simulator: read the sim through PluginExtensionContext.sim, which plugin-runtime hands PluginExtension.start (#1500).';
 
@@ -267,10 +269,15 @@ export default [
     // renders the pages through ejs and node:fs, and ./build is the Rollup
     // tooling. The manifest section is no guard on its own, since the package
     // resolves from any file, so a non-test source is refused it here, the bare
-    // name and every subpath. iracing-actions files match no other block setting
-    // no-restricted-imports, so these options replace none
+    // name and every subpath. A *.test-support.ts file is let through, which
+    // leaves a way round: a non-test source importing one by relative path
+    // would bundle what that file imports. The second pattern refuses that, in
+    // every specifier shape (with .js, which the repo writes, .ts or none).
+    // Both patterns sit in one options object: iracing-actions files match no
+    // other block setting no-restricted-imports, and a second block here would
+    // replace these options rather than add to them
     // (scripts/sim-boundary-coverage.test.mjs fails if one ever does).
-    // scripts/iracing-actions-pi-components-boundary.test.mjs proves this fires.
+    // scripts/iracing-actions-pi-components-boundary.test.mjs proves both fire.
     files: ['packages/iracing-actions/src/**/*.ts'],
     ignores: ['packages/iracing-actions/src/**/*.test.ts', 'packages/iracing-actions/src/**/*.test-support.ts'],
     rules: {
@@ -278,7 +285,13 @@ export default [
         'error',
         {
           paths: [{ name: '@iracedeck/pi-components', message: PI_COMPONENTS_MESSAGE }],
-          patterns: [{ group: ['@iracedeck/pi-components/*'], message: PI_COMPONENTS_MESSAGE }],
+          patterns: [
+            { group: ['@iracedeck/pi-components/*'], message: PI_COMPONENTS_MESSAGE },
+            {
+              group: ['*.test-support', '*.test-support.js', '*.test-support.ts'],
+              message: TEST_SUPPORT_MESSAGE,
+            },
+          ],
         },
       ],
     },
