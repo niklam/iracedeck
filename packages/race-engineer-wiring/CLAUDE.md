@@ -1,6 +1,6 @@
 # @iracedeck/race-engineer-wiring
 
-The Race Engineer's wiring, in one place (#1349): the plugin-side bus caches the engine's conditions read (`caches.ts`), every one of `registerPitCrew`'s 34 dependencies (`pit-crew-deps.ts`; `pit-crew-deps.test.ts` pins the count, so a new one bumps both), the call (`wireRaceEngineer`), the sim's query side as the Race Engineer reads it (`sim-runtime.ts`) and the translator's settings-backed options (`translator-options.ts`, #1378). The three plugins reach it through `@iracedeck/plugin-runtime`'s `initRaceEngineer`; the scenario harness calls it directly, with its three snapshot stubs as `overrides`.
+The Race Engineer's wiring, in one place (#1349): the plugin-side bus caches the engine's conditions read (`caches.ts`), every one of `registerPitCrew`'s 33 dependencies (`pit-crew-deps.ts`; `pit-crew-deps.test.ts` pins the count, so a new one bumps both), the call (`wireRaceEngineer`), the sim's query side as the Race Engineer reads it (`sim-runtime.ts`) and the translator's settings-backed options (`translator-options.ts`, #1378). The three plugins reach it through `@iracedeck/plugin-runtime`'s `initRaceEngineer`; the scenario harness calls it directly, with its three snapshot stubs as `overrides`.
 
 ## Boundaries
 

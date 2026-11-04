@@ -255,7 +255,7 @@ beforeEach(() => {
     getUnderFullCourseCaution: () => underCaution,
     getRaceFinishedFired: () => raceFinished,
     getLapCompletedSnapshot: () => latestLap,
-    getOpponentFlagLivePosition: ({ carIdx, isMultiClass }) => {
+    getLiveCarPosition: ({ carIdx, isMultiClass }) => {
       const p = liveCar.get(carIdx);
 
       return p ? (isMultiClass ? p.classPosition : p.position) : null;
@@ -476,11 +476,11 @@ describe("positions: live wins, the payload's pair is the fallback", () => {
 
     expect(
       relationPositions(data, {
-        getCarLivePosition: () => 2,
+        getLiveCarPosition: () => 2,
         getLivePosition: () => ({ position: 3, classPosition: 3, isMultiClass: false }),
       }),
     ).toEqual({ car: 2, player: 3 });
-    expect(relationPositions(data, { getCarLivePosition: () => 2, getLivePosition: () => null })).toEqual({
+    expect(relationPositions(data, { getLiveCarPosition: () => 2, getLivePosition: () => null })).toEqual({
       car: 6,
       player: 4,
     });
@@ -722,7 +722,7 @@ describe("the contract", () => {
     getRaceFinishedFired: () => false,
     getUnderFullCourseCaution: () => false,
     getLapCompletedSnapshot: () => null,
-    getCarLivePosition: () => null,
+    getLiveCarPosition: () => null,
     getLivePosition: () => null,
     getLiveGaps: () => null,
   };

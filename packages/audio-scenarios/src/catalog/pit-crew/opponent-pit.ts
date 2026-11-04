@@ -55,23 +55,14 @@ import type { SimEventOf } from "@iracedeck/event-bus";
 import type { ScenarioContract } from "../../dsl.js";
 import { poolRef } from "../../dsl.js";
 import type { IScenarioEngine } from "../../interpreter.js";
+import type { LiveCarPositionQuery, LiveCarPositionResolver } from "./position-readout.js";
 
 /**
  * The pitting car the nearby line speaks about — stashed at `where:` time from
- * the triggering event's payload (class-space position in multi-class).
+ * the triggering event's payload (class-space position in multi-class). It is
+ * the query the live position read is asked with.
  */
-export type OpponentPitPending = {
-  carIdx: number;
-  position: number;
-  isMultiClass: boolean;
-};
-
-/**
- * Live speak-time position read for the pending car, in the projection the
- * event was classified in. Return `null` to fall back to the emit-time
- * payload position (the harness does this by omitting the resolver).
- */
-export type OpponentPitLivePositionResolver = (pending: OpponentPitPending) => number | null;
+export type OpponentPitPending = LiveCarPositionQuery;
 
 const OPPONENT_PIT_WEIGHT = 65;
 const POSITION_NUMBER_GROUP = "position-number";
@@ -98,14 +89,14 @@ export function readOpponentPitDebugState(): { pendingNearby: OpponentPitPending
  */
 export function registerOpponentPitVocabulary(
   engine: Pick<IScenarioEngine, "defineVar">,
-  getLivePosition: OpponentPitLivePositionResolver = () => null,
+  getLiveCarPosition: LiveCarPositionResolver = () => null,
 ): void {
   engine.defineVar(
     "opponentPit.number",
     () => {
       if (!pendingNearby) return null;
 
-      const live = getLivePosition(pendingNearby);
+      const live = getLiveCarPosition(pendingNearby);
       const n = live !== null && Number.isInteger(live) && live > 0 ? live : pendingNearby.position;
 
       return n > 0 ? poolRef(POSITION_NUMBER_GROUP, String(n)) : null;

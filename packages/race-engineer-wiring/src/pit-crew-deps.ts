@@ -1,4 +1,5 @@
 import {
+  type LiveCarPositionQuery,
   type OvertakeGate,
   type PitCrewDeps,
   type RaceFinishedSnapshot,
@@ -62,23 +63,19 @@ export function buildPitCrewDeps(
     return { ...gate, msSinceIncident: at === null ? null : Date.now() - at };
   };
 
-  // Live speak-time position resolver shared by the opponent-pit (#622) and
-  // opponent-flag (#936) callout families — one definition so the projection/
-  // fallback logic can never drift between the two: the car's canonical
-  // position at speak time, read in the projection the event was classified
-  // in (the pending stash's isMultiClass, so a transient session-info dropout
-  // can't flip a multi-class read to overall space). A null return falls back
-  // to the emit-time payload position.
-  const resolvePendingCarLivePosition = (pending: {
-    carIdx: number;
-    position: number;
-    isMultiClass: boolean;
-  }): number | null => {
-    const live = sim.getLiveCarPosition(pending.carIdx);
+  // A car's live race position at speak time, the one per-car read every
+  // family that names another car takes (#1577): opponent pit (#622),
+  // opponent flags (#936) and the fastest lap of the race (#1571). The car's
+  // canonical position, read in the projection the event was classified in
+  // (the query's isMultiClass, so a transient session-info dropout can't flip
+  // a multi-class read to overall space). A null return falls back to the
+  // emit-time payload position.
+  const resolveLiveCarPosition = (car: LiveCarPositionQuery): number | null => {
+    const live = sim.getLiveCarPosition(car.carIdx);
 
     if (!live) return null;
 
-    const n = pending.isMultiClass ? live.classPosition : live.position;
+    const n = car.isMultiClass ? live.classPosition : live.position;
 
     return n > 0 ? n : null;
   };
@@ -153,10 +150,9 @@ export function buildPitCrewDeps(
       resolveStillThereIntervalMs(getGlobalSettings()[SPOTTER_STILL_THERE_SECONDS_KEY]),
     getSpotterNearestCarGapMeters: () => sim.getNearestCarGapMeters(),
     getCornerNameSnapshot: () => caches.cornerName(),
-    getOpponentPitLivePosition: resolvePendingCarLivePosition,
+    getLiveCarPosition: resolveLiveCarPosition,
     getGapCooldownMs: () => resolveGapCooldownMs(getGlobalSettings().gapCalloutCooldownSeconds),
     getLiveGaps: () => sim.getLiveGaps(),
-    getOpponentFlagLivePosition: resolvePendingCarLivePosition,
     getRaceEngineerMasterEnabled: () => getGlobalSettings().pitCrewRaceEngineerEnabled === true,
     getRadarMasterEnabled: () => getGlobalSettings().pitCrewRadarEnabled === true,
     // The four reads the catalog used to take from the translator module

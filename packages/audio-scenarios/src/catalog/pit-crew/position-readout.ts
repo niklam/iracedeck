@@ -87,6 +87,24 @@ export type LivePosition = { position: number; classPosition: number; isMultiCla
 /** Resolver the plugin wires to `getLivePosition()`. `null` = position not readable right now. */
 export type LivePositionResolver = () => LivePosition | null;
 
+/**
+ * The car a {@link LiveCarPositionResolver} is asked about: its index, the
+ * emit-time payload position the read falls back from, and the projection the
+ * event was classified in (class space in a multi-class race).
+ */
+export type LiveCarPositionQuery = { carIdx: number; position: number; isMultiClass: boolean };
+
+/**
+ * One car's live race position at speak time, in the query's projection;
+ * `null` when it is unknown, and the caller then speaks the emit-time
+ * `position` (issue #1577). It is the one per-car live read the catalog takes,
+ * `PitCrewDeps.getLiveCarPosition`, shared by every family that names another
+ * car's position: opponent pit (#622), opponent flags (#936) and the fastest
+ * lap of the race (#1571). The wiring answers it from the canonical order
+ * (`race-positions.md`) and ignores `position`.
+ */
+export type LiveCarPositionResolver = (car: LiveCarPositionQuery) => number | null;
+
 /** Cooldown (ms) between successive position announcements across ALL triggers. */
 export const POSITION_READOUT_COOLDOWN_MS = 20_000;
 

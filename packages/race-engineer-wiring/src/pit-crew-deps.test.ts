@@ -50,10 +50,10 @@ describe("buildPitCrewDeps", () => {
   });
   afterEach(() => vi.restoreAllMocks());
 
-  it("builds all 34 dependencies, so none falls back to DEFAULT_DEPS", () => {
+  it("builds all 33 dependencies, so none falls back to DEFAULT_DEPS", () => {
     const built = buildPitCrewDeps(fakeDeps(), noCaches);
 
-    expect(Object.keys(built)).toHaveLength(34);
+    expect(Object.keys(built)).toHaveLength(33);
 
     for (const [key, value] of Object.entries(built)) expect(value, key).toBeDefined();
   });
@@ -202,11 +202,22 @@ describe("buildPitCrewDeps", () => {
     });
   });
 
-  it("reads a pending car's live position in the projection it was classified in", () => {
+  it("reads a car's live position in the projection it was classified in", () => {
     const sim = fakeSim({ getLiveCarPosition: () => ({ position: 7, classPosition: 2 }) });
     const built = buildPitCrewDeps(fakeDeps({ sim }), noCaches);
 
-    expect(built.getOpponentPitLivePosition({ carIdx: 4, position: 9, isMultiClass: true })).toBe(2);
-    expect(built.getOpponentFlagLivePosition({ carIdx: 4, position: 9, isMultiClass: false })).toBe(7);
+    expect(built.getLiveCarPosition({ carIdx: 4, position: 9, isMultiClass: true })).toBe(2);
+    expect(built.getLiveCarPosition({ carIdx: 4, position: 9, isMultiClass: false })).toBe(7);
+  });
+
+  it("reads an unknown or unclassified car's live position as null, so the caller speaks the payload's", () => {
+    const unknown = buildPitCrewDeps(fakeDeps({ sim: fakeSim({ getLiveCarPosition: () => null }) }), noCaches);
+    const unclassified = buildPitCrewDeps(
+      fakeDeps({ sim: fakeSim({ getLiveCarPosition: () => ({ position: 0, classPosition: 0 }) }) }),
+      noCaches,
+    );
+
+    expect(unknown.getLiveCarPosition({ carIdx: 4, position: 9, isMultiClass: false })).toBeNull();
+    expect(unclassified.getLiveCarPosition({ carIdx: 4, position: 9, isMultiClass: true })).toBeNull();
   });
 });
