@@ -58,6 +58,7 @@ import {
   type ScriptStep,
 } from "@iracedeck/callout-script";
 import type { IEventBus, SimEventName, SimEventOf } from "@iracedeck/event-bus";
+import { classifySession } from "@iracedeck/sim-events-iracing";
 import { afterEach, beforeEach, describe, expect, it, type MockInstance, vi } from "vitest";
 
 import type { Scenario } from "../../dsl.js";
@@ -78,7 +79,7 @@ import { _resetSpotterEngine } from "./spotter-engine.js";
 // The sim reads the registration is handed (#1378). Nothing fires here, so
 // they are only what a race with no tick yet would answer.
 const SIM_READS = {
-  getSessionType: () => "Race",
+  getSessionClass: () => classifySession("Race"),
   getStandingStart: () => false,
   getLatestTelemetry: () => null,
 };

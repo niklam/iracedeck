@@ -12,6 +12,7 @@ import { createFakeAudio, type FakeAudio } from "@iracedeck/audio-service/testin
 import { type CalloutScript } from "@iracedeck/callout-script";
 import type { IEventBus, SimEventMap, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import { Flags, SessionState, type TelemetryData } from "@iracedeck/iracing-sdk";
+import { classifySession } from "@iracedeck/sim-events-iracing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ScenarioContract } from "../../dsl.js";
@@ -28,7 +29,7 @@ import {
   type FlagAlertsDeps,
   WAVING_FLAG_COOLDOWN_MS,
 } from "./flag-alerts.js";
-import { classifySessionType, isRaceSession } from "./race-start.js";
+import { isRaceSession, sessionCategoryOf } from "./race-start.js";
 
 const mockSessionType = vi.fn(() => "Race");
 const mockStandingStart = vi.fn(() => false);
@@ -39,7 +40,7 @@ const mockLatestTelemetry = vi.fn((): unknown => null);
 // The family's sim reads (#1378), handed to the one build every test below
 // registers and inspects — the stubs above, switched per case.
 const FLAG_DEPS: FlagAlertsDeps = {
-  getSessionType: () => mockSessionType(),
+  getSessionClass: () => classifySession(mockSessionType()),
   getStandingStart: () => mockStandingStart(),
   getLatestTelemetry: () => mockLatestTelemetry() as TelemetryData | null,
 };
@@ -1080,7 +1081,7 @@ describe("the bundled script's flag entries (issue #1064)", () => {
 });
 
 // The session rule the vocabulary reads is the package's shared one
-// (`classifySessionType`, race-start.ts) — the same rule the `where:` gates
+// (`classifySession`, sim-events-iracing) — the same rule the `where:` gates
 // read through `isRaceSession` — so a pack can never see `session.type` call
 // a session a race that a gate beside it calls practice.
 describe("the shared session rule (issue #1064)", () => {
@@ -1094,25 +1095,25 @@ describe("the shared session rule (issue #1064)", () => {
     { raw: "Warmup", kind: "race" },
     { raw: "Some Unknown", kind: "race" },
     { raw: "", kind: null },
-  ])("classifySessionType($raw) → $kind", ({ raw, kind }) => {
-    expect(classifySessionType(raw)).toBe(kind);
+  ])("sessionCategoryOf(classifySession($raw)) → $kind", ({ raw, kind }) => {
+    expect(sessionCategoryOf(classifySession(raw))).toBe(kind);
   });
 
   it("isRaceSession is the same rule for every known type, and permissive only on the unknown one", () => {
     for (const raw of ["Practice", "Lone Practice", "Offline Testing", "Open Qualify", "Lone Qualify"]) {
-      expect(isRaceSession(raw), raw).toBe(false);
-      expect(classifySessionType(raw)).not.toBe("race");
+      expect(isRaceSession(classifySession(raw)), raw).toBe(false);
+      expect(sessionCategoryOf(classifySession(raw))).not.toBe("race");
     }
 
     for (const raw of ["Race", "Warmup", "Some Unknown"]) {
-      expect(isRaceSession(raw), raw).toBe(true);
-      expect(classifySessionType(raw)).toBe("race");
+      expect(isRaceSession(classifySession(raw)), raw).toBe(true);
+      expect(sessionCategoryOf(classifySession(raw))).toBe("race");
     }
 
     // A gate never suppresses on missing data (the #574 precedent); the
     // vocabulary reports the same case as `null` and lets the pack decide.
-    expect(isRaceSession("")).toBe(true);
-    expect(classifySessionType("")).toBeNull();
+    expect(isRaceSession(classifySession(""))).toBe(true);
+    expect(sessionCategoryOf(classifySession(""))).toBeNull();
   });
 });
 
@@ -1642,7 +1643,7 @@ describe("buildFlagAlerts — the injected sim reads (issue #1378)", () => {
 
   function reads(overrides: Partial<FlagAlertsDeps>): FlagAlertsDeps {
     return {
-      getSessionType: () => "Race",
+      getSessionClass: () => classifySession("Race"),
       getStandingStart: () => false,
       getLatestTelemetry: () => null,
       ...overrides,
@@ -1658,8 +1659,8 @@ describe("buildFlagAlerts — the injected sim reads (issue #1378)", () => {
   }
 
   it("two builds gate on their own session type", () => {
-    const race = buildFlagAlerts(reads({ getSessionType: () => "Race" }));
-    const practice = buildFlagAlerts(reads({ getSessionType: () => "Practice" }));
+    const race = buildFlagAlerts(reads({ getSessionClass: () => classifySession("Race") }));
+    const practice = buildFlagAlerts(reads({ getSessionClass: () => classifySession("Practice") }));
 
     expect(where(race, "pit-crew.flag-crossed")(inCar)).toBe(true);
     expect(where(practice, "pit-crew.flag-crossed")(inCar)).toBe(false);

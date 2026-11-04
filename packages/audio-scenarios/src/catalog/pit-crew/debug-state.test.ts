@@ -6,6 +6,7 @@
  */
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import type { IEventBus, SimEventName, SimEventOf } from "@iracedeck/event-bus";
+import { classifySession } from "@iracedeck/sim-events-iracing";
 import { readdirSync, readFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -60,7 +61,7 @@ vi.mock("@iracedeck/audio-service", async (importOriginal) => ({
 // The sim reads every registration below is handed (#1378): a race with no
 // tick yet and a damage state not known.
 const SIM_READS = {
-  getSessionType: () => "Race",
+  getSessionClass: () => classifySession("Race"),
   getStandingStart: () => false,
   getLatestTelemetry: () => null,
   getDamageRepairNeeded: () => null,
@@ -637,7 +638,7 @@ describe("the family readers", () => {
         getCautionEpisode: () => ({ id: 3, firstFollowCarIdx: followCarIdx }),
         isCautionCalloutEnabled: () => true,
         getCautionGap: () => null,
-        getSessionType: () => "Race",
+        getSessionClass: () => classifySession("Race"),
         getLatestTelemetry: () => null,
       });
 
@@ -663,7 +664,7 @@ describe("the family readers", () => {
       getCautionEpisode: () => ({ id: 4, firstFollowCarIdx: 12 }),
       isCautionCalloutEnabled: () => true,
       getCautionGap: () => ({ warranted: true }),
-      getSessionType: () => "Race",
+      getSessionClass: () => classifySession("Race"),
       getLatestTelemetry: () => null,
     });
     const catchUp = contracts.find((c) => c.id === "pit-crew.caution-catch-up");
@@ -682,7 +683,7 @@ describe("the family readers", () => {
       const contracts = buildRollingStartContracts({
         getRollingStartFormation: () => ({ id: 5, firstFollowCarIdx: followCarIdx }),
         getPaceLineup: () => ({ followCarIdx }) as never,
-        getSessionType: () => "Race",
+        getSessionClass: () => classifySession("Race"),
       });
 
       expect(readRollingStartDebugState()).toEqual({ lastNamed: null });

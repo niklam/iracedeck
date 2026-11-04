@@ -5,6 +5,7 @@ import { createFakeAudio, type FakeAudio } from "@iracedeck/audio-service/testin
 import { type CalloutScript } from "@iracedeck/callout-script";
 import type { IEventBus, RadarState, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import type { TelemetryData } from "@iracedeck/iracing-sdk";
+import { classifySession } from "@iracedeck/sim-events-iracing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { NO_FRAME, WEIGHT } from "../../dsl.js";
@@ -161,7 +162,7 @@ function makeDeps(overrides: Partial<SpotterDeps> = {}): SpotterDeps {
     getTrackDirection: () => trackDirection,
     getNearestCarGapMeters: () => nearestGap,
     getLatestTelemetry: () => sim.getLatestTelemetry() as TelemetryData | null,
-    getSessionType: () => sim.getSessionType(),
+    getSessionClass: () => classifySession(sim.getSessionType()),
     logger: mockLogger as never,
     ...overrides,
   };

@@ -4087,7 +4087,7 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
   // first — so the scenario's resolver returns the intended grid position at
   // fire time (the production translator reads it from `QualifyResultsInfo`,
   // not from the event payload). The scenario still gates on
-  // `getSessionType() === "race"`, so set the session type to a race session
+  // `isRaceSession(getSessionClass())`, so set the session type to a race session
   // (via the session picker / a race preset) for these to fire. Each variant
   // exercises a distinct position clause; the 3 s `triggerDelay` applies, and
   // the conditions-unknown variant also waits out the 10 s `settle` (#1284).
@@ -4136,7 +4136,7 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
   // still briefs on the pre-green grid. The gate reads the event envelope's
   // telemetry, which `/api/bus/publish` fills from the live mock state — so
   // apply the named telemetry preset BEFORE clicking. Like every Race Start
-  // shortcut, the scenario also gates on `getSessionType() === "race"`, so a
+  // shortcut, the scenario also gates on `isRaceSession(getSessionClass())`, so a
   // race session preset must be active or the where: rejects before the #871
   // gate is ever reached.
   raceStart(

@@ -156,12 +156,12 @@ export function buildPitCrewDeps(
     getRaceEngineerMasterEnabled: () => getGlobalSettings().pitCrewRaceEngineerEnabled === true,
     getRadarMasterEnabled: () => getGlobalSettings().pitCrewRadarEnabled === true,
     // The four reads the catalog used to take from the translator module
-    // (#1378): raw telemetry, the session type name, the standing-start grid
-    // and the debounced repair need, each passed through so the catalog reads
-    // the sim only through its deps and the wiring reads it only through
-    // `SimRuntime`.
+    // (#1378): raw telemetry, the classified session (#1587, in place of the
+    // raw session type name), the standing-start grid and the debounced repair
+    // need, each passed through so the catalog reads the sim only through its
+    // deps and the wiring reads it only through `SimRuntime`.
     getLatestTelemetry: () => sim.getLatestTelemetry(),
-    getSessionType: () => sim.getSessionType(),
+    getSessionClass: () => sim.getSessionClass(),
     getStandingStart: () => sim.isStandingStart(),
     getDamageRepairNeeded: () => sim.isDamageRepairNeeded(),
   };

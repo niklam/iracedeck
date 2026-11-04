@@ -42,7 +42,7 @@ import type { CalloutScript } from "@iracedeck/callout-script";
 import { CAUTION_CALLOUTS } from "@iracedeck/callout-settings";
 import type { IEventBus, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import { SessionState } from "@iracedeck/iracing-sdk";
-import type { PaceLineup } from "@iracedeck/sim-events-iracing";
+import { classifySession, type PaceLineup } from "@iracedeck/sim-events-iracing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { WEIGHT } from "../../dsl.js";
@@ -60,7 +60,7 @@ import { createTimedAudio } from "./timed-audio.test-util.js";
 // The sim reads the registration is handed (#1378): a race, a rolling start,
 // no latest tick, and a repair still needed when the damage line comes to speak.
 const SIM_READS = {
-  getSessionType: () => "Race",
+  getSessionClass: () => classifySession("Race"),
   getStandingStart: () => false,
   getLatestTelemetry: () => null,
   getDamageRepairNeeded: () => true,

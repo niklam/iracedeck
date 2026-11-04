@@ -18,6 +18,7 @@ import { RACE_START_CALLOUTS } from "@iracedeck/callout-settings";
 import type { IEventBus, RaceStartSnapshot, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import { TrackWetness } from "@iracedeck/event-bus";
 import { SessionState, type TelemetryData } from "@iracedeck/iracing-sdk";
+import { classifySession } from "@iracedeck/sim-events-iracing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AudioAssetsManifest } from "../../interpreter.js";
@@ -57,7 +58,7 @@ const mockLatestTelemetry = vi.fn<() => Record<string, unknown> | null>(() => nu
 // The contract's two sim reads (#1378), over the stubs above — handed to the
 // direct builds and to the full registration alike.
 const SIM_READS = {
-  getSessionType: () => mockSessionType(),
+  getSessionClass: () => classifySession(mockSessionType()),
   getLatestTelemetry: () => mockLatestTelemetry() as TelemetryData | null,
 };
 
@@ -314,16 +315,16 @@ afterEach(() => {
 
 describe("isRaceSession", () => {
   it("returns true for race-typed sessions", () => {
-    expect(isRaceSession("Race")).toBe(true);
-    expect(isRaceSession("Warmup")).toBe(true); // warmup falls into the race bucket
+    expect(isRaceSession(classifySession("Race"))).toBe(true);
+    expect(isRaceSession(classifySession("Warmup"))).toBe(true); // warmup falls into the race bucket
   });
 
   it("returns false for practice / qualifying / testing", () => {
-    expect(isRaceSession("Practice")).toBe(false);
-    expect(isRaceSession("Lone Practice")).toBe(false);
-    expect(isRaceSession("Offline Testing")).toBe(false);
-    expect(isRaceSession("Open Qualify")).toBe(false);
-    expect(isRaceSession("Lone Qualify")).toBe(false);
+    expect(isRaceSession(classifySession("Practice"))).toBe(false);
+    expect(isRaceSession(classifySession("Lone Practice"))).toBe(false);
+    expect(isRaceSession(classifySession("Offline Testing"))).toBe(false);
+    expect(isRaceSession(classifySession("Open Qualify"))).toBe(false);
+    expect(isRaceSession(classifySession("Lone Qualify"))).toBe(false);
   });
 });
 
@@ -864,7 +865,7 @@ describe("settle wait for the conditions (issue #1284)", () => {
     publish(snap({ wetness: null }));
 
     vi.advanceTimersByTime(RACE_START_DELAY_MS);
-    expect(infoMessages()).toContainEqual(expect.stringContaining("race-start where: rejected — sessionType="));
+    expect(infoMessages()).toContainEqual(expect.stringContaining("race-start where: rejected — session="));
 
     flush(audio);
 

@@ -13,7 +13,7 @@ import { createFakeAudio, type FakeAudio } from "@iracedeck/audio-service/testin
 import { type CalloutScript, type CalloutScriptEntry, collectScriptReferences } from "@iracedeck/callout-script";
 import { FASTEST_LAP_CALLOUTS, LAP_TIME_CALLOUTS } from "@iracedeck/callout-settings";
 import type { CountedLapCompleted, IEventBus, SimEventName, SimEventOf } from "@iracedeck/event-bus";
-import type { LiveGaps } from "@iracedeck/sim-events-iracing";
+import { classifySession, type LiveGaps } from "@iracedeck/sim-events-iracing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { WEIGHT } from "../../dsl.js";
@@ -250,7 +250,7 @@ beforeEach(() => {
   initializeAudioScenarios(bus, audio, manifest, mockLogger as never, () => VOICE);
   registerPitCrew(bus, {
     logger: mockLogger as never,
-    getSessionType: () => "Race",
+    getSessionClass: () => classifySession("Race"),
     isCalloutEnabled: (key) => (key === "calloutEnabledFastestLap" ? fastestLapEnabled : true),
     getUnderFullCourseCaution: () => underCaution,
     getRaceFinishedFired: () => raceFinished,

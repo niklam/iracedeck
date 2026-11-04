@@ -24,7 +24,7 @@ import { type CalloutScript } from "@iracedeck/callout-script";
 import { ROLLING_START_CALLOUTS } from "@iracedeck/callout-settings";
 import type { IEventBus, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import { SessionState } from "@iracedeck/iracing-sdk";
-import type { LivePosition, PaceLineup } from "@iracedeck/sim-events-iracing";
+import { classifySession, type LivePosition, type PaceLineup } from "@iracedeck/sim-events-iracing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ScenarioContract } from "../../dsl.js";
@@ -59,7 +59,7 @@ const mockSessionType = vi.fn(() => "Race");
 // session type is a stub the race-only cases switch, the rest answer as a
 // translator with no tick yet would.
 const SIM_READS = {
-  getSessionType: () => mockSessionType(),
+  getSessionClass: () => classifySession(mockSessionType()),
   getStandingStart: () => false,
   getLatestTelemetry: () => null,
 };
@@ -103,7 +103,7 @@ function contracts(): readonly ScenarioContract[] {
   return buildRollingStartContracts({
     getRollingStartFormation: () => formationNow,
     getPaceLineup: () => lineupNow,
-    getSessionType: SIM_READS.getSessionType,
+    getSessionClass: SIM_READS.getSessionClass,
   });
 }
 

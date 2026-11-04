@@ -45,7 +45,7 @@
  * now is dropped rather than replayed stale a beat later.
  */
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
-import type { SimEventName, SimEventOf, StartCountdownSeconds } from "@iracedeck/event-bus";
+import type { SessionClass, SimEventName, SimEventOf, StartCountdownSeconds } from "@iracedeck/event-bus";
 import { isLiveOnTrack } from "@iracedeck/iracing-sdk";
 import type { TelemetryData } from "@iracedeck/sim-events-iracing";
 
@@ -54,12 +54,12 @@ import { WEIGHT } from "../../dsl.js";
 import { isRaceSession } from "./race-start.js";
 
 /**
- * The family's one sim read (#1378): the session type, for the race-only
+ * The family's one sim read (#1378): the classified session (#1587), for the race-only
  * gates on all six contracts — injected rather than imported from the
  * translator.
  */
 export type StartLightsDeps = {
-  getSessionType: () => string;
+  getSessionClass: () => SessionClass | null;
 };
 
 // Start lights are a race-only concept. The diff already gates the ready line
@@ -80,7 +80,7 @@ export type StartLightsDeps = {
 const gantryGateOver =
   (deps: StartLightsDeps) =>
   (e: SimEventOf<SimEventName>): boolean =>
-    isRaceSession(deps.getSessionType()) && isLiveOnTrack(e.telemetry as TelemetryData | null);
+    isRaceSession(deps.getSessionClass()) && isLiveOnTrack(e.telemetry as TelemetryData | null);
 
 /**
  * The gantry lines' supersede group (issue #1185): "go" replaces a "ready"
@@ -160,7 +160,7 @@ function countdownContract(deps: StartLightsDeps, seconds: StartCountdownSeconds
     when: {
       event: "startLight.countdown.raised",
       where: (e) =>
-        isRaceSession(deps.getSessionType()) &&
+        isRaceSession(deps.getSessionClass()) &&
         (e as SimEventOf<"startLight.countdown.raised">).data.seconds === seconds,
     },
     description: COUNTDOWN_DESCRIPTIONS[seconds],
@@ -175,9 +175,9 @@ export function buildStartLightContracts(deps: StartLightsDeps): readonly Scenar
 }
 
 /** Contract ids exported for tests so a typo here surfaces as a test failure. Derived from a build with no sim wired. */
-export const START_LIGHT_SCENARIO_IDS: readonly string[] = buildStartLightContracts({ getSessionType: () => "" }).map(
-  (c) => c.id,
-);
+export const START_LIGHT_SCENARIO_IDS: readonly string[] = buildStartLightContracts({
+  getSessionClass: () => null,
+}).map((c) => c.id);
 
 /**
  * The clip sources the start-light scripts draw from — every

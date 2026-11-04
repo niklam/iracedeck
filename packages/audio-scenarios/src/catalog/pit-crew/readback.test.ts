@@ -20,6 +20,7 @@ import { createFakeAudio, type FakeAudio } from "@iracedeck/audio-service/testin
 import { type CalloutScript } from "@iracedeck/callout-script";
 import { FLAG_CALLOUTS, PIT_READBACK_CALLOUTS } from "@iracedeck/callout-settings";
 import type { IEventBus, PitReadbackSnapshot, SimEventMap, SimEventName, SimEventOf } from "@iracedeck/event-bus";
+import { classifySession } from "@iracedeck/sim-events-iracing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { WEIGHT } from "../../dsl.js";
@@ -42,7 +43,7 @@ import { _resetSpotterEngine } from "./spotter-engine.js";
 
 const mockSessionType = vi.fn(() => "Race");
 // The session the registrations see (#1378), over the stub above.
-const SIM_READS = { getSessionType: () => mockSessionType() };
+const SIM_READS = { getSessionClass: () => classifySession(mockSessionType()) };
 
 const mockLogger = {
   trace: vi.fn(),

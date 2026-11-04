@@ -65,18 +65,18 @@
  * `penalty` supersede group, so the DQ fire replaces the waiting black one.
  */
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
-import type { SimEventName, SimEventOf } from "@iracedeck/event-bus";
+import type { SessionCategory, SessionClass, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import { Flags, hasFlag, isLiveOnTrack, isPenaltyFlagActive, isPostRace, isPreGreen } from "@iracedeck/iracing-sdk";
 import type { TelemetryData } from "@iracedeck/sim-events-iracing";
 
 import type { ScenarioContract } from "../../dsl.js";
 import { WEIGHT } from "../../dsl.js";
 import type { IScenarioEngine } from "../../interpreter.js";
-import { classifySessionType, isRaceSession, type SessionKind } from "./race-start.js";
+import { isRaceSession, sessionCategoryOf } from "./race-start.js";
 
 /**
  * The sim reads the flag family makes (#1378), injected rather than imported
- * from the translator: the session type for the race-only gates and the
+ * from the translator: the classified session for the race-only gates and the
  * `session.*` vocabulary, the standing-start grid for the rolling-only
  * formation cue, and the latest telemetry tick for the furled pair's
  * speak-time gates. {@link buildFlagAlerts} closes over one of these, so the
@@ -84,7 +84,7 @@ import { classifySessionType, isRaceSession, type SessionKind } from "./race-sta
  */
 export type FlagAlertsDeps = {
   getLatestTelemetry: () => TelemetryData | null;
-  getSessionType: () => string;
+  getSessionClass: () => SessionClass | null;
   getStandingStart: () => boolean;
 };
 
@@ -112,14 +112,14 @@ export type FlagAlertsFamily = {
 // nothing out of the car, and must not re-fire on the grid bits iRacing
 // re-asserts after the checkered. The rolling-start formation's three calls
 // take it too (issue #1167). One definition, so the families cannot drift
-// apart on what "live in a race" means. A factory over the session-type read
-// since #1378, so each family builds it over the read it was handed rather
-// than over the translator module.
+// apart on what "live in a race" means. A factory over the session read
+// since #1378 (the classified session since #1587), so each family builds it
+// over the read it was handed rather than over the translator module.
 export type LiveRaceCarGate = (e: SimEventOf<SimEventName>) => boolean;
 
-export function createLiveRaceCar(getSessionType: () => string): LiveRaceCarGate {
+export function createLiveRaceCar(getSessionClass: () => SessionClass | null): LiveRaceCarGate {
   return (e) =>
-    isRaceSession(getSessionType()) &&
+    isRaceSession(getSessionClass()) &&
     isLiveOnTrack(e.telemetry as TelemetryData | null) &&
     !isPostRace(e.telemetry as TelemetryData | null);
 }
@@ -133,7 +133,7 @@ type FlagGates = {
   raceOnly: () => boolean;
   liveRaceCar: LiveRaceCarGate;
   rollingFormationOnly: LiveRaceCarGate;
-  classifySession: () => SessionKind | null;
+  sessionCategory: () => SessionCategory | null;
   furledStillUp: () => boolean;
   furledWithdrawnUnspoken: () => boolean;
   furledStillShown: () => boolean;
@@ -141,7 +141,7 @@ type FlagGates = {
 };
 
 function createFlagGates(deps: FlagAlertsDeps): FlagGates {
-  const liveRaceCar = createLiveRaceCar(deps.getSessionType);
+  const liveRaceCar = createLiveRaceCar(deps.getSessionClass);
 
   return {
     // Race-progression / formation flags (green-held, ten-to-go, five-to-go,
@@ -150,7 +150,7 @@ function createFlagGates(deps: FlagAlertsDeps): FlagGates {
     // this gate they fired at the qualifying checkered (issue #480 follow-up).
     // Live-read at fire time, mirroring the session branching the
     // green/white/checkered scripts do through `session.type`.
-    raceOnly: () => isRaceSession(deps.getSessionType()),
+    raceOnly: () => isRaceSession(deps.getSessionClass()),
     liveRaceCar,
     // Rolling-only formation cue (green-held). A standing start has no pace lap, yet
     // iRacing sets the grid bits throughout the standing grid — so suppress during a
@@ -161,7 +161,7 @@ function createFlagGates(deps: FlagAlertsDeps): FlagGates {
     // rolling-start family since #1167.)
     rollingFormationOnly: (e) =>
       liveRaceCar(e) && !(deps.getStandingStart() && isPreGreen(e.telemetry as TelemetryData | null)),
-    classifySession: () => classifySession(deps),
+    sessionCategory: () => sessionCategory(deps),
     furledStillUp: () => furledStillUp(deps),
     furledWithdrawnUnspoken: () => furledWithdrawnUnspoken(deps),
     furledStillShown: () => furledStillShown(deps),
@@ -729,7 +729,7 @@ export function buildFlagAlerts(deps: FlagAlertsDeps): FlagAlertsFamily {
  */
 export const FLAG_SCENARIO_IDS: readonly string[] = buildFlagAlerts({
   getLatestTelemetry: () => null,
-  getSessionType: () => "",
+  getSessionClass: () => null,
   getStandingStart: () => false,
 }).contracts.map((s) => s.id);
 
@@ -774,17 +774,17 @@ export const FLAG_CLIP_SOURCES: readonly { group: "flags"; base: string }[] = [
   { group: "flags", base: "caution-waving" },
 ];
 
-// The one classifier behind the whole `session.*` vocabulary — the package's
-// shared session rule (`classifySessionType`, the same one `raceOnly` in
+// The one read behind the whole `session.*` vocabulary — the session bucket
+// the translator's classifier names (#1587; the same one `raceOnly` in
 // `createFlagGates` reads through `isRaceSession`), so the case var, the three conditions and
 // every `where:` gate in this family agree on what a session is. Before
 // #1064 the green/white/checkered branching tested `=== "Practice"` exactly,
 // which called "Lone Practice" and "Offline Testing" a race while the gates
 // beside it did not; now that `session.type` is public vocabulary the rule
-// is the shared one. `null` — no session type known yet — is reported
+// is the shared one. `null` — no session known yet — is reported
 // honestly and left to the script's `default` branch.
-function classifySession(deps: FlagAlertsDeps): SessionKind | null {
-  return classifySessionType(deps.getSessionType());
+function sessionCategory(deps: FlagAlertsDeps): SessionCategory | null {
+  return sessionCategoryOf(deps.getSessionClass());
 }
 
 /**
@@ -807,7 +807,7 @@ function classifySession(deps: FlagAlertsDeps): SessionKind | null {
 function defineFlagVocabulary(engine: Pick<IScenarioEngine, "defineCond" | "defineCase">, g: FlagGates): void {
   engine.defineCase(
     "session.type",
-    g.classifySession,
+    g.sessionCategory,
     {
       practice: "A practice session.",
       qualifying: "Any qualifying session (open or lone).",
@@ -829,17 +829,17 @@ function defineFlagVocabulary(engine: Pick<IScenarioEngine, "defineCond" | "defi
 
   engine.defineCond(
     "session.isPractice",
-    () => g.classifySession() === "practice",
+    () => g.sessionCategory() === "practice",
     "The current session is a practice session.",
   );
   engine.defineCond(
     "session.isQualifying",
-    () => g.classifySession() === "qualifying",
+    () => g.sessionCategory() === "qualifying",
     "The current session is a qualifying session (open or lone).",
   );
   engine.defineCond(
     "session.isRace",
-    () => g.classifySession() === "race",
+    () => g.sessionCategory() === "race",
     "The current session is a race session (anything that is not practice or qualifying).",
   );
 }

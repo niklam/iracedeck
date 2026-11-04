@@ -1,5 +1,6 @@
 import type { IEventBus } from "@iracedeck/event-bus";
 import type { TelemetryData } from "@iracedeck/iracing-sdk";
+import { classifySession } from "@iracedeck/sim-events-iracing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -77,7 +78,7 @@ function radarDeps(overrides: Partial<RadarDeps> = {}): RadarDeps {
   return {
     getMasterEnabled: () => true,
     getLatestTelemetry: () => hoisted.getLatestTelemetry() as TelemetryData | null,
-    getSessionType: () => hoisted.getSessionType(),
+    getSessionClass: () => classifySession(hoisted.getSessionType()),
     ...overrides,
   };
 }
@@ -122,13 +123,13 @@ describe("registerRadarEngine", () => {
   // The spotter engine's rule (#1378): a same-bus re-registration replaces the
   // deps the engine reads live; a rejected one leaves them as they were.
   it("a same-bus re-registration replaces the deps the engine reads", () => {
-    registerRadarEngine(hoisted.bus, radarDeps({ getSessionType: () => "Lone Qualify" }));
+    registerRadarEngine(hoisted.bus, radarDeps({ getSessionClass: () => classifySession("Lone Qualify") }));
     setRadarEnabled(true);
     hoisted.publishRadar("left");
 
     expect(hoisted.playOnChannel).not.toHaveBeenCalled();
 
-    registerRadarEngine(hoisted.bus, radarDeps({ getSessionType: () => "Race" }));
+    registerRadarEngine(hoisted.bus, radarDeps({ getSessionClass: () => classifySession("Race") }));
     hoisted.publishRadar("left");
 
     expect(hoisted.playOnChannel).toHaveBeenCalledWith(RADAR_CHANNEL, "sfx/radar/IRD-radar-left.mp3");

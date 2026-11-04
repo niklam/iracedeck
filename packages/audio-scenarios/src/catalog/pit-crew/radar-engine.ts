@@ -11,7 +11,7 @@
  * radar state itself.
  */
 import { AudioChannel, getAudio } from "@iracedeck/audio-service";
-import type { IEventBus, SimEventOf } from "@iracedeck/event-bus";
+import type { IEventBus, SessionClass, SimEventOf } from "@iracedeck/event-bus";
 import type { TelemetryData } from "@iracedeck/sim-events-iracing";
 
 export type RadarVisualState = "clear" | "left" | "right" | "both" | "two-left" | "two-right";
@@ -82,18 +82,18 @@ export type RadarDeps = {
    */
   getLatestTelemetry: () => TelemetryData | null;
   /**
-   * The sim's session type name, for the Lone Qualify silence; `""` when
-   * unavailable. Default `() => ""`, the translator's own answer when it was
-   * never initialised.
+   * The classified session (#1587), for the Lone Qualify silence; `null`
+   * when unavailable. Default `() => null`, the translator's own answer when
+   * it was never initialised.
    */
-  getSessionType: () => string;
+  getSessionClass: () => SessionClass | null;
 };
 
 /** What the engine reads before (or without) a registration: the master on, no sim. */
 const DEFAULT_DEPS: RadarDeps = {
   getMasterEnabled: () => true,
   getLatestTelemetry: () => null,
-  getSessionType: () => "",
+  getSessionClass: () => null,
 };
 
 let deps: RadarDeps = DEFAULT_DEPS;
@@ -186,7 +186,7 @@ function handleRadarChanged(ev: SimEventOf<"radar.changed">): void {
   // CarLeftRight value can flicker, and the callouts aren't useful. If a
   // loop was already running from a prior non-qualify state, tear it down
   // so the radar doesn't keep ticking after the session flips.
-  if (deps.getSessionType() === "Lone Qualify") {
+  if (deps.getSessionClass()?.soloQualifying === true) {
     forceClear();
 
     return;

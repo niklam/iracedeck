@@ -22,6 +22,8 @@ import { createFakeAudio, type FakeAudio } from "@iracedeck/audio-service/testin
 import { type CalloutScript } from "@iracedeck/callout-script";
 import { START_LIGHT_CALLOUTS } from "@iracedeck/callout-settings";
 import type { IEventBus, SimEventMap, SimEventName, SimEventOf } from "@iracedeck/event-bus";
+import type { SessionClass } from "@iracedeck/event-bus";
+import { classifySession } from "@iracedeck/sim-events-iracing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { WEIGHT } from "../../dsl.js";
@@ -44,8 +46,8 @@ const mockSessionType = vi.fn(() => "Race");
 
 // The family's one sim read (#1378), over the stub above — handed to the one
 // build every case below inspects and to the full registration.
-const getSessionType = (): string => mockSessionType();
-const START_LIGHT_CONTRACTS = buildStartLightContracts({ getSessionType });
+const getSessionClass = (): SessionClass | null => classifySession(mockSessionType());
+const START_LIGHT_CONTRACTS = buildStartLightContracts({ getSessionClass });
 
 const mockLogger = {
   trace: vi.fn(),
@@ -416,7 +418,7 @@ describe("START_LIGHT_CONTRACTS opt-in gating (issue #480)", () => {
     registerPitCrew(bus, {
       logger: mockLogger as never,
       isCalloutEnabled: familyGate(START_LIGHT_CALLOUTS, (id) => startLightEnabled.get(id) ?? true),
-      getSessionType,
+      getSessionClass,
       getLatestTelemetry: () => null,
     });
     // A contract is silent without a script (issue #1065): the gates are what

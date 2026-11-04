@@ -39,9 +39,10 @@ import {
   ROLLING_START_CALLOUTS,
   TIRE_WEAR_CALLOUTS,
 } from "@iracedeck/callout-settings";
-import type { IEventBus, SimEventMap, SimEventName, SimEventOf } from "@iracedeck/event-bus";
+import type { IEventBus, SessionClass, SimEventMap, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import { OpponentPenaltyFlag } from "@iracedeck/event-bus";
 import { EngineWarnings, PitSvStatus, type TelemetryData } from "@iracedeck/iracing-sdk";
+import { classifySession } from "@iracedeck/sim-events-iracing";
 import { afterEach, beforeEach, describe, expect, it, type MockInstance, vi } from "vitest";
 
 import type { Scenario, ScenarioContract } from "../../dsl.js";
@@ -587,7 +588,7 @@ beforeEach(() => {
     // The sim reads (#1378), over the stubs above: a race, a rolling grid,
     // the live tick the delayed pit-limiter cases drive, and a damage state
     // not known yet, which the damage line's speak-time gate admits.
-    getSessionType: () => mockSessionType(),
+    getSessionClass: () => classifySession(mockSessionType()),
     getStandingStart: () => false,
     getLatestTelemetry: () => mockLatestTelemetry() as TelemetryData | null,
     getDamageRepairNeeded: () => null,
@@ -2833,7 +2834,7 @@ describe("resolvePitCrewDeps (issue #1378)", () => {
 
     expect(resolved).not.toHaveProperty("logger");
     expect(resolved.getLatestTelemetry()).toBeNull();
-    expect(resolved.getSessionType()).toBe("");
+    expect(resolved.getSessionClass()).toBeNull();
     expect(resolved.getStandingStart()).toBe(false);
     expect(resolved.getDamageRepairNeeded()).toBeNull();
     expect(resolved.getSpotterTrackDirection()).toBe("neutral");
@@ -2842,23 +2843,23 @@ describe("resolvePitCrewDeps (issue #1378)", () => {
   });
 
   it("lets a defined dep win", () => {
-    const getSessionType = (): string => "Race";
+    const getSessionClass = (): SessionClass | null => classifySession("Race");
 
-    expect(resolvePitCrewDeps({ getSessionType }).getSessionType).toBe(getSessionType);
+    expect(resolvePitCrewDeps({ getSessionClass }).getSessionClass).toBe(getSessionClass);
   });
 
   it("keeps the default for a dep passed as an explicit undefined", () => {
-    const resolved = resolvePitCrewDeps({ getSessionType: undefined, getLatestTelemetry: undefined });
+    const resolved = resolvePitCrewDeps({ getSessionClass: undefined, getLatestTelemetry: undefined });
 
-    expect(resolved.getSessionType()).toBe("");
+    expect(resolved.getSessionClass()).toBeNull();
     expect(resolved.getLatestTelemetry()).toBeNull();
   });
 
   it("returns a fresh object each call, so one caller's deps never reach another's", () => {
-    const first = resolvePitCrewDeps({ getSessionType: () => "Race" });
+    const first = resolvePitCrewDeps({ getSessionClass: () => classifySession("Race") });
     const second = resolvePitCrewDeps({});
 
     expect(first).not.toBe(second);
-    expect(second.getSessionType()).toBe("");
+    expect(second.getSessionClass()).toBeNull();
   });
 });
