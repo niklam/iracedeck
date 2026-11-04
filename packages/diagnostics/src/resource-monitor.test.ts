@@ -172,8 +172,9 @@ describe("resourceSessionSummary (#1338)", () => {
 describe("createProcessResourceSampler", () => {
   /**
    * Stands in for `performance.eventLoopUtilization`: an absolute read comes
-   * from `read`, and the diff of two readings is computed as Node computes it,
-   * `utilization: 0` over an interval with no time in it included.
+   * from `read`, and the diff of two readings is computed as Node 24 computes
+   * it once the loop runs, active over the summed deltas, so two identical
+   * readings give `utilization: NaN`.
    */
   function spyOnEventLoopUtilization(read: () => EventLoopUtilization) {
     return vi
@@ -182,9 +183,8 @@ describe("createProcessResourceSampler", () => {
         if (current && previous) {
           const active = current.active - previous.active;
           const idle = current.idle - previous.idle;
-          const total = active + idle;
 
-          return { active, idle, utilization: total > 0 ? active / total : 0 };
+          return { active, idle, utilization: active / (active + idle) };
         }
 
         return read();
@@ -310,7 +310,7 @@ describe("createProcessResourceSampler", () => {
         heapTotalBytes: 170 * MB,
       });
       // A zero interval is floored at 1 ms rather than dividing by zero, and
-      // its loop share is Node's 0, never NaN.
+      // Node's NaN loop share over it is reported as 0.
       expect(zeroInterval.elapsedMs).toBe(1);
       expect(zeroInterval.cpuPercent).toBe(0);
       expect(zeroInterval.elu).toBe(0);
