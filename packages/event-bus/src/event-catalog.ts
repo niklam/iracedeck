@@ -242,20 +242,6 @@ export type PitReadbackSnapshot = {
 };
 
 /**
- * Telemetry-derived half of the session-start readout snapshot (issues #542,
- * #668). Built by the sim translator from live telemetry + session info at the
- * time the session.changed event fires, read at fire time by the session-start
- * scenario via a
- * resolver closure (same deferred-snapshot pattern as {@link PitReadbackSnapshot}).
- *
- * Units are resolved here, not in the scenario: the translator reads iRacing's
- * `DisplayUnits` and converts pit speed / temperatures into the user's display
- * unit so the engineer matches the sim. `pitSpeedLimit` is the exact rounded
- * integer — never stepped — because a rounded-up value would imply a false
- * pit-speed-penalty risk; the scenario skips the pit-speed clause when the
- * value isn't a clip it can speak.
- */
-/**
  * The three buckets a sim's session type collapses into (#1587): what the
  * session-start brief records, what a Race Engineer gate asks ("is this a
  * race"), and the keys of the catalog's `session.type` vocabulary. One name
@@ -279,6 +265,20 @@ export type SessionClass = {
   readonly soloQualifying: boolean;
 };
 
+/**
+ * Telemetry-derived half of the session-start readout snapshot (issues #542,
+ * #668). Built by the sim translator from live telemetry + session info at the
+ * time the session.changed event fires, read at fire time by the session-start
+ * scenario via a
+ * resolver closure (same deferred-snapshot pattern as {@link PitReadbackSnapshot}).
+ *
+ * Units are resolved here, not in the scenario: the translator reads iRacing's
+ * `DisplayUnits` and converts pit speed / temperatures into the user's display
+ * unit so the engineer matches the sim. `pitSpeedLimit` is the exact rounded
+ * integer — never stepped — because a rounded-up value would imply a false
+ * pit-speed-penalty risk; the scenario skips the pit-speed clause when the
+ * value isn't a clip it can speak.
+ */
 export type SessionStartConditions = {
   sessionType: SessionCategory;
   /** Exact pit speed limit in `speedUnit`, rounded to the nearest integer. */

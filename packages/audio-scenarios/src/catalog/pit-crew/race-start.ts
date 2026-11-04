@@ -477,7 +477,7 @@ export function buildRaceStartContract(
         }
 
         logger?.info(
-          `race-start where: passed — session="${sessionCategoryOf(session)}", position=${snapshot.playerCarPosition ?? "?"}`,
+          `race-start where: passed — session="${sessionCategoryOf(session) ?? "unknown"}", position=${snapshot.playerCarPosition ?? "?"}`,
         );
 
         return true;

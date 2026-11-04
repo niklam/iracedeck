@@ -513,7 +513,7 @@ export function buildCautionContracts({
   getSessionClass,
   getLatestTelemetry,
 }: CautionContractDeps): readonly ScenarioContract[] {
-  /** The flag family's live-race gate, over the session-type read this build was handed (#1378). */
+  /** The flag family's live-race gate, over the classified-session read this build was handed (#1378, #1587). */
   const liveRaceCar = createLiveRaceCar(getSessionClass);
 
   /** The shared gate, plus "a caution is actually out" for an event that also fires elsewhere. */

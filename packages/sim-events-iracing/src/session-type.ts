@@ -42,7 +42,8 @@ const RACE: SessionClass = Object.freeze({ category: "race", soloQualifying: fal
  * the unknown case. Only iRacing's "Lone Qualify" is `soloQualifying`.
  *
  * The one classifier for these buckets: the translator's session-start
- * conditions, lap payload and corner gate, and the Race Engineer catalog
+ * conditions, lap payload, corner gate and checkered-flag practice read, and
+ * the Race Engineer catalog
  * through `SimRuntime.getSessionClass`, read it. The profile switch's
  * `classifySessionKind` (`session-kind.ts`) is deliberately a different table (exact
  * strings, a row for testing and replays, no guess for an unknown type).

@@ -179,7 +179,7 @@ export function buildRollingStartContracts({
   getPaceLineup,
   getSessionClass,
 }: RollingStartContractDeps): readonly ScenarioContract[] {
-  /** The flag family's live-race gate, over the session-type read this build was handed (#1378). */
+  /** The flag family's live-race gate, over the classified-session read this build was handed (#1378, #1587). */
   const liveRaceCar = createLiveRaceCar(getSessionClass);
 
   /** The formation speak gate, on all three contracts. */

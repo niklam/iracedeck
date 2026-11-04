@@ -48,7 +48,7 @@ const hoisted = await vi.hoisted(async () => {
   };
 
   const getLatestTelemetry = vi.fn<() => { OnPitRoad?: boolean } | null>();
-  const getSessionType = vi.fn<() => string>();
+  const rawSessionType = vi.fn<() => string>();
 
   return {
     audio,
@@ -61,7 +61,7 @@ const hoisted = await vi.hoisted(async () => {
     bus,
     publishRadar,
     getLatestTelemetry,
-    getSessionType,
+    rawSessionType,
   };
 });
 
@@ -78,7 +78,7 @@ function radarDeps(overrides: Partial<RadarDeps> = {}): RadarDeps {
   return {
     getMasterEnabled: () => true,
     getLatestTelemetry: () => hoisted.getLatestTelemetry() as TelemetryData | null,
-    getSessionClass: () => classifySession(hoisted.getSessionType()),
+    getSessionClass: () => classifySession(hoisted.rawSessionType()),
     ...overrides,
   };
 }
@@ -94,8 +94,8 @@ beforeEach(() => {
   hoisted.busHandlers.clear();
   hoisted.getLatestTelemetry.mockReset();
   hoisted.getLatestTelemetry.mockReturnValue({ OnPitRoad: false });
-  hoisted.getSessionType.mockReset();
-  hoisted.getSessionType.mockReturnValue("Race");
+  hoisted.rawSessionType.mockReset();
+  hoisted.rawSessionType.mockReturnValue("Race");
 });
 
 afterEach(() => {
@@ -390,7 +390,7 @@ describe("Lone Qualify suppression", () => {
   it("ignores events during Lone Qualify", () => {
     registerRadarEngine(hoisted.bus, radarDeps());
     setRadarEnabled(true);
-    hoisted.getSessionType.mockReturnValue("Lone Qualify");
+    hoisted.rawSessionType.mockReturnValue("Lone Qualify");
 
     hoisted.publishRadar("left");
 
@@ -404,7 +404,7 @@ describe("Lone Qualify suppression", () => {
     hoisted.publishRadar("left");
     expect(getRadarVisualState()).toBe("left");
 
-    hoisted.getSessionType.mockReturnValue("Lone Qualify");
+    hoisted.rawSessionType.mockReturnValue("Lone Qualify");
     hoisted.publishRadar("both", "left");
 
     expect(getRadarVisualState()).toBe("clear");

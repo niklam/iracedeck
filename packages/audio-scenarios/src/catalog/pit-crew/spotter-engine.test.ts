@@ -36,7 +36,7 @@ import {
 
 const sim = {
   getLatestTelemetry: vi.fn<() => { OnPitRoad?: boolean } | null>(),
-  getSessionType: vi.fn<() => string>(),
+  rawSessionType: vi.fn<() => string>(),
 };
 
 // ─── Fake audio service (records plays, drives channel-complete manually) ───
@@ -162,7 +162,7 @@ function makeDeps(overrides: Partial<SpotterDeps> = {}): SpotterDeps {
     getTrackDirection: () => trackDirection,
     getNearestCarGapMeters: () => nearestGap,
     getLatestTelemetry: () => sim.getLatestTelemetry() as TelemetryData | null,
-    getSessionClass: () => classifySession(sim.getSessionType()),
+    getSessionClass: () => classifySession(sim.rawSessionType()),
     logger: mockLogger as never,
     ...overrides,
   };
@@ -201,8 +201,8 @@ beforeEach(() => {
   deps = makeDeps();
   sim.getLatestTelemetry.mockReset();
   sim.getLatestTelemetry.mockReturnValue({ OnPitRoad: false });
-  sim.getSessionType.mockReset();
-  sim.getSessionType.mockReturnValue("Race");
+  sim.rawSessionType.mockReset();
+  sim.rawSessionType.mockReturnValue("Race");
 });
 
 afterEach(() => {
@@ -545,7 +545,7 @@ describe("sustained still-there loop", () => {
     bus.publishRadar("left");
     const afterArrival = voicePaths().length;
 
-    sim.getSessionType.mockReturnValue("Lone Qualify");
+    sim.rawSessionType.mockReturnValue("Lone Qualify");
     vi.advanceTimersByTime(SPOTTER_STILL_THERE_DEFAULT_MS * 3);
     expect(voicePaths().length).toBe(afterArrival);
   });
@@ -660,7 +660,7 @@ describe("master + suppression (forceClear)", () => {
   it("Lone Qualify forces clear and fires nothing", () => {
     registerSpotterEngine(bus, deps);
 
-    sim.getSessionType.mockReturnValue("Lone Qualify");
+    sim.rawSessionType.mockReturnValue("Lone Qualify");
     bus.publishRadar("left");
 
     expect(voicePaths()).toEqual([]);
