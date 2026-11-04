@@ -13,6 +13,7 @@
  */
 import { join } from "node:path";
 
+import { CDP_CONNECTION_CLOSED } from "./cdp.mjs";
 import { SETTINGS_WINDOW_TABS } from "./tabs.mjs";
 
 /**
@@ -65,17 +66,30 @@ export const PANE_IMAGES_STATE_EXPRESSION = `(() => {
 export const BROWSER_CLOSE_TIMEOUT_MS = 5_000;
 
 /**
- * How long the browser's own process may take to exit once asked to close
- * before its tree is killed (#1544). Headless Edge took about 3 s on the
- * machine #1544 was measured on, flushing its profile first.
+ * How long the browser may take to exit once asked to close before what is
+ * left of it is killed (#1544). Headless Edge took about 3 s on the machine
+ * #1544 was measured on, flushing its profile first.
  */
 export const BROWSER_EXIT_TIMEOUT_MS = 10_000;
 
-/** How long to wait for the browser's process to go after killing its tree. */
+/**
+ * How long the browser's other processes (crash handler, utility, GPU) may
+ * outlive the browser's own before they are killed: any of them can still
+ * hold a file in the profile.
+ */
+export const PROFILE_RELEASE_TIMEOUT_MS = 5_000;
+
+/** How long to wait for the processes killed to be gone. */
 export const BROWSER_KILL_TIMEOUT_MS = 5_000;
 
-/** How often the browser's process is checked while either of those waits runs. */
+/** How often the browser's own pid is checked while it is waited for: a signal-0 check costs nothing. */
 export const BROWSER_EXIT_POLL_MS = 50;
+
+/**
+ * How often the processes naming the profile are listed while they are waited
+ * for. One listing is a PowerShell process on Windows, about half a second.
+ */
+export const PROFILE_PROCESSES_POLL_MS = 1_000;
 
 /** Pause after the page's load event, before the first capture. */
 export const PAGE_SETTLE_MS = 1500;
@@ -270,19 +284,116 @@ async function waitForProcessExit(pid, timeoutMs, processAlive, delay) {
 }
 
 /**
- * Shut the browser down and prove it has gone (#1544).
+ * The processes of this run's browser, as its lister last saw them.
  *
- * `Browser.close` over the protocol first, because it reaches the browser
- * whatever process the launcher handed off to, and lets it flush and release
- * its profile — killing it instead is what left the profile locked. Bounded,
- * so a browser that is dead or hung cannot hold teardown. Then the socket is
- * closed, whatever that command did. Then the browser's own process is waited
- * for; one still alive at the bound has its tree killed and is waited for
- * again. Every step that fails is a Warning, and nothing here throws.
+ * @typedef {{state: "listed", pids: number[]} | {state: "unknown", reason: string}} ProfileProcesses
+ */
+
+/**
+ * List the processes naming the profile, turning a lister that throws into
+ * "could not tell" — a broken lister must never read as "none left".
  *
- * Without the browser's pid (`browserProcess.pid` undefined) its exit cannot
- * be confirmed: the launcher's own `kill` is all that is left, which stops a
- * browser that is its own launcher and is a no-op on one that has exited.
+ * @param {() => Promise<ProfileProcesses>} listProfileProcesses
+ * @returns {Promise<ProfileProcesses>}
+ */
+async function listSafely(listProfileProcesses) {
+  try {
+    const listing = await listProfileProcesses();
+
+    if (listing?.state === "listed" && Array.isArray(listing.pids)) return listing;
+
+    if (listing?.state === "unknown") return listing;
+
+    return { state: "unknown", reason: `the process lister answered ${JSON.stringify(listing)}` };
+  } catch (error) {
+    return { state: "unknown", reason: `the process lister failed: ${String(error)}` };
+  }
+}
+
+/**
+ * List the processes naming the profile until none is left, the lister cannot
+ * tell, or the bound is reached, counting the time asked for as
+ * {@link waitForProcessExit} does. A bound of 0 lists once.
+ *
+ * @param {number} timeoutMs
+ * @param {() => Promise<ProfileProcesses>} listProfileProcesses
+ * @param {(ms: number) => Promise<void>} delay
+ * @returns {Promise<ProfileProcesses>} The last listing.
+ */
+async function waitForProfileRelease(timeoutMs, listProfileProcesses, delay) {
+  for (let waited = 0; ; waited += PROFILE_PROCESSES_POLL_MS) {
+    const listing = await listSafely(listProfileProcesses);
+
+    if (listing.state !== "listed" || listing.pids.length === 0 || waited >= timeoutMs) return listing;
+
+    await delay(PROFILE_PROCESSES_POLL_MS);
+  }
+}
+
+/**
+ * Send `Browser.close`, bounded, then close the socket whatever it did.
+ *
+ * The answer is a reason the close may not have worked, or `undefined`.
+ * Chromium drops the debugger socket while it handles `Browser.close`, and the
+ * command then rejects with {@link CDP_CONNECTION_CLOSED}: that is the browser
+ * closing, so it is no problem. A rejection with any other cause is.
+ *
+ * @param {any} cdp
+ * @param {(ms: number) => Promise<void>} delay
+ * @param {(message: string) => void} log
+ * @returns {Promise<string | undefined>}
+ */
+async function requestBrowserClose(cdp, delay, log) {
+  // Through a `then`, so even a send that throws synchronously becomes a
+  // rejection here and cannot skip closing the socket below.
+  const reply = Promise.resolve()
+    .then(() => cdp.send("Browser.close"))
+    .then(
+      () => undefined,
+      (error) => (error?.code === CDP_CONNECTION_CLOSED ? undefined : `Browser.close failed: ${String(error)}`),
+    );
+  const timeout = delay(BROWSER_CLOSE_TIMEOUT_MS).then(
+    () => `Browser.close had no reply after ${BROWSER_CLOSE_TIMEOUT_MS} ms`,
+  );
+  const problem = await Promise.race([reply, timeout]);
+
+  try {
+    cdp.close();
+  } catch (error) {
+    log(`Warning: could not close the debugger connection: ${String(error)}`);
+  }
+
+  return problem;
+}
+
+/**
+ * Shut the browser down and prove every process of it has gone (#1544).
+ *
+ * 1. `Browser.close` over the protocol, because it reaches the browser
+ *    whatever process the launcher handed off to and lets it flush and release
+ *    its profile; bounded, then the socket is closed.
+ * 2. When CDP told us the browser's own pid, it is waited for with a signal-0
+ *    check, which costs nothing.
+ * 3. The processes naming the profile are listed until none is left. That is
+ *    the browser's identity — every process of its tree names this run's
+ *    profile, and nothing else does — and it covers what the pid cannot: the
+ *    crash handler, utility and GPU processes that can outlive the browser and
+ *    hold profile files, and a capture that failed before the pid was learned,
+ *    when the launcher's kill (a no-op on Edge's) is all there would be.
+ * 4. At the bound, ONLY the pids that listing has just named are killed, each
+ *    with its tree, and the listing is waited on again. A bare pid is never
+ *    killed: once the browser has gone, Windows can hand its pid to an
+ *    unrelated process.
+ *
+ * The wait in step 3 is as long as there is reason to wait: a short grace for
+ * the other processes after the browser's own exited, the full bound when the
+ * browser was asked to close but its pid is unknown, and none — one listing —
+ * when it was never asked or its pid outlived the bound.
+ *
+ * A lister that cannot tell degrades to the browser's pid alone, with a
+ * Warning that the leftover check could not run; a pid still alive then is
+ * named, not killed. Every step that fails is a Warning, and nothing here
+ * throws.
  *
  * @param {object} state
  * @param {any} state.cdp - Undefined when the connection was never made.
@@ -290,78 +401,146 @@ async function waitForProcessExit(pid, timeoutMs, processAlive, delay) {
  * @param {{pid: number | undefined, reason?: string}} state.browserProcess
  * @param {object} deps
  * @param {(pid: number) => boolean} deps.processAlive
- * @param {(pid: number) => Promise<void> | void} deps.killTree
+ * @param {(pid: number) => Promise<"stopped" | "not-running">} deps.killTree
+ * @param {() => Promise<ProfileProcesses>} deps.listProfileProcesses
  * @param {(ms: number) => Promise<void>} deps.delay
  * @param {(message: string) => void} deps.log
  */
-async function shutDownBrowser({ cdp, browser, browserProcess }, { processAlive, killTree, delay, log }) {
-  /** Why the browser was not shut down cleanly, if it then outlives the wait. */
-  let closeProblem;
+async function shutDownBrowser(
+  { cdp, browser, browserProcess },
+  { processAlive, killTree, listProfileProcesses, delay, log },
+) {
+  // Nothing was ever started, so there is nothing to look for.
+  if (!browser) return;
 
-  if (cdp) {
-    // Through a `then`, so even a send that throws synchronously becomes a
-    // rejection here and cannot skip closing the socket below.
-    const reply = Promise.resolve()
-      .then(() => cdp.send("Browser.close"))
-      .then(
-        () => undefined,
-        (error) => `Browser.close failed: ${String(error)}`,
-      );
-    const timeout = delay(BROWSER_CLOSE_TIMEOUT_MS).then(
-      () => `Browser.close had no reply after ${BROWSER_CLOSE_TIMEOUT_MS} ms`,
+  const closeProblem = cdp
+    ? await requestBrowserClose(cdp, delay, log)
+    : "there was no debugger connection to send Browser.close on";
+  const { pid } = browserProcess;
+  const browserExited =
+    pid === undefined ? undefined : await waitForProcessExit(pid, BROWSER_EXIT_TIMEOUT_MS, processAlive, delay);
+
+  let releaseTimeoutMs = 0;
+
+  if (browserExited === true) releaseTimeoutMs = PROFILE_RELEASE_TIMEOUT_MS;
+  else if (browserExited === undefined && cdp) releaseTimeoutMs = BROWSER_EXIT_TIMEOUT_MS;
+
+  const leftover = await waitForProfileRelease(releaseTimeoutMs, listProfileProcesses, delay);
+
+  if (leftover.state === "unknown") {
+    reportWithoutLister({ browser, browserProcess, browserExited, closeProblem, reason: leftover.reason }, log);
+
+    return;
+  }
+
+  if (leftover.pids.length === 0) return;
+
+  let why = closeProblem;
+
+  if (why === undefined) {
+    why =
+      browserExited === true
+        ? `its processes were still running ${releaseTimeoutMs} ms after it exited`
+        : `it was still running ${BROWSER_EXIT_TIMEOUT_MS} ms after Browser.close`;
+  }
+
+  /** @type {number[]} */
+  const killed = [];
+  /** @type {{pid: number, error: string}[]} */
+  const threw = [];
+
+  for (const listed of leftover.pids) {
+    try {
+      if ((await killTree(listed)) === "stopped") killed.push(listed);
+    } catch (error) {
+      threw.push({ pid: listed, error: String(error) });
+    }
+  }
+
+  const after = await waitForProfileRelease(BROWSER_KILL_TIMEOUT_MS, listProfileProcesses, delay);
+  // A kill that threw may still have stopped its process: taskkill `/T`
+  // reports a failure for the whole tree when one member refuses — Edge runs
+  // a process whose command line cannot even be read — while the browser it
+  // was aimed at is gone. The listing after it decides which happened.
+  const goneAfter = (pid) => after.state === "listed" && !after.pids.includes(pid);
+
+  for (const { pid } of threw) if (goneAfter(pid)) killed.push(pid);
+
+  const refused = threw.filter(({ pid }) => !goneAfter(pid)).map(({ pid, error }) => `pid ${pid}: ${error}`);
+  const partly = threw.filter(({ pid }) => goneAfter(pid)).map(({ pid, error }) => `pid ${pid}: ${error}`);
+  const killedClause =
+    killed.length > 0
+      ? `; killed ${killed.length} process(es) naming its profile (pid ${killed.join(", ")})` +
+        (partly.length > 0 ? ` (the kill reported, though they are gone: ${partly.join("; ")})` : "")
+      : "";
+  const refusedClause = refused.length > 0 ? `; could not kill ${refused.join("; ")}` : "";
+
+  if (after.state === "listed" && after.pids.length === 0) {
+    // Every process listed may have gone by itself between the listing and
+    // its kill (taskkill's "not found"): then nothing was killed, and the run
+    // claims nothing.
+    if (killed.length > 0 || refused.length > 0) {
+      log(`Warning: the browser did not close cleanly (${why})${killedClause}${refusedClause}.`);
+    }
+
+    return;
+  }
+
+  const still =
+    after.state === "listed"
+      ? `${after.pids.length} process(es) naming its profile are still running (pid ${after.pids.join(", ")})`
+      : `whether any process naming its profile is still running could not be checked (${after.reason})`;
+
+  log(
+    `Warning: the browser did not close cleanly (${why})${killedClause}${refusedClause}, and ${still}. Stop them by hand.`,
+  );
+}
+
+/**
+ * The degraded end of {@link shutDownBrowser}: the processes naming the
+ * profile could not be listed, so only the browser's own pid speaks for it.
+ * Nothing is killed on a bare pid; one still alive is named for the user. The
+ * launcher's own `kill` is still tried when the pid is unknown — it stops a
+ * browser that is its own launcher (Chrome) and is a no-op on one that has
+ * exited (Edge's), through Node's handle rather than a pid.
+ *
+ * @param {object} state
+ * @param {{kill?: () => void}} state.browser
+ * @param {{pid: number | undefined, reason?: string}} state.browserProcess
+ * @param {boolean | undefined} state.browserExited
+ * @param {string | undefined} state.closeProblem
+ * @param {string} state.reason - Why the lister could not tell.
+ * @param {(message: string) => void} log
+ */
+function reportWithoutLister({ browser, browserProcess, browserExited, closeProblem, reason }, log) {
+  const { pid } = browserProcess;
+  const skipped = `the check for leftover browser processes could not run (${reason})`;
+  const closeClause = closeProblem ? `; ${closeProblem}` : "";
+
+  if (browserExited === true) {
+    log(`Warning: ${skipped}; the browser (pid ${pid}) exited, but processes of it may still hold its profile.`);
+
+    return;
+  }
+
+  if (browserExited === false) {
+    log(
+      `Warning: ${skipped}, and the browser (pid ${pid}) was still running ${BROWSER_EXIT_TIMEOUT_MS} ms after ` +
+        `Browser.close${closeClause}. It was not killed on its pid alone; stop it by hand.`,
     );
 
-    closeProblem = await Promise.race([reply, timeout]);
-
-    try {
-      cdp.close();
-    } catch (error) {
-      log(`Warning: could not close the debugger connection: ${String(error)}`);
-    }
-  } else {
-    closeProblem = "there was no debugger connection to send Browser.close on";
-  }
-
-  const { pid } = browserProcess;
-
-  if (pid === undefined) {
-    try {
-      browser?.kill?.();
-    } catch (error) {
-      log(`Warning: could not stop the launched browser process: ${String(error)}`);
-    }
-
-    if (browser) {
-      log(
-        `Warning: the browser's own process could not be identified (${browserProcess.reason}), so its exit ` +
-          `was not confirmed${closeProblem ? `, and ${closeProblem}` : ""}. A headless browser may still be running.`,
-      );
-    }
-
     return;
   }
-
-  if (await waitForProcessExit(pid, BROWSER_EXIT_TIMEOUT_MS, processAlive, delay)) return;
-
-  let killProblem = "";
 
   try {
-    await killTree(pid);
+    browser.kill?.();
   } catch (error) {
-    killProblem = `; killing it failed: ${String(error)}`;
-  }
-
-  const why = closeProblem ?? `it had not exited ${BROWSER_EXIT_TIMEOUT_MS} ms after Browser.close`;
-
-  if (await waitForProcessExit(pid, BROWSER_KILL_TIMEOUT_MS, processAlive, delay)) {
-    log(`Warning: the browser (pid ${pid}) did not close cleanly (${why}), so its process tree was killed.`);
-
-    return;
+    log(`Warning: could not stop the launched browser process: ${String(error)}`);
   }
 
   log(
-    `Warning: the browser (pid ${pid}) is still running: ${why}, and it outlived killing its process tree` +
-      `${killProblem}. Stop it by hand.`,
+    `Warning: ${skipped}, and the browser's own process could not be identified (${browserProcess.reason}), so ` +
+      `its exit was not confirmed${closeClause}. A headless browser may still be running.`,
   );
 }
 
@@ -395,17 +574,22 @@ async function shutDownBrowser({ cdp, browser, browserProcess }, { processAlive,
  * @param {() => Promise<{port: number, kill?: () => void}>} deps.launchBrowser - Starts
  *   the browser and reports its debugging port. `kill` stops the process it
  *   spawned, which may be only a launcher that has already handed off and
- *   exited (Edge's is), so teardown uses it only when the browser's own pid
- *   could not be learned over CDP.
+ *   exited (Edge's is), so teardown uses it only when neither the browser's
+ *   own pid nor the processes naming its profile could be learned.
  * @param {(port: number) => Promise<string>} deps.debuggerUrl
  * @param {(url: string) => Promise<any>} deps.connect
  * @param {(file: string, data: Buffer) => Promise<void>} deps.writeFile
  * @param {(pid: number) => boolean} deps.processAlive - Whether a process
  *   still runs; teardown polls the browser's own pid with it after
  *   `Browser.close`.
- * @param {(pid: number) => Promise<void> | void} deps.killTree - Kill a process
- *   and its children; teardown's fallback for a browser that outlives
- *   {@link BROWSER_EXIT_TIMEOUT_MS} after `Browser.close`.
+ * @param {(pid: number) => Promise<"stopped" | "not-running">} deps.killTree - Kill
+ *   a process and its children, saying whether this call stopped it or it had
+ *   already gone; teardown calls it only on a pid `listProfileProcesses` has
+ *   just named.
+ * @param {() => Promise<ProfileProcesses>} deps.listProfileProcesses - Every
+ *   process whose command line names this run's browser profile, which is how
+ *   teardown recognises the browser's processes; `unknown`, never a throw,
+ *   when it cannot tell.
  * @param {(ms: number) => Promise<void>} [deps.delay]
  * @param {(message: string) => void} [deps.log]
  * @returns {Promise<{written: string[], skipped: SkippedCapture[]}>} The files
@@ -430,6 +614,7 @@ export async function captureSettingsWindow(options, deps) {
     writeFile,
     processAlive,
     killTree,
+    listProfileProcesses,
     // unref'd: the settings server and the CDP socket keep the loop alive for
     // the whole capture, so nothing can exit early — but a fallback timer left
     // pending by a race that resolved early can never hold the process open
@@ -568,7 +753,11 @@ export async function captureSettingsWindow(options, deps) {
     for (const [what, step] of [
       [
         "shut the browser down",
-        () => shutDownBrowser({ cdp, browser, browserProcess }, { processAlive, killTree, delay, log }),
+        () =>
+          shutDownBrowser(
+            { cdp, browser, browserProcess },
+            { processAlive, killTree, listProfileProcesses, delay, log },
+          ),
       ],
       ["stop the settings server", () => server.close()],
     ]) {

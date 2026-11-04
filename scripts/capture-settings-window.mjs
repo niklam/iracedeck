@@ -19,7 +19,8 @@
  * left as it was, and the run says so and exits 1.
  *
  * The run ends by itself (#1544): the capture shuts the browser down over the
- * DevTools Protocol and waits for its process, the profile is removed with a
+ * DevTools Protocol and waits until no process names its profile, killing
+ * only those that outlive the bound; the profile is removed with a
  * bounded retry of our own, and a tripwire armed after the last line fails the
  * run loudly, naming what holds it, if anything still keeps the process alive.
  *
@@ -37,7 +38,11 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { captureSettingsWindow } from "./lib/settings-window-capture/capture.mjs";
 import { connectCdp, waitForDebuggerUrl, waitForDevToolsPort } from "./lib/settings-window-capture/cdp.mjs";
 import { armExitTripwire } from "./lib/settings-window-capture/exit-tripwire.mjs";
-import { isProcessAlive, killProcessTree } from "./lib/settings-window-capture/process-tree.mjs";
+import {
+  isProcessAlive,
+  killProcessTree,
+  listProcessesNamingDir,
+} from "./lib/settings-window-capture/process-tree.mjs";
 import { removeProfileDir } from "./lib/settings-window-capture/profile-dir.mjs";
 import { buildSeedSettings, buildSeedUpdateStatus } from "./lib/settings-window-capture/seed.mjs";
 
@@ -147,10 +152,10 @@ try {
 
         // The process spawned may be only a launcher: Edge's hands off to the
         // real headless browser and exits, leaving it orphaned. So this kill
-        // reaches the launcher alone and is the last resort the capture uses
-        // only when the browser cannot tell it its own pid; the capture shuts
-        // the real browser down over CDP and waits for that pid instead. The
-        // unref keeps a launcher that IS the browser from holding the run.
+        // reaches the launcher alone and is the capture's last resort; it
+        // shuts the real browser down over CDP and recognises its processes by
+        // this run's profile folder instead. The unref keeps a launcher that
+        // IS the browser from holding the run.
         child.unref();
 
         return { port, kill: () => child.kill() };
@@ -160,6 +165,9 @@ try {
       writeFile: (file, data) => writeFile(file, data),
       processAlive: (pid) => isProcessAlive(pid),
       killTree: (pid) => killProcessTree(pid),
+      // The profile folder is this run's alone, and every process of its
+      // browser names it: the browser's identity, where a pid is not one.
+      listProfileProcesses: () => listProcessesNamingDir(profileDir),
       log: (message) => console.log(message),
     },
   ));
