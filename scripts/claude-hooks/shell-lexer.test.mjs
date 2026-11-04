@@ -531,4 +531,16 @@ describe("the program-word rewrite's review round (#1606)", () => {
     expect(trustedMask(`$"/usr/bin/GH" pr`)).toBe(`${" ".repeat(12)}gh pr`);
     expect(lexer.unreadablePrograms(`$"$GH" pr`)).toEqual([{ start: 0, end: 6, word: `$"$GH"` }]);
   });
+
+  it.each([
+    [". gh pr", "  gh pr"],
+    [`a; . "C:\\x\\gh.exe" pr`, `a;   "C:/x/gh.exe" pr`],
+    ["{ . gh }", "{   gh }"],
+    [".\\gh.exe pr", "./gh.exe pr"],
+    ["a.b . c", "a.b . c"],
+  ])("powershellAsBash blanks the dot-source operator that leads a statement: %s", (ps, out) =>
+    expect(powershellAsBash(ps)).toBe(out),
+  );
+
+  it("leaves bash's `.`, which is source, as it is", () => expect(trustedMask(". gh pr")).toBe(". gh pr"));
 });

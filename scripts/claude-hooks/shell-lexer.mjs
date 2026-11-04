@@ -1182,6 +1182,9 @@ export function shellWords(command) {
  * newline, `&&` or `||` — is the call operator, which runs the quoted or
  * path program after it (`& "C:\…\gh.exe" pr merge 7`): it becomes a blank,
  * where bash would read a background job and the merge gate would refuse it.
+ * Its dot-source operator, a statement-leading `.` with a blank after it
+ * (`. gh pr merge 5`), runs the program after it too, and is blanked the same
+ * way (#1606 review); in bash a `.` is `source`, and is left alone there.
  * And PowerShell resolves a command in any case, a cmdlet's alias included,
  * so each program word's last path segment is folded to lower case here,
  * where {@link view} keeps the case of a name bash finds by its spelling.
@@ -1193,7 +1196,8 @@ export function powershellAsBash(command) {
       if (m.endsWith("\n")) return " ".repeat(m.length);
       return PS_PLAIN_ESCAPE.test(m) ? `\\${m[1]}` : "_".repeat(m.length);
     })
-    .replace(PS_CALL, "$1$2 ");
+    .replace(PS_CALL, "$1$2 ")
+    .replace(PS_DOT, "$1$2 ");
   let folded = bashed;
   for (const [, b, cut] of view(bashed).programs) {
     const lower = bashed.slice(cut, b).toLowerCase();
@@ -1207,3 +1211,6 @@ const PS_PLAIN_ESCAPE = /^`(?![0abefnrtvu])[A-Za-z0-9\-:./=+,@%_]$/;
 
 /** PowerShell's call operator where it leads a statement ({@link powershellAsBash}): not `&&`, and not a redirect's `&`. */
 const PS_CALL = /(^|[;|{(\n]|&&|\|\|)([ \t]*)&(?![&>])/g;
+
+/** PowerShell's dot-source operator where it leads a statement ({@link powershellAsBash}): a `.` with a blank after it. */
+const PS_DOT = /(^|[;|{(\n]|&&|\|\|)([ \t]*)\.(?=[ \t])/g;

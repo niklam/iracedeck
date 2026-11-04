@@ -4271,4 +4271,14 @@ describe("the program-word rewrite's review round (#1606)", () => {
     expect(deny(`$"gh" pr merge 5 --squash`, ctx({ prView: unapproved }))).toMatch(/REVIEW_REQUIRED/);
     expect(deny(`$"$GH" pr merge 5 --squash`)).toMatch(/judged as gh/);
   });
+
+  // PowerShell's dot-source operator runs the program after it, as `&` does.
+  it.each([". gh", `. "C:\\Program Files\\GitHub CLI\\gh.exe"`, "Set-Location ..\\ir-5; . GH.EXE"])(
+    "the merge gate judges PowerShell's %s pr merge as it judges gh",
+    (gh) => {
+      const ps = (o) => ctx({ shell: POWERSHELL, ...o });
+      passes(`${gh} pr merge 5 --squash`, ps({ prView: green }));
+      expect(deny(`${gh} pr merge 5 --squash`, ps({ prView: unapproved }))).toMatch(/REVIEW_REQUIRED/);
+    },
+  );
 });
