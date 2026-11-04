@@ -99,6 +99,163 @@ jobs:
           echo "Catalog overlaid from $catalog_commit, which master's catalog still matches (master at $master_commit)."
           git status --short "$catalog_dir"
 
+      # The catalog this deploys must not be behind master's (#1613). A tag
+      # release deploys the tag's catalog, and a patch tagged from a release
+      # branch cut before a voice-pack bump on master would put the older
+      # entry live over the newer one a between-releases publish already
+      # deployed — with everything green, since the older archive is still
+      # published. So every pack in master's catalog must be here at or above
+      # master's version (semver precedence); a pack only here never blocks,
+      # since a release branch may ship one before master publishes it, and a
+      # pack only on master refuses, since deploying would remove it. Every
+      # problem is reported, then the job fails before anything is installed.
+      #
+      # It runs on every deploy. On the publish path it passes by construction:
+      # the overlay above has just made this catalog master's. It lives here,
+      # in the deploying job, for the reason the overlay does: re-running this
+      # job alone skips every check in the caller's jobs. It is inline rather
+      # than a script under scripts/ because the publish path runs this file
+      # from master against an older stable tag's checkout, which would not
+      # carry a new script. Master is named here rather than passed in so that
+      # no caller can leave the comparison out.
+      #
+      # Fail closed throughout: a master that cannot be fetched, a master with
+      # no catalog directory (renamed, or its last pack withdrawn), an entry
+      # that is not JSON or a version that is not semver on either side all
+      # refuse, because accepting a catalog nobody compared is the failure
+      # this exists to stop, and a skipped deploy would read green.
+      # scripts/voice-pack-tag-catalog-workflow.test.mjs runs this script.
+      - name: Refuse a voice-pack catalog behind master's
+        run: |
+          set -euo pipefail
+          catalog_dir=packages/audio-assets/catalog
+          if ! git fetch --no-tags --depth=1 origin refs/heads/master; then
+            echo "::error::master could not be fetched from origin, so this checkout's $catalog_dir cannot be compared with master's. Refusing to deploy a catalog nobody compared; re-run once master can be fetched."
+            exit 1
+          fi
+          master_commit="$(git rev-parse FETCH_HEAD)"
+          # `<commit>:<path>` takes the rest as the path, so a `^{tree}` suffix cannot ask for a directory; the type is checked instead.
+          master_tree="$(git rev-parse --verify --quiet "$master_commit:$catalog_dir" || true)"
+          if [ -z "$master_tree" ] || [ "$(git cat-file -t "$master_tree")" != tree ]; then
+            echo "::error::master ($master_commit) has no $catalog_dir directory, so this checkout's catalog cannot be compared with master's. Refusing to deploy rather than skip the comparison; if master moved or removed its catalog, this step must follow it."
+            exit 1
+          fi
+          checkout_name="$(git describe --tags --always 2>/dev/null || git rev-parse HEAD)"
+          export CATALOG_DIR="$catalog_dir" MASTER_COMMIT="$master_commit" MASTER_TREE="$master_tree" CHECKOUT_NAME="$checkout_name"
+          node - <<'JS'
+          const { execFileSync } = require("node:child_process");
+          const { existsSync, readFileSync } = require("node:fs");
+          const { CATALOG_DIR: dir, MASTER_COMMIT: master, MASTER_TREE: tree, CHECKOUT_NAME: here } = process.env;
+
+          // semver.org 2.0.0, after trimming and one optional leading "v".
+          const SEMVER =
+            /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+[0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*)?$/;
+          function parseVersion(value) {
+            if (typeof value !== "string") return null;
+            const m = SEMVER.exec(value.trim().replace(/^v/, ""));
+            if (!m) return null;
+            return { core: [BigInt(m[1]), BigInt(m[2]), BigInt(m[3])], pre: m[4] === undefined ? [] : m[4].split(".") };
+          }
+          const order = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
+          function compareIdentifiers(a, b) {
+            const an = /^\d+$/.test(a);
+            const bn = /^\d+$/.test(b);
+            if (an && bn) return order(BigInt(a), BigInt(b));
+            if (an !== bn) return an ? -1 : 1;
+            return order(a, b);
+          }
+          // Precedence: the core numerically, then a release above its
+          // pre-releases, then identifier by identifier, a shorter list with an
+          // equal prefix ranking lower. Build metadata never counts.
+          function compareVersions(a, b) {
+            for (let i = 0; i < 3; i++) if (a.core[i] !== b.core[i]) return order(a.core[i], b.core[i]);
+            if (a.pre.length === 0 || b.pre.length === 0) return order(b.pre.length, a.pre.length);
+            for (let i = 0; i < Math.max(a.pre.length, b.pre.length); i++) {
+              if (i === a.pre.length) return -1;
+              if (i === b.pre.length) return 1;
+              const c = compareIdentifiers(a.pre[i], b.pre[i]);
+              if (c !== 0) return c;
+            }
+            return 0;
+          }
+
+          // Workflow-command escaping, so a stray character in a value cannot end the annotation.
+          const escapeData = (s) => String(s).replace(/%/g, "%25").replace(/\r/g, "%0D").replace(/\n/g, "%0A");
+          const escapeProperty = (s) => escapeData(s).replace(/:/g, "%3A").replace(/,/g, "%2C");
+          const shown = (v) => (v === undefined ? `no "version"` : `version ${JSON.stringify(v)}, which is not a semver version`);
+          const remedy = `Bring master's catalog onto the release branch (cherry-pick master's catalog bump commits) and re-tag, or re-run once the release branch carries them.`;
+          const problems = [];
+          const refuse = (file, message) => problems.push(`::error file=${escapeProperty(file)}::${escapeData(message)}`);
+          const git = (...args) => execFileSync("git", args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+
+          let compared = 0;
+          let unreadable = false;
+          try {
+            for (const record of git("ls-tree", "-z", tree).split("\0")) {
+              if (!record) continue;
+              const tab = record.indexOf("\t");
+              const [, type, object] = record.slice(0, tab).split(" ");
+              const name = record.slice(tab + 1);
+              if (type !== "blob" || !name.endsWith(".json")) continue;
+              const id = name.slice(0, -".json".length);
+              const file = `${dir}/${name}`;
+
+              const masterText = git("cat-file", "blob", object);
+              let masterEntry;
+              try {
+                masterEntry = JSON.parse(masterText);
+              } catch (error) {
+                refuse(file, `master's ${file} (at ${master}) is not valid JSON (${error.message}), so pack "${id}" cannot be compared. Refusing to deploy.`);
+                continue;
+              }
+              const masterVersion = masterEntry?.version;
+              const masterParsed = parseVersion(masterVersion);
+              if (!masterParsed) {
+                refuse(file, `master's ${file} (at ${master}) has ${shown(masterVersion)}, so pack "${id}" cannot be compared. Refusing to deploy.`);
+                continue;
+              }
+
+              if (!existsSync(file)) {
+                refuse(file, `Voice pack "${id}" is missing in ${here} but at ${masterVersion} on master (${master}); deploying would remove a live pack. ${remedy}`);
+                continue;
+              }
+              let entry;
+              try {
+                entry = JSON.parse(readFileSync(file, "utf8"));
+              } catch (error) {
+                refuse(file, `${file} in ${here} is not valid JSON (${error.message}), so pack "${id}" cannot be compared with master's ${masterVersion} (${master}). Refusing to deploy.`);
+                continue;
+              }
+              const version = entry?.version;
+              const parsed = parseVersion(version);
+              if (!parsed) {
+                refuse(file, `${file} in ${here} has ${shown(version)}, so pack "${id}" cannot be compared with master's ${masterVersion} (${master}). Refusing to deploy.`);
+                continue;
+              }
+              if (compareVersions(parsed, masterParsed) < 0) {
+                refuse(file, `Voice pack "${id}" is at ${version} in ${here} but at ${masterVersion} on master (${master}); deploying would put the older entry live over the newer one. ${remedy}`);
+                continue;
+              }
+              compared++;
+              console.log(`ok  ${id}  ${version} >= ${masterVersion}`);
+            }
+          } catch (error) {
+            console.log(`::error::master's ${dir} (at ${master}) could not be read: ${escapeData(error.message)} Refusing to deploy a catalog nobody compared.`);
+            unreadable = true;
+          }
+
+          // exitCode rather than exit(), so no output is cut short on a pipe.
+          if (unreadable) {
+            process.exitCode = 1;
+          } else if (problems.length > 0) {
+            for (const line of problems) console.log(line);
+            console.log(`::error::${problems.length} voice-pack catalog ${problems.length === 1 ? "entry" : "entries"} in ${here} cannot be deployed against master's catalog (${master}); see above.`);
+            process.exitCode = 1;
+          } else {
+            console.log(`Every voice pack in master's catalog (${master}) is here at or above master's version: ${compared} compared.`);
+          }
+          JS
+
       # The pnpm version follows the checked-out ref, not this file: a voice-pack
       # publish builds the latest stable tag with the workflow from master, and
       # a tag from before #1245 needs pnpm 10 (its settings live in package.json,
