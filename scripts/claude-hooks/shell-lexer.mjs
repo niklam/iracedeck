@@ -338,7 +338,8 @@ export function view(command) {
  * backtick), any blanks and any {@link COMMAND_LEAD}, read greedily so the
  * word it stops at is the one a {@link cmd} rule would test. Each place is
  * read on its own: an assignment lead such as `x=$(` runs past the `(` a
- * substitution's own command follows.
+ * substitution's own command follows. Each is `{ start, lead }`, the lead
+ * being the text stepped over.
  */
 function* programPositions(text) {
   const lead = new RegExp(String.raw`\s*${COMMAND_LEAD}`, "y");
@@ -346,9 +347,16 @@ function* programPositions(text) {
     if (p > 0 && !"\n|;&()\x60".includes(text[p - 1])) continue;
     lead.lastIndex = p;
     const m = lead.exec(text);
-    if (m) yield p + m[0].length;
+    if (m) yield { start: p + m[0].length, lead: m[0] };
   }
 }
+
+/** The wrappers of {@link COMMAND_LEAD} that run the next word as a command. */
+const LEAD_WRAPPER = /(?<!\S)(time|command|exec|env|nohup|timeout|xargs)(?=\s)/g;
+/** Whether the word after `lead` is one of env's own arguments or its program: env is the last wrapper the lead steps over. */
+const afterEnv = (lead) => [...lead.matchAll(LEAD_WRAPPER)].at(-1)?.[1] === "env";
+/** An option word that can be written back where it stands without changing how the text splits ({@link normalisePrograms}). */
+const OPTION_WORD = /^-[^\s;&|()<>"'`$\\]*$/;
 
 /**
  * The bash builtins and reserved words. Bash finds them by their exact
@@ -574,8 +582,13 @@ const CRUDE_WORD =
  *
  * It repeats until nothing changes, so a wrapper spelled with a path
  * (`/usr/bin/env /usr/bin/gh …`) puts the next word at command position too.
- * A word holding `=` is an assignment, and a `$word` followed by `=` is a
- * PowerShell one, never a program. `words` are the lexer's word spans, the
+ * A word bash takes for an assignment ({@link ASSIGNMENT}), and a `$word`
+ * followed by `=` (a PowerShell one), is never a program; nor is a word
+ * starting with `-`, an option the lead could not step over because it is
+ * quoted, which is written back as the option it is, its case kept. After
+ * env, any `NAME=VALUE`, quoted or not, is an assignment env makes, written
+ * back as `NAME=___`, and an argument that expands is listed in `unreadable`
+ * with `env` set, since it may be either (#1606 review). `words` are the lexer's word spans, the
  * only words taken where `crude` is false; in the raw text of an untrusted
  * view, a position the lexer did not see start a word is read by
  * {@link CRUDE_WORD}. A program word whose last segment expands or globs is
@@ -595,7 +608,7 @@ function normalisePrograms(command, text, flat, words, crude) {
     programs.some(([a, b, , keep]) => a < p && p < b && !keep.some(([k0, k1]) => k0 < p && p < k1));
   for (let changed = true, passes = 0; changed && passes < 32; passes++) {
     changed = false;
-    for (const start of programPositions(t)) {
+    for (const { start, lead } of programPositions(t)) {
       if (seen.has(start) || covered(start)) continue;
       let end = words.get(start);
       if (end === undefined && crude && (start === 0 || /[\s|;&()\x60]/.test(command[start - 1]))) {
@@ -606,9 +619,43 @@ function normalisePrograms(command, text, flat, words, crude) {
       if (end === undefined || end <= start) continue;
       seen.add(start);
       const word = command.slice(start, end);
+      const chars = decodeWord(word);
+      const live = chars.some((x) => x.live);
+      const decoded = chars.map((x) => x.c).join("");
+      const env = afterEnv(lead);
+      const write = (by) => {
+        t = t.slice(0, start) + by + t.slice(end);
+        f = f.slice(0, start) + by + f.slice(end);
+        changed = true;
+      };
+      // An option the lead could not step over because it is quoted
+      // (`env "-C" dir`): never the program, and written back as the option it
+      // is, its case kept, so the next pass steps over it (#1606 review).
+      if (!live && decoded.startsWith("-")) {
+        if (OPTION_WORD.test(decoded)) {
+          if (t.slice(start, end) !== decoded.padStart(end - start)) write(decoded.padStart(end - start));
+        } else if (env) unreadable.push({ start, end, word, env });
+        continue;
+      }
+      if (env) {
+        // env takes every NAME=VALUE ahead of its program, quoted or not: the
+        // name written back plain, so the lead steps over it, every rule that
+        // reads a GH_* or GIT_* sees it, and a reader of its value finds none
+        // it can read.
+        const eq = chars.findIndex((x) => !x.live && x.c === "=");
+        if (eq > 0 && !chars.slice(0, eq).some((x) => x.live)) {
+          const name = chars.slice(0, eq).map((x) => (/\w/.test(x.c) ? x.c : "_"));
+          const by = `${name.join("")}=`.padEnd(end - start, "_");
+          if (t.slice(start, end) !== by) write(by);
+          continue;
+        }
+        // One that expands may be an assignment or the program: judged as
+        // both by `checkBash`.
+        if (live) unreadable.push({ start, end, word, env });
+      }
       if (ASSIGNMENT.test(word) || (word.startsWith("$") && /^\s*[-+*/]?=(?!=)/.test(command.slice(end)))) continue;
-      const read = programName(decodeWord(word));
-      if (read?.unreadable) unreadable.push({ start, end, word });
+      const read = programName(chars);
+      if (read?.unreadable && !env) unreadable.push({ start, end, word });
       if (!read?.name) continue;
       const cut = start + read.cut;
       if (read.name.length > end - cut) continue;

@@ -4182,4 +4182,37 @@ describe("the program-word rewrite's review round (#1606)", () => {
     passes(`${gh} pr merge 5 --squash`, ctx({ prView: green }));
     expect(deny(`${gh} pr merge 5 --squash`, ctx({ prView: unapproved }))).toMatch(/REVIEW_REQUIRED/);
   });
+
+  // env takes every NAME=VALUE ahead of its program, quoted or not, and its
+  // options may be quoted too; the program after them is still the one run.
+  describe("env's quoted and expanding arguments", () => {
+    it.each([
+      `env 'GH_REPO=other/repo' gh pr merge 5 --squash`,
+      `env "GH_REPO=other/repo" gh pr merge 5 --squash`,
+      `env "GH_REPO"=other/repo gh pr merge 5 --squash`,
+      `env 'GH_HOST=x' gh pr merge 5 --squash`,
+      `env "-C" ../other gh pr merge 5 --squash`,
+      `env "-u" GH_REPO gh pr merge 5 --squash`,
+      `exec "-a" name gh pr merge 5 --squash`,
+      "env $R gh pr merge 5 --squash",
+      `env "$R" gh pr merge 5 --squash`,
+      "env FOO=1 $R gh pr merge 5 --squash",
+    ])("the merge gate fires on %s", (c) =>
+      expect(deny(c, ctx({ prView: green }))).toMatch(
+        /cannot read whole|Could not read the repository|targets other\/repo|env may take for an assignment/,
+      ),
+    );
+    it("judges a plain env assignment, quoted, as it judges the bare one", () => {
+      passes(`env 'FOO=1' gh pr merge 5 --squash`, ctx({ prView: green }));
+      expect(deny(`env 'FOO=1' gh pr merge 5 --squash`, ctx({ prView: unapproved }))).toMatch(/REVIEW_REQUIRED/);
+    });
+    it("refuses a commit behind an env that names its repository", () => {
+      expect(deny(`env 'GIT_DIR=x' git commit -m x`)).toMatch(/git -C <dir> commit/);
+      expect(deny("env $G git commit -m x")).toMatch(/judged as `GIT_DIR=\$G`/);
+    });
+    it("passes an expanding env argument ahead of a command no rule names", () => {
+      passes("env $R pnpm build");
+      passes(`env "$R" ls`);
+    });
+  });
 });

@@ -479,4 +479,18 @@ describe("the program-word rewrite's review round (#1606)", () => {
       expect(trustedMask(command), command).toBe(command);
     expect(lexer.unreadablePrograms("$x = 5")).toEqual([]);
   });
+
+  it("reads env's quoted assignments and options as env reads them, never as the program", () => {
+    expect(trustedMask(`env 'GH_REPO=x/y' gh pr`)).toBe(`env GH_REPO=_____ gh pr`);
+    expect(trustedMask(`env "a b=c" gh pr`)).toBe(`env a_b=___ gh pr`);
+    expect(trustedMask(`env "-C" ../o gh pr`)).toBe(`env   -C ../o gh pr`);
+    expect(trustedMask(`exec '-a' x GH.EXE pr`)).toBe(`exec   -a x     gh pr`);
+    expect(trustedMask(`env "--chdir=../o" gh pr`)).toBe(`env   --chdir=../o gh pr`);
+  });
+
+  it("lists an expanding env argument, which env may take for an assignment", () => {
+    expect(lexer.unreadablePrograms("env $R gh pr")).toEqual([{ start: 4, end: 6, word: "$R", env: true }]);
+    expect(lexer.unreadablePrograms(`env "$R" gh pr`)).toEqual([{ start: 4, end: 8, word: `"$R"`, env: true }]);
+    expect(lexer.unreadablePrograms("$R gh pr")).toEqual([{ start: 0, end: 2, word: "$R" }]);
+  });
 });

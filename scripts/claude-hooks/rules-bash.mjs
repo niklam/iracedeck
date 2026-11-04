@@ -1802,18 +1802,29 @@ const checkName = (c) => c.name ?? c.context ?? c.__typename ?? "?";
  * about either, an ask included, refuses it, naming the word: the hook cannot
  * tell what the shell will run, and a deny costs one re-spelling. A word no
  * rule would say anything about as either (`$EDITOR notes.md`) passes.
+ *
+ * An argument of env that expands (`env $R gh pr merge 5`) may be the program
+ * or a NAME=VALUE env makes (#1606 review), so it is judged as each program
+ * and as `GH_REPO=<word>` and `GIT_DIR=<word>`, the two assignments a rule
+ * reads: the merge gate then cannot read the repository, and a commit cannot
+ * tell which one it records into.
  */
 export function checkBash(command, ctx) {
   const powershell = ctx.shell === POWERSHELL;
   const text = powershell ? powershellAsBash(command) : command;
   const verdict = judge(text, ctx, powershell);
   if (typeof verdict === "string") return verdict;
-  for (const { start, end, word } of unreadablePrograms(text))
-    for (const program of ["gh", "git"]) {
+  for (const { start, end, word, env } of unreadablePrograms(text)) {
+    const as = ["gh", "git", ...(env ? [`GH_REPO=${word}`, `GIT_DIR=${word}`] : [])];
+    for (const program of as) {
       const v = judge(text.slice(0, start) + program + text.slice(end), ctx, powershell);
-      if (v)
-        return `Could not read the program \`${word}\`; judged as ${program}: ${typeof v === "string" ? v : v.ask} Spell the program as a plain word.`;
+      if (!v) continue;
+      const reason = typeof v === "string" ? v : v.ask;
+      return program.includes("=")
+        ? `Could not read \`${word}\`, which env may take for an assignment; judged as \`${program}\`: ${reason} Spell it as a plain word.`
+        : `Could not read the program \`${word}\`; judged as ${program}: ${reason} Spell the program as a plain word.`;
     }
+  }
   return verdict;
 }
 
