@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
 
-import { editTargets, issueNumberOfUrl, milestoneRemovedLine, setsMilestone } from "./rules-post.mjs";
+import {
+  assignedGhRepo,
+  editTargets,
+  issueCreateRepos,
+  issueNumberOfUrl,
+  milestoneRemovedLine,
+  setsMilestone,
+} from "./rules-post.mjs";
+import { programStart, trustedMask } from "./shell-lexer.mjs";
 
 // #1574: the milestone trigger's pure half. The rest of rules-post.mjs is
 // covered in rules-tools.test.mjs, where it was first tested.
@@ -98,5 +106,25 @@ describe("issueNumberOfUrl", () => {
     expect(issueNumberOfUrl("https://github.com/niklam/iracedeck/issues/1574")).toBe(1574);
     expect(issueNumberOfUrl("https://github.com/niklam/iracedeck/pull/1574")).toBeUndefined();
     expect(issueNumberOfUrl(undefined)).toBeUndefined();
+  });
+});
+
+// #1606: the post-hook hands these readers the rewritten text, where every
+// spelling of gh is `gh`, and slices the raw text where the program word starts.
+describe("the post-hook's repository readers read every spelling of gh", () => {
+  it.each(["gh", "gh.exe", `"gh"`, "/usr/bin/gh", `"C:/Program Files/GitHub CLI/gh.exe"`])(
+    "issueCreateRepos reads %s issue create",
+    (gh) => {
+      const command = `${gh} issue create --title x -R Other/Repo && GH_REPO=a/b ${gh} issue create --title y`;
+      expect(issueCreateRepos(command, trustedMask(command))).toEqual(["Other/Repo", "a/b"]);
+    },
+  );
+
+  it("assignedGhRepo reads the GH_REPO ahead of a merge spelled with a path", () => {
+    const command = `GH_REPO=a/b "C:/Program Files/GitHub CLI/gh.exe" pr merge 7 --squash`;
+    const text = trustedMask(command);
+    const at = programStart(command, text.indexOf("gh pr merge"));
+    expect(at).toBe(command.indexOf('"C:'));
+    expect(assignedGhRepo(command.slice(0, at), text.slice(0, at))).toBe("a/b");
   });
 });
