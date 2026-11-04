@@ -149,9 +149,11 @@ describe(`${HOSTING_WORKFLOW}'s overlay step (#1392)`, () => {
     expect(step.run).not.toContain("${{");
   });
 
-  it("deploys one run at a time and never cancels one in flight, so a check is not overtaken by an older deploy", () => {
+  it("deploys one overlay at a time, never cancels one in flight, and keeps releases in a group of their own", () => {
+    // Per kind of caller: GitHub cancels a pending run when a third arrives, and a
+    // release must not evict a pending publish whose archive is already up.
     expect(readWorkflow(HOSTING_WORKFLOW).jobs.build_and_deploy.concurrency).toEqual({
-      group: "firebase-hosting-live",
+      group: "firebase-hosting-live-${{ inputs.catalog_ref && 'catalog-overlay' || 'release' }}",
       "cancel-in-progress": false,
     });
   });

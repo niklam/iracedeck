@@ -35,14 +35,17 @@ permissions:
 jobs:
   build_and_deploy:
     runs-on: ubuntu-latest
-    # One live deploy at a time, from every caller (#1392). The overlay below
-    # checks master's catalog and the deploy follows minutes later; without
-    # this, an older run that passed its check could finish after a newer one
-    # and put its catalog back. Queued, never cancelled in flight: GitHub
-    # keeps one pending run per group, so a third deploy replaces the pending
-    # one, which then shows as cancelled and is dispatched again if needed.
+    # One catalog-overlay deploy at a time (#1392). The overlay below checks
+    # master's catalog and the deploy follows minutes later; without this, an
+    # older publish that passed its check could finish after a newer one and
+    # put its catalog back. Queued, never cancelled in flight. GitHub keeps
+    # one PENDING run per group and cancels the older when a third arrives,
+    # so the group is per kind of caller: a newer publish only ever replaces
+    # an older publish, whose packs its own verified catalog already carries,
+    # and a tag release only an older release. One shared group would let a
+    # release evict a pending publish and leave its new archive unoffered.
     concurrency:
-      group: firebase-hosting-live
+      group: firebase-hosting-live-${{ inputs.catalog_ref && 'catalog-overlay' || 'release' }}
       cancel-in-progress: false
     steps:
       - uses: actions/checkout@v7
