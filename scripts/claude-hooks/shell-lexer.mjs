@@ -927,14 +927,35 @@ export function shellWords(command) {
  * same word, with no boundary it could move, and ``re`start`` reaches the deck
  * rule as the `restart` PowerShell runs (#1526 second read; {@link shellWords}).
  * Any other backtick pair — a quote, a separator, a space — becomes two inert `_`.
+ *
+ * Two more rewrites read the program word as PowerShell does (#1606). A `&`
+ * that leads a statement — at the start, or after `;`, `|`, `{`, `(`, a
+ * newline, `&&` or `||` — is the call operator, which runs the quoted or
+ * path program after it (`& "C:\…\gh.exe" pr merge 7`): it becomes a blank,
+ * where bash would read a background job and the merge gate would refuse it.
+ * And PowerShell resolves a command in any case, a cmdlet's alias included,
+ * so each program word's last path segment is folded to lower case here,
+ * where {@link view} keeps the case of a name bash finds by its spelling.
  */
 export function powershellAsBash(command) {
-  return command.replace(/`\r?\n|`[\s\S]?|\\/g, (m) => {
-    if (m === "\\") return "/";
-    if (m.endsWith("\n")) return " ".repeat(m.length);
-    return PS_PLAIN_ESCAPE.test(m) ? `\\${m[1]}` : "_".repeat(m.length);
-  });
+  const bashed = command
+    .replace(/`\r?\n|`[\s\S]?|\\/g, (m) => {
+      if (m === "\\") return "/";
+      if (m.endsWith("\n")) return " ".repeat(m.length);
+      return PS_PLAIN_ESCAPE.test(m) ? `\\${m[1]}` : "_".repeat(m.length);
+    })
+    .replace(PS_CALL, "$1$2 ");
+  let folded = bashed;
+  for (const [a, b] of view(bashed).programs) {
+    const cut = Math.max(bashed.lastIndexOf("/", b - 1), a - 1) + 1;
+    const lower = bashed.slice(cut, b).toLowerCase();
+    if (lower.length === b - cut) folded = folded.slice(0, cut) + lower + folded.slice(b);
+  }
+  return folded;
 }
 
 /** A PowerShell backtick escape that stands for the character it escapes ({@link powershellAsBash}). */
 const PS_PLAIN_ESCAPE = /^`(?![0abefnrtvu])[A-Za-z0-9\-:./=+,@%_]$/;
+
+/** PowerShell's call operator where it leads a statement ({@link powershellAsBash}): not `&&`, and not a redirect's `&`. */
+const PS_CALL = /(^|[;|{(\n]|&&|\|\|)([ \t]*)&(?![&>])/g;

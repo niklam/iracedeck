@@ -180,6 +180,13 @@ describe("post-bash.mjs triggers", () => {
       expect(fire(command, { withoutGh: true }), command).toMatch(/could not read the PR back/);
     for (const command of ["git.exe worktree add ../ir-1321 -b fix/1321-x", `"git" worktree add ../ir-1321 -b x`])
       expect(fire(command, { withoutGh: true }), command).toMatch(/Worktree for #1321 created/);
+    const tool = "PowerShell";
+    expect(fire(`& "C:\\Program Files\\GitHub CLI\\gh.exe" pr merge 7 --squash`, { withoutGh: true, tool })).toMatch(
+      /could not read the PR back/,
+    );
+    expect(fire(`& GIT.EXE worktree add ..\\ir-1321 -b x`, { withoutGh: true, tool })).toMatch(
+      /Worktree for #1321 created/,
+    );
   });
 
   it("moves the card of the tree the add created, not of one a comment names", () => {

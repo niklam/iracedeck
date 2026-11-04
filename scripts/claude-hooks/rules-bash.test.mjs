@@ -3957,4 +3957,37 @@ describe("every spelling of a program reaches the guards that name it (#1606)", 
       expect(firstMerge(`${gh} pr merge 7 --squash`), gh).toMatchObject({ ref: "7", readable: true });
     for (const git of GIT) expect(worktreeAddTarget(`${git} worktree add ../ir-5 -b fix/5-x`), git).toBe("../ir-5");
   });
+
+  // PowerShell runs a quoted or path program only through its call operator,
+  // `&`, which the bash reading took for a background job.
+  describe("PowerShell's spellings, the call operator among them", () => {
+    const ps = (o = {}) => ctx({ shell: POWERSHELL, ...o });
+    const PS_GH = [
+      `& "C:\\Program Files\\GitHub CLI\\gh.exe"`,
+      `& 'C:\\Program Files\\GitHub CLI\\GH.EXE'`,
+      "& gh",
+      "&gh.exe",
+      ".\\gh.exe",
+      "GH",
+      "C:\\tools\\gh.exe",
+    ];
+    it.each(PS_GH)("the merge gate judges %s pr merge as it judges gh", (gh) => {
+      passes(`${gh} pr merge 7 --squash`, ps({ prView: green }));
+      expect(deny(`${gh} pr merge 7 --squash`, ps({ prView: unapproved }))).toMatch(/REVIEW_REQUIRED/);
+      expect(deny(`cd ..\\ir-5; ${gh} pr merge 7 --squash`, ps({ prView: unapproved }))).toMatch(/REVIEW_REQUIRED/);
+      expect(deny(`${gh} pr create --title "thing (#12)"`, ps())).toMatch(/must be/);
+    });
+    it("reads git through the call operator too", () => {
+      const onBranch = ps({ branch: () => "fix/5-x", staged: () => ["docs/superpowers/specs/a.md"] });
+      expect(deny(`& "C:\\Program Files\\Git\\cmd\\git.exe" commit -m x`, onBranch)).toMatch(
+        /never on a feature branch/,
+      );
+      expect(deny(`Write-Output x; & GIT.EXE commit -m x`, onBranch)).toMatch(/never on a feature branch/);
+      expect(asks(`& git push origin v3.2.0`, ps())).toMatch(/release/);
+    });
+    it("still refuses a merge run beside another as a background job", () => {
+      expect(deny("gh pr merge 7 --squash &", ps({ prView: green }))).toMatch(/as its own command/);
+      expect(deny("Start-Sleep 1 & gh pr merge 7 --squash", ps({ prView: green }))).toMatch(/as its own command/);
+    });
+  });
 });

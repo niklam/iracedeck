@@ -293,4 +293,26 @@ describe("the program word is read as the program it runs (#1606)", () => {
       [17, 20],
     ]);
   });
+
+  it.each([
+    [`& "C:\\x\\gh.exe" pr`, `  "C:/x/gh.exe" pr`],
+    ["&gh pr", " gh pr"],
+    ["a; & gh", "a;   gh"],
+    ["a | &gh", "a |  gh"],
+    ["a && & gh", "a &&   gh"],
+    ["a || & gh", "a ||   gh"],
+    ["{ & gh }", "{   gh }"],
+    ["(& gh)", "(  gh)"],
+    ["a\n& gh", "a\n  gh"],
+    ["gh pr merge 7 &", "gh pr merge 7 &"],
+    ["a & gh", "a & gh"],
+  ])("powershellAsBash blanks the call operator that leads a statement: %s", (ps, out) =>
+    expect(powershellAsBash(ps)).toBe(out),
+  );
+
+  it("powershellAsBash folds a program word's case, which PowerShell resolves in any case", () => {
+    expect(powershellAsBash("CD x; GH.EXE pr; Git status")).toBe("cd x; gh.exe pr; git status");
+    expect(powershellAsBash(`& "C:\\Tools\\GH.EXE" pr`)).toBe(`  "C:/Tools/gh.exe" pr`);
+    expect(powershellAsBash("Write-Output GH")).toBe("write-output GH");
+  });
 });
