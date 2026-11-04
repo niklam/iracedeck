@@ -85,6 +85,7 @@ import { OpponentPenaltyFlag, type SimEventOf } from "@iracedeck/event-bus";
 import type { ScenarioContext, ScenarioContract } from "../../dsl.js";
 import { poolRef, WEIGHT } from "../../dsl.js";
 import type { IScenarioEngine } from "../../interpreter.js";
+import type { LiveCarPositionQuery, LiveCarPositionResolver } from "./position-readout.js";
 
 /** The four penalty-flag subjects this family speaks about (issue #936). */
 export type OpponentFlagCalloutId = CalloutIdOf<typeof OPPONENT_FLAG_CALLOUTS>;
@@ -108,18 +109,7 @@ const SUBJECT_TO_FLAG: Record<OpponentFlagCalloutId, OpponentPenaltyFlag> = {
  * for it — read from the expanding fire's own event payload (class-space
  * position in multi-class).
  */
-export type OpponentFlagPending = {
-  carIdx: number;
-  position: number;
-  isMultiClass: boolean;
-};
-
-/**
- * Live speak-time position read for the flagged car, in the projection the
- * event was classified in. Return `null` to fall back to the emit-time
- * payload position (the harness does this by omitting the resolver).
- */
-export type OpponentFlagLivePositionResolver = (pending: OpponentFlagPending) => number | null;
+export type OpponentFlagPending = LiveCarPositionQuery;
 
 const POSITION_NUMBER_GROUP = "position-number";
 
@@ -156,10 +146,7 @@ export function resolveOpponentFlagCarNumber(ctx: ScenarioContext): string | nul
  * build a lookup with no clip behind it (`position-number/4.5`), so only
  * positive integers are spoken (mirrors opponent-pit's validity check).
  */
-function resolveOpponentFlagPosition(
-  ctx: ScenarioContext,
-  getLivePosition: OpponentFlagLivePositionResolver,
-): string | null {
+function resolveOpponentFlagPosition(ctx: ScenarioContext, getLiveCarPosition: LiveCarPositionResolver): string | null {
   const data = flaggedData(ctx);
 
   if (data === null) return null;
@@ -177,7 +164,7 @@ function resolveOpponentFlagPosition(
     return null;
   }
 
-  const live = getLivePosition({ carIdx, position, isMultiClass: isMultiClass === true });
+  const live = getLiveCarPosition({ carIdx, position, isMultiClass: isMultiClass === true });
   const n = live !== null && Number.isInteger(live) && live > 0 ? live : position;
 
   return poolRef(POSITION_NUMBER_GROUP, String(n));
@@ -190,7 +177,7 @@ function resolveOpponentFlagPosition(
  */
 export function registerOpponentFlagVocabulary(
   engine: Pick<IScenarioEngine, "defineVar">,
-  getLivePosition: OpponentFlagLivePositionResolver = () => null,
+  getLiveCarPosition: LiveCarPositionResolver = () => null,
 ): void {
   engine.defineVar(
     "opponentFlag.carNumber",
@@ -199,7 +186,7 @@ export function registerOpponentFlagVocabulary(
   );
   engine.defineVar(
     "opponentFlag.number",
-    (ctx) => resolveOpponentFlagPosition(ctx, getLivePosition),
+    (ctx) => resolveOpponentFlagPosition(ctx, getLiveCarPosition),
     'The flagged car\'s race position as a spoken number, drawn from the position-number group (position-number/4 is "P4"). Read live at speak time — class position in a multi-class race — and falling back to the position the event carried. Kept for packs scripted against 3.3.0; the bundled pack names the car with opponentFlag.carNumber instead. Part of the sentence, so a number that cannot be resolved skips the whole line rather than leaving a gap.',
   );
 }

@@ -576,7 +576,7 @@ beforeEach(() => {
     getPitActionsAllowed,
     getReadbackSnapshot: () => null,
     isCalloutEnabled: (key) => gates.every((gate) => gate(key)),
-    getOpponentPitLivePosition: () => opponentPitLivePosition,
+    getLiveCarPosition: () => opponentPitLivePosition,
     // A formation is running (issue #1167): the rolling-start family speaks
     // only inside one. No lineup is wired, so its calls take their numberless
     // wording.

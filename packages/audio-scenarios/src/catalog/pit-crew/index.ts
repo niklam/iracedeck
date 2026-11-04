@@ -165,13 +165,11 @@ import { NO_LIMITER_CONTRACTS, registerNoLimiterVocabulary, SCENARIO_ID_TO_NO_LI
 import {
   OPPONENT_FLAG_CONTRACTS,
   OPPONENT_FLAG_OTHERS_SCENARIO_ID,
-  type OpponentFlagLivePositionResolver,
   registerOpponentFlagVocabulary,
   SCENARIO_ID_TO_OPPONENT_FLAG_ID,
 } from "./opponent-flags.js";
 import {
   OPPONENT_PIT_CONTRACTS,
-  type OpponentPitLivePositionResolver,
   registerOpponentPitVocabulary,
   SCENARIO_ID_TO_OPPONENT_PIT_ID,
 } from "./opponent-pit.js";
@@ -191,6 +189,7 @@ import { PIT_WINDOW_CONTRACTS } from "./pit-window.js";
 import {
   buildOvertakeGainedPositionContract,
   buildOvertakeLostPositionContract,
+  type LiveCarPositionResolver,
   type LivePositionResolver,
   registerPositionReadoutVocabulary,
 } from "./position-readout.js";
@@ -328,7 +327,6 @@ export {
   OPPONENT_FLAG_SCENARIO_IDS,
   OPPONENT_PENALTY_FLAG_TO_CALLOUT_ID,
   type OpponentFlagCalloutId,
-  type OpponentFlagLivePositionResolver,
   type OpponentFlagPending,
   registerOpponentFlagVocabulary,
 } from "./opponent-flags.js";
@@ -338,7 +336,6 @@ export {
   OPPONENT_PIT_CONTRACTS,
   OPPONENT_PIT_SCENARIO_IDS,
   type OpponentPitCalloutId,
-  type OpponentPitLivePositionResolver,
   type OpponentPitPending,
   registerOpponentPitVocabulary,
 } from "./opponent-pit.js";
@@ -447,6 +444,8 @@ export {
   commitIntroDecision,
   INTRO_COOLDOWN_MS,
   type IntroDecision,
+  type LiveCarPositionQuery,
+  type LiveCarPositionResolver,
   type LivePosition,
   type LivePositionResolver,
   POSITION_READOUT_COOLDOWN_MS,
@@ -882,15 +881,20 @@ export type PitCrewDeps = {
   // `() => null` makes the scenario's `where:` short-circuit — a safe stub
   // for tests.
   getCornerNameSnapshot?: CornerNameSnapshotResolver;
-  // Opponent-pit live position resolver (issue #622). Plugins wire
-  // `getLiveCarPosition` so the nearby line's number is fresh at speak time,
-  // read in the projection the event was classified in (the pending stash's
-  // `isMultiClass`). The pitting car itself is carried by a module-scope
-  // stash written in the nearby scenario's `where:` (the #922 shape), so a
-  // later event of a different relation can never repoint a deferred line.
+  // A car's live race position at speak time (issue #1577): the one per-car
+  // live read the catalog takes, whatever family asks. The wiring answers it
+  // from the translator's `getLiveCarPosition(carIdx)`, in the projection the
+  // query names (the event's `isMultiClass`, so a transient session-info
+  // dropout can't flip a multi-class read to overall space). Three families
+  // read it: the opponent-pit nearby line's number (#622, its car stashed by
+  // the nearby scenario's `where:`, the #922 shape), the opponent-flag
+  // `opponentFlag.number` var (#936 — the 3.3.0 position var, kept for
+  // third-party packs; the bundled pack names the car by number since #1274)
+  // and the fastest-lap holder's relation (#1571). Each asks about the car its
+  // own fire names, so a later event can never repoint a deferred line.
   // Default `() => null` falls back to the emit-time payload position — a
   // safe stub for tests and the harness.
-  getOpponentPitLivePosition?: OpponentPitLivePositionResolver;
+  getLiveCarPosition?: LiveCarPositionResolver;
   // Shared gap-callout cooldown in ms (issue #933). Plugins wire this to
   // `resolveGapCooldownMs(gapCalloutCooldownSeconds)`; read live at event
   // arrival so a slider change applies to the next callout. Default 30 s.
@@ -900,18 +904,6 @@ export type PitCrewDeps = {
   // live-at-speak-time pattern). Default `() => null` skips the readout
   // clause — a safe stub for tests.
   getLiveGaps?: LiveGapsResolver;
-  // Opponent-flag live position resolver (issue #936). Plugins wire
-  // `getLiveCarPosition` so the `opponentFlag.number` var — the 3.3.0
-  // position var, kept for third-party packs; the bundled pack names the car
-  // by number since #1274 — is fresh at speak time, read in the projection
-  // the event was classified in (the payload's `isMultiClass`). The var reads
-  // the expanding fire's own event, so a later flag event can never repoint
-  // a deferred line. Default `() => null` falls back to the emit-time
-  // payload position — a safe stub for tests and the harness. The fastest
-  // lap of the race (issue #1571) reads the record holder's live position
-  // through the same resolver: it is the one per-car live read the catalog
-  // takes, whatever family asks.
-  getOpponentFlagLivePosition?: OpponentFlagLivePositionResolver;
   // Caution lineup resolver (issue #1127). Plugins wire `getPaceLineup()`
   // from `@iracedeck/sim-events-iracing`. Read at SPEAK time inside every
   // `caution.*` var, condition and case, so a call that waited behind a busier
@@ -1042,10 +1034,9 @@ const DEFAULT_DEPS: Readonly<ResolvedPitCrewDeps> = {
   getSpotterStillThereIntervalMs: () => SPOTTER_STILL_THERE_DEFAULT_MS,
   getSpotterNearestCarGapMeters: () => null,
   getCornerNameSnapshot: () => null,
-  getOpponentPitLivePosition: () => null,
+  getLiveCarPosition: () => null,
   getGapCooldownMs: () => GAP_CALLOUT_DEFAULT_COOLDOWN_MS,
   getLiveGaps: () => null,
-  getOpponentFlagLivePosition: () => null,
   getPaceLineup: () => null,
   getUnderFullCourseCaution: () => false,
   getCautionPhase: () => "none",
@@ -1421,7 +1412,7 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
   // `SCENARIO_ID_TO_OPPONENT_PIT_ID`; the contracts deliberately carry NO
   // `family` so a pit train queues politely instead of truncating in-flight
   // lines about different cars (see the module header).
-  registerOpponentPitVocabulary(engine, d.getOpponentPitLivePosition);
+  registerOpponentPitVocabulary(engine, d.getLiveCarPosition);
 
   for (const c of OPPONENT_PIT_CONTRACTS) {
     engine.defineContract(
@@ -1449,7 +1440,7 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
   // per-flag opt-ins before anything feeds the aggregation, so the aggregate
   // by construction only describes enabled flags — gating it on one subject's
   // toggle would let a disabled subject silence it (#936 review).
-  registerOpponentFlagVocabulary(engine, d.getOpponentFlagLivePosition);
+  registerOpponentFlagVocabulary(engine, d.getLiveCarPosition);
 
   for (const c of OPPONENT_FLAG_CONTRACTS) {
     engine.defineContract(
@@ -1720,14 +1711,13 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
 
   // The fastest lap of the race (issue #1571): the `fastestLap.*` vocabulary
   // and its one contract, built over one set of reads. The record holder's
-  // live position is the per-car read the opponent-flag family already takes
-  // (`getLiveCarPosition` in the payload's projection, behind
-  // `getOpponentFlagLivePosition`), so the family adds no `PitCrewDeps` key.
+  // live position is the shared per-car read `getLiveCarPosition` (#1577), in
+  // the payload's projection, so the family adds no `PitCrewDeps` key.
   const fastestLap = buildFastestLap({
     getRaceFinishedFired: d.getRaceFinishedFired,
     getUnderFullCourseCaution: d.getUnderFullCourseCaution,
     getLapCompletedSnapshot: d.getLapCompletedSnapshot,
-    getCarLivePosition: d.getOpponentFlagLivePosition,
+    getLiveCarPosition: d.getLiveCarPosition,
     getLivePosition: d.getLivePosition,
     getLiveGaps: d.getLiveGaps,
   });

@@ -161,7 +161,7 @@ describe("the lap-time scenario ids (issues #1163, #1571)", () => {
       getRaceFinishedFired: () => false,
       getUnderFullCourseCaution: () => false,
       getLapCompletedSnapshot: () => null,
-      getCarLivePosition: () => null,
+      getLiveCarPosition: () => null,
       getLivePosition: () => null,
       getLiveGaps: () => null,
     });

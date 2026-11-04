@@ -74,22 +74,10 @@ import { type LiveGapsResolver, speakableGap, type SpeakableGap } from "./gaps.j
 import { fastestLapAnnounceable, lapStillCurrent } from "./lap-announcement.js";
 import { compactClockRef, compactTenthsRef } from "./lap-time-readout.js";
 import type { LapCompletedSnapshotResolver } from "./lap-time.js";
-import type { LivePositionResolver } from "./position-readout.js";
+import type { LiveCarPositionResolver, LivePositionResolver } from "./position-readout.js";
 
 /** The `fastestLap.set` payload. */
 export type FastestLapData = SimEventOf<"fastestLap.set">["data"];
-
-/**
- * One car's live effective position in the projection asked for, `null` when
- * unknown — the per-car read the opponent families already take
- * (`getLiveCarPosition` behind it, `race-engineer-wiring`). `position` is the
- * emit-time payload position the read falls back from; the wiring ignores it.
- */
-export type FastestLapCarPositionResolver = (car: {
-  carIdx: number;
-  position: number;
-  isMultiClass: boolean;
-}) => number | null;
 
 /** What the fastest-lap family reads besides its event. */
 export type FastestLapDeps = {
@@ -97,7 +85,7 @@ export type FastestLapDeps = {
   getUnderFullCourseCaution: UnderCautionResolver;
   getLapCompletedSnapshot: LapCompletedSnapshotResolver;
   /** The record holder's live effective position. */
-  getCarLivePosition: FastestLapCarPositionResolver;
+  getLiveCarPosition: LiveCarPositionResolver;
   /** The player's live position, both projections. */
   getLivePosition: LivePositionResolver;
   /** The live gaps to the class neighbours, for the gap clause. */
@@ -145,11 +133,11 @@ function speakablePosition(n: number | null | undefined): number | null {
  */
 export function relationPositions(
   data: FastestLapData,
-  deps: Pick<FastestLapDeps, "getCarLivePosition" | "getLivePosition">,
+  deps: Pick<FastestLapDeps, "getLiveCarPosition" | "getLivePosition">,
 ): { car: number | null; player: number | null } {
   const multi = data.isMultiClass === true;
   const liveCar = speakablePosition(
-    deps.getCarLivePosition({ carIdx: data.carIdx, position: data.position ?? 0, isMultiClass: multi }),
+    deps.getLiveCarPosition({ carIdx: data.carIdx, position: data.position ?? 0, isMultiClass: multi }),
   );
   const player = deps.getLivePosition();
   const livePlayer = player ? speakablePosition(multi ? player.classPosition : player.position) : null;
