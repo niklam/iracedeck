@@ -3866,3 +3866,95 @@ describe("the mask fails closed (#1321 review)", () => {
     expect(firstMerge(`grep -rn "gh pr merge" scripts`)).toBeUndefined();
   });
 });
+
+// #1606: a guard named gh or git in its bare spelling only, so `gh.exe`, a path,
+// a quoted name or an upper-case one reached none of them.
+describe("every spelling of a program reaches the guards that name it (#1606)", () => {
+  const head = "1111111111111111111111111111111111111111";
+  const green = () => ({
+    number: 7,
+    url: "https://github.com/niklam/iracedeck/pull/7",
+    state: "OPEN",
+    headRefOid: head,
+    headRefName: "ir-7",
+    reviewDecision: "APPROVED",
+    mergeStateStatus: "CLEAN",
+    statusCheckRollup: [{ __typename: "CheckRun", name: "Tests", status: "COMPLETED", conclusion: "SUCCESS" }],
+    reviews: [{ author: { login: "coderabbitai" }, state: "APPROVED", commit: { oid: head } }],
+  });
+  const unapproved = () => ({ ...green(), reviewDecision: "REVIEW_REQUIRED" });
+  const GH = [
+    "gh.exe",
+    "GH.EXE",
+    "Gh",
+    "/usr/bin/gh",
+    "./gh",
+    `"C:/Program Files/GitHub CLI/gh.exe"`,
+    `"gh"`,
+    "'gh'",
+    `g"h"`,
+    "/usr/bin/env /usr/bin/gh",
+    "env gh.exe",
+  ];
+  const GIT = ["git.exe", "GIT", "/mingw64/bin/git", `"C:/Program Files/Git/cmd/git.exe"`, `"git"`, `g'i't`];
+
+  it.each(GH)("the merge gate judges %s pr merge as it judges gh", (gh) => {
+    passes(`${gh} pr merge 7 --squash`, ctx({ prView: green }));
+    expect(deny(`${gh} pr merge 7 --squash`, ctx({ prView: unapproved }))).toMatch(/REVIEW_REQUIRED/);
+    expect(deny(`${gh} pr merge 7 --squash && ${gh} pr merge 8 --squash`, ctx({ prView: green }))).toMatch(
+      /One `gh pr merge` per command/,
+    );
+    expect(deny(`${gh} pr merge 7 --squash`)).toMatch(/refusing to merge blind/);
+    expect(deny(`${gh} pr --repo x/y merge 7 --squash`, ctx({ prView: green }))).toMatch(
+      /flag between `gh` and `merge`/,
+    );
+  });
+
+  it.each(GH)("the PR title check, the item-edit deny and the --body @- trap read %s", (gh) => {
+    expect(deny(`${gh} pr create --title "thing (#12)"`)).toMatch(/must be/);
+    passes(`${gh} pr create --title "feat(x): thing (#12)" --body-file -`);
+    expect(deny(`${gh} project item-edit --id x --field-id y`)).toMatch(/helpers/);
+    expect(deny(`${gh} api graphql -f query='mutation { updateProjectV2ItemFieldValue }'`)).toMatch(/helpers/);
+    expect(deny(`${gh} issue comment 5 --body @-`)).toMatch(/--body-file/);
+  });
+
+  it.each(GIT)("the tag-push ask, the integration push and the spec commit read %s", (git) => {
+    expect(asks(`${git} push origin v3.2.0`)).toMatch(/release/);
+    expect(asks(`${git} push --tags`)).toMatch(/release/);
+    expect(deny(`${git} push origin integration`)).toMatch(/never pushed/);
+    const onBranch = ctx({ branch: () => "fix/5-x", staged: () => ["docs/superpowers/specs/a.md"] });
+    expect(deny(`${git} commit -m x`, onBranch)).toMatch(/never on a feature branch/);
+    expect(deny(`cd ../ir-5 && ${git} commit -m x`, onBranch)).toMatch(/never on a feature branch/);
+  });
+
+  it("reads a merge and a commit behind a wrapper spelled with a path", () => {
+    passes("/usr/bin/timeout 120 /usr/bin/gh pr merge 7 --squash", ctx({ prView: green }));
+    const onBranch = ctx({ branch: () => "fix/5-x", staged: () => ["docs/superpowers/specs/a.md"] });
+    expect(deny("/usr/bin/env GIT.EXE commit -m x", onBranch)).toMatch(/never on a feature branch/);
+  });
+
+  it("a mention of a spelling is still no command", () => {
+    for (const command of [
+      "grep -n gh.exe notes.md",
+      `grep -rn "gh.exe pr merge 5" scripts`,
+      `echo "gh pr merge 5"`,
+      `echo "git.exe push --tags"`,
+      `git commit -m "run git.exe push --tags after" -- notes.md`,
+      `git.exe commit -m "then /usr/bin/gh pr merge 7" -- notes.md`,
+    ])
+      passes(command, ctx({ prView: green }));
+  });
+
+  it("the deck-host ask reads a runner and a shell spelled with a path", () => {
+    expect(asks(`"C:/Program Files/nodejs/pnpm.cmd" restart:stream-deck`)).toMatch(/restart:stream-deck/);
+    expect(asks(`/usr/bin/bash -c 'pnpm restart:stream-deck'`)).toMatch(/restart:stream-deck/);
+    expect(asks(`"bash" -c 'pnpm restart:stream-deck'`)).toMatch(/restart:stream-deck/);
+    passes(`"C:/Program Files/nodejs/pnpm.cmd" build`);
+  });
+
+  it("the post-hook's merge and worktree triggers read every spelling", () => {
+    for (const gh of GH)
+      expect(firstMerge(`${gh} pr merge 7 --squash`), gh).toMatchObject({ ref: "7", readable: true });
+    for (const git of GIT) expect(worktreeAddTarget(`${git} worktree add ../ir-5 -b fix/5-x`), git).toBe("../ir-5");
+  });
+});

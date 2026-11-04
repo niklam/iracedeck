@@ -58,6 +58,7 @@ import {
   powershellAsBash,
   resolveDir,
   shellWords,
+  trustedMask,
 } from "./shell-lexer.mjs";
 
 /**
@@ -724,8 +725,14 @@ export function deckFindings(c, cwd, ctx, shell, trail = []) {
     if (app) found.push(`\`${head.replace(/^[\s|;&()`]+/, "").trim()} … ${app[0]}\` stops or starts a deck host app`);
   }
   for (const { re, read, whole } of RUNNERS)
-    for (const { base, head, args, at, cut } of chainCommands(c, cwd, re, shell)) {
-      const tokens = whole ? [head.match(/[^\s|;&()\x60]+$/)?.[0] ?? "", ...commandWords(c, at)] : shellWords(args);
+    for (const { base, start, args, at, cut } of chainCommands(c, cwd, re, shell)) {
+      // A shell wrapper's name as the rewritten text spells it (#1606): `bash`
+      // for `"/usr/bin/bash"`, `pwsh` for `pwsh.exe`.
+      const name = () =>
+        trustedMask(c)
+          .slice(start, at)
+          .match(/[^\s|;&()\x60]+$/)?.[0] ?? "";
+      const tokens = whole ? [name(), ...commandWords(c, at)] : shellWords(args);
       // A substitution cut the arguments short: it and what follows it are
       // unread. Glued to a word (`$(`, `--x=\``), it ends that word.
       if (!whole && (cut === "(" || cut === "\x60"))

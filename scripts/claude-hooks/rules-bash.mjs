@@ -43,6 +43,7 @@ import {
   optionDir,
   POWERSHELL,
   powershellAsBash,
+  programStart,
   ranges,
   resolveDir,
   trustedMask,
@@ -387,9 +388,11 @@ export function firstMerge(command) {
   const { text, flat, trusted } = view(command);
   const m = /\bgh\s+pr\s+merge\b/.exec(text);
   if (!m) return undefined;
-  const rest = text.slice(m.index).search(CHAIN_AND_BACKGROUND);
-  const end = rest < 0 ? text.length : m.index + rest;
-  return parseMerge({ raw: command.slice(m.index, end), flat: flat.slice(m.index, end), trusted });
+  // From the start of the program word, so its raw text is read whole (#1606).
+  const start = programStart(command, m.index);
+  const rest = text.slice(start).search(CHAIN_AND_BACKGROUND);
+  const end = rest < 0 ? text.length : start + rest;
+  return parseMerge({ raw: command.slice(start, end), flat: flat.slice(start, end), trusted });
 }
 
 /**
@@ -397,9 +400,17 @@ export function firstMerge(command) {
  * does not know, and for a merge the mask hid. It counts raw text so that it
  * shares no blind spot with the mask it backs up (#1321 review), and it is
  * reached only once a merge at command position has matched, so a command that
- * merely mentions one never pays for it.
+ * merely mentions one never pays for it. The raw count takes the spellings of
+ * the program a bare regex can see (`gh.exe`, `"gh"`, `GH`), and the larger of
+ * it and the count in the rewritten text wins (#1606): a quoted path to gh is
+ * seen only by the second, a merge inside a string handed to nothing only by
+ * the first.
  */
-const mergeMentions = (command) => (command.match(/\bgh\s+pr\s+merge\b/g) ?? []).length;
+const mergeMentions = (command) =>
+  Math.max(
+    (command.match(/\bgh(?:\.exe)?\b["']?\s+pr\s+merge\b/gi) ?? []).length,
+    (view(command).text.match(/\bgh\s+pr\s+merge\b/g) ?? []).length,
+  );
 
 /**
  * The words of one command segment, `{ word, shape }` each: with a trusted mask
@@ -873,10 +884,13 @@ export const rules = [
       // nothing may run beside it (a pipe, a background `&`).
       const ahead = cdsAhead(c, GH_PR_MERGE, ctx.cwd, ctx.shell);
       const masked = trustedMask(c);
-      const at = GH_PR_MERGE.exec(masked)?.index ?? c.length;
+      // Where the program word starts, not where its rewritten name does (#1606).
+      const at = programStart(c, GH_PR_MERGE.exec(masked)?.index ?? c.length);
       if (!ahead || CONCURRENT.test(masked))
         return "Run `gh pr merge` as its own command, with nothing ahead of it but a plain `cd <dir> &&` and no pipe or background `&` in the command: anything else could change which repository or PR gh merges after this gate has read it (#1393).";
-      if (!plainMergePrefix(c.slice(ahead.start, at)))
+      // Read in the rewritten text, where a wrapper spelled with a path is its
+      // plain name and a quoted assignment one word.
+      if (!plainMergePrefix(masked.slice(ahead.start, at)))
         return "This `gh pr merge` carries a prefix the gate cannot read whole — a wrapper's option, or a GH_* or GIT_* variable other than GH_REPO — which can move what gh merges; name the repository with `-R` on the merge, or leave it out (#1393).";
       // The repository in gh's order — a PR URL, then `--repo` / `-R`, then a
       // `GH_REPO` — refused before gh is asked when it is not HOME_REPO or

@@ -1,6 +1,7 @@
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
+import * as lexer from "./shell-lexer.mjs";
 import {
   cmd,
   gitCwd,
@@ -10,6 +11,7 @@ import {
   resolveDir,
   shellWords,
   trustedMask,
+  view,
   words,
 } from "./shell-lexer.mjs";
 
@@ -199,9 +201,96 @@ describe("the mask fails closed (#1321 review)", () => {
         `timeout 9 bash -c 'x'`,
         `ls | xargs sh -c 'x'`,
         `trap 'x' EXIT`,
-      ])
-        expect(trustedMask(command), command).toBe(command);
+      ]) {
+        // Raw, up to the program words, which are read in any case (#1606):
+        // the line a heredoc delimiter stands on is a line start to the raw text.
+        expect(view(command).trusted, command).toBe(false);
+        expect(trustedMask(command).toLowerCase(), command).toBe(command.toLowerCase());
+      }
       expect(trustedMask(`python - <<'EOF'\nx\nEOF`)).toBe(`python - <<'EOF'\n__EOF`);
     });
+  });
+});
+
+// #1606: every rule names a program in its bare spelling, so the lexer rewrites
+// the word at command position to that spelling, at the same length.
+describe("the program word is read as the program it runs (#1606)", () => {
+  const pad = (raw, name) => name.padStart(raw.length);
+  it.each([
+    ["gh.exe", "gh"],
+    ["GH.EXE", "gh"],
+    ["Gh.Cmd", "gh"],
+    ["/usr/bin/gh", "gh"],
+    ["./gh", "gh"],
+    [`"C:/Program Files/GitHub CLI/gh.exe"`, "gh"],
+    [`"gh"`, "gh"],
+    ["'gh'", "gh"],
+    [`g"h"`, "gh"],
+    ["g\\h", "gh"],
+    ["$'gh'", "gh"],
+    ["git.exe", "git"],
+    ["/mingw64/bin/git", "git"],
+    ["pnpm.cmd", "pnpm"],
+    ["node_modules/.bin/turbo.ps1", "turbo"],
+    ["$HOME/bin/gh", "gh"],
+  ])("rewrites %s to %s, right-aligned in its own span", (raw, name) => {
+    const command = `${raw} pr merge 7`;
+    const { text, flat } = view(command);
+    expect(text).toBe(`${pad(raw, name)} pr merge 7`);
+    expect(flat).toBe(`${pad(raw, name)} pr merge 7`);
+    expect(text).toHaveLength(command.length);
+  });
+
+  it("rewrites every program word of a chain, a subshell and a substitution, behind the leads cmd() knows", () => {
+    expect(trustedMask("ls && gh.exe pr merge 7")).toBe("ls &&     gh pr merge 7");
+    expect(trustedMask("(GIT.EXE status)")).toBe("(    git status)");
+    expect(trustedMask(`x=$("gh" pr view 7)`)).toBe(`x=$(  gh pr view 7)`);
+    expect(trustedMask("timeout 5 gh.exe pr merge 7")).toBe("timeout 5     gh pr merge 7");
+    expect(trustedMask("FOO=1 /usr/bin/git push")).toBe("FOO=1          git push");
+  });
+
+  it("follows a wrapper spelled with a path to the word it runs", () => {
+    expect(trustedMask("/usr/bin/env /usr/bin/gh pr merge 7")).toBe("         env          gh pr merge 7");
+    expect(trustedMask(`"timeout" 5 gh.exe x`)).toBe(`  timeout 5     gh x`);
+    expect(trustedMask("ENV GH x")).toBe("env gh x");
+  });
+
+  it("keeps the case of a bash builtin or keyword, which bash finds by its exact spelling", () => {
+    expect(trustedMask("CD x && Cd y && cd z")).toBe("CD x && Cd y && cd z");
+    expect(trustedMask("EXPORT X=1")).toBe("EXPORT X=1");
+    expect(trustedMask("Git status")).toBe("git status");
+  });
+
+  it("leaves a mention, an argument and an assignment alone", () => {
+    expect(trustedMask("grep gh.exe f")).toBe("grep gh.exe f");
+    expect(trustedMask(`echo "gh.exe pr merge 5"`)).toBe(`echo "${"_".repeat(17)}"`);
+    expect(trustedMask("GH=gh.exe ls")).toBe("GH=gh.exe ls");
+    expect(trustedMask(`"GH=x" ls`)).toBe(`"____" ls`);
+  });
+
+  it("reads a quoted shell as a shell, so the mask is not trusted for the string it is handed", () => {
+    for (const shell of [`"bash"`, "/usr/bin/bash", "BASH.EXE", "'sh'"])
+      expect(view(`${shell} -c 'gh pr merge 7'`).trusted, shell).toBe(false);
+    expect(trustedMask(`"bash" -c 'gh.exe pr merge 7'`)).toBe(`  bash -c 'gh.exe pr merge 7'`);
+  });
+
+  it("finds where the program word starts from anywhere inside it", () => {
+    const command = `cd x && "C:/Program Files/GitHub CLI/gh.exe" pr merge 7`;
+    const at = trustedMask(command).indexOf("gh pr");
+    expect(lexer.programStart(command, at)).toBe(command.indexOf(`"C:`));
+    expect(lexer.programStart(command, 3)).toBe(3);
+  });
+
+  it("records the words bash reads at every depth", () => {
+    const { words: ends } = maskInert(`a "b c"d $(e f)g \`h\` # i`);
+    expect([...ends]).toEqual([
+      [0, 1],
+      [2, 8],
+      [11, 12],
+      [13, 14],
+      [9, 16],
+      [18, 19],
+      [17, 20],
+    ]);
   });
 });

@@ -57,6 +57,9 @@ export function maskInert(command) {
   const out = s.split("");
   const flat = s.split("");
   const pending = [];
+  // Where each word bash reads ends, keyed by where it starts: at every depth,
+  // a substitution's own words included (#1606, {@link view}).
+  const wordEnds = new Map();
   let sure = true;
   const blank = (arr, a, b) => {
     for (let k = a; k < Math.min(b, n); k++) arr[k] = "_";
@@ -209,10 +212,19 @@ export function maskInert(command) {
     // read off the previous character, because in `a\ #b` that blank is escaped
     // and `#b` goes on with the word.
     let atWord = true;
+    // Where the word being read began, or -1 between words.
+    let word = -1;
+    const endWord = (at) => {
+      if (word >= 0) wordEnds.set(word, at);
+      word = -1;
+    };
     while (i < limit) {
       const ch = s[i];
       const from = i;
-      if (close === "`" && ch === "`") return i + 1;
+      if (close === "`" && ch === "`") {
+        endWord(i);
+        return i + 1;
+      }
       if (ch === "\\" && s[i + 1] === "\n") {
         // A line continuation: bash removes it, joining the lines; the word, if any, goes on.
         out[i] = out[i + 1] = " ";
@@ -220,6 +232,10 @@ export function maskInert(command) {
         i += 2;
         continue;
       }
+      // A blank or an operator character ends a word; anything else starts or
+      // continues one, except a `#` where a word could start, which opens a comment.
+      if (/[\s;&|()<>]/.test(ch)) endWord(from);
+      else if (word < 0 && !(atWord && ch === "#")) word = from;
       let sub = -1;
       // A `case` list's pattern `)` reads here as a closer — of a substitution
       // it ends early, and inside `"$(…)"` the rest is then blanked as data with
@@ -257,6 +273,7 @@ export function maskInert(command) {
       atWord = false;
       if (!close) blank(flat, from, i);
     }
+    endWord(limit);
     if (close) sure = false;
     return limit;
   };
@@ -264,7 +281,7 @@ export function maskInert(command) {
   commands(0, n, null);
   if (pending.length) sure = false;
   maskInert.last = command;
-  maskInert.lastOut = { masked: out.join(""), flat: flat.join(""), sure };
+  maskInert.lastOut = { masked: out.join(""), flat: flat.join(""), sure, words: wordEnds };
   return maskInert.lastOut;
 }
 
@@ -279,21 +296,285 @@ const SHELL_FED =
   /(?:^|[\s;&|(`/])(?:bash|sh|zsh|dash|ksh|fish|eval|xargs|parallel|watch|su|sudo|source|timeout|trap|pwsh|powershell|cmd)(?:\.exe)?(?=[\s;&|)`]|$)/m;
 
 /**
- * The text the rules read: `{ text, flat, trusted }`. The mask is trusted only
- * when the lexer is sure of it AND nothing in the live text feeds a string to a
- * shell; otherwise `text` and `flat` are the raw command — the pre-#1321
- * behaviour, which over-matches. The pre-hook is a safety gate, so a doubt
- * costs a false deny on a mention, never a missed command.
+ * The text the rules read: `{ text, flat, trusted, programs, unreadable }`.
+ * The mask is trusted only when the lexer is sure of it AND nothing in the
+ * live text feeds a string to a shell; otherwise `text` and `flat` are the raw
+ * command — the pre-#1321 behaviour, which over-matches. The pre-hook is a
+ * safety gate, so a doubt costs a false deny on a mention, never a missed
+ * command.
+ *
+ * Either way each PROGRAM WORD — the word at command position, {@link
+ * normalisePrograms} — is rewritten to its plain name at the same length
+ * (#1606), so `gh.exe`, `/usr/bin/gh`, `"gh"`, `g"h"` and `GH.EXE` all read as
+ * the `gh` every rule names, and the index of every other character is
+ * unchanged. That runs before the shell-feed test, so a quoted `"bash" -c`
+ * stops trusting the mask as a bare `bash -c` does. `programs` lists the
+ * `[start, end)` spans it rewrote or found plain ({@link programStart}), and
+ * `unreadable` the program words it could not read ({@link unreadablePrograms}).
  */
 export function view(command) {
   if (command !== view.last) {
-    const { masked, flat, sure } = maskInert(command);
-    const trusted = sure && !SHELL_FED.test(masked);
+    const { masked, flat, sure, words: wordEnds } = maskInert(command);
+    const lexed = normalisePrograms(command, masked, flat, wordEnds, false);
+    const trusted = sure && !SHELL_FED.test(lexed.text);
+    const out = trusted ? lexed : normalisePrograms(command, command, command, wordEnds, true);
     view.last = command;
-    view.out = trusted ? { text: masked, flat, trusted } : { text: command, flat: command, trusted };
+    view.out = {
+      text: out.text,
+      flat: trusted ? out.flat : out.text,
+      trusted,
+      programs: out.programs,
+      unreadable: out.unreadable,
+    };
   }
   return view.out;
 }
+
+/**
+ * Where a program word may start in `text`: after each place the anchor of
+ * {@link cmd} allows (the start, a newline, `|`, `;`, `&`, `(`, `)` or a
+ * backtick), any blanks and any {@link COMMAND_LEAD}, read greedily so the
+ * word it stops at is the one a {@link cmd} rule would test. Each place is
+ * read on its own: an assignment lead such as `x=$(` runs past the `(` a
+ * substitution's own command follows.
+ */
+function* programPositions(text) {
+  const lead = new RegExp(String.raw`\s*${COMMAND_LEAD}`, "y");
+  for (let p = 0; p <= text.length; p++) {
+    if (p > 0 && !"\n|;&()\x60".includes(text[p - 1])) continue;
+    lead.lastIndex = p;
+    const m = lead.exec(text);
+    if (m) yield p + m[0].length;
+  }
+}
+
+/**
+ * The bash builtins and reserved words. Bash finds them by their exact
+ * spelling, so `CD` is not `cd` there, while Windows finds an external program
+ * in any case: a name on this list keeps its case in bash, every other one is
+ * folded to lower case (#1606). PowerShell folds all of them
+ * ({@link powershellAsBash}).
+ */
+const BASH_CASED = new Set(
+  (
+    "alias bg bind break builtin caller cd command compgen complete compopt continue declare dirs disown echo " +
+    "enable eval exec exit export false fc fg getopts hash help history jobs kill let local logout mapfile popd " +
+    "printf pushd pwd read readarray readonly return set shift shopt source suspend test times trap true type " +
+    "typeset ulimit umask unalias unset wait if then else elif fi case esac for select while until do done in " +
+    "function time coproc . : [ [[ ]] { } !"
+  ).split(" "),
+);
+
+/** What a program name is made of: anything else (a space, a quote, an operator) would change how the rewritten text splits. */
+const PROGRAM_NAME = /^[\w.+@%:,~^!{}[\]-]+$/;
+
+/**
+ * Where the expansion opening at `k` in `w` ends — `$( … )`, `$(( … ))`,
+ * `${ … }`, `$name`, a backtick — roughly as bash finds it. Only used on a
+ * word the caller has already marked as expanding, so a misjudged end costs
+ * where the rest of that word is read from, never whether it expands.
+ */
+function expansionEnd(w, k) {
+  if (w[k] === "\x60") {
+    for (let j = k + 1; j < w.length; j++)
+      if (w[j] === "\\") j++;
+      else if (w[j] === "\x60") return j + 1;
+    return w.length;
+  }
+  const open = w[k + 1];
+  if (open === "(" || open === "{") {
+    const close = open === "(" ? ")" : "}";
+    let depth = 0;
+    for (let j = k + 1; j < w.length; j++) {
+      const c = w[j];
+      if (c === "\\") j++;
+      else if (c === "'") {
+        const e = w.indexOf("'", j + 1);
+        j = e < 0 ? w.length : e;
+      } else if (c === open) depth++;
+      else if (c === close && --depth === 0) return j + 1;
+    }
+    return w.length;
+  }
+  const name = /^(?:[A-Za-z_]\w*|[0-9@*#?$!-])/.exec(w.slice(k + 1));
+  return k + 1 + (name ? name[0].length : 0);
+}
+
+/** A `$` that opens an expansion, as bash reads one: a substitution, a `${`, a name or a special parameter. */
+const EXPANDS = /[({A-Za-z_0-9@*#?$!-]/;
+/** The ANSI-C escapes of a `$'…'` word that stand for one plain character; any other escape is read as unknown. */
+const ANSI_PLAIN = { "\\": "\\", "'": "'", '"': '"', "?": "?" };
+
+/**
+ * A word decoded as bash reads it, one `{ c, live }` per character it yields:
+ * quotes removed and `\` escapes applied, with `live` set on a character that
+ * stands for an expansion (`$…`, a backtick, one `$` per expansion), a glob
+ * (`*`, `?`, a `[` that a later `]` closes) or a brace expansion (a `{` and
+ * `}` around an unquoted `,` or `..`). An ANSI-C escape other than a quote or
+ * a backslash is read as live too: the word it spells is not plain.
+ */
+export function decodeWord(w) {
+  const out = [];
+  const lit = (text) => {
+    for (const c of text) out.push({ c, live: false });
+  };
+  // Unquoted `[`, `]`, `{`, `,`, `.` and `}`, as indices into `out`, for globs and braces.
+  const bare = [];
+  let i = 0;
+  while (i < w.length) {
+    const ch = w[i];
+    if (ch === "\\") {
+      if (w[i + 1] !== "\n") lit(w[i + 1] ?? "");
+      i += 2;
+    } else if (ch === "'") {
+      const e = w.indexOf("'", i + 1);
+      const end = e < 0 ? w.length : e;
+      lit(w.slice(i + 1, end));
+      i = end + 1;
+    } else if (ch === "$" && w[i + 1] === "'") {
+      let k = i + 2;
+      for (; k < w.length && w[k] !== "'"; k++)
+        if (w[k] !== "\\") lit(w[k]);
+        else if (ANSI_PLAIN[w[++k]] !== undefined) lit(ANSI_PLAIN[w[k]]);
+        else out.push({ c: "\\", live: true });
+      i = k + 1;
+    } else if (ch === '"') {
+      let k = i + 1;
+      while (k < w.length && w[k] !== '"') {
+        if (w[k] === "\\" && '"\\$`\n'.includes(w[k + 1] ?? "x")) {
+          if (w[k + 1] !== "\n") lit(w[k + 1]);
+          k += 2;
+        } else if ((w[k] === "$" && EXPANDS.test(w[k + 1] ?? "")) || w[k] === "\x60") {
+          out.push({ c: "$", live: true });
+          k = expansionEnd(w, k);
+        } else lit(w[k++]);
+      }
+      i = k + 1;
+    } else if ((ch === "$" && EXPANDS.test(w[i + 1] ?? "")) || ch === "\x60") {
+      out.push({ c: "$", live: true });
+      i = expansionEnd(w, i);
+    } else if (ch === "*" || ch === "?") {
+      out.push({ c: ch, live: true });
+      i++;
+    } else {
+      if ("[]{},.".includes(ch)) bare.push(out.length);
+      lit(ch);
+      i++;
+    }
+  }
+  const at = (c) => bare.filter((k) => out[k].c === c);
+  // A `[` is a glob only when a `]` closes it.
+  for (const k of at("[")) if (at("]").some((j) => j > k)) out[k].live = true;
+  // A brace expansion: `{…,…}` or `{a..b}`, its braces unquoted.
+  for (const k of at("{")) {
+    const close = at("}").find((j) => j > k);
+    if (close === undefined) continue;
+    const dots = at(".").filter((j) => j > k && j < close);
+    if (at(",").some((j) => j > k && j < close) || dots.some((j) => dots.includes(j + 1)))
+      out[k].live = out[close].live = true;
+  }
+  return out;
+}
+
+/**
+ * The program a word at command position runs, read off its last path
+ * segment: `{ name }`, folded as {@link BASH_CASED} says and without a
+ * Windows executable extension; `{ unreadable: true }` when that segment
+ * holds an expansion or a glob, so the program is decided at run time; or
+ * `null` for a word that names no program the text could carry.
+ */
+function programName(word) {
+  const chars = decodeWord(word);
+  let cut = -1;
+  chars.forEach((x, k) => {
+    if (!x.live && (x.c === "/" || x.c === "\\")) cut = k;
+  });
+  const last = chars.slice(cut + 1);
+  if (last.some((x) => x.live)) return { unreadable: true };
+  const name = last
+    .map((x) => x.c)
+    .join("")
+    .replace(/\.(?:exe|cmd|bat|com|ps1)$/i, "");
+  if (!PROGRAM_NAME.test(name)) return null;
+  const lower = name.toLowerCase();
+  return { name: BASH_CASED.has(lower) ? name : lower };
+}
+
+/** A word starting at `at` in raw text, found without the lexer: quotes, escapes and simple substitutions kept whole. */
+const CRUDE_WORD =
+  /(?:"(?:[^"\\]|\\[\s\S])*"|'[^']*'|\\[\s\S]|\$\((?:[^()]|\([^()]*\))*\)|\$\{[^}]*\}|\x60[^\x60]*\x60|[^\s;&|()<>"'\\\x60])+/y;
+
+/**
+ * The program words of `command`, found in `text` (its masked or raw form,
+ * same length) and rewritten there and in `flat` (#1606). A program word is
+ * the word at command position ({@link programPositions}); it is decoded as bash
+ * reads it, cut to its last `/` or `\` segment, stripped of `.exe`, `.cmd`,
+ * `.bat`, `.com` and `.ps1`, folded to lower case ({@link BASH_CASED}), and
+ * written back RIGHT-aligned in its own span, padded with spaces on the left:
+ * the anchor's `\s*` and {@link COMMAND_LEAD}'s `\s+` take the pad, so a
+ * {@link cmd} match starts where it did, its head covers the whole raw word,
+ * and the arguments keep their indices. Left-aligned, a regex that ends at the
+ * name — `pnpm${BIN}` — would read its arguments from `.cmd run …`.
+ *
+ * It repeats until nothing changes, so a wrapper spelled with a path
+ * (`/usr/bin/env /usr/bin/gh …`) puts the next word at command position too.
+ * A word holding `=` is an assignment, and a `$word` followed by `=` is a
+ * PowerShell one, never a program. `words` are the lexer's word spans, the
+ * only words taken where `crude` is false; in the raw text of an untrusted
+ * view, a position the lexer did not see start a word is read by
+ * {@link CRUDE_WORD}. A program word whose last segment expands or globs is
+ * left as it is and listed in `unreadable` as `{ start, end, word }`.
+ */
+function normalisePrograms(command, text, flat, words, crude) {
+  let t = text;
+  let f = flat;
+  const programs = [];
+  const unreadable = [];
+  const seen = new Set();
+  const splice = (s, a, b, by) => s.slice(0, a) + by + s.slice(b);
+  for (let changed = true, passes = 0; changed && passes < 32; passes++) {
+    changed = false;
+    for (const start of programPositions(t)) {
+      // A word read already, or a position inside one: the pad of a rewritten
+      // word is blank, so the lead may stop in it.
+      if (seen.has(start) || programs.some(([a, b]) => a < start && start < b)) continue;
+      let end = words.get(start);
+      if (end === undefined && crude && (start === 0 || /[\s|;&()\x60]/.test(command[start - 1]))) {
+        CRUDE_WORD.lastIndex = start;
+        const w = CRUDE_WORD.exec(command);
+        if (w) end = start + w[0].length;
+      }
+      if (end === undefined || end <= start) continue;
+      seen.add(start);
+      const word = command.slice(start, end);
+      if (word.includes("=") || (word.startsWith("$") && /^\s*[-+*/]?=(?!=)/.test(command.slice(end)))) continue;
+      const read = programName(word);
+      if (read?.unreadable) unreadable.push({ start, end, word });
+      if (!read?.name || read.name.length > end - start) continue;
+      programs.push([start, end]);
+      const padded = read.name.padStart(end - start);
+      if (t.slice(start, end) === padded) continue;
+      t = splice(t, start, end, padded);
+      f = splice(f, start, end, padded);
+      changed = true;
+    }
+  }
+  return { text: t, flat: f, programs, unreadable };
+}
+
+/**
+ * Where the program word holding `index` starts, when `index` falls inside
+ * one ({@link view}); `index` itself otherwise. A rule that finds `gh` with an
+ * unanchored regex lands on the rewritten name, which is right-aligned in its
+ * span, so the raw text ahead of it would end inside the raw word.
+ */
+export function programStart(command, index) {
+  for (const [a, b] of view(command).programs) if (a <= index && index < b) return a;
+  return index;
+}
+
+/** The program words at command position that expand or glob, `{ start, end, word }` each ({@link view}). */
+export const unreadablePrograms = (command) => view(command).unreadable;
 
 /** The command with its inert text masked where the mask is trusted, else the raw command ({@link view}). */
 export const trustedMask = (command) => view(command).text;
@@ -454,7 +735,10 @@ export function cdsAhead(command, re, cwd, shell = BASH) {
  * the command has words `args` does not hold. Where {@link gitCwd} judges the
  * first match, this judges each one, so a harmless first command cannot shield
  * a later one. The command's own `-C` is the caller's to read, since git and
- * pnpm spell it differently ({@link optionDir}).
+ * pnpm spell it differently ({@link gitPlaceAt}). `start` is where `head`
+ * begins: a match of an unanchored `re` that starts on a rewritten program
+ * name is moved back to the start of that word ({@link programStart}), so
+ * `head` holds the raw word whole.
  */
 export function* chainCommands(command, cwd, re, shell = BASH) {
   const text = trustedMask(command);
@@ -462,12 +746,14 @@ export function* chainCommands(command, cwd, re, shell = BASH) {
   let base = cwd;
   for (const [a, b] of ranges(text, CHAIN)) {
     for (const m of text.slice(a, b).matchAll(global)) {
+      const start = programStart(command, a + m.index);
       const from = a + m.index + m[0].length;
       const stop = text.slice(from, b).search(COMMAND_END);
       const to = stop >= 0 ? from + stop : b;
       yield {
         base,
-        head: command.slice(a + m.index, from),
+        start,
+        head: command.slice(start, from),
         args: command.slice(from, to),
         at: from,
         cut: stop >= 0 ? text[to] : undefined,

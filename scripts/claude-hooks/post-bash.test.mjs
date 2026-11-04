@@ -170,6 +170,18 @@ describe("post-bash.mjs triggers", () => {
     expect(fire(`gh pr merge "7" --squash`)).toMatch(/its PR argument could not be read/);
   });
 
+  // #1606: a program spelled with a path, an extension or quotes is the same program.
+  it("runs the merge and worktree steps on every spelling of gh and git", () => {
+    for (const command of [
+      `"gh" pr merge 7 --squash`,
+      "gh.exe pr merge 7 --squash",
+      `"C:/Program Files/GitHub CLI/gh.exe" pr merge 7 --squash`,
+    ])
+      expect(fire(command, { withoutGh: true }), command).toMatch(/could not read the PR back/);
+    for (const command of ["git.exe worktree add ../ir-1321 -b fix/1321-x", `"git" worktree add ../ir-1321 -b x`])
+      expect(fire(command, { withoutGh: true }), command).toMatch(/Worktree for #1321 created/);
+  });
+
   it("moves the card of the tree the add created, not of one a comment names", () => {
     const note = fire("# superseded: git worktree add ../ir-1400\ngit worktree add ../ir-1321 -b fix/1321-x", {
       withoutGh: true,
