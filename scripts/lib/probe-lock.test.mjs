@@ -6,7 +6,16 @@
  * so the waiting cases stay fast.
  */
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  utimesSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -36,8 +45,13 @@ function liveChild() {
   return child;
 }
 
-function writeHolder(pid) {
-  writeFileSync(lockPath, JSON.stringify({ pid, startedAt: new Date().toISOString() }));
+function writeHolder(pid, startedAt = new Date().toISOString()) {
+  writeFileSync(lockPath, JSON.stringify({ pid, startedAt }));
+}
+
+/** Everything in the lock's directory: a take-over must leave no `.stale` aside behind. */
+function lockDirEntries() {
+  return readdirSync(path.dirname(lockPath));
 }
 
 function holderPid() {
@@ -93,6 +107,18 @@ describe("acquireProbeLock", () => {
     expect(() => release()).not.toThrow();
   });
 
+  it("logs rather than throws when the lock cannot be read on release", async () => {
+    const release = await acquireProbeLock(lockPath, fast);
+    // A directory where the lock was: reading it fails with something other than
+    // ENOENT, as an AV scanner's EBUSY would on Windows.
+    rmSync(lockPath);
+    mkdirSync(lockPath);
+
+    expect(() => release()).not.toThrow();
+    expect(logged).toHaveLength(1);
+    expect(logged[0]).toMatch(/could not release the lock at .*the next run takes it over/);
+  });
+
   it("takes over a lock whose holder has exited, and says so", async () => {
     await acquireProbeLock(lockPath, fast).then((release) => release());
     const dead = deadPid();
@@ -103,6 +129,73 @@ describe("acquireProbeLock", () => {
     expect(logged).toHaveLength(1);
     expect(logged[0]).toContain(`pid ${dead}`);
     expect(logged[0]).toContain(lockPath);
+    expect(lockDirEntries()).toEqual(["probe.lock"]);
+    release();
+  });
+
+  it("takes over a lock held longer than any run can, even when its pid is alive (pid reuse)", async () => {
+    await acquireProbeLock(lockPath, fast).then((release) => release());
+    writeHolder(4242, new Date(Date.now() - 10 * 60_000).toISOString());
+
+    const release = await acquireProbeLock(lockPath, { ...fast, isAlive: () => true, maxHoldMs: 60_000 });
+    expect(holderPid()).toBe(process.pid);
+    expect(logged).toHaveLength(1);
+    expect(logged[0]).toMatch(/pid 4242 has held it for 600s, longer than any run can/);
+    expect(lockDirEntries()).toEqual(["probe.lock"]);
+    release();
+  });
+
+  it("leaves a live holder within maxHoldMs, and one whose startedAt is unreadable, to liveness", async () => {
+    await acquireProbeLock(lockPath, fast).then((release) => release());
+    const live = { ...fast, deadlineMs: 50, isAlive: () => true, maxHoldMs: 60_000 };
+
+    writeHolder(4242);
+    await expect(acquireProbeLock(lockPath, live)).rejects.toThrow(/pid 4242/);
+
+    // An unknown age is never "old": a tiny maxHoldMs still waits on a live pid.
+    writeHolder(4242, "not a date");
+    await expect(acquireProbeLock(lockPath, { ...live, maxHoldMs: 1 })).rejects.toThrow(/pid 4242/);
+    expect(holderPid()).toBe(4242);
+    expect(logged).toEqual([]);
+  });
+
+  it("puts back a fresh lock that replaced the stale one between the judgement and the take-over", async () => {
+    await acquireProbeLock(lockPath, fast).then((release) => release());
+    writeHolder(deadPid());
+    const rival = liveChild();
+    let raced = false;
+    // A competing waiter took the stale lock over and created its own first.
+    const _beforeTakeOver = () => {
+      if (raced) return;
+      raced = true;
+      rmSync(lockPath);
+      writeHolder(rival.pid);
+    };
+
+    await expect(acquireProbeLock(lockPath, { ...fast, deadlineMs: 100, _beforeTakeOver })).rejects.toThrow(
+      new RegExp(`pid ${rival.pid}`),
+    );
+    expect(raced).toBe(true);
+    expect(holderPid()).toBe(rival.pid);
+    expect(lockDirEntries()).toEqual(["probe.lock"]);
+    expect(logged).toEqual([]);
+  });
+
+  it("judges again, and takes nothing over, when the stale lock vanished before the take-over", async () => {
+    await acquireProbeLock(lockPath, fast).then((release) => release());
+    writeHolder(deadPid());
+    let raced = false;
+    const _beforeTakeOver = () => {
+      if (raced) return;
+      raced = true;
+      rmSync(lockPath);
+    };
+
+    const release = await acquireProbeLock(lockPath, { ...fast, _beforeTakeOver });
+    expect(raced).toBe(true);
+    expect(holderPid()).toBe(process.pid);
+    expect(lockDirEntries()).toEqual(["probe.lock"]);
+    expect(logged).toEqual([]);
     release();
   });
 
