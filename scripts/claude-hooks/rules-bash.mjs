@@ -146,9 +146,11 @@ const LINE_LEAD = /^( *)((?:(?:[-+*]|\d{1,9}[.)]) +)*)(.*)$/;
  * top level, or the column after the list marker of the item it sits in, on
  * the marker's own line (`- ```markdown`) or on a line indented to the item.
  * So a top-level `    ```` is indented code, not a fence, and inside a fence
- * opened at the top level a `    ```` is content, not its close. The list
+ * opened at the top level a `    ```` is content, not its close. A fence or
+ * comment opened in a list item ends with the item, closed or not. The list
  * tracking is the minimum that needs: the last item's content column, dropped
- * when a line indented less than it follows a blank line or is a heading.
+ * when a line indented less than it follows a blank line, is a heading, or
+ * ends a block the item held.
  * Until #1391's reviews an unclosed fence, a closing line with an info string
  * (` ```js `) or the other fence character, a commented-out `## Testing`, the
  * text after a `-->` and a fence opened in a list item all left a heading the
@@ -156,23 +158,31 @@ const LINE_LEAD = /^( *)((?:(?:[-+*]|\d{1,9}[.)]) +)*)(.*)$/;
  */
 function withoutInertBlocks(text) {
   const kept = [];
-  let fence = null;
-  let inComment = false;
+  // The open fence or comment, with the content column of the list item it
+  // sits in (0 at the top level).
+  let block = null;
   let listColumn = null;
   let previousBlank = true;
   for (const line of text.split("\n")) {
     const blank = /^\s*$/.test(line);
-    if (inComment) {
-      if (line.includes("-->")) inComment = false;
-    } else if (fence) {
+    // A block inside a list item ends with the item, closed or not: a line
+    // indented less than the item's content is no part of it, since neither
+    // fenced code nor an HTML block continues lazily (CodeRabbit on PR #1610).
+    if (block && block.container > 0 && !blank && line.match(/^ */)[0].length < block.container) {
+      block = null;
+      listColumn = null;
+    }
+    if (block?.kind === "comment") {
+      if (line.includes("-->")) block = null;
+    } else if (block) {
       const close = line.match(/^( *)(`{3,}|~{3,}) *$/);
       if (
         close &&
-        close[2][0] === fence.char &&
-        close[2].length >= fence.length &&
-        close[1].length <= fence.closeIndent
+        close[2][0] === block.char &&
+        close[2].length >= block.length &&
+        close[1].length <= block.container + 3
       )
-        fence = null;
+        block = null;
     } else {
       const [, indent, markers, rest] = line.match(LINE_LEAD);
       if (markers) listColumn = indent.length + markers.length;
@@ -183,9 +193,9 @@ function withoutInertBlocks(text) {
       const opener = relative <= 3 ? rest.match(/^(`{3,})[^`]*$|^(~{3,})/) : null;
       if (opener) {
         const run = opener[1] ?? opener[2];
-        fence = { char: run[0], length: run.length, closeIndent: container + 3 };
+        block = { kind: "fence", char: run[0], length: run.length, container };
       } else if (relative <= 3 && rest.startsWith("<!--")) {
-        inComment = !/^<!--(?:-?>|.*-->)/.test(rest);
+        if (!/^<!--(?:-?>|.*-->)/.test(rest)) block = { kind: "comment", container };
       } else kept.push(line);
     }
     previousBlank = blank;

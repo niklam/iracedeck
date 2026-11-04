@@ -1526,6 +1526,22 @@ describe("git commit", () => {
           missingSpecParts([HEADER, "# T", "## Out of scope", "- item", "x", "    ```", "## Testing"].join("\n\n")),
         ).toEqual([]);
       });
+      // CodeRabbit on PR #1610 (and the second read, upheld as a decline before the scanner made it cheap).
+      it("ends a fence or comment opened in a list item when the item ends, closed or not", () => {
+        for (const block of ["- ```\n  example", "1. Build:\n\n   ```bash\n   pnpm build", "- <!--\n  note"])
+          expect(
+            missingSpecParts([HEADER, "# T", "## Out of scope", "x", `${block}\n## Testing`, "y"].join("\n\n")),
+            block,
+          ).toEqual([]);
+        // Still inside the item: a blank line and a line indented to it are the block's.
+        expect(
+          missingSpecParts([HEADER, "# T", "## Out of scope", "x", "- ```\n\n  ## Testing\n"].join("\n\n")),
+        ).toEqual(["a Testing or Verification section"]);
+        // A top-level fence never ends early.
+        expect(
+          missingSpecParts([HEADER, "# T", "## Out of scope", "x", "```\nexample\n## Testing"].join("\n\n")),
+        ).toEqual(["a Testing or Verification section"]);
+      });
       it("ends a comment at an empty <!--> and takes a backtick line with a backtick in it for prose", () => {
         for (const before of ["<!-->", "<!--->", "```js``` is inline"])
           expect(
