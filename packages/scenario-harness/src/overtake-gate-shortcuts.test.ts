@@ -83,9 +83,13 @@ describe("which shortcuts the overtake gate decides", () => {
     vi.useFakeTimers();
 
     const bus = initializeEventBus(silentLogger);
-    // The shared fake audio service: the gate answers `null`, which refuses, so no
-    // gated line plays; whatever else a publish triggers only needs to not throw.
+    // The gate answers `null`, which refuses, so no gated line plays. Every
+    // other play fails at once, so no line holds its bus across the scan: a
+    // gated fire deferred behind a held bus would be asked its gate only once
+    // the bus frees, which here would be never, and go uncounted.
     const audio = createFakeAudio();
+
+    audio.playOnChannel.mockReturnValue(false);
 
     initializeAudioScenarios(bus, audio, getAudioAssetsManifest(), silentLogger, () => "default");
     registerPitCrew(bus, { getOvertakeGate: gate });

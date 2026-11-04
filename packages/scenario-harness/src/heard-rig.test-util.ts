@@ -195,6 +195,7 @@ export function useHeardRig(clipMs: ClipDurations): HeardRig {
     // Whatever is still waiting is refused or played out before the next test.
     vi.advanceTimersByTime(60_000);
     audio._played.length = 0;
+    audio._stopped.length = 0;
   });
 
   const running = (): MockSDKController => {
