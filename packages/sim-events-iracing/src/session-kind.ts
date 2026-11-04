@@ -2,9 +2,9 @@
  * Which kind of session the sim is in, for switching the deck's profile by
  * session kind (#1111).
  *
- * Deliberately separate from the translator's private `classifySessionType`,
- * which folds every raw `SessionType` into the three buckets the Race
- * Engineer's session-start callout records a line for — testing reads as
+ * Deliberately separate from `classifySession` (`session-type.ts`, #1587),
+ * which folds every raw `SessionType` into the three buckets the translator
+ * and the Race Engineer read — testing reads as
  * practice there and anything unrecognised as race, and those callouts depend
  * on exactly that. Profile switching needs the opposite trade: a row of its
  * own for testing and for replays, and no guess at all for a string it does

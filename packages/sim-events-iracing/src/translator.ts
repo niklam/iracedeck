@@ -23,6 +23,8 @@ import type {
   PitReadbackSnapshot,
   QualifyingInvalidationSnapshot,
   RaceStartConditions,
+  SessionCategory,
+  SessionClass,
   SessionStartConditions,
   SimEventMap,
   SimEventName,
@@ -110,7 +112,7 @@ import {
   type SessionIdentityBaseline,
 } from "./session-identity.js";
 import { classifySessionKind, type SessionKind } from "./session-kind.js";
-import { classifySession, resolveSessionType, type SessionCategory, type SessionClass } from "./session-type.js";
+import { classifySession, resolveSessionType } from "./session-type.js";
 import { buildDegradedSimState, buildSimState, type SimStateSnapshot } from "./sim-state.js";
 import { resolveStandingStart } from "./start-lights.js";
 import {

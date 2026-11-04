@@ -118,7 +118,8 @@ import type { EmitFn } from "./types.js";
 export type FastestLapJudge = (lap: number, lapTime: number) => boolean;
 
 /**
- * Result of `classifySessionType` mapped onto the subset of values the
+ * Result of the translator's `classifyLapSessionType` (a stricter reading of
+ * `classifySession`, `session-type.ts`) mapped onto the subset of values the
  * bus payload exposes. Practice / qualifying / race covers the announceable
  * cases; anything else (test, replay, "Warmup" between sessions, …) reaches
  * here as `undefined` and is omitted from the payload.

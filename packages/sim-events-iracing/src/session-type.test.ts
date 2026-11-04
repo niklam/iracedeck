@@ -50,8 +50,8 @@ describe("classifySession", () => {
     ["Heat Race", "race", false],
     ["Warmup", "race", false],
     ["Some Future Session", "race", false],
-  ] as const)("classifies %s as %s (lone qualify: %s)", (sessionType, category, loneQualify) => {
-    expect(classifySession(sessionType)).toEqual({ category, loneQualify });
+  ] as const)("classifies %s as %s (solo qualifying: %s)", (sessionType, category, soloQualifying) => {
+    expect(classifySession(sessionType)).toEqual({ category, soloQualifying });
   });
 
   it("answers null for a session type nobody could read", () => {
