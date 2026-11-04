@@ -37,9 +37,7 @@
  */
 import manifestJson from "@iracedeck/audio-assets/manifest.json" with { type: "json" };
 import defaultScript from "@iracedeck/audio-assets/voice/default/callouts.json" with { type: "json" };
-import type { IAudioService } from "@iracedeck/audio-service";
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
-import { createFakeAudio } from "@iracedeck/audio-service/testing";
 import type { CalloutScript } from "@iracedeck/callout-script";
 import { CAUTION_CALLOUTS } from "@iracedeck/callout-settings";
 import type { IEventBus, SimEventName, SimEventOf } from "@iracedeck/event-bus";
@@ -57,6 +55,7 @@ import { _resetPitSpeedingEngine } from "./pit-speeding-engine.js";
 import { resetQualifyingInvalidationLatch } from "./qualifying-invalidation.js";
 import { _resetRadarEngine } from "./radar-engine.js";
 import { _resetSpotterEngine } from "./spotter-engine.js";
+import { createTimedAudio } from "./timed-audio.test-util.js";
 
 // The sim reads the registration is handed (#1378): a race, a rolling start,
 // no latest tick, and a repair still needed when the damage line comes to speak.
@@ -135,37 +134,6 @@ function createMockBus(): IEventBus {
   } as unknown as IEventBus;
 }
 
-/** The shared fake audio service, with clips that end on the (fake) clock, after their length. */
-function createTimedAudio(): IAudioService {
-  const audio = createFakeAudio();
-  const timers = new Map<AudioChannel, ReturnType<typeof setTimeout>>();
-  const play = audio.playOnChannel.getMockImplementation();
-  const stop = audio.stopChannel.getMockImplementation();
-
-  audio.playOnChannel.mockImplementation((channel, path, loop) => {
-    clearTimeout(timers.get(channel));
-    timers.set(
-      channel,
-      setTimeout(
-        () => {
-          timers.delete(channel);
-          audio._triggerChannelEnd(channel);
-        },
-        channel === AudioChannel.SFX ? SFX_CLIP_MS : voiceClipMs,
-      ),
-    );
-
-    return play?.(channel, path, loop) ?? true;
-  });
-  audio.stopChannel.mockImplementation((channel) => {
-    clearTimeout(timers.get(channel));
-    timers.delete(channel);
-    stop?.(channel);
-  });
-
-  return audio;
-}
-
 let bus: IEventBus;
 
 beforeEach(() => {
@@ -179,7 +147,13 @@ beforeEach(() => {
   _resetLastIncidentPoints();
   resetQualifyingInvalidationLatch();
   bus = createMockBus();
-  initializeAudioScenarios(bus, createTimedAudio(), MANIFEST, mockLogger as never, () => VOICE);
+  initializeAudioScenarios(
+    bus,
+    createTimedAudio((channel) => (channel === AudioChannel.SFX ? SFX_CLIP_MS : voiceClipMs)),
+    MANIFEST,
+    mockLogger as never,
+    () => VOICE,
+  );
   registerPitCrew(bus, {
     ...SIM_READS,
     logger: mockLogger as never,

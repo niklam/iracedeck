@@ -48,8 +48,8 @@ export type FakeAudio = { [K in keyof IAudioService]: Mock<IAudioService[K]> } &
  * recording too. To extend the default instead, keep it first and call it from
  * the override — `const stop = audio.stopChannel.getMockImplementation();`,
  * then `stop?.(channel)` inside — as the timed fakes do, whose clips end on the
- * fake clock (`crash-caution-sequence.test.ts`, the scenario harness's
- * `heard-rig.test-util.ts`).
+ * fake clock (`audio-scenarios`' `timed-audio.test-util.ts`, the scenario
+ * harness's `heard-rig.test-util.ts`).
  */
 export function createFakeAudio(): FakeAudio {
   const completions = new Map<AudioChannel, () => void>();

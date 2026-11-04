@@ -16,9 +16,7 @@
  */
 import manifestJson from "@iracedeck/audio-assets/manifest.json" with { type: "json" };
 import defaultScript from "@iracedeck/audio-assets/voice/default/callouts.json" with { type: "json" };
-import type { IAudioService } from "@iracedeck/audio-service";
 import { AudioChannel } from "@iracedeck/audio-service";
-import { createFakeAudio } from "@iracedeck/audio-service/testing";
 import type { CalloutScript } from "@iracedeck/callout-script";
 import type { IEventBus, SimEventName, SimEventOf, TireWearReport } from "@iracedeck/event-bus";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -29,6 +27,7 @@ import { registerPitCrew } from "./index.js";
 import { _resetPitSpeedingEngine } from "./pit-speeding-engine.js";
 import { _resetRadarEngine } from "./radar-engine.js";
 import { _resetSpotterEngine } from "./spotter-engine.js";
+import { createTimedAudio } from "./timed-audio.test-util.js";
 
 const VOICE = "default";
 const SCRIPT = defaultScript as CalloutScript;
@@ -75,37 +74,6 @@ function createMockBus(): IEventBus {
   } as unknown as IEventBus;
 }
 
-/** The shared fake audio service, with clips that end on the (fake) clock, after their length. */
-function createTimedAudio(): IAudioService {
-  const audio = createFakeAudio();
-  const timers = new Map<AudioChannel, ReturnType<typeof setTimeout>>();
-  const play = audio.playOnChannel.getMockImplementation();
-  const stop = audio.stopChannel.getMockImplementation();
-
-  audio.playOnChannel.mockImplementation((channel, path, loop) => {
-    clearTimeout(timers.get(channel));
-    timers.set(
-      channel,
-      setTimeout(
-        () => {
-          timers.delete(channel);
-          audio._triggerChannelEnd(channel);
-        },
-        channel === AudioChannel.SFX ? SFX_CLIP_MS : VOICE_CLIP_MS,
-      ),
-    );
-
-    return play?.(channel, path, loop) ?? true;
-  });
-  audio.stopChannel.mockImplementation((channel) => {
-    clearTimeout(timers.get(channel));
-    timers.delete(channel);
-    stop?.(channel);
-  });
-
-  return audio;
-}
-
 /** A worn set with a speakable tread on every tire — what the report needs to fire. */
 const REPORT: TireWearReport = {
   corners: {
@@ -131,7 +99,13 @@ beforeEach(() => {
   _resetSpotterEngine();
   _resetPitSpeedingEngine();
   bus = createMockBus();
-  initializeAudioScenarios(bus, createTimedAudio(), MANIFEST, mockLogger as never, () => VOICE);
+  initializeAudioScenarios(
+    bus,
+    createTimedAudio((channel) => (channel === AudioChannel.SFX ? SFX_CLIP_MS : VOICE_CLIP_MS)),
+    MANIFEST,
+    mockLogger as never,
+    () => VOICE,
+  );
   registerPitCrew(bus, { logger: mockLogger as never });
   getScenarioEngine().setScripts(new Map([[VOICE, SCRIPT]]));
 });
