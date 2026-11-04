@@ -30,13 +30,16 @@ export function subscribeRaceEngineerCaches(bus: IEventBus, logger: ILogger): Ra
   // the cache is up-to-date by the time the scenario evaluates its
   // `where:` predicate. The 2 000 ms initial pause in the scenario sequence
   // further guarantees the cache is populated by the time the var resolvers
-  // run.
+  // run. A lap the sim did not count (issue #1582) is cached like any other —
+  // the position readout reads it — and its readers narrow on `lapIsValid`
+  // before they read a time.
   const lapCompletedLogger = logger.createScope("LapCompleted");
   let lastLapCompleted: LapCompletedSnapshot | null = null;
   bus.subscribe("lap.completed", (ev) => {
     lastLapCompleted = ev.data;
+    const time = ev.data.lapIsValid === false ? "refused" : ev.data.lapTime.toFixed(3);
     lapCompletedLogger.info(
-      `lap=${ev.data.lap} time=${ev.data.lapTime.toFixed(3)} isBest=${ev.data.isBest} isFirstValid=${ev.data.isFirstValid} ` +
+      `lap=${ev.data.lap} time=${time} isBest=${ev.data.isBest} isFirstValid=${ev.data.isFirstValid} ` +
         `sessionType=${ev.data.sessionType ?? "?"} position=${ev.data.position ?? "?"} previousPosition=${ev.data.previousPosition ?? "?"} ` +
         `classPosition=${ev.data.classPosition ?? "?"} previousClassPosition=${ev.data.previousClassPosition ?? "?"} ` +
         `isMultiClass=${ev.data.isMultiClass ?? "?"} lapsSincePositionChange=${ev.data.lapsSincePositionChange ?? "?"}`,

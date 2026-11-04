@@ -16,10 +16,13 @@ export {
 } from "./event-bus.js";
 export type {
   CautionLine,
+  CountedLapCompleted,
   EmptySimEventPayload,
   FlagScope,
   GapSide,
   IncidentType,
+  LapCompletedCommon,
+  LapCompletedData,
   OpponentFlagRelation,
   OpponentPitRelation,
   PitBoxMark,
@@ -28,6 +31,7 @@ export type {
   QualifyingInvalidationSnapshot,
   RaceStartConditions,
   RaceStartSnapshot,
+  RefusedLapCompleted,
   SessionStartConditions,
   SessionStartSnapshot,
   SimEvent,

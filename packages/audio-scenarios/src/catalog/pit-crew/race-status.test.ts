@@ -21,7 +21,14 @@ import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import { createFakeAudio, type FakeAudio } from "@iracedeck/audio-service/testing";
 import { type CalloutScript } from "@iracedeck/callout-script";
 import { RACE_STATUS_CALLOUTS } from "@iracedeck/callout-settings";
-import type { IEventBus, SimEventMap, SimEventName, SimEventOf } from "@iracedeck/event-bus";
+import type {
+  CountedLapCompleted,
+  IEventBus,
+  RefusedLapCompleted,
+  SimEventMap,
+  SimEventName,
+  SimEventOf,
+} from "@iracedeck/event-bus";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { NO_FRAME, WEIGHT } from "../../dsl.js";
@@ -159,8 +166,8 @@ function voicePaths(): string[] {
  * Publish an every-3-laps cadence hit in a race session (position held),
  * without letting the audio run — for a test that needs the fire to wait.
  */
-function publishStatus(overrides: Partial<LapSnap> = {}): void {
-  const data: Partial<LapSnap> = {
+function publishStatus(overrides: Partial<CountedLapCompleted> = {}): void {
+  const data: Partial<CountedLapCompleted> = {
     lap: 6,
     lapTime: 90.5,
     isBest: false,
@@ -177,7 +184,7 @@ function publishStatus(overrides: Partial<LapSnap> = {}): void {
 }
 
 /** Fire a cadence hit and let whatever it says play out. */
-function fireStatus(overrides: Partial<LapSnap> = {}): void {
+function fireStatus(overrides: Partial<CountedLapCompleted> = {}): void {
   publishStatus(overrides);
   flush(audio);
 }
@@ -268,6 +275,24 @@ describe("race-status still-leading wording (#599)", () => {
 });
 
 describe("race-status gating", () => {
+  it("speaks on a cadence lap the sim did not count, like any other (#1582)", () => {
+    const refused: RefusedLapCompleted = {
+      lap: 6,
+      isBest: false,
+      isFirstValid: false,
+      lapIsValid: false,
+      sessionType: "race",
+      lapsSincePositionChange: 3,
+      position: 1,
+      previousPosition: 1,
+    };
+    currentSnapshot = refused;
+    bus.publishEvent("lap.completed", refused);
+    flush(audio);
+
+    expect(voicePaths()).toContain(`voice/${VOICE}/race-status/still-leading-01.mp3`);
+  });
+
   it("is suppressed when the per-callout opt-in is off", () => {
     raceStatusEnabled = false;
     fireStatus();

@@ -51,12 +51,16 @@ export type LapOwnerFlags = { fastestLap: boolean; bestLap: boolean; everyLap: b
  * the lap set it and passes the grace, else the best lap when it is a
  * personal best or the first valid lap, else every lap. A fastest lap of the
  * race is always a personal best too, so with the fastest-lap call off,
- * unscripted or inside the grace, it falls to the best-lap call. The gates
+ * unscripted or inside the grace, it falls to the best-lap call. A lap the
+ * sim did not count has no time to read, so none of the three owns it
+ * (issue #1582). The gates
  * that silence a lap whole (a caution, the final lap of a race) are not
  * here: they stay in each contract and apply to all three alike, so a gate
  * never hands one callout's lap to another.
  */
 export function playerLapOwner(lap: LapCompleted, on: LapOwnerFlags): PlayerLapOwner {
+  if (lap.lapIsValid === false) return null;
+
   if (lap.isClassFastestLapOfRace === true && fastestLapAnnounceable(lap.lap, on.fastestLap)) return "fastest-lap";
 
   if ((lap.isBest || lap.isFirstValid) && on.bestLap) return "best-lap";

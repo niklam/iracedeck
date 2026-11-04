@@ -24,7 +24,13 @@ import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import { createFakeAudio, type FakeAudio } from "@iracedeck/audio-service/testing";
 import { type CalloutScript } from "@iracedeck/callout-script";
 import { LAP_TIME_CALLOUTS, POSITION_CALLOUTS } from "@iracedeck/callout-settings";
-import type { IEventBus, SimEventName, SimEventOf } from "@iracedeck/event-bus";
+import type {
+  CountedLapCompleted,
+  IEventBus,
+  RefusedLapCompleted,
+  SimEventName,
+  SimEventOf,
+} from "@iracedeck/event-bus";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { NO_FRAME, WEIGHT } from "../../dsl.js";
@@ -144,7 +150,7 @@ const MANIFEST = manifestJson as AudioAssetsManifest;
 
 type LapPayload = SimEventOf<"lap.completed">["data"];
 
-function snap(overrides: Partial<LapPayload> = {}): LapPayload {
+function snap(overrides: Partial<CountedLapCompleted> = {}): LapPayload {
   return {
     lap: 5,
     lapTime: 94.8,
@@ -155,6 +161,14 @@ function snap(overrides: Partial<LapPayload> = {}): LapPayload {
     sessionType: "qualifying",
     ...overrides,
   };
+}
+
+/**
+ * A qualifying lap the sim did not count (#1582): no time, never a best — the
+ * payload iRacing's translator now emits for a lap it wrote no time for.
+ */
+function refused(overrides: Partial<RefusedLapCompleted> = {}): LapPayload {
+  return { lap: 5, isBest: false, isFirstValid: false, lapIsValid: false, sessionType: "qualifying", ...overrides };
 }
 
 let bus: ReturnType<typeof createMockBus>;
@@ -290,7 +304,7 @@ describe("positionChangeIsAnnounceable", () => {
     // don't accidentally silence the invalid-lap shape.
     expect(
       positionChangeIsAnnounceable(
-        snap({
+        refused({
           position: 5,
           previousPosition: 5,
           isBest: false,
@@ -799,7 +813,7 @@ describe("position-change contract — qualifying pole", () => {
 describe("position-change contract — invalid lap (issue #572)", () => {
   it("prefixes with 'that lap didn't count' and uses worse intro when lap is invalid + unchanged", () => {
     fire(
-      snap({
+      refused({
         position: 5,
         previousPosition: 5,
         isBest: false,
@@ -818,7 +832,7 @@ describe("position-change contract — invalid lap (issue #572)", () => {
     // An invalid lap can't earn the "better" framing even if standings
     // shifted from others' laps — pin the worse-intro behavior.
     fire(
-      snap({
+      refused({
         position: 3,
         previousPosition: 5,
         isBest: false,
@@ -835,7 +849,7 @@ describe("position-change contract — invalid lap (issue #572)", () => {
 
   it("suppresses the pole shape for an invalid lap landing at P1", () => {
     fire(
-      snap({
+      refused({
         position: 1,
         previousPosition: 3,
         isBest: false,
@@ -872,13 +886,71 @@ describe("position-change contract — invalid lap (issue #572)", () => {
   });
 
   it("speaks the three fixed pieces in order: didn't count, currently, the number", () => {
-    fire(snap({ position: 5, previousPosition: 5, isBest: false, sessionType: "qualifying", lapIsValid: false }));
+    fire(refused({ position: 5, previousPosition: 5, isBest: false, sessionType: "qualifying", lapIsValid: false }));
 
     expect(voicePaths()).toEqual([
       `voice/${VOICE}/position-invalid-lap/that-lap-didnt-count-01.mp3`,
       `voice/${VOICE}/position-intro-worse/currently-01.mp3`,
       `voice/${VOICE}/position-number/5.mp3`,
     ]);
+  });
+
+  it("reads out the refused payload iRacing now emits, which carries no lap time (#1582)", () => {
+    const payload = refused({ position: 7, previousPosition: 6 });
+
+    expect("lapTime" in payload).toBe(false);
+
+    fire(payload);
+
+    expect(voicePaths()).toEqual([
+      `voice/${VOICE}/position-invalid-lap/that-lap-didnt-count-01.mp3`,
+      `voice/${VOICE}/position-intro-worse/currently-01.mp3`,
+      `voice/${VOICE}/position-number/7.mp3`,
+    ]);
+  });
+
+  it("does not prefix a counted qualifying lap, the same lap otherwise (#1582, the positive control)", () => {
+    fire(snap({ lap: 6, position: 7, previousPosition: 6 }));
+
+    expect(hasClip("/position-invalid-lap/that-lap-didnt-count-01.mp3")).toBe(false);
+    expect(hasClip("/position-intro-worse/currently-01.mp3")).toBe(true);
+    expect(hasClip("/position-number/7.mp3")).toBe(true);
+  });
+
+  it("takes the invalid-lap shape in qualifying only — a refused race lap reads the standard shape", () => {
+    expect(resolvePositionReadoutShape(refused({ position: 3, previousPosition: 5 }))).toBe("invalid-lap");
+    expect(resolvePositionReadoutShape(refused({ sessionType: "race", position: 3, previousPosition: 5 }))).toBe(
+      "standard",
+    );
+  });
+
+  it("says 'that lap didn't count' alone for a refused lap that left no position — a refused first lap (#1582)", () => {
+    fire(refused({ lap: 1 }));
+
+    expect(voicePaths()).toEqual([`voice/${VOICE}/position-invalid-lap/that-lap-didnt-count-01.mp3`]);
+  });
+
+  it("says it alone in a multi-class session with no class position either", () => {
+    fire(refused({ lap: 1, isMultiClass: true, position: 9 }));
+
+    expect(voicePaths()).toEqual([`voice/${VOICE}/position-invalid-lap/that-lap-didnt-count-01.mp3`]);
+  });
+
+  it("keeps a counted qualifying lap with no position silent (the positive control)", () => {
+    fire(snap({ lap: 1 }));
+    fire(snap({ lap: 2, isMultiClass: true, position: 9 }));
+
+    expect(voicePaths()).toEqual([]);
+  });
+
+  it("keeps the other gates for a refused lap with no position: a caution, the lap that ends one, practice", () => {
+    underCaution = true;
+    fire(refused({ lap: 1 }));
+    underCaution = false;
+    fire(refused({ lap: 2, wasCaution: true }));
+    fire(refused({ lap: 3, sessionType: "practice" }));
+
+    expect(voicePaths()).toEqual([]);
   });
 });
 
@@ -919,7 +991,11 @@ describe("registerPositionVocabulary (issue #1065)", () => {
           [5, 3],
           [5, 5],
         ] as const) {
-          const key = resolvePositionReadoutShape(snap({ sessionType, lapIsValid, position, previousPosition }));
+          const key = resolvePositionReadoutShape(
+            lapIsValid === false
+              ? refused({ sessionType, position, previousPosition })
+              : snap({ sessionType, lapIsValid, position, previousPosition }),
+          );
 
           expect(key).not.toBeNull();
           reachable.add(key ?? "");
@@ -949,15 +1025,14 @@ describe("the bundled script's position entry (issue #1065)", () => {
     }
   });
 
-  it("is one case over the three declared shapes, with the vars required (never optional) in every branch", () => {
+  it("is one case over the three declared shapes, with the vars required in every branch but the invalid-lap one's position, which a refused first lap has none of (#1582)", () => {
     expect(SCRIPT.scenarios["pit-crew.position-change"].sequence).toEqual([
       {
         case: "position.readoutShape",
         of: {
           "invalid-lap": [
             "pool:position-invalid-lap/that-lap-didnt-count",
-            "pool:position-intro-worse/currently",
-            "{{position.number}}",
+            { optional: ["pool:position-intro-worse/currently", "{{position.number}}"] },
           ],
           pole: ["{{position.pole}}"],
           standard: ["{{position.intro}}", "{{position.number}}"],

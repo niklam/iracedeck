@@ -1596,11 +1596,11 @@ export type TranslatorState = {
 
   // ── Lap completion (issue #555) ─────────────────────────────────────────
   // Tracks `LapCompleted` (counter) and `LapBestLapTime` across ticks so the
-  // diff can emit one `lap.completed` per real lap completion and decide if
-  // the lap was the new session best. Seeded silently on first tick — without
-  // it, connecting mid-session would synthesize a spurious completion event.
-  // `lastLapBestLapTime` stores 0 when no valid lap has happened yet (the
-  // iRacing sentinel — matches `LapBestLapTime` being unset).
+  // diff can emit one `lap.completed` per lap completion. Seeded silently on
+  // first tick — without it, connecting mid-session would synthesize a
+  // spurious completion event. `lastLapBestLapTime` is iRacing's own best as
+  // the last emit (or the seed) left it, 0 when it has none yet (issue
+  // #1582): the baseline `previousBestLapTime` and `isFirstValid` read.
   //
   // `lastLapSessionNum` is tracked independently of `lastSessionNum` (used by
   // diffLifecycle) so the lap diff can detect session boundaries on its own
@@ -1611,7 +1611,9 @@ export type TranslatorState = {
   lastLapBestLapTime: number;
   lastLapSessionNum: number | null;
   /**
-   * `LapLastLapTime` at the moment of the last emission. Used to detect when
+   * `LapLastLapTime` at the moment of the last emission (`-1` after a
+   * refused lap, issue #1582; a seed on `-1` stores `0`), or a late time
+   * dropped for a count already emitted. Used to detect when
    * iRacing has refreshed `LapLastLapTime` for the just-completed lap: when
    * `LapCompleted` increments, iRacing sometimes lags one or two ticks
    * before updating `LapLastLapTime`, and reading the stale prior-lap value
@@ -1717,19 +1719,11 @@ export type TranslatorState = {
    */
   raceFinish: { sessionNum: number | null; lap: number } | null;
   /**
-   * The lap diff's own record of the player's S/F crossings (issue #1278):
-   * the `LapCompleted` value last seen, whether the checkered flag was
-   * already flying when that value appeared (on the tick before AND the
-   * crossing tick — a flag rising on the crossing tick itself is not one the
-   * player took, the #771 rule), and the previous tick's checkered bit. The
-   * finish is decided from the crossing, never from the bit at the later tick
-   * `lap.completed` is emitted: that emit waits up to
-   * `LAP_RESULTS_SYNC_MAX_WAIT_MS` for standings, long enough for the leader
-   * to take the flag behind a lapped player who crossed a moment earlier.
+   * The lap diff's own record of the player's S/F crossings (issues #1278,
+   * #1582), one slice ({@link LapCrossingState}); reset with the rest of the lap
+   * state on a session change.
    */
-  lapCrossLap: number | null;
-  lapCrossUnderCheckered: boolean;
-  lapPrevCheckered: boolean;
+  lapCrossing: LapCrossingState;
   /**
    * The `LapCompleted` value at which the flag diff resolved the race
    * checkered for the player at a crossing (issue #1278) — the deferred
@@ -1740,6 +1734,44 @@ export type TranslatorState = {
    */
   flagCheckeredTakenLap: number | null;
 };
+
+/**
+ * The lap diff's record of the player's last S/F crossing (issues #1278,
+ * #1582), rewritten on every tick `LapCompleted` moves, the waits and the
+ * seed included, because the `lap.completed` that reads it can trail the
+ * crossing by seconds.
+ */
+export type LapCrossingState = {
+  /** The `LapCompleted` value last seen; `null` before the first tick. */
+  lap: number | null;
+  /**
+   * Whether the checkered flag was already flying when that value appeared —
+   * on the tick before AND the crossing tick (a flag rising on the crossing
+   * tick itself is not one the player took, the #771 rule). The finish is
+   * decided from the crossing, never from the bit at the later tick
+   * `lap.completed` is emitted: that emit waits up to
+   * `LAP_RESULTS_SYNC_MAX_WAIT_MS` for standings, long enough for the leader
+   * to take the flag behind a lapped player who crossed a moment earlier.
+   */
+  underCheckered: boolean;
+  /** The previous tick's checkered bit, for {@link underCheckered}. */
+  prevCheckered: boolean;
+  /** The tick's clock (`now`, ms) on the crossing tick, which bounds the wait for a time after a refused lap. */
+  since: number;
+  /**
+   * `LapLastLapTime` as the crossing tick read it (issue #1582). A `-1`
+   * after the crossing is this lap's refusal when this was anything else;
+   * when this was already `-1` (the lap before was refused), the lap is
+   * refused only once the field still reads it
+   * `LAP_TIME_REFRESH_ALLOWANCE_MS` after the crossing.
+   */
+  lapTimeAtCrossing: number;
+};
+
+/** A {@link LapCrossingState} with no crossing seen: the initial state, and the session-change reset. */
+export function createLapCrossingState(): LapCrossingState {
+  return { lap: null, underCheckered: false, prevCheckered: false, since: 0, lapTimeAtCrossing: 0 };
+}
 
 /** The player's official finishing position in a race (issue #1278); `0` = unknown. */
 export type RaceFinishResult = {
@@ -2026,9 +2058,7 @@ export function createInitialState(): TranslatorState {
     lastPositionChangeLap: -1,
     raceFinishedFired: false,
     raceFinish: null,
-    lapCrossLap: null,
-    lapCrossUnderCheckered: false,
-    lapPrevCheckered: false,
+    lapCrossing: createLapCrossingState(),
     flagCheckeredTakenLap: null,
   };
 }

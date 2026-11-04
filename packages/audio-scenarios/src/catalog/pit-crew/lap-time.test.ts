@@ -15,7 +15,13 @@ import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import { createFakeAudio, type FakeAudio } from "@iracedeck/audio-service/testing";
 import { type CalloutScript } from "@iracedeck/callout-script";
 import { LAP_TIME_CALLOUTS } from "@iracedeck/callout-settings";
-import type { IEventBus, SimEventName, SimEventOf } from "@iracedeck/event-bus";
+import type {
+  CountedLapCompleted,
+  IEventBus,
+  RefusedLapCompleted,
+  SimEventName,
+  SimEventOf,
+} from "@iracedeck/event-bus";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { WEIGHT } from "../../dsl.js";
@@ -160,7 +166,7 @@ const LAP_TIME_SCRIPT: CalloutScript = {
   scenarios: { ...BEST_LAP_SCRIPT.scenarios, "pit-crew.lap-time-last": LAST_ENTRY },
 };
 
-function snap(overrides: Partial<LapCompletedSnapshot> = {}): LapCompletedSnapshot {
+function snap(overrides: Partial<CountedLapCompleted> = {}): LapCompletedSnapshot {
   return {
     lap: 5,
     lapTime: 94.8,
@@ -168,6 +174,19 @@ function snap(overrides: Partial<LapCompletedSnapshot> = {}): LapCompletedSnapsh
     isFirstValid: false,
     bestLapTime: 94.8,
     previousBestLapTime: 96.2,
+    ...overrides,
+  };
+}
+
+/** A lap the sim did not count (#1582): no time, never a best, the standing best carried. */
+function refused(overrides: Partial<RefusedLapCompleted> = {}): LapCompletedSnapshot {
+  return {
+    lap: 5,
+    isBest: false,
+    isFirstValid: false,
+    lapIsValid: false,
+    bestLapTime: 94.8,
+    previousBestLapTime: 94.8,
     ...overrides,
   };
 }
@@ -298,6 +317,18 @@ describe("lap-time scenario", () => {
     fire(snap({ lapTime: 63.4, isBest: false }));
 
     expect(voicePaths()).toEqual([]);
+  });
+
+  it("does not fire on a lap the sim did not count (#1582), with or without a time reported for it", () => {
+    everyLapEnabled = false;
+    fire(refused({ sessionType: "qualifying" }));
+    fire(refused({ lap: 6, sessionType: "qualifying", lapTime: 63.4 }));
+
+    expect(voicePaths()).toEqual([]);
+
+    // The positive control: the same lap counted as a best is read out.
+    fire(snap({ lap: 7, lapTime: 63.4, sessionType: "qualifying" }));
+    expect(hasClip("/lap-time-intro/best-lap-yet.mp3")).toBe(true);
   });
 
   it("stays silent when the minute component has no clip (11:05.5, no 11.mp3 staged)", () => {
@@ -591,7 +622,7 @@ describe("the every-lap callout (issue #1163)", () => {
   }
 
   /** A lap that is not a personal best, so the best-lap call does not own it. */
-  const plain = (overrides: Partial<LapCompletedSnapshot> = {}): LapCompletedSnapshot =>
+  const plain = (overrides: Partial<CountedLapCompleted> = {}): LapCompletedSnapshot =>
     snap({ isBest: false, isFirstValid: false, ...overrides });
 
   it("reads 1:23.456 as the intro, the clock phrase 1m23 and the thousandths 456", () => {
@@ -697,12 +728,24 @@ describe("the every-lap callout (issue #1163)", () => {
     expect(voicePaths()).toEqual([]);
   });
 
-  it("speaks in practice and qualifying, and an invalid lap too", () => {
+  it("speaks in practice and qualifying", () => {
     fire(plain({ lapTime: 95.1, sessionType: "practice" }));
     expect(lastLine()[0]).toBe("lap-time-last/intro");
 
     audio._played.length = 0;
-    fire(plain({ lap: 6, lapTime: 95.1, sessionType: "qualifying", lapIsValid: false }));
+    fire(plain({ lap: 6, lapTime: 95.1, sessionType: "qualifying" }));
+    expect(lastLine()[0]).toBe("lap-time-last/intro");
+  });
+
+  it("is silent on a lap the sim did not count (#1582), with or without a time reported for it", () => {
+    fire(refused({ sessionType: "qualifying" }));
+    fire(refused({ lap: 6, sessionType: "race" }));
+    fire(refused({ lap: 7, sessionType: "practice", lapTime: 95.1 }));
+
+    expect(voicePaths()).toEqual([]);
+
+    // The positive control: the next lap, counted, is read out.
+    fire(plain({ lap: 8, lapTime: 95.1, sessionType: "practice" }));
     expect(lastLine()[0]).toBe("lap-time-last/intro");
   });
 

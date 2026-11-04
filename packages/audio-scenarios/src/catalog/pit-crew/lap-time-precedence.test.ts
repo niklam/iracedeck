@@ -12,7 +12,7 @@ import { AudioChannel } from "@iracedeck/audio-service";
 import { createFakeAudio } from "@iracedeck/audio-service/testing";
 import type { CalloutScript, CalloutScriptEntry } from "@iracedeck/callout-script";
 import { calloutKey, FASTEST_LAP_CALLOUTS, LAP_TIME_CALLOUTS } from "@iracedeck/callout-settings";
-import type { IEventBus, SimEventName, SimEventOf } from "@iracedeck/event-bus";
+import type { CountedLapCompleted, IEventBus, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 import type { AudioAssetsManifest } from "../../interpreter.js";
@@ -24,7 +24,7 @@ import { _resetPitSpeedingEngine } from "./pit-speeding-engine.js";
 import { _resetRadarEngine } from "./radar-engine.js";
 import { _resetSpotterEngine } from "./spotter-engine.js";
 
-function lap(overrides: Partial<LapCompletedSnapshot> = {}): LapCompletedSnapshot {
+function lap(overrides: Partial<CountedLapCompleted> = {}): LapCompletedSnapshot {
   return { lap: 5, lapTime: 83.4, isBest: false, isFirstValid: false, sessionType: "race", ...overrides };
 }
 

@@ -12,10 +12,9 @@ import {
   diffFastestLap,
   FASTEST_LAP_HOLD_MAX_MS,
   isEligibleRecordLap,
-  LAP_TIME_REFRESH_ALLOWANCE_MS,
   resolvePlayerFastestLap,
 } from "./fastest-lap.js";
-import { LAP_RESULTS_SYNC_MAX_WAIT_MS } from "./laps.js";
+import { LAP_RESULTS_SYNC_MAX_WAIT_MS, LAP_TIME_REFRESH_ALLOWANCE_MS } from "./laps.js";
 import type { PendingEvent } from "./types.js";
 
 const PLAYER = 0;
@@ -399,18 +398,18 @@ describe("the player's judge (decision 2)", () => {
     ({ state, field } = seededState());
   });
 
-  function judge(lap: number, lapTime: number, lapIsValid: boolean | undefined, opts: RunOptions = {}): boolean {
+  function judge(lap: number, lapTime: number, opts: RunOptions = {}): boolean {
     return createFastestLapJudge(
       state,
       field as unknown as TelemetryData,
       opts.sessionInfo === undefined ? SESSION_INFO : opts.sessionInfo,
       opts.player ?? PLAYER,
       opts.isRace ?? true,
-    )(lap, lapTime, lapIsValid);
+    )(lap, lapTime);
   }
 
-  it("a faster valid lap takes the record for the player and leaves the claim", () => {
-    expect(judge(4, 89.5, true)).toBe(true);
+  it("a faster lap takes the record for the player and leaves the claim", () => {
+    expect(judge(4, 89.5)).toBe(true);
     expect(state.fastestLapRecord).toEqual({ lapTime: 89.5, carIdx: PLAYER, isPlayer: true, carNumber: "1" });
     expect(state.fastestLapClaim).toEqual({
       lap: 4,
@@ -419,18 +418,13 @@ describe("the player's judge (decision 2)", () => {
     });
   });
 
-  it("an unknown validity counts as valid", () => {
-    expect(judge(4, 89.5, undefined)).toBe(true);
-  });
-
   it.each([
-    ["an invalid lap", 4, 89.5, false, {}],
-    ["a slower lap", 4, 90.5, true, {}],
-    ["an equal lap", 4, 90, true, {}],
-    ["a non-race session", 4, 89.5, true, { isRace: false }],
-    ["an unresolved player", 4, 89.5, true, { player: -1 }],
-  ] as const)("refuses %s, leaving the record and no claim", (_name, lap, lapTime, lapIsValid, opts) => {
-    expect(judge(lap, lapTime, lapIsValid, opts)).toBe(false);
+    ["a slower lap", 4, 90.5, {}],
+    ["an equal lap", 4, 90, {}],
+    ["a non-race session", 4, 89.5, { isRace: false }],
+    ["an unresolved player", 4, 89.5, { player: -1 }],
+  ] as const)("refuses %s, leaving the record and no claim", (_name, lap, lapTime, opts) => {
+    expect(judge(lap, lapTime, opts)).toBe(false);
     expect(state.fastestLapRecord).toMatchObject({ carIdx: 1, lapTime: 90 });
     expect(state.fastestLapClaim).toBeNull();
   });
@@ -438,7 +432,7 @@ describe("the player's judge (decision 2)", () => {
   it("refuses a pre-green tick", () => {
     field.SessionState = SessionState.ParadeLaps;
 
-    expect(judge(4, 89.5, true)).toBe(false);
+    expect(judge(4, 89.5)).toBe(false);
     expect(state.fastestLapClaim).toBeNull();
   });
 
@@ -449,7 +443,7 @@ describe("the player's judge (decision 2)", () => {
     expect(empty.fastestLapRecord).toBeNull();
 
     const judgeOn = (lap: number): boolean =>
-      createFastestLapJudge(empty, parade as unknown as TelemetryData, SESSION_INFO, PLAYER, true)(lap, 200, true);
+      createFastestLapJudge(empty, parade as unknown as TelemetryData, SESSION_INFO, PLAYER, true)(lap, 200);
 
     expect(judgeOn(0)).toBe(false);
     expect(empty.fastestLapRecord).toBeNull();
@@ -462,14 +456,14 @@ describe("the player's judge (decision 2)", () => {
     const parade = makeField();
     run(empty, parade);
 
-    expect(
-      resolvePlayerFastestLap(empty, parade as unknown as TelemetryData, SESSION_INFO, PLAYER, true, 1, 95, true),
-    ).toBe(true);
+    expect(resolvePlayerFastestLap(empty, parade as unknown as TelemetryData, SESSION_INFO, PLAYER, true, 1, 95)).toBe(
+      true,
+    );
     expect(empty.fastestLapClaim).toMatchObject({ lap: 1, previous: null });
   });
 
   it("the claim is published on the same tick, right away, with the player's lap as the lap count, then cleared", () => {
-    judge(4, 89.5, true);
+    judge(4, 89.5);
 
     const events = fastestLapEvents(run(state, field));
 
@@ -492,7 +486,7 @@ describe("the player's judge (decision 2)", () => {
   });
 
   it("a claim is published before any gate of the diff: on a non-race or pre-green tick too, and never on the next tick", () => {
-    judge(4, 89.5, true);
+    judge(4, 89.5);
     field.SessionState = SessionState.ParadeLaps;
 
     expect(fastestLapEvents(run(state, field, { isRace: false }))).toHaveLength(1);
@@ -502,7 +496,7 @@ describe("the player's judge (decision 2)", () => {
   });
 
   it("a remote car beating the player's record names the player as the beaten holder", () => {
-    judge(4, 89.5, true);
+    judge(4, 89.5);
     run(state, field);
 
     field.CarIdxBestLapTime[2] = 89;
@@ -513,7 +507,7 @@ describe("the player's judge (decision 2)", () => {
   });
 
   it("the player's best refreshing to the claimed time afterwards emits nothing", () => {
-    judge(4, 89.5, true);
+    judge(4, 89.5);
     run(state, field);
     field.CarIdxBestLapTime[PLAYER] = 89.5;
 
@@ -624,7 +618,7 @@ describe("diffFastestLap — the hold while the player's lap awaits judgement", 
       SESSION_INFO,
       PLAYER,
       true,
-    )(lap, lapTime, true);
+    )(lap, lapTime);
     state.lastLapCompletedCounter = lap;
 
     return passed;

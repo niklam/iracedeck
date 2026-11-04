@@ -57,6 +57,8 @@
  *   - **Cadence hit** — `lapsSincePositionChange > 0 && % 3 === 0`. The diff
  *     omits `lapsSincePositionChange` entirely when no baseline anchors exist
  *     (e.g. position not yet resolvable); the predicate then returns false.
+ *     A lap the sim did not count (issue #1582) counts like any other: the
+ *     cadence reads no lap time.
  *   - **Position in announceable range** — guards against junk telemetry; the
  *     pole-callout pattern from #566 stays consistent here too.
  *

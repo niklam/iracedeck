@@ -3,6 +3,7 @@
  * functions in `lap-announcement.ts`. The integration over the real
  * `registerPitCrew` is `lap-time-precedence.test.ts`.
  */
+import type { CountedLapCompleted, RefusedLapCompleted } from "@iracedeck/event-bus";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -15,8 +16,13 @@ import {
 } from "./lap-announcement.js";
 import type { LapCompletedSnapshot } from "./lap-time.js";
 
-function lap(overrides: Partial<LapCompletedSnapshot> = {}): LapCompletedSnapshot {
+function lap(overrides: Partial<CountedLapCompleted> = {}): LapCompletedSnapshot {
   return { lap: 5, lapTime: 83.4, isBest: false, isFirstValid: false, sessionType: "race", ...overrides };
+}
+
+/** A lap the sim did not count (#1582): no time, never a best. */
+function refused(overrides: Partial<RefusedLapCompleted> = {}): LapCompletedSnapshot {
+  return { lap: 5, isBest: false, isFirstValid: false, lapIsValid: false, sessionType: "race", ...overrides };
 }
 
 const ALL_ON: LapOwnerFlags = { fastestLap: true, bestLap: true, everyLap: true };
@@ -86,6 +92,14 @@ describe("playerLapOwner (#1571, decision 7; #1163)", () => {
     const off = { fastestLap: false, bestLap: false, everyLap: false };
 
     for (const l of [fastest, best, plain]) expect(playerLapOwner(l, off)).toBeNull();
+  });
+
+  it("names no owner for a lap the sim did not count, with every tier on (#1582)", () => {
+    expect(playerLapOwner(refused(), ALL_ON)).toBeNull();
+    // Another sim's translator may report a time for a refused lap; it still has no owner.
+    expect(playerLapOwner(refused({ lapTime: 83.4 }), ALL_ON)).toBeNull();
+    // The positive control: the same lap counted goes to the every-lap call.
+    expect(playerLapOwner(lap({ lapIsValid: true }), ALL_ON)).toBe("every-lap");
   });
 
   it("over the whole matrix answers the precedence, tier by tier", () => {

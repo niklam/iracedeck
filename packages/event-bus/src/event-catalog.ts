@@ -380,6 +380,164 @@ export type QualifyingInvalidationSnapshot = {
 };
 
 /**
+ * The fields every `lap.completed` carries, counted or refused (issue #1582).
+ */
+export type LapCompletedCommon = {
+  /** The number of the lap just completed: the driver's completed-lap count after it. */
+  lap: number;
+  /** The driver's session best after this lap, in seconds, if there is one. */
+  bestLapTime?: number;
+  /** The driver's session best before this lap, in seconds, if there was one. */
+  previousBestLapTime?: number;
+  /**
+   * Laps remaining in the session, including the lap in progress, if
+   * lap-limited. Absent when the session has no lap
+   * cap. A session can carry both limits; this field does not say which
+   * one ends it.
+   */
+  lapsRemaining?: number;
+  /**
+   * Time remaining in the session in seconds, if time-limited. Absent when the session has no clock, and also once a
+   * timed race's clock has run past zero. A session can carry both
+   * limits; this field does not say which one ends it.
+   */
+  timeRemaining?: number;
+  /** Current session type, if resolvable. */
+  sessionType?: "practice" | "qualifying" | "race";
+  /**
+   * Overall position at lap completion (issue #566), standings-first: the
+   * sim's official standings once they include this lap, else the live
+   * running position when the standings have not caught up within the
+   * translator's wait. Omitted entirely when neither has a valid position. Together with {@link previousPosition} powers the
+   * position-change callout. `classPosition` is the parallel field for
+   * multi-class series — consumers decide which to use via {@link isMultiClass}.
+   */
+  position?: number;
+  /**
+   * Overall position before this lap (issue #566): the {@link position} of
+   * the session's previous `lap.completed` that carried one, counted or
+   * refused. `undefined` until one has, so on the driver's first
+   * positioned lap of the session; the position-change callout treats "no
+   * previous position" as a "better" trigger.
+   */
+  previousPosition?: number;
+  /**
+   * Class position at lap completion (issue #566), 1-indexed, sourced like
+   * {@link position} and with the same omission semantics.
+   */
+  classPosition?: number;
+  /**
+   * Class position before this lap (issue #566), carried like
+   * {@link previousPosition}.
+   */
+  previousClassPosition?: number;
+  /**
+   * True iff the current session has more than one car class on track
+   * (issue #566), the pace car not counted. Position-aware callouts use this to pick
+   * `classPosition` over `position`.
+   */
+  isMultiClass?: boolean;
+  /**
+   * Number of laps completed since the driver's effective position last
+   * changed (issue #569). `0` on the lap where the change was detected,
+   * `1` on the next lap, etc. Omitted when no baseline has been
+   * established (e.g. driver's first valid lap of the session).
+   *
+   * The race-status callout uses this to fire the every-3-laps
+   * status update during races: a value of N where `N > 0 && N % 3 === 0`
+   * triggers the announcement.
+   *
+   * "Effective" position uses the same class-vs-overall pick as the
+   * other position fields above (driven by {@link isMultiClass}).
+   */
+  lapsSincePositionChange?: number;
+  /**
+   * True when a full-course caution was out at ANY point during this lap
+   * (issue #1127). Optional, and only ever present as `true`: a lap run
+   * wholly under green omits it, so every consumer that predates the
+   * field reads exactly what it always did. Derived from the translator's
+   * own caution phase, not from the raw caution bits. It exists because
+   * the lap that ENDS a caution is completed AFTER the green — 2.2–11.6 s
+   * after it across the committed captures — so a consumer that only asks
+   * "is a caution out now" when this event arrives would treat the last
+   * caution lap as a green one. The lap-time, position-change and
+   * race-status callouts refuse a lap carrying it (the race status since
+   * issue #1171).
+   */
+  wasCaution?: boolean;
+  /**
+   * The lap started on pit road (issue #1163): the car was on pit road at
+   * the start/finish crossing that opened it, the lap out of the pits.
+   * Only ever present as `true`, like `wasCaution`. The every-lap call is
+   * silent on a lap carrying it: an out lap does not describe pace. One
+   * definition with the fuel tracker's out lap (`diff/pit-lap.ts` in the
+   * iRacing translator).
+   */
+  isOutLap?: true;
+  /**
+   * The lap ended on pit road (issue #1163): the car entered pit road
+   * during the lap after having been off it, the lap into the pits. Only
+   * ever present as `true`, like `wasCaution`. The every-lap call is
+   * silent on a lap carrying it: an in lap does not describe pace. One
+   * definition with the fuel tracker's in lap (`diff/pit-lap.ts` in the
+   * iRacing translator).
+   */
+  isInLap?: true;
+};
+
+/**
+ * A lap the sim counted: it has a time (issue #555).
+ */
+export type CountedLapCompleted = LapCompletedCommon & {
+  /** The lap time in seconds. */
+  lapTime: number;
+  /**
+   * True iff the sim's own session best moved to this lap (issue #1582). A
+   * lap the sim times but does not take as a best is not one, however fast.
+   */
+  isBest: boolean;
+  /** True iff this is the first lap of the session to set a sim best: `isBest` with no best before it. */
+  isFirstValid: boolean;
+  /**
+   * The sim counted this lap (issue #1582). Optional so a payload that
+   * predates the refused shape stays valid; absent and `true` mean the same.
+   */
+  lapIsValid?: true;
+  /**
+   * In the player's class, this lap set a new fastest lap of the race
+   * (issue #1571). Race sessions only; only ever present as `true`.
+   *
+   * Pairing rule, kept by every translator: a `lap.completed` carrying this
+   * field is paired with exactly one `fastestLap.set` with `isPlayer: true`
+   * and the same `lap`, and no `fastestLap.set` with `isPlayer: true` is
+   * published without it. The order of the two on the bus is not guaranteed.
+   */
+  isClassFastestLapOfRace?: true;
+};
+
+/**
+ * A lap the sim did not count (issue #1582): a track-limits cut, say. It is
+ * never a best and never the fastest lap of the race; `bestLapTime` /
+ * `previousBestLapTime` carry the standing best.
+ */
+export type RefusedLapCompleted = LapCompletedCommon & {
+  /**
+   * The time the sim reports for the lap, when it reports one; a translator
+   * whose sim reports none omits it. A consumer that would speak or compare
+   * a lap time narrows on `lapIsValid`, never on whether this is present.
+   */
+  lapTime?: number;
+  isBest: false;
+  isFirstValid: false;
+  /** The sim did not count this lap. */
+  lapIsValid: false;
+  isClassFastestLapOfRace?: never;
+};
+
+/** The `lap.completed` payload: a counted lap or a refused one, told apart by `lapIsValid`. */
+export type LapCompletedData = CountedLapCompleted | RefusedLapCompleted;
+
+/**
  * Discriminated union of every event the bus knows about, keyed by event
  * name. Each entry binds an event name to its payload type — adding an
  * event means adding an entry here.
@@ -883,163 +1041,21 @@ export type SimEventMap = {
   "engine.startup": SimEvent<"engine.startup", EmptySimEventPayload>;
   "lap.started": SimEvent<"lap.started", { lap: number }>;
   /**
-   * A timed lap was just completed (issue #555). Fires once per lap when the
-   * sim publishes `LapLastLapTime` for the lap just crossed at S/F. Carries a
-   * rich payload so future lap-related callouts (delta-to-PB, consistency,
-   * pace, time-remaining) can subscribe without further bus changes.
+   * The player completed a lap (issues #555, #1582): one event per lap the
+   * player completes, counted or refused, never two for the same lap. A
+   * counted lap fires once the sim has published its time; a lap the sim did
+   * not count fires with `lapIsValid: false` (see {@link RefusedLapCompleted}).
+   * Carries a rich payload so lap-related callouts can subscribe without
+   * further bus changes. Not emitted for a pace or formation lap.
    *
-   * `isBest` is true iff this lap is the new session best (the sim's
-   * `LapBestLapTime` strictly decreased on this transition or transitioned
-   * 0 → non-zero). `isFirstValid` is true iff the driver had no prior best
-   * lap before this transition — used by the engineer voice to switch the
-   * intro line ("That was your best lap yet" vs "That lap was"). Both flags
-   * may be true simultaneously on the driver's first valid lap of a session.
-   *
-   * Sentinel suppression: the translator must not emit for pace laps
-   * (`LapCompleted < 0`) or for ticks where `LapLastLapTime <= 0`.
+   * Every verdict on the lap is the sim's own (Niklas, 2026-11-02): `isBest`
+   * is the sim's session best moving to this lap, `isFirstValid` marks the
+   * first lap of the session to set one — used by the engineer voice to
+   * switch the intro line ("That was your best lap yet" vs "That lap was") —
+   * and `lapIsValid` is whether the sim counted the lap. Both flags are true
+   * on the session's first best.
    */
-  "lap.completed": SimEvent<
-    "lap.completed",
-    {
-      /** Lap number just completed (`LapCompleted`). */
-      lap: number;
-      /** Lap time in seconds (`LapLastLapTime`). */
-      lapTime: number;
-      /** True iff this lap is the new session best. */
-      isBest: boolean;
-      /** True iff this is the driver's first valid lap of the session. */
-      isFirstValid: boolean;
-      /** Current session best after this lap, if any. */
-      bestLapTime?: number;
-      /** Session best before this lap, if there was one. */
-      previousBestLapTime?: number;
-      /**
-       * Laps remaining in the session (`SessionLapsRemainEx`, including the
-       * lap in progress), if lap-limited. Absent when the session has no lap
-       * cap. A session can carry both limits; this field does not say which
-       * one ends it.
-       */
-      lapsRemaining?: number;
-      /**
-       * Time remaining in the session in seconds (`SessionTimeRemain`), if
-       * time-limited. Absent when the session has no clock, and also once a
-       * timed race's clock has run past zero. A session can carry both
-       * limits; this field does not say which one ends it.
-       */
-      timeRemaining?: number;
-      /** Current session type, if resolvable. */
-      sessionType?: "practice" | "qualifying" | "race";
-      /**
-       * Overall position at lap completion (issue #566). The sim translator
-       * sources this **standings-first** from
-       * `SessionInfo.Sessions[current].ResultsPositions[player].Position`, with
-       * a fallback to the live `PlayerCarPosition` telemetry field when
-       * standings haven't caught up to the lap counter within the
-       * sync-wait timeout. Omitted entirely when neither source has a valid
-       * position. Together with {@link previousPosition} powers the
-       * position-change callout. `classPosition` is the parallel field for
-       * multi-class series — consumers decide which to use via {@link isMultiClass}.
-       */
-      position?: number;
-      /**
-       * Overall position before this lap, if a baseline was established
-       * (issue #566). Captured from the previous emission's resolved
-       * {@link position} (whichever source it came from). `undefined` on the
-       * driver's first valid lap of the session — combined with `isFirstValid`,
-       * the position-change scenario treats "no previous position" as a
-       * "better" trigger.
-       */
-      previousPosition?: number;
-      /**
-       * Class position at lap completion (issue #566). Standings-first
-       * (`ResultsPositions[player].ClassPosition`, converted from iRacing's
-       * 0-indexed value to 1-indexed on the wire) with a fallback to live
-       * `PlayerCarClassPosition` telemetry. Same omission semantics as {@link position}.
-       */
-      classPosition?: number;
-      /**
-       * Class position before this lap, if a baseline was established (issue #566).
-       * Captured from the previous emission's resolved {@link classPosition}.
-       */
-      previousClassPosition?: number;
-      /**
-       * True iff the current session has more than one car class on track
-       * (issue #566). Derived from `SessionInfo.DriverInfo.Drivers[].CarClassID`
-       * with the pace car filtered out. Position-aware callouts use this to pick
-       * `classPosition` over `position`.
-       */
-      isMultiClass?: boolean;
-      /**
-       * Number of laps completed since the driver's effective position last
-       * changed (issue #569). `0` on the lap where the change was detected,
-       * `1` on the next lap, etc. Omitted when no baseline has been
-       * established (e.g. driver's first valid lap of the session).
-       *
-       * The race-status callout uses this to fire the every-3-laps
-       * status update during races: a value of N where `N > 0 && N % 3 === 0`
-       * triggers the announcement.
-       *
-       * "Effective" position uses the same class-vs-overall pick as the
-       * other position fields above (driven by {@link isMultiClass}).
-       */
-      lapsSincePositionChange?: number;
-      /**
-       * True iff iRacing considers the just-completed lap valid for standings
-       * purposes (no track-limits invalidation, no pit-lane violation, etc.).
-       * Derived from `LapDeltaToBestLap_OK` and the session-best/optimal/last
-       * variants at the lap-completion tick (issue #572). `undefined` when
-       * the translator can't determine validity — consumers should treat
-       * `undefined` as valid (don't suppress callouts on a missing signal).
-       *
-       * The position-change callout uses this to prefix the readout with
-       * "That lap didn't count." and force the worse-framing intro when the
-       * lap is invalid.
-       */
-      lapIsValid?: boolean;
-      /**
-       * True when a full-course caution was out at ANY point during this lap
-       * (issue #1127). Optional, and only ever present as `true`: a lap run
-       * wholly under green omits it, so every consumer that predates the
-       * field reads exactly what it always did. Derived from the translator's
-       * own caution phase, not from the raw caution bits. It exists because
-       * the lap that ENDS a caution is completed AFTER the green — 2.2–11.6 s
-       * after it across the committed captures — so a consumer that only asks
-       * "is a caution out now" when this event arrives would treat the last
-       * caution lap as a green one. The lap-time, position-change and
-       * race-status callouts refuse a lap carrying it (the race status since
-       * issue #1171).
-       */
-      wasCaution?: boolean;
-      /**
-       * In the player's class, this lap set a new fastest lap of the race
-       * (issue #1571). Race sessions only; only ever present as `true`.
-       *
-       * Pairing rule, kept by every translator: a `lap.completed` carrying this
-       * field is paired with exactly one `fastestLap.set` with `isPlayer: true`
-       * and the same `lap`, and no `fastestLap.set` with `isPlayer: true` is
-       * published without it. The order of the two on the bus is not guaranteed.
-       */
-      isClassFastestLapOfRace?: true;
-      /**
-       * The lap started on pit road (issue #1163): the car was on pit road at
-       * the start/finish crossing that opened it, the lap out of the pits.
-       * Only ever present as `true`, like `wasCaution`. The every-lap call is
-       * silent on a lap carrying it: an out lap does not describe pace. One
-       * definition with the fuel tracker's out lap (`diff/pit-lap.ts` in the
-       * iRacing translator).
-       */
-      isOutLap?: true;
-      /**
-       * The lap ended on pit road (issue #1163): the car entered pit road
-       * during the lap after having been off it, the lap into the pits. Only
-       * ever present as `true`, like `wasCaution`. The every-lap call is
-       * silent on a lap carrying it: an in lap does not describe pace. One
-       * definition with the fuel tracker's in lap (`diff/pit-lap.ts` in the
-       * iRacing translator).
-       */
-      isInLap?: true;
-    }
-  >;
+  "lap.completed": SimEvent<"lap.completed", LapCompletedData>;
   /**
    * A new fastest lap of the race in the player's class (issue #1571): a car,
    * the player's included, completed a lap faster than any lap run in that

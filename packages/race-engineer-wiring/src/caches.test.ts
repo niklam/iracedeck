@@ -63,6 +63,45 @@ describe("subscribeRaceEngineerCaches", () => {
     expect(caches.lastIncidentAt()).toBe(1_000);
   });
 
+  describe("a lap the sim did not count (issue #1582)", () => {
+    /** A root logger whose LapCompleted scope records its info lines. */
+    function recordingLogger(lines: string[]) {
+      const scope = { ...silentLogger, info: (message: string) => void lines.push(message) };
+
+      return { ...silentLogger, createScope: (name: string) => (name === "LapCompleted" ? scope : silentLogger) };
+    }
+
+    it("caches the refused payload, which carries no time, and logs it as refused", () => {
+      const lines: string[] = [];
+      const { bus, emit } = fakeBus();
+      const caches = subscribeRaceEngineerCaches(bus as never, recordingLogger(lines));
+      const refused = {
+        lap: 1,
+        isBest: false,
+        isFirstValid: false,
+        lapIsValid: false,
+        sessionType: "qualifying",
+        position: 4,
+      };
+
+      emit("lap.completed", refused);
+
+      expect(caches.lapCompleted()).toBe(refused);
+      expect(lines).toHaveLength(1);
+      expect(lines[0]).toContain("lap=1 time=refused ");
+    });
+
+    it("logs a counted lap's time (the positive control)", () => {
+      const lines: string[] = [];
+      const { bus, emit } = fakeBus();
+      subscribeRaceEngineerCaches(bus as never, recordingLogger(lines));
+
+      emit("lap.completed", { lap: 2, lapTime: 92.5, isBest: true, isFirstValid: true });
+
+      expect(lines[0]).toContain("lap=2 time=92.500 ");
+    });
+  });
+
   describe("the lap.completed snapshot across a session change (issue #1571, decision 9)", () => {
     /**
      * The speak-gate comparison the fastest-lap and every-lap calls make over
