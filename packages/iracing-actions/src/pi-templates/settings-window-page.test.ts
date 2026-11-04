@@ -109,6 +109,17 @@ describe("the Race Engineer Callouts card (#1376)", () => {
 });
 
 /**
+ * The Mouse to Sim card's defaults and bounds are held to `@iracedeck/app-constants`
+ * in `pi-components`' `global-common-mouse-pointer-partial.test.ts` (#1029); that
+ * covers what the window ships only while the window includes that partial.
+ */
+describe("the Mouse to Sim card (#1029)", () => {
+  it("is the partial whose defaults and bounds are held to the constants", () => {
+    expect(source).toContain("include('global-common-mouse-pointer')");
+  });
+});
+
+/**
  * The settings window is served BY the settings server, so a banner saying that
  * server never started is disproved by the page the user is reading it on, and
  * the OPEN-failure note is advice about a button that page does not have
