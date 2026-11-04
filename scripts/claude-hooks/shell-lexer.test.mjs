@@ -348,3 +348,52 @@ describe("the program word is read as the program it runs (#1606)", () => {
     expect(powershellAsBash("Write-Output GH")).toBe("write-output GH");
   });
 });
+
+// #1606: git takes global options between `git` and its verb, and every trap
+// hand-rolled its own prefix, which knew `-C` at most.
+describe("git's global options (#1606)", () => {
+  const verb = (v) => cmd(new RegExp(String.raw`git${lexer.GIT_GLOBALS}${v}\b`));
+  it.each([
+    "git commit",
+    "git -c user.name=x commit",
+    "git -c 'user.name=a b' commit",
+    "git --no-pager commit",
+    "git -p -P --paginate --bare commit",
+    "git --git-dir=.git commit",
+    "git --git-dir .git commit",
+    "git --work-tree=. commit",
+    "git --work-tree . commit",
+    `git -C "a b" commit`,
+    "git -C 'a b' commit",
+    "git -C a\\ b commit",
+    "git -C a -C b commit",
+    "git --namespace=x --config-env=a.b=C --super-prefix=p --attr-source=HEAD commit",
+    "git --exec-path commit",
+    "git --exec-path=/x commit",
+    "git --list-cmds=main commit",
+    "git --no-replace-objects --literal-pathspecs --glob-pathspecs --noglob-pathspecs --icase-pathspecs commit",
+    "git --no-optional-locks --no-advice --no-lazy-fetch commit",
+    "x && git -c a=b -C ../ir-5 --no-pager commit -m y",
+  ])("matches the verb after them: %s", (command) => expect(verb("commit").test(trustedMask(command))).toBe(true));
+
+  it.each([
+    "git log commit",
+    "git -C commit",
+    "git -C -x commit",
+    "git --list-cmds commit",
+    "git --no-pagerx commit",
+    `echo "git -c a=b commit"`,
+  ])("does not take an argument or a mention for the verb: %s", (command) =>
+    expect(verb("commit").test(trustedMask(command))).toBe(false),
+  );
+
+  it("reads a long run of options in linear time", () => {
+    for (const n of [30, 4000])
+      for (const unit of ["-c a=b ", "--no-pager ", "-C x "]) {
+        const command = `git ${unit.repeat(n)}status`;
+        const started = Date.now();
+        expect(verb("commit").test(command)).toBe(false);
+        expect(Date.now() - started, `${n} × "${unit}"`).toBeLessThan(200);
+      }
+  });
+});

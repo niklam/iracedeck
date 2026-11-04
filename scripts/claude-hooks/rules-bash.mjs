@@ -35,6 +35,7 @@ import {
   COMMAND_LEAD,
   commandEnd,
   GIT_C_RE,
+  GIT_GLOBALS,
   gitCwd,
   has,
   maskInert,
@@ -263,11 +264,19 @@ const specExistsFor = (files, issue) => files.some((f) => new RegExp(`-issue-${i
 
 // ---------------------------------------------------------------------------
 
+/**
+ * A git command with verb `verb` (a regex source) at command position, read
+ * through every global option git takes ahead of it (`GIT_GLOBALS` in
+ * `shell-lexer.mjs`, #1606). Every git trap is built here, so none hand-rolls
+ * its own prefix again.
+ */
+const gitVerb = (verb) => cmd(new RegExp(`git${GIT_GLOBALS}${verb}`));
+
 /** The git shapes whose rules read a `-C`; exported so the post-hook scopes the same way. */
-export const GIT_PUSH = cmd(/git\s+(-C\s+\S+\s+)?push\b/);
-export const GIT_COMMIT = cmd(/git\s+(-C\s+\S+\s+)?commit\b/);
-export const GIT_WORKTREE_ADD = cmd(/git\s+(?:-C\s+\S+\s+)?worktree\s+add\b(.*)$/);
-export const GIT_WORKTREE_REMOVE = cmd(/git\s+(?:-c\s+\S+\s+)?(?:-C\s+\S+\s+)?worktree\s+remove\b(.*)$/);
+export const GIT_PUSH = gitVerb(String.raw`push\b`);
+export const GIT_COMMIT = gitVerb(String.raw`commit\b`);
+export const GIT_WORKTREE_ADD = gitVerb(String.raw`worktree\s+add\b(.*)$`);
+export const GIT_WORKTREE_REMOVE = gitVerb(String.raw`worktree\s+remove\b(.*)$`);
 
 /**
  * Issue number of an `ir-<n>` worktree path, read off its LAST segment — the
@@ -1241,7 +1250,7 @@ export const rules = [
     name: "git show <ref/with/slash>:<dot-path> is mangled by MSYS",
     bashOnly: true,
     test: (c) =>
-      [...matchesAt(c, cmd(/git\s+show\b([^|&;\n]*)/))].some(
+      [...matchesAt(c, gitVerb(String.raw`show\b([^|&;\n]*)`))].some(
         (m) =>
           /(?:^|\s)\S*\/\S*:\./.test(m[1]) && !/MSYS_NO_PATHCONV/.test(trustedMask(c).slice(0, m.index + m[0].length)),
       ) &&
@@ -1250,7 +1259,7 @@ export const rules = [
   {
     name: "git diff master..HEAD is the wrong question",
     test: (c) =>
-      has(c, cmd(/git\s+(-C\s+\S+\s+)?diff\b[^|&;]*\s(origin\/)?master\.\.[^.\s]/)) &&
+      has(c, gitVerb(String.raw`diff\b[^|&;]*\s(origin\/)?master\.\.[^.\s]`)) &&
       "`git diff master..X` diffs the two tips and returns master's own commits inverted. Use `origin/master...HEAD` (three dots, from the merge base).",
   },
 ];
@@ -1680,7 +1689,7 @@ function pathspecCovers(token, target, ctx, dir) {
   return target === rel || target.startsWith(`${rel}/`);
 }
 
-const GIT_ADD = cmd(/git\s+(?:-C\s+\S+\s+)?add\b/);
+const GIT_ADD = gitVerb(String.raw`add\b`);
 
 /**
  * Where the `git commit` matched as `commit` (a {@link chainCommands} result,

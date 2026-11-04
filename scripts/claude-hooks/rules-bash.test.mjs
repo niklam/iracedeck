@@ -4020,3 +4020,53 @@ describe("every spelling of a program reaches the guards that name it (#1606)", 
     });
   });
 });
+
+// #1606: every git trap hand-rolled `git` plus at most a `-C` before its verb,
+// so `git -c user.name=x commit` skipped the spec-commit deny outright.
+describe("every git trap reads git's global options (#1606)", () => {
+  // The options that leave the repository where it is; --git-dir and
+  // --work-tree, which move it, are below.
+  const SAME_TREE = ["-c user.name=x", "--no-pager", "-p", `-C "a b"`, "-C a -C b", "--exec-path=/x"];
+  const ALL = [...SAME_TREE, "--git-dir=.git", "--work-tree=."];
+  const onBranch = (o = {}) => ctx({ branch: () => "fix/5-x", staged: () => [], ...o });
+  const SPEC = "docs/superpowers/specs/a.md";
+
+  it.each(SAME_TREE)("the spec commit, the lockfile and the manifest rules read git %s commit", (g) => {
+    expect(deny(`git ${g} commit -m x`, onBranch({ staged: () => [SPEC] }))).toMatch(/never on a feature branch/);
+    expect(deny(`git ${g} add ${SPEC} && git ${g} commit -m x`, onBranch())).toMatch(/never on a feature branch/);
+    expect(
+      deny(`git ${g} commit -m x`, ctx({ staged: () => ["package.json"], modified: () => ["pnpm-lock.yaml"] })),
+    ).toMatch(/pnpm-lock/);
+    const manifest = ctx({
+      staged: () => [ELGATO_MANIFEST],
+      committedText: (d, f) => (f === ELGATO_MANIFEST ? `{"Nodejs":{"Debug":"${DEBUG_VALUE}"}}` : undefined),
+    });
+    expect(deny(`git ${g} commit -m x`, manifest)).toMatch(/Debug/);
+  });
+
+  it("denies the headline case: a -c ahead of a commit of a staged spec on a branch", () =>
+    expect(deny("git -c user.name=x commit -m x", onBranch({ staged: () => [SPEC] }))).toMatch(
+      /never on a feature branch/,
+    ));
+
+  it.each(ALL)("the tag-push ask, the diff trap and the MSYS show trap read git %s", (g) => {
+    expect(asks(`git ${g} push origin v3.2.0`)).toMatch(/release/);
+    expect(asks(`git ${g} push --tags`)).toMatch(/release/);
+    expect(deny(`git ${g} diff master..HEAD`)).toMatch(/wrong question|three dots/);
+    expect(deny(`git ${g} show origin/master:.claude/x.md`)).toMatch(/MSYS/);
+  });
+
+  it.each(SAME_TREE)("the integration push and the worktree rules read git %s", (g) => {
+    expect(deny(`git ${g} push origin integration`)).toMatch(/never pushed/);
+    expect(deny(`git ${g} worktree add .worktrees/ir-1`)).toMatch(/siblings/);
+    expect(
+      deny(
+        `git ${g} worktree remove ${tree("ir-1")}`,
+        ctx({ linkTargets: () => [{ host: "Stream Deck", target: tree("ir-1", "plugin") }] }),
+      ),
+    ).toMatch(/Stream Deck plugin link/);
+  });
+
+  it("the post-hook's worktree trigger reads them too", () =>
+    expect(worktreeAddTarget("git -c core.x=y --no-pager worktree add ../ir-5 -b fix/5-x")).toBe("../ir-5"));
+});

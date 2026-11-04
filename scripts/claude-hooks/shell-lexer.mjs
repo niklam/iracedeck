@@ -798,6 +798,41 @@ export const has = (command, re) => re.test(re.anchored ? trustedMask(command) :
  */
 export const COMMAND_LEAD = String.raw`(?:(?:if|then|do|else|elif|while|until|!|\{)\s+|(?:time|command|exec|env|nohup)(?:\s+(?:-[uCSa]|--unset|--chdir|--split-string)\s+[^\s-]\S*|\s+-\S+)*\s+|timeout(?:\s+(?:-[ks]|--kill-after|--signal)\s+[^\s-]\S*|\s+-\S+)*\s+\d[\d.]*[smhd]?\s+|xargs(?:\s+-[IdEeLnPs]\s+[^\s-]\S*|\s+-\S+)*\s+|\w+=\S*\s+)*`;
 
+/** One character run of a git option's value: a quoted run (`"___"` in the masked text) or an escape stays whole. */
+const GIT_VALUE_PART = String.raw`(?:"[^"]*"|'[^']*'|\\[\s\S]|[^\s\\"'])`;
+/** A git option's value in the next word, which never starts with `-` (the {@link COMMAND_LEAD} rule: one parse per token). */
+const GIT_VALUE = String.raw`(?:"[^"]*"|'[^']*'|\\[\s\S]|[^\s\\"'-])${GIT_VALUE_PART}*`;
+/** git's global options that take a value in the next word. */
+const GIT_VALUE_OPTIONS = String.raw`-C|-c|--git-dir|--work-tree|--namespace|--config-env|--super-prefix|--attr-source`;
+/** git's global options that take a value after `=`. */
+const GIT_EQ_OPTIONS = String.raw`--git-dir|--work-tree|--namespace|--config-env|--super-prefix|--attr-source|--exec-path|--list-cmds`;
+/** git's global options that take no value. */
+const GIT_FLAGS = String.raw`--no-pager|-p|--paginate|-P|--bare|--no-replace-objects|--literal-pathspecs|--glob-pathspecs|--noglob-pathspecs|--icase-pathspecs|--no-optional-locks|--no-advice|--no-lazy-fetch|--exec-path`;
+/** One global option, its name in group 1 or 3 and its value in group 2 or 4 ({@link gitGlobals}). */
+const GIT_OPTION = String.raw`(?:(${GIT_VALUE_OPTIONS})\s+(${GIT_VALUE})|(${GIT_EQ_OPTIONS})=(${GIT_VALUE_PART}*)|(?:${GIT_FLAGS})(?=\s))`;
+
+/**
+ * Every global option git takes between `git` and its verb (#1606), as a
+ * regex fragment: `git${GIT_GLOBALS}commit\b` is a commit whatever options
+ * come first — `-C <dir>` (any number of them), `-c <key=value>`,
+ * `--git-dir`, `--work-tree`, `--namespace`, `--config-env`, `--super-prefix`
+ * and `--attr-source` with a value in the next word or after `=`,
+ * `--exec-path[=…]`, `--list-cmds=…`, and the options that take none
+ * (`--no-pager`, `-p`, `--paginate`, `-P`, `--bare`, the pathspec switches,
+ * `--no-replace-objects`, `--no-optional-locks`, `--no-advice`,
+ * `--no-lazy-fetch`). Each git rule hand-rolled `git` and at most a `-C`
+ * until #1606, so `git -c user.name=x commit` passed the spec-commit deny;
+ * `scripts/claude-hooks/shell-lexer.test.mjs` fails on a hook module that
+ * does that again.
+ *
+ * It matches the masked text, where a quoted value is one run (`-C "___"`),
+ * and an unmasked one too, quote by quote. A value never starts with `-`, so
+ * every token has one parse and a long run of options cannot backtrack
+ * exponentially. It holds no capture group, so a rule's own groups keep their
+ * numbers. Its values are read raw by {@link gitGlobals}.
+ */
+export const GIT_GLOBALS = String.raw`(?:\s+${GIT_OPTION.replace(/\((?!\?)/g, "(?:")})*\s+`;
+
 /**
  * Anchors a command regex to COMMAND POSITION: the start of the string or of
  * a line (after any indent), or right after `|`, `;`, `&`, `(`, `)` or a
