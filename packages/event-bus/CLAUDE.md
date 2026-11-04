@@ -1,6 +1,6 @@
 # @iracedeck/event-bus
 
-Typed pub/sub with the canonical sim-event catalog. Sim- and audio-agnostic: the envelope's telemetry field is generic, so the package depends on no simulator SDK.
+Typed pub/sub with the canonical sim-event catalog. Sim- and audio-agnostic: the envelope's telemetry field is generic, so the package depends on no simulator SDK; it is in `SIM_NEUTRAL_PACKAGES` in `eslint.config.js`, whose block refuses a sim package import here (#1375).
 
 ## Shape
 

@@ -1,24 +1,19 @@
-// deck-core may not reach a simulator SDK (#1351), and neither may the packages
-// split out of it (#1367) or settings beneath it and voice-packs (#1375): the
-// ESLint rule below is the guard, and this test proves it fires in each — for a
-// value import, a type-only one in a test file and a deep subpath — and stays
-// silent on a clean file, so deleting or narrowing the rule goes red.
+// A sim-neutral package may not reach a simulator package: deck-core (#1351),
+// the packages split out of it (#1367), and since #1375 every package named in
+// SIM_NEUTRAL_PACKAGES in eslint.config.js. The ESLint rule is the guard, and
+// this test proves it fires in each — for a value import, a type-only one in a
+// test file, a deep subpath and an .mjs file outside src/ — and stays silent on
+// a clean file, so deleting or narrowing the rule goes red. The packages are read
+// from the config itself, so a package added there is planted here too;
+// scripts/sim-boundary-coverage.test.mjs checks the list against packages/.
 import { ESLint } from "eslint";
 import { describe, expect, it } from "vitest";
+
+import { SIM_NEUTRAL_PACKAGES } from "../eslint.config.js";
 
 const RULE = "no-restricted-imports";
 const TIMEOUT = 60_000;
 const eslint = new ESLint({ cwd: import.meta.dirname + "/.." });
-
-const GUARDED = [
-  "deck-core",
-  "replay-store",
-  "diagnostics",
-  "app-updates",
-  "settings-window",
-  "settings",
-  "voice-packs",
-];
 
 const BANNED = [
   "@iracedeck/iracing-sdk",
@@ -34,7 +29,27 @@ async function lint(code, filePath) {
 }
 
 describe("deck-core sim boundary", () => {
-  for (const dir of GUARDED) {
+  // The members #1375 added, named here as well as in the config, so dropping
+  // one from the list is red rather than a quietly shorter loop below.
+  it("guards the deck layer, the two seams and the leaves", () => {
+    expect(SIM_NEUTRAL_PACKAGES).toEqual(
+      expect.arrayContaining([
+        "deck-core",
+        "replay-store",
+        "diagnostics",
+        "app-updates",
+        "settings-window",
+        "settings",
+        "voice-packs",
+        "event-bus",
+        "deck-adapter-elgato",
+        "deck-adapter-mirabox",
+        "deck-adapter-ulanzi",
+      ]),
+    );
+  });
+
+  for (const dir of SIM_NEUTRAL_PACKAGES) {
     for (const pkg of BANNED) {
       it(
         `refuses ${pkg} in ${dir}`,
@@ -78,6 +93,22 @@ describe("deck-core sim boundary", () => {
         TIMEOUT,
       );
     }
+
+    // The block covers the whole package, not only src/: a build script or a
+    // config written as .mjs is held too.
+    it(
+      `refuses a sim import in an .mjs file outside ${dir}/src`,
+      async () => {
+        const messages = await lint(
+          `import { x } from "@iracedeck/iracing-sdk";\nexport const y = x;\n`,
+          `packages/${dir}/scripts/planted.mjs`,
+        );
+
+        expect(messages).toHaveLength(1);
+        expect(messages[0].message).toContain("#1375");
+      },
+      TIMEOUT,
+    );
 
     // The negative control: a clean file, including a name that only shares a
     // banned package's prefix, draws nothing, so the subpath pattern is no
