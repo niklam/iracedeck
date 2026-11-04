@@ -240,6 +240,12 @@ describe("ElgatoPlatformAdapter", () => {
       const handler: IDeckActionHandler = { onWillDisappear: vi.fn() };
       const bridge = registerAndGetBridge(handler);
 
+      // Both appear first: a disappear for a context that never appeared is dropped (#1597).
+      await bridge.onWillAppear({
+        action: { id: "ctx-infobar", isNeoInfobar: vi.fn().mockReturnValue(true) },
+        payload: { settings: {} },
+      });
+      await bridge.onWillAppear({ action: createMockKeyAction("ctx-key"), payload: { settings: {} } });
       await bridge.onWillDisappear({ action: { id: "ctx-infobar", controllerType: "Neo" }, payload: { settings: {} } });
       await bridge.onWillDisappear({ action: { id: "ctx-key", controllerType: "Keypad" }, payload: { settings: {} } });
 
@@ -249,8 +255,10 @@ describe("ElgatoPlatformAdapter", () => {
     it("still hands a key instance to the handler on didReceiveSettings", async () => {
       const handler: IDeckActionHandler = { onDidReceiveSettings: vi.fn() };
       const bridge = registerAndGetBridge(handler);
+      const action = createMockKeyAction("ctx-key");
 
-      await bridge.onDidReceiveSettings({ action: createMockKeyAction("ctx-key"), payload: { settings: { a: 1 } } });
+      await bridge.onWillAppear({ action, payload: { settings: {} } });
+      await bridge.onDidReceiveSettings({ action, payload: { settings: { a: 1 } } });
 
       expect(handler.onDidReceiveSettings).toHaveBeenCalledTimes(1);
     });
@@ -262,6 +270,7 @@ describe("ElgatoPlatformAdapter", () => {
       const bridge = registerAndGetBridge(handler);
       const action = createMockDialAction("ctx-touch");
 
+      await bridge.onWillAppear({ action, payload: { settings: {} } });
       await bridge.onTouchTap({
         action,
         payload: {
@@ -285,6 +294,7 @@ describe("ElgatoPlatformAdapter", () => {
       const bridge = registerAndGetBridge({});
       const action = createMockDialAction("ctx-touch");
 
+      await bridge.onWillAppear({ action, payload: { settings: {} } });
       await expect(
         bridge.onTouchTap({ action, payload: { settings: {}, tapPos: [0, 0], hold: false } }),
       ).resolves.toBeUndefined();
@@ -297,6 +307,7 @@ describe("ElgatoPlatformAdapter", () => {
       const bridge = registerAndGetBridge(handler);
       const action = createMockDialAction("ctx-dial");
 
+      await bridge.onWillAppear({ action, payload: { settings: {} } });
       await bridge.onDialRotate({ action, payload: { settings: {}, ticks: 4, pressed: true } });
 
       expect(handler.onDialRotate).toHaveBeenCalledOnce();

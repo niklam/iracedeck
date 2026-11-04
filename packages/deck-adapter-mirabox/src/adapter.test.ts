@@ -5,11 +5,17 @@ import {
   initializeRasterizer,
   svgToDataUri,
 } from "@iracedeck/deck-core";
+import {
+  CONTEXT_EVENT_ORDER_ACTION_UUID,
+  CONTEXT_EVENT_ORDER_SCENARIOS,
+  type ContextEventOrderHarness,
+  type ContextEventOrderHostEvent,
+} from "@iracedeck/deck-core/testing";
 import type { ILogger } from "@iracedeck/logger";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { VSDPlatformAdapter } from "./adapter.js";
-import type { VSDEventHandler } from "./vsd-client.js";
+import type { VSDEvent, VSDEventHandler } from "./vsd-client.js";
 
 // Store mock instances so tests can inspect them
 const mockInstances: Array<Record<string, ReturnType<typeof vi.fn>>> = [];
@@ -69,6 +75,96 @@ describe("VSDPlatformAdapter", () => {
 
     return call[2];
   };
+
+  /**
+   * Make `context` appear through the registered `willAppear` handler. Since
+   * #1597 the adapter drops input, a settings change and a disappear for a
+   * context it has not seen appear (spec decision 3), so a test driving any
+   * of those appears its context first.
+   */
+  const appear = async (context: string, controller = "Keypad"): Promise<void> => {
+    await actionEventHandler("willAppear")({
+      event: "willAppear",
+      action: "com.test.action",
+      context,
+      payload: { settings: {}, controller },
+    });
+  };
+
+  // deck-core's per-context ordering contract (#1597, decision 6), driven
+  // through the adapter's real dispatch: the handler the adapter registered on
+  // the (mocked) client for the event, called synchronously as
+  // `VSDClient.routeEvent` calls it, and not awaited.
+  describe("per-context ordering contract (#1597)", () => {
+    /**
+     * The host events a Stream Dock sends that reach a handler: no `dialUp`
+     * (the adapter drops it, since its `dialDown` runs the handler's down and
+     * up) and no `touchTap` (the knob has no touch strip).
+     */
+    const MIRABOX_HOST_EVENTS: readonly ContextEventOrderHostEvent[] = [
+      "willAppear",
+      "willDisappear",
+      "didReceiveSettings",
+      "keyDown",
+      "keyUp",
+      "dialDown",
+      "dialRotate",
+    ];
+
+    function createHarness(): { harness: ContextEventOrderHarness; errors: unknown[] } {
+      mockInstances.length = 0;
+
+      const orderedAdapter = new VSDPlatformAdapter();
+      const orderedClient = mockInstances[0];
+      const errors: unknown[] = [];
+
+      const harness: ContextEventOrderHarness = {
+        adapter: orderedAdapter,
+        hostEvents: MIRABOX_HOST_EVENTS,
+        emit(event, context, payload = {}) {
+          // The real client's `routeEvent` awaits every registration matching a
+          // frame in turn, so only the first is reached synchronously. Each
+          // scenario registers once, as production does, so there must be
+          // exactly one: anything else is a dispatch this harness would not
+          // reproduce.
+          const matching = (orderedClient.onActionEvent.mock.calls as ActionEventCall[]).filter(
+            ([uuid, name]) => uuid === CONTEXT_EVENT_ORDER_ACTION_UUID && name === event,
+          );
+
+          if (matching.length !== 1) {
+            throw new Error(`expected one "${event}" handler for the suite's action, found ${matching.length}`);
+          }
+
+          const registration = matching[0];
+
+          const frame: VSDEvent = {
+            event,
+            action: CONTEXT_EVENT_ORDER_ACTION_UUID,
+            context,
+            payload: {
+              settings: payload.settings ?? {},
+              ...(event === "willAppear" ? { controller: payload.controller ?? "Keypad" } : {}),
+              ...(event === "dialRotate" ? { ticks: payload.ticks ?? 1, pressed: payload.pressed ?? false } : {}),
+            },
+          };
+
+          // Not awaited: the host hands the frame over and moves on. A
+          // rejection is what `routeEvent` would log; the test fails on one.
+          void Promise.resolve(registration[2](frame)).catch((error: unknown) => errors.push(error));
+        },
+      };
+
+      return { harness, errors };
+    }
+
+    it.each(CONTEXT_EVENT_ORDER_SCENARIOS)("$name", async ({ run }) => {
+      const { harness, errors } = createHarness();
+
+      await run(harness);
+
+      expect(errors).toEqual([]);
+    });
+  });
 
   describe("connect", () => {
     it("should delegate to VSDClient.connect", () => {
@@ -268,11 +364,49 @@ describe("VSDPlatformAdapter", () => {
       expect(ev.payload.settings).toEqual({ mode: "direct" });
     });
 
+    it("delivers a willAppear for a live context as a settings change with its settings (#1597)", async () => {
+      const debug = vi.fn();
+      const scoped = { debug, warn: vi.fn(), createScope: () => scoped } as unknown as ILogger;
+      mockInstances.length = 0;
+      const logged = new VSDPlatformAdapter(scoped);
+      const loggedClient = mockInstances[0];
+      const handler: IDeckActionHandler = { onWillAppear: vi.fn(), onDidReceiveSettings: vi.fn() };
+      logged.registerAction("com.test.action", handler);
+
+      const willAppear = (loggedClient.onActionEvent.mock.calls as ActionEventCall[]).find(
+        (c) => c[1] === "willAppear",
+      );
+      await willAppear?.[2]({
+        event: "willAppear",
+        action: "com.test.action",
+        context: "ctx-twice",
+        payload: { settings: { mode: "first" }, controller: "Knob" },
+      });
+      await willAppear?.[2]({
+        event: "willAppear",
+        action: "com.test.action",
+        context: "ctx-twice",
+        payload: { settings: { mode: "second" }, controller: "Keypad" },
+      });
+
+      expect(handler.onWillAppear).toHaveBeenCalledOnce();
+      expect(handler.onDidReceiveSettings).toHaveBeenCalledOnce();
+      const ev = (handler.onDidReceiveSettings as ReturnType<typeof vi.fn>).mock.calls[0][0];
+      expect(ev.action.id).toBe("ctx-twice");
+      expect(ev.payload.settings).toEqual({ mode: "second" });
+      // The controller the context appeared as, not the second frame's.
+      expect(ev.action.isDial()).toBe(true);
+      expect(debug).toHaveBeenCalledWith(
+        "Context ctx-twice: willAppear arrived while live, delivered as a settings change",
+      );
+    });
+
     it("should call handler.onKeyDown with wrapped event", async () => {
       const handler: IDeckActionHandler = {
         onKeyDown: vi.fn(),
       };
       adapter.registerAction("com.test.action", handler);
+      await appear("ctx-456");
 
       const keyDownCall = actionEventHandler("keyDown");
 
@@ -288,11 +422,66 @@ describe("VSDPlatformAdapter", () => {
       expect(ev.action.id).toBe("ctx-456");
     });
 
+    it("builds an input event with the controller its context appeared as", async () => {
+      const handler: IDeckActionHandler = { onDialRotate: vi.fn() };
+      adapter.registerAction("com.test.action", handler);
+      await appear("ctx-knob", "Knob");
+
+      await actionEventHandler("dialRotate")({
+        event: "dialRotate",
+        action: "com.test.action",
+        context: "ctx-knob",
+        payload: { settings: {}, ticks: 1 },
+      });
+
+      const ev = (handler.onDialRotate as ReturnType<typeof vi.fn>).mock.calls[0][0];
+      // Not the Keypad a missing entry would default to.
+      expect(ev.action.isDial()).toBe(true);
+      expect(ev.action.isKey()).toBe(false);
+    });
+
+    it("drops input for a context that never appeared, logging it once at warn on the EventOrder scope", async () => {
+      const warn = vi.fn();
+      const debug = vi.fn();
+      const scopes: string[] = [];
+      const scoped = {
+        warn,
+        debug,
+        createScope: (scope: string) => {
+          scopes.push(scope);
+
+          return scoped;
+        },
+      } as unknown as ILogger;
+      mockInstances.length = 0;
+      const logged = new VSDPlatformAdapter(scoped);
+      const loggedClient = mockInstances[0];
+      const keyDownBroadcast = vi.fn();
+      const handler: IDeckActionHandler = { onKeyDown: vi.fn() };
+      logged.onKeyDown(keyDownBroadcast);
+      logged.registerAction("com.test.action", handler);
+
+      const keyDown = (loggedClient.onActionEvent.mock.calls as ActionEventCall[]).find((c) => c[1] === "keyDown");
+      const frame = { event: "keyDown", action: "com.test.action", context: "ctx-never", payload: { settings: {} } };
+      await keyDown?.[2](frame);
+      await keyDown?.[2](frame);
+
+      // What replaced the default-Keypad delivery (#1597, decision 3).
+      expect(handler.onKeyDown).not.toHaveBeenCalled();
+      expect(keyDownBroadcast).not.toHaveBeenCalled();
+      expect(scopes).toContain("EventOrder");
+      expect(warn).toHaveBeenCalledOnce();
+      expect(warn.mock.calls[0][0]).toBe(
+        "Dropped keyDown for ctx-never: it never appeared (the host sent no willAppear for it)",
+      );
+    });
+
     it("should call handler.onDialRotate with ticks", async () => {
       const handler: IDeckActionHandler = {
         onDialRotate: vi.fn(),
       };
       adapter.registerAction("com.test.action", handler);
+      await appear("ctx-789", "Knob");
 
       const dialRotateCall = actionEventHandler("dialRotate");
 
@@ -315,6 +504,7 @@ describe("VSDPlatformAdapter", () => {
         onDialRotate: vi.fn(),
       };
       adapter.registerAction("com.test.action", handler);
+      await appear("ctx-789", "Knob");
 
       const dialRotateCall = actionEventHandler("dialRotate");
 
@@ -334,6 +524,7 @@ describe("VSDPlatformAdapter", () => {
         onWillDisappear: vi.fn(),
       };
       adapter.registerAction("com.test.action", handler);
+      await appear("ctx-gone");
 
       const disappearCall = actionEventHandler("willDisappear");
 
@@ -369,6 +560,7 @@ describe("VSDPlatformAdapter", () => {
 
       adapter.onKeyDown(broadcastCb);
       adapter.registerAction("com.test.action", handler);
+      await appear("ctx");
 
       const keyDownCall = actionEventHandler("keyDown");
       await keyDownCall({
@@ -392,6 +584,7 @@ describe("VSDPlatformAdapter", () => {
 
       adapter.onDialRotate(broadcastCb);
       adapter.registerAction("com.test.action", handler);
+      await appear("ctx", "Knob");
 
       const dialRotateCall = actionEventHandler("dialRotate");
       await dialRotateCall({
@@ -415,6 +608,7 @@ describe("VSDPlatformAdapter", () => {
 
       adapter.onDialDown(broadcastCb);
       adapter.registerAction("com.test.action", handler);
+      await appear("ctx", "Knob");
 
       const dialDownCall = actionEventHandler("dialDown");
       await dialDownCall({
@@ -451,15 +645,59 @@ describe("VSDPlatformAdapter", () => {
     it("completes a lone host dialDown (a knob push) with one onDialDown then one onDialUp for that context", async () => {
       const calls: string[] = [];
       adapter.registerAction("com.test.action", recordingHandler(calls));
+      await appear("ctx-knob", "Knob");
 
       await actionEventHandler("dialDown")(dialFrame("dialDown", "ctx-knob"));
 
       expect(calls).toEqual(["down:ctx-knob", "up:ctx-knob"]);
     });
 
+    // The press is one input task in the per-context order (#1597): a
+    // disappear arriving while onDialDown awaits waits for onDialUp too, so
+    // the teardown never lands inside the atomic press.
+    it("runs a disappear that arrives between the press's onDialDown and onDialUp after both", async () => {
+      const calls: string[] = [];
+      let releaseDown: () => void = () => undefined;
+      const handler: IDeckActionHandler = {
+        onDialDown: vi.fn(async (ev: { action: { id: string } }) => {
+          calls.push(`down:${ev.action.id}`);
+          await new Promise<void>((resolve) => {
+            releaseDown = resolve;
+          });
+          calls.push(`down-done:${ev.action.id}`);
+        }),
+        onDialUp: vi.fn(async (ev: { action: { id: string } }) => {
+          calls.push(`up:${ev.action.id}`);
+        }),
+        onWillDisappear: vi.fn(async (ev: { action: { id: string } }) => {
+          calls.push(`disappear:${ev.action.id}`);
+        }),
+      };
+      adapter.registerAction("com.test.action", handler);
+      await appear("ctx-knob", "Knob");
+
+      const press = actionEventHandler("dialDown")(dialFrame("dialDown", "ctx-knob"));
+      const teardown = actionEventHandler("willDisappear")({
+        event: "willDisappear",
+        action: "com.test.action",
+        context: "ctx-knob",
+        payload: { settings: {} },
+      });
+
+      // The press is inside onDialDown; the disappear has arrived and waits.
+      await Promise.resolve();
+      expect(calls).toEqual(["down:ctx-knob"]);
+
+      releaseDown();
+      await Promise.all([press, teardown]);
+
+      expect(calls).toEqual(["down:ctx-knob", "down-done:ctx-knob", "up:ctx-knob", "disappear:ctx-knob"]);
+    });
+
     it("drops the host dialUp of a down+up pair (a screen tap), so it is the same single press", async () => {
       const calls: string[] = [];
       adapter.registerAction("com.test.action", recordingHandler(calls));
+      await appear("ctx-knob", "Knob");
 
       await actionEventHandler("dialDown")(dialFrame("dialDown", "ctx-knob"));
       await actionEventHandler("dialUp")(dialFrame("dialUp", "ctx-knob"));
@@ -470,6 +708,8 @@ describe("VSDPlatformAdapter", () => {
     it("drops a host dialUp even when no dialDown preceded it", async () => {
       const calls: string[] = [];
       adapter.registerAction("com.test.action", recordingHandler(calls));
+      // Live, so the drop is the dialUp rule's and not the order's.
+      await appear("ctx-knob", "Knob");
 
       await actionEventHandler("dialUp")(dialFrame("dialUp", "ctx-knob"));
 
@@ -480,6 +720,7 @@ describe("VSDPlatformAdapter", () => {
       const calls: string[] = [];
       adapter.onDialDown(() => calls.push("broadcast"));
       adapter.registerAction("com.test.action", recordingHandler(calls));
+      await appear("ctx-knob", "Knob");
 
       await actionEventHandler("dialDown")(dialFrame("dialDown", "ctx-knob"));
       await actionEventHandler("dialUp")(dialFrame("dialUp", "ctx-knob"));
@@ -511,6 +752,7 @@ describe("VSDPlatformAdapter", () => {
         }),
       };
       adapter.registerAction("com.test.action", handler);
+      await appear("ctx-knob", "Knob");
 
       await actionEventHandler("dialRotate")({
         event: "dialRotate",

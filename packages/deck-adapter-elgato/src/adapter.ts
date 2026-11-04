@@ -22,6 +22,7 @@ import {
 import type { JsonObject } from "@elgato/utils";
 import { type LogLocation } from "@iracedeck/app-constants";
 import {
+  ContextEventOrder,
   type DeckFeedbackPayload,
   type DeckTriggerDescription,
   deviceProfileName,
@@ -314,6 +315,10 @@ export class ElgatoPlatformAdapter implements IDeckPlatformAdapter {
    * for an event that did not happen.
    */
   private lastEventSettings: unknown = NO_EVENT_YET;
+  /** Created on first use, so the constructor stays free of logger calls; see {@link order}. */
+  private contextEventOrder: ContextEventOrder | undefined;
+  /** The handler registered for each action UUID; see {@link registerAction}. */
+  private readonly handlers = new Map<string, IDeckActionHandler<never>>();
 
   /**
    * The file the SDK's own logger writes, `<cwd>/logs/<plugin UUID>.0.log`
@@ -503,7 +508,64 @@ export class ElgatoPlatformAdapter implements IDeckPlatformAdapter {
     return createSDLogger(this.sd.logger.createScope(scope));
   }
 
+  /**
+   * The per-context event order every action of this adapter shares (#1597):
+   * context ids are unique per host and a context belongs to one action, so
+   * one instance orders them all. Created on first use with its own logger
+   * scope, so its wait, drop and abandon lines say where they came from.
+   */
+  private get order(): ContextEventOrder {
+    this.contextEventOrder ??= new ContextEventOrder(this.createLogger("ContextEventOrder"));
+
+    return this.contextEventOrder;
+  }
+
+  /**
+   * Register `handler` for `uuid` as an SDK `SingletonAction` whose every
+   * per-context event goes through {@link order} (#1597).
+   *
+   * Each `BridgeAction` method calls `enqueue` synchronously, inside the SDK
+   * callback and before any await — the SDK's emitter reaches it in the same
+   * call stack as the host frame, so arrival order is the order fixed there —
+   * and returns the enqueue promise, so the SDK's route awaits the handler and
+   * sees its rejection exactly as it did when the method awaited the handler
+   * itself. The task builds the deck-core event and calls the handler when it
+   * runs, as a non-async lambda so a handler with nothing ahead of it is called
+   * inside the SDK callback, as before. An event the order drops (a context
+   * that is not live) resolves to nothing.
+   *
+   * A `willAppear` for a context that is already live at arrival is not a
+   * second appear: it is enqueued as an exclusive `didReceiveSettings`
+   * carrying that frame's settings, and logged at debug on the `Lifecycle`
+   * scope. The SDK is not expected to send one, but the rule is every
+   * adapter's (#1597).
+   *
+   * One `BridgeAction` per UUID: a second registration of the same UUID
+   * replaces the handler — the one registered when an event arrives is the one
+   * its task calls — rather than adding a second SDK action, as the other
+   * adapters' one-handler-per-UUID maps do. The SDK has no way to unregister an
+   * action, and two bridges for one UUID would both enqueue every event of a
+   * context on the one shared order, where the second `willAppear` of a live
+   * context would reach the handler as a settings change.
+   *
+   * The adapter keeps no per-context state of its own: the SDK's action store
+   * carries the controller and the settings, and the event wraps the SDK's
+   * action object, so there is no bookkeeping to move into the tasks.
+   */
   registerAction<T>(uuid: string, handler: IDeckActionHandler<T>): void {
+    const alreadyBridged = this.handlers.has(uuid);
+
+    this.handlers.set(uuid, handler);
+
+    if (alreadyBridged) return;
+
+    const order = this.order;
+    const handlers = this.handlers;
+    /** The handler registered for `uuid` when an event arrives. */
+    const current = (): IDeckActionHandler<T> => handlers.get(uuid) as IDeckActionHandler<T>;
+    /** Created on use, like the other occasional scopes here: the case it logs should never occur. */
+    const lifecycleLog = (): ILogger => this.createLogger("Lifecycle");
+
     // Create a SingletonAction subclass that delegates to the handler.
     // Set manifestId directly instead of using the @action decorator to avoid
     // the __esDecorate helper which emits `(this && ...)` — invalid in ESM.
@@ -515,65 +577,116 @@ export class ElgatoPlatformAdapter implements IDeckPlatformAdapter {
       // entry declares the Neo Infobar controller, so the host never sends one;
       // narrowing it out keeps the wrapper honest without a cast. willDisappear
       // is narrowed too, so the handler never sees one vanish that it never saw
-      // appear.
-      override async onWillAppear(ev: WillAppearEvent<T & JsonObject>): Promise<void> {
-        if (ev.action.isNeoInfobar()) return;
+      // appear. A Neo Infobar context is never enqueued, so it never becomes
+      // live and its broadcasts never fire.
+      override onWillAppear(ev: WillAppearEvent<T & JsonObject>): Promise<void> | undefined {
+        if (ev.action.isNeoInfobar()) return undefined;
 
-        await handler.onWillAppear?.(wrapEvent({ action: ev.action, payload: ev.payload }) as IDeckWillAppearEvent<T>);
-      }
+        const action = ev.action;
+        const payload = ev.payload;
 
-      override async onWillDisappear(ev: WillDisappearEvent<T & JsonObject>): Promise<void> {
-        if (ev.action.controllerType === "Neo") return;
+        const handler = current();
 
-        await handler.onWillDisappear?.(wrapDisappearEvent<T>(ev));
-      }
+        if (order.isLive(action.id)) {
+          lifecycleLog().debug(`Context ${action.id}: willAppear arrived while live, delivered as a settings change`);
 
-      override async onDidReceiveSettings(ev: DidReceiveSettingsEvent<T & JsonObject>): Promise<void> {
-        if (ev.action.isNeoInfobar()) return;
+          return order.enqueue(action.id, "didReceiveSettings", () =>
+            handler.onDidReceiveSettings?.(wrapEvent({ action, payload }) as IDeckDidReceiveSettingsEvent<T>),
+          );
+        }
 
-        await handler.onDidReceiveSettings?.(
-          wrapEvent({ action: ev.action, payload: ev.payload }) as IDeckDidReceiveSettingsEvent<T>,
+        return order.enqueue(action.id, "willAppear", () =>
+          handler.onWillAppear?.(wrapEvent({ action, payload }) as IDeckWillAppearEvent<T>),
         );
       }
 
-      override async onKeyDown(ev: KeyDownEvent<T & JsonObject>): Promise<void> {
-        await handler.onKeyDown?.(wrapEvent(ev) as IDeckKeyDownEvent<T>);
+      override onWillDisappear(ev: WillDisappearEvent<T & JsonObject>): Promise<void> | undefined {
+        if (ev.action.controllerType === "Neo") return undefined;
+
+        const handler = current();
+
+        return order.enqueue(ev.action.id, "willDisappear", () => handler.onWillDisappear?.(wrapDisappearEvent<T>(ev)));
       }
 
-      override async onKeyUp(ev: KeyUpEvent<T & JsonObject>): Promise<void> {
-        await handler.onKeyUp?.(wrapEvent(ev) as IDeckKeyUpEvent<T>);
+      override onDidReceiveSettings(ev: DidReceiveSettingsEvent<T & JsonObject>): Promise<void> | undefined {
+        if (ev.action.isNeoInfobar()) return undefined;
+
+        const action = ev.action;
+        const payload = ev.payload;
+
+        const handler = current();
+
+        return order.enqueue(action.id, "didReceiveSettings", () =>
+          handler.onDidReceiveSettings?.(wrapEvent({ action, payload }) as IDeckDidReceiveSettingsEvent<T>),
+        );
       }
 
-      override async onDialRotate(ev: DialRotateEvent<T & JsonObject>): Promise<void> {
-        await handler.onDialRotate?.(wrapDialRotateEvent<T>(ev));
+      override onKeyDown(ev: KeyDownEvent<T & JsonObject>): Promise<void> | undefined {
+        const handler = current();
+
+        return order.enqueue(ev.action.id, "keyDown", () => handler.onKeyDown?.(wrapEvent(ev) as IDeckKeyDownEvent<T>));
       }
 
-      override async onDialDown(ev: DialDownEvent<T & JsonObject>): Promise<void> {
-        await handler.onDialDown?.(wrapEvent(ev) as IDeckDialDownEvent<T>);
+      override onKeyUp(ev: KeyUpEvent<T & JsonObject>): Promise<void> | undefined {
+        const handler = current();
+
+        return order.enqueue(ev.action.id, "keyUp", () => handler.onKeyUp?.(wrapEvent(ev) as IDeckKeyUpEvent<T>));
       }
 
-      override async onDialUp(ev: DialUpEvent<T & JsonObject>): Promise<void> {
-        await handler.onDialUp?.(wrapEvent(ev) as IDeckDialUpEvent<T>);
+      override onDialRotate(ev: DialRotateEvent<T & JsonObject>): Promise<void> | undefined {
+        const handler = current();
+
+        return order.enqueue(ev.action.id, "dialRotate", () => handler.onDialRotate?.(wrapDialRotateEvent<T>(ev)));
       }
 
-      override async onTouchTap(ev: TouchTapEvent<T & JsonObject>): Promise<void> {
-        await handler.onTouchTap?.(wrapTouchTapEvent<T>(ev));
+      override onDialDown(ev: DialDownEvent<T & JsonObject>): Promise<void> | undefined {
+        const handler = current();
+
+        return order.enqueue(ev.action.id, "dialDown", () =>
+          handler.onDialDown?.(wrapEvent(ev) as IDeckDialDownEvent<T>),
+        );
+      }
+
+      override onDialUp(ev: DialUpEvent<T & JsonObject>): Promise<void> | undefined {
+        const handler = current();
+
+        return order.enqueue(ev.action.id, "dialUp", () => handler.onDialUp?.(wrapEvent(ev) as IDeckDialUpEvent<T>));
+      }
+
+      override onTouchTap(ev: TouchTapEvent<T & JsonObject>): Promise<void> | undefined {
+        const handler = current();
+
+        return order.enqueue(ev.action.id, "touchTap", () => handler.onTouchTap?.(wrapTouchTapEvent<T>(ev)));
       }
     }
 
     this.sd.actions.registerAction(new BridgeAction());
   }
 
+  /**
+   * The three broadcasts fire at the event's arrival — the SDK-wide listener
+   * runs in the same emit as the action's own route — and only for a context
+   * {@link order} holds live (#1597): its `willAppear` has arrived and its
+   * `willDisappear` has not. The SDK already passes only a context in its
+   * action store; the gate is the adapter's own, so the contract holds
+   * whatever the SDK's store does.
+   */
   onKeyDown(callback: () => void): void {
-    this.sd.actions.onKeyDown(() => callback());
+    this.sd.actions.onKeyDown((ev) => {
+      if (this.order.isLive(ev.action.id)) callback();
+    });
   }
 
   onDialDown(callback: () => void): void {
-    this.sd.actions.onDialDown(() => callback());
+    this.sd.actions.onDialDown((ev) => {
+      if (this.order.isLive(ev.action.id)) callback();
+    });
   }
 
   onDialRotate(callback: () => void): void {
-    this.sd.actions.onDialRotate(() => callback());
+    this.sd.actions.onDialRotate((ev) => {
+      if (this.order.isLive(ev.action.id)) callback();
+    });
   }
 
   /**

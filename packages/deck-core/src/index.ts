@@ -279,6 +279,17 @@ export {
   getDualPressDirections,
 } from "./dual-press.js";
 
+// Per-context ordering of lifecycle events, applied at each adapter's dispatch (issue #1597)
+export {
+  CONTEXT_EVENT_WAIT_LIMIT_MS,
+  ContextEventOrder,
+  type ContextEventKind,
+  type ContextEventTask,
+  type ContextHandlerEventKind,
+  type ContextStepKind,
+  isExclusiveContextEventKind,
+} from "./context-event-order.js";
+
 // Press sounds: the wrapper every registered handler goes through (issue #269)
 export {
   _resetPressSounds,

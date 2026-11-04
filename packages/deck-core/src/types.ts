@@ -230,13 +230,57 @@ export interface IDeckPlatformAdapter extends SettingsHost {
   onPropertyInspectorDidAppear(callback: () => void): void;
   /** Create a scoped logger for a component */
   createLogger(scope: string): ILogger;
-  /** Register an action handler for a UUID */
+  /**
+   * Register an action handler for a UUID.
+   *
+   * **Per-context order and liveness (#1597).** The adapter delivers the
+   * handler's events for one context in arrival order through
+   * `ContextEventOrder`: `onWillAppear`, `onWillDisappear` and
+   * `onDidReceiveSettings` each start only after every earlier event of the
+   * context has settled and hold every later one; an input event
+   * (`onKeyDown`, `onKeyUp`, `onDialDown`, `onDialUp`, `onDialRotate`,
+   * `onTouchTap`) waits for earlier lifecycle events but not for earlier
+   * input, so two presses still run concurrently. A context is live from the
+   * arrival of its `willAppear` to the arrival of its `willDisappear`; input,
+   * a settings change or a second disappear for a context that is not live
+   * never reaches the handler, and a re-appear after a disappear runs after
+   * the teardown it follows. Two rules hold on every host: input, a settings
+   * change or a step for a context the host never appeared is dropped (no
+   * adapter synthesises an appear for it: no host hands over the context's
+   * settings with the input, and an appear with empty settings would let the
+   * action's first-appearance write wipe the key's stored settings); and a
+   * host `willAppear` for a context that is already live never calls
+   * `onWillAppear` — the adapter delivers it as `onDidReceiveSettings` carrying
+   * that frame's settings, ordered as an exclusive event. A context that has
+   * disappeared is never revived. An event that overlaps nothing reaches the
+   * handler synchronously at arrival. A wait is bounded by
+   * `CONTEXT_EVENT_WAIT_LIMIT_MS` per task ahead.
+   *
+   * The guarantee is part of implementing this interface, and it is checked:
+   * every adapter's tests run `CONTEXT_EVENT_ORDER_SCENARIOS` from
+   * `@iracedeck/deck-core/testing` through a harness over its real dispatch
+   * (`scripts/deck-adapter-order-contract.test.mjs` fails an adapter that does
+   * not). In return a handler must never await another event of its own
+   * context — a settings echo, an input — since that event is queued behind it.
+   */
   registerAction(uuid: string, handler: IDeckActionHandler): void;
-  /** Subscribe to key-down events across all actions */
+  /**
+   * Subscribe to key-down events across all actions. Fires at the event's
+   * arrival — not when the handler's `onKeyDown` runs, which may be later —
+   * and only for a live context as the adapter's `ContextEventOrder` sees it
+   * (its `willAppear` has arrived and its `willDisappear` has not); never
+   * gated on the host's own store. See {@link registerAction}.
+   */
   onKeyDown(callback: () => void): void;
-  /** Subscribe to dial-down events across all actions */
+  /**
+   * Subscribe to dial-down events across all actions. Fires at arrival, for a
+   * live context only, like {@link onKeyDown}.
+   */
   onDialDown(callback: () => void): void;
-  /** Subscribe to dial-rotate events across all actions */
+  /**
+   * Subscribe to dial-rotate events across all actions. Fires at arrival, for a
+   * live context only, like {@link onKeyDown}.
+   */
   onDialRotate(callback: () => void): void;
   /** Start the platform connection */
   connect(): void;

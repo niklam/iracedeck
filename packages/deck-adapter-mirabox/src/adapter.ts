@@ -7,6 +7,7 @@
  */
 import { type LogLocation } from "@iracedeck/app-constants";
 import {
+  ContextEventOrder,
   type DeckFeedbackPayload,
   type DeckTriggerDescription,
   DEFAULT_KEY_IMAGE_SIZE,
@@ -195,8 +196,21 @@ export class VSDPlatformAdapter implements IDeckPlatformAdapter {
   private readonly dialDownCallbacks: (() => void)[] = [];
   private readonly dialRotateCallbacks: (() => void)[] = [];
 
-  /** Track controller type per context from willAppear events */
+  /**
+   * The controller each context appeared as. Written and deleted only inside
+   * the ordered appear and disappear tasks, so it is ordered with the handlers:
+   * every other task of a context runs after its appear's task has set the
+   * entry and before its disappear's task deletes it.
+   */
   private readonly contextControllers = new Map<string, ControllerType>();
+
+  /**
+   * The per-context order every handler event of `registerAction` goes through
+   * (#1597): lifecycle events are exclusive, input waits only for lifecycle,
+   * and liveness — which gates the broadcasts too — is decided at arrival. One
+   * instance for the adapter, since context ids are unique per host.
+   */
+  private readonly order: ContextEventOrder;
 
   /**
    * Shared, runtime-mutable minimum log level (issue #609). `createConsoleLogger`
@@ -224,12 +238,17 @@ export class VSDPlatformAdapter implements IDeckPlatformAdapter {
   /** Scope for the adapter's own protocol normalisation (the dropped host `dialUp`). */
   private readonly dialLogger: ILogger;
 
+  /** Scope for lifecycle normalisation (a `willAppear` for a live context). */
+  private readonly lifecycleLogger: ILogger;
+
   constructor(logger?: ILogger, logDir?: string) {
     this.fileSink = logDir ? new FileSink(logDir) : null;
     this.logLocation = logDir ? { kind: "daily", dir: logDir } : undefined;
     const log = logger ?? this.buildLogger("VSD");
     this.client = new VSDClient(parseConnectionParams(), log.createScope("WebSocket"));
     this.dialLogger = log.createScope("Dial");
+    this.lifecycleLogger = log.createScope("Lifecycle");
+    this.order = new ContextEventOrder(log.createScope("EventOrder"));
   }
 
   /**
@@ -338,48 +357,91 @@ export class VSDPlatformAdapter implements IDeckPlatformAdapter {
     return this.buildLogger(scope);
   }
 
+  /**
+   * Every per-context host event goes through {@link order} (#1597). Each
+   * client callback calls `enqueue` before any await of its own, so arrival
+   * order is the order the handlers see; the task it hands over builds the
+   * deck-core event and calls the handler when it runs, which is synchronously
+   * inside the `enqueue` when nothing is ahead of it — today's moment. The
+   * client's `routeEvent` awaits the returned promise and logs a handler's
+   * error, as before. Input for a context that never appeared (or has
+   * disappeared) is dropped by the order and logged on the `EventOrder` scope;
+   * it no longer reaches the handler with a defaulted `Keypad` controller.
+   */
   registerAction<T>(uuid: string, handler: IDeckActionHandler<T>): void {
-    const getControllerType = (context: string): ControllerType => {
-      return this.contextControllers.get(context) ?? "Keypad";
-    };
+    // A task of any kind but the appear runs after its context's appear task
+    // set the entry and before its disappear task deletes it, so the entry is
+    // there: the order drops an event for a context it has not seen appear.
+    // The default only satisfies the type.
+    const controllerOf = (context: string): ControllerType => this.contextControllers.get(context) ?? "Keypad";
 
-    // willAppear — track controller type and delegate
+    // willAppear — the task records the controller, then calls the handler. A
+    // willAppear for a context that is already live at arrival is not a second
+    // appear (#1597): it is delivered as a settings change carrying the frame's
+    // settings, exclusive like any other, and the context keeps the controller
+    // it appeared as, read when the task runs.
     this.client.onActionEvent(uuid, "willAppear", async (data) => {
       if (!data.context) return;
 
-      const controller = ((data.payload?.controller as string) ?? "Keypad") as ControllerType;
-      this.contextControllers.set(data.context, controller);
+      const event = data as VSDEvent & { context: string };
 
-      await handler.onWillAppear?.(
-        wrapEvent<T>(this.client, data as VSDEvent & { context: string }, getControllerType(data.context)),
-      );
+      if (this.order.isLive(event.context)) {
+        this.lifecycleLogger.debug(
+          `Context ${event.context}: willAppear arrived while live, delivered as a settings change`,
+        );
+
+        await this.order.enqueue(event.context, "didReceiveSettings", () =>
+          handler.onDidReceiveSettings?.(wrapEvent<T>(this.client, event, controllerOf(event.context))),
+        );
+
+        return;
+      }
+
+      await this.order.enqueue(event.context, "willAppear", () => {
+        this.contextControllers.set(
+          event.context,
+          ((event.payload?.controller as string) ?? "Keypad") as ControllerType,
+        );
+
+        return handler.onWillAppear?.(wrapEvent<T>(this.client, event, controllerOf(event.context)));
+      });
     });
 
-    // willDisappear — clean up controller tracking
+    // willDisappear — the task forgets the controller, then calls the handler.
     this.client.onActionEvent(uuid, "willDisappear", async (data) => {
       if (!data.context) return;
 
-      await handler.onWillDisappear?.(wrapDisappearEvent<T>(data as VSDEvent & { context: string }));
-      this.contextControllers.delete(data.context);
+      const event = data as VSDEvent & { context: string };
+
+      await this.order.enqueue(event.context, "willDisappear", () => {
+        this.contextControllers.delete(event.context);
+
+        return handler.onWillDisappear?.(wrapDisappearEvent<T>(event));
+      });
     });
 
     // didReceiveSettings
     this.client.onActionEvent(uuid, "didReceiveSettings", async (data) => {
       if (!data.context) return;
 
-      await handler.onDidReceiveSettings?.(
-        wrapEvent<T>(this.client, data as VSDEvent & { context: string }, getControllerType(data.context)),
+      const event = data as VSDEvent & { context: string };
+
+      await this.order.enqueue(event.context, "didReceiveSettings", () =>
+        handler.onDidReceiveSettings?.(wrapEvent<T>(this.client, event, controllerOf(event.context))),
       );
     });
 
-    // keyDown — fire broadcast callbacks first (for window focus), then handler
+    // keyDown — the broadcast fires at arrival, for a live context only (window
+    // focus), before the handler event is enqueued.
     this.client.onActionEvent(uuid, "keyDown", async (data) => {
       if (!data.context) return;
 
-      for (const cb of this.keyDownCallbacks) cb();
+      const event = data as VSDEvent & { context: string };
 
-      await handler.onKeyDown?.(
-        wrapEvent<T>(this.client, data as VSDEvent & { context: string }, getControllerType(data.context)),
+      if (this.order.isLive(event.context)) for (const cb of this.keyDownCallbacks) cb();
+
+      await this.order.enqueue(event.context, "keyDown", () =>
+        handler.onKeyDown?.(wrapEvent<T>(this.client, event, controllerOf(event.context))),
       );
     });
 
@@ -387,19 +449,23 @@ export class VSDPlatformAdapter implements IDeckPlatformAdapter {
     this.client.onActionEvent(uuid, "keyUp", async (data) => {
       if (!data.context) return;
 
-      await handler.onKeyUp?.(
-        wrapEvent<T>(this.client, data as VSDEvent & { context: string }, getControllerType(data.context)),
+      const event = data as VSDEvent & { context: string };
+
+      await this.order.enqueue(event.context, "keyUp", () =>
+        handler.onKeyUp?.(wrapEvent<T>(this.client, event, controllerOf(event.context))),
       );
     });
 
-    // dialRotate — fire broadcast callbacks first, then handler
+    // dialRotate — broadcast at arrival for a live context, then the handler event.
     this.client.onActionEvent(uuid, "dialRotate", async (data) => {
       if (!data.context) return;
 
-      for (const cb of this.dialRotateCallbacks) cb();
+      const event = data as VSDEvent & { context: string };
 
-      await handler.onDialRotate?.(
-        wrapDialRotateEvent<T>(this.client, data as VSDEvent & { context: string }, getControllerType(data.context)),
+      if (this.order.isLive(event.context)) for (const cb of this.dialRotateCallbacks) cb();
+
+      await this.order.enqueue(event.context, "dialRotate", () =>
+        handler.onDialRotate?.(wrapDialRotateEvent<T>(this.client, event, controllerOf(event.context))),
       );
     });
 
@@ -414,17 +480,23 @@ export class VSDPlatformAdapter implements IDeckPlatformAdapter {
     // changes. No timer: a push has no release to wait for. See "The Mirabox
     // adapter makes a knob press atomic" in
     // docs/superpowers/specs/2026-09-26-issue-1013-mirabox-knob-dials.md.
+    //
+    // The press is ONE input task in the order (#1597), so a disappear arriving
+    // between the handler's down and up still runs after both: the atomic
+    // press stays atomic.
 
-    // dialDown — fire broadcast callbacks first, then the handler's down and up
+    // dialDown — broadcast at arrival for a live context, then the handler's down and up
     this.client.onActionEvent(uuid, "dialDown", async (data) => {
       if (!data.context) return;
 
-      for (const cb of this.dialDownCallbacks) cb();
-
       const event = data as VSDEvent & { context: string };
 
-      await handler.onDialDown?.(wrapEvent<T>(this.client, event, getControllerType(event.context)));
-      await handler.onDialUp?.(wrapEvent<T>(this.client, event, getControllerType(event.context)));
+      if (this.order.isLive(event.context)) for (const cb of this.dialDownCallbacks) cb();
+
+      await this.order.enqueue(event.context, "dialDown", async () => {
+        await handler.onDialDown?.(wrapEvent<T>(this.client, event, controllerOf(event.context)));
+        await handler.onDialUp?.(wrapEvent<T>(this.client, event, controllerOf(event.context)));
+      });
     });
 
     // dialUp — dropped: the press was already completed at its dialDown

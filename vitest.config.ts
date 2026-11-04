@@ -63,6 +63,7 @@ export default defineConfig({
       "@iracedeck/deck-adapter-elgato": packageSrc("deck-adapter-elgato"),
       "@iracedeck/deck-adapter-mirabox": packageSrc("deck-adapter-mirabox"),
       "@iracedeck/deck-adapter-ulanzi": packageSrc("deck-adapter-ulanzi"),
+      "@iracedeck/deck-core/testing": packageSrc("deck-core", "src/testing.ts"),
       "@iracedeck/deck-core": packageSrc("deck-core"),
       "@iracedeck/deck-iracing": packageSrc("deck-iracing"),
       "@iracedeck/diagnostics": packageSrc("diagnostics"),
