@@ -42,8 +42,8 @@ export type SessionKindsAgree = IsTrue<
 >;
 
 export function initSim(core: Core): Sim {
-  // Translate sdkController ticks → semantic events on the bus. The only
-  // package allowed to read `@iracedeck/iracing-sdk` for telemetry. Its six
+  // Translate sdkController ticks → semantic events on the bus: the one
+  // producer of bus events from `@iracedeck/iracing-sdk`. Its six
   // settings-backed options — the fuel margin, the corner lead, the gap
   // threshold and consistency gate, the opponent-flag opt-ins and range —
   // are built by the Race Engineer's wiring (#1378), so the scenario harness

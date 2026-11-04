@@ -3,10 +3,12 @@
  *
  * Subscribes to `sdkController` ticks, diffs each snapshot against the
  * previous tick, and publishes semantic events through the shared
- * `@iracedeck/event-bus`. This is the only package allowed to import
- * `@iracedeck/iracing-sdk` for telemetry consumption — future sim
- * adapters (`sim-events-ac`, …) sit as parallel siblings and emit the
- * same event catalog.
+ * `@iracedeck/event-bus`. It is the one producer of bus events from the
+ * iRacing SDK; other packages still import `@iracedeck/iracing-sdk`
+ * directly (`deck-iracing`, `replay-engine`, `iracing-actions` and the
+ * `audio-scenarios` catalog among them). Future sim translators
+ * (`sim-events-ac`, …) sit as parallel siblings and emit the same event
+ * catalog.
  *
  * Lifecycle:
  *   - initializeSimEventsIracing(bus, sdkController, logger) subscribes

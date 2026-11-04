@@ -1,8 +1,9 @@
 /**
- * Replay busy marks (issue #1437).
+ * Busy marks (issue #1437).
  *
- * The three looks a pressed replay key takes while its press is being carried
- * out: **working** (a ring of eight dots with one bright dot and a fading tail,
+ * The three looks a pressed key takes while its press is being carried out —
+ * the replay keys (Replay Control, Replay Markers) are the first to use them:
+ * **working** (a ring of eight dots with one bright dot and a fading tail,
  * stepped by the caller), **waiting** (three still dots in a row, the press is
  * held behind something else) and **not done** (a red cross, the plugin gave
  * up or ignored the press). Drawn in place of the key's artwork, inside the
@@ -16,7 +17,7 @@
  */
 import type { GraphicArea } from "./title-settings.js";
 
-/** The look a busy replay key shows. `step` is the working ring's frame, any integer. */
+/** The look a busy key shows. `step` is the working ring's frame, any integer. */
 export type BusyMark = { kind: "working"; step: number } | { kind: "waiting" } | { kind: "not-done" };
 
 /** Frames in one turn of the working ring: step n and step n + 8 draw the same text. */

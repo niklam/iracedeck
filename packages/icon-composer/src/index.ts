@@ -17,7 +17,7 @@ export {
   dimForBindingWarning,
 } from "./binding-warning.js";
 
-// Replay busy marks (issue #1437)
+// Busy marks (issue #1437; the replay keys are the first users)
 export { BUSY_MARK_FRAMES, BUSY_MARK_MAX_SIDE, BUSY_NOT_DONE_COLOR, busyMarkSvg, type BusyMark } from "./busy-mark.js";
 
 // Icon base template and border parts
