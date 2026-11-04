@@ -4122,7 +4122,7 @@ describe("every git trap reads git's global options (#1606)", () => {
       "export GIT_DIR=../ir-5/.git; git commit -m x",
       "git_dir=x git commit -m x",
     ])("refuses a commit whose repository or work tree is named apart: %s", (c) =>
-      expect(deny(c, inTree())).toMatch(/--git-dir, --work-tree, GIT_DIR or GIT_WORK_TREE.*git -C <dir> commit/),
+      expect(deny(c, inTree())).toMatch(/--git-dir, --work-tree, core\.worktree, GIT_DIR.*git -C <dir> commit/),
     );
 
     it("refuses a bare push and a worktree add under a --git-dir, and reads only the text otherwise", () => {
@@ -4240,6 +4240,28 @@ describe("the program-word rewrite's review round (#1606)", () => {
       expect(deny("2>`x` gh pr merge 5 --squash", ctx({ prView: green }))).toBeTruthy();
       passes("echo x &>log gh pr merge 5", ctx({ prView: green }));
       passes("echo 2>/dev/null gh pr merge 5", ctx({ prView: green }));
+    });
+  });
+
+  // An index or a work tree named apart from the directory moves what a commit records.
+  describe("a commit whose index or work tree is moved", () => {
+    it.each([
+      "GIT_INDEX_FILE=x git commit -m x",
+      "export GIT_INDEX_FILE=x; git commit -m x",
+      "env GIT_INDEX_FILE=x git commit -m x",
+      "git -c core.worktree=../ir-5 commit -m x",
+      "git -c Core.WorkTree=../ir-5 commit -m x",
+      "git -c core.worktree commit -m x",
+      `git -c "core.worktree=../ir 5" commit -m x`,
+      "git --config-env=core.worktree=WT commit -m x",
+      "git --config-env core.worktree=WT commit -m x",
+      "GIT_COMMON_DIR=../ir-5/.git git commit -m x",
+    ])("refuses %s", (c) => expect(deny(c)).toMatch(/git -C <dir> commit/));
+    it("passes other config and an index variable no commit is under", () => {
+      passes("git -c core.autocrlf=false commit -m x");
+      passes("git -c user.name=x -c core.worktreex=y commit -m x");
+      passes("GIT_INDEX_FILE=x git push origin master");
+      passes("git -c core.worktree=x push origin master");
     });
   });
 });

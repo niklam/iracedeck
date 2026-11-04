@@ -402,7 +402,11 @@ describe("git's global options (#1606)", () => {
 
   it("gitPlace says when --git-dir, --work-tree or their variables move the repository", () => {
     const place = (c) => lexer.gitPlace?.(c, MASTER);
-    expect(place("git status")).toEqual({ dir: MASTER, movesRepo: false, movesTree: false });
+    expect(place("git status")).toEqual({ dir: MASTER, movesRepo: false, movesTree: false, movesIndex: false });
+    expect(place("GIT_INDEX_FILE=x git status")).toMatchObject({ movesRepo: false, movesIndex: true });
+    expect(place("git -c core.worktree=x status")).toMatchObject({ movesRepo: false, movesTree: true });
+    expect(place("git --config-env=CORE.WORKTREE=X status")).toMatchObject({ movesTree: true });
+    expect(place("GIT_COMMON_DIR=x git status")).toMatchObject({ movesRepo: true });
     expect(place("git --git-dir=x status")).toMatchObject({ movesRepo: true, movesTree: false });
     expect(place("git --git-dir x status")).toMatchObject({ movesRepo: true });
     expect(place("GIT_DIR=x git status")).toMatchObject({ movesRepo: true });

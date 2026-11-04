@@ -842,51 +842,58 @@ export function gitPlace(command, cwd, re, shell = BASH) {
 
 /** The program word `git` in the rewritten text, wherever a word starts. */
 const GIT_WORD = /(?<![^\s|;&()\x60])git(?=\s)/g;
-/** `GIT_DIR` or `GIT_WORK_TREE` assigned or exported, in bash or as PowerShell's `$env:`; the environment is case-blind on Windows. */
-const GIT_ENV = /(?<!\w)GIT_(DIR|WORK_TREE)\s*=/gi;
+/**
+ * `GIT_DIR`, `GIT_COMMON_DIR`, `GIT_WORK_TREE` or `GIT_INDEX_FILE` assigned or
+ * exported, in bash or as PowerShell's `$env:`; the environment is case-blind
+ * on Windows.
+ */
+const GIT_ENV = /(?<!\w)GIT_(DIR|COMMON_DIR|WORK_TREE|INDEX_FILE)\s*=/gi;
 
 /**
  * Where the git command whose text starts at `start` runs (#1606), as
- * `{ dir, movesRepo, movesTree }`: `base` (the directory its `cd`s left it
- * in, a {@link chainCommands} `base`) moved by every `-C` among its global
- * options in order, each against the one before, as git applies them
- * ({@link gitGlobals}). `movesRepo` is set when a `--git-dir` or a `GIT_DIR`
- * names its repository, and `movesTree` when a `--work-tree` or a
- * `GIT_WORK_TREE` names its work tree: the repository is then not the one the
- * directory holds, so a rule that reads that repository's branch, index or
- * files cannot know what the command acts on. A `GIT_DIR` or
- * `GIT_WORK_TREE` anywhere in the live text ahead of the command counts, as a
- * prefix, an `export` or an assignment to a variable the environment may
- * already carry. `end` bounds where the git word is looked for.
+ * `{ dir, movesRepo, movesTree, movesIndex }`: `base` (the directory its `cd`s
+ * left it in, a {@link chainCommands} `base`) moved by every `-C` among its
+ * global options in order, each against the one before, as git applies them
+ * ({@link gitGlobals}). `movesRepo` is set when a `--git-dir`, `GIT_DIR` or
+ * `GIT_COMMON_DIR` names its repository, `movesTree` when a `--work-tree`, a
+ * `GIT_WORK_TREE` or a `core.worktree` set by `-c` or `--config-env` (its key
+ * in any case, as git reads it) names its work tree, and `movesIndex` when a
+ * `GIT_INDEX_FILE` names its index (#1606 review): the hook asks git in the
+ * directory, so a rule that reads that repository's branch, index or files
+ * cannot know what the command acts on. A variable anywhere in the live text
+ * ahead of the command counts, as a prefix, an `export` or an assignment to a
+ * variable the environment may already carry. `end` bounds where the git word
+ * is looked for.
  */
 export function gitPlaceAt(command, start, base, shell = BASH, end = command.length) {
   const text = trustedMask(command);
   GIT_WORD.lastIndex = start;
   const word = GIT_WORD.exec(text);
-  if (!word || word.index >= end) return { dir: base, movesRepo: false, movesTree: false };
+  if (!word || word.index >= end) return { dir: base, movesRepo: false, movesTree: false, movesIndex: false };
   const options = gitGlobals(command, word.index + word[0].length);
   let dir = base;
   for (const d of options.dirs) dir = resolveDir(dir, d, { shell });
   const env = new Set([...text.slice(0, word.index).matchAll(GIT_ENV)].map((m) => m[1].toUpperCase()));
   return {
     dir,
-    movesRepo: options.gitDir !== undefined || env.has("DIR"),
-    movesTree: options.workTree !== undefined || env.has("WORK_TREE"),
+    movesRepo: options.gitDir !== undefined || env.has("DIR") || env.has("COMMON_DIR"),
+    movesTree: options.workTree !== undefined || options.config.includes("core.worktree") || env.has("WORK_TREE"),
+    movesIndex: env.has("INDEX_FILE"),
   };
 }
 
 /**
  * The global options of the git command whose program word ends at `from`
  * (`GIT_GLOBALS`, #1606), read in the rewritten text and their values from
- * the raw text at the same indices, unquoted: `{ dirs, gitDir, workTree }`,
- * every `-C` in order and the last `--git-dir` and `--work-tree`. A value that
- * expands is kept as written, quotes stripped, as the hook has always read
- * one.
+ * the raw text at the same indices, unquoted: `{ dirs, gitDir, workTree,
+ * config }`, every `-C` in order, the last `--git-dir` and `--work-tree`, and
+ * the keys `-c` and `--config-env` set, lower-cased. A value that expands is
+ * kept as written, quotes stripped, as the hook has always read one.
  */
 export function gitGlobals(command, from) {
   const text = trustedMask(command);
   const option = new RegExp(String.raw`\s+${GIT_OPTION}`, "yd");
-  const out = { dirs: [], gitDir: undefined, workTree: undefined };
+  const out = { dirs: [], gitDir: undefined, workTree: undefined, config: [] };
   option.lastIndex = from;
   for (let m; (m = option.exec(text));) {
     const name = m[1] ?? m[3];
@@ -898,6 +905,7 @@ export function gitGlobals(command, from) {
     if (name === "-C") out.dirs.push(value);
     else if (name === "--git-dir") out.gitDir = value;
     else if (name === "--work-tree") out.workTree = value;
+    else if (name === "-c" || name === "--config-env") out.config.push(value.split("=")[0].toLowerCase());
   }
   return out;
 }

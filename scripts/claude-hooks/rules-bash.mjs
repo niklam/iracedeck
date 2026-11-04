@@ -273,15 +273,16 @@ const specExistsFor = (files, issue) => files.some((f) => new RegExp(`-issue-${i
 const gitVerb = (verb) => cmd(new RegExp(`git${GIT_GLOBALS}${verb}`));
 
 /**
- * The deny for a git command whose repository or work tree is named apart
- * from the directory it runs in (`--git-dir`, `--work-tree`, `GIT_DIR`,
- * `GIT_WORK_TREE`; `gitPlaceAt` in `shell-lexer.mjs`), from a rule that reads
+ * The deny for a git command whose repository, work tree or index is named
+ * apart from the directory it runs in (`--git-dir`, `--work-tree`,
+ * `core.worktree`, `GIT_DIR`, `GIT_COMMON_DIR`, `GIT_WORK_TREE`,
+ * `GIT_INDEX_FILE`; `gitPlaceAt` in `shell-lexer.mjs`), from a rule that reads
  * that repository's branch, index or files (#1606): the hook asks git in the
  * directory, so it would judge another repository than the one the command
  * acts on.
  */
 const movedRepo = (verb) =>
-  `This \`git ${verb}\` names its repository or work tree with --git-dir, --work-tree, GIT_DIR or GIT_WORK_TREE, so the hook cannot tell which branch, index and files it acts on. Run it as \`git -C <dir> ${verb} …\` in the tree itself instead (#1606).`;
+  `This \`git ${verb}\` names its repository, work tree or index apart from its directory (--git-dir, --work-tree, core.worktree, GIT_DIR, GIT_COMMON_DIR, GIT_WORK_TREE or GIT_INDEX_FILE), so the hook cannot tell which branch, index and files it acts on. Run it as \`git -C <dir> ${verb} …\` in the tree itself instead (#1606).`;
 
 /** The git shapes whose rules read a `-C`; exported so the post-hook scopes the same way. */
 export const GIT_PUSH = gitVerb(String.raw`push\b`);
@@ -999,8 +1000,8 @@ export const rules = [
       for (const commit of chainCommands(c, ctx.cwd, GIT_COMMIT, ctx.shell)) {
         // Every `-C`, in order; a repository or work tree named apart from the
         // directory leaves the branch, the index and the files unknown (#1606).
-        const { dir, movesRepo, movesTree } = gitPlaceAt(c, commit.start, commit.base, ctx.shell);
-        if (movesRepo || movesTree) return movedRepo("commit");
+        const { dir, movesRepo, movesTree, movesIndex } = gitPlaceAt(c, commit.start, commit.base, ctx.shell);
+        if (movesRepo || movesTree || movesIndex) return movedRepo("commit");
         const branch = ctx.branch(dir);
         const selection = commitSelection(c, commit, ctx, dir);
         const committed = [...selection.keys()];
@@ -1063,8 +1064,8 @@ export const rules = [
       if (!has(c, GIT_COMMIT)) return null;
       // Each commit in the tree its own `cd`s and `-C` land in, as for the spec rule (#1594 review).
       for (const commit of chainCommands(c, ctx.cwd, GIT_COMMIT, ctx.shell)) {
-        const { dir, movesRepo, movesTree } = gitPlaceAt(c, commit.start, commit.base, ctx.shell);
-        if (movesRepo || movesTree) return movedRepo("commit");
+        const { dir, movesRepo, movesTree, movesIndex } = gitPlaceAt(c, commit.start, commit.base, ctx.shell);
+        if (movesRepo || movesTree || movesIndex) return movedRepo("commit");
         for (const from of manifestSources(c, commit, ctx, dir)) {
           const text = ctx.committedText?.(dir, ELGATO_MANIFEST, from);
           if (text === undefined) continue;
