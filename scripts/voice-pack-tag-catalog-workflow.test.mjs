@@ -23,13 +23,18 @@
  * `runStepAsync`: the stand-in answers on this process's event loop, which a
  * synchronous spawn would hold for the whole run.
  */
-import { existsSync, mkdirSync, rmSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, rmSync } from "node:fs";
 import { createServer } from "node:http";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { BASH, createStepSandbox, readWorkflow, stepNamed, writeFile } from "./lib/workflow-step-runner.mjs";
+import {
+  buildVoiceCatalogData,
+  serializeVoiceCatalogData,
+  VOICE_CATALOG_ENTRIES_DIR,
+} from "./lib/voice-catalog-data.mjs";
+import { BASH, createStepSandbox, readWorkflow, REPO, stepNamed, writeFile } from "./lib/workflow-step-runner.mjs";
 
 const HOSTING_WORKFLOW = ".github/workflows/firebase-hosting-release.yml";
 const JOB = "build_and_deploy";
@@ -738,6 +743,34 @@ describe.skipIf(BASH === undefined)("the catalog check step, run against a live 
     routes.set(target, { status: 410, body: "gone" });
     const run = await check({ deploy: { default: "1.4.0" }, live: { redirect: target } });
     expect(refusedWhole(run, "answered HTTP 410")).toContain(`redirected to ${base}${target}`);
+  });
+
+  /**
+   * The step restates what it reads of the catalog format: schema 1, the
+   * pack-id rule and a semver grammar. This serves the website generator's own
+   * output for the repository's own entries as the live catalog and deploys
+   * those same entries, so a schema bump, a pack-id rule change or a version
+   * the step cannot parse turns this red in the change that makes it.
+   */
+  it("passes the repository's own catalog against the real generator's output of it, comparing every pack", async () => {
+    const entriesDir = path.join(REPO, VOICE_CATALOG_ENTRIES_DIR);
+    const data = buildVoiceCatalogData(entriesDir);
+    expect(
+      data.packs.length,
+      `${VOICE_CATALOG_ENTRIES_DIR} has no entry, so nothing would be compared`,
+    ).toBeGreaterThan(0);
+    const root = path.join(box.work, "case-repository-catalog");
+    cpSync(entriesDir, path.join(root, CATALOG), { recursive: true });
+
+    const run = await check({ cwd: root, live: { status: 200, body: serializeVoiceCatalogData(data) } });
+    for (const { id, version } of data.packs) {
+      expect(okLine(run, id), `pack "${id}" was not compared in:\n${run.output}`).toBe(
+        `ok  ${id}  ${version} >= ${version}`,
+      );
+    }
+    expect(run.output).toContain(`: ${data.packs.length} compared.`);
+    expect(run.output).not.toContain("::");
+    expect(run.status).toBe(0);
   });
 
   it("does not look at master: a pack bump on master that is not live yet passes", async () => {
