@@ -17,20 +17,12 @@
   "dependencies": {
     "@elgato/streamdeck": "3.0.2",
     "@iracedeck/app-constants": "workspace:*",
-    "@iracedeck/audio-assets": "workspace:*",
-    "@iracedeck/audio-native": "workspace:*",
-    "@iracedeck/audio-scenarios": "workspace:*",
-    "@iracedeck/audio-service": "workspace:*",
     "@iracedeck/deck-adapter-elgato": "workspace:*",
     "@iracedeck/deck-core": "workspace:*",
-    "@iracedeck/event-bus": "workspace:*",
     "@iracedeck/iracing-actions": "workspace:*",
     "@iracedeck/logger": "workspace:*",
-    "@iracedeck/pi-components": "workspace:*",
     "@iracedeck/plugin-runtime": "workspace:*",
-    "@iracedeck/rasterizer": "workspace:*",
-    "@iracedeck/settings": "workspace:*",
-    "zod": "4.6.7"
+    "@iracedeck/settings": "workspace:*"
   },
   "devDependencies": {
     "@elgato/cli": "1.10.2",
