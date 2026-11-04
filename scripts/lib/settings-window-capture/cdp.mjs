@@ -20,6 +20,31 @@ export const CDP_COMMAND_TIMEOUT_MS = 30_000;
 export const CDP_ENDPOINT_TIMEOUT_MS = 20_000;
 
 /**
+ * The `code` of the error a command in flight rejects with when the connection
+ * closes under it (#1544). Chromium drops the socket while it handles
+ * `Browser.close`, so for that one command this is the browser closing, not a
+ * failure — and the caller can tell so without reading the message.
+ */
+export const CDP_CONNECTION_CLOSED = "CDP_CONNECTION_CLOSED";
+
+/**
+ * The `code` of the error a command rejects with when it is sent on a
+ * connection that had already closed: it never reached the browser.
+ */
+export const CDP_NOT_CONNECTED = "CDP_NOT_CONNECTED";
+
+/**
+ * An Error carrying a `code`, as Node's own errors do.
+ *
+ * @param {string} message
+ * @param {string} code
+ * @returns {Error & {code: string}}
+ */
+function codedError(message, code) {
+  return Object.assign(new Error(message), { code });
+}
+
+/**
  * Read the port Chromium actually bound, from the `DevToolsActivePort` file it
  * writes into its profile directory.
  *
@@ -147,7 +172,7 @@ export async function connectCdp(url, deps = {}) {
 
     for (const { reject, timer } of pending.values()) {
       clearTimeout(timer);
-      reject(new Error(reason));
+      reject(codedError(reason, CDP_CONNECTION_CLOSED));
     }
 
     pending.clear();
@@ -194,7 +219,9 @@ export async function connectCdp(url, deps = {}) {
      * session rather than the browser itself.
      */
     send(method, params = {}, sessionId) {
-      if (closedReason) return Promise.reject(new Error(`${closedReason} (while sending ${method})`));
+      if (closedReason) {
+        return Promise.reject(codedError(`${closedReason} (while sending ${method})`, CDP_NOT_CONNECTED));
+      }
 
       const id = nextId++;
 
