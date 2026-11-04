@@ -36,6 +36,8 @@ const CHECK_STEP = "Refuse a voice-pack catalog behind the live one";
 const BUILD_STEP = "Build website";
 const LIVE_URL = "https://iracedeck.com/voice-catalog.json";
 const CATALOG = "packages/audio-assets/catalog";
+/** The commit a between-releases publish deploys the catalog of, as publish-voice-packs.yml passes it. */
+const PUBLISH_REF = "0123456789abcdef0123456789abcdef01234567";
 
 it("finds a bash to run the workflow step with", () => {
   expect(BASH, "no bash found (on Windows: Git for Windows' bin/bash.exe beside git)").toBeDefined();
@@ -69,6 +71,10 @@ const ASSERTIONS = {
   },
   "reads the live catalog from iracedeck.com": (doc) => {
     expect(stepNamed(doc, JOB, CHECK_STEP).step.env?.LIVE_CATALOG_URL).toBe(LIVE_URL);
+  },
+  // The one expression the step takes, in `env` and never in `run`; it picks the remedy a refusal names.
+  "takes the publish's catalog commit from the catalog_ref input": (doc) => {
+    expect(stepNamed(doc, JOB, CHECK_STEP).step.env?.CATALOG_REF).toBe("${{ inputs.catalog_ref }}");
   },
 };
 
@@ -126,6 +132,16 @@ const MUTATIONS = [
     "the env removed",
     "reads the live catalog from iracedeck.com",
     (doc) => delete stepNamed(doc, JOB, CHECK_STEP).step.env,
+  ],
+  [
+    "the catalog ref from another expression",
+    "takes the publish's catalog commit from the catalog_ref input",
+    (doc) => (stepNamed(doc, JOB, CHECK_STEP).step.env.CATALOG_REF = "${{ github.sha }}"),
+  ],
+  [
+    "the catalog ref removed",
+    "takes the publish's catalog commit from the catalog_ref input",
+    (doc) => delete stepNamed(doc, JOB, CHECK_STEP).step.env.CATALOG_REF,
   ],
 ];
 
@@ -268,7 +284,27 @@ describe.skipIf(BASH === undefined)("the catalog check step, run against a live 
       "from master onto the release branch this deploys, its clips and its catalog entry together",
     );
     expect(line).toContain("then re-tag, or re-run");
+    expect(line).not.toContain("Publish voice packs");
     errorLine(run, "1 voice-pack catalog entry in this deploy cannot be deployed");
+    expect(run.status).toBe(1);
+  });
+
+  it("names master as what must move when a between-releases publish is behind the live catalog", async () => {
+    // The publish deploys master's catalog at CATALOG_REF: a release put the newer version live.
+    const run = await check({
+      deploy: { default: "1.3.0" },
+      live: { packs: { default: "1.4.0" } },
+      env: { CATALOG_REF: PUBLISH_REF },
+    });
+    const line = errorFor(run, "default");
+    expect(line).toContain("is at 1.3.0 in this deploy but live at 1.4.0");
+    expect(line).toContain(
+      `This deploy's catalog is master's at ${PUBLISH_REF}, so master is behind the live catalog for pack "default"`,
+    );
+    expect(line).toContain("Bring the live version onto master first by back-merging the release branch's commits");
+    expect(line).toContain("then dispatch 'Publish voice packs' again from master");
+    expect(line).not.toContain("onto the release branch this deploys");
+    expect(line).not.toContain("re-tag");
     expect(run.status).toBe(1);
   });
 
@@ -382,7 +418,29 @@ describe.skipIf(BASH === undefined)("the catalog check step, run against a live 
       expect(line).toContain(`master (${origins.keeps.sha}) still carries ${CATALOG}/legacy.json`);
       expect(line).toContain('To keep it, bring pack "legacy" from master onto the release branch');
       expect(line).toContain(`To withdraw it, delete ${CATALOG}/legacy.json on master first, then re-run.`);
+      expect(line).not.toContain("Publish voice packs");
       expect(run.output).not.toContain("::warning");
+      expect(run.status).toBe(1);
+    });
+
+    it("on a between-releases publish, names master, not a release branch, as what decides", async () => {
+      // master gained the pack after the commit this publish verified and deploys.
+      const run = await check({
+        origin: origins.keeps.url,
+        deploy: { default: "1.0.0" },
+        live: { packs: { default: "1.0.0", legacy: "1.2.0" } },
+        env: { CATALOG_REF: PUBLISH_REF },
+      });
+      const line = errorFor(run, "legacy");
+      expect(line).toContain(`master (${origins.keeps.sha}) still carries ${CATALOG}/legacy.json`);
+      expect(line).toContain(
+        `This deploy's catalog is master's at ${PUBLISH_REF}, which has no legacy.json, so master decides.`,
+      );
+      expect(line).toContain(
+        `To keep pack "legacy", make sure master's ${CATALOG} carries legacy.json, then dispatch 'Publish voice packs' again from master`,
+      );
+      expect(line).toContain(`To withdraw it, make sure master's ${CATALOG} lacks it, then re-run.`);
+      expect(line).not.toContain("onto the release branch this deploys");
       expect(run.status).toBe(1);
     });
 

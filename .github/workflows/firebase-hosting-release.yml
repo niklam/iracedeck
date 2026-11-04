@@ -199,6 +199,12 @@ jobs:
       # The URL is a literal here, not an input, so no caller can point the
       # comparison elsewhere.
       #
+      # CATALOG_REF picks the remedy a refusal names, and nothing else. Set,
+      # this is the between-releases publish, whose catalog is master's at that
+      # commit (the overlay step above), so a pack behind live means master is
+      # behind a release, and master is what must move. Empty, it is a tag,
+      # whose release branch must take the pack from master.
+      #
       # A 404 is the one pass without a comparison: no catalog is live, so
       # nothing can regress, and a warning says so. Everything else fails
       # closed: a network error, a timeout, any other status, and a 200 whose
@@ -212,6 +218,7 @@ jobs:
       - name: Refuse a voice-pack catalog behind the live one
         env:
           LIVE_CATALOG_URL: https://iracedeck.com/voice-catalog.json
+          CATALOG_REF: ${{ inputs.catalog_ref }}
         run: |
           set -euo pipefail
           node --input-type=module - <<'JS'
@@ -274,10 +281,18 @@ jobs:
           const unread = "Refusing to deploy a catalog nobody compared with the live one";
           const malformed = (reason) =>
             fail(`The live voice-pack catalog at ${url} cannot be read as the catalog: ${reason}. ${unread}; until the live catalog reads as schema 1 again, no deploy through this workflow can replace it.`);
+          // The remedy depends on the path, never the verdict: a publish deploys
+          // master's catalog at CATALOG_REF, so there master is what must move;
+          // a tag deploys its release branch's, which must take the pack from master.
+          const catalogRef = process.env.CATALOG_REF ?? "";
           const remedy = (id) =>
-            `Bring pack "${id}" from master onto the release branch this deploys, its clips and its catalog entry together (the tag's pack job repacks from the branch's clips and verifies the archive against the entry), then re-tag, or re-run once the branch carries them.`;
+            catalogRef !== ""
+              ? `This deploy's catalog is master's at ${catalogRef}, so master is behind the live catalog for pack "${id}", as when a release put a newer version live than master holds. Bring the live version onto master first by back-merging the release branch's commits for the pack (its clips and its catalog entry together), then dispatch 'Publish voice packs' again from master; a re-run would deploy ${catalogRef} again.`
+              : `Bring pack "${id}" from master onto the release branch this deploys, its clips and its catalog entry together (the tag's pack job repacks from the branch's clips and verifies the archive against the entry), then re-tag, or re-run once the branch carries them.`;
           const missingRemedy = (id) =>
-            `To keep it, bring pack "${id}" from master onto the release branch this deploys, its clips and its catalog entry together (the tag's pack job repacks from the branch's clips and verifies the archive against the entry), then re-tag, or re-run once the branch carries them. To withdraw it, delete ${dir}/${id}.json on master first, then re-run.`;
+            catalogRef !== ""
+              ? `This deploy's catalog is master's at ${catalogRef}, which has no ${id}.json, so master decides. To keep pack "${id}", make sure master's ${dir} carries ${id}.json, then dispatch 'Publish voice packs' again from master; a re-run would deploy ${catalogRef} again. To withdraw it, make sure master's ${dir} lacks it, then re-run.`
+              : `To keep it, bring pack "${id}" from master onto the release branch this deploys, its clips and its catalog entry together (the tag's pack job repacks from the branch's clips and verifies the archive against the entry), then re-tag, or re-run once the branch carries them. To withdraw it, delete ${dir}/${id}.json on master first, then re-run.`;
 
           // git in the checkout, never prompting, and never left hanging on the network.
           const git = (...args) =>
