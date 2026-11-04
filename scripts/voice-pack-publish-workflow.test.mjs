@@ -104,7 +104,9 @@ describe(`${HOSTING_WORKFLOW}'s overlay step (#1392)`, () => {
   });
 });
 
-describe.skipIf(BASH === undefined)("the overlay step, run against a fetched origin", () => {
+// Each run is a shallow clone plus two fetches, 6 to 8 s apiece under a loaded
+// full suite, past vitest's 5 s default (#1613).
+describe.skipIf(BASH === undefined)("the overlay step, run against a fetched origin", { timeout: 60_000 }, () => {
   const { step } = stepNamed(readWorkflow(HOSTING_WORKFLOW), "build_and_deploy", OVERLAY_STEP);
   let origin;
   const sha = {};
@@ -151,7 +153,7 @@ describe.skipIf(BASH === undefined)("the overlay step, run against a fetched ori
     sha.noCatalog = commit("no catalog");
 
     git(origin, "checkout", "-q", "master");
-  });
+  }, 60_000);
 
   /** A shallow checkout of the stable tag, as actions/checkout leaves it, with the step run in it. */
   function overlay(catalogRef, { dropGenerator = false } = {}) {
