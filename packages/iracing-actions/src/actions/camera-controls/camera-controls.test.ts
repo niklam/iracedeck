@@ -1813,6 +1813,88 @@ describe("cycle-car focuses the neighbour by car number (pace-car recovery #803)
   });
 });
 
+// The keypad Cycle Car coerced a missing CamCarIdx to car index 0 while the
+// dial's car-number mode passed it raw (#1072). Index 0 is a listed competitor
+// in a session with no pace car, so the keypad stepped from that car where the
+// dial entered the walk at an end. Both now hand computeCarNumberTarget the
+// reading as it is.
+describe("Cycle Car and the dial's car-number mode agree on a missing CamCarIdx (#1072)", () => {
+  function dialContext() {
+    return {
+      id: "dial-1072",
+      deviceId: "dev-1",
+      deviceType: 2,
+      isKey: () => false,
+      isDial: () => true,
+      dialCanvas: () => ({ id: "sd-plus-strip", width: 200, height: 100 }) as const,
+      setDialCanvas: vi.fn(async (_dataUri: string) => {}),
+      setImage: vi.fn(async () => {}),
+      setTitle: vi.fn(async () => {}),
+      setSettings: vi.fn(async () => {}),
+      setFeedback: vi.fn(async () => {}),
+      setTriggerDescription: vi.fn(async () => {}),
+    };
+  }
+
+  /** Feeds the action's controller this telemetry and an empty session. */
+  function mockSim(action: CameraControls, telemetry: TelemetryData): void {
+    vi.mocked(action["sdkController"].getCurrentTelemetry).mockReturnValue(telemetry);
+    vi.mocked(action["sdkController"].getSessionInfo).mockReturnValue({});
+  }
+
+  /** A field with no pace car: car index 0 is a competitor, #3. */
+  const NO_PACE_CAR_FIELD = [
+    { carIdx: 0, carNumber: "3", carNumberRaw: 3, userName: "a" },
+    { carIdx: 5, carNumber: "7", carNumberRaw: 7, userName: "b" },
+    { carIdx: 9, carNumber: "12", carNumberRaw: 12, userName: "c" },
+  ];
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(getAllCarNumbers).mockReturnValue(NO_PACE_CAR_FIELD);
+  });
+
+  afterEach(() => {
+    vi.mocked(getAllCarNumbers).mockReturnValue([]);
+  });
+
+  async function pressNext(telemetry: TelemetryData): Promise<void> {
+    const action = new CameraControls();
+    mockSim(action, telemetry);
+
+    await action.onKeyDown({
+      action: { id: "k1" },
+      payload: { settings: { target: "cycle-car", direction: "next" } },
+    } as never);
+  }
+
+  it("the keypad enters at the first car when CamCarIdx is missing, not at car index 0's neighbour", async () => {
+    await pressNext({ CamGroupNumber: 9, CamCameraNumber: 2 });
+
+    // Coerced to 0 this was #7, the neighbour of car index 0 (#3).
+    expect(mockCamera.switchNum).toHaveBeenCalledWith(3, 9, 2);
+  });
+
+  it("the keypad still steps from car index 0 when the camera is on it", async () => {
+    await pressNext({ CamCarIdx: 0, CamGroupNumber: 9, CamCameraNumber: 2 });
+
+    expect(mockCamera.switchNum).toHaveBeenCalledWith(7, 9, 2);
+  });
+
+  it("the dial's car-number mode lands on the same car as the keypad for a missing CamCarIdx", async () => {
+    const action = new CameraControls();
+    mockSim(action, { CamGroupNumber: 9, CamCameraNumber: 2 });
+    const settings = { dial: { mode: "car-number" } };
+
+    await action.onWillAppear({ action: dialContext(), payload: { settings } } as never);
+    // Car-number is number-primary (#973): counter-clockwise is "next".
+    await action.onDialRotate({ action: dialContext(), payload: { settings, ticks: -1 } } as never);
+
+    expect(mockCamera.switchNum).toHaveBeenCalledTimes(1);
+    expect(mockCamera.switchNum).toHaveBeenCalledWith(3, expect.any(Number), expect.any(Number));
+  });
+});
+
 // Cycle by Track Order taps iRacing's own Next Car / Previous Car bindings
 // (issue #1277) on both surfaces — the keypad's CAR AHEAD / CAR BEHIND and the
 // dial's Track Order mode — instead of computing the neighbour from the live

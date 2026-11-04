@@ -1167,10 +1167,14 @@ export class CameraControls extends SimIRacingAction<CameraControlsSettings> {
         // the same competitor list so both surfaces agree — every car the
         // session has had, departed ones included, since a switch to one
         // works (#1281); falls back to the raw cycle helper only out of
-        // session (no car list).
+        // session (no car list). The walk takes CamCarIdx as read, as the
+        // dial does, rather than `carIdx`, whose `?? 0` gives the raw SDK
+        // calls the number they need: car index 0 is a listed competitor in
+        // a session with no pace car, so an unknown camera car read as 0
+        // would step from that car instead of entering at an end (#1072).
         const sessionInfo = this.sdkController.getSessionInfo();
         const cars = getAllCarNumbers(sessionInfo, true, true);
-        const targetCar = computeCarNumberTarget(carIdx, cars, direction);
+        const targetCar = computeCarNumberTarget(telemetry.CamCarIdx, cars, direction);
 
         if (targetCar) {
           const success = camera.switchNum(targetCar.carNumberRaw, groupNum, cameraNum);

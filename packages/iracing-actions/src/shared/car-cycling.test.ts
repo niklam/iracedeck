@@ -52,4 +52,10 @@ describe("computeCarNumberTarget walks every listed car (#1281)", () => {
     expect(computeCarNumberTarget(0, [cars[2]], "next")?.carNumber).toBe("14");
     expect(computeCarNumberTarget(0, [cars[2]], "previous")?.carNumber).toBe("14");
   });
+
+  it("enters at an end when the focused car is unknown, as for an unlisted one (#1072)", () => {
+    expect(computeCarNumberTarget(undefined, cars, "next")?.carNumber).toBe("1");
+    expect(computeCarNumberTarget(undefined, cars, "previous")?.carNumber).toBe("17");
+    expect(computeCarNumberTarget(undefined, [cars[2]], "next")?.carNumber).toBe("14");
+  });
 });
