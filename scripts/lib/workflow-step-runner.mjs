@@ -54,6 +54,27 @@ export function writeFile(root, rel, text) {
   writeFileSync(path.join(root, rel), text);
 }
 
+/** How long a step's output may trail its bash's exit before `runStepAsync` settles without it. */
+const EXIT_GRACE_MS = 500;
+
+/**
+ * Kills `child` and every process it started. On Windows a signal reaches the
+ * one process only, so `taskkill /T` walks the tree; elsewhere `child` leads
+ * its own process group (spawned `detached`), which one signal reaches whole.
+ */
+export function killTree(child) {
+  if (child.pid === undefined) return;
+  if (process.platform === "win32") {
+    spawnSync("taskkill", ["/pid", String(child.pid), "/T", "/F"], { stdio: "ignore", windowsHide: true });
+    return;
+  }
+  try {
+    process.kill(-child.pid, "SIGKILL");
+  } catch {
+    // The group is already gone.
+  }
+}
+
 /**
  * A temporary directory (`work`) with a git environment (`env`) that reads no
  * user, system or hook configuration of the machine running the suite, plus
@@ -95,8 +116,16 @@ export function createStepSandbox(prefix) {
    * `runStep` without blocking the event loop, for a step that talks to a server
    * the test itself runs (`spawnSync` would hold the loop the server answers
    * on, so the step could never be answered). Resolves its exit status and
-   * combined output; a step still running after `timeoutMs` is killed, and its
-   * status is then null.
+   * combined output. A step still running after `timeoutMs` is killed with
+   * every process it started, and resolves with status null and the output so
+   * far.
+   *
+   * Killing bash alone is not enough: a node or git it started outlives it,
+   * holding the output pipes open, so 'close' never fires and the promise
+   * would hang past any timeout (on Windows, where a signal reaches only the
+   * one process, that is the norm). So the whole tree is killed, and the
+   * promise also settles a short grace after bash exits, whether or not the
+   * pipes have closed by then.
    */
   function runStepAsync(script, cwd, extraEnv = {}, { timeoutMs = 60_000 } = {}) {
     if (BASH === undefined) return Promise.reject(new Error("no bash found to run a workflow step with"));
@@ -107,13 +136,45 @@ export function createStepSandbox(prefix) {
         cwd,
         env: { ...env, ...extraEnv },
         stdio: ["ignore", "pipe", "pipe"],
-        timeout: timeoutMs,
+        // Its own process group off Windows, so one signal reaches every process it starts.
+        detached: process.platform !== "win32",
       });
       let output = "";
+      let timedOut = false;
+      let settled = false;
+      let grace;
+      let backstop;
+      const finish = (status) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        clearTimeout(grace);
+        clearTimeout(backstop);
+        // A descendant may still hold the pipes; stop reading them so nothing keeps the loop alive.
+        child.stdout.destroy();
+        child.stderr.destroy();
+        resolve({ status: timedOut ? null : status, output });
+      };
+      const timer = setTimeout(() => {
+        timedOut = true;
+        killTree(child);
+        // Settles even if the kill reached nothing and bash never reports its exit.
+        backstop = setTimeout(() => finish(null), EXIT_GRACE_MS * 4);
+      }, timeoutMs);
       child.stdout.setEncoding("utf8").on("data", (chunk) => (output += chunk));
       child.stderr.setEncoding("utf8").on("data", (chunk) => (output += chunk));
-      child.on("error", reject);
-      child.on("close", (status) => resolve({ status, output }));
+      child.on("error", (error) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        clearTimeout(grace);
+        clearTimeout(backstop);
+        reject(error);
+      });
+      child.on("exit", (status) => {
+        grace = setTimeout(() => finish(status), EXIT_GRACE_MS);
+      });
+      child.on("close", (status) => finish(status));
     });
   }
 
