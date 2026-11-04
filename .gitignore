@@ -49,6 +49,13 @@ desktop.ini
 *.temp
 .cache/
 
+# The typecheck guard's probe (#1394): scripts/typecheck-script-coverage.test.mjs plants it
+# beside the website's tests for one `astro check` and deletes it again. Ignored so
+# `git status --porcelain`, which release-hooks.test.mjs compares in a parallel worker,
+# never sees it, and `git add -A` never stages an orphan from a killed run. The exact
+# basename only, like the vitest.config.ts exclude: a pattern could hide a real test file.
+__typecheck_coverage_probe__.test.ts
+
 # Environment variables
 .env
 .env.local
