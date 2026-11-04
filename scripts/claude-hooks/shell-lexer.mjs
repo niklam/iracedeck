@@ -545,6 +545,13 @@ function programName(chars) {
   return { name: BASH_CASED.has(lower) ? name : lower, cut: sep < 0 ? 0 : chars[sep].at + 1 };
 }
 
+/**
+ * A word bash takes for an assignment, not a command: an unquoted valid name
+ * (an array index allowed) before `=` or `+=` (#1606 review). `./x=y/gh` and a
+ * quoted `"/c/a=b/gh.exe"` are programs.
+ */
+const ASSIGNMENT = /^[A-Za-z_][A-Za-z0-9_]*(?:\[[^\]]*\])?\+?=/;
+
 /** A word starting at `at` in raw text, found without the lexer: quotes, escapes and simple substitutions kept whole. */
 const CRUDE_WORD =
   /(?:"(?:[^"\\]|\\[\s\S])*"|'[^']*'|\\[\s\S]|\$\((?:[^()]|\([^()]*\))*\)|\$\{[^}]*\}|\x60[^\x60]*\x60|[^\s;&|()<>"'\\\x60])+/y;
@@ -599,7 +606,7 @@ function normalisePrograms(command, text, flat, words, crude) {
       if (end === undefined || end <= start) continue;
       seen.add(start);
       const word = command.slice(start, end);
-      if (word.includes("=") || (word.startsWith("$") && /^\s*[-+*/]?=(?!=)/.test(command.slice(end)))) continue;
+      if (ASSIGNMENT.test(word) || (word.startsWith("$") && /^\s*[-+*/]?=(?!=)/.test(command.slice(end)))) continue;
       const read = programName(decodeWord(word));
       if (read?.unreadable) unreadable.push({ start, end, word });
       if (!read?.name) continue;
@@ -932,7 +939,7 @@ export const has = (command, re) => re.test(re.anchored ? trustedMask(command) :
  * obfuscation. A string handed to a shell (`bash -c`, `eval`) is not lexed —
  * the rules read the raw command then ({@link view}).
  */
-export const COMMAND_LEAD = String.raw`(?:(?:if|then|do|else|elif|while|until|!|\{)\s+|(?:time|command|exec|env|nohup)(?:\s+(?:-[uCSa]|--unset|--chdir|--split-string)\s+[^\s-]\S*|\s+-\S+)*\s+|timeout(?:\s+(?:-[ks]|--kill-after|--signal)\s+[^\s-]\S*|\s+-\S+)*\s+\d[\d.]*[smhd]?\s+|xargs(?:\s+-[IdEeLnPs]\s+[^\s-]\S*|\s+-\S+)*\s+|\w+=\S*\s+)*`;
+export const COMMAND_LEAD = String.raw`(?:(?:if|then|do|else|elif|while|until|!|\{)\s+|(?:time|command|exec|env|nohup)(?:\s+(?:-[uCSa]|--unset|--chdir|--split-string)\s+[^\s-]\S*|\s+-\S+)*\s+|timeout(?:\s+(?:-[ks]|--kill-after|--signal)\s+[^\s-]\S*|\s+-\S+)*\s+\d[\d.]*[smhd]?\s+|xargs(?:\s+-[IdEeLnPs]\s+[^\s-]\S*|\s+-\S+)*\s+|[A-Za-z_]\w*(?:\[[^\]\s]*\])?\+?=\S*\s+)*`;
 
 /** One character run of a git option's value: a quoted run (`"___"` in the masked text) or an escape stays whole. */
 const GIT_VALUE_PART = String.raw`(?:"[^"]*"|'[^']*'|\\[\s\S]|[^\s\\"'])`;

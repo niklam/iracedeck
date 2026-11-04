@@ -471,4 +471,12 @@ describe("the program-word rewrite's review round (#1606)", () => {
     expect(lexer.programStart(command, command.indexOf("x.sh"))).toBe(0);
     expect(lexer.programStart(command, 8)).toBe(8);
   });
+
+  it("takes a word for an assignment only where bash does: an unquoted valid name before `=`", () => {
+    expect(trustedMask("./x=y/gh pr")).toBe("      gh pr");
+    expect(trustedMask(`"/c/a=b/gh.exe" pr`)).toBe(`${" ".repeat(13)}gh pr`);
+    for (const command of ["FOO=1 ls", "a[1]=x ls", "X+=1 ls", "_x=1"])
+      expect(trustedMask(command), command).toBe(command);
+    expect(lexer.unreadablePrograms("$x = 5")).toEqual([]);
+  });
 });

@@ -4160,6 +4160,7 @@ describe("the program-word rewrite's review round (#1606)", () => {
     statusCheckRollup: [{ __typename: "CheckRun", name: "Tests", status: "COMPLETED", conclusion: "SUCCESS" }],
     reviews: [{ author: { login: "coderabbitai" }, state: "APPROVED", commit: { oid: head } }],
   });
+  const unapproved = () => ({ ...green(), reviewDecision: "REVIEW_REQUIRED" });
 
   // A program word's directory part may hold a command substitution, which runs.
   describe("a substitution in a program word's directory part is still a command", () => {
@@ -4174,5 +4175,11 @@ describe("the program-word rewrite's review round (#1606)", () => {
       deny("$(true)/gh pr merge 5 --squash", ctx({ prView: green }));
       deny(`"$(true)"/gh.exe pr merge 5 --squash`, ctx({ prView: green }));
     });
+  });
+
+  // Bash takes a word for an assignment only for an unquoted valid name before `=`.
+  it.each([`"/c/a=b/gh.exe"`, "./x=y/gh", "'a=b'/gh", "1x=y/gh"])("reads %s pr merge as the gh it runs", (gh) => {
+    passes(`${gh} pr merge 5 --squash`, ctx({ prView: green }));
+    expect(deny(`${gh} pr merge 5 --squash`, ctx({ prView: unapproved }))).toMatch(/REVIEW_REQUIRED/);
   });
 });
