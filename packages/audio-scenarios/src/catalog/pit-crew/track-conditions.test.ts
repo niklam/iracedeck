@@ -19,8 +19,8 @@
  */
 import manifestJson from "@iracedeck/audio-assets/manifest.json" with { type: "json" };
 import defaultScript from "@iracedeck/audio-assets/voice/default/callouts.json" with { type: "json" };
-import type { IAudioService } from "@iracedeck/audio-service";
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
+import { createFakeAudio, type FakeAudio } from "@iracedeck/audio-service/testing";
 import { type CalloutScript } from "@iracedeck/callout-script";
 import { TRACK_CONDITIONS_CALLOUTS } from "@iracedeck/callout-settings";
 import type { IEventBus, SimEventMap, SimEventName, SimEventOf } from "@iracedeck/event-bus";
@@ -103,55 +103,6 @@ function createMockBus(): IEventBus & {
       } as SimEventOf<SimEventName>);
     },
   };
-}
-
-type FakeAudio = IAudioService & {
-  _triggerChannelEnd: (channel: AudioChannel) => void;
-  _played: { channel: AudioChannel; path: string; loop: boolean }[];
-};
-
-function createFakeAudio(): FakeAudio {
-  const callbacks: Record<AudioChannel, (() => void) | null> = {
-    [AudioChannel.Ambient]: null,
-    [AudioChannel.SFX]: null,
-    [AudioChannel.Voice]: null,
-    [AudioChannel.Radar]: null,
-    [AudioChannel.Feedback]: null,
-  };
-  const played: { channel: AudioChannel; path: string; loop: boolean }[] = [];
-
-  return {
-    init: vi.fn(() => true),
-    destroy: vi.fn(),
-    playOnChannel: vi.fn((channel: AudioChannel, path: string, loop = false) => {
-      played.push({ channel, path, loop });
-
-      return true;
-    }),
-    stopChannel: vi.fn((channel: AudioChannel) => {
-      callbacks[channel] = null;
-    }),
-    stopAllChannels: vi.fn(),
-    setChannelVolume: vi.fn(),
-    setBusVolume: vi.fn(),
-    getBusVolume: vi.fn(() => 1.0),
-    isChannelPlaying: vi.fn(() => false),
-    onChannelComplete: vi.fn((channel: AudioChannel, cb: () => void) => {
-      callbacks[channel] = cb;
-    }),
-    playVoiceSequence: vi.fn(),
-    cancelVoiceSequence: vi.fn(),
-    onVoiceSequenceComplete: vi.fn(),
-    seekChannelRandom: vi.fn(),
-    getAudioDevices: vi.fn(() => []),
-    setAudioDevice: vi.fn(() => true),
-    _triggerChannelEnd: (channel: AudioChannel) => {
-      const cb = callbacks[channel];
-      callbacks[channel] = null;
-      cb?.();
-    },
-    _played: played,
-  } as unknown as FakeAudio;
 }
 
 const VOICE = "luca";

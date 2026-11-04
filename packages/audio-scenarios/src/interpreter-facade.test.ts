@@ -7,7 +7,7 @@
  * alone: the class's declarations in `interpreter.ts`, through the
  * TypeScript compiler API, and the own properties of a built engine.
  */
-import type { IAudioService } from "@iracedeck/audio-service";
+import { createFakeAudio } from "@iracedeck/audio-service/testing";
 import type { IEventBus } from "@iracedeck/event-bus";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -82,7 +82,7 @@ describe("ScenarioEngine stays a thin facade", () => {
 
   it("a built engine carries exactly those own properties", () => {
     const bus = { subscribe: () => () => {}, unsubscribe: () => {}, publish: () => {} } as unknown as IEventBus;
-    const engine = initializeAudioScenarios(bus, {} as IAudioService, {
+    const engine = initializeAudioScenarios(bus, createFakeAudio(), {
       clips: [],
       ambientLoop: "",
       ticks: { open: "", close: "" },

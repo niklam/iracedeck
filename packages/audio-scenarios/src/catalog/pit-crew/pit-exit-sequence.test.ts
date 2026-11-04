@@ -18,6 +18,7 @@ import manifestJson from "@iracedeck/audio-assets/manifest.json" with { type: "j
 import defaultScript from "@iracedeck/audio-assets/voice/default/callouts.json" with { type: "json" };
 import type { IAudioService } from "@iracedeck/audio-service";
 import { AudioChannel } from "@iracedeck/audio-service";
+import { createFakeAudio } from "@iracedeck/audio-service/testing";
 import type { CalloutScript } from "@iracedeck/callout-script";
 import type { IEventBus, SimEventName, SimEventOf, TireWearReport } from "@iracedeck/event-bus";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -74,54 +75,35 @@ function createMockBus(): IEventBus {
   } as unknown as IEventBus;
 }
 
-/** An audio service whose clips end on the (fake) clock, after their length. */
+/** The shared fake audio service, with clips that end on the (fake) clock, after their length. */
 function createTimedAudio(): IAudioService {
-  const callbacks = new Map<AudioChannel, () => void>();
+  const audio = createFakeAudio();
   const timers = new Map<AudioChannel, ReturnType<typeof setTimeout>>();
+  const play = audio.playOnChannel.getMockImplementation();
+  const stop = audio.stopChannel.getMockImplementation();
 
-  const stop = (channel: AudioChannel): void => {
+  audio.playOnChannel.mockImplementation((channel, path, loop) => {
+    clearTimeout(timers.get(channel));
+    timers.set(
+      channel,
+      setTimeout(
+        () => {
+          timers.delete(channel);
+          audio._triggerChannelEnd(channel);
+        },
+        channel === AudioChannel.SFX ? SFX_CLIP_MS : VOICE_CLIP_MS,
+      ),
+    );
+
+    return play?.(channel, path, loop) ?? true;
+  });
+  audio.stopChannel.mockImplementation((channel) => {
     clearTimeout(timers.get(channel));
     timers.delete(channel);
-    callbacks.delete(channel);
-  };
+    stop?.(channel);
+  });
 
-  return {
-    init: vi.fn(() => true),
-    destroy: vi.fn(),
-    playOnChannel: vi.fn((channel: AudioChannel, _path: string) => {
-      clearTimeout(timers.get(channel));
-      timers.set(
-        channel,
-        setTimeout(
-          () => {
-            const cb = callbacks.get(channel);
-
-            timers.delete(channel);
-            callbacks.delete(channel);
-            cb?.();
-          },
-          channel === AudioChannel.SFX ? SFX_CLIP_MS : VOICE_CLIP_MS,
-        ),
-      );
-
-      return true;
-    }),
-    stopChannel: vi.fn(stop),
-    stopAllChannels: vi.fn(),
-    setChannelVolume: vi.fn(),
-    setBusVolume: vi.fn(),
-    getBusVolume: vi.fn(() => 1.0),
-    isChannelPlaying: vi.fn(() => false),
-    onChannelComplete: vi.fn((channel: AudioChannel, cb: () => void) => {
-      callbacks.set(channel, cb);
-    }),
-    playVoiceSequence: vi.fn(),
-    cancelVoiceSequence: vi.fn(),
-    onVoiceSequenceComplete: vi.fn(),
-    seekChannelRandom: vi.fn(),
-    getAudioDevices: vi.fn(() => []),
-    setAudioDevice: vi.fn(() => true),
-  } as unknown as IAudioService;
+  return audio;
 }
 
 /** A worn set with a speakable tread on every tire — what the report needs to fire. */

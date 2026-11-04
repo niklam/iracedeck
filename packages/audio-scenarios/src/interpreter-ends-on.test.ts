@@ -4,8 +4,8 @@
  * waiting fire, or the playing one, which stops silently before any body clip
  * has started and plays the frame's cut tail once one has.
  */
-import type { IAudioService } from "@iracedeck/audio-service";
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
+import { createFakeAudio, type FakeAudio } from "@iracedeck/audio-service/testing";
 import type { CalloutScript, FrameDefinition } from "@iracedeck/callout-script";
 import type { IEventBus, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -57,51 +57,6 @@ function createMockBus(): MockBus {
       this.publish({ event: name, timestamp: Date.now(), telemetry: null, data: {} } as SimEventOf<SimEventName>);
     },
   };
-}
-
-type FakeAudio = IAudioService & {
-  _triggerChannelEnd: (channel: AudioChannel) => void;
-  _played: { channel: AudioChannel; path: string }[];
-  _stopped: AudioChannel[];
-};
-
-/**
- * Records plays and stops and lets a test end a channel's clip by hand. With
- * `completeOnStop`, `stopChannel` fires the channel's complete callback
- * synchronously before clearing it — the shape the end path must survive
- * without stepping into the next body op.
- */
-function createFakeAudio(completeOnStop = false): FakeAudio {
-  const callbacks = new Map<AudioChannel, () => void>();
-  const played: { channel: AudioChannel; path: string }[] = [];
-  const stopped: AudioChannel[] = [];
-
-  return {
-    playOnChannel: vi.fn((channel: AudioChannel, path: string) => {
-      played.push({ channel, path });
-
-      return true;
-    }),
-    stopChannel: vi.fn((channel: AudioChannel) => {
-      stopped.push(channel);
-
-      const cb = callbacks.get(channel);
-      callbacks.delete(channel);
-
-      if (completeOnStop) cb?.();
-    }),
-    onChannelComplete: vi.fn((channel: AudioChannel, cb: () => void) => {
-      callbacks.set(channel, cb);
-    }),
-    seekChannelRandom: vi.fn(),
-    _triggerChannelEnd: (channel: AudioChannel) => {
-      const cb = callbacks.get(channel);
-      callbacks.delete(channel);
-      cb?.();
-    },
-    _played: played,
-    _stopped: stopped,
-  } as unknown as FakeAudio;
 }
 
 const TICK_OPEN = "sfx/IRD-tick-open.mp3";
@@ -182,7 +137,18 @@ let frameOptions: FrameOptions;
 function init(completeOnStop = false): void {
   _resetAudioScenarios();
   bus = createMockBus();
-  audio = createFakeAudio(completeOnStop);
+  audio = createFakeAudio();
+
+  // The stop fires the channel's complete callback synchronously before
+  // forgetting it: the shape the end path must survive without stepping into
+  // the next body op.
+  if (completeOnStop) {
+    audio.stopChannel.mockImplementation((channel) => {
+      audio._stopped.push(channel);
+      audio._triggerChannelEnd(channel);
+    });
+  }
+
   engine = initializeAudioScenarios(
     bus,
     audio,
@@ -333,8 +299,8 @@ describe("endsOn (issue #1407)", () => {
     expect(audio._stopped).toEqual([AudioChannel.Ambient]);
     expect(played()).toEqual([TICK_OPEN, BODY_A, NEVER_MIND, TICK_CLOSE]);
     expect(audio._played.slice(-2)).toEqual([
-      { channel: AudioChannel.Voice, path: NEVER_MIND },
-      { channel: AudioChannel.SFX, path: TICK_CLOSE },
+      { channel: AudioChannel.Voice, path: NEVER_MIND, loop: false },
+      { channel: AudioChannel.SFX, path: TICK_CLOSE, loop: false },
     ]);
 
     // The tail ends, the bus is released and drains what waited.
@@ -370,7 +336,7 @@ describe("endsOn (issue #1407)", () => {
     bus.publishEvent("pitLane.exited");
     flush();
 
-    expect(audio._played.slice(-1)).toEqual([{ channel: AudioChannel.SFX, path: BEEP_2 }]);
+    expect(audio._played.slice(-1)).toEqual([{ channel: AudioChannel.SFX, path: BEEP_2, loop: false }]);
 
     // And Radio beeps drops it there, as it does in the close.
     init();
@@ -720,7 +686,7 @@ describe("endsOn (issue #1407)", () => {
     // The tail is "never mind" and its ambience stop: no close tick, and the
     // bed is stopped once, by the tail rather than at the cut.
     expect(played()).toEqual([BODY_A, NEVER_MIND]);
-    expect(audio._played.slice(-1)).toEqual([{ channel: AudioChannel.Voice, path: NEVER_MIND }]);
+    expect(audio._played.slice(-1)).toEqual([{ channel: AudioChannel.Voice, path: NEVER_MIND, loop: false }]);
     expect(audio._stopped.filter((c) => c === AudioChannel.Ambient).length).toBe(1);
     expect(voiceBus().playingId).toBeNull();
     expect(endedLines()).toEqual(['Scenario "test.ends" ended by pitLane.exited (playing → tail)']);
