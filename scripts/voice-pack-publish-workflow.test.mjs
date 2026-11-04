@@ -19,85 +19,30 @@
  * throwaway git repositories: the overlay against a shallow tag checkout and an
  * `origin` it fetches commits from by sha, as on GitHub.
  */
-import { execFileSync, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { parse } from "yaml";
 
-const REPO = path.join(import.meta.dirname, "..");
+import { BASH, createStepSandbox, readWorkflow, stepNamed, writeFile } from "./lib/workflow-step-runner.mjs";
+
 const PUBLISH_WORKFLOW = ".github/workflows/publish-voice-packs.yml";
 const HOSTING_WORKFLOW = ".github/workflows/firebase-hosting-release.yml";
 const GUARD_STEP = "Refuse to publish from a ref other than master";
 const OVERLAY_STEP = "Overlay the voice-pack catalog from another ref";
 const CATALOG = "packages/audio-assets/catalog";
 
-const readWorkflow = (rel) => parse(readFileSync(path.join(REPO, rel), "utf8"));
-
-/** The step called `name` in `job`, or a failure naming what is missing. */
-function stepNamed(doc, job, name) {
-  const steps = doc?.jobs?.[job]?.steps ?? [];
-  const index = steps.findIndex((s) => s?.name === name);
-  if (index === -1) throw new Error(`job "${job}" has no step named "${name}"`);
-  return { step: steps[index], index };
-}
-
-/**
- * A bash that runs the steps as the runner would. On Windows that is Git's own
- * bash, found from git's exec path: a bare `bash` there can be WSL's, which
- * sees a different filesystem and a different git. Undefined when none is
- * found, which the first test below turns red rather than letting the
- * behavioural tests skip in silence.
- */
-function findBash() {
-  if (process.platform !== "win32") return "bash";
-  const git = spawnSync("git", ["--exec-path"], { encoding: "utf8" });
-  if (git.status !== 0) return undefined;
-  const gitRoot = path.resolve(git.stdout.trim(), "..", "..", "..");
-  return [path.join(gitRoot, "bin", "bash.exe"), path.join(gitRoot, "usr", "bin", "bash.exe")].find(existsSync);
-}
-
-const BASH = findBash();
-
 it("finds a bash to run the workflow steps with", () => {
   expect(BASH, "no bash found (on Windows: Git for Windows' bin/bash.exe beside git)").toBeDefined();
 });
 
-let work;
-let isolatedEnv;
+let box;
 
 beforeAll(() => {
-  work = mkdtempSync(path.join(tmpdir(), "ird-voice-publish-"));
-  const emptyConfig = path.join(work, "empty.gitconfig");
-  writeFileSync(emptyConfig, "");
-  // No user, system or hook configuration of the machine running the suite.
-  isolatedEnv = {
-    ...process.env,
-    GIT_CONFIG_GLOBAL: emptyConfig,
-    GIT_CONFIG_NOSYSTEM: "1",
-    GIT_AUTHOR_NAME: "t",
-    GIT_AUTHOR_EMAIL: "t@t",
-    GIT_COMMITTER_NAME: "t",
-    GIT_COMMITTER_EMAIL: "t@t",
-  };
+  box = createStepSandbox("ird-voice-publish-");
 });
 
-afterAll(() => rmSync(work, { recursive: true, force: true }));
-
-/** Writes `script` to a file and runs it with bash in `cwd`. */
-function runStep(script, cwd, env) {
-  const file = path.join(work, `step-${Math.random().toString(36).slice(2)}.sh`);
-  writeFileSync(file, script);
-  const result = spawnSync(BASH, [file.replaceAll("\\", "/")], {
-    cwd,
-    env: { ...isolatedEnv, ...env },
-    encoding: "utf8",
-  });
-  if (result.error) throw result.error;
-  return { status: result.status, output: `${result.stdout}${result.stderr}` };
-}
+afterAll(() => box?.remove());
 
 describe("publish-voice-packs.yml (#1392)", () => {
   const doc = readWorkflow(PUBLISH_WORKFLOW);
@@ -123,7 +68,7 @@ describe("publish-voice-packs.yml (#1392)", () => {
 
 describe.skipIf(BASH === undefined)("the master guard step, run", () => {
   const { step } = stepNamed(readWorkflow(PUBLISH_WORKFLOW), "pack", GUARD_STEP);
-  const guard = (ref) => runStep(step.run, work, { DISPATCHED_REF: ref });
+  const guard = (ref) => box.runStep(step.run, box.work, { DISPATCHED_REF: ref });
 
   it("passes a dispatch from master", () => {
     const { status, output } = guard("refs/heads/master");
@@ -164,12 +109,7 @@ describe.skipIf(BASH === undefined)("the overlay step, run against a fetched ori
   let origin;
   const sha = {};
 
-  const git = (cwd, ...args) =>
-    execFileSync("git", args, { cwd, env: isolatedEnv, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
-  const write = (root, rel, text) => {
-    mkdirSync(path.dirname(path.join(root, rel)), { recursive: true });
-    writeFileSync(path.join(root, rel), text);
-  };
+  const git = (cwd, ...args) => box.git(cwd, ...args);
   const commit = (message) => {
     git(origin, "add", "-A");
     git(origin, "commit", "-q", "-m", message);
@@ -182,28 +122,28 @@ describe.skipIf(BASH === undefined)("the overlay step, run against a fetched ori
    *                   no-catalog (off unrelated: the catalog deleted)
    */
   beforeAll(() => {
-    origin = path.join(work, "origin");
+    origin = path.join(box.work, "origin");
     mkdirSync(origin);
     git(origin, "init", "-q", "-b", "master");
     // GitHub serves any reachable commit by sha; a local upload-pack does not by default.
     git(origin, "config", "uploadpack.allowReachableSHA1InWant", "true");
 
-    write(origin, "scripts/lib/voice-catalog-data.mjs", "export {};\n");
-    write(origin, `${CATALOG}/default.json`, '{"version":"1.0.0"}\n');
-    write(origin, `${CATALOG}/withdrawn.json`, '{"version":"1.0.0"}\n');
-    write(origin, "site.txt", "released site\n");
+    writeFile(origin, "scripts/lib/voice-catalog-data.mjs", "export {};\n");
+    writeFile(origin, `${CATALOG}/default.json`, '{"version":"1.0.0"}\n');
+    writeFile(origin, `${CATALOG}/withdrawn.json`, '{"version":"1.0.0"}\n');
+    writeFile(origin, "site.txt", "released site\n");
     sha.tag = commit("the stable release");
     git(origin, "tag", "v1.0.0");
 
-    write(origin, `${CATALOG}/default.json`, '{"version":"1.1.0"}\n');
+    writeFile(origin, `${CATALOG}/default.json`, '{"version":"1.1.0"}\n');
     rmSync(path.join(origin, CATALOG, "withdrawn.json"));
     sha.catalog = commit("bump default, withdraw a pack");
 
-    write(origin, "site.txt", "unreleased docs\n");
+    writeFile(origin, "site.txt", "unreleased docs\n");
     sha.unrelated = commit("unrelated master work");
 
     git(origin, "checkout", "-q", "-b", "stale", sha.catalog);
-    write(origin, `${CATALOG}/default.json`, '{"version":"1.2.0"}\n');
+    writeFile(origin, `${CATALOG}/default.json`, '{"version":"1.2.0"}\n');
     sha.stale = commit("an entry master never took");
 
     git(origin, "checkout", "-q", "-b", "no-catalog", sha.unrelated);
@@ -215,10 +155,10 @@ describe.skipIf(BASH === undefined)("the overlay step, run against a fetched ori
 
   /** A shallow checkout of the stable tag, as actions/checkout leaves it, with the step run in it. */
   function overlay(catalogRef, { dropGenerator = false } = {}) {
-    const checkout = path.join(work, `checkout-${Math.random().toString(36).slice(2)}`);
-    git(work, "clone", "-q", "--depth=1", "--branch", "v1.0.0", pathToFileURL(origin).href, checkout);
+    const checkout = path.join(box.work, `checkout-${Math.random().toString(36).slice(2)}`);
+    git(box.work, "clone", "-q", "--depth=1", "--branch", "v1.0.0", pathToFileURL(origin).href, checkout);
     if (dropGenerator) rmSync(path.join(checkout, "scripts/lib/voice-catalog-data.mjs"));
-    const run = runStep(step.run, checkout, { CATALOG_REF: catalogRef });
+    const run = box.runStep(step.run, checkout, { CATALOG_REF: catalogRef });
     const read = (rel) =>
       existsSync(path.join(checkout, rel)) ? readFileSync(path.join(checkout, rel), "utf8") : null;
     return { ...run, read };
