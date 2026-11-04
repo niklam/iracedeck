@@ -290,10 +290,14 @@ importers:
         version: 5.9.3
 
   packages/audio-assets:
-    devDependencies:
+    dependencies:
       '@iracedeck/callout-script':
         specifier: workspace:*
         version: link:../callout-script
+      ffmpeg-static:
+        specifier: 5.3.0
+        version: 5.3.0(supports-color@7.2.0)
+    devDependencies:
       '@iracedeck/track-data':
         specifier: workspace:*
         version: link:../track-data
@@ -306,9 +310,6 @@ importers:
       fflate:
         specifier: 0.8.3
         version: 0.8.3
-      ffmpeg-static:
-        specifier: 5.3.0
-        version: 5.3.0(supports-color@7.2.0)
       tsx:
         specifier: 4.23.15
         version: 4.23.15
@@ -345,9 +346,6 @@ importers:
 
   packages/audio-scenarios:
     dependencies:
-      '@iracedeck/audio-assets':
-        specifier: workspace:*
-        version: link:../audio-assets
       '@iracedeck/audio-service':
         specifier: workspace:*
         version: link:../audio-service
@@ -370,6 +368,9 @@ importers:
         specifier: workspace:*
         version: link:../sim-events-iracing
     devDependencies:
+      '@iracedeck/audio-assets':
+        specifier: workspace:*
+        version: link:../audio-assets
       '@tsconfig/node22':
         specifier: 22.0.6
         version: 22.0.6
@@ -764,6 +765,9 @@ importers:
         specifier: 4.6.7
         version: 4.6.7
     devDependencies:
+      '@iracedeck/pi-components':
+        specifier: workspace:*
+        version: link:../pi-components
       '@tsconfig/node22':
         specifier: 22.0.6
         version: 22.0.6
@@ -800,45 +804,12 @@ importers:
 
   packages/iracing-plugin-mirabox:
     dependencies:
-      '@iracedeck/audio-assets':
-        specifier: workspace:*
-        version: link:../audio-assets
-      '@iracedeck/audio-native':
-        specifier: workspace:*
-        version: link:../audio-native
-      '@iracedeck/audio-scenarios':
-        specifier: workspace:*
-        version: link:../audio-scenarios
-      '@iracedeck/audio-service':
-        specifier: workspace:*
-        version: link:../audio-service
       '@iracedeck/deck-adapter-mirabox':
         specifier: workspace:*
         version: link:../deck-adapter-mirabox
-      '@iracedeck/deck-core':
-        specifier: workspace:*
-        version: link:../deck-core
-      '@iracedeck/event-bus':
-        specifier: workspace:*
-        version: link:../event-bus
-      '@iracedeck/iracing-actions':
-        specifier: workspace:*
-        version: link:../iracing-actions
-      '@iracedeck/logger':
-        specifier: workspace:*
-        version: link:../logger
-      '@iracedeck/pi-components':
-        specifier: workspace:*
-        version: link:../pi-components
       '@iracedeck/plugin-runtime':
         specifier: workspace:*
         version: link:../plugin-runtime
-      '@iracedeck/rasterizer':
-        specifier: workspace:*
-        version: link:../rasterizer
-      ws:
-        specifier: 8.22.0
-        version: 8.22.0
     devDependencies:
       '@elgato/cli':
         specifier: 1.10.2
@@ -870,48 +841,24 @@ importers:
       '@iracedeck/app-constants':
         specifier: workspace:*
         version: link:../app-constants
-      '@iracedeck/audio-assets':
-        specifier: workspace:*
-        version: link:../audio-assets
-      '@iracedeck/audio-native':
-        specifier: workspace:*
-        version: link:../audio-native
-      '@iracedeck/audio-scenarios':
-        specifier: workspace:*
-        version: link:../audio-scenarios
-      '@iracedeck/audio-service':
-        specifier: workspace:*
-        version: link:../audio-service
       '@iracedeck/deck-adapter-elgato':
         specifier: workspace:*
         version: link:../deck-adapter-elgato
       '@iracedeck/deck-core':
         specifier: workspace:*
         version: link:../deck-core
-      '@iracedeck/event-bus':
-        specifier: workspace:*
-        version: link:../event-bus
       '@iracedeck/iracing-actions':
         specifier: workspace:*
         version: link:../iracing-actions
       '@iracedeck/logger':
         specifier: workspace:*
         version: link:../logger
-      '@iracedeck/pi-components':
-        specifier: workspace:*
-        version: link:../pi-components
       '@iracedeck/plugin-runtime':
         specifier: workspace:*
         version: link:../plugin-runtime
-      '@iracedeck/rasterizer':
-        specifier: workspace:*
-        version: link:../rasterizer
       '@iracedeck/settings':
         specifier: workspace:*
         version: link:../settings
-      zod:
-        specifier: 4.6.7
-        version: 4.6.7
     devDependencies:
       '@elgato/cli':
         specifier: 1.10.2
@@ -940,45 +887,12 @@ importers:
 
   packages/iracing-plugin-ulanzi:
     dependencies:
-      '@iracedeck/audio-assets':
-        specifier: workspace:*
-        version: link:../audio-assets
-      '@iracedeck/audio-native':
-        specifier: workspace:*
-        version: link:../audio-native
-      '@iracedeck/audio-scenarios':
-        specifier: workspace:*
-        version: link:../audio-scenarios
-      '@iracedeck/audio-service':
-        specifier: workspace:*
-        version: link:../audio-service
       '@iracedeck/deck-adapter-ulanzi':
         specifier: workspace:*
         version: link:../deck-adapter-ulanzi
-      '@iracedeck/deck-core':
-        specifier: workspace:*
-        version: link:../deck-core
-      '@iracedeck/event-bus':
-        specifier: workspace:*
-        version: link:../event-bus
-      '@iracedeck/iracing-actions':
-        specifier: workspace:*
-        version: link:../iracing-actions
-      '@iracedeck/logger':
-        specifier: workspace:*
-        version: link:../logger
-      '@iracedeck/pi-components':
-        specifier: workspace:*
-        version: link:../pi-components
       '@iracedeck/plugin-runtime':
         specifier: workspace:*
         version: link:../plugin-runtime
-      '@iracedeck/rasterizer':
-        specifier: workspace:*
-        version: link:../rasterizer
-      ws:
-        specifier: 8.22.0
-        version: 8.22.0
     devDependencies:
       '@iracedeck/plugin-build':
         specifier: workspace:*
@@ -1596,15 +1510,6 @@ importers:
       '@astrojs/check':
         specifier: 0.9.10
         version: 0.9.10(prettier@3.9.10)(typescript@5.9.3)
-      '@iracedeck/audio-scenarios':
-        specifier: workspace:*
-        version: link:../audio-scenarios
-      '@iracedeck/audio-service':
-        specifier: workspace:*
-        version: link:../audio-service
-      '@iracedeck/deck-core':
-        specifier: workspace:*
-        version: link:../deck-core
       '@iracedeck/icon-composer':
         specifier: workspace:*
         version: link:../icon-composer

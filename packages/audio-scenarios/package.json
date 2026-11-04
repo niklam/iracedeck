@@ -23,7 +23,6 @@
     "test:watch": "node ../../scripts/test-package.mjs --watch"
   },
   "dependencies": {
-    "@iracedeck/audio-assets": "workspace:*",
     "@iracedeck/audio-service": "workspace:*",
     "@iracedeck/callout-script": "workspace:*",
     "@iracedeck/callout-settings": "workspace:*",
@@ -33,6 +32,7 @@
     "@iracedeck/sim-events-iracing": "workspace:*"
   },
   "devDependencies": {
+    "@iracedeck/audio-assets": "workspace:*",
     "@tsconfig/node22": "22.0.6",
     "@types/node": "26.6.5",
     "rimraf": "6.1.3",

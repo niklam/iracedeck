@@ -16,14 +16,11 @@ import { describe, expect, it } from "vitest";
  * 2. It only renders when the flag is passed to THIS include. The window nests
  *    it inside an `accordion` include's object literal, evaluated in the page's
  *    own scope, so a caller that forgets `{ settingsWindow: true }` gets an
- *    empty card.
+ *    empty card. That the settings window's page does pass it is held beside
+ *    the page, in `iracing-actions`' `src/pi-templates/settings-window-page.test.ts` (#1375).
  */
 const partialsDir = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), "../../partials");
 const templatePath = path.join(partialsDir, "voice-packs.ejs");
-const windowTemplate = path.resolve(
-  partialsDir,
-  "../../iracing-actions/src/actions/settings-window/settings-window.ejs",
-);
 
 function render(locals: Record<string, unknown>): string {
   return ejs.render(readFileSync(templatePath, "utf-8"), locals, { filename: templatePath });
@@ -92,21 +89,5 @@ describe("voice-packs partial (#1145)", () => {
     expect(html).not.toContain("ird-voice-pack");
     expect(html).not.toContain("ird-open-voice-packs-folder");
     expect(html).not.toContain("Installed Voices");
-  });
-
-  it("the settings window renders it as a Voice Packs card, passing settingsWindow into THIS include", () => {
-    const source = readFileSync(windowTemplate, "utf-8");
-
-    expect(source).toContain(
-      "include('accordion', { title: 'Voice Packs', content: include('voice-packs', { settingsWindow: true }), settingsWindow: true })",
-    );
-  });
-
-  it("stacks Voice Packs above Setup Warning Patterns in one column", () => {
-    const source = readFileSync(windowTemplate, "utf-8");
-
-    expect(source).toMatch(
-      /<div class="sw-stack">\s*<%- include\('accordion', \{ title: 'Voice Packs'[^\n]*\n\s*<%- include\('accordion', \{ title: 'Setup Warning Patterns'[^\n]*\n\s*<\/div>/,
-    );
   });
 });

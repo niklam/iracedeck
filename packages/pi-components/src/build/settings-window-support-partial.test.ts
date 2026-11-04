@@ -1,11 +1,10 @@
 // @vitest-environment jsdom
 import ejs from "ejs";
-import { readdirSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import url from "node:url";
 import { describe, expect, it } from "vitest";
 
-import { parseNavPanes } from "../../../../scripts/lib/settings-window-capture/tabs.mjs";
 import { resolveExternalUrl } from "../components/external-links.js";
 import { readSupportPartialConstants } from "./support-partial-constants.js";
 
@@ -17,15 +16,11 @@ import { readSupportPartialConstants } from "./support-partial-constants.js";
  * agreed, a link that opens inside the window instead of the user's browser,
  * a button image that is fetched every time the window opens, or a tab that
  * drifts up the sidebar to sit between the user and a setting. Each is pinned
- * here.
+ * here, but the tab's place in the window: the page is `iracing-actions`', so
+ * that is held beside it, in `src/pi-templates/settings-window-page.test.ts` (#1375).
  */
 const partialsDir = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), "../../partials");
-const repoRoot = path.resolve(partialsDir, "../../..");
 const partialSource = readFileSync(path.join(partialsDir, "settings-window-support.ejs"), "utf-8");
-const pageSource = readFileSync(
-  path.join(repoRoot, "packages/iracing-actions/src/actions/settings-window/settings-window.ejs"),
-  "utf-8",
-);
 
 /** The partial takes no data: its three URLs are its own. */
 function render(): string {
@@ -233,50 +228,6 @@ describe("settings-window-support.ejs (#1303)", () => {
 
     it("has no inline style", () => {
       expect(render()).not.toMatch(/\sstyle\s*=/i);
-    });
-  });
-
-  describe("its place in the window", () => {
-    const navButtons = [...pageSource.matchAll(/<button[^>]*class="sw-nav-item[^"]*"[^>]*>([\s\S]*?)<\/button>/g)];
-
-    it("is the last tab in the sidebar", () => {
-      const panes = parseNavPanes(pageSource);
-
-      expect(panes.filter((pane) => pane === "support")).toHaveLength(1);
-      expect(panes.at(-1)).toBe("support");
-    });
-
-    it("is labelled Support iRaceDeck, with no badge", () => {
-      const last = navButtons.at(-1);
-
-      expect(last?.[0]).toContain('data-pane="support"');
-      expect(last?.[1]).toBe("Support iRaceDeck");
-    });
-
-    it("is the last pane, hidden until chosen, and holds only the partial", () => {
-      const sections = [
-        ...pageSource.matchAll(/<section class="sw-pane" id="pane-([a-z-]+)"( hidden)?>([\s\S]*?)<\/section>/g),
-      ];
-      const last = sections.at(-1);
-
-      expect(sections.filter((section) => section[1] === "support")).toHaveLength(1);
-      expect(last?.[1]).toBe("support");
-      // `hidden` is what keeps the lazy image unfetched until the tab is opened.
-      expect(last?.[2]).toBe(" hidden");
-      expect(last?.[3].trim()).toBe("<%- include('settings-window-support') %>");
-    });
-
-    it("is not jumped to from anywhere else in the window", () => {
-      const sources = [
-        pageSource,
-        ...readdirSync(partialsDir)
-          .filter((name) => name.endsWith(".ejs"))
-          .map((name) => readFileSync(path.join(partialsDir, name), "utf-8")),
-      ];
-
-      for (const source of sources) {
-        expect(source).not.toMatch(/data-jump=["']support["']/);
-      }
     });
   });
 });

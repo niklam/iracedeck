@@ -2,9 +2,7 @@ import { getAllCarNumbers } from "@iracedeck/iracing-sdk";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
-  availableProfilesForDevice,
   DEFAULT_SELECTOR_TARGET_PROFILE,
-  deviceProfileEntries,
   generateSelectorSvg,
   LEGACY_SELECTED_CAR_KEY,
   pageStartSlot,
@@ -30,15 +28,6 @@ vi.mock("@iracedeck/iracing-sdk", () => ({
 
 vi.mock("../../../icons/race-admin-car-selector.svg", () => ({
   default: "<svg>{{backgroundColor}}{{borderDefs}}{{borderContent}}{{titleContent}}{{numberContent}}</svg>",
-}));
-
-vi.mock("../data/profiles.json", () => ({
-  default: [
-    { name: "iRaceDeck Default XL", deviceType: 2, displayName: "iRaceDeck Default" },
-    { name: "iRaceDeck Race Admin Cars XL", deviceType: 2, displayName: "iRaceDeck Race Admin Cars" },
-    { name: "iRaceDeck Race Admin Per Car XL", deviceType: 2, displayName: "iRaceDeck Race Admin Per Car" },
-    { name: "iRaceDeck Pit Actions Mini", deviceType: 1, displayName: "iRaceDeck Pit Actions" },
-  ],
 }));
 
 vi.mock("@iracedeck/deck-core", () => ({
@@ -80,30 +69,6 @@ describe("race-admin-selector", () => {
 
     it("defaults the target profile to the bundled per-car profile", () => {
       expect(DEFAULT_SELECTOR_TARGET_PROFILE).toBe("iRaceDeck Race Admin Per Car");
-    });
-  });
-
-  describe("availableProfilesForDevice", () => {
-    it("filters the bundled profile list by device type, returning manifest names", () => {
-      expect(availableProfilesForDevice(2)).toEqual([
-        "iRaceDeck Default XL",
-        "iRaceDeck Race Admin Cars XL",
-        "iRaceDeck Race Admin Per Car XL",
-      ]);
-      expect(availableProfilesForDevice(1)).toEqual(["iRaceDeck Pit Actions Mini"]);
-      expect(availableProfilesForDevice(99)).toEqual([]);
-      expect(availableProfilesForDevice(undefined)).toEqual([]);
-    });
-  });
-
-  describe("deviceProfileEntries", () => {
-    it("pairs each manifest name with its clean display label (#753)", () => {
-      expect(deviceProfileEntries(2)).toEqual([
-        { name: "iRaceDeck Default XL", label: "iRaceDeck Default" },
-        { name: "iRaceDeck Race Admin Cars XL", label: "iRaceDeck Race Admin Cars" },
-        { name: "iRaceDeck Race Admin Per Car XL", label: "iRaceDeck Race Admin Per Car" },
-      ]);
-      expect(deviceProfileEntries(undefined)).toEqual([]);
     });
   });
 

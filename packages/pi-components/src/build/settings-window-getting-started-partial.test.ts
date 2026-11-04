@@ -1,5 +1,4 @@
 import ejs from "ejs";
-import { readFileSync } from "node:fs";
 import path from "node:path";
 import url from "node:url";
 import { describe, expect, it } from "vitest";
@@ -12,10 +11,10 @@ import { describe, expect, it } from "vitest";
  * from the build's own artifact rather than the network, the prose survives to
  * the page intact, and the platform split falls where #1061 says it does —
  * Profiles PROSE everywhere, the Profiles CONTROL only where that tab exists.
+ * The committed `getting-started.json` is rendered through it beside the data,
+ * in `iracing-actions`' `src/pi-templates/template-data.test.ts` (#1375).
  */
 const partialsDir = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), "../../partials");
-const repoRoot = path.resolve(partialsDir, "../../..");
-const DATA = path.join(repoRoot, "packages/iracing-actions/src/actions/data/getting-started.json");
 
 const FIXTURE = {
   _meta: { generatedFrom: "…", generatedBy: "…", note: "…" },
@@ -118,24 +117,5 @@ describe("settings-window-getting-started.ejs", () => {
     const rogue = { sections: [{ title: "S", blocks: [{ type: "action", id: "not-a-real-control" }] }] };
 
     expect(() => render(rogue)).toThrow(/unknown action id "not-a-real-control"/);
-  });
-
-  describe("the committed artifact", () => {
-    it("uses only action ids this partial can render", () => {
-      const committed = JSON.parse(readFileSync(DATA, "utf-8"));
-
-      expect(() => render(committed)).not.toThrow();
-    });
-
-    it("carries the controls the page's copy promises", () => {
-      const html = render(JSON.parse(readFileSync(DATA, "utf-8")));
-
-      for (const feature of ["race-engineer", "changelog-updates", "focus-iracing-window"]) {
-        expect(html, `missing the ${feature} control`).toContain(`<ird-enable-feature feature="${feature}">`);
-      }
-
-      expect(html).toContain('data-jump="engineer"');
-      expect(html).toContain('data-jump="profiles"');
-    });
   });
 });

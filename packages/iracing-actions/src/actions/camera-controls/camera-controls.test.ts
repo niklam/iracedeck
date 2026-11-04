@@ -134,9 +134,11 @@ vi.mock("@iracedeck/icons/camera-focus/focus-select-car.svg", () => ({
   default: '<svg xmlns="http://www.w3.org/2000/svg">focus-select-car {{mainLabel}} {{subLabel}}</svg>',
 }));
 
-// focus-select-car (#790): the Race Admin car selector's device-filtered
-// profile helpers, reused verbatim to open the selector for this device.
-vi.mock("../race-admin/race-admin-selector.js", () => ({
+// focus-select-car (#790): the shared device-filtered bundled-profile reader
+// (unit-tested in shared/profile-entries.test.ts), mocked to a device that
+// ships the car-selector profile; the echo-loop guard keeps its real logic.
+vi.mock("../../shared/profile-entries.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../shared/profile-entries.js")>()),
   availableProfilesForDevice: vi.fn(() => ["iRaceDeck Car Selector XL"]),
   deviceProfileEntries: vi.fn(() => [{ name: "iRaceDeck Car Selector XL", label: "iRaceDeck Car Selector" }]),
 }));

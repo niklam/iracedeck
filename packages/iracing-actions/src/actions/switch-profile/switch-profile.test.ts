@@ -3,9 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { _resetSelectIntents, getSelectIntent, setSelectIntent } from "../../shared/car-select-intent.js";
 import {
-  availableProfilesForDevice,
   defaultProfileForDevice,
-  deviceProfileEntries,
   generateSwitchProfileSvg,
   profileTitle,
   SWITCH_PROFILE_UUID,
@@ -181,33 +179,6 @@ describe("SwitchProfile", () => {
 
     it("shows no title for an empty selection (which behaves as the default profile)", () => {
       expect(profileTitle("")).toBe("");
-    });
-  });
-
-  describe("availableProfilesForDevice", () => {
-    it("filters the generated profiles by device type, returning manifest names", () => {
-      expect(availableProfilesForDevice(2)).toEqual([
-        "iRaceDeck Default XL",
-        "iRaceDeck Replay XL",
-        "iRaceDeck Car Selector XL",
-      ]);
-      expect(availableProfilesForDevice(1)).toEqual(["iRaceDeck Pit Actions Mini"]);
-      expect(availableProfilesForDevice(99)).toEqual([]);
-    });
-
-    it("returns empty when the device type is unknown", () => {
-      expect(availableProfilesForDevice(undefined)).toEqual([]);
-    });
-  });
-
-  describe("deviceProfileEntries", () => {
-    it("pairs each manifest name with its clean display label (#753)", () => {
-      expect(deviceProfileEntries(2)).toEqual([
-        { name: "iRaceDeck Default XL", label: "iRaceDeck Default" },
-        { name: "iRaceDeck Replay XL", label: "iRaceDeck Replay" },
-        { name: "iRaceDeck Car Selector XL", label: "iRaceDeck Car Selector" },
-      ]);
-      expect(deviceProfileEntries(undefined)).toEqual([]);
     });
   });
 

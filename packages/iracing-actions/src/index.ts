@@ -67,6 +67,9 @@ export { isRaceEngineerEnabled, isRadarEnabled, stopRaceEngineerPlayback } from 
 // registerActions hands deck-core's initPressSounds.
 export { PRESS_SOUND_CLIPS, playPressSound } from "./audio/press-sounds.js";
 export { CAR_CYCLE_BINDING_DEFAULTS } from "./shared/car-cycle-bindings.js";
+// The bundled-profile reader, for the Stream Deck plugin's automatic
+// session-kind profile switcher (#1111); the actions share the same one.
+export { availableProfilesForDevice } from "./shared/profile-entries.js";
 // The replay busy indicator (#1437) has no registration entry point of its
 // own, so the composition root sets its logger once, before the replay
 // actions are constructed (#1467).
@@ -91,11 +94,7 @@ export { SETUP_FUEL_UUID, SetupFuel } from "./actions/setup-fuel/setup-fuel.js";
 export { SETUP_HYBRID_UUID, SetupHybrid } from "./actions/setup-hybrid/setup-hybrid.js";
 export { SETUP_TRACTION_UUID, SetupTraction } from "./actions/setup-traction/setup-traction.js";
 export { SPLITS_DELTA_CYCLE_UUID, SplitsDeltaCycle } from "./actions/splits-delta-cycle/splits-delta-cycle.js";
-export {
-  availableProfilesForDevice,
-  SWITCH_PROFILE_UUID,
-  SwitchProfile,
-} from "./actions/switch-profile/switch-profile.js";
+export { SWITCH_PROFILE_UUID, SwitchProfile } from "./actions/switch-profile/switch-profile.js";
 export { TELEMETRY_CONTROL_UUID, TelemetryControl } from "./actions/telemetry-control/telemetry-control.js";
 export { TELEMETRY_DISPLAY_UUID, TelemetryDisplay } from "./actions/telemetry-display/telemetry-display.js";
 export { TIRE_SERVICE_UUID, TireService } from "./actions/tire-service/tire-service.js";

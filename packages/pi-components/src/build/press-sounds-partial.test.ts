@@ -1,5 +1,4 @@
 import ejs from "ejs";
-import { readFileSync } from "node:fs";
 import path from "node:path";
 import url from "node:url";
 import { describe, expect, it } from "vitest";
@@ -13,10 +12,6 @@ import { describe, expect, it } from "vitest";
  * both sides are literals that cannot import each other, so they are pinned here.
  */
 const partialsDir = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), "../../partials");
-const settingsWindowEjs = path.resolve(
-  partialsDir,
-  "../../iracing-actions/src/actions/settings-window/settings-window.ejs",
-);
 
 function render(template: string): string {
   return ejs.render(template, {}, { views: [partialsDir], filename: path.join(partialsDir, "_test.ejs") });
@@ -61,28 +56,6 @@ describe("global-common-press-sounds.ejs", () => {
   });
 });
 
-describe("settings window General tab (#269)", () => {
-  const source = readFileSync(settingsWindowEjs, "utf-8");
-  const general = source.slice(
-    source.indexOf('id="pane-general"'),
-    source.indexOf("</section>", source.indexOf('id="pane-general"')),
-  );
-
-  it("includes the Press Sounds card exactly once on the whole page", () => {
-    expect(source.split("include('global-common-press-sounds')").length - 1).toBe(1);
-  });
-
-  it("places it as a card directly after Dual-Press", () => {
-    const dualPress =
-      "<%- include('accordion', { title: 'Dual-Press', content: include('global-common-dual-press'), settingsWindow: true }) %>";
-    const pressSounds =
-      "<%- include('accordion', { title: 'Press Sounds', content: include('global-common-press-sounds'), settingsWindow: true }) %>";
-
-    expect(general).toContain(dualPress);
-    expect(general).toMatch(new RegExp(`${escapeRegExp(dualPress)}\\s*${escapeRegExp(pressSounds)}`));
-  });
-});
-
 describe("global-common-dual-press.ejs threshold text (#269)", () => {
   it("describes the threshold as the one for every key and dial-button long-press, the double bleep included", () => {
     const text = render("<%- include('global-common-dual-press') %>").replace(/\s+/g, " ");
@@ -93,7 +66,3 @@ describe("global-common-dual-press.ejs threshold text (#269)", () => {
     expect(text).not.toContain("before a setup View sub-mode treats it as a long-press");
   });
 });
-
-function escapeRegExp(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}

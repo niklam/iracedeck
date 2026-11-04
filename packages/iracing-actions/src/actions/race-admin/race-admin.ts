@@ -68,14 +68,12 @@ import { getGlobalColors, getGlobalSettings, updateGlobalSettings } from "@irace
 import z from "zod";
 
 import { getSelectIntent } from "../../shared/car-select-intent.js";
-import { profileEntriesEqual } from "../../shared/profile-entries.js";
+import { availableProfilesForDevice, deviceProfileEntries, profileEntriesEqual } from "../../shared/profile-entries.js";
 import { migrateUseViewedCarToDriverTarget } from "./migrate-use-viewed-car.js";
 import { buildAdminCommand, buildAdminCommandPrefix, resolveDriverTarget } from "./race-admin-commands.js";
 import { RACE_ADMIN_MODE_META, RACE_ADMIN_MODES, type RaceAdminMode } from "./race-admin-modes.js";
 import {
-  availableProfilesForDevice,
   DEFAULT_SELECTOR_TARGET_PROFILE,
-  deviceProfileEntries,
   generateSelectorSvg,
   LEGACY_SELECTED_CAR_KEY,
   pageStartSlot,

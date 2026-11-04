@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 
 import { discoverPlugins } from "../../../../scripts/lib/plugin-config-shape.mjs";
 import { readSupportPartialConstants } from "./support-partial-constants.js";
+import { SETTINGS_WINDOW_REMOTE_IMAGES as ALLOWED_REMOTE_IMAGES } from "./testing.js";
 import { findThirdPartyReferences, type ThirdPartyReference } from "./third-party-references.js";
 
 /**
@@ -19,8 +20,10 @@ import { findThirdPartyReferences, type ThirdPartyReference } from "./third-part
  * on the allow-list below, and an anchor is the only other element that may
  * carry an absolute URL.
  *
- * Held in two places. The SOURCES (the page and every partial, since any
- * partial can be included by it) always run. The BUILT pages are what actually
+ * Held in two places. The SOURCES (every partial, since any partial can be
+ * included by the page) always run; the page's own source is `iracing-actions`'
+ * and is scanned beside it, in `src/pi-templates/settings-window-page.test.ts`
+ * (#1375), with the same scanner and the allow-list in `./testing.ts`. The BUILT pages are what actually
  * ships, and also cover whatever a build step injects: they run wherever a
  * build is present, and must be present in CI.
  *
@@ -30,18 +33,6 @@ import { findThirdPartyReferences, type ThirdPartyReference } from "./third-part
  */
 const partialsDir = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), "../../partials");
 const repoRoot = path.resolve(partialsDir, "../../..");
-const windowPage = path.join(repoRoot, "packages/iracing-actions/src/actions/settings-window/settings-window.ejs");
-
-/**
- * Every image the window may load from another site. Adding one is a decision
- * about what a third party learns each time a user opens that part of the
- * window, so it is made here, in review, and not by a template.
- */
-const ALLOWED_REMOTE_IMAGES = [
-  // Buy Me a Coffee's button on the Support iRaceDeck tab (#1303): an SVG drawn
-  // by an <img>, which runs no script and follows no link.
-  "https://img.buymeacoffee.com/button-api/?text=Support%20iRaceDeck&emoji=%F0%9F%8F%8E%EF%B8%8F&slug=niklaslampen&button_colour=FFDD00&font_colour=000000&font_family=Cookie&outline_colour=000000&coffee_colour=ffffff",
-];
 
 /** The one partial that names an allowed image, and the constant it names it by. */
 const SUPPORT_PARTIAL = "settings-window-support.ejs";
@@ -80,12 +71,6 @@ describe("the Settings window's sources", () => {
     expect(lines(findThirdPartyReferences(supportSource, { allowedImages: ALLOWED_REMOTE_IMAGES }))).toEqual([
       `<img src> {{ejs:<%= ${IMAGE_CONSTANT} %>}} (unresolved)`,
     ]);
-  });
-
-  it("names no other origin in the page", () => {
-    const found = findThirdPartyReferences(readFileSync(windowPage, "utf-8"), { allowedImages: ALLOWED_REMOTE_IMAGES });
-
-    expect(lines(found)).toEqual([]);
   });
 
   it.each(partials)("names no other origin in %s", (name) => {

@@ -84,7 +84,7 @@
         "$TURBO_ROOT$/THIRD-PARTY-LICENSES.md",
         "$TURBO_ROOT$/packages/iracing-plugin-stream-deck/com.iracedeck.sd.core.sdPlugin/imgs/plugin/**"
       ],
-      "outputs": ["com.iracedeck.sd.*.sdPlugin/**"]
+      "outputs": ["com.iracedeck.sd.*.sdPlugin/**", "com.ulanzi.*.ulanziPlugin/**"]
     },
     "@iracedeck/iracing-plugin-stream-deck#build": {
       "dependsOn": ["^build", "@iracedeck/audio-assets#stage:dev-voices", "//#generate:changelog-data"],
@@ -101,9 +101,10 @@
         "$TURBO_ROOT$/scripts/lib/runtime-deps.mjs",
         "$TURBO_ROOT$/scripts/lib/runtime-install-env.mjs",
         "$TURBO_ROOT$/LICENSE",
-        "$TURBO_ROOT$/THIRD-PARTY-LICENSES.md"
+        "$TURBO_ROOT$/THIRD-PARTY-LICENSES.md",
+        "$TURBO_ROOT$/packages/iracing-plugin-stream-deck/com.iracedeck.sd.core.sdPlugin/imgs/plugin/**"
       ],
-      "outputs": ["com.iracedeck.sd.*.sdPlugin/**"]
+      "outputs": ["com.iracedeck.sd.*.sdPlugin/**", "com.ulanzi.*.ulanziPlugin/**"]
     },
     "@iracedeck/iracing-plugin-ulanzi#build": {
       "dependsOn": ["^build", "@iracedeck/audio-assets#stage:dev-voices", "//#generate:changelog-data"],
@@ -123,7 +124,7 @@
         "$TURBO_ROOT$/THIRD-PARTY-LICENSES.md",
         "$TURBO_ROOT$/packages/iracing-plugin-stream-deck/com.iracedeck.sd.core.sdPlugin/imgs/plugin/**"
       ],
-      "outputs": ["com.ulanzi.*.ulanziPlugin/**"]
+      "outputs": ["com.iracedeck.sd.*.sdPlugin/**", "com.ulanzi.*.ulanziPlugin/**"]
     },
     "@iracedeck/plugin-build#build": {
       "dependsOn": ["^build"],
@@ -150,9 +151,12 @@
         "$TURBO_ROOT$/scripts/lib/changelog-*.mjs",
         "!$TURBO_ROOT$/scripts/lib/changelog-*.test.mjs",
         "$TURBO_ROOT$/scripts/lib/plugin-config-shape.mjs",
-        "$TURBO_ROOT$/scripts/lib/version-discovery.mjs",
-        "$TURBO_ROOT$/scripts/lib/settings-window-capture/tabs.mjs"
+        "$TURBO_ROOT$/scripts/lib/version-discovery.mjs"
       ]
+    },
+    "@iracedeck/iracing-actions#typecheck": {
+      "dependsOn": ["^build"],
+      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/scripts/lib/settings-window-capture/tabs.mjs"]
     },
     "@iracedeck/website#typecheck": {
       "dependsOn": ["^build"],

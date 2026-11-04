@@ -3,19 +3,28 @@ import path from "node:path";
 import url from "node:url";
 
 /**
- * Locating and reading the action Property Inspector templates, for the build
- * tests that assert things across all of them.
+ * Test support: this package's Property Inspector templates, for the tests in
+ * `src/pi-templates/` that hold every page to the `@iracedeck/pi-components`
+ * partials it includes (#1375). Never imported by production code.
  *
- * Four test files had grown their own copy of this directory path and two of
- * them the whole directory walk, so a change to the `actions/` layout (a second
+ * Four test files had grown their own copy of the actions path and two of them
+ * the whole directory walk, so a change to the `actions/` layout (a second
  * `.ejs` per action, another non-action page) had to be found in four places.
  */
 
-/** `packages/iracing-actions/src/actions` — one directory per action. */
-export const ACTIONS_DIR = path.resolve(
-  path.dirname(url.fileURLToPath(import.meta.url)),
-  "../../../iracing-actions/src/actions",
-);
+/** `src/actions` — one directory per action, plus `data/` and the two non-action pages. */
+export const ACTIONS_DIR = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), "../actions");
+
+/** `src/actions/data` — the JSON the build hands to the partials (`profiles.json`, `getting-started.json`, …). */
+export const ACTIONS_DATA_DIR = path.join(ACTIONS_DIR, "data");
+
+/** The settings window's page, `settings-window/settings-window.ejs`, which includes most of the settings partials. */
+export const SETTINGS_WINDOW_PAGE = path.join(ACTIONS_DIR, "settings-window", "settings-window.ejs");
+
+/** `src/actions/data/<file>`, parsed. */
+export function readActionsData<T>(file: string): T {
+  return JSON.parse(readFileSync(path.join(ACTIONS_DATA_DIR, file), "utf-8")) as T;
+}
 
 /**
  * The `.ejs` files under `actions/` that are NOT action Property Inspectors:

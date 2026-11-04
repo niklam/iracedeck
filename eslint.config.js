@@ -5,14 +5,63 @@ import tsparser from '@typescript-eslint/parser';
 import prettier from 'eslint-config-prettier';
 import stylistic from '@stylistic/eslint-plugin';
 
-// The iRacing packages a sim-neutral layer may not import: deck-core and the
-// packages split out of it (#1351, #1367) and the device shells (#1500).
+// The iRacing packages a sim-neutral layer may not import: the packages named in
+// SIM_NEUTRAL_PACKAGES below (#1351, #1367, #1375) and the device shells (#1500).
 const SIM_PACKAGES = [
   '@iracedeck/deck-iracing',
   '@iracedeck/sim-events-iracing',
   '@iracedeck/iracing-sdk',
   '@iracedeck/iracing-native',
 ];
+
+// The packages that are sim-neutral by design, by directory under packages/: the
+// one list the sim-neutral block below is built from (#1375). Every package is
+// either here, held by a sim block of its own (the plugin shells, the
+// audio-scenarios catalog) or named sim-side with its reason in
+// scripts/sim-boundary-coverage.test.mjs, which fails on a package in none of
+// them, so a new package is decided rather than left unguarded — the way
+// settings and voice-packs were until #1375. A named export beside the default
+// one: ESLint reads only `default`, and the tests import this list.
+export const SIM_NEUTRAL_PACKAGES = Object.freeze([
+  // The deck layer and the packages split out of it (#1351, #1367).
+  'deck-core',
+  'replay-store',
+  'diagnostics',
+  'app-updates',
+  'settings-window',
+  // Beneath it, and out of it since #1366 (#1375).
+  'settings',
+  'voice-packs',
+  // The two seams: the sim-event catalog a sim's translator publishes into, and
+  // the IDeckPlatformAdapter implementations (#1375).
+  'event-bus',
+  'deck-adapter-elgato',
+  'deck-adapter-mirabox',
+  'deck-adapter-ulanzi',
+  // Leaves, audio, assets and tooling that know no sim (#1375). track-data holds
+  // corner data keyed by iRacing track names but reads no sim package.
+  'app-constants',
+  'logger',
+  'fetch-utils',
+  'icon-composer',
+  'icons',
+  'rasterizer',
+  'pi-components',
+  'callout-script',
+  'callout-settings',
+  'audio-native',
+  'audio-service',
+  'audio-assets',
+  'track-data',
+  'plugin-build',
+  'website',
+]);
+const SIM_NEUTRAL_MESSAGE =
+  'A sim-neutral package (SIM_NEUTRAL_PACKAGES in eslint.config.js) must not depend on a simulator: reach the sim through deck-core\'s SimConnection interface, the event-bus catalog or an injected delegate, and put iRacing code in an iRacing package such as @iracedeck/deck-iracing (#1351, #1367, #1375).';
+const PI_COMPONENTS_MESSAGE =
+  'iracing-actions is bundled into every plugin, and @iracedeck/pi-components (with ./testing, which loads ejs and node:fs, and ./build) is only its tests\' devDependency: import it from a *.test.ts or *.test-support.ts file only (#1375).';
+const TEST_SUPPORT_MESSAGE =
+  'A *.test-support.ts module may import @iracedeck/pi-components/testing (with ejs and node:fs), so a non-test iracing-actions source importing one would bundle that into every plugin: import it from a *.test.ts or *.test-support.ts file only (#1375).';
 const SHELL_SIM_MESSAGE =
   'A plugin shell must not depend on a simulator: read the sim through PluginExtensionContext.sim, which plugin-runtime hands PluginExtension.start (#1500).';
 
@@ -127,27 +176,32 @@ export default [
     },
   },
   {
-    // deck-core is the deck layer: it sees a simulator only through its
-    // SimConnection interface. iRacing lives in @iracedeck/deck-iracing (#1351).
-    // The packages split out of deck-core keep the same boundary (#1367): what
-    // they need from the sim is injected by plugin-runtime or fed by deck-iracing.
+    // A sim-neutral package reaches no simulator package. deck-core sees a sim
+    // only through its SimConnection interface, and iRacing lives in
+    // @iracedeck/deck-iracing (#1351); the packages split out of deck-core keep
+    // the same boundary (#1367), and since #1375 every package named in
+    // SIM_NEUTRAL_PACKAGES does: settings beneath deck-core, voice-packs, the
+    // event-bus catalog, the three deck adapters and the leaves. The block holds
+    // every .ts and .mjs file of the package, tests included, and src/ is not
+    // its edge: `pnpm lint` reads every .mjs in the repo, and a tracked .ts
+    // outside packages/*/src, which its globs miss, fails
+    // scripts/lint-format-coverage.test.mjs. It does not hold what no lint gate
+    // here reads at all: the website's .astro pages and its
+    // scripts/generate-icon-gallery.mts, where no lint refuses a sim import.
+    // That is a gap in what the repo lints, not in this block, and naming .mts
+    // here would not close it: the TypeScript parser block above takes
+    // **/*.ts only and `pnpm lint` passes no .mts, so the pattern would match a
+    // file nothing lints. The subpath pattern closes a deep import, which
+    // iracing-sdk and iracing-native allow because they declare no `exports`,
+    // as the plugin-shell block below does (#1500). Type-only imports included.
     // scripts/deck-core-sim-boundary.test.mjs proves this rule fires in each.
-    files: [
-      'packages/deck-core/src/**/*.ts',
-      'packages/replay-store/src/**/*.ts',
-      'packages/diagnostics/src/**/*.ts',
-      'packages/app-updates/src/**/*.ts',
-      'packages/settings-window/src/**/*.ts',
-    ],
+    files: SIM_NEUTRAL_PACKAGES.flatMap((dir) => [`packages/${dir}/**/*.ts`, `packages/${dir}/**/*.mjs`]),
     rules: {
       'no-restricted-imports': [
         'error',
         {
-          paths: SIM_PACKAGES.map((name) => ({
-            name,
-            message:
-              'deck-core and the packages split out of it must not depend on a simulator: use the SimConnection interface or an injected delegate, and put iRacing code in @iracedeck/deck-iracing (#1351, #1367).',
-          })),
+          paths: SIM_PACKAGES.map((name) => ({ name, message: SIM_NEUTRAL_MESSAGE })),
+          patterns: [{ group: SIM_PACKAGES.map((name) => `${name}/*`), message: SIM_NEUTRAL_MESSAGE }],
         },
       ],
     },
@@ -203,6 +257,39 @@ export default [
               ],
               message:
                 'The replay engine must not depend on the deck layer, the settings or its own consumers: take it through configureReplayEngine (#1467).',
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    // iracing-actions is bundled into every plugin, while @iracedeck/pi-components
+    // is a devDependency its PI-template tests alone use (#1375): ./testing
+    // renders the pages through ejs and node:fs, and ./build is the Rollup
+    // tooling. The manifest section is no guard on its own, since the package
+    // resolves from any file, so a non-test source is refused it here, the bare
+    // name and every subpath. A *.test-support.ts file is let through, which
+    // leaves a way round: a non-test source importing one by relative path
+    // would bundle what that file imports. The second pattern refuses that, in
+    // every specifier shape (with .js, which the repo writes, .ts or none).
+    // Both patterns sit in one options object: iracing-actions files match no
+    // other block setting no-restricted-imports, and a second block here would
+    // replace these options rather than add to them
+    // (scripts/sim-boundary-coverage.test.mjs fails if one ever does).
+    // scripts/iracing-actions-pi-components-boundary.test.mjs proves both fire.
+    files: ['packages/iracing-actions/src/**/*.ts'],
+    ignores: ['packages/iracing-actions/src/**/*.test.ts', 'packages/iracing-actions/src/**/*.test-support.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [{ name: '@iracedeck/pi-components', message: PI_COMPONENTS_MESSAGE }],
+          patterns: [
+            { group: ['@iracedeck/pi-components/*'], message: PI_COMPONENTS_MESSAGE },
+            {
+              group: ['*.test-support', '*.test-support.js', '*.test-support.ts'],
+              message: TEST_SUPPORT_MESSAGE,
             },
           ],
         },

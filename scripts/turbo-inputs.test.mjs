@@ -62,7 +62,8 @@ import { SOURCES } from "../packages/plugin-build/src/plugin-rollup.mjs";
 // Astro configs) or compiles (its tsc program, the program Rollup bundles
 // through, Astro's pages); C, a narrowed `inputs` list against the package's
 // `exports`; D and E, the folders and files the plugin build copies by path
-// rather than imports.
+// rather than imports; F, the three plugin builds' entries kept identical,
+// since turbo has no wildcard package key and three copies drift (#1375).
 //
 // What it does NOT see: a read through a computed path (`readFileSync` of a
 // string built at runtime) other than the copy sources D and E check; a file
@@ -515,6 +516,61 @@ function checkPluginSources(turbo, repo, sources, plugins, copiedFiles) {
       violations.push(
         `${pkg}#build copies SOURCES.${key} (${entry}), but turbo does not hash it for that task: ` +
           fixFor(turbo, repo, pkg, "build", entry),
+      );
+    }
+  }
+  return violations;
+}
+
+/**
+ * F. The three plugin builds share one entry (#1375). Turbo has no wildcard
+ * package key, so each plugin needs its own `<pkg>#build` entry, and three
+ * hand-kept copies drift: an input added to one plugin and not the others is a
+ * stale cache hit in the others. So every field of the three entries must be
+ * identical — the shape is the union of what each plugin needs, and costs
+ * nothing where it is not needed: the Stream Deck images Mirabox and Ulanzi
+ * copy are the Stream Deck plugin's own files, already in its default inputs,
+ * and an `outputs` glob naming another plugin's bundle folder matches nothing.
+ * Because `outputs` is shared, each plugin's bundle folder — the folder holding
+ * its tracked `manifest.json` — must be among them, so trimming the list to
+ * one plugin's glob is reported rather than leaving the others uncached.
+ */
+function checkPluginBuildsShareOneShape(turbo, workspace, plugins, tracked) {
+  const violations = [];
+  const entries = plugins.map((pkg) => ({
+    pkg,
+    key: taskKey(pkg, "build"),
+    config: turbo.tasks?.[taskKey(pkg, "build")],
+  }));
+  for (const { key, config } of entries) {
+    if (!config) violations.push(`turbo.json has no "${key}" entry: copy the other plugins' build entry into it`);
+  }
+  const present = entries.filter(({ config }) => config);
+  const [reference, ...others] = present;
+  for (const { key, config } of others) {
+    const fields = [...new Set([...Object.keys(reference.config), ...Object.keys(config)])].sort();
+    for (const field of fields) {
+      const want = JSON.stringify(reference.config[field]);
+      const got = JSON.stringify(config[field]);
+      if (want === got) continue;
+      violations.push(
+        `"${key}" differs from "${reference.key}" in "${field}" (${got ?? "absent"} against ${want ?? "absent"}): ` +
+          `the plugin build entries share one shape, so make the change in all three`,
+      );
+    }
+  }
+  for (const { pkg, key, config } of present) {
+    const dir = workspace.get(pkg)?.dir;
+    const bundles = tracked
+      .filter((file) => dir && isInside(file, dir) && /^[^/]+\/manifest\.json$/.test(file.slice(dir.length + 1)))
+      .map((file) => path.posix.dirname(file));
+    if (bundles.length === 0) {
+      violations.push(`${pkg} has no tracked <bundle>/manifest.json: the check cannot find its bundle folder`);
+    }
+    for (const bundle of bundles) {
+      if (outputsCover(config.outputs, dir, `${bundle}/${PROBE}`)) continue;
+      violations.push(
+        `"${key}" does not output ${bundle}/**, the plugin's bundle folder: add its glob to the shared "outputs"`,
       );
     }
   }
@@ -2035,6 +2091,68 @@ describe("turbo hashes every file a cached task reads (#1491)", () => {
       );
       expect(violations).toHaveLength(1);
       expect(violations[0]).toContain(`${key} copies SOURCES.actionTemplatesDir`);
+    });
+  });
+
+  describe("F. the plugin builds share one entry (#1375)", () => {
+    it("every plugin's build entry is the same, and outputs every plugin's bundle folder", () => {
+      const violations = checkPluginBuildsShareOneShape(turbo, workspace, PLUGIN_PACKAGES, tracked);
+      expect(violations, violations.join("\n")).toEqual([]);
+    });
+
+    it("positive control: reports an input, an env var or a key one plugin's entry has and another's lacks", () => {
+      const violations = checkPluginBuildsShareOneShape(
+        brokenConfig((c) => {
+          withoutInput("@iracedeck/iracing-plugin-ulanzi#build", "$TURBO_ROOT$/LICENSE")(c);
+          c.tasks["@iracedeck/iracing-plugin-stream-deck#build"].env = [];
+          c.tasks["@iracedeck/iracing-plugin-stream-deck#build"].cache = false;
+        }),
+        workspace,
+        PLUGIN_PACKAGES,
+        tracked,
+      );
+      expect(
+        violations
+          .map((v) =>
+            v
+              .match(/^"([^"]+)" differs from "[^"]+" in "(\w+)"/)
+              ?.slice(1)
+              .join(" "),
+          )
+          .sort(),
+      ).toEqual([
+        "@iracedeck/iracing-plugin-stream-deck#build cache",
+        "@iracedeck/iracing-plugin-stream-deck#build env",
+        "@iracedeck/iracing-plugin-ulanzi#build inputs",
+      ]);
+    });
+
+    it("positive control: reports shared outputs that leave a plugin's bundle folder out", () => {
+      const violations = checkPluginBuildsShareOneShape(
+        brokenConfig((c) => {
+          for (const pkg of PLUGIN_PACKAGES)
+            c.tasks[taskKey(pkg, "build")].outputs = ["com.iracedeck.sd.*.sdPlugin/**"];
+        }),
+        workspace,
+        PLUGIN_PACKAGES,
+        tracked,
+      );
+      expect(violations).toHaveLength(1);
+      expect(violations[0]).toContain("packages/iracing-plugin-ulanzi/com.ulanzi.iracedeck.ulanziPlugin/**");
+    });
+
+    it("positive control: reports a plugin with no entry of its own", () => {
+      const violations = checkPluginBuildsShareOneShape(
+        brokenConfig((c) => {
+          delete c.tasks["@iracedeck/iracing-plugin-mirabox#build"];
+        }),
+        workspace,
+        PLUGIN_PACKAGES,
+        tracked,
+      );
+      expect(violations).toEqual([
+        `turbo.json has no "@iracedeck/iracing-plugin-mirabox#build" entry: copy the other plugins' build entry into it`,
+      ]);
     });
   });
 });

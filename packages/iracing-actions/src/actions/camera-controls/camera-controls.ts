@@ -87,8 +87,7 @@ import z from "zod";
 import { carCycleBindingKey } from "../../shared/car-cycle-bindings.js";
 import { computeCarNumberTarget } from "../../shared/car-cycling.js";
 import { setSelectIntent } from "../../shared/car-select-intent.js";
-import { profileEntriesEqual } from "../../shared/profile-entries.js";
-import { availableProfilesForDevice, deviceProfileEntries } from "../race-admin/race-admin-selector.js";
+import { availableProfilesForDevice, deviceProfileEntries, profileEntriesEqual } from "../../shared/profile-entries.js";
 import { CameraDialSurface, type CarouselGlyph, DialSettings } from "./camera-dial-surface.js";
 import {
   CAMERA_GROUPS_SETTING_KEY,

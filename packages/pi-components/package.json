@@ -5,7 +5,8 @@
   "type": "module",
   "packageManager": "pnpm@12.6.0",
   "exports": {
-    "./build": "./src/build/index.mjs"
+    "./build": "./src/build/index.mjs",
+    "./testing": "./src/build/testing.ts"
   },
   "scripts": {
     "build": "rollup -c",

@@ -1,9 +1,18 @@
+// The REAL contracts, never a copy: the packer's output must satisfy the
+// schemas the plugin parses with and lay clips out where its scanner walks, so
+// if either format moves these tests break with it. The manifest schema is the
+// leaf's (`@iracedeck/callout-script`, the scanner validates through the same
+// one since #1134); the catalog schema and the scanner are `@iracedeck/voice-packs`'
+// public names, imported by package name like any consumer's (#1375). The root
+// vitest config aliases both packages to their source, so the tests always run
+// against the current formats rather than a stale `dist/`.
 import {
   CALLOUT_SCRIPT_FILE,
   type CalloutScript,
   calloutScriptPath,
   VoicePackManifestSchema,
 } from "@iracedeck/callout-script";
+import { createVoicePackFileSystem, scanVoicePacks, VoicePackCatalogEntrySchema } from "@iracedeck/voice-packs";
 import { unzipSync } from "fflate";
 import { createHash } from "node:crypto";
 import {
@@ -24,15 +33,6 @@ import path from "node:path";
 import url from "node:url";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
-// The REAL contracts, never a copy: the packer's output must satisfy the
-// schemas the plugin parses with and lay clips out where its scanner walks, so
-// if either format moves these tests break with it. The manifest schema is the
-// leaf's (`@iracedeck/callout-script`, above — the scanner validates through
-// the same one since #1134); the catalog schema and the scanner are voice-packs',
-// imported from its source.
-import { VoicePackCatalogEntrySchema } from "../../voice-packs/src/voice-pack-catalog.ts";
-import { createVoicePackFileSystem } from "../../voice-packs/src/voice-pack-fs.ts";
-import { scanVoicePacks } from "../../voice-packs/src/voice-pack-scanner.ts";
 import {
   archiveUrl,
   buildVoicePackManifest,

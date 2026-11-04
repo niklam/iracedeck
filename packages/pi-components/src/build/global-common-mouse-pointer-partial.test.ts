@@ -13,22 +13,16 @@ import url from "node:url";
 import { describe, expect, it } from "vitest";
 
 /**
- * The settings window's controls carry their own `default="…"` attributes, so a
- * default changed on one side of the pair and not the other would show the user
- * one value and apply another. The values live in `@iracedeck/app-constants`
- * (`sim-pointer-target.ts`), whose tests have no Node typings to read a file
- * with, so the guard lives here — reading a sibling package's file by relative
- * path, the same way `pi-components/src/build` reads `iracing-actions`.
+ * The Mouse to Sim card's controls carry their own `default="…"`, `min` and
+ * `max` attributes, hand-written in an `.ejs` file that neither prettier nor
+ * eslint covers, so a value changed in `@iracedeck/app-constants`
+ * (`sim-pointer-target.ts`) and not here would show the user one value and
+ * apply another. Nothing but this test connects the two. That the settings
+ * window includes the card is pinned beside the page, in `iracing-actions`'
+ * `src/pi-templates/settings-window-page.test.ts` (#1375).
  */
-const repoRoot = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), "../../..");
-const partial = readFileSync(
-  path.join(repoRoot, "packages/pi-components/partials/global-common-mouse-pointer.ejs"),
-  "utf-8",
-);
-const settingsWindow = readFileSync(
-  path.join(repoRoot, "packages/iracing-actions/src/actions/settings-window/settings-window.ejs"),
-  "utf-8",
-);
+const partialsDir = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), "../../partials");
+const partial = readFileSync(path.join(partialsDir, "global-common-mouse-pointer.ejs"), "utf-8");
 
 /** Every setting the card binds, in the order it lists them. */
 const SETTING_KEYS = ["mouseToSimAnchorX", "mouseToSimOffsetX", "mouseToSimAnchorY", "mouseToSimOffsetY"] as const;
@@ -92,9 +86,5 @@ describe("global-common-mouse-pointer.ejs (#1029)", () => {
 
   it("emits items only, so the includer supplies the heading", () => {
     expect(partial).not.toContain("include('accordion'");
-  });
-
-  it("is rendered by the settings window", () => {
-    expect(settingsWindow).toContain("include('global-common-mouse-pointer')");
   });
 });

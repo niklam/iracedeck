@@ -3,8 +3,6 @@ import path from "node:path";
 import url from "node:url";
 import { describe, expect, it } from "vitest";
 
-import { ACTIONS_DIR, actionTemplates } from "./action-templates.js";
-
 /**
  * #1003 split head-common.ejs in two.
  *
@@ -16,7 +14,9 @@ import { ACTIONS_DIR, actionTemplates } from "./action-templates.js";
  *
  * Both directions matter: the window must keep the behaviour, and head-common
  * must not quietly reacquire it (which would put dead script back into all 35
- * PIs).
+ * PIs). Which partial owns which hook is held here; which PAGE includes the
+ * window-only scripts is held beside the pages, in `iracing-actions`'
+ * `src/pi-templates/head-common-split.test.ts` (#1375).
  */
 const partialsDir = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), "../../partials");
 
@@ -24,7 +24,6 @@ const read = (file: string): string => readFileSync(file, "utf-8");
 
 const headCommon = read(path.join(partialsDir, "head-common.ejs"));
 const windowScripts = read(path.join(partialsDir, "settings-window-scripts.ejs"));
-const settingsWindow = read(path.join(ACTIONS_DIR, "settings-window/settings-window.ejs"));
 
 /** Hooks that only ever exist on the settings window's page. */
 const WINDOW_ONLY_HOOKS = [
@@ -49,10 +48,6 @@ describe("head-common / settings-window-scripts split (#1003)", () => {
     it.each(WINDOW_ONLY_HOOKS)("owns the %s behaviour", (hook) => {
       expect(windowScripts).toContain(hook);
     });
-
-    it("is included by the settings window", () => {
-      expect(settingsWindow).toContain("include('settings-window-scripts')");
-    });
   });
 
   describe("head-common.ejs", () => {
@@ -71,15 +66,6 @@ describe("head-common / settings-window-scripts split (#1003)", () => {
   });
 
   describe("no action Property Inspector includes the window-only scripts", () => {
-    it("keeps the partial out of every action template", () => {
-      const offenders = actionTemplates()
-        .filter(({ name }) => name !== "settings-window.ejs")
-        .filter(({ file }) => read(file).includes("settings-window-scripts"))
-        .map(({ name }) => name);
-
-      expect(offenders).toEqual([]);
-    });
-
     it("keeps it out of head-common, which every PI loads", () => {
       expect(headCommon).not.toContain("settings-window-scripts");
     });

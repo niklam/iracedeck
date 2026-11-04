@@ -19,15 +19,11 @@ import { getGlobalSettings, updateGlobalSettings } from "@iracedeck/settings";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { _resetSelectIntents, setSelectIntent } from "../../shared/car-select-intent.js";
+import { availableProfilesForDevice } from "../../shared/profile-entries.js";
 import { engineOverDeck } from "../../shared/replay-engine-deck.test-support.js";
 import { buildAdminCommand, buildAdminCommandPrefix, resolveDriverTarget } from "./race-admin-commands.js";
 import { getModesByOptgroup, RACE_ADMIN_MODE_META, RACE_ADMIN_MODES } from "./race-admin-modes.js";
-import {
-  availableProfilesForDevice,
-  generateSelectorSvg,
-  resolveSelectedCar,
-  resolveSlotCar,
-} from "./race-admin-selector.js";
+import { generateSelectorSvg, resolveSelectedCar, resolveSlotCar } from "./race-admin-selector.js";
 import { generateRaceAdminSvg, RaceAdmin } from "./race-admin.js";
 
 // Mock SDK
@@ -45,6 +41,17 @@ vi.mock("@iracedeck/iracing-sdk", async (importOriginal) => ({
   resolveTemplate: vi.fn((template: string) => template),
 }));
 
+// The bundled-profile reader is mocked (unit-tested in
+// shared/profile-entries.test.ts); the echo-loop guard keeps its real logic.
+vi.mock("../../shared/profile-entries.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../shared/profile-entries.js")>()),
+  availableProfilesForDevice: vi.fn(() => ["iRaceDeck Race Admin Cars XL", "iRaceDeck Race Admin Per Car XL"]),
+  deviceProfileEntries: vi.fn(() => [
+    { name: "iRaceDeck Race Admin Cars XL", label: "iRaceDeck Race Admin Cars" },
+    { name: "iRaceDeck Race Admin Per Car XL", label: "iRaceDeck Race Admin Per Car" },
+  ]),
+}));
+
 // The session-touching selector helpers are mocked (unit-tested in
 // race-admin-selector.test.ts); the pure slot-math helpers keep their real
 // logic so the lifecycle tests exercise genuine ordinal/paging behavior (#754).
@@ -52,11 +59,6 @@ vi.mock("./race-admin-selector.js", () => ({
   SELECTED_CAR_KEY: "_selectedCar",
   LEGACY_SELECTED_CAR_KEY: "_raceAdminSelectedCar",
   DEFAULT_SELECTOR_TARGET_PROFILE: "iRaceDeck Race Admin Per Car",
-  availableProfilesForDevice: vi.fn(() => ["iRaceDeck Race Admin Cars XL", "iRaceDeck Race Admin Per Car XL"]),
-  deviceProfileEntries: vi.fn(() => [
-    { name: "iRaceDeck Race Admin Cars XL", label: "iRaceDeck Race Admin Cars" },
-    { name: "iRaceDeck Race Admin Per Car XL", label: "iRaceDeck Race Admin Per Car" },
-  ]),
   parseSelectorPage: (raw: string | undefined) => {
     const n = Number(raw);
 

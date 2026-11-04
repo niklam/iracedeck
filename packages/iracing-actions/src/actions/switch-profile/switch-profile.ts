@@ -34,10 +34,7 @@ import { getGlobalColors } from "@iracedeck/settings";
 import z from "zod";
 
 import { clearSelectIntent } from "../../shared/car-select-intent.js";
-import { profileEntriesEqual, type ProfileEntry } from "../../shared/profile-entries.js";
-import profilesData from "../data/profiles.json" with { type: "json" };
-
-export type { ProfileEntry };
+import { availableProfilesForDevice, deviceProfileEntries, profileEntriesEqual } from "../../shared/profile-entries.js";
 
 /**
  * Sentinel `profile` value for the "Back to previous" mode: instead of a named
@@ -129,29 +126,6 @@ export function profileTitle(profile: string): string {
   if (!display || display === PROFILE_NAMES.default) return "";
 
   return PROFILE_TITLES[display] ?? display.replace(/^iRaceDeck\s+/i, "").toUpperCase();
-}
-
-/**
- * Bundled profile (manifest) names available for a device type, read from the
- * generated `data/profiles.json` (mirrors the manifest). Also exported from the
- * package for the Stream Deck plugin's automatic session-kind switcher (#1111),
- * so the one reader of `profiles.json` stays here.
- */
-export function availableProfilesForDevice(deviceType: number | undefined): string[] {
-  if (deviceType === undefined) return [];
-
-  return profilesData.filter((p) => p.deviceType === deviceType).map((p) => p.name);
-}
-
-/**
- * @internal Exported for testing. The `_deviceProfiles` entries pushed for the
- * PI dropdown: each available manifest name paired with its clean display
- * label, so the dropdown never shows device suffixes (#753).
- */
-export function deviceProfileEntries(deviceType: number | undefined): ProfileEntry[] {
-  if (deviceType === undefined) return [];
-
-  return profilesData.filter((p) => p.deviceType === deviceType).map((p) => ({ name: p.name, label: p.displayName }));
 }
 
 /**
