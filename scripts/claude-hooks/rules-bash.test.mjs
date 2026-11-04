@@ -380,6 +380,8 @@ describe("gh pr merge", () => {
         "GH_REPO=niklam/iracedeck gh pr merge 7 --squash",
         "env GH_REPO=niklam/iracedeck gh pr merge 7 --squash",
         "timeout 120 gh pr merge 7 --squash",
+        "gh pr merge 7 --squash 2>&1",
+        "gh pr merge 7 --squash && git pull || echo failed",
         "cd ../ir-7 && gh pr merge 7 --squash -R niklam/iracedeck",
         "cd ../ir-7; GH_REPO=niklam/iracedeck gh pr merge 7 --squash",
         "gh pr merge https://github.com/niklam/iracedeck/pull/7 --squash",
@@ -465,6 +467,13 @@ describe("gh pr merge", () => {
         "cd - && gh pr merge 7 --squash",
         "cd ../other & gh pr merge 7 --squash",
         "# merge it\ncd ../ir-7 & cd ../other && gh pr merge 7 --squash",
+        // A pipeline runs each command in its own subshell: the cd never reaches gh.
+        "cd ../ir-99 | gh pr merge --squash",
+        // Run beside the merge, a command can switch the branch or remote gh reads.
+        "gh pr merge --squash & git -C ../ir-99 log -1",
+        "gh pr merge --squash & git checkout feature-x",
+        "gh pr merge 5 --squash | git remote set-url origin https://github.com/someone/other",
+        "gh pr merge 5 --squash |& tail -3",
       ]) {
         const { c, reads } = arrange();
         expect(deny(command, c), command).toMatch(/as its own command/);
@@ -488,26 +497,36 @@ describe("gh pr merge", () => {
       passes("Set-Location ../ir-7; gh pr merge 7 --squash", arrange(green, { shell: POWERSHELL }).c);
     });
 
-    it("refuses a host, a working directory or an unread GH_REPO spelling in the merge's own prefix", () => {
+    it("refuses a host, a working directory, a git variable or a wrapper's option in the merge's own prefix", () => {
       for (const command of [
         "GH_HOST=ghe.example.com gh pr merge 7 --squash -R niklam/iracedeck",
         "GH_REPO=niklam/iracedeck GH_HOST=ghe.example.com gh pr merge 7 --squash",
         "env -C ../other gh pr merge 7 --squash",
+        "env -C../other gh pr merge 7 --squash",
         "env --chdir=../other gh pr merge 7 --squash",
+        "env --c=../other gh pr merge 7 --squash",
+        "GIT_DIR=../other/.git gh pr merge 7 --squash",
+        "git_work_tree=../other gh pr merge 7 --squash",
+        // Dropping an inherited GH_REPO the gate's own read still sees.
+        "env -i PATH=/bin gh pr merge 7 --squash",
+        "env -uGH_REPO gh pr merge 7 --squash",
+        "xargs -afile gh pr merge --squash",
         // Windows hands gh its environment case-blind.
         "gh_repo=someone/other gh pr merge 7 --squash",
       ]) {
         const { c, reads } = arrange();
-        expect(deny(command, c), command).toMatch(/sets GH_HOST, a working directory, or a GH_REPO/);
+        expect(deny(command, c), command).toMatch(/prefix the gate cannot read whole/);
         expect(reads, command).toEqual([]);
       }
     });
 
-    it("refuses a flag between `pr` and `merge`, which hid the merge from the gate", () => {
+    it("refuses a flag between `gh` and `merge`, which hid the merge from the gate", () => {
       for (const command of [
         "gh pr -R someone/other merge 7 --squash",
         "gh pr --repo niklam/iracedeck merge 7 --squash",
         "gh pr --repo=someone/other merge 7",
+        "gh -R niklam/iracedeck pr merge 5 --squash",
+        "gh --repo someone/other pr merge 5 --squash",
       ])
         expect(deny(command, arrange().c), command).toMatch(/every flag after `merge`/);
       passes("gh pr -R niklam/iracedeck view 7 --json url");
@@ -1210,12 +1229,20 @@ describe("gh pr merge", () => {
     // A keyword's condition is a command ahead of the merge, which the chain rule refuses (#1393).
     for (const command of ["if true; then gh pr merge 7 --squash; fi", "while x; do gh pr merge 7 --squash; done"])
       expect(deny(command, ctx({ prView: green }))).toMatch(/as its own command/);
+    // A wrapper's option or a gh variable can move what gh merges, so the prefix check refuses it (#1393).
     for (const command of [
       "env GH_DEBUG=1 gh pr merge 7 --squash",
       "env -i gh pr merge 7 --squash",
       "env -u GH_TOKEN -i PATH=/bin gh pr merge 7 --squash",
       "exec -a merger gh pr merge 7 --squash",
       "time -p gh pr merge 7 --squash",
+    ])
+      expect(deny(command, ctx({ prView: green }))).toMatch(/prefix the gate cannot read whole/);
+    for (const command of [
+      "env DEBUG=1 PATH=/bin gh pr merge 7 --squash",
+      "exec gh pr merge 7 --squash",
+      "time gh pr merge 7 --squash",
+      "timeout 120 gh pr merge 7 --squash",
       "nohup gh pr merge 7 --squash",
       "! gh pr merge 7 --squash",
     ])

@@ -419,23 +419,27 @@ export function gitCwd(command, cwd, re, shell = BASH) {
 }
 
 /**
- * Where the segment holding the first `re` match starts, split as
- * {@link gitCwd} splits, when every segment ahead of it is a `cd <dir>` that
- * {@link gitCwd} follows (`cd -` and `cd +` are not); `-1` when anything else
- * comes first or nothing matches. The merge gate's fail-closed check (#1393):
- * any other command ahead of a merge could change what gh resolves it to —
- * the repository, the checkout, the branch — after the gate has read it.
+ * `{ start, dir }` for the command `re` finds first, when every segment ahead
+ * of it, split as {@link gitCwd} splits, is a `cd <dir>` it follows (`cd -`
+ * and `cd +` are not): `start` is where the command's segment begins, `dir` the
+ * session cwd moved by those `cd`s alone — never by a `git -C`, which a
+ * command such as gh does not take. `undefined` when anything else comes first
+ * or nothing matches. The merge gate's fail-closed check (#1393): any other
+ * command ahead of a merge could change what gh resolves it to — the
+ * repository, the checkout, the branch — after the gate has read it.
  */
-export function startAfterCds(command, re, shell = BASH) {
+export function cdsAhead(command, re, cwd, shell = BASH) {
   const text = trustedMask(command);
   const segs = ranges(text, CHAIN).filter(([a, b]) => text.slice(a, b).trim());
   const at = segs.findIndex(([a, b]) => re.test(text.slice(a, b)));
-  if (at < 0) return -1;
-  const followed = segs.slice(0, at).every(([a, b]) => {
-    const dir = argIn(command, text, a, b, cdRe(shell));
-    return dir && !HISTORY_DIR.has(dir);
-  });
-  return followed ? segs[at][0] : -1;
+  if (at < 0) return undefined;
+  let dir = cwd;
+  for (const [a, b] of segs.slice(0, at)) {
+    const to = argIn(command, text, a, b, cdRe(shell));
+    if (!to || HISTORY_DIR.has(to)) return undefined;
+    dir = resolveDir(dir, to, { shell });
+  }
+  return { start: segs[at][0], dir };
 }
 
 /**
