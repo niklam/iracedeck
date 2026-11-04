@@ -32,6 +32,8 @@ export type {
   RaceStartConditions,
   RaceStartSnapshot,
   RefusedLapCompleted,
+  SessionCategory,
+  SessionClass,
   SessionStartConditions,
   SessionStartSnapshot,
   SimEvent,
