@@ -1,9 +1,11 @@
+import { spawnSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
 
+import { acquireProbeLock } from "./lib/probe-lock.mjs";
 import { spawnSyncShim } from "./lib/spawn-shim.mjs";
 
 // scripts/typecheck-script-coverage.test.mjs lives in scripts/, so the repo root is one up.
@@ -300,12 +302,23 @@ function runTypecheck(cwd) {
   return { status: result.status, output: `${result.stdout ?? ""}${result.stderr ?? ""}${failure}` };
 }
 
-// Named so its purpose is unmistakable in a `git status` listing: an orphaned
-// probe means a run crashed between writing and deleting it. It is untracked, so
-// it can never modify existing content — `git status --porcelain` stays a
-// trustworthy contamination signal, which is what it is used for around here.
-// `vitest.config.ts` excludes this exact filename so an orphan is never collected.
+// Named so its purpose is unmistakable wherever it is seen: a probe on disk
+// outside a run means a run was killed between writing and deleting it. It is
+// gitignored by this exact basename (#1394), so `git status --porcelain`, which
+// `release-hooks.test.mjs` compares in a parallel worker, never sees it come and
+// go, and `git add -A` never stages an orphan. An orphan heals itself: the next
+// run removes it under the lock below before its clean check. `vitest.config.ts`
+// excludes the same exact basename so a probe is never collected as a test.
 const PROBE_BASENAME = "__typecheck_coverage_probe__.test.ts";
+
+// One lock per checkout, held across the clean run AND the probed run (#1394).
+// Two runs in one checkout would otherwise break each other: the clean check
+// typechecks the whole directory, so another run's live probe turns it red, and
+// each run deletes the probe the other is measuring. Under the lock no other run
+// can be probing, so a probe already on disk is an orphan and safe to delete.
+// `node_modules/.cache/` is per checkout, already gitignored and read by no tool.
+// The mechanics and what counts as a stale lock: `scripts/lib/probe-lock.mjs`.
+const PROBE_LOCK_PATH = join(repoRoot, "node_modules", ".cache", "typecheck-coverage-probe.lock");
 
 // The probe's types are string literals carrying distinctive markers, so a
 // checker that rejects it must quote them in its own diagnostic:
@@ -326,17 +339,27 @@ const PROBE_EXPECTED_MARKER = "__ird_probe_expected__";
 const PROBE_ACTUAL_MARKER = "__ird_probe_actual__";
 
 const PROBE_SOURCE = `// TEMPORARY file written by scripts/typecheck-script-coverage.test.mjs.
-// It is deleted in a \`finally\`. If you are reading this in your working tree,
-// that run crashed — delete it. It is untracked and means nothing on its own.
+// It is deleted in a \`finally\`. If you are reading this outside a test run,
+// that run was killed. It is gitignored, and the next run of the guard removes
+// it; until then \`pnpm typecheck\` fails on it, so delete it to clear that sooner.
 const probe: "${PROBE_EXPECTED_MARKER}" = "${PROBE_ACTUAL_MARKER}";
 export default probe;
 `;
 
-// Two runs of a real typecheck, so this has to clear BOTH `SCRIPT_TIMEOUT_MS`
-// budgets plus pnpm's start-up, or the outer timeout could fire while an inner
-// one was still doing its job and report the wrong failure. Measured
-// 2026-09-01: ~8.5s per `astro check` run on a built tree.
-const PROBE_TIMEOUT_MS = 2 * SCRIPT_TIMEOUT_MS + 60_000;
+// Two runs of a real typecheck: BOTH `SCRIPT_TIMEOUT_MS` budgets plus pnpm's
+// start-up. Measured 2026-09-01: ~8.5s per `astro check` run on a built tree.
+const PROBE_RUNS_MS = 2 * SCRIPT_TIMEOUT_MS + 60_000;
+
+// How long a run waits for the lock: one other run's full probe, the longest a
+// live holder can legitimately keep it.
+const PROBE_LOCK_WAIT_MS = PROBE_RUNS_MS;
+
+// The test's own timeout clears the lock wait AND both runs, or it could fire
+// while an inner budget was still doing its job and report the wrong failure.
+// The order matters for the wait in particular: the lock's deadline must reject
+// first, because a test Vitest had already reported as timed out would keep
+// polling, and could take the lock and plant a probe with nothing watching it.
+const PROBE_TIMEOUT_MS = PROBE_LOCK_WAIT_MS + PROBE_RUNS_MS;
 
 // `.tsx` is matched too. Nothing in the repo uses it today, but a package whose
 // only sources were `.tsx` would otherwise be invisible to the guard — the same
@@ -581,33 +604,17 @@ describe("a package's typecheck covers its own test files", () => {
     // would when a second legitimately non-`tsc` package arrives.
     it.each(measured.map((name) => ({ name, why: deriveTypecheckConfig(typecheckScriptOf(name)).reason })))(
       "proves coverage by running its own typecheck: $name (not statically derivable: $why)",
-      ({ name }) => {
+      async ({ name }) => {
         const pkgDir = join(repoRoot, "packages", name);
-        const onDisk = testFilesOnDisk(pkgDir);
+        // A probe on disk (an orphan, or another run's) is test-shaped, so the
+        // walker finds it too. It is not one of the package's tests: leave it out,
+        // or it could be the file the probe path below is derived from.
+        const onDisk = testFilesOnDisk(pkgDir).filter((f) => !f.endsWith(`/${PROBE_BASENAME}`));
         if (onDisk.length === 0) return;
 
         const script = typecheckScriptOf(name);
         const { reason } = deriveTypecheckConfig(script);
 
-        // Side one. The script must pass on an unmodified tree. Without this,
-        // "the tool ignores test files" and "the workspace is not built" are the
-        // same non-zero exit, and the guard would confidently report the wrong
-        // one — this issue's own defect reappearing inside its fix.
-        const clean = runTypecheck(pkgDir);
-        expect(
-          clean.status,
-          `packages/${name}'s typecheck (\`${script}\`) does not pass on an unmodified tree, so its ` +
-            `coverage is UNPROVEN rather than absent — this is not a coverage failure. The usual ` +
-            `cause is an unbuilt workspace: run \`pnpm build\`, then \`pnpm test\` again. Output:\n` +
-            clean.output,
-        ).toBe(0);
-
-        // Side two. With a test-shaped file that cannot possibly typecheck, it
-        // must fail — AND the output must name the probe. An exit code alone
-        // cannot tell "the probe was checked and failed" from "something else
-        // failed", and a guard that cannot tell those apart is the thing being
-        // fixed here rather than the fix.
-        //
         // The probe goes beside a real test file so it is picked up exactly the
         // way a test file is. Placed anywhere else it would prove a weaker claim
         // than the one this block makes.
@@ -630,7 +637,55 @@ describe("a package's typecheck covers its own test files", () => {
           `refusing to write the probe: ${probePath} is not inside ${pkgPrefix}`,
         ).toBe(true);
 
+        // Held across both runs, released in the `finally` with the probe's
+        // removal. Taken BEFORE the clean run, because the clean run is the one
+        // another run's live probe would turn red.
+        const releaseLock = await acquireProbeLock(PROBE_LOCK_PATH, { deadlineMs: PROBE_LOCK_WAIT_MS });
         try {
+          // Under the lock no other run is probing, so a probe already in the
+          // package was left by a run that was killed before its `finally`
+          // (#1394). Remove it rather than let it fail the clean run below with a
+          // message that blames an unbuilt workspace — which is what it did, on
+          // every run, until someone deleted the file by hand. Every file of that
+          // name in the package, walked again now that the lock is held, not only
+          // the one at `probePath`: the probe follows the package's first test
+          // file, so an orphan from before that file changed sits elsewhere.
+          const orphans = testFilesOnDisk(pkgDir).filter((f) => f.endsWith(`/${PROBE_BASENAME}`));
+          for (const orphan of orphans) {
+            expect(
+              orphan.startsWith(pkgPrefix),
+              `refusing to delete an orphaned probe: ${orphan} is not inside ${pkgPrefix}`,
+            ).toBe(true);
+            rmSync(orphan, { force: true });
+            console.warn(
+              `[typecheck-script-coverage] removed an orphaned probe from an interrupted run: ` +
+                orphan.slice(repoRoot.length + 1),
+            );
+          }
+          const orphanNote =
+            orphans.length === 0
+              ? ""
+              : ` An orphaned probe from an interrupted run was found and removed before this clean run: ` +
+                `${orphans.map((f) => f.slice(repoRoot.length + 1)).join(", ")}.`;
+
+          // Side one. The script must pass on an unmodified tree. Without this,
+          // "the tool ignores test files" and "the workspace is not built" are the
+          // same non-zero exit, and the guard would confidently report the wrong
+          // one — this issue's own defect reappearing inside its fix.
+          const clean = runTypecheck(pkgDir);
+          expect(
+            clean.status,
+            `packages/${name}'s typecheck (\`${script}\`) does not pass on an unmodified tree, so its ` +
+              `coverage is UNPROVEN rather than absent — this is not a coverage failure. The usual ` +
+              `cause is an unbuilt workspace: run \`pnpm build\`, then \`pnpm test\` again.${orphanNote} ` +
+              `Output:\n${clean.output}`,
+          ).toBe(0);
+
+          // Side two. With a test-shaped file that cannot possibly typecheck, it
+          // must fail — AND the output must name the probe. An exit code alone
+          // cannot tell "the probe was checked and failed" from "something else
+          // failed", and a guard that cannot tell those apart is the thing being
+          // fixed here rather than the fix.
           writeFileSync(probePath, PROBE_SOURCE);
           const probed = runTypecheck(pkgDir);
 
@@ -665,12 +720,61 @@ describe("a package's typecheck covers its own test files", () => {
             ).toContain(marker);
           }
         } finally {
-          rmSync(probePath, { force: true });
+          // The probe goes first: releasing the lock is what lets another run
+          // in, and that run's clean check must not find this run's probe.
+          try {
+            rmSync(probePath, { force: true });
+          } finally {
+            releaseLock();
+          }
         }
       },
       PROBE_TIMEOUT_MS,
     );
   }
+});
+
+// The probe stays out of git (#1394). `release-hooks.test.mjs` compares
+// `git status --porcelain` before and after a dry run, in a worker running beside
+// the measured test above, so a probe git can see turns that test red with a diff
+// about nothing it did; and an orphan git can see is one `git add -A` stages. The
+// `.gitignore` line is what prevents both, and nothing else would notice it going.
+// Checked with `--no-index` so the answer is the ignore rules' alone, not "tracked
+// files are never ignored" — which would make the second assertion vacuous.
+describe("the probe is gitignored", () => {
+  // `<source>:<line>:<pattern>\t<path>` for a path a rule matches; empty when none does.
+  const checkIgnore = (relPath) => {
+    const result = spawnSync("git", ["check-ignore", "--no-index", "-v", relPath], {
+      cwd: repoRoot,
+      encoding: "utf-8",
+    });
+    expect([0, 1], `git check-ignore failed: ${result.stderr}`).toContain(result.status);
+    return result.stdout.trim();
+  };
+
+  // Derived from where the probe really goes — beside the website's first test
+  // file — so the check follows the probe if those tests move.
+  const websiteTests = testFilesOnDisk(join(repoRoot, "packages", "website")).filter(
+    (f) => !f.endsWith(`/${PROBE_BASENAME}`),
+  );
+
+  it("finds a website test file to put the probe beside", () => {
+    expect(websiteTests.length).toBeGreaterThan(0);
+  });
+
+  it("ignores the probe by its exact basename", () => {
+    const probe = websiteTests[0].replace(/\/[^/]+$/, `/${PROBE_BASENAME}`).slice(repoRoot.length + 1);
+    const verdict = checkIgnore(probe);
+    expect(verdict, `${probe} is not gitignored — add \`${PROBE_BASENAME}\` to .gitignore (#1394)`).not.toBe("");
+    // The matching rule is the exact basename, never a pattern that could also
+    // hide a real test file (the same reason vitest.config.ts excludes it so).
+    expect(verdict.split("\t")[0]).toMatch(new RegExp(`^\\.gitignore:\\d+:${PROBE_BASENAME.replace(/\./g, "\\.")}$`));
+  });
+
+  it("does not ignore the real test file beside it", () => {
+    const real = websiteTests[0].slice(repoRoot.length + 1);
+    expect(checkIgnore(real), `${real} is gitignored — a rule meant for the probe is too broad`).toBe("");
+  });
 });
 
 // The derivation is the load-bearing half of #1086 and it runs against real
