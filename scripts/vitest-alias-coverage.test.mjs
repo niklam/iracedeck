@@ -48,11 +48,30 @@ const SCOPE = "@iracedeck/";
  */
 const RESOLVED_TO_DIST = {};
 
-/** Export conditions in the order Vitest's resolver prefers them for a Node test. */
-const CONDITIONS = ["import", "node", "default", "require"];
+/**
+ * The export conditions active when a test `import`s a workspace package.
+ * Vitest resolves it through Vite's server environment, whose conditions are
+ * Vite's `defaultServerConditions` less `module` — `node` and
+ * `development|production`, which is `development` under test — plus the
+ * `import` and `default` Vite adds for an ESM import. `require` is not here:
+ * Vite activates it only for a CommonJS `require()` call, and a test's import
+ * of `@iracedeck/*` is ESM, so `{ "require": "./dist/x.cjs", "import": … }`
+ * resolves to the `import` target. `types` is TypeScript's, never a runtime
+ * condition. The set has no order: see `pickTarget`.
+ */
+const CONDITIONS = new Set(["import", "node", "development", "default"]);
 
-/** The file an `exports` value resolves to for a Node `import`, or null. */
-function pickTarget(value) {
+/**
+ * The file an `exports` value resolves to for a test's `import`, or null.
+ *
+ * A conditions object resolves the way Node and Vite resolve it: by the
+ * OBJECT's key order, taking the first key in the active set and recursing
+ * into its value, so `{ "node": "./dist/x.js", "import": "./src/x.ts" }` is
+ * dist. Walking the active set in an order of its own instead would class that
+ * as source. A key whose value yields nothing (a nested object with no active
+ * key) falls through to the next, as in Node.
+ */
+export function pickTarget(value) {
   if (typeof value === "string") return value;
   if (Array.isArray(value)) {
     for (const v of value) {
@@ -64,9 +83,9 @@ function pickTarget(value) {
   }
 
   if (value && typeof value === "object") {
-    for (const c of CONDITIONS) {
-      if (c in value) {
-        const t = pickTarget(value[c]);
+    for (const key of Object.keys(value)) {
+      if (CONDITIONS.has(key)) {
+        const t = pickTarget(value[key]);
         if (t) return t;
       }
     }
@@ -142,7 +161,9 @@ export function checkAliasCoverage({ packages, aliases, allowList, fileExists })
       known.add(spec);
 
       if (!target) {
-        problems.push(`${spec}: its "exports" entry has no import/node/default target this guard can read.`);
+        problems.push(
+          `${spec}: its "exports" entry has no import/node/development/default target this guard can read.`,
+        );
         continue;
       }
 
@@ -374,6 +395,36 @@ describe("vitest alias coverage (#1375)", () => {
     it("reports a dist export whose package layout the mapping does not know", () => {
       const problems = run({ packages: [{ ...pkg(both), layout: { rootDir: "lib", outDir: "dist" } }] });
       expect(problems.filter((p) => p.includes("teach this guard"))).toHaveLength(2);
+    });
+
+    // Node and Vite take the first key of the conditions object that is
+    // active, so an object listing `node` before `import` resolves to the
+    // `node` target. A guard walking its own condition order classed this
+    // shape as source and passed it unaliased.
+    it("reports a dist export that an earlier node key hides behind a source import key", () => {
+      const nodeFirst = { node: "./dist/index.js", import: "./src/index.ts" };
+      expect(exportEntries({ exports: { ".": nodeFirst } })).toEqual([{ subpath: ".", target: "./dist/index.js" }]);
+
+      const problems = run({ packages: [pkg({ ".": nodeFirst })], aliases: [] });
+      expect(problems).toEqual([expect.stringContaining('"@iracedeck/fake": packageSrc("fake")')]);
+    });
+
+    it("resolves a conditions object by its own key order", () => {
+      // The reverse order is source, so it needs no alias.
+      expect(pickTarget({ import: "./src/index.ts", node: "./dist/index.js" })).toBe("./src/index.ts");
+      // `types` and `require` are skipped wherever they stand; `default` is taken in place.
+      expect(pickTarget({ types: "./dist/index.d.ts", require: "./dist/index.cjs", import: "./src/index.ts" })).toBe(
+        "./src/index.ts",
+      );
+      expect(pickTarget({ default: "./dist/index.js", import: "./src/index.ts" })).toBe("./dist/index.js");
+      expect(pickTarget({ development: "./dist/dev.js", import: "./src/index.ts" })).toBe("./dist/dev.js");
+      // Nested: the first active outer key wins, and its inner object resolves by its own order.
+      expect(pickTarget({ node: { require: "./dist/x.cjs", default: "./dist/x.js" }, import: "./src/x.ts" })).toBe(
+        "./dist/x.js",
+      );
+      // A nested object with no active key yields nothing, so resolution falls through to the next key.
+      expect(pickTarget({ node: { require: "./dist/x.cjs" }, import: "./src/x.ts" })).toBe("./src/x.ts");
+      expect(pickTarget({ types: "./dist/x.d.ts", require: "./dist/x.cjs" })).toBeNull();
     });
 
     it("reads main when there is no exports map", () => {
