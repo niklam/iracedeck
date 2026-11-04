@@ -327,7 +327,6 @@ export {
   OPPONENT_FLAG_SCENARIO_IDS,
   OPPONENT_PENALTY_FLAG_TO_CALLOUT_ID,
   type OpponentFlagCalloutId,
-  type OpponentFlagPending,
   registerOpponentFlagVocabulary,
 } from "./opponent-flags.js";
 export {

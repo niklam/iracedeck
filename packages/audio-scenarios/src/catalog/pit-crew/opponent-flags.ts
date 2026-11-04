@@ -85,7 +85,7 @@ import { OpponentPenaltyFlag, type SimEventOf } from "@iracedeck/event-bus";
 import type { ScenarioContext, ScenarioContract } from "../../dsl.js";
 import { poolRef, WEIGHT } from "../../dsl.js";
 import type { IScenarioEngine } from "../../interpreter.js";
-import type { LiveCarPositionQuery, LiveCarPositionResolver } from "./position-readout.js";
+import type { LiveCarPositionResolver } from "./position-readout.js";
 
 /** The four penalty-flag subjects this family speaks about (issue #936). */
 export type OpponentFlagCalloutId = CalloutIdOf<typeof OPPONENT_FLAG_CALLOUTS>;
@@ -103,13 +103,6 @@ const SUBJECT_TO_FLAG: Record<OpponentFlagCalloutId, OpponentPenaltyFlag> = {
   meatball: OpponentPenaltyFlag.Repair,
   disqualify: OpponentPenaltyFlag.Disqualify,
 };
-
-/**
- * The flagged car a line speaks about, as the live position resolver is asked
- * for it — read from the expanding fire's own event payload (class-space
- * position in multi-class).
- */
-export type OpponentFlagPending = LiveCarPositionQuery;
 
 const POSITION_NUMBER_GROUP = "position-number";
 

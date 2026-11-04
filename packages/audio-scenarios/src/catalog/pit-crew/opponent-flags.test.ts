@@ -38,11 +38,11 @@ import {
   OPPONENT_FLAG_SCENARIO_IDS,
   OPPONENT_PENALTY_FLAG_TO_CALLOUT_ID,
   type OpponentFlagCalloutId,
-  type OpponentFlagPending,
   registerOpponentFlagVocabulary,
   resolveOpponentFlagCarNumber,
   SCENARIO_ID_TO_OPPONENT_FLAG_ID,
 } from "./opponent-flags.js";
+import type { LiveCarPositionQuery } from "./position-readout.js";
 
 const SUBJECTS: readonly OpponentFlagCalloutId[] = ["furled", "black", "meatball", "disqualify"];
 const RELATIONS = ["ahead", "behind"] as const satisfies readonly OpponentFlagRelation[];
@@ -148,7 +148,7 @@ let bus: ReturnType<typeof createMockBus>;
 let audio: FakeAudio;
 let engine: IScenarioEngine;
 let livePosition: number | null;
-let liveReads: OpponentFlagPending[];
+let liveReads: LiveCarPositionQuery[];
 
 function contract(id: string): ScenarioContract {
   const c = OPPONENT_FLAG_CONTRACTS.find((x) => x.id === id);
@@ -465,7 +465,7 @@ describe("opponentFlag.number (the 3.3.0 position var, kept for third-party pack
 
   it("prefers the live read and hands it the event's projection context", () => {
     const { engine: stub, vars } = makeVarEngine();
-    const seen: OpponentFlagPending[] = [];
+    const seen: LiveCarPositionQuery[] = [];
 
     registerOpponentFlagVocabulary(stub, (pending) => {
       seen.push(pending);
