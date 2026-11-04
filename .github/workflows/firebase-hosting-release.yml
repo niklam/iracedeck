@@ -54,12 +54,13 @@ jobs:
 
       # `--no-overlay` so a pack withdrawn on master (its entry deleted) is
       # removed here too; the default overlay mode only adds and overwrites.
-      # The check before the deploy (#1613) lets a live pack go only when
-      # master's catalog lacks it too, which here it does, since this overlay
-      # is master's catalog; the withdrawal then goes live with a warning.
-      # Withdrawing the LAST pack deletes the directory, which this step
-      # refuses outright (#1392) rather than put an empty, unverified catalog
-      # live.
+      # The check before the deploy (#1613) lets that removal go live, with a
+      # warning, because master's history shows the entry was there and was
+      # deleted. A live pack master has never carried, one a release branch
+      # put live that master has not taken back, is missing here too; that
+      # check refuses it rather than let this publish remove it. Withdrawing
+      # the LAST pack deletes the directory, which this step refuses outright
+      # (#1392) rather than put an empty, unverified catalog live.
       # The checkout must also be able to BUILD a catalog: a tag older than
       # the catalog generator would deploy green with no catalog at all.
       #
@@ -162,16 +163,40 @@ jobs:
       # reported, then the job fails before anything deploys.
       #
       # A live pack missing here would be removed by the deploy, and master
-      # decides whether that is a withdrawal. Master's catalog is read only
-      # when a live pack is missing, fetched here even on the publish path,
-      # whose overlay step fetched it already, rather than trusting a
-      # FETCH_HEAD another step left. When master's catalog has no <id>.json
-      # either, the pack was withdrawn on purpose: the deploy goes ahead with
-      # a warning naming it, its live version and master's commit. When
-      # master still has it, the deploy refuses, so a tag from a stale release
-      # branch cannot drop a pack master keeps. Only the file's presence
-      # counts, never the version in it. A master that cannot be fetched, or
-      # whose catalog cannot be listed, refuses every missing pack, since the
+      # decides whether that is a withdrawal, on positive evidence: master's
+      # catalog has no <id>.json AND master's history shows the file existed,
+      # so its absence there is a removal. Then the deploy goes ahead with a
+      # warning naming the pack, its live version, master's commit and the
+      # last commit on master's history to touch the file. When master still
+      # has the file, the deploy refuses, so a tag from a stale release branch
+      # cannot drop a pack master keeps. When master's history never had it,
+      # the pack went live from a release branch master has not taken back,
+      # and the deploy refuses, naming the back-merge; absence from a catalog
+      # that never held the pack says nothing about withdrawing it. Only the
+      # file's presence counts, never the version in it. "Master's history"
+      # is every commit reachable from master's tip (git log --full-history),
+      # so a pack added and removed on a branch master merged counts as
+      # master's too.
+      #
+      # Master is fetched only when a live pack is missing, and fetched here
+      # even on the publish path, whose overlay step fetched it already,
+      # rather than trusting a FETCH_HEAD another step left. The fetch takes
+      # master's whole history as commits and trees, without file contents
+      # (--filter=blob:none, a partial clone, which GitHub serves): about
+      # 6 MiB and 2 s for this repository (2,870 commits, measured
+      # 2026-11-04), where master's tip alone with its contents is 122 MiB.
+      # It passes --unshallow when the checkout is shallow, as actions/checkout
+      # leaves it: a fetch into a shallow repository stops at the shallow
+      # boundary, so when the tag is on master's history a removal older than
+      # the tag would be invisible and a real withdrawal refused. That also
+      # deepens the checkout's own history, blobless, which nothing after this
+      # step reads, and leaves the checkout a partial clone of origin. A
+      # checkout still shallow after the fetch refuses rather than trust a
+      # cut history. Every git call has 120 s (MASTER_GIT_TIMEOUT_MS, which
+      # only the tests set), sixty times the measured fetch.
+      #
+      # A master that cannot be fetched, whose history cannot be read or whose
+      # catalog cannot be listed refuses every missing pack, since the
       # withdrawal cannot be confirmed. So does a master with no catalog
       # directory at all: that is as much a rename or a move as a withdrawal,
       # and it says nothing about any one pack. That also keeps the last pack
@@ -183,8 +208,10 @@ jobs:
       # committed pack bump that is not live yet, so comparing with master
       # refused ordinary patch releases although nothing live regressed (the
       # spec's amendment). The live catalog is the state this protects. It
-      # runs on every deploy, the publish path's too, where it stops a publish
-      # from master taking back a pack a release put live ahead of master.
+      # runs on every deploy, the publish path's too. There it refuses a
+      # publish from master that would put an older version of a pack back
+      # over the one a release put live, or remove a pack a release put live
+      # that master has never carried.
       #
       # It is the job's last step before the deploy. It must be in this job,
       # because re-running this job alone skips every check in the caller's
@@ -293,31 +320,55 @@ jobs:
             catalogRef !== ""
               ? `This deploy's catalog is master's at ${catalogRef}, which has no ${id}.json, so master decides. To keep pack "${id}", make sure master's ${dir} carries ${id}.json, then dispatch 'Publish voice packs' again from master; a re-run would deploy ${catalogRef} again. To withdraw it, make sure master's ${dir} lacks it, then re-run.`
               : `To keep it, bring pack "${id}" from master onto the release branch this deploys, its clips and its catalog entry together (the tag's pack job repacks from the branch's clips and verifies the archive against the entry), then re-tag, or re-run once the branch carries them. To withdraw it, delete ${dir}/${id}.json on master first, then re-run.`;
+          // A pack master has never carried went live from a release branch that
+          // master has not taken back, so the back-merge comes first on either path.
+          const neverRemedy = (id) =>
+            catalogRef !== ""
+              ? `This deploy's catalog is master's at ${catalogRef}. Back-merge the release branch that put pack "${id}" live onto master, its clips and its catalog entry with it, then dispatch 'Publish voice packs' again from master; a re-run would deploy ${catalogRef} again. To withdraw the pack instead, it must reach master that way first and then be deleted from master's ${dir}.`
+              : `Back-merge the release branch that put pack "${id}" live onto master first. Then, to keep it, bring it onto the release branch this deploys too, its clips and its catalog entry together (the tag's pack job repacks from the branch's clips and verifies the archive against the entry), and re-tag, or re-run once the branch carries them; to withdraw it, delete ${dir}/${id}.json on master and re-run.`;
 
-          // git in the checkout, never prompting, and never left hanging on the network.
+          // git in the checkout, never prompting, and never left hanging on the
+          // network. The timeout is set in main(), from MASTER_GIT_TIMEOUT_MS.
+          let gitTimeoutMs = 120_000;
           const git = (...args) =>
             execFileSync("git", args, {
               encoding: "utf8",
               stdio: ["ignore", "pipe", "pipe"],
-              timeout: 120_000,
+              timeout: gitTimeoutMs,
               env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
             });
           // git's own fatal or error lines; the advice it prints after them says nothing about the cause.
           const gitReason = (error) => {
-            if (error?.code === "ETIMEDOUT") return "git did not finish within 120 s";
+            if (error?.code === "ETIMEDOUT") return `git did not finish within ${gitTimeoutMs} ms`;
             const lines = String(error?.stderr ?? "").split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
             const fatal = lines.filter((l) => /^(fatal|error):/.test(l));
             return (fatal.length > 0 ? fatal : lines.slice(-1)).join("; ") || reasonOf(error);
           };
 
-          // Master's catalog as the names in its directory, `{ sha, names }`, or
-          // `{ error }` when it cannot be read. Missing directory is an error, not
+          // Master's tip and the names in its catalog directory, `{ sha, names }`,
+          // with master's whole history fetched for lastTouch(), or `{ error }`
+          // when any of it cannot be read. A missing directory is an error, not
           // an empty set: it shows a move as much as a withdrawal.
-          function readMasterCatalog() {
+          function readMaster() {
+            let shallow;
             try {
-              git("fetch", "--no-tags", "--depth=1", "origin", MASTER);
+              shallow = git("rev-parse", "--is-shallow-repository").trim() === "true";
             } catch (error) {
-              return { error: `fetching ${MASTER} from origin failed (${gitReason(error)})` };
+              return { error: `the checkout could not be read as a repository (${gitReason(error)})` };
+            }
+            // Commits and trees, no file contents. --unshallow because a fetch into a
+            // shallow checkout stops at its boundary: with the tag on master's history,
+            // a removal older than the tag would not be seen.
+            try {
+              git("fetch", "--no-tags", "--filter=blob:none", ...(shallow ? ["--unshallow"] : []), "origin", MASTER);
+            } catch (error) {
+              return { error: `fetching ${MASTER} with its history from origin failed (${gitReason(error)})` };
+            }
+            try {
+              if (git("rev-parse", "--is-shallow-repository").trim() !== "false")
+                return { error: `the checkout is still shallow after fetching ${MASTER}, so master's history before the shallow boundary cannot be read` };
+            } catch (error) {
+              return { error: `the checkout could not be read as a repository after fetching ${MASTER} (${gitReason(error)})` };
             }
             let sha;
             try {
@@ -341,12 +392,27 @@ jobs:
             }
           }
 
+          // The last commit on master's history to touch `file`, `{ sha, subject }`,
+          // or null when none ever did. Trees alone answer it, so the blobless fetch
+          // suffices. --full-history follows every parent of a merge, so a file a
+          // merged branch added and removed is found too.
+          function lastTouch(sha, file) {
+            const line = git("log", "-1", "--full-history", "--format=%H %s", sha, "--", file).trim();
+            if (line === "") return null;
+            const space = line.indexOf(" ");
+            return space === -1 ? { sha: line, subject: "" } : { sha: line.slice(0, space), subject: line.slice(space + 1) };
+          }
+
           async function main() {
             if (!url) return fail(`LIVE_CATALOG_URL is not set, so there is no live catalog to compare with. ${unread}.`);
             const timeoutText = process.env.LIVE_CATALOG_TIMEOUT_MS ?? "30000";
             if (!/^[1-9]\d*$/.test(timeoutText))
               return fail(`LIVE_CATALOG_TIMEOUT_MS is ${JSON.stringify(timeoutText)}, not a whole number of milliseconds. ${unread}.`);
             const timeoutMs = Number(timeoutText);
+            const gitTimeoutText = process.env.MASTER_GIT_TIMEOUT_MS ?? "120000";
+            if (!/^[1-9]\d*$/.test(gitTimeoutText))
+              return fail(`MASTER_GIT_TIMEOUT_MS is ${JSON.stringify(gitTimeoutText)}, not a whole number of milliseconds. ${unread}.`);
+            gitTimeoutMs = Number(gitTimeoutText);
 
             let response;
             let body;
@@ -426,17 +492,33 @@ jobs:
             // Master is fetched only here, once, and only when a live pack is missing.
             let withdrawn = 0;
             if (missing.length > 0) {
-              const master = readMasterCatalog();
+              const master = readMaster();
               for (const { id, liveVersion } of missing) {
+                const file = `${dir}/${id}.json`;
                 const gone = `Voice pack "${id}" is missing in this deploy but live at ${liveVersion} (${url}); deploying would remove a live pack`;
+                const unconfirmed = (reason) => refuse(id, `${gone}, and master could not be read, so its withdrawal cannot be confirmed: ${reason}. ${missingRemedy(id)}`);
                 if (master.error) {
-                  refuse(id, `${gone}, and master could not be read, so its withdrawal cannot be confirmed: ${master.error}. ${missingRemedy(id)}`);
-                } else if (master.names.has(`${id}.json`)) {
-                  refuse(id, `${gone}, and master (${master.sha}) still carries ${dir}/${id}.json, so it was not withdrawn. ${missingRemedy(id)}`);
-                } else {
-                  withdrawn++;
-                  console.log(`::warning file=${escapeProperty(`${dir}/${id}.json`)}::${escapeData(`Voice pack "${id}", live at ${liveVersion} (${url}), is not in this deploy, and master (${master.sha}) has withdrawn it too: its ${dir} has no ${id}.json. Deploying removes it from the live catalog.`)}`);
+                  unconfirmed(master.error);
+                  continue;
                 }
+                if (master.names.has(`${id}.json`)) {
+                  refuse(id, `${gone}, and master (${master.sha}) still carries ${file}, so it was not withdrawn. ${missingRemedy(id)}`);
+                  continue;
+                }
+                let touched;
+                try {
+                  touched = lastTouch(master.sha, file);
+                } catch (error) {
+                  unconfirmed(`master's history of ${file} (${master.sha}) could not be read (${gitReason(error)})`);
+                  continue;
+                }
+                if (touched === null) {
+                  refuse(id, `${gone}, and master (${master.sha}) has never carried ${file}: no commit on its history touches it, so it was not withdrawn there. The pack went live from a release branch master has not taken back. ${neverRemedy(id)}`);
+                  continue;
+                }
+                withdrawn++;
+                const lastCommit = touched.subject === "" ? touched.sha : `${touched.sha} (${touched.subject})`;
+                console.log(`::warning file=${escapeProperty(file)}::${escapeData(`Voice pack "${id}", live at ${liveVersion} (${url}), is not in this deploy, and master (${master.sha}) has withdrawn it too: its ${dir} has no ${id}.json, which its history last touched in ${lastCommit}. Deploying removes it from the live catalog.`)}`);
               }
             }
 
