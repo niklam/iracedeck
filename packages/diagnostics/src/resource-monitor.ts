@@ -259,7 +259,10 @@ export function createProcessResourceSampler(): ResourceSampler {
     return {
       elapsedMs,
       cpuPercent: (cpuMicros / 1000 / elapsedMs) * 100,
-      elu: eluDelta.utilization,
+      // Node divides by the summed deltas, so two identical readings give NaN;
+      // an interval with no loop time in it was not busy, and a NaN would
+      // otherwise poison the session's peak (#1576).
+      elu: Number.isFinite(eluDelta.utilization) ? eluDelta.utilization : 0,
       rssBytes: memory.rss,
       heapUsedBytes: memory.heapUsed,
       heapTotalBytes: memory.heapTotal,
