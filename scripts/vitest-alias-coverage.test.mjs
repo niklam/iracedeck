@@ -1,8 +1,9 @@
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import rootConfig from "../vitest.config.ts";
+import { trackedPackageDirs } from "./lib/workspace-packages.mjs";
 
 // Guard for #1375: every `@iracedeck/*` import a test can make resolves to
 // TypeScript source, never to a package's built `dist/`.
@@ -252,14 +253,12 @@ function readLayout(dir) {
   }
 }
 
-const workspacePackages = readdirSync(PACKAGES, { withFileTypes: true })
-  .filter((d) => d.isDirectory() && existsSync(path.join(PACKAGES, d.name, "package.json")))
-  .map((d) => {
-    const dir = path.join(PACKAGES, d.name);
-    const manifest = JSON.parse(readFileSync(path.join(dir, "package.json"), "utf8"));
+const workspacePackages = trackedPackageDirs(ROOT).map((name) => {
+  const dir = path.join(PACKAGES, name);
+  const manifest = JSON.parse(readFileSync(path.join(dir, "package.json"), "utf8"));
 
-    return { name: manifest.name, dir, entries: exportEntries(manifest), layout: readLayout(dir) };
-  });
+  return { name: manifest.name, dir, entries: exportEntries(manifest), layout: readLayout(dir) };
+});
 
 const rootAliases = configAliases(rootConfig.resolve?.alias);
 

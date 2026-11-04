@@ -22,21 +22,18 @@
 // replace an earlier one's rather than merging, so a file matching two would
 // silently lose the first block's restrictions.
 import { ESLint } from "eslint";
-import { readdirSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import config, { SIM_NEUTRAL_PACKAGES } from "../eslint.config.js";
+import { trackedPackageDirs } from "./lib/workspace-packages.mjs";
 
 const TIMEOUT = 60_000;
 const repoRoot = join(import.meta.dirname, "..");
 const eslint = new ESLint({ cwd: repoRoot });
 const RULES = ["no-restricted-imports", "@typescript-eslint/no-restricted-imports"];
 
-const PACKAGES = readdirSync(join(repoRoot, "packages"), { withFileTypes: true })
-  .filter((entry) => entry.isDirectory())
-  .map((entry) => entry.name)
-  .sort();
+const PACKAGES = trackedPackageDirs(repoRoot);
 
 /**
  * Packages a sim block of their own holds, each with the block and its proof.

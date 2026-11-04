@@ -24,11 +24,13 @@
 // (`rollup`, `typescript`, `rimraf`, `@elgato/cli`, `@tsconfig/node22`,
 // `@types/node`), not imports, so they are not checked.
 import { execFileSync } from "node:child_process";
-import { readdirSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { builtinModules } from "node:module";
 import path from "node:path";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
+
+import { trackedPackageDirs } from "./lib/workspace-packages.mjs";
 
 const ROOT = path.resolve(import.meta.dirname, "..");
 const SCOPE = "@iracedeck/";
@@ -129,10 +131,7 @@ function importsOf(files) {
 }
 
 // Discovered, so a fourth shell is held to this the day it is added.
-const SHELLS = readdirSync(path.join(ROOT, "packages"), { withFileTypes: true })
-  .filter((entry) => entry.isDirectory() && entry.name.startsWith("iracing-plugin-"))
-  .map((entry) => entry.name)
-  .sort();
+const SHELLS = trackedPackageDirs(ROOT).filter((dir) => dir.startsWith("iracing-plugin-"));
 
 function shellInput(shell, buildOnly = BUILD_ONLY) {
   const files = execFileSync("git", ["ls-files", `packages/${shell}/src`], { cwd: ROOT, encoding: "utf-8" })
