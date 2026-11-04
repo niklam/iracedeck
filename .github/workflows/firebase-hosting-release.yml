@@ -13,15 +13,16 @@ on:
         type: string
       # Both optional, used only by publish-voice-packs.yml (#1116): build the
       # site from `ref` (the latest stable plugin tag) rather than the calling
-      # ref, then overlay packages/audio-assets/catalog/ from `catalog_ref`
-      # (master). A voice pack published between releases must move the
-      # catalog without deploying master's documentation for unreleased work.
+      # ref, then overlay packages/audio-assets/catalog/ from `catalog_ref` —
+      # the master commit whose catalog the caller verified (#1392). A voice
+      # pack published between releases must move the catalog without
+      # deploying master's documentation for unreleased work.
       ref:
         description: "Git ref to build the site from (default: the calling ref)"
         required: false
         type: string
       catalog_ref:
-        description: "Git ref whose packages/audio-assets/catalog/ overlays the checkout"
+        description: "Commit whose packages/audio-assets/catalog/ overlays the checkout; refused unless master's catalog is still the same"
         required: false
         type: string
 
@@ -43,19 +44,45 @@ jobs:
       # removed here too; the default overlay mode only adds and overwrites.
       # The checkout must also be able to BUILD a catalog: a tag older than
       # the catalog generator would deploy green with no catalog at all.
+      #
+      # The overlay is the catalog at `catalog_ref`, the commit the caller's
+      # pack job verified, and only while master's catalog is still that very
+      # tree (#1392). The caller pins the commit so a push landing mid-run
+      # cannot slip an unverified entry in; the comparison is what stops the
+      # pin from regressing the site, since a re-run keeps its original commit
+      # and would otherwise put an older catalog back over a newer one. It
+      # lives here, in the deploying job, because re-running this job alone
+      # skips every check in the caller's jobs. Master is named here rather
+      # than passed in so that no caller can leave the check out.
+      # scripts/voice-pack-publish-workflow.test.mjs runs this script.
       - name: Overlay the voice-pack catalog from another ref
         if: inputs.catalog_ref
         env:
           CATALOG_REF: ${{ inputs.catalog_ref }}
         run: |
           set -euo pipefail
+          catalog_dir=packages/audio-assets/catalog
           test -f scripts/lib/voice-catalog-data.mjs || {
             echo "::error::$(git describe --tags --always) has no voice-catalog generator; a catalog overlay cannot be built from it."
             exit 1
           }
           git fetch --no-tags --depth=1 origin "$CATALOG_REF"
-          git checkout --no-overlay FETCH_HEAD -- packages/audio-assets/catalog
-          git status --short packages/audio-assets/catalog
+          catalog_commit="$(git rev-parse FETCH_HEAD)"
+          git fetch --no-tags --depth=1 origin refs/heads/master
+          master_commit="$(git rev-parse FETCH_HEAD)"
+          catalog_tree="$(git rev-parse --verify --quiet "$catalog_commit:$catalog_dir" || true)"
+          master_tree="$(git rev-parse --verify --quiet "$master_commit:$catalog_dir" || true)"
+          if [ -z "$catalog_tree" ]; then
+            echo "::error::$CATALOG_REF ($catalog_commit) has no $catalog_dir; there is no catalog to deploy."
+            exit 1
+          fi
+          if [ "$catalog_tree" != "$master_tree" ]; then
+            echo "::error::master's $catalog_dir has changed since $catalog_commit, the commit this run verified (master is at $master_commit). Deploying it would put a catalog live that master no longer holds, or one nothing verified. Dispatch 'Publish voice packs' again from master."
+            exit 1
+          fi
+          git checkout --no-overlay "$catalog_commit" -- "$catalog_dir"
+          echo "Catalog overlaid from $catalog_commit, which master's catalog still matches (master at $master_commit)."
+          git status --short "$catalog_dir"
 
       # The pnpm version follows the checked-out ref, not this file: a voice-pack
       # publish builds the latest stable tag with the workflow from master, and
