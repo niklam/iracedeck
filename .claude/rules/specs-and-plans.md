@@ -52,10 +52,10 @@ A spec covering several issues is named for the primary one and lists the rest i
 
 ## Required sections
 
-Beyond the header block, two sections are checked at the commit (#1193). A section is a heading at any level, or a line that is bold from end to end; a paragraph that merely opens in bold is prose, and so is anything inside a code fence. The spellings already in use are all accepted:
+Beyond the header block, two sections are checked at the commit (#1193). A section is a heading at level 2 or below, or a line that is bold from end to end; the level-1 heading is the spec's title and never counts, a paragraph that merely opens in bold is prose, and so is anything inside a code fence. The heading must **be** the section's name, not mention it (#1391): an optional number (`5. Testing`), then the name, then at most a parenthetical, a dash, comma or colon tail, or a second name joined by `and`, `&` or `/` (`Testing (TDD)`, `Verification — results`, `Testing & verification`, `Code and tests`). `Test position` and a title such as `The Background Test plays a frame` are not test plans. The spellings already in use are all accepted:
 
-- **Out of scope** — or `Non-goals`, or `What this deliberately does not do`. What the decision deliberately does not cover.
-- **Testing** — or `Verification`, `Tests`, `Manual verification`. How the thing is proven, by hand as well as by suite.
+- **Out of scope** — or `Non-goals`, `Not in scope`, or `What this deliberately does not do` (or `cover`, `include`, `ship`). What the decision deliberately does not cover.
+- **Testing** — or `Tests`, `Verification`, `Verify`, with an optional `Manual`, `Unit`, `Integration` or `Build` before it and `plan` or `strategy` after it. How the thing is proven, by hand as well as by suite.
 
 Both faded once the spec became a filing-time decision record instead of an implementation-time design doc — 50 % → 17 % and 88 % → 70 % across the #621 policy, measured in the #1193 spec — and both are worth keeping from the older shape. **Forward-only**, like the naming convention: the check sees only a spec a commit ADDS, so amending an existing one is untouched and nothing is backfilled.
 

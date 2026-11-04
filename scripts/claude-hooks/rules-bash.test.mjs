@@ -12,6 +12,7 @@ import {
   GIT_WORKTREE_REMOVE,
   issueEdits,
   issueFromWorktreePath,
+  missingSpecParts,
   worktreeAddTarget,
 } from "./rules-bash.mjs";
 import { cmd, gitCwd, matchAt, POWERSHELL, powershellAsBash, words } from "./shell-lexer.mjs";
@@ -1333,6 +1334,116 @@ describe("git commit", () => {
       for (const scope of ["## Out of scope", "## Non-goals", "### What this deliberately does not do"])
         for (const test of ["## Testing", "## Verification", "## Tests", "**Manual verification**", "**Testing:**"])
           passes("git commit -m x", spec([HEADER, "# T", scope, "x", test, "y"].join("\n\n")));
+    });
+    // #1391: a heading counts when it IS the section, not when it mentions the word.
+    describe("a heading counts only when it is the section", () => {
+      const withTest = (test) => spec([HEADER, "# T", "## Out of scope", "x", test, "y"].join("\n\n"));
+      const withScope = (scope) => spec([HEADER, "# T", scope, "x", "## Testing", "y"].join("\n\n"));
+
+      it("does not take the title for a section — the issue's reproduction", () =>
+        expect(
+          deny(
+            "git commit -m x",
+            spec([HEADER, "# The Background Test plays a frame", "## Out of scope", "nothing"].join("\n\n")),
+          ),
+        ).toMatch(/Testing or Verification/));
+      it("does not take a level-1 heading for a section even when it is the name", () => {
+        expect(deny("git commit -m x", withTest("# Testing"))).toMatch(/Testing or Verification/);
+        expect(deny("git commit -m x", withScope("# Out of scope"))).toMatch(/Out of scope/);
+      });
+      it("does not take a heading that merely mentions a test", () => {
+        for (const h of [
+          "## Post-device-test revision (2026-07-12, Niklas review)",
+          "## Risks, verified during manual testing",
+          "## Test position",
+          "## Test-shape change, with a trap",
+          "## The bundled-pack completeness test lands here",
+          "## Amended after hardware testing: a purpose-made tone",
+          "### 3. The routing table is an explicit list, and an unrouted key is a test failure",
+          "## `voice-parity.test.ts` is replaced",
+          "## test.ts is replaced",
+          "## Testing the hypothesis we rejected",
+          // A real section in the corpus, but a word after the name is no
+          // qualifier: the anchoring cannot tell it from the line above.
+          // Forward-only, so the spec that carries it is never re-read.
+          "## Verification in the sim — results",
+          "**Tests assert structure**",
+        ])
+          expect(deny("git commit -m x", withTest(h)), h).toMatch(/Testing or Verification/);
+      });
+      it("does not take a heading that merely mentions what is not done", () => {
+        for (const h of [
+          "## What the parser does not cover",
+          "## Why this does not ship a migration",
+          "## Notes on scope",
+          "## The out of scope list grew",
+        ])
+          expect(deny("git commit -m x", withScope(h)), h).toMatch(/Out of scope/);
+      });
+      it("accepts every Testing spelling, with a number, a qualifier or a second name", () => {
+        for (const h of [
+          "## Testing",
+          "## Tests",
+          "## Test",
+          "## Verification",
+          "## Verify",
+          "## Manual verification",
+          "## Manual testing",
+          "## Manual test plan",
+          "## Testing strategy",
+          "### Unit tests",
+          "### Integration tests",
+          "### Build verification",
+          "## 5. Testing",
+          "## 7 Testing",
+          "## 8.1. Tests",
+          "## Testing (TDD)",
+          "## Tests (`car-control.test.ts`)",
+          "## Verification — results (2026-07-09)",
+          "## Verification – results",
+          "## Testing - by hand",
+          "## Testing & verification",
+          "## Testing and Verification",
+          "## Unit and integration tests",
+          "## Code and tests",
+          "## Testing:",
+          "## Testing ##",
+          "## **Testing**",
+          "## _Verification_",
+          "**Manual verification**",
+          "**Testing:**",
+          "**Unit tests, one per rule:**",
+          "**Manual test, per slice, by the maintainer:**",
+          "## TESTING",
+        ])
+          expect(missingSpecParts([HEADER, "# T", "## Out of scope", "x", h, "y"].join("\n\n")), h).toEqual([]);
+      });
+      it("accepts every Out of scope spelling, with a number, a qualifier or a second name", () => {
+        for (const h of [
+          "## Out of scope",
+          "## Out of Scope",
+          "## Non-goals",
+          "## Non-goal",
+          "## Not in scope",
+          "## What this deliberately does not do",
+          "### What this deliberately does not cover",
+          "### 8. Out of scope",
+          "## Out of scope / non-goals",
+          "## Notes / non-goals",
+          "## Out of scope (for now)",
+          "## Out of scope — tracked separately",
+          "**Out of scope:**",
+        ])
+          expect(missingSpecParts([HEADER, "# T", h, "x", "## Testing", "y"].join("\n\n")), h).toEqual([]);
+      });
+      it("reads a heading with CRLF line endings", () =>
+        expect(missingSpecParts([HEADER, "# T", "## Out of scope ", "x", "## Testing", "y"].join("\r\n\r\n"))).toEqual(
+          [],
+        ));
+      it("does not read a heading across a line break", () =>
+        expect(missingSpecParts([HEADER, "# T", "## Out of scope", "x", "##\nTesting"].join("\n\n"))).toEqual([
+          "a Testing or Verification section",
+        ]));
     });
     it("reads headings, not prose — a passing mention of a test is not a test plan", () =>
       expect(

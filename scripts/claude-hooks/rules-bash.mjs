@@ -61,17 +61,53 @@ const TITLE_RE = /^(feat|fix|improve|perf|refactor|docs|ci|chore|test|build|styl
  *
  * The spellings are the ones ALREADY in the corpus, deliberately: the house
  * style has never been uniform, and forcing one would rewrite 45 compliant
- * specs' habits for nothing. Matched against headings at any level plus the
- * bold pseudo-headings the specs use, never against body prose — a passing
- * mention of a test is not a test plan.
+ * specs' habits for nothing. Matched against section headings plus the bold
+ * pseudo-headings the specs use, never against body prose — a passing mention
+ * of a test is not a test plan.
+ *
+ * A heading counts only when it IS the section (#1391): an accepted name,
+ * after an optional number (`5. Testing`), with at most a qualifier after it
+ * (`Testing (TDD)`, `Verification — results`, `Unit tests, one per rule`) or a
+ * second name joined to it (`Testing & verification`, `Code and tests`,
+ * `Out of scope / non-goals`). Until then a section passed when ANY heading
+ * merely contained the word, the spec's own title included, so `# The
+ * Background Test plays a frame` satisfied the Testing check by itself.
+ * Measured over the 183 specs carrying the header block (2026-11-04): the
+ * anchoring drops no Out-of-scope pass, and five Testing passes, every one a
+ * heading about something else (`Test position`, `Amended after hardware
+ * testing: …`, `The verification is the hard part, …`) in a spec that has no
+ * Out of scope section either. The check is forward-only, so none of them is
+ * re-read.
  */
 const SPEC_SECTIONS = [
   {
     what: "an Out of scope section",
-    re: /out of scope|non-goals?|not in scope|deliberately does not|does not (?:do|cover|include|ship)/i,
+    names: [
+      String.raw`out\s+of\s+scope`,
+      String.raw`non-goals?`,
+      String.raw`not\s+in\s+scope`,
+      String.raw`what\s+this\s+deliberately\s+does\s+not\s+(?:do|cover|include|ship)`,
+    ],
   },
-  { what: "a Testing or Verification section", re: /\b(tests?|testing|verification|verify)\b/i },
-];
+  {
+    what: "a Testing or Verification section",
+    names: [
+      String.raw`(?:(?:manual|unit|integration|build)\s+)?(?:tests?|testing|verification)(?:\s+(?:plan|strategy))?`,
+      String.raw`verify`,
+    ],
+  },
+].map(({ what, names }) => {
+  const name = `(?:${names.join("|")})`;
+  // `5. ` / `8.1 ` ahead of the name; a word joined to it (`Code and tests`)
+  // or a second name after it; then at most a parenthetical and one tail —
+  // a dash, or a comma, colon, semicolon or full stop that ends the heading
+  // or is followed by a space. `Test position` and `test.ts is replaced` are
+  // not the section, so a bare word after the name never is.
+  const number = String.raw`(?:\d+(?:\.\d+)*\.?\s+)?`;
+  const joiner = String.raw`\s+(?:and|&|\/)\s+`;
+  const tail = String.raw`(?:\s*\([^)]*\))?(?:\s*[—–]\s*\S.*|\s+-\s+\S.*|\s*[,:;.](?:\s+\S.*)?)?`;
+  return { what, re: new RegExp(`^${number}(?:[\\w-]+${joiner})?${name}(?:${joiner}${name})?${tail}$`, "i") };
+});
 
 /** The `> **Issue:** … **Supersedes:** … **Superseded by:** …` block. */
 const SPEC_HEADER = /^>\s*\*\*Issue:\*\*.*\*\*Supersedes:\*\*.*\*\*Superseded by:\*\*/m;
@@ -80,20 +116,26 @@ const SPEC_HEADER = /^>\s*\*\*Issue:\*\*.*\*\*Supersedes:\*\*.*\*\*Superseded by
 const FENCED_BLOCK = /^(`{3,}|~{3,})[^\n]*\n[\s\S]*?^\1[^\n]*$/gm;
 
 /**
- * Headings at any level, plus the lines the specs make headings of by bolding
- * the WHOLE line (`**Manual verification**`, optionally with a trailing colon).
- * Code fences are dropped first, since a `# verify the build` comment in a
- * bash block is not a heading. A paragraph that merely OPENS in bold is body
- * prose, and does not count: the one post-policy spec that passed on such a
- * line (`**Tests assert structure, not pixels.**`, inside #1145's Decisions)
+ * Section headings — levels 2 to 6 — plus the lines the specs make headings of
+ * by bolding the WHOLE line (`**Manual verification**`, optionally with a
+ * trailing colon). The level-1 heading is the spec's title, never one of its
+ * sections, so it is left out (#1391): no spec in the corpus puts a section at
+ * level 1. Code fences are dropped first, since a `# verify the build` comment
+ * in a bash block is not a heading. A paragraph that merely OPENS in bold is
+ * body prose, and does not count: the one post-policy spec that passed on such
+ * a line (`**Tests assert structure, not pixels.**`, inside #1145's Decisions)
  * has no test section, and is already in HEAD, so it is never re-checked.
+ * Each heading loses an ATX closing run (`## Testing ##`) and emphasis that
+ * wraps the whole of it (`## **Testing**`), which are markup, not its name.
  */
 function specHeadings(text) {
   const body = text.replace(FENCED_BLOCK, "");
   return [
-    ...[...body.matchAll(/^#{1,6}\s+(.+)$/gm)].map((m) => m[1]),
+    ...[...body.matchAll(/^#{2,6}[ \t]+(.+)$/gm)].map((m) => m[1].trim().replace(/\s+#+$/, "")),
     ...[...body.matchAll(/^\*\*([^*\n]+?)\*\*[:.]?\s*$/gm)].map((m) => m[1]),
-  ].map((h) => h.trim());
+  ]
+    .map((h) => h.trim())
+    .map((h) => h.replace(/^(\*\*|__|\*|_)(.+)\1$/, "$2").trim());
 }
 
 /** What a committed spec is missing, in the order a reader would fix it. */
