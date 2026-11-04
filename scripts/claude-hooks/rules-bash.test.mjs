@@ -4145,3 +4145,34 @@ describe("every git trap reads git's global options (#1606)", () => {
     });
   });
 });
+
+// #1606 review: the cases the xhigh /code-review found the rewrite still missed.
+describe("the program-word rewrite's review round (#1606)", () => {
+  const head = "1111111111111111111111111111111111111111";
+  const green = () => ({
+    number: 5,
+    url: "https://github.com/niklam/iracedeck/pull/5",
+    state: "OPEN",
+    headRefOid: head,
+    headRefName: "ir-5",
+    reviewDecision: "APPROVED",
+    mergeStateStatus: "CLEAN",
+    statusCheckRollup: [{ __typename: "CheckRun", name: "Tests", status: "COMPLETED", conclusion: "SUCCESS" }],
+    reviews: [{ author: { login: "coderabbitai" }, state: "APPROVED", commit: { oid: head } }],
+  });
+
+  // A program word's directory part may hold a command substitution, which runs.
+  describe("a substitution in a program word's directory part is still a command", () => {
+    it.each([
+      "$(git push origin integration)/scripts/run.sh",
+      `"$(git push origin integration)"/x.sh`,
+      "`git push origin integration`/x.sh",
+      "${X:-$(git push origin integration)}/x.sh",
+      "$(cd .. && git push origin integration)/x.sh",
+    ])("denies the push inside %s", (c) => expect(deny(c)).toMatch(/never pushed/));
+    it("still reads the program after the substitution", () => {
+      deny("$(true)/gh pr merge 5 --squash", ctx({ prView: green }));
+      deny(`"$(true)"/gh.exe pr merge 5 --squash`, ctx({ prView: green }));
+    });
+  });
+});

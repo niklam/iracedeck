@@ -443,3 +443,32 @@ describe("git's global options (#1606)", () => {
       }
   });
 });
+
+// #1606 review: the cases the xhigh /code-review found the rewrite still missed.
+describe("the program-word rewrite's review round (#1606)", () => {
+  it.each([
+    ["$(git push x)/scripts/run.sh y", `$(git push x)${" ".repeat(9)}run.sh y`],
+    [`"$(git push x)"/x.sh y`, ` $(git push x)  x.sh y`],
+    ["`git push x`/gh pr", "`git push x` gh pr"],
+    ["${X:-$(git push x)}/gh pr", "     $(git push x)  gh pr"],
+    ["a$(b)c/$(d)e/gh pr", " $(b)  $(d)  gh pr"],
+    ["$HOME/bin/gh pr", `${" ".repeat(10)}gh pr`],
+  ])("keeps a command substitution in the directory part live: %s", (command, out) => {
+    const { text, flat } = view(command);
+    expect(text).toBe(out);
+    expect(flat).toHaveLength(command.length);
+  });
+
+  it("reads the commands inside, and the program after, the substitution", () => {
+    expect(trustedMask("$(GIT.EXE push x)/gh.exe pr")).toBe("$(    git push x)     gh pr");
+    expect(trustedMask(`$(echo ")")/gh pr`)).toBe(`$(echo "_") gh pr`);
+    expect(view("$(bash -c 'git push origin integration')/x").trusted).toBe(false);
+  });
+
+  it("finds the innermost program word for an index", () => {
+    const command = "$(gh issue edit 5)/x.sh y";
+    expect(lexer.programStart(command, 2)).toBe(2);
+    expect(lexer.programStart(command, command.indexOf("x.sh"))).toBe(0);
+    expect(lexer.programStart(command, 8)).toBe(8);
+  });
+});

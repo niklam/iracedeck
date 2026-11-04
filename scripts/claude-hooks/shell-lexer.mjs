@@ -377,29 +377,72 @@ const PROGRAM_NAME = /^[\w.+@%:,~^!{}[\]-]+$/;
  * where the rest of that word is read from, never whether it expands.
  */
 function expansionEnd(w, k) {
-  if (w[k] === "\x60") {
-    for (let j = k + 1; j < w.length; j++)
-      if (w[j] === "\\") j++;
-      else if (w[j] === "\x60") return j + 1;
-    return w.length;
-  }
+  if (w[k] === "\x60") return tickEnd(w, k);
   const open = w[k + 1];
-  if (open === "(" || open === "{") {
-    const close = open === "(" ? ")" : "}";
-    let depth = 0;
-    for (let j = k + 1; j < w.length; j++) {
-      const c = w[j];
-      if (c === "\\") j++;
-      else if (c === "'") {
-        const e = w.indexOf("'", j + 1);
-        j = e < 0 ? w.length : e;
-      } else if (c === open) depth++;
-      else if (c === close && --depth === 0) return j + 1;
-    }
-    return w.length;
-  }
+  if (open === "(" || open === "{") return closeAt(w, k + 2, open);
   const name = /^(?:[A-Za-z_]\w*|[0-9@*#?$!-])/.exec(w.slice(k + 1));
   return k + 1 + (name ? name[0].length : 0);
+}
+
+/** Just past the backtick that closes the one opening at `k` in `w`, an escaped one skipped. */
+function tickEnd(w, k) {
+  for (let j = k + 1; j < w.length; j++)
+    if (w[j] === "\\") j++;
+    else if (w[j] === "\x60") return j + 1;
+  return w.length;
+}
+
+/**
+ * Just past the `)` or `}` that closes the `open` whose body starts at `i` in
+ * `w`, nested ones counted and quoted text, escapes and backticks skipped:
+ * roughly the lexer's reading, for a word read on its own.
+ */
+function closeAt(w, i, open) {
+  const close = open === "(" ? ")" : "}";
+  let depth = 0;
+  for (let j = i; j < w.length; j++) {
+    const c = w[j];
+    if (c === "\\") j++;
+    else if (c === "'") {
+      const e = w.indexOf("'", j + 1);
+      j = e < 0 ? w.length : e;
+    } else if (c === '"') {
+      for (j++; j < w.length && w[j] !== '"'; j++) if (w[j] === "\\") j++;
+    } else if (c === "\x60") j = tickEnd(w, j) - 1;
+    else if (c === open) depth++;
+    else if (c === close && depth-- === 0) return j + 1;
+  }
+  return w.length;
+}
+
+/**
+ * The outermost command substitutions in a word, `$( … )` and backticks, as
+ * `[from, to)` offsets: wherever they sit, inside double quotes, a `${ … }` or
+ * a `$(( … ))` included, but not inside single quotes (#1606 review). Their
+ * text runs, so the rewrite of a program word keeps it ({@link
+ * normalisePrograms}).
+ */
+function commandSubs(w) {
+  const subs = [];
+  let quoted = false;
+  for (let i = 0; i < w.length; i++) {
+    const c = w[i];
+    if (c === "\\") i++;
+    else if (c === '"') quoted = !quoted;
+    else if (!quoted && c === "'") {
+      const e = w.indexOf("'", i + 1);
+      i = e < 0 ? w.length : e;
+    } else if (c === "$" && w[i + 1] === "(" && w[i + 2] !== "(") {
+      const end = closeAt(w, i + 2, "(");
+      subs.push([i, end]);
+      i = end - 1;
+    } else if (c === "\x60") {
+      const end = tickEnd(w, i);
+      subs.push([i, end]);
+      i = end - 1;
+    }
+  }
+  return subs;
 }
 
 /** A `$` that opens an expansion, as bash reads one: a substitution, a `${`, a name or a special parameter. */
@@ -413,55 +456,55 @@ const ANSI_PLAIN = { "\\": "\\", "'": "'", '"': '"', "?": "?" };
  * stands for an expansion (`$…`, a backtick, one `$` per expansion), a glob
  * (`*`, `?`, a `[` that a later `]` closes) or a brace expansion (a `{` and
  * `}` around an unquoted `,` or `..`). An ANSI-C escape other than a quote or
- * a backslash is read as live too: the word it spells is not plain.
+ * a backslash is read as live too: the word it spells is not plain. `at` is
+ * the offset in `w` of the character each one comes from.
  */
 export function decodeWord(w) {
   const out = [];
-  const lit = (text) => {
-    for (const c of text) out.push({ c, live: false });
+  const lit = (c, at) => {
+    if (c) out.push({ c, live: false, at });
   };
+  const live = (c, at) => out.push({ c, live: true, at });
   // Unquoted `[`, `]`, `{`, `,`, `.` and `}`, as indices into `out`, for globs and braces.
   const bare = [];
   let i = 0;
   while (i < w.length) {
     const ch = w[i];
     if (ch === "\\") {
-      if (w[i + 1] !== "\n") lit(w[i + 1] ?? "");
+      if (w[i + 1] !== "\n") lit(w[i + 1], i + 1);
       i += 2;
     } else if (ch === "'") {
       const e = w.indexOf("'", i + 1);
       const end = e < 0 ? w.length : e;
-      lit(w.slice(i + 1, end));
+      for (let k = i + 1; k < end; k++) lit(w[k], k);
       i = end + 1;
     } else if (ch === "$" && w[i + 1] === "'") {
       let k = i + 2;
       for (; k < w.length && w[k] !== "'"; k++)
-        if (w[k] !== "\\") lit(w[k]);
-        else if (ANSI_PLAIN[w[++k]] !== undefined) lit(ANSI_PLAIN[w[k]]);
-        else out.push({ c: "\\", live: true });
+        if (w[k] !== "\\") lit(w[k], k);
+        else if (ANSI_PLAIN[w[++k]] !== undefined) lit(ANSI_PLAIN[w[k]], k);
+        else live("\\", k);
       i = k + 1;
     } else if (ch === '"') {
       let k = i + 1;
       while (k < w.length && w[k] !== '"') {
         if (w[k] === "\\" && '"\\$`\n'.includes(w[k + 1] ?? "x")) {
-          if (w[k + 1] !== "\n") lit(w[k + 1]);
+          if (w[k + 1] !== "\n") lit(w[k + 1], k + 1);
           k += 2;
         } else if ((w[k] === "$" && EXPANDS.test(w[k + 1] ?? "")) || w[k] === "\x60") {
-          out.push({ c: "$", live: true });
+          live("$", k);
           k = expansionEnd(w, k);
-        } else lit(w[k++]);
+        } else lit(w[k], k++);
       }
       i = k + 1;
     } else if ((ch === "$" && EXPANDS.test(w[i + 1] ?? "")) || ch === "\x60") {
-      out.push({ c: "$", live: true });
+      live("$", i);
       i = expansionEnd(w, i);
     } else if (ch === "*" || ch === "?") {
-      out.push({ c: ch, live: true });
-      i++;
+      live(ch, i++);
     } else {
       if ("[]{},.".includes(ch)) bare.push(out.length);
-      lit(ch);
-      i++;
+      lit(ch, i++);
     }
   }
   const at = (c) => bare.filter((k) => out[k].c === c);
@@ -480,18 +523,18 @@ export function decodeWord(w) {
 
 /**
  * The program a word at command position runs, read off its last path
- * segment: `{ name }`, folded as {@link BASH_CASED} says and without a
- * Windows executable extension; `{ unreadable: true }` when that segment
- * holds an expansion or a glob, so the program is decided at run time; or
- * `null` for a word that names no program the text could carry.
+ * segment: `{ name, cut }`, folded as {@link BASH_CASED} says and without a
+ * Windows executable extension, `cut` the offset in the word where that
+ * segment's raw text starts; `{ unreadable: true }` when that segment holds
+ * an expansion or a glob, so the program is decided at run time; or `null`
+ * for a word that names no program the text could carry.
  */
-function programName(word) {
-  const chars = decodeWord(word);
-  let cut = -1;
+function programName(chars) {
+  let sep = -1;
   chars.forEach((x, k) => {
-    if (!x.live && (x.c === "/" || x.c === "\\")) cut = k;
+    if (!x.live && (x.c === "/" || x.c === "\\")) sep = k;
   });
-  const last = chars.slice(cut + 1);
+  const last = chars.slice(sep + 1);
   if (last.some((x) => x.live)) return { unreadable: true };
   const name = last
     .map((x) => x.c)
@@ -499,7 +542,7 @@ function programName(word) {
     .replace(/\.(?:exe|cmd|bat|com|ps1)$/i, "");
   if (!PROGRAM_NAME.test(name)) return null;
   const lower = name.toLowerCase();
-  return { name: BASH_CASED.has(lower) ? name : lower };
+  return { name: BASH_CASED.has(lower) ? name : lower, cut: sep < 0 ? 0 : chars[sep].at + 1 };
 }
 
 /** A word starting at `at` in raw text, found without the lexer: quotes, escapes and simple substitutions kept whole. */
@@ -512,11 +555,15 @@ const CRUDE_WORD =
  * the word at command position ({@link programPositions}); it is decoded as bash
  * reads it, cut to its last `/` or `\` segment, stripped of `.exe`, `.cmd`,
  * `.bat`, `.com` and `.ps1`, folded to lower case ({@link BASH_CASED}), and
- * written back RIGHT-aligned in its own span, padded with spaces on the left:
- * the anchor's `\s*` and {@link COMMAND_LEAD}'s `\s+` take the pad, so a
+ * written back RIGHT-aligned in its last segment, padded with spaces on the
+ * left: the anchor's `\s*` and {@link COMMAND_LEAD}'s `\s+` take the pad, so a
  * {@link cmd} match starts where it did, its head covers the whole raw word,
  * and the arguments keep their indices. Left-aligned, a regex that ends at the
- * name — `pnpm${BIN}` — would read its arguments from `.cmd run …`.
+ * name — `pnpm${BIN}` — would read its arguments from `.cmd run …`. The
+ * directory part before that segment is blanked too, except its command
+ * substitutions ({@link commandSubs}), which run and stay as they are:
+ * `$(git push …)/scripts/run.sh` keeps its push in sight, and a substitution
+ * that feeds a string to a shell still makes the mask untrusted (#1606 review).
  *
  * It repeats until nothing changes, so a wrapper spelled with a path
  * (`/usr/bin/env /usr/bin/gh …`) puts the next word at command position too.
@@ -530,16 +577,19 @@ const CRUDE_WORD =
 function normalisePrograms(command, text, flat, words, crude) {
   let t = text;
   let f = flat;
+  // `[start, end, cut, keep]` each: the word, where its last segment starts,
+  // and the command substitutions of its directory part, kept live.
   const programs = [];
   const unreadable = [];
   const seen = new Set();
-  const splice = (s, a, b, by) => s.slice(0, a) + by + s.slice(b);
+  // Inside a program word read already, and not inside a substitution it kept:
+  // the rewritten text is blank or the name there, so the lead may stop in it.
+  const covered = (p) =>
+    programs.some(([a, b, , keep]) => a < p && p < b && !keep.some(([k0, k1]) => k0 < p && p < k1));
   for (let changed = true, passes = 0; changed && passes < 32; passes++) {
     changed = false;
     for (const start of programPositions(t)) {
-      // A word read already, or a position inside one: the pad of a rewritten
-      // word is blank, so the lead may stop in it.
-      if (seen.has(start) || programs.some(([a, b]) => a < start && start < b)) continue;
+      if (seen.has(start) || covered(start)) continue;
       let end = words.get(start);
       if (end === undefined && crude && (start === 0 || /[\s|;&()\x60]/.test(command[start - 1]))) {
         CRUDE_WORD.lastIndex = start;
@@ -550,14 +600,28 @@ function normalisePrograms(command, text, flat, words, crude) {
       seen.add(start);
       const word = command.slice(start, end);
       if (word.includes("=") || (word.startsWith("$") && /^\s*[-+*/]?=(?!=)/.test(command.slice(end)))) continue;
-      const read = programName(word);
+      const read = programName(decodeWord(word));
       if (read?.unreadable) unreadable.push({ start, end, word });
-      if (!read?.name || read.name.length > end - start) continue;
-      programs.push([start, end]);
-      const padded = read.name.padStart(end - start);
-      if (t.slice(start, end) === padded) continue;
-      t = splice(t, start, end, padded);
-      f = splice(f, start, end, padded);
+      if (!read?.name) continue;
+      const cut = start + read.cut;
+      if (read.name.length > end - cut) continue;
+      const keep = commandSubs(word)
+        .filter(([, r1]) => r1 <= read.cut)
+        .map(([r0, r1]) => [start + r0, start + r1]);
+      programs.push([start, end, cut, keep]);
+      // The directory part blank but for its command substitutions, which run
+      // and are read where they stand (#1606 review); the name right-aligned
+      // in the last segment, so `$( … )/gh` reads `$( … )  gh`, at command
+      // position after the `)` as after any other.
+      const rewrite = (s) => {
+        let out = "";
+        for (let i = start; i < cut; i++) out += keep.some(([k0, k1]) => k0 <= i && i < k1) ? s[i] : " ";
+        return s.slice(0, start) + out + read.name.padStart(end - cut) + s.slice(end);
+      };
+      const next = rewrite(t);
+      if (next === t) continue;
+      t = next;
+      f = rewrite(f);
       changed = true;
     }
   }
@@ -568,11 +632,19 @@ function normalisePrograms(command, text, flat, words, crude) {
  * Where the program word holding `index` starts, when `index` falls inside
  * one ({@link view}); `index` itself otherwise. A rule that finds `gh` with an
  * unanchored regex lands on the rewritten name, which is right-aligned in its
- * span, so the raw text ahead of it would end inside the raw word.
+ * span, so the raw text ahead of it would end inside the raw word. The
+ * innermost such word counts, and a command substitution a word's directory
+ * part keeps is not part of that word: a command inside it is its own.
  */
 export function programStart(command, index) {
-  for (const [a, b] of view(command).programs) if (a <= index && index < b) return a;
-  return index;
+  let at = index;
+  let best = -1;
+  for (const [a, b, , keep] of view(command).programs)
+    if (a <= index && index < b && a > best && !keep.some(([k0, k1]) => k0 <= index && index < k1)) {
+      best = a;
+      at = a;
+    }
+  return at;
 }
 
 /** The program words at command position that expand or glob, `{ start, end, word }` each ({@link view}). */
@@ -1045,8 +1117,7 @@ export function powershellAsBash(command) {
     })
     .replace(PS_CALL, "$1$2 ");
   let folded = bashed;
-  for (const [a, b] of view(bashed).programs) {
-    const cut = Math.max(bashed.lastIndexOf("/", b - 1), a - 1) + 1;
+  for (const [, b, cut] of view(bashed).programs) {
     const lower = bashed.slice(cut, b).toLowerCase();
     if (lower.length === b - cut) folded = folded.slice(0, cut) + lower + folded.slice(b);
   }
