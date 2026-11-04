@@ -7,8 +7,8 @@
  * Jump to Race Start (issue #1354,
  * docs/superpowers/specs/2026-10-05-issue-1354-replay-jump-to-green-flag.md)
  * is a lookup first, like Jump to Fastest Lap. The race start is recorded
- * live in the replay record's `greens` section (the translator's
- * `replay.greenFlag`), so a press is one waited jump to five seconds before
+ * live in the replay record's `greens` section (the replay recorder's
+ * `replay.greenFlag`, `replay-recorder.ts`), so a press is one waited jump to five seconds before
  * it, with no camera switch: the green belongs to the whole field. With no
  * recorded green the pole car's lap 1 stands in for it, from the lap record
  * when it holds that lap, else from the lap walk run for lap 1

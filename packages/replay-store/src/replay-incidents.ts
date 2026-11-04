@@ -5,8 +5,8 @@
  * Next / Previous Incident keeps sending iRacing's search, and a later
  * observer compares where that search lands with the nearest recorded entry.
  * Pure functions over the section; the store (`replay-session-store.ts`) owns
- * it, and the translator's `replay.incident` event reaches it through the
- * store's `incidents` API.
+ * it, and the replay recorder's `replay.incident` event (`sim-events-iracing`'s
+ * `replay-recorder.ts`) reaches it through the store's `incidents` API.
  * Design: docs/superpowers/specs/2026-10-12-issue-1426-replay-record-steps.md.
  *
  * Per `(sessionNum, sessionUniqueId)`, like the greens, with no join-by-frame
