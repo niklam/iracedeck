@@ -40,6 +40,7 @@ import {
   TIRE_WEAR_CALLOUTS,
 } from "@iracedeck/callout-settings";
 import type { IEventBus, SimEventMap, SimEventName, SimEventOf } from "@iracedeck/event-bus";
+import { OpponentPenaltyFlag } from "@iracedeck/event-bus";
 import { EngineWarnings, PitSvStatus, type TelemetryData } from "@iracedeck/iracing-sdk";
 import { afterEach, beforeEach, describe, expect, it, type MockInstance, vi } from "vitest";
 
@@ -507,7 +508,8 @@ let pitBoxEnabled: boolean;
 let pitWindowEnabled: Map<PitWindowCalloutId, boolean>;
 let tireWearEnabled: Map<TireWearCalloutId, boolean>;
 let opponentPitEnabled: Map<OpponentPitCalloutId, boolean>;
-let opponentPitLivePosition: number | null;
+/** The shared `getLiveCarPosition` dep's answer for every car (#1577): opponent pit, opponent flags and fastest lap all read it. */
+let liveCarPosition: number | null;
 let rollingStartEnabled: Map<RollingStartCalloutId, boolean>;
 let fuelEnabled: Map<FuelCalloutId, boolean>;
 // Issue #1051. Two SEPARATE spies rather than one shared closure: the two
@@ -538,7 +540,7 @@ beforeEach(() => {
     ["leader", true],
     ["nearby", true],
   ]);
-  opponentPitLivePosition = 4;
+  liveCarPosition = 4;
   _resetOpponentPitPending();
   rollingStartEnabled = new Map<RollingStartCalloutId, boolean>([["pace-car", true]]);
   fuelEnabled = new Map<FuelCalloutId, boolean>();
@@ -576,7 +578,7 @@ beforeEach(() => {
     getPitActionsAllowed,
     getReadbackSnapshot: () => null,
     isCalloutEnabled: (key) => gates.every((gate) => gate(key)),
-    getLiveCarPosition: () => opponentPitLivePosition,
+    getLiveCarPosition: () => liveCarPosition,
     // A formation is running (issue #1167): the rolling-start family speaks
     // only inside one. No lineup is wired, so its calls take their numberless
     // wording.
@@ -1800,7 +1802,7 @@ describe("opponent-pit family registration (issue #622)", () => {
   });
 
   it("falls back to the emit-time payload position when the live read fails", () => {
-    opponentPitLivePosition = null;
+    liveCarPosition = null;
     bus.publishEvent("opponentPit.entered", { relation: "nearby", carIdx: 7, position: 4 } as never);
     flush(audio);
 
@@ -1844,6 +1846,55 @@ describe("opponent-pit family registration (issue #622)", () => {
     flush(audio);
 
     expect(voiceClipsPlayed()).toEqual([]);
+  });
+});
+
+// One live read for every family that names another car (#1577): the
+// opponent-flag `opponentFlag.number` var takes the same `getLiveCarPosition`
+// dep as the opponent-pit nearby line above. The bundled pack names a flagged
+// car by number, so the entry is swapped for the position var — the shape a
+// pack scripted against 3.3.0 still speaks.
+describe("the shared live car position (issue #1577)", () => {
+  const FLAG_AHEAD = "pit-crew.opponent-flag-black-ahead";
+
+  /** Fires the flagged-car line with `position` as the emit-time payload position. */
+  function speakFlaggedPosition(position: number): void {
+    getScenarioEngine().setScripts(
+      new Map([
+        [
+          VOICE,
+          {
+            ...SCRIPT,
+            scenarios: { ...SCRIPT.scenarios, [FLAG_AHEAD]: { sequence: ["{{opponentFlag.number}}"] } },
+          },
+        ],
+      ]),
+    );
+    bus.publishEvent("opponentFlag.flagged", {
+      relation: "ahead",
+      flag: OpponentPenaltyFlag.Black,
+      carIdx: 7,
+      position,
+      carNumber: "42",
+      trigger: "raised",
+      gapSeconds: 1.5,
+    } as never);
+    flush(audio);
+  }
+
+  it("speaks the opponent-flag position from the shared live read", () => {
+    // The manifest carries position-number/4 only, so the payload's 9 would
+    // abort the line: hearing P4 proves the live read answered.
+    speakFlaggedPosition(9);
+
+    expect(voiceClipsPlayed().some((p) => p.includes("/position-number/4.mp3"))).toBe(true);
+  });
+
+  it("falls back to the opponent-flag payload position when the shared live read is unknown", () => {
+    liveCarPosition = null;
+    speakFlaggedPosition(4);
+
+    expect(voiceClipsPlayed().some((p) => p.includes("/position-number/4.mp3"))).toBe(true);
   });
 });
 
