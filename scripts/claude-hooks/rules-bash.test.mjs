@@ -1832,6 +1832,61 @@ describe("git commit", () => {
         ),
       ).toMatch(/never on a feature branch/));
 
+    // #1594 second read.
+    describe("reads redirections, abbreviated options and substitutions as git and the shell do", () => {
+      const draft = (o = {}) =>
+        ctx({ untracked: () => [A], committedText: (_d, f) => (f === A ? "# T" : undefined), ...o });
+      it("a redirection whose target expands is the shell's, not an unknown operand", () => {
+        for (const c of [
+          'git commit -m "x" -- src/a.ts 2>"$LOG"',
+          'git commit -m "x" -- src/a.ts >"$f"',
+          'git commit -m "x" -- src/a.ts 2> "$LOG"',
+          'git commit -m "x" 2>"$LOG" -- src/a.ts',
+        ])
+          passes(c, draft());
+        passes('git commit -m "x" -- src/a.ts 2>$null', draft({ shell: POWERSHELL }));
+      });
+      it("a substitution operand beside a redirection is still unreadable", () =>
+        expect(deny('git commit -m x -- "$F" 2>/dev/null', draft())).toMatch(/a\.md is missing/));
+      it("an abbreviated long option is the option git takes it for", () => {
+        expect(deny('git commit --mess "add thing"', onBranch({ staged: () => [A] }))).toMatch(
+          /never on a feature branch/,
+        );
+        expect(deny('git commit --auth "A U <a@b.c>" -m x', onBranch({ staged: () => [A] }))).toMatch(
+          /never on a feature branch/,
+        );
+        expect(deny("git commit --inc -m x -- src/x.ts", onBranch({ staged: () => [A] }))).toMatch(
+          /never on a feature branch/,
+        );
+        expect(deny("git commit --pathspec-from list.txt -m x", onBranch({ modified: () => [A] }))).toMatch(
+          /never on a feature branch/,
+        );
+        expect(deny("git add --al && git commit -m x", onBranch({ untracked: () => [A] }))).toMatch(
+          /never on a feature branch/,
+        );
+      });
+      it("a value-taking short option the rules did not model is not a pathspec", () =>
+        expect(deny("git commit -U 3 -m x", onBranch({ staged: () => [A] }))).toMatch(/never on a feature branch/));
+      it("an everyday commit with known long options stays readable", () =>
+        passes("git commit --no-verify --amend --no-edit --allow-empty -- src/a.ts", draft()));
+      it("a long option git would not take for one name leaves the selection unreadable", () => {
+        for (const c of ["git commit --al -- src/a.ts", "git commit --frobnicate x -- src/a.ts"])
+          expect(deny(c, draft()), c).toMatch(/a\.md is missing/);
+      });
+      it("a top-level `-F -` heredoc commit still reads its pathspec", () => {
+        passes("git commit -F - -- src/x.ts <<'EOF'\nmsg\nEOF", onBranch({ staged: () => [A] }));
+        expect(deny(`git commit -F - -- ${A} <<'EOF'\nmsg\nEOF`, onBranch())).toMatch(/never on a feature branch/);
+      });
+      it("a heredoc commit inside a substitution is unreadable, not one blank operand", () =>
+        expect(deny(`out=$(git commit -F - -- ${A} <<'EOF'\nmsg\nEOF\n)`, onBranch({ modified: () => [A] }))).toMatch(
+          /never on a feature branch/,
+        ));
+      it("an escaped backtick ahead of the commit does not put it inside a substitution", () =>
+        expect(deny("echo \\` ; git commit -m x -- `cat list`", onBranch({ modified: () => [A] }))).toMatch(
+          /never on a feature branch/,
+        ));
+    });
+
     describe("errs to deny when the selection cannot be read", () => {
       it("an unreadable earlier add with a spec already staged reads both copies", () => {
         const split = (index, worktree) =>

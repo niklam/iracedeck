@@ -1322,8 +1322,7 @@ function commitSelection(command, commit, ctx, dir) {
 }
 
 /** The words of the `git commit` matched as `commit` (a {@link chainCommands} result), parsed by {@link gitArgs}. */
-const commitArgs = (command, commit) =>
-  gitArgs(argTokens(command, commit.at), COMMIT_VALUE_SHORT, COMMIT_ATTACHED_SHORT, COMMIT_VALUE_LONG);
+const commitArgs = (command, commit) => gitArgs(argTokens(command, commit.at), COMMIT_OPTIONS);
 
 /**
  * Every `git add` at command position chained AHEAD of the `git commit` matched
@@ -1341,7 +1340,7 @@ function addsAhead(command, commit, ctx) {
   return [...chainCommands(command, ctx.cwd, GIT_ADD, ctx.shell)]
     .filter((add) => add.at < commit.at)
     .map((add) => ({
-      args: gitArgs(argTokens(command, add.at)),
+      args: gitArgs(argTokens(command, add.at), ADD_OPTIONS),
       dir: optionDir(add.head, GIT_C_RE, add.base, ctx.shell),
     }));
 }
@@ -1411,17 +1410,31 @@ function pathspecPath(token, ctx, dir) {
  * unquoted, one with a `$` or backtick outside single quotes as `known: false`
  * (its value is decided at run time), and heredoc bodies and comments dropped as
  * data. When the command's own text does not lex (a heredoc whose body follows
- * it), the whole command's lexing is used for it; when the mask is not trusted
+ * it), the whole command's lexing is used for it — unless that blanks the
+ * command's own spaces, as it does inside a substitution, where the words cannot
+ * be read and one `known: false` token stands for them, so the selection is
+ * unreadable (#1594 second read). A backtick counts as opening a substitution
+ * only when no odd run of backslashes escapes it. When the mask is not trusted
  * the raw command is tokenised instead, respecting simple quotes, as the older
  * rules do.
  */
 function argTokens(command, from) {
   const { text, flat, trusted } = view(command);
   if (!trusted) return chainWords(command.slice(from)).map((value) => ({ value, known: true }));
-  // Live backticks ahead of it: an odd count means it runs inside a backtick substitution.
-  const inTick = (text.slice(0, from).match(/\x60/g)?.length ?? 0) % 2 === 1;
-  const end = commandEnd(text, from, inTick);
+  // Live backticks ahead of it: an odd count means it runs inside a backtick
+  // substitution. The mask keeps an escaped `\`` live, so one preceded by an
+  // odd run of live backslashes is a character, not a substitution (#1594 second read).
+  const ticks = [...text.slice(0, from).matchAll(/\x60/g)].filter(
+    (m) => text.slice(0, m.index).match(/\\*$/)[0].length % 2 === 0,
+  );
+  const end = commandEnd(text, from, ticks.length % 2 === 1);
   const own = maskInert(command.slice(from, end));
+  if (!own.sure) {
+    // The whole command's flat text blanks a substitution, spaces and all, so
+    // inside one it gives a single blank word for the whole command: its words
+    // cannot be read, and an unreadable word makes the selection unreadable.
+    for (let i = from; i < end; i++) if (flat[i] === "_" && /\s/.test(text[i])) return [{ value: "", known: false }];
+  }
   const [ownFlat, ownText] = own.sure ? [own.flat, own.masked] : [flat.slice(from, end), text.slice(from, end)];
   const out = [];
   for (const m of ownFlat.matchAll(/\S+/g)) {
@@ -1438,10 +1451,14 @@ function argTokens(command, from) {
   return out;
 }
 
-/** `git commit` options whose value is the NEXT word when not attached; `-S` and `-u` only ever take one attached. */
-const COMMIT_VALUE_SHORT = "mFCct";
-const COMMIT_ATTACHED_SHORT = "Su";
-const COMMIT_VALUE_LONG = new Set([
+/**
+ * How {@link gitArgs} reads one git command's options: `valueShort` and
+ * `valueLong` take the NEXT word as their value when it is not attached,
+ * `attachedShort` only ever takes one attached, and `long` is every long option
+ * the command has (from `git <cmd> -h`, git 2.56), against which an abbreviated
+ * one is resolved as git resolves it (#1594 second read).
+ */
+const COMMIT_VALUE_LONG = [
   "--message",
   "--file",
   "--reuse-message",
@@ -1454,7 +1471,72 @@ const COMMIT_VALUE_LONG = new Set([
   "--cleanup",
   "--trailer",
   "--pathspec-from-file",
-]);
+  "--unified",
+  "--inter-hunk-context",
+];
+const COMMIT_OPTIONS = {
+  valueShort: "mFCctU",
+  attachedShort: "Su",
+  valueLong: new Set(COMMIT_VALUE_LONG),
+  long: new Set([
+    ...COMMIT_VALUE_LONG,
+    "--quiet",
+    "--verbose",
+    "--reset-author",
+    "--signoff",
+    "--edit",
+    "--status",
+    "--gpg-sign",
+    "--all",
+    "--include",
+    "--interactive",
+    "--patch",
+    "--only",
+    "--no-verify",
+    "--verify",
+    "--dry-run",
+    "--short",
+    "--branch",
+    "--ahead-behind",
+    "--porcelain",
+    "--long",
+    "--null",
+    "--amend",
+    "--no-post-rewrite",
+    "--post-rewrite",
+    "--untracked-files",
+    "--pathspec-file-nul",
+    "--allow-empty",
+    "--allow-empty-message",
+  ]),
+};
+const ADD_VALUE_LONG = ["--unified", "--inter-hunk-context", "--chmod", "--pathspec-from-file"];
+const ADD_OPTIONS = {
+  valueShort: "U",
+  attachedShort: "",
+  valueLong: new Set(ADD_VALUE_LONG),
+  long: new Set([
+    ...ADD_VALUE_LONG,
+    "--dry-run",
+    "--verbose",
+    "--interactive",
+    "--patch",
+    "--auto-advance",
+    "--edit",
+    "--force",
+    "--update",
+    "--renormalize",
+    "--resolved",
+    "--intent-to-add",
+    "--all",
+    "--ignore-removal",
+    "--refresh",
+    "--ignore-errors",
+    "--ignore-missing",
+    "--sparse",
+    "--pathspec-file-nul",
+  ]),
+};
 
 /** A redirection operator standing alone, whose target is the next word. */
 const BARE_REDIRECT = /^\d*(?:<<-?|<<<|<>|<&|>&|>>|>\||&>>?|<|>)$/;
@@ -1506,30 +1588,36 @@ function pushReachesIntegration(tokens, fromIntegration) {
 }
 
 /**
- * A git command's words split into options and pathspec operands: `long` and
- * `short` hold the option names seen (a short cluster's letters one by one),
- * an option's value is skipped, redirections and their targets are skipped,
- * and every word after `--` is an operand. `unknown` is set when a word that is
- * not an option's value carries a substitution — it could be anything.
+ * A git command's words (from {@link argTokens}) split into options and
+ * pathspec operands, read with the command's `options` ({@link COMMIT_OPTIONS},
+ * {@link ADD_OPTIONS}): `long` and `short` hold the option names seen (a short
+ * cluster's letters one by one, a long one as git resolves an abbreviation,
+ * {@link longName}), an option's value is skipped, and every word after `--` is
+ * an operand. A redirection and its target are the shell's, before `--` or
+ * after it, whatever the target expands to: `2>$null` or `>"$f"` read as an
+ * operand made every selection unreadable (#1594 second read). `unknown` is set
+ * when a word that is not an option's value carries a substitution — it could
+ * be anything — and for a long option git would refuse as unknown or ambiguous,
+ * since one the hook does not model might take the next word as its value.
  */
-function gitArgs(tokens, valueShort = "", attachedShort = "", valueLong = new Set()) {
+function gitArgs(tokens, { valueShort = "", attachedShort = "", valueLong = new Set(), long } = {}) {
   const res = { long: new Set(), short: new Set(), operands: [], unknown: false };
+  let dashed = false;
   for (let i = 0; i < tokens.length; i++) {
     const { value: w, known } = tokens[i];
-    // An option is still read by its name; only its attached value is unknown.
-    if (!known && !w.startsWith("-")) {
-      res.unknown = true;
-      continue;
-    }
     if (/^(?:\d*[<>]|&>)/.test(w)) {
       if (BARE_REDIRECT.test(w)) i++;
-    } else if (w === "--") {
-      res.operands.push(...tokens.slice(i + 1));
-      break;
-    } else if (w.startsWith("--")) {
-      const name = w.split("=")[0];
-      res.long.add(name);
-      if (!w.includes("=") && valueLong.has(name)) i++;
+    } else if (dashed) res.operands.push(tokens[i]);
+    // An option is still read by its name; only its attached value is unknown.
+    else if (!known && !w.startsWith("-")) res.unknown = true;
+    else if (w === "--") dashed = true;
+    else if (w.startsWith("--")) {
+      const name = longName(w.split("=")[0], long);
+      if (name === undefined) res.unknown = true;
+      else {
+        res.long.add(name);
+        if (!w.includes("=") && valueLong.has(name)) i++;
+      }
     } else if (/^-[^-]/.test(w)) {
       for (let k = 1; k < w.length; k++) {
         res.short.add(w[k]);
@@ -1543,6 +1631,24 @@ function gitArgs(tokens, valueShort = "", attachedShort = "", valueLong = new Se
   }
   if (res.operands.some((t) => !t.known)) res.unknown = true;
   return res;
+}
+
+/**
+ * A long option as git resolves it among `known` (#1594 second read): itself,
+ * the one option it is a prefix of — git takes any unique abbreviation, so
+ * `--mess "add thing"` is `--message` and its value, not a pathspec — or the
+ * `--no-` negation of either. `undefined` when git would refuse it as unknown
+ * or ambiguous. Without `known` every name stands as written.
+ */
+function longName(name, known) {
+  if (!known || known.has(name)) return name;
+  const hits = [...known].filter((k) => k.startsWith(name));
+  if (hits.length === 1) return hits[0];
+  if (hits.length === 0 && name.startsWith("--no-")) {
+    const positive = longName(`--${name.slice(5)}`, known);
+    return positive && `--no-${positive.slice(2)}`;
+  }
+  return undefined;
 }
 
 /**
