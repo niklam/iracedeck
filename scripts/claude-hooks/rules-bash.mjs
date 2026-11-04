@@ -79,63 +79,91 @@ const TITLE_RE = /^(feat|fix|improve|perf|refactor|docs|ci|chore|test|build|styl
  * Out of scope section either. The check is forward-only, so none of them is
  * re-read.
  */
+const SECTION_NAMES = {
+  scope: [
+    String.raw`out\s+of\s+scope`,
+    String.raw`non-goals?`,
+    String.raw`not\s+in\s+scope`,
+    // `What this deliberately does not do`, and `What this change does not
+    // cover`, `What we deliberately do not do`.
+    String.raw`what\s+(?:this(?:\s+[\w-]+)?|it|we)\s+(?:deliberately\s+)?(?:does|do)\s+not\s+(?:do|cover|include|ship|change)`,
+  ],
+  testing: [
+    String.raw`(?:(?:manual|unit|integration|build|regression|acceptance|end-to-end|e2e|hardware|device|sim|in-sim)\s+)?(?:tests?|testing|verification)(?:\s+(?:plan|strategy))?`,
+    String.raw`verify`,
+    // The PR template's own section name, and its past-tense forms.
+    String.raw`how\s+to\s+(?:test|verify)`,
+    String.raw`how\s+it\s+(?:is|was)\s+(?:tested|verified)`,
+  ],
+};
+
+// `5. ` / `8.1 ` ahead of the name; a word or another section's name joined to
+// it (`Code and tests`, `Out of scope and testing`), or a second name after
+// it; then at most a parenthetical (one level of nesting), an issue reference
+// and one tail — a dash, or a comma, colon, semicolon or full stop that ends
+// the heading or is followed by a space. `Test position` and `test.ts is
+// replaced` are not the section, so a bare word after the name never is.
+const ANY_SECTION_NAME = `(?:${[...SECTION_NAMES.scope, ...SECTION_NAMES.testing].join("|")})`;
+const SECTION_NUMBER = String.raw`(?:\d+(?:\.\d+)*\.?\s+)?`;
+const SECTION_JOINER = String.raw`\s+(?:and|&|\/)\s+`;
+const SECTION_TAIL = String.raw`(?:\s*\((?:[^()]|\([^()]*\))*\))?(?:\s+#\d+)?(?:\s*[—–]\s*\S.*|\s+-\s+\S.*|\s*[,:;.](?:\s+\S.*)?)?`;
+const sectionHeading = (names) =>
+  new RegExp(
+    `^${SECTION_NUMBER}(?:(?:[\\w-]+|${ANY_SECTION_NAME})${SECTION_JOINER})?(?:${names.join("|")})(?:${SECTION_JOINER}${ANY_SECTION_NAME})?${SECTION_TAIL}$`,
+    "i",
+  );
+
 const SPEC_SECTIONS = [
-  {
-    what: "an Out of scope section",
-    names: [
-      String.raw`out\s+of\s+scope`,
-      String.raw`non-goals?`,
-      String.raw`not\s+in\s+scope`,
-      String.raw`what\s+this\s+deliberately\s+does\s+not\s+(?:do|cover|include|ship)`,
-    ],
-  },
-  {
-    what: "a Testing or Verification section",
-    names: [
-      String.raw`(?:(?:manual|unit|integration|build)\s+)?(?:tests?|testing|verification)(?:\s+(?:plan|strategy))?`,
-      String.raw`verify`,
-    ],
-  },
-].map(({ what, names }) => {
-  const name = `(?:${names.join("|")})`;
-  // `5. ` / `8.1 ` ahead of the name; a word joined to it (`Code and tests`)
-  // or a second name after it; then at most a parenthetical and one tail —
-  // a dash, or a comma, colon, semicolon or full stop that ends the heading
-  // or is followed by a space. `Test position` and `test.ts is replaced` are
-  // not the section, so a bare word after the name never is.
-  const number = String.raw`(?:\d+(?:\.\d+)*\.?\s+)?`;
-  const joiner = String.raw`\s+(?:and|&|\/)\s+`;
-  const tail = String.raw`(?:\s*\([^)]*\))?(?:\s*[—–]\s*\S.*|\s+-\s+\S.*|\s*[,:;.](?:\s+\S.*)?)?`;
-  return { what, re: new RegExp(`^${number}(?:[\\w-]+${joiner})?${name}(?:${joiner}${name})?${tail}$`, "i") };
-});
+  { what: "an Out of scope section", re: sectionHeading(SECTION_NAMES.scope) },
+  { what: "a Testing or Verification section", re: sectionHeading(SECTION_NAMES.testing) },
+];
 
 /** The `> **Issue:** … **Supersedes:** … **Superseded by:** …` block. */
 const SPEC_HEADER = /^>\s*\*\*Issue:\*\*.*\*\*Supersedes:\*\*.*\*\*Superseded by:\*\*/m;
 
-/** A fenced code block: its opening run of backticks or tildes, up to the same run closing it. */
-const FENCED_BLOCK = /^(`{3,}|~{3,})[^\n]*\n[\s\S]*?^\1[^\n]*$/gm;
+/**
+ * Text no heading can come from, as CommonMark reads it: a fenced code block,
+ * from its opening run of backticks or tildes to a closing run with nothing
+ * after it — or to the end of the spec when it never closes — and an HTML
+ * comment block, which hides what it holds the same way, to its `-->` or the
+ * end. One pass, so whichever opens first wins: a fence inside a comment, or a
+ * comment opener inside a fence, is just text. Until #1391's review an unclosed
+ * fence, a closing line with an info string (` ```js `) and a commented-out
+ * `## Testing` all left a heading the spec does not render.
+ */
+const INERT_BLOCK =
+  /^(?: {0,3}(`{3,}|~{3,})[^\n]*\n[\s\S]*?(?:^ {0,3}\1[`~]*[ \t]*$|$(?![\s\S]))| {0,3}<!--[\s\S]*?(?:-->|$(?![\s\S])))/gm;
+
+/** A heading's name: its text without emphasis wrapping the whole of it (`**Testing**`, `***Testing***`). */
+function headingName(text) {
+  let name = text.trim();
+  for (let was; was !== name;) {
+    was = name;
+    name = name.replace(/^(\*\*|__|\*|_)(.+)\1$/, "$2").trim();
+  }
+  return name;
+}
 
 /**
- * Section headings — levels 2 to 6 — plus the lines the specs make headings of
- * by bolding the WHOLE line (`**Manual verification**`, optionally with a
- * trailing colon). The level-1 heading is the spec's title, never one of its
- * sections, so it is left out (#1391): no spec in the corpus puts a section at
- * level 1. Code fences are dropped first, since a `# verify the build` comment
- * in a bash block is not a heading. A paragraph that merely OPENS in bold is
- * body prose, and does not count: the one post-policy spec that passed on such
- * a line (`**Tests assert structure, not pixels.**`, inside #1145's Decisions)
- * has no test section, and is already in HEAD, so it is never re-checked.
- * Each heading loses an ATX closing run (`## Testing ##`) and emphasis that
- * wraps the whole of it (`## **Testing**`), which are markup, not its name.
+ * Section headings — levels 2 to 6, indented up to three spaces — plus the
+ * lines the specs make headings of by bolding the WHOLE line (`**Manual
+ * verification**`, optionally with a trailing colon). The level-1 heading is
+ * the spec's title, never one of its sections, so it is left out (#1391): no
+ * spec in the corpus puts a section at level 1. Code fences and comments are
+ * dropped first, since a `# verify the build` comment in a bash block is not a
+ * heading. A paragraph that merely OPENS in bold is body prose, and does not
+ * count: the one post-policy spec that passed on such a line (`**Tests assert
+ * structure, not pixels.**`, inside #1145's Decisions) has no test section,
+ * and is already in HEAD, so it is never re-checked. An ATX closing run
+ * (`## Testing ##`) is markup, not the name. Setext headings (a line
+ * underlined with `---`) are not read: no spec uses them.
  */
 function specHeadings(text) {
-  const body = text.replace(FENCED_BLOCK, "");
+  const body = text.replace(INERT_BLOCK, "");
   return [
-    ...[...body.matchAll(/^#{2,6}[ \t]+(.+)$/gm)].map((m) => m[1].trim().replace(/\s+#+$/, "")),
+    ...[...body.matchAll(/^ {0,3}#{2,6}[ \t]+(.+)$/gm)].map((m) => m[1].replace(/\s+#+\s*$/, "")),
     ...[...body.matchAll(/^\*\*([^*\n]+?)\*\*[:.]?\s*$/gm)].map((m) => m[1]),
-  ]
-    .map((h) => h.trim())
-    .map((h) => h.replace(/^(\*\*|__|\*|_)(.+)\1$/, "$2").trim());
+  ].map(headingName);
 }
 
 /** What a committed spec is missing, in the order a reader would fix it. */
@@ -866,7 +894,7 @@ export const rules = [
         const missing = ctx.tracked?.(dir, f) ? [] : missingSpecParts(text);
         if (missing.length)
           problems.push(
-            `${f} is missing ${missing.join(" and ")}. A spec carries the header block, an Out of scope section and a Testing/Verification section. See .claude/rules/specs-and-plans.md.`,
+            `${f} is missing ${missing.join(" and ")}. A spec carries the header block, an Out of scope section and a Testing/Verification section — each a heading below the title that IS the section's name (\`## Testing\`, \`## 5. Out of scope\`), not a title or heading that mentions it. See .claude/rules/specs-and-plans.md.`,
           );
         if (problems.length) return problems.join(" ");
       }

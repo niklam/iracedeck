@@ -1436,6 +1436,60 @@ describe("git commit", () => {
         ])
           expect(missingSpecParts([HEADER, "# T", h, "x", "## Testing", "y"].join("\n\n")), h).toEqual([]);
       });
+      it("accepts the other names a test section goes by", () => {
+        for (const h of [
+          "## How to test",
+          "## How to verify",
+          "## How it was verified",
+          "## Regression tests",
+          "## Hardware testing",
+          "## Sim testing",
+          "## In-sim verification",
+          "## End-to-end tests",
+          "## Acceptance tests",
+          "## Testing #1391",
+          "## Tests (`f(x)` and `g(y)`)",
+          "## ***Testing***",
+          "   ## Testing",
+        ])
+          expect(missingSpecParts([HEADER, "# T", "## Out of scope", "x", h, "y"].join("\n\n")), h).toEqual([]);
+      });
+      it("accepts the variants of What this deliberately does not do", () => {
+        for (const h of [
+          "## What this change deliberately does not do",
+          "## What this spec does not cover",
+          "## What we deliberately do not do",
+          "## What it does not change",
+        ])
+          expect(missingSpecParts([HEADER, "# T", h, "x", "## Testing", "y"].join("\n\n")), h).toEqual([]);
+      });
+      it("counts a heading that names both sections as both", () => {
+        for (const h of ["## Out of scope and testing", "## Testing / non-goals"])
+          expect(missingSpecParts([HEADER, "# T", h, "x"].join("\n\n")), h).toEqual([]);
+      });
+      it("does not read a heading inside an HTML comment, closed or not", () => {
+        for (const tail of ["<!--\n## Testing\n-->", "<!-- placeholder\n\n## Testing", "  <!--\n## Testing\n-->"])
+          expect(missingSpecParts([HEADER, "# T", "## Out of scope", "x", tail].join("\n\n")), tail).toEqual([
+            "a Testing or Verification section",
+          ]);
+        expect(
+          missingSpecParts([HEADER, "# T", "## Out of scope", "<!-- note -->", "## Testing", "y"].join("\n\n")),
+        ).toEqual([]);
+      });
+      it("does not read a heading inside a fence that never closes, or one closed only by an info-string line", () => {
+        for (const tail of [
+          "```bash\npnpm build\n\n## Testing",
+          "```\ncode\n```js\n## Testing\n```",
+          "   ~~~\n## Testing",
+        ])
+          expect(missingSpecParts([HEADER, "# T", "## Out of scope", "x", tail].join("\n\n")), tail).toEqual([
+            "a Testing or Verification section",
+          ]);
+      });
+      it("says in the deny that the heading must be the section's name", () =>
+        expect(
+          deny("git commit -m x", spec([HEADER, "# Testing the model", "## Out of scope", "x"].join("\n\n"))),
+        ).toMatch(/IS the section's name/));
       it("reads a heading with CRLF line endings", () =>
         expect(missingSpecParts([HEADER, "# T", "## Out of scope ", "x", "## Testing", "y"].join("\r\n\r\n"))).toEqual(
           [],
