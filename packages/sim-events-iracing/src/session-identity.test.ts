@@ -266,6 +266,21 @@ describe("session identity", () => {
       expect(changes[0]).toMatchObject({ previousSubSessionId: 0, subSessionId: REGISTRATION });
     });
 
+    // #1591: the rule reads the id through the one shared reader, so a quoted
+    // id is that id: the same event quoted or not is no change, and a quoted
+    // new event is one.
+    it("reads a quoted SubSessionID as its number, as the replay store's opener does", () => {
+      const quoted = (id: number): SessionInfo => ({ WeekendInfo: { SimMode: "full", SubSessionID: String(id) } });
+      const { changes } = run([
+        [tick(0), quoted(REGISTRATION)],
+        [tick(0), sessionInfo(REGISTRATION)],
+        [tick(0), quoted(RACE_EVENT)],
+      ]);
+
+      expect(changes).toHaveLength(1);
+      expect(changes[0]).toMatchObject({ previousSubSessionId: REGISTRATION, subSessionId: RACE_EVENT });
+    });
+
     it("seeds rather than compares from a fresh baseline, as after a disconnect", () => {
       const { baseline } = run([[tick(0), sessionInfo(REGISTRATION)]]);
 

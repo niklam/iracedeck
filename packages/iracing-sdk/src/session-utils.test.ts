@@ -61,6 +61,17 @@ describe("readSubSessionId (#1591)", () => {
     expect(readSubSessionId(withId("42abc"))).toBeNull();
     expect(readSubSessionId(withId("Infinity"))).toBeNull();
   });
+
+  it("is null for an id that is not a whole number of zero or more, as a number or quoted", () => {
+    expect(readSubSessionId(withId(1.5))).toBeNull();
+    expect(readSubSessionId(withId(-3))).toBeNull();
+    expect(readSubSessionId(withId(Number.MAX_SAFE_INTEGER + 2))).toBeNull();
+    expect(readSubSessionId(withId("1.5"))).toBeNull();
+    expect(readSubSessionId(withId("-3"))).toBeNull();
+    expect(readSubSessionId(withId("+3"))).toBeNull();
+    expect(readSubSessionId(withId("0x10"))).toBeNull();
+    expect(readSubSessionId(withId("1e3"))).toBeNull();
+  });
 });
 
 describe("isReplayOnlySession (#604, #1324)", () => {

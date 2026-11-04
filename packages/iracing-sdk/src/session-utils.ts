@@ -37,12 +37,17 @@ export function isReplayOnlySession(sessionInfo: unknown): boolean {
   return weekend?.SimMode === "replay";
 }
 
+/** A quoted `SubSessionID`: decimal digits only, surrounding whitespace allowed. */
+const DECIMAL_ID = /^\s*\d+\s*$/;
+
 /**
  * `WeekendInfo.SubSessionID`, the key of the per-session replay record (#1162),
  * or `null` when it is not readable: the session info is not an object, it has
- * no `WeekendInfo` object, or the id is absent, not finite, a blank string or a
- * string that is not a number. An offline session reads 0, which is a real id
- * and not absence, so a caller that needs "nothing loaded yet" tests for `null`.
+ * no `WeekendInfo` object, or the id is absent or is not a whole number of zero
+ * or more (a fraction, a negative, NaN, a blank string, or a string other than
+ * decimal digits, so `"0x10"` and `"1e3"` are not ids). An offline session
+ * reads 0, which is a real id and not absence, so a caller that needs "nothing
+ * loaded yet" tests for `null`.
  *
  * Every reader of the id goes through this one (#1591): the store's opener, the
  * recorder that stamps every `replay.*` event, the session-identity rule and the
@@ -63,9 +68,9 @@ export function readSubSessionId(sessionInfo: unknown): number | null {
   if (weekend === null || typeof weekend !== "object") return null;
 
   const raw = (weekend as Record<string, unknown>).SubSessionID;
-  const value = typeof raw === "number" ? raw : typeof raw === "string" && raw.trim() !== "" ? Number(raw) : NaN;
+  const value = typeof raw === "number" ? raw : typeof raw === "string" && DECIMAL_ID.test(raw) ? Number(raw) : NaN;
 
-  return Number.isFinite(value) ? value : null;
+  return Number.isSafeInteger(value) && value >= 0 ? value : null;
 }
 
 /**

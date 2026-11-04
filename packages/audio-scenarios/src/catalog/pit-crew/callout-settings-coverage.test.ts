@@ -139,11 +139,12 @@ function scenarioMapCoverage(
 }
 
 /**
- * Every non-test module of the folder. Each is already reachable from the
+ * Every non-test module of the folder, subfolders included, so a family
+ * placed in one of its own is held to its row too. Each is already reachable from the
  * barrel, so this loads nothing the imports above do not; test files and
  * their helpers are left out, since loading one would register its tests here.
  */
-const PIT_CREW_MODULES = import.meta.glob(["./*.ts", "!./*.test.ts", "!./*.test-*.ts"], { eager: true });
+const PIT_CREW_MODULES = import.meta.glob(["./**/*.ts", "!./**/*.test.ts", "!./**/*.test-*.ts"], { eager: true });
 
 /**
  * Contract id → key, at the source (#1350): every scenario a family gates
