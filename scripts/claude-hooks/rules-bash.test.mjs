@@ -1807,7 +1807,38 @@ describe("git commit", () => {
       expect(deny(`git commit -m x -- ${A} && git -C ../ir-1 commit -m y -- ${A}`, ctx({ branch }))).toMatch(/on ir-1/);
     });
 
+    // #1594 review: the commit's words ran to the next chain separator, so the
+    // `)` closing a subshell was read into the last word.
+    describe("reads the commit's words up to where the command ends", () => {
+      const sectionless = (o = {}) => ctx({ committedText: (_d, f) => (f === A ? "# T" : undefined), ...o });
+      it("a subshell's closing paren is not part of the last operand", () =>
+        expect(deny(`(git commit -m x -- ${A})`, sectionless())).toMatch(/a\.md is missing/));
+      it("a subshell's closing paren is not part of a flag", () =>
+        expect(deny("(git commit --all)", onBranch({ modified: () => [A] }))).toMatch(/never on a feature branch/));
+      it("a paren inside a multi-line substitution message does not end the command", () =>
+        expect(
+          deny(`(git commit -q -m "$(cat <<'EOF'\nfix (x)\n\nbody)\nEOF\n)" -- ${A}) && echo done`, sectionless()),
+        ).toMatch(/a\.md is missing/));
+      it("a commit inside a backtick substitution is read to the closing backtick", () =>
+        expect(deny(`x=\`git commit -m y -- ${A}\``, sectionless())).toMatch(/a\.md is missing/));
+    });
+
+    // #1594 review: an add's operand is read in the directory the add runs in.
+    it("resolves an add ahead of the commit in its own directory", () =>
+      expect(
+        deny(
+          "cd docs && git add superpowers/specs/a.md && cd .. && git commit -m x",
+          onBranch({ toplevel: () => MASTER, untracked: () => [A] }),
+        ),
+      ).toMatch(/never on a feature branch/));
+
     describe("errs to deny when the selection cannot be read", () => {
+      it("an unreadable earlier add with a spec already staged reads both copies", () => {
+        const split = (index, worktree) =>
+          ctx({ staged: () => [A], committedText: (_d, _f, from) => (from === "index" ? index : worktree) });
+        expect(deny('git add "$F" && git commit -m x', split(whole, "# T"))).toMatch(/a\.md is missing/);
+        expect(deny('git add "$F" && git commit -m x', split("# T", whole))).toMatch(/a\.md is missing/);
+      });
       it("a substitution as the pathspec", () =>
         expect(deny('git commit -m x -- "$F"', onBranch({ staged: () => [A] }))).toMatch(/never on a feature branch/));
       it("--pathspec-from-file", () =>
@@ -1913,6 +1944,28 @@ describe("git commit: the Elgato manifest never carries a Debug key (#1338)", ()
     ).toMatch(/working copy/);
     passes(`cd ${sub} && git commit -m x -- src`, dirtyOn());
   });
+
+  // #1594 review: the manifest rule reads its commits as the spec rule does.
+  it("reads a commit in a subshell up to the paren that closes it", () =>
+    expect(deny(`(git commit -m x -- ${M})`, dirtyOn())).toMatch(/working copy/));
+  it("judges each commit in the tree its own `cd` or `-C` lands in", () => {
+    const IR1 = tree("ir-1");
+    const c = () =>
+      ctx({
+        toplevel: (d) => d,
+        committedText: (d, f) => (f === M ? (d === IR1 ? ON : OFF) : undefined),
+      });
+    expect(deny(`git commit -m x -- ${M} && git -C ../ir-1 commit -m y -- ${M}`, c())).toMatch(/working copy/);
+    expect(deny(`git commit -m x -- ${M} && cd ../ir-1 && git commit -m y -- ${M}`, c())).toMatch(/working copy/);
+    passes(`git -C ../ir-1 commit -m y -- src/a.ts && git commit -m x -- ${M}`, c());
+  });
+  it("resolves an add ahead of the commit in its own directory", () =>
+    expect(
+      deny(
+        "cd packages/iracing-plugin-stream-deck && git add com.iracedeck.sd.core.sdPlugin && cd ../.. && git commit -m x",
+        dirtyOn(),
+      ),
+    ).toMatch(/working copy/));
 
   it("judges a plain commit on the staged copy, and -a on the working copy", () => {
     // Staged with the key, switched off since: a plain commit still records the key.
