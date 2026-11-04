@@ -6,7 +6,7 @@
  * never changed the player's car ahead — not when two cars behind him left,
  * and not when an AI car passed another on track while the slots stayed put.
  */
-import { SessionState, type TelemetryData } from "@iracedeck/iracing-sdk";
+import { Flags, hasFlag, SessionState, type TelemetryData } from "@iracedeck/iracing-sdk";
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
@@ -68,9 +68,6 @@ const PLAYER = 0; // car "64", line 1 row 12
 const AHEAD = 30; // car "11", line 1 row 11
 const CAR_69 = 6; // line 1 row 8: the car the on-screen prompt named at 127.68 s
 const ROW_10 = 11; // car "86", line 1 row 10: the positive control's swap partner
-
-/** `Flags.GreenHeld` — the edge that ends the formation for the engineer. */
-const GREEN_HELD = 0x400;
 
 /** The track length in metres, from the session's own `TrackLength` ("5.4135 km"). */
 const TRACK_M = Number.parseFloat(sessionInfo.WeekendInfo.TrackLength) * 1000;
@@ -144,7 +141,7 @@ const slotOf = (tick: FixtureTick, carIdx: number): string =>
   `${tick.CarIdxPaceLine[carIdx]}/${tick.CarIdxPaceRow[carIdx]}`;
 
 const parade = ticks.filter((tick) => tick.SessionState === SessionState.ParadeLaps);
-const formation = parade.filter((tick) => (tick.SessionFlags & GREEN_HELD) === 0);
+const formation = parade.filter((tick) => !hasFlag(tick.SessionFlags, Flags.GreenHeld));
 
 describe("the 2026-11-04 road-course formation fixture (#1550)", () => {
   it("is a rolling double-file start on a road course, the player car 64 and the pace car raw index 64", () => {
@@ -170,7 +167,7 @@ describe("the 2026-11-04 road-course formation fixture (#1550)", () => {
     expect(parade.at(-1)?.t).toBe(216.22);
     expect(parade).toHaveLength(148);
     expect(formation.at(-1)?.t).toBe(192.33);
-    expect(at(192.35).SessionFlags & GREEN_HELD).toBe(GREEN_HELD);
+    expect(hasFlag(at(192.35).SessionFlags, Flags.GreenHeld)).toBe(true);
     expect(at(216.23).SessionState).toBe(SessionState.Racing);
     expect(ticks.at(-1)?.t).toBe(222);
   });

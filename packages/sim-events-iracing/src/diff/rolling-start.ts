@@ -65,9 +65,10 @@
  * **A change to the car ahead** is `rollingStart.lineup.changed`, the mirror
  * of `diffLineup` in `diff/caution.ts`. A change is iRacing's PUBLISHED lineup
  * changing the car ahead: a car leaving it, or iRacing reassigning the slots.
- * An AI car passing another on track while the slots stay put changes no
- * published variable, nor does iRacing's on-screen "catch up" prompt naming a
- * car further up the line, so neither is reported (issue #1550). In
+ * An AI car passing another on track while the slots stay put moves the lap
+ * distances but not the lineup, and iRacing's on-screen "catch up" prompt
+ * naming a car further up the line is published nowhere, so neither is
+ * reported (issue #1550). In
  * `__fixtures__/rolling-start-formation-20261104.json` the prompt read "Catch
  * up 69", a car four rows up, while every slot ahead of the player held and
  * two cars in his line ran up to 61 m out of their row order.
