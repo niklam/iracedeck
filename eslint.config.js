@@ -5,14 +5,17 @@ import tsparser from '@typescript-eslint/parser';
 import prettier from 'eslint-config-prettier';
 import stylistic from '@stylistic/eslint-plugin';
 
-// The iRacing packages a sim-neutral layer may not import: deck-core and the
-// packages split out of it (#1351, #1367) and the device shells (#1500).
+// The iRacing packages a sim-neutral layer may not import: deck-core, the
+// packages split out of it and settings beneath it (#1351, #1367, #1375) and the
+// device shells (#1500).
 const SIM_PACKAGES = [
   '@iracedeck/deck-iracing',
   '@iracedeck/sim-events-iracing',
   '@iracedeck/iracing-sdk',
   '@iracedeck/iracing-native',
 ];
+const DECK_SIM_MESSAGE =
+  'deck-core, the packages split out of it and settings beneath it must not depend on a simulator: use the SimConnection interface or an injected delegate, and put iRacing code in @iracedeck/deck-iracing (#1351, #1367, #1375).';
 const SHELL_SIM_MESSAGE =
   'A plugin shell must not depend on a simulator: read the sim through PluginExtensionContext.sim, which plugin-runtime hands PluginExtension.start (#1500).';
 
@@ -131,6 +134,12 @@ export default [
     // SimConnection interface. iRacing lives in @iracedeck/deck-iracing (#1351).
     // The packages split out of deck-core keep the same boundary (#1367): what
     // they need from the sim is injected by plugin-runtime or fed by deck-iracing.
+    // settings and voice-packs are guarded too (#1375): settings sits below
+    // deck-core, so a sim import there would reach deck-core transitively, and
+    // voice-packs left deck-core in #1366. The subpath pattern closes a deep
+    // import, which iracing-sdk and iracing-native allow because they declare no
+    // `exports`, as the plugin-shell block below does (#1500). Type-only imports
+    // and tests included.
     // scripts/deck-core-sim-boundary.test.mjs proves this rule fires in each.
     files: [
       'packages/deck-core/src/**/*.ts',
@@ -138,16 +147,15 @@ export default [
       'packages/diagnostics/src/**/*.ts',
       'packages/app-updates/src/**/*.ts',
       'packages/settings-window/src/**/*.ts',
+      'packages/settings/src/**/*.ts',
+      'packages/voice-packs/src/**/*.ts',
     ],
     rules: {
       'no-restricted-imports': [
         'error',
         {
-          paths: SIM_PACKAGES.map((name) => ({
-            name,
-            message:
-              'deck-core and the packages split out of it must not depend on a simulator: use the SimConnection interface or an injected delegate, and put iRacing code in @iracedeck/deck-iracing (#1351, #1367).',
-          })),
+          paths: SIM_PACKAGES.map((name) => ({ name, message: DECK_SIM_MESSAGE })),
+          patterns: [{ group: SIM_PACKAGES.map((name) => `${name}/*`), message: DECK_SIM_MESSAGE }],
         },
       ],
     },
