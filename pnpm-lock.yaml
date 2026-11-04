@@ -1509,15 +1509,6 @@ importers:
       '@astrojs/check':
         specifier: 0.9.10
         version: 0.9.10(prettier@3.9.10)(typescript@5.9.3)
-      '@iracedeck/audio-scenarios':
-        specifier: workspace:*
-        version: link:../audio-scenarios
-      '@iracedeck/audio-service':
-        specifier: workspace:*
-        version: link:../audio-service
-      '@iracedeck/deck-core':
-        specifier: workspace:*
-        version: link:../deck-core
       '@iracedeck/icon-composer':
         specifier: workspace:*
         version: link:../icon-composer
