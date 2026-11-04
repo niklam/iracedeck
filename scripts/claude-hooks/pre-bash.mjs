@@ -91,16 +91,20 @@ if (typeof command === "string" && command.trim()) {
     // differ from master's is judged by its own scripts (#1021).
     packages: memo(() => workspacePackages(toplevel(cwd) ?? mainRepoRoot(cwd) ?? cwd)),
     isInside,
-    prView: memo((ref, dir) =>
+    // The merge gate's PR read, in the directory the merge runs in. A repository
+    // the merge names reaches gh as `GH_REPO`, since gh refuses `--repo` without
+    // a PR argument; `url` tells the gate which repository gh read (#1393).
+    prView: memo((ref, dir, repo) =>
       ghJson(
         [
           "pr",
           "view",
           ...(ref ? [ref] : []),
           "--json",
-          "number,state,headRefOid,headRefName,baseRefName,baseRefOid,reviewDecision,mergeStateStatus,statusCheckRollup,reviews",
+          "number,url,state,headRefOid,headRefName,baseRefName,baseRefOid,reviewDecision,mergeStateStatus,statusCheckRollup,reviews",
         ],
         dir,
+        repo ? { env: { GH_REPO: repo } } : undefined,
       ),
     ),
     // The merge gate's pure-rebase check (#1307).

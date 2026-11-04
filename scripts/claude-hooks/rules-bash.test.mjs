@@ -293,6 +293,7 @@ describe("gh pr merge", () => {
   const head = "1111111111111111111111111111111111111111";
   const green = () => ({
     number: 7,
+    url: "https://github.com/niklam/iracedeck/pull/7",
     state: "OPEN",
     headRefOid: head,
     headRefName: "ir-7",
@@ -349,6 +350,115 @@ describe("gh pr merge", () => {
     const pr = green();
     pr.reviews = [{ author: { login: "niklam" }, state: "COMMENTED", commit: { oid: head } }];
     expect(deny("gh pr merge 7 --squash", ctx({ prView: () => pr }))).toMatch(/no CodeRabbit review/);
+  });
+  // #1393 (with #1534): the gate judges a niklam/iracedeck PR only, and the PR it
+  // reads is the one gh will merge — never this repository's PR of the same number.
+  describe("the repository the merge is in", () => {
+    /** A green home PR, recording every read as `[ref, dir, repo]`. */
+    const arrange = (pr = green, extra = {}) => {
+      const reads = [];
+      const c = ctx({
+        prView: (...args) => {
+          reads.push(args);
+          return pr();
+        },
+        ...extra,
+      });
+      return { c, reads };
+    };
+
+    it("passes a merge that names this repository, in every spelling gh takes", () => {
+      for (const command of [
+        "gh pr merge 7 --squash -R niklam/iracedeck",
+        "gh pr merge 7 --squash --repo NikLam/iRaceDeck",
+        "gh pr merge 7 --squash --repo=niklam/iracedeck",
+        "gh pr merge 7 --squash -Rniklam/iracedeck",
+        "gh pr merge 7 --squash -R github.com/niklam/iracedeck",
+        "gh pr merge 7 --squash -R https://github.com/niklam/iracedeck.git",
+        "gh pr merge 7 --squash -R 'niklam/iracedeck'",
+        "GH_REPO=niklam/iracedeck gh pr merge 7 --squash",
+        "export GH_REPO=niklam/iracedeck && gh pr merge 7 --squash",
+        "gh pr merge https://github.com/niklam/iracedeck/pull/7 --squash",
+      ]) {
+        const { c } = arrange();
+        expect(checkBash(command, c), command).toBeNull();
+      }
+    });
+
+    it("hands the named repository to the read as GH_REPO, and a URL reads as itself", () => {
+      const named = arrange();
+      passes("GH_REPO=niklam/iracedeck gh pr merge --squash", named.c);
+      expect(named.reads).toEqual([[undefined, MASTER, "niklam/iracedeck"]]);
+      const url = arrange();
+      passes("gh pr merge https://github.com/niklam/iracedeck/pull/7 --squash -R niklam/iracedeck", url.c);
+      expect(url.reads).toEqual([["https://github.com/niklam/iracedeck/pull/7", MASTER, undefined]]);
+      const bare = arrange();
+      passes("gh pr merge 7 --squash", bare.c);
+      expect(bare.reads).toEqual([["7", MASTER, undefined]]);
+    });
+
+    it("refuses a merge that names another repository, before reading any PR", () => {
+      for (const command of [
+        "gh pr merge 7 --squash -R someone/other",
+        "gh pr merge -R someone/other 7 --squash",
+        "gh pr merge 7 --squash --repo someone/other",
+        "gh pr merge 7 --squash --repo=someone/other",
+        "gh pr merge 7 --squash -Rsomeone/other",
+        "gh pr merge 7 --squash -R ghe.example.com/niklam/iracedeck",
+        "gh pr merge 7 --squash -R niklam/iracedeck -R someone/other",
+        "GH_REPO=someone/other gh pr merge 7 --squash",
+        "env GH_REPO=someone/other gh pr merge 7 --squash",
+        "export GH_REPO=someone/other; gh pr merge 7 --squash",
+        "GH_REPO=someone/other; export GH_REPO; gh pr merge 7 --squash",
+        "gh pr merge https://github.com/someone/other/pull/7 --squash",
+        // A URL wins over --repo, as it does in gh.
+        "gh pr merge https://github.com/someone/other/pull/7 --squash -R niklam/iracedeck",
+      ]) {
+        const { c, reads } = arrange();
+        expect(deny(command, c), command).toMatch(/targets someone\/other|targets ghe\.example\.com/);
+        expect(reads, command).toEqual([]);
+      }
+    });
+
+    it("refuses a PowerShell $env:GH_REPO that names another repository", () => {
+      const { c, reads } = arrange(green, { shell: POWERSHELL });
+      expect(deny("$env:GH_REPO = 'someone/other'; gh pr merge 7 --squash", c)).toMatch(/targets someone\/other/);
+      expect(reads).toEqual([]);
+      passes("$env:GH_REPO = 'niklam/iracedeck'; gh pr merge 7 --squash", arrange(green, { shell: POWERSHELL }).c);
+    });
+
+    it("refuses a repository it cannot read, before reading any PR", () => {
+      for (const command of [
+        `gh pr merge 7 --squash -R "$REPO"`,
+        "gh pr merge 7 --squash --repo=$REPO",
+        "gh pr merge 7 --squash -R",
+        "GH_REPO=$REPO gh pr merge 7 --squash",
+        "export GH_REPO && gh pr merge 7 --squash",
+      ]) {
+        const { c, reads } = arrange();
+        expect(deny(command, c), command).toMatch(/Could not read the repository/);
+        expect(reads, command).toEqual([]);
+      }
+    });
+
+    it("ignores a GH_REPO that does not reach the merge", () =>
+      passes("GH_REPO=someone/other gh pr view 7 && gh pr merge 7 --squash", arrange().c));
+
+    it("reads the PR where the merge runs, so a chained cd moves the read", () => {
+      const { c, reads } = arrange();
+      passes("cd ../ir-7 && gh pr merge --squash", c);
+      expect(reads).toEqual([[undefined, tree("ir-7"), undefined]]);
+    });
+
+    it("refuses a PR gh read in another repository — an inherited GH_REPO or another checkout", () => {
+      const foreign = () => ({ ...green(), url: "https://github.com/someone/other/pull/7" });
+      expect(deny("gh pr merge 7 --squash", arrange(foreign).c)).toMatch(
+        /someone\/other\/pull\/7 is in someone\/other, not niklam\/iracedeck/,
+      );
+      expect(deny("cd ../other && gh pr merge --squash", arrange(foreign).c)).toMatch(/is in someone\/other/);
+      const unknown = () => ({ ...green(), url: undefined });
+      expect(deny("gh pr merge 7 --squash", arrange(unknown).c)).toMatch(/an unknown repository/);
+    });
   });
   // #1307: a head that is a pure rebase of the commit CodeRabbit last reviewed.
   describe("a pure rebase of the reviewed head", () => {
@@ -2911,6 +3021,7 @@ describe("the mask fails closed (#1321 review)", () => {
   const linked = ctx({ linkTargets: () => [{ host: "Stream Deck", target: tree("ir-1013", "plugin") }] });
   const green = () => ({
     number: 7,
+    url: "https://github.com/niklam/iracedeck/pull/7",
     state: "OPEN",
     headRefOid: "1".repeat(40),
     headRefName: "ir-7",

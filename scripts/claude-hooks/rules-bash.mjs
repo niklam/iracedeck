@@ -23,6 +23,7 @@ import path from "node:path";
 import { DEBUG_VALUE, ELGATO_MANIFEST, manifestDebug } from "../lib/debug-plugin.mjs";
 import { FULL_SHA, rangeChain, readSummary } from "./coderabbit-summary.mjs";
 import { INTEGRATION_BRANCH, INTEGRATION_TREE, MAIN_BRANCH, SPEC_DIR } from "./lib.mjs";
+import { assignedGhRepo, HOME_REPO, isHomeRepo, mergeRepo, repoOfUrl } from "./rules-post.mjs";
 import { findControlByte } from "./rules-tools.mjs";
 import { deckFindings } from "./script-runs.mjs";
 import {
@@ -156,6 +157,9 @@ export const coderabbitReviews = (reviews) =>
   (reviews ?? []).filter(
     (r) => CODERABBIT.test(r.author?.login ?? "") && !(r.state === "COMMENTED" && !(r.body ?? "").trim()),
   );
+
+/** A `gh pr merge` in the masked text: where the gate reads the repository and directory from. */
+const GH_PR_MERGE = /\bgh\s+pr\s+merge\b/;
 
 /** `gh pr merge` flags that take a value, so the value is never read as the PR or as a flag. */
 const MERGE_VALUE_FLAGS = new Set([
@@ -650,9 +654,30 @@ export const rules = [
       if (!merge.readable)
         return "Could not read this `gh pr merge`'s own arguments (a quoted or substituted PR, or a merge inside a substitution or heredoc); run it on its own with the PR number or URL as a plain word.";
       const ref = merge.ref;
-      const pr = ctx.prView(ref, ctx.cwd);
+      // The gate judges a PR of HOME_REPO only, and the PR it reads must be the
+      // one gh will merge (#1393). The repository is taken in gh's order — a PR
+      // URL, then `--repo` / `-R`, then a `GH_REPO` that reaches the merge — and
+      // anything else, or a value the hook cannot read, is refused before gh is
+      // asked: reading this repository's PR of the same number is how a merge in
+      // another repository passed on checks nobody ran there.
+      const masked = trustedMask(c);
+      const at = GH_PR_MERGE.exec(masked)?.index ?? c.length;
+      const named = mergeRepo(merge, assignedGhRepo(c.slice(0, at), masked.slice(0, at)));
+      if (named === null)
+        return `Could not read the repository this \`gh pr merge\` names (a \`--repo\` / \`-R\` or \`GH_REPO\` that is not a plain value); the merge gate judges ${HOME_REPO} PRs only, so name it as a plain word or leave it out.`;
+      if (named && !isHomeRepo(named))
+        return `This \`gh pr merge\` targets ${named}, not ${HOME_REPO}. The merge gate can judge only ${HOME_REPO} PRs, and agents here merge nothing else (#1393).`;
+      // Read where the merge runs (a chained `cd` moves it) with the repository
+      // it names, so a branch's PR is the branch the merge sees.
+      const dir = gitCwd(c, ctx.cwd, GH_PR_MERGE, ctx.shell);
+      const pr = ctx.prView(ref, dir, named && !repoOfUrl(ref) ? named : undefined);
       if (!pr)
         return `Could not read the PR${ref ? ` "${ref}"` : " for this branch"} with gh; refusing to merge blind.`;
+      // Whatever gh resolved the repository from — a checkout the chain moved
+      // into, an inherited GH_REPO — the URL it returns says which PR it read.
+      const prRepo = repoOfUrl(pr.url);
+      if (!isHomeRepo(prRepo))
+        return `PR ${pr.url ?? `#${pr.number}`} is in ${prRepo ?? "an unknown repository"}, not ${HOME_REPO} (a checkout of another repository, or an inherited GH_REPO). The merge gate can judge only ${HOME_REPO} PRs, and agents here merge nothing else (#1393).`;
       if (pr.state !== "OPEN") return `PR #${pr.number} is ${pr.state}, not OPEN.`;
       const problems = [];
       const isBackMerge = /^release\//.test(pr.headRefName ?? "");
