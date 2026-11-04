@@ -172,10 +172,22 @@ describe("resourceSessionSummary (#1338)", () => {
 describe("createProcessResourceSampler", () => {
   it("reads plausible deltas from this process", () => {
     const sampler = createProcessResourceSampler();
-    const end = performance.now() + 30;
+    const charged = process.cpuUsage();
+    const minEnd = performance.now() + 30;
+    const deadline = minEnd + 2_000;
+    const chargedSince = () => {
+      const delta = process.cpuUsage(charged);
 
-    while (performance.now() < end) {
-      // Burn a little CPU so the delta is non-zero.
+      return delta.user + delta.system;
+    };
+
+    // Burn CPU for at least 30 ms AND until the OS has charged some of it to
+    // this process. Windows charges process CPU time in whole scheduler ticks
+    // (about 15.6 ms), so on a loaded machine a 30 ms wall-clock burn can be
+    // charged nothing and read as 0 % (#1576). The deadline only bounds a
+    // starved runner; an idle one leaves the loop after the first tick.
+    while (performance.now() < minEnd || (chargedSince() === 0 && performance.now() < deadline)) {
+      // Busy.
     }
 
     const reading = sampler();
@@ -232,6 +244,75 @@ describe("createProcessResourceSampler", () => {
     } finally {
       cpuUsage.mockRestore();
       elu.mockRestore();
+    }
+  });
+
+  it("turns the counter deltas into a share of one core over the elapsed time, and memory as of now", () => {
+    // Fixed readings, so the arithmetic is checked exactly rather than on
+    // whatever this machine happened to do (#1576).
+    const cpuReadings: NodeJS.CpuUsage[] = [
+      { user: 5_000, system: 1_000 },
+      { user: 6_000, system: 1_500 }, // +1.5 ms over 100 ms
+      { user: 6_000, system: 1_500 }, // nothing over a zero interval
+    ];
+    const nowReadings = [1_000, 1_100, 1_100];
+    const eluReadings: EventLoopUtilization[] = [
+      { active: 10, idle: 30, utilization: 0.25 },
+      { active: 50, idle: 90, utilization: 0.4 }, // +40 active of +100
+      { active: 50, idle: 90, utilization: 0.4 },
+    ];
+    const memory: NodeJS.MemoryUsage = {
+      rss: 300 * MB,
+      heapTotal: 170 * MB,
+      heapUsed: 60 * MB,
+      external: 0,
+      arrayBuffers: 0,
+    };
+    const next = <T>(readings: T[], name: string): T => {
+      const reading = readings.shift();
+
+      if (reading === undefined) throw new Error(`the sampler read ${name} more often than expected`);
+
+      return reading;
+    };
+
+    const cpuUsage = vi.spyOn(process, "cpuUsage").mockImplementation(() => next(cpuReadings, "process.cpuUsage()"));
+    const now = vi.spyOn(performance, "now").mockImplementation(() => next(nowReadings, "performance.now()"));
+    const elu = vi
+      .spyOn(performance, "eventLoopUtilization")
+      .mockImplementation((current?: EventLoopUtilization, previous?: EventLoopUtilization) => {
+        if (current && previous) {
+          const active = current.active - previous.active;
+          const idle = current.idle - previous.idle;
+
+          return { active, idle, utilization: active / (active + idle) };
+        }
+
+        return next(eluReadings, "performance.eventLoopUtilization()");
+      });
+    const memoryUsage = vi.spyOn(process, "memoryUsage").mockImplementation(() => memory);
+
+    try {
+      const sampler = createProcessResourceSampler();
+      const first = sampler();
+      const zeroInterval = sampler();
+
+      expect(first).toEqual({
+        elapsedMs: 100,
+        cpuPercent: 1.5,
+        elu: 0.4,
+        rssBytes: 300 * MB,
+        heapUsedBytes: 60 * MB,
+        heapTotalBytes: 170 * MB,
+      });
+      // A zero interval is floored at 1 ms rather than dividing by zero.
+      expect(zeroInterval.elapsedMs).toBe(1);
+      expect(zeroInterval.cpuPercent).toBe(0);
+    } finally {
+      cpuUsage.mockRestore();
+      now.mockRestore();
+      elu.mockRestore();
+      memoryUsage.mockRestore();
     }
   });
 });
