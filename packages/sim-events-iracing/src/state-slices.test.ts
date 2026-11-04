@@ -661,6 +661,42 @@ describe("the state-slice scanner (positive controls)", () => {
       ]);
     });
 
+    it("reports a read through a module-local alias of TranslatorState", () => {
+      const scan = planted(plantedState(), {
+        "fastest-lap.ts": `${IMPORT}type Ctx = TranslatorState;\nexport function diff(state: Ctx): void {\n  state.fastestLap.record = null;\n}\n`,
+      });
+
+      expect(scan.violations.map((v) => `${v.rule}:${v.module}:${v.line}:${v.name}`)).toEqual([
+        "C:fastest-lap.ts:4:fastestLap",
+      ]);
+    });
+
+    it("reports a read through an alias of an alias, declared before its target", () => {
+      const scan = planted(plantedState(), {
+        "fastest-lap.ts": `${IMPORT}type Outer = Readonly<Inner>;\ntype Inner = Pick<TranslatorState, "fastestLap">;\nexport function diff(state: Outer): unknown {\n  return state.fastestLap;\n}\n`,
+      });
+
+      expect(scan.violations.map((v) => `${v.rule}:${v.module}:${v.line}:${v.name}`)).toEqual([
+        "C:fastest-lap.ts:5:fastestLap",
+      ]);
+    });
+
+    it("reports a read through a local interface extending TranslatorState", () => {
+      const scan = planted(plantedState(), {
+        "fastest-lap.ts": `${IMPORT}interface Ctx extends TranslatorState { extra: number }\nexport function diff(state: Ctx): unknown {\n  const { trackGaps } = state;\n  return trackGaps;\n}\n`,
+      });
+
+      expect(violationNames(scan)).toEqual(["C:trackGaps"]);
+    });
+
+    it("passes a local alias that does not reach TranslatorState", () => {
+      const scan = planted(plantedState(), {
+        "fastest-lap.ts": `${IMPORT}type Other = { fastestLap: number };\ntype Alias = Other;\nexport function diff(state: TranslatorState, other: Alias): number {\n  return other.fastestLap + (state.pitLaneInitialized ? 1 : 0);\n}\n`,
+      });
+
+      expect(scan.violations).toEqual([]);
+    });
+
     it("passes other.fastestLap on a receiver not annotated TranslatorState", () => {
       const scan = planted(plantedState(), {
         "fastest-lap.ts": `${IMPORT}type Other = { fastestLap: number };\nexport function diff(state: TranslatorState, other: Other): number {\n  const { fastestLap } = other;\n  return other.fastestLap + fastestLap + (state.pitLaneInitialized ? 1 : 0);\n}\n`,

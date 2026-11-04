@@ -30,7 +30,9 @@
  *   (`import type { … }`, `import { type … }`, plain, or through a namespace
  *   import used as `ns.TranslatorState`) names no slice type, and reads no
  *   slice key off an identifier bound to a parameter or variable whose
- *   annotation mentions `TranslatorState` (`state.fastestLap`,
+ *   annotation mentions `TranslatorState` — directly, or through a
+ *   module-local type alias or interface that reaches it, alias of an alias
+ *   included (`type Ctx = TranslatorState`) — (`state.fastestLap`,
  *   `state["fastestLap"]`, `const { fastestLap } = state`, a destructured
  *   parameter, a destructuring assignment). A slice key on any other receiver
  *   is not a match: `other.fastestLap` passes. Reported by slice key, or by
@@ -518,7 +520,11 @@ function scanModule(
 ): ModuleScan {
   const sliceKeys = new Map(slices.map((slice) => [slice.key, slice.type]));
   const sliceTypes = new Set(slices.map((slice) => slice.type));
-  /** Local aliases of `TranslatorState`, and namespace imports of `state.ts`. */
+  /**
+   * Symbols that stand for `TranslatorState`: its import, and module-local
+   * type aliases and interfaces that reach it (added below); and the
+   * namespace imports of `state.ts`.
+   */
   const stateAliases = new Set<ts.Symbol>();
   const stateNamespaces = new Set<ts.Symbol>();
   /** Local names of slice types imported from `state.ts`, by alias symbol. */
@@ -580,6 +586,53 @@ function scanModule(
   };
 
   let importsState = stateAliases.size > 0;
+
+  /** Whether an interface heritage clause (`extends X`, `extends Omit<X, …>`) reaches `TranslatorState`. */
+  const heritageMentionsState = (heritage: ts.ExpressionWithTypeArguments): boolean => {
+    const expression = heritage.expression;
+    let reaches = false;
+
+    if (ts.isIdentifier(expression)) {
+      const symbol = symbolOf(expression);
+
+      reaches = symbol !== undefined && stateAliases.has(symbol);
+    } else if (ts.isPropertyAccessExpression(expression) && ts.isIdentifier(expression.expression)) {
+      const left = symbolOf(expression.expression);
+
+      reaches = left !== undefined && stateNamespaces.has(left) && expression.name.text === STATE_TYPE;
+    }
+
+    return reaches || (heritage.typeArguments ?? []).some(mentionsState);
+  };
+
+  // A module-local type alias or interface whose declaration reaches
+  // `TranslatorState` stands for it too (`type Ctx = TranslatorState`,
+  // `interface Ctx extends TranslatorState`), followed to a fixpoint so an
+  // alias of an alias counts.
+  const localTypes: (ts.TypeAliasDeclaration | ts.InterfaceDeclaration)[] = [];
+
+  eachNode(file, (node) => {
+    if (ts.isTypeAliasDeclaration(node) || ts.isInterfaceDeclaration(node)) localTypes.push(node);
+  });
+
+  for (let grew = true; grew;) {
+    grew = false;
+
+    for (const declaration of localTypes) {
+      const symbol = symbolOf(declaration.name);
+
+      if (symbol === undefined || stateAliases.has(symbol)) continue;
+
+      const reaches = ts.isTypeAliasDeclaration(declaration)
+        ? mentionsState(declaration.type)
+        : (declaration.heritageClauses ?? []).some((clause) => clause.types.some(heritageMentionsState));
+
+      if (reaches) {
+        stateAliases.add(symbol);
+        grew = true;
+      }
+    }
+  }
 
   eachNode(file, (node) => {
     if (ts.isTypeReferenceNode(node) && stateExportOf(node.typeName) === STATE_TYPE) importsState = true;
