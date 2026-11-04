@@ -20,6 +20,8 @@ Run it whenever the window's layout, controls or copy change — including a `ch
 
 `--scale=2` captures at HiDPI. The default is `1` (≈490 KB for the nine tabs the set had when it was measured); 2× roughly quadruples that, which is why it isn't the default.
 
+The command exits by itself, and fails loudly when it cannot (#1544). The process it spawns can be only a launcher (Edge's hands off to the real headless browser and exits), so the capture shuts the browser down with `Browser.close`, waits for its own pid (learned over CDP with `SystemInfo.getProcessInfo`), then waits until no process names the run's profile folder, which is the browser's identity: every process of its tree carries it, nothing else does, and it still works when the capture failed before the pid was learned or a crash handler outlives the browser. Only the processes that listing has just named are killed, each with its tree, and only once the bound is spent; a bare pid is never killed, since Windows can reuse it once the browser exits. A listing that cannot run degrades to the pid with a Warning. The throwaway profile is then removed with a few short retries of its own, never Node's `maxRetries`, whose back-off on a file a live browser holds kept the run alive for minutes; a profile that still cannot be removed is a Warning naming the folder. Last, an unref'd tripwire (`exit-tripwire.mjs`) fails the run with exit 1, listing what holds the event loop, if the process is still alive 5 s after its final line.
+
 ## Why a harness rather than hand-captured images
 
 Three properties a manual screenshot can't give:
@@ -50,6 +52,9 @@ Three properties a manual screenshot can't give:
 | `scripts/lib/settings-window-capture/seed.mjs` | The deterministic settings fixture |
 | `scripts/lib/settings-window-capture/cdp.mjs` | Minimal DevTools Protocol client (no dependencies — Node's global `WebSocket`) |
 | `scripts/lib/settings-window-capture/capture.mjs` | Orchestration; every collaborator injected, so it is testable without a browser |
+| `scripts/lib/settings-window-capture/process-tree.mjs` | Listing the processes naming the profile folder, checking a pid, killing a tree |
+| `scripts/lib/settings-window-capture/profile-dir.mjs` | Bounded removal of the throwaway browser profile |
+| `scripts/lib/settings-window-capture/exit-tripwire.mjs` | Fails the run when something keeps the process alive after its last line |
 | `packages/website/src/assets/settings-window/` | The committed PNGs |
 
 The harness adds **no dependencies**: `startSettingsWindowServer` and `findChromiumBrowserOnThisMachine` are already exported from `@iracedeck/settings-window` (the script loads its built `dist/index.js`, so build first), and Node 22+ ships a global `WebSocket`. It needs a Chromium-based browser on the machine — the same requirement the Settings window itself has.

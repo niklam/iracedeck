@@ -18,19 +18,32 @@
  * does not load (offline, or the site is slow), the tab is skipped, its PNG is
  * left as it was, and the run says so and exits 1.
  *
+ * The run ends by itself (#1544): the capture shuts the browser down over the
+ * DevTools Protocol and waits until no process names its profile, killing
+ * only those that outlive the bound; the profile is removed with a
+ * bounded retry of our own, and a tripwire armed after the last line fails the
+ * run loudly, naming what holds it, if anything still keeps the process alive.
+ *
  * This file is the composition root — it resolves the real server, browser and
  * filesystem and hands them to `captureSettingsWindow`, which contains the
  * logic and no I/O of its own.
  */
 import { spawn } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
-import { mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { captureSettingsWindow } from "./lib/settings-window-capture/capture.mjs";
 import { connectCdp, waitForDebuggerUrl, waitForDevToolsPort } from "./lib/settings-window-capture/cdp.mjs";
+import { armExitTripwire } from "./lib/settings-window-capture/exit-tripwire.mjs";
+import {
+  isProcessAlive,
+  killProcessTree,
+  listProcessesNamingDir,
+} from "./lib/settings-window-capture/process-tree.mjs";
+import { removeProfileDir } from "./lib/settings-window-capture/profile-dir.mjs";
 import { buildSeedSettings, buildSeedUpdateStatus } from "./lib/settings-window-capture/seed.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -137,6 +150,12 @@ try {
 
         const port = await waitForDevToolsPort(profileDir);
 
+        // The process spawned may be only a launcher: Edge's hands off to the
+        // real headless browser and exits, leaving it orphaned. So this kill
+        // reaches the launcher alone and is the capture's last resort; it
+        // shuts the real browser down over CDP and recognises its processes by
+        // this run's profile folder instead. The unref keeps a launcher that
+        // IS the browser from holding the run.
         child.unref();
 
         return { port, kill: () => child.kill() };
@@ -144,14 +163,27 @@ try {
       debuggerUrl: (port) => waitForDebuggerUrl(port),
       connect: (url) => connectCdp(url),
       writeFile: (file, data) => writeFile(file, data),
+      processAlive: (pid) => isProcessAlive(pid),
+      killTree: (pid) => killProcessTree(pid),
+      // The profile folder is this run's alone, and every process of its
+      // browser names it: the browser's identity, where a pid is not one.
+      listProfileProcesses: () => listProcessesNamingDir(profileDir),
       log: (message) => console.log(message),
     },
   ));
 } finally {
   // In a finally so a failed run does not leave ~100 MB of browser profile in
-  // %TEMP%, and with retries because Windows often still holds Chromium's
-  // files for a moment after kill().
-  await rm(profileDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }).catch(() => {});
+  // %TEMP%. The browser has been shut down and waited for by now, so this
+  // normally takes one try; the few retries are bounded and our own, because
+  // Node's maxRetries backs off for minutes on a file a live browser holds.
+  const removal = await removeProfileDir(profileDir);
+
+  if (!removal.removed) {
+    console.warn(
+      `Warning: could not remove the capture's browser profile ${profileDir}: ${String(removal.error)}. ` +
+        `Delete the folder by hand once no browser holds it.`,
+    );
+  }
 }
 
 console.log(`\nWrote ${written.length} screenshots to ${outDir}`);
@@ -166,3 +198,6 @@ for (const { file, label, reason } of skipped) {
 }
 
 if (skipped.length > 0) process.exitCode = 1;
+
+// Last, after every line: a healthy run has exited before this can fire.
+armExitTripwire();

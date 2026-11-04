@@ -1,6 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { connectCdp, waitForDebuggerUrl, waitForDevToolsPort } from "./cdp.mjs";
+import {
+  CDP_CONNECTION_CLOSED,
+  CDP_NOT_CONNECTED,
+  connectCdp,
+  waitForDebuggerUrl,
+  waitForDevToolsPort,
+} from "./cdp.mjs";
 
 describe("waitForDevToolsPort", () => {
   it("reads the port off the first line of DevToolsActivePort", async () => {
@@ -204,6 +210,7 @@ describe("connectCdp", () => {
     cdp.close();
 
     await expect(pending).rejects.toThrow(/closed while the command was in flight/);
+    await expect(pending).rejects.toMatchObject({ code: CDP_CONNECTION_CLOSED });
     expect(socket.closed).toBe(true);
   });
 
@@ -214,13 +221,20 @@ describe("connectCdp", () => {
     socket.emit("close", {});
 
     await expect(pending).rejects.toThrow(/connection closed unexpectedly/);
+    // Coded, so a caller can tell a close it caused (Browser.close) from a
+    // failure without matching the message.
+    await expect(pending).rejects.toMatchObject({ code: CDP_CONNECTION_CLOSED });
   });
 
   it("fails fast on a later command instead of waiting out the timeout", async () => {
     const { cdp, socket } = await connectFake();
     socket.emit("close", {});
 
-    await expect(cdp.send("Page.navigate")).rejects.toThrow(/closed unexpectedly \(while sending Page.navigate\)/);
+    const late = cdp.send("Page.navigate");
+
+    await expect(late).rejects.toThrow(/closed unexpectedly \(while sending Page.navigate\)/);
+    // Never reached the browser: not the same as a close under a command in flight.
+    await expect(late).rejects.toMatchObject({ code: CDP_NOT_CONNECTED });
   });
 
   it("clears the timer when the socket rejects the send", async () => {
