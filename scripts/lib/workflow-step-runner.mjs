@@ -5,11 +5,12 @@
  * a deploy is exactly the kind whose breakage reads as a green run. The tests
  * that guard those steps (#1392's `voice-pack-publish-workflow.test.mjs`,
  * #1613's `voice-pack-tag-catalog-workflow.test.mjs`) read the step out of the
- * YAML and run it with bash against throwaway git repositories, isolated from
- * the git configuration of the machine running the suite. This module is what
- * they share; it imports nothing from vitest, so each test owns its lifecycle.
+ * YAML and run it with bash against throwaway directories and git repositories,
+ * isolated from the git configuration of the machine running the suite. This
+ * module is what they share; it imports nothing from vitest, so each test owns
+ * its lifecycle.
  */
-import { execFileSync, spawnSync } from "node:child_process";
+import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -90,5 +91,31 @@ export function createStepSandbox(prefix) {
     return { status: result.status, output: `${result.stdout}${result.stderr}` };
   }
 
-  return { work, env, git, runStep, remove: () => rmSync(work, { recursive: true, force: true }) };
+  /**
+   * `runStep` without blocking the event loop, for a step that talks to a server
+   * the test itself runs (`spawnSync` would hold the loop the server answers
+   * on, so the step could never be answered). Resolves its exit status and
+   * combined output; a step still running after `timeoutMs` is killed, and its
+   * status is then null.
+   */
+  function runStepAsync(script, cwd, extraEnv = {}, { timeoutMs = 60_000 } = {}) {
+    if (BASH === undefined) return Promise.reject(new Error("no bash found to run a workflow step with"));
+    const file = path.join(work, `step-${Math.random().toString(36).slice(2)}.sh`);
+    writeFileSync(file, script);
+    return new Promise((resolve, reject) => {
+      const child = spawn(BASH, [file.replaceAll("\\", "/")], {
+        cwd,
+        env: { ...env, ...extraEnv },
+        stdio: ["ignore", "pipe", "pipe"],
+        timeout: timeoutMs,
+      });
+      let output = "";
+      child.stdout.setEncoding("utf8").on("data", (chunk) => (output += chunk));
+      child.stderr.setEncoding("utf8").on("data", (chunk) => (output += chunk));
+      child.on("error", reject);
+      child.on("close", (status) => resolve({ status, output }));
+    });
+  }
+
+  return { work, env, git, runStep, runStepAsync, remove: () => rmSync(work, { recursive: true, force: true }) };
 }
