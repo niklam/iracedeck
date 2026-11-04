@@ -143,9 +143,9 @@ describe("sim boundary coverage", () => {
     }));
 
     it("finds the blocks that set the rules", () => {
-      // The sim-neutral, replay-engine and plugin-shell blocks set the base
-      // rule; the audio-scenarios catalog block the typed one.
-      expect(blocks.map(({ engines }) => engines.length)).toEqual([3, 1]);
+      // The sim-neutral, replay-engine, iracing-actions and plugin-shell blocks
+      // set the base rule; the audio-scenarios catalog block the typed one.
+      expect(blocks.map(({ engines }) => engines.length)).toEqual([4, 1]);
     });
 
     const PLANTED = [

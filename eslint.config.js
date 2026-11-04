@@ -57,7 +57,10 @@ export const SIM_NEUTRAL_PACKAGES = Object.freeze([
   'website',
 ]);
 const SIM_NEUTRAL_MESSAGE =
-  'A sim-neutral package (SIM_NEUTRAL_PACKAGES in eslint.config.js) must not depend on a simulator: reach the sim through deck-core\'s SimConnection interface, the event-bus catalog or an injected delegate, and put iRacing code in an iRacing package such as @iracedeck/deck-iracing (#1351, #1367, #1375).';const SHELL_SIM_MESSAGE =
+  'A sim-neutral package (SIM_NEUTRAL_PACKAGES in eslint.config.js) must not depend on a simulator: reach the sim through deck-core\'s SimConnection interface, the event-bus catalog or an injected delegate, and put iRacing code in an iRacing package such as @iracedeck/deck-iracing (#1351, #1367, #1375).';
+const PI_COMPONENTS_MESSAGE =
+  'iracing-actions is bundled into every plugin, and @iracedeck/pi-components (with ./testing, which loads ejs and node:fs, and ./build) is only its tests\' devDependency: import it from a *.test.ts or *.test-support.ts file only (#1375).';
+const SHELL_SIM_MESSAGE =
   'A plugin shell must not depend on a simulator: read the sim through PluginExtensionContext.sim, which plugin-runtime hands PluginExtension.start (#1500).';
 
 // Repo-wide (#1208); spread into every block that sets no-restricted-syntax, since a
@@ -246,6 +249,28 @@ export default [
                 'The replay engine must not depend on the deck layer, the settings or its own consumers: take it through configureReplayEngine (#1467).',
             },
           ],
+        },
+      ],
+    },
+  },
+  {
+    // iracing-actions is bundled into every plugin, while @iracedeck/pi-components
+    // is a devDependency its PI-template tests alone use (#1375): ./testing
+    // renders the pages through ejs and node:fs, and ./build is the Rollup
+    // tooling. The manifest section is no guard on its own, since the package
+    // resolves from any file, so a non-test source is refused it here, the bare
+    // name and every subpath. iracing-actions files match no other block setting
+    // no-restricted-imports, so these options replace none
+    // (scripts/sim-boundary-coverage.test.mjs fails if one ever does).
+    // scripts/iracing-actions-pi-components-boundary.test.mjs proves this fires.
+    files: ['packages/iracing-actions/src/**/*.ts'],
+    ignores: ['packages/iracing-actions/src/**/*.test.ts', 'packages/iracing-actions/src/**/*.test-support.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [{ name: '@iracedeck/pi-components', message: PI_COMPONENTS_MESSAGE }],
+          patterns: [{ group: ['@iracedeck/pi-components/*'], message: PI_COMPONENTS_MESSAGE }],
         },
       ],
     },
