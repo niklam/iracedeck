@@ -51,6 +51,7 @@ export default defineConfig({
       "@iracedeck/audio-native": packageSrc("audio-native"),
       "@iracedeck/audio-scenarios/pit-crew": packageSrc("audio-scenarios", "src/catalog/pit-crew/index.ts"),
       "@iracedeck/audio-scenarios": packageSrc("audio-scenarios"),
+      "@iracedeck/audio-service/testing": packageSrc("audio-service", "src/testing.ts"),
       "@iracedeck/audio-service": packageSrc("audio-service"),
       "@iracedeck/callout-script": packageSrc("callout-script"),
       "@iracedeck/callout-settings": packageSrc("callout-settings"),
