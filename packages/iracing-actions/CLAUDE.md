@@ -47,6 +47,13 @@ src/
       profiles.json                      # GENERATED bundled-profile registry (pnpm generate:action-profiles)
     settings/                            # Plugin-global PI template
       settings.ejs
+  pi-templates/                          # Tests only (#1375): the templates, the settings window's
+                                         # page and data/ JSON held to the @iracedeck/pi-components
+                                         # partials they include — footer placement, the knob-shaped
+                                         # dial PIs, the window page's cards, the real data rendered.
+                                         # action-templates.test-support.ts walks actions/. Partials
+                                         # are reached through @iracedeck/pi-components/build and
+                                         # /testing (a devDependency), never by relative path
   audio/                                 # Shared audio helpers: Race Engineer/Radar master gates and
                                          # the side effects of a gate change (feature-gates, #1007),
                                          # voice-sequence player + toggle acknowledgment

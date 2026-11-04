@@ -11,8 +11,6 @@ import path from "node:path";
 import url from "node:url";
 import { describe, expect, it } from "vitest";
 
-import { ACTIONS_DATA_DIR, SETTINGS_WINDOW_PAGE } from "./action-templates.test-support.js";
-
 /**
  * Renders the REAL `partials/global-profile-auto-switch.ejs` (#1111), the
  * settings window's "Automatically switch to profile" card.
@@ -23,15 +21,25 @@ import { ACTIONS_DATA_DIR, SETTINGS_WINDOW_PAGE } from "./action-templates.test-
  * reactor read. A drift is silent — a select bound to a key the schema does
  * not know saves a value nothing reads — so the markup is pinned to the
  * constants and the schema here.
+ *
+ * It renders a fixture of profiles; the committed `data/profiles.json` is
+ * rendered through it beside the data, and the settings window's Profiles pane
+ * is held beside the page, in `iracing-actions`' `src/pi-templates/` (#1375).
  */
 const partialsDir = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), "../../partials");
 const templatePath = path.join(partialsDir, "global-profile-auto-switch.ejs");
-const windowTemplate = SETTINGS_WINDOW_PAGE;
-const realProfiles = JSON.parse(readFileSync(path.join(ACTIONS_DATA_DIR, "profiles.json"), "utf-8")) as ProfileRow[];
 
 type ProfileRow = { name: string; deviceType?: number; displayName?: string };
 
-function render(profiles: ProfileRow[] = realProfiles): string {
+/** Device variants of two templates: the shape `data/profiles.json` has, small enough to read. */
+const fixture: ProfileRow[] = [
+  { name: "iRaceDeck Default XL", deviceType: 2, displayName: "iRaceDeck Default" },
+  { name: "iRaceDeck Default SD", deviceType: 0, displayName: "iRaceDeck Default" },
+  { name: "iRaceDeck Replay XL", deviceType: 2, displayName: "iRaceDeck Replay" },
+  { name: "iRaceDeck Replay Plus XL", deviceType: 13, displayName: "iRaceDeck Replay" },
+];
+
+function render(profiles: ProfileRow[] = fixture): string {
   const require = (spec: string): unknown => {
     if (spec !== "./data/profiles.json") throw new Error(`unexpected require: ${spec}`);
 
@@ -87,19 +95,6 @@ describe("global-profile-auto-switch.ejs (#1111)", () => {
     }
   });
 
-  it("offers Do not change the profile first, then every bundled template once, in every row", () => {
-    const templates = [...new Set(realProfiles.map((p) => p.displayName ?? p.name))];
-
-    expect(templates.length).toBeGreaterThan(0);
-
-    for (const row of kindRows) {
-      expect(row.options, row.label).toEqual([
-        ["", "Do not change the profile"],
-        ...templates.map((name): [string, string] => [name, name.replace(/^iRaceDeck /, "")]),
-      ]);
-    }
-  });
-
   it("collapses device variants of one template into one option", () => {
     const options = rows(
       render([
@@ -129,31 +124,5 @@ describe("global-profile-auto-switch.ejs (#1111)", () => {
   it("keeps the rows enabled while the toggle is off — no disabled attribute, no gating script", () => {
     expect(html).not.toContain("disabled");
     expect(html).not.toContain("<script");
-  });
-});
-
-describe("the settings window's Profiles pane (#1111)", () => {
-  const source = readFileSync(windowTemplate, "utf-8");
-  const pane =
-    /<% if \(locals\.platform\?\.features\?\.profiles !== false\) \{ %>\s*<section class="sw-pane" id="pane-profiles"[\s\S]*?<\/section>\s*<% \} %>/.exec(
-      source,
-    )?.[0];
-
-  it("is gated on the profiles flag and holds the card after Stream Deck Profiles", () => {
-    expect(pane).toBeDefined();
-
-    const profiles = pane!.indexOf("include('global-stream-deck-profiles', __sw)");
-    const auto = pane!.indexOf(
-      "include('accordion', { title: 'Automatically switch to profile', content: include('global-profile-auto-switch'), settingsWindow: true })",
-    );
-
-    expect(profiles).toBeGreaterThan(-1);
-    expect(auto).toBeGreaterThan(profiles);
-  });
-
-  it("binds the auto-switch keys nowhere else on the page", () => {
-    for (const key of [PROFILE_AUTO_SWITCH_ENABLED_KEY, ...Object.values(PROFILE_FOR_SESSION_KIND_KEYS)]) {
-      expect(source, key).not.toContain(key);
-    }
   });
 });

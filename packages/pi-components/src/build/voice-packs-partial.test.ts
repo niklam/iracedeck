@@ -4,8 +4,6 @@ import path from "node:path";
 import url from "node:url";
 import { describe, expect, it } from "vitest";
 
-import { SETTINGS_WINDOW_PAGE } from "./action-templates.test-support.js";
-
 /**
  * Renders the REAL `partials/voice-packs.ejs` (#1145), which took over the block
  * `race-engineer-settings.ejs` rendered for the settings window since #1034.
@@ -18,11 +16,11 @@ import { SETTINGS_WINDOW_PAGE } from "./action-templates.test-support.js";
  * 2. It only renders when the flag is passed to THIS include. The window nests
  *    it inside an `accordion` include's object literal, evaluated in the page's
  *    own scope, so a caller that forgets `{ settingsWindow: true }` gets an
- *    empty card.
+ *    empty card. That the settings window's page does pass it is held beside
+ *    the page, in `iracing-actions`' `src/pi-templates/settings-window-page.test.ts` (#1375).
  */
 const partialsDir = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), "../../partials");
 const templatePath = path.join(partialsDir, "voice-packs.ejs");
-const windowTemplate = SETTINGS_WINDOW_PAGE;
 
 function render(locals: Record<string, unknown>): string {
   return ejs.render(readFileSync(templatePath, "utf-8"), locals, { filename: templatePath });
@@ -91,21 +89,5 @@ describe("voice-packs partial (#1145)", () => {
     expect(html).not.toContain("ird-voice-pack");
     expect(html).not.toContain("ird-open-voice-packs-folder");
     expect(html).not.toContain("Installed Voices");
-  });
-
-  it("the settings window renders it as a Voice Packs card, passing settingsWindow into THIS include", () => {
-    const source = readFileSync(windowTemplate, "utf-8");
-
-    expect(source).toContain(
-      "include('accordion', { title: 'Voice Packs', content: include('voice-packs', { settingsWindow: true }), settingsWindow: true })",
-    );
-  });
-
-  it("stacks Voice Packs above Setup Warning Patterns in one column", () => {
-    const source = readFileSync(windowTemplate, "utf-8");
-
-    expect(source).toMatch(
-      /<div class="sw-stack">\s*<%- include\('accordion', \{ title: 'Voice Packs'[^\n]*\n\s*<%- include\('accordion', \{ title: 'Setup Warning Patterns'[^\n]*\n\s*<\/div>/,
-    );
   });
 });

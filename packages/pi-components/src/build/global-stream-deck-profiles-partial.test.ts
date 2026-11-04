@@ -4,8 +4,6 @@ import path from "node:path";
 import url from "node:url";
 import { describe, expect, it } from "vitest";
 
-import { ACTIONS_DATA_DIR } from "./action-templates.test-support.js";
-
 /**
  * Renders the REAL `partials/global-stream-deck-profiles.ejs` (#736, #992,
  * #1457). In the settings window each template row carries the device types it
@@ -13,14 +11,25 @@ import { ACTIONS_DATA_DIR } from "./action-templates.test-support.js";
  * can hide a row the chosen deck has no variant of and show the note when it
  * has none. The Property Inspector rendering has no deck picker and must not
  * change.
+ *
+ * It renders a fixture of profiles; the committed `data/profiles.json` is
+ * rendered through it beside the data, in `iracing-actions`'
+ * `src/pi-templates/template-data.test.ts` (#1375).
  */
 const partialsDir = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), "../../partials");
 const templatePath = path.join(partialsDir, "global-stream-deck-profiles.ejs");
-const realProfiles = JSON.parse(readFileSync(path.join(ACTIONS_DATA_DIR, "profiles.json"), "utf-8")) as ProfileRow[];
 
 type ProfileRow = { name: string; deviceType?: number; displayName?: string };
 
-function render(locals: Record<string, unknown>, profiles: ProfileRow[] = realProfiles): string {
+/** Device variants of two templates: the shape `data/profiles.json` has, small enough to read. */
+const fixture: ProfileRow[] = [
+  { name: "iRaceDeck Default XL", deviceType: 2, displayName: "iRaceDeck Default" },
+  { name: "iRaceDeck Default SD", deviceType: 0, displayName: "iRaceDeck Default" },
+  { name: "iRaceDeck Replay XL", deviceType: 2, displayName: "iRaceDeck Replay" },
+  { name: "iRaceDeck Replay Plus XL", deviceType: 13, displayName: "iRaceDeck Replay" },
+];
+
+function render(locals: Record<string, unknown>, profiles: ProfileRow[] = fixture): string {
   const require = (spec: string): unknown => {
     if (spec !== "./data/profiles.json") throw new Error(`unexpected require: ${spec}`);
 
@@ -29,13 +38,6 @@ function render(locals: Record<string, unknown>, profiles: ProfileRow[] = realPr
 
   return ejs.render(readFileSync(templatePath, "utf-8"), { require, ...locals }, { filename: templatePath });
 }
-
-const fixture: ProfileRow[] = [
-  { name: "iRaceDeck Default XL", deviceType: 2, displayName: "iRaceDeck Default" },
-  { name: "iRaceDeck Default SD", deviceType: 0, displayName: "iRaceDeck Default" },
-  { name: "iRaceDeck Replay XL", deviceType: 2, displayName: "iRaceDeck Replay" },
-  { name: "iRaceDeck Replay Plus XL", deviceType: 13, displayName: "iRaceDeck Replay" },
-];
 
 /** The `data-device-types` each row carries, keyed by its label. */
 function rowTypes(html: string): Record<string, string> {
@@ -53,24 +55,6 @@ describe("global-stream-deck-profiles.ejs in the settings window (#1457)", () =>
     expect(html).toContain(
       '<ird-profile-switch profile="iRaceDeck Default" label="Switch" device-from="sw-deck-device">',
     );
-  });
-
-  it("puts every real template's row inside ird-profile-variants, bound to the deck picker", () => {
-    const html = render({ settingsWindow: true });
-    const wrapper = /<ird-profile-variants device-from="sw-deck-device">([\s\S]*?)<\/ird-profile-variants>/.exec(html);
-    const templates = [...new Set(realProfiles.map((p) => p.displayName ?? p.name))];
-
-    expect(html).toContain('<ird-deck-device-select select-id="sw-deck-device">');
-    expect(wrapper).not.toBeNull();
-    const label = (name: string): string => name.replace(/^iRaceDeck /, "");
-
-    expect(Object.keys(rowTypes(wrapper![1]))).toEqual(templates.map(label));
-
-    for (const name of templates) {
-      const types = realProfiles.filter((p) => (p.displayName ?? p.name) === name).map((p) => p.deviceType);
-
-      expect(rowTypes(html)[label(name)]!.split(",").map(Number).sort(), name).toEqual([...new Set(types)].sort());
-    }
   });
 
   it("carries the no-profiles note, hidden until a deck without variants is chosen", () => {

@@ -8,7 +8,6 @@ import {
   pluginConfigShapeProblems,
   readPluginPackage,
 } from "../../../../scripts/lib/plugin-config-shape.mjs";
-import { SETTINGS_WINDOW_PAGE } from "./action-templates.test-support.js";
 import { browserDir, SETTINGS_WINDOW_ICON } from "./index.mjs";
 
 /**
@@ -24,11 +23,12 @@ import { browserDir, SETTINGS_WINDOW_ICON } from "./index.mjs";
  * a `<link>` whose href resolves to nothing renders exactly like no link at
  * all. Nothing in a build, a test run or a screenshot capture would say so —
  * the failure is a globe nobody is looking at on a machine nobody is running.
- * So each hop is pinned here.
+ * So each hop is pinned here, but the page's `<link>`: the page is
+ * `iracing-actions`', so that hop is held beside it, in
+ * `src/pi-templates/settings-window-page.test.ts` (#1375).
  */
 const packageRoot = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), "../..");
 const repoRoot = path.resolve(packageRoot, "../..");
-const windowPage = SETTINGS_WINDOW_PAGE;
 
 /**
  * The shared plugin factory (#1349): the one place a plugin build copies this
@@ -91,13 +91,6 @@ describe("settings-window favicon (#1156)", () => {
     expect(width).toBe(height);
     expect(width).toBeGreaterThanOrEqual(256);
     expect(colorType).toBe(2);
-  });
-
-  it("is linked by the window page, by that same name", () => {
-    const page = readFileSync(windowPage, "utf-8");
-    const link = /<link[^>]*rel="icon"[^>]*>/.exec(page)?.[0] ?? "";
-
-    expect(link).toContain(`href="${SETTINGS_WINDOW_ICON}"`);
   });
 
   it("is copied into every plugin's ui/ beside the page that links it, by the shared factory", () => {

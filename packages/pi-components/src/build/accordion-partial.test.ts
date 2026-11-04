@@ -1,12 +1,11 @@
 import { CALLOUT_SETTING_KEYS } from "@iracedeck/callout-settings";
 import ejs from "ejs";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import url from "node:url";
 import { describe, expect, it } from "vitest";
 
-import { ACTIONS_DIR } from "./action-templates.test-support.js";
 import { loadCalloutPiGroups } from "./callout-pi-groups.mjs";
 
 /** The rows exactly as the build reads them: from the built registry, in a fresh process. */
@@ -23,13 +22,18 @@ function render(template: string, data: Record<string, unknown> = {}): string {
   return ejs.render(template, data, { views: [partialsDir], filename: path.join(partialsDir, "_test.ejs") });
 }
 
-// The templates `require()` shared data (callout ids, profiles etc.); the real
-// build resolves that from iracing-actions' data dir — point the tests there.
+// A partial that reads build data `require()`s it from the including page's
+// `data/` folder (`iracing-actions`' `src/actions/data/` in the real build).
+// These tests pin setting keys, not the data, so they hand it a fixture; the
+// committed data is rendered through the partials beside it, in
+// `iracing-actions`' `src/pi-templates/template-data.test.ts` (#1375).
+const DATA_FIXTURES: Record<string, unknown> = {
+  "./data/profiles.json": [{ name: "iRaceDeck Default SD", deviceType: 0, displayName: "iRaceDeck Default" }],
+};
 const dataRequire = (spec: string): unknown => {
-  const rel = spec.replace(/^\.\//, "");
-  const file = path.resolve(ACTIONS_DIR, rel);
+  if (!(spec in DATA_FIXTURES)) throw new Error(`unexpected require: ${spec}`);
 
-  return JSON.parse(readFileSync(file, "utf-8"));
+  return DATA_FIXTURES[spec];
 };
 const withRequire = { require: dataRequire };
 

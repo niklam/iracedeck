@@ -1,11 +1,9 @@
 import { GlobalSettingsSchema } from "@iracedeck/settings";
 import ejs from "ejs";
-import { readFileSync } from "node:fs";
 import path from "node:path";
 import url from "node:url";
 import { describe, expect, it } from "vitest";
 
-import { SETTINGS_WINDOW_PAGE } from "./action-templates.test-support.js";
 import { loadCalloutPiGroups } from "./callout-pi-groups.mjs";
 
 /**
@@ -20,10 +18,10 @@ import { loadCalloutPiGroups } from "./callout-pi-groups.mjs";
  *
  * The three plugins' `settings-window.html` are compiled from
  * `iracing-actions`' `settings-window.ejs`, which includes this partial on
- * every platform, so rendering the partial covers what each of them ships.
+ * every platform (held there, in `src/pi-templates/settings-window-page.test.ts`,
+ * #1375), so rendering the partial covers what each of them ships.
  */
 const partialsDir = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), "../../partials");
-const settingsWindowTemplate = SETTINGS_WINDOW_PAGE;
 
 /** The numeric settings the translator also clamps; the card must render a slider for each. */
 const TRANSLATOR_CLAMPED = [
@@ -85,10 +83,6 @@ function parsed(key: string, value: unknown): unknown {
 const sliders = globalSliders(renderCard());
 
 describe("race-engineer-callouts sliders against the settings schema (#1376)", () => {
-  it("is the partial the settings window ships", () => {
-    expect(readFileSync(settingsWindowTemplate, "utf-8")).toContain("include('race-engineer-callouts')");
-  });
-
   it("renders a global slider for each setting the translator also clamps", () => {
     const found = sliders.map(({ setting }) => setting);
 
