@@ -47,6 +47,7 @@ import {
   ranges,
   resolveDir,
   trustedMask,
+  unreadablePrograms,
   view,
   words,
 } from "./shell-lexer.mjs";
@@ -1759,10 +1760,31 @@ const checkName = (c) => c.name ?? c.context ?? c.__typename ?? "?";
  * A PowerShell command (`ctx.shell`, #1520) is read through
  * `powershellAsBash` in `shell-lexer.mjs` and skips the `bashOnly` rules — the traps that
  * describe bash syntax, which in PowerShell would only misfire.
+ *
+ * A program word the lexer cannot read — its last path segment expands or
+ * globs: `$GH`, `$(which gh)`, `g?` (`unreadablePrograms` in
+ * `shell-lexer.mjs`) — could be gh or git, so the command is judged again
+ * with that word replaced by each of them (#1606). Anything a rule would say
+ * about either, an ask included, refuses it, naming the word: the hook cannot
+ * tell what the shell will run, and a deny costs one re-spelling. A word no
+ * rule would say anything about as either (`$EDITOR notes.md`) passes.
  */
 export function checkBash(command, ctx) {
   const powershell = ctx.shell === POWERSHELL;
   const text = powershell ? powershellAsBash(command) : command;
+  const verdict = judge(text, ctx, powershell);
+  if (typeof verdict === "string") return verdict;
+  for (const { start, end, word } of unreadablePrograms(text))
+    for (const program of ["gh", "git"]) {
+      const v = judge(text.slice(0, start) + program + text.slice(end), ctx, powershell);
+      if (v)
+        return `Could not read the program \`${word}\`; judged as ${program}: ${typeof v === "string" ? v : v.ask} Spell the program as a plain word.`;
+    }
+  return verdict;
+}
+
+/** The rules' verdict on `text`, already read as bash ({@link checkBash}). */
+function judge(text, ctx, powershell) {
   const asks = [];
   for (const rule of rules) {
     if (powershell && rule.bashOnly) continue;

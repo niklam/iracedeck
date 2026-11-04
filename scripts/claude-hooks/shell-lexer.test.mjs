@@ -310,6 +310,38 @@ describe("the program word is read as the program it runs (#1606)", () => {
     expect(powershellAsBash(ps)).toBe(out),
   );
 
+  it.each([
+    ["$GH pr merge 5", "$GH"],
+    ["${GH} pr", "${GH}"],
+    ["$(which gh) pr", "$(which gh)"],
+    ["`which gh` pr", "`which gh`"],
+    [`"$GH" pr`, `"$GH"`],
+    ["/usr/bin/$GH pr", "/usr/bin/$GH"],
+    ["g? pr", "g?"],
+    ["g* pr", "g*"],
+    ["g[h] pr", "g[h]"],
+    ["{g,}h pr", "{g,}h"],
+    ["ls && $EDITOR f", "$EDITOR"],
+  ])("lists a program word it cannot read: %s", (command, word) => {
+    const found = lexer.unreadablePrograms?.(command);
+    expect(found).toEqual([{ start: command.indexOf(word), end: command.indexOf(word) + word.length, word }]);
+  });
+
+  it("reads a program word whose expansion or glob is in an earlier path segment, and skips what is no program", () => {
+    for (const command of [
+      "$HOME/bin/gh pr",
+      "$(git rev-parse --show-toplevel)/scripts/x.sh",
+      "echo $GH",
+      "X=$(gh pr view 7) ls",
+      "$x = 5",
+      "[ -f x ]",
+      "[[ -f x ]]",
+      "{ ls; }",
+      `'$GH' pr`,
+    ])
+      expect(lexer.unreadablePrograms?.(command), command).toEqual([]);
+  });
+
   it("powershellAsBash folds a program word's case, which PowerShell resolves in any case", () => {
     expect(powershellAsBash("CD x; GH.EXE pr; Git status")).toBe("cd x; gh.exe pr; git status");
     expect(powershellAsBash(`& "C:\\Tools\\GH.EXE" pr`)).toBe(`  "C:/Tools/gh.exe" pr`);

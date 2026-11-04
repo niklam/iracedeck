@@ -3958,6 +3958,35 @@ describe("every spelling of a program reaches the guards that name it (#1606)", 
     for (const git of GIT) expect(worktreeAddTarget(`${git} worktree add ../ir-5 -b fix/5-x`), git).toBe("../ir-5");
   });
 
+  // A program the hook cannot read is judged as each program the guards name,
+  // and anything they would say about it refuses it.
+  describe("a program word the hook cannot read", () => {
+    it.each(["$GH", "${GH}", `"$GH"`, "$(which gh)", "`which gh`", "/usr/bin/$GH", "g?", "{g,}h"])(
+      "is judged as gh: %s pr merge 5",
+      (gh) =>
+        expect(deny(`${gh} pr merge 5 --squash`)).toMatch(
+          /^Could not read the program `.+`; judged as gh: Could not read the PR "5" with gh; refusing to merge blind\..*Spell the program as a plain word\.$/,
+        ),
+    );
+    it("is judged as git, and an ask becomes a deny", () => {
+      expect(deny("$GIT push origin v3.2.0")).toMatch(
+        /^Could not read the program `\$GIT`; judged as git: Pushing a tag/,
+      );
+      const onBranch = ctx({ branch: () => "fix/5-x", staged: () => ["docs/superpowers/specs/a.md"] });
+      expect(deny("cd ../ir-5 && $(command -v git) commit -m x", onBranch)).toMatch(
+        /judged as git: A spec commits to master/,
+      );
+    });
+    it("passes when no guard would say anything about either program", () => {
+      passes("$EDITOR notes.md");
+      passes("ls && $EDITOR notes.md");
+      passes(`for f in a b; do "$f" --version; done`);
+      passes(`$PNPM build`);
+    });
+    it("is judged in a PowerShell command too", () =>
+      expect(deny("& $gh pr merge 5 --squash", ctx({ shell: POWERSHELL }))).toMatch(/judged as gh/));
+  });
+
   // PowerShell runs a quoted or path program only through its call operator,
   // `&`, which the bash reading took for a background job.
   describe("PowerShell's spellings, the call operator among them", () => {
