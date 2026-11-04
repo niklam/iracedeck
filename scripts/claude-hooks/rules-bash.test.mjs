@@ -4215,4 +4215,31 @@ describe("the program-word rewrite's review round (#1606)", () => {
       passes(`env "$R" ls`);
     });
   });
+
+  // Bash takes redirections ahead of the command name.
+  describe("a redirection ahead of the program", () => {
+    it.each([
+      "2>/dev/null gh",
+      "</dev/null gh.exe",
+      "2> /dev/null gh",
+      ">&2 gh",
+      `<<< "x" gh`,
+      "&>log gh",
+      "env 2>/dev/null gh",
+      "cd ../ir-5 && >log gh",
+    ])("the merge gate judges %s pr merge as it judges gh", (gh) => {
+      passes(`${gh} pr merge 5 --squash`, ctx({ prView: green }));
+      expect(deny(`${gh} pr merge 5 --squash`, ctx({ prView: unapproved }))).toMatch(/REVIEW_REQUIRED/);
+    });
+    it.each([">log git push origin integration", "2>&1 >log git push origin integration", ">x git -c a=b push --tags"])(
+      "the git traps read %s",
+      (c) => expect(checkBash(c, ctx())).toBeTruthy(),
+    );
+    it("refuses a redirection whose target runs a command, and is not fooled by a redirect's own &", () => {
+      expect(deny(">(cat) gh pr merge 5 --squash", ctx({ prView: green }))).toBeTruthy();
+      expect(deny("2>`x` gh pr merge 5 --squash", ctx({ prView: green }))).toBeTruthy();
+      passes("echo x &>log gh pr merge 5", ctx({ prView: green }));
+      passes("echo 2>/dev/null gh pr merge 5", ctx({ prView: green }));
+    });
+  });
 });

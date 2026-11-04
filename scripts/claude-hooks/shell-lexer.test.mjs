@@ -493,4 +493,32 @@ describe("the program-word rewrite's review round (#1606)", () => {
     expect(lexer.unreadablePrograms(`env "$R" gh pr`)).toEqual([{ start: 4, end: 8, word: `"$R"`, env: true }]);
     expect(lexer.unreadablePrograms("$R gh pr")).toEqual([{ start: 0, end: 2, word: "$R" }]);
   });
+
+  it.each([
+    "2>/dev/null gh pr",
+    "</dev/null gh pr",
+    "2> x gh pr",
+    ">&2 gh pr",
+    "2>&1 >log gh pr",
+    "<<<x gh pr",
+    "&>log gh pr",
+  ])("cmd() steps over a redirection ahead of the program: %s", (command) =>
+    expect(cmd(/gh\s+pr\b/).test(trustedMask(command))).toBe(true),
+  );
+
+  it("does not take a redirect's own & for a command boundary", () => {
+    expect(cmd(/gh\s+pr\b/).test(trustedMask("echo x &>log gh pr"))).toBe(false);
+    expect(cmd(/gh\s+pr\b/).test(trustedMask("echo x 2>&1 gh pr"))).toBe(false);
+    expect(cmd(/gh\s+pr\b/).test(trustedMask("echo x & gh pr"))).toBe(true);
+  });
+
+  it("steps over a long run of redirections in linear time", () => {
+    for (const n of [30, 4000])
+      for (const unit of ["2>/dev/null ", "> x ", "2>&1 ", "<<<x "]) {
+        const command = `${unit.repeat(n)}echo done`;
+        const started = Date.now();
+        expect(cmd(/gh\s+pr\b/).test(trustedMask(command))).toBe(false);
+        expect(Date.now() - started, `${n} × "${unit}"`).toBeLessThan(200);
+      }
+  });
 });

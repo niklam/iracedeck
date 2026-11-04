@@ -345,6 +345,8 @@ function* programPositions(text) {
   const lead = new RegExp(String.raw`\s*${COMMAND_LEAD}`, "y");
   for (let p = 0; p <= text.length; p++) {
     if (p > 0 && !"\n|;&()\x60".includes(text[p - 1])) continue;
+    // A redirect's own `&` (`2>&1`, `&>log`) ends no command.
+    if (text[p - 1] === "&" && (text[p] === ">" || /[<>]/.test(text[p - 2] ?? ""))) continue;
     lead.lastIndex = p;
     const m = lead.exec(text);
     if (m) yield { start: p + m[0].length, lead: m[0] };
@@ -720,9 +722,13 @@ export function ranges(text, sep) {
   return out;
 }
 
-/** The separators a chain is split at for `cd`/`-C` tracking; the merge and tag rules also split at a lone `&`. */
+/**
+ * The separators a chain is split at for `cd`/`-C` tracking; the merge and tag
+ * rules also split at a lone `&`, never at a redirect's own (`>&2`, `&>log`),
+ * which a redirection ahead of the program may carry (#1606 review).
+ */
 const CHAIN = /\n|&&|\|\||;|\|/;
-export const CHAIN_AND_BACKGROUND = /&&|\|\||[;|&\n]/;
+export const CHAIN_AND_BACKGROUND = /&&|\|\||[;|\n]|(?<![<>])&(?!>)/;
 /** What ends one command's arguments inside a chain segment ({@link chainCommands}): a paren, a backtick, or a `&` that is no redirect's. */
 const COMMAND_END = /[()\x60]|(?<![<>])&(?!>)/;
 
@@ -976,7 +982,11 @@ export const has = (command, re) => re.test(re.anchored ? trustedMask(command) :
  * every trap unchecked, #1307 review), and the wrappers that run the next
  * word as a command, with their own options — the ones that take a value
  * (`env -u NAME`, `env -C DIR`, `env -S STRING`, `exec -a NAME`,
- * `timeout -k 5`, `xargs -I {}`) with it, and `timeout`'s duration.
+ * `timeout -k 5`, `xargs -I {}`) with it, and `timeout`'s duration, and the
+ * redirections bash takes ahead of the command name (`2>/dev/null gh …`, #1606
+ * review): an optional fd, one operator (`<`, `>`, `>>`, `>|`, `<>`, `&>`,
+ * `&>>`, `>&`, `<&`, `<<<`) and its target, attached or not; a target holds no
+ * operator character, so each redirection has one parse too.
  * A value never starts with `-`, so every token has exactly one parse: were a
  * `-u` free to take the next `-u` as its value, a long run of them on a
  * command that does not match backtracks exponentially, and regex time is not
@@ -986,7 +996,7 @@ export const has = (command, re) => re.test(re.anchored ? trustedMask(command) :
  * obfuscation. A string handed to a shell (`bash -c`, `eval`) is not lexed —
  * the rules read the raw command then ({@link view}).
  */
-export const COMMAND_LEAD = String.raw`(?:(?:if|then|do|else|elif|while|until|!|\{)\s+|(?:time|command|exec|env|nohup)(?:\s+(?:-[uCSa]|--unset|--chdir|--split-string)\s+[^\s-]\S*|\s+-\S+)*\s+|timeout(?:\s+(?:-[ks]|--kill-after|--signal)\s+[^\s-]\S*|\s+-\S+)*\s+\d[\d.]*[smhd]?\s+|xargs(?:\s+-[IdEeLnPs]\s+[^\s-]\S*|\s+-\S+)*\s+|[A-Za-z_]\w*(?:\[[^\]\s]*\])?\+?=\S*\s+)*`;
+export const COMMAND_LEAD = String.raw`(?:(?:if|then|do|else|elif|while|until|!|\{)\s+|(?:time|command|exec|env|nohup)(?:\s+(?:-[uCSa]|--unset|--chdir|--split-string)\s+[^\s-]\S*|\s+-\S+)*\s+|timeout(?:\s+(?:-[ks]|--kill-after|--signal)\s+[^\s-]\S*|\s+-\S+)*\s+\d[\d.]*[smhd]?\s+|xargs(?:\s+-[IdEeLnPs]\s+[^\s-]\S*|\s+-\S+)*\s+|[A-Za-z_]\w*(?:\[[^\]\s]*\])?\+?=\S*\s+|\d*(?:<<<|[<>]&|&>>?|>>|>\||<>|<|>)\s*[^\s;&|()<>]+\s+)*`;
 
 /** One character run of a git option's value: a quoted run (`"___"` in the masked text) or an escape stays whole. */
 const GIT_VALUE_PART = String.raw`(?:"[^"]*"|'[^']*'|\\[\s\S]|[^\s\\"'])`;
@@ -1030,10 +1040,13 @@ export const GIT_GLOBALS = String.raw`(?:\s+${GIT_OPTION.replace(/\((?!\?)/g, "(
  * echo or a docs edit that merely MENTIONS a trapped shape
  * (`grep 'pnpm exec vitest'`) would be denied.
  */
+/** A `&` that ends a command, as a separator or a background: not a redirect's own, as in `2>&1`, `<&0` or `&>log`. */
+const BOUNDARY_AMP = String.raw`(?<![<>])&(?!>)`;
+
 export function cmd(re) {
   const flags = new Set([...re.flags, "m"]);
   const anchored = new RegExp(
-    String.raw`(?:^[ \t]*|[|;&()\x60]\s*)${COMMAND_LEAD}(?:${re.source})`,
+    String.raw`(?:^[ \t]*|(?:[|;()\x60]|${BOUNDARY_AMP})\s*)${COMMAND_LEAD}(?:${re.source})`,
     [...flags].join(""),
   );
   // Read by `has`: an anchored regex is tested on the trusted-masked text.

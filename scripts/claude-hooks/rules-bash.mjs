@@ -350,7 +350,9 @@ const MERGE_PREFIX_WORDS = new Set(["!", "command", "env", "exec", "nohup", "tim
  * variables, `GH_REPO` aside, which the gate reads. An option to a wrapper
  * (`env -C<dir>`, `env -i`, `env -u GH_REPO`) or a `GIT_DIR` can move what gh
  * resolves the merge to, so anything else is refused. Names are compared in
- * any case: Windows hands gh its environment case-blind.
+ * any case: Windows hands gh its environment case-blind. A redirection
+ * (`2>/dev/null`, `</dev/null`, #1606 review) moves nothing gh reads, so it is
+ * read too, unless its target runs a command (`>(…)`, a backtick).
  */
 function plainMergePrefix(prefix) {
   const words = prefix
@@ -366,10 +368,18 @@ function plainMergePrefix(prefix) {
     }
     const name = /^([A-Za-z_][A-Za-z0-9_]*)=/.exec(w)?.[1];
     if (name && (name === "GH_REPO" || !/^(?:GH|GIT)_/i.test(name))) continue;
+    const redirect = REDIRECT_WORD.exec(w);
+    if (redirect) {
+      const target = redirect[1] || words[++k];
+      if (target !== undefined && !/[()\x60]/.test(target)) continue;
+    }
     return false;
   }
   return true;
 }
+
+/** A redirection word: an optional fd and one operator, the target attached in group 1 or in the next word. */
+const REDIRECT_WORD = /^\d*(?:<<<|[<>]&|&>>?|>>|>\||<>|<|>)(.*)$/;
 
 /** `gh pr merge` flags that take a value, so the value is never read as the PR or as a flag. */
 const MERGE_VALUE_FLAGS = new Set([
