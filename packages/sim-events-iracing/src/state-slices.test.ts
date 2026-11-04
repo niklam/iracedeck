@@ -697,6 +697,80 @@ describe("the state-slice scanner (positive controls)", () => {
       expect(scan.violations).toEqual([]);
     });
 
+    it("reports a read through an inline import type, which counts as importing the state", () => {
+      const scan = planted(plantedState(), {
+        "inline.ts": `export function diff(state: import("../state.js").TranslatorState): unknown {\n  return state.fastestLap;\n}\n`,
+        "inline-slice.ts": `export function diff(store: import("../state.js").TrackGapsState, state: import("../state.js").TranslatorState): boolean {\n  return state.pitLaneInitialized;\n}\n`,
+      });
+
+      expect(scan.violations.map((v) => `${v.rule}:${v.module}:${v.line}:${v.name}`)).toEqual([
+        "C:inline-slice.ts:1:TrackGapsState",
+        "C:inline.ts:2:fastestLap",
+      ]);
+      expect(scan.stateImporters).toEqual(["inline-slice.ts", "inline.ts"]);
+    });
+
+    it("reports an exported type that stands for or holds the state, by its exported name", () => {
+      const scan = planted(plantedState(), {
+        "a.ts": `${IMPORT}export type DiffState = TranslatorState;\n`,
+        "b.ts": `${IMPORT}type Local = Readonly<TranslatorState>;\nexport type { Local as Shared };\n`,
+        "c.ts": `${IMPORT}export interface Ctx { now: number; state: TranslatorState }\n`,
+        "d.ts": `export type { TranslatorState } from "../state.js";\n`,
+      });
+
+      expect(scan.violations.map((v) => `${v.rule}:${v.module}:${v.line}:${v.name}`)).toEqual([
+        "C:a.ts:2:DiffState",
+        "C:b.ts:3:Shared",
+        "C:c.ts:2:Ctx",
+        "C:d.ts:1:TranslatorState",
+      ]);
+      expect(scan.violations[0].message).toContain("Keep such a type module-local");
+    });
+
+    it("passes an exported type that neither is nor holds the state", () => {
+      const scan = planted(plantedState(), {
+        "gaps.ts": `${IMPORT}export type Reading = { gap: number; traces: TranslatorState["pitLaneInitialized"] };\ntype Local = TranslatorState;\nexport function diff(state: Local): boolean {\n  return state.pitLaneInitialized;\n}\n`,
+      });
+
+      expect(scan.violations).toEqual([]);
+    });
+
+    it("reports a read through a container property, directly, through an alias and nested", () => {
+      const scan = planted(plantedState(), {
+        "direct.ts": `${IMPORT}export function diff(ctx: { state: TranslatorState }): unknown {\n  return ctx.state.fastestLap;\n}\n`,
+        "alias.ts": `${IMPORT}type Ctx = { now: number; state: Readonly<TranslatorState> };\nexport function diff(ctx: Ctx): unknown {\n  const { state } = ctx;\n  const held = ctx.state;\n  return [state.trackGaps, held.fastestLap, ctx["state"].trackGaps];\n}\n`,
+        "nested.ts": `${IMPORT}type Outer = { inner: { state: TranslatorState } };\nexport function diff(ctx: Outer): unknown {\n  const { inner: { state: { fastestLap } } } = ctx;\n  return [fastestLap, ctx.inner.state.trackGaps];\n}\n`,
+      });
+
+      expect(scan.violations.map((v) => `${v.rule}:${v.module}:${v.line}:${v.name}`)).toEqual([
+        "C:alias.ts:6:trackGaps",
+        "C:alias.ts:6:fastestLap",
+        "C:alias.ts:6:trackGaps",
+        "C:direct.ts:3:fastestLap",
+        "C:nested.ts:4:fastestLap",
+        "C:nested.ts:5:trackGaps",
+      ]);
+    });
+
+    it("reports a read through a union or an intersection with the state", () => {
+      const scan = planted(plantedState(), {
+        "a.ts": `${IMPORT}export function diff(state: TranslatorState | null, both: TranslatorState & { extra: number }): unknown {\n  return [state!.fastestLap, both.trackGaps];\n}\n`,
+      });
+
+      expect(violationNames(scan)).toEqual(["C:fastestLap", "C:trackGaps"]);
+    });
+
+    it("passes ctx.fastestLap on a container of the state, and an indexed access of the state", () => {
+      const scan = planted(plantedState(), {
+        "direct.ts": `${IMPORT}export function diff(ctx: { state: TranslatorState; fastestLap: number }): number {\n  return ctx.fastestLap;\n}\n`,
+        "alias.ts": `${IMPORT}type Ctx = { state: TranslatorState; trackGaps: number[] };\nexport function diff(ctx: Ctx): unknown {\n  const { trackGaps } = ctx;\n  return [ctx.trackGaps, trackGaps];\n}\n`,
+        "indexed.ts": `${IMPORT}export function diff(traces: TranslatorState["pitLaneInitialized"] & { fastestLap: number }): number {\n  return traces.fastestLap;\n}\n`,
+      });
+
+      expect(scan.violations).toEqual([]);
+      expect(scan.sliceReads).toEqual([]);
+    });
+
     it("passes other.fastestLap on a receiver not annotated TranslatorState", () => {
       const scan = planted(plantedState(), {
         "fastest-lap.ts": `${IMPORT}type Other = { fastestLap: number };\nexport function diff(state: TranslatorState, other: Other): number {\n  const { fastestLap } = other;\n  return other.fastestLap + fastestLap + (state.pitLaneInitialized ? 1 : 0);\n}\n`,
@@ -748,6 +822,36 @@ describe("the state-slice scanner (positive controls)", () => {
       });
 
       expect(violationNames(scan)).toEqual(["D:fastestLap"]);
+    });
+
+    it("reports a slice key in an Object.assign source literal, shorthand included", () => {
+      const scan = planted(plantedState(), {
+        "other.ts": `export function reset(holder: object): void {\n  const fastestLap = {};\n  Object.assign(holder, { trackGaps: {} });\n  Object.assign(holder, { now: 1 }, { fastestLap });\n}\n`,
+      });
+
+      expect(scan.violations.map((v) => `${v.rule}:${v.line}:${v.name}`)).toEqual(["D:3:trackGaps", "D:4:fastestLap"]);
+      expect(scan.violations[0].message).toContain("Object.assign");
+    });
+
+    it("reports a slice key as a destructuring assignment target and as a loop variable", () => {
+      const scan = planted(plantedState(), {
+        "other.ts": `export function reset(holder: { trackGaps: unknown; fastestLap: unknown }, obj: { a: unknown }, x: unknown, xs: unknown[]): void {\n  ({ a: holder.trackGaps } = obj);\n  [holder.fastestLap] = [x];\n  ({ a: holder["trackGaps"] = x } = obj);\n  for (holder.fastestLap of xs) {}\n}\n`,
+      });
+
+      expect(scan.violations.map((v) => `${v.rule}:${v.line}:${v.name}`)).toEqual([
+        "D:2:trackGaps",
+        "D:3:fastestLap",
+        "D:4:trackGaps",
+        "D:5:fastestLap",
+      ]);
+    });
+
+    it("passes an in-place clear through Object.assign and a slice key read as a destructuring source", () => {
+      const scan = planted(plantedState(), {
+        "other.ts": `export function reset(holder: { trackGaps: object }, obj: { trackGaps: unknown }): unknown {\n  let local: unknown;\n  Object.assign(holder.trackGaps, createTrackGapsState());\n  Object.assign(holder, { other: 1 });\n  ({ trackGaps: local } = obj);\n  return local;\n}\n`,
+      });
+
+      expect(scan.violations).toEqual([]);
     });
 
     it("passes an in-place clear", () => {
