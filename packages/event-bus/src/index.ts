@@ -5,8 +5,15 @@
  * envelope's telemetry type is generic, so this package has no dependency
  * on any specific simulator SDK.
  */
-export type { EventHandler, IEventBus } from "./event-bus.js";
-export { _resetEventBus, getEventBus, initializeEventBus, isEventBusInitialized } from "./event-bus.js";
+export type { EventBusOptions, EventHandler, IEventBus } from "./event-bus.js";
+export {
+  _resetEventBus,
+  EVENT_BUS_ERROR_ID_PREFIX,
+  EVENT_BUS_REPORTER_MAX_KEYS,
+  getEventBus,
+  initializeEventBus,
+  isEventBusInitialized,
+} from "./event-bus.js";
 export type {
   CautionLine,
   EmptySimEventPayload,

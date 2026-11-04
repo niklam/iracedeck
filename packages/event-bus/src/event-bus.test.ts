@@ -246,24 +246,31 @@ describe("EventBus", () => {
   });
 
   describe("error handling", () => {
-    it("logs and continues when a handler throws", () => {
+    const calls = (fn: ILogger["error"]): string[] =>
+      (fn as ReturnType<typeof vi.fn>).mock.calls.map((call) => call[0] as string);
+
+    it("reports and continues when a handler throws", () => {
       const logger = createMockLogger();
       const bus = initializeEventBus(logger);
 
-      const bad = vi.fn(() => {
+      // A plain function rather than vi.fn(), whose name ("Mock") the id would carry.
+      let badCalls = 0;
+      const bad = (): void => {
+        badCalls++;
         throw new Error("boom");
-      });
+      };
       const good = vi.fn();
 
       bus.subscribe("pitLane.entered", bad);
       bus.subscribe("pitLane.entered", good);
 
-      bus.publish(envelope("pitLane.entered"));
+      expect(() => bus.publish(envelope("pitLane.entered"))).not.toThrow();
 
-      expect(bad).toHaveBeenCalled();
+      expect(badCalls).toBe(1);
       expect(good).toHaveBeenCalled();
-      const logged = (logger.error as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
-      expect(logged).toContain('Event handler for "pitLane.entered" threw:');
+      expect(logger.error).toHaveBeenCalledTimes(1);
+      const logged = calls(logger.error)[0];
+      expect(logged).toMatch(/^event-bus:pitLane\.entered#1 \(bad\) threw: /);
       expect(logged).toContain("boom");
     });
 
@@ -277,10 +284,23 @@ describe("EventBus", () => {
 
       bus.publish(envelope("pitLane.entered"));
 
-      const logged = (logger.error as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
       // V8 error stacks begin with "Error: <message>\n    at ..."; asserting
       // on "at " confirms the stack is present rather than just the message.
-      expect(logged).toContain("at ");
+      expect(calls(logger.error)[0]).toContain("at ");
+    });
+
+    it("names the handler's function in its id when it has one", () => {
+      const logger = createMockLogger();
+      const bus = initializeEventBus(logger);
+
+      function onPitEntered(): void {
+        throw new Error("named");
+      }
+
+      bus.subscribe("pitLane.entered", onPitEntered);
+      bus.publish(envelope("pitLane.entered"));
+
+      expect(calls(logger.error)[0]).toMatch(/^event-bus:pitLane\.entered#1 \(onPitEntered\) threw: /);
     });
 
     it("continues dispatching siblings even if the logger itself throws", () => {
@@ -313,6 +333,223 @@ describe("EventBus", () => {
       bus.publish(envelope("pitLane.entered"));
 
       expect(logger.error).toHaveBeenCalledWith(expect.stringContaining("string error"));
+    });
+
+    describe("bounded reporting (#1560)", () => {
+      let now = 0;
+      const clock = (): number => now;
+
+      afterEach(() => {
+        now = 0;
+      });
+
+      /** An unnamed handler that always throws (a vi.fn() is named "Mock", which the id would carry). */
+      function throwingHandler(): () => void {
+        return () => {
+          throw new Error("always");
+        };
+      }
+
+      it("writes one error line for a handler that throws on every event, then a periodic count", () => {
+        const logger = createMockLogger();
+        const bus = initializeEventBus(logger, { errorClock: clock });
+
+        bus.subscribe("pitLane.entered", throwingHandler());
+
+        // One throw every 100 ms for just under a minute: one error line, no summary yet.
+        for (let i = 0; i < 600; i++) {
+          now = i * 100;
+          bus.publish(envelope("pitLane.entered"));
+        }
+
+        expect(logger.error).toHaveBeenCalledTimes(1);
+        expect(logger.warn).not.toHaveBeenCalled();
+
+        // The throw a full minute after the first line writes the summary.
+        now = 60_000;
+        bus.publish(envelope("pitLane.entered"));
+
+        expect(logger.error).toHaveBeenCalledTimes(1);
+        expect(calls(logger.warn)).toEqual([
+          expect.stringMatching(
+            /^event-bus:pitLane\.entered#1 threw 600 more times in the last 60s, latest at .*: Error: always$/,
+          ),
+        ]);
+      });
+
+      it("declares recovery once the handler has been quiet for a minute", () => {
+        const logger = createMockLogger();
+        const bus = initializeEventBus(logger, { errorClock: clock });
+        let failing = true;
+
+        bus.subscribe("pitLane.entered", () => {
+          if (failing) throw new Error("for a while");
+        });
+
+        bus.publish(envelope("pitLane.entered"));
+        now = 1_000;
+        bus.publish(envelope("pitLane.entered"));
+        failing = false;
+
+        now = 30_000;
+        bus.publish(envelope("pitLane.entered"));
+        expect(calls(logger.info)).not.toContainEqual(expect.stringContaining("recovered"));
+
+        now = 61_000;
+        bus.publish(envelope("pitLane.entered"));
+
+        expect(calls(logger.info)).toContain(
+          "event-bus:pitLane.entered#1 recovered: no errors for 60s, after 2 times in all",
+        );
+        expect(logger.error).toHaveBeenCalledTimes(1);
+      });
+
+      it("keys by event name and handler: each handler and each subscription gets its own first line", () => {
+        const logger = createMockLogger();
+        const bus = initializeEventBus(logger, { errorClock: clock });
+        const shared = throwingHandler();
+
+        bus.subscribe("pitLane.entered", shared);
+        bus.subscribe("flag.yellow.raised", shared);
+        bus.subscribe("pitLane.entered", throwingHandler());
+
+        bus.publish(envelope("pitLane.entered"));
+        bus.publish(envelope("flag.yellow.raised"));
+        bus.publish(envelope("pitLane.entered"));
+
+        expect(calls(logger.error).map((line) => line.slice(0, line.indexOf(" threw:")))).toEqual([
+          "event-bus:pitLane.entered#1",
+          "event-bus:pitLane.entered#3",
+          "event-bus:flag.yellow.raised#2",
+        ]);
+      });
+
+      it("keeps a handler's id when it is subscribed twice to the same event", () => {
+        const logger = createMockLogger();
+        const bus = initializeEventBus(logger, { errorClock: clock });
+        let handlerCalls = 0;
+        const handler = (): void => {
+          handlerCalls++;
+          throw new Error("twice subscribed");
+        };
+
+        bus.subscribe("pitLane.entered", handler);
+        bus.subscribe("pitLane.entered", handler);
+        bus.publish(envelope("pitLane.entered"));
+
+        expect(handlerCalls).toBe(1);
+        expect(calls(logger.error)[0]).toMatch(/^event-bus:pitLane\.entered#1 \(handler\) threw: /);
+      });
+
+      it("flushes a handler's unreported count on unsubscribe, and a re-subscribe starts afresh", () => {
+        const logger = createMockLogger();
+        const bus = initializeEventBus(logger, { errorClock: clock });
+        const handler = throwingHandler();
+
+        const off = bus.subscribe("pitLane.entered", handler);
+        bus.publish(envelope("pitLane.entered"));
+        bus.publish(envelope("pitLane.entered"));
+        bus.publish(envelope("pitLane.entered"));
+        off();
+
+        expect(calls(logger.warn)).toEqual([
+          "event-bus:pitLane.entered#1 forgotten with 2 times not yet reported (3 times in all)",
+        ]);
+
+        bus.subscribe("pitLane.entered", handler);
+        bus.publish(envelope("pitLane.entered"));
+
+        expect(calls(logger.error).map((line) => line.slice(0, line.indexOf(" threw:")))).toEqual([
+          "event-bus:pitLane.entered#1",
+          "event-bus:pitLane.entered#2",
+        ]);
+      });
+
+      it("leaves nothing to flush for a handler that unsubscribes itself and then throws", () => {
+        const logger = createMockLogger();
+        const bus = initializeEventBus(logger, { errorClock: clock });
+        const other = throwingHandler();
+        const handler = vi.fn(() => {
+          bus.unsubscribe("pitLane.entered", handler);
+          throw new Error("after leaving");
+        });
+
+        bus.subscribe("pitLane.entered", handler);
+        bus.subscribe("pitLane.entered", other);
+        bus.publish(envelope("pitLane.entered"));
+
+        expect(logger.error).toHaveBeenCalledTimes(2);
+
+        // Had its keys survived, its id would still count toward the reporter's
+        // table; the only observable trace is that no later forget or recovery
+        // ever names it.
+        bus.unsubscribe("pitLane.entered", other);
+        now = 120_000;
+        bus.publish(envelope("pitLane.entered"));
+
+        expect([...calls(logger.warn), ...calls(logger.info)].filter((line) => line.includes("#1"))).toEqual([]);
+      });
+
+      it("has room for more failing handlers than #1558's default global cap", () => {
+        const logger = createMockLogger();
+        const bus = initializeEventBus(logger, { errorClock: clock });
+
+        // 40 handlers, four throw sites each: 160 keys, past #1558's default of 32.
+        for (let h = 0; h < 40; h++) {
+          bus.subscribe("pitLane.entered", (ev) => {
+            const site = ev.timestamp;
+
+            if (site === 0) throw new Error("a");
+
+            if (site === 1) throw new Error("b");
+
+            if (site === 2) throw new Error("c");
+
+            throw new Error("d");
+          });
+        }
+
+        for (let site = 0; site < 4; site++) {
+          bus.publish({ ...envelope("pitLane.entered"), timestamp: site });
+        }
+
+        expect(logger.error).toHaveBeenCalledTimes(160);
+        expect(logger.warn).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('the "rethrow" policy', () => {
+      it("calls every handler, then throws the first error, and reports nothing", () => {
+        const logger = createMockLogger();
+        const bus = initializeEventBus(logger, { onHandlerError: "rethrow" });
+        const first = new Error("first");
+        const after = vi.fn();
+
+        bus.subscribe("pitLane.entered", () => {
+          throw first;
+        });
+        bus.subscribe("pitLane.entered", () => {
+          throw new Error("second");
+        });
+        bus.subscribe("pitLane.entered", after);
+
+        expect(() => bus.publish(envelope("pitLane.entered"))).toThrow(first);
+        expect(after).toHaveBeenCalledTimes(1);
+        expect(logger.error).not.toHaveBeenCalled();
+        expect(logger.warn).not.toHaveBeenCalled();
+      });
+
+      it('treats an unknown policy as "report"', () => {
+        const logger = createMockLogger();
+        const bus = initializeEventBus(logger, { onHandlerError: "loud" as never });
+
+        bus.subscribe("pitLane.entered", () => {
+          throw new Error("reported");
+        });
+
+        expect(() => bus.publish(envelope("pitLane.entered"))).not.toThrow();
+        expect(logger.error).toHaveBeenCalledTimes(1);
+      });
     });
   });
 
