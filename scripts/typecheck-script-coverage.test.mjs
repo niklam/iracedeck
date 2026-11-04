@@ -318,6 +318,10 @@ const PROBE_BASENAME = "__typecheck_coverage_probe__.test.ts";
 // can be probing, so a probe already on disk is an orphan and safe to delete.
 // `node_modules/.cache/` is per checkout, already gitignored and read by no tool.
 // The mechanics and what counts as a stale lock: `scripts/lib/probe-lock.mjs`.
+// It serialises runs of this guard and nothing else: a `pnpm typecheck` run by
+// hand beside a probing guard still typechecks the live probe and fails for that
+// window, because the probe has to sit in the live tree beside the package's
+// tests (see where the probe path is chosen below) and that command takes no lock.
 const PROBE_LOCK_PATH = join(repoRoot, "node_modules", ".cache", "typecheck-coverage-probe.lock");
 
 // The probe's types are string literals carrying distinctive markers, so a
@@ -353,6 +357,13 @@ const PROBE_RUNS_MS = 2 * SCRIPT_TIMEOUT_MS + 60_000;
 // How long a run waits for the lock: one other run's full probe, the longest a
 // live holder can legitimately keep it.
 const PROBE_LOCK_WAIT_MS = PROBE_RUNS_MS;
+
+// A lock older than this is stale even if its pid is alive: Windows reuses a
+// killed worker's pid quickly, and without this the next run would wait out its
+// whole deadline on an unrelated process and fail. `spawnSync`'s own timeouts
+// bound how long a live run can hold the lock (`PROBE_RUNS_MS`); the margin is
+// for the work around the two spawns.
+const PROBE_LOCK_MAX_HOLD_MS = PROBE_RUNS_MS + 60_000;
 
 // The test's own timeout clears the lock wait AND both runs, or it could fire
 // while an inner budget was still doing its job and report the wrong failure.
@@ -640,7 +651,10 @@ describe("a package's typecheck covers its own test files", () => {
         // Held across both runs, released in the `finally` with the probe's
         // removal. Taken BEFORE the clean run, because the clean run is the one
         // another run's live probe would turn red.
-        const releaseLock = await acquireProbeLock(PROBE_LOCK_PATH, { deadlineMs: PROBE_LOCK_WAIT_MS });
+        const releaseLock = await acquireProbeLock(PROBE_LOCK_PATH, {
+          deadlineMs: PROBE_LOCK_WAIT_MS,
+          maxHoldMs: PROBE_LOCK_MAX_HOLD_MS,
+        });
         try {
           // Under the lock no other run is probing, so a probe already in the
           // package was left by a run that was killed before its `finally`
@@ -758,12 +772,25 @@ describe("the probe is gitignored", () => {
     (f) => !f.endsWith(`/${PROBE_BASENAME}`),
   );
 
+  // Each test asserts this first, so an empty walk fails with this message rather
+  // than a TypeError from indexing nothing.
+  const firstWebsiteTest = () => {
+    expect(
+      websiteTests.length,
+      "packages/website has no test files, so there is nowhere the probe would go and nothing to check the " +
+        ".gitignore line against — move this check to a package that the measured test still probes",
+    ).toBeGreaterThan(0);
+    return websiteTests[0];
+  };
+
   it("finds a website test file to put the probe beside", () => {
-    expect(websiteTests.length).toBeGreaterThan(0);
+    firstWebsiteTest();
   });
 
   it("ignores the probe by its exact basename", () => {
-    const probe = websiteTests[0].replace(/\/[^/]+$/, `/${PROBE_BASENAME}`).slice(repoRoot.length + 1);
+    const probe = firstWebsiteTest()
+      .replace(/\/[^/]+$/, `/${PROBE_BASENAME}`)
+      .slice(repoRoot.length + 1);
     const verdict = checkIgnore(probe);
     expect(verdict, `${probe} is not gitignored — add \`${PROBE_BASENAME}\` to .gitignore (#1394)`).not.toBe("");
     // The matching rule is the exact basename, never a pattern that could also
@@ -772,7 +799,7 @@ describe("the probe is gitignored", () => {
   });
 
   it("does not ignore the real test file beside it", () => {
-    const real = websiteTests[0].slice(repoRoot.length + 1);
+    const real = firstWebsiteTest().slice(repoRoot.length + 1);
     expect(checkIgnore(real), `${real} is gitignored — a rule meant for the probe is too broad`).toBe("");
   });
 });
