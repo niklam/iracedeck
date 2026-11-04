@@ -170,6 +170,27 @@ describe("resourceSessionSummary (#1338)", () => {
 });
 
 describe("createProcessResourceSampler", () => {
+  /**
+   * Stands in for `performance.eventLoopUtilization`: an absolute read comes
+   * from `read`, and the diff of two readings is computed as Node computes it,
+   * `utilization: 0` over an interval with no time in it included.
+   */
+  function spyOnEventLoopUtilization(read: () => EventLoopUtilization) {
+    return vi
+      .spyOn(performance, "eventLoopUtilization")
+      .mockImplementation((current?: EventLoopUtilization, previous?: EventLoopUtilization) => {
+        if (current && previous) {
+          const active = current.active - previous.active;
+          const idle = current.idle - previous.idle;
+          const total = active + idle;
+
+          return { active, idle, utilization: total > 0 ? active / total : 0 };
+        }
+
+        return read();
+      });
+  }
+
   it("reads plausible deltas from this process", () => {
     const sampler = createProcessResourceSampler();
     const charged = process.cpuUsage();
@@ -189,6 +210,9 @@ describe("createProcessResourceSampler", () => {
     while (performance.now() < minEnd || (chargedSince() === 0 && performance.now() < deadline)) {
       // Busy.
     }
+
+    // Says so when the runner, not the sampler, is why the reading is 0 %.
+    expect(chargedSince(), "the OS charged this process no CPU within the 2 s deadline").toBeGreaterThan(0);
 
     const reading = sampler();
 
@@ -211,20 +235,11 @@ describe("createProcessResourceSampler", () => {
 
       return { user: cpuReads * 1000, system: cpuReads * 500 };
     });
-    const elu = vi
-      .spyOn(performance, "eventLoopUtilization")
-      .mockImplementation((current?: EventLoopUtilization, previous?: EventLoopUtilization) => {
-        if (current && previous) {
-          const active = current.active - previous.active;
-          const idle = current.idle - previous.idle;
+    const elu = spyOnEventLoopUtilization(() => {
+      eluReads++;
 
-          return { active, idle, utilization: active / (active + idle) };
-        }
-
-        eluReads++;
-
-        return { active: eluReads * 10, idle: eluReads * 30, utilization: 0.25 };
-      });
+      return { active: eluReads * 10, idle: eluReads * 30, utilization: 0.25 };
+    });
 
     try {
       const sampler = createProcessResourceSampler();
@@ -278,18 +293,7 @@ describe("createProcessResourceSampler", () => {
 
     const cpuUsage = vi.spyOn(process, "cpuUsage").mockImplementation(() => next(cpuReadings, "process.cpuUsage()"));
     const now = vi.spyOn(performance, "now").mockImplementation(() => next(nowReadings, "performance.now()"));
-    const elu = vi
-      .spyOn(performance, "eventLoopUtilization")
-      .mockImplementation((current?: EventLoopUtilization, previous?: EventLoopUtilization) => {
-        if (current && previous) {
-          const active = current.active - previous.active;
-          const idle = current.idle - previous.idle;
-
-          return { active, idle, utilization: active / (active + idle) };
-        }
-
-        return next(eluReadings, "performance.eventLoopUtilization()");
-      });
+    const elu = spyOnEventLoopUtilization(() => next(eluReadings, "performance.eventLoopUtilization()"));
     const memoryUsage = vi.spyOn(process, "memoryUsage").mockImplementation(() => memory);
 
     try {
@@ -305,9 +309,11 @@ describe("createProcessResourceSampler", () => {
         heapUsedBytes: 60 * MB,
         heapTotalBytes: 170 * MB,
       });
-      // A zero interval is floored at 1 ms rather than dividing by zero.
+      // A zero interval is floored at 1 ms rather than dividing by zero, and
+      // its loop share is Node's 0, never NaN.
       expect(zeroInterval.elapsedMs).toBe(1);
       expect(zeroInterval.cpuPercent).toBe(0);
+      expect(zeroInterval.elu).toBe(0);
     } finally {
       cpuUsage.mockRestore();
       now.mockRestore();
