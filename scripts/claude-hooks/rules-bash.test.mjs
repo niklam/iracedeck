@@ -4532,13 +4532,63 @@ describe("the mask is set aside only where a shell is fed (#1607)", () => {
     });
   });
 
+  // #1607 review: a mention in raw text — a fed span, or a whole command a
+  // shell may read — is a merge only at command position.
+  it.each([
+    `timeout 60 grep -rn "gh pr merge 1603 --squash" scripts`,
+    `grep -n "gh pr merge 1603 --squash" notes.md; bash "$SCRIPT"`,
+    `Q=/tmp/q; grep -n "gh pr merge 1603 --squash" $Q/a; bash $Q/run.sh`,
+    `git commit -m 'msg' && timeout 60 grep -n 'gh pr merge 1603' f`,
+    `grep -rln "gh pr merge 1603" scripts | xargs wc -l`,
+    `bash -c 'echo "gh pr merge 1603 --squash"'`,
+    `eval "x" 'gh pr merge 1603 --squash'`,
+  ])("finds no merge in a mention the raw text shows: %s", (command) => expect(firstMerge(command)).toBeUndefined());
+
+  it.each([
+    ["ls; gh pr merge 5 --squash", "gh"],
+    ["ls && gh pr merge 5 --squash", "gh"],
+    ["cd scripts && gh pr merge 5 --squash", "gh"],
+    ["timeout 120 gh pr merge 5 --squash", "gh"],
+    ["nice gh pr merge 5 --squash", "gh"],
+    ["sudo gh pr merge 5 --squash", "gh"],
+    ["sudo -E gh pr merge 5 --squash", "gh"],
+    ["bash -c 'ls; gh pr merge 5 --squash'", "gh"],
+    ["bash -c 'gh pr merge 5 --squash'", "gh"],
+    [`eval "gh pr merge 5 --squash"`, "gh"],
+    [`grep 'gh pr merge 6' f; "/usr/bin/gh" pr merge 5 --squash`, `"/usr/bin/gh"`],
+    [`bash -c 'echo "gh pr merge 6"'; cd scripts && gh pr merge 5 --squash`, "gh"],
+  ])("finds the merge the command runs, and where its program word starts: %s", (command, word) => {
+    const merge = firstMerge(command);
+    expect(merge).toMatchObject({ ref: "5", readable: true });
+    expect(command.slice(merge.index).startsWith(`${word} pr merge 5`), command.slice(merge.index)).toBe(true);
+  });
+
   it.each([
     "sed -n '/; gh pr merge 5/p' notes.md; timeout 5 true",
     "grep -n 'x; gh pr merge 5' notes.md && sudo true",
     "x=$(echo a | sh); grep 'a; gh pr merge 5' f",
-    "echo 'a; pnpm exec vitest'; timeout 5 true",
+    "x=$(a=1; echo b | sh); grep 'a; gh pr merge 1603' f",
+    "echo 'a; pnpm exec vitest'; bash -c true",
     "echo 'a; git push origin v1.2.3'; xargs true < /dev/null",
   ])("passes a quoted mention beside an unrelated shell feed: %s", (command) => passes(command));
+
+  // #1607 review: the element is the top-level one, so a separator inside a
+  // group, a substitution or a backtick, or a newline the list goes on over,
+  // ends nothing.
+  it.each([
+    "echo 'ls; gh pr merge 5 --squash' | { cd x && bash; }",
+    "echo 'ls; gh pr merge 5 --squash' | (cd x && bash)",
+    "echo 'ls; gh pr merge 5 --squash' | if true; then bash; fi",
+    "echo 'ls; gh pr merge 5 --squash' | while true; do bash; break; done",
+    "[[ -n 'ls; gh pr merge 5 --squash' && -n x ]] | bash",
+    "echo 'ls; gh pr merge 5 --squash' |\nbash",
+    "echo 'ls; gh pr merge 5 --squash' | # run it\nbash",
+    "cat <<'EOF' |\nls; gh pr merge 5 --squash\nEOF\nbash",
+    "echo \"`cat <<'EOF'\nls; gh pr merge 5 --squash\nEOF\n`\" | bash",
+    "exec 3< <(echo 'ls; gh pr merge 5 --squash'); bash <&3",
+  ])("still gates a merge piped into a shell however the element is spelled: %s", (command) =>
+    expect(deny(command)).toMatch(REAL),
+  );
 
   it.each([
     "grep 'x' f; timeout 120 gh pr merge 7 --squash",
@@ -4572,13 +4622,13 @@ describe("the mask is set aside only where a shell is fed (#1607)", () => {
 
   it("reads a command's words through the mask where it stands over that command", () => {
     // Raw, the `;` in the body ended the edit before its milestone.
-    expect([...issueEdits("gh issue edit 5 --body 'a; b' -m 3.8.0; timeout 5 true", MASTER)]).toMatchObject([
+    expect([...issueEdits("gh issue edit 5 --body 'a; b' -m 3.8.0; sh -c true", MASTER)]).toMatchObject([
       { issues: ["5"], milestone: "3.8.0", readable: true },
     ]);
-    expect([...issueEdits("echo 'gh issue edit 5 -m 3.8.0'; timeout 5 true", MASTER)]).toEqual([]);
+    expect([...issueEdits("echo 'gh issue edit 5 -m 3.8.0'; sh -c true", MASTER)]).toEqual([]);
     const feature = ctx({ branch: () => "fix/5-x" });
-    expect(
-      deny("timeout 5 true; git commit -m 'a; b' -- docs/superpowers/specs/2026-01-01-issue-5-x.md", feature),
-    ).toMatch(/never on a feature branch/);
+    expect(deny("sh -c true; git commit -m 'a; b' -- docs/superpowers/specs/2026-01-01-issue-5-x.md", feature)).toMatch(
+      /never on a feature branch/,
+    );
   });
 });

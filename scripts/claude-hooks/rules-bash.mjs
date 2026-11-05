@@ -34,6 +34,7 @@ import {
   cmd,
   COMMAND_LEAD,
   commandEnd,
+  fedCommandStart,
   GIT_GLOBALS,
   gitCwd,
   gitPlace,
@@ -412,26 +413,45 @@ export function mergeSegments(command) {
     .map(([a, b]) => ({ raw: command.slice(a, b), flat: flat.slice(a, b), trusted: trustedIn(command, a, b) }));
 }
 
+/** A `gh pr merge` at command position ({@link firstMerge}). */
+const MERGE_AT = cmd(/gh\s+pr\s+merge\b/);
+
 /**
- * The first `gh pr merge` outside inert text, at command position or not,
- * parsed ({@link parseMerge}); `undefined` when there is none. The post-hook's
- * trigger: a merge run through a wrapper the anchor does not know still gets
- * its board move and CI run list.
+ * The first `gh pr merge` the command runs, parsed ({@link parseMerge}) and
+ * with `index`, where its program word starts; `undefined` when there is
+ * none. The post-hook's trigger. Where the mask stands over it, a match
+ * anywhere is a merge, since the masked text holds no quoted mention: one run
+ * through a wrapper the anchor does not know (`nice gh pr merge`) still gets
+ * its board move and CI run list. Where the mask is set aside — a span that
+ * feeds a shell, or the whole command when the lexer is unsure (#1607) — the
+ * raw text holds every mention, so only a merge at command position counts
+ * there: after a command boundary and a {@link COMMAND_LEAD} (`bash -c 'ls;
+ * gh pr merge 5'`), or as the first word that fed shell runs (`bash -c 'gh pr
+ * merge 5'`, `sudo gh pr merge 5`, `fedCommandStart` in `shell-lexer.mjs`).
+ * A grep for `gh pr merge 1603` beside a `bash $SCRIPT` used to move #1603's
+ * card.
  */
 export function firstMerge(command) {
   const { text, flat } = view(command);
-  const m = /\bgh\s+pr\s+merge\b/.exec(text);
-  if (!m) return undefined;
-  // From the start of the program word, so its raw text is read whole (#1606).
-  const start = programStart(command, m.index);
-  const rest = text.slice(start).search(CHAIN_AND_BACKGROUND);
-  const end = rest < 0 ? text.length : start + rest;
-  // Through the mask only where it stands over the merge's own text (#1607).
-  return parseMerge({
-    raw: command.slice(start, end),
-    flat: flat.slice(start, end),
-    trusted: trustedIn(command, start, end),
-  });
+  const anchored = new Set(
+    [...text.matchAll(new RegExp(MERGE_AT.source, `${MERGE_AT.flags}g`))].map((m) => m.index + m[0].length),
+  );
+  for (const m of text.matchAll(/\bgh\s+pr\s+merge\b/g)) {
+    const to = m.index + m[0].length;
+    if (!trustedIn(command, m.index, to) && !anchored.has(to) && !fedCommandStart(command, m.index)) continue;
+    // From the start of the program word, so its raw text is read whole (#1606).
+    const start = programStart(command, m.index);
+    const rest = text.slice(start).search(CHAIN_AND_BACKGROUND);
+    const end = rest < 0 ? text.length : start + rest;
+    // Through the mask only where it stands over the merge's own text (#1607).
+    const merge = parseMerge({
+      raw: command.slice(start, end),
+      flat: flat.slice(start, end),
+      trusted: trustedIn(command, start, end),
+    });
+    return { ...merge, index: start };
+  }
+  return undefined;
 }
 
 /**

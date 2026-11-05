@@ -24,14 +24,7 @@ import {
   setBoardStatus,
   setHookDeadline,
 } from "./lib.mjs";
-import {
-  firstMerge,
-  GH_PR_MERGE,
-  GIT_WORKTREE_ADD,
-  issueEdits,
-  issueFromWorktreePath,
-  worktreeAddTarget,
-} from "./rules-bash.mjs";
+import { firstMerge, GIT_WORKTREE_ADD, issueEdits, issueFromWorktreePath, worktreeAddTarget } from "./rules-bash.mjs";
 import {
   assignedGhRepo,
   boardIssues,
@@ -51,18 +44,17 @@ import {
 import {
   BASH,
   chainCommands,
+  cwdAt,
   gitCwd,
   POWERSHELL,
   powershellAsBash,
-  programStart,
   resolveDir,
   trustedMask,
 } from "./shell-lexer.mjs";
 
-// `GH_PR_MERGE` (from rules-bash.mjs) is unanchored, as `firstMerge` is:
-// anchored, a merge behind a wrapper the anchor does not know matched no
-// segment, and `gitCwd` then walked every `cd` in the chain, those after the
-// merge included.
+// The merge the post-hook follows up is the one `firstMerge` found, by its
+// `index`: its repository prefix and the `cd`s ahead of it are read there, never
+// at the first mention of `gh pr merge` in the text (#1607).
 const GH_ISSUE_CREATE = /\bgh\s+issue\s+create\b/;
 /** A `setBoardStatus` line that read the card's lane, whatever it then did — every other line may be the deadline's doing. */
 const BOARD_ANSWERED = / moved | would move | already in |; not moving /;
@@ -90,9 +82,12 @@ if (typeof raw === "string") {
     // comment body that merely NAMES `gh pr merge` used to run the after-merge
     // steps. Where the mask is set aside — the whole command when the lexer is
     // unsure, else only the element that feeds a shell (#1607) — they read the
-    // raw text, as before.
-    // Unanchored on purpose: a follow-up is wanted wherever the command ran,
-    // `xargs sed -i` and `timeout 120 gh pr merge` included.
+    // raw text, as before. The sed and issue triggers are unanchored, so a
+    // follow-up is wanted wherever the command ran (`xargs sed -i`); the merge
+    // trigger counts a mention in that raw text only at command position
+    // (`firstMerge`), since a quoted `gh pr merge 1603` in a grep there once
+    // moved #1603's card. `timeout` and `xargs` set nothing aside: `COMMAND_LEAD`
+    // steps over them in the masked text.
     const text = trustedMask(command);
     if (/\bsed\s+(-[a-zA-Z]*i|--in-place)/.test(text)) {
       const r = git(["diff", "--stat"], gitCwd(command, cwd));
@@ -148,8 +143,8 @@ if (typeof raw === "string") {
  */
 function afterMerge(merge, command, cwd, shell) {
   const text = trustedMask(command);
-  // From where the program word starts, as the pre-hook's gate reads it (#1606).
-  const at = programStart(command, GH_PR_MERGE.exec(text)?.index ?? command.length);
+  // From where the program word of the merge `firstMerge` found starts (#1606, #1607).
+  const at = merge.index;
   const named = mergeRepo(merge, assignedGhRepo(command.slice(0, at), text.slice(0, at)));
   if (named === null)
     return [
@@ -157,7 +152,7 @@ function afterMerge(merge, command, cwd, shell) {
     ];
   if (named && !isHomeRepo(named))
     return [`gh pr merge ran in ${named}, not ${HOME_REPO}: no Roadmap card moved and no post-merge runs listed.`];
-  const ran = gitCwd(command, cwd, GH_PR_MERGE, shell);
+  const ran = cwdAt(command, cwd, at, shell);
   const pr = ghJson(
     [
       "pr",

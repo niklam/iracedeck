@@ -5,8 +5,8 @@
  *
  * {@link maskInert} lexes a command as bash reads it and blanks its inert text
  * at the same length, and {@link view} sets that mask aside over the whole
- * command when the lexer is not sure of it and over each list element that
- * hands a string or stdin to a shell (#1607, {@link trustedIn}), and rewrites
+ * command when the lexer is not sure of it and over each top-level list
+ * element that hands a string or stdin to a shell (#1607, {@link trustedIn}), and rewrites
  * each program word to the plain name it runs (`gh.exe`, `"gh"`, `/usr/bin/gh` → `gh`,
  * #1606). On top of it, {@link cmd} anchors a regex to command position,
  * and {@link GIT_GLOBALS} carries a git command past its global options;
@@ -49,12 +49,18 @@ import path from "node:path";
  *   command — and a misread mask can blank a command bash runs. Consumers fall
  *   back to the raw text then ({@link trustedMask}).
  *
- * Two indexes come with them: `words`, where each word bash reads ends, keyed
- * by where it starts, at every depth ({@link normalisePrograms}); and
- * `heredocs`, every heredoc as `{ op, start, end }` — `op` the index of its
- * `<<`, `[start, end)` its body up to the terminator line, or to the end of
- * the text when none comes — so the body of one fed to a shell can be read raw
- * ({@link fedSpans}, #1607).
+ * Three more come with them (#1607). `top`: `masked` with everything that is
+ * not command text of the top level blanked as well — inside a substitution,
+ * a backtick, a `${ … }`, a `$(( … ))`, a paren group (its own parens kept),
+ * a quote, an escape, a heredoc body and its terminator line — and comments
+ * and line continuations as blanks, so {@link structure} reads the top-level
+ * list elements off it without guessing where any of those are. `words`,
+ * where each word bash reads ends, keyed by where it starts, at every depth
+ * ({@link normalisePrograms}). And `heredocs`, every heredoc as `{ op, start,
+ * end, resume }` — `op` the index of its `<<`, `[start, end)` its body up to
+ * the terminator line, or to the end of the text when none comes, and
+ * `resume` where the line after the terminator starts — so the body of one
+ * fed to a shell can be read raw ({@link fedSpans}).
  *
  * One recursive lexer rather than a scanner per context: the three hand-copied
  * scanners it replaced had already drifted apart, and each gap blanked the rest
@@ -66,9 +72,14 @@ export function maskInert(command) {
   const n = s.length;
   const out = s.split("");
   const flat = s.split("");
+  // The command text of the top level only (#1607, {@link structure}): what is
+  // inside a substitution, a paren group, a quote, an escape or a heredoc
+  // body is `_`, and a comment or a line continuation is blank.
+  const topText = s.split("");
   const pending = [];
-  // Every heredoc, `{ op, start, end }`: `op` the index of its `<<`, `[start,
-  // end)` its body, at every depth (#1607, {@link fedSpans}).
+  // Every heredoc, `{ op, start, end, resume }`: `op` the index of its `<<`,
+  // `[start, end)` its body and `resume` where the line after its terminator
+  // starts, at every depth (#1607, {@link fedSpans}).
   const heredocs = [];
   // Where each word bash reads ends, keyed by where it starts: at every depth,
   // a substitution's own words included (#1606, {@link view}).
@@ -205,10 +216,12 @@ export function maskInert(command) {
         p = eol + 1;
       }
       const end = found < 0 ? limit : found;
-      heredocs.push({ op, start: at, end });
+      heredocs.push({ op, start: at, end, resume });
       if (quoted) blank(out, at, end);
       else expanding(at, end, false);
       if (top) blank(flat, at, end);
+      // The body and its terminator line are no command text of the top level.
+      if (top) blank(topText, at, resume);
       if (found < 0) {
         sure = false;
         return limit;
@@ -242,7 +255,7 @@ export function maskInert(command) {
       if (ch === "\\" && s[i + 1] === "\n") {
         // A line continuation: bash removes it, joining the lines; the word, if any, goes on.
         out[i] = out[i + 1] = " ";
-        if (!close) flat[i] = flat[i + 1] = " ";
+        if (!close) flat[i] = flat[i + 1] = topText[i] = topText[i + 1] = " ";
         i += 2;
         continue;
       }
@@ -263,6 +276,8 @@ export function maskInert(command) {
         const tick = close === "`" ? s.indexOf("`", i) : -1;
         if (tick >= 0 && tick < end) end = tick;
         blank(out, i, end);
+        // A comment is no token: a newline after `| # x` still continues the pipeline.
+        if (!close) for (let k = i; k < end; k++) topText[k] = " ";
         i = end;
       } else if (atWord && ch === "(" && s[i + 1] === "(") i = arithmetic(i + 2, limit);
       else if ((sub = substitution(i, limit, false)) >= 0) i = sub;
@@ -272,18 +287,29 @@ export function maskInert(command) {
       else if (ch === '"') i = expanding(i + 1, limit, true);
       else {
         // Live text: a word, a paren, a here-string, a heredoc operator, a newline.
+        const d0 = depth;
+        let read = false;
         if (ch === "<" && s[i + 1] === "<") i = s[i + 2] === "<" ? i + 3 : heredoc(i + 2, limit);
-        else if (ch === "\n" && pending.length) i = bodies(i + 1, limit, !close);
-        else {
+        else if (ch === "\n" && pending.length) {
+          read = true;
+          i = bodies(i + 1, limit, !close);
+        } else {
           if (ch === "(") depth++;
           else if (ch === ")" && depth > 0) depth--;
           else if (ch === ")" && close === ")") return i + 1;
           else if (ch === ")") sure = false; // closes nothing: bash would refuse the command
           i++;
         }
+        // The top-level text keeps a paren group's own parens and blanks what
+        // is inside it; `bodies` has blanked the heredoc bodies a newline read.
+        if (!close && d0 > 0) {
+          if (read) topText[from] = "_";
+          else if (!(ch === ")" && depth === 0)) blank(topText, from, i);
+        }
         atWord = " \t\n;&|()".includes(ch);
         continue;
       }
+      if (!close && !(atWord && ch === "#")) blank(topText, from, i);
       atWord = false;
       if (!close) blank(flat, from, i);
     }
@@ -295,68 +321,113 @@ export function maskInert(command) {
   commands(0, n, null);
   if (pending.length) sure = false;
   maskInert.last = command;
-  maskInert.lastOut = { masked: out.join(""), flat: flat.join(""), sure, words: wordEnds, heredocs };
+  maskInert.lastOut = {
+    masked: out.join(""),
+    flat: flat.join(""),
+    top: topText.join(""),
+    sure,
+    words: wordEnds,
+    heredocs,
+  };
   return maskInert.lastOut;
 }
 
 /**
  * A word, at a word boundary in live text, that hands a STRING or stdin to a
  * shell — `bash -c '…'`, `eval "…"`, `bash <<'EOF'`, `xargs sh -c`, `trap '…'`,
- * `timeout 900 bash -c` — or runs its argument (`timeout`, `sudo`, `watch`).
- * The text those carry is executed, not inert, so masking it would hide the
- * very commands the rules exist for (#1321 review). Each one sets the mask
- * aside over the list element that holds it ({@link fedSpans}, #1607).
+ * `sudo -s`, `watch '…'`. The text those carry is executed, not inert, so
+ * masking it would hide the very commands the rules exist for (#1321 review).
+ * Each one sets the mask aside over the top-level list element that holds it
+ * ({@link fedSpans}, #1607). `timeout` and `xargs` are not on it since #1607:
+ * they run their arguments as a program, never as shell text, and the program
+ * word after them is read in the masked text through {@link COMMAND_LEAD} —
+ * while one of them anywhere in a chain once set the mask aside for all of it,
+ * so a quoted `gh pr merge` in a grep pattern beside it read as a merge.
  */
-const SHELL_FED =
-  /(?<=^|[\s;&|(`/])(?:bash|sh|zsh|dash|ksh|fish|eval|xargs|parallel|watch|su|sudo|source|timeout|trap|pwsh|powershell|cmd)(?:\.exe)?(?=[\s;&|)`]|$)/gm;
+const SHELL_WORDS = String.raw`(?:bash|sh|zsh|dash|ksh|fish|eval|parallel|watch|su|sudo|source|trap|pwsh|powershell|cmd)(?:\.exe)?`;
+const SHELL_FED = new RegExp(String.raw`(?<=^|[\s;&|(\x60/])${SHELL_WORDS}(?=[\s;&|)\x60]|$)`, "gm");
+
+/** A {@link SHELL_WORDS} word with its options, then blanks and at most an opening quote, ending the text it is tested on. */
+const FED_LEAD = new RegExp(String.raw`(?:^|[\s;&|(\x60/])${SHELL_WORDS}(?:\s+(?:-\S+|\/\w+))*\s+(?:\$?['"]\s*)?$`);
+
+/**
+ * Whether the program word at `index` of {@link view}'s text is the first word
+ * a fed shell runs (#1607): inside a fed span, right after the shell word and
+ * its options (`sudo gh …`, `sudo -E gh …`), or at the start of the string it
+ * is handed (`bash -c 'gh …'`, `eval "gh …"`, `trap 'gh …' EXIT`). In the raw
+ * text of a fed span that is command position, as a {@link cmd} anchor is
+ * after a boundary; a quoted mention inside an argument of another command is
+ * neither.
+ */
+export function fedCommandStart(command, index) {
+  const { text, fed } = view(command);
+  const span = fed.find(([a, b]) => a <= index && index < b);
+  return !!span && FED_LEAD.test(text.slice(span[0], index));
+}
 
 /** The reserved words that open a compound command, and those that close one ({@link structure}). */
-const GROUP_OPEN = new Set(["if", "while", "until", "for", "select", "case", "{"]);
+const GROUP_OPEN = new Set(["if", "while", "until", "for", "select", "case", "{", "[["]);
 const GROUP_CLOSE = new Set(["fi", "done", "esac", "}"]);
 /** The reserved words after which the next word is at command position again. */
 const COMMAND_PREFIX = new Set(["if", "then", "elif", "else", "while", "until", "do", "!", "{", "time"]);
 
 /**
- * The structure of the masked text `text` a list element is read from
- * ({@link fedSpans}), as `{ at, end, kind }` events in order: `open` and
- * `close` for a paren and for the reserved word that opens or closes a
- * compound command (`if` … `fi`, `while` / `until` / `for` / `select` …
- * `done`, `case` … `esac`, `{` … `}`) where it stands at command position,
- * and `sep` for what ends a list element: a newline, `;`, `&&`, `||` or a lone
- * `&` — not a redirect's (`>&`, `<&`, `&>`), not `|&`, and not one a backslash
- * escapes (`find … -exec sh -c '…' \;`). A pipe ends no element. Inert text
- * is masked, so nothing in a quote, a heredoc body or a comment counts.
+ * The boundaries of the top-level list elements of a command, as `{ at, end }`
+ * ranges in order (#1607), read off `top`, the lexer's top-level text
+ * ({@link maskInert}), where everything inside a substitution, a backtick, a
+ * `${ … }`, a `$(( … ))`, a paren group, a quote, an escape or a heredoc body
+ * is already `_` — the lexer knows exactly where those are, so a separator
+ * inside one is never a boundary, and an escaped `\;` is none either.
+ *
+ * A boundary is a newline, `;`, `&&`, `||` or a lone `&` (not a redirect's
+ * `>&`, `<&` or `&>`, nor the `&` of `|&`), outside every compound command:
+ * `if` … `fi`, `while` / `until` / `for` / `select` … `done`, `case` …
+ * `esac`, `{` … `}` and `[[` … `]]`, each counted where it stands at command
+ * position, at the top level only. A pipe is none. A newline is none either
+ * where the list goes on over it: after `|`, `|&`, `&&` or `||`, past blanks,
+ * blank lines and a comment, and past the heredoc bodies that line read. A
+ * newline that ends an element reaches over the heredoc bodies and
+ * terminator lines that follow it, so the next element starts after them. An
+ * opener without its closer holds every boundary after it, which only widens
+ * an element; a closer with no opener counts for nothing, and `]]` closes only
+ * a `[[` that is open. Reserved words are read at the top level only, where
+ * bash finds them in valid input; a group opened some other way (`coproc
+ * NAME { … }`) is not modelled.
  */
-function structure(text) {
-  const events = [];
-  const escaped = (i) => {
-    let k = i;
-    while (k > 0 && text[k - 1] === "\\") k--;
-    return (i - k) % 2 === 1;
-  };
-  for (let i = 0; i < text.length; i++) {
-    const c = text[i];
-    if (c === "\n") events.push({ at: i, end: i + 1, kind: "sep" });
-    else if (escaped(i)) continue;
-    else if (c === "(" || c === ")") events.push({ at: i, end: i + 1, kind: c === "(" ? "open" : "close" });
-    else if (c === ";") events.push({ at: i, end: i + 1, kind: "sep" });
-    else if ((c === "&" || c === "|") && text[i + 1] === c) {
-      events.push({ at: i, end: i + 2, kind: "sep" });
+function structure(top, heredocs) {
+  const seps = [];
+  for (let i = 0; i < top.length; i++) {
+    const c = top[i];
+    if (c === "\n") {
+      // The last token before it, past blanks, comments and heredoc bodies.
+      let q = i - 1;
+      for (let h; q >= 0; q--) {
+        if ((h = heredocs.find((x) => x.start <= q && q < x.resume))) q = h.start;
+        else if (!/\s/.test(top[q])) break;
+      }
+      if (top[q] === "|" || (top[q] === "&" && /[&|]/.test(top[q - 1] ?? ""))) continue;
+      let end = i + 1;
+      for (let h; (h = heredocs.find((x) => x.start === end && x.resume > end));) end = h.resume;
+      seps.push({ at: i, end, kind: "sep" });
+      i = end - 1;
+    } else if (c === ";") seps.push({ at: i, end: i + 1, kind: "sep" });
+    else if ((c === "&" || c === "|") && top[i + 1] === c) {
+      seps.push({ at: i, end: i + 2, kind: "sep" });
       i++;
-    } else if (c === "&" && !/[<>|]/.test(text[i - 1] ?? "") && text[i + 1] !== ">")
-      events.push({ at: i, end: i + 1, kind: "sep" });
+    } else if (c === "&" && !/[<>|]/.test(top[i - 1] ?? "") && top[i + 1] !== ">")
+      seps.push({ at: i, end: i + 1, kind: "sep" });
   }
-  const words = [...text.matchAll(/[^\s;&|()<>]+/g)];
+  const words = [...top.matchAll(/[^\s;&|()<>]+/g)];
   const memo = new Map();
   // Whether the `k`th word stands at command position: after the start, a
-  // separator, a pipe, a paren or a backtick, or after a reserved word that does.
+  // separator, a pipe or a paren, or after a reserved word that does.
   const commandPosition = (k) => {
     if (memo.has(k)) return memo.get(k);
     let q = words[k].index - 1;
-    while (q >= 0 && (text[q] === " " || text[q] === "\t")) q--;
+    while (q >= 0 && /\s/.test(top[q])) q--;
     let yes = false;
-    if (q < 0 || "\n;|()\x60".includes(text[q])) yes = true;
-    else if (text[q] === "&") yes = !/[<>]/.test(text[q - 1] ?? "");
+    if (q < 0 || ";|()".includes(top[q])) yes = true;
+    else if (top[q] === "&") yes = !/[<>]/.test(top[q - 1] ?? "");
     else if (k > 0 && words[k - 1].index + words[k - 1][0].length === q + 1) {
       const prev = words[k - 1][0];
       if (COMMAND_PREFIX.has(prev)) yes = commandPosition(k - 1);
@@ -366,51 +437,62 @@ function structure(text) {
     memo.set(k, yes);
     return yes;
   };
+  const events = [...seps];
   words.forEach((m, k) => {
-    const kind = GROUP_OPEN.has(m[0]) ? "open" : GROUP_CLOSE.has(m[0]) ? "close" : undefined;
-    if (kind && commandPosition(k)) events.push({ at: m.index, end: m.index + m[0].length, kind });
+    // `]]` closes a `[[` wherever it stands; the others count at command position.
+    if (m[0] === "]]") events.push({ at: m.index, end: m.index + 2, kind: "close]]" });
+    else if (GROUP_OPEN.has(m[0]) && commandPosition(k))
+      events.push({ at: m.index, end: m.index + m[0].length, kind: m[0] === "[[" ? "open[[" : "open" });
+    else if (GROUP_CLOSE.has(m[0]) && commandPosition(k))
+      events.push({ at: m.index, end: m.index + m[0].length, kind: "close" });
   });
-  return events.sort((x, y) => x.at - y.at);
+  events.sort((x, y) => x.at - y.at);
+  const boundaries = [];
+  let depth = 0;
+  let tests = 0;
+  for (const e of events) {
+    if (e.kind === "sep") {
+      if (depth === 0) boundaries.push(e);
+    } else if (e.kind === "open[[") {
+      tests++;
+      depth++;
+    } else if (e.kind === "close]]") {
+      if (tests > 0) {
+        tests--;
+        depth--;
+      }
+    } else if (e.kind === "open") depth++;
+    else if (depth > 0) depth--;
+  }
+  return boundaries;
 }
 
 /**
  * The `[start, end)` spans of a command where a shell is fed (#1607): for
  * each {@link SHELL_FED} word in `text` (the masked, program-normalised
- * command), the list element that holds it — read left and right from the
- * word to the nearest separator outside every group ({@link structure}), so a
- * pipeline, a subshell or a compound command piped to a shell (`(…) | bash`,
- * `while …; done | sh`) is one element, and an enclosing group the word sits
- * in (`x=$(… | sh)`) widens the element to the one holding that group — plus
- * the body of every heredoc whose `<<` is in that element (`bash <<'EOF'`,
- * `heredocs` from {@link maskInert}). Overlapping and touching spans are
- * merged.
+ * command), the top-level list element that holds it ({@link structure}) —
+ * so a pipeline, a subshell, a group or a compound command a shell is part of
+ * (`echo '…' | bash`, `… | { cd x && bash; }`, `while …; done | sh`) is one
+ * element, and a word inside a substitution (`x=$(a; … | sh)`) sets aside the
+ * whole top-level element that holds the substitution, and no more — plus the
+ * body of every heredoc whose `<<` is in that element (`bash <<'EOF'`). A
+ * word inside a heredoc body is read where its heredoc's `<<` is. Overlapping
+ * and touching spans are merged.
  */
-function fedSpans(command, text, heredocs) {
-  const events = structure(text);
+function fedSpans(command, text, top, heredocs) {
+  const boundaries = structure(top, heredocs);
   const spans = [];
   // The elements whose word interprets shell text, not just runs a program.
   const interpreted = [];
   for (const m of text.matchAll(SHELL_FED)) {
+    let anchor = m.index;
+    for (let h; (h = heredocs.find((x) => x.start <= anchor && anchor < x.end));) anchor = h.op;
     let start = 0;
     let end = text.length;
-    let depth = 0;
-    for (let k = events.length - 1; k >= 0; k--) {
-      const e = events[k];
-      if (e.end > m.index) continue;
-      if (e.kind === "close") depth++;
-      else if (e.kind === "open") depth--;
-      else if (depth <= 0) {
-        start = e.end;
-        break;
-      }
-    }
-    depth = 0;
-    for (const e of events) {
-      if (e.at < m.index + m[0].length) continue;
-      if (e.kind === "open") depth++;
-      else if (e.kind === "close") depth--;
-      else if (depth <= 0) {
-        end = e.at;
+    for (const b of boundaries) {
+      if (b.end <= anchor) start = b.end;
+      else if (b.at >= anchor) {
+        end = b.at;
         break;
       }
     }
@@ -428,23 +510,26 @@ function fedSpans(command, text, heredocs) {
   return feedsAcross(command, text, merged, interpreted) ? [[0, text.length]] : merged;
 }
 
-/** The {@link SHELL_FED} words that run their arguments as a program, never as shell text. */
-const ARGV_RUNNERS = /^(?:timeout|sudo|xargs)(?:\.exe)?$/;
+/** The {@link SHELL_FED} word that runs its arguments as a program; `sudo -s` and `sudo -i` read a shell from stdin, inside its own element. */
+const ARGV_RUNNERS = /^sudo(?:\.exe)?$/;
 
 /** A parameter expansion: `$name`, `${…}`, `$1`, `$@` and the other special parameters. */
 const PARAMETER = /\$[A-Za-z_{0-9@*#?!$-]/;
 
 /**
- * What stores text for a later command to read, in the masked text of the
- * elements the mask stands over ({@link feedsAcross}): an assignment (or a
- * `NAME=value` argument), a builtin that sets a variable or an alias, a
- * function definition, `tee`, and a redirection that writes a file other than
- * `/dev/null` (not a descriptor's copy, `2>&1`).
+ * What stores text for a shell in another element to read, in the masked
+ * text of the elements the mask stands over ({@link feedsAcross}): a builtin
+ * that exports a variable or sets an alias (`export`, `declare`, `typeset`,
+ * `alias`, `set -a`), a function definition, `exec` (a descriptor a later
+ * command reads, `exec 3< <(…)`), `tee`, and a redirection that writes a file
+ * other than `/dev/null` (not a descriptor's copy, `2>&1`). A plain
+ * assignment is none: a shell in another element sees an unexported variable
+ * only through an expansion, which {@link PARAMETER} catches in that element.
  */
 const STORES = new RegExp(
   [
-    String.raw`(?:^|[\s;&|(\x60])[A-Za-z_]\w*(?:\[[^\]\s]*\])?\+?=`,
-    String.raw`(?:^|[\s;&|(\x60])(?:export|declare|typeset|readonly|local|read|readarray|mapfile|alias|function|tee)(?=[\s;&|)\x60]|$)`,
+    String.raw`(?:^|[\s;&|(\x60])(?:export|declare|typeset|alias|function|exec|tee)(?=[\s;&|)\x60]|$)`,
+    String.raw`(?:^|[\s;&|(\x60])set\s+(?:-[A-Za-z]*a|-o\s+allexport)\b`,
     String.raw`[\w.-]\s*\(\s*\)`,
     String.raw`(?:&>>?|>>?|>\|)(?!&)\s*(?!/dev/null(?![^\s;&|()<>]))[^\s;&|()<>]`,
   ].join("|"),
@@ -458,10 +543,10 @@ const STORES = new RegExp(
  * or another element stores text ({@link STORES}) — `x='…'; eval "$x"`,
  * `echo '…' > f; bash f`, `f() { echo '…'; }; f | bash`. The whole command is
  * then set aside, as before #1607, rather than mask a string a shell will run.
- * Only an interpreter counts: `timeout`, `sudo` and `xargs` run their
- * arguments as a program, whose word the rules read where it stands. A writer
- * that names no redirection (`cp`, `sed -i`, `curl -o`) is not followed; the
- * hooks catch mistakes, not deliberate obfuscation.
+ * Only an interpreter counts: `sudo` runs its arguments as a program, whose
+ * word the rules read where it stands. A writer that names no redirection
+ * (`cp`, `sed -i`, `curl -o`) is not followed; the hooks catch mistakes, not
+ * deliberate obfuscation.
  */
 function feedsAcross(command, text, fed, interpreted) {
   if (!interpreted.length) return false;
@@ -481,10 +566,12 @@ function feedsAcross(command, text, fed, interpreted) {
  * command there, the pre-#1321 behaviour, which over-matches — over the whole
  * command when the lexer is not sure of it, and otherwise over each span
  * where live text feeds a string or stdin to a shell (`fed`, {@link
- * fedSpans}, #1607): the list element holding the word that feeds it, with
- * its pipes, groups and heredoc bodies. Everywhere else the mask stands, so a
- * quoted `gh pr merge` in a `sed` or `grep` pattern is not read as a merge
- * because an unrelated `timeout` runs later in the chain. `trusted` says the
+ * fedSpans}, #1607): the top-level list element holding the word that feeds
+ * it, with its pipes, groups, substitutions and heredoc bodies — or the whole
+ * command, when that shell may run text another element stores ({@link
+ * feedsAcross}). Everywhere else the mask stands, so a quoted `gh pr merge` in
+ * a `sed` or `grep` pattern is not read as a merge because a shell runs
+ * elsewhere in the chain. `trusted` says the
  * whole command is masked, {@link trustedIn} says it of a range. The pre-hook
  * is a safety gate, so a doubt costs a false deny on a mention, never a
  * missed command.
@@ -500,9 +587,9 @@ function feedsAcross(command, text, fed, interpreted) {
  */
 export function view(command) {
   if (command !== view.last) {
-    const { masked, flat, sure, words: wordEnds, heredocs } = maskInert(command);
+    const { masked, flat, top, sure, words: wordEnds, heredocs } = maskInert(command);
     const lexed = normalisePrograms(command, masked, flat, wordEnds, () => false);
-    const fed = sure ? fedSpans(command, lexed.text, heredocs) : [[0, command.length]];
+    const fed = sure ? fedSpans(command, lexed.text, top, heredocs) : [[0, command.length]];
     let out = lexed;
     if (fed.length) {
       // The raw command inside each fed span, the mask outside them; a word
@@ -1091,14 +1178,27 @@ export function gitPlace(command, cwd, re, shell = BASH) {
   const text = trustedMask(command);
   const segs = ranges(text, CHAIN).filter(([a, b]) => command.slice(a, b).trim());
   const at = re ? segs.findIndex(([a, b]) => re.test(text.slice(a, b))) : -1;
-  let base = cwd;
-  for (const [a, b] of segs.slice(0, at >= 0 ? at : segs.length)) {
-    const dir = argIn(command, text, a, b, cdRe(shell));
-    if (dir && !HISTORY_DIR.has(dir)) base = resolveDir(base, dir, { shell });
-  }
+  const base = cwdAt(command, cwd, at >= 0 ? segs[at][0] : command.length, shell);
   const [a, b] = at >= 0 ? segs[at] : [0, command.length];
   const from = at >= 0 ? a + Math.max(0, text.slice(a, b).search(re)) : a;
   return gitPlaceAt(command, from, base, shell, b);
+}
+
+/**
+ * The session cwd moved by every `cd <dir>` in the chain segments that end
+ * before `index` ({@link gitCwd}'s walk, split and read as it is): where the
+ * command starting at `index` runs. The post-hook reads a merge's PR back
+ * there, at the merge `firstMerge` found rather than the first mention (#1607).
+ */
+export function cwdAt(command, cwd, index, shell = BASH) {
+  const text = trustedMask(command);
+  let base = cwd;
+  for (const [a, b] of ranges(text, CHAIN)) {
+    if (b > index) break;
+    const dir = argIn(command, text, a, b, cdRe(shell));
+    if (dir && !HISTORY_DIR.has(dir)) base = resolveDir(base, dir, { shell });
+  }
+  return base;
 }
 
 /** The program word `git` in the rewritten text, wherever a word starts: {@link gitWord}'s fallback. */
