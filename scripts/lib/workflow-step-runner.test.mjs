@@ -10,14 +10,33 @@ import { afterAll, describe, expect, it } from "vitest";
 
 import { BASH, createStepSandbox } from "./workflow-step-runner.mjs";
 
-/** Whether a process with this pid is still running. */
+/**
+ * Whether a process with this pid is still running. A Linux zombie, killed but
+ * not yet reaped by whatever adopted it, answers `kill(pid, 0)` and is dead.
+ */
 function alive(pid) {
   try {
     process.kill(pid, 0);
-    return true;
   } catch (error) {
     return error.code === "EPERM";
   }
+  if (process.platform === "linux") {
+    try {
+      const stat = readFileSync(`/proc/${pid}/stat`, "utf8");
+      // The state follows the parenthesised command name, which may itself contain ") ".
+      return stat.slice(stat.lastIndexOf(")") + 2)[0] !== "Z";
+    } catch {
+      return false;
+    }
+  }
+  return true;
+}
+
+/** Whether `pid` is still alive after waiting up to `ms` for it to go: a kill lands asynchronously. */
+async function aliveAfter(pid, ms = 2_000) {
+  const until = Date.now() + ms;
+  while (alive(pid) && Date.now() < until) await new Promise((resolve) => setTimeout(resolve, 50));
+  return alive(pid);
 }
 
 describe.skipIf(BASH === undefined)("runStepAsync", { timeout: 20_000 }, () => {
@@ -51,6 +70,6 @@ describe.skipIf(BASH === undefined)("runStepAsync", { timeout: 20_000 }, () => {
     expect(elapsed).toBeLessThan(8_000);
     expect(existsSync(pidFile), "the hanging node never started").toBe(true);
     const pid = Number(readFileSync(pidFile, "utf8"));
-    expect(alive(pid), `the step's node (pid ${pid}) outlived the timeout`).toBe(false);
+    expect(await aliveAfter(pid), `the step's node (pid ${pid}) outlived the timeout`).toBe(false);
   });
 });
