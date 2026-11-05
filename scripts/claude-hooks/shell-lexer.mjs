@@ -943,9 +943,23 @@ const GIT_ENV_MOVES = {
  * value is not read, any config key counts. On doubt it moves: a commit then
  * refuses, which costs a re-spelling.
  */
-/** One shell word at the start of `s`, quotes and escapes kept, for {@link decodeWord}. */
-const LEADING_WORD =
-  /^(?:"(?:[^"\\]|\\[\s\S])*"|'[^']*'|\\[\s\S]|\$\((?:[^()]|\((?:[^()]|\([^()]*\))*\))*\)|`[^`]*`|\$(?!\()|[^\s;&|()<>"'\\$`])*/;
+/** A quoted run inside a command substitution, where a `(` or `)` is text, not structure. */
+const SUBST_QUOTED = String.raw`'[^']*'|"(?:[^"\\]|\\[\s\S])*"`;
+/** One character of a substitution's body, or a quoted run: each starts differently, so it has one parse. */
+const SUBST_ATOM = String.raw`[^()'"]|${SUBST_QUOTED}`;
+/**
+ * A command substitution, `$( … )` (two levels of nesting) or a backtick one,
+ * taken whole: its words are one word of the command that holds it. A quoted
+ * `)` inside it is text (CodeRabbit on PR #1628: the raw view of
+ * `$(bash -c 'a ) b')` once ended there). A character class never matches its
+ * `$(` or backtick, so each has one parse.
+ */
+const SUBSTITUTION = String.raw`\$\((?:${SUBST_ATOM}|\((?:${SUBST_ATOM}|\((?:${SUBST_ATOM})*\))*\))*\)|\x60[^\x60]*\x60`;
+
+/** One shell word at the start of `s`, quotes, escapes and substitutions kept, for {@link decodeWord}. */
+const LEADING_WORD = new RegExp(
+  String.raw`^(?:"(?:[^"\\]|\\[\s\S])*"|'[^']*'|\\[\s\S]|${SUBSTITUTION}|\$(?!\()|[^\s;&|()<>"'\\$\x60])*`,
+);
 
 /**
  * Whether a config key, written as raw shell text at the start of `raw`,
@@ -1147,12 +1161,6 @@ function leadToken(open) {
  */
 export const COMMAND_LEAD = String.raw`(?:${leadToken("(?:")})*`;
 
-/**
- * A command substitution, `$( … )` (two levels of nesting) or a backtick one,
- * taken whole: its words are one word of the command that holds it. A
- * character class never matches its `$(` or backtick, so each has one parse.
- */
-const SUBSTITUTION = String.raw`\$\((?:[^()]|\((?:[^()]|\([^()]*\))*\))*\)|\x60[^\x60]*\x60`;
 /**
  * One character run of a git option's value: a quoted run (`"___"` in the
  * masked text), an escape or a command substitution stays whole, so

@@ -4424,12 +4424,14 @@ describe("the program-word rewrite's second read (#1606)", () => {
         expect(deny(c), c).toMatch(/names its repository, work tree or index/);
       // A substituted value under a plain key moves nothing, and the commit is still read as one.
       passes("git -c user.name=$(whoami) commit -m x");
-      expect(
-        deny(
-          "git -c user.name=$(echo a b) commit -m x",
-          ctx({ branch: () => "fix/5-x", staged: () => ["docs/superpowers/specs/a.md"] }),
-        ),
-      ).toMatch(/never on a feature branch/);
+      const specOnBranch = ctx({ branch: () => "fix/5-x", staged: () => ["docs/superpowers/specs/a.md"] });
+      expect(deny("git -c user.name=$(echo a b) commit -m x", specOnBranch)).toMatch(/never on a feature branch/);
+      // A quoted `)` inside the substitution is its text, in the raw view `bash` forces too (CodeRabbit on PR #1628).
+      for (const c of [
+        "git -c user.name=$(bash -c 'printf x' 'a ) b') commit -m x",
+        `git -c user.name=$(printf "%s" "a ) b") commit -m x`,
+      ])
+        expect(deny(c, specOnBranch), c).toMatch(/never on a feature branch/);
       passes("GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=user.name GIT_CONFIG_VALUE_0=x git commit -m x");
       passes("git -c user.name=x commit -m x");
     });
