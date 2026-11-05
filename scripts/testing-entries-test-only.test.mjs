@@ -17,7 +17,20 @@
 // test support too: it re-exports its package's modules by relative path, and
 // may build on another package's entry.
 //
-// This is the rule's one owner. `packages/replay-engine/src/index.test.ts`
+// Test support may import an entry, so it is a way round the rule: a
+// production `adapter.ts` importing `./fake.test-support.js`, which imports
+// `@iracedeck/audio-service/testing`, would bundle `vitest` all the same. So
+// no non-test source imports a test source by relative path either, in any of
+// those module forms or a triple-slash `path` reference. The specifier is
+// resolved against the importing file and matched in each form the repo
+// writes — `./x.test-support.js` naming `x.test-support.ts`, `.ts`,
+// extensionless, a folder's `index.ts` — by name, so the file need not exist.
+// A test or test support importing test support, and an entry importing its
+// package's test support, stay fine.
+//
+// This is the rule's one owner, in every package. It replaced the
+// iracing-actions ESLint pattern that refused a `*.test-support` module there
+// (#1375), which read one of these names in one package. `packages/replay-engine/src/index.test.ts`
 // (#1502), `packages/audio-service/src/testing.test.ts` (#1504) and
 // `packages/deck-core/src/testing.test.ts` (#1597) each held it for their own
 // entry, by regex over `src/` with test classifiers of their own that disagreed
@@ -64,9 +77,13 @@ function candidates(resolved) {
   return [resolved, resolved.replace(/\.[cm]?js$/, ".ts"), `${resolved}.ts`, `${resolved}/index.ts`];
 }
 
+/** A specifier that is a path relative to the importing file. */
+const RELATIVE = /^\.\.?(\/|$)/;
+
 /**
- * Every import of a testing entry by a non-test source, one line each; empty
- * when there is none. Pure, so the positive controls can feed it.
+ * Every import of a testing entry, or of test-only support, by a non-test
+ * source, one line each; empty when there is none. Pure, so the positive
+ * controls can feed it.
  *
  * @param {object} input
  * @param {{ file: string, source: string }[]} input.files repo-relative, `/`-separated
@@ -79,11 +96,8 @@ export function productionTestingImports({ files, entrySources }) {
   for (const { file, source } of files) {
     if (isTestSource(file) || entrySources.has(file)) continue;
 
-    for (const reference of moduleReferences(source)) {
-      if (reference.kind !== "import") continue;
-      const { specifier } = reference;
-
-      if (TESTING_ENTRY.test(specifier)) {
+    for (const { specifier, kind } of moduleReferences(source)) {
+      if (kind === "import" && TESTING_ENTRY.test(specifier)) {
         problems.push(
           `${file} imports ${specifier}, a testing entry, from production code: import the package's main entry, ` +
             `or name the file as test support (*.test-support.ts or a test-support/ folder) if only tests load it`,
@@ -91,13 +105,27 @@ export function productionTestingImports({ files, entrySources }) {
         continue;
       }
 
-      if (!/^\.\.?(\/|$)/.test(specifier)) continue;
-      const entry = candidates(P.join(P.dirname(file), specifier)).find((candidate) => entrySources.has(candidate));
+      // A triple-slash `path` reference is relative to the file whatever it
+      // starts with; an import is relative only when it says so.
+      if (kind === "import" && !RELATIVE.test(specifier)) continue;
+      const forms = candidates(P.join(P.dirname(file), specifier));
+      const entry = forms.find((candidate) => entrySources.has(candidate));
 
       if (entry !== undefined) {
         problems.push(
           `${file} imports ${entry}, a package's testing entry, by relative path from production code: import the ` +
             `module it re-exports instead`,
+        );
+        continue;
+      }
+
+      const support = forms.find((candidate) => isTestSource(candidate));
+
+      if (support !== undefined) {
+        problems.push(
+          `${file} imports ${specifier} (${support}), test-only support, from production code: it may load a ` +
+            `testing entry or vitest into the bundle, so move what production needs into a non-test module, or ` +
+            `name the importing file as test support too if only tests load it`,
         );
       }
     }
@@ -134,7 +162,21 @@ describe("no production source imports a ./testing entry (#1375)", () => {
     expect(importers.every(({ file }) => isTestSource(file) || ENTRY_SOURCES.has(file))).toBe(true);
   });
 
-  it("no non-test source imports one", () => {
+  it("reads the relative imports of test support, so an empty result is not vacuous", () => {
+    const importers = scanned.filter(({ file, source }) =>
+      moduleReferences(source).some(
+        ({ kind, specifier }) =>
+          kind === "import" && RELATIVE.test(specifier) && isTestSource(P.join(P.dirname(file), specifier)),
+      ),
+    );
+
+    // Tests, test support and, on 2026-11-05, replay-engine's entry, which re-exports its test support.
+    expect(importers.length).toBeGreaterThan(50);
+    expect(importers.every(({ file }) => isTestSource(file) || ENTRY_SOURCES.has(file))).toBe(true);
+    expect(importers.some(({ file }) => ENTRY_SOURCES.has(file))).toBe(true);
+  });
+
+  it("no non-test source imports one, or test support", () => {
     expect(productionTestingImports({ files: scanned, entrySources: ENTRY_SOURCES })).toEqual([]);
   });
 });
@@ -195,6 +237,85 @@ describe("the check itself (positive controls)", () => {
     ].join("\n");
 
     expect(check("packages/deck-core/src/a.ts", source)).toEqual([]);
+  });
+
+  // Test support may import an entry, so a production source must not reach
+  // one through it: `adapter.ts` → `./fake.test-support.js` →
+  // `@iracedeck/audio-service/testing` → `vitest`.
+  const PRODUCTION = "packages/deck-adapter-mirabox/src/adapter.ts";
+  const SUPPORT = "test-only support, from production code";
+
+  it("refuses a production import of test support in every specifier form", () => {
+    for (const [specifier, support] of [
+      ["./fake.test-support.js", "packages/deck-adapter-mirabox/src/fake.test-support.js"],
+      ["./fake.test-support.ts", "packages/deck-adapter-mirabox/src/fake.test-support.ts"],
+      ["./fake.test-support", "packages/deck-adapter-mirabox/src/fake.test-support.ts"],
+      ["../test-support/foo.js", "packages/deck-adapter-mirabox/test-support/foo.js"],
+      ["./test-support/fake-host.js", "packages/deck-adapter-mirabox/src/test-support/fake-host.js"],
+      ["./test-support", "packages/deck-adapter-mirabox/src/test-support/index.ts"],
+      ["./timed-audio.test-util.js", "packages/deck-adapter-mirabox/src/timed-audio.test-util.js"],
+      ["../shared/cases.fixture-cases.js", "packages/deck-adapter-mirabox/shared/cases.fixture-cases.js"],
+      ["./adapter.test.js", "packages/deck-adapter-mirabox/src/adapter.test.js"],
+    ]) {
+      expect(check(PRODUCTION, `import { fake } from "${specifier}";`), specifier).toEqual([
+        `${PRODUCTION} imports ${specifier} (${support}), ${SUPPORT}: it may load a testing entry or vitest into ` +
+          `the bundle, so move what production needs into a non-test module, or name the importing file as test ` +
+          `support too if only tests load it`,
+      ]);
+    }
+  });
+
+  it("refuses a production import of test support in every module form", () => {
+    for (const source of [
+      'import type { Fake } from "./fake.test-support.js";',
+      'import "./fake.test-support.js";',
+      'export { fake } from "./fake.test-support.js";',
+      'export * from "./fake.test-support.js";',
+      'const t = await import("./fake.test-support.js");',
+      'const t = require("./fake.test-support.js");',
+      'type T = typeof import("./fake.test-support.js");',
+      '/// <reference path="fake.test-support.ts" />',
+    ]) {
+      expect(check(PRODUCTION, source), source).toEqual([expect.stringContaining(SUPPORT)]);
+    }
+  });
+
+  it("passes test support imported by a test, by test support and by an entry", () => {
+    for (const [file, specifier] of [
+      ["packages/deck-adapter-mirabox/src/adapter.test.ts", "./fake.test-support.js"],
+      ["packages/deck-adapter-mirabox/src/adapter.test.ts", "../test-support/foo.js"],
+      ["packages/deck-adapter-mirabox/src/fake.test-support.ts", "./other.test-support.js"],
+      ["packages/deck-adapter-mirabox/src/test-support/fake-host.ts", "./clock.js"],
+      ["packages/deck-core/src/testing.ts", "./hold-preview.test-support.js"],
+    ]) {
+      expect(check(file, `import { fake } from "${specifier}";`), `${file} → ${specifier}`).toEqual([]);
+    }
+  });
+
+  it("passes a production import whose name only resembles test support", () => {
+    const source = [
+      'import { a } from "./test-supported.js";',
+      'import { b } from "./fake.test-supports.js";',
+      'import { c } from "./test-support-free.js";',
+      'import { d } from "./testing-helpers.js";',
+      'import { e } from "../latest.js";',
+      'import { f } from "@iracedeck/audio-service";',
+      '// import { g } from "./fake.test-support.js";',
+      'const s = "./fake.test-support.js";',
+    ].join("\n");
+
+    expect(check(PRODUCTION, source)).toEqual([]);
+  });
+
+  it("refuses a test-support import planted in a real production source", () => {
+    const { file, source } = read("packages/iracing-actions/src/actions/fuel-service/fuel-service.ts");
+    const planted = `import { pressShape } from "../../shared/press-shape.test-support.js";\n${source}`;
+
+    expect(productionTestingImports({ files: [{ file, source: planted }], entrySources: ENTRY_SOURCES })).toEqual([
+      expect.stringContaining(
+        `${file} imports ../../shared/press-shape.test-support.js (packages/iracing-actions/src/shared/press-shape.test-support.js)`,
+      ),
+    ]);
   });
 
   it("refuses an entry import planted in a real production source", () => {
