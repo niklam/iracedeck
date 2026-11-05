@@ -251,7 +251,7 @@ export function buildRollingStartContracts({
           named.admitChange((formation) => formation.firstFollowCarIdx),
       },
       description:
-        "The car you form up behind changes during a rolling-start formation — a car ahead drops out or is passed — and a second and a half later it is still not the car the engineer last named.",
+        "iRacing's pace lineup moves a new car into the slot ahead of you in a rolling-start formation, and 1.5 s later it is not the car last named; a pass that leaves the slots alone is no change.",
       // Decided after the hold. Whether the change is news is the gate's
       // question, asked at speak time against what was actually said.
       when: { event: "rollingStart.lineup.changed", where: inFormation },
