@@ -4374,6 +4374,16 @@ describe("the program-word rewrite's second read (#1606)", () => {
       passes("$PAGER git log");
       passes("$W gh pr view 5");
     });
+    // An ask another command of the chain carries anyway is not the word's
+    // doing: it stays an ask (CodeRabbit CLI on #1606).
+    it("keeps the chain's own ask an ask, and denies only what the word adds", () => {
+      expect(asks("$EDITOR notes.md; git push origin v3.2.0")).toMatch(/^Pushing a tag cuts a release/);
+      expect(asks("$PAGER CHANGELOG.md && git push --tags")).toMatch(/^Pushing a tag cuts a release/);
+      expect(asks("$GIT push origin v3.2.0; git push origin v3.3.0")).toMatch(/^Pushing a tag cuts a release/);
+      expect(deny("$GIT push origin integration; git push origin v3.2.0")).toMatch(
+        /^Could not read the program `\$GIT`; judged as git: The `integration` branch/,
+      );
+    });
   });
 
   // Whether a word is env's own argument is env's parse, not the last word

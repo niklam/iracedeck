@@ -1846,12 +1846,18 @@ export function checkBash(command, ctx) {
   const text = powershell ? powershellAsBash(command) : command;
   const verdict = judge(text, ctx, powershell);
   if (typeof verdict === "string") return verdict;
+  // An ask the command carries anyway, from another command of the chain, is
+  // not the word's doing: a re-judge repeats it, and only what the
+  // substitution adds may turn into a deny (#1606, CodeRabbit CLI).
+  const own = new Set(verdict?.asks ?? []);
   for (const { start, end, word, env } of unreadablePrograms(text)) {
     const as = ["gh", "git", ...(env ? [`GH_REPO=${word}`, `GIT_DIR=${word}`] : []), " ".repeat(end - start)];
     for (const program of as) {
       const v = judge(text.slice(0, start) + program + text.slice(end), ctx, powershell);
       if (!v) continue;
-      const reason = typeof v === "string" ? v : v.ask;
+      const added = typeof v === "string" ? [v] : v.asks.filter((a) => !own.has(a));
+      if (!added.length) continue;
+      const reason = added.join(" ");
       if (!program.trim())
         return `Could not read the program \`${word}\`; judged as a wrapper that runs what follows it: ${reason} Spell the program as a plain word.`;
       return program.includes("=")
@@ -1859,7 +1865,7 @@ export function checkBash(command, ctx) {
         : `Could not read the program \`${word}\`; judged as ${program}: ${reason} Spell the program as a plain word.`;
     }
   }
-  return verdict;
+  return verdict && { ask: verdict.ask };
 }
 
 /** The rules' verdict on `text`, already read as bash ({@link checkBash}). */
@@ -1874,5 +1880,5 @@ function judge(text, ctx, powershell) {
   }
   // Every ask in one prompt: a chain the maintainer approves runs whole, so a
   // later ask hidden behind an earlier one would run unseen (#1307 review).
-  return asks.length ? { ask: asks.join("\n\n") } : null;
+  return asks.length ? { ask: asks.join("\n\n"), asks } : null;
 }
