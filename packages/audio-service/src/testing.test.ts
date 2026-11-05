@@ -1,58 +1,14 @@
-import { readdirSync, readFileSync } from "node:fs";
-import { join, relative, sep } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
 import { AudioChannel, type IAudioService } from "./audio-service.js";
 import { createFakeAudio } from "./testing.js";
 
-const PACKAGES_ROOT = join(import.meta.dirname, "..", "..");
-
-/** An import of the testing entry, static, dynamic or re-exported. */
-const TESTING_IMPORT = /["']@iracedeck\/audio-service\/testing["']/;
-
-/** True for a test, a test-support module, a test utility or anything under a `test-support` directory. */
-function isTestSource(path: string): boolean {
-  return /\.test\.ts$|\.test-support\.ts$|\.test-util\.ts$/.test(path) || path.split(sep).includes("test-support");
-}
-
-/** Every `.ts` file under each package's `src/`, absolute. */
-function packageSources(): string[] {
-  const found: string[] = [];
-
-  const walk = (dir: string): void => {
-    for (const entry of readdirSync(dir, { withFileTypes: true })) {
-      const full = join(dir, entry.name);
-
-      if (entry.isDirectory()) {
-        if (entry.name !== "node_modules") walk(full);
-
-        continue;
-      }
-
-      if (entry.name.endsWith(".ts")) found.push(full);
-    }
-  };
-
-  for (const pkg of readdirSync(PACKAGES_ROOT, { withFileTypes: true })) {
-    if (!pkg.isDirectory()) continue;
-
-    try {
-      walk(join(PACKAGES_ROOT, pkg.name, "src"));
-    } catch {
-      // A package without a src/ directory has nothing to scan.
-    }
-  }
-
-  return found;
-}
-
-/** The files among `files` that import the testing entry, relative to the packages directory. */
-function testingImportersOf(files: string[]): string[] {
-  return files
-    .filter((file) => TESTING_IMPORT.test(readFileSync(file, "utf8")))
-    .map((file) => relative(PACKAGES_ROOT, file).split(sep).join("/"));
-}
-
+/*
+ * The fake's own behaviour. That no production source imports
+ * `@iracedeck/audio-service/testing` is the root guard's,
+ * `scripts/testing-entries-test-only.test.mjs`, which holds every package's
+ * `./testing` entry to it (#1375).
+ */
 describe("createFakeAudio (#1504)", () => {
   it("is an IAudioService with every member a mock", () => {
     const audio = createFakeAudio();
@@ -116,22 +72,5 @@ describe("createFakeAudio (#1504)", () => {
 
     expect(audio.isChannelPlaying(AudioChannel.Voice)).toBe(true);
     expect(createFakeAudio().isChannelPlaying(AudioChannel.Voice)).toBe(false);
-  });
-});
-
-describe("the testing entry stays out of production (#1504)", () => {
-  it("flags an import of the testing entry (positive control)", () => {
-    expect(TESTING_IMPORT.test(`import { createFakeAudio } from "@iracedeck/audio-service/testing";`)).toBe(true);
-    expect(TESTING_IMPORT.test(`await import('@iracedeck/audio-service/testing')`)).toBe(true);
-    expect(TESTING_IMPORT.test(`import { getAudio } from "@iracedeck/audio-service";`)).toBe(false);
-    // The scan reaches the real tests that import it, so an empty production result means something.
-    expect(testingImportersOf(packageSources().filter(isTestSource)).length).toBeGreaterThan(30);
-  });
-
-  it("no production source imports the testing entry", () => {
-    const production = packageSources().filter((file) => !isTestSource(file));
-
-    expect(production.length).toBeGreaterThan(500);
-    expect(testingImportersOf(production)).toEqual([]);
   });
 });

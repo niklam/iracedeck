@@ -17,10 +17,12 @@
 // test support too: it re-exports its package's modules by relative path, and
 // may build on another package's entry.
 //
-// Overlap: `packages/replay-engine/src/index.test.ts` (#1502) holds the same
-// rule for `@iracedeck/replay-engine/testing` alone, by regex over `src/`. It
-// stays, beside that package's barrel-surface checks; this covers every entry
-// and every tracked source, `scripts/` folders included.
+// This is the rule's one owner. `packages/replay-engine/src/index.test.ts`
+// (#1502), `packages/audio-service/src/testing.test.ts` (#1504) and
+// `packages/deck-core/src/testing.test.ts` (#1597) each held it for their own
+// entry, by regex over `src/` with test classifiers of their own that disagreed
+// with this one; those checks were removed in #1375. A package's own test holds
+// what its entry carries and what its barrel leaves out, never who imports it.
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
