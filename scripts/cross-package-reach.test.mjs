@@ -87,7 +87,9 @@ const ALLOWED = {
     reaches: ["plugin-build"],
     reason:
       "resolves the plugins' own terser through plugin-build, the package that declares @rollup/plugin-terser, to " +
-      "minify the watchdog the way the plugins ship it",
+      "minify the watchdog the way the plugins ship it. It stays undeclared on purpose: declaring plugin-build would " +
+      "make diagnostics' build and typecheck (turbo's ^build) wait on plugin-build's whole chain, including " +
+      "audio-assets#build's ffmpeg encode over every clip, for one test",
   },
   "packages/iracing-actions/src/actions/dial-surface-base-coverage.test.ts": {
     reaches: ["iracing-plugin-stream-deck"],
