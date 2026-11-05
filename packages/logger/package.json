@@ -9,6 +9,10 @@
     ".": {
       "import": "./dist/index.js",
       "types": "./dist/index.d.ts"
+    },
+    "./file-sink": {
+      "import": "./dist/file-sink.js",
+      "types": "./dist/file-sink.d.ts"
     }
   },
   "scripts": {
