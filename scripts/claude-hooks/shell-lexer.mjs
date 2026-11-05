@@ -565,6 +565,31 @@ function programName(chars) {
  */
 const ASSIGNMENT = /^[A-Za-z_][A-Za-z0-9_]*(?:\[[^\]]*\])?\+?=/;
 
+/**
+ * Whether a word read in the raw text of an untrusted view may be rewritten
+ * (#1606 second read): it holds no character a raw-text rule reads as a
+ * command boundary (a newline, `;`, `&`, `|`, a paren or a backtick) and every
+ * quote it opens it closes itself. A word found from a position inside a
+ * quoted string fails one or the other — it opens a quote at the string's end,
+ * or runs on over the commands to the next one — and is left as it stands, as
+ * an untrusted view was before #1606; so a rewrite there only ever turns a
+ * self-contained word into the name it runs, and every boundary and every
+ * command the raw text shows stays where it was.
+ */
+function selfContained(word) {
+  if (/[\n;&|()\x60]/.test(word)) return false;
+  let quote = null;
+  for (let i = 0; i < word.length; i++) {
+    const c = word[i];
+    if (quote === "'") {
+      if (c === "'") quote = null;
+    } else if (c === "\\") i++;
+    else if (c === quote) quote = null;
+    else if (!quote && (c === "'" || c === '"')) quote = c;
+  }
+  return quote === null;
+}
+
 /** A word starting at `at` in raw text, found without the lexer: quotes, escapes and simple substitutions kept whole. */
 const CRUDE_WORD =
   /(?:"(?:[^"\\]|\\[\s\S])*"|'[^']*'|\\[\s\S]|\$\((?:[^()]|\([^()]*\))*\)|\$\{[^}]*\}|\x60[^\x60]*\x60|[^\s;&|()<>"'\\\x60])+/y;
@@ -624,6 +649,10 @@ function normalisePrograms(command, text, flat, words, crude) {
       if (end === undefined || end <= start) continue;
       seen.add(start);
       const word = command.slice(start, end);
+      // The raw text of an untrusted view is what the rules read as it stands,
+      // separators inside strings included: a word there is rewritten only when
+      // it is whole on its own, so no rewrite hides a command (#1606 second read).
+      if (crude && !selfContained(word)) continue;
       const chars = decodeWord(word);
       const live = chars.some((x) => x.live);
       const decoded = chars.map((x) => x.c).join("");

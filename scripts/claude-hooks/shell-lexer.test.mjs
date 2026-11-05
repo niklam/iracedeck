@@ -544,3 +544,35 @@ describe("the program-word rewrite's review round (#1606)", () => {
 
   it("leaves bash's `.`, which is source, as it is", () => expect(trustedMask(". gh pr")).toBe(". gh pr"));
 });
+
+// #1606 second read: what the rewrite still got wrong after the review round.
+describe("the program-word rewrite's second read (#1606)", () => {
+  // Before #1606 an untrusted view was the raw text as it stands; a rewrite in
+  // one must never hide a command that raw text exposed.
+  const UNTRUSTED = [
+    `sudo true; echo "step; make"; git push origin integration; echo "origin/integration"`,
+    `bash -c "cd x && make"; gh pr merge 5 --squash; echo "a/b"`,
+    `bash -c "cd ../ir-5 && make"; git -C ../ir-5 commit -m "docs/x"`,
+    `timeout 5 echo 'a | b'; /usr/bin/git push --tags; echo 'c/d'`,
+    `eval "x"; echo "it's; fine" && gh pr create --title t; echo "a/b's"`,
+    `sudo echo "a & b" | git commit -m "x/y"`,
+    `xargs echo "(a)" ; gh pr merge 7 && echo ")"`,
+    "bash -c 'a; b' && git push origin integration # x/'y",
+    `sudo x "a;b"/gh pr merge 5; git.exe push --tags; echo "q/r"`,
+    "timeout 5 x `a; b`/c; gh pr merge 5 | echo 'd/e'",
+  ];
+  const SHAPES = [/git\s+push\b/, /gh\s+pr\s+merge\b/, /git\s+commit\b/, /gh\s+pr\s+create\b/].map((re) => cmd(re));
+  it.each(UNTRUSTED)("keeps every command the raw text exposes: %s", (command) => {
+    const { text, trusted } = view(command);
+    expect(trusted).toBe(false);
+    expect(text).toHaveLength(command.length);
+    for (let i = 0; i < command.length; i++)
+      if ("\n|;&()\x60\"'".includes(command[i])) expect(text[i], `${command[i]} at ${i}`).toBe(command[i]);
+    for (const re of SHAPES) if (re.test(command)) expect(re.test(text), String(re)).toBe(true);
+  });
+
+  it("still rewrites a plain program word in an untrusted view", () => {
+    expect(trustedMask(`"bash" -c 'x' && gh.exe pr merge 5`)).toBe(`  bash -c 'x' &&     gh pr merge 5`);
+    expect(trustedMask(`sudo x; "C:/Program Files/Git/cmd/git.exe" push`)).toBe(`sudo x; ${" ".repeat(31)}git push`);
+  });
+});

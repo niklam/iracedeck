@@ -4292,3 +4292,24 @@ describe("the program-word rewrite's review round (#1606)", () => {
     );
   });
 });
+
+// #1606 second read: what the rewrite still got wrong after the review round.
+describe("the program-word rewrite's second read (#1606)", () => {
+  const IR5 = tree("ir-5");
+  const onIr5 = (o = {}) =>
+    ctx({ branch: (d) => (d === IR5 ? "fix/5-x" : "master"), staged: () => ["docs/superpowers/specs/a.md"], ...o });
+
+  // An untrusted view's rewrite started a word inside a quoted string and
+  // blanked the commands up to the next quote.
+  describe("an untrusted view keeps every command its raw text shows", () => {
+    it("denies the push, the merge and the commit behind a quoted separator", () => {
+      expect(deny(`sudo true; echo "step; make"; git push origin integration; echo "origin/integration"`)).toMatch(
+        /never pushed/,
+      );
+      expect(deny(`bash -c "cd x && make"; gh pr merge 5 --squash; echo "a/b"`)).toBeTruthy();
+      expect(deny(`bash -c "cd ../ir-5 && make"; git -C ../ir-5 commit -m "docs/x"`, onIr5())).toMatch(
+        /never on a feature branch/,
+      );
+    });
+  });
+});
