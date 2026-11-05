@@ -947,8 +947,12 @@ const GIT_ENV_MOVES = {
 const ANSI_C = String.raw`\$'(?:[^'\\]|\\[\s\S])*'`;
 /** A quoted run inside a command substitution, where a `(` or `)` is text, not structure. */
 const SUBST_QUOTED = String.raw`${ANSI_C}|'[^']*'|"(?:[^"\\]|\\[\s\S])*"`;
-/** One character of a substitution's body, or a quoted run: each starts differently, so it has one parse. */
-const SUBST_ATOM = String.raw`[^()'"$]|\$(?!')|${SUBST_QUOTED}`;
+/**
+ * One character of a substitution's body, an escape or a quoted run: each
+ * starts differently, so it has one parse. The escape comes first, so `\$'`
+ * is a literal dollar and not an ANSI-C opener (CodeRabbit on PR #1628).
+ */
+const SUBST_ATOM = String.raw`\\[\s\S]|[^()'"$\\]|\$(?!')|${SUBST_QUOTED}`;
 /**
  * A command substitution, `$( … )` (two levels of nesting) or a backtick one,
  * taken whole: its words are one word of the command that holds it. A quoted

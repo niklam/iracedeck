@@ -4433,6 +4433,8 @@ describe("the program-word rewrite's second read (#1606)", () => {
         // An ANSI-C run's escaped apostrophe does not close it, inside a substitution or not.
         String.raw`git -c user.name=$(bash -c $'printf "O\'Brien"') commit -m x`,
         String.raw`bash -c x; git -c user.name=$'O\'Brien ) x' commit -m x`,
+        // An escaped `\$` before a quote is a literal dollar, not an ANSI-C opener.
+        String.raw`git -c user.name=$(bash -c 'printf x' \$'abc\') commit -m x`,
       ])
         expect(deny(c, specOnBranch), c).toMatch(/never on a feature branch/);
       passes("GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=user.name GIT_CONFIG_VALUE_0=x git commit -m x");
