@@ -22,13 +22,20 @@
 //     from (the repository root for a test, since the root suite runs every
 //     test from there; the package root for anything else, where pnpm runs a
 //     package's scripts and Rollup its config);
+//   * a string starting `packages/`, resolved against the directory it runs
+//     from, as `fs` opens it — so a test's `"packages/audio-assets/sfx/x.wav"`
+//     is a reach, while the same string in a package's own test, or in a
+//     non-test (which runs from its package root), is not;
 //   * a path built from the file's own location by constants — `join` /
 //     `resolve` / `dirname` from `node:path`, `fileURLToPath` and `new URL(…,
 //     import.meta.url)`, `import.meta.dirname`, `__dirname`, `process.cwd()`,
 //     template literals and `+`, through any `const` the file declares once —
 //     so `join(import.meta.dirname, "..", "..", "app-constants", "src")` is the
 //     same reach as the one-string spelling, and so is a path joined onto a
-//     repo-root constant derived the same way.
+//     repo-root constant derived the same way. A `join` or `normalize` of plain
+//     segments, or a constant string built any other way, is read as the one
+//     string it makes. A `\` in any of these is read as `/`, as Node's `path`
+//     reads it on Windows.
 // A path that lands outside `packages/` — the root `scripts/lib/`, the root
 // `changelog.d/`, the repository root itself, `packages/` as a whole — is not
 // a reach. Neither is a path that cannot be worked out from constants (a
@@ -38,6 +45,9 @@
 // ALLOWED names each file that reaches on purpose, the packages it reaches and
 // why. A listed file that reaches a package its entry does not name fails; so
 // does an entry whose file is gone or no longer reaches one of its packages.
+// NAMED_NOT_OPENED names the exact `packages/…` strings a test records or
+// compares as repo-relative names without opening them, with the same
+// staleness check.
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import ts from "typescript";
@@ -120,11 +130,42 @@ const ALLOWED = {
   },
 };
 
+/**
+ * Paths into another package that a test spells as a repo-relative name it
+ * never opens — provenance it records or compares — each file with the exact
+ * paths and the reason. Exact, so any other path into that package still fails.
+ */
+const NAMED_NOT_OPENED = {
+  "packages/audio-scenarios/src/reference/pack-reference.test.ts": {
+    paths: ["packages/audio-assets/voice/default/callouts.json"],
+    reason:
+      "hands buildPackReference the repo-relative source paths the generator records as `_meta.generatedFrom`, " +
+      "and checks they come back unchanged; the test never reads the file",
+  },
+  "packages/website/src/pack-reference-types.test.ts": {
+    paths: ["packages/audio-assets/voice/default/callouts.json"],
+    reason:
+      "asserts the committed pack reference names audio-assets' callouts.json among its `_meta.generatedFrom` " +
+      "provenance; the test never reads the file",
+  },
+};
+
 /** A relative module specifier: `./x`, `../x`, `.` or `..`. */
 const RELATIVE_SPECIFIER = /^\.\.?(\/|$)/;
 
 /** A string literal read as a relative path. */
 const RELATIVE_LITERAL = /^\.\.?\//;
+
+/**
+ * A string read as a path relative to the directory the code runs from, as
+ * `fs` opens one: `packages/…`. Only a test can reach a sibling this way, since
+ * it runs from the repository root; from a package root it names the package's
+ * own (nonexistent) `packages/` folder.
+ */
+const RUN_DIR_LITERAL = /^packages\//;
+
+/** `text` with Windows separators turned into `/`, as Node's `path` reads them on Windows. */
+const forwardSlashes = (text) => text.replaceAll("\\", "/");
 
 const PATH_MODULES = new Set(["path", "node:path", "path/posix", "node:path/posix"]);
 const URL_MODULES = new Set(["url", "node:url"]);
@@ -291,7 +332,7 @@ export function pathsNamed({ file, source }) {
     if (depth > 32) return undefined;
     node = unwrap(node);
 
-    if (ts.isStringLiteralLike(node)) return { seg: node.text };
+    if (ts.isStringLiteralLike(node)) return { seg: forwardSlashes(node.text) };
 
     // Only a property access or an argument-less call can spell one of these, so a large node is never stringified.
     const text =
@@ -334,8 +375,11 @@ export function pathsNamed({ file, source }) {
     ) {
       const parts = ts.isTemplateExpression(node)
         ? [
-            { seg: node.head.text },
-            ...node.templateSpans.flatMap((span) => [evaluate(span.expression, depth + 1), { seg: span.literal.text }]),
+            { seg: forwardSlashes(node.head.text) },
+            ...node.templateSpans.flatMap((span) => [
+              evaluate(span.expression, depth + 1),
+              { seg: forwardSlashes(span.literal.text) },
+            ]),
           ]
         : [evaluate(node.left, depth + 1), evaluate(node.right, depth + 1)];
 
@@ -360,12 +404,18 @@ export function pathsNamed({ file, source }) {
       switch (fn) {
         case "fileURLToPath":
         case "pathToFileURL":
-        case "normalize":
           return args[0]?.abs === undefined ? undefined : { abs: P.normalize(args[0].abs), dir: args[0].dir };
+        case "normalize":
+          if (args[0]?.abs !== undefined) return { abs: P.normalize(args[0].abs), dir: args[0].dir };
+
+          return args[0]?.seg === undefined ? undefined : { seg: P.normalize(args[0].seg) };
         case "dirname":
           return args[0]?.abs === undefined ? undefined : { abs: P.dirname(args[0].abs), dir: true };
         case "join":
-          return args[0]?.abs === undefined ? undefined : { abs: P.join(...values), dir: false };
+          if (args[0]?.abs !== undefined) return { abs: P.join(...values), dir: false };
+
+          // Plain segments join to a relative path, read as a string literal would be.
+          return args.length > 0 && args.every((arg) => arg.abs === undefined) ? { seg: P.join(...values) } : undefined;
         case "resolve":
           // A relative first segment resolves against the directory the code runs from, as Node's does.
           return { abs: P.resolve(runDir, ...values), dir: false };
@@ -377,8 +427,22 @@ export function pathsNamed({ file, source }) {
     return undefined;
   };
 
-  const visit = (node, insideAnchoredPath) => {
-    let inside = insideAnchoredPath;
+  /**
+   * A path the file spells without anchoring it: `./` or `../` against the
+   * file's directory and the run directory, `packages/…` against the run
+   * directory, as `fs` and `path.resolve` read it.
+   */
+  const noteUnanchored = (seg) => {
+    if (RELATIVE_LITERAL.test(seg)) {
+      note(P.resolve(dir, seg));
+      note(P.resolve(runDir, seg));
+    } else if (RUN_DIR_LITERAL.test(seg)) {
+      note(P.resolve(runDir, seg));
+    }
+  };
+
+  const visit = (node, insidePath) => {
+    let inside = insidePath;
 
     if (
       ts.isCallExpression(node) ||
@@ -391,15 +455,12 @@ export function pathsNamed({ file, source }) {
       if (value?.abs !== undefined) {
         note(value.abs);
         inside = true;
+      } else if (value?.seg !== undefined && !inside) {
+        noteUnanchored(value.seg);
+        inside = true;
       }
-    } else if (
-      ts.isStringLiteralLike(node) &&
-      !inside &&
-      !specifierAt.has(node.getStart(sf)) &&
-      RELATIVE_LITERAL.test(node.text)
-    ) {
-      note(P.resolve(dir, node.text));
-      note(P.resolve(runDir, node.text));
+    } else if (ts.isStringLiteralLike(node) && !inside && !specifierAt.has(node.getStart(sf))) {
+      noteUnanchored(forwardSlashes(node.text));
     }
 
     ts.forEachChild(node, (child) => visit(child, inside));
@@ -437,14 +498,17 @@ export function reachesOf({ file, source, packages }) {
  * @param {Map<string, Map<string, string[]>>} found file → its reaches (files with none may be left out)
  * @param {Record<string, { reaches: string[], reason: string }>} allowed
  * @param {Set<string>} files every file scanned
+ * @param {Record<string, { paths: string[], reason: string }>} [namedNotOpened] exact paths a file names but never opens
  * @returns {string[]}
  */
-export function reachProblems(found, allowed, files) {
+export function reachProblems(found, allowed, files, namedNotOpened = {}) {
   const problems = [];
 
   for (const [file, reaches] of found) {
-    for (const [pkg, paths] of reaches) {
-      if (allowed[file]?.reaches.includes(pkg)) continue;
+    for (const [pkg, named] of reaches) {
+      const paths = named.filter((p) => !namedNotOpened[file]?.paths.includes(p));
+
+      if (paths.length === 0 || allowed[file]?.reaches.includes(pkg)) continue;
       problems.push(
         `${file} reaches into packages/${pkg}/ by a relative path (${paths.join(", ")}): import it by package name — ` +
           `a test that needs a real implementation past a mocked barrel takes it from @iracedeck/${pkg}/testing ` +
@@ -464,6 +528,21 @@ export function reachProblems(found, allowed, files) {
         problems.push(
           `ALLOWED says ${file} reaches packages/${pkg}/, but it no longer does: remove ${pkg} from the entry`,
         );
+      }
+    }
+  }
+
+  for (const [file, { paths }] of Object.entries(namedNotOpened)) {
+    if (!files.has(file)) {
+      problems.push(`NAMED_NOT_OPENED names ${file}, which is not a tracked package source any more: remove the entry`);
+      continue;
+    }
+
+    const named = [...(found.get(file)?.values() ?? [])].flat();
+
+    for (const p of paths) {
+      if (!named.includes(p)) {
+        problems.push(`NAMED_NOT_OPENED says ${file} names ${p}, but it no longer does: remove it from the entry`);
       }
     }
   }
@@ -492,16 +571,22 @@ describe("no package reaches into another by a relative path (#1375)", () => {
   it("scans every package's sources and finds the deliberate reaches, so the check is not vacuous", () => {
     expect(FILES.length).toBeGreaterThan(1000);
     expect(new Set(FILES.map((file) => file.split("/")[1])).size).toBe(PACKAGES.size - 0);
-    expect([...found.keys()].sort()).toEqual(Object.keys(ALLOWED).sort());
+    expect([...found.keys()].sort()).toEqual(
+      [...new Set([...Object.keys(ALLOWED), ...Object.keys(NAMED_NOT_OPENED)])].sort(),
+    );
   });
 
   it("finds a reach only in a file ALLOWED names, to a package its entry names, and no stale entry", () => {
-    expect(reachProblems(found, ALLOWED, new Set(FILES))).toEqual([]);
+    expect(reachProblems(found, ALLOWED, new Set(FILES), NAMED_NOT_OPENED)).toEqual([]);
   });
 
-  it("gives every ALLOWED entry a reason", () => {
+  it("gives every ALLOWED and NAMED_NOT_OPENED entry a reason", () => {
     for (const [file, { reaches, reason }] of Object.entries(ALLOWED)) {
       expect(reaches.length, file).toBeGreaterThan(0);
+      expect(reason.length, file).toBeGreaterThan(20);
+    }
+    for (const [file, { paths, reason }] of Object.entries(NAMED_NOT_OPENED)) {
+      expect(paths.length, file).toBeGreaterThan(0);
       expect(reason.length, file).toBeGreaterThan(20);
     }
   });
@@ -553,6 +638,42 @@ describe("the check itself (positive controls)", () => {
     expect(reach(caution, captures)).toEqual({
       "sim-events-iracing": ["packages/sim-events-iracing/src/diff/__fixtures__/caution-road.json"],
     });
+  });
+
+  it("refuses a path spelled from the run directory, and one with Windows separators", () => {
+    const file = "packages/deck-core/src/a.test.ts";
+    const target = { "audio-assets": ["packages/audio-assets/sfx/x.wav"] };
+
+    for (const source of [
+      'readFileSync("packages/audio-assets/sfx/x.wav");',
+      'import { join } from "node:path";\nreadFileSync(join("packages", "audio-assets", "sfx", "x.wav"));',
+      'import path from "node:path";\nreadFileSync(path.normalize("packages/audio-assets/./sfx/x.wav"));',
+      'readFileSync("packages/audio-assets/sfx/" + "x.wav");',
+      'readFileSync("packages\\\\audio-assets\\\\sfx\\\\x.wav");',
+      'readFileSync("..\\\\..\\\\audio-assets\\\\sfx\\\\x.wav");',
+      'import { join } from "node:path";\nreadFileSync(join(import.meta.dirname, "..\\\\..\\\\audio-assets", "sfx", "x.wav"));',
+      'import { join } from "node:path";\nreadFileSync(join("packages\\\\audio-assets", "sfx\\\\x.wav"));',
+    ]) {
+      expect(reach(file, source), source).toEqual(target);
+    }
+
+    expect(reach(file, 'const SFX = "packages/audio-assets/sfx";\nreadFileSync(`${SFX}/x.wav`);')).toEqual({
+      "audio-assets": ["packages/audio-assets/sfx", "packages/audio-assets/sfx/x.wav"],
+    });
+  });
+
+  it("passes a package's own path spelled from the run directory, and a bare path from a non-test", () => {
+    const own = [
+      'const BASELINE = "packages/deck-core/src/__fixtures__/x.json";',
+      'import { join } from "node:path";\nreadFileSync(join("packages", "deck-core", "src", "x.json"));',
+    ].join("\n");
+
+    expect(reach("packages/deck-core/src/a.test.ts", own)).toEqual({});
+    // A non-test runs from its package root, where `packages/…` is a folder of its own.
+    expect(reach("packages/deck-core/src/a.ts", 'readFileSync("packages/audio-assets/sfx/x.wav");')).toEqual({});
+    expect(pathsNamed({ file: "packages/deck-core/src/a.ts", source: 'readFileSync("packages/x");' })).toEqual([
+      "packages/deck-core/packages/x",
+    ]);
   });
 
   it("resolves a non-test file's relative string against its package root too, as a glob handed to Rollup is", () => {
@@ -621,6 +742,22 @@ describe("the check itself (positive controls)", () => {
     ).toEqual([
       expect.stringContaining("packages/a/src/a.ts reaches into packages/d/"),
       expect.stringContaining("packages/c/src/c.ts reaches into packages/b/"),
+    ]);
+  });
+
+  it("passes only the exact paths NAMED_NOT_OPENED names, and fails a stale entry of it", () => {
+    const named = { "packages/a/src/a.ts": { paths: ["packages/b/x"], reason: "provenance for the control" } };
+    const reaching = (paths) => new Map([["packages/a/src/a.ts", new Map([["b", paths]])]]);
+
+    expect(reachProblems(reaching(["packages/b/x"]), {}, files, named)).toEqual([]);
+    expect(reachProblems(reaching(["packages/b/x", "packages/b/y"]), {}, files, named)).toEqual([
+      expect.stringContaining("packages/a/src/a.ts reaches into packages/b/ by a relative path (packages/b/y)"),
+    ]);
+    expect(reachProblems(found([]), {}, files, named)).toEqual([
+      "NAMED_NOT_OPENED says packages/a/src/a.ts names packages/b/x, but it no longer does: remove it from the entry",
+    ]);
+    expect(reachProblems(found([]), {}, new Set(), named)).toEqual([
+      "NAMED_NOT_OPENED names packages/a/src/a.ts, which is not a tracked package source any more: remove the entry",
     ]);
   });
 
