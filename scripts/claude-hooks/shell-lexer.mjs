@@ -872,8 +872,33 @@ export function gitPlace(command, cwd, re, shell = BASH) {
   return gitPlaceAt(command, from, base, shell, b);
 }
 
-/** The program word `git` in the rewritten text, wherever a word starts. */
+/** The program word `git` in the rewritten text, wherever a word starts: {@link gitWord}'s fallback. */
 const GIT_WORD = /(?<![^\s|;&()\x60])git(?=\s)/g;
+
+/**
+ * The git program word of the command whose text starts at `start`, as a
+ * match of its rewritten name (`index`, `[0]`), or `null` (#1606 second
+ * read): the first program word the lexer found there whose name is `git`, at
+ * the command's own depth — never a lead's option value spelled `git`
+ * (`exec -a git git -C …`), which is no program word, nor a `git` inside a
+ * substitution among its words. Only where the lexer found none is the first
+ * `git` word searched for.
+ */
+function gitWord(command, text, start, end) {
+  let from = start;
+  while (from < end && /[\s|;&()\x60]/.test(text[from])) from++;
+  const spans = view(command)
+    .programs.filter(([a, b, cut]) => a >= from && a < end && text.slice(cut, b).trim() === "git")
+    .sort((x, y) => x[0] - y[0]);
+  for (const [a, b] of spans) {
+    const between = text.slice(from, a);
+    const open = (between.match(/\(/g)?.length ?? 0) - (between.match(/\)/g)?.length ?? 0);
+    if (open <= 0 && (between.match(/\x60/g)?.length ?? 0) % 2 === 0) return Object.assign(["git"], { index: b - 3 });
+  }
+  GIT_WORD.lastIndex = from;
+  const found = GIT_WORD.exec(text);
+  return found && found.index < end ? found : null;
+}
 /**
  * `GIT_DIR`, `GIT_COMMON_DIR`, `GIT_WORK_TREE` or `GIT_INDEX_FILE` assigned or
  * exported, in bash or as PowerShell's `$env:`; the environment is case-blind
@@ -899,9 +924,8 @@ const GIT_ENV = /(?<!\w)GIT_(DIR|COMMON_DIR|WORK_TREE|INDEX_FILE)\s*=/gi;
  */
 export function gitPlaceAt(command, start, base, shell = BASH, end = command.length) {
   const text = trustedMask(command);
-  GIT_WORD.lastIndex = start;
-  const word = GIT_WORD.exec(text);
-  if (!word || word.index >= end) return { dir: base, movesRepo: false, movesTree: false, movesIndex: false };
+  const word = gitWord(command, text, start, end);
+  if (!word) return { dir: base, movesRepo: false, movesTree: false, movesIndex: false };
   const options = gitGlobals(command, word.index + word[0].length);
   let dir = base;
   for (const d of options.dirs) dir = resolveDir(dir, d, { shell });

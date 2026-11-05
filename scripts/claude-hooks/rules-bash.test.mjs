@@ -4312,4 +4312,19 @@ describe("the program-word rewrite's second read (#1606)", () => {
       );
     });
   });
+
+  // A lead's option value spelled `git` is no git command: the options read
+  // are those of the program word the rule matched.
+  it.each(["exec -a git", "xargs -I git", "env -u git", "2> git", "GIT=git", "timeout -s git 5"])(
+    "reads the -C of the git after %s",
+    (lead) => {
+      expect(deny(`${lead} git -C ../ir-5 commit -m x`, onIr5())).toMatch(/never on a feature branch/);
+      expect(
+        deny(
+          `${lead} git -C ../ir-integration push`,
+          ctx({ branch: (d) => (d.endsWith("ir-integration") ? "integration" : "master") }),
+        ),
+      ).toMatch(/never pushed/);
+    },
+  );
 });
