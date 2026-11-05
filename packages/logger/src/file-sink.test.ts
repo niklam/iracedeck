@@ -6,10 +6,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FileSink, LOG_RETENTION_DAYS, withFileSink } from "./file-sink.js";
 import { type ILogger, LogLevel } from "./index.js";
 
-// Each adapter checks that the name its sink writes matches the main-thread
-// watchdog's `watchdogDailyLogFileName` (`adapter.log-file.test.ts` in
-// deck-adapter-mirabox and deck-adapter-ulanzi): this package must not depend
-// on @iracedeck/diagnostics.
+// That the name the sink writes matches the main-thread watchdog's
+// `watchdogDailyLogFileName` is checked in @iracedeck/diagnostics
+// (`watchdog-daily-log-file.test.ts`), which depends on this package; this
+// package must not depend on it.
 
 describe("FileSink", () => {
   let dir: string;

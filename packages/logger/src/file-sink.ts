@@ -38,8 +38,8 @@ const LOG_FILE_PATTERN = /^(\d{4})\.(\d{1,2})\.(\d{1,2})\.log$/;
  * month and day (e.g. `2026.5.31.log`, `2026.5.5.log`) so our files sit
  * naturally alongside the host's own plugin logs. `@iracedeck/diagnostics`'
  * main-thread watchdog appends to the same file with its own copy of the name
- * (`watchdogDailyLogFileName`, #1330), and each adapter's test checks the two
- * agree. Writes are synchronous (`appendFileSync`) — debug logging is opt-in,
+ * (`watchdogDailyLogFileName`, #1330), and diagnostics'
+ * `watchdog-daily-log-file.test.ts` checks the two agree. Writes are synchronous (`appendFileSync`) — debug logging is opt-in,
  * so the volume is low and the simplicity is worth more than streaming. The
  * day rolls over automatically because the target filename is recomputed on
  * every write.

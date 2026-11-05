@@ -89,5 +89,4 @@ pnpm build  # tsc → dist/
 - `ws` — WebSocket client (UlanziStudio bundles Node.js 20)
 - `@iracedeck/deck-core` — Platform-agnostic interfaces
 - `@iracedeck/app-constants` — `LogLocation`, the type `logLocation` reports (#1367)
-- `@iracedeck/diagnostics` — devDependency only: `adapter.log-file.test.ts` checks the file name this adapter's `FileSink` writes against the watchdog's `watchdogDailyLogFileName` (#1367)
 - `@iracedeck/logger` — `ILogger` interface and `createConsoleLogger`, and from its Node-only `./file-sink` entry the per-day log file, shared with the Mirabox adapter (#1375)

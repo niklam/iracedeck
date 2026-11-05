@@ -48,5 +48,4 @@ pnpm build  # tsc → dist/
 - `ws` — WebSocket client (VSD Craft bundles Node.js 20 which lacks stable built-in WebSocket)
 - `@iracedeck/deck-core` — Platform-agnostic interfaces
 - `@iracedeck/app-constants` — `LogLocation`, the type `logLocation` reports (#1367)
-- `@iracedeck/diagnostics` — devDependency only: `adapter.log-file.test.ts` checks the file name this adapter's `FileSink` writes against the watchdog's `watchdogDailyLogFileName` (#1367)
 - `@iracedeck/logger` — `ILogger` interface and `createConsoleLogger`, and from its Node-only `./file-sink` entry the per-day log file (`FileSink`, `withFileSink`: unpadded `<YYYY.M.D>.log` names, the first write of each run prunes files older than `LOG_RETENTION_DAYS` = 14, issue #904), shared with the Ulanzi adapter (#1375)
