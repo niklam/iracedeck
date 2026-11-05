@@ -29,6 +29,25 @@ describe("the watchdog's daily log file name (#1330)", () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
+  /**
+   * Writes one line through a real `FileSink` at `localTime` (a fresh directory
+   * per call) and compares the one file it created with what `name` returns
+   * for that moment. The agreement test and its control share it, so the
+   * control exercises the very comparison the agreement rests on.
+   */
+  function sinkFileMatches(localTime: string, name: (now: Date) => string): boolean {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(localTime));
+    const caseDir = mkdtempSync(join(dir, "case-"));
+
+    new FileSink(caseDir, "Test").write("INFO", "x");
+    const written = readdirSync(caseDir);
+
+    expect(written).toHaveLength(1);
+
+    return written[0] === name(new Date());
+  }
+
   // Single-digit month and day (unpadded in both), two-digit ones, and both
   // sides of a year boundary, in local time.
   it.each([
@@ -38,16 +57,18 @@ describe("the watchdog's daily log file name (#1330)", () => {
     "2026-10-31T23:30:00",
     "2026-12-09T08:00:00",
   ])("is the file the logger's FileSink writes on %s", (localTime) => {
-    vi.useFakeTimers({ toFake: ["Date"] });
-    vi.setSystemTime(new Date(localTime));
-
-    new FileSink(dir, "Test").write("INFO", "x");
-
-    expect(readdirSync(dir)).toEqual([watchdogDailyLogFileName(new Date())]);
+    expect(sinkFileMatches(localTime, watchdogDailyLogFileName)).toBe(true);
   });
 
-  it("names a different file on each side of midnight (positive control)", () => {
-    expect(watchdogDailyLogFileName(new Date("2025-12-31T23:30:00"))).toBe("2025.12.31.log");
-    expect(watchdogDailyLogFileName(new Date("2026-01-01T00:30:00"))).toBe("2026.1.1.log");
+  // The drift this file exists to catch: a copy that zero-pads month and day.
+  // It names the same file as the sink on a two-digit date and a different one
+  // on a single-digit date, which is why the cases above include both.
+  it("fails for a name that drifted from the sink's (positive control)", () => {
+    const padded = (now: Date) =>
+      `${now.getFullYear()}.${String(now.getMonth() + 1).padStart(2, "0")}.${String(now.getDate()).padStart(2, "0")}.log`;
+
+    expect(sinkFileMatches("2026-10-31T23:30:00", padded)).toBe(true);
+    expect(sinkFileMatches("2026-05-05T12:00:00", padded)).toBe(false);
+    expect(sinkFileMatches("2026-01-01T00:30:00", padded)).toBe(false);
   });
 });
