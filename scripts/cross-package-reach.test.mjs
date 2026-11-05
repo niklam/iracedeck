@@ -101,11 +101,6 @@ const ALLOWED = {
       "reads the Elgato manifest for the actions that declare the Encoder controller, each of which must declare " +
       "dialPressShape",
   },
-  "packages/iracing-actions/src/audio/press-sound-clips.test.ts": {
-    reaches: ["audio-assets"],
-    reason:
-      "checks that the press sound clips the player names exist in audio-assets' sfx/ as mono 48 kHz PCM WAVs (#269)",
-  },
   "packages/replay-engine/src/camera-switch-waiter.single-policy.test.ts": {
     reaches: ["iracing-actions", "iracing-sdk"],
     reason:

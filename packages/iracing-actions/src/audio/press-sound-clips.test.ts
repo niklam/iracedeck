@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { createRequire } from "node:module";
 import { describe, expect, it } from "vitest";
 
 import { PRESS_SOUND_CLIPS } from "./press-sounds.js";
@@ -12,12 +12,21 @@ import { PRESS_SOUND_CLIPS } from "./press-sounds.js";
  * plain mono 48 kHz 16-bit PCM WAV with no metadata chunks, which is what the
  * player's mixer expects and what keeps the bleep free of an MP3's encoder
  * delay.
+ *
+ * Each clip is resolved through the package's `./sfx/*` export, which this
+ * package declares as a devDependency for the purpose, never by a relative
+ * path into its directory (#1375).
  */
-const AUDIO_ASSETS = join(import.meta.dirname, "../../../audio-assets");
+const requireHere = createRequire(import.meta.url);
+
+/** The file a clip path the player names (`sfx/…`) resolves to in `@iracedeck/audio-assets`. */
+function clipFile(clip: string): string {
+  return requireHere.resolve(`@iracedeck/audio-assets/${clip}`);
+}
 
 describe("press sound clips (#269)", () => {
   it.each(Object.entries(PRESS_SOUND_CLIPS))("the %s clip %s is a mono 48 kHz 16-bit PCM WAV", (_sound, clip) => {
-    const wav = readFileSync(join(AUDIO_ASSETS, clip));
+    const wav = readFileSync(clipFile(clip));
 
     expect(wav.toString("ascii", 0, 4)).toBe("RIFF");
     expect(wav.toString("ascii", 8, 16)).toBe("WAVEfmt ");
