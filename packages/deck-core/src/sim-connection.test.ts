@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { createFakeSimConnection } from "./fake-sim-connection.js";
+import { createFakeSimConnection } from "./fake-sim-connection.test-support.js";
 import {
   _resetSimConnection,
   getSimConnection,

@@ -10,7 +10,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ConnectionStateAwareAction } from "./connection-state-aware-action.js";
-import { createFakeSimConnection, type FakeSimConnection } from "./fake-sim-connection.js";
+import { createFakeSimConnection, type FakeSimConnection } from "./fake-sim-connection.test-support.js";
 import { applyInactiveOverlay, overlayConfig } from "./overlay-utils.js";
 import { _resetSimConnection, initializeSimConnection } from "./sim-connection.js";
 import type { IDeckActionContext, IDeckWillAppearEvent } from "./types.js";

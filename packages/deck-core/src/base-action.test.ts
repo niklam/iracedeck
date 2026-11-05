@@ -9,7 +9,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { BaseAction } from "./base-action.js";
-import { createFakeSimConnection, type FakeSimConnection } from "./fake-sim-connection.js";
+import { createFakeSimConnection, type FakeSimConnection } from "./fake-sim-connection.test-support.js";
 import { applyInactiveOverlay, overlayConfig } from "./overlay-utils.js";
 import { _resetPluginConfig, initPluginConfig } from "./plugin-config.js";
 import { _resetSimConnection, initializeSimConnection, type OverlayFlag } from "./sim-connection.js";

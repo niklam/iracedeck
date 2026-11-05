@@ -8,7 +8,7 @@
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { createFakeSimConnection, type FakeSimConnection } from "./fake-sim-connection.js";
+import { createFakeSimConnection, type FakeSimConnection } from "./fake-sim-connection.test-support.js";
 import { resolveTitleTemplate, titleHasTemplate } from "./title-template.js";
 
 const sim = vi.hoisted(() => ({ fake: null as FakeSimConnection | null, initialized: true }));
