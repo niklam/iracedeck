@@ -34,6 +34,7 @@ import type { ReplaySessionStore } from "@iracedeck/replay-store";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { labelClearsSideMarks } from "../../shared/dial-label-fit.js";
+import { describeLateInput } from "../../shared/dial-late-input.test-support.js";
 import { describePressShapes } from "../../shared/press-shape.test-support.js";
 import { registerReplayBusySurface, type ReplayBusyLook } from "../../shared/replay-busy-indicator.js";
 import { engineOverDeck } from "../../shared/replay-engine-deck.test-support.js";
@@ -2171,8 +2172,8 @@ describe("ReplayControlDialSurface", () => {
       surface.rotate(ctx as never, d, -1, false);
 
       // The dial's own io: the shared one, with its origin token bound (#801).
-      expect(jog).toHaveBeenNthCalledWith(1, 1, d, surface["contexts"].get(ctx.id)?.io);
-      expect(jog).toHaveBeenNthCalledWith(2, -1, d, surface["contexts"].get(ctx.id)?.io);
+      expect(jog).toHaveBeenNthCalledWith(1, 1, d, surface["contextsState"].get(ctx.id)?.io);
+      expect(jog).toHaveBeenNthCalledWith(2, -1, d, surface["contextsState"].get(ctx.id)?.io);
       expect(ladder).not.toHaveBeenCalled();
       expect(mocks.nextFrame).toHaveBeenCalledTimes(1);
       expect(mocks.prevFrame).toHaveBeenCalledTimes(1);
@@ -2332,7 +2333,7 @@ describe("ReplayControlDialSurface", () => {
       surface.rotate(late as never, d(), 1, false);
       await settle();
 
-      expect(surface["contexts"].has("late-rotate")).toBe(false);
+      expect(surface["contextsState"].has("late-rotate")).toBe(false);
       expectNothingHappened(late);
       expect(logger.debug).toHaveBeenCalledWith("Dial rotate dropped: no context for late-rotate (it has disappeared)");
     });
@@ -2347,7 +2348,7 @@ describe("ReplayControlDialSurface", () => {
       await vi.advanceTimersByTimeAsync(1000);
       await surface.up("late-down");
 
-      expect(surface["contexts"].has("late-down")).toBe(false);
+      expect(surface["contextsState"].has("late-down")).toBe(false);
       expectNothingHappened(late);
     });
 
@@ -2358,7 +2359,7 @@ describe("ReplayControlDialSurface", () => {
       surface.touchTap(late as never, d(), true);
       await settle();
 
-      expect(surface["contexts"].has("late-tap")).toBe(false);
+      expect(surface["contextsState"].has("late-tap")).toBe(false);
       expectNothingHappened(late);
     });
 
@@ -2376,8 +2377,54 @@ describe("ReplayControlDialSurface", () => {
 
       surface.rotate(ctx as never, d(), 1, false);
 
-      expect(surface["contexts"].has("live")).toBe(true);
+      expect(surface["contextsState"].has("live")).toBe(true);
       expect(mocks.setPlaySpeed).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe("the shared late-input cases", () => {
+    // A fresh surface per case, built by `appear`, as every case here builds its own.
+    let lateSurface: ReplayControlDialSurface;
+    const lateInputSettings = dial({
+      pressAction: "jump-to-live",
+      longPressAction: "jump-to-live",
+      tapAction: "jump-to-live",
+      longTouchAction: "jump-to-live",
+    });
+
+    describeLateInput({
+      appear: async (id) => {
+        nowPlaying(speed(1));
+        lateSurface = makeSurface();
+        const ctx = dialContext(id);
+        await lateSurface.willAppear(ctx as never, lateInputSettings);
+
+        return ctx;
+      },
+      disappear: async (ctx) => lateSurface.willDisappear(ctx.id),
+      rotate: async (ctx) => lateSurface.rotate(ctx as never, lateInputSettings, 1, false),
+      down: async (ctx) => lateSurface.down(ctx as never, lateInputSettings),
+      up: (ctx) => lateSurface.up(ctx.id),
+      touchTap: async (ctx, hold) => lateSurface.touchTap(ctx as never, lateInputSettings, hold),
+      contexts: () => lateSurface["contextsState"],
+      sent: (ctx) => ({
+        setDialCanvas: ctx.setDialCanvas,
+        setImage: ctx.setImage,
+        setTriggerDescription: ctx.setTriggerDescription,
+        setPlaySpeed: mocks.setPlaySpeed,
+        pause: mocks.pause,
+        nextFrame: mocks.nextFrame,
+        prevFrame: mocks.prevFrame,
+        setPlayPosition: mocks.setPlayPosition,
+        nextLap: mocks.nextLap,
+        nextSession: mocks.nextSession,
+        jumpToLive: host.jumpToLive,
+        jumpToRaceStart: host.jumpToRaceStart,
+        jumpToMyCar: host.jumpToMyCar,
+        switchToCarNumber: host.switchToCarNumber,
+        refreshKeys: host.refreshKeys,
+        tapBinding: host.tapBinding,
+      }),
     });
   });
 
@@ -2540,7 +2587,7 @@ describe("ReplayControlDialSurface", () => {
       await surface.up(ctx.id);
       await settle();
       expectNothingSent();
-      expect(surface["contexts"].get(ctx.id)?.preview).toBeNull();
+      expect(surface["contextsState"].get(ctx.id)?.preview).toBeNull();
     });
 
     it("a disappearing dial draws no revert frame and leaves no timer", async () => {

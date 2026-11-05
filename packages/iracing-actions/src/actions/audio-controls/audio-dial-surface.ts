@@ -24,8 +24,8 @@ import type { ILogger } from "@iracedeck/logger";
 import { onGlobalSettingsChange } from "@iracedeck/settings";
 
 import { tickIRacingVolumeStep } from "../../audio/volume-tick.js";
-import { type DialInputEvent, hasDialInputContext } from "../../shared/dial-context.js";
 import { KNOB_BOX_HEIGHT, KNOB_BOX_WIDTH } from "../../shared/dial-knob-box.js";
+import { DialSurfaceBase } from "../../shared/dial-surface-base.js";
 import { INTERNAL_AUDIO_BUSES } from "./audio-buses.js";
 import {
   type AudioControlsSettings,
@@ -282,8 +282,7 @@ export interface AudioDialHost {
  * dial-side behavior. The owning action routes events here after parsing
  * settings.
  */
-export class AudioDialSurface {
-  private contextsState = new Map<string, AudioDialContext>();
+export class AudioDialSurface extends DialSurfaceBase<AudioDialContext, AudioControlsSettings> {
   /**
    * Unsubscribe handle for the global-settings listener. Registered lazily on
    * the first dial appear and kept for the plugin lifetime (the action is a
@@ -293,7 +292,9 @@ export class AudioDialSurface {
    */
   private unsubscribeGlobalSettings: (() => void) | null = null;
 
-  constructor(private readonly host: AudioDialHost) {}
+  constructor(protected override readonly host: AudioDialHost) {
+    super();
+  }
 
   async willAppear(action: IDeckActionContext, settings: AudioControlsSettings): Promise<void> {
     const ctx = this.ensureContext(action, settings);
@@ -313,7 +314,7 @@ export class AudioDialSurface {
       if (ctx.renderTimer !== null) clearTimeout(ctx.renderTimer);
     }
 
-    this.contextsState.delete(actionId);
+    this.forgetContext(actionId);
   }
 
   async didReceiveSettings(action: IDeckActionContext, settings: AudioControlsSettings): Promise<void> {
@@ -529,39 +530,22 @@ export class AudioDialSurface {
     await this.host.tapBinding(skipCallKey);
   }
 
-  /**
-   * The context an INPUT event (rotate, down, touchTap) acts on: the existing
-   * one, refreshed exactly as {@link ensureContext} refreshes it, or `undefined`
-   * — never a new one (#1329). A late event the host delivers after
-   * `willDisappear` is dropped here, before it can re-create the entry or act
-   * on a context that is gone.
-   */
-  private inputContext(
-    action: IDeckActionContext,
-    settings: AudioControlsSettings,
-    event: DialInputEvent,
-  ): AudioDialContext | undefined {
-    return hasDialInputContext(this.contextsState, action.id, event, this.host.logger)
-      ? this.ensureContext(action, settings)
-      : undefined;
+  /** A new context for a lifecycle event (`willAppear`, `didReceiveSettings`); the base stores it. */
+  protected override createContext(action: IDeckActionContext, settings: AudioControlsSettings): AudioDialContext {
+    return { settings, action, pttHeld: false, renderTimer: null, renderQueued: false };
   }
 
   /**
-   * Look up or create the per-context state — for the LIFECYCLE events
-   * (`willAppear`, `didReceiveSettings`) only. Input events go through
-   * {@link inputContext}, which never creates a context (#1329).
+   * An existing context refreshes its action only: `willAppear`,
+   * `didReceiveSettings` and the input members assign `ctx.settings`
+   * themselves, at their call sites.
    */
-  private ensureContext(action: IDeckActionContext, settings: AudioControlsSettings): AudioDialContext {
-    let ctx = this.contextsState.get(action.id);
-
-    if (!ctx) {
-      ctx = { settings, action, pttHeld: false, renderTimer: null, renderQueued: false };
-      this.contextsState.set(action.id, ctx);
-    }
-
+  protected override refreshContext(
+    ctx: AudioDialContext,
+    action: IDeckActionContext,
+    _settings: AudioControlsSettings,
+  ): void {
     ctx.action = action;
-
-    return ctx;
   }
 
   private ensureGlobalListener(): void {

@@ -9,6 +9,7 @@ import {
 import type { ReplayMarker, ReplaySessionStore } from "@iracedeck/replay-store";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { describeLateInput } from "../../shared/dial-late-input.test-support.js";
 import { describePressShapes } from "../../shared/press-shape.test-support.js";
 import { registerReplayBusySurface, type ReplayBusyLook } from "../../shared/replay-busy-indicator.js";
 import { engineOverDeck } from "../../shared/replay-engine-deck.test-support.js";
@@ -1190,7 +1191,7 @@ describe("ReplayMarkersDialSurface", () => {
       surface.rotate(late as never, d(), 1, false);
       await settle();
 
-      expect(surface["contexts"].has("late-rotate")).toBe(false);
+      expect(surface["contextsState"].has("late-rotate")).toBe(false);
       expectNothingSent(late);
     });
 
@@ -1204,7 +1205,7 @@ describe("ReplayMarkersDialSurface", () => {
       await vi.advanceTimersByTimeAsync(1000);
       await surface.up("late-down");
 
-      expect(surface["contexts"].has("late-down")).toBe(false);
+      expect(surface["contextsState"].has("late-down")).toBe(false);
       expectNothingSent(late);
     });
 
@@ -1214,7 +1215,7 @@ describe("ReplayMarkersDialSurface", () => {
       surface.touchTap(late as never, d(), false);
       await settle();
 
-      expect(surface["contexts"].has("late-tap")).toBe(false);
+      expect(surface["contextsState"].has("late-tap")).toBe(false);
       expectNothingSent(late);
     });
 
@@ -1228,8 +1229,46 @@ describe("ReplayMarkersDialSurface", () => {
 
       surface.rotate(ctx as never, d(), 1, false);
 
-      expect(surface["contexts"].has("live")).toBe(true);
+      expect(surface["contextsState"].has("live")).toBe(true);
       expect(mocks.setPlayPosition).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe("the shared late-input cases", () => {
+    // A fresh surface per case, built by `appear`, as every case here builds its own.
+    let lateSurface: ReplayMarkersDialSurface;
+    const lateInputSettings = dial({
+      pressAction: "add",
+      longPressAction: "add",
+      tapAction: "add",
+      longTouchAction: "add",
+    });
+
+    describeLateInput({
+      appear: async (id) => {
+        setMarkers([1_000, 3_000, 5_000]);
+        env.telemetry = replayAt(3_050);
+        lateSurface = makeSurface();
+        const ctx = dialContext(id);
+        await lateSurface.willAppear(ctx as never, lateInputSettings);
+
+        return ctx;
+      },
+      disappear: async (ctx) => lateSurface.willDisappear(ctx.id),
+      rotate: async (ctx) => lateSurface.rotate(ctx as never, lateInputSettings, 1, false),
+      down: async (ctx) => lateSurface.down(ctx as never, lateInputSettings),
+      up: (ctx) => lateSurface.up(ctx.id),
+      touchTap: async (ctx, hold) => lateSurface.touchTap(ctx as never, lateInputSettings, hold),
+      contexts: () => lateSurface["contextsState"],
+      sent: (ctx) => ({
+        setDialCanvas: ctx.setDialCanvas,
+        setImage: ctx.setImage,
+        setTriggerDescription: ctx.setTriggerDescription,
+        setPlayPosition: mocks.setPlayPosition,
+        setPlaySpeed: mocks.setPlaySpeed,
+        add: storeMarkers.add,
+        deleteNearest: storeMarkers.deleteNearest,
+      }),
     });
   });
 

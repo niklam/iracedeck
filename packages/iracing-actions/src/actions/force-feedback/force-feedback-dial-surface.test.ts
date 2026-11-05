@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { describeLateInput } from "../../shared/dial-late-input.test-support.js";
 import { actionPressShapes, describePressShapes } from "../../shared/press-shape.test-support.js";
 import { buildTriggerDescription, DialSettings, formatDialValue } from "./force-feedback-dial-surface.js";
 import { ForceFeedback } from "./force-feedback.js";
@@ -214,6 +215,37 @@ describe("ForceFeedback dial surface", () => {
   async function appear(ctx: DialContext, settings: Record<string, unknown> = {}) {
     await action.onWillAppear(basicEvent(ctx, settings) as never);
   }
+
+  const lateInputSettings = dialSettings({
+    ...{ setting: "ffb-force" },
+    pressAction: "auto-ffb",
+    longPressAction: "auto-ffb",
+    tapAction: "auto-ffb",
+    longTouchAction: "auto-ffb",
+  });
+
+  describeLateInput({
+    appear: async (id) => {
+      const ctx = dialContext(id);
+      await appear(ctx, lateInputSettings);
+
+      return ctx;
+    },
+    disappear: (ctx) => action.onWillDisappear(basicEvent(ctx, lateInputSettings) as never),
+    rotate: (ctx) => action.onDialRotate(rotateEvent(ctx, lateInputSettings, 1) as never),
+    down: (ctx) => action.onDialDown(basicEvent(ctx, lateInputSettings) as never),
+    up: (ctx) => action.onDialUp(basicEvent(ctx, lateInputSettings) as never),
+    touchTap: (ctx, hold) => action.onTouchTap(touchTapEvent(ctx, lateInputSettings, hold) as never),
+    contexts: () => action["dialSurface"]["contextsState"],
+    sent: (ctx) => ({
+      tapBinding: mockTapBinding,
+      setDialCanvas: ctx.setDialCanvas,
+      setFeedback: ctx.setFeedback,
+      setImage: ctx.setImage,
+      setTriggerDescription: ctx.setTriggerDescription,
+      setSettings: ctx.setSettings,
+    }),
+  });
 
   describePressShapes({
     dialContext: (id) => dialContext(id),

@@ -26,16 +26,15 @@ import {
   type DeckTriggerDescription,
   getDualPressThresholdMs,
   type IDeckActionContext,
-  type PressShape,
   svgToDataUri,
 } from "@iracedeck/deck-core";
 import type { ILogger } from "@iracedeck/logger";
 import z from "zod";
 
 import { dialAppearanceFields, renderDialBox, resolveDialBoxColors } from "../../shared/dial-box.js";
-import { type DialInputEvent, hasDialInputContext } from "../../shared/dial-context.js";
 import { pushDialNameIcon } from "../../shared/dial-name-icon.js";
-import { classifyDialReleaseForHost, dialGestureShape, touchGestureShape } from "../../shared/dial-release.js";
+import { classifyDialReleaseForHost } from "../../shared/dial-release.js";
+import { type DialGestures, gestureSlots, ReleaseDialSurfaceBase } from "../../shared/dial-surface-base.js";
 
 /**
  * The global-settings binding keys the dial taps — shared verbatim with the
@@ -204,10 +203,10 @@ export interface SplitsDeltaCycleDialHost {
  * renders the dial screen. The owning action routes every dial
  * lifecycle/input event here.
  */
-export class SplitsDeltaCycleDialSurface {
-  private readonly contextsState = new Map<string, SplitsDeltaCycleDialContext>();
-
-  constructor(private readonly host: SplitsDeltaCycleDialHost) {}
+export class SplitsDeltaCycleDialSurface extends ReleaseDialSurfaceBase<SplitsDeltaCycleDialContext, DialSettings> {
+  constructor(protected override readonly host: SplitsDeltaCycleDialHost) {
+    super();
+  }
 
   async willAppear(action: IDeckActionContext, dial: DialSettings): Promise<void> {
     const ctx = this.ensureContext(action, dial);
@@ -222,7 +221,7 @@ export class SplitsDeltaCycleDialSurface {
   }
 
   willDisappear(actionId: string): void {
-    this.contextsState.delete(actionId);
+    this.forgetContext(actionId);
   }
 
   async didReceiveSettings(action: IDeckActionContext, dial: DialSettings): Promise<void> {
@@ -257,28 +256,6 @@ export class SplitsDeltaCycleDialSurface {
     for (let i = 0; i < taps; i++) {
       await this.host.tapBinding(key);
     }
-  }
-
-  /**
-   * The press shape of a dial press (#269): released, with the gestures the
-   * release fires and the threshold it classifies with, or `none` when no
-   * context would take the press. `down` and `touchTap` refresh the context from these settings, so they are the ones the release and the touch read.
-   */
-  pressShape(action: IDeckActionContext, dial: DialSettings): PressShape {
-    if (!this.contextsState.has(action.id)) return { kind: "none" };
-
-    return dialGestureShape({
-      pressGesture: dial.pressAction,
-      longPressGesture: dial.longPressAction,
-      thresholdMs: getDualPressThresholdMs(),
-    });
-  }
-
-  /** The press shape of a touch (#269): the slot `touchTap` fires for it, or `none`. */
-  touchShape(action: IDeckActionContext, dial: DialSettings, hold: boolean): PressShape {
-    if (!this.contextsState.has(action.id)) return { kind: "none" };
-
-    return touchGestureShape({ tapGesture: dial.tapAction, longTouchGesture: dial.longTouchAction, hold });
   }
 
   down(action: IDeckActionContext, dial: DialSettings): void {
@@ -351,45 +328,26 @@ export class SplitsDeltaCycleDialSurface {
     }
   }
 
-  /**
-   * The context an INPUT event (rotate, down, touchTap) acts on: the existing
-   * one, refreshed exactly as {@link ensureContext} refreshes it, or `undefined`
-   * — never a new one (#1329). A late event the host delivers after
-   * `willDisappear` is dropped here, before it can re-create the entry or act
-   * on a context that is gone.
-   */
-  private inputContext(
-    action: IDeckActionContext,
-    dial: DialSettings,
-    event: DialInputEvent,
-  ): SplitsDeltaCycleDialContext | undefined {
-    return hasDialInputContext(this.contextsState, action.id, event, this.host.logger)
-      ? this.ensureContext(action, dial)
-      : undefined;
+  protected override createContext(action: IDeckActionContext, dial: DialSettings): SplitsDeltaCycleDialContext {
+    return {
+      dial,
+      action,
+      pressStart: 0,
+      rotatedWhilePressed: false,
+    };
   }
 
-  /**
-   * Look up or create the per-context state — for the LIFECYCLE events
-   * (`willAppear`, `didReceiveSettings`) only. Input events go through
-   * {@link inputContext}, which never creates a context (#1329).
-   */
-  private ensureContext(action: IDeckActionContext, dial: DialSettings): SplitsDeltaCycleDialContext {
-    let ctx = this.contextsState.get(action.id);
+  protected override refreshContext(
+    ctx: SplitsDeltaCycleDialContext,
+    action: IDeckActionContext,
+    dial: DialSettings,
+  ): void {
+    ctx.action = action;
+    ctx.dial = dial;
+  }
 
-    if (!ctx) {
-      ctx = {
-        dial,
-        action,
-        pressStart: 0,
-        rotatedWhilePressed: false,
-      };
-      this.contextsState.set(action.id, ctx);
-    } else {
-      ctx.action = action;
-      ctx.dial = dial;
-    }
-
-    return ctx;
+  protected override dialGestures(_ctx: SplitsDeltaCycleDialContext, dial: DialSettings): DialGestures {
+    return gestureSlots(dial);
   }
 
   /** Runs a configured press / touch gesture. */

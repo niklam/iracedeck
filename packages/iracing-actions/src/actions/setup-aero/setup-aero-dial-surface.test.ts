@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { describeLateInput } from "../../shared/dial-late-input.test-support.js";
 import { actionPressShapes, describePressShapes } from "../../shared/press-shape.test-support.js";
 import { buildTriggerDescription, DialSettings, formatDialValue } from "./setup-aero-dial-surface.js";
 import { SetupAero } from "./setup-aero.js";
@@ -199,6 +200,37 @@ describe("SetupAero dial surface", () => {
         shape: { kind: "tap" },
       },
     ],
+  });
+
+  const lateInputSettings = dialSettings({
+    setting: "front-wing",
+    pressAction: "toggle-rf-brake",
+    longPressAction: "toggle-rf-brake",
+    tapAction: "toggle-rf-brake",
+    longTouchAction: "toggle-rf-brake",
+  });
+
+  describeLateInput({
+    appear: async (id) => {
+      const ctx = dialContext(id);
+      await appear(ctx, lateInputSettings);
+
+      return ctx;
+    },
+    disappear: (ctx) => action.onWillDisappear(basicEvent(ctx, lateInputSettings) as never),
+    rotate: (ctx) => action.onDialRotate(rotateEvent(ctx, lateInputSettings, 1) as never),
+    down: (ctx) => action.onDialDown(basicEvent(ctx, lateInputSettings) as never),
+    up: (ctx) => action.onDialUp(basicEvent(ctx, lateInputSettings) as never),
+    touchTap: (ctx, hold) => action.onTouchTap(touchTapEvent(ctx, lateInputSettings, hold) as never),
+    contexts: () => action["dialSurface"]["contextsState"],
+    sent: (ctx) => ({
+      tapBinding: mockTapBinding,
+      setDialCanvas: ctx.setDialCanvas,
+      setFeedback: ctx.setFeedback,
+      setImage: ctx.setImage,
+      setTriggerDescription: ctx.setTriggerDescription,
+      setSettings: ctx.setSettings,
+    }),
   });
 
   describe("onDialRotate", () => {

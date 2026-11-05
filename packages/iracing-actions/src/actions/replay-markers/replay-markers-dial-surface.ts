@@ -23,17 +23,16 @@ import {
   IconUpdateThrottle,
   type IDeckActionContext,
   NOOP_HOLD_PREVIEW,
-  type PressShape,
   svgToDataUri,
 } from "@iracedeck/deck-core";
 import type { TelemetryData } from "@iracedeck/iracing-sdk";
 import type { ILogger } from "@iracedeck/logger";
 
 import { type DialBoxArgs, type DialSideMarks, renderDialBox, resolveDialBoxColors } from "../../shared/dial-box.js";
-import { type DialInputEvent, hasDialInputContext } from "../../shared/dial-context.js";
 import { pushDialNameIcon } from "../../shared/dial-name-icon.js";
 import type { DialPendingPreview } from "../../shared/dial-preview.js";
-import { classifyDialReleaseForHost, dialGestureShape, touchGestureShape } from "../../shared/dial-release.js";
+import { classifyDialReleaseForHost } from "../../shared/dial-release.js";
+import { type DialGestures, gestureSlots, ReleaseDialSurfaceBase } from "../../shared/dial-surface-base.js";
 import { getReplayBusyLook, registerReplayBusySurface } from "../../shared/replay-busy-indicator.js";
 import { replayBusyDialMark } from "../../shared/replay-busy-mark.js";
 import {
@@ -203,12 +202,16 @@ export function resolveDialView(
  * The dial surface of the Replay Markers action. One instance per action;
  * holds every dial context's state and all dial-side behaviour.
  */
-export class ReplayMarkersDialSurface {
-  private readonly contexts = new Map<string, ReplayMarkersDialContext>();
+export class ReplayMarkersDialSurface extends ReleaseDialSurfaceBase<
+  ReplayMarkersDialContext,
+  ReplayMarkersDialSettings
+> {
   /** Every push to a dial's screen goes through this: at most 10 per second per dial (rule 6). */
   private readonly renderThrottle = new IconUpdateThrottle();
 
-  constructor(private readonly host: ReplayMarkersDialHost) {}
+  constructor(protected override readonly host: ReplayMarkersDialHost) {
+    super();
+  }
 
   async willAppear(action: IDeckActionContext, dial: ReplayMarkersDialSettings): Promise<void> {
     const ctx = this.ensureContext(action, dial);
@@ -225,7 +228,7 @@ export class ReplayMarkersDialSurface {
   }
 
   willDisappear(actionId: string): void {
-    const ctx = this.contexts.get(actionId);
+    const ctx = this.contextsState.get(actionId);
 
     if (!ctx) return;
 
@@ -235,7 +238,7 @@ export class ReplayMarkersDialSurface {
     ctx.unregisterBusy?.();
     ctx.unregisterBusy = null;
     this.renderThrottle.clear(actionId);
-    this.contexts.delete(actionId);
+    this.forgetContext(actionId);
   }
 
   async didReceiveSettings(action: IDeckActionContext, dial: ReplayMarkersDialSettings): Promise<void> {
@@ -265,7 +268,7 @@ export class ReplayMarkersDialSurface {
       token: ctx.action.id,
       drawsWorking: true,
       redraw: () => {
-        if (this.contexts.get(ctx.action.id) === ctx) this.scheduleIfChanged(ctx);
+        if (this.contextsState.get(ctx.action.id) === ctx) this.scheduleIfChanged(ctx);
       },
     });
   }
@@ -336,26 +339,9 @@ export class ReplayMarkersDialSurface {
     this.scheduleRender(ctx);
   }
 
-  /**
-   * The press shape of a dial press (#269): released, with the gestures the
-   * release fires and the threshold it classifies with, or `none` when no
-   * context would take the press. `down` and `touchTap` refresh the context from these settings, so they are the ones the release and the touch read.
-   */
-  pressShape(action: IDeckActionContext, dial: ReplayMarkersDialSettings): PressShape {
-    if (!this.contexts.has(action.id)) return { kind: "none" };
-
-    return dialGestureShape({
-      pressGesture: dial.pressAction,
-      longPressGesture: dial.longPressAction,
-      thresholdMs: getDualPressThresholdMs(),
-    });
-  }
-
-  /** The press shape of a touch (#269): the slot `touchTap` fires for it, or `none`. */
-  touchShape(action: IDeckActionContext, dial: ReplayMarkersDialSettings, hold: boolean): PressShape {
-    if (!this.contexts.has(action.id)) return { kind: "none" };
-
-    return touchGestureShape({ tapGesture: dial.tapAction, longTouchGesture: dial.longTouchAction, hold });
+  /** The gestures the press shapes (#269) report: the event's settings, since `down` and `touchTap` refresh the context from them. */
+  protected override dialGestures(_ctx: ReplayMarkersDialContext, dial: ReplayMarkersDialSettings): DialGestures {
+    return gestureSlots(dial);
   }
 
   down(action: IDeckActionContext, dial: ReplayMarkersDialSettings): void {
@@ -371,7 +357,7 @@ export class ReplayMarkersDialSurface {
   }
 
   async up(actionId: string): Promise<void> {
-    const ctx = this.contexts.get(actionId);
+    const ctx = this.contextsState.get(actionId);
 
     if (!ctx) return;
 
@@ -425,7 +411,7 @@ export class ReplayMarkersDialSurface {
    * built once.
    */
   onTick(actionId: string): void {
-    const ctx = this.contexts.get(actionId);
+    const ctx = this.contextsState.get(actionId);
 
     if (ctx) this.scheduleIfChanged(ctx);
   }
@@ -542,40 +528,11 @@ export class ReplayMarkersDialSurface {
     ctx.flash = null;
   }
 
-  /**
-   * The context an INPUT event (rotate, down, touchTap) acts on: the existing
-   * one, refreshed exactly as {@link ensureContext} refreshes it, or `undefined`
-   * — never a new one (#1329). A late event the host delivers after
-   * `willDisappear` is dropped here, before it can re-create the entry or act
-   * on a context that is gone.
-   */
-  private inputContext(
+  /** A new context, with its hold preview. */
+  protected override createContext(
     action: IDeckActionContext,
     dial: ReplayMarkersDialSettings,
-    event: DialInputEvent,
-  ): ReplayMarkersDialContext | undefined {
-    return hasDialInputContext(this.contexts, action.id, event, this.host.logger)
-      ? this.ensureContext(action, dial)
-      : undefined;
-  }
-
-  /**
-   * Gets or creates a context, refreshing its dial settings and action from the
-   * event — for the LIFECYCLE events (`willAppear`, `didReceiveSettings`) only;
-   * input events go through {@link inputContext}, which never creates a context
-   * (#1329). This surface writes no settings of its own, so the payload is
-   * authoritative (rule 10 applies only to surfaces that persist plugin-side).
-   */
-  private ensureContext(action: IDeckActionContext, dial: ReplayMarkersDialSettings): ReplayMarkersDialContext {
-    const existing = this.contexts.get(action.id);
-
-    if (existing) {
-      existing.action = action;
-      existing.dial = dial;
-
-      return existing;
-    }
-
+  ): ReplayMarkersDialContext {
     const created: ReplayMarkersDialContext = {
       action,
       dial,
@@ -598,9 +555,22 @@ export class ReplayMarkersDialSurface {
           onCancel: () => this.revertHoldPreview(created),
         })
       : NOOP_HOLD_PREVIEW;
-    this.contexts.set(action.id, created);
 
     return created;
+  }
+
+  /**
+   * Refreshes the dial settings and the action from the event. This surface
+   * writes no settings of its own, so the payload is authoritative (rule 10
+   * applies only to surfaces that persist plugin-side).
+   */
+  protected override refreshContext(
+    ctx: ReplayMarkersDialContext,
+    action: IDeckActionContext,
+    dial: ReplayMarkersDialSettings,
+  ): void {
+    ctx.action = action;
+    ctx.dial = dial;
   }
 
   /** The dash-box arguments for the current state; `pending` and the flash ride every render. */
@@ -659,7 +629,7 @@ export class ReplayMarkersDialSurface {
     ctx.queuedSig = null;
 
     // A context that went away (or was replaced) since the schedule draws nothing.
-    if (this.contexts.get(ctx.action.id) !== ctx) return;
+    if (this.contextsState.get(ctx.action.id) !== ctx) return;
 
     // The dial's own screen decides the drawing; none, nothing to draw (#1013).
     const canvas = ctx.action.dialCanvas();

@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { describeLateInput } from "../../shared/dial-late-input.test-support.js";
 import { actionPressShapes, describePressShapes } from "../../shared/press-shape.test-support.js";
 import {
   buildTriggerDescription,
@@ -249,6 +250,37 @@ describe("BlackBoxSelector dial surface", () => {
       mockDualPressThreshold.value = ms;
     },
     readsStoredSettings: false,
+  });
+
+  const lateInputSettings = withDial({
+    pressBox: "fuel",
+    pressAction: "open-selected-box",
+    longPressAction: "open-selected-box",
+    tapAction: "open-selected-box",
+    longTouchAction: "open-selected-box",
+  });
+
+  describeLateInput({
+    appear: async (id) => {
+      const ctx = dialContext(id);
+      await appear(ctx, lateInputSettings);
+
+      return ctx;
+    },
+    disappear: (ctx) => action.onWillDisappear(eventFor(ctx, lateInputSettings) as never),
+    rotate: (ctx) => action.onDialRotate(rotateEvent(ctx, lateInputSettings, 1) as never),
+    down: (ctx) => action.onDialDown(eventFor(ctx, lateInputSettings) as never),
+    up: (ctx) => action.onDialUp(eventFor(ctx, lateInputSettings) as never),
+    touchTap: (ctx, hold) => action.onTouchTap(touchEvent(ctx, lateInputSettings, hold) as never),
+    contexts: () => action["dialSurface"]["contextsState"],
+    sent: (ctx) => ({
+      tapBinding: mockTapBinding,
+      setDialCanvas: ctx.setDialCanvas,
+      setFeedback: ctx.setFeedback,
+      setImage: ctx.setImage,
+      setTriggerDescription: ctx.setTriggerDescription,
+      setSettings: ctx.setSettings,
+    }),
   });
 
   describe("onDialRotate", () => {

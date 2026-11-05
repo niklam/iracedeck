@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { describeLateInput } from "../../shared/dial-late-input.test-support.js";
 import { actionPressShapes, describePressShapes } from "../../shared/press-shape.test-support.js";
 import {
   buildTriggerDescription,
@@ -307,6 +308,39 @@ describe("SetupChassis dial surface", () => {
     ],
   });
 
+  const lateInputSettings = dialSettings({
+    setting: "lr-spring",
+    pressAction: "toggle-spring-side",
+    longPressAction: "toggle-spring-side",
+    tapAction: "toggle-spring-side",
+    longTouchAction: "toggle-spring-side",
+  });
+
+  describeLateInput({
+    appear: async (id) => {
+      const ctx = dialContext(id);
+      await appear(ctx, lateInputSettings);
+
+      return ctx;
+    },
+    disappear: (ctx) => action.onWillDisappear(basicEvent(ctx, lateInputSettings) as never),
+    rotate: (ctx) => action.onDialRotate(rotateEvent(ctx, lateInputSettings, 1) as never),
+    down: (ctx) => action.onDialDown(basicEvent(ctx, lateInputSettings) as never),
+    up: (ctx) => action.onDialUp(basicEvent(ctx, lateInputSettings) as never),
+    touchTap: (ctx, hold) =>
+      action.onTouchTap({ action: ctx, payload: { settings: lateInputSettings, tapPos: [0, 0], hold } } as never),
+    contexts: () => action["dialSurface"]["contextsState"],
+    sent: (ctx) => ({
+      tapBinding: mockTapBinding,
+      tapBindingSequence: mockTapBindingSequence,
+      setDialCanvas: ctx.setDialCanvas,
+      setFeedback: ctx.setFeedback,
+      setImage: ctx.setImage,
+      setTriggerDescription: ctx.setTriggerDescription,
+      setSettings: ctx.setSettings,
+    }),
+  });
+
   describe("dial units on the strip (#953)", () => {
     it("renders the forced imperial value on a metric-display sim", async () => {
       mockGetCurrentTelemetry.mockReturnValue({ dpWeightJackerLeft: 3.175, DisplayUnits: 1 });
@@ -497,7 +531,7 @@ describe("SetupChassis dial surface", () => {
       tapAction: "toggle-spring-side",
     });
 
-    function contexts(): Map<string, unknown> {
+    function contexts(): ReadonlyMap<string, unknown> {
       return action["dialSurface"]["contextsState"];
     }
 
