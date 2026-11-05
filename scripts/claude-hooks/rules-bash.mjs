@@ -1004,6 +1004,9 @@ export const rules = [
         // directory leaves the branch, the index and the files unknown (#1606).
         const { dir, movesRepo, movesTree, movesIndex } = gitPlaceAt(c, commit.start, commit.base, ctx.shell);
         if (movesRepo || movesTree || movesIndex) return movedRepo("commit");
+        // A `git add` ahead of it that stages into a moved repository, tree or
+        // index stages what the hook cannot read (#1606 second read).
+        if (addsAhead(c, commit, ctx).some((a) => a.moved)) return movedRepo("add");
         const branch = ctx.branch(dir);
         const selection = commitSelection(c, commit, ctx, dir);
         const committed = [...selection.keys()];
@@ -1068,6 +1071,9 @@ export const rules = [
       for (const commit of chainCommands(c, ctx.cwd, GIT_COMMIT, ctx.shell)) {
         const { dir, movesRepo, movesTree, movesIndex } = gitPlaceAt(c, commit.start, commit.base, ctx.shell);
         if (movesRepo || movesTree || movesIndex) return movedRepo("commit");
+        // A `git add` ahead of it that stages into a moved repository, tree or
+        // index stages what the hook cannot read (#1606 second read).
+        if (addsAhead(c, commit, ctx).some((a) => a.moved)) return movedRepo("add");
         for (const from of manifestSources(c, commit, ctx, dir)) {
           const text = ctx.committedText?.(dir, ELGATO_MANIFEST, from);
           if (text === undefined) continue;
@@ -1388,7 +1394,7 @@ const commitArgs = (command, commit) => gitArgs(argTokens(command, commit.at), C
 
 /**
  * Every `git add` at command position chained AHEAD of the `git commit` matched
- * as `commit`, as `{ args, dir }`: its words parsed by {@link gitArgs}, and the
+ * as `commit`, as `{ args, dir, moved }`: its words parsed by {@link gitArgs}, the
  * directory it runs in — the session cwd moved by the `cd`s ahead of it and its
  * own `-C`, as for the commit. An operand is resolved in the add's own directory
  * (#1594 review: `cd docs && git add superpowers/specs/x.md && cd .. && git commit`
@@ -1396,15 +1402,23 @@ const commitArgs = (command, commit) => gitArgs(argTokens(command, commit.at), C
  * `untracked` are repo-root-relative, so an add in the same repository yields
  * paths the commit's lists compare with; one in another repository can only
  * over-match, which errs to deny. An add after the commit, or one only quoted
- * or echoed, is none. Shared by {@link commitSelection} and {@link manifestSources}.
+ * or echoed, is none. `moved` is set when the add names its repository, work
+ * tree or index apart from its directory (`gitPlaceAt` in `shell-lexer.mjs`):
+ * it then stages what the hook cannot read, and the commit rules refuse it
+ * (#1606 second read). Shared by {@link commitSelection}, {@link
+ * manifestSources} and the commit rules.
  */
 function addsAhead(command, commit, ctx) {
   return [...chainCommands(command, ctx.cwd, GIT_ADD, ctx.shell)]
     .filter((add) => add.at < commit.at)
-    .map((add) => ({
-      args: gitArgs(argTokens(command, add.at), ADD_OPTIONS),
-      dir: gitPlaceAt(command, add.start, add.base, ctx.shell).dir,
-    }));
+    .map((add) => {
+      const place = gitPlaceAt(command, add.start, add.base, ctx.shell, add.at);
+      return {
+        args: gitArgs(argTokens(command, add.at), ADD_OPTIONS),
+        dir: place.dir,
+        moved: place.movesRepo || place.movesTree || place.movesIndex,
+      };
+    });
 }
 
 /**

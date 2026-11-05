@@ -4386,4 +4386,20 @@ describe("the program-word rewrite's second read (#1606)", () => {
   ])("reads env's arguments past an option value spelled as a wrapper: %s", (c) =>
     expect(deny(c)).toMatch(/cannot read whole|Could not read the repository|env may take for an assignment/),
   );
+
+  // A `git add` ahead of a commit stages into the index of the repository and
+  // tree it acts on, which the hook reads in its own directory only.
+  describe("a git add ahead of a commit whose repository, tree or index is moved", () => {
+    const untracked = ctx({ untracked: () => ["docs/superpowers/specs/new.md"] });
+    it.each([
+      "git --work-tree=../ir-5 add docs/superpowers/specs/new.md && git commit -m x",
+      "git -c core.worktree=../ir-5 add -A && git commit -m x",
+      "git --git-dir=../ir-5/.git add x && git commit -m x",
+      "git --config-env=core.worktree=WT add x; git commit -m x -- y",
+    ])("refuses %s", (c) => expect(deny(c, untracked)).toMatch(/git -C <dir> add/));
+    it("passes an add that is not ahead of the commit, and a plain one", () => {
+      passes("git commit -m x && git --work-tree=../ir-5 add y", untracked);
+      passes("git add notes.md && git commit -m x", untracked);
+    });
+  });
 });
