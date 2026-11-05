@@ -4402,7 +4402,24 @@ describe("the program-word rewrite's second read (#1606)", () => {
         "$CMD pr merge 5 --squash",
         "{gh,pr} merge 5 --squash",
       ])
-        expect(deny(c, green), c).toMatch(/may expand to several words/);
+        expect(deny(c, green), c).toMatch(/may expand to (?:several words|an assignment)/);
+      // A split word may carry a wrapper and an assignment (`W='env GH_REPO=o/r'`): CodeRabbit on PR #1628.
+      expect(deny("$W gh pr merge 5 --squash", green)).toMatch(/may expand to an assignment; judged as `GH_REPO=\$W`/);
+      expect(deny("$W git commit -m x", green)).toMatch(/may expand to an assignment; judged as `GIT_DIR=\$W`/);
+    });
+    // A config key is read as bash reads it, and one that expands may be core.worktree (CodeRabbit on PR #1628).
+    it("reads a config key that names core.worktree in any spelling, or may", () => {
+      for (const c of [
+        "GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=c'ore.worktree' GIT_CONFIG_VALUE_0=../ir-5 git commit -m x",
+        String.raw`GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core\.worktree GIT_CONFIG_VALUE_0=../ir-5 git commit -m x`,
+        "GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0='core'.WorkTree GIT_CONFIG_VALUE_0=../ir-5 git commit -m x",
+        `git -c "$K"=../ir-5 commit -m x`,
+        "git -c c'ore.worktree'=../ir-5 commit -m x",
+        "git --config-env=$K=V commit -m x",
+      ])
+        expect(deny(c), c).toMatch(/names its repository, work tree or index/);
+      passes("GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=user.name GIT_CONFIG_VALUE_0=x git commit -m x");
+      passes("git -c user.name=x commit -m x");
     });
     it("passes a splitting word whose command a guard does not read", () => {
       passes("$EDITOR notes.md");

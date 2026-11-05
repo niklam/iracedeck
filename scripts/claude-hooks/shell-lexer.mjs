@@ -943,12 +943,29 @@ const GIT_ENV_MOVES = {
  * value is not read, any config key counts. On doubt it moves: a commit then
  * refuses, which costs a re-spelling.
  */
+/** One shell word at the start of `s`, quotes and escapes kept, for {@link decodeWord}. */
+const LEADING_WORD = /^(?:"(?:[^"\\]|\\[\s\S])*"|'[^']*'|\\[\s\S]|[^\s;&|()<>"'\\])*/;
+
+/**
+ * Whether a config key, written as raw shell text at the start of `raw`,
+ * may be `core.worktree` (#1606, CodeRabbit on PR #1628). It is decoded as
+ * bash reads it, so `c'ore.worktree'` and `core\.worktree` are that key, and
+ * one that expands may be. `stop` cuts the key at a plain `=` (`-c k=v`).
+ */
+function mayNameWorktree(raw, stop = false) {
+  const chars = decodeWord(LEADING_WORD.exec(raw)[0]);
+  const eq = stop ? chars.findIndex((x) => !x.live && x.c === "=") : -1;
+  const key = eq < 0 ? chars : chars.slice(0, eq);
+  if (key.some((x) => x.live)) return true;
+  return /^core\.worktree$/i.test(key.map((x) => x.c).join(""));
+}
+
 function envMoves(command, text, upTo) {
   const moves = new Set();
   const add = (name, value) => {
     const key = name.toUpperCase();
     if (!key.startsWith("CONFIG_KEY_")) moves.add(GIT_ENV_MOVES[key]);
-    else if (value === undefined || /^['"]?(?:core\.worktree\b|[$`])/i.test(value)) moves.add("tree");
+    else if (value === undefined || mayNameWorktree(value)) moves.add("tree");
   };
   const before = text.slice(0, upTo);
   for (const m of before.matchAll(GIT_ENV)) add(m[1], command.slice(m.index + m[0].length, upTo));
@@ -1015,7 +1032,9 @@ export function gitGlobals(command, from) {
     if (name === "-C") out.dirs.push(value);
     else if (name === "--git-dir") out.gitDir = value;
     else if (name === "--work-tree") out.workTree = value;
-    else if (name === "-c" || name === "--config-env") out.config.push(value.split("=")[0].toLowerCase());
+    // A key that expands may be core.worktree: on doubt it moves (CodeRabbit on PR #1628).
+    else if (name === "-c" || name === "--config-env")
+      out.config.push(mayNameWorktree(raw, true) ? "core.worktree" : value.split("=")[0].toLowerCase());
   }
   return out;
 }
