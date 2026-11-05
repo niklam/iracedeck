@@ -4430,6 +4430,9 @@ describe("the program-word rewrite's second read (#1606)", () => {
       for (const c of [
         "git -c user.name=$(bash -c 'printf x' 'a ) b') commit -m x",
         `git -c user.name=$(printf "%s" "a ) b") commit -m x`,
+        // An ANSI-C run's escaped apostrophe does not close it, inside a substitution or not.
+        String.raw`git -c user.name=$(bash -c $'printf "O\'Brien"') commit -m x`,
+        String.raw`bash -c x; git -c user.name=$'O\'Brien ) x' commit -m x`,
       ])
         expect(deny(c, specOnBranch), c).toMatch(/never on a feature branch/);
       passes("GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=user.name GIT_CONFIG_VALUE_0=x git commit -m x");

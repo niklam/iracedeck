@@ -943,10 +943,12 @@ const GIT_ENV_MOVES = {
  * value is not read, any config key counts. On doubt it moves: a commit then
  * refuses, which costs a re-spelling.
  */
+/** An ANSI-C `$'…'` run, where `\'` does not close it (CodeRabbit on PR #1628). */
+const ANSI_C = String.raw`\$'(?:[^'\\]|\\[\s\S])*'`;
 /** A quoted run inside a command substitution, where a `(` or `)` is text, not structure. */
-const SUBST_QUOTED = String.raw`'[^']*'|"(?:[^"\\]|\\[\s\S])*"`;
+const SUBST_QUOTED = String.raw`${ANSI_C}|'[^']*'|"(?:[^"\\]|\\[\s\S])*"`;
 /** One character of a substitution's body, or a quoted run: each starts differently, so it has one parse. */
-const SUBST_ATOM = String.raw`[^()'"]|${SUBST_QUOTED}`;
+const SUBST_ATOM = String.raw`[^()'"$]|\$(?!')|${SUBST_QUOTED}`;
 /**
  * A command substitution, `$( … )` (two levels of nesting) or a backtick one,
  * taken whole: its words are one word of the command that holds it. A quoted
@@ -958,7 +960,7 @@ const SUBSTITUTION = String.raw`\$\((?:${SUBST_ATOM}|\((?:${SUBST_ATOM}|\((?:${S
 
 /** One shell word at the start of `s`, quotes, escapes and substitutions kept, for {@link decodeWord}. */
 const LEADING_WORD = new RegExp(
-  String.raw`^(?:"(?:[^"\\]|\\[\s\S])*"|'[^']*'|\\[\s\S]|${SUBSTITUTION}|\$(?!\()|[^\s;&|()<>"'\\$\x60])*`,
+  String.raw`^(?:"(?:[^"\\]|\\[\s\S])*"|${ANSI_C}|'[^']*'|\\[\s\S]|${SUBSTITUTION}|\$(?![('])|[^\s;&|()<>"'\\$\x60])*`,
 );
 
 /**
@@ -1166,9 +1168,9 @@ export const COMMAND_LEAD = String.raw`(?:${leadToken("(?:")})*`;
  * masked text), an escape or a command substitution stays whole, so
  * `git -c x=$(echo a b) commit` is still a commit (#1606, CodeRabbit on PR #1628).
  */
-const GIT_VALUE_PART = String.raw`(?:"[^"]*"|'[^']*'|\\[\s\S]|${SUBSTITUTION}|\$(?!\()|[^\s\\"'$\x60])`;
+const GIT_VALUE_PART = String.raw`(?:"[^"]*"|${ANSI_C}|'[^']*'|\\[\s\S]|${SUBSTITUTION}|\$(?![('])|[^\s\\"'$\x60])`;
 /** A git option's value in the next word, which never starts with `-` (the {@link COMMAND_LEAD} rule: one parse per token). */
-const GIT_VALUE = String.raw`(?:"[^"]*"|'[^']*'|\\[\s\S]|${SUBSTITUTION}|\$(?!\()|[^\s\\"'$\x60-])${GIT_VALUE_PART}*`;
+const GIT_VALUE = String.raw`(?:"[^"]*"|${ANSI_C}|'[^']*'|\\[\s\S]|${SUBSTITUTION}|\$(?![('])|[^\s\\"'$\x60-])${GIT_VALUE_PART}*`;
 /** git's global options that take a value in the next word. */
 const GIT_VALUE_OPTIONS = String.raw`-C|-c|--git-dir|--work-tree|--namespace|--config-env|--super-prefix|--attr-source`;
 /** git's global options that take a value after `=`. */
