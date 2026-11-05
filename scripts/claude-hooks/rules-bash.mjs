@@ -34,18 +34,21 @@ import {
   cmd,
   COMMAND_LEAD,
   commandEnd,
-  GIT_C_RE,
+  GIT_GLOBALS,
   gitCwd,
+  gitPlace,
+  gitPlaceAt,
   has,
   maskInert,
   matchAt,
   matchesAt,
-  optionDir,
   POWERSHELL,
   powershellAsBash,
+  programStart,
   ranges,
   resolveDir,
   trustedMask,
+  unreadablePrograms,
   view,
   words,
 } from "./shell-lexer.mjs";
@@ -261,11 +264,31 @@ const specExistsFor = (files, issue) => files.some((f) => new RegExp(`-issue-${i
 
 // ---------------------------------------------------------------------------
 
+/**
+ * A git command with verb `verb` (a regex source) at command position, read
+ * through every global option git takes ahead of it (`GIT_GLOBALS` in
+ * `shell-lexer.mjs`, #1606). Every git trap is built here, so none hand-rolls
+ * its own prefix again.
+ */
+const gitVerb = (verb) => cmd(new RegExp(`git${GIT_GLOBALS}${verb}`));
+
+/**
+ * The deny for a git command whose repository, work tree or index is named
+ * apart from the directory it runs in (`--git-dir`, `--work-tree`,
+ * `core.worktree`, `GIT_DIR`, `GIT_COMMON_DIR`, `GIT_WORK_TREE`,
+ * `GIT_INDEX_FILE`; `gitPlaceAt` in `shell-lexer.mjs`), from a rule that reads
+ * that repository's branch, index or files (#1606): the hook asks git in the
+ * directory, so it would judge another repository than the one the command
+ * acts on.
+ */
+const movedRepo = (verb) =>
+  `This \`git ${verb}\` names its repository, work tree or index apart from its directory (--git-dir, --work-tree, core.worktree, GIT_DIR, GIT_COMMON_DIR, GIT_WORK_TREE or GIT_INDEX_FILE), or through a \`-C\` that expands, so the hook cannot tell which branch, index and files it acts on. Run it as \`git -C <dir> ${verb} …\` with the directory written out, in the tree itself instead (#1606).`;
+
 /** The git shapes whose rules read a `-C`; exported so the post-hook scopes the same way. */
-export const GIT_PUSH = cmd(/git\s+(-C\s+\S+\s+)?push\b/);
-export const GIT_COMMIT = cmd(/git\s+(-C\s+\S+\s+)?commit\b/);
-export const GIT_WORKTREE_ADD = cmd(/git\s+(?:-C\s+\S+\s+)?worktree\s+add\b(.*)$/);
-export const GIT_WORKTREE_REMOVE = cmd(/git\s+(?:-c\s+\S+\s+)?(?:-C\s+\S+\s+)?worktree\s+remove\b(.*)$/);
+export const GIT_PUSH = gitVerb(String.raw`push\b`);
+export const GIT_COMMIT = gitVerb(String.raw`commit\b`);
+export const GIT_WORKTREE_ADD = gitVerb(String.raw`worktree\s+add\b(.*)$`);
+export const GIT_WORKTREE_REMOVE = gitVerb(String.raw`worktree\s+remove\b(.*)$`);
 
 /**
  * Issue number of an `ir-<n>` worktree path, read off its LAST segment — the
@@ -328,7 +351,9 @@ const MERGE_PREFIX_WORDS = new Set(["!", "command", "env", "exec", "nohup", "tim
  * variables, `GH_REPO` aside, which the gate reads. An option to a wrapper
  * (`env -C<dir>`, `env -i`, `env -u GH_REPO`) or a `GIT_DIR` can move what gh
  * resolves the merge to, so anything else is refused. Names are compared in
- * any case: Windows hands gh its environment case-blind.
+ * any case: Windows hands gh its environment case-blind. A redirection
+ * (`2>/dev/null`, `</dev/null`, #1606 review) moves nothing gh reads, so it is
+ * read too, unless its target runs a command (`>(…)`, a backtick).
  */
 function plainMergePrefix(prefix) {
   const words = prefix
@@ -344,10 +369,18 @@ function plainMergePrefix(prefix) {
     }
     const name = /^([A-Za-z_][A-Za-z0-9_]*)=/.exec(w)?.[1];
     if (name && (name === "GH_REPO" || !/^(?:GH|GIT)_/i.test(name))) continue;
+    const redirect = REDIRECT_WORD.exec(w);
+    if (redirect) {
+      const target = redirect[1] || words[++k];
+      if (target !== undefined && !/[()\x60]/.test(target)) continue;
+    }
     return false;
   }
   return true;
 }
+
+/** A redirection word: an optional fd and one operator, the target attached in group 1 or in the next word. */
+const REDIRECT_WORD = /^\d*(?:<<<|[<>]&|&>>?|>>|>\||<>|<|>)(.*)$/;
 
 /** `gh pr merge` flags that take a value, so the value is never read as the PR or as a flag. */
 const MERGE_VALUE_FLAGS = new Set([
@@ -387,9 +420,11 @@ export function firstMerge(command) {
   const { text, flat, trusted } = view(command);
   const m = /\bgh\s+pr\s+merge\b/.exec(text);
   if (!m) return undefined;
-  const rest = text.slice(m.index).search(CHAIN_AND_BACKGROUND);
-  const end = rest < 0 ? text.length : m.index + rest;
-  return parseMerge({ raw: command.slice(m.index, end), flat: flat.slice(m.index, end), trusted });
+  // From the start of the program word, so its raw text is read whole (#1606).
+  const start = programStart(command, m.index);
+  const rest = text.slice(start).search(CHAIN_AND_BACKGROUND);
+  const end = rest < 0 ? text.length : start + rest;
+  return parseMerge({ raw: command.slice(start, end), flat: flat.slice(start, end), trusted });
 }
 
 /**
@@ -397,9 +432,19 @@ export function firstMerge(command) {
  * does not know, and for a merge the mask hid. It counts raw text so that it
  * shares no blind spot with the mask it backs up (#1321 review), and it is
  * reached only once a merge at command position has matched, so a command that
- * merely mentions one never pays for it.
+ * merely mentions one never pays for it. The raw count takes the spellings of
+ * the program a bare regex can see (`gh.exe`, `"gh"`, `GH`), and the larger of
+ * it and the count in the rewritten text wins (#1606): a quoted path to gh is
+ * seen only by the second, a merge inside a string handed to nothing only by
+ * the first. Only the program's case is folded: `pr merge` is gh's own
+ * subcommand, in lower case, so `GH PR MERGE` in a body is no merge (#1606
+ * review).
  */
-const mergeMentions = (command) => (command.match(/\bgh\s+pr\s+merge\b/g) ?? []).length;
+const mergeMentions = (command) =>
+  Math.max(
+    (command.match(/\b[Gg][Hh](?:\.[Ee][Xx][Ee])?\b["']?\s+pr\s+merge\b/g) ?? []).length,
+    (view(command).text.match(/\bgh\s+pr\s+merge\b/g) ?? []).length,
+  );
 
 /**
  * The words of one command segment, `{ word, shape }` each: with a trusted mask
@@ -809,12 +854,20 @@ export const rules = [
     // it runs in, so `cd ../ir-integration && git push` is caught.
     name: "git push: the integration branch is never pushed",
     test: (c, ctx) => {
-      for (const { base, head, args } of chainCommands(c, ctx.cwd, GIT_PUSH, ctx.shell)) {
-        const dir = optionDir(head, GIT_C_RE, base, ctx.shell);
+      for (const { base, start, args } of chainCommands(c, ctx.cwd, GIT_PUSH, ctx.shell)) {
+        // Every `-C`, in order (#1606). The push reads the current branch only
+        // when no refspec names one, and only then does a `--git-dir` or
+        // `GIT_DIR`, which hides whose branch that is, refuse it.
+        const { dir, movesRepo } = gitPlaceAt(c, start, base, ctx.shell);
+        let unknown = false;
         const fromIntegration = () =>
-          ctx.branch(dir) === INTEGRATION_BRANCH || path.basename(ctx.toplevel?.(dir) ?? dir) === INTEGRATION_TREE;
+          movesRepo
+            ? (unknown = true)
+            : ctx.branch(dir) === INTEGRATION_BRANCH || path.basename(ctx.toplevel?.(dir) ?? dir) === INTEGRATION_TREE;
         if (pushReachesIntegration(words(args), fromIntegration))
-          return `The \`${INTEGRATION_BRANCH}\` branch is local and never pushed: it is origin/${MAIN_BRANCH} plus the branches under manual test, rebuilt by scripts/integration-build.mjs (#1520). Push each issue branch from its own ../ir-<issue> tree.`;
+          return unknown
+            ? movedRepo("push")
+            : `The \`${INTEGRATION_BRANCH}\` branch is local and never pushed: it is origin/${MAIN_BRANCH} plus the branches under manual test, rebuilt by scripts/integration-build.mjs (#1520). Push each issue branch from its own ../ir-<issue> tree.`;
       }
       return null;
     },
@@ -873,10 +926,13 @@ export const rules = [
       // nothing may run beside it (a pipe, a background `&`).
       const ahead = cdsAhead(c, GH_PR_MERGE, ctx.cwd, ctx.shell);
       const masked = trustedMask(c);
-      const at = GH_PR_MERGE.exec(masked)?.index ?? c.length;
+      // Where the program word starts, not where its rewritten name does (#1606).
+      const at = programStart(c, GH_PR_MERGE.exec(masked)?.index ?? c.length);
       if (!ahead || CONCURRENT.test(masked))
         return "Run `gh pr merge` as its own command, with nothing ahead of it but a plain `cd <dir> &&` and no pipe or background `&` in the command: anything else could change which repository or PR gh merges after this gate has read it (#1393).";
-      if (!plainMergePrefix(c.slice(ahead.start, at)))
+      // Read in the rewritten text, where a wrapper spelled with a path is its
+      // plain name and a quoted assignment one word.
+      if (!plainMergePrefix(masked.slice(ahead.start, at)))
         return "This `gh pr merge` carries a prefix the gate cannot read whole — a wrapper's option, or a GH_* or GIT_* variable other than GH_REPO — which can move what gh merges; name the repository with `-R` on the merge, or leave it out (#1393).";
       // The repository in gh's order — a PR URL, then `--repo` / `-R`, then a
       // `GH_REPO` — refused before gh is asked when it is not HOME_REPO or
@@ -944,7 +1000,13 @@ export const rules = [
       // Every commit at command position, each in the tree its own `cd`s and
       // `-C` land in, so a harmless first commit cannot shield a later one (#1594).
       for (const commit of chainCommands(c, ctx.cwd, GIT_COMMIT, ctx.shell)) {
-        const dir = optionDir(commit.head, GIT_C_RE, commit.base, ctx.shell);
+        // Every `-C`, in order; a repository or work tree named apart from the
+        // directory leaves the branch, the index and the files unknown (#1606).
+        const { dir, movesRepo, movesTree, movesIndex } = gitPlaceAt(c, commit.start, commit.base, ctx.shell);
+        if (movesRepo || movesTree || movesIndex) return movedRepo("commit");
+        // A `git add` ahead of it that stages into a moved repository, tree or
+        // index stages what the hook cannot read (#1606 second read).
+        if (addsAhead(c, commit, ctx).some((a) => a.moved)) return movedRepo("add");
         const branch = ctx.branch(dir);
         const selection = commitSelection(c, commit, ctx, dir);
         const committed = [...selection.keys()];
@@ -1007,7 +1069,11 @@ export const rules = [
       if (!has(c, GIT_COMMIT)) return null;
       // Each commit in the tree its own `cd`s and `-C` land in, as for the spec rule (#1594 review).
       for (const commit of chainCommands(c, ctx.cwd, GIT_COMMIT, ctx.shell)) {
-        const dir = optionDir(commit.head, GIT_C_RE, commit.base, ctx.shell);
+        const { dir, movesRepo, movesTree, movesIndex } = gitPlaceAt(c, commit.start, commit.base, ctx.shell);
+        if (movesRepo || movesTree || movesIndex) return movedRepo("commit");
+        // A `git add` ahead of it that stages into a moved repository, tree or
+        // index stages what the hook cannot read (#1606 second read).
+        if (addsAhead(c, commit, ctx).some((a) => a.moved)) return movedRepo("add");
         for (const from of manifestSources(c, commit, ctx, dir)) {
           const text = ctx.committedText?.(dir, ELGATO_MANIFEST, from);
           if (text === undefined) continue;
@@ -1031,7 +1097,9 @@ export const rules = [
     test: (c, ctx) => {
       const target = worktreeAddTarget(c);
       if (!target) return null;
-      const dir = gitCwd(c, ctx.cwd, GIT_WORKTREE_ADD, ctx.shell);
+      // The repository the tree joins decides where it belongs (#1606).
+      const { dir, movesRepo } = gitPlace(c, ctx.cwd, GIT_WORKTREE_ADD, ctx.shell);
+      if (movesRepo) return movedRepo("worktree add");
       const resolved = resolveDir(dir, target, { shell: ctx.shell });
       // A true sibling, not merely "outside master": the main root is the
       // checkout the git-common-dir belongs to, so a tree nested inside
@@ -1226,7 +1294,7 @@ export const rules = [
     name: "git show <ref/with/slash>:<dot-path> is mangled by MSYS",
     bashOnly: true,
     test: (c) =>
-      [...matchesAt(c, cmd(/git\s+show\b([^|&;\n]*)/))].some(
+      [...matchesAt(c, gitVerb(String.raw`show\b([^|&;\n]*)`))].some(
         (m) =>
           /(?:^|\s)\S*\/\S*:\./.test(m[1]) && !/MSYS_NO_PATHCONV/.test(trustedMask(c).slice(0, m.index + m[0].length)),
       ) &&
@@ -1235,7 +1303,7 @@ export const rules = [
   {
     name: "git diff master..HEAD is the wrong question",
     test: (c) =>
-      has(c, cmd(/git\s+(-C\s+\S+\s+)?diff\b[^|&;]*\s(origin\/)?master\.\.[^.\s]/)) &&
+      has(c, gitVerb(String.raw`diff\b[^|&;]*\s(origin\/)?master\.\.[^.\s]`)) &&
       "`git diff master..X` diffs the two tips and returns master's own commits inverted. Use `origin/master...HEAD` (three dots, from the merge base).",
   },
 ];
@@ -1326,7 +1394,7 @@ const commitArgs = (command, commit) => gitArgs(argTokens(command, commit.at), C
 
 /**
  * Every `git add` at command position chained AHEAD of the `git commit` matched
- * as `commit`, as `{ args, dir }`: its words parsed by {@link gitArgs}, and the
+ * as `commit`, as `{ args, dir, moved }`: its words parsed by {@link gitArgs}, the
  * directory it runs in — the session cwd moved by the `cd`s ahead of it and its
  * own `-C`, as for the commit. An operand is resolved in the add's own directory
  * (#1594 review: `cd docs && git add superpowers/specs/x.md && cd .. && git commit`
@@ -1334,15 +1402,23 @@ const commitArgs = (command, commit) => gitArgs(argTokens(command, commit.at), C
  * `untracked` are repo-root-relative, so an add in the same repository yields
  * paths the commit's lists compare with; one in another repository can only
  * over-match, which errs to deny. An add after the commit, or one only quoted
- * or echoed, is none. Shared by {@link commitSelection} and {@link manifestSources}.
+ * or echoed, is none. `moved` is set when the add names its repository, work
+ * tree or index apart from its directory (`gitPlaceAt` in `shell-lexer.mjs`):
+ * it then stages what the hook cannot read, and the commit rules refuse it
+ * (#1606 second read). Shared by {@link commitSelection}, {@link
+ * manifestSources} and the commit rules.
  */
 function addsAhead(command, commit, ctx) {
   return [...chainCommands(command, ctx.cwd, GIT_ADD, ctx.shell)]
     .filter((add) => add.at < commit.at)
-    .map((add) => ({
-      args: gitArgs(argTokens(command, add.at), ADD_OPTIONS),
-      dir: optionDir(add.head, GIT_C_RE, add.base, ctx.shell),
-    }));
+    .map((add) => {
+      const place = gitPlaceAt(command, add.start, add.base, ctx.shell, add.at);
+      return {
+        args: gitArgs(argTokens(command, add.at), ADD_OPTIONS),
+        dir: place.dir,
+        moved: place.movesRepo || place.movesTree || place.movesIndex,
+      };
+    });
 }
 
 /**
@@ -1665,7 +1741,7 @@ function pathspecCovers(token, target, ctx, dir) {
   return target === rel || target.startsWith(`${rel}/`);
 }
 
-const GIT_ADD = cmd(/git\s+(?:-C\s+\S+\s+)?add\b/);
+const GIT_ADD = gitVerb(String.raw`add\b`);
 
 /**
  * Where the `git commit` matched as `commit` (a {@link chainCommands} result,
@@ -1745,10 +1821,85 @@ const checkName = (c) => c.name ?? c.context ?? c.__typename ?? "?";
  * A PowerShell command (`ctx.shell`, #1520) is read through
  * `powershellAsBash` in `shell-lexer.mjs` and skips the `bashOnly` rules — the traps that
  * describe bash syntax, which in PowerShell would only misfire.
+ *
+ * A program word the lexer cannot read — its last path segment expands or
+ * globs: `$GH`, `$(which gh)`, `g?` (`unreadablePrograms` in
+ * `shell-lexer.mjs`) — could be gh or git, so the command is judged again
+ * with that word replaced by each of them (#1606). Anything a rule would say
+ * about either, an ask included, refuses it, naming the word: the hook cannot
+ * tell what the shell will run, and a deny costs one re-spelling. A word no
+ * rule would say anything about as either (`$EDITOR notes.md`) passes.
+ *
+ * An argument of env that expands (`env $R gh pr merge 5`) may be the program
+ * or a NAME=VALUE env makes (#1606 review), so it is judged as each program
+ * and as `GH_REPO=<word>` and `GIT_DIR=<word>`, the two assignments a rule
+ * reads: the merge gate then cannot read the repository, and a commit cannot
+ * tell which one it records into.
+ *
+ * Any such word may also be a wrapper (`W=command`, `W=env`) that runs the
+ * words after it as the command (#1606 second read), so it is judged once more
+ * blanked out, at the same length, which puts the next word at command
+ * position.
  */
 export function checkBash(command, ctx) {
   const powershell = ctx.shell === POWERSHELL;
   const text = powershell ? powershellAsBash(command) : command;
+  const verdict = judge(text, ctx, powershell);
+  if (typeof verdict === "string") return verdict;
+  // An ask the command carries anyway, from another command of the chain, is
+  // not the word's doing: a re-judge repeats it, and only what the
+  // substitution adds may turn into a deny (#1606, CodeRabbit CLI).
+  const own = new Set(verdict?.asks ?? []);
+  const masked = trustedMask(text);
+  for (const { start, end, word, env } of unreadablePrograms(text)) {
+    // Where the word's own command ends.
+    const stop = masked.slice(end).search(/[;&|\n()\x60]/);
+    const ownEnd = stop < 0 ? masked.length : end + stop;
+    // An unquoted expansion may split into a wrapper and its assignments
+    // (`W='env GH_REPO=o/r'`), so it gets the assignment stand-ins too
+    // (CodeRabbit on PR #1628), after the wrapper one. An assignment reaches
+    // only its own command, so that stand-in is judged without the commands
+    // chained after it, whose own rules would read it as theirs.
+    const splits = SPLITS.test(word.replace(/'[^']*'|"(?:[^"\\]|\\[\s\S])*"/g, ""));
+    const assigns = env || splits ? [`GH_REPO=${word}`, `GIT_DIR=${word}`] : [];
+    const blank = " ".repeat(end - start);
+    const as = env ? ["gh", "git", ...assigns, blank] : ["gh", "git", blank, ...assigns];
+    for (const program of as) {
+      const tail = program.includes("=") ? text.slice(end, ownEnd) : text.slice(end);
+      const v = judge(text.slice(0, start) + program + tail, ctx, powershell);
+      if (!v) continue;
+      const added = typeof v === "string" ? [v] : v.asks.filter((a) => !own.has(a));
+      if (!added.length) continue;
+      const reason = added.join(" ");
+      if (!program.trim())
+        return `Could not read the program \`${word}\`; judged as a wrapper that runs what follows it: ${reason} Spell the program as a plain word.`;
+      return program.includes("=")
+        ? `Could not read \`${word}\`, which ${env ? "env may take for" : "may expand to"} an assignment; judged as \`${program}\`: ${reason} Spell it as a plain word.`
+        : `Could not read the program \`${word}\`; judged as ${program}: ${reason} Spell the program as a plain word.`;
+    }
+    // An unquoted expansion splits into several words at run time, which no
+    // one-word stand-in above models: `$(echo gh pr) merge 5`, or
+    // `$(echo gh -R x/y) pr merge 5`, whose `gh` stand-in reads this
+    // repository's PR and passes (#1606, CodeRabbit CLI). Such a word refuses
+    // when it names gh or git, or when the word after it is a subcommand a
+    // guard reads, so the word supplies the program (`$CMD pr merge 5`). A
+    // program after it (`$W gh pr view 5`) was judged by the wrapper stand-in.
+    const next = masked.slice(end, ownEnd).trimStart().split(/\s+/, 1)[0];
+    if (splits && (GUARDED_PROGRAM.test(word) || GUARDED_VERB.test(next)))
+      return `Could not read the program \`${word}\`, which may expand to several words, among them a command a guard reads; spell the program and its subcommand as plain words.`;
+  }
+  return verdict && { ask: verdict.ask };
+}
+
+/** An unquoted expansion that word splitting or brace expansion can turn into several words ({@link checkBash}). */
+const SPLITS = /[$\x60]|\{[^}]*,/;
+/** gh or git named inside a program word that splits ({@link checkBash}). */
+const GUARDED_PROGRAM = /\b(?:gh|git)\b/i;
+/** A gh or git subcommand a guard reads, as the word after a program word that splits ({@link checkBash}). */
+const GUARDED_VERB = /^(?:pr|merge|create|push|commit|worktree|api|project|issue|add)$/;
+
+/** The rules' verdict on `text`, already read as bash ({@link checkBash}). */
+function judge(text, ctx, powershell) {
   const asks = [];
   for (const rule of rules) {
     if (powershell && rule.bashOnly) continue;
@@ -1759,5 +1910,5 @@ export function checkBash(command, ctx) {
   }
   // Every ask in one prompt: a chain the maintainer approves runs whole, so a
   // later ask hidden behind an earlier one would run unseen (#1307 review).
-  return asks.length ? { ask: asks.join("\n\n") } : null;
+  return asks.length ? { ask: asks.join("\n\n"), asks } : null;
 }

@@ -3866,3 +3866,639 @@ describe("the mask fails closed (#1321 review)", () => {
     expect(firstMerge(`grep -rn "gh pr merge" scripts`)).toBeUndefined();
   });
 });
+
+// #1606: a guard named gh or git in its bare spelling only, so `gh.exe`, a path,
+// a quoted name or an upper-case one reached none of them.
+describe("every spelling of a program reaches the guards that name it (#1606)", () => {
+  const head = "1111111111111111111111111111111111111111";
+  const green = () => ({
+    number: 7,
+    url: "https://github.com/niklam/iracedeck/pull/7",
+    state: "OPEN",
+    headRefOid: head,
+    headRefName: "ir-7",
+    reviewDecision: "APPROVED",
+    mergeStateStatus: "CLEAN",
+    statusCheckRollup: [{ __typename: "CheckRun", name: "Tests", status: "COMPLETED", conclusion: "SUCCESS" }],
+    reviews: [{ author: { login: "coderabbitai" }, state: "APPROVED", commit: { oid: head } }],
+  });
+  const unapproved = () => ({ ...green(), reviewDecision: "REVIEW_REQUIRED" });
+  const GH = [
+    "gh.exe",
+    "GH.EXE",
+    "Gh",
+    "/usr/bin/gh",
+    "./gh",
+    `"C:/Program Files/GitHub CLI/gh.exe"`,
+    `"gh"`,
+    "'gh'",
+    `g"h"`,
+    "/usr/bin/env /usr/bin/gh",
+    "env gh.exe",
+  ];
+  const GIT = ["git.exe", "GIT", "/mingw64/bin/git", `"C:/Program Files/Git/cmd/git.exe"`, `"git"`, `g'i't`];
+
+  it.each(GH)("the merge gate judges %s pr merge as it judges gh", (gh) => {
+    passes(`${gh} pr merge 7 --squash`, ctx({ prView: green }));
+    expect(deny(`${gh} pr merge 7 --squash`, ctx({ prView: unapproved }))).toMatch(/REVIEW_REQUIRED/);
+    expect(deny(`${gh} pr merge 7 --squash && ${gh} pr merge 8 --squash`, ctx({ prView: green }))).toMatch(
+      /One `gh pr merge` per command/,
+    );
+    expect(deny(`${gh} pr merge 7 --squash`)).toMatch(/refusing to merge blind/);
+    expect(deny(`${gh} pr --repo x/y merge 7 --squash`, ctx({ prView: green }))).toMatch(
+      /flag between `gh` and `merge`/,
+    );
+  });
+
+  it.each(GH)("the PR title check, the item-edit deny and the --body @- trap read %s", (gh) => {
+    expect(deny(`${gh} pr create --title "thing (#12)"`)).toMatch(/must be/);
+    passes(`${gh} pr create --title "feat(x): thing (#12)" --body-file -`);
+    expect(deny(`${gh} project item-edit --id x --field-id y`)).toMatch(/helpers/);
+    expect(deny(`${gh} api graphql -f query='mutation { updateProjectV2ItemFieldValue }'`)).toMatch(/helpers/);
+    expect(deny(`${gh} issue comment 5 --body @-`)).toMatch(/--body-file/);
+  });
+
+  it.each(GIT)("the tag-push ask, the integration push and the spec commit read %s", (git) => {
+    expect(asks(`${git} push origin v3.2.0`)).toMatch(/release/);
+    expect(asks(`${git} push --tags`)).toMatch(/release/);
+    expect(deny(`${git} push origin integration`)).toMatch(/never pushed/);
+    const onBranch = ctx({ branch: () => "fix/5-x", staged: () => ["docs/superpowers/specs/a.md"] });
+    expect(deny(`${git} commit -m x`, onBranch)).toMatch(/never on a feature branch/);
+    expect(deny(`cd ../ir-5 && ${git} commit -m x`, onBranch)).toMatch(/never on a feature branch/);
+  });
+
+  it("reads a merge and a commit behind a wrapper spelled with a path", () => {
+    passes("/usr/bin/timeout 120 /usr/bin/gh pr merge 7 --squash", ctx({ prView: green }));
+    const onBranch = ctx({ branch: () => "fix/5-x", staged: () => ["docs/superpowers/specs/a.md"] });
+    expect(deny("/usr/bin/env GIT.EXE commit -m x", onBranch)).toMatch(/never on a feature branch/);
+  });
+
+  it("a mention of a spelling is still no command", () => {
+    for (const command of [
+      "grep -n gh.exe notes.md",
+      `grep -rn "gh.exe pr merge 5" scripts`,
+      `echo "gh pr merge 5"`,
+      `echo "git.exe push --tags"`,
+      `git commit -m "run git.exe push --tags after" -- notes.md`,
+      `git.exe commit -m "then /usr/bin/gh pr merge 7" -- notes.md`,
+    ])
+      passes(command, ctx({ prView: green }));
+  });
+
+  it("the deck-host ask reads a runner and a shell spelled with a path", () => {
+    expect(asks(`"C:/Program Files/nodejs/pnpm.cmd" restart:stream-deck`)).toMatch(/restart:stream-deck/);
+    expect(asks(`/usr/bin/bash -c 'pnpm restart:stream-deck'`)).toMatch(/restart:stream-deck/);
+    expect(asks(`"bash" -c 'pnpm restart:stream-deck'`)).toMatch(/restart:stream-deck/);
+    passes(`"C:/Program Files/nodejs/pnpm.cmd" build`);
+  });
+
+  it("the post-hook's merge and worktree triggers read every spelling", () => {
+    for (const gh of GH)
+      expect(firstMerge(`${gh} pr merge 7 --squash`), gh).toMatchObject({ ref: "7", readable: true });
+    for (const git of GIT) expect(worktreeAddTarget(`${git} worktree add ../ir-5 -b fix/5-x`), git).toBe("../ir-5");
+  });
+
+  // A program the hook cannot read is judged as each program the guards name,
+  // and anything they would say about it refuses it.
+  describe("a program word the hook cannot read", () => {
+    it.each(["$GH", "${GH}", `"$GH"`, "$(which gh)", "`which gh`", "/usr/bin/$GH", "g?", "{g,}h"])(
+      "is judged as gh: %s pr merge 5",
+      (gh) =>
+        expect(deny(`${gh} pr merge 5 --squash`)).toMatch(
+          /^Could not read the program `.+`; judged as gh: Could not read the PR "5" with gh; refusing to merge blind\..*Spell the program as a plain word\.$/,
+        ),
+    );
+    it("is judged as git, and an ask becomes a deny", () => {
+      expect(deny("$GIT push origin v3.2.0")).toMatch(
+        /^Could not read the program `\$GIT`; judged as git: Pushing a tag/,
+      );
+      const onBranch = ctx({ branch: () => "fix/5-x", staged: () => ["docs/superpowers/specs/a.md"] });
+      expect(deny("cd ../ir-5 && $(command -v git) commit -m x", onBranch)).toMatch(
+        /judged as git: A spec commits to master/,
+      );
+    });
+    it("passes when no guard would say anything about either program", () => {
+      passes("$EDITOR notes.md");
+      passes("ls && $EDITOR notes.md");
+      passes(`for f in a b; do "$f" --version; done`);
+      passes(`$PNPM build`);
+    });
+    it("is judged in a PowerShell command too", () =>
+      expect(deny("& $gh pr merge 5 --squash", ctx({ shell: POWERSHELL }))).toMatch(/judged as gh/));
+  });
+
+  // PowerShell runs a quoted or path program only through its call operator,
+  // `&`, which the bash reading took for a background job.
+  describe("PowerShell's spellings, the call operator among them", () => {
+    const ps = (o = {}) => ctx({ shell: POWERSHELL, ...o });
+    const PS_GH = [
+      `& "C:\\Program Files\\GitHub CLI\\gh.exe"`,
+      `& 'C:\\Program Files\\GitHub CLI\\GH.EXE'`,
+      "& gh",
+      "&gh.exe",
+      ".\\gh.exe",
+      "GH",
+      "C:\\tools\\gh.exe",
+    ];
+    it.each(PS_GH)("the merge gate judges %s pr merge as it judges gh", (gh) => {
+      passes(`${gh} pr merge 7 --squash`, ps({ prView: green }));
+      expect(deny(`${gh} pr merge 7 --squash`, ps({ prView: unapproved }))).toMatch(/REVIEW_REQUIRED/);
+      expect(deny(`cd ..\\ir-5; ${gh} pr merge 7 --squash`, ps({ prView: unapproved }))).toMatch(/REVIEW_REQUIRED/);
+      expect(deny(`${gh} pr create --title "thing (#12)"`, ps())).toMatch(/must be/);
+    });
+    it("reads git through the call operator too", () => {
+      const onBranch = ps({ branch: () => "fix/5-x", staged: () => ["docs/superpowers/specs/a.md"] });
+      expect(deny(`& "C:\\Program Files\\Git\\cmd\\git.exe" commit -m x`, onBranch)).toMatch(
+        /never on a feature branch/,
+      );
+      expect(deny(`Write-Output x; & GIT.EXE commit -m x`, onBranch)).toMatch(/never on a feature branch/);
+      expect(asks(`& git push origin v3.2.0`, ps())).toMatch(/release/);
+    });
+    it("still refuses a merge run beside another as a background job", () => {
+      expect(deny("gh pr merge 7 --squash &", ps({ prView: green }))).toMatch(/as its own command/);
+      expect(deny("Start-Sleep 1 & gh pr merge 7 --squash", ps({ prView: green }))).toMatch(/as its own command/);
+    });
+  });
+});
+
+// #1606: every git trap hand-rolled `git` plus at most a `-C` before its verb,
+// so `git -c user.name=x commit` skipped the spec-commit deny outright.
+describe("every git trap reads git's global options (#1606)", () => {
+  // The options that leave the repository where it is; --git-dir and
+  // --work-tree, which move it, are below.
+  const SAME_TREE = ["-c user.name=x", "--no-pager", "-p", `-C "a b"`, "-C a -C b", "--exec-path=/x"];
+  const ALL = [...SAME_TREE, "--git-dir=.git", "--work-tree=."];
+  const onBranch = (o = {}) => ctx({ branch: () => "fix/5-x", staged: () => [], ...o });
+  const SPEC = "docs/superpowers/specs/a.md";
+
+  it.each(SAME_TREE)("the spec commit, the lockfile and the manifest rules read git %s commit", (g) => {
+    expect(deny(`git ${g} commit -m x`, onBranch({ staged: () => [SPEC] }))).toMatch(/never on a feature branch/);
+    expect(deny(`git ${g} add ${SPEC} && git ${g} commit -m x`, onBranch())).toMatch(/never on a feature branch/);
+    expect(
+      deny(`git ${g} commit -m x`, ctx({ staged: () => ["package.json"], modified: () => ["pnpm-lock.yaml"] })),
+    ).toMatch(/pnpm-lock/);
+    const manifest = ctx({
+      staged: () => [ELGATO_MANIFEST],
+      committedText: (d, f) => (f === ELGATO_MANIFEST ? `{"Nodejs":{"Debug":"${DEBUG_VALUE}"}}` : undefined),
+    });
+    expect(deny(`git ${g} commit -m x`, manifest)).toMatch(/Debug/);
+  });
+
+  it("denies the headline case: a -c ahead of a commit of a staged spec on a branch", () =>
+    expect(deny("git -c user.name=x commit -m x", onBranch({ staged: () => [SPEC] }))).toMatch(
+      /never on a feature branch/,
+    ));
+
+  it.each(ALL)("the tag-push ask, the diff trap and the MSYS show trap read git %s", (g) => {
+    expect(asks(`git ${g} push origin v3.2.0`)).toMatch(/release/);
+    // A bare push names no refspec, so the integration rule needs the current
+    // branch, which a --git-dir hides; that rule's deny wins over the ask.
+    if (g.startsWith("--git-dir")) expect(deny(`git ${g} push --tags`)).toMatch(/--git-dir/);
+    else expect(asks(`git ${g} push --tags`)).toMatch(/release/);
+    expect(deny(`git ${g} diff master..HEAD`)).toMatch(/wrong question|three dots/);
+    expect(deny(`git ${g} show origin/master:.claude/x.md`)).toMatch(/MSYS/);
+  });
+
+  it.each(SAME_TREE)("the integration push and the worktree rules read git %s", (g) => {
+    expect(deny(`git ${g} push origin integration`)).toMatch(/never pushed/);
+    expect(deny(`git ${g} worktree add .worktrees/ir-1`)).toMatch(/siblings/);
+    expect(
+      deny(
+        `git ${g} worktree remove ${tree("ir-1")}`,
+        ctx({ linkTargets: () => [{ host: "Stream Deck", target: tree("ir-1", "plugin") }] }),
+      ),
+    ).toMatch(/Stream Deck plugin link/);
+  });
+
+  it("the post-hook's worktree trigger reads them too", () =>
+    expect(worktreeAddTarget("git -c core.x=y --no-pager worktree add ../ir-5 -b fix/5-x")).toBe("../ir-5"));
+
+  // Where the command runs: every `-C` in order, each against the one before,
+  // as git applies them, with a quoted value whole.
+  describe("the directory a git command acts on", () => {
+    const INTEGRATION = tree("ir-integration");
+    const IR5 = tree("ir-5");
+    const inTree = (o = {}) =>
+      ctx({ branch: (d) => (d === INTEGRATION ? "integration" : d === IR5 ? "fix/5-x" : "master"), ...o });
+
+    it.each([
+      "git -C ../ir-integration push",
+      `"git" -C ../ir-integration push`,
+      "git.exe -C ../ir-integration push",
+      "git -c a=b -C ../ir-integration push",
+      `git --no-pager -C "../ir-integration" push`,
+      "git -C .. -C ir-integration push",
+      "git -C ../ir-5 -C ../ir-integration push",
+      "cd ../ir-5 && git -C ../ir-integration push -u origin HEAD",
+    ])("denies a bare push from the integration tree: %s", (c) => expect(deny(c, inTree())).toMatch(/never pushed/));
+
+    it("passes a push whose last -C leaves the integration tree", () => {
+      passes("git -C ../ir-integration -C ../ir-5 push", inTree());
+      passes("git -C ../ir-integration/.. -C master push", inTree());
+    });
+
+    it("judges a commit in the tree its last -C names", () => {
+      const spec = (o) => inTree({ staged: () => ["docs/superpowers/specs/a.md"], ...o });
+      expect(deny("git -C ../master -C ../ir-5 commit -m x", spec())).toMatch(/on fix\/5-x/);
+      passes("git -C ../ir-5 -C ../master commit -m x", spec());
+      expect(deny(`git -c a=b -C "../ir-5" commit -m x`, spec())).toMatch(/on fix\/5-x/);
+      expect(deny("git -C ../ir\\-5 commit -m x", spec())).toMatch(/on fix\/5-x/);
+    });
+
+    it("resolves a worktree add against every -C", () => {
+      // The first -C alone would put each target on the other side of the rule.
+      expect(deny("git -C .. -C master worktree add ir-1 -b fix/1-x")).toMatch(/siblings/);
+      passes("git -C ../ir-5 -C .. worktree add ir-1 -b fix/1-x");
+      passes("git -c x=y -C ../ir-5 -C .. worktree add ir-1 -b fix/1-x");
+    });
+
+    it.each([
+      "git --git-dir=../ir-5/.git commit -m x",
+      "git --git-dir ../ir-5/.git commit -m x",
+      "git --work-tree=../ir-5 commit -m x",
+      "git -C ../master --work-tree ../ir-5 commit -m x",
+      "GIT_DIR=../ir-5/.git git commit -m x",
+      "env GIT_WORK_TREE=../ir-5 git commit -m x",
+      "export GIT_DIR=../ir-5/.git; git commit -m x",
+      "git_dir=x git commit -m x",
+    ])("refuses a commit whose repository or work tree is named apart: %s", (c) =>
+      expect(deny(c, inTree())).toMatch(/--git-dir, --work-tree, core\.worktree, GIT_DIR.*git -C <dir> commit/),
+    );
+
+    it("refuses a bare push and a worktree add under a --git-dir, and reads only the text otherwise", () => {
+      expect(deny("git --git-dir=x push", inTree())).toMatch(/git -C <dir> push/);
+      expect(deny("GIT_DIR=x git push -u origin HEAD", inTree())).toMatch(/git -C <dir> push/);
+      expect(deny("git --git-dir=x worktree add ../ir-1 -b fix/1-x")).toMatch(/git -C <dir> worktree add/);
+      // A refspec says what is pushed whatever the repository; the work tree is no push's business.
+      passes("git --git-dir=x push origin master", inTree());
+      passes("git --work-tree=x push", inTree());
+      passes("git --work-tree=x worktree add ../ir-1 -b fix/1-x");
+      expect(asks("git --git-dir=x push origin v3.2.0")).toMatch(/release/);
+      expect(deny("git --git-dir=x diff master..HEAD")).toMatch(/three dots/);
+    });
+
+    it("does not take a GIT_DIR in a quoted string or after the command for one", () => {
+      passes(`echo "GIT_DIR=x" && git commit -m x`, inTree());
+      passes(`git commit -m "GIT_DIR=x"`, inTree());
+      passes("git commit -m x; export GIT_DIR=y", inTree());
+      passes("MY_GIT_DIR=x git commit -m x", inTree());
+    });
+  });
+});
+
+// #1606 review: the cases the xhigh /code-review found the rewrite still missed.
+describe("the program-word rewrite's review round (#1606)", () => {
+  const head = "1111111111111111111111111111111111111111";
+  const green = () => ({
+    number: 5,
+    url: "https://github.com/niklam/iracedeck/pull/5",
+    state: "OPEN",
+    headRefOid: head,
+    headRefName: "ir-5",
+    reviewDecision: "APPROVED",
+    mergeStateStatus: "CLEAN",
+    statusCheckRollup: [{ __typename: "CheckRun", name: "Tests", status: "COMPLETED", conclusion: "SUCCESS" }],
+    reviews: [{ author: { login: "coderabbitai" }, state: "APPROVED", commit: { oid: head } }],
+  });
+  const unapproved = () => ({ ...green(), reviewDecision: "REVIEW_REQUIRED" });
+
+  // A program word's directory part may hold a command substitution, which runs.
+  describe("a substitution in a program word's directory part is still a command", () => {
+    it.each([
+      "$(git push origin integration)/scripts/run.sh",
+      `"$(git push origin integration)"/x.sh`,
+      "`git push origin integration`/x.sh",
+      "${X:-$(git push origin integration)}/x.sh",
+      "$(cd .. && git push origin integration)/x.sh",
+    ])("denies the push inside %s", (c) => expect(deny(c)).toMatch(/never pushed/));
+    it("still reads the program after the substitution", () => {
+      deny("$(true)/gh pr merge 5 --squash", ctx({ prView: green }));
+      deny(`"$(true)"/gh.exe pr merge 5 --squash`, ctx({ prView: green }));
+    });
+  });
+
+  // Bash takes a word for an assignment only for an unquoted valid name before `=`.
+  it.each([`"/c/a=b/gh.exe"`, "./x=y/gh", "'a=b'/gh", "1x=y/gh"])("reads %s pr merge as the gh it runs", (gh) => {
+    passes(`${gh} pr merge 5 --squash`, ctx({ prView: green }));
+    expect(deny(`${gh} pr merge 5 --squash`, ctx({ prView: unapproved }))).toMatch(/REVIEW_REQUIRED/);
+  });
+
+  // env takes every NAME=VALUE ahead of its program, quoted or not, and its
+  // options may be quoted too; the program after them is still the one run.
+  describe("env's quoted and expanding arguments", () => {
+    it.each([
+      `env 'GH_REPO=other/repo' gh pr merge 5 --squash`,
+      `env "GH_REPO=other/repo" gh pr merge 5 --squash`,
+      `env "GH_REPO"=other/repo gh pr merge 5 --squash`,
+      `env 'GH_HOST=x' gh pr merge 5 --squash`,
+      `env "-C" ../other gh pr merge 5 --squash`,
+      `env "-u" GH_REPO gh pr merge 5 --squash`,
+      `exec "-a" name gh pr merge 5 --squash`,
+      "env $R gh pr merge 5 --squash",
+      `env "$R" gh pr merge 5 --squash`,
+      "env FOO=1 $R gh pr merge 5 --squash",
+    ])("the merge gate fires on %s", (c) =>
+      expect(deny(c, ctx({ prView: green }))).toMatch(
+        /cannot read whole|Could not read the repository|targets other\/repo|env may take for an assignment/,
+      ),
+    );
+    it("judges a plain env assignment, quoted, as it judges the bare one", () => {
+      passes(`env 'FOO=1' gh pr merge 5 --squash`, ctx({ prView: green }));
+      expect(deny(`env 'FOO=1' gh pr merge 5 --squash`, ctx({ prView: unapproved }))).toMatch(/REVIEW_REQUIRED/);
+    });
+    it("refuses a commit behind an env that names its repository", () => {
+      expect(deny(`env 'GIT_DIR=x' git commit -m x`)).toMatch(/git -C <dir> commit/);
+      expect(deny("env $G git commit -m x")).toMatch(/judged as `GIT_DIR=\$G`/);
+    });
+    it("passes an expanding env argument ahead of a command no rule names", () => {
+      passes("env $R pnpm build");
+      passes(`env "$R" ls`);
+    });
+  });
+
+  // Bash takes redirections ahead of the command name.
+  describe("a redirection ahead of the program", () => {
+    it.each([
+      "2>/dev/null gh",
+      "</dev/null gh.exe",
+      "2> /dev/null gh",
+      ">&2 gh",
+      `<<< "x" gh`,
+      "&>log gh",
+      "env 2>/dev/null gh",
+      "cd ../ir-5 && >log gh",
+    ])("the merge gate judges %s pr merge as it judges gh", (gh) => {
+      passes(`${gh} pr merge 5 --squash`, ctx({ prView: green }));
+      expect(deny(`${gh} pr merge 5 --squash`, ctx({ prView: unapproved }))).toMatch(/REVIEW_REQUIRED/);
+    });
+    it.each([">log git push origin integration", "2>&1 >log git push origin integration", ">x git -c a=b push --tags"])(
+      "the git traps read %s",
+      (c) => expect(checkBash(c, ctx())).toBeTruthy(),
+    );
+    it("refuses a redirection whose target runs a command, and is not fooled by a redirect's own &", () => {
+      expect(deny(">(cat) gh pr merge 5 --squash", ctx({ prView: green }))).toBeTruthy();
+      expect(deny("2>`x` gh pr merge 5 --squash", ctx({ prView: green }))).toBeTruthy();
+      passes("echo x &>log gh pr merge 5", ctx({ prView: green }));
+      passes("echo 2>/dev/null gh pr merge 5", ctx({ prView: green }));
+    });
+  });
+
+  // An index or a work tree named apart from the directory moves what a commit records.
+  describe("a commit whose index or work tree is moved", () => {
+    it.each([
+      "GIT_INDEX_FILE=x git commit -m x",
+      "export GIT_INDEX_FILE=x; git commit -m x",
+      "env GIT_INDEX_FILE=x git commit -m x",
+      "git -c core.worktree=../ir-5 commit -m x",
+      "git -c Core.WorkTree=../ir-5 commit -m x",
+      "git -c core.worktree commit -m x",
+      `git -c "core.worktree=../ir 5" commit -m x`,
+      "git --config-env=core.worktree=WT commit -m x",
+      "git --config-env core.worktree=WT commit -m x",
+      "GIT_COMMON_DIR=../ir-5/.git git commit -m x",
+    ])("refuses %s", (c) => expect(deny(c)).toMatch(/git -C <dir> commit/));
+    it("passes other config and an index variable no commit is under", () => {
+      passes("git -c core.autocrlf=false commit -m x");
+      passes("git -c user.name=x -c core.worktreex=y commit -m x");
+      passes("GIT_INDEX_FILE=x git push origin master");
+      passes("git -c core.worktree=x push origin master");
+    });
+  });
+
+  // `$"…"` is bash's locale string: a double-quoted string, translated.
+  it("reads a locale string's program as the gh it spells", () => {
+    passes(`$"gh" pr merge 5 --squash`, ctx({ prView: green }));
+    expect(deny(`$"gh" pr merge 5 --squash`, ctx({ prView: unapproved }))).toMatch(/REVIEW_REQUIRED/);
+    expect(deny(`$"$GH" pr merge 5 --squash`)).toMatch(/judged as gh/);
+  });
+
+  // PowerShell's dot-source operator runs the program after it, as `&` does.
+  it.each([". gh", `. "C:\\Program Files\\GitHub CLI\\gh.exe"`, "Set-Location ..\\ir-5; . GH.EXE"])(
+    "the merge gate judges PowerShell's %s pr merge as it judges gh",
+    (gh) => {
+      const ps = (o) => ctx({ shell: POWERSHELL, ...o });
+      passes(`${gh} pr merge 5 --squash`, ps({ prView: green }));
+      expect(deny(`${gh} pr merge 5 --squash`, ps({ prView: unapproved }))).toMatch(/REVIEW_REQUIRED/);
+    },
+  );
+
+  // The raw one-merge backstop folds the case of the program only: `pr merge`
+  // is gh's subcommand, spelled in lower case.
+  it("counts a merge's mention in another case as no second merge", () => {
+    passes(`gh pr merge 5 --squash --body 'GH PR MERGE later'`, ctx({ prView: green }));
+    passes(`gh pr merge 5 --squash --body 'Gh Pr Merge later'`, ctx({ prView: green }));
+    expect(deny(`gh pr merge 5 --squash --body "$(GH.EXE pr merge 6)"`, ctx({ prView: green }))).toMatch(
+      /One `gh pr merge` per command/,
+    );
+  });
+});
+
+// #1606 second read: what the rewrite still got wrong after the review round.
+describe("the program-word rewrite's second read (#1606)", () => {
+  const IR5 = tree("ir-5");
+  const onIr5 = (o = {}) =>
+    ctx({ branch: (d) => (d === IR5 ? "fix/5-x" : "master"), staged: () => ["docs/superpowers/specs/a.md"], ...o });
+
+  // An untrusted view's rewrite started a word inside a quoted string and
+  // blanked the commands up to the next quote.
+  describe("an untrusted view keeps every command its raw text shows", () => {
+    it("denies the push, the merge and the commit behind a quoted separator", () => {
+      expect(deny(`sudo true; echo "step; make"; git push origin integration; echo "origin/integration"`)).toMatch(
+        /never pushed/,
+      );
+      expect(deny(`bash -c "cd x && make"; gh pr merge 5 --squash; echo "a/b"`)).toBeTruthy();
+      expect(deny(`bash -c "cd ../ir-5 && make"; git -C ../ir-5 commit -m "docs/x"`, onIr5())).toMatch(
+        /never on a feature branch/,
+      );
+    });
+  });
+
+  // A lead's option value spelled `git` is no git command: the options read
+  // are those of the program word the rule matched.
+  it.each(["exec -a git", "xargs -I git", "env -u git", "2> git", "GIT=git", "timeout -s git 5"])(
+    "reads the -C of the git after %s",
+    (lead) => {
+      expect(deny(`${lead} git -C ../ir-5 commit -m x`, onIr5())).toMatch(/never on a feature branch/);
+      expect(
+        deny(
+          `${lead} git -C ../ir-integration push`,
+          ctx({ branch: (d) => (d.endsWith("ir-integration") ? "integration" : "master") }),
+        ),
+      ).toMatch(/never pushed/);
+    },
+  );
+
+  // Every way bash and PowerShell set a variable git reads for its repository,
+  // work tree or index, config included.
+  describe("the environment that moves a commit's repository, tree or index", () => {
+    const moved = /git -C <dir> commit/;
+    it.each([
+      "GIT_DIR+=x git commit -m x",
+      "GIT_INDEX_FILE+=x git commit -m x",
+      "export GIT_WORK_TREE+=x; git commit -m x",
+      "GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.worktree GIT_CONFIG_VALUE_0=x git commit -m x",
+      "export GIT_CONFIG_KEY_0='Core.WorkTree'; git commit -m x",
+      "GIT_CONFIG_KEY_3=$K git commit -m x",
+      `GIT_CONFIG_PARAMETERS="'core.worktree'='x'" git commit -m x`,
+      "GIT_CONFIG_PARAMETERS= git commit -m x",
+    ])("refuses %s", (c) => expect(deny(c)).toMatch(moved));
+    it.each([
+      "${env:GIT_DIR} = 'x'; git commit -m x",
+      "Set-Item Env:GIT_DIR x; git commit -m x",
+      "Set-Item -Path Env:GIT_DIR -Value x; git commit -m x",
+      "Set-Item Env:\\GIT_WORK_TREE x; git commit -m x",
+      "si Env:GIT_INDEX_FILE x; git commit -m x",
+      "New-Item -Path Env:GIT_DIR -Value x; git commit -m x",
+      "[Environment]::SetEnvironmentVariable('GIT_DIR', 'x'); git commit -m x",
+      `[System.Environment]::SetEnvironmentVariable("GIT_CONFIG_KEY_0", "core.worktree"); git commit -m x`,
+      "$env:GIT_CONFIG_PARAMETERS = 'x'; git commit -m x",
+    ])("refuses PowerShell's %s", (c) => expect(deny(c, ctx({ shell: POWERSHELL }))).toMatch(moved));
+    it("passes config of another key, and a mention", () => {
+      passes("GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=user.name GIT_CONFIG_VALUE_0=x git commit -m x");
+      passes(`echo "GIT_CONFIG_PARAMETERS=x" && git commit -m x`);
+      passes("Write-Output 'Set-Item Env:GIT_DIR x'; git commit -m x", ctx({ shell: POWERSHELL }));
+      passes("Set-Item Env:FOO x; git commit -m x", ctx({ shell: POWERSHELL }));
+    });
+  });
+
+  // A program word that expands may be a wrapper (W=command, W=env) that runs
+  // the next word as the command.
+  describe("an unreadable program word that may be a wrapper", () => {
+    it("is judged with the word removed, so the next word is the command", () => {
+      expect(deny("$W gh pr merge 5 --squash")).toMatch(/^Could not read the program `\$W`; judged as a wrapper/);
+      expect(deny("$W git -C ../ir-5 commit -m x", onIr5())).toMatch(/judged as a wrapper.*never on a feature branch/);
+      expect(deny(`"$W" git push origin integration`)).toMatch(/judged as a wrapper.*never pushed/);
+    });
+    it("passes when what follows it is no trapped command", () => {
+      passes("$EDITOR notes.md");
+      passes("$PAGER git log");
+      passes("$W gh pr view 5");
+    });
+    // An unquoted expansion splits into several words, which no one-word
+    // stand-in models (CodeRabbit CLI on #1606).
+    it("refuses a word that may split into a guarded command", () => {
+      // A merge-ready PR, so a stand-in that read the wrong PR would pass.
+      const sha = "a".repeat(40);
+      const green = ctx({
+        branch: () => "fix/5-x",
+        prView: () => ({
+          number: 5,
+          url: "https://github.com/niklam/iracedeck/pull/5",
+          state: "OPEN",
+          headRefOid: sha,
+          headRefName: "fix/5-x",
+          reviewDecision: "APPROVED",
+          mergeStateStatus: "CLEAN",
+          statusCheckRollup: [{ __typename: "CheckRun", name: "Tests", status: "COMPLETED", conclusion: "SUCCESS" }],
+          reviews: [{ author: { login: "coderabbitai" }, state: "APPROVED", commit: { oid: sha } }],
+        }),
+      });
+      expect(checkBash("gh pr merge 5 --squash", green), "control: the stand-in PR is merge-ready").toBeNull();
+      for (const c of [
+        "$(echo gh pr) merge 5 --squash",
+        "$(echo gh -R other/repo) pr merge 5 --squash",
+        "$(echo git push) origin integration",
+        "$(echo gh pr merge 5)",
+        "$CMD pr merge 5 --squash",
+        "{gh,pr} merge 5 --squash",
+      ])
+        expect(deny(c, green), c).toMatch(/may expand to (?:several words|an assignment)/);
+      // A split word may carry a wrapper and an assignment (`W='env GH_REPO=o/r'`): CodeRabbit on PR #1628.
+      expect(deny("$W gh pr merge 5 --squash", green)).toMatch(/may expand to an assignment; judged as `GH_REPO=\$W`/);
+      expect(deny("$W git commit -m x", green)).toMatch(/may expand to an assignment; judged as `GIT_DIR=\$W`/);
+    });
+    // A config key is read as bash reads it, and one that expands may be core.worktree (CodeRabbit on PR #1628).
+    it("reads a config key that names core.worktree in any spelling, or may", () => {
+      for (const c of [
+        "GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=c'ore.worktree' GIT_CONFIG_VALUE_0=../ir-5 git commit -m x",
+        String.raw`GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core\.worktree GIT_CONFIG_VALUE_0=../ir-5 git commit -m x`,
+        "GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0='core'.WorkTree GIT_CONFIG_VALUE_0=../ir-5 git commit -m x",
+        `git -c "$K"=../ir-5 commit -m x`,
+        "git -c c'ore.worktree'=../ir-5 commit -m x",
+        "git --config-env=$K=V commit -m x",
+        // A command-substitution key, taken whole (CodeRabbit on PR #1628).
+        "GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=$(echo core.worktree) GIT_CONFIG_VALUE_0=../ir-5 git commit -m x",
+        "git -c $(echo core.worktree)=../ir-5 commit -m x",
+        "git -c `echo core.worktree`=../ir-5 commit -m x",
+      ])
+        expect(deny(c), c).toMatch(/names its repository, work tree or index/);
+      // A substituted value under a plain key moves nothing, and the commit is still read as one.
+      passes("git -c user.name=$(whoami) commit -m x");
+      const specOnBranch = ctx({ branch: () => "fix/5-x", staged: () => ["docs/superpowers/specs/a.md"] });
+      expect(deny("git -c user.name=$(echo a b) commit -m x", specOnBranch)).toMatch(/never on a feature branch/);
+      // A quoted `)` inside the substitution is its text, in the raw view `bash` forces too (CodeRabbit on PR #1628).
+      for (const c of [
+        "git -c user.name=$(bash -c 'printf x' 'a ) b') commit -m x",
+        `git -c user.name=$(printf "%s" "a ) b") commit -m x`,
+        // An ANSI-C run's escaped apostrophe does not close it, inside a substitution or not.
+        String.raw`git -c user.name=$(bash -c $'printf "O\'Brien"') commit -m x`,
+        String.raw`bash -c x; git -c user.name=$'O\'Brien ) x' commit -m x`,
+        // An escaped `\$` before a quote is a literal dollar, not an ANSI-C opener.
+        String.raw`git -c user.name=$(bash -c 'printf x' \$'abc\') commit -m x`,
+      ])
+        expect(deny(c, specOnBranch), c).toMatch(/never on a feature branch/);
+      passes("GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=user.name GIT_CONFIG_VALUE_0=x git commit -m x");
+      passes("git -c user.name=x commit -m x");
+    });
+    // A -C the hook cannot resolve once read a path that does not exist, where
+    // the branch and index reads fail open (CodeRabbit on PR #1628).
+    it("refuses a commit or a branch push behind a -C that expands", () => {
+      const onBranch = ctx({
+        branch: (d) => (/\$|~/.test(d) ? null : "fix/5-x"),
+        staged: (d) => (/\$|~/.test(d) ? [] : ["docs/superpowers/specs/a.md"]),
+      });
+      for (const c of [
+        `git -C "$TARGET" commit -m x`,
+        "git -C $TARGET commit -m x",
+        "git -C ~/ir-5 commit -m x",
+        "git -C ../ir-5 -C $SUB commit -m x",
+        `git -C "$TARGET" push origin HEAD`,
+      ])
+        expect(deny(c, onBranch), c).toMatch(/through a `-C` that expands/);
+      passes("git -C ../ir-5 -C sub status", onBranch);
+    });
+    it("passes a splitting word whose command a guard does not read", () => {
+      passes("$EDITOR notes.md");
+      passes("$PAGER git log");
+      passes(`"$(echo gh)" --version`);
+    });
+    // An ask another command of the chain carries anyway is not the word's
+    // doing: it stays an ask (CodeRabbit CLI on #1606).
+    it("keeps the chain's own ask an ask, and denies only what the word adds", () => {
+      expect(asks("$EDITOR notes.md; git push origin v3.2.0")).toMatch(/^Pushing a tag cuts a release/);
+      expect(asks("$PAGER CHANGELOG.md && git push --tags")).toMatch(/^Pushing a tag cuts a release/);
+      // Quoted, so it does not split: one stand-in models it.
+      expect(asks(`"$GIT" push origin v3.2.0; git push origin v3.3.0`)).toMatch(/^Pushing a tag cuts a release/);
+      expect(deny("$GIT push origin integration; git push origin v3.2.0")).toMatch(
+        /^Could not read the program `\$GIT`; judged as git: The `integration` branch/,
+      );
+    });
+  });
+
+  // Whether a word is env's own argument is env's parse, not the last word
+  // in the lead that happens to spell a wrapper.
+  it.each([
+    `env -u time "GH_HOST=evil" gh pr merge 5 --squash`,
+    `env -C exec 'GH_REPO=other/repo' gh pr merge 5 --squash`,
+    `env -u nohup FOO=1 "GH_HOST=evil" gh pr merge 5 --squash`,
+    "env -S xargs $R gh pr merge 5 --squash",
+  ])("reads env's arguments past an option value spelled as a wrapper: %s", (c) =>
+    expect(deny(c)).toMatch(/cannot read whole|Could not read the repository|env may take for an assignment/),
+  );
+
+  // A `git add` ahead of a commit stages into the index of the repository and
+  // tree it acts on, which the hook reads in its own directory only.
+  describe("a git add ahead of a commit whose repository, tree or index is moved", () => {
+    const untracked = ctx({ untracked: () => ["docs/superpowers/specs/new.md"] });
+    it.each([
+      "git --work-tree=../ir-5 add docs/superpowers/specs/new.md && git commit -m x",
+      "git -c core.worktree=../ir-5 add -A && git commit -m x",
+      "git --git-dir=../ir-5/.git add x && git commit -m x",
+      "git --config-env=core.worktree=WT add x; git commit -m x -- y",
+    ])("refuses %s", (c) => expect(deny(c, untracked)).toMatch(/git -C <dir> add/));
+    it("passes an add that is not ahead of the commit, and a plain one", () => {
+      passes("git commit -m x && git --work-tree=../ir-5 add y", untracked);
+      passes("git add notes.md && git commit -m x", untracked);
+    });
+  });
+});

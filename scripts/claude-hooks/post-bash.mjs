@@ -48,7 +48,16 @@ import {
   repoOfUrl,
   setsMilestone,
 } from "./rules-post.mjs";
-import { BASH, chainCommands, gitCwd, POWERSHELL, powershellAsBash, resolveDir, trustedMask } from "./shell-lexer.mjs";
+import {
+  BASH,
+  chainCommands,
+  gitCwd,
+  POWERSHELL,
+  powershellAsBash,
+  programStart,
+  resolveDir,
+  trustedMask,
+} from "./shell-lexer.mjs";
 
 // `GH_PR_MERGE` (from rules-bash.mjs) is unanchored, as `firstMerge` is:
 // anchored, a merge behind a wrapper the anchor does not know matched no
@@ -137,7 +146,8 @@ if (typeof raw === "string") {
  */
 function afterMerge(merge, command, cwd, shell) {
   const text = trustedMask(command);
-  const at = GH_PR_MERGE.exec(text)?.index ?? command.length;
+  // From where the program word starts, as the pre-hook's gate reads it (#1606).
+  const at = programStart(command, GH_PR_MERGE.exec(text)?.index ?? command.length);
   const named = mergeRepo(merge, assignedGhRepo(command.slice(0, at), text.slice(0, at)));
   if (named === null)
     return [
