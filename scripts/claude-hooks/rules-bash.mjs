@@ -282,7 +282,7 @@ const gitVerb = (verb) => cmd(new RegExp(`git${GIT_GLOBALS}${verb}`));
  * acts on.
  */
 const movedRepo = (verb) =>
-  `This \`git ${verb}\` names its repository, work tree or index apart from its directory (--git-dir, --work-tree, core.worktree, GIT_DIR, GIT_COMMON_DIR, GIT_WORK_TREE or GIT_INDEX_FILE), so the hook cannot tell which branch, index and files it acts on. Run it as \`git -C <dir> ${verb} …\` in the tree itself instead (#1606).`;
+  `This \`git ${verb}\` names its repository, work tree or index apart from its directory (--git-dir, --work-tree, core.worktree, GIT_DIR, GIT_COMMON_DIR, GIT_WORK_TREE or GIT_INDEX_FILE), or through a \`-C\` that expands, so the hook cannot tell which branch, index and files it acts on. Run it as \`git -C <dir> ${verb} …\` with the directory written out, in the tree itself instead (#1606).`;
 
 /** The git shapes whose rules read a `-C`; exported so the post-hook scopes the same way. */
 export const GIT_PUSH = gitVerb(String.raw`push\b`);

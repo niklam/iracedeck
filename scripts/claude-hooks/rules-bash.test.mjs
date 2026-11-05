@@ -4438,6 +4438,23 @@ describe("the program-word rewrite's second read (#1606)", () => {
       passes("GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=user.name GIT_CONFIG_VALUE_0=x git commit -m x");
       passes("git -c user.name=x commit -m x");
     });
+    // A -C the hook cannot resolve once read a path that does not exist, where
+    // the branch and index reads fail open (CodeRabbit on PR #1628).
+    it("refuses a commit or a branch push behind a -C that expands", () => {
+      const onBranch = ctx({
+        branch: (d) => (/\$|~/.test(d) ? null : "fix/5-x"),
+        staged: (d) => (/\$|~/.test(d) ? [] : ["docs/superpowers/specs/a.md"]),
+      });
+      for (const c of [
+        `git -C "$TARGET" commit -m x`,
+        "git -C $TARGET commit -m x",
+        "git -C ~/ir-5 commit -m x",
+        "git -C ../ir-5 -C $SUB commit -m x",
+        `git -C "$TARGET" push origin HEAD`,
+      ])
+        expect(deny(c, onBranch), c).toMatch(/through a `-C` that expands/);
+      passes("git -C ../ir-5 -C sub status", onBranch);
+    });
     it("passes a splitting word whose command a guard does not read", () => {
       passes("$EDITOR notes.md");
       passes("$PAGER git log");

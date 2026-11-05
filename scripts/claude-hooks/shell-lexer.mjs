@@ -1020,7 +1020,7 @@ export function gitPlaceAt(command, start, base, shell = BASH, end = command.len
   const env = envMoves(command, text, word.index);
   return {
     dir,
-    movesRepo: options.gitDir !== undefined || env.has("repo"),
+    movesRepo: options.gitDir !== undefined || options.dirUnknown || env.has("repo"),
     movesTree: options.workTree !== undefined || options.config.includes("core.worktree") || env.has("tree"),
     movesIndex: env.has("index"),
   };
@@ -1033,11 +1033,14 @@ export function gitPlaceAt(command, start, base, shell = BASH, end = command.len
  * config }`, every `-C` in order, the last `--git-dir` and `--work-tree`, and
  * the keys `-c` and `--config-env` set, lower-cased. A value that expands is
  * kept as written, quotes stripped, as the hook has always read one.
+ * `dirUnknown` is set when a `-C` expands (`"$TARGET"`, `~/x`): it names a
+ * directory the hook cannot resolve, where its git reads fail open, so the
+ * repository counts as unknown (CodeRabbit on PR #1628).
  */
 export function gitGlobals(command, from) {
   const text = trustedMask(command);
   const option = new RegExp(String.raw`\s+${GIT_OPTION}`, "yd");
-  const out = { dirs: [], gitDir: undefined, workTree: undefined, config: [] };
+  const out = { dirs: [], gitDir: undefined, workTree: undefined, config: [], dirUnknown: false };
   option.lastIndex = from;
   for (let m; (m = option.exec(text));) {
     const name = m[1] ?? m[3];
@@ -1046,8 +1049,10 @@ export function gitGlobals(command, from) {
     const raw = command.slice(at[0], at[1]);
     const chars = decodeWord(raw);
     const value = chars.some((x) => x.live) ? raw.replace(/["']/g, "") : chars.map((x) => x.c).join("");
-    if (name === "-C") out.dirs.push(value);
-    else if (name === "--git-dir") out.gitDir = value;
+    if (name === "-C") {
+      out.dirs.push(value);
+      if (chars.some((x) => x.live) || value.startsWith("~")) out.dirUnknown = true;
+    } else if (name === "--git-dir") out.gitDir = value;
     else if (name === "--work-tree") out.workTree = value;
     // A key that expands may be core.worktree: on doubt it moves (CodeRabbit on PR #1628).
     else if (name === "-c" || name === "--config-env")
