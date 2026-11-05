@@ -22,7 +22,7 @@ import { afterAll, describe, expect, it } from "vitest";
 // there; a new spawn here only for a new reader or a new field of the payload.
 const HOOK = path.join(import.meta.dirname, "pre-bash.mjs");
 
-// Each describe below spawns the hook, at most two to a test (measured on
+// Each describe below spawns the hook, at most three to a test (measured on
 // #1542: a spawn up to 0.55 s under the full suite), so 30 s is headroom for a
 // loaded machine, not a budget anything here should approach.
 const SPAWNS = { timeout: 30_000 };
@@ -54,6 +54,9 @@ describe("pre-bash.mjs, fired as the harness fires it", SPAWNS, () => {
     const v = fire("pnpm --filter @iracedeck/iracing-plugin-mirabox test");
     expect(v.permissionDecision).toBe("deny");
     expect(v.permissionDecisionReason).toMatch(/no "test" script/);
+    // Positive control: a package that has the script passes, so the reader
+    // returns real scripts rather than none for every package.
+    expect(fire("pnpm --filter @iracedeck/logger test")).toBeNull();
   });
 
   it("refuses two merges in one command before asking GitHub anything", () => {
@@ -104,6 +107,8 @@ describe("pre-bash.mjs, fired for the PowerShell tool", SPAWNS, () => {
     const v = fire("pnpm dev:voices on", { tool: "PowerShell", cwd: linkedTree, env });
     expect(v.permissionDecision).toBe("ask");
     expect(v.permissionDecisionReason).toMatch(/Stream Deck plugin link points into/);
+    // The same payload from the Bash tool reads the same links.
+    expect(fire("pnpm dev:voices on", { cwd: linkedTree, env }).permissionDecision).toBe("ask");
     // Positive control: the same payload from an unlinked tree passes.
     expect(fire("pnpm dev:voices on", { tool: "PowerShell", cwd: otherTree, env })).toBeNull();
   });
@@ -121,7 +126,7 @@ describe("pre-bash.mjs, fired for the PowerShell tool", SPAWNS, () => {
   // `watch`: the restart sits in a quoted rollup option, escaped once more by
   // the JSON it is read from. The shapes themselves, under both shells, are in
   // `script-runs.test.mjs`; these prove the two filesystem readers behind them.
-  describe("reads the package directories and the package.json each holds", SPAWNS, () => {
+  describe("reads the package directories and the package.json each holds", () => {
     const sd = path.join(otherTree, "packages", "sd");
     mkdirSync(sd, { recursive: true });
     writeFileSync(
@@ -146,6 +151,12 @@ describe("pre-bash.mjs, fired for the PowerShell tool", SPAWNS, () => {
       expect(
         fire("pnpm --filter ./packages/sd watch", { tool: "PowerShell", cwd: otherTree, env }).permissionDecision,
       ).toBe("ask"));
+
+    // No selector: the script is read from the package.json at the command's own cwd.
+    it("asks for a bare script run from the package's own directory", () =>
+      expect(fire("pnpm watch", { cwd: sd, env }).permissionDecisionReason).toMatch(
+        /`pnpm watch` → `rollup --watch\.onEnd` → `streamdeck restart`/,
+      ));
   });
 
   // The tool decides the shell: a heredoc is bash syntax only.
