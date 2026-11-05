@@ -90,11 +90,8 @@ vi.mock("../../shared/replay-busy-indicator.js", () => ({
 
 vi.mock("@iracedeck/deck-core", async () => {
   const { z } = await import("zod");
-  // The real dial-gesture module, by path (zero imports): the dial instances
-  // below classify their releases through it.
-  const dialGesture = await vi.importActual<typeof import("../../../../deck-core/src/dial-gesture.js")>(
-    "../../../../deck-core/src/dial-gesture.js",
-  );
+  // The REAL dial-gesture helpers: the dial instances below classify their releases through them.
+  const dialGesture = await import("@iracedeck/deck-core/testing");
 
   return {
     createHoldPreview: dialGesture.createHoldPreview,

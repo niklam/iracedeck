@@ -52,12 +52,8 @@ vi.mock("@iracedeck/icons/setup-traction/tc-slot-4-decrease.svg", () => ({
 
 vi.mock("@iracedeck/deck-core", async () => {
   const { z } = await import("zod");
-  // The dial surface builds a real hold preview per context (#1120). Reached by
-  // PATH rather than through the mocked barrel, which this factory replaces;
-  // that module has zero imports of its own.
-  const dialGesture = await vi.importActual<typeof import("../../../../deck-core/src/dial-gesture.js")>(
-    "../../../../deck-core/src/dial-gesture.js",
-  );
+  // The dial surface builds a real hold preview per context (#1120).
+  const dialGesture = await import("@iracedeck/deck-core/testing");
 
   return {
     createHoldPreview: dialGesture.createHoldPreview,

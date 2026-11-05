@@ -127,23 +127,14 @@ const { configureEngine, resetEngine } = engineOverDeck();
 configureEngine();
 
 vi.mock("@iracedeck/deck-core", async () => {
-  // deck-core's dial-gesture and icon-update-throttle modules, reached by PATH
-  // rather than through the mocked barrel (the `mouse-to-sim.test.ts`
-  // pattern): the hold preview's timer, the release classifier and the 10/s
-  // throttle are what is under test, so the REAL ones run. Neither module has
-  // imports of its own. The paths are inlined because `vi.mock` is hoisted.
-  const dialGesture = await vi.importActual<typeof import("../../../../deck-core/src/dial-gesture.js")>(
-    "../../../../deck-core/src/dial-gesture.js",
-  );
-  const throttle = await vi.importActual<typeof import("../../../../deck-core/src/icon-update-throttle.js")>(
-    "../../../../deck-core/src/icon-update-throttle.js",
-  );
+  // The REAL hold preview, release classifier and 10/s throttle: their timing is under test.
+  const real = await import("@iracedeck/deck-core/testing");
 
   return {
-    createHoldPreview: dialGesture.createHoldPreview,
-    NOOP_HOLD_PREVIEW: dialGesture.NOOP_HOLD_PREVIEW,
-    classifyDialRelease: dialGesture.classifyDialRelease,
-    IconUpdateThrottle: throttle.IconUpdateThrottle,
+    createHoldPreview: real.createHoldPreview,
+    NOOP_HOLD_PREVIEW: real.NOOP_HOLD_PREVIEW,
+    classifyDialRelease: real.classifyDialRelease,
+    IconUpdateThrottle: real.IconUpdateThrottle,
     getDualPressThresholdMs: () => mocks.thresholdMs.value,
     applyBindingWarning: (content: string) => `${content}<binding-warning/>`,
     escapeXml: (str: string) => str,

@@ -41,6 +41,7 @@ import {
   type PaceLineup,
   resolvePaceLineup,
 } from "@iracedeck/sim-events-iracing";
+import { captureFixturePath } from "@iracedeck/sim-events-iracing/testing";
 import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -95,10 +96,7 @@ const FLAG_CONTRACTS = buildFlagAlerts(SIM_READS).contracts;
 const IN_CAR = { IsOnTrack: true, IsReplayPlaying: false, SessionState: SessionState.Racing };
 
 /** The committed cut of the 2026-09-18 road-course capture, `sim-events-iracing`'s fixture. */
-const ROAD_FIXTURE = new URL(
-  "../../../../sim-events-iracing/src/diff/__fixtures__/caution-road-20260918.json",
-  import.meta.url,
-);
+const ROAD_FIXTURE = captureFixturePath("caution-road-20260918.json");
 
 /** The bundled voice's real script and manifest, for the expansion cases at the end — the `bundled-scripts.test.ts` casts. */
 const BUNDLED_SCRIPT = defaultScript as CalloutScript;
@@ -2292,10 +2290,7 @@ describe("the position call in the bundled voice, against the 2026-09-19 snapsho
   // back at the pace-row variable would speak 20 here and fail.
   const VOICE = "default";
   const CURRENTLY = `voice/${VOICE}/position-intro-worse/currently-01.mp3`;
-  const SNAPSHOT_FIXTURE = new URL(
-    "../../../../sim-events-iracing/src/diff/__fixtures__/caution-lineup-20260919.json",
-    import.meta.url,
-  );
+  const SNAPSHOT_FIXTURE = captureFixturePath("caution-lineup-20260919.json");
   const [snapshot] = JSON.parse(readFileSync(SNAPSHOT_FIXTURE, "utf-8")) as [
     {
       PlayerCarPosition: number;

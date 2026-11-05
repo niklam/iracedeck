@@ -52,10 +52,9 @@ const { mockGroups, mockCameras, mockCarNumber, mockCarNumberByIdx, mockCarNumbe
 );
 
 vi.mock("@iracedeck/deck-core", async () => {
-  // The REAL hold-preview helper (#1120), reached by its own module rather
-  // than the deck-core barrel: the timer/threshold/revert behaviour under test
-  // is the helper's, and a stub here would only re-test the stub.
-  const { createHoldPreview, NOOP_HOLD_PREVIEW } = await import("../../../../deck-core/src/dial-gesture.js");
+  // The REAL hold-preview helper (#1120): the timer/threshold/revert behaviour
+  // under test is the helper's, and a stub here would only re-test the stub.
+  const { createHoldPreview, NOOP_HOLD_PREVIEW } = await import("@iracedeck/deck-core/testing");
 
   return {
     createHoldPreview,
