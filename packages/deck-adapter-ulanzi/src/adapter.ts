@@ -27,8 +27,8 @@ import {
 } from "@iracedeck/deck-core";
 import type { ILogger } from "@iracedeck/logger";
 import { createConsoleLogger, LogLevel } from "@iracedeck/logger";
+import { FileSink, withFileSink } from "@iracedeck/logger/file-sink";
 
-import { FileSink, withFileSink } from "./file-logger.js";
 import { parseConnectionParams, PLUGIN_UUID, UlanziClient, type UlanziEvent } from "./ulanzi-client.js";
 
 /** Valid controller types for Ulanzi devices. */
@@ -268,7 +268,7 @@ export class UlanziPlatformAdapter implements IDeckPlatformAdapter {
   readonly logLocation: LogLocation | undefined;
 
   constructor(logger?: ILogger, logDir?: string) {
-    this.fileSink = logDir ? new FileSink(logDir) : null;
+    this.fileSink = logDir ? new FileSink(logDir, "Ulanzi") : null;
     this.logLocation = logDir ? { kind: "daily", dir: logDir } : undefined;
     const log = logger ?? this.buildLogger("Ulanzi");
     this.client = new UlanziClient(parseConnectionParams(), log.createScope("WebSocket"));

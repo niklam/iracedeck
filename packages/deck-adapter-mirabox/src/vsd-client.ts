@@ -229,7 +229,7 @@ export class VSDClient {
    * a consumer should not have to read this file to learn that it must.
    *
    * KEEP IN SYNC with `UlanziClient.onHostReady` / `notifyHostReady`, which are
-   * deliberate near-duplicates of these — like the two `FileSink`s.
+   * deliberate near-duplicates of these.
    */
   onHostReady(callback: () => void): void {
     if (this.ws?.readyState === WS_OPEN) {
