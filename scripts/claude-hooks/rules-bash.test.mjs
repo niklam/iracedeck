@@ -4374,12 +4374,48 @@ describe("the program-word rewrite's second read (#1606)", () => {
       passes("$PAGER git log");
       passes("$W gh pr view 5");
     });
+    // An unquoted expansion splits into several words, which no one-word
+    // stand-in models (CodeRabbit CLI on #1606).
+    it("refuses a word that may split into a guarded command", () => {
+      // A merge-ready PR, so a stand-in that read the wrong PR would pass.
+      const sha = "a".repeat(40);
+      const green = ctx({
+        branch: () => "fix/5-x",
+        prView: () => ({
+          number: 5,
+          url: "https://github.com/niklam/iracedeck/pull/5",
+          state: "OPEN",
+          headRefOid: sha,
+          headRefName: "fix/5-x",
+          reviewDecision: "APPROVED",
+          mergeStateStatus: "CLEAN",
+          statusCheckRollup: [{ __typename: "CheckRun", name: "Tests", status: "COMPLETED", conclusion: "SUCCESS" }],
+          reviews: [{ author: { login: "coderabbitai" }, state: "APPROVED", commit: { oid: sha } }],
+        }),
+      });
+      expect(checkBash("gh pr merge 5 --squash", green), "control: the stand-in PR is merge-ready").toBeNull();
+      for (const c of [
+        "$(echo gh pr) merge 5 --squash",
+        "$(echo gh -R other/repo) pr merge 5 --squash",
+        "$(echo git push) origin integration",
+        "$(echo gh pr merge 5)",
+        "$CMD pr merge 5 --squash",
+        "{gh,pr} merge 5 --squash",
+      ])
+        expect(deny(c, green), c).toMatch(/may expand to several words/);
+    });
+    it("passes a splitting word whose command a guard does not read", () => {
+      passes("$EDITOR notes.md");
+      passes("$PAGER git log");
+      passes(`"$(echo gh)" --version`);
+    });
     // An ask another command of the chain carries anyway is not the word's
     // doing: it stays an ask (CodeRabbit CLI on #1606).
     it("keeps the chain's own ask an ask, and denies only what the word adds", () => {
       expect(asks("$EDITOR notes.md; git push origin v3.2.0")).toMatch(/^Pushing a tag cuts a release/);
       expect(asks("$PAGER CHANGELOG.md && git push --tags")).toMatch(/^Pushing a tag cuts a release/);
-      expect(asks("$GIT push origin v3.2.0; git push origin v3.3.0")).toMatch(/^Pushing a tag cuts a release/);
+      // Quoted, so it does not split: one stand-in models it.
+      expect(asks(`"$GIT" push origin v3.2.0; git push origin v3.3.0`)).toMatch(/^Pushing a tag cuts a release/);
       expect(deny("$GIT push origin integration; git push origin v3.2.0")).toMatch(
         /^Could not read the program `\$GIT`; judged as git: The `integration` branch/,
       );

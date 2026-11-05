@@ -1850,6 +1850,7 @@ export function checkBash(command, ctx) {
   // not the word's doing: a re-judge repeats it, and only what the
   // substitution adds may turn into a deny (#1606, CodeRabbit CLI).
   const own = new Set(verdict?.asks ?? []);
+  const masked = trustedMask(text);
   for (const { start, end, word, env } of unreadablePrograms(text)) {
     const as = ["gh", "git", ...(env ? [`GH_REPO=${word}`, `GIT_DIR=${word}`] : []), " ".repeat(end - start)];
     for (const program of as) {
@@ -1864,9 +1865,31 @@ export function checkBash(command, ctx) {
         ? `Could not read \`${word}\`, which env may take for an assignment; judged as \`${program}\`: ${reason} Spell it as a plain word.`
         : `Could not read the program \`${word}\`; judged as ${program}: ${reason} Spell the program as a plain word.`;
     }
+    // An unquoted expansion splits into several words at run time, which no
+    // one-word stand-in above models: `$(echo gh pr) merge 5`, or
+    // `$(echo gh -R x/y) pr merge 5`, whose `gh` stand-in reads this
+    // repository's PR and passes (#1606, CodeRabbit CLI). Such a word refuses
+    // when it names gh or git, or when the word after it is a subcommand a
+    // guard reads, so the word supplies the program (`$CMD pr merge 5`). A
+    // program after it (`$W gh pr view 5`) was judged by the wrapper stand-in.
+    const stop = masked.slice(end).search(/[;&|\n()\x60]/);
+    const next = masked
+      .slice(end, stop < 0 ? masked.length : end + stop)
+      .trimStart()
+      .split(/\s+/, 1)[0];
+    const unquoted = word.replace(/'[^']*'|"(?:[^"\\]|\\[\s\S])*"/g, "");
+    if (SPLITS.test(unquoted) && (GUARDED_PROGRAM.test(word) || GUARDED_VERB.test(next)))
+      return `Could not read the program \`${word}\`, which may expand to several words, among them a command a guard reads; spell the program and its subcommand as plain words.`;
   }
   return verdict && { ask: verdict.ask };
 }
+
+/** An unquoted expansion that word splitting or brace expansion can turn into several words ({@link checkBash}). */
+const SPLITS = /[$\x60]|\{[^}]*,/;
+/** gh or git named inside a program word that splits ({@link checkBash}). */
+const GUARDED_PROGRAM = /\b(?:gh|git)\b/i;
+/** A gh or git subcommand a guard reads, as the word after a program word that splits ({@link checkBash}). */
+const GUARDED_VERB = /^(?:pr|merge|create|push|commit|worktree|api|project|issue|add)$/;
 
 /** The rules' verdict on `text`, already read as bash ({@link checkBash}). */
 function judge(text, ctx, powershell) {
