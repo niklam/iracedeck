@@ -4416,8 +4416,20 @@ describe("the program-word rewrite's second read (#1606)", () => {
         `git -c "$K"=../ir-5 commit -m x`,
         "git -c c'ore.worktree'=../ir-5 commit -m x",
         "git --config-env=$K=V commit -m x",
+        // A command-substitution key, taken whole (CodeRabbit on PR #1628).
+        "GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=$(echo core.worktree) GIT_CONFIG_VALUE_0=../ir-5 git commit -m x",
+        "git -c $(echo core.worktree)=../ir-5 commit -m x",
+        "git -c `echo core.worktree`=../ir-5 commit -m x",
       ])
         expect(deny(c), c).toMatch(/names its repository, work tree or index/);
+      // A substituted value under a plain key moves nothing, and the commit is still read as one.
+      passes("git -c user.name=$(whoami) commit -m x");
+      expect(
+        deny(
+          "git -c user.name=$(echo a b) commit -m x",
+          ctx({ branch: () => "fix/5-x", staged: () => ["docs/superpowers/specs/a.md"] }),
+        ),
+      ).toMatch(/never on a feature branch/);
       passes("GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=user.name GIT_CONFIG_VALUE_0=x git commit -m x");
       passes("git -c user.name=x commit -m x");
     });

@@ -944,7 +944,8 @@ const GIT_ENV_MOVES = {
  * refuses, which costs a re-spelling.
  */
 /** One shell word at the start of `s`, quotes and escapes kept, for {@link decodeWord}. */
-const LEADING_WORD = /^(?:"(?:[^"\\]|\\[\s\S])*"|'[^']*'|\\[\s\S]|[^\s;&|()<>"'\\])*/;
+const LEADING_WORD =
+  /^(?:"(?:[^"\\]|\\[\s\S])*"|'[^']*'|\\[\s\S]|\$\((?:[^()]|\((?:[^()]|\([^()]*\))*\))*\)|`[^`]*`|\$(?!\()|[^\s;&|()<>"'\\$`])*/;
 
 /**
  * Whether a config key, written as raw shell text at the start of `raw`,
@@ -1146,18 +1147,35 @@ function leadToken(open) {
  */
 export const COMMAND_LEAD = String.raw`(?:${leadToken("(?:")})*`;
 
-/** One character run of a git option's value: a quoted run (`"___"` in the masked text) or an escape stays whole. */
-const GIT_VALUE_PART = String.raw`(?:"[^"]*"|'[^']*'|\\[\s\S]|[^\s\\"'])`;
+/**
+ * A command substitution, `$( … )` (two levels of nesting) or a backtick one,
+ * taken whole: its words are one word of the command that holds it. A
+ * character class never matches its `$(` or backtick, so each has one parse.
+ */
+const SUBSTITUTION = String.raw`\$\((?:[^()]|\((?:[^()]|\([^()]*\))*\))*\)|\x60[^\x60]*\x60`;
+/**
+ * One character run of a git option's value: a quoted run (`"___"` in the
+ * masked text), an escape or a command substitution stays whole, so
+ * `git -c x=$(echo a b) commit` is still a commit (#1606, CodeRabbit on PR #1628).
+ */
+const GIT_VALUE_PART = String.raw`(?:"[^"]*"|'[^']*'|\\[\s\S]|${SUBSTITUTION}|\$(?!\()|[^\s\\"'$\x60])`;
 /** A git option's value in the next word, which never starts with `-` (the {@link COMMAND_LEAD} rule: one parse per token). */
-const GIT_VALUE = String.raw`(?:"[^"]*"|'[^']*'|\\[\s\S]|[^\s\\"'-])${GIT_VALUE_PART}*`;
+const GIT_VALUE = String.raw`(?:"[^"]*"|'[^']*'|\\[\s\S]|${SUBSTITUTION}|\$(?!\()|[^\s\\"'$\x60-])${GIT_VALUE_PART}*`;
 /** git's global options that take a value in the next word. */
 const GIT_VALUE_OPTIONS = String.raw`-C|-c|--git-dir|--work-tree|--namespace|--config-env|--super-prefix|--attr-source`;
 /** git's global options that take a value after `=`. */
 const GIT_EQ_OPTIONS = String.raw`--git-dir|--work-tree|--namespace|--config-env|--super-prefix|--attr-source|--exec-path|--list-cmds`;
 /** git's global options that take no value. */
 const GIT_FLAGS = String.raw`--no-pager|-p|--paginate|-P|--bare|--no-replace-objects|--literal-pathspecs|--glob-pathspecs|--noglob-pathspecs|--icase-pathspecs|--no-optional-locks|--no-advice|--no-lazy-fetch|--exec-path`;
-/** One global option, its name in group 1 or 3 and its value in group 2 or 4 ({@link gitGlobals}). */
-const GIT_OPTION = String.raw`(?:(${GIT_VALUE_OPTIONS})\s+(${GIT_VALUE})|(${GIT_EQ_OPTIONS})=(${GIT_VALUE_PART}*)|(?:${GIT_FLAGS})(?=\s))`;
+/**
+ * One global option. With `open` set to `(` its name is in group 1 or 3 and
+ * its value in group 2 or 4 ({@link gitGlobals}); with `(?:` it captures
+ * nothing ({@link GIT_GLOBALS}). Built both ways rather than rewritten,
+ * since the value's own pattern holds escaped parentheses and classes.
+ */
+const gitOption = (open) =>
+  String.raw`(?:${open}${GIT_VALUE_OPTIONS})\s+${open}${GIT_VALUE})|${open}${GIT_EQ_OPTIONS})=${open}${GIT_VALUE_PART}*)|(?:${GIT_FLAGS})(?=\s))`;
+const GIT_OPTION = gitOption("(");
 
 /**
  * Every global option git takes between `git` and its verb (#1606), as a
@@ -1179,7 +1197,7 @@ const GIT_OPTION = String.raw`(?:(${GIT_VALUE_OPTIONS})\s+(${GIT_VALUE})|(${GIT_
  * exponentially. It holds no capture group, so a rule's own groups keep their
  * numbers. Its values are read raw by {@link gitGlobals}.
  */
-export const GIT_GLOBALS = String.raw`(?:\s+${GIT_OPTION.replace(/\((?!\?)/g, "(?:")})*\s+`;
+export const GIT_GLOBALS = String.raw`(?:\s+${gitOption("(?:")})*\s+`;
 
 /**
  * Anchors a command regex to COMMAND POSITION: the start of the string or of
