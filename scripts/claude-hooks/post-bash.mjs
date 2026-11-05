@@ -88,7 +88,9 @@ if (typeof raw === "string") {
   try {
     // The triggers read the trusted-masked text (#1321): a grep, a heredoc or a
     // comment body that merely NAMES `gh pr merge` used to run the after-merge
-    // steps. Where the mask is not trusted they read the raw text, as before.
+    // steps. Where the mask is set aside — the whole command when the lexer is
+    // unsure, else only the element that feeds a shell (#1607) — they read the
+    // raw text, as before.
     // Unanchored on purpose: a follow-up is wanted wherever the command ran,
     // `xargs sed -i` and `timeout 120 gh pr merge` included.
     const text = trustedMask(command);

@@ -4,9 +4,10 @@
  * and which directory it runs in.
  *
  * {@link maskInert} lexes a command as bash reads it and blanks its inert text
- * at the same length, and {@link view} trusts that mask only when the lexer is
- * sure of it and no string is handed to a shell, and rewrites each program
- * word to the plain name it runs (`gh.exe`, `"gh"`, `/usr/bin/gh` → `gh`,
+ * at the same length, and {@link view} sets that mask aside over the whole
+ * command when the lexer is not sure of it and over each list element that
+ * hands a string or stdin to a shell (#1607, {@link trustedIn}), and rewrites
+ * each program word to the plain name it runs (`gh.exe`, `"gh"`, `/usr/bin/gh` → `gh`,
  * #1606). On top of it, {@link cmd} anchors a regex to command position,
  * and {@link GIT_GLOBALS} carries a git command past its global options;
  * {@link matchesAt} and {@link chainCommands} find a command in the masked
@@ -48,6 +49,13 @@ import path from "node:path";
  *   command — and a misread mask can blank a command bash runs. Consumers fall
  *   back to the raw text then ({@link trustedMask}).
  *
+ * Two indexes come with them: `words`, where each word bash reads ends, keyed
+ * by where it starts, at every depth ({@link normalisePrograms}); and
+ * `heredocs`, every heredoc as `{ op, start, end }` — `op` the index of its
+ * `<<`, `[start, end)` its body up to the terminator line, or to the end of
+ * the text when none comes — so the body of one fed to a shell can be read raw
+ * ({@link fedSpans}, #1607).
+ *
  * One recursive lexer rather than a scanner per context: the three hand-copied
  * scanners it replaced had already drifted apart, and each gap blanked the rest
  * of a command (#1321 review).
@@ -59,6 +67,9 @@ export function maskInert(command) {
   const out = s.split("");
   const flat = s.split("");
   const pending = [];
+  // Every heredoc, `{ op, start, end }`: `op` the index of its `<<`, `[start,
+  // end)` its body, at every depth (#1607, {@link fedSpans}).
+  const heredocs = [];
   // Where each word bash reads ends, keyed by where it starts: at every depth,
   // a substitution's own words included (#1606, {@link view}).
   const wordEnds = new Map();
@@ -171,14 +182,14 @@ export function maskInert(command) {
         k += 2;
       } else delim += s[k++];
     }
-    if (delim) pending.push({ delim, quoted, strip });
+    if (delim) pending.push({ delim, quoted, strip, op: i - 2 });
     else sure = false;
     return k;
   };
 
   // The queued heredoc bodies, from `at` (the line after their operators); returns where commands resume.
   const bodies = (at, limit, top) => {
-    for (const { delim, quoted, strip } of pending.splice(0)) {
+    for (const { delim, quoted, strip, op } of pending.splice(0)) {
       let p = at;
       let found = -1;
       let resume = limit;
@@ -194,6 +205,7 @@ export function maskInert(command) {
         p = eol + 1;
       }
       const end = found < 0 ? limit : found;
+      heredocs.push({ op, start: at, end });
       if (quoted) blank(out, at, end);
       else expanding(at, end, false);
       if (top) blank(flat, at, end);
@@ -283,7 +295,7 @@ export function maskInert(command) {
   commands(0, n, null);
   if (pending.length) sure = false;
   maskInert.last = command;
-  maskInert.lastOut = { masked: out.join(""), flat: flat.join(""), sure, words: wordEnds };
+  maskInert.lastOut = { masked: out.join(""), flat: flat.join(""), sure, words: wordEnds, heredocs };
   return maskInert.lastOut;
 }
 
@@ -292,44 +304,244 @@ export function maskInert(command) {
  * shell — `bash -c '…'`, `eval "…"`, `bash <<'EOF'`, `xargs sh -c`, `trap '…'`,
  * `timeout 900 bash -c` — or runs its argument (`timeout`, `sudo`, `watch`).
  * The text those carry is executed, not inert, so masking it would hide the
- * very commands the rules exist for (#1321 review).
+ * very commands the rules exist for (#1321 review). Each one sets the mask
+ * aside over the list element that holds it ({@link fedSpans}, #1607).
  */
 const SHELL_FED =
-  /(?:^|[\s;&|(`/])(?:bash|sh|zsh|dash|ksh|fish|eval|xargs|parallel|watch|su|sudo|source|timeout|trap|pwsh|powershell|cmd)(?:\.exe)?(?=[\s;&|)`]|$)/m;
+  /(?<=^|[\s;&|(`/])(?:bash|sh|zsh|dash|ksh|fish|eval|xargs|parallel|watch|su|sudo|source|timeout|trap|pwsh|powershell|cmd)(?:\.exe)?(?=[\s;&|)`]|$)/gm;
+
+/** The reserved words that open a compound command, and those that close one ({@link structure}). */
+const GROUP_OPEN = new Set(["if", "while", "until", "for", "select", "case", "{"]);
+const GROUP_CLOSE = new Set(["fi", "done", "esac", "}"]);
+/** The reserved words after which the next word is at command position again. */
+const COMMAND_PREFIX = new Set(["if", "then", "elif", "else", "while", "until", "do", "!", "{", "time"]);
 
 /**
- * The text the rules read: `{ text, flat, trusted, programs, unreadable }`.
- * The mask is trusted only when the lexer is sure of it AND nothing in the
- * live text feeds a string to a shell; otherwise `text` and `flat` are the raw
- * command — the pre-#1321 behaviour, which over-matches. The pre-hook is a
- * safety gate, so a doubt costs a false deny on a mention, never a missed
- * command.
+ * The structure of the masked text `text` a list element is read from
+ * ({@link fedSpans}), as `{ at, end, kind }` events in order: `open` and
+ * `close` for a paren and for the reserved word that opens or closes a
+ * compound command (`if` … `fi`, `while` / `until` / `for` / `select` …
+ * `done`, `case` … `esac`, `{` … `}`) where it stands at command position,
+ * and `sep` for what ends a list element: a newline, `;`, `&&`, `||` or a lone
+ * `&` — not a redirect's (`>&`, `<&`, `&>`), not `|&`, and not one a backslash
+ * escapes (`find … -exec sh -c '…' \;`). A pipe ends no element. Inert text
+ * is masked, so nothing in a quote, a heredoc body or a comment counts.
+ */
+function structure(text) {
+  const events = [];
+  const escaped = (i) => {
+    let k = i;
+    while (k > 0 && text[k - 1] === "\\") k--;
+    return (i - k) % 2 === 1;
+  };
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (c === "\n") events.push({ at: i, end: i + 1, kind: "sep" });
+    else if (escaped(i)) continue;
+    else if (c === "(" || c === ")") events.push({ at: i, end: i + 1, kind: c === "(" ? "open" : "close" });
+    else if (c === ";") events.push({ at: i, end: i + 1, kind: "sep" });
+    else if ((c === "&" || c === "|") && text[i + 1] === c) {
+      events.push({ at: i, end: i + 2, kind: "sep" });
+      i++;
+    } else if (c === "&" && !/[<>|]/.test(text[i - 1] ?? "") && text[i + 1] !== ">")
+      events.push({ at: i, end: i + 1, kind: "sep" });
+  }
+  const words = [...text.matchAll(/[^\s;&|()<>]+/g)];
+  const memo = new Map();
+  // Whether the `k`th word stands at command position: after the start, a
+  // separator, a pipe, a paren or a backtick, or after a reserved word that does.
+  const commandPosition = (k) => {
+    if (memo.has(k)) return memo.get(k);
+    let q = words[k].index - 1;
+    while (q >= 0 && (text[q] === " " || text[q] === "\t")) q--;
+    let yes = false;
+    if (q < 0 || "\n;|()\x60".includes(text[q])) yes = true;
+    else if (text[q] === "&") yes = !/[<>]/.test(text[q - 1] ?? "");
+    else if (k > 0 && words[k - 1].index + words[k - 1][0].length === q + 1) {
+      const prev = words[k - 1][0];
+      if (COMMAND_PREFIX.has(prev)) yes = commandPosition(k - 1);
+      // `function name {`: the brace opens the body.
+      else if (words[k][0] === "{" && k > 1 && words[k - 2][0] === "function") yes = commandPosition(k - 2);
+    }
+    memo.set(k, yes);
+    return yes;
+  };
+  words.forEach((m, k) => {
+    const kind = GROUP_OPEN.has(m[0]) ? "open" : GROUP_CLOSE.has(m[0]) ? "close" : undefined;
+    if (kind && commandPosition(k)) events.push({ at: m.index, end: m.index + m[0].length, kind });
+  });
+  return events.sort((x, y) => x.at - y.at);
+}
+
+/**
+ * The `[start, end)` spans of a command where a shell is fed (#1607): for
+ * each {@link SHELL_FED} word in `text` (the masked, program-normalised
+ * command), the list element that holds it — read left and right from the
+ * word to the nearest separator outside every group ({@link structure}), so a
+ * pipeline, a subshell or a compound command piped to a shell (`(…) | bash`,
+ * `while …; done | sh`) is one element, and an enclosing group the word sits
+ * in (`x=$(… | sh)`) widens the element to the one holding that group — plus
+ * the body of every heredoc whose `<<` is in that element (`bash <<'EOF'`,
+ * `heredocs` from {@link maskInert}). Overlapping and touching spans are
+ * merged.
+ */
+function fedSpans(command, text, heredocs) {
+  const events = structure(text);
+  const spans = [];
+  // The elements whose word interprets shell text, not just runs a program.
+  const interpreted = [];
+  for (const m of text.matchAll(SHELL_FED)) {
+    let start = 0;
+    let end = text.length;
+    let depth = 0;
+    for (let k = events.length - 1; k >= 0; k--) {
+      const e = events[k];
+      if (e.end > m.index) continue;
+      if (e.kind === "close") depth++;
+      else if (e.kind === "open") depth--;
+      else if (depth <= 0) {
+        start = e.end;
+        break;
+      }
+    }
+    depth = 0;
+    for (const e of events) {
+      if (e.at < m.index + m[0].length) continue;
+      if (e.kind === "open") depth++;
+      else if (e.kind === "close") depth--;
+      else if (depth <= 0) {
+        end = e.at;
+        break;
+      }
+    }
+    const element = [[start, end], ...heredocs.filter((h) => h.op >= start && h.op < end).map((h) => [h.start, h.end])];
+    spans.push(...element);
+    if (!ARGV_RUNNERS.test(m[0])) interpreted.push(...element);
+  }
+  spans.sort((x, y) => x[0] - y[0]);
+  const merged = [];
+  for (const [a, b] of spans) {
+    const last = merged.at(-1);
+    if (last && a <= last[1]) last[1] = Math.max(last[1], b);
+    else merged.push([a, b]);
+  }
+  return feedsAcross(command, text, merged, interpreted) ? [[0, text.length]] : merged;
+}
+
+/** The {@link SHELL_FED} words that run their arguments as a program, never as shell text. */
+const ARGV_RUNNERS = /^(?:timeout|sudo|xargs)(?:\.exe)?$/;
+
+/** A parameter expansion: `$name`, `${…}`, `$1`, `$@` and the other special parameters. */
+const PARAMETER = /\$[A-Za-z_{0-9@*#?!$-]/;
+
+/**
+ * What stores text for a later command to read, in the masked text of the
+ * elements the mask stands over ({@link feedsAcross}): an assignment (or a
+ * `NAME=value` argument), a builtin that sets a variable or an alias, a
+ * function definition, `tee`, and a redirection that writes a file other than
+ * `/dev/null` (not a descriptor's copy, `2>&1`).
+ */
+const STORES = new RegExp(
+  [
+    String.raw`(?:^|[\s;&|(\x60])[A-Za-z_]\w*(?:\[[^\]\s]*\])?\+?=`,
+    String.raw`(?:^|[\s;&|(\x60])(?:export|declare|typeset|readonly|local|read|readarray|mapfile|alias|function|tee)(?=[\s;&|)\x60]|$)`,
+    String.raw`[\w.-]\s*\(\s*\)`,
+    String.raw`(?:&>>?|>>?|>\|)(?!&)\s*(?!/dev/null(?![^\s;&|()<>]))[^\s;&|()<>]`,
+  ].join("|"),
+  "m",
+);
+
+/**
+ * Whether a shell interpreter fed in `command` may be handed text from an
+ * element the mask stands over (#1607): its own element expands a variable
+ * ({@link PARAMETER}, raw, since `bash -c '$X'` expands in the inner shell),
+ * or another element stores text ({@link STORES}) — `x='…'; eval "$x"`,
+ * `echo '…' > f; bash f`, `f() { echo '…'; }; f | bash`. The whole command is
+ * then set aside, as before #1607, rather than mask a string a shell will run.
+ * Only an interpreter counts: `timeout`, `sudo` and `xargs` run their
+ * arguments as a program, whose word the rules read where it stands. A writer
+ * that names no redirection (`cp`, `sed -i`, `curl -o`) is not followed; the
+ * hooks catch mistakes, not deliberate obfuscation.
+ */
+function feedsAcross(command, text, fed, interpreted) {
+  if (!interpreted.length) return false;
+  if (interpreted.some(([a, b]) => PARAMETER.test(command.slice(a, b)))) return true;
+  let outside = "";
+  let at = 0;
+  for (const [a, b] of fed) {
+    outside += text.slice(at, a) + " ".repeat(b - a);
+    at = b;
+  }
+  return STORES.test(outside + text.slice(at));
+}
+
+/**
+ * The text the rules read: `{ text, flat, trusted, sure, fed, programs,
+ * unreadable }`. The mask is set aside — `text` and `flat` are the raw
+ * command there, the pre-#1321 behaviour, which over-matches — over the whole
+ * command when the lexer is not sure of it, and otherwise over each span
+ * where live text feeds a string or stdin to a shell (`fed`, {@link
+ * fedSpans}, #1607): the list element holding the word that feeds it, with
+ * its pipes, groups and heredoc bodies. Everywhere else the mask stands, so a
+ * quoted `gh pr merge` in a `sed` or `grep` pattern is not read as a merge
+ * because an unrelated `timeout` runs later in the chain. `trusted` says the
+ * whole command is masked, {@link trustedIn} says it of a range. The pre-hook
+ * is a safety gate, so a doubt costs a false deny on a mention, never a
+ * missed command.
  *
  * Either way each PROGRAM WORD — the word at command position, {@link
  * normalisePrograms} — is rewritten to its plain name at the same length
  * (#1606), so `gh.exe`, `/usr/bin/gh`, `"gh"`, `g"h"` and `GH.EXE` all read as
  * the `gh` every rule names, and the index of every other character is
  * unchanged. That runs before the shell-feed test, so a quoted `"bash" -c`
- * stops trusting the mask as a bare `bash -c` does. `programs` lists the
+ * feeds a shell as a bare `bash -c` does. `programs` lists the
  * `[start, end)` spans it rewrote or found plain ({@link programStart}), and
  * `unreadable` the program words it could not read ({@link unreadablePrograms}).
  */
 export function view(command) {
   if (command !== view.last) {
-    const { masked, flat, sure, words: wordEnds } = maskInert(command);
-    const lexed = normalisePrograms(command, masked, flat, wordEnds, false);
-    const trusted = sure && !SHELL_FED.test(lexed.text);
-    const out = trusted ? lexed : normalisePrograms(command, command, command, wordEnds, true);
+    const { masked, flat, sure, words: wordEnds, heredocs } = maskInert(command);
+    const lexed = normalisePrograms(command, masked, flat, wordEnds, () => false);
+    const fed = sure ? fedSpans(command, lexed.text, heredocs) : [[0, command.length]];
+    let out = lexed;
+    if (fed.length) {
+      // The raw command inside each fed span, the mask outside them; a word
+      // the lexer did not see start is read raw only inside a span.
+      const restore = (s) => {
+        let at = 0;
+        let r = "";
+        for (const [a, b] of fed) {
+          r += s.slice(at, a) + command.slice(a, b);
+          at = b;
+        }
+        return r + s.slice(at);
+      };
+      const raw = (p) => fed.some(([a, b]) => a <= p && p < b);
+      out = normalisePrograms(command, restore(masked), restore(flat), wordEnds, raw);
+    }
     view.last = command;
     view.out = {
       text: out.text,
-      flat: trusted ? out.flat : out.text,
-      trusted,
+      flat: out.flat,
+      trusted: fed.length === 0,
+      sure,
+      fed,
       programs: out.programs,
       unreadable: out.unreadable,
     };
   }
   return view.out;
+}
+
+/**
+ * Whether the mask stands over `[a, b)` of `command` ({@link view}): the lexer
+ * is sure of it and no fed span overlaps the range (#1607). A consumer that
+ * reads one command's words reads them through the mask only then, and raw
+ * otherwise, as the whole command was read before #1607.
+ */
+export function trustedIn(command, a, b) {
+  const { sure, fed } = view(command);
+  return sure && !fed.some(([s, e]) => s < b && a < e);
 }
 
 /**
@@ -580,7 +792,8 @@ function programName(chars) {
 const ASSIGNMENT = /^[A-Za-z_][A-Za-z0-9_]*(?:\[[^\]]*\])?\+?=/;
 
 /**
- * Whether a word read in the raw text of an untrusted view may be rewritten
+ * Whether a word read in the raw text of a view — where the mask is set aside,
+ * over the whole command or a fed span ({@link view}) — may be rewritten
  * (#1606 second read): it holds no character a raw-text rule reads as a
  * command boundary (a newline, `;`, `&`, `|`, a paren or a backtick) and every
  * quote it opens it closes itself. A word found from a position inside a
@@ -622,7 +835,7 @@ const CRUDE_WORD =
  * directory part before that segment is blanked too, except its command
  * substitutions ({@link commandSubs}), which run and stay as they are:
  * `$(git push …)/scripts/run.sh` keeps its push in sight, and a substitution
- * that feeds a string to a shell still makes the mask untrusted (#1606 review).
+ * that feeds a string to a shell still sets the mask aside (#1606 review).
  *
  * It repeats until nothing changes, so a wrapper spelled with a path
  * (`/usr/bin/env /usr/bin/gh …`) puts the next word at command position too.
@@ -632,13 +845,15 @@ const CRUDE_WORD =
  * quoted, which is written back as the option it is, its case kept. After
  * env, any `NAME=VALUE`, quoted or not, is an assignment env makes, written
  * back as `NAME=___`, and an argument that expands is listed in `unreadable`
- * with `env` set, since it may be either (#1606 review). `words` are the lexer's word spans, the
- * only words taken where `crude` is false; in the raw text of an untrusted
- * view, a position the lexer did not see start a word is read by
- * {@link CRUDE_WORD}. A program word whose last segment expands or globs is
+ * with `env` set, since it may be either (#1606 review). `words` are the
+ * lexer's word spans, the only words taken where `raw(position)` is false; in
+ * the raw text of a span the mask is set aside over ({@link view}: the whole
+ * command, or a fed span, #1607), a position the lexer did not see start a
+ * word is read by {@link CRUDE_WORD}, and only a {@link selfContained} word is
+ * rewritten. A program word whose last segment expands or globs is
  * left as it is and listed in `unreadable` as `{ start, end, word }`.
  */
-function normalisePrograms(command, text, flat, words, crude) {
+function normalisePrograms(command, text, flat, words, raw) {
   let t = text;
   let f = flat;
   // `[start, end, cut, keep]` each: the word, where its last segment starts,
@@ -655,7 +870,7 @@ function normalisePrograms(command, text, flat, words, crude) {
     for (const { start, lead } of programPositions(t)) {
       if (seen.has(start) || covered(start)) continue;
       let end = words.get(start);
-      if (end === undefined && crude && (start === 0 || /[\s|;&()\x60]/.test(command[start - 1]))) {
+      if (end === undefined && raw(start) && (start === 0 || /[\s|;&()\x60]/.test(command[start - 1]))) {
         CRUDE_WORD.lastIndex = start;
         const w = CRUDE_WORD.exec(command);
         if (w) end = start + w[0].length;
@@ -663,10 +878,10 @@ function normalisePrograms(command, text, flat, words, crude) {
       if (end === undefined || end <= start) continue;
       seen.add(start);
       const word = command.slice(start, end);
-      // The raw text of an untrusted view is what the rules read as it stands,
+      // Where the mask is set aside the rules read the raw text as it stands,
       // separators inside strings included: a word there is rewritten only when
       // it is whole on its own, so no rewrite hides a command (#1606 second read).
-      if (crude && !selfContained(word)) continue;
+      if (raw(start) && !selfContained(word)) continue;
       const chars = decodeWord(word);
       const live = chars.some((x) => x.live);
       const decoded = chars.map((x) => x.c).join("");
@@ -752,7 +967,7 @@ export function programStart(command, index) {
 /** The program words at command position that expand or glob, `{ start, end, word }` each ({@link view}). */
 export const unreadablePrograms = (command) => view(command).unreadable;
 
-/** The command with its inert text masked where the mask is trusted, else the raw command ({@link view}). */
+/** The command with its inert text masked where the mask stands, and raw where it is set aside ({@link view}). */
 export const trustedMask = (command) => view(command).text;
 
 /** `[start, end)` ranges of `text` between the separators `sep` finds in it. */
@@ -1168,7 +1383,8 @@ function leadToken(open) {
  *
  * A heuristic, not a shell parser: the hooks catch mistakes, not deliberate
  * obfuscation. A string handed to a shell (`bash -c`, `eval`) is not lexed —
- * the rules read the raw command then ({@link view}).
+ * the rules read the raw text of the list element that hands it over then
+ * ({@link view}, #1607).
  */
 export const COMMAND_LEAD = String.raw`(?:${leadToken("(?:")})*`;
 
@@ -1272,8 +1488,9 @@ export function commandEnd(text, from, inTick) {
  * `|`, `)`, backtick, or a `&` that is no redirect's: quotes removed, `\`
  * escapes applied and `$'…'` decoded. A shell wrapper's command string is one
  * of these words, which {@link chainCommands}' `args` cannot give whole: the
- * mask is not trusted where a shell is fed a string ({@link view}), so the
- * chain is split in the raw text, inside the string too.
+ * mask is set aside over the element where a shell is fed a string ({@link
+ * view}, #1607), so that element is split in the raw text, inside the string
+ * too.
  */
 export function commandWords(text, from) {
   const out = [];
