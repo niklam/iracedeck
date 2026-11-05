@@ -70,6 +70,97 @@ describe("deckFindings", () => {
   });
 });
 
+// #1542: shapes `pre-bash.test.mjs` once spawned the hook for, two tools each.
+// Every one of those spawns ran the same readers, so the hook test keeps one
+// spawn per reader and the shapes are judged here, in-process, under both
+// shells as before.
+const SHELLS = [
+  ["Bash", BASH],
+  ["PowerShell", POWERSHELL],
+];
+/** The Stream Deck plugin's real `watch`: the restart sits in a quoted rollup option. */
+const SD_WATCH = 'rollup -c -w --watch.onEnd="streamdeck restart com.iracedeck.sd.core"';
+const LINKED = { linkTargets: () => [{ host: "Stream Deck", target: path.join(ROOT, "plugin") }] };
+
+describe("a script read from the package.json it runs from, under either shell (#1520, #1542)", () => {
+  const at = (o) =>
+    ctx(
+      {
+        hop: "pnpm relink:anything",
+        voices: "pnpm dev:voices on",
+        watch: SD_WATCH,
+        wipe: "rimraf plugin/bin",
+        quiet: "vitest run",
+      },
+      o,
+    );
+
+  it.each(SHELLS)("%s: labels each step from the script to the restart, linked or not", (_, shell) => {
+    for (const o of [{}, LINKED]) {
+      expect(deckFindings("pnpm hop", ROOT, at(o), shell)).toEqual([
+        "`pnpm hop` → `pnpm relink:anything` restarts or relinks a deck host",
+      ]);
+      expect(deckFindings("pnpm watch", ROOT, at(o), shell)).toEqual([
+        "`pnpm watch` → `rollup --watch.onEnd` → `streamdeck restart` restarts or relinks a deck host",
+      ]);
+    }
+  });
+
+  it.each(SHELLS)("%s: asks for a script that runs dev:voices only where a host is linked", (_, shell) => {
+    expect(deckFindings("pnpm voices", ROOT, at(LINKED), shell)).toEqual([
+      `\`pnpm voices\` → Stream Deck plugin link points into ${ROOT}: \`pnpm dev:voices\` there relinks the running plugin`,
+    ]);
+    expect(deckFindings("pnpm voices", ROOT, at(), shell)).toEqual([]);
+  });
+
+  // Positive control: scripts from the same package.json that restart nothing.
+  it.each(SHELLS)("%s: finds nothing in a script that restarts nothing, linked or not", (_, shell) => {
+    for (const o of [{}, LINKED])
+      for (const c of ["pnpm wipe", "pnpm quiet"]) expect(deckFindings(c, ROOT, at(o), shell), c).toEqual([]);
+  });
+});
+
+// #1526 review: the false accepts it found. `sd` carries the Stream Deck
+// plugin's `watch`; the root carries no scripts, so a selector asks only by
+// reaching that package.
+describe("every package an unresolved selector may pick, a wrapper's string and node behind a runner (#1526, #1542)", () => {
+  const SD = path.join(ROOT, "packages", "sd");
+  const manifests = {
+    [ROOT]: { name: "root", scripts: {} },
+    [SD]: { name: "@fixture/sd", scripts: { build: "rollup -c", watch: SD_WATCH } },
+  };
+  const scriptsAt = (dir) => {
+    for (let d = dir; ; d = path.dirname(d)) {
+      if (manifests[d]) return { dir: d, ...manifests[d] };
+      if (path.dirname(d) === d) return undefined;
+    }
+  };
+  const c = ctx({}, { scriptsAt, workspaceDirs: () => [SD] });
+  const restarting = [
+    "pnpm -r watch",
+    "pnpm --filter sd watch",
+    "pnpm --filter ./packages/sd watch",
+    "npm run watch -w packages/sd",
+    `bash -c "pnpm restart:stream-deck"`,
+    `cmd /c "pnpm restart:stream-deck"`,
+    `pwsh -c "pnpm restart:stream-deck"`,
+    "npx node scripts/host-app.mjs stop mirabox",
+    "node scripts/integration-build.mjs $(echo --restart) fix/1-a",
+  ];
+  // Positive control: the same shapes over what restarts nothing.
+  const harmless = ["pnpm -r build", "pnpm --filter sd build", `bash -c "pnpm build"`, "npx node scripts/build.mjs"];
+  const cases = (cmds) => SHELLS.flatMap(([name, shell]) => cmds.map((cmd) => [name, cmd, shell]));
+
+  it.each(cases(restarting))("%s finds a deck host in: %s", (_, cmd, shell) => {
+    const found = deckFindings(cmd, ROOT, c, shell);
+    expect(found).not.toEqual([]);
+    for (const f of found) expect(f).toMatch(/deck host/);
+  });
+  it.each(cases(harmless))("%s finds nothing in: %s", (_, cmd, shell) =>
+    expect(deckFindings(cmd, ROOT, c, shell)).toEqual([]),
+  );
+});
+
 describe("helpers", () => {
   // A runner's forwarded words are appended to a script's line through
   // shellQuote and read back through shellWords; each must come back whole
