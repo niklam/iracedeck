@@ -4455,7 +4455,12 @@ describe("the program-word rewrite's second read (#1606)", () => {
         `git -C "$TARGET" push origin HEAD`,
       ])
         expect(deny(c, onBranch), c).toMatch(/through a `-C` that expands/);
-      passes("git -C ../ir-5 -C sub status", onBranch);
+      // Written out, the same -C forms reach the commit and push guards and pass
+      // on a branch with nothing to refuse (CodeRabbit on PR #1628: `status` is judged by no rule).
+      const clean = ctx({ branch: () => "fix/5-x", staged: () => [] });
+      passes("git -C ../ir-5 -C sub commit -m x", clean);
+      passes("git -C ../ir-5 push origin HEAD", clean);
+      expect(deny("git -C ../ir-5 -C sub commit -m x", onBranch)).toMatch(/never on a feature branch/);
     });
     it("passes a splitting word whose command a guard does not read", () => {
       passes("$EDITOR notes.md");
