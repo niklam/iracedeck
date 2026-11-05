@@ -640,13 +640,18 @@ describe("the mask is set aside only where a shell is fed (#1607)", () => {
     "while read l; do echo 'ls; gh pr merge 5'; done < f | sh",
     "until false; do echo 'ls; gh pr merge 5'; done | sh",
     "for x in 1; do echo 'ls; gh pr merge 5'; done | sh",
-    "function f { echo 'ls; gh pr merge 5'; } | bash",
-    "f() { echo 'ls; gh pr merge 5'; } | bash",
   ])("reads a pipeline that feeds a shell raw from its first command, a group's included: %s", (element) => {
     const command = `ls; ${element}`;
     expect(view(command).fed).toEqual([[3, command.length]]);
     expect(view(command).text.slice(3)).toBe(command.slice(3));
   });
+
+  // A function definition in a shell's element may hold that shell for a
+  // later `… | f`, so it reads the whole command raw (#1607 second read).
+  it.each(["function f { echo 'ls; gh pr merge 5'; } | bash", "f() { echo 'ls; gh pr merge 5'; } | bash"])(
+    "reads the whole command raw for a function definition beside a shell: %s",
+    (element) => expect(view(`ls; ${element}`).fed).toEqual([[0, element.length + 4]]),
+  );
 
   it("ends the element at a separator outside every group, and only there", () => {
     splitAt("echo 'gh pr merge 5' && bash -c 'x'", "echo 'gh pr merge 5' &&".length);
@@ -734,8 +739,32 @@ describe("the mask is set aside only where a shell is fed (#1607)", () => {
     "exec 3< <(echo 'ls; gh pr merge 5'); bash <&3",
     "set -a; X='ls; gh pr merge 5'; bash f.sh",
     "grep -n 'gh pr merge 5' notes.md; bash \"$SCRIPT\"",
+    // #1607 second read: the shell's own element holds it for a later one to feed.
+    'f() { bash; }; printf "cd x; gh pr merge 5" | f',
+    'function f { sh; }; echo "cd x; gh pr merge 5" | f',
+    'exec > >(bash); echo "cd x; gh pr merge 5"',
+    'exec 3> >(bash); echo "cd x; gh pr merge 5" >&3',
+    'coproc bash; echo "cd x; gh pr merge 5" >&"${COPROC[1]}"',
+    // A sudo that runs a shell hands it its argument as shell text.
+    'X="cd x; gh pr merge 5"; sudo -s "$X"',
+    'X="cd x; gh pr merge 5"; sudo -i "$X"',
+    'X="cd x; gh pr merge 5"; sudo -Eu me -s "$X"',
+    'X="cd x; gh pr merge 5"; sudo --user me --login "$X"',
   ])("reads the whole command raw when a shell may run text another element stores: %s", (command) =>
     expect(view(command).fed).toEqual([[0, command.length]]),
+  );
+
+  // A newline is a command-position boundary, so a compound command that
+  // opens on a later line, or after `time -p`, is still a group (#1607 second read).
+  it.each([
+    "git fetch\n{\n  cat <<'EOF'\ngh pr merge 5\nEOF\n} | bash",
+    // (`$p` would expand in the shell's element and read the whole command raw: see feedsAcross.)
+    'git fetch\nfor p in 5; do echo "cd x; gh pr merge 5"; done | bash',
+    "git fetch\n{ echo a; printf '%s' \"cd x; gh pr merge 5\"; } | bash",
+    "git fetch\ntime -p { echo a; printf '%s' \"cd x; gh pr merge 5\"; } | bash",
+    "git fetch\nif true\nthen echo 'cd x; gh pr merge 5'\nfi | bash",
+  ])("reads a group opened on a later line as one element: %s", (command) =>
+    expect(view(command).fed).toEqual([[10, command.length]]),
   );
 
   it("keeps the mask where nothing is stored for a shell, or only a program runs", () => {
@@ -743,14 +772,15 @@ describe("the mask is set aside only where a shell is fed (#1607)", () => {
       "grep 'gh pr merge 5' f 2>/dev/null; bash -c 'x'",
       "grep 'gh pr merge 5' f 2>&1; bash -c 'x'",
       "grep 'gh pr merge 5' f > out.txt; sudo true",
+      'X="a"; grep "gh pr merge 5" f; sudo -u me "$X"',
+      // An assignment in the shell's own element holds nothing for a later one.
+      "x=$(echo a | sh); grep 'a; gh pr merge 1603' f",
       // An unexported assignment reaches another shell only through an expansion.
       "x=1; grep 'a|gh pr merge 5' f; sh -c 'true'",
       "Q=/c/q; grep 'gh pr merge 5' $Q/f > $Q/g; xargs ls < $Q/g",
     ])
-      expect(
-        view(command).fed.every(([a]) => a > 0),
-        command,
-      ).toBe(true);
+      // The mention stays masked: no span reaches over the grep.
+      expect(trustedMask(command), command).not.toMatch(/gh pr merge/);
   });
 
   it("sets the mask aside over the whole command when the lexer is unsure", () => {

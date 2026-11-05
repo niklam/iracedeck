@@ -4557,6 +4557,12 @@ describe("the mask is set aside only where a shell is fed (#1607)", () => {
     [`eval "gh pr merge 5 --squash"`, "gh"],
     [`grep 'gh pr merge 6' f; "/usr/bin/gh" pr merge 5 --squash`, `"/usr/bin/gh"`],
     [`bash -c 'echo "gh pr merge 6"'; cd scripts && gh pr merge 5 --squash`, "gh"],
+    // #1607 second read: past a COMMAND_LEAD in the string, and past sudo's valued options.
+    ["bash -c 'GH_REPO=niklam/iracedeck gh pr merge 5 --squash'", "gh"],
+    ["bash -c 'timeout 600 gh pr merge 5 --squash'", "gh"],
+    ["timeout 600 bash -c 'exec gh pr merge 5 --squash'", "gh"],
+    ["sudo -u me gh pr merge 5 --squash", "gh"],
+    ["sudo -g staff -E gh pr merge 5 --squash", "gh"],
   ])("finds the merge the command runs, and where its program word starts: %s", (command, word) => {
     const merge = firstMerge(command);
     expect(merge).toMatchObject({ ref: "5", readable: true });
@@ -4586,6 +4592,18 @@ describe("the mask is set aside only where a shell is fed (#1607)", () => {
     "cat <<'EOF' |\nls; gh pr merge 5 --squash\nEOF\nbash",
     "echo \"`cat <<'EOF'\nls; gh pr merge 5 --squash\nEOF\n`\" | bash",
     "exec 3< <(echo 'ls; gh pr merge 5 --squash'); bash <&3",
+    // #1607 second read.
+    "git fetch\n{\n  cat <<'EOF'\ngh pr merge 5 --squash\nEOF\n} | bash",
+    'git fetch\nfor p in 5; do echo "cd x; gh pr merge $p"; done | bash',
+    "git fetch\n{ echo a; printf '%s' \"cd x; gh pr merge 5\"; } | bash",
+    "git fetch; time -p { echo a; printf '%s' \"cd x; gh pr merge 5\"; } | bash",
+    'f() { bash; }; printf "cd x; gh pr merge 5" | f',
+    'function f { sh; }; echo "cd x; gh pr merge 5" | f',
+    'exec > >(bash); echo "cd x; gh pr merge 5"',
+    'exec 3> >(bash); echo "cd x; gh pr merge 5" >&3',
+    'coproc bash; echo "cd x; gh pr merge 5" >&"${COPROC[1]}"',
+    'X="cd x; gh pr merge 5"; sudo -s "$X"',
+    'X="cd x; gh pr merge 5"; sudo -i "$X"',
   ])("still gates a merge piped into a shell however the element is spelled: %s", (command) =>
     expect(deny(command)).toMatch(REAL),
   );

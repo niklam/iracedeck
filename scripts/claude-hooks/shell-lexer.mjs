@@ -347,16 +347,72 @@ export function maskInert(command) {
 const SHELL_WORDS = String.raw`(?:bash|sh|zsh|dash|ksh|fish|eval|parallel|watch|su|sudo|source|trap|pwsh|powershell|cmd)(?:\.exe)?`;
 const SHELL_FED = new RegExp(String.raw`(?<=^|[\s;&|(\x60/])${SHELL_WORDS}(?=[\s;&|)\x60]|$)`, "gm");
 
-/** A {@link SHELL_WORDS} word with its options, then blanks and at most an opening quote, ending the text it is tested on. */
-const FED_LEAD = new RegExp(String.raw`(?:^|[\s;&|(\x60/])${SHELL_WORDS}(?:\s+(?:-\S+|\/\w+))*\s+(?:\$?['"]\s*)?$`);
+/** sudo's short options that take a value in the next word or attached (`-u me`, `-ume`). */
+const SUDO_VALUE_SHORT = "ughCDprtUT";
+/** sudo's long options that take a value in the next word when none is attached with `=`. */
+const SUDO_VALUE_LONG = new Set([
+  "--user",
+  "--group",
+  "--chdir",
+  "--chroot",
+  "--host",
+  "--prompt",
+  "--role",
+  "--type",
+  "--other-user",
+  "--close-from",
+  "--command-timeout",
+]);
+
+/**
+ * A {@link SHELL_WORDS} word with its options — sudo's value-taking ones with
+ * their value — then blanks, at most an opening quote and a {@link
+ * COMMAND_LEAD} (built from `leadToken`, which is hoisted), ending the text it
+ * is tested on.
+ */
+const FED_LEAD = new RegExp(
+  String.raw`(?:^|[\s;&|(\x60/])${SHELL_WORDS}(?:\s+(?:-[${SUDO_VALUE_SHORT}]\s+[^\s-]\S*|-\S+|\/\w+))*\s+(?:\$?['"]\s*)?(?:${leadToken("(?:")})*$`,
+);
+
+/**
+ * Whether the sudo whose word ends at `from` in `text` runs a shell (#1607):
+ * among its options, before its command, a `-s` or `-i` (in a cluster too,
+ * `-Es`), `--shell` or `--login`. That shell runs its argument as shell text
+ * (`sudo -s "$X"`, as `$SHELL -c`), so it is an interpreter for {@link
+ * feedsAcross}; any other sudo runs its arguments as a program.
+ */
+function sudoRunsShell(text, from) {
+  const word = /\s+([^\s;&|()<>]+)/y;
+  word.lastIndex = from;
+  for (let m; (m = word.exec(text));) {
+    const w = m[1];
+    if (w === "--shell" || w === "--login") return true;
+    if (w === "--" || !w.startsWith("-")) return false;
+    if (w.startsWith("--")) {
+      if (SUDO_VALUE_LONG.has(w)) word.exec(text);
+      continue;
+    }
+    for (let k = 1; k < w.length; k++) {
+      if (w[k] === "s" || w[k] === "i") return true;
+      if (SUDO_VALUE_SHORT.includes(w[k])) {
+        // The value is the rest of the word, or the next word when none is attached.
+        if (k === w.length - 1) word.exec(text);
+        break;
+      }
+    }
+  }
+  return false;
+}
 
 /**
  * Whether the program word at `index` of {@link view}'s text is the first word
  * a fed shell runs (#1607): inside a fed span, right after the shell word and
- * its options (`sudo gh …`, `sudo -E gh …`), or at the start of the string it
- * is handed (`bash -c 'gh …'`, `eval "gh …"`, `trap 'gh …' EXIT`). In the raw
- * text of a fed span that is command position, as a {@link cmd} anchor is
- * after a boundary; a quoted mention inside an argument of another command is
+ * its options (`sudo gh …`, `sudo -E gh …`, `sudo -u me gh …`), or at the
+ * start of the string it is handed (`bash -c 'gh …'`, `eval "gh …"`, `trap 'gh
+ * …' EXIT`), either one past a {@link COMMAND_LEAD} (`bash -c 'GH_REPO=x gh
+ * …'`, `bash -c 'timeout 600 gh …'`, `bash -c 'exec gh …'`). In the raw text
+ * of a fed span that is command position, as a {@link cmd} anchor is after a
+ * boundary; a quoted mention inside an argument of another command is
  * neither.
  */
 export function fedCommandStart(command, index) {
@@ -419,18 +475,24 @@ function structure(top, heredocs) {
   }
   const words = [...top.matchAll(/[^\s;&|()<>]+/g)];
   const memo = new Map();
-  // Whether the `k`th word stands at command position: after the start, a
-  // separator, a pipe or a paren, or after a reserved word that does.
+  // Whether only blanks stand between the `a`th word and the next one.
+  const adjacent = (a) => /^[ \t]*$/.test(top.slice(words[a].index + words[a][0].length, words[a + 1].index));
+  // Whether the `k`th word stands at command position: at the start of a line
+  // (a newline is a boundary, #1607 second read), after the start, a
+  // separator, a pipe, a paren or a heredoc's terminator line, or after a
+  // reserved word that does — `time` past its own options (`time -p {`).
   const commandPosition = (k) => {
     if (memo.has(k)) return memo.get(k);
     let q = words[k].index - 1;
-    while (q >= 0 && /\s/.test(top[q])) q--;
+    while (q >= 0 && (top[q] === " " || top[q] === "\t")) q--;
     let yes = false;
-    if (q < 0 || ";|()".includes(top[q])) yes = true;
+    if (q < 0 || "\n;|()".includes(top[q]) || heredocs.some((h) => h.resume === q + 1)) yes = true;
     else if (top[q] === "&") yes = !/[<>]/.test(top[q - 1] ?? "");
-    else if (k > 0 && words[k - 1].index + words[k - 1][0].length === q + 1) {
-      const prev = words[k - 1][0];
-      if (COMMAND_PREFIX.has(prev)) yes = commandPosition(k - 1);
+    else if (k > 0 && adjacent(k - 1)) {
+      let p = k - 1;
+      while (p > 0 && words[p][0].startsWith("-") && adjacent(p - 1)) p--;
+      const prev = words[p][0];
+      if (COMMAND_PREFIX.has(prev) && (p === k - 1 || prev === "time")) yes = commandPosition(p);
       // `function name {`: the brace opens the body.
       else if (words[k][0] === "{" && k > 1 && words[k - 2][0] === "function") yes = commandPosition(k - 2);
     }
@@ -498,7 +560,7 @@ function fedSpans(command, text, top, heredocs) {
     }
     const element = [[start, end], ...heredocs.filter((h) => h.op >= start && h.op < end).map((h) => [h.start, h.end])];
     spans.push(...element);
-    if (!ARGV_RUNNERS.test(m[0])) interpreted.push(...element);
+    if (!SUDO.test(m[0]) || sudoRunsShell(text, m.index + m[0].length)) interpreted.push(...element);
   }
   spans.sort((x, y) => x[0] - y[0]);
   const merged = [];
@@ -510,8 +572,24 @@ function fedSpans(command, text, top, heredocs) {
   return feedsAcross(command, text, merged, interpreted) ? [[0, text.length]] : merged;
 }
 
-/** The {@link SHELL_FED} word that runs its arguments as a program; `sudo -s` and `sudo -i` read a shell from stdin, inside its own element. */
-const ARGV_RUNNERS = /^sudo(?:\.exe)?$/;
+/** The {@link SHELL_FED} word that runs its arguments as a program, unless it runs a shell ({@link sudoRunsShell}). */
+const SUDO = /^sudo(?:\.exe)?$/;
+
+/**
+ * What makes a shell's own element read text from a later one (#1607 second
+ * read), in the masked text of that element: a function definition (`f() {
+ * bash; }`, `function f { sh; }`, fed by a later `… | f`), an `exec` with a
+ * redirection (`exec > >(bash)`, `exec 3> >(bash)`, fed by every later
+ * output) and a `coproc` (fed through its descriptors).
+ */
+const HOLDS = new RegExp(
+  [
+    String.raw`(?:^|[\s;&|(\x60])(?:function|coproc)(?=[\s;&|)\x60]|$)`,
+    String.raw`[\w.-]\s*\(\s*\)`,
+    String.raw`(?:^|[\s;&|(\x60])exec\s[^;&|\n]*[<>]`,
+  ].join("|"),
+  "m",
+);
 
 /** A parameter expansion: `$name`, `${…}`, `$1`, `$@` and the other special parameters. */
 const PARAMETER = /\$[A-Za-z_{0-9@*#?!$-]/;
@@ -541,16 +619,20 @@ const STORES = new RegExp(
  * element the mask stands over (#1607): its own element expands a variable
  * ({@link PARAMETER}, raw, since `bash -c '$X'` expands in the inner shell),
  * or another element stores text ({@link STORES}) — `x='…'; eval "$x"`,
- * `echo '…' > f; bash f`, `f() { echo '…'; }; f | bash`. The whole command is
- * then set aside, as before #1607, rather than mask a string a shell will run.
- * Only an interpreter counts: `sudo` runs its arguments as a program, whose
- * word the rules read where it stands. A writer that names no redirection
- * (`cp`, `sed -i`, `curl -o`) is not followed; the hooks catch mistakes, not
- * deliberate obfuscation.
+ * `echo '…' > f; bash f`, `f() { echo '…'; }; f | bash` — or its own element
+ * holds the shell for a later one to feed ({@link HOLDS}): `f() { bash; };
+ * echo '…' | f`, `exec > >(bash); echo '…'`, `coproc bash; echo '…' >&…`. The
+ * whole command is then set aside, as before #1607, rather than mask a string
+ * a shell will run. Only an interpreter counts: a `sudo` without `-s` or `-i`
+ * runs its arguments as a program, whose word the rules read where it stands
+ * ({@link sudoRunsShell}). A writer that names no redirection (`cp`, `sed -i`,
+ * `curl -o`) is not followed; the hooks catch mistakes, not deliberate
+ * obfuscation.
  */
 function feedsAcross(command, text, fed, interpreted) {
   if (!interpreted.length) return false;
   if (interpreted.some(([a, b]) => PARAMETER.test(command.slice(a, b)))) return true;
+  if (interpreted.some(([a, b]) => HOLDS.test(text.slice(a, b)))) return true;
   let outside = "";
   let at = 0;
   for (const [a, b] of fed) {
