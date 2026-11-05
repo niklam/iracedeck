@@ -10,10 +10,20 @@ import * as testing from "./testing.js";
  * surface, and `@iracedeck/deck-core/testing` carries the ordering contract
  * suite and its harness types, which no production source may import — an
  * adapter imports `ContextEventOrder` from the barrel and runs the suite from
- * its tests. Shaped like replay-engine's `index.test.ts` (#1502).
+ * its tests. It also re-exports the real dial-gesture helpers and icon
+ * throttle, for tests that mock the barrel (#1375). Shaped like
+ * replay-engine's `index.test.ts` (#1502).
  */
 
 const PACKAGES_ROOT = join(import.meta.dirname, "..", "..");
+
+/** The real implementations the entry re-exports for tests that mock the barrel (#1375). */
+const REAL_IMPLEMENTATIONS = [
+  "IconUpdateThrottle",
+  "NOOP_HOLD_PREVIEW",
+  "classifyDialRelease",
+  "createHoldPreview",
+] as const;
 
 /** An import of the testing entry, static, dynamic or re-exported. */
 const TESTING_IMPORT = /["']@iracedeck\/deck-core\/testing["']/;
@@ -63,7 +73,9 @@ function testingImportersOf(files: string[]): string[] {
 
 describe("deck-core's testing entry (#1597)", () => {
   it("carries the suite and its harness types, and the barrel carries none of them", () => {
-    expect(Object.keys(testing).sort()).toEqual([
+    const suite = Object.keys(testing).filter((name) => !(REAL_IMPLEMENTATIONS as readonly string[]).includes(name));
+
+    expect(suite.sort()).toEqual([
       "CONTEXT_EVENT_ORDER_ACTION_UUID",
       "CONTEXT_EVENT_ORDER_HOST_EVENTS",
       "CONTEXT_EVENT_ORDER_INPUT_EVENTS",
@@ -71,7 +83,7 @@ describe("deck-core's testing entry (#1597)", () => {
     ]);
     expect(testing.CONTEXT_EVENT_ORDER_SCENARIOS.length).toBeGreaterThanOrEqual(11);
 
-    for (const name of Object.keys(testing)) expect(barrel, name).not.toHaveProperty(name);
+    for (const name of suite) expect(barrel, name).not.toHaveProperty(name);
 
     // The references beside the suite are test support, reachable from neither entry.
     for (const name of [
@@ -84,6 +96,13 @@ describe("deck-core's testing entry (#1597)", () => {
     ]) {
       expect(barrel).not.toHaveProperty(name);
       expect(testing).not.toHaveProperty(name);
+    }
+  });
+
+  it("re-exports the very implementations the barrel ships, for tests that mock the barrel (#1375)", () => {
+    for (const name of REAL_IMPLEMENTATIONS) {
+      expect(testing, name).toHaveProperty(name);
+      expect(testing[name], name).toBe(barrel[name]);
     }
   });
 
