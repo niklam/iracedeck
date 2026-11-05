@@ -287,11 +287,11 @@ export function buildSessionStartContract(
         }
 
         // Race sessions are spoken exclusively by the race-start contract
-        // (issue #568), whose `where:` requires `isRaceSession(getSessionType())`.
+        // (issue #568), whose `where:` requires `isRaceSession(getSessionClass())`.
         // Rejecting `sessionType === "race"` here prevents a double-greeting
         // when both contracts ride the same `session.changed` event.
         //
-        // We read `snapshot.sessionType` (not `isRaceSession(getSessionType())`)
+        // We read `snapshot.sessionType` (not `isRaceSession(getSessionClass())`)
         // because the snapshot is the injected seam: the var resolvers and the
         // scenario-harness session-start composer both drive it directly via the
         // snapshot resolver, so the gate and the spoken session-type line are

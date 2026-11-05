@@ -1,7 +1,7 @@
 import type { TelemetryData } from "@iracedeck/iracing-sdk";
 import { describe, expect, it } from "vitest";
 
-import { resolveSessionType } from "./session-type.js";
+import { classifySession, resolveSessionType } from "./session-type.js";
 
 const WEEKEND = {
   SessionInfo: {
@@ -33,5 +33,33 @@ describe("resolveSessionType", () => {
     expect(resolveSessionType({ SessionInfo: {} }, inSession(2))).toBe("");
     expect(resolveSessionType(WEEKEND, inSession(7))).toBe("");
     expect(resolveSessionType({ SessionInfo: { Sessions: [{ SessionNum: 0 }] } }, inSession(0))).toBe("");
+  });
+});
+
+describe("classifySession", () => {
+  // Every SessionType the translator meets (the profile switch's table in
+  // `session-kind.ts`, plus the ones it leaves unmapped), pinned to the bucket
+  // the translator and the Race Engineer catalog read today (#1587).
+  it.each([
+    ["Practice", "practice", false],
+    ["Lone Practice", "practice", false],
+    ["Offline Testing", "practice", false],
+    ["Open Qualify", "qualifying", false],
+    ["Lone Qualify", "qualifying", true],
+    ["Race", "race", false],
+    ["Heat Race", "race", false],
+    ["Warmup", "race", false],
+    ["Some Future Session", "race", false],
+  ] as const)("classifies %s as %s (solo qualifying: %s)", (sessionType, category, soloQualifying) => {
+    expect(classifySession(sessionType)).toEqual({ category, soloQualifying });
+  });
+
+  it("answers null for a session type nobody could read", () => {
+    expect(classifySession("")).toBeNull();
+  });
+
+  it("hands back the same frozen value on every call", () => {
+    expect(classifySession("Race")).toBe(classifySession("Heat Race"));
+    expect(Object.isFrozen(classifySession("Practice"))).toBe(true);
   });
 });

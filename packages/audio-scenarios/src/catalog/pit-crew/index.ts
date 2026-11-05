@@ -118,7 +118,7 @@ import {
   TIRE_WEAR_CALLOUTS,
   TRACK_CONDITIONS_CALLOUTS,
 } from "@iracedeck/callout-settings";
-import type { IEventBus, PitReadbackSnapshot, SessionStartSnapshot } from "@iracedeck/event-bus";
+import type { IEventBus, PitReadbackSnapshot, SessionClass, SessionStartSnapshot } from "@iracedeck/event-bus";
 import type { ILogger } from "@iracedeck/logger";
 import type { TelemetryData } from "@iracedeck/sim-events-iracing";
 
@@ -983,12 +983,12 @@ export type PitCrewDeps = {
   // `() => null`, the translator's own answer when it was never initialised,
   // so a caller that wires no reader sees what it saw before.
   getLatestTelemetry?: () => TelemetryData | null;
-  // The sim's session type name (#1378) — `"Race"`, `"Practice"`, `"Lone
-  // Qualify"`, … — which the flag, race-start, start-light, radar and
-  // spotter families classify through `classifySessionType`. Default
-  // `() => ""`, the translator's own answer when it was never initialised,
-  // which every classifier reads as an unknown session.
-  getSessionType?: () => string;
+  // The session as the translator's one classifier names it (#1378, #1587):
+  // practice / qualifying / race and whether it is a solo qualifying run, which the
+  // flag, caution, rolling-start, race-start, start-light, radar and spotter
+  // families read. Default `() => null`, the translator's own answer when it
+  // was never initialised, which every gate reads as an unknown session.
+  getSessionClass?: () => SessionClass | null;
   // Whether the race starts from a standing grid rather than behind the pace
   // car (#480, #1378); the flag family silences the rolling-only formation
   // calls on one. Default `() => false`, the translator's own answer when it
@@ -1045,7 +1045,7 @@ const DEFAULT_DEPS: Readonly<ResolvedPitCrewDeps> = {
   getRaceEngineerMasterEnabled: () => true,
   getRadarMasterEnabled: () => true,
   getLatestTelemetry: () => null,
-  getSessionType: () => "",
+  getSessionClass: () => null,
   getStandingStart: () => false,
   getDamageRepairNeeded: () => null,
 };
@@ -1145,7 +1145,7 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
   registerRadarEngine(bus, {
     getMasterEnabled: d.getRadarMasterEnabled,
     getLatestTelemetry: d.getLatestTelemetry,
-    getSessionType: d.getSessionType,
+    getSessionClass: d.getSessionClass,
   });
 
   registerPitSpeedingEngine(bus, {
@@ -1163,7 +1163,7 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
     getTrackDirection: d.getSpotterTrackDirection,
     getNearestCarGapMeters: d.getSpotterNearestCarGapMeters,
     getLatestTelemetry: d.getLatestTelemetry,
-    getSessionType: d.getSessionType,
+    getSessionClass: d.getSessionClass,
     logger,
   });
 
@@ -1320,7 +1320,7 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
     getCautionEpisode: d.getCautionEpisode,
     isCautionCalloutEnabled: getCautionCalloutEnabled,
     getCautionGap: d.getCautionGap,
-    getSessionType: d.getSessionType,
+    getSessionClass: d.getSessionClass,
     getLatestTelemetry: d.getLatestTelemetry,
   })) {
     engine.defineContract(

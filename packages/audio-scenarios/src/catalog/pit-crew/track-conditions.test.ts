@@ -25,6 +25,7 @@ import { type CalloutScript } from "@iracedeck/callout-script";
 import { TRACK_CONDITIONS_CALLOUTS } from "@iracedeck/callout-settings";
 import type { IEventBus, SimEventMap, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import { TrackWetness } from "@iracedeck/event-bus";
+import { classifySession } from "@iracedeck/sim-events-iracing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { WEIGHT } from "../../dsl.js";
@@ -49,7 +50,7 @@ import {
 
 // The sim reads the registration is handed (#1378): a race with no tick yet.
 const SIM_READS = {
-  getSessionType: () => "Race",
+  getSessionClass: () => classifySession("Race"),
   getStandingStart: () => false,
   getLatestTelemetry: () => null,
 };

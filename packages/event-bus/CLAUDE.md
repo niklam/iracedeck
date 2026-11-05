@@ -5,7 +5,7 @@ Typed pub/sub with the canonical sim-event catalog. Sim- and audio-agnostic: the
 ## Shape
 
 - The singleton trio `initializeEventBus` / `getEventBus` / `isEventBusInitialized` (`src/event-bus.ts`), plus `_resetEventBus` for tests.
-- The catalog types (`SimEventMap`, `SimEventName`, `SimEventOf` and the payloads) live in `src/event-catalog.ts` and are re-exported from `src/index.ts`. Publishers and subscribers both index into `SimEventMap` by event name and receive a fully typed envelope.
+- The catalog types (`SimEventMap`, `SimEventName`, `SimEventOf` and the payloads) live in `src/event-catalog.ts` and are re-exported from `src/index.ts`. Publishers and subscribers both index into `SimEventMap` by event name and receive a fully typed envelope. Beside them are the sim-neutral read types a translator answers through a resolver rather than publishes, among them `SessionCategory` (the practice / qualifying / race union every session-typed payload carries) and `SessionClass` (the classified session the Race Engineer reads through `SimRuntime.getSessionClass`, #1587).
 
 ## Handler errors (#1560)
 

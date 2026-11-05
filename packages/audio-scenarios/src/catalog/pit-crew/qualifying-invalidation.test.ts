@@ -14,6 +14,7 @@ import { createFakeAudio, type FakeAudio } from "@iracedeck/audio-service/testin
 import { type CalloutScript } from "@iracedeck/callout-script";
 import { INCIDENT_CALLOUTS, QUALIFYING_INVALIDATION_CALLOUTS } from "@iracedeck/callout-settings";
 import type { IEventBus, SimEventName, SimEventOf } from "@iracedeck/event-bus";
+import { classifySession } from "@iracedeck/sim-events-iracing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ScenarioContext } from "../../dsl.js";
@@ -49,7 +50,7 @@ import { _resetRadarEngine } from "./radar-engine.js";
 import { _resetSpotterEngine } from "./spotter-engine.js";
 
 // The session the registrations see (#1378): a race.
-const SIM_READS = { getSessionType: () => "Race" };
+const SIM_READS = { getSessionClass: () => classifySession("Race") };
 
 const mockLogger = {
   trace: vi.fn(),

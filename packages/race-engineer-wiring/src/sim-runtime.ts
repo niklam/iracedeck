@@ -17,6 +17,7 @@ import type {
   PitReadbackSnapshot,
   QualifyingInvalidationSnapshot,
   RaceStartConditions,
+  SessionClass,
   SessionStartConditions,
 } from "@iracedeck/event-bus";
 import {
@@ -38,8 +39,8 @@ import {
   getRaceStartConditions,
   getReadbackSnapshot,
   getRollingStartFormation,
+  getSessionClass,
   getSessionStartConditions,
-  getSessionType,
   getStandingStart,
   getTrackDirection,
   isDamageRepairNeeded,
@@ -92,10 +93,10 @@ export interface SimRuntime {
   getReadbackSnapshot(): PitReadbackSnapshot | null;
   /** WHICH rolling-start formation is running (#1167); `null` while none is. */
   getRollingStartFormation(): RollingStartFormation | null;
+  /** The session classified by the translator's one classifier (#1587): practice / qualifying / race and whether it is a solo qualifying run; `null` when unavailable. */
+  getSessionClass(): SessionClass | null;
   /** The session-start brief's conditions (#542); `null` when they cannot be read. */
   getSessionStartConditions(): SessionStartConditions | null;
-  /** The sim's own session type name (`"Race"`, `"Practice"`, `"Lone Qualify"`, …); `""` when unavailable. */
-  getSessionType(): string;
   /** The track's rotation direction, for the spotter's road / oval terminology (#651); `Neutral` when unknown. */
   getTrackDirection(): TrackDirection;
   /** Whether the car needs a repair, debounced by the translator (#1138); `null` before the first damage read. */
@@ -133,8 +134,8 @@ export function createIracingSimRuntime(): SimRuntime {
     getRaceStartConditions,
     getReadbackSnapshot,
     getRollingStartFormation,
+    getSessionClass,
     getSessionStartConditions,
-    getSessionType,
     getTrackDirection,
     isDamageRepairNeeded,
     isPitActionsAllowed,

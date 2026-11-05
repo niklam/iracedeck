@@ -17,6 +17,7 @@ import { SESSION_START_CALLOUTS } from "@iracedeck/callout-settings";
 import type { IEventBus, SessionStartSnapshot, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import { TrackWetness } from "@iracedeck/event-bus";
 import type { TelemetryData } from "@iracedeck/iracing-sdk";
+import { classifySession } from "@iracedeck/sim-events-iracing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AudioAssetsManifest } from "../../interpreter.js";
@@ -304,7 +305,7 @@ beforeEach(() => {
     isCalloutEnabled: familyGate(SESSION_START_CALLOUTS, () => sessionStartEnabled),
     getSessionStartSnapshot: () => currentSnapshot,
     getSetupWarningMismatch: (kind) => setupWarningMismatch(kind),
-    getSessionType: () => "Race",
+    getSessionClass: () => classifySession("Race"),
     getLatestTelemetry,
   });
   // After the registration, as the plugins do: the brief's body is looked up

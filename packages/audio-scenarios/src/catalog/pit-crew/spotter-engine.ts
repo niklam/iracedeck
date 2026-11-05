@@ -45,7 +45,7 @@
  * (inside/outside) terminology.
  */
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
-import type { IEventBus, RadarState, SimEventOf } from "@iracedeck/event-bus";
+import type { IEventBus, RadarState, SessionClass, SimEventOf } from "@iracedeck/event-bus";
 import type { ILogger } from "@iracedeck/logger";
 import type { TelemetryData } from "@iracedeck/sim-events-iracing";
 
@@ -130,11 +130,11 @@ export type SpotterDeps = {
    */
   getLatestTelemetry: () => TelemetryData | null;
   /**
-   * The sim's session type name, for the Lone Qualify silence (#1378); `""`
-   * when unavailable. Default `() => ""`, the translator's own answer when it
-   * was never initialised.
+   * The classified session, for the Lone Qualify silence (#1378, #1587);
+   * `null` when unavailable. Default `() => null`, the translator's own
+   * answer when it was never initialised.
    */
-  getSessionType: () => string;
+  getSessionClass: () => SessionClass | null;
   logger?: ILogger;
 };
 
@@ -244,7 +244,7 @@ const DEFAULT_DEPS: SpotterDeps = {
   getTrackDirection: () => "neutral",
   getNearestCarGapMeters: () => null,
   getLatestTelemetry: () => null,
-  getSessionType: () => "",
+  getSessionClass: () => null,
 };
 
 let deps: SpotterDeps = DEFAULT_DEPS;
@@ -390,7 +390,9 @@ function startLoop(): void {
 
 /** Live suppression: master off, both opt-ins off, on pit road, or Lone Qualify. */
 function suppressed(): boolean {
-  return !deps.getMasterEnabled() || !spotterActive() || deps.getSessionType() === "Lone Qualify" || isOnPitRoad();
+  return (
+    !deps.getMasterEnabled() || !spotterActive() || deps.getSessionClass()?.soloQualifying === true || isOnPitRoad()
+  );
 }
 
 function tick(): void {

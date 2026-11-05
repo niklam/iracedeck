@@ -22,6 +22,7 @@ import type {
   SimEventName,
   SimEventOf,
 } from "@iracedeck/event-bus";
+import { classifySession } from "@iracedeck/sim-events-iracing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { WEIGHT } from "../../dsl.js";
@@ -45,7 +46,7 @@ import { _resetRadarEngine } from "./radar-engine.js";
 import { _resetSpotterEngine } from "./spotter-engine.js";
 
 // The session the registration sees (#1378): a race.
-const SIM_READS = { getSessionType: () => "Race" };
+const SIM_READS = { getSessionClass: () => classifySession("Race") };
 
 const mockLogger = {
   trace: vi.fn(),

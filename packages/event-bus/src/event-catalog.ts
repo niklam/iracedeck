@@ -242,6 +242,30 @@ export type PitReadbackSnapshot = {
 };
 
 /**
+ * The three buckets a sim's session type collapses into (#1587): what the
+ * session-start brief records, what a Race Engineer gate asks ("is this a
+ * race"), and the keys of the catalog's `session.type` vocabulary. One name
+ * for the union the session-start conditions, the qualifying-invalidation
+ * snapshot and the `lap.completed` payload carry. Sim-agnostic: a translator
+ * maps its own session names onto it.
+ */
+export type SessionCategory = "practice" | "qualifying" | "race";
+
+/**
+ * A session classified once by the translator, for every reader that must not
+ * classify a sim's session strings itself (#1587). Read through
+ * `SimRuntime.getSessionClass`, never published on the bus.
+ */
+export type SessionClass = {
+  readonly category: SessionCategory;
+  /**
+   * A qualifying session the player runs alone, so no other car is on their
+   * road (iRacing's "Lone Qualify"): the radar and spotter stay silent in it.
+   */
+  readonly soloQualifying: boolean;
+};
+
+/**
  * Telemetry-derived half of the session-start readout snapshot (issues #542,
  * #668). Built by the sim translator from live telemetry + session info at the
  * time the session.changed event fires, read at fire time by the session-start
@@ -256,7 +280,7 @@ export type PitReadbackSnapshot = {
  * value isn't a clip it can speak.
  */
 export type SessionStartConditions = {
-  sessionType: "practice" | "qualifying" | "race";
+  sessionType: SessionCategory;
   /** Exact pit speed limit in `speedUnit`, rounded to the nearest integer. */
   pitSpeedLimit: number;
   speedUnit: "kmh" | "mph";
@@ -370,7 +394,7 @@ export type RaceStartSnapshot = RaceStartConditions & {
  * Sim-agnostic: any future translator can populate the same shape.
  */
 export type QualifyingInvalidationSnapshot = {
-  sessionType: "practice" | "qualifying" | "race" | undefined;
+  sessionType: SessionCategory | undefined;
   sessionNum: number | undefined;
   lapsRemaining: number | undefined;
   lapLimited: boolean;
@@ -403,7 +427,7 @@ export type LapCompletedCommon = {
    */
   timeRemaining?: number;
   /** Current session type, if resolvable. */
-  sessionType?: "practice" | "qualifying" | "race";
+  sessionType?: SessionCategory;
   /**
    * Overall position at lap completion (issue #566), standings-first: the
    * sim's official standings once they include this lap, else the live

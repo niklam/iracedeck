@@ -62,7 +62,7 @@
  * race-only opener can preempt this one without affecting practice / qualifying
  * sessions still using session-start.
  *
- * `where:` is `isRaceSession(getSessionType()) &&
+ * `where:` is `isRaceSession(getSessionClass()) &&
  * getRaceStartSnapshot() !== null`, plus the issue #871 fresh-connect gate: a synthetic
  * `session.changed { from: -1 }` (plugin connect mid-session) is rejected when
  * the race is already underway (`SessionState === Racing` or post-race) — a
@@ -77,7 +77,7 @@
  */
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import { type CalloutIdOf, RACE_START_CALLOUTS } from "@iracedeck/callout-settings";
-import { type RaceStartSnapshot, TrackWetness } from "@iracedeck/event-bus";
+import { type RaceStartSnapshot, type SessionCategory, type SessionClass, TrackWetness } from "@iracedeck/event-bus";
 import { isPostRace, SessionState } from "@iracedeck/iracing-sdk";
 import type { ILogger } from "@iracedeck/logger";
 import type { TelemetryData } from "@iracedeck/sim-events-iracing";
@@ -109,14 +109,14 @@ export type SetupWarningResolver = (kind: "qualifying" | "race") => boolean;
 /**
  * What {@link buildRaceStartContract} is built against (#1378): the snapshot
  * its `where:` and `settle` read, and the two sim reads it makes — the
- * session type, for the race-only gate, and the latest telemetry tick, for
+ * classified session, for the race-only gate, and the latest telemetry tick, for
  * the live half of the fresh-connect gate and the speak-time session check.
  * Injected rather than imported from the translator.
  */
 export type RaceStartContractDeps = {
   getRaceStartSnapshot: RaceStartSnapshotResolver;
   getLatestTelemetry: () => TelemetryData | null;
-  getSessionType: () => string;
+  getSessionClass: () => SessionClass | null;
 };
 
 /**
@@ -232,45 +232,32 @@ const RACE_START_GREETING_GROUP = "race-start-greeting";
 const SESSION_START_GROUP = "session-start";
 const POSITION_NUMBER_GROUP = "position-number";
 
-/** The three buckets a session type collapses into — the keys of the `session.type` vocabulary (issue #1064). */
-export type SessionKind = "practice" | "qualifying" | "race";
-
 /**
- * The catalog's ONE rule for reading iRacing's raw `SessionType` string
- * ("Practice", "Lone Practice", "Offline Testing", "Open Qualify",
- * "Lone Qualify", "Race", "Warmup", …): practice or testing → `"practice"`
- * (a test session is practice-like), qualifying → `"qualifying"`, anything
- * else (race, warmup, heat) → `"race"`, and `""` — the translator's "no
- * session type known" answer — → `null`. It mirrors the translator's own
- * `classifySessionType` (sim-events-iracing `translator.ts`), which must
- * stay in agreement; every session gate in this package and the
- * `session.*` vocabulary a voice script names read through it, so a pack
- * can never see a session called a race that a `where:` here calls
- * something else.
+ * The bucket of a classified session, `null` when the sim could not name it.
+ * The catalog classifies no session strings itself (#1587): the session
+ * arrives classified by the translator's one classifier
+ * (`SimRuntime.getSessionClass`), so every session gate in this package and
+ * the `session.*` vocabulary a voice script names read the same buckets the
+ * translator does, and a pack can never see a session called a race that a
+ * `where:` here calls something else.
  */
-export function classifySessionType(sessionType: string): SessionKind | null {
-  if (sessionType === "") return null;
-
-  if (sessionType.includes("Practice") || sessionType.includes("Testing")) return "practice";
-
-  if (sessionType.includes("Qualify")) return "qualifying";
-
-  return "race";
+export function sessionCategoryOf(session: SessionClass | null): SessionCategory | null {
+  return session?.category ?? null;
 }
 
 /**
- * Whether the session is a race for the catalog's `where:` gates — the
- * shared rule above, read permissively: an UNKNOWN session type (`""`) also
- * passes, because a gate must never suppress on missing data (the #574
- * precedent). The `session.type` vocabulary reads the same rule honestly
- * (`null`) and leaves the unknown case to the pack's `default` branch —
- * that asymmetry is deliberate, not two rules. Public so the predicates can
- * be unit-tested without mocking the entire scenario harness.
+ * Whether the session is a race for the catalog's `where:` gates, read
+ * permissively: an UNKNOWN session (`null`) also passes, because a gate must
+ * never suppress on missing data (the #574 precedent). The `session.type`
+ * vocabulary reads the same buckets honestly (`null`) and leaves the unknown
+ * case to the pack's `default` branch — that asymmetry is deliberate, not two
+ * rules. Public so the predicates can be unit-tested without mocking the
+ * entire scenario harness.
  */
-export function isRaceSession(sessionType: string): boolean {
-  const kind = classifySessionType(sessionType);
+export function isRaceSession(session: SessionClass | null): boolean {
+  const category = sessionCategoryOf(session);
 
-  return kind !== "practice" && kind !== "qualifying";
+  return category !== "practice" && category !== "qualifying";
 }
 
 /** The keys of the `raceStart.gridPosition` case — the closed set the position clause is a lookup over. */
@@ -436,7 +423,7 @@ export function registerRaceStartVocabulary(
  * vocabulary's ({@link registerRaceStartVocabulary}).
  */
 export function buildRaceStartContract(
-  { getRaceStartSnapshot: getSnapshot, getLatestTelemetry, getSessionType }: RaceStartContractDeps,
+  { getRaceStartSnapshot: getSnapshot, getLatestTelemetry, getSessionClass }: RaceStartContractDeps,
   logger?: ILogger,
 ): ScenarioContract {
   return {
@@ -444,12 +431,12 @@ export function buildRaceStartContract(
     when: {
       event: "session.changed",
       where: (e) => {
-        const sessionType = getSessionType();
-        const inRace = isRaceSession(sessionType);
+        const session = getSessionClass();
+        const inRace = isRaceSession(session);
         const snapshot = getSnapshot();
 
         if (!inRace) {
-          logger?.info(`race-start where: rejected — sessionType="${sessionType}" is not race`);
+          logger?.info(`race-start where: rejected — session="${sessionCategoryOf(session)}" is not race`);
 
           return false;
         }
@@ -490,7 +477,7 @@ export function buildRaceStartContract(
         }
 
         logger?.info(
-          `race-start where: passed — sessionType="${sessionType}", position=${snapshot.playerCarPosition ?? "?"}`,
+          `race-start where: passed — session="${sessionCategoryOf(session) ?? "unknown"}", position=${snapshot.playerCarPosition ?? "?"}`,
         );
 
         return true;
@@ -508,7 +495,7 @@ export function buildRaceStartContract(
     // Practice and qualifying are session-start's: answer ready at once so a
     // session this brief will refuse neither waits nor logs a settle line.
     settle: {
-      pending: () => (isRaceSession(getSessionType()) ? describeMissingStartConditions(getSnapshot()) : null),
+      pending: () => (isRaceSession(getSessionClass()) ? describeMissingStartConditions(getSnapshot()) : null),
       maxWaitMs: START_BRIEF_SETTLE_MAX_MS,
       pollMs: START_BRIEF_SETTLE_POLL_MS,
     },

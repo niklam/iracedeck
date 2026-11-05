@@ -24,8 +24,8 @@ const IMPLEMENTED_BY: { readonly [K in keyof SimRuntime]: keyof typeof translato
   getRaceStartConditions: "getRaceStartConditions",
   getReadbackSnapshot: "getReadbackSnapshot",
   getRollingStartFormation: "getRollingStartFormation",
+  getSessionClass: "getSessionClass",
   getSessionStartConditions: "getSessionStartConditions",
-  getSessionType: "getSessionType",
   getTrackDirection: "getTrackDirection",
   isDamageRepairNeeded: "isDamageRepairNeeded",
   isPitActionsAllowed: "isPitActionsAllowed",
@@ -69,7 +69,7 @@ describe("createIracingSimRuntime", () => {
     expectTypeOf(translator.getReadbackSnapshot).toEqualTypeOf<SimRuntime["getReadbackSnapshot"]>();
     expectTypeOf(translator.getRollingStartFormation).toEqualTypeOf<SimRuntime["getRollingStartFormation"]>();
     expectTypeOf(translator.getSessionStartConditions).toEqualTypeOf<SimRuntime["getSessionStartConditions"]>();
-    expectTypeOf(translator.getSessionType).toEqualTypeOf<SimRuntime["getSessionType"]>();
+    expectTypeOf(translator.getSessionClass).toEqualTypeOf<SimRuntime["getSessionClass"]>();
     expectTypeOf(translator.getTrackDirection).toEqualTypeOf<SimRuntime["getTrackDirection"]>();
     expectTypeOf(translator.isDamageRepairNeeded).toEqualTypeOf<SimRuntime["isDamageRepairNeeded"]>();
     expectTypeOf(translator.isPitActionsAllowed).toEqualTypeOf<SimRuntime["isPitActionsAllowed"]>();
@@ -83,7 +83,7 @@ describe("createIracingSimRuntime", () => {
     const sim = createIracingSimRuntime();
 
     expect(sim.getLatestTelemetry()).toBeNull();
-    expect(sim.getSessionType()).toBe("");
+    expect(sim.getSessionClass()).toBeNull();
     expect(sim.isStandingStart()).toBe(false);
     expect(sim.isDamageRepairNeeded()).toBeNull();
   });

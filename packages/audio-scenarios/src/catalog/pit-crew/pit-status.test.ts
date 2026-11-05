@@ -40,6 +40,7 @@ import { type CalloutScript } from "@iracedeck/callout-script";
 import { PIT_STATUS_CALLOUTS } from "@iracedeck/callout-settings";
 import type { IEventBus, SimEventMap, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import { PitSvStatus, type TelemetryData, TrkLoc } from "@iracedeck/iracing-sdk";
+import { classifySession } from "@iracedeck/sim-events-iracing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { NO_FRAME, WEIGHT } from "../../dsl.js";
@@ -1063,7 +1064,7 @@ describe("PIT_STATUS_CONTRACTS per-callout opt-out (via registerPitCrew)", () =>
       getPitActionsAllowed: () => true,
       getReadbackSnapshot: () => null,
       isCalloutEnabled: familyGate(PIT_STATUS_CALLOUTS, (id) => enabled.get(id) ?? true),
-      getSessionType: () => "Race",
+      getSessionClass: () => classifySession("Race"),
       getLatestTelemetry,
     });
     // After the registration, as the plugins do: the whole bundled script,

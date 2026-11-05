@@ -37,6 +37,7 @@ export {
   getRaceStartConditions,
   getReadbackSnapshot,
   getRollingStartFormation,
+  getSessionClass,
   getSessionKind,
   getSessionStartConditions,
   getSessionType,
@@ -186,6 +187,10 @@ export { resolveIsAiRace, resolveStandingStart } from "./start-lights.js";
 // The session kind `getSessionKind()` returns and its classifier (issue #1111),
 // for switching the deck's profile by session kind.
 export { classifySessionKind, type SessionKind } from "./session-kind.js";
+// The one practice / qualifying / race classifier (issue #1587), shared by the
+// translator and the Race Engineer catalog through `SimRuntime.getSessionClass`;
+// its `SessionClass` / `SessionCategory` types are `@iracedeck/event-bus`'s.
+export { classifySession } from "./session-type.js";
 // `isOvalTrack` rides with them for the scenario harness, which asks THIS reader in
 // a shortcut precondition whether the session is an oval (the lane is named
 // only on one) rather than restating its rule.

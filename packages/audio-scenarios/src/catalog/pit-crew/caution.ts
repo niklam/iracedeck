@@ -250,7 +250,7 @@
  */
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import { type CalloutIdOf, CAUTION_CALLOUTS } from "@iracedeck/callout-settings";
-import type { SimEventName, SimEventOf } from "@iracedeck/event-bus";
+import type { SessionClass, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import { Flags, hasFlag } from "@iracedeck/iracing-sdk";
 import type { ILogger } from "@iracedeck/logger";
 import type { CautionEpisode, CautionPhase, PaceLineup, TelemetryData } from "@iracedeck/sim-events-iracing";
@@ -276,7 +276,7 @@ export type CautionCalloutId = CalloutIdOf<typeof CAUTION_CALLOUTS>;
  *
  * Injected rather than imported — the shape `registerOpponentFlagVocabulary`
  * takes its live-position reader in. Since #1378 every sim read this family
- * makes is injected, the latest telemetry and the session type included, so
+ * makes is injected, the latest telemetry and the classified session included, so
  * the catalog reads the translator through its deps alone. Injection also
  * buys what it always did: a test or the harness can hand over a lineup
  * without standing up the translator's module singleton, the harness can
@@ -335,7 +335,7 @@ export type CautionGapResolver = () => { readonly warranted: boolean } | null;
  * episode that scopes that record; the live opt-in, which the change call
  * asks of the follow call before anything is named (module header, finding
  * 2); the gap to the car ahead, which the two catch-up calls ask at speak
- * time; and two sim reads (#1378) — the session type, for the flag family's
+ * time; and two sim reads (#1378) — the classified session (#1587), for the flag family's
  * live-race gate every contract carries, and the latest telemetry tick, for
  * the pace-car-off call's speak-time GreenHeld check.
  */
@@ -345,7 +345,7 @@ export type CautionContractDeps = {
   getCautionEpisode: CautionEpisodeResolver;
   isCautionCalloutEnabled: (id: CautionCalloutId) => boolean;
   getCautionGap: CautionGapResolver;
-  getSessionType: () => string;
+  getSessionClass: () => SessionClass | null;
   getLatestTelemetry: () => TelemetryData | null;
 };
 
@@ -510,11 +510,11 @@ export function buildCautionContracts({
   getCautionEpisode,
   isCautionCalloutEnabled,
   getCautionGap,
-  getSessionType,
+  getSessionClass,
   getLatestTelemetry,
 }: CautionContractDeps): readonly ScenarioContract[] {
-  /** The flag family's live-race gate, over the session-type read this build was handed (#1378). */
-  const liveRaceCar = createLiveRaceCar(getSessionType);
+  /** The flag family's live-race gate, over the classified-session read this build was handed (#1378, #1587). */
+  const liveRaceCar = createLiveRaceCar(getSessionClass);
 
   /** The shared gate, plus "a caution is actually out" for an event that also fires elsewhere. */
   const underCautionCar = (e: SimEventOf<SimEventName>): boolean => liveRaceCar(e) && getCautionPhase() !== "none";
@@ -830,7 +830,7 @@ export const CAUTION_SCENARIO_IDS: readonly string[] = buildCautionContracts({
   getCautionEpisode: () => null,
   isCautionCalloutEnabled: () => true,
   getCautionGap: () => null,
-  getSessionType: () => "",
+  getSessionClass: () => null,
   getLatestTelemetry: () => null,
 }).map((c) => c.id);
 

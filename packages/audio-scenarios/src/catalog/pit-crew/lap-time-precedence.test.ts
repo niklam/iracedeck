@@ -13,6 +13,7 @@ import { createFakeAudio } from "@iracedeck/audio-service/testing";
 import type { CalloutScript, CalloutScriptEntry } from "@iracedeck/callout-script";
 import { calloutKey, FASTEST_LAP_CALLOUTS, LAP_TIME_CALLOUTS } from "@iracedeck/callout-settings";
 import type { CountedLapCompleted, IEventBus, SimEventName, SimEventOf } from "@iracedeck/event-bus";
+import { classifySession } from "@iracedeck/sim-events-iracing";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 import type { AudioAssetsManifest } from "../../interpreter.js";
@@ -153,7 +154,7 @@ describe("one lap, one lap time — the real registerPitCrew over both first-par
         );
         registerPitCrew(bus, {
           logger: mockLogger as never,
-          getSessionType: () => "Race",
+          getSessionClass: () => classifySession("Race"),
           isCalloutEnabled: (key) => enabled.get(key) ?? true,
           getLapCompletedSnapshot: () => latest,
         });

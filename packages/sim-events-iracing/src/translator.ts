@@ -23,6 +23,8 @@ import type {
   PitReadbackSnapshot,
   QualifyingInvalidationSnapshot,
   RaceStartConditions,
+  SessionCategory,
+  SessionClass,
   SessionStartConditions,
   SimEventMap,
   SimEventName,
@@ -110,7 +112,7 @@ import {
   type SessionIdentityBaseline,
 } from "./session-identity.js";
 import { classifySessionKind, type SessionKind } from "./session-kind.js";
-import { resolveSessionType } from "./session-type.js";
+import { classifySession, resolveSessionType } from "./session-type.js";
 import { buildDegradedSimState, buildSimState, type SimStateSnapshot } from "./sim-state.js";
 import { resolveStandingStart } from "./start-lights.js";
 import {
@@ -566,6 +568,18 @@ export function getSessionType(): string {
 }
 
 /**
+ * Returns the current session classified by {@link classifySession} (#1587):
+ * its practice / qualifying / race bucket and whether it is a Lone Qualify.
+ * `null` when the translator has no telemetry yet or session info does not
+ * name the session — the same cases {@link getSessionType} answers `""` for.
+ * What the Race Engineer catalog reads through `SimRuntime`, so it holds no
+ * iRacing session strings of its own.
+ */
+export function getSessionClass(): SessionClass | null {
+  return classifySession(getSessionType());
+}
+
+/**
  * Returns the kind of the current session for profile switching (#1111): the
  * raw {@link getSessionType} classified by {@link classifySessionKind}, a saved
  * replay (`WeekendInfo.SimMode === "replay"`, read through the SDK's
@@ -866,7 +880,7 @@ export function getSessionStartConditions(): SessionStartConditions | null {
  * Differs from {@link getSessionStartConditions} in three ways:
  *   - Pit speed limit is **not** read. Race start doesn't speak the limit.
  *   - `sessionType` is not returned — the scenario's `where:` already gates on
- *     `classifySessionType(getSessionType()) === "race"` so the conditions
+ *     `isRaceSession(getSessionClass())` (the catalog's) so the conditions
  *     contract for this readout is fixed.
  *   - Adds `playerCarPosition` — the **starting grid position**. Sourced from
  *     `sessionInfo.QualifyResultsInfo.Results` (the qualifying results, which
@@ -2797,7 +2811,7 @@ function handleLiveSteps(
   // one tick stale here, which the leader check tolerates). Leader
   // resolution is gated on race sessions — the winner grace it feeds is
   // race-only, so non-race ticks skip the frozen-order computation.
-  // Practice-like sessions (Practice / Testing — the classifyLapSessionType
+  // Practice-like sessions (Practice / Testing — the shared `classifySession`
   // convention) are flagged so the checkered speaks immediately at the
   // raise there.
   //
@@ -2825,7 +2839,7 @@ function handleLiveSteps(
       emit,
       isRaceSession,
       playerIsLeader,
-      sessionType.includes("Practice") || sessionType.includes("Testing"),
+      classifySession(sessionType)?.category === "practice",
     ),
   );
   // Lap completion (issue #555). Runs alongside diffLifecycle since they
@@ -3057,7 +3071,7 @@ function handleLiveSteps(
     diffCornerName(
       self.state,
       telemetry,
-      sessionType !== "" && classifySessionType(sessionType) === "practice",
+      classifySession(sessionType)?.category === "practice",
       cornerMarkers,
       trackLengthMeters,
       self.getCornerCalloutLeadSeconds,
@@ -3355,19 +3369,13 @@ function publish(self: TranslatorInstance, pending: PendingEvent, telemetry: Tel
 }
 
 /**
- * Collapse iRacing's raw `SessionType` string ("Practice", "Lone Practice",
- * "Offline Testing", "Open Qualify", "Lone Qualify", "Race", "Warmup", …)
- * into the three buckets the session-start callout records a line for.
- * "Offline Testing" maps to "practice" — a test session is practice-like and
- * "it's time to race" would be wrong there. Anything that isn't practice,
- * testing, or qualifying (warmup, heat, race) reads as "race".
+ * The shared {@link classifySession} bucket of iRacing's raw `SessionType`,
+ * with an unreadable one (`""`) read as "race": the safe default for the
+ * session-start conditions and the session-change latch, which classify only
+ * once the raw value is non-empty anyway.
  */
-function classifySessionType(raw: string): "practice" | "qualifying" | "race" {
-  if (raw.includes("Practice") || raw.includes("Testing")) return "practice";
-
-  if (raw.includes("Qualify")) return "qualifying";
-
-  return "race";
+function classifySessionType(raw: string): SessionCategory {
+  return classifySession(raw)?.category ?? "race";
 }
 
 /**
@@ -3377,18 +3385,16 @@ function classifySessionType(raw: string): "practice" | "qualifying" | "race" {
  * false-positive "race" classification. Used only by `diffLaps` — callers
  * outside `lap.completed` retain the looser {@link classifySessionType}
  * because its "race" default is the right safe choice when the session info
- * isn't yet available.
+ * isn't yet available. The practice and qualifying buckets are the shared
+ * classifier's; only a session type naming "Race" counts as a race here, so a
+ * Warmup or a future name is left out rather than guessed.
  */
-function classifyLapSessionType(raw: string): "practice" | "qualifying" | "race" | undefined {
-  if (!raw) return undefined;
+function classifyLapSessionType(raw: string): SessionCategory | undefined {
+  const category = classifySession(raw)?.category;
 
-  if (raw.includes("Practice") || raw.includes("Testing")) return "practice";
+  if (category === "race" && !raw.includes("Race")) return undefined;
 
-  if (raw.includes("Qualify")) return "qualifying";
-
-  if (raw.includes("Race")) return "race";
-
-  return undefined;
+  return category;
 }
 
 function resolvePlayerCarIdx(sessionInfo: Record<string, unknown> | null): number {

@@ -75,7 +75,7 @@
  * countdown own it.
  */
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
-import type { SimEventName, SimEventOf } from "@iracedeck/event-bus";
+import type { SessionClass, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 
 import type { ScenarioContract, SpeakGate } from "../../dsl.js";
 import { WEIGHT } from "../../dsl.js";
@@ -103,13 +103,13 @@ export type RollingStartFormationResolver = () => NamingEpisode | null;
  * What {@link buildRollingStartContracts} is built against: the formation,
  * for the speak-time gate and to scope the car last named; the lineup,
  * read at SPEAK time by the change call's pace-row check and by the three
- * calls that record the car they name; and the session type (#1378), for the
+ * calls that record the car they name; and the classified session (#1378, #1587), for the
  * flag family's live-race gate every contract carries.
  */
 export type RollingStartContractDeps = {
   getRollingStartFormation: RollingStartFormationResolver;
   getPaceLineup: PaceLineupResolver;
-  getSessionType: () => string;
+  getSessionClass: () => SessionClass | null;
 };
 
 /**
@@ -177,10 +177,10 @@ export function readRollingStartDebugState(): { lastNamed: LastNamedCar | null }
 export function buildRollingStartContracts({
   getRollingStartFormation,
   getPaceLineup,
-  getSessionType,
+  getSessionClass,
 }: RollingStartContractDeps): readonly ScenarioContract[] {
-  /** The flag family's live-race gate, over the session-type read this build was handed (#1378). */
-  const liveRaceCar = createLiveRaceCar(getSessionType);
+  /** The flag family's live-race gate, over the classified-session read this build was handed (#1378, #1587). */
+  const liveRaceCar = createLiveRaceCar(getSessionClass);
 
   /** The formation speak gate, on all three contracts. */
   const formationRunning: SpeakGate = {
@@ -267,7 +267,7 @@ export function buildRollingStartContracts({
 export const ROLLING_START_SCENARIO_IDS: readonly string[] = buildRollingStartContracts({
   getRollingStartFormation: () => null,
   getPaceLineup: () => null,
-  getSessionType: () => "",
+  getSessionClass: () => null,
 }).map((c) => c.id);
 
 /**

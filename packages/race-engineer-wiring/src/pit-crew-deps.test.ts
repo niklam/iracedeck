@@ -145,14 +145,14 @@ describe("buildPitCrewDeps", () => {
   it("routes the four #1378 reads to their SimRuntime members, read live", () => {
     const sim = fakeSim({
       getLatestTelemetry: vi.fn(() => ({ SessionTick: 7 })),
-      getSessionType: vi.fn(() => "Lone Qualify"),
+      getSessionClass: vi.fn(() => ({ category: "qualifying" as const, soloQualifying: true })),
       isStandingStart: vi.fn(() => true),
       isDamageRepairNeeded: vi.fn(() => false),
     });
     const built = buildPitCrewDeps(fakeDeps({ sim }), noCaches);
 
     expect(built.getLatestTelemetry()).toEqual({ SessionTick: 7 });
-    expect(built.getSessionType()).toBe("Lone Qualify");
+    expect(built.getSessionClass()).toEqual({ category: "qualifying", soloQualifying: true });
     expect(built.getStandingStart()).toBe(true);
     expect(built.getDamageRepairNeeded()).toBe(false);
 
@@ -163,14 +163,14 @@ describe("buildPitCrewDeps", () => {
   it("hands the catalog the no-translator values for the four reads when the sim answers them", () => {
     const sim = fakeSim({
       getLatestTelemetry: () => null,
-      getSessionType: () => "",
+      getSessionClass: () => null,
       isStandingStart: () => false,
       isDamageRepairNeeded: () => null,
     });
     const built = buildPitCrewDeps(fakeDeps({ sim }), noCaches);
 
     expect(built.getLatestTelemetry()).toBeNull();
-    expect(built.getSessionType()).toBe("");
+    expect(built.getSessionClass()).toBeNull();
     expect(built.getStandingStart()).toBe(false);
     expect(built.getDamageRepairNeeded()).toBeNull();
   });

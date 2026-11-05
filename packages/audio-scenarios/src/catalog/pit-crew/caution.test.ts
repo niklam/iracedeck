@@ -37,6 +37,7 @@ import {
   CATCH_UP_REMINDER_MS,
   type CautionEpisode,
   type CautionPhase,
+  classifySession,
   type LivePosition,
   type PaceLineup,
   resolvePaceLineup,
@@ -83,7 +84,7 @@ const mockLatestTelemetry = vi.fn((): unknown => null);
 // the snapshot cases at the end derive their lineup from the committed
 // fixture instead of typing its number in.
 const SIM_READS = {
-  getSessionType: () => mockSessionType(),
+  getSessionClass: () => classifySession(mockSessionType()),
   getStandingStart: () => mockStandingStart(),
   getLatestTelemetry: () => mockLatestTelemetry() as TelemetryData | null,
 };
