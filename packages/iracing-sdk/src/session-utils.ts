@@ -37,6 +37,42 @@ export function isReplayOnlySession(sessionInfo: unknown): boolean {
   return weekend?.SimMode === "replay";
 }
 
+/** A quoted `SubSessionID`: decimal digits only, surrounding whitespace allowed. */
+const DECIMAL_ID = /^\s*\d+\s*$/;
+
+/**
+ * `WeekendInfo.SubSessionID`, the key of the per-session replay record (#1162),
+ * or `null` when it is not readable: the session info is not an object, it has
+ * no `WeekendInfo` object, or the id is absent or is not a whole number of zero
+ * or more (a fraction, a negative, NaN, a blank string, or a string other than
+ * decimal digits, so `"0x10"` and `"1e3"` are not ids). An offline session
+ * reads 0, which is a real id and not absence, so a caller that needs "nothing
+ * loaded yet" tests for `null`.
+ *
+ * Every reader of the id goes through this one (#1591): the store's opener, the
+ * recorder that stamps every `replay.*` event, the session-identity rule and the
+ * replay presses. Two readers with different contracts would let the store open
+ * a session under one id while the recorder stamped another, and the store
+ * drops every event for a session it is not holding.
+ *
+ * It accepts a numeric string as well as a number. The session YAML parser
+ * yields a number today, but the store's opener has always accepted a string:
+ * narrowing it would make a quoted id open no record and silently drop every
+ * marker, while widening the recorder only makes the two agree.
+ */
+export function readSubSessionId(sessionInfo: unknown): number | null {
+  if (sessionInfo === null || typeof sessionInfo !== "object") return null;
+
+  const weekend = (sessionInfo as Record<string, unknown>).WeekendInfo;
+
+  if (weekend === null || typeof weekend !== "object") return null;
+
+  const raw = (weekend as Record<string, unknown>).SubSessionID;
+  const value = typeof raw === "number" ? raw : typeof raw === "string" && DECIMAL_ID.test(raw) ? Number(raw) : NaN;
+
+  return Number.isSafeInteger(value) && value >= 0 ? value : null;
+}
+
 /**
  * What a car-number target refers to in the current session:
  * - `"user"` — a car with a human driver (a connected iRacing user)

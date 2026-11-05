@@ -37,9 +37,7 @@
  * it) between the two, so a subscriber that reads its trackers during that
  * publish still sees the previous session's.
  */
-import { isReplayOnlySession, type TelemetryData } from "@iracedeck/iracing-sdk";
-
-import { readSubSessionId } from "./diff/replay-record-gate.js";
+import { isReplayOnlySession, readSubSessionId, type TelemetryData } from "@iracedeck/iracing-sdk";
 
 /**
  * The last session identity a subscriber observed outside a saved replay —

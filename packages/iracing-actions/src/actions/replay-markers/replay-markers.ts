@@ -56,7 +56,7 @@ import {
 
 // The keypad's helpers moved to their own modules so the dial surface shares
 // them (#1230); re-exported so this module's API is unchanged.
-export { buildMarker, CONFIRMATION_FLASH_MS, pickMarkerToDelete, readSubSessionId } from "./replay-markers-ops.js";
+export { buildMarker, CONFIRMATION_FLASH_MS, pickMarkerToDelete } from "./replay-markers-ops.js";
 export {
   DELETE_WINDOW_DEFAULT,
   ReplayMarkersDialSettings,

@@ -9,7 +9,7 @@
  * sim semantics beyond the session identity: what happens INSIDE a session
  * (crossings, lap times) is the translator's to detect.
  */
-import type { SessionInfo, TelemetryCallback } from "@iracedeck/iracing-sdk";
+import { readSubSessionId, type SessionInfo, type TelemetryCallback } from "@iracedeck/iracing-sdk";
 import type { ILogger } from "@iracedeck/logger";
 import type { ReplaySessionHeader, ReplaySessionStore } from "@iracedeck/replay-store";
 
@@ -51,9 +51,11 @@ export function replaySessionHeaderFromSessionInfo(sessionInfo: SessionInfo | nu
   if (weekend === null || typeof weekend !== "object") return undefined;
 
   const info = weekend as Record<string, unknown>;
-  const subSessionId = asFiniteNumber(info.SubSessionID);
+  // The shared reader (#1591): the recorder stamps every `replay.*` event with
+  // the id it reads, so the record opened here is the one those events address.
+  const subSessionId = readSubSessionId(sessionInfo);
 
-  if (subSessionId === undefined) return undefined;
+  if (subSessionId === null) return undefined;
 
   const trackName = asText(info.TrackDisplayName) || asText(info.TrackName);
   const config = asText(info.TrackConfigName);

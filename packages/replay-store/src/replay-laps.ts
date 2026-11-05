@@ -2,8 +2,9 @@
  * The `laps` section of the per-session replay file (issue #1203): every car's
  * lap start frames and lap times, recorded live, so Jump to Fastest Lap is a
  * lookup. Pure functions over the section; the store (`replay-session-store.ts`)
- * owns it, and the translator's `replay.lapStarted` / `replay.lapTimed` events
- * reach it through the store's `laps` API.
+ * owns it, and the replay recorder's `replay.lapStarted` / `replay.lapTimed`
+ * events (`sim-events-iracing`'s `replay-recorder.ts`) reach it through the store's
+ * `laps` API.
  * Design: docs/superpowers/specs/2026-09-24-issue-1203-fastest-lap-from-session-record.md.
  *
  * Keyed by `carIdx`, VERIFIED by `carNumberRaw`: iRacing assigns the index at

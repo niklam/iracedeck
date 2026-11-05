@@ -63,6 +63,7 @@ import stopIconSvg from "@iracedeck/icons/replay-control/stop.svg";
 import {
   getAllCarNumbers,
   getCarNumberRawFromSessionInfo,
+  readSubSessionId,
   replaySpeedFromTelemetry,
   type TelemetryData,
 } from "@iracedeck/iracing-sdk";
@@ -81,7 +82,6 @@ import {
   pressJumpToFastestLap,
   pressJumpToRaceStart,
   pressReplayCommand,
-  readSubSessionId,
   RECORD_STEPS,
   type RecordStepMode,
   type RecordStepSource,
@@ -1109,7 +1109,7 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
 
     return {
       store: isReplaySessionStoreInitialized() ? getReplaySessionStore() : null,
-      scope: subSessionId === undefined ? undefined : { subSessionId },
+      scope: subSessionId === null ? undefined : { subSessionId },
       camCarIdx: telemetry?.CamCarIdx,
       carNumberRaw: (carIdx) => this.getCarNumberRawByIdx(carIdx),
       lapApproachFrames: LAP_START_APPROACH_FRAMES,
@@ -1354,7 +1354,7 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
 
             const subSessionId = readSubSessionId(this.sdkController.getSessionInfo());
 
-            return getReplaySessionStore().incidents.list(subSessionId === undefined ? undefined : { subSessionId });
+            return getReplaySessionStore().incidents.list(subSessionId === null ? undefined : { subSessionId });
           },
         });
         break;

@@ -3,8 +3,9 @@
  * frame each session of the recording began at, recorded the moment the
  * session is first seen live, so Next / Previous Session can step through the
  * record. Pure functions over the section; the store (`replay-session-store.ts`)
- * owns it, and the translator's `replay.sessionStarted` event reaches it
- * through the store's `sessions` API.
+ * owns it, and the replay recorder's `replay.sessionStarted` event
+ * (`sim-events-iracing`'s `replay-recorder.ts`) reaches it through the store's
+ * `sessions` API.
  * Design: docs/superpowers/specs/2026-10-12-issue-1426-replay-record-steps.md.
  *
  * One entry per `(sessionNum, sessionUniqueId)` pair, held in frame order. A

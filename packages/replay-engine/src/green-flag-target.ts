@@ -66,8 +66,8 @@ export function lastListedSessionNum(sessionInfo: unknown): number | null {
 
 /**
  * A session is a race when its `SessionType` is exactly `Race` — the reading
- * the translator's green recorder takes, so a session a press targets is one
- * the record can hold. Deliberately not the Race Engineer's "anything that is
+ * the replay recorder's `diffReplayGreens` takes (`replay-recorder.ts`), so a
+ * session a press targets is one the record can hold. Deliberately not the Race Engineer's "anything that is
  * not practice or qualifying": a `Warmup` session also goes green, and nobody
  * reviews that one.
  */

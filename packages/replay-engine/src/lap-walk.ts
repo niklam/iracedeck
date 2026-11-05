@@ -70,7 +70,8 @@ export const MAX_ABSENT_PROBES = 31;
 // docs/superpowers/specs/2026-09-24-issue-1203-fastest-lap-from-session-record.md).
 //
 // The lookup reads the per-session replay record (`getReplaySessionStore().laps`,
-// written live by the translator's lap-crossing events): a hit is one
+// written live from the replay recorder's lap-crossing events,
+// `sim-events-iracing`'s `replay-recorder.ts`): a hit is one
 // `setPlayPosition` to `LAP_START_APPROACH_FRAMES` before the recorded lap
 // start and, once the cursor has landed there, one camera switch.
 //

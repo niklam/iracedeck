@@ -7,9 +7,9 @@
  * Jump to Race Start (issue #1354,
  * docs/superpowers/specs/2026-10-05-issue-1354-replay-jump-to-green-flag.md)
  * is a lookup first, like Jump to Fastest Lap. The race start is recorded
- * live in the replay record's `greens` section (the translator's
- * `replay.greenFlag`), so a press is one waited jump to five seconds before
- * it, with no camera switch: the green belongs to the whole field. With no
+ * live in the replay record's `greens` section (the replay recorder's
+ * `replay.greenFlag`, `replay-recorder.ts`), so a press is one waited jump to
+ * five seconds before it, with no camera switch: the green belongs to the whole field. With no
  * recorded green the pole car's lap 1 stands in for it, from the lap record
  * when it holds that lap, else from the lap walk run for lap 1
  * (`lap-walk.ts`). The press shares Jump to Fastest Lap's in-flight slot
@@ -17,7 +17,7 @@
  * claims the cursor under RACE_START_JUMP_OWNER for its single waited jump,
  * and under RACE_START_WALK_OWNER while it searches.
  */
-import type { TelemetryData } from "@iracedeck/iracing-sdk";
+import { readSubSessionId, type TelemetryData } from "@iracedeck/iracing-sdk";
 import {
   getReplaySessionStore,
   type GreenLookup,
@@ -25,13 +25,7 @@ import {
   isReplaySessionStoreInitialized,
 } from "@iracedeck/replay-store";
 
-import {
-  carNumberRawByIdx,
-  type LapPressResult,
-  lookupRecordedLapStart,
-  readSubSessionId,
-  readUserId,
-} from "./fastest-lap-press.js";
+import { carNumberRawByIdx, type LapPressResult, lookupRecordedLapStart, readUserId } from "./fastest-lap-press.js";
 import {
   acceptsGreenFallbackLanding,
   greenApproachFrame,
@@ -134,7 +128,7 @@ export function pressJumpToRaceStart(request: { readonly origin: string }): LapP
     return { kind: "refused", reason: "replay not open" };
   }
 
-  const subSessionId = readSubSessionId(sessionInfo);
+  const subSessionId = readSubSessionId(sessionInfo) ?? undefined;
 
   logger.info("Jump to race start executed");
   logger.debug(
