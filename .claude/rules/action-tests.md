@@ -119,6 +119,8 @@ vi.mock("@iracedeck/deck-iracing", async (importOriginal) => ({
 }));
 ```
 
+**A real implementation past a mocked barrel comes from the package's `./testing` entry, never from a relative path into its `src/` (#1375).** When a factory replaces a barrel but the behaviour under test is one of its helpers — the hold preview's timer, the release classifier, the 10/s throttle, a unit conversion, the store's marker functions — take the real one by package name inside the factory: `const real = await import("@iracedeck/deck-core/testing")` (`createHoldPreview`, `NOOP_HOLD_PREVIEW`, `classifyDialRelease`, `IconUpdateThrottle`); `@iracedeck/deck-iracing/testing` (`celsiusToFahrenheit`, `fuelToDisplayUnits`); `@iracedeck/replay-store/testing` (`addMarker`, `deleteNearestMarker`). Each entry re-exports by relative path inside its own package, so the mock never reaches it, and the root `vitest.config.ts` aliases it to source. A helper not on an entry yet is added to it; a package without one gets a `./testing` export, `src/testing.ts` and its alias (subpath before the bare package).
+
 ## Settings literals and protected members (#1078)
 
 Test files are typechecked with their package (`pnpm typecheck`), so a test has to type what it hands the code under test. Two rules cover what used to be the bulk of the errors there:
