@@ -54,9 +54,13 @@ jobs:
 
       # `--no-overlay` so a pack withdrawn on master (its entry deleted) is
       # removed here too; the default overlay mode only adds and overwrites.
-      # The one exception is deliberate (#1392): withdrawing the LAST pack
-      # deletes the directory, which this step refuses below rather than put
-      # an empty, unverified catalog live; that ships with the next tag.
+      # The check before the deploy (#1613) lets that removal go live, with a
+      # warning, because master's history shows the entry was there and was
+      # deleted. A live pack master has never carried, one a release branch
+      # put live that master has not taken back, is missing here too; that
+      # check refuses it rather than let this publish remove it. Withdrawing
+      # the LAST pack deletes the directory, which this step refuses outright
+      # (#1392) rather than put an empty, unverified catalog live.
       # The checkout must also be able to BUILD a catalog: a tag older than
       # the catalog generator would deploy green with no catalog at all.
       #
@@ -146,6 +150,389 @@ jobs:
         run: pnpm exec turbo run build --filter=@iracedeck/website
         env:
           PUBLIC_IRACEDECK_VERSION: ${{ inputs.version || '' }}
+
+      # The catalog this deploys must not be behind the one already live
+      # (#1613). A tag release deploys the tag's catalog, and a patch tagged
+      # from a release branch cut before a voice-pack bump would put the older
+      # entry live over the newer one a between-releases publish deployed, with
+      # everything green, since the older archive is still published. So every
+      # pack in the live catalog must be here at or above its live version
+      # (semver precedence). A pack only here never blocks. A version rollback,
+      # a pack here below its live version, refuses whatever master holds: a
+      # published version is bumped, never replaced. Every problem is
+      # reported, then the job fails before anything deploys.
+      #
+      # A live pack missing here would be removed by the deploy, and master
+      # decides whether that is a withdrawal, on positive evidence: master's
+      # catalog has no <id>.json AND master's history shows the file existed,
+      # so its absence there is a removal. Then the deploy goes ahead with a
+      # warning naming the pack, its live version, master's commit and the
+      # last commit on master's history to touch the file. When master still
+      # has the file, the deploy refuses, so a tag from a stale release branch
+      # cannot drop a pack master keeps. When master's history never had it,
+      # the pack went live from a release branch master has not taken back,
+      # and the deploy refuses, naming the back-merge; absence from a catalog
+      # that never held the pack says nothing about withdrawing it. Only the
+      # file's presence counts, never the version in it. "Master's history"
+      # is every commit reachable from master's tip (git log --full-history),
+      # so a pack added and removed on a branch master merged counts as
+      # master's too.
+      #
+      # Master is fetched only when a live pack is missing, and fetched here
+      # even on the publish path, whose overlay step fetched it already,
+      # rather than trusting a FETCH_HEAD another step left. The fetch takes
+      # master's whole history as commits and trees, without file contents
+      # (--filter=blob:none, a partial clone, which GitHub serves): about
+      # 6 MiB and 2 s for this repository (2,870 commits, measured
+      # 2026-11-04), where master's tip alone with its contents is 122 MiB.
+      # It passes --unshallow when the checkout is shallow, as actions/checkout
+      # leaves it: a fetch into a shallow repository stops at the shallow
+      # boundary, so when the tag is on master's history a removal older than
+      # the tag would be invisible and a real withdrawal refused. That also
+      # deepens the checkout's own history, blobless, which nothing after this
+      # step reads, and leaves the checkout a partial clone of origin. A
+      # checkout still shallow after the fetch refuses rather than trust a
+      # cut history. Every git call has 120 s (MASTER_GIT_TIMEOUT_MS, which
+      # only the tests set), sixty times the measured fetch.
+      #
+      # A master that cannot be fetched, whose history cannot be read or whose
+      # catalog cannot be listed refuses every missing pack, since the
+      # withdrawal cannot be confirmed. So does a master with no catalog
+      # directory at all: that is as much a rename or a move as a withdrawal,
+      # and it says nothing about any one pack. That also keeps the last pack
+      # from being withdrawn this way, which #1392's overlay refuses too.
+      # Master is named here, never passed in, so no caller can point the
+      # decision at another branch.
+      #
+      # The base is the live catalog, not master's. Master routinely carries a
+      # committed pack bump that is not live yet, so comparing with master
+      # refused ordinary patch releases although nothing live regressed (the
+      # spec's amendment). The live catalog is the state this protects. It
+      # runs on every deploy, the publish path's too. There it refuses a
+      # publish from master that would put an older version of a pack back
+      # over the one a release put live, or remove a pack a release put live
+      # that master has never carried.
+      #
+      # It is the job's last step before the deploy. It must be in this job,
+      # because re-running this job alone skips every check in the caller's
+      # jobs. And it reads the live catalog last because release deploys and
+      # publish deploys are in separate concurrency groups: a publish can go
+      # live while this job installs and builds, and a check made before that
+      # would pass a catalog the publish has since overtaken. Only the deploy,
+      # and master's fetch when a pack is missing, is left in that window. It
+      # is inline rather than a script under scripts/ because the publish
+      # path runs this file from master against an older stable tag's
+      # checkout, which would not carry a new script.
+      # The URL is a literal here, not an input, so no caller can point the
+      # comparison elsewhere.
+      #
+      # CATALOG_REF picks the remedy a refusal names, and nothing else. Set,
+      # this is the between-releases publish, whose catalog is master's at that
+      # commit (the overlay step above), so a pack behind live means master is
+      # behind a release, and master is what must move. Empty, it is a tag,
+      # whose release branch must take the pack from master.
+      #
+      # A 404 is the one pass without a comparison: no catalog is live, so
+      # nothing can regress, and a warning says so. Everything else fails
+      # closed: a network error, a timeout, any other status, and a 200 whose
+      # body is not the schema-1 catalog (an unknown schema included, since
+      # this step must follow a change to the format). Accepting a catalog
+      # nobody compared is the failure this exists to stop, and a skipped
+      # deploy would read green. The accepted cost: while the live catalog
+      # answers 200 with a body this cannot read, no deploy through this
+      # workflow can replace it until the site is repaired by hand.
+      # scripts/voice-pack-tag-catalog-workflow.test.mjs runs this script.
+      - name: Refuse a voice-pack catalog behind the live one
+        env:
+          LIVE_CATALOG_URL: https://iracedeck.com/voice-catalog.json
+          CATALOG_REF: ${{ inputs.catalog_ref }}
+        run: |
+          set -euo pipefail
+          node --input-type=module - <<'JS'
+          import { execFileSync } from "node:child_process";
+          import { existsSync, readFileSync } from "node:fs";
+
+          const url = process.env.LIVE_CATALOG_URL;
+          const dir = "packages/audio-assets/catalog";
+          const MASTER = "refs/heads/master";
+          // The pack-id rule of the voice-pack schema; it also keeps a live id from naming a path outside `dir`.
+          const PACK_ID = /^[a-z][a-z0-9-]*$/;
+
+          // semver.org 2.0.0, after trimming and one optional leading "v".
+          const SEMVER =
+            /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+[0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*)?$/;
+          function parseVersion(value) {
+            if (typeof value !== "string") return null;
+            const m = SEMVER.exec(value.trim().replace(/^v/, ""));
+            if (!m) return null;
+            return { core: [BigInt(m[1]), BigInt(m[2]), BigInt(m[3])], pre: m[4] === undefined ? [] : m[4].split(".") };
+          }
+          const order = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
+          function compareIdentifiers(a, b) {
+            const an = /^\d+$/.test(a);
+            const bn = /^\d+$/.test(b);
+            if (an && bn) return order(BigInt(a), BigInt(b));
+            if (an !== bn) return an ? -1 : 1;
+            return order(a, b);
+          }
+          // Precedence: the core numerically, then a release above its
+          // pre-releases, then identifier by identifier, a shorter list with an
+          // equal prefix ranking lower. Build metadata never counts.
+          function compareVersions(a, b) {
+            for (let i = 0; i < 3; i++) if (a.core[i] !== b.core[i]) return order(a.core[i], b.core[i]);
+            if (a.pre.length === 0 || b.pre.length === 0) return order(b.pre.length, a.pre.length);
+            for (let i = 0; i < Math.max(a.pre.length, b.pre.length); i++) {
+              if (i === a.pre.length) return -1;
+              if (i === b.pre.length) return 1;
+              const c = compareIdentifiers(a.pre[i], b.pre[i]);
+              if (c !== 0) return c;
+            }
+            return 0;
+          }
+
+          // Workflow-command escaping, so a stray character in a value cannot end the annotation.
+          const escapeData = (s) => String(s).replace(/%/g, "%25").replace(/\r/g, "%0D").replace(/\n/g, "%0A");
+          const escapeProperty = (s) => escapeData(s).replace(/:/g, "%3A").replace(/,/g, "%2C");
+          const shown = (v) => (v === undefined ? `no "version"` : `version ${JSON.stringify(v)}, which is not a semver version`);
+          const shownValue = (v) => (v === undefined ? "absent" : JSON.stringify(v));
+          const reasonOf = (error) => {
+            const cause = error?.cause;
+            const detail = cause?.code ?? cause?.message;
+            return detail ? `${error.message}: ${detail}` : String(error?.message ?? error);
+          };
+          // exitCode rather than exit(), so no output is cut short on a pipe.
+          const fail = (message) => {
+            console.log(`::error::${escapeData(message)}`);
+            process.exitCode = 1;
+          };
+          const unread = "Refusing to deploy a catalog nobody compared with the live one";
+          const malformed = (reason) =>
+            fail(`The live voice-pack catalog at ${url} cannot be read as the catalog: ${reason}. ${unread}; until the live catalog reads as schema 1 again, no deploy through this workflow can replace it.`);
+          // The remedy depends on the path, never the verdict: a publish deploys
+          // master's catalog at CATALOG_REF, so there master is what must move;
+          // a tag deploys its release branch's, which must take the pack from master.
+          const catalogRef = process.env.CATALOG_REF ?? "";
+          const remedy = (id) =>
+            catalogRef !== ""
+              ? `This deploy's catalog is master's at ${catalogRef}, so master is behind the live catalog for pack "${id}", as when a release put a newer version live than master holds. Bring the live version onto master first by back-merging the release branch's commits for the pack (its clips and its catalog entry together), then dispatch 'Publish voice packs' again from master; a re-run would deploy ${catalogRef} again.`
+              : `Bring pack "${id}" from master onto the release branch this deploys, its clips and its catalog entry together (the tag's pack job repacks from the branch's clips and verifies the archive against the entry), then re-tag, or re-run once the branch carries them.`;
+          const missingRemedy = (id) =>
+            catalogRef !== ""
+              ? `This deploy's catalog is master's at ${catalogRef}, which has no ${id}.json, so master decides. To keep pack "${id}", make sure master's ${dir} carries ${id}.json, then dispatch 'Publish voice packs' again from master; a re-run would deploy ${catalogRef} again. To withdraw it, make sure master's ${dir} lacks it, then re-run.`
+              : `To keep it, bring pack "${id}" from master onto the release branch this deploys, its clips and its catalog entry together (the tag's pack job repacks from the branch's clips and verifies the archive against the entry), then re-tag, or re-run once the branch carries them. To withdraw it, delete ${dir}/${id}.json on master first, then re-run.`;
+          // A pack master has never carried went live from a release branch that
+          // master has not taken back, so the back-merge comes first on either path.
+          const neverRemedy = (id) =>
+            catalogRef !== ""
+              ? `This deploy's catalog is master's at ${catalogRef}. Back-merge the release branch that put pack "${id}" live onto master, its clips and its catalog entry with it, then dispatch 'Publish voice packs' again from master; a re-run would deploy ${catalogRef} again. To withdraw the pack instead, it must reach master that way first and then be deleted from master's ${dir}.`
+              : `Back-merge the release branch that put pack "${id}" live onto master first. Then, to keep it, bring it onto the release branch this deploys too, its clips and its catalog entry together (the tag's pack job repacks from the branch's clips and verifies the archive against the entry), and re-tag, or re-run once the branch carries them; to withdraw it, delete ${dir}/${id}.json on master and re-run.`;
+
+          // git in the checkout, never prompting, and never left hanging on the
+          // network. The timeout is set in main(), from MASTER_GIT_TIMEOUT_MS.
+          let gitTimeoutMs = 120_000;
+          const git = (...args) =>
+            execFileSync("git", args, {
+              encoding: "utf8",
+              stdio: ["ignore", "pipe", "pipe"],
+              timeout: gitTimeoutMs,
+              env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
+            });
+          // git's own fatal or error lines; the advice it prints after them says nothing about the cause.
+          const gitReason = (error) => {
+            if (error?.code === "ETIMEDOUT") return `git did not finish within ${gitTimeoutMs} ms`;
+            const lines = String(error?.stderr ?? "").split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+            const fatal = lines.filter((l) => /^(fatal|error):/.test(l));
+            return (fatal.length > 0 ? fatal : lines.slice(-1)).join("; ") || reasonOf(error);
+          };
+
+          // Master's tip and the names in its catalog directory, `{ sha, names }`,
+          // with master's whole history fetched for lastTouch(), or `{ error }`
+          // when any of it cannot be read. A missing directory is an error, not
+          // an empty set: it shows a move as much as a withdrawal.
+          function readMaster() {
+            let shallow;
+            try {
+              shallow = git("rev-parse", "--is-shallow-repository").trim() === "true";
+            } catch (error) {
+              return { error: `the checkout could not be read as a repository (${gitReason(error)})` };
+            }
+            // Commits and trees, no file contents. --unshallow because a fetch into a
+            // shallow checkout stops at its boundary: with the tag on master's history,
+            // a removal older than the tag would not be seen.
+            try {
+              git("fetch", "--no-tags", "--filter=blob:none", ...(shallow ? ["--unshallow"] : []), "origin", MASTER);
+            } catch (error) {
+              return { error: `fetching ${MASTER} with its history from origin failed (${gitReason(error)})` };
+            }
+            try {
+              if (git("rev-parse", "--is-shallow-repository").trim() !== "false")
+                return { error: `the checkout is still shallow after fetching ${MASTER}, so master's history before the shallow boundary cannot be read` };
+            } catch (error) {
+              return { error: `the checkout could not be read as a repository after fetching ${MASTER} (${gitReason(error)})` };
+            }
+            let sha;
+            try {
+              sha = git("rev-parse", "--verify", "--quiet", "FETCH_HEAD^{commit}").trim();
+            } catch {
+              return { error: `the fetch of ${MASTER} left no commit in FETCH_HEAD` };
+            }
+            let tree;
+            try {
+              tree = git("rev-parse", "--verify", "--quiet", `${sha}:${dir}`).trim();
+            } catch {
+              return { error: `master (${sha}) has no ${dir} at all, which shows a moved catalog as much as a withdrawn pack` };
+            }
+            try {
+              const type = git("cat-file", "-t", tree).trim();
+              if (type !== "tree") return { error: `master's ${dir} (${sha}) is a ${type}, not a directory` };
+              const names = git("ls-tree", "-z", "--name-only", tree).split("\0").filter(Boolean);
+              return { sha, names: new Set(names) };
+            } catch (error) {
+              return { error: `master's ${dir} (${sha}) could not be listed (${gitReason(error)})` };
+            }
+          }
+
+          // The last commit on master's history to touch `file`, `{ sha, subject }`,
+          // or null when none ever did. Trees alone answer it, so the blobless fetch
+          // suffices. --full-history follows every parent of a merge, so a file a
+          // merged branch added and removed is found too.
+          function lastTouch(sha, file) {
+            const line = git("log", "-1", "--full-history", "--format=%H %s", sha, "--", file).trim();
+            if (line === "") return null;
+            const space = line.indexOf(" ");
+            return space === -1 ? { sha: line, subject: "" } : { sha: line.slice(0, space), subject: line.slice(space + 1) };
+          }
+
+          async function main() {
+            if (!url) return fail(`LIVE_CATALOG_URL is not set, so there is no live catalog to compare with. ${unread}.`);
+            const timeoutText = process.env.LIVE_CATALOG_TIMEOUT_MS ?? "30000";
+            if (!/^[1-9]\d*$/.test(timeoutText))
+              return fail(`LIVE_CATALOG_TIMEOUT_MS is ${JSON.stringify(timeoutText)}, not a whole number of milliseconds. ${unread}.`);
+            const timeoutMs = Number(timeoutText);
+            const gitTimeoutText = process.env.MASTER_GIT_TIMEOUT_MS ?? "120000";
+            if (!/^[1-9]\d*$/.test(gitTimeoutText))
+              return fail(`MASTER_GIT_TIMEOUT_MS is ${JSON.stringify(gitTimeoutText)}, not a whole number of milliseconds. ${unread}.`);
+            gitTimeoutMs = Number(gitTimeoutText);
+
+            let response;
+            let body;
+            try {
+              // Redirects are followed, and the status judged is the final one.
+              response = await fetch(url, { signal: AbortSignal.timeout(timeoutMs), headers: { accept: "application/json" } });
+              if (response.status === 200) body = await response.text();
+              else await response.body?.cancel();
+            } catch (error) {
+              const reason = error?.name === "TimeoutError" ? `no complete answer within ${timeoutMs} ms` : reasonOf(error);
+              return fail(`The live voice-pack catalog at ${url} could not be read (${reason}). ${unread}; re-run once it answers.`);
+            }
+            const where = response.redirected ? ` (redirected to ${response.url})` : "";
+            if (response.status === 404) {
+              console.log(`::warning::${escapeData(`The live voice-pack catalog at ${url} answered HTTP 404${where}: no catalog is live, so no pack can regress. Nothing was compared.`)}`);
+              return;
+            }
+            if (response.status !== 200)
+              return fail(`The live voice-pack catalog at ${url} answered HTTP ${response.status}${where}. ${unread}; re-run once it answers 200, or 404 when no catalog is live.`);
+
+            let doc;
+            try {
+              doc = JSON.parse(body);
+            } catch (error) {
+              return malformed(`its body is not JSON (${error.message})`);
+            }
+            if (doc === null || typeof doc !== "object" || Array.isArray(doc)) return malformed("its body is not a JSON object");
+            if (doc.schema !== 1)
+              return malformed(`its "schema" is ${shownValue(doc.schema)}, not 1 (this step reads schema 1 and must follow a change to the format)`);
+            if (!Array.isArray(doc.packs)) return malformed(`its "packs" is ${shownValue(doc.packs)}, not an array`);
+            const shape = [];
+            const seen = new Set();
+            doc.packs.forEach((pack, i) => {
+              if (pack === null || typeof pack !== "object" || Array.isArray(pack)) shape.push(`packs[${i}] is not an object`);
+              else if (typeof pack.id !== "string" || !PACK_ID.test(pack.id)) shape.push(`packs[${i}] has id ${shownValue(pack.id)}, not a pack id`);
+              else if (seen.has(pack.id)) shape.push(`packs[${i}] repeats pack id "${pack.id}"`);
+              else seen.add(pack.id);
+            });
+            if (shape.length > 0) return malformed(shape.join("; "));
+
+            const problems = [];
+            const refuse = (id, message) => problems.push(`::error file=${escapeProperty(`${dir}/${id}.json`)}::${escapeData(message)}`);
+            const missing = [];
+            let compared = 0;
+            for (const { id, version: liveVersion } of doc.packs) {
+              const file = `${dir}/${id}.json`;
+              const liveParsed = parseVersion(liveVersion);
+              if (!liveParsed) {
+                refuse(id, `The live catalog (${url}) lists pack "${id}" with ${shown(liveVersion)}, so it cannot be compared. ${unread}.`);
+                continue;
+              }
+              if (!existsSync(file)) {
+                missing.push({ id, liveVersion });
+                continue;
+              }
+              let entry;
+              try {
+                entry = JSON.parse(readFileSync(file, "utf8"));
+              } catch (error) {
+                refuse(id, `${file} in this deploy could not be read as JSON (${error.message}), so pack "${id}" cannot be compared with its live ${liveVersion} (${url}). ${unread}.`);
+                continue;
+              }
+              const version = entry?.version;
+              const parsed = parseVersion(version);
+              if (!parsed) {
+                refuse(id, `${file} in this deploy has ${shown(version)}, so pack "${id}" cannot be compared with its live ${liveVersion} (${url}). ${unread}.`);
+                continue;
+              }
+              if (compareVersions(parsed, liveParsed) < 0) {
+                refuse(id, `Voice pack "${id}" is at ${version} in this deploy but live at ${liveVersion} (${url}); deploying would put the older entry live over the newer one. ${remedy(id)}`);
+                continue;
+              }
+              compared++;
+              console.log(`ok  ${id}  ${version} >= ${liveVersion}`);
+            }
+
+            // Master is fetched only here, once, and only when a live pack is missing.
+            let withdrawn = 0;
+            if (missing.length > 0) {
+              const master = readMaster();
+              for (const { id, liveVersion } of missing) {
+                const file = `${dir}/${id}.json`;
+                const gone = `Voice pack "${id}" is missing in this deploy but live at ${liveVersion} (${url}); deploying would remove a live pack`;
+                const unconfirmed = (reason) => refuse(id, `${gone}, and master could not be read, so its withdrawal cannot be confirmed: ${reason}. ${missingRemedy(id)}`);
+                if (master.error) {
+                  unconfirmed(master.error);
+                  continue;
+                }
+                if (master.names.has(`${id}.json`)) {
+                  refuse(id, `${gone}, and master (${master.sha}) still carries ${file}, so it was not withdrawn. ${missingRemedy(id)}`);
+                  continue;
+                }
+                let touched;
+                try {
+                  touched = lastTouch(master.sha, file);
+                } catch (error) {
+                  unconfirmed(`master's history of ${file} (${master.sha}) could not be read (${gitReason(error)})`);
+                  continue;
+                }
+                if (touched === null) {
+                  refuse(id, `${gone}, and master (${master.sha}) has never carried ${file}: no commit on its history touches it, so it was not withdrawn there. The pack went live from a release branch master has not taken back. ${neverRemedy(id)}`);
+                  continue;
+                }
+                withdrawn++;
+                const lastCommit = touched.subject === "" ? touched.sha : `${touched.sha} (${touched.subject})`;
+                console.log(`::warning file=${escapeProperty(file)}::${escapeData(`Voice pack "${id}", live at ${liveVersion} (${url}), is not in this deploy, and master (${master.sha}) has withdrawn it too: its ${dir} has no ${id}.json, which its history last touched in ${lastCommit}. Deploying removes it from the live catalog.`)}`);
+              }
+            }
+
+            if (problems.length > 0) {
+              for (const line of problems) console.log(line);
+              return fail(`${problems.length} voice-pack catalog ${problems.length === 1 ? "entry" : "entries"} in this deploy cannot be deployed against the live catalog (${url}); see above.`);
+            }
+            const and = withdrawn > 0 ? `, or withdrawn on master` : "";
+            const tally = withdrawn > 0 ? `, ${withdrawn} withdrawn` : "";
+            console.log(`Every voice pack in the live catalog (${url}) is in this deploy at or above its live version${and}: ${compared} compared${tally}.`);
+          }
+
+          main().catch((error) => fail(`The catalog check failed unexpectedly (${reasonOf(error)}). ${unread}.`));
+          JS
 
       - uses: FirebaseExtended/action-hosting-deploy@v0
         with:
