@@ -25,6 +25,9 @@
 // resolved against the importing file and matched in each form the repo
 // writes — `./x.test-support.js` naming `x.test-support.ts`, `.ts`,
 // extensionless, a folder's `index.ts` — by name, so the file need not exist.
+// Nor by package name and a deep path (`@iracedeck/iracing-sdk/dist/foo.test.js`,
+// `…/src/foo.test-support.js`): a package with no `exports` map resolves any
+// path inside it, and its `dist/` holds its compiled tests (`testing.md`).
 // A test or test support importing test support, and an entry importing its
 // package's test support, stay fine.
 //
@@ -40,7 +43,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { isTestSource, moduleReferences, trackedPackageSources } from "./lib/source-imports.mjs";
+import { isTestSource, moduleReferences, packageOf, trackedPackageSources } from "./lib/source-imports.mjs";
 import { trackedPackageDirs } from "./lib/workspace-packages.mjs";
 
 const ROOT = path.resolve(import.meta.dirname, "..");
@@ -81,6 +84,28 @@ function candidates(resolved) {
 const RELATIVE = /^\.\.?(\/|$)/;
 
 /**
+ * The path a package-name specifier takes inside its package
+ * (`@iracedeck/iracing-sdk/dist/foo.js` → `dist/foo.js`), or undefined for
+ * a bare package name, a relative path or a Node builtin.
+ */
+export function packageSubpath(specifier) {
+  const name = packageOf(specifier);
+
+  if (name === null || specifier.length <= name.length + 1) return undefined;
+
+  return specifier.slice(name.length + 1);
+}
+
+/**
+ * True when a path inside a package names a test or test-only support: what
+ * {@link isTestSource} classes as one, or a file compiled from a test
+ * (`foo.test.js`, `foo.test.d.ts`, `foo.test.js.map`).
+ */
+export function isTestSubpath(subpath) {
+  return isTestSource(subpath) || /(^|\/)[^/]*\.test\./.test(subpath);
+}
+
+/**
  * Every import of a testing entry, or of test-only support, by a non-test
  * source, one line each; empty when there is none. Pure, so the positive
  * controls can feed it.
@@ -107,7 +132,19 @@ export function productionTestingImports({ files, entrySources }) {
 
       // A triple-slash `path` reference is relative to the file whatever it
       // starts with; an import is relative only when it says so.
-      if (kind === "import" && !RELATIVE.test(specifier)) continue;
+      if (kind === "import" && !RELATIVE.test(specifier)) {
+        const subpath = packageSubpath(specifier);
+
+        if (subpath !== undefined && isTestSubpath(subpath)) {
+          problems.push(
+            `${file} imports ${specifier}, a test or test-only support inside that package, from production code: ` +
+              `a package without an exports map resolves any deep path, dist/ holds its compiled tests, and they ` +
+              `may load a testing entry or vitest into the bundle — import what production needs from the ` +
+              `package's main entry`,
+          );
+        }
+        continue;
+      }
       const forms = candidates(P.join(P.dirname(file), specifier));
       const entry = forms.find((candidate) => entrySources.has(candidate));
 
@@ -174,6 +211,17 @@ describe("no production source imports a ./testing entry (#1375)", () => {
     expect(importers.length).toBeGreaterThan(50);
     expect(importers.every(({ file }) => isTestSource(file) || ENTRY_SOURCES.has(file))).toBe(true);
     expect(importers.some(({ file }) => ENTRY_SOURCES.has(file))).toBe(true);
+  });
+
+  it("reads production's deep package imports, so an empty result is not vacuous", () => {
+    const deep = scanned
+      .filter(({ file }) => !isTestSource(file))
+      .flatMap(({ source }) => moduleReferences(source))
+      .filter(({ kind, specifier }) => kind === "import" && packageSubpath(specifier) !== undefined);
+
+    // 429 on 2026-11-05, nearly all `@iracedeck/icons/<group>/<name>.svg`.
+    expect(deep.length).toBeGreaterThan(100);
+    expect(deep.filter(({ specifier }) => isTestSubpath(packageSubpath(specifier)))).toEqual([]);
   });
 
   it("no non-test source imports one, or test support", () => {
@@ -278,6 +326,53 @@ describe("the check itself (positive controls)", () => {
     ]) {
       expect(check(PRODUCTION, source), source).toEqual([expect.stringContaining(SUPPORT)]);
     }
+  });
+
+  it("refuses a production import of a test or test support by package name and deep path", () => {
+    for (const specifier of [
+      "@iracedeck/iracing-sdk/dist/foo.test.js",
+      "@iracedeck/iracing-sdk/dist/foo.test.d.ts",
+      "@iracedeck/iracing-sdk/src/foo.test-support.js",
+      "@iracedeck/icons/src/test-support/fake.js",
+      "@iracedeck/audio-native/dist/mixer.test-util.js",
+      "some-lib/dist/foo.test.js",
+    ]) {
+      for (const source of [`import { x } from "${specifier}";`, `const m = await import("${specifier}");`]) {
+        expect(check(PRODUCTION, source), source).toEqual([
+          expect.stringContaining(
+            `${PRODUCTION} imports ${specifier}, a test or test-only support inside that package`,
+          ),
+        ]);
+      }
+    }
+  });
+
+  it("passes an ordinary deep import, and a test importing a test file by deep path", () => {
+    const ordinary = [
+      'import icon from "@iracedeck/icons/foo/bar.svg";',
+      'import { x } from "@iracedeck/iracing-sdk/dist/latest.js";',
+      'import { y } from "@iracedeck/iracing-sdk/dist/testing-helpers.js";',
+      'import { z } from "@iracedeck/audio-assets/package.json";',
+      'import { w } from "node:test";',
+      'import { v } from "vitest";',
+    ].join("\n");
+
+    expect(check(PRODUCTION, ordinary)).toEqual([]);
+    expect(
+      check(
+        "packages/deck-adapter-mirabox/src/adapter.test.ts",
+        'import { x } from "@iracedeck/iracing-sdk/dist/foo.test.js";',
+      ),
+    ).toEqual([]);
+  });
+
+  it("reads the subpath a package-name specifier takes", () => {
+    expect(packageSubpath("@iracedeck/iracing-sdk/dist/foo.test.js")).toBe("dist/foo.test.js");
+    expect(packageSubpath("lodash/fp/map.js")).toBe("fp/map.js");
+    expect(packageSubpath("@iracedeck/iracing-sdk")).toBeUndefined();
+    expect(packageSubpath("lodash")).toBeUndefined();
+    expect(packageSubpath("./foo.test.js")).toBeUndefined();
+    expect(packageSubpath("node:fs/promises")).toBeUndefined();
   });
 
   it("passes test support imported by a test, by test support and by an entry", () => {
