@@ -106,12 +106,6 @@ const ALLOWED = {
     reason:
       "checks that the press sound clips the player names exist in audio-assets' sfx/ as mono 48 kHz PCM WAVs (#269)",
   },
-  "packages/pi-components/src/build/settings-window-icon.test.ts": {
-    reaches: ["plugin-build"],
-    reason:
-      "reads the plugin factory's source to hold the step that copies this package's settings-window assets into a " +
-      "plugin's ui/",
-  },
   "packages/replay-engine/src/camera-switch-waiter.single-policy.test.ts": {
     reaches: ["iracing-actions", "iracing-sdk"],
     reason:
