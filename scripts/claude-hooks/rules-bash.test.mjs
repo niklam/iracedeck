@@ -4375,4 +4375,15 @@ describe("the program-word rewrite's second read (#1606)", () => {
       passes("$W gh pr view 5");
     });
   });
+
+  // Whether a word is env's own argument is env's parse, not the last word
+  // in the lead that happens to spell a wrapper.
+  it.each([
+    `env -u time "GH_HOST=evil" gh pr merge 5 --squash`,
+    `env -C exec 'GH_REPO=other/repo' gh pr merge 5 --squash`,
+    `env -u nohup FOO=1 "GH_HOST=evil" gh pr merge 5 --squash`,
+    "env -S xargs $R gh pr merge 5 --squash",
+  ])("reads env's arguments past an option value spelled as a wrapper: %s", (c) =>
+    expect(deny(c)).toMatch(/cannot read whole|Could not read the repository|env may take for an assignment/),
+  );
 });

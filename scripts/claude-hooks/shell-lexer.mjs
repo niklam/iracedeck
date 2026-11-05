@@ -353,10 +353,24 @@ function* programPositions(text) {
   }
 }
 
-/** The wrappers of {@link COMMAND_LEAD} that run the next word as a command. */
-const LEAD_WRAPPER = /(?<!\S)(time|command|exec|env|nohup|timeout|xargs)(?=\s)/g;
-/** Whether the word after `lead` is one of env's own arguments or its program: env is the last wrapper the lead steps over. */
-const afterEnv = (lead) => [...lead.matchAll(LEAD_WRAPPER)].at(-1)?.[1] === "env";
+/**
+ * Whether the word after `lead` (a {@link COMMAND_LEAD} match) is one of env's
+ * own arguments or its program: env is the last wrapper the lead steps over.
+ * The lead is read token by token as {@link COMMAND_LEAD} reads it, so an
+ * option's value spelled as a wrapper (`env -u time …`) is the value it is,
+ * never a wrapper (#1606 second read); assignments and redirections keep the
+ * wrapper before them, a keyword ends it.
+ */
+function afterEnv(lead) {
+  const step = new RegExp(String.raw`\s*${leadToken("(")}`, "y");
+  let wrapper;
+  for (let m; step.lastIndex < lead.length && (m = step.exec(lead));) {
+    if (m[1] ?? m[2] ?? m[3]) wrapper = m[1] ?? m[2] ?? m[3];
+    else if (/^\s*(?:if|then|do|else|elif|while|until|!|\{)\s/.test(m[0])) wrapper = undefined;
+    if (!m[0]) break;
+  }
+  return wrapper === "env";
+}
 /** An option word that can be written back where it stands without changing how the text splits ({@link normalisePrograms}). */
 const OPTION_WORD = /^-[^\s;&|()<>"'`$\\]*$/;
 
@@ -1080,6 +1094,17 @@ export function words(command) {
 export const has = (command, re) => re.test(re.anchored ? trustedMask(command) : command);
 
 /**
+ * One token of {@link COMMAND_LEAD}: a keyword, a wrapper with its options, an
+ * assignment or a redirection. `open` opens the group around each wrapper's
+ * name: `(?:` for the lead itself, `(` where {@link afterEnv} reads which
+ * wrapper a token is — group 1 for `time`, `command`, `exec`, `env` or
+ * `nohup`, 2 for `timeout`, 3 for `xargs`.
+ */
+function leadToken(open) {
+  return String.raw`(?:(?:if|then|do|else|elif|while|until|!|\{)\s+|${open}time|command|exec|env|nohup)(?:\s+(?:-[uCSa]|--unset|--chdir|--split-string)\s+[^\s-]\S*|\s+-\S+)*\s+|${open}timeout)(?:\s+(?:-[ks]|--kill-after|--signal)\s+[^\s-]\S*|\s+-\S+)*\s+\d[\d.]*[smhd]?\s+|${open}xargs)(?:\s+-[IdEeLnPs]\s+[^\s-]\S*|\s+-\S+)*\s+|[A-Za-z_]\w*(?:\[[^\]\s]*\])?\+?=\S*\s+|\d*(?:<<<|[<>]&|&>>?|>>|>\||<>|<|>)\s*[^\s;&|()<>]+\s+)`;
+}
+
+/**
  * What may stand between a command boundary and the command itself and still
  * leave it in command position: `VAR=value` assignments, the shell keywords
  * that open a command list (`if …; then gh pr merge …` would otherwise pass
@@ -1100,7 +1125,7 @@ export const has = (command, re) => re.test(re.anchored ? trustedMask(command) :
  * obfuscation. A string handed to a shell (`bash -c`, `eval`) is not lexed —
  * the rules read the raw command then ({@link view}).
  */
-export const COMMAND_LEAD = String.raw`(?:(?:if|then|do|else|elif|while|until|!|\{)\s+|(?:time|command|exec|env|nohup)(?:\s+(?:-[uCSa]|--unset|--chdir|--split-string)\s+[^\s-]\S*|\s+-\S+)*\s+|timeout(?:\s+(?:-[ks]|--kill-after|--signal)\s+[^\s-]\S*|\s+-\S+)*\s+\d[\d.]*[smhd]?\s+|xargs(?:\s+-[IdEeLnPs]\s+[^\s-]\S*|\s+-\S+)*\s+|[A-Za-z_]\w*(?:\[[^\]\s]*\])?\+?=\S*\s+|\d*(?:<<<|[<>]&|&>>?|>>|>\||<>|<|>)\s*[^\s;&|()<>]+\s+)*`;
+export const COMMAND_LEAD = String.raw`(?:${leadToken("(?:")})*`;
 
 /** One character run of a git option's value: a quoted run (`"___"` in the masked text) or an escape stays whole. */
 const GIT_VALUE_PART = String.raw`(?:"[^"]*"|'[^']*'|\\[\s\S]|[^\s\\"'])`;
