@@ -38,7 +38,6 @@
 // ALLOWED names each file that reaches on purpose, the packages it reaches and
 // why. A listed file that reaches a package its entry does not name fails; so
 // does an entry whose file is gone or no longer reaches one of its packages.
-import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import ts from "typescript";
@@ -651,6 +650,3 @@ describe("the check itself (positive controls)", () => {
     ]);
   });
 });
-
-// Kept beside the scan, so the history a reach was removed in stays one command away.
-void execFileSync;
