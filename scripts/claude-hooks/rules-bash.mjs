@@ -1821,6 +1821,11 @@ const checkName = (c) => c.name ?? c.context ?? c.__typename ?? "?";
  * and as `GH_REPO=<word>` and `GIT_DIR=<word>`, the two assignments a rule
  * reads: the merge gate then cannot read the repository, and a commit cannot
  * tell which one it records into.
+ *
+ * Any such word may also be a wrapper (`W=command`, `W=env`) that runs the
+ * words after it as the command (#1606 second read), so it is judged once more
+ * blanked out, at the same length, which puts the next word at command
+ * position.
  */
 export function checkBash(command, ctx) {
   const powershell = ctx.shell === POWERSHELL;
@@ -1828,11 +1833,13 @@ export function checkBash(command, ctx) {
   const verdict = judge(text, ctx, powershell);
   if (typeof verdict === "string") return verdict;
   for (const { start, end, word, env } of unreadablePrograms(text)) {
-    const as = ["gh", "git", ...(env ? [`GH_REPO=${word}`, `GIT_DIR=${word}`] : [])];
+    const as = ["gh", "git", ...(env ? [`GH_REPO=${word}`, `GIT_DIR=${word}`] : []), " ".repeat(end - start)];
     for (const program of as) {
       const v = judge(text.slice(0, start) + program + text.slice(end), ctx, powershell);
       if (!v) continue;
       const reason = typeof v === "string" ? v : v.ask;
+      if (!program.trim())
+        return `Could not read the program \`${word}\`; judged as a wrapper that runs what follows it: ${reason} Spell the program as a plain word.`;
       return program.includes("=")
         ? `Could not read \`${word}\`, which env may take for an assignment; judged as \`${program}\`: ${reason} Spell it as a plain word.`
         : `Could not read the program \`${word}\`; judged as ${program}: ${reason} Spell the program as a plain word.`;

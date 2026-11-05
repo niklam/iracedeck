@@ -4360,4 +4360,19 @@ describe("the program-word rewrite's second read (#1606)", () => {
       passes("Set-Item Env:FOO x; git commit -m x", ctx({ shell: POWERSHELL }));
     });
   });
+
+  // A program word that expands may be a wrapper (W=command, W=env) that runs
+  // the next word as the command.
+  describe("an unreadable program word that may be a wrapper", () => {
+    it("is judged with the word removed, so the next word is the command", () => {
+      expect(deny("$W gh pr merge 5 --squash")).toMatch(/^Could not read the program `\$W`; judged as a wrapper/);
+      expect(deny("$W git -C ../ir-5 commit -m x", onIr5())).toMatch(/judged as a wrapper.*never on a feature branch/);
+      expect(deny(`"$W" git push origin integration`)).toMatch(/judged as a wrapper.*never pushed/);
+    });
+    it("passes when what follows it is no trapped command", () => {
+      passes("$EDITOR notes.md");
+      passes("$PAGER git log");
+      passes("$W gh pr view 5");
+    });
+  });
 });
