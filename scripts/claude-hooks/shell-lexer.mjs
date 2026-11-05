@@ -899,12 +899,52 @@ function gitWord(command, text, start, end) {
   const found = GIT_WORD.exec(text);
   return found && found.index < end ? found : null;
 }
+/** The variables git reads for where it acts: its repository, work tree or index, or config that may set `core.worktree`. */
+const GIT_ENV_NAME = String.raw`GIT_(DIR|COMMON_DIR|WORK_TREE|INDEX_FILE|CONFIG_PARAMETERS|CONFIG_KEY_\d+)`;
 /**
- * `GIT_DIR`, `GIT_COMMON_DIR`, `GIT_WORK_TREE` or `GIT_INDEX_FILE` assigned or
- * exported, in bash or as PowerShell's `$env:`; the environment is case-blind
- * on Windows.
+ * One of {@link GIT_ENV_NAME} assigned or exported, with `=` or `+=`, in bash
+ * or as PowerShell's `$env:NAME` or `${env:NAME}`; the environment is
+ * case-blind on Windows. The value starts where the match ends.
  */
-const GIT_ENV = /(?<!\w)GIT_(DIR|COMMON_DIR|WORK_TREE|INDEX_FILE)\s*=/gi;
+const GIT_ENV = new RegExp(String.raw`(?<!\w)${GIT_ENV_NAME}\}?\s*\+?=\s*`, "gi");
+/** PowerShell's commands that write an `Env:` item or call .NET's `SetEnvironmentVariable` (#1606 second read). */
+const PS_ENV_WRITE = /(?<![\w-])(?:set-item|si|new-item|ni|setenvironmentvariable)(?![\w-])/gi;
+/** What each variable moves ({@link envMoves}); a `GIT_CONFIG_KEY_<n>` moves the tree when it names `core.worktree`. */
+const GIT_ENV_MOVES = {
+  DIR: "repo",
+  COMMON_DIR: "repo",
+  WORK_TREE: "tree",
+  INDEX_FILE: "index",
+  CONFIG_PARAMETERS: "tree",
+};
+
+/**
+ * What the environment set in the live text before `upTo` moves for a git
+ * command after it: a set of `repo`, `tree` and `index` (#1606). Read are a
+ * bash assignment or export, PowerShell's `$env:` and `${env:}`, `Set-Item`,
+ * `New-Item` (and `si`, `ni`) on an `Env:` item and `SetEnvironmentVariable`.
+ * Config given through the environment counts when it may set
+ * `core.worktree`: any `GIT_CONFIG_PARAMETERS`, and a `GIT_CONFIG_KEY_<n>`
+ * whose value names it or cannot be read; through a PowerShell write, whose
+ * value is not read, any config key counts. On doubt it moves: a commit then
+ * refuses, which costs a re-spelling.
+ */
+function envMoves(command, text, upTo) {
+  const moves = new Set();
+  const add = (name, value) => {
+    const key = name.toUpperCase();
+    if (!key.startsWith("CONFIG_KEY_")) moves.add(GIT_ENV_MOVES[key]);
+    else if (value === undefined || /^['"]?(?:core\.worktree\b|[$`])/i.test(value)) moves.add("tree");
+  };
+  const before = text.slice(0, upTo);
+  for (const m of before.matchAll(GIT_ENV)) add(m[1], command.slice(m.index + m[0].length, upTo));
+  for (const m of before.matchAll(PS_ENV_WRITE)) {
+    const stop = before.slice(m.index).search(/[;|&\n]/);
+    const args = command.slice(m.index, stop < 0 ? upTo : m.index + stop);
+    for (const a of args.matchAll(new RegExp(String.raw`(?<!\w)${GIT_ENV_NAME}(?!\w)`, "gi"))) add(a[1]);
+  }
+  return moves;
+}
 
 /**
  * Where the git command whose text starts at `start` runs (#1606), as
@@ -929,12 +969,12 @@ export function gitPlaceAt(command, start, base, shell = BASH, end = command.len
   const options = gitGlobals(command, word.index + word[0].length);
   let dir = base;
   for (const d of options.dirs) dir = resolveDir(dir, d, { shell });
-  const env = new Set([...text.slice(0, word.index).matchAll(GIT_ENV)].map((m) => m[1].toUpperCase()));
+  const env = envMoves(command, text, word.index);
   return {
     dir,
-    movesRepo: options.gitDir !== undefined || env.has("DIR") || env.has("COMMON_DIR"),
-    movesTree: options.workTree !== undefined || options.config.includes("core.worktree") || env.has("WORK_TREE"),
-    movesIndex: env.has("INDEX_FILE"),
+    movesRepo: options.gitDir !== undefined || env.has("repo"),
+    movesTree: options.workTree !== undefined || options.config.includes("core.worktree") || env.has("tree"),
+    movesIndex: env.has("index"),
   };
 }
 

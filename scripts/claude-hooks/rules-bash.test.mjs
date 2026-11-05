@@ -4327,4 +4327,37 @@ describe("the program-word rewrite's second read (#1606)", () => {
       ).toMatch(/never pushed/);
     },
   );
+
+  // Every way bash and PowerShell set a variable git reads for its repository,
+  // work tree or index, config included.
+  describe("the environment that moves a commit's repository, tree or index", () => {
+    const moved = /git -C <dir> commit/;
+    it.each([
+      "GIT_DIR+=x git commit -m x",
+      "GIT_INDEX_FILE+=x git commit -m x",
+      "export GIT_WORK_TREE+=x; git commit -m x",
+      "GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.worktree GIT_CONFIG_VALUE_0=x git commit -m x",
+      "export GIT_CONFIG_KEY_0='Core.WorkTree'; git commit -m x",
+      "GIT_CONFIG_KEY_3=$K git commit -m x",
+      `GIT_CONFIG_PARAMETERS="'core.worktree'='x'" git commit -m x`,
+      "GIT_CONFIG_PARAMETERS= git commit -m x",
+    ])("refuses %s", (c) => expect(deny(c)).toMatch(moved));
+    it.each([
+      "${env:GIT_DIR} = 'x'; git commit -m x",
+      "Set-Item Env:GIT_DIR x; git commit -m x",
+      "Set-Item -Path Env:GIT_DIR -Value x; git commit -m x",
+      "Set-Item Env:\\GIT_WORK_TREE x; git commit -m x",
+      "si Env:GIT_INDEX_FILE x; git commit -m x",
+      "New-Item -Path Env:GIT_DIR -Value x; git commit -m x",
+      "[Environment]::SetEnvironmentVariable('GIT_DIR', 'x'); git commit -m x",
+      `[System.Environment]::SetEnvironmentVariable("GIT_CONFIG_KEY_0", "core.worktree"); git commit -m x`,
+      "$env:GIT_CONFIG_PARAMETERS = 'x'; git commit -m x",
+    ])("refuses PowerShell's %s", (c) => expect(deny(c, ctx({ shell: POWERSHELL }))).toMatch(moved));
+    it("passes config of another key, and a mention", () => {
+      passes("GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=user.name GIT_CONFIG_VALUE_0=x git commit -m x");
+      passes(`echo "GIT_CONFIG_PARAMETERS=x" && git commit -m x`);
+      passes("Write-Output 'Set-Item Env:GIT_DIR x'; git commit -m x", ctx({ shell: POWERSHELL }));
+      passes("Set-Item Env:FOO x; git commit -m x", ctx({ shell: POWERSHELL }));
+    });
+  });
 });
