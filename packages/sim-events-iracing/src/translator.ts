@@ -107,7 +107,8 @@ import {
   isClockExpiryConfirmed,
   type LeaderFinish,
   leaderWhiteCrossingIndex,
-  predictLeaderChequeredS,
+  resolveLeaderFinish,
+  UNKNOWN_LEADER_FINISH,
 } from "./leader-finish.js";
 import { calculateCanonicalRacePositions } from "./race-order.js";
 import { type ReplayRecorder, startReplayRecorder } from "./replay-recorder.js";
@@ -1914,25 +1915,26 @@ function fuelLapsLeftStats(self: TranslatorInstance): FuelStats {
 
 /**
  * The race leader as the laps-of-fuel-left race coverage reads them (issues
- * #880, #1405): their recent lap time ({@link resolveLeaderLapTimeS}) and the
- * predicted seconds until their chequered flag (`predictLeaderChequeredS`),
- * over the canonical live order. One definition for `handleTick` and
+ * #880, #1405): their recent lap time ({@link resolveLeaderLapTimeS}), the
+ * predicted chequered flag in seconds and in crossings, and the player's
+ * place against them on the lap counters (`resolveLeaderFinish`), over the
+ * canonical live order. One definition for `handleTick` and
  * {@link readSimState}, like {@link fuelLapsLeftStats}, so the two read the
  * same expired-clock state: the confirmation count `diffFuelLapsLeft` has
  * already advanced for the tick (`fuelCalloutClockExpiredTicks`) and the
  * post-expiry crossing marker `diffLeaderWhite` left
  * (`leaderWhitePostExpiryCrossed`).
  */
-function fuelLeaderFinish(telemetry: TelemetryData, positions: number[], state: TranslatorState): LeaderFinish {
-  const lapTimeS = resolveLeaderLapTimeS(telemetry, positions);
-
-  return {
-    lapTimeS,
-    chequeredInS: predictLeaderChequeredS(telemetry, positions, lapTimeS, {
-      confirmed: isClockExpiryConfirmed(state.fuelCalloutClockExpiredTicks),
-      leaderCrossed: state.leaderWhitePostExpiryCrossed,
-    }),
-  };
+function fuelLeaderFinish(
+  telemetry: TelemetryData,
+  positions: number[],
+  playerCarIdx: number,
+  state: TranslatorState,
+): LeaderFinish {
+  return resolveLeaderFinish(telemetry, positions, playerCarIdx, resolveLeaderLapTimeS(telemetry, positions), {
+    confirmed: isClockExpiryConfirmed(state.fuelCalloutClockExpiredTicks),
+    leaderCrossed: state.leaderWhitePostExpiryCrossed,
+  });
 }
 
 /**
@@ -2024,12 +2026,18 @@ export function readSimState(): SimStateSnapshot {
         // public accessor) and the expired-clock state the latest tick left:
         // `diffFuelLapsLeft`'s confirmation count and `diffLeaderWhite`'s
         // post-expiry marker, read after the tick as the diff read them in
-        // it. `positions` is null only without telemetry, where there is no
-        // estimate to ask for.
+        // it, with the player's car index `handleTick` resolves from the same
+        // session info. `positions` is null only without telemetry, where
+        // there is no estimate to ask for.
         getLeaderFinish: () =>
           telemetry !== null && positions !== null
-            ? fuelLeaderFinish(telemetry, positions, state)
-            : { lapTimeS: null, chequeredInS: null },
+            ? fuelLeaderFinish(
+                telemetry,
+                positions,
+                resolvePlayerCarIdx(self.controller.getSessionInfo() as Record<string, unknown> | null),
+                state,
+              )
+            : UNKNOWN_LEADER_FINISH,
       },
       order: {
         positions,
@@ -3137,8 +3145,8 @@ function handleLiveSteps(
       self.getFuelLapsLeftMarginLaps,
       () =>
         leaderPositions === null
-          ? { lapTimeS: null, chequeredInS: null }
-          : fuelLeaderFinish(telemetry, leaderPositions, self.state),
+          ? UNKNOWN_LEADER_FINISH
+          : fuelLeaderFinish(telemetry, leaderPositions, playerCarIdx, self.state),
       emit,
     ),
   );

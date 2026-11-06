@@ -15,13 +15,20 @@
  * opposite. The gap horizon takes an unknown leader fraction as `0`, the
  * smaller count, since a short horizon only withholds an announcement. The
  * fuel estimate must not count too few laps — that silences a warning the
- * driver needs — so {@link predictLeaderChequeredS} answers `null` instead,
+ * driver needs — so {@link predictLeaderChequered} answers `null` instead,
  * and the fuel code falls back to its cautious bound.
  *
+ * For the fuel estimate the prediction comes in two units, from one model:
+ * the seconds until the chequered and the leader's line crossings up to and
+ * including it. The crossings, with the two cars' lap counters
+ * ({@link readLeaderGap}), let a player within a lap of the leader be counted
+ * by laps rather than by time — see `resolveFuelRaceCoverage`.
+ * {@link resolveLeaderFinish} bundles them for the fuel diff.
+ *
  * Pure: the caller supplies the canonical live order
- * (`.claude/rules/race-positions.md`) and the leader's lap time
- * (`resolveLeaderLapTimeS` in `translator.ts`, taken as a parameter so this
- * module imports nothing from the translator).
+ * (`.claude/rules/race-positions.md`), the player's car index and the
+ * leader's lap time (`resolveLeaderLapTimeS` in `translator.ts`, taken as a
+ * parameter so this module imports nothing from the translator).
  *
  * Spec: `docs/superpowers/specs/2026-10-10-issue-1405-fuel-race-end-coverage.md`.
  */
@@ -44,16 +51,70 @@ export const FUEL_FINISH_TOLERANCE_LAPS = 0.03;
 export const FUEL_FINISH_PACE_DRIFT = 0.01;
 
 /**
- * What the fuel race-coverage estimate is handed about the race leader: their
- * recent lap time and the predicted seconds until they take the chequered
- * flag, each `null` when unknown.
+ * The leader's predicted chequered flag ({@link predictLeaderChequered}), in
+ * both units the fuel estimate reads, from one count: `inS` is
+ * `(crossings − f) · L`.
+ */
+export type LeaderChequered = {
+  /** Seconds from now until the leader takes the chequered flag. */
+  inS: number;
+  /** The leader's line crossings from now up to and including the chequered one. */
+  crossings: number;
+};
+
+/**
+ * Where the player is against the race leader on the lap counters
+ * ({@link readLeaderGap}).
+ */
+export type LeaderGap = {
+  /** The leader's `CarIdxLapCompleted`. */
+  leaderLapsCompleted: number;
+  /** The player's `CarIdxLapCompleted`. */
+  playerLapsCompleted: number;
+  /**
+   * The leader's distance less the player's, in laps:
+   * `(LC_L + f_L) − (LC_p + f_p)`. Positive while the player is behind; `0`
+   * when the player is the leader.
+   */
+  distanceLaps: number;
+};
+
+/**
+ * What the fuel race-coverage estimate is handed about the race leader
+ * ({@link resolveLeaderFinish}): their recent lap time, the predicted
+ * chequered flag in seconds and in crossings, and the player's place against
+ * them on the lap counters, each `null` when unknown.
  */
 export type LeaderFinish = {
   /** `resolveLeaderLapTimeS` — the leader's recent lap time (s). */
   lapTimeS: number | null;
-  /** {@link predictLeaderChequeredS} — seconds until the leader's chequered flag. */
+  /** {@link LeaderChequered.inS} — seconds until the leader's chequered flag. */
   chequeredInS: number | null;
+  /** {@link LeaderChequered.crossings} — `null` exactly when `chequeredInS` is. */
+  crossingsToChequered: number | null;
+  /** {@link readLeaderGap}. */
+  leaderGap: LeaderGap | null;
 };
+
+/** A {@link LeaderFinish} that knows nothing: no leader, or no order to find one in. */
+export const UNKNOWN_LEADER_FINISH: LeaderFinish = Object.freeze({
+  lapTimeS: null,
+  chequeredInS: null,
+  crossingsToChequered: null,
+  leaderGap: null,
+});
+
+/**
+ * How close to the line (lap fraction) a car's `CarIdxLapDistPct` may be
+ * before {@link readLeaderGap} stops trusting its pairing with
+ * `CarIdxLapCompleted`. On the tick of a crossing the two can disagree for a
+ * tick or two — the fraction already wrapped with the lap count not yet
+ * moved, or the other way round — and either reads a full lap off. Half a
+ * percent is half a second on a 100 s lap, against the hundredths of a second
+ * of a tick or two, so a real disagreement always lands inside it. Inside it
+ * the gap is unknown and the fuel estimate counts by time instead.
+ */
+export const LAP_LINE_GUARD_PCT = 0.005;
 
 /**
  * Consecutive ticks of an expired clock reading that confirm a real expiry:
@@ -149,18 +210,18 @@ export function fuelFinishToleranceLaps(timeRemainS: number, lapTimeS: number): 
 }
 
 /**
- * Seconds until the race leader takes the chequered flag in a timed race, or
- * `null` when that cannot be predicted.
+ * When the race leader takes the chequered flag in a timed race — in
+ * crossings from now, the chequered included, and in seconds,
+ * `(crossings − f) · L` — or `null` when that cannot be predicted.
  *
  * - **Clock running** (`SessionTimeRemain > 0`): the white is crossing
  *   `k = ceil(t / L + f + ε)` ({@link leaderWhiteCrossingIndex}, with `ε` from
- *   {@link fuelFinishToleranceLaps}) and the chequered the one after it, at
- *   `(k + 1 − f) · L`.
+ *   {@link fuelFinishToleranceLaps}) and the chequered the one after it:
+ *   `k + 1` crossings.
  * - **Clock expired** (`SessionTimeRemain ≤ 0` for
  *   {@link CLOCK_EXPIRY_CONFIRM_TICKS} ticks in a row, `expiry.confirmed`):
- *   `(1 − f) · L` once the leader has crossed since expiry — they are on the
- *   white lap — otherwise `(2 − f) · L`. See below for when a crossing is
- *   trusted.
+ *   one crossing once the leader has crossed since expiry — they are on the
+ *   white lap — otherwise two. See below for when a crossing is trusted.
  * - **`null`** for an expired reading that is not confirmed yet: it may be
  *   the blip of a tick or two iRacing can produce mid-race (the #666
  *   transient), which read as an expiry would end the race within two leader
@@ -168,6 +229,26 @@ export function fuelFinishToleranceLaps(timeRemainS: number, lapTimeS: number): 
  *   on the sample it lands on. A real expiry is confirmed about a second
  *   later and holds for minutes; the fuel estimate leaves its timed side
  *   unknown meanwhile.
+ * - **`null`** when the clock is unknown or unlimited, the leader is
+ *   unresolved, has no lap time, has no usable lap fraction (missing, `-1`
+ *   off-world, or not below 1 — never taken as `0`), or is in the pits by
+ *   `CarIdxTrackSurface` (`InPitStall` or `AproachingPits`; never
+ *   `CarIdxOnPitRoad`, which `race-finish.ts` documents as unreliable). A
+ *   leader in the pits is about to lose time the lap time does not know of.
+ *
+ * **The `-1` clock before the start.** Real captures read
+ * `SessionTimeRemain = -1` before the race clock starts — through
+ * `ParadeLaps`, and in `Racing` until the leader's first crossing — which this
+ * reads as an expired clock, confirmed after a second. Nothing here guards
+ * against it; two things elsewhere make it harmless. In `ParadeLaps` the
+ * leader has no lap time (`resolveLeaderLapTimeS` answers `null` pre-green,
+ * since the board holds the parade lap), so there is no prediction, and with
+ * an expired clock no bound either: the fuel estimate's timed side is
+ * unknown and its callout keeps announcing. In `Racing` before the first
+ * crossing the leader's lap time is that parade lap, but the fuel tracker's
+ * deferred session wipe lands on the first `Racing` tick (`fuel-laps.ts`,
+ * held through `isPreGreen`), so the fuel diff has no average and returns
+ * before it asks for a prediction. A change to either needs a guard here.
  *
  * **When the leader has crossed since expiry.** The marker
  * (`state.leaderWhitePostExpiryCrossed`, which `diffLeaderWhite` has updated
@@ -188,24 +269,18 @@ export function fuelFinishToleranceLaps(timeRemainS: number, lapTimeS: number): 
  * expiry, but whose `f · L` sits within that allowance of the expiry, reads
  * one lap long until they are further round — cautious, and over within a
  * few seconds.
- * - **`null`** when the clock is unknown or unlimited, the leader is
- *   unresolved, has no lap time, has no usable lap fraction (missing, `-1`
- *   off-world, or not below 1 — never taken as `0`), or is in the pits by
- *   `CarIdxTrackSurface` (`InPitStall` or `AproachingPits`; never
- *   `CarIdxOnPitRoad`, which `race-finish.ts` documents as unreliable). A
- *   leader in the pits is about to lose time the lap time does not know of.
  *
  * @param telemetry - the tick's telemetry
  * @param positions - the tick's canonical live order (1-based rank by car index)
  * @param leaderLapTimeS - the leader's recent lap time (s) from `resolveLeaderLapTimeS`, or `null`
  * @param expiry - whether an expired reading is confirmed, and whether the leader has crossed since
  */
-export function predictLeaderChequeredS(
+export function predictLeaderChequered(
   telemetry: TelemetryData,
   positions: number[],
   leaderLapTimeS: number | null,
   expiry: LeaderClockExpiry,
-): number | null {
+): LeaderChequered | null {
   const expired = isClockExpiredReading(telemetry);
 
   if (expired && !expiry.confirmed) return null;
@@ -228,30 +303,111 @@ export function predictLeaderChequeredS(
 
   if (surface === TrkLoc.InPitStall || surface === TrkLoc.AproachingPits) return null;
 
-  if (expired) {
-    const crossed = expiry.leaderCrossed && leaderCrossedSinceExpiry(telemetry, leaderPct, leaderLapTimeS);
+  let crossings: number;
 
-    return ((crossed ? 1 : 2) - leaderPct) * leaderLapTimeS;
+  if (expired) {
+    crossings = expiry.leaderCrossed && leaderCrossedSinceExpiry(telemetry, leaderPct, leaderLapTimeS) ? 1 : 2;
+  } else {
+    const white = leaderWhiteCrossingIndex(
+      timeRemainS,
+      leaderLapTimeS,
+      leaderPct,
+      fuelFinishToleranceLaps(timeRemainS, leaderLapTimeS),
+    );
+
+    crossings = white + 1;
   }
 
-  const white = leaderWhiteCrossingIndex(
-    timeRemainS,
-    leaderLapTimeS,
-    leaderPct,
-    fuelFinishToleranceLaps(timeRemainS, leaderLapTimeS),
-  );
-
-  return (white + 1 - leaderPct) * leaderLapTimeS;
+  return { inS: (crossings - leaderPct) * leaderLapTimeS, crossings };
 }
 
 /**
  * Whether the leader's position on the lap is consistent with a crossing
  * since the clock expired: `f · L` seconds into their lap, clearly fewer than
  * the seconds since expiry (the raw `SessionTimeRemain`, negated) — by more
- * than `FUEL_FINISH_TOLERANCE_LAPS · L`. See {@link predictLeaderChequeredS}.
+ * than `FUEL_FINISH_TOLERANCE_LAPS · L`. See {@link predictLeaderChequered}.
  */
 function leaderCrossedSinceExpiry(telemetry: TelemetryData, leaderPct: number, leaderLapTimeS: number): boolean {
   const sinceExpiryS = -(telemetry.SessionTimeRemain ?? 0);
 
   return leaderPct * leaderLapTimeS < sinceExpiryS - FUEL_FINISH_TOLERANCE_LAPS * leaderLapTimeS;
+}
+
+/**
+ * A car's place on the lap counter, or `null` when it cannot be trusted: a
+ * car index out of range, a `CarIdxLapCompleted` that is missing or not a
+ * whole lap count of 0 or more (it reads -1 before a car's first crossing),
+ * a `CarIdxLapDistPct` that is not a position on the lap (missing, -1 off
+ * world), or one within {@link LAP_LINE_GUARD_PCT} of the line, where the two
+ * fields can disagree for a tick.
+ */
+function readCarLapPosition(telemetry: TelemetryData, carIdx: number): { lapsCompleted: number; pct: number } | null {
+  if (!Number.isInteger(carIdx) || carIdx < 0) return null;
+
+  const lapsCompleted = telemetry.CarIdxLapCompleted?.[carIdx];
+  const pct = telemetry.CarIdxLapDistPct?.[carIdx];
+
+  if (typeof lapsCompleted !== "number" || !Number.isInteger(lapsCompleted) || lapsCompleted < 0) return null;
+
+  if (typeof pct !== "number" || !Number.isFinite(pct) || pct < LAP_LINE_GUARD_PCT || pct >= 1 - LAP_LINE_GUARD_PCT) {
+    return null;
+  }
+
+  return { lapsCompleted, pct };
+}
+
+/**
+ * The player's place against the race leader on the lap counters, or `null`
+ * when either car's reading cannot be trusted (see `readCarLapPosition`): the
+ * fuel estimate then counts by time, never by a lap count that may be a lap
+ * off. The leader is position 1 of the canonical order; when that is the
+ * player, the gap is `0`.
+ *
+ * @param telemetry - the tick's telemetry
+ * @param positions - the tick's canonical live order (1-based rank by car index)
+ * @param playerCarIdx - the player's car index (`DriverInfo.DriverCarIdx`), `-1` when unknown
+ */
+export function readLeaderGap(telemetry: TelemetryData, positions: number[], playerCarIdx: number): LeaderGap | null {
+  const leaderIdx = positions.findIndex((position) => position === 1);
+
+  if (leaderIdx < 0) return null;
+
+  const leader = readCarLapPosition(telemetry, leaderIdx);
+  const player = readCarLapPosition(telemetry, playerCarIdx);
+
+  if (leader === null || player === null) return null;
+
+  return {
+    leaderLapsCompleted: leader.lapsCompleted,
+    playerLapsCompleted: player.lapsCompleted,
+    distanceLaps: leader.lapsCompleted + leader.pct - (player.lapsCompleted + player.pct),
+  };
+}
+
+/**
+ * The race leader as the fuel race coverage reads them: their lap time, the
+ * chequered prediction ({@link predictLeaderChequered}) in seconds and in
+ * crossings, and the player's place against them ({@link readLeaderGap}).
+ *
+ * @param telemetry - the tick's telemetry
+ * @param positions - the tick's canonical live order (1-based rank by car index)
+ * @param playerCarIdx - the player's car index, `-1` when unknown
+ * @param leaderLapTimeS - the leader's recent lap time (s) from `resolveLeaderLapTimeS`, or `null`
+ * @param expiry - whether an expired reading is confirmed, and whether the leader has crossed since
+ */
+export function resolveLeaderFinish(
+  telemetry: TelemetryData,
+  positions: number[],
+  playerCarIdx: number,
+  leaderLapTimeS: number | null,
+  expiry: LeaderClockExpiry,
+): LeaderFinish {
+  const chequered = predictLeaderChequered(telemetry, positions, leaderLapTimeS, expiry);
+
+  return {
+    lapTimeS: leaderLapTimeS,
+    chequeredInS: chequered?.inS ?? null,
+    crossingsToChequered: chequered?.crossings ?? null,
+    leaderGap: readLeaderGap(telemetry, positions, playerCarIdx),
+  };
 }
