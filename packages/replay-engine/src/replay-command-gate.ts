@@ -549,6 +549,15 @@ function longestSeekMs(): number {
  * be running, and the longer of the two wins. A target not yet sent (a replay
  * jump's pause window) has no seek out, and a go to end leaves the replay
  * for live, so neither holds. A time already passed is none.
+ *
+ * A known limit, kept on purpose: a replay jump that still holds the cursor
+ * keeps its target past `giveUpMs` (`heldBy`), but the hold ends there. A
+ * seek outlasts that wait only when the sim searches at under half its
+ * 60 Hz update rate, while holding on through the jump's own bound
+ * (`REPLAY_JUMP_MAX_WAIT_MS`) would need the cap past the last sighting
+ * lifted with it, and a replay left for the garage reads as a seek the whole
+ * time: moves sent from there could then renew the hold for two minutes
+ * each. The departure event bounds a target the same way (`replay-left.ts`).
  */
 function seekHoldUntil(now: number): number | null {
   const target = pendingReplayTarget();
