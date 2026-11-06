@@ -4542,6 +4542,10 @@ describe("the mask is set aside only where a shell is fed (#1607)", () => {
     `grep -rln "gh pr merge 1603" scripts | xargs wc -l`,
     `bash -c 'echo "gh pr merge 1603 --squash"'`,
     `eval "x" 'gh pr merge 1603 --squash'`,
+    // CodeRabbit on PR #1632: a shell word that is an argument hands nothing to a shell.
+    `rg -t sh "gh pr merge 1603 --squash" scripts`,
+    `ls /bin/sh "gh pr merge 1603 --squash"`,
+    `sudo -u sh ls "gh pr merge 1603 --squash"`,
   ])("finds no merge in a mention the raw text shows: %s", (command) => expect(firstMerge(command)).toBeUndefined());
 
   it.each([
@@ -4563,6 +4567,15 @@ describe("the mask is set aside only where a shell is fed (#1607)", () => {
     ["timeout 600 bash -c 'exec gh pr merge 5 --squash'", "gh"],
     ["sudo -u me gh pr merge 5 --squash", "gh"],
     ["sudo -g staff -E gh pr merge 5 --squash", "gh"],
+    // CodeRabbit on PR #1632: the shell word is the program, at command position or behind a wrapper.
+    [`sudo -u x sh -c "gh pr merge 5 --squash"`, "gh"],
+    [`sh -c "gh pr merge 5 --squash"`, "gh"],
+    [`env A=1 bash -c "gh pr merge 5 --squash"`, "gh"],
+    [`cd d && sh -c "gh pr merge 5 --squash"`, "gh"],
+    [`find . -exec sh -c 'gh pr merge 5 --squash' \\;`, "gh"],
+    [`nice -n 5 bash -c "gh pr merge 5 --squash"`, "gh"],
+    [`stdbuf -oL sh -c "gh pr merge 5 --squash"`, "gh"],
+    [`sudo nice /bin/sh -c "gh pr merge 5 --squash"`, "gh"],
   ])("finds the merge the command runs, and where its program word starts: %s", (command, word) => {
     const merge = firstMerge(command);
     expect(merge).toMatchObject({ ref: "5", readable: true });

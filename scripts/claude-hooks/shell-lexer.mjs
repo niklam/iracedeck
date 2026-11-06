@@ -367,12 +367,29 @@ const SUDO_VALUE_LONG = new Set([
 /**
  * A {@link SHELL_WORDS} word with its options — sudo's value-taking ones with
  * their value — then blanks, at most an opening quote and a {@link
- * COMMAND_LEAD} (built from `leadToken`, which is hoisted), ending the text it
- * is tested on.
+ * COMMAND_LEAD} (built from `leadToken`, which is hoisted), from where it is
+ * tried (sticky) to the end of the text it is tested on.
  */
 const FED_LEAD = new RegExp(
-  String.raw`(?:^|[\s;&|(\x60/])${SHELL_WORDS}(?:\s+(?:-[${SUDO_VALUE_SHORT}]\s+[^\s-]\S*|-\S+|\/\w+))*\s+(?:\$?['"]\s*)?(?:${leadToken("(?:")})*$`,
+  String.raw`${SHELL_WORDS}(?:\s+(?:-[${SUDO_VALUE_SHORT}]\s+[^\s-]\S*|-\S+|\/\w+))*\s+(?:\$?['"]\s*)?(?:${leadToken("(?:")})*$`,
+  "y",
 );
+
+/** A boundary-led word, then its options with their values, ending the text it is tested on ({@link shellProgram}). */
+const wrapped = (name, values) =>
+  new RegExp(String.raw`(?<=^|[\s;&|(\x60])${name}(?:\s+(?:(?:${values})\s+[^\s-]\S*|-\S+))*\s+$`);
+/**
+ * The wrappers whose own argument is the program they run, ahead of a shell
+ * word ({@link shellProgram}): `sudo` (its options and their values), `nice`
+ * and `stdbuf`.
+ */
+const WRAPPERS = [
+  wrapped("sudo", String.raw`-[${SUDO_VALUE_SHORT}]|${[...SUDO_VALUE_LONG].join("|")}`),
+  wrapped("nice", String.raw`-n|--adjustment`),
+  wrapped("stdbuf", String.raw`-[ioe]|--input|--output|--error`),
+];
+/** `find`'s `-exec` / `-execdir`, whose next word is the program it runs. */
+const FIND_EXEC = /(?:^|\s)-exec(?:dir)?\s+$/;
 
 /**
  * Whether the sudo whose word ends at `from` in `text` runs a shell (#1607):
@@ -413,12 +430,46 @@ function sudoRunsShell(text, from) {
  * …'`, `bash -c 'timeout 600 gh …'`, `bash -c 'exec gh …'`). In the raw text
  * of a fed span that is command position, as a {@link cmd} anchor is after a
  * boundary; a quoted mention inside an argument of another command is
- * neither.
+ * neither. The shell word counts only where it is the program ({@link
+ * shellProgram}): `rg -t sh "gh pr merge 1603"` and `ls /bin/sh "gh …"` name
+ * `sh` as an argument, and their mention is no merge (CodeRabbit on PR #1632).
  */
 export function fedCommandStart(command, index) {
   const { text, fed } = view(command);
   const span = fed.find(([a, b]) => a <= index && index < b);
-  return !!span && FED_LEAD.test(text.slice(span[0], index));
+  if (!span) return false;
+  const before = text.slice(span[0], index);
+  for (const m of before.matchAll(SHELL_FED)) {
+    FED_LEAD.lastIndex = m.index;
+    if (FED_LEAD.test(before) && shellProgram(command, span[0], span[0] + m.index, m[0])) return true;
+  }
+  return false;
+}
+
+/**
+ * Whether the word `name` at `at` in {@link view}'s text is the program its
+ * command runs (CodeRabbit on PR #1632): a program word the rewrite read
+ * ({@link normalisePrograms}, so past a {@link COMMAND_LEAD} — `env A=1 bash`,
+ * `timeout 5 sh`, `xargs sh`, assignments), the word a `sudo`, `nice` or
+ * `stdbuf` that is itself a program runs, past their options and values
+ * (`sudo -u x sh`), or the word after `find`'s `-exec` / `-execdir`. A
+ * shell word anywhere else is an argument (`rg -t sh`, `ls /bin/sh`).
+ * `from` is where the fed span starts: a wrapper is looked for in it alone.
+ */
+function shellProgram(command, from, at, name) {
+  const { text, programs } = view(command);
+  if (programs.some(([, b, cut]) => b === at + name.length && text.slice(cut, b).trim() === name)) return true;
+  // What stands before the whole word, a path to it (`/bin/sh`) included.
+  const before = text.slice(from, at).replace(/\S*$/, "");
+  if (FIND_EXEC.test(before)) return true;
+  for (const re of WRAPPERS) {
+    const m = re.exec(before);
+    if (m) {
+      const word = m[0].match(/^\S+/)[0];
+      return shellProgram(command, from, from + m.index, word);
+    }
+  }
+  return false;
 }
 
 /** The reserved words that open a compound command, and those that close one ({@link structure}). */
