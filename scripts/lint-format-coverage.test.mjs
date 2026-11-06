@@ -107,8 +107,9 @@ describe("lint and format coverage", () => {
 
   // The positive control for the check above: with the globs that reach them
   // taken out, the website's .astro components and its .mts generator are
-  // reported unreached, so the check sees them (#1616). Without a config block
-  // for them they would not be `lintable` at all and could never be reported.
+  // reported unreached, so the check sees them (#1616). With no config block
+  // naming their extension they would not be `lintable` at all and could never
+  // be reported.
   it("would report the .astro and .mts files a narrower lint missed", () => {
     const astro = lintable.filter((file) => extension(file) === "astro");
     const mts = lintable.filter((file) => extension(file) === "mts");
@@ -132,9 +133,12 @@ describe("lint and format coverage", () => {
 
   // ESLint really reads them with the repo's TypeScript rules: a planted
   // unused variable is reported in an .astro frontmatter, an .astro <script>
-  // (the virtual .ts the Astro processor extracts) and an .mts file, so the
-  // .astro and .mts files counted above are linted rather than parsed and
-  // passed over.
+  // (the virtual .ts the Astro processor extracts) and an .mts file. That
+  // `lintable` holds a file says only that some block names it — the
+  // sim-neutral block names every .astro file in the website, so without the
+  // Astro parser block they would still count, and fail to parse in `pnpm
+  // lint` — so this is what proves the files counted above are read with the
+  // TypeScript rules.
   it.each([
     [
       "an .astro frontmatter",
