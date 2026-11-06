@@ -435,6 +435,8 @@ function sudoRunsShell(text, from) {
  * neither. The shell word counts only where it is the program ({@link
  * programAt}): `rg -t sh "gh pr merge 1603"` and `ls /bin/sh "gh …"` name
  * `sh` as an argument, and their mention is no merge (CodeRabbit on PR #1632).
+ * It is also the first word of a script a shell reads on stdin ({@link
+ * stdinScriptStart}): `echo 'gh pr merge 5' | bash`, `bash <<< 'gh …'`.
  */
 export function fedCommandStart(command, index) {
   const { text, fed } = view(command);
@@ -444,6 +446,113 @@ export function fedCommandStart(command, index) {
   for (const m of before.matchAll(SHELL_FED)) {
     FED_LEAD.lastIndex = m.index;
     if (FED_LEAD.test(before) && programAt(command, span[0] + m.index, m[0], span[0])) return true;
+  }
+  return stdinScriptStart(command, index);
+}
+
+/** The shells that read their script from stdin when handed no `-c` and no script file ({@link stdinShell}). */
+const STDIN_SHELL = /(?<=^|[\s;&|(\x60/])(?:bash|sh|zsh|dash|ksh)(?=\s|$)/g;
+/** What may stand between a string's opening quote and the program word it starts with: blanks and a {@link COMMAND_LEAD}. */
+const STRING_LEAD = new RegExp(String.raw`^\s*(?:${leadToken("(?:")})*$`);
+/** An `echo` or `printf` at the start of a pipeline stage, past a {@link COMMAND_LEAD}: its name is group 1. */
+const ECHO_AT = new RegExp(String.raw`^\s*(?:${leadToken("(?:")})*(echo|printf)(?=\s)`, "d");
+
+/**
+ * The raw text of a fed span `[a, b)` read crudely, quotes kept whole
+ * ({@link stdinScriptStart}): `quotes`, each quoted string as `[open, close]`
+ * (the indices of its quotes), and `pipelines`, each a list of its stages as
+ * `[start, end)`, split at an unquoted `|` or `|&` and ended by `;`, `&&`,
+ * `||`, a lone `&` or a newline.
+ */
+function pipelinesOf(command, a, b) {
+  const quotes = [];
+  const pipelines = [];
+  let stages = [];
+  let start = a;
+  const cut = (at, next, ends) => {
+    stages.push([start, at]);
+    if (ends) {
+      pipelines.push(stages);
+      stages = [];
+    }
+    start = next;
+  };
+  for (let i = a; i < b; i++) {
+    const c = command[i];
+    if (c === "\\") i++;
+    else if (c === "'" || c === '"') {
+      let k = i + 1;
+      while (k < b && command[k] !== c) k += c === '"' && command[k] === "\\" ? 2 : 1;
+      quotes.push([i, k]);
+      i = k;
+    } else if ((c === "|" || c === "&") && command[i + 1] === c) {
+      cut(i, i + 2, true);
+      i++;
+    } else if (c === "|") cut(i, command[i + 1] === "&" ? i + 2 : i + 1, false);
+    else if (c === ";" || c === "\n" || (c === "&" && !/[<>|]/.test(command[i - 1] ?? "") && command[i + 1] !== ">"))
+      cut(i, i + 1, true);
+  }
+  cut(b, b, true);
+  return { quotes, pipelines };
+}
+
+/**
+ * Whether a shell that reads its script on stdin is the program of the
+ * pipeline stage `[s, e)` of {@link view}'s text, its words read up to `until`
+ * (#1607, CodeRabbit on PR #1632): a {@link STDIN_SHELL} word at program
+ * position ({@link programAt}, so `sudo bash` too) whose own words are options
+ * only — none a `-c` (`-xc` included), the value of `-o` skipped, a
+ * redirection and its target skipped — and everything after a `-s` its
+ * positional parameters. A script-file or other word means the shell reads
+ * no stdin script.
+ */
+function stdinShell(command, text, [s, e], from, until = e) {
+  for (const m of text.slice(s, until).matchAll(STDIN_SHELL)) {
+    if (!programAt(command, s + m.index, m[0], from)) continue;
+    const words = text
+      .slice(s + m.index + m[0].length, until)
+      .split(/\s+/)
+      .filter(Boolean);
+    for (let k = 0; k < words.length; k++) {
+      const w = words[k];
+      if (/^\d*[<>&|]+$/.test(w)) k++;
+      else if (/^\d*[<>]/.test(w) || w.startsWith("--")) continue;
+      else if (w === "-o" || w === "+o") k++;
+      else if (/^[-+][A-Za-z]*c/.test(w)) return false;
+      else if (/^-[A-Za-z]*s/.test(w)) return true;
+      else if (!/^[-+]/.test(w)) return false;
+    }
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Whether the program word at `index` of {@link view}'s text starts a script a
+ * shell reads on stdin (#1607, CodeRabbit on PR #1632): the first word, past
+ * blanks and a {@link COMMAND_LEAD}, of a quoted string that is an argument of
+ * an `echo` or `printf` piped on to a shell reading stdin in the same fed
+ * element (`echo 'gh pr merge 5' | bash`, `printf '%s\n' 'gh …' | sh`,
+ * `… | sudo bash -x`), or of a here-string handed to one (`bash <<< 'gh …'`).
+ * A later word after a `;` or a newline in the string is at command position
+ * in the raw text already ({@link cmd}). The same string piped to anything
+ * else, or written to a file, is a mention.
+ */
+function stdinScriptStart(command, index) {
+  const { text, fed } = view(command);
+  const span = fed.find(([a, b]) => a <= index && index < b);
+  if (!span) return false;
+  const { quotes, pipelines } = pipelinesOf(command, span[0], span[1]);
+  const quote = quotes.find(([open, close]) => open < index && index < close);
+  if (!quote || !STRING_LEAD.test(command.slice(quote[0] + 1, index))) return false;
+  for (const stages of pipelines) {
+    const at = stages.findIndex(([s, e]) => s <= quote[0] && quote[0] < e);
+    if (at < 0) continue;
+    const [s] = stages[at];
+    if (/<<<\s*$/.test(text.slice(s, quote[0]))) return stdinShell(command, text, stages[at], span[0], quote[0]);
+    const echo = ECHO_AT.exec(text.slice(s, quote[0]));
+    if (!echo || !programAt(command, s + echo.indices[1][0], echo[1], span[0])) return false;
+    return stages.slice(at + 1).some((stage) => stdinShell(command, text, stage, span[0]));
   }
   return false;
 }

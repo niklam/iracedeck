@@ -943,6 +943,12 @@ describe("post-bash.mjs reads a mention beside a shell feed as a mention (#1607)
     expect(fire(command, { withoutGh: true })).toMatch(/could not read the PR back/),
   );
 
+  // CodeRabbit on PR #1632: bash runs the string it reads on stdin.
+  it("reads back the PR of a merge a shell reads on stdin", () => {
+    const { calls } = fireWithGh("echo 'gh pr merge 1603 --squash' | bash", {});
+    expect(calls.map((c) => c.args.slice(0, 3))).toEqual([["pr", "view", "1603"]]);
+  });
+
   it("reads back the real merge's PR, not the one a quoted mention ahead of it names", () => {
     const { calls } = fireWithGh("grep 'gh pr merge 6' f; timeout 120 gh pr merge 7 --squash", {});
     expect(calls.map((c) => c.args.slice(0, 3))).toEqual([["pr", "view", "7"]]);

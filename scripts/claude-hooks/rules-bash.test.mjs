@@ -4550,9 +4550,26 @@ describe("the mask is set aside only where a shell is fed (#1607)", () => {
     "echo gh pr merge 1603 --squash",
     "git log --oneline --grep=x -- gh pr merge 1603",
     'printf "%s\\n" done; echo note gh pr merge 1603',
+    // A string no shell reads on stdin, or not as the first word of its script.
+    "echo 'gh pr merge 5' | grep x",
+    "echo 'gh pr merge 5' > f",
+    "echo 'gh pr merge 5' | tee f",
+    "echo 'gh pr merge 5' | bash -c 'cat'",
+    "echo 'gh pr merge 5' | bash -xc 'cat'",
+    "echo 'gh pr merge 5' | bash script.sh",
+    "echo 'x gh pr merge 5' | bash",
+    "echo 'gh pr merge 5'; bash",
+    "cat <<< 'gh pr merge 5' | grep x; bash -c true",
   ])("finds no merge in a mention the raw text shows: %s", (command) => expect(firstMerge(command)).toBeUndefined());
 
   it.each([
+    // A script a shell reads on stdin (CodeRabbit on PR #1632).
+    ["echo 'gh pr merge 5 --squash' | bash", "gh"],
+    ["printf '%s\\n' 'gh pr merge 5 --squash' | sh", "gh"],
+    ["bash <<< 'gh pr merge 5 --squash'", "gh"],
+    [`echo "gh pr merge 5 --squash" | sudo bash -x`, "gh"],
+    ["echo 'gh pr merge 5 --squash' | sh -s -- a", "gh"],
+    ["echo 'GH_REPO=niklam/iracedeck gh pr merge 5 --squash' | bash", "gh"],
     ["ls; gh pr merge 5 --squash", "gh"],
     ["ls && gh pr merge 5 --squash", "gh"],
     ["cd scripts && gh pr merge 5 --squash", "gh"],
