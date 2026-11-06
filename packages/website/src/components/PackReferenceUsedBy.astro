@@ -15,18 +15,16 @@ const { usedBy } = Astro.props;
 
 <p class="pack-ref-used-by">
   <strong>Used by:</strong>{" "}
-  {
-    usedBy.length === 0
-      ? "no entry in the reference voice — available to a pack all the same"
-      : usedBy.map((id, i) => (
-          <>
-            {i > 0 && ", "}
-            <a href={calloutHref(id)}>
-              <code>{id}</code>
-            </a>
-          </>
-        ))
-  }
+  {usedBy.length === 0
+    ? "no entry in the reference voice — available to a pack all the same"
+    : usedBy.map((id, i) => (
+        <>
+          {i > 0 && ", "}
+          <a href={calloutHref(id)}>
+            <code>{id}</code>
+          </a>
+        </>
+      ))}
 </p>
 
 <style>

@@ -37,102 +37,96 @@ const unusedGroups = groups.filter(isUnusedGroup).map((g) => g.group);
   {groups.length} groups, {lineCount} lines, {takeCount} takes.
 </p>
 
-{
-  groups.map((group) => {
-    const note = groupNote(group);
-    // A line is marked unused unless the whole group already is.
-    const markLines = note !== UNUSED_GROUP_NOTE;
+{groups.map((group) => {
+  const note = groupNote(group);
+  // A line is marked unused unless the whole group already is.
+  const markLines = note !== UNUSED_GROUP_NOTE;
 
-    return (
-      <section class="pack-ref-group">
-        <h2 id={groupAnchor(group.group)}>
-          <code>{group.group}/</code>
-        </h2>
-        {note !== undefined && <p class="pack-ref-note">{note}</p>}
-        <table>
-          <thead>
-            <tr>
-              <th>Line</th>
-              <th>Takes</th>
-              <th>Text</th>
-              <th>Used by</th>
-            </tr>
-          </thead>
-          <tbody>
-            {group.lines.map((line) => {
-              const pool = `${group.group}/${line.base}`;
-              const via = viaVarConsumers(line, vocabulary);
-              const playedBy = linePlayedBy(line, note);
+  return (
+    <section class="pack-ref-group">
+      <h2 id={groupAnchor(group.group)}>
+        <code>{group.group}/</code>
+      </h2>
+      {note !== undefined && <p class="pack-ref-note">{note}</p>}
+      <table>
+        <thead>
+          <tr>
+            <th>Line</th>
+            <th>Takes</th>
+            <th>Text</th>
+            <th>Used by</th>
+          </tr>
+        </thead>
+        <tbody>
+          {group.lines.map((line) => {
+            const pool = `${group.group}/${line.base}`;
+            const via = viaVarConsumers(line, vocabulary);
+            const playedBy = linePlayedBy(line, note);
 
-              return (
-                <tr id={lineAnchor(pool)}>
-                  <td>
-                    <code>{line.base}</code>
-                  </td>
-                  <td>{line.takes}</td>
-                  <td>
-                    {line.texts.length === 0 ? (
-                      <em>no text on file</em>
-                    ) : line.texts.length === 1 ? (
-                      renderTakeText(line.texts[0])
-                    ) : (
-                      <ol class="pack-ref-takes">
-                        {line.texts.map((text) => (
-                          <li>{renderTakeText(text)}</li>
-                        ))}
-                      </ol>
-                    )}
-                  </td>
-                  <td>
-                    {line.usedBy.length > 0 && (
-                      <p>
-                        {line.usedBy.map((id, i) => (
-                          <>
-                            {i > 0 && ", "}
-                            <a href={calloutHref(id)}>
-                              <code>{id}</code>
-                            </a>
-                          </>
-                        ))}
-                      </p>
-                    )}
-                    {via.map((v) => (
-                      <p>
-                        via{" "}
-                        <a href={varHref(v.name)}>
-                          <code>{`{{${v.name}}}`}</code>
-                        </a>
-                        {v.usedBy.length > 0 && ": "}
-                        {v.usedBy.map((id, i) => (
-                          <>
-                            {i > 0 && ", "}
-                            <a href={calloutHref(id)}>
-                              <code>{id}</code>
-                            </a>
-                          </>
-                        ))}
-                      </p>
-                    ))}
-                    {playedBy !== null && <p class="pack-ref-note">{playedBy}</p>}
-                    {markLines && isUnusedLine(line) && <p class="pack-ref-note">{UNUSED_LINE_NOTE}</p>}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </section>
-    );
-  })
-}
+            return (
+              <tr id={lineAnchor(pool)}>
+                <td>
+                  <code>{line.base}</code>
+                </td>
+                <td>{line.takes}</td>
+                <td>
+                  {line.texts.length === 0 ? (
+                    <em>no text on file</em>
+                  ) : line.texts.length === 1 ? (
+                    renderTakeText(line.texts[0])
+                  ) : (
+                    <ol class="pack-ref-takes">
+                      {line.texts.map((text) => (
+                        <li>{renderTakeText(text)}</li>
+                      ))}
+                    </ol>
+                  )}
+                </td>
+                <td>
+                  {line.usedBy.length > 0 && (
+                    <p>
+                      {line.usedBy.map((id, i) => (
+                        <>
+                          {i > 0 && ", "}
+                          <a href={calloutHref(id)}>
+                            <code>{id}</code>
+                          </a>
+                        </>
+                      ))}
+                    </p>
+                  )}
+                  {via.map((v) => (
+                    <p>
+                      via{" "}
+                      <a href={varHref(v.name)}>
+                        <code>{`{{${v.name}}}`}</code>
+                      </a>
+                      {v.usedBy.length > 0 && ": "}
+                      {v.usedBy.map((id, i) => (
+                        <>
+                          {i > 0 && ", "}
+                          <a href={calloutHref(id)}>
+                            <code>{id}</code>
+                          </a>
+                        </>
+                      ))}
+                    </p>
+                  ))}
+                  {playedBy !== null && <p class="pack-ref-note">{playedBy}</p>}
+                  {markLines && isUnusedLine(line) && <p class="pack-ref-note">{UNUSED_LINE_NOTE}</p>}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </section>
+  );
+})}
 
-{
-  unusedGroups.length > 0 && (
-    <p class="pack-ref-count">
-      Groups nothing draws from: {unusedGroups.map((g) => `${g}/`).join(", ")}.
-    </p>
-  )
-}
+{unusedGroups.length > 0 && (
+  <p class="pack-ref-count">Groups nothing draws from: {unusedGroups.map((g) => `${g}/`).join(", ")}.</p>
+)}
 
 <style>
   .pack-ref-count,

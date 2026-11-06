@@ -1,7 +1,8 @@
 // The replay engine may not reach the deck layer, the settings or its own
 // consumers (#1467): what it needs from them is injected by plugin-runtime's
 // initReplay phase. The ESLint rule is the guard, and this test proves it
-// fires, so deleting or narrowing the rule goes red.
+// fires, in an .mts, .mjs or .astro file as well as a .ts one (#1616), so
+// deleting or narrowing the rule goes red.
 import { ESLint } from "eslint";
 import { describe, expect, it } from "vitest";
 
@@ -15,6 +16,14 @@ const REFUSED = [
   "@iracedeck/settings",
   "@iracedeck/icons",
   "@iracedeck/iracing-actions",
+];
+
+// The extensions besides .ts that `pnpm lint` reads as source (#1616); an .astro
+// component imports in its frontmatter.
+const OTHER_SOURCES = [
+  ["mts", (pkg) => `import { x } from "${pkg}";\nexport const y = x;\n`],
+  ["mjs", (pkg) => `import { x } from "${pkg}";\nexport const y = x;\n`],
+  ["astro", (pkg) => `---\nimport { x } from "${pkg}";\n---\n\n<p>{x}</p>\n`],
 ];
 
 async function lint(code, filePath) {
@@ -50,6 +59,19 @@ describe("replay engine boundary", () => {
       },
       TIMEOUT,
     );
+
+    for (const [extension, code] of OTHER_SOURCES) {
+      it(
+        `refuses ${pkg} in an .${extension} file of replay-engine`,
+        async () => {
+          const messages = await lint(code(pkg), `packages/replay-engine/src/planted.${extension}`);
+
+          expect(messages).toHaveLength(1);
+          expect(messages[0].message).toContain("#1467");
+        },
+        TIMEOUT,
+      );
+    }
   }
 
   it(

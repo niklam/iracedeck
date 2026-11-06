@@ -2,8 +2,9 @@
 // the packages split out of it (#1367), and since #1375 every package named in
 // SIM_NEUTRAL_PACKAGES in eslint.config.js. The ESLint rule is the guard, and
 // this test proves it fires in each — for a value import, a type-only one in a
-// test file, a deep subpath and an .mjs file outside src/ — and stays silent on
-// a clean file, so deleting or narrowing the rule goes red. The packages are read
+// test file, a deep subpath, an .mjs or .mts file outside src/ and an .astro
+// component (#1616) — and stays silent on a clean file, so deleting or narrowing
+// the rule goes red. The packages are read
 // from the config itself, so a package added there is planted here too;
 // scripts/sim-boundary-coverage.test.mjs checks the list against packages/.
 import { ESLint } from "eslint";
@@ -94,23 +95,37 @@ describe("deck-core sim boundary", () => {
       );
     }
 
-    // The block reaches past src/ for every .ts and .mjs file of the package: a
-    // build script or a config written as .mjs is held too. It holds no
-    // .astro or .mts file, which no lint gate here reads (see the block's
-    // comment in eslint.config.js).
-    it(
-      `refuses a sim import in an .mjs file outside ${dir}/src`,
-      async () => {
-        const messages = await lint(
-          `import { x } from "@iracedeck/iracing-sdk";\nexport const y = x;\n`,
-          `packages/${dir}/scripts/planted.mjs`,
-        );
+    // The block reaches past src/ for every .ts, .mts and .mjs file of the
+    // package: a build script or a config written as .mjs or .mts is held too.
+    // So is an .astro component, its frontmatter and its <script> both (#1616).
+    for (const [where, filePath, code] of [
+      [
+        "an .mjs file outside src",
+        `packages/${dir}/scripts/planted.mjs`,
+        `import { x } from "@iracedeck/iracing-sdk";\nexport const y = x;\n`,
+      ],
+      [
+        "an .mts file outside src",
+        `packages/${dir}/scripts/planted.mts`,
+        `import { x } from "@iracedeck/iracing-sdk";\nexport const y = x;\n`,
+      ],
+      [
+        "an .astro frontmatter",
+        `packages/${dir}/src/components/Planted.astro`,
+        `---\nimport { x } from "@iracedeck/iracing-sdk";\n---\n\n<p>{x}</p>\n`,
+      ],
+    ]) {
+      it(
+        `refuses a sim import in ${where} of ${dir}`,
+        async () => {
+          const messages = await lint(code, filePath);
 
-        expect(messages).toHaveLength(1);
-        expect(messages[0].message).toContain("#1375");
-      },
-      TIMEOUT,
-    );
+          expect(messages).toHaveLength(1);
+          expect(messages[0].message).toContain("#1375");
+        },
+        TIMEOUT,
+      );
+    }
 
     // The negative control: a clean file, including a name that only shares a
     // banned package's prefix, draws nothing, so the subpath pattern is no
@@ -128,6 +143,50 @@ describe("deck-core sim boundary", () => {
       TIMEOUT,
     );
   }
+
+  // The website's own .astro components and .mts generator were linted by
+  // nothing until #1616. A value import of the deck layer and a deep import of
+  // the SDK are refused in each, and in the client code of a <script>, which
+  // the Astro processor hands to ESLint as a virtual .ts file.
+  describe("in the website's .astro and .mts files", () => {
+    const CASES = [
+      [
+        "an .astro frontmatter",
+        "packages/website/src/components/Planted.astro",
+        `---\nimport { x } from "@iracedeck/deck-iracing";\nimport { z } from "@iracedeck/iracing-sdk/dist/index.js";\n---\n\n<p>{x}{z}</p>\n`,
+      ],
+      [
+        "an .astro <script>",
+        "packages/website/src/pages/planted.astro",
+        `<p>planted</p>\n\n<script>\n  import { x } from "@iracedeck/deck-iracing";\n  import { z } from "@iracedeck/iracing-sdk/dist/index.js";\n\n  console.log(x, z);\n</script>\n`,
+      ],
+      [
+        "an .mts script",
+        "packages/website/scripts/planted.mts",
+        `import { x } from "@iracedeck/deck-iracing";\nimport { z } from "@iracedeck/iracing-sdk/dist/index.js";\n\nexport const y = [x, z];\n`,
+      ],
+    ];
+
+    for (const [where, filePath, code] of CASES) {
+      it(
+        `refuses @iracedeck/deck-iracing and an @iracedeck/iracing-sdk subpath in ${where}`,
+        async () => {
+          const messages = await lint(code, filePath);
+
+          expect(messages.map((m) => m.message.split(" import ")[0])).toEqual([
+            "'@iracedeck/deck-iracing'",
+            "'@iracedeck/iracing-sdk/dist/index.js'",
+          ]);
+
+          for (const m of messages) {
+            expect(m.message).toContain("SimConnection");
+            expect(m.message).toContain("#1375");
+          }
+        },
+        TIMEOUT,
+      );
+    }
+  });
 
   it(
     "allows the same import outside the guarded packages",

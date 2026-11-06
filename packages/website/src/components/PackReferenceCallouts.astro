@@ -30,9 +30,7 @@ const scripted = callouts.filter((c) => !c.skip).length;
 function hasReferences(c: (typeof callouts)[number]): boolean {
   const r = c.references;
 
-  return (
-    r.pools.length + r.vars.length + r.conds.length + r.cases.length + r.includes.length + r.frames.length > 0
-  );
+  return r.pools.length + r.vars.length + r.conds.length + r.cases.length + r.includes.length + r.frames.length > 0;
 }
 ---
 
@@ -40,180 +38,178 @@ function hasReferences(c: (typeof callouts)[number]): boolean {
   {callouts.length} callouts in {groups.length} groups; the reference voice scripts {scripted} of them.
 </p>
 
-{
-  groups.map((group) => (
-    <section class="pack-ref-family">
-      <h2 id={group.anchor}>{group.family === null ? NO_FAMILY_LABEL : <code>{group.family}</code>}</h2>
-      {group.family === null ? (
-        <p>
-          These callouts belong to no family: each neither replaces nor is replaced by a family-mate, and only its
-          weight decides what it yields to and what yields to it.
-        </p>
-      ) : (
-        <p>
-          Callouts in the <code>{group.family}</code> family preempt each other: a newer one replaces one of the same
-          family that is still playing, whatever their weights.
-        </p>
-      )}
+{groups.map((group) => (
+  <section class="pack-ref-family">
+    <h2 id={group.anchor}>{group.family === null ? NO_FAMILY_LABEL : <code>{group.family}</code>}</h2>
+    {group.family === null ? (
+      <p>
+        These callouts belong to no family: each neither replaces nor is replaced by a family-mate, and only its weight
+        decides what it yields to and what yields to it.
+      </p>
+    ) : (
+      <p>
+        Callouts in the <code>{group.family}</code> family preempt each other: a newer one replaces one of the same
+        family that is still playing, whatever their weights.
+      </p>
+    )}
 
-      {group.callouts.map((c) => (
-        <article class="pack-ref-callout">
-          <h3 id={c.id}>
-            <code>{c.id}</code>
-          </h3>
-          <p>{c.description}</p>
-          <dl class="pack-ref-facts">
-            <dt>Trigger</dt>
-            <dd>{c.event === null ? describeTrigger(c) : <code>{c.event}</code>}</dd>
-            {c.speakGate !== null && (
-              <>
-                <dt>Re-checked at speak time</dt>
-                <dd>{describeSpeakGate(c)}</dd>
-              </>
-            )}
-            {c.endsOn !== null && (
-              <>
-                <dt>Ends when</dt>
-                <dd>{describeEndsOn(c)}</dd>
-              </>
-            )}
-            <dt>Default frame</dt>
-            <dd>{c.frame === "none" ? "none — plays unframed" : <code>{c.frame}</code>}</dd>
-            <dt>Weight</dt>
-            <dd>{describeWeight(c)}</dd>
-            <dt>Scheduling</dt>
-            <dd>{describeScheduling(c)}</dd>
-            <dt>Base</dt>
-            <dd>{describeBase(c)}</dd>
-          </dl>
-          {c.skip ? (
-            <p>
-              <strong>Reference entry:</strong> <code>skip: true</code> — the reference voice is deliberately silent here.
-            </p>
-          ) : (
+    {group.callouts.map((c) => (
+      <article class="pack-ref-callout">
+        <h3 id={c.id}>
+          <code>{c.id}</code>
+        </h3>
+        <p>{c.description}</p>
+        <dl class="pack-ref-facts">
+          <dt>Trigger</dt>
+          <dd>{c.event === null ? describeTrigger(c) : <code>{c.event}</code>}</dd>
+          {c.speakGate !== null && (
             <>
-              {c.comment !== null && (
-                <p>
-                  <strong>Says:</strong> {c.comment}
-                </p>
-              )}
-              {c.test !== null && (
-                <p>
-                  <strong>Hear it:</strong> {c.test}
-                </p>
-              )}
-              {hasReferences(c) && (
-                <dl class="pack-ref-refs">
-                  {c.references.pools.length > 0 && (
-                    <>
-                      <dt>Pools</dt>
-                      <dd>
-                        {c.references.pools.map((pool, i) => (
-                          <>
-                            {i > 0 && ", "}
-                            {pool.includes("/") ? (
-                              <a href={lineHref(pool)}>
-                                <code>{pool}</code>
-                              </a>
-                            ) : (
-                              <code>{pool}</code>
-                            )}
-                          </>
-                        ))}
-                      </dd>
-                    </>
-                  )}
-                  {c.references.vars.length > 0 && (
-                    <>
-                      <dt>Variables</dt>
-                      <dd>
-                        {c.references.vars.map((name, i) => (
-                          <>
-                            {i > 0 && ", "}
-                            <a href={varHref(name)}>
-                              <code>{`{{${name}}}`}</code>
-                            </a>
-                          </>
-                        ))}
-                      </dd>
-                    </>
-                  )}
-                  {c.references.conds.length > 0 && (
-                    <>
-                      <dt>Conditions</dt>
-                      <dd>
-                        {c.references.conds.map((name, i) => (
-                          <>
-                            {i > 0 && ", "}
-                            <a href={condHref(name)}>
-                              <code>{name}</code>
-                            </a>
-                          </>
-                        ))}
-                      </dd>
-                    </>
-                  )}
-                  {c.references.cases.length > 0 && (
-                    <>
-                      <dt>Cases</dt>
-                      <dd>
-                        {c.references.cases.map((item, i) => (
-                          <>
-                            {i > 0 && "; "}
-                            <a href={caseHref(item.name)}>
-                              <code>{item.name}</code>
-                            </a>
-                            {item.keys.length > 0 && (
-                              <>
-                                {" → "}
-                                {item.keys.map((key, k) => (
-                                  <>
-                                    {k > 0 && ", "}
-                                    <code>{key}</code>
-                                  </>
-                                ))}
-                              </>
-                            )}
-                          </>
-                        ))}
-                      </dd>
-                    </>
-                  )}
-                  {c.references.includes.length > 0 && (
-                    <>
-                      <dt>Fragments</dt>
-                      <dd>
-                        {c.references.includes.map((name, i) => (
-                          <>
-                            {i > 0 && ", "}
-                            <code>{`@${name}`}</code>
-                          </>
-                        ))}
-                      </dd>
-                    </>
-                  )}
-                  {c.references.frames.length > 0 && (
-                    <>
-                      <dt>Frame override</dt>
-                      <dd>
-                        {c.references.frames.map((name, i) => (
-                          <>
-                            {i > 0 && ", "}
-                            <code>{name}</code>
-                          </>
-                        ))}
-                      </dd>
-                    </>
-                  )}
-                </dl>
-              )}
+              <dt>Re-checked at speak time</dt>
+              <dd>{describeSpeakGate(c)}</dd>
             </>
           )}
-        </article>
-      ))}
-    </section>
-  ))
-}
+          {c.endsOn !== null && (
+            <>
+              <dt>Ends when</dt>
+              <dd>{describeEndsOn(c)}</dd>
+            </>
+          )}
+          <dt>Default frame</dt>
+          <dd>{c.frame === "none" ? "none — plays unframed" : <code>{c.frame}</code>}</dd>
+          <dt>Weight</dt>
+          <dd>{describeWeight(c)}</dd>
+          <dt>Scheduling</dt>
+          <dd>{describeScheduling(c)}</dd>
+          <dt>Base</dt>
+          <dd>{describeBase(c)}</dd>
+        </dl>
+        {c.skip ? (
+          <p>
+            <strong>Reference entry:</strong> <code>skip: true</code> — the reference voice is deliberately silent here.
+          </p>
+        ) : (
+          <>
+            {c.comment !== null && (
+              <p>
+                <strong>Says:</strong> {c.comment}
+              </p>
+            )}
+            {c.test !== null && (
+              <p>
+                <strong>Hear it:</strong> {c.test}
+              </p>
+            )}
+            {hasReferences(c) && (
+              <dl class="pack-ref-refs">
+                {c.references.pools.length > 0 && (
+                  <>
+                    <dt>Pools</dt>
+                    <dd>
+                      {c.references.pools.map((pool, i) => (
+                        <>
+                          {i > 0 && ", "}
+                          {pool.includes("/") ? (
+                            <a href={lineHref(pool)}>
+                              <code>{pool}</code>
+                            </a>
+                          ) : (
+                            <code>{pool}</code>
+                          )}
+                        </>
+                      ))}
+                    </dd>
+                  </>
+                )}
+                {c.references.vars.length > 0 && (
+                  <>
+                    <dt>Variables</dt>
+                    <dd>
+                      {c.references.vars.map((name, i) => (
+                        <>
+                          {i > 0 && ", "}
+                          <a href={varHref(name)}>
+                            <code>{`{{${name}}}`}</code>
+                          </a>
+                        </>
+                      ))}
+                    </dd>
+                  </>
+                )}
+                {c.references.conds.length > 0 && (
+                  <>
+                    <dt>Conditions</dt>
+                    <dd>
+                      {c.references.conds.map((name, i) => (
+                        <>
+                          {i > 0 && ", "}
+                          <a href={condHref(name)}>
+                            <code>{name}</code>
+                          </a>
+                        </>
+                      ))}
+                    </dd>
+                  </>
+                )}
+                {c.references.cases.length > 0 && (
+                  <>
+                    <dt>Cases</dt>
+                    <dd>
+                      {c.references.cases.map((item, i) => (
+                        <>
+                          {i > 0 && "; "}
+                          <a href={caseHref(item.name)}>
+                            <code>{item.name}</code>
+                          </a>
+                          {item.keys.length > 0 && (
+                            <>
+                              {" → "}
+                              {item.keys.map((key, k) => (
+                                <>
+                                  {k > 0 && ", "}
+                                  <code>{key}</code>
+                                </>
+                              ))}
+                            </>
+                          )}
+                        </>
+                      ))}
+                    </dd>
+                  </>
+                )}
+                {c.references.includes.length > 0 && (
+                  <>
+                    <dt>Fragments</dt>
+                    <dd>
+                      {c.references.includes.map((name, i) => (
+                        <>
+                          {i > 0 && ", "}
+                          <code>{`@${name}`}</code>
+                        </>
+                      ))}
+                    </dd>
+                  </>
+                )}
+                {c.references.frames.length > 0 && (
+                  <>
+                    <dt>Frame override</dt>
+                    <dd>
+                      {c.references.frames.map((name, i) => (
+                        <>
+                          {i > 0 && ", "}
+                          <code>{name}</code>
+                        </>
+                      ))}
+                    </dd>
+                  </>
+                )}
+              </dl>
+            )}
+          </>
+        )}
+      </article>
+    ))}
+  </section>
+))}
 
 <style>
   .pack-ref-count {

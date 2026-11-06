@@ -15,11 +15,9 @@ const { ecosystem } = Astro.props;
 const segments = toSentenceList(brandsFor(ecosystem).map((brand) => brand.name));
 ---
 
-{
-  segments.map(({ value, separator }) => (
-    <Fragment>
-      <strong>{value}</strong>
-      {separator}
-    </Fragment>
-  ))
-}
+{segments.map(({ value, separator }) => (
+  <Fragment>
+    <strong>{value}</strong>
+    {separator}
+  </Fragment>
+))}

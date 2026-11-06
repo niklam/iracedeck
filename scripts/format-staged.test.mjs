@@ -1,5 +1,6 @@
 import { execFileSync, spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import url from "node:url";
@@ -434,10 +435,12 @@ describe("the husky pre-commit hook", () => {
 });
 
 describe("STAGED_TASKS and toolsFor", () => {
-  it("runs ESLint then Prettier on .ts and .mjs, Prettier alone on .json, and nothing on the rest", () => {
+  it("runs ESLint then Prettier on .ts, .mts, .mjs and .astro, Prettier alone on .json, and nothing on the rest", () => {
     expect(toolsFor("packages/x/src/a.ts")).toEqual(["eslint", "prettier"]);
     expect(toolsFor("packages/x/src/a.d.ts")).toEqual(["eslint", "prettier"]);
+    expect(toolsFor("packages/x/scripts/a.mts")).toEqual(["eslint", "prettier"]);
     expect(toolsFor("scripts/a.mjs")).toEqual(["eslint", "prettier"]);
+    expect(toolsFor("packages/x/src/components/A.astro")).toEqual(["eslint", "prettier"]);
     expect(toolsFor("package.json")).toEqual(["prettier"]);
     expect(toolsFor("README.md")).toBeNull();
     expect(toolsFor("scripts/a.js")).toBeNull();
@@ -521,6 +524,108 @@ describe("createRepoFormatter on this repository", { timeout: 60_000 }, () => {
     expect(result.outputs).toEqual([
       "export function probe(x: number): number {\n  const doubled = x * 2;\n\n  return doubled;\n}\n",
     ]);
+  });
+
+  // The website's generator is .mts (#1616): the same TypeScript rules and formatting as a .ts file.
+  it("fixes an .mts file with ESLint and Prettier", async () => {
+    const source = "export function probe(x: number): number {\n  const doubled =    x * 2;\n  return doubled;\n}\n";
+    const result = await format([file("packages/website/scripts/format-staged-probe.mts", source)]);
+
+    expect(result.failure).toBeNull();
+    expect(result.outputs).toEqual([
+      "export function probe(x: number): number {\n  const doubled = x * 2;\n\n  return doubled;\n}\n",
+    ]);
+  });
+
+  // An .astro component (#1616): ESLint fixes its frontmatter through the Astro parser, and Prettier
+  // formats it through prettier-plugin-astro, which the formatter must resolve from the repo's config.
+  it("fixes an .astro file's frontmatter with ESLint and formats the component with Prettier", async () => {
+    const source =
+      '---\nfunction probe(x: number): number {\n  const doubled =    x * 2;\n  return doubled;\n}\nconst value = probe(2);\n---\n\n<p   class="probe">{value}</p>\n';
+    const result = await format([file("packages/website/src/components/FormatStagedProbe.astro", source)]);
+
+    expect(result.failure).toBeNull();
+    expect(result.outputs).toEqual([
+      '---\nfunction probe(x: number): number {\n  const doubled = x * 2;\n\n  return doubled;\n}\nconst value = probe(2);\n---\n\n<p class="probe">{value}</p>\n',
+    ]);
+  });
+
+  // prettier-plugin-astro may move whitespace only where Astro's compiler collapses it anyway,
+  // and is told where by astroCompressHTML in .prettierrc.js, which must name the compressHTML
+  // the website builds with (#1616). A paragraph shaped like the pack reference's (an inline
+  // `<code>` before a full stop, a link mid-sentence, each near printWidth) is formatted the
+  // way the pre-commit step does, then both versions are compiled as Astro compiles the site:
+  // the page must read the same.
+  describe("an .astro paragraph renders the same once formatted", () => {
+    const websiteRequire = createRequire(path.join(repoRoot, "packages/website/package.json"));
+    const astroPackage = websiteRequire.resolve("astro/package.json");
+    const COMPONENT = "packages/website/src/components/FormatStagedProbe.astro";
+    const SOURCE = [
+      "<p>",
+      '  A condition answers yes or no at fire time. Write it in an <code>if</code> step — <code>{\'{ "if": "name", "then": [ … ], "else": [ … ] }\'}</code> — and negate it with a single leading <code>!</code>. That <code>!</code> is the only operator the format has.',
+      "</p>",
+      '<p class="support-membership">',
+      '  Or become an <a href="https://example.com/membership" target="_blank" rel="noopener">iRaceDeck Supporter</a> for a monthly amount and get the Supporter role on Discord.',
+      "</p>",
+      "",
+    ].join("\n");
+
+    // The compressHTML the website builds with: astro.config.mjs names none, so Astro's default.
+    async function siteCompressHtml() {
+      const config = readFileSync(path.join(repoRoot, "packages/website/astro.config.mjs"), "utf8");
+
+      expect(
+        config,
+        "astro.config.mjs now sets compressHTML: read it here and pin the same in .prettierrc.js",
+      ).not.toMatch(/compressHTML/);
+
+      const defaults = path.join(path.dirname(astroPackage), "dist/core/config/schemas/defaults.js");
+
+      return (await import(url.pathToFileURL(defaults).href)).ASTRO_CONFIG_DEFAULTS.compressHTML;
+    }
+
+    // The template the page renders, as a browser reads its whitespace: a `{" "}` is a space,
+    // and a run of whitespace is one space.
+    async function rendered(source, compact) {
+      const { transform } = await import(
+        url.pathToFileURL(createRequire(astroPackage).resolve("@astrojs/compiler-rs")).href
+      );
+      const code = transform(source, { filename: "FormatStagedProbe.astro", compact }).code;
+
+      return code.slice(code.indexOf("$$render`")).replaceAll('${" "}', " ").replace(/\s+/g, " ");
+    }
+
+    it("pins prettier-plugin-astro to the compressHTML the website builds with", async () => {
+      const prettier = (await import("prettier")).default;
+      const options = await prettier.resolveConfig(path.join(repoRoot, COMPONENT));
+
+      expect(options.astroCompressHTML).toBe(await siteCompressHtml());
+    });
+
+    it("reads the same once the pre-commit step wraps it: the full stop after the code, a space each side of the link", async () => {
+      const compact = await siteCompressHtml();
+      const result = await format([file(COMPONENT, SOURCE)]);
+
+      expect(result.failure).toBeNull();
+      expect(result.outputs[0]).not.toBe(SOURCE);
+
+      const page = await rendered(result.outputs[0], compact);
+
+      expect(page).toBe(await rendered(SOURCE, compact));
+      expect(page).toContain("Write it in an <code>if</code> step — <code>");
+      expect(page).toContain("a single leading <code>!</code>. That <code>!</code> is");
+      expect(page).toContain('Or become an <a href="https://example.com/membership"');
+      expect(page).toContain('rel="noopener">iRaceDeck Supporter</a> for a monthly amount');
+    });
+  });
+
+  it("reports an error ESLint cannot fix in an .astro frontmatter, naming the file", async () => {
+    const result = await format([
+      file("packages/website/src/components/FormatStagedProbe.astro", "---\nconst unused = 1;\n---\n\n<p>probe</p>\n"),
+    ]);
+
+    expect(result.failure).toContain("@typescript-eslint/no-unused-vars");
+    expect(result.failure).toContain("FormatStagedProbe.astro");
   });
 
   it("reports an error ESLint cannot fix, naming the file", async () => {

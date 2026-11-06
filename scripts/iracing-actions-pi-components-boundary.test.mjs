@@ -2,8 +2,9 @@
 // only its PI-template tests' devDependency (#1375): ./testing renders the pages
 // through ejs and node:fs, ./build is the Rollup tooling. The ESLint block is
 // the guard, and this test proves it refuses the package and its subpaths in a
-// non-test source, value and type-only, and lets the tests and their support
-// files through, so deleting or narrowing the block goes red. A support file
+// non-test source, value and type-only, in an .mts, .mjs or .astro file as well
+// as a .ts one (#1616), and lets the tests and their support files through, in
+// any script extension, so deleting or narrowing the block goes red. A support file
 // may import it, so a non-test source must not import a support file either:
 // that holds in every package, and the root guard
 // scripts/testing-entries-test-only.test.mjs owns it.
@@ -15,6 +16,15 @@ const TIMEOUT = 60_000;
 const eslint = new ESLint({ cwd: import.meta.dirname + "/.." });
 
 const SPECIFIERS = ["@iracedeck/pi-components", "@iracedeck/pi-components/testing", "@iracedeck/pi-components/build"];
+
+// The extensions besides .ts that `pnpm lint` reads as source (#1616); an .astro
+// component imports in its frontmatter. A test and its support may be written
+// in any of the scripts, never as a component.
+const OTHER_SOURCES = [
+  ["mts", (specifier) => `import { x } from "${specifier}";\nexport const y = x;\n`],
+  ["mjs", (specifier) => `import { x } from "${specifier}";\nexport const y = x;\n`],
+  ["astro", (specifier) => `---\nimport { x } from "${specifier}";\n---\n\n<p>{x}</p>\n`],
+];
 
 async function lint(code, filePath) {
   const [result] = await eslint.lintText(code, { filePath });
@@ -52,8 +62,24 @@ describe("iracing-actions keeps pi-components test-only", () => {
       TIMEOUT,
     );
 
-    // The negative controls: the files the edge exists for.
-    for (const file of ["src/pi-templates/planted.test.ts", "src/pi-templates/planted.test-support.ts"]) {
+    for (const [extension, code] of OTHER_SOURCES) {
+      it(
+        `refuses ${specifier} in an .${extension} source file`,
+        async () => {
+          const messages = await lint(code(specifier), `packages/iracing-actions/src/shared/planted.${extension}`);
+
+          expect(messages).toHaveLength(1);
+          expect(messages[0].message).toContain("#1375");
+        },
+        TIMEOUT,
+      );
+    }
+
+    // The negative controls: the files the edge exists for, in each script extension.
+    for (const file of ["ts", "mts", "mjs"].flatMap((extension) => [
+      `src/pi-templates/planted.test.${extension}`,
+      `src/pi-templates/planted.test-support.${extension}`,
+    ])) {
       it(
         `allows ${specifier} in ${file}`,
         async () => {
