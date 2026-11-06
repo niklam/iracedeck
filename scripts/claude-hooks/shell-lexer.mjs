@@ -1942,7 +1942,7 @@ function* found(command, re, a, b) {
   const taken = new Set();
   const anchored = new RegExp(re.source, withFlags(re, "yd"));
   for (let m of slice.matchAll(new RegExp(re.source, withFlags(re, "gd")))) {
-    const program = innerStart(slice, m, re);
+    const program = innerStart(slice, m, re, (p) => v.byName.has(a + p) || v.starts.has(a + p));
     const close = closeIn(program);
     if (close !== undefined && m.index + m[0].length > close && !(m = matchWithin(anchored, slice, m.index, close)))
       continue;
@@ -1988,18 +1988,25 @@ function matchWithin(re, text, p, close) {
  * Where the rule's own shape starts inside an anchored {@link cmd} match: past
  * the boundary and the lead it took, found with the flags the match was made
  * with — the `m` of {@link cmd} included, so a `$`-ending shape before a
- * newline is found too (#1634 review). Never a separator: were the shape not
- * found, the match's first character that is none.
+ * newline is found too (#1634 review). A position `known` names as a
+ * program's (where {@link view} read one) is preferred over an earlier one the
+ * shape also fits: a greedy shape fits from the `gh` of an `X=gh` lead too
+ * (`X=gh gh pr comment 5 --body @-`), and that position is no program, so the
+ * known-program pass would yield the same command a second time (CodeRabbit
+ * CLI on #1634). Never a separator: were the shape not found, the match's
+ * first character that is none.
  */
-function innerStart(text, m, re) {
+function innerStart(text, m, re, known = () => false) {
   if (!re.inner) return m.index;
   const end = m.index + m[0].length;
   const sticky = new RegExp(re.inner.source, withFlags(re, "y"));
-  for (let p = m.index; p < end; p++) {
+  const fits = (p) => {
     sticky.lastIndex = p;
     const r = sticky.exec(text);
-    if (r && p + r[0].length === end) return p;
-  }
+    return !!r && p + r[0].length === end;
+  };
+  for (let p = m.index; p < end; p++) if (known(p) && fits(p)) return p;
+  for (let p = m.index; p < end; p++) if (fits(p)) return p;
   return m.index + /^[\s|;()\x60&]*/.exec(m[0])[0].length;
 }
 

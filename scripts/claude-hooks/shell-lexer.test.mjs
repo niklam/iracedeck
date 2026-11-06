@@ -1035,6 +1035,18 @@ describe("the #1634 review round: options, cuts and program positions", () => {
     expect([...lexer.matchesAt("sudo env X=gh gh pr comment 5 --body @-", BODY)]).toHaveLength(1);
   });
 
+  it.each([
+    ["X=gh gh pr comment 5 --body @-", 5],
+    ["GH_REPO=a/gh gh pr comment 5 --body @-", 13],
+    ["cd x && X=gh gh pr comment 5 --body @-", 13],
+  ])("finds an anchored command once, at its program, past a lead the shape also fits: %s", (c, program) => {
+    // The greedy shape fits from the `gh` inside the assignment too; that is
+    // no program, and the known-program pass must not yield the command again.
+    const found = [...lexer.matchesAt(c, BODY)];
+    expect(found.map((m) => m.program)).toEqual([program]);
+    expect(found[0].how).toBe("command");
+  });
+
   it("confines a match to the string its program runs in", () => {
     expect(lexer.has("echo 'pnpm test' | bash", PIPED)).toBe(false);
     expect(lexer.has("bash -c 'pnpm test' | tail", PIPED)).toBe(false);
