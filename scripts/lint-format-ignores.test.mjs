@@ -25,7 +25,7 @@ const trackedUnderBuild = execFileSync("git", ["ls-files", "-z"], { cwd: repoRoo
 // `files` matches, so only an extension eslint.config.js lints proves anything
 // about the ignores. Prettier's answer depends on the path alone, so it checks
 // every tracked file.
-const LINTED = /\.(ts|mjs|js)$/;
+const LINTED = /\.(ts|mts|mjs|js|astro)$/;
 
 // Paths node-gyp writes, which must stay ignored. They need not exist, and are
 // `.ts` so the ESLint answer cannot come from the extension alone.

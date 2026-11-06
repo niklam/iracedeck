@@ -434,10 +434,12 @@ describe("the husky pre-commit hook", () => {
 });
 
 describe("STAGED_TASKS and toolsFor", () => {
-  it("runs ESLint then Prettier on .ts and .mjs, Prettier alone on .json, and nothing on the rest", () => {
+  it("runs ESLint then Prettier on .ts, .mts, .mjs and .astro, Prettier alone on .json, and nothing on the rest", () => {
     expect(toolsFor("packages/x/src/a.ts")).toEqual(["eslint", "prettier"]);
     expect(toolsFor("packages/x/src/a.d.ts")).toEqual(["eslint", "prettier"]);
+    expect(toolsFor("packages/x/scripts/a.mts")).toEqual(["eslint", "prettier"]);
     expect(toolsFor("scripts/a.mjs")).toEqual(["eslint", "prettier"]);
+    expect(toolsFor("packages/x/src/components/A.astro")).toEqual(["eslint", "prettier"]);
     expect(toolsFor("package.json")).toEqual(["prettier"]);
     expect(toolsFor("README.md")).toBeNull();
     expect(toolsFor("scripts/a.js")).toBeNull();
@@ -521,6 +523,39 @@ describe("createRepoFormatter on this repository", { timeout: 60_000 }, () => {
     expect(result.outputs).toEqual([
       "export function probe(x: number): number {\n  const doubled = x * 2;\n\n  return doubled;\n}\n",
     ]);
+  });
+
+  // The website's generator is .mts (#1616): the same TypeScript rules and formatting as a .ts file.
+  it("fixes an .mts file with ESLint and Prettier", async () => {
+    const source = "export function probe(x: number): number {\n  const doubled =    x * 2;\n  return doubled;\n}\n";
+    const result = await format([file("packages/website/scripts/format-staged-probe.mts", source)]);
+
+    expect(result.failure).toBeNull();
+    expect(result.outputs).toEqual([
+      "export function probe(x: number): number {\n  const doubled = x * 2;\n\n  return doubled;\n}\n",
+    ]);
+  });
+
+  // An .astro component (#1616): ESLint fixes its frontmatter through the Astro parser, and Prettier
+  // formats it through prettier-plugin-astro, which the formatter must resolve from the repo's config.
+  it("fixes an .astro file's frontmatter with ESLint and formats the component with Prettier", async () => {
+    const source =
+      '---\nfunction probe(x: number): number {\n  const doubled =    x * 2;\n  return doubled;\n}\nconst value = probe(2);\n---\n\n<p   class="probe">{value}</p>\n';
+    const result = await format([file("packages/website/src/components/FormatStagedProbe.astro", source)]);
+
+    expect(result.failure).toBeNull();
+    expect(result.outputs).toEqual([
+      '---\nfunction probe(x: number): number {\n  const doubled = x * 2;\n\n  return doubled;\n}\nconst value = probe(2);\n---\n\n<p class="probe">{value}</p>\n',
+    ]);
+  });
+
+  it("reports an error ESLint cannot fix in an .astro frontmatter, naming the file", async () => {
+    const result = await format([
+      file("packages/website/src/components/FormatStagedProbe.astro", "---\nconst unused = 1;\n---\n\n<p>probe</p>\n"),
+    ]);
+
+    expect(result.failure).toContain("@typescript-eslint/no-unused-vars");
+    expect(result.failure).toContain("FormatStagedProbe.astro");
   });
 
   it("reports an error ESLint cannot fix, naming the file", async () => {

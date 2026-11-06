@@ -54,10 +54,14 @@ const lintGlobs = args(pkg.scripts.lint, "eslint");
 const formatGlobs = args(pkg.scripts.format, "prettier", "--check");
 const eslint = new ESLint({ cwd: repoRoot });
 
-// The extensions this repo lints. ESLint would also take .js by default, but
-// the tracked .js files are two root configs, a vendored bundle and two
-// browser scripts, deliberately in neither gate (.claude/rules/code-style.md).
-const LINTED_EXTENSIONS = ["mjs", "ts"];
+// The extensions this repo lints, sorted. ESLint would also take .js by
+// default, but the tracked .js files are two root configs, a vendored bundle
+// and two browser scripts, deliberately in neither gate
+// (.claude/rules/code-style.md). The website's .astro components and its .mts
+// generator were linted by nothing until #1616: ESLint skipped the .astro files
+// a glob handed it, since no config block named them, and no glob reached the
+// .mts.
+const LINTED_EXTENSIONS = ["astro", "mjs", "mts", "ts"];
 
 // isPathIgnored() also answers true for a file no config block applies to, so
 // `lintable` is every tracked file of those extensions ESLint would lint.
@@ -67,7 +71,10 @@ for (const file of tracked.filter((file) => LINTED_EXTENSIONS.includes(extension
   if (!(await eslint.isPathIgnored(join(repoRoot, file)))) lintable.push(file);
 }
 
-const linted = lintable.filter((file) => lintGlobs.some((glob) => matchesGlob(file, glob)));
+/** The files of `files` that none of `globs` reaches. */
+const unreached = (files, globs) => files.filter((file) => !globs.some((glob) => matchesGlob(file, glob)));
+
+const linted = lintable.filter((file) => !unreached([file], lintGlobs).length);
 const formatted = [];
 
 for (const file of tracked.filter((file) => formatGlobs.some((glob) => matchesGlob(file, glob)))) {
@@ -78,9 +85,9 @@ for (const file of tracked.filter((file) => formatGlobs.some((glob) => matchesGl
 
 describe("lint and format coverage", () => {
   // An empty discovery would pass every comparison below vacuously.
-  it("finds tracked .ts and .mjs files that lint and format reach", () => {
+  it("finds tracked files of every linted extension that lint and format reach", () => {
     expect(sorted(linted.map(extension))).toEqual(LINTED_EXTENSIONS);
-    expect(sorted(formatted.map(extension))).toEqual(expect.arrayContaining(["json", "mjs", "ts"]));
+    expect(sorted(formatted.map(extension))).toEqual(expect.arrayContaining(["json", ...LINTED_EXTENSIONS]));
   });
 
   it("lint:fix covers exactly the files lint does", () => {
@@ -95,7 +102,57 @@ describe("lint and format coverage", () => {
   // linted extension, so a lintable file `lint` skips is one CI never checks
   // but a commit touching it can still be refused for.
   it("lint reaches every tracked file ESLint can lint", () => {
-    expect(lintable.filter((file) => !linted.includes(file))).toEqual([]);
+    expect(unreached(lintable, lintGlobs)).toEqual([]);
+  });
+
+  // The positive control for the check above: with the globs that reach them
+  // taken out, the website's .astro components and its .mts generator are
+  // reported unreached, so the check sees them (#1616). Without a config block
+  // for them they would not be `lintable` at all and could never be reported.
+  it("would report the .astro and .mts files a narrower lint missed", () => {
+    const astro = lintable.filter((file) => extension(file) === "astro");
+    const mts = lintable.filter((file) => extension(file) === "mts");
+
+    expect(astro.length).toBeGreaterThan(0);
+    expect(mts).toContain("packages/website/scripts/generate-icon-gallery.mts");
+    expect(
+      unreached(
+        lintable,
+        lintGlobs.filter((glob) => glob !== "**/*.mts"),
+      ),
+    ).toEqual(mts);
+    // packages/*/src/** reaches the components as well, so both go.
+    expect(
+      unreached(
+        lintable,
+        lintGlobs.filter((glob) => !["**/*.astro", "packages/*/src/**"].includes(glob)),
+      ),
+    ).toEqual(expect.arrayContaining(astro));
+  });
+
+  // ESLint really reads them with the repo's TypeScript rules: a planted
+  // unused variable is reported in an .astro frontmatter, an .astro <script>
+  // (the virtual .ts the Astro processor extracts) and an .mts file, so the
+  // .astro and .mts files counted above are linted rather than parsed and
+  // passed over.
+  it.each([
+    [
+      "an .astro frontmatter",
+      "packages/website/src/components/Planted.astro",
+      "---\nconst unused: number = 1;\n---\n\n<p>planted</p>\n",
+      2,
+    ],
+    [
+      "an .astro <script>",
+      "packages/website/src/components/Planted.astro",
+      "<p>planted</p>\n\n<script>\n  const unused: number = 1;\n</script>\n",
+      4,
+    ],
+    ["an .mts file", "packages/website/scripts/planted.mts", "const unused: number = 1;\n\nexport {};\n", 1],
+  ])("reports a TypeScript rule in %s", async (_where, filePath, code, line) => {
+    const [result] = await eslint.lintText(code, { filePath: join(repoRoot, filePath) });
+
+    expect(result.messages.map((m) => [m.ruleId, m.line])).toEqual([["@typescript-eslint/no-unused-vars", line]]);
   });
 
   it("format reaches every file lint does", () => {

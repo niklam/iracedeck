@@ -38,7 +38,10 @@ import url from "node:url";
 
 /** What each staged file gets, by extension, in order. */
 export const STAGED_TASKS = Object.freeze([
-  Object.freeze({ extensions: Object.freeze(["ts", "mjs"]), tools: Object.freeze(["eslint", "prettier"]) }),
+  Object.freeze({
+    extensions: Object.freeze(["ts", "mts", "mjs", "astro"]),
+    tools: Object.freeze(["eslint", "prettier"]),
+  }),
   Object.freeze({ extensions: Object.freeze(["json"]), tools: Object.freeze(["prettier"]) }),
 ]);
 
