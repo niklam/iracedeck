@@ -1,7 +1,38 @@
 import { LogLevel } from "@iracedeck/logger";
+import { readFileSync, realpathSync } from "node:fs";
+import { createRequire } from "node:module";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createLogWriteFailures, createSDLogger, SDLoggerLike } from "./sd-logger.js";
+
+describe("the SDK level ranking the guard mirrors (#1630)", () => {
+  const packageDir = join(dirname(fileURLToPath(import.meta.url)), "..");
+  const ownRequire = createRequire(join(packageDir, "package.json"));
+  const sdkPackageJson = join(packageDir, "node_modules", "@elgato", "streamdeck", "package.json");
+  const sdkRequire = createRequire(sdkPackageJson);
+
+  function dependencies(file: string): Record<string, string> {
+    return (JSON.parse(readFileSync(file, "utf8")) as { dependencies: Record<string, string> }).dependencies;
+  }
+
+  it("pins the same @elgato/utils as @elgato/streamdeck", () => {
+    // `createSDLogger` ranks levels with `defcon` from its own `@elgato/utils`,
+    // while the SDK's `Logger.write` gates with its own copy. A bump of one pin
+    // without the other installs two copies, and the mirror can drift from the
+    // gate it mirrors. Move both together.
+    expect(dependencies(join(packageDir, "package.json"))["@elgato/utils"]).toBe(
+      dependencies(sdkPackageJson)["@elgato/utils"],
+    );
+  });
+
+  it("resolves to the very copy the SDK's logger uses", () => {
+    expect(realpathSync(ownRequire.resolve("@elgato/utils/logging"))).toBe(
+      realpathSync(sdkRequire.resolve("@elgato/utils/logging")),
+    );
+  });
+});
 
 function createMockSDLogger(): SDLoggerLike {
   const mock: SDLoggerLike = {

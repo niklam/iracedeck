@@ -37,7 +37,7 @@ pnpm build  # tsc → dist/
 ## Dependencies
 
 - `@elgato/streamdeck` — The Elgato Stream Deck SDK
-- `@elgato/utils` — the SDK's own utilities, the same version `@elgato/streamdeck` pins: `JsonObject`, and the level ranking `defcon` that `createSDLogger` uses to mirror the SDK logger's gate (#1630)
+- `@elgato/utils` — the SDK's own utilities, the same version `@elgato/streamdeck` pins: `JsonObject`, and the level ranking `defcon` that `createSDLogger` uses to mirror the SDK logger's gate (#1630). Bump it only together with `@elgato/streamdeck`: `sd-logger.test.ts` fails when the two pins differ or resolve to different copies, since the mirror would then rank levels with a different `defcon` than the gate
 - `@iracedeck/deck-core` — Platform-agnostic interfaces
 - `@iracedeck/app-constants` — `LogLocation`, the type `logLocation` reports (#1367)
 - `@iracedeck/settings` — imported only by `adapter.test.ts`, which runs the real settings cache over the adapter's global-settings fan-out
