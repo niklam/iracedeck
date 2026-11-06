@@ -4,6 +4,7 @@ import tseslint from '@typescript-eslint/eslint-plugin';
 import tsparser from '@typescript-eslint/parser';
 import prettier from 'eslint-config-prettier';
 import stylistic from '@stylistic/eslint-plugin';
+import astro from 'eslint-plugin-astro';
 
 // The iRacing packages a sim-neutral layer may not import: the packages named in
 // SIM_NEUTRAL_PACKAGES below (#1351, #1367, #1375) and the device shells (#1500).
@@ -63,6 +64,18 @@ const PI_COMPONENTS_MESSAGE =
 const SHELL_SIM_MESSAGE =
   'A plugin shell must not depend on a simulator: read the sim through PluginExtensionContext.sim, which plugin-runtime hands PluginExtension.start (#1500).';
 
+// The TypeScript sources: .ts, and .mts, the extension the website's icon-gallery
+// generator is written in (#1616). An .mts file gets exactly what a .ts file does,
+// so every block below that names a TypeScript pattern names both.
+const TS_FILES = ['**/*.ts', '**/*.mts'];
+
+// The website's Astro components and pages (#1616). Their frontmatter, and every
+// <script> the plugin's processor extracts (as a virtual `<file>.astro/<n>.ts`,
+// which TS_FILES then matches), is TypeScript, held to the same rules as a .ts
+// file; only the parser differs, so the rule blocks name this beside TS_FILES and
+// the parser block does not.
+const ASTRO_FILES = ['**/*.astro'];
+
 // Repo-wide (#1208); spread into every block that sets no-restricted-syntax, since a
 // later block's options replace an earlier one's rather than merging with them.
 const NO_LEGACY_SETTINGS_BEHAVIOR = {
@@ -74,13 +87,35 @@ const NO_LEGACY_SETTINGS_BEHAVIOR = {
 export default [
   eslint.configs.recommended,
   {
-    files: ['**/*.ts'],
+    files: TS_FILES,
     languageOptions: {
       parser: tsparser,
       globals: {
         ...globals.node,
       }
     },
+  },
+  // The Astro plugin's flat config (#1616): astro-eslint-parser for the
+  // component, its Astro and Node globals, and the client-side-ts processor,
+  // which hands each <script> to the TypeScript blocks as a virtual .ts file, so
+  // browser code is linted, and held to the sim boundary, as frontmatter is. Its
+  // rules block names no files, so it is scoped here: an astro rule has nothing
+  // to read in any other file. The frontmatter parser is named rather than left
+  // to the plugin, which looks it up from the process's cwd and would parse the
+  // frontmatter as plain JavaScript wherever that lookup fails.
+  ...astro.configs['flat/recommended'].map((block) =>
+    block.rules && !block.files ? { ...block, files: ASTRO_FILES } : block,
+  ),
+  {
+    files: ASTRO_FILES,
+    languageOptions: {
+      parserOptions: {
+        parser: tsparser,
+      },
+    },
+  },
+  {
+    files: [...TS_FILES, ...ASTRO_FILES],
     plugins: {
       '@typescript-eslint': tseslint,
       '@stylistic': stylistic,
@@ -122,7 +157,7 @@ export default [
     // The Elgato adapter delivers a global-settings read's answer from the SDK
     // promise (#1208). SDK 3.0's legacy flag would ALSO fire the event for it,
     // handing `@iracedeck/settings`' one-time host migration the answer twice.
-    files: ['**/*.ts'],
+    files: [...TS_FILES, ...ASTRO_FILES],
     rules: {
       'no-restricted-syntax': ['error', NO_LEGACY_SETTINGS_BEHAVIOR],
     },
@@ -152,8 +187,8 @@ export default [
     // parameter or annotation), so this is a guard on the common shape, not a
     // complete one.
     // scripts/global-settings-cast-lint.test.mjs proves both selectors fire.
-    files: ['packages/*/src/**/*.ts'],
-    ignores: ['packages/*/src/**/*.test.ts'],
+    files: ['packages/*/src/**/*.ts', 'packages/*/src/**/*.mts', 'packages/*/src/**/*.astro'],
+    ignores: ['packages/*/src/**/*.test.ts', 'packages/*/src/**/*.test.mts'],
     rules: {
       'no-restricted-syntax': [
         'error',
@@ -180,20 +215,20 @@ export default [
     // the same boundary (#1367), and since #1375 every package named in
     // SIM_NEUTRAL_PACKAGES does: settings beneath deck-core, voice-packs, the
     // event-bus catalog, the three deck adapters and the leaves. The block holds
-    // every .ts and .mjs file of the package, tests included, and src/ is not
-    // its edge: `pnpm lint` reads every .mjs in the repo, and a tracked .ts
-    // outside packages/*/src, which its globs miss, fails
-    // scripts/lint-format-coverage.test.mjs. It does not hold what no lint gate
-    // here reads at all: the website's .astro pages and its
-    // scripts/generate-icon-gallery.mts, where no lint refuses a sim import.
-    // That is a gap in what the repo lints, not in this block, and naming .mts
-    // here would not close it: the TypeScript parser block above takes
-    // **/*.ts only and `pnpm lint` passes no .mts, so the pattern would match a
-    // file nothing lints. The subpath pattern closes a deep import, which
-    // iracing-sdk and iracing-native allow because they declare no `exports`,
-    // as the plugin-shell block below does (#1500). Type-only imports included.
+    // every .ts, .mts, .mjs and .astro file of the package, tests included, and
+    // src/ is not its edge: `pnpm lint` reads every .mjs, .mts and .astro in the
+    // repo, and a tracked .ts outside packages/*/src, which its globs miss, fails
+    // scripts/lint-format-coverage.test.mjs. The website's .astro pages and its
+    // scripts/generate-icon-gallery.mts were linted by nothing until #1616, so a
+    // sim import there went unrefused; an .astro file's <script> is held too,
+    // as the virtual .ts the Astro processor extracts. The subpath pattern closes
+    // a deep import, which iracing-sdk and iracing-native allow because they
+    // declare no `exports`, as the plugin-shell block below does (#1500).
+    // Type-only imports included.
     // scripts/deck-core-sim-boundary.test.mjs proves this rule fires in each.
-    files: SIM_NEUTRAL_PACKAGES.flatMap((dir) => [`packages/${dir}/**/*.ts`, `packages/${dir}/**/*.mjs`]),
+    files: SIM_NEUTRAL_PACKAGES.flatMap((dir) =>
+      ['ts', 'mts', 'mjs', 'astro'].map((extension) => `packages/${dir}/**/*.${extension}`),
+    ),
     rules: {
       'no-restricted-imports': [
         'error',
