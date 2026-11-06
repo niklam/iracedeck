@@ -337,6 +337,7 @@ for (const dirent of readdirSync(ACTIONS_ROOT, { withFileTypes: true })) {
 
   const sourcePath = path.join(ACTIONS_ROOT, dirent.name, `${dirent.name}.ts`);
   let source: string;
+
   try {
     source = readFileSync(sourcePath, "utf-8");
   } catch {
@@ -347,10 +348,13 @@ for (const dirent of readdirSync(ACTIONS_ROOT, { withFileTypes: true })) {
 
   for (const iconPath of parseIconImports(source)) {
     const consumers = actionsByIcon.get(iconPath) ?? [];
+
     if (!consumers.includes(dirent.name)) consumers.push(dirent.name);
+
     actionsByIcon.set(iconPath, consumers);
 
     const basename = iconPath.split("/").pop() ?? "";
+
     if (titles[basename] && !titleByIcon.has(iconPath)) titleByIcon.set(iconPath, titles[basename]);
   }
 }
@@ -381,8 +385,10 @@ const hiddenActions = new Set<string>();
 
 for (const action of manifest.Actions) {
   if (!action.UUID.startsWith(UUID_PREFIX)) continue;
+
   const folder = action.UUID.slice(UUID_PREFIX.length);
   actionDisplayName.set(folder, action.Name);
+
   if (action.VisibleInActionsList === false) hiddenActions.add(folder);
 }
 
@@ -413,11 +419,13 @@ const usedTemplateSamples = new Set<string>();
 // TEMPLATE_SAMPLES and marked `sample`, like the dynamic class (#1352).
 for (const familyDirent of readdirSync(ICONS_ROOT, { withFileTypes: true })) {
   if (!familyDirent.isDirectory() || NON_FAMILY_DIRS.has(familyDirent.name)) continue;
+
   const family = familyDirent.name;
   const familyName = resolveFamilyName(family);
 
   for (const file of readdirSync(path.join(ICONS_ROOT, family))) {
     if (!file.endsWith(".svg")) continue;
+
     const name = file.slice(0, -4);
     const iconPath = `${family}/${name}`;
     const consumers = actionsByIcon.get(iconPath) ?? [];
@@ -495,6 +503,7 @@ if (unusedTemplateSamples.length > 0) {
 // "Dynamic templates" section.
 for (const file of readdirSync(DYNAMIC_ROOT)) {
   if (!file.endsWith(".svg")) continue;
+
   const name = file.slice(0, -4);
   const sourcePath = path.join(DYNAMIC_ROOT, file);
   const svg = readFileSync(sourcePath, "utf-8");
@@ -519,6 +528,7 @@ for (const file of readdirSync(DYNAMIC_ROOT)) {
         sample: true,
       });
     }
+
     continue;
   }
 
@@ -561,6 +571,7 @@ for (const dirent of readdirSync(ACTIONS_ROOT, { withFileTypes: true })) {
   for (const { file, cls } of STATIC_CLASSES) {
     const sourcePath = path.join(ACTIONS_ROOT, dirent.name, file);
     let svg: string;
+
     try {
       svg = readFileSync(sourcePath, "utf-8");
     } catch {
@@ -756,6 +767,7 @@ writeFileSync(JSON_OUT, JSON.stringify(entries, null, 2) + "\n", "utf-8");
 
 const counts = entries.reduce<Record<string, number>>((acc, e) => {
   acc[e.class] = (acc[e.class] ?? 0) + 1;
+
   return acc;
 }, {});
 console.log(`Generated ${entries.length} gallery entries:`, counts);

@@ -37,9 +37,11 @@
     // ids carried by "type" are intentionally left unmapped for now.
     const labels = { "stream-deck": "Stream Deck", mirabox: "Mirabox", ulanzi: "Ulanzi" };
     const label = ecosystem ? labels[ecosystem] : null;
+
     if (!label) return;
 
     const el = document.getElementById("update-lead-in");
+
     if (el) {
       el.textContent = label + " updated — here's what's new.";
       el.hidden = false;

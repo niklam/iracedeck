@@ -47,6 +47,7 @@ if (orphanKeys.length > 0) {
     `IconGallery: ${orphanKeys.length} default key image(s) have no group and are not rendered: ${orphanKeys.map((e) => e.name).join(", ")}`,
   );
 }
+
 if (orphanCategories.length > 0) {
   console.warn(
     `IconGallery: ${orphanCategories.length} category icon(s) have no group and are not rendered: ${orphanCategories.map((e) => e.name).join(", ")}`,
@@ -153,14 +154,18 @@ function groupCount(group: TemplateGroup): number {
     for (const card of document.querySelectorAll<HTMLElement>(".icon-card")) {
       const hit = !q || (card.dataset.search ?? "").includes(q);
       card.hidden = !hit;
+
       if (hit) visible++;
     }
+
     for (const group of document.querySelectorAll<HTMLElement>(".gallery-family")) {
       group.hidden = !group.querySelector(".icon-card:not([hidden])");
     }
+
     for (const section of document.querySelectorAll<HTMLElement>(".gallery-class")) {
       section.hidden = !section.querySelector(".icon-card:not([hidden])");
     }
+
     if (count) count.textContent = `${visible} icons`;
   });
 </script>

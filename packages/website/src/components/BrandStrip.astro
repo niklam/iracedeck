@@ -39,6 +39,7 @@ const logoUrls = import.meta.glob<string>("../assets/brands/*.{svg,png,webp,avif
 // indistinguishable from a brand that never had a logo. Fail the build instead.
 function resolveLogo(name: string, logo: string): string {
   const logoUrl = logoUrls[`../assets/brands/${logo}`];
+
   if (logoUrl) return logoUrl;
 
   const reason = BRAND_LOGO_EXTENSIONS.some((extension) => logo.endsWith(extension))
