@@ -953,9 +953,11 @@ describe("the first word of a shell-fed string is at command position (#1634)", 
     readsLinearly((n) => `echo '${"gh pr merge 7; ".repeat(n)}' | bash`, 2000, MERGE, true);
     readsLinearly((n) => `echo '${"x gh pr merge 7 ".repeat(n)}' | bash`, 2000, MERGE, false);
     // A lead token whose option value were free to be another option (the one
-    // parse per token COMMAND_LEAD keeps) would backtrack exponentially here,
-    // where the lead fails at the string's close.
-    readsLinearly((n) => `bash -c 'env ${"-u ".repeat(n)}-u'`, 12, MERGE, false);
+    // parse per token COMMAND_LEAD keeps) would backtrack here, where the lead
+    // fails at the string's close or the text's end, in time that grows as the
+    // Fibonacci numbers do: trivial at 20 options, a second at 40.
+    readsLinearly((n) => `bash -c 'env ${"-u ".repeat(n)}-u'`, 20, MERGE, false);
+    readsLinearly((n) => `env ${"-u ".repeat(n)}-u`, 20, MERGE, false);
   });
 });
 

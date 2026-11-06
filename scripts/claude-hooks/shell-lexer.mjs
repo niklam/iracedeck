@@ -1667,7 +1667,11 @@ function normalisePrograms(command, text, flat, words, raw, extra = new Map()) {
   const inside = new Uint8Array(command.length);
   const covered = (p) => inside[p] === 1;
   for (let changed = true, passes = 0; changed && passes < 32; passes++) {
-    changed = false;
+    // Every rewrite of the pass, `[start, end, text, flat]`, applied in one
+    // splice at its end: a string rebuilt per word made a chain of n words n²
+    // (#1634 review). Words never overlap (`seen`, `covered`), so the order of
+    // application is free, and a comparison reads the text as it stood.
+    const edits = [];
     // The first word of each fed string after the anchored positions, so a
     // whole quoted word (`sudo "gh" …`) is read before the word inside its quotes.
     const positions = [...programPositions(t), ...[...extra].map(([start, kind]) => ({ start, lead: "", kind }))];
@@ -1690,11 +1694,7 @@ function normalisePrograms(command, text, flat, words, raw, extra = new Map()) {
       const live = chars.some((x) => x.live);
       const decoded = chars.map((x) => x.c).join("");
       const env = afterEnv(lead);
-      const write = (by) => {
-        t = t.slice(0, start) + by + t.slice(end);
-        f = f.slice(0, start) + by + f.slice(end);
-        changed = true;
-      };
+      const write = (by, inFlat = by) => edits.push([start, end, by, inFlat]);
       // An option the lead could not step over because it is quoted
       // (`env "-C" dir`): never the program, and written back as the option it
       // is, its case kept, so the next pass steps over it (#1606 review).
@@ -1738,13 +1738,36 @@ function normalisePrograms(command, text, flat, words, raw, extra = new Map()) {
       const rewrite = (s) => {
         let out = "";
         for (let i = start; i < cut; i++) out += keep.some(([k0, k1]) => k0 <= i && i < k1) ? s[i] : " ";
-        return s.slice(0, start) + out + read.name.padStart(end - cut) + s.slice(end);
+        return out + read.name.padStart(end - cut);
       };
-      const next = rewrite(t);
-      if (next === t) continue;
-      t = next;
-      f = rewrite(f);
-      changed = true;
+      const by = rewrite(t);
+      if (by !== t.slice(start, end)) write(by, rewrite(f));
+    }
+    changed = edits.length > 0;
+    if (changed) {
+      // A word inside a command substitution that is another word's directory
+      // part (`$(GIT.EXE push x)/gh.exe`) nests in that word's edit, whose
+      // replacement keeps the substitution's characters where they stand: the
+      // inner edit is written into the outer's replacement at its offset.
+      const merged = [];
+      for (const e of edits.sort((x, y) => x[0] - y[0])) {
+        const outer = merged.findLast((m) => m[0] <= e[0] && e[1] <= m[1]);
+        if (!outer) merged.push(e);
+        else
+          for (const k of [2, 3])
+            outer[k] = outer[k].slice(0, e[0] - outer[0]) + e[k] + outer[k].slice(e[1] - outer[0]);
+      }
+      const splice = (s, k) => {
+        let out = "";
+        let at = 0;
+        for (const e of merged) {
+          out += s.slice(at, e[0]) + e[k];
+          at = e[1];
+        }
+        return out + s.slice(at);
+      };
+      t = splice(t, 2);
+      f = splice(f, 3);
     }
   }
   return { text: t, flat: f, programs, unreadable };
