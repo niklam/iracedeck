@@ -12,10 +12,8 @@
  * through. Design record:
  * `docs/superpowers/specs/2026-11-05-issue-1630-log-write-failure-never-throws.md`.
  */
+import { defcon, type LogLevel as SDLevelName } from "@elgato/utils/logging";
 import { ILogger, LogLevel } from "@iracedeck/logger";
-
-/** The level names the Stream Deck SDK's logger takes and reports. */
-type SDLevelName = "error" | "warn" | "info" | "debug" | "trace";
 
 /**
  * Minimal interface for Stream Deck logger methods we use.
@@ -53,18 +51,13 @@ export function createLogWriteFailures(): LogWriteFailures {
   return { dropped: 0, firstReason: undefined };
 }
 
-/** The SDK's own priority order (`defcon` in `@elgato/utils`): lower is more severe. */
-const SD_LEVEL_PRIORITY: Readonly<Record<SDLevelName, number>> = { error: 0, warn: 1, info: 2, debug: 3, trace: 4 };
-
 /**
- * Whether the SDK logger would write a line at `lineLevel`, mirroring its
- * `Logger.write` gate. A missing or unknown level counts as writing it, as the
- * SDK's own `defcon` ranks an unknown level with `trace`.
+ * Whether the SDK logger would write a line at `lineLevel`: its own
+ * `Logger.write` gate, through its own `defcon` ranking. A missing or unknown
+ * level counts as writing everything, as `defcon` ranks it with `trace`.
  */
 function sdWrites(sdLogger: SDLoggerLike, lineLevel: SDLevelName): boolean {
-  const current = SD_LEVEL_PRIORITY[sdLogger.level as SDLevelName] ?? SD_LEVEL_PRIORITY.trace;
-
-  return SD_LEVEL_PRIORITY[lineLevel] <= current;
+  return defcon(lineLevel) <= defcon(sdLogger.level as SDLevelName);
 }
 
 function failureReason(error: unknown): string {

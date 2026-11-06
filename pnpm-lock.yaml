@@ -463,6 +463,9 @@ importers:
       '@elgato/streamdeck':
         specifier: 3.0.2
         version: 3.0.2
+      '@elgato/utils':
+        specifier: 0.6.1
+        version: 0.6.1
       '@iracedeck/app-constants':
         specifier: workspace:*
         version: link:../app-constants
@@ -473,9 +476,6 @@ importers:
         specifier: workspace:*
         version: link:../logger
     devDependencies:
-      '@elgato/utils':
-        specifier: 0.6.1
-        version: 0.6.1
       '@iracedeck/settings':
         specifier: workspace:*
         version: link:../settings
