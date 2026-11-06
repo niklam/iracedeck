@@ -45,6 +45,7 @@ import {
   matchesAt,
   POWERSHELL,
   powershellAsBash,
+  programAt,
   programStart,
   ranges,
   resolveDir,
@@ -419,17 +420,15 @@ const MERGE_AT = cmd(/gh\s+pr\s+merge\b/);
 /**
  * The first `gh pr merge` the command runs, parsed ({@link parseMerge}) and
  * with `index`, where its program word starts; `undefined` when there is
- * none. The post-hook's trigger. Where the mask stands over it, a match
- * anywhere is a merge, since the masked text holds no quoted mention: one run
- * through a wrapper the anchor does not know (`nice gh pr merge`) still gets
- * its board move and CI run list. Where the mask is set aside — a span that
- * feeds a shell, or the whole command when the lexer is unsure (#1607) — the
- * raw text holds every mention, so only a merge at command position counts
- * there: after a command boundary and a {@link COMMAND_LEAD} (`bash -c 'ls;
- * gh pr merge 5'`), or as the first word that fed shell runs (`bash -c 'gh pr
- * merge 5'`, `sudo gh pr merge 5`, `fedCommandStart` in `shell-lexer.mjs`).
- * A grep for `gh pr merge 1603` beside a `bash $SCRIPT` used to move #1603's
- * card.
+ * none. The post-hook's trigger, which follows the command-position rule the
+ * pre-hook's guards follow (#1607): a `gh pr merge` counts only where `gh` is
+ * the program, in masked and raw text alike — after a command boundary and a
+ * {@link COMMAND_LEAD} (`timeout 5 gh …`, `GH_REPO=x gh …`, `bash -c 'ls; gh
+ * …'`), as the program a `sudo`, `nice`, `stdbuf` or `winpty` runs or after `find
+ * -exec` (`programAt` in `shell-lexer.mjs`), or as the first word a fed shell
+ * runs (`bash -c 'gh pr merge 5'`, `fedCommandStart`). A mention as an
+ * argument is none: `echo gh pr merge 1603`, a `git log -- gh pr merge 1603`,
+ * or a grep for it beside a `bash $SCRIPT`, which used to move #1603's card.
  */
 export function firstMerge(command) {
   const { text, flat } = view(command);
@@ -438,7 +437,7 @@ export function firstMerge(command) {
   );
   for (const m of text.matchAll(/\bgh\s+pr\s+merge\b/g)) {
     const to = m.index + m[0].length;
-    if (!trustedIn(command, m.index, to) && !anchored.has(to) && !fedCommandStart(command, m.index)) continue;
+    if (!anchored.has(to) && !programAt(command, m.index, "gh") && !fedCommandStart(command, m.index)) continue;
     // From the start of the program word, so its raw text is read whole (#1606).
     const start = programStart(command, m.index);
     const rest = text.slice(start).search(CHAIN_AND_BACKGROUND);

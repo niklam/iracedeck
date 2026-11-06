@@ -923,6 +923,8 @@ describe("post-bash.mjs reads a mention beside a shell feed as a mention (#1607)
     `timeout 60 grep -rn "gh pr merge 1603 --squash" scripts`,
     `grep -n "gh pr merge 1603 --squash" notes.md; bash "$SCRIPT"`,
     `Q=/tmp/q; grep -n "gh pr merge 1603 --squash" $Q/a; bash $Q/run.sh`,
+    // An unquoted argument: `gh` is not the program (CodeRabbit on PR #1632).
+    "echo gh pr merge 1603 --squash",
   ])("reads no PR and says nothing for a mention: %s", (command) => {
     const { note, calls } = fireWithGh(command, {});
     expect(note).toBeNull();

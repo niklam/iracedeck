@@ -4546,6 +4546,10 @@ describe("the mask is set aside only where a shell is fed (#1607)", () => {
     `rg -t sh "gh pr merge 1603 --squash" scripts`,
     `ls /bin/sh "gh pr merge 1603 --squash"`,
     `sudo -u sh ls "gh pr merge 1603 --squash"`,
+    // An unquoted argument is a mention too: `gh` is not the program (CodeRabbit on PR #1632).
+    "echo gh pr merge 1603 --squash",
+    "git log --oneline --grep=x -- gh pr merge 1603",
+    'printf "%s\\n" done; echo note gh pr merge 1603',
   ])("finds no merge in a mention the raw text shows: %s", (command) => expect(firstMerge(command)).toBeUndefined());
 
   it.each([
@@ -4554,6 +4558,8 @@ describe("the mask is set aside only where a shell is fed (#1607)", () => {
     ["cd scripts && gh pr merge 5 --squash", "gh"],
     ["timeout 120 gh pr merge 5 --squash", "gh"],
     ["nice gh pr merge 5 --squash", "gh"],
+    ["winpty gh pr merge 5 --squash", "gh"],
+    ["gh pr merge 5 --squash", "gh"],
     ["sudo gh pr merge 5 --squash", "gh"],
     ["sudo -E gh pr merge 5 --squash", "gh"],
     ["bash -c 'ls; gh pr merge 5 --squash'", "gh"],

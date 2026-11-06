@@ -375,18 +375,20 @@ const FED_LEAD = new RegExp(
   "y",
 );
 
-/** A boundary-led word, then its options with their values, ending the text it is tested on ({@link shellProgram}). */
+/** A boundary-led word, then its options with their values, ending the text it is tested on ({@link programAt}). */
 const wrapped = (name, values) =>
   new RegExp(String.raw`(?<=^|[\s;&|(\x60])${name}(?:\s+(?:(?:${values})\s+[^\s-]\S*|-\S+))*\s+$`);
 /**
  * The wrappers whose own argument is the program they run, ahead of a shell
- * word ({@link shellProgram}): `sudo` (its options and their values), `nice`
- * and `stdbuf`.
+ * word ({@link programAt}): `sudo` (its options and their values), `nice`,
+ * `stdbuf` and `winpty`.
  */
 const WRAPPERS = [
   wrapped("sudo", String.raw`-[${SUDO_VALUE_SHORT}]|${[...SUDO_VALUE_LONG].join("|")}`),
   wrapped("nice", String.raw`-n|--adjustment`),
   wrapped("stdbuf", String.raw`-[ioe]|--input|--output|--error`),
+  // Git Bash's console wrapper (`winpty gh …`); none of its options takes a value.
+  wrapped("winpty", String.raw`(?!)`),
 ];
 /** `find`'s `-exec` / `-execdir`, whose next word is the program it runs. */
 const FIND_EXEC = /(?:^|\s)-exec(?:dir)?\s+$/;
@@ -431,7 +433,7 @@ function sudoRunsShell(text, from) {
  * of a fed span that is command position, as a {@link cmd} anchor is after a
  * boundary; a quoted mention inside an argument of another command is
  * neither. The shell word counts only where it is the program ({@link
- * shellProgram}): `rg -t sh "gh pr merge 1603"` and `ls /bin/sh "gh …"` name
+ * programAt}): `rg -t sh "gh pr merge 1603"` and `ls /bin/sh "gh …"` name
  * `sh` as an argument, and their mention is no merge (CodeRabbit on PR #1632).
  */
 export function fedCommandStart(command, index) {
@@ -441,7 +443,7 @@ export function fedCommandStart(command, index) {
   const before = text.slice(span[0], index);
   for (const m of before.matchAll(SHELL_FED)) {
     FED_LEAD.lastIndex = m.index;
-    if (FED_LEAD.test(before) && shellProgram(command, span[0], span[0] + m.index, m[0])) return true;
+    if (FED_LEAD.test(before) && programAt(command, span[0] + m.index, m[0], span[0])) return true;
   }
   return false;
 }
@@ -450,13 +452,15 @@ export function fedCommandStart(command, index) {
  * Whether the word `name` at `at` in {@link view}'s text is the program its
  * command runs (CodeRabbit on PR #1632): a program word the rewrite read
  * ({@link normalisePrograms}, so past a {@link COMMAND_LEAD} — `env A=1 bash`,
- * `timeout 5 sh`, `xargs sh`, assignments), the word a `sudo`, `nice` or
- * `stdbuf` that is itself a program runs, past their options and values
- * (`sudo -u x sh`), or the word after `find`'s `-exec` / `-execdir`. A
- * shell word anywhere else is an argument (`rg -t sh`, `ls /bin/sh`).
- * `from` is where the fed span starts: a wrapper is looked for in it alone.
+ * `timeout 5 sh`, `xargs gh`, assignments, keywords), the word a `sudo`,
+ * `nice`, `stdbuf` or `winpty` that is itself a program runs, past their options and
+ * values (`sudo -u x sh`, `nice gh`), or the word after `find`'s `-exec` /
+ * `-execdir`. A word anywhere else is an argument (`rg -t sh`, `ls /bin/sh`,
+ * `echo gh pr merge 5`). Read for a fed shell word ({@link fedCommandStart})
+ * and for the post-hook's merge (`firstMerge` in `rules-bash.mjs`). `from`
+ * bounds where a wrapper is looked for: a fed span's start, or the text's.
  */
-function shellProgram(command, from, at, name) {
+export function programAt(command, at, name, from = 0) {
   const { text, programs } = view(command);
   if (programs.some(([, b, cut]) => b === at + name.length && text.slice(cut, b).trim() === name)) return true;
   // What stands before the whole word, a path to it (`/bin/sh`) included.
@@ -466,7 +470,7 @@ function shellProgram(command, from, at, name) {
     const m = re.exec(before);
     if (m) {
       const word = m[0].match(/^\S+/)[0];
-      return shellProgram(command, from, from + m.index, word);
+      return programAt(command, from + m.index, word, from);
     }
   }
   return false;

@@ -84,10 +84,10 @@ if (typeof raw === "string") {
     // unsure, else only the element that feeds a shell (#1607) — they read the
     // raw text, as before. The sed and issue triggers are unanchored, so a
     // follow-up is wanted wherever the command ran (`xargs sed -i`); the merge
-    // trigger counts a mention in that raw text only at command position
-    // (`firstMerge`), since a quoted `gh pr merge 1603` in a grep there once
-    // moved #1603's card. `timeout` and `xargs` set nothing aside: `COMMAND_LEAD`
-    // steps over them in the masked text.
+    // trigger counts a `gh pr merge` only where `gh` is the program, masked text
+    // or raw (`firstMerge`): a quoted `gh pr merge 1603` in a grep, or an
+    // unquoted one after `echo`, once moved #1603's card. `timeout` and `xargs`
+    // set nothing aside: `COMMAND_LEAD` steps over them in the masked text.
     const text = trustedMask(command);
     if (/\bsed\s+(-[a-zA-Z]*i|--in-place)/.test(text)) {
       const r = git(["diff", "--stat"], gitCwd(command, cwd));
