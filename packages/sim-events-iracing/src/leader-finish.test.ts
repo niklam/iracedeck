@@ -339,6 +339,20 @@ describe("resolveLeaderFinish", () => {
     expect(fast.lapCountChequered?.crossings).toBe(fast.crossingsToChequered);
   });
 
+  it("checks a post-expiry crossing at the raw pace, not the capped one", () => {
+    // 70 s past expiry, the marker set (a lead change can set it), the leader
+    // at 0.6 with a 160 s raw lap and the player's average at 100 s. At the
+    // raw pace the leader crossed 96 s ago, before expiry, so the marker is
+    // not borne out: two crossings. At the capped pace 60 s would look like a
+    // crossing since expiry and read one — the race a lap short.
+    const telemetry = race(-70, 0.6, { CarIdxLapCompleted: [30, 30, 6], CarIdxLapDistPct: [0.5, 0.6, 0.1] });
+    const finish = resolveLeaderFinish(telemetry, ORDER, 0, 160, HELD_CROSSED, 100);
+
+    expect(finish.crossingsToChequered).toBe(2);
+    expect(finish.lapCountChequered?.crossings).toBe(2);
+    expect(finish.lapCountChequered?.inS).toBeCloseTo((2 - 0.6) * 100, 9);
+  });
+
   it("has no lap-count prediction without the player's average", () => {
     const telemetry = race(600, 0.6, { CarIdxLapCompleted: [30, 30, 6], CarIdxLapDistPct: [0.5, 0.6, 0.1] });
 
