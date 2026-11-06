@@ -5153,10 +5153,12 @@ describe("a carried merge is refused before the PR is read (#1634)", () => {
   // and a re-judge hits the same cap: the command is refused whole, before any
   // PR read (an independent judge on PR #1637 found `nice` × 9 let a merge through).
   it.each([
+    ["eight nested nice, the first depth refused", `${"nice ".repeat(8)}gh pr merge 7 --squash`],
     ["nine nested nice", `${"nice ".repeat(9)}gh pr merge 7 --squash`],
     ["twelve nested nice", `${"nice ".repeat(12)}gh pr merge 7 --squash`],
     ["ten nested nice in a shell string", `bash -c '${"nice ".repeat(10)}gh pr merge 7' 'x y'`],
     ["a tag push under ten nice", `${"nice ".repeat(10)}git push origin v1.2.3`],
+    ["a harmless program under eight nice", `${"nice ".repeat(8)}echo hi`],
     ["a harmless program under nine nice", `${"nice ".repeat(9)}echo hi`],
   ])("refuses %s as nested too deep to read", (_, c) => {
     reads.length = 0;
