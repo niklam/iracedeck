@@ -23,7 +23,7 @@ import {
 import type { ILogger } from "@iracedeck/logger";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { LeaderFinish } from "./leader-finish.js";
+import { type LeaderFinish, UNKNOWN_LEADER_FINISH } from "./leader-finish.js";
 import { CONTROLLER_TICK_ORDER, REPLAY_RECORDER_ORDER, type TickStage } from "./tick-order.js";
 import type { UnitRunner } from "./tick-steps.js";
 import {
@@ -663,9 +663,10 @@ describe("decision 3: a value that throws takes its last value this session", ()
       const { called } = runTick();
 
       expect(called.filter((s) => ORDER_CONSUMERS.includes(s))).toEqual([]);
-      // The leader closure (#1405): no lap time and no chequered prediction.
+      // The leader closure (#1405): no lap time, no chequered prediction and
+      // no lap-counter gap.
       const leaderFinish = argsOf("diffFuelLapsLeft")?.[5] as () => LeaderFinish;
-      expect(leaderFinish()).toEqual({ lapTimeS: null, chequeredInS: null });
+      expect(leaderFinish()).toEqual(UNKNOWN_LEADER_FINISH);
 
       harness.control.throwing.clear();
       expect(runTick().called.filter((s) => ORDER_CONSUMERS.includes(s))).toEqual(ORDER_CONSUMERS);

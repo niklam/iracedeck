@@ -43,10 +43,12 @@
  *     and the timed estimate (the player's crossings up to their first at
  *     or after the leader's PREDICTED chequered flag, `leader-finish.ts`,
  *     which reads an expired clock only once it has held for about a
- *     second (`CLOCK_EXPIRY_CONFIRM_TICKS`);
- *     when that cannot be predicted, a running clock's bound
- *     `SessionTimeRemain + 2 × leaderLap`, and unknown for an expired one). The verdict is on the TANK, not the post-margin
- *     count ({@link isFuelRaceCovered}, #1405): the raw laps of fuel must
+ *     second, `CLOCK_EXPIRY_CONFIRM_TICKS`: counted on the lap counters for
+ *     a player within a lap of the leader, and by the player's pace
+ *     otherwise; when the flag cannot be predicted, a running clock's bound
+ *     `SessionTimeRemain + 2 × leaderLap`, and unknown for an expired one).
+ *     The verdict is on the TANK, not the post-margin count
+ *     ({@link isFuelRaceCovered}, #1405): the raw laps of fuel must
  *     cover the rest of this lap and every lap after it with
  *     `FUEL_COVERAGE_ERROR` to spare. The margin protects a pit decision
  *     against estimate error, but with a lap or two left there is no stop
@@ -60,10 +62,9 @@
  *     distance leaves no lap after the current one (`remainingLaps === 0`,
  *     the verdict's own rule): a lapped or slower-class player whose own
  *     final-lap latch has not fired is on their last lap all the same. The
- *     announced floor is NOT
- *     advanced by a suppression, so coverage is re-evaluated every lap and a
- *     burn-rate spike that shrinks the estimate below the race distance
- *     still announces on the earlier laps.
+ *     announced floor is NOT advanced by a suppression, so coverage is
+ *     re-evaluated every lap and a burn-rate spike that shrinks the
+ *     estimate below the race distance still announces on the earlier laps.
  *   - Enough-fuel reassurance (issue #880): when the coverage determination
  *     is positive in the race ENDGAME — 10 or fewer laps to go by the
  *     binding limit — the dedicated `fuel.lapsLeft.raceCovered` event fires
@@ -247,7 +248,7 @@ export type FuelRaceCoverage = {
  * @param telemetry - the tick's telemetry
  * @param stats - the validated estimator's stats, for the player's lap time
  * @param lapFractionRemaining - `1 − LapDistPct`, from {@link estimateFuelLapsLeft}
- * @param getLeaderFinish - the race leader's recent lap time and predicted chequered flag, each `null` when unknown
+ * @param getLeaderFinish - the race leader's recent lap time, predicted chequered flag (seconds and crossings) and the player's lap-counter gap to them, each `null` when unknown
  */
 export function resolveFuelRaceCoverage(
   telemetry: TelemetryData,
@@ -281,10 +282,11 @@ export function resolveFuelRaceCoverage(
   // Timed estimate (issue #880, made a prediction by #1405): the clock
   // expiring does NOT end a timed race — the leader takes the WHITE at their
   // first crossing at or after expiry and the chequered one leader lap after
-  // that. `T`, the seconds until the leader's chequered, is the translator's
-  // prediction from the leader's lap fraction, lap time and the post-expiry
-  // crossing marker (`predictLeaderChequeredS` in `leader-finish.ts`, the
-  // crossing model the gap horizon shares). When it cannot be predicted
+  // that. The translator predicts that chequered flag from the leader's lap
+  // fraction, lap time and the post-expiry crossing marker
+  // (`predictLeaderChequered` in `leader-finish.ts`, the crossing model the
+  // gap horizon shares), both as `T` seconds from now and as `N_L`, the
+  // leader's crossings up to and including it. When it cannot be predicted
   // (unknown leader fraction or lap time, the leader in the pits) a running
   // clock falls back to the bound `timeRemain + 2 × leaderLap` — white at
   // most one leader lap after expiry, plus the white lap — with the player's
@@ -297,16 +299,37 @@ export function resolveFuelRaceCoverage(
   // silence a warning.
   //
   // The player takes the chequered at their first crossing at or after the
-  // leader's. With the player's average lap `P` and lap fraction `f_p`,
-  // their k-th crossing is at `(k − f_p) · P`, so the full laps they still
-  // start after the current one are `ceil(T / P + f_p + ε) − 1`, where `ε`
-  // (`fuelFinishToleranceLaps`) moves a near-tie to the later crossing —
-  // one lap more, the safe direction. The White bit is deliberately not
-  // read here: it is per car, so a lapped or slower-class player never sees
-  // the leader's. Leader pace comes from the translator closure (recent →
-  // best lap, canonical live order). The averages exclude caution laps (see
-  // `FuelLap.wasCaution`), so a long caution can neither deflate the burn
-  // rate nor inflate the lap time into a false "enough fuel".
+  // leader's. Two ways to count the full laps they still start after the
+  // current one:
+  //
+  // - **By lap count**, when there is a prediction and the player is within
+  //   a lap of the leader on distance (`leaderGap`, `−1 < g < 1` with
+  //   `g = (LC_L + f_L) − (LC_p + f_p)`; the player being the leader gives
+  //   `g = 0`). Every car within a lap of the leader finishes on the lap
+  //   count the leader's chequered brings up, `LC_L + N_L`: a car behind
+  //   crosses it after the leader, and one that passes becomes the leader at
+  //   the same count. So the player's crossings are `LC_L + N_L − LC_p` and
+  //   the laps after the current one `LC_L + N_L − LC_p − 1`, with no pace
+  //   and no tolerance — a close follower crosses after the leader whatever
+  //   the gap, so there is no near-tie to allow for. (Same lap: `N_L`; a lap
+  //   down but within a lap on distance, either side of the line: `N_L + 1`;
+  //   the player across the line just ahead of the leader: `N_L − 1`.)
+  // - **By time** otherwise — a lapped or slower-class player a lap or more
+  //   away, a lap count or fraction missing or too close to the line to
+  //   trust for either car (`readLeaderGap`), or no prediction. With the
+  //   player's average lap `P` and lap fraction `f_p`, their k-th crossing
+  //   is at `(k − f_p) · P`, so the laps after the current one are
+  //   `ceil(T / P + f_p + ε) − 1`, where `ε` (`fuelFinishToleranceLaps`)
+  //   moves a near-tie to the later crossing — one lap more, the safe
+  //   direction. Missing data therefore lands here or on unknown, never on
+  //   a smaller count.
+  //
+  // The White bit is deliberately not read here: it is per car, so a lapped
+  // or slower-class player never sees the leader's. Leader pace comes from
+  // the translator closure (recent → best lap, canonical live order). The
+  // averages exclude caution laps (see `FuelLap.wasCaution`), so a long
+  // caution can neither deflate the burn rate nor inflate the lap time into
+  // a false "enough fuel".
   const clockExpired = isClockExpiredReading(telemetry);
   const timeRemain = resolveTimeRemainingS(telemetry);
   const playerLap = stats.avgLapTime;
@@ -323,7 +346,19 @@ export function resolveFuelRaceCoverage(
           ? timeRemain + 2 * leaderLap
           : null;
 
-    if (leaderChequeredS !== null) {
+    const crossings = leader.crossingsToChequered;
+    const gap = leader.leaderGap;
+
+    if (
+      leaderChequeredS === predicted &&
+      typeof crossings === "number" &&
+      Number.isInteger(crossings) &&
+      crossings >= 1 &&
+      gap !== null &&
+      Math.abs(gap.distanceLaps) < 1
+    ) {
+      timedLapsAfterCurrent = Math.max(0, gap.leaderLapsCompleted + crossings - gap.playerLapsCompleted - 1);
+    } else if (leaderChequeredS !== null) {
       // `t` is 0 once the clock has expired, leaving only the fixed part of
       // the tolerance.
       const tolerance = fuelFinishToleranceLaps(clockExpired ? 0 : (timeRemain ?? 0), leaderLap);
