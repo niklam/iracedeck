@@ -34,6 +34,7 @@
     "zod": "4.6.7"
   },
   "devDependencies": {
+    "@iracedeck/audio-assets": "workspace:*",
     "@iracedeck/pi-components": "workspace:*",
     "@tsconfig/node22": "22.0.6",
     "@types/node": "26.6.5",

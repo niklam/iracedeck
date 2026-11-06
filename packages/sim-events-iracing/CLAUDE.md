@@ -63,4 +63,4 @@ A throw in one step of a tick costs that step and no other. `TickSteps` (`src/ti
 ## Rules
 
 - A new bus event needs an entry in the scenario harness's `src/event-names.ts`, and a new callout a shortcut button there (`packages/scenario-harness/CLAUDE.md`).
-- Captured telemetry fixtures for the diff tests live in `src/diff/__fixtures__/` (see its `README.md`).
+- Captured telemetry fixtures for the diff tests live in `src/diff/__fixtures__/` (see its `README.md`). Another package's test reads one through the `./testing` entry, `captureFixturePath("<name>.json")` from `@iracedeck/sim-events-iracing/testing` (#1375; `audio-scenarios`' `caution.test.ts`), never by a relative path into `src/`. It resolves `../src/diff/__fixtures__/` against its own module, the same folder from `src/` (the vitest alias) and from `dist/`, and refuses a name that is not a bare `.json` file name or that the folder does not hold. Renaming or removing a capture another package reads breaks that test.

@@ -294,7 +294,8 @@ export function watchdogStep(
 /**
  * The name of a daily target's file for a report written at `now`: the name the
  * Mirabox and Ulanzi `FileSink` writes, `<YYYY.M.D>.log` with an unpadded
- * month and day in local time. Their adapters' tests check the two agree.
+ * month and day in local time. `watchdog-daily-log-file.test.ts` checks the
+ * two agree.
  * Self-contained: it is stringified into the worker.
  */
 export function watchdogDailyLogFileName(now: Date): string {

@@ -3,7 +3,7 @@ import { type GlobalSettings, GlobalSettingsSchema } from "@iracedeck/settings";
 import { afterEach, beforeEach, describe, expect, expectTypeOf, it, type Mock, type MockInstance, vi } from "vitest";
 
 import { classifyDialRelease } from "./dial-gesture.js";
-import { createFakeSimConnection, type FakeSimConnection } from "./fake-sim-connection.js";
+import { createFakeSimConnection, type FakeSimConnection } from "./fake-sim-connection.test-support.js";
 import {
   _resetPressSounds,
   DEFAULT_DIAL_PRESS_SHAPE,

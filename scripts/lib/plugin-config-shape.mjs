@@ -1,9 +1,10 @@
 // @ts-check
 /**
  * The shape every deck plugin's `rollup.config.mjs` keeps since #1349, read the
- * same way by the five guards that rest on it: `rollup-logs.test.mjs`,
+ * same way by the guards that rest on it: `rollup-logs.test.mjs`,
  * `runtime-deps-guard.test.mjs`, `third-party-licenses.test.mjs`,
- * `dev-voice-root-guard.test.mjs` and pi-components' `settings-window-icon.test.ts`.
+ * `dev-voice-root-guard.test.mjs`, and this module's own test, which also holds
+ * every plugin config to leaving the browser-asset copy to the factory.
  *
  * Each guard checks a property the shared factory (`@iracedeck/plugin-build`)
  * owns, so each needs the same three facts about every plugin before its own
@@ -11,7 +12,7 @@
  * the factory's call, and the package declares `@iracedeck/plugin-build` (which
  * orders its build after the factory's and re-hashes it when the factory
  * changes). Two guards also need the config's literal `extraExternals`, parsed
- * strictly. Both live here once, so the five cannot drift apart.
+ * strictly. Both live here once, so the guards cannot drift apart.
  */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";

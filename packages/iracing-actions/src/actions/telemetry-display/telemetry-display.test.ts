@@ -21,13 +21,9 @@ vi.mock("@iracedeck/iracing-sdk", () => ({
 }));
 
 vi.mock("@iracedeck/deck-core", async () => ({
-  // The real throttle from deck-core's source: the refresh tests drive its
+  // The REAL throttle: the refresh tests drive its
   // leading/trailing window with fake timers.
-  IconUpdateThrottle: (
-    await vi.importActual<typeof import("../../../../deck-core/src/icon-update-throttle.js")>(
-      "../../../../deck-core/src/icon-update-throttle.js",
-    )
-  ).IconUpdateThrottle,
+  IconUpdateThrottle: (await import("@iracedeck/deck-core/testing")).IconUpdateThrottle,
   CommonSettings: {
     extend: (_fields: unknown) => {
       // Return a mock Zod-like schema

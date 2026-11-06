@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { BaseAction } from "./base-action.js";
 import { ConnectionStateAwareAction } from "./connection-state-aware-action.js";
-import { createFakeSimConnection, type FakeSimConnection } from "./fake-sim-connection.js";
+import { createFakeSimConnection, type FakeSimConnection } from "./fake-sim-connection.test-support.js";
 import { _resetSimConnection, initializeSimConnection } from "./sim-connection.js";
 
 // The real sim-connection singleton, initialised with a fake per test, so the

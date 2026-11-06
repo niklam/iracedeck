@@ -86,25 +86,16 @@ const { configureEngine, resetEngine } = engineOverDeck({ settings: engineSettin
 configureEngine();
 
 vi.mock("@iracedeck/deck-core", async () => {
-  // deck-core's dial-gesture and icon-update-throttle modules, reached by PATH
-  // rather than through the mocked barrel (the `mouse-to-sim.test.ts`
-  // pattern): the hold preview's timer, the release classifier and the 10/s
-  // throttle are what is under test, so the REAL ones run. Neither module has
-  // imports of its own. The paths are inlined because `vi.mock` is hoisted.
-  const dialGesture = await vi.importActual<typeof import("../../../../deck-core/src/dial-gesture.js")>(
-    "../../../../deck-core/src/dial-gesture.js",
-  );
-  const throttle = await vi.importActual<typeof import("../../../../deck-core/src/icon-update-throttle.js")>(
-    "../../../../deck-core/src/icon-update-throttle.js",
-  );
+  // The REAL hold preview, release classifier and 10/s throttle: their timing is under test.
+  const real = await import("@iracedeck/deck-core/testing");
   const { z } = await import("zod");
 
   return {
     CommonSettings: { extend: (shape: never) => z.object(shape).passthrough() },
-    createHoldPreview: dialGesture.createHoldPreview,
-    NOOP_HOLD_PREVIEW: dialGesture.NOOP_HOLD_PREVIEW,
-    classifyDialRelease: dialGesture.classifyDialRelease,
-    IconUpdateThrottle: throttle.IconUpdateThrottle,
+    createHoldPreview: real.createHoldPreview,
+    NOOP_HOLD_PREVIEW: real.NOOP_HOLD_PREVIEW,
+    classifyDialRelease: real.classifyDialRelease,
+    IconUpdateThrottle: real.IconUpdateThrottle,
     getDualPressThresholdMs: () => mocks.thresholdMs.value,
     applyBindingWarning: (content: string) => `${content}<binding-warning/>`,
     escapeXml: (str: string) => str,
@@ -120,12 +111,9 @@ vi.mock("@iracedeck/replay-store", () => ({
   MARKER_PREVIOUS_MIN_BEHIND_FRAMES: 120,
 }));
 
-// The store's own pure marker functions, by path past the mocked barrel (the
-// module has no imports), so the fake store answers add / delete exactly as
+// The store's REAL marker functions, so the fake store answers add / delete exactly as
 // the real one does. Next and previous are the shared walk over list() (#1426).
-const markerFns = await vi.importActual<typeof import("../../../../replay-store/src/replay-markers.js")>(
-  "../../../../replay-store/src/replay-markers.js",
-);
+const markerFns = await import("@iracedeck/replay-store/testing");
 
 const STRIP = { id: "sd-plus-strip", width: 200, height: 100 } as const;
 const KNOB = { id: "stream-dock-knob", width: 176, height: 112 } as const;

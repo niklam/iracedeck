@@ -38,19 +38,14 @@ import { ReplayControlDialSurface } from "./replay-control-dial-surface.js";
 vi.mock("@iracedeck/deck-iracing", () => ({ getCommands: vi.fn() }));
 
 vi.mock("@iracedeck/deck-core", async () => {
-  // The real hold preview, release classifier and throttle, by path (the dial surface test's pattern).
-  const dialGesture = await vi.importActual<typeof import("../../../../deck-core/src/dial-gesture.js")>(
-    "../../../../deck-core/src/dial-gesture.js",
-  );
-  const throttle = await vi.importActual<typeof import("../../../../deck-core/src/icon-update-throttle.js")>(
-    "../../../../deck-core/src/icon-update-throttle.js",
-  );
+  // The REAL hold preview, release classifier and throttle, as in the dial surface's own test.
+  const real = await import("@iracedeck/deck-core/testing");
 
   return {
-    createHoldPreview: dialGesture.createHoldPreview,
-    NOOP_HOLD_PREVIEW: dialGesture.NOOP_HOLD_PREVIEW,
-    classifyDialRelease: dialGesture.classifyDialRelease,
-    IconUpdateThrottle: throttle.IconUpdateThrottle,
+    createHoldPreview: real.createHoldPreview,
+    NOOP_HOLD_PREVIEW: real.NOOP_HOLD_PREVIEW,
+    classifyDialRelease: real.classifyDialRelease,
+    IconUpdateThrottle: real.IconUpdateThrottle,
     getDualPressThresholdMs: () => 500,
     applyBindingWarning: (content: string) => content,
     escapeXml: (str: string) => str,

@@ -3,7 +3,7 @@ import type { GlobalSettings } from "@iracedeck/settings";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { TitleOverrides } from "./common-settings.js";
-import { createFakeSimConnection, type FakeSimConnection } from "./fake-sim-connection.js";
+import { createFakeSimConnection, type FakeSimConnection } from "./fake-sim-connection.test-support.js";
 import {
   assembleIcon,
   BORDER_DEFAULTS,

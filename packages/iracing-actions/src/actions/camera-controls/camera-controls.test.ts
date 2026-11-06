@@ -192,8 +192,8 @@ vi.mock("@iracedeck/deck-iracing", async (importOriginal) => ({
 vi.mock("@iracedeck/deck-core", async () => ({
   // The dial surface arms the REAL hold-preview helper (#1120) on every dial
   // context; a dial press below would otherwise throw at `ensureContext`.
-  createHoldPreview: (await import("../../../../deck-core/src/dial-gesture.js")).createHoldPreview,
-  NOOP_HOLD_PREVIEW: (await import("../../../../deck-core/src/dial-gesture.js")).NOOP_HOLD_PREVIEW,
+  createHoldPreview: (await import("@iracedeck/deck-core/testing")).createHoldPreview,
+  NOOP_HOLD_PREVIEW: (await import("@iracedeck/deck-core/testing")).NOOP_HOLD_PREVIEW,
   CommonSettings: {
     extend: (_fields: unknown) => {
       const schema = {

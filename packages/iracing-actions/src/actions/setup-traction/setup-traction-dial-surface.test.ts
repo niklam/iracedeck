@@ -21,15 +21,8 @@ const { mockGetCurrentTelemetry, mockTapBinding, mockIsBindingMissing, mockDualP
 
 vi.mock("@iracedeck/deck-core", async () => {
   const { z } = await import("zod");
-  // deck-core's dial-gesture module, reached by PATH rather than through the
-  // mocked barrel (the `mouse-to-sim.test.ts` pattern): the hold preview's
-  // timer behaviour is the thing under test, so the REAL helper has to run — a
-  // stub would only assert the stub. That module has zero imports of its own,
-  // so reaching it directly drags in none of the barrel's graph. The path is
-  // inlined because `vi.mock` is hoisted above every top-level const.
-  const dialGesture = await vi.importActual<typeof import("../../../../deck-core/src/dial-gesture.js")>(
-    "../../../../deck-core/src/dial-gesture.js",
-  );
+  // The REAL hold preview: its timer behaviour is under test, and a stub would only assert the stub.
+  const dialGesture = await import("@iracedeck/deck-core/testing");
 
   return {
     createHoldPreview: dialGesture.createHoldPreview,

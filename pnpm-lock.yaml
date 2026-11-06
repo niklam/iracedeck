@@ -501,9 +501,6 @@ importers:
         specifier: 8.22.0
         version: 8.22.0
     devDependencies:
-      '@iracedeck/diagnostics':
-        specifier: workspace:*
-        version: link:../diagnostics
       '@tsconfig/node22':
         specifier: 22.0.6
         version: 22.0.6
@@ -538,9 +535,6 @@ importers:
         specifier: 8.22.0
         version: 8.22.0
     devDependencies:
-      '@iracedeck/diagnostics':
-        specifier: workspace:*
-        version: link:../diagnostics
       '@tsconfig/node22':
         specifier: 22.0.6
         version: 22.0.6
@@ -765,6 +759,9 @@ importers:
         specifier: 4.6.7
         version: 4.6.7
     devDependencies:
+      '@iracedeck/audio-assets':
+        specifier: workspace:*
+        version: link:../audio-assets
       '@iracedeck/pi-components':
         specifier: workspace:*
         version: link:../pi-components

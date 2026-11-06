@@ -12,6 +12,7 @@
     "./manifest.bundled.json": "./manifest.bundled.json",
     "./catalog/*.json": "./catalog/*.json",
     "./voice/*/callouts.json": "./voice/*/callouts.json",
+    "./sfx/*": "./sfx/*",
     "./presets": "./src/presets.mjs"
   },
   "scripts": {

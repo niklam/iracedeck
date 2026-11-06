@@ -1,22 +1,29 @@
 /**
- * File logging for the Mirabox (VSD Craft / Stream Dock) adapter.
+ * File logging for a deck host that does not capture a plugin's output.
  *
- * Unlike Elgato — whose `streamDeck.logger` owns a managed rotating `.log` file
- * under `<sdPlugin>/logs/` — the Stream Dock host does NOT capture a plugin's
- * stdout/stderr to disk. Our Mirabox logging goes through `createConsoleLogger`
- * (i.e. `console.*`), which the host discards, so the "Enable debug logging"
- * toggle (issue #609) would have nothing to capture for support.
+ * Elgato's `streamDeck.logger` owns a managed rotating `.log` file under
+ * `<sdPlugin>/logs/`, but the Mirabox Stream Dock host (VSD Craft) and
+ * UlanziStudio do NOT capture a plugin's stdout/stderr to disk. Their adapters
+ * log through `createConsoleLogger` (i.e. `console.*`), which the host
+ * discards, so the "Enable debug logging" toggle (issue #609) would have
+ * nothing to capture for support.
  *
  * `FileSink` fixes that by writing to `<plugin>/log/<YYYY.M.D>.log` — the same
- * `log/` directory convention the host's own first-party plugins use, so a
- * support log lands where users (and maintainers) already look. `withFileSink`
- * tees an existing `ILogger` to the sink, preserving the live level gating and
- * scope chaining of the wrapped console logger.
+ * `log/` directory convention the Stream Dock host's own first-party plugins
+ * use, so a support log lands where users (and maintainers) already look.
+ * `withFileSink` tees an existing `ILogger` to the sink, preserving the live
+ * level gating and scope chaining of the wrapped console logger.
+ *
+ * One implementation for both adapters (#1375); what differs per host is the
+ * directory and the label in the sink's own console failure messages, both
+ * constructor arguments. This is a Node-only subpath entry
+ * (`@iracedeck/logger/file-sink`), kept off the package barrel that every
+ * layer imports so the barrel stays free of `node:fs`.
  */
-import type { ILogger } from "@iracedeck/logger";
-import { LogLevel } from "@iracedeck/logger";
 import { appendFileSync, mkdirSync, readdirSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
+
+import { type ILogger, LogLevel } from "./index.js";
 
 /** Per-day log files older than this many days are deleted on the sink's first write (issue #904). */
 export const LOG_RETENTION_DAYS = 14;
@@ -29,10 +36,13 @@ const LOG_FILE_PATTERN = /^(\d{4})\.(\d{1,2})\.(\d{1,2})\.log$/;
  *
  * The filename matches the host convention `<YYYY.M.D>.log` with **unpadded**
  * month and day (e.g. `2026.5.31.log`, `2026.5.5.log`) so our files sit
- * naturally alongside the host's own plugin logs. Writes are synchronous
- * (`appendFileSync`) — debug logging is opt-in, so the volume is low and the
- * simplicity is worth more than streaming. The day rolls over automatically
- * because the target filename is recomputed on every write.
+ * naturally alongside the host's own plugin logs. `@iracedeck/diagnostics`'
+ * main-thread watchdog appends to the same file with its own copy of the name
+ * (`watchdogDailyLogFileName`, #1330), and diagnostics'
+ * `watchdog-daily-log-file.test.ts` checks the two agree. Writes are
+ * synchronous (`appendFileSync`) — debug logging is opt-in, so the volume is
+ * low and the simplicity is worth more than streaming. The day rolls over
+ * automatically because the target filename is recomputed on every write.
  *
  * The first write also prunes files older than `LOG_RETENTION_DAYS` (issue
  * #904) — without it, per-day files accumulate on user machines forever.
@@ -40,7 +50,20 @@ const LOG_FILE_PATTERN = /^(\d{4})\.(\d{1,2})\.(\d{1,2})\.log$/;
 export class FileSink {
   private ensuredDir = false;
 
-  constructor(private readonly dir: string) {}
+  /** The tag on the sink's own console failure messages, e.g. `[VSD FileSink]`. */
+  private readonly tag: string;
+
+  /**
+   * @param dir - The directory the per-day files are written to (created on the first write).
+   * @param host - The host's label in the sink's console failure messages, which read
+   *   `[<host> FileSink] …` (`VSD` for Mirabox, `Ulanzi` for UlanziStudio).
+   */
+  constructor(
+    private readonly dir: string,
+    host: string,
+  ) {
+    this.tag = `[${host} FileSink]`;
+  }
 
   /**
    * Append one line. Logging must never crash the plugin, so any I/O failure
@@ -60,7 +83,7 @@ export class FileSink {
       appendFileSync(file, `${now.toISOString()} ${level} ${message}\n`);
     } catch (err) {
       // Avoid recursing through the logger that's failing; surface directly.
-      console.error(`[VSD FileSink] write failed: ${String(err)}`);
+      console.error(`${this.tag} write failed: ${String(err)}`);
     }
   }
 
@@ -96,11 +119,11 @@ export class FileSink {
         try {
           unlinkSync(join(this.dir, name));
         } catch (err) {
-          console.error(`[VSD FileSink] prune of ${name} failed: ${String(err)}`);
+          console.error(`${this.tag} prune of ${name} failed: ${String(err)}`);
         }
       }
     } catch (err) {
-      console.error(`[VSD FileSink] prune failed: ${String(err)}`);
+      console.error(`${this.tag} prune failed: ${String(err)}`);
     }
   }
 }

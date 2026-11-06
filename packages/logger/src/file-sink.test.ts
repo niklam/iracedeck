@@ -1,17 +1,21 @@
-import { watchdogDailyLogFileName } from "@iracedeck/diagnostics";
-import { type ILogger, LogLevel } from "@iracedeck/logger";
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { FileSink, withFileSink } from "./file-logger.js";
+import { FileSink, LOG_RETENTION_DAYS, withFileSink } from "./file-sink.js";
+import { type ILogger, LogLevel } from "./index.js";
+
+// That the name the sink writes matches the main-thread watchdog's
+// `watchdogDailyLogFileName` is checked in @iracedeck/diagnostics
+// (`watchdog-daily-log-file.test.ts`), which depends on this package; this
+// package must not depend on it.
 
 describe("FileSink", () => {
   let dir: string;
 
   beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), "ulanzi-log-"));
+    dir = mkdtempSync(join(tmpdir(), "file-sink-"));
   });
 
   afterEach(() => {
@@ -24,7 +28,7 @@ describe("FileSink", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-05-05T12:00:00"));
 
-    const sink = new FileSink(dir);
+    const sink = new FileSink(dir, "Test");
     sink.write("INFO", "[Scope] hello");
 
     // Computed with the same (faked) clock and the same non-padded formula the
@@ -32,27 +36,22 @@ describe("FileSink", () => {
     const now = new Date();
     const expected = `${now.getFullYear()}.${now.getMonth() + 1}.${now.getDate()}.log`;
 
+    expect(expected).toBe("2026.5.5.log");
     expect(readdirSync(dir)).toEqual([expected]);
     expect(readFileSync(join(dir, expected), "utf-8")).toContain("INFO [Scope] hello");
   });
 
-  // The main-thread watchdog's worker appends to this sink's file on its own
-  // (#1330) and must stay self-contained, so it keeps its own copy of the
-  // name. This fails if the two drift apart.
-  it.each(["2026-01-01T00:30:00", "2026-05-05T12:00:00", "2026-10-31T23:30:00", "2026-12-09T08:00:00"])(
-    "names the day's file as the main-thread watchdog does (%s)",
-    (localTime) => {
-      vi.useFakeTimers({ toFake: ["Date"] });
-      vi.setSystemTime(new Date(localTime));
+  it("writes each line as `<ISO time> <LEVEL> <message>`", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-05T12:00:00"));
 
-      new FileSink(dir).write("INFO", "x");
+    new FileSink(dir, "Test").write("WARN", "[Scope] exact");
 
-      expect(readdirSync(dir)).toEqual([watchdogDailyLogFileName(new Date())]);
-    },
-  );
+    expect(readFileSync(join(dir, "2026.5.5.log"), "utf-8")).toBe(`${new Date().toISOString()} WARN [Scope] exact\n`);
+  });
 
   it("appends successive lines to the same file", () => {
-    const sink = new FileSink(dir);
+    const sink = new FileSink(dir, "Test");
     sink.write("INFO", "first");
     sink.write("DEBUG", "second");
 
@@ -66,7 +65,7 @@ describe("FileSink", () => {
 
   it("creates the log directory if it does not exist", () => {
     const nested = join(dir, "deeper", "log");
-    const sink = new FileSink(nested);
+    const sink = new FileSink(nested, "Test");
 
     sink.write("INFO", "made it");
 
@@ -74,13 +73,24 @@ describe("FileSink", () => {
   });
 
   it("does not throw when the path is unwritable", () => {
-    // A path whose parent is a file, not a directory — mkdirSync will throw, and
-    // the sink must swallow it (logging never crashes the plugin).
+    // A path whose parent is a file, not a directory — mkdirSync will throw,
+    // and the sink must swallow it (logging never crashes the plugin).
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-    const sink = new FileSink("\0invalid");
+    const sink = new FileSink("\0invalid", "Test");
 
     expect(() => sink.write("INFO", "boom")).not.toThrow();
     expect(errorSpy).toHaveBeenCalled();
+  });
+
+  // The host label is the one thing the two adapters' former copies differed
+  // in (#1375): each host's failure messages keep their own tag.
+  it.each(["VSD", "Ulanzi"])("tags a write failure with the host's label (%s)", (host) => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    new FileSink("\0invalid", host).write("INFO", "boom");
+
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+    expect(errorSpy.mock.calls[0][0]).toMatch(new RegExp(`^\\[${host} FileSink\\] write failed: `));
   });
 });
 
@@ -88,7 +98,7 @@ describe("FileSink pruning", () => {
   let dir: string;
 
   beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), "ulanzi-log-"));
+    dir = mkdtempSync(join(tmpdir(), "file-sink-"));
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-07-31T12:00:00"));
   });
@@ -99,12 +109,16 @@ describe("FileSink pruning", () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
+  it("keeps files for 14 days", () => {
+    expect(LOG_RETENTION_DAYS).toBe(14);
+  });
+
   it("deletes log files older than the retention window on first write", () => {
     writeFileSync(join(dir, "2026.7.16.log"), "15 days old\n");
     writeFileSync(join(dir, "2026.7.17.log"), "exactly 14 days old\n");
     writeFileSync(join(dir, "2025.12.31.log"), "ancient\n");
 
-    const sink = new FileSink(dir);
+    const sink = new FileSink(dir, "Test");
     sink.write("INFO", "today");
 
     expect(readdirSync(dir).sort()).toEqual(["2026.7.17.log", "2026.7.31.log"]);
@@ -114,7 +128,7 @@ describe("FileSink pruning", () => {
     writeFileSync(join(dir, "notes.log"), "not a per-day log\n");
     writeFileSync(join(dir, "readme.txt"), "hello\n");
 
-    const sink = new FileSink(dir);
+    const sink = new FileSink(dir, "Test");
     sink.write("INFO", "today");
 
     expect(readdirSync(dir).sort()).toEqual(["2026.7.31.log", "notes.log", "readme.txt"]);
@@ -125,14 +139,14 @@ describe("FileSink pruning", () => {
     // must be treated as not-a-log-file, not as its rolled-over date.
     writeFileSync(join(dir, "2020.2.31.log"), "impossible date\n");
 
-    const sink = new FileSink(dir);
+    const sink = new FileSink(dir, "Test");
     sink.write("INFO", "today");
 
     expect(readdirSync(dir).sort()).toEqual(["2020.2.31.log", "2026.7.31.log"]);
   });
 
   it("prunes only on the first write of a sink", () => {
-    const sink = new FileSink(dir);
+    const sink = new FileSink(dir, "Test");
     sink.write("INFO", "first");
 
     writeFileSync(join(dir, "2020.1.1.log"), "appeared after the first write\n");
@@ -151,12 +165,24 @@ describe("FileSink pruning", () => {
     writeFileSync(join(dir, "2021.1.1.log"), "expired, sorts after the bad entry\n");
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
-    const sink = new FileSink(dir);
+    const sink = new FileSink(dir, "Test");
     expect(() => sink.write("INFO", "still logged")).not.toThrow();
 
     expect(readdirSync(dir).sort()).toEqual(["2020.1.1.log", "2026.7.31.log"]);
     expect(readFileSync(join(dir, "2026.7.31.log"), "utf-8")).toContain("INFO still logged");
     expect(errorSpy).toHaveBeenCalled();
+  });
+
+  it.each(["VSD", "Ulanzi"])("tags a failed prune of one file with the host's label (%s)", (host) => {
+    mkdirSync(join(dir, "2020.1.1.log"));
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    new FileSink(dir, host).write("INFO", "today");
+
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+    expect(errorSpy.mock.calls[0][0]).toMatch(
+      new RegExp(`^\\[${host} FileSink\\] prune of 2020\\.1\\.1\\.log failed: `),
+    );
   });
 });
 
@@ -175,8 +201,8 @@ describe("withFileSink", () => {
   });
 
   beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), "ulanzi-log-"));
-    sink = new FileSink(dir);
+    dir = mkdtempSync(join(tmpdir(), "file-sink-"));
+    sink = new FileSink(dir, "Test");
   });
 
   afterEach(() => {

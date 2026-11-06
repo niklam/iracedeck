@@ -25,17 +25,14 @@
 // `@types/node`), not imports, so they are not checked.
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
-import { builtinModules } from "node:module";
 import path from "node:path";
-import ts from "typescript";
 import { describe, expect, it } from "vitest";
 
+import { CODE, importedPackages, isTestSource } from "./lib/source-imports.mjs";
 import { trackedPackageDirs } from "./lib/workspace-packages.mjs";
 
 const ROOT = path.resolve(import.meta.dirname, "..");
 const SCOPE = "@iracedeck/";
-const CODE = /\.[cm]?[jt]sx?$/;
-const TEST = /\.test\.[cm]?[jt]sx?$|\.test-support\.|\/test-support\//;
 
 /**
  * Workspace devDependencies a shell declares without any of its sources
@@ -47,22 +44,6 @@ const BUILD_ONLY = {
     "the shell's rollup.config.mjs calls its createPluginRollupConfig; the factory, not the shell, imports " +
     "pi-components, audio-assets and app-constants for the build's copy steps",
 };
-
-/** The package a bare specifier names (`@scope/name/sub` → `@scope/name`), or null for a relative path or a Node builtin. */
-export function packageOf(specifier) {
-  if (specifier.startsWith(".") || specifier.startsWith("/") || specifier.startsWith("node:")) return null;
-  const parts = specifier.split("/");
-  const name = specifier.startsWith("@") ? parts.slice(0, 2).join("/") : parts[0];
-
-  return builtinModules.includes(name) ? null : name;
-}
-
-/** The packages `source` imports: static, type-only, side-effect, re-export, dynamic and `require`. */
-export function importedPackages(source) {
-  const { importedFiles } = ts.preProcessFile(source, true, true);
-
-  return new Set(importedFiles.map(({ fileName }) => packageOf(fileName)).filter((name) => name !== null));
-}
 
 /**
  * Every way a shell's manifest disagrees with its sources' imports, one line
@@ -140,8 +121,8 @@ function shellInput(shell, buildOnly = BUILD_ONLY) {
 
   return {
     manifest: JSON.parse(readFileSync(path.join(ROOT, "packages", shell, "package.json"), "utf-8")),
-    sourceImports: importsOf(files.filter((file) => !TEST.test(file))),
-    testImports: importsOf(files.filter((file) => TEST.test(file))),
+    sourceImports: importsOf(files.filter((file) => !isTestSource(file))),
+    testImports: importsOf(files.filter((file) => isTestSource(file))),
     buildOnly,
   };
 }
@@ -253,25 +234,5 @@ describe("the check itself (positive controls)", () => {
     expect(run({ manifest })).toEqual([
       "BUILD_ONLY names @iracedeck/plugin-build, which is not in its devDependencies",
     ]);
-  });
-
-  it("reads every import form, and no mention in a comment or a string", () => {
-    const source = [
-      'import a from "pkg-a";',
-      'import type { B } from "@scope/b/sub/path";',
-      'import "pkg-c";',
-      'export { d } from "pkg-d";',
-      'const e = await import("pkg-e");',
-      'const f = require("pkg-f");',
-      'import g from "node:path";',
-      'import h from "fs";',
-      'import i from "./local.js";',
-      '// import j from "pkg-j";',
-      '/* import("pkg-k") */',
-      'const l = "import m from \\"pkg-m\\"";',
-      "/** see `@iracedeck/pkg-n` */",
-    ].join("\n");
-
-    expect([...importedPackages(source)].sort()).toEqual(["@scope/b", "pkg-a", "pkg-c", "pkg-d", "pkg-e", "pkg-f"]);
   });
 });

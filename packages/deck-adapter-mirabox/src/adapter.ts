@@ -24,8 +24,8 @@ import {
 } from "@iracedeck/deck-core";
 import type { ILogger } from "@iracedeck/logger";
 import { createConsoleLogger, LogLevel } from "@iracedeck/logger";
+import { FileSink, withFileSink } from "@iracedeck/logger/file-sink";
 
-import { FileSink, withFileSink } from "./file-logger.js";
 import { parseConnectionParams, VSDClient, type VSDEvent } from "./vsd-client.js";
 
 /** Valid controller types for VSD/Elgato devices. */
@@ -242,7 +242,7 @@ export class VSDPlatformAdapter implements IDeckPlatformAdapter {
   private readonly lifecycleLogger: ILogger;
 
   constructor(logger?: ILogger, logDir?: string) {
-    this.fileSink = logDir ? new FileSink(logDir) : null;
+    this.fileSink = logDir ? new FileSink(logDir, "VSD") : null;
     this.logLocation = logDir ? { kind: "daily", dir: logDir } : undefined;
     const log = logger ?? this.buildLogger("VSD");
     this.client = new VSDClient(parseConnectionParams(), log.createScope("WebSocket"));

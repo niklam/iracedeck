@@ -1,13 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
-import url from "node:url";
 import { describe, expect, it } from "vitest";
 
-import {
-  discoverPlugins,
-  pluginConfigShapeProblems,
-  readPluginPackage,
-} from "../../../../scripts/lib/plugin-config-shape.mjs";
 import { browserDir, SETTINGS_WINDOW_ICON } from "./index.mjs";
 
 /**
@@ -23,52 +17,13 @@ import { browserDir, SETTINGS_WINDOW_ICON } from "./index.mjs";
  * a `<link>` whose href resolves to nothing renders exactly like no link at
  * all. Nothing in a build, a test run or a screenshot capture would say so —
  * the failure is a globe nobody is looking at on a machine nobody is running.
- * So each hop is pinned here, but the page's `<link>`: the page is
- * `iracing-actions`', so that hop is held beside it, in
- * `src/pi-templates/settings-window-page.test.ts` (#1375).
+ * So each hop is pinned where it lives: the asset here; the copy in
+ * plugin-build's `src/plugin-rollup.test.ts`, which runs the factory's copy step
+ * and checks every file name it writes into `ui/`, and in the root
+ * `scripts/lib/plugin-config-shape.test.mjs`, which holds every plugin config to
+ * leaving that copy to the factory; and the page's `<link>` beside the page, in
+ * `iracing-actions`' `src/pi-templates/settings-window-page.test.ts` (#1375).
  */
-const packageRoot = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), "../..");
-const repoRoot = path.resolve(packageRoot, "../..");
-
-/**
- * The shared plugin factory (#1349): the one place a plugin build copies this
- * package's browser assets into its `ui/`.
- */
-const FACTORY_SOURCE = readFileSync(path.join(repoRoot, "packages/plugin-build/src/plugin-rollup.mjs"), "utf-8");
-
-/**
- * Every plugin's rollup config, discovered from the committed plugin manifests
- * like the other four plugin guards, so a fourth deck ecosystem is covered the
- * day its package appears — and a package that merely builds with Rollup (this
- * one included) is never taken for a plugin. Each must leave the copy to the factory.
- */
-function pluginConfigs(): ({ pkg: string } & ReturnType<typeof readPluginPackage>)[] {
-  return discoverPlugins(repoRoot).map(({ pkg }) => ({ pkg, ...readPluginPackage(repoRoot, pkg) }));
-}
-
-/**
- * The `for (const … of [ … ])` list the browser-assets copy step walks,
- * identified by the one asset every plugin has always copied. Empty when no
- * such loop is found, which fails the assertion rather than passing it — a
- * factory whose copy step was restructured must be re-read, not waved through.
- *
- * The list, NOT the whole file: the import line names the constant too, so a
- * whole-file search is satisfied by a factory that imports the icon and copies
- * everything except it — which emits no `ui/iracedeck-icon.png` and puts the
- * globe back. `pnpm lint` does read the factory and the plugin configs (it
- * globs every `.mjs` file), so an import left wholly unused is a `no-unused-vars`
- * error — but not one still used elsewhere in the file, nor one removed along
- * with its list entry, and the build itself copies whatever the list names
- * without complaint. Only the list says whether the icon ships.
- */
-function browserAssetCopyList(source: string): string {
-  for (const [, list] of source.matchAll(/for \(const \w+ of \[([^\]]*)\]\)/g)) {
-    if (list.includes("sdpi-components.js")) return list;
-  }
-
-  return "";
-}
-
 describe("settings-window favicon (#1156)", () => {
   it("ships the committed icon the export names", () => {
     expect(existsSync(path.join(browserDir, SETTINGS_WINDOW_ICON))).toBe(true);
@@ -91,28 +46,5 @@ describe("settings-window favicon (#1156)", () => {
     expect(width).toBe(height);
     expect(width).toBeGreaterThanOrEqual(256);
     expect(colorType).toBe(2);
-  });
-
-  it("is copied into every plugin's ui/ beside the page that links it, by the shared factory", () => {
-    const copyList = browserAssetCopyList(FACTORY_SOURCE);
-
-    expect(copyList, "the factory's browser-asset copy loop was not found").not.toBe("");
-    expect(copyList.includes("SETTINGS_WINDOW_ICON"), "the factory's browser-asset copy list omits the icon").toBe(
-      true,
-    );
-  });
-
-  it("is left to the factory by every plugin config", () => {
-    const configs = pluginConfigs();
-
-    expect(configs.length, "fewer plugin configs than deck ecosystems: discovery broke").toBeGreaterThanOrEqual(3);
-
-    for (const { pkg, configSource, packageJson } of configs) {
-      expect(
-        pluginConfigShapeProblems(configSource, packageJson),
-        `${pkg} must build through the shared factory`,
-      ).toEqual([]);
-      expect(configSource, `${pkg} copies browser assets of its own`).not.toContain("browserDir");
-    }
   });
 });

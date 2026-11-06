@@ -1,5 +1,10 @@
 import { SETTINGS_WINDOW_HTML } from "@iracedeck/app-constants";
-import { PI_SETTINGS_BRIDGE, SETTINGS_WINDOW_BRIDGE } from "@iracedeck/pi-components/build";
+import {
+  PI_SETTINGS_BRIDGE,
+  SETTINGS_WINDOW_BRIDGE,
+  SETTINGS_WINDOW_ICON,
+  SETTINGS_WINDOW_LOGO,
+} from "@iracedeck/pi-components/build";
 import typescript from "@rollup/plugin-typescript";
 import {
   copyFileSync,
@@ -320,8 +325,8 @@ describe("createPluginRollupConfig", () => {
         "pi-components.js",
         expected,
         SETTINGS_WINDOW_BRIDGE,
-        "iracedeck-logo.png",
-        "iracedeck-icon.png",
+        SETTINGS_WINDOW_LOGO,
+        SETTINGS_WINDOW_ICON,
       ]);
 
       for (const dest of destinations) expect(path.dirname(dest)).toBe(path.join(SD_PLUGIN_DIR, "ui"));

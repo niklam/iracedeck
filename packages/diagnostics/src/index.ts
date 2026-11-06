@@ -6,7 +6,6 @@ export {
   type MainThreadWatchdogOptions,
   startMainThreadWatchdog,
   WATCHDOG_DEFAULTS,
-  watchdogDailyLogFileName,
   type WatchdogLogTarget,
 } from "./main-thread-watchdog.js";
 

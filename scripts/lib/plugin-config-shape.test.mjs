@@ -176,6 +176,21 @@ export default { ...config, plugins: [] };
     }
   });
 
+  it("finds every real plugin config leaving the browser-asset copy to the factory", () => {
+    // The shape above admits any value in the factory's object literal, so a config could still
+    // copy pi-components' browser assets itself, beside the factory's own copy step — which
+    // plugin-build's test runs, checking every file it writes into ui/, the settings window's
+    // favicon included (#1156). Every config names browserDir nowhere, so that step is the only copy.
+    const plugins = discoverPlugins(repoRoot);
+
+    expect(plugins.length, "fewer plugin configs than deck ecosystems: discovery broke").toBeGreaterThanOrEqual(3);
+    for (const { pkg } of plugins) {
+      expect(readPluginPackage(repoRoot, pkg).configSource, `${pkg} copies browser assets of its own`).not.toContain(
+        "browserDir",
+      );
+    }
+  });
+
   it.each([
     ["no devDependencies", {}],
     ["the package missing", { devDependencies: { rollup: "4.64.0" } }],
