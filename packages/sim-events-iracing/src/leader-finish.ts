@@ -93,6 +93,13 @@ export type LeaderFinish = {
   chequeredInS: number | null;
   /** {@link LeaderChequered.crossings} — `null` exactly when `chequeredInS` is. */
   crossingsToChequered: number | null;
+  /**
+   * The same prediction at the lap-count pace `min(L, P)` — the leader's lap
+   * time capped at the player's validated average — with that pace, for the
+   * fuel estimate's lap-count path (see {@link resolveLeaderFinish}); `null`
+   * without a prediction or a player average.
+   */
+  lapCountChequered: (LeaderChequered & { lapTimeS: number }) | null;
   /** {@link readLeaderGap}. */
   leaderGap: LeaderGap | null;
 };
@@ -102,6 +109,7 @@ export const UNKNOWN_LEADER_FINISH: LeaderFinish = Object.freeze({
   lapTimeS: null,
   chequeredInS: null,
   crossingsToChequered: null,
+  lapCountChequered: null,
   leaderGap: null,
 });
 
@@ -392,13 +400,32 @@ export function readLeaderGap(telemetry: TelemetryData, positions: number[], pla
 /**
  * The race leader as the fuel race coverage reads them: their lap time, the
  * chequered prediction ({@link predictLeaderChequered}) in seconds and in
- * crossings, and the player's place against them ({@link readLeaderGap}).
+ * crossings, the same prediction at the lap-count pace, and the player's
+ * place against them ({@link readLeaderGap}).
+ *
+ * **Two paces, one model.** The leader's lap time is their raw
+ * `CarIdxLastLapTime`, which can be a caution lap, an in- or out-lap or a
+ * spin. Where the fuel estimate counts by time, a lap time too slow puts the
+ * chequered later, and that only adds laps: cautious, so `chequeredInS` keeps
+ * it. Where it counts on the lap counters it is the other way round: a slower
+ * pace means fewer crossings before the clock runs out, so an inflated lap
+ * reads the race short. `lapCountChequered` therefore runs the same
+ * prediction at `min(L, P)`, the leader's lap time capped at the player's
+ * validated average `P`, which leaves out caution and pit laps. The lap
+ * counters are read only for a player within a lap of the leader and
+ * projected to stay so, whose race pace is comparable, and of two paces the
+ * faster gives the more crossings — the cautious count. A leader genuinely
+ * faster than the player keeps their own lap time. It also covers a faster
+ * player who passes before the clock runs out: the race then ends on their
+ * crossings, and the leader's position run at the player's pace brings up a
+ * count at least as high.
  *
  * @param telemetry - the tick's telemetry
  * @param positions - the tick's canonical live order (1-based rank by car index)
  * @param playerCarIdx - the player's car index, `-1` when unknown
  * @param leaderLapTimeS - the leader's recent lap time (s) from `resolveLeaderLapTimeS`, or `null`
  * @param expiry - whether an expired reading is confirmed, and whether the leader has crossed since
+ * @param playerLapS - the player's validated average lap time (s), or `null`
  */
 export function resolveLeaderFinish(
   telemetry: TelemetryData,
@@ -406,13 +433,30 @@ export function resolveLeaderFinish(
   playerCarIdx: number,
   leaderLapTimeS: number | null,
   expiry: LeaderClockExpiry,
+  playerLapS: number | null,
 ): LeaderFinish {
   const chequered = predictLeaderChequered(telemetry, positions, leaderLapTimeS, expiry);
+  const lapCountPaceS =
+    chequered !== null &&
+    leaderLapTimeS !== null &&
+    typeof playerLapS === "number" &&
+    Number.isFinite(playerLapS) &&
+    playerLapS > 0
+      ? Math.min(leaderLapTimeS, playerLapS)
+      : null;
+  const atLapCountPace =
+    lapCountPaceS === null
+      ? null
+      : lapCountPaceS === leaderLapTimeS
+        ? chequered
+        : predictLeaderChequered(telemetry, positions, lapCountPaceS, expiry);
 
   return {
     lapTimeS: leaderLapTimeS,
     chequeredInS: chequered?.inS ?? null,
     crossingsToChequered: chequered?.crossings ?? null,
+    lapCountChequered:
+      lapCountPaceS === null || atLapCountPace === null ? null : { ...atLapCountPace, lapTimeS: lapCountPaceS },
     leaderGap: readLeaderGap(telemetry, positions, playerCarIdx),
   };
 }
