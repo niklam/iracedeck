@@ -21,41 +21,39 @@ const [varsSection, condsSection, casesSection] = VOCABULARY_SECTIONS;
 <section>
   <h2 id={varsSection.anchor}>{varsSection.label}</h2>
   <p>
-    A variable resolves at fire time to one clip, or to a pool it picks a take from — a number, a name, a line chosen
-    by the sim's state. Write it as <code>{"{{name}}"}</code>, or as <code>{'{ "var": "name" }'}</code>. A variable
-    that resolves to nothing aborts the callout unless the step sits inside an <code>optional</code>.
+    A variable resolves at fire time to one clip, or to a pool it picks a take from — a number, a name, a line chosen by
+    the sim's state. Write it as <code>{"{{name}}"}</code>, or as <code>{'{ "var": "name" }'}</code>. A variable that
+    resolves to nothing aborts the callout unless the step sits inside an <code>optional</code>.
   </p>
-  {
-    vocabulary.vars.map((item) => (
-      <article class="pack-ref-item">
-        <h3 id={varAnchor(item.name)}>
-          <code>{`{{${item.name}}}`}</code>
-        </h3>
-        <p>{item.description}</p>
-        <PackReferenceUsedBy usedBy={item.usedBy} />
-      </article>
-    ))
-  }
+  {vocabulary.vars.map((item) => (
+    <article class="pack-ref-item">
+      <h3 id={varAnchor(item.name)}>
+        <code>{`{{${item.name}}}`}</code>
+      </h3>
+      <p>{item.description}</p>
+      <PackReferenceUsedBy usedBy={item.usedBy} />
+    </article>
+  ))}
 </section>
 
 <section>
   <h2 id={condsSection.anchor}>{condsSection.label}</h2>
+  {/* Prettier would break the line between </code> and the full stop, which renders as "! ." (#1616). */}
+  <!-- prettier-ignore -->
   <p>
     A condition answers yes or no at fire time. Write it in an <code>if</code> step —{" "}
     <code>{'{ "if": "name", "then": [ … ], "else": [ … ] }'}</code> — and negate it with a single leading{" "}
     <code>!</code>. That <code>!</code> is the only operator the format has.
   </p>
-  {
-    vocabulary.conds.map((item) => (
-      <article class="pack-ref-item">
-        <h3 id={condAnchor(item.name)}>
-          <code>{item.name}</code>
-        </h3>
-        <p>{item.description}</p>
-        <PackReferenceUsedBy usedBy={item.usedBy} />
-      </article>
-    ))
-  }
+  {vocabulary.conds.map((item) => (
+    <article class="pack-ref-item">
+      <h3 id={condAnchor(item.name)}>
+        <code>{item.name}</code>
+      </h3>
+      <p>{item.description}</p>
+      <PackReferenceUsedBy usedBy={item.usedBy} />
+    </article>
+  ))}
 </section>
 
 <section>
@@ -67,27 +65,25 @@ const [varsSection, condsSection, casesSection] = VOCABULARY_SECTIONS;
     key may map to <code>[]</code> to say nothing about it. A key that is not declared below is refused when the script
     is compiled.
   </p>
-  {
-    vocabulary.cases.map((item) => (
-      <article class="pack-ref-item">
-        <h3 id={caseAnchor(item.name)}>
-          <code>{item.name}</code>
-        </h3>
-        <p>{item.description}</p>
-        <dl class="pack-ref-keys">
-          {Object.entries(item.keys).map(([key, description]) => (
-            <>
-              <dt>
-                <code>{key}</code>
-              </dt>
-              <dd>{description}</dd>
-            </>
-          ))}
-        </dl>
-        <PackReferenceUsedBy usedBy={item.usedBy} />
-      </article>
-    ))
-  }
+  {vocabulary.cases.map((item) => (
+    <article class="pack-ref-item">
+      <h3 id={caseAnchor(item.name)}>
+        <code>{item.name}</code>
+      </h3>
+      <p>{item.description}</p>
+      <dl class="pack-ref-keys">
+        {Object.entries(item.keys).map(([key, description]) => (
+          <>
+            <dt>
+              <code>{key}</code>
+            </dt>
+            <dd>{description}</dd>
+          </>
+        ))}
+      </dl>
+      <PackReferenceUsedBy usedBy={item.usedBy} />
+    </article>
+  ))}
 </section>
 
 <style>

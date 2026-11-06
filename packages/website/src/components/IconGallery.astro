@@ -65,14 +65,21 @@ function groupCount(group: TemplateGroup): number {
 
 <div class="icon-gallery not-content">
   <p>
-    <input id="icon-gallery-filter" type="search" placeholder="Filter by name, family, action, or title…" aria-label="Filter icons" />
+    <input
+      id="icon-gallery-filter"
+      type="search"
+      placeholder="Filter by name, family, action, or title…"
+      aria-label="Filter icons"
+    />
     <span id="icon-gallery-count">{all.length} icons</span>
   </p>
 
   <div class="gallery-size-facts">
     <p>Sizes at a glance</p>
     <ul>
-      {SIZE_FACTS.map((fact) => <li>{fact}</li>)}
+      {SIZE_FACTS.map((fact) => (
+        <li>{fact}</li>
+      ))}
     </ul>
   </div>
 
@@ -105,14 +112,18 @@ function groupCount(group: TemplateGroup): number {
           )}
 
           <div class="gallery-grid">
-            {group.entries.map((e) => <IconGalleryCard entry={e} />)}
+            {group.entries.map((e) => (
+              <IconGalleryCard entry={e} />
+            ))}
           </div>
 
           {group.dialEntries.length > 0 && (
             <div class="gallery-dial-row">
               <div class="gallery-dial-label">Dial</div>
               <div class="gallery-grid">
-                {group.dialEntries.map((e) => <IconGalleryCard entry={e} label={dialLabel(e)} />)}
+                {group.dialEntries.map((e) => (
+                  <IconGalleryCard entry={e} label={dialLabel(e)} />
+                ))}
               </div>
             </div>
           )}
@@ -127,7 +138,9 @@ function groupCount(group: TemplateGroup): number {
       <p>{dynamicSection.blurb}</p>
       <p class="section-size">{dynamicSection.blurbSize}</p>
       <div class="gallery-grid">
-        {dynamicEntries.map((e) => <IconGalleryCard entry={e} />)}
+        {dynamicEntries.map((e) => (
+          <IconGalleryCard entry={e} />
+        ))}
       </div>
     </section>
   )}
@@ -135,9 +148,13 @@ function groupCount(group: TemplateGroup): number {
   {orphanDials.length > 0 && (
     <section class="gallery-class" data-class="dial">
       <h2 id="class-dial">Dials</h2>
-      <p>Dial assets (encoder icons and touch-strip dash-box samples) that couldn't be matched to an action group above.</p>
+      <p>
+        Dial assets (encoder icons and touch-strip dash-box samples) that couldn't be matched to an action group above.
+      </p>
       <div class="gallery-grid">
-        {orphanDials.map((e) => <IconGalleryCard entry={e} label={dialLabel(e)} />)}
+        {orphanDials.map((e) => (
+          <IconGalleryCard entry={e} label={dialLabel(e)} />
+        ))}
       </div>
     </section>
   )}
