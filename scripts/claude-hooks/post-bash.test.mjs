@@ -138,7 +138,8 @@ const boardItem = (lane) => ({
 
 const issueRef = (repo, number) => ({ number, url: `https://github.com/${repo}/issues/${number}` });
 
-describe("post-bash.mjs triggers", () => {
+// Each case spawns the hook, several to a test: measured up to 2.1 s under the full suite (#1542).
+describe("post-bash.mjs triggers", { timeout: 30_000 }, () => {
   it("stays silent on a mention of every trigger", () => {
     for (const command of [
       `grep -rn "gh pr merge" scripts`,
@@ -236,7 +237,8 @@ describe("post-bash.mjs triggers", () => {
 
 // #1527: a card is found by issue number alone, so a filing or a merge in
 // another repository moved the iRaceDeck card that shares its number.
-describe("post-bash.mjs acts on niklam/iracedeck only (#1527)", () => {
+// Each case spawns the hook, several to a test: measured up to 2.1 s under the full suite (#1542).
+describe("post-bash.mjs acts on niklam/iracedeck only (#1527)", { timeout: 30_000 }, () => {
   const FOREIGN = "https://github.com/lint-staged/lint-staged/issues/1865";
 
   it("names an iRaceDeck issue it cannot date rather than file it", () => {

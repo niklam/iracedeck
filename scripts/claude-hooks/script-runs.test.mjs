@@ -2,7 +2,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { deckFindings, shellQuote } from "./script-runs.mjs";
-import { BASH, maskInert, POWERSHELL, shellWords } from "./shell-lexer.mjs";
+import { BASH, maskInert, POWERSHELL, powershellAsBash, shellWords } from "./shell-lexer.mjs";
 
 // Built through `path`, not written as Windows literals: CI runs on Linux, where
 // `C:\repo\master` is a RELATIVE path and every resolve lands under the runner's cwd.
@@ -68,6 +68,109 @@ describe("deckFindings", () => {
     expect(deckFindings("pnpm deep0", ROOT, chain(7), BASH)).toHaveLength(1);
     expect(deckFindings("pnpm deep0", ROOT, chain(8), BASH)).toEqual([]);
   });
+});
+
+// #1542: shapes `pre-bash.test.mjs` once spawned the hook for, two tools each.
+// Every one of those spawns ran the same readers, so the hook test keeps one
+// spawn per reader and the shapes are judged here, in-process, under both
+// shells as before.
+const SHELLS = [
+  ["Bash", BASH],
+  ["PowerShell", POWERSHELL],
+];
+/**
+ * `deckFindings` over a command as `checkBash` hands it over: a PowerShell
+ * command first goes through `powershellAsBash`, as it does in the hook.
+ */
+const judge = (command, c, shell) =>
+  deckFindings(shell === POWERSHELL ? powershellAsBash(command) : command, ROOT, c, shell);
+/** The Stream Deck plugin's real `watch`: the restart sits in a quoted rollup option. */
+const SD_WATCH = 'rollup -c -w --watch.onEnd="streamdeck restart com.iracedeck.sd.core"';
+const LINKED = { linkTargets: () => [{ host: "Stream Deck", target: path.join(ROOT, "plugin") }] };
+
+describe("a script read from the package.json it runs from, under either shell (#1520, #1542)", () => {
+  const at = (o) =>
+    ctx(
+      {
+        hop: "pnpm relink:anything",
+        voices: "pnpm dev:voices on",
+        watch: SD_WATCH,
+        wipe: "rimraf plugin/bin",
+        quiet: "vitest run",
+      },
+      o,
+    );
+
+  it.each(SHELLS)("%s: labels each step from the script to the restart, linked or not", (_, shell) => {
+    for (const o of [{}, LINKED]) {
+      expect(judge("pnpm hop", at(o), shell)).toEqual([
+        "`pnpm hop` → `pnpm relink:anything` restarts or relinks a deck host",
+      ]);
+      expect(judge("pnpm watch", at(o), shell)).toEqual([
+        "`pnpm watch` → `rollup --watch.onEnd` → `streamdeck restart` restarts or relinks a deck host",
+      ]);
+    }
+  });
+
+  it.each(SHELLS)("%s: asks for a script that runs dev:voices only where a host is linked", (_, shell) => {
+    expect(judge("pnpm voices", at(LINKED), shell)).toEqual([
+      `\`pnpm voices\` → Stream Deck plugin link points into ${ROOT}: \`pnpm dev:voices\` there relinks the running plugin`,
+    ]);
+    expect(judge("pnpm voices", at(), shell)).toEqual([]);
+  });
+
+  // Positive control: scripts from the same package.json that restart nothing.
+  it.each(SHELLS)("%s: finds nothing in a script that restarts nothing, linked or not", (_, shell) => {
+    for (const o of [{}, LINKED])
+      for (const c of ["pnpm wipe", "pnpm quiet"]) expect(judge(c, at(o), shell), c).toEqual([]);
+  });
+});
+
+// #1526 review: the false accepts it found. `sd` carries the Stream Deck
+// plugin's `watch`; the root carries no scripts, so a selector asks only by
+// reaching that package.
+describe("every package an unresolved selector may pick, a wrapper's string and node behind a runner (#1526, #1542)", () => {
+  const SD = path.join(ROOT, "packages", "sd");
+  const manifests = {
+    [ROOT]: { name: "root", scripts: {} },
+    [SD]: { name: "@fixture/sd", scripts: { build: "rollup -c", watch: SD_WATCH } },
+  };
+  const scriptsAt = (dir) => {
+    for (let d = dir; ; d = path.dirname(d)) {
+      if (manifests[d]) return { dir: d, ...manifests[d] };
+      if (path.dirname(d) === d) return undefined;
+    }
+  };
+  const c = ctx({}, { scriptsAt, workspaceDirs: () => [SD] });
+  // Each shape with the exact finding it must give, so one that asks for the
+  // wrong reason (a selector that stopped resolving, say) fails.
+  const SD_RESTART = "`rollup --watch.onEnd` → `streamdeck restart` restarts or relinks a deck host";
+  const WRAPPED = "`pnpm restart:stream-deck` restarts or relinks a deck host";
+  const restarting = [
+    ["pnpm -r watch", `\`pnpm watch\` → ${SD_RESTART}`],
+    ["pnpm --filter sd watch", `\`pnpm watch\` → ${SD_RESTART}`],
+    ["pnpm --filter ./packages/sd watch", `\`pnpm watch\` → ${SD_RESTART}`],
+    ["npm run watch -w packages/sd", `\`npm run watch\` → ${SD_RESTART}`],
+    [`bash -c "pnpm restart:stream-deck"`, `\`bash -c\` → ${WRAPPED}`],
+    [`cmd /c "pnpm restart:stream-deck"`, `\`cmd /c\` → ${WRAPPED}`],
+    [`pwsh -c "pnpm restart:stream-deck"`, `\`pwsh -Command\` → ${WRAPPED}`],
+    ["npx node scripts/host-app.mjs stop mirabox", "`node scripts/host-app.mjs stop` stops or starts a deck host app"],
+    [
+      "node scripts/integration-build.mjs $(echo --restart) fix/1-a",
+      "`node scripts/integration-build.mjs $(…)` may stop and start the deck hosts linked to its tree: its flags could not be read",
+    ],
+  ];
+  // Positive control: the same shapes over what restarts nothing.
+  const harmless = ["pnpm -r build", "pnpm --filter sd build", `bash -c "pnpm build"`, "npx node scripts/build.mjs"];
+
+  it.each(SHELLS.flatMap(([name, shell]) => restarting.map(([cmd, finding]) => [name, cmd, shell, finding])))(
+    "%s finds a deck host in: %s",
+    (_, cmd, shell, finding) => expect(judge(cmd, c, shell)).toEqual([finding]),
+  );
+  it.each(SHELLS.flatMap(([name, shell]) => harmless.map((cmd) => [name, cmd, shell])))(
+    "%s finds nothing in: %s",
+    (_, cmd, shell) => expect(judge(cmd, c, shell)).toEqual([]),
+  );
 });
 
 describe("helpers", () => {
