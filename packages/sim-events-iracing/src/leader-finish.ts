@@ -287,12 +287,16 @@ export function fuelFinishToleranceLaps(timeRemainS: number, lapTimeS: number): 
  * @param positions - the tick's canonical live order (1-based rank by car index)
  * @param leaderLapTimeS - the leader's recent lap time (s) from `resolveLeaderLapTimeS`, or `null`
  * @param expiry - whether an expired reading is confirmed, and whether the leader has crossed since
+ * @param crossingCheckLapS - the lap time the post-expiry crossing is checked against the clock with;
+ *   the prediction's own `leaderLapTimeS` unless a caller runs it at another pace. The slower of two
+ *   paces is the cautious one here, since it trusts the crossing less.
  */
 export function predictLeaderChequered(
   telemetry: TelemetryData,
   positions: number[],
   leaderLapTimeS: number | null,
   expiry: LeaderClockExpiry,
+  crossingCheckLapS: number | null = leaderLapTimeS,
 ): LeaderChequered | null {
   const expired = isClockExpiredReading(telemetry);
 
@@ -319,7 +323,12 @@ export function predictLeaderChequered(
   let crossings: number;
 
   if (expired) {
-    crossings = expiry.leaderCrossed && leaderCrossedSinceExpiry(telemetry, leaderPct, leaderLapTimeS) ? 1 : 2;
+    const checkLapS =
+      typeof crossingCheckLapS === "number" && Number.isFinite(crossingCheckLapS) && crossingCheckLapS > 0
+        ? Math.max(crossingCheckLapS, leaderLapTimeS)
+        : leaderLapTimeS;
+
+    crossings = expiry.leaderCrossed && leaderCrossedSinceExpiry(telemetry, leaderPct, checkLapS) ? 1 : 2;
   } else {
     const white = leaderWhiteCrossingIndex(
       timeRemainS,
@@ -449,7 +458,10 @@ export function resolveLeaderFinish(
       ? null
       : lapCountPaceS === leaderLapTimeS
         ? chequered
-        : predictLeaderChequered(telemetry, positions, lapCountPaceS, expiry);
+        : // The post-expiry crossing is still checked at the raw, slower pace: a
+          // faster pace would trust a lead-change marker the raw pace rejects
+          // and read the race a lap short.
+          predictLeaderChequered(telemetry, positions, lapCountPaceS, expiry, leaderLapTimeS);
 
   return {
     lapTimeS: leaderLapTimeS,
