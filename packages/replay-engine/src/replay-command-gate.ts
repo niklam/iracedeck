@@ -525,12 +525,21 @@ function batch<T>(now: number, change: () => T): T {
  * Control dial's own clause once did (its sighting was stamped while the
  * debounced state read true, a second of grace past the tick, and held for
  * `REPLAY_TARGET_GIVE_UP_MS` more), and on a long tape it grows with the
- * tape, so a long seek is still held through.
+ * tape, so a long seek is still held through. Never under the own wait of
+ * the move that holds: a search's could-run time has the fastest-lap walk's
+ * floor, and a takeover's target the search's wait (`minGiveUpMs`), either of
+ * which can pass the tape's on a short tape, and a cap below it would end the
+ * hold before the move it holds for. Both are finite, so moves sent from the
+ * car still cannot renew the hold for ever.
  */
 function longestSeekMs(): number {
   const tapeFrames = lastReplay?.left === undefined ? 0 : lastReplay.frame + lastReplay.left;
+  const target = pendingReplayTarget();
+  const targetWaitMs = target !== null && target.sent ? target.giveUpMs : 0;
+  const searchWaitMs =
+    search !== null && search.onItsWay && !search.landed && search.kind !== "go-to-end" ? search.couldRunMs : 0;
 
-  return replayTargetGiveUpMs(tapeFrames);
+  return Math.max(replayTargetGiveUpMs(tapeFrames), targetWaitMs, searchWaitMs);
 }
 
 /**

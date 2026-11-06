@@ -15,7 +15,7 @@ import { steppedReplayState } from "./replay-state.test-support.js";
  * grace on a long jump.
  */
 
-const engineSettings = {
+const engineSettings: { replayJumpPlayback(): unknown; fastestLapSearchDelayMs(): unknown } = {
   replayJumpPlayback: () => undefined,
   fastestLapSearchDelayMs: () => undefined,
 };
@@ -193,13 +193,14 @@ describe("replay command gate: the replay state's seek hold (#1429)", () => {
       expect(caps[0]).toBeGreaterThan(REPLAY_TARGET_GIVE_UP_MS);
     });
 
-    it("is REPLAY_TARGET_GIVE_UP_MS on a short tape, and when no reading has said how long the tape is", () => {
+    it("is REPLAY_TARGET_GIVE_UP_MS on a short tape", () => {
       setUp({ frame: 2_000, end: 6_000 });
       press({ kind: "jump", frame: 4_000 });
 
       expect(caps).toEqual([REPLAY_TARGET_GIVE_UP_MS]);
+    });
 
-      resetEngine({ settings: engineSettings });
+    it("is the jump's own wait when no reading has said how long the tape is", () => {
       const unsized = setUp({ frame: 2_000 });
       const read = unsized.telemetry.bind(unsized);
 
@@ -208,7 +209,29 @@ describe("replay command gate: the replay state's seek hold (#1429)", () => {
       );
       press({ kind: "jump", frame: 1_200_000 });
 
-      expect(caps).toEqual([REPLAY_TARGET_GIVE_UP_MS]);
+      // The tape's own cap would be REPLAY_TARGET_GIVE_UP_MS, and would end the hold long before this jump lands.
+      const giveUpMs = pendingReplayTarget()?.giveUpMs;
+
+      expect(giveUpMs).toBeGreaterThan(REPLAY_TARGET_GIVE_UP_MS);
+      expect(caps).toEqual([giveUpMs]);
+    });
+
+    it("never falls under the own wait of a search on its way, which can pass a short tape's", () => {
+      // A short tape: the tape's own cap is REPLAY_TARGET_GIVE_UP_MS, the search's floor the fastest-lap walk's.
+      engineSettings.fastestLapSearchDelayMs = () => 2_000;
+
+      try {
+        setUp({ frame: 2_000, end: 6_000, searches: { nextLap: (from) => from + 1_000 } });
+        const couldRunMs = replaySearchMayRunMs(sim.telemetry(), 1);
+
+        press({ kind: "search", search: "nextLap" });
+
+        expect(couldRunMs).toBeGreaterThan(REPLAY_TARGET_GIVE_UP_MS);
+        expect(holds).toEqual([couldRunMs]);
+        expect(caps).toEqual([couldRunMs]);
+      } finally {
+        engineSettings.fastestLapSearchDelayMs = () => undefined;
+      }
     });
 
     it("is told again when it changes though the hold's time does not", async () => {
