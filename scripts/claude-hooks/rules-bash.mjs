@@ -1313,7 +1313,10 @@ export const rules = [
         const [open, close] = string;
         // Where the command that runs the shell starts: after the last operator ahead of the string.
         const from = text.slice(0, open).search(/[^\n;&|()\x60]*$/);
-        const inner = /pipefail/.test(text.slice(open, m.index)) || /[-+]o\s+pipefail\b/.test(text.slice(from, open));
+        // The shell's own `-o pipefail`, alone or ending a cluster (`-eo pipefail`);
+        // a `+o pipefail` turns it off, so it excuses nothing (#1634).
+        const inner =
+          /pipefail/.test(text.slice(open, m.index)) || /(?<!\S)-[A-Za-z]*o\s+pipefail\b/.test(text.slice(from, open));
         if (!inner && piped(text.slice(end, close))) return PIPED_PNPM;
         if (/pipefail/.test(text.slice(0, from))) continue;
         const after = /^(?:>&\d|&>|[^;&\n])*/.exec(text.slice(close + 1))[0];

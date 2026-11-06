@@ -4913,6 +4913,10 @@ describe("the #1634 second read: the piped pnpm's exemptions, nested wrappers, a
     passes('bash -c "set -o pipefail; pnpm test | tail"');
     passes("bash -o pipefail -c 'pnpm test | tail -5'");
     passes("bash +o posix -o pipefail -c 'pnpm test | tail -5'");
+    // A cluster ending in `o` takes pipefail as its value; `+o pipefail` turns it off (CodeRabbit CLI round 6).
+    passes("bash -eo pipefail -c 'pnpm test | tail -5'");
+    passes("sh -euo pipefail -c 'pnpm build | tail -5'");
+    expect(deny("bash +o pipefail -c 'pnpm test | tail -5'")).toMatch(/pipefail/);
     // Outside the string: pipefail in the outer text ahead of the shell word only.
     expect(deny('bash -c "set -o pipefail; pnpm test" | tail')).toMatch(/pipefail/);
     expect(deny("bash -o pipefail -c 'pnpm test' | tail")).toMatch(/pipefail/);
