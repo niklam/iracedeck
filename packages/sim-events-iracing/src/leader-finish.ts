@@ -21,8 +21,9 @@
  * For the fuel estimate the prediction comes in two units, from one model:
  * the seconds until the chequered and the leader's line crossings up to and
  * including it. The crossings, with the two cars' lap counters
- * ({@link readLeaderGap}), let a player within a lap of the leader be counted
- * by laps rather than by time — see `resolveFuelRaceCoverage`.
+ * ({@link readLeaderGap}), let a player within a lap of the leader, now and
+ * at the flag, be counted by laps rather than by time — see
+ * `resolveFuelRaceCoverage`.
  * {@link resolveLeaderFinish} bundles them for the fuel diff.
  *
  * Pure: the caller supplies the canonical live order
@@ -162,7 +163,7 @@ export function isClockExpiryConfirmed(expiredTicks: number): boolean {
 }
 
 /**
- * What {@link predictLeaderChequeredS} is told about an expired clock: whether
+ * What {@link predictLeaderChequered} is told about an expired clock: whether
  * the expiry is confirmed, and whether the leader has crossed the line since.
  */
 export type LeaderClockExpiry = {
@@ -171,7 +172,7 @@ export type LeaderClockExpiry = {
   /**
    * `state.leaderWhitePostExpiryCrossed` after this tick's `diffLeaderWhite`;
    * trusted only when the leader's lap position agrees with the clock (see
-   * {@link predictLeaderChequeredS}).
+   * {@link predictLeaderChequered}).
    */
   leaderCrossed: boolean;
 };

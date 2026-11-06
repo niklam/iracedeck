@@ -1173,12 +1173,14 @@ describe("resolveFuelRaceCoverage — a player within a lap of the leader (issue
       expiry = HELD,
       order = ORDER,
       extra = {},
-    }: { expiry?: LeaderClockExpiry; order?: number[]; extra?: Partial<TelemetryData> } = {},
+      playerLapS = 100,
+    }: { expiry?: LeaderClockExpiry; order?: number[]; extra?: Partial<TelemetryData>; playerLapS?: number } = {},
   ): number | null {
     const telemetry = telemetryOf(clock, player, leader, extra);
     const finish = resolveLeaderFinish(telemetry, order, 0, 100, expiry);
+    const stats: FuelStats = { ...STATS, avgLapTime: playerLapS };
 
-    return resolveFuelRaceCoverage(telemetry, STATS, 1 - player.pct, () => finish).timedLapsAfterCurrent;
+    return resolveFuelRaceCoverage(telemetry, stats, 1 - player.pct, () => finish).timedLapsAfterCurrent;
   }
 
   it("counts a follower on the same lap two seconds back by laps, not one lap long (the tape)", () => {
@@ -1231,6 +1233,60 @@ describe("resolveFuelRaceCoverage — a player within a lap of the leader (issue
     expect(timedLaps(-20, { laps: 9, pct: 0.01 }, { laps: 8, pct: 0.99 })).toBe(0);
   });
 
+  describe("a slower player, projected to the leader's chequered flag", () => {
+    // The player laps in 115 s against the leader's 100 s: the gap grows by
+    // T × (1/100 − 1/115) = 0.0013 laps a second until the flag.
+    const SLOW = { playerLapS: 115 };
+
+    it("counts a car within a lap now but lapped before the flag by time, at several samples", () => {
+      // 300 s on the clock, the leader at 5.5 (chequered at count 10, 450 s
+      // away), the player at 4.9: projected 1.19 laps back at the flag. Their
+      // crossings fall at 11.5, 126.5, 241.5, 356.5 and 471.5 s — they finish
+      // at count 9, four laps after this one. The lap counters would say 5.
+      expect(timedLaps(300, { laps: 4, pct: 0.9 }, { laps: 5, pct: 0.5 }, SLOW)).toBe(4);
+      // 1000 s on the clock, the leader at 5.5 (count 17, 1150 s away), the
+      // player at 5.2: projected 1.8 laps back. They finish at count 16 after
+      // eleven crossings, ten laps after this one. The lap counters: 11.
+      expect(timedLaps(1000, { laps: 5, pct: 0.2 }, { laps: 5, pct: 0.5 }, SLOW)).toBe(10);
+      // Expired, the leader at 9.5 (count 11, 150 s away), the player at
+      // 8.65: projected 1.05 back. Crossings at 40.25 and 155.25 s, finishing
+      // at count 10, one lap after this one. The lap counters: 2.
+      expect(timedLaps(-20, { laps: 8, pct: 0.65 }, { laps: 9, pct: 0.5 }, SLOW)).toBe(1);
+    });
+
+    it("keeps a car lapped just after the flag on the lap counters", () => {
+      // The player at 8.75, 0.95 laps back at the flag: crossings at 28.75,
+      // 143.75 and 258.75 s, finishing at count 11 with the leader — two
+      // laps after this one.
+      expect(timedLaps(-20, { laps: 8, pct: 0.75 }, { laps: 9, pct: 0.5 }, SLOW)).toBe(2);
+    });
+
+    it("errs to the cautious side either way at the boundary", () => {
+      // Projected just inside a lap (8.79: 0.986 back): the lap counters say
+      // two laps after this one, one more than if the car is really lapped.
+      expect(timedLaps(-20, { laps: 8, pct: 0.79 }, { laps: 9, pct: 0.5 }, SLOW)).toBe(2);
+      // Projected just outside (8.685: 1.011 back), the time model: the
+      // player's crossing 1.2 s after the leader's chequered is a near-tie,
+      // and the tolerance counts the later crossing — two laps, which also
+      // covers the car not being lapped after all.
+      expect(timedLaps(-20, { laps: 8, pct: 0.685 }, { laps: 9, pct: 0.5 }, SLOW)).toBe(2);
+    });
+
+    it("keeps a faster player on the lap counters: they pass and lead at the same count", () => {
+      // 90 s laps, two seconds back: the projected gap falls below zero.
+      // By time, ceil(143 / 90 + 0.55 + 0.03) − 1 = 2.
+      expect(timedLaps(-20, { laps: 8, pct: 0.55 }, { laps: 8, pct: 0.57 }, { playerLapS: 90 })).toBe(1);
+    });
+
+    it("counts by time when the leader's lap time is unknown", () => {
+      const telemetry = telemetryOf(-20, { laps: 8, pct: 0.55 }, { laps: 8, pct: 0.57 });
+      const finish = { ...resolveLeaderFinish(telemetry, ORDER, 0, 100, HELD), lapTimeS: null };
+
+      // The prediction stands, but the gap cannot be projected: by time, 2.
+      expect(resolveFuelRaceCoverage(telemetry, STATS, 0.45, () => finish).timedLapsAfterCurrent).toBe(2);
+    });
+  });
+
   it("keeps a lapped player on the time model", () => {
     // 1.05 laps back: by time ceil(1.4 + 0.55 + 0.03) − 1 = 1, where the lap
     // counters would say 8 + 2 − 7 − 1 = 2.
@@ -1281,6 +1337,34 @@ describe("diffFuelLapsLeft — a close follower of the leader (issue #1405, the 
       8,
       4,
       { avgLapTime: 100, finish },
+      { SessionLapsRemainEx: IRSDK_UNLIMITED_LAPS, SessionTimeRemain: -20 },
+    );
+
+    expect(events).toEqual([]);
+  });
+
+  it("stays silent for a slower car lapped before the flag on a tank that covers it (the lapped tape)", () => {
+    const events: PendingEvent[] = [];
+    const { run } = makeRunner(events);
+    const sample = tick({
+      LapDistPct: 0.55,
+      SessionLapsRemainEx: IRSDK_UNLIMITED_LAPS,
+      SessionTimeRemain: -20,
+      CarIdxLapCompleted: [8, 9],
+      CarIdxLapDistPct: [0.55, 0.5],
+      CarIdxTrackSurface: [TrkLoc.OnTrack, TrkLoc.OnTrack],
+    });
+    const finish = resolveLeaderFinish(sample, [2, 1], 0, 100, { confirmed: true, leaderCrossed: false });
+
+    // The player at 8.55 on 115 s laps, 0.95 laps behind the leader now and
+    // 1.15 at the flag: crossings at 51.75 and 166.75 s against the
+    // chequered at 150 s — one lap after this one, which two laps of fuel
+    // cover. Counted on the lap counters it was two, and "1 more lap".
+    lapSample(
+      run,
+      8,
+      4,
+      { avgLapTime: 115, finish },
       { SessionLapsRemainEx: IRSDK_UNLIMITED_LAPS, SessionTimeRemain: -20 },
     );
 
