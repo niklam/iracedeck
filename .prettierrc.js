@@ -20,12 +20,6 @@ export default {
       },
     },
     {
-      files: "*.astro",
-      options: {
-        parser: "astro",
-      },
-    },
-    {
       files: "*.jsonc",
       options: {
         trailingComma: "none",

@@ -74,7 +74,7 @@ for (const file of tracked.filter((file) => LINTED_EXTENSIONS.includes(extension
 /** The files of `files` that none of `globs` reaches. */
 const unreached = (files, globs) => files.filter((file) => !globs.some((glob) => matchesGlob(file, glob)));
 
-const linted = lintable.filter((file) => !unreached([file], lintGlobs).length);
+const linted = lintable.filter((file) => lintGlobs.some((glob) => matchesGlob(file, glob)));
 const formatted = [];
 
 for (const file of tracked.filter((file) => formatGlobs.some((glob) => matchesGlob(file, glob)))) {
@@ -116,12 +116,14 @@ describe("lint and format coverage", () => {
 
     expect(astro.length).toBeGreaterThan(0);
     expect(mts).toContain("packages/website/scripts/generate-icon-gallery.mts");
+    // An .mts under packages/*/src would stay reached through that glob, so only
+    // the generator outside src/ is named.
     expect(
       unreached(
         lintable,
         lintGlobs.filter((glob) => glob !== "**/*.mts"),
       ),
-    ).toEqual(mts);
+    ).toContain("packages/website/scripts/generate-icon-gallery.mts");
     // packages/*/src/** reaches the components as well, so both go.
     expect(
       unreached(
