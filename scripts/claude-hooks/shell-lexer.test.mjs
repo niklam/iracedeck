@@ -22,6 +22,38 @@ const REPO = path.resolve("/repo");
 const MASTER = path.join(REPO, "master");
 const tree = (...parts) => path.join(REPO, ...parts);
 
+/**
+ * Asserts the command `make(n)` is read in time linear in `n`: `read` (by
+ * default `has` with `re`) is timed over a fresh view (the view memoises the
+ * last command) at `n` and at `2n`, three runs each, interleaved, and the
+ * fastest run at `2n` may take at most three times the fastest at `n`, plus
+ * 25 ms. Self-relative, so it holds on a loaded machine and on CI's runners
+ * as it does idle — an absolute bound did not (#1634 review) — while a
+ * quadratic pass takes four times as long, which fails once the run at `n`
+ * is past 25 ms (the sizes the callers pick put each pass's known quadratic
+ * well past it), and an exponential one thousands of times. Returns the two
+ * timings.
+ */
+function readsLinearly(make, n, re, found, read = (c) => lexer.has(c, re)) {
+  const time = (size) => {
+    const command = make(size);
+    lexer.view.last = undefined;
+    maskInert.last = undefined;
+    const started = performance.now();
+    expect(read(command), command.slice(0, 40)).toBe(found);
+    return performance.now() - started;
+  };
+  const runs = [[], []];
+  for (let k = 0; k < 3; k++) {
+    runs[0].push(time(n));
+    runs[1].push(time(2 * n));
+  }
+  const [t1, t2] = runs.map((r) => Math.min(...r));
+  const label = `${make(1).slice(0, 40)}: ${t1.toFixed(1)} ms at ${n}, ${t2.toFixed(1)} ms at ${2 * n}`;
+  expect(t2, label).toBeLessThanOrEqual(3 * t1 + 25);
+  return [t1, t2];
+}
+
 describe("helpers", () => {
   it("gitCwd honours -C", () => {
     expect(gitCwd("git -C ../ir-5 status", MASTER)).toBe(tree("ir-5"));
@@ -913,20 +945,17 @@ describe("the first word of a shell-fed string is at command position (#1634)", 
     expect([...lexer.matchesAt(command, MERGE)].map((m) => m[1])).toEqual(["5", "7"]);
   });
 
-  it("reads a long fed string, a long lead and a long run of options in linear time", () => {
-    for (const [command, found] of [
-      [`bash -c '${"gh pr merge 7 ".repeat(4000)}'`, true],
-      [`echo ${"-x gh pr merge 7 ".repeat(4000)}`, false],
-      [`sudo ${"-E ".repeat(4000)}gh pr merge 7`, true],
-      [`bash -c '${"A=1 ".repeat(4000)}gh pr merge 7'`, true],
-      [`echo '${"gh pr merge 7; ".repeat(4000)}' | bash`, true],
-      [`echo '${"x gh pr merge 7 ".repeat(4000)}' | bash`, false],
-    ]) {
-      const started = Date.now();
-      expect(lexer.has(command, MERGE), command.slice(0, 40)).toBe(found);
-      expect([...lexer.matchesAt(command, MERGE)].length >= (found ? 1 : 0)).toBe(true);
-      expect(Date.now() - started, command.slice(0, 40)).toBeLessThan(400);
-    }
+  it("reads a long fed string, a long lead and a long run of options in time linear in their length", () => {
+    readsLinearly((n) => `bash -c '${"gh pr merge 7 ".repeat(n)}'`, 2000, MERGE, true);
+    readsLinearly((n) => `echo ${"-x gh pr merge 7 ".repeat(n)}`, 2000, MERGE, false);
+    readsLinearly((n) => `sudo ${"-E ".repeat(n)}gh pr merge 7`, 2000, MERGE, true);
+    readsLinearly((n) => `bash -c '${"A=1 ".repeat(n)}gh pr merge 7'`, 2000, MERGE, true);
+    readsLinearly((n) => `echo '${"gh pr merge 7; ".repeat(n)}' | bash`, 2000, MERGE, true);
+    readsLinearly((n) => `echo '${"x gh pr merge 7 ".repeat(n)}' | bash`, 2000, MERGE, false);
+    // A lead token whose option value were free to be another option (the one
+    // parse per token COMMAND_LEAD keeps) would backtrack exponentially here,
+    // where the lead fails at the string's close.
+    readsLinearly((n) => `bash -c 'env ${"-u ".repeat(n)}-u'`, 12, MERGE, false);
   });
 });
 
@@ -1039,16 +1068,19 @@ describe("the #1634 review round: options, cuts and program positions", () => {
   it("has no fedCommandStart export: programKind says how a word is the program", () =>
     expect(lexer.fedCommandStart).toBeUndefined());
 
-  it("answers has() without sorting every match, in linear time on a long chain", () => {
-    for (const [command, found] of [
-      [`${"gh pr merge 7; ".repeat(4000)}`, true],
-      [`sudo ${"-u me ".repeat(4000)}gh pr merge 7`, true],
-      [`echo ${"-x gh pr merge 7 ".repeat(4000)}`, false],
-      [`${"echo x | ".repeat(2000)}bash -c 'gh pr merge 7'`, true],
-    ]) {
-      const started = Date.now();
-      expect(lexer.has(command, MERGE), command.slice(0, 40)).toBe(found);
-      expect(Date.now() - started, command.slice(0, 40)).toBeLessThan(400);
-    }
+  it("answers has() and reads every match in time linear in a long chain", () => {
+    readsLinearly((n) => "gh pr merge 7; ".repeat(n), 4000, MERGE, true);
+    readsLinearly((n) => `sudo ${"-u me ".repeat(n)}gh pr merge 7`, 2000, MERGE, true);
+    readsLinearly((n) => `echo ${"-x gh pr merge 7 ".repeat(n)}`, 2000, MERGE, false);
+    // A pipeline of n stages into a shell: the stdin pass once asked every later stage for its reader, per stage.
+    readsLinearly((n) => `${"echo x | ".repeat(n)}bash -c 'gh pr merge 7'`, 1000, MERGE, true);
+    // Every match of the chain, each placed in its program word: a lookup per match, never a walk of them all.
+    readsLinearly(
+      (n) => "gh pr merge 7; ".repeat(n),
+      4000,
+      MERGE,
+      true,
+      (c) => [...lexer.matchesAt(c, MERGE)].length > 1,
+    );
   });
 });

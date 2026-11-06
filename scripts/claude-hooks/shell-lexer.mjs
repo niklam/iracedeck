@@ -1006,7 +1006,7 @@ export const programAt = (command, at) => programKind(command, at) !== undefined
  * starts ({@link wordStartOf}).
  */
 function stringAround(v, index) {
-  const start = wordStartOf(v.programs, index);
+  const start = wordStartOf(v, index);
   return v.quotes.find(([open, close]) => open < start && index <= close);
 }
 
@@ -1323,6 +1323,7 @@ export function view(command) {
       programs: out.programs,
       unreadable: out.unreadable,
       byName: programsByName(out.text, out.programs),
+      wordStarts: wordStartsOf(out.programs, command.length),
       starts,
       quotes,
       quoteKinds,
@@ -1662,8 +1663,9 @@ function normalisePrograms(command, text, flat, words, raw, extra = new Map()) {
   const seen = new Set();
   // Inside a program word read already, and not inside a substitution it kept:
   // the rewritten text is blank or the name there, so the lead may stop in it.
-  const covered = (p) =>
-    programs.some(([a, b, , keep]) => a < p && p < b && !keep.some(([k0, k1]) => k0 < p && p < k1));
+  // Kept as a span array, so a chain of n commands asks n times, not n² (#1634 review).
+  const inside = new Uint8Array(command.length);
+  const covered = (p) => inside[p] === 1;
   for (let changed = true, passes = 0; changed && passes < 32; passes++) {
     changed = false;
     // The first word of each fed string after the anchored positions, so a
@@ -1728,6 +1730,7 @@ function normalisePrograms(command, text, flat, words, raw, extra = new Map()) {
         .filter(([, r1]) => r1 <= read.cut)
         .map(([r0, r1]) => [start + r0, start + r1]);
       programs.push([start, end, cut, keep, kind]);
+      for (let p = start + 1; p < end; p++) if (!keep.some(([k0, k1]) => k0 < p && p < k1)) inside[p] = 1;
       // The directory part blank but for its command substitutions, which run
       // and are read where they stand (#1606 review); the name right-aligned
       // in the last segment, so `$( … )/gh` reads `$( … )  gh`, at command
@@ -1756,19 +1759,27 @@ function normalisePrograms(command, text, flat, words, raw, extra = new Map()) {
  * part keeps is not part of that word: a command inside it is its own.
  */
 export function programStart(command, index) {
-  return wordStartOf(view(command).programs, index);
+  return wordStartOf(view(command), index);
 }
 
-/** {@link programStart} over a view's `programs`. */
-function wordStartOf(programs, index) {
-  let at = index;
-  let best = -1;
-  for (const [a, b, , keep] of programs)
-    if (a <= index && index < b && a > best && !keep.some(([k0, k1]) => k0 <= index && index < k1)) {
-      best = a;
-      at = a;
-    }
-  return at;
+/** {@link programStart} over a view: a lookup in its `wordStarts`, so a chain of n commands costs n reads, not n². */
+function wordStartOf(v, index) {
+  const start = v.wordStarts[index];
+  return start === undefined || start < 0 ? index : start;
+}
+
+/**
+ * For each index of a command, where the innermost program word holding it
+ * starts, or -1 ({@link wordStartOf}): the words in order of their start, each
+ * written over its span, so a nested one (a substitution's own command) wins,
+ * and a command substitution a word's directory part keeps left out, since a
+ * command inside it is its own.
+ */
+function wordStartsOf(programs, length) {
+  const starts = new Int32Array(length).fill(-1);
+  for (const [a, b, , keep] of [...programs].sort((x, y) => x[0] - y[0]))
+    for (let i = a; i < b; i++) if (!keep.some(([k0, k1]) => k0 <= i && i < k1)) starts[i] = a;
+  return starts;
 }
 
 /** The program words at command position that expand or glob, `{ start, end, word }` each ({@link view}). */
