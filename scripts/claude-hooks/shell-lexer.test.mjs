@@ -1086,3 +1086,54 @@ describe("the #1634 review round: options, cuts and program positions", () => {
     );
   });
 });
+
+// The #1634 second read: a wrapped word recorded at its rewritten name, a
+// shell word made a program only by a wrapper and written quoted, and the
+// string switch written attached (`cmd /c"…"`, `su -c'…'`).
+describe("the #1634 second read: rounds, late shell words and attached switches", () => {
+  const MERGE = cmd(/gh\s+pr\s+merge\b/);
+  const PUSH = cmd(/git\s+push\b/);
+
+  it.each([
+    'nice nice.exe bash -c "gh pr merge 7 --squash"',
+    "nice nice.exe nice.exe gh pr merge 7 --squash",
+    "nice nice.exe nice.exe gh.exe pr merge 7 --squash",
+    'winpty bash.exe -c "cmd.exe /c gh pr merge 7"',
+    "sudo nice.exe stdbuf.exe -oL gh.exe pr merge 7",
+  ])("keeps every level of a nested wrapper across the rounds: %s", (c) => {
+    expect(lexer.has(c, MERGE)).toBe(true);
+    expect(trustedMask(c)).toMatch(/\bgh pr merge 7/);
+    expect(trustedMask(c)).not.toMatch(/\.exe/);
+  });
+
+  it.each([
+    'nice "bash" -c "gh pr merge 7 --squash"',
+    'winpty "pwsh" -c "gh pr merge 7 --squash"',
+    `nice 'bash' -c 'gh pr merge 7'`,
+    `find . -exec "sh" -c "gh pr merge 7" \\;`,
+  ])("reads the string of a shell word that only a wrapper makes a program: %s", (c) => {
+    expect(view(c).fed).not.toEqual([]);
+    expect(lexer.has(c, MERGE)).toBe(true);
+  });
+  it("reads the string of a quoted shell path a wrapper runs", () => {
+    const c = `nice "C:/Program Files/Git/bin/bash.exe" -c "git push --tags"`;
+    expect(view(c).fed).not.toEqual([]);
+    expect(lexer.has(c, PUSH)).toBe(true);
+  });
+
+  it.each([
+    "cmd /cgh pr merge 7 --squash",
+    `cmd /c"gh pr merge 7 --squash"`,
+    `cmd //C"gh pr merge 7"`,
+    `su -c'gh pr merge 7 --squash' me`,
+    `su me -c"gh pr merge 7"`,
+    `su -c"gh pr merge 7" me`,
+    `fish -c'gh pr merge 7'`,
+    `pwsh -c"gh pr merge 7"`,
+    `powershell -Command"gh pr merge 7"`,
+  ])("reads the string switch with its string attached: %s", (c) => expect(lexer.has(c, MERGE)).toBe(true));
+  it("keeps bash's clustered flags as flags, not an attached string", () => {
+    expect(lexer.has("bash -cx 'gh pr merge 7'", MERGE)).toBe(true);
+    expect(lexer.has("bash -cls", MERGE)).toBe(false);
+  });
+});

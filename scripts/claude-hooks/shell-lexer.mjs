@@ -437,21 +437,31 @@ const spells = (p, full, min) => p.length >= min && full.startsWith(p);
  */
 const PS_OPTIONS = {
   read(w) {
-    const m = /^(?:--?|\/)([A-Za-z?]+)(?::([\s\S]*))?$/.exec(w);
+    // A value attached with `:`, or a quoted string glued to `-c` / `-Command`
+    // (`pwsh -c"gh …"`): what pwsh makes of the latter is not certain, so it is
+    // read as the string, erring to deny (#1634 second read).
+    const m = /^(?:--?|\/)([A-Za-z?]+)(?::([\s\S]*)|(['"][\s\S]*))?$/.exec(w);
     if (!m) return null;
     const p = m[1].toLowerCase();
+    const attached = m[2] ?? m[3];
     if (p === "c" || p === "cwa" || spells(p, "commandwithargs", 3))
-      return m[2] === undefined ? { string: true } : { string: true, attached: w.length - m[2].length };
+      return attached === undefined ? { string: true } : { string: true, attached: w.length - attached.length };
     if (p === "e" || p === "ec" || spells(p, "encodedcommand", 2) || spells(p, "file", 1)) return { stop: true };
-    return { value: m[2] === undefined && PS_VALUE_PARAMS.some(([full, min]) => spells(p, full, min)) };
+    return { value: attached === undefined && PS_VALUE_PARAMS.some(([full, min]) => spells(p, full, min)) };
   },
 };
-/** cmd.exe's switches, `/x` or `/x:value`, and Git Bash's `//c` (which keeps `/c` from becoming a path): `/c` and `/k` run what follows. */
+/**
+ * cmd.exe's switches, `/x` or `/x:value`, and Git Bash's `//c` (which keeps
+ * `/c` from becoming a path): `/c` and `/k` run what follows, glued to the
+ * switch too (`cmd /c"gh …"`, `cmd /cgh …`), as `wrapperRuns` in
+ * `script-runs.mjs` reads them.
+ */
 const CMD_OPTIONS = {
   read(w) {
-    const m = /^\/\/?([A-Za-z?])(?::[\s\S]*)?$/.exec(w);
+    const m = /^\/\/?([A-Za-z?])(?::[\s\S]*|([\s\S]+))?$/.exec(w);
     if (!m) return null;
-    return /^[ck]$/i.test(m[1]) ? { string: true } : {};
+    if (!/^[ck]$/i.test(m[1])) return {};
+    return m[2] === undefined ? { string: true } : { string: true, attached: w.length - m[2].length };
   },
 };
 const OPTION_SPECS = new Map([
@@ -463,6 +473,7 @@ const OPTION_SPECS = new Map([
       long: ["--init-command", "--debug", "--debug-output", "--debug-stack-frames", "--profile", "--profile-startup"],
       string: "c",
       longString: ["--command"],
+      attachedString: true,
     },
   ],
   // `su [options] [-] [user [argument…]]`: the user is the first word that is no option, the string follows `-c`.
@@ -473,6 +484,7 @@ const OPTION_SPECS = new Map([
       long: ["--shell", "--group", "--supp-group"],
       string: "c",
       longString: ["--command", "--session-command"],
+      attachedString: true,
     },
   ],
   ["sudo", { value: SUDO_VALUE_SHORT, long: [...SUDO_VALUE_LONG] }],
@@ -578,6 +590,10 @@ function readOption(spec, w) {
   if (/^-[A-Za-z]/.test(w) || (spec.plus && /^\+[A-Za-z]/.test(w))) {
     let string = false;
     for (let k = 1; k < w.length; k++) {
+      // getopt takes the rest of the word as the option's argument (`su -c'…'`,
+      // `fish -c'…'`); bash reads `-cx` as the flags `c` and `x`.
+      if (spec.string && w[k] === spec.string && spec.attachedString && k < w.length - 1)
+        return { string: true, attached: k + 1 };
       if (spec.string && w[k] === spec.string) string = true;
       else if (spec.value.includes(w[k])) return { string, value: k === w.length - 1 };
     }
@@ -867,15 +883,22 @@ function printedArgs(text, from, e, name) {
  * searched for, so the pass is linear in the text (one option step per word,
  * one lead step per token), whatever a rule later asks about.
  */
-function fedStarts(command, text, fed, byName) {
+function fedStarts(command, text, fed, programs) {
+  const byName = programsByName(text, programs);
+  const wordStarts = wordStartsOf(programs, text.length);
   const starts = new Map();
   const quotes = [];
   const quoteKinds = new Map();
-  // `p`, and the position after each lead token from it, up to `limit`.
+  // `p`, and the position after each lead token from it, up to `limit`. Each
+  // is recorded at its raw word's start, which a rewritten word's pad hides
+  // from `p` (`nice nice.exe gh`: the second nice is read at its name, four
+  // characters into its word), so the position is the same in every round
+  // and {@link normalisePrograms} finds the word there (#1634 second read).
   const leads = (p, kind, limit) => {
     for (;;) {
       if (p >= limit) return;
-      if (!starts.has(p)) starts.set(p, kind);
+      const at = wordStarts[p] >= 0 ? wordStarts[p] : p;
+      if (!starts.has(at)) starts.set(at, kind);
       LEAD_TOKEN.lastIndex = p;
       const m = LEAD_TOKEN.exec(text);
       if (!m?.[0] || p + m[0].length > limit) return;
@@ -1018,6 +1041,9 @@ function stringAround(v, index) {
  * further ({@link matchesAt}, {@link chainCommands}).
  */
 export const stringEnd = (command, index) => stringAround(view(command), index)?.[1];
+
+/** The `[open, close]` quotes of the string holding `index` ({@link stringAround}), or `undefined` outside one. */
+export const stringBounds = (command, index) => stringAround(view(command), index);
 
 /**
  * How the string holding `index` reaches a shell ({@link fedStarts}'s kind for
@@ -1281,38 +1307,57 @@ function feedsAcross(command, text, fed, interpreted) {
 export function view(command) {
   if (command !== view.last) {
     const { masked, flat, top, sure, words: wordEnds, heredocs } = maskInert(command);
-    const lexed = normalisePrograms(command, masked, flat, wordEnds, () => false);
-    const fed = sure ? fedSpans(command, lexed.text, top, heredocs) : [[0, command.length]];
-    // The raw command inside each fed span, the mask outside them; a word
-    // the lexer did not see start is read raw only inside a span.
-    const restore = (s) => {
-      let at = 0;
-      let r = "";
-      for (const [a, b] of fed) {
-        r += s.slice(at, a) + command.slice(a, b);
-        at = b;
-      }
-      return r + s.slice(at);
+    // The view for a set of fed-start positions ({@link fedStarts}): the masked
+    // text with its program words rewritten, the spans where a shell is fed read
+    // off THAT text — so a shell word that only a wrapper makes a program, and is
+    // written quoted (`nice "bash" -c "…"`), feeds its string once the round
+    // that read `nice` has rewritten it (#1634 second read) — and the text with
+    // those spans raw, rewritten again; a word the lexer did not see start is
+    // read raw only inside a span.
+    const build = (starts) => {
+      const lexed = normalisePrograms(command, masked, flat, wordEnds, () => false, starts);
+      const fed = sure ? fedSpans(command, lexed.text, top, heredocs) : [[0, command.length]];
+      if (!fed.length) return { fed, out: lexed };
+      const restore = (s) => {
+        let at = 0;
+        let r = "";
+        for (const [a, b] of fed) {
+          r += s.slice(at, a) + command.slice(a, b);
+          at = b;
+        }
+        return r + s.slice(at);
+      };
+      const raw = (p) => fed.some(([a, b]) => a <= p && p < b);
+      return { fed, out: normalisePrograms(command, restore(masked), restore(flat), wordEnds, raw, starts) };
     };
-    const raw = (p) => fed.some(([a, b]) => a <= p && p < b);
-    const restored = fed.length ? [restore(masked), restore(flat)] : [masked, flat];
-    let out = fed.length ? normalisePrograms(command, ...restored, wordEnds, raw) : lexed;
-    let starts = new Map();
-    let quotes = [];
-    let quoteKinds = new Map();
     // The first word of each string a shell runs, and the word a wrapper runs,
     // are program words too (#1634, {@link fedStarts}). Each round can reveal
     // one more level of nesting (`sudo nice sh -c "…"`: the shell is a program
-    // only once `nice` is), so it repeats while new positions appear, to a
-    // depth no command typed by hand reaches — each time from the restored
-    // text, since a rewritten word's pad hides its start from the next pass.
-    for (let round = 0; round < 6; round++) {
-      const found = fedStarts(command, out.text, fed, programsByName(out.text, out.programs));
-      ({ quotes, quoteKinds } = found);
-      if (found.starts.size === starts.size) break;
+    // only once `nice` is), so it repeats until the positions stop changing —
+    // each time from the masked text, since a rewritten word's pad hides its
+    // start from the next pass — to a depth no command typed by hand reaches.
+    // Past that depth the words still unread are listed as programs the hook
+    // cannot read, which `checkBash` judges as each guarded one: a doubt denies.
+    let starts = new Map();
+    let built = build(starts);
+    let found = fedStarts(command, built.out.text, built.fed, built.out.programs);
+    let settled = false;
+    const same = (a, b) => a.size === b.size && [...a.keys()].every((k) => b.has(k));
+    for (let round = 0; round < 8 && !(settled = same(found.starts, starts)); round++) {
       starts = found.starts;
-      out = normalisePrograms(command, ...restored, wordEnds, raw, starts);
+      built = build(starts);
+      found = fedStarts(command, built.out.text, built.fed, built.out.programs);
     }
+    const { fed, out } = built;
+    const byName = programsByName(out.text, out.programs);
+    const unreadable = [...out.unreadable];
+    if (!settled)
+      for (const p of found.starts.keys()) {
+        CRUDE_WORD.lastIndex = p;
+        const w = CRUDE_WORD.exec(command);
+        if (w && !byName.has(p) && !out.programs.some(([a]) => a === p))
+          unreadable.push({ start: p, end: p + w[0].length, word: w[0] });
+      }
     view.last = command;
     view.out = {
       text: out.text,
@@ -1321,12 +1366,12 @@ export function view(command) {
       sure,
       fed,
       programs: out.programs,
-      unreadable: out.unreadable,
-      byName: programsByName(out.text, out.programs),
+      unreadable,
+      byName,
       wordStarts: wordStartsOf(out.programs, command.length),
       starts,
-      quotes,
-      quoteKinds,
+      quotes: found.quotes,
+      quoteKinds: found.quoteKinds,
     };
   }
   return view.out;
