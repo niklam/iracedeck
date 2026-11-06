@@ -1,7 +1,7 @@
 import { LogLevel } from "@iracedeck/logger";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { createSDLogger, SDLoggerLike } from "./sd-logger.js";
+import { createLogWriteFailures, createSDLogger, SDLoggerLike } from "./sd-logger.js";
 
 function createMockSDLogger(): SDLoggerLike {
   const mock: SDLoggerLike = {
@@ -165,6 +165,254 @@ describe("createSDLogger", () => {
 
       expect(scopedMock.info).not.toHaveBeenCalled();
       expect(scopedMock.warn).toHaveBeenCalledWith("should log");
+    });
+  });
+
+  describe("failed writes (#1630)", () => {
+    const LEVELS = ["trace", "debug", "info", "warn", "error"] as const;
+
+    function enospc(): Error {
+      return Object.assign(new Error("ENOSPC: no space left on device, write"), { code: "ENOSPC" });
+    }
+
+    /**
+     * An SD-logger double shaped like the SDK's `Logger` over a `FileTarget`:
+     * a line below `state.level` is dropped before any write, as `Logger.write`
+     * does; any other line throws while `state.failing` is set, else is
+     * recorded on `lines`. Scopes share the list, the level and the switch, as
+     * the SDK's scopes share one target.
+     */
+    function createFileDouble(
+      state: { failing: boolean; error?: () => unknown; level?: string },
+      lines: string[] = [],
+      scope = "root",
+    ): SDLoggerLike & { lines: string[] } {
+      const order = ["error", "warn", "info", "debug", "trace"];
+      const writer = (lvl: string) =>
+        vi.fn((msg: string) => {
+          if (state.level !== undefined && order.indexOf(lvl) > order.indexOf(state.level)) return;
+
+          if (state.failing) throw (state.error ?? enospc)();
+
+          lines.push(`${lvl.toUpperCase()} ${scope}: ${msg}`);
+        });
+
+      return {
+        get level() {
+          return state.level;
+        },
+        lines,
+        trace: writer("trace"),
+        debug: writer("debug"),
+        info: writer("info"),
+        warn: writer("warn"),
+        error: writer("error"),
+        createScope: vi.fn((name: string) => createFileDouble(state, lines, name)),
+      };
+    }
+
+    it("never throws through the wrapper, at any level", () => {
+      const state = { failing: true };
+      const logger = createSDLogger(createFileDouble(state), LogLevel.Trace);
+
+      for (const lvl of LEVELS) expect(() => logger[lvl](`${lvl} line`)).not.toThrow();
+    });
+
+    it("never throws through createScope or withLevel", () => {
+      const state = { failing: true };
+      const logger = createSDLogger(createFileDouble(state), LogLevel.Info);
+      const scoped = logger.createScope("Replay");
+      const verbose = scoped.withLevel(LogLevel.Trace);
+
+      for (const lvl of LEVELS) {
+        expect(() => scoped[lvl]("x")).not.toThrow();
+        expect(() => verbose[lvl]("x")).not.toThrow();
+      }
+    });
+
+    it("never throws for a non-Error throw", () => {
+      const state = { failing: true, error: () => "disk gone" };
+      const logger = createSDLogger(createFileDouble(state));
+
+      expect(() => logger.info("x")).not.toThrow();
+    });
+
+    it("writes one notice with the count across scopes, before the recovering line", () => {
+      const state = { failing: true };
+      const root = createFileDouble(state);
+      const logger = createSDLogger(root);
+      const replay = logger.createScope("Replay");
+      const startup = logger.createScope("Startup");
+
+      replay.error("save failed 1");
+      startup.info("phase 1");
+      replay.error("save failed 2");
+
+      state.failing = false;
+      startup.info("phase 2");
+      startup.info("phase 3");
+
+      expect(root.lines).toEqual([
+        "WARN Startup: Log writes failed; 3 lines were dropped (first failure: ENOSPC)",
+        "INFO Startup: phase 2",
+        "INFO Startup: phase 3",
+      ]);
+    });
+
+    it("shares the count with a withLevel logger", () => {
+      const state = { failing: true };
+      const root = createFileDouble(state);
+      const logger = createSDLogger(root, LogLevel.Info);
+
+      logger.withLevel(LogLevel.Trace).trace("lost");
+      state.failing = false;
+      logger.info("back");
+
+      expect(root.lines).toEqual([
+        "WARN root: Log writes failed; 1 line was dropped (first failure: ENOSPC)",
+        "INFO root: back",
+      ]);
+    });
+
+    it("keeps the first failure's reason, not a later one's", () => {
+      const state: { failing: boolean; error: () => unknown } = { failing: true, error: enospc };
+      const root = createFileDouble(state);
+      const logger = createSDLogger(root);
+
+      logger.info("a");
+      state.error = () => Object.assign(new Error("operation not permitted"), { code: "EPERM" });
+      logger.info("b");
+      state.failing = false;
+      logger.info("c");
+
+      expect(root.lines[0]).toBe("WARN root: Log writes failed; 2 lines were dropped (first failure: ENOSPC)");
+    });
+
+    it("names the error's message when it has no code, and the value when it is no Error", () => {
+      const state: { failing: boolean; error: () => unknown } = {
+        failing: true,
+        error: () => new Error("target closed"),
+      };
+      const root = createFileDouble(state);
+      const logger = createSDLogger(root);
+
+      logger.info("a");
+      state.failing = false;
+      logger.info("b");
+      state.failing = true;
+      state.error = () => 42;
+      logger.info("c");
+      state.failing = false;
+      logger.info("d");
+
+      expect(root.lines).toEqual([
+        "WARN root: Log writes failed; 1 line was dropped (first failure: target closed)",
+        "INFO root: b",
+        "WARN root: Log writes failed; 1 line was dropped (first failure: 42)",
+        "INFO root: d",
+      ]);
+    });
+
+    it("does not count a line the wrapper's level gate filters out", () => {
+      const state = { failing: true };
+      const root = createFileDouble(state);
+      const logger = createSDLogger(root, LogLevel.Info);
+
+      logger.info("lost");
+      logger.debug("filtered");
+      logger.trace("filtered");
+      state.failing = false;
+      logger.info("back");
+
+      expect(root.lines[0]).toBe("WARN root: Log writes failed; 1 line was dropped (first failure: ENOSPC)");
+      expect(root.debug).not.toHaveBeenCalled();
+      expect(root.trace).not.toHaveBeenCalled();
+    });
+
+    it("retries a failed notice on the next call, counting the line it held back", () => {
+      const state = { failing: true };
+      const root = createFileDouble(state);
+      const logger = createSDLogger(root);
+
+      logger.info("a");
+      logger.info("b");
+
+      // The second call attempted the notice, which failed, so "b" was never sent.
+      expect(root.warn).toHaveBeenCalledTimes(1);
+      expect(root.info).toHaveBeenCalledTimes(1);
+
+      state.failing = false;
+      logger.info("c");
+
+      expect(root.lines).toEqual([
+        "WARN root: Log writes failed; 2 lines were dropped (first failure: ENOSPC)",
+        "INFO root: c",
+      ]);
+    });
+
+    it("neither attempts the notice nor counts a line the SDK's own level filters", () => {
+      const state = { failing: true, level: "info" };
+      const root = createFileDouble(state);
+      const logger = createSDLogger(root);
+
+      logger.info("lost");
+      logger.debug("not written by the SDK");
+      logger.debug("not written by the SDK either");
+
+      expect(root.warn).not.toHaveBeenCalled();
+
+      state.failing = false;
+      logger.info("back");
+
+      expect(root.lines).toEqual([
+        "WARN root: Log writes failed; 1 line was dropped (first failure: ENOSPC)",
+        "INFO root: back",
+      ]);
+    });
+
+    it("holds the notice while the SDK filters warnings, and writes it once they pass", () => {
+      const state = { failing: true, level: "error" };
+      const root = createFileDouble(state);
+      const logger = createSDLogger(root);
+
+      logger.error("lost");
+      state.failing = false;
+      logger.error("back at error level");
+
+      expect(root.warn).not.toHaveBeenCalled();
+      expect(root.lines).toEqual(["ERROR root: back at error level"]);
+
+      state.level = "info";
+      logger.info("level raised");
+
+      expect(root.lines.slice(1)).toEqual([
+        "WARN root: Log writes failed; 1 line was dropped (first failure: ENOSPC)",
+        "INFO root: level raised",
+      ]);
+    });
+
+    it("writes nothing extra when no write ever failed", () => {
+      const root = createFileDouble({ failing: false });
+      const logger = createSDLogger(root);
+
+      logger.info("a");
+      logger.createScope("S").warn("b");
+
+      expect(root.lines).toEqual(["INFO root: a", "WARN S: b"]);
+    });
+
+    it("keeps separate counts for separate roots", () => {
+      const state = { failing: true };
+      const rootA = createFileDouble(state);
+      const rootB = createFileDouble(state, []);
+      const a = createSDLogger(rootA, LogLevel.Debug, createLogWriteFailures());
+      const b = createSDLogger(rootB);
+
+      a.info("lost");
+      state.failing = false;
+      b.info("b");
+
+      expect(rootB.lines).toEqual(["INFO root: b"]);
     });
   });
 

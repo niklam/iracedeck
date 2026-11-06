@@ -118,6 +118,45 @@ describe("ElgatoPlatformAdapter", () => {
     return instance;
   }
 
+  describe("createLogger: a failed write never throws (#1630)", () => {
+    it("shares one dropped-line count across every logger it creates", () => {
+      const lines: string[] = [];
+      let failing = true;
+      const scoped = (name: string) => {
+        const writer = (lvl: string) =>
+          vi.fn((msg: string) => {
+            if (failing) throw Object.assign(new Error("no space left on device"), { code: "ENOSPC" });
+
+            lines.push(`${lvl} ${name}: ${msg}`);
+          });
+
+        return {
+          trace: writer("trace"),
+          debug: writer("debug"),
+          info: writer("info"),
+          warn: writer("warn"),
+          error: writer("error"),
+          createScope: vi.fn(),
+        };
+      };
+      sd.logger.createScope.mockImplementation(scoped as unknown as typeof sd.logger.createScope);
+
+      const replay = adapter.createLogger("Replay");
+      const startup = adapter.createLogger("Startup");
+
+      expect(() => replay.error("save failed")).not.toThrow();
+      expect(() => startup.info("phase")).not.toThrow();
+
+      failing = false;
+      adapter.createLogger("Rasterizer").info("initialized");
+
+      expect(lines).toEqual([
+        "warn Rasterizer: Log writes failed; 2 lines were dropped (first failure: ENOSPC)",
+        "info Rasterizer: initialized",
+      ]);
+    });
+  });
+
   describe("ElgatoActionContext feedback", () => {
     it("should forward setFeedback to the underlying dial action", async () => {
       const handler: IDeckActionHandler = { onWillAppear: vi.fn() };
