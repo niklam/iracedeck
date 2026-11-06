@@ -1084,10 +1084,11 @@ describe("the #1634 review round: options, cuts and program positions", () => {
 
   it("answers has() and reads every match in time linear in a long chain", () => {
     readsLinearly((n) => "gh pr merge 7; ".repeat(n), 4000, MERGE, true);
-    // A chain of rewritten program words: each rewrite's edit once merged by a
-    // scan of every earlier edit (CodeRabbit CLI on #1634). At 8000 the scan
-    // runs about 3.5× per doubling, the lookup about 2×.
-    readsLinearly((n) => "gh.exe pr merge 7; ".repeat(n), 8000, MERGE, true);
+    // No timing case for a chain of rewritten program words (`gh.exe pr merge
+    // 7; ` × n): the merge of their edits no longer scans every earlier one
+    // (#1634), but at a size where the old scan crossed the bound the new code
+    // kept only about 1.7× headroom under it, too close for CI's slower and
+    // noisier runners, and the merge has no seam a count could reach.
     readsLinearly((n) => `sudo ${"-u me ".repeat(n)}gh pr merge 7`, 2000, MERGE, true);
     readsLinearly((n) => `echo ${"-x gh pr merge 7 ".repeat(n)}`, 2000, MERGE, false);
     // A pipeline of n stages into a shell: the stdin pass once asked every later stage for its reader, per stage.
