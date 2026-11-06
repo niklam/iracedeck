@@ -18,11 +18,6 @@
  * the same relative paths; the root scripts/website-icon-gallery.test.mjs uses
  * it so a test run never rewrites the gallery under a dev server or a build.
  */
-import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import path from "node:path";
-import url from "node:url";
-import { parseArgs } from "node:util";
-
 import {
   assembleIcon,
   dataUriToSvg,
@@ -34,6 +29,10 @@ import {
   resolveIconColors,
   resolveTitleSettings,
 } from "@iracedeck/icon-composer";
+import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import path from "node:path";
+import url from "node:url";
+import { parseArgs } from "node:util";
 
 import { renderAudioStripSvg } from "../../iracing-actions/src/actions/audio-controls/audio-dial-surface.ts";
 import { renderBlackBoxStrip } from "../../iracing-actions/src/actions/black-box-selector/black-box-selector-dial-surface.ts";
@@ -48,12 +47,12 @@ import {
   extractColorSlots,
   extractRawViewBox,
   findLeftoverPlaceholders,
+  type GalleryEntry,
   parseIconImports,
   parseTitlesMaps,
   renderDynamicTemplate,
   resolveTemplateSample,
   sampleTitle,
-  type GalleryEntry,
 } from "../src/gallery-gen/lib.js";
 import { DYNAMIC_ONLY_ACTIONS, titleCaseSlug } from "../src/gallery-gen/sections.js";
 
@@ -768,4 +767,3 @@ if (skippedTemplates.length > 0) {
 if (excludedHidden.length > 0) {
   console.log(`Excluded ${excludedHidden.length} entries for hidden actions: ${excludedHidden.join(", ")}`);
 }
-
