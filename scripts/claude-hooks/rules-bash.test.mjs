@@ -4950,6 +4950,16 @@ describe("the #1634 second read: the piped pnpm's exemptions, nested wrappers, a
     passes(`bash -c "git push origin main" v1.2.3`);
     passes(`bash -c "git push origin main" # v1.2.3`);
   });
+
+  it("reads a quoted # as part of a value, never as a comment that hides the tag", () => {
+    // CodeRabbit CLI on #1634: the mask blanks quoted text and a comment alike.
+    expect(asks("git -c 'user.name=CI #1' push origin v1.2.3")).toMatch(/release/);
+    expect(asks(`git -c "user.name=CI #1" push origin v1.2.3`)).toMatch(/release/);
+    expect(asks(`bash -c "git -c 'core.x=#y' push origin v1.2.3"`)).toMatch(/release/);
+    expect(asks("git -c 'user.name=🚀 CI' push origin v1.2.3 # note")).toMatch(/release/);
+    passes("git -c 'user.name=CI #1' push origin v1.2.3 --dry-run");
+    passes("git push origin main # v1.2.3");
+  });
 });
 
 // The #1634 CodeRabbit CLI round: a string attached to its switch reached no

@@ -897,10 +897,11 @@ export const rules = [
         // From the raw word's start, not its rewritten name's: `"git" push` begins at the quote (CodeRabbit on #1634).
         const own = c.slice(programStart(c, m.program), Math.min(b, stringEnd(c, m.program) ?? b));
         // Its inert text blanked, a comment included, which the raw text of a fed span keeps.
-        const code = maskInert(own).masked;
-        const comment = [...own].findIndex(
-          (ch, i) => ch === "#" && code[i] === "_" && (i === 0 || /\s/.test(own[i - 1])),
-        );
+        // The comment starts at the `#` the lexer's top-level text blanks to a space: a quoted
+        // `#` is `_` there (`git -c 'user.name=CI #1' push …`), never a comment (CodeRabbit CLI on #1634).
+        const { masked: code, top } = maskInert(own);
+        let comment = -1;
+        for (let i = 0; i < own.length && comment < 0; i++) if (own[i] === "#" && top[i] === " ") comment = i;
         const live = comment < 0 ? own : own.slice(0, comment);
         return !/--dry-run\b/.test(code) && /\bpush(?:\s[^|&;]*)?\s["']?(--tags\b|v\d+\.\d+)/.test(live);
       });
