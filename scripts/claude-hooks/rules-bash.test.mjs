@@ -4560,13 +4560,30 @@ describe("the mask is set aside only where a shell is fed (#1607)", () => {
     "echo 'x gh pr merge 5' | bash",
     "echo 'gh pr merge 5'; bash",
     "cat <<< 'gh pr merge 5' | grep x; bash -c true",
+    // The shell's own input redirection replaces the pipe; only the last one counts.
+    "echo 'gh pr merge 1603 --squash' | bash </dev/null",
+    "echo 'gh pr merge 1603 --squash' | bash 0<f",
+    "echo 'gh pr merge 1603 --squash' | bash <&3",
+    "echo 'gh pr merge 1603 --squash' | sh <<< 'true'",
+    "bash <<< 'gh pr merge 1603 --squash' </dev/null",
+    // printf splices the argument into its format; echo joins its arguments with blanks.
+    "printf 'echo %s\\n' 'gh pr merge 1603 --squash' | bash",
+    "printf 'x%s' 'gh pr merge 1603 --squash' | bash",
+    "printf '%s %s\\n' 'cd x' 'gh pr merge 1603 --squash' | bash",
+    "printf -v x '%s\\n' 'gh pr merge 1603 --squash' | bash",
+    "echo 'x' 'gh pr merge 1603 --squash' | bash",
   ])("finds no merge in a mention the raw text shows: %s", (command) => expect(firstMerge(command)).toBeUndefined());
 
   it.each([
     // A script a shell reads on stdin (CodeRabbit on PR #1632).
     ["echo 'gh pr merge 5 --squash' | bash", "gh"],
     ["printf '%s\\n' 'gh pr merge 5 --squash' | sh", "gh"],
+    ["printf 'gh pr merge 5 --squash\\n' | bash", "gh"],
+    ["printf '%s\\n%s\\n' 'cd x' 'gh pr merge 5 --squash' | bash", "gh"],
+    ["printf '%s;' 'cd x' 'gh pr merge 5 --squash' | bash", "gh"],
+    ["echo -n 'gh pr merge 5 --squash' | bash 2>&1 > out.log", "gh"],
     ["bash <<< 'gh pr merge 5 --squash'", "gh"],
+    ["bash </dev/null <<< 'gh pr merge 5 --squash'", "gh"],
     [`echo "gh pr merge 5 --squash" | sudo bash -x`, "gh"],
     ["echo 'gh pr merge 5 --squash' | sh -s -- a", "gh"],
     ["echo 'GH_REPO=niklam/iracedeck gh pr merge 5 --squash' | bash", "gh"],

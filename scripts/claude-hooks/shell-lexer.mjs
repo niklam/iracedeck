@@ -496,47 +496,97 @@ function pipelinesOf(command, a, b) {
   return { quotes, pipelines };
 }
 
+/** The words of `text[a, b)` as `{ w, at }`, quotes and escapes kept whole ({@link stdinShell}, {@link stdinScriptStart}). */
+function wordsIn(text, a, b) {
+  return [...text.slice(a, b).matchAll(/(?:"(?:[^"\\]|\\[\s\S])*"|'[^']*'|\\[\s\S]|[^\s"'\\])+/g)].map((m) => ({
+    w: m[0],
+    at: a + m.index,
+  }));
+}
+
+/** A redirection that gives a command its stdin: `<`, `<<`, `<<<`, `<&`, `<>`, with an optional fd 0. Group 1 is the operator. */
+const INPUT_REDIRECT = /^0?(<<<|<<-?|<&|<>|<)(?!\()/;
+/** A redirection of an output descriptor (`>`, `>>`, `>|`, `&>`, `2>&1`, `1<&-` aside), which leaves stdin as it is. */
+const OUTPUT_REDIRECT = /^(?:\d*(?:>>?|>\||>&)|&>>?|[1-9]\d*<[&>]?)/;
+
 /**
- * Whether a shell that reads its script on stdin is the program of the
- * pipeline stage `[s, e)` of {@link view}'s text, its words read up to `until`
- * (#1607, CodeRabbit on PR #1632): a {@link STDIN_SHELL} word at program
- * position ({@link programAt}, so `sudo bash` too) whose own words are options
- * only — none a `-c` (`-xc` included), the value of `-o` skipped, a
- * redirection and its target skipped — and everything after a `-s` its
- * positional parameters. A script-file or other word means the shell reads
- * no stdin script.
+ * Where the shell the pipeline stage `[s, e)` of {@link view}'s text runs reads
+ * its script (#1607, CodeRabbit on PR #1632): `"pipe"` when a {@link
+ * STDIN_SHELL} word at program position ({@link programAt}, so `sudo bash`
+ * too) reads it from the pipeline, the index of the word a here-string hands
+ * it when that is its last input redirection, or `undefined` when it reads no
+ * stdin script. Its own words are options only — a `-c` (`-xc` included) or a
+ * script-file word means no stdin script, the value of `-o` is skipped, and
+ * everything after a `-s` is its positional parameters — and the last input
+ * redirection among them is its stdin, as bash takes it: a file, a heredoc or
+ * a descriptor (`</dev/null`, `0<f`, `<&3`) replaces the pipe. An output
+ * redirection changes nothing.
  */
-function stdinShell(command, text, [s, e], from, until = e) {
-  for (const m of text.slice(s, until).matchAll(STDIN_SHELL)) {
+function stdinShell(command, text, [s, e], from) {
+  for (const m of text.slice(s, e).matchAll(STDIN_SHELL)) {
     if (!programAt(command, s + m.index, m[0], from)) continue;
-    const words = text
-      .slice(s + m.index + m[0].length, until)
-      .split(/\s+/)
-      .filter(Boolean);
+    const words = wordsIn(text, s + m.index + m[0].length, e);
+    let input = "pipe";
+    let positional = false;
     for (let k = 0; k < words.length; k++) {
-      const w = words[k];
-      if (/^\d*[<>&|]+$/.test(w)) k++;
-      else if (/^\d*[<>]/.test(w) || w.startsWith("--")) continue;
+      const { w } = words[k];
+      const redirect = INPUT_REDIRECT.exec(w);
+      if (redirect) {
+        // The target is attached, or the next word.
+        const bare = redirect[0].length === w.length;
+        const target = bare ? words[++k] : { at: words[k].at + redirect[0].length };
+        input = redirect[1] === "<<<" && target ? target.at : "other";
+      } else if (OUTPUT_REDIRECT.test(w)) {
+        // A bare operator takes the next word as its target.
+        if (/^\d*(?:>>?|>\||&>>?|>&|<&|<>|<)$/.test(w)) k++;
+      } else if (positional || w.startsWith("--")) continue;
       else if (w === "-o" || w === "+o") k++;
-      else if (/^[-+][A-Za-z]*c/.test(w)) return false;
-      else if (/^-[A-Za-z]*s/.test(w)) return true;
-      else if (!/^[-+]/.test(w)) return false;
+      else if (/^[-+][A-Za-z]*c/.test(w)) return undefined;
+      else if (/^-[A-Za-z]*s/.test(w)) positional = true;
+      else if (!/^[-+]/.test(w)) return undefined;
     }
-    return true;
+    return input === "other" ? undefined : input;
   }
-  return false;
+  return undefined;
+}
+
+/** A `printf` format's literal text that leaves the next argument at the start of a command: blanks, `\n` and `;`. */
+const COMMAND_GAP = /^(?:[ \t]|\\[nt]|;)*$/;
+
+/**
+ * Whether the `k`th argument (from 0) of a `printf` whose format word is
+ * `format` starts a command in what it prints (#1607, CodeRabbit on PR
+ * #1632): the format must be made of `%s` / `%b` conversions with nothing but
+ * blanks, `\n` and `;` around them, and the literal text before the
+ * conversion the argument fills — across the format's end when printf
+ * reuses it — must hold a `\n` or `;`, or be the start of the output. Any
+ * other literal text (`'echo %s\n'`, `'x%s'`) puts every argument inside a
+ * command.
+ */
+function printfArgStartsCommand(format, k) {
+  const body = /^(['"])([\s\S]*)\1$/.exec(format)?.[2] ?? format;
+  const literals = body.split(/%[sb]/);
+  const conversions = literals.length - 1;
+  if (conversions === 0 || !literals.every((l) => COMMAND_GAP.test(l))) return false;
+  const j = k % conversions;
+  if (j > 0) return /\\n|;/.test(literals[j]);
+  return k === 0 || /\\n|;/.test(literals[conversions] + literals[0]);
 }
 
 /**
  * Whether the program word at `index` of {@link view}'s text starts a script a
  * shell reads on stdin (#1607, CodeRabbit on PR #1632): the first word, past
- * blanks and a {@link COMMAND_LEAD}, of a quoted string that is an argument of
- * an `echo` or `printf` piped on to a shell reading stdin in the same fed
- * element (`echo 'gh pr merge 5' | bash`, `printf '%s\n' 'gh …' | sh`,
- * `… | sudo bash -x`), or of a here-string handed to one (`bash <<< 'gh …'`).
- * A later word after a `;` or a newline in the string is at command position
- * in the raw text already ({@link cmd}). The same string piped to anything
- * else, or written to a file, is a mention.
+ * blanks and a {@link COMMAND_LEAD}, of a quoted word that starts a command in
+ * what an `echo` or `printf` prints, piped on in the same fed element to a
+ * shell that reads its script from the pipeline ({@link stdinShell}: `| bash`,
+ * `| sh -s`, `| sudo bash -x`, not `| bash </dev/null`) — `echo`'s first
+ * argument (it joins the rest with blanks), and `printf`'s format, or an
+ * argument its format puts at the start of a line or after a `;`
+ * ({@link printfArgStartsCommand}: `printf '%s\n' 'gh …'`, not `printf 'echo
+ * %s\n' 'gh …'`) — or of a here-string that is the last input redirection of
+ * such a shell (`bash <<< 'gh …'`). A later word after a `;` or a newline in
+ * the string is at command position in the raw text already ({@link cmd}).
+ * The same string piped to anything else, or written to a file, is a mention.
  */
 function stdinScriptStart(command, index) {
   const { text, fed } = view(command);
@@ -548,11 +598,25 @@ function stdinScriptStart(command, index) {
   for (const stages of pipelines) {
     const at = stages.findIndex(([s, e]) => s <= quote[0] && quote[0] < e);
     if (at < 0) continue;
-    const [s] = stages[at];
-    if (/<<<\s*$/.test(text.slice(s, quote[0]))) return stdinShell(command, text, stages[at], span[0], quote[0]);
+    const [s, e] = stages[at];
+    if (/<<<\s*$/.test(text.slice(s, quote[0]))) return stdinShell(command, text, stages[at], span[0]) === quote[0];
     const echo = ECHO_AT.exec(text.slice(s, quote[0]));
     if (!echo || !programAt(command, s + echo.indices[1][0], echo[1], span[0])) return false;
-    return stages.slice(at + 1).some((stage) => stdinShell(command, text, stage, span[0]));
+    // The printed words, past options and redirections; the quote must be one of them whole.
+    const args = [];
+    const words = wordsIn(text, s + echo.indices[1][1], e);
+    for (let k = 0; k < words.length; k++) {
+      const { w } = words[k];
+      if (/^\d*[<>&]/.test(w)) {
+        if (/^\d*(?:[<>]{1,3}-?|[<>]&|&>>?|>\|)$/.test(w)) k++;
+      } else if (echo[1] === "printf" && w === "-v") return false;
+      else if (args.length === 0 && (w === "--" || (echo[1] === "echo" ? /^-[neE]+$/ : /^-/).test(w))) continue;
+      else args.push(words[k]);
+    }
+    const k = args.findIndex((x) => x.at === quote[0]);
+    if (k < 0) return false;
+    const starts = echo[1] === "echo" ? k === 0 : k === 0 || printfArgStartsCommand(args[0].w, k - 1);
+    return starts && stages.slice(at + 1).some((stage) => stdinShell(command, text, stage, span[0]) === "pipe");
   }
   return false;
 }
