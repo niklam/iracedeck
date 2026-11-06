@@ -1222,15 +1222,21 @@ describe("resolveFuelRaceCoverage — a player within a lap of the leader (issue
   });
 
   it("counts both sides of the line: the leader just across it, then the player just across it", () => {
-    // The leader crossed 1 s ago, after expiry (their white), the player is
-    // 1 s from the line a lap down: the chequered is at count 9, the
-    // player's crossings 8 and 9 — one lap after this one. By time,
-    // ceil(0.99 + 0.99 + 0.03) − 1 = 2.
-    expect(timedLaps(-60, { laps: 7, pct: 0.99 }, { laps: 8, pct: 0.01 }, { expiry: HELD_CROSSED })).toBe(1);
-    // The player crossed 1 s ago, the leader is 1 s from the line with the
+    // The leader crossed 5 s ago, after expiry (their white), the player is
+    // 5 s from the line a lap down: the chequered is at count 9, the
+    // player's crossings 8 and 9 — one lap after this one.
+    expect(timedLaps(-60, { laps: 7, pct: 0.95 }, { laps: 8, pct: 0.05 }, { expiry: HELD_CROSSED })).toBe(1);
+    // The player crossed 5 s ago, the leader is 5 s from the line with the
     // order not yet flipped: the chequered is at count 10, one crossing for
     // the player — nothing after this lap. By time, 1.
-    expect(timedLaps(-20, { laps: 9, pct: 0.01 }, { laps: 8, pct: 0.99 })).toBe(0);
+    expect(timedLaps(-20, { laps: 9, pct: 0.05 }, { laps: 8, pct: 0.95 })).toBe(0);
+  });
+
+  it("counts by time, the cautious side, when either car is within the line guard", () => {
+    // As above but 1 s from the line: the lap counts cannot be trusted there
+    // (a stale leader count would read one LOW), so the time model with its
+    // tolerance answers — ceil(0.99 + 0.99 + 0.03) − 1 = 2, a lap more.
+    expect(timedLaps(-60, { laps: 7, pct: 0.99 }, { laps: 8, pct: 0.01 }, { expiry: HELD_CROSSED })).toBe(2);
   });
 
   describe("a slower player, projected to the leader's chequered flag", () => {

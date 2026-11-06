@@ -349,19 +349,20 @@ export function resolveFuelRaceCoverage(
     const leader = getLeaderFinish();
     const leaderLap = isPositiveFinite(leader.lapTimeS) ? leader.lapTimeS : playerLap;
     const predicted = leader.chequeredInS;
-    const leaderChequeredS =
-      typeof predicted === "number" && Number.isFinite(predicted) && predicted >= 0
-        ? predicted
-        : !clockExpired && timeRemain !== null
-          ? timeRemain + 2 * leaderLap
-          : null;
+    const fromPrediction = typeof predicted === "number" && Number.isFinite(predicted) && predicted >= 0;
+    const leaderChequeredS = fromPrediction
+      ? predicted
+      : !clockExpired && timeRemain !== null
+        ? timeRemain + 2 * leaderLap
+        : null;
 
     const crossings = leader.crossingsToChequered;
     const gap = leader.leaderGap;
 
     if (
+      fromPrediction &&
       leaderChequeredS !== null &&
-      leaderChequeredS === predicted &&
+      // The projection below divides by it; a prediction implies it today.
       isPositiveFinite(leader.lapTimeS) &&
       typeof crossings === "number" &&
       Number.isInteger(crossings) &&
