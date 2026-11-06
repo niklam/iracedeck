@@ -4455,7 +4455,12 @@ describe("the program-word rewrite's second read (#1606)", () => {
         `git -C "$TARGET" push origin HEAD`,
       ])
         expect(deny(c, onBranch), c).toMatch(/through a `-C` that expands/);
-      passes("git -C ../ir-5 -C sub status", onBranch);
+      // Written out, the same -C forms reach the commit and push guards and pass
+      // on a branch with nothing to refuse (CodeRabbit on PR #1628: `status` is judged by no rule).
+      const clean = ctx({ branch: () => "fix/5-x", staged: () => [] });
+      passes("git -C ../ir-5 -C sub commit -m x", clean);
+      passes("git -C ../ir-5 push origin HEAD", clean);
+      expect(deny("git -C ../ir-5 -C sub commit -m x", onBranch)).toMatch(/never on a feature branch/);
     });
     it("passes a splitting word whose command a guard does not read", () => {
       passes("$EDITOR notes.md");
@@ -4500,5 +4505,201 @@ describe("the program-word rewrite's second read (#1606)", () => {
       passes("git commit -m x && git --work-tree=../ir-5 add y", untracked);
       passes("git add notes.md && git commit -m x", untracked);
     });
+  });
+});
+
+// #1607: one `timeout` anywhere in a chain set the mask aside for the whole
+// command, so a quoted `gh pr merge` elsewhere in it read as a merge. The
+// mask is now set aside over the element that feeds a shell only, and each
+// command's words are read through it where it stands over that command.
+describe("the mask is set aside only where a shell is fed (#1607)", () => {
+  // The two commands from #1393's transcripts that the post-hook misread.
+  const SED = String.raw`Q=/c/q; sed -e 's#^const cases = \[#const cases = [\n  ["A23b", "url", "Bash", "gh pr merge 1603 --squash", "deny: PR is in cli/cli, not niklam/iracedeck", TREE, { GH_REPO: "cli/cli" }],\n];\nconst _orig = [#' $Q/run-a.mjs > $Q/run-a2.mjs; grep -n "cases = \|_orig" $Q/run-a2.mjs; timeout 300 node $Q/run-a2.mjs $Q/a2-results.json 2>&1 | tee $Q/a2-summary.txt`;
+  const GREP = `set -o pipefail; cd /c/x/ir-1393 && grep -rnE "(&&|;) *gh pr merge" .claude docs/superpowers/specs README.md scripts --include=*.md 2>/dev/null | grep -v "^docs/superpowers/specs" | head; timeout 200 pnpm test scripts/claude-rules-frontmatter.test.mjs --reporter=verbose > "/c/x/fm.log" 2>&1; grep -iE "headroom|budget|Tests " "/c/x/fm.log" | head`;
+  const REAL = /refusing to merge blind|Could not isolate|Could not read this|One `gh pr merge`|as its own command/;
+
+  it("finds no merge in either real command, and passes both", () => {
+    expect(firstMerge(SED)).toBeUndefined();
+    expect(firstMerge(GREP)).toBeUndefined();
+    passes(SED);
+    passes(GREP);
+  });
+
+  it("reads the real merge past a quoted mention ahead of it", () => {
+    expect(firstMerge("grep 'gh pr merge 6' f; timeout 120 gh pr merge 7 --squash")).toMatchObject({
+      ref: "7",
+      readable: true,
+    });
+  });
+
+  // #1607 review: a mention in raw text — a fed span, or a whole command a
+  // shell may read — is a merge only at command position.
+  it.each([
+    `timeout 60 grep -rn "gh pr merge 1603 --squash" scripts`,
+    `grep -n "gh pr merge 1603 --squash" notes.md; bash "$SCRIPT"`,
+    `Q=/tmp/q; grep -n "gh pr merge 1603 --squash" $Q/a; bash $Q/run.sh`,
+    `git commit -m 'msg' && timeout 60 grep -n 'gh pr merge 1603' f`,
+    `grep -rln "gh pr merge 1603" scripts | xargs wc -l`,
+    `bash -c 'echo "gh pr merge 1603 --squash"'`,
+    `eval "x" 'gh pr merge 1603 --squash'`,
+    // CodeRabbit on PR #1632: a shell word that is an argument hands nothing to a shell.
+    `rg -t sh "gh pr merge 1603 --squash" scripts`,
+    `ls /bin/sh "gh pr merge 1603 --squash"`,
+    `sudo -u sh ls "gh pr merge 1603 --squash"`,
+    // An unquoted argument is a mention too: `gh` is not the program (CodeRabbit on PR #1632).
+    "echo gh pr merge 1603 --squash",
+    "git log --oneline --grep=x -- gh pr merge 1603",
+    'printf "%s\\n" done; echo note gh pr merge 1603',
+    // A string no shell reads on stdin, or not as the first word of its script.
+    "echo 'gh pr merge 5' | grep x",
+    "echo 'gh pr merge 5' > f",
+    "echo 'gh pr merge 5' | tee f",
+    "echo 'gh pr merge 5' | bash -c 'cat'",
+    "echo 'gh pr merge 5' | bash -xc 'cat'",
+    "echo 'gh pr merge 5' | bash script.sh",
+    "echo 'x gh pr merge 5' | bash",
+    "echo 'gh pr merge 5'; bash",
+    "cat <<< 'gh pr merge 5' | grep x; bash -c true",
+    // The shell's own input redirection replaces the pipe; only the last one counts.
+    "echo 'gh pr merge 1603 --squash' | bash </dev/null",
+    "echo 'gh pr merge 1603 --squash' | bash 0<f",
+    "echo 'gh pr merge 1603 --squash' | bash <&3",
+    "echo 'gh pr merge 1603 --squash' | sh <<< 'true'",
+    "bash <<< 'gh pr merge 1603 --squash' </dev/null",
+    // printf splices the argument into its format; echo joins its arguments with blanks.
+    "printf 'echo %s\\n' 'gh pr merge 1603 --squash' | bash",
+    "printf 'x%s' 'gh pr merge 1603 --squash' | bash",
+    "printf '%s %s\\n' 'cd x' 'gh pr merge 1603 --squash' | bash",
+    "printf -v x '%s\\n' 'gh pr merge 1603 --squash' | bash",
+    "echo 'x' 'gh pr merge 1603 --squash' | bash",
+  ])("finds no merge in a mention the raw text shows: %s", (command) => expect(firstMerge(command)).toBeUndefined());
+
+  it.each([
+    // A script a shell reads on stdin (CodeRabbit on PR #1632).
+    ["echo 'gh pr merge 5 --squash' | bash", "gh"],
+    ["printf '%s\\n' 'gh pr merge 5 --squash' | sh", "gh"],
+    ["printf 'gh pr merge 5 --squash\\n' | bash", "gh"],
+    ["printf '%s\\n%s\\n' 'cd x' 'gh pr merge 5 --squash' | bash", "gh"],
+    ["printf '%s;' 'cd x' 'gh pr merge 5 --squash' | bash", "gh"],
+    ["echo -n 'gh pr merge 5 --squash' | bash 2>&1 > out.log", "gh"],
+    ["bash <<< 'gh pr merge 5 --squash'", "gh"],
+    ["bash </dev/null <<< 'gh pr merge 5 --squash'", "gh"],
+    [`echo "gh pr merge 5 --squash" | sudo bash -x`, "gh"],
+    ["echo 'gh pr merge 5 --squash' | sh -s -- a", "gh"],
+    ["echo 'GH_REPO=niklam/iracedeck gh pr merge 5 --squash' | bash", "gh"],
+    ["ls; gh pr merge 5 --squash", "gh"],
+    ["ls && gh pr merge 5 --squash", "gh"],
+    ["cd scripts && gh pr merge 5 --squash", "gh"],
+    ["timeout 120 gh pr merge 5 --squash", "gh"],
+    ["nice gh pr merge 5 --squash", "gh"],
+    ["winpty gh pr merge 5 --squash", "gh"],
+    ["gh pr merge 5 --squash", "gh"],
+    ["sudo gh pr merge 5 --squash", "gh"],
+    ["sudo -E gh pr merge 5 --squash", "gh"],
+    ["bash -c 'ls; gh pr merge 5 --squash'", "gh"],
+    ["bash -c 'gh pr merge 5 --squash'", "gh"],
+    [`eval "gh pr merge 5 --squash"`, "gh"],
+    [`grep 'gh pr merge 6' f; "/usr/bin/gh" pr merge 5 --squash`, `"/usr/bin/gh"`],
+    [`bash -c 'echo "gh pr merge 6"'; cd scripts && gh pr merge 5 --squash`, "gh"],
+    // #1607 second read: past a COMMAND_LEAD in the string, and past sudo's valued options.
+    ["bash -c 'GH_REPO=niklam/iracedeck gh pr merge 5 --squash'", "gh"],
+    ["bash -c 'timeout 600 gh pr merge 5 --squash'", "gh"],
+    ["timeout 600 bash -c 'exec gh pr merge 5 --squash'", "gh"],
+    ["sudo -u me gh pr merge 5 --squash", "gh"],
+    ["sudo -g staff -E gh pr merge 5 --squash", "gh"],
+    // CodeRabbit on PR #1632: the shell word is the program, at command position or behind a wrapper.
+    [`sudo -u x sh -c "gh pr merge 5 --squash"`, "gh"],
+    [`sh -c "gh pr merge 5 --squash"`, "gh"],
+    [`env A=1 bash -c "gh pr merge 5 --squash"`, "gh"],
+    [`cd d && sh -c "gh pr merge 5 --squash"`, "gh"],
+    [`find . -exec sh -c 'gh pr merge 5 --squash' \\;`, "gh"],
+    [`nice -n 5 bash -c "gh pr merge 5 --squash"`, "gh"],
+    [`stdbuf -oL sh -c "gh pr merge 5 --squash"`, "gh"],
+    [`sudo nice /bin/sh -c "gh pr merge 5 --squash"`, "gh"],
+  ])("finds the merge the command runs, and where its program word starts: %s", (command, word) => {
+    const merge = firstMerge(command);
+    expect(merge).toMatchObject({ ref: "5", readable: true });
+    expect(command.slice(merge.index).startsWith(`${word} pr merge 5`), command.slice(merge.index)).toBe(true);
+  });
+
+  it.each([
+    "sed -n '/; gh pr merge 5/p' notes.md; timeout 5 true",
+    "grep -n 'x; gh pr merge 5' notes.md && sudo true",
+    "x=$(echo a | sh); grep 'a; gh pr merge 5' f",
+    "x=$(a=1; echo b | sh); grep 'a; gh pr merge 1603' f",
+    "echo 'a; pnpm exec vitest'; bash -c true",
+    "echo 'a; git push origin v1.2.3'; xargs true < /dev/null",
+  ])("passes a quoted mention beside an unrelated shell feed: %s", (command) => passes(command));
+
+  // #1607 review: the element is the top-level one, so a separator inside a
+  // group, a substitution or a backtick, or a newline the list goes on over,
+  // ends nothing.
+  it.each([
+    "echo 'ls; gh pr merge 5 --squash' | { cd x && bash; }",
+    "echo 'ls; gh pr merge 5 --squash' | (cd x && bash)",
+    "echo 'ls; gh pr merge 5 --squash' | if true; then bash; fi",
+    "echo 'ls; gh pr merge 5 --squash' | while true; do bash; break; done",
+    "[[ -n 'ls; gh pr merge 5 --squash' && -n x ]] | bash",
+    "echo 'ls; gh pr merge 5 --squash' |\nbash",
+    "echo 'ls; gh pr merge 5 --squash' | # run it\nbash",
+    "cat <<'EOF' |\nls; gh pr merge 5 --squash\nEOF\nbash",
+    "echo \"`cat <<'EOF'\nls; gh pr merge 5 --squash\nEOF\n`\" | bash",
+    "exec 3< <(echo 'ls; gh pr merge 5 --squash'); bash <&3",
+    // #1607 second read.
+    "git fetch\n{\n  cat <<'EOF'\ngh pr merge 5 --squash\nEOF\n} | bash",
+    'git fetch\nfor p in 5; do echo "cd x; gh pr merge $p"; done | bash',
+    "git fetch\n{ echo a; printf '%s' \"cd x; gh pr merge 5\"; } | bash",
+    "git fetch; time -p { echo a; printf '%s' \"cd x; gh pr merge 5\"; } | bash",
+    'f() { bash; }; printf "cd x; gh pr merge 5" | f',
+    'function f { sh; }; echo "cd x; gh pr merge 5" | f',
+    'exec > >(bash); echo "cd x; gh pr merge 5"',
+    'exec 3> >(bash); echo "cd x; gh pr merge 5" >&3',
+    'coproc bash; echo "cd x; gh pr merge 5" >&"${COPROC[1]}"',
+    'X="cd x; gh pr merge 5"; sudo -s "$X"',
+    'X="cd x; gh pr merge 5"; sudo -i "$X"',
+  ])("still gates a merge piped into a shell however the element is spelled: %s", (command) =>
+    expect(deny(command)).toMatch(REAL),
+  );
+
+  it.each([
+    "grep 'x' f; timeout 120 gh pr merge 7 --squash",
+    "echo 'a; b' && bash -c 'ls; gh pr merge 7 --squash'",
+    "echo 'a; b'; echo 'ls; gh pr merge 7 --squash' | bash",
+    "echo 'a; b'; (echo 'ls; gh pr merge 7 --squash') | bash",
+    "echo 'a; b'; bash <<'EOF'\ncd ../ir-5\ngh pr merge 7 --squash\nEOF",
+    `echo 'a; b'; eval "ls; gh pr merge 7 --squash"`,
+    "echo 'a; b'; echo 7 | xargs -I{} gh pr merge {} --squash",
+    "echo 'a; b'; watch -n 5 'ls; gh pr merge 7 --squash'",
+    "echo 'a; b'; trap 'ls; gh pr merge 7 --squash' EXIT",
+    `echo 'a; b'; pwsh -Command "ls; gh pr merge 7 --squash"`,
+    `echo 'a; b'; cmd /c "ls & gh pr merge 7 --squash"`,
+    "echo 'a; b'; sudo bash -c 'ls; gh pr merge 7 --squash'",
+  ])("still gates a merge fed to a shell, beside a quoted mention: %s", (command) =>
+    expect(deny(command)).toMatch(REAL),
+  );
+
+  it.each([
+    `x='ls; gh pr merge 7 --squash'; eval "$x"`,
+    "echo 'ls; gh pr merge 7 --squash' > f.sh; bash f.sh",
+    "f() { echo 'ls; gh pr merge 7 --squash'; }; f | bash",
+    "alias m='ls; gh pr merge 7 --squash'; eval m",
+  ])("still gates a merge a shell may read from another element: %s", (command) => expect(deny(command)).toMatch(REAL));
+
+  it("still judges the other traps fed to a shell beside a quoted mention", () => {
+    deny(`echo 'a; b'; eval "ls; pnpm exec vitest run"`);
+    asks(`echo 'a; b'; sh -c "cd x && git push origin v1.2.3"`);
+    deny(`echo 'a; b'; bash <<'EOF'\ngh issue create --title x --milestone 3.3\nEOF`);
+  });
+
+  it("reads a command's words through the mask where it stands over that command", () => {
+    // Raw, the `;` in the body ended the edit before its milestone.
+    expect([...issueEdits("gh issue edit 5 --body 'a; b' -m 3.8.0; sh -c true", MASTER)]).toMatchObject([
+      { issues: ["5"], milestone: "3.8.0", readable: true },
+    ]);
+    expect([...issueEdits("echo 'gh issue edit 5 -m 3.8.0'; sh -c true", MASTER)]).toEqual([]);
+    const feature = ctx({ branch: () => "fix/5-x" });
+    expect(deny("sh -c true; git commit -m 'a; b' -- docs/superpowers/specs/2026-01-01-issue-5-x.md", feature)).toMatch(
+      /never on a feature branch/,
+    );
   });
 });

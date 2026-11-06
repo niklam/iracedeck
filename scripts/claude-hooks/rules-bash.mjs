@@ -34,6 +34,7 @@ import {
   cmd,
   COMMAND_LEAD,
   commandEnd,
+  fedCommandStart,
   GIT_GLOBALS,
   gitCwd,
   gitPlace,
@@ -44,9 +45,11 @@ import {
   matchesAt,
   POWERSHELL,
   powershellAsBash,
+  programAt,
   programStart,
   ranges,
   resolveDir,
+  trustedIn,
   trustedMask,
   unreadablePrograms,
   view,
@@ -400,31 +403,54 @@ const MERGE_VALUE_FLAGS = new Set([
 /**
  * The segments of a chained command that are a `gh pr merge`, split at `&&`,
  * `||`, `;`, `|`, `&` and newline in the trusted-masked text: each a
- * `{ raw, flat, trusted }` slice for {@link parseMerge}.
+ * `{ raw, flat, trusted }` slice for {@link parseMerge}, `trusted` when the
+ * mask stands over that slice (`trustedIn` in `shell-lexer.mjs`, #1607).
  */
 export function mergeSegments(command) {
   const lead = new RegExp(String.raw`^[\s($]*${COMMAND_LEAD}gh\s+pr\s+merge\b`);
-  const { text, flat, trusted } = view(command);
+  const { text, flat } = view(command);
   return ranges(text, CHAIN_AND_BACKGROUND)
     .filter(([a, b]) => lead.test(text.slice(a, b)))
-    .map(([a, b]) => ({ raw: command.slice(a, b), flat: flat.slice(a, b), trusted }));
+    .map(([a, b]) => ({ raw: command.slice(a, b), flat: flat.slice(a, b), trusted: trustedIn(command, a, b) }));
 }
 
+/** A `gh pr merge` at command position ({@link firstMerge}). */
+const MERGE_AT = cmd(/gh\s+pr\s+merge\b/);
+
 /**
- * The first `gh pr merge` outside inert text, at command position or not,
- * parsed ({@link parseMerge}); `undefined` when there is none. The post-hook's
- * trigger: a merge run through a wrapper the anchor does not know still gets
- * its board move and CI run list.
+ * The first `gh pr merge` the command runs, parsed ({@link parseMerge}) and
+ * with `index`, where its program word starts; `undefined` when there is
+ * none. The post-hook's trigger, which follows the command-position rule the
+ * pre-hook's guards follow (#1607): a `gh pr merge` counts only where `gh` is
+ * the program, in masked and raw text alike — after a command boundary and a
+ * {@link COMMAND_LEAD} (`timeout 5 gh …`, `GH_REPO=x gh …`, `bash -c 'ls; gh
+ * …'`), as the program a `sudo`, `nice`, `stdbuf` or `winpty` runs or after `find
+ * -exec` (`programAt` in `shell-lexer.mjs`), or as the first word a fed shell
+ * runs (`bash -c 'gh pr merge 5'`, `fedCommandStart`). A mention as an
+ * argument is none: `echo gh pr merge 1603`, a `git log -- gh pr merge 1603`,
+ * or a grep for it beside a `bash $SCRIPT`, which used to move #1603's card.
  */
 export function firstMerge(command) {
-  const { text, flat, trusted } = view(command);
-  const m = /\bgh\s+pr\s+merge\b/.exec(text);
-  if (!m) return undefined;
-  // From the start of the program word, so its raw text is read whole (#1606).
-  const start = programStart(command, m.index);
-  const rest = text.slice(start).search(CHAIN_AND_BACKGROUND);
-  const end = rest < 0 ? text.length : start + rest;
-  return parseMerge({ raw: command.slice(start, end), flat: flat.slice(start, end), trusted });
+  const { text, flat } = view(command);
+  const anchored = new Set(
+    [...text.matchAll(new RegExp(MERGE_AT.source, `${MERGE_AT.flags}g`))].map((m) => m.index + m[0].length),
+  );
+  for (const m of text.matchAll(/\bgh\s+pr\s+merge\b/g)) {
+    const to = m.index + m[0].length;
+    if (!anchored.has(to) && !programAt(command, m.index, "gh") && !fedCommandStart(command, m.index)) continue;
+    // From the start of the program word, so its raw text is read whole (#1606).
+    const start = programStart(command, m.index);
+    const rest = text.slice(start).search(CHAIN_AND_BACKGROUND);
+    const end = rest < 0 ? text.length : start + rest;
+    // Through the mask only where it stands over the merge's own text (#1607).
+    const merge = parseMerge({
+      raw: command.slice(start, end),
+      flat: flat.slice(start, end),
+      trusted: trustedIn(command, start, end),
+    });
+    return { ...merge, index: start };
+  }
+  return undefined;
 }
 
 /**
@@ -651,20 +677,21 @@ const MILESTONE_FLAG = /(?:^|[\s"'(=])(?:--milestone\b|-m)/;
  * (`--body "$(cat <<'EOF' … EOF)"`, `$(gh issue list …)`) is then one word, so
  * the flags after it are still read, and an edit inside one
  * (`out=$(gh issue edit 5 -m x)`), which the whole command's flat text blanks,
- * is at the top level of its own. Where the mask is not trusted the raw words
- * are read, as everywhere else. `namesMilestone` says whether a milestone flag
+ * is at the top level of its own. Where the mask does not stand over the edit
+ * (`trustedIn`, #1607) the raw words are read, as everywhere else. `namesMilestone` says whether a milestone flag
  * appears anywhere in the edit's raw text, for one the hook could not read
  * whole: the caller then says to move its cards by hand rather than nothing.
  */
 export function* issueEdits(command, cwd, shell = BASH) {
-  const { text, trusted } = view(command);
+  const { text } = view(command);
   for (const { base, head, at } of chainCommands(command, cwd, GH_ISSUE_EDIT, shell)) {
     const start = at - head.length;
     // Live backticks ahead of it: an odd count means it runs inside a backtick substitution.
     const inTick = (text.slice(0, start).match(/\x60/g)?.length ?? 0) % 2 === 1;
-    const raw = command.slice(start, commandEnd(text, at, inTick));
+    const end = commandEnd(text, at, inTick);
+    const raw = command.slice(start, end);
     const own = maskInert(raw);
-    const lexed = trusted && own.sure;
+    const lexed = trustedIn(command, start, end) && own.sure;
     const edit = parseIssueEdit({ raw, flat: lexed ? own.flat : raw, trusted: lexed });
     yield { ...edit, namesMilestone: MILESTONE_FLAG.test(raw), base, start };
   }
@@ -1490,13 +1517,12 @@ function pathspecPath(token, ctx, dir) {
  * command's own spaces, as it does inside a substitution, where the words cannot
  * be read and one `known: false` token stands for them, so the selection is
  * unreadable (#1594 second read). A backtick counts as opening a substitution
- * only when no odd run of backslashes escapes it. When the mask is not trusted
- * the raw command is tokenised instead, respecting simple quotes, as the older
- * rules do.
+ * only when no odd run of backslashes escapes it. When the mask does not stand
+ * over the command (`trustedIn`, #1607) the raw command is tokenised instead,
+ * respecting simple quotes, as the older rules do.
  */
 function argTokens(command, from) {
-  const { text, flat, trusted } = view(command);
-  if (!trusted) return chainWords(command.slice(from)).map((value) => ({ value, known: true }));
+  const { text, flat } = view(command);
   // Live backticks ahead of it: an odd count means it runs inside a backtick
   // substitution. The mask keeps an escaped `\`` live, so one preceded by an
   // odd run of live backslashes is a character, not a substitution (#1594 second read).
@@ -1504,6 +1530,7 @@ function argTokens(command, from) {
     (m) => text.slice(0, m.index).match(/\\*$/)[0].length % 2 === 0,
   );
   const end = commandEnd(text, from, ticks.length % 2 === 1);
+  if (!trustedIn(command, from, end)) return chainWords(command.slice(from)).map((value) => ({ value, known: true }));
   const own = maskInert(command.slice(from, end));
   if (!own.sure) {
     // The whole command's flat text blanks a substitution, spaces and all, so

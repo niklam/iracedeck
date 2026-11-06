@@ -553,26 +553,252 @@ describe("the program-word rewrite's second read (#1606)", () => {
     `sudo true; echo "step; make"; git push origin integration; echo "origin/integration"`,
     `bash -c "cd x && make"; gh pr merge 5 --squash; echo "a/b"`,
     `bash -c "cd ../ir-5 && make"; git -C ../ir-5 commit -m "docs/x"`,
-    `timeout 5 echo 'a | b'; /usr/bin/git push --tags; echo 'c/d'`,
+    `sudo echo 'a | b'; /usr/bin/git push --tags; echo 'c/d'`,
     `eval "x"; echo "it's; fine" && gh pr create --title t; echo "a/b's"`,
     `sudo echo "a & b" | git commit -m "x/y"`,
-    `xargs echo "(a)" ; gh pr merge 7 && echo ")"`,
+    `sudo echo "(a)" ; gh pr merge 7 && echo ")"`,
     "bash -c 'a; b' && git push origin integration # x/'y",
     `sudo x "a;b"/gh pr merge 5; git.exe push --tags; echo "q/r"`,
-    "timeout 5 x `a; b`/c; gh pr merge 5 | echo 'd/e'",
+    "sudo x `a; b`/c; gh pr merge 5 | echo 'd/e'",
   ];
   const SHAPES = [/git\s+push\b/, /gh\s+pr\s+merge\b/, /git\s+commit\b/, /gh\s+pr\s+create\b/].map((re) => cmd(re));
+  // Since #1607 the raw text is read only over the element that feeds a shell;
+  // elsewhere a boundary inside a quote is masked, as in a trusted view.
   it.each(UNTRUSTED)("keeps every command the raw text exposes: %s", (command) => {
-    const { text, trusted } = view(command);
+    const { text, trusted, fed } = view(command);
+    const { masked } = maskInert(command);
     expect(trusted).toBe(false);
     expect(text).toHaveLength(command.length);
-    for (let i = 0; i < command.length; i++)
-      if ("\n|;&()\x60\"'".includes(command[i])) expect(text[i], `${command[i]} at ${i}`).toBe(command[i]);
+    for (let i = 0; i < command.length; i++) {
+      if (!"\n|;&()\x60\"'".includes(command[i])) continue;
+      const raw = fed.some(([a, b]) => a <= i && i < b);
+      expect(text[i], `${command[i]} at ${i}`).toBe(raw ? command[i] : masked[i]);
+    }
     for (const re of SHAPES) if (re.test(command)) expect(re.test(text), String(re)).toBe(true);
   });
 
   it("still rewrites a plain program word in an untrusted view", () => {
     expect(trustedMask(`"bash" -c 'x' && gh.exe pr merge 5`)).toBe(`  bash -c 'x' &&     gh pr merge 5`);
     expect(trustedMask(`sudo x; "C:/Program Files/Git/cmd/git.exe" push`)).toBe(`sudo x; ${" ".repeat(31)}git push`);
+  });
+});
+
+// #1607: one `timeout` anywhere in a chain set the mask aside for the whole
+// command, so a quoted `gh pr merge` in a sed or grep pattern elsewhere in it
+// read as a merge. The mask is now set aside only over the list element that
+// feeds a shell.
+describe("the mask is set aside only where a shell is fed (#1607)", () => {
+  /** The view of `command`: masked before `cut`, raw from it on, and the one fed span `[cut, end)`. */
+  const splitAt = (command, cut, end = command.length) => {
+    const { text, fed } = view(command);
+    expect(text.slice(0, cut)).toBe(maskInert(command).masked.slice(0, cut));
+    expect(text.slice(cut, end)).toBe(command.slice(cut, end));
+    expect(fed).toEqual([[cut, end]]);
+  };
+
+  it("keeps a quoted sed pattern masked when an unrelated shell runs later in the chain", () => {
+    // No `> g` here: a file written beside a shell sets the whole command aside (`feedsAcross`).
+    const command = `sed -e 's#a#"gh pr merge 5"#' f; sh -c 'grep "gh pr merge 6" g'`;
+    splitAt(command, command.indexOf(" sh -c"));
+    expect(trustedMask(command)).not.toMatch(/merge 5/);
+    expect(trustedMask(command)).toMatch(/merge 6/);
+  });
+
+  // They run their arguments as a program, whose word COMMAND_LEAD steps to in the masked text.
+  it.each([
+    `sed -e 's#a#"gh pr merge 5"#' f > g; timeout 5 grep 'gh pr merge 6' g`,
+    `timeout 60 grep -rn "gh pr merge 1603 --squash" scripts`,
+    `grep -rln "gh pr merge 1603" scripts | xargs wc -l`,
+  ])("sets nothing aside for timeout or xargs: %s", (command) => {
+    expect(view(command).fed).toEqual([]);
+    expect(trustedMask(command)).not.toMatch(/merge/);
+  });
+
+  it("still reads the program after timeout and xargs, quoted or not, in the masked text", () => {
+    const at = cmd(/gh\s+pr\s+merge\b/);
+    for (const command of [
+      "timeout 5 gh pr merge 7",
+      "timeout 5 'gh' pr merge 7",
+      `timeout -k 5 10 "gh.exe" pr merge 7`,
+      "echo 7 | xargs -I{} gh pr merge {}",
+    ])
+      expect(at.test(trustedMask(command)), command).toBe(true);
+    // A shell they run is fed as any other.
+    expect(view("timeout 5 bash -c 'ls; gh pr merge 7'").fed).toEqual([[0, 37]]);
+    expect(view("ls | xargs sh -c 'gh pr merge 7'").fed).toEqual([[0, 32]]);
+  });
+
+  // Each after an `ls;` the element must stop at: a group read wrongly either
+  // ends the element inside it or carries it past that `;`.
+  it.each([
+    "echo 'gh pr merge 5' | bash",
+    "printf '%s\\n' 'gh pr merge 5' |& sh",
+    "echo 'gh pr merge 5' 2>&1 | xargs -I{} sh -c '{}'",
+    "(echo 'ls; gh pr merge 5'; true) | bash",
+    "{ echo 'ls; gh pr merge 5'; } | bash",
+    "if true; then echo 'ls; gh pr merge 5'; echo if; fi | bash",
+    "while read l; do echo 'ls; gh pr merge 5'; done < f | sh",
+    "until false; do echo 'ls; gh pr merge 5'; done | sh",
+    "for x in 1; do echo 'ls; gh pr merge 5'; done | sh",
+  ])("reads a pipeline that feeds a shell raw from its first command, a group's included: %s", (element) => {
+    const command = `ls; ${element}`;
+    expect(view(command).fed).toEqual([[3, command.length]]);
+    expect(view(command).text.slice(3)).toBe(command.slice(3));
+  });
+
+  // A function definition in a shell's element may hold that shell for a
+  // later `… | f`, so it reads the whole command raw (#1607 second read).
+  it.each(["function f { echo 'ls; gh pr merge 5'; } | bash", "f() { echo 'ls; gh pr merge 5'; } | bash"])(
+    "reads the whole command raw for a function definition beside a shell: %s",
+    (element) => expect(view(`ls; ${element}`).fed).toEqual([[0, element.length + 4]]),
+  );
+
+  it("ends the element at a separator outside every group, and only there", () => {
+    splitAt("echo 'gh pr merge 5' && bash -c 'x'", "echo 'gh pr merge 5' &&".length);
+    splitAt("echo 'gh pr merge 5' || bash -c 'x'", "echo 'gh pr merge 5' ||".length);
+    splitAt("echo 'gh pr merge 5' & bash -c 'x'", "echo 'gh pr merge 5' &".length);
+    splitAt("echo 'gh pr merge 5'\nbash -c 'x'", "echo 'gh pr merge 5'\n".length);
+    // A separator a backslash escapes is find's argument, not the end of the element.
+    const find = "find . -exec sh -c 'gh pr merge 5' \\; ; echo 'gh pr merge 6'";
+    const { text, fed } = view(find);
+    expect(fed).toEqual([[0, find.indexOf(" ; echo") + 1]]);
+    expect(text).toMatch(/merge 5/);
+    expect(text).not.toMatch(/merge 6/);
+  });
+
+  it("widens the element to the one holding an enclosing group, and no further", () => {
+    const command = "x=$(echo a | sh); grep 'gh pr merge 5' f";
+    const { text, fed } = view(command);
+    expect(fed).toEqual([[0, command.indexOf(";")]]);
+    expect(text.slice(command.indexOf(";"))).toBe(maskInert(command).masked.slice(command.indexOf(";")));
+    // A separator inside the group ends nothing: the heredoc in the substitution is the eval's.
+    const nested = `eval "$(cat <<'EOF'\nls; gh pr merge 5\nEOF\n)"; echo 'gh pr merge 6'`;
+    expect(view(nested).fed).toEqual([[0, nested.indexOf("; echo")]]);
+    expect(view(nested).text).not.toMatch(/merge 6/);
+  });
+
+  it("reads the body of a heredoc fed to a shell raw, and another command's heredoc masked", () => {
+    const command = "bash <<'EOF'\ngh pr merge 5\nEOF\ncat <<'X'\ngh pr merge 6\nX";
+    const { text } = view(command);
+    expect(text).toMatch(/gh pr merge 5/);
+    expect(text).not.toMatch(/merge 6/);
+    expect(maskInert(command).heredocs).toEqual([
+      { op: 5, start: 13, end: 27, resume: 31 },
+      { op: 35, start: 41, end: 55, resume: 56 },
+    ]);
+  });
+
+  it("keeps only the top-level command text in the lexer's top text", () => {
+    const command = "a 'b;c' \"$(d; e)\" `f; g` ${h;} \\; (i; j) # k\ncat <<X\nl; m\nX\nn";
+    expect(maskInert(command).top).toBe("a _____ _________ ______ _____ __ (____)    \ncat <<X\n_______n");
+  });
+
+  // The pipeline, the group or the substitution a shell sits in is the
+  // element: a separator inside any of them, or a newline the list goes on
+  // over, ends nothing (#1607 review).
+  it.each([
+    "echo 'ls; gh pr merge 5' | { cd x && bash; }",
+    "echo 'ls; gh pr merge 5' | (cd x && bash)",
+    "echo 'ls; gh pr merge 5' | if true; then bash; fi",
+    "echo 'ls; gh pr merge 5' | while true; do bash; break; done",
+    "[[ -n 'ls; gh pr merge 5' && -n x ]] | bash",
+    "echo 'ls; gh pr merge 5' |\nbash",
+    "echo 'ls; gh pr merge 5' |&\n\nbash",
+    "echo 'ls; gh pr merge 5' | # run it\nbash",
+    "cat <<'EOF' |\nls; gh pr merge 5\nEOF\nbash",
+    "cat <<'EOF' |\nls; gh pr merge 5\nEOF\n\nbash",
+    "echo \"`cat <<'EOF'\nls; gh pr merge 5\nEOF\n`\" | bash",
+    "echo \"$(cat <<'EOF'\nls; gh pr merge 5\nEOF\n)\" | bash",
+  ])("reads the whole top-level element a shell sits in raw: %s", (element) => {
+    const command = `ls; ${element}`;
+    expect(view(command).fed).toEqual([[3, command.length]]);
+  });
+
+  it("ends an element at a newline whose list does not go on, past the heredocs it read", () => {
+    const command = "cat <<'X'\ngh pr merge 6\nX\nbash -c 'gh pr merge 5'";
+    expect(view(command).fed).toEqual([[command.indexOf("bash"), command.length]]);
+    expect(view(command).text).not.toMatch(/merge 6/);
+    // `&&` is the separator; the newline after it only continues the list.
+    const and = "echo 'gh pr merge 6' > /dev/null &&\nbash -c 'x'";
+    expect(view(and).fed).toEqual([[and.indexOf("&&") + 2, and.length]]);
+  });
+
+  // A shell may run text another element stored: a variable, a file, a
+  // function or an alias. The whole command is read raw then, as before #1607.
+  it.each([
+    `x='ls; gh pr merge 5'; eval "$x"`,
+    "export X='ls; gh pr merge 5'; bash -c '$X'",
+    "bash <<EOF\n$x\nEOF\necho 'gh pr merge 5'",
+    "echo 'ls; gh pr merge 5' > f.sh; bash f.sh",
+    "echo 'ls; gh pr merge 5' >> f.sh && sh f.sh",
+    "echo 'ls; gh pr merge 5' | tee f.sh; source f.sh",
+    "f() { echo 'ls; gh pr merge 5'; }; f | bash",
+    "function f { echo 'ls; gh pr merge 5'; }; f | sh",
+    "alias m='ls; gh pr merge 5'; eval m",
+    "read -r x <<< 'ls; gh pr merge 5'; eval \"$x\"",
+    "exec 3< <(echo 'ls; gh pr merge 5'); bash <&3",
+    "set -a; X='ls; gh pr merge 5'; bash f.sh",
+    "grep -n 'gh pr merge 5' notes.md; bash \"$SCRIPT\"",
+    // #1607 second read: the shell's own element holds it for a later one to feed.
+    'f() { bash; }; printf "cd x; gh pr merge 5" | f',
+    'function f { sh; }; echo "cd x; gh pr merge 5" | f',
+    'exec > >(bash); echo "cd x; gh pr merge 5"',
+    'exec 3> >(bash); echo "cd x; gh pr merge 5" >&3',
+    'coproc bash; echo "cd x; gh pr merge 5" >&"${COPROC[1]}"',
+    // A sudo that runs a shell hands it its argument as shell text.
+    'X="cd x; gh pr merge 5"; sudo -s "$X"',
+    'X="cd x; gh pr merge 5"; sudo -i "$X"',
+    'X="cd x; gh pr merge 5"; sudo -Eu me -s "$X"',
+    'X="cd x; gh pr merge 5"; sudo --user me --login "$X"',
+  ])("reads the whole command raw when a shell may run text another element stores: %s", (command) =>
+    expect(view(command).fed).toEqual([[0, command.length]]),
+  );
+
+  // A newline is a command-position boundary, so a compound command that
+  // opens on a later line, or after `time -p`, is still a group (#1607 second read).
+  it.each([
+    "git fetch\n{\n  cat <<'EOF'\ngh pr merge 5\nEOF\n} | bash",
+    // (`$p` would expand in the shell's element and read the whole command raw: see feedsAcross.)
+    'git fetch\nfor p in 5; do echo "cd x; gh pr merge 5"; done | bash',
+    "git fetch\n{ echo a; printf '%s' \"cd x; gh pr merge 5\"; } | bash",
+    "git fetch\ntime -p { echo a; printf '%s' \"cd x; gh pr merge 5\"; } | bash",
+    "git fetch\nif true\nthen echo 'cd x; gh pr merge 5'\nfi | bash",
+  ])("reads a group opened on a later line as one element: %s", (command) =>
+    expect(view(command).fed).toEqual([[10, command.length]]),
+  );
+
+  it("keeps the mask where nothing is stored for a shell, or only a program runs", () => {
+    for (const command of [
+      "grep 'gh pr merge 5' f 2>/dev/null; bash -c 'x'",
+      "grep 'gh pr merge 5' f 2>&1; bash -c 'x'",
+      "grep 'gh pr merge 5' f > out.txt; sudo true",
+      'X="a"; grep "gh pr merge 5" f; sudo -u me "$X"',
+      // An assignment in the shell's own element holds nothing for a later one.
+      "x=$(echo a | sh); grep 'a; gh pr merge 1603' f",
+      // An unexported assignment reaches another shell only through an expansion.
+      "x=1; grep 'a|gh pr merge 5' f; sh -c 'true'",
+      "Q=/c/q; grep 'gh pr merge 5' $Q/f > $Q/g; xargs ls < $Q/g",
+    ])
+      // The mention stays masked: no span reaches over the grep.
+      expect(trustedMask(command), command).not.toMatch(/gh pr merge/);
+  });
+
+  it("sets the mask aside over the whole command when the lexer is unsure", () => {
+    const command = "echo 'gh pr merge 5'; timeout 5 x 'open";
+    expect(maskInert(command).sure).toBe(false);
+    expect(view(command).text).toBe(command);
+    expect(view(command).fed).toEqual([[0, command.length]]);
+    expect(lexer.trustedIn(command, 0, 4)).toBe(false);
+  });
+
+  it("says over which ranges the mask stands", () => {
+    const command = "grep 'gh pr merge 5' f; sh -c true";
+    const at = command.indexOf(" sh");
+    expect(lexer.trustedIn(command, 0, at)).toBe(true);
+    expect(lexer.trustedIn(command, at, command.length)).toBe(false);
+    expect(lexer.trustedIn(command, 0, command.length)).toBe(false);
+    expect(view(command).trusted).toBe(false);
+    expect(lexer.trustedIn("grep 'gh pr merge 5' f", 0, 22)).toBe(true);
+    expect(view("grep 'gh pr merge 5' f").trusted).toBe(true);
   });
 });

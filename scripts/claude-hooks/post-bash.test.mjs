@@ -901,3 +901,63 @@ describe("post-bash.mjs moves a milestoned issue to Planned (#1574)", { timeout:
     }
   });
 });
+
+// #1607: one `timeout` anywhere in a chain set the mask aside for the whole
+// command, so a quoted `gh pr merge` in a sed or grep pattern elsewhere in it
+// ran the after-merge steps, and moved #1559's card for a PR nobody merged.
+describe("post-bash.mjs reads a mention beside a shell feed as a mention (#1607)", { timeout: 30_000 }, () => {
+  // The two commands from #1393's transcripts.
+  const SED = String.raw`Q=/c/q; sed -e 's#^const cases = \[#const cases = [\n  ["A23b", "url", "Bash", "gh pr merge 1603 --squash", "deny: PR is in cli/cli, not niklam/iracedeck", TREE, { GH_REPO: "cli/cli" }],\n];\nconst _orig = [#' $Q/run-a.mjs > $Q/run-a2.mjs; grep -n "cases = \|_orig" $Q/run-a2.mjs; timeout 300 node $Q/run-a2.mjs $Q/a2-results.json 2>&1 | tee $Q/a2-summary.txt`;
+  const GREP = `set -o pipefail; cd /c/x/ir-1393 && grep -rnE "(&&|;) *gh pr merge" .claude docs/superpowers/specs README.md scripts --include=*.md 2>/dev/null | grep -v "^docs/superpowers/specs" | head; timeout 200 pnpm test scripts/claude-rules-frontmatter.test.mjs --reporter=verbose > "/c/x/fm.log" 2>&1; grep -iE "headroom|budget|Tests " "/c/x/fm.log" | head`;
+
+  it.each([
+    ["sed", SED],
+    ["grep", GREP],
+  ])("reads no PR and says nothing for the real %s command", (_, command) => {
+    const { note, calls } = fireWithGh(command, {});
+    expect(note).toBeNull();
+    expect(calls).toEqual([]);
+  });
+
+  // #1607 review: a mention the raw text shows — behind `timeout`, or beside a
+  // shell that may read another element — is no merge either.
+  it.each([
+    `timeout 60 grep -rn "gh pr merge 1603 --squash" scripts`,
+    `grep -n "gh pr merge 1603 --squash" notes.md; bash "$SCRIPT"`,
+    `Q=/tmp/q; grep -n "gh pr merge 1603 --squash" $Q/a; bash $Q/run.sh`,
+    // An unquoted argument: `gh` is not the program (CodeRabbit on PR #1632).
+    "echo gh pr merge 1603 --squash",
+  ])("reads no PR and says nothing for a mention: %s", (command) => {
+    const { note, calls } = fireWithGh(command, {});
+    expect(note).toBeNull();
+    expect(calls).toEqual([]);
+  });
+
+  it.each([
+    "ls; gh pr merge 7 --squash",
+    "ls && gh pr merge 7 --squash",
+    "cd scripts && gh pr merge 7 --squash",
+    "timeout 120 gh pr merge 7 --squash",
+    "sudo gh pr merge 7 --squash",
+    "bash -c 'ls; gh pr merge 7 --squash'",
+    "sed -n '/x/p' f; timeout 120 gh pr merge 7 --squash",
+  ])("still runs the merge step on a real merge: %s", (command) =>
+    expect(fire(command, { withoutGh: true })).toMatch(/could not read the PR back/),
+  );
+
+  // CodeRabbit on PR #1632: bash runs the string it reads on stdin.
+  it("reads back the PR of a merge a shell reads on stdin", () => {
+    const { calls } = fireWithGh("echo 'gh pr merge 1603 --squash' | bash", {});
+    expect(calls.map((c) => c.args.slice(0, 3))).toEqual([["pr", "view", "1603"]]);
+  });
+
+  it("reads back the real merge's PR, not the one a quoted mention ahead of it names", () => {
+    const { calls } = fireWithGh("grep 'gh pr merge 6' f; timeout 120 gh pr merge 7 --squash", {});
+    expect(calls.map((c) => c.args.slice(0, 3))).toEqual([["pr", "view", "7"]]);
+  });
+
+  it("reads the PR back where the merge it found runs, past the cds ahead of it", () => {
+    const { calls } = fireWithGh(`bash -c 'echo "gh pr merge 6"'; cd scripts && gh pr merge 7 --squash`, {});
+    expect(calls.map((c) => [c.args.slice(0, 3), path.basename(c.cwd)])).toEqual([[["pr", "view", "7"], "scripts"]]);
+  });
+});
