@@ -15,12 +15,16 @@
 // Then, by behaviour rather than by reading the config: a planted import of
 // @iracedeck/iracing-native is refused in every package of the first two and
 // allowed in every SIM_SIDE one, so an entry left behind by a moved boundary
-// fails as surely as a new package in none of the three.
+// fails as surely as a new package in none of the three. Planted in every
+// source extension lint reads (#1616), an .astro component's frontmatter
+// included, so a block narrowed to .ts fails too.
 //
-// And one structural check: no file is held by two blocks setting the same
-// restricted-imports rule. A later flat-config block's options for a rule
+// And two structural checks. No file is held by two blocks setting the same
+// restricted-imports rule: a later flat-config block's options for a rule
 // replace an earlier one's rather than merging, so a file matching two would
-// silently lose the first block's restrictions.
+// silently lose the first block's restrictions. And every block scoped to a
+// package's sources names each source extension (#1616): until then four
+// boundaries named .ts alone, and an .mts or .astro file escaped them all.
 import { ESLint } from "eslint";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -66,12 +70,61 @@ const SIM_SIDE = {
   "scenario-harness": "The QA harness: drives the iRacing translator from recorded sessions.",
 };
 
+// Every extension `pnpm lint` reads as source (#1616), written out rather than
+// imported from eslint.config.js, so narrowing the config's list goes red here
+// instead of narrowing the test with it.
+const SOURCE_EXTENSIONS = ["ts", "mts", "mjs", "astro"];
+const SCRIPT_EXTENSIONS = ["ts", "mts", "mjs"];
+
+/** A file importing `specifier`; an .astro component imports it in its frontmatter. */
+function plantedImport(specifier, extension) {
+  return extension === "astro"
+    ? `---\nimport { x } from "${specifier}";\n---\n\n<p>{x}</p>\n`
+    : `import { x } from "${specifier}";\nexport const y = x;\n`;
+}
+
 async function simMessages(filePath) {
-  const [result] = await eslint.lintText(`import { x } from "@iracedeck/iracing-native";\nexport const y = x;\n`, {
-    filePath,
-  });
+  const extension = filePath.split(".").pop();
+  const [result] = await eslint.lintText(plantedImport("@iracedeck/iracing-native", extension), { filePath });
 
   return result.messages.filter((m) => RULES.includes(m.ruleId));
+}
+
+// The `packages/` globs of a block's `files` or `ignores` that name a source
+// extension, grouped by what precedes it: `packages/x/src/**/*.test` maps to
+// ["ts", "mts", "mjs"].
+function extensionsByStem(globs = []) {
+  const stems = new Map();
+
+  for (const glob of globs) {
+    const match = typeof glob === "string" && glob.match(/^(packages\/.*)\.([a-z]+)$/);
+
+    if (!match || !SOURCE_EXTENSIONS.includes(match[2])) continue;
+
+    stems.set(match[1], [...(stems.get(match[1]) ?? []), match[2]]);
+  }
+
+  return stems;
+}
+
+// What a block's package globs miss: one line per stem lacking an extension.
+// Its files name every source extension; its ignores, which exempt test files,
+// every script one (a component is never a test).
+function missingExtensions(block) {
+  const missing = [];
+
+  for (const [key, expected] of [
+    ["files", SOURCE_EXTENSIONS],
+    ["ignores", SCRIPT_EXTENSIONS],
+  ]) {
+    for (const [stem, named] of extensionsByStem(block[key])) {
+      const absent = expected.filter((extension) => !named.includes(extension));
+
+      if (absent.length > 0) missing.push(`${key} ${stem}: ${absent.join(", ")}`);
+    }
+  }
+
+  return missing;
 }
 
 function setsRule(block, rule) {
@@ -108,11 +161,22 @@ describe("sim boundary coverage", () => {
     ]);
   });
 
+  // The number of sim-import messages a planted file in each extension draws.
+  async function countsByExtension(dir) {
+    const counts = {};
+
+    for (const extension of SOURCE_EXTENSIONS) {
+      counts[extension] = (await simMessages(`packages/${dir}/src/planted.${extension}`)).length;
+    }
+
+    return counts;
+  }
+
   for (const dir of [...SIM_NEUTRAL_PACKAGES, ...Object.keys(OWN_BLOCK)]) {
     it(
-      `refuses a sim import in ${dir}`,
+      `refuses a sim import in ${dir}, in every source extension`,
       async () => {
-        expect(await simMessages(`packages/${dir}/src/planted.ts`)).toHaveLength(1);
+        expect(await countsByExtension(dir)).toEqual({ ts: 1, mts: 1, mjs: 1, astro: 1 });
       },
       TIMEOUT,
     );
@@ -120,13 +184,38 @@ describe("sim boundary coverage", () => {
 
   for (const dir of Object.keys(SIM_SIDE)) {
     it(
-      `allows a sim import in ${dir}, which is sim-side`,
+      `allows a sim import in ${dir}, which is sim-side, in every source extension`,
       async () => {
-        expect(await simMessages(`packages/${dir}/src/planted.ts`)).toEqual([]);
+        expect(await countsByExtension(dir)).toEqual({ ts: 0, mts: 0, mjs: 0, astro: 0 });
       },
       TIMEOUT,
     );
   }
+
+  describe("every block scoped to a package's sources names each source extension", () => {
+    const scoped = config.filter((block) => extensionsByStem(block.files).size > 0);
+
+    it("finds the package-scoped blocks", () => {
+      // The global-settings cast block, the sim-neutral block, and the
+      // audio-scenarios, replay-engine, iracing-actions and plugin-shell blocks.
+      expect(scoped).toHaveLength(6);
+    });
+
+    it("names .ts, .mts, .mjs and .astro in each, and the test twins of each exemption", () => {
+      expect(scoped.flatMap(missingExtensions)).toEqual([]);
+    });
+
+    // The positive control: a block narrowed back to .ts is reported, files and
+    // ignores both, so the check above can fail.
+    it("reports a block narrowed to .ts", () => {
+      expect(
+        missingExtensions({
+          files: ["packages/x/src/**/*.ts"],
+          ignores: ["packages/x/src/**/*.test.ts", "packages/x/src/**/*.test.mts"],
+        }),
+      ).toEqual(["files packages/x/src/**/*: mts, mjs, astro", "ignores packages/x/src/**/*.test: mjs"]);
+    });
+  });
 
   describe("no file is held by two blocks setting one restricted-imports rule", () => {
     // Each block on its own, so ESLint's own matching (files, ignores) decides
@@ -150,6 +239,9 @@ describe("sim boundary coverage", () => {
       "src/planted.ts",
       "src/nested/planted.test.ts",
       "src/planted.test-support.ts",
+      "src/planted.mts",
+      "src/planted.mjs",
+      "src/nested/planted.test.mts",
       "scripts/planted.mjs",
       "scripts/planted.mts",
       "src/components/Planted.astro",
