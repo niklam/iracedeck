@@ -1096,6 +1096,15 @@ describe("the #1634 review round: options, cuts and program positions", () => {
       true,
       (c) => [...lexer.matchesAt(c, MERGE)].length > 1,
     );
+    // Every match of a chain of quoted shell strings: the string around each is
+    // a binary search, never a scan of every quote (CodeRabbit on PR #1637).
+    readsLinearly(
+      (n) => "bash -c 'gh pr merge 7'; ".repeat(n),
+      2000,
+      MERGE,
+      true,
+      (c) => [...lexer.matchesAt(c, MERGE)].length > 1,
+    );
   });
 });
 

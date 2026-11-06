@@ -1115,10 +1115,27 @@ export const programAt = (command, at) => programKind(command, at) !== undefined
  * `undefined`. A program word's own quotes (`"gh" pr merge`, `"bash" -c`) are
  * its spelling, not a string around it: the quote must open before the word
  * starts ({@link wordStartOf}).
+ *
+ * `quotes` is sorted by its opening quote and its strings never overlap (each
+ * fed span is read left to right past every close, and the spans are sorted
+ * and disjoint), so the one string that can hold the word is the last one
+ * opening before it, found by a binary search: a lookup per match costs a log,
+ * not a scan, and `matchesAt` over a chain of n quoted shell strings stays
+ * linear (CodeRabbit on PR #1637).
  */
 function stringAround(v, index) {
   const start = wordStartOf(v, index);
-  return v.quotes.find(([open, close]) => open < start && index <= close);
+  const { quotes } = v;
+  let lo = 0;
+  let hi = quotes.length;
+  // The first quote opening at or after `start`; the candidate is the one before it.
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (quotes[mid][0] < start) lo = mid + 1;
+    else hi = mid;
+  }
+  const quote = quotes[lo - 1];
+  return quote && index <= quote[1] ? quote : undefined;
 }
 
 /**
