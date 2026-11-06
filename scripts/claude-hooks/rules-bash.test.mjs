@@ -5094,3 +5094,48 @@ describe("a wrapper's string is judged whole, with its own cds (#1634)", () => {
     expect(asks("echo 'pnpm dev:voices' | bash", links)).toMatch(/Ulanzi plugin link points into .*master/);
   });
 });
+
+// A merge handed to a shell or a wrapper is refused before the gate reads any
+// PR: with a green, approved PR behind it, so a refusal cannot come from a
+// failed read (CodeRabbit on PR #1637).
+describe("a carried merge is refused before the PR is read (#1634)", () => {
+  const head = "1111111111111111111111111111111111111111";
+  const reads = [];
+  const green = (...args) => {
+    reads.push(args);
+    return {
+      number: 7,
+      url: "https://github.com/niklam/iracedeck/pull/7",
+      state: "OPEN",
+      headRefOid: head,
+      headRefName: "ir-7",
+      reviewDecision: "APPROVED",
+      mergeStateStatus: "CLEAN",
+      statusCheckRollup: [
+        { __typename: "CheckRun", name: "Tests", status: "COMPLETED", conclusion: "SUCCESS" },
+        { __typename: "StatusContext", context: "CodeRabbit", state: "SUCCESS" },
+      ],
+      reviews: [{ author: { login: "coderabbitai" }, state: "APPROVED", commit: { oid: head } }],
+    };
+  };
+
+  it("reads the PR for a direct merge, so the counter is live", () => {
+    reads.length = 0;
+    passes(`gh pr merge 7 --squash --match-head-commit ${head}`, ctx({ prView: green }));
+    expect(reads.length).toBeGreaterThan(0);
+  });
+
+  it.each([
+    ["a heredoc a shell reads", "bash <<'EOF'\ngh pr merge 7 --squash\nEOF"],
+    ["a heredoc after a command", "bash <<'EOF'\ntrue\ngh pr merge 7 --squash\nEOF"],
+    ["a semicolon inside a -c string", "bash -c 'true; gh pr merge 7 --squash'"],
+    ["a semicolon inside an eval string", `eval "true; gh pr merge 7 --squash"`],
+    ["a -c string's first word", "bash -c 'gh pr merge 7 --squash'"],
+    ["a script on stdin", "echo 'gh pr merge 7 --squash' | bash"],
+    ["a wrapper", "sudo gh pr merge 7 --squash"],
+  ])("refuses %s without reading the PR", (_, c) => {
+    reads.length = 0;
+    deny(c, ctx({ prView: green }));
+    expect(reads, c).toEqual([]);
+  });
+});
