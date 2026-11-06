@@ -38,12 +38,10 @@ const [varsSection, condsSection, casesSection] = VOCABULARY_SECTIONS;
 
 <section>
   <h2 id={condsSection.anchor}>{condsSection.label}</h2>
-  {/* Prettier would break the line between </code> and the full stop, which renders as "! ." (#1616). */}
-  <!-- prettier-ignore -->
   <p>
     A condition answers yes or no at fire time. Write it in an <code>if</code> step —{" "}
-    <code>{'{ "if": "name", "then": [ … ], "else": [ … ] }'}</code> — and negate it with a single leading{" "}
-    <code>!</code>. That <code>!</code> is the only operator the format has.
+    <code>{'{ "if": "name", "then": [ … ], "else": [ … ] }'}</code> — and negate it with a single leading <code>!</code>
+    . That <code>!</code> is the only operator the format has.
   </p>
   {vocabulary.conds.map((item) => (
     <article class="pack-ref-item">
