@@ -1096,8 +1096,10 @@ describe("the #1634 review round: options, cuts and program positions", () => {
       true,
       (c) => [...lexer.matchesAt(c, MERGE)].length > 1,
     );
-    // Every match of a chain of quoted shell strings: the string around each is
-    // a binary search, never a scan of every quote (CodeRabbit on PR #1637).
+    // Every match of a chain of quoted shell strings, end to end: a guard
+    // against a gross blowup only. Building the view dominates its timing, so
+    // it does not tell a scan of every quote from a binary search; the read
+    // count below does.
     readsLinearly(
       (n) => "bash -c 'gh pr merge 7'; ".repeat(n),
       2000,
@@ -1105,6 +1107,37 @@ describe("the #1634 review round: options, cuts and program positions", () => {
       true,
       (c) => [...lexer.matchesAt(c, MERGE)].length > 1,
     );
+  });
+
+  // The string around a word is found by a binary search over the sorted
+  // quotes, never a scan of them all (CodeRabbit on PR #1637): counted, so no
+  // clock decides it. A scan reads every quote for the last string, and for a
+  // word outside every string; the search reads about log2(n).
+  it("finds the string around a word in about log2(n) quote reads, not n", () => {
+    const n = 256;
+    const c = "bash -c 'gh pr merge 7'; ".repeat(n);
+    const v = lexer.view(c);
+    const quotes = v.quotes;
+    expect(quotes).toHaveLength(n);
+    let reads = 0;
+    v.quotes = new Proxy(quotes, {
+      get(target, key, receiver) {
+        if (typeof key === "string" && /^\d+$/.test(key)) reads++;
+        return Reflect.get(target, key, receiver);
+      },
+    });
+    try {
+      const lastGh = c.lastIndexOf("gh");
+      reads = 0;
+      expect(lexer.stringBounds(c, lastGh)).toEqual(quotes[n - 1]);
+      expect(reads).toBeLessThanOrEqual(2 * Math.log2(n) + 4);
+      // A word outside every string: the last separator.
+      reads = 0;
+      expect(lexer.stringBounds(c, c.lastIndexOf(";"))).toBeUndefined();
+      expect(reads).toBeLessThanOrEqual(2 * Math.log2(n) + 4);
+    } finally {
+      v.quotes = quotes;
+    }
   });
 });
 
