@@ -4965,6 +4965,22 @@ describe("the #1634 CodeRabbit round: attached strings and a quoted push", () =>
     const ask = asks(c);
     expect(ask.match(/restart:stream-deck/g), ask).toHaveLength(1);
   });
+  // A cluster that ends in a value option takes the next word as that value
+  // (`-eo pipefail`), so `pipefail` is no script file and the `-c` string is
+  // still read (CodeRabbit CLI round 3 on #1634).
+  it.each([
+    "bash -eo pipefail -c 'pnpm restart:stream-deck'",
+    `sh -eo pipefail -c "pnpm restart:stream-deck"`,
+    "bash -xO extglob -c 'pnpm restart:stream-deck'",
+    "bash +eo posix -c 'pnpm restart:stream-deck'",
+    "bash -o pipefail -c 'pnpm restart:stream-deck'",
+  ])("asks once for the restart in a -c string past a clustered value option: %s", (c) => {
+    const ask = asks(c);
+    expect(ask.match(/restart:stream-deck/g), ask).toHaveLength(1);
+  });
+  it("passes a -c string past a clustered value option that restarts nothing", () => {
+    passes("bash -eo pipefail -c 'pnpm build'");
+  });
   it("passes an attached string that restarts nothing", () => {
     passes("fish -c'pnpm build'");
     passes(`pwsh -c"pnpm build"`);

@@ -591,9 +591,10 @@ function lineRun(label, dir, words, as) {
 /**
  * bash, sh, zsh, dash, ksh or fish handed a string: `-c`, alone or in a
  * cluster (`-lc`, `-ec`), makes the first word after the options the line,
- * read as bash; `-o` / `+o` / `-O` / `+O`, `--rcfile` and `--init-file` take a
- * value, and fish's `--command` carries the line itself. A shell run on a file
- * or on its stdin runs nothing the hook can read.
+ * read as bash; `-o` / `+o` / `-O` / `+O`, also at the end of a cluster
+ * (`-eo pipefail`, `+eo posix`), `--rcfile` and `--init-file` take a value,
+ * and fish's `--command` carries the line itself. A shell run on a file or on
+ * its stdin runs nothing the hook can read.
  */
 function shRuns(name, words, dir) {
   let command = false;
@@ -602,9 +603,12 @@ function shRuns(name, words, dir) {
     const long = w.match(/^--command(?:=([\s\S]*))?$/);
     if (long) return lineRun(`${name} --command`, dir, [long[1] ?? words[i + 1] ?? ""], BASH);
     if (w === "--") return command ? lineRun(`${name} -c`, dir, [words[i + 1] ?? ""], BASH) : [];
-    if (/^[-+][oO]$/.test(w) || w === "--rcfile" || w === "--init-file") i++;
-    else if (/^-[A-Za-z]+$/.test(w)) command ||= w.includes("c");
-    else if (!/^[-+]/.test(w)) return command ? lineRun(`${name} -c`, dir, [w], BASH) : [];
+    if (w === "--rcfile" || w === "--init-file") i++;
+    else if (/^[-+][A-Za-z]+$/.test(w)) {
+      if (w[0] === "-") command ||= w.includes("c");
+      // The value of a trailing `o` / `O` is the next word, never a script file (#1634).
+      if (/[oO]$/.test(w)) i++;
+    } else if (!/^[-+]/.test(w)) return command ? lineRun(`${name} -c`, dir, [w], BASH) : [];
   }
   return [];
 }
