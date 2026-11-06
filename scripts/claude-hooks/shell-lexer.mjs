@@ -633,6 +633,7 @@ function commandOf(spec, text, from, limit) {
   let scanned = 0;
   let program;
   let string;
+  let attached = false;
   for (let word = next(); word; word = next()) {
     if (REDIRECTION.test(word.w)) {
       if (BARE_REDIRECTION.test(word.w) && !next()) break;
@@ -647,6 +648,7 @@ function commandOf(spec, text, from, limit) {
     if (o) {
       if (o.string && o.attached !== undefined) {
         string = word.at + o.attached;
+        attached = true;
         break;
       }
       if (o.string) stringNext = true;
@@ -660,7 +662,9 @@ function commandOf(spec, text, from, limit) {
     if (program === undefined) program = word.at;
     if (!scansOn || ++scanned > SCANNED_WORDS) break;
   }
-  return { program, string };
+  // `attached`: the string is glued to its switch (`cmd /c"…"`, `su -c'…'`), a
+  // form a reader of the spaced one (`bash -c '…'`) does not see.
+  return { program, string, attached };
 }
 
 /**
@@ -950,10 +954,10 @@ function fedStarts(command, text, fed, programs) {
       if (!SHELL_NAMES.has(via)) continue;
       const kind =
         via === "sudo" && !sudoRunsShell(text, p + via.length) ? { how: "wrapper", via } : { how: "shell", via };
-      const { program, string } = commandOf(OPTION_SPECS.get(via) ?? NO_OPTIONS, text, p + via.length, b);
+      const { program, string, attached } = commandOf(OPTION_SPECS.get(via) ?? NO_OPTIONS, text, p + via.length, b);
       // A wrapper's word is the program whole, quoted or not; a shell's is the string it runs.
       if (program !== undefined) (kind.how === "wrapper" ? leads : stringAt)(program, kind, b);
-      if (string !== undefined) stringAt(string, kind, b);
+      if (string !== undefined) stringAt(string, attached ? { ...kind, attached: true } : kind, b);
     }
     for (const stages of own.pipelines) {
       // Each stage's reader of a stdin script, read once, and the first one past each stage that reads the pipe.
@@ -2008,6 +2012,7 @@ function rawMatch(command, { at, indices, kind, program }) {
   if (kind.via) raw.via = kind.via;
   if (kind.stdin) raw.stdin = true;
   if (kind.piped) raw.piped = true;
+  if (kind.attached) raw.attached = true;
   return raw;
 }
 
@@ -2371,6 +2376,7 @@ export function* chainCommands(command, cwd, re, shell = BASH) {
         ...(f.kind.via ? { via: f.kind.via } : {}),
         ...(f.kind.stdin ? { stdin: true } : {}),
         ...(f.kind.piped ? { piped: true } : {}),
+        ...(f.kind.attached ? { attached: true } : {}),
       };
     }
     const dir = argIn(command, text, a, b, cdRe(shell));

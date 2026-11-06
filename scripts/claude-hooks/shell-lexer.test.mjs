@@ -1137,3 +1137,18 @@ describe("the #1634 second read: rounds, late shell words and attached switches"
     expect(lexer.has("bash -cls", MERGE)).toBe(false);
   });
 });
+
+// The #1634 CodeRabbit CLI round: a string attached to its switch says so, so
+// a consumer that reads a wrapper's spaced string itself can leave the lexer's
+// reading of the attached one alone.
+describe("the #1634 CodeRabbit round: an attached string's kind", () => {
+  it("marks the first word of a string attached to its switch", () => {
+    expect(lexer.programKind("fish -c'gh pr merge 7'", 8)).toEqual({ how: "shell", via: "fish", attached: true });
+    expect(lexer.programKind(`pwsh -c"gh pr merge 7"`, 8)).toEqual({ how: "shell", via: "pwsh", attached: true });
+    expect(lexer.programKind("cmd /cgh pr merge 7", 6)).toEqual({ how: "shell", via: "cmd", attached: true });
+    expect(lexer.programKind("fish -c 'gh pr merge 7'", 9)).toEqual({ how: "shell", via: "fish" });
+    expect([...lexer.chainCommands("fish -c'pnpm restart:x'", MASTER, cmd(/pnpm\b/))].map((c) => c.attached)).toEqual([
+      true,
+    ]);
+  });
+});

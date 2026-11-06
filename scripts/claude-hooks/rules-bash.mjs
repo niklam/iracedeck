@@ -894,7 +894,8 @@ export const rules = [
       const tagPush = [...matchesAt(c, GIT_PUSH)].some((m) => {
         // The segment holding the program word: an anchored match's `index` is its boundary.
         const [, b] = segments.find(([s, e]) => s <= m.program && m.program < e);
-        const own = c.slice(m.program, Math.min(b, stringEnd(c, m.program) ?? b));
+        // From the raw word's start, not its rewritten name's: `"git" push` begins at the quote (CodeRabbit on #1634).
+        const own = c.slice(programStart(c, m.program), Math.min(b, stringEnd(c, m.program) ?? b));
         // Its inert text blanked, a comment included, which the raw text of a fed span keeps.
         const code = maskInert(own).masked;
         const comment = [...own].findIndex(

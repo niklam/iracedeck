@@ -4947,3 +4947,36 @@ describe("the #1634 second read: the piped pnpm's exemptions, nested wrappers, a
     passes(`bash -c "git push origin main" # v1.2.3`);
   });
 });
+
+// The #1634 CodeRabbit CLI round: a string attached to its switch reached no
+// reader of the deck-host ask, and the tag-push ask sliced a push from its
+// rewritten name rather than its raw word.
+describe("the #1634 CodeRabbit round: attached strings and a quoted push", () => {
+  it.each([
+    "fish -c'pnpm restart:stream-deck'",
+    `pwsh -c"pnpm restart:stream-deck"`,
+    `powershell -Command"pnpm restart:stream-deck"`,
+    "su -c'pnpm restart:stream-deck' me",
+    `cmd /c"pnpm restart:stream-deck"`,
+    "cmd /cpnpm restart:stream-deck",
+    "fish -c 'pnpm restart:stream-deck'",
+    `pwsh -c "pnpm restart:stream-deck"`,
+  ])("asks once for the restart in a string attached to its switch, as for one spaced: %s", (c) => {
+    const ask = asks(c);
+    expect(ask.match(/restart:stream-deck/g), ask).toHaveLength(1);
+  });
+  it("passes an attached string that restarts nothing", () => {
+    passes("fish -c'pnpm build'");
+    passes(`pwsh -c"pnpm build"`);
+    passes(`cmd /c"pnpm build"`);
+  });
+
+  it("reads a push's own words from its raw program word, whatever its spelling", () => {
+    passes(`"git" push --tags --dry-run`);
+    passes("/usr/bin/git push --tags --dry-run");
+    passes("git.exe push --tags --dry-run");
+    passes(`'git' push origin v1.2.3 --dry-run`);
+    expect(asks(`"git" push --tags`)).toMatch(/release/);
+    expect(asks("git.exe push origin v1.2.3")).toMatch(/release/);
+  });
+});
