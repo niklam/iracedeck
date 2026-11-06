@@ -994,9 +994,17 @@ function fedStarts(command, text, fed, programs) {
     }
   };
   // Where the command holding `p` ends: its next operator character or newline.
+  // Every position's end, built once on first use, so a run of `find -exec`
+  // clauses or wrappers asks a lookup each, not a scan of the rest of the text
+  // (CodeRabbit CLI on #1634).
+  let ends;
   const commandEnd = (p) => {
-    const stop = text.slice(p).search(/[\n;&|()\x60]/);
-    return stop < 0 ? text.length : p + stop;
+    if (!ends) {
+      ends = new Int32Array(text.length + 1);
+      ends[text.length] = text.length;
+      for (let i = text.length - 1; i >= 0; i--) ends[i] = "\n;&|()\x60".includes(text[i]) ? i : ends[i + 1];
+    }
+    return ends[p];
   };
   // The wrappers and the `find`s among the program words: what each runs.
   for (const p of byName.keys()) {
@@ -1016,7 +1024,9 @@ function fedStarts(command, text, fed, programs) {
   for (const [a, b] of fed) {
     const own = pipelinesOf(command, a, b);
     quotes.push(...own.quotes);
-    const closeOf = (open) => own.quotes.find(([o]) => o === open)?.[1];
+    // Each string's close by its opening quote: a lookup, not a scan of the span's quotes.
+    const closes = new Map(own.quotes);
+    const closeOf = (open) => closes.get(open);
     // The word at `p` when no quote opens it (`eval gh …`, `cmd /c pnpm …`);
     // else the first word of the string inside, past blanks and a lead, up to
     // the string's close.
@@ -1899,9 +1909,13 @@ function normalisePrograms(command, text, flat, words, raw, extra = new Map()) {
       // part (`$(GIT.EXE push x)/gh.exe`) nests in that word's edit, whose
       // replacement keeps the substitution's characters where they stand: the
       // inner edit is written into the outer's replacement at its offset.
+      // The merged edits are sorted and disjoint, so the only one that can
+      // hold the next is the last: a check of that one, not a scan of them
+      // all, which made a chain of n `gh.exe` commands n² (CodeRabbit CLI on #1634).
       const merged = [];
       for (const e of edits.sort((x, y) => x[0] - y[0])) {
-        const outer = merged.findLast((m) => m[0] <= e[0] && e[1] <= m[1]);
+        const last = merged.at(-1);
+        const outer = last && last[0] <= e[0] && e[1] <= last[1] ? last : undefined;
         if (!outer) merged.push(e);
         else
           for (const k of [2, 3])
