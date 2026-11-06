@@ -44,8 +44,8 @@
  *     or after the leader's PREDICTED chequered flag, `leader-finish.ts`,
  *     which reads an expired clock only once it has held for about a
  *     second, `CLOCK_EXPIRY_CONFIRM_TICKS`: counted on the lap counters for
- *     a player within a lap of the leader, and by the player's pace
- *     otherwise; when the flag cannot be predicted, a running clock's bound
+ *     a player within a lap of the leader now and at the flag, and by the
+ *     player's pace otherwise; when the flag cannot be predicted, a running clock's bound
  *     `SessionTimeRemain + 2 × leaderLap`, and unknown for an expired one).
  *     The verdict is on the TANK, not the post-margin count
  *     ({@link isFuelRaceCovered}, #1405): the raw laps of fuel must
@@ -303,20 +303,30 @@ export function resolveFuelRaceCoverage(
   // current one:
   //
   // - **By lap count**, when there is a prediction and the player is within
-  //   a lap of the leader on distance (`leaderGap`, `−1 < g < 1` with
+  //   a lap of the leader on distance now (`leaderGap`, `−1 < g < 1` with
   //   `g = (LC_L + f_L) − (LC_p + f_p)`; the player being the leader gives
-  //   `g = 0`). Every car within a lap of the leader finishes on the lap
-  //   count the leader's chequered brings up, `LC_L + N_L`: a car behind
-  //   crosses it after the leader, and one that passes becomes the leader at
-  //   the same count. So the player's crossings are `LC_L + N_L − LC_p` and
-  //   the laps after the current one `LC_L + N_L − LC_p − 1`, with no pace
-  //   and no tolerance — a close follower crosses after the leader whatever
-  //   the gap, so there is no near-tie to allow for. (Same lap: `N_L`; a lap
-  //   down but within a lap on distance, either side of the line: `N_L + 1`;
-  //   the player across the line just ahead of the leader: `N_L − 1`.)
+  //   `g = 0`) AND still at the chequered: `g + T · (1/L − 1/P) < 1`, with
+  //   the leader's lap time `L` and the player's average `P`. Every car
+  //   within a lap of the leader at the flag finishes on the lap count the
+  //   leader's chequered brings up, `LC_L + N_L`: a car behind crosses it
+  //   after the leader, and one that passes becomes the leader at the same
+  //   count. So the player's crossings are `LC_L + N_L − LC_p` and the laps
+  //   after the current one `LC_L + N_L − LC_p − 1`, with no tolerance — a
+  //   close follower crosses after the leader whatever the gap, so there is
+  //   no near-tie to allow for. (Same lap: `N_L`; a lap down but within a
+  //   lap on distance, either side of the line: `N_L + 1`; the player across
+  //   the line just ahead of the leader: `N_L − 1`.) A slower car within a
+  //   lap now but lapped before the flag finishes one count lower, which is
+  //   why the gap is projected to the flag. A faster player's projected gap
+  //   only falls: they pass and lead at the same count, and stay here. At
+  //   the boundary both errors are cautious: projected just inside a lap but
+  //   really lapped, this counts one lap more; projected just outside but
+  //   not really lapped, the time model's tolerance counts the later
+  //   crossing.
   // - **By time** otherwise — a lapped or slower-class player a lap or more
-  //   away, a lap count or fraction missing or too close to the line to
-  //   trust for either car (`readLeaderGap`), or no prediction. With the
+  //   away now or at the flag, a lap count or fraction missing or too close
+  //   to the line to trust for either car (`readLeaderGap`), an unknown
+  //   leader lap time, or no prediction. With the
   //   player's average lap `P` and lap fraction `f_p`, their k-th crossing
   //   is at `(k − f_p) · P`, so the laps after the current one are
   //   `ceil(T / P + f_p + ε) − 1`, where `ε` (`fuelFinishToleranceLaps`)
@@ -350,12 +360,16 @@ export function resolveFuelRaceCoverage(
     const gap = leader.leaderGap;
 
     if (
+      leaderChequeredS !== null &&
       leaderChequeredS === predicted &&
+      isPositiveFinite(leader.lapTimeS) &&
       typeof crossings === "number" &&
       Number.isInteger(crossings) &&
       crossings >= 1 &&
       gap !== null &&
-      Math.abs(gap.distanceLaps) < 1
+      Math.abs(gap.distanceLaps) < 1 &&
+      // The gap projected to the leader's chequered flag: still inside a lap.
+      gap.distanceLaps + leaderChequeredS * (1 / leader.lapTimeS - 1 / playerLap) < 1
     ) {
       timedLapsAfterCurrent = Math.max(0, gap.leaderLapsCompleted + crossings - gap.playerLapsCompleted - 1);
     } else if (leaderChequeredS !== null) {

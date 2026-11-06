@@ -1,7 +1,7 @@
 /**
  * Unit tests for the leader's chequered-flag prediction (issue #1405): the
  * shared white-crossing index, the fuel estimate's near-tie tolerance, and
- * `predictLeaderChequeredS` on a running clock, an expired one, and every
+ * `predictLeaderChequered` on a running clock, an expired one, and every
  * case it cannot answer.
  */
 import { IRSDK_UNLIMITED_TIME, type TelemetryData, TrkLoc } from "@iracedeck/iracing-sdk";
@@ -68,7 +68,7 @@ describe("fuelFinishToleranceLaps", () => {
   });
 });
 
-describe("predictLeaderChequeredS — clock running", () => {
+describe("predictLeaderChequered — clock running", () => {
   it("places the chequered one leader lap after the white, from the leader's mid-lap position", () => {
     // ε = 0.03 + 0.01 × 6 = 0.09; white k = ceil(6 + 0.25 + 0.09) = 7, so the
     // chequered is crossing 8, at (8 − 0.25) × 100 s.
@@ -99,7 +99,7 @@ describe("predictLeaderChequeredS — clock running", () => {
   });
 });
 
-describe("predictLeaderChequeredS — clock expired", () => {
+describe("predictLeaderChequered — clock expired", () => {
   it("allows two leader laps less the fraction until the leader has crossed since expiry", () => {
     expect(predictedChequeredInS(race(-10, 0.4), ORDER, 100, HELD)).toBeCloseTo(160, 9);
   });
@@ -115,7 +115,7 @@ describe("predictLeaderChequeredS — clock expired", () => {
   });
 });
 
-describe("predictLeaderChequeredS — a marker the clock does not bear out", () => {
+describe("predictLeaderChequered — a marker the clock does not bear out", () => {
   it("does not trust a marker a lead change set before anyone's white (the second-read scenario)", () => {
     // B passed A after expiry: `leader-white.ts` absorbs the change and sets
     // the marker, but B is half a lap round only 30 s after expiry — they
@@ -175,7 +175,7 @@ describe("the expired-clock confirmation", () => {
   });
 });
 
-describe("predictLeaderChequeredS — an expired reading not yet confirmed", () => {
+describe("predictLeaderChequered — an expired reading not yet confirmed", () => {
   const BLIP: LeaderClockExpiry = { confirmed: false, leaderCrossed: false };
 
   it("answers null for a reading at or below zero that has not held long enough", () => {
@@ -190,7 +190,7 @@ describe("predictLeaderChequeredS — an expired reading not yet confirmed", () 
   });
 });
 
-describe("predictLeaderChequeredS — cannot predict", () => {
+describe("predictLeaderChequered — cannot predict", () => {
   it("answers null for an unknown or unlimited clock", () => {
     expect(predictedChequeredInS(race(IRSDK_UNLIMITED_TIME, 0.5), ORDER, 100, HELD)).toBeNull();
     expect(predictedChequeredInS(race(Number.NaN, 0.5), ORDER, 100, HELD)).toBeNull();
