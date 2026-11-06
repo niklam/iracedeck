@@ -60,14 +60,38 @@ export const SIM_NEUTRAL_PACKAGES = Object.freeze([
 const SIM_NEUTRAL_MESSAGE =
   'A sim-neutral package (SIM_NEUTRAL_PACKAGES in eslint.config.js) must not depend on a simulator: reach the sim through deck-core\'s SimConnection interface, the event-bus catalog or an injected delegate, and put iRacing code in an iRacing package such as @iracedeck/deck-iracing (#1351, #1367, #1375).';
 const PI_COMPONENTS_MESSAGE =
-  'iracing-actions is bundled into every plugin, and @iracedeck/pi-components (with ./testing, which loads ejs and node:fs, and ./build) is only its tests\' devDependency: import it from a *.test.ts or *.test-support.ts file only (#1375).';
+  'iracing-actions is bundled into every plugin, and @iracedeck/pi-components (with ./testing, which loads ejs and node:fs, and ./build) is only its tests\' devDependency: import it from a *.test.ts or *.test-support.ts file (or its .mts or .mjs twin) only (#1375).';
 const SHELL_SIM_MESSAGE =
   'A plugin shell must not depend on a simulator: read the sim through PluginExtensionContext.sim, which plugin-runtime hands PluginExtension.start (#1500).';
 
 // The TypeScript sources: .ts, and .mts, the extension the website's icon-gallery
-// generator is written in (#1616). An .mts file gets exactly what a .ts file does,
-// so every block below that names a TypeScript pattern names both.
+// generator is written in (#1616). An .mts file gets exactly what a .ts file does:
+// the language blocks name TS_FILES, and every block scoped to a package's
+// sources names its files through sources() below.
 const TS_FILES = ['**/*.ts', '**/*.mts'];
+
+// Every extension `pnpm lint` reads as source (#1616): the scripts — .ts, .mts
+// and .mjs — and an .astro component, whose frontmatter is TypeScript (its
+// <script> blocks arrive as virtual .ts files, which the .ts pattern already
+// matches). An .mjs file is plain JavaScript, so the TypeScript rules above
+// skip it, but an import is an import: a boundary refuses one in any of the
+// four. A block that scopes its rules to a package's sources takes its files
+// from sources() and its test-file exemptions from tests(), so a block cannot
+// name .ts and forget the rest, which is how an .mts or .astro file (and,
+// before #1616, an .mjs one) escaped four boundaries.
+// scripts/sim-boundary-coverage.test.mjs fails on a `packages/` glob that names
+// one extension without the others.
+const SCRIPT_EXTENSIONS = ['ts', 'mts', 'mjs'];
+const SOURCE_EXTENSIONS = [...SCRIPT_EXTENSIONS, 'astro'];
+
+// sources('packages/x/src/**/*'): that glob in every source extension.
+const sources = (stem) => SOURCE_EXTENSIONS.map((extension) => `${stem}.${extension}`);
+
+// tests('packages/x/src/**/*', ['test']): the test files of that glob, one per
+// kind (`test`, `test-support`, `test-util`) and script extension. A component
+// is never a test, so a `.test.astro` is held like any other.
+const tests = (stem, kinds) =>
+  kinds.flatMap((kind) => SCRIPT_EXTENSIONS.map((extension) => `${stem}.${kind}.${extension}`));
 
 // The website's Astro components and pages (#1616). Their frontmatter, and every
 // <script> the plugin's processor extracts (as a virtual `<file>.astro/<n>.ts`,
@@ -187,8 +211,8 @@ export default [
     // parameter or annotation), so this is a guard on the common shape, not a
     // complete one.
     // scripts/global-settings-cast-lint.test.mjs proves both selectors fire.
-    files: ['packages/*/src/**/*.ts', 'packages/*/src/**/*.mts', 'packages/*/src/**/*.astro'],
-    ignores: ['packages/*/src/**/*.test.ts', 'packages/*/src/**/*.test.mts'],
+    files: sources('packages/*/src/**/*'),
+    ignores: tests('packages/*/src/**/*', ['test']),
     rules: {
       'no-restricted-syntax': [
         'error',
@@ -226,9 +250,7 @@ export default [
     // declare no `exports`, as the plugin-shell block below does (#1500).
     // Type-only imports included.
     // scripts/deck-core-sim-boundary.test.mjs proves this rule fires in each.
-    files: SIM_NEUTRAL_PACKAGES.flatMap((dir) =>
-      ['ts', 'mts', 'mjs', 'astro'].map((extension) => `packages/${dir}/**/*.${extension}`),
-    ),
+    files: SIM_NEUTRAL_PACKAGES.flatMap((dir) => sources(`packages/${dir}/**/*`)),
     rules: {
       'no-restricted-imports': [
         'error',
@@ -245,9 +267,16 @@ export default [
     // called, and the deck and native layers not reached at all. Lint sees imports,
     // not calls, so this is a ratchet on direct imports; a transitive read is
     // caught by the families' required deps types instead. Tests and their utils
-    // may import what they like.
-    files: ['packages/audio-scenarios/src/**/*.ts'],
-    ignores: ['packages/audio-scenarios/src/**/*.test.ts', 'packages/audio-scenarios/src/**/*.test-util.ts'],
+    // may import what they like. The typed rule is registered here as well as in
+    // the TypeScript block, because this block also holds an .mjs file, which
+    // that block does not; there it reads every import as a value import, which
+    // is what a JavaScript import is.
+    // scripts/audio-scenarios-sim-boundary.test.mjs proves this rule fires.
+    files: sources('packages/audio-scenarios/src/**/*'),
+    ignores: tests('packages/audio-scenarios/src/**/*', ['test', 'test-util']),
+    plugins: {
+      '@typescript-eslint': tseslint,
+    },
     rules: {
       '@typescript-eslint/no-restricted-imports': [
         'error',
@@ -273,7 +302,7 @@ export default [
     // The replay engine is iRacing's, not the deck's (#1467): what it needs from the deck
     // layer and the settings is injected by plugin-runtime's initReplay phase.
     // scripts/replay-engine-boundary.test.mjs proves this rule fires.
-    files: ['packages/replay-engine/src/**/*.ts'],
+    files: sources('packages/replay-engine/src/**/*'),
     rules: {
       'no-restricted-imports': [
         'error',
@@ -311,8 +340,8 @@ export default [
     // and a second block here would replace these options rather than add to
     // them (scripts/sim-boundary-coverage.test.mjs fails if one ever does).
     // scripts/iracing-actions-pi-components-boundary.test.mjs proves it fires.
-    files: ['packages/iracing-actions/src/**/*.ts'],
-    ignores: ['packages/iracing-actions/src/**/*.test.ts', 'packages/iracing-actions/src/**/*.test-support.ts'],
+    files: sources('packages/iracing-actions/src/**/*'),
+    ignores: tests('packages/iracing-actions/src/**/*', ['test', 'test-support']),
     rules: {
       'no-restricted-imports': [
         'error',
@@ -331,7 +360,7 @@ export default [
     // subpath pattern closes a deep import, which iracing-sdk and iracing-native
     // allow because they declare no `exports`.
     // scripts/plugin-shell-sim-boundary.test.mjs proves this rule fires.
-    files: ['packages/iracing-plugin-*/src/**/*.ts'],
+    files: sources('packages/iracing-plugin-*/src/**/*'),
     rules: {
       'no-restricted-imports': [
         'error',
