@@ -4884,3 +4884,66 @@ describe("the #1634 review round: value options, string closes and program posit
     expect(matchAt("cd x && git worktree remove ../ir-5\necho", GIT_WORKTREE_REMOVE)[1]).toBe(" ../ir-5");
   });
 });
+
+// The #1634 second read, through the rules.
+describe("the #1634 second read: the piped pnpm's exemptions, nested wrappers, attached switches, a carried push's own text", () => {
+  const head = "1".repeat(40);
+  const green = () => ({
+    number: 7,
+    url: "https://github.com/niklam/iracedeck/pull/7",
+    state: "OPEN",
+    headRefOid: head,
+    headRefName: "ir-7",
+    reviewDecision: "APPROVED",
+    mergeStateStatus: "CLEAN",
+    statusCheckRollup: [{ __typename: "CheckRun", name: "Tests", status: "COMPLETED", conclusion: "SUCCESS" }],
+    reviews: [{ author: { login: "coderabbitai" }, state: "APPROVED", commit: { oid: head } }],
+  });
+
+  it("reads the pipe after a string past a redirect's own &", () => {
+    expect(deny(`bash -c "pnpm test" 2>&1 | tail`)).toMatch(/pipefail/);
+    expect(deny(`echo "pnpm test" | bash 2>&1 | tail`)).toMatch(/pipefail/);
+    expect(deny("pnpm test 2>&1 | tail")).toMatch(/pipefail/);
+    passes(`bash -c "pnpm test" 2>&1`);
+  });
+
+  it("excuses a pipe only by a pipefail the shell that runs it has", () => {
+    // Inside the string: pipefail inside that string, or the shell's own -o pipefail.
+    expect(deny('set -o pipefail; bash -c "pnpm test | tail"')).toMatch(/pipefail/);
+    passes('bash -c "set -o pipefail; pnpm test | tail"');
+    passes("bash -o pipefail -c 'pnpm test | tail -5'");
+    passes("bash +o posix -o pipefail -c 'pnpm test | tail -5'");
+    // Outside the string: pipefail in the outer text ahead of the shell word only.
+    expect(deny('bash -c "set -o pipefail; pnpm test" | tail')).toMatch(/pipefail/);
+    expect(deny("bash -o pipefail -c 'pnpm test' | tail")).toMatch(/pipefail/);
+    passes('set -o pipefail; bash -c "pnpm test" | tail');
+    passes("set -o pipefail; echo 'pnpm test' | bash | tail");
+    expect(deny("echo 'set -o pipefail; pnpm test' | bash | tail")).toMatch(/pipefail/);
+  });
+
+  it.each([
+    'nice nice.exe bash -c "gh pr merge 7 --squash"',
+    "nice nice.exe nice.exe gh pr merge 7 --squash",
+    'winpty bash.exe -c "cmd.exe /c gh pr merge 7 --squash"',
+    'nice "bash" -c "gh pr merge 7 --squash"',
+    'winpty "pwsh" -c "gh pr merge 7 --squash"',
+    "cmd /cgh pr merge 7 --squash",
+    `cmd /c"gh pr merge 7 --squash"`,
+    `su -c'gh pr merge 7 --squash' me`,
+    `pwsh -c"gh pr merge 7 --squash"`,
+  ])("the merge gate refuses %s", (c) => expect(deny(c, ctx({ prView: green }))).toMatch(/is not its own command/));
+
+  it("asks for a tag push a wrapper's quoted shell path runs", () =>
+    expect(asks(`nice "C:/Program Files/Git/bin/bash.exe" -c "git push --tags"`)).toMatch(/release/));
+
+  it("judges a carried push's --dry-run and tag within its own command, never in a comment", () => {
+    expect(asks(`bash -c "git push --tags" --dry-run`)).toMatch(/release/);
+    expect(asks(`bash -c "git push origin v1.2.3" # --dry-run`)).toMatch(/release/);
+    expect(asks("sudo git push origin v1.2.3 # --dry-run")).toMatch(/release/);
+    expect(asks("git push origin v1.2.3 # --dry-run")).toMatch(/release/);
+    passes(`bash -c "git push --tags --dry-run"`);
+    passes("git push --tags --dry-run");
+    passes(`bash -c "git push origin main" v1.2.3`);
+    passes(`bash -c "git push origin main" # v1.2.3`);
+  });
+});

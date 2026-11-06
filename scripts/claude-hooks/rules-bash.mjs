@@ -47,6 +47,7 @@ import {
   programStart,
   ranges,
   resolveDir,
+  stringBounds,
   stringEnd,
   stringKind,
   trustedIn,
@@ -882,17 +883,25 @@ export const rules = [
     // review). The tag itself is read from the raw text: `"v1.2.3"` is a tag too.
     // Each push is found as every guard finds its command (`matchesAt`, #1634:
     // `sudo git push --tags` and `bash <<< 'git push --tags'` included), then
-    // judged on the chain segment it stands in.
+    // judged on its own text alone: from its program word to its string's close
+    // or its chain segment's end, less a comment — so a `--dry-run` that is
+    // bash's `$0` after the string, or sits in a comment, excuses nothing, and a
+    // tag there is none (#1634 second read).
     name: "git push: a tag cuts a release",
     test: (c) => {
       const text = trustedMask(c);
       const segments = ranges(text, CHAIN_AND_BACKGROUND);
       const tagPush = [...matchesAt(c, GIT_PUSH)].some((m) => {
         // The segment holding the program word: an anchored match's `index` is its boundary.
-        const [a, b] = segments.find(([s, e]) => s <= m.program && m.program < e);
-        return (
-          !/--dry-run\b/.test(text.slice(a, b)) && /\bpush(?:\s[^|&;]*)?\s["']?(--tags\b|v\d+\.\d+)/.test(c.slice(a, b))
+        const [, b] = segments.find(([s, e]) => s <= m.program && m.program < e);
+        const own = c.slice(m.program, Math.min(b, stringEnd(c, m.program) ?? b));
+        // Its inert text blanked, a comment included, which the raw text of a fed span keeps.
+        const code = maskInert(own).masked;
+        const comment = [...own].findIndex(
+          (ch, i) => ch === "#" && code[i] === "_" && (i === 0 || /\s/.test(own[i - 1])),
         );
+        const live = comment < 0 ? own : own.slice(0, comment);
+        return !/--dry-run\b/.test(code) && /\bpush(?:\s[^|&;]*)?\s["']?(--tags\b|v\d+\.\d+)/.test(live);
       });
       return tagPush && { ask: "Pushing a tag cuts a release. The maintainer confirms." };
     },
@@ -1279,18 +1288,34 @@ export const rules = [
     // 'pnpm test' | tail`; for a script a shell reads on stdin the first pipe
     // after the string feeds the shell and only a second hides it: `echo 'pnpm
     // test' | bash` passes, `… | bash | tail` does not) (#1634 review).
+    // A pipefail excuses only the shell that has it (#1634 second read): a pipe
+    // inside the string is the inner shell's, excused by a `set -o pipefail`
+    // inside that string ahead of the pnpm or by the shell's own `-o pipefail`
+    // option, never by one in the outer text, which a child bash does not
+    // inherit; a pipe after the string is the outer shell's, excused only by a
+    // pipefail in the outer text ahead of the shell's command.
     name: "a piped pnpm build/test needs pipefail",
     bashOnly: true,
     test: (c) => {
       const text = trustedMask(c);
-      const piped = (s) => /^(?:[^|&;\n]|>&\d)*\|(?!\|)/.test(s);
+      // A redirect's `>&1` or `&>` ahead of the plain characters, so a greedy
+      // run with nothing after it takes the whole redirect rather than stopping
+      // at its `&`.
+      const piped = (s) => /^(?:>&\d|&>|[^|&;\n])*\|(?!\|)/.test(s);
       for (const m of matchesAt(c, cmd(/pnpm\s+(?:run\s+)?(?:build|test|typecheck|lint|format)\b/))) {
-        if (/pipefail/.test(text.slice(0, m.index))) continue;
         const end = m.index + m[0].length;
-        const close = stringEnd(c, m.program);
-        if (piped(text.slice(end, close ?? text.length))) return PIPED_PNPM;
-        if (close === undefined) continue;
-        const after = /^[^;&\n]*/.exec(text.slice(close + 1))[0];
+        const string = stringBounds(c, m.program);
+        if (!string) {
+          if (!/pipefail/.test(text.slice(0, m.index)) && piped(text.slice(end))) return PIPED_PNPM;
+          continue;
+        }
+        const [open, close] = string;
+        // Where the command that runs the shell starts: after the last operator ahead of the string.
+        const from = text.slice(0, open).search(/[^\n;&|()\x60]*$/);
+        const inner = /pipefail/.test(text.slice(open, m.index)) || /[-+]o\s+pipefail\b/.test(text.slice(from, open));
+        if (!inner && piped(text.slice(end, close))) return PIPED_PNPM;
+        if (/pipefail/.test(text.slice(0, from))) continue;
+        const after = /^(?:>&\d|&>|[^;&\n])*/.exec(text.slice(close + 1))[0];
         const pipes = (after.match(/(?<!\|)\|(?!\|)/g) ?? []).length;
         if (pipes >= (stringKind(c, m.program)?.piped ? 2 : 1)) return PIPED_PNPM;
       }
