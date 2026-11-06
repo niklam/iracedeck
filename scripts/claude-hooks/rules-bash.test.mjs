@@ -4820,3 +4820,67 @@ describe("a trap word that starts a shell-fed string reaches every guard (#1634)
     expect(deny("bash -c '$GH pr merge 7 --squash'")).toMatch(/Could not read the program/);
   });
 });
+
+// The #1634 /code-review round, through the rules.
+describe("the #1634 review round: value options, string closes and program positions", () => {
+  const head = "1".repeat(40);
+  const green = () => ({
+    number: 7,
+    url: "https://github.com/niklam/iracedeck/pull/7",
+    state: "OPEN",
+    headRefOid: head,
+    headRefName: "ir-7",
+    reviewDecision: "APPROVED",
+    mergeStateStatus: "CLEAN",
+    statusCheckRollup: [{ __typename: "CheckRun", name: "Tests", status: "COMPLETED", conclusion: "SUCCESS" }],
+    reviews: [{ author: { login: "coderabbitai" }, state: "APPROVED", commit: { oid: head } }],
+  });
+
+  it.each([
+    "bash -o pipefail -c 'gh pr merge 7 --squash'",
+    `cmd //c "gh pr merge 7 --squash"`,
+    "watch -n 5 'gh pr merge 7 --squash'",
+    "su - me -c 'gh pr merge 7 --squash'",
+    `pwsh -ExecutionPolicy Bypass -Command "gh pr merge 7 --squash"`,
+    'sudo "gh" pr merge 7 --squash',
+    "sudo --user=me gh pr merge 7 --squash",
+  ])("the merge gate refuses %s past the shell word's value options", (c) =>
+    expect(deny(c, ctx({ prView: green }))).toMatch(/is not its own command/),
+  );
+
+  it("passes a value option's value, and a word that merely ends in a trap word", () => {
+    passes("sudo -u gh pr merge 7", ctx({ prView: green }));
+    passes("sudo -u jq ls");
+    passes("sudo ./build-jq x");
+    passes("nice -n 5 foojq x");
+    passes("sudo apt-get install -y jq");
+    passes("echo -exec gh pr merge 7", ctx({ prView: green }));
+  });
+
+  it("denies the --body @- trap past a mention that shares its shape", () => {
+    expect(deny("sudo env X=gh gh pr comment 5 --body @-")).toMatch(/--body-file/);
+    expect(deny("sudo gh pr comment 5 --body @-")).toMatch(/--body-file/);
+  });
+
+  it("judges a piped pnpm by the pipe that hides its exit, never by the one that feeds the shell", () => {
+    passes("echo 'pnpm test' | bash");
+    passes("printf '%s\\n' 'pnpm build' | sh");
+    passes("bash <<< 'pnpm test'");
+    passes("bash -c 'pnpm test' > log");
+    passes("echo 'ls; pnpm test' | bash");
+    passes("bash -o pipefail -c 'pnpm test | tail -5'");
+    passes("set -o pipefail; sh -c 'pnpm test' | tail");
+    expect(deny("sh -c 'pnpm test 2>&1' | tail -5")).toMatch(/pipefail/);
+    expect(deny("bash -c 'pnpm test | tee x'")).toMatch(/pipefail/);
+    expect(deny("echo 'pnpm test' | bash | tail -5")).toMatch(/pipefail/);
+    expect(deny("bash <<< 'pnpm test' | tail")).toMatch(/pipefail/);
+    expect(deny("sudo pnpm test | tail")).toMatch(/pipefail/);
+    expect(deny("pnpm test | tail")).toMatch(/pipefail/);
+  });
+
+  it("reads a $-ending shape before a newline without landing on the separator", () => {
+    expect(worktreeAddTarget("cd ../ir-4 && git worktree add ../ir-5 -b x\ncd ../ir-6")).toBe("../ir-5");
+    expect(asks("cd x && git push origin v1.2.3\necho hi")).toMatch(/release/);
+    expect(matchAt("cd x && git worktree remove ../ir-5\necho", GIT_WORKTREE_REMOVE)[1]).toBe(" ../ir-5");
+  });
+});

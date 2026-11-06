@@ -48,6 +48,7 @@ import {
   ranges,
   resolveDir,
   stringEnd,
+  stringKind,
   trustedIn,
   trustedMask,
   unreadablePrograms,
@@ -383,6 +384,10 @@ function plainMergePrefix(prefix) {
 
 /** A redirection word: an optional fd and one operator, the target attached in group 1 or in the next word. */
 const REDIRECT_WORD = /^\d*(?:<<<|[<>]&|&>>?|>>|>\||<>|<|>)(.*)$/;
+
+/** The deny of the piped-pnpm rule. */
+const PIPED_PNPM =
+  "Piping `pnpm build/test/...` hides its exit code (you get tail's). Prefix `set -o pipefail;` or check the log before claiming green.";
 
 /** `gh pr merge` flags that take a value, so the value is never read as the PR or as a flag. */
 const MERGE_VALUE_FLAGS = new Set([
@@ -1267,16 +1272,29 @@ export const rules = [
     // earlier in the chain, not the word in a string or a comment (#1321 review).
     // `>&\d` is the only way past a `>&`, so `2>&1` has one parse: the old
     // `[^|&;\n]|\d?>&\d` had two for each, and backtracked exponentially on a
-    // long run of them with no pipe at the end.
+    // long run of them with no pipe at the end. The pipe that hides the exit is
+    // the one after the pnpm in its own command — inside the string a shell runs
+    // it from, `bash -c 'pnpm test | tee x'` — or, for a pnpm inside such a
+    // string, the one after the string's close, which pipes the shell on (`sh -c
+    // 'pnpm test' | tail`; for a script a shell reads on stdin the first pipe
+    // after the string feeds the shell and only a second hides it: `echo 'pnpm
+    // test' | bash` passes, `… | bash | tail` does not) (#1634 review).
     name: "a piped pnpm build/test needs pipefail",
     bashOnly: true,
     test: (c) => {
-      const m = matchAt(c, cmd(/pnpm\s+(run\s+)?(build|test|typecheck|lint|format)\b(?:[^|&;\n]|>&\d)*\|(?!\|)/));
-      return (
-        m &&
-        !/pipefail/.test(trustedMask(c).slice(0, m.index)) &&
-        "Piping `pnpm build/test/...` hides its exit code (you get tail's). Prefix `set -o pipefail;` or check the log before claiming green."
-      );
+      const text = trustedMask(c);
+      const piped = (s) => /^(?:[^|&;\n]|>&\d)*\|(?!\|)/.test(s);
+      for (const m of matchesAt(c, cmd(/pnpm\s+(?:run\s+)?(?:build|test|typecheck|lint|format)\b/))) {
+        if (/pipefail/.test(text.slice(0, m.index))) continue;
+        const end = m.index + m[0].length;
+        const close = stringEnd(c, m.program);
+        if (piped(text.slice(end, close ?? text.length))) return PIPED_PNPM;
+        if (close === undefined) continue;
+        const after = /^[^;&\n]*/.exec(text.slice(close + 1))[0];
+        const pipes = (after.match(/(?<!\|)\|(?!\|)/g) ?? []).length;
+        if (pipes >= (stringKind(c, m.program)?.piped ? 2 : 1)) return PIPED_PNPM;
+      }
+      return null;
     },
   },
   {
