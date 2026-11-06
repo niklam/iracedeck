@@ -40,13 +40,11 @@ import { replaySpeedFromTelemetry, type ReplayState, type TelemetryData } from "
 import type { ILogger } from "@iracedeck/logger";
 import {
   beginReplayJump,
-  currentReplayCursorOwner,
   describeReplayJump,
   findRecordStep,
   formatPlayCaption,
   formatSpeedDisplay,
   getReplayGateRecord,
-  isReplayMoveUnderWay,
   isReplaySearchRunning,
   isSeeking,
   keepDialPendingSpeed,
@@ -62,7 +60,6 @@ import {
   rememberedSpeed,
   REPLAY_JUMP_MAX_WAIT_MS,
   REPLAY_SPEED_HOLD_MS,
-  REPLAY_TARGET_GIVE_UP_MS,
   type ReplayGateCommand,
   type ReplayPressResult,
   resolveReplayWalkStart,
@@ -604,9 +601,6 @@ export class ReplayControlDialSurface extends ReleaseDialSurfaceBase<
    * actually presses something (#1437).
    */
   private runningGesture: { readonly ctx: ReplayControlDialContext; readonly gesture: ActiveGesture } | null = null;
-
-  /** When the host's debounced state last said a replay is on screen (ms), or null before it ever did. */
-  private replaySeenAt: number | null = null;
 
   /** The timer that keeps the dials following a move that has not read back ({@link armPositionFollow}), or null. */
   private positionFollowTimer: ReturnType<typeof setTimeout> | null = null;
@@ -1157,34 +1151,16 @@ export class ReplayControlDialSurface extends ReleaseDialSurfaceBase<
   /**
    * Whether a command would do anything: a replay on screen and telemetry to
    * read the speed from. Without both, every input is a no-op and the box
-   * dims. A replay is on screen by the debounced state (so the ~300 ms after a
-   * seek still count), and also while a move of the plugin's own is under
-   * way: a jump under way holds iRacing's raw flag false, and a turn that
-   * keeps retargeting one shows it true for a tick or two in every 400 ms, so
-   * the debounce's grace is not something to rest a long turn on.
+   * dims. A replay is on screen by the debounced state alone: the ~300 ms
+   * after a seek count through its grace, and since #1429 a move of the
+   * plugin's own holds it for as long as the move is out (a jump under way
+   * holds iRacing's raw flag false, and a turn that keeps retargeting one
+   * shows it true for a tick or two in every 400 ms), so this dial and Replay
+   * Markers agree, and a move from the car is never one, since the hold only
+   * extends a replay the ticks have sighted.
    */
   private isReplayOnScreen(): boolean {
-    const now = Date.now();
-    const inReplay = this.host.inReplay();
-
-    if (inReplay) this.replaySeenAt = now;
-
-    return (inReplay || this.isMoveUnderWay(now)) && this.reading().telemetry !== null;
-  }
-
-  /**
-   * Whether the plugin is moving the replay right now: a target that has not
-   * read back, a search on its way, a press waiting in the gate, or a claim on
-   * the replay cursor. It holds the replay on screen only for
-   * {@link REPLAY_TARGET_GIVE_UP_MS} past the last moment the debounced state
-   * said so. A move sent while only this holds would otherwise renew its own
-   * target, and with it the hold, for as long as the dial is turned from the
-   * car.
-   */
-  private isMoveUnderWay(now: number): boolean {
-    if (this.replaySeenAt === null || now - this.replaySeenAt >= REPLAY_TARGET_GIVE_UP_MS) return false;
-
-    return currentReplayCursorOwner() !== null || isReplayMoveUnderWay() || this.io.position()?.seeking === true;
+    return this.host.inReplay() && this.reading().telemetry !== null;
   }
 
   /** Runs a gesture slot's assignment for the dial `ctx`; outside a replay it sends nothing. */

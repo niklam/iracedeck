@@ -55,6 +55,11 @@
  * (`replay-command-gate.ts`) writes it. A cursor take does not clear it: the
  * replay is still headed there whoever holds the cursor.
  *
+ * A target's seek, once sent, is also what holds the SDK's debounced replay
+ * state "in a replay" while the ticks read as the car (#1429): the gate tells
+ * the controller the rest of the target's own wait at the end of each change,
+ * and releases the hold when the target reads back, is given up or cleared.
+ *
  * Time is passed in, never read here. In memory only, and one value for the
  * whole plugin: iRacing has one replay position.
  */

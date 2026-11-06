@@ -57,6 +57,20 @@
  *   press decides with a speed sent the moment before. A press says whether
  *   its send is the speed the dial's Play resumes (`rememberSpeed`); a
  *   command the slot sends later always is.
+ * - **The replay state holds through its seeks** (#1429): while iRacing carries
+ *   out a seek its ticks read as the car until the cursor lands, which
+ *   outlasts the SDK's one-second exit grace on a long jump or a sustained
+ *   spin. At the end of every change the gate tells the controller how long
+ *   a seek of its own still holds the replay (`noteReplaySeekHold`): a
+ *   target whose seek has gone out for the rest of its own wait, a search on
+ *   its way for the rest of the time it could be running, the longer of the
+ *   two, and none once neither stands. A go to end never holds: it leaves the
+ *   replay for live, which `leftForLive` says instead. With the hold goes its
+ *   cap, the longest any seek on the tape can take (`replayTargetGiveUpMs` of
+ *   the tape's length): the hold never reaches further past the last replay
+ *   sighting, and the SDK's grace follows its end as it follows any hold's.
+ *   That is what stops moves sent from the car, which the held state lets a
+ *   surface send and iRacing ignores, from renewing the hold.
  *
  * A one-shot press goes through {@link pressReplayCommand}, which takes the
  * replay cursor (`replay-cursor.ts`) as every command did before. A long-running
@@ -66,7 +80,7 @@
  *
  * In memory only, and one gate for the whole plugin: iRacing has one replay.
  */
-import { ReplayPosMode, type TelemetryData } from "@iracedeck/iracing-sdk";
+import { ReplayPosMode, type ReplaySeekHoldUntil, type TelemetryData } from "@iracedeck/iracing-sdk";
 import type { ILogger } from "@iracedeck/logger";
 
 import { now as engineNow, pollUntil } from "./engine-clock.js";
@@ -450,6 +464,15 @@ const sameRunEnds = new Map<string, ReplayGateEndReason>();
 /** The speeds sent in the running change, in the order they went out, for the speed state's listeners once it is complete. */
 let sentSpeeds: ReplaySpeed[] = [];
 
+/**
+ * The seek hold last told to the controller (#1429), or null for none, its
+ * `untilMs` on the engine clock (the controller is told the time remaining,
+ * since its clock need not be this one): a change that leaves its time and
+ * its cap as they were tells nothing, so a poll under a long jump is no write
+ * per tick.
+ */
+let toldSeekHold: ReplaySeekHoldUntil | null = null;
+
 /** Runs `listener` on every change of any token's view. Returns the unsubscribe. */
 export function subscribeReplayGate(listener: (notice: ReplayGateNotice) => void): () => void {
   listeners.add(listener);
@@ -487,8 +510,88 @@ function batch<T>(now: number, change: () => T): T {
     if (batchDepth === 0) {
       publish();
       noteSentSpeeds();
+      tellSeekHold();
     }
   }
+}
+
+/**
+ * The longest any seek on the tape can take (ms), by the last replay reading
+ * the gate knows (#1429): the jump wait of a jump across the whole tape
+ * (`replayTargetGiveUpMs`), never under `REPLAY_TARGET_GIVE_UP_MS`, which it
+ * is when no reading has said how long the tape is. The seek hold's cap past
+ * the last sighting: with the grace that follows the hold, on a short tape it
+ * ends turns from the car 4 s after the last replay tick, as the Replay
+ * Control dial's own clause once did (its sighting was stamped while the
+ * debounced state read true, a second of grace past the tick, and held for
+ * `REPLAY_TARGET_GIVE_UP_MS` more), and on a long tape it grows with the
+ * tape, so a long seek is still held through. Never under the own wait of
+ * the move that holds: a search's could-run time has the fastest-lap walk's
+ * floor, and a takeover's target the search's wait (`minGiveUpMs`), either of
+ * which can pass the tape's on a short tape, and a cap below it would end the
+ * hold before the move it holds for. Both are finite, so moves sent from the
+ * car still cannot renew the hold for ever.
+ */
+function longestSeekMs(): number {
+  const tapeFrames = lastReplay?.left === undefined ? 0 : lastReplay.frame + lastReplay.left;
+  const target = pendingReplayTarget();
+  const targetWaitMs = target !== null && target.sent ? target.giveUpMs : 0;
+  const searchWaitMs =
+    search !== null && search.onItsWay && !search.landed && search.kind !== "go-to-end" ? search.couldRunMs : 0;
+
+  return Math.max(replayTargetGiveUpMs(tapeFrames), targetWaitMs, searchWaitMs);
+}
+
+/**
+ * Until when (engine clock) a seek of the gate's own holds the replay
+ * (#1429), or null: a target whose seek has gone out holds it for its own
+ * wait (`giveUpMs` from the send), a search on its way for the time it could
+ * be running, and the longer of the two wins. A target not yet sent (a replay
+ * jump's pause window) has no seek out, and a go to end leaves the replay
+ * for live, so neither holds. A time already passed is none.
+ *
+ * A known limit, kept on purpose: a replay jump that still holds the cursor
+ * keeps its target past `giveUpMs` (`heldBy`), but the hold ends there. A
+ * seek outlasts that wait only when the sim searches at under half its
+ * 60 Hz update rate, while holding on through the jump's own bound
+ * (`REPLAY_JUMP_MAX_WAIT_MS`) would need the cap past the last sighting
+ * lifted with it, and a replay left for the garage reads as a seek the whole
+ * time: moves sent from there could then renew the hold for two minutes
+ * each. The departure event bounds a target the same way (`replay-left.ts`).
+ */
+function seekHoldUntil(now: number): number | null {
+  const target = pendingReplayTarget();
+  const targetUntil = target !== null && target.sent ? target.sentAt + target.giveUpMs : null;
+  const searchUntil =
+    search !== null && search.onItsWay && !search.landed && search.kind !== "go-to-end"
+      ? search.sentAt + search.couldRunMs
+      : null;
+  let until = targetUntil;
+
+  if (searchUntil !== null && (until === null || searchUntil > until)) until = searchUntil;
+
+  return until !== null && until > now ? until : null;
+}
+
+/**
+ * Tells the controller the seek hold as the change just completed leaves it
+ * (#1429), after the views and the speeds are out, as a duration from now, so
+ * the SDK's clock need not be the engine's, with its cap ({@link longestSeekMs}).
+ * Only a change of either is told: a landing, a give-up, a clear or a
+ * disconnect releases it (null), and the release restarts the SDK's exit
+ * grace from that moment.
+ */
+function tellSeekHold(): void {
+  const now = engineNow();
+  const until = seekHoldUntil(now);
+  const hold = until === null ? null : { untilMs: until, maxPastSightingMs: longestSeekMs() };
+
+  if (hold?.untilMs === toldSeekHold?.untilMs && hold?.maxPastSightingMs === toldSeekHold?.maxPastSightingMs) return;
+
+  toldSeekHold = hold;
+  engineReads().seekHold(
+    hold === null ? null : { remainingMs: hold.untilMs - now, maxPastSightingMs: hold.maxPastSightingMs },
+  );
 }
 
 /**
@@ -2593,6 +2696,7 @@ export function _resetReplayCommandGate(): void {
   batchEnds.clear();
   sameRunEnds.clear();
   sentSpeeds = [];
+  toldSeekHold = null;
   batchDepth = 0;
   clearReplayTarget();
 }

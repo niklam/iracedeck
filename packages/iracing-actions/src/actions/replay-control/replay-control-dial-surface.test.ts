@@ -1,5 +1,6 @@
 import {
   getCarNumberRawFromSessionInfo,
+  REPLAY_EXIT_GRACE_MS,
   ReplayPosMode,
   replaySpeedFromTelemetry,
   replaySpeedToSdk,
@@ -29,6 +30,9 @@ import {
   noteReplaySpeedSent,
   noteTelemetrySpeed,
   RACE_START_WALK_OWNER,
+  replayTargetGiveUpMs,
+  steppedReplayState,
+  type SteppedReplayState,
 } from "@iracedeck/replay-engine/testing";
 import type { ReplaySessionStore } from "@iracedeck/replay-store";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -207,6 +211,8 @@ function replayAt(s: ReplaySpeed): TelemetryData {
 const env = {
   /** The host's debounced "a replay is on screen". */
   inReplay: true,
+  /** The SDK's own debounced state, for a case that runs it: the host then reads it rather than {@link env.inReplay}. */
+  state: null as SteppedReplayState | null,
   /** What a fresh telemetry read returns. */
   telemetry: null as TelemetryData | null,
   /** What the SDK's session info is. */
@@ -268,7 +274,7 @@ const host = {
 function makeSurface(): ReplayControlDialSurface {
   return new ReplayControlDialSurface({
     logger: logger as never,
-    inReplay: () => env.inReplay,
+    inReplay: () => env.state?.getReplayState().inReplay ?? env.inReplay,
     telemetry: host.telemetry,
     jumpToLive: host.jumpToLive,
     jumpToRaceStart: host.jumpToRaceStart,
@@ -381,6 +387,7 @@ describe("ReplayControlDialSurface", () => {
     // The gate reads the same replay the surface does (#1430).
     resetEngine({ readTelemetry: () => env.telemetry, inReplay: () => env.inReplay });
     env.inReplay = true;
+    env.state = null;
     env.telemetry = replayAt(speed(1));
     env.sessionInfo = null;
     env.replayOnlySession = false;
@@ -1565,6 +1572,9 @@ describe("ReplayControlDialSurface", () => {
     });
   });
 
+  // Since #1429 the replay on screen is the SDK's debounced state alone, which a
+  // seek of the plugin's own holds through: these cases run the real tracker,
+  // stepped from what a fresh read returns, with the gate telling it its holds.
   describe("a replay on screen while the plugin moves it", () => {
     function ioOf(surface: ReplayControlDialSurface): ReplayDialModeIo {
       return surface["io"];
@@ -1572,30 +1582,57 @@ describe("ReplayControlDialSurface", () => {
 
     /** What iRacing reports while a jump is under way. */
     const SEEKING = { ...replayAt(PAUSED), IsReplayPlaying: false, ReplayFrameNum: 0 } as TelemetryData;
+    /** What iRacing reports from the car: no seek shows. */
+    const FROM_CAR = {
+      ...replayAt(PAUSED),
+      IsReplayPlaying: false,
+      IsOnTrack: true,
+      ReplayFrameNum: 0,
+    } as TelemetryData;
 
-    /** iRacing's raw flag has been down for longer than the debounce's grace. */
-    function flagDown(): void {
-      env.inReplay = false;
+    let state: SteppedReplayState;
+
+    beforeEach(() => {
+      state = steppedReplayState(() => env.telemetry);
+      env.state = state;
+      resetEngine({
+        readTelemetry: () => env.telemetry,
+        inReplay: () => state.getReplayState().inReplay,
+        seekHold: (hold) => state.noteReplaySeekHold(hold),
+      });
+    });
+
+    /** Telemetry reads `telemetry` for `ms`, the state stepped every 50 ms as the controller's poll would. */
+    async function reading(telemetry: TelemetryData, ms: number): Promise<void> {
+      env.telemetry = telemetry;
+
+      for (let t = 0; t < ms; t += 50) {
+        await vi.advanceTimersByTimeAsync(50);
+        state.getReplayState();
+      }
     }
 
-    it("refuses a turn and a press from the car", async () => {
+    /** iRacing's raw flag down for longer than the debounce's grace. */
+    const PAST_THE_GRACE = REPLAY_EXIT_GRACE_MS + 200;
+
+    it("refuses a turn and a press from the car once the grace has run out", async () => {
       const { surface, ctx } = await onScreen(speed(8));
 
-      flagDown();
+      await reading(FROM_CAR, PAST_THE_GRACE);
       surface.rotate(ctx as never, dial(), -1, false);
       await press(surface, ctx, dial());
 
+      expect(state.getReplayState().inReplay).toBe(false);
       expectNothingSent();
     });
 
-    it("still takes a turn while a move of its own has not read back", async () => {
+    it("still takes a turn past the grace while a move of its own has not read back", async () => {
       const d = dial({ mode: "frame-jog" });
       const { surface, ctx } = await onScreen(PAUSED, d);
 
       env.telemetry = { ...replayAt(PAUSED), ReplayFrameNum: 600 } as TelemetryData;
       ioOf(surface).jumpTo("dial-frame-jog", 640);
-      env.telemetry = SEEKING;
-      flagDown();
+      await reading(SEEKING, PAST_THE_GRACE);
 
       surface.rotate(ctx as never, d, 1, false);
 
@@ -1605,15 +1642,13 @@ describe("ReplayControlDialSurface", () => {
       ]);
     });
 
-    it("refuses again once that move is given up without reading back", async () => {
+    it("refuses again once that move is given up without reading back and the grace after it has run", async () => {
       const d = dial({ mode: "frame-jog" });
       const { surface, ctx } = await onScreen(PAUSED, d);
 
       env.telemetry = { ...replayAt(PAUSED), ReplayFrameNum: 600 } as TelemetryData;
       ioOf(surface).jumpTo("dial-frame-jog", 640);
-      env.telemetry = SEEKING;
-      flagDown();
-      await vi.advanceTimersByTimeAsync(REPLAY_TARGET_GIVE_UP_MS + 100);
+      await reading(SEEKING, REPLAY_TARGET_GIVE_UP_MS + PAST_THE_GRACE);
 
       surface.rotate(ctx as never, d, 1, false);
 
@@ -1621,23 +1656,26 @@ describe("ReplayControlDialSurface", () => {
       expect(mocks.nextFrame).not.toHaveBeenCalled();
     });
 
-    it("still takes a turn while something holds a claim on the replay cursor, and takes the cursor from it", async () => {
-      const { surface, ctx } = await onScreen(speed(1));
+    it("still takes a turn past the grace while a move is out under another's claim, and takes the cursor from it", async () => {
+      const d = dial({ mode: "frame-jog" });
+      const { surface, ctx } = await onScreen(PAUSED, d);
 
+      env.telemetry = { ...replayAt(PAUSED), ReplayFrameNum: 600 } as TelemetryData;
+      ioOf(surface).jumpTo("dial-frame-jog", 640);
       claimReplayCursor("fastest-lap");
-      flagDown();
-      surface.rotate(ctx as never, dial(), 1, false);
+      await reading(SEEKING, PAST_THE_GRACE);
 
-      expect(mocks.setPlaySpeed).toHaveBeenCalledTimes(1);
+      surface.rotate(ctx as never, d, 1, false);
+
+      expect(mocks.setPlayPosition).toHaveBeenLastCalledWith(ReplayPosMode.Begin, 641);
       expect(currentReplayCursorOwner()).toBeNull();
     });
 
-    it("stops taking turns under a claim once no replay has been seen for the give-up time", async () => {
+    it("does not hold the replay for a claim with no move of its own out: past the grace a turn is refused", async () => {
       const { surface, ctx } = await onScreen(speed(1));
 
       claimReplayCursor("fastest-lap");
-      flagDown();
-      await vi.advanceTimersByTimeAsync(REPLAY_TARGET_GIVE_UP_MS + 100);
+      await reading(FROM_CAR, PAST_THE_GRACE);
       surface.rotate(ctx as never, dial(), 1, false);
 
       expect(mocks.setPlaySpeed).not.toHaveBeenCalled();
@@ -1650,25 +1688,52 @@ describe("ReplayControlDialSurface", () => {
 
       // A jump goes out in the replay; then the replay is left, and the dial is kept turning.
       surface.rotate(ctx as never, d, 2, false);
-      env.telemetry = SEEKING;
-      flagDown();
 
       for (let i = 0; i < 8; i++) {
-        await vi.advanceTimersByTimeAsync(1_000);
+        await reading(FROM_CAR, 1_000);
         surface.rotate(ctx as never, d, 2, false);
       }
 
-      // Each accepted turn sent a jump and renewed its own target; the hold still ended on time.
-      expect(mocks.setPlayPosition.mock.calls.length).toBeLessThanOrEqual(3);
-      expect(mocks.setPlayPosition.mock.calls.length).toBeGreaterThanOrEqual(2);
+      // Each accepted turn sent a jump and renewed its own target; the hold still ended on time (#1429): the
+      // state's cap past the last sighting is REPLAY_TARGET_GIVE_UP_MS on a tape whose length no reading said,
+      // and its grace follows, so turns at 1, 2 and 3 s are taken and none from 4 s. That is the old clause's
+      // real bound too: its sighting was stamped while the debounced state read true, a second past the tick.
+      expect(mocks.setPlayPosition.mock.calls.length).toBe(4);
     });
 
-    it("shows the box, not the dimmed label, while a move has not read back", async () => {
+    it("on a long tape the bound on turns from the car grows with the tape, and still ends (#1429)", async () => {
+      const d = dial({ mode: "frame-jog" });
+      const { surface, ctx } = await onScreen(PAUSED, d);
+      // Six hours of tape: frame 5 000 with the rest left. The longest seek on it is the cap past the sighting.
+      const cap = replayTargetGiveUpMs(1_296_000);
+
+      env.telemetry = { ...replayAt(PAUSED), ReplayFrameNumEnd: 1_291_000 } as TelemetryData;
+      state.getReplayState();
+      surface.rotate(ctx as never, d, 2, false);
+
+      const sentBy: number[] = [];
+
+      for (let t = 1_000; t <= cap + 5_000; t += 1_000) {
+        await reading(FROM_CAR, 1_000);
+        surface.rotate(ctx as never, d, 2, false);
+        sentBy.push(mocks.setPlayPosition.mock.calls.length);
+      }
+
+      // Far more than the short tape's four: every turn inside the cap and the grace after it taken, none after.
+      const taken = Math.ceil((cap + REPLAY_EXIT_GRACE_MS) / 1_000) - 1;
+
+      expect(cap).toBeGreaterThan(REPLAY_TARGET_GIVE_UP_MS * 5);
+      expect(sentBy[taken - 1]).toBe(1 + taken);
+      expect(sentBy.at(-1)).toBe(1 + taken);
+      expect(state.getReplayState().inReplay).toBe(false);
+    });
+
+    it("shows the box, not the dimmed label, past the grace while a move has not read back", async () => {
       const { surface, ctx } = await onScreen(PAUSED);
 
       env.telemetry = { ...replayAt(PAUSED), ReplayFrameNum: 600 } as TelemetryData;
       ioOf(surface).jumpTo("dial-frame-jog", 640);
-      flagDown();
+      await reading(SEEKING, PAST_THE_GRACE);
       await settle(150);
 
       expect(shownValue(lastBox(ctx))).toBe("PAUSED");
@@ -3683,15 +3748,14 @@ describe("ReplayControlDialSurface", () => {
         rotate.mockRestore();
       });
 
-      it("a detent after the replay state's grace, while a jump holds the cursor, is still taken; after the surface's hold it is not", async () => {
+      it("a detent is taken while the replay state holds the replay and refused once it does not, a claim on the cursor notwithstanding (#1429)", async () => {
         const { surface, ctx, d } = await dialIn("incident", pausedOn(54_000));
         const claim = claimReplayCursor("dial-lap");
 
-        env.inReplay = false;
         surface.rotate(ctx as never, d, 1, false);
         expect(queue.turns).toHaveLength(1);
 
-        await vi.advanceTimersByTimeAsync(REPLAY_TARGET_GIVE_UP_MS + 100);
+        env.inReplay = false;
         surface.rotate(ctx as never, d, 1, false);
         expect(queue.turns).toHaveLength(1);
         claim.release();

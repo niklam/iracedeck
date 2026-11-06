@@ -13,7 +13,7 @@ import {
 } from "@iracedeck/logger";
 
 import { IRacingSDK } from "./IRacingSDK.js";
-import { ReplayStateTracker } from "./replay-state-tracker.js";
+import { type ReplaySeekHold, ReplayStateTracker } from "./replay-state-tracker.js";
 import type { ReplayState } from "./telemetry-features.js";
 import { buildTemplateContextFromData, type TemplateContext } from "./template-context.js";
 import { SessionInfo, TelemetryData } from "./types.js";
@@ -506,6 +506,23 @@ export class SDKController {
    */
   noteReplayLeftForLive(nowMs: number = Date.now()): void {
     this.replayState.noteLeftForLive(nowMs);
+  }
+
+  /**
+   * Tells the replay state how long a seek of the plugin's own still holds
+   * the replay (#1429): `hold.remainingMs` from `nowMs`, never past the last
+   * replay sighting plus `hold.maxPastSightingMs`, or null once none is under
+   * way. While iRacing carries out a seek the ticks read as the car until the
+   * cursor lands, which outlasts the exit grace on a long jump or a sustained
+   * dial spin; the replay engine's command gate, which knows its seek is out,
+   * says so here at the end of each of its changes. The hold only extends a
+   * replay the ticks have sighted, never makes one, its release restarts the
+   * grace, and the cap stops moves sent from the car from renewing it. A
+   * remaining duration, not a time, so the engine's clock need not be this
+   * one. `nowMs` is injectable for tests.
+   */
+  noteReplaySeekHold(hold: ReplaySeekHold | null, nowMs: number = Date.now()): void {
+    this.replayState.holdForSeek(hold, nowMs);
   }
 
   /**

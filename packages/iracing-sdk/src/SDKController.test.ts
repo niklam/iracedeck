@@ -541,6 +541,40 @@ describe("SDKController", () => {
       expect(controller.getReplayState()).toMatchObject({ inReplay: true, frame: 500 });
     });
 
+    it("noteReplaySeekHold holds a sighting through a seek longer than the grace, and its release restarts the grace (#1429)", () => {
+      subscribeLive();
+      vi.mocked(mockSdk.getTelemetry).mockReturnValue(replayTick(2, 500));
+      vi.advanceTimersByTime(TELEMETRY_INTERVAL_MS);
+
+      controller.noteReplaySeekHold({ remainingMs: 10_000, maxPastSightingMs: 21_000 });
+
+      vi.mocked(mockSdk.getTelemetry).mockReturnValue(liveTick(3, 900));
+      vi.advanceTimersByTime(3_000);
+
+      expect(controller.getReplayState()).toMatchObject({ inReplay: true, frame: 500 });
+
+      const releasedAt = Date.now();
+
+      controller.noteReplaySeekHold(null);
+
+      expect(controller.getReplayState(releasedAt + 999)).toMatchObject({ inReplay: true, frame: 500 });
+      expect(controller.getReplayState(releasedAt + 1_000)).toMatchObject({ inReplay: false, frame: 900 });
+    });
+
+    it("noteReplaySeekHold takes the caller's clock", () => {
+      subscribeLive();
+      vi.mocked(mockSdk.getTelemetry).mockReturnValue(replayTick(2, 500));
+      vi.advanceTimersByTime(TELEMETRY_INTERVAL_MS);
+      const now = Date.now();
+
+      controller.noteReplaySeekHold({ remainingMs: 2_000, maxPastSightingMs: 3_000 }, now);
+
+      expect(controller.getReplayState(now)).toMatchObject({
+        seekHeldUntil: now + 2_000,
+        seekHoldMaxPastSightingMs: 3_000,
+      });
+    });
+
     it("resets on a disconnect noticed by the reconnect poll, so no grace outlives the connection", () => {
       subscribeLive();
       vi.mocked(mockSdk.getTelemetry).mockReturnValue(replayTick(2, 500));

@@ -32,6 +32,7 @@
  * pattern the existing translator tests use.
  */
 import {
+  type ReplaySeekHold,
   type ReplayState,
   ReplayStateTracker,
   type SessionInfo,
@@ -250,6 +251,11 @@ export class MockSDKController {
   /** The real controller's `goToEnd` hook (#1230, #1324); nothing in the harness sends one today. */
   noteReplayLeftForLive(nowMs: number = Date.now()): void {
     this.replayState.noteLeftForLive(nowMs);
+  }
+
+  /** The real controller's seek hold (#1429), by the same tracker rule; nothing in the harness pushes one today. */
+  noteReplaySeekHold(hold: ReplaySeekHold | null, nowMs: number = Date.now()): void {
+    this.replayState.holdForSeek(hold, nowMs);
   }
 
   // ── Harness-only API ───────────────────────────────────────────────────────

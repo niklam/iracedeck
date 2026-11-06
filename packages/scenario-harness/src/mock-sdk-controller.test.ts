@@ -441,6 +441,24 @@ describe("MockSDKController", () => {
       expect(controller.getReplayState().inReplay).toBe(true);
     });
 
+    it("holds a sighting through a seek of the plugin's own, by the real controller's rule (#1429)", () => {
+      const controller = connected();
+      controller.mutateTelemetry({ IsReplayPlaying: true, ReplayFrameNum: 1200 });
+      controller.tickOnce();
+
+      controller.noteReplaySeekHold({ remainingMs: 5_000, maxPastSightingMs: 10_000 });
+      controller.mutateTelemetry({ IsReplayPlaying: false });
+      vi.advanceTimersByTime(REPLAY_EXIT_GRACE_MS * 3);
+      controller.tickOnce();
+
+      expect(controller.getReplayState()).toMatchObject({ inReplay: true, frame: 1200 });
+
+      controller.noteReplaySeekHold(null);
+      vi.advanceTimersByTime(REPLAY_EXIT_GRACE_MS);
+
+      expect(controller.getReplayState().inReplay).toBe(false);
+    });
+
     it("takes a saved replay as a replay whatever the flag reads, and resets on a disconnect", () => {
       const controller = connected();
       controller.setSessionInfo({ WeekendInfo: { SimMode: "replay" } } as never);

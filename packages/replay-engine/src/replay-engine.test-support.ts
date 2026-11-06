@@ -82,6 +82,7 @@ export function configureTestEngine(options: TestEngineOptions): TestEngine {
     getSessionInfo: () => reads.getSessionInfo() as ReturnType<ReplayEngineController["getSessionInfo"]>,
     getReplayState: (nowMs?: number) => reads.getReplayState(nowMs),
     noteReplayLeftForLive: (nowMs?: number) => reads.noteReplayLeftForLive(nowMs),
+    noteReplaySeekHold: (hold, nowMs) => reads.noteReplaySeekHold(hold, nowMs),
     getConnectionStatus: () => true,
     subscribe: vi.fn(),
     unsubscribe: vi.fn(),
