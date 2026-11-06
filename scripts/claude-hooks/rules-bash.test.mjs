@@ -5148,4 +5148,30 @@ describe("a carried merge is refused before the PR is read (#1634)", () => {
     deny(c, ctx({ prView: green }));
     expect(reads, c).toEqual([]);
   });
+
+  // Past the lexer's depth cap the program at the bottom is read by no rule,
+  // and a re-judge hits the same cap: the command is refused whole, before any
+  // PR read (an independent judge on PR #1637 found `nice` × 9 let a merge through).
+  it.each([
+    ["nine nested nice", `${"nice ".repeat(9)}gh pr merge 7 --squash`],
+    ["twelve nested nice", `${"nice ".repeat(12)}gh pr merge 7 --squash`],
+    ["ten nested nice in a shell string", `bash -c '${"nice ".repeat(10)}gh pr merge 7' 'x y'`],
+    ["a tag push under ten nice", `${"nice ".repeat(10)}git push origin v1.2.3`],
+    ["a harmless program under nine nice", `${"nice ".repeat(9)}echo hi`],
+  ])("refuses %s as nested too deep to read", (_, c) => {
+    reads.length = 0;
+    expect(deny(c, ctx({ prView: green }))).toMatch(/deeper than the hook can read/);
+    expect(reads, c).toEqual([]);
+  });
+
+  it("reads nested wrappers below the cap as before", () => {
+    passes(`${"nice ".repeat(3)}echo hi`);
+    passes(`${"nice ".repeat(7)}echo hi`);
+    expect(deny(`${"nice ".repeat(7)}gh pr merge 7 --squash`, ctx({ prView: green }))).toMatch(
+      /is not its own command/,
+    );
+    expect(deny(`sudo nice env A=1 bash -c "stdbuf -oL nice gh pr merge 7 --squash"`, ctx({ prView: green }))).toMatch(
+      /is not its own command/,
+    );
+  });
 });

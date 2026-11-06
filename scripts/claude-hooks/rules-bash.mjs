@@ -53,6 +53,7 @@ import {
   trustedIn,
   trustedMask,
   unreadablePrograms,
+  unsettled,
   view,
   words,
 } from "./shell-lexer.mjs";
@@ -1942,6 +1943,12 @@ const checkName = (c) => c.name ?? c.context ?? c.__typename ?? "?";
 export function checkBash(command, ctx) {
   const powershell = ctx.shell === POWERSHELL;
   const text = powershell ? powershellAsBash(command) : command;
+  // Shells or wrappers nested past the lexer's depth leave the program at the
+  // bottom unread by every rule, and a re-judge hits the same depth, so the
+  // command is refused whole rather than passed (#1634, an independent judge
+  // on PR #1637: `nice` nested nine times let a merge through).
+  if (unsettled(text))
+    return "This command nests shells or wrappers (`bash -c`, `sudo`, `nice`, `env` …) deeper than the hook can read, so it cannot see what runs at the bottom. Run the inner command directly, or with fewer wrappers around it.";
   const verdict = judge(text, ctx, powershell);
   if (typeof verdict === "string") return verdict;
   // An ask the command carries anyway, from another command of the chain, is

@@ -1451,8 +1451,10 @@ export function view(command) {
     // only once `nice` is), so it repeats until the positions stop changing —
     // each time from the masked text, since a rewritten word's pad hides its
     // start from the next pass — to a depth no command typed by hand reaches.
-    // Past that depth the words still unread are listed as programs the hook
-    // cannot read, which `checkBash` judges as each guarded one: a doubt denies.
+    // A command still unsettled past that depth is reported as `unsettled`,
+    // and `checkBash` refuses it whole: a re-judge would hit the same depth
+    // and read nothing, so `nice` nested nine times once let a merge through
+    // (an independent judge on PR #1637).
     let starts = new Map();
     let built = build(starts);
     let found = fedStarts(command, built.out.text, built.fed, built.out.programs);
@@ -1465,14 +1467,6 @@ export function view(command) {
     }
     const { fed, out } = built;
     const byName = programsByName(out.text, out.programs);
-    const unreadable = [...out.unreadable];
-    if (!settled)
-      for (const p of found.starts.keys()) {
-        CRUDE_WORD.lastIndex = p;
-        const w = CRUDE_WORD.exec(command);
-        if (w && !byName.has(p) && !out.programs.some(([a]) => a === p))
-          unreadable.push({ start: p, end: p + w[0].length, word: w[0] });
-      }
     view.last = command;
     view.out = {
       text: out.text,
@@ -1481,7 +1475,8 @@ export function view(command) {
       sure,
       fed,
       programs: out.programs,
-      unreadable,
+      unreadable: out.unreadable,
+      unsettled: !settled,
       byName,
       wordStarts: wordStartsOf(out.programs, command.length),
       starts,
@@ -1971,6 +1966,13 @@ function wordStartsOf(programs, length) {
 
 /** The program words at command position that expand or glob, `{ start, end, word }` each ({@link view}). */
 export const unreadablePrograms = (command) => view(command).unreadable;
+
+/**
+ * Whether {@link view} stopped reading `command` at its depth cap with nested
+ * shells or wrappers still unread (#1634): such a command is refused whole by
+ * `checkBash`, since no rule can see the program at the bottom of it.
+ */
+export const unsettled = (command) => view(command).unsettled;
 
 /** The command with its inert text masked where the mask stands, and raw where it is set aside ({@link view}). */
 export const trustedMask = (command) => view(command).text;
