@@ -297,14 +297,14 @@ describe("readLeaderGap", () => {
     expect(readLeaderGap(counted([8, 8, 6], [Number.NaN, 0.57, 0.1]), ORDER, 0)).toBeNull();
   });
 
-  it("does not trust a car within the line guard, where the lap count and fraction can disagree for a tick", () => {
-    expect(LAP_LINE_GUARD_PCT).toBe(0.005);
-    expect(readLeaderGap(counted([8, 8, 6], [0.55, 0.004, 0.1]), ORDER, 0)).toBeNull();
-    expect(readLeaderGap(counted([8, 8, 6], [0.55, 0.996, 0.1]), ORDER, 0)).toBeNull();
-    expect(readLeaderGap(counted([8, 8, 6], [0.002, 0.57, 0.1]), ORDER, 0)).toBeNull();
-    expect(readLeaderGap(counted([8, 8, 6], [0.998, 0.57, 0.1]), ORDER, 0)).toBeNull();
+  it("does not trust a car within the line guard, where the lap count and fraction can disagree around a crossing", () => {
+    expect(LAP_LINE_GUARD_PCT).toBe(0.03);
+    expect(readLeaderGap(counted([8, 8, 6], [0.55, 0.02, 0.1]), ORDER, 0)).toBeNull();
+    expect(readLeaderGap(counted([8, 8, 6], [0.55, 0.98, 0.1]), ORDER, 0)).toBeNull();
+    expect(readLeaderGap(counted([8, 8, 6], [0.01, 0.57, 0.1]), ORDER, 0)).toBeNull();
+    expect(readLeaderGap(counted([8, 8, 6], [0.975, 0.57, 0.1]), ORDER, 0)).toBeNull();
     // Just outside it, both read.
-    expect(readLeaderGap(counted([8, 8, 6], [0.01, 0.99, 0.1]), ORDER, 0)).not.toBeNull();
+    expect(readLeaderGap(counted([8, 8, 6], [0.04, 0.96, 0.1]), ORDER, 0)).not.toBeNull();
   });
 });
 

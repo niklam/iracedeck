@@ -108,14 +108,18 @@ export const UNKNOWN_LEADER_FINISH: LeaderFinish = Object.freeze({
 /**
  * How close to the line (lap fraction) a car's `CarIdxLapDistPct` may be
  * before {@link readLeaderGap} stops trusting its pairing with
- * `CarIdxLapCompleted`. On the tick of a crossing the two can disagree for a
- * tick or two — the fraction already wrapped with the lap count not yet
- * moved, or the other way round — and either reads a full lap off. Half a
- * percent is half a second on a 100 s lap, against the hundredths of a second
- * of a tick or two, so a real disagreement always lands inside it. Inside it
- * the gap is unknown and the fuel estimate counts by time instead.
+ * `CarIdxLapCompleted`. Around a crossing the two can disagree — the fraction
+ * already wrapped with the lap count not yet moved, or the other way round —
+ * and either reads a full lap off; a stale leader count reads the player's
+ * laps one LOW, the unsafe direction. How long the arrays can disagree has
+ * not been measured: the one capture that pairs a lap count with another
+ * per-car array shows `CarIdxLastLapTime` arriving up to about a second after
+ * `CarIdxLapCompleted` moves. Three percent is three seconds on a 100 s lap
+ * and 1.2 s on a 40 s oval, so a lag of that order lands inside it. Inside it
+ * the gap is unknown and the fuel estimate counts by time with the near-tie
+ * tolerance instead, which errs towards warning.
  */
-export const LAP_LINE_GUARD_PCT = 0.005;
+export const LAP_LINE_GUARD_PCT = 0.03;
 
 /**
  * Consecutive ticks of an expired clock reading that confirm a real expiry:
