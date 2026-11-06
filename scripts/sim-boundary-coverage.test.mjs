@@ -145,11 +145,14 @@ describe("sim boundary coverage", () => {
       expect(blocks.map(({ engines }) => engines.length)).toEqual([4, 1]);
     });
 
+    // Every extension a block can hold: the .mts and .astro files are linted since #1616.
     const PLANTED = [
       "src/planted.ts",
       "src/nested/planted.test.ts",
       "src/planted.test-support.ts",
       "scripts/planted.mjs",
+      "scripts/planted.mts",
+      "src/components/Planted.astro",
     ];
 
     for (const dir of PACKAGES) {
