@@ -2641,31 +2641,12 @@ export function commandWords(text, from) {
   const out = [];
   let word;
   const add = (s) => (word = (word ?? "") + s);
-  const ANSI = { n: "\n", t: "\t", r: "\r", "\\": "\\", "'": "'", '"': '"' };
   for (let i = from; i < text.length; i++) {
     const ch = text[i];
-    if (ch === "\\") {
-      if (text[i + 1] !== "\n") add(text[i + 1] ?? "");
-      i++;
-    } else if (ch === "'") {
-      const end = text.indexOf("'", i + 1);
-      add(text.slice(i + 1, end < 0 ? text.length : end));
-      i = end < 0 ? text.length : end;
-    } else if (ch === "$" && text[i + 1] === "'") {
-      let k = i + 2;
-      let s = "";
-      for (; k < text.length && text[k] !== "'"; k++)
-        s += text[k] === "\\" ? (ANSI[text[++k]] ?? text[k] ?? "") : text[k];
-      add(s);
-      i = k;
-    } else if (ch === '"') {
-      let k = i + 1;
-      let s = "";
-      for (; k < text.length && text[k] !== '"'; k++)
-        if (text[k] === "\\" && '"\\$`\n'.includes(text[k + 1] ?? "x")) s += text[++k] === "\n" ? "" : text[k];
-        else s += text[k];
-      add(s);
-      i = k;
+    const piece = quotedPiece(text, i);
+    if (piece) {
+      add(piece[0]);
+      i = piece[1] - 1;
     } else if (/[\n;|)\x60]/.test(ch) || (ch === "&" && !/[<>]/.test(text[i - 1] ?? "") && text[i + 1] !== ">")) break;
     else if (ch === " " || ch === "\t") {
       if (word !== undefined) out.push(word);
@@ -2676,19 +2657,82 @@ export function commandWords(text, from) {
   return out;
 }
 
+/** The characters bash's `$'…'` decodes after a backslash. */
+const ANSI = { n: "\n", t: "\t", r: "\r", "\\": "\\", "'": "'", '"': '"' };
+
+/**
+ * The quoted or escaped piece of a bash word that starts at `i` in `text` — a
+ * `\` escape, `'…'`, `$'…'` or `"…"` — as `[decoded, indexAfter]`, read to the
+ * end of `text` when its closing quote is missing; `undefined` when no piece
+ * starts at `i`. {@link commandWords} and {@link wordText} share it, so a
+ * word reads the same whether it is split out of a command or decoded whole.
+ */
+function quotedPiece(text, i) {
+  const ch = text[i];
+  if (ch === "\\") return [text[i + 1] === "\n" ? "" : (text[i + 1] ?? ""), Math.min(i + 2, text.length)];
+  if (ch === "'") {
+    const end = text.indexOf("'", i + 1);
+    return end < 0 ? [text.slice(i + 1), text.length] : [text.slice(i + 1, end), end + 1];
+  }
+  if (ch === "$" && text[i + 1] === "'") {
+    let k = i + 2;
+    let s = "";
+    for (; k < text.length && text[k] !== "'"; k++)
+      s += text[k] === "\\" ? (ANSI[text[++k]] ?? text[k] ?? "") : text[k];
+    return [s, Math.min(k + 1, text.length)];
+  }
+  if (ch === '"') {
+    let k = i + 1;
+    let s = "";
+    for (; k < text.length && text[k] !== '"'; k++)
+      if (text[k] === "\\" && '"\\$`\n'.includes(text[k + 1] ?? "x")) s += text[++k] === "\n" ? "" : text[k];
+      else s += text[k];
+    return [s, Math.min(k + 1, text.length)];
+  }
+  return undefined;
+}
+
+/**
+ * One word of a command ({@link commandWordsRaw}), decoded whole as bash reads
+ * it: quotes removed, `\` escapes applied, `$'…'` decoded — and nothing else
+ * read, so a `;`, `&&`, `|` or newline the quotes held is data of the word,
+ * as it is to the shell that word is handed to. {@link commandWords} splits
+ * where this does not (#1634, CodeRabbit CLI round 5): decoding a shell
+ * wrapper's string with it ended the string at its first operator, and judged
+ * `sh -c 'cd ../x && pnpm dev:voices'` as `cd ../x` alone.
+ */
+export function wordText(word) {
+  let out = "";
+  for (let i = 0; i < word.length;) {
+    const piece = quotedPiece(word, i);
+    if (piece) {
+      out += piece[0];
+      i = piece[1];
+    } else out += word[i++];
+  }
+  return out;
+}
+
 /**
  * The words of the command whose arguments start at `from` in `text`, as
  * {@link readCommand} wants them: quotes and escapes kept, each word whole
  * ({@link COMMAND_WORD}), up to an unquoted `;`, `&`, `|`, paren, backtick or
- * newline. The deck-host ask hands these to `wrapperRuns`, which decodes a
- * word ({@link shellWords}) only once the walk has chosen it — so an attached
- * `-c"…"` is still seen as one, where {@link commandWords} would have handed
- * over `-c…` with its quotes gone (#1634, CodeRabbit CLI round 4).
+ * newline, or to `limit` — the close of the string the command is itself
+ * inside, so the words of a command found in one never run past it. The
+ * deck-host ask reads every runner's words with this and decodes each whole
+ * ({@link wordText}), its quoted strings included: {@link chainCommands}'
+ * `args` end where the lexer's chain does, which inside a string a shell is
+ * fed is the string's own first `&&` (#1607), while the string is one word to
+ * the runner that hands it on. `wrapperRuns` decodes a word only once the
+ * walk has chosen it, so an attached `-c"…"` is still seen as one, where
+ * {@link commandWords} would have handed over `-c…` with its quotes gone
+ * (#1634, CodeRabbit CLI round 4).
  */
-export function commandWordsRaw(text, from) {
+export function commandWordsRaw(text, from, limit = text.length) {
   const out = [];
+  const within = text.slice(0, limit);
   COMMAND_WORD.lastIndex = from;
-  for (let m; (m = COMMAND_WORD.exec(text));) out.push(m[1]);
+  for (let m; (m = COMMAND_WORD.exec(within));) out.push(m[1]);
   return out;
 }
 

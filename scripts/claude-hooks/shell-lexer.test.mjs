@@ -1211,3 +1211,39 @@ describe("a shell reading its script on stdin is read from the shell's own optio
     expect(lexer.commandWordsRaw(`bash -c 'a b' "c d" e`, 4)).toEqual(["-c", "'a b'", '"c d"', "e"]);
   });
 });
+
+// #1634, CodeRabbit CLI round 5: a shell wrapper's string is one word to the
+// shell that hands it on, operators and all; `commandWords` ended it at the first.
+describe("wordText decodes one word whole (#1634)", () => {
+  it.each([
+    ["'cd ../x && pnpm dev:voices'", "cd ../x && pnpm dev:voices"],
+    ['"cd ../x; pnpm dev:voices | tee log"', "cd ../x; pnpm dev:voices | tee log"],
+    ["$'cd ../x\\npnpm dev:voices'", "cd ../x\npnpm dev:voices"],
+    ["-c'cd x && pnpm y'", "-ccd x && pnpm y"],
+    ['re\\ start:"stream deck"', "re start:stream deck"],
+    ['"a \\"b\\" \\$c \\\\ d"', 'a "b" $c \\ d'],
+    ["'it'\\''s'", "it's"],
+    ["'unclosed && pnpm", "unclosed && pnpm"],
+    ["plain", "plain"],
+    ["", ""],
+  ])("%j → %j", (word, text) => {
+    expect(lexer.wordText(word)).toBe(text);
+  });
+
+  it("agrees with commandWords on a word that holds no operator, and keeps one it holds", () => {
+    for (const w of ["'a b'", "x\\ y", '"q"r', "$'t\\tu'"]) expect(lexer.wordText(w)).toBe(lexer.commandWords(w, 0)[0]);
+    expect(lexer.commandWords("'a && b'", 0)).toEqual(["a && b"]);
+    expect(lexer.commandWords("a && b", 0)).toEqual(["a"]);
+    expect(lexer.wordText("a && b")).toBe("a && b");
+  });
+});
+
+describe("commandWordsRaw stops at a limit (#1634)", () => {
+  it("reads to the end of the text by default and no further than the limit given", () => {
+    const c = "bash -c 'pnpm run y' 'z' w";
+    expect(lexer.commandWordsRaw(c, 0)).toEqual(["bash", "-c", "'pnpm run y'", "'z'", "w"]);
+    // The words of the `pnpm` inside the string end at the string's close.
+    expect(lexer.commandWordsRaw(c, 13, lexer.stringEnd(c, 12))).toEqual(["run", "y"]);
+    expect(lexer.commandWordsRaw(c, 13)).toEqual(["run", "y' 'z"]);
+  });
+});

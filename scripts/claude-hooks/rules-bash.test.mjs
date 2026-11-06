@@ -5050,3 +5050,43 @@ describe("the lexer and the deck-host reader read a shell's options from one spe
     passes("fish -d 3 x.fish");
   });
 });
+
+// #1634, CodeRabbit CLI round 5: the deck-host reader decoded a wrapper's
+// chosen word with `commandWords`, which stops at the first unquoted operator,
+// so `sh -c 'cd ../ir-integration && pnpm dev:voices'` was judged from `cd
+// ../ir-integration` alone while the lexer's own match of the `pnpm` after
+// `&&` was judged at the OUTER cwd — the wrong tree. The string is decoded
+// whole and judged recursively with its own cds, and every lexer match inside
+// a string the reader judges whole is left to the reader.
+describe("a wrapper's string is judged whole, with its own cds (#1634)", () => {
+  const INTEGRATION = tree("ir-integration");
+  // Stream Deck linked into ir-integration, Ulanzi into master, the session in master.
+  const links = ctx({
+    cwd: MASTER,
+    linkTargets: () => [
+      { host: "Stream Deck", target: path.join(INTEGRATION, "packages", "iracing-plugin-stream-deck", "x.sdPlugin") },
+      { host: "Ulanzi", target: path.join(MASTER, "packages", "iracing-plugin-ulanzi", "x.ulanziPlugin") },
+    ],
+    toplevel: (d) => [MASTER, INTEGRATION, tree("ir-5")].find((r) => isInside(d, r)),
+  });
+  it.each([
+    "sh -c 'cd ../ir-integration && pnpm dev:voices'",
+    "pnpm exec sh -c 'cd ../ir-integration && pnpm dev:voices'",
+    "npx sh -c 'cd ../ir-integration; pnpm dev:voices'",
+    "bash -c $'cd ../ir-integration\\npnpm dev:voices'",
+    "bash -c 'cd ../ir-integration && pnpm dev:voices | tee log'",
+    `pwsh -c "cd ../ir-integration; pnpm dev:voices"`,
+    `cmd /c "cd ..\\ir-integration && pnpm dev:voices"`,
+  ])("names the tree the inner cd reaches, not the outer cwd: %s", (c) => {
+    const ask = asks(c, links);
+    expect(ask).toMatch(/Stream Deck plugin link points into .*ir-integration/);
+    expect(ask).not.toMatch(/Ulanzi/);
+    expect(ask.match(/dev:voices/g), ask).toHaveLength(1);
+  });
+  it("passes the same string where the inner cd reaches an unlinked tree, and a string no reader judges keeps the lexer's match", () => {
+    passes("sh -c 'cd ../ir-5 && pnpm dev:voices'", links);
+    passes("pnpm exec sh -c 'cd ../ir-5 && pnpm dev:voices'", links);
+    // A script read on stdin has no reader of the whole line: the lexer's match stands, at the cwd it can see.
+    expect(asks("echo 'pnpm dev:voices' | bash", links)).toMatch(/Ulanzi plugin link points into .*master/);
+  });
+});

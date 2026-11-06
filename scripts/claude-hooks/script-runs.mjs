@@ -52,7 +52,6 @@ import {
   BASH,
   chainCommands,
   cmd,
-  commandWords,
   commandWordsRaw,
   matchesAt,
   POWERSHELL,
@@ -60,8 +59,10 @@ import {
   readCommand,
   resolveDir,
   shellSpec,
-  shellWords,
+  stringBounds,
+  stringEnd,
   trustedMask,
+  wordText,
 } from "./shell-lexer.mjs";
 
 /**
@@ -570,9 +571,13 @@ function nodeRuns(tokens, base, shell) {
  * 4) — so a string the lexer finds the reader finds too, spaced or glued to
  * its switch, past every valued option: the lexer skips its own match of the
  * trap word inside such a string because this reader judges it, and the two
- * cannot disagree. The words arrive with their quotes (`commandWordsRaw`), so
- * an attached `-c"…"` is seen as the string it is; each is decoded as bash
- * reads it ({@link shellWords}) only once the walk has chosen it.
+ * cannot disagree. From the command itself the words arrive with their quotes
+ * (`commandWordsRaw`, `quoted`), so an attached `-c"…"` is seen as the string
+ * it is, and each is decoded whole as bash reads it (`wordText`) only once
+ * the walk has chosen it — whole, so the `&&`, `;` or `|` a string holds stays
+ * the string's (#1634, CodeRabbit CLI round 5: `commandWords` ended it at the
+ * first). From a runner (`pnpm exec sh -c "…"`) the words arrive decoded
+ * already and are never split again.
  *
  * - bash, sh and their kin, fish: the string after `-c` (`-lc`, `-eo pipefail
  *   -c`, fish's `-c'…'` and `--command`), one word, read as bash. A shell run
@@ -583,15 +588,13 @@ function nodeRuns(tokens, base, shell) {
  * - `eval`: its words joined, read as bash; `Invoke-Expression` / `iex`:
  *   likewise past a `-Command`, read as PowerShell.
  */
-function wrapperRuns(tokens, dir, shell) {
+function wrapperRuns(tokens, dir, shell, quoted = false) {
   const [name, ...raw] = tokens;
   let i = 0;
   const read = readCommand(shellSpec(name), () => raw[i++]);
-  // Decoded as bash reads a word (`$'…'` included), only once the walk has
-  // chosen it: the walk itself needs the quotes to tell `-c"…"` from a flag
-  // cluster. A word a runner already decoded (`pnpm exec sh -c "…"` hands its
-  // words through `shellWords`) decodes to itself.
-  const decode = (w) => commandWords(w, 0).join(" ");
+  // A quoted word is decoded whole, only once the walk has chosen it: the walk
+  // itself needs the quotes to tell `-c"…"` from a flag cluster.
+  const decode = quoted ? wordText : (w) => w;
   const from = (k, offset = 0) => [raw[k].slice(offset), ...raw.slice(k + 1)].map(decode);
   if (isPowerShell(name)) return powershellRuns(name, raw, read, dir, shell, decode, from);
   if (isSh(name)) {
@@ -647,9 +650,11 @@ function powershellRuns(name, raw, read, dir, shell, decode, from) {
 }
 
 /**
- * Where the deck rule's words come from: `shellWords(args)` for a runner, or
- * — `whole` — `commandWords` in `shell-lexer.mjs` from where its arguments start, preceded by
- * the command's own name, for a shell wrapper whose string must stay one word.
+ * Where the deck rule's words come from: `commandWordsRaw` in `shell-lexer.mjs`
+ * from where the command's arguments start, each word whole — a quoted string
+ * with its `&&` inside included — and decoded for a runner, or kept with its
+ * quotes (`whole`) and preceded by the command's own name for a shell wrapper,
+ * whose reader needs them.
  */
 const RUNNERS = [
   { re: PNPM, read: pnpmRuns },
@@ -658,7 +663,7 @@ const RUNNERS = [
   { re: TURBO, read: turboRuns },
   { re: NODE, read: nodeRuns },
   { re: ROLLUP, read: rollupRuns },
-  { re: WRAPPER, read: wrapperRuns, whole: true },
+  { re: WRAPPER, read: (tokens, dir, shell) => wrapperRuns(tokens, dir, shell, true), whole: true },
 ];
 
 /**
@@ -686,56 +691,84 @@ export function deckFindings(c, cwd, ctx, shell, trail = []) {
     const app = args.match(HOST_APP);
     if (app) found.push(`\`${head.replace(/^[\s|;&()`]+/, "").trim()} … ${app[0]}\` stops or starts a deck host app`);
   }
-  for (const { re, read, whole } of RUNNERS)
-    for (const { base, start, args, at, cut, how, via, stdin } of chainCommands(c, cwd, re, shell)) {
-      // The first word of a string a shell wrapper is handed (#1634) is read
-      // through that wrapper's own string, below, as a command line, with the
-      // same option spec the lexer found it by ({@link wrapperRuns}): judging
-      // it here too would name the same restart twice. A string a shell reads
-      // on stdin, and what `sudo`, `trap`, `watch` or `su` run, no wrapper
-      // reads, so those are judged here.
-      if (how === "shell" && !stdin && isWrapper(via)) continue;
-      // A shell wrapper's name as the rewritten text spells it (#1606): `bash`
-      // for `"/usr/bin/bash"`, `pwsh` for `pwsh.exe`.
-      const name = () =>
-        trustedMask(c)
-          .slice(start, at)
-          .match(/[^\s|;&()\x60]+$/)?.[0] ?? "";
-      const tokens = whole ? [name(), ...commandWordsRaw(c, at)] : shellWords(args);
-      // A substitution cut the arguments short: it and what follows it are
-      // unread. Glued to a word (`$(`, `--x=\``), it ends that word.
-      if (!whole && (cut === "(" || cut === "\x60"))
-        if (tokens.length && !/\s$/.test(args)) tokens.push(tokens.pop().replace(/\$$/, "") + UNREAD);
-        else tokens.push(UNREAD);
-      for (const run of read(tokens, base, shell).flatMap((r) => selectedRuns(r, ctx, found))) {
-        // A name is judged with its leftover escapes gone ({@link unescaped}):
-        // `pnpm "re\`start:stream-deck"` in PowerShell runs the script.
-        const name = unescaped(run.script ?? "");
-        if (run.always || DECK_ALWAYS.test(name)) {
-          found.push(`\`${run.label}\` ${run.why ?? "restarts or relinks a deck host"}`);
+  // Every runner's commands, in {@link RUNNERS} order for the findings, read in
+  // order of position: a command is read before the lexer's matches inside the
+  // strings it hands on come up, so those are known to be this reader's.
+  const matches = RUNNERS.flatMap(({ re, read, whole }) =>
+    [...chainCommands(c, cwd, re, shell)].map((m) => ({ ...m, read, whole })),
+  );
+  // The command lines this reader has judged whole, decoded: a shell wrapper's
+  // string (`sh -c '…'`, `pnpm exec sh -c '…'`), a rollup watch hook.
+  const judged = [];
+  const runs = new Map();
+  for (const m of [...matches].sort((x, y) => x.start - y.start)) {
+    const { base, start, args, at, cut, how, via, stdin, read, whole } = m;
+    // A command inside a string a shell wrapper is handed (#1634) is read
+    // through that wrapper's own string, as a command line with its own
+    // `cd`s, with the same option spec the lexer found the string by ({@link
+    // wrapperRuns}): judging it here too would name the same restart twice —
+    // and at the session cwd, since a `cd` inside the string moves no lexer
+    // base, which is the wrong tree (CodeRabbit CLI round 5). The lexer says
+    // which string a program word at command position feeds; the string a
+    // runner hands a shell (`pnpm exec sh -c '…'`) it does not know, so a match
+    // inside any string whose decoded text this reader has already judged as
+    // a line is left to it. A string a shell reads on stdin, and what `sudo`,
+    // `trap`, `watch` or `su` run, no wrapper reads, so those are judged here.
+    if (how === "shell" && !stdin && isWrapper(via)) continue;
+    const string = stringBounds(c, at - 1);
+    if (string) {
+      const text = wordText(c.slice(string[0], string[1] + 1));
+      if (judged.some((line) => line === text || line.startsWith(`${text} `))) continue;
+    }
+    // A shell wrapper's name as the rewritten text spells it (#1606): `bash`
+    // for `"/usr/bin/bash"`, `pwsh` for `pwsh.exe`.
+    const name = () =>
+      trustedMask(c)
+        .slice(start, at)
+        .match(/[^\s|;&()\x60]+$/)?.[0] ?? "";
+    // Each word whole, to the close of the string the command is itself in: a
+    // string among them is one word however many `&&` it holds, where `args`
+    // ends at the first (#1607) — and the lexer's own match past it is the
+    // one skipped above.
+    const words = commandWordsRaw(c, at, stringEnd(c, at - 1));
+    const tokens = whole ? [name(), ...words] : words.map(wordText);
+    // A substitution cut the arguments short: it and what follows it are
+    // unread. Glued to a word (`$(`, `--x=\``), it ends that word.
+    if (!whole && (cut === "(" || cut === "\x60"))
+      if (tokens.length && !/\s$/.test(args)) tokens.push(tokens.pop().replace(/\$$/, "") + UNREAD);
+      else tokens.push(UNREAD);
+    const own = read(tokens, base, shell);
+    for (const r of own) judged.push(...(r.lines ?? []));
+    runs.set(m, own);
+  }
+  for (const m of matches)
+    for (const run of (runs.get(m) ?? []).flatMap((r) => selectedRuns(r, ctx, found))) {
+      // A name is judged with its leftover escapes gone ({@link unescaped}):
+      // `pnpm "re\`start:stream-deck"` in PowerShell runs the script.
+      const name = unescaped(run.script ?? "");
+      if (run.always || DECK_ALWAYS.test(name)) {
+        found.push(`\`${run.label}\` ${run.why ?? "restarts or relinks a deck host"}`);
+        continue;
+      }
+      if (DECK_IF_LINKED.test(name)) {
+        const root = ctx.toplevel?.(run.dir) ?? run.dir;
+        const held = links.filter((l) => ctx.isInside(l.target, root));
+        if (held.length) {
+          found.push(
+            `${held.map((l) => l.host).join(" and ")} plugin link points into ${root}: \`${run.label}\` there relinks the running plugin`,
+          );
           continue;
         }
-        if (DECK_IF_LINKED.test(name)) {
-          const root = ctx.toplevel?.(run.dir) ?? run.dir;
-          const held = links.filter((l) => ctx.isInside(l.target, root));
-          if (held.length) {
-            found.push(
-              `${held.map((l) => l.host).join(" and ")} plugin link points into ${root}: \`${run.label}\` there relinks the running plugin`,
-            );
-            continue;
-          }
-        }
-        if (trail.length >= MAX_SCRIPT_DEPTH) continue;
-        // A hook's or a shell's command line is no script: it has no key a
-        // cycle could repeat, so its empty one only counts towards the depth.
-        const lines = run.lines?.map((line) => ({ dir: run.dir, line, key: "", as: run.as })) ?? [];
-        if (run.expand) lines.push(...scriptLines(run, ctx));
-        for (const { dir, line, key, as } of lines) {
-          if (key && trail.includes(key)) continue;
-          const [text, lineShell] = lineAs(line, as);
-          for (const f of deckFindings(text, dir, ctx, lineShell, [...trail, key]))
-            found.push(`\`${run.label}\` → ${f}`);
-        }
+      }
+      if (trail.length >= MAX_SCRIPT_DEPTH) continue;
+      // A hook's or a shell's command line is no script: it has no key a
+      // cycle could repeat, so its empty one only counts towards the depth.
+      const lines = run.lines?.map((line) => ({ dir: run.dir, line, key: "", as: run.as })) ?? [];
+      if (run.expand) lines.push(...scriptLines(run, ctx));
+      for (const { dir, line, key, as } of lines) {
+        if (key && trail.includes(key)) continue;
+        const [text, lineShell] = lineAs(line, as);
+        for (const f of deckFindings(text, dir, ctx, lineShell, [...trail, key])) found.push(`\`${run.label}\` → ${f}`);
       }
     }
   return found;
