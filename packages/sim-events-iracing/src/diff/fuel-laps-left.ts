@@ -248,13 +248,13 @@ export type FuelRaceCoverage = {
  * @param telemetry - the tick's telemetry
  * @param stats - the validated estimator's stats, for the player's lap time
  * @param lapFractionRemaining - `1 − LapDistPct`, from {@link estimateFuelLapsLeft}
- * @param getLeaderFinish - the race leader's recent lap time, predicted chequered flag (seconds and crossings) and the player's lap-counter gap to them, each `null` when unknown
+ * @param getLeaderFinish - the race leader's recent lap time, predicted chequered flag (seconds and crossings, raw and at the lap-count pace) and the player's lap-counter gap to them, each `null` when unknown; handed the player's validated average lap time
  */
 export function resolveFuelRaceCoverage(
   telemetry: TelemetryData,
   stats: FuelStats,
   lapFractionRemaining: number,
-  getLeaderFinish: () => LeaderFinish,
+  getLeaderFinish: (playerLapS: number) => LeaderFinish,
 ): FuelRaceCoverage {
   const whiteUp = typeof telemetry.SessionFlags === "number" && (telemetry.SessionFlags & Flags.White) !== 0;
 
@@ -306,9 +306,14 @@ export function resolveFuelRaceCoverage(
   //   a lap of the leader on distance now (`leaderGap`, `−1 < g < 1` with
   //   `g = (LC_L + f_L) − (LC_p + f_p)`; the player being the leader gives
   //   `g = 0`) AND still at the chequered: `g + T · (1/L − 1/P) < 1`, with
-  //   the leader's lap time `L` and the player's average `P`. Every car
-  //   within a lap of the leader at the flag finishes on the lap count the
-  //   leader's chequered brings up, `LC_L + N_L`: a car behind crosses it
+  //   the player's average `P`. On this path the leader's crossings `N_L`,
+  //   the chequered time `T` and the pace `L` in the projection are all the
+  //   prediction at the lap-count pace `L = min(L_leader, P)`
+  //   (`lapCountChequered`, see `resolveLeaderFinish`): an inflated raw
+  //   leader lap — a caution, pit or spin lap — would count too few
+  //   crossings, and the projection would pick this path exactly then. Every
+  //   car within a lap of the leader at the flag finishes on the lap count
+  //   the leader's chequered brings up, `LC_L + N_L`: a car behind crosses it
   //   after the leader, and one that passes becomes the leader at the same
   //   count. So the player's crossings are `LC_L + N_L − LC_p` and the laps
   //   after the current one `LC_L + N_L − LC_p − 1`, with no tolerance — a
@@ -317,8 +322,11 @@ export function resolveFuelRaceCoverage(
   //   lap on distance, either side of the line: `N_L + 1`; the player across
   //   the line just ahead of the leader: `N_L − 1`.) A slower car within a
   //   lap now but lapped before the flag finishes one count lower, which is
-  //   why the gap is projected to the flag. A faster player's projected gap
-  //   only falls: they pass and lead at the same count, and stay here. At
+  //   why the gap is projected to the flag. A faster player keeps this path:
+  //   at the capped pace their projected gap does not grow, and a pass even
+  //   before expiry, which ends the race on the new leader's crossings,
+  //   brings up no higher count than the leader's position run at the
+  //   player's pace. At
   //   the boundary both errors are cautious: projected just inside a lap but
   //   really lapped, this counts one lap more; projected just outside but
   //   not really lapped, the time model's tolerance counts the later
@@ -336,17 +344,20 @@ export function resolveFuelRaceCoverage(
   //
   // The White bit is deliberately not read here: it is per car, so a lapped
   // or slower-class player never sees the leader's. Leader pace comes from
-  // the translator closure (recent → best lap, canonical live order). The
-  // averages exclude caution laps (see `FuelLap.wasCaution`), so a long
-  // caution can neither deflate the burn rate nor inflate the lap time into
-  // a false "enough fuel".
+  // the translator closure (recent → best lap, canonical live order), raw:
+  // a caution, pit or spin lap inflates it, which on the time path only
+  // moves the chequered later (more laps, cautious) and on the lap-count
+  // path is capped at the player's average. The player's averages exclude
+  // caution laps (see `FuelLap.wasCaution`) and pit laps, so a long caution
+  // can neither deflate the burn rate nor inflate either lap time into a
+  // false "enough fuel".
   const clockExpired = isClockExpiredReading(telemetry);
   const timeRemain = resolveTimeRemainingS(telemetry);
   const playerLap = stats.avgLapTime;
   let timedLapsAfterCurrent: number | null = null;
 
   if ((timeRemain !== null || clockExpired) && playerLap !== null && playerLap > 0) {
-    const leader = getLeaderFinish();
+    const leader = getLeaderFinish(playerLap);
     const leaderLap = isPositiveFinite(leader.lapTimeS) ? leader.lapTimeS : playerLap;
     const predicted = leader.chequeredInS;
     const fromPrediction = typeof predicted === "number" && Number.isFinite(predicted) && predicted >= 0;
@@ -356,23 +367,25 @@ export function resolveFuelRaceCoverage(
         ? timeRemain + 2 * leaderLap
         : null;
 
-    const crossings = leader.crossingsToChequered;
+    // The lap-count path reads the prediction at the lap-count pace,
+    // `min(L, P)` (`resolveLeaderFinish`): a raw leader lap inflated by a
+    // caution, pit or spin lap would count too few crossings there.
+    const lapCount = leader.lapCountChequered;
     const gap = leader.leaderGap;
 
     if (
       fromPrediction &&
-      leaderChequeredS !== null &&
-      // The projection below divides by it; a prediction implies it today.
-      isPositiveFinite(leader.lapTimeS) &&
-      typeof crossings === "number" &&
-      Number.isInteger(crossings) &&
-      crossings >= 1 &&
+      lapCount !== null &&
+      isPositiveFinite(lapCount.lapTimeS) &&
+      Number.isInteger(lapCount.crossings) &&
+      lapCount.crossings >= 1 &&
       gap !== null &&
       Math.abs(gap.distanceLaps) < 1 &&
-      // The gap projected to the leader's chequered flag: still inside a lap.
-      gap.distanceLaps + leaderChequeredS * (1 / leader.lapTimeS - 1 / playerLap) < 1
+      // The gap projected to the leader's chequered flag at the same pace:
+      // still inside a lap.
+      gap.distanceLaps + lapCount.inS * (1 / lapCount.lapTimeS - 1 / playerLap) < 1
     ) {
-      timedLapsAfterCurrent = Math.max(0, gap.leaderLapsCompleted + crossings - gap.playerLapsCompleted - 1);
+      timedLapsAfterCurrent = Math.max(0, gap.leaderLapsCompleted + lapCount.crossings - gap.playerLapsCompleted - 1);
     } else if (leaderChequeredS !== null) {
       // `t` is 0 once the clock has expired, leaving only the fixed part of
       // the tolerance.
@@ -459,7 +472,7 @@ export function diffFuelLapsLeft(
   isRaceSession: boolean,
   getStats: () => FuelStats,
   getMarginLaps: () => number,
-  getLeaderFinish: () => LeaderFinish,
+  getLeaderFinish: (playerLapS: number) => LeaderFinish,
   emit: EmitFn<(typeof FUEL_LAPS_LEFT_EVENTS)[number]>,
 ): void {
   // The expired-clock confirmation (issue #1405), counted on EVERY tick this

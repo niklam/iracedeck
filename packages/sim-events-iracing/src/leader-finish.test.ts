@@ -311,20 +311,52 @@ describe("readLeaderGap", () => {
 describe("resolveLeaderFinish", () => {
   it("bundles the lap time, the prediction in both units and the gap", () => {
     const telemetry = race(-30, 0.57, { CarIdxLapCompleted: [8, 8, 6], CarIdxLapDistPct: [0.55, 0.57, 0.1] });
-    const finish = resolveLeaderFinish(telemetry, ORDER, 0, 100, HELD);
+    const finish = resolveLeaderFinish(telemetry, ORDER, 0, 100, HELD, 100);
 
     expect(finish.lapTimeS).toBe(100);
     expect(finish.chequeredInS).toBeCloseTo(143, 9);
     expect(finish.crossingsToChequered).toBe(2);
+    expect(finish.lapCountChequered).toEqual({ inS: finish.chequeredInS, crossings: 2, lapTimeS: 100 });
     expect(finish.leaderGap?.distanceLaps).toBeCloseTo(0.02, 9);
+  });
+
+  it("runs the lap-count prediction at the leader's lap capped at the player's average", () => {
+    const telemetry = race(600, 0.6, { CarIdxLapCompleted: [30, 30, 6], CarIdxLapDistPct: [0.5, 0.6, 0.1] });
+    // A 160 s caution lap: the raw prediction keeps it, the lap-count one
+    // runs at the player's 100 s.
+    const slow = resolveLeaderFinish(telemetry, ORDER, 0, 160, HELD, 100);
+
+    expect(slow.chequeredInS).toBeCloseTo((6 - 0.6) * 160, 9);
+    expect(slow.crossingsToChequered).toBe(6);
+    expect(slow.lapCountChequered?.lapTimeS).toBe(100);
+    expect(slow.lapCountChequered?.crossings).toBe(8);
+    expect(slow.lapCountChequered?.inS).toBeCloseTo((8 - 0.6) * 100, 9);
+
+    // A leader faster than the player keeps their own lap.
+    const fast = resolveLeaderFinish(telemetry, ORDER, 0, 95, HELD, 100);
+
+    expect(fast.lapCountChequered?.lapTimeS).toBe(95);
+    expect(fast.lapCountChequered?.crossings).toBe(fast.crossingsToChequered);
+  });
+
+  it("has no lap-count prediction without the player's average", () => {
+    const telemetry = race(600, 0.6, { CarIdxLapCompleted: [30, 30, 6], CarIdxLapDistPct: [0.5, 0.6, 0.1] });
+
+    for (const playerLapS of [null, 0, Number.NaN]) {
+      const finish = resolveLeaderFinish(telemetry, ORDER, 0, 100, HELD, playerLapS);
+
+      expect(finish.chequeredInS).not.toBeNull();
+      expect(finish.lapCountChequered).toBeNull();
+    }
   });
 
   it("has no crossings exactly when it has no seconds", () => {
     const telemetry = race(-30, 0.57, { CarIdxLapCompleted: [8, 8, 6], CarIdxLapDistPct: [0.55, 0.57, 0.1] });
-    const finish = resolveLeaderFinish(telemetry, ORDER, 0, null, HELD);
+    const finish = resolveLeaderFinish(telemetry, ORDER, 0, null, HELD, 100);
 
     expect(finish.chequeredInS).toBeNull();
     expect(finish.crossingsToChequered).toBeNull();
+    expect(finish.lapCountChequered).toBeNull();
     expect(finish.leaderGap).not.toBeNull();
   });
 });

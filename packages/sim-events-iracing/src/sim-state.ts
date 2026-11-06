@@ -266,7 +266,7 @@ export type SimStateParts = {
     /** The margin closure the diff is handed. Called only when there is an estimate to subtract it from. */
     getMarginLaps: () => number;
     /** The leader-finish resolver the diff is handed. Called only when the timed side is computed. */
-    getLeaderFinish: () => LeaderFinish;
+    getLeaderFinish: (playerLapS: number) => LeaderFinish;
   };
   order: SimOrderState;
   gaps: LiveGaps | null;

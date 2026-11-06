@@ -1929,11 +1929,19 @@ function fuelLeaderFinish(
   positions: number[],
   playerCarIdx: number,
   state: TranslatorState,
+  playerLapS: number,
 ): LeaderFinish {
-  return resolveLeaderFinish(telemetry, positions, playerCarIdx, resolveLeaderLapTimeS(telemetry, positions), {
-    confirmed: isClockExpiryConfirmed(state.fuelCalloutClockExpiredTicks),
-    leaderCrossed: state.leaderWhitePostExpiryCrossed,
-  });
+  return resolveLeaderFinish(
+    telemetry,
+    positions,
+    playerCarIdx,
+    resolveLeaderLapTimeS(telemetry, positions),
+    {
+      confirmed: isClockExpiryConfirmed(state.fuelCalloutClockExpiredTicks),
+      leaderCrossed: state.leaderWhitePostExpiryCrossed,
+    },
+    playerLapS,
+  );
 }
 
 /**
@@ -2028,13 +2036,14 @@ export function readSimState(): SimStateSnapshot {
         // it, with the player's car index `handleTick` resolves from the same
         // session info. `positions` is null only without telemetry, where
         // there is no estimate to ask for.
-        getLeaderFinish: () =>
+        getLeaderFinish: (playerLapS) =>
           telemetry !== null && positions !== null
             ? fuelLeaderFinish(
                 telemetry,
                 positions,
                 resolvePlayerCarIdx(self.controller.getSessionInfo() as Record<string, unknown> | null),
                 state,
+                playerLapS,
               )
             : UNKNOWN_LEADER_FINISH,
       },
@@ -3140,10 +3149,10 @@ function handleLiveSteps(
       isRaceSession,
       () => fuelLapsLeftStats(self),
       self.getFuelLapsLeftMarginLaps,
-      () =>
+      (playerLapS) =>
         leaderPositions === null
           ? UNKNOWN_LEADER_FINISH
-          : fuelLeaderFinish(telemetry, leaderPositions, playerCarIdx, self.state),
+          : fuelLeaderFinish(telemetry, leaderPositions, playerCarIdx, self.state, playerLapS),
       emit,
     ),
   );
