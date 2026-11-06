@@ -272,7 +272,10 @@ describe("the program word is read as the program it runs (#1606)", () => {
   it("reads a quoted shell as a shell, so the mask is not trusted for the string it is handed", () => {
     for (const shell of [`"bash"`, "/usr/bin/bash", "BASH.EXE", "'sh'"])
       expect(view(`${shell} -c 'gh pr merge 7'`).trusted, shell).toBe(false);
-    expect(trustedMask(`"bash" -c 'gh.exe pr merge 7'`)).toBe(`  bash -c 'gh.exe pr merge 7'`);
+    // The string's first word is a program word too since #1634, rewritten as
+    // the shell word before it is; the quotes and every other character stay.
+    expect(trustedMask(`"bash" -c 'gh.exe pr merge 7'`)).toBe(`  bash -c '    gh pr merge 7'`);
+    expect(trustedMask(`"bash" -c 'echo gh.exe pr merge 7'`)).toBe(`  bash -c 'echo gh.exe pr merge 7'`);
   });
 
   it("finds where the program word starts from anywhere inside it", () => {
@@ -800,5 +803,126 @@ describe("the mask is set aside only where a shell is fed (#1607)", () => {
     expect(view(command).trusted).toBe(false);
     expect(lexer.trustedIn("grep 'gh pr merge 5' f", 0, 22)).toBe(true);
     expect(view("grep 'gh pr merge 5' f").trusted).toBe(true);
+  });
+});
+
+// #1634: a trap word that is the FIRST word of a string a shell runs, or the
+// program a wrapper runs, was at command position for no `cmd()` consumer —
+// only the post-hook's merge trigger read those positions (#1607). Every
+// consumer now does, through one notion of command position.
+describe("the first word of a shell-fed string is at command position (#1634)", () => {
+  const MERGE = cmd(/gh\s+pr\s+merge\s+(\d+)/);
+  const VITEST = cmd(/(pnpm\s+exec\s+|npx\s+)vitest\b/);
+  const FED = [
+    ["bash -c 'gh pr merge 7 --squash'", "shell", "bash"],
+    [`sh -c "gh pr merge 7"`, "shell", "sh"],
+    [`eval "gh pr merge 7"`, "shell", "eval"],
+    ["eval gh pr merge 7", "shell", "eval"],
+    ["echo 'gh pr merge 7' | bash", "shell", "bash"],
+    ["printf '%s\\n' 'gh pr merge 7' | sh", "shell", "sh"],
+    ["bash <<< 'gh pr merge 7'", "shell", "bash"],
+    ["sudo gh pr merge 7", "wrapper", "sudo"],
+    ["sudo -u me gh pr merge 7", "wrapper", "sudo"],
+    [`pwsh -Command "gh pr merge 7"`, "shell", "pwsh"],
+    ["env A=1 bash -c 'gh pr merge 7'", "shell", "bash"],
+    ["nice gh pr merge 7", "wrapper", "nice"],
+    ["bash -c 'A=1 gh pr merge 7'", "shell", "bash"],
+    ["bash -c 'gh.exe pr merge 7'", "shell", "bash"],
+    ["bash -c 'sudo gh pr merge 7'", "wrapper", "sudo"],
+    [`"bash" -c 'exec gh pr merge 7'`, "shell", "bash"],
+  ];
+
+  it.each(FED)("has() and matchAt() find the merge, with its groups, in %s", (command, how, via) => {
+    expect(lexer.has(command, MERGE)).toBe(true);
+    const m = lexer.matchAt(command, MERGE);
+    expect(m[1]).toBe("7");
+    expect(m).toMatchObject({ how, via });
+    expect(command.slice(lexer.programStart(command, m.index))).toMatch(/^gh(?:\.exe)? pr merge 7/);
+  });
+
+  it.each([
+    "bash -c 'pnpm exec vitest run'",
+    "eval 'npx vitest'",
+    "echo 'pnpm exec vitest run' | bash",
+    "sudo pnpm exec vitest",
+    `pwsh -c "pnpm exec vitest"`,
+  ])("finds the vitest trap in %s", (command) => expect(lexer.has(command, VITEST)).toBe(true));
+
+  it.each([
+    `echo "bash -c gh pr merge 7"`,
+    "grep 'gh pr merge 7' f",
+    `rg -t sh "gh pr merge 1603"`,
+    "echo 'gh pr merge 7' > f",
+    "echo gh pr merge 7",
+    "echo 'pnpm exec vitest' | tee f",
+    "ls /bin/sh 'pnpm exec vitest'",
+    "bash -c 'echo gh pr merge 7'",
+    `bash -c 'echo "sudo gh pr merge 7"'`,
+    "bash -c 'echo sudo pnpm exec vitest'",
+    "sudo echo gh pr merge 7",
+  ])("still finds no command in a mention: %s", (command) => {
+    expect(lexer.has(command, MERGE)).toBe(false);
+    expect(lexer.has(command, VITEST)).toBe(false);
+    expect(lexer.matchAt(command, MERGE)).toBeNull();
+  });
+
+  it("says how a word is the program", () => {
+    expect(lexer.programKind("gh pr merge 7", 0)).toEqual({ how: "command" });
+    expect(lexer.programKind("sudo gh pr merge 7", 5)).toEqual({ how: "wrapper", via: "sudo" });
+    expect(lexer.programKind("nice -n 5 gh pr merge 7", 10)).toEqual({ how: "wrapper", via: "nice" });
+    expect(lexer.programKind("bash -c 'gh pr merge 7'", 9)).toEqual({ how: "shell", via: "bash" });
+    expect(lexer.programKind("echo 'gh pr merge 7' | bash", 6)).toEqual({ how: "shell", via: "bash", stdin: true });
+    expect(lexer.programKind("echo gh pr merge 7", 5)).toBeUndefined();
+    expect(lexer.programKind("bash -c 'echo gh pr merge 7'", 14)).toBeUndefined();
+    expect(lexer.programAt("sudo gh pr merge 7", 5)).toBe(true);
+    expect(lexer.fedCommandStart("bash -c 'gh pr merge 7'", 9)).toBe(true);
+    expect(lexer.fedCommandStart("echo gh pr merge 7", 5)).toBe(false);
+  });
+
+  it("rewrites the first word of a fed string to the program it runs, as it does at command position", () => {
+    expect(trustedMask("bash -c 'gh.exe pr merge 7'")).toBe("bash -c '    gh pr merge 7'");
+    expect(trustedMask(`echo '"gh" pr merge 7' | bash`)).toBe(`echo '  gh pr merge 7' | bash`);
+    expect(trustedMask("sudo GH.EXE pr merge 7")).toBe("sudo     gh pr merge 7");
+    expect(trustedMask("bash -c 'echo gh.exe pr merge 7'")).toBe("bash -c 'echo gh.exe pr merge 7'");
+    expect(lexer.unreadablePrograms("bash -c '$GH pr merge 7'")).toEqual([{ start: 9, end: 12, word: "$GH" }]);
+    // The known gap, pinned: the quoted word after a shell word is the string,
+    // never rewritten whole, so a program quoted whole there is not read.
+    // Reading it would rewrite every one-word string (`bash -c 'x'` → `  x`),
+    // which the raw-view tests above keep as it is; no slip spells it so.
+    expect(trustedMask('sudo "gh" pr merge 7')).toBe('sudo "gh" pr merge 7');
+    expect(lexer.has('sudo "gh" pr merge 7', MERGE)).toBe(false);
+  });
+
+  it("ends a command's arguments and groups at the close of the string it runs in", () => {
+    const push = cmd(/git\s+push\b/);
+    const args = (c) => [...lexer.chainCommands(c, MASTER, push)].map((x) => x.args);
+    expect(args("bash -c 'git push origin x'")).toEqual([" origin x"]);
+    expect(args("bash -c 'ls; git push'")).toEqual([""]);
+    expect(args("sudo git push origin 'v1'")).toEqual([" origin 'v1'"]);
+    expect(args(`eval "git push" && git push origin y`)).toEqual(["", " origin y"]);
+    const add = cmd(/git\s+worktree\s+add\b(.*)$/);
+    expect(lexer.matchAt("bash -c 'git worktree add ../ir-5 -b x'", add)[1]).toBe(" ../ir-5 -b x");
+    expect(lexer.matchAt("git worktree add ../ir-5 -b x", add)[1]).toBe(" ../ir-5 -b x");
+  });
+
+  it("yields the matches in the order the command runs them", () => {
+    const command = "bash -c 'gh pr merge 5'; gh pr merge 7";
+    expect([...lexer.matchesAt(command, MERGE)].map((m) => m[1])).toEqual(["5", "7"]);
+  });
+
+  it("reads a long fed string, a long lead and a long run of options in linear time", () => {
+    for (const [command, found] of [
+      [`bash -c '${"gh pr merge 7 ".repeat(4000)}'`, true],
+      [`echo ${"-x gh pr merge 7 ".repeat(4000)}`, false],
+      [`sudo ${"-E ".repeat(4000)}gh pr merge 7`, true],
+      [`bash -c '${"A=1 ".repeat(4000)}gh pr merge 7'`, true],
+      [`echo '${"gh pr merge 7; ".repeat(4000)}' | bash`, true],
+      [`echo '${"x gh pr merge 7 ".repeat(4000)}' | bash`, false],
+    ]) {
+      const started = Date.now();
+      expect(lexer.has(command, MERGE), command.slice(0, 40)).toBe(found);
+      expect([...lexer.matchesAt(command, MERGE)].length >= (found ? 1 : 0)).toBe(true);
+      expect(Date.now() - started, command.slice(0, 40)).toBeLessThan(400);
+    }
   });
 });

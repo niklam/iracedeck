@@ -8,10 +8,13 @@
  * command when the lexer is not sure of it and over each top-level list
  * element that hands a string or stdin to a shell (#1607, {@link trustedIn}), and rewrites
  * each program word to the plain name it runs (`gh.exe`, `"gh"`, `/usr/bin/gh` → `gh`,
- * #1606). On top of it, {@link cmd} anchors a regex to command position,
- * and {@link GIT_GLOBALS} carries a git command past its global options;
- * {@link matchesAt} and {@link chainCommands} find a command in the masked
- * text and read its arguments from the raw text at the same index;
+ * #1606), the first word of each string a shell runs among them (#1634,
+ * {@link fedStarts}). On top of it, {@link cmd} anchors a regex to command
+ * position, and {@link GIT_GLOBALS} carries a git command past its global
+ * options; {@link matchesAt}, {@link has} and {@link chainCommands} find a
+ * command in the masked text — at command position, or as the first word a
+ * fed shell or a wrapper runs ({@link programKind}) — and read its arguments
+ * from the raw text at the same index;
  * {@link gitCwd}, {@link gitPlaceAt} and {@link resolveDir} follow the `cd`s
  * and `-C`s that move the directory it runs in; and {@link words}, {@link shellWords},
  * {@link commandWords} and {@link powershellAsBash} read its words as bash
@@ -365,33 +368,48 @@ const SUDO_VALUE_LONG = new Set([
 ]);
 
 /**
- * A {@link SHELL_WORDS} word with its options — sudo's value-taking ones with
- * their value — then blanks, at most an opening quote and a {@link
- * COMMAND_LEAD} (built from `leadToken`, which is hoisted), from where it is
- * tried (sticky) to the end of the text it is tested on.
+ * A {@link SHELL_WORDS} word's own options — sudo's value-taking ones with
+ * their value, cmd's `/c` — and the blanks before what it runs, sticky from
+ * just past the word ({@link fedStarts}). A value never starts with `-`, so
+ * each option has one parse (the {@link COMMAND_LEAD} rule).
  */
-const FED_LEAD = new RegExp(
-  String.raw`${SHELL_WORDS}(?:\s+(?:-[${SUDO_VALUE_SHORT}]\s+[^\s-]\S*|-\S+|\/\w+))*\s+(?:\$?['"]\s*)?(?:${leadToken("(?:")})*$`,
-  "y",
-);
+const FED_OPTIONS = new RegExp(String.raw`(?:\s+(?:-[${SUDO_VALUE_SHORT}]\s+[^\s-]\S*|-\S+|\/\w+))*\s+`, "y");
+/** One {@link COMMAND_LEAD} token (built from `leadToken`, which is hoisted), stepped over one at a time ({@link fedStarts}). */
+const LEAD_TOKEN = new RegExp(leadToken("(?:"), "y");
+/** The quote that opens a string a shell is handed, `$'…'` included ({@link fedStarts}). */
+const STRING_OPEN = /\$?['"]/y;
 
-/** A boundary-led word, then its options with their values, ending the text it is tested on ({@link programAt}). */
-const wrapped = (name, values) =>
-  new RegExp(String.raw`(?<=^|[\s;&|(\x60])${name}(?:\s+(?:(?:${values})\s+[^\s-]\S*|-\S+))*\s+$`);
 /**
- * The wrappers whose own argument is the program they run, ahead of a shell
- * word ({@link programAt}): `sudo` (its options and their values), `nice`,
- * `stdbuf` and `winpty`.
+ * A wrapper's own options with their values, then the blanks before the
+ * program it runs, sticky from just past its name to the end of the text it
+ * is tested on ({@link programKindIn}). A value never starts with `-`, so each
+ * option has one parse.
  */
-const WRAPPERS = [
-  wrapped("sudo", String.raw`-[${SUDO_VALUE_SHORT}]|${[...SUDO_VALUE_LONG].join("|")}`),
-  wrapped("nice", String.raw`-n|--adjustment`),
-  wrapped("stdbuf", String.raw`-[ioe]|--input|--output|--error`),
+const wrapped = (values) => new RegExp(String.raw`(?:\s+(?:(?:${values})\s+[^\s-]\S*|-\S+))*\s+$`, "y");
+/**
+ * The wrappers whose own argument is the program they run ({@link
+ * programKindIn}): `sudo` (its options and their values), `nice`, `stdbuf`
+ * and `winpty`. A `sudo` is also a {@link SHELL_WORDS} word: {@link fedStarts}
+ * reads the program it runs as it reads a shell's first word, and this table
+ * reads it where that word is reached some other way (`bash -c 'sudo gh …'`).
+ */
+const WRAPPERS = new Map([
+  ["sudo", wrapped(String.raw`-[${SUDO_VALUE_SHORT}]|${[...SUDO_VALUE_LONG].join("|")}`)],
+  ["nice", wrapped(String.raw`-n|--adjustment`)],
+  ["stdbuf", wrapped(String.raw`-[ioe]|--input|--output|--error`)],
   // Git Bash's console wrapper (`winpty gh …`); none of its options takes a value.
-  wrapped("winpty", String.raw`(?!)`),
-];
-/** `find`'s `-exec` / `-execdir`, whose next word is the program it runs. */
-const FIND_EXEC = /(?:^|\s)-exec(?:dir)?\s+$/;
+  ["winpty", wrapped(String.raw`(?!)`)],
+]);
+/** `find`'s `-exec` / `-execdir` as the word before a program word, which is the program it runs ({@link programKindIn}). */
+const FIND_EXEC = /^-exec(?:dir)?$/;
+/**
+ * How many words back of a program word a wrapper is looked for ({@link
+ * programKindIn}): a wrapper's options are few, and without a bound a command
+ * of many option-value pairs would be walked once per trap word in it, which
+ * is quadratic. Past it the word is no program — the hooks catch mistakes, not
+ * a `nice` buried under sixty-five options.
+ */
+const WRAPPER_WALK = 64;
 
 /**
  * Whether the sudo whose word ends at `from` in `text` runs a shell (#1607):
@@ -423,43 +441,14 @@ function sudoRunsShell(text, from) {
   return false;
 }
 
-/**
- * Whether the program word at `index` of {@link view}'s text is the first word
- * a fed shell runs (#1607): inside a fed span, right after the shell word and
- * its options (`sudo gh …`, `sudo -E gh …`, `sudo -u me gh …`), or at the
- * start of the string it is handed (`bash -c 'gh …'`, `eval "gh …"`, `trap 'gh
- * …' EXIT`), either one past a {@link COMMAND_LEAD} (`bash -c 'GH_REPO=x gh
- * …'`, `bash -c 'timeout 600 gh …'`, `bash -c 'exec gh …'`). In the raw text
- * of a fed span that is command position, as a {@link cmd} anchor is after a
- * boundary; a quoted mention inside an argument of another command is
- * neither. The shell word counts only where it is the program ({@link
- * programAt}): `rg -t sh "gh pr merge 1603"` and `ls /bin/sh "gh …"` name
- * `sh` as an argument, and their mention is no merge (CodeRabbit on PR #1632).
- * It is also the first word of a script a shell reads on stdin ({@link
- * stdinScriptStart}): `echo 'gh pr merge 5' | bash`, `bash <<< 'gh …'`.
- */
-export function fedCommandStart(command, index) {
-  const { text, fed } = view(command);
-  const span = fed.find(([a, b]) => a <= index && index < b);
-  if (!span) return false;
-  const before = text.slice(span[0], index);
-  for (const m of before.matchAll(SHELL_FED)) {
-    FED_LEAD.lastIndex = m.index;
-    if (FED_LEAD.test(before) && programAt(command, span[0] + m.index, m[0], span[0])) return true;
-  }
-  return stdinScriptStart(command, index);
-}
-
-/** The shells that read their script from stdin when handed no `-c` and no script file ({@link stdinShell}). */
+/** The shells that read their script from stdin when handed no `-c` and no script file ({@link stdinShellIn}). */
 const STDIN_SHELL = /(?<=^|[\s;&|(\x60/])(?:bash|sh|zsh|dash|ksh)(?=\s|$)/g;
-/** What may stand between a string's opening quote and the program word it starts with: blanks and a {@link COMMAND_LEAD}. */
-const STRING_LEAD = new RegExp(String.raw`^\s*(?:${leadToken("(?:")})*$`);
 /** An `echo` or `printf` at the start of a pipeline stage, past a {@link COMMAND_LEAD}: its name is group 1. */
 const ECHO_AT = new RegExp(String.raw`^\s*(?:${leadToken("(?:")})*(echo|printf)(?=\s)`, "d");
 
 /**
  * The raw text of a fed span `[a, b)` read crudely, quotes kept whole
- * ({@link stdinScriptStart}): `quotes`, each quoted string as `[open, close]`
+ * ({@link fedStarts}): `quotes`, each quoted string as `[open, close]`
  * (the indices of its quotes), and `pipelines`, each a list of its stages as
  * `[start, end)`, split at an unquoted `|` or `|&` and ended by `;`, `&&`,
  * `||`, a lone `&` or a newline.
@@ -496,7 +485,7 @@ function pipelinesOf(command, a, b) {
   return { quotes, pipelines };
 }
 
-/** The words of `text[a, b)` as `{ w, at }`, quotes and escapes kept whole ({@link stdinShell}, {@link stdinScriptStart}). */
+/** The words of `text[a, b)` as `{ w, at }`, quotes and escapes kept whole ({@link stdinShellIn}, {@link printedArgs}). */
 function wordsIn(text, a, b) {
   return [...text.slice(a, b).matchAll(/(?:"(?:[^"\\]|\\[\s\S])*"|'[^']*'|\\[\s\S]|[^\s"'\\])+/g)].map((m) => ({
     w: m[0],
@@ -510,21 +499,21 @@ const INPUT_REDIRECT = /^0?(<<<|<<-?|<&|<>|<)(?!\()/;
 const OUTPUT_REDIRECT = /^(?:\d*(?:>>?|>\||>&)|&>>?|[1-9]\d*<[&>]?)/;
 
 /**
- * Where the shell the pipeline stage `[s, e)` of {@link view}'s text runs reads
- * its script (#1607, CodeRabbit on PR #1632): `"pipe"` when a {@link
- * STDIN_SHELL} word at program position ({@link programAt}, so `sudo bash`
- * too) reads it from the pipeline, the index of the word a here-string hands
- * it when that is its last input redirection, or `undefined` when it reads no
- * stdin script. Its own words are options only — a `-c` (`-xc` included) or a
- * script-file word means no stdin script, the value of `-o` is skipped, and
- * everything after a `-s` is its positional parameters — and the last input
- * redirection among them is its stdin, as bash takes it: a file, a heredoc or
- * a descriptor (`</dev/null`, `0<f`, `<&3`) replaces the pipe. An output
- * redirection changes nothing.
+ * Where the shell the pipeline stage `[s, e)` of `text` runs reads its script
+ * (#1607, CodeRabbit on PR #1632), as `{ input, via }`: `input` is `"pipe"`
+ * when a {@link STDIN_SHELL} word that is the program ({@link programKindIn},
+ * so `sudo bash` too) reads it from the pipeline, or the index of the word a
+ * here-string hands it when that is its last input redirection; `via` the
+ * shell word. `undefined` when it reads no stdin script. Its own words are
+ * options only — a `-c` (`-xc` included) or a script-file word means no stdin
+ * script, the value of `-o` is skipped, and everything after a `-s` is its
+ * positional parameters — and the last input redirection among them is its
+ * stdin, as bash takes it: a file, a heredoc or a descriptor (`</dev/null`,
+ * `0<f`, `<&3`) replaces the pipe. An output redirection changes nothing.
  */
-function stdinShell(command, text, [s, e], from) {
+function stdinShellIn(text, byName, [s, e]) {
   for (const m of text.slice(s, e).matchAll(STDIN_SHELL)) {
-    if (!programAt(command, s + m.index, m[0], from)) continue;
+    if (!programKindIn(text, byName, s + m.index)) continue;
     const words = wordsIn(text, s + m.index + m[0].length, e);
     let input = "pipe";
     let positional = false;
@@ -545,7 +534,7 @@ function stdinShell(command, text, [s, e], from) {
       else if (/^-[A-Za-z]*s/.test(w)) positional = true;
       else if (!/^[-+]/.test(w)) return undefined;
     }
-    return input === "other" ? undefined : input;
+    return input === "other" ? undefined : { input, via: m[0] };
   }
   return undefined;
 }
@@ -574,80 +563,248 @@ function printfArgStartsCommand(format, k) {
 }
 
 /**
- * Whether the program word at `index` of {@link view}'s text starts a script a
- * shell reads on stdin (#1607, CodeRabbit on PR #1632): the first word, past
- * blanks and a {@link COMMAND_LEAD}, of a quoted word that starts a command in
- * what an `echo` or `printf` prints, piped on in the same fed element to a
- * shell that reads its script from the pipeline ({@link stdinShell}: `| bash`,
- * `| sh -s`, `| sudo bash -x`, not `| bash </dev/null`) — `echo`'s first
- * argument (it joins the rest with blanks), and `printf`'s format, or an
- * argument its format puts at the start of a line or after a `;`
- * ({@link printfArgStartsCommand}: `printf '%s\n' 'gh …'`, not `printf 'echo
- * %s\n' 'gh …'`) — or of a here-string that is the last input redirection of
- * such a shell (`bash <<< 'gh …'`). A later word after a `;` or a newline in
- * the string is at command position in the raw text already ({@link cmd}).
- * The same string piped to anything else, or written to a file, is a mention.
+ * The words an `echo` or `printf` (named `name`, its word ending at `from` in
+ * `text`) prints, up to `e`, as `{ w, at }`: its options and redirections
+ * skipped, each argument one word with its quotes. `undefined` for a `printf
+ * -v`, which prints nothing.
  */
-function stdinScriptStart(command, index) {
-  const { text, fed } = view(command);
-  const span = fed.find(([a, b]) => a <= index && index < b);
-  if (!span) return false;
-  const { quotes, pipelines } = pipelinesOf(command, span[0], span[1]);
-  const quote = quotes.find(([open, close]) => open < index && index < close);
-  if (!quote || !STRING_LEAD.test(command.slice(quote[0] + 1, index))) return false;
-  for (const stages of pipelines) {
-    const at = stages.findIndex(([s, e]) => s <= quote[0] && quote[0] < e);
-    if (at < 0) continue;
-    const [s, e] = stages[at];
-    if (/<<<\s*$/.test(text.slice(s, quote[0]))) return stdinShell(command, text, stages[at], span[0]) === quote[0];
-    const echo = ECHO_AT.exec(text.slice(s, quote[0]));
-    if (!echo || !programAt(command, s + echo.indices[1][0], echo[1], span[0])) return false;
-    // The printed words, past options and redirections; the quote must be one of them whole.
-    const args = [];
-    const words = wordsIn(text, s + echo.indices[1][1], e);
-    for (let k = 0; k < words.length; k++) {
-      const { w } = words[k];
-      if (/^\d*[<>&]/.test(w)) {
-        if (/^\d*(?:[<>]{1,3}-?|[<>]&|&>>?|>\|)$/.test(w)) k++;
-      } else if (echo[1] === "printf" && w === "-v") return false;
-      else if (args.length === 0 && (w === "--" || (echo[1] === "echo" ? /^-[neE]+$/ : /^-/).test(w))) continue;
-      else args.push(words[k]);
-    }
-    const k = args.findIndex((x) => x.at === quote[0]);
-    if (k < 0) return false;
-    const starts = echo[1] === "echo" ? k === 0 : k === 0 || printfArgStartsCommand(args[0].w, k - 1);
-    return starts && stages.slice(at + 1).some((stage) => stdinShell(command, text, stage, span[0]) === "pipe");
+function printedArgs(text, from, e, name) {
+  const args = [];
+  const words = wordsIn(text, from, e);
+  for (let k = 0; k < words.length; k++) {
+    const { w } = words[k];
+    if (/^\d*[<>&]/.test(w)) {
+      if (/^\d*(?:[<>]{1,3}-?|[<>]&|&>>?|>\|)$/.test(w)) k++;
+    } else if (name === "printf" && w === "-v") return undefined;
+    else if (args.length === 0 && (w === "--" || (name === "echo" ? /^-[neE]+$/ : /^-/).test(w))) continue;
+    else args.push(words[k]);
   }
-  return false;
+  return args;
 }
 
 /**
- * Whether the word `name` at `at` in {@link view}'s text is the program its
- * command runs (CodeRabbit on PR #1632): a program word the rewrite read
- * ({@link normalisePrograms}, so past a {@link COMMAND_LEAD} — `env A=1 bash`,
- * `timeout 5 sh`, `xargs gh`, assignments, keywords), the word a `sudo`,
- * `nice`, `stdbuf` or `winpty` that is itself a program runs, past their options and
- * values (`sudo -u x sh`, `nice gh`), or the word after `find`'s `-exec` /
- * `-execdir`. A word anywhere else is an argument (`rg -t sh`, `ls /bin/sh`,
- * `echo gh pr merge 5`). Read for a fed shell word ({@link fedCommandStart})
- * and for the post-hook's merge (`firstMerge` in `rules-bash.mjs`). `from`
- * bounds where a wrapper is looked for: a fed span's start, or the text's.
+ * Where the first word a fed shell runs starts, for every fed span of `text`
+ * (#1607, #1634): a map from each such index to how that word is the program
+ * ({@link programKindIn}'s `{ how, via, stdin }`), plus `quotes`, every quoted
+ * string of the spans as `[open, close]` ({@link pipelinesOf}). The word is
+ * at command position inside the string as a {@link cmd} anchor is after a
+ * boundary: {@link view} hands these positions to {@link normalisePrograms},
+ * so the word is a program word — rewritten to the name it runs (`bash -c
+ * 'gh.exe …'`), listed in {@link view}'s `programs` with its kind, and read by
+ * every rule as a word typed directly is. Three things put a word there:
+ *
+ * - A {@link SHELL_WORDS} word that is the program ({@link programKindIn}: at
+ *   command position past a {@link COMMAND_LEAD}, behind a wrapper, after
+ *   `find -exec` — never as an argument, `rg -t sh "gh …"`, `ls /bin/sh "…"`,
+ *   CodeRabbit on PR #1632), past its options ({@link FED_OPTIONS}): the word
+ *   after them (`sudo gh …`, `sudo -u me gh …`, `eval gh …`), and the first
+ *   word of the string that follows (`bash -c 'gh …'`, `eval "gh …"`, `pwsh
+ *   -Command "gh …"`, `trap 'gh …' EXIT`), either past a {@link COMMAND_LEAD}
+ *   inside the string, token by token (`bash -c 'GH_REPO=x gh …'`, `bash -c
+ *   'exec gh …'`), never past the string's close. `how` is `"wrapper"` for a
+ *   `sudo` that runs a program ({@link sudoRunsShell}), `"shell"` otherwise;
+ *   `via` the shell word.
+ * - The first word, past blanks and a {@link COMMAND_LEAD}, of a word that
+ *   starts a command in what an `echo` or `printf` prints — `echo`'s first
+ *   argument (it joins the rest with blanks), and `printf`'s format, or an
+ *   argument its format puts at the start of a line or after a `;` ({@link
+ *   printfArgStartsCommand}: `printf '%s\n' 'gh …'`, not `printf 'echo %s\n'
+ *   'gh …'`) — piped on in the same element to a shell that reads its script
+ *   from the pipeline ({@link stdinShellIn}: `| bash`, `| sh -s`, `| sudo
+ *   bash -x`, not `| bash </dev/null`). `stdin` is set; `via` the shell word.
+ * - The first word of a here-string that is such a shell's last input
+ *   redirection (`bash <<< 'gh …'`).
+ *
+ * A later word after a `;` or a newline in the string is at command position
+ * in the raw text already ({@link cmd}); the same string piped to anything
+ * else, or written to a file, is a mention. Positions are recorded, never
+ * searched for, so the whole pass is linear in the text (one lead step per
+ * token, one option step per word), whatever a rule later asks about.
  */
-export function programAt(command, at, name, from = 0) {
-  const { text, programs } = view(command);
-  if (programs.some(([, b, cut]) => b === at + name.length && text.slice(cut, b).trim() === name)) return true;
-  // What stands before the whole word, a path to it (`/bin/sh`) included.
-  const before = text.slice(from, at).replace(/\S*$/, "");
-  if (FIND_EXEC.test(before)) return true;
-  for (const re of WRAPPERS) {
-    const m = re.exec(before);
-    if (m) {
-      const word = m[0].match(/^\S+/)[0];
-      return programAt(command, from + m.index, word, from);
+function fedStarts(command, text, fed, byName) {
+  const starts = new Map();
+  const quotes = [];
+  // `p`, and the position after each lead token from it, up to `limit`.
+  const leads = (p, kind, limit) => {
+    for (;;) {
+      if (p >= limit) return;
+      if (!starts.has(p)) starts.set(p, kind);
+      LEAD_TOKEN.lastIndex = p;
+      const m = LEAD_TOKEN.exec(text);
+      if (!m?.[0] || p + m[0].length > limit) return;
+      p += m[0].length;
+    }
+  };
+  for (const [a, b] of fed) {
+    const own = pipelinesOf(command, a, b);
+    quotes.push(...own.quotes);
+    const closeOf = (open) => own.quotes.find(([o]) => o === open)?.[1];
+    // The word at `p` when no quote opens it (`sudo gh …`, `eval gh …`); else
+    // the first word of the string inside, past blanks and a lead, up to the
+    // string's close — never the quoted word whole, which is the string, not
+    // a program: `bash -c 'x'` keeps its quotes in the text, as every raw
+    // view has since #1606, at the price of a program quoted whole after a
+    // shell word (`sudo "gh" pr merge 7`), which no slip produces.
+    const string = (p, kind, limit) => {
+      STRING_OPEN.lastIndex = p;
+      const q = STRING_OPEN.exec(text);
+      if (!q) return leads(p, kind, limit);
+      const open = p + q[0].length - 1;
+      const close = closeOf(open) ?? limit;
+      leads(open + 1 + /^\s*/.exec(text.slice(open + 1, close))[0].length, kind, close);
+    };
+    for (const m of text.slice(a, b).matchAll(SHELL_FED)) {
+      const at = a + m.index;
+      if (!programKindIn(text, byName, at)) continue;
+      FED_OPTIONS.lastIndex = at + m[0].length;
+      const options = FED_OPTIONS.exec(text);
+      if (!options) continue;
+      const via = m[0].replace(/\.exe$/, "");
+      const how = SUDO.test(m[0]) && !sudoRunsShell(text, at + m[0].length) ? "wrapper" : "shell";
+      string(options.index + options[0].length, { how, via }, b);
+    }
+    for (const stages of own.pipelines) {
+      stages.forEach(([s, e], k) => {
+        const here = stdinShellIn(text, byName, [s, e]);
+        if (typeof here?.input === "number") string(here.input, { how: "shell", via: here.via, stdin: true }, e);
+        const echo = ECHO_AT.exec(text.slice(s, e));
+        if (!echo || !programKindIn(text, byName, s + echo.indices[1][0])) return;
+        const reader = stages
+          .slice(k + 1)
+          .map((stage) => stdinShellIn(text, byName, stage))
+          .find((r) => r?.input === "pipe");
+        if (!reader) return;
+        const args = printedArgs(text, s + echo.indices[1][1], e, echo[1]);
+        args?.forEach(({ at }, j) => {
+          const starts = echo[1] === "echo" ? j === 0 : j === 0 || printfArgStartsCommand(args[0].w, j - 1);
+          if (starts) string(at, { how: "shell", via: reader.via, stdin: true }, e);
+        });
+      });
     }
   }
-  return false;
+  return { starts, quotes };
 }
+
+/** How a word at command position is the program: after a boundary and a {@link COMMAND_LEAD} ({@link programKindIn}). */
+const COMMAND = Object.freeze({ how: "command" });
+
+/**
+ * {@link view}'s program words keyed by where each one's rewritten name
+ * starts, to how it is the program: the kind {@link fedStarts} gave it, or
+ * {@link COMMAND}. A rule that finds a program by an unanchored regex lands on
+ * the name, which is right-aligned in its word's span ({@link normalisePrograms}).
+ */
+function programsByName(text, programs) {
+  const byName = new Map();
+  for (const [, b, cut, , kind] of programs) byName.set(b - text.slice(cut, b).trim().length, kind ?? COMMAND);
+  return byName;
+}
+
+/**
+ * How the word whose name starts at `at` in `text` is the program its command
+ * runs, or `undefined` for a word that is none (CodeRabbit on PR #1632, #1634):
+ * `{ how: "command" }` for a program word the rewrite read at command position
+ * ({@link normalisePrograms}, so past a {@link COMMAND_LEAD} — `env A=1 bash`,
+ * `timeout 5 sh`, `xargs gh`, assignments, keywords); `{ how: "shell", via }`
+ * or `{ how: "wrapper", via: "sudo" }` for the first word a fed shell or a
+ * `sudo` runs ({@link fedStarts}, `stdin` set for a script read on stdin);
+ * `{ how: "wrapper", via }` for the word a `nice`, `stdbuf`, `winpty` or
+ * `sudo` that is itself a program runs, past their options and values (`nice
+ * gh`, `bash -c 'sudo -u x gh …'`), or the word after `find`'s `-exec` /
+ * `-execdir`. A word anywhere else is an argument (`rg -t sh`, `ls /bin/sh`,
+ * `echo gh pr merge 5`). `byName` is {@link programsByName}'s map.
+ *
+ * The wrapper is looked for backwards from the word, within its own command
+ * (to the last boundary character): a word that is an option is stepped
+ * over, a word an option before it may take as its value is tried and then
+ * stepped over, any other word ends the search ({@link WRAPPER_WALK} words
+ * at most), and a candidate counts only when its own options reach the word
+ * ({@link wrapped}) and it is itself a program. So `sudo -u me gh` and `sudo
+ * -E nice gh` read `gh` as a program, `sudo -E me gh` and `echo foo gh` do
+ * not, and the cost per word is bounded by that walk, never by the text: a
+ * long string of mentions asks this once per mention.
+ */
+function programKindIn(text, byName, at) {
+  const own = byName.get(at);
+  if (own) return own;
+  const { words, end } = wordsBefore(text, at);
+  if (FIND_EXEC.test(words[0]?.w ?? "")) return { how: "wrapper", via: "find -exec" };
+  for (let k = 0; k < words.length; k++) {
+    let { w, at: pos } = words[k];
+    if (w.startsWith("-")) continue;
+    // A quote opening the word: the first word of a string a shell is handed ({@link fedStarts}).
+    const quote = /^\$?['"]/.exec(w);
+    if (quote) {
+      pos += quote[0].length;
+      w = w.slice(quote[0].length);
+    }
+    const options = WRAPPERS.get(w);
+    if (options) {
+      options.lastIndex = w.length;
+      if (options.test(text.slice(pos, end)) && programKindIn(text, byName, pos)) return { how: "wrapper", via: w };
+    }
+    if (!words[k + 1]?.w.startsWith("-")) break;
+  }
+  return undefined;
+}
+
+/**
+ * The words of the command before `at` in `text`, nearest first, as `{ w, at
+ * }`: back to the last boundary character, {@link WRAPPER_WALK} words at most,
+ * and without the partial word `at` ends (a path, `/bin/sh`; a quote, `"gh`).
+ * `end` is where that partial word, or `at`, begins: what a wrapper's options
+ * must reach ({@link programKindIn}). Read backwards from `at` rather than off
+ * a slice of the text, so the cost is the words read, not the text's length.
+ */
+function wordsBefore(text, at) {
+  const boundary = (c) => "\n;&|()\x60".includes(c);
+  const blank = (c) => c === " " || c === "\t";
+  let i = at - 1;
+  while (i >= 0 && !blank(text[i]) && !boundary(text[i])) i--;
+  const end = i + 1;
+  const words = [];
+  while (words.length < WRAPPER_WALK) {
+    while (i >= 0 && blank(text[i])) i--;
+    if (i < 0 || boundary(text[i])) break;
+    const stop = i + 1;
+    while (i >= 0 && !blank(text[i]) && !boundary(text[i])) i--;
+    words.push({ w: text.slice(i + 1, stop), at: i + 1 });
+  }
+  return { words, end };
+}
+
+/**
+ * How the word whose name starts at `at` in {@link view}'s text is the program
+ * ({@link programKindIn}), or `undefined`. A position {@link fedStarts}
+ * recorded counts as command position even where its word is no program —
+ * an assignment, as `bash -c 'IRACEDECK_MOCK=0 pnpm test'` starts with — as a
+ * {@link cmd} anchor takes a zero lead.
+ */
+export function programKind(command, at) {
+  const { text, byName, starts } = view(command);
+  return programKindIn(text, byName, at) ?? starts.get(at);
+}
+
+/** Whether the word whose name starts at `at` in {@link view}'s text is the program its command runs ({@link programKind}). */
+export const programAt = (command, at) => programKind(command, at) !== undefined;
+
+/**
+ * Whether the word at `index` of {@link view}'s text is the first word a fed
+ * shell runs (#1607, {@link fedStarts}): a position the string pass recorded,
+ * or a program word a shell runs ({@link programKind}).
+ */
+export const fedCommandStart = (command, index) =>
+  view(command).starts.has(index) || programKind(command, index)?.how === "shell";
+
+/**
+ * The index of the quote that closes the string holding `index`, when that
+ * string is one a fed span's raw text shows ({@link view}'s `quotes`);
+ * `undefined` outside one. A command found inside a string a shell is handed
+ * ends at that string's close: its arguments and its groups read no further
+ * ({@link matchesAt}, {@link chainCommands}).
+ */
+export const stringEnd = (command, index) => stringEndAt(view(command).quotes, index);
+const stringEndAt = (quotes, index) => quotes.find(([open, close]) => open < index && index <= close)?.[1];
 
 /** The reserved words that open a compound command, and those that close one ({@link structure}). */
 const GROUP_OPEN = new Set(["if", "while", "until", "for", "select", "case", "{", "[["]);
@@ -901,6 +1058,8 @@ export function view(command) {
     const lexed = normalisePrograms(command, masked, flat, wordEnds, () => false);
     const fed = sure ? fedSpans(command, lexed.text, top, heredocs) : [[0, command.length]];
     let out = lexed;
+    let starts = new Map();
+    let quotes = [];
     if (fed.length) {
       // The raw command inside each fed span, the mask outside them; a word
       // the lexer did not see start is read raw only inside a span.
@@ -914,7 +1073,21 @@ export function view(command) {
         return r + s.slice(at);
       };
       const raw = (p) => fed.some(([a, b]) => a <= p && p < b);
-      out = normalisePrograms(command, restore(masked), restore(flat), wordEnds, raw);
+      const restored = [restore(masked), restore(flat)];
+      out = normalisePrograms(command, ...restored, wordEnds, raw);
+      // The first word of each string a shell runs is a program word too
+      // (#1634, {@link fedStarts}). Each round can reveal one more level of
+      // nesting (`bash -c 'sudo sh -c "…"'`: the inner shell is a program
+      // only once `sudo` is), so it repeats while new positions appear, to a
+      // depth no command typed by hand reaches — each time from the restored
+      // text, since a rewritten word's pad hides its start from the next pass.
+      for (let round = 0; round < 4; round++) {
+        const found = fedStarts(command, out.text, fed, programsByName(out.text, out.programs));
+        quotes = found.quotes;
+        if (found.starts.size === starts.size) break;
+        starts = found.starts;
+        out = normalisePrograms(command, ...restored, wordEnds, raw, starts);
+      }
     }
     view.last = command;
     view.out = {
@@ -925,6 +1098,9 @@ export function view(command) {
       fed,
       programs: out.programs,
       unreadable: out.unreadable,
+      byName: programsByName(out.text, out.programs),
+      starts,
+      quotes,
     };
   }
   return view.out;
@@ -1250,11 +1426,12 @@ const CRUDE_WORD =
  * rewritten. A program word whose last segment expands or globs is
  * left as it is and listed in `unreadable` as `{ start, end, word }`.
  */
-function normalisePrograms(command, text, flat, words, raw) {
+function normalisePrograms(command, text, flat, words, raw, extra = new Map()) {
   let t = text;
   let f = flat;
-  // `[start, end, cut, keep]` each: the word, where its last segment starts,
-  // and the command substitutions of its directory part, kept live.
+  // `[start, end, cut, keep, kind]` each: the word, where its last segment
+  // starts, the command substitutions of its directory part, kept live, and
+  // how it is the program when `extra` put it there (#1634, {@link fedStarts}).
   const programs = [];
   const unreadable = [];
   const seen = new Set();
@@ -1264,10 +1441,13 @@ function normalisePrograms(command, text, flat, words, raw) {
     programs.some(([a, b, , keep]) => a < p && p < b && !keep.some(([k0, k1]) => k0 < p && p < k1));
   for (let changed = true, passes = 0; changed && passes < 32; passes++) {
     changed = false;
-    for (const { start, lead } of programPositions(t)) {
+    // The first word of each fed string after the anchored positions, so a
+    // whole quoted word (`sudo "gh" …`) is read before the word inside its quotes.
+    const positions = [...programPositions(t), ...[...extra].map(([start, kind]) => ({ start, lead: "", kind }))];
+    for (const { start, lead, kind } of positions) {
       if (seen.has(start) || covered(start)) continue;
       let end = words.get(start);
-      if (end === undefined && raw(start) && (start === 0 || /[\s|;&()\x60]/.test(command[start - 1]))) {
+      if (end === undefined && raw(start) && (kind || start === 0 || /[\s|;&()\x60]/.test(command[start - 1]))) {
         CRUDE_WORD.lastIndex = start;
         const w = CRUDE_WORD.exec(command);
         if (w) end = start + w[0].length;
@@ -1322,7 +1502,7 @@ function normalisePrograms(command, text, flat, words, raw) {
       const keep = commandSubs(word)
         .filter(([, r1]) => r1 <= read.cut)
         .map(([r0, r1]) => [start + r0, start + r1]);
-      programs.push([start, end, cut, keep]);
+      programs.push([start, end, cut, keep, kind]);
       // The directory part blank but for its command substitutions, which run
       // and are read where they stand (#1606 review); the name right-aligned
       // in the last segment, so `$( … )/gh` reads `$( … )  gh`, at command
@@ -1394,16 +1574,61 @@ const COMMAND_END = /[()\x60]|(?<![<>])&(?!>)/;
  * Every match of `re` in the trusted-masked text, with its capture groups read
  * from the RAW command at the same indices: the mask decides WHERE a command
  * is, the raw text says what its arguments are (a quoted path stays readable).
- * Each result is the array of raw groups, with `index` set.
+ * Each result is the array of raw groups, with `index` set, in the order the
+ * command runs them.
+ *
+ * For a {@link cmd} regex the matches are the anchored ones — a command after
+ * a boundary and a {@link COMMAND_LEAD}, `index` at the boundary — and, since
+ * #1634, every match of the rule's own shape (`re.inner`) whose program word
+ * is the program some other way ({@link programKind}): the first word a fed
+ * shell or a `sudo` runs, the word a wrapper runs, `index` at the word. Each
+ * carries `program` (where the program word's name starts), `how` and, for a
+ * carried one, `via` (`"bash"`, `"sudo"`, …) and `stdin`, so a rule can say
+ * which shape it refused. A match that is both is one match. A match inside a
+ * string a shell is handed reads no further than the string's close ({@link
+ * stringEnd}): `bash -c 'git worktree add ../ir-5'` names `../ir-5`, not
+ * `../ir-5'`.
  */
 export function* matchesAt(command, re) {
-  const flags = new Set([...re.flags, "g", "d"]);
-  const global = new RegExp(re.source, [...flags].join(""));
-  for (const m of trustedMask(command).matchAll(global)) {
-    const raw = m.indices.map((r) => (r ? command.slice(r[0], r[1]) : undefined));
-    raw.index = m.index;
-    yield raw;
+  const text = trustedMask(command);
+  const flags = [...new Set([...re.flags, "g", "d"])].join("");
+  const found = [...text.matchAll(new RegExp(re.source, flags))].map((m) => [m, COMMAND, innerStart(text, m, re)]);
+  if (re.inner) {
+    const ends = new Set(found.map(([m]) => m.index + m[0].length));
+    for (const m of text.matchAll(new RegExp(re.inner.source, flags))) {
+      if (ends.has(m.index + m[0].length)) continue;
+      const kind = programKind(command, m.index);
+      if (kind) found.push([m, kind, m.index]);
+    }
+    found.sort((x, y) => x[2] - y[2]);
   }
+  for (const [m, kind, program] of found) yield rawMatch(command, m, kind, program);
+}
+
+/** Where the rule's own shape starts inside an anchored {@link cmd} match: past the boundary and the lead it took. */
+function innerStart(text, m, re) {
+  if (!re.inner) return m.index;
+  const end = m.index + m[0].length;
+  const sticky = new RegExp(re.inner.source, [...new Set([...re.inner.flags, "y"])].join(""));
+  for (let p = m.index; p < end; p++) {
+    sticky.lastIndex = p;
+    const r = sticky.exec(text);
+    if (r && p + r[0].length === end) return p;
+  }
+  return m.index;
+}
+
+/** A {@link matchesAt} result: the raw groups, cut at the close of the string the program runs in, with the match's facts. */
+function rawMatch(command, m, kind, program) {
+  const close = stringEndAt(view(command).quotes, program);
+  const cut = (r) => (close === undefined ? r[1] : Math.min(r[1], Math.max(r[0], close)));
+  const raw = m.indices.map((r) => (r ? command.slice(r[0], cut(r)) : undefined));
+  raw.index = m.index;
+  raw.program = program;
+  raw.how = kind.how;
+  if (kind.via) raw.via = kind.via;
+  if (kind.stdin) raw.stdin = true;
+  return raw;
 }
 
 /** The first of {@link matchesAt}, or `null`. */
@@ -1487,11 +1712,13 @@ export const gitCwd = (command, cwd, re, shell = BASH) => gitPlace(command, cwd,
 export function gitPlace(command, cwd, re, shell = BASH) {
   const text = trustedMask(command);
   const segs = ranges(text, CHAIN).filter(([a, b]) => command.slice(a, b).trim());
-  const at = re ? segs.findIndex(([a, b]) => re.test(text.slice(a, b))) : -1;
+  // The first command the rule finds ({@link matchesAt}: at command position,
+  // or the first word a shell or a wrapper runs, #1634), and its segment.
+  const m = re ? matchAt(command, re) : null;
+  const at = m ? segs.findIndex(([a, b]) => a <= m.program && m.program < b) : -1;
   const base = cwdAt(command, cwd, at >= 0 ? segs[at][0] : command.length, shell);
   const [a, b] = at >= 0 ? segs[at] : [0, command.length];
-  const from = at >= 0 ? a + Math.max(0, text.slice(a, b).search(re)) : a;
-  return gitPlaceAt(command, from, base, shell, b);
+  return gitPlaceAt(command, m ? m.program : a, base, shell, b);
 }
 
 /**
@@ -1730,24 +1957,53 @@ export function cdsAhead(command, re, cwd, shell = BASH) {
  * begins: a match of an unanchored `re` that starts on a rewritten program
  * name is moved back to the start of that word ({@link programStart}), so
  * `head` holds the raw word whole.
+ *
+ * As {@link matchesAt} does, a {@link cmd} regex also finds the command where
+ * its program word is the first word a fed shell or a wrapper runs (#1634),
+ * with `how`, `via` and `stdin` saying so, and a command inside a string a
+ * shell is handed ends at that string's close ({@link stringEnd}): the `args`
+ * of `bash -c 'git push origin x'` are ` origin x`, not ` origin x'`.
  */
 export function* chainCommands(command, cwd, re, shell = BASH) {
   const text = trustedMask(command);
-  const global = new RegExp(re.source, [...new Set([...re.flags, "g"])].join(""));
+  const flags = [...new Set([...re.flags, "g"])].join("");
+  const anchored = new RegExp(re.source, flags);
+  const inner = re.inner && new RegExp(re.inner.source, flags);
+  const { quotes } = view(command);
   let base = cwd;
   for (const [a, b] of ranges(text, CHAIN)) {
-    for (const m of text.slice(a, b).matchAll(global)) {
+    const slice = text.slice(a, b);
+    const found = [...slice.matchAll(anchored)].map((m) => [m, COMMAND]);
+    if (inner) {
+      const ends = new Set(found.map(([m]) => m.index + m[0].length));
+      for (const m of slice.matchAll(inner)) {
+        if (ends.has(m.index + m[0].length)) continue;
+        const kind = programKind(command, a + m.index);
+        if (kind) found.push([m, kind]);
+      }
+      found.sort((x, y) => x[0].index + x[0][0].length - (y[0].index + y[0][0].length));
+    }
+    for (const [m, kind] of found) {
       const start = programStart(command, a + m.index);
       const from = a + m.index + m[0].length;
       const stop = text.slice(from, b).search(COMMAND_END);
-      const to = stop >= 0 ? from + stop : b;
+      let to = stop >= 0 ? from + stop : b;
+      let cut = stop >= 0 ? text[to] : undefined;
+      const close = stringEndAt(quotes, from);
+      if (close !== undefined && close < to) {
+        to = close;
+        cut = undefined;
+      }
       yield {
         base,
         start,
         head: command.slice(start, from),
         args: command.slice(from, to),
         at: from,
-        cut: stop >= 0 ? text[to] : undefined,
+        cut,
+        how: kind.how,
+        ...(kind.via ? { via: kind.via } : {}),
+        ...(kind.stdin ? { stdin: true } : {}),
       };
     }
     const dir = argIn(command, text, a, b, cdRe(shell));
@@ -1760,8 +2016,12 @@ export function words(command) {
   return [...command.matchAll(/"([^"]*)"|'([^']*)'|(\S+)/g)].map((m) => m[1] ?? m[2] ?? m[3]);
 }
 
-/** An anchored rule ({@link cmd}) tests the trusted-masked text; an unanchored one, which must fire on any occurrence, the raw text. */
-export const has = (command, re) => re.test(re.anchored ? trustedMask(command) : command);
+/**
+ * An anchored rule ({@link cmd}) finds its command through {@link matchesAt} —
+ * at command position, or as the first word a fed shell or a wrapper runs
+ * (#1634); an unanchored one, which must fire on any occurrence, tests the raw text.
+ */
+export const has = (command, re) => (re.anchored ? matchAt(command, re) !== null : re.test(command));
 
 /**
  * One token of {@link COMMAND_LEAD}: a keyword, a wrapper with its options, an
@@ -1794,7 +2054,8 @@ function leadToken(open) {
  * A heuristic, not a shell parser: the hooks catch mistakes, not deliberate
  * obfuscation. A string handed to a shell (`bash -c`, `eval`) is not lexed —
  * the rules read the raw text of the list element that hands it over then
- * ({@link view}, #1607).
+ * ({@link view}, #1607), and its first word, past a lead of these tokens, is a
+ * program word ({@link fedStarts}, #1634).
  */
 export const COMMAND_LEAD = String.raw`(?:${leadToken("(?:")})*`;
 
@@ -1844,16 +2105,20 @@ const GIT_OPTION = gitOption("(");
  */
 export const GIT_GLOBALS = String.raw`(?:\s+${gitOption("(?:")})*\s+`;
 
+/** A `&` that ends a command, as a separator or a background: not a redirect's own, as in `2>&1`, `<&0` or `&>log`. */
+const BOUNDARY_AMP = String.raw`(?<![<>])&(?!>)`;
+
 /**
  * Anchors a command regex to COMMAND POSITION: the start of the string or of
  * a line (after any indent), or right after `|`, `;`, `&`, `(`, `)` or a
  * backtick, with any leading {@link COMMAND_LEAD}. Without this, a grep, an
  * echo or a docs edit that merely MENTIONS a trapped shape
- * (`grep 'pnpm exec vitest'`) would be denied.
+ * (`grep 'pnpm exec vitest'`) would be denied. The anchor adds no capture
+ * group, so the rule's own groups keep their numbers. The rule's own shape is
+ * kept as `inner`: {@link matchesAt}, {@link has} and {@link chainCommands}
+ * also find it where its program word is the first word a fed shell or a
+ * wrapper runs (#1634), which no anchor reaches.
  */
-/** A `&` that ends a command, as a separator or a background: not a redirect's own, as in `2>&1`, `<&0` or `&>log`. */
-const BOUNDARY_AMP = String.raw`(?<![<>])&(?!>)`;
-
 export function cmd(re) {
   const flags = new Set([...re.flags, "m"]);
   const anchored = new RegExp(
@@ -1862,6 +2127,7 @@ export function cmd(re) {
   );
   // Read by `has`: an anchored regex is tested on the trusted-masked text.
   anchored.anchored = true;
+  anchored.inner = re;
   return anchored;
 }
 
