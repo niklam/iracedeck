@@ -725,7 +725,13 @@ export function deckFindings(c, cwd, ctx, shell, trail = []) {
     if (app) found.push(`\`${head.replace(/^[\s|;&()`]+/, "").trim()} … ${app[0]}\` stops or starts a deck host app`);
   }
   for (const { re, read, whole } of RUNNERS)
-    for (const { base, start, args, at, cut } of chainCommands(c, cwd, re, shell)) {
+    for (const { base, start, args, at, cut, how, via, stdin } of chainCommands(c, cwd, re, shell)) {
+      // The first word of a string a shell wrapper is handed (#1634) is read
+      // through that wrapper's own string, below, as a command line: judging
+      // it here too would name the same restart twice. A string a shell reads
+      // on stdin, and what `sudo`, `trap`, `watch` or `su` run, no wrapper
+      // reads, so those are judged here.
+      if (how === "shell" && !stdin && isWrapper(via)) continue;
       // A shell wrapper's name as the rewritten text spells it (#1606): `bash`
       // for `"/usr/bin/bash"`, `pwsh` for `pwsh.exe`.
       const name = () =>

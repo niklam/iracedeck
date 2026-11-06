@@ -4703,3 +4703,120 @@ describe("the mask is set aside only where a shell is fed (#1607)", () => {
     );
   });
 });
+
+// #1634: no pre-hook trap saw a trap word that starts a shell-fed string, or
+// the program a wrapper runs, so `bash -c 'gh pr merge 7'`, `eval "gh pr merge
+// 7"`, `echo 'gh pr merge 7' | bash` and `sudo gh pr merge 7` passed the merge
+// gate, and `bash -c 'pnpm exec vitest run'` its trap. The post-hook's
+// `firstMerge` read those positions since #1607; every guard now does.
+describe("a trap word that starts a shell-fed string reaches every guard (#1634)", () => {
+  const head = "1".repeat(40);
+  const green = () => ({
+    number: 7,
+    url: "https://github.com/niklam/iracedeck/pull/7",
+    state: "OPEN",
+    headRefOid: head,
+    headRefName: "ir-7",
+    reviewDecision: "APPROVED",
+    mergeStateStatus: "CLEAN",
+    statusCheckRollup: [{ __typename: "CheckRun", name: "Tests", status: "COMPLETED", conclusion: "SUCCESS" }],
+    reviews: [{ author: { login: "coderabbitai" }, state: "APPROVED", commit: { oid: head } }],
+  });
+  const CARRIED = /is not its own command/;
+  const FED = [
+    "bash -c 'gh pr merge 7 --squash'",
+    `sh -c "gh pr merge 7 --squash"`,
+    `eval "gh pr merge 7 --squash"`,
+    "eval gh pr merge 7 --squash",
+    "echo 'gh pr merge 7 --squash' | bash",
+    "printf '%s\\n' 'gh pr merge 7 --squash' | sh",
+    "bash <<< 'gh pr merge 7 --squash'",
+    "sudo gh pr merge 7 --squash",
+    "sudo -u me gh pr merge 7 --squash",
+    `pwsh -Command "gh pr merge 7 --squash"`,
+    "env A=1 bash -c 'gh pr merge 7 --squash'",
+    "nice gh pr merge 7 --squash",
+    "bash -c 'gh.exe pr merge 7 --squash'",
+    "bash -c 'GH_REPO=niklam/iracedeck gh pr merge 7 --squash'",
+    "cd scripts && sudo gh pr merge 7 --squash",
+  ];
+
+  it.each(FED)("the merge gate refuses %s, naming the shape, even for a green PR", (command) => {
+    const reason = deny(command, ctx({ prView: green }));
+    expect(reason).toMatch(CARRIED);
+    expect(reason).toMatch(/`(?:bash|sh|eval|sudo|pwsh|nice)`/);
+    expect(reason).not.toMatch(/Could not isolate/);
+  });
+
+  it("the post-hook's trigger reads the same merges", () => {
+    for (const command of FED) expect(firstMerge(command), command).toMatchObject({ ref: "7", readable: true });
+  });
+
+  it.each([
+    "bash -c 'pnpm exec vitest run'",
+    `sh -c "npx vitest"`,
+    `eval "pnpm exec vitest run"`,
+    "eval pnpm exec vitest",
+    "echo 'pnpm exec vitest run' | bash",
+    "printf '%s\\n' 'pnpm exec vitest' | sh",
+    "bash <<< 'pnpm exec vitest run'",
+    "sudo pnpm exec vitest run",
+    "sudo -u me npx vitest",
+    `pwsh -Command "pnpm exec vitest"`,
+    "env A=1 bash -c 'pnpm exec vitest run'",
+  ])("the vitest trap refuses %s", (command) => expect(deny(command)).toMatch(/pnpm test <path>/));
+
+  it.each([
+    `echo "bash -c gh pr merge 7"`,
+    "grep 'gh pr merge 7' f",
+    `rg -t sh "gh pr merge 1603"`,
+    "echo 'gh pr merge 7' > f",
+    "echo gh pr merge 7",
+    "echo 'pnpm exec vitest run' > f",
+    `echo "sudo pnpm exec vitest"`,
+    "bash -c 'echo gh pr merge 7'",
+    "bash -c 'echo pnpm exec vitest'",
+    "ls /bin/sh 'pnpm exec vitest'",
+    "sudo echo gh pr merge 7",
+  ])("still passes a mention: %s", (command) => passes(command, ctx({ prView: green })));
+
+  it("reads the other traps at the start of a fed string", () => {
+    expect(deny("bash -c 'pnpm build --force'")).toMatch(/build:force/);
+    expect(deny("sudo gh issue create --title x --milestone 3.3")).toMatch(/milestone/);
+    expect(deny("eval 'jq .x f'")).toMatch(/jq/);
+    expect(deny("bash -c 'IRACEDECK_MOCK=0 pnpm test'")).toMatch(/IRACEDECK_REAL_NATIVE/);
+    expect(deny(`bash -c 'gh pr create --title "thing (#12)"'`)).toMatch(/must be/);
+    expect(deny("echo 'gh project item-edit --id x' | bash")).toMatch(/helpers/);
+    expect(deny(`sh -c "gh run list --commit abc123"`)).toMatch(/FULL 40-char/);
+    expect(asks("sudo git push origin v1.2.3")).toMatch(/release/);
+    expect(asks("bash <<< 'git push --tags'")).toMatch(/release/);
+  });
+
+  it("judges a fed git push or commit in its tree, with the string's close as its end", () => {
+    const integration = ctx({ branch: () => "integration" });
+    expect(deny("bash -c 'git push'", integration)).toMatch(/never pushed/);
+    expect(deny("echo 'git push' | sh", integration)).toMatch(/never pushed/);
+    expect(deny("sudo git push origin integration")).toMatch(/never pushed/);
+    passes("bash -c 'git push --dry-run'", integration);
+    const onBranch = ctx({ branch: () => "fix/5-x", staged: () => ["docs/superpowers/specs/a.md"] });
+    expect(deny("bash -c 'git commit -m x'", onBranch)).toMatch(/never on a feature branch/);
+    expect(deny("sudo git commit -m x", onBranch)).toMatch(/never on a feature branch/);
+    passes("bash -c 'git commit -m x -- notes.md'", onBranch);
+  });
+
+  it("asks once for a deck restart fed to a shell on stdin, run under a wrapper, or in a wrapper's string", () => {
+    const once = (command, script) => {
+      const ask = asks(command);
+      expect(ask.match(new RegExp(script, "g")), ask).toHaveLength(1);
+    };
+    once("echo 'pnpm restart:stream-deck' | bash", "restart:stream-deck");
+    once("sudo pnpm restart:stream-deck", "restart:stream-deck");
+    once(`bash -c "pnpm restart:stream-deck"`, "restart:stream-deck");
+    once("trap 'pnpm restart:stream-deck' EXIT", "restart:stream-deck");
+    once("bash <<< 'pnpm build:with-restart'", "build:with-restart");
+  });
+
+  it("refuses a program it cannot read at the start of a fed string", () => {
+    expect(deny("bash -c '$GH pr merge 7 --squash'")).toMatch(/Could not read the program/);
+  });
+});

@@ -34,7 +34,6 @@ import {
   cmd,
   COMMAND_LEAD,
   commandEnd,
-  fedCommandStart,
   GIT_GLOBALS,
   gitCwd,
   gitPlace,
@@ -45,10 +44,10 @@ import {
   matchesAt,
   POWERSHELL,
   powershellAsBash,
-  programAt,
   programStart,
   ranges,
   resolveDir,
+  stringEnd,
   trustedIn,
   trustedMask,
   unreadablePrograms,
@@ -414,34 +413,33 @@ export function mergeSegments(command) {
     .map(([a, b]) => ({ raw: command.slice(a, b), flat: flat.slice(a, b), trusted: trustedIn(command, a, b) }));
 }
 
-/** A `gh pr merge` at command position ({@link firstMerge}). */
+/** A `gh pr merge` at command position, or carried there by a shell or a wrapper ({@link firstMerge}, the merge gate). */
 const MERGE_AT = cmd(/gh\s+pr\s+merge\b/);
 
 /**
  * The first `gh pr merge` the command runs, parsed ({@link parseMerge}) and
  * with `index`, where its program word starts; `undefined` when there is
- * none. The post-hook's trigger, which follows the command-position rule the
- * pre-hook's guards follow (#1607): a `gh pr merge` counts only where `gh` is
- * the program, in masked and raw text alike — after a command boundary and a
- * {@link COMMAND_LEAD} (`timeout 5 gh …`, `GH_REPO=x gh …`, `bash -c 'ls; gh
- * …'`), as the program a `sudo`, `nice`, `stdbuf` or `winpty` runs or after `find
- * -exec` (`programAt` in `shell-lexer.mjs`), or as the first word a fed shell
- * runs (`bash -c 'gh pr merge 5'`, `fedCommandStart`). A mention as an
- * argument is none: `echo gh pr merge 1603`, a `git log -- gh pr merge 1603`,
- * or a grep for it beside a `bash $SCRIPT`, which used to move #1603's card.
+ * none. The post-hook's trigger, which reads the one notion of command
+ * position every pre-hook guard reads (`matchesAt` in `shell-lexer.mjs`,
+ * #1607, #1634): a `gh pr merge` counts only where `gh` is the program, in
+ * masked and raw text alike — after a command boundary and a {@link
+ * COMMAND_LEAD} (`timeout 5 gh …`, `GH_REPO=x gh …`, `bash -c 'ls; gh …'`),
+ * as the program a `sudo`, `nice`, `stdbuf` or `winpty` runs or after `find
+ * -exec`, or as the first word a fed shell runs (`bash -c 'gh pr merge 5'`,
+ * `echo 'gh pr merge 5' | bash`). A mention as an argument is none: `echo gh
+ * pr merge 1603`, a `git log -- gh pr merge 1603`, or a grep for it beside a
+ * `bash $SCRIPT`, which used to move #1603's card.
  */
 export function firstMerge(command) {
   const { text, flat } = view(command);
-  const anchored = new Set(
-    [...text.matchAll(new RegExp(MERGE_AT.source, `${MERGE_AT.flags}g`))].map((m) => m.index + m[0].length),
-  );
-  for (const m of text.matchAll(/\bgh\s+pr\s+merge\b/g)) {
-    const to = m.index + m[0].length;
-    if (!anchored.has(to) && !programAt(command, m.index, "gh") && !fedCommandStart(command, m.index)) continue;
+  for (const m of matchesAt(command, MERGE_AT)) {
     // From the start of the program word, so its raw text is read whole (#1606).
-    const start = programStart(command, m.index);
+    const start = programStart(command, m.program);
     const rest = text.slice(start).search(CHAIN_AND_BACKGROUND);
-    const end = rest < 0 ? text.length : start + rest;
+    let end = rest < 0 ? text.length : start + rest;
+    // A merge inside a string a shell runs ends at that string's close (#1634).
+    const close = stringEnd(command, start);
+    if (close !== undefined && close < end) end = close;
     // Through the mask only where it stands over the merge's own text (#1607).
     const merge = parseMerge({
       raw: command.slice(start, end),
@@ -452,6 +450,21 @@ export function firstMerge(command) {
   }
   return undefined;
 }
+
+/**
+ * The deny for a `gh pr merge` that is not its own command (#1634): the first
+ * word of a string a shell runs (`bash -c 'gh pr merge 7'`, `eval "…"`, `echo
+ * '…' | bash`, `pwsh -Command "…"`), or the program a wrapper runs (`sudo gh
+ * pr merge 7`, `nice gh …`). Until #1634 no trap saw either, so such a merge
+ * passed the gate unread; the gate reads the PR before the command runs and
+ * cannot follow what a shell or a wrapper does to the repository, the
+ * checkout or the environment in between, so it refuses rather than judge
+ * the merge as if typed directly. `m` is the `matchesAt` result.
+ */
+const carriedMerge = (m) =>
+  m.how === "shell"
+    ? `This \`gh pr merge\` is not its own command: it is the first word of a string \`${m.via}\` runs${m.stdin ? " from its stdin" : ""}, and the gate cannot read what that shell does around it — where it runs, what reaches it, what else it runs. Type the merge directly, as its own command: \`gh pr merge <pr> --squash\` (#1634).`
+    : `This \`gh pr merge\` is not its own command: it runs under \`${m.via}\`, which can change what gh resolves the PR and the repository to after the gate has read them. Type the merge directly, as its own command, with nothing ahead of it but a plain \`cd <dir> &&\` (#1634).`;
 
 /**
  * Every `gh pr merge` in the RAW text — the backstop for a separator the split
@@ -862,15 +875,20 @@ export const rules = [
     // Judged per command of the chain, so a `--dry-run` on another push, in a
     // string or in a comment does not wave a real tag push through (#1321
     // review). The tag itself is read from the raw text: `"v1.2.3"` is a tag too.
+    // Each push is found as every guard finds its command (`matchesAt`, #1634:
+    // `sudo git push --tags` and `bash <<< 'git push --tags'` included), then
+    // judged on the chain segment it stands in.
     name: "git push: a tag cuts a release",
     test: (c) => {
       const text = trustedMask(c);
-      const tagPush = ranges(text, CHAIN_AND_BACKGROUND).some(
-        ([a, b]) =>
-          GIT_PUSH.test(text.slice(a, b)) &&
-          !/--dry-run\b/.test(text.slice(a, b)) &&
-          /\bpush(?:\s[^|&;]*)?\s["']?(--tags\b|v\d+\.\d+)/.test(c.slice(a, b)),
-      );
+      const segments = ranges(text, CHAIN_AND_BACKGROUND);
+      const tagPush = [...matchesAt(c, GIT_PUSH)].some((m) => {
+        // The segment holding the program word: an anchored match's `index` is its boundary.
+        const [a, b] = segments.find(([s, e]) => s <= m.program && m.program < e);
+        return (
+          !/--dry-run\b/.test(text.slice(a, b)) && /\bpush(?:\s[^|&;]*)?\s["']?(--tags\b|v\d+\.\d+)/.test(c.slice(a, b))
+        );
+      });
       return tagPush && { ask: "Pushing a tag cuts a release. The maintainer confirms." };
     },
   },
@@ -932,14 +950,19 @@ export const rules = [
       // matches (#1393).
       if (has(c, cmd(/gh\s+pr\s+-[^;&|\n]*?\bmerge\b/)) || has(c, cmd(/gh\s+-[^;&|\n]*?\bpr\b[^;&|\n]*?\bmerge\b/)))
         return "Write a merge as `gh pr merge <pr> …`, with every flag after `merge`: a flag between `gh` and `merge` hides the merge from this gate (#1393).";
-      if (!has(c, cmd(/gh\s+pr\s+merge\b/))) return null;
+      if (!has(c, MERGE_AT)) return null;
       // One merge per command, judged on its own words: the rule used to read
       // the first merge of a chain and honour `--admin` anywhere in the string.
       const segments = mergeSegments(c);
-      if (segments.length !== 1 || mergeMentions(c) !== 1)
-        return segments.length > 1 || mergeMentions(c) > 1
-          ? "One `gh pr merge` per command: each merge is checked on its own, so run them one at a time."
-          : "Could not isolate the `gh pr merge` in this command; run it on its own.";
+      if (segments.length !== 1 || mergeMentions(c) !== 1) {
+        if (segments.length > 1 || mergeMentions(c) > 1)
+          return "One `gh pr merge` per command: each merge is checked on its own, so run them one at a time.";
+        // No segment starts with the merge: it is the first word of a string a
+        // shell runs, or the program a wrapper runs (#1634), named as such.
+        const carried = [...matchesAt(c, MERGE_AT)].find((m) => m.how !== "command");
+        if (carried) return carriedMerge(carried);
+        return "Could not isolate the `gh pr merge` in this command; run it on its own.";
+      }
       const merge = parseMerge(segments[0]);
       if (!merge.readable)
         return "Could not read this `gh pr merge`'s own arguments (a quoted or substituted PR, or a merge inside a substitution or heredoc); run it on its own with the PR number or URL as a plain word.";
