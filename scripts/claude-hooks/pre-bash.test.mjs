@@ -120,6 +120,22 @@ describe("pre-bash.mjs, fired for the PowerShell tool", SPAWNS, () => {
         .permissionDecision,
     ).toBe("ask"));
 
+  // The two readers together: the script is read from the linked tree's own
+  // package.json, and only the link makes what it runs ask. Its control is the
+  // unlinked run of `dev:voices` above. The manifest is removed afterwards so
+  // the tests that run a bare `dev:voices` there do not depend on the order.
+  it("reads a linked tree's own script before judging its link", () => {
+    const manifest = path.join(linkedTree, "package.json");
+    writeFileSync(manifest, JSON.stringify({ name: "fixture", scripts: { voices: "pnpm dev:voices on" } }));
+    try {
+      const v = fire("pnpm voices", { cwd: linkedTree, env });
+      expect(v.permissionDecision).toBe("ask");
+      expect(v.permissionDecisionReason).toMatch(/`pnpm voices` → .*`pnpm dev:voices` there relinks/);
+    } finally {
+      rmSync(manifest, { force: true });
+    }
+  });
+
   // #1520 second read, #1526 review: a script is judged by the command line its
   // package.json gives it, and a selector the hook cannot resolve exactly reads
   // every package it may pick. `sd` carries the Stream Deck plugin's real
