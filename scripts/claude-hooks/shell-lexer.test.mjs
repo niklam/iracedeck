@@ -1164,3 +1164,50 @@ describe("the #1634 CodeRabbit round: an attached string's kind", () => {
     ]);
   });
 });
+
+// #1634, CodeRabbit CLI round 4: `stdinShellIn` knew a lone `-o`/`+o` only,
+// so a script read on stdin past `-O extglob` or a clustered `-eo pipefail`
+// was no script. It reads the shell's options from `OPTION_SPECS` now, as
+// `commandOf` does.
+describe("a shell reading its script on stdin is read from the shell's own option spec (#1634)", () => {
+  const MERGE = cmd(/gh\s+pr\s+merge\b/);
+  it.each([
+    "echo 'gh pr merge 7' | bash -O extglob",
+    "echo 'gh pr merge 7' | bash -eo pipefail",
+    "echo 'gh pr merge 7' | bash +o posix",
+    "echo 'gh pr merge 7' | bash --rcfile x",
+    "echo 'gh pr merge 7' | bash -s -o x",
+    "echo 'gh pr merge 7' | sh -eu",
+    "echo 'gh pr merge 7' | bash -s a b",
+  ])("reads the script %s", (c) => {
+    expect(lexer.has(c, MERGE)).toBe(true);
+    expect(lexer.programKind(c, 6)).toMatchObject({ how: "shell", stdin: true, piped: true });
+  });
+  it.each([
+    "echo 'gh pr merge 7' | bash -O extglob x.sh",
+    "echo 'gh pr merge 7' | bash --rcfile x y.sh",
+    "echo 'gh pr merge 7' | bash -eo pipefail -c true",
+    "echo 'gh pr merge 7' | bash -O extglob </dev/null",
+  ])("reads no script where a file, a string or another input is given: %s", (c) =>
+    expect(lexer.has(c, MERGE)).toBe(false),
+  );
+  it("exports the option reader the deck-host reader shares", () => {
+    const words = ["-eo", "pipefail", "-c", "'gh pr merge 7'", "a"];
+    let i = 0;
+    const r = lexer.readCommand(lexer.shellSpec("bash"), () => words[i++]);
+    expect(r).toMatchObject({ string: 3, offset: 0, attached: false, switch: 2 });
+    let j = 0;
+    expect(lexer.readCommand(lexer.shellSpec("fish"), () => ["-d", "3", "-c'x'"][j++])).toMatchObject({
+      string: 2,
+      offset: 2,
+      attached: true,
+    });
+    let k = 0;
+    expect(lexer.readCommand(lexer.shellSpec("bash"), () => ["-s", "-o", "x", "a"][k++])).toMatchObject({
+      program: undefined,
+      string: undefined,
+      stdin: "pipe",
+    });
+    expect(lexer.commandWordsRaw(`bash -c 'a b' "c d" e`, 4)).toEqual(["-c", "'a b'", '"c d"', "e"]);
+  });
+});

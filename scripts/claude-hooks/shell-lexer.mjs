@@ -404,7 +404,7 @@ const STRING_OPEN = /\$?['"]/y;
  * takes its value, so `sudo -u gh pr merge 7` runs `pr` as the user `gh`, and
  * `bash -o pipefail -c '…'` reaches its string.
  */
-const SH_OPTIONS = { value: "oO", long: ["--rcfile", "--init-file"], string: "c", plus: true };
+const SH_OPTIONS = { value: "oO", long: ["--rcfile", "--init-file"], string: "c", positional: "s", plus: true };
 const NO_OPTIONS = { value: "", long: [] };
 /** PowerShell's parameters that take a value, with the shortest prefix pwsh takes for each. */
 const PS_VALUE_PARAMS = [
@@ -446,8 +446,16 @@ const PS_OPTIONS = {
     const attached = m[2] ?? m[3];
     if (p === "c" || p === "cwa" || spells(p, "commandwithargs", 3))
       return attached === undefined ? { string: true } : { string: true, attached: w.length - attached.length };
-    if (p === "e" || p === "ec" || spells(p, "encodedcommand", 2) || spells(p, "file", 1)) return { stop: true };
-    return { value: attached === undefined && PS_VALUE_PARAMS.some(([full, min]) => spells(p, full, min)) };
+    const glued = attached === undefined ? {} : { attached: w.length - attached.length };
+    if (p === "e" || p === "ec" || spells(p, "encodedcommand", 2)) return { stop: true, encoded: true, ...glued };
+    if (spells(p, "file", 1)) return { stop: true, file: true };
+    // `-WorkingDirectory` (`-wd`) moves where the string runs: a value option the deck-host ask resolves.
+    const dir = p === "wd" || spells(p, "workingdirectory", 2);
+    return {
+      value: attached === undefined && (dir || PS_VALUE_PARAMS.some(([full, min]) => spells(p, full, min))),
+      dir,
+      ...glued,
+    };
   },
 };
 /**
@@ -552,6 +560,20 @@ const OPTION_SPECS = new Map([
   ["cmd", CMD_OPTIONS],
 ]);
 /**
+ * The option spec of the shell word or wrapper `name` ({@link OPTION_SPECS}),
+ * by its plain name — a path and a Windows extension stripped, any case — or
+ * {@link NO_OPTIONS} for a word that takes none (`eval`, `trap`, `winpty`).
+ * What `wrapperRuns` in `script-runs.mjs` reads a shell's words with (#1634).
+ */
+export const shellSpec = (name) =>
+  OPTION_SPECS.get(
+    String(name)
+      .toLowerCase()
+      .replace(/^.*[\\/]/, "")
+      .replace(/\.exe$/, ""),
+  ) ?? NO_OPTIONS;
+
+/**
  * The wrappers whose own argument is the program they run and that are not
  * {@link SHELL_WORDS} words ({@link fedStarts}'s wrapper pass): `nice`,
  * `stdbuf` and `winpty` (Git Bash's console wrapper, with no valued option).
@@ -589,21 +611,28 @@ function readOption(spec, w) {
   }
   if (/^-[A-Za-z]/.test(w) || (spec.plus && /^\+[A-Za-z]/.test(w))) {
     let string = false;
+    let positional = false;
     for (let k = 1; k < w.length; k++) {
       // getopt takes the rest of the word as the option's argument (`su -c'…'`,
       // `fish -c'…'`); bash reads `-cx` as the flags `c` and `x`.
       if (spec.string && w[k] === spec.string && spec.attachedString && k < w.length - 1)
         return { string: true, attached: k + 1 };
       if (spec.string && w[k] === spec.string) string = true;
-      else if (spec.value.includes(w[k])) return { string, value: k === w.length - 1 };
+      else if (spec.positional && w[k] === spec.positional) positional = true;
+      else if (spec.value.includes(w[k])) return { string, positional, value: k === w.length - 1 };
     }
-    return { string };
+    return { string, positional };
   }
   return w.startsWith("-") ? {} : null;
 }
 
-/** One word of a command from where it is tried, sticky, past blanks: quotes and escapes kept whole, ending at an operator character ({@link commandOf}). */
-const COMMAND_WORD = /[ \t]*((?:"(?:[^"\\]|\\[\s\S])*"|'[^']*'|\\[\s\S]|[^\s"'\\;&|()\x60])+)/y;
+/**
+ * One word of a command from where it is tried, sticky, past blanks: quotes and
+ * escapes kept whole, ending at an operator character ({@link commandOf}) — a
+ * redirect's own `&` (`<&3`, `2>&1`, `&>log`) is part of its word, not a
+ * background job's.
+ */
+const COMMAND_WORD = /[ \t]*((?:"(?:[^"\\]|\\[\s\S])*"|'[^']*'|\\[\s\S]|[<>]&|&>|[^\s"'\\;&|()\x60])+)/y;
 /** A redirection word ({@link commandOf}); {@link BARE_REDIRECTION} is one whose target is the next word. */
 const REDIRECTION = /^\d*(?:[<>]|&>)/;
 const BARE_REDIRECTION = /^\d*(?:[<>]{1,3}-?|[<>]&|&>>?|>\|)$/;
@@ -621,50 +650,122 @@ const BARE_REDIRECTION = /^\d*(?:[<>]{1,3}-?|[<>]&|&>>?|>\|)$/;
  * a false program, never a missed string. Reading stops at a `;`, `&`, `|`,
  * paren, backtick or newline, as the command does.
  */
-function commandOf(spec, text, from, limit) {
-  COMMAND_WORD.lastIndex = from;
-  const next = () => {
-    const m = COMMAND_WORD.exec(text);
-    return m && COMMAND_WORD.lastIndex <= limit ? { w: m[1], at: COMMAND_WORD.lastIndex - m[1].length } : undefined;
+/**
+ * The words a shell word or a wrapper runs, read as it reads them ({@link
+ * readCommand}): `next` hands over one word at a time, quotes and escapes
+ * kept, and nothing more is read than the walk needs. `program`, `string`,
+ * `switch` and `dirs` are indices into the words handed over, `offset` the
+ * character of the string word where an attached string starts (`cmd /c"…"`,
+ * `su -c'…'`), `attached` whether it is one, `stop` the word after which
+ * nothing can be read (pwsh's `-File`, `-EncodedCommand`), and `stdin` where
+ * a shell with no string and no file would read its script: `"pipe"`, the
+ * here-string word as `{ index, offset }`, or `"other"` for a file, heredoc or
+ * descriptor — the last input redirection wins, an output redirection changes
+ * nothing. A value option takes its value, a redirection its target, `--` ends
+ * the options, a positional switch (bash's `-s`) makes the later plain words
+ * arguments rather than a script file, and past the program the words are
+ * still read for a string option, {@link SCANNED_WORDS} at most, so an option
+ * the spec does not know costs at worst a false program, never a missed string.
+ *
+ * The one reader of a shell's options (#1634, CodeRabbit CLI round 4): the
+ * lexer's {@link commandOf} and {@link stdinShellIn} and the deck-host ask's
+ * `wrapperRuns` in `script-runs.mjs` all walk through it, so they cannot
+ * disagree on which word is the string.
+ */
+export function readCommand(spec, next) {
+  const out = {
+    program: undefined,
+    string: undefined,
+    offset: 0,
+    attached: false,
+    switch: undefined,
+    stdin: "pipe",
+    dirs: [],
+    stop: undefined,
   };
   const scansOn = Boolean(spec.string || spec.longString || spec.read);
   let options = true;
   let stringNext = false;
+  let stringSwitch;
+  let positional = false;
   let scanned = 0;
-  let program;
-  let string;
-  let attached = false;
-  for (let word = next(); word; word = next()) {
-    if (REDIRECTION.test(word.w)) {
-      if (BARE_REDIRECTION.test(word.w) && !next()) break;
+  let k = -1;
+  const take = () => {
+    const w = next();
+    if (w !== undefined) k++;
+    return w;
+  };
+  for (let w = take(); w !== undefined; w = take()) {
+    const input = INPUT_REDIRECT.exec(w);
+    if (input || REDIRECTION.test(w)) {
+      const bare = input ? input[0].length === w.length : BARE_REDIRECTION.test(w);
+      let target = { index: k, offset: input ? input[0].length : 0 };
+      if (bare) {
+        if (take() === undefined) break;
+        target = { index: k, offset: 0 };
+      }
+      if (input) out.stdin = input[1] === "<<<" ? target : "other";
       continue;
     }
-    const o = options ? readOption(spec, word.w) : null;
-    if (o?.stop) break;
+    const o = options ? readOption(spec, w) : null;
+    if (o?.stop) {
+      out.stop = { index: k, ...o };
+      break;
+    }
     if (o?.end) {
       options = false;
       continue;
     }
     if (o) {
+      if (o.positional) positional = true;
+      if (o.dir)
+        out.dirs.push(o.attached === undefined ? { index: k + 1, offset: 0 } : { index: k, offset: o.attached });
       if (o.string && o.attached !== undefined) {
-        string = word.at + o.attached;
-        attached = true;
+        Object.assign(out, { string: k, offset: o.attached, attached: true, switch: k });
         break;
       }
-      if (o.string) stringNext = true;
-      if (o.value && !next()) break;
+      if (o.string) {
+        stringNext = true;
+        stringSwitch = k;
+      }
+      if (o.value && take() === undefined) break;
       continue;
     }
     if (stringNext) {
-      string = word.at;
+      Object.assign(out, { string: k, switch: stringSwitch });
       break;
     }
-    if (program === undefined) program = word.at;
+    if (!positional && out.program === undefined) out.program = k;
     if (!scansOn || ++scanned > SCANNED_WORDS) break;
   }
-  // `attached`: the string is glued to its switch (`cmd /c"…"`, `su -c'…'`), a
-  // form a reader of the spaced one (`bash -c '…'`) does not see.
-  return { program, string, attached };
+  return out;
+}
+
+/**
+ * {@link readCommand} over the text of a command whose program word ends at
+ * `from`, its words read up to `limit` ({@link COMMAND_WORD}): the same
+ * result with text positions in place of word indices, and `stop` as a
+ * boolean. Reading stops at a `;`, `&`, `|`, paren, backtick or newline, as
+ * the command does.
+ */
+function commandOf(spec, text, from, limit) {
+  COMMAND_WORD.lastIndex = from;
+  const ats = [];
+  const next = () => {
+    const m = COMMAND_WORD.exec(text);
+    if (!m || COMMAND_WORD.lastIndex > limit) return undefined;
+    ats.push(COMMAND_WORD.lastIndex - m[1].length);
+    return m[1];
+  };
+  const r = readCommand(spec, next);
+  const at = (i, offset = 0) => (i === undefined ? undefined : ats[i] + offset);
+  return {
+    program: at(r.program),
+    string: at(r.string, r.offset),
+    attached: r.attached,
+    stdin: typeof r.stdin === "object" ? at(r.stdin.index, r.stdin.offset) : r.stdin,
+    stop: r.stop !== undefined,
+  };
 }
 
 /**
@@ -751,8 +852,6 @@ function wordsIn(text, a, b) {
 
 /** A redirection that gives a command its stdin: `<`, `<<`, `<<<`, `<&`, `<>`, with an optional fd 0. Group 1 is the operator. */
 const INPUT_REDIRECT = /^0?(<<<|<<-?|<&|<>|<)(?!\()/;
-/** A redirection of an output descriptor (`>`, `>>`, `>|`, `&>`, `2>&1`, `1<&-` aside), which leaves stdin as it is. */
-const OUTPUT_REDIRECT = /^(?:\d*(?:>>?|>\||>&)|&>>?|[1-9]\d*<[&>]?)/;
 
 /**
  * Where the shell the pipeline stage `[s, e)` of `text` runs reads its script
@@ -760,37 +859,22 @@ const OUTPUT_REDIRECT = /^(?:\d*(?:>>?|>\||>&)|&>>?|[1-9]\d*<[&>]?)/;
  * when a {@link STDIN_SHELL} word that is the program ({@link programKindIn},
  * so `sudo bash` too) reads it from the pipeline, or the index of the word a
  * here-string hands it when that is its last input redirection; `via` the
- * shell word. `undefined` when it reads no stdin script. Its own words are
- * options only — a `-c` (`-xc` included) or a script-file word means no stdin
- * script, the value of `-o` is skipped, and everything after a `-s` is its
- * positional parameters — and the last input redirection among them is its
- * stdin, as bash takes it: a file, a heredoc or a descriptor (`</dev/null`,
- * `0<f`, `<&3`) replaces the pipe. An output redirection changes nothing.
+ * shell word. `undefined` when it reads no stdin script. Its words are read
+ * from the shell's own option spec ({@link readCommand} through {@link
+ * commandOf}, #1634, CodeRabbit CLI round 4): a string switch (`-c`, `-xc`,
+ * `-eo pipefail -c`) or a script-file word means no stdin script, a value
+ * option (`-o pipefail`, `-O extglob`, `--rcfile x`) takes its value,
+ * everything after a `-s` is its positional parameters, and the last input
+ * redirection among them is its stdin, as bash takes it: a file, a heredoc or
+ * a descriptor (`</dev/null`, `0<f`, `<&3`) replaces the pipe. An output
+ * redirection changes nothing.
  */
 function stdinShellIn(text, byName, [s, e]) {
   for (const m of text.slice(s, e).matchAll(STDIN_SHELL)) {
     if (!byName.has(s + m.index)) continue;
-    const words = wordsIn(text, s + m.index + m[0].length, e);
-    let input = "pipe";
-    let positional = false;
-    for (let k = 0; k < words.length; k++) {
-      const { w } = words[k];
-      const redirect = INPUT_REDIRECT.exec(w);
-      if (redirect) {
-        // The target is attached, or the next word.
-        const bare = redirect[0].length === w.length;
-        const target = bare ? words[++k] : { at: words[k].at + redirect[0].length };
-        input = redirect[1] === "<<<" && target ? target.at : "other";
-      } else if (OUTPUT_REDIRECT.test(w)) {
-        // A bare operator takes the next word as its target.
-        if (/^\d*(?:>>?|>\||&>>?|>&|<&|<>|<)$/.test(w)) k++;
-      } else if (positional || w.startsWith("--")) continue;
-      else if (w === "-o" || w === "+o") k++;
-      else if (/^[-+][A-Za-z]*c/.test(w)) return undefined;
-      else if (/^-[A-Za-z]*s/.test(w)) positional = true;
-      else if (!/^[-+]/.test(w)) return undefined;
-    }
-    return input === "other" ? undefined : { input, via: m[0] };
+    const r = commandOf(shellSpec(m[0]), text, s + m.index + m[0].length, e);
+    if (r.string !== undefined || r.program !== undefined || r.stop || r.stdin === "other") return undefined;
+    return { input: r.stdin, via: m[0] };
   }
   return undefined;
 }
@@ -2589,6 +2673,22 @@ export function commandWords(text, from) {
     } else add(ch);
   }
   if (word !== undefined) out.push(word);
+  return out;
+}
+
+/**
+ * The words of the command whose arguments start at `from` in `text`, as
+ * {@link readCommand} wants them: quotes and escapes kept, each word whole
+ * ({@link COMMAND_WORD}), up to an unquoted `;`, `&`, `|`, paren, backtick or
+ * newline. The deck-host ask hands these to `wrapperRuns`, which decodes a
+ * word ({@link shellWords}) only once the walk has chosen it — so an attached
+ * `-c"…"` is still seen as one, where {@link commandWords} would have handed
+ * over `-c…` with its quotes gone (#1634, CodeRabbit CLI round 4).
+ */
+export function commandWordsRaw(text, from) {
+  const out = [];
+  COMMAND_WORD.lastIndex = from;
+  for (let m; (m = COMMAND_WORD.exec(text));) out.push(m[1]);
   return out;
 }
 

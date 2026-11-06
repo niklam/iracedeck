@@ -53,10 +53,13 @@ import {
   chainCommands,
   cmd,
   commandWords,
+  commandWordsRaw,
   matchesAt,
   POWERSHELL,
   powershellAsBash,
+  readCommand,
   resolveDir,
+  shellSpec,
   shellWords,
   trustedMask,
 } from "./shell-lexer.mjs";
@@ -561,25 +564,48 @@ function nodeRuns(tokens, base, shell) {
  * command arguments are read — never a quoted string merely because it is
  * quoted, so `git commit -m "… pnpm restart:stream-deck …"` stays a mention.
  *
- * - bash, sh and their kin ({@link shRuns}): the word after the options when
- *   one of them is `-c`.
+ * The shell's options are read as the lexer reads them — `readCommand` over
+ * `shellSpec(name)` in `shell-lexer.mjs`, the one spec of each shell's valued
+ * options, string switch and positional switch (#1634, CodeRabbit CLI round
+ * 4) — so a string the lexer finds the reader finds too, spaced or glued to
+ * its switch, past every valued option: the lexer skips its own match of the
+ * trap word inside such a string because this reader judges it, and the two
+ * cannot disagree. The words arrive with their quotes (`commandWordsRaw`), so
+ * an attached `-c"…"` is seen as the string it is; each is decoded as bash
+ * reads it ({@link shellWords}) only once the walk has chosen it.
+ *
+ * - bash, sh and their kin, fish: the string after `-c` (`-lc`, `-eo pipefail
+ *   -c`, fish's `-c'…'` and `--command`), one word, read as bash. A shell run
+ *   on a file or on its stdin runs nothing this reader can read.
  * - cmd.exe: every word after `/c` or `/k` (`//c` from Git Bash, which would
- *   turn `/c` into a path), read as cmd.exe reads it.
+ *   turn `/c` into a path; `/c"…"` glued), read as cmd.exe reads it.
  * - Windows PowerShell and pwsh ({@link powershellRuns}).
  * - `eval`: its words joined, read as bash; `Invoke-Expression` / `iex`:
  *   likewise past a `-Command`, read as PowerShell.
  */
 function wrapperRuns(tokens, dir, shell) {
-  const [name, ...words] = tokens;
-  if (isPowerShell(name)) return powershellRuns(name, words, dir, shell);
-  if (isSh(name)) return shRuns(name, words, dir);
-  if (isCmdExe(name)) {
-    const at = words.findIndex((w) => /^\/\/?[ck]/i.test(w));
-    const m = at >= 0 ? words[at].match(/^\/\/?([ck])([\s\S]*)$/i) : null;
-    return m ? lineRun(`${name} /${m[1].toLowerCase()}`, dir, [m[2], ...words.slice(at + 1)]) : [];
+  const [name, ...raw] = tokens;
+  let i = 0;
+  const read = readCommand(shellSpec(name), () => raw[i++]);
+  // Decoded as bash reads a word (`$'…'` included), only once the walk has
+  // chosen it: the walk itself needs the quotes to tell `-c"…"` from a flag
+  // cluster. A word a runner already decoded (`pnpm exec sh -c "…"` hands its
+  // words through `shellWords`) decodes to itself.
+  const decode = (w) => commandWords(w, 0).join(" ");
+  const from = (k, offset = 0) => [raw[k].slice(offset), ...raw.slice(k + 1)].map(decode);
+  if (isPowerShell(name)) return powershellRuns(name, raw, read, dir, shell, decode, from);
+  if (isSh(name)) {
+    if (read.string === undefined) return [];
+    const label = /^--/.test(raw[read.switch]) ? `${name} --command` : `${name} -c`;
+    return lineRun(label, dir, [decode(raw[read.string].slice(read.offset))], BASH);
   }
-  if (/^eval$/i.test(name)) return lineRun(name, dir, words, BASH);
-  return lineRun(name, dir, /^-c/i.test(words[0] ?? "") ? words.slice(1) : words, POWERSHELL);
+  if (isCmdExe(name)) {
+    if (read.string === undefined) return [];
+    const letter = raw[read.switch].replace(/^\/+/, "")[0].toLowerCase();
+    return lineRun(`${name} /${letter}`, dir, from(read.string, read.offset));
+  }
+  if (/^eval$/i.test(name)) return lineRun(name, dir, raw.map(decode), BASH);
+  return lineRun(name, dir, /^-c/i.test(raw[0] ?? "") ? raw.slice(1).map(decode) : raw.map(decode), POWERSHELL);
 }
 
 /** The run of a command line made of `words` joined, read as `as` reads it; none for an empty line. */
@@ -589,101 +615,33 @@ function lineRun(label, dir, words, as) {
 }
 
 /**
- * bash, sh, zsh, dash, ksh or fish handed a string: `-c`, alone or in a
- * cluster (`-lc`, `-ec`), makes the first word after the options the line,
- * read as bash; `-o` / `+o` / `-O` / `+O`, also at the end of a cluster
- * (`-eo pipefail`, `+eo posix`), `--rcfile` and `--init-file` take a value,
- * and fish's `--command` carries the line itself. A shell run on a file or on
- * its stdin runs nothing the hook can read.
+ * Windows PowerShell or pwsh handed a string, read as PowerShell from what
+ * `readCommand` found over the shell's spec (`PS_OPTIONS` in
+ * `shell-lexer.mjs`): every word after `-Command` (`-c`, any unambiguous
+ * prefix, `-CommandWithArgs`, with `-`, `--` or `/`, glued or not) is the
+ * line, and so is the decoded base64 UTF-16 of `-EncodedCommand` (`-e`,
+ * `-ec`); `-File` runs a file the hook cannot read. With none of them the
+ * first word that is no option starts the line — powershell.exe's default,
+ * which over-reaches for pwsh's. When a `-Command` follows such a word, that
+ * word may be the value of an option the spec does not know, so both lines
+ * are judged. `-WorkingDirectory` (`-wd`) ahead of them moves where the line
+ * runs.
  */
-function shRuns(name, words, dir) {
-  let command = false;
-  for (let i = 0; i < words.length; i++) {
-    const w = words[i];
-    const long = w.match(/^--command(?:=([\s\S]*))?$/);
-    if (long) return lineRun(`${name} --command`, dir, [long[1] ?? words[i + 1] ?? ""], BASH);
-    if (w === "--") return command ? lineRun(`${name} -c`, dir, [words[i + 1] ?? ""], BASH) : [];
-    if (w === "--rcfile" || w === "--init-file") i++;
-    else if (/^[-+][A-Za-z]+$/.test(w)) {
-      if (w[0] === "-") command ||= w.includes("c");
-      // The value of a trailing `o` / `O` is the next word, never a script file (#1634).
-      if (/[oO]$/.test(w)) i++;
-    } else if (!/^[-+]/.test(w)) return command ? lineRun(`${name} -c`, dir, [w], BASH) : [];
-  }
-  return [];
-}
-
-/** Whether `p` spells PowerShell's parameter `full` — at least its first `min` letters, as `pwsh` accepts an unambiguous prefix. */
-const spells = (p, full, min) => p.length >= min && full.startsWith(p);
-/** PowerShell's command-line parameters that take a value, besides the ones read on their own. */
-const PS_VALUE_PARAMS = [
-  ["executionpolicy", 2],
-  ["ep", 2],
-  ["windowstyle", 1],
-  ["inputformat", 3],
-  ["if", 2],
-  ["outputformat", 1],
-  ["of", 2],
-  ["configurationname", 6],
-  ["configurationfile", 6],
-  ["custompipename", 2],
-  ["settingsfile", 2],
-  ["psconsolefile", 2],
-  ["version", 1],
-  ["encodedarguments", 8],
-  ["ea", 2],
-];
-
-/**
- * Windows PowerShell or pwsh handed a string, read as PowerShell: every word
- * after `-Command` (`-c`, any unambiguous prefix, `-CommandWithArgs`, with `-`,
- * `--` or `/`) is the line, and so is the decoded base64 UTF-16 of
- * `-EncodedCommand` (`-e`, `-ec`); `-File` runs a file the hook cannot read.
- * With none of them the first word that is no option starts the line —
- * powershell.exe's default, which over-reaches for pwsh's. When one of them
- * follows such a word, that word may be the value of an option this reader
- * does not know, so both lines are judged. `-WorkingDirectory` (`-wd`) ahead
- * of them moves where the line runs.
- */
-function powershellRuns(name, words, dir, shell) {
-  const param = (w) => {
-    const m = w.match(/^(?:--?|\/)([A-Za-z]+)(?::([\s\S]*))?$/);
-    return m && { p: m[1].toLowerCase(), value: m[2] };
-  };
-  const kind = (p) =>
-    p === "c" || p === "cwa" || spells(p, "commandwithargs", 3)
-      ? "command"
-      : p === "e" || p === "ec" || spells(p, "encodedcommand", 2)
-        ? "encoded"
-        : spells(p, "file", 1)
-          ? "file"
-          : p === "wd" || spells(p, "workingdirectory", 2)
-            ? "dir"
-            : PS_VALUE_PARAMS.some(([full, min]) => spells(p, full, min))
-              ? "value"
-              : "switch";
-  const explicit = words.some((w) => /^(?:command|encoded|file)$/.test(kind(param(w)?.p ?? "")));
-  const runs = [];
+function powershellRuns(name, raw, read, dir, shell, decode, from) {
   let at = dir;
-  for (let i = 0; i < words.length; i++) {
-    const opt = param(words[i]);
-    if (!opt) {
-      if (!runs.length) runs.push(...lineRun(name, at, words.slice(i), POWERSHELL));
-      if (explicit) continue;
-      return runs;
-    }
-    const k = kind(opt.p);
-    const value = opt.value ?? words[i + 1];
-    if (k === "command")
-      return [...runs, ...lineRun(`${name} -Command`, at, [opt.value ?? "", ...words.slice(i + 1)], POWERSHELL)];
-    if (k === "encoded") {
-      if (!/^[A-Za-z0-9+/]+=*$/.test(value ?? "")) return runs;
-      const line = Buffer.from(value, "base64").toString("utf16le");
-      return [...runs, ...lineRun(`${name} -EncodedCommand`, at, [line], POWERSHELL)];
-    }
-    if (k === "file") return runs;
-    if (k === "dir" && value) at = resolveDir(dir, value, { shell });
-    if ((k === "dir" || k === "value") && opt.value === undefined) i++;
+  for (const d of read.dirs)
+    if (raw[d.index] !== undefined) at = resolveDir(dir, decode(raw[d.index].slice(d.offset)), { shell });
+  const runs = [];
+  if (read.program !== undefined) runs.push(...lineRun(name, at, from(read.program), POWERSHELL));
+  if (read.string !== undefined)
+    return [...runs, ...lineRun(`${name} -Command`, at, from(read.string, read.offset), POWERSHELL)];
+  if (read.stop?.encoded) {
+    const value =
+      read.stop.attached === undefined ? raw[read.stop.index + 1] : raw[read.stop.index].slice(read.stop.attached);
+    const encoded = value === undefined ? "" : decode(value);
+    if (!/^[A-Za-z0-9+/]+=*$/.test(encoded)) return runs;
+    const line = Buffer.from(encoded, "base64").toString("utf16le");
+    return [...runs, ...lineRun(`${name} -EncodedCommand`, at, [line], POWERSHELL)];
   }
   return runs;
 }
@@ -729,23 +687,21 @@ export function deckFindings(c, cwd, ctx, shell, trail = []) {
     if (app) found.push(`\`${head.replace(/^[\s|;&()`]+/, "").trim()} … ${app[0]}\` stops or starts a deck host app`);
   }
   for (const { re, read, whole } of RUNNERS)
-    for (const { base, start, args, at, cut, how, via, stdin, attached } of chainCommands(c, cwd, re, shell)) {
+    for (const { base, start, args, at, cut, how, via, stdin } of chainCommands(c, cwd, re, shell)) {
       // The first word of a string a shell wrapper is handed (#1634) is read
-      // through that wrapper's own string, below, as a command line: judging
+      // through that wrapper's own string, below, as a command line, with the
+      // same option spec the lexer found it by ({@link wrapperRuns}): judging
       // it here too would name the same restart twice. A string a shell reads
       // on stdin, and what `sudo`, `trap`, `watch` or `su` run, no wrapper
-      // reads, so those are judged here — and so is a string glued to its
-      // switch (`fish -c'…'`, `pwsh -c"…"`), which `commandWords` hands the
-      // readers below with its quotes gone, unreadable as a string; cmd.exe's
-      // `/c…` is the one attached form its reader takes (CodeRabbit on #1634).
-      if (how === "shell" && !stdin && isWrapper(via) && (!attached || isCmdExe(via))) continue;
+      // reads, so those are judged here.
+      if (how === "shell" && !stdin && isWrapper(via)) continue;
       // A shell wrapper's name as the rewritten text spells it (#1606): `bash`
       // for `"/usr/bin/bash"`, `pwsh` for `pwsh.exe`.
       const name = () =>
         trustedMask(c)
           .slice(start, at)
           .match(/[^\s|;&()\x60]+$/)?.[0] ?? "";
-      const tokens = whole ? [name(), ...commandWords(c, at)] : shellWords(args);
+      const tokens = whole ? [name(), ...commandWordsRaw(c, at)] : shellWords(args);
       // A substitution cut the arguments short: it and what follows it are
       // unread. Glued to a word (`$(`, `--x=\``), it ends that word.
       if (!whole && (cut === "(" || cut === "\x60"))

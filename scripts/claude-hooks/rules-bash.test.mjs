@@ -4996,3 +4996,57 @@ describe("the #1634 CodeRabbit round: attached strings and a quoted push", () =>
     expect(asks("git.exe push origin v1.2.3")).toMatch(/release/);
   });
 });
+
+// #1634, CodeRabbit CLI round 4: three hand-rolled option readers disagreed
+// (the lexer's `commandOf`, `stdinShellIn`, the deck ask's `shRuns`). One
+// source of truth now — `OPTION_SPECS` through `readCommand` — and this table
+// pins the agreement: for each shell and option line the lexer finds the
+// string (a merge inside it is refused), the deck ask finds the same string
+// exactly once, and a vitest inside it is refused.
+describe("the lexer and the deck-host reader read a shell's options from one spec (#1634)", () => {
+  const head = "1".repeat(40);
+  const green = () => ({
+    number: 7,
+    url: "https://github.com/niklam/iracedeck/pull/7",
+    state: "OPEN",
+    headRefOid: head,
+    headRefName: "ir-7",
+    reviewDecision: "APPROVED",
+    mergeStateStatus: "CLEAN",
+    statusCheckRollup: [{ __typename: "CheckRun", name: "Tests", status: "COMPLETED", conclusion: "SUCCESS" }],
+    reviews: [{ author: { login: "coderabbitai" }, state: "APPROVED", commit: { oid: head } }],
+  });
+  const LINES = [
+    (s) => `bash -eo pipefail -c '${s}'`,
+    (s) => `bash -O extglob -c '${s}'`,
+    (s) => `bash +o posix -c '${s}'`,
+    (s) => `bash --rcfile x -c '${s}'`,
+    (s) => `sh -eu -c '${s}'`,
+    (s) => `fish -d 3 -c '${s}'`,
+    (s) => `fish -C x -c '${s}'`,
+    (s) => `fish --init-command x -c '${s}'`,
+    (s) => `fish -c'${s}'`,
+    (s) => `pwsh -ep Bypass -c "${s}"`,
+    (s) => `pwsh -wd x -c "${s}"`,
+    (s) => `pwsh -c"${s}"`,
+    (s) => `cmd /d /s /c "${s}"`,
+    (s) => `cmd /c"${s}"`,
+    (s) => `echo '${s}' | bash -eo pipefail`,
+    (s) => `echo '${s}' | bash -O extglob`,
+    (s) => `echo '${s}' | bash -s -o x`,
+    (s) => `echo '${s}' | sh -eu`,
+    (s) => `echo '${s}' | bash --rcfile x`,
+  ];
+  it.each(LINES.map((line) => [line("…"), line]))("agree on the string in %s", (_, line) => {
+    expect(deny(line("gh pr merge 7 --squash"), ctx({ prView: green }))).toMatch(/is not its own command/);
+    expect(deny(line("pnpm exec vitest run"))).toMatch(/pnpm test <path>/);
+    const ask = asks(line("pnpm restart:stream-deck"));
+    expect(ask.match(/restart:stream-deck/g), ask).toHaveLength(1);
+  });
+  it("passes a shell that reads a script file, or runs nothing readable", () => {
+    passes("echo 'pnpm restart:stream-deck' | bash x.sh");
+    passes("echo 'pnpm restart:stream-deck' | bash -c true");
+    passes("echo 'gh pr merge 7' | bash --rcfile x y.sh", ctx({ prView: green }));
+    passes("fish -d 3 x.fish");
+  });
+});
