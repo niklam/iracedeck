@@ -12,7 +12,7 @@ Two facts shape the merge. Master's ruleset requires one approving review, and N
 
 ## Decision
 
-**Which PRs skip CodeRabbit.** A PR whose every changed file is Claude-facing prose: `.claude/rules/**`, `.claude/skills/**`, `.claude/agents/**`, or a file named `CLAUDE.md` anywhere. Nothing else qualifies: not `.claude/settings.json`, which wires the hooks; not a changelog fragment, a website page or `README.md`, which users read; not a script or a test, however small. These files already need no draft approval, and their review is the local `/code-review` at `medium` plus the CodeRabbit CLI round, which draws on its own allowance rather than the PR one. Such a PR is opened with `--label no-coderabbit`, at `gh pr create`, since the review it saves is the one that runs on open.
+**Which PRs skip CodeRabbit.** A PR whose every changed file is Claude-facing prose: a Markdown file under `.claude/rules/`, `.claude/skills/` or `.claude/agents/` (`**/*.md`), or a file named `CLAUDE.md` anywhere. Markdown only, so a script a skill carries one day is code and does not qualify. Nothing else qualifies: not `.claude/settings.json`, which wires the hooks; not a changelog fragment, a website page or `README.md`, which users read; not a script or a test, however small. These files already need no draft approval, and their review is the local `/code-review` at `medium` plus the CodeRabbit CLI round, which draws on its own allowance rather than the PR one. Such a PR is opened with `--label no-coderabbit`, at `gh pr create`, since the review it saves is the one that runs on open.
 
 **One list, in one module.** The globs live in a new `scripts/claude-hooks/no-review-paths.mjs`, exporting the list and a `isNoReviewPath(path)` matcher. The gate imports it, `code-review.md` states the same list in prose, and a test reads that section of `code-review.md` and fails when the two differ, so widening the list is one edit plus the rule's sentence.
 
@@ -26,7 +26,7 @@ A non-qualifying `--admin` behaves exactly as today: the review checks are skipp
 
 **How the files are read.** With git, not the PR's GraphQL `files`: `git diff --no-renames --name-only <merge-base of baseRefOid and head>..<head>`, at the repository root, fetching a missing commit from `origin` by sha the way `replayRebase` already does. `--no-renames` lists both sides of a rename, so moving `scripts/x.mjs` into `.claude/rules/` shows the deleted script and refuses; GraphQL reports a rename by its new path only. The read is pinned to the head sha the merge is pinned to. Anything that fails — the fetch, the merge base, the diff, an empty list — refuses, naming what failed.
 
-**Dependabot.** Its PRs are never reviewed by CodeRabbit (`ignore_usernames`), so they are unapproved too, and the documented route for them is `--admin`. The author check reads the PR's `author` as GraphQL gives it: the `Bot` with login `dependabot`. Their files are lockfiles and manifests, which CI covers; the list is not consulted for them.
+**Dependabot.** Its PRs are never reviewed by CodeRabbit (`ignore_usernames`), so they are unapproved too, and the documented route for them is `--admin`. The author check reads the PR's `author` as `gh pr view` gives it: `is_bot: true` with login `app/dependabot` (a user login cannot hold a `/`). Their files are lockfiles and manifests, which CI covers; the list is not consulted for them.
 
 ## Alternatives rejected
 
