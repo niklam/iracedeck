@@ -23,7 +23,7 @@ import path from "node:path";
 import { DEBUG_VALUE, ELGATO_MANIFEST, manifestDebug } from "../lib/debug-plugin.mjs";
 import { FULL_SHA, rangeChain, readSummary } from "./coderabbit-summary.mjs";
 import { INTEGRATION_BRANCH, INTEGRATION_TREE, MAIN_BRANCH, SPEC_DIR } from "./lib.mjs";
-import { isNoReviewPath, NO_REVIEW_PATHS } from "./no-review-paths.mjs";
+import { frontmatterChanged, hasConfigFrontmatter, isNoReviewPath, NO_REVIEW_PATHS } from "./no-review-paths.mjs";
 import { assignedGhRepo, HOME_REPO, isHomeRepo, mergeRepo, repoOfUrl } from "./rules-post.mjs";
 import { findControlByte } from "./rules-tools.mjs";
 import { deckFindings } from "./script-runs.mjs";
@@ -835,17 +835,24 @@ const isDependabot = (author) => author?.is_bot === true && author?.login === "a
 /** Dependabot's commit author line, as GitHub writes it on every commit it makes. */
 export const DEPENDABOT_COMMIT_AUTHOR = "dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>";
 
+/** The committer line GitHub writes on Dependabot's commits; a local amend or rebase replaces it. */
+export const GITHUB_COMMITTER = "GitHub <noreply@github.com>";
+
 /**
  * Whether an `--admin` merge is one the bypass is for (#1648): `{ ok: true }`,
- * or `{ ok: false, why, off }` with the reason, and the files off the list
- * when that is the reason. It is when Dependabot opened the PR and wrote
- * every commit on it, or when every file the PR changes is Claude-facing
- * prose (`NO_REVIEW_PATHS`); both are read with git at the head
- * (`prChangedFiles` in `lib.mjs`), never from the `no-coderabbit` label, which
- * only decides whether CodeRabbit spends a review. A Dependabot PR carrying
- * anyone else's commit is judged on its files like any PR. A read that fails
- * is a no, never a pass, and a release back-merge is never one: the bypass
- * keeps `--squash`.
+ * or `{ ok: false, why, offList }` with the reason, and whether files off the
+ * list are part of it. It is when Dependabot opened the PR and made every
+ * commit on it — Dependabot's author line and GitHub's committer line, so an
+ * edit amended or rebased into Dependabot's own commit, which keeps the
+ * author, is caught too — or when every file the PR changes is Claude-facing
+ * prose (`NO_REVIEW_PATHS`) and no skill's or agent's frontmatter, which is
+ * configuration, changed between the merge-base and the head (an added or
+ * deleted skill or agent file counts as changed). All of it is read with git
+ * at the head (`prChangedFiles` in `lib.mjs`), never from the `no-coderabbit`
+ * label, which only decides whether CodeRabbit spends a review. A Dependabot
+ * PR carrying anyone else's commit is judged on its files like any PR. A read
+ * that fails is a no, never a pass, and a release back-merge is never one:
+ * the bypass keeps `--squash`.
  */
 function adminQualifies(pr, ctx, isBackMerge) {
   if (isBackMerge) return { ok: false, why: "a release back-merge never is" };
@@ -856,12 +863,28 @@ function adminQualifies(pr, ctx, isBackMerge) {
       why: `the gate could not read the files it changes: ${read?.reason ?? "the read did not run"}`,
     };
   const byDependabot = isDependabot(pr.author);
-  if (byDependabot && read.authors?.length && read.authors.every((a) => a === DEPENDABOT_COMMIT_AUTHOR))
+  const commits = Array.isArray(read.commits) ? read.commits : [];
+  if (
+    byDependabot &&
+    commits.length &&
+    commits.every((c) => c?.author === DEPENDABOT_COMMIT_AUTHOR && c?.committer === GITHUB_COMMITTER)
+  )
     return { ok: true };
   const off = read.files.filter((f) => !isNoReviewPath(f));
-  if (off.length === 0) return { ok: true };
-  const foreign = byDependabot ? " (Dependabot opened it, but not every commit on it is Dependabot's)" : "";
-  return { ok: false, why: `it changes ${names(off)}, off the prose list${foreign}`, off };
+  // A missing pair reads as a change: `frontmatterChanged` takes an absent side as one.
+  const config = read.files.filter(
+    (f) =>
+      isNoReviewPath(f) && hasConfigFrontmatter(f) && frontmatterChanged(read.blobs?.[f]?.base, read.blobs?.[f]?.head),
+  );
+  if (off.length === 0 && config.length === 0) return { ok: true };
+  const why = [];
+  if (off.length) why.push(`it changes ${names(off)}, off the prose list`);
+  if (config.length)
+    why.push(
+      `the frontmatter of ${names(config)} changed, or the file is new or deleted, and a skill's or agent's frontmatter is configuration`,
+    );
+  const foreign = byDependabot ? " (Dependabot opened it, but not every commit on it is Dependabot's own)" : "";
+  return { ok: false, why: why.join("; ") + foreign, offList: true };
 }
 
 /**
@@ -873,30 +896,34 @@ function adminQualifies(pr, ctx, isBackMerge) {
  * `mergeStateStatus` says — an unapproved PR reads `UNKNOWN` while GitHub
  * computes it.
  *
+ * - **Changes requested:** refused first, qualifying or not and whatever the
+ *   merge state, since no prompt stands in for answering a review.
  * - **Not qualifying:** refused while it is BLOCKED (an unapproved PR off the
  *   list has no business merging), otherwise an ask, so it runs only on
- *   Niklas's word. Either way the files off the list, or the failed read, are
- *   named.
+ *   Niklas's word. Either way what disqualified it is named.
  * - **Qualifying:** the merge must be pinned with the full
  *   `--match-head-commit <head>`, the head the files were read at, so a push
- *   between the read and the merge cannot slip a file in; a review that
- *   asked for changes refuses whatever the merge state; and every status
+ *   between the read and the merge cannot slip a file in; and every status
  *   check the base branch's rules require must be in the rollup and green
  *   (`requiredStatusChecks` in `lib.mjs`), since BLOCKED, which the bypass
  *   sets aside for the missing approval, also stands for a required check
- *   that never reported. A rule set the gate cannot read refuses.
+ *   that never reported. A rule set the gate cannot read refuses; one that
+ *   requires no check (a `release/*` base today) passes, unless the PR is
+ *   BLOCKED, where an empty set contradicts the block.
  *
  * Spec: `docs/superpowers/specs/2026-11-07-issue-1648-no-coderabbit-admin-merge.md`.
  */
 function adminVerdict(merge, pr, ctx, isBackMerge) {
   const head = pr.headRefOid;
   const at = `PR #${pr.number} at ${head.slice(0, 9)}`;
+  if (pr.reviewDecision === "CHANGES_REQUESTED")
+    return `Not merging ${at}: a review asked for changes (CHANGES_REQUESTED), which \`--admin\` never passes.`;
   const list = `${NO_REVIEW_PATHS.join(", ")}; .claude/rules/code-review.md, "PRs that skip CodeRabbit"`;
   const q = adminQualifies(pr, ctx, isBackMerge);
   if (!q.ok) {
     if (pr.mergeStateStatus === "BLOCKED")
       return `Not merging ${at}: it is BLOCKED for want of an approval (REVIEW_REQUIRED), and \`--admin\` passes that only for a PR whose every file is Claude-facing prose (${list}) or one Dependabot wrote whole — ${q.why}${
-        q.off
+        q.offList
           ? ", so it needs CodeRabbit's review and an approval: take any `no-coderabbit` label off and ask `@coderabbitai review`"
           : ""
       }.`;
@@ -907,15 +934,16 @@ function adminVerdict(merge, pr, ctx, isBackMerge) {
   // GitHub takes only a full sha here, so a prefix would be a merge that can never go through.
   if (!FULL_SHA.test(merge.pin ?? "") || merge.pin !== head)
     return `Not merging ${at}: it may merge under \`--admin\` only at the head the gate read, so pin it: add \`--match-head-commit ${head}\`.`;
-  if (pr.reviewDecision === "CHANGES_REQUESTED")
-    return `Not merging ${at}: a review asked for changes (CHANGES_REQUESTED), which \`--admin\` never passes.`;
+  const base = pr.baseRefName ?? "the base branch";
   const required = ctx.requiredChecks?.(repoOfUrl(pr.url), pr.baseRefName, ctx.cwd);
-  if (!required?.ok)
-    return `Not merging ${at}: the gate could not read the status checks ${pr.baseRefName ?? "the base branch"} requires (${required?.reason ?? "the read did not run"}), and \`--admin\` must not skip one.`;
+  if (!required?.ok || !Array.isArray(required.contexts))
+    return `Not merging ${at}: the gate could not read the status checks ${base} requires (${required?.reason ?? "the read did not run"}), and \`--admin\` must not skip one.`;
+  if (required.contexts.length === 0 && pr.mergeStateStatus === "BLOCKED")
+    return `Not merging ${at}: it is BLOCKED, yet the rules of ${base} require no status check, so the gate cannot tell what blocks it beyond the missing approval.`;
   const rollup = pr.statusCheckRollup ?? [];
   const missing = required.contexts.filter((c) => !rollup.some((x) => checkName(x) === c && classifyCheck(x) === "ok"));
   if (missing.length)
-    return `Not merging ${at}: ${pr.baseRefName} requires ${names(missing)}, not reported green at the head, and \`--admin\` must not skip a required check.`;
+    return `Not merging ${at}: ${base} requires ${names(missing)}, not reported green at the head, and \`--admin\` must not skip a required check.`;
   return null;
 }
 

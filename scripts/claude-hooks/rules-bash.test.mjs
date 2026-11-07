@@ -11,6 +11,7 @@ import {
   firstMerge,
   GIT_COMMIT,
   GIT_WORKTREE_REMOVE,
+  GITHUB_COMMITTER,
   issueEdits,
   issueFromWorktreePath,
   missingSpecParts,
@@ -1245,8 +1246,22 @@ describe("gh pr merge", () => {
       "scripts/CLAUDE.md",
       "packages/deck-core/CLAUDE.md",
     ];
-    const NIKLAS = "Niklas Lampén <niklas@lampen.fi>";
-    const prose = (files = PROSE, authors = [NIKLAS]) => ({ ok: true, files, authors });
+    const NIKLAS = { author: "Niklas Lampén <niklas@lampen.fi>", committer: "Niklas Lampén <niklas@lampen.fi>" };
+    const BOT = { author: DEPENDABOT_COMMIT_AUTHOR, committer: GITHUB_COMMITTER };
+    const SKILL = "---\nname: x\nallowed-tools: Read\n---\n\nBody.\n";
+    /** Both sides of every skill or agent file in `files`, its frontmatter untouched and its body edited. */
+    const bodyEdits = (files) =>
+      Object.fromEntries(
+        files
+          .filter((f) => /^\.claude\/(skills|agents)\//.test(f))
+          .map((f) => [f, { base: SKILL, head: SKILL.replace("Body.", "Body, edited.") }]),
+      );
+    const prose = (files = PROSE, commits = [NIKLAS], blobs = bodyEdits(files)) => ({
+      ok: true,
+      files,
+      commits,
+      blobs,
+    });
     /** A context whose file read and rules read answer as given, recording each call. */
     const arrange = (read = prose(), pr = unapproved(), required = { ok: true, contexts: [...REQUIRED] }) => {
       const calls = [];
@@ -1301,18 +1316,15 @@ describe("gh pr merge", () => {
     });
 
     it("passes a PR Dependabot opened and wrote whole, on its own files", () => {
-      const { c, calls } = arrange(prose(["package.json", "pnpm-lock.yaml"], [DEPENDABOT_COMMIT_AUTHOR]), dependabot());
+      const { c, calls } = arrange(prose(["package.json", "pnpm-lock.yaml"], [BOT]), dependabot());
       passes(pinned, c);
       expect(calls).toHaveLength(1);
-      const two = arrange(
-        prose(["pnpm-lock.yaml"], [DEPENDABOT_COMMIT_AUTHOR, DEPENDABOT_COMMIT_AUTHOR]),
-        dependabot(),
-      );
+      const two = arrange(prose(["pnpm-lock.yaml"], [BOT, BOT]), dependabot());
       passes(pinned, two.c);
     });
 
     it("judges a Dependabot PR carrying anyone else's commit on its files", () => {
-      const mixed = [DEPENDABOT_COMMIT_AUTHOR, NIKLAS];
+      const mixed = [BOT, NIKLAS];
       const said = deny(pinned, arrange(prose(["pnpm-lock.yaml"], mixed), dependabot()).c);
       expect(said).toContain(
         "it changes pnpm-lock.yaml, off the prose list (Dependabot opened it, but not every commit",
@@ -1323,6 +1335,14 @@ describe("gh pr merge", () => {
       ).toMatch(/not every commit on it is Dependabot's/);
       // On the list, it passes as prose.
       passes(pinned, arrange(prose([".claude/rules/a.md"], mixed), dependabot()).c);
+      // An edit amended or rebased into Dependabot's own commit keeps its author, not GitHub's committer.
+      const amended = [{ author: DEPENDABOT_COMMIT_AUTHOR, committer: NIKLAS.committer }];
+      expect(deny(pinned, arrange(prose(["pnpm-lock.yaml"], amended), dependabot()).c)).toContain(
+        "it changes pnpm-lock.yaml, off the prose list (Dependabot opened it, but not every commit",
+      );
+      expect(deny(pinned, arrange(prose(["pnpm-lock.yaml"], [BOT, ...amended]), dependabot()).c)).toContain(
+        "off the prose list",
+      );
       // No commit list at all is never Dependabot's.
       expect(deny(pinned, arrange({ ok: true, files: ["pnpm-lock.yaml"] }, dependabot()).c)).toContain(
         "it changes pnpm-lock.yaml, off the prose list",
@@ -1338,17 +1358,23 @@ describe("gh pr merge", () => {
         { login: "app/dependabot" },
         undefined,
       ]) {
-        const c = arrange(prose(["package.json"], [DEPENDABOT_COMMIT_AUTHOR]), unapproved({ author })).c;
+        const c = arrange(prose(["package.json"], [BOT]), unapproved({ author })).c;
         expect(deny(pinned, c), JSON.stringify(author)).toContain("it changes package.json, off the prose list");
       }
-      for (const commitAuthor of [
-        "dependabot[bot] <dependabot@example.com>",
-        "dependabot <49699333+dependabot[bot]@users.noreply.github.com>",
-        `${DEPENDABOT_COMMIT_AUTHOR} `,
+      for (const commit of [
+        { ...BOT, author: "dependabot[bot] <dependabot@example.com>" },
+        { ...BOT, author: "dependabot <49699333+dependabot[bot]@users.noreply.github.com>" },
+        { ...BOT, author: `${DEPENDABOT_COMMIT_AUTHOR} ` },
+        { ...BOT, committer: "GitHub <noreply@example.com>" },
+        { ...BOT, committer: "GitHub Actions <noreply@github.com>" },
+        { author: DEPENDABOT_COMMIT_AUTHOR },
+        {},
+        null,
       ])
-        expect(deny(pinned, arrange(prose(["package.json"], [commitAuthor]), dependabot()).c), commitAuthor).toContain(
-          "off the prose list",
-        );
+        expect(
+          deny(pinned, arrange(prose(["package.json"], [commit]), dependabot()).c),
+          JSON.stringify(commit),
+        ).toContain("off the prose list");
     });
 
     it("refuses an unpinned merge, or one pinned to another sha or a prefix", () => {
@@ -1358,7 +1384,7 @@ describe("gh pr merge", () => {
         `gh pr merge 7 --squash --admin --match-head-commit ${head.slice(0, 9)}`,
       ])
         expect(deny(command, arrange().c), command).toContain(`add \`--match-head-commit ${head}\``);
-      const bot = arrange(prose(["pnpm-lock.yaml"], [DEPENDABOT_COMMIT_AUTHOR]), dependabot()).c;
+      const bot = arrange(prose(["pnpm-lock.yaml"], [BOT]), dependabot()).c;
       expect(deny("gh pr merge 7 --squash --admin", bot)).toContain("--match-head-commit");
     });
 
@@ -1388,13 +1414,25 @@ describe("gh pr merge", () => {
     });
 
     it("refuses a qualifying PR when the base branch's rules cannot be read", () => {
-      for (const reason of ["gh could not read the rules of master", "the rules of master require no status check"])
+      for (const reason of ["gh could not read the rules of master", "master has more rules than one page holds"])
         expect(deny(pinned, arrange(undefined, undefined, { ok: false, reason }).c)).toContain(
           `the gate could not read the status checks master requires (${reason})`,
         );
+      expect(deny(pinned, arrange(undefined, undefined, { ok: true }).c)).toContain("the gate could not read");
       // The default context's reader answers nothing.
       const c = ctx({ prView: () => unapproved(), prChangedFiles: () => prose() });
       expect(deny(pinned, c)).toContain("(the read did not run)");
+    });
+
+    it("passes a qualifying PR whose base requires no check unless it is BLOCKED", () => {
+      const none = { ok: true, contexts: [] };
+      const release = (extra) =>
+        unapproved({ baseRefName: "release/3.9", statusCheckRollup: [run("Tests")], ...extra });
+      for (const mergeStateStatus of ["CLEAN", "UNKNOWN", "UNSTABLE"])
+        passes(pinned, arrange(undefined, release({ mergeStateStatus }), none).c);
+      expect(deny(pinned, arrange(undefined, release({}), none).c)).toContain(
+        "it is BLOCKED, yet the rules of release/3.9 require no status check",
+      );
     });
 
     it("never passes a review that asked for changes, whatever the merge state", () => {
@@ -1406,6 +1444,71 @@ describe("gh pr merge", () => {
         unapproved({ reviewDecision: "CHANGES_REQUESTED", mergeStateStatus: "UNKNOWN" }),
       );
       expect(deny(pinned, unknown.c)).toMatch(/asked for changes \(CHANGES_REQUESTED\)/);
+      // Off the list too: refused, not asked, and before any read.
+      const code = arrange(
+        prose(["scripts/x.mjs"]),
+        unapproved({ reviewDecision: "CHANGES_REQUESTED", mergeStateStatus: "UNKNOWN" }),
+      );
+      expect(deny(pinned, code.c)).toMatch(/asked for changes \(CHANGES_REQUESTED\), which `--admin` never passes/);
+      expect(code.calls).toEqual([]);
+      const approvedThenChanged = arrange(prose(["scripts/x.mjs"]), {
+        ...green(),
+        reviewDecision: "CHANGES_REQUESTED",
+        mergeStateStatus: "CLEAN",
+      });
+      expect(deny("gh pr merge 7 --squash --admin", approvedThenChanged.c)).toMatch(/CHANGES_REQUESTED/);
+    });
+
+    describe("a skill's or agent's frontmatter is configuration", () => {
+      const skill = ".claude/skills/issue-lead/SKILL.md";
+      const agent = ".claude/agents/qa.md";
+
+      it("qualifies a body-only edit", () => {
+        passes(pinned, arrange(prose([skill, agent, ".claude/rules/r.md"])).c);
+      });
+
+      it("does not qualify a changed frontmatter, naming the file: refused while BLOCKED, otherwise asked", () => {
+        for (const head of [
+          SKILL.replace("allowed-tools: Read", "allowed-tools: Bash"),
+          SKILL.replace("name: x\n", "name: x\nhooks: {}\n"),
+          `---\npermissionMode: bypassPermissions\n---\n${SKILL}`,
+        ]) {
+          const read = prose([skill, ".claude/rules/r.md"], [NIKLAS], { [skill]: { base: SKILL, head } });
+          const said = deny(pinned, arrange(read).c);
+          expect(said).toContain(`the frontmatter of ${skill} changed`);
+          expect(said).toMatch(/REVIEW_REQUIRED/);
+          expect(asks(pinned, arrange(read, unapproved({ mergeStateStatus: "CLEAN" })).c)).toContain(
+            `the frontmatter of ${skill} changed`,
+          );
+        }
+      });
+
+      it("does not qualify an added or deleted skill or agent file", () => {
+        for (const pair of [
+          { base: null, head: SKILL },
+          { base: SKILL, head: null },
+        ])
+          expect(deny(pinned, arrange(prose([agent], [NIKLAS], { [agent]: pair })).c)).toContain(
+            `the frontmatter of ${agent} changed, or the file is new or deleted`,
+          );
+      });
+
+      it("does not qualify a skill or agent file whose sides the read did not return", () => {
+        expect(deny(pinned, arrange(prose([skill], [NIKLAS], {})).c)).toContain(`the frontmatter of ${skill} changed`);
+        expect(deny(pinned, arrange({ ok: true, files: [skill], commits: [NIKLAS] }).c)).toContain(
+          `the frontmatter of ${skill} changed`,
+        );
+      });
+
+      it("never checks a rule's or a CLAUDE.md's frontmatter", () => {
+        passes(pinned, arrange(prose([".claude/rules/r.md", "scripts/CLAUDE.md"], [NIKLAS], {})).c);
+      });
+
+      it("names both reasons when a PR has files off the list and a changed frontmatter", () => {
+        const read = prose(["scripts/x.mjs", skill], [NIKLAS], { [skill]: { base: SKILL, head: "---\n---\n" } });
+        const said = deny(pinned, arrange(read).c);
+        expect(said).toContain("it changes scripts/x.mjs, off the prose list; the frontmatter of");
+      });
     });
 
     it("keeps every other check: DIRTY, a red or pending check, no checks, the method", () => {
