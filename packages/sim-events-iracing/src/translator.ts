@@ -109,7 +109,8 @@ import {
   lapCountCrossings,
   type LeaderFinish,
   leaderWhiteCrossingIndex,
-  readLeaderGap,
+  readLapFraction,
+  readLeaderGapAt,
   resolveLeaderFinish,
   staysWithinLapAtChequered,
   UNKNOWN_LEADER_FINISH,
@@ -780,6 +781,19 @@ export function isRaceFinished(): boolean {
 }
 
 /**
+ * Whether `finish` (`state.raceFinish`) records the player's chequered flag
+ * in the session `sessionNum` names (the tick's `SessionNum`): a finish
+ * recorded in another session never answers for this one. Shared by
+ * {@link getRaceFinishResult} and the gap horizon (#1380).
+ */
+function isFinishRecordedFor(
+  finish: TranslatorState["raceFinish"],
+  sessionNum: number | undefined,
+): finish is NonNullable<TranslatorState["raceFinish"]> {
+  return finish !== null && finish.sessionNum === (sessionNum ?? null);
+}
+
+/**
  * The player's official finishing position in the current race (issue #1278),
  * or `null` before they have taken the checkered flag — so once a driver's
  * race is over a display can show their result instead of a running order
@@ -800,7 +814,7 @@ export function getRaceFinishResult(sessionNum: number | undefined): RaceFinishR
 
   const finish = instance.state.raceFinish;
 
-  if (!finish || finish.sessionNum !== (sessionNum ?? null)) return null;
+  if (!isFinishRecordedFor(finish, sessionNum)) return null;
 
   const sessionInfo = instance.controller.getSessionInfo() as Record<string, unknown> | null;
   const row = resolvePlayerResultsSnapshot(sessionInfo, resolvePlayerCarIdx(sessionInfo), sessionNum ?? 0);
@@ -1751,21 +1765,23 @@ function resolvePlayerIsLeader(
  * one leader-pace reading rather than a second source.
  */
 export function resolveLeaderLapTimeS(telemetry: TelemetryData, positions: number[]): number | null {
-  if (isPreGreen(telemetry)) return null;
+  return leaderRecentLapS(
+    telemetry,
+    positions.findIndex((position) => position === 1),
+  );
+}
 
-  const leaderIdx = positions.findIndex((position) => position === 1);
+/**
+ * {@link resolveLeaderLapTimeS} for a caller that has already found the
+ * leader in the canonical order (`leaderIdx`, `-1` when there is none): the
+ * gap horizon, which resolves the leader once per tick.
+ */
+function leaderRecentLapS(telemetry: TelemetryData, leaderIdx: number): number | null {
+  if (isPreGreen(telemetry) || leaderIdx < 0) return null;
 
-  if (leaderIdx < 0) return null;
-
-  const last = telemetry.CarIdxLastLapTime?.[leaderIdx];
-
-  if (typeof last === "number" && Number.isFinite(last) && last > 0) return last;
-
-  const best = telemetry.CarIdxBestLapTime?.[leaderIdx];
-
-  if (typeof best === "number" && Number.isFinite(best) && best > 0) return best;
-
-  return null;
+  return (
+    positiveLapS(telemetry.CarIdxLastLapTime?.[leaderIdx]) ?? positiveLapS(telemetry.CarIdxBestLapTime?.[leaderIdx])
+  );
 }
 
 /**
@@ -1826,11 +1842,13 @@ export function resolveGapLapsRemaining(
   // The player's flag ends their race whatever the limits read.
   if (player.finished) return 0;
 
-  const leaderCrossings = leaderCrossingsToGo(telemetry, positions, leaderCrossedSinceExpiry);
+  // The leader is found once, and everything below reads them by index.
+  const leaderIdx = positions.findIndex((position) => position === 1);
+  const leaderCrossings = leaderCrossingsToGo(telemetry, leaderIdx, leaderCrossedSinceExpiry);
 
   if (leaderCrossings === null) return null;
 
-  const playerCrossings = playerCrossingsToGo(telemetry, positions, leaderCrossings, player);
+  const playerCrossings = playerCrossingsToGo(telemetry, leaderIdx, leaderCrossings, player);
 
   return Math.max(0, playerCrossings - (readLapFraction(telemetry, player.carIdx) ?? 0));
 }
@@ -1860,12 +1878,12 @@ export function resolveGapLapsRemaining(
  */
 function leaderCrossingsToGo(
   telemetry: TelemetryData,
-  positions: number[],
+  leaderIdx: number,
   leaderCrossedSinceExpiry: boolean,
 ): number | null {
   return bindingLapsToGo(
     resolveLapsRemaining(telemetry),
-    timeSideCrossings(telemetry, positions, leaderCrossedSinceExpiry),
+    timeSideCrossings(telemetry, leaderIdx, leaderCrossedSinceExpiry),
   );
 }
 
@@ -1919,7 +1937,7 @@ function leaderCrossingsToGo(
  */
 function playerCrossingsToGo(
   telemetry: TelemetryData,
-  positions: number[],
+  leaderIdx: number,
   leaderCrossings: number,
   player: GapHorizonPlayer,
 ): number {
@@ -1929,9 +1947,8 @@ function playerCrossingsToGo(
     return 1;
   }
 
-  if (player.carIdx >= 0 && positions[player.carIdx] === 1) return leaderCrossings;
+  if (player.carIdx >= 0 && player.carIdx === leaderIdx) return leaderCrossings;
 
-  const leaderIdx = positions.findIndex((position) => position === 1);
   const leaderLapS = leaderConversionLapS(telemetry, leaderIdx);
   const leaderPct = readLapFraction(telemetry, leaderIdx);
   const playerLapS = player.avgLapTimeS;
@@ -1940,7 +1957,7 @@ function playerCrossingsToGo(
   if (leaderLapS === null || leaderPct === null || !playerLapKnown) return leaderCrossings;
 
   const chequeredInS = (leaderCrossings - leaderPct) * leaderLapS;
-  const gap = readLeaderGap(telemetry, positions, player.carIdx);
+  const gap = readLeaderGapAt(telemetry, leaderIdx, player.carIdx);
 
   if (gap !== null && staysWithinLapAtChequered(gap, chequeredInS, leaderLapS, playerLapS)) {
     return Math.max(1, lapCountCrossings(gap, leaderCrossings));
@@ -1981,19 +1998,6 @@ function positiveLapS(lapS: number | undefined): number | null {
 }
 
 /**
- * A car's `CarIdxLapDistPct` when it is a position on the lap (finite,
- * `0 ≤ f < 1`), otherwise `null` — a car index out of range, the array
- * missing, or `-1` off world.
- */
-function readLapFraction(telemetry: TelemetryData, carIdx: number): number | null {
-  if (!Number.isInteger(carIdx) || carIdx < 0) return null;
-
-  const pct = telemetry.CarIdxLapDistPct?.[carIdx];
-
-  return typeof pct === "number" && Number.isFinite(pct) && pct >= 0 && pct < 1 ? pct : null;
-}
-
-/**
  * The leader's remaining line crossings the session clock allows, the
  * chequered one included, or `null` when the clock is unknown or unlimited,
  * or still running with no leader pace to project it by.
@@ -2014,7 +2018,7 @@ function readLapFraction(telemetry: TelemetryData, carIdx: number): number | nul
  */
 function timeSideCrossings(
   telemetry: TelemetryData,
-  positions: number[],
+  leaderIdx: number,
   leaderCrossedSinceExpiry: boolean,
 ): number | null {
   const raw = telemetry.SessionTimeRemain;
@@ -2025,14 +2029,11 @@ function timeSideCrossings(
 
   if (timeRemainS === null) return null;
 
-  const leaderLapTimeS = resolveLeaderLapTimeS(telemetry, positions);
+  const leaderLapTimeS = leaderRecentLapS(telemetry, leaderIdx);
 
   if (leaderLapTimeS === null) return null;
 
-  const leaderPct = telemetry.CarIdxLapDistPct?.[positions.findIndex((position) => position === 1)];
-  const fraction = typeof leaderPct === "number" && leaderPct >= 0 && leaderPct < 1 ? leaderPct : 0;
-
-  return leaderWhiteCrossingIndex(timeRemainS, leaderLapTimeS, fraction, 0) + 1;
+  return leaderWhiteCrossingIndex(timeRemainS, leaderLapTimeS, readLapFraction(telemetry, leaderIdx) ?? 0, 0) + 1;
 }
 
 /**
@@ -3603,11 +3604,15 @@ function handleOrderSteps(
       canonicalPositions,
       self.getGapAlertThresholdSeconds,
       emit,
-      resolveGapLapsRemaining(telemetry, canonicalPositions, self.state.leaderWhitePostExpiryCrossed, {
-        carIdx: playerCarIdx,
-        avgLapTimeS: fuelLapsLeftStats(self).avgLapTime,
-        finished: self.state.raceFinish !== null && self.state.raceFinish.sessionNum === (telemetry.SessionNum ?? null),
-      }),
+      // Only a race has a horizon; `diffGaps` returns at its first gate in
+      // any other session, so the estimate is not computed there.
+      isRaceSession
+        ? resolveGapLapsRemaining(telemetry, canonicalPositions, self.state.leaderWhitePostExpiryCrossed, {
+            carIdx: playerCarIdx,
+            avgLapTimeS: fuelLapsLeftStats(self).avgLapTime,
+            finished: isFinishRecordedFor(self.state.raceFinish, telemetry.SessionNum),
+          })
+        : null,
       self.getGapMinChangeSeconds,
       trackLengthMeters,
       // `diffCaution` ran earlier this tick, so this is the current phase —

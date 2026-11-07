@@ -502,6 +502,18 @@ describe("gap closing-announcement horizon at the call site (issues #1311, #1380
     expect(lastHorizon()).toBe(1);
   });
 
+  it("hands no horizon outside a race", () => {
+    const controller = createMockController({
+      SessionInfo: { Sessions: [{ SessionNum: 0, SessionType: "Practice" }] },
+      DriverInfo: { DriverCarIdx: 0 },
+    });
+    initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
+
+    controller.__tick(timedRace(1200, 5, 0.25));
+    expect(diffGapsSpy).toHaveBeenCalled();
+    expect(lastHorizon()).toBeNull();
+  });
+
   it("counts a lapped player's own crossings from their validated average lap", () => {
     const controller = createMockController();
     initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });

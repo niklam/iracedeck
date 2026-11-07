@@ -22,7 +22,9 @@ import {
   type LeaderGap,
   leaderWhiteCrossingIndex,
   predictLeaderChequered,
+  readLapFraction,
   readLeaderGap,
+  readLeaderGapAt,
   resolveLeaderFinish,
   staysWithinLapAtChequered,
 } from "./leader-finish.js";
@@ -269,6 +271,29 @@ describe("predictLeaderChequered — crossings and seconds from one count", () =
   });
 });
 
+describe("readLapFraction", () => {
+  const pcts = (values: number[]): TelemetryData => ({ CarIdxLapDistPct: values }) as TelemetryData;
+
+  it("reads a position on the lap, the line included", () => {
+    expect(readLapFraction(pcts([0, 0.5, 0.999]), 0)).toBe(0);
+    expect(readLapFraction(pcts([0, 0.5, 0.999]), 1)).toBe(0.5);
+    expect(readLapFraction(pcts([0, 0.5, 0.999]), 2)).toBe(0.999);
+  });
+
+  it("reads nothing that is not one", () => {
+    // Off world, a full lap or more, not a number.
+    for (const value of [-1, 1, 1.2, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(readLapFraction(pcts([value]), 0)).toBeNull();
+    }
+
+    // No such car, no array.
+    expect(readLapFraction(pcts([0.5]), 1)).toBeNull();
+    expect(readLapFraction(pcts([0.5]), -1)).toBeNull();
+    expect(readLapFraction(pcts([0.5]), 0.5)).toBeNull();
+    expect(readLapFraction({} as TelemetryData, 0)).toBeNull();
+  });
+});
+
 describe("readLeaderGap", () => {
   // The player is car 0, the leader car 1.
   const counted = (lapsCompleted: number[], pcts: number[]): TelemetryData =>
@@ -299,6 +324,13 @@ describe("readLeaderGap", () => {
     expect(readLeaderGap(counted([-1, 8, 6], [0.55, 0.57, 0.1]), ORDER, 0)).toBeNull();
     expect(readLeaderGap(counted([-1, 8, 6], [-1, 0.57, 0.1]), ORDER, 0)).toBeNull();
     expect(readLeaderGap(counted([8, 8, 6], [Number.NaN, 0.57, 0.1]), ORDER, 0)).toBeNull();
+  });
+
+  it("reads the same gap from the leader's index as from the order", () => {
+    const telemetry = counted([7, 8, 6], [0.55, 0.2, 0.1]);
+
+    expect(readLeaderGapAt(telemetry, 1, 0)).toEqual(readLeaderGap(telemetry, ORDER, 0));
+    expect(readLeaderGapAt(telemetry, -1, 0)).toBeNull();
   });
 
   it("does not trust a car within the line guard, where the lap count and fraction can disagree around a crossing", () => {

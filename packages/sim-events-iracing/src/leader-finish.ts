@@ -315,9 +315,9 @@ export function predictLeaderChequered(
 
   if (leaderIdx < 0) return null;
 
-  const leaderPct = telemetry.CarIdxLapDistPct?.[leaderIdx];
+  const leaderPct = readLapFraction(telemetry, leaderIdx);
 
-  if (typeof leaderPct !== "number" || !Number.isFinite(leaderPct) || leaderPct < 0 || leaderPct >= 1) return null;
+  if (leaderPct === null) return null;
 
   const surface = telemetry.CarIdxTrackSurface?.[leaderIdx];
 
@@ -359,6 +359,24 @@ function leaderCrossedSinceExpiry(telemetry: TelemetryData, leaderPct: number, l
 }
 
 /**
+ * A car's `CarIdxLapDistPct` when it is a position on the lap — finite and
+ * `0 ≤ f < 1` — otherwise `null`: a car index that is not a whole number of 0
+ * or more, the array or the entry missing, or `-1` off world. The one reading
+ * of a lap fraction the chequered prediction, the lap counters and the gap
+ * horizon share; each consumer decides what an unknown one means for it.
+ *
+ * @param telemetry - the tick's telemetry
+ * @param carIdx - the car index, `-1` when unknown
+ */
+export function readLapFraction(telemetry: TelemetryData, carIdx: number): number | null {
+  if (!Number.isInteger(carIdx) || carIdx < 0) return null;
+
+  const pct = telemetry.CarIdxLapDistPct?.[carIdx];
+
+  return typeof pct === "number" && Number.isFinite(pct) && pct >= 0 && pct < 1 ? pct : null;
+}
+
+/**
  * A car's place on the lap counter, or `null` when it cannot be trusted: a
  * car index out of range, a `CarIdxLapCompleted` that is missing or not a
  * whole lap count of 0 or more (it reads -1 before a car's first crossing),
@@ -370,13 +388,11 @@ function readCarLapPosition(telemetry: TelemetryData, carIdx: number): { lapsCom
   if (!Number.isInteger(carIdx) || carIdx < 0) return null;
 
   const lapsCompleted = telemetry.CarIdxLapCompleted?.[carIdx];
-  const pct = telemetry.CarIdxLapDistPct?.[carIdx];
+  const pct = readLapFraction(telemetry, carIdx);
 
   if (typeof lapsCompleted !== "number" || !Number.isInteger(lapsCompleted) || lapsCompleted < 0) return null;
 
-  if (typeof pct !== "number" || !Number.isFinite(pct) || pct < LAP_LINE_GUARD_PCT || pct >= 1 - LAP_LINE_GUARD_PCT) {
-    return null;
-  }
+  if (pct === null || pct < LAP_LINE_GUARD_PCT || pct >= 1 - LAP_LINE_GUARD_PCT) return null;
 
   return { lapsCompleted, pct };
 }
@@ -393,8 +409,22 @@ function readCarLapPosition(telemetry: TelemetryData, carIdx: number): { lapsCom
  * @param playerCarIdx - the player's car index (`DriverInfo.DriverCarIdx`), `-1` when unknown
  */
 export function readLeaderGap(telemetry: TelemetryData, positions: number[], playerCarIdx: number): LeaderGap | null {
-  const leaderIdx = positions.findIndex((position) => position === 1);
+  return readLeaderGapAt(
+    telemetry,
+    positions.findIndex((position) => position === 1),
+    playerCarIdx,
+  );
+}
 
+/**
+ * {@link readLeaderGap} for a caller that has already found the leader in the
+ * canonical order — the gap horizon, which resolves the leader once per tick.
+ *
+ * @param telemetry - the tick's telemetry
+ * @param leaderIdx - the leader's car index (position 1 of the canonical order), `-1` when there is none
+ * @param playerCarIdx - the player's car index, `-1` when unknown
+ */
+export function readLeaderGapAt(telemetry: TelemetryData, leaderIdx: number, playerCarIdx: number): LeaderGap | null {
   if (leaderIdx < 0) return null;
 
   const leader = readCarLapPosition(telemetry, leaderIdx);
