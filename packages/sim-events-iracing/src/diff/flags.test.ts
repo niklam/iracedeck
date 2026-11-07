@@ -10,7 +10,7 @@
  * paired cleared (issue #669) are covered in full here.
  */
 import { Flags, type TelemetryData } from "@iracedeck/iracing-sdk";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { createInitialState } from "../state.js";
 import {
@@ -1236,7 +1236,9 @@ describe("diffFlags — white two-stage (issue #772)", () => {
 
     // Caution replaces the white; the sticky marker holds (limitation 3)…
     diffFlags(state, liveTick(Flags.Caution, { LapCompleted: 11 }), T0 + 40_000, () => {}, RACE, !LEADER);
-    state.fuelCalloutRaceCoveredAnnounced = true;
+    // The fuel family's reassurance re-arm, which `handleTick` builds over the
+    // `fuelCallout` slice (issue #1405); here only whether it is called.
+    const rearmFuelReassurance = vi.fn();
     // The leader's white-flag once-per-race latch + post-expiry-crossing
     // observation (issue #936) are the same kind of sticky marker —
     // simulate them having already latched this race.
@@ -1248,9 +1250,19 @@ describe("diffFlags — white two-stage (issue #772)", () => {
     // determination no longer holds, so its latch re-arms with it. The
     // leader's white-flag latch (and its crossing observation) re-arm
     // alongside it for the same reason.
-    diffFlags(state, liveTick(Flags.Green, { LapCompleted: 11 }), T0 + 120_000, () => {}, RACE, !LEADER);
+    expect(rearmFuelReassurance).not.toHaveBeenCalled();
+    diffFlags(
+      state,
+      liveTick(Flags.Green, { LapCompleted: 11 }),
+      T0 + 120_000,
+      () => {},
+      RACE,
+      !LEADER,
+      false,
+      rearmFuelReassurance,
+    );
     expect(state.playerFinalLapStarted).toBe(false);
-    expect(state.fuelCalloutRaceCoveredAnnounced).toBe(false);
+    expect(rearmFuelReassurance).toHaveBeenCalledTimes(1);
     expect(state.leaderWhiteFired).toBe(false);
     expect(state.leaderWhitePostExpiryCrossed).toBe(false);
   });
@@ -1264,10 +1276,22 @@ describe("diffFlags — white two-stage (issue #772)", () => {
     state.leaderWhiteFired = true;
     state.leaderWhitePostExpiryCrossed = true;
     expect(state.playerFinalLapStarted).toBe(false);
+    const rearmFuelReassurance = vi.fn();
 
-    diffFlags(state, liveTick(Flags.Green, { LapCompleted: 11 }), T0, () => {}, RACE, !LEADER);
+    diffFlags(
+      state,
+      liveTick(Flags.Green, { LapCompleted: 11 }),
+      T0,
+      () => {},
+      RACE,
+      !LEADER,
+      false,
+      rearmFuelReassurance,
+    );
 
     expect(state.playerFinalLapStarted).toBe(false);
+    // The fuel reassurance re-opens with the player's final lap only.
+    expect(rearmFuelReassurance).not.toHaveBeenCalled();
     expect(state.leaderWhiteFired).toBe(false);
     expect(state.leaderWhitePostExpiryCrossed).toBe(false);
   });

@@ -318,6 +318,17 @@ export const FLAGS_EVENTS = [
   "flag.yellow.raised",
 ] as const satisfies readonly SimEventName[];
 
+/**
+ * Per-tick flag edges, the white two-stage split and the checkered deferral.
+ *
+ * @param rearmFuelReassurance - re-opens the fuel family's enough-fuel
+ *   reassurance (`fuelCallout.raceCoveredAnnounced`, issue #880), called when
+ *   a GREEN rising edge clears the sticky final-lap marker. `handleTick` hands
+ *   the closure `createFuelReassuranceRearm` builds over the `fuelCallout`
+ *   slice (#1405, under #1588's convention), so this module never reaches
+ *   another family's slice. The no-op default is for the tests that do not
+ *   exercise a re-opened final lap.
+ */
 export function diffFlags(
   state: TranslatorState,
   telemetry: TelemetryData,
@@ -326,6 +337,7 @@ export function diffFlags(
   isRaceSession = false,
   playerIsLeader = false,
   isPracticeSession = false,
+  rearmFuelReassurance: () => void = () => {},
 ): void {
   const sessionFlags = telemetry.SessionFlags ?? 0;
   // The episode marker is read BEFORE this tick can set it, so the tick that
@@ -434,7 +446,7 @@ export function diffFlags(
           // restart's green arrives with the start bits set.
           if (state.playerFinalLapStarted) {
             state.playerFinalLapStarted = false;
-            state.fuelCalloutRaceCoveredAnnounced = false;
+            rearmFuelReassurance();
           }
 
           // #936: overtime/admin-restart re-arm — the leader's white-flag

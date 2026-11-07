@@ -26,9 +26,10 @@ import {
  * has not been assessed yet, so its move starts by reading how the replay wipe
  * (`wipeStateForReplay`) treats its fields and which other diffs read them.
  *
- * Not here: "Track-order gaps outside a race (issue #1515)" (`trackGaps`) and
- * "Fastest lap of the race (issue #1571)" (`fastestLap`), whose only members
- * are slices, and the `lapCrossing` slice under "Lap completion".
+ * Not here: "Track-order gaps outside a race (issue #1515)" (`trackGaps`),
+ * "Fastest lap of the race (issue #1571)" (`fastestLap`) and
+ * "Laps-of-fuel-left callouts (issue #838)" (`fuelCallout`), whose only
+ * members are slices, and the `lapCrossing` slice under "Lap completion".
  */
 const LEGACY_FLAT_MEMBERS: FlatMemberPin = {
   "Pit lane / stall": [
@@ -52,8 +53,9 @@ const LEGACY_FLAT_MEMBERS: FlatMemberPin = {
     "cornerMarkers",
     "lapStartedFromPits",
   ],
-  // `playerFinalLapStarted` is read by `diff/fuel-laps-left.ts`, which takes it
-  // as a value once either family moves.
+  // `playerFinalLapStarted` reaches `diff/fuel-laps-left.ts` as a value, and
+  // the green re-arm of the fuel reassurance goes through the closure
+  // `createFuelReassuranceRearm` builds over the `fuelCallout` slice (#1405).
   Flags: [
     "flagStateInitialized",
     "activeFlags",
@@ -300,15 +302,6 @@ const LEGACY_FLAT_MEMBERS: FlatMemberPin = {
     "leaderWhitePostExpiryCrossed",
   ],
   Radar: ["radarState"],
-  // Partial replay keep (three of five fields); reads the flags'
-  // `playerFinalLapStarted`, which becomes a value.
-  "Laps-of-fuel-left callouts (issue #838)": [
-    "fuelCalloutLastDistPct",
-    "fuelCalloutLastSampledLap",
-    "fuelCalloutLastFuelLevel",
-    "fuelCalloutLastAnnouncedCount",
-    "fuelCalloutRaceCoveredAnnounced",
-  ],
   Lifecycle: ["lifecycleInitialized", "lastSessionNum", "lastEngineRunning", "lastLap"],
   // The `lapCrossing` slice nests inside the laps slice; `flagCheckeredTakenLap`
   // (written by the flags) becomes a value.
@@ -340,7 +333,7 @@ const SLICE_READS_ALLOWED: SliceReadAllowList = {
 };
 
 /** The slices the tree has, by key. */
-const SLICE_KEYS = ["trackGaps", "fastestLap", "lapCrossing"];
+const SLICE_KEYS = ["trackGaps", "fastestLap", "fuelCallout", "lapCrossing"];
 
 const violationNames = (scan: SliceScan): string[] => scan.violations.map((v) => `${v.rule}:${v.name}`);
 const violationKeys = (scan: SliceScan): string[] =>
@@ -358,8 +351,8 @@ describe("TranslatorState keeps to the slice convention (#1588)", () => {
   const scan = scanStateSlices(sources, LEGACY_FLAT_MEMBERS, SLICE_READS_ALLOWED);
 
   it("scans the whole state and every diff module, not an empty or narrowed read", () => {
-    // Measured after the fastest-lap move (#1588), 2026-11-04: 243 members
-    // (240 pinned flat under 31 headings, 3 slices), 46 diff modules, 30 of
+    // Measured after the fuel-callout move (#1405), 2026-11-07: 239 members
+    // (235 pinned flat under 30 headings, 4 slices), 46 diff modules, 29 of
     // them importing TranslatorState.
     expect(scan.members.length).toBeGreaterThan(200);
     expect(scan.diffModules.length).toBeGreaterThanOrEqual(40);

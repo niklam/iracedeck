@@ -2776,6 +2776,86 @@ describe("sim-events-iracing translator", () => {
       expect((handler.mock.calls[2]![0] as SimEventOf<"fuel.lapsLeft.crossed">).data.count).toBe(1);
     });
 
+    /** The translator's live state, through the snapshot's raw half, which holds it by reference. */
+    function liveState(): TranslatorState {
+      const snapshot = readSimState();
+
+      if (!snapshot.initialized) throw new Error("expected an initialized translator");
+
+      return snapshot.raw.state;
+    }
+
+    /**
+     * Two validated laps (~2 L each), then the low-fuel mid-lap sample that
+     * says "1 lap of fuel left" — the first test's recipe — with `beforeSample`
+     * run against the live state just before the sample.
+     */
+    function sampleLowFuel(beforeSample: (state: TranslatorState) => void): ReturnType<typeof vi.fn> {
+      const controller = createMockController();
+      const bus = getEventBus();
+      const handler = vi.fn();
+      bus.subscribe("fuel.lapsLeft.crossed", handler);
+      controller.__setSessionInfo({
+        SessionInfo: { Sessions: [{ SessionType: "Race" }] },
+        DriverInfo: { DriverCarIdx: 0 },
+      });
+      initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
+
+      controller.__tick(telemetry({ Lap: 1, LapDistPct: 0.9, SessionTime: 0, FuelLevel: 64 }));
+      controller.__tick(telemetry({ Lap: 2, LapDistPct: 0.05, SessionTime: 5, FuelLevel: 63.9 }));
+      controller.__tick(telemetry({ Lap: 2, LapDistPct: 0.55, SessionTime: 45, FuelLevel: 63 }));
+      controller.__tick(telemetry({ Lap: 2, LapDistPct: 0.9, SessionTime: 80, FuelLevel: 62.2 }));
+      controller.__tick(telemetry({ Lap: 3, LapDistPct: 0.05, SessionTime: 90, FuelLevel: 62 }));
+      controller.__tick(telemetry({ Lap: 3, LapDistPct: 0.55, SessionTime: 135, FuelLevel: 61 }));
+      controller.__tick(telemetry({ Lap: 3, LapDistPct: 0.9, SessionTime: 170, FuelLevel: 60.2 }));
+      controller.__tick(telemetry({ Lap: 4, LapDistPct: 0.05, SessionTime: 180, FuelLevel: 60 }));
+      controller.__tick(telemetry({ Lap: 4, LapDistPct: 0.45, SessionTime: 200, FuelLevel: 5.0 }));
+      beforeSample(liveState());
+      controller.__tick(telemetry({ Lap: 4, LapDistPct: 0.55, SessionTime: 210, FuelLevel: 4.9 }));
+
+      return handler;
+    }
+
+    it("speaks the low-fuel sample with no final-lap marker set (the control for the test below)", () => {
+      expect(sampleLowFuel(() => {})).toHaveBeenCalledTimes(1);
+    });
+
+    it("hands the fuel diff the flags' sticky final-lap marker, not the two-stage white latch (issue #880, #1405)", () => {
+      // A caution replacing the white mid-final-lap re-arms the two-stage
+      // latch but keeps the sticky marker (issue #880 limitation 3): silent.
+      const handler = sampleLowFuel((state) => {
+        state.playerFinalLapStarted = true;
+        state.whiteLastLapFired = false;
+      });
+
+      expect(handler).not.toHaveBeenCalled();
+    });
+
+    it("re-arms the fuel reassurance when a green re-opens the player's final lap (issue #880 review, #1405)", () => {
+      const controller = createMockController();
+      controller.__setSessionInfo({
+        SessionInfo: { Sessions: [{ SessionType: "Race" }] },
+        DriverInfo: { DriverCarIdx: 0 },
+      });
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
+
+      // Seed the flags with nothing flying, then latch the final lap and a
+      // spoken reassurance as the race would have.
+      controller.__tick(telemetry({ Lap: 4, LapDistPct: 0.1, SessionTime: 100 }));
+      const state = liveState();
+      state.playerFinalLapStarted = true;
+      state.fuelCallout.raceCoveredAnnounced = true;
+
+      // A tick with no flag change leaves both alone…
+      controller.__tick(telemetry({ Lap: 4, LapDistPct: 0.11, SessionTime: 101 }));
+      expect(liveState().fuelCallout.raceCoveredAnnounced).toBe(true);
+
+      // …and a green rising edge, off the mid-lap sample, re-opens both.
+      controller.__tick(telemetry({ Lap: 4, LapDistPct: 0.12, SessionTime: 102, SessionFlags: Flags.Green }));
+      expect(liveState().playerFinalLapStarted).toBe(false);
+      expect(liveState().fuelCallout.raceCoveredAnnounced).toBe(false);
+    });
+
     // Timed-race coverage (issue #880) end-to-end through the REAL leader
     // resolver: the leader comes from the canonical live order and their
     // CarIdxLastLapTime feeds the estimate. The two cases differ ONLY in the
@@ -2843,9 +2923,10 @@ describe("sim-events-iracing translator", () => {
     }
 
     it("suppresses and reassures when the LEADER's pace says the clock ends the race within the tank (issue #880)", () => {
-      // Fast leader (60 s): checkered bound 5 + 2×60 = 125 s →
-      // ceil((125 − 39.4) / 87.5) = 1 lap to run; count 2 covers it with a
-      // lap in hand, so the confirmation fires.
+      // Fast leader (60 s, 55 % round): white at their first crossing, 27 s
+      // away, chequered at (2 − 0.55) × 60 = 87 s (#1405) →
+      // ceil(87 / 87.5 + 0.55 + 0.031) − 1 = 1 lap to run; the tank covers
+      // it and count 2 has a lap in hand, so the confirmation fires.
       const { crossed, covered } = runTimedRaceToSample(60);
 
       expect(crossed).not.toHaveBeenCalled();
@@ -2853,10 +2934,11 @@ describe("sim-events-iracing translator", () => {
     });
 
     it("keeps warning when the LEADER's slow pace stretches the timed race past the tank (issue #880)", () => {
-      // Slow leader (200 s): checkered bound 5 + 2×200 = 405 s →
-      // ceil((405 − 39.4) / 87.5) = 5 laps to run; count 2 falls short — the
-      // warning must still fire. A resolver that fell back to the player's
-      // 87.5 s average would wrongly suppress.
+      // Slow leader (200 s): chequered at (2 − 0.55) × 200 = 290 s →
+      // ceil(290 / 87.5 + 0.55 + 0.03) − 1 = 3 laps to run; 3.54 laps of
+      // fuel fall short of 3.45 × 1.05 — the warning must still fire. A
+      // resolver that fell back to the player's 87.5 s average would wrongly
+      // suppress.
       const { crossed, covered } = runTimedRaceToSample(200);
 
       expect(crossed).toHaveBeenCalledTimes(1);

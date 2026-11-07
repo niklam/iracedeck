@@ -59,6 +59,7 @@ import { diffDamage } from "./diff/damage.js";
 import { createFastestLapJudge, diffFastestLap } from "./diff/fastest-lap.js";
 import { diffFlags } from "./diff/flags.js";
 import {
+  createFuelReassuranceRearm,
   diffFuelLapsLeft,
   FUEL_CALLOUT_DEFAULT_MARGIN_LAPS,
   FUEL_LAPS_LEFT_WINDOW_LAPS,
@@ -103,6 +104,13 @@ import { diffToggles } from "./diff/toggles.js";
 import { diffTrackGaps } from "./diff/track-gaps.js";
 import { diffTrackWetness, resolveReportedTrackWetness } from "./diff/track-wetness.js";
 import type { EmitFn, PendingEvent } from "./diff/types.js";
+import {
+  isClockExpiryConfirmed,
+  type LeaderFinish,
+  leaderWhiteCrossingIndex,
+  resolveLeaderFinish,
+  UNKNOWN_LEADER_FINISH,
+} from "./leader-finish.js";
 import { calculateCanonicalRacePositions } from "./race-order.js";
 import { type ReplayRecorder, startReplayRecorder } from "./replay-recorder.js";
 import {
@@ -123,6 +131,7 @@ import {
   type LastStopTireTemps,
   type RaceFinishResult,
   resetFastestLapBaselines,
+  resetFuelCalloutBaselines,
   type RollingStartFormation,
   type TranslatorState,
 } from "./state.js";
@@ -1810,7 +1819,10 @@ export function resolveGapLapsRemaining(
  * - **Clock running** (`t` seconds, leader lap `L`, leader lap fraction `f`):
  *   the leader's k-th crossing from now is at `(k − f) · L`, the white is the
  *   first at or after expiry, `k = ceil(t / L + f)`, and the chequered is the
- *   one after it. An unknown fraction counts as `0`, the smaller result.
+ *   one after it. The crossing model is `leader-finish.ts`' (#1405), which the
+ *   fuel estimate shares; here it runs with no tolerance. An unknown fraction
+ *   counts as `0`, the smaller result — the gap horizon's own safe direction,
+ *   where the fuel estimate answers unknown instead.
  */
 function timeSideCrossings(
   telemetry: TelemetryData,
@@ -1832,7 +1844,7 @@ function timeSideCrossings(
   const leaderPct = telemetry.CarIdxLapDistPct?.[positions.findIndex((position) => position === 1)];
   const fraction = typeof leaderPct === "number" && leaderPct >= 0 && leaderPct < 1 ? leaderPct : 0;
 
-  return Math.ceil(timeRemainS / leaderLapTimeS + fraction) + 1;
+  return leaderWhiteCrossingIndex(timeRemainS, leaderLapTimeS, fraction, 0) + 1;
 }
 
 /**
@@ -1904,6 +1916,38 @@ function fuelLapsLeftStats(self: TranslatorInstance): FuelStats {
 }
 
 /**
+ * The race leader as the laps-of-fuel-left race coverage reads them (issues
+ * #880, #1405): their recent lap time ({@link resolveLeaderLapTimeS}), the
+ * predicted chequered flag in seconds and in crossings, and the player's
+ * place against them on the lap counters (`resolveLeaderFinish`), over the
+ * canonical live order. One definition for `handleTick` and
+ * {@link readSimState}, like {@link fuelLapsLeftStats}, so the two read the
+ * same expired-clock state: the confirmation count `diffFuelLapsLeft` has
+ * already advanced for the tick (`fuelCallout.clockExpiredTicks`) and the
+ * post-expiry crossing marker `diffLeaderWhite` left
+ * (`leaderWhitePostExpiryCrossed`).
+ */
+function fuelLeaderFinish(
+  telemetry: TelemetryData,
+  positions: number[],
+  playerCarIdx: number,
+  state: TranslatorState,
+  playerLapS: number,
+): LeaderFinish {
+  return resolveLeaderFinish(
+    telemetry,
+    positions,
+    playerCarIdx,
+    resolveLeaderLapTimeS(telemetry, positions),
+    {
+      confirmed: isClockExpiryConfirmed(state.fuelCallout.clockExpiredTicks),
+      leaderCrossed: state.leaderWhitePostExpiryCrossed,
+    },
+    playerLapS,
+  );
+}
+
+/**
  * The translator's state for a Telemetry Snapshot (issue #1387): what it had
  * computed as of its latest tick — the fuel history and the laps-of-fuel-left
  * figure, the live order, the gaps, the caution — then the whole
@@ -1926,7 +1970,7 @@ function fuelLapsLeftStats(self: TranslatorInstance): FuelStats {
  * holds it, because `diffFuelLapsLeft` computes it as locals at its mid-lap
  * sample — and is made from that diff's own inputs: the stats of
  * {@link fuelLapsLeftStats}, the instance's margin closure, and
- * {@link resolveLeaderLapTimeS} over the canonical order. The shaping is
+ * {@link fuelLeaderFinish} over the canonical order. The shaping is
  * `buildSimState` in `sim-state.ts`.
  *
  * **The result holds live objects** (the lap history, the gap traces, the
@@ -1989,10 +2033,22 @@ export function readSimState(): SimStateSnapshot {
         getMarginLaps: self.getFuelLapsLeftMarginLaps,
         // The expression `handleTick` hands `diffFuelLapsLeft`, over the same
         // canonical order (`resolveCanonicalOrder`, read here through its
-        // public accessor). `positions` is null only without telemetry, where
+        // public accessor) and the expired-clock state the latest tick left:
+        // `diffFuelLapsLeft`'s confirmation count and `diffLeaderWhite`'s
+        // post-expiry marker, read after the tick as the diff read them in
+        // it, with the player's car index `handleTick` resolves from the same
+        // session info. `positions` is null only without telemetry, where
         // there is no estimate to ask for.
-        getLeaderLapTimeS: () =>
-          telemetry !== null && positions !== null ? resolveLeaderLapTimeS(telemetry, positions) : null,
+        getLeaderFinish: (playerLapS) =>
+          telemetry !== null && positions !== null
+            ? fuelLeaderFinish(
+                telemetry,
+                positions,
+                resolvePlayerCarIdx(self.controller.getSessionInfo() as Record<string, unknown> | null),
+                state,
+                playerLapS,
+              )
+            : UNKNOWN_LEADER_FINISH,
       },
       order: {
         positions,
@@ -2154,18 +2210,12 @@ function wipeStateForReplay(self: TranslatorInstance): void {
     startCountdownCeiling: self.state.startCountdownCeiling,
     startCountdownFired: self.state.startCountdownFired,
     startCountdownObserved: self.state.startCountdownObserved,
-    // The laps-of-fuel-left announce state (issue #838): a replay glance
-    // mid-race must not re-announce a count already spoken this stint, and
-    // the previous-fuel-level tracker must survive the garage visit so the
-    // refuel that happened there (replay-mode ticks) lands as one positive
-    // delta on the first live tick back and re-arms the stint. The sampling
-    // baselines (`fuelCalloutLastDistPct` / `fuelCalloutLastSampledLap`)
-    // deliberately re-seed — the position jump made their edges meaningless.
-    fuelCalloutLastFuelLevel: self.state.fuelCalloutLastFuelLevel,
-    fuelCalloutLastAnnouncedCount: self.state.fuelCalloutLastAnnouncedCount,
-    // The enough-fuel reassurance latch (issue #880) is preserved with the
-    // floor: a replay glance must not let the reassurance speak twice.
-    fuelCalloutRaceCoveredAnnounced: self.state.fuelCalloutRaceCoveredAnnounced,
+    // The laps-of-fuel-left announce state (issue #838): the previous fuel
+    // level, the announce floor and the enough-fuel reassurance latch (issue
+    // #880) survive the glance, the sampling baselines and the expired-clock
+    // count (issue #1405) re-seed; which part, and why, is
+    // `resetFuelCalloutBaselines`' (issue #1405, under #1588's convention).
+    fuelCallout: resetFuelCalloutBaselines(self.state.fuelCallout),
     // The opponent-pit episode state (issue #622): glancing at the incident
     // replay mid-caution-pit-train must not reset the aggregation window,
     // the once-per-episode aggregate flag, or the per-car cooldowns — the
@@ -2835,6 +2885,9 @@ function handleLiveSteps(
       isRaceSession,
       playerIsLeader,
       classifySession(sessionType)?.category === "practice",
+      // The one write `diffFlags` makes into another family's slice: a green
+      // re-opening the final lap re-arms the fuel reassurance (issue #880).
+      createFuelReassuranceRearm(self.state.fuelCallout),
     ),
   );
   // Lap completion (issue #555). Runs alongside diffLifecycle since they
@@ -3017,8 +3070,9 @@ function handleLiveSteps(
   // order computed from half-written anchors is not the canonical one, and a
   // stale one would present the field as it was while the traces move on. A
   // skipped step advances no baseline, so it sees the change on the next tick
-  // it runs. `diffFuelLapsLeft` still runs, its leader-lap closure answering
-  // `null` (no leader known, the player's own average is its fallback).
+  // it runs. `diffFuelLapsLeft` still runs, its leader closure answering no
+  // lap time and no chequered prediction (no leader known: a running clock
+  // falls back to the bound on the player's own average, #1405).
   const order = tracked
     ? steps.requiredValue("resolveCanonicalOrder", () =>
         resolveCanonicalOrder(self.state, telemetry, sessionInfo, isRaceSession),
@@ -3085,17 +3139,24 @@ function handleLiveSteps(
   // validated estimator as Session Info's Laps to Empty (issue #748), over
   // the same default window, so the spoken count tracks the display. Runs
   // after diffFlags so the race-coverage suppression (#866) reads a
-  // same-tick-fresh `whiteLastLapFired` final-lap latch. Without a canonical
-  // order this tick the leader's lap time is unknown (#1559).
+  // same-tick-fresh sticky `playerFinalLapStarted` final-lap marker, and after
+  // diffLeaderWhite so the leader's chequered prediction (#1405) reads a
+  // current post-expiry crossing marker. Without a canonical order this tick
+  // the leader is unknown (#1559).
   const leaderPositions = order.ok ? order.value : null;
   steps.live("diffFuelLapsLeft", pending, () =>
     diffFuelLapsLeft(
-      self.state,
+      self.state.fuelCallout,
       telemetry,
       isRaceSession,
+      // The flags' sticky final-lap marker, as `diffFlags` left it above.
+      self.state.playerFinalLapStarted,
       () => fuelLapsLeftStats(self),
       self.getFuelLapsLeftMarginLaps,
-      () => (leaderPositions === null ? null : resolveLeaderLapTimeS(telemetry, leaderPositions)),
+      (playerLapS) =>
+        leaderPositions === null
+          ? UNKNOWN_LEADER_FINISH
+          : fuelLeaderFinish(telemetry, leaderPositions, playerCarIdx, self.state, playerLapS),
       emit,
     ),
   );
