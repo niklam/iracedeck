@@ -26,6 +26,11 @@ export const NO_REVIEW_PATHS = Object.freeze([
 ]);
 
 /**
+ * Not `path.matchesGlob`: its `**` does not cross a dot-segment
+ * (`.claude/CLAUDE.md` fails), it takes no option to make it, it is
+ * case-insensitive on Windows, and it accepts `..`, `.` and empty segments —
+ * each a way for this list to match more than it says.
+ *
  * A glob as an anchored, case-sensitive regular expression: `**` followed by
  * a slash matches zero or more directories, a trailing `/**` one or more path
  * segments below, `*` anything but a `/`, every other character itself.
