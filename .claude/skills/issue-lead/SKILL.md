@@ -89,7 +89,7 @@ git -C <tree> push -u origin <branch>
 gh pr create --base master --head <branch> --title "<type>(<scope>): <description> (#<n>)" --body-file <scratchpad>/pr-body.md
 ```
 
-When every file the branch changes is on the prose list in `code-review.md` (*PRs that skip CodeRabbit*), add `--label no-coderabbit` to `gh pr create`; it saves the review on open, so it cannot be added later to the same effect.
+When every file the branch changes is on the prose list in `code-review.md` (*PRs that skip CodeRabbit*) and no skill's or agent's frontmatter changed (nor such a file was added or deleted), add `--label no-coderabbit` to `gh pr create`; it saves the review on open, so it cannot be added later to the same effect.
 
 The body follows `.github/pull_request_template.md`, carries `Fixes #<n>`, the second-read tally line when one ran, the `Judged declines` lines, and any vacuous test condition with what covers it. No AI references. Report `pr-open`.
 
