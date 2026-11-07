@@ -41,6 +41,7 @@ import {
   CATCH_UP_PIT_EXIT_GRACE_MS,
   CATCH_UP_REMINDER_MS,
   CATCH_UP_SETTLE_MS,
+  CAUTION_EVENTS,
 } from "./diff/caution.js";
 import { DAMAGE_DEBOUNCE_MS } from "./diff/damage.js";
 import { YELLOW_CLEARED_HOLD_MS } from "./diff/flags.js";
@@ -5829,6 +5830,285 @@ describe("sim-events-iracing translator", () => {
 
         controller.__tick(cautionTick({ flags: STATIC }));
         expect(getCautionEpisode()).toEqual(before);
+      });
+    });
+
+    // The only way into "one-to-go" is a RISING edge of `OneLapToGreen` while
+    // caught, and the seed copies the current flags into the baseline. So a
+    // seed tick that already carries the flag — the first tick back from a
+    // replay or the garage (the translator treats both alike), or a fresh
+    // connect — leaves no edge to see, and the phase never reaches one to go:
+    // no last-lap position call, and in variant B a "Two to green" spoken with
+    // one to go already showing. The recovery reports it late: one to go is
+    // read as a level ("caught" with the flag up), so the first live tick back
+    // publishes `caution.oneLapToGreen` through the same branch as a watched
+    // rise — true for as long as the flag is up — and the checkpoint follows
+    // at 35%.
+    describe("missed one-to-go (issue #1395)", () => {
+      /** A caution tick with the player's own lap distance, which the last-lap checkpoint reads. */
+      function at(flags: number, lapDistPct: number, replay?: boolean): TelemetryData {
+        return {
+          ...cautionTick({ flags, ...(replay === undefined ? {} : { replay }) }),
+          LapDistPct: lapDistPct,
+        } as TelemetryData;
+      }
+
+      /** Counts `caution.lastLapCheckpoint` publications. */
+      function countCheckpoints(): { count: number } {
+        const counter = { count: 0 };
+        getEventBus().subscribe("caution.lastLapCheckpoint", () => {
+          counter.count++;
+        });
+
+        return counter;
+      }
+
+      it("variant A: one to go rising during a replay while caught still reaches one-to-go and its checkpoint", () => {
+        const controller = createMockController();
+        controller.__setSessionInfo(ovalRace());
+        const seen = recordStream();
+        const checkpoints = countCheckpoints();
+        initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
+
+        controller.__tick(at(RACING, 0.1));
+        controller.__tick(at(WAVING, 0.1));
+        controller.__tick(at(STATIC, 0.1));
+        expect(getCautionPhase()).toBe("caught");
+        expect(seen).toContain("caution.fieldCaught");
+
+        // Out of the car; the flag rises while the translator is not watching.
+        controller.__tick(at(STATIC, 0.1, true));
+        controller.__tick(at(ONE_TO_GO, 0.1, true));
+        elapseReplayGrace();
+
+        controller.__tick(at(ONE_TO_GO, 0.1)); // the seed tick back
+        expect(seen).not.toContain("caution.oneLapToGreen"); // the seed itself stays silent
+        controller.__tick(at(ONE_TO_GO, 0.2)); // the following live tick
+        const phaseAfterReturn = getCautionPhase();
+
+        controller.__tick(at(ONE_TO_GO, 0.3));
+        controller.__tick(at(ONE_TO_GO, 0.4)); // up through 35% of the player's lap
+
+        expect({
+          phaseAfterReturn,
+          checkpoints: checkpoints.count,
+          oneToGo: seen.filter((e) => e === "caution.oneLapToGreen").length,
+          fieldCaught: seen.filter((e) => e === "caution.fieldCaught").length,
+        }).toEqual({ phaseAfterReturn: "one-to-go", checkpoints: 1, oneToGo: 1, fieldCaught: 1 });
+      });
+
+      it("a glance during the one-to-go lap neither repeats the call nor loses the checkpoint", () => {
+        const controller = createMockController();
+        controller.__setSessionInfo(ovalRace());
+        const seen = recordStream();
+        const checkpoints = countCheckpoints();
+        initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
+
+        controller.__tick(at(RACING, 0.9));
+        controller.__tick(at(WAVING, 0.9));
+        controller.__tick(at(STATIC, 0.9));
+        controller.__tick(at(ONE_TO_GO, 0.95)); // watched live
+        expect(getCautionPhase()).toBe("one-to-go");
+
+        controller.__tick(at(ONE_TO_GO, 0.1, true));
+        elapseReplayGrace();
+        controller.__tick(at(ONE_TO_GO, 0.1)); // the seed tick back
+        controller.__tick(at(ONE_TO_GO, 0.2));
+        controller.__tick(at(ONE_TO_GO, 0.4)); // up through 35% of the player's lap
+
+        expect({
+          phase: getCautionPhase(),
+          checkpoints: checkpoints.count,
+          oneToGo: seen.filter((e) => e === "caution.oneLapToGreen").length,
+        }).toEqual({ phase: "one-to-go", checkpoints: 1, oneToGo: 1 });
+      });
+
+      it("variant B: a caution left waving and found at one to go is never 'caught' when the pickup is published", () => {
+        const controller = createMockController();
+        controller.__setSessionInfo(ovalRace());
+        const seen = recordStream();
+        const checkpoints = countCheckpoints();
+        // What the field-caught contract's `where` reads: the phase at the
+        // moment the event is published.
+        const phaseAtFieldCaught: string[] = [];
+        getEventBus().subscribe("caution.fieldCaught", () => {
+          phaseAtFieldCaught.push(getCautionPhase());
+        });
+        initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
+
+        controller.__tick(at(RACING, 0.1));
+        controller.__tick(at(WAVING, 0.1));
+        expect(getCautionPhase()).toBe("waving");
+
+        // Out of the car across the tick where the static caution and one to
+        // go are raised together.
+        controller.__tick(at(WAVING, 0.1, true));
+        controller.__tick(at(ONE_TO_GO, 0.1, true));
+        elapseReplayGrace();
+
+        controller.__tick(at(ONE_TO_GO, 0.1)); // the seed tick back
+        controller.__tick(at(ONE_TO_GO, 0.2)); // the tick the pickup lands on
+        const phaseAfterPickupTick = getCautionPhase();
+
+        controller.__tick(at(ONE_TO_GO, 0.3));
+        controller.__tick(at(ONE_TO_GO, 0.4)); // up through 35% of the player's lap
+
+        // The pickup and one to go land on one tick, as on a road course: the
+        // pickup IS published, but with the phase already at one to go, so the
+        // field-caught callout's `where` keeps "Two to green" silent.
+        expect({
+          phaseAtFieldCaught,
+          phaseAfterPickupTick,
+          checkpoints: checkpoints.count,
+          oneToGo: seen.filter((e) => e === "caution.oneLapToGreen").length,
+        }).toEqual({
+          phaseAtFieldCaught: ["one-to-go"],
+          phaseAfterPickupTick: "one-to-go",
+          checkpoints: 1,
+          oneToGo: 1,
+        });
+      });
+
+      it("a one to go that rises while the waving bit is still set is reported at the pickup, not lost", () => {
+        // Watched live, no replay: the rise lands on a tick the phase is still
+        // "waving", so an edge test consumed it there and never saw it again.
+        const controller = createMockController();
+        controller.__setSessionInfo(ovalRace());
+        const seen = recordStream();
+        const checkpoints = countCheckpoints();
+        initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
+
+        controller.__tick(at(RACING, 0.1));
+        controller.__tick(at(WAVING, 0.1));
+        controller.__tick(at(WAVING | Flags.OneLapToGreen, 0.1)); // still waving: no pickup yet
+        expect(getCautionPhase()).toBe("waving");
+        controller.__tick(at(ONE_TO_GO, 0.2)); // the pickup tick
+        const phaseAfterPickupTick = getCautionPhase();
+
+        controller.__tick(at(ONE_TO_GO, 0.3));
+        controller.__tick(at(ONE_TO_GO, 0.4)); // up through 35% of the player's lap
+
+        expect({ phaseAfterPickupTick, checkpoints: checkpoints.count, seen }).toEqual({
+          phaseAfterPickupTick: "one-to-go",
+          checkpoints: 1,
+          seen: ["caution.fieldCaught", "caution.oneLapToGreen"],
+        });
+      });
+
+      it.each([
+        ["caught", STATIC],
+        ["waving", WAVING],
+      ] as const)(
+        "a late report from a phase kept as %s that finds GreenHeld already up moves on silently",
+        (_kept, before) => {
+          // GreenHeld is up about fifteen seconds before the green in both
+          // captures: a lap's warning there would come with seconds left.
+          const HELD = ONE_TO_GO | Flags.GreenHeld;
+          const controller = createMockController();
+          controller.__setSessionInfo(ovalRace());
+          const seen = recordStream();
+          const checkpoints = countCheckpoints();
+          const phaseAtFieldCaught: string[] = [];
+          getEventBus().subscribe("caution.fieldCaught", () => {
+            phaseAtFieldCaught.push(getCautionPhase());
+          });
+          initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
+
+          controller.__tick(at(RACING, 0.1));
+          controller.__tick(at(WAVING, 0.1));
+
+          if (before === STATIC) controller.__tick(at(STATIC, 0.1));
+
+          phaseAtFieldCaught.length = 0;
+
+          controller.__tick(at(before, 0.1, true));
+          controller.__tick(at(HELD, 0.7, true));
+          elapseReplayGrace();
+          controller.__tick(at(HELD, 0.8)); // the seed tick back
+          controller.__tick(at(HELD, 0.9));
+          controller.__tick(at(HELD, 0.2)); // the player's own crossing…
+          controller.__tick(at(HELD, 0.4)); // …and up through 35%
+
+          expect({
+            phase: getCautionPhase(),
+            checkpoints: checkpoints.count,
+            oneToGo: seen.filter((e) => e === "caution.oneLapToGreen").length,
+            phaseAtFieldCaught,
+          }).toEqual({
+            phase: "one-to-go",
+            checkpoints: 0,
+            oneToGo: 0,
+            // A pickup published here finds the phase already at one to go,
+            // so "Two to green" stays silent as well.
+            phaseAtFieldCaught: before === WAVING ? ["one-to-go"] : [],
+          });
+        },
+      );
+
+      it("a watched rise is reported even when GreenHeld comes up with it", () => {
+        const controller = createMockController();
+        controller.__setSessionInfo(ovalRace());
+        const seen = recordStream();
+        initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
+
+        controller.__tick(at(RACING, 0.1));
+        controller.__tick(at(WAVING, 0.1));
+        controller.__tick(at(STATIC, 0.1));
+        controller.__tick(at(ONE_TO_GO | Flags.GreenHeld, 0.1));
+
+        expect(seen.filter((e) => e === "caution.oneLapToGreen")).toHaveLength(1);
+      });
+
+      it("fresh connect: a first-ever tick already at one to go reaches one-to-go and its checkpoint", () => {
+        const controller = createMockController();
+        controller.__setSessionInfo(ovalRace());
+        const seen = recordStream();
+        const checkpoints = countCheckpoints();
+        initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
+
+        controller.__tick(at(ONE_TO_GO, 0.1)); // the seed: no Green, static caution, one to go
+        controller.__tick(at(ONE_TO_GO, 0.2)); // the next live tick
+        const phaseAfterConnect = getCautionPhase();
+
+        controller.__tick(at(ONE_TO_GO, 0.3));
+        controller.__tick(at(ONE_TO_GO, 0.4)); // up through 35% of the player's lap
+
+        // Entered caught silently (a pickup it never watched), then the late
+        // one to go — never "Two to green".
+        expect({ phaseAfterConnect, checkpoints: checkpoints.count, seen }).toEqual({
+          phaseAfterConnect: "one-to-go",
+          checkpoints: 1,
+          seen: ["caution.oneLapToGreen"],
+        });
+      });
+
+      it("control: a rolling-start formation seeded on the first tick is no caution and publishes nothing", () => {
+        // `OneLapToGreen` with no caution bit is the formation lap (issue
+        // #1167), not one to go — a recovery keyed on the flag alone would
+        // start a caution here.
+        const FORMATION = Flags.OneLapToGreen | Flags.Servicible | Flags.StartReady;
+        const controller = createMockController();
+        controller.__setSessionInfo(ovalRace());
+        const cautionEvents: string[] = [];
+
+        for (const name of CAUTION_EVENTS) {
+          if (name.startsWith("caution.")) getEventBus().subscribe(name, () => cautionEvents.push(name));
+        }
+
+        initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
+
+        const formation = (lapDistPct: number): TelemetryData =>
+          ({ ...at(FORMATION, lapDistPct), SessionState: SessionState.ParadeLaps }) as TelemetryData;
+
+        controller.__tick(formation(0.1)); // the seed
+        controller.__tick(formation(0.2));
+        expect(getCautionPhase()).toBe("none");
+
+        controller.__tick(formation(0.3));
+        controller.__tick(formation(0.4));
+
+        expect(getCautionPhase()).toBe("none");
+        expect(cautionEvents).toEqual([]);
       });
     });
   });

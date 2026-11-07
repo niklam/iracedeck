@@ -190,15 +190,17 @@ describe("diffStartLights — a restart is not a race start (issue #1127)", () =
   const RESTART = 0x80040004 | 0; // Green | Servicible | StartGo — verbatim from the capture
   const BEFORE = 0x10044600 | 0; // Caution | OneLapToGreen | GreenHeld | Servicible | StartHidden
 
-  /** A state parked one tick before the measured restart, phase `"caught"`. */
+  /** A state parked one tick before the measured restart, phase `"one-to-go"`. */
   function atOneToGo(): { state: TranslatorState; restart: TelemetryData } {
     const state = createInitialState();
     const before = tick(BEFORE, SessionState.Racing, 600);
 
     diffStartLights(state, before, STANDING_SESSION, () => {}); // seed the gantry baseline
     diffCaution(state, before, null, null, () => {}); // seed the caution baselines
-    diffCaution(state, before, null, null, () => {}); // …and take the phase to "caught"
-    expect(state.cautionPhase).toBe("caught");
+    // …and take the phase through "caught" to "one-to-go": one to go is read
+    // as a level, so the flag already up is reported late (issue #1395).
+    diffCaution(state, before, null, null, () => {});
+    expect(state.cautionPhase).toBe("one-to-go");
 
     return { state, restart: tick(RESTART, SessionState.Racing, 580) };
   }
