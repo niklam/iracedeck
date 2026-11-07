@@ -589,9 +589,9 @@ export type SessionLimitDisplay =
  * shared whichever-ends-sooner rule from `@iracedeck/iracing-sdk` — the same
  * POLICY the fuel laps-left callouts apply, so neither invents its own notion
  * of which limit a dual-limit session is running to. They can still reach
- * different verdicts on the same tick, and deliberately so: fuel compares the
- * laps it can still complete after the current one against a checkered bound
- * built from the player's own average, while this key compares the raw counter
+ * different verdicts on the same tick, and deliberately so: fuel judges the
+ * raw tank against the player's crossings up to the leader's predicted
+ * chequered flag (#1405), while this key compares the raw counter
  * against the clock divided by the leader's pace. What is shared is the rule
  * and the sentinel decoding, not the operands.
  *

@@ -38,10 +38,12 @@ import {
   estimateFuelLapsLeft,
   type FuelLapsLeftEstimate,
   type FuelRaceCoverage,
+  isFuelRaceCovered,
   resolveFuelRaceCoverage,
 } from "./diff/fuel-laps-left.js";
 import type { FuelLap, FuelLapTracker, FuelStats } from "./diff/fuel-laps.js";
 import type { PaceLineup } from "./diff/pace-lineup.js";
+import type { LeaderFinish } from "./leader-finish.js";
 import type { ReplayRecorderSnapshot } from "./replay-recorder.js";
 import type {
   CautionEpisode,
@@ -73,7 +75,8 @@ export type SimFuelCoverageSkip = "not-a-race-session" | "race-over" | "final-la
 /**
  * What the laps-of-fuel-left callout's formula gives for one tick: every step
  * of the count, then the remaining race distance it is compared with and the
- * verdict — `covered` is the diff's own `count >= remainingLaps`.
+ * verdict — `covered` is the diff's own `isFuelRaceCovered` (issue #1405),
+ * which is true on the last lap (`remainingLaps` 0) whatever the tank holds.
  *
  * The count stands in any session. The comparison does not: where it has no
  * meaningful answer its four keys are `null` and `coverageSkipped` says why.
@@ -262,8 +265,8 @@ export type SimStateParts = {
     tracker: FuelLapTracker;
     /** The margin closure the diff is handed. Called only when there is an estimate to subtract it from. */
     getMarginLaps: () => number;
-    /** The leader-lap resolver the diff is handed. Called only when the timed side is computed. */
-    getLeaderLapTimeS: () => number | null;
+    /** The leader-finish resolver the diff is handed. Called only when the timed side is computed. */
+    getLeaderFinish: (playerLapS: number) => LeaderFinish;
   };
   order: SimOrderState;
   gaps: LiveGaps | null;
@@ -371,9 +374,14 @@ function resolveLapsLeftNow(
     };
   }
 
-  const coverage = resolveFuelRaceCoverage(telemetry, stats, estimate.lapFractionRemaining, fuel.getLeaderLapTimeS);
+  const coverage = resolveFuelRaceCoverage(telemetry, stats, estimate.lapFractionRemaining, fuel.getLeaderFinish);
 
-  return { ...estimate, ...coverage, covered: estimate.count >= coverage.remainingLaps, coverageSkipped: null };
+  return {
+    ...estimate,
+    ...coverage,
+    covered: isFuelRaceCovered(estimate, coverage.remainingLaps),
+    coverageSkipped: null,
+  };
 }
 
 /** The longest reason {@link buildDegradedSimState} records; a message is a sentence, not a dump. */
