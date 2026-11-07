@@ -424,8 +424,9 @@ export function readLeaderGap(telemetry: TelemetryData, positions: number[], pla
  *
  * Shared by the fuel race coverage (#1405), which passes the lap-count
  * prediction and its capped pace `min(L, P)`, and the gap callouts' horizon
- * (#1380), which passes the raw leader pace: each consumer picks the pace
- * that errs in its own safe direction.
+ * (#1380), which passes the leader's faster known pace, the smaller of their
+ * last and best laps: each consumer picks the pace that errs in its own safe
+ * direction.
  *
  * @param gap - the player's place against the leader ({@link readLeaderGap})
  * @param chequeredInS - seconds until the leader's chequered flag, `T`

@@ -224,6 +224,52 @@ describe("resolveGapLapsRemaining — the player's own crossings (issue #1380)",
 
     expect(resolveGapLapsRemaining(across, ORDER, false, player())).toBeCloseTo(1 - 0.05, 9);
   });
+
+  it("caps the time model at one crossing more than the leader's", () => {
+    // A faster player (97 s against the leader's 100 s) a lap down on the
+    // counter but 0.215 laps behind on distance, so close to the line that
+    // the lap counters are not trusted (the line guard). By pace,
+    // ceil((8 − 0.2) · 100 / 97 + 0.985) = 10; but a car within a lap of the
+    // leader finishes on the leader's lap count, 8 + 1 = 9.
+    const nearLine = limits(8, IRSDK_UNLIMITED_TIME, {
+      CarIdxLastLapTime: [97, 100, 100],
+      CarIdxLapCompleted: [9, 10, 8],
+      CarIdxLapDistPct: [0.985, 0.2, 0.5],
+    });
+
+    expect(resolveGapLapsRemaining(nearLine, ORDER, false, player({ avgLapTimeS: 97 }))).toBeCloseTo(9 - 0.985, 9);
+  });
+
+  it("caps a lapped player's time count when the leader's pace stretches the flag", () => {
+    // Three laps down, and the leader's only lap on the board is a 160 s one:
+    // T = (6 − 0.5) · 160 = 880 s puts the player's chequered at crossing
+    // ceil(880 / 100 + 0.5) = 10, more than any car but the leader can run.
+    const stretched = limits(6, IRSDK_UNLIMITED_TIME, {
+      CarIdxLastLapTime: [100, 160, 100],
+      CarIdxLapCompleted: [7, 10, 6],
+      CarIdxLapDistPct: [0.5, 0.5, 0.5],
+    });
+
+    expect(resolveGapLapsRemaining(stretched, ORDER, false, player({ avgLapTimeS: 100 }))).toBeCloseTo(7 - 0.5, 9);
+  });
+
+  it("converts at the leader's faster known pace, so a slow last lap does not keep a car about to be lapped on the counters", () => {
+    // Leader's last lap 160 s (a pit stop), best 100 s; the player 0.7 laps
+    // behind on 110 s laps, 6 laps to go. At 100 s the flag is
+    // (6 − 0.3) · 100 = 570 s away, the gap grows by 570 · (1/100 − 1/110)
+    // ≈ 0.52 laps and the player is lapped: by time, ceil(570 / 110 + 0.6) = 6.
+    // At the raw 160 s the gap would shrink and the counters say 10 + 6 − 9 = 7.
+    const slowLast = lapRace({ SessionLapsRemainEx: 6, CarIdxLastLapTime: [110, 160, 110] });
+    const withBest = { ...slowLast, CarIdxBestLapTime: [108, 100, 108] } as TelemetryData;
+
+    expect(resolveGapLapsRemaining(withBest, ORDER, false, player({ avgLapTimeS: 110 }))).toBeCloseTo(6 - 0.6, 9);
+    // Without a best lap, the last one is all there is.
+    expect(resolveGapLapsRemaining(slowLast, ORDER, false, player({ avgLapTimeS: 110 }))).toBeCloseTo(7 - 0.6, 9);
+    // Without a last lap, the best one.
+    const bestOnly = { ...withBest, CarIdxLastLapTime: [110, -1, 110] } as TelemetryData;
+
+    expect(resolveGapLapsRemaining(bestOnly, ORDER, false, player({ avgLapTimeS: 110 }))).toBeCloseTo(6 - 0.6, 9);
+  });
 });
 
 describe("resolveGapLapsRemaining — the end of the race (issue #1380)", () => {
@@ -264,9 +310,15 @@ describe("resolveGapLapsRemaining — falling back to the leader's crossings (is
   // Each would be 6 − 0.6 on the counters (see above); without what the
   // conversion needs, it is the leader's 5 less the player's fraction.
   it("without a leader pace", () => {
-    const noPace = lapRace({ CarIdxLastLapTime: [90, 0, 92] });
+    const noPace = lapRace({ CarIdxLastLapTime: [90, 0, 92], CarIdxBestLapTime: [90, -1, 92] });
 
     expect(resolveGapLapsRemaining(noPace, ORDER, false, player())).toBeCloseTo(5 - 0.6, 9);
+  });
+
+  it("before the green, whose laps on the board are the parade's", () => {
+    const parade = lapRace({ SessionState: SessionState.ParadeLaps });
+
+    expect(resolveGapLapsRemaining(parade, ORDER, false, player())).toBeCloseTo(5 - 0.6, 9);
   });
 
   it("without a leader lap fraction", () => {

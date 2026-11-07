@@ -1889,20 +1889,33 @@ function leaderCrossingsToGo(
  *    not finished has at least their chequered crossing to run.
  * 4. **By time** otherwise, when `T`, `P` and `f_p` are known: the player's
  *    k-th crossing is at `(k − f_p) · P`, and their chequered is their first
- *    at or after the leader's, so `max(1, ceil(T / P + f_p))`. No near-tie
- *    tolerance: here a crossing counted one too few only withholds an
- *    announcement on the last lap.
+ *    at or after the leader's, so `ceil(T / P + f_p)`, at least `1` and at
+ *    most `C_L + 1`. No car but the leader finishes more than one crossing
+ *    after the leader's count — a car a lap down within a lap finishes on
+ *    `C_L + 1`, any other on fewer — so the cap catches what the pace model
+ *    over-counts: a faster player within a lap whose lap counters sit inside
+ *    the line guard, or a `T` stretched by a leader pace slower than the
+ *    leader really runs. No near-tie tolerance: here a crossing counted one
+ *    too few only withholds an announcement on the last lap.
  * 5. **Otherwise** `C_L` — no leader pace, no leader lap fraction, no player
  *    average, or the lap counters unreadable near the line with no player
  *    fraction to fall back on. It overstates for a lapped or slower-class
  *    player, as #1311 did, and never mutes.
  *
- * `T = (C_L − f_L) · L` is the leader's chequered in seconds, with `L` the
- * leader's raw recent lap ({@link resolveLeaderLapTimeS}) and `f_L` their lap
- * fraction; `P` is the player's validated average. Unlike the fuel estimate,
- * the pace is not capped at `min(L, P)` and there is no tolerance: the two
- * consumers' safe directions are opposite, and for the horizon a count too
- * high announces a catch that cannot happen.
+ * `T = (C_L − f_L) · L` is the leader's chequered in seconds, with `f_L` the
+ * leader's lap fraction and `L` their faster known pace
+ * ({@link leaderConversionLapS}: the smaller of their last and best laps);
+ * `P` is the player's validated average. The two consumers of the lap-count
+ * test err in opposite directions, so each picks its own pace. For fuel a
+ * count too low silences a warning, so it caps the leader's lap at the
+ * player's average and adds a near-tie tolerance on the time path. For the
+ * horizon a count too high announces a catch that cannot happen, and a
+ * leader lap too slow does exactly that twice over: it lengthens `T`, adding
+ * crossings on the time path, and it keeps a car the leader will lap on the
+ * lap-count path, one crossing more. A slow last lap is common — a pit stop,
+ * a spin, the last lap of a caution — so the conversion takes the leader's
+ * best when it is faster, and no tolerance. The leader's own count `C_L`
+ * keeps {@link resolveLeaderLapTimeS}, the recent lap (#1311).
  */
 function playerCrossingsToGo(
   telemetry: TelemetryData,
@@ -1918,8 +1931,8 @@ function playerCrossingsToGo(
 
   if (player.carIdx >= 0 && positions[player.carIdx] === 1) return leaderCrossings;
 
-  const leaderLapS = resolveLeaderLapTimeS(telemetry, positions);
   const leaderIdx = positions.findIndex((position) => position === 1);
+  const leaderLapS = leaderConversionLapS(telemetry, leaderIdx);
   const leaderPct = readLapFraction(telemetry, leaderIdx);
   const playerLapS = player.avgLapTimeS;
   const playerLapKnown = playerLapS !== null && Number.isFinite(playerLapS) && playerLapS > 0;
@@ -1937,7 +1950,34 @@ function playerCrossingsToGo(
 
   if (playerPct === null) return leaderCrossings;
 
-  return Math.max(1, Math.ceil(chequeredInS / playerLapS + playerPct));
+  return Math.min(leaderCrossings + 1, Math.max(1, Math.ceil(chequeredInS / playerLapS + playerPct)));
+}
+
+/**
+ * The race leader's pace for converting their crossings into the player's
+ * ({@link playerCrossingsToGo}, issue #1380): the smaller of their
+ * `CarIdxLastLapTime` and `CarIdxBestLapTime`, each only when finite and
+ * positive, either alone when the other is not, or `null` when neither is,
+ * the leader is unresolved (`leaderIdx < 0`), or the race has not gone green
+ * — before the green the board holds the parade lap, as
+ * {@link resolveLeaderLapTimeS} documents. The faster of the two because a
+ * slow last lap (a pit stop, a spin, a caution's last lap) over-counts the
+ * player's crossings both ways the conversion reads it.
+ */
+function leaderConversionLapS(telemetry: TelemetryData, leaderIdx: number): number | null {
+  if (isPreGreen(telemetry) || leaderIdx < 0) return null;
+
+  const last = positiveLapS(telemetry.CarIdxLastLapTime?.[leaderIdx]);
+  const best = positiveLapS(telemetry.CarIdxBestLapTime?.[leaderIdx]);
+
+  if (last === null) return best;
+
+  return best === null ? last : Math.min(last, best);
+}
+
+/** A lap time (s) when it is finite and positive, otherwise `null` (unset `-1`, `0`, missing). */
+function positiveLapS(lapS: number | undefined): number | null {
+  return typeof lapS === "number" && Number.isFinite(lapS) && lapS > 0 ? lapS : null;
 }
 
 /**
