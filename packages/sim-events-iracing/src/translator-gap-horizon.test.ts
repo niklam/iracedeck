@@ -474,7 +474,8 @@ function lastHorizon(): unknown {
 describe("gap closing-announcement horizon at the call site (issues #1311, #1380)", () => {
   beforeEach(() => {
     initializeEventBus(createMockLogger());
-    diffGapsSpy.mockClear();
+    // A reset, not a clear: one test runs the real `diffGaps` behind the spy.
+    diffGapsSpy.mockReset();
   });
 
   afterEach(() => {
@@ -532,6 +533,96 @@ describe("gap closing-announcement horizon at the call site (issues #1311, #1380
     // from lap 10 completed, less the 0.6 already run.
     controller.__tick(lapRaceTick(11, 0.6, { SessionTime: 244, FuelLevel: 46 }));
     expect(lastHorizon()).toBeCloseTo(6 - 0.6, 9);
+  });
+
+  it("reads the player's finish at the crossing, before the lap time and the standings catch up", async () => {
+    // The real `diffGaps` behind the spy, its events collected.
+    const actual = await vi.importActual<typeof import("./diff/gaps.js")>("./diff/gaps.js");
+    const events: { event: string; data: unknown }[] = [];
+
+    diffGapsSpy.mockImplementation((...args: Parameters<typeof actual.diffGaps>) => {
+      const emit = args[7];
+
+      args[7] = (event) => {
+        events.push(event);
+        emit(event);
+      };
+
+      return actual.diffGaps(...args);
+    });
+
+    // The standings never catch up within the test (`LapsComplete` stays 0
+    // and the wait is in wall-clock time), so `raceFinish` is not recorded.
+    const controller = createMockController({
+      WeekendInfo: { SimMode: "full" },
+      DriverInfo: { DriverCarIdx: 0, Drivers: [0, 1, 2].map((CarIdx) => ({ CarIdx, CarClassID: 1 })) },
+      SessionInfo: {
+        Sessions: [
+          {
+            SessionNum: 0,
+            SessionType: "Race",
+            ResultsPositions: [0, 1, 2].map((CarIdx) => ({
+              CarIdx,
+              Position: CarIdx === 1 ? 1 : CarIdx === 0 ? 2 : 3,
+              ClassPosition: CarIdx === 1 ? 0 : CarIdx === 0 ? 1 : 2,
+              LapsComplete: 0,
+            })),
+          },
+        ],
+      },
+    });
+    initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
+
+    // A 5-lap race on 90 s laps. The player (car0) catches the leader (car1)
+    // at 2 s a lap, so the catch is always 0.6 laps past the player's own
+    // flag: 1.2 s behind at the line, 0.6 laps to contact. Car2 runs 30 s back.
+    const totalLaps = 5;
+    const lapS = 90;
+    const step = 0.005; // laps per tick
+    const gapS = (p: number): number => 1.2 + 2 * (totalLaps - p);
+    const lapsDone = (p: number): number => Math.floor(p + 1e-9);
+    const horizons: { p: number; horizon: unknown }[] = [];
+
+    for (let i = 0; ; i++) {
+      const p = 0.02 + i * step;
+
+      if (p > totalLaps + 0.05) break;
+
+      const leaderP = p + gapS(p) / lapS;
+      const leaderFinished = lapsDone(leaderP) >= totalLaps;
+      const progress = [p, leaderP, p - 30 / lapS];
+
+      controller.__tick(
+        raceTick({
+          SessionTime: p * lapS,
+          SessionLapsRemainEx: Math.max(0, totalLaps - lapsDone(leaderP)),
+          SessionTimeRemain: IRSDK_UNLIMITED_TIME,
+          SessionState: leaderFinished ? SessionState.Checkered : SessionState.Racing,
+          SessionFlags: leaderFinished ? Flags.Checkered : 0,
+          Lap: lapsDone(p) + 1,
+          LapDistPct: p - lapsDone(p),
+          LapCompleted: lapsDone(p),
+          // The lap time refreshes three ticks after each crossing, never on it.
+          LapLastLapTime: lapsDone(p - 3 * step) > 0 ? 90 + lapsDone(p - 3 * step) / 100 : -1,
+          LapBestLapTime: 90.01,
+          CarIdxLapCompleted: progress.map(lapsDone),
+          CarIdxLapDistPct: progress.map((q) => q - lapsDone(q)),
+          CarIdxOnPitRoad: [false, false, false],
+          CarIdxLastLapTime: [lapS, lapS, lapS],
+        }),
+      );
+      horizons.push({ p, horizon: lastHorizon() });
+    }
+
+    const crossing = horizons.find(({ p }) => lapsDone(p) === totalLaps);
+
+    // On the last lap the horizon is the distance to the line...
+    expect(horizons.find(({ p }) => p > totalLaps - 0.5)?.horizon).toBeGreaterThan(0.4);
+    // ...and on the crossing tick itself it is 0, though `raceFinish` is not recorded.
+    expect(crossing?.horizon).toBe(0);
+    expect(
+      events.filter((e) => e.event === "gap.trendChanged" && (e.data as { direction: string }).direction === "closing"),
+    ).toHaveLength(0);
   });
 
   it("leaves the player their last lap after the leader's flag, and nothing after their own", () => {

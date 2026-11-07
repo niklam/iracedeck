@@ -73,7 +73,7 @@ import {
 } from "./diff/fuel-laps.js";
 import { diffGaps, GAP_DEFAULT_ALERT_THRESHOLD_S, GAP_DEFAULT_MIN_CHANGE_S, readPairGap } from "./diff/gaps.js";
 import { COLLISION_CAR_VALUE_PAVEMENT, diffIncidents, resolveCollisionCarValue } from "./diff/incidents.js";
-import { diffLaps } from "./diff/laps.js";
+import { diffLaps, tookChequeredAt } from "./diff/laps.js";
 import { diffLeaderWhite } from "./diff/leader-white.js";
 import { diffLifecycle } from "./diff/lifecycle.js";
 import { diffLimiter } from "./diff/limiter.js";
@@ -1797,9 +1797,12 @@ export type GapHorizonPlayer = {
    */
   avgLapTimeS: number | null;
   /**
-   * Whether the player has taken the chequered flag in this session:
-   * `state.raceFinish` recorded for the current `SessionNum`, which
-   * `diffLaps` sets at the flag crossing earlier in the same tick.
+   * Whether the player has taken the chequered flag in this session, from
+   * the crossing tick on: `state.raceFinish` recorded for the current
+   * `SessionNum`, or the crossing this tick's `diffLaps` recorded taken under
+   * the flag (`tookChequeredAt`). The second is what covers the crossing
+   * itself: `diffLaps` writes `raceFinish` only when it emits the lap, after
+   * its lap-time and standings waits, up to seconds later.
    */
   finished: boolean;
 };
@@ -3591,8 +3594,11 @@ function handleOrderSteps(
   // closing-announcement horizon (a catch that completes after the player's
   // flag is never announced, #1380) — see `resolveGapLapsRemaining`.
   // `diffLeaderWhite` ran earlier this tick, so the post-expiry crossing
-  // marker is current, and `diffLaps` did, so a finish at this tick's
-  // crossing is already recorded in `raceFinish`. The estimate is read from
+  // marker is current. The player's finish is read at the crossing, not
+  // from `raceFinish` alone: `diffLaps` records that only when it emits the
+  // lap, after its lap-time and standings waits, while `diffFlags` and
+  // `diffLaps`' crossing record, both earlier this tick, have already
+  // written what `tookChequeredAt` reads. The estimate is read from
   // telemetry for this one diff, so it is part of its step (#1559).
   steps.live("diffGaps", pending, () =>
     diffGaps(
@@ -3610,7 +3616,9 @@ function handleOrderSteps(
         ? resolveGapLapsRemaining(telemetry, canonicalPositions, self.state.leaderWhitePostExpiryCrossed, {
             carIdx: playerCarIdx,
             avgLapTimeS: fuelLapsLeftStats(self).avgLapTime,
-            finished: isFinishRecordedFor(self.state.raceFinish, telemetry.SessionNum),
+            finished:
+              isFinishRecordedFor(self.state.raceFinish, telemetry.SessionNum) ||
+              tookChequeredAt(self.state, typeof telemetry.LapCompleted === "number" ? telemetry.LapCompleted : -1),
           })
         : null,
       self.getGapMinChangeSeconds,

@@ -30,6 +30,7 @@ import {
   type LapSessionType,
   type PlayerResultsForLap,
   diffLaps as runDiffLaps,
+  tookChequeredAt,
 } from "./laps.js";
 import type { PendingEvent } from "./types.js";
 
@@ -93,6 +94,39 @@ function synced(position: number = 0, classPosition1Indexed: number = position):
 }
 
 const NOW = 1_000_000;
+
+describe("tookChequeredAt (issue #1380)", () => {
+  it("reads a crossing made with the flag already flying, for that lap only", () => {
+    const state = createInitialState();
+
+    state.lapCrossing.lap = 5;
+    state.lapCrossing.underCheckered = true;
+
+    expect(tookChequeredAt(state, 5)).toBe(true);
+    expect(tookChequeredAt(state, 4)).toBe(false);
+    expect(tookChequeredAt(state, 6)).toBe(false);
+
+    state.lapCrossing.underCheckered = false;
+
+    expect(tookChequeredAt(state, 5)).toBe(false);
+  });
+
+  it("reads the lap the flag diff resolved the finish for", () => {
+    const state = createInitialState();
+
+    state.flagCheckeredTakenLap = 7;
+
+    expect(tookChequeredAt(state, 7)).toBe(true);
+    expect(tookChequeredAt(state, 6)).toBe(false);
+  });
+
+  it("reads nothing before any crossing, nor for an unknown lap", () => {
+    const state = createInitialState();
+
+    expect(tookChequeredAt(state, 0)).toBe(false);
+    expect(tookChequeredAt(state, -1)).toBe(false);
+  });
+});
 
 describe("diffLaps — seeding", () => {
   it("does not emit on the first tick when connecting cleanly", () => {
