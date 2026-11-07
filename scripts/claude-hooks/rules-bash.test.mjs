@@ -51,6 +51,7 @@ function ctx(overrides = {}) {
     replayRebase: () => undefined,
     baseChangedSince: () => undefined,
     prComments: () => undefined,
+    prChangedFiles: () => undefined,
     ...overrides,
   };
 }
@@ -1212,6 +1213,182 @@ describe("gh pr merge", () => {
     };
     deny("gh pr merge 7 --squash --admin", ctx({ prView: () => pr }));
   });
+
+  // #1648: nobody can approve a PR CodeRabbit does not review, so it is BLOCKED
+  // with REVIEW_REQUIRED even to an admin; `--admin` passes that block only for
+  // Claude-facing prose or a Dependabot PR, read from the files at the pinned head.
+  describe("an unapproved --admin merge (#1648)", () => {
+    const base = "4".repeat(40);
+    const unapproved = (extra = {}) => ({
+      ...green(),
+      baseRefOid: base,
+      author: { is_bot: false, login: "niklam" },
+      reviewDecision: "REVIEW_REQUIRED",
+      mergeStateStatus: "BLOCKED",
+      statusCheckRollup: [{ __typename: "CheckRun", name: "Tests", status: "COMPLETED", conclusion: "SUCCESS" }],
+      reviews: [],
+      ...extra,
+    });
+    const PROSE = [
+      ".claude/rules/hooks.md",
+      ".claude/skills/issue-lead/SKILL.md",
+      ".claude/agents/implementer.md",
+      "CLAUDE.md",
+      "packages/deck-core/CLAUDE.md",
+    ];
+    /** A context whose file read answers `read` and records each call. */
+    const arrange = (read = { ok: true, files: PROSE }, pr = unapproved()) => {
+      const calls = [];
+      const c = ctx({ prView: () => pr, prChangedFiles: (args) => (calls.push(args), read) });
+      return { c, calls };
+    };
+    const pinned = `gh pr merge 7 --squash --admin --match-head-commit ${head}`;
+
+    it("passes a prose-only PR pinned to its head, reading the files at that head", () => {
+      const { c, calls } = arrange();
+      passes(pinned, c);
+      expect(calls).toEqual([{ head, base, dir: MASTER }]);
+    });
+
+    it("refuses each file off the list, naming it", () => {
+      for (const file of [
+        "scripts/claude-hooks/rules-bash.mjs",
+        "scripts/claude-hooks/rules-bash.test.mjs",
+        ".claude/settings.json",
+        "changelog.d/1648-x.md",
+        "packages/website/src/content/docs/docs/index.md",
+        "README.md",
+      ]) {
+        const said = deny(pinned, arrange({ ok: true, files: [...PROSE, file] }).c);
+        expect(said, file).toContain(`it changes ${file}, off that list`);
+        expect(said, file).toMatch(/REVIEW_REQUIRED/);
+      }
+    });
+
+    it("refuses a script renamed into the rules, by the deleted side git lists", () => {
+      // `prChangedFiles` reads with --no-renames, so a move lists both paths.
+      const said = deny(pinned, arrange({ ok: true, files: [".claude/rules/x.md", "scripts/x.mjs"] }).c);
+      expect(said).toContain("it changes scripts/x.mjs, off that list");
+    });
+
+    it("names at most five files off the list", () => {
+      const files = Array.from({ length: 7 }, (_, i) => `scripts/f${i}.mjs`);
+      expect(deny(pinned, arrange({ ok: true, files }).c)).toContain("scripts/f4.mjs, and 2 more, off that list");
+    });
+
+    it("passes a Dependabot PR on its own files, which it never reads", () => {
+      const { c, calls } = arrange(
+        { ok: true, files: ["package.json", "pnpm-lock.yaml"] },
+        unapproved({ author: { is_bot: true, login: "app/dependabot" } }),
+      );
+      passes(pinned, c);
+      expect(calls).toEqual([]);
+    });
+
+    it("takes no other author for Dependabot", () => {
+      for (const author of [
+        { is_bot: false, login: "app/dependabot" },
+        { is_bot: true, login: "dependabot" },
+        { is_bot: true, login: "app/dependabot-preview" },
+        { login: "app/dependabot" },
+        undefined,
+      ]) {
+        const c = arrange({ ok: true, files: ["package.json"] }, unapproved({ author })).c;
+        expect(deny(pinned, c), JSON.stringify(author)).toContain("it changes package.json, off that list");
+      }
+    });
+
+    it("refuses an unpinned merge, or one pinned to another sha or a prefix", () => {
+      for (const command of [
+        "gh pr merge 7 --squash --admin",
+        `gh pr merge 7 --squash --admin --match-head-commit ${"2".repeat(40)}`,
+        `gh pr merge 7 --squash --admin --match-head-commit ${head.slice(0, 9)}`,
+      ])
+        expect(deny(command, arrange().c), command).toContain(`add \`--match-head-commit ${head}\``);
+      const dependabot = arrange(undefined, unapproved({ author: { is_bot: true, login: "app/dependabot" } })).c;
+      expect(deny("gh pr merge 7 --squash --admin", dependabot)).toContain("--match-head-commit");
+    });
+
+    it("refuses when the file read fails or lists nothing, naming what failed", () => {
+      for (const reason of [
+        "git could not fetch the PR's head and base from origin",
+        "the history is criss-crossed (more than one merge-base)",
+        "git could not list the files the PR changes",
+        "git lists no file the PR changes",
+      ])
+        expect(deny(pinned, arrange({ ok: false, reason }).c)).toContain(
+          `the gate could not read the files it changes: ${reason}`,
+        );
+      // The default context's reader answers nothing, as a reader that never ran.
+      expect(deny(pinned, ctx({ prView: () => unapproved() }))).toContain("the file read did not run");
+    });
+
+    it("never passes a review that asked for changes", () => {
+      const { c, calls } = arrange(undefined, unapproved({ reviewDecision: "CHANGES_REQUESTED" }));
+      expect(deny(pinned, c)).toMatch(/mergeStateStatus is BLOCKED \(CHANGES_REQUESTED/);
+      expect(calls).toEqual([]);
+    });
+
+    it("keeps every other check: DIRTY, a red or pending check, no checks, the method", () => {
+      const cases = [
+        [unapproved({ mergeStateStatus: "DIRTY" }), pinned, /mergeStateStatus is DIRTY/],
+        [
+          unapproved({
+            statusCheckRollup: [{ __typename: "CheckRun", name: "Tests", status: "COMPLETED", conclusion: "FAILURE" }],
+          }),
+          pinned,
+          /not green: Tests/,
+        ],
+        [
+          unapproved({ statusCheckRollup: [{ __typename: "CheckRun", name: "Tests", status: "IN_PROGRESS" }] }),
+          pinned,
+          /pending: Tests/,
+        ],
+        [unapproved({ statusCheckRollup: [] }), pinned, /no checks reported/],
+        [unapproved(), `gh pr merge 7 --admin --match-head-commit ${head}`, /squash/],
+        [unapproved({ state: "CLOSED" }), pinned, /CLOSED, not OPEN/],
+      ];
+      for (const [pr, command, said] of cases) {
+        const { c, calls } = arrange(undefined, pr);
+        expect(deny(command, c)).toMatch(said);
+        // Every cheap refusal comes before the git read.
+        expect(calls).toEqual([]);
+      }
+      // A red check on a qualifying PR still names the BLOCKED it would otherwise pass.
+      const red = unapproved({
+        statusCheckRollup: [{ __typename: "CheckRun", name: "Tests", status: "COMPLETED", conclusion: "FAILURE" }],
+      });
+      expect(deny(pinned, arrange(undefined, red).c)).toMatch(/BLOCKED \(REVIEW_REQUIRED; whether `--admin`/);
+    });
+
+    it("gives a release back-merge no bypass", () => {
+      const { c, calls } = arrange(undefined, unapproved({ headRefName: "release/3.9" }));
+      expect(deny(`gh pr merge 7 --merge --admin --match-head-commit ${head}`, c)).toMatch(
+        /mergeStateStatus is BLOCKED/,
+      );
+      expect(calls).toEqual([]);
+    });
+
+    it("leaves a non-qualifying --admin as it was: BLOCKED refuses, anything else passes unread", () => {
+      // Without --admin, the unapproved PR refuses on the review checks.
+      expect(deny(`gh pr merge 7 --squash --match-head-commit ${head}`, arrange().c)).toMatch(
+        /reviewDecision is REVIEW_REQUIRED/,
+      );
+      // BLOCKED for another reason than the missing approval.
+      for (const reviewDecision of ["APPROVED", "", undefined]) {
+        const { c, calls } = arrange(undefined, unapproved({ reviewDecision }));
+        expect(deny(pinned, c)).toMatch(/mergeStateStatus is BLOCKED$|mergeStateStatus is BLOCKED\./);
+        expect(calls).toEqual([]);
+      }
+      // Not BLOCKED: `--admin` skips the review checks and reads nothing, pinned or not.
+      for (const mergeStateStatus of ["CLEAN", "UNSTABLE", "HAS_HOOKS"]) {
+        const { c, calls } = arrange({ ok: true, files: ["scripts/x.mjs"] }, unapproved({ mergeStateStatus }));
+        passes("gh pr merge 7 --squash --admin", c);
+        expect(calls).toEqual([]);
+      }
+    });
+  });
+
   it("refuses more than one merge in a command — each is checked on its own", () =>
     expect(deny("gh pr merge 7 --squash && gh pr merge 8 --squash", ctx({ prView: green }))).toMatch(
       /One `gh pr merge` per command/,

@@ -17,6 +17,7 @@ import {
   linkTargets,
   mainRepoRoot,
   originMasterFresh,
+  prChangedFiles,
   prComments,
   readIndexFile,
   readInput,
@@ -101,14 +102,16 @@ if (typeof command === "string" && command.trim()) {
           "view",
           ...(ref ? [ref] : []),
           "--json",
-          "number,url,state,headRefOid,headRefName,baseRefName,baseRefOid,reviewDecision,mergeStateStatus,statusCheckRollup,reviews",
+          "number,url,state,author,headRefOid,headRefName,baseRefName,baseRefOid,reviewDecision,mergeStateStatus,statusCheckRollup,reviews",
         ],
         dir,
         repoEnv(repo),
       ),
     ),
-    // The merge gate's pure-rebase check (#1307).
+    // The merge gate's pure-rebase check (#1307), and its read of the files an
+    // unapproved `--admin` merge changes (#1648).
     replayRebase,
+    prChangedFiles,
     // Both read the repository the gate confirmed, as GH_REPO (#1393).
     baseChangedSince: memo((n, since, dir, repo) => baseChangedSince(n, since, dir, repoEnv(repo))),
     // CodeRabbit's summary comment, read only for a head without a review object of its own (#1386).
