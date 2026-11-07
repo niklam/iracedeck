@@ -112,7 +112,7 @@ When CodeRabbit has approved and every check is green at the current head:
 gh pr merge <pr> --squash --match-head-commit <full head sha>
 ```
 
-A `no-coderabbit` PR has no approver: once every check is green, `gh pr merge <pr> --squash --admin --match-head-commit <full head sha>`; the hook refuses it unless every file is on the prose list.
+A `no-coderabbit` PR has no approver: once every check is green, `gh pr merge <pr> --squash --admin --match-head-commit <full head sha>`; the hook lets it through only when every file is on the prose list and every required check is green, and otherwise refuses it or asks Niklas.
 
 The hook judges the head; act on what a refusal names. Any other `--admin` only when Niklas has said so through the PO, after you sent the PO the evidence. Report `merged` with the merge commit's sha.
 
