@@ -88,7 +88,7 @@ Once the test passes, the issue lead pushes and opens the PR without asking. In 
 
 CodeRabbit is the reviewer. **Do not wait for a human code review** — the maintainer is the tester and the approver, not a second reviewer.
 
-Poll the PR, fix every finding **that holds — nitpicks included**, and answer every thread: cite the fix commit where you applied it, the reasoning where you did not. Expect a fresh review after every push that is not a pure rebase (CodeRabbit does not review a rebase); a clean incremental one only updates its summary comment. A summary that says CodeRabbit was **rate limited** means the follow-up was not reviewed: wait for the limit to reset, then ask `@coderabbitai review`. Stop polling once the review is done.
+Poll the PR, fix every finding **that holds — nitpicks included**, and answer every thread: cite the fix commit where you applied it, the reasoning where you did not. CodeRabbit reviews a PR once when it opens and then only when asked, because every review spends one allowance all PRs share (`@.claude/rules/code-review.md`): push a round's fixes together, then ask `@coderabbitai review` once; a pure rebase needs no ask. A clean incremental review only updates its summary comment. A summary that says CodeRabbit was **rate limited** means it was not reviewed: wait for the limit to reset, then ask again. Stop polling once the review is done. A `no-coderabbit` PR (prose only, same rule) gets no PR review at all.
 
 Nitpicks are in scope precisely because they are the ones it is tempting to wave through; "it's only a nitpick" is not a reason to skip one, and it is not a reason to apply one that is wrong either.
 
@@ -98,7 +98,7 @@ One trap with no other home: `gh pr checks` exits non-zero (8) while any check i
 
 ### Merging (11)
 
-Once CodeRabbit has approved and the checks are green, **the issue lead merges** — the maintainer is not a second reviewer to wait for. A *review* step never merges; that separation is what `@.claude/rules/build-and-commit.md` protects, and it owns the merge mechanics. Merging includes the issue's Roadmap card moving to `Testing` — the post-merge hook does that and reports when it could not, in which case make the move by hand (#1065, 2026-09-05); `@.claude/rules/build-and-commit.md` has the lanes.
+Once CodeRabbit has approved and the checks are green, **the issue lead merges** — the maintainer is not a second reviewer to wait for. A `no-coderabbit` PR has no approver, so it merges with `--admin` once its checks are green, and the merge hook allows that only when every file it changes is on the prose list. A *review* step never merges; that separation is what `@.claude/rules/build-and-commit.md` protects, and it owns the merge mechanics. Merging includes the issue's Roadmap card moving to `Testing` — the post-merge hook does that and reports when it could not, in which case make the move by hand (#1065, 2026-09-05); `@.claude/rules/build-and-commit.md` has the lanes.
 
 **An approval and a green check are both head-specific.** Neither travels with a push, while the PR still displays the old approval beside the new head, so the merge hook judges both at the **current** head (`@.claude/rules/hooks.md` has what it accepts in place of a fresh review). Each refusal names the condition that failed and what to add or ask for. A `mergeStateStatus` of `BLOCKED` while you believe everything is green means the hook will refuse.
 
