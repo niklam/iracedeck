@@ -463,9 +463,9 @@ export function buildSimState(parts: SimStateParts): SimStateSnapshot {
       lapsLeft: {
         now: resolveLapsLeftNow(telemetry, parts.fuel, state),
         announced: {
-          lastAnnouncedCount: state.fuelCalloutLastAnnouncedCount,
-          lastSampledLap: state.fuelCalloutLastSampledLap,
-          raceCoveredAnnounced: state.fuelCalloutRaceCoveredAnnounced,
+          lastAnnouncedCount: state.fuelCallout.lastAnnouncedCount,
+          lastSampledLap: state.fuelCallout.lastSampledLap,
+          raceCoveredAnnounced: state.fuelCallout.raceCoveredAnnounced,
         },
       },
     },

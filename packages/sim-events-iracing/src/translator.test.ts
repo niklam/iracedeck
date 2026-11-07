@@ -2776,6 +2776,86 @@ describe("sim-events-iracing translator", () => {
       expect((handler.mock.calls[2]![0] as SimEventOf<"fuel.lapsLeft.crossed">).data.count).toBe(1);
     });
 
+    /** The translator's live state, through the snapshot's raw half, which holds it by reference. */
+    function liveState(): TranslatorState {
+      const snapshot = readSimState();
+
+      if (!snapshot.initialized) throw new Error("expected an initialized translator");
+
+      return snapshot.raw.state;
+    }
+
+    /**
+     * Two validated laps (~2 L each), then the low-fuel mid-lap sample that
+     * says "1 lap of fuel left" — the first test's recipe — with `beforeSample`
+     * run against the live state just before the sample.
+     */
+    function sampleLowFuel(beforeSample: (state: TranslatorState) => void): ReturnType<typeof vi.fn> {
+      const controller = createMockController();
+      const bus = getEventBus();
+      const handler = vi.fn();
+      bus.subscribe("fuel.lapsLeft.crossed", handler);
+      controller.__setSessionInfo({
+        SessionInfo: { Sessions: [{ SessionType: "Race" }] },
+        DriverInfo: { DriverCarIdx: 0 },
+      });
+      initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
+
+      controller.__tick(telemetry({ Lap: 1, LapDistPct: 0.9, SessionTime: 0, FuelLevel: 64 }));
+      controller.__tick(telemetry({ Lap: 2, LapDistPct: 0.05, SessionTime: 5, FuelLevel: 63.9 }));
+      controller.__tick(telemetry({ Lap: 2, LapDistPct: 0.55, SessionTime: 45, FuelLevel: 63 }));
+      controller.__tick(telemetry({ Lap: 2, LapDistPct: 0.9, SessionTime: 80, FuelLevel: 62.2 }));
+      controller.__tick(telemetry({ Lap: 3, LapDistPct: 0.05, SessionTime: 90, FuelLevel: 62 }));
+      controller.__tick(telemetry({ Lap: 3, LapDistPct: 0.55, SessionTime: 135, FuelLevel: 61 }));
+      controller.__tick(telemetry({ Lap: 3, LapDistPct: 0.9, SessionTime: 170, FuelLevel: 60.2 }));
+      controller.__tick(telemetry({ Lap: 4, LapDistPct: 0.05, SessionTime: 180, FuelLevel: 60 }));
+      controller.__tick(telemetry({ Lap: 4, LapDistPct: 0.45, SessionTime: 200, FuelLevel: 5.0 }));
+      beforeSample(liveState());
+      controller.__tick(telemetry({ Lap: 4, LapDistPct: 0.55, SessionTime: 210, FuelLevel: 4.9 }));
+
+      return handler;
+    }
+
+    it("speaks the low-fuel sample with no final-lap marker set (the control for the test below)", () => {
+      expect(sampleLowFuel(() => {})).toHaveBeenCalledTimes(1);
+    });
+
+    it("hands the fuel diff the flags' sticky final-lap marker, not the two-stage white latch (issue #880, #1405)", () => {
+      // A caution replacing the white mid-final-lap re-arms the two-stage
+      // latch but keeps the sticky marker (issue #880 limitation 3): silent.
+      const handler = sampleLowFuel((state) => {
+        state.playerFinalLapStarted = true;
+        state.whiteLastLapFired = false;
+      });
+
+      expect(handler).not.toHaveBeenCalled();
+    });
+
+    it("re-arms the fuel reassurance when a green re-opens the player's final lap (issue #880 review, #1405)", () => {
+      const controller = createMockController();
+      controller.__setSessionInfo({
+        SessionInfo: { Sessions: [{ SessionType: "Race" }] },
+        DriverInfo: { DriverCarIdx: 0 },
+      });
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
+
+      // Seed the flags with nothing flying, then latch the final lap and a
+      // spoken reassurance as the race would have.
+      controller.__tick(telemetry({ Lap: 4, LapDistPct: 0.1, SessionTime: 100 }));
+      const state = liveState();
+      state.playerFinalLapStarted = true;
+      state.fuelCallout.raceCoveredAnnounced = true;
+
+      // A tick with no flag change leaves both alone…
+      controller.__tick(telemetry({ Lap: 4, LapDistPct: 0.11, SessionTime: 101 }));
+      expect(liveState().fuelCallout.raceCoveredAnnounced).toBe(true);
+
+      // …and a green rising edge, off the mid-lap sample, re-opens both.
+      controller.__tick(telemetry({ Lap: 4, LapDistPct: 0.12, SessionTime: 102, SessionFlags: Flags.Green }));
+      expect(liveState().playerFinalLapStarted).toBe(false);
+      expect(liveState().fuelCallout.raceCoveredAnnounced).toBe(false);
+    });
+
     // Timed-race coverage (issue #880) end-to-end through the REAL leader
     // resolver: the leader comes from the canonical live order and their
     // CarIdxLastLapTime feeds the estimate. The two cases differ ONLY in the

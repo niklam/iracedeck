@@ -127,7 +127,7 @@ vi.mock("./diff/gaps.js", async (io) => harness.spy(await io(), { diffGaps: 7 })
 vi.mock("./diff/track-gaps.js", async (io) => harness.spy(await io(), { diffTrackGaps: null }));
 vi.mock("./diff/pit-box-countdown.js", async (io) => harness.spy(await io(), { diffPitBoxCountdown: 4 }));
 vi.mock("./diff/corner-name.js", async (io) => harness.spy(await io(), { diffCornerName: 6 }));
-vi.mock("./diff/fuel-laps-left.js", async (io) => harness.spy(await io(), { diffFuelLapsLeft: 6 }));
+vi.mock("./diff/fuel-laps-left.js", async (io) => harness.spy(await io(), { diffFuelLapsLeft: 7 }));
 vi.mock("./diff/fuel-laps.js", async (io) => harness.spy(await io(), { diffFuelLaps: null }));
 vi.mock("./diff/radar.js", async (io) => harness.spy(await io(), { diffRadar: 2 }));
 vi.mock("./diff/pit-speeding.js", async (io) => harness.spy(await io(), { diffPitSpeeding: 4 }));
@@ -665,7 +665,7 @@ describe("decision 3: a value that throws takes its last value this session", ()
       expect(called.filter((s) => ORDER_CONSUMERS.includes(s))).toEqual([]);
       // The leader closure (#1405): no lap time, no chequered prediction and
       // no lap-counter gap.
-      const leaderFinish = argsOf("diffFuelLapsLeft")?.[5] as () => LeaderFinish;
+      const leaderFinish = argsOf("diffFuelLapsLeft")?.[6] as () => LeaderFinish;
       expect(leaderFinish()).toEqual(UNKNOWN_LEADER_FINISH);
 
       harness.control.throwing.clear();

@@ -25,7 +25,8 @@
  *   - A refuel re-arms every count for the new stint: any debounced per-tick
  *     `FuelLevel` increase clears the announced floor. A garage refuel lands
  *     as one large delta on the first live tick back (the previous-level
- *     tracker is preserved across the replay wipe — see `TranslatorState`).
+ *     tracker is kept across the replay wipe — see `resetFuelCalloutBaselines`
+ *     in `state.ts`).
  *   - Race-coverage suppression (issue #866, extended by #880 and #1405):
  *     when the tank covers the remaining race distance, on the player's
  *     own final lap (the sticky `playerFinalLapStarted` latch — set with the
@@ -103,7 +104,7 @@ import {
   isClockExpiredReading,
   type LeaderFinish,
 } from "../leader-finish.js";
-import type { TranslatorState } from "../state.js";
+import type { FuelCalloutState } from "../state.js";
 import type { FuelStats } from "./fuel-laps.js";
 import type { EmitFn } from "./types.js";
 
@@ -458,18 +459,26 @@ export const FUEL_LAPS_LEFT_EVENTS = [
 ] as const satisfies readonly SimEventName[];
 
 /**
- * Per-tick laps-of-fuel-left tracking. `getStats` reads the validated fuel
- * estimator (`computeFuelStats` over the instance tracker); `getMarginLaps`
- * is the live-read margin closure injected by the plugin (already
- * sanitized); `getLeaderFinish` reads the race leader's recent pace and
- * predicted chequered flag from the translator (issues #880, #1405 — each
- * `null` when unknown, see {@link resolveFuelRaceCoverage} for the
- * fallbacks).
+ * Per-tick laps-of-fuel-left tracking over the `fuelCallout` slice.
+ * `getStats` reads the validated fuel estimator (`computeFuelStats` over the
+ * instance tracker); `getMarginLaps` is the live-read margin closure injected
+ * by the plugin (already sanitized); `getLeaderFinish` reads the race
+ * leader's recent pace and predicted chequered flag from the translator
+ * (issues #880, #1405 — each `null` when unknown, see
+ * {@link resolveFuelRaceCoverage} for the fallbacks). It reads this slice's
+ * `clockExpiredTicks` after this call has advanced it.
+ *
+ * @param playerFinalLapStarted - the flags' STICKY "the player started their
+ *   final lap" marker (`TranslatorState.playerFinalLapStarted`, issue #880),
+ *   as `diffFlags` left it earlier in the same tick: set with the #772
+ *   white-flag crossing, never re-armed by a mid-final-lap flag change, and
+ *   cleared by a later green. `handleTick` reads it at the call.
  */
 export function diffFuelLapsLeft(
-  state: TranslatorState,
+  slice: FuelCalloutState,
   telemetry: TelemetryData,
   isRaceSession: boolean,
+  playerFinalLapStarted: boolean,
   getStats: () => FuelStats,
   getMarginLaps: () => number,
   getLeaderFinish: (playerLapS: number) => LeaderFinish,
@@ -480,7 +489,7 @@ export function diffFuelLapsLeft(
   // a session type, invalid input or the sampling gates never freeze it. The
   // leader's chequered prediction (`getLeaderFinish`) reads it later in this
   // same call; the Telemetry Snapshot reads it after the tick.
-  state.fuelCalloutClockExpiredTicks = countClockExpiredTicks(telemetry, state.fuelCalloutClockExpiredTicks);
+  slice.clockExpiredTicks = countClockExpiredTicks(telemetry, slice.clockExpiredTicks);
 
   if (!isRaceSession) return;
 
@@ -505,15 +514,15 @@ export function diffFuelLapsLeft(
   // live-in-car state, a garage fill lands as one big delta on the first
   // live tick back). A new stint re-arms both the announce floor and the
   // enough-fuel reassurance (issue #880).
-  if (state.fuelCalloutLastFuelLevel !== null && fuelLevel - state.fuelCalloutLastFuelLevel > REFUEL_EPSILON_L) {
-    state.fuelCalloutLastAnnouncedCount = null;
-    state.fuelCalloutRaceCoveredAnnounced = false;
+  if (slice.lastFuelLevel !== null && fuelLevel - slice.lastFuelLevel > REFUEL_EPSILON_L) {
+    slice.lastAnnouncedCount = null;
+    slice.raceCoveredAnnounced = false;
   }
 
-  state.fuelCalloutLastFuelLevel = fuelLevel;
+  slice.lastFuelLevel = fuelLevel;
 
-  const lastDistPct = state.fuelCalloutLastDistPct;
-  state.fuelCalloutLastDistPct = distPct;
+  const lastDistPct = slice.lastDistPct;
+  slice.lastDistPct = distPct;
 
   // Seed silently on the first valid tick — no edge to compare yet.
   if (lastDistPct === null) return;
@@ -521,9 +530,9 @@ export function diffFuelLapsLeft(
   // Rising mid-lap crossing, at most one sample attempt per lap.
   if (!(lastDistPct < FUEL_LAPS_LEFT_SAMPLE_PCT && distPct >= FUEL_LAPS_LEFT_SAMPLE_PCT)) return;
 
-  if (lap === state.fuelCalloutLastSampledLap) return;
+  if (lap === slice.lastSampledLap) return;
 
-  state.fuelCalloutLastSampledLap = lap;
+  slice.lastSampledLap = lap;
 
   if (!isLiveOnTrack(telemetry)) return;
 
@@ -540,7 +549,7 @@ export function diffFuelLapsLeft(
   // because at the estimator's ±margin precision a final-lap shortage call
   // is more often noise than a real splash-and-dash opportunity (decided in
   // the #866 review). The reassurance below never fires here either.
-  if (isPostRace(telemetry) || state.playerFinalLapStarted) return;
+  if (isPostRace(telemetry) || playerFinalLapStarted) return;
 
   const stats = getStats();
 
@@ -578,15 +587,15 @@ export function diffFuelLapsLeft(
     if (
       remainingLaps <= FUEL_LAPS_LEFT_MAX_COUNT &&
       unclampedCount >= remainingLaps + 1 &&
-      !state.fuelCalloutRaceCoveredAnnounced
+      !slice.raceCoveredAnnounced
     ) {
-      state.fuelCalloutRaceCoveredAnnounced = true;
+      slice.raceCoveredAnnounced = true;
       // The all-clear retracts every warning spoken so far: clear the dedup
       // floor so a later coverage flip re-warns at ANY count — a kept floor
       // would leave "enough fuel" as the driver's last word while the tank
       // runs short (after a box-call → reassurance arc, no count could ever
       // fall below a floor of 0 again).
-      state.fuelCalloutLastAnnouncedCount = null;
+      slice.lastAnnouncedCount = null;
       emit({ event: "fuel.lapsLeft.raceCovered", data: {} });
     }
 
@@ -599,11 +608,27 @@ export function diffFuelLapsLeft(
   if (count > FUEL_LAPS_LEFT_MAX_COUNT) return;
 
   // Descending crossings only; a count already announced stays announced.
-  if (state.fuelCalloutLastAnnouncedCount !== null && count >= state.fuelCalloutLastAnnouncedCount) return;
+  if (slice.lastAnnouncedCount !== null && count >= slice.lastAnnouncedCount) return;
 
-  state.fuelCalloutLastAnnouncedCount = count;
+  slice.lastAnnouncedCount = count;
   // A real warning re-arms the reassurance — if coverage recovers (fuel
   // save, the race got shorter), the driver must hear the retraction.
-  state.fuelCalloutRaceCoveredAnnounced = false;
+  slice.raceCoveredAnnounced = false;
   emit({ event: "fuel.lapsLeft.crossed", data: { count, lapsLeft: effective } });
+}
+
+/**
+ * The narrow re-arm `diffFlags` is handed (issue #880 review, a closure since
+ * #1405 moved the fuel state into its slice): closed over the `fuelCallout`
+ * slice, so `flags.ts` re-opens the enough-fuel reassurance through
+ * `() => void` and never reaches the slice itself. Called when a GREEN rising
+ * edge clears the sticky final-lap marker: the race was extended or
+ * restarted, so the pre-extension coverage determination no longer holds. The
+ * one writer of the slice outside {@link diffFuelLapsLeft}; it writes
+ * `raceCoveredAnnounced` only.
+ */
+export function createFuelReassuranceRearm(slice: FuelCalloutState): () => void {
+  return () => {
+    slice.raceCoveredAnnounced = false;
+  };
 }

@@ -289,6 +289,114 @@ export function createTrackGapsState(): TrackGapsState {
   };
 }
 
+/**
+ * The laps-of-fuel-left callouts' state (issue #838; one slice since #1405
+ * moved it under #1588's convention): the mid-lap sampling baselines, the
+ * refuel tracker, the stint's announce floor and reassurance latch, and the
+ * expired-clock confirmation count the leader's chequered prediction reads.
+ * Written by `diffFuelLapsLeft`, and by the reassurance re-arm
+ * `createFuelReassuranceRearm` builds over this slice and `handleTick` hands
+ * to `diffFlags`, the one sanctioned cross-step writer (it writes
+ * `raceCoveredAnnounced` only). Reset per session and at a disconnect with
+ * the rest of the state; a replay glance keeps the part
+ * {@link resetFuelCalloutBaselines} returns.
+ *
+ * The validated fuel lap history (issue #465) deliberately does NOT live
+ * here: it is the instance-level `FuelLapTracker` (see `fuel-laps.ts`), so
+ * replay/garage state wipes and session changes don't destroy it.
+ */
+export type FuelCalloutState = {
+  /**
+   * Previous-tick `LapDistPct`, for the rising 0.5-crossing sample trigger.
+   * `null` until the first valid tick (seed silently). Re-seeds after a
+   * replay/garage gap — the jump made the edge comparison meaningless.
+   */
+  lastDistPct: number | null;
+  /**
+   * `Lap` value of the last mid-lap sample, so a car rolling backwards and
+   * forwards across the 0.5 mark can't sample the same lap twice. `-1` = none.
+   */
+  lastSampledLap: number;
+  /**
+   * Previous-tick `FuelLevel` for refuel detection (a debounced per-tick
+   * increase re-arms the announced counts). Kept across a replay glance
+   * ({@link resetFuelCalloutBaselines}) so a garage refuel — which happens
+   * entirely inside replay-mode ticks — lands as one big positive delta on
+   * the first live tick back and re-arms the stint.
+   */
+  lastFuelLevel: number | null;
+  /**
+   * Smallest count already announced this stint, or `null` when none has
+   * been. A sample only emits when its count is strictly below this
+   * (descending crossings only; multi-count drops speak just the current
+   * count). Cleared by a refuel — the new stint re-arms every count.
+   * Kept across a replay glance ({@link resetFuelCalloutBaselines}) so a
+   * replay glance mid-race can't repeat a count; a genuine session change
+   * still clears it.
+   */
+  lastAnnouncedCount: number | null;
+  /**
+   * True once the enough-fuel reassurance (`fuel.lapsLeft.raceCovered`,
+   * issue #880) has been emitted for the current stint. Cleared by a refuel,
+   * by any later REAL warning emission (a burn-rate spike arc speaks
+   * warning → reassurance again once coverage recovers), and by a green that
+   * re-opens the player's final lap (`diffFlags`, through the re-arm
+   * `createFuelReassuranceRearm` builds). Kept across a replay glance
+   * ({@link resetFuelCalloutBaselines}) alongside the announce floor so a
+   * replay glance can't repeat the reassurance; a genuine session change
+   * clears it.
+   */
+  raceCoveredAnnounced: boolean;
+  /**
+   * Consecutive ticks, up to and including the latest one the fuel diff saw,
+   * on which the raw `SessionTimeRemain` read finite and ≤ 0 (issue #1405);
+   * `0` on any other reading. The leader's chequered prediction treats the
+   * clock as expired only once this reaches `CLOCK_EXPIRY_CONFIRM_TICKS`
+   * (`leader-finish.ts`, about one second), against the mid-race blip of a
+   * tick or two (#666). A count rather than a previous-tick boolean, so the
+   * Telemetry Snapshot, read after the tick, sees the same confirmation the
+   * diff acted on. Updated on every tick the diff sees, race or not. Not kept
+   * across a replay glance and cleared by a session change: a stale count
+   * must not confirm an expiry across either.
+   */
+  clockExpiredTicks: number;
+};
+
+/** A {@link FuelCalloutState} with nothing sampled or announced: the initial state, and the session-change reset. */
+export function createFuelCalloutState(): FuelCalloutState {
+  return {
+    lastDistPct: null,
+    lastSampledLap: -1,
+    lastFuelLevel: null,
+    lastAnnouncedCount: null,
+    raceCoveredAnnounced: false,
+    clockExpiredTicks: 0,
+  };
+}
+
+/**
+ * The part of a {@link FuelCalloutState} a replay glance keeps (issue #838,
+ * as #1405 moves it here from the translator's wipe): the previous fuel
+ * level, the announce floor and the reassurance latch survive; the sampling
+ * baselines and the expired-clock count come back fresh. A replay glance
+ * mid-race must not re-announce a count already spoken this stint nor repeat
+ * the reassurance, and the previous-fuel-level tracker must survive the
+ * garage visit so the refuel that happened there (replay-mode ticks) lands as
+ * one positive delta on the first live tick back and re-arms the stint. The
+ * sampling baselines (`lastDistPct`, `lastSampledLap`) re-seed, because the
+ * position jump made their edges meaningless, and the expired-clock count
+ * starts again (issue #1405), because a stale count must not confirm an
+ * expiry on the first live tick back.
+ */
+export function resetFuelCalloutBaselines(slice: FuelCalloutState): FuelCalloutState {
+  return {
+    ...createFuelCalloutState(),
+    lastFuelLevel: slice.lastFuelLevel,
+    lastAnnouncedCount: slice.lastAnnouncedCount,
+    raceCoveredAnnounced: slice.raceCoveredAnnounced,
+  };
+}
+
 export type MaterialSample = {
   t: number; // timestamp (ms since epoch)
   material: number; // TrkSurf-like enum value
@@ -488,7 +596,8 @@ export type TranslatorState = {
    * when the White bit drops: a caution replacing the white mid-final-lap
    * re-arms the two-stage callout latch, and this marker is what keeps the
    * fuel-callout family's final-lap suppression engaged through that flag
-   * change (the only reliable final-lap signal in a timed race). Preserved
+   * change (the only reliable final-lap signal in a timed race); `handleTick`
+   * hands it to `diffFuelLapsLeft` as a value. Preserved
    * across `wipeStateForReplay`; cleared by the per-session reset and by a
    * GREEN rising edge (`diffFlags`) — a green past the latched lap means
    * the race was extended (oval overtime) or restarted same-session (admin
@@ -1590,60 +1699,13 @@ export type TranslatorState = {
   radarState: RadarState;
 
   // ── Laps-of-fuel-left callouts (issue #838) ───────────────────────────────
-  // NOTE: the validated fuel lap history (issue #465) deliberately does NOT
-  // live here — it's the instance-level `FuelLapTracker` (see `fuel-laps.ts`)
-  // so replay/garage state wipes and session changes don't destroy it.
   /**
-   * Previous-tick `LapDistPct`, for the rising 0.5-crossing sample trigger.
-   * `null` until the first valid tick (seed silently). Re-seeds after a
-   * replay/garage gap — the jump made the edge comparison meaningless.
+   * The laps-of-fuel-left callouts (issue #838), one slice
+   * ({@link FuelCalloutState}, issue #1405). Reset per session and at a
+   * disconnect; a replay glance keeps the previous fuel level, the announce
+   * floor and the reassurance latch ({@link resetFuelCalloutBaselines}).
    */
-  fuelCalloutLastDistPct: number | null;
-  /**
-   * `Lap` value of the last mid-lap sample, so a car rolling backwards and
-   * forwards across the 0.5 mark can't sample the same lap twice. `-1` = none.
-   */
-  fuelCalloutLastSampledLap: number;
-  /**
-   * Previous-tick `FuelLevel` for refuel detection (a debounced per-tick
-   * increase re-arms the announced counts). Preserved across
-   * `wipeStateForReplay` so a garage refuel — which happens entirely inside
-   * replay-mode ticks — lands as one big positive delta on the first live
-   * tick back and re-arms the stint.
-   */
-  fuelCalloutLastFuelLevel: number | null;
-  /**
-   * Smallest count already announced this stint, or `null` when none has
-   * been. A sample only emits when its count is strictly below this
-   * (descending crossings only; multi-count drops speak just the current
-   * count). Cleared by a refuel — the new stint re-arms every count.
-   * Preserved across `wipeStateForReplay` so a replay glance mid-race can't
-   * repeat a count; a genuine session change still clears it.
-   */
-  fuelCalloutLastAnnouncedCount: number | null;
-  /**
-   * True once the enough-fuel reassurance (`fuel.lapsLeft.raceCovered`,
-   * issue #880) has been emitted for the current stint. Cleared by a refuel
-   * and by any later REAL warning emission (a burn-rate spike arc speaks
-   * warning → reassurance again once coverage recovers). Preserved across
-   * `wipeStateForReplay` alongside the announce floor so a replay glance
-   * can't repeat the reassurance; a genuine session change clears it.
-   */
-  fuelCalloutRaceCoveredAnnounced: boolean;
-  /**
-   * Consecutive ticks, up to and including the latest one the fuel diff saw,
-   * on which the raw `SessionTimeRemain` read finite and ≤ 0 (issue #1405);
-   * `0` on any other reading. The leader's chequered prediction treats the
-   * clock as expired only once this reaches `CLOCK_EXPIRY_CONFIRM_TICKS`
-   * (`leader-finish.ts`, about one second), against the mid-race blip of a
-   * tick or two (#666). A count
-   * rather than a previous-tick boolean, so the Telemetry Snapshot, read after
-   * the tick, sees the same confirmation the diff acted on. Updated on every
-   * tick the diff sees, race or not. Not preserved by `wipeStateForReplay`
-   * and cleared by a session change: a stale count must not confirm an
-   * expiry across either.
-   */
-  fuelCalloutClockExpiredTicks: number;
+  fuelCallout: FuelCalloutState;
 
   // ── Lifecycle ───────────────────────────────────────────────────────────
   // `driver.firstOnTrack` is tracked on the translator instance, not here —
@@ -2087,12 +2149,7 @@ export function createInitialState(): TranslatorState {
 
     radarState: "clear",
 
-    fuelCalloutLastDistPct: null,
-    fuelCalloutLastSampledLap: -1,
-    fuelCalloutLastFuelLevel: null,
-    fuelCalloutLastAnnouncedCount: null,
-    fuelCalloutRaceCoveredAnnounced: false,
-    fuelCalloutClockExpiredTicks: 0,
+    fuelCallout: createFuelCalloutState(),
 
     lifecycleInitialized: false,
     lastSessionNum: null,

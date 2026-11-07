@@ -41,8 +41,9 @@ import {
   resolveLeaderFinish,
   UNKNOWN_LEADER_FINISH,
 } from "../leader-finish.js";
-import { createInitialState, type TranslatorState } from "../state.js";
+import { createFuelCalloutState, type FuelCalloutState, resetFuelCalloutBaselines } from "../state.js";
 import {
+  createFuelReassuranceRearm,
   diffFuelLapsLeft,
   estimateFuelLapsLeft,
   FUEL_CALLOUT_DEFAULT_MARGIN_LAPS,
@@ -80,11 +81,13 @@ type RunOptions = {
   chequeredInS?: number | null;
   /** The whole leader finish, in place of `leaderLap` and `chequeredInS`. */
   finish?: LeaderFinish;
+  /** The flags' sticky final-lap marker `handleTick` hands the diff (issue #880). */
+  finalLap?: boolean;
 };
 
-function makeRunner(events: PendingEvent[], state: TranslatorState = createInitialState()) {
+function makeRunner(events: PendingEvent[], slice: FuelCalloutState = createFuelCalloutState()) {
   return {
-    state,
+    slice,
     run(
       t: TelemetryData,
       {
@@ -95,6 +98,7 @@ function makeRunner(events: PendingEvent[], state: TranslatorState = createIniti
         leaderLap = null,
         chequeredInS = null,
         finish,
+        finalLap = false,
       }: RunOptions = {},
     ) {
       const stats: FuelStats =
@@ -102,9 +106,10 @@ function makeRunner(events: PendingEvent[], state: TranslatorState = createIniti
           ? { lastLap: null, avg: null, avgLapTime: null, samples: 0 }
           : { lastLap: avg, avg, avgLapTime, samples: 5 };
       diffFuelLapsLeft(
-        state,
+        slice,
         t,
         race,
+        finalLap,
         () => stats,
         () => margin,
         (): LeaderFinish => finish ?? { ...UNKNOWN_LEADER_FINISH, lapTimeS: leaderLap, chequeredInS },
@@ -317,19 +322,19 @@ describe("diffFuelLapsLeft — the expired-clock count (issue #1405)", () => {
 
     // Outside a race, on invalid input and on the seed tick alike.
     runner.run(tick({ SessionTimeRemain: -1 }), { race: false });
-    expect(runner.state.fuelCalloutClockExpiredTicks).toBe(1);
+    expect(runner.slice.clockExpiredTicks).toBe(1);
 
     runner.run(tick({ SessionTimeRemain: -2, FuelLevel: Number.NaN }));
-    expect(runner.state.fuelCalloutClockExpiredTicks).toBe(2);
+    expect(runner.slice.clockExpiredTicks).toBe(2);
 
     runner.run(tick({ SessionTimeRemain: 0 }));
-    expect(runner.state.fuelCalloutClockExpiredTicks).toBe(3);
+    expect(runner.slice.clockExpiredTicks).toBe(3);
 
     runner.run(tick({ SessionTimeRemain: 12 }));
-    expect(runner.state.fuelCalloutClockExpiredTicks).toBe(0);
+    expect(runner.slice.clockExpiredTicks).toBe(0);
 
     runner.run(tick({ SessionTimeRemain: undefined }));
-    expect(runner.state.fuelCalloutClockExpiredTicks).toBe(0);
+    expect(runner.slice.clockExpiredTicks).toBe(0);
     expect(events).toEqual([]);
   });
 });
@@ -400,25 +405,12 @@ describe("diffFuelLapsLeft — race-coverage suppression (issue #866)", () => {
   it("suppresses the family on the player's own final lap (sticky latch, issue #880)", () => {
     const events: PendingEvent[] = [];
     const runner = makeRunner(events);
-    runner.state.playerFinalLapStarted = true;
 
     // Timed race (no usable lap counter) — the sticky latch is the signal.
-    lapSample(runner.run, 5, 0.6, {}, { SessionLapsRemainEx: 32767 });
-
-    expect(events).toEqual([]);
-  });
-
-  it("keeps suppressing after a caution replaces the white mid-final-lap (issue #880 limitation 3)", () => {
-    const events: PendingEvent[] = [];
-    const runner = makeRunner(events);
-
-    // The #772 two-stage latch re-arms when the White bit drops; the sticky
-    // latch does not — a caution on the final lap of a timed race must not
-    // resurrect the box call.
-    runner.state.playerFinalLapStarted = true;
-    runner.state.whiteLastLapFired = false;
-
-    lapSample(runner.run, 5, 0.6, {}, { SessionLapsRemainEx: 32767 });
+    // That a caution replacing the white mid-final-lap keeps it set (issue
+    // #880 limitation 3) is the flags' and `handleTick`'s, tested in
+    // `translator.test.ts`: the diff sees only the value.
+    lapSample(runner.run, 5, 0.6, { finalLap: true }, { SessionLapsRemainEx: 32767 });
 
     expect(events).toEqual([]);
   });
@@ -1427,5 +1419,77 @@ describe("diffFuelLapsLeft — a close follower of the leader (issue #1405, the 
     );
 
     expect(events).toEqual([]);
+  });
+});
+
+describe("the fuelCallout slice (issue #1405, under #1588's convention)", () => {
+  /** A slice with every field away from its initial value. */
+  function busySlice(): FuelCalloutState {
+    return {
+      lastDistPct: 0.62,
+      lastSampledLap: 14,
+      lastFuelLevel: 7.5,
+      lastAnnouncedCount: 3,
+      raceCoveredAnnounced: true,
+      clockExpiredTicks: 42,
+    };
+  }
+
+  it("starts with nothing sampled, announced or counted", () => {
+    expect(createFuelCalloutState()).toEqual({
+      lastDistPct: null,
+      lastSampledLap: -1,
+      lastFuelLevel: null,
+      lastAnnouncedCount: null,
+      raceCoveredAnnounced: false,
+      clockExpiredTicks: 0,
+    });
+    expect(createFuelCalloutState()).not.toBe(createFuelCalloutState());
+  });
+
+  it("keeps the fuel level, the announce floor and the reassurance latch across a replay glance, and returns the rest fresh", () => {
+    const slice = busySlice();
+
+    const kept = resetFuelCalloutBaselines(slice);
+
+    expect(kept).toEqual({
+      lastDistPct: null,
+      lastSampledLap: -1,
+      lastFuelLevel: 7.5,
+      lastAnnouncedCount: 3,
+      raceCoveredAnnounced: true,
+      // A stale count must not confirm an expiry on the first live tick back.
+      clockExpiredTicks: 0,
+    });
+    // A new object: the slice handed in is left as it was.
+    expect(kept).not.toBe(slice);
+    expect(slice).toEqual(busySlice());
+  });
+
+  it("re-arms the reassurance through the closure the flags are handed, and touches nothing else", () => {
+    const slice = busySlice();
+    const rearm = createFuelReassuranceRearm(slice);
+
+    rearm();
+
+    expect(slice).toEqual({ ...busySlice(), raceCoveredAnnounced: false });
+  });
+
+  it("writes the slice it was built over, so a reassurance re-armed by the flags speaks again", () => {
+    const events: PendingEvent[] = [];
+    const runner = makeRunner(events);
+    const options: RunOptions = { avg: 2, avgLapTime: 90 };
+    const extra = { SessionLapsRemainEx: 4 };
+
+    // 20 L at 2 L a lap covers the 3 laps after this one with plenty in hand.
+    lapSample(runner.run, 5, 20, options, extra);
+    expect(reassured(events)).toBe(1);
+    lapSample(runner.run, 6, 18, options, { SessionLapsRemainEx: 3 });
+    expect(reassured(events)).toBe(1);
+
+    createFuelReassuranceRearm(runner.slice)();
+    lapSample(runner.run, 7, 16, options, { SessionLapsRemainEx: 2 });
+
+    expect(reassured(events)).toBe(2);
   });
 });

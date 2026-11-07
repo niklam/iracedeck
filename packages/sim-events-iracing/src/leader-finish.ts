@@ -157,7 +157,7 @@ export function isClockExpiredReading(telemetry: TelemetryData): boolean {
 /**
  * The consecutive-expired-ticks count after `telemetry`: one more than
  * `previous` on an expired reading ({@link isClockExpiredReading}), `0` on
- * any other. The fuel diff keeps it in `state.fuelCalloutClockExpiredTicks`.
+ * any other. The fuel diff keeps it in `state.fuelCallout.clockExpiredTicks`.
  *
  * @param telemetry - the tick's telemetry
  * @param previous - the count after the previous tick
@@ -179,7 +179,7 @@ export function isClockExpiryConfirmed(expiredTicks: number): boolean {
  * the expiry is confirmed, and whether the leader has crossed the line since.
  */
 export type LeaderClockExpiry = {
-  /** {@link isClockExpiryConfirmed} over `state.fuelCalloutClockExpiredTicks`, this tick included. */
+  /** {@link isClockExpiryConfirmed} over `state.fuelCallout.clockExpiredTicks`, this tick included. */
   confirmed: boolean;
   /**
    * `state.leaderWhitePostExpiryCrossed` after this tick's `diffLeaderWhite`;

@@ -551,7 +551,7 @@ describe("readSimState — the laps-of-fuel-left figure", () => {
     const beforeWhite = predictedChequeredInS(latest, [2, 1], 60, HELD);
 
     expect(state.raw.state.leaderWhitePostExpiryCrossed).toBe(true);
-    expect(state.raw.state.fuelCalloutClockExpiredTicks).toBe(70);
+    expect(state.raw.state.fuelCallout.clockExpiredTicks).toBe(70);
     expect(onWhiteLap).toBeCloseTo(55.5, 9);
     expect(beforeWhite).toBeCloseTo(115.5, 9);
     expect(state.fuel.lapsLeft.now!.timedLapsAfterCurrent).toBe(1);
@@ -700,7 +700,7 @@ describe("readSimState — the expired-clock confirmation (issue #1405)", () => 
     expect(counts).toEqual([3]);
     expect(spoken).toEqual(["fuel.lapsLeft.crossed"]);
     // The snapshot reads the same unconfirmed expiry the diff did.
-    expect(read().raw.state.fuelCalloutClockExpiredTicks).toBe(1);
+    expect(read().raw.state.fuelCallout.clockExpiredTicks).toBe(1);
     expect(now).toMatchObject({ timedLapsAfterCurrent: null, remainingLaps: Number.POSITIVE_INFINITY, covered: false });
   });
 
@@ -719,7 +719,7 @@ describe("readSimState — the expired-clock confirmation (issue #1405)", () => 
 
     expect(counts).toEqual([3]);
     expect(spoken).toEqual(["fuel.lapsLeft.crossed"]);
-    expect(read().raw.state.fuelCalloutClockExpiredTicks).toBe(2);
+    expect(read().raw.state.fuelCallout.clockExpiredTicks).toBe(2);
     expect(read().fuel.lapsLeft.now).toMatchObject({ timedLapsAfterCurrent: null, covered: false });
   });
 
@@ -731,7 +731,7 @@ describe("readSimState — the expired-clock confirmation (issue #1405)", () => 
 
     expect(counts).toEqual([]);
     expect(spoken).toEqual(["fuel.lapsLeft.raceCovered"]);
-    expect(read().raw.state.fuelCalloutClockExpiredTicks).toBe(CLOCK_EXPIRY_CONFIRM_TICKS + 1);
+    expect(read().raw.state.fuelCallout.clockExpiredTicks).toBe(CLOCK_EXPIRY_CONFIRM_TICKS + 1);
     // (2 − 0.55) × 60 = 87 s → ceil(87 / 87.5 + 0.55 + 0.03) − 1 = 1.
     expect(now).toMatchObject({ timedLapsAfterCurrent: 1, remainingLaps: 1, covered: true });
   });
@@ -741,7 +741,7 @@ describe("readSimState — the expired-clock confirmation (issue #1405)", () => 
 
     driveTwoValidLaps(controller, field(0.3, 1200));
     controller.__tick(telemetry({ Lap: 4, LapDistPct: 0.3, SessionTime: 190, FuelLevel: 59, ...field(0.3, -1) }));
-    expect(read().raw.state.fuelCalloutClockExpiredTicks).toBe(1);
+    expect(read().raw.state.fuelCallout.clockExpiredTicks).toBe(1);
 
     // A replay tick wipes the state before any diff runs; the count is not
     // kept, so a stale reading cannot confirm an expiry on the first live
@@ -758,25 +758,25 @@ describe("readSimState — the expired-clock confirmation (issue #1405)", () => 
     );
 
     expect(read().inReplay).toBe(true);
-    expect(read().raw.state.fuelCalloutClockExpiredTicks).toBe(0);
+    expect(read().raw.state.fuelCallout.clockExpiredTicks).toBe(0);
   });
 
   it("starts the count again in a new session, and counts outside a race too", () => {
     const { controller } = start();
 
     controller.__tick(telemetry({ Lap: 4, LapDistPct: 0.3, SessionTime: 190, ...field(0.3, -1) }));
-    expect(read().raw.state.fuelCalloutClockExpiredTicks).toBe(1);
+    expect(read().raw.state.fuelCallout.clockExpiredTicks).toBe(1);
 
     // SessionNum 1 is not a race in this session info; the session change
     // clears the count, and the diff counts the new session's first tick.
     controller.__tick(telemetry({ Lap: 0, LapDistPct: 0.1, SessionNum: 1, ...field(0.1, -1) }));
-    expect(read().raw.state.fuelCalloutClockExpiredTicks).toBe(1);
+    expect(read().raw.state.fuelCallout.clockExpiredTicks).toBe(1);
 
     controller.__tick(telemetry({ Lap: 0, LapDistPct: 0.11, SessionNum: 1, ...field(0.11, -2) }));
-    expect(read().raw.state.fuelCalloutClockExpiredTicks).toBe(2);
+    expect(read().raw.state.fuelCallout.clockExpiredTicks).toBe(2);
 
     controller.__tick(telemetry({ Lap: 0, LapDistPct: 0.12, SessionNum: 1, ...field(0.12, 5) }));
-    expect(read().raw.state.fuelCalloutClockExpiredTicks).toBe(0);
+    expect(read().raw.state.fuelCallout.clockExpiredTicks).toBe(0);
   });
 });
 
@@ -854,9 +854,9 @@ describe("readSimState — the -1 clock before the race starts (issue #1405)", (
     // The -1 reads as an expired clock, confirmed, and the leader has a lap
     // time — the parade lap — so a prediction would put the chequered two
     // laps away...
-    expect(state.raw.state.fuelCalloutClockExpiredTicks).toBe(90);
+    expect(state.raw.state.fuelCallout.clockExpiredTicks).toBe(90);
     expect(resolveLeaderLapTimeS(latest, state.order.positions!)).toBe(150);
-    expect(state.raw.state.fuelCalloutLastSampledLap).toBe(1);
+    expect(state.raw.state.fuelCallout.lastSampledLap).toBe(1);
     // ...but there is no fuel average, so the diff returned before asking:
     // no warning, no confirmation, no latch moved.
     expect(state.fuel.stats.avg).toBeNull();
@@ -904,7 +904,7 @@ describe("readSimState — a curated half that cannot be built", () => {
     expect(state).not.toHaveProperty("error");
     // The live objects, as in the full shape: the same state, the same flags.
     expect(state.raw.state).toBe(healthy.raw.state);
-    expect(state.raw.state.fuelCalloutLastSampledLap).toBe(3);
+    expect(state.raw.state.fuelCallout.lastSampledLap).toBe(3);
     expect(state.raw.instance).toEqual(healthy.raw.instance);
     expect(state.raw.replay).toEqual(healthy.raw.replay);
     expect(functionPaths(state)).toEqual([]);
@@ -926,7 +926,7 @@ describe("readSimState — a curated half that cannot be built", () => {
 
     expect(getFuelLapsLeftMarginLaps).toHaveBeenCalledTimes(1);
     expect(state.curatedError).toBe("settings not loaded");
-    expect(state.raw.state.fuelCalloutLastSampledLap).toBe(-1);
+    expect(state.raw.state.fuelCallout.lastSampledLap).toBe(-1);
     expect(state.raw.instance.firstOnTrackSeeded).toBe(true);
   });
 
@@ -1254,9 +1254,9 @@ describe("buildSimState", () => {
   it("reads the announce latches from the translator state", () => {
     const translatorState = createInitialState();
 
-    translatorState.fuelCalloutLastAnnouncedCount = 3;
-    translatorState.fuelCalloutLastSampledLap = 12;
-    translatorState.fuelCalloutRaceCoveredAnnounced = true;
+    translatorState.fuelCallout.lastAnnouncedCount = 3;
+    translatorState.fuelCallout.lastSampledLap = 12;
+    translatorState.fuelCallout.raceCoveredAnnounced = true;
 
     const state = build({ state: translatorState });
 
@@ -1438,7 +1438,7 @@ describe("simStateHeadline", () => {
   it("reports fuel per lap with its sample count, laps left with the last announced count, position, gaps and caution phase", () => {
     const translatorState = createInitialState();
 
-    translatorState.fuelCalloutLastAnnouncedCount = 2;
+    translatorState.fuelCallout.lastAnnouncedCount = 2;
 
     const state = buildSimState(
       parts({
