@@ -187,3 +187,29 @@ describe("helpers", () => {
     },
   );
 });
+
+// #1634, CodeRabbit CLI round 5: the string a runner hands a shell is read
+// whole, with its own `cd`s, and the lexer's match inside it is left to this reader.
+describe("a shell wrapper's string is judged whole, with its own cds (#1634)", () => {
+  const MASTER = path.resolve("/repo/master");
+  const isInside = (c, p) => c === p || c.startsWith(p + path.sep);
+  const trees = ctx({}, { ...LINKED, toplevel: (d) => (isInside(d, ROOT) ? ROOT : MASTER) });
+  const inner = `\`sh -c\` → Stream Deck plugin link points into ${ROOT}: \`pnpm dev:voices\` there relinks the running plugin`;
+
+  it.each([
+    "sh -c 'cd ../ir-5 && pnpm dev:voices'",
+    "pnpm exec sh -c 'cd ../ir-5 && pnpm dev:voices'",
+    "npx sh -c 'cd ../ir-5; pnpm dev:voices'",
+    "sh -c $'cd ../ir-5\\npnpm dev:voices'",
+    "sh -c 'cd ../ir-5 && pnpm dev:voices | tee log'",
+  ])("names the tree the inner cd reaches once, from the session cwd: %s", (c) => {
+    expect(deckFindings(c, MASTER, trees, BASH)).toEqual([inner]);
+  });
+
+  it("finds nothing where the inner cd reaches an unlinked tree, and reads a stdin script at the cwd", () => {
+    expect(deckFindings("pnpm exec sh -c 'cd ../ir-7 && pnpm dev:voices'", MASTER, trees, BASH)).toEqual([]);
+    expect(deckFindings("echo 'pnpm dev:voices' | bash", ROOT, trees, BASH)).toEqual([
+      `Stream Deck plugin link points into ${ROOT}: \`pnpm dev:voices\` there relinks the running plugin`,
+    ]);
+  });
+});
