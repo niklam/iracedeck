@@ -106,9 +106,12 @@ import { diffTrackWetness, resolveReportedTrackWetness } from "./diff/track-wetn
 import type { EmitFn, PendingEvent } from "./diff/types.js";
 import {
   isClockExpiryConfirmed,
+  lapCountCrossings,
   type LeaderFinish,
   leaderWhiteCrossingIndex,
+  readLeaderGap,
   resolveLeaderFinish,
+  staysWithinLapAtChequered,
   UNKNOWN_LEADER_FINISH,
 } from "./leader-finish.js";
 import { calculateCanonicalRacePositions } from "./race-order.js";
@@ -1766,9 +1769,77 @@ export function resolveLeaderLapTimeS(telemetry: TelemetryData, positions: numbe
 }
 
 /**
- * Laps left in the session for the gap callouts' closing-announcement
- * horizon (issue #933), or `null` when neither limit is known — which
- * `diffGaps` reads as "no cap", never as zero.
+ * What the gap horizon ({@link resolveGapLapsRemaining}) is told about the
+ * player, beyond the tick's telemetry and canonical order.
+ */
+export type GapHorizonPlayer = {
+  /** The player's car index (`DriverInfo.DriverCarIdx`), `-1` when unknown. */
+  carIdx: number;
+  /**
+   * The player's validated average lap time (s), `fuelLapsLeftStats(self).avgLapTime`,
+   * which leaves out caution and pit laps; `null` when there is none yet.
+   */
+  avgLapTimeS: number | null;
+  /**
+   * Whether the player has taken the chequered flag in this session:
+   * `state.raceFinish` recorded for the current `SessionNum`, which
+   * `diffLaps` sets at the flag crossing earlier in the same tick.
+   */
+  finished: boolean;
+};
+
+/**
+ * The gap callouts' closing-announcement horizon (issues #933, #1311,
+ * #1380): the player's distance to their own chequered flag, in laps, or
+ * `null` when neither session limit is known — which `diffGaps` reads as "no
+ * cap", never as zero. `diffGaps` compares a projected catch's laps to
+ * contact with it, so a catch that completes after the player's flag is
+ * never announced.
+ *
+ * The distance is `C_p − f_p`, never below `0`: the player's remaining line
+ * crossings, the chequered one included ({@link playerCrossingsToGo}), less
+ * their lap fraction `f_p` (`CarIdxLapDistPct`, `0` when unknown). It is built
+ * from the leader's crossings `C_L` ({@link leaderCrossingsToGo}), the
+ * horizon #1311 shipped. Before #1380 the horizon WAS `C_L`: a lapped or
+ * slower-class player was given the leader's crossings, which overstate their
+ * own (a GT4 on 120 s laps behind a GTP leader on 90 s laps, 600 s left, ran
+ * 6 or 7 while the horizon allowed 9); the leader's flag zeroed it while the
+ * player still had their last lap to run; and every count overstated the
+ * distance by the player's lap fraction.
+ *
+ * Spec: `docs/superpowers/specs/2026-11-07-issue-1380-gap-horizon-player-laps.md`
+ * (and the #1311 spec, `2026-10-10-issue-1311-gap-horizon-end-of-race.md`, for
+ * the leader's side).
+ *
+ * @param telemetry - The tick's telemetry
+ * @param positions - The tick's canonical live order (`calculateFrozenRacePositions`)
+ * @param leaderCrossedSinceExpiry - `state.leaderWhitePostExpiryCrossed` after this tick's `diffLeaderWhite`
+ * @param player - The player's car index, validated average lap and whether they have finished
+ * @internal Exported for testing
+ */
+export function resolveGapLapsRemaining(
+  telemetry: TelemetryData,
+  positions: number[],
+  leaderCrossedSinceExpiry: boolean,
+  player: GapHorizonPlayer,
+): number | null {
+  // The player's flag ends their race whatever the limits read.
+  if (player.finished) return 0;
+
+  const leaderCrossings = leaderCrossingsToGo(telemetry, positions, leaderCrossedSinceExpiry);
+
+  if (leaderCrossings === null) return null;
+
+  const playerCrossings = playerCrossingsToGo(telemetry, positions, leaderCrossings, player);
+
+  return Math.max(0, playerCrossings - (readLapFraction(telemetry, player.carIdx) ?? 0));
+}
+
+/**
+ * The race leader's remaining line crossings, the chequered one included, by
+ * whichever limit ends the session sooner, or `null` when neither is known —
+ * the gap horizon as #1311 shipped it, now the input
+ * {@link playerCrossingsToGo} converts.
  *
  * Whichever limit ends the session sooner, by the rule
  * `@iracedeck/iracing-sdk`'s `session-limit.ts` owns (#1311), with both sides
@@ -1786,15 +1857,8 @@ export function resolveLeaderLapTimeS(telemetry: TelemetryData, positions: numbe
  * This shares the RULE with the fuel callouts, not their operands — the fuel
  * estimate counts the player's laps after the current one — so the two can
  * still reach different verdicts about which limit binds.
- *
- * Spec: `docs/superpowers/specs/2026-10-10-issue-1311-gap-horizon-end-of-race.md`.
- *
- * @param telemetry - The tick's telemetry
- * @param positions - The tick's canonical live order (`calculateFrozenRacePositions`)
- * @param leaderCrossedSinceExpiry - `state.leaderWhitePostExpiryCrossed` after this tick's `diffLeaderWhite`
- * @internal Exported for testing
  */
-export function resolveGapLapsRemaining(
+function leaderCrossingsToGo(
   telemetry: TelemetryData,
   positions: number[],
   leaderCrossedSinceExpiry: boolean,
@@ -1803,6 +1867,90 @@ export function resolveGapLapsRemaining(
     resolveLapsRemaining(telemetry),
     timeSideCrossings(telemetry, positions, leaderCrossedSinceExpiry),
   );
+}
+
+/**
+ * The player's remaining line crossings, the chequered one included, from
+ * the leader's `C_L` (issue #1380). The first rule that applies decides:
+ *
+ * 1. **The leader has the chequered flag** (`C_L = 0`, or `SessionState`
+ *    reads `Checkered` or `CoolDown`): `1` — the player finishes at their
+ *    next crossing, whatever lap they are on. `SessionState` is needed for a
+ *    time-only race, whose lap counter reads the unlimited sentinel, so `C_L`
+ *    stays at the clock side's `1` after the leader's flag. (A player who has
+ *    the flag themselves was answered `0` by the caller.)
+ * 2. **The player is the leader** (position 1 of the canonical order): `C_L`.
+ * 3. **By lap count**, when the player is within a lap of the leader on
+ *    distance now and projected to stay so at the leader's flag
+ *    (`staysWithinLapAtChequered`, the fuel estimate's test, #1405):
+ *    `LC_L + C_L − LC_p` (`lapCountCrossings`). Every car within a lap of the
+ *    leader at the flag finishes on the lap count the leader's chequered
+ *    brings up, so this needs no tolerance. Floored at `1`: a player who has
+ *    not finished has at least their chequered crossing to run.
+ * 4. **By time** otherwise, when `T`, `P` and `f_p` are known: the player's
+ *    k-th crossing is at `(k − f_p) · P`, and their chequered is their first
+ *    at or after the leader's, so `max(1, ceil(T / P + f_p))`. No near-tie
+ *    tolerance: here a crossing counted one too few only withholds an
+ *    announcement on the last lap.
+ * 5. **Otherwise** `C_L` — no leader pace, no leader lap fraction, no player
+ *    average, or the lap counters unreadable near the line with no player
+ *    fraction to fall back on. It overstates for a lapped or slower-class
+ *    player, as #1311 did, and never mutes.
+ *
+ * `T = (C_L − f_L) · L` is the leader's chequered in seconds, with `L` the
+ * leader's raw recent lap ({@link resolveLeaderLapTimeS}) and `f_L` their lap
+ * fraction; `P` is the player's validated average. Unlike the fuel estimate,
+ * the pace is not capped at `min(L, P)` and there is no tolerance: the two
+ * consumers' safe directions are opposite, and for the horizon a count too
+ * high announces a catch that cannot happen.
+ */
+function playerCrossingsToGo(
+  telemetry: TelemetryData,
+  positions: number[],
+  leaderCrossings: number,
+  player: GapHorizonPlayer,
+): number {
+  const sessionState = telemetry.SessionState;
+
+  if (leaderCrossings === 0 || sessionState === SessionState.Checkered || sessionState === SessionState.CoolDown) {
+    return 1;
+  }
+
+  if (player.carIdx >= 0 && positions[player.carIdx] === 1) return leaderCrossings;
+
+  const leaderLapS = resolveLeaderLapTimeS(telemetry, positions);
+  const leaderIdx = positions.findIndex((position) => position === 1);
+  const leaderPct = readLapFraction(telemetry, leaderIdx);
+  const playerLapS = player.avgLapTimeS;
+  const playerLapKnown = playerLapS !== null && Number.isFinite(playerLapS) && playerLapS > 0;
+
+  if (leaderLapS === null || leaderPct === null || !playerLapKnown) return leaderCrossings;
+
+  const chequeredInS = (leaderCrossings - leaderPct) * leaderLapS;
+  const gap = readLeaderGap(telemetry, positions, player.carIdx);
+
+  if (gap !== null && staysWithinLapAtChequered(gap, chequeredInS, leaderLapS, playerLapS)) {
+    return Math.max(1, lapCountCrossings(gap, leaderCrossings));
+  }
+
+  const playerPct = readLapFraction(telemetry, player.carIdx);
+
+  if (playerPct === null) return leaderCrossings;
+
+  return Math.max(1, Math.ceil(chequeredInS / playerLapS + playerPct));
+}
+
+/**
+ * A car's `CarIdxLapDistPct` when it is a position on the lap (finite,
+ * `0 ≤ f < 1`), otherwise `null` — a car index out of range, the array
+ * missing, or `-1` off world.
+ */
+function readLapFraction(telemetry: TelemetryData, carIdx: number): number | null {
+  if (!Number.isInteger(carIdx) || carIdx < 0) return null;
+
+  const pct = telemetry.CarIdxLapDistPct?.[carIdx];
+
+  return typeof pct === "number" && Number.isFinite(pct) && pct >= 0 && pct < 1 ? pct : null;
 }
 
 /**
@@ -3398,10 +3546,12 @@ function handleOrderSteps(
   // gaps + relevance/threshold callout events. Consumes the same canonical
   // frozen order as diffOvertakes; the pace car is excluded explicitly
   // because the canonical order carries no pace-car filter of its own. The
-  // laps-remaining estimate caps the closing-announcement horizon (a catch
-  // that completes after the checkered is never announced) — see
-  // `resolveGapLapsRemaining`. `diffLeaderWhite` ran earlier this tick, so
-  // the post-expiry crossing marker is current. The estimate is read from
+  // player's distance to their own chequered flag caps the
+  // closing-announcement horizon (a catch that completes after the player's
+  // flag is never announced, #1380) — see `resolveGapLapsRemaining`.
+  // `diffLeaderWhite` ran earlier this tick, so the post-expiry crossing
+  // marker is current, and `diffLaps` did, so a finish at this tick's
+  // crossing is already recorded in `raceFinish`. The estimate is read from
   // telemetry for this one diff, so it is part of its step (#1559).
   steps.live("diffGaps", pending, () =>
     diffGaps(
@@ -3413,7 +3563,11 @@ function handleOrderSteps(
       canonicalPositions,
       self.getGapAlertThresholdSeconds,
       emit,
-      resolveGapLapsRemaining(telemetry, canonicalPositions, self.state.leaderWhitePostExpiryCrossed),
+      resolveGapLapsRemaining(telemetry, canonicalPositions, self.state.leaderWhitePostExpiryCrossed, {
+        carIdx: playerCarIdx,
+        avgLapTimeS: fuelLapsLeftStats(self).avgLapTime,
+        finished: self.state.raceFinish !== null && self.state.raceFinish.sessionNum === (telemetry.SessionNum ?? null),
+      }),
       self.getGapMinChangeSeconds,
       trackLengthMeters,
       // `diffCaution` ran earlier this tick, so this is the current phase —
