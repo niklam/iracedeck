@@ -18,6 +18,7 @@ import {
   prComments,
   readIndexFile,
   replayRebase,
+  requiredStatusChecks,
   run,
   setBoardStatus,
   setHookDeadline,
@@ -347,7 +348,11 @@ describe("prChangedFiles", { timeout: 20_000 }, () => {
   it("lists the PR's own changes, never the base's after the branch point", () => {
     const { m1 } = arrange();
     const head = commit({ ".claude/rules/a.md": "a edited\n", "packages/p/CLAUDE.md": "p\n" }, "prose");
-    expect(read(head, m1)).toEqual({ ok: true, files: [".claude/rules/a.md", "packages/p/CLAUDE.md"] });
+    expect(read(head, m1)).toEqual({
+      ok: true,
+      files: [".claude/rules/a.md", "packages/p/CLAUDE.md"],
+      authors: ["t <t@t>"],
+    });
   });
 
   it("lists both sides of a rename, so a script moved into the rules shows as deleted", () => {
@@ -355,7 +360,7 @@ describe("prChangedFiles", { timeout: 20_000 }, () => {
     git("mv", "scripts/x.mjs", ".claude/rules/x.md");
     git("commit", "-qm", "move");
     const head = gitIn(root, "rev-parse", "HEAD");
-    expect(read(head, m1)).toEqual({ ok: true, files: [".claude/rules/x.md", "scripts/x.mjs"] });
+    expect(read(head, m1)).toEqual({ ok: true, files: [".claude/rules/x.md", "scripts/x.mjs"], authors: ["t <t@t>"] });
   });
 
   it("leaves out a base merged into the PR (GitHub's Update branch)", () => {
@@ -363,13 +368,42 @@ describe("prChangedFiles", { timeout: 20_000 }, () => {
     commit({ ".claude/rules/a.md": "a edited\n" }, "prose");
     git("merge", "-q", "--no-edit", m1);
     const head = gitIn(root, "rev-parse", "HEAD");
-    expect(read(head, m1)).toEqual({ ok: true, files: [".claude/rules/a.md"] });
+    // The merge commit is the PR's own, so it is listed; the base's m1 is not.
+    expect(read(head, m1)).toEqual({ ok: true, files: [".claude/rules/a.md"], authors: ["t <t@t>", "t <t@t>"] });
   });
 
   it("returns a path as it is, never quoted, and runs from the repository root", () => {
     const { m1 } = arrange();
     const head = commit({ ".claude/skills/ä x/SKILL.md": "s\n" }, "unicode");
-    expect(read(head, m1, join(root, "scripts"))).toEqual({ ok: true, files: [".claude/skills/ä x/SKILL.md"] });
+    expect(read(head, m1, join(root, "scripts"))).toEqual({
+      ok: true,
+      files: [".claude/skills/ä x/SKILL.md"],
+      authors: ["t <t@t>"],
+    });
+  });
+
+  it("lists every commit's raw author line, whatever a mailmap says", () => {
+    const { m1 } = arrange();
+    const DEPENDABOT = "dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>";
+    const asBot = [
+      "-c",
+      "user.name=dependabot[bot]",
+      "-c",
+      "user.email=49699333+dependabot[bot]@users.noreply.github.com",
+    ];
+    writeFileSync(join(root, "package.json"), "{}\n");
+    execFileSync("git", ["add", "-A"], { cwd: root });
+    execFileSync("git", [...asBot, "commit", "-qm", "bump"], { cwd: root });
+    const head = commit({ "pnpm-lock.yaml": "x\n" }, "fix on top");
+    // A mailmap that would show the fix as Dependabot's, and a signature display that would add lines.
+    writeFileSync(join(root, ".mailmap"), `${DEPENDABOT} t <t@t>\n`);
+    git("config", "log.mailmap", "true");
+    git("config", "log.showSignature", "true");
+    expect(read(head, m1)).toEqual({
+      ok: true,
+      files: ["package.json", "pnpm-lock.yaml"],
+      authors: ["t <t@t>", DEPENDABOT],
+    });
   });
 
   it("fetches a head only origin has", () => {
@@ -388,7 +422,7 @@ describe("prChangedFiles", { timeout: 20_000 }, () => {
       gitIn(other, "push", "-q", "origin", "pushed");
       const head = gitIn(other, "rev-parse", "HEAD");
       expect(() => gitIn(root, "cat-file", "-e", `${head}^{commit}`)).toThrow();
-      expect(read(head, m1)).toEqual({ ok: true, files: ["CLAUDE.md"] });
+      expect(read(head, m1)).toEqual({ ok: true, files: ["CLAUDE.md"], authors: ["t <t@t>"] });
       expect(() => git("rev-parse", "-q", "--verify", "FETCH_HEAD")).toThrow();
     } finally {
       rmSync(remote, { recursive: true, force: true });
@@ -473,6 +507,65 @@ describe("baseChangedSince", () => {
     expect(baseChangedSince(7, "2026-10-03T10:00:00Z", root)).toBeUndefined();
     vi.mocked(spawnSync).mockImplementationOnce(() => ({ status: 0, stdout: "{}", stderr: "" }));
     expect(baseChangedSince(7, "2026-10-03T10:00:00Z", root)).toBeUndefined();
+  });
+});
+
+// #1648: the checks a qualifying --admin merge must show, from the base branch's rules.
+describe("requiredStatusChecks", () => {
+  const answer = (out, status = 0) =>
+    vi.mocked(spawnSync).mockImplementationOnce(() => ({ status, stdout: JSON.stringify(out), stderr: "" }));
+  const checks = (...contexts) => ({
+    type: "required_status_checks",
+    parameters: { required_status_checks: contexts.map((context) => ({ context, integration_id: 15368 })) },
+  });
+
+  it("reads the confirmed repository's rules for the base branch, every ruleset's checks together", () => {
+    answer([
+      { type: "deletion" },
+      checks("Typecheck", "Run tests"),
+      { type: "pull_request", parameters: {} },
+      checks("ESLint check", "Typecheck"),
+    ]);
+    expect(requiredStatusChecks("niklam/iracedeck", "master", root)).toEqual({
+      ok: true,
+      contexts: ["ESLint check", "Run tests", "Typecheck"],
+    });
+    const [cmd, args] = vi.mocked(spawnSync).mock.calls.at(-1);
+    expect(cmd).toBe("gh");
+    expect(args).toEqual(["api", "repos/niklam/iracedeck/rules/branches/master?per_page=100"]);
+  });
+
+  it("keeps a branch's slashes as path segments and encodes the rest", () => {
+    answer([checks("Typecheck")]);
+    requiredStatusChecks("niklam/iracedeck", "release/3.9 x", root);
+    expect(vi.mocked(spawnSync).mock.calls.at(-1)[1]).toContain(
+      "repos/niklam/iracedeck/rules/branches/release/3.9%20x?per_page=100",
+    );
+  });
+
+  it("fails for a rule set it cannot read whole, or one that requires no check", () => {
+    answer({}, 1);
+    expect(requiredStatusChecks("niklam/iracedeck", "master", root)).toEqual({
+      ok: false,
+      reason: "gh could not read the rules of master",
+    });
+    answer({ message: "Not Found" });
+    expect(requiredStatusChecks("niklam/iracedeck", "master", root)).toMatchObject({ ok: false });
+    answer([{ type: "deletion" }, checks()]);
+    expect(requiredStatusChecks("niklam/iracedeck", "master", root)).toEqual({
+      ok: false,
+      reason: "the rules of master require no status check",
+    });
+    answer(Array.from({ length: 100 }, () => checks("Typecheck")));
+    expect(requiredStatusChecks("niklam/iracedeck", "master", root)).toEqual({
+      ok: false,
+      reason: "master has more rules than one page holds",
+    });
+    const calls = vi.mocked(spawnSync).mock.calls.length;
+    expect(requiredStatusChecks("niklam/iracedeck/x", "master", root)).toMatchObject({ ok: false });
+    expect(requiredStatusChecks(undefined, "master", root)).toMatchObject({ ok: false });
+    expect(requiredStatusChecks("niklam/iracedeck", "", root)).toMatchObject({ ok: false });
+    expect(vi.mocked(spawnSync).mock.calls.length).toBe(calls);
   });
 });
 

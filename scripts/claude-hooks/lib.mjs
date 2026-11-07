@@ -425,23 +425,27 @@ function soleMergeBase(g, a, base) {
 }
 
 /**
- * Every path a PR changes, read with git (#1648): `{ ok: true, files }`, the
+ * Every path a PR changes and who wrote its commits, read with git (#1648):
+ * `{ ok: true, files, authors }` or `{ ok: false, reason }`. `files` are the
  * repo-relative paths that differ between the merge-base of `head` and `base`
- * and `head` — the PR's own diff, as GitHub shows it — or `{ ok: false,
- * reason }`. `head` and `base` are the PR's `headRefOid` and `baseRefOid`,
- * full shas. The merge gate lets an unapproved `--admin` merge through only
- * when every path is Claude-facing prose (`no-review-paths.mjs`), so every
- * uncertain read is a failure, never a shorter list:
+ * and `head` — the PR's own diff, as GitHub shows it; `authors` holds each
+ * commit's author identity on that range, `Name <email>`, merges included,
+ * one entry per commit. `head` and `base` are the PR's `headRefOid` and
+ * `baseRefOid`, full shas. The merge gate lets an `--admin` merge through
+ * unasked only when every path is Claude-facing prose (`no-review-paths.mjs`)
+ * or every commit is Dependabot's, so every uncertain read is a failure,
+ * never a shorter list:
  *
  * - `--no-renames`, so a rename lists both sides, and a script moved into
  *   `.claude/rules/` shows the deleted script; `-r` and
  *   `--ignore-submodules=none`, so neither a directory nor a gitlink hides a
  *   path; `-z`, so a path comes back as it is, never quoted.
- * - Plumbing (`diff-tree`), which no diff configuration changes; replace refs
+ * - Plumbing (`diff-tree`, `rev-list`), which no diff, mailmap or signature
+ *   configuration changes; `%an` / `%ae` are the raw author line. Replace refs
  *   and grafts ignored, at the repository's top level (`pinnedGit`).
  * - A commit the checkout lacks is fetched from `origin` by sha, as
- *   `replayRebase` does; criss-cross history, a failed diff and an empty list
- *   all fail.
+ *   `replayRebase` does; criss-cross history, a failed diff or commit list,
+ *   and an empty list all fail.
  */
 export function prChangedFiles({ head, base, dir }) {
   if (![head, base].every((s) => typeof s === "string" && FULL_SHA.test(s)))
@@ -458,7 +462,51 @@ export function prChangedFiles({ head, base, dir }) {
   if (!diff.ok) return fail("git could not list the files the PR changes");
   const files = [...new Set(diff.out.split("\0").filter(Boolean))].sort();
   if (files.length === 0) return fail("git lists no file the PR changes");
-  return { ok: true, files };
+  // A name or an email never holds a NUL or a line break, so neither split can cut one.
+  const log = g(["rev-list", "--no-commit-header", "--format=%an%x00%ae", `${mb.sha}..${head}`], {
+    maxBuffer: 16 * 1024 * 1024,
+  });
+  if (!log.ok) return fail("git could not list the PR's commits");
+  const authors = log.out
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => {
+      const [name, email] = line.split("\0");
+      return `${name} <${email ?? ""}>`;
+    });
+  if (authors.length === 0) return fail("git lists no commit on the PR");
+  return { ok: true, files, authors };
+}
+
+/**
+ * The status checks a branch's rules require (#1648), read from the rules
+ * API (`repos/<repo>/rules/branches/<branch>`, every ruleset that applies,
+ * whatever its source): `{ ok: true, contexts }`, the required contexts
+ * by name, or `{ ok: false, reason }`. `repo` is the `owner/name` the merge
+ * gate confirmed; `opts` go to {@link run} (the gate passes it as `GH_REPO`
+ * too, as for its other reads). A rule set it cannot read whole, or one
+ * requiring no check at all, is a failure: the gate then cannot tell a
+ * required check that never reported from one that does not exist.
+ */
+export function requiredStatusChecks(repo, branch, dir, opts) {
+  if (typeof repo !== "string" || !/^[\w.-]+\/[\w.-]+$/.test(repo))
+    return { ok: false, reason: "the PR's repository is unreadable" };
+  if (typeof branch !== "string" || branch === "") return { ok: false, reason: "the PR's base branch is unknown" };
+  const at = branch.split("/").map(encodeURIComponent).join("/");
+  const rules = ghJson(["api", `repos/${repo}/rules/branches/${at}?per_page=100`], dir, opts);
+  if (!Array.isArray(rules)) return { ok: false, reason: `gh could not read the rules of ${branch}` };
+  if (rules.length >= 100) return { ok: false, reason: `${branch} has more rules than one page holds` };
+  const contexts = [
+    ...new Set(
+      rules
+        .filter((r) => r?.type === "required_status_checks")
+        .flatMap((r) => r.parameters?.required_status_checks ?? [])
+        .map((c) => c?.context)
+        .filter((c) => typeof c === "string" && c !== ""),
+    ),
+  ].sort();
+  if (contexts.length === 0) return { ok: false, reason: `the rules of ${branch} require no status check` };
+  return { ok: true, contexts };
 }
 
 /**
