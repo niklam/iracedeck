@@ -82,7 +82,7 @@ Run the code review and the second read before **manual testing**, not after, be
 
 For a change with nothing runnable to test — a website or other user-facing docs change — the gate does not disappear, it changes shape: show the drafted text **in full** and get it approved before opening the PR. "There was nothing to test" is not an exemption. Rule and `CLAUDE.md` prose is the one exception: it is written for Claude, and its size is held by the budget test and the architecture reviews, so it needs no draft approval.
 
-Once the test passes, the issue lead pushes and opens the PR without asking. In the integration build (`scripts/integration-build.mjs`) he passes or fails each issue, and the pass belongs to the issue at the head sha the build merged.
+Once the test passes, the issue lead pushes and opens the PR without asking, with `--label no-coderabbit` when every file it changes is Claude-facing prose (`@.claude/rules/code-review.md`), since the review it saves is the one on open. In the integration build (`scripts/integration-build.mjs`) he passes or fails each issue, and the pass belongs to the issue at the head sha the build merged.
 
 ### Babysit the review (10)
 
@@ -98,7 +98,7 @@ One trap with no other home: `gh pr checks` exits non-zero (8) while any check i
 
 ### Merging (11)
 
-Once CodeRabbit has approved and the checks are green, **the issue lead merges** — the maintainer is not a second reviewer to wait for. A `no-coderabbit` PR has no approver, so it merges with `--admin` once its checks are green, and the merge hook allows that only when every file it changes is on the prose list. A *review* step never merges; that separation is what `@.claude/rules/build-and-commit.md` protects, and it owns the merge mechanics. Merging includes the issue's Roadmap card moving to `Testing` — the post-merge hook does that and reports when it could not, in which case make the move by hand (#1065, 2026-09-05); `@.claude/rules/build-and-commit.md` has the lanes.
+Once CodeRabbit has approved and the checks are green, **the issue lead merges** — the maintainer is not a second reviewer to wait for. A `no-coderabbit` PR has no approver, so GitHub shows it BLOCKED for want of an approval: it merges with `--admin` pinned to its head once its checks are green, and the merge hook lets that block pass only when every file is on the prose list and every required check is green, refusing or asking Niklas otherwise. A *review* step never merges; that separation is what `@.claude/rules/build-and-commit.md` protects, and it owns the merge mechanics. Merging includes the issue's Roadmap card moving to `Testing` — the post-merge hook does that and reports when it could not, in which case make the move by hand (#1065, 2026-09-05); `@.claude/rules/build-and-commit.md` has the lanes.
 
 **An approval and a green check are both head-specific.** Neither travels with a push, while the PR still displays the old approval beside the new head, so the merge hook judges both at the **current** head (`@.claude/rules/hooks.md` has what it accepts in place of a fresh review). Each refusal names the condition that failed and what to add or ask for. A `mergeStateStatus` of `BLOCKED` while you believe everything is green means the hook will refuse.
 
