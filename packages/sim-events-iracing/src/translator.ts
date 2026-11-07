@@ -3,8 +3,11 @@
  *
  * Subscribes to `sdkController` ticks, diffs each snapshot against the
  * previous tick, and publishes semantic events through the shared
- * `@iracedeck/event-bus`. It is the one producer of bus events from the
- * iRacing SDK; other packages still import `@iracedeck/iracing-sdk`
+ * `@iracedeck/event-bus`. With the replay recorder it starts
+ * (`replay-recorder.ts`: a controller subscription of its own that publishes
+ * the `replay.*` events directly, behind its own gate rather than the
+ * translator's replay guard), this package is the one producer of bus events
+ * from the iRacing SDK; other packages still import `@iracedeck/iracing-sdk`
  * directly (`deck-iracing`, `replay-engine`, `iracing-actions` and the
  * `audio-scenarios` catalog among them). Future sim translators
  * (`sim-events-ac`, …) sit as parallel siblings and emit the same event

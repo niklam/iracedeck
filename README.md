@@ -175,7 +175,7 @@ packages/
 | `@iracedeck/voice-packs` | The voice-pack stack: scanner, catalog, download and installer, the launch step that keeps the `default` pack installed |
 | `@iracedeck/callout-settings` | Every Race Engineer callout opt-in, declared once: key, label and default |
 | `@iracedeck/audio-scenarios` | The Race Engineer catalog: callout contracts, script vocabulary, speak gates and the pack-author tooling |
-| `@iracedeck/race-engineer-wiring` | `wireRaceEngineer`: every `registerPitCrew` dependency, read from the declared `SimRuntime`, shared by the plugins and the harness |
+| `@iracedeck/race-engineer-wiring` | `wireRaceEngineer`: every `registerPitCrew` dependency, its live sim reads through the declared `SimRuntime`, shared by the plugins and the harness |
 | `@iracedeck/scenario-harness` | Local QA tool: the real Race Engineer stack against a mock SDK controller, driven from a web UI |
 | **Icons and rendering** | |
 | `@iracedeck/icons` | SVG key icon Mustache templates with colorization support |
