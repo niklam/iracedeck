@@ -50,7 +50,7 @@ import {
 import { type ILogger, LogLevel } from "@iracedeck/logger";
 
 import { elgatoPluginLogFile } from "./log-file.js";
-import { createSDLogger } from "./sd-logger.js";
+import { createLogWriteFailures, createSDLogger } from "./sd-logger.js";
 
 /**
  * Wraps an Elgato SDK action reference into a platform-agnostic IDeckActionContext.
@@ -319,6 +319,12 @@ export class ElgatoPlatformAdapter implements IDeckPlatformAdapter {
   private contextEventOrder: ContextEventOrder | undefined;
   /** The handler registered for each action UUID; see {@link registerAction}. */
   private readonly handlers = new Map<string, IDeckActionHandler<never>>();
+  /**
+   * Lines dropped by failed log writes, shared by every logger this adapter
+   * creates, so one scope's failures are reported by whichever scope next
+   * writes successfully (#1630); see {@link createSDLogger}.
+   */
+  private readonly logWriteFailures = createLogWriteFailures();
 
   /**
    * The file the SDK's own logger writes, `<cwd>/logs/<plugin UUID>.0.log`
@@ -505,7 +511,7 @@ export class ElgatoPlatformAdapter implements IDeckPlatformAdapter {
   }
 
   createLogger(scope: string): ILogger {
-    return createSDLogger(this.sd.logger.createScope(scope));
+    return createSDLogger(this.sd.logger.createScope(scope), LogLevel.Debug, this.logWriteFailures);
   }
 
   /**

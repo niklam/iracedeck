@@ -25,7 +25,7 @@ Elgato Stream Deck adapter that implements `IDeckPlatformAdapter` from `@iracede
 
 ## Also Contains
 
-- `createSDLogger()` / `SDLoggerLike` — Wraps Elgato's SDK logger into the `ILogger` interface with level filtering. Defaults to `LogLevel.Debug` intentionally: level gating happens at the `streamDeck.logger` layer, so the wrapper keeps forwarding debug and a runtime `debugLogging` flip surfaces scoped debug logs without recreating loggers (see `.claude/rules/logging.md`)
+- `createSDLogger()` / `SDLoggerLike` — Wraps Elgato's SDK logger into the `ILogger` interface with level filtering. Defaults to `LogLevel.Debug` intentionally: level gating happens at the `streamDeck.logger` layer, so the wrapper keeps forwarding debug and a runtime `debugLogging` flip surfaces scoped debug logs without recreating loggers (see `.claude/rules/logging.md`). A failed write never throws out of it (#1630): it counts the dropped line in the `LogWriteFailures` record (`createLogWriteFailures()`, one per adapter, passed to every logger `createLogger` makes) and writes one `WARN Log writes failed; <n> lines were dropped (first failure: <code>)` before the next line the SDK's level would write, and only while that level lets `warn` through: while the SDK filters `warn` (level `error`) the notice waits, and the record is kept until it lands. `SDLoggerLike.level` (optional, the SDK `Logger`'s getter) is read only while lines are being dropped
 - `elgatoPluginLogFile(cwd?)` / `elgatoPluginUuid(cwd)` (#1330) — the file `@elgato/streamdeck`'s logger writes, `<cwd>/logs/<plugin UUID>.0.log`, which the SDK does not expose. The adapter reports it as its `logLocation`, which the shared bootstrap hands to the main-thread watchdog, whose worker appends to that file directly. `log-file.test.ts` checks the UUID against the SDK's own `getPluginUUID` and the path against a real `FileTarget`, so an SDK upgrade that moves the file turns the suite red
 
 ## Build
@@ -37,6 +37,7 @@ pnpm build  # tsc → dist/
 ## Dependencies
 
 - `@elgato/streamdeck` — The Elgato Stream Deck SDK
+- `@elgato/utils` — the SDK's own utilities, the same version `@elgato/streamdeck` pins: `JsonObject`, and the level ranking `defcon` that `createSDLogger` uses to mirror the SDK logger's gate (#1630). Bump it only together with `@elgato/streamdeck`: `sd-logger.test.ts` fails when the two pins differ or resolve to different copies, since the mirror would then rank levels with a different `defcon` than the gate
 - `@iracedeck/deck-core` — Platform-agnostic interfaces
 - `@iracedeck/app-constants` — `LogLocation`, the type `logLocation` reports (#1367)
 - `@iracedeck/settings` — imported only by `adapter.test.ts`, which runs the real settings cache over the adapter's global-settings fan-out

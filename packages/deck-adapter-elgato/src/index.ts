@@ -5,5 +5,5 @@
  */
 
 export { ElgatoPlatformAdapter } from "./adapter.js";
-export { createSDLogger, type SDLoggerLike } from "./sd-logger.js";
+export { createLogWriteFailures, createSDLogger, type LogWriteFailures, type SDLoggerLike } from "./sd-logger.js";
 export { elgatoPluginLogFile, elgatoPluginUuid } from "./log-file.js";
