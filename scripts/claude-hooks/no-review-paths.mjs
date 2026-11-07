@@ -15,9 +15,9 @@
 
 /** Repo-relative globs, `/`-separated: `**` spans directories, `*` stays within one. */
 export const NO_REVIEW_PATHS = Object.freeze([
-  ".claude/rules/**",
-  ".claude/skills/**",
-  ".claude/agents/**",
+  ".claude/rules/**/*.md",
+  ".claude/skills/**/*.md",
+  ".claude/agents/**/*.md",
   "**/CLAUDE.md",
 ]);
 

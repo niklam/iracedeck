@@ -35,6 +35,9 @@ describe("isNoReviewPath", () => {
       "scripts/claude-hooks/rules-bash.mjs",
       "scripts/claude-hooks/rules-bash.test.mjs",
       "CLAUDE.md.bak",
+      ".claude/skills/issue-lead/helper.mjs",
+      ".claude/rules/notes.txt",
+      ".claude/agents/x.json",
       "NOTCLAUDE.md",
       "packages/x/claude.md",
       "packages/x/CLAUDE.mdx",
@@ -100,9 +103,9 @@ describe("code-review.md states the same list", () => {
     const section = rule.slice(rule.indexOf(HEADING));
     expect(section.startsWith(HEADING)).toBe(true);
     const mutations = [
-      rule.replace("- `.claude/agents/**`\n", ""),
+      rule.replace("- `.claude/agents/**/*.md`\n", ""),
       rule.replace("- `**/CLAUDE.md`\n", "- `**/CLAUDE.md`\n- `README.md`\n"),
-      rule.replace("`.claude/skills/**`", "`.claude/skills/*`"),
+      rule.replace("`.claude/skills/**/*.md`", "`.claude/skills/**`"),
       rule.replace(HEADING, "## PRs that skip review"),
       rule.replace(/^- `/gm, "* `"),
     ];

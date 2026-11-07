@@ -77,11 +77,11 @@ CodeRabbit meters PR reviews per author, and every PR here is niklam's, so all o
 
 ## PRs that skip CodeRabbit (#1648)
 
-A PR is opened with `--label no-coderabbit` when every file it changes is Claude-facing prose on this list:
+A PR is opened with `--label no-coderabbit` when every file it changes is Claude-facing prose, a Markdown file on this list:
 
-- `.claude/rules/**`
-- `.claude/skills/**`
-- `.claude/agents/**`
+- `.claude/rules/**/*.md`
+- `.claude/skills/**/*.md`
+- `.claude/agents/**/*.md`
 - `**/CLAUDE.md`
 
 Nothing else qualifies: not `.claude/settings.json` (it wires the hooks), not a changelog fragment, website page or `README.md` (users read them), not a script or a test. The label goes on at `gh pr create`, since the review it saves is the one on open. Such a PR gets no CodeRabbit PR review; its review is the `/code-review` at `medium` and the CLI round. Nobody can approve it, so it merges with `gh pr merge <pr> --squash --admin --match-head-commit <head>` once every check is green, the one standing use of `--admin`. The merge gate reads the files itself and refuses that for a PR off the list (`scripts/claude-hooks/no-review-paths.mjs`, held to this list by its test), so the label only decides whether CodeRabbit spends a review. If a later commit adds a file off the list, take the label off and comment `@coderabbitai review`.
