@@ -53,6 +53,95 @@ export type FastestLapClaim = {
 };
 
 /**
+ * The fastest lap of the race in the player's class (issues #1571, #1588):
+ * the record, the per-car baselines the remote scan reads it from, the
+ * player's claim for this tick, and the scan's hold while the player's lap
+ * awaits its judgement. Written by `diff/fastest-lap.ts` alone: by
+ * `diffFastestLap`, and by the judge `createFastestLapJudge` builds over this
+ * slice and `handleTick` hands to `diffLaps`, the one sanctioned cross-step
+ * writer. Reset per session and at a disconnect with the rest of the state;
+ * a replay glance keeps the part {@link resetFastestLapBaselines} returns.
+ */
+export type FastestLapState = {
+  /**
+   * The race's class record: the fastest lap run in the player's class so
+   * far in this race, and who holds it. `null` until the first eligible lap.
+   * Written by the scan over the remote cars' `CarIdxBestLapTime` and by the
+   * player's judge. Survives a replay glance ({@link resetFastestLapBaselines}
+   * carries it): re-deriving it from the sim would lose a holder that left
+   * the world meanwhile, whose value then reads `-1`.
+   */
+  record: FastestLapRecord | null;
+  /**
+   * Whether this race's record has had its first seed — the one seed that
+   * reads the player's own `CarIdxBestLapTime` too. Rides with the record
+   * across a replay glance, so the re-seed on the way back reads only the
+   * remote cars: the player's laps reach the record through `lap.completed`'s
+   * judge alone after the first seed.
+   */
+  raceSeeded: boolean;
+  /**
+   * Per-car baseline of `CarIdxBestLapTime`, indexed by carIdx; `0` for a car
+   * never seen with a positive value. Every positive value a tick carries
+   * goes in, eligible or not, so a lap seen while the car's count was still
+   * 0 (a rolling start's parade lap, should the sim carry it into lap 1) is
+   * never read as new once the car becomes eligible. Wiped by the replay
+   * glance and re-seeded silently on the first live tick back.
+   */
+  baselines: number[];
+  /** Whether the baselines above have been seeded since the last wipe. */
+  baselinesSeeded: boolean;
+  /**
+   * The player's claim for THIS tick: left by the judge `diffLaps` calls when
+   * the player's `lap.completed` set a new record, and published or cleared
+   * by `diffFastestLap` later in the same tick, before any gate of its own.
+   * Never survives a tick, so a claim can never be published for a lap it no
+   * longer belongs to.
+   */
+  claim: FastestLapClaim | null;
+  /**
+   * The hold on the remote scan while the player's just-completed lap awaits
+   * its judgement: the player's `LapCompleted` the hold is for, and when (ms,
+   * the tick's `now`) `diff/fastest-lap.ts` first saw that count ahead of the
+   * one `diffLaps` last emitted for. `null` while no crossing is pending.
+   * The scan holds until the lap is judged or `FASTEST_LAP_HOLD_MAX_MS` has
+   * passed since, so a remote best that moves inside `lap.completed`'s wait is
+   * compared against the record as the judge leaves it, never before. Wiped
+   * by the replay glance: `diffLaps` re-seeds on the way back, so a crossing
+   * pending at the flip is never emitted and there is nothing to wait for.
+   */
+  hold: { lap: number; since: number } | null;
+};
+
+/** A {@link FastestLapState} with no record and nothing seeded: the initial state, and the session-change reset. */
+export function createFastestLapState(): FastestLapState {
+  return {
+    record: null,
+    raceSeeded: false,
+    baselines: [],
+    baselinesSeeded: false,
+    claim: null,
+    hold: null,
+  };
+}
+
+/**
+ * The part of a {@link FastestLapState} a replay glance keeps (issue #1571,
+ * as #1588 moves it here from the translator's wipe): the record, by
+ * reference, and its first-seed mark survive; the per-car baselines and
+ * their seeded mark come back fresh, so they re-seed, silently, on the first
+ * live tick back. Re-deriving the record from the sim would lose a holder
+ * that left the world meanwhile — its value then reads `-1` — and the
+ * re-seeded, slower record would let a later lap that never beat the real
+ * one be announced as the fastest of the race. The claim never outlives a
+ * tick, so there is none to keep, and the hold is for a crossing `diffLaps`
+ * never emits once it re-seeds, so there is nothing to wait for.
+ */
+export function resetFastestLapBaselines(slice: FastestLapState): FastestLapState {
+  return { ...createFastestLapState(), record: slice.record, raceSeeded: slice.raceSeeded };
+}
+
+/**
  * One tire's carcass temperatures across the tread (issue #254), in °C and
  * unrounded. The zones are named from the car's centreline, as in the tire
  * wear report's `TireCornerWear`: on a left-side tire the sim's L is the
@@ -1353,54 +1442,12 @@ export type TranslatorState = {
 
   // ── Fastest lap of the race (issue #1571) ─────────────────────────────
   /**
-   * The race's class record: the fastest lap run in the player's class so
-   * far in this race, and who holds it. `null` until the first eligible lap.
-   * Written by `diff/fastest-lap.ts` alone — the scan over the remote cars'
-   * `CarIdxBestLapTime`, and the player's judge `diffLaps` is handed. Survives
-   * a replay glance (`wipeStateForReplay` preserves it): re-deriving it from
-   * the sim would lose a holder that left the world meanwhile, whose value
-   * then reads `-1`. Reset per session and at a disconnect.
+   * The fastest lap of the race (issue #1571), one slice
+   * ({@link FastestLapState}, issue #1588). Reset per session and at a
+   * disconnect; a replay glance keeps the record and its first-seed mark
+   * ({@link resetFastestLapBaselines}).
    */
-  fastestLapRecord: FastestLapRecord | null;
-  /**
-   * Whether this race's record has had its first seed — the one seed that
-   * reads the player's own `CarIdxBestLapTime` too. Rides with the record
-   * across a replay glance, so the re-seed on the way back reads only the
-   * remote cars: the player's laps reach the record through `lap.completed`'s
-   * judge alone after the first seed.
-   */
-  fastestLapRaceSeeded: boolean;
-  /**
-   * Per-car baseline of `CarIdxBestLapTime`, indexed by carIdx; `0` for a car
-   * never seen with a positive value. Every positive value a tick carries
-   * goes in, eligible or not, so a lap seen while the car's count was still
-   * 0 (a rolling start's parade lap, should the sim carry it into lap 1) is
-   * never read as new once the car becomes eligible. Wiped by the replay
-   * glance and re-seeded silently on the first live tick back.
-   */
-  fastestLapBaselines: number[];
-  /** Whether the baselines above have been seeded since the last wipe. */
-  fastestLapBaselinesSeeded: boolean;
-  /**
-   * The player's claim for THIS tick: left by the judge `diffLaps` calls when
-   * the player's `lap.completed` set a new record, and published or cleared
-   * by `diffFastestLap` later in the same tick, before any gate of its own.
-   * Never survives a tick, so a claim can never be published for a lap it no
-   * longer belongs to.
-   */
-  fastestLapClaim: FastestLapClaim | null;
-  /**
-   * The hold on the remote scan while the player's just-completed lap awaits
-   * its judgement: the player's `LapCompleted` the hold is for, and when (ms,
-   * the tick's `now`) `diff/fastest-lap.ts` first saw that count ahead of the
-   * one `diffLaps` last emitted for. `null` while no crossing is pending.
-   * The scan holds until the lap is judged or `FASTEST_LAP_HOLD_MAX_MS` has
-   * passed since, so a remote best that moves inside `lap.completed`'s wait is
-   * compared against the record as the judge leaves it, never before. Wiped
-   * by the replay glance: `diffLaps` re-seeds on the way back, so a crossing
-   * pending at the flip is never emitted and there is nothing to wait for.
-   */
-  fastestLapHold: { lap: number; since: number } | null;
+  fastestLap: FastestLapState;
 
   // ── Opponent pit entries (issue #622) ─────────────────────────────────
   /** First eligible tick seeds the per-car surface baseline silently. */
@@ -1998,12 +2045,7 @@ export function createInitialState(): TranslatorState {
     positionPrevScore: [],
     positionJustReleased: new Set(),
 
-    fastestLapRecord: null,
-    fastestLapRaceSeeded: false,
-    fastestLapBaselines: [],
-    fastestLapBaselinesSeeded: false,
-    fastestLapClaim: null,
-    fastestLapHold: null,
+    fastestLap: createFastestLapState(),
 
     opponentPitInitialized: false,
     opponentPitLastSurface: [],

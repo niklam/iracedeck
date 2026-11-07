@@ -122,6 +122,7 @@ import {
   type GapNeighborState,
   type LastStopTireTemps,
   type RaceFinishResult,
+  resetFastestLapBaselines,
   type RollingStartFormation,
   type TranslatorState,
 } from "./state.js";
@@ -2295,15 +2296,9 @@ function wipeStateForReplay(self: TranslatorInstance): void {
     lapPitLatch: self.state.lapPitLatch,
     lapCompletedPit: self.state.lapCompletedPit,
     // The fastest lap of the race (issue #1571): the record and its first-seed
-    // mark survive the glance; the per-car baselines (`fastestLapBaselines` /
-    // `fastestLapBaselinesSeeded`) deliberately re-seed, silently, on the
-    // first live tick back. Re-deriving the record from the sim would lose a
-    // holder that left the world meanwhile — its value then reads `-1` — and
-    // the re-seeded, slower record would let a later lap that never beat the
-    // real one be announced as the fastest of the race. The claim
-    // (`fastestLapClaim`) never outlives a tick, so there is none to keep.
-    fastestLapRecord: self.state.fastestLapRecord,
-    fastestLapRaceSeeded: self.state.fastestLapRaceSeeded,
+    // mark survive the glance, the rest re-seeds; which part, and why, is
+    // `resetFastestLapBaselines`' (issue #1588).
+    fastestLap: resetFastestLapBaselines(self.state.fastestLap),
     // The gap diff's restart mark (issue #1171) is the one piece of gap state
     // kept: it is a point in the live race's distance, one lap past where the
     // player was when the caution ended, and the lap up to it is kept out of
@@ -2886,7 +2881,7 @@ function handleLiveSteps(
       playerResults,
       now,
       emit,
-      createFastestLapJudge(self.state, telemetry, sessionInfo, playerCarIdx, isRaceSession),
+      createFastestLapJudge(self.state.fastestLap, telemetry, sessionInfo, playerCarIdx, isRaceSession),
       self.logger,
     ),
   );
@@ -3047,7 +3042,15 @@ function handleLiveSteps(
   // for `getTrackGaps()`. Its gate and `diffGaps`' are disjoint, so only one
   // of the two stores grows in a session. Publishes no event.
   steps.run("diffTrackGaps", () =>
-    diffTrackGaps(self.state, telemetry, sessionType, sessionInfo, playerCarIdx, paceCarIdx, trackLengthMeters),
+    diffTrackGaps(
+      self.state.trackGaps,
+      telemetry,
+      sessionType,
+      sessionInfo,
+      playerCarIdx,
+      paceCarIdx,
+      trackLengthMeters,
+    ),
   );
   // Pit-box count-in (issue #600). Reuses the cached `trackLengthMeters` to
   // convert the LapDistPct→box gap into meters; the box itself comes from
@@ -3248,11 +3251,12 @@ function handleOrderSteps(
   // the field's last laps after the checkered still count for the record and
   // the audio layer stands down after the player's own finish. Session info
   // names the car (`carNumber`), as for the opponent flags. The scan holds
-  // while the player's own crossing awaits `diffLaps`' emit (read off
-  // `lastLapCompletedCounter`), on the tick's `now`, bounded.
+  // while the player's own crossing awaits `diffLaps`' emit (handed in as
+  // `lapsJudgedThrough`, `lastLapCompletedCounter` once the lap diff is
+  // seeded), on the tick's `now`, bounded.
   steps.live("diffFastestLap", pending, () =>
     diffFastestLap(
-      self.state,
+      self.state.fastestLap,
       telemetry,
       sessionInfo,
       playerCarIdx,
@@ -3262,6 +3266,7 @@ function handleOrderSteps(
       canonicalPositions,
       emit,
       now,
+      self.state.lapCompletedInitialized ? self.state.lastLapCompletedCounter : null,
     ),
   );
 

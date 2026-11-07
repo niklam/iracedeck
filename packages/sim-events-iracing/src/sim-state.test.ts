@@ -785,6 +785,53 @@ describe("readSimState — a caution, from the committed oval capture", () => {
   });
 });
 
+describe("readSimState — the fastest lap of the race (issue #1588)", () => {
+  it("carries the record under the fastestLap slice in the raw state, as data a JSON file can hold", () => {
+    const { controller } = start({
+      SessionInfo: { Sessions: [{ SessionNum: 0, SessionType: "Race" }] },
+      DriverInfo: {
+        DriverCarIdx: 0,
+        Drivers: [
+          { CarIdx: 0, CarNumber: "1", CarClassID: 0, CarIsPaceCar: 0, IsSpectator: 0 },
+          { CarIdx: 1, CarNumber: "07", CarClassID: 0, CarIsPaceCar: 0, IsSpectator: 0 },
+          { CarIdx: 2, CarNumber: "22", CarClassID: 0, CarIsPaceCar: 0, IsSpectator: 0 },
+        ],
+      },
+    });
+    const sets: Array<SimEventOf<"fastestLap.set">["data"]> = [];
+    getEventBus().subscribe("fastestLap.set", (ev) => sets.push(ev.data));
+
+    // A green race, the rivals a lap ahead of the player: car 1 holds a 90.0, car 2 a 91.0.
+    const raceTick = (best: number[]): TelemetryData =>
+      telemetry({
+        SessionState: SessionState.Racing,
+        SessionTime: 100,
+        CarIdxClass: [0, 0, 0],
+        CarIdxLapCompleted: [3, 4, 4],
+        CarIdxLapDistPct: [0.5, 0.6, 0.4],
+        CarIdxTrackSurface: [TrkLoc.OnTrack, TrkLoc.OnTrack, TrkLoc.OnTrack],
+        CarIdxBestLapTime: best,
+        LapCompleted: 3,
+      });
+
+    controller.__tick(raceTick([-1, 90, 91]));
+    // Car 2 takes the record.
+    controller.__tick(raceTick([-1, 90, 89.5]));
+
+    expect(sets).toHaveLength(1);
+    expect(sets[0]).toMatchObject({ carIdx: 2, lapTime: 89.5 });
+
+    const json = JSON.stringify(toPlain(read()));
+    const parsed = JSON.parse(json) as { raw: { state: Record<string, unknown> } };
+
+    expect(parsed.raw.state.fastestLap).toMatchObject({
+      record: { carIdx: 2, lapTime: 89.5, isPlayer: false, carNumber: "22" },
+    });
+    // The flat names are gone: the slice is the one place the record lives.
+    expect(Object.keys(parsed.raw.state).filter((key) => key.startsWith("fastestLap"))).toEqual(["fastestLap"]);
+  });
+});
+
 describe("readSimState — a replay-wiped translator", () => {
   it("reads as wiped gaps and anchors with the fuel history intact, not as an error", () => {
     const { controller } = start();

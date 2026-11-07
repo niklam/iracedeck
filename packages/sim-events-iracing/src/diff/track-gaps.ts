@@ -28,13 +28,7 @@
 import { appendProgressSample, findNearestCarOnTrack, type TelemetryData, TrkLoc } from "@iracedeck/iracing-sdk";
 
 import { classifySessionKind } from "../session-kind.js";
-import {
-  createTrackGapsState,
-  type GapNeighborState,
-  type TrackGapSideState,
-  type TrackGapsState,
-  type TranslatorState,
-} from "../state.js";
+import { createTrackGapsState, type GapNeighborState, type TrackGapSideState, type TrackGapsState } from "../state.js";
 import { classifyTrendChain, GAP_CHECKPOINT_STEP, readGapAt, resetTrendChain, updateTrendChain } from "./gaps.js";
 
 /**
@@ -134,11 +128,12 @@ function inAbsenceGrace(store: TrackGapsState, idx: number): boolean {
 
 /**
  * Per-tick track-order gaps. Called from the translator's `handleTick` after
- * the replay guard, beside `diffGaps`. Outside {@link isTrackGapSession} the
- * whole store is dropped, so it never grows in a race.
+ * the replay guard, beside `diffGaps`, on the translator state's `trackGaps`
+ * slice (issue #1588). Outside {@link isTrackGapSession} the whole store is
+ * cleared in place, so it never grows in a race.
  */
 export function diffTrackGaps(
-  state: TranslatorState,
+  store: TrackGapsState,
   telemetry: TelemetryData,
   sessionType: string,
   sessionInfo: Record<string, unknown> | null,
@@ -148,12 +143,11 @@ export function diffTrackGaps(
   trackLengthMeters: number | null,
 ): void {
   if (!isTrackGapSession(sessionType)) {
-    if (!isEmpty(state.trackGaps)) state.trackGaps = createTrackGapsState();
+    if (!isEmpty(store)) Object.assign(store, createTrackGapsState());
 
     return;
   }
 
-  const store = state.trackGaps;
   const pct = telemetry.CarIdxLapDistPct as number[] | undefined;
   // Finite, not merely numeric: a NaN session time stamped into a trace
   // would surface as a NaN gap.

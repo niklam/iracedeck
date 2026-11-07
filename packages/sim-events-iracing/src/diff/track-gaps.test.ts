@@ -16,7 +16,7 @@
 import { type TelemetryData, TrkLoc } from "@iracedeck/iracing-sdk";
 import { describe, expect, it } from "vitest";
 
-import { createInitialState, type TranslatorState } from "../state.js";
+import { createTrackGapsState, type TrackGapsState } from "../state.js";
 import { resolvePaceCarIdx } from "./pace-laps.js";
 import { diffTrackGaps, isTrackGapSession, TRACK_GAP_ABSENCE_GRACE_S } from "./track-gaps.js";
 
@@ -73,7 +73,7 @@ function telemetryAt(t: number, cars: CarFn[], extra: Partial<TelemetryData> = {
 }
 
 /** Drive the diff from `t0` to `t1` inclusive, one tick every {@link DT}. */
-function run(state: TranslatorState, cars: CarFn[], t0: number, t1: number, opts: RunOptions = {}): void {
+function run(store: TrackGapsState, cars: CarFn[], t0: number, t1: number, opts: RunOptions = {}): void {
   const steps = Math.round((t1 - t0) / DT);
 
   const sessionInfo = opts.sessionInfo ?? { DriverInfo: { Drivers: [] } };
@@ -84,7 +84,7 @@ function run(state: TranslatorState, cars: CarFn[], t0: number, t1: number, opts
     const t = t0 + k * DT;
 
     diffTrackGaps(
-      state,
+      store,
       telemetryAt(t, cars, opts.extra?.(t)),
       opts.sessionType ?? "Practice",
       sessionInfo,
@@ -95,12 +95,12 @@ function run(state: TranslatorState, cars: CarFn[], t0: number, t1: number, opts
   }
 }
 
-function ahead(state: TranslatorState) {
-  return state.trackGaps.ahead.live;
+function ahead(store: TrackGapsState) {
+  return store.ahead.live;
 }
 
-function behind(state: TranslatorState) {
-  return state.trackGaps.behind.live;
+function behind(store: TrackGapsState) {
+  return store.behind.live;
 }
 
 describe("isTrackGapSession (issue #1515, Decision 1)", () => {
@@ -117,36 +117,36 @@ describe("diffTrackGaps — the session gate", () => {
   const field = [steady(0.5), steady(0.55), steady(0.42)];
 
   it.each(["Practice", "Warmup", "Offline Testing", "Open Qualify"])("produces gaps in %s", (sessionType) => {
-    const state = createInitialState();
+    const store = createTrackGapsState();
 
-    run(state, field, 0, 20, { sessionType });
+    run(store, field, 0, 20, { sessionType });
 
-    expect(ahead(state)).toMatchObject({ carIdx: 1, gapSeconds: expect.closeTo(4.5, 6), lapDelta: 0 });
-    expect(behind(state)?.gapSeconds).toBeCloseTo(7.2, 6);
+    expect(ahead(store)).toMatchObject({ carIdx: 1, gapSeconds: expect.closeTo(4.5, 6), lapDelta: 0 });
+    expect(behind(store)?.gapSeconds).toBeCloseTo(7.2, 6);
   });
 
   it.each(["Race", "Heat Race", "", "Lone Qualify", "Lone Practice"])("produces nothing in %j", (sessionType) => {
-    const state = createInitialState();
+    const store = createTrackGapsState();
 
-    run(state, field, 0, 20, { sessionType });
+    run(store, field, 0, 20, { sessionType });
 
-    expect(ahead(state)).toBeNull();
-    expect(behind(state)).toBeNull();
-    expect(state.trackGaps.traces).toEqual([]);
+    expect(ahead(store)).toBeNull();
+    expect(behind(store)).toBeNull();
+    expect(store.traces).toEqual([]);
   });
 
   it("drops the whole store when the session leaves the gate", () => {
-    const state = createInitialState();
+    const store = createTrackGapsState();
 
-    run(state, field, 0, 20);
-    expect(state.trackGaps.traces.length).toBe(3);
+    run(store, field, 0, 20);
+    expect(store.traces.length).toBe(3);
 
-    run(state, field, 20.25, 21, { sessionType: "Race" });
+    run(store, field, 20.25, 21, { sessionType: "Race" });
 
-    expect(state.trackGaps.traces).toEqual([]);
-    expect(state.trackGaps.odometers).toEqual([]);
-    expect(ahead(state)).toBeNull();
-    expect(state.trackGaps.ahead.carIdx).toBe(-1);
+    expect(store.traces).toEqual([]);
+    expect(store.odometers).toEqual([]);
+    expect(ahead(store)).toBeNull();
+    expect(store.ahead.carIdx).toBe(-1);
   });
 });
 
@@ -157,22 +157,22 @@ describe("diffTrackGaps — the neighbours (Decision 2)", () => {
   }
 
   it("skips the pace car", () => {
-    const state = createInitialState();
+    const store = createTrackGapsState();
 
-    run(state, fieldWith(steady(0.52)), 0, 1, { sessionInfo: { DriverInfo: { PaceCarIdx: 1, Drivers: [] } } });
+    run(store, fieldWith(steady(0.52)), 0, 1, { sessionInfo: { DriverInfo: { PaceCarIdx: 1, Drivers: [] } } });
 
-    expect(ahead(state)?.carIdx).toBe(2);
-    expect(state.trackGaps.traces[1]).toBeUndefined();
+    expect(ahead(store)?.carIdx).toBe(2);
+    expect(store.traces[1]).toBeUndefined();
   });
 
   it("skips a spectator", () => {
-    const state = createInitialState();
+    const store = createTrackGapsState();
 
-    run(state, fieldWith(steady(0.52)), 0, 1, {
+    run(store, fieldWith(steady(0.52)), 0, 1, {
       sessionInfo: { DriverInfo: { Drivers: [{ CarIdx: 1, IsSpectator: 1 }] } },
     });
 
-    expect(ahead(state)?.carIdx).toBe(2);
+    expect(ahead(store)?.carIdx).toBe(2);
   });
 
   it.each([
@@ -180,49 +180,49 @@ describe("diffTrackGaps — the neighbours (Decision 2)", () => {
     ["AproachingPits", TrkLoc.AproachingPits],
     ["NotInWorld", TrkLoc.NotInWorld],
   ])("skips a car whose surface is %s", (_name, surface) => {
-    const state = createInitialState();
+    const store = createTrackGapsState();
 
     run(
-      state,
+      store,
       fieldWith((t) => ({ pos: 0.52 + V * t, surface })),
       0,
       1,
     );
 
-    expect(ahead(state)?.carIdx).toBe(2);
-    expect(state.trackGaps.traces[1]).toBeUndefined();
+    expect(ahead(store)?.carIdx).toBe(2);
+    expect(store.traces[1]).toBeUndefined();
   });
 
   it("judges pit road by the surface, never by CarIdxOnPitRoad", () => {
-    const state = createInitialState();
+    const store = createTrackGapsState();
 
-    run(state, fieldWith(steady(0.52)), 0, 1, {
+    run(store, fieldWith(steady(0.52)), 0, 1, {
       extra: () => ({ CarIdxOnPitRoad: [false, true, false, false] }) as Partial<TelemetryData>,
     });
 
-    expect(ahead(state)?.carIdx).toBe(1);
+    expect(ahead(store)?.carIdx).toBe(1);
   });
 
   it("keeps an OffTrack car — a car spun off ahead is traffic", () => {
-    const state = createInitialState();
+    const store = createTrackGapsState();
 
     run(
-      state,
+      store,
       fieldWith((t) => ({ pos: 0.52 + V * t, surface: TrkLoc.OffTrack })),
       0,
       1,
     );
 
-    expect(ahead(state)?.carIdx).toBe(1);
+    expect(ahead(store)?.carIdx).toBe(1);
   });
 
   it("finds the car ahead across the start/finish line", () => {
-    const state = createInitialState();
+    const store = createTrackGapsState();
 
-    run(state, [steady(0.98, 0), steady(0.02, 0), steady(0.5, 0)], 0, 0);
+    run(store, [steady(0.98, 0), steady(0.02, 0), steady(0.5, 0)], 0, 0);
 
-    expect(ahead(state)?.carIdx).toBe(1);
-    expect(behind(state)?.carIdx).toBe(2);
+    expect(ahead(store)?.carIdx).toBe(1);
+    expect(behind(store)?.carIdx).toBe(2);
   });
 
   it("walks a field longer than 64 entries to its end", () => {
@@ -231,68 +231,68 @@ describe("diffTrackGaps — the neighbours (Decision 2)", () => {
     cars[PLAYER] = steady(0.5);
     cars[68] = steady(0.55);
 
-    const state = createInitialState();
+    const store = createTrackGapsState();
 
-    run(state, cars, 0, 20);
+    run(store, cars, 0, 20);
 
-    expect(ahead(state)).toMatchObject({ carIdx: 68, gapSeconds: expect.closeTo(4.5, 6), lapDelta: 0 });
-    expect(behind(state)?.carIdx).toBe(68);
+    expect(ahead(store)).toMatchObject({ carIdx: 68, gapSeconds: expect.closeTo(4.5, 6), lapDelta: 0 });
+    expect(behind(store)?.carIdx).toBe(68);
   });
 
   it("shows one other car on both sides, a lap minus the gap behind", () => {
-    const state = createInitialState();
+    const store = createTrackGapsState();
 
-    run(state, [steady(0.5), steady(0.75)], 0, 80);
+    run(store, [steady(0.5), steady(0.75)], 0, 80);
 
-    expect(ahead(state)).toMatchObject({ carIdx: 1, gapSeconds: expect.closeTo(22.5, 6) });
-    expect(behind(state)).toMatchObject({ carIdx: 1, gapSeconds: expect.closeTo(67.5, 6) });
+    expect(ahead(store)).toMatchObject({ carIdx: 1, gapSeconds: expect.closeTo(22.5, 6) });
+    expect(behind(store)).toMatchObject({ carIdx: 1, gapSeconds: expect.closeTo(67.5, 6) });
   });
 
   it("leaves both sides null with no other car on the road", () => {
-    const state = createInitialState();
+    const store = createTrackGapsState();
 
-    run(state, [steady(0.5), (t) => ({ pos: 0.6 + V * t, surface: TrkLoc.InPitStall })], 0, 10);
+    run(store, [steady(0.5), (t) => ({ pos: 0.6 + V * t, surface: TrkLoc.InPitStall })], 0, 10);
 
-    expect(ahead(state)).toBeNull();
-    expect(behind(state)).toBeNull();
+    expect(ahead(store)).toBeNull();
+    expect(behind(store)).toBeNull();
   });
 });
 
 describe("diffTrackGaps — the measurement (Decision 3)", () => {
   it("reads the crossing times of a constant-speed field across the line, whatever CarIdxLapCompleted says", () => {
-    const state = createInitialState();
+    const store = createTrackGapsState();
     // Everyone near the line: the player crosses at t = 4.5, the car ahead
     // already has, the car behind crosses at t = 11.7. Every lap count reads -1.
     const field = [steady(0.95), steady(1.0), steady(0.87)];
 
-    run(state, field, 0, 3);
+    run(store, field, 0, 3);
     // Cold start: the car ahead's trace does not reach back 4.5 s yet.
-    expect(ahead(state)?.gapSeconds).toBeNull();
+    expect(ahead(store)?.gapSeconds).toBeNull();
 
     // The player has crossed the line; the car ahead now reads, the car behind
     // not yet: the player's own trace does not reach back 7.2 s.
-    run(state, field, 3.25, 6);
-    expect(ahead(state)).toMatchObject({ carIdx: 1, gapSeconds: expect.closeTo(4.5, 6), lapDelta: 0 });
-    expect(behind(state)).toMatchObject({ carIdx: 2, gapSeconds: null });
+    run(store, field, 3.25, 6);
+    expect(ahead(store)).toMatchObject({ carIdx: 1, gapSeconds: expect.closeTo(4.5, 6), lapDelta: 0 });
+    expect(behind(store)).toMatchObject({ carIdx: 2, gapSeconds: null });
 
     let from = 6.25;
 
     for (const until of [12, 30, 95]) {
-      run(state, field, from, until);
+      run(store, field, from, until);
       from = until + DT;
-      expect(ahead(state)).toMatchObject({ carIdx: 1, gapSeconds: expect.closeTo(4.5, 6), lapDelta: 0 });
-      expect(behind(state)).toMatchObject({ carIdx: 2, gapSeconds: expect.closeTo(7.2, 6), lapDelta: 0 });
+      expect(ahead(store)).toMatchObject({ carIdx: 1, gapSeconds: expect.closeTo(4.5, 6), lapDelta: 0 });
+      expect(behind(store)).toMatchObject({ carIdx: 2, gapSeconds: expect.closeTo(7.2, 6), lapDelta: 0 });
     }
 
     // Equal pace: the display trend has warmed up and reads steady.
-    expect(ahead(state)?.trend).toBe("steady");
-    expect(behind(state)?.trend).toBe("steady");
+    expect(ahead(store)?.trend).toBe("steady");
+    expect(behind(store)?.trend).toBe("steady");
   });
 
   it("gives the same gaps whatever the lap counts are", () => {
     const field = [steady(0.95), steady(1.0), steady(0.87)];
-    const minusOne = createInitialState();
-    const counted = createInitialState();
+    const minusOne = createTrackGapsState();
+    const counted = createTrackGapsState();
 
     run(minusOne, field, 0, 30);
     run(counted, field, 0, 30, {
@@ -304,37 +304,37 @@ describe("diffTrackGaps — the measurement (Decision 3)", () => {
   });
 
   it("clears a car's trace when it leaves the world and reads – after it returns until its trace covers the lookup", () => {
-    const state = createInitialState();
+    const store = createTrackGapsState();
     const car1: CarFn = (t) => (t > 20 && t < 25 ? null : { pos: 0.55 + V * t });
 
-    run(state, [steady(0.5), car1], 0, 20);
-    expect(ahead(state)?.gapSeconds).toBeCloseTo(4.5, 6);
+    run(store, [steady(0.5), car1], 0, 20);
+    expect(ahead(store)?.gapSeconds).toBeCloseTo(4.5, 6);
 
-    run(state, [steady(0.5), car1], 20.25, 24.75);
-    expect(ahead(state)).toBeNull();
-    expect(state.trackGaps.traces[1]).toBeUndefined();
-    expect(state.trackGaps.odometers[1]).toBeUndefined();
+    run(store, [steady(0.5), car1], 20.25, 24.75);
+    expect(ahead(store)).toBeNull();
+    expect(store.traces[1]).toBeUndefined();
+    expect(store.odometers[1]).toBeUndefined();
 
-    run(state, [steady(0.5), car1], 25, 29);
-    expect(ahead(state)).toEqual({ carIdx: 1, gapSeconds: null, lapDelta: 0, trend: null });
+    run(store, [steady(0.5), car1], 25, 29);
+    expect(ahead(store)).toEqual({ carIdx: 1, gapSeconds: null, lapDelta: 0, trend: null });
 
-    run(state, [steady(0.5), car1], 29.25, 31);
-    expect(ahead(state)?.gapSeconds).toBeCloseTo(4.5, 6);
+    run(store, [steady(0.5), car1], 29.25, 31);
+    expect(ahead(store)?.gapSeconds).toBeCloseTo(4.5, 6);
   });
 
   it("clears a car's trace on pit road, so it is measured afresh when it rejoins", () => {
-    const state = createInitialState();
+    const store = createTrackGapsState();
     const car1: CarFn = (t) => ({ pos: 0.55 + V * t, surface: t > 20 && t < 25 ? TrkLoc.AproachingPits : undefined });
 
-    run(state, [steady(0.5), car1], 0, 24.75);
-    expect(ahead(state)).toBeNull();
-    expect(state.trackGaps.traces[1]).toBeUndefined();
+    run(store, [steady(0.5), car1], 0, 24.75);
+    expect(ahead(store)).toBeNull();
+    expect(store.traces[1]).toBeUndefined();
 
-    run(state, [steady(0.5), car1], 25, 27);
-    expect(ahead(state)?.gapSeconds).toBeNull();
+    run(store, [steady(0.5), car1], 25, 27);
+    expect(ahead(store)?.gapSeconds).toBeNull();
 
-    run(state, [steady(0.5), car1], 27.25, 31);
-    expect(ahead(state)?.gapSeconds).toBeCloseTo(4.5, 6);
+    run(store, [steady(0.5), car1], 27.25, 31);
+    expect(ahead(store)?.gapSeconds).toBeCloseTo(4.5, 6);
   });
 
   it.each([
@@ -342,49 +342,49 @@ describe("diffTrackGaps — the measurement (Decision 3)", () => {
     ["approaching the pits", { PlayerTrackSurface: TrkLoc.AproachingPits }, TrkLoc.AproachingPits],
     ["out of the car", { IsOnTrack: false }, undefined],
   ])("has no track gaps with the player %s", (_name, extra, playerSurface) => {
-    const state = createInitialState();
+    const store = createTrackGapsState();
     const player: CarFn = (t) => ({ pos: 0.5 + V * t, surface: t > 20 ? playerSurface : undefined });
 
-    run(state, [player, steady(0.55), steady(0.42)], 0, 20);
-    expect(ahead(state)?.gapSeconds).toBeCloseTo(4.5, 6);
+    run(store, [player, steady(0.55), steady(0.42)], 0, 20);
+    expect(ahead(store)?.gapSeconds).toBeCloseTo(4.5, 6);
 
-    run(state, [player, steady(0.55), steady(0.42)], 20.25, 22, {
+    run(store, [player, steady(0.55), steady(0.42)], 20.25, 22, {
       extra: () => extra as Partial<TelemetryData>,
     });
 
-    expect(ahead(state)).toBeNull();
-    expect(behind(state)).toBeNull();
-    expect(state.trackGaps.traces[PLAYER]).toBeUndefined();
+    expect(ahead(store)).toBeNull();
+    expect(behind(store)).toBeNull();
+    expect(store.traces[PLAYER]).toBeUndefined();
   });
 
   it("uses PlayerTrackSurface for the player when there is no per-car surface array", () => {
-    const state = createInitialState();
+    const store = createTrackGapsState();
 
-    run(state, [steady(0.5), steady(0.55)], 0, 1, {
+    run(store, [steady(0.5), steady(0.55)], 0, 1, {
       extra: () => ({ CarIdxTrackSurface: undefined, PlayerTrackSurface: TrkLoc.InPitStall }) as Partial<TelemetryData>,
     });
 
-    expect(ahead(state)).toBeNull();
+    expect(ahead(store)).toBeNull();
   });
 
   it("switches to the ETA reading behind a crawling car ahead, and counts down", () => {
-    const state = createInitialState();
+    const store = createTrackGapsState();
     const slow = 5 / TRACK_M;
     // Car 1 runs at the player's pace 0.05 lap ahead, then crawls at 5 m/s from t = 20.
     const car1: CarFn = (t) => ({ pos: t <= 20 ? 0.55 + V * t : 0.55 + V * 20 + slow * (t - 20) });
     const separation = (t: number): number => car1(t)!.pos - (0.5 + V * t);
 
-    run(state, [steady(0.5), car1], 0, 20);
-    expect(ahead(state)?.gapSeconds).toBeCloseTo(4.5, 6);
+    run(store, [steady(0.5), car1], 0, 20);
+    expect(ahead(store)?.gapSeconds).toBeCloseTo(4.5, 6);
 
-    run(state, [steady(0.5), car1], 20.25, 23.5);
-    const first = ahead(state)!;
+    run(store, [steady(0.5), car1], 20.25, 23.5);
+    const first = ahead(store)!;
 
     expect(first.trend).toBe("closing");
     expect(first.gapSeconds).toBeCloseTo(separation(23.5) / V, 6);
 
-    run(state, [steady(0.5), car1], 23.75, 24);
-    const later = ahead(state)!;
+    run(store, [steady(0.5), car1], 23.75, 24);
+    const later = ahead(store)!;
 
     expect(later.gapSeconds).toBeCloseTo(separation(24) / V, 6);
     expect(later.gapSeconds!).toBeLessThan(first.gapSeconds!);
@@ -392,16 +392,16 @@ describe("diffTrackGaps — the measurement (Decision 3)", () => {
   });
 
   it("keeps the crossing time behind a crawling car when the track length is unknown", () => {
-    const state = createInitialState();
+    const store = createTrackGapsState();
     const slow = 5 / TRACK_M;
     const car1: CarFn = (t) => ({ pos: t <= 20 ? 0.55 + V * t : 0.55 + V * 20 + slow * (t - 20) });
 
-    run(state, [steady(0.5), car1], 0, 23.5, { trackLengthMeters: null });
+    run(store, [steady(0.5), car1], 0, 23.5, { trackLengthMeters: null });
 
     // The crossing time: car 1 passed the player's spot before it slowed,
     // so the reading stays frozen at 4.5 s rather than risk a false ETA.
-    expect(ahead(state)?.gapSeconds).toBeCloseTo(4.5, 6);
-    expect(ahead(state)?.trend).not.toBe("closing");
+    expect(ahead(store)?.gapSeconds).toBeCloseTo(4.5, 6);
+    expect(ahead(store)?.trend).not.toBe("closing");
   });
 });
 
@@ -410,34 +410,34 @@ describe("diffTrackGaps — the display trend (Decision 5)", () => {
   const field = [steady(0.5), steady(0.55, V * 0.97)];
 
   it("goes live within the race's sample count and reads closing", () => {
-    const state = createInitialState();
+    const store = createTrackGapsState();
 
-    run(state, field, 0, 5);
-    expect(ahead(state)?.gapSeconds).not.toBeNull();
-    expect(ahead(state)?.trend).toBeNull();
+    run(store, field, 0, 5);
+    expect(ahead(store)?.gapSeconds).not.toBeNull();
+    expect(ahead(store)?.trend).toBeNull();
 
     // A checkpoint every 0.02 lap (1.8 s): five rate samples after the anchor.
-    run(state, field, 5.25, 12);
-    expect(state.trackGaps.ahead.trend.samples).toBeLessThan(5);
-    expect(ahead(state)?.trend).toBeNull();
+    run(store, field, 5.25, 12);
+    expect(store.ahead.trend.samples).toBeLessThan(5);
+    expect(ahead(store)?.trend).toBeNull();
 
-    run(state, field, 12.25, 17);
-    expect(state.trackGaps.ahead.trend.samples).toBeGreaterThanOrEqual(5);
-    expect(ahead(state)?.trend).toBe("closing");
-    expect(state.trackGaps.ahead.trend.ema).toBeLessThan(-0.15);
+    run(store, field, 12.25, 17);
+    expect(store.ahead.trend.samples).toBeGreaterThanOrEqual(5);
+    expect(ahead(store)?.trend).toBe("closing");
+    expect(store.ahead.trend.ema).toBeLessThan(-0.15);
   });
 
   it("resets the side's chain when a different car becomes the neighbour", () => {
-    const state = createInitialState();
+    const store = createTrackGapsState();
     // Car 2 joins the road between the player and car 1 at t = 20.
     const car2: CarFn = (t) => (t < 20 ? null : { pos: 0.52 + V * t });
 
-    run(state, [...field, car2], 0, 19.75);
-    expect(ahead(state)?.trend).toBe("closing");
+    run(store, [...field, car2], 0, 19.75);
+    expect(ahead(store)?.trend).toBe("closing");
 
-    run(state, [...field, car2], 20, 20);
-    expect(ahead(state)).toEqual({ carIdx: 2, gapSeconds: null, lapDelta: 0, trend: null });
-    expect(state.trackGaps.ahead.trend).toEqual({ lastCheckpoint: null, ema: null, samples: 0 });
+    run(store, [...field, car2], 20, 20);
+    expect(ahead(store)).toEqual({ carIdx: 2, gapSeconds: null, lapDelta: 0, trend: null });
+    expect(store.ahead.trend).toEqual({ lastCheckpoint: null, ema: null, samples: 0 });
   });
 });
 
@@ -463,119 +463,119 @@ describe("diffTrackGaps — the absence grace", () => {
   it.each(["not-in-world", "invalid-dist"] as const)(
     "bridges a neighbour's one-tick %s blink: the reading and the trend carry on",
     (shape) => {
-      const state = createInitialState();
+      const store = createTrackGapsState();
       const field = [PLAYER_CAR, blinking((t) => t === 20.25, shape), BEHIND_CAR];
 
-      run(state, field, 0, 20);
-      const before = structuredClone(state.trackGaps.ahead);
+      run(store, field, 0, 20);
+      const before = structuredClone(store.ahead);
 
       expect(before.live).toEqual({ carIdx: 1, gapSeconds: expect.closeTo(4.5, 6), lapDelta: 0, trend: "steady" });
 
       // The blink: the row holds exactly as it was, and the car is remembered.
-      run(state, field, 20.25, 20.25);
-      expect(state.trackGaps.ahead).toEqual(before);
-      expect(state.trackGaps.traces[1]).toBeDefined();
-      expect(behind(state)?.gapSeconds).toBeCloseTo(7.2, 6);
+      run(store, field, 20.25, 20.25);
+      expect(store.ahead).toEqual(before);
+      expect(store.traces[1]).toBeDefined();
+      expect(behind(store)?.gapSeconds).toBeCloseTo(7.2, 6);
 
       // Back: no cold start, no trend reset — the odometer continued.
-      run(state, field, 20.5, 20.5);
-      expect(ahead(state)).toEqual({ carIdx: 1, gapSeconds: expect.closeTo(4.5, 6), lapDelta: 0, trend: "steady" });
-      expect(state.trackGaps.ahead.trend.samples).toBeGreaterThanOrEqual(before.trend.samples);
+      run(store, field, 20.5, 20.5);
+      expect(ahead(store)).toEqual({ carIdx: 1, gapSeconds: expect.closeTo(4.5, 6), lapDelta: 0, trend: "steady" });
+      expect(store.ahead.trend.samples).toBeGreaterThanOrEqual(before.trend.samples);
     },
   );
 
   it("forgets a car whose absence outlasts the grace, and reads – again until its trace covers the lookup", () => {
-    const state = createInitialState();
+    const store = createTrackGapsState();
     const field = [PLAYER_CAR, blinking((t) => t > 20 && t < 21.75, "not-in-world")];
 
-    run(state, field, 0, 20.5);
+    run(store, field, 0, 20.5);
     // Inside the grace: held.
-    expect(ahead(state)?.gapSeconds).toBeCloseTo(4.5, 6);
-    expect(state.trackGaps.traces[1]).toBeDefined();
+    expect(ahead(store)?.gapSeconds).toBeCloseTo(4.5, 6);
+    expect(store.traces[1]).toBeDefined();
 
-    run(state, field, 20.75, 21);
-    expect(state.trackGaps.traces[1]).toBeUndefined();
-    expect(state.trackGaps.odometers[1]).toBeUndefined();
-    expect(ahead(state)).toBeNull();
+    run(store, field, 20.75, 21);
+    expect(store.traces[1]).toBeUndefined();
+    expect(store.odometers[1]).toBeUndefined();
+    expect(ahead(store)).toBeNull();
 
-    run(state, field, 21.25, 24);
-    expect(ahead(state)).toEqual({ carIdx: 1, gapSeconds: null, lapDelta: 0, trend: null });
+    run(store, field, 21.25, 24);
+    expect(ahead(store)).toEqual({ carIdx: 1, gapSeconds: null, lapDelta: 0, trend: null });
 
-    run(state, field, 24.25, 27);
-    expect(ahead(state)?.gapSeconds).toBeCloseTo(4.5, 6);
+    run(store, field, 24.25, 27);
+    expect(ahead(store)?.gapSeconds).toBeCloseTo(4.5, 6);
   });
 
   it("forgets a towed car — out of the world for 2 s, then in its pit stall", () => {
-    const state = createInitialState();
+    const store = createTrackGapsState();
     const car1: CarFn = (t) =>
       t <= 20 ? { pos: 0.55 + V * t } : t < 22.25 ? null : { pos: 0.1, surface: TrkLoc.InPitStall };
 
-    run(state, [PLAYER_CAR, car1], 0, 20.25);
-    expect(state.trackGaps.traces[1]).toBeDefined();
+    run(store, [PLAYER_CAR, car1], 0, 20.25);
+    expect(store.traces[1]).toBeDefined();
 
-    run(state, [PLAYER_CAR, car1], 20.5, 21);
-    expect(state.trackGaps.traces[1]).toBeUndefined();
+    run(store, [PLAYER_CAR, car1], 20.5, 21);
+    expect(store.traces[1]).toBeUndefined();
 
-    run(state, [PLAYER_CAR, car1], 21.25, 23);
-    expect(state.trackGaps.traces[1]).toBeUndefined();
-    expect(state.trackGaps.absentSince[1]).toBeUndefined();
-    expect(ahead(state)).toBeNull();
-    expect(behind(state)).toBeNull();
+    run(store, [PLAYER_CAR, car1], 21.25, 23);
+    expect(store.traces[1]).toBeUndefined();
+    expect(store.absentSince[1]).toBeUndefined();
+    expect(ahead(store)).toBeNull();
+    expect(behind(store)).toBeNull();
   });
 
   it("clears a car on pit road at once, with no grace", () => {
-    const state = createInitialState();
+    const store = createTrackGapsState();
     const car1: CarFn = (t) => ({ pos: 0.55 + V * t, surface: t === 20.25 ? TrkLoc.AproachingPits : undefined });
 
-    run(state, [PLAYER_CAR, car1], 0, 20);
-    expect(ahead(state)?.gapSeconds).toBeCloseTo(4.5, 6);
+    run(store, [PLAYER_CAR, car1], 0, 20);
+    expect(ahead(store)?.gapSeconds).toBeCloseTo(4.5, 6);
 
-    run(state, [PLAYER_CAR, car1], 20.25, 20.25);
-    expect(state.trackGaps.traces[1]).toBeUndefined();
-    expect(ahead(state)).toBeNull();
+    run(store, [PLAYER_CAR, car1], 20.25, 20.25);
+    expect(store.traces[1]).toBeUndefined();
+    expect(ahead(store)).toBeNull();
 
-    run(state, [PLAYER_CAR, car1], 20.5, 20.5);
-    expect(ahead(state)).toEqual({ carIdx: 1, gapSeconds: null, lapDelta: 0, trend: null });
+    run(store, [PLAYER_CAR, car1], 20.5, 20.5);
+    expect(ahead(store)).toEqual({ carIdx: 1, gapSeconds: null, lapDelta: 0, trend: null });
   });
 
   it("holds both rows unchanged through the player's one-tick blink, while the other cars advance", () => {
-    const state = createInitialState();
+    const store = createTrackGapsState();
     const player: CarFn = (t) => (t === 20.25 ? null : { pos: 0.5 + V * t });
     const field = [player, steady(0.55), BEHIND_CAR];
 
-    run(state, field, 0, 20);
+    run(store, field, 0, 20);
     const before = structuredClone({
-      ahead: state.trackGaps.ahead,
-      behind: state.trackGaps.behind,
-      lastCheckpoint: state.trackGaps.lastCheckpoint,
+      ahead: store.ahead,
+      behind: store.behind,
+      lastCheckpoint: store.lastCheckpoint,
     });
-    const car1Odometer = state.trackGaps.odometers[1]!;
+    const car1Odometer = store.odometers[1]!;
 
     expect(before.ahead.live?.gapSeconds).toBeCloseTo(4.5, 6);
     expect(before.behind.live?.gapSeconds).toBeCloseTo(7.2, 6);
 
-    run(state, field, 20.25, 20.25);
+    run(store, field, 20.25, 20.25);
     expect({
-      ahead: state.trackGaps.ahead,
-      behind: state.trackGaps.behind,
-      lastCheckpoint: state.trackGaps.lastCheckpoint,
+      ahead: store.ahead,
+      behind: store.behind,
+      lastCheckpoint: store.lastCheckpoint,
     }).toEqual(before);
-    expect(state.trackGaps.odometers[1]).toBeCloseTo(car1Odometer + V * DT, 9);
-    expect(state.trackGaps.traces[PLAYER]).toBeDefined();
+    expect(store.odometers[1]).toBeCloseTo(car1Odometer + V * DT, 9);
+    expect(store.traces[PLAYER]).toBeDefined();
 
-    run(state, field, 20.5, 20.5);
-    expect(ahead(state)).toMatchObject({ carIdx: 1, gapSeconds: expect.closeTo(4.5, 6), trend: "steady" });
-    expect(behind(state)).toMatchObject({ carIdx: 2, gapSeconds: expect.closeTo(7.2, 6), trend: "steady" });
+    run(store, field, 20.5, 20.5);
+    expect(ahead(store)).toMatchObject({ carIdx: 1, gapSeconds: expect.closeTo(4.5, 6), trend: "steady" });
+    expect(behind(store)).toMatchObject({ carIdx: 2, gapSeconds: expect.closeTo(7.2, 6), trend: "steady" });
   });
 
   it("drops both rows once the player's absence outlasts the grace", () => {
-    const state = createInitialState();
+    const store = createTrackGapsState();
     const player: CarFn = (t) => (t > 20 && t < 23 ? null : { pos: 0.5 + V * t });
 
-    run(state, [player, steady(0.55), BEHIND_CAR], 0, 21);
+    run(store, [player, steady(0.55), BEHIND_CAR], 0, 21);
 
-    expect(ahead(state)).toBeNull();
-    expect(behind(state)).toBeNull();
-    expect(state.trackGaps.traces[PLAYER]).toBeUndefined();
+    expect(ahead(store)).toBeNull();
+    expect(behind(store)).toBeNull();
+    expect(store.traces[PLAYER]).toBeUndefined();
   });
 });

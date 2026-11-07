@@ -2,8 +2,9 @@
  * The fastest lap of the race in the player's class (issue #1571).
  * Design: docs/superpowers/specs/2026-11-01-issue-1571-fastest-lap-of-the-race.md.
  *
- * Keeps the race's class record in `TranslatorState` (`fastestLapRecord`: the
- * time, the holder and whether it is the player) and publishes
+ * Keeps the race's class record in the translator state's `fastestLap` slice
+ * (`fastestLap.record`: the time, the holder and whether it is the player,
+ * issue #1588) and publishes
  * `fastestLap.set` whenever it falls. Two ways in, one record:
  *
  * - **Every car but the player: the scan.** Per-car baselines of
@@ -27,7 +28,7 @@
  *   on that payload and the time spoken is the time the lap-time calls
  *   speak. A lap
  *   that passes sets the record to the player and leaves a claim
- *   (`fastestLapClaim`) that {@link diffFastestLap} publishes later in the
+ *   (`fastestLap.claim`) that {@link diffFastestLap} publishes later in the
  *   same tick, before any gate of its own, so a claim never survives into a
  *   later tick. When `CarIdxBestLapTime[player]` later refreshes to the same
  *   value nothing happens: the player is not scanned.
@@ -88,7 +89,7 @@ import {
   type TelemetryData,
 } from "@iracedeck/iracing-sdk";
 
-import type { FastestLapRecord, TranslatorState } from "../state.js";
+import type { FastestLapRecord, FastestLapState } from "../state.js";
 import { type FastestLapJudge, LAP_RESULTS_SYNC_MAX_WAIT_MS, LAP_TIME_REFRESH_ALLOWANCE_MS } from "./laps.js";
 import type { EmitFn } from "./types.js";
 
@@ -132,7 +133,7 @@ export function isEligibleRecordLap(
  * it passed, which is exactly `lap.completed.isClassFastestLapOfRace`.
  */
 export function resolvePlayerFastestLap(
-  state: TranslatorState,
+  slice: FastestLapState,
   telemetry: TelemetryData,
   sessionInfo: Record<string, unknown> | null,
   playerCarIdx: number,
@@ -144,7 +145,7 @@ export function resolvePlayerFastestLap(
 
   if (!isEligibleRecordLap(isRaceSession, telemetry, lap, lapTime)) return false;
 
-  const previous = state.fastestLapRecord;
+  const previous = slice.record;
 
   if (previous !== null && lapTime >= previous.lapTime) return false;
 
@@ -154,27 +155,30 @@ export function resolvePlayerFastestLap(
     isPlayer: true,
     carNumber: getCarNumberFromSessionInfo(sessionInfo, playerCarIdx),
   };
-  state.fastestLapRecord = record;
-  state.fastestLapClaim = { lap, record, previous };
+  slice.record = record;
+  slice.claim = { lap, record, previous };
 
   return true;
 }
 
 /**
  * The narrow judge `diffLaps` is handed (issue #1571, decision 2): closed
- * over the tick's state, session and telemetry, so `laps.ts` reaches the
- * record only through `(lap, lapTime) => boolean` and never
- * imports this module.
+ * over the `fastestLap` slice, the tick's session and telemetry, so
+ * `laps.ts` reaches the record only through `(lap, lapTime) => boolean` and
+ * never imports this module. The one writer of the slice outside
+ * {@link diffFastestLap} (issue #1588): it writes `record` and `claim` from
+ * inside the `diffLaps` call, into the same object `diffFastestLap` reads
+ * later in the tick.
  */
 export function createFastestLapJudge(
-  state: TranslatorState,
+  slice: FastestLapState,
   telemetry: TelemetryData,
   sessionInfo: Record<string, unknown> | null,
   playerCarIdx: number,
   isRaceSession: boolean,
 ): FastestLapJudge {
   return (lap, lapTime) =>
-    resolvePlayerFastestLap(state, telemetry, sessionInfo, playerCarIdx, isRaceSession, lap, lapTime);
+    resolvePlayerFastestLap(slice, telemetry, sessionInfo, playerCarIdx, isRaceSession, lap, lapTime);
 }
 
 type FastestLapPayload = {
@@ -214,37 +218,48 @@ function positiveOrNull(value: number | undefined): number | null {
 /**
  * Whether the remote scan holds this tick because the player has crossed
  * the line and that lap has not been judged yet (issue #1571). "Crossed but
- * not judged" is read off what is honestly there: `diffLaps` is initialised
- * (it runs before this diff on every tick, so an uninitialised lap diff means
- * no crossing it will ever emit for) and the player's `LapCompleted` is at
- * least 1 and ahead of `lastLapCompletedCounter`, the count `diffLaps` last
- * emitted for — read-only here, written only in `laps.ts`. The crossing's
- * time is this diff's own, taken on the first tick the count ran ahead and
- * kept in `fastestLapHold`; a new count starts a new hold, and the hold
- * clears the tick the counts agree again. Past {@link FASTEST_LAP_HOLD_MAX_MS}
- * the scan resumes with the hold still recorded, so the same unjudged
- * crossing cannot hold again.
+ * not judged" is read off what is honestly there: the lap diff is seeded
+ * (`lapsJudgedThrough` is not `null`; it runs before this diff on every tick,
+ * so an unseeded lap diff means no crossing it will ever emit for) and the
+ * player's `LapCompleted` is at least 1 and ahead of `lapsJudgedThrough`, the
+ * count `diffLaps` last emitted for. The crossing's time is this diff's own,
+ * taken on the first tick the count ran ahead and kept in the slice's
+ * `hold`; a new count starts a new hold, and the hold clears the tick the
+ * counts agree again. Past {@link FASTEST_LAP_HOLD_MAX_MS} the scan resumes
+ * with the hold still recorded, so the same unjudged crossing cannot hold
+ * again.
+ *
+ * @param lapsJudgedThrough The player's `LapCompleted` count `diffLaps` last
+ *   emitted `lap.completed` for (its `lastLapCompletedCounter`, written only
+ *   in `laps.ts`), or `null` while the lap diff is unseeded
+ *   (`lapCompletedInitialized` false). `handleTick` reads it when this step
+ *   runs, after `diffLaps` (issue #1588).
  */
-export function playerLapAwaitsJudgement(state: TranslatorState, telemetry: TelemetryData, now: number): boolean {
+export function playerLapAwaitsJudgement(
+  slice: FastestLapState,
+  telemetry: TelemetryData,
+  now: number,
+  lapsJudgedThrough: number | null,
+): boolean {
   const laps = telemetry.LapCompleted;
   const pending =
-    state.lapCompletedInitialized &&
+    lapsJudgedThrough !== null &&
     typeof laps === "number" &&
     Number.isFinite(laps) &&
     laps >= 1 &&
-    laps > state.lastLapCompletedCounter;
+    laps > lapsJudgedThrough;
 
   if (!pending) {
-    state.fastestLapHold = null;
+    slice.hold = null;
 
     return false;
   }
 
-  if (state.fastestLapHold === null || state.fastestLapHold.lap !== laps) {
-    state.fastestLapHold = { lap: laps, since: now };
+  if (slice.hold === null || slice.hold.lap !== laps) {
+    slice.hold = { lap: laps, since: now };
   }
 
-  return now - state.fastestLapHold.since < FASTEST_LAP_HOLD_MAX_MS;
+  return now - slice.hold.since < FASTEST_LAP_HOLD_MAX_MS;
 }
 
 /**
@@ -255,10 +270,11 @@ export function playerLapAwaitsJudgement(state: TranslatorState, telemetry: Tele
  * player's unjudged lap, then the scan. Baselines are per car and advance
  * element-wise; the scan reads only the player's class, skipping the player
  * (judged on `lap.completed`) and the pace car. `now` is the tick's clock,
- * the same value `diffLaps` is handed, and only the hold reads it.
+ * the same value `diffLaps` is handed, and only the hold reads it, with
+ * `lapsJudgedThrough` (see {@link playerLapAwaitsJudgement}).
  */
 export function diffFastestLap(
-  state: TranslatorState,
+  slice: FastestLapState,
   telemetry: TelemetryData,
   sessionInfo: Record<string, unknown> | null,
   playerCarIdx: number,
@@ -268,6 +284,7 @@ export function diffFastestLap(
   positions: number[],
   emit: EmitFn<(typeof FASTEST_LAP_EVENTS)[number]>,
   now: number,
+  lapsJudgedThrough: number | null,
 ): void {
   const carClasses = telemetry.CarIdxClass;
   const projection = isMultiClass === true;
@@ -275,8 +292,8 @@ export function diffFastestLap(
   // The player's claim, left by the judge earlier this tick: published and
   // cleared before any gate below, so it can neither survive into a later
   // tick nor be lost to a gate the judge already applied.
-  const claim = state.fastestLapClaim;
-  state.fastestLapClaim = null;
+  const claim = slice.claim;
+  slice.claim = null;
 
   if (claim !== null) {
     emit({
@@ -307,15 +324,15 @@ export function diffFastestLap(
   // which reads the player's car too), or the first live tick after a replay
   // glance (a re-seed, which reads only the remote cars). Silent either way:
   // a connect mid-race and a lap run during a glance are not news.
-  if (!state.fastestLapBaselinesSeeded) {
-    state.fastestLapBaselinesSeeded = true;
-    const firstSeed = !state.fastestLapRaceSeeded;
-    state.fastestLapRaceSeeded = true;
-    state.fastestLapBaselines = [];
+  if (!slice.baselinesSeeded) {
+    slice.baselinesSeeded = true;
+    const firstSeed = !slice.raceSeeded;
+    slice.raceSeeded = true;
+    slice.baselines = [];
 
     for (let carIdx = 0; carIdx < best.length; carIdx++) {
       const value = positiveOrNull(best[carIdx]);
-      state.fastestLapBaselines[carIdx] = value ?? 0;
+      slice.baselines[carIdx] = value ?? 0;
 
       if (value === null || !inClass(carIdx)) continue;
 
@@ -323,8 +340,8 @@ export function diffFastestLap(
 
       if (!isEligibleRecordLap(isRaceSession, telemetry, completed[carIdx] ?? -1, value)) continue;
 
-      if (state.fastestLapRecord === null || value < state.fastestLapRecord.lapTime) {
-        state.fastestLapRecord = {
+      if (slice.record === null || value < slice.record.lapTime) {
+        slice.record = {
           lapTime: value,
           carIdx,
           isPlayer: carIdx === playerCarIdx,
@@ -341,7 +358,7 @@ export function diffFastestLap(
   // — and a remote best that changes meanwhile is read on the first tick
   // after the judge, against the record as the judge leaves it. Bounded, so
   // a crossing that never emits cannot freeze the scan.
-  if (playerLapAwaitsJudgement(state, telemetry, now)) return;
+  if (playerLapAwaitsJudgement(slice, telemetry, now, lapsJudgedThrough)) return;
 
   // The scan: one candidate per tick, the fastest of the cars whose value
   // moved below the record. Every positive value advances its baseline,
@@ -351,29 +368,29 @@ export function diffFastestLap(
   for (let carIdx = 0; carIdx < best.length; carIdx++) {
     const value = positiveOrNull(best[carIdx]);
 
-    if (value === null || value === state.fastestLapBaselines[carIdx]) continue;
+    if (value === null || value === slice.baselines[carIdx]) continue;
 
-    state.fastestLapBaselines[carIdx] = value;
+    slice.baselines[carIdx] = value;
 
     if (carIdx === playerCarIdx || !inClass(carIdx)) continue;
 
     if (!isEligibleRecordLap(isRaceSession, telemetry, completed[carIdx] ?? -1, value)) continue;
 
-    if (state.fastestLapRecord !== null && value >= state.fastestLapRecord.lapTime) continue;
+    if (slice.record !== null && value >= slice.record.lapTime) continue;
 
     if (candidate === null || value < candidate.lapTime) candidate = { carIdx, lapTime: value };
   }
 
   if (candidate === null) return;
 
-  const previous = state.fastestLapRecord;
+  const previous = slice.record;
   const record: FastestLapRecord = {
     lapTime: candidate.lapTime,
     carIdx: candidate.carIdx,
     isPlayer: false,
     carNumber: getCarNumberFromSessionInfo(sessionInfo, candidate.carIdx),
   };
-  state.fastestLapRecord = record;
+  slice.record = record;
 
   emit({
     event: "fastestLap.set",
