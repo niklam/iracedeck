@@ -24,7 +24,10 @@
  * ({@link readLeaderGap}), let a player within a lap of the leader, now and
  * at the flag, be counted by laps rather than by time — see
  * `resolveFuelRaceCoverage`.
- * {@link resolveLeaderFinish} bundles them for the fuel diff.
+ * {@link resolveLeaderFinish} bundles them for the fuel diff. The lap-count
+ * test and count themselves ({@link staysWithinLapAtChequered},
+ * {@link lapCountCrossings}) are shared with the gap horizon too (#1380),
+ * which converts the leader's crossings into the player's.
  *
  * Pure: the caller supplies the canonical live order
  * (`.claude/rules/race-positions.md`), the player's car index and the
@@ -404,6 +407,56 @@ export function readLeaderGap(telemetry: TelemetryData, positions: number[], pla
     playerLapsCompleted: player.lapsCompleted,
     distanceLaps: leader.lapsCompleted + leader.pct - (player.lapsCompleted + player.pct),
   };
+}
+
+/**
+ * Whether the player is within a lap of the race leader on distance now and
+ * is projected to stay so when the leader takes the chequered flag:
+ * `|g| < 1` and `g + T · (1/L − 1/P) < 1`, the gap `g` ({@link readLeaderGap})
+ * carried forward `T` seconds at the two paces. Every car still inside a lap
+ * of the leader at the flag finishes on the lap count the leader's chequered
+ * brings up, so such a player is counted by {@link lapCountCrossings} rather
+ * than by time.
+ *
+ * A slower car within a lap now but lapped before the flag finishes one count
+ * lower, which is why the gap is projected rather than read. A faster player
+ * (`P < L`) projects a shrinking gap and stays on the lap count.
+ *
+ * Shared by the fuel race coverage (#1405), which passes the lap-count
+ * prediction and its capped pace `min(L, P)`, and the gap callouts' horizon
+ * (#1380), which passes the raw leader pace: each consumer picks the pace
+ * that errs in its own safe direction.
+ *
+ * @param gap - the player's place against the leader ({@link readLeaderGap})
+ * @param chequeredInS - seconds until the leader's chequered flag, `T`
+ * @param leaderLapS - the leader's lap time (s) the prediction was made at, `L`, positive
+ * @param playerLapS - the player's validated average lap time (s), `P`, positive
+ */
+export function staysWithinLapAtChequered(
+  gap: LeaderGap,
+  chequeredInS: number,
+  leaderLapS: number,
+  playerLapS: number,
+): boolean {
+  return Math.abs(gap.distanceLaps) < 1 && gap.distanceLaps + chequeredInS * (1 / leaderLapS - 1 / playerLapS) < 1;
+}
+
+/**
+ * The player's line crossings from now up to and including their chequered
+ * flag, by the lap counters: `LC_L + C_L − LC_p`. The leader's chequered is
+ * their `LC_L + C_L`-th completed lap, and a car within a lap of them at the
+ * flag ({@link staysWithinLapAtChequered}) takes its own chequered on that
+ * same lap count. No pace and no tolerance: a close follower crosses after the
+ * leader whatever the gap, so there is no near-tie to allow for. Same lap:
+ * `C_L`; a lap down but within a lap on distance: `C_L + 1`.
+ *
+ * The fuel estimate counts the laps after the current one, one fewer.
+ *
+ * @param gap - the player's place against the leader ({@link readLeaderGap})
+ * @param leaderCrossings - the leader's line crossings from now, the chequered included, `C_L`
+ */
+export function lapCountCrossings(gap: LeaderGap, leaderCrossings: number): number {
+  return gap.leaderLapsCompleted + leaderCrossings - gap.playerLapsCompleted;
 }
 
 /**
