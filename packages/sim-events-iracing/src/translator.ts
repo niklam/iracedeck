@@ -106,6 +106,7 @@ import { diffTrackWetness, resolveReportedTrackWetness } from "./diff/track-wetn
 import type { EmitFn, PendingEvent } from "./diff/types.js";
 import {
   isClockExpiryConfirmed,
+  LAP_LINE_GUARD_PCT,
   lapCountCrossings,
   type LeaderFinish,
   leaderWhiteCrossingIndex,
@@ -1918,6 +1919,18 @@ function leaderCrossingsToGo(
  *    the line guard, or a `T` stretched by a leader pace slower than the
  *    leader really runs. No near-tie tolerance: here a crossing counted one
  *    too few only withholds an announcement on the last lap.
+ *
+ *    **A leader just past the line is read one crossing short.** With the
+ *    leader's fraction inside `LAP_LINE_GUARD_PCT`, the time path takes
+ *    `C_L − 1` for both `T` and the cap. In a lap race `C_L` is the lap
+ *    counter, and around the leader's crossing their fraction can wrap a
+ *    tick or more before the counter moves: `C_L` still names the lap just
+ *    finished while `f_L` already reads the new one, so `T` and the cap come
+ *    out a lap long — a count too high, the unsafe direction. When the
+ *    reading is consistent (the counter has moved too) the same rule counts
+ *    one crossing too few, which only withholds an announcement, and only
+ *    until the leader is past the guard, a few seconds. The lap-count path is
+ *    not affected: its gap is unknown while either car is inside the guard.
  * 5. **Otherwise** `C_L` — no leader pace, no leader lap fraction, no player
  *    average, or the lap counters unreadable near the line with no player
  *    fraction to fall back on. It overstates for a lapped or slower-class
@@ -1970,7 +1983,12 @@ function playerCrossingsToGo(
 
   if (playerPct === null) return leaderCrossings;
 
-  return Math.min(leaderCrossings + 1, Math.max(1, Math.ceil(chequeredInS / playerLapS + playerPct)));
+  // A leader just past the line may read a stale counter: one crossing
+  // fewer, the cautious count (see step 4 above).
+  const timeCrossings = leaderPct < LAP_LINE_GUARD_PCT ? leaderCrossings - 1 : leaderCrossings;
+  const timeChequeredInS = (timeCrossings - leaderPct) * leaderLapS;
+
+  return Math.min(timeCrossings + 1, Math.max(1, Math.ceil(timeChequeredInS / playerLapS + playerPct)));
 }
 
 /**

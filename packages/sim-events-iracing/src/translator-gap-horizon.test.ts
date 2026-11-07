@@ -272,6 +272,35 @@ describe("resolveGapLapsRemaining — the player's own crossings (issue #1380)",
   });
 });
 
+describe("resolveGapLapsRemaining — a leader just past the line (issue #1380)", () => {
+  // A lapped player (car0) on 100 s laps at 0.6, more than a lap behind; the
+  // leader (car1) on 90 s laps has just crossed the line.
+  const justCrossed = (lapsRemain: number, leaderPct: number): TelemetryData =>
+    limits(lapsRemain, IRSDK_UNLIMITED_TIME, {
+      CarIdxLapCompleted: [7, 11, 6],
+      CarIdxLapDistPct: [0.6, leaderPct, 0.5],
+    });
+  const lapped = player({ avgLapTimeS: 100 });
+
+  it("does not over-count from a counter that has not moved yet", () => {
+    // The fraction has wrapped (0.005) but the counter still reads 5, the
+    // lap just finished: 4 crossings remain. Taken at face value,
+    // T = (5 − 0.005) · 90 ≈ 449.6 s and the player's chequered is crossing
+    // ceil(4.4955 + 0.6) = 6. One fewer: T ≈ 359.6 s, crossing
+    // ceil(3.5955 + 0.6) = 5 — what the moved counter will say.
+    expect(resolveGapLapsRemaining(justCrossed(5, 0.005), ORDER, false, lapped)).toBeCloseTo(5 - 0.6, 9);
+    expect(resolveGapLapsRemaining(justCrossed(4, 0.04), ORDER, false, lapped)).toBeCloseTo(5 - 0.6, 9);
+  });
+
+  it("only under-counts a consistent reading, and only inside the guard", () => {
+    // The counter has moved with the fraction: 4 is right, and one fewer
+    // reads crossing ceil(2.6955 + 0.6) = 4, a crossing short — never more.
+    expect(resolveGapLapsRemaining(justCrossed(4, 0.005), ORDER, false, lapped)).toBeCloseTo(4 - 0.6, 9);
+    // Past the guard the count is the full one again.
+    expect(resolveGapLapsRemaining(justCrossed(4, 0.04), ORDER, false, lapped)).toBeCloseTo(5 - 0.6, 9);
+  });
+});
+
 describe("resolveGapLapsRemaining — the end of the race (issue #1380)", () => {
   it("is zero once the player has the chequered flag, whatever the limits read", () => {
     expect(resolveGapLapsRemaining(lapRace(), ORDER, false, player({ finished: true }))).toBe(0);
