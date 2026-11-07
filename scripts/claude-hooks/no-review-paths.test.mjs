@@ -5,16 +5,16 @@ import { describe, expect, it } from "vitest";
 import { isNoReviewPath, NO_REVIEW_PATHS } from "./no-review-paths.mjs";
 
 describe("isNoReviewPath", () => {
-  it("takes Claude-facing prose: rules, skills, agents and every CLAUDE.md", () => {
+  it("takes Claude-facing prose: rules, skills, agents and the CLAUDE.md files where the repo keeps them", () => {
     for (const file of [
       ".claude/rules/hooks.md",
       ".claude/rules/nested/deeper/x.md",
       ".claude/skills/issue-lead/SKILL.md",
       ".claude/agents/implementer.md",
-      "CLAUDE.md",
       ".claude/CLAUDE.md",
       "scripts/CLAUDE.md",
       "packages/deck-core/CLAUDE.md",
+      "packages/foo/CLAUDE.md",
     ])
       expect(isNoReviewPath(file), file).toBe(true);
   });
@@ -41,6 +41,13 @@ describe("isNoReviewPath", () => {
       "NOTCLAUDE.md",
       "packages/x/claude.md",
       "packages/x/CLAUDE.mdx",
+      // A CLAUDE.md anywhere else: the website publishes its content folder as pages.
+      "CLAUDE.md",
+      "packages/website/src/content/docs/CLAUDE.md",
+      "packages/foo/src/CLAUDE.md",
+      "packages/CLAUDE.md",
+      "scripts/claude-hooks/CLAUDE.md",
+      "docs/CLAUDE.md",
     ])
       expect(isNoReviewPath(file), file).toBe(false);
   });
@@ -104,7 +111,8 @@ describe("code-review.md states the same list", () => {
     expect(section.startsWith(HEADING)).toBe(true);
     const mutations = [
       rule.replace("- `.claude/agents/**/*.md`\n", ""),
-      rule.replace("- `**/CLAUDE.md`\n", "- `**/CLAUDE.md`\n- `README.md`\n"),
+      rule.replace("- `scripts/CLAUDE.md`\n", "- `scripts/CLAUDE.md`\n- `README.md`\n"),
+      rule.replace("`packages/*/CLAUDE.md`", "`**/CLAUDE.md`"),
       rule.replace("`.claude/skills/**/*.md`", "`.claude/skills/**`"),
       rule.replace(HEADING, "## PRs that skip review"),
       rule.replace(/^- `/gm, "* `"),

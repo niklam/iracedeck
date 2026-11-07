@@ -82,6 +82,8 @@ A PR is opened with `--label no-coderabbit` when every file it changes is Claude
 - `.claude/rules/**/*.md`
 - `.claude/skills/**/*.md`
 - `.claude/agents/**/*.md`
-- `**/CLAUDE.md`
+- `.claude/CLAUDE.md`
+- `packages/*/CLAUDE.md`
+- `scripts/CLAUDE.md`
 
-Nothing else qualifies: not `.claude/settings.json` (it wires the hooks), not a changelog fragment, website page or `README.md` (users read them), not a script or a test. The label goes on at `gh pr create`, since the review it saves is the one on open. Such a PR gets no CodeRabbit PR review; its review is the `/code-review` at `medium` and the CLI round. Nobody can approve it, so it merges with `gh pr merge <pr> --squash --admin --match-head-commit <head>` once every check is green, the one standing use of `--admin`. The merge gate reads the files itself and refuses that for a PR off the list (`scripts/claude-hooks/no-review-paths.mjs`, held to this list by its test), so the label only decides whether CodeRabbit spends a review. If a later commit adds a file off the list, take the label off and comment `@coderabbitai review`.
+Nothing else qualifies: not `.claude/settings.json` (it wires the hooks), not a changelog fragment, website page or `README.md` (users read them), not a script or a test. The label goes on at `gh pr create`, since the review it saves is the one on open. Such a PR gets no CodeRabbit PR review; its review is the `/code-review` at `medium` and the CLI round. Nobody can approve it, so it merges with `gh pr merge <pr> --squash --admin --match-head-commit <head>` once every check is green, the one standing use of `--admin`. The merge gate reads the files itself and lets that through only for a PR on the list (`scripts/claude-hooks/no-review-paths.mjs`, held to this list by its test) that shows every check its base branch requires; one off the list is refused while unapproved and otherwise put to Niklas as a prompt, so the label only decides whether CodeRabbit spends a review. If a later commit adds a file off the list, take the label off and comment `@coderabbitai review`.

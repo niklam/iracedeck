@@ -3,7 +3,9 @@
  * prose only. Such a PR is opened with `--label no-coderabbit`, nobody can
  * approve it, and it merges under `--admin`, which the merge gate in
  * `rules-bash.mjs` allows past a missing approval only when every file the PR
- * changes matches this list.
+ * changes matches this list. A `CLAUDE.md` counts only where the repo keeps
+ * them, never at any depth: one under the website's content folder would be
+ * published as a page.
  *
  * The one list: `.claude/rules/code-review.md` ("PRs that skip CodeRabbit")
  * states the same globs in prose, and `no-review-paths.test.mjs` fails when the
@@ -18,7 +20,9 @@ export const NO_REVIEW_PATHS = Object.freeze([
   ".claude/rules/**/*.md",
   ".claude/skills/**/*.md",
   ".claude/agents/**/*.md",
-  "**/CLAUDE.md",
+  ".claude/CLAUDE.md",
+  "packages/*/CLAUDE.md",
+  "scripts/CLAUDE.md",
 ]);
 
 /**
