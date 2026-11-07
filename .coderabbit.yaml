@@ -1,0 +1,24 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+# Every PR here is authored as niklam, so all reviews share one per-author
+# allowance. A PR is reviewed once when it opens, then only on
+# `@coderabbitai review`; a `no-coderabbit` PR (Claude-facing prose only) is not
+# reviewed at all. The rules: `.claude/rules/code-review.md` (#1648, #1649).
+reviews:
+  poem: true
+  auto_review:
+    enabled: true
+    base_branches:
+      - master
+      - release/.*
+    auto_incremental_review: false
+    ignore_usernames:
+      - dependabot[bot]
+    labels:
+      - "!no-coderabbit"
+  tools:
+    fbinfer:
+      enabled: false
+    presidio:
+      enabled: false
+  auto_approvals:
+    enabled: true
