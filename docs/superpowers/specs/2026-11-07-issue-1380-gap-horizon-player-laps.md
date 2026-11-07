@@ -37,6 +37,12 @@ When `C_L` is `null` (neither limit known), the horizon is `null`, no cap, as to
 
 The lap-count test and count of step 4 are the fuel estimate's, so they move into `leader-finish.ts` as two pure helpers both consumers call: whether a player stays within a lap at the leader's flag, and the player's crossings by lap count. The fuel estimate keeps its own inputs (the pace capped at `min(L, P)` and its tolerance on the time path) and its own fallbacks. The two consumers' safe directions are opposite: for fuel a count too low silences a warning, for the gap horizon a count too high announces a catch that cannot happen. So the gap horizon uses the raw leader pace and no tolerance.
 
+## Amendment during implementation (2026-11-07)
+
+**No car finishes more than one crossing after the leader's count.** Only the leader can be ahead of the leader on distance, so any other car is either within a lap of them at the flag (and takes the flag on the lap count, at most `C_L + 1` crossings from now) or a lap or more down (and crosses fewer times). The time model can still exceed `C_L + 1`. One case is a player faster than the leader within a lap whose lap counters sit inside `LAP_LINE_GUARD_PCT` of the line, so `readLeaderGap` is unknown: about 3 % of every lap per car. The other is an inflated leader lap time, below. So the time model's result is capped at `C_L + 1`: `C_p = min(C_L + 1, max(1, ceil(T / P + f_p)))`.
+
+**The leader's pace for the conversion is the faster of their last and best lap.** `resolveLeaderLapTimeS` gives the leader's last lap, which after a pit stop, a spin or the lap that ends a caution is slow. A slow `L` lengthens `T = (C_L − f_L) · L` and keeps a car that will be lapped on the lap count: both over-count, the gap horizon's unsafe direction. Section 3's claim that the raw pace errs safe for the gap horizon is wrong on the time path. Steps 4 and 5 therefore use `L = min(CarIdxLastLapTime, CarIdxBestLapTime)` of the leader, each when valid. A best lap faster than the current pace only shortens `T`, which withholds a call at worst. `C_L` itself (the #1311 time side) keeps `resolveLeaderLapTimeS`, where a slower lap already counts fewer crossings.
+
 ## Alternatives rejected
 
 - **A pace ratio against the leader** (`C_L × L / P`). It is right only for a player far from the leader; for a close follower it under- or over-counts by a lap at random as pace drifts, where the lap count is exact.
