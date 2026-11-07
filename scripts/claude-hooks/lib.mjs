@@ -19,6 +19,7 @@ import path from "node:path";
 import { spawnSyncShim } from "../lib/spawn-shim.mjs";
 import { changedFiles, parseChangeSignature } from "./change-signature.mjs";
 import { FULL_SHA, isSummaryComment, MAX_COMMENTS, MAX_EDITS } from "./coderabbit-summary.mjs";
+import { hasConfigFrontmatter, isNoReviewPath } from "./no-review-paths.mjs";
 import { HOME_REPO, isHomeRepo, repoOfUrl } from "./rules-post.mjs";
 
 // The deck-host link readers moved to `scripts/lib/plugin-links.mjs` in #1143,
@@ -425,12 +426,16 @@ function soleMergeBase(g, a, base) {
 }
 
 /**
- * Every path a PR changes and who wrote its commits, read with git (#1648):
- * `{ ok: true, files, authors }` or `{ ok: false, reason }`. `files` are the
- * repo-relative paths that differ between the merge-base of `head` and `base`
- * and `head` — the PR's own diff, as GitHub shows it; `authors` holds each
- * commit's author identity on that range, `Name <email>`, merges included,
- * one entry per commit. `head` and `base` are the PR's `headRefOid` and
+ * Every path a PR changes and who made its commits, read with git (#1648):
+ * `{ ok: true, files, commits, blobs }` or `{ ok: false, reason }`. `files`
+ * are the repo-relative paths that differ between the merge-base of `head`
+ * and `base` and `head` — the PR's own diff, as GitHub shows it; `commits`
+ * holds each commit's `{ author, committer }` on that range, each
+ * `Name <email>`, merges included, one entry per commit; `blobs` maps every
+ * file on the prose list whose frontmatter is configuration (a skill's or an
+ * agent's, `hasConfigFrontmatter`) to its `{ base, head }` text, read as
+ * latin1 so a comparison is byte for byte, `null` on the side an added or
+ * deleted file lacks. `head` and `base` are the PR's `headRefOid` and
  * `baseRefOid`, full shas. The merge gate lets an `--admin` merge through
  * unasked only when every path is Claude-facing prose (`no-review-paths.mjs`)
  * or every commit is Dependabot's, so every uncertain read is a failure,
@@ -441,11 +446,12 @@ function soleMergeBase(g, a, base) {
  *   `--ignore-submodules=none`, so neither a directory nor a gitlink hides a
  *   path; `-z`, so a path comes back as it is, never quoted.
  * - Plumbing (`diff-tree`, `rev-list`), which no diff, mailmap or signature
- *   configuration changes; `%an` / `%ae` are the raw author line. Replace refs
- *   and grafts ignored, at the repository's top level (`pinnedGit`).
+ *   configuration changes; `%an` / `%ae` and `%cn` / `%ce` are the raw author
+ *   and committer lines. Replace refs and grafts ignored, at the repository's
+ *   top level (`pinnedGit`).
  * - A commit the checkout lacks is fetched from `origin` by sha, as
- *   `replayRebase` does; criss-cross history, a failed diff or commit list,
- *   and an empty list all fail.
+ *   `replayRebase` does; criss-cross history, a failed diff, commit list or
+ *   blob read, and an empty list all fail.
  */
 export function prChangedFiles({ head, base, dir }) {
   if (![head, base].every((s) => typeof s === "string" && FULL_SHA.test(s)))
@@ -456,26 +462,44 @@ export function prChangedFiles({ head, base, dir }) {
   if (!fetchMissingCommits(g, [head, base])) return fail("git could not fetch the PR's head and base from origin");
   const mb = soleMergeBase(g, head, base);
   if (!mb.sha) return fail(mb.error);
-  const diff = g(["diff-tree", "-r", "--no-renames", "--ignore-submodules=none", "--name-only", "-z", mb.sha, head], {
+  const diff = g(["diff-tree", "-r", "--no-renames", "--ignore-submodules=none", "--name-status", "-z", mb.sha, head], {
     maxBuffer: 16 * 1024 * 1024,
   });
   if (!diff.ok) return fail("git could not list the files the PR changes");
-  const files = [...new Set(diff.out.split("\0").filter(Boolean))].sort();
+  // `-z --name-status`: a status letter, then its path, each NUL-terminated.
+  const fields = diff.out.split("\0");
+  const status = new Map();
+  for (let i = 0; i + 1 < fields.length; i += 2) if (fields[i + 1]) status.set(fields[i + 1], fields[i]);
+  const files = [...status.keys()].sort();
   if (files.length === 0) return fail("git lists no file the PR changes");
   // A name or an email never holds a NUL or a line break, so neither split can cut one.
-  const log = g(["rev-list", "--no-commit-header", "--format=%an%x00%ae", `${mb.sha}..${head}`], {
+  const log = g(["rev-list", "--no-commit-header", "--format=%an%x00%ae%x00%cn%x00%ce", `${mb.sha}..${head}`], {
     maxBuffer: 16 * 1024 * 1024,
   });
   if (!log.ok) return fail("git could not list the PR's commits");
-  const authors = log.out
+  const commits = log.out
     .split("\n")
     .filter(Boolean)
     .map((line) => {
-      const [name, email] = line.split("\0");
-      return `${name} <${email ?? ""}>`;
+      const [an, ae, cn, ce] = line.split("\0");
+      return { author: `${an} <${ae ?? ""}>`, committer: `${cn ?? ""} <${ce ?? ""}>` };
     });
-  if (authors.length === 0) return fail("git lists no commit on the PR");
-  return { ok: true, files, authors };
+  if (commits.length === 0) return fail("git lists no commit on the PR");
+  // Both sides of every prose file whose frontmatter is configuration, byte for
+  // byte; `null` for the side an added or deleted file lacks.
+  const blobs = {};
+  for (const file of files.filter((f) => isNoReviewPath(f) && hasConfigFrontmatter(f))) {
+    const side = (sha, absent) => {
+      if (absent) return null;
+      const r = g(["cat-file", "blob", `${sha}:${file}`], { maxBuffer: 16 * 1024 * 1024, encoding: "latin1" });
+      return r.ok ? r.out : undefined;
+    };
+    const s = status.get(file);
+    const pair = { base: side(mb.sha, s === "A"), head: side(head, s === "D") };
+    if (pair.base === undefined || pair.head === undefined) return fail(`git could not read ${file} on both sides`);
+    blobs[file] = pair;
+  }
+  return { ok: true, files, commits, blobs };
 }
 
 /**
@@ -484,9 +508,9 @@ export function prChangedFiles({ head, base, dir }) {
  * whatever its source): `{ ok: true, contexts }`, the required contexts
  * by name, or `{ ok: false, reason }`. `repo` is the `owner/name` the merge
  * gate confirmed; `opts` go to {@link run} (the gate passes it as `GH_REPO`
- * too, as for its other reads). A rule set it cannot read whole, or one
- * requiring no check at all, is a failure: the gate then cannot tell a
- * required check that never reported from one that does not exist.
+ * too, as for its other reads). A rule set it cannot read whole is a failure;
+ * one requiring no check is `contexts: []`, which the gate accepts only for
+ * a PR that is not BLOCKED (`adminVerdict` in `rules-bash.mjs`).
  */
 export function requiredStatusChecks(repo, branch, dir, opts) {
   if (typeof repo !== "string" || !/^[\w.-]+\/[\w.-]+$/.test(repo))
@@ -505,7 +529,6 @@ export function requiredStatusChecks(repo, branch, dir, opts) {
         .filter((c) => typeof c === "string" && c !== ""),
     ),
   ].sort();
-  if (contexts.length === 0) return { ok: false, reason: `the rules of ${branch} require no status check` };
   return { ok: true, contexts };
 }
 

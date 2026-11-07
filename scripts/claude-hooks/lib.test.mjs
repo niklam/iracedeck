@@ -335,6 +335,8 @@ describe("prChangedFiles", { timeout: 20_000 }, () => {
     return gitIn(root, "rev-parse", "HEAD");
   };
   const read = (head, base, dir = root) => prChangedFiles({ head, base, dir });
+  /** A commit by the fixtures' own identity, author and committer alike. */
+  const T = { author: "t <t@t>", committer: "t <t@t>" };
   /** master: m0 → m1 (touches README.md); the PR branches at m0. */
   const arrange = () => {
     const m0 = commit({ "README.md": "r\n", "scripts/x.mjs": "export {};\n", ".claude/rules/a.md": "a\n" }, "m0");
@@ -351,7 +353,8 @@ describe("prChangedFiles", { timeout: 20_000 }, () => {
     expect(read(head, m1)).toEqual({
       ok: true,
       files: [".claude/rules/a.md", "packages/p/CLAUDE.md"],
-      authors: ["t <t@t>"],
+      commits: [T],
+      blobs: {},
     });
   });
 
@@ -360,7 +363,12 @@ describe("prChangedFiles", { timeout: 20_000 }, () => {
     git("mv", "scripts/x.mjs", ".claude/rules/x.md");
     git("commit", "-qm", "move");
     const head = gitIn(root, "rev-parse", "HEAD");
-    expect(read(head, m1)).toEqual({ ok: true, files: [".claude/rules/x.md", "scripts/x.mjs"], authors: ["t <t@t>"] });
+    expect(read(head, m1)).toEqual({
+      ok: true,
+      files: [".claude/rules/x.md", "scripts/x.mjs"],
+      commits: [T],
+      blobs: {},
+    });
   });
 
   it("leaves out a base merged into the PR (GitHub's Update branch)", () => {
@@ -369,7 +377,7 @@ describe("prChangedFiles", { timeout: 20_000 }, () => {
     git("merge", "-q", "--no-edit", m1);
     const head = gitIn(root, "rev-parse", "HEAD");
     // The merge commit is the PR's own, so it is listed; the base's m1 is not.
-    expect(read(head, m1)).toEqual({ ok: true, files: [".claude/rules/a.md"], authors: ["t <t@t>", "t <t@t>"] });
+    expect(read(head, m1)).toEqual({ ok: true, files: [".claude/rules/a.md"], commits: [T, T], blobs: {} });
   });
 
   it("returns a path as it is, never quoted, and runs from the repository root", () => {
@@ -378,11 +386,13 @@ describe("prChangedFiles", { timeout: 20_000 }, () => {
     expect(read(head, m1, join(root, "scripts"))).toEqual({
       ok: true,
       files: [".claude/skills/ä x/SKILL.md"],
-      authors: ["t <t@t>"],
+      commits: [T],
+      // Added: no merge-base side.
+      blobs: { ".claude/skills/ä x/SKILL.md": { base: null, head: "s\n" } },
     });
   });
 
-  it("lists every commit's raw author line, whatever a mailmap says", () => {
+  it("lists every commit's raw author and committer lines, whatever a mailmap says", () => {
     const { m1 } = arrange();
     const DEPENDABOT = "dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>";
     const asBot = [
@@ -393,7 +403,15 @@ describe("prChangedFiles", { timeout: 20_000 }, () => {
     ];
     writeFileSync(join(root, "package.json"), "{}\n");
     execFileSync("git", ["add", "-A"], { cwd: root });
-    execFileSync("git", [...asBot, "commit", "-qm", "bump"], { cwd: root });
+    // Dependabot's commits name GitHub as their committer.
+    const asGitHub = { ...process.env, GIT_COMMITTER_NAME: "GitHub", GIT_COMMITTER_EMAIL: "noreply@github.com" };
+    execFileSync("git", [...asBot, "commit", "-qm", "bump"], { cwd: root, env: asGitHub });
+    const bump = gitIn(root, "rev-parse", "HEAD");
+    // An amend keeps the author line and replaces the committer.
+    writeFileSync(join(root, "package.json"), "{ }\n");
+    execFileSync("git", ["add", "-A"], { cwd: root });
+    git("commit", "-q", "--amend", "--no-edit");
+    const amended = gitIn(root, "rev-parse", "HEAD");
     const head = commit({ "pnpm-lock.yaml": "x\n" }, "fix on top");
     // A mailmap that would show the fix as Dependabot's, and a signature display that would add lines.
     writeFileSync(join(root, ".mailmap"), `${DEPENDABOT} t <t@t>\n`);
@@ -402,7 +420,51 @@ describe("prChangedFiles", { timeout: 20_000 }, () => {
     expect(read(head, m1)).toEqual({
       ok: true,
       files: ["package.json", "pnpm-lock.yaml"],
-      authors: ["t <t@t>", DEPENDABOT],
+      commits: [T, { author: DEPENDABOT, committer: "t <t@t>" }],
+      blobs: {},
+    });
+    expect(read(bump, m1)).toMatchObject({
+      commits: [{ author: DEPENDABOT, committer: "GitHub <noreply@github.com>" }],
+    });
+    expect(read(amended, m1)).toMatchObject({ commits: [{ author: DEPENDABOT, committer: "t <t@t>" }] });
+  });
+
+  it("reads both sides of every skill and agent file on the list, byte for byte, and nothing else", () => {
+    const skill = "---\nname: s\n---\nbody\n";
+    const m0 = commit(
+      { ".claude/skills/s/SKILL.md": skill, ".claude/agents/gone.md": "---\ntools: Read\n---\n", "a.txt": "a\n" },
+      "m0",
+    );
+    git("checkout", "-q", "-b", "pr");
+    git("rm", "-q", ".claude/agents/gone.md");
+    // Not UTF-8: latin1 keeps every byte.
+    writeFileSync(
+      join(root, ".claude/skills/s/SKILL.md"),
+      Buffer.from([0x2d, 0x2d, 0x2d, 0x0a, 0xff, 0x0a, 0x2d, 0x2d, 0x2d, 0x0a]),
+    );
+    const head = commit(
+      {
+        ".claude/agents/new.md": "---\nhooks: {}\n---\n",
+        ".claude/skills/s/helper.mjs": "x\n",
+        ".claude/rules/r.md": "r\n",
+      },
+      "edit",
+    );
+    expect(read(head, m0)).toEqual({
+      ok: true,
+      files: [
+        ".claude/agents/gone.md",
+        ".claude/agents/new.md",
+        ".claude/rules/r.md",
+        ".claude/skills/s/SKILL.md",
+        ".claude/skills/s/helper.mjs",
+      ],
+      commits: [T],
+      blobs: {
+        ".claude/agents/gone.md": { base: "---\ntools: Read\n---\n", head: null },
+        ".claude/agents/new.md": { base: null, head: "---\nhooks: {}\n---\n" },
+        ".claude/skills/s/SKILL.md": { base: skill, head: "---\n\xff\n---\n" },
+      },
     });
   });
 
@@ -422,7 +484,7 @@ describe("prChangedFiles", { timeout: 20_000 }, () => {
       gitIn(other, "push", "-q", "origin", "pushed");
       const head = gitIn(other, "rev-parse", "HEAD");
       expect(() => gitIn(root, "cat-file", "-e", `${head}^{commit}`)).toThrow();
-      expect(read(head, m1)).toEqual({ ok: true, files: ["CLAUDE.md"], authors: ["t <t@t>"] });
+      expect(read(head, m1)).toEqual({ ok: true, files: ["CLAUDE.md"], commits: [T], blobs: {} });
       expect(() => git("rev-parse", "-q", "--verify", "FETCH_HEAD")).toThrow();
     } finally {
       rmSync(remote, { recursive: true, force: true });
@@ -543,7 +605,7 @@ describe("requiredStatusChecks", () => {
     );
   });
 
-  it("fails for a rule set it cannot read whole, or one that requires no check", () => {
+  it("fails for a rule set it cannot read whole, and answers an empty list for one that requires no check", () => {
     answer({}, 1);
     expect(requiredStatusChecks("niklam/iracedeck", "master", root)).toEqual({
       ok: false,
@@ -551,11 +613,11 @@ describe("requiredStatusChecks", () => {
     });
     answer({ message: "Not Found" });
     expect(requiredStatusChecks("niklam/iracedeck", "master", root)).toMatchObject({ ok: false });
+    // None required is an answer, not a failure: the gate decides what it means.
     answer([{ type: "deletion" }, checks()]);
-    expect(requiredStatusChecks("niklam/iracedeck", "master", root)).toEqual({
-      ok: false,
-      reason: "the rules of master require no status check",
-    });
+    expect(requiredStatusChecks("niklam/iracedeck", "release/3.9", root)).toEqual({ ok: true, contexts: [] });
+    answer([]);
+    expect(requiredStatusChecks("niklam/iracedeck", "release/3.9", root)).toEqual({ ok: true, contexts: [] });
     answer(Array.from({ length: 100 }, () => checks("Typecheck")));
     expect(requiredStatusChecks("niklam/iracedeck", "master", root)).toEqual({
       ok: false,

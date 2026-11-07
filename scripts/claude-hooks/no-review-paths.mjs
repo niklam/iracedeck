@@ -2,8 +2,9 @@
  * The files a PR may change and still skip CodeRabbit (#1648): Claude-facing
  * prose only. Such a PR is opened with `--label no-coderabbit`, nobody can
  * approve it, and it merges under `--admin`, which the merge gate in
- * `rules-bash.mjs` allows past a missing approval only when every file the PR
- * changes matches this list. A `CLAUDE.md` counts only where the repo keeps
+ * `rules-bash.mjs` lets through unasked only when every file the PR changes
+ * matches this list, a skill's or agent's frontmatter unchanged, or Dependabot
+ * wrote the whole PR. A `CLAUDE.md` counts only where the repo keeps
  * them, never at any depth: one under the website's content folder would be
  * published as a page.
  *
@@ -68,4 +69,47 @@ export function isNoReviewPath(file) {
   if (typeof file !== "string" || file === "" || file.includes("\\")) return false;
   if (file.split("/").some((segment) => segment === "" || segment === "." || segment === "..")) return false;
   return MATCHERS.some((re) => re.test(file));
+}
+
+/**
+ * Where a file's frontmatter is configuration rather than prose: a skill's or
+ * an agent's (`tools`, `allowed-tools`, `hooks`, a permission mode). Such a
+ * file stays on the list only while its frontmatter is unchanged
+ * ({@link frontmatterChanged}); a rule's `paths` frontmatter only scopes when
+ * it loads, and is not checked.
+ */
+export const CONFIG_FRONTMATTER_DIRS = Object.freeze([".claude/skills/", ".claude/agents/"]);
+
+/** Whether `file`'s frontmatter is configuration (see {@link CONFIG_FRONTMATTER_DIRS}). */
+export const hasConfigFrontmatter = (file) =>
+  typeof file === "string" && CONFIG_FRONTMATTER_DIRS.some((dir) => file.startsWith(dir));
+
+/**
+ * The frontmatter block of a file's text, read wider than any loader reads it
+ * so a change no loader would miss is never outside it: when the text, past
+ * an optional byte-order mark and any leading whitespace, opens with `---`,
+ * the block is everything from the first byte through the end of the next
+ * line that opens with `---` — or the whole text when no such line follows.
+ * Otherwise the block is empty. The text may be read as latin1, so the
+ * comparison is byte for byte.
+ */
+export function frontmatterBlock(text) {
+  const lead = /^(?:\uFEFF|\xEF\xBB\xBF)?\s*/.exec(text)[0].length;
+  if (!text.startsWith("---", lead)) return "";
+  const firstEnd = text.indexOf("\n", lead);
+  if (firstEnd < 0) return text;
+  // `m`, so `^` is any line's start; `[^\n]*` keeps a CR in the closing line, and the text may end there.
+  const m = /^---[^\n]*(?:\n|(?![^]))/m.exec(text.slice(firstEnd + 1));
+  return m ? text.slice(0, firstEnd + 1 + m.index + m[0].length) : text;
+}
+
+/**
+ * Whether a file's frontmatter block differs between the merge-base text and
+ * the head text — or either side is missing (`null` or `undefined`: the file
+ * was added or deleted, or its text could not be read), which counts as a
+ * change, so a new skill or agent is never prose alone.
+ */
+export function frontmatterChanged(baseText, headText) {
+  if (typeof baseText !== "string" || typeof headText !== "string") return true;
+  return frontmatterBlock(baseText) !== frontmatterBlock(headText);
 }

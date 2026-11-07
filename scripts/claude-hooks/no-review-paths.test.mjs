@@ -2,7 +2,66 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { isNoReviewPath, NO_REVIEW_PATHS } from "./no-review-paths.mjs";
+import {
+  frontmatterBlock,
+  frontmatterChanged,
+  hasConfigFrontmatter,
+  isNoReviewPath,
+  NO_REVIEW_PATHS,
+} from "./no-review-paths.mjs";
+
+// #1648 third round: a skill's or agent's frontmatter is configuration.
+describe("the frontmatter of a skill or agent", () => {
+  const SKILL = "---\nname: x\nallowed-tools: Read\n---\n\n# X\n\nBody.\n";
+
+  it("is checked under .claude/skills/ and .claude/agents/ only", () => {
+    for (const file of [".claude/skills/x/SKILL.md", ".claude/skills/x/ref.md", ".claude/agents/qa.md"])
+      expect(hasConfigFrontmatter(file), file).toBe(true);
+    for (const file of [".claude/rules/hooks.md", ".claude/CLAUDE.md", "scripts/CLAUDE.md", ".claude/skillsx/a.md"])
+      expect(hasConfigFrontmatter(file), file).toBe(false);
+  });
+
+  it("is the block from the first byte through the closing line", () => {
+    expect(frontmatterBlock(SKILL)).toBe("---\nname: x\nallowed-tools: Read\n---\n");
+    expect(frontmatterBlock("---\r\nname: x\r\n---\r\nbody\r\n")).toBe("---\r\nname: x\r\n---\r\n");
+    expect(frontmatterBlock("---\nname: x\n---")).toBe("---\nname: x\n---");
+    // Read wider than a loader: a BOM or leading whitespace still opens one, and is part of it.
+    expect(frontmatterBlock("\xEF\xBB\xBF---\na: 1\n---\nbody")).toBe("\xEF\xBB\xBF---\na: 1\n---\n");
+    expect(frontmatterBlock("\n  ---\na: 1\n---\nbody")).toBe("\n  ---\na: 1\n---\n");
+    // Unterminated: all of it.
+    expect(frontmatterBlock("---\na: 1\nbody\n")).toBe("---\na: 1\nbody\n");
+    expect(frontmatterBlock("---")).toBe("---");
+    // None at all is an empty block, and a later `---` is body.
+    expect(frontmatterBlock("# X\n\n---\na: 1\n---\n")).toBe("");
+    expect(frontmatterBlock("")).toBe("");
+  });
+
+  it("counts a body-only edit as unchanged, and anything in the block as a change", () => {
+    expect(frontmatterChanged(SKILL, SKILL.replace("Body.", "New body.\n\n---\n\nMore."))).toBe(false);
+    expect(frontmatterChanged("# none\n", "# still none\n")).toBe(false);
+    for (const head of [
+      SKILL.replace("allowed-tools: Read", "allowed-tools: Bash"),
+      SKILL.replace("name: x\n", "name: x\nhooks: {}\n"),
+      SKILL.replace("---\n\n# X", "--- \n\n# X"),
+      `---\npermissionMode: bypassPermissions\n---\n${SKILL}`,
+      SKILL.replace(/^---\n/, ""),
+    ])
+      expect(frontmatterChanged(SKILL, head), JSON.stringify(head)).toBe(true);
+    // Added from nothing, or to a file that had none.
+    expect(frontmatterChanged("# X\n", `---\ntools: Bash\n---\n# X\n`)).toBe(true);
+  });
+
+  it("counts a missing side — an added or deleted file, or an unread one — as a change", () => {
+    for (const [base, head] of [
+      [null, SKILL],
+      [SKILL, null],
+      [undefined, SKILL],
+      [SKILL, undefined],
+      [null, null],
+    ])
+      expect(frontmatterChanged(base, head)).toBe(true);
+  });
+});
 
 describe("isNoReviewPath", () => {
   it("takes Claude-facing prose: rules, skills, agents and the CLAUDE.md files where the repo keeps them", () => {
