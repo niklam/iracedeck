@@ -60,6 +60,10 @@ function sdWrites(sdLogger: SDLoggerLike, lineLevel: SDLevelName): boolean {
   return defcon(lineLevel) <= defcon(sdLogger.level as SDLevelName);
 }
 
+/**
+ * What the notice names as the first failure: a Node error's `code` (`ENOSPC`,
+ * `EPERM`, …), else the error's message, else the thrown value as a string.
+ */
 function failureReason(error: unknown): string {
   if (error instanceof Error) {
     const code = (error as { code?: unknown }).code;
@@ -72,6 +76,11 @@ function failureReason(error: unknown): string {
   return String(error);
 }
 
+/**
+ * The `WARN` written before the first line that gets through after a failure:
+ * `Log writes failed; <n> lines were dropped (first failure: <reason>)`, with
+ * the singular for one line.
+ */
 function droppedNotice(failures: LogWriteFailures): string {
   const lines = failures.dropped === 1 ? "1 line was" : `${failures.dropped} lines were`;
 
