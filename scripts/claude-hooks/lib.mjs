@@ -306,36 +306,10 @@ export function replayRebase({ reviewed, head, base, dir }) {
   if (!shas.every((s) => typeof s === "string" && FULL_SHA.test(s)))
     return { ok: false, reason: "a reviewed, head or base sha is missing" };
   const fail = (reason) => ({ ok: false, reason: hookDeadlineSpent() ? "the hook ran out of time" : reason });
-  const env = { GIT_NO_REPLACE_OBJECTS: "1", GIT_GRAFT_FILE: os.devNull };
-  const root = git(["rev-parse", "--show-toplevel"], dir, { env });
-  if (!root.ok) return fail("git could not find the repository");
-  const top = path.resolve(root.out.trim());
-  const g = (args, opts = {}) => git(args, top, { timeoutMs: 15_000, ...opts, env });
-  const present = (s) => g(["cat-file", "-e", `${s}^{commit}`]).ok;
-  const missing = shas.filter((s) => !present(s));
-  if (missing.length) {
-    g(
-      [
-        "fetch",
-        "--quiet",
-        "--no-tags",
-        "--no-write-fetch-head",
-        "--no-auto-maintenance",
-        "origin",
-        ...new Set(missing),
-      ],
-      {
-        timeoutMs: 20_000,
-      },
-    );
-    if (!missing.every(present)) return fail("git could not fetch every commit it needs from origin");
-  }
-  const mergeBase = (s) => {
-    const r = g(["merge-base", "--all", s, base]);
-    if (!r.ok) return { error: "git could not find a merge-base with the PR's base" };
-    const all = r.out.split("\n").filter(Boolean);
-    return all.length === 1 ? { sha: all[0] } : { error: "the history is criss-crossed (more than one merge-base)" };
-  };
+  const g = pinnedGit(dir);
+  if (!g) return fail("git could not find the repository");
+  if (!fetchMissingCommits(g, shas)) return fail("git could not fetch every commit it needs from origin");
+  const mergeBase = (s) => soleMergeBase(g, s, base);
   const mbReviewed = mergeBase(reviewed);
   const mbHead = mergeBase(head);
   if (!mbReviewed.sha || !mbHead.sha) return fail(mbReviewed.error ?? mbHead.error);
@@ -408,6 +382,84 @@ export function replayRebase({ reviewed, head, base, dir }) {
 
 /** Conflicted files the replay line-checks; past this the gate refuses rather than spend the hook's deadline. */
 export const MAX_CONFLICTED_LINE_CHECKS = 20;
+
+/**
+ * A `git` runner at the top level of `dir`'s repository with replace refs and
+ * grafts ignored, so local repository state cannot change what a sha means,
+ * or `undefined` when git finds no repository there. The merge gate's git
+ * reads (`replayRebase`, `prChangedFiles`) all go through one.
+ */
+function pinnedGit(dir) {
+  const env = { GIT_NO_REPLACE_OBJECTS: "1", GIT_GRAFT_FILE: os.devNull };
+  const root = git(["rev-parse", "--show-toplevel"], dir, { env });
+  if (!root.ok) return undefined;
+  const top = path.resolve(root.out.trim());
+  return (args, opts = {}) => git(args, top, { timeoutMs: 15_000, ...opts, env });
+}
+
+/**
+ * Whether every one of `shas` (full commit ids) is in the store once those
+ * missing are fetched from `origin` by sha, in one call, without tags,
+ * `FETCH_HEAD` or automatic maintenance: it writes objects, never a ref.
+ */
+function fetchMissingCommits(g, shas) {
+  const present = (s) => g(["cat-file", "-e", `${s}^{commit}`]).ok;
+  const missing = [...new Set(shas.filter((s) => !present(s)))];
+  if (missing.length === 0) return true;
+  g(["fetch", "--quiet", "--no-tags", "--no-write-fetch-head", "--no-auto-maintenance", "origin", ...missing], {
+    timeoutMs: 20_000,
+  });
+  return missing.every(present);
+}
+
+/**
+ * `{ sha }`, the one merge-base of `a` and `base`, or `{ error }`: git could
+ * not find one, or found several (criss-cross history), where `git merge-base`
+ * would pick one and GitHub merges against a virtual base.
+ */
+function soleMergeBase(g, a, base) {
+  const r = g(["merge-base", "--all", a, base]);
+  if (!r.ok) return { error: "git could not find a merge-base with the PR's base" };
+  const all = r.out.split("\n").filter(Boolean);
+  return all.length === 1 ? { sha: all[0] } : { error: "the history is criss-crossed (more than one merge-base)" };
+}
+
+/**
+ * Every path a PR changes, read with git (#1648): `{ ok: true, files }`, the
+ * repo-relative paths that differ between the merge-base of `head` and `base`
+ * and `head` — the PR's own diff, as GitHub shows it — or `{ ok: false,
+ * reason }`. `head` and `base` are the PR's `headRefOid` and `baseRefOid`,
+ * full shas. The merge gate lets an unapproved `--admin` merge through only
+ * when every path is Claude-facing prose (`no-review-paths.mjs`), so every
+ * uncertain read is a failure, never a shorter list:
+ *
+ * - `--no-renames`, so a rename lists both sides, and a script moved into
+ *   `.claude/rules/` shows the deleted script; `-r` and
+ *   `--ignore-submodules=none`, so neither a directory nor a gitlink hides a
+ *   path; `-z`, so a path comes back as it is, never quoted.
+ * - Plumbing (`diff-tree`), which no diff configuration changes; replace refs
+ *   and grafts ignored, at the repository's top level (`pinnedGit`).
+ * - A commit the checkout lacks is fetched from `origin` by sha, as
+ *   `replayRebase` does; criss-cross history, a failed diff and an empty list
+ *   all fail.
+ */
+export function prChangedFiles({ head, base, dir }) {
+  if (![head, base].every((s) => typeof s === "string" && FULL_SHA.test(s)))
+    return { ok: false, reason: "the PR's head or base sha is missing" };
+  const fail = (reason) => ({ ok: false, reason: hookDeadlineSpent() ? "the hook ran out of time" : reason });
+  const g = pinnedGit(dir);
+  if (!g) return fail("git could not find the repository");
+  if (!fetchMissingCommits(g, [head, base])) return fail("git could not fetch the PR's head and base from origin");
+  const mb = soleMergeBase(g, head, base);
+  if (!mb.sha) return fail(mb.error);
+  const diff = g(["diff-tree", "-r", "--no-renames", "--ignore-submodules=none", "--name-only", "-z", mb.sha, head], {
+    maxBuffer: 16 * 1024 * 1024,
+  });
+  if (!diff.ok) return fail("git could not list the files the PR changes");
+  const files = [...new Set(diff.out.split("\0").filter(Boolean))].sort();
+  if (files.length === 0) return fail("git lists no file the PR changes");
+  return { ok: true, files };
+}
 
 /**
  * Whether the PR's base moved under it after `sinceIso` (#1307): a retarget

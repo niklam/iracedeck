@@ -14,6 +14,7 @@ import {
   MAX_CONFLICTED_LINE_CHECKS,
   memoizeBoardStatusField,
   moveBoardItemAfter,
+  prChangedFiles,
   prComments,
   readIndexFile,
   replayRebase,
@@ -312,6 +313,130 @@ describe("replayRebase", { timeout: 20_000 }, () => {
       expect(env.GIT_NO_REPLACE_OBJECTS).toBe("1");
       expect(env.GIT_GRAFT_FILE).toBeTruthy();
     }
+  });
+});
+
+// #1648: the files a PR changes, which decide whether an unapproved --admin merge passes.
+// 20 s per case, as for the replay: real git subprocesses.
+describe("prChangedFiles", { timeout: 20_000 }, () => {
+  const ID = ["-c", "user.email=t@t", "-c", "user.name=t"];
+  const gitIn = (dir, ...args) =>
+    execFileSync("git", [...ID, ...args], { cwd: dir, stdio: "pipe" })
+      .toString()
+      .trim();
+  const commit = (files, msg = "c") => {
+    for (const [name, text] of Object.entries(files)) {
+      mkdirSync(join(root, name, ".."), { recursive: true });
+      writeFileSync(join(root, name), text);
+    }
+    git("add", "-A");
+    git("commit", "-qm", msg);
+    return gitIn(root, "rev-parse", "HEAD");
+  };
+  const read = (head, base, dir = root) => prChangedFiles({ head, base, dir });
+  /** master: m0 → m1 (touches README.md); the PR branches at m0. */
+  const arrange = () => {
+    const m0 = commit({ "README.md": "r\n", "scripts/x.mjs": "export {};\n", ".claude/rules/a.md": "a\n" }, "m0");
+    git("checkout", "-q", "-b", "pr");
+    git("checkout", "-q", "master");
+    const m1 = commit({ "README.md": "r moved\n" }, "m1");
+    git("checkout", "-q", "pr");
+    return { m0, m1 };
+  };
+
+  it("lists the PR's own changes, never the base's after the branch point", () => {
+    const { m1 } = arrange();
+    const head = commit({ ".claude/rules/a.md": "a edited\n", "packages/p/CLAUDE.md": "p\n" }, "prose");
+    expect(read(head, m1)).toEqual({ ok: true, files: [".claude/rules/a.md", "packages/p/CLAUDE.md"] });
+  });
+
+  it("lists both sides of a rename, so a script moved into the rules shows as deleted", () => {
+    const { m1 } = arrange();
+    git("mv", "scripts/x.mjs", ".claude/rules/x.md");
+    git("commit", "-qm", "move");
+    const head = gitIn(root, "rev-parse", "HEAD");
+    expect(read(head, m1)).toEqual({ ok: true, files: [".claude/rules/x.md", "scripts/x.mjs"] });
+  });
+
+  it("leaves out a base merged into the PR (GitHub's Update branch)", () => {
+    const { m1 } = arrange();
+    commit({ ".claude/rules/a.md": "a edited\n" }, "prose");
+    git("merge", "-q", "--no-edit", m1);
+    const head = gitIn(root, "rev-parse", "HEAD");
+    expect(read(head, m1)).toEqual({ ok: true, files: [".claude/rules/a.md"] });
+  });
+
+  it("returns a path as it is, never quoted, and runs from the repository root", () => {
+    const { m1 } = arrange();
+    const head = commit({ ".claude/skills/ä x/SKILL.md": "s\n" }, "unicode");
+    expect(read(head, m1, join(root, "scripts"))).toEqual({ ok: true, files: [".claude/skills/ä x/SKILL.md"] });
+  });
+
+  it("fetches a head only origin has", () => {
+    const { m1 } = arrange();
+    const remote = mkdtempSync(join(tmpdir(), "ird-hooks-origin-"));
+    const other = mkdtempSync(join(tmpdir(), "ird-hooks-other-"));
+    try {
+      gitIn(remote, "init", "-q", "--bare");
+      git("remote", "add", "origin", remote);
+      git("push", "-q", "origin", "master");
+      gitIn(other, "clone", "-q", remote, ".");
+      gitIn(other, "checkout", "-q", "-b", "pushed", m1);
+      writeFileSync(join(other, "CLAUDE.md"), "root\n");
+      gitIn(other, "add", "-A");
+      gitIn(other, "commit", "-qm", "pushed elsewhere");
+      gitIn(other, "push", "-q", "origin", "pushed");
+      const head = gitIn(other, "rev-parse", "HEAD");
+      expect(() => gitIn(root, "cat-file", "-e", `${head}^{commit}`)).toThrow();
+      expect(read(head, m1)).toEqual({ ok: true, files: ["CLAUDE.md"] });
+      expect(() => git("rev-parse", "-q", "--verify", "FETCH_HEAD")).toThrow();
+    } finally {
+      rmSync(remote, { recursive: true, force: true });
+      rmSync(other, { recursive: true, force: true });
+    }
+  });
+
+  it("fails, never lists fewer files, for every read it cannot make", () => {
+    const { m1 } = arrange();
+    const head = commit({ ".claude/rules/a.md": "a edited\n" }, "prose");
+    expect(read("HEAD", m1)).toEqual({ ok: false, reason: "the PR's head or base sha is missing" });
+    expect(read(head, undefined)).toEqual({ ok: false, reason: "the PR's head or base sha is missing" });
+    // No origin to fetch from.
+    expect(read("f".repeat(40), m1)).toEqual({
+      ok: false,
+      reason: "git could not fetch the PR's head and base from origin",
+    });
+    // A head with nothing of its own: the base itself.
+    expect(read(m1, m1)).toEqual({ ok: false, reason: "git lists no file the PR changes" });
+    const outside = mkdtempSync(join(tmpdir(), "ird-hooks-norepo-"));
+    try {
+      expect(read(head, m1, outside)).toEqual({ ok: false, reason: "git could not find the repository" });
+    } finally {
+      rmSync(outside, { recursive: true, force: true });
+    }
+    setHookDeadline(Date.now() - 1);
+    try {
+      expect(read(head, m1)).toEqual({ ok: false, reason: "the hook ran out of time" });
+    } finally {
+      setHookDeadline(Infinity);
+    }
+  });
+
+  it("refuses criss-cross history, where the merge-base is not one commit", () => {
+    commit({ "a.txt": "a\n" }, "m0");
+    git("checkout", "-q", "-b", "x");
+    const x1 = commit({ "x.txt": "x\n" }, "x1");
+    git("checkout", "-q", "master");
+    const y1 = commit({ "y.txt": "y\n" }, "y1");
+    git("merge", "-q", "--no-edit", x1);
+    const base = gitIn(root, "rev-parse", "HEAD");
+    git("checkout", "-q", "x");
+    git("merge", "-q", "--no-edit", y1);
+    const head = commit({ "CLAUDE.md": "c\n" }, "prose");
+    expect(read(head, base)).toEqual({
+      ok: false,
+      reason: "the history is criss-crossed (more than one merge-base)",
+    });
   });
 });
 
