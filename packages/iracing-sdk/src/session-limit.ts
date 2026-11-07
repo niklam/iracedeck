@@ -14,7 +14,9 @@
  * This module owns five things. The first three are shared by every consumer —
  * the fuel laps-left callouts (`sim-events-iracing`), the gap callouts'
  * closing-announcement horizon (`resolveGapLapsRemaining` in the translator,
- * #1311), Session Info's Time Remaining key and the template context's
+ * #1311, which applies the rule to the race leader's remaining crossings
+ * before converting them into the player's distance to their own flag,
+ * #1380), Session Info's Time Remaining key and the template context's
  * `session.laps_remaining` and `session.time_remaining`:
  *
  *   1. decoding the two sentinels,
@@ -37,9 +39,11 @@
  * estimate's white-flag clamp, its lap-fraction subtraction, its prediction
  * of the leader's chequered flag (`leader-finish.ts` in `sim-events-iracing`,
  * #1405) and the `+2 × leaderLap` bound it falls back to while the clock is
- * still running and the leader's finish cannot be predicted. Those describe how well that one estimate knows
- * its own side and stay with it; what is shared is the policy of comparing the
- * two sides once each is expressed in laps.
+ * still running and the leader's finish cannot be predicted — nor the gap
+ * horizon's conversion from the leader's crossings to the player's laps.
+ * Those describe how well each consumer knows its own side and stay with it;
+ * what is shared is the policy of comparing the two sides once each is
+ * expressed in laps.
  */
 import { IRSDK_UNLIMITED_LAPS, IRSDK_UNLIMITED_TIME, type TelemetryData } from "./types.js";
 

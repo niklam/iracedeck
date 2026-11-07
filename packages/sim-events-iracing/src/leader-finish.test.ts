@@ -2,7 +2,8 @@
  * Unit tests for the leader's chequered-flag prediction (issue #1405): the
  * shared white-crossing index, the fuel estimate's near-tie tolerance, and
  * `predictLeaderChequered` on a running clock, an expired one, and every
- * case it cannot answer.
+ * case it cannot answer; and the lap-count test and count the fuel estimate
+ * shares with the gap horizon (issue #1380).
  */
 import { IRSDK_UNLIMITED_TIME, type TelemetryData, TrkLoc } from "@iracedeck/iracing-sdk";
 import { describe, expect, it } from "vitest";
@@ -16,11 +17,16 @@ import {
   isClockExpiredReading,
   isClockExpiryConfirmed,
   LAP_LINE_GUARD_PCT,
+  lapCountCrossings,
   type LeaderClockExpiry,
+  type LeaderGap,
   leaderWhiteCrossingIndex,
   predictLeaderChequered,
+  readLapFraction,
   readLeaderGap,
+  readLeaderGapAt,
   resolveLeaderFinish,
+  staysWithinLapAtChequered,
 } from "./leader-finish.js";
 
 /** The seconds half of `predictLeaderChequered`, `null` without a prediction. */
@@ -265,6 +271,29 @@ describe("predictLeaderChequered — crossings and seconds from one count", () =
   });
 });
 
+describe("readLapFraction", () => {
+  const pcts = (values: number[]): TelemetryData => ({ CarIdxLapDistPct: values }) as TelemetryData;
+
+  it("reads a position on the lap, the line included", () => {
+    expect(readLapFraction(pcts([0, 0.5, 0.999]), 0)).toBe(0);
+    expect(readLapFraction(pcts([0, 0.5, 0.999]), 1)).toBe(0.5);
+    expect(readLapFraction(pcts([0, 0.5, 0.999]), 2)).toBe(0.999);
+  });
+
+  it("reads nothing that is not one", () => {
+    // Off world, a full lap or more, not a number.
+    for (const value of [-1, 1, 1.2, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(readLapFraction(pcts([value]), 0)).toBeNull();
+    }
+
+    // No such car, no array.
+    expect(readLapFraction(pcts([0.5]), 1)).toBeNull();
+    expect(readLapFraction(pcts([0.5]), -1)).toBeNull();
+    expect(readLapFraction(pcts([0.5]), 0.5)).toBeNull();
+    expect(readLapFraction({} as TelemetryData, 0)).toBeNull();
+  });
+});
+
 describe("readLeaderGap", () => {
   // The player is car 0, the leader car 1.
   const counted = (lapsCompleted: number[], pcts: number[]): TelemetryData =>
@@ -297,6 +326,13 @@ describe("readLeaderGap", () => {
     expect(readLeaderGap(counted([8, 8, 6], [Number.NaN, 0.57, 0.1]), ORDER, 0)).toBeNull();
   });
 
+  it("reads the same gap from the leader's index as from the order", () => {
+    const telemetry = counted([7, 8, 6], [0.55, 0.2, 0.1]);
+
+    expect(readLeaderGapAt(telemetry, 1, 0)).toEqual(readLeaderGap(telemetry, ORDER, 0));
+    expect(readLeaderGapAt(telemetry, -1, 0)).toBeNull();
+  });
+
   it("does not trust a car within the line guard, where the lap count and fraction can disagree around a crossing", () => {
     expect(LAP_LINE_GUARD_PCT).toBe(0.03);
     expect(readLeaderGap(counted([8, 8, 6], [0.55, 0.02, 0.1]), ORDER, 0)).toBeNull();
@@ -305,6 +341,46 @@ describe("readLeaderGap", () => {
     expect(readLeaderGap(counted([8, 8, 6], [0.975, 0.57, 0.1]), ORDER, 0)).toBeNull();
     // Just outside it, both read.
     expect(readLeaderGap(counted([8, 8, 6], [0.04, 0.96, 0.1]), ORDER, 0)).not.toBeNull();
+  });
+});
+
+describe("staysWithinLapAtChequered (issue #1380)", () => {
+  const gapOf = (distanceLaps: number): LeaderGap => ({ leaderLapsCompleted: 8, playerLapsCompleted: 7, distanceLaps });
+
+  it("keeps a player on the leader's pace within a lap whatever the time left", () => {
+    expect(staysWithinLapAtChequered(gapOf(0.65), 3600, 100, 100)).toBe(true);
+    expect(staysWithinLapAtChequered(gapOf(-0.5), 3600, 100, 100)).toBe(true);
+  });
+
+  it("refuses a gap of a lap or more now, either side", () => {
+    expect(staysWithinLapAtChequered(gapOf(1), 0, 100, 100)).toBe(false);
+    expect(staysWithinLapAtChequered(gapOf(-1), 0, 100, 100)).toBe(false);
+    expect(staysWithinLapAtChequered(gapOf(1.2), 0, 100, 90)).toBe(false);
+  });
+
+  it("projects a slower player's gap to the flag: lapped before it is not within a lap", () => {
+    // 0.65 laps down, 1 % slower: 1000 s at the flag adds 1000 · (1/100 − 1/101) ≈ 0.099 laps.
+    expect(staysWithinLapAtChequered(gapOf(0.65), 1000, 100, 101)).toBe(true);
+    // 5000 s adds ≈ 0.495 laps: lapped before the flag.
+    expect(staysWithinLapAtChequered(gapOf(0.65), 5000, 100, 101)).toBe(false);
+  });
+
+  it("keeps a faster player, whose projected gap shrinks", () => {
+    expect(staysWithinLapAtChequered(gapOf(0.9), 5000, 100, 95)).toBe(true);
+  });
+});
+
+describe("lapCountCrossings (issue #1380)", () => {
+  it("is the leader's crossings on the same lap", () => {
+    expect(lapCountCrossings({ leaderLapsCompleted: 8, playerLapsCompleted: 8, distanceLaps: 0.2 }, 3)).toBe(3);
+  });
+
+  it("adds a lap for a player a lap down on the counter but within a lap on distance", () => {
+    expect(lapCountCrossings({ leaderLapsCompleted: 8, playerLapsCompleted: 7, distanceLaps: 0.65 }, 3)).toBe(4);
+  });
+
+  it("takes one off for a player across the line just ahead of the leader", () => {
+    expect(lapCountCrossings({ leaderLapsCompleted: 8, playerLapsCompleted: 9, distanceLaps: -0.1 }, 3)).toBe(2);
   });
 });
 

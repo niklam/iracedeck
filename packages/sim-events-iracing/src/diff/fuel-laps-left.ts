@@ -102,7 +102,9 @@ import {
   countClockExpiredTicks,
   fuelFinishToleranceLaps,
   isClockExpiredReading,
+  lapCountCrossings,
   type LeaderFinish,
+  staysWithinLapAtChequered,
 } from "../leader-finish.js";
 import type { FuelCalloutState } from "../state.js";
 import type { FuelStats } from "./fuel-laps.js";
@@ -381,12 +383,11 @@ export function resolveFuelRaceCoverage(
       Number.isInteger(lapCount.crossings) &&
       lapCount.crossings >= 1 &&
       gap !== null &&
-      Math.abs(gap.distanceLaps) < 1 &&
-      // The gap projected to the leader's chequered flag at the same pace:
-      // still inside a lap.
-      gap.distanceLaps + lapCount.inS * (1 / lapCount.lapTimeS - 1 / playerLap) < 1
+      // Within a lap now, and the gap projected to the leader's chequered
+      // flag at the same pace still inside one.
+      staysWithinLapAtChequered(gap, lapCount.inS, lapCount.lapTimeS, playerLap)
     ) {
-      timedLapsAfterCurrent = Math.max(0, gap.leaderLapsCompleted + lapCount.crossings - gap.playerLapsCompleted - 1);
+      timedLapsAfterCurrent = Math.max(0, lapCountCrossings(gap, lapCount.crossings) - 1);
     } else if (leaderChequeredS !== null) {
       // `t` is 0 once the clock has expired, leaving only the fixed part of
       // the tolerance.

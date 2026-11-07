@@ -391,11 +391,12 @@ export function diffGaps(
   getThresholdSeconds: () => number,
   emit: EmitFn<(typeof GAPS_EVENTS)[number]>,
   /**
-   * The leader's remaining line crossings, the chequered one included, by
-   * whichever limit ends the race first (`resolveGapLapsRemaining` in the
-   * translator, #1311; null = unknown/unlimited). Caps the
-   * closing-announcement horizon — a projected catch that completes after the
-   * checkered is never announced.
+   * The player's distance to their own chequered flag, in laps: their
+   * remaining line crossings, the chequered one included, less their lap
+   * fraction (`resolveGapLapsRemaining` in the translator, #1311, #1380;
+   * null = unknown/unlimited). The unit of `lapsToContact`, which it caps in
+   * the closing-announcement horizon — a projected catch that completes
+   * after the player's flag is never announced.
    */
   lapsRemaining: number | null = null,
   /**
@@ -995,9 +996,11 @@ function resetCalloutBookkeeping(state: TranslatorState, side: Side): void {
  *
  * Closing: with a sustained closing rate, `gapSeconds ÷ rate` projects the
  * laps until contact. An announcement fires when that projection first
- * drops inside {@link GAP_CONTACT_HORIZON_LAPS} — capped by the laps
- * actually remaining, so a catch that completes after the checkered is
- * never announced — and again each time the projection roughly halves.
+ * drops inside {@link GAP_CONTACT_HORIZON_LAPS} — capped by the player's
+ * distance to their own chequered flag (`lapsRemaining`, in the same unit
+ * as the projection, #1380), so a catch that completes after the player's
+ * flag is never announced — and again each time the projection roughly
+ * halves.
  * The episode re-arms once the threat clearly recedes.
  *
  * Opening: a breakaway — a small gap (≤ {@link GAP_BREAKAWAY_MAX_GAP_S})
@@ -1171,7 +1174,13 @@ function updateStability(state: TranslatorState, side: Side): boolean {
   return ticks >= GAP_STABLE_TICKS_FOR_CALLOUTS;
 }
 
-/** Evaluate one side's closing-threat projection and breakaway episode. */
+/**
+ * Evaluate one side's closing-threat projection and breakaway episode. The
+ * closing projection is announced only inside the horizon
+ * `min(GAP_CONTACT_HORIZON_LAPS, lapsRemaining)`, both in the player's laps:
+ * `lapsToContact` is the player's distance to the catch, `lapsRemaining` their
+ * distance to their own chequered flag (#1380), `null` for no cap.
+ */
 function processRelevance(
   state: TranslatorState,
   telemetry: TelemetryData,

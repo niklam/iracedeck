@@ -173,6 +173,30 @@ export const LAP_TIME_REFRESH_ALLOWANCE_MS = 2000;
 /** The value iRacing writes to `LapLastLapTime` for a lap it did not count (issue #1582). */
 const REFUSED_LAP_TIME = -1;
 
+/**
+ * Whether the player took the chequered flag at the crossing that completed
+ * lap `lapCompleted` (issues #569, #1278): the crossing record shows the flag
+ * already flying when they crossed (`state.lapCrossing`, the #771 rule), or
+ * the flag diff resolved it for that lap (`state.flagCheckeredTakenLap`, the
+ * deferred resolution and the winner grace). The one test of a finish, read
+ * by {@link diffLaps}, which records the finish in `state.raceFinish` only
+ * when it emits the lap — after the lap-time and standings waits, up to
+ * seconds later — and by the gap horizon (#1380), which must know on the
+ * crossing tick itself. Both inputs are written on that tick, by
+ * `diffFlags` and by this diff's crossing record, which runs before any of
+ * its waits.
+ *
+ * Pure, and race-agnostic: a caller outside a race session must not ask.
+ *
+ * @param state - the translator state, after this tick's `diffFlags` and `diffLaps`
+ * @param lapCompleted - the player's `LapCompleted`, `-1` when unknown
+ */
+export function tookChequeredAt(state: TranslatorState, lapCompleted: number): boolean {
+  const crossing = state.lapCrossing;
+
+  return (crossing.lap === lapCompleted && crossing.underCheckered) || state.flagCheckeredTakenLap === lapCompleted;
+}
+
 /** The events {@link diffLaps} emits (issue #1499): its emitter's type, and its row in `TICK_ORDER`. */
 export const LAPS_EVENTS = [
   "lap.completed",
@@ -592,9 +616,7 @@ export function diffLaps(
   // satisfies. The finish itself is recorded whether or not a position was
   // read (issue #1278), because a cool-down lap usually ends in the pits and
   // never brings that retry.
-  const tookCheckered =
-    sessionType === "race" &&
-    ((crossing.lap === lapCompleted && crossing.underCheckered) || state.flagCheckeredTakenLap === lapCompleted);
+  const tookCheckered = sessionType === "race" && tookChequeredAt(state, lapCompleted);
 
   if (tookCheckered && state.raceFinish === null) {
     state.raceFinish = { sessionNum, lap: lapCompleted };
