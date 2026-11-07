@@ -23,6 +23,7 @@ import {
   readInput,
   readRepoFile,
   replayRebase,
+  requiredStatusChecks,
   setHookDeadline,
   specFilenames,
   toplevel,
@@ -108,10 +109,13 @@ if (typeof command === "string" && command.trim()) {
         repoEnv(repo),
       ),
     ),
-    // The merge gate's pure-rebase check (#1307), and its read of the files an
-    // unapproved `--admin` merge changes (#1648).
+    // The merge gate's pure-rebase check (#1307), and its read of the files and
+    // commit authors of a PR merged under `--admin` (#1648).
     replayRebase,
     prChangedFiles,
+    // The status checks the base branch's rules require, which a qualifying
+    // `--admin` merge must show green (#1648), read of the confirmed repository.
+    requiredChecks: memo((repo, branch, dir) => requiredStatusChecks(repo, branch, dir, repoEnv(repo))),
     // Both read the repository the gate confirmed, as GH_REPO (#1393).
     baseChangedSince: memo((n, since, dir, repo) => baseChangedSince(n, since, dir, repoEnv(repo))),
     // CodeRabbit's summary comment, read only for a head without a review object of its own (#1386).

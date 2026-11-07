@@ -832,40 +832,90 @@ function unreviewedHeadVerdict(merge, pr, bot, ctx, isBackMerge) {
  */
 const isDependabot = (author) => author?.is_bot === true && author?.login === "app/dependabot";
 
+/** Dependabot's commit author line, as GitHub writes it on every commit it makes. */
+export const DEPENDABOT_COMMIT_AUTHOR = "dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>";
+
 /**
- * The verdict for an unapproved PR merged under `--admin` (#1648), called once
- * every other check has passed and the only block left is the missing
- * approval (`BLOCKED` with `REVIEW_REQUIRED`): `null` to let it through, or a
- * deny. Nobody can approve a PR CodeRabbit does not review, so the admin
- * bypass is how it merges; the gate ties that bypass to the PRs it is for.
- *
- * It passes when Dependabot opened the PR, or when every file the PR changes
- * is Claude-facing prose (`NO_REVIEW_PATHS`), read with git at the head
- * (`prChangedFiles` in `lib.mjs`) — never the `no-coderabbit` label, which
- * only decides whether CodeRabbit spends a review. A read that fails refuses,
- * naming what failed, and a file off the list is named in the refusal. Then
- * the merge must be pinned with the full `--match-head-commit <head>`, the
- * head the files were read at, so a push between the read and the merge
- * cannot slip a file in. Spec:
- * `docs/superpowers/specs/2026-11-07-issue-1648-no-coderabbit-admin-merge.md`.
+ * Whether an `--admin` merge is one the bypass is for (#1648): `{ ok: true }`,
+ * or `{ ok: false, why, off }` with the reason, and the files off the list
+ * when that is the reason. It is when Dependabot opened the PR and wrote
+ * every commit on it, or when every file the PR changes is Claude-facing
+ * prose (`NO_REVIEW_PATHS`); both are read with git at the head
+ * (`prChangedFiles` in `lib.mjs`), never from the `no-coderabbit` label, which
+ * only decides whether CodeRabbit spends a review. A Dependabot PR carrying
+ * anyone else's commit is judged on its files like any PR. A read that fails
+ * is a no, never a pass, and a release back-merge is never one: the bypass
+ * keeps `--squash`.
  */
-function unapprovedAdminVerdict(merge, pr, ctx) {
+function adminQualifies(pr, ctx, isBackMerge) {
+  if (isBackMerge) return { ok: false, why: "a release back-merge never is" };
+  const read = ctx.prChangedFiles?.({ head: pr.headRefOid, base: pr.baseRefOid, dir: ctx.cwd });
+  if (!read?.ok)
+    return {
+      ok: false,
+      why: `the gate could not read the files it changes: ${read?.reason ?? "the read did not run"}`,
+    };
+  const byDependabot = isDependabot(pr.author);
+  if (byDependabot && read.authors?.length && read.authors.every((a) => a === DEPENDABOT_COMMIT_AUTHOR))
+    return { ok: true };
+  const off = read.files.filter((f) => !isNoReviewPath(f));
+  if (off.length === 0) return { ok: true };
+  const foreign = byDependabot ? " (Dependabot opened it, but not every commit on it is Dependabot's)" : "";
+  return { ok: false, why: `it changes ${names(off)}, off the prose list${foreign}`, off };
+}
+
+/**
+ * The verdict for a merge under `--admin` (#1648), called once every check
+ * the gate makes of any `--admin` merge has passed: `null`, an ask, or a deny.
+ * `--admin` skips the review checks, so it would merge a head CodeRabbit never
+ * reviewed (an approval survives a push here); every such merge is therefore
+ * judged for whether it qualifies (`adminQualifies`), whatever GitHub's
+ * `mergeStateStatus` says — an unapproved PR reads `UNKNOWN` while GitHub
+ * computes it.
+ *
+ * - **Not qualifying:** refused while it is BLOCKED (an unapproved PR off the
+ *   list has no business merging), otherwise an ask, so it runs only on
+ *   Niklas's word. Either way the files off the list, or the failed read, are
+ *   named.
+ * - **Qualifying:** the merge must be pinned with the full
+ *   `--match-head-commit <head>`, the head the files were read at, so a push
+ *   between the read and the merge cannot slip a file in; a review that
+ *   asked for changes refuses whatever the merge state; and every status
+ *   check the base branch's rules require must be in the rollup and green
+ *   (`requiredStatusChecks` in `lib.mjs`), since BLOCKED, which the bypass
+ *   sets aside for the missing approval, also stands for a required check
+ *   that never reported. A rule set the gate cannot read refuses.
+ *
+ * Spec: `docs/superpowers/specs/2026-11-07-issue-1648-no-coderabbit-admin-merge.md`.
+ */
+function adminVerdict(merge, pr, ctx, isBackMerge) {
   const head = pr.headRefOid;
-  const refuse = (why) =>
-    `Not merging PR #${pr.number} at ${head.slice(0, 9)}: it is BLOCKED for want of an approval (REVIEW_REQUIRED), and \`--admin\` passes that only for a PR Dependabot opened or one whose every file is Claude-facing prose (${NO_REVIEW_PATHS.join(", ")}; .claude/rules/code-review.md, "PRs that skip CodeRabbit") — ${why}.`;
-  if (!isDependabot(pr.author)) {
-    const read = ctx.prChangedFiles?.({ head, base: pr.baseRefOid, dir: ctx.cwd });
-    if (!read?.ok)
-      return refuse(`the gate could not read the files it changes: ${read?.reason ?? "the file read did not run"}`);
-    const off = read.files.filter((f) => !isNoReviewPath(f));
-    if (off.length)
-      return refuse(
-        `it changes ${names(off)}, off that list, so it needs CodeRabbit's review and an approval: take any \`no-coderabbit\` label off and ask \`@coderabbitai review\``,
-      );
+  const at = `PR #${pr.number} at ${head.slice(0, 9)}`;
+  const list = `${NO_REVIEW_PATHS.join(", ")}; .claude/rules/code-review.md, "PRs that skip CodeRabbit"`;
+  const q = adminQualifies(pr, ctx, isBackMerge);
+  if (!q.ok) {
+    if (pr.mergeStateStatus === "BLOCKED")
+      return `Not merging ${at}: it is BLOCKED for want of an approval (REVIEW_REQUIRED), and \`--admin\` passes that only for a PR whose every file is Claude-facing prose (${list}) or one Dependabot wrote whole — ${q.why}${
+        q.off
+          ? ", so it needs CodeRabbit's review and an approval: take any `no-coderabbit` label off and ask `@coderabbitai review`"
+          : ""
+      }.`;
+    return {
+      ask: `${at} merges under \`--admin\`, which skips CodeRabbit's review at the head, and it is not a PR the bypass is for (${list}) — ${q.why}. An \`--admin\` merge off the prose list runs only on Niklas's word: the maintainer confirms.`,
+    };
   }
   // GitHub takes only a full sha here, so a prefix would be a merge that can never go through.
   if (!FULL_SHA.test(merge.pin ?? "") || merge.pin !== head)
-    return `Not merging PR #${pr.number}: it may merge unapproved under \`--admin\` only at the head the gate read, so pin it: add \`--match-head-commit ${head}\`.`;
+    return `Not merging ${at}: it may merge under \`--admin\` only at the head the gate read, so pin it: add \`--match-head-commit ${head}\`.`;
+  if (pr.reviewDecision === "CHANGES_REQUESTED")
+    return `Not merging ${at}: a review asked for changes (CHANGES_REQUESTED), which \`--admin\` never passes.`;
+  const required = ctx.requiredChecks?.(repoOfUrl(pr.url), pr.baseRefName, ctx.cwd);
+  if (!required?.ok)
+    return `Not merging ${at}: the gate could not read the status checks ${pr.baseRefName ?? "the base branch"} requires (${required?.reason ?? "the read did not run"}), and \`--admin\` must not skip one.`;
+  const rollup = pr.statusCheckRollup ?? [];
+  const missing = required.contexts.filter((c) => !rollup.some((x) => checkName(x) === c && classifyCheck(x) === "ok"));
+  if (missing.length)
+    return `Not merging ${at}: ${pr.baseRefName} requires ${names(missing)}, not reported green at the head, and \`--admin\` must not skip a required check.`;
   return null;
 }
 
@@ -1075,10 +1125,9 @@ export const rules = [
       if (!isBackMerge && !squash) problems.push("feature/fix PRs are squash-merged (--squash)");
       if (!isBackMerge && regular) problems.push("feature/fix PRs are squash-merged, not --merge/--rebase");
       const admin = flag("--admin");
-      // #1648: under `--admin`, the one block an unapproved PR may pass is the
-      // missing approval itself, and only for the PRs the bypass is for —
-      // judged last (`unapprovedAdminVerdict`), since it costs git work. Any
-      // other `--admin` skips the review checks and nothing more, as before.
+      // #1648: `--admin` skips the review checks; whether the PR is one the
+      // bypass is for is judged last (`adminVerdict`), since it costs git and
+      // gh work. The one block it may then pass is the missing approval itself.
       const unapproved =
         admin && !isBackMerge && pr.mergeStateStatus === "BLOCKED" && pr.reviewDecision === "REVIEW_REQUIRED";
       const bot = coderabbitReviews(pr.reviews);
@@ -1110,12 +1159,12 @@ export const rules = [
           }`,
         );
       if (problems.length === 0) {
-        if (unapproved) return unapprovedAdminVerdict(merge, pr, ctx);
+        if (admin) return adminVerdict(merge, pr, ctx, isBackMerge);
         return rebaseCheck ? unreviewedHeadVerdict(merge, pr, bot, ctx, isBackMerge) : null;
       }
       if (unapproved)
         problems.push(
-          "mergeStateStatus is BLOCKED (REVIEW_REQUIRED; whether `--admin` may merge it unapproved — only Claude-facing prose or a Dependabot PR — is read once the rest is green)",
+          "mergeStateStatus is BLOCKED (REVIEW_REQUIRED; whether `--admin` may merge it unapproved — only Claude-facing prose or a PR Dependabot wrote whole — is read once the rest is green)",
         );
       if (rebaseCheck)
         problems.push(
