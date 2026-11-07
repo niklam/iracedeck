@@ -20,7 +20,7 @@ If you are picking up an issue, read this first. In the agent team (#1520) the P
 | 8   | Manual testing                                             | **blocks the PR**       | below                                                                       |
 | 9   | Push, open the PR                                          | —                       | `@.claude/rules/build-and-commit.md`                                        |
 | 10  | Babysit the review                                         | every thread answered   | below                                                                       |
-| 11  | Merge                                                      | approved + checks green **at the current head** | `@.claude/rules/build-and-commit.md`                    |
+| 11  | Merge                                                      | approved (a `no-coderabbit` PR: prose only) + checks green **at the current head** | `@.claude/rules/build-and-commit.md` |
 | 12  | Watch **all four** post-merge runs to completion           | a red result goes to the PO                     | below                                                   |
 | 13  | Remove the worktree                                        | —                                               | `@.claude/rules/build-and-commit.md`                    |
 
@@ -102,7 +102,7 @@ Once CodeRabbit has approved and the checks are green, **the issue lead merges**
 
 **An approval and a green check are both head-specific.** Neither travels with a push, while the PR still displays the old approval beside the new head, so the merge hook judges both at the **current** head (`@.claude/rules/hooks.md` has what it accepts in place of a fresh review). Each refusal names the condition that failed and what to add or ask for. A `mergeStateStatus` of `BLOCKED` while you believe everything is green means the hook will refuse, except for a `no-coderabbit` PR whose only block is the missing approval (above).
 
-Issue work reaches a target branch only through an approved PR. Two documented paths do not: a maintainer-directed **Master** work mode, and a release **back-merge**. Neither is an excuse to skip the PR on issue work.
+Issue work reaches a target branch only through an approved PR, or a `no-coderabbit` PR the merge hook has judged prose-only. Two documented paths do not: a maintainer-directed **Master** work mode, and a release **back-merge**. Neither is an excuse to skip the PR on issue work.
 
 ### The merge is not finished until the post-merge run is (12)
 
