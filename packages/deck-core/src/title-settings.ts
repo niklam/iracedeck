@@ -85,7 +85,7 @@ export {
   dimForBindingWarning,
 } from "@iracedeck/icon-composer";
 
-// Replay busy marks (issue #1437)
+// Busy marks (issue #1437; the replay keys are the first users)
 export { BUSY_MARK_FRAMES, BUSY_NOT_DONE_COLOR, busyMarkSvg, type BusyMark } from "@iracedeck/icon-composer";
 
 // ---------------------------------------------------------------------------

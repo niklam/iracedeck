@@ -105,72 +105,106 @@ pnpm dev:voices off
 
 ## Project Structure
 
-A pnpm monorepo built with [Turborepo](https://turbo.build/):
+A pnpm monorepo built with [Turborepo](https://turbo.build/). Its packages are grouped below the way `.claude/CLAUDE.md` groups them; how they depend on each other and how data flows between them is on the [Architecture](https://iracedeck.com/docs/development/architecture/) page.
 
 ```text
 packages/
-  iracing-actions/         Platform-agnostic iRacing action implementations
-  deck-adapter-elgato/     Elgato Stream Deck adapter (bridges Elgato SDK to deck-core)
-  deck-adapter-mirabox/    Mirabox VSD Craft adapter (WebSocket protocol to deck-core)
-  deck-adapter-ulanzi/     Ulanzi Deck adapter (UlanziStudio WebSocket protocol to deck-core)
-  deck-core/               Platform-agnostic base classes, types, and shared utilities
-  settings/                Global settings below the deck layer: schema, settings store, migrations, PI warnings
-  voice-packs/             Race Engineer voice packs: scanner, catalog, installer, launch step, voice labels
-  replay-store/            Per-session replay store: replay markers, the lap record, the greens, the session starts and the incidents, one file per session
-  replay-engine/           iRacing replay engine: command gate, cursor, jump playback, speed state, camera waiter, lap walks
-  diagnostics/             Self-diagnostics: main-thread watchdog, resource monitor, CPU profile capture, Telemetry Snapshot state sections
-  app-updates/             Version-upgrade changelog opener and the What's New update check
-  settings-window/         Settings window plugin side: loopback server and guard, launcher, commands
-  deck-iracing/            iRacing's side of the deck layer (sim connection, SimIRacingAction, SDK singleton)
-  app-constants/           Constants every layer and the PI bundle share: setting keys, value sets, ids (zero dependencies)
-  callout-settings/        Race Engineer callout opt-in registry (zero dependencies)
-  icon-composer/           Standalone SVG icon assembly (zero dependencies)
-  fetch-utils/             Request deadline and byte-capped JSON read for Node and the PI bundle (zero dependencies)
-  icons/                   SVG icon templates (Mustache)
-  iracing-native/          C++ N-API addon (shared memory, window messaging, scan codes)
-  iracing-sdk/             TypeScript SDK (telemetry, broadcast commands, session parsing)
-  logger/                  Shared logger interface
-  iracing-plugin-mirabox/          Mirabox device plugin
-  iracing-plugin-ulanzi/           Ulanzi Deck device plugin
-  pi-components/           Shared Property Inspector assets (web components, EJS templates, partials, data)
-  plugin-build/            Shared Rollup config factory for the three plugins (build-only)
-  plugin-runtime/          Shared plugin bootstrap (startup phases, shared action list)
-  race-engineer-wiring/    Race Engineer wiring shared by the plugins and the harness
-  iracing-plugin-stream-deck/      Elgato Stream Deck plugin
-  website/                 Documentation website (iracedeck.com)
+  # Sim and telemetry
+  iracing-native/              C++ N-API addon: shared memory, window messaging, scan-code input, window focus
+  iracing-sdk/                 TypeScript SDK: telemetry, session info, broadcast commands
+  event-bus/                   Typed pub/sub with the canonical sim-event catalog (sim- and audio-agnostic)
+  sim-events-iracing/          The iRacing translator (SDK ticks to bus events) and the replay recorder
+  track-data/                  Bundled Lovely Sim Racing corner markers
+
+  # Audio and the Race Engineer
+  audio-native/                C++ N-API addon: the miniaudio five-channel mixer
+  audio-service/               The mixer singleton: buses, voice sequences, the output device
+  audio-assets/                Voice clips, sound effects, the clip generator, voice configs, packer and catalog
+  callout-script/              The voice-pack contract: callout-script grammar and voice-pack.json rules
+  voice-packs/                 Voice packs: scanner, catalog, installer, launch step, voice labels
+  callout-settings/            Race Engineer callout opt-in registry (zero dependencies)
+  audio-scenarios/             The Race Engineer callout catalog: contracts, vocabulary, speak gates
+  race-engineer-wiring/        Race Engineer wiring shared by the plugins and the harness
+  scenario-harness/            Local QA web UI that plays Race Engineer audio without iRacing
+
+  # Icons and rendering
+  icons/                       SVG key icon templates (Mustache)
+  icon-composer/               Standalone SVG icon assembly (zero dependencies)
+  rasterizer/                  SVG to PNG through resvg, with bundled fonts
+
+  # Deck layer
+  logger/                      Shared logger interface and the per-call error boundary
+  app-constants/               Constants every layer and the PI bundle share (zero dependencies)
+  fetch-utils/                 Request deadline and byte-capped JSON read for Node and the PI bundle
+  settings/                    Global settings: schema, settings store, migrations, PI warnings, first run
+  replay-store/                Per-session replay store: markers, laps, greens, session starts, incidents
+  replay-engine/               iRacing replay engine: command gate, cursor, jump playback, speed state, lap walks
+  diagnostics/                 Self-diagnostics: watchdog, resource monitor, CPU profiles, snapshot sections
+  app-updates/                 Version-upgrade changelog opener and the What's New update check
+  settings-window/             Settings window plugin side: loopback server and guard, launcher, commands
+  deck-core/                   The deck abstraction: base classes, types, services; sim-neutral
+  deck-iracing/                iRacing's side of the deck layer: sim connection, SimIRacingAction, SDK singleton
+  deck-adapter-elgato/         Elgato Stream Deck adapter (Elgato SDK to deck-core)
+  deck-adapter-mirabox/        Mirabox VSD Craft adapter (WebSocket protocol to deck-core)
+  deck-adapter-ulanzi/         Ulanzi Deck adapter (UlanziStudio WebSocket protocol to deck-core)
+  iracing-actions/             Platform-agnostic iRacing action implementations
+  plugin-runtime/              Shared plugin bootstrap: startup phases, shared action list
+  plugin-build/                Shared Rollup config factory for the three plugins (build-only)
+  pi-components/               Property Inspector components, EJS partials, Rollup plugins, bridges
+  iracing-plugin-stream-deck/  Elgato Stream Deck plugin
+  iracing-plugin-mirabox/      Mirabox device plugin
+  iracing-plugin-ulanzi/       Ulanzi Deck device plugin
+
+  # Website
+  website/                     Documentation website (iracedeck.com)
 ```
 
-| Package                           | Role                                                                                      |
-| --------------------------------- | ----------------------------------------------------------------------------------------- |
-| `@iracedeck/iracing-actions`              | All 32 action implementations, platform-agnostic                                          |
-| `@iracedeck/deck-core`            | Base classes, types, keyboard service, icon templates; sim-neutral through `SimConnection` |
-| `@iracedeck/settings`             | Global settings below the deck layer: the schema and cache, migrations, the plugin-owned settings store, run-scoped keys, PI warnings, first run and the startup gates; deck-core re-exports none of them |
-| `@iracedeck/voice-packs`          | The Race Engineer voice-pack stack: the scanner and voice-pack service, the catalog, download, extraction and installer, the launch step that keeps the `default` pack installed, the voice labels; deck-core re-exports none of it |
-| `@iracedeck/replay-store`         | The per-session replay store: replay markers, the lap record, the greens, the session starts and the incidents, one file per `SubSessionID`, debounced atomic writes; deck-core re-exports none of it |
-| `@iracedeck/replay-engine`        | The iRacing replay engine the replay actions share: the replay command gate (the one sender of replay commands), the cursor, jump playback and seek, the paced search, the speed state, the camera-switch waiter and the Jump to Fastest Lap / Jump to Race Start walks; imports no deck package or settings, configured once by `plugin-runtime` |
-| `@iracedeck/diagnostics`          | The plugin's self-diagnostics: the main-thread watchdog, the resource monitor, the CPU profile capture, and the registry of plugin-state sections a Telemetry Snapshot records, with its JSON-safe encoder |
-| `@iracedeck/app-updates`          | The version-upgrade changelog opener and the settings window's update check: the published-changelog feed, its sanitizer, the cached service |
-| `@iracedeck/settings-window`      | The settings window's plugin side: the loopback server and its request guard, the controller, the app-window launcher, the command handler, the settings-channel publisher |
-| `@iracedeck/deck-iracing`         | iRacing's side of the deck layer: `SimIRacingConnection`, the `SimIRacingAction` base, the SDK singleton (`getCommands()`) and the iRacing helpers |
-| `@iracedeck/app-constants`        | The constants every layer and the PI bundle share — setting-key names, value sets, settings-window ids, the `_warnings` record shape, `LogLocation` — with zero imports; deck-core re-exports none of them |
-| `@iracedeck/callout-settings`     | Every Race Engineer callout opt-in, declared once: the keys, labels and defaults the settings schema, the callout gates and the settings window derive from |
-| `@iracedeck/deck-adapter-elgato`  | Bridges the Elgato SDK to deck-core's `IDeckPlatformAdapter` interface                    |
-| `@iracedeck/deck-adapter-mirabox` | Bridges the Mirabox VSD Craft WebSocket protocol to deck-core                             |
-| `@iracedeck/deck-adapter-ulanzi`  | Bridges the UlanziStudio WebSocket protocol to deck-core                                  |
-| `@iracedeck/icon-composer`        | Standalone SVG icon assembly (pure functions, zero dependencies)                          |
-| `@iracedeck/fetch-utils`          | `abortAfter` and `readCappedJson`: request helpers shared by app-updates, voice-packs and the PI bundle (zero dependencies) |
-| `@iracedeck/icons`                | SVG icon Mustache templates with colorization support                                     |
-| `@iracedeck/iracing-native`       | C++ Node.js addon for Win32 APIs (memory-mapped files, window messaging, scan-code input) |
-| `@iracedeck/iracing-sdk`          | TypeScript SDK for reading telemetry and sending iRacing broadcast commands               |
-| `@iracedeck/logger`               | Shared logging interface with scoped loggers                                              |
-| `@iracedeck/pi-components`        | Shared PI web components, EJS partials, Rollup EJS plugin, and the Ulanzi + settings-window bridges |
-| `@iracedeck/plugin-build`         | Build-only: `createPluginRollupConfig`, the one Rollup config the three plugins share     |
-| `@iracedeck/plugin-runtime`       | The composition root all three plugins share: startup phases and the shared action list  |
-| `@iracedeck/race-engineer-wiring` | The Race Engineer's bus caches, every `registerPitCrew` dependency, the declared `SimRuntime` they read the sim through and the translator's settings-backed options, shared with the scenario harness |
-| `@iracedeck/iracing-plugin-stream-deck`   | Elgato Stream Deck plugin — shell over `plugin-runtime`, PI templates, manifest           |
-| `@iracedeck/iracing-plugin-mirabox`       | Mirabox plugin — shell over `plugin-runtime` for Mirabox devices                          |
-| `@iracedeck/iracing-plugin-ulanzi`        | Ulanzi Deck plugin — shell over `plugin-runtime` for Ulanzi devices                        |
-| `@iracedeck/website`              | Documentation website at [iracedeck.com](https://iracedeck.com)                           |
+| Package | Role |
+| --- | --- |
+| **Sim and telemetry** | |
+| `@iracedeck/iracing-native` | C++ Node.js addon for Win32 APIs (memory-mapped files, window messaging, scan-code input, window focus); mocked off Windows |
+| `@iracedeck/iracing-sdk` | TypeScript SDK: `SDKController`, session YAML and the broadcast `Commands` |
+| `@iracedeck/event-bus` | Typed pub/sub with the canonical sim-event catalog; depends on no simulator SDK |
+| `@iracedeck/sim-events-iracing` | The iRacing translator, from SDK ticks to bus events, the replay recorder, and the canonical live race order |
+| `@iracedeck/track-data` | Bundled corner markers from Lovely Sim Racing, keyed by track name |
+| **Audio and the Race Engineer** | |
+| `@iracedeck/audio-native` | C++ Node.js addon around miniaudio: a five-channel mixer with device selection; mocked off Windows |
+| `@iracedeck/audio-service` | The mixer singleton over `audio-native`: buses, voice sequences and the device lifecycle |
+| `@iracedeck/audio-assets` | The voice clips, `sfx/`, the ElevenLabs generator, per-voice configs, the voice-pack packer and the catalog |
+| `@iracedeck/callout-script` | The shared contract of a voice pack: the `callouts.json` grammar and parser and the `voice-pack.json` rules |
+| `@iracedeck/voice-packs` | The voice-pack stack: scanner, catalog, download and installer, the launch step that keeps the `default` pack installed |
+| `@iracedeck/callout-settings` | Every Race Engineer callout opt-in, declared once: key, label and default |
+| `@iracedeck/audio-scenarios` | The Race Engineer catalog: callout contracts, script vocabulary, speak gates and the pack-author tooling |
+| `@iracedeck/race-engineer-wiring` | `wireRaceEngineer`: every `registerPitCrew` dependency, its live sim reads through the declared `SimRuntime`, shared by the plugins and the harness |
+| `@iracedeck/scenario-harness` | Local QA tool: the real Race Engineer stack against a mock SDK controller, driven from a web UI |
+| **Icons and rendering** | |
+| `@iracedeck/icons` | SVG key icon Mustache templates with colorization support |
+| `@iracedeck/icon-composer` | Standalone SVG icon assembly (pure functions, zero dependencies), re-exported by deck-core |
+| `@iracedeck/rasterizer` | SVG to PNG through `@resvg/resvg-js` with bundled Arimo fonts, injected into deck-core at startup |
+| **Deck layer** | |
+| `@iracedeck/logger` | Shared logging interface with scoped loggers, and `createErrorBoundary` for every dispatcher |
+| `@iracedeck/app-constants` | The constants every layer and the PI bundle share — setting keys, value sets, settings-window ids, `LogLocation` — with zero imports |
+| `@iracedeck/fetch-utils` | `abortAfter` and `readCappedJson`: request helpers shared by app-updates, voice-packs and the PI bundle |
+| `@iracedeck/settings` | Global settings below the deck layer: schema, migrations, the plugin-owned settings store, PI warnings, first run |
+| `@iracedeck/replay-store` | The per-session replay store: markers, laps, greens, session starts and incidents, one file per `SubSessionID` |
+| `@iracedeck/replay-engine` | The iRacing replay engine the replay actions share: the replay command gate, cursor, jump playback, speed state and lap walks |
+| `@iracedeck/diagnostics` | Self-diagnostics: the main-thread watchdog, the resource monitor, CPU profiles and the Telemetry Snapshot's state sections |
+| `@iracedeck/app-updates` | The version-upgrade changelog opener and the settings window's What's New update check |
+| `@iracedeck/settings-window` | The settings window's plugin side: the loopback server and its request guard, the launcher, the command handler |
+| `@iracedeck/deck-core` | The deck abstraction: base classes, types, keyboard service, icon templates; sim-neutral through `SimConnection` |
+| `@iracedeck/deck-iracing` | iRacing's side of the deck layer: `SimIRacingConnection`, the `SimIRacingAction` base, the SDK singleton (`getCommands()`) |
+| `@iracedeck/deck-adapter-elgato` | Bridges the Elgato SDK to deck-core's `IDeckPlatformAdapter` interface |
+| `@iracedeck/deck-adapter-mirabox` | Bridges the Mirabox VSD Craft WebSocket protocol to deck-core |
+| `@iracedeck/deck-adapter-ulanzi` | Bridges the UlanziStudio WebSocket protocol to deck-core |
+| `@iracedeck/iracing-actions` | Every action implementation, platform-agnostic |
+| `@iracedeck/plugin-runtime` | The composition root all three plugins share: startup phases and the shared action list |
+| `@iracedeck/plugin-build` | Build-only: `createPluginRollupConfig`, the one Rollup config the three plugins share |
+| `@iracedeck/pi-components` | Shared PI web components, EJS partials, Rollup EJS plugin, and the Ulanzi + settings-window bridges |
+| `@iracedeck/iracing-plugin-stream-deck` | Elgato Stream Deck plugin: shell over `plugin-runtime`, manifest, bundled profiles |
+| `@iracedeck/iracing-plugin-mirabox` | Mirabox plugin: shell over `plugin-runtime` for Mirabox devices |
+| `@iracedeck/iracing-plugin-ulanzi` | Ulanzi Deck plugin: shell over `plugin-runtime` for Ulanzi devices |
+| **Website** | |
+| `@iracedeck/website` | Documentation website at [iracedeck.com](https://iracedeck.com) |
 
 ### How it fits together
 

@@ -2,7 +2,7 @@
  * Connection State Aware Action
  *
  * Extends BaseAction with:
- * - Automatic iRacing connection state tracking (no manual calls needed)
+ * - Automatic sim connection state tracking through `SimConnection` (no manual calls needed)
  * - Binding dispatch delegates (tap, hold, release)
  * - Binding-aware readiness (active/inactive overlay based on binding type)
  *
@@ -31,7 +31,7 @@ import type { IDeckWillAppearEvent, IDeckWillDisappearEvent } from "./types.js";
 const READINESS_SUB_PREFIX = "_readiness:";
 
 /**
- * Abstract base class for actions that need iRacing connection state awareness
+ * Abstract base class for actions that need sim connection state awareness
  * and/or binding dispatch.
  *
  * @template T - The settings type for this action

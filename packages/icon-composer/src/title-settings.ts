@@ -577,7 +577,7 @@ function dimContent(content: string): string {
  *   {@link DIMMED_OPACITY} over the untouched background and border — the key
  *   is there but a press would do nothing right now (e.g. Replay Markers' Next
  *   with no marker ahead, #1162). A plain `<g opacity>`, so it needs no filter.
- * @param options.busy - When set, the artwork gives way to the replay busy
+ * @param options.busy - When set, the artwork gives way to the busy
  *   mark (issue #1437, see {@link busyMarkSvg}), drawn in the title-aware
  *   graphic area whether or not `showGraphics` is on; the title and border stay
  *   as they are. The mark takes `graphic1Color`, then `textColor`, then white;
