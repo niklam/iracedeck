@@ -89,6 +89,8 @@ git -C <tree> push -u origin <branch>
 gh pr create --base master --head <branch> --title "<type>(<scope>): <description> (#<n>)" --body-file <scratchpad>/pr-body.md
 ```
 
+When the branch qualifies under *PRs that skip CodeRabbit* in `code-review.md` (read it there: the file list, and the frontmatter and added-or-deleted rule for skill and agent files), add `--label no-coderabbit` to `gh pr create`; it saves the review on open, so it cannot be added later to the same effect.
+
 The body follows `.github/pull_request_template.md`, carries `Fixes #<n>`, the second-read tally line when one ran, the `Judged declines` lines, and any vacuous test condition with what covers it. No AI references. Report `pr-open`.
 
 ## 10. Babysit the PR
@@ -96,6 +98,7 @@ The body follows `.github/pull_request_template.md`, carries `Fixes #<n>`, the s
 Load `mcp__ccd_pr__bind_pr`, `mcp__ccd_pr__get_status` and `mcp__ccd_pr__set_monitor` with ToolSearch, bind the PR and turn Auto-fix on. It wakes you on CI failures, conflicts and review comments, not on an approval.
 
 - Fix every finding that holds, nitpicks included, and answer every thread: the fix commit, or the reason it does not hold (`issue-workflow.md` step 10). Never push while CodeRabbit's review is in progress.
+- CodeRabbit reviews the PR once on open and then only when asked, since every review spends the allowance all PRs share (`code-review.md`). Check a fix round with the CodeRabbit CLI first (step 7, item 3), push all of the round's commits in one push, then comment `@coderabbitai review` once. A pure rebase needs no ask; one that resolved conflicts does. A `no-coderabbit` PR gets no PR review: skip to step 11 once its checks are green, but if a later commit stops it qualifying under that section, take the label off and ask for a review instead.
 - A thread you would reject goes to the judge first (step 7, item 4), batched per CodeRabbit review. Upheld: reply with your reason plus "upheld by an independent judge". Overruled: fix it and reply with the commit.
 - The approval: act on it when a monitor event brings it; otherwise check `gh pr view <pr> --json reviewDecision,reviews,headRefOid` with a `Monitor` until-loop at an interval of ten minutes or more, with a timeout. That is a review check, not CI polling.
 - CodeRabbit traps: a clean incremental review updates only its summary comment and posts no new `APPROVED`. Over a standing `CHANGES_REQUESTED`, `@coderabbitai approve` once. A rate-limited summary means not reviewed: wait for the reset, then `@coderabbitai review`. Read the "Recent review info" block's range, not a "between" line found anywhere in the comment.
@@ -109,7 +112,9 @@ When CodeRabbit has approved and every check is green at the current head:
 gh pr merge <pr> --squash --match-head-commit <full head sha>
 ```
 
-The hook judges the head; act on what a refusal names. `--admin` only when Niklas has said so through the PO, after you sent the PO the evidence. Report `merged` with the merge commit's sha.
+A `no-coderabbit` PR has no approver: once every check is green, `gh pr merge <pr> --squash --admin --match-head-commit <full head sha>`; the hook lets it through only when it still qualifies and every required check is green, and otherwise refuses it or asks Niklas.
+
+The hook judges the head; act on what a refusal names. Any other `--admin` only when Niklas has said so through the PO, after you sent the PO the evidence. Report `merged` with the merge commit's sha.
 
 ## 12. Post-merge runs
 

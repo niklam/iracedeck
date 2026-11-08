@@ -14,9 +14,11 @@ import {
   MAX_CONFLICTED_LINE_CHECKS,
   memoizeBoardStatusField,
   moveBoardItemAfter,
+  prChangedFiles,
   prComments,
   readIndexFile,
   replayRebase,
+  requiredStatusChecks,
   run,
   setBoardStatus,
   setHookDeadline,
@@ -315,6 +317,225 @@ describe("replayRebase", { timeout: 20_000 }, () => {
   });
 });
 
+// #1648: the files a PR changes, which decide whether an unapproved --admin merge passes.
+// 20 s per case, as for the replay: real git subprocesses.
+describe("prChangedFiles", { timeout: 20_000 }, () => {
+  const ID = ["-c", "user.email=t@t", "-c", "user.name=t"];
+  const gitIn = (dir, ...args) =>
+    execFileSync("git", [...ID, ...args], { cwd: dir, stdio: "pipe" })
+      .toString()
+      .trim();
+  const commit = (files, msg = "c") => {
+    for (const [name, text] of Object.entries(files)) {
+      mkdirSync(join(root, name, ".."), { recursive: true });
+      writeFileSync(join(root, name), text);
+    }
+    git("add", "-A");
+    git("commit", "-qm", msg);
+    return gitIn(root, "rev-parse", "HEAD");
+  };
+  const read = (head, base, dir = root) => prChangedFiles({ head, base, dir });
+  /** A commit by the fixtures' own identity, author and committer alike. */
+  const T = { author: "t <t@t>", committer: "t <t@t>" };
+  /** master: m0 → m1 (touches README.md); the PR branches at m0. */
+  const arrange = () => {
+    const m0 = commit({ "README.md": "r\n", "scripts/x.mjs": "export {};\n", ".claude/rules/a.md": "a\n" }, "m0");
+    git("checkout", "-q", "-b", "pr");
+    git("checkout", "-q", "master");
+    const m1 = commit({ "README.md": "r moved\n" }, "m1");
+    git("checkout", "-q", "pr");
+    return { m0, m1 };
+  };
+
+  it("lists the PR's own changes, never the base's after the branch point", () => {
+    const { m1 } = arrange();
+    const head = commit({ ".claude/rules/a.md": "a edited\n", "packages/p/CLAUDE.md": "p\n" }, "prose");
+    expect(read(head, m1)).toEqual({
+      ok: true,
+      files: [".claude/rules/a.md", "packages/p/CLAUDE.md"],
+      commits: [T],
+      blobs: {},
+    });
+  });
+
+  it("lists both sides of a rename, so a script moved into the rules shows as deleted", () => {
+    const { m1 } = arrange();
+    git("mv", "scripts/x.mjs", ".claude/rules/x.md");
+    git("commit", "-qm", "move");
+    const head = gitIn(root, "rev-parse", "HEAD");
+    expect(read(head, m1)).toEqual({
+      ok: true,
+      files: [".claude/rules/x.md", "scripts/x.mjs"],
+      commits: [T],
+      blobs: {},
+    });
+  });
+
+  it("leaves out a base merged into the PR (GitHub's Update branch)", () => {
+    const { m1 } = arrange();
+    commit({ ".claude/rules/a.md": "a edited\n" }, "prose");
+    git("merge", "-q", "--no-edit", m1);
+    const head = gitIn(root, "rev-parse", "HEAD");
+    // The merge commit is the PR's own, so it is listed; the base's m1 is not.
+    expect(read(head, m1)).toEqual({ ok: true, files: [".claude/rules/a.md"], commits: [T, T], blobs: {} });
+  });
+
+  it("returns a path as it is, never quoted, and runs from the repository root", () => {
+    const { m1 } = arrange();
+    const head = commit({ ".claude/skills/ä x/SKILL.md": "s\n" }, "unicode");
+    expect(read(head, m1, join(root, "scripts"))).toEqual({
+      ok: true,
+      files: [".claude/skills/ä x/SKILL.md"],
+      commits: [T],
+      // Added: no merge-base side.
+      blobs: { ".claude/skills/ä x/SKILL.md": { base: null, head: "s\n" } },
+    });
+  });
+
+  it("lists every commit's raw author and committer lines, whatever a mailmap says", () => {
+    const { m1 } = arrange();
+    const DEPENDABOT = "dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>";
+    const asBot = [
+      "-c",
+      "user.name=dependabot[bot]",
+      "-c",
+      "user.email=49699333+dependabot[bot]@users.noreply.github.com",
+    ];
+    writeFileSync(join(root, "package.json"), "{}\n");
+    execFileSync("git", ["add", "-A"], { cwd: root });
+    // Dependabot's commits name GitHub as their committer.
+    const asGitHub = { ...process.env, GIT_COMMITTER_NAME: "GitHub", GIT_COMMITTER_EMAIL: "noreply@github.com" };
+    execFileSync("git", [...asBot, "commit", "-qm", "bump"], { cwd: root, env: asGitHub });
+    const bump = gitIn(root, "rev-parse", "HEAD");
+    // An amend keeps the author line and replaces the committer.
+    writeFileSync(join(root, "package.json"), "{ }\n");
+    execFileSync("git", ["add", "-A"], { cwd: root });
+    git("commit", "-q", "--amend", "--no-edit");
+    const amended = gitIn(root, "rev-parse", "HEAD");
+    const head = commit({ "pnpm-lock.yaml": "x\n" }, "fix on top");
+    // A mailmap that would show the fix as Dependabot's, and a signature display that would add lines.
+    writeFileSync(join(root, ".mailmap"), `${DEPENDABOT} t <t@t>\n`);
+    git("config", "log.mailmap", "true");
+    git("config", "log.showSignature", "true");
+    expect(read(head, m1)).toEqual({
+      ok: true,
+      files: ["package.json", "pnpm-lock.yaml"],
+      commits: [T, { author: DEPENDABOT, committer: "t <t@t>" }],
+      blobs: {},
+    });
+    expect(read(bump, m1)).toMatchObject({
+      commits: [{ author: DEPENDABOT, committer: "GitHub <noreply@github.com>" }],
+    });
+    expect(read(amended, m1)).toMatchObject({ commits: [{ author: DEPENDABOT, committer: "t <t@t>" }] });
+  });
+
+  it("reads both sides of every skill and agent file on the list, byte for byte, and nothing else", () => {
+    const skill = "---\nname: s\n---\nbody\n";
+    const m0 = commit(
+      { ".claude/skills/s/SKILL.md": skill, ".claude/agents/gone.md": "---\ntools: Read\n---\n", "a.txt": "a\n" },
+      "m0",
+    );
+    git("checkout", "-q", "-b", "pr");
+    git("rm", "-q", ".claude/agents/gone.md");
+    // Not UTF-8: latin1 keeps every byte.
+    writeFileSync(
+      join(root, ".claude/skills/s/SKILL.md"),
+      Buffer.from([0x2d, 0x2d, 0x2d, 0x0a, 0xff, 0x0a, 0x2d, 0x2d, 0x2d, 0x0a]),
+    );
+    const head = commit(
+      {
+        ".claude/agents/new.md": "---\nhooks: {}\n---\n",
+        ".claude/skills/s/helper.mjs": "x\n",
+        ".claude/rules/r.md": "r\n",
+      },
+      "edit",
+    );
+    expect(read(head, m0)).toEqual({
+      ok: true,
+      files: [
+        ".claude/agents/gone.md",
+        ".claude/agents/new.md",
+        ".claude/rules/r.md",
+        ".claude/skills/s/SKILL.md",
+        ".claude/skills/s/helper.mjs",
+      ],
+      commits: [T],
+      blobs: {
+        ".claude/agents/gone.md": { base: "---\ntools: Read\n---\n", head: null },
+        ".claude/agents/new.md": { base: null, head: "---\nhooks: {}\n---\n" },
+        ".claude/skills/s/SKILL.md": { base: skill, head: "---\n\xff\n---\n" },
+      },
+    });
+  });
+
+  it("fetches a head only origin has", () => {
+    const { m1 } = arrange();
+    const remote = mkdtempSync(join(tmpdir(), "ird-hooks-origin-"));
+    const other = mkdtempSync(join(tmpdir(), "ird-hooks-other-"));
+    try {
+      gitIn(remote, "init", "-q", "--bare");
+      git("remote", "add", "origin", remote);
+      git("push", "-q", "origin", "master");
+      gitIn(other, "clone", "-q", remote, ".");
+      gitIn(other, "checkout", "-q", "-b", "pushed", m1);
+      writeFileSync(join(other, "CLAUDE.md"), "root\n");
+      gitIn(other, "add", "-A");
+      gitIn(other, "commit", "-qm", "pushed elsewhere");
+      gitIn(other, "push", "-q", "origin", "pushed");
+      const head = gitIn(other, "rev-parse", "HEAD");
+      expect(() => gitIn(root, "cat-file", "-e", `${head}^{commit}`)).toThrow();
+      expect(read(head, m1)).toEqual({ ok: true, files: ["CLAUDE.md"], commits: [T], blobs: {} });
+      expect(() => git("rev-parse", "-q", "--verify", "FETCH_HEAD")).toThrow();
+    } finally {
+      rmSync(remote, { recursive: true, force: true });
+      rmSync(other, { recursive: true, force: true });
+    }
+  });
+
+  it("fails, never lists fewer files, for every read it cannot make", () => {
+    const { m1 } = arrange();
+    const head = commit({ ".claude/rules/a.md": "a edited\n" }, "prose");
+    expect(read("HEAD", m1)).toEqual({ ok: false, reason: "the PR's head or base sha is missing" });
+    expect(read(head, undefined)).toEqual({ ok: false, reason: "the PR's head or base sha is missing" });
+    // No origin to fetch from.
+    expect(read("f".repeat(40), m1)).toEqual({
+      ok: false,
+      reason: "git could not fetch the PR's head and base from origin",
+    });
+    // A head with nothing of its own: the base itself.
+    expect(read(m1, m1)).toEqual({ ok: false, reason: "git lists no file the PR changes" });
+    const outside = mkdtempSync(join(tmpdir(), "ird-hooks-norepo-"));
+    try {
+      expect(read(head, m1, outside)).toEqual({ ok: false, reason: "git could not find the repository" });
+    } finally {
+      rmSync(outside, { recursive: true, force: true });
+    }
+    setHookDeadline(Date.now() - 1);
+    try {
+      expect(read(head, m1)).toEqual({ ok: false, reason: "the hook ran out of time" });
+    } finally {
+      setHookDeadline(Infinity);
+    }
+  });
+
+  it("refuses criss-cross history, where the merge-base is not one commit", () => {
+    commit({ "a.txt": "a\n" }, "m0");
+    git("checkout", "-q", "-b", "x");
+    const x1 = commit({ "x.txt": "x\n" }, "x1");
+    git("checkout", "-q", "master");
+    const y1 = commit({ "y.txt": "y\n" }, "y1");
+    git("merge", "-q", "--no-edit", x1);
+    const base = gitIn(root, "rev-parse", "HEAD");
+    git("checkout", "-q", "x");
+    git("merge", "-q", "--no-edit", y1);
+    const head = commit({ "CLAUDE.md": "c\n" }, "prose");
+    expect(read(head, base)).toEqual({
+      ok: false,
+      reason: "the history is criss-crossed (more than one merge-base)",
+    });
+  });
+});
+
 // #1307: the base moving under a PR — a retarget or a base force-push — since a review.
 describe("baseChangedSince", () => {
   const answer = (nodes) =>
@@ -348,6 +569,65 @@ describe("baseChangedSince", () => {
     expect(baseChangedSince(7, "2026-10-03T10:00:00Z", root)).toBeUndefined();
     vi.mocked(spawnSync).mockImplementationOnce(() => ({ status: 0, stdout: "{}", stderr: "" }));
     expect(baseChangedSince(7, "2026-10-03T10:00:00Z", root)).toBeUndefined();
+  });
+});
+
+// #1648: the checks a qualifying --admin merge must show, from the base branch's rules.
+describe("requiredStatusChecks", () => {
+  const answer = (out, status = 0) =>
+    vi.mocked(spawnSync).mockImplementationOnce(() => ({ status, stdout: JSON.stringify(out), stderr: "" }));
+  const checks = (...contexts) => ({
+    type: "required_status_checks",
+    parameters: { required_status_checks: contexts.map((context) => ({ context, integration_id: 15368 })) },
+  });
+
+  it("reads the confirmed repository's rules for the base branch, every ruleset's checks together", () => {
+    answer([
+      { type: "deletion" },
+      checks("Typecheck", "Run tests"),
+      { type: "pull_request", parameters: {} },
+      checks("ESLint check", "Typecheck"),
+    ]);
+    expect(requiredStatusChecks("niklam/iracedeck", "master", root)).toEqual({
+      ok: true,
+      contexts: ["ESLint check", "Run tests", "Typecheck"],
+    });
+    const [cmd, args] = vi.mocked(spawnSync).mock.calls.at(-1);
+    expect(cmd).toBe("gh");
+    expect(args).toEqual(["api", "repos/niklam/iracedeck/rules/branches/master?per_page=100"]);
+  });
+
+  it("keeps a branch's slashes as path segments and encodes the rest", () => {
+    answer([checks("Typecheck")]);
+    requiredStatusChecks("niklam/iracedeck", "release/3.9 x", root);
+    expect(vi.mocked(spawnSync).mock.calls.at(-1)[1]).toContain(
+      "repos/niklam/iracedeck/rules/branches/release/3.9%20x?per_page=100",
+    );
+  });
+
+  it("fails for a rule set it cannot read whole, and answers an empty list for one that requires no check", () => {
+    answer({}, 1);
+    expect(requiredStatusChecks("niklam/iracedeck", "master", root)).toEqual({
+      ok: false,
+      reason: "gh could not read the rules of master",
+    });
+    answer({ message: "Not Found" });
+    expect(requiredStatusChecks("niklam/iracedeck", "master", root)).toMatchObject({ ok: false });
+    // None required is an answer, not a failure: the gate decides what it means.
+    answer([{ type: "deletion" }, checks()]);
+    expect(requiredStatusChecks("niklam/iracedeck", "release/3.9", root)).toEqual({ ok: true, contexts: [] });
+    answer([]);
+    expect(requiredStatusChecks("niklam/iracedeck", "release/3.9", root)).toEqual({ ok: true, contexts: [] });
+    answer(Array.from({ length: 100 }, () => checks("Typecheck")));
+    expect(requiredStatusChecks("niklam/iracedeck", "master", root)).toEqual({
+      ok: false,
+      reason: "master has more rules than one page holds",
+    });
+    const calls = vi.mocked(spawnSync).mock.calls.length;
+    expect(requiredStatusChecks("niklam/iracedeck/x", "master", root)).toMatchObject({ ok: false });
+    expect(requiredStatusChecks(undefined, "master", root)).toMatchObject({ ok: false });
+    expect(requiredStatusChecks("niklam/iracedeck", "", root)).toMatchObject({ ok: false });
+    expect(vi.mocked(spawnSync).mock.calls.length).toBe(calls);
   });
 });
 

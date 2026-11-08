@@ -20,7 +20,7 @@ If you are picking up an issue, read this first. In the agent team (#1520) the P
 | 8   | Manual testing                                             | **blocks the PR**       | below                                                                       |
 | 9   | Push, open the PR                                          | —                       | `@.claude/rules/build-and-commit.md`                                        |
 | 10  | Babysit the review                                         | every thread answered   | below                                                                       |
-| 11  | Merge                                                      | approved + checks green **at the current head** | `@.claude/rules/build-and-commit.md`                    |
+| 11  | Merge                                                      | approved (a `no-coderabbit` PR: prose only) + checks green **at the current head** | `@.claude/rules/build-and-commit.md` |
 | 12  | Watch **all four** post-merge runs to completion           | a red result goes to the PO                     | below                                                   |
 | 13  | Remove the worktree                                        | —                                               | `@.claude/rules/build-and-commit.md`                    |
 
@@ -82,13 +82,13 @@ Run the code review and the second read before **manual testing**, not after, be
 
 For a change with nothing runnable to test — a website or other user-facing docs change — the gate does not disappear, it changes shape: show the drafted text **in full** and get it approved before opening the PR. "There was nothing to test" is not an exemption. Rule and `CLAUDE.md` prose is the one exception: it is written for Claude, and its size is held by the budget test and the architecture reviews, so it needs no draft approval.
 
-Once the test passes, the issue lead pushes and opens the PR without asking. In the integration build (`scripts/integration-build.mjs`) he passes or fails each issue, and the pass belongs to the issue at the head sha the build merged.
+Once the test passes, the issue lead pushes and opens the PR without asking, with `--label no-coderabbit` when it qualifies under *PRs that skip CodeRabbit* (`@.claude/rules/code-review.md`), since the review it saves is the one on open. In the integration build (`scripts/integration-build.mjs`) he passes or fails each issue, and the pass belongs to the issue at the head sha the build merged.
 
 ### Babysit the review (10)
 
 CodeRabbit is the reviewer. **Do not wait for a human code review** — the maintainer is the tester and the approver, not a second reviewer.
 
-Poll the PR, fix every finding **that holds — nitpicks included**, and answer every thread: cite the fix commit where you applied it, the reasoning where you did not. Expect a fresh review after every push that is not a pure rebase (CodeRabbit does not review a rebase); a clean incremental one only updates its summary comment. A summary that says CodeRabbit was **rate limited** means the follow-up was not reviewed: wait for the limit to reset, then ask `@coderabbitai review`. Stop polling once the review is done.
+Poll the PR, fix every finding **that holds — nitpicks included**, and answer every thread: cite the fix commit where you applied it, the reasoning where you did not. CodeRabbit reviews a PR once when it opens and then only when asked, because every review spends one allowance all PRs share (`@.claude/rules/code-review.md`): push a round's fixes together, then ask `@coderabbitai review` once; a pure rebase needs no ask. A clean incremental review only updates its summary comment. A summary that says CodeRabbit was **rate limited** means it was not reviewed: wait for the limit to reset, then ask again. Stop polling once the review is done. A `no-coderabbit` PR (prose only, same rule) gets no PR review at all.
 
 Nitpicks are in scope precisely because they are the ones it is tempting to wave through; "it's only a nitpick" is not a reason to skip one, and it is not a reason to apply one that is wrong either.
 
@@ -98,11 +98,11 @@ One trap with no other home: `gh pr checks` exits non-zero (8) while any check i
 
 ### Merging (11)
 
-Once CodeRabbit has approved and the checks are green, **the issue lead merges** — the maintainer is not a second reviewer to wait for. A *review* step never merges; that separation is what `@.claude/rules/build-and-commit.md` protects, and it owns the merge mechanics. Merging includes the issue's Roadmap card moving to `Testing` — the post-merge hook does that and reports when it could not, in which case make the move by hand (#1065, 2026-09-05); `@.claude/rules/build-and-commit.md` has the lanes.
+Once CodeRabbit has approved and the checks are green, **the issue lead merges** — the maintainer is not a second reviewer to wait for. A `no-coderabbit` PR has no approver, so GitHub shows it BLOCKED for want of an approval: it merges with `--admin` pinned to its head once its checks are green, and the merge hook lets that block pass only when the PR still qualifies and every required check is green, refusing or asking Niklas otherwise. A *review* step never merges; that separation is what `@.claude/rules/build-and-commit.md` protects, and it owns the merge mechanics. Merging includes the issue's Roadmap card moving to `Testing` — the post-merge hook does that and reports when it could not, in which case make the move by hand (#1065, 2026-09-05); `@.claude/rules/build-and-commit.md` has the lanes.
 
-**An approval and a green check are both head-specific.** Neither travels with a push, while the PR still displays the old approval beside the new head, so the merge hook judges both at the **current** head (`@.claude/rules/hooks.md` has what it accepts in place of a fresh review). Each refusal names the condition that failed and what to add or ask for. A `mergeStateStatus` of `BLOCKED` while you believe everything is green means the hook will refuse.
+**An approval and a green check are both head-specific.** Neither travels with a push, while the PR still displays the old approval beside the new head, so the merge hook judges both at the **current** head (`@.claude/rules/hooks.md` has what it accepts in place of a fresh review). Each refusal names the condition that failed and what to add or ask for. A `mergeStateStatus` of `BLOCKED` while you believe everything is green means the hook will refuse, except for a `no-coderabbit` PR whose only block is the missing approval (above).
 
-Issue work reaches a target branch only through an approved PR. Two documented paths do not: a maintainer-directed **Master** work mode, and a release **back-merge**. Neither is an excuse to skip the PR on issue work.
+Issue work reaches a target branch only through an approved PR, or a `no-coderabbit` PR the merge hook has judged prose-only. Two documented paths do not: a maintainer-directed **Master** work mode, and a release **back-merge**. Neither is an excuse to skip the PR on issue work.
 
 ### The merge is not finished until the post-merge run is (12)
 

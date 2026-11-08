@@ -178,6 +178,8 @@ The labeler runs when a PR is opened or its title is edited. If you change the P
 
 Release notes categories are configured in `.github/release.yml`.
 
+One more PR label is set by hand, at `gh pr create`: `no-coderabbit`, on a PR whose every file is Claude-facing prose, so CodeRabbit skips it (`@.claude/rules/code-review.md`).
+
 Issues
 
 Issue templates automatically apply labels (`bug`, `enhancement`). These are separate from the `type:` labels used on PRs for release notes categorization — do not manually add `type:` labels to issues.
