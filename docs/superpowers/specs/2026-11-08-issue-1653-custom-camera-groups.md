@@ -12,6 +12,12 @@ The press path does not stand in the way. Since #958 Change Camera resolves its 
 
 The session alone is also not enough to choose from. A broadcaster sets up a deck between events, without the track loaded, so the picker has to know about cameras seen on earlier sessions too.
 
+**The scale, from the broadcaster who asked** (2026-11-08):
+- **Files and groups:** 300+ camera files, and 40–50 groups on one track is possible.
+- **Names:** any name, from shot types (`StaticTV2`, `DynamicTV`, `SpeedCam`, `CrankItUp`) and real-series replicas (`F1`, `Nascar`, `IMSA`, sometimes with a year), down to single-camera groups for one chicane.
+- **Consistency:** names are mostly consistent across his files, but not entirely, and he considers keeping them consistent the user's job.
+- **Loading:** he loads the camera file through the Camera Tool after joining the session, every time, to be sure which file is live. iRacing can also auto-load the last file per track from `camera.ini` in the Documents folder.
+
 ## What ships
 
 - **A camera catalog file,** `cameras.json`, beside the settings file. It records every camera group name the plugin has seen, and for each track its latest group list.
@@ -113,7 +119,7 @@ A name the session does not list is skipped and logged, as since #958. The raw-n
 
 **`ird-camera-group-select`** (in `@iracedeck/pi-components`) replaces the Change Camera `sdpi-select`, which binds one setting to static options. The choice now writes two settings, its list changes under an open PI, and it needs a free-text path. Its options, in order:
 
-1. **On this track:** the current session's groups in the sim's order, standard and custom alike. It is hidden with no session.
+1. **On this track:** the current session's groups in the sim's order, standard and custom alike. It is hidden with no session. Its heading reads **On this track (custom camera file)** when the session has at least one group outside the 25 standard names, so a user can see at a glance that their file is the one loaded. That's a heuristic: a custom file that uses only standard names reads as the default cameras, and the heading never claims more than it can see.
 2. **Standard groups** not in the first section, in today's Car / Chase / Track / Aerial `<optgroup>`s, marked `(not on this track)` while a session is loaded.
 3. **Other remembered groups:** every catalog name not shown above, labelled with up to three tracks whose latest list holds it, `Drone (not on this track: Spa, Monza +2)`, or `(seen before)` when none does.
 4. **The stored name,** when it is in none of the above, as `<name> (not on this track)`, so a key never looks unset.
@@ -121,7 +127,7 @@ A name the session does not list is skipped and logged, as since #958. The raw-n
 
 The component writes only on the user's choice, never on load or on a catalog push. It re-renders on every `didReceiveGlobalSettings` push and reads nothing in response to a DOM event (the `ird-enable-feature` lesson in `stream-deck-actions.md`). The standard list stays a hand copy in the PI, held to `CHANGE_CAMERA_GROUPS` by the test #958 added.
 
-**The Cycle Camera grids** (the per-key `cameraGroupSubset` and the dial's global one) gain a **Remembered groups** section after Aerial. It lists every non-standard catalog name, plus every non-standard name the stored subset ticks. Names not in the current session are dimmed. A new name enters the stored map only when ticked: the grid's fill-in with defaults applies to the standard 25 only, and a custom group is never enabled by default (#958's reason). The subset's stored shape, a name → boolean map, already holds any name, so its schema does not change.
+**The Cycle Camera grids** (the per-key `cameraGroupSubset` and the dial's global one) gain a **Remembered groups** section after Aerial. It lists every non-standard catalog name, plus every non-standard name the stored subset ticks: this track's custom groups first in the sim's order, then the rest alphabetically and dimmed. At 40–50 custom groups a track and hundreds remembered, that order keeps the ones a user can act on at the top. A filter field is not part of this change: it would need a new `ird-*` component (a raw `<input>` is not allowed in a PI), and the sort covers the case first. It's the follow-up if the section proves too long in use. A new name enters the stored map only when ticked: the grid's fill-in with defaults applies to the standard 25 only, and a custom group is never enabled by default (#958's reason). The subset's stored shape, a name → boolean map, already holds any name, so its schema does not change.
 
 **The settings window** gets a **Camera groups** card listing the catalog: each name with the tracks that currently have it and when it was last seen, and a Remove button per name. Remove sends `sendToPlugin {event: "cameraCatalogRemove", name}`. The command handler checks the name against the catalog and never takes a path. Removing a name drops it from `groups` only. A track's latest list still holds it until that track is seen again, so it reappears if the file still has it. That is the honest result: it is still in that file. Removing never touches a key's stored settings.
 
@@ -144,7 +150,7 @@ Rejected: a title with no artwork (the key looks broken next to its neighbours),
 
 ### 10. The session-info refresh is assumed, and checked first
 
-The design assumes iRacing re-emits session info with the new `CameraInfo.Groups` when a camera file is loaded mid-session through the Camera Tool. Overlay tools pick up custom groups, which they can only do from the session info. The capture that confirms it is a Telemetry Control snapshot before and after loading a public custom camera package on one track, and it is the issue's first task, before any code. If the groups refresh only when the session is re-joined, the design stands: names are matched at press time and recorded on the next observation, and the website page says so.
+The design assumes iRacing re-emits session info with the new `CameraInfo.Groups` when a camera file is loaded mid-session through the Camera Tool. Overlay tools pick up custom groups, which they can only do from the session info. This is not an edge case: it is how the broadcaster who asked loads his files, after joining, every time. The capture that confirms it is a Telemetry Control snapshot before and after loading a public custom camera package on one track, and it is the issue's first task, before any code. If the groups refresh only when the session is re-joined, the design stands: names are matched at press time and recorded on the next observation, and the website page says so.
 
 ## Out of scope
 
@@ -155,6 +161,8 @@ The design assumes iRacing re-emits session info with the new `CameraInfo.Groups
 - **A template variable for the current group name** (an on-screen category label). That's another surface and another issue.
 - **Importing a catalog from camera files on disk.** The catalog learns from sessions only, so a file never loaded is not known until it is. Reading `.cam` files would mean parsing a binary format we do not own.
 - **Sharing one catalog between ecosystems.** It follows the settings file's per-ecosystem rule.
+- **Reading `camera.ini`** to learn which file a track will auto-load. The session's groups already say what is loaded, which is all a key needs.
+- **Switching groups automatically when the camera moves to another car.** That's #1656, built on this catalog.
 
 ## Testing
 
@@ -176,7 +184,9 @@ Unit:
 - **`_cameraCatalog`:**
   - published at each trigger in decision 4 and nowhere else;
   - stripped at every run-scoped boundary (`run-scoped-settings.test.ts`);
-  - a 300-track, 2,000-name catalog checked for its published size.
+  - a 300-track, 2,000-name catalog checked for its published size (the order of magnitude the requester reported: 300+ files, 40–50 groups on a track).
+- **The custom-file heading:** shown for a session with one non-standard group, not shown for the 25 standard ones alone.
+- **The grid order:** this track's custom groups first in the sim's order, the rest alphabetical and dimmed, tested with 50 custom groups on the track.
 - **`ird-camera-group-select`:**
   - the five option groups with and without a session, and the track labels;
   - no write on load or on a push;
