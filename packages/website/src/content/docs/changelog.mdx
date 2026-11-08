@@ -9,6 +9,26 @@ import ChangelogLeadIn from "../../components/ChangelogLeadIn.astro";
 
 Release notes for each version of iRaceDeck. The newest release is listed first. For installation help, see the [installation guide](/docs/getting-started/installation/); to grab the latest build, head to the [downloads page](/downloads/).
 
+## 3.8.1
+
+_2026-11-08_
+
+**Bug Fixes**
+
+- The Race Engineer now judges your laps the way iRacing does. *"That was your best lap yet"* and the fastest-lap-of-the-race call follow iRacing's own best lap, so a track-limits cut, or the lap you start a race on after a rolling start, is never announced as your best or as the fastest lap of the race, while a lap with an off-track that iRacing still counts can be. A lap iRacing doesn't count is no longer read out by **Every lap**, since iRacing gives it no time, and *"That lap didn't count."* now plays on the qualifying laps iRacing actually throws out rather than on laps it counted, on its own when you have no position yet. A thrown-out lap now also counts toward the every-3-laps race status, and the final result now comes on a thrown-out last lap too. See [Lap Time](/docs/actions/audio-voice/pit-crew/#best-lap) and [Position Change](/docs/actions/audio-voice/pit-crew/#position-change-qualifying--race).
+- On Stream Deck, the plugin no longer crashes when it can't write to its log, for example because the disk is full, and no longer crashes again every time Stream Deck restarts it. It keeps running without those log lines, and once writing works again the log says how many were lost and why.
+- Near the end of a race your tank already covers, the Race Engineer no longer warns that fuel is running low or tells you to *"Box this lap for fuel"*: in a timed race it now works out when the leader will actually take the chequered flag, and it judges whether the fuel lasts on what is in the tank rather than after your fuel safety margin. See [Laps of fuel left](/docs/actions/audio-voice/pit-crew/#laps-of-fuel-left).
+- The Race Engineer now says *"One lap to green"* and gives your position on the last caution lap even when the one-to-go flag came out while you were in a replay or the garage, or before the plugin connected, and no longer says *"Two to green"* with one to go already showing. See [Pit Crew](/docs/actions/audio-voice/pit-crew/).
+- **Replay Markers** keys and dial no longer treat a long marker jump as leaving the replay: while the jump was still on its way they refused **Next** and **Previous** and redrew as if you were in the car, and now they keep working until it lands. See [Replay Markers](/docs/actions/view-camera/replay-markers/).
+- The Race Engineer no longer says *"Your pit limiter is on"* after you leave pit road when the limiter was never engaged: the pit limiter warnings now check whether the limiter is actually holding the car, the same reading as the pit limiter beep and the Car Control key. See [Pit Crew](/docs/actions/audio-voice/pit-crew/).
+- Near the end of a race, the Race Engineer's *"closing in"* gap calls now count the laps **you** have left, not the leader's: in a multi-class race or a lap down you no longer hear about a catch that can only happen after your own chequered flag, and once the leader has finished you still hear about one on your last lap. See [Gap callouts](/docs/actions/audio-voice/pit-crew/#gap-callouts-car-ahead--car-behind).
+- A replay jump pressed right after a speed change, such as a Multi Action that plays and then jumps to the next marker, or a change made in iRacing's own replay bar just after a jump, now remembers the new speed instead of the one before it. See [Replay Markers](/docs/actions/view-camera/replay-markers/).
+- The **Replay Control** dial's Play now resumes the speed the replay last played at even when that speed was set while no Replay Control key or dial was on screen. See [Replay Control](/docs/actions/view-camera/replay-control/).
+
+**Maintenance**
+
+- A bug in one part of the plugin that reads live telemetry can no longer stop the other parts from updating or crash the plugin: the rest carry on, and the error is written to the log once rather than on every frame.
+
 ## 3.8.0
 
 _2026-11-02_
