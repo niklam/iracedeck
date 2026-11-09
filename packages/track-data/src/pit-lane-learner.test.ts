@@ -106,6 +106,46 @@ describe("loadPitLaneLandmarkLearner", () => {
     expect(loader).toHaveBeenCalledTimes(2);
   });
 
+  it("keeps the identity it holds without building its key, and adopts an equal one in a new object", () => {
+    let reads = 0;
+    const counted = (track: PitLaneTrackIdentity): PitLaneTrackIdentity =>
+      new Proxy(track, {
+        get(target, property, receiver) {
+          reads++;
+
+          return Reflect.get(target, property, receiver) as unknown;
+        },
+      });
+    const loader = vi.fn((_track: PitLaneTrackIdentity) => null);
+    const learner = createPitLaneLandmarkLearner();
+    const first = counted({ ...TRACK });
+
+    expect(loadPitLaneLandmarkLearner(learner, first, loader)).toEqual({ kind: "none" });
+
+    // The same object again, as on every tick of an unchanged session info: no field is read.
+    reads = 0;
+    expect(loadPitLaneLandmarkLearner(learner, first, loader)).toEqual({ kind: "kept" });
+    expect(reads).toBe(0);
+
+    // An equal identity in a new object is keyed once, kept, and adopted.
+    const second = counted({ ...TRACK });
+
+    expect(loadPitLaneLandmarkLearner(learner, second, loader)).toEqual({ kind: "kept" });
+    expect(reads).toBeGreaterThan(0);
+    expect(learner.track).toBe(second);
+
+    reads = 0;
+    expect(loadPitLaneLandmarkLearner(learner, second, loader)).toEqual({ kind: "kept" });
+    expect(reads).toBe(0);
+    expect(loader).toHaveBeenCalledOnce();
+
+    // A changed identity is still loaded.
+    expect(loadPitLaneLandmarkLearner(learner, { ...TRACK, trackVersion: "2027.01.01.01" }, loader)).toEqual({
+      kind: "none",
+    });
+    expect(loader).toHaveBeenCalledTimes(2);
+  });
+
   it("does nothing without an identity", () => {
     const loader = vi.fn((_track: PitLaneTrackIdentity) => stored());
     const learner = createPitLaneLandmarkLearner();

@@ -45,7 +45,11 @@ export type PitLaneLandmarksLoader = (track: PitLaneTrackIdentity) => PitLaneSec
 export type PitLaneLandmarkLearner = {
   /** {@link pitLaneTrackKey} of {@link track} once loaded; `null` = not loaded. */
   key: string | null;
-  /** The identity the section was loaded for, carried on every event; `null` = not loaded. */
+  /**
+   * The identity the section was loaded for, carried on every event: the
+   * object last handed in with this {@link key} (`loadPitLaneLandmarkLearner`
+   * adopts an equal one); `null` = not loaded.
+   */
   track: PitLaneTrackIdentity | null;
   /** The track's section, as loaded and then folded into; `null` = not loaded. */
   section: PitLaneSection | null;
@@ -101,17 +105,28 @@ export type PitLaneLearnerLoad =
  * none), is brought in line with the session's track length
  * ({@link applyTrackLength}: a changed length is a rebuild, whose published
  * values become `previous`). Never throws for the loader's sake.
+ *
+ * A translator calls this every tick, so the common answer is cheap: the very
+ * object the learner holds is `kept` without building its key. An equal
+ * identity in a new object (the session info was re-read) is `kept` too, and
+ * the learner adopts that object, so the calls after it take the cheap path.
+ * The learner keeps the identity it is handed, not a copy: never mutate one
+ * after handing it in.
  */
 export function loadPitLaneLandmarkLearner(
   learner: PitLaneLandmarkLearner,
   track: PitLaneTrackIdentity | null,
   loader: PitLaneLandmarksLoader | null,
 ): PitLaneLearnerLoad {
-  if (track === null) return { kind: "kept" };
+  if (track === null || track === learner.track) return { kind: "kept" };
 
   const key = pitLaneTrackKey(track);
 
-  if (key === learner.key) return { kind: "kept" };
+  if (key === learner.key) {
+    learner.track = track;
+
+    return { kind: "kept" };
+  }
 
   let readable: PitLaneSection | null = null;
   let failure: PitLaneLearnerLoad | null = null;
