@@ -232,7 +232,7 @@ iRacing telemetry (shared memory)
 
 ## Releasing
 
-All packages share a single version number, driven by [release-it](https://github.com/release-it/release-it) plus one custom hook. Nothing is inferred from commit messages — you choose the version, and release-it asks before it commits, tags, pushes, or creates a GitHub Release.
+All packages share a single version number, driven by [release-it](https://github.com/release-it/release-it) plus two custom hooks. Nothing is inferred from commit messages — you choose the version, and release-it asks before it commits, tags, pushes, or creates a GitHub Release.
 
 ### How to release
 
@@ -242,7 +242,7 @@ pnpm release -- 3.2.0  # release a specific version
 pnpm release:dry       # safe preview — writes nothing
 ```
 
-`pnpm release` wraps release-it (`scripts/release.mjs`): it strips the `--` separator pnpm inserts, exports `GITHUB_TOKEN` from `gh auth token` when that variable is not already set, and signals a dry run to the hook below.
+`pnpm release` wraps release-it (`scripts/release.mjs`): it strips the `--` separator pnpm inserts, exports `GITHUB_TOKEN` from `gh auth token` when that variable is not already set, and signals a dry run to the hooks below. release-it shows a hook's output only with `--verbose`, so add `-V` (`pnpm release -- 3.2.0 -V`) to watch a stable release's build and capture; without it they run behind a spinner and print only when they fail.
 
 A release then runs in this order:
 
@@ -250,16 +250,24 @@ A release then runs in this order:
 2. On a **stable** version only, the same hook folds the changelog fragments in `changelog.d/` into a new `## <version>` section of `packages/website/src/content/docs/changelog.mdx`, dated today, and deletes and stages the fragments. Everything is validated before anything is written, so a malformed fragment aborts the release with a clean tree, and the fold runs before the version bumps below, so a fold that fails part-way leaves the version files untouched. Any version containing a dash (`3.2.0-dev.0`, `3.2.0-rc.1`) skips the fold and keeps the fragments as the in-development notes; a stable version with no fragments gets no section.
 3. The same hook bumps every `packages/*/package.json`. The root `package.json` is bumped separately, by release-it's own npm plugin.
 4. The same hook bumps all three plugin `manifest.json` files (Stream Deck, Mirabox, Ulanzi). It discovers them rather than using a hardcoded list, and writes the version each ecosystem requires: a 4-part `major.minor.patch.build` for the Stream Deck and Mirabox manifests — Elgato's manifest schema rejects semver suffixes — with the build slot taken from `git rev-list --count HEAD`, and a plain `major.minor.patch` for Ulanzi, whose marketplace refuses any other form. The changelog edit is staged with the version files.
-5. release-it commits the result as `chore(release): vX.Y.Z`.
-6. It creates the annotated tag `vX.Y.Z`.
-7. It pushes the branch and the tag to origin.
-8. It creates a GitHub Release named `vX.Y.Z`.
+5. On a **stable** version only, the `after:bump` hook (`scripts/release-capture.mjs`) captures the Settings window screenshots the website shows, so they carry the new version and the folded notes. It refuses a developer tree before building anything (`feature-flags.local.json` or `dev.local.json` at the root, or `IRACEDECK_DEV_VOICES` set to any value, `0` included), records the changes steps 1–4 made, builds the Stream Deck plugin and its dependencies, checks that the built plugin carries no development voice root, captures every tab into `packages/website/src/assets/settings-window/` (refusing a page whose header does not show the new version), writes `capture.json` beside the screenshots, refuses any other tracked file the build changed, and stages the folder. Branches never commit these screenshots: `pnpm capture:settings` captures into the gitignored `local/settings-window-capture/` to look at a change, and the release captures the committed set. A pre-release skips this step.
+6. release-it commits the result as `chore(release): vX.Y.Z`.
+7. It creates the annotated tag `vX.Y.Z`.
+8. It pushes the branch and the tag to origin.
+9. It creates a GitHub Release named `vX.Y.Z`.
 
-Steps 5–8 are each **prompted** outside CI, and declining one skips it. Development bumps are normally committed without a tag or a GitHub Release, which is why most `-dev.0` commits in the history are untagged. Pushing a `v*` tag is what triggers the packaging workflow below, so a bump you chose not to tag publishes nothing.
+If step 5 fails, the release stops before the commit, and nothing is rolled back for you: release-it arms its own rollback only after that hook. The failure names the two commands that return the tree to its last commit — the second removes a screenshot written for a tab that had none:
+
+```bash
+git restore --staged --worktree -- :/
+git clean -fd -- packages/website/src/assets/settings-window/
+```
+
+Steps 6–9 are each **prompted** outside CI, and declining one skips it. Development bumps are normally committed without a tag or a GitHub Release, which is why most `-dev.0` commits in the history are untagged. Pushing a `v*` tag is what triggers the packaging workflow below, so a bump you chose not to tag publishes nothing.
 
 The changelog is written by hand, not generated from commits: each user-facing PR adds a fragment to `changelog.d/` — one file per bullet, so two PRs never edit the same lines (see `.claude/rules/changelog.md`) — and the release only folds them into `changelog.mdx` with its date. The plugin's `changelog.json` is a gitignored build artifact composed from the two, which the release-pack build regenerates from the tag. GitHub Release notes are generated by GitHub from merged PR labels (`github.autoGenerate`, categorised by `.github/release.yml`), not from the changelog.
 
-> **Preview with `pnpm release:dry`, never `npx release-it --dry-run`.** release-it 21.1.1 does not run `before:bump` hooks in its own dry run: it prints `! node scripts/release-hooks.mjs <version>` and skips the command, so a direct `npx release-it --dry-run` previews none of steps 1–4 and would not show a stale pack record or a malformed fragment that stops the real release. The pnpm wrapper (`scripts/release.mjs`) therefore asks release-it which version it would release (`--release-version`), runs the hook itself with that version and `RELEASE_IT_DRY_RUN=1` — the flag that makes the hook print what it would bump, fold and seal instead of writing — and stops with the hook's error when it refuses; only then does it run release-it's own dry run. The flag is set for that run too, so a release-it that ran hooks in a dry run again (older versions did) would still write nothing. Nothing in the sequence touches the tree or the index.
+> **Preview with `pnpm release:dry`, never `npx release-it --dry-run`.** release-it 21.1.1 does not run hooks in its own dry run: it prints `! node scripts/release-hooks.mjs <version>` and skips the command, so a direct `npx release-it --dry-run` previews none of steps 1–5 and would not show a stale pack record, a malformed fragment or a developer-tree marker that stops the real release. The pnpm wrapper (`scripts/release.mjs`) therefore asks release-it which version it would release (`--release-version`), runs both hooks itself, in release order, with that version and `RELEASE_IT_DRY_RUN=1` — the flag that makes the first print what it would bump, fold and seal, and the second print the build and capture it would run, instead of writing — and stops with a hook's error when it refuses; only then does it run release-it's own dry run. The flag is set for that run too, so a release-it that ran hooks in a dry run again (older versions did) would still write nothing. Nothing in the sequence touches the tree or the index.
 
 ### Plugin packaging (CI)
 
@@ -286,6 +294,8 @@ A tag release deploys the catalog the tag carries, so **a `release/*` branch tha
 
 - A clean working tree — release-it refuses to start otherwise (`requireCleanWorkingDir`)
 - [GitHub CLI](https://cli.github.com/) (`gh`) authenticated — `pnpm release` reads a token from `gh auth token` unless `GITHUB_TOKEN` is already set. Only the GitHub Release step needs it, so declining that prompt works without either
+- For a stable release, a Chromium-based browser (Edge or Chrome) for the screenshot capture, and the native toolchain (Visual Studio's C++ build tools for node-gyp): the bumped version rebuilds `iracing-native` and `audio-native`. An MSVC `LNK1318` abort while linking is a toolchain hiccup, not a defect: restore with the two commands above and release again
+- `IRACEDECK_DEV_VOICES` unset in the shell you release from, and no `feature-flags.local.json` or `dev.local.json` at the root — a stable release refuses all three. If your user environment sets the variable, clear it for that shell (`Remove-Item Env:IRACEDECK_DEV_VOICES` in PowerShell, `unset IRACEDECK_DEV_VOICES` in bash)
 
 ## Contributing
 
