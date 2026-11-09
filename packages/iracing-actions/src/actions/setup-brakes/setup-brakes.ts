@@ -259,10 +259,7 @@ export class SetupBrakes extends SimIRacingAction<SetupBrakesSettings> {
   private readonly iconThrottle = new IconUpdateThrottle();
 
   /**
-   * The dial half of the action; all IDeck dial events route here. No
-   * `setActiveBinding` is delegated — readiness state is one value per
-   * action-class instance and a dial context setting it would bleed onto the
-   * keypad buttons (mirrors the Fuel Service dial surface).
+   * The dial half of the action; all IDeck dial events route here.
    */
   private readonly dialSurface = new SetupBrakesDialSurface({
     logger: this.logger,
@@ -314,7 +311,6 @@ export class SetupBrakes extends SimIRacingAction<SetupBrakesSettings> {
     }
 
     this.activeContexts.set(ev.action.id, settings);
-    this.applyActiveBinding(settings);
     await this.updateDisplay(ev, settings);
 
     // Subscribe always; the callback no-ops for non-View settings. View entries can be
@@ -357,7 +353,6 @@ export class SetupBrakes extends SimIRacingAction<SetupBrakesSettings> {
     // resolve to the same display string as the previous mode.
     this.lastRenderedValue.delete(ev.action.id);
     this.repeat.clear(ev.action.id);
-    this.applyActiveBinding(settings);
     await this.updateDisplay(ev, settings);
   }
 
@@ -479,33 +474,6 @@ export class SetupBrakes extends SimIRacingAction<SetupBrakesSettings> {
 
   private parseSettings(settings: unknown): SetupBrakesSettings {
     return parseSetupBrakesSettings(settings);
-  }
-
-  private applyActiveBinding(settings: SetupBrakesSettings): void {
-    if (isViewSetting(settings.setting)) {
-      if (!settings.dualPressEnabled) {
-        // Read-only View — no binding drives the key, so clear the readiness overlay.
-        this.setActiveBinding(null);
-
-        return;
-      }
-
-      // Dual-press is active: the tap direction is the primary action, so the
-      // readiness overlay tracks that binding. (Long-press fires the opposite,
-      // but a single chip can only show one — pick the tap.)
-      const adjustMode = getAdjustmentModeForView(settings.setting);
-      const tapDir: SetupBrakesDirection = getDualPressDirections() === "tap-increases" ? "increase" : "decrease";
-      const activeKey = adjustMode ? (SETUP_BRAKES_GLOBAL_KEYS[`${adjustMode}-${tapDir}`] ?? null) : null;
-      this.setActiveBinding(activeKey);
-
-      return;
-    }
-
-    const activeKey = this.resolveGlobalKey(settings.setting, settings.direction);
-
-    if (activeKey) {
-      this.setActiveBinding(activeKey);
-    }
   }
 
   private async executeSetting(setting: SetupBrakesAdjustSetting, direction: SetupBrakesDirection): Promise<void> {

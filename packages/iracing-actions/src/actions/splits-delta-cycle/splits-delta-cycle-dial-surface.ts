@@ -185,11 +185,9 @@ interface SplitsDeltaCycleDialContext {
 
 /**
  * The delegates the surface needs from its owning action. Binding dispatch
- * stays on the action so keyboard/SimHub routing is unchanged. Deliberately NO
- * `setActiveBinding`: readiness is one value per action-class instance and
- * setting it from a dial context would bleed onto the action's keypad buttons
- * (see global-settings.md), so the dial computes its own missing-binding state
- * from the injected `isBindingMissing`. No `getTelemetry` either — the strip is
+ * stays on the action so keyboard/SimHub routing is unchanged. The dial computes
+ * its own missing-binding state from the injected `isBindingMissing`. No
+ * `getTelemetry` either — the strip is
  * identity-only, with nothing to read.
  */
 export interface SplitsDeltaCycleDialHost {

@@ -267,7 +267,7 @@ interface FuelDialContext {
 /**
  * What the dial surface needs from the owning action: scoped logging, live
  * telemetry/session access, and the base-class binding delegates (which must
- * stay on the action so #612 readiness/warning semantics are unchanged).
+ * stay on the action so #612 warning semantics are unchanged).
  */
 export interface FuelDialHost {
   readonly logger: ILogger;

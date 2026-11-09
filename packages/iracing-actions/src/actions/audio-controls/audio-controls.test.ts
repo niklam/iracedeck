@@ -102,14 +102,12 @@ vi.mock("@iracedeck/deck-core", () => ({
   ConnectionStateAwareAction: class MockConnectionStateAwareAction {
     logger = { trace: vi.fn(), debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
     sdkController = { subscribe: vi.fn(), unsubscribe: vi.fn(), getCurrentTelemetry: vi.fn() };
-    updateConnectionState = vi.fn();
     setKeyImage = vi.fn();
     setRegenerateCallback = vi.fn();
     updateKeyImage = vi.fn().mockResolvedValue(true);
     tapBinding = mockTapBinding;
     holdBinding = mockHoldBinding;
     releaseBinding = mockReleaseBinding;
-    setActiveBinding = vi.fn();
     isBindingMissing = vi.fn(() => false);
     async onWillAppear() {}
     async onDidReceiveSettings() {}
@@ -371,13 +369,6 @@ describe("AudioControls", () => {
         }
       });
 
-      it("clears the active binding rather than keeping the previous key's (#1196)", async () => {
-        const action = new AudioControls();
-        await action.onWillAppear(fakeEvent("ctx-stale", { category: "master", action: "mute-driver" }) as any);
-
-        expect(action["setActiveBinding"]).toHaveBeenCalledWith(null);
-      });
-
       it("shows the warning on the key itself when it appears", async () => {
         const action = new AudioControls();
         await action.onWillAppear(fakeEvent("ctx-stale", { category: "master", action: "mute-driver" }) as any);
@@ -555,11 +546,10 @@ describe("AudioControls", () => {
       expect(mockTapBinding).not.toHaveBeenCalled();
     });
 
-    it("declares the driver-mute binding as the active one on appear (#863)", async () => {
+    it("renders the key on appear for the driver-mute binding (#863)", async () => {
       const ev = fakeEvent("action-1", { category: "voice-chat", action: "mute-driver" });
       await action.onWillAppear(ev as any);
 
-      expect(action["setActiveBinding"]).toHaveBeenCalledWith("audioVoiceChatMuteDriver");
       expect(action["setKeyImage"]).toHaveBeenCalled();
     });
   });

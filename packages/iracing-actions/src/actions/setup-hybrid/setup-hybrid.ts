@@ -246,8 +246,7 @@ export class SetupHybrid extends SimIRacingAction<SetupHybridSettings> {
   private readonly iconThrottle = new IconUpdateThrottle();
 
   /**
-   * The dial half of the action; all IDeck dial events route here (#796). No
-   * `setActiveBinding` is delegated — it would bleed onto the keypad buttons.
+   * The dial half of the action; all IDeck dial events route here (#796).
    */
   private readonly dialSurface = new SetupHybridDialSurface({
     logger: this.logger,
@@ -291,7 +290,6 @@ export class SetupHybrid extends SimIRacingAction<SetupHybridSettings> {
     }
 
     this.activeContexts.set(ev.action.id, settings);
-    this.applyActiveBinding(settings);
     await this.updateDisplay(ev, settings);
 
     this.sdkController.subscribe(ev.action.id, (telemetry) => {
@@ -328,7 +326,6 @@ export class SetupHybrid extends SimIRacingAction<SetupHybridSettings> {
     this.activeContexts.set(ev.action.id, settings);
     this.lastRenderedValue.delete(ev.action.id);
     this.repeat.clear(ev.action.id);
-    this.applyActiveBinding(settings);
     await this.updateDisplay(ev, settings);
   }
 
@@ -482,29 +479,6 @@ export class SetupHybrid extends SimIRacingAction<SetupHybridSettings> {
 
   private parseSettings(settings: unknown): SetupHybridSettings {
     return parseSetupHybridSettings(settings);
-  }
-
-  private applyActiveBinding(settings: SetupHybridSettings): void {
-    if (isViewSetting(settings.setting)) {
-      if (!settings.dualPressEnabled) {
-        this.setActiveBinding(null);
-
-        return;
-      }
-
-      const adjustMode = getAdjustmentModeForView(settings.setting);
-      const tapDir: DirectionType = getDualPressDirections() === "tap-increases" ? "increase" : "decrease";
-      const activeKey = adjustMode ? (SETUP_HYBRID_GLOBAL_KEYS[`${adjustMode}-${tapDir}`] ?? null) : null;
-      this.setActiveBinding(activeKey);
-
-      return;
-    }
-
-    const activeKey = this.resolveGlobalKey(settings.setting, settings.direction);
-
-    if (activeKey) {
-      this.setActiveBinding(activeKey);
-    }
   }
 
   private resolveGlobalKey(setting: SetupHybridAdjustSetting, direction: DirectionType): string | null {

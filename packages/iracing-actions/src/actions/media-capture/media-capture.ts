@@ -122,18 +122,12 @@ export class MediaCapture extends ConnectionStateAwareAction<MediaCaptureSetting
     }
 
     const settings = this.parseSettings(migrated);
-    const activeKey = MEDIA_CAPTURE_GLOBAL_KEYS[settings.mode];
-    this.setActiveBinding(activeKey ?? null);
-
     await this.updateDisplay(ev, settings);
   }
 
   override async onDidReceiveSettings(ev: IDeckDidReceiveSettingsEvent<MediaCaptureSettings>): Promise<void> {
     await super.onDidReceiveSettings(ev);
     const settings = this.parseSettings(ev.payload.settings);
-    const activeKey = MEDIA_CAPTURE_GLOBAL_KEYS[settings.mode];
-    this.setActiveBinding(activeKey ?? null);
-
     await this.updateDisplay(ev, settings);
   }
 

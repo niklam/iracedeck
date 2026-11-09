@@ -608,9 +608,7 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
     replayState: (nowMs) => this.sdkController.getReplayState(nowMs),
     sessionInfo: () => this.sdkController.getSessionInfo(),
     recordSource: (telemetry) => this.recordStepSource(telemetry),
-    // The Track Order mode's binding (#801). Never `setActiveBinding`: its readiness
-    // state is one value per action instance, and a dial's would bleed onto the
-    // keys; `isBindingMissing` is stateless.
+    // The Track Order mode's binding (#801); `isBindingMissing` is stateless.
     tapBinding: (settingKey) => this.tapBinding(settingKey),
     isBindingMissing: (keys) => this.isBindingMissing(keys),
   });
@@ -663,7 +661,6 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
     }
 
     this.activeContexts.set(ev.action.id, settings);
-    this.setActiveBinding(KEYSTROKE_MODES[settings.mode] ?? null);
     // Before the first draw: an unregistered key reads rest, and a key coming
     // back while its press still stands shows the look at once.
     this.syncBusyRegistration(ev.action.id, settings.mode);
@@ -710,7 +707,6 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
     }
 
     this.activeContexts.set(ev.action.id, settings);
-    this.setActiveBinding(KEYSTROKE_MODES[settings.mode] ?? null);
     // The mode may have changed, and with it whether the key registers and
     // whether it draws working.
     this.syncBusyRegistration(ev.action.id, settings.mode);

@@ -45,7 +45,6 @@ vi.mock("@iracedeck/deck-core", async () => ({
       getCurrentTelemetry: vi.fn(() => null),
       getCurrentTemplateContext: vi.fn(() => null),
     };
-    updateConnectionState = vi.fn();
     setKeyImage = vi.fn();
     setRegenerateCallback = vi.fn();
     updateKeyImage = vi.fn();

@@ -281,9 +281,7 @@ export class SetupTraction extends SimIRacingAction<SetupTractionSettings> {
   private readonly iconThrottle = new IconUpdateThrottle();
 
   /**
-   * The dial half of the action; all IDeck dial events route here (#795). No
-   * `setActiveBinding` is delegated — it is one value per action-class instance
-   * and a dial context setting it would bleed onto the keypad buttons.
+   * The dial half of the action; all IDeck dial events route here (#795).
    */
   private readonly dialSurface = new SetupTractionDialSurface({
     logger: this.logger,
@@ -327,7 +325,6 @@ export class SetupTraction extends SimIRacingAction<SetupTractionSettings> {
     }
 
     this.activeContexts.set(ev.action.id, settings);
-    this.applyActiveBinding(settings);
     await this.updateDisplay(ev, settings);
 
     this.sdkController.subscribe(ev.action.id, (telemetry) => {
@@ -366,7 +363,6 @@ export class SetupTraction extends SimIRacingAction<SetupTractionSettings> {
     this.activeContexts.set(ev.action.id, settings);
     this.lastRenderedValue.delete(ev.action.id);
     this.repeat.clear(ev.action.id);
-    this.applyActiveBinding(settings);
     await this.updateDisplay(ev, settings);
   }
 
@@ -488,29 +484,6 @@ export class SetupTraction extends SimIRacingAction<SetupTractionSettings> {
 
   private parseSettings(settings: unknown): SetupTractionSettings {
     return parseSetupTractionSettings(settings);
-  }
-
-  private applyActiveBinding(settings: SetupTractionSettings): void {
-    if (isViewSetting(settings.setting)) {
-      if (!settings.dualPressEnabled) {
-        this.setActiveBinding(null);
-
-        return;
-      }
-
-      const adjustMode = getAdjustmentModeForView(settings.setting);
-      const tapDir: DirectionType = getDualPressDirections() === "tap-increases" ? "increase" : "decrease";
-      const activeKey = adjustMode ? (SETUP_TRACTION_GLOBAL_KEYS[`${adjustMode}-${tapDir}`] ?? null) : null;
-      this.setActiveBinding(activeKey);
-
-      return;
-    }
-
-    const activeKey = this.resolveGlobalKey(settings.setting, settings.direction);
-
-    if (activeKey) {
-      this.setActiveBinding(activeKey);
-    }
   }
 
   private async executeSetting(setting: SetupTractionAdjustSetting, direction: DirectionType): Promise<void> {

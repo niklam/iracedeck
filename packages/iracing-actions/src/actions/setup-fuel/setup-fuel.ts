@@ -217,8 +217,7 @@ export class SetupFuel extends SimIRacingAction<SetupFuelSettings> {
   private readonly iconThrottle = new IconUpdateThrottle();
 
   /**
-   * The dial half of the action; all IDeck dial events route here (#797). No
-   * `setActiveBinding` is delegated — it would bleed onto the keypad buttons.
+   * The dial half of the action; all IDeck dial events route here (#797).
    */
   private readonly dialSurface = new SetupFuelDialSurface({
     logger: this.logger,
@@ -262,7 +261,6 @@ export class SetupFuel extends SimIRacingAction<SetupFuelSettings> {
     }
 
     this.activeContexts.set(ev.action.id, settings);
-    this.applyActiveBinding(settings);
     await this.updateDisplay(ev, settings);
 
     this.sdkController.subscribe(ev.action.id, (telemetry) => {
@@ -298,7 +296,6 @@ export class SetupFuel extends SimIRacingAction<SetupFuelSettings> {
     this.activeContexts.set(ev.action.id, settings);
     this.lastRenderedValue.delete(ev.action.id);
     this.repeat.clear(ev.action.id);
-    this.applyActiveBinding(settings);
     await this.updateDisplay(ev, settings);
   }
 
@@ -420,29 +417,6 @@ export class SetupFuel extends SimIRacingAction<SetupFuelSettings> {
 
   private parseSettings(settings: unknown): SetupFuelSettings {
     return parseSetupFuelSettings(settings);
-  }
-
-  private applyActiveBinding(settings: SetupFuelSettings): void {
-    if (isViewSetting(settings.setting)) {
-      if (!settings.dualPressEnabled) {
-        this.setActiveBinding(null);
-
-        return;
-      }
-
-      const adjustMode = getAdjustmentModeForView(settings.setting);
-      const tapDir: DirectionType = getDualPressDirections() === "tap-increases" ? "increase" : "decrease";
-      const activeKey = adjustMode ? (SETUP_FUEL_GLOBAL_KEYS[`${adjustMode}-${tapDir}`] ?? null) : null;
-      this.setActiveBinding(activeKey);
-
-      return;
-    }
-
-    const activeKey = this.resolveGlobalKey(settings.setting, settings.direction);
-
-    if (activeKey) {
-      this.setActiveBinding(activeKey);
-    }
   }
 
   private async executeSetting(setting: SetupFuelAdjustSetting, direction: DirectionType): Promise<void> {

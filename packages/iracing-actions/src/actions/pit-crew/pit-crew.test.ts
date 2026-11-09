@@ -184,7 +184,6 @@ vi.mock("@iracedeck/deck-core", async () => {
       unsubscribe: hoisted.sdkUnsubscribe,
       getConnectionStatus: hoisted.sdkGetConnectionStatus,
     };
-    updateConnectionState = vi.fn();
     setKeyImage = vi.fn().mockResolvedValue(undefined);
     updateKeyImage = vi.fn().mockResolvedValue(true);
     setRegenerateCallback = vi.fn();

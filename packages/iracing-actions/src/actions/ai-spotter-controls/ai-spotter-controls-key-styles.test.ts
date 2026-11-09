@@ -40,7 +40,6 @@ vi.mock("@iracedeck/deck-core", async (importOriginal) => {
       logger = { trace: vi.fn(), debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
       setKeyImage = vi.fn().mockResolvedValue(undefined);
       setRegenerateCallback = vi.fn();
-      setActiveBinding = vi.fn();
       tapBinding = mockTapBinding;
       isBindingMissing = mockIsBindingMissing;
       // The base's addedWithVersion stamp: it writes `{...payload, addedWithVersion}`.

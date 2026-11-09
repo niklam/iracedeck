@@ -486,9 +486,6 @@ export class FuelService extends SimIRacingAction<FuelServiceSettings> {
     }
 
     this.activeContexts.set(ev.action.id, settings);
-    const activeKey = FUEL_SERVICE_GLOBAL_KEYS[settings.mode];
-    this.setActiveBinding(activeKey ?? null);
-
     await this.updateDisplay(ev, settings);
 
     this.sdkController.subscribe(ev.action.id, (telemetry) => {
@@ -523,9 +520,6 @@ export class FuelService extends SimIRacingAction<FuelServiceSettings> {
     this.repeat.clear(ev.action.id);
     this.activeContexts.set(ev.action.id, settings);
     this.lastState.delete(ev.action.id);
-    const activeKey = FUEL_SERVICE_GLOBAL_KEYS[settings.mode];
-    this.setActiveBinding(activeKey ?? null);
-
     await this.updateDisplay(ev, settings);
   }
 

@@ -86,7 +86,6 @@ vi.mock("@iracedeck/deck-core", () => ({
       getSessionInfo: vi.fn((): unknown => null),
       noteReplayLeftForLive: vi.fn(),
     };
-    updateConnectionState = vi.fn();
     setKeyImage = vi.fn();
     setRegenerateCallback = vi.fn();
   },

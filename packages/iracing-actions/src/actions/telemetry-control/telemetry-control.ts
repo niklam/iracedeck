@@ -297,8 +297,6 @@ export class TelemetryControl extends SimIRacingAction<TelemetryControlSettings>
     }
 
     const settings = this.parseSettings(migrated);
-    const activeKey = TELEMETRY_CONTROL_GLOBAL_KEYS[settings.mode];
-    this.setActiveBinding(activeKey ?? null);
     this.trackCaptureContext(ev.action.id, settings);
 
     await this.updateDisplay(ev, settings);
@@ -312,8 +310,6 @@ export class TelemetryControl extends SimIRacingAction<TelemetryControlSettings>
   override async onDidReceiveSettings(ev: IDeckDidReceiveSettingsEvent<TelemetryControlSettings>): Promise<void> {
     await super.onDidReceiveSettings(ev);
     const settings = this.parseSettings(ev.payload.settings);
-    const activeKey = TELEMETRY_CONTROL_GLOBAL_KEYS[settings.mode];
-    this.setActiveBinding(activeKey ?? null);
     this.trackCaptureContext(ev.action.id, settings);
 
     await this.updateDisplay(ev, settings);

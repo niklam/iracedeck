@@ -146,8 +146,7 @@ export const FORCE_FEEDBACK_UUID = "com.iracedeck.sd.core.force-feedback" as con
 
 export class ForceFeedback extends SimIRacingAction<ForceFeedbackSettings> {
   /**
-   * The dial half of the action; all IDeck dial events route here (#802). No
-   * `setActiveBinding` is delegated — it would bleed onto the keypad buttons.
+   * The dial half of the action; all IDeck dial events route here (#802).
    */
   private readonly dialSurface = new ForceFeedbackDialSurface({
     logger: this.logger,
@@ -187,12 +186,6 @@ export class ForceFeedback extends SimIRacingAction<ForceFeedbackSettings> {
     }
 
     await this.persistMigratedSettings(ev);
-    const activeKey = this.resolveGlobalKey(settings.mode, settings.direction);
-
-    if (activeKey) {
-      this.setActiveBinding(activeKey);
-    }
-
     await this.updateDisplay(ev, settings);
   }
 
@@ -211,12 +204,6 @@ export class ForceFeedback extends SimIRacingAction<ForceFeedbackSettings> {
       await this.dialSurface.didReceiveSettings(ev.action, settings.dial);
 
       return;
-    }
-
-    const activeKey = this.resolveGlobalKey(settings.mode, settings.direction);
-
-    if (activeKey) {
-      this.setActiveBinding(activeKey);
     }
 
     await this.updateDisplay(ev, settings);

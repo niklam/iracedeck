@@ -302,11 +302,9 @@ vi.mock("@iracedeck/deck-core", () => ({
       getCurrentTelemetry: vi.fn(() => null),
       getSessionInfo: vi.fn(() => null),
     });
-    updateConnectionState = vi.fn();
     setKeyImage = vi.fn();
     setRegenerateCallback = vi.fn();
     updateKeyImage = vi.fn();
-    setActiveBinding = vi.fn();
     isBindingMissing = vi.fn(() => false);
     tapBinding = vi.fn().mockResolvedValue(undefined);
     async onWillAppear() {}
@@ -1443,21 +1441,6 @@ describe("ReplayControl", () => {
       const cameraMock = vi.mocked(getCommands)().camera as unknown as { switchNum: ReturnType<typeof vi.fn> };
       expect(cameraMock.switchNum).not.toHaveBeenCalled();
     });
-
-    it("declares the active binding so readiness tracking matches the configured key", async () => {
-      await action.onWillAppear(fakeEvent("ctx-1", { mode: "next-car" }) as any);
-
-      expect(action["setActiveBinding"]).toHaveBeenCalledWith("replayControlNextCar");
-    });
-
-    it("clears the active binding when switched to a non-keystroke mode", async () => {
-      await action.onWillAppear(fakeEvent("ctx-1", { mode: "next-car" }) as any);
-      vi.mocked(action["setActiveBinding"]).mockClear();
-
-      await action.onDidReceiveSettings(fakeEvent("ctx-1", { mode: "next-session" }) as any);
-
-      expect(action["setActiveBinding"]).toHaveBeenCalledWith(null);
-    });
   });
 
   describe("car number cycling", () => {
@@ -1716,12 +1699,6 @@ describe("ReplayControl", () => {
         expect(source.lastSessionNum).toBe(2);
         expect(host().recordSource(null).camCarIdx).toBeUndefined();
       });
-
-      it("reads the binding state without setting the action's active binding", () => {
-        host().isBindingMissing(["replayControlNextCar", "replayControlPrevCar"]);
-
-        expect(action["setActiveBinding"]).not.toHaveBeenCalled();
-      });
     });
 
     describe("lifecycle", () => {
@@ -1733,7 +1710,6 @@ describe("ReplayControl", () => {
         expect(dialSurface.willAppear).toHaveBeenCalledTimes(1);
         expect(dialSurface.willAppear).toHaveBeenCalledWith(ev.action, DIAL);
         expect(action["activeContexts"].has("dial-1")).toBe(false);
-        expect(action["setActiveBinding"]).not.toHaveBeenCalled();
         expect(action["setKeyImage"]).not.toHaveBeenCalled();
         expect(ev.action.setTitle).not.toHaveBeenCalled();
       });
@@ -1764,7 +1740,6 @@ describe("ReplayControl", () => {
 
         expect(dialSurface.didReceiveSettings).toHaveBeenCalledWith(ev.action, changed);
         expect(action["activeContexts"].has("dial-1")).toBe(false);
-        expect(action["setActiveBinding"]).not.toHaveBeenCalled();
         expect(action["setKeyImage"]).not.toHaveBeenCalled();
       });
 

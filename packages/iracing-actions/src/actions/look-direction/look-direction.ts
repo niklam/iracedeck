@@ -96,7 +96,6 @@ export class LookDirection extends ConnectionStateAwareAction<LookDirectionSetti
   override async onWillAppear(ev: IDeckWillAppearEvent<LookDirectionSettings>): Promise<void> {
     await super.onWillAppear(ev);
     const settings = this.parseSettings(ev.payload.settings);
-    this.setActiveBinding(LOOK_DIRECTION_GLOBAL_KEYS[settings.direction]);
     await this.updateDisplay(ev, settings);
   }
 
@@ -108,7 +107,6 @@ export class LookDirection extends ConnectionStateAwareAction<LookDirectionSetti
   override async onDidReceiveSettings(ev: IDeckDidReceiveSettingsEvent<LookDirectionSettings>): Promise<void> {
     await super.onDidReceiveSettings(ev);
     const settings = this.parseSettings(ev.payload.settings);
-    this.setActiveBinding(LOOK_DIRECTION_GLOBAL_KEYS[settings.direction]);
     await this.updateDisplay(ev, settings);
   }
 

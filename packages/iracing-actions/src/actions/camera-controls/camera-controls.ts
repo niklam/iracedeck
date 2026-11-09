@@ -183,9 +183,8 @@ const FOCUS_ON_SWITCH_NAMES: Record<FocusOnTarget, string> = {
  * modes (which need no binding). Two modes tap an iRacing key binding: Cycle
  * Sub-Camera (Next / Previous Sub Camera, #852) and Cycle by Track Order (Next
  * / Previous Car, #1277). Drives the per-button missing-binding icon warning
- * (`isBindingMissing`) — deliberately NOT `setActiveBinding`, whose state is
- * one value per action-class instance and would bleed one button's mode onto
- * every other Camera Controls key (see the note in `updateDisplay`).
+ * (`isBindingMissing`), which is stateless per call so one button's mode never
+ * bleeds onto another Camera Controls key.
  */
 export function resolveBindingKey(target: Target, direction: Direction = "next"): string | null {
   switch (target) {
@@ -831,9 +830,7 @@ export class CameraControls extends SimIRacingAction<CameraControlsSettings> {
    * Rotation reuses the keypad's own `executeCycle` / focus dispatch — the dial
    * duplicates no camera logic. `isBindingMissing` is delegated for the strip's
    * #612 warning (Sub-Camera is binding-driven since #852, Track Order since
-   * #1277); `setActiveBinding`
-   * is NOT — it is one value per action-class instance and would bleed a dial
-   * context's state onto the keypad buttons (see global-settings.md).
+   * #1277).
    */
   private readonly dialSurface = new CameraDialSurface({
     logger: this.logger,
@@ -891,7 +888,6 @@ export class CameraControls extends SimIRacingAction<CameraControlsSettings> {
     await this.updateDisplay(ev, settings);
 
     this.sdkController.subscribe(ev.action.id, () => {
-      this.updateConnectionState();
       this.updateCycleIcon(ev.action.id);
     });
 
@@ -1683,20 +1679,9 @@ export class CameraControls extends SimIRacingAction<CameraControlsSettings> {
     ev: IDeckWillAppearEvent<CameraControlsSettings> | IDeckDidReceiveSettingsEvent<CameraControlsSettings>,
     settings: CameraControlsSettings,
   ): Promise<void> {
-    this.updateConnectionState();
-
-    // Per-BUTTON missing-binding state (#612): never the shared
-    // isActiveBindingMissing(), which is one value per action-class instance and
-    // would bleed one button's mode onto every other Camera Controls button.
-    //
-    // For the same reason this action never calls `setActiveBinding`: readiness
-    // would then be governed class-wide by whichever button appeared last, so a
-    // single unbound Cycle Sub-Camera key would dim the twelve SDK-driven camera
-    // keys around it (and an SDK-mode button would clear the tracking the
-    // sub-camera key needs). Readiness stays tied to the iRacing connection —
-    // correct for every mode, since no camera control works out of a session —
-    // and the binding state is surfaced per button by this warning and by the
-    // PI's own status line.
+    // Per-BUTTON missing-binding state (#612): computed from this button's own
+    // mode, so one unbound Cycle Sub-Camera key never marks the SDK-driven camera
+    // keys around it.
     const bindingKey = resolveBindingKey(settings.target, settings.direction);
     const svgDataUri = generateCameraControlsSvg(settings, this.isBindingMissing(bindingKey));
     await ev.action.setTitle("");

@@ -256,11 +256,9 @@ interface ForceFeedbackDialContext {
 
 /**
  * The delegates the surface needs from its owning action. Binding dispatch
- * stays on the action so keyboard/SimHub routing is unchanged. Deliberately NO
- * `setActiveBinding`: readiness state is one value per action-class instance and
- * setting it from a dial context would bleed onto the action's keypad buttons
- * (see global-settings.md), so dial instances compute their own per-context
- * missing-binding via `isBindingMissing` — same as the Setup dial surfaces.
+ * stays on the action so keyboard/SimHub routing is unchanged. Dial instances
+ * compute their own per-context missing-binding via `isBindingMissing` — same as
+ * the Setup dial surfaces.
  */
 export interface ForceFeedbackDialHost {
   readonly logger: ILogger;
