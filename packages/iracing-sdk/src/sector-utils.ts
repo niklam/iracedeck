@@ -30,6 +30,8 @@ const FIRST_SECTOR_AT_LINE_TOLERANCE = 1e-6;
  *
  * - `SplitTimeInfo.Sectors` is a non-empty list of records, each with a
  *   numeric `SectorNum` and a finite `SectorStartPct` in `[0, 1)`;
+ * - no `SectorNum` repeats (two entries for one sector leave its start, and
+ *   the sector count, undecidable);
  * - sorted by `SectorNum`, the start fractions strictly ascend (no repeated or
  *   backwards start);
  * - the first start is 0, within {@link FIRST_SECTOR_AT_LINE_TOLERANCE}
@@ -64,6 +66,10 @@ export function extractSectorStarts(sessionInfo: unknown): number[] | null {
   }
 
   entries.sort((a, b) => a.num - b.num);
+
+  for (let i = 1; i < entries.length; i++) {
+    if (entries[i]!.num === entries[i - 1]!.num) return null;
+  }
 
   const starts = entries.map((e) => e.start);
 

@@ -95,13 +95,53 @@ describe("extractSectorStarts", () => {
     expect(extractSectorStarts(info)).toBeNull();
   });
 
-  it("returns null for a negative start", () => {
+  it("returns null for a negative start, even one inside the line tolerance", () => {
+    // -0.0000005 is within 1e-6 of 0, so only the `start < 0` check refuses it.
     const info = withSectors([
-      { SectorNum: 0, SectorStartPct: -0.1 },
+      { SectorNum: 0, SectorStartPct: -0.0000005 },
       { SectorNum: 1, SectorStartPct: 0.5 },
     ]);
 
     expect(extractSectorStarts(info)).toBeNull();
+  });
+
+  it("accepts a first start of exactly 1e-6 as the line, and refuses one just above", () => {
+    expect(
+      extractSectorStarts(
+        withSectors([
+          { SectorNum: 0, SectorStartPct: 1e-6 },
+          { SectorNum: 1, SectorStartPct: 0.5 },
+        ]),
+      ),
+    ).toEqual([0, 0.5]);
+    expect(
+      extractSectorStarts(
+        withSectors([
+          { SectorNum: 0, SectorStartPct: 1.1e-6 },
+          { SectorNum: 1, SectorStartPct: 0.5 },
+        ]),
+      ),
+    ).toBeNull();
+  });
+
+  it("returns null for a repeated SectorNum", () => {
+    const info = withSectors([
+      { SectorNum: 0, SectorStartPct: 0 },
+      { SectorNum: 1, SectorStartPct: 0.3 },
+      { SectorNum: 1, SectorStartPct: 0.6 },
+    ]);
+
+    expect(extractSectorStarts(info)).toBeNull();
+    // Positive control: the same starts under distinct numbers are three sectors.
+    expect(
+      extractSectorStarts(
+        withSectors([
+          { SectorNum: 0, SectorStartPct: 0 },
+          { SectorNum: 1, SectorStartPct: 0.3 },
+          { SectorNum: 2, SectorStartPct: 0.6 },
+        ]),
+      ),
+    ).toEqual([0, 0.3, 0.6]);
   });
 
   it.each([Number.NaN, Number.POSITIVE_INFINITY, "0.5", null, undefined])(
