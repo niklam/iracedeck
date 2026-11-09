@@ -219,18 +219,26 @@ export const PIT_LANE_MIN_AGREEING_SAMPLES = 2;
 
 /**
  * How far from the median (metres along the track) a sample may lie and still
- * agree — a half-width, so two samples up to twice this apart agree. A
- * reasoned default, to be tuned on captures: one 60 Hz tick is about a metre
- * at pit speed and several at track speed.
+ * agree — a half-width, so two samples up to twice this apart agree. Tuned on
+ * the Spa capture (online practice, 2026-11-09, `CarIdxTrackSurface` at
+ * 60 Hz): the surface boundaries repeat within 0.2 m at the approach start
+ * (three entries) and 1.6 m at the exit lane's end (three drive-outs by two
+ * cars), and an edge's midpoint is within half a tick of the boundary (about
+ * 0.6 m at 75 m/s, a few metres across the two- to five-tick gaps a busy
+ * session leaves). 5 m keeps all of that with room to spare while two
+ * landmarks a car-length apart stay apart. Not yet seen in a capture, so not
+ * tuned: the pit-road speed lines (that capture recorded no `OnPitRoad`, and
+ * no remote car's `CarIdxOnPitRoad` made a pit-road edge there; see
+ * `sim-events-iracing`'s `diff/pit-lane-landmarks.ts`), other tracks, and the
+ * scatter across sim builds.
  */
-export const PIT_LANE_TOLERANCE_M = 15;
+export const PIT_LANE_TOLERANCE_M = 5;
 
 /**
  * {@link PIT_LANE_TOLERANCE_M} as a lap fraction, used when the track length is
- * unknown. A reasoned default, to be tuned on captures: 15 m on a track of
- * about 3.75 km.
+ * unknown: 5 m on a track of about 3.75 km.
  */
-export const PIT_LANE_TOLERANCE_PCT = 0.004;
+export const PIT_LANE_TOLERANCE_PCT = 0.00133;
 
 /**
  * Two samples with the same key count as one when their `at` lies closer than

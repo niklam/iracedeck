@@ -21,7 +21,7 @@ import {
   resolvePitLaneLandmarks,
 } from "./pit-lane-learner.js";
 
-/** A 4 km track: the 15 m tolerance is 0.00375 of a lap. */
+/** A 4 km track: the 5 m tolerance is 0.00125 of a lap. */
 const TRACK: PitLaneTrackIdentity = {
   sim: "iracing",
   trackId: 123,
@@ -468,10 +468,10 @@ describe("learnPitLaneLandmarks", () => {
     const learner = loaded();
 
     learnPitLaneLandmarks(learner, [{ landmark: "pitRoadStart", sample: sample(0.9, "a", 1_000) }], NOW);
-    // 0.003 of 4 km is 12 m: within the 15 m half-width of the median.
+    // 0.002 of 4 km is 8 m, 4 m each side of the median: within the 5 m half-width.
     const [second] = learnPitLaneLandmarks(
       learner,
-      [{ landmark: "pitRoadStart", sample: sample(0.903, "b", 2_000) }],
+      [{ landmark: "pitRoadStart", sample: sample(0.902, "b", 2_000) }],
       NOW,
     );
 

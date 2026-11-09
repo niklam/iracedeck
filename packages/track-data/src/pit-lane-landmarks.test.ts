@@ -335,14 +335,14 @@ describe("summarizeLandmark", () => {
   });
 
   it("publishes two samples within the tolerance", () => {
-    // 15 m on 5000 m is 0.003.
-    expect(summarizeLandmark(foldAll([sample(0.3), sample(0.3029)]), TRACK_M).published).toBe(true);
+    // 5 m on 5000 m is 0.001: 9.5 m apart is 4.75 m each side of the median.
+    expect(summarizeLandmark(foldAll([sample(0.3), sample(0.3019)]), TRACK_M).published).toBe(true);
   });
 
   it("treats the tolerance as a half-width around the median", () => {
-    // 5 km track: 20 m apart is 10 m each side of the median, 31 m apart is 15.5 m.
-    expect(summarizeLandmark(foldAll([sample(0.3), sample(0.304)]), TRACK_M).published).toBe(true);
-    expect(summarizeLandmark(foldAll([sample(0.3), sample(0.3062)]), TRACK_M).published).toBe(false);
+    // 5 km track: 8 m apart is 4 m each side of the median, 11 m apart is 5.5 m.
+    expect(summarizeLandmark(foldAll([sample(0.3), sample(0.3016)]), TRACK_M).published).toBe(true);
+    expect(summarizeLandmark(foldAll([sample(0.3), sample(0.3022)]), TRACK_M).published).toBe(false);
   });
 
   it("does not publish two samples beyond the tolerance", () => {
@@ -350,7 +350,8 @@ describe("summarizeLandmark", () => {
   });
 
   it("uses the pct tolerance when the track length is unknown", () => {
-    const record = foldAll([sample(0.3), sample(0.307)], undefined, null);
+    // 0.0012 each side of the median: within PIT_LANE_TOLERANCE_PCT, but 6 m on 5 km.
+    const record = foldAll([sample(0.3), sample(0.3024)], undefined, null);
 
     expect(summarizeLandmark(record, null).published).toBe(true);
     expect(summarizeLandmark(record, TRACK_M).published).toBe(false);

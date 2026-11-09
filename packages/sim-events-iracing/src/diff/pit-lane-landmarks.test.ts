@@ -31,7 +31,7 @@ import {
 } from "./pit-lane-landmarks.js";
 import type { PendingEvent } from "./types.js";
 
-/** A 4 km track: one lap fraction of 0.001 is 4 m, and the 15 m tolerance is 0.00375. */
+/** A 4 km track: one lap fraction of 0.001 is 4 m, and the 5 m tolerance is 0.00125. */
 const TRACK: PitLaneTrackIdentity = {
   sim: "iracing",
   trackId: 123,
