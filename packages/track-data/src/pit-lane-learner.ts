@@ -145,6 +145,18 @@ export function loadPitLaneLandmarkLearner(
 }
 
 /**
+ * One value per landmark, in {@link PIT_LANE_LANDMARK_NAMES} order. The cast
+ * is exact: `PitLaneLandmarkName` is derived from that list, so the entries
+ * name every landmark and nothing else.
+ */
+function byLandmark<T>(value: (name: PitLaneLandmarkName) => T): Record<PitLaneLandmarkName, T> {
+  return Object.fromEntries(PIT_LANE_LANDMARK_NAMES.map((name) => [name, value(name)])) as Record<
+    PitLaneLandmarkName,
+    T
+  >;
+}
+
+/**
  * What a consumer may use for each landmark of the loaded track
  * ({@link resolvePublishedLandmark}: the current values when published, else
  * the pre-rebuild ones, else `null`), or `null` when nothing is loaded.
@@ -156,12 +168,7 @@ export function resolvePitLaneLandmarks(
 
   if (track === null || section === null) return null;
 
-  return {
-    approachStart: resolvePublishedLandmark(section.landmarks.approachStart, track.trackLengthM),
-    pitRoadStart: resolvePublishedLandmark(section.landmarks.pitRoadStart, track.trackLengthM),
-    pitRoadEnd: resolvePublishedLandmark(section.landmarks.pitRoadEnd, track.trackLengthM),
-    blendEnd: resolvePublishedLandmark(section.landmarks.blendEnd, track.trackLengthM),
-  };
+  return byLandmark((name) => resolvePublishedLandmark(section.landmarks[name], track.trackLengthM));
 }
 
 /** One sample a translator offers the learner: the landmark whose edge a car drove, and the sample it made. */

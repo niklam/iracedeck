@@ -49,7 +49,12 @@ export interface PitLaneLandmarkSample {
   carClassId: number;
   /**
    * Opaque: unique per crossing of one landmark by one car, so two processes
-   * watching one session make the same key for one edge. Its publisher builds
+   * watching one session make the same key for one edge. That holds because
+   * both read the same frames. It can fail only when one process misses a
+   * frame at a crossing within about a tick of the start/finish line, where
+   * the two may put it on different laps: the edge is then counted twice.
+   * That is accepted as rare, since a key without the lap would merge a car's
+   * real repeat crossings within the duplicate window. Its publisher builds
    * it (iRacing's translator: `<subSessionId>:<sessionNum>:<carIdx>:<landmark>:<lap>`);
    * nothing parses it.
    */
