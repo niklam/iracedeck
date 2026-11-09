@@ -87,6 +87,11 @@ vi.mock("../../shared/replay-busy-indicator.js", () => ({
   setReplayBusyIndicatorLogger: vi.fn(),
 }));
 
+vi.mock("@iracedeck/icon-composer", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@iracedeck/icon-composer")>()),
+  hexToGrayscale: vi.fn((hex: string) => `grey(${hex})`),
+}));
+
 vi.mock("@iracedeck/deck-core", async () => {
   const { z } = await import("zod");
   // The REAL dial-gesture helpers: the dial instances below classify their releases through them.
@@ -114,7 +119,6 @@ vi.mock("@iracedeck/deck-core", async () => {
         getCurrentTelemetry: vi.fn((): TelemetryData | null => null),
         getSessionInfo: vi.fn((): unknown => null),
       };
-      updateConnectionState = vi.fn();
       setKeyImage = vi.fn().mockResolvedValue(undefined);
       updateKeyImage = vi.fn().mockResolvedValue(true);
       setRegenerateCallback = vi.fn();
@@ -133,7 +137,6 @@ vi.mock("@iracedeck/deck-core", async () => {
         titleText: overrides?.titleText ?? defaultTitle ?? "",
       }),
     ),
-    hexToGrayscale: vi.fn((hex: string) => `grey(${hex})`),
     IconUpdateThrottle: class {
       schedule = vi.fn((_id: string, render: () => unknown) => {
         void render();
