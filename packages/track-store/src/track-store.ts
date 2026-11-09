@@ -893,11 +893,21 @@ export function createTrackStore(opts: TrackStoreOptions): TrackStore {
   return store;
 }
 
+/**
+ * The one store of this process. Nothing reads it back: there is no getter,
+ * because the plugin threads the handle `initializeTrackStore` returns to the
+ * one place that needs it, and a global one would invite reading the file
+ * around the translator (spec decision 4: consumers read the translator).
+ * It is kept only so a second store cannot be created, since two stores in
+ * one process would share its pid in their temp-file names and each re-fold
+ * only its own samples.
+ */
 let trackStore: TrackStore | null = null;
 
 /**
- * Initialize the track store singleton. Called once at plugin startup; the
- * plugin also registers `process.on("exit", () => store.flushSync())`.
+ * Create the process's track store. Called once at plugin startup; the
+ * plugin also registers `process.on("exit", () => store.flushSync())` and
+ * threads the returned handle to its consumers.
  *
  * @throws Error if called more than once
  */
@@ -909,23 +919,6 @@ export function initializeTrackStore(options: TrackStoreOptions): TrackStore {
   trackStore = createTrackStore(options);
 
   return trackStore;
-}
-
-/**
- * Get the track store.
- *
- * @throws Error if the store hasn't been initialized
- */
-export function getTrackStore(): TrackStore {
-  if (!trackStore) {
-    throw new Error("Track store not initialized. Call initializeTrackStore() first in your plugin entry point.");
-  }
-
-  return trackStore;
-}
-
-export function isTrackStoreInitialized(): boolean {
-  return trackStore !== null;
 }
 
 /**

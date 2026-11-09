@@ -1,7 +1,9 @@
 // @iracedeck/track-store: the per-track store (issue #1112). Pit-lane landmarks
-// learned from live telemetry, one file per TrackID under
-// %LOCALAPPDATA%\iRaceDeck\Track Data, shared by every deck host and merged on
-// every write. The landmark model is @iracedeck/track-data's.
+// learned from live telemetry, one file per track under
+// %LOCALAPPDATA%\iRaceDeck\Track Data\<sim>, shared by every deck host and
+// merged on every write. The landmark model is @iracedeck/track-data's. There
+// is no global getter: the plugin threads the handle initializeTrackStore
+// returns, and consumers read the translator, never the store.
 export {
   buildTrackFile,
   type ParsedTrackFile,
@@ -20,9 +22,7 @@ export {
 export {
   _resetTrackStore,
   createTrackStore,
-  getTrackStore,
   initializeTrackStore,
-  isTrackStoreInitialized,
   nodeTrackStoreIo,
   TRACK_STORE_OWN_SAMPLES_CAP,
   TRACK_STORE_STALE_TEMP_MS,

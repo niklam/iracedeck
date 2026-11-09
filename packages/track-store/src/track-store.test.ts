@@ -24,9 +24,7 @@ import { TRACK_FILE_VERSION, type TrackFile } from "./track-file.js";
 import {
   _resetTrackStore,
   createTrackStore,
-  getTrackStore,
   initializeTrackStore,
-  isTrackStoreInitialized,
   nodeTrackStoreIo,
   TRACK_STORE_STALE_TEMP_MS,
   TRACK_STORE_WRITE_DEBOUNCE_MS,
@@ -1061,19 +1059,23 @@ describe("flushSync", () => {
 });
 
 describe("the singleton", () => {
-  it("initializes once and is read back", () => {
-    expect(isTrackStoreInitialized()).toBe(false);
-    expect(() => getTrackStore()).toThrow(/not initialized/);
-
+  it("initializes once, until reset", () => {
     const store = initializeTrackStore({ directory: dir, logger: silentLogger });
 
-    expect(isTrackStoreInitialized()).toBe(true);
-    expect(getTrackStore()).toBe(store);
+    expect(store.directory).toBe(dir);
     expect(() => initializeTrackStore({ directory: dir, logger: silentLogger })).toThrow(/already initialized/);
 
     _resetTrackStore();
 
-    expect(isTrackStoreInitialized()).toBe(false);
+    expect(initializeTrackStore({ directory: dir, logger: silentLogger })).not.toBe(store);
+  });
+
+  it("has no getter: the handle is the one initializeTrackStore returns", async () => {
+    const barrel = await import("./index.js");
+
+    expect(Object.keys(barrel)).not.toContain("getTrackStore");
+    expect(Object.keys(barrel)).not.toContain("isTrackStoreInitialized");
+    expect(Object.keys(barrel)).toContain("initializeTrackStore");
   });
 
   it("is reset without a timer of the old store writing afterwards", () => {
