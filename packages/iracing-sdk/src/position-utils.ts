@@ -52,7 +52,11 @@ export function calculateRacePositions(telemetry: TelemetryData | null): number[
  * @returns 1-based class position, or `0` when it can't be derived (player omitted,
  *          missing class data, or out-of-range carIdx).
  */
-export function classPositionFromOrder(positions: number[], carIdxClass: number[] | undefined, carIdx: number): number {
+export function classPositionFromOrder(
+  positions: readonly number[],
+  carIdxClass: number[] | undefined,
+  carIdx: number,
+): number {
   if (carIdx < 0 || carIdx >= positions.length) return 0;
 
   if (!Array.isArray(carIdxClass)) return 0;
@@ -76,4 +80,41 @@ export function classPositionFromOrder(positions: number[], carIdxClass: number[
   }
 
   return ahead + 1;
+}
+
+/**
+ * A car's class position: derived from the canonical order when the order and
+ * the car's class are known, else the official counter. 0 = unknown.
+ *
+ * The one derive-else-official policy (#711), shared by the translator's
+ * `getLivePosition` and the template's `class_position`:
+ *
+ * - No order → `official` when it is a positive number, else `0`.
+ * - An order and the car's class id (`carIdxClass[carIdx]`) known →
+ *   {@link classPositionFromOrder} and nothing else: a car the order does not
+ *   rank reads `0`, never the official counter, because an order is
+ *   authoritative (`race-positions.md`).
+ * - An order but no class id for the car (no `CarIdxClass`, or an array without
+ *   that car's entry) → `official` when positive, else `0`: the class cannot be
+ *   derived, which is not the same as the car being absent.
+ *
+ * The official source is the caller's: `PlayerCarClassPosition` for the player
+ * readout, `CarIdxClassPosition[carIdx]` for the template.
+ *
+ * @param order       1-based overall ranks indexed by carIdx (`0` = omitted), or none.
+ * @param carIdxClass `CarIdxClass` telemetry (class id per carIdx); may be undefined.
+ * @param carIdx      The car to resolve.
+ * @param official    iRacing's official class counter for that car (`0` = not classified).
+ */
+export function classPositionOrOfficial(
+  order: readonly number[] | null | undefined,
+  carIdxClass: number[] | undefined,
+  carIdx: number,
+  official: number | undefined,
+): number {
+  if (order && Array.isArray(carIdxClass) && carIdxClass[carIdx] !== undefined) {
+    return classPositionFromOrder(order, carIdxClass, carIdx);
+  }
+
+  return typeof official === "number" && official > 0 ? official : 0;
 }

@@ -119,7 +119,7 @@ export {
 } from "./track-utils.js";
 
 // Position utilities
-export { calculateRacePositions, classPositionFromOrder } from "./position-utils.js";
+export { calculateRacePositions, classPositionFromOrder, classPositionOrOfficial } from "./position-utils.js";
 
 // Replay speed encoding (#1202)
 export { replaySpeedFromTelemetry, replaySpeedToSdk } from "./replay-speed.js";
