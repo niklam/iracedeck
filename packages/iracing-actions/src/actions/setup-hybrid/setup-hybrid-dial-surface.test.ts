@@ -43,7 +43,6 @@ vi.mock("@iracedeck/deck-core", async () => {
       setKeyImage = vi.fn().mockResolvedValue(undefined);
       setRegenerateCallback = vi.fn();
       updateKeyImage = vi.fn().mockResolvedValue(false);
-      setActiveBinding = vi.fn();
       tapBinding = mockTapBinding;
       holdBinding = vi.fn().mockResolvedValue(undefined);
       releaseBinding = vi.fn().mockResolvedValue(undefined);
@@ -541,21 +540,6 @@ describe("SetupHybrid dial surface", () => {
       const decoded = decodeURIComponent(ctx.setDialCanvas.mock.calls.at(-1)?.[0] as string);
 
       expect(decoded).toContain("binding-warning");
-    });
-  });
-
-  describe("active binding", () => {
-    it("does not declare active bindings for dial instances (would bleed onto keypad buttons)", async () => {
-      const ctx = dialContext("ab1");
-      await appear(ctx, dialSettings({ setting: "mguk-deploy-mode" }));
-
-      const setActiveBinding = (action as unknown as { setActiveBinding: ReturnType<typeof vi.fn> }).setActiveBinding;
-
-      expect(setActiveBinding).not.toHaveBeenCalled();
-
-      await action.onDidReceiveSettings(basicEvent(ctx, dialSettings({ setting: "mguk-regen-gain" })) as never);
-
-      expect(setActiveBinding).not.toHaveBeenCalled();
     });
   });
 

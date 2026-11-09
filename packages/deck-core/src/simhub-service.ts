@@ -17,7 +17,9 @@
  * Usage:
  * 1. Call initializeSimHub() once at plugin startup
  * 2. Use getSimHub() in your actions to trigger roles
- * 3. Use isSimHubReachable() for readiness checks (e.g., overlay state)
+ * 3. Use isSimHubReachable() to check whether a SimHub role can be pressed
+ *    now (the binding dispatcher's isReady, and the black-box helper Fuel
+ *    Service and Setup Chassis pass it to)
  *
  * @example
  * // At startup (the shared bootstrap: plugin-runtime's phases/start-services.ts)

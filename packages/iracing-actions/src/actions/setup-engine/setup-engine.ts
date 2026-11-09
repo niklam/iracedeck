@@ -217,8 +217,7 @@ export class SetupEngine extends SimIRacingAction<SetupEngineSettings> {
   private readonly iconThrottle = new IconUpdateThrottle();
 
   /**
-   * The dial half of the action; all IDeck dial events route here (#798). No
-   * `setActiveBinding` is delegated — it would bleed onto the keypad buttons.
+   * The dial half of the action; all IDeck dial events route here (#798).
    */
   private readonly dialSurface = new SetupEngineDialSurface({
     logger: this.logger,
@@ -262,7 +261,6 @@ export class SetupEngine extends SimIRacingAction<SetupEngineSettings> {
     }
 
     this.activeContexts.set(ev.action.id, settings);
-    this.applyActiveBinding(settings);
     await this.updateDisplay(ev, settings);
 
     this.sdkController.subscribe(ev.action.id, (telemetry) => {
@@ -298,7 +296,6 @@ export class SetupEngine extends SimIRacingAction<SetupEngineSettings> {
     this.activeContexts.set(ev.action.id, settings);
     this.lastRenderedValue.delete(ev.action.id);
     this.repeat.clear(ev.action.id);
-    this.applyActiveBinding(settings);
     await this.updateDisplay(ev, settings);
   }
 
@@ -420,25 +417,6 @@ export class SetupEngine extends SimIRacingAction<SetupEngineSettings> {
 
   private parseSettings(settings: unknown): SetupEngineSettings {
     return parseSetupEngineSettings(settings);
-  }
-
-  private applyActiveBinding(settings: SetupEngineSettings): void {
-    if (isViewSetting(settings.setting)) {
-      if (!settings.dualPressEnabled) {
-        this.setActiveBinding(null);
-
-        return;
-      }
-
-      const adjustMode = getAdjustmentModeForView(settings.setting);
-      const tapDir: DirectionType = getDualPressDirections() === "tap-increases" ? "increase" : "decrease";
-      const activeKey = adjustMode ? (SETUP_ENGINE_GLOBAL_KEYS[`${adjustMode}-${tapDir}`] ?? null) : null;
-      this.setActiveBinding(activeKey);
-
-      return;
-    }
-
-    this.setActiveBinding(SETUP_ENGINE_GLOBAL_KEYS[`${settings.setting}-${settings.direction}`]);
   }
 
   private async executeSetting(setting: SetupEngineAdjustSetting, direction: DirectionType): Promise<void> {

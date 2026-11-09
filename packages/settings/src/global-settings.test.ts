@@ -281,7 +281,7 @@ describe("global-settings cache (synchronous update on local writes)", () => {
       raceEngineerVolume: 50,
       radarVolume: 50,
       backgroundVolume: 25,
-      disableWhenDisconnected: true,
+      showDisconnectedState: false,
       focusIRacingWindow: "always",
       enableFuelingOnChange: true,
       simHubHost: "127.0.0.1",
@@ -1133,6 +1133,50 @@ describe("debugLogging (issue #609)", () => {
   });
 });
 
+describe("showDisconnectedState (issue #1599)", () => {
+  const parse = (input: Record<string, unknown>): Record<string, unknown> =>
+    GlobalSettingsSchema.parse(input) as Record<string, unknown>;
+
+  it("defaults to false when the key is absent", () => {
+    expect(parse({}).showDisconnectedState).toBe(false);
+  });
+
+  it("defaults to false when the key is explicitly undefined", () => {
+    expect(parse({ showDisconnectedState: undefined }).showDisconnectedState).toBe(false);
+  });
+
+  it("accepts real booleans as themselves", () => {
+    expect(parse({ showDisconnectedState: true }).showDisconnectedState).toBe(true);
+    expect(parse({ showDisconnectedState: false }).showDisconnectedState).toBe(false);
+  });
+
+  it("coerces the checkbox's string values", () => {
+    expect(parse({ showDisconnectedState: "true" }).showDisconnectedState).toBe(true);
+    expect(parse({ showDisconnectedState: "false" }).showDisconnectedState).toBe(false);
+  });
+
+  it("reads any other string as false", () => {
+    expect(parse({ showDisconnectedState: "yes" }).showDisconnectedState).toBe(false);
+    expect(parse({ showDisconnectedState: "" }).showDisconnectedState).toBe(false);
+  });
+
+  it("falls back to false on a value of the wrong type, without failing the whole parse", () => {
+    for (const value of [1, null, { on: true }, ["true"]]) {
+      const parsed = parse({ showDisconnectedState: value, debugLogging: true });
+
+      expect(parsed.showDisconnectedState).toBe(false);
+      // The `.catch` keeps the rest of the object: a neighbour still parses.
+      expect(parsed.debugLogging).toBe(true);
+    }
+  });
+
+  it("is typed as a boolean on the parsed settings", () => {
+    const value: boolean = GlobalSettingsSchema.parse({}).showDisconnectedState;
+
+    expect(value).toBe(false);
+  });
+});
+
 describe("stored-settings salvage (issue #896 protection, now over the file)", () => {
   it("keeps the good keys when one stored value is unparseable", async () => {
     // debugLogging: 42 fails its union (no per-field catch) — the salvage
@@ -1192,11 +1236,21 @@ describe("schema hardening (issue #896)", () => {
     expect(parsed.chatPasteToEnterDelayMs).toBe(200);
   });
 
-  it("disableWhenDisconnected coerces PI string values like the other booleans", () => {
-    const parsedFalse = GlobalSettingsSchema.parse({ disableWhenDisconnected: "false" }) as Record<string, unknown>;
-    expect(parsedFalse.disableWhenDisconnected).toBe(false);
-    const parsedTrue = GlobalSettingsSchema.parse({ disableWhenDisconnected: "true" }) as Record<string, unknown>;
-    expect(parsedTrue.disableWhenDisconnected).toBe(true);
+  it("showDisconnectedState coerces PI string values like the other booleans", () => {
+    const parsedFalse = GlobalSettingsSchema.parse({ showDisconnectedState: "false" }) as Record<string, unknown>;
+    expect(parsedFalse.showDisconnectedState).toBe(false);
+    const parsedTrue = GlobalSettingsSchema.parse({ showDisconnectedState: "true" }) as Record<string, unknown>;
+    expect(parsedTrue.showDisconnectedState).toBe(true);
+  });
+
+  it("no longer declares the retired disableWhenDisconnected (#1599): no default, a stored value passes through", () => {
+    const empty = GlobalSettingsSchema.parse({}) as Record<string, unknown>;
+    expect(empty).not.toHaveProperty("disableWhenDisconnected");
+    // A stored copy is an ordinary passthrough key, kept as stored (not
+    // coerced) until the cleanup deletes it.
+    const stored = GlobalSettingsSchema.parse({ disableWhenDisconnected: "true" }) as Record<string, unknown>;
+    expect(stored.disableWhenDisconnected).toBe("true");
+    expect(stored.showDisconnectedState).toBe(false);
   });
 
   it("simHubHost falls back to the default on a non-string value", () => {

@@ -78,15 +78,12 @@ vi.mock("@iracedeck/deck-core", async () => {
     ConnectionStateAwareAction: class MockConnectionStateAwareAction {
       logger = { trace: vi.fn(), debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
       sdkController = { subscribe: vi.fn(), unsubscribe: vi.fn(), getCurrentTelemetry: vi.fn() };
-      updateConnectionState = vi.fn();
       setKeyImage = vi.fn();
       setRegenerateCallback = vi.fn();
       updateKeyImage = vi.fn().mockResolvedValue(true);
       tapBinding = mockTapBinding;
       holdBinding = vi.fn().mockResolvedValue(undefined);
       releaseBinding = vi.fn().mockResolvedValue(undefined);
-      setActiveBinding = vi.fn();
-      isActiveBindingMissing = vi.fn(() => false);
       isBindingMissing = vi.fn(() => false);
       async onWillAppear() {}
       async onDidReceiveSettings() {}

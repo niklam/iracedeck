@@ -106,14 +106,12 @@ vi.mock("@iracedeck/deck-core", async () => ({
       getCurrentTelemetry: vi.fn(),
       getCurrentTemplateContext: vi.fn((): TemplateContext | null => null),
     };
-    updateConnectionState = vi.fn();
     setKeyImage = vi.fn();
     setRegenerateCallback = vi.fn();
     updateKeyImage = vi.fn().mockResolvedValue(true);
     tapBinding = mockTapBinding;
     holdBinding = vi.fn().mockResolvedValue(undefined);
     releaseBinding = vi.fn().mockResolvedValue(undefined);
-    setActiveBinding = vi.fn();
     isBindingMissing = vi.fn(() => false);
     async onWillAppear() {}
     async onDidReceiveSettings() {}

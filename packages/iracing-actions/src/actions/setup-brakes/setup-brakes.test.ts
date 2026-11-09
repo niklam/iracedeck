@@ -86,15 +86,12 @@ vi.mock("@iracedeck/deck-core", async () => {
     ConnectionStateAwareAction: class MockConnectionStateAwareAction {
       logger = { trace: vi.fn(), debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
       sdkController = { subscribe: vi.fn(), unsubscribe: vi.fn(), getCurrentTelemetry: vi.fn() };
-      updateConnectionState = vi.fn();
       setKeyImage = vi.fn();
       setRegenerateCallback = vi.fn();
       updateKeyImage = vi.fn().mockResolvedValue(true);
       tapBinding = mockTapBinding;
       holdBinding = vi.fn().mockResolvedValue(undefined);
       releaseBinding = vi.fn().mockResolvedValue(undefined);
-      setActiveBinding = vi.fn();
-      isActiveBindingMissing = vi.fn(() => false);
       isBindingMissing = vi.fn(() => false);
       async onWillAppear() {}
       async onDidReceiveSettings() {}
@@ -552,7 +549,6 @@ describe("SetupBrakes", () => {
       expect(ev.action.setDialCanvas).toHaveBeenCalled();
       expect(ev.action.setFeedback).not.toHaveBeenCalled();
       expect((action as any).setKeyImage).not.toHaveBeenCalled();
-      expect((action as any).setActiveBinding).not.toHaveBeenCalled();
     });
 
     it("pushes no touch-strip feedback for a keypad instance", async () => {
@@ -561,7 +557,6 @@ describe("SetupBrakes", () => {
       await action.onWillAppear(ev as any);
 
       expect((action as any).setKeyImage).toHaveBeenCalled();
-      expect((action as any).setActiveBinding).toHaveBeenCalledWith("setupBrakesBrakeBiasIncrease");
     });
   });
 
@@ -600,13 +595,6 @@ describe("SetupBrakes", () => {
 
       await action.onWillDisappear({ action: { id: "action-1" }, payload: { settings: {} } } as any);
       expect(unsubscribe).toHaveBeenCalledWith("action-1");
-    });
-
-    it("clears active binding when switching to a View setting with dual-press off", async () => {
-      const setActive = vi.mocked(action["setActiveBinding"]);
-      await action.onWillAppear(fakeEvent("action-1", { setting: "view-brake-bias", dualPressEnabled: false }) as any);
-
-      expect(setActive).toHaveBeenCalledWith(null);
     });
   });
 

@@ -125,7 +125,6 @@ export function buildSeedSettings() {
     // A mode since #977; the plugin pushes the PARSED cache, so the page never
     // sees the legacy boolean and neither does the shot.
     focusIRacingWindow: "always",
-    disableWhenDisconnected: true,
     // The Mouse to Sim pointer target (#1029), seeded at its shipped defaults on
     // purpose: the shot then shows what a fresh install shows, and it shows it
     // from the fixture rather than from the controls' own `default=` attributes.
@@ -135,6 +134,12 @@ export function buildSeedSettings() {
     mouseToSimOffsetY: 12.5,
     dualPressThresholdMs: 500,
     dualPressDirections: "tap-increases",
+
+    // ── Appearance ──
+    // The disconnected look (#1599), seeded off: it ships off for everyone, so
+    // the shot shows the unticked box a fresh or upgraded install shows. Its
+    // checkbox has no `default=` attribute, so this value is what draws it.
+    showDisconnectedState: false,
 
     // ── Race Engineer ──
     pitCrewRaceEngineerEnabled: true,

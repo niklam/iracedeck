@@ -222,8 +222,7 @@ export const CAMERA_EDITOR_ADJUSTMENTS_UUID = "com.iracedeck.sd.core.camera-edit
 
 export class CameraEditorAdjustments extends SimIRacingAction<CameraEditorAdjustmentsSettings> {
   /**
-   * The dial half of the action; all IDeck dial events route here (#804). No
-   * `setActiveBinding` is delegated — it would bleed onto the keypad buttons.
+   * The dial half of the action; all IDeck dial events route here (#804).
    */
   private readonly dialSurface = new CameraEditorDialSurface({
     logger: this.logger,
@@ -257,7 +256,6 @@ export class CameraEditorAdjustments extends SimIRacingAction<CameraEditorAdjust
       return;
     }
 
-    this.setActiveBinding(CAMERA_EDITOR_GLOBAL_KEYS[settings.adjustment]?.[settings.direction]);
     await this.updateDisplay(ev, settings);
   }
 
@@ -279,7 +277,6 @@ export class CameraEditorAdjustments extends SimIRacingAction<CameraEditorAdjust
       return;
     }
 
-    this.setActiveBinding(CAMERA_EDITOR_GLOBAL_KEYS[settings.adjustment]?.[settings.direction]);
     await this.updateDisplay(ev, settings);
   }
 

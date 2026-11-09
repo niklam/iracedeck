@@ -191,8 +191,7 @@ export const SPLITS_DELTA_CYCLE_UUID = "com.iracedeck.sd.core.splits-delta-cycle
 
 export class SplitsDeltaCycle extends ConnectionStateAwareAction<SplitsDeltaCycleSettings> {
   /**
-   * The dial half of the action; all IDeck dial events route here (#807). No
-   * `setActiveBinding` is delegated — it would bleed onto the keypad buttons.
+   * The dial half of the action; all IDeck dial events route here (#807).
    */
   private readonly dialSurface = new SplitsDeltaCycleDialSurface({
     logger: this.logger,
@@ -219,7 +218,6 @@ export class SplitsDeltaCycle extends ConnectionStateAwareAction<SplitsDeltaCycl
       return;
     }
 
-    this.setActiveBinding(this.resolveSettingKey(settings));
     await this.updateDisplay(ev, settings);
   }
 
@@ -235,7 +233,7 @@ export class SplitsDeltaCycle extends ConnectionStateAwareAction<SplitsDeltaCycl
       // Teardown must not stall, so MIN_HOLD_MS is deliberately not applied.
       await this.releaseBinding(ev.action.id);
     } finally {
-      // The base teardown (readiness unsubscribe, context removal) must run
+      // The base teardown (connection unsubscribe, context removal) must run
       // even if the release rejects — otherwise the context leaks for good.
       await super.onWillDisappear(ev);
     }
@@ -251,7 +249,6 @@ export class SplitsDeltaCycle extends ConnectionStateAwareAction<SplitsDeltaCycl
       return;
     }
 
-    this.setActiveBinding(this.resolveSettingKey(settings));
     await this.updateDisplay(ev, settings);
   }
 

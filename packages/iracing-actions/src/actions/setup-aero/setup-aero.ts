@@ -215,8 +215,7 @@ export class SetupAero extends SimIRacingAction<SetupAeroSettings> {
   private readonly iconThrottle = new IconUpdateThrottle();
 
   /**
-   * The dial half of the action; all IDeck dial events route here (#799). No
-   * `setActiveBinding` is delegated — it would bleed onto the keypad buttons.
+   * The dial half of the action; all IDeck dial events route here (#799).
    */
   private readonly dialSurface = new SetupAeroDialSurface({
     logger: this.logger,
@@ -260,7 +259,6 @@ export class SetupAero extends SimIRacingAction<SetupAeroSettings> {
     }
 
     this.activeContexts.set(ev.action.id, settings);
-    this.applyActiveBinding(settings);
     await this.updateDisplay(ev, settings);
 
     this.sdkController.subscribe(ev.action.id, (telemetry) => {
@@ -296,7 +294,6 @@ export class SetupAero extends SimIRacingAction<SetupAeroSettings> {
     this.activeContexts.set(ev.action.id, settings);
     this.lastRenderedValue.delete(ev.action.id);
     this.repeat.clear(ev.action.id);
-    this.applyActiveBinding(settings);
     await this.updateDisplay(ev, settings);
   }
 
@@ -418,29 +415,6 @@ export class SetupAero extends SimIRacingAction<SetupAeroSettings> {
 
   private parseSettings(settings: unknown): SetupAeroSettings {
     return parseSetupAeroSettings(settings);
-  }
-
-  private applyActiveBinding(settings: SetupAeroSettings): void {
-    if (isViewSetting(settings.setting)) {
-      if (!settings.dualPressEnabled) {
-        this.setActiveBinding(null);
-
-        return;
-      }
-
-      const adjustMode = getAdjustmentModeForView(settings.setting);
-      const tapDir: DirectionType = getDualPressDirections() === "tap-increases" ? "increase" : "decrease";
-      const activeKey = adjustMode ? (SETUP_AERO_GLOBAL_KEYS[`${adjustMode}-${tapDir}`] ?? null) : null;
-      this.setActiveBinding(activeKey);
-
-      return;
-    }
-
-    const activeKey = this.resolveGlobalKey(settings.setting, settings.direction);
-
-    if (activeKey) {
-      this.setActiveBinding(activeKey);
-    }
   }
 
   private async executeSetting(setting: SetupAeroAdjustSetting, direction: DirectionType): Promise<void> {

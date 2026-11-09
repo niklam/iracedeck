@@ -47,7 +47,7 @@ describe("SimHub Service", () => {
       GlobalSettingsSchema.parse({
         simHubHost: "127.0.0.1",
         simHubPort: 8888,
-        disableWhenDisconnected: true,
+        showDisconnectedState: false,
         debugLogging: false,
         focusIRacingWindow: "never",
         mouseToSimAnchorX: "center" as const,
@@ -176,7 +176,7 @@ describe("SimHub Service", () => {
         GlobalSettingsSchema.parse({
           simHubHost: "192.168.1.100",
           simHubPort: 9999,
-          disableWhenDisconnected: true,
+          showDisconnectedState: false,
           debugLogging: false,
           focusIRacingWindow: "never",
           mouseToSimAnchorX: "center" as const,

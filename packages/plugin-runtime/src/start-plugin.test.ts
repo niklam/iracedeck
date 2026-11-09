@@ -149,6 +149,7 @@ function expectedOrder(withExtension: boolean): string[] {
     "initGlobalSettings",
     "createVoicePackLaunchStep().start",
     "migrateGlobalSettingsKeys",
+    "cleanupRetiredDisconnectedSetting", // #1599
     "seedBindingDefaultsIfAbsent",
     ...(withExtension ? ["extension.start"] : []),
     "adapter.onOpenSettingsRequest",
@@ -171,12 +172,13 @@ function expectedOrder(withExtension: boolean): string[] {
  * scan helpers, and `().includes` reads stay out. `register` joined the list
  * with #1387: until then the only registrations were the adapter's, which
  * `adapter.` covers, so a bare `registerStateSection` passed unseen.
- * `configure` and `setReplayBusyIndicatorLogger` joined it with #1467; a
+ * `configure` and `setReplayBusyIndicatorLogger` joined it with #1467, and
+ * `cleanup` with #1599 (the retired-key cleanup); a
  * top-level `set*` is deliberately not added, since it would surface setters
  * the order does not care about.
  */
 const EFFECTFUL =
-  /^(init|start|on[A-Z]|new |adapter\.|extension\.|apply|validate|migrate|seed|wire|create|register|configure|setReplayBusyIndicatorLogger)|\.(start|subscribe|refresh|init|set[A-Z]\w*)$/;
+  /^(init|start|on[A-Z]|new |adapter\.|extension\.|apply|validate|migrate|cleanup|seed|wire|create|register|configure|setReplayBusyIndicatorLogger)|\.(start|subscribe|refresh|init|set[A-Z]\w*)$/;
 
 /**
  * Pure factories whose product goes straight into a recorded call — that
@@ -264,6 +266,7 @@ describe("startPlugin (#1349)", () => {
       // 10 startServices
       "GlobalSettings",
       "SettingsMigration",
+      "SettingsMigration", // the retired-key cleanup (#1599)
       "SettingsMigration",
       "SimHub",
       "BindingDispatcher",

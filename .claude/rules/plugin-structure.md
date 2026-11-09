@@ -73,7 +73,7 @@ packages/iracing-plugin-stream-deck-{name}/
     │   ├── plugin/                        # category-icon.png, marketplace.png (@1x and @2x); iracedeck.ico (Volume Mixer, #1253)
     │   └── actions/{action-name}/         # icon.svg, key.svg for each action
     └── ui/
-        ├── settings.html                  # Global settings (disableWhenDisconnected) — compiled from @iracedeck/pi-components
+        ├── settings.html                  # Plugin-level fallback PI: a link to the Settings window, no global controls (#1003) — compiled from @iracedeck/pi-components
         ├── sdpi-components.js             # Copied at build time from @iracedeck/pi-components/browser
         ├── pi-components.js               # Copied at build time from @iracedeck/pi-components/browser
         └── {action-name}.html             # Action-specific Property Inspector — compiled from @iracedeck/pi-components
@@ -183,7 +183,7 @@ Every plugin starts through one composition root (#1349). Its `plugin.ts` is a s
 | 7 | `initSettings` | `Core`, `Audio`, `VoicePacks` | `Settings` | the settings store, the startup notices, the CPU profile capture, the settings window, the global-settings listener with its store-ready block |
 | 8 | `initReplay` | `Core` | `Replay` | the replay engine's env (`configureReplayEngine`) and the replay store with its exit flush and five record subscriptions |
 | 9 | `registerActions` | `Core`, `Input` | — | window focus and the mouse pointer, the Always-mode focus listeners, the replay busy indicator's logger, `initPressSounds` (#269), then every action, each wrapped in `withPressSounds`: `SHARED_ACTIONS`, then the extension's `extraActions` |
-| 10 | `startServices` | `Core`, `Input`, `Settings`, `Replay`, `VoicePacks`, `HostSim` (`sim.host`) | — | `initGlobalSettings`, the launch step's start, the binding migrations, the extension's `start({ sim })`, the settings-window request, SimHub, the binding dispatcher, the app monitor, the elevation and replay-session subscribers |
+| 10 | `startServices` | `Core`, `Input`, `Settings`, `Replay`, `VoicePacks`, `HostSim` (`sim.host`) | — | `initGlobalSettings`, the launch step's start, the binding-key renames, the retired-key cleanup (`cleanupRetiredDisconnectedSetting`, #1599), the binding-default seed, the extension's `start({ sim })`, the settings-window request, SimHub, the binding dispatcher, the app monitor, the elevation and replay-session subscribers |
 | 11 | `adapter.connect()` | — | — | always last: every handler is registered before the host can deliver an event |
 
 A data dependency is a parameter, so a phase cannot run before what it needs exists: `initGlobalSettings` after the first pack refresh, the launch step after `initGlobalSettings`, the settings window after the store. The voice-pack phase's mutable state lives on the `VoicePacks` object, created before the service that calls back into it, so the old module scope's temporal-dead-zone hazard is gone by construction. An ordering with no data edge stays inside one phase, adjacent, with its comment:

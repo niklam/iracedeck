@@ -43,7 +43,6 @@ vi.mock("@iracedeck/deck-core", async () => {
       setKeyImage = vi.fn().mockResolvedValue(undefined);
       setRegenerateCallback = vi.fn();
       updateKeyImage = vi.fn().mockResolvedValue(false);
-      setActiveBinding = vi.fn();
       tapBinding = mockTapBinding;
       isBindingMissing = mockIsBindingMissing;
       async onWillAppear() {}
@@ -742,21 +741,6 @@ describe("CockpitMisc dial surface", () => {
       const decoded = decodeURIComponent(ctx.setDialCanvas.mock.calls.at(-1)?.[0] as string);
 
       expect(decoded).toContain("binding-warning");
-    });
-  });
-
-  describe("active binding", () => {
-    it("does not declare active bindings for dial instances (would bleed onto keypad buttons)", async () => {
-      const ctx = dialContext("ab1");
-      await appear(ctx, dialSettings({ setting: "dash-page-1" }));
-
-      const setActiveBinding = (action as unknown as { setActiveBinding: ReturnType<typeof vi.fn> }).setActiveBinding;
-
-      expect(setActiveBinding).not.toHaveBeenCalled();
-
-      await action.onDidReceiveSettings(basicEvent(ctx, dialSettings({ setting: "dash-page-2" })) as never);
-
-      expect(setActiveBinding).not.toHaveBeenCalled();
     });
   });
 

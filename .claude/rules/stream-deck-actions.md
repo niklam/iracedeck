@@ -54,7 +54,7 @@ Requirements
 - Logger is injected via constructor, not created in the action class.
 - Event types use `IDeck` prefix: `IDeckWillAppearEvent<T>`, `IDeckKeyDownEvent<T>`, etc.
 - Action settings should use Zod schemas when the action has settings.
-- Actions must not implement their own global offline handling; offline behavior is handled centrally.
+- Actions never draw their own "sim not running" look or gate presses on the connection: `ConnectionStateAwareAction` draws the disconnected look over every key image the action sends, per key, while the setting is on and the sim is absent (#1599). An action only says which of its modes work without the sim, by overriding `needsSim(settings)` (below).
 - Actions should implement `onDidReceiveSettings()` to handle settings updates from the Property Inspector.
 - A lifecycle handler (`onWillAppear`, `onWillDisappear`, `onDidReceiveSettings`) never awaits another event of its own context — a settings echo, an input: the adapter queues that event behind the handler, so the await stalls the context until the 10 s limit (#1597; the contract is under *Per-context event order* in `packages/deck-core/CLAUDE.md`).
 
@@ -409,9 +409,6 @@ Actions extending `ConnectionStateAwareAction` use binding dispatch delegates th
 automatically route to keyboard or SimHub based on the binding type:
 
 ```typescript
-// Declare which binding this action depends on (for readiness tracking)
-this.setActiveBinding("blackBoxLapTiming");
-
 // Execute the binding (routes to keyboard or SimHub automatically)
 await this.tapBinding("blackBoxLapTiming");
 
@@ -419,6 +416,27 @@ await this.tapBinding("blackBoxLapTiming");
 await this.holdBinding(ev.action.id, "lookDirectionLeft");
 await this.releaseBinding(ev.action.id);
 ```
+
+There is nothing to declare first: `setActiveBinding` and the readiness it fed were removed in #1599. The #612 binding warning is computed per key with `isBindingMissing` (step 3 of the comms checklist below).
+
+### Keys that work without the sim — `needsSim` (#1599)
+
+With `showDisconnectedState` on, every key is drawn with the disconnected look (a dim layer and a badge) once the sim has been absent for the sim's delay (iRacing: 5 s), unless its action says the key's current mode works without the sim. `BaseAction` sends every key image through one funnel, so an action draws nothing for this and calls nothing; the look follows the sim's presence and clears on the first connected tick. Presses still go through. Dials and the touch strip are not decorated.
+
+An action whose mode changes only plugin state — a plugin setting, a deck profile, the plugin's own audio buses or CPU profile — overrides `needsSim`, which is handed the raw settings of the key being drawn (possibly `undefined` before it appears) and parses them with the action's own schema:
+
+```typescript
+protected override needsSim(settings: unknown): boolean {
+  const parsed = AudioControlsSettings.safeParse(settings ?? {});
+
+  // The Race Engineer and Radar buses are the plugin's own; the rest talk to iRacing
+  return !(parsed.success && (parsed.data.category === "race-engineer" || parsed.data.category === "radar"));
+}
+```
+
+- **The binding type never changes the answer.** A mode bound to a SimHub role needs the sim as much as one bound to a key: SimHub's Control Mapper turns the role into an input for the sim.
+- **Decide per key, from the settings passed in** — never from a field on the action, which one instance shares across every key it is placed on.
+- Overrides today: Pit Crew and Switch Profile (every mode), Audio Controls (Race Engineer and Radar categories), Telemetry Control (Capture CPU Profile). A new mode of that kind extends its action's override, and the settings window's help text in `global-disconnected-look.ejs` and the website's settings page, which name these keys.
 
 ### Direct Global Settings Access (Low-Level)
 
@@ -500,5 +518,5 @@ When adding or modifying an action, keep these in sync:
    <ird-binding-status mode-setting="<%= __comms._meta.modeSetting %>" comms='<%= JSON.stringify(__comms) %>'></ird-binding-status>
    ```
    Use `<%=` (HTML-escaped) for the `comms` attribute, never `<%-`. Display-only / internal actions (session-info, telemetry-display, pit-crew) get no line and no catalog entry.
-3. **Icon overlay** — for keybind modes, compute the missing-binding flag **per button context** with the base-class `this.isBindingMissing(<key(s) for this mode's settings>)` — NOT the shared `isActiveBindingMissing()`, which bleeds one button's state onto every button of the action. Reuse the same key expression the action passes to `setActiveBinding`. Pass `bindingMissing` into the icon generator: `assembleIcon({ …, bindingMissing })` for static icons, or `applyBindingWarning(content)` for dynamic-template icons. Compute it fresh inside regenerate-callback closures so a live binding change updates the icon.
+3. **Icon overlay** — for keybind modes, compute the missing-binding flag **per button context** with the base-class `this.isBindingMissing(<key(s) for this mode's settings>)`, from that context's own settings — never from a field on the action, which bleeds one button's state onto every button of the action. Use the same key expression the mode's `tapBinding` / `holdBinding` sends. Pass `bindingMissing` into the icon generator: `assembleIcon({ …, bindingMissing })` for static icons, or `applyBindingWarning(content)` for dynamic-template icons. Compute it fresh inside regenerate-callback closures so a live binding change updates the icon.
 4. **Docs** — state the per-mode method in the action docs and on the website action page (see `action-documentation.md` and `website-action-docs.md`).

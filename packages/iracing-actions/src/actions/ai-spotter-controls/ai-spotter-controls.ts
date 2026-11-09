@@ -192,7 +192,6 @@ export class AiSpotterControls extends ConnectionStateAwareAction<AiSpotterContr
     await persistFreshKeyStyleSeed(ev, this.logger);
     await super.onWillAppear(ev);
     const settings = this.parseSettings(ev.payload.settings);
-    this.setActiveBinding(SPOTTER_GLOBAL_KEYS[settings.control]);
     await this.updateDisplay(ev, settings);
   }
 
@@ -200,7 +199,6 @@ export class AiSpotterControls extends ConnectionStateAwareAction<AiSpotterContr
     await super.onDidReceiveSettings(ev);
     const settings = this.parseSettings(ev.payload.settings);
     this.repeat.clear(ev.action.id);
-    this.setActiveBinding(SPOTTER_GLOBAL_KEYS[settings.control]);
     await this.updateDisplay(ev, settings);
   }
 

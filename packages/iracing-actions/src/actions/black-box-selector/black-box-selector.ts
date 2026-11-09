@@ -158,8 +158,7 @@ export const BLACK_BOX_SELECTOR_UUID = "com.iracedeck.sd.core.black-box-selector
 
 export class BlackBoxSelector extends ConnectionStateAwareAction<BlackBoxSelectorSettings> {
   /**
-   * The dial half of the action; all IDeck dial events route here (#808). No
-   * `setActiveBinding` is delegated — it would bleed onto the keypad buttons.
+   * The dial half of the action; all IDeck dial events route here (#808).
    */
   private readonly dialSurface = new BlackBoxSelectorDialSurface({
     logger: this.logger,
@@ -180,7 +179,6 @@ export class BlackBoxSelector extends ConnectionStateAwareAction<BlackBoxSelecto
       return;
     }
 
-    this.setActiveBinding(this.resolveSettingKey(settings));
     await this.updateDisplay(ev, settings);
   }
 
@@ -199,7 +197,6 @@ export class BlackBoxSelector extends ConnectionStateAwareAction<BlackBoxSelecto
       return;
     }
 
-    this.setActiveBinding(this.resolveSettingKey(settings));
     await this.updateDisplay(ev, settings);
   }
 

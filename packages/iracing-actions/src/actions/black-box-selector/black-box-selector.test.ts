@@ -7,9 +7,8 @@ import {
   generateBlackBoxSelectorSvg,
 } from "./black-box-selector.js";
 
-const { mockTapBinding, mockSetActiveBinding } = vi.hoisted(() => ({
+const { mockTapBinding } = vi.hoisted(() => ({
   mockTapBinding: vi.fn().mockResolvedValue(undefined),
-  mockSetActiveBinding: vi.fn(),
 }));
 
 vi.mock("@iracedeck/icons/black-box-selector/lap-timing.svg", () => ({
@@ -76,13 +75,11 @@ vi.mock("@iracedeck/deck-core", () => ({
   ConnectionStateAwareAction: class MockConnectionStateAwareAction {
     logger = { trace: vi.fn(), debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
     sdkController = { subscribe: vi.fn(), unsubscribe: vi.fn(), getCurrentTelemetry: vi.fn() };
-    updateConnectionState = vi.fn();
     setKeyImage = vi.fn();
     setRegenerateCallback = vi.fn();
     tapBinding = mockTapBinding;
     holdBinding = vi.fn().mockResolvedValue(undefined);
     releaseBinding = vi.fn().mockResolvedValue(undefined);
-    setActiveBinding = mockSetActiveBinding;
     isBindingMissing = vi.fn(() => false);
     async onWillAppear() {}
     async onDidReceiveSettings() {}
@@ -328,26 +325,6 @@ describe("BlackBoxSelector", () => {
         await action.onKeyDown(fakeEvent("a1", { mode: "previous", blackBox: "lap-timing" }) as never);
 
         expect(mockTapBinding).toHaveBeenCalledWith("blackBoxCyclePrevious");
-      });
-    });
-
-    describe("setActiveBinding", () => {
-      it("should set active binding in onWillAppear for direct mode", async () => {
-        await action.onWillAppear(fakeEvent("a1", { mode: "direct", blackBox: "standings" }) as never);
-
-        expect(mockSetActiveBinding).toHaveBeenCalledWith("blackBoxStandings");
-      });
-
-      it("should update active binding in onDidReceiveSettings", async () => {
-        await action.onDidReceiveSettings(fakeEvent("a1", { mode: "direct", blackBox: "tires" }) as never);
-
-        expect(mockSetActiveBinding).toHaveBeenCalledWith("blackBoxTires");
-      });
-
-      it("should set cycle key for next mode", async () => {
-        await action.onWillAppear(fakeEvent("a1", { mode: "next", blackBox: "lap-timing" }) as never);
-
-        expect(mockSetActiveBinding).toHaveBeenCalledWith("blackBoxCycleNext");
       });
     });
   });

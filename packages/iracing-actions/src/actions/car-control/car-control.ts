@@ -1016,7 +1016,6 @@ export class CarControl extends SimIRacingAction<CarControlSettings> {
     await super.onWillAppear(ev);
     const settings = this.parseSettings(ev.payload.settings);
     this.activeContexts.set(ev.action.id, settings);
-    this.applyReadinessBinding(settings);
 
     await this.updateDisplay(ev, settings);
 
@@ -1060,7 +1059,6 @@ export class CarControl extends SimIRacingAction<CarControlSettings> {
     this.stopStarterFlash(ev.action.id);
     const settings = this.parseSettings(ev.payload.settings);
     this.activeContexts.set(ev.action.id, settings);
-    this.applyReadinessBinding(settings);
 
     await this.updateDisplay(ev, settings);
   }
@@ -1511,26 +1509,6 @@ export class CarControl extends SimIRacingAction<CarControlSettings> {
 
     this.logger.debug(`Wipers and Visor: ${press} press sends ${binding}`);
     await this.tapBinding(binding);
-  }
-
-  /**
-   * Declare the binding readiness tracks for this key's mode. Wipers and Visor tracks none, so
-   * its readiness follows the sim alone (#1463): which binding it needs changes with the car
-   * on any telemetry tick, while readiness is resolved only here, so a binding chosen now
-   * would grey the key in the next car. Its per-car missing binding shows on the icon instead.
-   */
-  private applyReadinessBinding(settings: CarControlSettings): void {
-    if (settings.control === "wipers-and-visor") {
-      this.setActiveBinding(null);
-
-      return;
-    }
-
-    const globalKey = CAR_CONTROL_GLOBAL_KEYS[settings.control];
-
-    if (globalKey) {
-      this.setActiveBinding(globalKey);
-    }
   }
 
   /**

@@ -241,7 +241,6 @@ vi.mock("@iracedeck/deck-core", () => ({
       getCurrentTelemetry: vi.fn(() => null),
       getSessionInfo: vi.fn(() => null),
     };
-    updateConnectionState = vi.fn();
     setKeyImage = vi.fn();
     updateKeyImage = vi.fn();
     setRegenerateCallback = vi.fn();

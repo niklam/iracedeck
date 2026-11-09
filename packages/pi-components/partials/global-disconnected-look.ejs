@@ -1,0 +1,26 @@
+<%#
+  Global Disconnected Keys setting (#1599): one card on the settings window's
+  Appearance tab, after Flag Flash. Turns on the disconnected look, a dim layer
+  and a badge on every key that needs the sim, while the sim is absent. It
+  replaces the retired `disableWhenDisconnected` checkbox, which promised
+  ignored presses that never existed; presses still go through.
+
+  The checkbox carries NO `default` attribute: the setting defaults to off, and
+  `default="false"` renders checked (the truthy-attribute trap).
+%>
+<%- include('accordion', {
+  title: 'Disconnected Keys',
+  accordionId: 'Global Disconnected Keys',
+  open: false,
+  content: `
+    <sdpi-item label="iRacing not running">
+      <sdpi-checkbox setting="showDisconnectedState" label="Dim keys that need iRacing" global></sdpi-checkbox>
+    </sdpi-item>
+    <div class="ird-supporting-text">
+      While iRacing isn't running, keys that need it are dimmed and marked with a badge.
+      Pressing one still sends the press. Pit Crew, Switch Profile, Capture CPU Profile
+      and the Race Engineer and Radar volume keys keep their normal look, because they
+      work without iRacing.
+    </div>
+  `
+}) %>

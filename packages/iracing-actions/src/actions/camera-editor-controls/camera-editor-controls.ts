@@ -232,14 +232,12 @@ export class CameraEditorControls extends ConnectionStateAwareAction<CameraEdito
   override async onWillAppear(ev: IDeckWillAppearEvent<CameraEditorControlsSettings>): Promise<void> {
     await super.onWillAppear(ev);
     const settings = this.parseSettings(ev.payload.settings);
-    this.setActiveBinding(CAMERA_EDITOR_CONTROLS_GLOBAL_KEYS[settings.control]);
     await this.updateDisplay(ev, settings);
   }
 
   override async onDidReceiveSettings(ev: IDeckDidReceiveSettingsEvent<CameraEditorControlsSettings>): Promise<void> {
     await super.onDidReceiveSettings(ev);
     const settings = this.parseSettings(ev.payload.settings);
-    this.setActiveBinding(CAMERA_EDITOR_CONTROLS_GLOBAL_KEYS[settings.control]);
     await this.updateDisplay(ev, settings);
   }
 

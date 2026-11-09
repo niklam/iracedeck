@@ -408,8 +408,7 @@ export class SetupChassis extends SimIRacingAction<SetupChassisSettings> {
   private readonly iconThrottle = new IconUpdateThrottle();
 
   /**
-   * The dial half of the action; all IDeck dial events route here (#800). No
-   * `setActiveBinding` is delegated — it would bleed onto the keypad buttons.
+   * The dial half of the action; all IDeck dial events route here (#800).
    */
   private readonly dialSurface = new SetupChassisDialSurface({
     logger: this.logger,
@@ -459,7 +458,6 @@ export class SetupChassis extends SimIRacingAction<SetupChassisSettings> {
     }
 
     this.activeContexts.set(ev.action.id, settings);
-    this.applyActiveBinding(settings);
     await this.updateDisplay(ev, settings);
 
     this.sdkController.subscribe(ev.action.id, (telemetry) => {
@@ -495,7 +493,6 @@ export class SetupChassis extends SimIRacingAction<SetupChassisSettings> {
     this.activeContexts.set(ev.action.id, settings);
     this.lastRenderedValue.delete(ev.action.id);
     this.repeat.clear(ev.action.id);
-    this.applyActiveBinding(settings);
     await this.updateDisplay(ev, settings);
   }
 
@@ -643,25 +640,6 @@ export class SetupChassis extends SimIRacingAction<SetupChassisSettings> {
 
   private parseSettings(settings: unknown): SetupChassisSettings {
     return parseSetupChassisSettings(settings);
-  }
-
-  private applyActiveBinding(settings: SetupChassisSettings): void {
-    if (isViewSetting(settings.setting)) {
-      if (!settings.dualPressEnabled) {
-        this.setActiveBinding(null);
-
-        return;
-      }
-
-      const adjustMode = getAdjustmentModeForView(settings.setting);
-      const tapDir: DirectionType = getDualPressDirections() === "tap-increases" ? "increase" : "decrease";
-      const activeKey = adjustMode ? (SETUP_CHASSIS_GLOBAL_KEYS[`${adjustMode}-${tapDir}`] ?? null) : null;
-      this.setActiveBinding(activeKey);
-
-      return;
-    }
-
-    this.setActiveBinding(SETUP_CHASSIS_GLOBAL_KEYS[`${settings.setting}-${settings.direction}`]);
   }
 
   private async executeSetting(setting: string, direction: DirectionType): Promise<void> {

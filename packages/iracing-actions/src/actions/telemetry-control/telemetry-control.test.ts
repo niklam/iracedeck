@@ -153,12 +153,10 @@ vi.mock("@iracedeck/deck-core", () => ({
       getCurrentTelemetry: mockGetCurrentTelemetry,
       getSessionInfo: mockGetSessionInfo,
     };
-    updateConnectionState = vi.fn();
     setKeyImage = vi.fn();
     updateKeyImage = vi.fn().mockResolvedValue(true);
     setRegenerateCallback = vi.fn();
     isBindingMissing = vi.fn(() => false);
-    setActiveBinding = vi.fn();
     tapBinding = mockTapBinding;
     holdBinding = vi.fn().mockResolvedValue(undefined);
     releaseBinding = vi.fn().mockResolvedValue(undefined);

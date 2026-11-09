@@ -163,6 +163,18 @@ export function generateSwitchProfileSvg(settings: SwitchProfileSettings): strin
 export const SWITCH_PROFILE_UUID = "com.iracedeck.sd.core.switch-profile" as const;
 
 export class SwitchProfile extends ConnectionStateAwareAction<SwitchProfileSettings> {
+  /**
+   * A Switch Profile key never needs the sim (#1599): it switches a deck
+   * profile, which works with iRacing closed, so it never shows the
+   * disconnected look.
+   *
+   * @param settings - The context's raw settings; every profile gives the same answer
+   */
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  protected override needsSim(settings: unknown): boolean {
+    return false;
+  }
+
   override async onWillAppear(ev: IDeckWillAppearEvent<SwitchProfileSettings>): Promise<void> {
     await super.onWillAppear(ev);
     await this.sync(ev);

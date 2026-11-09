@@ -269,9 +269,7 @@ interface SetupTractionDialContext {
 }
 
 /**
- * The delegates the surface needs from its owning action. Deliberately NO
- * `setActiveBinding`: it is one value per action-class instance and setting it
- * from a dial context would bleed onto the keypad buttons.
+ * The delegates the surface needs from its owning action.
  */
 export interface SetupTractionDialHost {
   readonly logger: ILogger;

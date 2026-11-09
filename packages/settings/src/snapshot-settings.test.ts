@@ -550,7 +550,7 @@ describe("readSettingsForSnapshot", () => {
       expect(result.someObject).toEqual({ nested: { deep: [1, 2, 3] }, flag: true });
       expect(result.someArray).toEqual(["a", { b: 2 }]);
       // A schema default the store never held is there too.
-      expect(result.disableWhenDisconnected).toBe(true);
+      expect(result.focusIRacingWindow).toBe("always");
     });
 
     it("returns every key of the cache that does not start with an underscore", async () => {

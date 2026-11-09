@@ -125,15 +125,23 @@ function calloutEnabledFields(): { [K in CalloutSettingKey]: ReturnType<typeof c
 export const GlobalSettingsSchema = z
   .object({
     /**
-     * When true, buttons show inactive/disabled state when iRacing is not connected.
-     * Default: true. Uses the standard string/boolean coercion (issue #896) so a
-     * persisted string value can't abort the whole settings parse.
+     * When true, every key that needs the sim is drawn with the disconnected
+     * look (a dim layer and a badge) while the sim is absent (#1599). Presses
+     * still go through; the look only says the key cannot act now. Keys that
+     * work without the sim (Pit Crew, Switch Profile, the Race Engineer and
+     * Radar volume modes, Capture CPU Profile) never get it.
+     *
+     * Default: false, for everyone (Niklas, 2026-11-02). It replaces the
+     * retired `disableWhenDisconnected`, whose value deliberately does not
+     * carry over (see `cleanupRetiredDisconnectedSetting`). Uses the standard
+     * string/boolean coercion (#896) so a persisted string value can't abort
+     * the whole settings parse.
      */
-    disableWhenDisconnected: z
+    showDisconnectedState: z
       .union([z.boolean(), z.string()])
       .transform((val) => val === true || val === "true")
-      .default(true)
-      .catch(true),
+      .default(false)
+      .catch(false),
     /**
      * When true, the plugin writes verbose `DEBUG`-level logs; when false it
      * logs at `INFO` (issue #609). Production default is `false` so a fresh

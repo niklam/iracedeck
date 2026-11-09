@@ -86,6 +86,11 @@ vi.mock("../../shared/replay-busy-indicator.js", () => ({
   setReplayBusyIndicatorLogger: vi.fn(),
 }));
 
+vi.mock("@iracedeck/icon-composer", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@iracedeck/icon-composer")>()),
+  hexToGrayscale: vi.fn((hex: string) => `grey(${hex})`),
+}));
+
 vi.mock("@iracedeck/deck-core", () => ({
   BUSY_MARK_FRAMES: 8,
   busyMarkSvg: vi.fn(() => "<busy-mark/>"),
@@ -111,11 +116,9 @@ vi.mock("@iracedeck/deck-core", () => ({
       getCurrentTelemetry: vi.fn((): TelemetryData | null => null),
       getSessionInfo: vi.fn((): unknown => null),
     });
-    updateConnectionState = vi.fn();
     setKeyImage = vi.fn();
     setRegenerateCallback = vi.fn();
     updateKeyImage = vi.fn();
-    setActiveBinding = vi.fn();
     isBindingMissing = vi.fn(() => false);
     tapBinding = vi.fn().mockResolvedValue(undefined);
     async onWillAppear() {}
@@ -131,7 +134,6 @@ vi.mock("@iracedeck/deck-core", () => ({
   getGlobalBorderSettings: vi.fn(() => ({})),
   getGlobalGraphicSettings: vi.fn(() => ({})),
   getGlobalTitleSettings: vi.fn(() => ({})),
-  hexToGrayscale: vi.fn((hex: string) => `grey(${hex})`),
   ICON_BASE_TEMPLATE: "<svg>{{graphicContent}}{{titleContent}}</svg>",
   LogLevel: { Info: 2 },
   parseSvgViewBox: vi.fn(() => undefined),

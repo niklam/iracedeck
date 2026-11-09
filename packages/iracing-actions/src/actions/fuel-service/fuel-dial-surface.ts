@@ -267,7 +267,7 @@ interface FuelDialContext {
 /**
  * What the dial surface needs from the owning action: scoped logging, live
  * telemetry/session access, and the base-class binding delegates (which must
- * stay on the action so #612 readiness/warning semantics are unchanged).
+ * stay on the action so #612 warning semantics are unchanged).
  */
 export interface FuelDialHost {
   readonly logger: ILogger;
@@ -1841,8 +1841,9 @@ export class FuelDialSurface extends ReleaseDialSurfaceBase<FuelDialContext, Fue
    * toggle-autofuel-mode) but unset — drives the #612 missing-binding overlay on
    * the strip. The dial's primary functions (rotate to add fuel, press to toggle
    * fueling) go through the iRacing API and need NO binding, so a missing autofuel
-   * binding must never gate the whole key's readiness — that would dim the key out
-   * of the box for everyone (the default Long Press is toggle-autofuel-mode).
+   * binding only drives the strip's warning and never marks the whole key as
+   * unusable — that would flag the key out of the box for everyone (the default
+   * Long Press is toggle-autofuel-mode).
    */
   private autofuelBindingMissing(settings: FuelServiceSettings): boolean {
     const slots = [

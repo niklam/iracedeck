@@ -7,9 +7,10 @@
 		<%# The plugin-level fallback Property Inspector. It carried copies of
 		    `disableWhenDisconnected` and `focusIRacingWindow`; #1003 removed them
 		    with every other in-PI copy of a plugin-global setting, so this page is
-		    now the way through to the window that owns them — both live on its
-		    General tab. Do not re-add a global control here; see
-		    .claude/rules/settings-window.md. %>
+		    now the way through to the window that owns them. Focus iRacing lives
+		    on its General tab; `disableWhenDisconnected` was retired in #1599, and
+		    its successor `showDisconnectedState` is on the Appearance tab. Do not
+		    re-add a global control here; see .claude/rules/settings-window.md. %>
 		<%- include('section-header', { title: 'iRaceDeck Settings', openSettings: true }) %>
 
 		<div class="ird-supporting-text">Every plugin-wide setting lives in the iRaceDeck Settings window.</div>

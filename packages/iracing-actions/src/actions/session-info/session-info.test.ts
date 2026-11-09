@@ -192,7 +192,6 @@ vi.mock("@iracedeck/deck-core", async () => ({
       getSessionInfo: vi.fn(),
       getReplayState: vi.fn(() => ({ inReplay: false })),
     };
-    updateConnectionState = vi.fn();
     setKeyImage = vi.fn();
     setRegenerateCallback = vi.fn();
     updateKeyImage = vi.fn().mockResolvedValue(true);

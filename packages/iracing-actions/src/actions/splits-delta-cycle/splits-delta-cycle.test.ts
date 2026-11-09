@@ -52,11 +52,9 @@ vi.mock("@iracedeck/deck-core", () => ({
   ConnectionStateAwareAction: class MockConnectionStateAwareAction {
     logger = { trace: vi.fn(), debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
     sdkController = { subscribe: vi.fn(), unsubscribe: vi.fn() };
-    updateConnectionState = vi.fn();
     setKeyImage = vi.fn();
     setRegenerateCallback = vi.fn();
     isBindingMissing = vi.fn(() => false);
-    setActiveBinding = vi.fn();
     tapBinding = mockTapBinding;
     holdBinding = mockHoldBinding;
     releaseBinding = mockReleaseBinding;

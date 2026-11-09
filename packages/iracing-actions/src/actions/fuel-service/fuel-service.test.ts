@@ -116,7 +116,6 @@ vi.mock("@iracedeck/deck-core", async () => {
         getCurrentTelemetry: vi.fn(() => null),
         getSessionInfo: vi.fn(() => null),
       };
-      updateConnectionState = vi.fn();
       setKeyImage = vi.fn();
       setRegenerateCallback = vi.fn();
       updateKeyImage = vi.fn().mockResolvedValue(true);
@@ -124,8 +123,6 @@ vi.mock("@iracedeck/deck-core", async () => {
       tapBindingSequence = mockTapBindingSequence;
       holdBinding = vi.fn().mockResolvedValue(undefined);
       releaseBinding = vi.fn().mockResolvedValue(undefined);
-      setActiveBinding = vi.fn();
-      isActiveBindingMissing = vi.fn(() => false);
       isBindingMissing = vi.fn(() => false);
       isBindingKeyboardBound = mockIsBindingKeyboardBound;
       async onWillAppear() {}
@@ -303,7 +300,6 @@ function internals(action: FuelService) {
       getCurrentTelemetry: MockFn;
       getSessionInfo: MockFn;
     };
-    setActiveBinding: MockFn;
     setKeyImage: MockFn;
     updateKeyImage: MockFn;
     logger: { trace: MockFn; debug: MockFn; info: MockFn; warn: MockFn; error: MockFn };
@@ -890,7 +886,7 @@ describe("FuelService", () => {
       action = new FuelService();
     });
 
-    it("should route dial instances to the dial surface on onWillAppear (no keypad icon, no active binding)", async () => {
+    it("should route dial instances to the dial surface on onWillAppear (no keypad icon)", async () => {
       const ev = fakeDialEvent("dial-1", {});
 
       await action.onWillAppear(ev as any);
@@ -900,7 +896,6 @@ describe("FuelService", () => {
       expect(ev.action.setTriggerDescription).toHaveBeenCalled();
       expect(internals(action).sdkController.subscribe).toHaveBeenCalledWith("dial-1", expect.any(Function));
       // …and NONE of the keypad bookkeeping.
-      expect(internals(action).setActiveBinding).not.toHaveBeenCalled();
       expect(internals(action).setKeyImage).not.toHaveBeenCalled();
     });
 
@@ -910,7 +905,6 @@ describe("FuelService", () => {
       await action.onDidReceiveSettings(ev as any);
 
       expect(ev.action.setDialCanvas).toHaveBeenCalled();
-      expect(internals(action).setActiveBinding).not.toHaveBeenCalled();
     });
 
     it("should not execute keypad modes from dial press events", async () => {
@@ -936,7 +930,6 @@ describe("FuelService", () => {
 
       await action.onWillAppear(ev as any);
 
-      expect(internals(action).setActiveBinding).toHaveBeenCalledWith("fuelServiceToggleAutofuel");
       expect(internals(action).setKeyImage).toHaveBeenCalled();
     });
   });

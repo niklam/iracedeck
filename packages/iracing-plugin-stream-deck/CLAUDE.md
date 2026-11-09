@@ -78,8 +78,9 @@ export class {ActionName} extends ConnectionStateAwareAction<{ActionName}Setting
   //
   // Lifecycle (see splits-delta-cycle.ts for the full implementation):
   // - onWillAppear / onDidReceiveSettings: call super FIRST, parse settings with
-  //   safeParse, declare the required binding via this.setActiveBinding(key),
-  //   then update the display.
+  //   safeParse, then update the display. Nothing to declare about bindings or
+  //   the connection: the base class draws the disconnected look (#1599). Only a
+  //   mode that works without iRacing overrides needsSim(settings) to return false.
   // - onKeyDown: execute the binding via await this.tapBinding(key). Use
   //   holdBinding/releaseBinding for hold-style actions (see
   //   .claude/rules/keyboard-shortcuts.md). Never call getKeyboard() in actions.
@@ -96,7 +97,7 @@ Full requirements (base class, UUID export, event types, Zod usage, super calls,
 
 #### 2. Unit tests — `packages/iracing-actions/src/actions/{action-name}/{action-name}.test.ts`
 
-Must mock `@iracedeck/deck-core`, and `@iracedeck/settings` for the global-settings names such as `getGlobalSettings` and `getGlobalColors`, before importing — the canonical mock block (including the binding-dispatch stubs `setActiveBinding` / `tapBinding` / `holdBinding` / `releaseBinding`) is in `.claude/rules/action-tests.md`. Actions that pass `bindingMissing` into icon generation must additionally stub `isBindingMissing` on the mock `ConnectionStateAwareAction`. See `packages/iracing-actions/src/actions/splits-delta-cycle/splits-delta-cycle.test.ts` for the full pattern.
+Must mock `@iracedeck/deck-core`, and `@iracedeck/settings` for the global-settings names such as `getGlobalSettings` and `getGlobalColors`, before importing — the canonical mock block (including the binding-dispatch stubs `tapBinding` / `holdBinding` / `releaseBinding`) is in `.claude/rules/action-tests.md`. Actions that pass `bindingMissing` into icon generation must additionally stub `isBindingMissing` on the mock `ConnectionStateAwareAction`. See `packages/iracing-actions/src/actions/splits-delta-cycle/splits-delta-cycle.test.ts` for the full pattern.
 
 #### 3. Icon SVGs — `packages/icons/{action-name}/*.svg`
 
@@ -236,7 +237,7 @@ Add entry to the `Actions` array:
 
 #### 9. Add key bindings — `packages/iracing-actions/src/actions/data/key-bindings.json`
 
-Add a new category with binding entries — field reference in `.claude/rules/pi-templates.md` §"Key Bindings JSON Format". The `setting` value is the flat global setting key and **must match** what the action passes to `setActiveBinding` / `tapBinding`.
+Add a new category with binding entries — field reference in `.claude/rules/pi-templates.md` §"Key Bindings JSON Format". The `setting` value is the flat global setting key and **must match** what the action passes to `tapBinding` / `holdBinding` and `isBindingMissing`.
 
 #### 10. Add comms catalog entry — `packages/iracing-actions/src/actions/comms-catalog.ts` (#612)
 
@@ -322,7 +323,6 @@ private lastState = new Map<string, string>();
 
 // 4. Subscribe with telemetry callback in onWillAppear
 this.sdkController.subscribe(ev.action.id, (telemetry) => {
-  this.updateConnectionState();
   const storedSettings = this.activeContexts.get(ev.action.id);
   if (storedSettings) {
     this.updateDisplayFromTelemetry(ev.action.id, telemetry, storedSettings);

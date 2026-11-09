@@ -33,7 +33,7 @@ export type {
   DeckFeedbackPixmapItem,
 } from "./feedback-types.js";
 
-// Base action with inactive overlay support
+// Base action: the key-image funnel, flag overlay and disconnected look
 export { BaseAction } from "./base-action.js";
 
 // Common settings (shared by all actions)
@@ -103,16 +103,8 @@ export { generateBorderParts, ICON_BASE_TEMPLATE, extractGraphicContent } from "
 // Connection state aware action (extends BaseAction with sim connection tracking through `SimConnection`)
 export { ConnectionStateAwareAction } from "./connection-state-aware-action.js";
 
-// Overlay utilities
-export {
-  applyInactiveOverlay,
-  hexToGrayscale,
-  isDataUri,
-  isRawSvg,
-  svgToDataUri,
-  dataUriToSvg,
-  overlayConfig,
-} from "./overlay-utils.js";
+// SVG data-URI helpers (re-exports from icon-composer)
+export { isDataUri, isRawSvg, svgToDataUri, dataUriToSvg } from "./overlay-utils.js";
 
 // Icon template utilities (re-exports from icon-composer)
 export {
@@ -139,11 +131,15 @@ export { LogLevel } from "@iracedeck/logger";
 // The sim-neutral connection the base classes read (#1351)
 export {
   _resetSimConnection,
+  DEFAULT_SIM_ABSENT_DELAY_MS,
   getSimConnection,
   initializeSimConnection,
+  isSimAbsent,
   isSimConnectionInitialized,
+  onSimPresenceChange,
   type OverlayFlag,
   type SimConnection,
+  type SimConnectionOptions,
 } from "./sim-connection.js";
 
 // Per-mode sim-communication descriptors (issue #612)

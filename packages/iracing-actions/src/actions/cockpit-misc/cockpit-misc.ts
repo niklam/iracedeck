@@ -171,8 +171,7 @@ export const COCKPIT_MISC_UUID = "com.iracedeck.sd.core.cockpit-misc" as const;
 
 export class CockpitMisc extends SimIRacingAction<CockpitMiscSettings> {
   /**
-   * The dial half of the action; all IDeck dial events route here (#805). No
-   * `setActiveBinding` is delegated — it would bleed onto the keypad buttons.
+   * The dial half of the action; all IDeck dial events route here (#805).
    */
   private readonly dialSurface = new CockpitMiscDialSurface({
     logger: this.logger,
@@ -206,12 +205,6 @@ export class CockpitMisc extends SimIRacingAction<CockpitMiscSettings> {
       return;
     }
 
-    const activeKey = this.resolveGlobalKey(settings.control, settings.direction);
-
-    if (activeKey) {
-      this.setActiveBinding(activeKey);
-    }
-
     await this.updateDisplay(ev, settings);
   }
 
@@ -229,12 +222,6 @@ export class CockpitMisc extends SimIRacingAction<CockpitMiscSettings> {
       await this.dialSurface.didReceiveSettings(ev.action, settings.dial);
 
       return;
-    }
-
-    const activeKey = this.resolveGlobalKey(settings.control, settings.direction);
-
-    if (activeKey) {
-      this.setActiveBinding(activeKey);
     }
 
     await this.updateDisplay(ev, settings);

@@ -217,11 +217,7 @@ interface SetupBrakesDialContext {
 
 /**
  * The delegates the surface needs from its owning action. Binding dispatch
- * stays on the action so keyboard/SimHub routing is unchanged. Deliberately
- * NO `setActiveBinding`: readiness state is one value per action-class
- * instance and setting it from a dial context would bleed onto the action's
- * keypad buttons (see global-settings.md), so dial instances don't declare
- * active bindings — same call as the Fuel Service dial surface.
+ * stays on the action so keyboard/SimHub routing is unchanged.
  */
 export interface SetupBrakesDialHost {
   readonly logger: ILogger;

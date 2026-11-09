@@ -209,8 +209,6 @@ vi.mock("@iracedeck/deck-core", async () => ({
   ConnectionStateAwareAction: class MockConnectionStateAwareAction {
     logger = { trace: vi.fn(), debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
     sdkController = { subscribe: vi.fn(), unsubscribe: vi.fn(), getCurrentTelemetry: vi.fn(), getSessionInfo: vi.fn() };
-    updateConnectionState = vi.fn();
-    setActiveBinding = vi.fn();
     tapBinding = vi.fn().mockResolvedValue(undefined);
     isBindingMissing = vi.fn(() => false);
     setKeyImage = vi.fn();
@@ -1300,7 +1298,6 @@ describe("cycle-sub-camera taps the iRacing sub-camera binding (#852)", () => {
   function bindings(action: CameraControls) {
     return action as unknown as {
       tapBinding: ReturnType<typeof vi.fn>;
-      setActiveBinding: ReturnType<typeof vi.fn>;
     };
   }
 
@@ -1442,29 +1439,6 @@ describe("cycle-sub-camera taps the iRacing sub-camera binding (#852)", () => {
 
     expect(bindings(action).tapBinding).toHaveBeenCalledTimes(1);
     expect(bindings(action).tapBinding).toHaveBeenCalledWith(SUB_CAMERA_BINDING_KEYS.next);
-  });
-
-  // setActiveBinding writes ONE value per action-class instance and re-evaluates
-  // readiness for every context, so a mixed API/binding action must not touch it:
-  // an unbound sub-camera key would dim the twelve SDK-driven camera keys around
-  // it, and an SDK-mode button appearing later would clear the tracking. The
-  // binding state reaches the user per button through the icon warning instead.
-  it("never writes the shared readiness state, whichever mode a button uses", async () => {
-    const action = new CameraControls();
-    sdk(action).getCurrentTelemetry.mockReturnValue(null);
-    sdk(action).getSessionInfo.mockReturnValue({});
-
-    for (const [id, settings] of [
-      ["k1", { target: "cycle-sub-camera", direction: "previous" }],
-      ["k2", { target: "focus-your-car" }],
-    ] as const) {
-      await action.onWillAppear({
-        action: { id, isKey: () => true, isDial: () => false, setTitle: vi.fn(async () => {}) },
-        payload: { settings },
-      } as never);
-    }
-
-    expect(bindings(action).setActiveBinding).not.toHaveBeenCalled();
   });
 
   // The tap reads no telemetry, so a gap in the SDK feed (reconnect window,

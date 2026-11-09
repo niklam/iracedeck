@@ -115,13 +115,17 @@ vi.mock("@iracedeck/deck-iracing", async (importOriginal) => ({
   getSDK: vi.fn(() => ({ sdk: { getSessionInfo: mockGetSessionInfo } })),
 }));
 
+vi.mock("@iracedeck/icon-composer", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@iracedeck/icon-composer")>()),
+  hexToGrayscale: vi.fn((hex: string) => `grey(${hex})`),
+}));
+
 vi.mock("@iracedeck/deck-core", async (importOriginal) => ({
   // The real tap/long-press tracker, so Wipers and Visor's press classification runs against
   // the live `dualPressThresholdMs` read from the mocked global settings (#1463).
   DualPressTracker: (await importOriginal<typeof import("@iracedeck/deck-core")>()).DualPressTracker,
   // The real threshold reader, so a press shape (#269) carries the live `dualPressThresholdMs`.
   getDualPressThresholdMs: (await importOriginal<typeof import("@iracedeck/deck-core")>()).getDualPressThresholdMs,
-  hexToGrayscale: vi.fn((hex: string) => `grey(${hex})`),
   IconUpdateThrottle: class {
     schedule(_id: string, render: () => unknown): void {
       try {
@@ -154,14 +158,12 @@ vi.mock("@iracedeck/deck-core", async (importOriginal) => ({
       getCurrentTelemetry: vi.fn(),
       getSessionInfo: vi.fn(() => null),
     };
-    updateConnectionState = vi.fn();
     setKeyImage = vi.fn();
     setRegenerateCallback = vi.fn();
     updateKeyImage = vi.fn().mockResolvedValue(true);
     tapBinding = mockTapBinding;
     holdBinding = mockHoldBinding;
     releaseBinding = mockReleaseBinding;
-    setActiveBinding = vi.fn();
     isBindingMissing = vi.fn(() => false);
     async onWillAppear() {}
     async onDidReceiveSettings() {}
@@ -737,28 +739,6 @@ describe("CarControl", () => {
         await action.onWillAppear(fakeEvent("action-1", { control: "wipers-and-visor", wipersOnTap: "toggle" }) as any);
 
         expect(lastAssembleArgs().bindingMissing).toBe(false);
-      });
-
-      it("tracks no readiness binding, whatever the car, so readiness follows the sim alone", async () => {
-        for (const frame of [VISOR_FRAME, WIPER_FRAME, null, NEITHER_FRAME]) {
-          vi.mocked(action["setActiveBinding"]).mockClear();
-          setTelemetry(frame);
-          await action.onWillAppear(fakeEvent("action-1", { control: "wipers-and-visor" }) as any);
-          expect(action["setActiveBinding"]).toHaveBeenCalledExactlyOnceWith(null);
-
-          vi.mocked(action["setActiveBinding"]).mockClear();
-          await action.onDidReceiveSettings(fakeEvent("action-1", { control: "wipers-and-visor" }) as any);
-          expect(action["setActiveBinding"]).toHaveBeenCalledExactlyOnceWith(null);
-        }
-      });
-
-      it("clears a binding an earlier mode declared when the key switches to Wipers and Visor", async () => {
-        setTelemetry(null);
-        await action.onWillAppear(fakeEvent("action-1", { control: "tear-off-visor" }) as any);
-        expect(action["setActiveBinding"]).toHaveBeenLastCalledWith(VISOR);
-
-        await action.onDidReceiveSettings(fakeEvent("action-1", { control: "wipers-and-visor" }) as any);
-        expect(action["setActiveBinding"]).toHaveBeenLastCalledWith(null);
       });
 
       it("shows none for an unknown car or one with neither", async () => {

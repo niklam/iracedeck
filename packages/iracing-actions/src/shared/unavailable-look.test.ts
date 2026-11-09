@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { unavailableLook } from "./unavailable-look.js";
 
-vi.mock("@iracedeck/deck-core", () => ({
+vi.mock("@iracedeck/icon-composer", () => ({
   hexToGrayscale: vi.fn((hex: string) => `grey(${hex})`),
 }));
 

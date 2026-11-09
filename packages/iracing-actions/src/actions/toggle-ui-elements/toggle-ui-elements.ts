@@ -140,18 +140,12 @@ export class ToggleUiElements extends SimIRacingAction<ToggleUiElementsSettings>
   override async onWillAppear(ev: IDeckWillAppearEvent<ToggleUiElementsSettings>): Promise<void> {
     await super.onWillAppear(ev);
     const settings = this.parseSettings(ev.payload.settings);
-    const activeKey = UI_ELEMENT_GLOBAL_KEYS[settings.element];
-    this.setActiveBinding(activeKey ?? null);
-
     await this.updateDisplay(ev, settings);
   }
 
   override async onDidReceiveSettings(ev: IDeckDidReceiveSettingsEvent<ToggleUiElementsSettings>): Promise<void> {
     await super.onDidReceiveSettings(ev);
     const settings = this.parseSettings(ev.payload.settings);
-    const activeKey = UI_ELEMENT_GLOBAL_KEYS[settings.element];
-    this.setActiveBinding(activeKey ?? null);
-
     await this.updateDisplay(ev, settings);
   }
 

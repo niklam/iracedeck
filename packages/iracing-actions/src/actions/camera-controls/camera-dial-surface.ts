@@ -948,11 +948,9 @@ interface CameraDialContext {
  * focus stay on the action (the SDK camera commands, plus the sub-camera key
  * binding since #852 and the Next / Previous Car binding since #1277), so the
  * dial reuses the SAME dispatch as the keypad
- * rather than duplicating it. Deliberately NO `setActiveBinding` / `tapBinding`:
- * the surface never dispatches a binding itself (the action's `cycle` does),
- * and readiness state is one value per action-class instance that a dial
- * context would bleed onto the keypad buttons (see global-settings.md) —
- * `isBindingMissing` is delegated instead, because it is stateless.
+ * rather than duplicating it. Deliberately NO `tapBinding`: the surface never
+ * dispatches a binding itself (the action's `cycle` does); `isBindingMissing`
+ * is delegated for the strip's warning.
  *
  * Every dispatch carries the dial context that asked for it (#1428 / #1435):
  * the action sends it through the replay engine's camera-switch waiter, which

@@ -284,6 +284,19 @@ export class TelemetryControl extends SimIRacingAction<TelemetryControlSettings>
   private captureHold: ReturnType<typeof setTimeout> | undefined;
   private unsubscribeCaptureStatus: (() => void) | undefined;
 
+  /**
+   * Whether a key needs the sim, for the disconnected look (#1599): Capture
+   * CPU Profile records the plugin's own CPU profile and works with iRacing
+   * closed; every other mode reaches or reads iRacing. Read through
+   * {@link parseSettings}, the parse the key draws with, so a legacy `action`
+   * payload or an unparseable one answers for the mode the key shows.
+   *
+   * @param settings - The context's raw settings (possibly `undefined`)
+   */
+  protected override needsSim(settings: unknown): boolean {
+    return this.parseSettings(settings).mode !== "capture-profile";
+  }
+
   override async onWillAppear(ev: IDeckWillAppearEvent<TelemetryControlSettings>): Promise<void> {
     await super.onWillAppear(ev);
     const { migrated, changed } = migrateLegacyActionToMode(ev.payload.settings);
@@ -297,8 +310,6 @@ export class TelemetryControl extends SimIRacingAction<TelemetryControlSettings>
     }
 
     const settings = this.parseSettings(migrated);
-    const activeKey = TELEMETRY_CONTROL_GLOBAL_KEYS[settings.mode];
-    this.setActiveBinding(activeKey ?? null);
     this.trackCaptureContext(ev.action.id, settings);
 
     await this.updateDisplay(ev, settings);
@@ -312,8 +323,6 @@ export class TelemetryControl extends SimIRacingAction<TelemetryControlSettings>
   override async onDidReceiveSettings(ev: IDeckDidReceiveSettingsEvent<TelemetryControlSettings>): Promise<void> {
     await super.onDidReceiveSettings(ev);
     const settings = this.parseSettings(ev.payload.settings);
-    const activeKey = TELEMETRY_CONTROL_GLOBAL_KEYS[settings.mode];
-    this.setActiveBinding(activeKey ?? null);
     this.trackCaptureContext(ev.action.id, settings);
 
     await this.updateDisplay(ev, settings);

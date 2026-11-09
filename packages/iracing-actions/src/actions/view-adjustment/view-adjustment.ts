@@ -169,8 +169,7 @@ export const VIEW_ADJUSTMENT_UUID = "com.iracedeck.sd.core.view-adjustment" as c
 
 export class ViewAdjustment extends SimIRacingAction<ViewAdjustmentSettings> {
   /**
-   * The dial half of the action; all IDeck dial events route here (#806). No
-   * `setActiveBinding` is delegated — it would bleed onto the keypad buttons.
+   * The dial half of the action; all IDeck dial events route here (#806).
    */
   private readonly dialSurface = new ViewAdjustmentDialSurface({
     logger: this.logger,
@@ -204,7 +203,6 @@ export class ViewAdjustment extends SimIRacingAction<ViewAdjustmentSettings> {
       return;
     }
 
-    this.setActiveBinding(VIEW_ADJUSTMENT_GLOBAL_KEYS[settings.adjustment]?.[settings.direction] ?? null);
     await this.updateDisplay(ev, settings);
   }
 
@@ -224,7 +222,6 @@ export class ViewAdjustment extends SimIRacingAction<ViewAdjustmentSettings> {
       return;
     }
 
-    this.setActiveBinding(VIEW_ADJUSTMENT_GLOBAL_KEYS[settings.adjustment]?.[settings.direction] ?? null);
     await this.updateDisplay(ev, settings);
   }
 

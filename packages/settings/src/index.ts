@@ -53,8 +53,10 @@ export {
 } from "./global-settings.js";
 
 // One-shot renamed-key migrations (issue #953), the idempotent voice-id
-// qualification (#1144) and the seed-if-absent binding defaults (#1277)
+// qualification (#1144), the seed-if-absent binding defaults (#1277) and the
+// marker-free deletion of the retired disableWhenDisconnected key (#1599)
 export {
+  cleanupRetiredDisconnectedSetting,
   migrateGlobalSettingsKeys,
   migrateRaceEngineerVoiceId,
   seedBindingDefaultsIfAbsent,

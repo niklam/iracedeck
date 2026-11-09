@@ -4,13 +4,13 @@ export { _resetSDK, getCommands, getController, getSDK, initializeSDK, isSDKInit
 export {
   _resetAppMonitor,
   initAppMonitor,
-  IRACING_EXIT_SDK_CONFIRM_MS,
   isAppMonitorInitialized,
   isIRacingActive,
   isIRacingRunning,
   onIRacingStarted,
   onIRacingTerminated,
 } from "./app-monitor.js";
+export { IRACING_EXIT_SDK_CONFIRM_MS } from "./exit-confirm.js";
 export { isAutofuelActive, isAutofuelEnabled, isFuelFillOn, isPitstopActive } from "./fuel-telemetry.js";
 export {
   celsiusToFahrenheit,

@@ -297,9 +297,6 @@ export class Chat extends SimIRacingAction<ChatSettings> {
     await this.persistMigratedSettings(ev);
     const settings = this.parseSettings(ev.payload.settings);
     this.activeContexts.set(ev.action.id, settings);
-    const activeKey = CHAT_GLOBAL_KEYS[settings.mode];
-    this.setActiveBinding(activeKey ?? null);
-
     await this.updateDisplay(ev, settings);
 
     const contextId = ev.action.id;
@@ -330,9 +327,6 @@ export class Chat extends SimIRacingAction<ChatSettings> {
     const settings = this.parseSettings(ev.payload.settings);
     this.activeContexts.set(ev.action.id, settings);
     this.lastRenderedIcon.delete(ev.action.id);
-    const activeKey = CHAT_GLOBAL_KEYS[settings.mode];
-    this.setActiveBinding(activeKey ?? null);
-
     await this.updateDisplay(ev, settings);
   }
 

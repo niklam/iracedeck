@@ -2,33 +2,23 @@
  * Connection State Aware Action
  *
  * Extends BaseAction with:
- * - Automatic sim connection state tracking through `SimConnection` (no manual calls needed)
- * - Binding dispatch delegates (tap, hold, release)
- * - Binding-aware readiness (active/inactive overlay based on binding type)
+ * - The disconnected look, decided per key (#1599): a key shows it while the
+ *   setting is on, the sim is absent ({@link isSimAbsent}) and the key's own
+ *   mode needs the sim ({@link ConnectionStateAwareAction.needsSim}).
+ * - Binding dispatch delegates (tap, hold, release) and the stateless
+ *   per-key binding checks.
  *
- * The deprecated updateConnectionState() method is still available for backward
- * compatibility but delegates to the new evaluateReadiness() internally.
- *
- * Readiness is fully automatic:
- * - The base class subscribes to the sim connection on onWillAppear and
- *   evaluates readiness on every sim tick.
- * - setActiveBinding(key) declares which binding the action depends on.
- *   When set, readiness is determined by the binding type. When not set,
- *   readiness falls back to the sim connection status.
- * - Global settings changes (e.g., user switches a binding from keyboard
- *   to SimHub) trigger automatic readiness re-evaluation.
- * - Actions never need to call updateConnectionState() manually.
+ * The action listens to the sim's presence while it has at least one live
+ * context, and on a change pushes every live key's image again through
+ * BaseAction's one image funnel, which draws the look. Nothing is evaluated
+ * per tick. Spec: docs/superpowers/specs/2026-11-02-issue-1599-disconnected-key-look.md
  */
-import { onGlobalSettingsChange } from "@iracedeck/settings";
+import { getGlobalSettings } from "@iracedeck/settings";
 
 import { BaseAction } from "./base-action.js";
 import { getBindingDispatcher } from "./binding-dispatcher.js";
-import { getSimConnection } from "./sim-connection.js";
-import { onSimHubReachabilityChange } from "./simhub-service.js";
+import { getSimConnection, isSimAbsent, onSimPresenceChange } from "./sim-connection.js";
 import type { IDeckWillAppearEvent, IDeckWillDisappearEvent } from "./types.js";
-
-/** Prefix for the base class's internal sim-connection subscription ID */
-const READINESS_SUB_PREFIX = "_readiness:";
 
 /**
  * Abstract base class for actions that need sim connection state awareness
@@ -37,155 +27,92 @@ const READINESS_SUB_PREFIX = "_readiness:";
  * @template T - The settings type for this action
  */
 export abstract class ConnectionStateAwareAction<T = Record<string, unknown>> extends BaseAction<T> {
-  /**
-   * Last known connection/readiness status for change detection
-   */
-  private lastReadyStatus: boolean | null = null;
+  /** Contexts that have appeared and not yet disappeared. */
+  private readonly liveContexts = new Set<string>();
 
-  /**
-   * The currently active binding setting key(s) for readiness tracking.
-   * Most modes track a single key; some (e.g. setup view-* dual-press modes)
-   * track several, all of which must be configured/ready (issue #612).
-   */
-  private activeBindingKeys: string[] = [];
-
-  /**
-   * Unsubscribe function for global settings change listener.
-   */
-  private globalSettingsUnsubscribe: (() => void) | null = null;
-
-  /**
-   * Unsubscribe function for SimHub reachability change listener.
-   */
-  private simHubReachabilityUnsubscribe: (() => void) | null = null;
+  /** Removes the sim-presence listener; set while {@link liveContexts} is not empty. */
+  private presenceUnsubscribe: (() => void) | null = null;
 
   // --- Lifecycle ---
 
   /**
-   * Subscribe to the sim connection for automatic readiness tracking.
-   * Actions that override onWillAppear MUST call super.onWillAppear(ev).
-   * A key that appears before the sim connection exists is queued and
-   * subscribed when the connection is initialised.
+   * Starts listening to the sim's presence when the action's first context
+   * appears. Actions that override onWillAppear MUST call super.onWillAppear(ev).
+   * A key that appears before the sim connection exists loses nothing: the
+   * presence signal's subscription is queued and replayed at initialisation.
    */
   override async onWillAppear(ev: IDeckWillAppearEvent<T>): Promise<void> {
-    await super.onWillAppear(ev);
+    // Before awaiting super, whose first-appearance settings write can let this
+    // context's onWillDisappear run in between: recorded first, that
+    // disappearance removes it again; recorded after, the dead context would
+    // stay live and hold the listener for good.
+    this.liveContexts.add(ev.action.id);
 
-    const subId = READINESS_SUB_PREFIX + ev.action.id;
-    getSimConnection().subscribe(subId, () => {
-      this.evaluateReadiness();
-    });
+    if (!this.presenceUnsubscribe) {
+      this.presenceUnsubscribe = onSimPresenceChange(() => this.onSimPresenceChanged());
+    }
+
+    await super.onWillAppear(ev);
   }
 
   /**
-   * Unsubscribe from sim-connection readiness tracking.
+   * Stops listening to the sim's presence when the action's last context
+   * disappears, so one key leaving never stops another's updates.
    * Actions that override onWillDisappear MUST call super.onWillDisappear(ev).
    */
   override async onWillDisappear(ev: IDeckWillDisappearEvent<T>): Promise<void> {
-    getSimConnection().unsubscribe(READINESS_SUB_PREFIX + ev.action.id);
+    this.liveContexts.delete(ev.action.id);
 
-    // Clean up listeners to prevent memory leaks
-    if (this.globalSettingsUnsubscribe) {
-      this.globalSettingsUnsubscribe();
-      this.globalSettingsUnsubscribe = null;
-    }
-
-    if (this.simHubReachabilityUnsubscribe) {
-      this.simHubReachabilityUnsubscribe();
-      this.simHubReachabilityUnsubscribe = null;
+    if (this.liveContexts.size === 0 && this.presenceUnsubscribe) {
+      this.presenceUnsubscribe();
+      this.presenceUnsubscribe = null;
     }
 
     await super.onWillDisappear(ev);
   }
 
-  // --- Readiness ---
+  // --- The disconnected look (#1599) ---
 
   /**
-   * Declare the binding setting key this action instance currently depends on.
-   * Immediately evaluates readiness and subscribes to global settings changes
-   * so readiness updates automatically when the binding is modified in the
-   * Property Inspector.
+   * Whether a key with these settings needs the sim to do anything: `true`
+   * unless the action says otherwise for the key's current mode. Handed the
+   * raw settings of the context being drawn (possibly `undefined` before the
+   * context has appeared); an override parses them with the action's own
+   * schema. The binding type does not change the answer: a SimHub-bound mode
+   * needs the sim as much as a keyboard-bound one.
    *
-   * Call in onWillAppear and onDidReceiveSettings when the setting key changes
-   * (e.g., user switches mode or direction). Cleanup is automatic —
-   * onWillDisappear unsubscribes all listeners.
-   *
-   * @param settingKey - The global settings key (e.g., "blackBoxLapTiming"), an
-   *   array of keys (all required), or null/empty to clear. Empty strings are
-   *   ignored, so a fixed-key mode can pass "" to track nothing.
+   * @param settings - The context's raw settings
    */
-  protected setActiveBinding(settingKey: string | string[] | null): void {
-    const keys = (Array.isArray(settingKey) ? settingKey : settingKey ? [settingKey] : []).filter(
-      (k): k is string => typeof k === "string" && k.length > 0,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  protected needsSim(settings: unknown): boolean {
+    return true;
+  }
+
+  /**
+   * A key shows the disconnected look while the setting is on, the sim is
+   * absent and the key's own mode needs the sim.
+   */
+  protected override showsDisconnected(contextId: string): boolean {
+    return (
+      getGlobalSettings().showDisconnectedState === true &&
+      isSimAbsent() &&
+      this.needsSim(this.getContextSettings(contextId))
     );
-    this.activeBindingKeys = keys;
-
-    if (keys.length > 0) {
-      // Subscribe to global settings changes (once)
-      if (!this.globalSettingsUnsubscribe) {
-        this.globalSettingsUnsubscribe = onGlobalSettingsChange(() => {
-          this.evaluateReadiness();
-        });
-      }
-
-      // Subscribe to SimHub reachability changes (once)
-      if (!this.simHubReachabilityUnsubscribe) {
-        this.simHubReachabilityUnsubscribe = onSimHubReachabilityChange(() => {
-          this.evaluateReadiness();
-        });
-      }
-    } else {
-      // Clear binding — unsubscribe from change listeners
-      if (this.globalSettingsUnsubscribe) {
-        this.globalSettingsUnsubscribe();
-        this.globalSettingsUnsubscribe = null;
-      }
-
-      if (this.simHubReachabilityUnsubscribe) {
-        this.simHubReachabilityUnsubscribe();
-        this.simHubReachabilityUnsubscribe = null;
-      }
-    }
-
-    // Immediately evaluate readiness
-    this.evaluateReadiness();
   }
 
   /**
-   * @deprecated Use setActiveBinding() for binding-aware actions. For SDK-only
-   * actions, readiness is tracked automatically via the base class subscription.
-   * This method is kept for backward compatibility during migration.
+   * The sim's presence changed: push again only the keys whose image can
+   * change with it. With the setting off no key shows the look either way,
+   * and a key whose mode needs no sim never shows it, so both are skipped
+   * rather than re-sent (and, on Mirabox and Ulanzi, re-rasterised).
    */
-  protected updateConnectionState(): void {
-    this.evaluateReadiness();
+  private onSimPresenceChanged(): void {
+    if (getGlobalSettings().showDisconnectedState !== true) return;
+
+    this.refreshAllImages((contextId) => this.needsSim(this.getContextSettings(contextId)));
   }
 
-  /**
-   * Internal readiness evaluation — called automatically by the sim-connection subscription,
-   * setActiveBinding, and the global settings change listener.
-   * Wrapped in try-catch to prevent exceptions from breaking telemetry for all actions.
-   */
-  private evaluateReadiness(): void {
-    try {
-      const simConnected = getSimConnection().isConnected();
-
-      let isReady: boolean;
-
-      if (this.activeBindingKeys.length > 0) {
-        // All tracked keys must be ready (multi-key modes warn if any is missing).
-        isReady = this.activeBindingKeys.every((key) => getBindingDispatcher().isReady(key, simConnected));
-      } else {
-        isReady = simConnected;
-      }
-
-      if (this.lastReadyStatus !== isReady) {
-        this.logger.debug(`Readiness changed: ${this.lastReadyStatus} -> ${isReady}`);
-        this.lastReadyStatus = isReady;
-        this.setActive(isReady);
-      }
-    } catch (error) {
-      this.logger.warn(`Readiness evaluation failed: ${error}`);
-    }
-  }
+  // --- Connection and bindings ---
 
   /**
    * Get the current sim connection status
@@ -195,32 +122,12 @@ export abstract class ConnectionStateAwareAction<T = Record<string, unknown>> ex
   }
 
   /**
-   * Whether the action's currently active binding requires a binding but has
-   * neither a keyboard binding nor a SimHub role configured (issue #612).
-   *
-   * Drives the centered binding-missing warning overlay on the key icon.
-   * Returns false when no binding is active (api/chat modes) or when a binding
-   * of either type is set — including a SimHub role whose SimHub server is not
-   * currently running (that is a reachability concern, not a missing binding).
-   *
-   * Derived from the same dispatcher source of truth as readiness, so the
-   * icon overlay and readiness overlay never disagree about "configured".
-   */
-  protected isActiveBindingMissing(): boolean {
-    return this.isBindingMissing(this.activeBindingKeys);
-  }
-
-  /**
-   * Stateless per-context variant of {@link isActiveBindingMissing}: returns
-   * true when the given binding key(s) require a binding but ANY is
-   * unconfigured (neither keyboard nor SimHub). Pass `null`/empty for
-   * api/chat/fixed modes (returns false).
-   *
-   * Use THIS — not {@link isActiveBindingMissing} — to drive a per-button icon
-   * warning. One action-class instance serves every button context, so the
-   * `activeBindingKeys` field that backs `isActiveBindingMissing` is shared and
-   * would bleed one button's missing-binding state onto all the others. This
-   * variant derives solely from its arguments + global settings (#612).
+   * Whether the given binding key(s) require a binding but ANY is
+   * unconfigured (neither keyboard nor SimHub) — the #612 binding-missing
+   * warning on the key icon. Pass `null`/empty for api/chat/fixed modes
+   * (returns false). Derives solely from its arguments and the global
+   * settings, so it is safe per key: one action-class instance serves every
+   * key it is placed on.
    *
    * Accepts a readonly array so callers can pass a shared `as const` /
    * `readonly string[]` key list straight in — the check only reads.

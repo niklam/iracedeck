@@ -266,7 +266,7 @@ interface AudioDialContext {
 /**
  * What the dial surface needs from the owning action: scoped logging and the
  * base-class binding delegates (which must stay on the action so #612
- * readiness/warning semantics are unchanged).
+ * warning semantics are unchanged).
  */
 export interface AudioDialHost {
   readonly logger: ILogger;

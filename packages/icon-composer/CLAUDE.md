@@ -19,6 +19,16 @@ Note: the base64 conversion uses Node's `Buffer`, so the package is Node-only de
 
 Design constraint: the glyph uses only `polygon`, `rect` (with `rx`), and `circle` (plus the opacity group) so it renders on QT5 / SVG Tiny 1.2 (Mirabox) — no filters, masks, clipPath, or CSS. Keep it that way (see `.claude/rules/svg-platform-compatibility.md`).
 
+### Disconnected Look (`disconnected-look.ts`, issue #1599)
+
+- `applyDisconnectedLook(svg)` — Draws the disconnected look over a finished key image: one full-canvas black `rect` at `DISCONNECTED_DIM_OPACITY` (0.55), then the badge (`DISCONNECTED_BADGE`: a white plug struck through by a white slash on a red rounded plate, 40 of 144 units, inset 8, chosen on the #1599 badge review) in the top-left corner. Takes a raw SVG or an SVG data URI and returns the same form; the overlay goes just before the root's last `</svg>`, sized to the root `viewBox` (or its `width` / `height`), and the badge, authored for 144×144, is scaled by the canvas's shorter side. Anything it cannot place — a PNG or malformed data URI, a non-SVG string, an SVG with no usable size — comes back unchanged. `BaseAction` in deck-core calls it from its one image funnel.
+
+Design constraints: the badge keeps clear of the bottom title band, the centre (the #612 ⚠) and the top-right corner (the "A" badge), and takes well under a third of the key's width. It is built only from `rect`, `circle`, `polygon` and `path` with plain fills, strokes, opacity and simple transforms — no filter, mask, clipPath, gradient, text or CSS — because it carries essential information and must read with `pngRasterization` off; the tests pin that. Anything the action drew (the binding ⚠, the unavailable grey) is dimmed with the rest. See `.claude/rules/svg-platform-compatibility.md`.
+
+### Colour Helpers (`color-utils.ts`)
+
+- `hexToGrayscale(hex)` — A hex colour's luminance grey (moved from deck-core in #1599; this is its one import path, deck-core does not re-export it). Its production caller is `iracing-actions`' `unavailable-look.ts`.
+
 ### Busy Marks (`busy-mark.ts`, issue #1437)
 
 - `busyMarkSvg(mark, area, color)` — The look a pressed key shows while its press is carried out (the replay keys are the first users), centred in a `GraphicArea`: `working` (eight dots in a ring, the newest one unit larger and fully opaque with a fading tail behind it, stepped by `step`), `waiting` (three still dots in a row) and `not-done` (a round-capped red cross). Called by `assembleIcon()`'s `busy` option, and directly by actions that assemble their icon by hand (Replay Control's Set Speed)
@@ -82,4 +92,4 @@ None. This package has zero runtime dependencies. All functions are pure and sel
 
 ## Relationship to deck-core
 
-The `@iracedeck/deck-core` package re-exports all `icon-composer` symbols for backward compatibility and adds global settings readers (`getGlobalTitleSettings()`, `getGlobalBorderSettings()`, `getGlobalGraphicSettings()`) that depend on the global settings store.
+The `@iracedeck/deck-core` package re-exports the `icon-composer` assembly and template symbols for backward compatibility (not `hexToGrayscale` or the disconnected look, which are imported from here) and adds global settings readers (`getGlobalTitleSettings()`, `getGlobalBorderSettings()`, `getGlobalGraphicSettings()`) that depend on the global settings store.
