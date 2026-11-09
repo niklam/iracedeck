@@ -2,7 +2,7 @@
 
 The public changelog at `packages/website/src/content/docs/changelog.mdx` is the user-facing record of every release, and the **single source of truth** for release notes everywhere. It is opened automatically in the user's browser on a version upgrade (see `version-check` in `@.claude/rules/global-settings.md`), and since #1011 it is also parsed at build time into the artifact the plugin's Settings window renders on its What's New tab — so it must stay in sync with what actually ships.
 
-Since #1386 that source has two halves. `changelog.mdx` holds the **released** versions, one dated section each. The version **in development** is `changelog.d/` at the repository root, one fragment file per bullet, which every reader composes in as that version's `_Unreleased_` section and the release folds into `changelog.mdx`. Fragments exist because while every user-facing PR edited one shared section and a committed `changelog.json`, nearly every rebase conflicted and the merge gate then needed the maintainer; a fragment is a path no other PR touches. Decided in `docs/superpowers/specs/2026-10-10-issue-1386-changelog-fragments-merge-gate.md`; `changelog.d/README.md` documents the format in the folder.
+Since #1386 that source has two halves. `changelog.mdx` holds the **released** versions, one dated section each. The version **in development** is `changelog.d/` at the repository root, one fragment file per bullet, which every reader composes in as that version's `_Unreleased_` section (`## Unreleased` between a stable fold and the next bump, #1398) and the release folds into `changelog.mdx`. Fragments exist because while every user-facing PR edited one shared section and a committed `changelog.json`, nearly every rebase conflicted and the merge gate then needed the maintainer; a fragment is a path no other PR touches. Decided in `docs/superpowers/specs/2026-10-10-issue-1386-changelog-fragments-merge-gate.md`; `changelog.d/README.md` documents the format in the folder.
 
 ## When to add one — required on merge to `master` or `release/*`
 
@@ -10,7 +10,7 @@ Any change that merges to `master` or a `release/*` branch and is **user-facing*
 
 Pure internal work (refactors, build/tooling, dependency bumps) with no user-visible effect may get a **Maintenance** fragment if notable, or none at all. Don't list internal churn line by line.
 
-Never write an in-development section into `changelog.mdx` by hand: an `_Unreleased_` line there fails every reader.
+Never write an in-development section into `changelog.mdx` by hand: an `_Unreleased_` line or a `## Unreleased` heading there fails every reader.
 
 ## A fragment
 
