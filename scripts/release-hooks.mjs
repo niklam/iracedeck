@@ -194,9 +194,13 @@ if (changelogFold.fold) {
   }
 }
 
-// release-it runs before:bump hooks even in dry-run mode, which would otherwise
-// modify real package.json / manifest.json files and stage them with `git add`.
-// `scripts/release.mjs` sets RELEASE_IT_DRY_RUN=1 when --dry-run is passed.
+// The preview. release-it 21.1.1 does NOT run before:bump hooks in its own dry
+// run — it logs `! node scripts/release-hooks.mjs <version>` and skips the
+// command — so `scripts/release.mjs` runs this hook itself on `pnpm release:dry`,
+// with the version release-it resolved and RELEASE_IT_DRY_RUN=1, which is what
+// makes this branch print what the release would do and write nothing. The flag
+// is also set for release-it's own dry run, so a release-it that ran hooks in a
+// dry run again (older versions did) would still write nothing here.
 if (process.env.RELEASE_IT_DRY_RUN === "1") {
   console.log(`  [dry-run] Would bump ${packageJsonFiles.length} package.json files to version ${version}:`);
   for (const { rel } of packageJsonFiles) console.log(`    - ${rel}`);
