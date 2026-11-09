@@ -11,6 +11,8 @@
  */
 import { AudioChannel } from "@iracedeck/audio-service";
 import type { IEventBus, SimEventOf } from "@iracedeck/event-bus";
+import { readFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -288,5 +290,36 @@ describe("pit exit cue engine", () => {
 
       expect(readPitExitCueDebugState()).toEqual({ registered: false, lastOutcome: null });
     });
+  });
+});
+
+/**
+ * The tone the engine names is a real file in `@iracedeck/audio-assets`, whose
+ * `sfx/` is copied into the plugins unchanged: a missing or misnamed clip would
+ * leave every pit exit silent with only a debug line. Resolved through the
+ * package's `./sfx/*` export (a devDependency here for the purpose), never by
+ * a relative path into its directory (#1375). The format pinned is the one its
+ * JSDoc renders: a plain mono 48 kHz 16-bit PCM WAV with only `fmt ` and
+ * `data`, 170 ms long.
+ */
+describe("the pit exit clip", () => {
+  const wav = readFileSync(createRequire(import.meta.url).resolve(`@iracedeck/audio-assets/${PIT_EXIT_CLIP}`));
+
+  it("is a mono 48 kHz 16-bit PCM WAV with no metadata chunks", () => {
+    expect(wav.toString("ascii", 0, 4)).toBe("RIFF");
+    expect(wav.toString("ascii", 8, 16)).toBe("WAVEfmt ");
+    expect(wav.readUInt32LE(16)).toBe(16);
+    expect(wav.readUInt16LE(20)).toBe(1);
+    expect(wav.readUInt16LE(22)).toBe(1);
+    expect(wav.readUInt32LE(24)).toBe(48_000);
+    expect(wav.readUInt16LE(34)).toBe(16);
+    expect(wav.toString("ascii", 36, 40)).toBe("data");
+    expect(wav.readUInt32LE(40)).toBe(wav.length - 44);
+  });
+
+  it("lasts 170 ms, inside the spec's 250 ms", () => {
+    const samples = wav.readUInt32LE(40) / 2;
+
+    expect(samples / 48).toBe(170);
   });
 });

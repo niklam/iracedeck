@@ -36,13 +36,49 @@ import type { ILogger } from "@iracedeck/logger";
 import type { TelemetryData } from "@iracedeck/sim-events-iracing";
 
 /**
- * The pit exit tone: a short rising two-note chirp, under 250 ms, deliberately
- * unlike `IRD-pit-speed-warning.wav` — that tone means "too fast", this one
- * "limit's off".
+ * The pit exit tone, chosen by ear from six candidates during #1161. A rising
+ * perfect fourth: E6 (1318.51 Hz) for 60 ms, a 10 ms gap, then A6 (1760 Hz)
+ * for 100 ms — pure sine, flat sustain, a 3 ms linear attack and a 10 ms
+ * linear release on each note, 170 ms in all. Mono, 48 kHz. Rising is the
+ * meaning: this tone says "limit's off", unlike `IRD-pit-speed-warning.wav`,
+ * which says "too fast", and #1272's limiter-on beep is to mirror it falling.
  *
- * TODO(#1161): the render recipe of the chosen tone is recorded here once
- * Niklas has picked it — its source, the ffmpeg command and absolute gain, and
- * why it ships as `.wav` (see `PIT_SPEEDING_CLIP` for the shape).
+ * The source is rendered as:
+ *
+ * ```text
+ * ffmpeg -f lavfi -i "aevalsrc=exprs='0.89*(between(t,0,0.06)*min(1,(t-0)/0.003)*min(1,(0.06-t)/0.01)*(1*sin(2*PI*1318.51*t))+between(t,0.07,0.17)*min(1,(t-0.07)/0.003)*min(1,(0.17-t)/0.01)*(1*sin(2*PI*1760*t)))':s=48000:d=0.17" \
+ *        -c:a pcm_s16le -ar 48000 -ac 1 -map_metadata -1 -fflags +bitexact -flags +bitexact <source>
+ * ```
+ *
+ * **The shipped asset is that source at −19 dB**, rendered as:
+ *
+ * ```text
+ * ffmpeg -i <source> -af volume=-19dB -c:a pcm_s16le -ar 48000 -ac 1 \
+ *        -map_metadata -1 -fflags +bitexact -flags +bitexact <asset>
+ * ```
+ *
+ * −19 dB matches its maximum EBU R128 momentary loudness (−25.9 LUFS) to that
+ * of one tick of `IRD-pit-speed-warning.wav` (−26.0 LUFS), which plays through
+ * the same Alerts bus at the same mix ratio, so the two pit-lane tones
+ * sit at one level under the Radar Volume slider. Peak −20.0 dBFS, RMS
+ * −23.8 dBFS.
+ *
+ * The gain is stated as an ABSOLUTE figure against the source, not as a delta
+ * against whatever is currently in the repo: a further adjustment re-renders
+ * from the source with a new absolute number, since attenuating the committed
+ * file again would compound with every pass. The bitexact flags keep ffmpeg
+ * from writing a `LIST/INFO/ISFT` chunk naming its own version, so a re-render
+ * from another ffmpeg at the same gain is byte-identical; the file carries
+ * only `fmt ` and `data`. The gain is baked into the asset because
+ * `playOnChannel` takes no per-play gain.
+ *
+ * Kept as `.wav` rather than `.mp3`, as the speeding tick is: it is 16 KB,
+ * and an mp3 decoder's priming delay would land on a cue whose whole value is
+ * marking an instant. The build copies everything outside `voice/` verbatim
+ * and miniaudio decodes wav natively.
+ *
+ * Generated for this feature rather than sourced, so it carries no third-party
+ * licence obligation and needs no `THIRD-PARTY-LICENSES.md` entry.
  */
 export const PIT_EXIT_CLIP = "sfx/IRD-pit-exit.wav";
 
