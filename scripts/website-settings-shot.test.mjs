@@ -136,8 +136,228 @@ function contentFiles(dir = contentDir) {
   });
 }
 
-/** The `file` prop of every `<SettingsShot … />` in `text`. */
-const shotFiles = (text) => [...text.matchAll(/<SettingsShot\b[^>]*?\bfile="([^"]*)"/g)].map((match) => match[1]);
+/**
+ * The index just past the `{ … }` expression that opens at `start`, or -1
+ * when it never closes. Strings and template literals inside it are skipped,
+ * so a brace or quote in one does not end it early.
+ *
+ * @param {string} text
+ * @param {number} start - The index of the opening `{`.
+ * @returns {number}
+ */
+function skipExpression(text, start) {
+  let depth = 0;
+
+  for (let i = start; i < text.length; i++) {
+    const c = text[i];
+
+    if (c === '"' || c === "'" || c === "`") {
+      for (i++; i < text.length && text[i] !== c; i++) {
+        if (text[i] === "\\") i++;
+      }
+      if (i >= text.length) return -1;
+    } else if (c === "{") {
+      depth++;
+    } else if (c === "}") {
+      depth--;
+      if (depth === 0) return i + 1;
+    }
+  }
+
+  return -1;
+}
+
+/** A JSX string literal inside `{ … }`, double- or single-quoted, with no escape. */
+const STRING_EXPRESSION = /^(?:"([^"\\]*)"|'([^'\\]*)')$/;
+
+/**
+ * Read the attributes of the JSX tag whose name ends at `start`, up to its
+ * closing `>` or `/>`: each name with its value as a literal string, as an
+ * expression's source, or as absent; and whether a `{…props}` spread is there.
+ * Quoted values and `{ … }` expressions are skipped whole, so a `>` inside
+ * one does not end the tag. Returns a string saying why when it cannot.
+ *
+ * @param {string} text
+ * @param {number} start
+ * @returns {{ attributes: { name: string, literal?: string, expression?: string }[], spread: boolean } | string}
+ */
+function readTagAttributes(text, start) {
+  /** @type {{ name: string, literal?: string, expression?: string }[]} */
+  const attributes = [];
+  let spread = false;
+  const attributeName = /[^\s=/>"'{}]+/y;
+  let i = start;
+  const skipSpace = () => {
+    while (i < text.length && /\s/.test(text[i])) i++;
+  };
+
+  for (;;) {
+    skipSpace();
+    if (i >= text.length) return "the tag is never closed";
+
+    const c = text[i];
+    if (c === ">" || (c === "/" && text[i + 1] === ">")) return { attributes, spread };
+
+    if (c === "{") {
+      const end = skipExpression(text, i);
+      if (end < 0) return "a `{` in the tag is never closed";
+      spread = true;
+      i = end;
+      continue;
+    }
+
+    attributeName.lastIndex = i;
+    const match = attributeName.exec(text);
+    if (match === null) return `the tag holds an unexpected ${JSON.stringify(c)}`;
+
+    /** @type {{ name: string, literal?: string, expression?: string }} */
+    const attribute = { name: match[0] };
+    attributes.push(attribute);
+    i = attributeName.lastIndex;
+    skipSpace();
+    if (text[i] !== "=") continue;
+
+    i++;
+    skipSpace();
+    const quote = text[i];
+
+    if (quote === '"' || quote === "'") {
+      const end = text.indexOf(quote, i + 1);
+      if (end < 0) return `the value of ${attribute.name} is never closed`;
+      attribute.literal = text.slice(i + 1, end);
+      i = end + 1;
+    } else if (quote === "{") {
+      const end = skipExpression(text, i);
+      if (end < 0) return `the value of ${attribute.name} is never closed`;
+      const source = text.slice(i + 1, end - 1).trim();
+      const literal = STRING_EXPRESSION.exec(source);
+      if (literal === null) attribute.expression = source;
+      else attribute.literal = literal[1] ?? literal[2];
+      i = end;
+    } else {
+      return `${attribute.name}= has no value`;
+    }
+  }
+}
+
+/**
+ * The `file` of every `<SettingsShot …>` tag in `text`, in any of the forms
+ * `file="…"`, `file='…'`, `file={"…"}` or `file={'…'}`, and a problem for
+ * each tag whose `file` cannot be read as a literal: missing, named twice,
+ * given no value, given an expression (`file={name}`) or possibly set by a
+ * spread. Each problem names the tag's line, so the guard says where to look.
+ *
+ * @param {string} text - An MDX or Markdown file's text.
+ * @returns {{ files: string[], problems: string[] }}
+ */
+function settingsShotFiles(text) {
+  /** @type {string[]} */
+  const files = [];
+  /** @type {string[]} */
+  const problems = [];
+
+  for (const match of text.matchAll(/<SettingsShot(?=[\s/>])/g)) {
+    const line = text.slice(0, match.index).split("\n").length;
+    const problem = (/** @type {string} */ message) => problems.push(`line ${line}: <SettingsShot> ${message}`);
+    const tag = readTagAttributes(text, match.index + match[0].length);
+
+    if (typeof tag === "string") {
+      problem(`cannot be read: ${tag}`);
+      continue;
+    }
+
+    const named = tag.attributes.filter((attribute) => attribute.name === "file");
+
+    if (tag.spread) {
+      problem('passes props through a `{…}` spread, so its file cannot be read; name it as file="<name>.png"');
+    } else if (named.length === 0) {
+      problem('has no file; name the screenshot as file="<name>.png"');
+    } else if (named.length > 1) {
+      problem("names file more than once");
+    } else if (named[0].expression !== undefined) {
+      problem(`has file={${named[0].expression}}, which is not a string literal; name it as file="<name>.png"`);
+    } else if (named[0].literal === undefined) {
+      problem('has a file with no value; name it as file="<name>.png"');
+    } else {
+      files.push(named[0].literal);
+    }
+  }
+
+  return { files, problems };
+}
+
+describe("settingsShotFiles", () => {
+  it("reads file in each literal form", () => {
+    const text = [
+      '<SettingsShot file="a.png" alt="A" />',
+      "<SettingsShot file='b.png' alt='B' />",
+      '<SettingsShot file={"c.png"} alt="C" />',
+      "<SettingsShot file={'d.png'} alt=\"D\" />",
+      '<SettingsShot file = { "e.png" } alt="E"/>',
+    ].join("\n");
+
+    expect(settingsShotFiles(text)).toEqual({ files: ["a.png", "b.png", "c.png", "d.png", "e.png"], problems: [] });
+  });
+
+  it("reads file past an earlier attribute whose value holds a >", () => {
+    const text = [
+      '<SettingsShot alt="Before > after" file="a.png" />',
+      "<SettingsShot alt='x > y' file='b.png' />",
+      '<SettingsShot alt={count > 1 ? "many" : "one"} file="c.png" />',
+      '<SettingsShot alt={`a } > { b`} file="d.png" />',
+      '<SettingsShot alt="Tab one"\n  file="e.png"\n/>',
+      '<SettingsShot alt="No self-close" file="f.png"></SettingsShot>',
+    ].join("\n");
+
+    expect(settingsShotFiles(text)).toEqual({
+      files: ["a.png", "b.png", "c.png", "d.png", "e.png", "f.png"],
+      problems: [],
+    });
+  });
+
+  it("reads only SettingsShot tags, and none in a mention or an import", () => {
+    const text = [
+      'import SettingsShot from "../../../../components/SettingsShot.astro";',
+      '<SettingsShots file="not-this.png" />',
+      '<Image file="nor-this.png" />',
+      "The SettingsShot component, written as `SettingsShot`.",
+      '<SettingsShot file="yes.png" alt="Yes" />',
+    ].join("\n");
+
+    expect(settingsShotFiles(text)).toEqual({ files: ["yes.png"], problems: [] });
+  });
+
+  it("refuses a file it cannot read as a literal, naming the line", () => {
+    const cases = [
+      ['<SettingsShot file={name} alt="A" />', "has file={name}, which is not a string literal"],
+      ["<SettingsShot file={`tab-${n}.png`} />", "which is not a string literal"],
+      ['<SettingsShot alt="No file" />', "has no file"],
+      ['<SettingsShot alt="Bare" file />', "a file with no value"],
+      ['<SettingsShot file="a.png" file="b.png" />', "names file more than once"],
+      ['<SettingsShot {...props} file="a.png" />', "spread"],
+      ['<SettingsShot file="a.png" {...props} />', "spread"],
+      ['<SettingsShot file="a.png" alt="never closed', "the value of alt is never closed"],
+      ['<SettingsShot file="a.png"', "the tag is never closed"],
+      ["<SettingsShot file=a.png />", "file= has no value"],
+    ];
+
+    for (const [tag, expected] of cases) {
+      const { files, problems } = settingsShotFiles(`Intro.\n\n${tag}\n`);
+
+      expect(files, tag).toEqual([]);
+      expect(problems, tag).toHaveLength(1);
+      expect(problems[0], tag).toMatch(/^line 3: <SettingsShot> /);
+      expect(problems[0], tag).toContain(expected);
+    }
+  });
+
+  it("keeps reading the tags after one it refuses", () => {
+    const { files, problems } = settingsShotFiles('<SettingsShot file={name} />\n<SettingsShot file="b.png" />');
+
+    expect(files).toEqual(["b.png"]);
+    expect(problems).toHaveLength(1);
+  });
+});
 
 describe("the docs' Settings-window screenshots", () => {
   const tabFiles = SETTINGS_WINDOW_TABS.map((tab) => tab.file);
@@ -152,10 +372,18 @@ describe("the docs' Settings-window screenshots", () => {
     expect(direct).toEqual([]);
   });
 
+  it("name their file as a literal, so the checks below can read it", () => {
+    const problems = contentFiles().flatMap(({ file, text }) =>
+      settingsShotFiles(text).problems.map((problem) => `${file} ${problem}`),
+    );
+
+    expect(problems).toEqual([]);
+  });
+
   it("name only files the capture writes, since a misspelt one would render nothing", () => {
     const unknown = contentFiles().flatMap(({ file, text }) =>
-      shotFiles(text)
-        .filter((shot) => !tabFiles.includes(shot))
+      settingsShotFiles(text)
+        .files.filter((shot) => !tabFiles.includes(shot))
         .map((shot) => `${file}: ${shot}`),
     );
 
@@ -163,7 +391,7 @@ describe("the docs' Settings-window screenshots", () => {
   });
 
   it("show every tab exactly once on the Settings page", () => {
-    const shots = shotFiles(readFileSync(settingsPage, "utf8"));
+    const { files: shots } = settingsShotFiles(readFileSync(settingsPage, "utf8"));
 
     expect([...shots].sort()).toEqual([...tabFiles].sort());
   });
