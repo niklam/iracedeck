@@ -122,14 +122,6 @@ class TestAction extends ConnectionStateAwareAction {
     return this.showsDisconnected(contextId);
   }
 
-  callUpdateConnectionState(): void {
-    this.updateConnectionState();
-  }
-
-  callSetActiveBinding(key: string | string[] | null): void {
-    this.setActiveBinding(key);
-  }
-
   callGetConnectionStatus(): boolean {
     return this.getConnectionStatus();
   }
@@ -311,22 +303,6 @@ describe("ConnectionStateAwareAction", () => {
     it("subscribes nothing to the sim connection per context: there is no per-tick evaluation", async () => {
       await action.onWillAppear(contextEvent("ctx-1"));
 
-      expect(sim.fake!.subscribers.size).toBe(0);
-    });
-  });
-
-  describe("deprecated shims", () => {
-    it("setActiveBinding and updateConnectionState do nothing", async () => {
-      await action.onWillAppear(contextEvent("ctx-1"));
-      vi.clearAllMocks();
-
-      action.callSetActiveBinding("someKey");
-      action.callSetActiveBinding(["a", "b"]);
-      action.callSetActiveBinding(null);
-      action.callUpdateConnectionState();
-
-      expect(getRefreshAllImages(action)).not.toHaveBeenCalled();
-      expect(mockIsConfigured).not.toHaveBeenCalled();
       expect(sim.fake!.subscribers.size).toBe(0);
     });
   });

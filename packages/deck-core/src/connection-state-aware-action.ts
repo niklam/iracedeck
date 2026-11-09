@@ -96,22 +96,6 @@ export abstract class ConnectionStateAwareAction<T = Record<string, unknown>> ex
     );
   }
 
-  // --- Deprecated shims, removed with their callers in #1599 ---
-
-  /**
-   * @deprecated Does nothing. Readiness was removed in #1599; the
-   * disconnected look is decided per key by {@link needsSim}. Kept only until
-   * its callers in `@iracedeck/iracing-actions` are removed.
-   */
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  protected setActiveBinding(settingKey: string | string[] | null): void {}
-
-  /**
-   * @deprecated Does nothing. Readiness was removed in #1599. Kept only until
-   * its callers in `@iracedeck/iracing-actions` are removed.
-   */
-  protected updateConnectionState(): void {}
-
   // --- Connection and bindings ---
 
   /**
