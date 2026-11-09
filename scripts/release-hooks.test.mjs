@@ -52,7 +52,10 @@ function runHook(version) {
 // normal state while one is being written and tested, so it would make
 // `pnpm test` depend on the developer's working tree. The stable path, the fold
 // and its dry run included, is exercised in the temporary repositories below.
-describe("release-hooks.mjs (dry run over this repository)", () => {
+// Each run of the hook here hashes this checkout's real voice tree (about
+// 175 MB) for the voice-pack check (#1667), so the default 5 s is too tight on
+// a loaded machine; the timeout matches the fixture suites below.
+describe("release-hooks.mjs (dry run over this repository)", { timeout: 60_000 }, () => {
   it("discovers all three plugin manifests and stages nothing", () => {
     const before = git("status", "--porcelain");
 
