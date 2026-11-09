@@ -220,7 +220,7 @@ export async function runCapture(
   if (!browserPath) {
     throw new CapturePreconditionError(
       "No Chromium-based browser (Edge or Chrome) was found on this machine, so the page cannot be rendered.\n" +
-        "The Settings window itself has the same requirement — see docs/getting-started/settings.md.",
+        "The Settings window itself has the same requirement — see docs/getting-started/settings.mdx.",
     );
   }
 
