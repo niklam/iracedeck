@@ -31,6 +31,7 @@ import relativeIconSvg from "@iracedeck/icons/black-box-selector/relative.svg";
 import standingsIconSvg from "@iracedeck/icons/black-box-selector/standings.svg";
 import tireInfoIconSvg from "@iracedeck/icons/black-box-selector/tire-info.svg";
 import tiresIconSvg from "@iracedeck/icons/black-box-selector/tires.svg";
+import toggleSizeIconSvg from "@iracedeck/icons/black-box-selector/toggle-size.svg";
 import weatherIconSvg from "@iracedeck/icons/black-box-selector/weather.svg";
 import { getGlobalColors, onGlobalSettingsChange } from "@iracedeck/settings";
 import z from "zod";
@@ -86,7 +87,7 @@ export { BLACK_BOX_GLOBAL_KEYS };
  * @internal Exported for testing
  */
 export const BlackBoxSelectorSettings = CommonSettings.extend({
-  mode: z.enum(["direct", "next", "previous"]).default("direct"),
+  mode: z.enum(["direct", "next", "previous", "toggle-size"]).default("direct"),
   blackBox: z
     .enum([
       "lap-timing",
@@ -111,12 +112,43 @@ export const BlackBoxSelectorSettings = CommonSettings.extend({
 export type BlackBoxSelectorSettings = z.infer<typeof BlackBoxSelectorSettings>;
 
 /**
- * Global settings keys for cycle actions
+ * @internal Exported for testing
+ *
+ * Global settings keys for the box-independent modes: the two cycle keys and
+ * iRacing's Toggle Black Box Size (#1238), which resizes whatever box is shown.
  */
-const GLOBAL_KEYS = {
+export const GLOBAL_KEYS = {
   CYCLE_NEXT: "blackBoxCycleNext",
   CYCLE_PREVIOUS: "blackBoxCyclePrevious",
+  TOGGLE_SIZE: "blackBoxToggleSize",
 } as const;
+
+/**
+ * @internal Exported for testing
+ *
+ * The global-settings key a keypad press taps for the given settings. Exhaustive
+ * over `mode`, so a new mode stops compiling here until it names its key rather
+ * than falling through to another mode's.
+ */
+export function resolveBlackBoxSettingKey(settings: BlackBoxSelectorSettings): string {
+  const { mode, blackBox } = settings;
+
+  switch (mode) {
+    case "direct":
+      return BLACK_BOX_GLOBAL_KEYS[blackBox];
+    case "next":
+      return GLOBAL_KEYS.CYCLE_NEXT;
+    case "previous":
+      return GLOBAL_KEYS.CYCLE_PREVIOUS;
+    case "toggle-size":
+      return GLOBAL_KEYS.TOGGLE_SIZE;
+    default: {
+      const unhandled: never = mode;
+
+      throw new Error(`Black Box Selector: no binding for mode "${String(unhandled)}"`);
+    }
+  }
+}
 
 /**
  * @internal Exported for testing
@@ -135,6 +167,9 @@ export function generateBlackBoxSelectorSvg(settings: BlackBoxSelectorSettings, 
   } else if (mode === "previous") {
     iconSvg = CYCLE_ICONS.previous;
     defaultTitle = "PREVIOUS";
+  } else if (mode === "toggle-size") {
+    iconSvg = toggleSizeIconSvg;
+    defaultTitle = "BOX SIZE";
   } else {
     iconSvg = DIRECT_ICONS[blackBox] || DIRECT_ICONS["lap-timing"];
     defaultTitle = BLACK_BOX_TITLE_TEXT[blackBox] || "BLACK BOX";
@@ -152,7 +187,8 @@ export function generateBlackBoxSelectorSvg(settings: BlackBoxSelectorSettings, 
 
 /**
  * Black Box Selector Action
- * Cycles through or directly selects iRacing black box screens via keyboard shortcuts.
+ * Cycles through or directly selects iRacing black box screens, or toggles the
+ * shown box's size, via keyboard shortcuts.
  */
 export const BLACK_BOX_SELECTOR_UUID = "com.iracedeck.sd.core.black-box-selector" as const;
 
@@ -203,7 +239,9 @@ export class BlackBoxSelector extends ConnectionStateAwareAction<BlackBoxSelecto
   override async onKeyDown(ev: IDeckKeyDownEvent<BlackBoxSelectorSettings>): Promise<void> {
     this.logger.info("Key down received");
     const settings = this.parseSettings(ev.payload.settings);
-    await this.tapBinding(this.resolveSettingKey(settings));
+    // One tap in every mode. Toggle Size needs no #818 prime-then-target
+    // sequence: resizing acts on whatever box is shown, whichever it is (#1238).
+    await this.tapBinding(resolveBlackBoxSettingKey(settings));
   }
 
   private parseSettings(settings: unknown): BlackBoxSelectorSettings {
@@ -212,25 +250,18 @@ export class BlackBoxSelector extends ConnectionStateAwareAction<BlackBoxSelecto
     return parsed.success ? parsed.data : BlackBoxSelectorSettings.parse({});
   }
 
-  private resolveSettingKey(settings: BlackBoxSelectorSettings): string {
-    const { mode, blackBox } = settings;
-
-    return mode === "direct"
-      ? BLACK_BOX_GLOBAL_KEYS[blackBox]
-      : mode === "next"
-        ? GLOBAL_KEYS.CYCLE_NEXT
-        : GLOBAL_KEYS.CYCLE_PREVIOUS;
-  }
-
   private async updateDisplay(
     ev: IDeckWillAppearEvent<BlackBoxSelectorSettings> | IDeckDidReceiveSettingsEvent<BlackBoxSelectorSettings>,
     settings: BlackBoxSelectorSettings,
   ): Promise<void> {
-    const svgDataUri = generateBlackBoxSelectorSvg(settings, this.isBindingMissing(this.resolveSettingKey(settings)));
+    const svgDataUri = generateBlackBoxSelectorSvg(
+      settings,
+      this.isBindingMissing(resolveBlackBoxSettingKey(settings)),
+    );
     await ev.action.setTitle("");
     await this.setKeyImage(ev, svgDataUri);
     this.setRegenerateCallback(ev.action.id, () =>
-      generateBlackBoxSelectorSvg(settings, this.isBindingMissing(this.resolveSettingKey(settings))),
+      generateBlackBoxSelectorSvg(settings, this.isBindingMissing(resolveBlackBoxSettingKey(settings))),
     );
   }
 

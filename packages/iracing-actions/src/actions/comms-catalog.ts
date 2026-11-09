@@ -141,6 +141,7 @@ export const COMMS_CATALOG: Record<string, ActionCommEntry> = {
     direct: keybindBy("blackBox", BLACK_BOX_GLOBAL_KEYS),
     next: keybind("blackBoxCycleNext"),
     previous: keybind("blackBoxCyclePrevious"),
+    "toggle-size": keybind("blackBoxToggleSize"),
   }),
 
   // The dial surface of Black Box Selector (#808). Rotation always cycles — there
@@ -150,12 +151,14 @@ export const COMMS_CATALOG: Record<string, ActionCommEntry> = {
   // "cycle" descriptor is the next/previous key PAIR (warn if either is unset).
   // The press gesture `open-selected-box` opens the box chosen by `dial.pressBox`,
   // reusing the keypad Direct mode's per-box keys via the keyBy descriptor (the
-  // audio-controls `mute-unmute` pattern). Every dial path is keybind-backed —
-  // black-box selection has no SDK support. A separate entry from the keypad map:
+  // audio-controls `mute-unmute` pattern); `toggle-size` taps Toggle Black Box
+  // Size (#1238). Every dial path is keybind-backed — black-box selection has no
+  // SDK support. A separate entry from the keypad map:
   // the keypad `next`/`previous` are single keys, the dial rotation needs both.
   "black-box-selector-dial": entry("dial.rotation", {
     cycle: pair("blackBoxCycleNext", "blackBoxCyclePrevious"),
     "open-selected-box": keybindBy("dial.pressBox", BLACK_BOX_GLOBAL_KEYS),
+    "toggle-size": keybind("blackBoxToggleSize"),
   }),
 
   "splits-delta-cycle": entry("mode", {

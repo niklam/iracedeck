@@ -109,6 +109,13 @@
         "scope": "global",
         "key": "blackBoxCyclePrevious"
       }
+    },
+    "toggle-size": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "blackBoxToggleSize"
+      }
     }
   },
   "black-box-selector-dial": {
@@ -145,6 +152,13 @@
             "weather": "blackBoxWeather"
           }
         }
+      }
+    },
+    "toggle-size": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "blackBoxToggleSize"
       }
     }
   },

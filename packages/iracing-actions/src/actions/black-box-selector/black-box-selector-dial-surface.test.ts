@@ -126,6 +126,20 @@ describe("black-box-selector dial-surface pure helpers", () => {
       expect(parsed.pressBox).toBe("fuel");
       expect(parsed.pressAction).toBe("none");
     });
+
+    it("accepts Toggle Box Size in every gesture slot (#1238)", () => {
+      const parsed = DialSettings.parse({
+        pressAction: "toggle-size",
+        longPressAction: "toggle-size",
+        tapAction: "toggle-size",
+        longTouchAction: "toggle-size",
+      });
+
+      expect(parsed.pressAction).toBe("toggle-size");
+      expect(parsed.longPressAction).toBe("toggle-size");
+      expect(parsed.tapAction).toBe("toggle-size");
+      expect(parsed.longTouchAction).toBe("toggle-size");
+    });
   });
 
   describe("buildTriggerDescription", () => {
@@ -148,6 +162,28 @@ describe("black-box-selector dial-surface pure helpers", () => {
       );
 
       expect(desc.push).toBe("Open selected box (hold: Open selected box)");
+    });
+
+    it("labels Toggle Box Size on every gesture it is set on (#1238)", () => {
+      const desc = buildTriggerDescription(
+        DialSettings.parse({
+          pressAction: "open-selected-box",
+          longPressAction: "toggle-size",
+          tapAction: "toggle-size",
+          longTouchAction: "toggle-size",
+        }),
+      );
+
+      expect(desc.rotate).toBe("Cycle black boxes");
+      expect(desc.push).toBe("Open selected box (hold: Toggle box size)");
+      expect(desc.touch).toBe("Toggle box size");
+      expect(desc.longTouch).toBe("Toggle box size");
+    });
+
+    it("labels a push set to Toggle Box Size alone (#1238)", () => {
+      const desc = buildTriggerDescription(DialSettings.parse({ pressAction: "toggle-size" }));
+
+      expect(desc.push).toBe("Toggle box size");
     });
   });
 
@@ -399,6 +435,75 @@ describe("BlackBoxSelector dial surface", () => {
       await action.onTouchTap(touchEvent(ctx, settings, true) as never);
 
       expect(mockTapBinding).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("Toggle Box Size gesture (#1238)", () => {
+    const settings = withDial({
+      pressBox: "fuel",
+      pressAction: "toggle-size",
+      longPressAction: "toggle-size",
+      tapAction: "toggle-size",
+      longTouchAction: "toggle-size",
+    });
+
+    async function appeared(id: string): Promise<DialContext> {
+      const ctx = dialContext(id);
+      await appear(ctx, settings);
+      mockTapBinding.mockClear();
+
+      return ctx;
+    }
+
+    it("taps Toggle Black Box Size once on a short press", async () => {
+      const ctx = await appeared("s1");
+
+      await action.onDialDown(eventFor(ctx, settings) as never);
+      await action.onDialUp(eventFor(ctx, settings) as never);
+
+      expect(mockTapBinding.mock.calls).toEqual([["blackBoxToggleSize"]]);
+    });
+
+    it("taps Toggle Black Box Size once on a long press", async () => {
+      const ctx = await appeared("s2");
+
+      await action.onDialDown(eventFor(ctx, settings) as never);
+      vi.advanceTimersByTime(600);
+      await action.onDialUp(eventFor(ctx, settings) as never);
+
+      expect(mockTapBinding.mock.calls).toEqual([["blackBoxToggleSize"]]);
+    });
+
+    it("taps Toggle Black Box Size once on a tap of the display", async () => {
+      const ctx = await appeared("s3");
+
+      await action.onTouchTap(touchEvent(ctx, settings, false) as never);
+
+      expect(mockTapBinding.mock.calls).toEqual([["blackBoxToggleSize"]]);
+    });
+
+    it("taps Toggle Black Box Size once on a long touch", async () => {
+      const ctx = await appeared("s4");
+
+      await action.onTouchTap(touchEvent(ctx, settings, true) as never);
+
+      expect(mockTapBinding.mock.calls).toEqual([["blackBoxToggleSize"]]);
+    });
+
+    it("leaves rotation on the Cycle bindings", async () => {
+      const ctx = await appeared("s5");
+
+      await action.onDialRotate(rotateEvent(ctx, settings, 1) as never);
+      await action.onDialRotate(rotateEvent(ctx, settings, -1) as never);
+
+      expect(mockTapBinding.mock.calls).toEqual([["blackBoxCycleNext"], ["blackBoxCyclePrevious"]]);
+    });
+
+    it("keeps the strip's #612 warning on the Cycle pair, not the size binding", async () => {
+      await appeared("s6");
+
+      expect(mockIsBindingMissing).toHaveBeenCalledWith(["blackBoxCycleNext", "blackBoxCyclePrevious"]);
+      expect(mockIsBindingMissing).not.toHaveBeenCalledWith(expect.arrayContaining(["blackBoxToggleSize"]));
     });
   });
 

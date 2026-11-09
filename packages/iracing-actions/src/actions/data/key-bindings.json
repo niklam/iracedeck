@@ -12,7 +12,8 @@
     { "id": "radio", "label": "Radio Adjustments", "default": "F10", "setting": "blackBoxRadio" },
     { "id": "weather", "label": "Weather", "default": "F11", "setting": "blackBoxWeather" },
     { "id": "cycleNext", "label": "Cycle Next", "default": "", "setting": "blackBoxCycleNext" },
-    { "id": "cyclePrevious", "label": "Cycle Previous", "default": "", "setting": "blackBoxCyclePrevious" }
+    { "id": "cyclePrevious", "label": "Cycle Previous", "default": "", "setting": "blackBoxCyclePrevious" },
+    { "id": "toggleSize", "label": "Toggle Black Box Size", "default": "", "setting": "blackBoxToggleSize" }
   ],
   "splitsDelta": [
     { "id": "next", "label": "Next", "default": "Tab", "setting": "splitsDeltaNext" },

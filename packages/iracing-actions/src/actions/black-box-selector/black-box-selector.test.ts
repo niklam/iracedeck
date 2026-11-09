@@ -1,3 +1,4 @@
+import { assembleIcon } from "@iracedeck/deck-core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -5,6 +6,8 @@ import {
   BlackBoxSelector,
   BlackBoxSelectorSettings,
   generateBlackBoxSelectorSvg,
+  GLOBAL_KEYS,
+  resolveBlackBoxSettingKey,
 } from "./black-box-selector.js";
 
 const { mockTapBinding } = vi.hoisted(() => ({
@@ -50,82 +53,81 @@ vi.mock("@iracedeck/icons/black-box-selector/next.svg", () => ({
 vi.mock("@iracedeck/icons/black-box-selector/previous.svg", () => ({
   default: '<svg xmlns="http://www.w3.org/2000/svg">previous</svg>',
 }));
-
-vi.mock("@iracedeck/deck-core", () => ({
-  assembleIcon: vi.fn(
-    ({ graphicSvg, title }: { graphicSvg: string; colors: unknown; title: { titleText: string } }) => {
-      const encoded = encodeURIComponent(`<svg>${graphicSvg}${title?.titleText ?? ""}</svg>`);
-
-      return `data:image/svg+xml,${encoded}`;
-    },
-  ),
-  CommonSettings: {
-    extend: (_fields: unknown) => {
-      // Return a mock Zod-like schema
-      const schema = {
-        parse: (data: Record<string, unknown>) => ({ ...data }),
-        safeParse: (data: Record<string, unknown>) => ({ success: true, data: { ...data } }),
-      };
-
-      return schema;
-    },
-    parse: (data: Record<string, unknown>) => ({ ...data }),
-    safeParse: (data: Record<string, unknown>) => ({ success: true, data: { ...data } }),
-  },
-  ConnectionStateAwareAction: class MockConnectionStateAwareAction {
-    logger = { trace: vi.fn(), debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
-    sdkController = { subscribe: vi.fn(), unsubscribe: vi.fn(), getCurrentTelemetry: vi.fn() };
-    setKeyImage = vi.fn();
-    setRegenerateCallback = vi.fn();
-    tapBinding = mockTapBinding;
-    holdBinding = vi.fn().mockResolvedValue(undefined);
-    releaseBinding = vi.fn().mockResolvedValue(undefined);
-    isBindingMissing = vi.fn(() => false);
-    async onWillAppear() {}
-    async onDidReceiveSettings() {}
-    async onWillDisappear() {}
-  },
-  formatKeyBinding: vi.fn((b: { key: string; modifiers: string[] }) => {
-    if (b.modifiers?.length) {
-      return `${b.modifiers.join("+")}+${b.key}`;
-    }
-
-    return b.key;
-  }),
-  generateBorderParts: vi.fn(() => ({ defs: "", rects: "" })),
-  getGlobalBorderSettings: vi.fn(() => ({})),
-  getGlobalGraphicSettings: vi.fn(() => ({})),
-  getGlobalTitleSettings: vi.fn(() => ({})),
-  getKeyboard: vi.fn(() => ({
-    sendKeyCombination: vi.fn().mockResolvedValue(true),
-  })),
-  // Dial surface (imported transitively) needs these at construct / render time.
-  applyBindingWarning: vi.fn((content: string) => `${content}<binding-warning/>`),
-  escapeXml: vi.fn((s: string) => s),
-  svgToDataUri: vi.fn((svg: string) => `data:image/svg+xml,${encodeURIComponent(svg)}`),
-  classifyDialRelease: vi.fn(() => "short"),
-  getDualPressThresholdMs: vi.fn(() => 500),
-  LogLevel: { Info: 2 },
-  parseKeyBinding: vi.fn(),
-  resolveIconColors: vi.fn((_svg: unknown, _global: unknown, _overrides: unknown) => ({})),
-  resolveBorderSettings: vi.fn((_svg: unknown, _global: unknown, _overrides?: unknown, _stateColor?: string) => ({
-    enabled: false,
-    borderWidth: 7,
-    borderColor: "#00aaff",
-    glowEnabled: true,
-    glowWidth: 18,
-  })),
-  resolveGraphicSettings: vi.fn(() => ({ scale: 1 })),
-  resolveTitleSettings: vi.fn((_svg: unknown, _global: unknown, _overrides: unknown, defaultTitle: string) => ({
-    showTitle: true,
-    showGraphics: true,
-    titleText: defaultTitle ?? "",
-    bold: true,
-    fontSize: 9,
-    position: "bottom" as const,
-    customPosition: 0,
-  })),
+vi.mock("@iracedeck/icons/black-box-selector/toggle-size.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">toggle-size</svg>',
 }));
+
+vi.mock("@iracedeck/deck-core", async () => {
+  const { z } = await import("zod");
+
+  return {
+    assembleIcon: vi.fn(
+      ({ graphicSvg, title }: { graphicSvg: string; colors: unknown; title: { titleText: string } }) => {
+        const encoded = encodeURIComponent(`<svg>${graphicSvg}${title?.titleText ?? ""}</svg>`);
+
+        return `data:image/svg+xml,${encoded}`;
+      },
+    ),
+    // The action's own fields parse through real zod, so the `mode` enum is what
+    // the settings tests exercise (the CommonSettings base keys are not filled).
+    CommonSettings: {
+      extend: (shape: never) => z.object(shape).passthrough(),
+    },
+    ConnectionStateAwareAction: class MockConnectionStateAwareAction {
+      logger = { trace: vi.fn(), debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+      sdkController = { subscribe: vi.fn(), unsubscribe: vi.fn(), getCurrentTelemetry: vi.fn() };
+      setKeyImage = vi.fn();
+      setRegenerateCallback = vi.fn();
+      tapBinding = mockTapBinding;
+      holdBinding = vi.fn().mockResolvedValue(undefined);
+      releaseBinding = vi.fn().mockResolvedValue(undefined);
+      isBindingMissing = vi.fn(() => false);
+      async onWillAppear() {}
+      async onDidReceiveSettings() {}
+      async onWillDisappear() {}
+    },
+    formatKeyBinding: vi.fn((b: { key: string; modifiers: string[] }) => {
+      if (b.modifiers?.length) {
+        return `${b.modifiers.join("+")}+${b.key}`;
+      }
+
+      return b.key;
+    }),
+    generateBorderParts: vi.fn(() => ({ defs: "", rects: "" })),
+    getGlobalBorderSettings: vi.fn(() => ({})),
+    getGlobalGraphicSettings: vi.fn(() => ({})),
+    getGlobalTitleSettings: vi.fn(() => ({})),
+    getKeyboard: vi.fn(() => ({
+      sendKeyCombination: vi.fn().mockResolvedValue(true),
+    })),
+    // Dial surface (imported transitively) needs these at construct / render time.
+    applyBindingWarning: vi.fn((content: string) => `${content}<binding-warning/>`),
+    escapeXml: vi.fn((s: string) => s),
+    svgToDataUri: vi.fn((svg: string) => `data:image/svg+xml,${encodeURIComponent(svg)}`),
+    classifyDialRelease: vi.fn(() => "short"),
+    getDualPressThresholdMs: vi.fn(() => 500),
+    LogLevel: { Info: 2 },
+    parseKeyBinding: vi.fn(),
+    resolveIconColors: vi.fn((_svg: unknown, _global: unknown, _overrides: unknown) => ({})),
+    resolveBorderSettings: vi.fn((_svg: unknown, _global: unknown, _overrides?: unknown, _stateColor?: string) => ({
+      enabled: false,
+      borderWidth: 7,
+      borderColor: "#00aaff",
+      glowEnabled: true,
+      glowWidth: 18,
+    })),
+    resolveGraphicSettings: vi.fn(() => ({ scale: 1 })),
+    resolveTitleSettings: vi.fn((_svg: unknown, _global: unknown, _overrides: unknown, defaultTitle: string) => ({
+      showTitle: true,
+      showGraphics: true,
+      titleText: defaultTitle ?? "",
+      bold: true,
+      fontSize: 9,
+      position: "bottom" as const,
+      customPosition: 0,
+    })),
+  };
+});
 
 vi.mock("@iracedeck/settings", () => ({
   getGlobalColors: vi.fn(() => ({})),
@@ -180,7 +182,62 @@ describe("BlackBoxSelector", () => {
     });
   });
 
+  describe("BlackBoxSelectorSettings mode (#1238)", () => {
+    it.each(["direct", "next", "previous", "toggle-size"] as const)("parses mode %s", (mode) => {
+      expect(BlackBoxSelectorSettings.parse({ mode }).mode).toBe(mode);
+    });
+
+    it("defaults to Direct", () => {
+      expect(BlackBoxSelectorSettings.parse({}).mode).toBe("direct");
+    });
+
+    it("rejects a mode it does not know", () => {
+      expect(BlackBoxSelectorSettings.safeParse({ mode: "make-large" }).success).toBe(false);
+    });
+
+    it("keeps the stored box while in Toggle Size, so switching back restores it", () => {
+      expect(BlackBoxSelectorSettings.parse({ mode: "toggle-size", blackBox: "weather" }).blackBox).toBe("weather");
+    });
+  });
+
+  describe("resolveBlackBoxSettingKey", () => {
+    it("names the Toggle Black Box Size key", () => {
+      expect(GLOBAL_KEYS.TOGGLE_SIZE).toBe("blackBoxToggleSize");
+    });
+
+    it.each([
+      [{ mode: "direct", blackBox: "relative" }, "blackBoxRelative"],
+      [{ mode: "next" }, "blackBoxCycleNext"],
+      [{ mode: "previous" }, "blackBoxCyclePrevious"],
+      [{ mode: "toggle-size", blackBox: "relative" }, "blackBoxToggleSize"],
+    ] as const)("maps %o to %s", (settings, key) => {
+      expect(resolveBlackBoxSettingKey(BlackBoxSelectorSettings.parse(settings))).toBe(key);
+    });
+
+    it("throws on a mode it has no key for, rather than falling through to another mode's", () => {
+      expect(() =>
+        resolveBlackBoxSettingKey({ ...BlackBoxSelectorSettings.parse({}), mode: "selected-control" } as never),
+      ).toThrow(/selected-control/);
+    });
+  });
+
   describe("generateBlackBoxSelectorSvg", () => {
+    it("draws the Toggle Size icon titled BOX SIZE (#1238)", () => {
+      const decoded = decodeURIComponent(
+        generateBlackBoxSelectorSvg(BlackBoxSelectorSettings.parse({ mode: "toggle-size", blackBox: "fuel" })),
+      );
+
+      expect(decoded).toContain(">toggle-size<");
+      expect(decoded).toContain("BOX SIZE");
+      expect(decoded).not.toContain(">fuel<");
+    });
+
+    it("passes the missing-binding state through for Toggle Size", () => {
+      generateBlackBoxSelectorSvg(BlackBoxSelectorSettings.parse({ mode: "toggle-size" }), true);
+
+      expect(vi.mocked(assembleIcon)).toHaveBeenCalledWith(expect.objectContaining({ bindingMissing: true }));
+    });
+
     it("should generate a valid data URI for direct mode with lap-timing", () => {
       const result = generateBlackBoxSelectorSvg(
         BlackBoxSelectorSettings.parse({ mode: "direct", blackBox: "lap-timing" }),
@@ -325,6 +382,31 @@ describe("BlackBoxSelector", () => {
         await action.onKeyDown(fakeEvent("a1", { mode: "previous", blackBox: "lap-timing" }) as never);
 
         expect(mockTapBinding).toHaveBeenCalledWith("blackBoxCyclePrevious");
+      });
+
+      it("taps Toggle Black Box Size exactly once in toggle-size mode, with no prime (#1238)", async () => {
+        await action.onKeyDown(fakeEvent("a1", { mode: "toggle-size", blackBox: "fuel" }) as never);
+
+        expect(mockTapBinding.mock.calls).toEqual([["blackBoxToggleSize"]]);
+      });
+    });
+
+    describe("key icon in toggle-size mode (#1238)", () => {
+      it("shows the missing-binding state while Toggle Black Box Size is unbound", async () => {
+        vi.mocked(action["isBindingMissing"]).mockImplementation((key) => key === "blackBoxToggleSize");
+
+        await action.onWillAppear(fakeEvent("a1", { mode: "toggle-size" }) as never);
+
+        expect(action["isBindingMissing"]).toHaveBeenCalledWith("blackBoxToggleSize");
+        expect(vi.mocked(assembleIcon)).toHaveBeenLastCalledWith(
+          expect.objectContaining({ bindingMissing: true, title: expect.objectContaining({ titleText: "BOX SIZE" }) }),
+        );
+      });
+
+      it("drops the missing-binding state once it is bound", async () => {
+        await action.onWillAppear(fakeEvent("a1", { mode: "toggle-size" }) as never);
+
+        expect(vi.mocked(assembleIcon)).toHaveBeenLastCalledWith(expect.objectContaining({ bindingMissing: false }));
       });
     });
   });
