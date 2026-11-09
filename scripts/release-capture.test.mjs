@@ -3,7 +3,8 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it, vi } from "vitest";
 
-import { main, USAGE } from "./release-capture.mjs";
+import { exitTripwireHint } from "./lib/release-capture.mjs";
+import { armReleaseTripwire, main, USAGE } from "./release-capture.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -47,6 +48,27 @@ describe("node scripts/release-capture.mjs <version>", () => {
 
     expect(run).not.toHaveBeenCalled();
     expect(error).toHaveBeenCalledWith(USAGE);
+  });
+});
+
+describe("armReleaseTripwire", () => {
+  it("arms the tripwire with the release's restore hint", () => {
+    const timer = { unref: vi.fn() };
+    const arm = vi.fn(() => timer);
+
+    expect(armReleaseTripwire({ arm, env: {} })).toBe(timer);
+
+    expect(arm).toHaveBeenCalledTimes(1);
+    expect(arm).toHaveBeenCalledWith({ hint: exitTripwireHint({}) });
+    expect(arm).toHaveBeenCalledWith({ hint: expect.stringContaining("`git restore --staged --worktree -- :/`") });
+  });
+
+  it("hands a dry run the dry run's hint", () => {
+    const arm = vi.fn(() => undefined);
+
+    armReleaseTripwire({ arm, env: { RELEASE_IT_DRY_RUN: "1" } });
+
+    expect(arm).toHaveBeenCalledWith({ hint: exitTripwireHint({ RELEASE_IT_DRY_RUN: "1" }) });
   });
 });
 

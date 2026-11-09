@@ -58,6 +58,8 @@ function readActiveResources() {
  * @param {(fire: () => void, ms: number) => {unref?: () => unknown} | undefined} [deps.setTimer]
  * @param {() => {resources: string[], handles: string[]}} [deps.activeResources]
  * @param {(line: string) => void} [deps.report] - Where the failure is written; stderr by default.
+ * @param {string} [deps.hint] - A last line of the report, for what the caller's
+ *   failure leaves behind and how to undo it; none by default.
  * @param {(code: number) => void} [deps.exit]
  * @returns {{unref?: () => unknown} | undefined} The timer, already unref'd.
  */
@@ -68,6 +70,7 @@ export function armExitTripwire(deps = {}) {
     activeResources = readActiveResources,
     report = (line) => console.error(line),
     exit = (code) => process.exit(code),
+    hint,
   } = deps;
 
   const timer = setTimer(() => {
@@ -79,6 +82,7 @@ export function armExitTripwire(deps = {}) {
     );
     report(`Active resources: ${summarise(resources)}`);
     report(`Active handles: ${summarise(handles)}`);
+    if (hint !== undefined && hint !== "") report(hint);
     exit(1);
   }, ms);
 

@@ -10,10 +10,12 @@ import {
   createOutputTail,
   describeBuildCommand,
   developerTreeMarkers,
+  exitTripwireHint,
   FEATURE_FLAGS_LOCAL_FILE,
   PLUGIN_CONFIG_REL,
   releaseCapture,
   RESTORE_COMMAND,
+  restoreAdvice,
   runTeed,
   unexpectedTrackedChanges,
 } from "./release-capture.mjs";
@@ -260,6 +262,40 @@ describe("the restore commands", () => {
   it("are the literals the failures name", () => {
     expect(RESTORE_COMMAND).toBe("git restore --staged --worktree -- :/");
     expect(cleanCommand(FOLDER_REL)).toBe("git clean -fd -- packages/website/src/assets/settings-window/");
+  });
+
+  it("are named, with what the restore also reverts, by restoreAdvice", () => {
+    const advice = restoreAdvice(FOLDER_REL);
+
+    expect(advice).toContain("`git restore --staged --worktree -- :/`");
+    expect(advice).toContain("`git clean -fd -- packages/website/src/assets/settings-window/`");
+    expect(advice).toContain("which also reverts what before:bump changed and staged");
+    expect(advice).toContain("release again once the cause is fixed");
+  });
+});
+
+describe("exitTripwireHint", () => {
+  it("on a real release, says the folder may be staged and names both restore commands", () => {
+    for (const env of [{}, { RELEASE_IT_DRY_RUN: "0" }]) {
+      const hint = exitTripwireHint(env);
+
+      expect(hint).toContain("this hook may already have staged the screenshot folder");
+      expect(hint).toContain("`git restore --staged --worktree -- :/`");
+      expect(hint).toContain("`git clean -fd -- packages/website/src/assets/settings-window/`");
+      expect(hint.endsWith(restoreAdvice(FOLDER_REL))).toBe(true);
+    }
+  });
+
+  it("on a dry run, says there is nothing to restore and names no command", () => {
+    const hint = exitTripwireHint({ RELEASE_IT_DRY_RUN: "1" });
+
+    expect(hint).toContain("nothing to restore");
+    expect(hint).not.toContain("git restore");
+    expect(hint).not.toContain("git clean");
+  });
+
+  it("reads the process environment by default", () => {
+    expect(exitTripwireHint()).toBe(exitTripwireHint(process.env));
   });
 });
 

@@ -10,11 +10,13 @@
  * `RELEASE_IT_DRY_RUN=1` it prints what it would do and writes nothing. The
  * decisions live in `lib/release-capture.mjs`; this file reads the argument,
  * sets the exit code and arms the exit tripwire, since the capture's browser
- * can hold the event loop open after the work is done (#1544).
+ * can hold the event loop open after the work is done (#1544). The tripwire
+ * fires whatever the hook returned, so its report ends with the same restore
+ * commands a failure names: by then the folder may already be staged.
  */
 import url from "node:url";
 
-import { releaseCapture } from "./lib/release-capture.mjs";
+import { exitTripwireHint, releaseCapture } from "./lib/release-capture.mjs";
 import { armExitTripwire } from "./lib/settings-window-capture/exit-tripwire.mjs";
 
 export const USAGE = "Usage: node scripts/release-capture.mjs <version>";
@@ -40,6 +42,19 @@ export async function main(argv, { run = (version) => releaseCapture(version), e
   return run(version);
 }
 
+/**
+ * Arm the exit tripwire with the release's restore hint, so a run held open
+ * after it staged the folder still names the way back to HEAD.
+ *
+ * @param {object} [deps]
+ * @param {typeof armExitTripwire} [deps.arm]
+ * @param {NodeJS.ProcessEnv} [deps.env] - Read for `RELEASE_IT_DRY_RUN`.
+ * @returns {ReturnType<typeof armExitTripwire>}
+ */
+export function armReleaseTripwire({ arm = armExitTripwire, env = process.env } = {}) {
+  return arm({ hint: exitTripwireHint(env) });
+}
+
 // Direct-exec guard: only run when this file was executed as the entry script,
 // so importing `main` (the tests do) builds and captures nothing.
 const invokedPath = process.argv[1];
@@ -51,5 +66,5 @@ if (
   process.exitCode = await main(process.argv.slice(2));
 
   // Last, after every line: a healthy run has exited before this can fire.
-  armExitTripwire();
+  armReleaseTripwire();
 }

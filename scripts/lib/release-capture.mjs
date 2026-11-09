@@ -74,6 +74,7 @@ import {
   buildCaptureManifest,
   CAPTURE_MANIFEST_FILE,
   checkCaptureManifest,
+  COMMITTED_CAPTURE_DIR_REL,
   serializeCaptureManifest,
 } from "./settings-window-capture/capture-manifest.mjs";
 import {
@@ -114,6 +115,41 @@ export const RESTORE_COMMAND = "git restore --staged --worktree -- :/";
  */
 export function cleanCommand(folderRel) {
   return `git clean -fd -- ${folderRel}/`;
+}
+
+/**
+ * How to get back to HEAD once the release has stopped after `before:bump`:
+ * the one wording every failure and the exit tripwire's report use.
+ *
+ * @param {string} folderRel - The screenshot folder, relative to the root.
+ * @returns {string}
+ */
+export function restoreAdvice(folderRel) {
+  return (
+    `Return the tree to HEAD with \`${RESTORE_COMMAND}\`, which also reverts what before:bump changed and staged ` +
+    "(the version bump, the folded changelog, the fragments' removal and any sealed voice-pack record), " +
+    `then \`${cleanCommand(folderRel)}\` for a screenshot the capture may have written for a tab that had none, ` +
+    "and release again once the cause is fixed."
+  );
+}
+
+/**
+ * What the exit tripwire adds to its report when it fires on the release hook.
+ * It fires whatever the hook returned, so on a real release the hook may
+ * already have staged the folder; its exit 1 then stops release-it with the
+ * tree bumped and staged, and without this line the report would name no way
+ * back. A dry run wrote nothing, so there is nothing to restore.
+ *
+ * @param {NodeJS.ProcessEnv} [env] - Read for `RELEASE_IT_DRY_RUN`.
+ * @returns {string}
+ */
+export function exitTripwireHint(env = process.env) {
+  if (env.RELEASE_IT_DRY_RUN === "1") return "This was a dry run: nothing was written, so there is nothing to restore.";
+
+  return (
+    "The exit code stops the release, and this hook may already have staged the screenshot folder. " +
+    restoreAdvice(COMMITTED_CAPTURE_DIR_REL)
+  );
 }
 
 /**
@@ -453,11 +489,7 @@ export async function releaseCapture(
     error(
       dryRun
         ? "Nothing was written; the release would stop here."
-        : "This hook staged nothing. " +
-            `Return the tree to HEAD with \`${RESTORE_COMMAND}\`, which also reverts what before:bump changed and staged ` +
-            "(the version bump, the folded changelog, the fragments' removal and any sealed voice-pack record), " +
-            `then \`${cleanCommand(folderRel)}\` for a screenshot the capture may have written for a tab that had none, ` +
-            "and release again once the cause is fixed.",
+        : `This hook staged nothing. ${restoreAdvice(folderRel)}`,
     );
 
     return 1;
