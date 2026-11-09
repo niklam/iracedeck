@@ -28,6 +28,7 @@ import { RACE_START_CALLOUTS } from "./families/race-start.js";
 import { RACE_STATUS_CALLOUTS } from "./families/race-status.js";
 import { PIT_READBACK_CALLOUTS } from "./families/readback.js";
 import { ROLLING_START_CALLOUTS } from "./families/rolling-start.js";
+import { SECTOR_START_CALLOUTS } from "./families/sector-start.js";
 import { SESSION_START_CALLOUTS } from "./families/session-start.js";
 import { SETUP_WARNING_CALLOUTS } from "./families/setup-warning.js";
 import { SPOTTER_CALLOUTS } from "./families/spotter.js";
@@ -76,7 +77,11 @@ export const CALLOUT_PI_GROUPS = [
   { id: "pit-box", title: "Pit Box", families: [PIT_BOX_CALLOUTS] },
   { id: "pit-speeding", title: "Pit Speeding", families: [PIT_SPEEDING_CALLOUTS] },
   { id: "fuel", title: "Fuel", families: [FUEL_CALLOUTS] },
-  { id: "corner-names", title: "Corner Names", families: [CORNER_NAME_CALLOUTS, CORNER_NAMES_TOGGLE_CALLOUTS] },
+  {
+    id: "corner-names",
+    title: "Corner Names and Sectors",
+    families: [CORNER_NAME_CALLOUTS, CORNER_NAMES_TOGGLE_CALLOUTS, SECTOR_START_CALLOUTS],
+  },
   { id: "setup-warning", title: "Setup Warning", families: [SETUP_WARNING_CALLOUTS] },
   { id: "caution", title: "Caution", families: [CAUTION_CALLOUTS] },
 ] as const satisfies readonly CalloutPiGroup[];
