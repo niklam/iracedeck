@@ -132,7 +132,7 @@ describe("wrap-aware helpers", () => {
 describe("foldSample", () => {
   it("creates a learned record from the first sample", () => {
     const first = sample(0.42, { estTime: 33.5, carClassId: 7 });
-    const result = foldSample(undefined, first, NOW);
+    const result = foldSample(undefined, first, NOW, TRACK_M);
 
     expect(result.accepted).toBe(true);
     expect(result.record).toEqual({
@@ -163,15 +163,15 @@ describe("foldSample", () => {
     const first = sample(0.3, { key: "1:2:3:pitRoadEnd:4", at: 10_000 });
     const record = foldAll([first]);
 
-    const dupe = foldSample(record, { ...first, at: 10_000 + PIT_LANE_DUPLICATE_WINDOW_MS - 1 }, LATER);
+    const dupe = foldSample(record, { ...first, at: 10_000 + PIT_LANE_DUPLICATE_WINDOW_MS - 1 }, LATER, TRACK_M);
 
     expect(dupe).toEqual({ accepted: false, reason: "duplicate", record });
 
-    const earlier = foldSample(record, { ...first, at: 10_000 - PIT_LANE_DUPLICATE_WINDOW_MS + 1 }, LATER);
+    const earlier = foldSample(record, { ...first, at: 10_000 - PIT_LANE_DUPLICATE_WINDOW_MS + 1 }, LATER, TRACK_M);
 
     expect(earlier.accepted).toBe(false);
 
-    const restart = foldSample(record, { ...first, at: 10_000 + PIT_LANE_DUPLICATE_WINDOW_MS }, LATER);
+    const restart = foldSample(record, { ...first, at: 10_000 + PIT_LANE_DUPLICATE_WINDOW_MS }, LATER, TRACK_M);
 
     expect(restart.accepted).toBe(true);
     expect(restart.record?.samples).toBe(2);
@@ -181,7 +181,7 @@ describe("foldSample", () => {
   it("accepts a different key at the same time", () => {
     const first = sample(0.3, { key: "a", at: 10_000 });
 
-    expect(foldSample(foldAll([first]), { ...first, key: "b" }, NOW).accepted).toBe(true);
+    expect(foldSample(foldAll([first]), { ...first, key: "b" }, NOW, TRACK_M).accepted).toBe(true);
   });
 
   it("rejects a malformed sample and returns the input", () => {
@@ -195,10 +195,10 @@ describe("foldSample", () => {
       { ...sample(0.3), key: "" },
       { ...sample(0.3), at: Number.POSITIVE_INFINITY },
     ]) {
-      expect(foldSample(record, bad, NOW)).toEqual({ accepted: false, reason: "invalid", record });
+      expect(foldSample(record, bad, NOW, TRACK_M)).toEqual({ accepted: false, reason: "invalid", record });
     }
 
-    expect(foldSample(undefined, { ...sample(0.3), pct: 2 }, NOW)).toEqual({
+    expect(foldSample(undefined, { ...sample(0.3), pct: 2 }, NOW, TRACK_M)).toEqual({
       accepted: false,
       reason: "invalid",
       record: undefined,
@@ -215,16 +215,44 @@ describe("foldSample", () => {
     expect(record.samples).toBe(PIT_LANE_WINDOW_CAP + 5);
   });
 
-  it("keeps the window ordered by time and drops the oldest when an older sample arrives", () => {
-    const samples = Array.from({ length: PIT_LANE_WINDOW_CAP }, (_, index) => sample(0.3, { at: 1000 + index }));
+  it("rejects as stale a sample older than all of a full window", () => {
+    const samples = Array.from({ length: PIT_LANE_WINDOW_CAP }, (_, index) =>
+      sample(0.3, { at: 1000 + index, key: `k${String(index).padStart(2, "0")}` }),
+    );
     const record = foldAll(samples);
-    const older = sample(0.3, { at: 500 });
-    const result = foldSample(record, older, NOW);
+    const result = foldSample(record, sample(0.3, { at: 500 }), LATER, TRACK_M);
+
+    expect(result).toEqual({ accepted: false, reason: "stale", record });
+    expect(record.samples).toBe(PIT_LANE_WINDOW_CAP);
+    expect(record.updatedAt).toBe(NOW);
+  });
+
+  it("orders ties on at by key, so eviction is deterministic", () => {
+    const samples = Array.from({ length: PIT_LANE_WINDOW_CAP }, (_, index) =>
+      sample(0.3, { at: 1000 + index, key: `k${String(index).padStart(2, "0")}` }),
+    );
+    const record = foldAll(samples);
+
+    // Same `at` as the oldest, key sorts before it: evicted at once.
+    expect(foldSample(record, sample(0.3, { at: 1000, key: "k" }), LATER, TRACK_M).accepted).toBe(false);
+
+    // Same `at` as the oldest, key sorts after it: the oldest goes instead.
+    const tie = sample(0.3, { at: 1000, key: "k000" });
+    const result = foldSample(record, tie, LATER, TRACK_M);
 
     expect(result.accepted).toBe(true);
     expect(result.record?.window).toHaveLength(PIT_LANE_WINDOW_CAP);
-    expect(result.record?.window).not.toContainEqual(older);
+    expect(result.record?.window[0]).toEqual(tie);
+    expect(result.record?.window).not.toContainEqual(samples[0]);
     expect(result.record?.samples).toBe(PIT_LANE_WINDOW_CAP + 1);
+    expect(result.record?.updatedAt).toBe(LATER);
+  });
+
+  it("orders an older sample into a window that is not full", () => {
+    const record = foldAll([sample(0.3, { at: 2000, key: "b" }), sample(0.3, { at: 3000, key: "c" })]);
+    const result = foldSample(record, sample(0.3, { at: 1000, key: "a" }), LATER, TRACK_M);
+
+    expect(result.record?.window.map((entry) => entry.key)).toEqual(["a", "b", "c"]);
   });
 
   it("keeps the median estTime per class", () => {
@@ -252,13 +280,28 @@ describe("foldSample", () => {
     expect(record.estTimeByClass).toEqual({ "1": 1, "2": 0.09 });
   });
 
+  it("ignores the estTime of a sample outside the tolerance", () => {
+    const record = foldAll([
+      sample(0.5, { carClassId: 1, estTime: 40 }),
+      sample(0.5, { carClassId: 1, estTime: 41 }),
+      sample(0.5001, { carClassId: 1, estTime: 40.5 }),
+      // An outlier of another class: must not create that class's time.
+      sample(0.3, { carClassId: 2, estTime: 25 }),
+      // An outlier of the same class: must not skew its median (40.5 with it would be 40.25).
+      sample(0.3, { carClassId: 1, estTime: 25 }),
+    ]);
+
+    expect(record.pct).toBeCloseTo(0.5);
+    expect(record.estTimeByClass).toEqual({ "1": 40.5 });
+  });
+
   it("keeps an existing origin and unknown keys", () => {
     const seeded: PitLaneLandmarkRecord = {
       ...foldAll([sample(0.3)]),
       origin: "seeded",
       futureField: { nested: true },
     };
-    const result = foldSample(seeded, sample(0.3), NOW);
+    const result = foldSample(seeded, sample(0.3), NOW, TRACK_M);
 
     expect(result.record?.origin).toBe("seeded");
     expect(result.record?.futureField).toEqual({ nested: true });
@@ -275,7 +318,7 @@ describe("foldSample", () => {
     const entry = deepFreeze(sample(0.31));
     const before = structuredClone(record);
 
-    const result = foldSample(record, entry, LATER);
+    const result = foldSample(record, entry, LATER, TRACK_M);
 
     expect(result.accepted).toBe(true);
     expect(record).toEqual(before);
@@ -294,6 +337,12 @@ describe("summarizeLandmark", () => {
   it("publishes two samples within the tolerance", () => {
     // 15 m on 5000 m is 0.003.
     expect(summarizeLandmark(foldAll([sample(0.3), sample(0.3029)]), TRACK_M).published).toBe(true);
+  });
+
+  it("treats the tolerance as a half-width around the median", () => {
+    // 5 km track: 20 m apart is 10 m each side of the median, 31 m apart is 15.5 m.
+    expect(summarizeLandmark(foldAll([sample(0.3), sample(0.304)]), TRACK_M).published).toBe(true);
+    expect(summarizeLandmark(foldAll([sample(0.3), sample(0.3062)]), TRACK_M).published).toBe(false);
   });
 
   it("does not publish two samples beyond the tolerance", () => {
@@ -332,7 +381,7 @@ function section(landmarks: PitLaneSection["landmarks"], trackLength = "5.00 km"
 
 describe("applyTrackLength and resolvePublishedLandmark", () => {
   it("creates an empty section", () => {
-    expect(applyTrackLength(undefined, "5.00 km")).toEqual({
+    expect(applyTrackLength(undefined, "5.00 km", TRACK_M)).toEqual({
       version: PIT_LANE_SECTION_VERSION,
       trackLength: "5.00 km",
       landmarks: {},
@@ -342,7 +391,7 @@ describe("applyTrackLength and resolvePublishedLandmark", () => {
   it("returns the section itself for an equal length", () => {
     const current = section({ pitRoadEnd: foldAll([sample(0.3)]) });
 
-    expect(applyTrackLength(current, "5.00 km")).toBe(current);
+    expect(applyTrackLength(current, "5.00 km", TRACK_M)).toBe(current);
   });
 
   it("moves published values to previous on a rebuild, then drops them once relearned", () => {
@@ -388,7 +437,11 @@ describe("applyTrackLength and resolvePublishedLandmark", () => {
 
   it("keeps the last published previous through a second rebuild", () => {
     const learned = foldAll([sample(0.3), sample(0.3)]);
-    const twice = applyTrackLength(applyTrackLength(section({ pitRoadEnd: learned }), "5.02 km"), "5.03 km");
+    const twice = applyTrackLength(
+      applyTrackLength(section({ pitRoadEnd: learned }), "5.02 km", null),
+      "5.03 km",
+      null,
+    );
 
     expect(twice.landmarks.pitRoadEnd?.previous?.pct).toBe(learned.pct);
   });
@@ -441,8 +494,8 @@ describe("normalizePitLaneSection", () => {
     const normalized = normalizePitLaneSection(
       roundTrip({ ...section({ pitRoadEnd: { ...foldAll([sample(0.3)]), extra: 1 } }), envelope: "e" }),
     )!;
-    const folded = foldSample(normalized.landmarks.pitRoadEnd, sample(0.3), NOW).record!;
-    const rebuilt = applyTrackLength({ ...normalized, landmarks: { pitRoadEnd: folded } }, "5.1 km");
+    const folded = foldSample(normalized.landmarks.pitRoadEnd, sample(0.3), NOW, null).record!;
+    const rebuilt = applyTrackLength({ ...normalized, landmarks: { pitRoadEnd: folded } }, "5.1 km", null);
 
     expect(rebuilt.envelope).toBe("e");
     expect(rebuilt.landmarks.pitRoadEnd?.extra).toBe(1);
@@ -499,6 +552,15 @@ describe("normalizePitLaneSection", () => {
     expect(normalized.landmarks).toEqual({});
   });
 
+  it("keeps an informational trackVersion and drops a malformed one", () => {
+    expect(normalizePitLaneSection({ ...section({}), trackVersion: "2026.11.04.01" })?.trackVersion).toBe(
+      "2026.11.04.01",
+    );
+    expect(normalizePitLaneSection({ ...section({}), trackVersion: null })).toHaveProperty("trackVersion", null);
+    expect(normalizePitLaneSection({ ...section({}), trackVersion: 7 })).not.toHaveProperty("trackVersion");
+    expect(normalizePitLaneSection(section({}))).not.toHaveProperty("trackVersion");
+  });
+
   it("returns null for the wrong shape", () => {
     for (const bad of [
       null,
@@ -541,6 +603,19 @@ describe("normalizePitLaneSection", () => {
 });
 
 describe("normalizePitLaneLandmarkRecord", () => {
+  it("orders the window by at then key and keeps the newest up to the cap", () => {
+    const window = Array.from({ length: PIT_LANE_WINDOW_CAP + 5 }, (_, index) =>
+      sample(0.3, { at: 1000 + index, key: `k${String(index).padStart(2, "0")}` }),
+    );
+    const tieLow = sample(0.3, { at: 1000 + PIT_LANE_WINDOW_CAP + 4, key: "a" });
+    const shuffled = [window[29], window[3], tieLow, ...window.slice(4, 29).reverse(), window[0], window[2], window[1]];
+
+    const record = normalizePitLaneLandmarkRecord({ ...foldAll([sample(0.3)]), window: shuffled })!;
+
+    expect(record.window).toHaveLength(PIT_LANE_WINDOW_CAP);
+    expect(record.window).toEqual([...window.slice(6, 29), tieLow, window[29]]);
+  });
+
   it("returns null for a non-object", () => {
     expect(normalizePitLaneLandmarkRecord(undefined)).toBeNull();
     expect(normalizePitLaneLandmarkRecord([])).toBeNull();
@@ -559,5 +634,41 @@ describe("sample checks", () => {
 
     expect(isDuplicatePitLaneSample([entry], { ...entry, at: entry.at + 1000 })).toBe(true);
     expect(isDuplicatePitLaneSample([entry], { ...entry, key: "other" })).toBe(false);
+  });
+});
+
+describe("seeded landmarks", () => {
+  function seededRecord(count: number): PitLaneLandmarkRecord {
+    const window = Array.from({ length: count }, (_, index) => ({
+      pct: 0.3 + index * 1e-5,
+      estTime: 30,
+      carClassId: 1,
+      key: `seed:${index}`,
+      at: index,
+    }));
+
+    return {
+      ...normalizePitLaneLandmarkRecord({ window })!,
+      origin: "seeded",
+      samples: count,
+      updatedAt: "2026-10-01T00:00:00.000Z",
+    };
+  }
+
+  it("publishes a seeded record with a synthetic window under the ordinary rule", () => {
+    expect(resolvePublishedLandmark(seededRecord(3), TRACK_M)).toMatchObject({ source: "current", published: true });
+  });
+
+  it("is refined by local samples, which displace the seed oldest-first", () => {
+    const seeded = seededRecord(PIT_LANE_WINDOW_CAP);
+    const local = sample(0.31, { at: 1_000_000_000 });
+    const result = foldSample(seeded, local, NOW, TRACK_M);
+
+    expect(result.accepted).toBe(true);
+    expect(result.record?.origin).toBe("seeded");
+    expect(result.record?.window).toHaveLength(PIT_LANE_WINDOW_CAP);
+    expect(result.record?.window.map((entry) => entry.key)).not.toContain("seed:0");
+    expect(result.record?.window.at(-1)).toEqual(local);
+    expect(result.record?.samples).toBe(PIT_LANE_WINDOW_CAP + 1);
   });
 });

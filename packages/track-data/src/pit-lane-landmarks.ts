@@ -45,17 +45,26 @@ export interface PitLaneTrackIdentity {
   trackId: number;
   trackName: string;
   trackConfigName: string;
-  /** Raw `WeekendInfo.TrackLength`, e.g. `"5.51 km"`. */
+  /** Raw `WeekendInfo.TrackLength`, e.g. `"5.51 km"`. A change is a rebuild ({@link applyTrackLength}). */
   trackLength: string;
   trackLengthM: number | null;
+  /**
+   * Raw `WeekendInfo.TrackVersion`, or `null` when the session has none.
+   * Informational only: it moves on every iRacing update whether or not the
+   * geometry changed, so the rebuild rule stays on `trackLength`.
+   */
+  trackVersion: string | null;
 }
 
 /** What consumers read (translator accessor) and the event's summary. */
 export interface PitLaneLandmarkSummary {
   pct: number;
-  /** Class id (string) → median estTime, for classes with at least one sample on the median's side of S/F. */
+  /**
+   * Class id (string) → median estTime, for classes with at least one window
+   * sample within tolerance of the median and on its side of S/F.
+   */
   estTimeByClass: Record<string, number>;
-  /** Cumulative accepted samples. */
+  /** Accepted samples that entered the window, since the last rebuild. */
   samples: number;
   published: boolean;
 }
@@ -64,6 +73,12 @@ export interface PitLaneLandmarkSummary {
  * Where a landmark record came from. `learned` is the only origin written
  * today; `seeded` is reserved for the bundled shared snapshot. Typed open so
  * an origin a newer writer introduces survives a round trip.
+ *
+ * A seeded landmark needs no logic of its own: it ships as an ordinary
+ * {@link PitLaneLandmarkRecord} with `origin: "seeded"` and a synthetic window
+ * (keys `seed:<n>`, old `at` values), so it publishes under the ordinary rule
+ * and local samples displace its window oldest-first. The origin is kept on
+ * fold.
  */
 export type PitLaneLandmarkOrigin = "learned" | "seeded" | (string & {});
 
@@ -79,18 +94,32 @@ export interface PitLaneLandmarkPrevious {
   [key: string]: unknown;
 }
 
-/** One landmark in the pit-lane section of a track file. */
+/**
+ * One landmark in the pit-lane section of a track file.
+ *
+ * `samples: 0` with an empty window means "not learned under the current
+ * geometry": after a rebuild ({@link applyTrackLength}) the record keeps its
+ * pre-rebuild `pct` and `estTimeByClass` only so the record (and its unknown
+ * keys) survives. Never read them as current; {@link resolvePublishedLandmark}
+ * does not.
+ */
 export interface PitLaneLandmarkRecord {
   /** Circular median of the window's positions, normalized to `[0, 1)`. */
   pct: number;
-  /** Per class id (string): median estTime of that class's window samples on the median's side of S/F. */
+  /**
+   * Per class id (string): median estTime of that class's window samples that
+   * lie within tolerance of the median and on its side of S/F.
+   */
   estTimeByClass: Record<string, number>;
-  /** Cumulative accepted samples since the last rebuild (not capped by the window). */
+  /** Accepted samples that entered the window, since the last rebuild (not capped by the window). */
   samples: number;
-  /** ISO timestamp of the last accepted sample. */
+  /** ISO time the record last changed: the `now` of the last accepting {@link foldSample}. */
   updatedAt: string;
   origin: PitLaneLandmarkOrigin;
-  /** The most recent accepted samples, oldest first, at most {@link PIT_LANE_WINDOW_CAP}. */
+  /**
+   * The most recent accepted samples, at most {@link PIT_LANE_WINDOW_CAP},
+   * ordered by `at` then `key` (oldest first).
+   */
   window: PitLaneLandmarkSample[];
   /** Published values from before the last rebuild; dropped once this landmark publishes again. */
   previous?: PitLaneLandmarkPrevious;
@@ -111,17 +140,29 @@ export interface PitLaneSection {
   version: number;
   /** Raw `WeekendInfo.TrackLength` the landmarks were learned under; a change means a rebuild. */
   trackLength: string;
+  /**
+   * Raw `WeekendInfo.TrackVersion` when the store last wrote the section.
+   * Informational only; the rebuild rule reads `trackLength`.
+   */
+  trackVersion?: string | null;
   landmarks: PitLaneLandmarks;
   [key: string]: unknown;
 }
 
-/** Version of the pit-lane section this code reads and writes. */
+/**
+ * Version of the pit-lane section this code reads and writes. Bumped by any
+ * change an older host would misread rather than ignore: a different
+ * {@link PIT_LANE_WINDOW_CAP} (an older host would mis-trim the window), a new
+ * landmark name, or a new record field derived from the window or the
+ * geometry (an older host would carry it stale across a rebuild).
+ */
 export const PIT_LANE_SECTION_VERSION = 1;
 
 /**
  * Samples kept per landmark. A reasoned default, to be tuned on captures:
  * enough for a stable median against a few outliers, small enough that a
- * changed pit entry is relearned within a session or two.
+ * changed pit entry is relearned within a session or two. Changing it needs a
+ * {@link PIT_LANE_SECTION_VERSION} bump.
  */
 export const PIT_LANE_WINDOW_CAP = 25;
 
@@ -134,8 +175,9 @@ export const PIT_LANE_MIN_AGREEING_SAMPLES = 2;
 
 /**
  * How far from the median (metres along the track) a sample may lie and still
- * agree. A reasoned default, to be tuned on captures: one 60 Hz tick is about
- * a metre at pit speed and several at track speed.
+ * agree — a half-width, so two samples up to twice this apart agree. A
+ * reasoned default, to be tuned on captures: one 60 Hz tick is about a metre
+ * at pit speed and several at track speed.
  */
 export const PIT_LANE_TOLERANCE_M = 15;
 
@@ -252,11 +294,29 @@ export function isPitLaneLandmarkSample(value: unknown): value is PitLaneLandmar
   );
 }
 
-/** The outcome of {@link foldSample}. On a rejection `record` is the input, untouched. */
+/**
+ * The outcome of {@link foldSample}. On a rejection `record` is the input,
+ * untouched. `stale` is a sample older than every sample of a full window,
+ * which would be evicted the moment it entered.
+ */
 export type PitLaneFoldResult =
   | { accepted: true; record: PitLaneLandmarkRecord }
-  | { accepted: false; reason: "duplicate"; record: PitLaneLandmarkRecord }
+  | { accepted: false; reason: "duplicate" | "stale"; record: PitLaneLandmarkRecord }
   | { accepted: false; reason: "invalid"; record: PitLaneLandmarkRecord | undefined };
+
+/** Window order: by `at`, then by `key`, so eviction on a tie is deterministic. */
+function compareSamples(a: PitLaneLandmarkSample, b: PitLaneLandmarkSample): number {
+  if (a.at !== b.at) return a.at - b.at;
+
+  return a.key < b.key ? -1 : a.key > b.key ? 1 : 0;
+}
+
+/** Sort by {@link compareSamples} and keep the newest {@link PIT_LANE_WINDOW_CAP}. Returns a new array. */
+function orderAndTrim(window: readonly PitLaneLandmarkSample[]): PitLaneLandmarkSample[] {
+  const ordered = [...window].sort(compareSamples);
+
+  return ordered.slice(Math.max(0, ordered.length - PIT_LANE_WINDOW_CAP));
+}
 
 /**
  * Whether `sample` is already in `window`: the same key, accepted less than
@@ -272,17 +332,24 @@ export function isDuplicatePitLaneSample(
 }
 
 /**
- * Per class, the median estTime of the window samples on the same side of the
- * S/F line as `medianPct`. `CarIdxEstTime` restarts at 0 on the line, so a
- * sample unwrapped across it would mix a near-zero time with a near-lap one.
+ * Per class, the median estTime of the window samples that agree with
+ * `medianPct` (within `tolerancePct`) and lie on its side of the S/F line. An
+ * outlier's time belongs to the wrong place on track, and `CarIdxEstTime`
+ * restarts at 0 on the line, so a sample unwrapped across it would mix a
+ * near-zero time with a near-lap one.
  */
-function estTimeByClassFor(window: readonly PitLaneLandmarkSample[], medianPct: number): Record<string, number> {
+function estTimeByClassFor(
+  window: readonly PitLaneLandmarkSample[],
+  medianPct: number,
+  tolerancePct: number,
+): Record<string, number> {
   const byClass = new Map<string, number[]>();
 
   for (const sample of window) {
-    const unwrapped = medianPct + pitLaneSignedDeltaPct(medianPct, sample.pct);
+    const delta = pitLaneSignedDeltaPct(medianPct, sample.pct);
+    const unwrapped = medianPct + delta;
 
-    if (unwrapped < 0 || unwrapped >= 1) continue;
+    if (Math.abs(delta) > tolerancePct || unwrapped < 0 || unwrapped >= 1) continue;
 
     const classKey = String(sample.carClassId);
     const times = byClass.get(classKey);
@@ -306,23 +373,26 @@ function countAgreeing(window: readonly PitLaneLandmarkSample[], medianPct: numb
  * Fold one sample into a landmark record, returning a new record; neither
  * argument is mutated.
  *
- * A malformed sample, or a duplicate of one in the window (same key, under
- * {@link PIT_LANE_DUPLICATE_WINDOW_MS} apart), is rejected and the input
- * returned. Otherwise the sample joins the window (kept oldest first by `at`,
- * the oldest dropped past {@link PIT_LANE_WINDOW_CAP}), `samples` grows by one,
- * `pct` and `estTimeByClass` are recomputed from the window, `updatedAt`
- * becomes `now`, and `previous` is dropped once the landmark is published
- * again. A new record's origin is `learned`; an existing origin is kept.
+ * Rejected, with the input returned: a malformed sample (`invalid`), a
+ * duplicate of one in the window (same key, under
+ * {@link PIT_LANE_DUPLICATE_WINDOW_MS} apart; `duplicate`), and a sample that
+ * would be evicted at once because the window is full and it sorts before all
+ * of it (`stale`). Otherwise the sample joins the window (ordered by `at`
+ * then `key`, the oldest dropped past {@link PIT_LANE_WINDOW_CAP}), `samples`
+ * grows by one, `pct` and `estTimeByClass` are recomputed from the window,
+ * `updatedAt` becomes `now`, and `previous` is dropped once the landmark is
+ * published again. A new record's origin is `learned`; an existing origin is
+ * kept.
  *
  * @param now ISO timestamp written to `updatedAt`.
- * @param trackLengthM Track length in metres for the publish tolerance; `null`
- *   uses {@link PIT_LANE_TOLERANCE_PCT}.
+ * @param trackLengthM Track length in metres for the tolerance; `null` uses
+ *   {@link PIT_LANE_TOLERANCE_PCT}.
  */
 export function foldSample(
   record: PitLaneLandmarkRecord | undefined,
   sample: PitLaneLandmarkSample,
   now: string,
-  trackLengthM: number | null = null,
+  trackLengthM: number | null,
 ): PitLaneFoldResult {
   if (!isPitLaneLandmarkSample(sample)) return { accepted: false, reason: "invalid", record };
 
@@ -330,15 +400,16 @@ export function foldSample(
     return { accepted: false, reason: "duplicate", record };
   }
 
-  const window = [...(record?.window ?? []), { ...sample }].sort((a, b) => a.at - b.at);
+  const entry = { ...sample };
+  const window = orderAndTrim([...(record?.window ?? []), entry]);
 
-  while (window.length > PIT_LANE_WINDOW_CAP) window.shift();
+  if (record && !window.includes(entry)) return { accepted: false, reason: "stale", record };
 
-  const pct = pitLaneCircularMedianPct(window.map((entry) => entry.pct))!;
+  const pct = pitLaneCircularMedianPct(window.map((kept) => kept.pct))!;
   const next: PitLaneLandmarkRecord = {
     ...record,
     pct,
-    estTimeByClass: estTimeByClassFor(window, pct),
+    estTimeByClass: estTimeByClassFor(window, pct, pitLaneTolerancePct(trackLengthM)),
     samples: (record?.samples ?? 0) + 1,
     updatedAt: now,
     origin: record?.origin ?? "learned",
@@ -418,7 +489,9 @@ export function resolvePublishedLandmark(
  * published moves its `pct`, `estTimeByClass` and `samples` into `previous`
  * (one that was not keeps any `previous` it already had, so a second rebuild
  * before relearning still falls back to the last published geometry), and its
- * window and count reset. Nothing is mutated.
+ * window and count reset (see {@link PitLaneLandmarkRecord} for what the
+ * remaining values mean). `trackVersion` and every other section key are left
+ * as they were; the store writes `trackVersion`. Nothing is mutated.
  *
  * @param trackLengthM The session's length in metres, used to judge which
  *   landmarks were published; a rebuild changes the length only slightly, so
@@ -428,7 +501,7 @@ export function resolvePublishedLandmark(
 export function applyTrackLength(
   section: PitLaneSection | undefined,
   trackLength: string,
-  trackLengthM: number | null = null,
+  trackLengthM: number | null,
 ): PitLaneSection {
   if (!section) return { version: PIT_LANE_SECTION_VERSION, trackLength, landmarks: {} };
 
@@ -503,16 +576,19 @@ function normalizePrevious(raw: unknown): PitLaneLandmarkPrevious | undefined {
 
 /**
  * Read one landmark record leniently: malformed samples are dropped from the
- * window, a missing or malformed count falls back to the window's size, a
- * missing `pct` is recomputed from the window, and unknown keys are kept. A
- * record with neither a valid `pct` nor any valid sample is `null`.
+ * window, which is then ordered by `at` then `key` and trimmed to the newest
+ * {@link PIT_LANE_WINDOW_CAP}; a missing or malformed count falls back to the
+ * window's size; a missing `pct` is recomputed from the window, and a missing
+ * `estTimeByClass` too (with {@link PIT_LANE_TOLERANCE_PCT}, since no track
+ * length is known here); unknown keys are kept. A record with neither a valid
+ * `pct` nor any valid sample is `null`.
  */
 export function normalizePitLaneLandmarkRecord(raw: unknown): PitLaneLandmarkRecord | null {
   if (!isPlainObject(raw)) return null;
 
-  const window = (Array.isArray(raw.window) ? raw.window : [])
-    .filter(isPitLaneLandmarkSample)
-    .map((sample) => ({ ...sample }));
+  const window = orderAndTrim(
+    (Array.isArray(raw.window) ? raw.window : []).filter(isPitLaneLandmarkSample).map((sample) => ({ ...sample })),
+  );
   const pct = isValidPct(raw.pct) ? raw.pct : pitLaneCircularMedianPct(window.map((sample) => sample.pct));
 
   if (pct === null) return null;
@@ -522,7 +598,7 @@ export function normalizePitLaneLandmarkRecord(raw: unknown): PitLaneLandmarkRec
     pct,
     estTimeByClass: isPlainObject(raw.estTimeByClass)
       ? normalizeEstTimeByClass(raw.estTimeByClass)
-      : estTimeByClassFor(window, pct),
+      : estTimeByClassFor(window, pct, pitLaneTolerancePct(null)),
     samples: isCount(raw.samples) ? raw.samples : window.length,
     updatedAt: typeof raw.updatedAt === "string" ? raw.updatedAt : "",
     origin: typeof raw.origin === "string" ? raw.origin : "learned",
@@ -551,7 +627,8 @@ export function isNewerPitLaneSection(raw: unknown): boolean {
  * `landmarks` object) or when the version is newer than this code
  * ({@link isNewerPitLaneSection}). Records under known landmark names are read
  * with {@link normalizePitLaneLandmarkRecord} and dropped when unusable;
- * entries under unknown names, and unknown keys at every level, are kept.
+ * entries under unknown names, and unknown keys at every level, are kept. A
+ * `trackVersion` that is neither a string nor `null` is dropped.
  */
 export function normalizePitLaneSection(raw: unknown): PitLaneSection | null {
   if (!isPlainObject(raw)) return null;
@@ -573,5 +650,11 @@ export function normalizePitLaneSection(raw: unknown): PitLaneSection | null {
     else delete normalized[name];
   }
 
-  return { ...raw, version, trackLength, landmarks: normalized };
+  const section: PitLaneSection = { ...raw, version, trackLength, landmarks: normalized };
+
+  if ("trackVersion" in section && typeof section.trackVersion !== "string" && section.trackVersion !== null) {
+    delete section.trackVersion;
+  }
+
+  return section;
 }
