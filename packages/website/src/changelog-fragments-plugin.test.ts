@@ -12,6 +12,7 @@ import {
   renderReleaseSection,
   UNRELEASED_DATE_LINE,
 } from "../../../scripts/lib/changelog-fragments.mjs";
+import { UNRELEASED_LABEL } from "../../../scripts/lib/changelog-parse.mjs";
 import { changelogFragmentSection, changelogFragmentsPlugin } from "./changelog-fragments-plugin.mjs";
 
 const REPO_ROOT = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), "../../..");
@@ -94,11 +95,33 @@ describe("changelogFragmentsPlugin", () => {
     expect(() => render()).toThrow(/already in a released section/);
   });
 
-  it("renders the real fragments as renderReleaseSection writes them", () => {
-    const { fragments, version } = loadChangelogSources(REPO_ROOT);
+  it("renders the window's fragments as an Unreleased section above the version's dated one (#1398)", () => {
+    write("package.json", JSON.stringify({ version: "1.2.0" }));
+    write(`${CHANGELOG_FRAGMENTS_DIR}/9-a-feature.md`, fragment("Features", 50, "Merged after the fold."));
 
-    expect(changelogFragmentSection(REPO_ROOT)).toBe(
-      fragments.length === 0 ? null : renderReleaseSection(version, UNRELEASED_DATE_LINE, fragments),
-    );
+    const html = render();
+
+    const { fragments } = loadChangelogSources(root);
+    const handWritten = `${INTRO}${renderReleaseSection(UNRELEASED_LABEL, null, fragments)}\n${DATED}`;
+    expect(html).toBe(markdownToHtml(handWritten).html);
+    expect(html.indexOf(`<h2>${UNRELEASED_LABEL}</h2>`)).toBeGreaterThan(html.indexOf("Release notes."));
+    expect(html.indexOf(`<h2>${UNRELEASED_LABEL}</h2>`)).toBeLessThan(html.indexOf("<h2>1.2.0</h2>"));
+    // No `_Unreleased_` date line under the heading: the word appears once.
+    expect(html).not.toContain("<em>Unreleased</em>");
+    expect(html.match(/Unreleased/g)).toHaveLength(1);
+    expect(changelogFragmentSection(root)).toBe(`## ${UNRELEASED_LABEL}\n\n**Features**\n\n- Merged after the fold.\n`);
+  });
+
+  it("renders the real fragments as renderReleaseSection writes them", () => {
+    const { mdx, fragments, version } = loadChangelogSources(REPO_ROOT);
+    // Inside the window after a stable fold the root version is the newest dated
+    // one, and the fragments render as the Unreleased section instead.
+    const newest = /^##[ \t]+(.*?)[ \t]*$/m.exec(mdx)?.[1];
+    const expected = () =>
+      newest === version
+        ? renderReleaseSection(UNRELEASED_LABEL, null, fragments)
+        : renderReleaseSection(version, UNRELEASED_DATE_LINE, fragments);
+
+    expect(changelogFragmentSection(REPO_ROOT)).toBe(fragments.length === 0 ? null : expected());
   });
 });

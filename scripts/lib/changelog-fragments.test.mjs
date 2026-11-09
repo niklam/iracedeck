@@ -16,8 +16,9 @@ import {
   parseFragment,
   renderReleaseSection,
   sortFragments,
+  UNRELEASED_DATE_LINE,
 } from "./changelog-fragments.mjs";
-import { CHANGELOG_CATEGORIES, parseChangelog } from "./changelog-parse.mjs";
+import { CHANGELOG_CATEGORIES, parseChangelog, UNRELEASED_LABEL } from "./changelog-parse.mjs";
 
 const __dirname = path.dirname(url.fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, "../..");
@@ -506,16 +507,58 @@ _Unreleased_
     );
     expect(() => renderReleaseSection("2.0.0", "2026-10-10", [fragment("1-a.md", "Features", 1)])).toThrow(/date line/);
   });
+
+  it(`writes "## ${UNRELEASED_LABEL}" with no date line when given the label`, () => {
+    const section = renderReleaseSection(UNRELEASED_LABEL, null, [
+      fragment("4-fix.md", "Bug Fixes", 10, "A fix."),
+      fragment("2-feat.md", "Features", 10, "A feature."),
+    ]);
+
+    expect(section).toBe(`## Unreleased
+
+**Features**
+
+- A feature.
+
+**Bug Fixes**
+
+- A fix.
+`);
+    expect(parseChangelog(`${PREAMBLE}${section}`).releases).toEqual([
+      {
+        version: UNRELEASED_LABEL,
+        date: null,
+        categories: [
+          { title: "Features", items: ["A feature."] },
+          { title: "Bug Fixes", items: ["A fix."] },
+        ],
+      },
+    ]);
+  });
+
+  it("pairs the label with no date line and a version with one, refusing either mix", () => {
+    const one = [fragment("1-a.md", "Features", 1)];
+    expect(() => renderReleaseSection(UNRELEASED_LABEL, UNRELEASED_DATE_LINE, one)).toThrow(/takes no date line/);
+    expect(() => renderReleaseSection(UNRELEASED_LABEL, "_2026-10-10_", one)).toThrow(/takes no date line/);
+    expect(() => renderReleaseSection("2.0.0", null, one)).toThrow(/needs a date line/);
+    expect(() => renderReleaseSection("unreleased", null, one)).toThrow(/plain X\.Y\.Z/);
+  });
 });
+
+const PREVIEW = { mode: "preview" };
+const fold = (date) => ({ mode: "fold", date });
 
 describe("composeChangelog", () => {
   const mdx = `${PREAMBLE}${DATED}`;
   const fragments = [fragment("10-feat.md", "Features", 50, "A new feature."), fragment("11-fix.md", "Bug Fixes", 50)];
+  /** The line of `## 1.2.0`, the newest section of `mdx`, and of `## 1.1.0` below it. */
+  const NEWEST_LINE = PREAMBLE.split("\n").length;
+  const OLDER_LINE = NEWEST_LINE + 12;
 
   it("inserts the section before the first ## heading, leaving the rest byte for byte", () => {
-    const composed = composeChangelog(mdx, fragments, "1.3.0", "_Unreleased_");
+    const composed = composeChangelog(mdx, fragments, "1.3.0", PREVIEW);
 
-    expect(composed).toBe(`${PREAMBLE}${renderReleaseSection("1.3.0", "_Unreleased_", fragments)}\n${DATED}`);
+    expect(composed).toBe(`${PREAMBLE}${renderReleaseSection("1.3.0", UNRELEASED_DATE_LINE, fragments)}\n${DATED}`);
     expect(parseChangelog(composed).releases.map((r) => [r.version, r.date])).toEqual([
       ["1.3.0", null],
       ["1.2.0", "2026-01-02"],
@@ -523,19 +566,27 @@ describe("composeChangelog", () => {
     ]);
   });
 
+  it("appends the section after the preamble when there is no ## heading at all", () => {
+    const composed = composeChangelog(PREAMBLE, fragments, "1.0.0", PREVIEW);
+
+    expect(composed).toBe(`${PREAMBLE}${renderReleaseSection("1.0.0", UNRELEASED_DATE_LINE, fragments)}`);
+    expect(parseChangelog(composed).releases.map((r) => [r.version, r.date])).toEqual([["1.0.0", null]]);
+  });
+
   it("writes the real date when folding", () => {
-    const composed = composeChangelog(mdx, fragments, "1.3.0", "_2026-10-10_");
+    const composed = composeChangelog(mdx, fragments, "1.3.0", fold("2026-10-10"));
     expect(parseChangelog(composed).releases[0]).toMatchObject({ version: "1.3.0", date: "2026-10-10" });
   });
 
   it("returns the MDX unchanged when there are no fragments", () => {
-    expect(composeChangelog(mdx, [], "1.3.0", "_Unreleased_")).toBe(mdx);
+    expect(composeChangelog(mdx, [], "1.3.0", PREVIEW)).toBe(mdx);
+    expect(composeChangelog(mdx, [], "1.3.0", fold("2026-10-10"))).toBe(mdx);
   });
 
   it("keeps CRLF line endings when the MDX has them", () => {
     const crlf = mdx.replace(/\n/g, "\r\n");
-    const composed = composeChangelog(crlf, fragments, "1.3.0", "_Unreleased_");
-    expect(composed).toBe(composeChangelog(mdx, fragments, "1.3.0", "_Unreleased_").replace(/\n/g, "\r\n"));
+    const composed = composeChangelog(crlf, fragments, "1.3.0", PREVIEW);
+    expect(composed).toBe(composeChangelog(mdx, fragments, "1.3.0", PREVIEW).replace(/\n/g, "\r\n"));
   });
 
   describe("refuses a leftover _Unreleased_ line in changelog.mdx", () => {
@@ -547,11 +598,11 @@ describe("composeChangelog", () => {
     };
 
     it("while fragments exist", () => {
-      expectFragmentError(() => composeChangelog(withUnreleased, fragments, "1.3.0", "_Unreleased_"), expected);
+      expectFragmentError(() => composeChangelog(withUnreleased, fragments, "1.3.0", PREVIEW), expected);
     });
 
     it("with no fragments, where a hand-written section would otherwise pass silently", () => {
-      expectFragmentError(() => composeChangelog(withUnreleased, [], "1.3.0", "_Unreleased_"), expected);
+      expectFragmentError(() => composeChangelog(withUnreleased, [], "1.3.0", PREVIEW), expected);
     });
 
     it("through its own export, for a reader with nothing to compose", () => {
@@ -560,21 +611,133 @@ describe("composeChangelog", () => {
     });
   });
 
-  it("allows the version's own dated section when there are no fragments, as on a release commit", () => {
-    expect(composeChangelog(mdx, [], "1.2.0", "_Unreleased_")).toBe(mdx);
+  describe(`refuses a hand-written "## ${UNRELEASED_LABEL}" heading in changelog.mdx`, () => {
+    // The label exists only in composed text; in the file it is the old habit of
+    // a hand-written in-development section under a new name.
+    const withLabel = `${PREAMBLE}## ${UNRELEASED_LABEL}\n\n**Features**\n\n- Written by hand.\n\n${DATED}`;
+    const expected = {
+      file: CHANGELOG_SOURCE_PATH,
+      line: NEWEST_LINE,
+      message: new RegExp(`"## ${UNRELEASED_LABEL}" left in changelog\\.mdx`),
+    };
+
+    for (const [name, mode] of [
+      ["previewing", PREVIEW],
+      ["folding", fold("2026-10-10")],
+    ]) {
+      it(`while fragments exist, ${name}`, () => {
+        expectFragmentError(() => composeChangelog(withLabel, fragments, "1.3.0", mode), expected);
+      });
+
+      it(`with no fragments, ${name}`, () => {
+        expectFragmentError(() => composeChangelog(withLabel, [], "1.3.0", mode), expected);
+      });
+    }
+
+    it("through its own export", () => {
+      expectFragmentError(() => assertNoInDevelopmentSection(withLabel), expected);
+    });
   });
 
-  it("refuses an existing section for the in-development version while fragments exist", () => {
-    expectFragmentError(() => composeChangelog(mdx, fragments, "1.2.0", "_Unreleased_"), {
+  it("allows the version's own dated section when there are no fragments, as on a release commit", () => {
+    expect(composeChangelog(mdx, [], "1.2.0", PREVIEW)).toBe(mdx);
+  });
+
+  describe("the window: the version already has the newest, dated section (#1398)", () => {
+    it(`previews the fragments as "## ${UNRELEASED_LABEL}" with no date line, before the first heading`, () => {
+      const composed = composeChangelog(mdx, fragments, "1.2.0", PREVIEW);
+
+      expect(composed).toBe(`${PREAMBLE}${renderReleaseSection(UNRELEASED_LABEL, null, fragments)}\n${DATED}`);
+      expect(composed).toContain(`\n## ${UNRELEASED_LABEL}\n\n**Features**\n\n- A new feature.\n`);
+      expect(composed.match(/_Unreleased_/g)).toBeNull();
+      expect(parseChangelog(composed).releases.map((r) => [r.version, r.date])).toEqual([
+        [UNRELEASED_LABEL, null],
+        ["1.2.0", "2026-01-02"],
+        ["1.1.0", "2025-12-01"],
+      ]);
+    });
+
+    it("hands the window section to a reader that takes it on its own", () => {
+      const parts = composeChangelogParts(mdx.replace(/\n/g, "\r\n"), fragments, "1.2.0", PREVIEW);
+
+      expect(parts.section).toBe(renderReleaseSection(UNRELEASED_LABEL, null, fragments));
+      expect(parts.content).toBe(composeChangelog(mdx, fragments, "1.2.0", PREVIEW).replace(/\n/g, "\r\n"));
+    });
+
+    it("still refuses a fold over the existing section, naming the half-folded tree and the restore", () => {
+      expectFragmentError(() => composeChangelog(mdx, fragments, "1.2.0", fold("2026-10-10")), {
+        file: CHANGELOG_SOURCE_PATH,
+        line: NEWEST_LINE,
+        message: /"## 1\.2\.0" section already exists.*half-folded.*git restore.*release again/,
+      });
+    });
+
+    it("refuses a half-folded tree in preview: every fragment repeats the section just written", () => {
+      const folded = composeChangelog(mdx, fragments, "1.3.0", fold("2026-11-09"));
+
+      expectFragmentError(() => composeChangelog(folded, fragments, "1.3.0", PREVIEW), {
+        file: `${CHANGELOG_FRAGMENTS_DIR}/10-feat.md`,
+        line: null,
+        message: /already in a released section/,
+      });
+    });
+  });
+
+  describe("refuses a version behind the newest section while fragments exist, naming both", () => {
+    it("with no section of its own", () => {
+      expectFragmentError(() => composeChangelog(mdx, fragments, "1.1.5", PREVIEW), {
+        file: CHANGELOG_SOURCE_PATH,
+        line: NEWEST_LINE,
+        message: /1\.1\.5.*behind the newest section "## 1\.2\.0"/,
+      });
+    });
+
+    it("with a dated section of its own below the newest", () => {
+      expectFragmentError(() => composeChangelog(mdx, fragments, "1.1.0", PREVIEW), {
+        file: CHANGELOG_SOURCE_PATH,
+        line: NEWEST_LINE,
+        message: /1\.1\.0.*behind the newest section "## 1\.2\.0"/,
+      });
+    });
+
+    it("and with no fragments composes nothing and refuses nothing", () => {
+      expect(composeChangelog(mdx, [], "1.1.0", PREVIEW)).toBe(mdx);
+    });
+  });
+
+  it("refuses a version whose section exists below a newest section it is not behind", () => {
+    // Out of newest-first order: the parser would refuse the file anyway, but the
+    // window is the version equalling the NEWEST section, never one further down.
+    const misfiled = DATED.replace("## 1.1.0", "## 1.3.0");
+    expectFragmentError(() => composeChangelog(`${PREAMBLE}${misfiled}`, fragments, "1.3.0", PREVIEW), {
       file: CHANGELOG_SOURCE_PATH,
-      line: PREAMBLE.split("\n").length,
-      message: /"## 1\.2\.0" section already exists/,
+      line: OLDER_LINE,
+      message: /"## 1\.3\.0" section already exists below the newest section "## 1\.2\.0"/,
+    });
+  });
+
+  describe("a fold never writes the window section", () => {
+    it("whatever the newest section, it refuses one for its own version anywhere", () => {
+      expectFragmentError(() => composeChangelog(mdx, fragments, "1.1.0", fold("2026-10-10")), {
+        file: CHANGELOG_SOURCE_PATH,
+        line: OLDER_LINE,
+        message: /"## 1\.1\.0" section already exists.*half-folded/,
+      });
+    });
+
+    it("folds a window tree's fragments into the next version's dated section", () => {
+      // A window tree: the root version would still say 1.2.0, but the fold is
+      // handed the release version, so the section is dated, never Unreleased.
+      const composed = composeChangelog(mdx, fragments, "1.2.1", fold("2026-11-09"));
+
+      expect(composed).toBe(`${PREAMBLE}${renderReleaseSection("1.2.1", "_2026-11-09_", fragments)}\n${DATED}`);
+      expect(composed).not.toContain(UNRELEASED_LABEL);
     });
   });
 
   it("refuses a fragment whose bullet repeats a dated bullet, naming the fragment and the dated line", () => {
     const duplicate = [...fragments, fragment("12-cherry-pick.md", "Bug Fixes", 50, "An old fix.")];
-    expectFragmentError(() => composeChangelog(mdx, duplicate, "1.3.0", "_Unreleased_"), {
+    expectFragmentError(() => composeChangelog(mdx, duplicate, "1.3.0", PREVIEW), {
       file: `${CHANGELOG_FRAGMENTS_DIR}/12-cherry-pick.md`,
       line: null,
       message: new RegExp(
@@ -588,14 +751,14 @@ describe("composeChangelog", () => {
       fragment("10-feat.md", "Features", 50, "A new feature."),
       fragment("14-copy.md", "Bug Fixes", 20, "A new feature."),
     ];
-    expectFragmentError(() => composeChangelog(mdx, twins, "1.3.0", "_Unreleased_"), {
+    expectFragmentError(() => composeChangelog(mdx, twins, "1.3.0", PREVIEW), {
       file: `${CHANGELOG_FRAGMENTS_DIR}/14-copy.md`,
       line: null,
       message: new RegExp(`same as ${CHANGELOG_FRAGMENTS_DIR}/10-feat\\.md`),
     });
     // Positive control: the same two files with different bullets compose.
     expect(() =>
-      composeChangelog(mdx, [twins[0], { ...twins[1], body: "A different fix." }], "1.3.0", "_Unreleased_"),
+      composeChangelog(mdx, [twins[0], { ...twins[1], body: "A different fix." }], "1.3.0", PREVIEW),
     ).not.toThrow();
   });
 
@@ -604,9 +767,33 @@ describe("composeChangelog", () => {
       mdx,
       [fragment("13-a.md", "Features", 1, "Release notes for each version of iRaceDeck.")],
       "1.3.0",
-      "_Unreleased_",
+      PREVIEW,
     );
     expect(parseChangelog(composed).releases[0].version).toBe("1.3.0");
+  });
+
+  describe("refuses a mode that is not exactly preview or a fold with a date, even with no fragments", () => {
+    for (const [name, mode] of [
+      ["a date line, the old fourth argument", "_Unreleased_"],
+      ["nothing", undefined],
+      ["null", null],
+      ["an unknown mode", { mode: "publish" }],
+      ["a preview carrying a date", { mode: "preview", date: "2026-10-10" }],
+      ["a fold with no date", { mode: "fold" }],
+      ["a fold with a date line for a date", { mode: "fold", date: "_2026-10-10_" }],
+      ["a fold with a malformed date", { mode: "fold", date: "2026-1-5" }],
+      ["a fold with a stray key", { mode: "fold", date: "2026-10-10", version: "1.3.0" }],
+    ]) {
+      it(name, () => {
+        expect(() => composeChangelog(mdx, fragments, "1.3.0", mode)).toThrow(/mode/);
+        expect(() => composeChangelog(mdx, [], "1.3.0", mode)).toThrow(/mode/);
+      });
+    }
+  });
+
+  it("refuses a version that is not a plain X.Y.Z in either mode", () => {
+    expect(() => composeChangelog(mdx, fragments, "1.3.0-dev.0", PREVIEW)).toThrow(/plain X\.Y\.Z/);
+    expect(() => composeChangelog(mdx, fragments, UNRELEASED_LABEL, fold("2026-10-10"))).toThrow(/plain X\.Y\.Z/);
   });
 });
 
@@ -615,27 +802,32 @@ describe("composeChangelogParts", () => {
   const fragments = [fragment("10-feat.md", "Features", 50, "A new feature."), fragment("11-fix.md", "Bug Fixes", 50)];
 
   it("returns composeChangelog's content and the section renderReleaseSection writes", () => {
-    expect(composeChangelogParts(mdx, fragments, "1.3.0", "_Unreleased_")).toEqual({
-      content: composeChangelog(mdx, fragments, "1.3.0", "_Unreleased_"),
-      section: renderReleaseSection("1.3.0", "_Unreleased_", fragments),
+    expect(composeChangelogParts(mdx, fragments, "1.3.0", PREVIEW)).toEqual({
+      content: composeChangelog(mdx, fragments, "1.3.0", PREVIEW),
+      section: renderReleaseSection("1.3.0", UNRELEASED_DATE_LINE, fragments),
+    });
+    expect(composeChangelogParts(mdx, fragments, "1.3.0", fold("2026-10-10"))).toEqual({
+      content: composeChangelog(mdx, fragments, "1.3.0", fold("2026-10-10")),
+      section: renderReleaseSection("1.3.0", "_2026-10-10_", fragments),
     });
   });
 
   it("keeps the section in LF when the MDX is CRLF", () => {
-    const parts = composeChangelogParts(mdx.replace(/\n/g, "\r\n"), fragments, "1.3.0", "_Unreleased_");
-    expect(parts.section).toBe(renderReleaseSection("1.3.0", "_Unreleased_", fragments));
+    const parts = composeChangelogParts(mdx.replace(/\n/g, "\r\n"), fragments, "1.3.0", PREVIEW);
+    expect(parts.section).toBe(renderReleaseSection("1.3.0", UNRELEASED_DATE_LINE, fragments));
     expect(parts.content).toContain(parts.section.replace(/\n/g, "\r\n"));
   });
 
   it("returns the MDX and a null section with no fragments", () => {
-    expect(composeChangelogParts(mdx, [], "1.3.0", "_Unreleased_")).toEqual({ content: mdx, section: null });
+    expect(composeChangelogParts(mdx, [], "1.3.0", PREVIEW)).toEqual({ content: mdx, section: null });
   });
 
   it("runs every compose-time check", () => {
-    expect(() => composeChangelogParts(mdx, fragments, "1.2.0", "_Unreleased_")).toThrow(/already exists/);
-    expect(() =>
-      composeChangelogParts(mdx.replace("_2026-01-02_", "_Unreleased_"), [], "1.3.0", "_Unreleased_"),
-    ).toThrow(/"_Unreleased_" left/);
+    expect(() => composeChangelogParts(mdx, fragments, "1.2.0", fold("2026-10-10"))).toThrow(/already exists/);
+    expect(() => composeChangelogParts(mdx, fragments, "1.1.0", PREVIEW)).toThrow(/behind the newest section/);
+    expect(() => composeChangelogParts(mdx.replace("_2026-01-02_", "_Unreleased_"), [], "1.3.0", PREVIEW)).toThrow(
+      /"_Unreleased_" left/,
+    );
   });
 });
 
@@ -687,22 +879,24 @@ describe("the real changelog", () => {
   });
 
   it("the top section, taken out and composed back from fragments, gives the file byte for byte", () => {
-    // Today this is the in-development 3.6.0 section the migration turns into
-    // fragments; after the migration it is the newest dated release.
+    // The newest dated release, folded back in from fragments as its release did.
     const top = releases[0];
-    const dateLine = top.date === null ? "_Unreleased_" : `_${top.date}_`;
     const withoutTop = realMdx.slice(0, headingOffsets[0]) + realMdx.slice(headingOffsets[1]);
 
-    expect(composeChangelog(withoutTop, toFragments(top), top.version, dateLine)).toBe(realMdx);
+    expect(top.date).not.toBeNull();
+    expect(composeChangelog(withoutTop, toFragments(top), top.version, fold(top.date))).toBe(realMdx);
   });
 
   it("the real tree loads, composes and parses", () => {
     const { mdx, fragments, version } = loadChangelogSources(REPO_ROOT);
-    const composed = composeChangelog(mdx, fragments, version, "_Unreleased_");
+    const composed = composeChangelog(mdx, fragments, version, PREVIEW);
     const parsed = parseChangelog(composed);
 
     expect(version).toMatch(/^\d+\.\d+\.\d+$/);
-    if (fragments.length > 0) expect(parsed.releases[0].version).toBe(version);
+    // Inside the window after a stable fold the root version is the newest dated
+    // one, and the fragments compose as the Unreleased section above it.
+    const inWindow = releases.length > 0 && releases[0].version === version;
+    if (fragments.length > 0) expect(parsed.releases[0].version).toBe(inWindow ? UNRELEASED_LABEL : version);
   });
 });
 

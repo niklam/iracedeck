@@ -57,10 +57,24 @@ describe("planChangelogFold", () => {
     expect(plan).toEqual({ fold: false, reason: expect.stringContaining("No fragments") });
   });
 
-  it("refuses a release whose section already exists", () => {
+  it("refuses a release whose section already exists, naming the half-folded tree", () => {
     expect(() => planChangelogFold({ mdx: MDX, fragments: FRAGMENTS }, "1.22.2", "2026-07-01")).toThrow(
-      /"## 1\.22\.2" section already exists/,
+      /"## 1\.22\.2" section already exists.*half-folded.*git restore/,
     );
+  });
+
+  it("folds a window tree's fragments into the release's dated section, never an Unreleased one (#1398)", () => {
+    // The tree's root version would still be 1.22.2; the fold is handed the
+    // release version and dates the section with it.
+    const plan = planChangelogFold({ mdx: MDX, fragments: FRAGMENTS }, "1.22.3", "2026-07-01");
+
+    expect(plan.fold).toBe(true);
+    expect(plan.section).toMatch(/^## 1\.22\.3\n\n_2026-07-01_\n/);
+    expect(plan.content).not.toContain("Unreleased");
+  });
+
+  it("refuses a malformed date rather than writing it", () => {
+    expect(() => planChangelogFold({ mdx: MDX, fragments: FRAGMENTS }, "1.23.0", "2026-7-1")).toThrow(/date/);
   });
 
   it("refuses a fragment that repeats a released bullet", () => {

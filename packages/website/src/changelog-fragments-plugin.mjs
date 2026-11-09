@@ -2,9 +2,10 @@
 //
 // Those notes are fragments in `changelog.d/`, one file per bullet, not a section
 // of changelog.mdx; the release fold writes them into the file only when a stable
-// version is cut. This Sätteri mdast plugin renders them as that version's
-// `_Unreleased_` section through the same `renderReleaseSection` the fold and the
-// plugin's What's New data use, and splices it into the page before the first
+// version is cut. This Sätteri mdast plugin renders them as the in-development
+// section — `## <version>` / `_Unreleased_`, or `## Unreleased` in the window after
+// a stable fold (#1398) — through the same composition, in preview mode, that the
+// plugin's What's New data uses, and splices it into the page before the first
 // `##` heading. Injecting at the mdast stage, rather than rendering a component,
 // is what keeps the section in Starlight's table of contents with the anchor a
 // hand-written one had: heading ids and the TOC are collected later, from hast.
@@ -18,17 +19,13 @@
 // would need the whole site switched to `@astrojs/markdown-remark`.
 //
 // Every compose-time check runs on the way, so a malformed fragment, a
-// hand-written `_Unreleased_` section or a bullet that repeats a dated one fails
+// hand-written in-development section or a bullet that repeats a dated one fails
 // the website build, naming the file.
 import path from "node:path";
 import url from "node:url";
 
 import { CHANGELOG_SOURCE_PATH } from "../../../scripts/lib/changelog-data.mjs";
-import {
-  composeChangelogParts,
-  loadChangelogSources,
-  UNRELEASED_DATE_LINE,
-} from "../../../scripts/lib/changelog-fragments.mjs";
+import { composeChangelogParts, loadChangelogSources } from "../../../scripts/lib/changelog-fragments.mjs";
 
 const REPO_ROOT = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), "../../..");
 
@@ -43,7 +40,7 @@ export function changelogFragmentSection(root) {
   const { mdx, fragments, version } = loadChangelogSources(root);
   // The section comes out of the same composition the generator runs, so the
   // page refuses exactly what the generator refuses.
-  return composeChangelogParts(mdx, fragments, version, UNRELEASED_DATE_LINE).section;
+  return composeChangelogParts(mdx, fragments, version, { mode: "preview" }).section;
 }
 
 /**

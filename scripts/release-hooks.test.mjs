@@ -30,7 +30,7 @@ import {
 import { VOICE_PACKS } from "../packages/audio-assets/src/build/voice-packs.mjs";
 import { buildChangelogData, CHANGELOG_DATA_PATH, CHANGELOG_SOURCE_PATH } from "./lib/changelog-data.mjs";
 import { formatLocalDate } from "./lib/changelog-fold.mjs";
-import { composeChangelog, loadChangelogSources, UNRELEASED_DATE_LINE } from "./lib/changelog-fragments.mjs";
+import { composeChangelog, loadChangelogSources } from "./lib/changelog-fragments.mjs";
 
 // scripts/release-hooks.test.mjs lives in scripts/, so the repo root is one up.
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -590,7 +590,7 @@ describe("release-hooks.mjs fold (in a temporary git repository)", { timeout: 60
     const sources = loadChangelogSources(dir);
     expect(sources.version).toBe("1.1.0");
     const data = buildChangelogData(
-      composeChangelog(sources.mdx, sources.fragments, sources.version, UNRELEASED_DATE_LINE),
+      composeChangelog(sources.mdx, sources.fragments, sources.version, { mode: "preview" }),
     );
     expect(data.releases.map(({ version, date }) => [version, date === null ? null : "dated"])).toEqual([
       ["1.1.0", null],
