@@ -624,7 +624,7 @@ describe("checkPackRecords", () => {
 
       expect(parts(problems)).toEqual(["inputs.pipeline", "inputs.archiveFormat", "inputs.manifest"]);
       expect(problems.map((problem) => problem.message)).toEqual([
-        "testvoice: the encode pipeline (filter chain, encode args or ffmpeg-static version) changed since catalog/testvoice.json was packed",
+        "testvoice: the encode pipeline (filter chain, encode args, loudness normalization or ffmpeg-static version) changed since catalog/testvoice.json was packed",
         "testvoice: the archive format (fflate version or zip entry options) changed since catalog/testvoice.json was packed",
         "testvoice: voice-pack.json (the pack's version, label or author, or a voice's label) changed since catalog/testvoice.json was packed",
       ]);

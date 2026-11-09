@@ -421,7 +421,7 @@ function diffInputs(pack, recorded, now) {
   if (recorded.pipeline !== now.pipeline) {
     diffs.push({
       part: "inputs.pipeline",
-      message: `${pack.id}: the encode pipeline (filter chain, encode args or ffmpeg-static version) changed ${since}`,
+      message: `${pack.id}: the encode pipeline (filter chain, encode args, loudness normalization or ffmpeg-static version) changed ${since}`,
     });
   }
 
