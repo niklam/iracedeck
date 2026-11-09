@@ -7094,6 +7094,78 @@
         "seed": 2
       }
     ],
+    "sector-number": [
+      {
+        "name": "1-01",
+        "text": "Sector one.",
+        "previous_request_ids": [
+          "corner-names/turn-5-01"
+        ]
+      },
+      {
+        "name": "2-01",
+        "text": "Sector two.",
+        "previous_request_ids": [
+          "sector-number/1-01"
+        ]
+      },
+      {
+        "name": "3-01",
+        "text": "Sector three.",
+        "previous_request_ids": [
+          "sector-number/1-01"
+        ]
+      },
+      {
+        "name": "4-01",
+        "text": "Sector four.",
+        "previous_request_ids": [
+          "sector-number/1-01"
+        ]
+      },
+      {
+        "name": "5-01",
+        "text": "Sector five.",
+        "previous_request_ids": [
+          "sector-number/1-01"
+        ]
+      },
+      {
+        "name": "6-01",
+        "text": "Sector six.",
+        "previous_request_ids": [
+          "sector-number/1-01"
+        ]
+      },
+      {
+        "name": "7-01",
+        "text": "Sector seven.",
+        "previous_request_ids": [
+          "sector-number/1-01"
+        ]
+      },
+      {
+        "name": "8-01",
+        "text": "Sector eight.",
+        "previous_request_ids": [
+          "sector-number/1-01"
+        ]
+      },
+      {
+        "name": "9-01",
+        "text": "Sector nine.",
+        "previous_request_ids": [
+          "sector-number/1-01"
+        ]
+      },
+      {
+        "name": "10-01",
+        "text": "Sector ten.",
+        "previous_request_ids": [
+          "sector-number/1-01"
+        ]
+      }
+    ],
     "corner-names": [
       {
         "name": "130r-01",

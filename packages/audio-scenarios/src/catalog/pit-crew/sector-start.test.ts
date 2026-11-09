@@ -8,6 +8,7 @@
  * opt-in, the active voice's script and a corner name holding the bus decide
  * whether a sector start is spoken.
  */
+import { PUBLISHED_VOICE_IDS } from "@iracedeck/audio-assets/build";
 import manifestJson from "@iracedeck/audio-assets/manifest.json" with { type: "json" };
 import defaultScript from "@iracedeck/audio-assets/voice/default/callouts.json" with { type: "json" };
 import shawnScript from "@iracedeck/audio-assets/voice/shawn/callouts.json" with { type: "json" };
@@ -488,5 +489,20 @@ describe("the sector-start callout in the real registerPitCrew", () => {
   it("maps its one scenario id to the sector-starts opt-in", () => {
     expect(SECTOR_START_SCENARIO_IDS).toEqual([SECTOR_START_ID]);
     expect(SCENARIO_ID_TO_SECTOR_START_ID[SECTOR_START_ID]).toBe("sector-starts");
+  });
+});
+
+describe("the shipped sector-number clips", () => {
+  // The family tests above supply their own sector-number clips, so this is
+  // the one check that every first-party voice the plugin publishes really
+  // ships them: without a clip the callout is skipped whole (#835), silently.
+  const clips = new Set(manifestJson.clips);
+
+  it.each([...PUBLISHED_VOICE_IDS])("voice %s ships a sector-number clip for sectors 1 to 10", (voice) => {
+    const missing = Array.from({ length: 10 }, (_, i) => `voice/${voice}/sector-number/${i + 1}-01.mp3`).filter(
+      (clip) => !clips.has(clip),
+    );
+
+    expect(missing).toEqual([]);
   });
 });

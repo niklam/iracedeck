@@ -76464,6 +76464,166 @@
       "textPreview": "Come on, Bill.",
       "generatedAt": "2026-11-01T17:33:37.473Z",
       "requestId": "foVrHArFX3IStqA5Oeql"
+    },
+    "voice/default/sector-number/1-01.mp3": {
+      "hash": "fa092cfdfd918913",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Sector one.",
+      "generatedAt": "2026-11-09T16:22:13.467Z",
+      "requestId": "pmEW9ZzHJisFIvsoKWC6"
+    },
+    "voice/default/sector-number/2-01.mp3": {
+      "hash": "41c7b6cc840bd189",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Sector two.",
+      "generatedAt": "2026-11-09T16:22:13.642Z",
+      "requestId": "L4SCRt4OciTbEnZhbLXG"
+    },
+    "voice/default/sector-number/3-01.mp3": {
+      "hash": "2c826d71cb8d5f77",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Sector three.",
+      "generatedAt": "2026-11-09T16:22:13.805Z",
+      "requestId": "i8qNcwi1B3xmkceJzb6N"
+    },
+    "voice/default/sector-number/4-01.mp3": {
+      "hash": "9ab35afad367a7b6",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Sector four.",
+      "generatedAt": "2026-11-09T16:22:13.969Z",
+      "requestId": "c1XS8gXZ5YvqpXr8FuRt"
+    },
+    "voice/default/sector-number/5-01.mp3": {
+      "hash": "17950dd784dde7b3",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Sector five.",
+      "generatedAt": "2026-11-09T16:22:14.136Z",
+      "requestId": "eUNMdFdEOPUdUMFJw8fl"
+    },
+    "voice/default/sector-number/6-01.mp3": {
+      "hash": "29f5cdc543812189",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Sector six.",
+      "generatedAt": "2026-11-09T16:22:14.302Z",
+      "requestId": "W0SqJ3u6jwJY2CZicYo9"
+    },
+    "voice/default/sector-number/7-01.mp3": {
+      "hash": "2c48fa3134518de0",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Sector seven.",
+      "generatedAt": "2026-11-09T16:22:14.462Z",
+      "requestId": "jSLrOXE6zsbWVMmFcx62"
+    },
+    "voice/default/sector-number/8-01.mp3": {
+      "hash": "3aa645a34ce5c8a8",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Sector eight.",
+      "generatedAt": "2026-11-09T16:22:14.633Z",
+      "requestId": "aO6SnT27jUDw4vEnyzuz"
+    },
+    "voice/default/sector-number/9-01.mp3": {
+      "hash": "0cd1834622b50d32",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Sector nine.",
+      "generatedAt": "2026-11-09T16:22:14.792Z",
+      "requestId": "UF5TWzfDfwaqVs6d3fy8"
+    },
+    "voice/default/sector-number/10-01.mp3": {
+      "hash": "86f15f4c060e7acd",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Sector ten.",
+      "generatedAt": "2026-11-09T16:22:14.959Z",
+      "requestId": "C7BT2JX2RGYyKvyjbNFM"
+    },
+    "voice/shawn/sector-number/1-01.mp3": {
+      "hash": "fa092cfdfd918913",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Sector one.",
+      "generatedAt": "2026-11-09T16:22:13.467Z",
+      "requestId": "pmEW9ZzHJisFIvsoKWC6"
+    },
+    "voice/shawn/sector-number/2-01.mp3": {
+      "hash": "41c7b6cc840bd189",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Sector two.",
+      "generatedAt": "2026-11-09T16:22:13.642Z",
+      "requestId": "L4SCRt4OciTbEnZhbLXG"
+    },
+    "voice/shawn/sector-number/3-01.mp3": {
+      "hash": "2c826d71cb8d5f77",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Sector three.",
+      "generatedAt": "2026-11-09T16:22:13.805Z",
+      "requestId": "i8qNcwi1B3xmkceJzb6N"
+    },
+    "voice/shawn/sector-number/4-01.mp3": {
+      "hash": "9ab35afad367a7b6",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Sector four.",
+      "generatedAt": "2026-11-09T16:22:13.969Z",
+      "requestId": "c1XS8gXZ5YvqpXr8FuRt"
+    },
+    "voice/shawn/sector-number/5-01.mp3": {
+      "hash": "17950dd784dde7b3",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Sector five.",
+      "generatedAt": "2026-11-09T16:22:14.136Z",
+      "requestId": "eUNMdFdEOPUdUMFJw8fl"
+    },
+    "voice/shawn/sector-number/6-01.mp3": {
+      "hash": "29f5cdc543812189",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Sector six.",
+      "generatedAt": "2026-11-09T16:22:14.302Z",
+      "requestId": "W0SqJ3u6jwJY2CZicYo9"
+    },
+    "voice/shawn/sector-number/7-01.mp3": {
+      "hash": "2c48fa3134518de0",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Sector seven.",
+      "generatedAt": "2026-11-09T16:22:14.462Z",
+      "requestId": "jSLrOXE6zsbWVMmFcx62"
+    },
+    "voice/shawn/sector-number/8-01.mp3": {
+      "hash": "3aa645a34ce5c8a8",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Sector eight.",
+      "generatedAt": "2026-11-09T16:22:14.633Z",
+      "requestId": "aO6SnT27jUDw4vEnyzuz"
+    },
+    "voice/shawn/sector-number/9-01.mp3": {
+      "hash": "0cd1834622b50d32",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Sector nine.",
+      "generatedAt": "2026-11-09T16:22:14.792Z",
+      "requestId": "UF5TWzfDfwaqVs6d3fy8"
+    },
+    "voice/shawn/sector-number/10-01.mp3": {
+      "hash": "86f15f4c060e7acd",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Sector ten.",
+      "generatedAt": "2026-11-09T16:22:14.959Z",
+      "requestId": "C7BT2JX2RGYyKvyjbNFM"
     }
   }
 }
