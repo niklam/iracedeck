@@ -4,7 +4,7 @@ The iRacing replay engine (#1467): the replay command gate, the cursor, jump pla
 
 ## The env, and `initReplay`
 
-The engine has no deck concept. What the deck layer and the settings supply is injected once, by `plugin-runtime`'s `initReplay` phase (phase 8, right after `initSettings` and before `registerActions`), through `configureReplayEngine(env)` (`replay-engine-configure.ts`):
+The engine has no deck concept. What the deck layer and the settings supply is injected once, by `plugin-runtime`'s `initReplay` phase (phase 9, right after `initSettings` and before `registerActions`), through `configureReplayEngine(env)` (`replay-engine-configure.ts`):
 
 - `controller` — the SDK controller, as `ReplayEngineController` (a `Pick` of `SDKController`: telemetry, session info, `getReplayState()`, the connection, `noteReplayLeftForLive()`, `noteReplaySeekHold()`, subscribe / unsubscribe). The engine reads it through `engineReads()` (`readTelemetry`, `inReplay`, `connected`, `leftForLive`, `seekHold`), each of which catches a throwing read.
 - `replay()` and `camera()` — the replay broadcast surface and the camera's `switchNum`, `getCommands().replay` / `.camera` reached at each use. Only the gate calls `replay()`.

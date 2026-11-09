@@ -10,7 +10,7 @@ Sim and telemetry
 - `@iracedeck/iracing-sdk` — TypeScript layer over the native SDK: `SDKController`, session YAML, the `Commands` broadcast surface. Has its own `CLAUDE.md`.
 - `@iracedeck/event-bus` — typed pub/sub with the canonical sim-event catalog; sim- and audio-agnostic. Has its own `CLAUDE.md`.
 - `@iracedeck/sim-events-iracing` — the iRacing translator and replay recorder, SDK ticks to bus events; owns the canonical live order (`race-positions.md`). Has its own `CLAUDE.md`.
-- `@iracedeck/track-data` — bundled Lovely Sim Racing corner markers (attribution is a grant condition); a corner a refresh adds needs a `corner-names` entry in every voice. Has its own `CLAUDE.md`.
+- `@iracedeck/track-data` — sim-neutral: bundled Lovely Sim Racing corner markers (attribution is a grant condition; a corner a refresh adds needs a `corner-names` entry in every voice), and the pit-lane landmark model and learner (#1112). Has its own `CLAUDE.md`.
 
 Audio and the Race Engineer (end-to-end walkthrough: `race-engineer-callouts.md`)
 
@@ -37,6 +37,7 @@ Deck layer
 - `@iracedeck/fetch-utils` — request helpers (`abortAfter`, `readCappedJson`) that Node and the PI bundle share. Has its own `CLAUDE.md`.
 - `@iracedeck/settings` — global settings, store, migrations, warnings, first run; import and mock its names here, never via deck-core. Rules in `global-settings.md`. Has its own `CLAUDE.md`.
 - `@iracedeck/replay-store` — per-session replay markers, laps, greens, session starts and incidents. Has its own `CLAUDE.md`.
+- `@iracedeck/track-store` — learned pit-lane landmarks per track, one folder every deck host shares, merged on write (#1112). Has its own `CLAUDE.md`.
 - `@iracedeck/replay-engine` — the iRacing replay engine the replay actions share: the command gate (the one sender of replay commands), the cursor, jump playback, the paced search, the speed state, the camera-switch waiter and the lap walks; imports no deck package or settings, and is configured by `plugin-runtime`'s `initReplay`. Has its own `CLAUDE.md`.
 - `@iracedeck/diagnostics` — the watchdog, resource monitor, CPU profiles, snapshot sections. Log lines in `logging.md`. Has its own `CLAUDE.md`.
 - `@iracedeck/app-updates` — the version-upgrade changelog opener and the What's New update check. Has its own `CLAUDE.md`.
