@@ -81,7 +81,7 @@ Three properties a manual screenshot can't give:
 | Path | What |
 |------|------|
 | `scripts/capture-settings-window.mjs` | `pnpm capture:settings`: arguments and report; captures into `local/settings-window-capture/` only |
-| `scripts/release-capture.mjs` | release-it's `after:bump` hook: reads the version, sets the exit code, arms the exit tripwire |
+| `scripts/release-capture.mjs` | release-it's `after:bump` hook: reads the version, sets the exit code, arms the exit tripwire with the restore commands as its hint, since a tripwire after a staged capture fails the release too |
 | `scripts/lib/release-capture.mjs` | The release capture's steps, every collaborator injected |
 | `scripts/lib/settings-window-capture/run-capture.mjs` | Composition root both callers share: resolves the real server, browser and filesystem; `localCaptureDir` / `committedCaptureDir` |
 | `scripts/lib/settings-window-capture/capture-manifest.mjs` | `capture.json`: build, serialise, and `checkCaptureManifest` with `FIRST_CAPTURED_RELEASE` |
