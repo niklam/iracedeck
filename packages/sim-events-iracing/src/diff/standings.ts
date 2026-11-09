@@ -91,7 +91,7 @@ export function resolvePlayerStanding(
   isMultiClass: boolean,
 ): PlayerStanding {
   return {
-    pos: standingPosition(positions, telemetry.CarIdxClass as number[] | undefined, playerCarIdx, isMultiClass),
+    pos: standingPosition(positions, telemetry.CarIdxClass, playerCarIdx, isMultiClass),
     progress: lapProgress(telemetry, playerCarIdx),
   };
 }
@@ -148,7 +148,7 @@ export function resolveStanding(
   carIdx: number,
   isMultiClass: boolean,
 ): Standing {
-  const carClasses = telemetry.CarIdxClass as Array<number | undefined> | undefined;
+  const carClasses = telemetry.CarIdxClass;
   const playerClass = carClasses?.[playerCarIdx];
   const carClass = carClasses?.[carIdx];
   const classesReadable = typeof playerClass === "number" && typeof carClass === "number";
@@ -157,7 +157,7 @@ export function resolveStanding(
 
   if (classesReadable && playerClass !== carClass) return { reason: "different-class", carPos: 0, playerPos: 0 };
 
-  const carPos = standingPosition(positions, carClasses as number[] | undefined, carIdx, isMultiClass);
+  const carPos = standingPosition(positions, carClasses, carIdx, isMultiClass);
   const playerPos = player.pos;
 
   if (carPos <= 0 || playerPos <= 0) return { reason: "position-unresolved", carPos, playerPos };
