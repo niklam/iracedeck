@@ -161,6 +161,9 @@ export {
   type QualifyResultEntry,
 } from "./grid-utils.js";
 
+// Sector utilities (#1573) — the track's sector starts from `SplitTimeInfo`
+export { extractSectorStarts } from "./sector-utils.js";
+
 // iRating estimation utilities (#268, #872)
 export {
   calculateIRatingChanges,

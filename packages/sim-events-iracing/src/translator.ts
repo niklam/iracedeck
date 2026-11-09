@@ -40,6 +40,7 @@ import {
   CarLeftRight,
   classPositionFromOrder,
   extractQualifyResults,
+  extractSectorStarts,
   IRSDK_UNLIMITED_LAPS,
   isPostRace,
   isPreGreen,
@@ -101,6 +102,7 @@ import { diffPitsOpen } from "./diff/pits-open.js";
 import { updatePositionTracking } from "./diff/race-finish.js";
 import { diffRadar, resolveRadarState } from "./diff/radar.js";
 import { diffRollingStart } from "./diff/rolling-start.js";
+import { diffSectorStart } from "./diff/sector-start.js";
 import { updateStallVisit } from "./diff/stall-visit.js";
 import { diffStartCountdown, diffStartLights } from "./diff/start-lights.js";
 import { diffTireTemps, readTireTempsLeavingCar } from "./diff/tire-temps.js";
@@ -136,6 +138,7 @@ import { resolveStandingStart } from "./start-lights.js";
 import {
   type CautionEpisode,
   type CautionPhase,
+  type CornerNameState,
   createInitialState,
   type GapNeighborState,
   type LastStopTireTemps,
@@ -143,6 +146,7 @@ import {
   resetFastestLapBaselines,
   resetFuelCalloutBaselines,
   type RollingStartFormation,
+  type TrackSectorsState,
   type TranslatorState,
 } from "./state.js";
 import { TICK_STEP_KEYS_PER_ID, TickSteps, VALUE_UNAVAILABLE } from "./tick-steps.js";
@@ -167,7 +171,7 @@ const SUBSCRIPTION_ID = "__sim-events-iracing__";
  * one step's first error. `tick-steps.source.test.ts` counts the ids in both
  * `handleTick`s and fails until this number matches; a new step changes it.
  */
-export const TRANSLATOR_REPORTER_MAX_KEYS = 55 * TICK_STEP_KEYS_PER_ID;
+export const TRANSLATOR_REPORTER_MAX_KEYS = 57 * TICK_STEP_KEYS_PER_ID;
 
 /** The step name every {@link onTranslatorTick} listener is called under: one id, `translator:onTranslatorTick`. */
 const TICK_LISTENER_STEP = "onTranslatorTick";
@@ -3336,14 +3340,43 @@ function handleLiveSteps(
   // speed→lap-fraction conversion; markers resolve from the bundled
   // lovely-track-data snapshot keyed by WeekendInfo.TrackName. An empty raw
   // session type means session info hasn't resolved — stay silent.
-  const cornerMarkers = steps.value("resolveCornerMarkersCached", values, self.state.cornerMarkers, () =>
-    resolveCornerMarkersCached(self.state, sessionInfo, telemetry),
+  const cornerMarkers = steps.value("resolveCornerMarkersCached", values, self.state.cornerName.markers, () =>
+    resolveCornerMarkersCached(self.state.cornerName, sessionInfo, telemetry),
+  );
+  // The track's sectors (issue #1573), resolved in every session type — not
+  // gated on practice like the corner names — because this value is the one
+  // place any feature reads them: the sector-start diff below, and #1572's
+  // race sector timer. Keyed like the corner markers, resolved on live ticks
+  // only and wiped at a replay like them. Captured as a value so each diff
+  // reads it at the call (#1588), with `steps.value`'s last-good fallback
+  // should the resolution throw. A reader outside the translator would get a
+  // sim-neutral `SimRuntime` member, never a getter over this cache.
+  const trackSectors = steps.value("resolveTrackSectorsCached", values, self.state.trackSectors.starts, () =>
+    resolveTrackSectorsCached(self.state.trackSectors, sessionInfo, telemetry),
   );
   steps.live("diffCornerName", pending, () =>
     diffCornerName(
-      self.state,
+      self.state.cornerName,
       telemetry,
       classifySession(sessionType)?.category === "practice",
+      cornerMarkers,
+      trackLengthMeters,
+      self.getCornerCalloutLeadSeconds,
+      emit,
+    ),
+  );
+  // Sector-start calls (issue #1573): the corner names' lead point and sweep
+  // over the track's sector starts, practice/test only (gated in the diff),
+  // right after the corner names so a corner swept on the same tick is
+  // published first. Behind the replay guard like everything here, so a replay
+  // never publishes one. The corner markers only measure `nextCornerInS`; a
+  // track without them still gets every sector start.
+  steps.live("diffSectorStart", pending, () =>
+    diffSectorStart(
+      self.state.sectorStart,
+      telemetry,
+      classifySession(sessionType)?.category === "practice",
+      trackSectors,
       cornerMarkers,
       trackLengthMeters,
       self.getCornerCalloutLeadSeconds,
@@ -3832,8 +3865,25 @@ function resolveIsMultiClass(sessionInfo: Record<string, unknown> | null): boole
 }
 
 /**
+ * The cache key every per-track, per-session cache of the translator is keyed
+ * by (issue #1573): `${TrackID}|${SessionNum}`, from `WeekendInfo.TrackID` and
+ * the tick's `SessionNum`, each `""` when absent. The track length (#574), the
+ * corner markers (#888), the pit speed limit and the track's sectors (#1573)
+ * all invalidate on it, so a new track, or a new session at the same track,
+ * re-resolves each of them the same way. Built here once, so no cache can key
+ * differently from the others.
+ *
+ * @internal Exported for testing.
+ */
+export function trackSessionKey(sessionInfo: Record<string, unknown>, telemetry: TelemetryData): string {
+  const weekend = sessionInfo.WeekendInfo as Record<string, unknown> | undefined;
+
+  return `${String(weekend?.TrackID ?? "")}|${String(telemetry.SessionNum ?? "")}`;
+}
+
+/**
  * Read `SessionInfo.WeekendInfo.TrackLength` ("X.XXX km" or "X.XXX miles") in
- * meters and cache the result on `TranslatorState` keyed by `(TrackID, SessionNum)`
+ * meters and cache the result on `TranslatorState` keyed by {@link trackSessionKey}
  * (issue #574). Returns `null` when the YAML hasn't been seen yet, the field is
  * absent, or the format doesn't parse — the overtake diff treats null as "no
  * gap data" and lets emissions through without the physical-gap gate. Re-parses
@@ -3846,8 +3896,7 @@ function resolveTrackLengthMeters(
 ): number | null {
   if (!sessionInfo) return state.trackLengthMeters;
 
-  const weekend = sessionInfo.WeekendInfo as Record<string, unknown> | undefined;
-  const trackId = `${String(weekend?.TrackID ?? "")}|${String(telemetry.SessionNum ?? "")}`;
+  const trackId = trackSessionKey(sessionInfo, telemetry);
 
   if (trackId !== state.trackLengthKey) {
     state.trackLengthKey = trackId;
@@ -3865,32 +3914,69 @@ function resolveTrackLengthMeters(
 
 /**
  * Resolve (and cache) the bundled corner markers for the current track
- * (issue #888). Keyed by `(TrackID, SessionNum)` like the track-length cache;
+ * (issue #888). Keyed by {@link trackSessionKey} like the track-length cache;
  * re-resolves when the key changes and retries while null in case the first
  * YAML tick lacked `TrackName`. Returns `null` for tracks not in the dataset.
  */
 function resolveCornerMarkersCached(
-  state: TranslatorState,
+  slice: CornerNameState,
   sessionInfo: Record<string, unknown> | null,
   telemetry: TelemetryData,
 ): CornerMarker[] | null {
-  if (!sessionInfo) return state.cornerMarkers;
+  if (!sessionInfo) return slice.markers;
 
   const weekend = sessionInfo.WeekendInfo as Record<string, unknown> | undefined;
-  const key = `${String(weekend?.TrackID ?? "")}|${String(telemetry.SessionNum ?? "")}`;
+  const key = trackSessionKey(sessionInfo, telemetry);
 
-  if (key !== state.cornerMarkersKey) {
-    state.cornerMarkersKey = key;
-    state.cornerMarkers = null;
-  } else if (state.cornerMarkers !== null) {
-    return state.cornerMarkers;
+  if (key !== slice.markersKey) {
+    slice.markersKey = key;
+    slice.markers = null;
+  } else if (slice.markers !== null) {
+    return slice.markers;
   }
 
   const trackName = typeof weekend?.TrackName === "string" ? weekend.TrackName : "";
 
-  if (trackName !== "") state.cornerMarkers = resolveCornerMarkers(trackName);
+  if (trackName !== "") slice.markers = resolveCornerMarkers(trackName);
 
-  return state.cornerMarkers;
+  return slice.markers;
+}
+
+/**
+ * Resolve (and cache) the current track's sector starts (issue #1573) from
+ * `SplitTimeInfo.Sectors`, through `extractSectorStarts`, which returns `null`
+ * for sectors it cannot count from the start/finish line. Keyed by
+ * {@link trackSessionKey} like the corner markers: re-resolves when the key
+ * changes. A null is retried only while the session info has not carried the
+ * `Sectors` list, in case the first read lacked `SplitTimeInfo`; once a parse
+ * has seen the list its result stands for the key (`settled`), so sectors that
+ * fail validation are not re-parsed on every tick of the session. Absent
+ * session info keeps what the slice holds.
+ */
+function resolveTrackSectorsCached(
+  slice: TrackSectorsState,
+  sessionInfo: Record<string, unknown> | null,
+  telemetry: TelemetryData,
+): readonly number[] | null {
+  if (!sessionInfo) return slice.starts;
+
+  const key = trackSessionKey(sessionInfo, telemetry);
+
+  if (key !== slice.key) {
+    slice.key = key;
+    slice.starts = null;
+    slice.settled = false;
+  } else if (slice.starts !== null || slice.settled) {
+    return slice.starts;
+  }
+
+  slice.starts = extractSectorStarts(sessionInfo);
+
+  const splitTimeInfo = sessionInfo.SplitTimeInfo as Record<string, unknown> | null | undefined;
+
+  slice.settled = Array.isArray(splitTimeInfo?.Sectors);
+
+  return slice.starts;
 }
 
 function resolvePitSpeedLimit(
@@ -3901,7 +3987,7 @@ function resolvePitSpeedLimit(
   if (!sessionInfo) return self.pitSpeedLimitMps;
 
   const weekend = sessionInfo.WeekendInfo as Record<string, unknown> | undefined;
-  const trackId = `${String(weekend?.TrackID ?? "")}|${String(telemetry.SessionNum ?? "")}`;
+  const trackId = trackSessionKey(sessionInfo, telemetry);
 
   // Track or session changed — invalidate the cache. We re-parse below; if
   // the new session YAML is missing or malformed, the cached limit resets

@@ -3810,6 +3810,33 @@
       }
     },
     {
+      "id": "pit-crew.sector-start-approaching",
+      "family": "sector-start",
+      "event": "sectorStart.approaching",
+      "description": "Your car reaches the point about a second (the configured lead) before a sector start in a practice or test session, once per sector per lap except at start/finish; qualifying and races stay silent.",
+      "frame": "none",
+      "weight": 10,
+      "weightBand": "CHATTER",
+      "queueable": false,
+      "interrupt": false,
+      "speakGate": null,
+      "endsOn": null,
+      "base": "voice/{voice}",
+      "comment": "The sector the car is entering, as a bare \"Sector three.\" with no radio frame, spoken as the car reaches the sector start in practice and test sessions on the same lead as the corner names. Sector one at the line is never called, and a corner name due just past the start is spoken instead of the sector.",
+      "test": "Harness → Corner Names → Sector three. In-sim: an Offline Testing lap at a track with three or more sectors; each sector start except the line is called once a lap.",
+      "skip": false,
+      "references": {
+        "pools": [],
+        "vars": [
+          "sectorStart.number"
+        ],
+        "conds": [],
+        "cases": [],
+        "includes": [],
+        "frames": []
+      }
+    },
+    {
       "id": "pit-crew.session-start",
       "family": "session-start",
       "event": "session.changed",
@@ -5550,6 +5577,13 @@
         ]
       },
       {
+        "name": "sectorStart.number",
+        "description": "The sector the car is entering, from the sector-number clip group, base the sector's number (sector-number/3 is \"Sector three.\"); a sector the voice has no clip for skips the callout.",
+        "usedBy": [
+          "pit-crew.sector-start-approaching"
+        ]
+      },
+      {
         "name": "sessionStart.airTempNumber",
         "description": "The air temperature as a whole number in the driver's display unit, Celsius or Fahrenheit alike. Draws from the numbers-degrees clip group, whose lines carry the word degrees themselves and are recorded for -20 to 176 (below zero named minus1 to minus20); a reading the voice has no clip for aborts the clause it sits in.",
         "usedBy": [
@@ -5848,6 +5882,11 @@
           "pit-crew.flag-one-pace-lap-to-go",
           "pit-crew.rolling-start-pace-car"
         ]
+      },
+      {
+        "name": "sectorStart.isFinal",
+        "description": "The sector the car is entering is the track's last one, so a pack may say something like final sector instead of its number.",
+        "usedBy": []
       },
       {
         "name": "session.isPractice",
@@ -66878,6 +66917,131 @@
             "pit-crew.rolling-start-pace-car"
           ],
           "viaVar": [],
+          "playedBy": null
+        }
+      ]
+    },
+    {
+      "group": "sector-number",
+      "lines": [
+        {
+          "base": "1",
+          "texts": [
+            "Sector one."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "sectorStart.number"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "10",
+          "texts": [
+            "Sector ten."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "sectorStart.number"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "2",
+          "texts": [
+            "Sector two."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "sectorStart.number"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "3",
+          "texts": [
+            "Sector three."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "sectorStart.number"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "4",
+          "texts": [
+            "Sector four."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "sectorStart.number"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "5",
+          "texts": [
+            "Sector five."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "sectorStart.number"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "6",
+          "texts": [
+            "Sector six."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "sectorStart.number"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "7",
+          "texts": [
+            "Sector seven."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "sectorStart.number"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "8",
+          "texts": [
+            "Sector eight."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "sectorStart.number"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "9",
+          "texts": [
+            "Sector nine."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "sectorStart.number"
+          ],
           "playedBy": null
         }
       ]

@@ -113,6 +113,11 @@ export const EVENT_TEMPLATES = [
     data: { name: "Eau Rouge", slug: "eau-rouge" },
   },
   {
+    name: "sectorStart.approaching",
+    description: "Approaching a sector start in practice/test (issue #1573)",
+    data: { sector: 3, sectorCount: 4, nextCornerInS: null },
+  },
+  {
     name: "pitService.readbackRequested",
     description: "Engineer pit-service readback (entry / refire / exit)",
     data: {

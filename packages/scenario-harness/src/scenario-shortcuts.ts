@@ -4347,6 +4347,46 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
     data: { name: "Turn 5", slug: "turn-5" },
   },
 
+  // ── Sector starts (issue #1573) ──
+  // Fire the event directly, bypassing the practice/test gate and the lead
+  // point sweep of the translator diff. The contract decides what is said:
+  // sector one at the line is silent, as is a sector start with a spoken
+  // corner due within 1.5 s, and a sector with no clip is skipped whole.
+  {
+    id: "sector-start-three",
+    category: "Corner Names",
+    label: "Sector three",
+    description:
+      'Sector-start callout on a four-sector track, no corner due — spoken as "Sector three." (practice/test).',
+    event: "sectorStart.approaching",
+    data: { sector: 3, sectorCount: 4, nextCornerInS: null },
+  },
+  {
+    id: "sector-start-one-at-line",
+    category: "Corner Names",
+    label: "Sector one at the line",
+    description: "Sector one starts at the start/finish line: silent by design, the line is never called.",
+    event: "sectorStart.approaching",
+    data: { sector: 1, sectorCount: 4, nextCornerInS: null },
+  },
+  {
+    id: "sector-start-corner-due",
+    category: "Corner Names",
+    label: "Sector start with a corner due",
+    description:
+      "Sector three with a corner 0.8 s past its start: silent while Corner names are on (the corner call wins), spoken once they are off.",
+    event: "sectorStart.approaching",
+    data: { sector: 3, sectorCount: 4, nextCornerInS: 0.8 },
+  },
+  {
+    id: "sector-start-eleven",
+    category: "Corner Names",
+    label: "Sector eleven",
+    description: "Sector eleven of eleven: silent, since the voice records sector-number clips one to ten only.",
+    event: "sectorStart.approaching",
+    data: { sector: 11, sectorCount: 11, nextCornerInS: null },
+  },
+
   // ── Gaps (issue #933) ──
   // Fire each gap callout path directly. The spoken gap number reads LIVE
   // gaps at speak time from the REAL translator the harness boots, so the

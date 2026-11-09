@@ -28,8 +28,10 @@ import {
  *
  * Not here: "Track-order gaps outside a race (issue #1515)" (`trackGaps`),
  * "Fastest lap of the race (issue #1571)" (`fastestLap`) and
- * "Laps-of-fuel-left callouts (issue #838)" (`fuelCallout`), whose only
- * members are slices, and the `lapCrossing` slice under "Lap completion".
+ * "Laps-of-fuel-left callouts (issue #838)" (`fuelCallout`) and "Track
+ * sectors (issue #1573)" (`trackSectors`, `sectorStart`), whose only members are slices, the
+ * `lapCrossing` slice under "Lap completion", and the `cornerName` slice under
+ * "Corner-name callouts (issue #888)".
  */
 const LEGACY_FLAT_MEMBERS: FlatMemberPin = {
   "Pit lane / stall": [
@@ -46,13 +48,7 @@ const LEGACY_FLAT_MEMBERS: FlatMemberPin = {
   // `lapStartedFromPits` sits under this heading by source order, but
   // `diff/pit-lane.ts` and `diff/lifecycle.ts` write it: it moves with the
   // pit-lane cluster, not with the corner names.
-  "Corner-name callouts (issue #888)": [
-    "cornerLeadPrevPct",
-    "cornerSpoken",
-    "cornerMarkersKey",
-    "cornerMarkers",
-    "lapStartedFromPits",
-  ],
+  "Corner-name callouts (issue #888)": ["lapStartedFromPits"],
   // `playerFinalLapStarted` reaches `diff/fuel-laps-left.ts` as a value, and
   // the green re-arm of the fuel reassurance goes through the closure
   // `createFuelReassuranceRearm` builds over the `fuelCallout` slice (#1405).
@@ -333,7 +329,15 @@ const SLICE_READS_ALLOWED: SliceReadAllowList = {
 };
 
 /** The slices the tree has, by key. */
-const SLICE_KEYS = ["trackGaps", "fastestLap", "fuelCallout", "lapCrossing"];
+const SLICE_KEYS = [
+  "trackGaps",
+  "fastestLap",
+  "fuelCallout",
+  "lapCrossing",
+  "trackSectors",
+  "cornerName",
+  "sectorStart",
+];
 
 const violationNames = (scan: SliceScan): string[] => scan.violations.map((v) => `${v.rule}:${v.name}`);
 const violationKeys = (scan: SliceScan): string[] =>

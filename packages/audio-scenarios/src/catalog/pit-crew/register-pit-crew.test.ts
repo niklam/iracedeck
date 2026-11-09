@@ -926,7 +926,7 @@ describe("radio frame comes from the engine, not the catalog (issue #1064)", () 
     }
   });
 
-  it("only the four terse families opt out of the frame, and only via `frame: NO_FRAME`", () => {
+  it("only the five terse families opt out of the frame, and only via `frame: NO_FRAME`", () => {
     const explicit = registered().filter((s) => s.frame !== undefined);
 
     // Nothing names a frame other than the opt-out: the default (`radio`)
@@ -943,6 +943,8 @@ describe("radio frame comes from the engine, not the catalog (issue #1064)", () 
         ),
         // Corner names: a 1 s lead.
         "pit-crew.corner-name-approaching",
+        // Sector starts: the same lead as the corner names (#1573).
+        "pit-crew.sector-start-approaching",
         // Spotter calls (decision D1) and their informational sibling.
         "pit-crew.spotter-call",
         "pit-crew.spotter-info",

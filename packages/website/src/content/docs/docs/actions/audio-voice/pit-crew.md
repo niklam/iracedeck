@@ -47,9 +47,9 @@ The Settings window's **Radar → Enabled** checkbox flips this same state, and 
 
 ### Corner Names
 
-Toggles the [corner-name callouts](#corner-names-practice--test) on/off. Pressing the button flips the same **Race Engineer Callouts → Corner Names** setting as the Settings window checkbox, so the key and the checkbox always mirror each other — and unlike the other two toggles, the callouts ship **enabled** by default. The status bar flips green ↔ red and follows the setting live, whichever surface changed it.
+Toggles the [corner-name callouts](#corner-names-practice--test) on/off. Pressing the button flips the same **Race Engineer Callouts → Corner Names and Sectors → Corner names (practice/test)** setting as the Settings window checkbox, so the key and the checkbox always mirror each other — and unlike the other two toggles, the callouts ship **enabled** by default. The status bar flips green ↔ red and follows the setting live, whichever surface changed it. The key toggles only the corner names: the [sector starts](#sector-starts-practice--test) have their own checkbox.
 
-The engineer confirms each press with a short line — *"Roger that. Corner calls coming up."* when you enable, *"Copy that. Dropping the corner calls."* when you disable — as long as the Race Engineer master is on. Disable the confirmation under **Race Engineer Callouts → Corner Names → Toggle on/off acknowledgment**. With the Race Engineer master off, the toggle still flips the setting silently — but the corner names themselves stay quiet regardless of this key, because every engineer callout requires the master.
+The engineer confirms each press with a short line — *"Roger that. Corner calls coming up."* when you enable, *"Copy that. Dropping the corner calls."* when you disable — as long as the Race Engineer master is on. Disable the confirmation under **Race Engineer Callouts → Corner Names and Sectors → Toggle on/off acknowledgment**. With the Race Engineer master off, the toggle still flips the setting silently — but the corner names themselves stay quiet regardless of this key, because every engineer callout requires the master.
 
 #### Details
 
@@ -565,7 +565,11 @@ Each corner announces once per lap. Resetting to the pits or getting towed start
 
 Corner data © 2025 [Lovely Sim Racing](https://github.com/Lovely-Sim-Racing/lovely-track-data) (lovely-track-data, modified: pruned and normalized for iRaceDeck), corner names by Racing Circuits — [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/), used with permission — thank you! The dataset covers roughly 68 iRacing track configurations with named turns; tracks outside it simply stay silent, and dataset updates ship with plugin releases.
 
-Two opt-ins live under **Race Engineer Callouts → Corner Names** — the corner-name announcement itself and the toggle acknowledgment, both enabled by default — see [the opt-in list below](#race-engineer-callouts-per-subject-opt-inout). The Pit Crew action's [**Corner Names** mode](#corner-names) flips the announcement setting from a deck key, with a spoken confirmation.
+Three opt-ins live under **Race Engineer Callouts → Corner Names and Sectors** — the corner-name announcement itself, the toggle acknowledgment and the [sector starts](#sector-starts-practice--test), all enabled by default — see [the opt-in list below](#race-engineer-callouts-per-subject-opt-inout). The Pit Crew action's [**Corner Names** mode](#corner-names) flips the announcement setting from a deck key, with a spoken confirmation.
+
+### Sector starts (practice & test)
+
+In the same sessions the engineer also tells you where each sector begins — *"Sector two."*, *"Sector three."* — using the track's own sectors from iRacing, however many it has. The call is timed by the same **Corner call lead** as the corner names, so it lands as you reach the sector line, and changing the lead moves both. Sector one starts at the start/finish line and is never called, so a three-sector track gives you *"Sector two."* and *"Sector three."* each lap. When a named corner is due within about a second and a half of a sector start, you hear only the corner; with the corner names switched off, every sector start is called. Each sector start is called once per lap, and like the corner names, nothing is called on pit road, in qualifying, warmup or the race, or while watching a replay. A track whose first sector does not start at the start/finish line gets no sector calls. Switch them off with **Sector starts (practice/test)** under **Race Engineer Callouts → Corner Names and Sectors**; the Pit Crew action's **Corner Names** key leaves them alone.
 
 ## Spotter (side-awareness calls)
 
@@ -734,11 +738,12 @@ Under **Fuel**, each laps-of-fuel-left count has its own checkbox (see [Laps of 
 - **Enough fuel to finish** (`calloutEnabledFuelLapsLeftRaceCovered`) — the one-time *"We have enough fuel to finish the race. No need to box for fuel."* confirmation, spoken once the race is inside its last 10 laps and the tank covers what's left of it with a lap to spare.
 - **Fuel margin (laps)** (`fuelCalloutMarginLaps`, 0–3 in 0.1 steps, default 0.3) — the safety margin subtracted from the estimate before it is spoken. Higher values make the engineer call you in earlier. Read live, so a change takes effect on the next lap's announcement.
 
-Under **Corner Names**, two callouts are toggleable, both enabled by default (see [Corner names (practice & test)](#corner-names-practice--test) above for the full behavior):
+Under **Corner Names and Sectors**, three callouts are toggleable, all enabled by default (see [Corner names (practice & test)](#corner-names-practice--test) and [Sector starts (practice & test)](#sector-starts-practice--test) above for the full behavior):
 
 - **Corner names (practice/test)** (`calloutEnabledCornerNames`) — the per-corner name announcement in practice and test sessions. Disabling silences the whole family. The Pit Crew action's [**Corner Names** mode](#corner-names) flips this same setting from a deck key.
 - **Toggle on/off acknowledgment** (`calloutEnabledToggleCornerNames`) — the spoken confirmation when the Corner Names key is pressed. Disabling keeps the toggle silent (the status bar still updates).
-- **Corner call lead (seconds)** (`cornerCalloutLeadSeconds`, 0–5 in 0.5 steps, default 1) — how far before the corner the name is spoken, scaled by your speed. Read live, so a change takes effect on the next corner.
+- **Sector starts (practice/test)** (`calloutEnabledSectorStarts`) — the *"Sector two."*, *"Sector three."* calls at each sector start in practice and test sessions. Not affected by the Corner Names key.
+- **Corner call lead (seconds)** (`cornerCalloutLeadSeconds`, 0–5 in 0.5 steps, default 1) — how far before the corner or sector line the call is spoken, scaled by your speed. Read live, so a change takes effect on the next corner or sector.
 
 Under **Spotter**, two callouts are toggleable, both enabled by default (see [Spotter (side-awareness calls)](#spotter-side-awareness-calls) above for the full behavior):
 

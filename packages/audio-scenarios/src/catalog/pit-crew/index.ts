@@ -112,6 +112,7 @@ import {
   RACE_STATUS_CALLOUTS,
   type RegisteredCalloutFamily,
   ROLLING_START_CALLOUTS,
+  SECTOR_START_CALLOUTS,
   SESSION_START_CALLOUTS,
   SPOTTER_CALLOUTS,
   START_LIGHT_CALLOUTS,
@@ -218,6 +219,12 @@ import { registerRadarEngine } from "./radar-engine.js";
 import { PIT_READBACK_CONTRACTS, registerReadbackVocabulary, SCENARIO_ID_TO_PIT_READBACK_ID } from "./readback.js";
 import { buildRollingStartContracts, type RollingStartFormationResolver } from "./rolling-start.js";
 import {
+  buildSectorStartContract,
+  type CornerCallWouldSpeakResolver,
+  registerSectorStartVocabulary,
+  SCENARIO_ID_TO_SECTOR_START_ID,
+} from "./sector-start.js";
+import {
   buildSessionStartContract,
   registerSessionStartVocabulary,
   SCENARIO_ID_TO_SESSION_START_ID,
@@ -297,6 +304,16 @@ export {
   type CornerNameSnapshot,
   type CornerNameSnapshotResolver,
 } from "./corner-name.js";
+export {
+  buildSectorStartContract,
+  type CornerCallWouldSpeakResolver,
+  registerSectorStartVocabulary,
+  SECTOR_START_CLIP_SOURCES,
+  SECTOR_START_CORNER_CLEARANCE_S,
+  SECTOR_START_SCENARIO_IDS,
+  type SectorStartCalloutId,
+  type SectorStartData,
+} from "./sector-start.js";
 export {
   buildCautionContracts,
   CAUTION_FOLLOW_DELAY_MS,
@@ -1131,6 +1148,7 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
   const getStartLightCalloutEnabled = enabledIn(START_LIGHT_CALLOUTS);
   const getFuelCalloutEnabled = enabledIn(FUEL_CALLOUTS);
   const getCornerNameCalloutEnabled = enabledIn(CORNER_NAME_CALLOUTS);
+  const getSectorStartCalloutEnabled = enabledIn(SECTOR_START_CALLOUTS);
   const getOpponentPitCalloutEnabled = enabledIn(OPPONENT_PIT_CALLOUTS);
   const getGapCalloutEnabled = enabledIn(GAP_CALLOUTS);
   // The aggregate tail is not per-flag-gated (see its registration below).
@@ -1181,6 +1199,15 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
       bestLap: getLapTimeCalloutEnabled("best-lap") && engine.isScripted("pit-crew.lap-time-best"),
       everyLap: getLapTimeCalloutEnabled("every-lap") && engine.isScripted("pit-crew.lap-time-last"),
     });
+
+  // Whether a corner name would be spoken (#1573), for the sector-start
+  // contract, which yields to a corner due just past its sector start: the
+  // corner-name opt-in is on AND the active voice scripts the corner-name
+  // contract, read live at each fire from the same gate and the engine's
+  // compiled scripts, as the lap-time precedence above does (the #1571
+  // owner-resolver precedent). It adds no `PitCrewDeps` key.
+  const cornerCallWouldSpeak: CornerCallWouldSpeakResolver = () =>
+    getCornerNameCalloutEnabled("corner-names") && engine.isScripted("pit-crew.corner-name-approaching");
 
   // The flag family, built once over its sim reads (#1378): the vocabulary and
   // the contracts share one set of gates, so the furled speak-time gates and
@@ -1748,6 +1775,23 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
         SCENARIO_ID_TO_CORNER_NAME_ID,
         getCornerNameCalloutEnabled,
         "corner-name callout",
+        logger,
+      ),
+    ),
+  );
+
+  // Sector-start callout (issue #1573). The vocabulary (`sectorStart.number`,
+  // `sectorStart.isFinal`) reads the fire's own event, so it needs no
+  // snapshot; the contract yields to a spoken corner due just past the sector
+  // start through `cornerCallWouldSpeak` above.
+  registerSectorStartVocabulary(engine);
+  engine.defineContract(
+    wrapWithMaster(
+      wrapCalloutScenario(
+        buildSectorStartContract(cornerCallWouldSpeak),
+        SCENARIO_ID_TO_SECTOR_START_ID,
+        getSectorStartCalloutEnabled,
+        "sector-start callout",
         logger,
       ),
     ),

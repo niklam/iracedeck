@@ -7691,6 +7691,78 @@
         "seed": 2
       }
     ],
+    "sector-number": [
+      {
+        "name": "1-01",
+        "text": "Sector one.",
+        "previous_request_ids": [
+          "corner-names/turn-5-01"
+        ]
+      },
+      {
+        "name": "2-01",
+        "text": "Sector two.",
+        "previous_request_ids": [
+          "sector-number/1-01"
+        ]
+      },
+      {
+        "name": "3-01",
+        "text": "Sector three.",
+        "previous_request_ids": [
+          "sector-number/1-01"
+        ]
+      },
+      {
+        "name": "4-01",
+        "text": "Sector four.",
+        "previous_request_ids": [
+          "sector-number/1-01"
+        ]
+      },
+      {
+        "name": "5-01",
+        "text": "Sector five.",
+        "previous_request_ids": [
+          "sector-number/1-01"
+        ]
+      },
+      {
+        "name": "6-01",
+        "text": "Sector six.",
+        "previous_request_ids": [
+          "sector-number/1-01"
+        ]
+      },
+      {
+        "name": "7-01",
+        "text": "Sector seven.",
+        "previous_request_ids": [
+          "sector-number/1-01"
+        ]
+      },
+      {
+        "name": "8-01",
+        "text": "Sector eight.",
+        "previous_request_ids": [
+          "sector-number/1-01"
+        ]
+      },
+      {
+        "name": "9-01",
+        "text": "Sector nine.",
+        "previous_request_ids": [
+          "sector-number/1-01"
+        ]
+      },
+      {
+        "name": "10-01",
+        "text": "Sector ten.",
+        "previous_request_ids": [
+          "sector-number/1-01"
+        ]
+      }
+    ],
     "corner-names": [
       {
         "name": "130r-01",
@@ -33228,6 +33300,11 @@
       "comment": "The upcoming corner's bare name, spoken about a second before it in practice and test sessions — one clip, no radio frame, because at that lead the beeps would eat the whole margin. The name is the whole callout: a corner the voice has no clip for is skipped rather than half-said, and a pack that wants a lead-in puts it before the name here.",
       "test": "Harness → Corner Names → Eau Rouge (or Turn 5). In-sim: a practice session on a track with corner data, Corner names enabled; the name plays on the approach to each corner.",
       "sequence": ["{{cornerName.clip}}"]
+    },
+    "pit-crew.sector-start-approaching": {
+      "comment": "The sector the car is entering, as a bare \"Sector three.\" with no radio frame, spoken as the car reaches the sector start in practice and test sessions on the same lead as the corner names. Sector one at the line is never called, and a corner name due just past the start is spoken instead of the sector.",
+      "test": "Harness → Corner Names → Sector three. In-sim: an Offline Testing lap at a track with three or more sectors; each sector start except the line is called once a lap.",
+      "sequence": ["{{sectorStart.number}}"]
     },
     "pit-crew.damage-repair-needed": {
       "comment": "The car has picked up damage the crew can repair — spoken once when iRacing first flags a mandatory or optional repair. A meatball flag carries the same news with more authority and outranks this line.",
