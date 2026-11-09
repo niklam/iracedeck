@@ -38,8 +38,9 @@ const REPO_ROOT = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)),
  */
 export function changelogFragmentSection(root) {
   const { mdx, fragments, version } = loadChangelogSources(root);
-  // The section comes out of the same composition the generator runs, so the
-  // page refuses exactly what the generator refuses.
+  // The section comes out of the same composition the generator runs, handed
+  // the same root version as written, so the page refuses exactly what the
+  // generator refuses, a pre-release of the newest dated version included.
   return composeChangelogParts(mdx, fragments, version, { mode: "preview" }).section;
 }
 

@@ -17,9 +17,12 @@ import { composeChangelog, loadChangelogSources } from "./changelog-fragments.mj
 
 /**
  * Read the tree and compose the changelog with the fragments as its undated
- * first release, in preview mode: `## <version>` / `_Unreleased_`, or
- * `## Unreleased` while the root version is still the newest dated one. With no
- * fragments the MDX comes back unchanged.
+ * first release, in preview mode: `## <X.Y.Z>` / `_Unreleased_` under the root
+ * version without its pre-release suffix, or `## Unreleased` while the root
+ * version is still exactly the newest dated one. The root version goes to the
+ * composer as written, since a pre-release of the newest dated version is
+ * refused rather than read as the window. With no fragments the MDX comes back
+ * unchanged.
  *
  * @param {string} root - The repository root.
  * @returns {string} the composed MDX.

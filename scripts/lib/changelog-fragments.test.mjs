@@ -683,6 +683,69 @@ describe("composeChangelog", () => {
     });
   });
 
+  // The window is the root version being exactly the newest dated one. A
+  // pre-release of it is behind it in semver (a master at 3.8.1-dev.0 that took a
+  // 3.8.1 hotfix's fold, say), so stripping the suffix must not make it the
+  // window: the next patch release's fold would then meet its own section and
+  // call the tree half-folded, which it is not.
+  describe("refuses a pre-release of the newest dated version while fragments exist, naming both (#1398)", () => {
+    for (const version of ["1.2.0-dev.0", "1.2.0-rc.1"]) {
+      it(version, () => {
+        expectFragmentError(() => composeChangelog(mdx, fragments, version, PREVIEW), {
+          file: CHANGELOG_SOURCE_PATH,
+          line: NEWEST_LINE,
+          message: new RegExp(
+            `${version.replace(/\./g, "\\.")} \\(package\\.json\\) is a pre-release of "## 1\\.2\\.0".*bump the version to the next -dev`,
+          ),
+        });
+        expect(() => composeChangelogParts(mdx, fragments, version, PREVIEW)).toThrow(/is a pre-release of/);
+      });
+    }
+
+    it("and with no fragments composes nothing and refuses nothing", () => {
+      expect(composeChangelog(mdx, [], "1.2.0-dev.0", PREVIEW)).toBe(mdx);
+      expect(composeChangelogParts(mdx, [], "1.2.0-rc.1", PREVIEW)).toEqual({ content: mdx, section: null });
+    });
+
+    // A half-folded master: the fold wrote "## 1.3.0" while package.json still
+    // names the version it was released from. The message names that remedy too.
+    it("naming the half-folded release as well as the bump", () => {
+      const folded = composeChangelog(mdx, fragments, "1.3.0", fold("2026-11-09"));
+
+      expectFragmentError(() => composeChangelog(folded, fragments, "1.3.0-dev.0", PREVIEW), {
+        file: CHANGELOG_SOURCE_PATH,
+        line: NEWEST_LINE,
+        message: /stopped part-way after writing "## 1\.3\.0", run the "git restore" the release hook printed/,
+      });
+    });
+  });
+
+  describe("composes a pre-release of a version newer than the newest section under its plain version", () => {
+    it("above the newest section, as for the plain version", () => {
+      const composed = composeChangelog(mdx, fragments, "1.3.0-dev.0", PREVIEW);
+
+      expect(composed).toBe(composeChangelog(mdx, fragments, "1.3.0", PREVIEW));
+      expect(composed).toContain(`\n## 1.3.0\n\n${UNRELEASED_DATE_LINE}\n`);
+      expect(composeChangelogParts(mdx, fragments, "1.3.0-rc.1", PREVIEW).section).toBe(
+        renderReleaseSection("1.3.0", UNRELEASED_DATE_LINE, fragments),
+      );
+    });
+
+    it("after the preamble when there is no ## heading", () => {
+      expect(composeChangelog(PREAMBLE, fragments, "1.0.0-dev.0", PREVIEW)).toBe(
+        `${PREAMBLE}${renderReleaseSection("1.0.0", UNRELEASED_DATE_LINE, fragments)}`,
+      );
+    });
+
+    it("and a pre-release behind the newest section is refused as behind it, named as written", () => {
+      expectFragmentError(() => composeChangelog(mdx, fragments, "1.1.5-dev.0", PREVIEW), {
+        file: CHANGELOG_SOURCE_PATH,
+        line: NEWEST_LINE,
+        message: /1\.1\.5-dev\.0 \(package\.json\) is behind the newest section "## 1\.2\.0"/,
+      });
+    });
+  });
+
   describe("refuses a version behind the newest section while fragments exist, naming both", () => {
     it("with no section of its own", () => {
       expectFragmentError(() => composeChangelog(mdx, fragments, "1.1.5", PREVIEW), {
@@ -804,9 +867,22 @@ describe("composeChangelog", () => {
     }
   });
 
-  it("refuses a version that is not a plain X.Y.Z in either mode", () => {
-    expect(() => composeChangelog(mdx, fragments, "1.3.0-dev.0", PREVIEW)).toThrow(/plain X\.Y\.Z/);
-    expect(() => composeChangelog(mdx, fragments, UNRELEASED_LABEL, fold("2026-10-10"))).toThrow(/plain X\.Y\.Z/);
+  it("refuses a preview version that is not X.Y.Z or a pre-release of one, even with no fragments", () => {
+    for (const version of ["next", "1.3", "1.3.0+build.1", UNRELEASED_LABEL, "", undefined]) {
+      expect(() => composeChangelog(mdx, fragments, version, PREVIEW), String(version)).toThrow(
+        /not X\.Y\.Z or a pre-release of one/,
+      );
+      expect(() => composeChangelog(mdx, [], version, PREVIEW), String(version)).toThrow(
+        /not X\.Y\.Z or a pre-release of one/,
+      );
+    }
+  });
+
+  it("refuses a fold version that is not a plain X.Y.Z, a pre-release included", () => {
+    for (const version of ["1.3.0-dev.0", "1.3.0-rc.1", UNRELEASED_LABEL]) {
+      expect(() => composeChangelog(mdx, fragments, version, fold("2026-10-10")), version).toThrow(/plain X\.Y\.Z/);
+      expect(() => composeChangelog(mdx, [], version, fold("2026-10-10")), version).toThrow(/plain X\.Y\.Z/);
+    }
   });
 });
 
@@ -905,11 +981,15 @@ describe("the real changelog", () => {
     const composed = composeChangelog(mdx, fragments, version, PREVIEW);
     const parsed = parseChangelog(composed);
 
-    expect(version).toMatch(/^\d+\.\d+\.\d+$/);
-    // Inside the window after a stable fold the root version is the newest dated
-    // one, and the fragments compose as the Unreleased section above it.
+    // The root version as written, which may carry a pre-release suffix.
+    expect(version).toMatch(/^\d+\.\d+\.\d+(?:-.*)?$/);
+    // Inside the window after a stable fold the root version is exactly the
+    // newest dated one, and the fragments compose as the Unreleased section
+    // above it; otherwise under the version without its suffix.
     const inWindow = releases.length > 0 && releases[0].version === version;
-    if (fragments.length > 0) expect(parsed.releases[0].version).toBe(inWindow ? UNRELEASED_LABEL : version);
+    if (fragments.length > 0) {
+      expect(parsed.releases[0].version).toBe(inWindow ? UNRELEASED_LABEL : version.replace(/-.*$/, ""));
+    }
   });
 });
 
@@ -933,7 +1013,7 @@ describe("loadChangelogSources", () => {
     rmSync(root, { recursive: true, force: true });
   });
 
-  it("reads the MDX, the sorted fragments and the version with its suffix stripped, skipping the README", () => {
+  it("reads the MDX, the sorted fragments and the version as written, skipping the README", () => {
     write(`${CHANGELOG_FRAGMENTS_DIR}/20-later.md`, fragmentText({ category: "Features", weight: "10", body: "B." }));
     write(`${CHANGELOG_FRAGMENTS_DIR}/3-earlier.md`, fragmentText({ category: "Features", weight: "10", body: "A." }));
     write(`${CHANGELOG_FRAGMENTS_DIR}/7-fix.md`, fragmentText({ category: "Bug Fixes", weight: "99", body: "C." }));
@@ -941,7 +1021,9 @@ describe("loadChangelogSources", () => {
     const sources = loadChangelogSources(root);
 
     expect(sources.mdx).toBe(`${PREAMBLE}${DATED}`);
-    expect(sources.version).toBe("1.3.0");
+    // Its pre-release suffix kept: the composer needs it to tell the window
+    // (exactly the newest dated version) from a pre-release of that version.
+    expect(sources.version).toBe("1.3.0-dev.2");
     expect(sources.fragments.map((f) => f.fileName)).toEqual(["3-earlier.md", "20-later.md", "7-fix.md"]);
   });
 
@@ -1034,5 +1116,16 @@ describe("loadChangelogSources", () => {
   it("refuses a root version that is not X.Y.Z", () => {
     write("package.json", JSON.stringify({ version: "next" }));
     expectFragmentError(() => loadChangelogSources(root), { file: "package.json", line: null });
+  });
+
+  it("refuses a root version that does not start with a plain X.Y.Z, build metadata included", () => {
+    for (const version of ["1.3", "v1.3.0", "1.3.0+build.1", 1]) {
+      write("package.json", JSON.stringify({ version }));
+      expectFragmentError(() => loadChangelogSources(root), {
+        file: "package.json",
+        line: null,
+        message: /does not start with a plain X\.Y\.Z/,
+      });
+    }
   });
 });

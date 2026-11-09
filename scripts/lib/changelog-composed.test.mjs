@@ -85,6 +85,16 @@ describe("readComposedChangelog / buildComposedChangelogData", () => {
     expect(composed).not.toContain("_Unreleased_");
   });
 
+  it("refuses a pre-release of the newest dated version while fragments exist, rather than the window (#1398)", () => {
+    write("package.json", JSON.stringify({ version: "1.2.0-dev.0" }));
+    write(`${CHANGELOG_FRAGMENTS_DIR}/9-a-feature.md`, fragment("Features", 50, "Merged after the fold."));
+
+    expect(() => buildComposedChangelogData(root)).toThrow(
+      /1\.2\.0-dev\.0 \(package\.json\) is a pre-release of "## 1\.2\.0".*next -dev/,
+    );
+    expect(() => readComposedChangelog(root)).toThrow(/is a pre-release of "## 1\.2\.0"/);
+  });
+
   it("refuses a version behind the newest dated section while fragments exist", () => {
     write("package.json", JSON.stringify({ version: "1.1.0" }));
     write(`${CHANGELOG_FRAGMENTS_DIR}/9-a-feature.md`, fragment("Features", 50, "On a stale branch."));

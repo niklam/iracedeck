@@ -652,7 +652,7 @@ describe("release-hooks.mjs fold (in a temporary git repository)", { timeout: 60
 
     // And the merged tree composes: 1.1.0 Unreleased on top of the dated 1.0.0.
     const sources = loadChangelogSources(dir);
-    expect(sources.version).toBe("1.1.0");
+    expect(sources.version).toBe("1.1.0-dev.0");
     const data = buildChangelogData(
       composeChangelog(sources.mdx, sources.fragments, sources.version, { mode: "preview" }),
     );
@@ -784,12 +784,18 @@ describe("release-hooks.mjs fold (in a temporary git repository)", { timeout: 60
     expect(window.text).toContain(`## ${UNRELEASED_LABEL}\n\n**Features**\n\n- After the branch point.\n\n## 1.1.0\n`);
     expect(read(dir, CHANGELOG_SOURCE_PATH)).not.toContain(UNRELEASED_LABEL);
 
-    // The root's -dev suffix makes no difference here: a master that kept
-    // 1.1.0-dev.0 strips to the same 1.1.0 and composes identically. (A master
+    // The window is the root version being exactly 1.1.0. A master that kept a
+    // pre-release of it, 1.1.0-dev.0, is behind the dated 1.1.0 and is refused
+    // rather than composed as the window: composed green, it would surface only at
+    // its next patch release, 1.1.0, whose fold meets "## 1.1.0" and calls the
+    // tree half-folded, which it is not. The merger bumps it to the next -dev
+    // before pushing. (A master
     // already bumped past the branch point would resolve the version conflict to
     // its own 1.2.0-dev.0 and compose the normal `## 1.2.0` / `_Unreleased_`.)
     writeJson(dir, "package.json", { name: "fixture", version: "1.1.0-dev.0" });
-    expect(composeTree(dir).releases).toEqual(expectedWindow);
+    expect(() => composeTree(dir)).toThrow(
+      /1\.1\.0-dev\.0 \(package\.json\) is a pre-release of "## 1\.1\.0".*bump the version to the next -dev/,
+    );
     fixtureGit(dir, "restore", "--", "package.json");
     expect(fixtureGit(dir, "status", "--porcelain")).toBe("");
 

@@ -95,6 +95,14 @@ describe("changelogFragmentsPlugin", () => {
     expect(() => render()).toThrow(/already in a released section/);
   });
 
+  it("fails the build on a pre-release of the newest dated version while fragments exist (#1398)", () => {
+    write("package.json", JSON.stringify({ version: "1.2.0-dev.0" }));
+    write(`${CHANGELOG_FRAGMENTS_DIR}/9-a-feature.md`, fragment("Features", 50, "Merged after the fold."));
+
+    expect(() => render()).toThrow(/1\.2\.0-dev\.0 \(package\.json\) is a pre-release of "## 1\.2\.0".*next -dev/);
+    expect(() => changelogFragmentSection(root)).toThrow(/is a pre-release of "## 1\.2\.0"/);
+  });
+
   it("renders the window's fragments as an Unreleased section above the version's dated one (#1398)", () => {
     write("package.json", JSON.stringify({ version: "1.2.0" }));
     write(`${CHANGELOG_FRAGMENTS_DIR}/9-a-feature.md`, fragment("Features", 50, "Merged after the fold."));
@@ -114,13 +122,14 @@ describe("changelogFragmentsPlugin", () => {
 
   it("renders the real fragments as renderReleaseSection writes them", () => {
     const { mdx, fragments, version } = loadChangelogSources(REPO_ROOT);
-    // Inside the window after a stable fold the root version is the newest dated
-    // one, and the fragments render as the Unreleased section instead.
+    // Inside the window after a stable fold the root version is exactly the
+    // newest dated one, and the fragments render as the Unreleased section
+    // instead; otherwise under the root version without its pre-release suffix.
     const newest = /^##[ \t]+(.*?)[ \t]*$/m.exec(mdx)?.[1];
     const expected = () =>
       newest === version
         ? renderReleaseSection(UNRELEASED_LABEL, null, fragments)
-        : renderReleaseSection(version, UNRELEASED_DATE_LINE, fragments);
+        : renderReleaseSection(version.replace(/-.*$/, ""), UNRELEASED_DATE_LINE, fragments);
 
     expect(changelogFragmentSection(REPO_ROOT)).toBe(fragments.length === 0 ? null : expected());
   });

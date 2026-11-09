@@ -246,11 +246,12 @@ if (process.env.RELEASE_IT_DRY_RUN === "1") {
 //    tree holding the folded changelog beside fragments rather than folding them
 //    again: composing in fold mode refuses a `## <version>` section that already
 //    exists while fragments remain, naming the half-folded tree. A preview (the
-//    readers: the build's changelog data and the website) treats the same
-//    shape, a version equal to the newest section, as the window after a
-//    release and composes the fragments as `## Unreleased` (#1398), except that
-//    a half-folded tree's fragments repeat the bullets just written and are
-//    refused for that. The fragments are committed (checked above), so
+//    readers: the build's changelog data and the website) refuses that tree
+//    too, naming the same remedy: its root version is not bumped yet, so it is
+//    behind the section just written or a pre-release of it, never exactly it,
+//    which is the window after a release that composes the fragments as
+//    `## Unreleased` (#1398); and its fragments repeat the bullets just written,
+//    which is refused on its own. The fragments are committed (checked above), so
 //    `git restore` brings it all back. stdin is not a terminal, so Git for
 //    Windows' "Unlink of file failed. Should I try again?" prompt never waits
 //    on the release.
