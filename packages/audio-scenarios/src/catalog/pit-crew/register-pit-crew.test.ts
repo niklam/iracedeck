@@ -74,6 +74,7 @@ import {
   type TireWearCalloutId,
 } from "./index.js";
 import { NO_LIMITER_CLIP_SOURCES } from "./no-limiter.js";
+import { _resetPitExitCueEngine } from "./pit-exit-cue-engine.js";
 import { LIMITER_MISSING_DELAY_MS, LIMITER_ON_TRACK_DELAY_MS, PIT_LIMITER_CLIP_SOURCES } from "./pit-limiter.js";
 import { _resetPitSpeedingEngine } from "./pit-speeding-engine.js";
 import { _resetRadarEngine } from "./radar-engine.js";
@@ -603,6 +604,7 @@ afterEach(() => {
   _resetRadarEngine();
   _resetSpotterEngine();
   _resetPitSpeedingEngine();
+  _resetPitExitCueEngine();
   _setFurledRaisedSpoken(false);
   _resetLastIncidentPoints();
   vi.clearAllMocks();

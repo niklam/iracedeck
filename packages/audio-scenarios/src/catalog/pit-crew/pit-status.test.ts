@@ -49,6 +49,7 @@ import { _resetAudioScenarios, initializeAudioScenarios, poolMemberPattern } fro
 import { familyGate } from "./callout-gate.test-util.js";
 import { familyReferences } from "./family-references.test-util.js";
 import { type PitStatusCalloutId, registerPitCrew } from "./index.js";
+import { _resetPitExitCueEngine } from "./pit-exit-cue-engine.js";
 import { _resetPitSpeedingEngine } from "./pit-speeding-engine.js";
 import {
   buildPitStatus,
@@ -1077,6 +1078,7 @@ describe("PIT_STATUS_CONTRACTS per-callout opt-out (via registerPitCrew)", () =>
     _resetRadarEngine();
     _resetSpotterEngine();
     _resetPitSpeedingEngine();
+    _resetPitExitCueEngine();
     vi.clearAllMocks();
   });
 

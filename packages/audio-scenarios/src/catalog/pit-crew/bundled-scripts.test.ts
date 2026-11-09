@@ -72,6 +72,7 @@ import {
 } from "../../interpreter.js";
 import { FLAG_CLIP_SOURCES, FLAG_SCENARIO_IDS } from "./flag-alerts.js";
 import { registerPitCrew } from "./index.js";
+import { _resetPitExitCueEngine } from "./pit-exit-cue-engine.js";
 import { _resetPitSpeedingEngine } from "./pit-speeding-engine.js";
 import { _resetRadarEngine } from "./radar-engine.js";
 import { _resetSpotterEngine } from "./spotter-engine.js";
@@ -228,6 +229,7 @@ afterEach(() => {
   _resetRadarEngine();
   _resetSpotterEngine();
   _resetPitSpeedingEngine();
+  _resetPitExitCueEngine();
   vi.clearAllMocks();
 });
 

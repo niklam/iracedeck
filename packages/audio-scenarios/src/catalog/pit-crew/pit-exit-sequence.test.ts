@@ -1,7 +1,8 @@
 /**
  * The #1108 pit exit replayed through the engine (issues #1108, #1185): the
  * exit readback, the tire-wear report published right behind it, and a flag
- * that lands while the readback plays.
+ * that lands while the readback plays. And the pit exit beep (#1161) at the
+ * same edge, which plays beside them rather than among them.
  *
  * Under the engine's one pending slot the report waited alone in that slot
  * while the readback played, and any fire of at least its weight arriving
@@ -17,17 +18,33 @@
 import manifestJson from "@iracedeck/audio-assets/manifest.json" with { type: "json" };
 import defaultScript from "@iracedeck/audio-assets/voice/default/callouts.json" with { type: "json" };
 import { AudioChannel } from "@iracedeck/audio-service";
+import type { FakeAudio } from "@iracedeck/audio-service/testing";
 import type { CalloutScript } from "@iracedeck/callout-script";
 import type { IEventBus, SimEventName, SimEventOf, TireWearReport } from "@iracedeck/event-bus";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AudioAssetsManifest } from "../../interpreter.js";
 import { _resetAudioScenarios, getScenarioEngine, initializeAudioScenarios } from "../../interpreter.js";
-import { registerPitCrew } from "./index.js";
+import { type PitCrewDeps, registerPitCrew } from "./index.js";
+import { _resetPitExitCueEngine, PIT_EXIT_CLIP } from "./pit-exit-cue-engine.js";
 import { _resetPitSpeedingEngine } from "./pit-speeding-engine.js";
 import { _resetRadarEngine } from "./radar-engine.js";
 import { _resetSpotterEngine } from "./spotter-engine.js";
 import { createTimedAudio } from "./timed-audio.test-util.js";
+
+// The imperative engines (the pit exit beep among them) reach the mixer
+// through `getAudio()` rather than the engine's injected audio, so it hands
+// back the same timed fake the engine plays through; the enums stay real.
+const mixer = vi.hoisted(() => ({ current: null as unknown }));
+
+vi.mock("@iracedeck/audio-service", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@iracedeck/audio-service")>()),
+  getAudio: () => {
+    if (mixer.current === null) throw new Error("Audio service not initialized");
+
+    return mixer.current;
+  },
+}));
 
 const VOICE = "default";
 const SCRIPT = defaultScript as CalloutScript;
@@ -90,24 +107,27 @@ const REPORT_ID = "pit-crew.tire-wear-report";
 const BLUE = "pit-crew.flag-blue";
 
 let bus: IEventBus;
+let audio: FakeAudio;
 
-beforeEach(() => {
-  vi.useFakeTimers();
-  vi.clearAllMocks();
+/** Register every pit-crew contract as a plugin does, over `deps` on top of the logger. */
+function boot(deps: Partial<PitCrewDeps> = {}): void {
   _resetAudioScenarios();
   _resetRadarEngine();
   _resetSpotterEngine();
   _resetPitSpeedingEngine();
+  _resetPitExitCueEngine();
   bus = createMockBus();
-  initializeAudioScenarios(
-    bus,
-    createTimedAudio((channel) => (channel === AudioChannel.SFX ? SFX_CLIP_MS : VOICE_CLIP_MS)),
-    MANIFEST,
-    mockLogger as never,
-    () => VOICE,
-  );
-  registerPitCrew(bus, { logger: mockLogger as never });
+  audio = createTimedAudio((channel) => (channel === AudioChannel.SFX ? SFX_CLIP_MS : VOICE_CLIP_MS));
+  mixer.current = audio;
+  initializeAudioScenarios(bus, audio, MANIFEST, mockLogger as never, () => VOICE);
+  registerPitCrew(bus, { logger: mockLogger as never, ...deps });
   getScenarioEngine().setScripts(new Map([[VOICE, SCRIPT]]));
+}
+
+beforeEach(() => {
+  vi.useFakeTimers();
+  vi.clearAllMocks();
+  boot();
 });
 
 afterEach(() => {
@@ -160,5 +180,50 @@ describe("the #1108 pit exit replayed through the engine (issues #1108, #1185)",
 
     expect(heard()).toEqual([READBACK, BLUE, REPORT_ID]);
     expect(queueDrops()).toEqual([]);
+  });
+});
+
+describe("the pit exit beep at the same edge (#1161)", () => {
+  /** The edge as the translator publishes it: the player in the car, live. */
+  function exitPitRoad(): void {
+    bus.publish({
+      event: "pitLane.exited",
+      timestamp: Date.now(),
+      telemetry: { IsOnTrack: true, IsReplayPlaying: false },
+      data: {},
+    } as unknown as SimEventOf<SimEventName>);
+  }
+
+  function beeps(): number {
+    return audio._played.filter((p) => p.channel === AudioChannel.Cue && p.path === PIT_EXIT_CLIP).length;
+  }
+
+  it("beeps on the Cue channel at once, and the exit readback that follows still plays in full", () => {
+    exitPitRoad();
+
+    expect(beeps()).toBe(1);
+
+    // The readback lands 4.5 s later on the Voice bus; the beep neither took
+    // that bus nor left anything waiting on it.
+    vi.advanceTimersByTime(4500);
+    publish("pitService.readbackRequested", { reason: "exit" });
+
+    expect(heard()).toEqual([READBACK]);
+    expect(audio.stopChannel).not.toHaveBeenCalledWith(AudioChannel.Cue);
+    expect(queueDrops()).toEqual([]);
+  });
+
+  it("is silent with its own opt-in off, read through the one isCalloutEnabled lookup", () => {
+    boot({ isCalloutEnabled: (key) => key !== "calloutEnabledPitExitCue" });
+    exitPitRoad();
+
+    expect(beeps()).toBe(0);
+  });
+
+  it("is silent with the Race Engineer master off, which leaves the Alerts bus unmuted", () => {
+    boot({ getRaceEngineerMasterEnabled: () => false });
+    exitPitRoad();
+
+    expect(beeps()).toBe(0);
   });
 });

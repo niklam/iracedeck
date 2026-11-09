@@ -34,6 +34,7 @@ import {
 import { speakableGap } from "./gaps.js";
 import { registerPitCrew } from "./index.js";
 import type { LapCompletedSnapshot } from "./lap-time.js";
+import { _resetPitExitCueEngine } from "./pit-exit-cue-engine.js";
 import { _resetPitSpeedingEngine } from "./pit-speeding-engine.js";
 import type { LivePosition } from "./position-readout.js";
 import { _resetRadarEngine } from "./radar-engine.js";
@@ -271,6 +272,7 @@ afterEach(() => {
   _resetRadarEngine();
   _resetSpotterEngine();
   _resetPitSpeedingEngine();
+  _resetPitExitCueEngine();
   vi.clearAllMocks();
   vi.useRealTimers();
 });

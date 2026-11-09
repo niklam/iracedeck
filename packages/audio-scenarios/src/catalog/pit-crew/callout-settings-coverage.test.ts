@@ -158,9 +158,10 @@ const PIT_CREW_MODULES = import.meta.glob(["./**/*.ts", "!./**/*.test.ts", "!./*
  * cannot go unchecked by leaving its row out. The registry families with no such map,
  * and how each is gated instead:
  *
- * - `SPOTTER_CALLOUTS` (`cars`, `still-there`) and `PIT_SPEEDING_CALLOUTS`
- *   (`cue`): read inside their imperative engines (`registerSpotterEngine`,
- *   `registerPitSpeedingEngine`), which play direct rather than through a
+ * - `SPOTTER_CALLOUTS` (`cars`, `still-there`), `PIT_SPEEDING_CALLOUTS`
+ *   (`cue`) and `PIT_EXIT_CALLOUTS` (`cue`): read inside their imperative
+ *   engines (`registerSpotterEngine`, `registerPitSpeedingEngine`,
+ *   `registerPitExitCueEngine`), which play direct rather than through a
  *   scenario `where:`.
  * - `PIT_SERVICE_REQUEST_CALLOUTS` (`requests`): one gate over all the toggle
  *   confirmations, applied by `wrapPitServiceRequestsScenario`.

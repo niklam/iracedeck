@@ -25,6 +25,7 @@ import { _resetGapCalloutCooldown, readGapsDebugState, tryClaimGapCallout } from
 import { _resetLastIncidentPoints, INCIDENT_CONTRACTS, readIncidentsDebugState } from "./incidents.js";
 import { registerPitCrew } from "./index.js";
 import { _resetOpponentPitPending, OPPONENT_PIT_CONTRACTS, readOpponentPitDebugState } from "./opponent-pit.js";
+import { _resetPitExitCueEngine, readPitExitCueDebugState } from "./pit-exit-cue-engine.js";
 import { _resetPitSpeedingEngine, readPitSpeedingDebugState } from "./pit-speeding-engine.js";
 import {
   _resetPositionReadoutCooldown,
@@ -109,6 +110,7 @@ const FAMILY_KEYS = [
   "gaps",
   "incidents",
   "opponentPit",
+  "pitExitCue",
   "pitSpeeding",
   "positionReadout",
   "qualifyingInvalidation",
@@ -125,6 +127,7 @@ const UNTOUCHED_FAMILIES = {
   gaps: { lastGapCalloutAt: null },
   incidents: { lastIncidentPoints: null },
   opponentPit: { pendingNearby: null },
+  pitExitCue: { registered: false, lastOutcome: null },
   pitSpeeding: { registered: false, ticking: false, episodeActive: false, lastSessionTick: null },
   positionReadout: { lastPositionAnnouncedAt: 0, lastIntroAt: 0, lastSpokenPosition: 0, pendingIntro: null },
   qualifyingInvalidation: { lastAnnounced: null, approvedBurstTimestamp: null },
@@ -186,6 +189,7 @@ afterEach(() => {
   _resetRadarEngine();
   _resetSpotterEngine();
   _resetPitSpeedingEngine();
+  _resetPitExitCueEngine();
   _resetBackgroundTest();
   _setFurledRaisedSpoken(false);
   _resetGapCalloutCooldown();
@@ -233,6 +237,7 @@ describe("readRaceEngineerState", () => {
     expect(Object.keys(state.families).sort()).toEqual(FAMILY_KEYS);
     expect(state.families).toEqual({
       ...UNTOUCHED_FAMILIES,
+      pitExitCue: { ...UNTOUCHED_FAMILIES.pitExitCue, registered: true },
       pitSpeeding: { ...UNTOUCHED_FAMILIES.pitSpeeding, registered: true },
       radar: { ...UNTOUCHED_FAMILIES.radar, registered: true },
       spotter: { ...UNTOUCHED_FAMILIES.spotter, registered: true },
@@ -403,7 +408,7 @@ describe("a part that cannot be read fails alone", () => {
     expect(JSON.parse(JSON.stringify(state))).toEqual(state);
   });
 
-  it("an engine that cannot describe itself leaves all twelve families intact", () => {
+  it("an engine that cannot describe itself leaves all thirteen families intact", () => {
     const engine = startEngine();
 
     registerPitCrew(bus, SIM_READS);
@@ -417,6 +422,7 @@ describe("a part that cannot be read fails alone", () => {
     expect(state.families).toEqual({
       ...UNTOUCHED_FAMILIES,
       flagAlerts: { furledRaisedSpoken: true },
+      pitExitCue: { ...UNTOUCHED_FAMILIES.pitExitCue, registered: true },
       pitSpeeding: { ...UNTOUCHED_FAMILIES.pitSpeeding, registered: true },
       radar: { ...UNTOUCHED_FAMILIES.radar, registered: true },
       spotter: { ...UNTOUCHED_FAMILIES.spotter, registered: true },
@@ -711,13 +717,19 @@ describe("the family readers", () => {
     expect(readBackgroundTestDebugState()).toEqual({ testInFlight: false, builtInFramePlaying: false });
   });
 
-  it("the three engines: registration, the episode and the timers as booleans", () => {
+  it("the four engines: registration, the episode and the timers as booleans", () => {
     startEngine();
     registerPitCrew(bus, SIM_READS);
 
     expect(readRadarDebugState().registered).toBe(true);
     expect(readSpotterDebugState().registered).toBe(true);
     expect(readPitSpeedingDebugState().registered).toBe(true);
+    expect(readPitExitCueDebugState()).toEqual({ registered: true, lastOutcome: null });
+
+    // The pit exit cue reports what its last edge did (#1161).
+    bus.publishEvent("pitLane.exited");
+
+    expect(readPitExitCueDebugState().lastOutcome).toBe("played");
 
     bus.publishEvent("radar.changed", { from: "clear", to: "two-right" });
     bus.publishEvent("radar.changed", { from: "two-right", to: "clear" });

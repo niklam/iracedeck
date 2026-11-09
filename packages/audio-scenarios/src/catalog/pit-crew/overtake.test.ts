@@ -35,6 +35,7 @@ import {
   overtakeLossIsAnnounceable,
   resolveOvertakeGainedReaction,
 } from "./overtake.js";
+import { _resetPitExitCueEngine } from "./pit-exit-cue-engine.js";
 import { _resetPitSpeedingEngine } from "./pit-speeding-engine.js";
 import {
   _setReactionRandom,
@@ -238,6 +239,7 @@ afterEach(() => {
   _resetRadarEngine();
   _resetSpotterEngine();
   _resetPitSpeedingEngine();
+  _resetPitExitCueEngine();
   _resetPositionReadoutCooldown();
   vi.clearAllMocks();
 });
