@@ -6,8 +6,6 @@ import type {
   PitLaneLandmarkSample,
   PitLaneLandmarkSummary,
   PitLaneTrackIdentity,
-} from "./event-catalog.js";
-import type {
   QualifyingInvalidationSnapshot,
   SessionCategory,
   SessionClass,
