@@ -199,6 +199,27 @@ describe("diffOpponentPit", () => {
     ]);
   });
 
+  it("skips a readable other-class car even while the session does not read multi-class (#950, #1274's rule)", () => {
+    // No session info yet: isMultiClass reads false, but CarIdxClass already
+    // splits the field. carIdx 1 (overall P1) and carIdx 3 (overall P3, which
+    // would read "ahead" of the player's P4) are another class; carIdx 4 (P5)
+    // is the player's, and still announces as the one behind.
+    const classes = [100, 200, 100, 200, 100, 100, 100, 100];
+    const seed = makeField();
+    seed.CarIdxClass = classes;
+    run(state, seed, 1000, { multi: false });
+
+    const t = makeField();
+    t.CarIdxClass = classes;
+    t.CarIdxTrackSurface[1] = TrkLoc.AproachingPits;
+    t.CarIdxTrackSurface[3] = TrkLoc.AproachingPits;
+    t.CarIdxTrackSurface[4] = TrkLoc.AproachingPits;
+
+    expect(run(state, t, 2000, { multi: false })).toEqual([
+      { event: "opponentPit.entered", data: { relation: "behind", carIdx: 4, position: 5, isMultiClass: false } },
+    ]);
+  });
+
   it("skips the player and the pace car", () => {
     run(state, makeField(), 1000, { pace: 4 });
     const t = makeField();
