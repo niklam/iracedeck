@@ -1176,9 +1176,9 @@ export function getQualifyingInvalidationSnapshot(): QualifyingInvalidationSnaps
  * this is read from the latest tick's canonical order — the live
  * `CarIdxLapDistPct` order via `calculateFrozenRacePositions`, memoised per tick
  * and frozen (#711) — so it reflects the latest frame, not a value frozen at
- * the last S/F crossing. A finished car
- * that has left the world is kept at its finishing rank (issue #603) so the
- * spoken overall position doesn't climb as leaders peel into the garage. Used by
+ * the last S/F crossing. A finished car that has left the world is kept at its
+ * finishing rank (issue #603) so the spoken overall position doesn't climb as
+ * leaders peel into the garage. Used by
  * the "We're currently P[n]" voice readouts (overtake, race position-change,
  * race-status) so the spoken position is accurate to speak-time even when the
  * scenario plays seconds after the triggering event.
@@ -1214,9 +1214,11 @@ export function getLivePosition(): LivePosition | null {
   if (playerCarIdx < 0) return null;
 
   // One shared read path (issue #622): the frozen-order rank comes from
-  // getLiveCarPosition so the player readout and the per-car reads can never
-  // silently diverge; both read the tick's memoised order (#711).
-  const base = getLiveCarPosition(playerCarIdx);
+  // carPositionInOrder, as for getLiveCarPosition, so the player readout and
+  // the per-car reads can never silently diverge; both read the tick's
+  // memoised order (#711).
+  const order = readCanonicalOrder(instance, telemetry, sessionInfo);
+  const base = carPositionInOrder(order, telemetry, sessionInfo, playerCarIdx);
 
   if (!base) return null;
 
@@ -1224,7 +1226,7 @@ export function getLivePosition(): LivePosition | null {
   // `PlayerCarClassPosition` when the car's class is unknown — the shared
   // derive-else-official policy (#711).
   const classPosition = classPositionOrOfficial(
-    readCanonicalOrder(instance),
+    order,
     telemetry.CarIdxClass,
     playerCarIdx,
     telemetry.PlayerCarClassPosition,
@@ -1237,10 +1239,10 @@ export function getLivePosition(): LivePosition | null {
  * Live position of an ARBITRARY car from the same canonical frozen order as
  * {@link getLivePosition} (issue #622 — the opponent-pit "P{n}" number
  * resolves at speak time): the latest tick's memoised order (#711). Returns
- * `null` when telemetry isn't resolvable,
- * `carIdx` is invalid, or the car has no rank in the order. `classPosition`
- * is `0` when underivable (no `CarIdxClass`) — there is no official per-car
- * fallback here; consumers fall back to their emit-time payload instead.
+ * `null` when telemetry isn't resolvable, `carIdx` is invalid, or the car has
+ * no rank in the order. `classPosition` is `0` when underivable (no
+ * `CarIdxClass`) — there is no official per-car fallback here; consumers fall
+ * back to their emit-time payload instead.
  */
 export function getLiveCarPosition(carIdx: number): LivePosition | null {
   if (!instance || !instance.latestTelemetry) return null;
@@ -1249,15 +1251,27 @@ export function getLiveCarPosition(carIdx: number): LivePosition | null {
 
   const telemetry = instance.latestTelemetry;
   const sessionInfo = instance.controller.getSessionInfo() as Record<string, unknown> | null;
-  const positions = readCanonicalOrder(instance);
 
-  if (!positions) return null;
+  return carPositionInOrder(readCanonicalOrder(instance, telemetry, sessionInfo), telemetry, sessionInfo, carIdx);
+}
 
-  const position = positions[carIdx] ?? 0;
+/**
+ * One car's slot in the canonical `order`, the shared body of
+ * {@link getLivePosition} and {@link getLiveCarPosition}: `null` when the car
+ * has no rank, the class position derived from the order with no official
+ * fallback (`0` when underivable).
+ */
+function carPositionInOrder(
+  order: readonly number[],
+  telemetry: TelemetryData,
+  sessionInfo: Record<string, unknown> | null,
+  carIdx: number,
+): LivePosition | null {
+  const position = order[carIdx] ?? 0;
 
   if (position <= 0) return null;
 
-  const classPosition = classPositionFromOrder(positions, telemetry.CarIdxClass, carIdx);
+  const classPosition = classPositionFromOrder(order, telemetry.CarIdxClass, carIdx);
 
   return {
     position,
@@ -1298,22 +1312,27 @@ export function getLiveCarPosition(carIdx: number): LivePosition | null {
  * correct order to reconstruct.
  */
 export function getLiveRacePositions(): readonly number[] | null {
-  return instance ? readCanonicalOrder(instance) : null;
+  if (!instance || !instance.latestTelemetry) return null;
+
+  return readCanonicalOrder(
+    instance,
+    instance.latestTelemetry,
+    instance.controller.getSessionInfo() as Record<string, unknown> | null,
+  );
 }
 
 /**
- * The canonical order for the latest telemetry, through
+ * The canonical order for the latest telemetry and session info, through
  * {@link TranslatorInstance.canonicalOrderMemo} (#711): the memo on a match of
  * the telemetry, session-info and state objects, else a fresh
- * {@link resolveCanonicalOrder}, stored. `null` without telemetry. The memo's
- * one reader, behind every public order accessor.
+ * {@link resolveCanonicalOrder}, stored. The memo's one reader, behind every
+ * public order accessor, which each check for telemetry first.
  */
-function readCanonicalOrder(self: TranslatorInstance): readonly number[] | null {
-  const telemetry = self.latestTelemetry;
-
-  if (!telemetry) return null;
-
-  const sessionInfo = self.controller.getSessionInfo() as Record<string, unknown> | null;
+function readCanonicalOrder(
+  self: TranslatorInstance,
+  telemetry: TelemetryData,
+  sessionInfo: Record<string, unknown> | null,
+): readonly number[] {
   const memo = self.canonicalOrderMemo;
 
   if (memo && memo.telemetry === telemetry && memo.sessionInfo === sessionInfo && memo.state === self.state) {

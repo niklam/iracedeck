@@ -90,7 +90,9 @@ export const TELEPORT_THRESHOLD = 0.05;
  * Cars never seen in-world (no anchor) are seeded on their first in-world tick
  * and stay unfrozen from there.
  *
- * The only in-place writer of `positionLastKnownScores` / `positionFrozen`: any other must clear `canonicalOrderMemo` (its invariant, `translator.ts`, #711).
+ * The only in-place writer of `positionLastKnownScores` / `positionFrozen`:
+ * any other must clear `canonicalOrderMemo` (its invariant, `translator.ts`,
+ * #711).
  */
 export function updatePositionTracking(state: TranslatorState, telemetry: TelemetryData): void {
   const lc = telemetry.CarIdxLapCompleted;
