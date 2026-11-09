@@ -144,7 +144,13 @@ describe("sim-connection singleton", () => {
     expect(isSimConnectionInitialized()).toBe(false);
   });
 
-  it.each([-1, Number.NaN, Number.POSITIVE_INFINITY])(
+  it("accepts the longest delay a timer honours", () => {
+    expect(() =>
+      initializeSimConnection(createFakeSimConnection().connection, { absentDelayMs: 2_147_483_647 }),
+    ).not.toThrow();
+  });
+
+  it.each([-1, Number.NaN, Number.POSITIVE_INFINITY, 2_147_483_648])(
     "refuses an absentDelayMs of %s and installs nothing",
     (delay) => {
       expect(() => initializeSimConnection(createFakeSimConnection().connection, { absentDelayMs: delay })).toThrow(
@@ -183,6 +189,30 @@ describe("sim presence (#1599)", () => {
   afterEach(() => {
     _resetSimConnection();
     vi.useRealTimers();
+  });
+
+  it("reports a subscribe that throws while registering, and still seeds the signal", () => {
+    const fake = createFakeSimConnection();
+    fake.state.connected = false;
+    const warn = vi.fn();
+    const logger = { trace: vi.fn(), debug: vi.fn(), info: vi.fn(), warn, error: vi.fn() } as never;
+    const connection: SimConnection = {
+      ...fake.connection,
+      subscribe: (id, onTick) => {
+        fake.connection.subscribe(id, onTick);
+        throw new Error("broken contract");
+      },
+    };
+    initializeSimConnection(connection, { absentDelayMs: DELAY, logger });
+    const listener = vi.fn();
+
+    expect(() => onSimPresenceChange(listener)).not.toThrow();
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("broken contract"));
+
+    vi.advanceTimersByTime(DELAY);
+
+    expect(isSimAbsent()).toBe(true);
+    expect(listener).toHaveBeenCalledWith(true);
   });
 
   it("is present at start", () => {

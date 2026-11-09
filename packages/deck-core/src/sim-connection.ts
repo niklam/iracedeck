@@ -95,11 +95,17 @@ const PENDING_SIM_CONNECTION: SimConnection = Object.freeze({
  */
 export const DEFAULT_SIM_ABSENT_DELAY_MS = 5000;
 
+/**
+ * The longest delay a timer honours: Node runs a `setTimeout` above 2^31 - 1 ms
+ * after 1 ms instead, which would make the sim read as absent at once.
+ */
+const MAX_TIMER_DELAY_MS = 2_147_483_647;
+
 /** What {@link initializeSimConnection} takes beside the connection. */
 export interface SimConnectionOptions {
   /**
    * How long, in milliseconds, the connection must stay disconnected before
-   * {@link isSimAbsent} turns true. A finite number, 0 or more. Defaults to
+   * {@link isSimAbsent} turns true. A number from 0 to 2147483647 (the longest delay a timer honours). Defaults to
    * {@link DEFAULT_SIM_ABSENT_DELAY_MS}.
    */
   absentDelayMs?: number;
@@ -111,7 +117,7 @@ export interface SimConnectionOptions {
  * Installs the sim connection, then subscribes every subscription queued
  * before it existed onto it, in the order they were made.
  *
- * @throws Error on a second call; RangeError when `absentDelayMs` is negative
+ * @throws Error on a second call; RangeError when `absentDelayMs` is negative, above 2147483647
  *   or not finite (checked before anything is installed)
  */
 export function initializeSimConnection(connection: SimConnection, options: SimConnectionOptions = {}): void {
@@ -121,8 +127,10 @@ export function initializeSimConnection(connection: SimConnection, options: SimC
 
   const { absentDelayMs = DEFAULT_SIM_ABSENT_DELAY_MS, logger = silentLogger } = options;
 
-  if (!Number.isFinite(absentDelayMs) || absentDelayMs < 0) {
-    throw new RangeError(`initializeSimConnection: absentDelayMs must be a finite number >= 0, got ${absentDelayMs}`);
+  if (!Number.isFinite(absentDelayMs) || absentDelayMs < 0 || absentDelayMs > MAX_TIMER_DELAY_MS) {
+    throw new RangeError(
+      `initializeSimConnection: absentDelayMs must be a number from 0 to ${MAX_TIMER_DELAY_MS}, got ${absentDelayMs}`,
+    );
   }
 
   presenceAbsentDelayMs = absentDelayMs;
@@ -228,7 +236,18 @@ function ensurePresenceSubscription(): void {
   if (presenceSubscribed) return;
 
   presenceSubscribed = true;
-  getSimConnection().subscribe(PRESENCE_SUBSCRIPTION_ID, onPresenceTick);
+
+  try {
+    getSimConnection().subscribe(PRESENCE_SUBSCRIPTION_ID, onPresenceTick);
+  } catch (err) {
+    // The `subscribe` contract forbids this. As in initializeSimConnection, a
+    // subscribe that threw has still registered the subscription (only its
+    // first notification failed), so it stays subscribed and is still seeded;
+    // the throw is reported rather than escaping into the caller's appear.
+    presenceLogger.warn(
+      `Sim presence subscription threw while registering: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
 
   // Before initialisation the subscription is only queued; the seed then
   // happens in initializeSimConnection, once it is replayed.
