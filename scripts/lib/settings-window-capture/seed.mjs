@@ -20,6 +20,9 @@
 /** Where the Diagnostics tab says settings are stored. A stable fake path. */
 export const SEED_STORE_PATH = "C:\\Users\\Driver\\AppData\\Local\\iRaceDeck\\Settings\\settings.json";
 
+/** Where the Diagnostics tab says learned track data is kept (#1112). A stable fake path. */
+export const SEED_TRACK_DATA_PATH = "C:\\Users\\Driver\\AppData\\Local\\iRaceDeck\\Track Data";
+
 /**
  * Build the settings object the capture serves to the page.
  *
@@ -117,6 +120,7 @@ export function buildSeedSettings() {
       installs: {},
     }),
     _settingsStorePath: SEED_STORE_PATH,
+    _trackDataPath: SEED_TRACK_DATA_PATH,
 
     // ── General ──
     // No dual-press ENABLE here on purpose: that one is a per-action setting
