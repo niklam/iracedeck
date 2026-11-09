@@ -4,6 +4,7 @@ import url from "node:url";
 import { describe, expect, it } from "vitest";
 
 import { buildComposedChangelogData } from "../../../../scripts/lib/changelog-composed.mjs";
+import { UNRELEASED_LABEL } from "../../../../scripts/lib/changelog-parse.mjs";
 
 /**
  * Renders the REAL `partials/settings-window-changelog.ejs` (not a fixture).
@@ -136,6 +137,56 @@ describe("settings-window-changelog.ejs", () => {
 
       expect(html.match(/sw-cl-date">Unreleased</g)).toHaveLength(1);
       expect(html).toContain('<h3 class="sw-cl-version">0.13.0</h3>\n\t\t</div>');
+    });
+  });
+
+  describe("the Unreleased section of the window after a stable fold (#1398)", () => {
+    // Between a stable fold and the next version bump the fragments compose as
+    // `## Unreleased` with no date line, above the dated section of the version
+    // the build still reports. The version is taken from the parser's constant,
+    // never written out here: the partial compares against a hand-kept literal
+    // (EJS cannot import), and this is what fails if the two drift apart.
+    const WINDOW = {
+      _meta: {},
+      releases: [
+        {
+          version: UNRELEASED_LABEL,
+          date: null,
+          categories: [{ title: "Features", items: ["Merged after the fold."] }],
+        },
+        {
+          version: "1.2.0",
+          date: "2026-11-01",
+          categories: [{ title: "Bug Fixes", items: ["Shipped in 1.2.0."] }],
+        },
+      ],
+    };
+
+    function cards(html: string): string[] {
+      return html.match(/<article class="sw-cl-release[\s\S]*?<\/article>/g) ?? [];
+    }
+
+    it("titles the card with the label and prints it once, with no date chip", () => {
+      const [unreleased] = cards(render("1.2.0", WINDOW));
+
+      expect(unreleased).toContain(`<h3 class="sw-cl-version">${UNRELEASED_LABEL}</h3>\n\t\t</div>`);
+      expect(unreleased).not.toContain("sw-cl-date");
+      expect(unreleased.split(UNRELEASED_LABEL)).toHaveLength(2);
+    });
+
+    it("badges the dated release the build reports, not the Unreleased card", () => {
+      const [unreleased, installed] = cards(render("1.2.0", WINDOW));
+
+      expect(unreleased).not.toContain("sw-cl-badge");
+      expect(unreleased).toMatch(/^<article class="sw-cl-release">/);
+      expect(installed).toMatch(/^<article class="sw-cl-release installed">/);
+      expect(installed).toContain('<h3 class="sw-cl-version">1.2.0</h3>');
+      expect(installed).toContain('<span class="sw-cl-date">2026-11-01</span>');
+      expect(installed).toContain('<span class="sw-cl-badge">Installed</span>');
+    });
+
+    it("finds the installed release below it, so no missing-notes line is shown", () => {
+      expect(render("1.2.0", WINDOW)).not.toContain("No release notes for version");
     });
   });
 
