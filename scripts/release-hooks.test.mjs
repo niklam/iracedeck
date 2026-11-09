@@ -743,7 +743,7 @@ describe("release-hooks.mjs voice-pack records (in a temporary git repository)",
     expect(result.stderr).toContain("Refusing to release: The voice-pack record module could not be loaded: ");
     expect(result.stderr).toContain("@iracedeck/callout-script");
     expect(result.stderr).toContain("Run `pnpm build`, then run this again. Nothing was written.");
-    expect(result.stderr).not.toMatch(/^Error [ERR_MODULE_NOT_FOUND]/m);
+    expect(result.stderr).not.toMatch(/^Error \[ERR_MODULE_NOT_FOUND\]/m);
     expect(snapshot(dir)).toEqual(before);
   });
 
