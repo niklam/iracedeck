@@ -121,6 +121,11 @@ export interface SettingsWindowCommandDeps {
   captureCpuProfile?: () => void;
   /** The CPU profiles directory (`<log dir>/profiles`); the page never supplies one (#1338). */
   profilesPath?: string;
+  /**
+   * The learned per-track data directory (`%LOCALAPPDATA%\iRaceDeck\Track Data`,
+   * shared by every deck host); the page never supplies one (#1112).
+   */
+  trackDataPath?: string;
 }
 
 /** The gate whose two keys the Race Engineer opt-in has to move together (#1061). */
@@ -280,6 +285,14 @@ export function createSettingsWindowCommandHandler(
       // where the user goes to pick up the files, not a file to highlight.
       case "openProfilesFolder":
         if (deps.openDirectory && deps.profilesPath) deps.openDirectory(deps.profilesPath);
+
+        break;
+
+      // The learned track data folder (#1112): a directory opener too, and the
+      // path is the plugin's own — anything the page sends beside the event is
+      // ignored.
+      case "openTrackDataFolder":
+        if (deps.openDirectory && deps.trackDataPath) deps.openDirectory(deps.trackDataPath);
 
         break;
 
