@@ -14,7 +14,8 @@
  * fold, because `release.yml` deploys the website for stable tags only.
  *
  * On a stable version the steps run in this order, each one's failure stopping
- * the release before anything is staged:
+ * the release before this hook stages anything (`before:bump` has already
+ * staged its own changes by then):
  *
  * 1. Refuse a developer tree before anything is built: `feature-flags.local.json`
  *    or `dev.local.json` at the root, or `IRACEDECK_DEV_VOICES` in the
@@ -42,7 +43,8 @@
  *    commit unseen. Then stage the folder, which release-it's own `--update`
  *    staging would not do for a pending tab's first, untracked PNG.
  *
- * Every failure names the commands that return the tree to HEAD. release-it's
+ * Every failure names the commands that return the tree to HEAD, and says that
+ * the restore reverts `before:bump`'s staged changes too. release-it's
  * `requireCleanWorkingDir` held when the release started, so `git restore
  * --staged --worktree -- :/` is safe, and it brings back the staged deletions
  * and modifications too; it does not remove an untracked file, so a pending
@@ -440,7 +442,9 @@ export async function releaseCapture(
   /**
    * Write the failure and what to do about it; the exit code to return. In a
    * dry run nothing has been written, by this hook or by `before:bump`'s dry
-   * branch, so there is nothing to restore.
+   * branch, so there is nothing to restore. In a real one this hook has staged
+   * nothing, but `before:bump` has already changed and staged the release's
+   * own files, which the restore reverts as well.
    *
    * @param {string[]} lines
    */
@@ -449,8 +453,11 @@ export async function releaseCapture(
     error(
       dryRun
         ? "Nothing was written; the release would stop here."
-        : `Nothing is staged. Return the tree to HEAD with \`${RESTORE_COMMAND}\`, then \`${cleanCommand(folderRel)}\` for a screenshot ` +
-            "the capture may have written for a tab that had none, and release again once the cause is fixed.",
+        : "This hook staged nothing. " +
+            `Return the tree to HEAD with \`${RESTORE_COMMAND}\`, which also reverts what before:bump changed and staged ` +
+            "(the version bump, the folded changelog, the fragments' removal and any sealed voice-pack record), " +
+            `then \`${cleanCommand(folderRel)}\` for a screenshot the capture may have written for a tab that had none, ` +
+            "and release again once the cause is fixed.",
     );
 
     return 1;

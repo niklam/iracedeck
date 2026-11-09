@@ -238,17 +238,22 @@ const STEPS = [
 ];
 
 /**
- * Every failure: nothing staged, the two restore commands named — as literals,
- * so a wrong constant cannot agree with itself. Verified in a throwaway
- * repository: `git restore --staged --worktree -- :/` returns every tracked
- * change (staged deletions and modifications included) and leaves an untracked
- * file, which the `git clean` of the folder removes.
+ * Every failure: nothing staged by the hook, the two restore commands named —
+ * as literals, so a wrong constant cannot agree with itself. Verified in a
+ * throwaway repository: `git restore --staged --worktree -- :/` returns every
+ * tracked change (staged deletions and modifications included) and leaves an
+ * untracked file, which the `git clean` of the folder removes. The message
+ * never claims the tree has nothing staged: `before:bump` staged its own
+ * changes before this hook ran, and the restore reverts them too.
  */
 function expectRefusedBeforeStaging({ staged, errors }, status) {
   expect(status).toBe(1);
   expect(staged()).toEqual([]);
   expect(errors()).toContain("`git restore --staged --worktree -- :/`");
   expect(errors()).toContain("`git clean -fd -- packages/website/src/assets/settings-window/`");
+  expect(errors()).toContain("This hook staged nothing.");
+  expect(errors()).toContain("which also reverts what before:bump changed and staged");
+  expect(errors()).not.toContain("Nothing is staged");
 }
 
 describe("the restore commands", () => {
@@ -611,10 +616,12 @@ describe("a failure at each step stops before staging and names the restore", ()
     expectRefusedBeforeStaging(f, status);
     expect(f.trace).toEqual(STEPS.slice(0, 8));
     expect(f.errors()).toContain(`changed tracked files outside ${FOLDER_REL}/`);
-    expect(f.errors()).toContain("packages/foo/generated.json (changed by the build");
-    // before:bump's own changes are not in the complaint.
-    expect(f.errors()).not.toContain("package.json (");
-    expect(f.errors()).not.toContain("changelog");
+    // The build's change alone is listed: before:bump's own changes (the
+    // version files, the fold, the fragment removal, the sealed record) are not.
+    const listed = f.deps.error.mock.calls.map(([line]) => line).filter((line) => line.startsWith("  - "));
+    expect(listed).toEqual([
+      "  - packages/foo/generated.json (changed by the build; it matched HEAD when the hook started)",
+    ]);
   });
 
   it("a file before:bump changed that the build changed again", async () => {
