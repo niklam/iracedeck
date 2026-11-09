@@ -20,6 +20,12 @@ const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..")
 const assetsDir = join(repoRoot, "packages", "website", "src", "assets", "settings-window");
 
 const DROP_FIX = "git checkout origin/master -- packages/website/src/assets/settings-window/";
+/** The checkout never deletes a file the base lacks, so every drop fix also says to remove those. */
+const RM_EVERY_ADDED = "then `git rm` every PNG there that origin/master lacks (the checkout never deletes a file)";
+/** @param {string} name */
+const rmAdded = (name) =>
+  `then \`git rm packages/website/src/assets/settings-window/${name}\` if origin/master lacks ${name} ` +
+  "(the checkout never deletes a file)";
 const RECAPTURE_FIX = "recaptured by the next stable release, never in a branch";
 
 /** @param {string} text */
@@ -145,6 +151,7 @@ describe("checkCaptureManifest", () => {
       expect(findings).toHaveLength(1);
       expect(findings[0].message).toContain("missing");
       expect(findings[0].message).toContain(DROP_FIX);
+      expect(findings[0].message).toContain(RM_EVERY_ADDED);
     });
 
     it("reports a manifest that is not an object", () => {
@@ -192,6 +199,8 @@ describe("checkCaptureManifest", () => {
       expect(findings).toEqual([
         { file: "general.png", message: expect.stringContaining("not a lowercase hex sha256") },
       ]);
+      // The entry is the problem and the PNG may be absent, so no file is named for git rm.
+      expect(findings[0].message).toContain(RM_EVERY_ADDED);
     });
   });
 
@@ -206,6 +215,7 @@ describe("checkCaptureManifest", () => {
       expect(findings[0].file).toBe("general.png");
       expect(findings[0].message).toContain("does not match its hash");
       expect(findings[0].message).toContain(DROP_FIX);
+      expect(findings[0].message).toContain(rmAdded("general.png"));
     });
 
     it("a file without an entry", () => {
@@ -217,6 +227,7 @@ describe("checkCaptureManifest", () => {
       expect(findings[0].file).toBe("general.png");
       expect(findings[0].message).toContain("has no entry");
       expect(findings[0].message).toContain(DROP_FIX);
+      expect(findings[0].message).toContain(rmAdded("general.png"));
     });
 
     it("an entry without a file", () => {
@@ -238,9 +249,11 @@ describe("checkCaptureManifest", () => {
       expect(findings[0].file).toBe("old.png");
       expect(findings[0].message).toContain("names no tab");
       expect(findings[0].message).toContain("PNG and its manifest entry go together");
+      expect(findings[0].message).toContain(DROP_FIX);
+      expect(findings[0].message).toContain(rmAdded("old.png"));
     });
 
-    it("an entry for an unlisted tab", () => {
+    it("an entry for an unlisted tab, naming no absent PNG to git rm", () => {
       const input = cleanInput();
       const files = { ...input.manifest.files, "old.png": sha256Hex(bytes("old")) };
       const findings = checkCaptureManifest({ ...input, manifest: { ...input.manifest, files } });
@@ -248,6 +261,8 @@ describe("checkCaptureManifest", () => {
       expect(findings).toHaveLength(1);
       expect(findings[0].file).toBe("old.png");
       expect(findings[0].message).toContain("a manifest entry but names no tab");
+      expect(findings[0].message).toContain(RM_EVERY_ADDED);
+      expect(findings[0].message).not.toContain("settings-window/old.png");
     });
 
     it("a PNG and an entry for an unlisted tab, as one finding", () => {
@@ -260,7 +275,12 @@ describe("checkCaptureManifest", () => {
       });
 
       expect(findings).toEqual([
-        { file: "old.png", message: expect.stringContaining("delete its PNG and its manifest entry together") },
+        {
+          file: "old.png",
+          message: expect.stringContaining(
+            "delete its PNG (`git rm packages/website/src/assets/settings-window/old.png`) and its manifest entry together",
+          ),
+        },
       ]);
     });
 
@@ -300,6 +320,38 @@ describe("checkCaptureManifest", () => {
       expect(findings).toHaveLength(1);
       expect(findings[0].message).toContain("newer than the version in development (3.10.0)");
       expect(findings[0].message).toContain(DROP_FIX);
+      expect(findings[0].message).toContain(RM_EVERY_ADDED);
+    });
+
+    // The checkout restores what origin/master has and never deletes a PNG the
+    // branch added, so a fix that names it alone leaves such a PNG red (#1536 QA).
+    it("every fix that drops the branch's files also says to git rm what the checkout leaves", () => {
+      const input = cleanInput();
+      const flipped = Uint8Array.from(input.files["general.png"]);
+      flipped[0] ^= 0x01;
+      const inputs = [
+        { ...input, manifest: null },
+        { ...input, manifest: [] },
+        { ...input, manifest: { ...input.manifest, extra: 1 } },
+        { ...input, manifest: { ...input.manifest, version: 1 } },
+        { ...input, manifest: { version: "3.9.0" } },
+        { ...input, manifest: { ...input.manifest, files: { ...input.manifest.files, "general.png": "x" } } },
+        { ...input, files: { ...input.files, "general.png": flipped } },
+        { ...input, manifest: { ...input.manifest, files: without(input.manifest.files, "general.png") } },
+        { ...input, files: { ...input.files, "old.png": bytes("old") } },
+        { ...input, manifest: { ...input.manifest, files: { ...input.manifest.files, "old.png": "0".repeat(64) } } },
+        { ...input, manifest: { ...input.manifest, version: "3.9" } },
+        { ...input, manifest: { ...input.manifest, version: "3.10.0-dev.0" } },
+        { ...input, manifest: { ...input.manifest, version: "3.10.1" } },
+      ];
+      const drops = inputs
+        .flatMap((each) => checkCaptureManifest(each))
+        .map((finding) => finding.message)
+        .filter((message) => message.includes("drop the branch's files"));
+
+      // One drop fix per input, so a message that stopped naming one would show here.
+      expect(drops).toHaveLength(inputs.length);
+      for (const message of drops) expect(message).toMatch(/then `git rm[ `].*\(the checkout never deletes a file\)/);
     });
   });
 

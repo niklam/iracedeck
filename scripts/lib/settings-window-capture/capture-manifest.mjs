@@ -47,17 +47,49 @@ export const FIRST_CAPTURED_RELEASE = "3.9.0";
  */
 export const COMMITTED_CAPTURE_DIR_REL = "packages/website/src/assets/settings-window";
 
-/** Puts the folder back as `master` has it: the fix for files a branch changed. */
+/**
+ * Puts back the files `master` has as `master` has them: the fix for files a
+ * branch changed or deleted. It never deletes a file `master` lacks.
+ */
 const CHECKOUT_MASTER_FOLDER = `git checkout origin/master -- ${COMMITTED_CAPTURE_DIR_REL}/`;
 
-const DROP_BRANCH_FILES =
-  "screenshots are recaptured by the next stable release, never in a branch: drop the branch's files with " +
-  `\`${CHECKOUT_MASTER_FOLDER}\``;
+/**
+ * Removes a PNG the branch added, which {@link CHECKOUT_MASTER_FOLDER} leaves.
+ *
+ * @param {string} name - The file name in the folder.
+ */
+const gitRmFile = (name) => `git rm ${COMMITTED_CAPTURE_DIR_REL}/${name}`;
 
-const REMOVE_TAB_REMAINDER =
+/**
+ * How to drop the branch's changes to the folder: the checkout, then the
+ * `git rm` of the PNGs it leaves, naming `png` when the finding is about a PNG
+ * that is in the folder (a `git rm` of an absent file fails).
+ *
+ * @param {string} [png] - The PNG the finding is about, present in the folder.
+ */
+const dropBranchFilesSteps = (png) =>
+  `drop the branch's files with \`${CHECKOUT_MASTER_FOLDER}\`, then ` +
+  (png === undefined
+    ? "`git rm` every PNG there that origin/master lacks"
+    : `\`${gitRmFile(png)}\` if origin/master lacks ${png}`) +
+  " (the checkout never deletes a file)";
+
+/**
+ * The fix for a folder a branch recaptured or edited.
+ *
+ * @param {string} [png] - The PNG the finding is about, present in the folder.
+ */
+const dropBranchFiles = (png) =>
+  `screenshots are recaptured by the next stable release, never in a branch: ${dropBranchFilesSteps(png)}`;
+
+/**
+ * The fix for a PNG or a manifest entry, not both, of a tab the list does not name.
+ *
+ * @param {string | undefined} png - The PNG, when it is the half in the folder.
+ */
+const removeTabRemainder = (png) =>
   "a removed tab's PNG and its manifest entry go together: delete the remainder " +
-  "(or, if the tab was not meant to go, drop the branch's files with " +
-  `\`${CHECKOUT_MASTER_FOLDER}\`)`;
+  `(or, if the tab was not meant to go, ${dropBranchFilesSteps(png)})`;
 
 const SHA256_HEX = /^[0-9a-f]{64}$/;
 
@@ -127,7 +159,7 @@ function checkShape(manifest) {
 
   if (!isPlainObject(manifest)) {
     return {
-      findings: [{ message: `${CAPTURE_MANIFEST_FILE} is not a JSON object; ${DROP_BRANCH_FILES}` }],
+      findings: [{ message: `${CAPTURE_MANIFEST_FILE} is not a JSON object; ${dropBranchFiles()}` }],
       entries: null,
     };
   }
@@ -135,16 +167,16 @@ function checkShape(manifest) {
   const extra = Object.keys(manifest).filter((key) => key !== "version" && key !== "files");
   if (extra.length > 0) {
     findings.push({
-      message: `${CAPTURE_MANIFEST_FILE} has keys other than "version" and "files" (${extra.join(", ")}); ${DROP_BRANCH_FILES}`,
+      message: `${CAPTURE_MANIFEST_FILE} has keys other than "version" and "files" (${extra.join(", ")}); ${dropBranchFiles()}`,
     });
   }
 
   if (typeof manifest.version !== "string") {
-    findings.push({ message: `${CAPTURE_MANIFEST_FILE} has no string "version"; ${DROP_BRANCH_FILES}` });
+    findings.push({ message: `${CAPTURE_MANIFEST_FILE} has no string "version"; ${dropBranchFiles()}` });
   }
 
   if (!isPlainObject(manifest.files)) {
-    findings.push({ message: `${CAPTURE_MANIFEST_FILE} has no "files" object; ${DROP_BRANCH_FILES}` });
+    findings.push({ message: `${CAPTURE_MANIFEST_FILE} has no "files" object; ${dropBranchFiles()}` });
     return { findings, entries: null };
   }
 
@@ -152,7 +184,7 @@ function checkShape(manifest) {
     if (typeof hash !== "string" || !SHA256_HEX.test(hash)) {
       findings.push({
         file: name,
-        message: `${CAPTURE_MANIFEST_FILE} records ${name} with a value that is not a lowercase hex sha256; ${DROP_BRANCH_FILES}`,
+        message: `${CAPTURE_MANIFEST_FILE} records ${name} with a value that is not a lowercase hex sha256; ${dropBranchFiles()}`,
       });
     }
   }
@@ -182,7 +214,10 @@ function checkListing(entries, files, tabs) {
 
     if (!listed.has(name)) {
       const what = hasFile && hasEntry ? "a PNG and a manifest entry" : hasFile ? "a PNG" : "a manifest entry";
-      const fix = hasFile && hasEntry ? "delete its PNG and its manifest entry together" : REMOVE_TAB_REMAINDER;
+      const fix =
+        hasFile && hasEntry
+          ? `delete its PNG (\`${gitRmFile(name)}\`) and its manifest entry together`
+          : removeTabRemainder(hasFile ? name : undefined);
       findings.push({
         file: name,
         message: `${name} has ${what} but names no tab in SETTINGS_WINDOW_TABS; ${fix}`,
@@ -191,7 +226,10 @@ function checkListing(entries, files, tabs) {
     }
 
     if (hasFile && !hasEntry) {
-      findings.push({ file: name, message: `${name} has no entry in ${CAPTURE_MANIFEST_FILE}; ${DROP_BRANCH_FILES}` });
+      findings.push({
+        file: name,
+        message: `${name} has no entry in ${CAPTURE_MANIFEST_FILE}; ${dropBranchFiles(name)}`,
+      });
       continue;
     }
 
@@ -212,7 +250,7 @@ function checkListing(entries, files, tabs) {
     if (typeof recorded === "string" && SHA256_HEX.test(recorded) && recorded !== sha256Hex(files[name])) {
       findings.push({
         file: name,
-        message: `${name} does not match its hash in ${CAPTURE_MANIFEST_FILE}; ${DROP_BRANCH_FILES}`,
+        message: `${name} does not match its hash in ${CAPTURE_MANIFEST_FILE}; ${dropBranchFiles(name)}`,
       });
     }
   }
@@ -238,7 +276,7 @@ function checkVersion(version, newestReleased, packageVersion) {
   if (parsed === null || parsed.version !== version || parsed.build.length > 0) {
     return [
       {
-        message: `${CAPTURE_MANIFEST_FILE} version "${version}" is not a semver version; ${DROP_BRANCH_FILES}`,
+        message: `${CAPTURE_MANIFEST_FILE} version "${version}" is not a semver version; ${dropBranchFiles()}`,
       },
     ];
   }
@@ -248,7 +286,7 @@ function checkVersion(version, newestReleased, packageVersion) {
       {
         message:
           `${CAPTURE_MANIFEST_FILE} version ${version} is a prerelease, so it was not captured by a stable release; ` +
-          DROP_BRANCH_FILES,
+          dropBranchFiles(),
       },
     ];
   }
@@ -271,7 +309,7 @@ function checkVersion(version, newestReleased, packageVersion) {
     findings.push({
       message:
         `${CAPTURE_MANIFEST_FILE} version ${version} is newer than the version in development (${developing}); ` +
-        DROP_BRANCH_FILES,
+        dropBranchFiles(),
     });
   }
 
@@ -306,7 +344,7 @@ export function checkCaptureManifest({ manifest, files, tabs, newestReleased, pa
   }
 
   if (manifest === null || manifest === undefined) {
-    return [{ message: `${CAPTURE_MANIFEST_FILE} is missing or not valid JSON; ${DROP_BRANCH_FILES}` }];
+    return [{ message: `${CAPTURE_MANIFEST_FILE} is missing or not valid JSON; ${dropBranchFiles()}` }];
   }
 
   const shape = checkShape(manifest);

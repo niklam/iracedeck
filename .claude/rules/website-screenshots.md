@@ -13,7 +13,7 @@ The website's only screenshots today are the Settings window's tabs (issue #1010
 
 ## Regenerating
 
-**A branch never commits a screenshot** — not after a UI change, a fragment or a `changelog.mdx` edit. Every user-facing PR used to recapture `whats-new.png`, and every recapture after a version bump rewrote the header version on all eleven tabs, so any two branches in flight conflicted on binaries git cannot merge (#1536). `capture-manifest.test.mjs` turns a branch's PNG red, since its hash no longer matches `capture.json`, and names the fix: `git checkout origin/master -- packages/website/src/assets/settings-window/`. Between releases `master`'s shots show the last release while its pages may already describe newer UI; the site ships from stable tags only, where the two agree.
+**A branch never commits a screenshot** — not after a UI change, a fragment or a `changelog.mdx` edit. Every user-facing PR used to recapture `whats-new.png`, and every recapture after a version bump rewrote the header version on all eleven tabs, so any two branches in flight conflicted on binaries git cannot merge (#1536). `capture-manifest.test.mjs` turns a branch's PNG red, since its hash no longer matches `capture.json`, and names the fix: `git checkout origin/master -- packages/website/src/assets/settings-window/`, then `git rm` each PNG the branch added there that `origin/master` lacks, since the checkout never deletes a file. Between releases `master`'s shots show the last release while its pages may already describe newer UI; the site ships from stable tags only, where the two agree.
 
 To look at a change, capture locally:
 
