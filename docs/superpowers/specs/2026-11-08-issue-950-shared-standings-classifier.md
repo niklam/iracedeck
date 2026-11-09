@@ -31,7 +31,7 @@ export function standingPosition(
   isMultiClass: boolean,
 ): number;
 
-/** `CarIdxLapCompleted + CarIdxLapDistPct`, or `null` when either is missing or negative. */
+/** `CarIdxLapCompleted + CarIdxLapDistPct`, or `null` when either is missing, negative or not finite. */
 export function lapProgress(telemetry: TelemetryData, carIdx: number): number | null;
 
 /** The player's side of every check, the same for every car on a tick. */
@@ -147,7 +147,7 @@ Rejected: resolving the player once in `handleOrderSteps` and passing it to both
   - multi-class with one unreadable class, which misses;
   - a readable class that differs while `isMultiClass` is false, which misses;
   - the lap boundary: a gap of `0.999` is the same lap, `1.0` is `different-lap`, and a pair straddling S/F (`lc 4 + dp 0.98` against `lc 5 + dp 0.01`) is the same lap;
-  - `lapProgress` returning `null` for a missing value and for a negative `CarIdxLapCompleted` or `CarIdxLapDistPct`.
+  - `lapProgress` returning `null` for a missing value and for a negative or non-finite (NaN) `CarIdxLapCompleted` or `CarIdxLapDistPct`. (Amended 2026-11-09: both old copies let a NaN through the same-lap test as "same lap"; treating it as unreadable is the second deliberate behaviour change, found by the /code-review.)
 - **`resolvePlayerStanding` and `standingPosition` tests.** The cases now covered only through opponent-flags move here.
 - **Positive controls.** These are run once by the implementer and recorded in the PR body, each with the test that failed, then reverted:
   - change `>= SAME_LAP_SPAN` to `>`; the `1.0` boundary case must fail;
