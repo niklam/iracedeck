@@ -7,12 +7,14 @@ import { DEV_LOCAL_FILE, DEV_VOICES_ENV } from "./dev-local.mjs";
 import {
   BUILD_FILTER,
   cleanCommand,
+  createOutputTail,
   describeBuildCommand,
   developerTreeMarkers,
   FEATURE_FLAGS_LOCAL_FILE,
   PLUGIN_CONFIG_REL,
   releaseCapture,
   RESTORE_COMMAND,
+  runTeed,
   unexpectedTrackedChanges,
 } from "./release-capture.mjs";
 import { CAPTURE_MANIFEST_FILE, sha256Hex } from "./settings-window-capture/capture-manifest.mjs";
@@ -20,6 +22,8 @@ import { CapturePreconditionError, committedCaptureDir } from "./settings-window
 import { SETTINGS_WINDOW_TABS } from "./settings-window-capture/tabs.mjs";
 
 const ROOT = path.join("/repo");
+/** A real folder for the tests that start a child process. */
+const ROOT_CWD = import.meta.dirname;
 const FOLDER = committedCaptureDir(ROOT);
 const FOLDER_REL = "packages/website/src/assets/settings-window";
 const VERSION = "3.9.0";
@@ -157,10 +161,13 @@ function fakes({ env = {}, build, capture, assertReleaseBuild, head: headOverrid
     root: ROOT,
     env,
     fs,
-    build: vi.fn((root) => {
+    // A fake `build` may return a bare exit code, or the whole BuildResult to
+    // hand back an output tail.
+    build: vi.fn(async (root) => {
       trace.push("build");
+      const result = build === undefined ? 0 : build(root, { files, head });
 
-      return build === undefined ? 0 : build(root, { files, head });
+      return typeof result === "number" ? { status: result, outputTail: [] } : result;
     }),
     assertReleaseBuild: vi.fn((configPath) => {
       trace.push("assert");
@@ -352,6 +359,35 @@ describe("a failure at each step stops before staging and names the restore", ()
     expect(f.errors()).toContain("the plugin build exited 3");
     expect(f.errors()).toContain("LNK1318");
     expect(f.errors()).toContain("restore and run the release again");
+  });
+
+  it("a failed build's output tail, repeated on error ahead of the failure, with the verbose rerun", async () => {
+    const tail = [
+      "@iracedeck/settings:build: src/settings.ts(12,3): error TS2322: Type 'string' is not assignable to type 'number'.",
+      " ERROR  run failed: command  exited (2)",
+    ];
+    const f = fakes({ build: () => ({ status: 2, outputTail: tail }) });
+
+    const status = await releaseCapture(VERSION, f.deps);
+
+    expectRefusedBeforeStaging(f, status);
+    const lines = f.deps.error.mock.calls.map(([line]) => line);
+    const stopped = lines.findIndex((line) => line.startsWith("The release stopped: the plugin build exited 2"));
+    expect(lines.slice(0, stopped)).toEqual([`The last 2 lines of the plugin build's output:`, ...tail, ""]);
+    expect(lines[stopped]).toContain("The end of its output is above.");
+    expect(lines[stopped]).toContain("`pnpm release -- -V`");
+  });
+
+  it("a failed build that printed nothing does not point above", async () => {
+    const f = fakes({ build: () => 1 });
+
+    const status = await releaseCapture(VERSION, f.deps);
+
+    expectRefusedBeforeStaging(f, status);
+    expect(f.errors()).toContain("the plugin build exited 1, so there is nothing to capture. It printed nothing.");
+    expect(f.errors()).not.toContain("above");
+    expect(f.errors()).not.toContain("output:");
+    expect(f.errors()).toContain("`pnpm release -- -V`");
   });
 
   it("a built bin/config.json carrying devVoicePacksRoot, before the capture", async () => {
@@ -604,11 +640,116 @@ describe("the dry run (RELEASE_IT_DRY_RUN=1)", () => {
 });
 
 describe("the build command", () => {
-  it("runs turbo's JS entry under this Node with the plugin filter", () => {
+  it("runs turbo's JS entry under this Node with the plugin filter, printing only failed tasks' logs", () => {
     const command = describeBuildCommand();
 
     expect(command.startsWith(process.execPath)).toBe(true);
     expect(command).toMatch(/turbo[\\/]bin[\\/]turbo/);
-    expect(command.endsWith(` run build --filter=${BUILD_FILTER}`)).toBe(true);
+    expect(command.endsWith(` run build --filter=${BUILD_FILTER} --output-logs=errors-only`)).toBe(true);
+  });
+});
+
+describe("createOutputTail", () => {
+  it("keeps the last lines of both streams, in the order they finished", () => {
+    const tail = createOutputTail(3);
+
+    tail.write("stdout", "one\ntwo\n");
+    tail.write("stderr", "three\r\n");
+    tail.write("stdout", "four\nfive\n");
+
+    expect(tail.lines()).toEqual(["three", "four", "five"]);
+  });
+
+  it("joins a line cut across chunks within its own stream, never with the other one's", () => {
+    const tail = createOutputTail(10);
+
+    tail.write("stdout", "src/a.ts(1,1): err");
+    tail.write("stderr", "warning: slow\n");
+    tail.write("stdout", "or TS2322\n");
+
+    expect(tail.lines()).toEqual(["warning: slow", "src/a.ts(1,1): error TS2322"]);
+  });
+
+  it("joins a CRLF split between two chunks", () => {
+    const tail = createOutputTail(10);
+
+    tail.write("stdout", "a\r");
+    tail.write("stdout", "\nb\r\n");
+
+    expect(tail.lines()).toEqual(["a", "b"]);
+  });
+
+  it("includes each stream's unfinished last line, still bounded", () => {
+    const tail = createOutputTail(2);
+
+    tail.write("stdout", "one\ntwo\nno newline at the end");
+    tail.write("stderr", "dangling\r");
+
+    expect(tail.lines()).toEqual(["no newline at the end", "dangling"]);
+  });
+
+  it("keeps blank lines that were finished but not an empty unfinished one", () => {
+    const tail = createOutputTail(10);
+
+    tail.write("stdout", "a\n\nb\n");
+
+    expect(tail.lines()).toEqual(["a", "", "b"]);
+  });
+});
+
+describe("runTeed", () => {
+  /** A writable that records what it was handed. */
+  const sink = () => {
+    const chunks = [];
+
+    return { chunks, write: (text) => chunks.push(text), text: () => chunks.join("") };
+  };
+
+  it("streams both outputs live, resolves with the exit code and keeps the tail", async () => {
+    const out = sink();
+    const err = sink();
+    const script =
+      "process.stdout.write('compiling\\nsrc/a.ts: error TS2322\\n');" +
+      "process.stderr.write('turbo: task failed\\n');" +
+      "process.exitCode = 7;";
+
+    const result = await runTeed(process.execPath, ["-e", script], { cwd: ROOT_CWD, out, err });
+
+    expect(result.status).toBe(7);
+    expect(out.text()).toBe("compiling\nsrc/a.ts: error TS2322\n");
+    expect(err.text()).toBe("turbo: task failed\n");
+    expect([...result.outputTail].sort()).toEqual(["compiling", "src/a.ts: error TS2322", "turbo: task failed"].sort());
+  });
+
+  it("keeps only the last maxLines lines of a long output, while streaming all of it", async () => {
+    const out = sink();
+    const script = "for (let i = 1; i <= 500; i++) process.stdout.write('line ' + i + '\\n');";
+
+    const result = await runTeed(process.execPath, ["-e", script], { cwd: ROOT_CWD, out, err: sink(), maxLines: 200 });
+
+    expect(result.status).toBe(0);
+    expect(out.text()).toBe(Array.from({ length: 500 }, (_, i) => `line ${i + 1}\n`).join(""));
+    expect(result.outputTail).toHaveLength(200);
+    expect(result.outputTail[0]).toBe("line 301");
+    expect(result.outputTail.at(-1)).toBe("line 500");
+  });
+
+  it("decodes a character split across two writes whole", async () => {
+    const out = sink();
+    // "é" is two bytes in UTF-8; write them as separate chunks.
+    const script =
+      "process.stdout.write(Buffer.from([0x63, 0x61, 0x66, 0xc3]));" +
+      "setTimeout(() => process.stdout.write(Buffer.from([0xa9, 0x0a])), 50);";
+
+    const result = await runTeed(process.execPath, ["-e", script], { cwd: ROOT_CWD, out, err: sink() });
+
+    expect(out.text()).toBe("café\n");
+    expect(result.outputTail).toEqual(["café"]);
+  });
+
+  it("rejects when the program cannot be started", async () => {
+    await expect(
+      runTeed(path.join(ROOT_CWD, "no-such-program-1536.exe"), [], { cwd: ROOT_CWD, out: sink(), err: sink() }),
+    ).rejects.toThrow(/ENOENT/);
   });
 });

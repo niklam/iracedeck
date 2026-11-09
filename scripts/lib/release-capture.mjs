@@ -23,7 +23,10 @@
  *    files, the folded `changelog.mdx`, the fragments' removal, any sealed
  *    voice-pack record — each with the hash of its content, so step 7 can tell
  *    the build's changes from theirs, a file both changed included.
- * 3. Build the Stream Deck plugin and its dependencies through turbo's JS entry.
+ * 3. Build the Stream Deck plugin and its dependencies through turbo's JS entry,
+ *    its output streamed live. A failed build's last lines are repeated through
+ *    `error`: without `--verbose`, release-it shows a failed hook's stderr and
+ *    nothing of its stdout, which is where turbo prints the compiler errors.
  * 4. `assertReleaseBuild` on the built plugin's `bin/config.json`: the artifact
  *    itself carries no development voice root.
  * 5. Capture every tab into the committed folder, expecting the header to read
@@ -53,7 +56,7 @@
  * build, a browser or a git repository.
  * Decided in `docs/superpowers/specs/2026-11-09-issue-1536-whats-new-screenshot-conflicts.md`.
  */
-import { execFileSync, spawnSync } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
@@ -83,8 +86,15 @@ export const FEATURE_FLAGS_LOCAL_FILE = "feature-flags.local.json";
 /** The turbo filter: the Stream Deck plugin and everything it depends on. */
 export const BUILD_FILTER = "@iracedeck/iracing-plugin-stream-deck...";
 
-/** turbo's arguments for the build, after its JS entry. */
-export const BUILD_ARGS = Object.freeze(["run", "build", `--filter=${BUILD_FILTER}`]);
+/**
+ * turbo's arguments for the build, after its JS entry. `--output-logs=errors-only`
+ * keeps a passing build to turbo's summary, well under the 1 MiB `maxBuffer`
+ * release-it's `exec` gives a hook, past which Node kills it.
+ */
+export const BUILD_ARGS = Object.freeze(["run", "build", `--filter=${BUILD_FILTER}`, "--output-logs=errors-only"]);
+
+/** How many lines of the build's combined output a failed build repeats. */
+export const BUILD_OUTPUT_TAIL_LINES = 200;
 
 /** The built plugin's config, which `assertReleaseBuild` reads. */
 export const PLUGIN_CONFIG_REL = "packages/iracing-plugin-stream-deck/com.iracedeck.sd.core.sdPlugin/bin/config.json";
@@ -118,17 +128,99 @@ export function describeBuildCommand() {
 }
 
 /**
- * The real build: turbo under `process.execPath`, output streamed, in `root`.
+ * @typedef {{ status: number, outputTail: string[] }} BuildResult - The exit
+ *   code, and the last lines of stdout and stderr together, oldest first.
+ */
+
+/**
+ * A bounded tail of a child's combined output, by line. Each stream keeps its
+ * own unfinished line, so a chunk that ends mid-line on stdout never has a
+ * stderr line glued onto it; a finished line from either joins one shared
+ * list, of which only the last `maxLines` are kept.
+ *
+ * @param {number} maxLines
+ */
+export function createOutputTail(maxLines) {
+  /** @type {string[]} */
+  const finished = [];
+  /** @type {Map<string, string>} */
+  const unfinished = new Map();
+
+  return {
+    /**
+     * @param {string} stream - Which stream the text came from, as `"stdout"`.
+     * @param {string} text - A decoded chunk, cut wherever the pipe cut it.
+     */
+    write(stream, text) {
+      const parts = `${unfinished.get(stream) ?? ""}${text}`.split(/\r?\n/);
+      unfinished.set(stream, /** @type {string} */ (parts.pop()));
+      finished.push(...parts);
+      if (finished.length > maxLines) finished.splice(0, finished.length - maxLines);
+    },
+    /** The kept lines, each stream's unfinished last line after them. */
+    lines() {
+      const pending = [...unfinished.values()].map((line) => line.replace(/\r$/, "")).filter((line) => line !== "");
+
+      return [...finished, ...pending].slice(-maxLines);
+    },
+  };
+}
+
+/**
+ * Run `file` with `args` in `cwd`, streaming its stdout and stderr live to
+ * `out` and `err` while keeping the last `maxLines` lines of both.
+ *
+ * release-it shows a failing hook's stderr and drops its stdout whenever
+ * stderr is not empty, which the hook's own failure lines make sure of; so a
+ * failed build's compiler errors, which turbo prints on stdout, would never
+ * reach the person releasing unless the hook repeats them on stderr.
+ *
+ * @param {string} file
+ * @param {readonly string[]} args
+ * @param {object} options
+ * @param {string} options.cwd
+ * @param {{ write: (text: string) => unknown }} [options.out]
+ * @param {{ write: (text: string) => unknown }} [options.err]
+ * @param {number} [options.maxLines]
+ * @returns {Promise<BuildResult>} `status` is 1 when the child was ended by a signal.
+ *   Rejects when it could not be started.
+ */
+export function runTeed(
+  file,
+  args,
+  { cwd, out = process.stdout, err = process.stderr, maxLines = BUILD_OUTPUT_TAIL_LINES },
+) {
+  return new Promise((resolve, reject) => {
+    const tail = createOutputTail(maxLines);
+    const child = spawn(file, args, { cwd, stdio: ["inherit", "pipe", "pipe"] });
+
+    for (const [name, from, to] of /** @type {const} */ ([
+      ["stdout", child.stdout, out],
+      ["stderr", child.stderr, err],
+    ])) {
+      // Decoded per stream, so a character split across two chunks arrives whole.
+      from.setEncoding("utf8");
+      from.on("data", (text) => {
+        to.write(text);
+        tail.write(name, text);
+      });
+    }
+
+    child.once("error", reject);
+    // `close`, not `exit`: both pipes have been read to the end by then.
+    child.once("close", (code) => resolve({ status: code ?? 1, outputTail: tail.lines() }));
+  });
+}
+
+/**
+ * The real build: turbo under `process.execPath` in `root`, its output streamed
+ * live and its tail kept for a failure to repeat.
  *
  * @param {string} root
- * @returns {number} The exit code; 1 when the process could not be started.
+ * @returns {Promise<BuildResult>}
  */
 function realBuild(root) {
-  const result = spawnSync(process.execPath, [turboEntry(), ...BUILD_ARGS], { cwd: root, stdio: "inherit" });
-
-  if (result.error) throw result.error;
-
-  return result.status ?? 1;
+  return runTeed(process.execPath, [turboEntry(), ...BUILD_ARGS], { cwd: root });
 }
 
 /**
@@ -272,7 +364,8 @@ export function developerTreeMarkers(root, { fs, env }) {
  * @param {string} [deps.root] - The repository root; this checkout's by default.
  * @param {NodeJS.ProcessEnv} [deps.env] - Read for `RELEASE_IT_DRY_RUN` and `IRACEDECK_DEV_VOICES`.
  * @param {ReleaseCaptureFs} [deps.fs]
- * @param {(root: string) => number} [deps.build] - Runs the build, returning its exit code.
+ * @param {(root: string) => Promise<BuildResult>} [deps.build] - Runs the build, its output
+ *   streamed, and resolves with its exit code and the tail of its output.
  * @param {(configPath: string) => number} [deps.assertReleaseBuild]
  * @param {typeof realRunCapture} [deps.runCapture]
  * @param {typeof realGit} [deps.git]
@@ -370,10 +463,16 @@ export async function releaseCapture(
 
     // 3. The build, so the page carries the bumped version and the folded notes.
     log(`  Building the Stream Deck plugin and its dependencies: ${describeBuildCommand()}`);
-    const buildStatus = build(root);
+    const { status: buildStatus, outputTail } = await build(root);
     if (buildStatus !== 0) {
+      // Repeated on stderr: release-it shows a failed hook's stderr alone, so
+      // turbo's stdout, where the compiler errors are, would otherwise be lost.
+      const repeated = outputTail.length > 0;
       return fail(
-        `The release stopped: the plugin build exited ${buildStatus} (see its output above), so there is nothing to capture. ` +
+        ...(repeated ? [`The last ${outputTail.length} lines of the plugin build's output:`, ...outputTail, ""] : []),
+        `The release stopped: the plugin build exited ${buildStatus}, so there is nothing to capture. ` +
+          (repeated ? "The end of its output is above. " : "It printed nothing. ") +
+          "To watch the whole build live, restore the tree and release with `pnpm release -- -V`. " +
           "An MSVC LNK1318 abort while linking a native addon is a toolchain hiccup, not a defect in the tree: restore and run the release again.",
       );
     }
