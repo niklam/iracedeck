@@ -22,14 +22,18 @@
  * version; one that is stays byte-untouched, so re-running is safe. Nothing is
  * committed here.
  *
+ * The record module is loaded through `lib/pack-record-module.mjs`, after the
+ * arguments are parsed, so an unbuilt tree is one sentence naming `pnpm build`
+ * rather than a raw module-not-found from inside the package.
+ *
  * Design record: docs/superpowers/specs/2026-11-08-issue-1667-voice-pack-version-guard.md,
  * "Sealing: how the tree learns a version is released".
  */
 import path from "node:path";
 import url from "node:url";
 
-import { sealPackRecords } from "../packages/audio-assets/src/build/pack-record.mjs";
 import { VOICE_PACKS } from "../packages/audio-assets/src/build/voice-packs.mjs";
+import { loadPackRecordModule } from "./lib/pack-record-module.mjs";
 
 const repoRoot = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), "..");
 
@@ -46,21 +50,30 @@ const PACK_RECORDS_REL = "packages/audio-assets/pack-records";
 /**
  * The command, with everything it reads and prints injectable so a test can
  * run it over a tree of its own. Returns the exit code: 0 when every chosen
- * pack is sealed (or was already), 1 for a usage error, an unknown pack, a
- * record problem or a write that failed — nothing is sealed in those cases.
+ * pack is sealed (or was already), 1 for a usage error, an unknown pack, an
+ * unbuilt tree, a record problem or a write that failed — nothing is sealed in
+ * those cases.
  *
  * @param {readonly string[]} argv — everything after the script path: pack ids
  * @param {object} [options]
  * @param {readonly VoicePackDefinition[]} [options.packs] — the registry, `VOICE_PACKS`
  * @param {PackRoots} [options.roots] — where the tree is; the package's own by default
  * @param {string} [options.root] — the directory printed paths are relative to; the repo root
+ * @param {typeof loadPackRecordModule} [options.load] — a test's seam for the record module
  * @param {(line: string) => void} [options.log]
  * @param {(line: string) => void} [options.error]
- * @returns {number}
+ * @returns {Promise<number>}
  */
-export function sealVoicePacks(
+export async function sealVoicePacks(
   argv,
-  { packs = VOICE_PACKS, roots = {}, root = repoRoot, log = console.log, error = console.error } = {},
+  {
+    packs = VOICE_PACKS,
+    roots = {},
+    root = repoRoot,
+    load = loadPackRecordModule,
+    log = console.log,
+    error = console.error,
+  } = {},
 ) {
   const known = packs.map((pack) => pack.id);
   /** @type {string[]} */
@@ -80,23 +93,23 @@ export function sealVoicePacks(
       return 1;
     }
 
-    if (!known.includes(arg)) {
-      error(`unknown pack "${arg}" — known packs: ${known.join(", ")}`);
-
-      return 1;
-    }
-
-    if (!ids.includes(arg)) ids.push(arg);
+    ids.push(arg);
   }
 
-  const chosen = ids.length === 0 ? [...known] : ids;
+  let chosen;
   let sealed;
 
   try {
-    ({ sealed } = sealPackRecords({ packs, ...(ids.length === 0 ? {} : { ids }), ...roots }));
+    const { selectPacks, sealPackRecords } = await load();
+
+    // The one selector the packer and the sealer use too: an unknown id is
+    // refused here, before a record is read, naming the known ones.
+    chosen = selectPacks(ids, packs);
+    ({ sealed } = sealPackRecords({ packs, ids, ...roots }));
   } catch (err) {
-    // A record problem comes with its problems formatted into the message; a
-    // write that failed names the file. Either way nothing else is sealed.
+    // An unbuilt tree names `pnpm build`; a record problem comes with its
+    // problems formatted into the message; a write that failed names the file.
+    // Either way nothing else is sealed.
     error(err instanceof Error ? err.message : String(err));
 
     return 1;
@@ -105,7 +118,7 @@ export function sealVoicePacks(
   const relative = (file) => path.relative(root, file).split(path.sep).join("/");
 
   if (sealed.length === 0) {
-    const versions = chosen.map((id) => `${id} ${packs.find((pack) => pack.id === id).version}`);
+    const versions = chosen.map((pack) => `${pack.id} ${pack.version}`);
 
     log(`Nothing to seal: ${versions.join(", ")} ${chosen.length === 1 ? "is" : "are"} already sealed as released.`);
 
@@ -132,5 +145,5 @@ if (
   invokedPath &&
   (import.meta.url === url.pathToFileURL(invokedPath).href || invokedPath === url.fileURLToPath(import.meta.url))
 ) {
-  process.exitCode = sealVoicePacks(process.argv.slice(2));
+  process.exitCode = await sealVoicePacks(process.argv.slice(2));
 }

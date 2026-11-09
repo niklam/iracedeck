@@ -98,10 +98,10 @@ function fixture({ sealed = [] } = {}) {
 }
 
 /** Run the command over the fixture, capturing both streams. */
-function run(fx, argv) {
+async function run(fx, argv, options = {}) {
   const log = vi.fn();
   const error = vi.fn();
-  const status = sealVoicePacks(argv, { packs: PACKS, roots: fx.roots, root: fx.root, log, error });
+  const status = await sealVoicePacks(argv, { packs: PACKS, roots: fx.roots, root: fx.root, log, error, ...options });
   return {
     status,
     out: log.mock.calls.map(([line]) => line).join("\n"),
@@ -110,11 +110,11 @@ function run(fx, argv) {
 }
 
 describe("sealVoicePacks", () => {
-  it("seals every pack when none is named, printing each record and the commit hint", () => {
+  it("seals every pack when none is named, printing each record and the commit hint", async () => {
     const fx = fixture();
     const expected = { alpha: fx.sealedBytes(ALPHA), beta: fx.sealedBytes(BETA) };
 
-    const { status, out, err } = run(fx, []);
+    const { status, out, err } = await run(fx, []);
 
     expect(err).toBe("");
     expect(status).toBe(0);
@@ -129,11 +129,11 @@ describe("sealVoicePacks", () => {
     ]);
   });
 
-  it("seals only the named packs and leaves the others byte-untouched", () => {
+  it("seals only the named packs and leaves the others byte-untouched", async () => {
     const fx = fixture();
     const alphaBefore = fx.recordBytes(ALPHA);
 
-    const { status, out } = run(fx, ["beta"]);
+    const { status, out } = await run(fx, ["beta"]);
 
     expect(status).toBe(0);
     expect(fx.recordBytes(ALPHA)).toBe(alphaBefore);
@@ -142,21 +142,21 @@ describe("sealVoicePacks", () => {
     expect(out).not.toContain("alpha");
   });
 
-  it("names a pack given twice once", () => {
+  it("names a pack given twice once", async () => {
     const fx = fixture();
 
-    const { status, out } = run(fx, ["alpha", "alpha"]);
+    const { status, out } = await run(fx, ["alpha", "alpha"]);
 
     expect(status).toBe(0);
     expect(out.match(/Sealed /g)).toHaveLength(1);
   });
 
-  it("says so and writes nothing when every chosen pack is already sealed at its version", () => {
+  it("says so and writes nothing when every chosen pack is already sealed at its version", async () => {
     const fx = fixture({ sealed: ["alpha", "beta"] });
     const before = fx.allBytes();
 
-    const all = run(fx, []);
-    const one = run(fx, ["beta"]);
+    const all = await run(fx, []);
+    const one = await run(fx, ["beta"]);
 
     expect(all.status).toBe(0);
     expect(all.out).toBe("Nothing to seal: alpha 1.2.3, beta 2.0.0 are already sealed as released.");
@@ -165,11 +165,11 @@ describe("sealVoicePacks", () => {
     expect(fx.allBytes()).toEqual(before);
   });
 
-  it("seals the packs not yet sealed and skips the one that is", () => {
+  it("seals the packs not yet sealed and skips the one that is", async () => {
     const fx = fixture({ sealed: ["alpha"] });
     const alphaBefore = fx.recordBytes(ALPHA);
 
-    const { status, out } = run(fx, []);
+    const { status, out } = await run(fx, []);
 
     expect(status).toBe(0);
     expect(fx.recordBytes(ALPHA)).toBe(alphaBefore);
@@ -177,11 +177,11 @@ describe("sealVoicePacks", () => {
     expect(out).not.toContain("Sealed pack-records/alpha.json");
   });
 
-  it("refuses an unknown pack, naming the known ones, before checking or writing anything", () => {
+  it("refuses an unknown pack, naming the known ones, before checking or writing anything", async () => {
     const fx = fixture();
     const before = fx.allBytes();
 
-    const { status, out, err } = run(fx, ["beta", "gamma"]);
+    const { status, out, err } = await run(fx, ["beta", "gamma"]);
 
     expect(status).toBe(1);
     expect(err).toBe('unknown pack "gamma" — known packs: alpha, beta');
@@ -189,21 +189,21 @@ describe("sealVoicePacks", () => {
     expect(fx.allBytes()).toEqual(before);
   });
 
-  it("refuses an option it does not know, with the usage", () => {
+  it("refuses an option it does not know, with the usage", async () => {
     const fx = fixture();
 
-    const { status, err } = run(fx, ["--dry-run"]);
+    const { status, err } = await run(fx, ["--dry-run"]);
 
     expect(status).toBe(1);
     expect(err).toBe(`unknown option "--dry-run" — ${USAGE}`);
     expect(readPackRecord("alpha", fx.roots.recordsDir).released).toBeUndefined();
   });
 
-  it("prints the usage and the known packs for --help and -h, sealing nothing", () => {
+  it("prints the usage and the known packs for --help and -h, sealing nothing", async () => {
     const fx = fixture();
 
     for (const flag of ["--help", "-h"]) {
-      const { status, out, err } = run(fx, [flag]);
+      const { status, out, err } = await run(fx, [flag]);
       expect(status).toBe(0);
       expect(err).toBe("");
       expect(out).toContain(USAGE);
@@ -215,12 +215,12 @@ describe("sealVoicePacks", () => {
   // The command is the hook's seal without the release: the same checks over
   // EVERY pack first, so a stale record anywhere in the tree seals nothing, not
   // even the pack that was named and is fine.
-  it("seals nothing and prints every problem with its fix when any pack's record is stale", () => {
+  it("seals nothing and prints every problem with its fix when any pack's record is stale", async () => {
     const fx = fixture();
     writeFileSync(path.join(fx.roots.srcRoot, "alpha", "numbers", "1.mp3"), "re-recorded");
     const before = fx.allBytes();
 
-    const { status, out, err } = run(fx, ["beta"]);
+    const { status, out, err } = await run(fx, ["beta"]);
 
     expect(status).toBe(1);
     expect(out).toBe("");
@@ -234,14 +234,44 @@ describe("sealVoicePacks", () => {
     expect(fx.allBytes()).toEqual(before);
   });
 
-  it("prints paths relative to the root it is given, with forward slashes", () => {
+  it("prints paths relative to the root it is given, with forward slashes", async () => {
     const fx = fixture();
 
-    const { out } = run(fx, ["alpha"]);
+    const { out } = await run(fx, ["alpha"]);
 
     expect(out).toContain("Sealed pack-records/alpha.json:");
     expect(out).not.toContain("\\");
     expect(out).not.toContain(fx.root);
+  });
+  // The unknown-id check is the shared `selectPacks`, run before a record is
+  // read: a stale record elsewhere in the tree does not change the answer.
+  it("refuses an unknown pack before the record checks, even with a stale record in the tree", async () => {
+    const fx = fixture();
+    writeFileSync(path.join(fx.roots.srcRoot, "alpha", "numbers", "1.mp3"), "re-recorded");
+
+    const { status, err } = await run(fx, ["gamma"]);
+
+    expect(status).toBe(1);
+    expect(err).toBe('unknown pack "gamma" — known packs: alpha, beta');
+  });
+
+  // On an unbuilt or cleaned tree the record module cannot be imported, since it
+  // reaches @iracedeck/callout-script's dist/. The loader turns that into one
+  // sentence naming `pnpm build`; the command prints it and seals nothing.
+  it("prints the loader's pnpm build message and exits 1 when the record module cannot be loaded", async () => {
+    const fx = fixture();
+    const before = fx.allBytes();
+    const load = vi.fn(async () => {
+      throw new Error("The voice-pack record module could not be loaded: Cannot find package … Run `pnpm build` …");
+    });
+
+    const { status, out, err } = await run(fx, ["alpha"], { load });
+
+    expect(status).toBe(1);
+    expect(err).toContain("The voice-pack record module could not be loaded");
+    expect(err).toContain("pnpm build");
+    expect(out).toBe("");
+    expect(fx.allBytes()).toEqual(before);
   });
 });
 

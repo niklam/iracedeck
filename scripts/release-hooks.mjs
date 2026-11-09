@@ -3,15 +3,11 @@ import { existsSync, writeFileSync } from "node:fs";
 import path, { join } from "node:path";
 import semver from "semver";
 
-import {
-  formatPackRecordProblems,
-  PACK_RECORDS_DIR,
-  sealPackRecords,
-} from "../packages/audio-assets/src/build/pack-record.mjs";
 import { CHANGELOG_SOURCE_PATH } from "./lib/changelog-data.mjs";
 import { formatLocalDate, loadChangelogFold } from "./lib/changelog-fold.mjs";
 import { CHANGELOG_FRAGMENTS_DIR } from "./lib/changelog-fragments.mjs";
 import { manifestVersionFor } from "./lib/manifest-version.mjs";
+import { loadPackRecordModule } from "./lib/pack-record-module.mjs";
 import { allPluginManifestRelPaths, discoverVersionedFiles, pluginManifestRelPaths } from "./lib/version-discovery.mjs";
 
 const version = process.argv[2];
@@ -24,9 +20,6 @@ const root = new URL("..", import.meta.url).pathname.replace(/^\/([A-Z]:)/, "$1"
 
 /** A path under `root` as git and the messages name it: relative, forward slashes. */
 const relativeToRoot = (file) => path.relative(root, file).split(path.sep).join("/");
-
-/** `packages/audio-assets/pack-records`, as the restore command names it. */
-const PACK_RECORDS_REL = relativeToRoot(PACK_RECORDS_DIR);
 
 // Does releasing `version` publish the voice packs, so their records are
 // sealed? Yes for every version without a `dev` prerelease identifier — a
@@ -42,6 +35,23 @@ if (parsedVersion === null) {
   throw new Error(`Refusing to release: "${version}" is not a semver version.`);
 }
 const sealsVoicePacks = !parsedVersion.prerelease.includes("dev");
+
+// The voice-pack record module (#1667) reaches `@iracedeck/callout-script`
+// through its `dist/`, which only `pnpm build` writes, so it is loaded here
+// rather than imported statically: on an unbuilt or cleaned tree the release
+// stops with a sentence naming the build instead of a raw module-not-found
+// from inside the package. Nothing has been written at this point.
+let formatPackRecordProblems;
+let PACK_RECORDS_DIR;
+let sealPackRecords;
+try {
+  ({ formatPackRecordProblems, PACK_RECORDS_DIR, sealPackRecords } = await loadPackRecordModule());
+} catch (err) {
+  throw new Error(`Refusing to release: ${err instanceof Error ? err.message : err}`);
+}
+
+/** `packages/audio-assets/pack-records`, as the restore command names it. */
+const PACK_RECORDS_REL = relativeToRoot(PACK_RECORDS_DIR);
 
 // Every voice pack is held to its record's four rules on every release — a
 // stale record (the pack's clips, script or version changed with no re-pack,

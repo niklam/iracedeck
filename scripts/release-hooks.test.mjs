@@ -4,12 +4,15 @@ import {
   chmodSync,
   copyFileSync,
   existsSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
+  rmdirSync,
   rmSync,
   symlinkSync,
+  unlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -134,9 +137,39 @@ const RECORD_FILES = VOICE_PACKS.map((pack) => `M\t${PACK_RECORDS}/${pack.id}.js
 /** @type {string[]} */
 const fixtures = [];
 
+/** Every junction a fixture made into this checkout, removed as a LINK before its fixture is removed. */
+const junctions = [];
+
+/**
+ * Remove a directory junction (or, off Windows, a directory symlink) without
+ * touching what it points at: `unlinkSync` removes a symlink on every platform
+ * and a junction on Windows; `rmdirSync` is the fallback for a Windows build
+ * that refuses to unlink a directory reparse point. Either way the target is
+ * untouched, and the entry must be gone afterwards — a link that is still there
+ * would be walked by the recursive remove that follows.
+ *
+ * @param {string} link
+ */
+function removeLink(link) {
+  if (!lstatSync(link, { throwIfNoEntry: false })?.isSymbolicLink()) return;
+
+  try {
+    unlinkSync(link);
+  } catch {
+    rmdirSync(link);
+  }
+
+  if (lstatSync(link, { throwIfNoEntry: false }) !== undefined) {
+    throw new Error(`the junction ${link} is still there after unlink and rmdir; not removing its fixture`);
+  }
+}
+
 afterEach(() => {
-  // The fixture's `node_modules` and `packages/callout-script` are junctions
-  // into this checkout; rmSync removes the link itself and never follows one.
+  // The fixture's `node_modules`, `packages/audio-assets/node_modules` and
+  // `packages/callout-script` are junctions into this checkout. Each is removed
+  // as a link first, so the recursive remove of the fixture never depends on
+  // rmSync declining to follow one into the checkout's dependencies or sources.
+  for (const link of junctions.splice(0)) removeLink(link);
   for (const dir of fixtures.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
@@ -253,10 +286,12 @@ function sealedRecordBytes(dir, pack) {
  * `snapshot` skips them.
  *
  * @param {Record<string, string>} fragments - file name → fragment text
- * @param {{ unsealedPacks?: boolean }} [options] - `unsealedPacks`: the records
- *   carry no `released`, the state before the first release that ships them
+ * @param {{ unsealedPacks?: boolean; unbuilt?: boolean }} [options] - `unsealedPacks`: the records
+ *   carry no `released`, the state before the first release that ships them; `unbuilt`: no
+ *   `packages/callout-script` junction, so the record module's import of `@iracedeck/callout-script`
+ *   fails as it does on a fresh clone or after `pnpm clean`
  */
-function makeRepo(fragments, { unsealedPacks = false } = {}) {
+function makeRepo(fragments, { unsealedPacks = false, unbuilt = false } = {}) {
   const dir = mkdtempSync(join(tmpdir(), "iracedeck-release-hooks-"));
   fixtures.push(dir);
 
@@ -264,8 +299,11 @@ function makeRepo(fragments, { unsealedPacks = false } = {}) {
   copyFileSync(join(repoRoot, "scripts", "release-hooks.mjs"), join(dir, "scripts", "release-hooks.mjs"));
   copyModules(dir, join(AUDIO_ASSETS, "src", "build"));
   copyModules(dir, join(AUDIO_ASSETS, "src"));
-  for (const rel of ["node_modules", `${AUDIO_ASSETS}/node_modules`, "packages/callout-script"]) {
-    symlinkSync(join(repoRoot, rel), join(dir, rel), "junction");
+  const linked = ["node_modules", `${AUDIO_ASSETS}/node_modules`, ...(unbuilt ? [] : ["packages/callout-script"])];
+  for (const rel of linked) {
+    const link = join(dir, rel);
+    symlinkSync(join(repoRoot, rel), link, "junction");
+    junctions.push(link);
   }
   write(dir, ".gitignore", "node_modules/\n/packages/callout-script/\n");
   seedVoicePacks(dir, { sealed: !unsealedPacks });
@@ -686,6 +724,24 @@ describe("release-hooks.mjs voice-pack records (in a temporary git repository)",
     expect(result.status, result.stderr).toBe(0);
     const [pack] = VOICE_PACKS;
     expect(readPackRecord(pack.id, packRoots(dir).recordsDir).released !== undefined).toBe(seals);
+  });
+
+  // On a fresh clone or after `pnpm clean` the record module's import of
+  // `@iracedeck/callout-script` finds no dist/. The hook loads the module
+  // through lib/pack-record-module.mjs, so that is one sentence naming
+  // `pnpm build` rather than a raw ERR_MODULE_NOT_FOUND, and nothing is written.
+  it("stops with a sentence naming pnpm build when the record module cannot be loaded, writing nothing", () => {
+    const dir = makeRepo(TWO_FRAGMENTS, { unsealedPacks: true, unbuilt: true });
+    const before = snapshot(dir);
+
+    const result = runFixtureHook(dir, "1.0.0");
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain("Refusing to release: The voice-pack record module could not be loaded: ");
+    expect(result.stderr).toContain("@iracedeck/callout-script");
+    expect(result.stderr).toContain("Run `pnpm build`, then run this again. Nothing was written.");
+    expect(result.stderr).not.toMatch(/^Error [ERR_MODULE_NOT_FOUND]/m);
+    expect(snapshot(dir)).toEqual(before);
   });
 
   it("refuses a version that is not semver before anything else", () => {
