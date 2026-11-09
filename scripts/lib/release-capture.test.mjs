@@ -5,6 +5,7 @@ import { assertReleaseBuild as realAssertReleaseBuild } from "./assert-release-b
 import { CHANGELOG_SOURCE_PATH } from "./changelog-data.mjs";
 import { DEV_LOCAL_FILE, DEV_VOICES_ENV } from "./dev-local.mjs";
 import {
+  BUILD_ARGS,
   BUILD_FILTER,
   cleanCommand,
   createOutputTail,
@@ -13,11 +14,15 @@ import {
   exitTripwireHint,
   FEATURE_FLAGS_LOCAL_FILE,
   PLUGIN_CONFIG_REL,
+  releaseBuildEnv,
   releaseCapture,
   RESTORE_COMMAND,
   restoreAdvice,
+  runReleaseBuild,
   runTeed,
+  turboEntry,
   unexpectedTrackedChanges,
+  VERIFY_DEPS_ENV,
 } from "./release-capture.mjs";
 import { CAPTURE_MANIFEST_FILE, sha256Hex } from "./settings-window-capture/capture-manifest.mjs";
 import { CapturePreconditionError, committedCaptureDir } from "./settings-window-capture/run-capture.mjs";
@@ -778,9 +783,70 @@ describe("the build command", () => {
   it("runs turbo's JS entry under this Node with the plugin filter, printing only failed tasks' logs", () => {
     const command = describeBuildCommand();
 
-    expect(command.startsWith(process.execPath)).toBe(true);
+    expect(command.startsWith(`pnpm_config_verify_deps_before_run=false ${process.execPath} `)).toBe(true);
     expect(command).toMatch(/turbo[\\/]bin[\\/]turbo/);
     expect(command.endsWith(` run build --filter=${BUILD_FILTER} --output-logs=errors-only`)).toBe(true);
+  });
+});
+
+describe("releaseBuildEnv", () => {
+  it("is the setting pnpm reads, spelled as a literal so a wrong constant cannot agree with itself", () => {
+    expect(VERIFY_DEPS_ENV).toBe("pnpm_config_verify_deps_before_run");
+  });
+
+  it("turns pnpm's verifyDepsBeforeRun off and keeps every other variable, npm's included", () => {
+    const env = {
+      PATH: "C:\\bin",
+      Path: "C:\\other",
+      npm_config_user_agent: "npm/11.13.0",
+      npm_lifecycle_event: "npx",
+      INIT_CWD: "C:\\repo",
+      pnpm_config_registry: "https://registry.example/",
+    };
+
+    expect(releaseBuildEnv(env)).toEqual({ ...env, pnpm_config_verify_deps_before_run: "false" });
+  });
+
+  it("replaces an existing spelling of the key in any case, with - or _, leaving exactly one", () => {
+    const env = {
+      PNPM_CONFIG_VERIFY_DEPS_BEFORE_RUN: "install",
+      pnpm_config_verify_deps_before_run: "install",
+      "pnpm_config_verify-deps-before-run": "error",
+      Pnpm_Config_VerifyDepsBeforeRun: "install",
+      HOME: "/home/a",
+    };
+
+    expect(releaseBuildEnv(env)).toEqual({ HOME: "/home/a", pnpm_config_verify_deps_before_run: "false" });
+  });
+
+  it("leaves a lookalike key alone", () => {
+    const env = { npm_config_verify_deps_before_run: "install", pnpm_config_verify_deps: "x" };
+
+    expect(releaseBuildEnv(env)).toEqual({ ...env, pnpm_config_verify_deps_before_run: "false" });
+  });
+
+  it("does not modify its input", () => {
+    const env = { PNPM_CONFIG_VERIFY_DEPS_BEFORE_RUN: "install", PATH: "p" };
+    const copy = { ...env };
+
+    releaseBuildEnv(env);
+
+    expect(env).toEqual(copy);
+  });
+});
+
+describe("runReleaseBuild", () => {
+  it("runs turbo's entry under this Node in the root, in releaseBuildEnv's environment", async () => {
+    const result = { status: 0, outputTail: [] };
+    const spawnTeed = vi.fn(async () => result);
+    const env = { PATH: "p", PNPM_CONFIG_VERIFY_DEPS_BEFORE_RUN: "install" };
+
+    expect(await runReleaseBuild(ROOT, { env, spawnTeed })).toBe(result);
+    expect(spawnTeed).toHaveBeenCalledTimes(1);
+    expect(spawnTeed).toHaveBeenCalledWith(process.execPath, [turboEntry(), ...BUILD_ARGS], {
+      cwd: ROOT,
+      env: { PATH: "p", pnpm_config_verify_deps_before_run: "false" },
+    });
   });
 });
 
@@ -880,6 +946,24 @@ describe("runTeed", () => {
 
     expect(out.text()).toBe("café\n");
     expect(result.outputTail).toEqual(["café"]);
+  });
+
+  it("hands the child exactly the environment it is given", async () => {
+    const out = sink();
+    const script =
+      "process.stdout.write(JSON.stringify([process.env.RUN_TEED_1536, process.env.RUN_TEED_ABSENT_1536]));";
+    // PATH and SystemRoot keep Node startable on Windows; the absent key proves
+    // nothing of this process's environment leaked in.
+    process.env.RUN_TEED_ABSENT_1536 = "leaked";
+    try {
+      const env = { PATH: process.env.PATH, SystemRoot: process.env.SystemRoot, RUN_TEED_1536: "given" };
+      const result = await runTeed(process.execPath, ["-e", script], { cwd: ROOT_CWD, env, out, err: sink() });
+
+      expect(result.status).toBe(0);
+      expect(JSON.parse(out.text())).toEqual(["given", null]);
+    } finally {
+      delete process.env.RUN_TEED_ABSENT_1536;
+    }
   });
 
   it("rejects when the program cannot be started", async () => {

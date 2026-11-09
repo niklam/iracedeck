@@ -25,7 +25,9 @@
  *    voice-pack record — each with the hash of its content, so step 7 can tell
  *    the build's changes from theirs, a file both changed included.
  * 3. Build the Stream Deck plugin and its dependencies through turbo's JS entry,
- *    its output streamed live. A failed build's last lines are repeated through
+ *    its output streamed live, with pnpm's `verifyDepsBeforeRun` off
+ *    (`releaseBuildEnv`): the bumped manifests would otherwise make every task
+ *    reinstall the workspace at once. A failed build's last lines are repeated through
  *    `error`: without `--verbose`, release-it shows a failed hook's stderr and
  *    nothing of its stdout, which is where turbo prints the compiler errors.
  * 4. `assertReleaseBuild` on the built plugin's `bin/config.json`: the artifact
@@ -98,6 +100,45 @@ export const BUILD_FILTER = "@iracedeck/iracing-plugin-stream-deck...";
  */
 export const BUILD_ARGS = Object.freeze(["run", "build", `--filter=${BUILD_FILTER}`, "--output-logs=errors-only"]);
 
+/**
+ * The pnpm setting that turns `verifyDepsBeforeRun` off, as the environment
+ * variable pnpm 11 and later read it from; its `npm_config_` spelling is not
+ * read (measured on pnpm 12.6.0).
+ */
+export const VERIFY_DEPS_ENV = "pnpm_config_verify_deps_before_run";
+
+/**
+ * The environment the release build runs in: `env` with pnpm's
+ * `verifyDepsBeforeRun` off, and otherwise unchanged.
+ *
+ * `before:bump` has just rewritten the `version` of every workspace
+ * `package.json`, and pnpm reads a changed manifest as dependencies that may be
+ * out of date. With the repository's default `verifyDepsBeforeRun: install`,
+ * every turbo task's `pnpm run build` then ran a workspace-wide `pnpm install`
+ * before compiling, all of them at once: the lifecycle scripts of one ran
+ * while another re-linked the same package, and a release failed on
+ * `ERR_PNPM_EXECUTOR_SPAWN_LIFECYCLE` for `ffmpeg-static` (#1536). A version
+ * field changes no dependency, so the install had nothing to do. The release
+ * runs no install of its own, so the build uses the tree as installed, as it
+ * did before pnpm 11.
+ *
+ * Every existing spelling of the key is replaced, in any case and with `-` or
+ * `_`: Windows reads environment names case-insensitively, so a second
+ * spelling left beside ours could be the one the child sees.
+ *
+ * @param {Record<string, string | undefined>} env - Not modified.
+ * @returns {Record<string, string | undefined>}
+ */
+export function releaseBuildEnv(env) {
+  const normalized = (name) => name.toLowerCase().replace(/[-_]/g, "");
+  const target = normalized(VERIFY_DEPS_ENV);
+
+  return {
+    ...Object.fromEntries(Object.entries(env).filter(([name]) => normalized(name) !== target)),
+    [VERIFY_DEPS_ENV]: "false",
+  };
+}
+
 /** How many lines of the build's combined output a failed build repeats. */
 export const BUILD_OUTPUT_TAIL_LINES = 200;
 
@@ -162,9 +203,9 @@ export function turboEntry() {
   return createRequire(import.meta.url).resolve("turbo/bin/turbo");
 }
 
-/** The build command as the dry run and the log print it. */
+/** The build command as the dry run and the log print it, with the one variable it sets. */
 export function describeBuildCommand() {
-  return [process.execPath, turboEntry(), ...BUILD_ARGS].join(" ");
+  return [`${VERIFY_DEPS_ENV}=false`, process.execPath, turboEntry(), ...BUILD_ARGS].join(" ");
 }
 
 /**
@@ -219,6 +260,8 @@ export function createOutputTail(maxLines) {
  * @param {readonly string[]} args
  * @param {object} options
  * @param {string} options.cwd
+ * @param {Record<string, string | undefined>} [options.env] - The child's whole
+ *   environment; this process's when omitted.
  * @param {{ write: (text: string) => unknown }} [options.out]
  * @param {{ write: (text: string) => unknown }} [options.err]
  * @param {number} [options.maxLines]
@@ -228,11 +271,11 @@ export function createOutputTail(maxLines) {
 export function runTeed(
   file,
   args,
-  { cwd, out = process.stdout, err = process.stderr, maxLines = BUILD_OUTPUT_TAIL_LINES },
+  { cwd, env, out = process.stdout, err = process.stderr, maxLines = BUILD_OUTPUT_TAIL_LINES },
 ) {
   return new Promise((resolve, reject) => {
     const tail = createOutputTail(maxLines);
-    const child = spawn(file, args, { cwd, stdio: ["inherit", "pipe", "pipe"] });
+    const child = spawn(file, args, { cwd, env, stdio: ["inherit", "pipe", "pipe"] });
 
     for (const [name, from, to] of /** @type {const} */ ([
       ["stdout", child.stdout, out],
@@ -253,14 +296,18 @@ export function runTeed(
 }
 
 /**
- * The real build: turbo under `process.execPath` in `root`, its output streamed
- * live and its tail kept for a failure to repeat.
+ * The real build: turbo under `process.execPath` in `root`, in
+ * {@link releaseBuildEnv}'s environment, its output streamed live and its tail
+ * kept for a failure to repeat.
  *
  * @param {string} root
+ * @param {object} [deps]
+ * @param {Record<string, string | undefined>} [deps.env] - The environment to derive the build's from.
+ * @param {typeof runTeed} [deps.spawnTeed]
  * @returns {Promise<BuildResult>}
  */
-function realBuild(root) {
-  return runTeed(process.execPath, [turboEntry(), ...BUILD_ARGS], { cwd: root });
+export function runReleaseBuild(root, { env = process.env, spawnTeed = runTeed } = {}) {
+  return spawnTeed(process.execPath, [turboEntry(), ...BUILD_ARGS], { cwd: root, env: releaseBuildEnv(env) });
 }
 
 /**
@@ -428,7 +475,8 @@ export function developerTreeMarkers(root, { fs, env }) {
  * @param {string} version - The version release-it is releasing, as `3.9.0`.
  * @param {object} [deps]
  * @param {string} [deps.root] - The repository root; this checkout's by default.
- * @param {NodeJS.ProcessEnv} [deps.env] - Read for `RELEASE_IT_DRY_RUN` and `IRACEDECK_DEV_VOICES`.
+ * @param {NodeJS.ProcessEnv} [deps.env] - Read for `RELEASE_IT_DRY_RUN` and `IRACEDECK_DEV_VOICES`,
+ *   and the base of the default build's environment.
  * @param {ReleaseCaptureFs} [deps.fs]
  * @param {(root: string) => Promise<BuildResult>} [deps.build] - Runs the build, its output
  *   streamed, and resolves with its exit code and the tail of its output.
@@ -446,7 +494,7 @@ export async function releaseCapture(
     root = REPO_ROOT,
     env = process.env,
     fs = { existsSync, readdirSync, readFileSync, writeFileSync },
-    build = realBuild,
+    build = (buildRoot) => runReleaseBuild(buildRoot, { env }),
     assertReleaseBuild = (configPath) => realAssertReleaseBuild(configPath),
     runCapture = realRunCapture,
     git = realGit,
