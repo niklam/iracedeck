@@ -290,9 +290,9 @@ function sealedRecordBytes(dir, pack) {
  *
  * @param {Record<string, string>} fragments - file name → fragment text
  * @param {{ unsealedPacks?: boolean; unbuilt?: boolean }} [options] - `unsealedPacks`: the records
- *   carry no `released`, the state before the first release that ships them; `unbuilt`: no
- *   `packages/callout-script` junction, so the record module's import of `@iracedeck/callout-script`
- *   fails as it does on a fresh clone or after `pnpm clean`
+ *   carry no `released`, the state before the first release that ships them; `unbuilt`:
+ *   `@iracedeck/callout-script` is a stub with its package.json and no dist/, so the record
+ *   module's import of it fails as it does on a fresh clone or after `pnpm clean`
  */
 function makeRepo(fragments, { unsealedPacks = false, unbuilt = false } = {}) {
   const dir = mkdtempSync(join(tmpdir(), "iracedeck-release-hooks-"));
@@ -302,11 +302,31 @@ function makeRepo(fragments, { unsealedPacks = false, unbuilt = false } = {}) {
   copyFileSync(join(repoRoot, "scripts", "release-hooks.mjs"), join(dir, "scripts", "release-hooks.mjs"));
   copyModules(dir, join(AUDIO_ASSETS, "src", "build"));
   copyModules(dir, join(AUDIO_ASSETS, "src"));
-  const linked = ["node_modules", `${AUDIO_ASSETS}/node_modules`, ...(unbuilt ? [] : ["packages/callout-script"])];
-  for (const rel of linked) {
-    const link = join(dir, rel);
-    symlinkSync(join(repoRoot, rel), link, "junction");
-    junctions.push(link);
+  const link = (rel) => {
+    const at = join(dir, rel);
+    symlinkSync(join(repoRoot, rel), at, "junction");
+    junctions.push(at);
+  };
+  link("node_modules");
+  if (unbuilt) {
+    // The package's own node_modules is rebuilt entry by entry, with
+    // `@iracedeck/callout-script` a stub: its real package.json and no dist/.
+    // Dropping only the `packages/callout-script` junction is not enough: on
+    // Linux the junctioned `@iracedeck/callout-script` link resolves against
+    // its real location and finds this checkout's built package.
+    const modules = `${AUDIO_ASSETS}/node_modules`;
+    const scope = `${modules}/@iracedeck`;
+    mkdirSync(join(dir, scope), { recursive: true });
+    for (const name of readdirSync(join(repoRoot, modules))) if (name !== "@iracedeck") link(`${modules}/${name}`);
+    for (const name of readdirSync(join(repoRoot, scope))) if (name !== "callout-script") link(`${scope}/${name}`);
+    mkdirSync(join(dir, scope, "callout-script"));
+    copyFileSync(
+      join(repoRoot, "packages", "callout-script", "package.json"),
+      join(dir, scope, "callout-script", "package.json"),
+    );
+  } else {
+    link(`${AUDIO_ASSETS}/node_modules`);
+    link("packages/callout-script");
   }
   write(dir, ".gitignore", "node_modules/\n/packages/callout-script/\n");
   seedVoicePacks(dir, { sealed: !unsealedPacks });
@@ -741,7 +761,8 @@ describe("release-hooks.mjs voice-pack records (in a temporary git repository)",
 
     expect(result.status).not.toBe(0);
     expect(result.stderr).toContain("Refusing to release: The voice-pack record module could not be loaded: ");
-    expect(result.stderr).toContain("@iracedeck/callout-script");
+    // Node names the missing entry by its file path, with the platform's separators.
+    expect(result.stderr).toMatch(/callout-script[\\/]dist[\\/]index\.js/);
     expect(result.stderr).toContain("Run `pnpm build`, then run this again. Nothing was written.");
     expect(result.stderr).not.toMatch(/^Error \[ERR_MODULE_NOT_FOUND\]/m);
     expect(snapshot(dir)).toEqual(before);
