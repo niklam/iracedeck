@@ -18,7 +18,8 @@
  * needs only the repository is in pass 1, and pass 2 holds only what needs
  * GitHub's answer. Each pass stops at its first failure.
  *
- * Pass 1 opens with one check over the whole catalog, before any pack is built:
+ * Pass 1 opens with three checks over the whole tree, before any pack is built
+ * — none depends on an archive's bytes, so a refusal costs no encoding time:
  *
  *   1. Every committed `packages/audio-assets/catalog/<id>.json` must belong to
  *      a pack in `VOICE_PACKS` (#1392). The website's catalog generator
@@ -27,38 +28,56 @@
  *      dropped from voice-packs.mjs with its entry left behind, or an entry
  *      added by hand — would go live with nothing checking it. voice-packs.mjs
  *      calls itself the one list, every entry of which is published, so such an
- *      entry is a repo-state error like a mismatched one. It does not depend on
- *      the archives' bytes, so it runs before the first pack: a refusal costs no
- *      encoding time.
+ *      entry is a repo-state error like a mismatched one.
+ *   2. Every pack's committed record (`packages/audio-assets/pack-records/
+ *      <id>.json`) must pass its four rules (`checkPackRecords`, #1667): it
+ *      exists, agrees with the definition and the entry, its recorded inputs
+ *      are what the tree holds now, and a released version is frozen. This is
+ *      the check that catches #1582's shape — clips or a script changed and
+ *      nobody re-ran `pack:voice` — in seconds, with the pack, the input that
+ *      changed and the command to run, where step 6 would catch it only after
+ *      encoding every clip.
+ *   3. With `--publish` only: every pack's current version must be SEALED in
+ *      its record (`isSealedAt`) — `released.version` equal to the version
+ *      about to be published. A tag run's release commit has sealed it (the
+ *      release hook does, on a stable or -rc version), so this bites only a
+ *      between-releases publish that skipped `pnpm seal:voice-packs`, or a
+ *      tagged -dev bump, which publishes nothing by design. A version is
+ *      published only once the tree says it is. A dry run does not need a seal:
+ *      it is how a maintainer confirms the runner reproduces the bytes BEFORE
+ *      sealing and tagging.
  *
  * Then, per pack — pack, copy, verify:
  *
- *   2. Pack with `packVoice` into a SCRATCH directory, catalog entry to scratch
- *      too. The committed `packages/audio-assets/catalog/<id>.json` is never
- *      rewritten here — CI has no business committing.
- *   3. Copy the archive to `--out` — BEFORE checking it. The one run whose
+ *   4. Pack with `packVoice` into a SCRATCH directory, catalog entry and pack
+ *      record to scratch too. The committed `packages/audio-assets/catalog/
+ *      <id>.json` and `pack-records/<id>.json` are never rewritten here — CI
+ *      has no business committing.
+ *   5. Copy the archive to `--out` — BEFORE checking it. The one run whose
  *      archive the maintainer needs to inspect is the red one, where the runner
  *      did not reproduce the committed bytes, and the scratch copy is gone by
  *      the time the process exits.
- *   4. The fresh sha256, byte count and url must equal the committed entry.
- *      Anything else is a repo-state error that needs a commit anyway
- *      (`pack:voice`, a version bump if the clips changed), so it fails before
- *      anything is published — and before the plugin attach step, which keeps
- *      the tag clean. The url is checked because the hash does not cover it: a
- *      committed url that drifted would go live pointing where nothing uploads.
+ *   6. The fresh sha256, byte count and url must equal the committed entry.
+ *      With step 2 passed, a mismatch here means the runner did not reproduce
+ *      the maintainer's bytes from the same inputs — still a repo-state error
+ *      that needs a commit (`pack:voice`, a version bump if the clips changed),
+ *      so it fails before anything is published — and before the plugin attach
+ *      step, which keeps the tag clean. The url is checked because the hash
+ *      does not cover it: a committed url that drifted would go live pointing
+ *      where nothing uploads.
  *
- * Pass 1 runs the same on a dry run: catching a repo-state error before a tag
- * does is what the dry run is for. A dry run ends there. Pass 2, per pack, with
- * `--publish` only:
+ * Pass 1 runs the same on a dry run (step 3 aside): catching a repo-state error
+ * before a tag does is what the dry run is for. A dry run ends there. Pass 2,
+ * per pack, with `--publish` only:
  *
- *   5. No `voices-<id>-<version>` release yet → create it, with `--latest=false`,
+ *   7. No `voices-<id>-<version>` release yet → create it, with `--latest=false`,
  *      and attach the archive. Release without the asset → upload. Asset present
  *      → download and hash it: the same bytes is a re-run or a later plugin
  *      release with no pack change, skip; different bytes is a forgotten version
  *      bump, fail. A published version's bytes never change. A DRAFT release is
  *      refused outright: it is what an interrupted create leaves behind, an
  *      upload into it would report "published" while every download 404s.
- *   6. On all three paths — created, uploaded, and already published alike:
+ *   8. On all three paths — created, uploaded, and already published alike:
  *      `gh release edit --latest=false` on the tag, then read back which
  *      release the repository calls latest and fail loudly if it is ours
  *      (`assertNotLatest`, which explains why the create flag is not trusted
@@ -80,6 +99,12 @@ import path from "node:path";
 import url from "node:url";
 
 import { archiveFileName, CATALOG_DIR, packVoice, releaseTag } from "../packages/audio-assets/scripts/pack-voice.mjs";
+import {
+  checkPackRecords,
+  formatPackRecordProblems,
+  isSealedAt,
+  readPackRecord,
+} from "../packages/audio-assets/src/build/pack-record.mjs";
 import { VOICE_PACKS } from "../packages/audio-assets/src/build/voice-packs.mjs";
 
 const repoRoot = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), "..");
@@ -90,6 +115,9 @@ export const DEFAULT_OUT_DIR = "packed/voice-packs";
 /** The committed entries, as the failure messages name them. */
 const COMMITTED_ENTRY_DIR = "packages/audio-assets/catalog";
 
+/** The committed records, as the failure messages name them. */
+const COMMITTED_RECORD_DIR = "packages/audio-assets/pack-records";
+
 /** The pack list, as the failure messages name it. */
 const VOICE_PACKS_FILE = "packages/audio-assets/src/build/voice-packs.mjs";
 
@@ -97,6 +125,8 @@ const USAGE = "usage: node scripts/publish-voice-packs.mjs [--publish] [--out <d
 
 /**
  * @typedef {import("../packages/audio-assets/src/build/voice-packs.mjs").VoicePackDefinition} VoicePackDefinition
+ * @typedef {import("../packages/audio-assets/src/build/pack-record.mjs").PackRecord} PackRecord
+ * @typedef {import("../packages/audio-assets/src/build/pack-record.mjs").PackRecordProblem} PackRecordProblem
  * @typedef {{ bytes: number; sha256: string; url: string }} ArchiveIdentity
  * @typedef {"dry-run" | "published" | "already-published"} Outcome
  * @typedef {{ id: string; version: string; outcome: Outcome; archive: string }} PackResult
@@ -109,6 +139,10 @@ const USAGE = "usage: node scripts/publish-voice-packs.mjs [--publish] [--out <d
  * @typedef {object} PublishDeps
  * @property {() => string[]} listCommittedEntryIds — the id of every committed
  *   catalog entry the website would publish (`listCatalogEntryIds`)
+ * @property {() => PackRecordProblem[]} checkRecords — every pack's committed
+ *   record held to its four rules (`checkPackRecords`); empty is a clean tree
+ * @property {(id: string) => Pick<PackRecord, "released"> | null} readRecord — the
+ *   committed record (`readPackRecord`), read for its seal
  * @property {(pack: VoicePackDefinition) => Promise<{ entry: ArchiveIdentity; archivePath: string }>} pack
  * @property {(id: string) => ArchiveIdentity | null} readCommittedEntry
  * @property {(dir: string) => void} ensureDir
@@ -241,6 +275,55 @@ function assertEveryEntryHasAPack(packs, entryIds) {
 }
 
 /**
+ * Step 2 (see the header): refuse the run while any pack's committed record
+ * disagrees with the tree, printing every problem and its fix the way the
+ * release hook does — the same `checkPackRecords` and the same wording, so a
+ * stale record reads the same wherever it is caught.
+ *
+ * @param {readonly PackRecordProblem[]} problems
+ */
+function assertRecordsClean(problems) {
+  if (problems.length === 0) return;
+
+  throw new Error(
+    `A voice pack's committed record (${COMMITTED_RECORD_DIR}) disagrees with the tree, so its catalog entry is ` +
+      `not what this run would build. Nothing was packed or published.\n${formatPackRecordProblems(problems)}`,
+  );
+}
+
+/**
+ * Step 3 (see the header), `--publish` only: refuse every pack whose current
+ * version is not the one its record says is released. `isSealedAt` is THE
+ * predicate for a seal, shared with the checker, the sealer and the packer. A
+ * record the checks passed exists; a `null` here is still refused, since an
+ * absent seal and an absent record say the same thing about the version.
+ *
+ * @param {readonly VoicePackDefinition[]} packs
+ * @param {PublishDeps} deps
+ */
+function assertEverySealed(packs, deps) {
+  const unsealed = packs.filter((pack) => {
+    const record = deps.readRecord(pack.id);
+
+    return record === null || !isSealedAt(record, pack.version);
+  });
+
+  if (unsealed.length === 0) return;
+
+  const lines = unsealed.map(
+    ({ id, version }) =>
+      `${id} ${version} is about to be published but is not sealed in pack-records/${id}.json — seal it on master first.`,
+  );
+  const ids = unsealed.map(({ id }) => id).join(" ");
+
+  throw new Error(
+    `${lines.join("\n")}\nRun \`pnpm seal:voice-packs ${ids}\` on master, commit ${COMMITTED_RECORD_DIR}/, and dispatch ` +
+      "the publish again. A tag run's release commit seals every pack, so this is a between-releases publish that " +
+      "skipped the seal, or a tagged -dev bump, which publishes nothing. Nothing was packed or published.",
+  );
+}
+
+/**
  * The fresh entry rides along on every verification failure: on the red dry
  * run it is the only record of what the runner actually built, and the diff
  * against the committed file is what the maintainer needs next.
@@ -253,7 +336,7 @@ function verifyAgainstCommitted(pack, fresh, committed) {
   const committedFile = `${COMMITTED_ENTRY_DIR}/${pack.id}.json`;
   const fix =
     'Run "pnpm --filter @iracedeck/audio-assets pack:voice", bump the pack version in voice-packs.mjs ' +
-    `if its clips changed, and commit the regenerated entry. The entry built here: ${JSON.stringify(fresh)}`;
+    `if its clips changed, and commit the regenerated entry and record. The entry built here: ${JSON.stringify(fresh)}`;
 
   if (committed === null) {
     throw new Error(`${pack.id}: no committed catalog entry at ${committedFile}. ${fix}`);
@@ -483,6 +566,8 @@ function publishArchive(deps, pack, archivePath, fresh, { scratchDir, targetSha 
  */
 export async function publishVoicePacks({ packs, publish, outDir, scratchDir, targetSha, deps }) {
   assertEveryEntryHasAPack(packs, deps.listCommittedEntryIds());
+  assertRecordsClean(deps.checkRecords());
+  if (publish) assertEverySealed(packs, deps);
   deps.ensureDir(outDir);
 
   /** @type {VerifiedPack[]} */
@@ -563,6 +648,10 @@ async function main() {
       targetSha: resolveTargetSha(process.env),
       deps: {
         listCommittedEntryIds: () => listCatalogEntryIds(CATALOG_DIR),
+        // Over the whole registry, which is also `packs` here: the stray-record
+        // half of rule 1 judges by it.
+        checkRecords: () => checkPackRecords(),
+        readRecord: (id) => readPackRecord(id),
         // Stage, archive, catalog entry and pack record all land in scratch —
         // the packer refuses a `catalogDir` without its `recordsDir`, since a
         // publish run must never rewrite the committed `pack-records/<id>.json`
