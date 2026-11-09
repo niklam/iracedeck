@@ -98,7 +98,8 @@
 | Toggle UI Edit | Alt+K | No | Toggle UI Edit |
 | Toggle Driving Line | Ctrl+Alt+L | No | Driving Line |
 | Adjust UI Size | Ctrl+PageDown / Ctrl+PageUp | No | Scale UI Up / Scale UI Down |
-| Toggle UI Visibility | Space | No | Toggle UI Visibility |
+| Cycle UI Visibility Mode | Space | No | Cycle UI Visibility Mode |
+| Toggle Minimal Drive UI | - | No | Toggle Minimal Drive UI |
 | Pause Sim | Shift+P | No | Pause Sim |
 
 ### Black Box
