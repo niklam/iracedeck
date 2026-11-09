@@ -84,9 +84,17 @@
 				SimHub role it may flash briefly.
 			</div>
 			<%
-			var __primeCandidates = require('./data/key-bindings.json').blackBox
-				.filter(function (b) { return b.id !== 'cycleNext' && b.id !== 'cyclePrevious'; })
-				.map(function (b) { return b.setting; });
+			// Prime candidates = the 11 direct black boxes only, read from the Black Box
+			// Selector's Direct-mode map in action-comms.json, which is generated from
+			// BLACK_BOX_GLOBAL_KEYS (iracing-actions/src/shared/black-box.ts) — the map the
+			// runtime prime resolver scans. The other rows of the Black Box key-binding
+			// group never prime: Toggle Black Box Size opens no box, and cycling could land
+			// on the target itself, whose press would then toggle it back OFF. Listing the
+			// runtime's own map, rather than filtering that group by row id, keeps a row
+			// added to the group out of this list (black-box-prime-candidates.test.ts).
+			var __primeCandidates = Object.values(
+				require('./data/action-comms.json')['black-box-selector'].direct.binding.keyBy.map
+			);
 			%>
 			<ird-black-box-caveat
 				id="chassis-black-box-caveat"
