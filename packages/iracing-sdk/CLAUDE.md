@@ -9,7 +9,7 @@ The TypeScript layer over the native iRacing SDK (`@iracedeck/iracing-native`). 
 - Session-YAML parsing (`session-yaml.ts`, `session-utils.ts`).
 - `createSDK` / `createCommands` (`factory.ts`) — the `Commands` broadcast surface behind `@iracedeck/deck-iracing`'s `getCommands()`.
 - The template resolver (`template-resolver.ts`, `template-context.ts`) for key titles.
-- Flag, position, grid and track utilities (`flag-utils.ts`, `penalty-flag-utils.ts`, `position-utils.ts`, `grid-utils.ts`, `track-utils.ts`, and the gap, wind and iRating helpers beside them).
+- Flag, position, grid and track utilities (`flag-utils.ts`, `penalty-flag-utils.ts`, `position-utils.ts`, `grid-utils.ts`, `track-utils.ts`, `sector-utils.ts` — `extractSectorStarts`, the track's sector starts from `SplitTimeInfo`, `null` unless the first starts at the line (#1573) — and the gap, wind and iRating helpers beside them).
 
 ## Delivery to subscribers (#1558)
 
