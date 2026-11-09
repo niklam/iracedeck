@@ -1,11 +1,15 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { silentLogger } from "@iracedeck/logger";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createFakeSimConnection } from "./fake-sim-connection.test-support.js";
 import {
   _resetSimConnection,
+  DEFAULT_SIM_ABSENT_DELAY_MS,
   getSimConnection,
   initializeSimConnection,
+  isSimAbsent,
   isSimConnectionInitialized,
+  onSimPresenceChange,
   type SimConnection,
 } from "./sim-connection.js";
 
@@ -138,5 +142,244 @@ describe("sim-connection singleton", () => {
     _resetSimConnection();
 
     expect(isSimConnectionInitialized()).toBe(false);
+  });
+
+  it.each([-1, Number.NaN, Number.POSITIVE_INFINITY])(
+    "refuses an absentDelayMs of %s and installs nothing",
+    (delay) => {
+      expect(() => initializeSimConnection(createFakeSimConnection().connection, { absentDelayMs: delay })).toThrow(
+        RangeError,
+      );
+      expect(isSimConnectionInitialized()).toBe(false);
+    },
+  );
+});
+
+describe("sim presence (#1599)", () => {
+  const DELAY = 5000;
+
+  /**
+   * A connection that, like iRacing's SDK controller, calls a new subscriber
+   * back at once with the current state, then only on `tick()`.
+   */
+  function createNotifyingConnection(connected: boolean) {
+    const fake = createFakeSimConnection();
+    fake.state.connected = connected;
+    const connection: SimConnection = {
+      ...fake.connection,
+      subscribe: (id, onTick) => {
+        fake.connection.subscribe(id, onTick);
+        onTick(fake.state.connected);
+      },
+    };
+
+    return { ...fake, connection };
+  }
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    _resetSimConnection();
+    vi.useRealTimers();
+  });
+
+  it("is present at start", () => {
+    expect(isSimAbsent()).toBe(false);
+    onSimPresenceChange(vi.fn());
+    expect(isSimAbsent()).toBe(false);
+  });
+
+  it("subscribes to the connection once, on the first listener", () => {
+    const fake = createFakeSimConnection();
+    initializeSimConnection(fake.connection);
+
+    expect(fake.subscribers.size).toBe(0);
+
+    onSimPresenceChange(vi.fn());
+    onSimPresenceChange(vi.fn());
+
+    expect(fake.subscribers.size).toBe(1);
+  });
+
+  it("turns absent only after the delay, when no tick follows the initial disconnected callback", () => {
+    const fake = createNotifyingConnection(false);
+    initializeSimConnection(fake.connection, { absentDelayMs: DELAY });
+    const listener = vi.fn();
+    onSimPresenceChange(listener);
+
+    vi.advanceTimersByTime(DELAY - 1);
+    expect(isSimAbsent()).toBe(false);
+    expect(listener).not.toHaveBeenCalled();
+
+    vi.advanceTimersByTime(1);
+    expect(isSimAbsent()).toBe(true);
+    expect(listener).toHaveBeenCalledExactlyOnceWith(true);
+  });
+
+  it("does not re-arm the delay on every disconnected tick", () => {
+    const fake = createNotifyingConnection(false);
+    initializeSimConnection(fake.connection, { absentDelayMs: DELAY });
+    const listener = vi.fn();
+    onSimPresenceChange(listener);
+
+    vi.advanceTimersByTime(DELAY / 2);
+    fake.tick();
+    vi.advanceTimersByTime(DELAY / 2);
+
+    expect(isSimAbsent()).toBe(true);
+    fake.tick();
+    vi.advanceTimersByTime(DELAY * 2);
+    expect(listener).toHaveBeenCalledOnce();
+  });
+
+  it("uses the default delay when the sim passes none", () => {
+    initializeSimConnection(createNotifyingConnection(false).connection);
+    onSimPresenceChange(vi.fn());
+
+    vi.advanceTimersByTime(DEFAULT_SIM_ABSENT_DELAY_MS - 1);
+    expect(isSimAbsent()).toBe(false);
+    vi.advanceTimersByTime(1);
+    expect(isSimAbsent()).toBe(true);
+  });
+
+  it("never fires for a reconnect inside the delay", () => {
+    const fake = createNotifyingConnection(false);
+    initializeSimConnection(fake.connection, { absentDelayMs: DELAY });
+    const listener = vi.fn();
+    onSimPresenceChange(listener);
+
+    vi.advanceTimersByTime(DELAY - 1);
+    fake.state.connected = true;
+    fake.tick();
+    vi.advanceTimersByTime(DELAY * 3);
+
+    expect(isSimAbsent()).toBe(false);
+    expect(listener).not.toHaveBeenCalled();
+  });
+
+  it("turns present on the first connected tick", () => {
+    const fake = createNotifyingConnection(false);
+    initializeSimConnection(fake.connection, { absentDelayMs: DELAY });
+    const listener = vi.fn();
+    onSimPresenceChange(listener);
+    vi.advanceTimersByTime(DELAY);
+    listener.mockClear();
+
+    fake.state.connected = true;
+    fake.tick();
+
+    expect(isSimAbsent()).toBe(false);
+    expect(listener).toHaveBeenCalledExactlyOnceWith(false);
+  });
+
+  it("stays present while connected", () => {
+    const fake = createNotifyingConnection(true);
+    initializeSimConnection(fake.connection, { absentDelayMs: DELAY });
+    const listener = vi.fn();
+    onSimPresenceChange(listener);
+
+    fake.tick();
+    vi.advanceTimersByTime(DELAY * 2);
+
+    expect(isSimAbsent()).toBe(false);
+    expect(listener).not.toHaveBeenCalled();
+  });
+
+  it("keeps its value when every listener leaves, and keeps tracking for the next one", () => {
+    const fake = createNotifyingConnection(false);
+    initializeSimConnection(fake.connection, { absentDelayMs: DELAY });
+    const unsubscribe = onSimPresenceChange(vi.fn());
+    vi.advanceTimersByTime(DELAY);
+    unsubscribe();
+
+    expect(isSimAbsent()).toBe(true);
+    expect(fake.subscribers.size).toBe(1);
+
+    const next = vi.fn();
+    onSimPresenceChange(next);
+    expect(isSimAbsent()).toBe(true);
+    expect(fake.subscribers.size).toBe(1);
+
+    fake.state.connected = true;
+    fake.tick();
+    expect(next).toHaveBeenCalledExactlyOnceWith(false);
+  });
+
+  it("stops calling a listener once it is removed", () => {
+    const fake = createNotifyingConnection(false);
+    initializeSimConnection(fake.connection, { absentDelayMs: DELAY });
+    const removed = vi.fn();
+    const kept = vi.fn();
+    onSimPresenceChange(removed)();
+    onSimPresenceChange(kept);
+
+    vi.advanceTimersByTime(DELAY);
+
+    expect(removed).not.toHaveBeenCalled();
+    expect(kept).toHaveBeenCalledOnce();
+  });
+
+  it("replays a listener added before initialisation onto the connection", () => {
+    const listener = vi.fn();
+    onSimPresenceChange(listener);
+
+    const fake = createNotifyingConnection(false);
+    initializeSimConnection(fake.connection, { absentDelayMs: DELAY });
+    expect(fake.subscribers.size).toBe(1);
+
+    vi.advanceTimersByTime(DELAY);
+    expect(listener).toHaveBeenCalledExactlyOnceWith(true);
+  });
+
+  it("isolates a listener that throws: the others still run and the tick does not throw", () => {
+    const fake = createNotifyingConnection(false);
+    const logger = { ...silentLogger, error: vi.fn(), warn: vi.fn() };
+    initializeSimConnection(fake.connection, { absentDelayMs: DELAY, logger });
+    const after = vi.fn();
+    onSimPresenceChange(() => {
+      throw new Error("listener broke");
+    });
+    onSimPresenceChange(after);
+
+    expect(() => vi.advanceTimersByTime(DELAY)).not.toThrow();
+    expect(after).toHaveBeenCalledExactlyOnceWith(true);
+
+    fake.state.connected = true;
+    expect(() => fake.tick()).not.toThrow();
+    expect(after).toHaveBeenLastCalledWith(false);
+    expect(logger.error).toHaveBeenCalled();
+  });
+
+  it("reset clears the timer, the listeners, the subscription and the value", () => {
+    const fake = createNotifyingConnection(false);
+    initializeSimConnection(fake.connection, { absentDelayMs: DELAY });
+    const listener = vi.fn();
+    onSimPresenceChange(listener);
+    vi.advanceTimersByTime(DELAY);
+    expect(isSimAbsent()).toBe(true);
+
+    // A second arming in flight: reconnect, then drop again.
+    fake.state.connected = true;
+    fake.tick();
+    fake.state.connected = false;
+    fake.tick();
+    listener.mockClear();
+    expect(vi.getTimerCount()).toBe(1);
+
+    _resetSimConnection();
+
+    expect(isSimAbsent()).toBe(false);
+    expect(vi.getTimerCount()).toBe(0);
+
+    // A fresh connection gets no presence subscription until a new listener arrives.
+    const next = createNotifyingConnection(false);
+    initializeSimConnection(next.connection, { absentDelayMs: DELAY });
+    vi.advanceTimersByTime(DELAY * 2);
+
+    expect(next.subscribers.size).toBe(0);
+    expect(listener).not.toHaveBeenCalled();
+    expect(isSimAbsent()).toBe(false);
   });
 });

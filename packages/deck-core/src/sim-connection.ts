@@ -5,7 +5,13 @@
  * sim's own deck package — `@iracedeck/deck-iracing` for iRacing — which
  * initialises this singleton. Spec:
  * docs/superpowers/specs/2026-10-07-issue-1351-deck-core-split-and-sim-seam.md
+ *
+ * It also derives one debounced sim-presence signal from the connection's
+ * ticks (#1599): {@link isSimAbsent} / {@link onSimPresenceChange}, which the
+ * disconnected key look reads. Spec:
+ * docs/superpowers/specs/2026-11-02-issue-1599-disconnected-key-look.md
  */
+import { createErrorBoundary, type ErrorBoundary, type ILogger, silentLogger } from "@iracedeck/logger";
 
 /** One active flag as the key overlay draws it. */
 export interface OverlayFlag {
@@ -74,14 +80,46 @@ const PENDING_SIM_CONNECTION: SimConnection = Object.freeze({
 });
 
 /**
+ * How long a disconnection must last before the sim counts as absent, when the
+ * sim's deck package passes no delay of its own: 5 s. The delay is the sim's
+ * to choose (iRacing passes its app monitor's exit confirm, also 5 s); this
+ * default only keeps a connection that names none conservative — well above a
+ * reconnect poll of a couple of seconds, so a short drop never reads as gone.
+ */
+export const DEFAULT_SIM_ABSENT_DELAY_MS = 5000;
+
+/** What {@link initializeSimConnection} takes beside the connection. */
+export interface SimConnectionOptions {
+  /**
+   * How long, in milliseconds, the connection must stay disconnected before
+   * {@link isSimAbsent} turns true. A finite number, 0 or more. Defaults to
+   * {@link DEFAULT_SIM_ABSENT_DELAY_MS}.
+   */
+  absentDelayMs?: number;
+  /** Where the presence signal logs its changes and any listener's throw. Defaults to a silent logger. */
+  logger?: ILogger;
+}
+
+/**
  * Installs the sim connection, then subscribes every subscription queued
  * before it existed onto it, in the order they were made.
+ *
+ * @throws Error on a second call; RangeError when `absentDelayMs` is negative
+ *   or not finite (checked before anything is installed)
  */
-export function initializeSimConnection(connection: SimConnection): void {
+export function initializeSimConnection(connection: SimConnection, options: SimConnectionOptions = {}): void {
   if (current) {
     throw new Error("Sim connection already initialized. initializeSimConnection() should only be called once.");
   }
 
+  const { absentDelayMs = DEFAULT_SIM_ABSENT_DELAY_MS, logger = silentLogger } = options;
+
+  if (!Number.isFinite(absentDelayMs) || absentDelayMs < 0) {
+    throw new RangeError(`initializeSimConnection: absentDelayMs must be a finite number >= 0, got ${absentDelayMs}`);
+  }
+
+  presenceAbsentDelayMs = absentDelayMs;
+  presenceLogger = logger;
   current = connection;
 
   const queued = [...pendingSubscriptions];
@@ -120,8 +158,131 @@ export function isSimConnectionInitialized(): boolean {
   return current !== null;
 }
 
-/** @internal For tests: forgets the connection and every queued subscription. */
+// ---------------------------------------------------------------------------
+// Sim presence (#1599)
+// ---------------------------------------------------------------------------
+
+/** The id of the presence signal's own subscription on the connection. */
+const PRESENCE_SUBSCRIPTION_ID = "__sim_presence__";
+
+/** Listener ids, for the error boundary's reports. */
+const PRESENCE_LISTENER_PREFIX = "simPresence:";
+
+let presenceAbsentDelayMs = DEFAULT_SIM_ABSENT_DELAY_MS;
+let presenceLogger: ILogger = silentLogger;
+let presenceBoundary: ErrorBoundary | null = null;
+let presenceSubscribed = false;
+let presenceAbsent = false;
+let presenceTimer: ReturnType<typeof setTimeout> | null = null;
+let presenceListenerCounter = 0;
+const presenceListeners = new Map<string, (absent: boolean) => void>();
+
+/**
+ * Whether the sim has been disconnected for at least the sim's absent delay
+ * (iRacing: 5 s). False at start, so a plugin started with the sim already
+ * running never reads it as absent, and false again on the first connected
+ * tick. Meaningful once something has called {@link onSimPresenceChange},
+ * which is what starts the signal; until then it is always false.
+ */
+export function isSimAbsent(): boolean {
+  return presenceAbsent;
+}
+
+/**
+ * Calls `listener` with the new value of {@link isSimAbsent} whenever it
+ * changes — never for a disconnection shorter than the absent delay, and never
+ * twice with the same value. Returns the function that removes it.
+ *
+ * The first call subscribes the signal to the sim connection, queued like any
+ * subscription when no connection is installed yet, and that subscription is
+ * kept for the plugin's lifetime: the value survives every listener leaving
+ * (a page switch with the sim closed) and is current for the next to arrive.
+ *
+ * A listener's throw is reported through an error boundary and stops neither
+ * the other listeners nor the tick that caused the change.
+ */
+export function onSimPresenceChange(listener: (absent: boolean) => void): () => void {
+  const id = `${PRESENCE_LISTENER_PREFIX}${++presenceListenerCounter}`;
+
+  presenceListeners.set(id, listener);
+  ensurePresenceSubscription();
+
+  return () => {
+    if (presenceListeners.delete(id)) presenceBoundary?.forget(id);
+  };
+}
+
+function ensurePresenceSubscription(): void {
+  if (presenceSubscribed) return;
+
+  presenceSubscribed = true;
+  getSimConnection().subscribe(PRESENCE_SUBSCRIPTION_ID, onPresenceTick);
+}
+
+/**
+ * One sim tick. A connected tick clears a pending absence and turns the signal
+ * present at once; a disconnected tick arms one absence timer, unless one is
+ * armed already or the signal is already absent. The connection calls a new
+ * subscriber back at once (iRacing's does, with `false` while the sim is
+ * closed), so the timer is armed at start even when no further tick follows.
+ */
+function onPresenceTick(isConnected: boolean): void {
+  if (isConnected) {
+    clearPresenceTimer();
+
+    if (presenceAbsent) setPresence(false);
+
+    return;
+  }
+
+  if (presenceAbsent || presenceTimer !== null) return;
+
+  presenceTimer = setTimeout(() => {
+    presenceTimer = null;
+    setPresence(true);
+  }, presenceAbsentDelayMs);
+}
+
+function clearPresenceTimer(): void {
+  if (presenceTimer === null) return;
+
+  clearTimeout(presenceTimer);
+  presenceTimer = null;
+}
+
+function setPresence(absent: boolean): void {
+  if (presenceAbsent === absent) return;
+
+  presenceAbsent = absent;
+  presenceLogger.info(`Sim ${absent ? "absent" : "present"}`);
+
+  // A snapshot, so a listener that adds or removes one does not change this dispatch.
+  const snapshot = [...presenceListeners];
+
+  getPresenceBoundary().callEach(snapshot, (listener) => listener(absent));
+}
+
+function getPresenceBoundary(): ErrorBoundary {
+  presenceBoundary ??= createErrorBoundary({
+    logger: presenceLogger,
+    isRegistered: (id) => presenceListeners.has(id),
+  });
+
+  return presenceBoundary;
+}
+
+/**
+ * @internal For tests: forgets the connection, every queued subscription, and
+ * the presence signal (its timer, listeners, subscription, delay and value).
+ */
 export function _resetSimConnection(): void {
   current = null;
   pendingSubscriptions.clear();
+  clearPresenceTimer();
+  presenceListeners.clear();
+  presenceSubscribed = false;
+  presenceAbsent = false;
+  presenceAbsentDelayMs = DEFAULT_SIM_ABSENT_DELAY_MS;
+  presenceLogger = silentLogger;
+  presenceBoundary = null;
 }
