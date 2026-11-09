@@ -63,7 +63,7 @@ describe("initTrackStore (#1112)", () => {
     }
   });
 
-  it("creates the store at the resolved folder, for iRacing, under a TrackStore logger, and subscribes once", () => {
+  it("creates the store at the resolved folder, naming no sim, under a TrackStore logger, and subscribes once", () => {
     const { core, createLogger, logger } = fakeCore();
 
     const trackData = initTrackStore(core);
@@ -78,7 +78,8 @@ describe("initTrackStore (#1112)", () => {
     expect((directoryOptions[0] as { env: unknown }).env).toBe(process.env);
     expect(createLogger).toHaveBeenCalledWith("TrackStore");
     expect(storeOptions).toHaveLength(1);
-    expect(storeOptions[0]).toEqual({ directory: "C:/data/Track Data", sim: "iracing", logger });
+    // The sim comes with each sample's track identity, so the store is given none.
+    expect(storeOptions[0]).toEqual({ directory: "C:/data/Track Data", logger });
     expect(trackData).toEqual({ store, directory: "C:/data/Track Data" });
     expect(trackData.store).toBe(store);
   });
@@ -89,6 +90,7 @@ describe("initTrackStore (#1112)", () => {
     callLog.length = 0;
     const data = {
       track: {
+        sim: "iracing",
         trackId: 1,
         trackName: "a",
         trackConfigName: "b",

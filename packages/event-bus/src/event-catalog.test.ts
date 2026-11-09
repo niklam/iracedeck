@@ -53,6 +53,7 @@ describe("pitLane.landmarkLearned", () => {
     expectTypeOf<SimEventMap["pitLane.landmarkLearned"]["event"]>().toEqualTypeOf<"pitLane.landmarkLearned">();
     expectTypeOf<SimEventMap["pitLane.landmarkLearned"]["data"]>().toEqualTypeOf<{
       track: {
+        sim: string;
         trackId: number;
         trackName: string;
         trackConfigName: string;

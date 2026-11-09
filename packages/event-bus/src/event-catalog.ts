@@ -581,8 +581,16 @@ export type PitLaneLandmarkName = "approachStart" | "pitRoadStart" | "pitRoadEnd
  * track (same id, new length) is noticed. Same shape as track-data's.
  */
 export type PitLaneTrackIdentity = {
+  /**
+   * The simulator the track belongs to, e.g. `"iracing"` (lowercase letters,
+   * digits and hyphens); every other field is in this sim's terms.
+   */
+  sim: string;
+  /** The sim's id of the track layout. */
   trackId: number;
+  /** The sim's name of the track. */
   trackName: string;
+  /** The sim's name of the layout, `""` when it has none. */
   trackConfigName: string;
   /** The sim's raw track version as reported (iRacing's `WeekendInfo.TrackVersion`), or `null` when it reports none. */
   trackVersion: string | null;

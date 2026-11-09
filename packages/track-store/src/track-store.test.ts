@@ -6,7 +6,16 @@ import {
   type PitLaneLandmarkSample,
   type PitLaneTrackIdentity,
 } from "@iracedeck/track-data";
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  utimesSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -28,6 +37,7 @@ import {
 } from "./track-store.js";
 
 const TRACK: PitLaneTrackIdentity = {
+  sim: "iracing",
   trackId: 101,
   trackName: "spa 2024 gp",
   trackConfigName: "Grand Prix",
@@ -38,10 +48,14 @@ const TRACK: PitLaneTrackIdentity = {
 
 const T0 = Date.parse("2026-11-09T12:00:00.000Z");
 
+/** The track data root the store is given. */
 let dir: string;
+/** Its `iracing` folder, where {@link TRACK}'s files live. */
+let simDir: string;
 
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), "track-store-"));
+  simDir = join(dir, "iracing");
 });
 
 afterEach(() => {
@@ -51,7 +65,13 @@ afterEach(() => {
 });
 
 function filePath(trackId = TRACK.trackId): string {
-  return join(dir, `track_${trackId}.json`);
+  return join(simDir, `track_${trackId}.json`);
+}
+
+/** Write a file in the sim's folder, creating the folder as another process's write would have. */
+function writeInSimDir(path: string, data: string | Buffer, encoding?: "utf-8"): void {
+  mkdirSync(simDir, { recursive: true });
+  writeFileSync(path, data, encoding);
 }
 
 function readFile(): TrackFile {
@@ -81,7 +101,7 @@ function spyLogger(): ILogger & Record<"trace" | "debug" | "info" | "warn" | "er
 }
 
 function makeStore(overrides: Partial<TrackStoreOptions> = {}): TrackStore {
-  return createTrackStore({ directory: dir, sim: "iracing", logger: silentLogger, ...overrides });
+  return createTrackStore({ directory: dir, logger: silentLogger, ...overrides });
 }
 
 function record(
@@ -108,7 +128,7 @@ function writeTrackFile(overrides: Record<string, unknown> = {}, landmarks: Reco
     ...overrides,
   });
 
-  writeFileSync(filePath(), text, "utf-8");
+  writeInSimDir(filePath(), text, "utf-8");
 
   return text;
 }
@@ -162,7 +182,7 @@ describe("an absent file", () => {
     });
     expect(file.pitLane.landmarks.pitRoadStart).toMatchObject({ samples: 1, origin: "learned", pct: 0.1 });
     expect(windowKeys(file)).toEqual(["1:0:5:pitRoadStart:3"]);
-    expect(readdirSync(dir)).toEqual(["track_101.json"]);
+    expect(readdirSync(simDir)).toEqual(["track_101.json"]);
     expect(logger.info).toHaveBeenCalledWith(expect.stringContaining("created"));
     // Compact JSON, one line.
     expect(readFileSync(filePath(), "utf-8").trimEnd()).not.toContain("\n");
@@ -301,7 +321,7 @@ describe("a malformed file", () => {
     ["not JSON", "{not json"],
     ["not a track file", JSON.stringify({ version: 1, hello: "world" })],
   ])("(%s) is left alone by load, then moved aside and preserved by the write", (_label, text) => {
-    writeFileSync(filePath(), text, "utf-8");
+    writeInSimDir(filePath(), text, "utf-8");
     const logger = spyLogger();
     const store = makeStore({ logger, now: () => new Date(T0) });
 
@@ -311,29 +331,29 @@ describe("a malformed file", () => {
     record(store, "a", 0.1, T0);
     store.flushSync();
 
-    const asides = readdirSync(dir).filter((name) => name.startsWith("track_101.corrupt-"));
+    const asides = readdirSync(simDir).filter((name) => name.startsWith("track_101.corrupt-"));
 
     expect(asides).toEqual(["track_101.corrupt-2026-11-09T12-00-00-000Z.json"]);
-    expect(readFileSync(join(dir, asides[0]!), "utf-8")).toBe(text);
+    expect(readFileSync(join(simDir, asides[0]!), "utf-8")).toBe(text);
     expect(windowKeys(readFile())).toEqual(["a"]);
     expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining("not valid"));
   });
 
   it("never overwrites an earlier aside", () => {
-    writeFileSync(filePath(), "{one", "utf-8");
-    writeFileSync(join(dir, "track_101.corrupt-2026-11-09T12-00-00-000Z.json"), "{earlier", "utf-8");
+    writeInSimDir(filePath(), "{one", "utf-8");
+    writeInSimDir(join(simDir, "track_101.corrupt-2026-11-09T12-00-00-000Z.json"), "{earlier", "utf-8");
     const store = makeStore({ now: () => new Date(T0) });
 
     record(store, "a", 0.1, T0);
     store.flushSync();
 
-    expect(readFileSync(join(dir, "track_101.corrupt-2026-11-09T12-00-00-000Z.json"), "utf-8")).toBe("{earlier");
-    expect(readFileSync(join(dir, "track_101.corrupt-2026-11-09T12-00-00-000Z-1.json"), "utf-8")).toBe("{one");
+    expect(readFileSync(join(simDir, "track_101.corrupt-2026-11-09T12-00-00-000Z.json"), "utf-8")).toBe("{earlier");
+    expect(readFileSync(join(simDir, "track_101.corrupt-2026-11-09T12-00-00-000Z-1.json"), "utf-8")).toBe("{one");
   });
 
   it("is compared as bytes: two invalid-UTF-8 files are not taken as identical", () => {
-    writeFileSync(filePath(), Buffer.from([0x7b, 0xfe]));
-    writeFileSync(join(dir, "track_101.corrupt-earlier.json"), Buffer.from([0x7b, 0xff]));
+    writeInSimDir(filePath(), Buffer.from([0x7b, 0xfe]));
+    writeInSimDir(join(simDir, "track_101.corrupt-earlier.json"), Buffer.from([0x7b, 0xff]));
     const store = makeStore({
       now: () => new Date(T0),
       io: {
@@ -349,14 +369,14 @@ describe("a malformed file", () => {
     record(store, "a", 0.1, T0);
     store.flushSync();
 
-    expect([...readFileSync(join(dir, "track_101.corrupt-2026-11-09T12-00-00-000Z.json"))]).toEqual([0x7b, 0xfe]);
-    expect([...readFileSync(join(dir, "track_101.corrupt-earlier.json"))]).toEqual([0x7b, 0xff]);
+    expect([...readFileSync(join(simDir, "track_101.corrupt-2026-11-09T12-00-00-000Z.json"))]).toEqual([0x7b, 0xfe]);
+    expect([...readFileSync(join(simDir, "track_101.corrupt-earlier.json"))]).toEqual([0x7b, 0xff]);
     expect(windowKeys(readFile())).toEqual(["a"]);
   });
 
   it("is copied once when the write after the copy fails and is retried", () => {
     vi.useFakeTimers({ now: T0 });
-    writeFileSync(filePath(), "{locked", "utf-8");
+    writeInSimDir(filePath(), "{locked", "utf-8");
     let tmpRenameFailures = 1;
     let copies = 0;
     const store = makeStore({
@@ -387,14 +407,14 @@ describe("a malformed file", () => {
 
     expect(copies).toBe(1);
     // Stamped when the first write ran, one debounce after the sample.
-    expect(readdirSync(dir).filter((name) => name.includes(".corrupt-"))).toEqual([
+    expect(readdirSync(simDir).filter((name) => name.includes(".corrupt-"))).toEqual([
       "track_101.corrupt-2026-11-09T12-00-02-000Z.json",
     ]);
     expect(windowKeys(readFile())).toEqual(["a"]);
   });
 
   it("is not moved aside when another process's valid write replaced it after the read", () => {
-    writeFileSync(filePath(), "{broken", "utf-8");
+    writeInSimDir(filePath(), "{broken", "utf-8");
     const valid = { pitRoadStart: recordOf([sample("theirs", 0.1, T0 - 1000)]) };
     let armed = false;
     let replaced = false;
@@ -421,12 +441,12 @@ describe("a malformed file", () => {
     store.flushSync();
 
     expect(replaced).toBe(true);
-    expect(readdirSync(dir)).toEqual(["track_101.json"]);
+    expect(readdirSync(simDir)).toEqual(["track_101.json"]);
     expect(windowKeys(readFile())).toEqual(["mine", "theirs"]);
   });
 
   it("is preserved as a copy when it cannot be renamed", () => {
-    writeFileSync(filePath(), "{locked", "utf-8");
+    writeInSimDir(filePath(), "{locked", "utf-8");
     const store = makeStore({
       now: () => new Date(T0),
       io: {
@@ -442,12 +462,12 @@ describe("a malformed file", () => {
     record(store, "a", 0.1, T0);
     store.flushSync();
 
-    expect(readFileSync(join(dir, "track_101.corrupt-2026-11-09T12-00-00-000Z.json"), "utf-8")).toBe("{locked");
+    expect(readFileSync(join(simDir, "track_101.corrupt-2026-11-09T12-00-00-000Z.json"), "utf-8")).toBe("{locked");
     expect(windowKeys(readFile())).toEqual(["a"]);
   });
 
   it("is never written over when it cannot be preserved", () => {
-    writeFileSync(filePath(), "{stuck", "utf-8");
+    writeInSimDir(filePath(), "{stuck", "utf-8");
     const logger = spyLogger();
     const store = makeStore({
       logger,
@@ -547,7 +567,7 @@ describe("a file from a newer build", () => {
     store.flushSync();
 
     expect(readFileSync(filePath(), "utf-8")).toBe(text);
-    expect(readdirSync(dir)).toEqual(["track_101.json"]);
+    expect(readdirSync(simDir)).toEqual(["track_101.json"]);
     expect(logger.warn).toHaveBeenCalledTimes(1);
     expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining("newer version"));
     // Kept in memory for this process.
@@ -572,6 +592,86 @@ describe("a file of another track", () => {
 
     expect(readFileSync(filePath(), "utf-8")).toBe(text);
     expect(logger.warn).toHaveBeenCalledTimes(1);
+  });
+
+  it("is one whose envelope names another sim than the identity's, in the identity's folder", () => {
+    const text = writeTrackFile({ sim: "other-sim" }, { pitRoadStart: recordOf([sample("theirs", 0.5, T0)]) });
+    const logger = spyLogger();
+    const store = makeStore({ logger });
+
+    expect(store.load(TRACK)).toBeNull();
+    expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining('sim "other-sim" is not "iracing"'));
+
+    record(store, "mine", 0.1, T0);
+    store.flushSync();
+
+    expect(readFileSync(filePath(), "utf-8")).toBe(text);
+  });
+});
+
+describe("the sim's folder", () => {
+  const OTHER: PitLaneTrackIdentity = { ...TRACK, sim: "other-sim", trackName: "another sim's spa" };
+
+  it("holds each sim's file under the identity's sim, with that sim in the envelope", () => {
+    vi.useFakeTimers({ now: T0 });
+    const store = makeStore();
+
+    record(store, "a", 0.1, T0);
+    store.flushSync();
+
+    expect(readdirSync(dir)).toEqual(["iracing"]);
+    expect(readdirSync(simDir)).toEqual(["track_101.json"]);
+    expect(readFile().sim).toBe("iracing");
+  });
+
+  it("keeps two sims' tracks with one id apart", () => {
+    vi.useFakeTimers({ now: T0 });
+    const store = makeStore();
+
+    record(store, "mine", 0.1, T0);
+    store.recordSample({ track: OTHER, landmark: "pitRoadStart", sample: sample("other", 0.7, T0) });
+    store.flushSync();
+
+    expect(readdirSync(dir).sort()).toEqual(["iracing", "other-sim"]);
+    expect(windowKeys(readFile())).toEqual(["mine"]);
+
+    const other = JSON.parse(readFileSync(join(dir, "other-sim", "track_101.json"), "utf-8")) as TrackFile;
+
+    expect(other).toMatchObject({ sim: "other-sim", trackId: 101, trackName: "another sim's spa" });
+    expect(windowKeys(other)).toEqual(["other"]);
+    expect(store.load(TRACK)?.landmarks.pitRoadStart?.window.map((kept) => kept.key)).toEqual(["mine"]);
+    expect(store.load(OTHER)?.landmarks.pitRoadStart?.window.map((kept) => kept.key)).toEqual(["other"]);
+  });
+
+  it.each(["", "Iracing", "../escape", "a/b", "a\\b", ".", "-lead", "has space", "con", "LPT1", "x".repeat(33)])(
+    "refuses an identity whose sim cannot name a folder (%j), warning once",
+    (sim) => {
+      vi.useFakeTimers({ now: T0 });
+      const logger = spyLogger();
+      const store = makeStore({ logger });
+      const track = { ...TRACK, sim };
+
+      expect(store.load(track)).toBeNull();
+      expect(store.recordSample({ track, landmark: "pitRoadStart", sample: sample("a", 0.1, T0) })).toBe(false);
+      store.flushSync();
+      vi.advanceTimersByTime(TRACK_STORE_WRITE_MAX_WAIT_MS * 2);
+
+      expect(readdirSync(dir)).toEqual([]);
+      expect(logger.warn).toHaveBeenCalledOnce();
+      expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining(JSON.stringify(sim)));
+      expect(logger.error).not.toHaveBeenCalled();
+    },
+  );
+
+  it("accepts a sim of lowercase letters, digits and hyphens", () => {
+    vi.useFakeTimers({ now: T0 });
+    const store = makeStore();
+    const track = { ...TRACK, sim: "sim-2" };
+
+    expect(store.recordSample({ track, landmark: "pitRoadStart", sample: sample("a", 0.1, T0) })).toBe(true);
+    store.flushSync();
+
+    expect(existsSync(join(dir, "sim-2", "track_101.json"))).toBe(true);
   });
 });
 
@@ -633,13 +733,13 @@ describe("the atomic write", () => {
     vi.advanceTimersByTime(TRACK_STORE_WRITE_DEBOUNCE_MS);
 
     expect(readFileSync(filePath(), "utf-8")).toBe(text);
-    expect(readdirSync(dir)).toEqual(["track_101.json"]);
+    expect(readdirSync(simDir)).toEqual(["track_101.json"]);
 
     vi.advanceTimersByTime(100);
 
     expect(windowKeys(readFile())).toEqual(["mine"]);
     expect(windowKeys(readFile(), "pitRoadEnd")).toEqual(["disk"]);
-    expect(readdirSync(dir)).toEqual(["track_101.json"]);
+    expect(readdirSync(simDir)).toEqual(["track_101.json"]);
   });
 
   it("writes through a temp file named for the process", () => {
@@ -878,17 +978,17 @@ describe("stale temp files", () => {
       "session_5.json.4242.tmp",
     ];
 
-    for (const name of names) writeFileSync(join(dir, name), "x", "utf-8");
+    for (const name of names) writeInSimDir(join(simDir, name), "x", "utf-8");
 
     const old = (Date.now() - TRACK_STORE_STALE_TEMP_MS - 60_000) / 1000;
 
-    utimesSync(join(dir, "track_102.json.4242.tmp"), old, old);
+    utimesSync(join(simDir, "track_102.json.4242.tmp"), old, old);
 
     const io: TrackStoreIo = { ...nodeTrackStoreIo, isProcessAlive: (pid) => pid === 4242 || pid === 7777 };
 
     makeStore({ pid: 7777, io });
 
-    expect(readdirSync(dir).sort()).toEqual(
+    expect(readdirSync(simDir).sort()).toEqual(
       [
         "notes.tmp",
         "session_5.json.4242.tmp",
@@ -900,10 +1000,32 @@ describe("stale temp files", () => {
     );
   });
 
+  it("are looked for in every sim's folder, and nowhere else", () => {
+    const dead = "track_7.json.999991.tmp";
+
+    // Two sims' folders: each one's leftover goes.
+    for (const sim of ["iracing", "other-sim"]) {
+      mkdirSync(join(dir, sim));
+      writeFileSync(join(dir, sim, dead), "x", "utf-8");
+    }
+
+    // The root and a folder no sim could be named are not the store's.
+    writeFileSync(join(dir, dead), "x", "utf-8");
+    mkdirSync(join(dir, "Not A Sim"));
+    writeFileSync(join(dir, "Not A Sim", dead), "x", "utf-8");
+    // A file named like a sim is skipped, not a reason to fail.
+    writeFileSync(join(dir, "plainfile"), "x", "utf-8");
+
+    makeStore({ io: { ...nodeTrackStoreIo, isProcessAlive: () => false } });
+
+    expect(readdirSync(join(dir, "iracing"))).toEqual([]);
+    expect(readdirSync(join(dir, "other-sim"))).toEqual([]);
+    expect(readdirSync(dir).sort()).toEqual(["Not A Sim", "iracing", "other-sim", "plainfile", dead].sort());
+    expect(readdirSync(join(dir, "Not A Sim"))).toEqual([dead]);
+  });
+
   it("are no reason to fail when the folder does not exist yet", () => {
-    expect(() =>
-      createTrackStore({ directory: join(dir, "missing"), sim: "iracing", logger: silentLogger }),
-    ).not.toThrow();
+    expect(() => createTrackStore({ directory: join(dir, "missing"), logger: silentLogger })).not.toThrow();
   });
 });
 
@@ -929,12 +1051,12 @@ describe("flushSync", () => {
 
   it("creates the folder when it does not exist", () => {
     const nested = join(dir, "a", "b");
-    const store = createTrackStore({ directory: nested, sim: "iracing", logger: silentLogger });
+    const store = createTrackStore({ directory: nested, logger: silentLogger });
 
     record(store, "a", 0.1, T0);
     store.flushSync();
 
-    expect(existsSync(join(nested, "track_101.json"))).toBe(true);
+    expect(existsSync(join(nested, "iracing", "track_101.json"))).toBe(true);
   });
 });
 
@@ -943,13 +1065,11 @@ describe("the singleton", () => {
     expect(isTrackStoreInitialized()).toBe(false);
     expect(() => getTrackStore()).toThrow(/not initialized/);
 
-    const store = initializeTrackStore({ directory: dir, sim: "iracing", logger: silentLogger });
+    const store = initializeTrackStore({ directory: dir, logger: silentLogger });
 
     expect(isTrackStoreInitialized()).toBe(true);
     expect(getTrackStore()).toBe(store);
-    expect(() => initializeTrackStore({ directory: dir, sim: "iracing", logger: silentLogger })).toThrow(
-      /already initialized/,
-    );
+    expect(() => initializeTrackStore({ directory: dir, logger: silentLogger })).toThrow(/already initialized/);
 
     _resetTrackStore();
 
@@ -958,7 +1078,7 @@ describe("the singleton", () => {
 
   it("is reset without a timer of the old store writing afterwards", () => {
     vi.useFakeTimers({ now: T0 });
-    const store = initializeTrackStore({ directory: dir, sim: "iracing", logger: silentLogger });
+    const store = initializeTrackStore({ directory: dir, logger: silentLogger });
 
     record(store, "a", 0.1, T0);
     _resetTrackStore();

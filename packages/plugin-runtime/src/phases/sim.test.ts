@@ -152,6 +152,7 @@ describe("initSim", () => {
     // The loader asks the store only when the translator calls it, and answers what the store answers.
     expect(store.loads).toEqual([]);
     const track = {
+      sim: "iracing",
       trackId: 7,
       trackName: "t",
       trackConfigName: "c",

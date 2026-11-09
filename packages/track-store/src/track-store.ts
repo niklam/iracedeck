@@ -1,6 +1,8 @@
 /**
  * The per-track store (issue #1112): a process singleton and the only owner
- * of `%LOCALAPPDATA%\iRaceDeck\Track Data\track_<TrackID>.json`.
+ * of `%LOCALAPPDATA%\iRaceDeck\Track Data\<sim>\track_<TrackID>.json`. The
+ * folder is the identity's `sim`, so the tracks of two simulators never share
+ * a file even when their ids collide; the store is told no sim of its own.
  *
  * It persists the pit-lane landmarks the translator learns. The translator
  * publishes each accepted edge as `pitLane.landmarkLearned`; the plugin hands
@@ -26,11 +28,12 @@
  * Write discipline follows `@iracedeck/settings`' `settings-store.ts`: atomic
  * replace (temp file + rename), a trailing debounce capped by a max wait,
  * failed writes retried on `WRITE_RETRY_DELAYS_MS` and kept for the shutdown
- * flush, a corrupt file moved aside as `track_<id>.corrupt-<iso>.json` and
- * never overwritten or deleted, a file written by a newer build never
- * written. IO is synchronous: the file is a few kilobytes, written at most a
- * few times a minute, and a synchronous read-merge-rename leaves no await in
- * which this process could interleave with itself. Compact JSON.
+ * flush, a corrupt file moved aside as `track_<id>.corrupt-<iso>.json` in its
+ * sim's folder and never overwritten or deleted, a file written by a newer
+ * build never written. IO is synchronous: the file is a few kilobytes,
+ * written at most a few times a minute, and a synchronous read-merge-rename
+ * leaves no await in which this process could interleave with itself.
+ * Compact JSON.
  */
 import type { ILogger } from "@iracedeck/logger";
 import { WRITE_RETRY_DELAYS_MS } from "@iracedeck/settings";
@@ -61,11 +64,13 @@ import { join } from "node:path";
 
 import {
   buildTrackFile,
+  isTrackDataSim,
   type ParsedTrackFile,
   readTrackFile,
   trackFileMismatch,
   trackFileName,
   type TrackFileRead,
+  trackSimDirectory,
 } from "./track-file.js";
 
 /** Trailing debounce for a track's write: a burst of edges (a pit cycle's four) lands as one file. */
@@ -96,7 +101,7 @@ export interface TrackStoreSampleInput {
 }
 
 export interface TrackStore {
-  /** The folder the store owns `track_*.json` in. */
+  /** The track data root; each sim's `track_*.json` files are in `<directory>\<sim>`. */
   readonly directory: string;
   /**
    * The track's pit-lane section, for seeding the translator: the file
@@ -105,14 +110,15 @@ export interface TrackStore {
    * samples not yet written folded in. A copy. `null` when nothing is known:
    * no file, a file of another track (logged once, never written over), a
    * newer build's file, or one that cannot be read or parsed — and no sample
-   * recorded meanwhile. SYNCHRONOUS, and never throws.
+   * recorded meanwhile — and for an identity whose `sim` cannot name a
+   * folder (`isTrackDataSim`; warned once). SYNCHRONOUS, and never throws.
    */
   load(track: PitLaneTrackIdentity): PitLaneSection | null;
   /**
    * Fold one accepted sample (the `pitLane.landmarkLearned` payload) into the
    * track's section and schedule a write. Returns whether the fold accepted
-   * it; a duplicate, a stale or a malformed sample changes nothing. Never
-   * throws.
+   * it; a duplicate, a stale or a malformed sample, or one whose identity's
+   * `sim` cannot name a folder (warned once), changes nothing. Never throws.
    */
   recordSample(input: TrackStoreSampleInput): boolean;
   /**
@@ -164,10 +170,8 @@ export const nodeTrackStoreIo: TrackStoreIo = {
 };
 
 export interface TrackStoreOptions {
-  /** `resolveTrackDataDirectory({ env: process.env })`. */
+  /** The track data root, `resolveTrackDataDirectory({ env: process.env })`; each sim's files go in a subfolder. */
   directory: string;
-  /** The simulator the TrackIDs belong to, written to every file's envelope (`"iracing"`). */
-  sim: string;
   logger: ILogger;
   /** Clock, for `updatedAt`, the debounce and the corrupt-aside name (test hook). */
   now?: () => Date;
@@ -193,7 +197,11 @@ interface OwnSample {
 type Refusal = "mismatch" | "newerVersion" | "newerSection";
 
 interface TrackEntry {
+  /** `<directory>\<sim>`: the file, its temp file and its corrupt asides live here. */
+  folder: string;
   path: string;
+  /** `<sim>/track_<id>.json`, for log lines. */
+  label: string;
   /** The session's identity, as last passed to `load` or `recordSample`. */
   identity: PitLaneTrackIdentity;
   /** The file as last read or written, when it is this track's and this build reads it. */
@@ -233,12 +241,18 @@ function isoStamp(date: Date): string {
 /** The temp files the atomic write uses, and nothing else: `track_<id>.json.<pid>.tmp`. */
 const TEMP_FILE = /^track_\d+\.json\.(\d+)\.tmp$/;
 
+/** The key of a track's entry: its sim and its id, which are what name its file. */
+function entryKey(track: PitLaneTrackIdentity): string {
+  return `${track.sim}/${track.trackId}`;
+}
+
 function hasLandmarks(section: PitLaneSection): boolean {
   return PIT_LANE_LANDMARK_NAMES.some((name) => section.landmarks[name] !== undefined);
 }
 
 function sameIdentity(a: PitLaneTrackIdentity, b: PitLaneTrackIdentity): boolean {
   return (
+    a.sim === b.sim &&
     a.trackId === b.trackId &&
     a.trackName === b.trackName &&
     a.trackConfigName === b.trackConfigName &&
@@ -249,31 +263,48 @@ function sameIdentity(a: PitLaneTrackIdentity, b: PitLaneTrackIdentity): boolean
 }
 
 export function createTrackStore(opts: TrackStoreOptions): TrackStore {
-  const { directory, sim, logger } = opts;
+  const { directory, logger } = opts;
   const now = opts.now ?? (() => new Date());
   const debounceMs = opts.debounceMs ?? TRACK_STORE_WRITE_DEBOUNCE_MS;
   const maxWaitMs = opts.maxWaitMs ?? TRACK_STORE_WRITE_MAX_WAIT_MS;
   const retryDelaysMs = opts.retryDelaysMs ?? WRITE_RETRY_DELAYS_MS;
   const io = opts.io ?? nodeTrackStoreIo;
   const pid = opts.pid ?? process.pid;
-  const entries = new Map<number, TrackEntry>();
+  const entries = new Map<string, TrackEntry>();
+  /** The refused `sim` values already warned about. */
+  const warnedSims = new Set<string>();
 
   removeStaleTempFiles();
 
   /**
-   * Remove temp files a crashed process left behind: only names of this
-   * store's own pattern, and only when their pid is not a running process or
-   * they are older than {@link TRACK_STORE_STALE_TEMP_MS} — another live
-   * plugin process may be mid-write in the same folder. Our own pid at init
-   * is a previous process's: this one has not written yet.
+   * Remove temp files a crashed process left behind, in every sim's folder
+   * present: only names of this store's own pattern, and only when their pid
+   * is not a running process or they are older than
+   * {@link TRACK_STORE_STALE_TEMP_MS} — another live plugin process may be
+   * mid-write in the same folder. Our own pid at init is a previous
+   * process's: this one has not written yet. Nothing at the root, and no
+   * folder whose name is not a sim's, is touched.
    */
   function removeStaleTempFiles(): void {
+    let sims: string[];
+
+    try {
+      sims = io.readdir(directory).filter(isTrackDataSim);
+    } catch {
+      return; // no folder yet, or unreadable — nothing to clean
+    }
+
+    for (const sim of sims) removeStaleTempFilesIn(sim);
+  }
+
+  function removeStaleTempFilesIn(sim: string): void {
+    const folder = trackSimDirectory(directory, sim);
     let names: string[];
 
     try {
-      names = io.readdir(directory);
+      names = io.readdir(folder);
     } catch {
-      return; // no folder yet, or unreadable — nothing to clean
+      return; // a file named like a sim, or unreadable — nothing to clean
     }
 
     for (const name of names) {
@@ -281,7 +312,7 @@ export function createTrackStore(opts: TrackStoreOptions): TrackStore {
 
       if (!match) continue;
 
-      const path = join(directory, name);
+      const path = join(folder, name);
       const ownerPid = Number(match[1]);
 
       try {
@@ -290,9 +321,9 @@ export function createTrackStore(opts: TrackStoreOptions): TrackStore {
         if (ownerPid !== pid && ageMs < TRACK_STORE_STALE_TEMP_MS && io.isProcessAlive(ownerPid)) continue;
 
         io.unlink(path);
-        logger.debug(`Removed a stale track-data temp file: ${name}`);
+        logger.debug(`Removed a stale track-data temp file: ${sim}/${name}`);
       } catch (error: unknown) {
-        logger.debug(`Stale track-data temp file ${name} could not be removed: ${String(error)}`);
+        logger.debug(`Stale track-data temp file ${sim}/${name} could not be removed: ${String(error)}`);
       }
     }
   }
@@ -350,7 +381,7 @@ export function createTrackStore(opts: TrackStoreOptions): TrackStore {
    * write moves it aside. An `unreadable` one changes nothing.
    */
   function absorb(entry: TrackEntry, result: TrackFileRead): "use" | "corrupt" | "unreadable" | "refused" {
-    const name = trackFileName(entry.identity.trackId);
+    const name = entry.label;
     let verdict: "use" | "corrupt" | "refused";
 
     switch (result.kind) {
@@ -381,7 +412,7 @@ export function createTrackStore(opts: TrackStoreOptions): TrackStore {
         );
         break;
       case "ok": {
-        const mismatch = trackFileMismatch(result.file, entry.identity, sim);
+        const mismatch = trackFileMismatch(result.file, entry.identity);
 
         if (mismatch === null) {
           entry.base = result.file;
@@ -409,17 +440,42 @@ export function createTrackStore(opts: TrackStoreOptions): TrackStore {
   }
 
   /**
-   * The entry for a track, created on first use; an identity that changed
-   * (a rebuilt track's length, a renamed configuration) is taken and the file
-   * is re-read on next use. Own samples of another track length are dropped:
-   * they belong to the old geometry.
+   * Whether the identity's `sim` can name a folder; one that cannot is
+   * refused, with a warn once per value per process.
+   */
+  function acceptsSim(track: PitLaneTrackIdentity): boolean {
+    if (isTrackDataSim(track.sim)) return true;
+
+    const sim = String(track.sim);
+    const message = `Track data for sim ${JSON.stringify(sim)} is not stored: a sim must be lowercase letters, digits and hyphens to name its folder`;
+
+    if (warnedSims.has(sim)) logger.debug(message);
+    else {
+      warnedSims.add(sim);
+      logger.warn(message);
+    }
+
+    return false;
+  }
+
+  /**
+   * The entry for a track (keyed by its sim and id), created on first use; an
+   * identity that changed (a rebuilt track's length, a renamed configuration)
+   * is taken and the file is re-read on next use. Own samples of another
+   * track length are dropped: they belong to the old geometry. The caller has
+   * checked the sim ({@link acceptsSim}).
    */
   function entryFor(track: PitLaneTrackIdentity): TrackEntry {
-    let entry = entries.get(track.trackId);
+    const key = entryKey(track);
+    let entry = entries.get(key);
 
     if (entry === undefined) {
+      const folder = trackSimDirectory(directory, track.sim);
+
       entry = {
-        path: join(directory, trackFileName(track.trackId)),
+        folder,
+        path: join(folder, trackFileName(track.trackId)),
+        label: `${track.sim}/${trackFileName(track.trackId)}`,
         identity: { ...track },
         base: undefined,
         read: false,
@@ -432,7 +488,7 @@ export function createTrackStore(opts: TrackStoreOptions): TrackStore {
         retryAttempt: 0,
         warned: new Set(),
       };
-      entries.set(track.trackId, entry);
+      entries.set(key, entry);
 
       return entry;
     }
@@ -473,12 +529,12 @@ export function createTrackStore(opts: TrackStoreOptions): TrackStore {
     entry.own.set(landmark, samples);
   }
 
-  /** A free `track_<id>.corrupt-<iso>.json` name; never one that exists. */
-  function asidePath(trackId: number): string {
-    const stem = `track_${trackId}.corrupt-${isoStamp(now())}`;
-    let candidate = join(directory, `${stem}.json`);
+  /** A free `track_<id>.corrupt-<iso>.json` name in the entry's folder; never one that exists. */
+  function asidePath(entry: TrackEntry): string {
+    const stem = `track_${entry.identity.trackId}.corrupt-${isoStamp(now())}`;
+    let candidate = join(entry.folder, `${stem}.json`);
 
-    for (let n = 1; io.exists(candidate); n++) candidate = join(directory, `${stem}-${n}.json`);
+    for (let n = 1; io.exists(candidate); n++) candidate = join(entry.folder, `${stem}-${n}.json`);
 
     return candidate;
   }
@@ -490,14 +546,14 @@ export function createTrackStore(opts: TrackStoreOptions): TrackStore {
    * two different invalid-UTF-8 files decode to the same replacement
    * characters.
    */
-  function identicalAside(trackId: number, original: Buffer): string | undefined {
-    const prefix = `track_${trackId}.corrupt-`;
+  function identicalAside(entry: TrackEntry, original: Buffer): string | undefined {
+    const prefix = `track_${entry.identity.trackId}.corrupt-`;
 
-    for (const name of io.readdir(directory)) {
+    for (const name of io.readdir(entry.folder)) {
       if (!name.startsWith(prefix) || !name.endsWith(".json")) continue;
 
       try {
-        if (io.readBytes(join(directory, name)).equals(original)) return name;
+        if (io.readBytes(join(entry.folder, name)).equals(original)) return name;
       } catch {
         // an aside that cannot be read is no match
       }
@@ -522,7 +578,7 @@ export function createTrackStore(opts: TrackStoreOptions): TrackStore {
    * retried one finds the identical aside and copies nothing.
    */
   function moveAside(entry: TrackEntry, classified: Buffer): "moved" | "changed" | "failed" {
-    const name = trackFileName(entry.identity.trackId);
+    const name = entry.label;
     let current: Buffer;
 
     try {
@@ -537,7 +593,7 @@ export function createTrackStore(opts: TrackStoreOptions): TrackStore {
 
     if (!current.equals(classified)) return "changed";
 
-    const aside = asidePath(entry.identity.trackId);
+    const aside = asidePath(entry);
 
     try {
       io.rename(entry.path, aside);
@@ -548,7 +604,7 @@ export function createTrackStore(opts: TrackStoreOptions): TrackStore {
       logger.debug(`Move-aside rename failed: ${String(renameError)}`);
 
       try {
-        const existing = identicalAside(entry.identity.trackId, current);
+        const existing = identicalAside(entry, current);
 
         if (existing === undefined) {
           io.copyExclusive(entry.path, aside);
@@ -567,13 +623,13 @@ export function createTrackStore(opts: TrackStoreOptions): TrackStore {
     }
   }
 
-  function writeAtomic(path: string, text: string): void {
-    const tmp = `${path}.${pid}.tmp`;
+  function writeAtomic(entry: TrackEntry, text: string): void {
+    const tmp = `${entry.path}.${pid}.tmp`;
 
     try {
-      io.mkdirp(directory);
+      io.mkdirp(entry.folder);
       io.writeText(tmp, text);
-      io.rename(tmp, path);
+      io.rename(tmp, entry.path);
     } catch (error: unknown) {
       try {
         io.unlink(tmp);
@@ -598,13 +654,13 @@ export function createTrackStore(opts: TrackStoreOptions): TrackStore {
       if (outcome !== "changed") return outcome;
     }
 
-    logger.debug(`Track data file ${trackFileName(entry.identity.trackId)} kept changing under the write`);
+    logger.debug(`Track data file ${entry.label} kept changing under the write`);
 
     return "retry";
   }
 
   function writeEntryOnce(entry: TrackEntry, mode: WriteMode): WriteOutcome | "changed" {
-    const name = trackFileName(entry.identity.trackId);
+    const name = entry.label;
     let bytes: Buffer | undefined;
     const verdict = absorb(
       entry,
@@ -649,10 +705,10 @@ export function createTrackStore(opts: TrackStoreOptions): TrackStore {
     }
 
     const pitLane: PitLaneSection = { ...section, trackVersion: entry.identity.trackVersion };
-    const file = buildTrackFile(entry.base, entry.identity, sim, pitLane);
+    const file = buildTrackFile(entry.base, entry.identity, pitLane);
 
     try {
-      writeAtomic(entry.path, JSON.stringify(file) + "\n");
+      writeAtomic(entry, JSON.stringify(file) + "\n");
     } catch (error: unknown) {
       logger.debug(`Track data write of ${name} failed: ${String(error)}`);
 
@@ -687,7 +743,7 @@ export function createTrackStore(opts: TrackStoreOptions): TrackStore {
       } catch (error: unknown) {
         // A timer callback's throw would be uncaught; the sample stays in
         // memory for the next one or the shutdown flush.
-        logger.error(`Track data write of ${trackFileName(entry.identity.trackId)} failed: ${String(error)}`);
+        logger.error(`Track data write of ${entry.label} failed: ${String(error)}`);
       }
     }, delayMs);
     entry.timer.unref?.();
@@ -720,9 +776,7 @@ export function createTrackStore(opts: TrackStoreOptions): TrackStore {
         const delay = retryDelaysMs[entry.retryAttempt];
 
         if (delay === undefined) {
-          logger.warn(
-            `Track data ${trackFileName(entry.identity.trackId)} could not be written; retrying on the next sample or at shutdown`,
-          );
+          logger.warn(`Track data ${entry.label} could not be written; retrying on the next sample or at shutdown`);
           break;
         }
 
@@ -753,6 +807,8 @@ export function createTrackStore(opts: TrackStoreOptions): TrackStore {
 
     load(track) {
       try {
+        if (!acceptsSim(track)) return null;
+
         const entry = entryFor(track);
 
         ensureRead(entry);
@@ -772,6 +828,8 @@ export function createTrackStore(opts: TrackStoreOptions): TrackStore {
 
           return false;
         }
+
+        if (!acceptsSim(track)) return false;
 
         const entry = entryFor(track);
 
@@ -815,7 +873,7 @@ export function createTrackStore(opts: TrackStoreOptions): TrackStore {
 
           if (outcome === "done" || outcome === "refused") entry.dirty = false;
           else if (outcome === "retry") {
-            logger.error(`Track data ${trackFileName(entry.identity.trackId)} could not be written at shutdown`);
+            logger.error(`Track data ${entry.label} could not be written at shutdown`);
           }
         } catch (error: unknown) {
           logger.error(`Track data shutdown flush failed: ${String(error)}`);

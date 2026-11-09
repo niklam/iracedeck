@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildTrackFile,
+  isTrackDataSim,
   type ParsedTrackFile,
   parseTrackFile,
   readTrackFile,
@@ -12,9 +13,12 @@ import {
   TRACK_FILE_VERSION,
   trackFileMismatch,
   trackFileName,
+  trackFilePath,
+  trackSimDirectory,
 } from "./track-file.js";
 
 const TRACK: PitLaneTrackIdentity = {
+  sim: "iracing",
   trackId: 101,
   trackName: "spa 2024 gp",
   trackConfigName: "Grand Prix",
@@ -167,11 +171,16 @@ describe("trackFileMismatch", () => {
   }
 
   it("accepts the same track, whatever its length or version", () => {
-    expect(trackFileMismatch(parsed({ trackLength: "7.00 km", trackVersion: "old" }), TRACK, "iracing")).toBeNull();
+    expect(trackFileMismatch(parsed({ trackLength: "7.00 km", trackVersion: "old" }), TRACK)).toBeNull();
   });
 
   it("accepts a file with no sim recorded", () => {
-    expect(trackFileMismatch(parsed({ sim: undefined }), TRACK, "iracing")).toBeNull();
+    expect(trackFileMismatch(parsed({ sim: undefined }), TRACK)).toBeNull();
+  });
+
+  it("compares the envelope's sim with the identity's", () => {
+    expect(trackFileMismatch(parsed({ sim: "other-sim" }), { ...TRACK, sim: "other-sim" })).toBeNull();
+    expect(trackFileMismatch(parsed(), { ...TRACK, sim: "other-sim" })).toBe('sim "iracing" is not "other-sim"');
   });
 
   it.each([
@@ -180,7 +189,7 @@ describe("trackFileMismatch", () => {
     ["trackConfigName", { trackConfigName: "Oval" }],
     ["sim", { sim: "othersim" }],
   ])("refuses a different %s", (field, overrides) => {
-    expect(trackFileMismatch(parsed(overrides), TRACK, "iracing")).toContain(field);
+    expect(trackFileMismatch(parsed(overrides), TRACK)).toContain(field);
   });
 });
 
@@ -188,7 +197,7 @@ describe("buildTrackFile", () => {
   const section = { version: 1, trackLength: "6.93 km", trackVersion: "2025.03.01.02", landmarks: {} };
 
   it("writes the envelope from the session's identity", () => {
-    expect(buildTrackFile(undefined, TRACK, "iracing", section)).toEqual({
+    expect(buildTrackFile(undefined, TRACK, section)).toEqual({
       version: TRACK_FILE_VERSION,
       sim: "iracing",
       trackId: 101,
@@ -205,11 +214,53 @@ describe("buildTrackFile", () => {
 
     if (base.kind !== "ok") throw new Error("fixture did not parse");
 
-    const file = buildTrackFile(base.file, TRACK, "iracing", section);
+    const file = buildTrackFile(base.file, TRACK, section);
 
     expect(file.futureKey).toEqual([1, 2]);
     expect(file.trackLength).toBe("6.93 km");
     expect(file.sim).toBe("iracing");
     expect(file.pitLane).toBe(section);
+  });
+
+  it("names the identity's sim in the envelope", () => {
+    expect(buildTrackFile(undefined, { ...TRACK, sim: "other-sim" }, section).sim).toBe("other-sim");
+  });
+});
+
+describe("the sim's folder", () => {
+  it.each(["iracing", "sim-2", "a", "0", "x".repeat(32)])("accepts %j as a folder name", (sim) => {
+    expect(isTrackDataSim(sim)).toBe(true);
+    expect(trackSimDirectory("C:/data/Track Data", sim)).toBe(join("C:/data/Track Data", sim));
+  });
+
+  it.each([
+    "",
+    "iRacing",
+    "../up",
+    "a/b",
+    "a\\b",
+    ".",
+    "..",
+    "-lead",
+    "a.b",
+    "has space",
+    "con",
+    "nul",
+    "com1",
+    "lpt9",
+    "x".repeat(33),
+    3,
+    null,
+    undefined,
+  ])("refuses %j", (sim) => {
+    expect(isTrackDataSim(sim)).toBe(false);
+    expect(() => trackSimDirectory("C:/data/Track Data", sim as string)).toThrow(RangeError);
+    expect(() => trackFilePath("C:/data/Track Data", sim as string, 101)).toThrow(RangeError);
+  });
+
+  it("puts a track's file in its sim's folder", () => {
+    expect(trackFilePath("C:/data/Track Data", "iracing", 101)).toBe(
+      join("C:/data/Track Data", "iracing", "track_101.json"),
+    );
   });
 });

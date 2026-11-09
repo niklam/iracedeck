@@ -4,12 +4,14 @@
  * the pit-lane section's model (fold, median, rebuild, the section reader) is
  * `@iracedeck/track-data`'s and is never reimplemented here.
  *
- * `%LOCALAPPDATA%\iRaceDeck\Track Data\track_<TrackID>.json` holds what
- * iRaceDeck learns about one track. Today that is the `pitLane` section; the
- * envelope carries the track identity as it was when written (the #1081
- * re-keying rule: the raw names let a file be re-keyed rather than orphaned if
- * the identity scheme changes). The envelope's `version` covers the envelope
- * only — the section versions its own contents.
+ * `%LOCALAPPDATA%\iRaceDeck\Track Data\<sim>\track_<TrackID>.json` holds
+ * what iRaceDeck learns about one track of one simulator: the folder is the
+ * identity's `sim` (`iracing`), so two sims' track ids never share a name.
+ * Today the file holds the `pitLane` section; the envelope carries the track
+ * identity as it was when written (the #1081 re-keying rule: the raw names
+ * let a file be re-keyed rather than orphaned if the identity scheme
+ * changes). The envelope's `version` covers the envelope only — the section
+ * versions its own contents.
  *
  * Design: `docs/superpowers/specs/2026-09-04-issue-1112-pit-lane-landmarks.md`
  * and its 2026-11-09 amendments.
@@ -33,14 +35,14 @@ export const TRACK_DATA_DIR_ENV = "IRACEDECK_TRACK_DATA_DIR";
 export interface TrackFileEnvelope {
   [key: string]: unknown;
   version: number;
-  /** The simulator the TrackID belongs to (`"iracing"`). */
+  /** The identity's `sim` (`"iracing"`), the same as the folder the file is in. */
   sim: string;
   trackId: number;
   trackName: string;
   trackConfigName: string;
-  /** Raw `WeekendInfo.TrackLength` when last written. */
+  /** The identity's raw `trackLength` when last written. */
   trackLength: string;
-  /** Raw `WeekendInfo.TrackVersion` when last written; informational only. */
+  /** The identity's raw `trackVersion` when last written; informational only. */
   trackVersion: string | null;
 }
 
@@ -80,12 +82,53 @@ export function trackFileName(trackId: number): string {
   return `track_${trackId}.json`;
 }
 
+/**
+ * What a `sim` must look like to name a folder: lowercase letters, digits and
+ * hyphens, starting with a letter or digit, at most 32 characters. No
+ * separator, dot or space can reach the path, and the case is fixed, so a
+ * case-insensitive file system never folds two sims into one folder.
+ */
+const TRACK_SIM_PATTERN = /^[a-z0-9][a-z0-9-]{0,31}$/;
+
+/** Names Windows reserves for devices, in any folder. */
+const WINDOWS_RESERVED_NAMES = /^(con|prn|aux|nul|com[0-9]|lpt[0-9])$/;
+
+/**
+ * Whether `sim` is safe as the one path segment of its folder under the track
+ * data directory ({@link TRACK_SIM_PATTERN}, and not a Windows device name).
+ * The store refuses an identity whose `sim` is not.
+ */
+export function isTrackDataSim(sim: unknown): sim is string {
+  return typeof sim === "string" && TRACK_SIM_PATTERN.test(sim) && !WINDOWS_RESERVED_NAMES.test(sim);
+}
+
+/**
+ * The folder of one sim's track files: `<directory>\<sim>`.
+ *
+ * @throws RangeError when `sim` is not {@link isTrackDataSim}.
+ */
+export function trackSimDirectory(directory: string, sim: string): string {
+  if (!isTrackDataSim(sim)) throw new RangeError(`Not a track data sim: ${JSON.stringify(sim)}`);
+
+  return join(directory, sim);
+}
+
+/**
+ * `<directory>\<sim>\track_<TrackID>.json`.
+ *
+ * @throws RangeError when `sim` is not {@link isTrackDataSim}.
+ */
+export function trackFilePath(directory: string, sim: string, trackId: number): string {
+  return join(trackSimDirectory(directory, sim), trackFileName(trackId));
+}
+
 export interface ResolveTrackDataDirectoryOptions {
   env: Record<string, string | undefined>;
 }
 
 /**
- * `%LOCALAPPDATA%\iRaceDeck\Track Data`, one folder for every deck host.
+ * `%LOCALAPPDATA%\iRaceDeck\Track Data`, one folder for every deck host; the
+ * store keeps each sim's files in a subfolder named for it.
  * Deliberately NOT per ecosystem, unlike the settings and replay stores: a pit
  * lane is a fact about a track, not about which deck is attached, and per-host
  * copies would relearn it on every switch (spec decision 3). Two plugin
@@ -192,11 +235,13 @@ export function readTrackFile(path: string, readText: (path: string) => string):
 
 /**
  * Why a file must not be merged with the session's track, or `null` when it
- * may. A file whose TrackID, name or configuration differs from the session's
- * (or that names another simulator) is not this track's, whatever its file
- * name says: it is neither read as data nor written over.
+ * may. A file whose TrackID, name or configuration differs from the session's,
+ * or whose envelope names another simulator than the identity's `sim`, is not
+ * this track's, whatever its folder and file name say: it is neither read as
+ * data nor written over. An envelope with no `sim` (read as `""`) is judged
+ * by the rest: the folder already names the sim.
  */
-export function trackFileMismatch(file: ParsedTrackFile, track: PitLaneTrackIdentity, sim: string): string | null {
+export function trackFileMismatch(file: ParsedTrackFile, track: PitLaneTrackIdentity): string | null {
   if (file.trackId !== track.trackId) return `trackId ${file.trackId} is not ${track.trackId}`;
 
   if (file.trackName !== track.trackName) return `trackName "${file.trackName}" is not "${track.trackName}"`;
@@ -205,7 +250,7 @@ export function trackFileMismatch(file: ParsedTrackFile, track: PitLaneTrackIden
     return `trackConfigName "${file.trackConfigName}" is not "${track.trackConfigName}"`;
   }
 
-  if (file.sim !== "" && file.sim !== sim) return `sim "${file.sim}" is not "${sim}"`;
+  if (file.sim !== "" && file.sim !== track.sim) return `sim "${file.sim}" is not "${track.sim}"`;
 
   return null;
 }
@@ -223,19 +268,19 @@ const ENVELOPE_KEYS = new Set([
 ]);
 
 /**
- * The file to write: the envelope from the session's identity, the section
- * (whose `trackVersion` the store stamps from the identity), and every key of
- * `base` this build does not read, carried through after them.
+ * The file to write: the envelope from the session's identity (its `sim`
+ * included), the section (whose `trackVersion` the store stamps from the
+ * identity), and every key of `base` this build does not read, carried
+ * through after them.
  */
 export function buildTrackFile(
   base: ParsedTrackFile | undefined,
   track: PitLaneTrackIdentity,
-  sim: string,
   pitLane: PitLaneSection,
 ): TrackFile {
   const file: TrackFile = {
     version: TRACK_FILE_VERSION,
-    sim,
+    sim: track.sim,
     trackId: track.trackId,
     trackName: track.trackName,
     trackConfigName: track.trackConfigName,

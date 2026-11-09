@@ -2,9 +2,10 @@
  * Learned pit-lane landmarks (issue #1112): the pure model behind the
  * per-track pit-lane file.
  *
- * iRacing reports which state a car is in (approaching the pits, between the
- * cones, back on track) but never the positions at which those states change.
- * The translator turns each observed edge into a {@link PitLaneLandmarkSample};
+ * A sim reports which state a car is in (approaching the pits, between the
+ * cones, back on track) but not the positions at which those states change —
+ * iRacing, the one sim read today, does not. A sim's translator turns each
+ * observed edge into a {@link PitLaneLandmarkSample};
  * this module folds samples into a windowed record whose position is the
  * circular median of the window, decides when a landmark is trustworthy enough
  * to publish, and handles a track rebuild. It does no IO and reads no clock:
@@ -26,32 +27,70 @@ export const PIT_LANE_LANDMARK_NAMES = ["approachStart", "pitRoadStart", "pitRoa
 /** One of {@link PIT_LANE_LANDMARK_NAMES}. */
 export type PitLaneLandmarkName = (typeof PIT_LANE_LANDMARK_NAMES)[number];
 
-/** One accepted edge. */
+/**
+ * One accepted edge: one car crossing one landmark once. The examples name
+ * iRacing's telemetry, the one sim read today; another sim fills each field
+ * from its own equivalent.
+ */
 export interface PitLaneLandmarkSample {
-  /** `0 <= pct < 1`, `CarIdxLapDistPct` (wrap-aware midpoint of the edge's two ticks). */
+  /**
+   * Where the edge happened, as a fraction of the lap from the start/finish
+   * line, `0 <= pct < 1`: the wrap-aware midpoint of the edge's two ticks
+   * (iRacing: `CarIdxLapDistPct`).
+   */
   pct: number;
-  /** Seconds, `CarIdxEstTime` on the landmark's side of the S/F line. */
+  /**
+   * The sim's reference time to this point of the lap for the car's class, in
+   * seconds from the start/finish line, read on the landmark's side of the
+   * line (iRacing: `CarIdxEstTime`).
+   */
   estTime: number;
-  /** `CarIdxClass`. */
+  /** The sim's id of the car's class (iRacing: `CarIdxClass`). */
   carClassId: number;
-  /** `${subSessionId}:${sessionNum}:${carIdx}:${landmark}:${lap}` — identifies the edge across processes. */
+  /**
+   * Opaque: unique per crossing of one landmark by one car, so two processes
+   * watching one session make the same key for one edge. Its publisher builds
+   * it (iRacing's translator: `<subSessionId>:<sessionNum>:<carIdx>:<landmark>:<lap>`);
+   * nothing parses it.
+   */
   key: string;
   /** Epoch ms (wall clock) when the sample was accepted. */
   at: number;
 }
 
-/** Track identity carried by the event and the file envelope. */
+/**
+ * The track a landmark belongs to, carried by the event and the file
+ * envelope. The raw names travel with the id so a record can be re-keyed if
+ * the identity scheme changes, and the raw length so a rebuilt track is
+ * noticed. The examples are iRacing's; the id and class key types are
+ * revisited by the second-sim state-model spike (#714).
+ */
 export interface PitLaneTrackIdentity {
+  /**
+   * The simulator the track belongs to, e.g. `"iracing"`: lowercase letters,
+   * digits and hyphens, starting with a letter or digit (the store names a
+   * folder after it). Every other field is read in this sim's terms.
+   */
+  sim: string;
+  /** The sim's id of the track layout (iRacing: `WeekendInfo.TrackID`). */
   trackId: number;
+  /** The sim's name of the track (iRacing: `WeekendInfo.TrackName`). */
   trackName: string;
+  /** The sim's name of the layout, `""` when it has none (iRacing: `WeekendInfo.TrackConfigName`). */
   trackConfigName: string;
-  /** Raw `WeekendInfo.TrackLength`, e.g. `"5.51 km"`. A change is a rebuild ({@link applyTrackLength}). */
+  /**
+   * The track length exactly as the sim reports it (iRacing:
+   * `WeekendInfo.TrackLength`, e.g. `"5.51 km"`). Compared as a string: a
+   * change is a rebuild ({@link applyTrackLength}).
+   */
   trackLength: string;
+  /** That length in metres, or `null` when it does not parse. */
   trackLengthM: number | null;
   /**
-   * Raw `WeekendInfo.TrackVersion`, or `null` when the session has none.
-   * Informational only: it moves on every iRacing update whether or not the
-   * geometry changed, so the rebuild rule stays on `trackLength`.
+   * The sim's track version as reported, or `null` when it reports none
+   * (iRacing: `WeekendInfo.TrackVersion`). Informational only: it can move on
+   * any update of the sim whether or not the geometry changed, so the rebuild
+   * rule stays on `trackLength`.
    */
   trackVersion: string | null;
 }
@@ -138,10 +177,10 @@ export type PitLaneLandmarks = Partial<Record<PitLaneLandmarkName, PitLaneLandma
 export interface PitLaneSection {
   /** {@link PIT_LANE_SECTION_VERSION} when written by this code. */
   version: number;
-  /** Raw `WeekendInfo.TrackLength` the landmarks were learned under; a change means a rebuild. */
+  /** The identity's `trackLength` the landmarks were learned under; a change means a rebuild. */
   trackLength: string;
   /**
-   * Raw `WeekendInfo.TrackVersion` when the store last wrote the section.
+   * The identity's `trackVersion` when the store last wrote the section.
    * Informational only; the rebuild rule reads `trackLength`.
    */
   trackVersion?: string | null;
@@ -334,8 +373,8 @@ export function isDuplicatePitLaneSample(
 /**
  * Per class, the median estTime of the window samples that agree with
  * `medianPct` (within `tolerancePct`) and lie on its side of the S/F line. An
- * outlier's time belongs to the wrong place on track, and `CarIdxEstTime`
- * restarts at 0 on the line, so a sample unwrapped across it would mix a
+ * outlier's time belongs to the wrong place on track, and the estTime
+ * restarts at 0 on the line (iRacing's `CarIdxEstTime` does), so a sample unwrapped across it would mix a
  * near-zero time with a near-lap one.
  */
 function estTimeByClassFor(
@@ -482,7 +521,8 @@ export function resolvePublishedLandmark(
 // ---------------------------------------------------------------------------
 
 /**
- * Bring a section in line with the session's `WeekendInfo.TrackLength`.
+ * Bring a section in line with the session's track length (the identity's
+ * `trackLength`).
  *
  * No section yields an empty one. An equal length returns the section itself.
  * A different length means the track was rebuilt: every landmark that was

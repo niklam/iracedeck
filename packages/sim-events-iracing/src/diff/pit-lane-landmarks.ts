@@ -90,6 +90,7 @@ import {
   type PitLaneTrackIdentity,
 } from "@iracedeck/track-data";
 
+import { IRACING_SIM_ID } from "../sim-id.js";
 import type { PitLaneLandmarkCarTick, PitLaneLandmarksState } from "../state.js";
 import { runUnitsDirectly, type UnitRunner } from "../tick-steps.js";
 import { parseTrackLengthMeters } from "../track-type.js";
@@ -120,8 +121,9 @@ export const PIT_LANE_MAX_PLAUSIBLE_SPEED_MPS = 150;
 export const PIT_LANE_EDGE_SETTLE_S = 3;
 
 /**
- * The track in session, as the landmark store keys it (issue #1112), from
- * `WeekendInfo`: `TrackID` (a non-negative integer), `TrackName` and
+ * The track in session, as the landmark store keys it (issue #1112): `sim` is
+ * {@link IRACING_SIM_ID}, the rest is from `WeekendInfo`: `TrackID` (a
+ * non-negative integer), `TrackName` and
  * `TrackLength` (strings) are required, else `null` — session info not loaded
  * yet. A missing `TrackConfigName` reads `""`; `TrackVersion` is kept as a
  * string (a number is stringified) and is `null` when absent.
@@ -142,6 +144,7 @@ export function resolvePitLaneTrackIdentity(sessionInfo: Record<string, unknown>
   const version = weekend.TrackVersion;
 
   return {
+    sim: IRACING_SIM_ID,
     trackId,
     trackName,
     trackConfigName: typeof config === "string" ? config : "",

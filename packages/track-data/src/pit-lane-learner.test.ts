@@ -19,6 +19,7 @@ import {
 
 /** A 4 km track: the 15 m tolerance is 0.00375 of a lap. */
 const TRACK: PitLaneTrackIdentity = {
+  sim: "iracing",
   trackId: 123,
   trackName: "testtrack",
   trackConfigName: "Grand Prix",
@@ -56,6 +57,7 @@ describe("pitLaneTrackKey", () => {
   it("changes with every field of the identity", () => {
     const base = pitLaneTrackKey(TRACK);
     const variants: PitLaneTrackIdentity[] = [
+      { ...TRACK, sim: "othersim" },
       { ...TRACK, trackId: 124 },
       { ...TRACK, trackName: "other" },
       { ...TRACK, trackConfigName: "Oval" },

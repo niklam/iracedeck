@@ -14,6 +14,7 @@ import {
 } from "@iracedeck/track-data";
 import { describe, expect, it, vi } from "vitest";
 
+import { IRACING_SIM_ID } from "../sim-id.js";
 import { createPitLaneLandmarksState, type PitLaneLandmarksState } from "../state.js";
 import { TickSteps } from "../tick-steps.js";
 import {
@@ -28,6 +29,7 @@ import type { PendingEvent } from "./types.js";
 
 /** A 4 km track: one lap fraction of 0.001 is 4 m, and the 15 m tolerance is 0.00375. */
 const TRACK: PitLaneTrackIdentity = {
+  sim: "iracing",
   trackId: 123,
   trackName: "testtrack",
   trackConfigName: "Grand Prix",
@@ -635,8 +637,10 @@ describe("resolvePitLaneTrackIdentity", () => {
     TrackVersion: "2026.11.01.01",
   };
 
-  it("reads the identity from WeekendInfo, with the length in metres", () => {
+  it("reads the identity from WeekendInfo, with the length in metres, as iRacing's", () => {
     expect(resolvePitLaneTrackIdentity({ WeekendInfo: weekend })).toEqual(TRACK);
+    expect(resolvePitLaneTrackIdentity({ WeekendInfo: weekend })!.sim).toBe(IRACING_SIM_ID);
+    expect(IRACING_SIM_ID).toBe("iracing");
   });
 
   it("reads a missing config as empty and a numeric version as a string", () => {

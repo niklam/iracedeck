@@ -62,6 +62,7 @@ export function createPitLaneLandmarkLearner(): PitLaneLandmarkLearner {
  */
 export function pitLaneTrackKey(track: PitLaneTrackIdentity): string {
   return JSON.stringify([
+    track.sim,
     track.trackId,
     track.trackName,
     track.trackConfigName,

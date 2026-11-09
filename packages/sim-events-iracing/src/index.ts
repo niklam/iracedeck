@@ -182,6 +182,9 @@ export { PIT_APPROACH_COOLDOWN_MS } from "./diff/pit-lane.js";
 // plugin hands `initializeSimEventsIracing` (`loadPitLaneLandmarks`) is
 // `@iracedeck/track-data`'s `PitLaneLandmarksLoader`.
 export { PIT_LANE_EDGE_SETTLE_S, PIT_LANE_MAX_PLAUSIBLE_SPEED_MPS } from "./diff/pit-lane-landmarks.js";
+// The id sim-neutral data names this sim by: a pit-lane track identity's
+// `sim`, and the track store's folder and file envelope through it.
+export { IRACING_SIM_ID } from "./sim-id.js";
 export {
   PIT_STATUS_EMPTY_STOP_MAX_MS,
   PIT_STATUS_MOVEMENT_SPEED_MPS,

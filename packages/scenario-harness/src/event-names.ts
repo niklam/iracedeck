@@ -91,6 +91,7 @@ export const EVENT_TEMPLATES = [
     // Checked against the catalog: this payload is a contract the store folds.
     data: {
       track: {
+        sim: "iracing",
         trackId: 324,
         trackName: "tsukuba 2kfull",
         trackConfigName: "2000 Full",

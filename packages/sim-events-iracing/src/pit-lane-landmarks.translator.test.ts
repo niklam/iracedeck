@@ -27,6 +27,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { _resetSimEventsIracing, getPitLaneLandmarks, initializeSimEventsIracing } from "./translator.js";
 
 const TRACK: PitLaneTrackIdentity = {
+  sim: "iracing",
   trackId: 123,
   trackName: "testtrack",
   trackConfigName: "Grand Prix",

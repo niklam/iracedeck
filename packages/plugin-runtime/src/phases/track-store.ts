@@ -1,8 +1,8 @@
 /**
  * Phase 2 (#1112): the per-track store the learned pit-lane landmarks persist
- * in — one file per TrackID under `%LOCALAPPDATA%\iRaceDeck\Track Data`,
- * shared by every deck host — with its exit flush and the bus subscription
- * that feeds it.
+ * in — one file per track under `%LOCALAPPDATA%\iRaceDeck\Track Data`, in a
+ * folder per sim, shared by every deck host — with its exit flush and the bus
+ * subscription that feeds it.
  *
  * It runs before the sim phase because the translator takes the store's
  * reader when it is constructed (`loadPitLaneLandmarks`), and after the core
@@ -14,22 +14,14 @@ import { initializeTrackStore, resolveTrackDataDirectory } from "@iracedeck/trac
 
 import type { Core, TrackData } from "../types.js";
 
-/**
- * The simulator the TrackIDs belong to, written to every track file's
- * envelope. This package chooses the sim (#1349), so it names it here.
- */
-const TRACK_STORE_SIM = "iracing";
-
 export function initTrackStore(core: Core): TrackData {
   // Not per ecosystem, unlike the settings and replay stores: a pit lane is a
   // fact about a track, and the store merges on every write, so two deck
-  // hosts share one folder (spec decision 3).
+  // hosts share one folder (spec decision 3). No sim is named here: each
+  // sample's track identity carries its own, and the store files it under a
+  // folder of that name.
   const directory = resolveTrackDataDirectory({ env: process.env });
-  const store = initializeTrackStore({
-    directory,
-    sim: TRACK_STORE_SIM,
-    logger: core.adapter.createLogger("TrackStore"),
-  });
+  const store = initializeTrackStore({ directory, logger: core.adapter.createLogger("TrackStore") });
 
   // Writes are debounced (2 s, at most 10 s from the first unsaved sample),
   // so the last pit stop of a session would be lost without a synchronous
