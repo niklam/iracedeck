@@ -30,6 +30,7 @@ import {
 } from "@iracedeck/settings";
 import { z } from "zod";
 
+import pitCrewRadarVolumeTemplate from "../../../icons/pit-crew-radar-volume.svg";
 import pitCrewTemplate from "../../../icons/pit-crew.svg";
 import {
   isCornerNamesEnabled,
@@ -229,20 +230,32 @@ function modePresentation(
 /**
  * @internal Exported for testing.
  *
+ * The icon template for a mode. Each template's `<desc>` carries its mode's
+ * title default with `showTitle` locked (#1479): the three toggles hide the
+ * title, since their status bar already reads the state, and Radar Volume
+ * shows it, since the title is the volume readout. The global Show title
+ * setting therefore applies to none of them; a per-key override still does.
+ * Colours and border are the same in both.
+ */
+export function templateFor(mode: Mode): string {
+  return mode === "radar-volume" ? pitCrewRadarVolumeTemplate : pitCrewTemplate;
+}
+
+/**
+ * @internal Exported for testing.
+ *
  * Generates a complete SVG data URI for the Pit Crew icon. The artwork and
  * status bar vary per mode; feature on/off state is read from global
  * settings so every instance of a given mode shows the same state.
  */
 export function generatePitCrewSvg(settings: PitCrewSettings): string {
-  const colors = resolveIconColors(pitCrewTemplate, getGlobalColors(), settings.colorOverrides) as Record<
-    string,
-    string
-  >;
+  const template = templateFor(settings.mode);
+  const colors = resolveIconColors(template, getGlobalColors(), settings.colorOverrides) as Record<string, string>;
 
   const graphicColor = colors.graphic1Color ?? WHITE;
   const graphic = resolveGraphicSettings(getGlobalGraphicSettings(), settings.graphicOverrides);
   const { defaultTitle, stateIndicator } = modePresentation(settings.mode, settings.direction, readRadarVolume());
-  const title = resolveTitleSettings(pitCrewTemplate, getGlobalTitleSettings(), settings.titleOverrides, defaultTitle);
+  const title = resolveTitleSettings(template, getGlobalTitleSettings(), settings.titleOverrides, defaultTitle);
 
   // Status bar, when present, occupies y=100..144. Shrink the graphic area
   // so the artwork sits above it. Volume modes have no status bar, so the
@@ -278,14 +291,14 @@ export function generatePitCrewSvg(settings: PitCrewSettings): string {
   const iconContent = scaledGraphic + titleText + statusBar;
 
   const border = resolveBorderSettings(
-    pitCrewTemplate,
+    template,
     getGlobalBorderSettings(),
     settings.borderOverrides,
     stateIndicator !== null ? borderColorForState(stateIndicator) : undefined,
   );
   const borderSvg = generateBorderParts(border);
 
-  const svg = renderIconTemplate(pitCrewTemplate, {
+  const svg = renderIconTemplate(template, {
     iconContent,
     borderDefs: borderSvg.defs,
     borderContent: borderSvg.rects,
