@@ -267,6 +267,58 @@ describe("pit-lane landmarks through handleTick (issue #1112)", () => {
     expect(loader).toHaveBeenCalledTimes(3);
   });
 
+  it("builds the track identity once per session-info object, and picks up a changed one", () => {
+    const loader = vi.fn((_track: PitLaneTrackIdentity): PitLaneSection | null => null);
+
+    init(loader);
+
+    // A fresh session info with `TrackVersion` read through a counter: only the identity reads it.
+    const base = controller.sessionInfo;
+    let versionReads = 0;
+    const withVersion = (version: string): Record<string, unknown> => {
+      const weekend = { ...(base.WeekendInfo as Record<string, unknown>) };
+
+      Object.defineProperty(weekend, "TrackVersion", {
+        enumerable: true,
+        get: () => {
+          versionReads++;
+
+          return version;
+        },
+      });
+
+      return { ...base, WeekendInfo: weekend };
+    };
+
+    controller.sessionInfo = withVersion(TRACK.trackVersion!);
+
+    for (let t = 0; t < 1; t += 0.1) controller.__tick(tick(t, {}));
+
+    expect(versionReads).toBe(1);
+    expect(loader).toHaveBeenCalledOnce();
+
+    // The YAML re-read with nothing changed: a new object, built once, and the learner keeps its track.
+    controller.sessionInfo = withVersion(TRACK.trackVersion!);
+
+    for (let t = 1; t < 2; t += 0.1) controller.__tick(tick(t, {}));
+
+    expect(versionReads).toBe(2);
+    expect(loader).toHaveBeenCalledOnce();
+
+    // A changed identity in a new object is loaded.
+    controller.sessionInfo = withVersion("2027.01.01.01");
+    controller.__tick(tick(2, {}));
+    controller.__tick(tick(2.1, {}));
+
+    expect(versionReads).toBe(3);
+    expect(loader).toHaveBeenCalledTimes(2);
+    expect(loader).toHaveBeenLastCalledWith({ ...TRACK, trackVersion: "2027.01.01.01" });
+
+    enterApproach(controller, 10, 1, 0.5);
+
+    expect(events.at(-1)!.data.track).toEqual({ ...TRACK, trackVersion: "2027.01.01.01" });
+  });
+
   it("drops what it learned at a session change and starts from the store's answer", () => {
     const stored: PitLaneSection = { version: PIT_LANE_SECTION_VERSION, trackLength: TRACK.trackLength, landmarks: {} };
     const loader = vi.fn((_track: PitLaneTrackIdentity) => stored);

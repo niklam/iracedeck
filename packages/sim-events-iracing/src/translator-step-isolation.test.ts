@@ -389,14 +389,26 @@ describe("every step, made to throw in turn (#1559)", () => {
 
   // The steps and values that publish nothing: a throw is reported, and every
   // publishing step still publishes, but for the consumers decision 3 skips.
-  it.each<{ throwing: string; ids: string[]; skipped: readonly string[]; firstCallOnly?: boolean }>([
+  it.each<{
+    throwing: string;
+    ids: string[];
+    skipped: readonly string[];
+    firstCallOnly?: boolean;
+    newSessionInfo?: boolean;
+  }>([
     { throwing: "diffTireTemps", ids: ["diffTireTemps"], skipped: [] },
     { throwing: "diffFuelLaps", ids: ["diffFuelLaps"], skipped: [] },
     { throwing: "diffTrackGaps", ids: ["diffTrackGaps"], skipped: [] },
     { throwing: "resolveSessionType", ids: ["resolveSessionType"], skipped: [] },
     { throwing: "resolveTrackType", ids: ["resolveTrackType"], skipped: [] },
     { throwing: "resolveCollisionCarValue", ids: ["resolveCollisionCarValue"], skipped: [] },
-    { throwing: "resolvePitLaneTrackIdentity", ids: ["resolvePitLaneTrackIdentity"], skipped: [] },
+    // Built once per session-info object (`pitLaneTrackMemo`), so it runs again, and throws, on a re-read one.
+    {
+      throwing: "resolvePitLaneTrackIdentity",
+      ids: ["resolvePitLaneTrackIdentity"],
+      skipped: [],
+      newSessionInfo: true,
+    },
     { throwing: "seedPitLaneLandmarkLearner", ids: ["seedPitLaneLandmarkLearner"], skipped: [] },
     // Only the tick's own read: `diffCaution` and the recorder resolve the pace car themselves.
     { throwing: "resolvePaceCarIdx", ids: ["resolvePaceCarIdx"], skipped: [], firstCallOnly: true },
@@ -408,10 +420,12 @@ describe("every step, made to throw in turn (#1559)", () => {
       ids: ["resolvePlayerIsLeader", "resolveCanonicalOrder"],
       skipped: ORDER_CONSUMERS,
     },
-  ])("$throwing: reports $ids and skips $skipped", ({ throwing, ids, skipped, firstCallOnly }) => {
+  ])("$throwing: reports $ids and skips $skipped", ({ throwing, ids, skipped, firstCallOnly, newSessionInfo }) => {
     start();
     runTick();
     harness.control.probe = true;
+
+    if (newSessionInfo === true) controller.setSessionInfo(raceSessionInfo());
 
     if (firstCallOnly === true) {
       let calls = 0;

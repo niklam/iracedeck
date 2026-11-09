@@ -65,6 +65,7 @@ import {
   type PitLaneLandmarkName,
   type PitLaneLandmarksLoader,
   type PitLaneResolvedLandmark,
+  type PitLaneTrackIdentity,
   resolveCornerMarkers,
   resolvePitLaneLandmarks,
 } from "@iracedeck/track-data";
@@ -331,6 +332,20 @@ type TranslatorInstance = {
    * unwritten samples.
    */
   pitLaneLearner: PitLaneLandmarkLearner;
+  /**
+   * The track identity `resolvePitLaneTrackIdentity` last built (issue
+   * #1112), keyed on the session-info object it read, as
+   * {@link TranslatorInstance.paceLineupMemo} is and for the same reason: the
+   * SDK hands back the same parsed object until the YAML changes. So a tick
+   * with unchanged session info hands the learner the very identity it holds,
+   * which `loadPitLaneLandmarkLearner` keeps by reference, and neither the
+   * identity, the track length nor its key is rebuilt. Dropped with the
+   * learner. `null` until first resolved.
+   */
+  pitLaneTrackMemo: {
+    sessionInfo: Record<string, unknown> | null;
+    track: PitLaneTrackIdentity | null;
+  } | null;
   /** The store's loader the learner is seeded from (issue #1112); `null` when none was given (learn from empty). */
   loadPitLaneLandmarks: PitLaneLandmarksLoader | null;
   /**
@@ -565,6 +580,7 @@ export function initializeSimEventsIracing(
     freshConnectReplaySkipLogged: false,
     fuelLaps: createFuelLapTracker(),
     pitLaneLearner: createPitLaneLandmarkLearner(),
+    pitLaneTrackMemo: null,
     loadPitLaneLandmarks: options.loadPitLaneLandmarks ?? null,
     getFuelLapsLeftMarginLaps: options.getFuelLapsLeftMarginLaps ?? (() => FUEL_CALLOUT_DEFAULT_MARGIN_LAPS),
     getCornerCalloutLeadSeconds: options.getCornerCalloutLeadSeconds ?? (() => CORNER_CALLOUT_DEFAULT_LEAD_SECONDS),
@@ -756,6 +772,26 @@ export function getLastStopTireTemps(): LastStopTireTemps | null {
  */
 export function getPitLaneLandmarks(): Record<PitLaneLandmarkName, PitLaneResolvedLandmark | null> | null {
   return instance ? resolvePitLaneLandmarks(instance.pitLaneLearner) : null;
+}
+
+/**
+ * `resolvePitLaneTrackIdentity` once per session-info object (issue #1112):
+ * the same identity object while the SDK hands back the same session info,
+ * so the learner keeps it by reference. See `pitLaneTrackMemo`.
+ */
+function resolvePitLaneTrackMemoised(
+  self: TranslatorInstance,
+  sessionInfo: Record<string, unknown> | null,
+): PitLaneTrackIdentity | null {
+  const memo = self.pitLaneTrackMemo;
+
+  if (memo !== null && memo.sessionInfo === sessionInfo) return memo.track;
+
+  const track = resolvePitLaneTrackIdentity(sessionInfo);
+
+  self.pitLaneTrackMemo = { sessionInfo, track };
+
+  return track;
 }
 
 /**
@@ -2534,6 +2570,7 @@ function handleDisconnect(self: TranslatorInstance): void {
   // The learned pit-lane landmarks (issue #1112) are reloaded from the store
   // on the first live tick after a reconnect.
   self.pitLaneLearner = createPitLaneLandmarkLearner();
+  self.pitLaneTrackMemo = null;
 }
 
 /**
@@ -2818,6 +2855,7 @@ function resetPerSessionState(self: TranslatorInstance, telemetry: TelemetryData
   // section, including its unwritten samples — whether or not the track
   // changed.
   self.pitLaneLearner = createPitLaneLandmarkLearner();
+  self.pitLaneTrackMemo = null;
 }
 
 /**
@@ -3495,12 +3533,13 @@ function handleLiveSteps(
   // Learned pit-lane landmarks (issue #1112), from every car but the pace car.
   // The track identity falls back to its last good answer this session, else
   // to `null`, the answer for absent session info, which loads and learns
-  // nothing. The learner is loaded from the store once per identity, and
-  // again after a session change or a disconnect empties it; the diff then
-  // folds each accepted edge into it. Live in-car only: a replay tick never
-  // gets here.
+  // nothing. It is built once per session-info object (`pitLaneTrackMemo`),
+  // so the learner's per-tick load is a reference check. The learner is
+  // loaded from the store once per identity, and again after a session
+  // change or a disconnect empties it; the diff then folds each accepted edge
+  // into it. Live in-car only: a replay tick never gets here.
   const pitLaneTrack = steps.value("resolvePitLaneTrackIdentity", values, null, () =>
-    resolvePitLaneTrackIdentity(sessionInfo),
+    resolvePitLaneTrackMemoised(self, sessionInfo),
   );
   steps.run("seedPitLaneLandmarkLearner", () =>
     seedPitLaneLandmarkLearner(self.pitLaneLearner, pitLaneTrack, self.loadPitLaneLandmarks, self.logger),
