@@ -78,7 +78,7 @@ export function secondsToNextCorner(
  * @param isPracticeSession whether the session classifies as practice
  *   (Practice, Lone Practice, Offline Testing); anything else is silent
  * @param sectors the track's sector starts, the translator's
- *   `resolveTrackSectorsCached` value (what `getTrackSectors()` serves);
+ *   `resolveTrackSectorsCached` value, read at the call (#1588);
  *   `null` when the track has none it can count
  * @param cornerMarkers the track's corner markers, the translator's
  *   `resolveCornerMarkersCached` value; only `nextCornerInS` reads them

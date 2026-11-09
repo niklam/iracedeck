@@ -402,11 +402,10 @@ export function resetFuelCalloutBaselines(slice: FuelCalloutState): FuelCalloutS
  * the sector start fractions `extractSectorStarts` reads from
  * `SplitTimeInfo.Sectors`, and the key they were resolved for. Written by the
  * translator's `resolveTrackSectorsCached` alone, once per live tick, in every
- * session type; read by `getTrackSectors()`, the one place any feature reads
- * the sectors. Reset per session and at a disconnect with the rest of the
- * state, and kept whole across a replay glance (`wipeStateForReplay`): a pure
- * session-info fact, so readers outside the translator see no null window
- * through the replay; the next live tick re-validates its key.
+ * session type; `handleTick` hands its value to each diff that reads the
+ * sectors (#1588), the one place any feature reads them. Reset per session, at
+ * a disconnect and at the replay wipe with the rest of the state, like the
+ * other track caches; the next live tick re-resolves it.
  */
 export type TrackSectorsState = {
   /**

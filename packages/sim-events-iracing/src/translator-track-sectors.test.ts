@@ -1,9 +1,9 @@
 /**
  * The translator's per-track, per-session caches through the real tick (issue
  * #1573): the one `trackSessionKey` all four are keyed by, and the track's
- * sectors as `getTrackSectors()` serves them — in every session type,
+ * sectors as the `trackSectors` slice caches them — in every session type,
  * re-resolved on a new `(TrackID, SessionNum)`, `null` for sectors that fail
- * validation, and kept through a replay.
+ * validation, and wiped at a replay like the other track caches.
  */
 import { _resetEventBus, getEventBus, initializeEventBus } from "@iracedeck/event-bus";
 import {
@@ -19,13 +19,18 @@ import {
 import type { ILogger } from "@iracedeck/logger";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import {
-  _resetSimEventsIracing,
-  getTrackSectors,
-  initializeSimEventsIracing,
-  readSimState,
-  trackSessionKey,
-} from "./translator.js";
+import { _resetSimEventsIracing, initializeSimEventsIracing, readSimState, trackSessionKey } from "./translator.js";
+
+/**
+ * The translator's cached sector starts, as its `trackSectors` slice holds
+ * them — the value `handleTick` hands the sector diffs. `null` before the
+ * translator is initialised.
+ */
+function cachedSectors(): readonly number[] | null {
+  const state = readSimState();
+
+  return state.initialized ? state.raw.state.trackSectors.starts : null;
+}
 
 function createMockLogger(): ILogger {
   return {
@@ -203,13 +208,13 @@ describe("trackSessionKey", () => {
   });
 });
 
-describe("getTrackSectors", () => {
+describe("the cached track sectors", () => {
   it("is null before the translator is initialised, and before its first live tick", () => {
-    expect(getTrackSectors()).toBeNull();
+    expect(cachedSectors()).toBeNull();
 
     start(sessionInfo({ sectors: FIVE_SECTORS }));
 
-    expect(getTrackSectors()).toBeNull();
+    expect(cachedSectors()).toBeNull();
   });
 
   it.each(["Practice", "Open Qualify", "Lone Qualify", "Race", "Offline Testing"])(
@@ -218,7 +223,7 @@ describe("getTrackSectors", () => {
       start(sessionInfo({ sessionType, sectors: FIVE_SECTORS }));
       controller.__tick(tick());
 
-      expect(getTrackSectors()).toEqual({ starts: [0, 0.2, 0.4, 0.6, 0.8] });
+      expect(cachedSectors()).toEqual([0, 0.2, 0.4, 0.6, 0.8]);
     },
   );
 
@@ -226,19 +231,19 @@ describe("getTrackSectors", () => {
     start(sessionInfo({ trackId: 42, sectors: FIVE_SECTORS }));
     controller.__tick(tick());
 
-    expect(getTrackSectors()).toEqual({ starts: [0, 0.2, 0.4, 0.6, 0.8] });
+    expect(cachedSectors()).toEqual([0, 0.2, 0.4, 0.6, 0.8]);
 
     // Same (TrackID, SessionNum), other sectors in the session info: the cache
     // holds, which is what makes the next step a test of the key.
     controller.__setSessionInfo(sessionInfo({ trackId: 42, sectors: THREE_SECTORS }));
     controller.__tick(tick());
 
-    expect(getTrackSectors()).toEqual({ starts: [0, 0.2, 0.4, 0.6, 0.8] });
+    expect(cachedSectors()).toEqual([0, 0.2, 0.4, 0.6, 0.8]);
 
     controller.__setSessionInfo(sessionInfo({ trackId: 7, sectors: THREE_SECTORS }));
     controller.__tick(tick());
 
-    expect(getTrackSectors()).toEqual({ starts: [0, 0.333333, 0.666667] });
+    expect(cachedSectors()).toEqual([0, 0.333333, 0.666667]);
   });
 
   // A SessionNum change resets the whole translator state (`resetPerSessionState`),
@@ -248,24 +253,24 @@ describe("getTrackSectors", () => {
     start(sessionInfo({ sectors: FIVE_SECTORS }));
     controller.__tick(tick(0));
 
-    expect(getTrackSectors()).toEqual({ starts: [0, 0.2, 0.4, 0.6, 0.8] });
+    expect(cachedSectors()).toEqual([0, 0.2, 0.4, 0.6, 0.8]);
 
     controller.__setSessionInfo(sessionInfo({ sectors: THREE_SECTORS }));
     controller.__tick(tick(1));
 
-    expect(getTrackSectors()).toEqual({ starts: [0, 0.333333, 0.666667] });
+    expect(cachedSectors()).toEqual([0, 0.333333, 0.666667]);
   });
 
   it("retries while null, so sectors that arrive after the first read are picked up", () => {
     start(sessionInfo());
     controller.__tick(tick());
 
-    expect(getTrackSectors()).toBeNull();
+    expect(cachedSectors()).toBeNull();
 
     controller.__setSessionInfo(sessionInfo({ sectors: THREE_SECTORS }));
     controller.__tick(tick());
 
-    expect(getTrackSectors()).toEqual({ starts: [0, 0.333333, 0.666667] });
+    expect(cachedSectors()).toEqual([0, 0.333333, 0.666667]);
   });
 
   it.each([
@@ -295,48 +300,36 @@ describe("getTrackSectors", () => {
     start(sessionInfo({ sectors }));
     controller.__tick(tick());
 
-    expect(getTrackSectors()).toBeNull();
+    expect(cachedSectors()).toBeNull();
 
     // Positive control: the same session with valid sectors answers.
     controller.__setSessionInfo(sessionInfo({ sectors: THREE_SECTORS }));
     controller.__tick(tick());
 
-    expect(getTrackSectors()).toEqual({ starts: [0, 0.333333, 0.666667] });
+    expect(cachedSectors()).toEqual([0, 0.333333, 0.666667]);
   });
 
-  it("holds through a replay glance and its exit grace, kept as the same object", () => {
+  it("is wiped at a replay like the other track caches, and re-resolved on the first live tick after the grace", () => {
     vi.useFakeTimers();
     start(sessionInfo({ sectors: FIVE_SECTORS }));
     controller.__tick(tick());
 
-    expect(getTrackSectors()).toEqual({ starts: [0, 0.2, 0.4, 0.6, 0.8] });
-
-    const before = readSimState();
-
-    if (!before.initialized) throw new Error("translator not initialised");
-
-    const slice = before.raw.state.trackSectors;
+    expect(cachedSectors()).toEqual([0, 0.2, 0.4, 0.6, 0.8]);
 
     controller.__tick(tick(0, { IsReplayPlaying: true, IsOnTrack: false }));
 
-    expect(getTrackSectors()).toEqual({ starts: [0, 0.2, 0.4, 0.6, 0.8] });
+    expect(cachedSectors()).toBeNull();
 
-    // Back to live, inside the replay state's exit grace (#1324): still held.
+    // Back to live, inside the replay state's exit grace (#1324): no live step
+    // runs yet, so nothing re-resolves.
     controller.__tick(tick());
 
-    expect(getTrackSectors()).toEqual({ starts: [0, 0.2, 0.4, 0.6, 0.8] });
+    expect(cachedSectors()).toBeNull();
 
     vi.advanceTimersByTime(REPLAY_EXIT_GRACE_MS + 1);
     controller.__tick(tick());
 
-    expect(getTrackSectors()).toEqual({ starts: [0, 0.2, 0.4, 0.6, 0.8] });
-
-    const after = readSimState();
-
-    if (!after.initialized) throw new Error("translator not initialised");
-
-    // Kept whole by reference across the wipe, not re-resolved into a new one.
-    expect(after.raw.state.trackSectors).toBe(slice);
+    expect(cachedSectors()).toEqual([0, 0.2, 0.4, 0.6, 0.8]);
   });
 });
 
@@ -378,7 +371,7 @@ describe("sectorStart.approaching through the tick", () => {
 
     expect(seen).toEqual([]);
     // The sectors are there all the same: the silence is the session gate's.
-    expect(getTrackSectors()).toEqual({ starts: [0, 0.2, 0.4, 0.6, 0.8] });
+    expect(cachedSectors()).toEqual([0, 0.2, 0.4, 0.6, 0.8]);
   });
 
   it("publishes nothing for a crossing in a replay, and the next live crossing after the grace publishes", () => {

@@ -9,9 +9,9 @@
  * sector at 0.0000, the start/finish line, with two sectors on an oval up to
  * seven at Le Mans.
  *
- * The translator caches the result per `(TrackID, SessionNum)` and serves it
- * through `getTrackSectors()` (`@iracedeck/sim-events-iracing`), the one place
- * any feature reads the sectors.
+ * The iRacing translator (`@iracedeck/sim-events-iracing`) caches the result
+ * per `(TrackID, SessionNum)` and hands it to each diff that reads the
+ * sectors, the one place any feature reads them.
  */
 
 /**

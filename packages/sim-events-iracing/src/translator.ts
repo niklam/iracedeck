@@ -636,32 +636,6 @@ export function getTrackDirection(): TrackDirection {
 }
 
 /**
- * The current track's sectors (issue #1573): `starts` holds each sector's start
- * as a lap fraction (`LapDistPct`), in sector order, the first `0` at the
- * start/finish line, so `starts.length` is the sector count and sector `n`
- * (counted from 1, as a driver counts them) begins at `starts[n - 1]`.
- *
- * The one place any feature reads the sectors — the sector-start calls of this
- * issue and the sector comparison of #1572 included — so the parse, its
- * validation and its cache stay in one place. Answers in every session type.
- * Read from the translator's per-`(TrackID, SessionNum)` cache, resolved on
- * every live tick from `SplitTimeInfo.Sectors` by `extractSectorStarts`.
- *
- * `null` before the translator is initialised, before its first live tick of
- * the session has resolved them, and when the session info has no sectors or
- * they fail validation (a first sector that does not
- * start at the line, a repeated or backwards start, a value outside `[0, 1)`,
- * a repeated `SectorNum`). A replay glance keeps the cache (`wipeStateForReplay`),
- * so a reader outside the translator sees no null window through the replay
- * or the exit grace; the first live tick back re-validates the key.
- */
-export function getTrackSectors(): { starts: readonly number[] } | null {
-  const starts = instance?.state.trackSectors.starts ?? null;
-
-  return starts === null ? null : { starts };
-}
-
-/**
  * Rolling fuel consumption statistics over the validated per-lap fuel history
  * (issue #465): the most recent valid lap's usage, the mean over the last
  * `windowLaps` valid laps, and how many laps actually contributed. Values are
@@ -2619,12 +2593,6 @@ function wipeStateForReplay(self: TranslatorInstance): void {
     // the one replay that must not keep it; the guard in `handleTick` clears
     // it there.
     lastStopTireTemps: self.state.lastStopTireTemps,
-    // The track's sectors (issue #1573), kept whole by reference: a pure
-    // session-info fact keyed by `trackSessionKey`, with nothing of the replay
-    // timeline in it, so `getTrackSectors()` has no null window during a
-    // replay glance or the exit grace for readers outside the translator
-    // (#1572's sector timer). The key still re-validates on the next live tick.
-    trackSectors: self.state.trackSectors,
   };
 
   self.state = createInitialState();
@@ -3376,13 +3344,13 @@ function handleLiveSteps(
     resolveCornerMarkersCached(self.state.cornerName, sessionInfo, telemetry),
   );
   // The track's sectors (issue #1573), resolved in every session type — not
-  // gated on practice like the corner names — because `getTrackSectors()`
-  // serves every feature that reads them. Keyed like the corner markers, and
-  // resolved on live ticks only; the slice is kept across a replay glance
-  // (`wipeStateForReplay`), and the key re-validates on the first live tick
-  // back. Captured as a value so the sector-start diff reads it at the call
-  // (#1588), with `steps.value`'s last-good fallback should the resolution
-  // throw.
+  // gated on practice like the corner names — because this value is the one
+  // place any feature reads them: the sector-start diff below, and #1572's
+  // race sector timer. Keyed like the corner markers, resolved on live ticks
+  // only and wiped at a replay like them. Captured as a value so each diff
+  // reads it at the call (#1588), with `steps.value`'s last-good fallback
+  // should the resolution throw. A reader outside the translator would get a
+  // sim-neutral `SimRuntime` member, never a getter over this cache.
   const trackSectors = steps.value("resolveTrackSectorsCached", values, self.state.trackSectors.starts, () =>
     resolveTrackSectorsCached(self.state.trackSectors, sessionInfo, telemetry),
   );
