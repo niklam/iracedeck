@@ -2692,7 +2692,7 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
       "Crossing the pit exit line, where the speed limit ends: one short rising tone on the Cue channel, at the Radar volume. Silent with the Race Engineer or the Pit exit beep off.",
     event: "pitLane.exited",
     data: {},
-    telemetryPatch: { IsOnTrack: true, IsReplayPlaying: false, PlayerTrackSurface: TrkLoc.OnTrack, Speed: 15 },
+    telemetryPatch: { IsOnTrack: true, PlayerTrackSurface: TrkLoc.OnTrack, Speed: 15 },
   },
 
   // ── Pit-road speeding (issue #912) ──

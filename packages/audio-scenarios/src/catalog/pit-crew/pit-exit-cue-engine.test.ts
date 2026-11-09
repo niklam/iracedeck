@@ -1,8 +1,8 @@
 /**
  * Unit tests for the pit exit cue (issue #1161): one tone per `pitLane.exited`
  * on the Cue channel, gated live by the Race Engineer master and the cue's
- * opt-in, silent on a positive "not in the car" or "replay" read and audible
- * when the telemetry says nothing.
+ * opt-in, silent on a positive "not in the car" read and audible when the
+ * telemetry says nothing.
  *
  * The bus is a recording fake that calls the handler directly, rather than the
  * real bus: the real one isolates a throwing subscriber, which would make the
@@ -197,12 +197,11 @@ describe("pit exit cue engine", () => {
       expect(logger.debug).toHaveBeenCalledWith("Pit exit cue skipped: telemetry reports the player is not in the car");
     });
 
-    it("stays silent in a replay", () => {
+    it("reads no IsReplayPlaying: the translator's debounced replay guard owns that decision (#1324)", () => {
       register();
       exitPitRoad({ IsOnTrack: true, IsReplayPlaying: true });
 
-      expect(hoisted.audio.playOnChannel).not.toHaveBeenCalled();
-      expect(readPitExitCueDebugState().lastOutcome).toBe("replay");
+      expect(hoisted.audio.playOnChannel).toHaveBeenCalledExactlyOnceWith(AudioChannel.Cue, PIT_EXIT_CLIP);
     });
 
     it.each([

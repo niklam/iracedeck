@@ -96,10 +96,10 @@ export type PitExitCueDeps = {
  * event after registration.
  */
 export type PitExitCueOutcome =
-  "played" | "master-off" | "cue-off" | "not-in-car" | "replay" | "playback-failed" | "playback-refused";
+  "played" | "master-off" | "cue-off" | "not-in-car" | "playback-failed" | "playback-refused";
 
-/** The two telemetry fields the cue reads, as an envelope may (or may not) carry them. */
-type Snapshot = Pick<Partial<TelemetryData>, "IsOnTrack" | "IsReplayPlaying">;
+/** The telemetry field the cue reads, as an envelope may (or may not) carry it. */
+type Snapshot = Pick<Partial<TelemetryData>, "IsOnTrack">;
 
 const DEFAULT_DEPS: PitExitCueDeps = {
   getMasterEnabled: () => true,
@@ -123,25 +123,23 @@ function snapshotOf(event: SimEventOf<"pitLane.exited">): Snapshot | null {
 }
 
 /**
- * Which telemetry gate silences this edge, if any.
+ * Whether telemetry says the player is out of the car on this edge:
+ * `IsOnTrack === false`. A driver cannot leave a moving car, so a real
+ * drive-out never reads this; a tow or reset that clears `OnPitRoad` does.
  *
- * Both are checked as POSITIVE reads, never as "not the safe value": missing
- * or unknown telemetry plays, following #912's precedent that unknown data
- * must not silence a cue. That also keeps the cue audible from the scenario
- * harness when nothing real sits behind a published event.
+ * A POSITIVE read, never "not the safe value": missing or unknown telemetry
+ * plays, following #912's precedent that unknown data must not silence a cue.
+ * That also keeps the cue audible from the scenario harness when nothing real
+ * sits behind a published event.
  *
- * - `IsOnTrack === false` — the player is not in the car. A driver cannot
- *   leave a moving car, so a real drive-out never reads this; a tow or reset
- *   that clears `OnPitRoad` does.
- * - `IsReplayPlaying === true` — a replay. The translator already suppresses
- *   events while one plays; this keeps the cue honest if one ever reaches it.
+ * There is deliberately no replay check here. `pitLane.exited` comes from a
+ * diff behind the translator's replay guard, which reads the one debounced
+ * replay state and publishes nothing in a replay; a raw `IsReplayPlaying`
+ * read would be a second, undebounced answer to the same question, which
+ * `race-engineer-callouts.md` forbids (#1324).
  */
-function telemetryGate(snapshot: Snapshot | null): "not-in-car" | "replay" | null {
-  if (snapshot?.IsOnTrack === false) return "not-in-car";
-
-  if (snapshot?.IsReplayPlaying === true) return "replay";
-
-  return null;
+function notInCar(snapshot: Snapshot | null): boolean {
+  return snapshot?.IsOnTrack === false;
 }
 
 function handleExited(event: SimEventOf<"pitLane.exited">): void {
@@ -161,15 +159,9 @@ function handleExited(event: SimEventOf<"pitLane.exited">): void {
     return;
   }
 
-  const gate = telemetryGate(snapshotOf(event));
-
-  if (gate !== null) {
-    lastOutcome = gate;
-    deps.logger?.debug(
-      gate === "not-in-car"
-        ? "Pit exit cue skipped: telemetry reports the player is not in the car"
-        : "Pit exit cue skipped: a replay is playing",
-    );
+  if (notInCar(snapshotOf(event))) {
+    lastOutcome = "not-in-car";
+    deps.logger?.debug("Pit exit cue skipped: telemetry reports the player is not in the car");
 
     return;
   }
