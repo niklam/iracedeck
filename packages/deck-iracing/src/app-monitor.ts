@@ -11,21 +11,11 @@
 import type { IDeckPlatformAdapter } from "@iracedeck/deck-core";
 import type { ILogger } from "@iracedeck/logger";
 
+import { IRACING_EXIT_SDK_CONFIRM_MS } from "./exit-confirm.js";
 import { getController } from "./sdk-singleton.js";
 
 /** The iRacing executable name on Windows */
 const IRACING_EXE = "iRacingSim64DX11.exe";
-
-/**
- * How long a lost SDK connection must stay lost before it counts as an
- * iRacing exit (issue #870). Ulanzi maps no app-monitoring events at all, so
- * a sustained SDK disconnect is the only exit signal there (Stream Deck and
- * Mirabox both deliver applicationDidTerminate, verified in #1347 and #1419).
- * The window is well above the controller's 2 s reconnect poll, so a
- * transient shared-memory blip reconnects and cancels the confirmation
- * instead of mis-reading as an exit.
- */
-export const IRACING_EXIT_SDK_CONFIRM_MS = 5000;
 
 /** Whether initAppMonitor has been called */
 let initialized = false;

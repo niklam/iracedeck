@@ -5,13 +5,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   _resetAppMonitor,
   initAppMonitor,
-  IRACING_EXIT_SDK_CONFIRM_MS,
   isAppMonitorInitialized,
   isIRacingActive,
   isIRacingRunning,
   onIRacingStarted,
   onIRacingTerminated,
 } from "./app-monitor.js";
+import { IRACING_EXIT_SDK_CONFIRM_MS } from "./exit-confirm.js";
 
 // Mock the sdk-singleton module used internally by app-monitor
 const mockSetReconnectEnabled = vi.fn();

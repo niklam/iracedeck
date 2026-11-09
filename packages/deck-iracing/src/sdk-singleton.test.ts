@@ -1,8 +1,17 @@
 import { getSimConnection, initializeSimConnection, isSimConnectionInitialized } from "@iracedeck/deck-core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { IRACING_EXIT_SDK_CONFIRM_MS } from "./exit-confirm.js";
 import { _resetSDK, getCommands, getController, getSDK, initializeSDK, isSDKInitialized } from "./sdk-singleton.js";
 import { SimIRacingConnection } from "./sim-iracing-connection.js";
+
+// The real deck-core, with initializeSimConnection wrapped so a test can read
+// the options iRacing installs its connection with (#1599).
+vi.mock("@iracedeck/deck-core", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@iracedeck/deck-core")>();
+
+  return { ...actual, initializeSimConnection: vi.fn(actual.initializeSimConnection) };
+});
 
 // Mock the iracing-sdk createSDK function
 vi.mock("@iracedeck/iracing-sdk", () => ({
@@ -147,6 +156,16 @@ describe("SDK Singleton", () => {
       expect(() => initializeSDK()).toThrow(/sim connection is already initialized/);
       expect(isSDKInitialized()).toBe(false);
       expect(createSDK).not.toHaveBeenCalled();
+    });
+
+    it("counts iRacing as absent after the app monitor's exit confirm (#1599)", () => {
+      initializeSDK();
+
+      expect(initializeSimConnection).toHaveBeenCalledWith(
+        expect.any(SimIRacingConnection),
+        expect.objectContaining({ absentDelayMs: IRACING_EXIT_SDK_CONFIRM_MS }),
+      );
+      expect(IRACING_EXIT_SDK_CONFIRM_MS).toBe(5000);
     });
 
     it("removes the sim connection on reset", () => {
