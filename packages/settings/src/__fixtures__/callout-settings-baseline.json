@@ -1061,7 +1061,7 @@
   },
   "calloutEnabledPitExitCue": {
     "owner": "pit-exit/cue",
-    "default": true,
+    "default": false,
     "true": true,
     "\"true\"": true,
     "false": false,

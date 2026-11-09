@@ -87,7 +87,7 @@ const COLUMNS: readonly string[] = ["owner", "default", "true", '"true"', "false
  * nothing else ever moves it.
  */
 const RECORD_ROWS = 107;
-const RECORD_SHA256 = "4e299ae62766769a6729e6fc7538870e9cc4c5d55fe0a2409dbd10918a4ede7e";
+const RECORD_SHA256 = "156635003b147eec37bfbea3be9a194961a9fd46237159e50742e7a4542d3f63";
 
 /**
  * The columns a written row never changes, so the pin covers them: the default

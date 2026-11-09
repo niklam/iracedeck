@@ -74,6 +74,10 @@ export function seedGlobalSettings(adapter: MockPlatformAdapter): BootstrapDefau
     // `getFrameOptions` in `main.ts` reads a value that was deliberately set.
     raceEngineerRadioBeeps: true,
     raceEngineerPitAmbience: true,
+    // Off by default for users (#1161), on here so the "Pit exit beep"
+    // shortcut is heard on a freshly booted harness; the Global Settings
+    // panel's checkbox turns it off.
+    calloutEnabledPitExitCue: true,
   });
 
   return { raceEngineerVoices, driverNames };
