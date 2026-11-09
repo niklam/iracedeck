@@ -6,11 +6,11 @@ import { describe, expect, it } from "vitest";
 import { CHANGELOG_SOURCE_PATH } from "../changelog-data.mjs";
 import { parseChangelog } from "../changelog-parse.mjs";
 import {
-  BOOTSTRAP_RELEASE,
   buildCaptureManifest,
   CAPTURE_MANIFEST_FILE,
   checkCaptureManifest,
   COMMITTED_CAPTURE_DIR_REL,
+  FIRST_CAPTURED_RELEASE,
   serializeCaptureManifest,
   sha256Hex,
 } from "./capture-manifest.mjs";
@@ -167,7 +167,7 @@ describe("checkCaptureManifest", () => {
       const findings = checkCaptureManifest({
         ...input,
         manifest: { ...input.manifest, version: 390 },
-        newestReleased: BOOTSTRAP_RELEASE,
+        newestReleased: "3.8.1",
       });
 
       expect(findings).toHaveLength(1);
@@ -310,19 +310,27 @@ describe("checkCaptureManifest", () => {
   });
 
   describe("bootstrap", () => {
-    it("skips the version rules while the newest release is the bootstrap release", () => {
-      const input = cleanInput();
-
-      for (const version of ["3.8.1-dev.0", "3.0.0", "9.9.9", "not a version"]) {
-        const findings = checkCaptureManifest({
-          ...input,
-          manifest: { ...input.manifest, version },
-          newestReleased: BOOTSTRAP_RELEASE,
-        });
-
-        expect(findings, version).toEqual([]);
-      }
+    it("is keyed on the first release cut with the capture hook", () => {
+      expect(FIRST_CAPTURED_RELEASE).toBe("3.9.0");
     });
+
+    // 3.8.1 is the newest release when the hook lands; 3.8.2 stands for a
+    // hotfix cut from a pre-hook tag and back-merged, which recaptures nothing.
+    for (const newestReleased of ["3.8.1", "3.8.2"]) {
+      it(`skips the version rules while the newest release is ${newestReleased}`, () => {
+        const input = cleanInput();
+
+        for (const version of ["3.8.1", "3.8.1-dev.0", "3.0.0", "9.9.9", "not a version"]) {
+          const findings = checkCaptureManifest({
+            ...input,
+            manifest: { ...input.manifest, version },
+            newestReleased,
+          });
+
+          expect(findings, version).toEqual([]);
+        }
+      });
+    }
 
     it("keeps the listing and hash rules", () => {
       const input = cleanInput();
@@ -330,19 +338,30 @@ describe("checkCaptureManifest", () => {
       flipped[0] ^= 0x80;
       const findings = checkCaptureManifest({
         ...input,
-        newestReleased: BOOTSTRAP_RELEASE,
+        newestReleased: "3.8.2",
         files: { ...input.files, "general.png": flipped, "old.png": bytes("old") },
       });
 
       expect(findings.map((finding) => finding.file)).toEqual(["general.png", "old.png"]);
     });
 
-    it("ends with the next release", () => {
-      const input = cleanInput();
-      const findings = checkCaptureManifest({ ...input, manifest: { ...input.manifest, version: "3.8.1" } });
+    // Positive control: the bootstrap manifest's 3.8.1 is reported as soon as
+    // the newest release is one cut with the hook, so the exemption is what
+    // keeps it quiet before then.
+    for (const newestReleased of ["3.9.0", "3.9.1"]) {
+      it(`ends once the newest release is ${newestReleased}`, () => {
+        const input = cleanInput();
+        const findings = checkCaptureManifest({
+          ...input,
+          manifest: { ...input.manifest, version: "3.8.1" },
+          newestReleased,
+        });
 
-      expect(findings).toHaveLength(1);
-    });
+        expect(findings.map((finding) => finding.message)).toEqual([
+          expect.stringContaining(`older than the newest release in changelog.mdx (${newestReleased})`),
+        ]);
+      });
+    }
   });
 
   it("refuses a caller's malformed version inputs", () => {

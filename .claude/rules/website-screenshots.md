@@ -47,7 +47,7 @@ Every failure stops before this hook stages anything (the index still holds `bef
 - **Listing**: every tab in `SETTINGS_WINDOW_TABS` has both a PNG and an entry, or neither (pending, rule 3); no file or entry for an unlisted tab.
 - **Hash**: each entry is the sha256 of the file's bytes.
 - **Version**: stable semver, at least the newest dated section of `changelog.mdx` (a release whose capture never landed), at most the root `package.json` version with its prerelease stripped.
-- **Bootstrap**: while the newest dated section is `3.8.1` (`BOOTSTRAP_RELEASE` in `capture-manifest.mjs`), the version rules are skipped, because the committed `capture.json` says `3.8.1` over PNGs branches captured at assorted `-dev` versions. The 3.9.0 release folds a `3.9.0` section and recaptures at `3.9.0`, which ends it; a follow-up deletes the constant.
+- **Bootstrap**: while the newest dated section is older than `3.9.0` (`FIRST_CAPTURED_RELEASE` in `capture-manifest.mjs`), no release has captured the folder yet, so the version rules are skipped, because the committed `capture.json` says `3.8.1` over PNGs branches captured at assorted `-dev` versions. A 3.8.x hotfix back-merged from a tag without the hook keeps the exemption rather than turning `master` red. The 3.9.0 release is the first stable release cut with the hook: it folds a `3.9.0` section and recaptures at `3.9.0`, which ends it; a follow-up deletes the constant.
 
 ### Options and exit
 
@@ -84,7 +84,7 @@ Three properties a manual screenshot can't give:
 | `scripts/release-capture.mjs` | release-it's `after:bump` hook: reads the version, sets the exit code, arms the exit tripwire |
 | `scripts/lib/release-capture.mjs` | The release capture's steps, every collaborator injected |
 | `scripts/lib/settings-window-capture/run-capture.mjs` | Composition root both callers share: resolves the real server, browser and filesystem; `localCaptureDir` / `committedCaptureDir` |
-| `scripts/lib/settings-window-capture/capture-manifest.mjs` | `capture.json`: build, serialise, and `checkCaptureManifest` with `BOOTSTRAP_RELEASE` |
+| `scripts/lib/settings-window-capture/capture-manifest.mjs` | `capture.json`: build, serialise, and `checkCaptureManifest` with `FIRST_CAPTURED_RELEASE` |
 | `scripts/lib/settings-window-capture/tabs.mjs` | The tab list — one source of truth for harness, test and docs |
 | `scripts/lib/settings-window-capture/seed.mjs` | The deterministic settings fixture |
 | `scripts/lib/settings-window-capture/cdp.mjs` | Minimal DevTools Protocol client (no dependencies — Node's global `WebSocket`) |

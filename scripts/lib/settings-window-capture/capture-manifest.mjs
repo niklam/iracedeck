@@ -21,17 +21,22 @@ import semver from "semver";
 export const CAPTURE_MANIFEST_FILE = "capture.json";
 
 /**
- * The newest released version before release-time capture existed. While it is
- * still the newest dated section of `changelog.mdx`, {@link checkCaptureManifest}
- * skips its three version rules and keeps the shape, listing and hash rules:
- * `master`'s PNGs were captured by branches at assorted `-dev` versions, and the
- * bootstrap manifest records them as they are.
+ * The first stable release cut with the capture hook. While the newest dated
+ * section of `changelog.mdx` is older than it, no release has captured the
+ * folder yet, so {@link checkCaptureManifest} skips its three version rules and
+ * keeps the shape, listing and hash rules: `master`'s PNGs were captured by
+ * branches at assorted `-dev` versions, and the bootstrap manifest records
+ * them as they are, at `3.8.1`.
  *
+ * Keyed on "no release made with the hook yet" rather than on one exact
+ * version: a 3.8.x hotfix is cut from a tag that has no hook, so back-merging
+ * it adds a `3.8.2` section with no recapture, and an exemption on exactly
+ * `3.8.1` would turn `master` red with nothing on `master` able to fix it.
  * The 3.9.0 release ends the exemption: it folds a `3.9.0` section and, in the
- * same commit, recaptures the whole folder at `3.9.0`. A follow-up deletes this
- * constant and the branch that reads it.
+ * same commit, recaptures the whole folder at `3.9.0`. A follow-up deletes
+ * this constant and the branch that reads it.
  */
-export const BOOTSTRAP_RELEASE = "3.8.1";
+export const FIRST_CAPTURED_RELEASE = "3.9.0";
 
 /**
  * The committed screenshot folder the manifest guards, relative to the
@@ -310,7 +315,7 @@ export function checkCaptureManifest({ manifest, files, tabs, newestReleased, pa
   if (shape.entries !== null) findings.push(...checkListing(shape.entries, files, tabs));
 
   const version = /** @type {{ version?: unknown }} */ (manifest).version;
-  if (newestReleased !== BOOTSTRAP_RELEASE && typeof version === "string") {
+  if (!semver.lt(newestReleased, FIRST_CAPTURED_RELEASE) && typeof version === "string") {
     findings.push(...checkVersion(version, newestReleased, packageVersion));
   }
 
