@@ -1042,6 +1042,8 @@ describe("packVoice", () => {
         configsDir,
         outDir: path.join(root, "out-4"),
         cacheDir: path.join(root, "cache-4"),
+        catalogDir: path.join(root, "catalog-4"),
+        recordsDir: path.join(root, "records-4"),
       });
 
     await expect(attempt({ id: "Test Voice" })).rejects.toThrow(/kebab-case/);
@@ -1070,6 +1072,8 @@ describe("packVoice", () => {
         configsDir,
         outDir: path.join(root, "out-5"),
         cacheDir: path.join(root, "cache-5"),
+        catalogDir: path.join(root, "catalog-5"),
+        recordsDir: path.join(root, "records-5"),
       }),
     ).rejects.toThrow(/pack "testvoice": version must be a canonical semver version/);
   });
@@ -1086,6 +1090,8 @@ describe("packVoice", () => {
         configsDir,
         outDir: path.join(root, "out-5"),
         cacheDir: path.join(root, "cache-5"),
+        catalogDir: path.join(root, "catalog-5"),
+        recordsDir: path.join(root, "records-5"),
       }),
     ).rejects.toThrow(/pack "testvoice": minPluginVersion must be a canonical semver version/);
   });
@@ -1094,7 +1100,15 @@ describe("packVoice", () => {
     const outDir = path.join(root, "out-6");
 
     await expect(
-      packVoice({ pack: { ...pack, author: "" }, srcRoot, configsDir, outDir, cacheDir: path.join(root, "cache-6") }),
+      packVoice({
+        pack: { ...pack, author: "" },
+        srcRoot,
+        configsDir,
+        outDir,
+        cacheDir: path.join(root, "cache-6"),
+        catalogDir: path.join(root, "catalog-6"),
+        recordsDir: path.join(root, "records-6"),
+      }),
     ).rejects.toThrow(
       /pack "testvoice": the voice-pack\.json it would write is one the plugin refuses:\n {2}author: Too small/,
     );
@@ -1105,6 +1119,8 @@ describe("packVoice", () => {
         configsDir,
         outDir,
         cacheDir: path.join(root, "cache-6"),
+        catalogDir: path.join(root, "catalog-6"),
+        recordsDir: path.join(root, "records-6"),
       }),
     ).rejects.toThrow(/label: must not contain control characters/);
     // Refused before anything was staged.
@@ -1121,6 +1137,8 @@ describe("packVoice", () => {
         configsDir,
         outDir,
         cacheDir: path.join(root, "cache-7"),
+        catalogDir: path.join(root, "catalog-7"),
+        recordsDir: path.join(root, "records-7"),
       }),
     ).rejects.toThrow(/pack "testvoice": voice "testvoice" is listed more than once in voices/);
     expect(existsSync(path.join(outDir, "testvoice"))).toBe(false);
