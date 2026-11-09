@@ -66,6 +66,7 @@ Actions marked "Available via SDK" use SDK commands directly and don't require k
 | Quick Access | F9 | No | Quick Access |
 | Radio Adjustments | F10 | No | Radio Adjustments Black Box |
 | Weather Black Box | F11 | No | Weather Black Box |
+| Toggle Black Box Size | - | No | Toggle Black Box Size |
 
 ### Split-Time Delta
 
