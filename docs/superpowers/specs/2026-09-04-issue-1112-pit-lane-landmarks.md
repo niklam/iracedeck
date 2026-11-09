@@ -33,7 +33,7 @@ A per-track file of the four landmarks, learned from every accepted edge, persis
 
 ### 1. The landmark record
 
-Each of the four is `{ pct, estTime, samples, updatedAt }`: the running median position and reference time, the count behind them, and when they last moved. Both `pct` and `estTime` are kept because consumers want different ones — a distance for "how far", a time for "who arrives when" — and deriving one from the other needs a speed profile the file does not have.
+Each of the four is `{ pct, estTime, samples, updatedAt }`: the running median position and reference time, the count behind them, and when they last moved. (Amended 2026-11-09, see *Amendments*: `estTime` is kept per car class, and each record keeps a window of recent samples.) Both `pct` and `estTime` are kept because consumers want different ones — a distance for "how far", a time for "who arrives when" — and deriving one from the other needs a speed profile the file does not have.
 
 ### 2. Sample acceptance
 
@@ -53,7 +53,7 @@ Shared across the three ecosystems, deliberately outside `Settings\<host>\`: a p
 
 ### 4. Ownership
 
-As in #1081: the store lives in **deck-core** and the translator does no file IO. At session start the plugin seeds the translator with the track's landmarks; the translator's diff publishes accepted samples on the bus (`pitLane.landmarkLearned`), and the store folds them in and persists. Consumers read `getPitLaneLandmarks()` from the translator, not the file, so a landmark accepted mid-session is usable mid-session.
+As in #1081, the translator does no file IO. (Amended 2026-11-09: the store is a new package, `@iracedeck/track-store`, not deck-core; see *Amendments*.) At session start the plugin seeds the translator with the track's landmarks; the translator's diff publishes accepted samples on the bus (`pitLane.landmarkLearned`), and the store folds them in and persists. Consumers read `getPitLaneLandmarks()` from the translator, not the file, so a landmark accepted mid-session is usable mid-session.
 
 ### 5. No landmark, no guess
 
@@ -61,7 +61,17 @@ A consumer that finds no published landmark for the current track stays silent a
 
 ### 6. Track updates
 
-When a file's stored `TrackLength` disagrees with the session's for the same `TrackID`, the track has been rebuilt. Proposed: samples reset, the previous values kept under `previous` for one session so a consumer can fall back while the new geometry is learned. Recorded as the open question in the issue.
+When a file's stored `TrackLength` disagrees with the session's for the same `TrackID`, the track has been rebuilt. Proposed: samples reset, the previous values kept under `previous` until the new landmark is published (amended 2026-11-09: the store has no notion of a session), so a consumer can fall back while the new geometry is learned. Recorded as the open question in the issue.
+
+## Amendments (2026-11-09)
+
+Made when implementation started, from the issue lead's plan. Each changes the frozen file format or where code lives, so they are recorded here rather than left to the branch.
+
+1. **The store is a new package, `@iracedeck/track-store`, not deck-core.** Since the #1351 split, `@iracedeck/replay-store` is the precedent for a persisted per-plugin store outside deck-core. The pure landmark model (types, sample acceptance, the median, the merge) goes in `@iracedeck/track-data`, which has no dependencies, which the translator already imports, and where the later shared snapshot ships. `track-store` holds the file format and the store, and `plugin-runtime` wires it in a phase of its own.
+2. **Each landmark record keeps a window of its recent samples, up to 25.** Each sample stores its position, reference time, car class, a key and a timestamp. The median is computed over the window, so it is exact, robust to outliers and correct across the start/finish line. The file is shared by every deck host, so two plugin processes can write it at once: every write re-reads the file and merges sample windows instead of overwriting the other process's samples. The sample key is subsession, session, car, landmark and lap; two samples count as one only when their keys match and their times are under about 60 s apart. Samples merge only when the track length, name and configuration all match.
+3. **`pitLane.landmarkLearned` carries the accepted sample plus a summary,** not the aggregate. The store folds samples itself with the shared model code and never trusts a record that may be out of date.
+4. **`estTime` is kept per car class; `pct` from every car.** `CarIdxEstTime` is measured against each car's own class reference lap, so one median over all classes means nothing in a multiclass race, and #1113 needs the time for the class of the arriving car. `pct` is a track position and is the same for every class.
+5. **v1 learns only from live, in-car telemetry.** The translator's live steps do not run while `IsReplayPlaying` is set, and that includes spectating from the garage; telling a live spectate from a true replay is a design of its own, and a replay sample learned as live would corrupt a frozen file. Garage learning, if wanted, is a follow-up issue.
 
 ## Later: a shared database
 
