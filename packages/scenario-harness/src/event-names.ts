@@ -94,6 +94,7 @@ export const EVENT_TEMPLATES = [
         trackId: 324,
         trackName: "tsukuba 2kfull",
         trackConfigName: "2000 Full",
+        trackVersion: "2025.09.30.01",
         trackLength: "2.05 km",
         trackLengthM: 2050,
       },

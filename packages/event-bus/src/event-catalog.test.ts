@@ -44,8 +44,9 @@ describe("SessionCategory", () => {
  * `@iracedeck/track-data`'s model types it must match, because the catalog
  * imports nothing. This pins the catalog's side field by field, so changing
  * the published shape is a deliberate edit here too (type test: a mismatch
- * fails `pnpm typecheck`). Drift from track-data's types is caught where the
- * translator builds the payload from them, not here.
+ * fails `pnpm typecheck`). The two copies are pinned to each other by a
+ * two-way equality test in `@iracedeck/sim-events-iracing`, which depends on
+ * both; this package cannot see track-data.
  */
 describe("pitLane.landmarkLearned", () => {
   it("carries the track, the landmark, the accepted sample and the summary", () => {
@@ -55,6 +56,7 @@ describe("pitLane.landmarkLearned", () => {
         trackId: number;
         trackName: string;
         trackConfigName: string;
+        trackVersion: string | null;
         trackLength: string;
         trackLengthM: number | null;
       };

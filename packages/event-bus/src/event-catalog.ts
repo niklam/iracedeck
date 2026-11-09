@@ -584,6 +584,8 @@ export type PitLaneTrackIdentity = {
   trackId: number;
   trackName: string;
   trackConfigName: string;
+  /** The sim's raw track version as reported (iRacing's `WeekendInfo.TrackVersion`), or `null` when it reports none. */
+  trackVersion: string | null;
   /** The sim's track length string as reported, e.g. `"5.51 km"`. */
   trackLength: string;
   /** That length in metres, or `null` when it does not parse. */
@@ -597,13 +599,18 @@ export type PitLaneTrackIdentity = {
 export type PitLaneLandmarkSample = {
   /** Lap fraction where the edge happened, `0 <= pct < 1` (the wrap-aware midpoint of the edge's two ticks). */
   pct: number;
-  /** Seconds into the car's class reference lap at that point, on the landmark's side of the start/finish line. */
+  /**
+   * The car's reference-lap time at the landmark, in seconds, per its class,
+   * taken from the edge tick on the same side of the start/finish line as `pct`.
+   */
   estTime: number;
   /** The sim's car-class id of the car that drove the edge. */
   carClassId: number;
   /**
-   * Identifies the crossing: `${subSessionId}:${sessionNum}:${carIdx}:${landmark}:${lap}`.
-   * Two samples with the same key close together in time are the same edge.
+   * Opaque: unique per crossing of one landmark by one car; the publisher
+   * builds it (the iRacing translator, for example, from the subsession,
+   * session, car, landmark and lap). Two samples with the same key close
+   * together in time are the same edge.
    */
   key: string;
   /** Wall-clock epoch milliseconds when the edge was accepted. */
