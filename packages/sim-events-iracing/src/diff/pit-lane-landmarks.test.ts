@@ -278,11 +278,15 @@ describe("diffPitLaneLandmarks", () => {
       expect(h.tick(45.3, { 1: { surface: ON, pct: 0.362 } })).toEqual([]);
     });
 
-    it("forgets pit road once the car reads OnTrack off pit road", () => {
+    it("takes both pitRoadEnd and blendEnd where pit road ends straight onto the track, then forgets pit road", () => {
       const h = harness();
 
       h.tick(40, { 1: { surface: APPROACH, onPit: true, pct: 0.35 } });
-      h.tick(40.1, { 1: { surface: ON, pct: 0.351 } }); // pit road straight onto the track: cleared
+      // Pit road straight onto the track: both edges on one tick, and the flag is cleared.
+      expect(learned(h.tick(40.1, { 1: { surface: ON, pct: 0.351 } })).map((e) => e.landmark)).toEqual([
+        "pitRoadEnd",
+        "blendEnd",
+      ]);
       h.tick(60, { 1: { surface: APPROACH, pct: 0.6 } });
 
       expect(h.tick(60.1, { 1: { surface: ON, pct: 0.601 } })).toEqual([]);
@@ -448,8 +452,9 @@ describe("diffPitLaneLandmarks", () => {
       ]);
       // A flicker of the pit-road signal at the exit.
       expect(h.tick(40.2, { 1: { surface: APPROACH, onPit: true, pct: 0.3512 } })).toEqual([]);
-      // Its off edge falls within the settle time of that on edge.
-      expect(h.tick(40.3, { 1: { surface: APPROACH, pct: 0.3514 } })).toEqual([]);
+      // Its off edge falls within the settle time of that on edge. Another lap,
+      // so its key is new and only the settle guard can refuse it.
+      expect(h.tick(40.3, { 1: { surface: APPROACH, pct: 0.3514, lap: 4 } })).toEqual([]);
       expect(h.learner.section!.landmarks.pitRoadEnd!.samples).toBe(1);
     });
 

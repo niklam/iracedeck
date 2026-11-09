@@ -17,18 +17,28 @@
  * - `pitRoadEnd` — `CarIdxOnPitRoad` true → false, out of `AproachingPits`
  *   into `AproachingPits` or `OnTrack`. It arms the car's "came from pit
  *   road" flag, whether or not the sample is accepted.
- * - `blendEnd` — `AproachingPits → OnTrack` while that flag is set; it clears
- *   the flag, as does any tick read `OnTrack` off pit road.
+ * - `blendEnd` — `AproachingPits → OnTrack` while that flag is set, including
+ *   on the tick that armed it (a pit lane that ends straight onto the track
+ *   makes `pitRoadEnd` and `blendEnd` on one tick); it clears the flag, as
+ *   does any tick read `OnTrack` off pit road.
  *
  * **Why the pit-road edges read the surface too.** `CarIdxOnPitRoad` alone is
- * not a pit-road signal: captures read it `true` for cars on the racing
- * surface (`OnTrack`) — thirteen cars at once around the line at a rolling
- * start (`local/telemetry-watch-20261104-204104-531.jsonl`, 217.85 s), and a
- * car for a minute at a time under caution (`…20260917-191825-092.jsonl`) —
- * and `true` for cars out of the world. A car driving the pit lane reads
- * `AproachingPits` there (the same 2026-09-17 capture's start from pit road),
- * so the pit side of each pit-road edge must be `AproachingPits`: a car read
- * `OnTrack` on both ticks never makes a pit-road edge here.
+ * not a pit-road signal: the maintainer's local captures (not committed) read
+ * it `true` for cars on the racing surface (`OnTrack`). In
+ * `telemetry-watch-20261104-204104-531.jsonl` twelve cars (18–29) flip to it
+ * at once around the line at 217.85 s, and car 16 about nine seconds
+ * earlier. In `…20260917-191825-092.jsonl` one car's flag tracks the pace
+ * car's pit-lane visit, from just after the pace car turns into the approach
+ * until shortly before it reads `OnTrack` again, starting in the formation
+ * lap or a caution. The flag also reads `true` for cars out of the world. A
+ * car driving the pit lane reads `AproachingPits` there (the 2026-09-17
+ * capture's start from pit road), so the pit side of each pit-road edge must
+ * be `AproachingPits`: a car read `OnTrack` on both ticks never makes a
+ * pit-road edge here. No capture shows a non-player car's real pit entry, so
+ * this is the model those captures support, not a measured one. A pit lane
+ * that does not read `AproachingPits` between the cones (possibly a dirt
+ * oval's, see `diff/pit-lane.ts`) learns only `approachStart` there: the
+ * pit-road and blend landmarks stay unlearned, and their consumers silent.
  *
  * **Acceptance** (spec decision 2): the previous tick is a road state of the
  * edge's own (never `InPitStall` or `NotInWorld`, so a tow, a reset or a
@@ -123,8 +133,10 @@ export type PitLaneLandmarksLoader = (track: PitLaneTrackIdentity) => PitLaneSec
  * The learned landmarks of the track in session (issue #1112). Held on the
  * translator instance, not in `TranslatorState`: it must survive the replay
  * wipe, which every garage visit makes. Emptied at a session change and a
- * disconnect, so the next live tick loads it again from the store, picking up
- * what another plugin process learned meanwhile.
+ * disconnect, so the next live tick loads it again from the store: the
+ * store's current section, including its unwritten samples. Another plugin
+ * process's samples reach it only through the store's own merge when it
+ * writes the file.
  */
 export type PitLaneLandmarkLearner = {
   /** {@link pitLaneTrackKey} of {@link track} once loaded; `null` = not loaded. */
@@ -402,7 +414,9 @@ export function diffPitLaneLandmarks(
         pitRoadEndAt = sessionTime;
       }
 
-      if (prev.surface === TrkLoc.AproachingPits && surface === TrkLoc.OnTrack && prev.fromPitRoad) {
+      // `fromPitRoad`, not `prev.fromPitRoad`: a pit lane that ends straight
+      // onto the track arms the flag and crosses the blend line on one tick.
+      if (prev.surface === TrkLoc.AproachingPits && surface === TrkLoc.OnTrack && fromPitRoad) {
         if (moved) (edges ??= []).push("blendEnd");
 
         fromPitRoad = false;

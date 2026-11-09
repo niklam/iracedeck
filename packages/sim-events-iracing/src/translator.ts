@@ -327,8 +327,8 @@ type TranslatorInstance = {
    * like `fuelLaps`, so the replay guard's wipes (every garage visit) keep
    * it. Emptied by `resetPerSessionState` and `handleDisconnect`, so the
    * first live tick after either loads it again through
-   * {@link loadPitLaneLandmarks}, picking up what another plugin process
-   * learned meanwhile.
+   * {@link loadPitLaneLandmarks}: the store's current section, including its
+   * unwritten samples.
    */
   pitLaneLearner: PitLaneLandmarkLearner;
   /** The store's loader the learner is seeded from (issue #1112); `null` when none was given (learn from empty). */
@@ -2814,9 +2814,9 @@ function resetPerSessionState(self: TranslatorInstance, telemetry: TelemetryData
   self.fuelLaps.pendingSessionWipe = true;
 
   // The learned pit-lane landmarks (issue #1112): emptied, so the first live
-  // tick of the new session loads them again from the store — which has
-  // folded everything published so far, and whatever another plugin process
-  // learned meanwhile — whether or not the track changed.
+  // tick of the new session loads them again from the store — its current
+  // section, including its unwritten samples — whether or not the track
+  // changed.
   self.pitLaneLearner = createPitLaneLandmarkLearner();
 }
 
