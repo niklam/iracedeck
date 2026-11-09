@@ -139,13 +139,13 @@ static bool DeserializeDeviceId(const std::string &hex, ma_device_id &outId)
 // Audio Engine (miniaudio — multi-channel mixer)
 // ============================================================================
 
-// The mixer's channel count: Ambient, SFX, Voice, Radar and Feedback (#1455),
-// the indices of the AudioChannel enum in src/index.ts and in
+// The mixer's channel count: Ambient, SFX, Voice, Radar, Feedback (#1455) and
+// Cue (#1161), the indices of the AudioChannel enum in src/index.ts and in
 // @iracedeck/audio-service. It sizes every per-channel table below; a new
 // channel is an enum entry there plus a bump here. Every entry point refuses
 // a channel at or above it, so a binary built before a bump refuses the new
 // channel (its play returns false) rather than crashing.
-static const int IRD_MAX_CHANNELS = 5;
+static const int IRD_MAX_CHANNELS = 6;
 static ma_context *g_audioContext = nullptr;
 static ma_engine *g_engine = nullptr;
 static ma_sound *g_channels[IRD_MAX_CHANNELS] = {};
