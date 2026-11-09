@@ -1,13 +1,13 @@
 ---
 title: Black Box Selector
-description: Navigate iRacing's black box overlays with direct selection or cycling.
+description: Navigate iRacing's black box overlays with direct selection or cycling, and toggle their size.
 sidebar:
   badge:
-    text: "3 modes"
+    text: "4 modes"
     variant: tip
 ---
 
-Open any of iRacing's black box overlays directly, or cycle through them sequentially. Direct-selection acts as a toggle — pressing a button opens the black box, and pressing it again while that black box is already selected closes it. Placed on a **Stream Deck+ dial**, the same action becomes a black-box browser — turn to step through the boxes and press to open one — see [On a dial](#on-a-dial) below.
+Open any of iRacing's black box overlays directly, cycle through them sequentially, or switch the open black box between its small and large size. Direct-selection acts as a toggle — pressing a button opens the black box, and pressing it again while that black box is already selected closes it. Placed on a **Stream Deck+ dial**, the same action becomes a black-box browser — turn to step through the boxes and press to open one — see [On a dial](#on-a-dial) below.
 
 ## Modes
 
@@ -74,15 +74,36 @@ Cycle to the previous black box.
 
 - No additional settings
 
+---
+
+### Toggle Size
+
+Switch the black box that is currently showing between iRacing's small and large size. Each press toggles the size, so pressing again switches it back. The key shows **BOX SIZE**.
+
+iRacing only offers this as a toggle and does not report which size a box is shown at, so there is no separate key to make a box small or large. If no black box is open, the press does nothing in the sim.
+
+iRacing ships **Toggle Black Box Size** without a key, so assign one in iRacing's controls first, then set the same key on the **Toggle Black Box Size** binding in the Property Inspector. Until it is set, the key shows the missing-binding warning and the Property Inspector says the binding is not set.
+
+#### Details
+
+- **Method:** Key binding
+- **Dial:** No rotation support
+- **Default binding:** No default key binding
+- **Telemetry-aware icon:** No
+
+#### Settings
+
+- No additional settings
+
 ## On a dial
 
-Placed on a Stream Deck+ dial or a Mirabox knob, Black Box Selector becomes a black-box browser. Turning the dial steps through iRacing's black boxes — clockwise for the next box, counter-clockwise for the previous — using the same **Cycle Next** and **Cycle Previous** key bindings the keypad Next and Previous modes use, so no extra configuration is needed if you already use them. A press can jump straight to one box you pick. The Property Inspector automatically shows the dial settings below (instead of the keypad Mode and Black Box) when the instance sits on a dial. See [Dials](/docs/features/dials/) for how the shared dial gestures work.
+Placed on a Stream Deck+ dial or a Mirabox knob, Black Box Selector becomes a black-box browser. Turning the dial steps through iRacing's black boxes — clockwise for the next box, counter-clockwise for the previous — using the same **Cycle Next** and **Cycle Previous** key bindings the keypad Next and Previous modes use, so no extra configuration is needed if you already use them. A press can jump straight to one box you pick, or toggle the open box's size. The Property Inspector automatically shows the dial settings below (instead of the keypad Mode and Black Box) when the instance sits on a dial. See [Dials](/docs/features/dials/) for how the shared dial gestures work.
 
 iRacing reports no telemetry for which black box is currently open, so the touch strip can't track your position in the ring — it shows the action's identity only: a "BB" badge and the "BLACK BOX" wordmark. This is the same documented limitation as the other key-binding-driven dials. You can still recolor the strip's border, label, and background in the **Dash Box Appearance** section of the dial settings.
 
 #### Details
 
-- **Method:** Key binding — rotation uses the **Cycle Next** and **Cycle Previous** bindings; the press gesture uses the per-box binding of the box you choose in **Box to Open**. Black box selection has no iRacing API command, so every dial path needs a binding. Configure them in the **Related Key Bindings** section; the Property Inspector shows a status line indicating whether each is set.
+- **Method:** Key binding — rotation uses the **Cycle Next** and **Cycle Previous** bindings; **Open Selected Box** uses the per-box binding of the box you choose in **Box to Open**, and **Toggle Box Size** uses the **Toggle Black Box Size** binding. Black box selection has no iRacing API command, so every dial path needs a binding. Configure them in the **Related Key Bindings** section; the Property Inspector shows a status line indicating whether each is set.
 - **Dial:** Rotating cycles through the black boxes (clockwise = next, counter-clockwise = previous), one box per detent; a fast spin steps several at once. Both the Cycle Next and Cycle Previous bindings must be set.
 - **Telemetry-aware:** No — iRacing exposes no open-box state, so the touch strip is a static identity readout.
 
@@ -101,9 +122,10 @@ What a short or long press of the dial button does, chosen from:
 
 - **None** (default for both) — does nothing.
 - **Open Selected Box** — opens the box picked in **Box to Open**.
+- **Toggle Box Size** — switches the open black box between its small and large size, like the keypad Toggle Size mode. It needs the **Toggle Black Box Size** binding, which has no default key.
 
 A press is classified when you release the dial — a hold past the [Long-press threshold](/docs/features/dials/#the-long-press-threshold) fires the Long Press action. Turning the dial while pressed cycles boxes (a "push + turn") and never fires the press action.
 
 #### Setting: Tap Display / Long Touch
 
-Optional touch-strip gestures (Stream Deck+ only), each over { Open Selected Box, None }. Both default to **None** for VR safety.
+Optional touch-strip gestures (Stream Deck+ only), each offering the same choices as Press Action: **None**, **Open Selected Box** or **Toggle Box Size**. Both default to **None** for VR safety.

@@ -1,6 +1,6 @@
 # Black Box Selector
 
-Cycles through or directly selects iRacing black box screens, from a keypad button, a Stream Deck+ dial (#808) or a Mirabox knob (#1013).
+Cycles through or directly selects iRacing black box screens, and toggles the open box between small and large (#1238), from a keypad button, a Stream Deck+ dial (#808) or a Mirabox knob (#1013).
 
 ## Properties
 
@@ -19,6 +19,7 @@ Cycles through or directly selects iRacing black box screens, from a keypad butt
 ### Button Press
 - **Direct mode**: Opens the selected black box immediately
 - **Next/Previous mode**: Cycles to the next or previous black box
+- **Toggle Size mode** (#1238): Single-taps the global `blackBoxToggleSize` binding, which flips whichever black box is showing between iRacing's small and large size. iRacing exposes only the toggle and no telemetry for the current size, so there is no "make large" or "make small"; with no box open the tap does nothing in the sim. It does not use the #818 prime-then-target sequence — resizing is independent of which box is shown. The binding has no default (iRacing ships it unassigned), so the key shows the #612 missing-binding state and the PI its binding warning until the user sets it
 
 ### Dial (Stream Deck+)
 
@@ -26,7 +27,7 @@ Cycles through or directly selects iRacing black box screens, from a keypad butt
 - **Push** (short press, fires on `dialUp`): Runs the configured **Press Action** gesture. Default **None**.
 - **Long Press** (held past the **Long-press threshold** global setting, default 500 ms, with no turn, fires on `dialUp`): Runs the configured **Long Press** gesture. Default **None**.
 - Press and long-press are classified at `dialUp` (a duration comparison, with a guard so a rotation while held pre-empts both press actions) — there is no mid-hold timer.
-- The only gesture action is **Open Selected Box**: taps the per-box binding chosen by the **Box to Open** setting — the same 11 bindings the keypad Direct mode uses. Like a Direct keypad press, it toggles the box: pressing again while it is already open closes it.
+- The gesture actions are **Open Selected Box**, which taps the per-box binding chosen by the **Box to Open** setting — the same 11 bindings the keypad Direct mode uses; like a Direct keypad press, it toggles the box: pressing again while it is already open closes it — and **Toggle Box Size** (#1238), which single-taps `blackBoxToggleSize` exactly like the keypad Toggle Size mode. The strip's #612 dim still tracks only the Cycle pair, so an unset Toggle Black Box Size binding does not dim it.
 - There is no Push + Turn gesture and no rotation-mode setting — rotation always cycles.
 
 ### Touchscreen (Elgato only)
@@ -55,6 +56,7 @@ The Property Inspector shows the settings for the surface the instance sits on: 
 - **Direct** - Opens a specific black box immediately
 - **Next** - Cycles to the next black box
 - **Previous** - Cycles to the previous black box
+- **Toggle Size** - Toggles the open black box between small and large (key title `BOX SIZE`)
 
 #### Black Box Options
 - Lap Timing
@@ -82,6 +84,7 @@ The Property Inspector shows the settings for the surface the instance sits on: 
 #### Gesture Action Options (Press Action, Long Press, Tap Display, Long Touch)
 - **None** - The gesture does nothing; rotation still cycles black boxes
 - **Open Selected Box** - Taps the binding for the box chosen in **Box to Open** — toggles it open/closed, same as a Direct keypad press
+- **Toggle Box Size** - Taps the **Toggle Black Box Size** binding — flips the open box between small and large, same as a Toggle Size keypad press
 
 There is no Push + Turn gesture and no rotation-mode setting for the dial — rotation always cycles next/previous.
 
@@ -108,9 +111,14 @@ There is no Push + Turn gesture and no rotation-mode setting for the dial — ro
 | Next | *(none)* | Next Black Box |
 | Previous | *(none)* | Prev Black Box |
 
+### Toggle Size Mode
+| Action | Default Key | iRacing Setting |
+|--------|-------------|-----------------|
+| Toggle Size | *(none)* | Toggle Black Box Size |
+
 ### Dial
 
-The dial reuses the bindings above rather than defining its own — Rotate taps the same Next/Previous bindings as keypad Next/Previous mode, and the **Open Selected Box** gesture taps the same per-box binding as keypad Direct mode for whichever box **Box to Open** selects.
+The dial reuses the bindings above rather than defining its own — Rotate taps the same Next/Previous bindings as keypad Next/Previous mode, the **Open Selected Box** gesture taps the same per-box binding as keypad Direct mode for whichever box **Box to Open** selects, and the **Toggle Box Size** gesture taps the same `blackBoxToggleSize` binding as keypad Toggle Size mode.
 
 ## Icon States
 
@@ -120,6 +128,7 @@ All Direct mode icons include a small "BB" label in the corner to distinguish th
 |------|------|
 | Next | "BB" with up arrow |
 | Previous | "BB" with down arrow |
+| Toggle Size | Small solid box in the corner of a muted larger outline, with a diagonal double-headed arrow; title `BOX SIZE` |
 | Direct: Lap Timing | Stopwatch + BB label |
 | Direct: Standings | Podium + BB label |
 | Direct: Relative | Gap indicator (±) + BB label |
@@ -143,7 +152,7 @@ A dial instance has no keypad icon — its display is the self-drawn 200×100 to
 
 ## Notes
 
-- Next/Previous mode requires configuring custom keybindings in iRacing (no defaults set)
+- Next/Previous and Toggle Size modes require configuring custom keybindings in iRacing (no defaults set)
 - Direct mode uses iRacing's default F1–F11 bindings
 - Every dial path is key-binding-backed — black box selection has no SDK support, on either surface
 - Rotation coalesces a fast spin into up to 5 binding taps per rotate event rather than tapping once per detent regardless of speed

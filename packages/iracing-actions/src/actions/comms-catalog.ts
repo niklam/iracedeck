@@ -35,7 +35,7 @@ import {
   keybindKeys,
 } from "@iracedeck/deck-core";
 
-import { BLACK_BOX_GLOBAL_KEYS } from "../shared/black-box.js";
+import { BLACK_BOX_CONTROL_KEYS, BLACK_BOX_GLOBAL_KEYS } from "../shared/black-box.js";
 import { CAR_CYCLE_BINDING_KEYS } from "../shared/car-cycle-bindings.js";
 import { SPOTTER_GLOBAL_KEYS } from "../shared/spotter-bindings.js";
 import {
@@ -139,8 +139,9 @@ export const COMMS_CATALOG: Record<string, ActionCommEntry> = {
 
   "black-box-selector": entry("mode", {
     direct: keybindBy("blackBox", BLACK_BOX_GLOBAL_KEYS),
-    next: keybind("blackBoxCycleNext"),
-    previous: keybind("blackBoxCyclePrevious"),
+    next: keybind(BLACK_BOX_CONTROL_KEYS.cycleNext),
+    previous: keybind(BLACK_BOX_CONTROL_KEYS.cyclePrevious),
+    "toggle-size": keybind(BLACK_BOX_CONTROL_KEYS.toggleSize),
   }),
 
   // The dial surface of Black Box Selector (#808). Rotation always cycles — there
@@ -150,12 +151,14 @@ export const COMMS_CATALOG: Record<string, ActionCommEntry> = {
   // "cycle" descriptor is the next/previous key PAIR (warn if either is unset).
   // The press gesture `open-selected-box` opens the box chosen by `dial.pressBox`,
   // reusing the keypad Direct mode's per-box keys via the keyBy descriptor (the
-  // audio-controls `mute-unmute` pattern). Every dial path is keybind-backed —
-  // black-box selection has no SDK support. A separate entry from the keypad map:
+  // audio-controls `mute-unmute` pattern); `toggle-size` taps Toggle Black Box
+  // Size (#1238). Every dial path is keybind-backed — black-box selection has no
+  // SDK support. A separate entry from the keypad map:
   // the keypad `next`/`previous` are single keys, the dial rotation needs both.
   "black-box-selector-dial": entry("dial.rotation", {
-    cycle: pair("blackBoxCycleNext", "blackBoxCyclePrevious"),
+    cycle: pair(BLACK_BOX_CONTROL_KEYS.cycleNext, BLACK_BOX_CONTROL_KEYS.cyclePrevious),
     "open-selected-box": keybindBy("dial.pressBox", BLACK_BOX_GLOBAL_KEYS),
+    "toggle-size": keybind(BLACK_BOX_CONTROL_KEYS.toggleSize),
   }),
 
   "splits-delta-cycle": entry("mode", {

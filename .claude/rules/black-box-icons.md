@@ -14,7 +14,7 @@ These are the dynamic-render icons used by the black-box selector action. Each i
 
 ## Inner Black Box Frame (the family identity)
 
-All 13 icons share one flat frame, filled with the key background and outlined in the primary graphic colour:
+All 14 icons share one flat frame, filled with the key background and outlined in the primary graphic colour:
 
 ```svg
 <rect x="10" y="12" width="76" height="44" rx="6" fill="{{backgroundColor}}" stroke="{{graphic1Color}}" stroke-width="3.5"/>
@@ -44,6 +44,7 @@ Content is flat: linework and silhouettes in `{{graphic1Color}}`, interior detai
 | standings | podium bars, amber winner with `1` |
 | weather | small cloud + cyan rain, clear of the border |
 | next / previous | double chevrons pointing the cycle direction: the rear chevron solid, the one ahead of it at 55% opacity |
+| toggle-size | a solid small box in the bottom-left corner of a muted (55% opacity) larger outline box sharing that corner, with a diagonal double-headed arrow between their top-right corners, all `{{graphic1Color}}`; it reads as "resize", not as any one box (#1238) |
 
 Quick Access deliberately avoids Relative's language: no row is filled edge to edge and no row is highlighted as a whole, because three full-width rows with one picked out in amber is what identifies Relative. The chevrons and the switch carry Quick Access's identity instead.
 

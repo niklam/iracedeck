@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 81.3 49.3">
+  <desc>{"colors":{"backgroundColor":"#2a2a2a","textColor":"#ffffff","graphic1Color":"#ffffff","graphic2Color":"#4fc3f7"},"title":{"text":"BOX SIZE"},"border":{"color":"#5a5a5a"}}</desc>
+  <defs>
+
+  </defs>
+  <g transform="translate(-7.2 -9.2)">
+
+    <rect x="10" y="12" width="76" height="44" rx="6" fill="#2a2a2a" stroke="#ffffff" stroke-width="3.5"/>
+    <rect x="22" y="19" width="52" height="30" rx="3" fill="none" stroke="#ffffff" stroke-width="3" opacity="0.55"/>
+    <rect x="22" y="37" width="20" height="12" rx="2.5" fill="#ffffff"/>
+    <line x1="47" y1="34" x2="67" y2="24" stroke="#ffffff" stroke-width="3.4" stroke-linecap="round"/>
+    <polyline points="60.29,22.88 67,24 63.87,30.04" fill="none" stroke="#ffffff" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/>
+    <polyline points="50.13,27.96 47,34 53.71,35.12" fill="none" stroke="#ffffff" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+</svg>

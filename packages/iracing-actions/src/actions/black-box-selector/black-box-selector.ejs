@@ -16,6 +16,7 @@
 					<option value="direct">Direct</option>
 					<option value="next">Next</option>
 					<option value="previous">Previous</option>
+					<option value="toggle-size">Toggle Size</option>
 				</sdpi-select>
 			</sdpi-item>
 			<ird-binding-status mode-setting="<%= __comms._meta.modeSetting %>" comms='<%= JSON.stringify(__comms) %>'></ird-binding-status>
@@ -82,15 +83,21 @@
 				<sdpi-select setting="dial.pressAction" default="none">
 					<option value="none">None</option>
 					<option value="open-selected-box">Open Selected Box</option>
+					<option value="toggle-size">Toggle Box Size</option>
 				</sdpi-select>
 			</sdpi-item>
 			<ird-binding-status mode-setting="dial.pressAction" comms='<%= JSON.stringify(__dialComms) %>'></ird-binding-status>
+			<div class="ird-supporting-text">
+				Toggle Box Size switches the black box that is showing between its small and
+				large size, whichever box it is. It uses the Toggle Black Box Size binding below.
+			</div>
 
 			<% if (locals.platform?.features?.dialExtendedGestures !== false) { %>
 			<sdpi-item label="Long Press">
 				<sdpi-select setting="dial.longPressAction" default="none">
 					<option value="none">None</option>
 					<option value="open-selected-box">Open Selected Box</option>
+					<option value="toggle-size">Toggle Box Size</option>
 				</sdpi-select>
 			</sdpi-item>
 			<ird-binding-status mode-setting="dial.longPressAction" comms='<%= JSON.stringify(__dialComms) %>'></ird-binding-status>
@@ -99,6 +106,7 @@
 				<sdpi-select setting="dial.tapAction" default="none">
 					<option value="none">None</option>
 					<option value="open-selected-box">Open Selected Box</option>
+					<option value="toggle-size">Toggle Box Size</option>
 				</sdpi-select>
 			</sdpi-item>
 			<ird-binding-status mode-setting="dial.tapAction" comms='<%= JSON.stringify(__dialComms) %>'></ird-binding-status>
@@ -107,6 +115,7 @@
 				<sdpi-select setting="dial.longTouchAction" default="none">
 					<option value="none">None</option>
 					<option value="open-selected-box">Open Selected Box</option>
+					<option value="toggle-size">Toggle Box Size</option>
 				</sdpi-select>
 			</sdpi-item>
 			<ird-binding-status mode-setting="dial.longTouchAction" comms='<%= JSON.stringify(__dialComms) %>'></ird-binding-status>

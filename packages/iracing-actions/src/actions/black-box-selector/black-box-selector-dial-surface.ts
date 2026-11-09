@@ -8,7 +8,9 @@
  * boxes — clockwise taps the Cycle Next binding, counter-clockwise Cycle
  * Previous — one detent per box (a fast spin coalesces ticks, capped per event).
  * A press optionally opens one chosen box directly, reusing the same per-box
- * bindings and the same single-tap dispatch the keypad Direct mode uses.
+ * bindings and the same single-tap dispatch the keypad Direct mode uses, or
+ * toggles the shown box's size with iRacing's Toggle Black Box Size binding
+ * (#1238) — the same single tap the keypad Toggle Size mode sends.
  *
  * iRacing exposes no telemetry for which black box is currently open (the
  * documented #782 identity-only compromise), so the dial's own screen — the
@@ -17,7 +19,8 @@
  * open-box readback, drawn by this surface itself for each screen
  * (`renderBlackBoxStrip` / `renderBlackBoxKnob`, #1013). Its only live element
  * is the #612 missing-binding warning, which dims the drawing when the Cycle
- * bindings aren't set; that refreshes on
+ * bindings (rotation) aren't set — a gesture's binding is reported by its PI
+ * status line, not on the strip; the warning refreshes on
  * global-settings changes (`refreshAll`), not from telemetry, so this surface
  * never subscribes to the telemetry tick.
  */
@@ -32,7 +35,7 @@ import {
 import type { ILogger } from "@iracedeck/logger";
 import z from "zod";
 
-import { BLACK_BOX_GLOBAL_KEYS, type BlackBoxId } from "../../shared/black-box.js";
+import { BLACK_BOX_CONTROL_KEYS, BLACK_BOX_GLOBAL_KEYS, type BlackBoxId } from "../../shared/black-box.js";
 import { dialAppearanceFields, type DialBoxColors, resolveDialBoxColors } from "../../shared/dial-box.js";
 import { KNOB_BOX_HEIGHT, KNOB_BOX_WIDTH } from "../../shared/dial-knob-box.js";
 import { pushDialNameIcon } from "../../shared/dial-name-icon.js";
@@ -43,8 +46,11 @@ import { type DialGestures, gestureSlots, ReleaseDialSurfaceBase } from "../../s
 const MAX_TAPS_PER_EVENT = 5;
 
 /** Cycle bindings the rotation taps — the same keys the keypad Next / Previous modes use. */
-const CYCLE_NEXT_KEY = "blackBoxCycleNext";
-const CYCLE_PREVIOUS_KEY = "blackBoxCyclePrevious";
+const CYCLE_NEXT_KEY = BLACK_BOX_CONTROL_KEYS.cycleNext;
+const CYCLE_PREVIOUS_KEY = BLACK_BOX_CONTROL_KEYS.cyclePrevious;
+
+/** iRacing's Toggle Black Box Size binding — the key the keypad Toggle Size mode uses (#1238). */
+const TOGGLE_SIZE_KEY = BLACK_BOX_CONTROL_KEYS.toggleSize;
 
 /** Warm amber accent, matching the black-box icon family (olive glass / amber data). */
 const ACCENT = "#d4a017";
@@ -68,8 +74,11 @@ export const PRESS_BOXES = [
   "weather",
 ] as const satisfies readonly BlackBoxId[];
 
-/** `open-selected-box` taps the per-box binding chosen by `dial.pressBox`. */
-export const GESTURE_ACTIONS = ["open-selected-box", "none"] as const;
+/**
+ * `open-selected-box` taps the per-box binding chosen by `dial.pressBox`;
+ * `toggle-size` taps Toggle Black Box Size (#1238).
+ */
+export const GESTURE_ACTIONS = ["open-selected-box", "toggle-size", "none"] as const;
 export type GestureSlot = (typeof GESTURE_ACTIONS)[number];
 
 export const DialSettings = z
@@ -117,10 +126,13 @@ export function buildTriggerDescription(dial: DialSettings): DeckTriggerDescript
   return description;
 }
 
+/** The deck's trigger-description label for a gesture slot, or `undefined` for `none` (no label shown). */
 function gestureLabel(action: GestureSlot): string | undefined {
   switch (action) {
     case "open-selected-box":
       return "Open selected box";
+    case "toggle-size":
+      return "Toggle box size";
     case "none":
       return undefined;
   }
@@ -353,17 +365,39 @@ export class BlackBoxSelectorDialSurface extends ReleaseDialSurfaceBase<BlackBox
     return gestureSlots(dial);
   }
 
+  /**
+   * Runs one press or touch gesture: a single tap of the binding it names (the
+   * box chosen by `dial.pressBox`, or Toggle Black Box Size), never a #818 prime
+   * sequence. Exhaustive over {@link GESTURE_ACTIONS}.
+   */
   private async doGesture(ctx: BlackBoxDialContext, gesture: GestureSlot): Promise<void> {
-    if (gesture === "none") return;
+    switch (gesture) {
+      case "none":
+        return;
+      case "open-selected-box": {
+        const key = BLACK_BOX_GLOBAL_KEYS[ctx.dial.pressBox];
+        this.host.logger.info("Black box dial opened selected box");
+        this.host.logger.debug(`Open ${ctx.dial.pressBox}`);
+        // Mirrors the keypad Direct mode exactly: a single tap of the per-box
+        // binding. Direct-mode selection toggles the box, so this can hide the box
+        // when it is already shown — the same behavior a keypad Direct press has.
+        await this.host.tapBinding(key);
 
-    if (gesture === "open-selected-box") {
-      const key = BLACK_BOX_GLOBAL_KEYS[ctx.dial.pressBox];
-      this.host.logger.info("Black box dial opened selected box");
-      this.host.logger.debug(`Open ${ctx.dial.pressBox}`);
-      // Mirrors the keypad Direct mode exactly: a single tap of the per-box
-      // binding. Direct-mode selection toggles the box, so this can hide the box
-      // when it is already shown — the same behavior a keypad Direct press has.
-      await this.host.tapBinding(key);
+        return;
+      }
+      case "toggle-size":
+        this.host.logger.info("Black box dial toggled box size");
+        // Mirrors the keypad Toggle Size mode: one tap, no #818 prime — the
+        // resize acts on whichever box is shown (#1238).
+        await this.host.tapBinding(TOGGLE_SIZE_KEY);
+
+        return;
+      default: {
+        // A new gesture must be dispatched here: this line stops compiling until it is.
+        const unhandled: never = gesture;
+
+        throw new Error(`Black Box Selector: no dial gesture "${String(unhandled)}"`);
+      }
     }
   }
 
