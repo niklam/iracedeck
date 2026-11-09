@@ -243,11 +243,17 @@ if (process.env.RELEASE_IT_DRY_RUN === "1") {
 //    it warns, carries on, stages every removal and exits 0, leaving the locked
 //    fragment on disk. So success is checked on disk, not by the exit code: a
 //    fragment still present stops the release the same way. A re-run refuses a
-//    tree holding the folded changelog beside fragments — composing finds the new
-//    `## <version>` section while fragments remain — rather than folding them
-//    again, and the fragments are committed (checked above), so `git restore`
-//    brings it all back. stdin is not a terminal, so Git for Windows' "Unlink of
-//    file failed. Should I try again?" prompt never waits on the release.
+//    tree holding the folded changelog beside fragments rather than folding them
+//    again: composing in fold mode refuses a `## <version>` section that already
+//    exists while fragments remain, naming the half-folded tree. A preview (the
+//    readers: the build's changelog data and the website) treats the same
+//    shape, a version equal to the newest section, as the window after a
+//    release and composes the fragments as `## Unreleased` (#1398), except that
+//    a half-folded tree's fragments repeat the bullets just written and are
+//    refused for that. The fragments are committed (checked above), so
+//    `git restore` brings it all back. stdin is not a terminal, so Git for
+//    Windows' "Unlink of file failed. Should I try again?" prompt never waits
+//    on the release.
 // 3. Only then are the version files bumped.
 if (changelogFold.fold) {
   writeFileSync(changelogPath, changelogFold.content);
