@@ -290,6 +290,60 @@ export function createTrackGapsState(): TrackGapsState {
 }
 
 /**
+ * One car's previous tick as the pit-lane landmark learner saw it (issue
+ * #1112, `diff/pit-lane-landmarks.ts`): the readings an edge is judged
+ * against, and the car's place in its pit visit. Written in place, last in the
+ * car's unit, on every tick the car is read.
+ */
+export type PitLaneLandmarkCarTick = {
+  /** `CarIdxTrackSurface` (a `TrkLoc`); `-1` (`NotInWorld`) when the car was out of the world. */
+  surface: number;
+  /** `CarIdxOnPitRoad`. */
+  onPitRoad: boolean;
+  /** `CarIdxLapDistPct`; negative when the sim had no position for the car. */
+  pct: number;
+  /** `CarIdxEstTime`, seconds. */
+  estTime: number;
+  /** `SessionTime`, seconds: the plausibility check's clock. */
+  sessionTime: number;
+  /** `CarIdxLap`. */
+  lap: number;
+  /**
+   * Set when the car leaves pit road (`CarIdxOnPitRoad` true → false out of
+   * the pit lane), cleared at its `blendEnd` edge or on any tick it reads
+   * `OnTrack` off pit road. While set, an `AproachingPits → OnTrack` edge is
+   * the blend line, and an `OnTrack → AproachingPits` one is not a pit entry.
+   */
+  fromPitRoad: boolean;
+  /** `SessionTime` of the car's last raw pit-road on edge between two in-world ticks; `null` = none seen. */
+  pitRoadStartAt: number | null;
+  /** `SessionTime` of the car's last raw pit-road off edge between two in-world ticks; `null` = none seen. */
+  pitRoadEndAt: number | null;
+  /** `SessionTime` at which {@link fromPitRoad} was last cleared; `null` = never this baseline. */
+  rejoinedAt: number | null;
+};
+
+/**
+ * The pit-lane landmark learner's per-car baselines (issue #1112,
+ * `diff/pit-lane-landmarks.ts`). Only the edge detection lives here: the
+ * learned landmarks themselves are the translator instance's (they must
+ * survive the replay wipe and are reloaded from the store at a session
+ * change), so this slice holds nothing a wipe could lose but a car's previous
+ * tick. Recreated with the state at a session change and a disconnect, and
+ * wiped whole at the replay wipe: replay-timeline readings must never be the
+ * baseline of a live edge, so every car seeds again on its first tick back.
+ */
+export type PitLaneLandmarksState = {
+  /** Per car, by `CarIdx`: its previous tick; `undefined` = not seeded yet (its next tick only seeds). */
+  cars: (PitLaneLandmarkCarTick | undefined)[];
+};
+
+/** No car seeded (issue #1112): the initial state. */
+export function createPitLaneLandmarksState(): PitLaneLandmarksState {
+  return { cars: [] };
+}
+
+/**
  * The laps-of-fuel-left callouts' state (issue #838; one slice since #1405
  * moved it under #1588's convention): the mid-lap sampling baselines, the
  * refuel tracker, the stint's announce floor and reassurance latch, and the
@@ -1609,6 +1663,10 @@ export type TranslatorState = {
   /** See {@link TrackGapsState}. Wiped with the rest of the state on a replay glance. */
   trackGaps: TrackGapsState;
 
+  // ── Pit-lane landmarks (issue #1112) ───────────────────────────────────
+  /** See {@link PitLaneLandmarksState}. Wiped with the rest of the state on a replay glance. */
+  pitLaneLandmarks: PitLaneLandmarksState;
+
   // ── Self-managed running order (issue #603) ─────────────────────────────
   /**
    * Per-car last-known good score (`CarIdxLapCompleted + CarIdxLapDistPct`) from
@@ -2237,6 +2295,8 @@ export function createInitialState(): TranslatorState {
     gapThresholdArmedBehind: false,
 
     trackGaps: createTrackGapsState(),
+
+    pitLaneLandmarks: createPitLaneLandmarksState(),
 
     positionLastKnownScores: [],
     positionFrozen: new Set(),

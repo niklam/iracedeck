@@ -27,7 +27,8 @@ import {
  * (`wipeStateForReplay`) treats its fields and which other diffs read them.
  *
  * Not here: "Track-order gaps outside a race (issue #1515)" (`trackGaps`),
- * "Fastest lap of the race (issue #1571)" (`fastestLap`) and
+ * "Pit-lane landmarks (issue #1112)" (`pitLaneLandmarks`),
+ * "Fastest lap of the race (issue #1571)" (`fastestLap`),
  * "Laps-of-fuel-left callouts (issue #838)" (`fuelCallout`) and "Track
  * sectors (issue #1573)" (`trackSectors`, `sectorStart`), whose only members are slices, the
  * `lapCrossing` slice under "Lap completion", and the `cornerName` slice under
@@ -331,6 +332,7 @@ const SLICE_READS_ALLOWED: SliceReadAllowList = {
 /** The slices the tree has, by key. */
 const SLICE_KEYS = [
   "trackGaps",
+  "pitLaneLandmarks",
   "fastestLap",
   "fuelCallout",
   "lapCrossing",
