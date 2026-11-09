@@ -1,16 +1,16 @@
 {
   "version": "3.8.1",
   "files": {
-    "appearance.png": "9d9ef0b5956de382f126660f8e91de74ba8ecaed67b476e647ddc88731da3cbe",
-    "delays.png": "cdc4fb5dbd7eb186e5ee3e738ae5c4e5a74c440d159d1672ad81c696204adf32",
-    "diagnostics.png": "ad065263a037964e18740710cceb04014e9f4cb5698896de9614317effb39396",
-    "general.png": "dd9b749a6973af295cc01e46b85aa133aabaed809d9f423d754b069384565eab",
-    "getting-started.png": "2636aa7efff67c60db5b05aaf175b1c5a7757e986d90834b70c0d6b9f559adde",
-    "key-bindings.png": "9aacb0540150f6f3c507cd8e64f6b526962dcc93ac0f752e2b04b670a70bb544",
-    "profiles.png": "f5ad6c7a9c0d40bfabe1ad15c01b2521a8054a872caed624b78eb748c00b1ffb",
-    "race-engineer.png": "cb831c58cd6b9930f351347e38683e7997e9a048e78ee930475ecec8fad75ab0",
-    "simhub.png": "11d61815dd32a19d64166e81b05d8c4569f6758e22da316dea19f7dc6c31a5f2",
-    "support.png": "b7fa9fddb68412f736183be659efb81ef2510cea0cd3a3688b2913c645a7505c",
-    "whats-new.png": "a1039da6cd16d2e0a699d9a34c34cd7d183a4d93e92cd01c77b7f9b76e1488cb"
+    "appearance.png": "5e23aab28a06d36416c789925ab3d2472915d1a7e6e9eaf88b8dd38ce39af4c1",
+    "delays.png": "52b8162a9e4fd4860f662a21ad1b3c0d1d6737f9f745234266424e55eb4514ee",
+    "diagnostics.png": "996a89c49d44a9a06b4dd2b9e479eb9f8ad7cb47f95dd45320a65f1e14302bbd",
+    "general.png": "608b1afb2b3ecb1eeb3c003503cabe47ed7e06f2400b607456e0372ab1f8c4d1",
+    "getting-started.png": "c0b57ae6e92d6aa6e15f9eb936f1ad2757253649958ea635c93167fe3d37a828",
+    "key-bindings.png": "566932214e3e6bae9838593ce3afe36f68897083b17541a8d585139c1b8eaa79",
+    "profiles.png": "bfc5c38b302da8ab8c3bcc0df63b031ab4c9eced63ad1b832c126ef075d5779d",
+    "race-engineer.png": "fb9c6503523a2b9be10ec5f20744c8e5bcc7c15d9cde3ba8efa41f60ffeeda1f",
+    "simhub.png": "62c762fb4d146f0a53109ac03bc7aeaa54af1786d492b848a20a350c5ec334bd",
+    "support.png": "80a27205755b2a726465b9a1ef67bd53bd7186e3baec078ffe4661ac779991b2",
+    "whats-new.png": "d9108fa3af8cac6c77d05e2c7fd2178e7576f182021f1f0594dfd293764cfddf"
   }
 }
