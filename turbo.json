@@ -37,6 +37,10 @@
         "manifest.json",
         "manifest.bundled.json",
         "src/build/**",
+        "!src/build/**/*.test.ts",
+        "!src/build/callout-scripts.mjs",
+        "!src/build/pack-format.mjs",
+        "!src/build/pack-record.mjs",
         "src/presets.mjs"
       ],
       "outputs": [".cache/**"]
