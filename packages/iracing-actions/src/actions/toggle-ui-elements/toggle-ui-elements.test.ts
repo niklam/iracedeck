@@ -230,7 +230,7 @@ describe("ToggleUiElements", () => {
     });
 
     it("should not have a mapping for replay-ui", () => {
-      expect(UI_ELEMENT_GLOBAL_KEYS["replay-ui"]).toBeUndefined();
+      expect((UI_ELEMENT_GLOBAL_KEYS as Readonly<Record<string, string>>)["replay-ui"]).toBeUndefined();
     });
 
     it("should have exactly 10 entries", () => {
