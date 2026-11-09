@@ -109,11 +109,11 @@ describe("diffSectorStart", () => {
 
   it("re-anchors without firing on a teleport, and announces normally after it", () => {
     tick(0.6);
-    tick(0.2425); // a jump of most of a lap: reset to the pits
+    tick(0.2275); // a jump of most of a lap, to just behind sector 2: reset to the pits
 
     expect(emit).not.toHaveBeenCalled();
 
-    tick(0.2275);
+    // The fresh pass starts at the new point and crosses sector 2's start.
     tick(0.2425);
 
     expect(sectorsEmitted()).toEqual([2]);

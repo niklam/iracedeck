@@ -11,7 +11,7 @@ import {
 
 /** A sweep with no pass under way. */
 function freshSweep(): LeadPointSweep {
-  return { leadPrevPct: null, spoken: new Set(), spokenBeforeBackingOver: null };
+  return { leadPrevPct: null, spoken: new Set() };
 }
 
 /**
@@ -145,13 +145,70 @@ describe("sweepLeadPoint", () => {
     expect(sweepLeadPoint(sweep, 0.015625, starts)).toBe(0);
   });
 
-  it("never fires while reversing", () => {
+  it("never fires while reversing, and never sweeps on the way forward again what lies behind its furthest point", () => {
+    // Seeded past the 0.25 start, which is therefore never swept this lap.
     sweepLeadPoint(sweep, 0.265625, STARTS);
 
     expect(sweepLeadPoint(sweep, 0.234375, STARTS)).toBe(-1);
-    // Back over the same start, forward again from below it, is still a crossing.
+    // The previous point holds at the furthest point reached.
+    expect(sweep.leadPrevPct).toBe(0.265625);
     expect(sweepLeadPoint(sweep, 0.2421875, STARTS)).toBe(-1);
-    expect(sweepLeadPoint(sweep, 0.2578125, STARTS)).toBe(0);
+    // Forward again over 0.25, still behind the furthest point: nothing.
+    expect(sweepLeadPoint(sweep, 0.2578125, STARTS)).toBe(-1);
+    expect(sweepLeadPoint(sweep, 0.28125, STARTS)).toBe(-1);
+    expect(sweep.spoken.size).toBe(0);
+  });
+
+  it("after a reverse within the threshold, announces nothing already consumed and still the next unconsumed start", () => {
+    sweepLeadPoint(sweep, 0.234375, STARTS);
+
+    expect(sweepLeadPoint(sweep, 0.265625, STARTS)).toBe(0);
+
+    // Braking mid-lap: back behind the start, within the threshold.
+    expect(sweepLeadPoint(sweep, 0.2421875, STARTS)).toBe(-1);
+    expect(sweepLeadPoint(sweep, 0.234375, STARTS)).toBe(-1);
+    expect(sweep.leadPrevPct).toBe(0.265625);
+
+    // Forward over the consumed start and past the furthest point: silent.
+    expect(sweepLeadPoint(sweep, 0.2578125, STARTS)).toBe(-1);
+    expect(sweepLeadPoint(sweep, 0.28125, STARTS)).toBe(-1);
+
+    // The next start announces as ever.
+    expect(driveForward(sweep, 0.515625, STARTS)).toEqual([1]);
+  });
+
+  it("re-anchors on a backward jump over the threshold, keeping what the lap has spoken until the next wrap", () => {
+    sweepLeadPoint(sweep, 0.234375, STARTS);
+    sweepLeadPoint(sweep, 0.265625, STARTS);
+    driveForward(sweep, 0.3125, STARTS);
+
+    // 0.3125 → 0.234375: backward 0.078125, over the threshold (a tow behind the car).
+    expect(sweepLeadPoint(sweep, 0.234375, STARTS)).toBe(-1);
+    expect(sweep.leadPrevPct).toBe(0.234375);
+    expect(sweep.spoken).toEqual(new Set([0]));
+
+    // Forward from the new point: the start already spoken this lap stays silent.
+    expect(driveForward(sweep, 0.515625, STARTS)).toEqual([1]);
+    expect(driveForward(sweep, 0.984375, STARTS)).toEqual([2]);
+
+    // The next real wrap clears as normal.
+    expect(driveForward(sweep, 0.015625, STARTS)).toEqual([]);
+    expect(sweep.spoken.size).toBe(0);
+    expect(driveForward(sweep, 0.265625, STARTS)).toEqual([0]);
+  });
+
+  it("re-anchors once a slow retreat takes the lead point more than the threshold behind its furthest point", () => {
+    sweepLeadPoint(sweep, 0.3125, STARTS);
+
+    // Back in ticks of 1/64, each well under the threshold.
+    expect(sweepLeadPoint(sweep, 0.296875, STARTS)).toBe(-1);
+    expect(sweepLeadPoint(sweep, 0.28125, STARTS)).toBe(-1);
+    expect(sweepLeadPoint(sweep, 0.265625, STARTS)).toBe(-1);
+    expect(sweep.leadPrevPct).toBe(0.3125);
+
+    // 0.0546875 behind the furthest point: over the threshold, re-anchored there.
+    expect(sweepLeadPoint(sweep, 0.2578125, STARTS)).toBe(-1);
+    expect(sweep.leadPrevPct).toBe(0.2578125);
   });
 
   it("re-anchors silently on a jump over the teleport threshold, and clears the spoken set", () => {
@@ -205,12 +262,11 @@ describe("sweepLeadPoint when the lead point backs over the line", () => {
 
     // Braking: back over the line, 0.01171875 → 0.99609375.
     expect(sweepLeadPoint(sweep, 0.99609375, STARTS)).toBe(-1);
-    expect(sweep.spokenBeforeBackingOver).toEqual(new Set([0]));
+    expect(sweep.leadPrevPct).toBe(0.01171875);
 
     // Forward over the line and past the start again: the same lap.
     expect(sweepLeadPoint(sweep, 0.015625, STARTS)).toBe(-1);
     expect(sweep.spoken).toEqual(new Set([0]));
-    expect(sweep.spokenBeforeBackingOver).toBeNull();
 
     // And again: back over, forward over.
     expect(sweepLeadPoint(sweep, 0.998046875, STARTS)).toBe(-1);
@@ -235,36 +291,44 @@ describe("sweepLeadPoint when the lead point backs over the line", () => {
     expect(sweepLeadPoint(sweep, 0.546875, STARTS)).toBe(-1);
     expect(driveForward(sweep, 0.984375, STARTS)).toEqual([]);
     expect(sweepLeadPoint(sweep, 0.9765625, STARTS)).toBe(-1);
-    expect(sweep.spokenBeforeBackingOver).toBeNull();
 
     // The next lap's line announces its first start again.
     expect(driveForward(sweep, 0.015625, STARTS)).toEqual([0]);
   });
 
-  it("announces a start behind the line crossed while backed over, and again at the end of the lap", () => {
+  it("announces neither a start just past the line nor one just before it a second time when braking re-crosses the line", () => {
     const BEHIND_LINE = 0.98828125;
-    const starts = [PAST_LINE, BEHIND_LINE];
+    const starts = [PAST_LINE, 0.5, BEHIND_LINE];
 
-    crossTheLine(starts);
-    // Back over the line and behind that start…
-    sweepLeadPoint(sweep, 0.99609375, starts);
     sweepLeadPoint(sweep, 0.984375, starts);
 
-    // …then forward across it (a forward crossing, as re-crossing a start
-    // after reversing over it always was) and across the line, where the
-    // lap's first start stays silent.
-    expect(sweepLeadPoint(sweep, 0.9921875, starts)).toBe(1);
-    expect(sweepLeadPoint(sweep, 0.015625, starts)).toBe(-1);
+    // Forward over the start before the line, then over the line and the start past it.
+    expect(sweepLeadPoint(sweep, 0.9921875, starts)).toBe(2);
+    expect(sweepLeadPoint(sweep, 0.01171875, starts)).toBe(0);
 
-    // What was consumed behind the line belongs to the lap's end, where it is
-    // announced again; then the next lap's line.
-    expect(driveForward(sweep, 0.9921875, starts)).toEqual([1]);
+    // Braking: back over the line and behind the start before it…
+    expect(sweepLeadPoint(sweep, 0.99609375, starts)).toBe(-1);
+    expect(sweepLeadPoint(sweep, 0.984375, starts)).toBe(-1);
+    expect(sweep.leadPrevPct).toBe(0.01171875);
+
+    // …then forward over both again: the same lap, nothing announced twice.
+    expect(sweepLeadPoint(sweep, 0.9921875, starts)).toBe(-1);
+    expect(sweepLeadPoint(sweep, 0.0078125, starts)).toBe(-1);
+    expect(sweepLeadPoint(sweep, 0.015625, starts)).toBe(-1);
+    // The start before the line belongs to the lap the wrap ended; it stays
+    // behind the furthest point, so it is not consumed again either.
+    expect(sweep.spoken).toEqual(new Set([0]));
+
+    // Positive control: the genuine next lap, driven all the way round,
+    // announces both again.
+    expect(driveForward(sweep, 0.984375, starts)).toEqual([1]);
+    expect(driveForward(sweep, 0.9921875, starts)).toEqual([2]);
     expect(driveForward(sweep, 0.015625, starts)).toEqual([0]);
   });
 
   it.each([
-    ["a backward jump over the threshold drops what it kept: the next wrap is a new lap", 0.9375, [0]],
-    ["a reverse within the threshold keeps it: the next wrap is the same lap", 0.953125, []],
+    ["a backward jump over the threshold re-anchors behind the line: the next wrap is a new lap", 0.9375, [0]],
+    ["a reverse within the threshold of its furthest point keeps it: there is no wrap", 0.97265625, []],
   ])("after backing over the line, %s", (_label, back, announcedAtLine) => {
     crossTheLine();
     sweepLeadPoint(sweep, 0.99609375, STARTS);
@@ -273,37 +337,32 @@ describe("sweepLeadPoint when the lead point backs over the line", () => {
     expect(driveForward(sweep, 0.015625, STARTS)).toEqual(announcedAtLine);
   });
 
-  it("drops what it kept on a teleport re-anchor, so the fresh pass announces the line's start", () => {
+  it("clears the spoken set on a forward teleport after backing over the line, so the fresh pass announces the line's start", () => {
     crossTheLine();
     sweepLeadPoint(sweep, 0.99609375, STARTS);
 
     // A tow forward to 0.25: over the threshold, a fresh pass.
     expect(sweepLeadPoint(sweep, 0.25, STARTS)).toBe(-1);
-    expect(sweep.spokenBeforeBackingOver).toBeNull();
 
     expect(driveForward(sweep, 0.984375, STARTS)).toEqual([1]);
     expect(driveForward(sweep, 0.015625, STARTS)).toEqual([0]);
   });
 
-  it("keeps nothing for a backward jump over the threshold across the line, which stays a new lap at the next wrap", () => {
+  it("re-anchors behind the line on a backward jump over the threshold, so the next wrap is a new lap", () => {
     crossTheLine();
     driveForward(sweep, 0.03125, STARTS);
 
     // 0.03125 → 0.96875: backward 0.0625, over the threshold.
     expect(sweepLeadPoint(sweep, 0.96875, STARTS)).toBe(-1);
-    expect(sweep.spokenBeforeBackingOver).toBeNull();
+    expect(sweep.leadPrevPct).toBe(0.96875);
 
     expect(driveForward(sweep, 0.015625, STARTS)).toEqual([0]);
   });
 });
 
 describe("resetLeadPointSweep", () => {
-  it("clears the previous point, the spoken set and what a back-over kept, so the next point seeds silently", () => {
-    const sweep: LeadPointSweep = {
-      leadPrevPct: 0.234375,
-      spoken: new Set([2]),
-      spokenBeforeBackingOver: new Set([2]),
-    };
+  it("clears the previous point and the spoken set, so the next point seeds silently", () => {
+    const sweep: LeadPointSweep = { leadPrevPct: 0.234375, spoken: new Set([2]) };
 
     resetLeadPointSweep(sweep);
 
