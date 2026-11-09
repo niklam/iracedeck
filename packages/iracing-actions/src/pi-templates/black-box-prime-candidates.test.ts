@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
-import { BLACK_BOX_GLOBAL_KEYS } from "../shared/black-box.js";
+import { BLACK_BOX_CONTROL_KEYS, BLACK_BOX_GLOBAL_KEYS } from "../shared/black-box.js";
 import { ACTIONS_DIR, readActionsData } from "./action-templates.test-support.js";
 
 /**
@@ -109,9 +109,9 @@ describe("black-box prime candidates in the Property Inspectors (#1238)", () => 
     const rows = readActionsData<{ blackBox: Array<{ setting: string }> }>("key-bindings.json").blackBox;
     const nonBox = rows.map((row) => row.setting).filter((setting) => !expected.includes(setting));
 
-    // Vacuity guard: the group does hold non-box rows. Every one is checked
-    // below, whichever rows are added beside the Cycle pair.
-    expect(nonBox).toEqual(expect.arrayContaining(["blackBoxCycleNext", "blackBoxCyclePrevious"]));
+    // Vacuity guard: the group does hold non-box rows, Toggle Black Box Size
+    // (#1238) among them. Every one is checked below, whichever rows are added.
+    expect(nonBox).toEqual(expect.arrayContaining(Object.values(BLACK_BOX_CONTROL_KEYS)));
 
     for (const page of CAVEAT_PAGES) {
       const [tag] = pages.get(page)!.match(CAVEAT_TAG)!;

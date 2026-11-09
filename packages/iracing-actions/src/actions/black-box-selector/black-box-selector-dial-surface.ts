@@ -35,7 +35,7 @@ import {
 import type { ILogger } from "@iracedeck/logger";
 import z from "zod";
 
-import { BLACK_BOX_GLOBAL_KEYS, type BlackBoxId } from "../../shared/black-box.js";
+import { BLACK_BOX_CONTROL_KEYS, BLACK_BOX_GLOBAL_KEYS, type BlackBoxId } from "../../shared/black-box.js";
 import { dialAppearanceFields, type DialBoxColors, resolveDialBoxColors } from "../../shared/dial-box.js";
 import { KNOB_BOX_HEIGHT, KNOB_BOX_WIDTH } from "../../shared/dial-knob-box.js";
 import { pushDialNameIcon } from "../../shared/dial-name-icon.js";
@@ -46,11 +46,11 @@ import { type DialGestures, gestureSlots, ReleaseDialSurfaceBase } from "../../s
 const MAX_TAPS_PER_EVENT = 5;
 
 /** Cycle bindings the rotation taps — the same keys the keypad Next / Previous modes use. */
-const CYCLE_NEXT_KEY = "blackBoxCycleNext";
-const CYCLE_PREVIOUS_KEY = "blackBoxCyclePrevious";
+const CYCLE_NEXT_KEY = BLACK_BOX_CONTROL_KEYS.cycleNext;
+const CYCLE_PREVIOUS_KEY = BLACK_BOX_CONTROL_KEYS.cyclePrevious;
 
 /** iRacing's Toggle Black Box Size binding — the key the keypad Toggle Size mode uses (#1238). */
-const TOGGLE_SIZE_KEY = "blackBoxToggleSize";
+const TOGGLE_SIZE_KEY = BLACK_BOX_CONTROL_KEYS.toggleSize;
 
 /** Warm amber accent, matching the black-box icon family (olive glass / amber data). */
 const ACCENT = "#d4a017";

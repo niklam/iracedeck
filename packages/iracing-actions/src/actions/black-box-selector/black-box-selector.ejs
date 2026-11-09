@@ -76,9 +76,7 @@
 			<div class="ird-supporting-text">
 				Which box a press opens directly, when a gesture below is set to Open Selected
 				Box. Like a Direct keypad button, opening a box toggles it — pressing again
-				while it is already shown closes it. Toggle Box Size instead switches the
-				shown box between its small and large size, using the Toggle Black Box Size
-				binding below.
+				while it is already shown closes it.
 			</div>
 
 			<sdpi-item label="Press Action">
@@ -89,6 +87,10 @@
 				</sdpi-select>
 			</sdpi-item>
 			<ird-binding-status mode-setting="dial.pressAction" comms='<%= JSON.stringify(__dialComms) %>'></ird-binding-status>
+			<div class="ird-supporting-text">
+				Toggle Box Size switches the black box that is showing between its small and
+				large size, whichever box it is. It uses the Toggle Black Box Size binding below.
+			</div>
 
 			<% if (locals.platform?.features?.dialExtendedGestures !== false) { %>
 			<sdpi-item label="Long Press">

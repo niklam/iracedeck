@@ -1,7 +1,9 @@
 import type { ILogger } from "@iracedeck/logger";
+import { readFileSync } from "node:fs";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  BLACK_BOX_CONTROL_KEYS,
   BLACK_BOX_GLOBAL_KEYS,
   BLACK_BOX_SEQUENCE_HOLD_MS,
   PRIME_BLACK_BOX,
@@ -40,6 +42,41 @@ describe("BLACK_BOX_GLOBAL_KEYS", () => {
   it("should list lap-timing first so it is the default prime fallback", () => {
     expect(Object.keys(BLACK_BOX_GLOBAL_KEYS)[0]).toBe("lap-timing");
     expect(PRIME_BLACK_BOX).toBe("lap-timing");
+  });
+});
+
+describe("BLACK_BOX_CONTROL_KEYS (#1238)", () => {
+  const KEY_BINDINGS_PATH = new URL("../actions/data/key-bindings.json", import.meta.url);
+
+  /** The Black Box rows the PIs and the Settings window render (setting = global key). */
+  function blackBoxRowSettings(): string[] {
+    const json = JSON.parse(readFileSync(KEY_BINDINGS_PATH, "utf8")) as { blackBox: { setting: string }[] };
+
+    return json.blackBox.map((row) => row.setting);
+  }
+
+  it("names the cycle pair and Toggle Black Box Size", () => {
+    expect(BLACK_BOX_CONTROL_KEYS).toEqual({
+      cycleNext: "blackBoxCycleNext",
+      cyclePrevious: "blackBoxCyclePrevious",
+      toggleSize: "blackBoxToggleSize",
+    });
+  });
+
+  it("shares no key with the box map, so no control is ever a prime candidate", () => {
+    const boxes = Object.values(BLACK_BOX_GLOBAL_KEYS);
+
+    for (const key of Object.values(BLACK_BOX_CONTROL_KEYS)) {
+      expect(boxes, key).not.toContain(key);
+    }
+  });
+
+  it("together with the box map, matches the Black Box rows of key-bindings.json one-to-one", () => {
+    // A key the code taps but no row renders can never be set; a row no code
+    // reads is a binding that does nothing.
+    const known = [...Object.values(BLACK_BOX_GLOBAL_KEYS), ...Object.values(BLACK_BOX_CONTROL_KEYS)];
+
+    expect([...known].sort()).toEqual([...blackBoxRowSettings()].sort());
   });
 });
 

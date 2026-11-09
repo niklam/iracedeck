@@ -27,7 +27,7 @@ Each sub-action specifies a long-press behavior that determines what happens whe
 
 ## Main Action 1: Black Box Selector
 
-Opens a specific black box or cycles through them.
+Opens a specific black box, cycles through them, or toggles the open box between small and large.
 
 | Sub-Action           | Default Key      | iRacing Setting | Long-Press | Notes |
 | -------------------- | ---------------- | --------------- | ---------- | ----- |
@@ -44,8 +44,9 @@ Opens a specific black box or cycles through them.
 | Weather              | F11              | -               | None       | -     |
 | Cycle Next           | _(configurable)_ | -               | None       | -     |
 | Cycle Previous       | _(configurable)_ | -               | None       | -     |
+| Toggle Size          | _(configurable)_ | Toggle Black Box Size | None | Acts on whichever box is shown (#1238) |
 
-**Type:** Multi-toggle with mode selector (Direct/Next/Previous)
+**Type:** Multi-toggle with mode selector (Direct/Next/Previous/Toggle Size)
 
 ---
 

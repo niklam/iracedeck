@@ -36,7 +36,7 @@ import weatherIconSvg from "@iracedeck/icons/black-box-selector/weather.svg";
 import { getGlobalColors, onGlobalSettingsChange } from "@iracedeck/settings";
 import z from "zod";
 
-import { BLACK_BOX_GLOBAL_KEYS } from "../../shared/black-box.js";
+import { BLACK_BOX_CONTROL_KEYS, BLACK_BOX_GLOBAL_KEYS } from "../../shared/black-box.js";
 import { BlackBoxSelectorDialSurface, DialSettings } from "./black-box-selector-dial-surface.js";
 
 const DIRECT_ICONS: Record<string, string> = {
@@ -114,18 +114,6 @@ export type BlackBoxSelectorSettings = z.infer<typeof BlackBoxSelectorSettings>;
 /**
  * @internal Exported for testing
  *
- * Global settings keys for the box-independent modes: the two cycle keys and
- * iRacing's Toggle Black Box Size (#1238), which resizes whatever box is shown.
- */
-export const GLOBAL_KEYS = {
-  CYCLE_NEXT: "blackBoxCycleNext",
-  CYCLE_PREVIOUS: "blackBoxCyclePrevious",
-  TOGGLE_SIZE: "blackBoxToggleSize",
-} as const;
-
-/**
- * @internal Exported for testing
- *
  * The global-settings key a keypad press taps for the given settings. Exhaustive
  * over `mode`, so a new mode stops compiling here until it names its key rather
  * than falling through to another mode's.
@@ -137,15 +125,43 @@ export function resolveBlackBoxSettingKey(settings: BlackBoxSelectorSettings): s
     case "direct":
       return BLACK_BOX_GLOBAL_KEYS[blackBox];
     case "next":
-      return GLOBAL_KEYS.CYCLE_NEXT;
+      return BLACK_BOX_CONTROL_KEYS.cycleNext;
     case "previous":
-      return GLOBAL_KEYS.CYCLE_PREVIOUS;
+      return BLACK_BOX_CONTROL_KEYS.cyclePrevious;
     case "toggle-size":
-      return GLOBAL_KEYS.TOGGLE_SIZE;
+      return BLACK_BOX_CONTROL_KEYS.toggleSize;
     default: {
       const unhandled: never = mode;
 
       throw new Error(`Black Box Selector: no binding for mode "${String(unhandled)}"`);
+    }
+  }
+}
+
+/**
+ * The artwork and default title a key shows for its settings. Exhaustive over
+ * `mode`, like {@link resolveBlackBoxSettingKey}, so a new mode stops compiling
+ * here until it names its icon rather than drawing the Direct box's.
+ */
+function blackBoxIconFor(settings: BlackBoxSelectorSettings): { iconSvg: string; defaultTitle: string } {
+  const { mode, blackBox } = settings;
+
+  switch (mode) {
+    case "direct":
+      return {
+        iconSvg: DIRECT_ICONS[blackBox] || DIRECT_ICONS["lap-timing"],
+        defaultTitle: BLACK_BOX_TITLE_TEXT[blackBox] || "BLACK BOX",
+      };
+    case "next":
+      return { iconSvg: CYCLE_ICONS.next, defaultTitle: "NEXT" };
+    case "previous":
+      return { iconSvg: CYCLE_ICONS.previous, defaultTitle: "PREVIOUS" };
+    case "toggle-size":
+      return { iconSvg: toggleSizeIconSvg, defaultTitle: "BOX SIZE" };
+    default: {
+      const unhandled: never = mode;
+
+      throw new Error(`Black Box Selector: no icon for mode "${String(unhandled)}"`);
     }
   }
 }
@@ -156,24 +172,7 @@ export function resolveBlackBoxSettingKey(settings: BlackBoxSelectorSettings): s
  * Generates an SVG data URI icon for the black box selector action.
  */
 export function generateBlackBoxSelectorSvg(settings: BlackBoxSelectorSettings, bindingMissing = false): string {
-  const { mode, blackBox } = settings;
-
-  let iconSvg: string;
-  let defaultTitle: string;
-
-  if (mode === "next") {
-    iconSvg = CYCLE_ICONS.next;
-    defaultTitle = "NEXT";
-  } else if (mode === "previous") {
-    iconSvg = CYCLE_ICONS.previous;
-    defaultTitle = "PREVIOUS";
-  } else if (mode === "toggle-size") {
-    iconSvg = toggleSizeIconSvg;
-    defaultTitle = "BOX SIZE";
-  } else {
-    iconSvg = DIRECT_ICONS[blackBox] || DIRECT_ICONS["lap-timing"];
-    defaultTitle = BLACK_BOX_TITLE_TEXT[blackBox] || "BLACK BOX";
-  }
+  const { iconSvg, defaultTitle } = blackBoxIconFor(settings);
 
   const colors = resolveIconColors(iconSvg, getGlobalColors(), settings.colorOverrides);
   const title = resolveTitleSettings(iconSvg, getGlobalTitleSettings(), settings.titleOverrides, defaultTitle);

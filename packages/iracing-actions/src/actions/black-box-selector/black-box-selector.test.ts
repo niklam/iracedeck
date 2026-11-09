@@ -1,12 +1,12 @@
 import { assembleIcon } from "@iracedeck/deck-core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { BLACK_BOX_CONTROL_KEYS } from "../../shared/black-box.js";
 import {
   BLACK_BOX_GLOBAL_KEYS,
   BlackBoxSelector,
   BlackBoxSelectorSettings,
   generateBlackBoxSelectorSvg,
-  GLOBAL_KEYS,
   resolveBlackBoxSettingKey,
 } from "./black-box-selector.js";
 
@@ -71,7 +71,7 @@ vi.mock("@iracedeck/deck-core", async () => {
     // The action's own fields parse through real zod, so the `mode` enum is what
     // the settings tests exercise (the CommonSettings base keys are not filled).
     CommonSettings: {
-      extend: (shape: never) => z.object(shape).passthrough(),
+      extend: (shape: never) => z.looseObject(shape),
     },
     ConnectionStateAwareAction: class MockConnectionStateAwareAction {
       logger = { trace: vi.fn(), debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
@@ -202,7 +202,7 @@ describe("BlackBoxSelector", () => {
 
   describe("resolveBlackBoxSettingKey", () => {
     it("names the Toggle Black Box Size key", () => {
-      expect(GLOBAL_KEYS.TOGGLE_SIZE).toBe("blackBoxToggleSize");
+      expect(BLACK_BOX_CONTROL_KEYS.toggleSize).toBe("blackBoxToggleSize");
     });
 
     it.each([
