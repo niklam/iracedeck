@@ -348,6 +348,8 @@ type TranslatorInstance = {
   } | null;
   /** The store's loader the learner is seeded from (issue #1112); `null` when none was given (learn from empty). */
   loadPitLaneLandmarks: PitLaneLandmarksLoader | null;
+  /** Scoped logger for the pit-lane landmark edge diagnostics (issue #1112), all at debug. */
+  pitLaneLandmarkLogger: ILogger;
   /**
    * Live-read safety margin (laps) for the laps-of-fuel-left callouts
    * (issue #838). Plugins wire it to the `fuelCalloutMarginLaps` global
@@ -582,6 +584,7 @@ export function initializeSimEventsIracing(
     pitLaneLearner: createPitLaneLandmarkLearner(),
     pitLaneTrackMemo: null,
     loadPitLaneLandmarks: options.loadPitLaneLandmarks ?? null,
+    pitLaneLandmarkLogger: logger.createScope("PitLaneLandmarks"),
     getFuelLapsLeftMarginLaps: options.getFuelLapsLeftMarginLaps ?? (() => FUEL_CALLOUT_DEFAULT_MARGIN_LAPS),
     getCornerCalloutLeadSeconds: options.getCornerCalloutLeadSeconds ?? (() => CORNER_CALLOUT_DEFAULT_LEAD_SECONDS),
     getGapAlertThresholdSeconds: options.getGapAlertThresholdSeconds ?? (() => GAP_DEFAULT_ALERT_THRESHOLD_S),
@@ -3555,6 +3558,7 @@ function handleLiveSteps(
       now,
       emit,
       steps.runUnit,
+      self.pitLaneLandmarkLogger,
     ),
   );
   // Corner-name callouts (issue #888). Practice/test only — the diff gates on

@@ -103,11 +103,11 @@ type Harness = {
   tick(
     sessionTime: number,
     cars: Record<number, CarReading>,
-    opts?: { pace?: number | null; subSession?: number | null; sessionTick?: number },
+    opts?: { pace?: number | null; subSession?: number | null; sessionTick?: number; player?: number },
   ): PendingEvent[];
 };
 
-function harness(learner: PitLaneLandmarkLearner = loadedLearner()): Harness {
+function harness(learner: PitLaneLandmarkLearner = loadedLearner(), logger?: ILogger): Harness {
   const slice = createPitLaneLandmarksState();
 
   return {
@@ -115,15 +115,20 @@ function harness(learner: PitLaneLandmarkLearner = loadedLearner()): Harness {
     learner,
     tick(sessionTime, cars, opts = {}) {
       const out: PendingEvent[] = [];
+      const t = telemetry(sessionTime, cars, opts.sessionTick);
+
+      if (opts.player !== undefined) t.PlayerCarIdx = opts.player;
 
       diffPitLaneLandmarks(
         slice,
         learner,
-        telemetry(sessionTime, cars, opts.sessionTick) as never,
+        t as never,
         opts.pace === undefined ? null : opts.pace,
         opts.subSession === undefined ? SUBSESSION : opts.subSession,
         WALL_EPOCH + Math.round(sessionTime * 1000),
         (ev) => out.push(ev),
+        undefined,
+        logger,
       );
 
       return out;
@@ -144,6 +149,7 @@ function learned(events: PendingEvent[]): Learned[] {
 const ON = TrkLoc.OnTrack;
 const APPROACH = TrkLoc.AproachingPits;
 const STALL = TrkLoc.InPitStall;
+const OFF = TrkLoc.OffTrack;
 const GONE = TrkLoc.NotInWorld;
 
 /**
@@ -751,6 +757,163 @@ describe("diffPitLaneLandmarks", () => {
       expect(
         learned(run(13.1, { 2: { surface: APPROACH, onPit: true, pct: 0.53875 } })).map((e) => e.landmark),
       ).toEqual(["pitRoadStart"]);
+    });
+  });
+
+  describe("the edge diagnostics", () => {
+    function logged(): { logger: ILogger; debug: ReturnType<typeof vi.fn> } {
+      const debug = vi.fn();
+
+      return { logger: { ...silentLogger, debug }, debug };
+    }
+
+    /** The reason each debug line gives, in order. */
+    function reasons(debug: ReturnType<typeof vi.fn>): string[] {
+      return debug.mock.calls.map(([line]) => String(line).replace(/^.* taught no landmark: /, ""));
+    }
+
+    it("names the car, the player, the direction, both surfaces and both positions, and calls on-track flips noise", () => {
+      const { logger, debug } = logged();
+      const h = harness(loadedLearner(), logger);
+
+      h.tick(10, { 1: { surface: ON, pct: 0.99 }, 2: { surface: ON, onPit: true, pct: 0.5 } }, { player: 2 });
+      h.tick(10.1, { 1: { surface: ON, onPit: true, pct: 0.991 }, 2: { surface: ON, pct: 0.501 } }, { player: 2 });
+
+      expect(debug.mock.calls).toEqual([
+        [
+          "Pit-lane landmarks: car 1 pit road on OnTrack -> OnTrack at pct 0.99000 -> 0.99100 taught no landmark: on-track noise (OnTrack both ticks)",
+        ],
+        [
+          "Pit-lane landmarks: car 2 (player) pit road off OnTrack -> OnTrack at pct 0.50000 -> 0.50100 taught no landmark: on-track noise (OnTrack both ticks)",
+        ],
+      ]);
+    });
+
+    it("logs nothing for a flip that taught its landmark, nor for a tick with no flip", () => {
+      const { logger, debug } = logged();
+      const h = harness(loadedLearner(), logger);
+
+      expect(learned(drivePitVisit(h)).map((e) => e.landmark)).toEqual([
+        "approachStart",
+        "pitRoadStart",
+        "pitRoadEnd",
+        "blendEnd",
+      ]);
+      expect(debug).not.toHaveBeenCalled();
+    });
+
+    it("logs nothing for a flip into or out of the world", () => {
+      const { logger, debug } = logged();
+      const h = harness(loadedLearner(), logger);
+
+      h.tick(10, { 1: { surface: ON, pct: 0.7 } });
+      h.tick(10.1, { 1: { surface: GONE, onPit: true, pct: -1 } });
+      h.tick(10.2, { 1: { surface: APPROACH, pct: 0.33 } });
+
+      expect(debug).not.toHaveBeenCalled();
+    });
+
+    it("names the surface that refused it", () => {
+      const { logger, debug } = logged();
+      const h = harness(loadedLearner(), logger);
+
+      h.tick(10, { 1: { surface: APPROACH, onPit: true, pct: 0.33 }, 2: { surface: STALL, pct: 0.331 } });
+      h.tick(10.1, { 1: { surface: STALL, pct: 0.331 }, 2: { surface: APPROACH, onPit: true, pct: 0.3312 } });
+      h.tick(20, { 3: { surface: ON, pct: 0.4 } });
+      h.tick(20.1, { 3: { surface: OFF, onPit: true, pct: 0.401 } });
+      h.tick(30, { 4: { surface: STALL, onPit: true, pct: 0.331 } });
+      h.tick(30.1, { 4: { surface: ON, pct: 0.3312 } });
+
+      expect(reasons(debug)).toEqual([
+        "went to InPitStall, not AproachingPits or OnTrack",
+        "came from InPitStall, not OnTrack or AproachingPits",
+        "went to OffTrack, not AproachingPits",
+        "came from InPitStall, not AproachingPits",
+      ]);
+    });
+
+    it("names a tick that cannot learn", () => {
+      const { logger, debug } = logged();
+      const unloaded = harness(createPitLaneLandmarkLearner(), logger);
+
+      unloaded.tick(10, { 1: { surface: APPROACH, pct: 0.31 } });
+      unloaded.tick(10.1, { 1: { surface: APPROACH, onPit: true, pct: 0.311 } });
+
+      const noLength = harness(loadedLearner({ ...TRACK, trackLength: "long", trackLengthM: null }), logger);
+
+      noLength.tick(10, { 1: { surface: APPROACH, pct: 0.31 } });
+      noLength.tick(10.1, { 1: { surface: APPROACH, onPit: true, pct: 0.311 } });
+
+      const noSubSession = harness(loadedLearner(), logger);
+
+      noSubSession.tick(10, { 1: { surface: APPROACH, pct: 0.31 } });
+      noSubSession.tick(10.1, { 1: { surface: APPROACH, onPit: true, pct: 0.311 } }, { subSession: null });
+
+      expect(reasons(debug)).toEqual([
+        "not learning: no track loaded",
+        "not learning: no track length",
+        "not learning: no subsession",
+      ]);
+    });
+
+    it("names the clock, the span and the distance", () => {
+      const { logger, debug } = logged();
+      const h = harness(loadedLearner(), logger);
+
+      h.tick(10, { 1: { surface: APPROACH, pct: 0.31 } }, { sessionTick: 600 });
+      h.tick(10, { 1: { surface: APPROACH, onPit: true, pct: 0.3101 } }, { sessionTick: 600 });
+      h.tick(20, { 2: { surface: APPROACH, pct: 0.31 } });
+      h.tick(21.5, { 2: { surface: APPROACH, onPit: true, pct: 0.311 } });
+      h.tick(30, { 3: { surface: APPROACH, onPit: true, pct: 0.2 } });
+      h.tick(30.1, { 3: { surface: APPROACH, pct: 0.3 } });
+
+      expect(reasons(debug)).toEqual([
+        "neither SessionTime nor SessionTick moved forward",
+        `ticks 1.50 s apart, over ${PIT_LANE_MAX_EDGE_SPAN_S} s`,
+        `moved 400 m in 0.100 s, faster than ${PIT_LANE_MAX_PLAUSIBLE_SPEED_MPS} m/s`,
+      ]);
+    });
+
+    it("names the settle time, an unreadable sample and the learner's refusal", () => {
+      const { logger, debug } = logged();
+      const h = harness(loadedLearner(), logger);
+
+      h.tick(40, { 1: { surface: APPROACH, onPit: true, pct: 0.35 } });
+      h.tick(40.1, { 1: { surface: APPROACH, pct: 0.351 } }); // pitRoadEnd, learned
+      h.tick(40.2, { 1: { surface: APPROACH, onPit: true, pct: 0.3512 } }); // within the settle time
+      h.tick(50, { 2: { surface: APPROACH, pct: 0.31 } });
+      h.tick(50.1, { 2: { surface: APPROACH, onPit: true, pct: 0.311, est: -1 } });
+      h.tick(60, { 3: { surface: APPROACH, pct: 0.31 } });
+      h.tick(60.1, { 3: { surface: APPROACH, onPit: true, pct: 0.311 } }); // pitRoadStart, learned
+      h.tick(69.9, { 3: { surface: APPROACH, onPit: true, pct: 0.35 } });
+      h.tick(70, { 3: { surface: APPROACH, pct: 0.351 } }); // pitRoadEnd, learned
+      h.tick(73.4, { 3: { surface: APPROACH, pct: 0.31 } });
+      // The same car, lap and landmark again, past the settle time: a duplicate.
+      h.tick(73.5, { 3: { surface: APPROACH, onPit: true, pct: 0.311 } });
+
+      expect(reasons(debug)).toEqual([
+        `within ${PIT_LANE_EDGE_SETTLE_S} s of the car's last pit-road off edge`,
+        "unreadable estTime",
+        "the learner rejected it (duplicate)",
+      ]);
+    });
+
+    it("never lets a throwing logger cost the car its tick", () => {
+      const logger: ILogger = {
+        ...silentLogger,
+        debug: () => {
+          throw new Error("log sink gone");
+        },
+      };
+      const h = harness(loadedLearner(), logger);
+
+      h.tick(10, { 1: { surface: ON, pct: 0.99 }, 2: { surface: ON, pct: 0.5 } });
+      const events = learned(
+        h.tick(10.1, { 1: { surface: ON, onPit: true, pct: 0.991 }, 2: { surface: APPROACH, pct: 0.501 } }),
+      );
+
+      expect(events.map((e) => e.sample.key)).toEqual([`${SUBSESSION}:${SESSION_NUM}:2:approachStart:3`]);
+      expect(h.slice.cars[1]).toMatchObject({ surface: ON, onPitRoad: true, pct: 0.991, sessionTime: 10.1 });
     });
   });
 

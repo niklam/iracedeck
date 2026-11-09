@@ -74,13 +74,23 @@
  * and the car's baseline is written last, so a car whose unit throws learns
  * nothing that tick and is read again on the next.
  *
+ * **Diagnostics.** A pit-road flip between two in-world ticks that teaches
+ * no pit-road landmark logs one debug line to the logger the translator hands
+ * in (silent by default): the car, whether it is the player, the direction,
+ * both ticks' surface (as `TrkLoc` names) and position, and the first
+ * condition that refused it, in the order the edge is judged — `on-track
+ * noise (OnTrack both ticks)` for a car read `OnTrack` on both ticks. A run
+ * that learns no pit-road landmark (the Spa test) then explains itself from
+ * the plugin log. The line is written after the car's baseline, and a throw
+ * in it is swallowed, so it never costs the car its tick.
+ *
  * No replay term: a replay tick, a saved replay included, never reaches this
  * diff (the translator's replay guard), so it learns from live, in-car
  * telemetry only (spec amendment 5).
  */
 import type { SimEventName } from "@iracedeck/event-bus";
 import { type TelemetryData, TrkLoc } from "@iracedeck/iracing-sdk";
-import type { ILogger } from "@iracedeck/logger";
+import { type ILogger, silentLogger } from "@iracedeck/logger";
 import {
   learnPitLaneLandmarks,
   loadPitLaneLandmarkLearner,
@@ -90,6 +100,7 @@ import {
   type PitLaneLandmarkSample,
   type PitLaneLandmarksLoader,
   type PitLaneLearnerEdge,
+  type PitLaneLearnerResult,
   pitLaneMidpointPct,
   pitLaneSignedDeltaPct,
   type PitLaneTrackIdentity,
@@ -254,6 +265,7 @@ function isSettling(since: number | null, sessionTime: number): boolean {
  * @param subSessionId - `WeekendInfo.SubSessionID` for the sample keys (`readSubSessionId`); `null`, unreadable, learns nothing.
  * @param now - The wall clock, epoch ms: each sample's `at`, and the folded records' `updatedAt`.
  * @param runUnit - Runs each car as a unit (#1559): the translator's step runner, so one car's throw costs that car only. Defaults to {@link runUnitsDirectly}, which catches nothing
+ * @param logger - Where the edge diagnostics go, at debug (module comment); silent by default.
  */
 export function diffPitLaneLandmarks(
   slice: PitLaneLandmarksState,
@@ -264,6 +276,7 @@ export function diffPitLaneLandmarks(
   now: number,
   emit: EmitFn<(typeof PIT_LANE_LANDMARKS_EVENTS)[number]>,
   runUnit: UnitRunner = runUnitsDirectly,
+  logger: ILogger = silentLogger,
 ): void {
   const surfaces = telemetry.CarIdxTrackSurface as number[] | undefined;
   const onPitRoads = telemetry.CarIdxOnPitRoad as boolean[] | undefined;
@@ -277,17 +290,11 @@ export function diffPitLaneLandmarks(
   const sessionTime = typeof telemetry.SessionTime === "number" ? telemetry.SessionTime : Number.NaN;
   const sessionTick = typeof telemetry.SessionTick === "number" ? telemetry.SessionTick : Number.NaN;
   const sessionNum = telemetry.SessionNum;
+  const playerCarIdx = typeof telemetry.PlayerCarIdx === "number" ? telemetry.PlayerCarIdx : null;
   const track = learner.track;
   const trackLengthM = track?.trackLengthM ?? null;
-  const learning =
-    track !== null &&
-    learner.section !== null &&
-    trackLengthM !== null &&
-    Number.isFinite(trackLengthM) &&
-    trackLengthM > 0 &&
-    subSessionId !== null &&
-    typeof sessionNum === "number" &&
-    Number.isFinite(sessionTime);
+  const notLearning = notLearningReason(learner, subSessionId, sessionNum, sessionTime);
+  const learning = notLearning === null;
   let nowIso: string | null = null;
 
   // The car the unit below reads, set by the loop: one closure per tick.
@@ -326,11 +333,19 @@ export function diffPitLaneLandmarks(
     let pitRoadEndAt = prev.pitRoadEndAt;
     let rejoinedAt = prev.rejoinedAt;
     let edges: PitLaneLandmarkName[] | null = null;
+    // What the edge diagnostics read, set only on the rare tick they log.
+    let flip: PitRoadFlip | null = null;
+    let sampleRefusal: string | null = null;
+    let results: PitLaneLearnerResult[] | null = null;
 
     // An edge needs both ticks in the world; a tick out of it only moves the baseline.
     if (isInWorld(surface, pct) && isInWorld(prev.surface, prev.pct)) {
       const pitRoadOn = !prev.onPitRoad && onPitRoad;
       const pitRoadOff = prev.onPitRoad && !onPitRoad;
+
+      if (pitRoadOn) flip = "on";
+      else if (pitRoadOff) flip = "off";
+
       const moved =
         learning && isDrivenEdge(prev.pct, pct, elapsedSeconds(prev, sessionTime, sessionTick), trackLengthM as number);
 
@@ -393,7 +408,9 @@ export function diffPitLaneLandmarks(
       const reading = readSampleSide(prev, pct, estTime, lap);
       const carClassId = classes?.[i];
 
-      if (reading !== null && typeof carClassId === "number") {
+      if (reading === null) sampleRefusal = "unreadable estTime";
+      else if (typeof carClassId !== "number") sampleRefusal = "no class";
+      else {
         const offered: PitLaneLearnerEdge[] = edges.map((landmark) => ({
           landmark,
           sample: {
@@ -405,8 +422,10 @@ export function diffPitLaneLandmarks(
           } satisfies PitLaneLandmarkSample,
         }));
 
+        results = learnPitLaneLandmarks(learner, offered, (nowIso ??= new Date(now).toISOString()));
+
         // Then the events, and the baseline is written last.
-        for (const result of learnPitLaneLandmarks(learner, offered, (nowIso ??= new Date(now).toISOString()))) {
+        for (const result of results) {
           if (!result.accepted) continue;
 
           unitEmit({
@@ -422,11 +441,35 @@ export function diffPitLaneLandmarks(
       }
     }
 
+    // The previous tick as the diagnostics read it, before the baseline moves on.
+    const before = flip !== null ? { ...prev } : null;
+
     writeBaseline(prev, surface, onPitRoad, pct, estTime, sessionTime, sessionTick, lap);
     prev.fromPitRoad = fromPitRoad;
     prev.pitRoadStartAt = pitRoadStartAt;
     prev.pitRoadEndAt = pitRoadEndAt;
     prev.rejoinedAt = rejoinedAt;
+
+    // Diagnostics last, after everything the car's unit owes: a throw here
+    // must never cost the car its tick, nor re-offer its edges.
+    if (before !== null && flip !== null) {
+      try {
+        const reason = pitRoadEdgeRefusal(flip, before, surface, pct, sessionTime, sessionTick, {
+          notLearning,
+          trackLengthM,
+          sampleRefusal,
+          results,
+        });
+
+        if (reason !== null) {
+          logger.debug(
+            describePitRoadEdge({ carIdx: i, isPlayer: i === playerCarIdx, flip, before, surface, pct, reason }),
+          );
+        }
+      } catch {
+        // Diagnostics only: nothing to recover.
+      }
+    }
   };
 
   for (i = 0; i < surfaces.length; i++) runUnit(emit, unit);
@@ -505,4 +548,126 @@ function writeBaseline(
   baseline.sessionTime = sessionTime;
   baseline.sessionTick = sessionTick;
   baseline.lap = lap;
+}
+
+/** The direction of a pit-road flip: `on` (false → true) or `off` (true → false). */
+type PitRoadFlip = "on" | "off";
+
+/**
+ * Why nothing is learned this tick from any car, in the order the learning
+ * condition reads it; `null` when the tick can learn.
+ */
+function notLearningReason(
+  learner: PitLaneLandmarkLearner,
+  subSessionId: number | null,
+  sessionNum: unknown,
+  sessionTime: number,
+): string | null {
+  const trackLengthM = learner.track?.trackLengthM ?? null;
+
+  if (learner.track === null || learner.section === null) return "no track loaded";
+
+  if (trackLengthM === null || !Number.isFinite(trackLengthM) || trackLengthM <= 0) return "no track length";
+
+  if (subSessionId === null) return "no subsession";
+
+  if (typeof sessionNum !== "number") return "no session number";
+
+  if (!Number.isFinite(sessionTime)) return "no session time";
+
+  return null;
+}
+
+/**
+ * The first condition that kept a pit-road flip between two in-world ticks
+ * from teaching its landmark, in the order the edge is judged; `null` when it
+ * was learned. Reads only what the unit already decided (the learning
+ * condition, the sample's refusal, the learner's results), so it cannot
+ * disagree with what was learned.
+ */
+function pitRoadEdgeRefusal(
+  flip: PitRoadFlip,
+  prev: PitLaneLandmarkCarTick,
+  surface: number,
+  pct: number,
+  sessionTime: number,
+  sessionTick: number,
+  outcome: {
+    notLearning: string | null;
+    trackLengthM: number | null;
+    sampleRefusal: string | null;
+    results: PitLaneLearnerResult[] | null;
+  },
+): string | null {
+  if (prev.surface === TrkLoc.OnTrack && surface === TrkLoc.OnTrack) return "on-track noise (OnTrack both ticks)";
+
+  if (flip === "on") {
+    if (prev.surface !== TrkLoc.OnTrack && prev.surface !== TrkLoc.AproachingPits) {
+      return `came from ${trkLocName(prev.surface)}, not OnTrack or AproachingPits`;
+    }
+
+    if (surface !== TrkLoc.AproachingPits) return `went to ${trkLocName(surface)}, not AproachingPits`;
+  } else {
+    if (prev.surface !== TrkLoc.AproachingPits) return `came from ${trkLocName(prev.surface)}, not AproachingPits`;
+
+    if (surface !== TrkLoc.AproachingPits && surface !== TrkLoc.OnTrack) {
+      return `went to ${trkLocName(surface)}, not AproachingPits or OnTrack`;
+    }
+  }
+
+  if (outcome.notLearning !== null) return `not learning: ${outcome.notLearning}`;
+
+  const elapsed = elapsedSeconds(prev, sessionTime, sessionTick);
+
+  if (!Number.isFinite(elapsed)) return "neither SessionTime nor SessionTick moved forward";
+
+  if (elapsed > PIT_LANE_MAX_EDGE_SPAN_S) {
+    return `ticks ${elapsed.toFixed(2)} s apart, over ${PIT_LANE_MAX_EDGE_SPAN_S} s`;
+  }
+
+  const trackLengthM = outcome.trackLengthM as number;
+
+  if (!isDrivenEdge(prev.pct, pct, elapsed, trackLengthM)) {
+    const metres = Math.abs(pitLaneSignedDeltaPct(prev.pct, pct)) * trackLengthM;
+
+    return `moved ${metres.toFixed(0)} m in ${elapsed.toFixed(3)} s, faster than ${PIT_LANE_MAX_PLAUSIBLE_SPEED_MPS} m/s`;
+  }
+
+  if (flip === "on" && isSettling(prev.pitRoadEndAt, sessionTime)) {
+    return `within ${PIT_LANE_EDGE_SETTLE_S} s of the car's last pit-road off edge`;
+  }
+
+  if (flip === "off" && isSettling(prev.pitRoadStartAt, sessionTime)) {
+    return `within ${PIT_LANE_EDGE_SETTLE_S} s of the car's last pit-road on edge`;
+  }
+
+  if (outcome.sampleRefusal !== null) return outcome.sampleRefusal;
+
+  const landmark: PitLaneLandmarkName = flip === "on" ? "pitRoadStart" : "pitRoadEnd";
+  const result = outcome.results?.find((r) => r.landmark === landmark);
+
+  if (result === undefined) return "not offered to the learner";
+
+  return result.accepted ? null : `the learner rejected it (${result.reason})`;
+}
+
+/** The debug line for a pit-road flip that taught nothing (module comment). */
+function describePitRoadEdge(edge: {
+  carIdx: number;
+  isPlayer: boolean;
+  flip: PitRoadFlip;
+  before: PitLaneLandmarkCarTick;
+  surface: number;
+  pct: number;
+  reason: string;
+}): string {
+  const { carIdx, isPlayer, flip, before, surface, pct, reason } = edge;
+  const who = `car ${carIdx}${isPlayer ? " (player)" : ""}`;
+
+  return `Pit-lane landmarks: ${who} pit road ${flip} ${trkLocName(before.surface)} -> ${trkLocName(surface)} at pct ${before.pct.toFixed(5)} -> ${pct.toFixed(5)} taught no landmark: ${reason}`;
+}
+
+/** A `TrkLoc`'s name, or the raw number when it is none. */
+function trkLocName(surface: number): string {
+  return (TrkLoc as unknown as Record<number, string | undefined>)[surface] ?? String(surface);
 }
