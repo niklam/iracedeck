@@ -32,6 +32,7 @@
  */
 import { AudioChannel, getAudio } from "@iracedeck/audio-service";
 import type { IEventBus, SimEventOf } from "@iracedeck/event-bus";
+import { TrkLoc } from "@iracedeck/iracing-sdk";
 import type { ILogger } from "@iracedeck/logger";
 import type { TelemetryData } from "@iracedeck/sim-events-iracing";
 
@@ -96,10 +97,10 @@ export type PitExitCueDeps = {
  * event after registration.
  */
 export type PitExitCueOutcome =
-  "played" | "master-off" | "cue-off" | "not-in-car" | "playback-failed" | "playback-refused";
+  "played" | "master-off" | "cue-off" | "not-in-car" | "left-the-world" | "playback-failed" | "playback-refused";
 
-/** The telemetry field the cue reads, as an envelope may (or may not) carry it. */
-type Snapshot = Pick<Partial<TelemetryData>, "IsOnTrack">;
+/** The telemetry fields the cue reads, as an envelope may (or may not) carry them. */
+type Snapshot = Pick<Partial<TelemetryData>, "IsOnTrack" | "PlayerTrackSurface">;
 
 const DEFAULT_DEPS: PitExitCueDeps = {
   getMasterEnabled: () => true,
@@ -142,6 +143,30 @@ function notInCar(snapshot: Snapshot | null): boolean {
   return snapshot?.IsOnTrack === false;
 }
 
+/**
+ * Whether the car left the world on this edge rather than crossing the exit
+ * line: `PlayerTrackSurface === TrkLoc.NotInWorld`. A reset or tow from pit
+ * road (#1161's manual test) passes through one tick with the car out of the
+ * world and the driver still in it — `IsOnTrack` true, surface −1, `OnPitRoad`
+ * false — before it stands in its stall, so `notInCar` cannot see it, and the
+ * translator publishes `pitLane.exited` on that tick. The committed captures
+ * show the shape: the reset at 618.00 s in `tire-temps-stops-20261011.json`
+ * and the tow at 295.02 s in `tire-temps-tow-20261011.json` (both from the
+ * circuit), and the exit edge at 371.38 s in `laps-qualifying-race-20261102.json`
+ * (from the stall, `InPitStall` → `NotInWorld` on the tick `OnPitRoad`
+ * falls). Every captured drive-out crosses the line with the surface at
+ * `AproachingPits`.
+ *
+ * Gated here, not in the translator: the event's other consumers re-check live
+ * state when they speak (`limiter-on-track` 1.5 s later, the exit readback at
+ * 4.5 s), and by then the car stands in its stall on pit road, so a reset is
+ * already silent for them. The beep plays at the edge and has no later moment
+ * to re-check. Positive read, as above: a missing surface plays.
+ */
+function leftTheWorld(snapshot: Snapshot | null): boolean {
+  return snapshot?.PlayerTrackSurface === TrkLoc.NotInWorld;
+}
+
 function handleExited(event: SimEventOf<"pitLane.exited">): void {
   // Read live at the event, never captured at registration, so a toggle takes
   // effect on the next pit exit with no push path from the settings listener.
@@ -162,6 +187,13 @@ function handleExited(event: SimEventOf<"pitLane.exited">): void {
   if (notInCar(snapshotOf(event))) {
     lastOutcome = "not-in-car";
     deps.logger?.debug("Pit exit cue skipped: telemetry reports the player is not in the car");
+
+    return;
+  }
+
+  if (leftTheWorld(snapshotOf(event))) {
+    lastOutcome = "left-the-world";
+    deps.logger?.debug("Pit exit cue skipped: the car left the world (a reset or tow), it did not cross the exit line");
 
     return;
   }

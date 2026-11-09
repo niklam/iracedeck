@@ -197,6 +197,21 @@ describe("pit exit cue engine", () => {
       expect(logger.debug).toHaveBeenCalledWith("Pit exit cue skipped: telemetry reports the player is not in the car");
     });
 
+    it("stays silent on a reset or tow from pit road: the edge tick has the car out of the world, the driver still in it", () => {
+      register();
+      exitPitRoad({ IsOnTrack: true, PlayerTrackSurface: -1 });
+
+      expect(hoisted.audio.playOnChannel).not.toHaveBeenCalled();
+      expect(readPitExitCueDebugState().lastOutcome).toBe("left-the-world");
+    });
+
+    it("plays on a drive-out, which crosses the line with the surface at approaching pits", () => {
+      register();
+      exitPitRoad({ IsOnTrack: true, PlayerTrackSurface: 2 });
+
+      expect(hoisted.audio.playOnChannel).toHaveBeenCalledExactlyOnceWith(AudioChannel.Cue, PIT_EXIT_CLIP);
+    });
+
     it("reads no IsReplayPlaying: the translator's debounced replay guard owns that decision (#1324)", () => {
       register();
       exitPitRoad({ IsOnTrack: true, IsReplayPlaying: true });

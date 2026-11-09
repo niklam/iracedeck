@@ -9,7 +9,7 @@
  * translator over the mock SDK, the plugins' Race Engineer wiring and the
  * seeded settings.
  */
-import { PIT_EXIT_CLIP } from "@iracedeck/audio-scenarios/pit-crew";
+import { PIT_EXIT_CLIP, readPitExitCueDebugState } from "@iracedeck/audio-scenarios/pit-crew";
 import { AudioChannel } from "@iracedeck/audio-service";
 import { TrkLoc } from "@iracedeck/iracing-sdk";
 import { setCalloutEnabled } from "@iracedeck/settings";
@@ -50,10 +50,22 @@ const DRIVE_OUT: TelemetryStep[] = [
   { patch: { OnPitRoad: false, PlayerTrackSurface: TrkLoc.OnTrack, Speed: 16 }, holdMs: 1000 },
 ];
 
-/** The same car on pit road, then towed: out of the car on the tick pit road clears. */
-const TOWED: TelemetryStep[] = [
+/** The same car on pit road, then out of the car on the tick pit road clears. */
+const LEFT_THE_CAR: TelemetryStep[] = [
   DRIVE_OUT[0],
   { patch: { OnPitRoad: false, IsOnTrack: false, PlayerTrackSurface: TrkLoc.NotInWorld, Speed: 0 }, holdMs: 1000 },
+];
+
+/**
+ * The same car on pit road, then reset (or towed) to its stall, in the shape the
+ * committed captures show a reset taking: one tick out of the world with the
+ * driver still in it (`IsOnTrack` true, surface −1, `OnPitRoad` false), then the
+ * car standing in its box. Niklas's #1161 manual test heard the beep here.
+ */
+const RESET_FROM_PIT_ROAD: TelemetryStep[] = [
+  DRIVE_OUT[0],
+  { patch: { OnPitRoad: false, PlayerTrackSurface: TrkLoc.NotInWorld, Speed: 0 }, holdMs: 50 },
+  { patch: { OnPitRoad: true, PlayerCarInPitStall: true, PlayerTrackSurface: TrkLoc.InPitStall }, holdMs: 1000 },
 ];
 
 describe("the pit exit beep in the harness (issue #1161)", () => {
@@ -92,11 +104,20 @@ describe("the pit exit beep in the harness (issue #1161)", () => {
     expect(beeps()).toBe(1);
   });
 
-  it("a tow off pit road is silent", () => {
+  it("leaving the car on pit road is silent", () => {
     boot("race");
-    apply(TOWED);
+    apply(LEFT_THE_CAR);
 
     expect(beeps()).toBe(0);
+  });
+
+  it("a reset from pit road is silent, though the translator publishes pitLane.exited on its out-of-world tick", () => {
+    boot("race");
+    apply(RESET_FROM_PIT_ROAD);
+
+    expect(beeps()).toBe(0);
+    // Positive control: the edge reached the engine and was refused there.
+    expect(readPitExitCueDebugState().lastOutcome).toBe("left-the-world");
   });
 
   it("the same drive-out is silent with the Pit exit beep switched off", () => {
