@@ -213,6 +213,7 @@ describe("the debounce", () => {
 
 describe("load", () => {
   it("returns this process's samples before the first write", () => {
+    vi.useFakeTimers({ now: T0 });
     const store = makeStore();
 
     record(store, "a", 0.1, T0);
@@ -226,6 +227,7 @@ describe("load", () => {
   });
 
   it("returns a copy", () => {
+    vi.useFakeTimers({ now: T0 });
     const store = makeStore();
 
     record(store, "a", 0.1, T0);
@@ -259,7 +261,8 @@ describe("load", () => {
     const logger = spyLogger();
     const store = makeStore({
       logger,
-      io: { ...nodeTrackStoreIo, readText: () => undefined as unknown as string },
+      // Decodes to something that is not a string, so the parse itself throws.
+      io: { ...nodeTrackStoreIo, readBytes: () => ({ toString: () => undefined }) as unknown as Buffer },
     });
 
     expect(store.load(TRACK)).toBeNull();
@@ -328,6 +331,100 @@ describe("a malformed file", () => {
     expect(readFileSync(join(dir, "track_101.corrupt-2026-11-09T12-00-00-000Z-1.json"), "utf-8")).toBe("{one");
   });
 
+  it("is compared as bytes: two invalid-UTF-8 files are not taken as identical", () => {
+    writeFileSync(filePath(), Buffer.from([0x7b, 0xfe]));
+    writeFileSync(join(dir, "track_101.corrupt-earlier.json"), Buffer.from([0x7b, 0xff]));
+    const store = makeStore({
+      now: () => new Date(T0),
+      io: {
+        ...nodeTrackStoreIo,
+        rename: (from, to) => {
+          if (to.includes(".corrupt-")) throw errno("EPERM");
+
+          nodeTrackStoreIo.rename(from, to);
+        },
+      },
+    });
+
+    record(store, "a", 0.1, T0);
+    store.flushSync();
+
+    expect([...readFileSync(join(dir, "track_101.corrupt-2026-11-09T12-00-00-000Z.json"))]).toEqual([0x7b, 0xfe]);
+    expect([...readFileSync(join(dir, "track_101.corrupt-earlier.json"))]).toEqual([0x7b, 0xff]);
+    expect(windowKeys(readFile())).toEqual(["a"]);
+  });
+
+  it("is copied once when the write after the copy fails and is retried", () => {
+    vi.useFakeTimers({ now: T0 });
+    writeFileSync(filePath(), "{locked", "utf-8");
+    let tmpRenameFailures = 1;
+    let copies = 0;
+    const store = makeStore({
+      retryDelaysMs: [100],
+      io: {
+        ...nodeTrackStoreIo,
+        rename: (from, to) => {
+          if (to.includes(".corrupt-")) throw errno("EPERM");
+
+          if (tmpRenameFailures > 0 && from.endsWith(".tmp")) {
+            tmpRenameFailures--;
+            throw errno("EPERM");
+          }
+
+          nodeTrackStoreIo.rename(from, to);
+        },
+        copyExclusive: (from, to) => (copies++, nodeTrackStoreIo.copyExclusive(from, to)),
+      },
+    });
+
+    record(store, "a", 0.1, T0);
+    vi.advanceTimersByTime(TRACK_STORE_WRITE_DEBOUNCE_MS);
+
+    expect(readFileSync(filePath(), "utf-8")).toBe("{locked");
+    expect(copies).toBe(1);
+
+    vi.advanceTimersByTime(100);
+
+    expect(copies).toBe(1);
+    // Stamped when the first write ran, one debounce after the sample.
+    expect(readdirSync(dir).filter((name) => name.includes(".corrupt-"))).toEqual([
+      "track_101.corrupt-2026-11-09T12-00-02-000Z.json",
+    ]);
+    expect(windowKeys(readFile())).toEqual(["a"]);
+  });
+
+  it("is not moved aside when another process's valid write replaced it after the read", () => {
+    writeFileSync(filePath(), "{broken", "utf-8");
+    const valid = { pitRoadStart: recordOf([sample("theirs", 0.1, T0 - 1000)]) };
+    let armed = false;
+    let replaced = false;
+    const store = makeStore({
+      io: {
+        ...nodeTrackStoreIo,
+        readBytes: (p) => {
+          const bytes = nodeTrackStoreIo.readBytes(p);
+
+          // The write's own read: it classifies the corrupt bytes, then the
+          // other process's rename lands before the move aside.
+          if (armed && !replaced && p === filePath() && bytes.toString("utf-8") === "{broken") {
+            replaced = true;
+            writeTrackFile({}, valid);
+          }
+
+          return bytes;
+        },
+      },
+    });
+
+    record(store, "mine", 0.1001, T0);
+    armed = true;
+    store.flushSync();
+
+    expect(replaced).toBe(true);
+    expect(readdirSync(dir)).toEqual(["track_101.json"]);
+    expect(windowKeys(readFile())).toEqual(["mine", "theirs"]);
+  });
+
   it("is preserved as a copy when it cannot be renamed", () => {
     writeFileSync(filePath(), "{locked", "utf-8");
     const store = makeStore({
@@ -384,10 +481,10 @@ describe("an unreadable file", () => {
       retryDelaysMs: [100, 200],
       io: {
         ...nodeTrackStoreIo,
-        readText: (path) => {
+        readBytes: (path) => {
           if (locked && path === filePath()) throw errno("EBUSY");
 
-          return nodeTrackStoreIo.readText(path);
+          return nodeTrackStoreIo.readBytes(path);
         },
       },
     });
@@ -415,10 +512,10 @@ describe("an unreadable file", () => {
       retryDelaysMs: [100],
       io: {
         ...nodeTrackStoreIo,
-        readText: (path) => {
+        readBytes: (path) => {
           if (locked) throw errno("EBUSY");
 
-          return nodeTrackStoreIo.readText(path);
+          return nodeTrackStoreIo.readBytes(path);
         },
       },
     });
@@ -659,21 +756,68 @@ describe("two processes sharing the folder", () => {
     expect(readFile().pitLane.landmarks.pitRoadStart?.samples).toBe(3);
   });
 
-  it("settle check writes nothing when nothing is missing", () => {
+  it("settle check reads the file once after a write and writes nothing when nothing is missing", () => {
     vi.useFakeTimers({ now: T0 });
     let writes = 0;
+    let reads = 0;
     const store = makeStore({
-      io: { ...nodeTrackStoreIo, writeText: (p, t) => (writes++, nodeTrackStoreIo.writeText(p, t)) },
+      io: {
+        ...nodeTrackStoreIo,
+        writeText: (p, t) => (writes++, nodeTrackStoreIo.writeText(p, t)),
+        readBytes: (p) => (p === filePath() && reads++, nodeTrackStoreIo.readBytes(p)),
+      },
     });
 
     record(store, "a", 0.1, T0);
+    const readsBeforeWrite = reads;
+
     vi.advanceTimersByTime(TRACK_STORE_WRITE_DEBOUNCE_MS);
 
+    expect(writes).toBe(1);
+    expect(reads).toBe(readsBeforeWrite + 1);
+
+    vi.advanceTimersByTime(TRACK_STORE_WRITE_DEBOUNCE_MS);
+
+    // The check ran (one more read) and found nothing to write.
+    expect(reads).toBe(readsBeforeWrite + 2);
     expect(writes).toBe(1);
 
     vi.advanceTimersByTime(TRACK_STORE_WRITE_MAX_WAIT_MS * 3);
 
+    expect(reads).toBe(readsBeforeWrite + 2);
     expect(writes).toBe(1);
+  });
+
+  it("on two builds of one track, never rebuild each other's file from the settle check", () => {
+    vi.useFakeTimers({ now: T0 });
+    const REBUILT: PitLaneTrackIdentity = { ...TRACK, trackLength: "6.95 km", trackLengthM: 6950 };
+    let writes = 0;
+    const counting: TrackStoreIo = {
+      ...nodeTrackStoreIo,
+      writeText: (p, t) => (writes++, nodeTrackStoreIo.writeText(p, t)),
+    };
+    const logger = spyLogger();
+    const a = makeStore({ pid: 1001, io: counting, logger });
+    const b = makeStore({ pid: 1002, io: counting });
+
+    a.recordSample({ track: TRACK, landmark: "pitRoadStart", sample: sample("a1", 0.1, T0) });
+    vi.advanceTimersByTime(TRACK_STORE_WRITE_DEBOUNCE_MS / 2);
+    b.recordSample({ track: REBUILT, landmark: "pitRoadStart", sample: sample("b1", 0.1, T0 + 1) });
+    vi.advanceTimersByTime(TRACK_STORE_WRITE_DEBOUNCE_MS * 50);
+
+    // One save each; the settle checks see the other length and leave it.
+    expect(writes).toBe(2);
+    expect(readFile().trackLength).toBe("6.95 km");
+    expect(windowKeys(readFile())).toEqual(["b1"]);
+    expect(logger.warn).toHaveBeenCalledTimes(1);
+    expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining("another build of the track"));
+
+    // A learned sample still writes, rebuilding to that process's length.
+    a.recordSample({ track: TRACK, landmark: "pitRoadStart", sample: sample("a2", 0.1, T0 + 2) });
+    vi.advanceTimersByTime(TRACK_STORE_WRITE_DEBOUNCE_MS * 50);
+
+    expect(writes).toBe(3);
+    expect(readFile().trackLength).toBe("6.93 km");
   });
 });
 
@@ -810,5 +954,17 @@ describe("the singleton", () => {
     _resetTrackStore();
 
     expect(isTrackStoreInitialized()).toBe(false);
+  });
+
+  it("is reset without a timer of the old store writing afterwards", () => {
+    vi.useFakeTimers({ now: T0 });
+    const store = initializeTrackStore({ directory: dir, sim: "iracing", logger: silentLogger });
+
+    record(store, "a", 0.1, T0);
+    _resetTrackStore();
+    vi.advanceTimersByTime(TRACK_STORE_WRITE_MAX_WAIT_MS * 2);
+
+    expect(vi.getTimerCount()).toBe(0);
+    expect(existsSync(filePath())).toBe(false);
   });
 });

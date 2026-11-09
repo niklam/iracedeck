@@ -124,7 +124,8 @@ export interface TrackStore {
 
 /** The file operations the store uses; a seam so tests can fail or interleave them. */
 export interface TrackStoreIo {
-  readText(path: string): string;
+  /** The file's raw bytes: decoded as UTF-8 to parse, compared as bytes to tell corrupt files apart. */
+  readBytes(path: string): Buffer;
   writeText(path: string, text: string): void;
   rename(from: string, to: string): void;
   unlink(path: string): void;
@@ -139,7 +140,7 @@ export interface TrackStoreIo {
 }
 
 export const nodeTrackStoreIo: TrackStoreIo = {
-  readText: (path) => readFileSync(path, "utf-8"),
+  readBytes: (path) => readFileSync(path),
   writeText: (path, text) => writeFileSync(path, text, "utf-8"),
   rename: (from, to) => renameSync(from, to),
   unlink: (path) => unlinkSync(path),
@@ -217,7 +218,13 @@ interface TrackEntry {
 }
 
 type WriteMode = "save" | "verify";
+
+/** How often a write re-classifies a file that changed under it before it gives up until the retry. */
+const RECLASSIFY_ATTEMPTS = 3;
 type WriteOutcome = "done" | "unchanged" | "refused" | "retry";
+
+/** Per store, clears its timers without writing; used by {@link _resetTrackStore}. */
+const timerCleaners = new WeakMap<TrackStore, () => void>();
 
 function isoStamp(date: Date): string {
   return date.toISOString().replace(/[:.]/g, "-");
@@ -448,7 +455,11 @@ export function createTrackStore(opts: TrackStoreOptions): TrackStore {
   }
 
   function ensureRead(entry: TrackEntry): void {
-    if (!entry.read) absorb(entry, readTrackFile(entry.path, io.readText));
+    if (!entry.read)
+      absorb(
+        entry,
+        readTrackFile(entry.path, (path) => io.readBytes(path).toString("utf-8")),
+      );
   }
 
   function rememberOwn(entry: TrackEntry, landmark: PitLaneLandmarkName, sample: PitLaneLandmarkSample): void {
@@ -473,19 +484,20 @@ export function createTrackStore(opts: TrackStoreOptions): TrackStore {
   }
 
   /**
-   * An existing `track_<id>.corrupt-*.json` whose bytes equal the corrupt
-   * file, so a file that survives every attempt (locked, undeletable) is
-   * preserved once, not once per write — the settings store's rule.
+   * An existing `track_<id>.corrupt-*.json` whose bytes equal `original`, so a
+   * file that survives every attempt (locked, undeletable) is preserved once,
+   * not once per write — the settings store's rule. Bytes, never decoded text:
+   * two different invalid-UTF-8 files decode to the same replacement
+   * characters.
    */
-  function identicalAside(entry: TrackEntry): string | undefined {
-    const prefix = `track_${entry.identity.trackId}.corrupt-`;
-    const original = io.readText(entry.path);
+  function identicalAside(trackId: number, original: Buffer): string | undefined {
+    const prefix = `track_${trackId}.corrupt-`;
 
     for (const name of io.readdir(directory)) {
       if (!name.startsWith(prefix) || !name.endsWith(".json")) continue;
 
       try {
-        if (io.readText(join(directory, name)) === original) return name;
+        if (io.readBytes(join(directory, name)).equals(original)) return name;
       } catch {
         // an aside that cannot be read is no match
       }
@@ -494,19 +506,49 @@ export function createTrackStore(opts: TrackStoreOptions): TrackStore {
     return undefined;
   }
 
-  /** Preserve a corrupt file under another name. Whether it is now safe to write over the original path. */
-  function moveAside(entry: TrackEntry): boolean {
-    const aside = asidePath(entry.identity.trackId);
+  /**
+   * Preserve a corrupt file under another name. `classified` is the content
+   * that was read and judged corrupt: the file is re-read first and moved
+   * only while it still holds exactly those bytes, so another process's valid
+   * write landing meanwhile is never moved aside (`changed`: classify again).
+   * `moved` means the original path may now be written over; `failed` that it
+   * must not be (the write is retried).
+   *
+   * When the rename is refused the file is copied instead and the original is
+   * left where it is: the write that follows renames over it, which replaces
+   * the target on Windows too. The settings and replay stores unlink the
+   * original after the copy because a later open would otherwise preserve it
+   * again with nothing written over it; here a write always follows, and a
+   * retried one finds the identical aside and copies nothing.
+   */
+  function moveAside(entry: TrackEntry, classified: Buffer): "moved" | "changed" | "failed" {
     const name = trackFileName(entry.identity.trackId);
+    let current: Buffer;
+
+    try {
+      current = io.readBytes(entry.path);
+    } catch (error: unknown) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return "changed";
+
+      logger.debug(`Corrupt track data file ${name} could not be re-read: ${String(error)}`);
+
+      return "failed";
+    }
+
+    if (!current.equals(classified)) return "changed";
+
+    const aside = asidePath(entry.identity.trackId);
 
     try {
       io.rename(entry.path, aside);
       logger.warn(`Track data file ${name} is not valid; preserved as ${aside} and started fresh`);
 
-      return true;
+      return "moved";
     } catch (renameError: unknown) {
+      logger.debug(`Move-aside rename failed: ${String(renameError)}`);
+
       try {
-        const existing = identicalAside(entry);
+        const existing = identicalAside(entry.identity.trackId, current);
 
         if (existing === undefined) {
           io.copyExclusive(entry.path, aside);
@@ -515,20 +557,12 @@ export function createTrackStore(opts: TrackStoreOptions): TrackStore {
           logger.debug(`Track data file ${name} is not valid; an identical copy is already preserved as ${existing}`);
         }
 
-        logger.debug(`Move-aside rename failed: ${String(renameError)}`);
-
-        try {
-          io.unlink(entry.path);
-        } catch (unlinkError: unknown) {
-          logger.debug(`Corrupt original could not be removed: ${String(unlinkError)}`);
-        }
-
-        return true;
+        return "moved";
       } catch (copyError: unknown) {
         logger.error(`Track data file ${name} is not valid and could not be preserved; it is not written over`);
         logger.debug(`Copy also failed: ${String(copyError)}`);
 
-        return false;
+        return "failed";
       }
     }
   }
@@ -554,22 +588,65 @@ export function createTrackStore(opts: TrackStoreOptions): TrackStore {
   /**
    * Re-read the file, merge this process's samples into it, write it.
    * `verify` (the settle check) writes only when one of this process's
-   * samples is missing from the file.
+   * samples is missing from the file, and never rebuilds: a file at another
+   * track length than this process's identity is left as it is.
    */
   function writeEntry(entry: TrackEntry, mode: WriteMode): WriteOutcome {
+    for (let attempt = 1; attempt <= RECLASSIFY_ATTEMPTS; attempt++) {
+      const outcome = writeEntryOnce(entry, mode);
+
+      if (outcome !== "changed") return outcome;
+    }
+
+    logger.debug(`Track data file ${trackFileName(entry.identity.trackId)} kept changing under the write`);
+
+    return "retry";
+  }
+
+  function writeEntryOnce(entry: TrackEntry, mode: WriteMode): WriteOutcome | "changed" {
     const name = trackFileName(entry.identity.trackId);
-    const verdict = absorb(entry, readTrackFile(entry.path, io.readText));
+    let bytes: Buffer | undefined;
+    const verdict = absorb(
+      entry,
+      readTrackFile(entry.path, (path) => {
+        bytes = io.readBytes(path);
+
+        return bytes.toString("utf-8");
+      }),
+    );
 
     if (verdict === "unreadable") return "retry";
 
     if (verdict === "refused") return "refused";
+
+    const fileLength = entry.base?.pitLane?.trackLength;
+
+    if (mode === "verify" && fileLength !== undefined && fileLength !== entry.identity.trackLength) {
+      // Never rebuild from the settle check: two processes on two builds of
+      // one track would otherwise rebuild the file back and forth every
+      // debounce, each discarding the other's windows. A save still rebuilds,
+      // so the file follows whichever process last learned a sample.
+      warnOnce(
+        entry,
+        `length:${fileLength}`,
+        `Track data file ${name} holds track length "${fileLength}" while this session has "${entry.identity.trackLength}"; another process may be on another build of the track, so it is only written when a sample is learned`,
+      );
+
+      return "unchanged";
+    }
 
     const existed = entry.base !== undefined;
     const { section, accepted } = mergeOwn(entry.base?.pitLane, entry);
 
     if (mode === "verify" && accepted === 0) return "unchanged";
 
-    if (verdict === "corrupt" && !moveAside(entry)) return "retry";
+    if (verdict === "corrupt") {
+      const aside = moveAside(entry, bytes!);
+
+      if (aside === "changed") return "changed";
+
+      if (aside === "failed") return "retry";
+    }
 
     const pitLane: PitLaneSection = { ...section, trackVersion: entry.identity.trackVersion };
     const file = buildTrackFile(entry.base, entry.identity, sim, pitLane);
@@ -604,8 +681,14 @@ export function createTrackStore(opts: TrackStoreOptions): TrackStore {
     entry.timer = setTimeout(() => {
       entry.timer = undefined;
 
-      if (entry.dirty) attempt(entry, "save");
-      else if (entry.verifyPending) attempt(entry, "verify");
+      try {
+        if (entry.dirty) attempt(entry, "save");
+        else if (entry.verifyPending) attempt(entry, "verify");
+      } catch (error: unknown) {
+        // A timer callback's throw would be uncaught; the sample stays in
+        // memory for the next one or the shutdown flush.
+        logger.error(`Track data write of ${trackFileName(entry.identity.trackId)} failed: ${String(error)}`);
+      }
     }, delayMs);
     entry.timer.unref?.();
   }
@@ -665,7 +748,7 @@ export function createTrackStore(opts: TrackStoreOptions): TrackStore {
     arm(entry, Math.max(0, Math.min(debounceMs, entry.firstDirtyAt + maxWaitMs - nowMs)));
   }
 
-  return {
+  const store: TrackStore = {
     directory,
 
     load(track) {
@@ -740,6 +823,16 @@ export function createTrackStore(opts: TrackStoreOptions): TrackStore {
       }
     },
   };
+
+  timerCleaners.set(store, () => {
+    for (const entry of entries.values()) {
+      if (entry.timer !== undefined) clearTimeout(entry.timer);
+
+      entry.timer = undefined;
+    }
+  });
+
+  return store;
 }
 
 let trackStore: TrackStore | null = null;
@@ -782,5 +875,7 @@ export function isTrackStoreInitialized(): boolean {
  * @internal
  */
 export function _resetTrackStore(): void {
+  if (trackStore) timerCleaners.get(trackStore)?.();
+
   trackStore = null;
 }
