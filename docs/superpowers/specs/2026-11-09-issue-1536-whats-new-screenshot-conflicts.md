@@ -159,7 +159,7 @@ A wiring test asserts that `.release-it.json` names the hook under `after:bump`.
 
 ### Bootstrap
 
-The exemption is keyed on the newest dated section of `changelog.mdx` being `3.8.1`, not on any version string. While that holds, the check skips the three version rules and keeps the listing and hash rules.
+The exemption holds while the newest dated section of `changelog.mdx` is older than `3.9.0` (`FIRST_CAPTURED_RELEASE`), the first stable release cut with the capture hook, not on any version string; a 3.8.x hotfix back-merge keeps it. (Amended 2026-11-09 after the second read: keying on exactly `3.8.1` would turn master red after a 3.8.2 back-merge.) While that holds, the check skips the three version rules and keeps the listing and hash rules.
 
 This handles a mixed folder whichever order things land in. #1112, #1161 and #1599 may merge before #1536, leaving `master`'s PNGs captured at different `-dev` versions.
 
