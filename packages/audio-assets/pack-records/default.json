@@ -1,0 +1,21 @@
+{
+  "id": "default",
+  "version": "1.4.1",
+  "sha256": "4a9b8a4c923f281ad583311b4666765f8aa653bc2a4a4205280539b8348f0483",
+  "inputs": {
+    "pipeline": "051b4a890aa4a7468a318348fe17a3238fb27286a600ba1a21c86d2af88ae232",
+    "archiveFormat": "dff24c496d1c311953f8cd6b9a8aeee12dc6eaca81e3bc3ad645794093cc71ca",
+    "manifest": "5ce3d804d8a841711475e03328e12a8aa5778f32ad9ee2e89bbea9762e130cb5",
+    "voices": {
+      "default": {
+        "clips": 4810,
+        "clipsSha256": "06bca7ed0bd4fed03004528438bd43fbff5d03633d0f8f53f1d0d1a958016f80",
+        "script": "e3023f7679aea0316425363ab0ce17c1805da122bc11365c9b0674237a433a65"
+      }
+    }
+  },
+  "released": {
+    "version": "1.4.1",
+    "sha256": "4a9b8a4c923f281ad583311b4666765f8aa653bc2a4a4205280539b8348f0483"
+  }
+}
