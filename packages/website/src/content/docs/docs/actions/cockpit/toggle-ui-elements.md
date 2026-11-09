@@ -3,7 +3,7 @@ title: Toggle UI Elements
 description: Show or hide iRacing's on-screen UI elements.
 sidebar:
   badge:
-    text: "9 modes"
+    text: "10 modes"
     variant: tip
 ---
 
@@ -145,6 +145,27 @@ The driving line must first be enabled in iRacing's options (Settings → Drivin
 - **Method:** Key binding
 - **Dial:** No rotation support
 - **Default binding:** `Ctrl+Alt+L`
+- **Telemetry-aware icon:** No
+
+#### Settings
+
+- No additional settings
+
+---
+
+### Minimal Drive UI
+
+Switch the driving UI between its normal layout and Minimal, which shows only your pinned widgets and the ones iRacing requires. Unlike iRacing's Cycle UI Visibility Mode, it never hides the UI completely. The key icon stays the same in both states, because iRacing does not report which one is active.
+
+:::note
+iRacing ships Toggle Minimal Drive UI with no key assigned. Assign a key to it in iRacing's controls, then set the same key in this mode's key binding in iRaceDeck. Until the iRaceDeck binding is set, the key shows a missing-binding warning. Minimal only takes effect when at least one widget is pinned — with nothing pinned, a press changes nothing.
+:::
+
+#### Details
+
+- **Method:** Key binding
+- **Dial:** No rotation support
+- **Default binding:** No default key binding
 - **Telemetry-aware icon:** No
 
 #### Settings
