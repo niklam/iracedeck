@@ -523,7 +523,7 @@ It only plays while you're driving. Getting out of the car, a tow or a reset bac
 
 Like the speeding tick, it isn't a spoken line, so it plays with every voice, a voice pack without a callout script included, and it doesn't wait its turn on the radio. The *"Limiter's still engaged"* reminder and the *"To confirm: …"* exit readback that can follow you out of the pits neither cut it short nor hold it back. It plays at your **Radar volume**, so turning radar volume to zero silences it too, but on a channel of its own, so the [Radar](#radar) ticking again as you rejoin the circuit can't cut it off.
 
-Switch it in the Settings window under **Race Engineer Callouts → Pit Speeding → Pit exit beep**, on by default. Turning the Race Engineer master off silences it too.
+It is off by default: turn it on in the Settings window under **Race Engineer Callouts → Pit Speeding → Pit exit beep**. Turning the Race Engineer master off silences it too.
 
 ## Pit limiter reminders
 
@@ -725,10 +725,10 @@ Under **Pit Box**, one callout is toggleable, enabled by default:
 
 - **Count-in to pit box** — the *"five… four… three… two… one… pit now"* distance countdown to your pit box as you drive down pit road. Disabling this silences the whole count-in.
 
-Under **Pit Speeding**, two callouts are toggleable, both enabled by default:
+Under **Pit Speeding**, two callouts are toggleable:
 
-- **Pit road speeding** — the repeating tick that sounds while you're over the pit lane speed limit (see [Pit road speeding](#pit-road-speeding) above). It plays at your Radar volume.
-- **Pit exit beep** — the short beep as you cross the pit exit line (see [Pit exit beep](#pit-exit-beep) above). It plays at your Radar volume.
+- **Pit road speeding** — the repeating tick that sounds while you're over the pit lane speed limit (see [Pit road speeding](#pit-road-speeding) above). It plays at your Radar volume. Enabled by default.
+- **Pit exit beep** — the short beep as you cross the pit exit line (see [Pit exit beep](#pit-exit-beep) above). It plays at your Radar volume. Off by default.
 
 Under **Pit Limiter**, four callouts are toggleable, all enabled by default. They only ever fire on a car that has a pit limiter (see [Pit limiter reminders](#pit-limiter-reminders) above):
 
