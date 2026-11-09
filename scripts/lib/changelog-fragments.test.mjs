@@ -692,6 +692,19 @@ describe("composeChangelog", () => {
       });
     });
 
+    // A release that stopped part-way at a version other than package.json's
+    // (one made from the window, say) leaves exactly this shape: the dated section
+    // it wrote above a version it never bumped. The message names that case and
+    // its remedy beside the bump, rather than sending the reader to bump alone.
+    it("naming the half-folded release as well as the bump", () => {
+      expectFragmentError(() => composeChangelog(mdx, fragments, "1.1.5", PREVIEW), {
+        file: CHANGELOG_SOURCE_PATH,
+        line: NEWEST_LINE,
+        message:
+          /stopped part-way after writing "## 1\.2\.0", run the "git restore" the release hook printed.*otherwise bump the version to 1\.2\.0 or later/,
+      });
+    });
+
     it("with a dated section of its own below the newest", () => {
       expectFragmentError(() => composeChangelog(mdx, fragments, "1.1.0", PREVIEW), {
         file: CHANGELOG_SOURCE_PATH,

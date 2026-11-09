@@ -471,7 +471,7 @@ function sectionFor(headings, version, mode) {
     throw new ChangelogFragmentError(
       CHANGELOG_SOURCE_PATH,
       newest.line,
-      `the in-development version ${version} (package.json) is behind the newest section "## ${newest.version}" while ${CHANGELOG_FRAGMENTS_DIR}/ holds fragments — bump the version to ${newest.version} or later`,
+      `the in-development version ${version} (package.json) is behind the newest section "## ${newest.version}" while ${CHANGELOG_FRAGMENTS_DIR}/ holds fragments. If a release stopped part-way after writing "## ${newest.version}", run the "git restore" the release hook printed, then release again; otherwise bump the version to ${newest.version} or later`,
     );
   }
   if (own && own !== newest) {
