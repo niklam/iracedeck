@@ -1,0 +1,1276 @@
+{
+  "WeekendInfo": {
+    "TrackID": 523,
+    "TrackName": "spa 2024 up",
+    "TrackConfigName": "Grand Prix",
+    "TrackLength": "6.9293 km",
+    "TrackVersion": "2026.09.04.02",
+    "SubSessionID": 89998671
+  },
+  "SessionNum": 0,
+  "PlayerCarIdx": 24,
+  "cars": [24, 37, 14, 6],
+  "CarIdxClass": [2708, 2708, 2708, 2708],
+  "ticks": [
+    {
+      "t": 1200.9833,
+      "tick": 73452,
+      "OnPitRoad": true,
+      "CarIdxTrackSurface": [1, 3, 3, 3],
+      "CarIdxOnPitRoad": [true, false, false, true],
+      "CarIdxLapDistPct": [0.0328, 0.394856, 0.652155, 0.41125],
+      "CarIdxEstTime": [4.276, 50.586, 86.48, 52.664],
+      "CarIdxLap": [2, 0, 3, 6]
+    },
+    {
+      "t": 1201,
+      "tick": 73453,
+      "OnPitRoad": true,
+      "CarIdxTrackSurface": [1, 3, 3, 3],
+      "CarIdxOnPitRoad": [true, false, false, true],
+      "CarIdxLapDistPct": [0.032812, 0.394963, 0.65224, 0.411375],
+      "CarIdxEstTime": [4.277, 50.601, 86.494, 52.679],
+      "CarIdxLap": [2, 0, 3, 6]
+    },
+    {
+      "t": 1201.0167,
+      "tick": 73454,
+      "OnPitRoad": true,
+      "CarIdxTrackSurface": [1, 3, 3, 3],
+      "CarIdxOnPitRoad": [true, false, false, true],
+      "CarIdxLapDistPct": [0.032823, 0.395071, 0.652325, 0.4115],
+      "CarIdxEstTime": [4.279, 50.616, 86.509, 52.694],
+      "CarIdxLap": [2, 0, 3, 6]
+    },
+    {
+      "t": 1201.0333,
+      "tick": 73455,
+      "OnPitRoad": true,
+      "CarIdxTrackSurface": [2, 3, 3, 3],
+      "CarIdxOnPitRoad": [true, false, false, true],
+      "CarIdxLapDistPct": [0.032835, 0.395178, 0.65241, 0.411624],
+      "CarIdxEstTime": [4.28, 50.631, 86.523, 52.71],
+      "CarIdxLap": [2, 0, 3, 6]
+    },
+    {
+      "t": 1201.05,
+      "tick": 73456,
+      "OnPitRoad": true,
+      "CarIdxTrackSurface": [2, 3, 3, 3],
+      "CarIdxOnPitRoad": [true, false, false, true],
+      "CarIdxLapDistPct": [0.032847, 0.395286, 0.652495, 0.411749],
+      "CarIdxEstTime": [4.281, 50.647, 86.538, 52.725],
+      "CarIdxLap": [2, 0, 3, 6]
+    },
+    {
+      "t": 1201.0667,
+      "tick": 73457,
+      "OnPitRoad": true,
+      "CarIdxTrackSurface": [2, 3, 3, 3],
+      "CarIdxOnPitRoad": [true, false, false, true],
+      "CarIdxLapDistPct": [0.032859, 0.395395, 0.65258, 0.411874],
+      "CarIdxEstTime": [4.283, 50.662, 86.552, 52.741],
+      "CarIdxLap": [2, 0, 3, 6]
+    },
+    {
+      "t": 1201.0833,
+      "tick": 73458,
+      "OnPitRoad": true,
+      "CarIdxTrackSurface": [2, 3, 3, 3],
+      "CarIdxOnPitRoad": [true, false, false, true],
+      "CarIdxLapDistPct": [0.032871, 0.395503, 0.652665, 0.412],
+      "CarIdxEstTime": [4.284, 50.677, 86.567, 52.756],
+      "CarIdxLap": [2, 0, 3, 6]
+    },
+    {
+      "t": 1204.6,
+      "tick": 73669,
+      "OnPitRoad": true,
+      "CarIdxTrackSurface": [2, 3, 3, 3],
+      "CarIdxOnPitRoad": [true, false, false, true],
+      "CarIdxLapDistPct": [0.040563, 0.421254, 0.671476, 0.433348],
+      "CarIdxEstTime": [5.198, 54.003, 89.785, 56.19],
+      "CarIdxLap": [2, 0, 3, 6]
+    },
+    {
+      "t": 1204.6167,
+      "tick": 73670,
+      "OnPitRoad": true,
+      "CarIdxTrackSurface": [2, 3, 3, 3],
+      "CarIdxOnPitRoad": [true, false, false, true],
+      "CarIdxLapDistPct": [0.040611, 0.42137, 0.671571, 0.433419],
+      "CarIdxEstTime": [5.204, 54.019, 89.801, 56.206],
+      "CarIdxLap": [2, 0, 3, 6]
+    },
+    {
+      "t": 1204.6333,
+      "tick": 73671,
+      "OnPitRoad": true,
+      "CarIdxTrackSurface": [2, 3, 3, 3],
+      "CarIdxOnPitRoad": [true, false, false, true],
+      "CarIdxLapDistPct": [0.040659, 0.421485, 0.671666, 0.433489],
+      "CarIdxEstTime": [5.21, 54.036, 89.817, 56.222],
+      "CarIdxLap": [2, 0, 3, 6]
+    },
+    {
+      "t": 1204.65,
+      "tick": 73672,
+      "OnPitRoad": true,
+      "CarIdxTrackSurface": [2, 3, 3, 3],
+      "CarIdxOnPitRoad": [true, false, false, false],
+      "CarIdxLapDistPct": [0.040707, 0.421599, 0.671762, 0.433559],
+      "CarIdxEstTime": [5.216, 54.052, 89.833, 56.238],
+      "CarIdxLap": [2, 0, 3, 6]
+    },
+    {
+      "t": 1204.6667,
+      "tick": 73673,
+      "OnPitRoad": true,
+      "CarIdxTrackSurface": [2, 3, 3, 3],
+      "CarIdxOnPitRoad": [true, false, false, false],
+      "CarIdxLapDistPct": [0.040756, 0.421713, 0.671857, 0.433629],
+      "CarIdxEstTime": [5.222, 54.069, 89.849, 56.253],
+      "CarIdxLap": [2, 0, 3, 6]
+    },
+    {
+      "t": 1204.6833,
+      "tick": 73674,
+      "OnPitRoad": true,
+      "CarIdxTrackSurface": [2, 3, 3, 3],
+      "CarIdxOnPitRoad": [true, false, false, false],
+      "CarIdxLapDistPct": [0.040804, 0.421825, 0.671952, 0.433699],
+      "CarIdxEstTime": [5.228, 54.085, 89.865, 56.269],
+      "CarIdxLap": [2, 0, 3, 6]
+    },
+    {
+      "t": 1204.7,
+      "tick": 73675,
+      "OnPitRoad": true,
+      "CarIdxTrackSurface": [2, 3, 3, 3],
+      "CarIdxOnPitRoad": [true, false, false, false],
+      "CarIdxLapDistPct": [0.040852, 0.421937, 0.672048, 0.433769],
+      "CarIdxEstTime": [5.234, 54.102, 89.881, 56.285],
+      "CarIdxLap": [2, 0, 3, 6]
+    },
+    {
+      "t": 1204.7167,
+      "tick": 73676,
+      "OnPitRoad": true,
+      "CarIdxTrackSurface": [2, 3, 3, 3],
+      "CarIdxOnPitRoad": [true, false, false, false],
+      "CarIdxLapDistPct": [0.040901, 0.422049, 0.672144, 0.433839],
+      "CarIdxEstTime": [5.241, 54.118, 89.897, 56.3],
+      "CarIdxLap": [2, 0, 3, 6]
+    },
+    {
+      "t": 1204.7333,
+      "tick": 73677,
+      "OnPitRoad": true,
+      "CarIdxTrackSurface": [2, 3, 3, 3],
+      "CarIdxOnPitRoad": [true, false, false, false],
+      "CarIdxLapDistPct": [0.04095, 0.42216, 0.67224, 0.433908],
+      "CarIdxEstTime": [5.247, 54.134, 89.913, 56.316],
+      "CarIdxLap": [2, 0, 3, 6]
+    },
+    {
+      "t": 1204.75,
+      "tick": 73678,
+      "OnPitRoad": true,
+      "CarIdxTrackSurface": [2, 3, 3, 3],
+      "CarIdxOnPitRoad": [true, false, false, false],
+      "CarIdxLapDistPct": [0.040999, 0.42227, 0.672336, 0.433978],
+      "CarIdxEstTime": [5.253, 54.151, 89.929, 56.332],
+      "CarIdxLap": [2, 0, 3, 6]
+    },
+    {
+      "t": 1204.7667,
+      "tick": 73679,
+      "OnPitRoad": false,
+      "CarIdxTrackSurface": [2, 3, 3, 3],
+      "CarIdxOnPitRoad": [true, false, false, false],
+      "CarIdxLapDistPct": [0.041049, 0.422379, 0.672432, 0.434047],
+      "CarIdxEstTime": [5.26, 54.167, 89.945, 56.348],
+      "CarIdxLap": [2, 0, 3, 6]
+    },
+    {
+      "t": 1204.7833,
+      "tick": 73680,
+      "OnPitRoad": false,
+      "CarIdxTrackSurface": [2, 3, 3, 3],
+      "CarIdxOnPitRoad": [true, false, false, false],
+      "CarIdxLapDistPct": [0.041099, 0.422487, 0.672528, 0.434116],
+      "CarIdxEstTime": [5.266, 54.183, 89.961, 56.363],
+      "CarIdxLap": [2, 0, 3, 6]
+    },
+    {
+      "t": 1204.8,
+      "tick": 73681,
+      "OnPitRoad": false,
+      "CarIdxTrackSurface": [2, 3, 3, 3],
+      "CarIdxOnPitRoad": [true, false, false, false],
+      "CarIdxLapDistPct": [0.041149, 0.422595, 0.672625, 0.434185],
+      "CarIdxEstTime": [5.272, 54.2, 89.977, 56.379],
+      "CarIdxLap": [2, 0, 3, 6]
+    },
+    {
+      "t": 1204.8167,
+      "tick": 73682,
+      "OnPitRoad": false,
+      "CarIdxTrackSurface": [2, 3, 3, 3],
+      "CarIdxOnPitRoad": [true, false, false, false],
+      "CarIdxLapDistPct": [0.0412, 0.422703, 0.672721, 0.434253],
+      "CarIdxEstTime": [5.279, 54.216, 89.993, 56.394],
+      "CarIdxLap": [2, 0, 3, 6]
+    },
+    {
+      "t": 1207.9667,
+      "tick": 73871,
+      "OnPitRoad": false,
+      "CarIdxTrackSurface": [2, 3, 3, 3],
+      "CarIdxOnPitRoad": [true, false, false, false],
+      "CarIdxLapDistPct": [0.062812, 0.436989, 0.693727, 0.445835],
+      "CarIdxEstTime": [10.459, 57.109, 93.052, 59.097],
+      "CarIdxLap": [2, 0, 3, 6]
+    },
+    {
+      "t": 1207.9833,
+      "tick": 73872,
+      "OnPitRoad": false,
+      "CarIdxTrackSurface": [2, 3, 3, 3],
+      "CarIdxOnPitRoad": [true, false, false, false],
+      "CarIdxLapDistPct": [0.062828, 0.437052, 0.693851, 0.445908],
+      "CarIdxEstTime": [10.463, 57.124, 93.069, 59.112],
+      "CarIdxLap": [2, 0, 3, 6]
+    },
+    {
+      "t": 1208,
+      "tick": 73873,
+      "OnPitRoad": false,
+      "CarIdxTrackSurface": [2, 3, 3, 3],
+      "CarIdxOnPitRoad": [true, false, false, false],
+      "CarIdxLapDistPct": [0.062844, 0.437115, 0.693976, 0.445981],
+      "CarIdxEstTime": [10.466, 57.139, 93.085, 59.128],
+      "CarIdxLap": [2, 0, 3, 6]
+    },
+    {
+      "t": 1208.0167,
+      "tick": 73874,
+      "OnPitRoad": false,
+      "CarIdxTrackSurface": [3, 3, 3, 3],
+      "CarIdxOnPitRoad": [true, false, false, false],
+      "CarIdxLapDistPct": [0.062861, 0.437178, 0.694101, 0.446055],
+      "CarIdxEstTime": [10.47, 57.154, 93.102, 59.143],
+      "CarIdxLap": [2, 0, 3, 6]
+    },
+    {
+      "t": 1208.0333,
+      "tick": 73875,
+      "OnPitRoad": false,
+      "CarIdxTrackSurface": [3, 3, 3, 3],
+      "CarIdxOnPitRoad": [true, false, false, false],
+      "CarIdxLapDistPct": [0.062879, 0.43724, 0.694226, 0.446129],
+      "CarIdxEstTime": [10.474, 57.168, 93.118, 59.159],
+      "CarIdxLap": [2, 0, 3, 6]
+    },
+    {
+      "t": 1208.05,
+      "tick": 73876,
+      "OnPitRoad": false,
+      "CarIdxTrackSurface": [3, 3, 3, 3],
+      "CarIdxOnPitRoad": [true, false, false, false],
+      "CarIdxLapDistPct": [0.062896, 0.437303, 0.69435, 0.446203],
+      "CarIdxEstTime": [10.478, 57.183, 93.134, 59.175],
+      "CarIdxLap": [2, 0, 3, 6]
+    },
+    {
+      "t": 1208.0667,
+      "tick": 73877,
+      "OnPitRoad": false,
+      "CarIdxTrackSurface": [3, 3, 3, 3],
+      "CarIdxOnPitRoad": [true, false, false, false],
+      "CarIdxLapDistPct": [0.062914, 0.437365, 0.694475, 0.446277],
+      "CarIdxEstTime": [10.482, 57.198, 93.151, 59.19],
+      "CarIdxLap": [2, 0, 3, 6]
+    },
+    {
+      "t": 1333.9667,
+      "tick": 81431,
+      "OnPitRoad": false,
+      "CarIdxTrackSurface": [3, 3, 3, 3],
+      "CarIdxOnPitRoad": [true, false, false, false],
+      "CarIdxLapDistPct": [0.974794, 0.347542, 0.627558, 0.374112],
+      "CarIdxEstTime": [128.617, 42.372, 82.625, 47.257],
+      "CarIdxLap": [2, 1, 4, 7]
+    },
+    {
+      "t": 1333.9833,
+      "tick": 81432,
+      "OnPitRoad": false,
+      "CarIdxTrackSurface": [3, 3, 3, 3],
+      "CarIdxOnPitRoad": [true, false, false, false],
+      "CarIdxLapDistPct": [0.97482, 0.347627, 0.62771, 0.374208],
+      "CarIdxEstTime": [128.626, 42.389, 82.641, 47.273],
+      "CarIdxLap": [2, 1, 4, 7]
+    },
+    {
+      "t": 1334,
+      "tick": 81433,
+      "OnPitRoad": false,
+      "CarIdxTrackSurface": [3, 3, 3, 3],
+      "CarIdxOnPitRoad": [true, false, false, false],
+      "CarIdxLapDistPct": [0.974846, 0.347712, 0.627861, 0.374305],
+      "CarIdxEstTime": [128.634, 42.406, 82.658, 47.29],
+      "CarIdxLap": [2, 1, 4, 7]
+    },
+    {
+      "t": 1334.0167,
+      "tick": 81434,
+      "OnPitRoad": false,
+      "CarIdxTrackSurface": [2, 3, 3, 3],
+      "CarIdxOnPitRoad": [true, false, false, false],
+      "CarIdxLapDistPct": [0.974872, 0.347796, 0.628012, 0.374401],
+      "CarIdxEstTime": [128.642, 42.423, 82.674, 47.306],
+      "CarIdxLap": [2, 1, 4, 7]
+    },
+    {
+      "t": 1334.0333,
+      "tick": 81435,
+      "OnPitRoad": false,
+      "CarIdxTrackSurface": [2, 3, 3, 3],
+      "CarIdxOnPitRoad": [true, false, false, false],
+      "CarIdxLapDistPct": [0.974898, 0.34788, 0.628161, 0.374497],
+      "CarIdxEstTime": [128.651, 42.44, 82.691, 47.322],
+      "CarIdxLap": [2, 1, 4, 7]
+    },
+    {
+      "t": 1334.05,
+      "tick": 81436,
+      "OnPitRoad": false,
+      "CarIdxTrackSurface": [2, 3, 3, 3],
+      "CarIdxOnPitRoad": [true, false, false, false],
+      "CarIdxLapDistPct": [0.974924, 0.347965, 0.62831, 0.374593],
+      "CarIdxEstTime": [128.659, 42.457, 82.707, 47.339],
+      "CarIdxLap": [2, 1, 4, 7]
+    },
+    {
+      "t": 1334.0667,
+      "tick": 81437,
+      "OnPitRoad": false,
+      "CarIdxTrackSurface": [2, 3, 3, 3],
+      "CarIdxOnPitRoad": [true, false, false, false],
+      "CarIdxLapDistPct": [0.974951, 0.348049, 0.628458, 0.374689],
+      "CarIdxEstTime": [128.668, 42.474, 82.724, 47.355],
+      "CarIdxLap": [2, 1, 4, 7]
+    },
+    {
+      "t": 1337.45,
+      "tick": 81640,
+      "OnPitRoad": false,
+      "CarIdxTrackSurface": [2, 3, 3, 3],
+      "CarIdxOnPitRoad": [true, false, false, false],
+      "CarIdxLapDistPct": [0.986386, 0.365284, 0.649955, 0.395702],
+      "CarIdxEstTime": [131.255, 45.807, 86.096, 50.632],
+      "CarIdxLap": [2, 1, 4, 7]
+    },
+    {
+      "t": 1337.4667,
+      "tick": 81641,
+      "OnPitRoad": false,
+      "CarIdxTrackSurface": [2, 3, 3, 3],
+      "CarIdxOnPitRoad": [true, false, false, false],
+      "CarIdxLapDistPct": [0.986436, 0.365373, 0.650042, 0.395817],
+      "CarIdxEstTime": [131.264, 45.823, 86.111, 50.648],
+      "CarIdxLap": [2, 1, 4, 7]
+    },
+    {
+      "t": 1337.4833,
+      "tick": 81642,
+      "OnPitRoad": false,
+      "CarIdxTrackSurface": [2, 3, 3, 3],
+      "CarIdxOnPitRoad": [true, false, false, false],
+      "CarIdxLapDistPct": [0.986485, 0.365464, 0.650129, 0.395933],
+      "CarIdxEstTime": [131.273, 45.839, 86.127, 50.664],
+      "CarIdxLap": [2, 1, 4, 7]
+    },
+    {
+      "t": 1337.5,
+      "tick": 81643,
+      "OnPitRoad": true,
+      "CarIdxTrackSurface": [2, 3, 3, 3],
+      "CarIdxOnPitRoad": [true, false, false, false],
+      "CarIdxLapDistPct": [0.986533, 0.365554, 0.650216, 0.396048],
+      "CarIdxEstTime": [131.282, 45.856, 86.142, 50.681],
+      "CarIdxLap": [2, 1, 4, 7]
+    },
+    {
+      "t": 1337.5167,
+      "tick": 81644,
+      "OnPitRoad": true,
+      "CarIdxTrackSurface": [2, 3, 3, 3],
+      "CarIdxOnPitRoad": [true, false, false, false],
+      "CarIdxLapDistPct": [0.986581, 0.365644, 0.650303, 0.396164],
+      "CarIdxEstTime": [131.291, 45.872, 86.158, 50.697],
+      "CarIdxLap": [2, 1, 4, 7]
+    },
+    {
+      "t": 1337.5333,
+      "tick": 81645,
+      "OnPitRoad": true,
+      "CarIdxTrackSurface": [2, 3, 3, 3],
+      "CarIdxOnPitRoad": [true, false, false, false],
+      "CarIdxLapDistPct": [0.986628, 0.365735, 0.65039, 0.39628],
+      "CarIdxEstTime": [131.299, 45.889, 86.173, 50.713],
+      "CarIdxLap": [2, 1, 4, 7]
+    },
+    {
+      "t": 1337.55,
+      "tick": 81646,
+      "OnPitRoad": true,
+      "CarIdxTrackSurface": [2, 3, 3, 3],
+      "CarIdxOnPitRoad": [true, false, false, false],
+      "CarIdxLapDistPct": [0.986674, 0.365826, 0.650478, 0.396396],
+      "CarIdxEstTime": [131.308, 45.905, 86.188, 50.729],
+      "CarIdxLap": [2, 1, 4, 7]
+    },
+    {
+      "t": 1337.9167,
+      "tick": 81668,
+      "OnPitRoad": true,
+      "CarIdxTrackSurface": [2, 3, 3, 3],
+      "CarIdxOnPitRoad": [true, false, false, false],
+      "CarIdxLapDistPct": [0.987621, 0.367871, 0.652443, 0.398988],
+      "CarIdxEstTime": [131.477, 46.267, 86.529, 51.083],
+      "CarIdxLap": [2, 1, 4, 7]
+    },
+    {
+      "t": 1337.9333,
+      "tick": 81669,
+      "OnPitRoad": true,
+      "CarIdxTrackSurface": [2, 3, 3, 3],
+      "CarIdxOnPitRoad": [true, false, false, false],
+      "CarIdxLapDistPct": [0.987666, 0.367966, 0.652534, 0.399107],
+      "CarIdxEstTime": [131.485, 46.283, 86.545, 51.099],
+      "CarIdxLap": [2, 1, 4, 7]
+    },
+    {
+      "t": 1337.95,
+      "tick": 81670,
+      "OnPitRoad": true,
+      "CarIdxTrackSurface": [2, 3, 3, 3],
+      "CarIdxOnPitRoad": [true, false, false, false],
+      "CarIdxLapDistPct": [0.987711, 0.368061, 0.652626, 0.399227],
+      "CarIdxEstTime": [131.493, 46.3, 86.56, 51.115],
+      "CarIdxLap": [2, 1, 4, 7]
+    },
+    {
+      "t": 1337.9667,
+      "tick": 81671,
+      "OnPitRoad": true,
+      "CarIdxTrackSurface": [2, 3, 3, 3],
+      "CarIdxOnPitRoad": [true, false, false, true],
+      "CarIdxLapDistPct": [0.987756, 0.368157, 0.652718, 0.399346],
+      "CarIdxEstTime": [131.501, 46.316, 86.576, 51.131],
+      "CarIdxLap": [2, 1, 4, 7]
+    },
+    {
+      "t": 1337.9833,
+      "tick": 81672,
+      "OnPitRoad": true,
+      "CarIdxTrackSurface": [2, 3, 3, 3],
+      "CarIdxOnPitRoad": [true, false, false, true],
+      "CarIdxLapDistPct": [0.987802, 0.368252, 0.65281, 0.399466],
+      "CarIdxEstTime": [131.509, 46.333, 86.591, 51.147],
+      "CarIdxLap": [2, 1, 4, 7]
+    },
+    {
+      "t": 1338,
+      "tick": 81673,
+      "OnPitRoad": true,
+      "CarIdxTrackSurface": [2, 3, 3, 3],
+      "CarIdxOnPitRoad": [true, false, false, true],
+      "CarIdxLapDistPct": [0.987849, 0.368348, 0.652902, 0.399586],
+      "CarIdxEstTime": [131.517, 46.35, 86.607, 51.163],
+      "CarIdxLap": [2, 1, 4, 7]
+    },
+    {
+      "t": 1338.0167,
+      "tick": 81674,
+      "OnPitRoad": true,
+      "CarIdxTrackSurface": [2, 3, 3, 3],
+      "CarIdxOnPitRoad": [true, false, false, true],
+      "CarIdxLapDistPct": [0.987895, 0.368444, 0.652995, 0.399706],
+      "CarIdxEstTime": [131.525, 46.366, 86.623, 51.179],
+      "CarIdxLap": [2, 1, 4, 7]
+    },
+    {
+      "t": 1353.8167,
+      "tick": 82622,
+      "OnPitRoad": true,
+      "CarIdxTrackSurface": [2, 3, 3, 3],
+      "CarIdxOnPitRoad": [true, false, false, true],
+      "CarIdxLapDistPct": [0.032226, 0.458076, 0.751543, 0.489519],
+      "CarIdxEstTime": [4.207, 61.403, 101.953, 66.276],
+      "CarIdxLap": [3, 1, 4, 7]
+    },
+    {
+      "t": 1353.8333,
+      "tick": 82623,
+      "OnPitRoad": true,
+      "CarIdxTrackSurface": [2, 3, 3, 3],
+      "CarIdxOnPitRoad": [true, false, false, true],
+      "CarIdxLapDistPct": [0.032234, 0.458163, 0.751674, 0.489637],
+      "CarIdxEstTime": [4.208, 61.417, 101.97, 66.292],
+      "CarIdxLap": [3, 1, 4, 7]
+    },
+    {
+      "t": 1353.85,
+      "tick": 82624,
+      "OnPitRoad": true,
+      "CarIdxTrackSurface": [2, 3, 3, 3],
+      "CarIdxOnPitRoad": [true, false, false, true],
+      "CarIdxLapDistPct": [0.032242, 0.45825, 0.751806, 0.489755],
+      "CarIdxEstTime": [4.209, 61.431, 101.987, 66.309],
+      "CarIdxLap": [3, 1, 4, 7]
+    },
+    {
+      "t": 1353.8667,
+      "tick": 82625,
+      "OnPitRoad": true,
+      "CarIdxTrackSurface": [1, 3, 3, 3],
+      "CarIdxOnPitRoad": [true, false, false, true],
+      "CarIdxLapDistPct": [0.032249, 0.458338, 0.751937, 0.489873],
+      "CarIdxEstTime": [4.21, 61.445, 102.004, 66.325],
+      "CarIdxLap": [3, 1, 4, 7]
+    },
+    {
+      "t": 1353.8833,
+      "tick": 82626,
+      "OnPitRoad": true,
+      "CarIdxTrackSurface": [1, 3, 3, 3],
+      "CarIdxOnPitRoad": [true, false, false, true],
+      "CarIdxLapDistPct": [0.032255, 0.458426, 0.752068, 0.489992],
+      "CarIdxEstTime": [4.211, 61.459, 102.021, 66.341],
+      "CarIdxLap": [3, 1, 4, 7]
+    },
+    {
+      "t": 1353.9,
+      "tick": 82627,
+      "OnPitRoad": true,
+      "CarIdxTrackSurface": [1, 3, 3, 3],
+      "CarIdxOnPitRoad": [true, false, false, true],
+      "CarIdxLapDistPct": [0.032261, 0.458514, 0.7522, 0.490111],
+      "CarIdxEstTime": [4.211, 61.472, 102.037, 66.357],
+      "CarIdxLap": [3, 1, 4, 7]
+    },
+    {
+      "t": 1353.9167,
+      "tick": 82628,
+      "OnPitRoad": true,
+      "CarIdxTrackSurface": [1, 3, 3, 3],
+      "CarIdxOnPitRoad": [true, false, false, true],
+      "CarIdxLapDistPct": [0.032265, 0.458602, 0.752331, 0.490229],
+      "CarIdxEstTime": [4.212, 61.486, 102.054, 66.373],
+      "CarIdxLap": [3, 1, 4, 7]
+    },
+    {
+      "t": 1390.9167,
+      "tick": 84848,
+      "OnPitRoad": true,
+      "CarIdxTrackSurface": [1, 0, 3, 3],
+      "CarIdxOnPitRoad": [true, false, false, true],
+      "CarIdxLapDistPct": [0.032273, 0.687588, 0.036693, 0.755013],
+      "CarIdxEstTime": [4.213, 92.225, 4.76, 102.261],
+      "CarIdxLap": [3, 1, 5, 7]
+    },
+    {
+      "t": 1390.9333,
+      "tick": 84849,
+      "OnPitRoad": true,
+      "CarIdxTrackSurface": [1, 0, 3, 3],
+      "CarIdxOnPitRoad": [true, false, false, true],
+      "CarIdxLapDistPct": [0.032273, 0.687588, 0.036833, 0.755146],
+      "CarIdxEstTime": [4.213, 92.225, 4.776, 102.277],
+      "CarIdxLap": [3, 1, 5, 7]
+    },
+    {
+      "t": 1390.9667,
+      "tick": 84851,
+      "OnPitRoad": true,
+      "CarIdxTrackSurface": [1, 0, 3, 3],
+      "CarIdxOnPitRoad": [true, false, false, true],
+      "CarIdxLapDistPct": [0.032273, 0.687588, 0.037114, 0.75541],
+      "CarIdxEstTime": [4.213, 92.225, 4.809, 102.311],
+      "CarIdxLap": [3, 1, 5, 7]
+    },
+    {
+      "t": 1391,
+      "tick": 84853,
+      "OnPitRoad": true,
+      "CarIdxTrackSurface": [1, -1, 3, 3],
+      "CarIdxOnPitRoad": [true, false, false, true],
+      "CarIdxLapDistPct": [0.032273, -1, 0.037395, 0.755675],
+      "CarIdxEstTime": [4.213, 0, 4.843, 102.344],
+      "CarIdxLap": [3, -1, 5, 7]
+    },
+    {
+      "t": 1391.0333,
+      "tick": 84855,
+      "OnPitRoad": true,
+      "CarIdxTrackSurface": [1, -1, 3, 3],
+      "CarIdxOnPitRoad": [true, false, false, true],
+      "CarIdxLapDistPct": [0.032273, -1, 0.037677, 0.75594],
+      "CarIdxEstTime": [4.213, 0, 4.876, 102.377],
+      "CarIdxLap": [3, -1, 5, 7]
+    },
+    {
+      "t": 1391.05,
+      "tick": 84856,
+      "OnPitRoad": true,
+      "CarIdxTrackSurface": [1, -1, 3, 3],
+      "CarIdxOnPitRoad": [true, false, false, true],
+      "CarIdxLapDistPct": [0.032273, -1, 0.037818, 0.756073],
+      "CarIdxEstTime": [4.213, 0, 4.892, 102.394],
+      "CarIdxLap": [3, -1, 5, 7]
+    },
+    {
+      "t": 1391.0667,
+      "tick": 84857,
+      "OnPitRoad": true,
+      "CarIdxTrackSurface": [1, -1, 3, 3],
+      "CarIdxOnPitRoad": [true, false, false, true],
+      "CarIdxLapDistPct": [0.032273, -1, 0.037959, 0.756206],
+      "CarIdxEstTime": [4.213, 0, 4.909, 102.411],
+      "CarIdxLap": [3, -1, 5, 7]
+    },
+    {
+      "t": 1391.9333,
+      "tick": 84909,
+      "OnPitRoad": true,
+      "CarIdxTrackSurface": [1, -1, 3, 3],
+      "CarIdxOnPitRoad": [true, false, false, true],
+      "CarIdxLapDistPct": [0.032273, -1, 0.044549, 0.763234],
+      "CarIdxEstTime": [4.213, 0, 5.776, 103.28],
+      "CarIdxLap": [3, -1, 5, 7]
+    },
+    {
+      "t": 1391.9667,
+      "tick": 84911,
+      "OnPitRoad": true,
+      "CarIdxTrackSurface": [1, -1, 3, 3],
+      "CarIdxOnPitRoad": [true, false, false, true],
+      "CarIdxLapDistPct": [0.032273, -1, 0.044762, 0.763508],
+      "CarIdxEstTime": [4.213, 0, 5.809, 103.313],
+      "CarIdxLap": [3, -1, 5, 7]
+    },
+    {
+      "t": 1391.9833,
+      "tick": 84912,
+      "OnPitRoad": true,
+      "CarIdxTrackSurface": [1, -1, 3, 3],
+      "CarIdxOnPitRoad": [true, false, false, true],
+      "CarIdxLapDistPct": [0.032273, -1, 0.044868, 0.763645],
+      "CarIdxEstTime": [4.213, 0, 5.825, 103.33],
+      "CarIdxLap": [3, -1, 5, 7]
+    },
+    {
+      "t": 1392.0167,
+      "tick": 84914,
+      "OnPitRoad": true,
+      "CarIdxTrackSurface": [1, 1, 3, 3],
+      "CarIdxOnPitRoad": [true, false, false, true],
+      "CarIdxLapDistPct": [0.032273, 0.03123, 0.045076, 0.763919],
+      "CarIdxEstTime": [4.213, 4.11, 5.858, 103.363],
+      "CarIdxLap": [3, 1, 5, 7]
+    },
+    {
+      "t": 1392.0333,
+      "tick": 84915,
+      "OnPitRoad": true,
+      "CarIdxTrackSurface": [1, 1, 3, 3],
+      "CarIdxOnPitRoad": [true, false, false, true],
+      "CarIdxLapDistPct": [0.032273, 0.03123, 0.045179, 0.764057],
+      "CarIdxEstTime": [4.213, 4.11, 5.874, 103.38],
+      "CarIdxLap": [3, 1, 5, 7]
+    },
+    {
+      "t": 1392.0667,
+      "tick": 84917,
+      "OnPitRoad": true,
+      "CarIdxTrackSurface": [1, 1, 3, 3],
+      "CarIdxOnPitRoad": [true, false, false, true],
+      "CarIdxLapDistPct": [0.032273, 0.03123, 0.045384, 0.764332],
+      "CarIdxEstTime": [4.213, 4.11, 5.907, 103.413],
+      "CarIdxLap": [3, 1, 5, 7]
+    },
+    {
+      "t": 1392.0833,
+      "tick": 84918,
+      "OnPitRoad": true,
+      "CarIdxTrackSurface": [1, 1, 3, 3],
+      "CarIdxOnPitRoad": [true, false, false, true],
+      "CarIdxLapDistPct": [0.032273, 0.03123, 0.045485, 0.764469],
+      "CarIdxEstTime": [4.213, 4.11, 5.923, 103.43],
+      "CarIdxLap": [3, 1, 5, 7]
+    },
+    {
+      "t": 1392.6,
+      "tick": 84949,
+      "OnPitRoad": true,
+      "CarIdxTrackSurface": [1, 1, 3, 3],
+      "CarIdxOnPitRoad": [true, false, false, true],
+      "CarIdxLapDistPct": [0.032273, 0.031398, 0.048283, 0.76877],
+      "CarIdxEstTime": [4.213, 4.13, 6.414, 103.947],
+      "CarIdxLap": [3, 1, 5, 7]
+    },
+    {
+      "t": 1392.6167,
+      "tick": 84950,
+      "OnPitRoad": true,
+      "CarIdxTrackSurface": [1, 1, 3, 3],
+      "CarIdxOnPitRoad": [true, false, false, true],
+      "CarIdxLapDistPct": [0.032273, 0.031409, 0.048363, 0.76891],
+      "CarIdxEstTime": [4.213, 4.131, 6.429, 103.963],
+      "CarIdxLap": [3, 1, 5, 7]
+    },
+    {
+      "t": 1392.6333,
+      "tick": 84951,
+      "OnPitRoad": true,
+      "CarIdxTrackSurface": [1, 1, 3, 3],
+      "CarIdxOnPitRoad": [true, false, false, true],
+      "CarIdxLapDistPct": [0.032273, 0.031421, 0.048442, 0.769049],
+      "CarIdxEstTime": [4.213, 4.133, 6.445, 103.98],
+      "CarIdxLap": [3, 1, 5, 7]
+    },
+    {
+      "t": 1392.6667,
+      "tick": 84953,
+      "OnPitRoad": true,
+      "CarIdxTrackSurface": [1, 2, 3, 3],
+      "CarIdxOnPitRoad": [true, false, false, true],
+      "CarIdxLapDistPct": [0.032273, 0.031445, 0.048599, 0.769329],
+      "CarIdxEstTime": [4.213, 4.136, 6.476, 104.013],
+      "CarIdxLap": [3, 1, 5, 7]
+    },
+    {
+      "t": 1392.6833,
+      "tick": 84954,
+      "OnPitRoad": true,
+      "CarIdxTrackSurface": [1, 2, 3, 3],
+      "CarIdxOnPitRoad": [true, false, false, true],
+      "CarIdxLapDistPct": [0.032273, 0.031458, 0.048676, 0.769469],
+      "CarIdxEstTime": [4.213, 4.137, 6.491, 104.03],
+      "CarIdxLap": [3, 1, 5, 7]
+    },
+    {
+      "t": 1392.7167,
+      "tick": 84956,
+      "OnPitRoad": true,
+      "CarIdxTrackSurface": [1, 2, 3, 3],
+      "CarIdxOnPitRoad": [true, false, false, true],
+      "CarIdxLapDistPct": [0.032273, 0.031484, 0.048829, 0.769749],
+      "CarIdxEstTime": [4.213, 4.14, 6.521, 104.063],
+      "CarIdxLap": [3, 1, 5, 7]
+    },
+    {
+      "t": 1392.7333,
+      "tick": 84957,
+      "OnPitRoad": true,
+      "CarIdxTrackSurface": [1, 2, 3, 3],
+      "CarIdxOnPitRoad": [true, false, false, true],
+      "CarIdxLapDistPct": [0.032273, 0.031498, 0.048904, 0.769889],
+      "CarIdxEstTime": [4.213, 4.142, 6.536, 104.08],
+      "CarIdxLap": [3, 1, 5, 7]
+    },
+    {
+      "t": 1399.6333,
+      "tick": 85371,
+      "OnPitRoad": true,
+      "CarIdxTrackSurface": [1, 2, 3, 3],
+      "CarIdxOnPitRoad": [true, false, false, true],
+      "CarIdxLapDistPct": [0.032273, 0.04874, 0.075816, 0.832579],
+      "CarIdxEstTime": [4.213, 6.504, 12.911, 110.957],
+      "CarIdxLap": [3, 1, 5, 7]
+    },
+    {
+      "t": 1399.65,
+      "tick": 85372,
+      "OnPitRoad": true,
+      "CarIdxTrackSurface": [1, 2, 3, 3],
+      "CarIdxOnPitRoad": [true, false, false, true],
+      "CarIdxLapDistPct": [0.032273, 0.048774, 0.075918, 0.832738],
+      "CarIdxEstTime": [4.213, 6.51, 12.927, 110.973],
+      "CarIdxLap": [3, 1, 5, 7]
+    },
+    {
+      "t": 1399.6667,
+      "tick": 85373,
+      "OnPitRoad": true,
+      "CarIdxTrackSurface": [1, 2, 3, 3],
+      "CarIdxOnPitRoad": [true, false, false, true],
+      "CarIdxLapDistPct": [0.032273, 0.048808, 0.076021, 0.832898],
+      "CarIdxEstTime": [4.213, 6.517, 12.943, 110.99],
+      "CarIdxLap": [3, 1, 5, 7]
+    },
+    {
+      "t": 1399.6833,
+      "tick": 85374,
+      "OnPitRoad": true,
+      "CarIdxTrackSurface": [1, 2, 2, 3],
+      "CarIdxOnPitRoad": [true, false, false, true],
+      "CarIdxLapDistPct": [0.032273, 0.048841, 0.076123, 0.833057],
+      "CarIdxEstTime": [4.213, 6.524, 12.959, 111.006],
+      "CarIdxLap": [3, 1, 5, 7]
+    },
+    {
+      "t": 1399.7,
+      "tick": 85375,
+      "OnPitRoad": true,
+      "CarIdxTrackSurface": [1, 2, 2, 3],
+      "CarIdxOnPitRoad": [true, false, false, true],
+      "CarIdxLapDistPct": [0.032273, 0.048874, 0.076226, 0.833216],
+      "CarIdxEstTime": [4.213, 6.53, 12.975, 111.023],
+      "CarIdxLap": [3, 1, 5, 7]
+    },
+    {
+      "t": 1399.7167,
+      "tick": 85376,
+      "OnPitRoad": true,
+      "CarIdxTrackSurface": [1, 2, 2, 3],
+      "CarIdxOnPitRoad": [true, false, false, true],
+      "CarIdxLapDistPct": [0.032273, 0.048906, 0.076329, 0.833376],
+      "CarIdxEstTime": [4.213, 6.537, 12.991, 111.039],
+      "CarIdxLap": [3, 1, 5, 7]
+    },
+    {
+      "t": 1399.7333,
+      "tick": 85377,
+      "OnPitRoad": true,
+      "CarIdxTrackSurface": [1, 2, 2, 3],
+      "CarIdxOnPitRoad": [true, false, false, true],
+      "CarIdxLapDistPct": [0.032273, 0.048938, 0.076432, 0.833535],
+      "CarIdxEstTime": [4.213, 6.543, 13.008, 111.055],
+      "CarIdxLap": [3, 1, 5, 7]
+    },
+    {
+      "t": 1400.0833,
+      "tick": 85398,
+      "OnPitRoad": true,
+      "CarIdxTrackSurface": [1, 2, 2, 3],
+      "CarIdxOnPitRoad": [true, false, false, true],
+      "CarIdxLapDistPct": [0.032273, 0.06253, 0.078629, 0.836883],
+      "CarIdxEstTime": [4.213, 10.447, 13.346, 111.4],
+      "CarIdxLap": [3, 1, 5, 7]
+    },
+    {
+      "t": 1400.1,
+      "tick": 85399,
+      "OnPitRoad": true,
+      "CarIdxTrackSurface": [1, 2, 2, 3],
+      "CarIdxOnPitRoad": [true, false, false, true],
+      "CarIdxLapDistPct": [0.032273, 0.062543, 0.078735, 0.837043],
+      "CarIdxEstTime": [4.213, 10.45, 13.362, 111.417],
+      "CarIdxLap": [3, 1, 5, 7]
+    },
+    {
+      "t": 1400.1167,
+      "tick": 85400,
+      "OnPitRoad": true,
+      "CarIdxTrackSurface": [1, 2, 2, 3],
+      "CarIdxOnPitRoad": [true, false, false, true],
+      "CarIdxLapDistPct": [0.032273, 0.062557, 0.078841, 0.837203],
+      "CarIdxEstTime": [4.213, 10.453, 13.378, 111.433],
+      "CarIdxLap": [3, 1, 5, 7]
+    },
+    {
+      "t": 1400.2167,
+      "tick": 85406,
+      "OnPitRoad": true,
+      "CarIdxTrackSurface": [1, 3, 2, 3],
+      "CarIdxOnPitRoad": [true, false, false, true],
+      "CarIdxLapDistPct": [0.032273, 0.062652, 0.079484, 0.838161],
+      "CarIdxEstTime": [4.213, 10.475, 13.475, 111.531],
+      "CarIdxLap": [3, 1, 5, 7]
+    },
+    {
+      "t": 1400.2667,
+      "tick": 85409,
+      "OnPitRoad": true,
+      "CarIdxTrackSurface": [1, 3, 2, 3],
+      "CarIdxOnPitRoad": [true, false, false, true],
+      "CarIdxLapDistPct": [0.032273, 0.062707, 0.079807, 0.83864],
+      "CarIdxEstTime": [4.213, 10.487, 13.523, 111.58],
+      "CarIdxLap": [3, 1, 5, 7]
+    },
+    {
+      "t": 1400.3,
+      "tick": 85411,
+      "OnPitRoad": true,
+      "CarIdxTrackSurface": [1, 3, 2, 3],
+      "CarIdxOnPitRoad": [true, false, false, true],
+      "CarIdxLapDistPct": [0.032273, 0.062746, 0.080024, 0.83896],
+      "CarIdxEstTime": [4.213, 10.496, 13.556, 111.613],
+      "CarIdxLap": [3, 1, 5, 7]
+    },
+    {
+      "t": 1400.3333,
+      "tick": 85413,
+      "OnPitRoad": true,
+      "CarIdxTrackSurface": [1, 3, 2, 3],
+      "CarIdxOnPitRoad": [true, false, false, true],
+      "CarIdxLapDistPct": [0.032273, 0.062787, 0.080241, 0.83928],
+      "CarIdxEstTime": [4.213, 10.506, 13.588, 111.646],
+      "CarIdxLap": [3, 1, 5, 7]
+    },
+    {
+      "t": 1407.2833,
+      "tick": 85830,
+      "OnPitRoad": true,
+      "CarIdxTrackSurface": [1, 3, 2, 3],
+      "CarIdxOnPitRoad": [true, false, false, true],
+      "CarIdxLapDistPct": [0.032273, 0.072124, 0.135675, 0.907644],
+      "CarIdxEstTime": [4.213, 12.307, 20.312, 118.482],
+      "CarIdxLap": [3, 1, 5, 7]
+    },
+    {
+      "t": 1407.3,
+      "tick": 85831,
+      "OnPitRoad": true,
+      "CarIdxTrackSurface": [1, 3, 2, 3],
+      "CarIdxOnPitRoad": [true, false, false, true],
+      "CarIdxLapDistPct": [0.032273, 0.072124, 0.135825, 0.907809],
+      "CarIdxEstTime": [4.213, 12.307, 20.328, 118.499],
+      "CarIdxLap": [3, 1, 5, 7]
+    },
+    {
+      "t": 1407.3333,
+      "tick": 85833,
+      "OnPitRoad": true,
+      "CarIdxTrackSurface": [1, 3, 2, 3],
+      "CarIdxOnPitRoad": [true, false, false, true],
+      "CarIdxLapDistPct": [0.032273, 0.072124, 0.136126, 0.90814],
+      "CarIdxEstTime": [4.213, 12.307, 20.359, 118.531],
+      "CarIdxLap": [3, 1, 5, 7]
+    },
+    {
+      "t": 1407.35,
+      "tick": 85834,
+      "OnPitRoad": true,
+      "CarIdxTrackSurface": [1, -1, 2, 3],
+      "CarIdxOnPitRoad": [true, false, false, true],
+      "CarIdxLapDistPct": [0.032273, -1, 0.136275, 0.908305],
+      "CarIdxEstTime": [4.213, 0, 20.375, 118.547],
+      "CarIdxLap": [3, -1, 5, 7]
+    },
+    {
+      "t": 1407.3667,
+      "tick": 85835,
+      "OnPitRoad": true,
+      "CarIdxTrackSurface": [1, -1, 2, 3],
+      "CarIdxOnPitRoad": [true, false, false, true],
+      "CarIdxLapDistPct": [0.032273, -1, 0.136425, 0.908471],
+      "CarIdxEstTime": [4.213, 0, 20.391, 118.563],
+      "CarIdxLap": [3, -1, 5, 7]
+    },
+    {
+      "t": 1407.4,
+      "tick": 85837,
+      "OnPitRoad": true,
+      "CarIdxTrackSurface": [1, -1, 2, 3],
+      "CarIdxOnPitRoad": [true, false, false, true],
+      "CarIdxLapDistPct": [0.032273, -1, 0.136726, 0.908802],
+      "CarIdxEstTime": [4.213, 0, 20.423, 118.596],
+      "CarIdxLap": [3, -1, 5, 7]
+    },
+    {
+      "t": 1407.4167,
+      "tick": 85838,
+      "OnPitRoad": true,
+      "CarIdxTrackSurface": [1, -1, 2, 3],
+      "CarIdxOnPitRoad": [true, false, false, true],
+      "CarIdxLapDistPct": [0.032273, -1, 0.136876, 0.908967],
+      "CarIdxEstTime": [4.213, 0, 20.439, 118.612],
+      "CarIdxLap": [3, -1, 5, 7]
+    },
+    {
+      "t": 1408.2667,
+      "tick": 85889,
+      "OnPitRoad": true,
+      "CarIdxTrackSurface": [1, -1, 2, 3],
+      "CarIdxOnPitRoad": [true, false, false, true],
+      "CarIdxLapDistPct": [0.032273, -1, 0.14454, 0.91744],
+      "CarIdxEstTime": [4.213, 0, 21.245, 119.439],
+      "CarIdxLap": [3, -1, 5, 7]
+    },
+    {
+      "t": 1408.2833,
+      "tick": 85890,
+      "OnPitRoad": true,
+      "CarIdxTrackSurface": [1, -1, 2, 3],
+      "CarIdxOnPitRoad": [true, false, false, true],
+      "CarIdxLapDistPct": [0.032273, -1, 0.14469, 0.917607],
+      "CarIdxEstTime": [4.213, 0, 21.261, 119.456],
+      "CarIdxLap": [3, -1, 5, 7]
+    },
+    {
+      "t": 1408.3167,
+      "tick": 85892,
+      "OnPitRoad": true,
+      "CarIdxTrackSurface": [1, -1, 2, 3],
+      "CarIdxOnPitRoad": [true, false, false, true],
+      "CarIdxLapDistPct": [0.032273, -1, 0.14499, 0.91794],
+      "CarIdxEstTime": [4.213, 0, 21.292, 119.488],
+      "CarIdxLap": [3, -1, 5, 7]
+    },
+    {
+      "t": 1408.35,
+      "tick": 85894,
+      "OnPitRoad": true,
+      "CarIdxTrackSurface": [1, 1, 2, 3],
+      "CarIdxOnPitRoad": [true, false, false, true],
+      "CarIdxLapDistPct": [0.032273, 0.03123, 0.14529, 0.918274],
+      "CarIdxEstTime": [4.213, 4.11, 21.323, 119.521],
+      "CarIdxLap": [3, 1, 5, 7]
+    },
+    {
+      "t": 1408.3667,
+      "tick": 85895,
+      "OnPitRoad": true,
+      "CarIdxTrackSurface": [1, 1, 2, 3],
+      "CarIdxOnPitRoad": [true, false, false, true],
+      "CarIdxLapDistPct": [0.032273, 0.031231, 0.14544, 0.918441],
+      "CarIdxEstTime": [4.213, 4.11, 21.339, 119.537],
+      "CarIdxLap": [3, 1, 5, 7]
+    },
+    {
+      "t": 1408.3833,
+      "tick": 85896,
+      "OnPitRoad": true,
+      "CarIdxTrackSurface": [1, 1, 2, 3],
+      "CarIdxOnPitRoad": [true, false, false, true],
+      "CarIdxLapDistPct": [0.032273, 0.031231, 0.14559, 0.918608],
+      "CarIdxEstTime": [4.213, 4.11, 21.354, 119.553],
+      "CarIdxLap": [3, 1, 5, 7]
+    },
+    {
+      "t": 1408.4,
+      "tick": 85897,
+      "OnPitRoad": true,
+      "CarIdxTrackSurface": [1, 1, 2, 3],
+      "CarIdxOnPitRoad": [true, false, false, true],
+      "CarIdxLapDistPct": [0.032273, 0.031231, 0.14574, 0.918775],
+      "CarIdxEstTime": [4.213, 4.11, 21.37, 119.569],
+      "CarIdxLap": [3, 1, 5, 7]
+    },
+    {
+      "t": 1408.7,
+      "tick": 85915,
+      "OnPitRoad": true,
+      "CarIdxTrackSurface": [1, 1, 2, 3],
+      "CarIdxOnPitRoad": [true, false, false, true],
+      "CarIdxLapDistPct": [0.032273, 0.031243, 0.148427, 0.921784],
+      "CarIdxEstTime": [4.213, 4.111, 21.648, 119.862],
+      "CarIdxLap": [3, 1, 5, 7]
+    },
+    {
+      "t": 1408.7167,
+      "tick": 85916,
+      "OnPitRoad": true,
+      "CarIdxTrackSurface": [1, 1, 2, 3],
+      "CarIdxOnPitRoad": [true, false, false, true],
+      "CarIdxLapDistPct": [0.032273, 0.031246, 0.148574, 0.921951],
+      "CarIdxEstTime": [4.213, 4.112, 21.663, 119.878],
+      "CarIdxLap": [3, 1, 5, 7]
+    },
+    {
+      "t": 1408.7333,
+      "tick": 85917,
+      "OnPitRoad": true,
+      "CarIdxTrackSurface": [1, 1, 2, 3],
+      "CarIdxOnPitRoad": [true, false, false, true],
+      "CarIdxLapDistPct": [0.032273, 0.03125, 0.148721, 0.922118],
+      "CarIdxEstTime": [4.213, 4.112, 21.679, 119.894],
+      "CarIdxLap": [3, 1, 5, 7]
+    },
+    {
+      "t": 1408.75,
+      "tick": 85918,
+      "OnPitRoad": true,
+      "CarIdxTrackSurface": [1, 1, 3, 3],
+      "CarIdxOnPitRoad": [true, false, false, true],
+      "CarIdxLapDistPct": [0.032273, 0.031254, 0.148868, 0.922286],
+      "CarIdxEstTime": [4.213, 4.113, 21.694, 119.911],
+      "CarIdxLap": [3, 1, 5, 7]
+    },
+    {
+      "t": 1408.7667,
+      "tick": 85919,
+      "OnPitRoad": true,
+      "CarIdxTrackSurface": [1, 1, 3, 3],
+      "CarIdxOnPitRoad": [true, false, false, true],
+      "CarIdxLapDistPct": [0.032273, 0.031258, 0.149015, 0.922453],
+      "CarIdxEstTime": [4.213, 4.113, 21.709, 119.927],
+      "CarIdxLap": [3, 1, 5, 7]
+    },
+    {
+      "t": 1408.7833,
+      "tick": 85920,
+      "OnPitRoad": true,
+      "CarIdxTrackSurface": [1, 1, 3, 3],
+      "CarIdxOnPitRoad": [true, false, false, true],
+      "CarIdxLapDistPct": [0.032273, 0.031263, 0.149163, 0.922621],
+      "CarIdxEstTime": [4.213, 4.114, 21.724, 119.943],
+      "CarIdxLap": [3, 1, 5, 7]
+    },
+    {
+      "t": 1408.8,
+      "tick": 85921,
+      "OnPitRoad": true,
+      "CarIdxTrackSurface": [1, 1, 3, 3],
+      "CarIdxOnPitRoad": [true, false, false, true],
+      "CarIdxLapDistPct": [0.032273, 0.031268, 0.149311, 0.922788],
+      "CarIdxEstTime": [4.213, 4.115, 21.739, 119.959],
+      "CarIdxLap": [3, 1, 5, 7]
+    },
+    {
+      "t": 1409.2,
+      "tick": 85945,
+      "OnPitRoad": true,
+      "CarIdxTrackSurface": [1, 1, 3, 3],
+      "CarIdxOnPitRoad": [true, false, false, true],
+      "CarIdxLapDistPct": [0.032273, 0.031472, 0.152967, 0.926814],
+      "CarIdxEstTime": [4.213, 4.139, 22.116, 120.35],
+      "CarIdxLap": [3, 1, 5, 7]
+    },
+    {
+      "t": 1409.2167,
+      "tick": 85946,
+      "OnPitRoad": true,
+      "CarIdxTrackSurface": [1, 1, 3, 3],
+      "CarIdxOnPitRoad": [true, false, false, true],
+      "CarIdxLapDistPct": [0.032273, 0.031484, 0.153127, 0.926983],
+      "CarIdxEstTime": [4.213, 4.14, 22.133, 120.366],
+      "CarIdxLap": [3, 1, 5, 7]
+    },
+    {
+      "t": 1409.2333,
+      "tick": 85947,
+      "OnPitRoad": true,
+      "CarIdxTrackSurface": [1, 1, 3, 3],
+      "CarIdxOnPitRoad": [true, false, false, true],
+      "CarIdxLapDistPct": [0.032273, 0.031496, 0.153286, 0.927151],
+      "CarIdxEstTime": [4.213, 4.142, 22.149, 120.383],
+      "CarIdxLap": [3, 1, 5, 7]
+    },
+    {
+      "t": 1409.2667,
+      "tick": 85949,
+      "OnPitRoad": true,
+      "CarIdxTrackSurface": [1, 2, 3, 3],
+      "CarIdxOnPitRoad": [true, false, false, true],
+      "CarIdxLapDistPct": [0.032273, 0.03152, 0.153607, 0.927487],
+      "CarIdxEstTime": [4.213, 4.145, 22.182, 120.415],
+      "CarIdxLap": [3, 1, 5, 7]
+    },
+    {
+      "t": 1409.2833,
+      "tick": 85950,
+      "OnPitRoad": true,
+      "CarIdxTrackSurface": [1, 2, 3, 3],
+      "CarIdxOnPitRoad": [true, false, false, true],
+      "CarIdxLapDistPct": [0.032273, 0.031532, 0.153768, 0.927655],
+      "CarIdxEstTime": [4.213, 4.146, 22.198, 120.432],
+      "CarIdxLap": [3, 1, 5, 7]
+    },
+    {
+      "t": 1409.3,
+      "tick": 85951,
+      "OnPitRoad": true,
+      "CarIdxTrackSurface": [1, 2, 3, 3],
+      "CarIdxOnPitRoad": [true, false, false, true],
+      "CarIdxLapDistPct": [0.032273, 0.031545, 0.15393, 0.927824],
+      "CarIdxEstTime": [4.213, 4.148, 22.215, 120.448],
+      "CarIdxLap": [3, 1, 5, 7]
+    },
+    {
+      "t": 1409.3167,
+      "tick": 85952,
+      "OnPitRoad": true,
+      "CarIdxTrackSurface": [1, 2, 3, 3],
+      "CarIdxOnPitRoad": [true, false, false, true],
+      "CarIdxLapDistPct": [0.032273, 0.031558, 0.154091, 0.927992],
+      "CarIdxEstTime": [4.213, 4.149, 22.232, 120.464],
+      "CarIdxLap": [3, 1, 5, 7]
+    },
+    {
+      "t": 1417.4167,
+      "tick": 86438,
+      "OnPitRoad": true,
+      "CarIdxTrackSurface": [1, 2, 3, 3],
+      "CarIdxOnPitRoad": [true, false, false, true],
+      "CarIdxLapDistPct": [0.032273, 0.062793, 0.231424, 0.973029],
+      "CarIdxEstTime": [4.213, 10.507, 30.152, 128.043],
+      "CarIdxLap": [3, 1, 5, 7]
+    },
+    {
+      "t": 1417.4333,
+      "tick": 86439,
+      "OnPitRoad": true,
+      "CarIdxTrackSurface": [1, 2, 3, 3],
+      "CarIdxOnPitRoad": [true, false, false, true],
+      "CarIdxLapDistPct": [0.032273, 0.062812, 0.231581, 0.973074],
+      "CarIdxEstTime": [4.213, 10.512, 30.168, 128.058],
+      "CarIdxLap": [3, 1, 5, 7]
+    },
+    {
+      "t": 1417.45,
+      "tick": 86440,
+      "OnPitRoad": true,
+      "CarIdxTrackSurface": [1, 2, 3, 3],
+      "CarIdxOnPitRoad": [true, false, false, true],
+      "CarIdxLapDistPct": [0.032273, 0.062831, 0.231739, 0.97312],
+      "CarIdxEstTime": [4.213, 10.516, 30.184, 128.073],
+      "CarIdxLap": [3, 1, 5, 7]
+    },
+    {
+      "t": 1417.4667,
+      "tick": 86441,
+      "OnPitRoad": true,
+      "CarIdxTrackSurface": [1, 3, 3, 3],
+      "CarIdxOnPitRoad": [true, false, false, true],
+      "CarIdxLapDistPct": [0.032273, 0.062851, 0.231896, 0.973166],
+      "CarIdxEstTime": [4.213, 10.52, 30.199, 128.088],
+      "CarIdxLap": [3, 1, 5, 7]
+    },
+    {
+      "t": 1417.4833,
+      "tick": 86442,
+      "OnPitRoad": true,
+      "CarIdxTrackSurface": [1, 3, 3, 3],
+      "CarIdxOnPitRoad": [true, false, false, true],
+      "CarIdxLapDistPct": [0.032273, 0.062871, 0.232053, 0.973212],
+      "CarIdxEstTime": [4.213, 10.525, 30.215, 128.103],
+      "CarIdxLap": [3, 1, 5, 7]
+    },
+    {
+      "t": 1417.5,
+      "tick": 86443,
+      "OnPitRoad": true,
+      "CarIdxTrackSurface": [1, 3, 3, 3],
+      "CarIdxOnPitRoad": [true, false, false, true],
+      "CarIdxLapDistPct": [0.032273, 0.062891, 0.23221, 0.973258],
+      "CarIdxEstTime": [4.213, 10.53, 30.231, 128.118],
+      "CarIdxLap": [3, 1, 5, 7]
+    },
+    {
+      "t": 1417.5167,
+      "tick": 86444,
+      "OnPitRoad": true,
+      "CarIdxTrackSurface": [1, 3, 3, 3],
+      "CarIdxOnPitRoad": [true, false, false, true],
+      "CarIdxLapDistPct": [0.032273, 0.062912, 0.232366, 0.973305],
+      "CarIdxEstTime": [4.213, 10.534, 30.246, 128.133],
+      "CarIdxLap": [3, 1, 5, 7]
+    }
+  ]
+}
