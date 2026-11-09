@@ -1123,6 +1123,48 @@ describe("two processes sharing the folder", () => {
     expect(writes).toBe(1);
   });
 
+  it("retries a settle check that could not read the file as a settle check, never as a rebuilding save", () => {
+    vi.useFakeTimers({ now: T0 });
+    let failReads = 0;
+    const store = makeStore({
+      retryDelaysMs: [100],
+      io: {
+        ...nodeTrackStoreIo,
+        readBytes: (p) => {
+          if (p === filePath() && failReads > 0) {
+            failReads--;
+            throw Object.assign(new Error("busy"), { code: "EBUSY" });
+          }
+
+          return nodeTrackStoreIo.readBytes(p);
+        },
+      },
+    });
+
+    record(store, "a", 0.1, T0);
+    vi.advanceTimersByTime(TRACK_STORE_WRITE_DEBOUNCE_MS);
+    expect(readFile().trackLength).toBe("6.93 km");
+
+    // Another process on another build of the track writes its file; this
+    // process's settle check then finds it unreadable once.
+    writeTrackFile({
+      trackLength: "6.95 km",
+      pitLane: {
+        version: PIT_LANE_SECTION_VERSION,
+        trackLength: "6.95 km",
+        landmarks: { pitRoadStart: recordOf([sample("b1", 0.1, T0 + 1), sample("b2", 0.1001, T0 + 2)]) },
+      },
+    });
+    failReads = 1;
+    vi.advanceTimersByTime(TRACK_STORE_WRITE_DEBOUNCE_MS + 100 + TRACK_STORE_WRITE_MAX_WAIT_MS * 3);
+
+    // The retried settle check saw the other length and left the file alone.
+    expect(failReads).toBe(0);
+    expect(readFile().trackLength).toBe("6.95 km");
+    expect(readFile().pitLane.trackLength).toBe("6.95 km");
+    expect(windowKeys(readFile())).toEqual(["b1", "b2"]);
+  });
+
   it("on two builds of one track, never rebuild each other's file from the settle check", () => {
     vi.useFakeTimers({ now: T0 });
     const REBUILT: PitLaneTrackIdentity = { ...TRACK, trackLength: "6.95 km", trackLengthM: 6950 };

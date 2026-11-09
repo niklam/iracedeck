@@ -806,7 +806,11 @@ export function createTrackStore(opts: TrackStoreOptions): TrackStore {
         entry.dirty = false;
         break;
       case "retry": {
-        if (!entry.dirty) {
+        // A failed settle check stays a settle check: marking it dirty would
+        // retry it as a save, which rebuilds a file at another track length —
+        // exactly what the settle check must never do.
+        if (mode === "verify") entry.verifyPending = true;
+        else if (!entry.dirty) {
           entry.dirty = true;
           entry.firstDirtyAt = now().getTime();
         }
