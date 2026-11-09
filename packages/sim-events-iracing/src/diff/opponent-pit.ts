@@ -21,8 +21,12 @@
  *
  * **Effective positions.** Ranks come from the canonical frozen order
  * (`calculateFrozenRacePositions`, threaded in by the translator — the
- * `diffOvertakes` slot) per `race-positions.md`; class ranks derive from the
- * same order via `classPositionFromOrder` (#588's class space).
+ * `diffOvertakes` slot) per `race-positions.md`. The class screen, the
+ * class-space projection (#588) and the same-lap test are the shared
+ * standings check (`resolveStanding` in `standings.ts`, #950), which
+ * opponent-flags reads too: a readable class that differs from the player's
+ * never qualifies, even while `isMultiClass` reads false for want of session
+ * info (#1274's rule). The leader exemption and the ±2 window stay here.
  *
  * **Aggregation (the oval safety valve).** The incident-burst shape: a rolling
  * list of eligible-entry timestamps pruned to the last 12 s on every tick.
@@ -56,10 +60,11 @@
  * baselines advance after the loops, a throw in the step is retried as well.
  */
 import type { SimEventName } from "@iracedeck/event-bus";
-import { classPositionFromOrder, type TelemetryData, TrkLoc } from "@iracedeck/iracing-sdk";
+import { type TelemetryData, TrkLoc } from "@iracedeck/iracing-sdk";
 
 import type { TranslatorState } from "../state.js";
 import { runUnitsDirectly, type UnitRunner } from "../tick-steps.js";
+import { type PlayerStanding, resolvePlayerStanding, resolveStanding } from "./standings.js";
 import { isRacingSurface } from "./track-surface.js";
 import type { EmitFn } from "./types.js";
 
@@ -82,61 +87,35 @@ type Classification = {
   position: number;
 };
 
+/**
+ * Classify a pit-entering car against the player: the (class) leader always,
+ * otherwise a same-lap car within ±2 positions. The class screen, the
+ * positions and the same lap are the shared standings check; the leader rule
+ * reads the car's position after the class screen and before any check on
+ * the player, which is why a miss carries it.
+ */
 function classify(
   telemetry: TelemetryData,
   positions: number[],
+  player: PlayerStanding,
   playerCarIdx: number,
   carIdx: number,
   isMultiClass: boolean,
 ): Classification | null {
-  const carClasses = telemetry.CarIdxClass;
+  const s = resolveStanding(telemetry, positions, player, playerCarIdx, carIdx, isMultiClass);
 
-  // Multi-class: only same-class cars are rivals; positions are class space.
-  if (isMultiClass) {
-    const playerClass = carClasses?.[playerCarIdx];
-    const carClass = carClasses?.[carIdx];
+  if (s.carPos <= 0) return null;
 
-    if (playerClass === undefined || carClass === undefined || playerClass !== carClass) return null;
-  }
+  // The (class) leader always qualifies — no player, same-lap or window check.
+  if (s.carPos === 1) return { relation: "leader", position: 1 };
 
-  const carPos = isMultiClass ? classPositionFromOrder(positions, carClasses, carIdx) : (positions[carIdx] ?? 0);
+  if (s.reason !== null) return null;
 
-  if (carPos <= 0) return null;
+  if (s.placesAhead === 1) return { relation: "ahead", position: s.carPos };
 
-  // The (class) leader always qualifies — no same-lap or window check.
-  if (carPos === 1) return { relation: "leader", position: 1 };
+  if (s.placesAhead === -1) return { relation: "behind", position: s.carPos };
 
-  const playerPos = isMultiClass
-    ? classPositionFromOrder(positions, carClasses, playerCarIdx)
-    : (positions[playerCarIdx] ?? 0);
-
-  if (playerPos <= 0) return null;
-
-  // Same lap: lap-progress scores within one full lap. Raw `CarIdxLap`
-  // equality misbehaves around S/F crossings; the score form is what the
-  // position machinery ranks by.
-  const lc = telemetry.CarIdxLapCompleted;
-  const dp = telemetry.CarIdxLapDistPct;
-  const carLc = lc?.[carIdx] ?? -1;
-  const playerLc = lc?.[playerCarIdx] ?? -1;
-  const carDp = dp?.[carIdx] ?? -1;
-  const playerDp = dp?.[playerCarIdx] ?? -1;
-
-  // Both cars need complete lap-progress data — defaulting a missing
-  // distance to 0 could misread a lapped car as same-lap.
-  if (carLc < 0 || playerLc < 0 || carDp < 0 || playerDp < 0) return null;
-
-  const scoreGap = Math.abs(carLc + carDp - (playerLc + playerDp));
-
-  if (scoreGap >= 1.0) return null;
-
-  const delta = carPos - playerPos;
-
-  if (delta === -1) return { relation: "ahead", position: carPos };
-
-  if (delta === 1) return { relation: "behind", position: carPos };
-
-  if (delta === -2 || delta === 2) return { relation: "nearby", position: carPos };
+  if (s.placesAhead === 2 || s.placesAhead === -2) return { relation: "nearby", position: s.carPos };
 
   return null;
 }
@@ -194,6 +173,10 @@ export function diffOpponentPit(
     const lc = telemetry.CarIdxLapCompleted;
     const dp = telemetry.CarIdxLapDistPct;
     const qualifying: Array<{ carIdx: number; c: Classification }> = [];
+    // The player's standing, the same for every car this tick: resolved at
+    // most once, and only on a tick with a qualifying pit entry. A unit that
+    // throws before the assignment leaves it for the next car to retry.
+    let player: PlayerStanding | null = null;
     // The car the unit below reads, set by the loop: one closure per tick rather
     // than one per car. The unit emits nothing; it qualifies the car or not.
     let i = 0;
@@ -208,7 +191,9 @@ export function diffOpponentPit(
 
       if (now < (state.opponentPitCarCooldownUntil[i] ?? 0)) return;
 
-      const c = classify(telemetry, frozenPositions, playerCarIdx, i, isMultiClass);
+      player ??= resolvePlayerStanding(telemetry, frozenPositions, playerCarIdx, isMultiClass);
+
+      const c = classify(telemetry, frozenPositions, player, playerCarIdx, i, isMultiClass);
 
       if (c) qualifying.push({ carIdx: i, c });
     };
