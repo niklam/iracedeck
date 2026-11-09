@@ -148,12 +148,21 @@ const STATUS_BAR_TEMPLATES = new Set([
  * bakes title + artwork + status bar into `iconContent` itself
  * (`generatePitCrewSvg()`: `iconContent = scaledGraphic + titleText +
  * statusBar`). So each sample supplies the full `iconContent` as a sample
- * title — bottomY 92 above a status bar, matching `STATUS_BAR_TEMPLATES`'
- * convention, or the default bottomY without one — plus `statusBarOn()` where
- * the mode has one, leaving the artwork blank like every other dynamic-template
- * sample. The toggles hide their title on a real key since #1479; the sample
- * keeps it as the card's label, as Car Control's Pit Limiter sample does.
+ * title plus `statusBarOn()` where the mode has one, leaving the artwork blank
+ * like every other dynamic-template sample. A toggle hides its title by
+ * default since #1479; the sample keeps it as the card's label, drawn at the
+ * top, where pit-crew.svg's locked position puts a title turned on per key
+ * (the status bar would cover a bottom one). Radar Volume's readout sits at the
+ * default bottom, where the global position puts it unless moved.
  */
+/** First baseline of a top title at the default 18 px (icon-composer `calculateYPositions`: fontSize + 8). */
+const TOP_TITLE_FIRST_BASELINE = 26;
+
+/** `sampleTitle`'s `bottomY` for a title drawn from the top, whose lines it spaces 20 px apart. */
+function topSampleTitleBottomY(title: string): number {
+  return TOP_TITLE_FIRST_BASELINE + 20 * (title.split("\n").length - 1);
+}
+
 const PIT_CREW_SAMPLES: Record<string, { key: string; title: string; statusBar: boolean }[]> = {
   "pit-crew": [
     { key: "pit-crew-engineer", title: "RACE\nENGINEER", statusBar: true },
@@ -521,7 +530,7 @@ for (const file of readdirSync(DYNAMIC_ROOT)) {
     for (const pitCrewSample of pitCrewSamples) {
       const sitePath = `dynamic/${pitCrewSample.key}.svg`;
       const iconContent = pitCrewSample.statusBar
-        ? sampleTitle(pitCrewSample.title, 92) + statusBarOn()
+        ? sampleTitle(pitCrewSample.title, topSampleTitleBottomY(pitCrewSample.title)) + statusBarOn()
         : sampleTitle(pitCrewSample.title);
       writeAsset(sitePath, renderDynamicTemplate(svg, { iconContent }));
       entries.push({
