@@ -8,7 +8,9 @@
  *
  * It also derives one debounced sim-presence signal from the connection's
  * ticks (#1599): {@link isSimAbsent} / {@link onSimPresenceChange}, which the
- * disconnected key look reads. Spec:
+ * disconnected key look reads. It is seeded from `isConnected()` when it
+ * subscribes and then follows the connection-change calls, so a connection
+ * need not call a new subscriber back for it. Spec:
  * docs/superpowers/specs/2026-11-02-issue-1599-disconnected-key-look.md
  */
 import { createErrorBoundary, type ErrorBoundary, type ILogger, silentLogger } from "@iracedeck/logger";
@@ -26,7 +28,12 @@ export interface SimConnection {
   isConnected(): boolean;
   /**
    * Called once per sim tick, and on connection changes, with the current
-   * connection state. A connection may also call `onTick` as it registers it.
+   * connection state. A connection may also call `onTick` as it registers it,
+   * but nothing in the deck layer relies on that: the presence signal
+   * ({@link isSimAbsent}) seeds itself from `isConnected()` when it
+   * subscribes, so it needs only `isConnected()` and a call on every
+   * connection change — not a callback at registration, nor ticks while the
+   * sim is closed.
    *
    * The contract every `deck-<sim>` connection must honour (#1558): a throw
    * from `onTick` never reaches the caller — not from `subscribe`, nor from
@@ -142,6 +149,11 @@ export function initializeSimConnection(connection: SimConnection, options: SimC
     }
   }
 
+  // The presence signal's subscription, when a listener queued it, is on the
+  // connection now: seed it, whether or not that subscribe threw (it is
+  // registered either way).
+  if (queued.some(([id]) => id === PRESENCE_SUBSCRIPTION_ID)) seedPresence(connection);
+
   if (failures.length > 0) {
     throw new Error(
       `${failures.length} of ${queued.length} queued sim subscription(s) threw while being replayed; every one was still subscribed`,
@@ -217,14 +229,46 @@ function ensurePresenceSubscription(): void {
 
   presenceSubscribed = true;
   getSimConnection().subscribe(PRESENCE_SUBSCRIPTION_ID, onPresenceTick);
+
+  // Before initialisation the subscription is only queued; the seed then
+  // happens in initializeSimConnection, once it is replayed.
+  if (current) seedPresence(current);
 }
 
 /**
- * One sim tick. A connected tick clears a pending absence and turns the signal
- * present at once; a disconnected tick arms one absence timer, unless one is
- * armed already or the signal is already absent. The connection calls a new
- * subscriber back at once (iRacing's does, with `false` while the sim is
- * closed), so the timer is armed at start even when no further tick follows.
+ * Feeds the connection's current state to the signal as one tick, once its
+ * subscription is on a real connection. `subscribe` only says a connection
+ * *may* call a new subscriber back at once (iRacing's does), so without this a
+ * plugin started with the sim already closed would never arm the absence timer
+ * on a connection that waits for its next tick, which a closed sim never
+ * sends. Idempotent with a connection that does call back: a second
+ * disconnected tick finds the timer armed, and a connected one finds the
+ * signal present. A throw from `isConnected()` is logged and leaves the signal
+ * to the next tick rather than breaking the caller.
+ */
+function seedPresence(connection: SimConnection): void {
+  let isConnected: boolean;
+
+  try {
+    isConnected = connection.isConnected();
+  } catch (err) {
+    presenceLogger.warn(
+      `Sim presence not seeded: isConnected() threw: ${err instanceof Error ? err.message : String(err)}`,
+    );
+
+    return;
+  }
+
+  onPresenceTick(isConnected);
+}
+
+/**
+ * One sim tick, or the seed from `isConnected()` when the signal subscribes. A
+ * connected tick clears a pending absence and turns the signal present at
+ * once; a disconnected tick arms one absence timer, unless one is armed
+ * already or the signal is already absent. The seed is what arms the timer at
+ * start when the sim is closed, so a connection need not call a new
+ * subscriber back, nor tick while the sim is closed.
  */
 function onPresenceTick(isConnected: boolean): void {
   if (isConnected) {

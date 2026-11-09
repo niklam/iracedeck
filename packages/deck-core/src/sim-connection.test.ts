@@ -333,6 +333,122 @@ describe("sim presence (#1599)", () => {
     expect(listener).toHaveBeenCalledExactlyOnceWith(true);
   });
 
+  describe("seeded from isConnected() on a connection that does not call back", () => {
+    it("turns absent after the delay when the plugin starts with the sim closed, listener added after initialisation", () => {
+      const fake = createFakeSimConnection();
+      fake.state.connected = false;
+      initializeSimConnection(fake.connection, { absentDelayMs: DELAY });
+      const listener = vi.fn();
+      onSimPresenceChange(listener);
+
+      vi.advanceTimersByTime(DELAY - 1);
+      expect(isSimAbsent()).toBe(false);
+
+      vi.advanceTimersByTime(1);
+      expect(isSimAbsent()).toBe(true);
+      expect(listener).toHaveBeenCalledExactlyOnceWith(true);
+    });
+
+    it("turns absent after the delay when the plugin starts with the sim closed, listener added before initialisation", () => {
+      const listener = vi.fn();
+      onSimPresenceChange(listener);
+
+      const fake = createFakeSimConnection();
+      fake.state.connected = false;
+      initializeSimConnection(fake.connection, { absentDelayMs: DELAY });
+
+      vi.advanceTimersByTime(DELAY - 1);
+      expect(isSimAbsent()).toBe(false);
+
+      vi.advanceTimersByTime(1);
+      expect(isSimAbsent()).toBe(true);
+      expect(listener).toHaveBeenCalledExactlyOnceWith(true);
+    });
+
+    it("never fires when the sim is connected at initialisation", () => {
+      const before = vi.fn();
+      onSimPresenceChange(before);
+      const fake = createFakeSimConnection();
+      initializeSimConnection(fake.connection, { absentDelayMs: DELAY });
+      const after = vi.fn();
+      onSimPresenceChange(after);
+
+      expect(vi.getTimerCount()).toBe(0);
+      vi.advanceTimersByTime(DELAY * 2);
+
+      expect(isSimAbsent()).toBe(false);
+      expect(before).not.toHaveBeenCalled();
+      expect(after).not.toHaveBeenCalled();
+    });
+
+    it("does not arm before initialisation, when there is no connection to ask", () => {
+      onSimPresenceChange(vi.fn());
+
+      expect(vi.getTimerCount()).toBe(0);
+      vi.advanceTimersByTime(DELAY * 2);
+      expect(isSimAbsent()).toBe(false);
+    });
+
+    it("logs a throw from isConnected() and leaves the signal to the next tick", () => {
+      const fake = createFakeSimConnection();
+      fake.state.connected = false;
+      const connection: SimConnection = {
+        ...fake.connection,
+        isConnected: () => {
+          throw new Error("no state yet");
+        },
+      };
+      const logger = { ...silentLogger, warn: vi.fn() };
+      const listener = vi.fn();
+      onSimPresenceChange(listener);
+
+      expect(() => initializeSimConnection(connection, { absentDelayMs: DELAY, logger })).not.toThrow();
+      expect(() => onSimPresenceChange(vi.fn())).not.toThrow();
+      expect(logger.warn).toHaveBeenCalledOnce();
+      expect(vi.getTimerCount()).toBe(0);
+
+      fake.tick();
+      vi.advanceTimersByTime(DELAY);
+      expect(listener).toHaveBeenCalledExactlyOnceWith(true);
+    });
+  });
+
+  describe("seeded on a connection that does call back", () => {
+    it.each([
+      ["after initialisation", false],
+      ["before initialisation", true],
+    ])("arms one timer, not two, for a listener added %s", (_label, listenerFirst) => {
+      const listener = vi.fn();
+
+      if (listenerFirst) onSimPresenceChange(listener);
+
+      const fake = createNotifyingConnection(false);
+      initializeSimConnection(fake.connection, { absentDelayMs: DELAY });
+
+      if (!listenerFirst) onSimPresenceChange(listener);
+
+      expect(vi.getTimerCount()).toBe(1);
+      vi.advanceTimersByTime(DELAY);
+      expect(listener).toHaveBeenCalledExactlyOnceWith(true);
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it("never fires when the sim is connected at initialisation", () => {
+      const before = vi.fn();
+      onSimPresenceChange(before);
+      initializeSimConnection(createNotifyingConnection(true).connection, { absentDelayMs: DELAY });
+      const after = vi.fn();
+      onSimPresenceChange(after);
+
+      expect(vi.getTimerCount()).toBe(0);
+      vi.advanceTimersByTime(DELAY * 2);
+
+      expect(isSimAbsent()).toBe(false);
+      expect(before).not.toHaveBeenCalled();
+      expect(after).not.toHaveBeenCalled();
+    });
+  });
+
   it("isolates a listener that throws: the others still run and the tick does not throw", () => {
     const fake = createNotifyingConnection(false);
     const logger = { ...silentLogger, error: vi.fn(), warn: vi.fn() };
