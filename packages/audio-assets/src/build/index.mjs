@@ -24,7 +24,7 @@ import path from "node:path";
 import url from "node:url";
 
 import { RADIO_ENGINEER_FILTER } from "../presets.mjs";
-import { installedPackageVersion } from "./installed-version.mjs";
+import { installedPackageManifest, installedPackageVersion } from "./installed-version.mjs";
 import { serializeSortedJson } from "./stable-json.mjs";
 import { BUNDLED_VOICE_IDS } from "./voice-packs.mjs";
 
@@ -105,10 +105,16 @@ const ENCODE_ARGS = Object.freeze(["-ar", "16000", "-ac", "1", "-c:a", "libmp3la
  * path instead of its own when the variable is set. Read from the package's
  * own `package.json` (`ffmpeg-static.binary-path-env-var`), the field its
  * `index.js` reads, so a rename there is followed; the literal is the fallback
- * for a manifest without it.
+ * for a manifest without it. Found through `installedPackageManifest`, the
+ * lookup the version uses, so an `exports` map that withholds `./package.json`
+ * cannot break the `./build` entry at import.
  */
 const FFMPEG_BINARY_ENV_VAR = (() => {
-  const declared = require("ffmpeg-static/package.json")["ffmpeg-static"]?.["binary-path-env-var"];
+  const config = installedPackageManifest("ffmpeg-static", import.meta.url)["ffmpeg-static"];
+  const declared =
+    config !== null && typeof config === "object"
+      ? /** @type {Record<string, unknown>} */ (config)["binary-path-env-var"]
+      : undefined;
 
   return typeof declared === "string" && declared !== "" ? declared : "FFMPEG_BIN";
 })();

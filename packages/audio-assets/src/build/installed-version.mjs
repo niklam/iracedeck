@@ -28,6 +28,36 @@ import url from "node:url";
  * @returns {string}
  */
 export function installedPackageVersion(name, from) {
+  const { manifestPath, manifest } = readInstalledManifest(name, from);
+  const version = manifest.version;
+
+  if (typeof version !== "string" || version === "") {
+    throw new Error(`installedPackageVersion: ${manifestPath} has no "version"`);
+  }
+
+  return version;
+}
+
+/**
+ * The parsed `package.json` of the package `name` as installed for the module
+ * at `from`, found exactly as `installedPackageVersion` finds it — so a field
+ * other than the version (ffmpeg-static's `binary-path-env-var`, read by
+ * `index.mjs`) survives an `exports` map that withholds `./package.json` too.
+ *
+ * @param {string} name — a bare package name, as in an import specifier
+ * @param {string} from — the requiring module's `import.meta.url`
+ * @returns {Record<string, unknown>}
+ */
+export function installedPackageManifest(name, from) {
+  return readInstalledManifest(name, from).manifest;
+}
+
+/**
+ * @param {string} name
+ * @param {string} from
+ * @returns {{ manifestPath: string; manifest: Record<string, unknown> }}
+ */
+function readInstalledManifest(name, from) {
   const require = createRequire(from);
   let manifestPath;
 
@@ -44,13 +74,7 @@ export function installedPackageVersion(name, from) {
     manifestPath = installedManifest(name, from);
   }
 
-  const version = JSON.parse(readFileSync(manifestPath, "utf-8")).version;
-
-  if (typeof version !== "string" || version === "") {
-    throw new Error(`installedPackageVersion: ${manifestPath} has no "version"`);
-  }
-
-  return version;
+  return { manifestPath, manifest: JSON.parse(readFileSync(manifestPath, "utf-8")) };
 }
 
 /**

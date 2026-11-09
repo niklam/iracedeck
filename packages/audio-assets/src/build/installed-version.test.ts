@@ -5,7 +5,7 @@ import path from "node:path";
 import url from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { installedPackageVersion } from "./installed-version.mjs";
+import { installedPackageManifest, installedPackageVersion } from "./installed-version.mjs";
 
 const require = createRequire(import.meta.url);
 
@@ -74,6 +74,9 @@ describe("installedPackageVersion", () => {
       expect.objectContaining({ code: "ERR_PACKAGE_PATH_NOT_EXPORTED" }),
     );
     expect(installedPackageVersion("strict-pkg", from)).toBe("4.5.6");
+    // The whole manifest comes through the same fallback, so index.mjs's read of
+    // ffmpeg-static's binary-path-env-var cannot be broken by such a map either.
+    expect(installedPackageManifest("strict-pkg", from)).toMatchObject({ name: "strict-pkg", version: "4.5.6" });
   });
 
   // An exports map offering only `import` conditions refuses `require.resolve`
