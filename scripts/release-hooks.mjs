@@ -1,7 +1,13 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import path, { join } from "node:path";
+import semver from "semver";
 
+import {
+  formatPackRecordProblems,
+  PACK_RECORDS_DIR,
+  sealPackRecords,
+} from "../packages/audio-assets/src/build/pack-record.mjs";
 import { CHANGELOG_SOURCE_PATH } from "./lib/changelog-data.mjs";
 import { formatLocalDate, loadChangelogFold } from "./lib/changelog-fold.mjs";
 import { CHANGELOG_FRAGMENTS_DIR } from "./lib/changelog-fragments.mjs";
@@ -15,6 +21,53 @@ if (!version) {
 }
 
 const root = new URL("..", import.meta.url).pathname.replace(/^\/([A-Z]:)/, "$1");
+
+/** A path under `root` as git and the messages name it: relative, forward slashes. */
+const relativeToRoot = (file) => path.relative(root, file).split(path.sep).join("/");
+
+/** `packages/audio-assets/pack-records`, as the restore command names it. */
+const PACK_RECORDS_REL = relativeToRoot(PACK_RECORDS_DIR);
+
+// Does releasing `version` publish the voice packs, so their records are
+// sealed? Yes for every version without a `dev` prerelease identifier — a
+// stable `3.9.0` or an `-rc.1`, the ones that are tagged and whose tag run
+// publishes every pack (#1667). A `-dev.0` bump is committed untagged and
+// publishes nothing, so sealing on it would freeze a version bumped on master
+// but not yet published, and force a needless second bump on its next change.
+// semver's own parse decides: `3.9.0-dev.0` has the identifiers `dev` and `0`,
+// `3.9.0-rc.1` has `rc` and `1`, `3.9.0` has none. release-it hands over a
+// valid version; anything else is refused rather than guessed about.
+const parsedVersion = semver.parse(version);
+if (parsedVersion === null) {
+  throw new Error(`Refusing to release: "${version}" is not a semver version.`);
+}
+const sealsVoicePacks = !parsedVersion.prerelease.includes("dev");
+
+// Every voice pack is held to its record's four rules on every release — a
+// stale record (the pack's clips, script or version changed with no re-pack,
+// #1582) or a re-pack under a published version aborts the release here, with a
+// clean tree, naming the pack and the command to run. Planned as a dry seal,
+// so this also knows which records the real seal below will write and stage:
+// `released` is set on every pack whose current version is not yet sealed, on a
+// version that publishes. Nothing is written yet; `sealPackRecords` checks every
+// pack before it would write any, and throws with the problems attached.
+let voicePackSeal;
+try {
+  voicePackSeal = sealPackRecords({ dryRun: true });
+} catch (err) {
+  if (!Array.isArray(err?.problems)) throw err;
+  throw new Error(
+    `Refusing to release: a voice pack's committed record disagrees with the tree, so its catalog entry would not ` +
+      `be what the release publishes. Nothing was written.\n${formatPackRecordProblems(err.problems)}`,
+  );
+}
+const voicePackRecordPaths = sealsVoicePacks ? voicePackSeal.sealed.map(({ path: file }) => relativeToRoot(file)) : [];
+// What is said when no record is written; when some are, each is named as it is sealed.
+const voicePackSummary = !sealsVoicePacks
+  ? "Voice packs: records checked; a -dev bump publishes no pack, so nothing is sealed"
+  : voicePackSeal.sealed.length === 0
+    ? "Voice packs: records checked; every pack is already sealed at its version"
+    : null;
 
 // Packages that intentionally track their own versions and must NOT be bumped
 // by the release process. Empty today — add the package name here if a
@@ -90,11 +143,13 @@ const manifestBumps = manifestFiles.map((manifest) => ({
 const changelogFold = loadChangelogFold(root, version, formatLocalDate(new Date()));
 const changelogPath = join(root, CHANGELOG_SOURCE_PATH);
 
-// The changelog edit is staged with the version files, so the preflight and the
-// real `git add` both see it. The fragments are not in this list: one
-// `git rm` deletes and stages them all (see the fold below).
+// The changelog edit and the sealed voice-pack records are staged with the
+// version files, so the preflight and the real `git add` both see them. The
+// fragments are not in this list: one `git rm` deletes and stages them all (see
+// the fold below).
 const allPaths = [...packageJsonFiles, ...manifestFiles].map(({ rel }) => rel);
 if (changelogFold.fold) allPaths.push(CHANGELOG_SOURCE_PATH);
+allPaths.push(...voicePackRecordPaths);
 
 // A fragment git does not track would be folded and then fail the `git rm`
 // below — git cannot remove a path it never knew — leaving a half-folded tree.
@@ -154,6 +209,13 @@ if (process.env.RELEASE_IT_DRY_RUN === "1") {
     console.log(`  [dry-run] Would delete ${changelogFold.fragmentPaths.length} fragments:`);
     for (const rel of changelogFold.fragmentPaths) console.log(`    - ${rel}`);
   }
+  if (voicePackSummary !== null) console.log(`  [dry-run] ${voicePackSummary}`);
+  if (voicePackRecordPaths.length > 0) {
+    console.log(`  [dry-run] Would seal ${voicePackRecordPaths.length} voice-pack records as released:`);
+    for (const { id, version: packVersion, sha256, path: file } of voicePackSeal.sealed) {
+      console.log(`    - ${relativeToRoot(file)}: ${id} ${packVersion} (sha256 ${sha256})`);
+    }
+  }
   process.exit(0);
 }
 
@@ -197,6 +259,48 @@ if (changelogFold.fold) {
   for (const rel of changelogFold.fragmentPaths) console.log(`  Deleted ${rel}`);
 }
 console.log(`  ${changelogFold.reason}`);
+
+// The seal comes after the fold and before the version bumps, so the fold's
+// own part-way messages above stay true (the version files AND the records are
+// untouched when the fold stops), and a seal that fails leaves the least to
+// undo: the fold's edits and whatever records were written, never a bumped
+// version file. The records are staged by the `git add` at the end, with the
+// version files. `sealPackRecords` re-checks every pack and writes only once
+// every record is built, so a failure here is a write that did not land, and
+// the message names everything the tree now holds.
+if (sealsVoicePacks) {
+  let sealed;
+  try {
+    ({ sealed } = sealPackRecords());
+  } catch (err) {
+    const foldState = changelogFold.fold
+      ? `the changelog fold is done (${CHANGELOG_SOURCE_PATH} is written and the fragments are removed), `
+      : "";
+    throw new Error(
+      `The release stopped part-way: ${foldState}but sealing the voice-pack records failed — ` +
+        `${err instanceof Error ? err.message : err}\nThe version files are untouched. Restore the tree with ` +
+        `\`git restore --staged --worktree -- ${CHANGELOG_SOURCE_PATH} ${CHANGELOG_FRAGMENTS_DIR} ${PACK_RECORDS_REL}\`, ` +
+        `then release again.`,
+    );
+  }
+  // The plan above decided what the preflight checked and what `git add` stages
+  // below; the real seal must have written exactly that. The tree did not change
+  // in between, so a difference is a bug here, and staging would miss a file.
+  const planned = voicePackSeal.sealed.map(({ path: file }) => relativeToRoot(file));
+  const written = sealed.map(({ path: file }) => relativeToRoot(file));
+  if (planned.join("\n") !== written.join("\n")) {
+    throw new Error(
+      `The release stopped part-way: the voice-pack seal wrote ${written.join(", ") || "nothing"} but the preflight ` +
+        `planned ${planned.join(", ") || "nothing"}. The version files are untouched. Restore the tree with ` +
+        `\`git restore --staged --worktree -- ${CHANGELOG_SOURCE_PATH} ${CHANGELOG_FRAGMENTS_DIR} ${PACK_RECORDS_REL}\`, ` +
+        `then release again.`,
+    );
+  }
+  for (const { id, version: packVersion, path: file } of sealed) {
+    console.log(`  Sealed ${relativeToRoot(file)}: ${id} ${packVersion} released`);
+  }
+}
+if (voicePackSummary !== null) console.log(`  ${voicePackSummary}`);
 
 // Reuse the objects captured during discovery — no second read+parse (#702).
 for (const { rel, filePath, data } of packageJsonFiles) {

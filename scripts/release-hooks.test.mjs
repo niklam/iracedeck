@@ -1,5 +1,7 @@
+import { CALLOUT_SCRIPT_FILE } from "@iracedeck/callout-script";
 import { execFileSync, spawnSync } from "node:child_process";
 import {
+  chmodSync,
   copyFileSync,
   existsSync,
   mkdirSync,
@@ -7,6 +9,7 @@ import {
   readdirSync,
   readFileSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -14,6 +17,14 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 
+import {
+  buildPackRecord,
+  computePackInputs,
+  readPackRecord,
+  serializePackRecord,
+  writePackRecord,
+} from "../packages/audio-assets/src/build/pack-record.mjs";
+import { VOICE_PACKS } from "../packages/audio-assets/src/build/voice-packs.mjs";
 import { buildChangelogData, CHANGELOG_DATA_PATH, CHANGELOG_SOURCE_PATH } from "./lib/changelog-data.mjs";
 import { formatLocalDate } from "./lib/changelog-fold.mjs";
 import { composeChangelog, loadChangelogSources, UNRELEASED_DATE_LINE } from "./lib/changelog-fragments.mjs";
@@ -53,6 +64,18 @@ describe("release-hooks.mjs (dry run over this repository)", () => {
     expect(stdout).toContain("packages/iracing-plugin-stream-deck/com.iracedeck.sd.core.sdPlugin/manifest.json");
     expect(stdout).toContain("packages/iracing-plugin-mirabox/com.iracedeck.sd.core.sdPlugin/manifest.json");
     expect(stdout).toContain("packages/iracing-plugin-ulanzi/com.ulanzi.iracedeck.ulanziPlugin/manifest.json");
+  });
+
+  // The real tree's two pack records are held to the four rules on every
+  // release (#1667); `pack-record.test.ts` is what keeps them fresh, so a red
+  // here with a green there is the hook's own fault.
+  it("checks the voice-pack records of this checkout and reports the seal it would write", () => {
+    const stdout = runHook("9.9.9-rc.1");
+
+    expect(stdout).toMatch(/\[dry-run\] (Voice packs: records checked|Would seal \d+ voice-pack records)/);
+    expect(runHook("9.9.9-dev.0")).toContain(
+      "[dry-run] Voice packs: records checked; a -dev bump publishes no pack, so nothing is sealed",
+    );
   });
 
   it("stamps each ecosystem's manifest in its own format", () => {
@@ -98,10 +121,22 @@ const VERSION_FILES = [
   `M\t${PLUGIN_MANIFEST}`,
 ];
 
+// The voice packs (#1667). The fixture carries the REAL registry
+// (`voice-packs.mjs`, copied in with the record module), a tiny clip tree and
+// config per voice, a catalog entry per pack at `PACK_SHA`, and a record that
+// agrees with all of it, so the hook runs the real checker and sealer against a
+// tree the test controls.
+const AUDIO_ASSETS = "packages/audio-assets";
+const PACK_RECORDS = `${AUDIO_ASSETS}/pack-records`;
+const PACK_SHA = "4a".repeat(32);
+const RECORD_FILES = VOICE_PACKS.map((pack) => `M\t${PACK_RECORDS}/${pack.id}.json`);
+
 /** @type {string[]} */
 const fixtures = [];
 
 afterEach(() => {
+  // The fixture's `node_modules` and `packages/callout-script` are junctions
+  // into this checkout; rmSync removes the link itself and never follows one.
   for (const dir of fixtures.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
@@ -131,24 +166,109 @@ function writeJson(dir, rel, value) {
   write(dir, rel, `${JSON.stringify(value, null, 2)}\n`);
 }
 
+/** Copy every non-test `.mjs` of `rel` from this checkout into the fixture. */
+function copyModules(dir, rel) {
+  mkdirSync(join(dir, rel), { recursive: true });
+  for (const name of readdirSync(join(repoRoot, rel))) {
+    if (name.endsWith(".mjs") && !name.endsWith(".test.mjs"))
+      copyFileSync(join(repoRoot, rel, name), join(dir, rel, name));
+  }
+}
+
+/**
+ * The fixture's voice-pack roots: the record module copied into the fixture
+ * derives `packages/audio-assets` from its own location, so these are the
+ * directories the hook's checker and sealer read.
+ */
+function packRoots(dir) {
+  const audioAssets = join(dir, AUDIO_ASSETS);
+  return {
+    srcRoot: join(audioAssets, "voice"),
+    configsDir: join(audioAssets, "configs"),
+    catalogDir: join(audioAssets, "catalog"),
+    recordsDir: join(audioAssets, "pack-records"),
+  };
+}
+
+/**
+ * Seed every pack of the real registry: two clips and a script per voice, the
+ * voice's config, a catalog entry at `PACK_SHA`, and a record agreeing with
+ * all of it — sealed at the pack's version unless asked otherwise, the state a
+ * tree is in after a release that shipped the pack.
+ */
+function seedVoicePacks(dir, { sealed }) {
+  const roots = packRoots(dir);
+  for (const pack of VOICE_PACKS) {
+    for (const voiceId of pack.voices) {
+      write(dir, `${AUDIO_ASSETS}/voice/${voiceId}/numbers/1.mp3`, `${voiceId} one`);
+      write(dir, `${AUDIO_ASSETS}/voice/${voiceId}/seconds/1.mp3`, `${voiceId} one second`);
+      write(dir, `${AUDIO_ASSETS}/voice/${voiceId}/${CALLOUT_SCRIPT_FILE}`, `{"voice":"${voiceId}"}\n`);
+      writeJson(dir, `${AUDIO_ASSETS}/configs/${voiceId}.voice.json`, { label: `Voice ${voiceId}` });
+    }
+    writeJson(dir, `${AUDIO_ASSETS}/catalog/${pack.id}.json`, {
+      id: pack.id,
+      version: pack.version,
+      bytes: 3,
+      sha256: PACK_SHA,
+    });
+    writePackRecord(
+      buildPackRecord(pack, {
+        sha256: PACK_SHA,
+        inputs: computePackInputs(pack, roots),
+        released: sealed ? { version: pack.version, sha256: PACK_SHA } : undefined,
+      }),
+      roots.recordsDir,
+    );
+  }
+}
+
+/** The record the sealer writes for `pack` over a fixture record: the same, plus `released`. */
+function sealedRecordBytes(dir, pack) {
+  const record = readPackRecord(pack.id, packRoots(dir).recordsDir);
+  return serializePackRecord(
+    buildPackRecord(pack, {
+      sha256: record.sha256,
+      inputs: record.inputs,
+      released: { version: pack.version, sha256: record.sha256 },
+    }),
+  );
+}
+
 /**
  * A minimal repository the hook can release: two packages, one plugin manifest,
- * the changelog, its tracked data artifact and the fragments, all committed on
- * `master`.
+ * the changelog, its tracked data artifact and the fragments, and the voice
+ * packs with their records, all committed on `master`.
+ *
+ * The hook imports the record module by its path in the tree, so the module and
+ * its siblings are copied in beside it, and the fixture's two `node_modules`
+ * and `packages/callout-script` are junctions into this checkout's: the copies
+ * resolve `semver`, `zod`, `fflate`, `ffmpeg-static` and
+ * `@iracedeck/callout-script` exactly as the originals do, so the pipeline and
+ * archive-format identities hash the same. Windows resolves a relative symlink
+ * against the path as traversed, not the link's real location, which is why
+ * pnpm's `@iracedeck/callout-script -> ../../../callout-script` needs that
+ * workspace package at the same place in the fixture, and `zod ->
+ * ../../../node_modules/.pnpm/…` the root `node_modules`. The junctions are
+ * gitignored, so `git add -A` and the fixture's status never see them, and
+ * `snapshot` skips them.
  *
  * @param {Record<string, string>} fragments - file name → fragment text
+ * @param {{ unsealedPacks?: boolean }} [options] - `unsealedPacks`: the records
+ *   carry no `released`, the state before the first release that ships them
  */
-function makeRepo(fragments) {
+function makeRepo(fragments, { unsealedPacks = false } = {}) {
   const dir = mkdtempSync(join(tmpdir(), "iracedeck-release-hooks-"));
   fixtures.push(dir);
 
-  mkdirSync(join(dir, "scripts", "lib"), { recursive: true });
+  copyModules(dir, join("scripts", "lib"));
   copyFileSync(join(repoRoot, "scripts", "release-hooks.mjs"), join(dir, "scripts", "release-hooks.mjs"));
-  for (const name of readdirSync(join(repoRoot, "scripts", "lib"))) {
-    if (name.endsWith(".mjs") && !name.endsWith(".test.mjs")) {
-      copyFileSync(join(repoRoot, "scripts", "lib", name), join(dir, "scripts", "lib", name));
-    }
+  copyModules(dir, join(AUDIO_ASSETS, "src", "build"));
+  copyModules(dir, join(AUDIO_ASSETS, "src"));
+  for (const rel of ["node_modules", `${AUDIO_ASSETS}/node_modules`, "packages/callout-script"]) {
+    symlinkSync(join(repoRoot, rel), join(dir, rel), "junction");
   }
+  write(dir, ".gitignore", "node_modules/\n/packages/callout-script/\n");
+  seedVoicePacks(dir, { sealed: !unsealedPacks });
 
   writeJson(dir, "package.json", { name: "fixture", version: "1.0.0-dev.0" });
   writeJson(dir, "packages/demo/package.json", { name: "demo", version: "1.0.0-dev.0" });
@@ -183,7 +303,7 @@ function snapshot(dir) {
   const files = {};
   const walk = (rel) => {
     for (const entry of readdirSync(join(dir, rel), { withFileTypes: true })) {
-      if (entry.name === ".git") continue;
+      if (entry.name === ".git" || entry.name === "node_modules" || entry.isSymbolicLink()) continue;
       const child = rel ? `${rel}/${entry.name}` : entry.name;
       if (entry.isDirectory()) walk(child);
       else files[child] = read(dir, child);
@@ -416,5 +536,293 @@ describe("release-hooks.mjs fold (in a temporary git repository)", { timeout: 60
       ["1.0.0", "dated"],
       ["0.9.0", "dated"],
     ]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The voice-pack records (#1667), run for real against the fixture's packs: the
+// hook holds every record to the four rules before it writes anything, and on
+// a version that publishes (stable or -rc) seals each pack's current version as
+// released and stages the records in the bump commit.
+// ---------------------------------------------------------------------------
+
+const recordPath = (pack) => `${PACK_RECORDS}/${pack.id}.json`;
+
+/** Every git command of a traced run, as git logs them. */
+function tracedGit(dir, version, options = {}) {
+  const traceDir = mkdtempSync(join(tmpdir(), "iracedeck-release-hooks-trace-"));
+  fixtures.push(traceDir);
+  const result = runFixtureHook(dir, version, { ...options, extraEnv: { GIT_TRACE: join(traceDir, "trace.txt") } });
+  const commands = read(traceDir, "trace.txt")
+    .split("\n")
+    .map((line) => /trace: built-in: (git .*)$/.exec(line)?.[1])
+    .filter(Boolean);
+  return { result, commands };
+}
+
+describe("release-hooks.mjs voice-pack records (in a temporary git repository)", { timeout: 60_000 }, () => {
+  it("seals every unsealed pack on a stable release and stages the records with the version files and the fold", () => {
+    const dir = makeRepo(TWO_FRAGMENTS, { unsealedPacks: true });
+    const expected = Object.fromEntries(VOICE_PACKS.map((pack) => [pack.id, sealedRecordBytes(dir, pack)]));
+
+    const result = runFixtureHook(dir, "1.0.0");
+
+    expect(result.status, result.stderr).toBe(0);
+    for (const pack of VOICE_PACKS) {
+      // Byte for byte what the sealer writes: the record as it was, plus `released`
+      // at the pack's version and the record's own sha256.
+      expect(read(dir, recordPath(pack))).toBe(expected[pack.id]);
+      expect(readPackRecord(pack.id, packRoots(dir).recordsDir).released).toEqual({
+        version: pack.version,
+        sha256: PACK_SHA,
+      });
+      expect(result.stdout).toContain(`  Sealed ${recordPath(pack)}: ${pack.id} ${pack.version} released`);
+    }
+    expect(staged(dir)).toEqual(
+      [
+        ...VERSION_FILES,
+        ...RECORD_FILES,
+        "D\tchangelog.d/11-a-feature.md",
+        "D\tchangelog.d/12-a-fix.md",
+        `M\t${CHANGELOG_SOURCE_PATH}`,
+      ].sort(),
+    );
+    expect(fixtureGit(dir, "diff", "--name-only")).toBe("");
+  });
+
+  it("seals on an -rc too, which is tagged and publishes the packs, while the fold stays skipped", () => {
+    const dir = makeRepo(TWO_FRAGMENTS, { unsealedPacks: true });
+
+    const result = runFixtureHook(dir, "1.0.0-rc.1");
+
+    expect(result.status, result.stderr).toBe(0);
+    for (const pack of VOICE_PACKS) {
+      expect(readPackRecord(pack.id, packRoots(dir).recordsDir).released).toEqual({
+        version: pack.version,
+        sha256: PACK_SHA,
+      });
+    }
+    expect(read(dir, CHANGELOG_SOURCE_PATH)).toBe(MDX);
+    expect(staged(dir)).toEqual([...VERSION_FILES, ...RECORD_FILES].sort());
+  });
+
+  it("names the record paths in the git add preflight, before anything is written, and in the real git add", () => {
+    const dir = makeRepo(TWO_FRAGMENTS, { unsealedPacks: true });
+
+    const { result, commands } = tracedGit(dir, "1.0.0");
+
+    expect(result.status, result.stderr).toBe(0);
+    const adds = commands.filter((command) => command.startsWith("git add "));
+    expect(adds).toHaveLength(2);
+    expect(adds[0]).toMatch(/^git add --dry-run -- /);
+    expect(adds[1]).toMatch(/^git add -- /);
+    for (const add of adds) for (const pack of VOICE_PACKS) expect(add).toContain(` ${recordPath(pack)}`);
+    // The preflight is the last git command before the fold's `git rm`: every
+    // write of the hook comes after it.
+    expect(commands.indexOf(adds[0])).toBeLessThan(commands.findIndex((command) => /^git rm -q -- /.test(command)));
+  });
+
+  it("leaves a pack already sealed at its version alone, and says so", () => {
+    const dir = makeRepo({});
+    const before = Object.fromEntries(VOICE_PACKS.map((pack) => [pack.id, read(dir, recordPath(pack))]));
+
+    const result = runFixtureHook(dir, "1.0.0");
+
+    expect(result.status, result.stderr).toBe(0);
+    for (const pack of VOICE_PACKS) expect(read(dir, recordPath(pack))).toBe(before[pack.id]);
+    expect(result.stdout).toContain("Voice packs: records checked; every pack is already sealed at its version");
+    expect(result.stdout).not.toContain("Sealed ");
+    expect(staged(dir)).toEqual([...VERSION_FILES].sort());
+  });
+
+  it("seals only the packs not yet sealed at their version", () => {
+    const dir = makeRepo({}, { unsealedPacks: true });
+    const [first, ...rest] = VOICE_PACKS;
+    // The first pack sealed by hand, as the seal command would before a
+    // between-releases publish; the rest wait for the release.
+    write(dir, recordPath(first), sealedRecordBytes(dir, first));
+    commitAll(dir, "seal the first pack");
+
+    const result = runFixtureHook(dir, "1.0.0");
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).not.toContain(`Sealed ${recordPath(first)}`);
+    for (const pack of rest) expect(result.stdout).toContain(`Sealed ${recordPath(pack)}`);
+    expect(staged(dir)).toEqual([...VERSION_FILES, ...rest.map((pack) => `M\t${recordPath(pack)}`)].sort());
+  });
+
+  it("checks the records on a -dev bump and seals nothing", () => {
+    const dir = makeRepo(TWO_FRAGMENTS, { unsealedPacks: true });
+    const before = snapshot(dir);
+
+    // Past the fixture's own 1.0.0-dev.0, so the version files show as staged.
+    const result = runFixtureHook(dir, "1.1.0-dev.0");
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toContain(
+      "Voice packs: records checked; a -dev bump publishes no pack, so nothing is sealed",
+    );
+    for (const pack of VOICE_PACKS) {
+      expect(read(dir, recordPath(pack))).toBe(before.files[recordPath(pack)]);
+      expect(readPackRecord(pack.id, packRoots(dir).recordsDir).released).toBeUndefined();
+    }
+    expect(staged(dir)).toEqual([...VERSION_FILES].sort());
+  });
+
+  // "No -dev identifier" is semver's own reading of the prerelease: `dev` as
+  // one of its dot-separated identifiers, wherever it sits.
+  it.each([
+    ["1.0.0", true],
+    ["1.0.0-rc.1", true],
+    ["1.0.0-beta.2", true],
+    ["1.0.0-dev.0", false],
+    ["1.0.0-dev", false],
+    ["1.0.0-rc.dev.1", false],
+  ])("decides whether %s seals by semver's prerelease identifiers (%s)", (version, seals) => {
+    const dir = makeRepo({}, { unsealedPacks: true });
+
+    const result = runFixtureHook(dir, version);
+
+    expect(result.status, result.stderr).toBe(0);
+    const [pack] = VOICE_PACKS;
+    expect(readPackRecord(pack.id, packRoots(dir).recordsDir).released !== undefined).toBe(seals);
+  });
+
+  it("refuses a version that is not semver before anything else", () => {
+    const dir = makeRepo({}, { unsealedPacks: true });
+    const before = snapshot(dir);
+
+    const result = runFixtureHook(dir, "1.0");
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain('Refusing to release: "1.0" is not a semver version.');
+    expect(snapshot(dir)).toEqual(before);
+  });
+
+  it.each(["1.0.0", "1.0.0-rc.1", "1.0.0-dev.0"])(
+    "aborts %s with a clean tree when a pack's clips changed since it was packed, naming the pack and the fix",
+    (version) => {
+      const dir = makeRepo(TWO_FRAGMENTS);
+      const [pack] = VOICE_PACKS;
+      const [voiceId] = pack.voices;
+      // #1582's shape: an input changed and nobody re-ran pack:voice. Committed,
+      // so release-it's own clean-tree check would have let it through.
+      write(dir, `${AUDIO_ASSETS}/voice/${voiceId}/numbers/1.mp3`, "different bytes");
+      commitAll(dir, "re-record a clip without re-packing");
+      const before = snapshot(dir);
+
+      const result = runFixtureHook(dir, version);
+
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain("Refusing to release: a voice pack's committed record disagrees with the tree");
+      expect(result.stderr).toContain("Nothing was written.");
+      expect(result.stderr).toContain(
+        `  ${pack.id}: the clips under voice/${voiceId} changed (2 clips as recorded, with different bytes or paths)`,
+      );
+      // The fixture's records are sealed, so the fix is the released one: bump first.
+      expect(result.stderr).toContain(
+        `  fix: version ${pack.version} is released: bump \`version\` in src/build/voice-packs.mjs, ` +
+          `run \`pnpm --filter @iracedeck/audio-assets pack:voice ${pack.id}\`, and commit catalog/${pack.id}.json and pack-records/${pack.id}.json`,
+      );
+      expect(snapshot(dir)).toEqual(before);
+    },
+  );
+
+  it("aborts with a clean tree on a re-pack under a released version (rule 4)", () => {
+    const dir = makeRepo(TWO_FRAGMENTS);
+    const [pack] = VOICE_PACKS;
+    const other = "b7".repeat(32);
+    // What a `pack:voice` that was forced through would leave: entry and record
+    // agree on new bytes, but the version is the one already published.
+    const record = JSON.parse(read(dir, recordPath(pack)));
+    record.sha256 = other;
+    write(dir, recordPath(pack), `${JSON.stringify(record, null, 2)}\n`);
+    const entry = JSON.parse(read(dir, `${AUDIO_ASSETS}/catalog/${pack.id}.json`));
+    entry.sha256 = other;
+    write(dir, `${AUDIO_ASSETS}/catalog/${pack.id}.json`, `${JSON.stringify(entry, null, 2)}\n`);
+    commitAll(dir, "re-pack under the released version");
+    const before = snapshot(dir);
+
+    const result = runFixtureHook(dir, "1.0.0");
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain(
+      `${pack.id}: version ${pack.version} is released with sha256 ${PACK_SHA}, but pack-records/${pack.id}.json now carries ${other}`,
+    );
+    expect(result.stderr).toContain("a published archive never changes under its version");
+    expect(snapshot(dir)).toEqual(before);
+  });
+
+  it("prints what it would seal in a dry run, and writes nothing", () => {
+    const dir = makeRepo(TWO_FRAGMENTS, { unsealedPacks: true });
+    const before = snapshot(dir);
+
+    const result = runFixtureHook(dir, "1.0.0", { dryRun: true });
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toContain(`[dry-run] Would seal ${VOICE_PACKS.length} voice-pack records as released:`);
+    for (const pack of VOICE_PACKS) {
+      expect(result.stdout).toContain(`    - ${recordPath(pack)}: ${pack.id} ${pack.version} (sha256 ${PACK_SHA})`);
+    }
+    expect(result.stdout).not.toContain("Sealed ");
+    expect(snapshot(dir)).toEqual(before);
+
+    // And the two cases with nothing to seal say so, in the dry run too.
+    const dev = runFixtureHook(dir, "1.0.0-dev.0", { dryRun: true });
+    expect(dev.status, dev.stderr).toBe(0);
+    expect(dev.stdout).toContain(
+      "[dry-run] Voice packs: records checked; a -dev bump publishes no pack, so nothing is sealed",
+    );
+    expect(dev.stdout).not.toContain("Would seal");
+    expect(snapshot(dir)).toEqual(before);
+
+    const sealedDir = makeRepo(TWO_FRAGMENTS);
+    const sealedBefore = snapshot(sealedDir);
+    const already = runFixtureHook(sealedDir, "1.0.0", { dryRun: true });
+    expect(already.status, already.stderr).toBe(0);
+    expect(already.stdout).toContain(
+      "[dry-run] Voice packs: records checked; every pack is already sealed at its version",
+    );
+    expect(already.stdout).not.toContain("Would seal");
+    expect(snapshot(sealedDir)).toEqual(sealedBefore);
+  });
+
+  it("stops before the version bumps when a record cannot be written, and names a restore that works", () => {
+    const dir = makeRepo(TWO_FRAGMENTS, { unsealedPacks: true });
+    const versionFiles = Object.fromEntries(
+      VERSION_FILES.map((line) => line.slice(2)).map((rel) => [rel, read(dir, rel)]),
+    );
+    const before = snapshot(dir);
+    // The LAST pack's record is read-only: the checks read it fine, the sealer
+    // writes the first and fails on this one — the worst half-way state.
+    const last = VOICE_PACKS.at(-1);
+    const lockedFile = join(dir, recordPath(last));
+    chmodSync(lockedFile, 0o444);
+
+    try {
+      const result = runFixtureHook(dir, "1.0.0");
+
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain(
+        `The release stopped part-way: the changelog fold is done (${CHANGELOG_SOURCE_PATH} is written and the fragments are removed), but sealing the voice-pack records failed`,
+      );
+      expect(result.stderr).toContain("The version files are untouched.");
+      const restore = `git restore --staged --worktree -- ${CHANGELOG_SOURCE_PATH} changelog.d ${PACK_RECORDS}`;
+      expect(result.stderr).toContain(restore);
+      // The fold is done, the first record is sealed, the last is not, and no
+      // version file moved.
+      expect(read(dir, CHANGELOG_SOURCE_PATH)).toContain("## 1.0.0");
+      expect(existsSync(join(dir, "changelog.d/11-a-feature.md"))).toBe(false);
+      expect(readPackRecord(VOICE_PACKS[0].id, packRoots(dir).recordsDir).released).toBeDefined();
+      expect(readPackRecord(last.id, packRoots(dir).recordsDir).released).toBeUndefined();
+      for (const [rel, text] of Object.entries(versionFiles)) expect(read(dir, rel)).toBe(text);
+
+      // The restore the message names puts the tree back exactly.
+      chmodSync(lockedFile, 0o644);
+      fixtureGit(dir, ...restore.split(" ").slice(1));
+      expect(snapshot(dir)).toEqual(before);
+    } finally {
+      chmodSync(lockedFile, 0o644);
+    }
   });
 });
