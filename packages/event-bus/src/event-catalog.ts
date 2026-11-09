@@ -562,6 +562,81 @@ export type RefusedLapCompleted = LapCompletedCommon & {
 export type LapCompletedData = CountedLapCompleted | RefusedLapCompleted;
 
 /**
+ * The four pit-lane landmarks (issue #1112), in driving order: where a car
+ * starts approaching the pits, where pit road (the cones) starts and ends, and
+ * where the car blends back onto the racing surface after pit road.
+ * Sim-agnostic names for positions every sim's pit lane has; the iRacing
+ * translator reads each from a track-surface or on-pit-road edge.
+ *
+ * Declared here rather than imported, so the catalog stays a leaf;
+ * `@iracedeck/track-data` declares the same union as the landmark model's
+ * names, and the two must stay identical.
+ */
+export type PitLaneLandmarkName = "approachStart" | "pitRoadStart" | "pitRoadEnd" | "blendEnd";
+
+/**
+ * The track a pit-lane landmark belongs to (issue #1112), as the session
+ * describes it. The raw names travel with the id so a learned record can be
+ * re-keyed if the identity scheme ever changes, and the raw length so a rebuilt
+ * track (same id, new length) is noticed. Same shape as track-data's.
+ */
+export type PitLaneTrackIdentity = {
+  trackId: number;
+  trackName: string;
+  trackConfigName: string;
+  /** The sim's track length string as reported, e.g. `"5.51 km"`. */
+  trackLength: string;
+  /** That length in metres, or `null` when it does not parse. */
+  trackLengthM: number | null;
+};
+
+/**
+ * One accepted pit-lane landmark edge from one car (issue #1112). Same shape as
+ * track-data's, which folds it into a landmark record.
+ */
+export type PitLaneLandmarkSample = {
+  /** Lap fraction where the edge happened, `0 <= pct < 1` (the wrap-aware midpoint of the edge's two ticks). */
+  pct: number;
+  /** Seconds into the car's class reference lap at that point, on the landmark's side of the start/finish line. */
+  estTime: number;
+  /** The sim's car-class id of the car that drove the edge. */
+  carClassId: number;
+  /**
+   * Identifies the crossing: `${subSessionId}:${sessionNum}:${carIdx}:${landmark}:${lap}`.
+   * Two samples with the same key close together in time are the same edge.
+   */
+  key: string;
+  /** Wall-clock epoch milliseconds when the edge was accepted. */
+  at: number;
+};
+
+/**
+ * What a consumer reads about one pit-lane landmark (issue #1112), after the
+ * sample that carried it was folded in. Same shape as track-data's.
+ */
+export type PitLaneLandmarkSummary = {
+  /** Median lap fraction over the landmark's sample window. */
+  pct: number;
+  /**
+   * Median `estTime` per car class, keyed by the class id as a string; only
+   * classes with a sample on the median's side of the start/finish line.
+   */
+  estTimeByClass: Record<string, number>;
+  /** Accepted samples behind the landmark, cumulative. */
+  samples: number;
+  /** Whether enough samples agree for consumers to trust the landmark. */
+  published: boolean;
+};
+
+/** Payload of `pitLane.landmarkLearned` (issue #1112). */
+export type PitLaneLandmarkLearned = {
+  track: PitLaneTrackIdentity;
+  landmark: PitLaneLandmarkName;
+  sample: PitLaneLandmarkSample;
+  summary: PitLaneLandmarkSummary;
+};
+
+/**
  * Discriminated union of every event the bus knows about, keyed by event
  * name. Each entry binds an event name to its payload type — adding an
  * event means adding an entry here.
@@ -571,6 +646,20 @@ export type SimEventMap = {
   "pitLane.approaching": SimEvent<"pitLane.approaching", EmptySimEventPayload>;
   "pitLane.entered": SimEvent<"pitLane.entered", EmptySimEventPayload>;
   "pitLane.exited": SimEvent<"pitLane.exited", EmptySimEventPayload>;
+  /**
+   * The translator accepted a pit-lane landmark edge from a car (issue
+   * #1112): any car but the pace car, the player's included, driving one of
+   * the four {@link PitLaneLandmarkName} edges from a road state over a
+   * plausible distance. Published from live, in-car telemetry only — never
+   * while a replay is on screen, which includes spectating from the garage.
+   *
+   * `sample` is the edge itself, and is what the landmark store folds into its
+   * own record and persists; the store never takes `summary` as the record,
+   * since another process may have learned more. `summary` is the translator's
+   * view of the landmark after the fold, for consumers and the scenario
+   * harness. Nothing speaks on this event.
+   */
+  "pitLane.landmarkLearned": SimEvent<"pitLane.landmarkLearned", PitLaneLandmarkLearned>;
   "pitStall.entered": SimEvent<"pitStall.entered", EmptySimEventPayload>;
   "pitStall.departed": SimEvent<"pitStall.departed", EmptySimEventPayload>;
   /**
