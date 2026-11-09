@@ -29,7 +29,7 @@ Two user-set rejoin windows, and a user-set pit-exit window either side of the p
 
 For a reference point P on the track with reference time T(P), a car's time to reach P is `T(P) − CarIdxEstTime[car]`, wrapped across the start/finish line. `CarIdxEstTime` is the sim's own estimate of the time to reach the car's current position on a reference lap, so the subtraction is a time-of-arrival that already carries the track's speed profile; a distance-over-speed model would have to invent that profile. Cars ahead of P, in the pits, or not in world are ignored; the pace car is not (it does arrive).
 
-For rejoin, P is the player's own position and T(P) the player's own `CarIdxEstTime`, so no landmark is needed. For pit exit, P is the learned `blendEnd` from #1112.
+For rejoin, P is the player's own position and T(P) the player's own `CarIdxEstTime`, so no landmark is needed. For pit exit, P is the learned `blendEnd` from #1112. (Amended 2026-11-09, after #1112's amendments: a landmark's reference time is kept per car class, so T(P) for an arriving car is its own class's `estTime` at the landmark. The landmarks are read through a new `SimRuntime.getPitLaneLandmarks` member if the detector lives outside the translator, or from the translator's learner if it is a translator diff; this issue's plan decides which.)
 
 ### 2. The rejoin trigger: stopped on track, no incident precondition
 
