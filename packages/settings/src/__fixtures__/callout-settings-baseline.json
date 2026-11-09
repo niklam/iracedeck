@@ -1058,5 +1058,15 @@
     "\"false\"": false,
     "\"x\"": false,
     "numberRejected": true
+  },
+  "calloutEnabledPitExitCue": {
+    "owner": "pit-exit/cue",
+    "default": true,
+    "true": true,
+    "\"true\"": true,
+    "false": false,
+    "\"false\"": false,
+    "\"x\"": false,
+    "numberRejected": true
   }
 }

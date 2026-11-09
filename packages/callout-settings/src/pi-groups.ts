@@ -15,6 +15,7 @@ import { OPPONENT_FLAG_CALLOUTS } from "./families/opponent-flags.js";
 import { OPPONENT_PIT_CALLOUTS } from "./families/opponent-pit.js";
 import { OVERTAKE_CALLOUTS } from "./families/overtake.js";
 import { PIT_BOX_CALLOUTS } from "./families/pit-box.js";
+import { PIT_EXIT_CALLOUTS } from "./families/pit-exit.js";
 import { PIT_LIMITER_CALLOUTS } from "./families/pit-limiter.js";
 import { PIT_SERVICE_REQUEST_CALLOUTS } from "./families/pit-service-requests.js";
 import { PIT_SPEEDING_CALLOUTS } from "./families/pit-speeding.js";
@@ -75,7 +76,7 @@ export const CALLOUT_PI_GROUPS = [
   { id: "gaps", title: "Gaps", families: [GAP_CALLOUTS] },
   { id: "spotter", title: "Spotter", families: [SPOTTER_CALLOUTS] },
   { id: "pit-box", title: "Pit Box", families: [PIT_BOX_CALLOUTS] },
-  { id: "pit-speeding", title: "Pit Speeding", families: [PIT_SPEEDING_CALLOUTS] },
+  { id: "pit-speeding", title: "Pit Speeding", families: [PIT_SPEEDING_CALLOUTS, PIT_EXIT_CALLOUTS] },
   { id: "fuel", title: "Fuel", families: [FUEL_CALLOUTS] },
   {
     id: "corner-names",

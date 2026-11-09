@@ -18,6 +18,7 @@ export { OPPONENT_FLAG_CALLOUTS } from "./families/opponent-flags.js";
 export { OPPONENT_PIT_CALLOUTS } from "./families/opponent-pit.js";
 export { OVERTAKE_CALLOUTS } from "./families/overtake.js";
 export { PIT_BOX_CALLOUTS } from "./families/pit-box.js";
+export { PIT_EXIT_CALLOUTS } from "./families/pit-exit.js";
 export { PIT_LIMITER_CALLOUTS } from "./families/pit-limiter.js";
 export { PIT_READBACK_CALLOUTS } from "./families/readback.js";
 export { PIT_SERVICE_REQUEST_CALLOUTS } from "./families/pit-service-requests.js";
