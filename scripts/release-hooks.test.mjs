@@ -784,8 +784,10 @@ describe("release-hooks.mjs fold (in a temporary git repository)", { timeout: 60
     expect(window.text).toContain(`## ${UNRELEASED_LABEL}\n\n**Features**\n\n- After the branch point.\n\n## 1.1.0\n`);
     expect(read(dir, CHANGELOG_SOURCE_PATH)).not.toContain(UNRELEASED_LABEL);
 
-    // Had the root kept master's 1.1.0-dev.0 (a conflict resolved in master's
-    // favour), the version strips to the same 1.1.0 and composes identically.
+    // The root's -dev suffix makes no difference here: a master that kept
+    // 1.1.0-dev.0 strips to the same 1.1.0 and composes identically. (A master
+    // already bumped past the branch point would resolve the version conflict to
+    // its own 1.2.0-dev.0 and compose the normal `## 1.2.0` / `_Unreleased_`.)
     writeJson(dir, "package.json", { name: "fixture", version: "1.1.0-dev.0" });
     expect(composeTree(dir).releases).toEqual(expectedWindow);
     fixtureGit(dir, "restore", "--", "package.json");

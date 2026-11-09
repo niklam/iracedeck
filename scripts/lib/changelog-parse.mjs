@@ -126,6 +126,16 @@ export function parseChangelog(source) {
     }
   };
 
+  // Start a release: every piece of per-release state is reset here, for a plain
+  // version and the Unreleased section alike.
+  const openRelease = (version) => {
+    release = { version, date: null, categories: [] };
+    releases.push(release);
+    category = null;
+    highestCategoryIndex = -1;
+    sawDateLine = false;
+  };
+
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     const lineNumber = i + 1;
@@ -144,11 +154,7 @@ export function parseChangelog(source) {
             lineNumber,
           );
         }
-        release = { version, date: null, categories: [] };
-        releases.push(release);
-        category = null;
-        highestCategoryIndex = -1;
-        sawDateLine = false;
+        openRelease(version);
         continue;
       }
       if (!PLAIN_VERSION.test(version)) {
@@ -174,12 +180,7 @@ export function parseChangelog(source) {
       }
       closeRelease(lineNumber);
       seenVersions.add(version);
-
-      release = { version, date: null, categories: [] };
-      releases.push(release);
-      category = null;
-      highestCategoryIndex = -1;
-      sawDateLine = false;
+      openRelease(version);
       continue;
     }
 

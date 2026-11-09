@@ -409,6 +409,21 @@ function checkComposeMode(mode) {
 }
 
 /**
+ * Every `## ` heading of changelog.mdx in file order, with its 1-based line.
+ *
+ * @param {string[]} lines - changelog.mdx, split into lines.
+ * @returns {{ version: string, line: number }[]}
+ */
+function versionHeadings(lines) {
+  const headings = [];
+  for (let i = 0; i < lines.length; i++) {
+    const heading = VERSION_HEADING.exec(lines[i]);
+    if (heading) headings.push({ version: heading[1], line: i + 1 });
+  }
+  return headings;
+}
+
+/**
  * The heading and date line the fragments are written under, after the version
  * rules of `mode`. Only called while fragments exist.
  *
@@ -427,19 +442,14 @@ function checkComposeMode(mode) {
  * every composed text goes through and which names it; the preview then writes
  * `## V` / `_Unreleased_` above it, as it always has.
  *
- * @param {string[]} lines - changelog.mdx, split into lines.
+ * @param {{ version: string, line: number }[]} headings - every `## ` heading of
+ *   changelog.mdx in file order, as `versionHeadings` returns them.
  * @param {string} version
  * @param {ComposeMode} mode
  * @returns {{ heading: string, dateLine: string | null }}
  * @throws {ChangelogFragmentError} naming the line.
  */
-function sectionFor(lines, version, mode) {
-  /** @type {{ version: string, line: number }[]} */
-  const headings = [];
-  for (let i = 0; i < lines.length; i++) {
-    const heading = VERSION_HEADING.exec(lines[i]);
-    if (heading) headings.push({ version: heading[1], line: i + 1 });
-  }
+function sectionFor(headings, version, mode) {
   const own = headings.find((heading) => heading.version === version);
 
   if (mode.mode === "fold") {
@@ -523,8 +533,10 @@ export function composeChangelogParts(mdx, fragments, version, mode) {
 
   const source = String(mdx);
   const lines = source.split(/\r?\n/);
-  const { heading, dateLine } = sectionFor(lines, version, mode);
-  const firstHeading = lines.findIndex((line) => VERSION_HEADING.test(line));
+  const headings = versionHeadings(lines);
+  const { heading, dateLine } = sectionFor(headings, version, mode);
+  // 0-based index of the first `## ` line, where the section is inserted; -1 when there is none.
+  const firstHeading = headings.length === 0 ? -1 : headings[0].line - 1;
 
   // Two fragments with one bullet (a copied file, or a follow-up that added a
   // fragment instead of editing the first) would list the change twice.
