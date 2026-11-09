@@ -26,6 +26,7 @@ import {
   RACE_START_CALLOUTS,
   RACE_STATUS_CALLOUTS,
   ROLLING_START_CALLOUTS,
+  SECTOR_START_CALLOUTS,
   SESSION_START_CALLOUTS,
   START_LIGHT_CALLOUTS,
   TIRE_WEAR_CALLOUTS,
@@ -63,6 +64,7 @@ import { SCENARIO_ID_TO_RACE_END_ID } from "./race-end.js";
 import { SCENARIO_ID_TO_RACE_START_ID } from "./race-start.js";
 import { SCENARIO_ID_TO_RACE_STATUS_ID } from "./race-status.js";
 import { SCENARIO_ID_TO_PIT_READBACK_ID } from "./readback.js";
+import { SCENARIO_ID_TO_SECTOR_START_ID } from "./sector-start.js";
 import { SCENARIO_ID_TO_SESSION_START_ID } from "./session-start.js";
 
 // Vite's `import.meta.glob`, typed for the one form the completeness check
@@ -198,6 +200,7 @@ const GATED: readonly GatedFamily[] = [
   { name: "race-start", scenarios: SCENARIO_ID_TO_RACE_START_ID, family: RACE_START_CALLOUTS },
   { name: "race-status", scenarios: SCENARIO_ID_TO_RACE_STATUS_ID, family: RACE_STATUS_CALLOUTS },
   { name: "rolling-start", scenarios: SCENARIO_ID_TO_ROLLING_START_ID, family: ROLLING_START_CALLOUTS },
+  { name: "sector-start", scenarios: SCENARIO_ID_TO_SECTOR_START_ID, family: SECTOR_START_CALLOUTS },
   { name: "session-start", scenarios: SCENARIO_ID_TO_SESSION_START_ID, family: SESSION_START_CALLOUTS },
   { name: "start-light", scenarios: SCENARIO_ID_TO_START_LIGHT_ID, family: START_LIGHT_CALLOUTS },
   { name: "tire-wear", scenarios: SCENARIO_ID_TO_TIRE_WEAR_ID, family: TIRE_WEAR_CALLOUTS },

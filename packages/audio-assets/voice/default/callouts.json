@@ -818,6 +818,13 @@
         "{{cornerName.clip}}"
       ]
     },
+    "pit-crew.sector-start-approaching": {
+      "comment": "The sector the car is entering, as a bare \"Sector three.\" with no radio frame, spoken as the car reaches the sector start in practice and test sessions on the same lead as the corner names. Sector one at the line is never called, and a corner name due just past the start is spoken instead of the sector.",
+      "test": "Harness → Corner Names → Sector three. In-sim: an Offline Testing lap at a track with three or more sectors; each sector start except the line is called once a lap.",
+      "sequence": [
+        "{{sectorStart.number}}"
+      ]
+    },
     "pit-crew.damage-repair-needed": {
       "comment": "The car has picked up damage the crew can repair — spoken once when iRacing first flags a mandatory or optional repair. A meatball flag carries the same news with more authority and outranks this line.",
       "test": "Harness → Damage → Damage Detected. In-sim: hit a wall or another car hard enough for the repair indicator to light in the black box.",
