@@ -2873,6 +2873,24 @@ describe("sim-events-iracing translator", () => {
       expect(started).toHaveBeenCalledTimes(1);
     });
 
+    it("reads a unit-less limit as km/h, uncorrected (issue #1476)", () => {
+      const controller = createMockController();
+      controller.__setSessionInfo(sessionWithLimit("60"));
+      const bus = getEventBus();
+      const started = vi.fn();
+      bus.subscribe("pitSpeeding.started", started);
+      initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
+
+      // The shared parser reads a bare number as km/h, which is what iRacing
+      // publishes; before #1476 the translator ignored it and stayed disarmed.
+      // No decimals, so no #1059 window: silent exactly at 60, firing a hair over.
+      controller.__tick(telemetry({ OnPitRoad: true, Speed: 60 / 3.6, EngineWarnings: 0 }));
+      expect(started).not.toHaveBeenCalled();
+
+      controller.__tick(telemetry({ OnPitRoad: true, Speed: (60 + 0.05) / 3.6, EngineWarnings: 0 }));
+      expect(started).toHaveBeenCalledTimes(1);
+    });
+
     it("keeps a published zero indistinguishable from an unparsed limit", () => {
       const controller = createMockController();
       controller.__setSessionInfo(sessionWithLimit("0.00 kph"));
