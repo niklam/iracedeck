@@ -61,6 +61,8 @@ When rendering a button, title settings are resolved through a priority chain:
 3. **Icon default** (from the icon's design metadata) — the designed setting for that action
 4. **System default** — bottom position, bold, font size 9
 
+Some keys skip the global step for a setting their design depends on, so only a per-button override changes it. Most are on/off toggle keys with a status bar. Some of them, such as Pit Crew's [Race Engineer, Radar and Corner Names](/docs/actions/audio-voice/pit-crew/) keys, hide their title so the artwork fills the key. Others, such as Car Control's DRS key, always show their title, because the title is part of what the key tells you.
+
 ## Tips
 
 - **Text-only buttons**: Set "Show Graphics" to No and increase the font size for clean, readable labels
