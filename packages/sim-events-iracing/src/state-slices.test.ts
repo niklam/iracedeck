@@ -333,7 +333,7 @@ const SLICE_READS_ALLOWED: SliceReadAllowList = {
 };
 
 /** The slices the tree has, by key. */
-const SLICE_KEYS = ["trackGaps", "fastestLap", "fuelCallout", "lapCrossing"];
+const SLICE_KEYS = ["trackGaps", "fastestLap", "fuelCallout", "lapCrossing", "trackSectors"];
 
 const violationNames = (scan: SliceScan): string[] => scan.violations.map((v) => `${v.rule}:${v.name}`);
 const violationKeys = (scan: SliceScan): string[] =>

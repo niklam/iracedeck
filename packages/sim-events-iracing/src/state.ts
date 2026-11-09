@@ -397,6 +397,38 @@ export function resetFuelCalloutBaselines(slice: FuelCalloutState): FuelCalloutS
   };
 }
 
+/**
+ * The current track's sectors (issue #1573), cached per track and session:
+ * the sector start fractions `extractSectorStarts` reads from
+ * `SplitTimeInfo.Sectors`, and the key they were resolved for. Written by the
+ * translator's `resolveTrackSectorsCached` alone, once per live tick, in every
+ * session type; read by `getTrackSectors()`, the one place any feature reads
+ * the sectors. Reset per session and at a disconnect with the rest of the
+ * state, and wiped whole at a replay glance: the next live tick re-resolves it
+ * from the session info, as it does the corner markers and the track length.
+ */
+export type TrackSectorsState = {
+  /**
+   * The `trackSessionKey` (`${TrackID}|${SessionNum}`) {@link starts} was
+   * resolved for; `""` before the first resolution. A tick with another key
+   * re-resolves.
+   */
+  key: string;
+  /**
+   * The sector start fractions of the lap, ordered by sector, the first at the
+   * start/finish line (`0`); `null` while unresolved, or when the session info
+   * has no sectors or its sectors fail `extractSectorStarts`' validation. A
+   * null is retried every tick, in case the first session-info read lacked
+   * `SplitTimeInfo`.
+   */
+  starts: readonly number[] | null;
+};
+
+/** A {@link TrackSectorsState} resolved for no track: the initial state, and what a replay glance leaves. */
+export function createTrackSectorsState(): TrackSectorsState {
+  return { key: "", starts: null };
+}
+
 export type MaterialSample = {
   t: number; // timestamp (ms since epoch)
   material: number; // TrkSurf-like enum value
@@ -482,6 +514,14 @@ export type TranslatorState = {
    * and any mid-session post-pit-exit lap — neither is a timed attempt.
    */
   lapStartedFromPits: boolean;
+
+  // ── Track sectors (issue #1573) ─────────────────────────────────────────
+  /**
+   * The current track's sectors, one slice ({@link TrackSectorsState}).
+   * Reset per session and at a disconnect; wiped whole at a replay glance and
+   * re-resolved on the next live tick.
+   */
+  trackSectors: TrackSectorsState;
 
   // ── Flags ───────────────────────────────────────────────────────────────
   flagStateInitialized: boolean;
@@ -1919,6 +1959,8 @@ export function createInitialState(): TranslatorState {
     cornerSpoken: new Set(),
     cornerMarkersKey: "",
     cornerMarkers: null,
+
+    trackSectors: createTrackSectorsState(),
 
     flagStateInitialized: false,
     activeFlags: new Set(),

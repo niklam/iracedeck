@@ -40,6 +40,7 @@ import {
   CarLeftRight,
   classPositionFromOrder,
   extractQualifyResults,
+  extractSectorStarts,
   IRSDK_UNLIMITED_LAPS,
   isPostRace,
   isPreGreen,
@@ -143,6 +144,7 @@ import {
   resetFastestLapBaselines,
   resetFuelCalloutBaselines,
   type RollingStartFormation,
+  type TrackSectorsState,
   type TranslatorState,
 } from "./state.js";
 import { TICK_STEP_KEYS_PER_ID, TickSteps, VALUE_UNAVAILABLE } from "./tick-steps.js";
@@ -167,7 +169,7 @@ const SUBSCRIPTION_ID = "__sim-events-iracing__";
  * one step's first error. `tick-steps.source.test.ts` counts the ids in both
  * `handleTick`s and fails until this number matches; a new step changes it.
  */
-export const TRANSLATOR_REPORTER_MAX_KEYS = 55 * TICK_STEP_KEYS_PER_ID;
+export const TRANSLATOR_REPORTER_MAX_KEYS = 56 * TICK_STEP_KEYS_PER_ID;
 
 /** The step name every {@link onTranslatorTick} listener is called under: one id, `translator:onTranslatorTick`. */
 const TICK_LISTENER_STEP = "onTranslatorTick";
@@ -629,6 +631,30 @@ export function getTrackDirection(): TrackDirection {
   const sessionInfo = (instance?.controller.getSessionInfo() ?? null) as Record<string, unknown> | null;
 
   return resolveTrackDirection(sessionInfo);
+}
+
+/**
+ * The current track's sectors (issue #1573): `starts` holds each sector's start
+ * as a lap fraction (`LapDistPct`), in sector order, the first `0` at the
+ * start/finish line, so `starts.length` is the sector count and sector `n`
+ * (counted from 1, as a driver counts them) begins at `starts[n - 1]`.
+ *
+ * The one place any feature reads the sectors — the sector-start calls of this
+ * issue and the sector comparison of #1572 included — so the parse, its
+ * validation and its cache stay in one place. Answers in every session type.
+ * Read from the translator's per-`(TrackID, SessionNum)` cache, resolved on
+ * every live tick from `SplitTimeInfo.Sectors` by `extractSectorStarts`.
+ *
+ * `null` before the translator is initialised, before its first live tick of
+ * the session has resolved them, during a replay (the replay wipe clears the
+ * cache, and the first live tick back re-resolves it), and when the session
+ * info has no sectors or they fail validation (a first sector that does not
+ * start at the line, a repeated or backwards start, a value outside `[0, 1)`).
+ */
+export function getTrackSectors(): { starts: readonly number[] } | null {
+  const starts = instance?.state.trackSectors.starts ?? null;
+
+  return starts === null ? null : { starts };
 }
 
 /**
@@ -3339,6 +3365,14 @@ function handleLiveSteps(
   const cornerMarkers = steps.value("resolveCornerMarkersCached", values, self.state.cornerMarkers, () =>
     resolveCornerMarkersCached(self.state, sessionInfo, telemetry),
   );
+  // The track's sectors (issue #1573), resolved in every session type — not
+  // gated on practice like the corner names — because `getTrackSectors()`
+  // serves every feature that reads them. Keyed like the corner markers, and
+  // live-only like them: a replay glance wipes the slice and this re-resolves
+  // it on the first live tick back.
+  steps.value("resolveTrackSectorsCached", values, self.state.trackSectors.starts, () =>
+    resolveTrackSectorsCached(self.state.trackSectors, sessionInfo, telemetry),
+  );
   steps.live("diffCornerName", pending, () =>
     diffCornerName(
       self.state,
@@ -3835,9 +3869,10 @@ function resolveIsMultiClass(sessionInfo: Record<string, unknown> | null): boole
  * The cache key every per-track, per-session cache of the translator is keyed
  * by (issue #1573): `${TrackID}|${SessionNum}`, from `WeekendInfo.TrackID` and
  * the tick's `SessionNum`, each `""` when absent. The track length (#574), the
- * corner markers (#888) and the pit speed limit all invalidate on it, so a new
- * track, or a new session at the same track, re-resolves each of them the same
- * way. Built here once, so no cache can key differently from the others.
+ * corner markers (#888), the pit speed limit and the track's sectors (#1573)
+ * all invalidate on it, so a new track, or a new session at the same track,
+ * re-resolves each of them the same way. Built here once, so no cache can key
+ * differently from the others.
  *
  * @internal Exported for testing.
  */
@@ -3906,6 +3941,35 @@ function resolveCornerMarkersCached(
   if (trackName !== "") state.cornerMarkers = resolveCornerMarkers(trackName);
 
   return state.cornerMarkers;
+}
+
+/**
+ * Resolve (and cache) the current track's sector starts (issue #1573) from
+ * `SplitTimeInfo.Sectors`, through `extractSectorStarts`, which returns `null`
+ * for sectors it cannot count from the start/finish line. Keyed by
+ * {@link trackSessionKey} like the corner markers: re-resolves when the key
+ * changes, and retries while null in case the first session-info read lacked
+ * `SplitTimeInfo`. Absent session info keeps what the slice holds.
+ */
+function resolveTrackSectorsCached(
+  slice: TrackSectorsState,
+  sessionInfo: Record<string, unknown> | null,
+  telemetry: TelemetryData,
+): readonly number[] | null {
+  if (!sessionInfo) return slice.starts;
+
+  const key = trackSessionKey(sessionInfo, telemetry);
+
+  if (key !== slice.key) {
+    slice.key = key;
+    slice.starts = null;
+  } else if (slice.starts !== null) {
+    return slice.starts;
+  }
+
+  slice.starts = extractSectorStarts(sessionInfo);
+
+  return slice.starts;
 }
 
 function resolvePitSpeedLimit(

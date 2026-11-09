@@ -44,6 +44,7 @@ export {
   getStandingStart,
   getStartingGridPosition,
   getTrackDirection,
+  getTrackSectors,
   initializeSimEventsIracing,
   isDamageRepairNeeded,
   isPitActionsAllowed,
