@@ -1,5 +1,27 @@
 export declare const audioAssetsPath: string;
 
+/**
+ * Everything a processed clip's bytes depend on besides the source clip
+ * (#1667). Hashed as sorted-key JSON for both the processed-clip cache key and
+ * the pack record's `inputs.pipeline`; a new pipeline input is one more field.
+ */
+export type PipelineIdentity = {
+  /** The radio filter chain, `RADIO_ENGINEER_FILTER`. */
+  filter: string;
+  /** The ffmpeg encode arguments. */
+  encodeArgs: readonly string[];
+  /** The installed `ffmpeg-static` version, read from its `package.json`. */
+  ffmpegStatic: string;
+};
+
+export declare const PIPELINE_IDENTITY: Readonly<PipelineIdentity>;
+
+/** The sha-256 (hex) of `identity` as sorted-key JSON — the pack record's `inputs.pipeline`. */
+export declare function pipelineIdentityHash(identity?: PipelineIdentity): string;
+
+/** The processed-clip cache directory name under `.cache/`: the first eight hex digits of `pipelineIdentityHash`. */
+export declare function pipelineCacheKey(identity?: PipelineIdentity): string;
+
 export type ProcessAndCopyAudioAssetsOptions = {
   destRoot: string;
   logger?: (message: string) => void;
@@ -57,6 +79,7 @@ export type ProcessVoiceTreeResult = {
   script: string | null;
   processed: number;
   cached: number;
+  /** The cache key the run used — `pipelineCacheKey()`, the `.cache/<key>/` directory name. */
   pipelineHash: string;
 };
 

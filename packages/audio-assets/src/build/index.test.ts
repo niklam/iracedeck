@@ -16,7 +16,17 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { audioAssetsPath, BUNDLED_VOICE_IDS, processAndCopyAudioAssets, processVoiceTree } from "./index.mjs";
+import { RADIO_ENGINEER_FILTER } from "../presets.mjs";
+import {
+  audioAssetsPath,
+  BUNDLED_VOICE_IDS,
+  PIPELINE_IDENTITY,
+  pipelineCacheKey,
+  pipelineIdentityHash,
+  processAndCopyAudioAssets,
+  processVoiceTree,
+} from "./index.mjs";
+import { installedPackageVersion } from "./installed-version.mjs";
 
 // Real `node:child_process.spawn` is kept — every test here runs ffmpeg for
 // real, on genuine audio, exactly as before — but wrapped so a test can
@@ -106,6 +116,64 @@ function sha256(bytes: Buffer): string {
 
 it("has the sample clip to build its fixtures from", () => {
   expect(existsSync(SAMPLE_CLIP)).toBe(true);
+});
+
+/**
+ * The pipeline identity (#1667): one object naming everything a processed
+ * clip's bytes depend on, hashed once for the cache key and once for the pack
+ * record. An `ffmpeg-static` bump used to be invisible to the cache key, so a
+ * warm cache went on serving the previous binary's output.
+ */
+describe("PIPELINE_IDENTITY — the cache key and the record's pipeline digest", () => {
+  it("names the filter chain, the encode args and the installed ffmpeg-static version, frozen", () => {
+    expect(PIPELINE_IDENTITY).toEqual({
+      filter: RADIO_ENGINEER_FILTER,
+      encodeArgs: ["-ar", "16000", "-ac", "1", "-c:a", "libmp3lame", "-b:a", "32k"],
+      ffmpegStatic: installedPackageVersion("ffmpeg-static", import.meta.url),
+    });
+    expect(Object.isFrozen(PIPELINE_IDENTITY)).toBe(true);
+    expect(Object.isFrozen(PIPELINE_IDENTITY.encodeArgs)).toBe(true);
+  });
+
+  it("hashes the identity as sorted-key JSON, so field order cannot move it", () => {
+    const reordered = {
+      ffmpegStatic: PIPELINE_IDENTITY.ffmpegStatic,
+      encodeArgs: PIPELINE_IDENTITY.encodeArgs,
+      filter: PIPELINE_IDENTITY.filter,
+    };
+
+    expect(pipelineIdentityHash()).toMatch(/^[0-9a-f]{64}$/);
+    expect(pipelineIdentityHash(reordered)).toBe(pipelineIdentityHash());
+  });
+
+  it("changes the cache key with the ffmpeg-static version, as with the filter and the encode args", () => {
+    const current = pipelineCacheKey();
+
+    expect(current).toBe(pipelineIdentityHash().slice(0, 8));
+    expect(pipelineCacheKey({ ...PIPELINE_IDENTITY, ffmpegStatic: "0.0.0-other" })).not.toBe(current);
+    expect(pipelineCacheKey({ ...PIPELINE_IDENTITY, filter: `${PIPELINE_IDENTITY.filter},volume=0dB` })).not.toBe(
+      current,
+    );
+    expect(pipelineCacheKey({ ...PIPELINE_IDENTITY, encodeArgs: [...PIPELINE_IDENTITY.encodeArgs, "-q"] })).not.toBe(
+      current,
+    );
+  });
+
+  it("is the key processVoiceTree runs under", async () => {
+    const root = tempDir("ird-pipeline-key-");
+    const srcDir = path.join(root, "src");
+
+    mkdirSync(path.join(srcDir, "flags"), { recursive: true });
+    copyFileSync(SAMPLE_CLIP, path.join(srcDir, "flags", "blue-01.mp3"));
+
+    const result = await processVoiceTree({
+      srcDir,
+      destDir: path.join(root, "dest"),
+      cacheDir: path.join(root, "cache"),
+    });
+
+    expect(result.pipelineHash).toBe(pipelineCacheKey());
+  }, 30_000);
 });
 
 /**
