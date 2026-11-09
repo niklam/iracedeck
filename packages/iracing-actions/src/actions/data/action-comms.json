@@ -1854,6 +1854,13 @@
         "key": "toggleUiDrivingLine"
       }
     },
+    "minimal-drive-ui": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "toggleUiMinimalDriveUi"
+      }
+    },
     "display-ref-car": {
       "method": "keybind",
       "binding": {

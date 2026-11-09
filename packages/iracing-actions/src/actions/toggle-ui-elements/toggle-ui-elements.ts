@@ -18,6 +18,7 @@ import dashBoxIconSvg from "@iracedeck/icons/toggle-ui-elements/dash-box.svg";
 import displayRefCarIconSvg from "@iracedeck/icons/toggle-ui-elements/display-ref-car.svg";
 import drivingLineIconSvg from "@iracedeck/icons/toggle-ui-elements/driving-line.svg";
 import fpsNetworkDisplayIconSvg from "@iracedeck/icons/toggle-ui-elements/fps-network-display.svg";
+import minimalDriveUiIconSvg from "@iracedeck/icons/toggle-ui-elements/minimal-drive-ui.svg";
 import radioDisplayIconSvg from "@iracedeck/icons/toggle-ui-elements/radio-display.svg";
 import replayUiIconSvg from "@iracedeck/icons/toggle-ui-elements/replay-ui.svg";
 import speedGearPedalsIconSvg from "@iracedeck/icons/toggle-ui-elements/speed-gear-pedals.svg";
@@ -37,6 +38,7 @@ type UiElement =
   | "virtual-mirror"
   | "ui-edit-mode"
   | "driving-line"
+  | "minimal-drive-ui"
   | "display-ref-car"
   | "replay-ui";
 
@@ -49,6 +51,7 @@ const ELEMENT_ICONS: Record<UiElement, string> = {
   "virtual-mirror": virtualMirrorIconSvg,
   "ui-edit-mode": uiEditModeIconSvg,
   "driving-line": drivingLineIconSvg,
+  "minimal-drive-ui": minimalDriveUiIconSvg,
   "display-ref-car": displayRefCarIconSvg,
   "replay-ui": replayUiIconSvg,
 };
@@ -65,6 +68,7 @@ const UI_ELEMENT_TITLES: Record<UiElement, string> = {
   "virtual-mirror": "MIRROR\nVIRTUAL",
   "ui-edit-mode": "MODE\nUI EDIT",
   "driving-line": "TOGGLE\nDRIVING LINE",
+  "minimal-drive-ui": "MINIMAL\nDRIVE UI",
   "display-ref-car": "CAR\nREFERENCE",
   "replay-ui": "TOGGLE\nREPLAY UI",
 };
@@ -84,6 +88,7 @@ export const UI_ELEMENT_GLOBAL_KEYS: Record<string, string> = {
   "virtual-mirror": "toggleUiVirtualMirror",
   "ui-edit-mode": "toggleUiEditMode",
   "driving-line": "toggleUiDrivingLine",
+  "minimal-drive-ui": "toggleUiMinimalDriveUi",
   "display-ref-car": "toggleUiDisplayRefCar",
 };
 
@@ -101,6 +106,7 @@ export const ToggleUiElementsSettings = CommonSettings.extend({
       "virtual-mirror",
       "ui-edit-mode",
       "driving-line",
+      "minimal-drive-ui",
       "display-ref-car",
       "replay-ui",
     ])
