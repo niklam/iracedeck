@@ -124,7 +124,7 @@ pnpm --filter @iracedeck/audio-assets generate --group <group-name>          # o
 pnpm --filter @iracedeck/audio-assets generate:manifest                      # rebuild runtime manifest
 ```
 
-Each `configs/<voice-id>.voice.json` is the per-voice source of truth — voices are self-contained, no cross-voice fallback. `generate.manifest.json` is the per-voice hash cache (keys include `voice/<voice-id>/…` so changing one voice's settings invalidates only that voice's entries). `manifest.json` is the runtime asset listing. The `--group` filter keeps the generator from re-cutting unrelated entries (and saves API cost); `--voice <id>` scopes to one voice. ElevenLabs is a paid API — never run unfiltered `generate` casually.
+Each `configs/<voice-id>.voice.json` is the per-voice source of truth — voices are self-contained, no cross-voice fallback. `generate.manifest.json` is the per-voice hash cache (keys include `voice/<voice-id>/…` so changing one voice's settings invalidates only that voice's entries). `manifest.json` is the runtime asset listing. The `--group` filter keeps the generator from re-cutting unrelated entries (and saves API cost); `--voice <id>` scopes to one voice. ElevenLabs is a paid API — never run unfiltered `generate` casually. Never level a new clip by hand: the build brings every clip to one loudness ahead of the radio filter (#1657, `packages/audio-assets/CLAUDE.md`), and a clip it has to clamp or reads as silence is named in a `Voice clip …: … fix the clip` warning on the build that first encodes it — re-cut that clip rather than waving the warning through.
 
 ### 4a. The contract in code (pools, vocabulary, scheduling)
 

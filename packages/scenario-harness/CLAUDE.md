@@ -14,7 +14,7 @@ UI at `http://127.0.0.1:5750/` (`DEFAULT_HOST`/`DEFAULT_PORT` in `src/server.ts`
 
 ## Audio pipeline
 
-Boot processes the audio-assets clips through the same radio-engineer ffmpeg filter the plugin build applies, so the harness auditions the exact clips shipped to users. The processed cache is shared with the plugin builds (`packages/audio-assets/.cache/<filter-hash>/`), so the first run after a plugin build is a fast cache-hit copy. The UI's audio refresh re-runs the processor with `wipe: false` — Windows/miniaudio holds file locks on any clip currently loaded, so overwrite-in-place instead of rmSync (`src/main.ts`). `/api/audio/wipe-cache` nukes the upstream ffmpeg cache and reprocesses everything — a last-resort diagnostic (`src/server.ts`).
+Boot processes the audio-assets clips through the same pipeline the plugin build applies (a per-clip loudness gain, then the radio-engineer ffmpeg filter — `packages/audio-assets/CLAUDE.md`), so the harness auditions the exact clips shipped to users; a clip's loudness warning (#1657) is logged at `warn` level, and only for a clip the run re-encodes. The processed cache is shared with the plugin builds (`packages/audio-assets/.cache/<pipeline-hash>/`), so the first run after a plugin build is a fast cache-hit copy. The UI's audio refresh re-runs the processor with `wipe: false` — Windows/miniaudio holds file locks on any clip currently loaded, so overwrite-in-place instead of rmSync (`src/main.ts`). `/api/audio/wipe-cache` nukes the upstream ffmpeg cache and reprocesses everything — a last-resort diagnostic (`src/server.ts`).
 
 ## Callout scripts and voice packs (#1064)
 
