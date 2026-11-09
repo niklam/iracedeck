@@ -100,11 +100,52 @@ const VOICE_ROOT = "voice";
 const ENCODE_ARGS = Object.freeze(["-ar", "16000", "-ac", "1", "-c:a", "libmp3lame", "-b:a", "32k"]);
 
 /**
+ * The environment variable through which `ffmpeg-static` lets another binary
+ * stand in for the one it installed (`FFMPEG_BIN`): its `index.js` exports that
+ * path instead of its own when the variable is set. Read from the package's
+ * own `package.json` (`ffmpeg-static.binary-path-env-var`), the field its
+ * `index.js` reads, so a rename there is followed; the literal is the fallback
+ * for a manifest without it.
+ */
+const FFMPEG_BINARY_ENV_VAR = (() => {
+  const declared = require("ffmpeg-static/package.json")["ffmpeg-static"]?.["binary-path-env-var"];
+
+  return typeof declared === "string" && declared !== "" ? declared : "FFMPEG_BIN";
+})();
+
+/**
  * Everything a processed clip's bytes depend on besides the source clip
- * itself (#1667): the radio filter chain, the encode arguments, and the
- * `ffmpeg-static` release whose binary runs them, read from its installed
- * `package.json` — the same resolution `require("ffmpeg-static")` below uses,
- * so the version named is the version of the binary that ran.
+ * itself (#1667), built from `env`: the radio filter chain, the encode
+ * arguments, and the `ffmpeg-static` release whose binary runs them, read from
+ * its installed `package.json` — the same resolution `require("ffmpeg-static")`
+ * below uses. That version names the binary that ran only while
+ * `ffmpeg-static` serves its own: with its `FFMPEG_BIN` override set, it
+ * exports that path instead, and a different binary from the same package
+ * version would otherwise keep the same cache key and pipeline hash. So the
+ * override, when set, is one more field — `ffmpegBinaryOverride`, the path as
+ * given — and absent otherwise, which keeps the hash of every record sealed
+ * before it existed exactly where it was.
+ *
+ * `PIPELINE_IDENTITY` is this over `process.env`, frozen, and what everything
+ * reads; the function is the seam a test builds another environment's identity
+ * through.
+ *
+ * @param {NodeJS.ProcessEnv} [env]
+ * @returns {import("./index.d.ts").PipelineIdentity}
+ */
+export function pipelineIdentity(env = process.env) {
+  const override = env[FFMPEG_BINARY_ENV_VAR];
+
+  return {
+    filter: RADIO_ENGINEER_FILTER,
+    encodeArgs: ENCODE_ARGS,
+    ffmpegStatic: installedPackageVersion("ffmpeg-static", import.meta.url),
+    ...(override ? { ffmpegBinaryOverride: override } : {}),
+  };
+}
+
+/**
+ * The pipeline identity of this process (`pipelineIdentity(process.env)`).
  *
  * ONE identity, two readers. `pipelineCacheKey` derives the processed-clip
  * cache directory from it, so a change to any field — an `ffmpeg-static`
@@ -128,11 +169,7 @@ const ENCODE_ARGS = Object.freeze(["-ar", "16000", "-ac", "1", "-c:a", "libmp3la
  *
  * @type {Readonly<import("./index.d.ts").PipelineIdentity>}
  */
-export const PIPELINE_IDENTITY = Object.freeze({
-  filter: RADIO_ENGINEER_FILTER,
-  encodeArgs: ENCODE_ARGS,
-  ffmpegStatic: installedPackageVersion("ffmpeg-static", import.meta.url),
-});
+export const PIPELINE_IDENTITY = Object.freeze(pipelineIdentity());
 
 /**
  * The sha-256 of `identity` as sorted-key JSON (`serializeSortedJson`), so the

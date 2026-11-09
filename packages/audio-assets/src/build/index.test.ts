@@ -22,6 +22,7 @@ import {
   BUNDLED_VOICE_IDS,
   PIPELINE_IDENTITY,
   pipelineCacheKey,
+  pipelineIdentity,
   pipelineIdentityHash,
   processAndCopyAudioAssets,
   processVoiceTree,
@@ -133,6 +134,29 @@ describe("PIPELINE_IDENTITY — the cache key and the record's pipeline digest",
     });
     expect(Object.isFrozen(PIPELINE_IDENTITY)).toBe(true);
     expect(Object.isFrozen(PIPELINE_IDENTITY.encodeArgs)).toBe(true);
+  });
+
+  // ffmpeg-static exports the path in its FFMPEG_BIN variable instead of its
+  // own binary when the variable is set, so the package version alone no longer
+  // names the binary that ran. The override is a field only while set: unset,
+  // the identity is byte-for-byte the one the committed records were sealed
+  // with, so neither record goes stale from this field existing.
+  it("is the committed records' pipeline digest with no ffmpeg-static override, and another one with it", () => {
+    const sealed = JSON.parse(readFileSync(path.join(audioAssetsPath, "pack-records", "default.json"), "utf-8"));
+    const unset = pipelineIdentity({});
+
+    expect(unset).toEqual(PIPELINE_IDENTITY);
+    expect(unset).not.toHaveProperty("ffmpegBinaryOverride");
+    expect(pipelineIdentityHash(unset)).toBe(sealed.inputs.pipeline);
+    expect(pipelineIdentityHash(pipelineIdentity({ FFMPEG_BIN: "" }))).toBe(sealed.inputs.pipeline);
+
+    const overridden = pipelineIdentity({ FFMPEG_BIN: "/opt/ffmpeg/bin/ffmpeg" });
+
+    expect(overridden).toEqual({ ...unset, ffmpegBinaryOverride: "/opt/ffmpeg/bin/ffmpeg" });
+    expect(pipelineCacheKey(overridden)).not.toBe(pipelineCacheKey(unset));
+    expect(pipelineCacheKey(pipelineIdentity({ FFMPEG_BIN: "/usr/bin/ffmpeg" }))).not.toBe(
+      pipelineCacheKey(overridden),
+    );
   });
 
   it("hashes the identity as sorted-key JSON, so field order cannot move it", () => {

@@ -12,7 +12,17 @@ export type PipelineIdentity = {
   encodeArgs: readonly string[];
   /** The installed `ffmpeg-static` version, read from its `package.json`. */
   ffmpegStatic: string;
+  /**
+   * The binary `ffmpeg-static`'s `FFMPEG_BIN` override points at, present only
+   * while that variable is set: the package version alone then no longer names
+   * the binary that ran. Absent, the hash is the one records sealed before the
+   * field existed carry.
+   */
+  ffmpegBinaryOverride?: string;
 };
+
+/** The identity `env` gives: `PIPELINE_IDENTITY` is this over `process.env`. A test's seam. */
+export declare function pipelineIdentity(env?: NodeJS.ProcessEnv): PipelineIdentity;
 
 export declare const PIPELINE_IDENTITY: Readonly<PipelineIdentity>;
 
