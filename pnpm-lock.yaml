@@ -1452,6 +1452,31 @@ importers:
         specifier: 5.0.5
         version: 5.0.5(@opentelemetry/api@1.9.1)(@types/node@26.6.5)(jsdom@30.1.3)(vite@8.3.4(@types/node@26.6.5)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.46.0)(tsx@4.23.15)(yaml@2.9.1))
 
+  packages/track-store:
+    dependencies:
+      '@iracedeck/logger':
+        specifier: workspace:*
+        version: link:../logger
+      '@iracedeck/settings':
+        specifier: workspace:*
+        version: link:../settings
+      '@iracedeck/track-data':
+        specifier: workspace:*
+        version: link:../track-data
+    devDependencies:
+      '@tsconfig/node22':
+        specifier: 22.0.6
+        version: 22.0.6
+      '@types/node':
+        specifier: 26.6.5
+        version: 26.6.5
+      rimraf:
+        specifier: 6.1.3
+        version: 6.1.3
+      typescript:
+        specifier: 5.9.3
+        version: 5.9.3
+
   packages/voice-packs:
     dependencies:
       '@iracedeck/app-constants':

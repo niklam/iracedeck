@@ -27,6 +27,8 @@ export const SIM_NEUTRAL_PACKAGES = Object.freeze([
   // The deck layer and the packages split out of it (#1351, #1367).
   'deck-core',
   'replay-store',
+  // The per-track store beside it (#1112): files only, fed over the bus.
+  'track-store',
   'diagnostics',
   'app-updates',
   'settings-window',
