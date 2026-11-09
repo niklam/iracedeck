@@ -404,8 +404,9 @@ export function resetFuelCalloutBaselines(slice: FuelCalloutState): FuelCalloutS
  * translator's `resolveTrackSectorsCached` alone, once per live tick, in every
  * session type; read by `getTrackSectors()`, the one place any feature reads
  * the sectors. Reset per session and at a disconnect with the rest of the
- * state, and wiped whole at a replay glance: the next live tick re-resolves it
- * from the session info, as it does the corner markers and the track length.
+ * state, and kept whole across a replay glance (`wipeStateForReplay`): a pure
+ * session-info fact, so readers outside the translator see no null window
+ * through the replay; the next live tick re-validates its key.
  */
 export type TrackSectorsState = {
   /**
@@ -424,7 +425,7 @@ export type TrackSectorsState = {
   starts: readonly number[] | null;
 };
 
-/** A {@link TrackSectorsState} resolved for no track: the initial state, and what a replay glance leaves. */
+/** A {@link TrackSectorsState} resolved for no track: the initial state. */
 export function createTrackSectorsState(): TrackSectorsState {
   return { key: "", starts: null };
 }
@@ -518,8 +519,8 @@ export type TranslatorState = {
   // ── Track sectors (issue #1573) ─────────────────────────────────────────
   /**
    * The current track's sectors, one slice ({@link TrackSectorsState}).
-   * Reset per session and at a disconnect; wiped whole at a replay glance and
-   * re-resolved on the next live tick.
+   * Reset per session and at a disconnect; kept whole across a replay glance,
+   * its key re-validated on the next live tick.
    */
   trackSectors: TrackSectorsState;
 

@@ -646,10 +646,12 @@ export function getTrackDirection(): TrackDirection {
  * every live tick from `SplitTimeInfo.Sectors` by `extractSectorStarts`.
  *
  * `null` before the translator is initialised, before its first live tick of
- * the session has resolved them, during a replay (the replay wipe clears the
- * cache, and the first live tick back re-resolves it), and when the session
- * info has no sectors or they fail validation (a first sector that does not
- * start at the line, a repeated or backwards start, a value outside `[0, 1)`).
+ * the session has resolved them, and when the session info has no sectors or
+ * they fail validation (a first sector that does not
+ * start at the line, a repeated or backwards start, a value outside `[0, 1)`,
+ * a repeated `SectorNum`). A replay glance keeps the cache (`wipeStateForReplay`),
+ * so a reader outside the translator sees no null window through the replay
+ * or the exit grace; the first live tick back re-validates the key.
  */
 export function getTrackSectors(): { starts: readonly number[] } | null {
   const starts = instance?.state.trackSectors.starts ?? null;
@@ -2615,6 +2617,12 @@ function wipeStateForReplay(self: TranslatorInstance): void {
     // the one replay that must not keep it; the guard in `handleTick` clears
     // it there.
     lastStopTireTemps: self.state.lastStopTireTemps,
+    // The track's sectors (issue #1573), kept whole by reference: a pure
+    // session-info fact keyed by `trackSessionKey`, with nothing of the replay
+    // timeline in it, so `getTrackSectors()` has no null window during a
+    // replay glance or the exit grace for readers outside the translator
+    // (#1572's sector timer). The key still re-validates on the next live tick.
+    trackSectors: self.state.trackSectors,
   };
 
   self.state = createInitialState();
@@ -3368,8 +3376,9 @@ function handleLiveSteps(
   // The track's sectors (issue #1573), resolved in every session type — not
   // gated on practice like the corner names — because `getTrackSectors()`
   // serves every feature that reads them. Keyed like the corner markers, and
-  // live-only like them: a replay glance wipes the slice and this re-resolves
-  // it on the first live tick back.
+  // resolved on live ticks only; the slice is kept across a replay glance
+  // (`wipeStateForReplay`), and the key re-validates on the first live tick
+  // back.
   steps.value("resolveTrackSectorsCached", values, self.state.trackSectors.starts, () =>
     resolveTrackSectorsCached(self.state.trackSectors, sessionInfo, telemetry),
   );

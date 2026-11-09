@@ -3,7 +3,7 @@
  * #1573): the one `trackSessionKey` all four are keyed by, and the track's
  * sectors as `getTrackSectors()` serves them — in every session type,
  * re-resolved on a new `(TrackID, SessionNum)`, `null` for sectors that fail
- * validation, and live-only across a replay.
+ * validation, and kept through a replay.
  */
 import { _resetEventBus, getEventBus, initializeEventBus } from "@iracedeck/event-bus";
 import {
@@ -241,7 +241,10 @@ describe("getTrackSectors", () => {
     expect(getTrackSectors()).toEqual({ starts: [0, 0.333333, 0.666667] });
   });
 
-  it("re-resolves on a new SessionNum at the same track", () => {
+  // A SessionNum change resets the whole translator state (`resetPerSessionState`),
+  // so this is the session reset clearing the cache, not the key at work; the
+  // TrackID test above is the key's own test.
+  it("is cleared by the session reset and re-resolved on a new SessionNum", () => {
     start(sessionInfo({ sectors: FIVE_SECTORS }));
     controller.__tick(tick(0));
 
@@ -301,22 +304,38 @@ describe("getTrackSectors", () => {
     expect(getTrackSectors()).toEqual({ starts: [0, 0.333333, 0.666667] });
   });
 
-  it("is null through a replay, and re-resolves on the first live tick after it", () => {
+  it("holds through a replay glance and its exit grace, kept as the same object", () => {
     vi.useFakeTimers();
     start(sessionInfo({ sectors: FIVE_SECTORS }));
     controller.__tick(tick());
 
     expect(getTrackSectors()).toEqual({ starts: [0, 0.2, 0.4, 0.6, 0.8] });
 
+    const before = readSimState();
+
+    if (!before.initialized) throw new Error("translator not initialised");
+
+    const slice = before.raw.state.trackSectors;
+
     controller.__tick(tick(0, { IsReplayPlaying: true, IsOnTrack: false }));
 
-    expect(getTrackSectors()).toBeNull();
+    expect(getTrackSectors()).toEqual({ starts: [0, 0.2, 0.4, 0.6, 0.8] });
 
-    // Back to live, past the replay state's exit grace (#1324).
+    // Back to live, inside the replay state's exit grace (#1324): still held.
     controller.__tick(tick());
+
+    expect(getTrackSectors()).toEqual({ starts: [0, 0.2, 0.4, 0.6, 0.8] });
+
     vi.advanceTimersByTime(REPLAY_EXIT_GRACE_MS + 1);
     controller.__tick(tick());
 
     expect(getTrackSectors()).toEqual({ starts: [0, 0.2, 0.4, 0.6, 0.8] });
+
+    const after = readSimState();
+
+    if (!after.initialized) throw new Error("translator not initialised");
+
+    // Kept whole by reference across the wipe, not re-resolved into a new one.
+    expect(after.raw.state.trackSectors).toBe(slice);
   });
 });
