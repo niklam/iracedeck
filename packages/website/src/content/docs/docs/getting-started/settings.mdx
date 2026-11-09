@@ -3,6 +3,8 @@ title: Settings
 description: Every plugin-wide setting in one full-size window — key bindings, appearance, the Race Engineer, profiles, and more — instead of hunting through Property Inspectors.
 ---
 
+import SettingsShot from "../../../../components/SettingsShot.astro";
+
 Every iRaceDeck key has its own settings in the deck software's Property Inspector, but many settings apply to the **whole plugin**: your key bindings, the appearance defaults every key inherits, the Race Engineer's voice and callouts, timing tunables, SimHub, and so on. Those used to live inside each Property Inspector — repeated in every one, stacked in a narrow panel. The **Settings window** is their home now.
 
 ## Opening It
@@ -21,7 +23,7 @@ The sidebar has one tab per area. Everything here applies to the **whole plugin*
 
 ### Getting Started
 
-![The Getting Started tab of the iRaceDeck Settings window](../../../../assets/settings-window/getting-started.png)
+<SettingsShot file="getting-started.png" alt="The Getting Started tab of the iRaceDeck Settings window" />
 
 The [First Steps](/docs/getting-started/first-steps/) page, built into the plugin so it works without an internet connection — what to do first, which layout to start from, and what the Race Engineer is.
 
@@ -33,7 +35,7 @@ Three of its steps do something rather than only explain it: one press turns on 
 
 ### General
 
-![The General tab of the iRaceDeck Settings window](../../../../assets/settings-window/general.png)
+<SettingsShot file="general.png" alt="The General tab of the iRaceDeck Settings window" />
 
 Behaviour that affects every key you press.
 
@@ -47,7 +49,7 @@ Behaviour that affects every key you press.
 
 ### Key Bindings
 
-![The Key Bindings tab, showing the searchable table of every binding](../../../../assets/settings-window/key-bindings.png)
+<SettingsShot file="key-bindings.png" alt="The Key Bindings tab, showing the searchable table of every binding" />
 
 Every binding in the plugin, in one searchable table — search by action or category, or filter to a single category with the dropdown. Each row saves the moment you change it, exactly as it would in a Property Inspector.
 
@@ -57,7 +59,7 @@ The same bindings also appear in each key's Property Inspector, filtered to just
 
 ### Appearance
 
-![The Appearance tab, showing title, colour, border, graphic and flag-flash defaults and the Disconnected Keys setting](../../../../assets/settings-window/appearance.png)
+<SettingsShot file="appearance.png" alt="The Appearance tab, showing title, colour, border, graphic and flag-flash defaults and the Disconnected Keys setting" />
 
 The look every key inherits. Anything set here is a **default**: a key that has its own override in its Property Inspector keeps it.
 
@@ -77,7 +79,7 @@ Keys that work without iRacing keep their normal look: [Pit Crew](/docs/actions/
 
 ### Race Engineer
 
-![The Race Engineer tab, showing the live toggles, startup policies, voice, the Radio Frame beeps and ambience switches, the voice packs you have installed and the ones available to download, and callout opt-ins](../../../../assets/settings-window/race-engineer.png)
+<SettingsShot file="race-engineer.png" alt="The Race Engineer tab, showing the live toggles, startup policies, voice, the Radio Frame beeps and ambience switches, the voice packs you have installed and the ones available to download, and callout opt-ins" />
 
 Everything about the Race Engineer and the radar: the live on/off toggles and their startup policies, the voice, your name, the output device and the three volumes with **Test** buttons beside them, the two halves of the radio frame, the voice packs you have installed and the ones available to download, the setup-warning patterns, and the per-callout opt-ins.
 
@@ -111,7 +113,7 @@ If you upgraded from an earlier version, your old **On startup** checkbox carrie
 
 ### Profiles
 
-![The Profiles tab, showing the deck picker, the bundled profiles and the automatic switch by session type](../../../../assets/settings-window/profiles.png)
+<SettingsShot file="profiles.png" alt="The Profiles tab, showing the deck picker, the bundled profiles and the automatic switch by session type" />
 
 **Stream Deck only.** Mirabox and Ulanzi Deck have no profile system, so this tab is not shown there.
 
@@ -123,7 +125,7 @@ Switch a connected Stream Deck to one of the ready-made iRaceDeck layouts, or le
 
 ### Delays
 
-![The Delays tab, showing the chat and replay timing tunables](../../../../assets/settings-window/delays.png)
+<SettingsShot file="delays.png" alt="The Delays tab, showing the chat and replay timing tunables" />
 
 Timing for the actions that drive iRacing's own interface rather than talking to it directly. **The defaults suit most machines** — come here only if something misbehaves.
 
@@ -141,7 +143,7 @@ A replay that is moving is paused for the jump, and the setting is applied only 
 
 ### SimHub
 
-![The SimHub tab, showing the Control Mapper host and port](../../../../assets/settings-window/simhub.png)
+<SettingsShot file="simhub.png" alt="The SimHub tab, showing the Control Mapper host and port" />
 
 Where iRaceDeck reaches [SimHub](https://www.simhubdash.com/) Control Mapper, for bindings you have set to a SimHub role rather than a keyboard shortcut. The default `127.0.0.1:8888` is right when SimHub runs on the same PC; point it elsewhere if SimHub lives on another machine.
 
@@ -149,7 +151,7 @@ This only matters if you actually use SimHub roles — a purely keyboard-bound s
 
 ### What's New
 
-![The What's New tab, showing the update preference and the built-in release notes](../../../../assets/settings-window/whats-new.png)
+<SettingsShot file="whats-new.png" alt="The What's New tab, showing the update preference and the built-in release notes" />
 
 The **Updates** card holds two settings, one for each side of an update. **What's New page** controls when the changelog opens by itself once iRaceDeck has updated:
 
@@ -172,7 +174,7 @@ Below the settings are the **release notes for every version of iRaceDeck**, new
 
 ### Diagnostics
 
-![The Diagnostics tab, showing the debug logging toggle and the settings file path](../../../../assets/settings-window/diagnostics.png)
+<SettingsShot file="diagnostics.png" alt="The Diagnostics tab, showing the debug logging toggle and the settings file path" />
 
 **Enable debug logging** writes verbose detail to the plugin log. Leave it off for normal use — it takes effect immediately, with no restart, so switch it on only to capture a log when reporting a problem, then switch it back off.
 
@@ -182,7 +184,7 @@ Below the settings are the **release notes for every version of iRaceDeck**, new
 
 ### Support iRaceDeck
 
-![The Support iRaceDeck tab, showing what iRaceDeck costs to keep going, the Buy Me a Coffee button and other ways to help](../../../../assets/settings-window/support.png)
+<SettingsShot file="support.png" alt="The Support iRaceDeck tab, showing what iRaceDeck costs to keep going, the Buy Me a Coffee button and other ways to help" />
 
 iRaceDeck is free, with no paid version and no locked features. This tab says what it costs to keep going and gives you a way to chip in if you want to. The **Support iRaceDeck** button opens the project's Buy Me a Coffee page in your browser, and the link under it goes to the **iRaceDeck Supporter** membership, which comes with the Supporter role on Discord. Nothing is ever expected.
 

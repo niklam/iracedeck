@@ -1,0 +1,37 @@
+---
+/**
+ * One Settings-window screenshot on the docs' Settings page (#1536).
+ *
+ * The screenshots in `src/assets/settings-window/` are captured by the stable
+ * release only, so a branch that adds a tab to the window cannot commit its PNG.
+ * A Markdown image naming a missing file fails the whole Astro build; this
+ * component looks the file up in the folder instead and renders nothing for a
+ * tab that has not been captured yet, so the page builds before the release and
+ * shows the shot from the release on.
+ *
+ * A file that is there renders exactly as a Markdown image does: optimized by
+ * `astro:assets` to WebP at its own size, lazy and async, inside a paragraph.
+ */
+import type { ImageMetadata } from "astro";
+import { Image } from "astro:assets";
+
+interface Props {
+  /** The PNG's name in the folder, as `SETTINGS_WINDOW_TABS[].file` names it, e.g. `general.png`. */
+  file: string;
+  /** The image's alt text. */
+  alt: string;
+}
+
+// Vite needs the pattern as a literal, and keys each match by it: a file is
+// found under `../assets/settings-window/<file>`, and nowhere else.
+const shots = import.meta.glob<{ default: ImageMetadata }>("../assets/settings-window/*.png", { eager: true });
+
+const { file, alt } = Astro.props;
+const shot = shots[`../assets/settings-window/${file}`]?.default;
+---
+
+{shot && (
+  <p>
+    <Image src={shot} alt={alt} />
+  </p>
+)}
