@@ -188,7 +188,7 @@ export interface ReplayControlDialHost {
    */
   switchToCarNumber(carNumberRaw: number): boolean;
   /** The canonical live race order (`getLiveRacePositions`, `race-positions.md`), or null: the Position mode's (#1448). */
-  racePositions(): number[] | null;
+  racePositions(): readonly number[] | null;
   /** Redraws the keypad keys whose icon follows the replay speed. */
   refreshKeys(): void;
   /**

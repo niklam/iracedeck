@@ -57,7 +57,7 @@ export function wrapPosition(current: number, dir: 1 | -1, max: number): number 
  */
 export function computeRacePositionTarget(
   camCarIdx: number | undefined,
-  order: number[] | null,
+  order: readonly number[] | null,
   direction: CarCycleDirection,
 ): { currentPosition: number | null; targetPosition: number; maxPosition: number } | null {
   if (!order || camCarIdx === undefined || camCarIdx < 0) return null;
@@ -91,7 +91,7 @@ export function computeRacePositionTarget(
 }
 
 /** The carIdx running at a given race position (the inverse of `order`), or null when unclassified. */
-function carIdxAtPosition(order: number[], position: number): number | null {
+function carIdxAtPosition(order: readonly number[], position: number): number | null {
   const carIdx = order.findIndex((p) => p === position);
 
   return carIdx < 0 ? null : carIdx;
@@ -104,7 +104,11 @@ function carIdxAtPosition(order: number[], position: number): number | null {
  * shows, rather than a bare position that iRacing's own `switchPos` would
  * resolve against a potentially different (official) order.
  */
-export function carNumberRawAtPosition(order: number[], sessionInfo: unknown, position: number): number | null {
+export function carNumberRawAtPosition(
+  order: readonly number[],
+  sessionInfo: unknown,
+  position: number,
+): number | null {
   const carIdx = carIdxAtPosition(order, position);
 
   return carIdx === null ? null : getCarNumberRawFromSessionInfo(sessionInfo, carIdx);
@@ -126,9 +130,9 @@ export function carNumberRawAtPosition(order: number[], sessionInfo: unknown, po
  * is itself all-zero pre-green (iRacing scores positions at start/finish).
  */
 export function resolveRaceOrder(
-  canonical: number[] | null,
+  canonical: readonly number[] | null,
   carIdxPosition: number[] | null | undefined,
-): number[] | null {
+): readonly number[] | null {
   if (canonical?.some((position) => position > 0)) return canonical;
 
   return carIdxPosition ?? canonical ?? null;

@@ -167,7 +167,7 @@ export interface ReplayDialStepIo extends ReplayDialModeIo {
    * car it does not rank, or null without one. The Position mode falls back
    * to the official `CarIdxPosition` itself (`resolveRaceOrder`, #1448).
    */
-  racePositions(): number[] | null;
+  racePositions(): readonly number[] | null;
   /** Whether a position jump is under way: a pending target standing, or a seek showing. A search is not one. */
   isJumpUnderWay(): boolean;
   /**
