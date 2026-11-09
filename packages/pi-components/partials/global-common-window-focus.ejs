@@ -1,8 +1,9 @@
 <%#
-  Common settings — Window Focus + Connection (issue #992 split). One group of the
-  PI's "Common Settings" accordion; also a card on the settings window's General
-  tab. Focus iRacing is a three-way mode since #977. Emits items only — the
-  includer supplies the heading.
+  Common settings — Window Focus (issue #992 split). A card on the settings
+  window's General tab. Focus iRacing is a three-way mode since #977. Emits
+  items only — the includer supplies the heading. Its Connection item
+  (`disableWhenDisconnected`) was retired in #1599; the disconnected look is the
+  Appearance tab's `global-disconnected-look.ejs`.
 %>
 <sdpi-item label="Focus iRacing">
   <sdpi-select setting="focusIRacingWindow" global default="always">
@@ -18,16 +19,4 @@
   foreground: a keyboard binding, a chat command, or a touch-strip gesture that taps a
   binding — keys that talk to iRacing over its API, SimHub roles and plugin-only keys
   leave your window alone. <strong>Never</strong> leaves focus alone entirely.
-</div>
-<sdpi-item label="Connection">
-  <sdpi-checkbox
-    setting="disableWhenDisconnected"
-    label="Disable buttons when iRacing is not connected"
-    global
-    default="true"
-  ></sdpi-checkbox>
-</sdpi-item>
-<div class="ird-supporting-text">
-  Greys out keys and ignores presses while iRacing isn't running, so a stray press
-  can't send keystrokes to whatever else is in the foreground.
 </div>

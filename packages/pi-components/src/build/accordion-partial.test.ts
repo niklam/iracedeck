@@ -89,7 +89,7 @@ describe("accordion.ejs", () => {
 describe("global-common-* group partials", () => {
   it("each per-group partial renders on its own without an accordion, for the settings window", () => {
     const groups: Record<string, string[]> = {
-      "global-common-window-focus": ["focusIRacingWindow", "disableWhenDisconnected"],
+      "global-common-window-focus": ["focusIRacingWindow"],
       "global-common-simhub": ["simHubHost", "simHubPort"],
       "global-common-dual-press": ["dualPressThresholdMs", "dualPressDirections"],
       "global-common-press-sounds": ["pressSound"],
@@ -130,6 +130,52 @@ describe("global-common-* group partials", () => {
     // over several lines, so a single-line literal would pass vacuously against
     // the very markup it exists to forbid.
     expect(html).not.toMatch(/<sdpi-checkbox[^>]*setting="focusIRacingWindow"/);
+  });
+});
+
+describe("the disconnected look (#1599)", () => {
+  it("the Window Focus card no longer carries the retired Connection item", () => {
+    const html = render("<%- include('global-common-window-focus') %>");
+
+    expect(html).not.toContain("disableWhenDisconnected");
+    expect(html).not.toContain('label="Connection"');
+    expect(html).not.toContain("<sdpi-checkbox");
+    // What stays: the Focus iRacing select, and only it.
+    expect((html.match(/<sdpi-item /g) ?? []).length).toBe(1);
+  });
+
+  it("global-disconnected-look renders one global checkbox for showDisconnectedState with no default attribute", () => {
+    const html = render("<%- include('global-disconnected-look') %>");
+
+    // The truthy-attribute trap: `default="false"` renders CHECKED, so the
+    // off-by-default setting carries no `default` attribute at all.
+    expect(html).toContain(
+      '<sdpi-checkbox setting="showDisconnectedState" label="Dim keys that need iRacing" global></sdpi-checkbox>',
+    );
+    expect(html).not.toMatch(/<sdpi-checkbox[^>]*default=/);
+    expect((html.match(/setting="/g) ?? []).length).toBe(1);
+    expect(html).not.toContain("disableWhenDisconnected");
+  });
+
+  it("says presses still go through and names the keys that keep their look", () => {
+    const text = render("<%- include('global-disconnected-look') %>").replace(/\s+/g, " ");
+
+    expect(text).toContain("Pressing one still sends the press.");
+
+    for (const name of ["Pit Crew", "Switch Profile", "Capture CPU Profile", "Race Engineer and Radar volume keys"]) {
+      expect(text, name).toContain(name);
+    }
+  });
+
+  it("is a collapsible accordion in the PI mode and a flat card in the settings window", () => {
+    const pi = render("<%- include('global-disconnected-look') %>");
+    const win = render("<%- include('global-disconnected-look', { settingsWindow: true }) %>");
+
+    expect(pi).toContain('<details class="ird-collapsible" data-accordion-id="Global Disconnected Keys"');
+    expect(win).not.toContain("<details");
+    expect(win).toContain('class="ird-sw-card"');
+    expect(win).toContain("Disconnected Keys");
+    expect(win).toContain('setting="showDisconnectedState"');
   });
 });
 
