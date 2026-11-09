@@ -156,6 +156,7 @@ export const RELEASE_DOWNLOAD_BASE = "https://github.com/niklam/iracedeck/releas
  * @property {boolean} [writeCatalog] — false leaves `catalogDir` and `recordsDir` untouched
  * @property {boolean} [writeArchive] — false writes no archive, no catalog entry and no record (`--stage-only`)
  * @property {(message: string) => void} [logger]
+ * @property {(message: string) => void} [warn] — each re-encoded clip's loudness warning (#1657); absent, it goes to `logger`
  *
  * @typedef {object} PackedPack — a full run: stage, archive, and (unless withheld) the catalog entry and the record
  * @property {string} archivePath
@@ -460,6 +461,7 @@ export async function packVoice({
   writeCatalog = true,
   writeArchive = true,
   logger,
+  warn,
 } = {}) {
   if (!pack) throw new Error("packVoice: pack is required");
 
@@ -517,6 +519,7 @@ export async function packVoice({
       destDir,
       cacheDir: cacheDir === undefined ? undefined : path.join(cacheDir, voiceId),
       logger,
+      warn,
     });
 
     // The scanner refuses a voice with no usable clip and reports it; the packer
@@ -692,7 +695,13 @@ async function main() {
   const { ids, writeCatalog, writeArchive } = parseArgs(process.argv.slice(2));
 
   for (const pack of selectPacks(ids)) {
-    const result = await packVoice({ pack, writeCatalog, writeArchive, logger: (message) => console.log(message) });
+    const result = await packVoice({
+      pack,
+      writeCatalog,
+      writeArchive,
+      logger: (message) => console.log(message),
+      warn: (message) => console.warn(message),
+    });
 
     if (result.entry === undefined) {
       console.log(
