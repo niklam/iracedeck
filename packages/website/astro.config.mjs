@@ -42,7 +42,7 @@ export default defineConfig({
         // Drops ONE warning (#1252): rolldown's MODULE_LEVEL_DIRECTIVE for
         // the `"use astro:head-inject"` directive Astro prepends to every
         // `?astroPropagatedAssets` MDX module — one per MDX page importing a
-        // component, eight today. Nothing reads that directive any more; it
+        // component, nine today. Nothing reads that directive any more; it
         // is dead code Astro left behind when head propagation moved to
         // module-id detection, and rolldown 1.2.9 started warning on it.
         // Upstream: withastro/astro#18087, fix in #18088. Delete this hook

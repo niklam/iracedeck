@@ -6,16 +6,18 @@ const ok = (stdout = "") => ({ status: 0, stdout, stderr: "", signal: null, outp
 const failed = (status, stdout = "") => ({ ...ok(stdout), status });
 
 /**
- * The wrapper with release-it and the hook faked. `releaseIt` answers by what
+ * The wrapper with release-it and both hooks faked. `releaseIt` answers by what
  * the call is: the `--release-version` probe gets `version`'s stdout, the real
- * (or dry) run gets `run`. Every call's argv and options are kept.
+ * (or dry) run gets `run`. `hook` is the `before:bump` hook's result,
+ * `captureHook` the `after:bump` hook's. Every call's argv and options are kept.
  */
-function fakes({ version = ok("9.9.9-rc.1\n"), run = ok(), hook = ok(), token = "token" } = {}) {
+function fakes({ version = ok("9.9.9-rc.1\n"), run = ok(), hook = ok(), captureHook = ok(), token = "token" } = {}) {
   const env = token === null ? {} : { GITHUB_TOKEN: token };
   const deps = {
     env,
     runReleaseIt: vi.fn((args) => (args.includes("--release-version") ? version : run)),
     runHook: vi.fn(() => hook),
+    runCaptureHook: vi.fn(() => captureHook),
     log: vi.fn(),
     warn: vi.fn(),
     error: vi.fn(),
@@ -65,7 +67,7 @@ describe("the argument helpers", () => {
 });
 
 describe("pnpm release:dry (main with a dry-run flag)", () => {
-  it("resolves the version, runs the hook with RELEASE_IT_DRY_RUN=1, then release-it's dry run", () => {
+  it("resolves the version, runs both hooks with RELEASE_IT_DRY_RUN=1 in release order, then release-it's dry run", () => {
     const { deps, calls } = fakes();
 
     const status = main(["--", "9.9.9-rc.1", "--dry-run", "--ci"], deps);
@@ -82,18 +84,26 @@ describe("pnpm release:dry (main with a dry-run flag)", () => {
     });
     expect(deps.runReleaseIt.mock.calls[1][1]).toMatchObject({ stdio: "inherit" });
     expect(deps.runHook).toHaveBeenCalledTimes(1);
-    const [version, hookEnv] = deps.runHook.mock.calls[0];
-    expect(version).toBe("9.9.9-rc.1");
-    expect(hookEnv.RELEASE_IT_DRY_RUN).toBe("1");
-    expect(hookEnv.GITHUB_TOKEN).toBe("token");
+    expect(deps.runCaptureHook).toHaveBeenCalledTimes(1);
+    for (const hook of [deps.runHook, deps.runCaptureHook]) {
+      const [version, hookEnv] = hook.mock.calls[0];
+      expect(version).toBe("9.9.9-rc.1");
+      expect(hookEnv.RELEASE_IT_DRY_RUN).toBe("1");
+      expect(hookEnv.GITHUB_TOKEN).toBe("token");
+    }
     // Every child, release-it's own dry run included, carries the flag.
     for (const [, options] of deps.runReleaseIt.mock.calls) expect(options.env.RELEASE_IT_DRY_RUN).toBe("1");
-    // The hook runs between the probe and the dry run.
-    expect(deps.runHook.mock.invocationCallOrder[0]).toBeGreaterThan(deps.runReleaseIt.mock.invocationCallOrder[0]);
-    expect(deps.runHook.mock.invocationCallOrder[0]).toBeLessThan(deps.runReleaseIt.mock.invocationCallOrder[1]);
-    expect(deps.log).toHaveBeenCalledWith(
+    // The hooks run between the probe and the dry run: before:bump first, as in the release.
+    const [probe, dryRun] = deps.runReleaseIt.mock.invocationCallOrder;
+    const [bump] = deps.runHook.mock.invocationCallOrder;
+    const [capture] = deps.runCaptureHook.mock.invocationCallOrder;
+    expect(bump).toBeGreaterThan(probe);
+    expect(capture).toBeGreaterThan(bump);
+    expect(capture).toBeLessThan(dryRun);
+    expect(deps.log.mock.calls.map(([line]) => line)).toEqual([
       "Previewing the before:bump hook for 9.9.9-rc.1 (release-it skips hooks in a dry run):",
-    );
+      "Previewing the after:bump hook for 9.9.9-rc.1 (release-it skips hooks in a dry run):",
+    ]);
   });
 
   it("uses the version release-it resolves when none is given, warnings on stdout aside", () => {
@@ -117,16 +127,33 @@ describe("pnpm release:dry (main with a dry-run flag)", () => {
     expect(deps.runHook.mock.calls[0][0]).toBe("3.9.0");
   });
 
-  it("stops without running release-it's dry run when the hook refuses, with the hook's exit code", () => {
+  it("stops without running release-it's dry run when the before:bump hook refuses, with the hook's exit code", () => {
     const { deps, calls, errors } = fakes({ hook: failed(1) });
 
     const status = main(["9.9.9-rc.1", "--dry-run"], deps);
 
     expect(status).toBe(1);
     expect(calls()).toEqual([["9.9.9-rc.1", "--release-version"]]);
+    // A refused bump is never followed by the capture that builds on it.
+    expect(deps.runCaptureHook).not.toHaveBeenCalled();
     expect(errors()).toContain(
       "The before:bump hook refused 9.9.9-rc.1, so the release would stop there; the dry run stops here.",
     );
+  });
+
+  it("stops without running release-it's dry run when the after:bump capture hook refuses, naming that hook", () => {
+    const { deps, calls, errors } = fakes({ version: ok("3.9.0\n"), captureHook: failed(2) });
+
+    const status = main(["3.9.0", "--dry-run"], deps);
+
+    expect(status).toBe(2);
+    expect(calls()).toEqual([["3.9.0", "--release-version"]]);
+    expect(deps.runHook).toHaveBeenCalledTimes(1);
+    expect(deps.runCaptureHook).toHaveBeenCalledTimes(1);
+    expect(errors()).toContain(
+      "The after:bump hook refused 3.9.0, so the release would stop there; the dry run stops here.",
+    );
+    expect(errors()).not.toContain("before:bump hook refused");
   });
 
   it("stops before the hook when release-it cannot say which version it would release", () => {
@@ -145,12 +172,17 @@ describe("pnpm release:dry (main with a dry-run flag)", () => {
   it("reports a release-it or hook process that could not be started", () => {
     const noNpx = fakes({ version: { ...ok(), error: new Error("spawn npx ENOENT") } });
     const noNode = fakes({ hook: { ...ok(), error: new Error("spawn node ENOENT") } });
+    const noCapture = fakes({ captureHook: { ...ok(), error: new Error("spawn node EACCES") } });
 
     expect(main(["--dry-run"], noNpx.deps)).toBe(1);
     expect(noNpx.errors()).toContain("ENOENT");
     expect(main(["--dry-run"], noNode.deps)).toBe(1);
     expect(noNode.errors()).toContain("ENOENT");
     expect(noNode.calls()).toHaveLength(1);
+    expect(noNode.deps.runCaptureHook).not.toHaveBeenCalled();
+    expect(main(["--dry-run"], noCapture.deps)).toBe(1);
+    expect(noCapture.errors()).toContain("EACCES");
+    expect(noCapture.calls()).toHaveLength(1);
   });
 });
 
@@ -163,6 +195,7 @@ describe("pnpm release (main without a dry-run flag)", () => {
     expect(status).toBe(0);
     expect(calls()).toEqual([["minor", "--preRelease=rc"]]);
     expect(deps.runHook).not.toHaveBeenCalled();
+    expect(deps.runCaptureHook).not.toHaveBeenCalled();
     expect(deps.runReleaseIt.mock.calls[0][1].env.RELEASE_IT_DRY_RUN).toBeUndefined();
     expect(deps.runReleaseIt.mock.calls[0][1]).toMatchObject({ stdio: "inherit" });
   });

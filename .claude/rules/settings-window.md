@@ -17,7 +17,7 @@ paths:
 
 # Settings Window (#992)
 
-The dedicated settings window that owns the plugin-global settings. It is **not a Property Inspector**: the plugin serves it over loopback and opens it as a chromeless browser app window, but it reuses the PI framework verbatim (`sdpi-components.js`, `pi-components.js`, the `global-*.ejs` partials, every `ird-*` component), so a control that works in a PI works here unchanged. Website docs: `docs/getting-started/settings.md`.
+The dedicated settings window that owns the plugin-global settings. It is **not a Property Inspector**: the plugin serves it over loopback and opens it as a chromeless browser app window, but it reuses the PI framework verbatim (`sdpi-components.js`, `pi-components.js`, the `global-*.ejs` partials, every `ird-*` component), so a control that works in a PI works here unchanged. Website docs: `docs/getting-started/settings.mdx`.
 
 The server starts from the plugin's **store-ready startup block** (`ensureStarted()`, or the first `open()`) and lives for the process; on the fail-closed unreadable-file path that block never runs, so nothing starts and no channel is published. Its `_settingsChannel` (port + token) reaches the deck host through the once-per-start mirror, every action PI talks to the same server through its bridge, and so window ↔ PI ↔ PI edits all land in the plugin-owned file and show live everywhere. The mirror, the PI router's bootstrap and fallback, and run-scoped keys are owned by `@.claude/rules/global-settings.md`.
 

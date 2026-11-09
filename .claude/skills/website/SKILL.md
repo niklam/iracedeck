@@ -53,7 +53,7 @@ src/content/docs/
     ├── getting-started/
     │   ├── installation.mdx
     │   ├── first-steps.md           # Also generates the Settings window's Getting Started tab (#1061)
-    │   ├── settings.md
+    │   ├── settings.mdx             # Settings-window shots via SettingsShot.astro (release-captured, #1536)
     │   └── troubleshooting.md
     ├── features/
     │   ├── communication-methods.md

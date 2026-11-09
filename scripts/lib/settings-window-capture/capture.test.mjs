@@ -8,6 +8,7 @@ import {
   BROWSER_KILL_TIMEOUT_MS,
   captureSettingsWindow,
   createSeedSettingsHost,
+  HEADER_VERSION_EXPRESSION,
   PAGE_LOAD_TIMEOUT_MS,
   PAGE_SETTLE_MS,
   PANE_IMAGES_POLL_MS,
@@ -39,6 +40,10 @@ const SIZE = { width: 1172, height: 788 };
  * client rejects it when Chromium drops the socket while closing; `"error"`, a
  * rejection for any other cause; or `"hang"`. `close` is recorded among the
  * commands, so the order of the two can be seen.
+ *
+ * `headerVersion` is what the page's `.sw-version` reads (`null`, the default,
+ * when the element is missing), and `headerReply` replaces the whole reply to
+ * that read.
  */
 function createFakeCdp({
   missingPane,
@@ -52,6 +57,8 @@ function createFakeCdp({
     { type: "renderer", id: 5150, cpuTime: 0 },
   ],
   browserClose = "ok",
+  headerVersion = null,
+  headerReply,
 } = {}) {
   const sent = [];
   const listeners = [];
@@ -131,6 +138,10 @@ function createFakeCdp({
         if (imagesLoadAfter === undefined) return { result: { value: "none" } };
 
         return { result: { value: imageChecksThisTab <= imagesLoadAfter ? "loading" : "loaded" } };
+      }
+
+      if (method === "Runtime.evaluate" && params.expression === HEADER_VERSION_EXPRESSION) {
+        return headerReply ?? { result: { value: headerVersion } };
       }
 
       if (method === "Runtime.evaluate") {
@@ -331,6 +342,102 @@ describe("captureSettingsWindow", () => {
     expect(cdp.close).toHaveBeenCalled();
     expect(processAlive).toHaveBeenCalledWith(BROWSER_PID);
     expect(close).toHaveBeenCalled();
+  });
+});
+
+// The stable release captures right after it bumps and rebuilds (#1536); a
+// build that missed the bump would commit the previous version's header.
+describe("captureSettingsWindow: expectVersion", () => {
+  /** The methods sent, with each evaluate named by what it asked. */
+  function steps(cdp) {
+    return cdp.sent.map(({ method, params }) => {
+      if (method !== "Runtime.evaluate") return method;
+
+      if (params.expression === HEADER_VERSION_EXPRESSION) return "read header";
+
+      if (params.expression === PANE_IMAGES_STATE_EXPRESSION) return "check images";
+
+      return "click";
+    });
+  }
+
+  it("reads the header once, after the page has settled and before the first click, and captures on a match", async () => {
+    const cdp = createFakeCdp({ headerVersion: "v3.9.0" });
+    const { deps, writeFile } = createDeps({ cdp });
+
+    const { written } = await captureSettingsWindow({ ...OPTIONS, expectVersion: "3.9.0" }, deps);
+
+    expect(written).toEqual([join("/out", "general.png"), join("/out", "simhub.png")]);
+    expect(writeFile).toHaveBeenCalledTimes(2);
+
+    const order = steps(cdp);
+
+    expect(order.filter((step) => step === "read header")).toHaveLength(1);
+    expect(order.indexOf("read header")).toBeGreaterThan(order.indexOf("Page.navigate"));
+    expect(order.indexOf("read header")).toBeLessThan(order.indexOf("click"));
+  });
+
+  it("refuses a page that shows another version, writes nothing, and still shuts everything down", async () => {
+    const cdp = createFakeCdp({ headerVersion: "v3.9.0-dev.0" });
+    const { deps, writeFile, processAlive, close } = createDeps({ cdp });
+
+    await expect(captureSettingsWindow({ ...OPTIONS, expectVersion: "3.9.0" }, deps)).rejects.toThrow(
+      /should show v3\.9\.0, but its header says "v3\.9\.0-dev\.0"/,
+    );
+
+    expect(writeFile).not.toHaveBeenCalled();
+    expect(steps(cdp)).not.toContain("click");
+    expect(steps(cdp)).not.toContain("Page.captureScreenshot");
+    expect(cdp.sent.map((c) => c.method)).toContain("Browser.close");
+    expect(processAlive).toHaveBeenCalledWith(BROWSER_PID);
+    expect(close).toHaveBeenCalled();
+  });
+
+  it("refuses a page with no version element in its header", async () => {
+    const cdp = createFakeCdp({ headerVersion: null });
+    const { deps, writeFile, close } = createDeps({ cdp });
+
+    await expect(captureSettingsWindow({ ...OPTIONS, expectVersion: "3.9.0" }, deps)).rejects.toThrow(
+      /should show v3\.9\.0, but the page has no \.sw-version element/,
+    );
+
+    expect(writeFile).not.toHaveBeenCalled();
+    expect(close).toHaveBeenCalled();
+  });
+
+  it("refuses a page that throws when its header is read, naming what it threw", async () => {
+    const cdp = createFakeCdp({
+      headerReply: { exceptionDetails: { exception: { description: "ReferenceError: document is not defined" } } },
+    });
+    const { deps, writeFile } = createDeps({ cdp });
+
+    await expect(captureSettingsWindow({ ...OPTIONS, expectVersion: "3.9.0" }, deps)).rejects.toThrow(
+      /threw ReferenceError: document is not defined/,
+    );
+
+    expect(writeFile).not.toHaveBeenCalled();
+  });
+
+  it("does not read the header when no version is expected", async () => {
+    // A header that would fail any check: unset must not look at it at all.
+    const cdp = createFakeCdp({ headerVersion: "v0.0.0" });
+    const { deps, writeFile } = createDeps({ cdp });
+
+    await captureSettingsWindow(OPTIONS, deps);
+
+    expect(steps(cdp)).not.toContain("read header");
+    expect(writeFile).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([[""], [3.9], [null]])("refuses an expectVersion of %j before starting anything", async (bad) => {
+    const { deps } = createDeps();
+
+    await expect(captureSettingsWindow({ ...OPTIONS, expectVersion: bad }, deps)).rejects.toThrow(
+      /expectVersion must be a non-empty version string/,
+    );
+
+    expect(deps.startServer).not.toHaveBeenCalled();
+    expect(deps.launchBrowser).not.toHaveBeenCalled();
   });
 });
 

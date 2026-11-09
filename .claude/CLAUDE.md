@@ -124,4 +124,4 @@ You can import or reference specific rule files from other markdown using `@.cla
 - `svg-platform-compatibility.md` — the resvg SVG baseline and the `pngRasterization` caveat.
 - `turbo-cache.md` — what turbo hashes (task inputs, `scripts/turbo-inputs.test.mjs`) and how CI keeps its cache.
 - `website-action-docs.md` — website action page format (canonical example: `tire-service.md`).
-- `website-screenshots.md` — settings-window screenshots come from `pnpm capture:settings`.
+- `website-screenshots.md` — settings-window screenshots, captured by the stable release only.

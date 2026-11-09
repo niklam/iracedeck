@@ -6,7 +6,7 @@ Windows-only by design, like the rest of the plugin (iRacing is), behind injecte
 
 ## What reaches it, and from where
 
-`scripts/capture-settings-window.mjs` (`pnpm capture:settings`, `.claude/rules/website-screenshots.md`) imports this package's BUILT `dist/index.js` by path — `startSettingsWindowServer`, `findChromiumBrowserOnThisMachine` and `SETTINGS_WINDOW_SIZE` — and refuses to run with a message when it has not been built. Renaming one of those exports or the `dist/` entry breaks it. `pi-components`' `open-folder.ts` component and the settings page's controls are the browser half; they reach this package only over the loopback socket, never by import.
+`scripts/lib/settings-window-capture/run-capture.mjs`, the screenshot capture behind `pnpm capture:settings` and the stable release's `after:bump` hook (`.claude/rules/website-screenshots.md`), imports this package's BUILT `dist/index.js` by path — `startSettingsWindowServer`, `findChromiumBrowserOnThisMachine` and `SETTINGS_WINDOW_SIZE` — and refuses to run with a message when it has not been built. Renaming one of those exports or the `dist/` entry breaks it. `pi-components`' `open-folder.ts` component and the settings page's controls are the browser half; they reach this package only over the loopback socket, never by import.
 
 ## Module map
 

@@ -15,6 +15,7 @@
     "autoGenerate": true
   },
   "hooks": {
-    "before:bump": "node scripts/release-hooks.mjs ${version}"
+    "before:bump": "node scripts/release-hooks.mjs ${version}",
+    "after:bump": "node scripts/release-capture.mjs ${version}"
   }
 }

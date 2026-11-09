@@ -3,29 +3,34 @@
  *
  * It strips the `--` separator pnpm inserts, exports `GITHUB_TOKEN` from
  * `gh auth token` when the variable is not already set, and makes the dry run
- * a real preview of the `before:bump` hook (`scripts/release-hooks.mjs`).
+ * a real preview of the two hooks: `before:bump` (`scripts/release-hooks.mjs`,
+ * the bump, the fold and the voice-pack seal) and `after:bump`
+ * (`scripts/release-capture.mjs`, the stable release's Settings-window
+ * screenshot capture, #1536).
  *
  * That last part exists because release-it 21.1.1 does NOT run hooks in a dry
  * run: `lib/shell.js` turns every write-mode exec — hooks included, they run
  * `external: true` — into a logged `! <command>` and a no-op, so
  * `npx release-it --dry-run` shows `! node scripts/release-hooks.mjs <version>`
- * and never runs it. The hook's own `RELEASE_IT_DRY_RUN=1` branch, which
- * prints the version files it would bump, the changelog section it would write
- * and the voice-pack records it would seal (#1386, #1667), was therefore never
- * reached by `pnpm release:dry`. So on a dry run this wrapper first asks
- * release-it which version it would release (`--release-version`, which runs
- * only the `init` lifecycle — the clean-tree check and a `git fetch` — prints
- * the version and exits), runs the hook with that version and the flag set,
- * stops if the hook refuses (a stale pack record or a malformed fragment then
- * shows in the preview, as it would stop the real release), and only then runs
- * release-it's own dry run. Nothing in that sequence writes: the hook's
- * dry-run branch exits before any write or `git add`, and release-it's dry run
- * logs its commands instead of running them. `scripts/release.test.mjs`
- * drives the sequence with fakes; the real `pnpm release:dry 9.9.9-rc.1 --ci`
- * leaves `git status --porcelain` empty and creates no tag.
+ * and never runs it. The hooks' own `RELEASE_IT_DRY_RUN=1` branches, which
+ * print the version files they would bump, the changelog section they would
+ * write, the voice-pack records they would seal (#1386, #1667) and the build
+ * and capture they would run (#1536), were therefore never reached by
+ * `pnpm release:dry`. So on a dry run this wrapper first asks release-it which
+ * version it would release (`--release-version`, which runs only the `init`
+ * lifecycle — the clean-tree check and a `git fetch` — prints the version and
+ * exits), runs each hook in release order with that version and the flag set,
+ * stops at the first that refuses (a stale pack record, a malformed fragment
+ * or a developer-tree marker then shows in the preview, as it would stop the
+ * real release), and only then runs release-it's own dry run. Nothing in that
+ * sequence writes: each hook's dry-run branch exits before any write or
+ * `git add`, and release-it's dry run logs its commands instead of running
+ * them. `scripts/release.test.mjs` drives the sequence with fakes; the real
+ * `pnpm release:dry 9.9.9-rc.1 --ci` leaves `git status --porcelain` empty and
+ * creates no tag.
  *
  * The flag is still set for release-it's own dry run, so that should a
- * release-it upgrade run hooks in a dry run again, the hook still writes
+ * release-it upgrade run hooks in a dry run again, the hooks still write
  * nothing.
  */
 import { execSync, spawnSync } from "node:child_process";
@@ -35,6 +40,7 @@ import semver from "semver";
 import { spawnSyncShim } from "./lib/spawn-shim.mjs";
 
 const hookPath = url.fileURLToPath(new URL("./release-hooks.mjs", import.meta.url));
+const captureHookPath = url.fileURLToPath(new URL("./release-capture.mjs", import.meta.url));
 
 /** The spellings release-it accepts for a dry run, and so this wrapper. */
 const DRY_RUN_FLAGS = new Set(["--dry-run", "-d", "--dry-run=true"]);
@@ -103,7 +109,8 @@ export function parseReleaseVersion(stdout) {
  * @param {object} [deps]
  * @param {NodeJS.ProcessEnv} [deps.env] — read for `GITHUB_TOKEN`, handed to every child with `RELEASE_IT_DRY_RUN` set on a dry run
  * @param {(args: string[], options: import("node:child_process").SpawnSyncOptions) => import("node:child_process").SpawnSyncReturns<string>} [deps.runReleaseIt]
- * @param {(version: string, env: NodeJS.ProcessEnv) => import("node:child_process").SpawnSyncReturns<string>} [deps.runHook]
+ * @param {(version: string, env: NodeJS.ProcessEnv) => import("node:child_process").SpawnSyncReturns<string>} [deps.runHook] — the `before:bump` hook
+ * @param {(version: string, env: NodeJS.ProcessEnv) => import("node:child_process").SpawnSyncReturns<string>} [deps.runCaptureHook] — the `after:bump` hook
  * @param {(line: string) => void} [deps.log]
  * @param {(line: string) => void} [deps.warn]
  * @param {(line: string) => void} [deps.error]
@@ -116,6 +123,8 @@ export function main(
     runReleaseIt = (args, options) => spawnSyncShim("npx", ["release-it", ...args], options),
     runHook = (version, hookEnv) =>
       spawnSync(process.execPath, [hookPath, version], { stdio: "inherit", env: hookEnv }),
+    runCaptureHook = (version, hookEnv) =>
+      spawnSync(process.execPath, [captureHookPath, version], { stdio: "inherit", env: hookEnv }),
     log = console.log,
     warn = console.warn,
     error = console.error,
@@ -160,20 +169,28 @@ export function main(
       return 1;
     }
 
-    log(`Previewing the before:bump hook for ${version} (release-it skips hooks in a dry run):`);
+    // In release order: the bump and fold, then the screenshot capture that
+    // builds what the bump produced. Each hook's dry-run branch reads the tree
+    // only, so the second previews the same tree the first did.
+    for (const [name, run] of [
+      ["before:bump", runHook],
+      ["after:bump", runCaptureHook],
+    ]) {
+      log(`Previewing the ${name} hook for ${version} (release-it skips hooks in a dry run):`);
 
-    const hook = runHook(version, childEnv);
+      const hook = run(version, childEnv);
 
-    if (hook.error) {
-      error(String(hook.error));
+      if (hook.error) {
+        error(String(hook.error));
 
-      return 1;
-    }
+        return 1;
+      }
 
-    if (hook.status !== 0) {
-      error(`The before:bump hook refused ${version}, so the release would stop there; the dry run stops here.`);
+      if (hook.status !== 0) {
+        error(`The ${name} hook refused ${version}, so the release would stop there; the dry run stops here.`);
 
-      return hook.status ?? 1;
+        return hook.status ?? 1;
+      }
     }
   }
 
