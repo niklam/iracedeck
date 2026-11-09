@@ -563,14 +563,17 @@ async function main() {
       targetSha: resolveTargetSha(process.env),
       deps: {
         listCommittedEntryIds: () => listCatalogEntryIds(CATALOG_DIR),
-        // Stage, archive and catalog entry all land in scratch; `cacheDir` is
-        // left unset so the packer reads the build's shared clip cache — the
-        // very bytes the plugins ship.
+        // Stage, archive, catalog entry and pack record all land in scratch —
+        // the packer refuses a `catalogDir` without its `recordsDir`, since a
+        // publish run must never rewrite the committed `pack-records/<id>.json`
+        // (#1667); `cacheDir` is left unset so the packer reads the build's
+        // shared clip cache — the very bytes the plugins ship.
         pack: (pack) =>
           packVoice({
             pack,
             outDir: path.join(scratchDir, "pack"),
             catalogDir: path.join(scratchDir, "catalog"),
+            recordsDir: path.join(scratchDir, "records"),
             logger: log,
           }),
         readCommittedEntry: (id) => {

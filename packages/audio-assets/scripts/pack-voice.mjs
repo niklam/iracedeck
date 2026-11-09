@@ -76,7 +76,6 @@ import {
   CALLOUT_SCRIPT_FILE,
   calloutScriptPath,
   dedupeDeclaredVoices,
-  isSemverVersion,
   packId,
   parseCalloutScriptText,
   USABLE_VOICE_CLIP,
@@ -94,6 +93,7 @@ import {
   CONFIGS_DIR,
   countSourceClips,
   createArchive,
+  isCanonicalPackVersion,
   locateCalloutScript,
   MANIFEST_FILE,
   readVoiceEntries,
@@ -103,9 +103,10 @@ import {
 import {
   buildPackRecord,
   computePackInputs,
+  isSealedAt,
   PACK_RECORDS_DIR,
   readPackRecord,
-  writePackRecord,
+  serializePackRecord,
 } from "../src/build/pack-record.mjs";
 
 // The pack format moved to `src/build/pack-format.mjs` (#1667) so the pack
@@ -148,8 +149,8 @@ export const RELEASE_DOWNLOAD_BASE = "https://github.com/niklam/iracedeck/releas
  * @property {string} [srcRoot] — holds `<voice-id>/…` source clip trees
  * @property {string} [configsDir] — holds `<voice-id>.voice.json`
  * @property {string} [outDir] — stage directory and archive land here
- * @property {string} [catalogDir] — `<pack-id>.json` lands here
- * @property {string} [recordsDir] — the pack record `<pack-id>.json` lands here, beside the entry (#1667)
+ * @property {string} [catalogDir] — `<pack-id>.json` lands here; given, `recordsDir` must be too
+ * @property {string} [recordsDir] — the pack record `<pack-id>.json` lands here, beside the entry (#1667); given, `catalogDir` must be too
  * @property {string} [cacheDir] — processed-clip cache root; see `packVoice`
  * @property {boolean} [writeCatalog] — false leaves `catalogDir` and `recordsDir` untouched
  * @property {boolean} [writeArchive] — false writes no archive, no catalog entry and no record (`--stage-only`)
@@ -189,24 +190,6 @@ export function archiveUrl(pack) {
   return `${RELEASE_DOWNLOAD_BASE}/${releaseTag(pack)}/${archiveFileName(pack)}`;
 }
 
-/**
- * Is `value` a version this script may write verbatim?
- *
- * Stricter than the scanner, on purpose. `isSemverVersion` is exactly what the
- * plugin ACCEPTS — `semver.valid`, which trims and allows one leading `v` — but
- * the packer does not only hand a version to the plugin: it writes it verbatim
- * into the release tag (`voices-<id>-<version>`), the archive's file name, the
- * catalog entry's `url` and the manifest. `" 1.1.2"` or `"v1.1.2"` would be a
- * version the plugin reads fine and a tag, a file name and a download url
- * nobody meant. So the definition must hold the CANONICAL spelling: a string
- * the plugin accepts, with no surrounding whitespace and no leading `v`.
- *
- * @param {unknown} value
- */
-function isCanonicalVersion(value) {
-  return typeof value === "string" && isSemverVersion(value) && value === value.trim() && !value.startsWith("v");
-}
-
 /** @param {import("zod").ZodType} schema @param {unknown} value */
 function firstProblem(schema, value) {
   const parsed = schema.safeParse(value);
@@ -227,7 +210,7 @@ function firstProblem(schema, value) {
  *   voice's source tree) before there is a manifest to validate, and an id the
  *   plugin would refuse must never reach the filesystem.
  * - `version` and `minPluginVersion` in their canonical spelling
- *   ({@link isCanonicalVersion}) — a rule the plugin does not have, because only
+ *   (`isCanonicalPackVersion`) — a rule the plugin does not have, because only
  *   the packer writes a version into a tag, a file name and a url. Each is
  *   checked for being a string first, so a number fails naming the field.
  * - `description`'s 300-character bound — `VoicePackCatalogEntrySchema`'s
@@ -242,19 +225,19 @@ function assertPackDefinition(pack) {
   const idProblem = firstProblem(packId, pack?.id);
 
   if (idProblem !== undefined) throw new Error(`${where}: id ${idProblem}`);
-  if (!isCanonicalVersion(pack.version)) {
+  if (!isCanonicalPackVersion(pack.version)) {
     throw new Error(
       `${where}: version must be a canonical semver version such as 1.2.3 — a string, no leading "v", ` +
-        `no surrounding whitespace — since it names the release tag, the archive and the catalog url`,
+        `no surrounding whitespace, no build metadata — since it names the release tag, the archive and the catalog url`,
     );
   }
   if (pack.description !== undefined && (typeof pack.description !== "string" || pack.description.length > 300)) {
     throw new Error(`${where}: description must be 300 characters or fewer`);
   }
-  if (pack.minPluginVersion !== undefined && !isCanonicalVersion(pack.minPluginVersion)) {
+  if (pack.minPluginVersion !== undefined && !isCanonicalPackVersion(pack.minPluginVersion)) {
     throw new Error(
       `${where}: minPluginVersion must be a canonical semver version such as 1.2.3 — a string, no leading "v", ` +
-        `no surrounding whitespace`,
+        `no surrounding whitespace, no build metadata`,
     );
   }
   if (!Array.isArray(pack.voices) || pack.voices.length === 0) {
@@ -432,9 +415,15 @@ export function buildCatalogEntry(pack, voices, { bytes, sha256 }) {
  * check above still runs, since each is about the stage rather than the zip.
  *
  * The record (#1667) is written with the entry and only with it: the same
- * run, so the two cannot disagree. An existing record's `released` is carried
- * over untouched, and when it names the pack's current version a changed
- * archive is refused before either file is written (see the header).
+ * run, so the two cannot disagree — and `catalogDir` and `recordsDir` are
+ * given together or not at all, so no caller can point the entry at a scratch
+ * directory while the record lands in the committed `pack-records/` (the
+ * publish script did exactly that in review). An existing record's `released`
+ * is carried over untouched, and when it names the pack's current version a
+ * changed archive is refused before either file is written (see the header).
+ * The inputs are taken BEFORE the encode and again after the zip; a source
+ * tree that moved in between would give a record describing an archive that
+ * was never built from it, so the run refuses to write either file.
  *
  * Typed as three overloads so a caller gets the result shape its
  * `writeArchive` implies: a literal `false` resolves to a `StagedPack`, `true`
@@ -464,20 +453,51 @@ export async function packVoice({
   srcRoot = path.join(audioAssetsPath, VOICE_ROOT),
   configsDir = CONFIGS_DIR,
   outDir = OUTPUT_DIR,
-  catalogDir = CATALOG_DIR,
-  recordsDir = PACK_RECORDS_DIR,
+  catalogDir,
+  recordsDir,
   cacheDir,
   writeCatalog = true,
   writeArchive = true,
   logger,
 } = {}) {
   if (!pack) throw new Error("packVoice: pack is required");
+
+  if ((catalogDir === undefined) !== (recordsDir === undefined)) {
+    throw new Error(
+      "packVoice: catalogDir and recordsDir are given together or not at all — the catalog entry and the pack " +
+        "record are one pair, and a run that writes one to a scratch directory must not write the other to the " +
+        "committed one (#1667)",
+    );
+  }
+
+  catalogDir ??= CATALOG_DIR;
+  recordsDir ??= PACK_RECORDS_DIR;
   assertPackDefinition(pack);
 
   const voices = readVoiceEntries(pack, configsDir);
   const manifest = buildVoicePackManifest(pack, voices);
 
   assertPackManifest(pack, manifest);
+
+  // Every voice's source tree and script are checked before anything is read
+  // for the record or staged, so a missing tree or a refused script is reported
+  // in the packer's words rather than as a raw error from the inputs walk.
+  for (const voiceId of pack.voices) {
+    const srcDir = path.join(srcRoot, voiceId);
+
+    if (!existsSync(srcDir)) throw new Error(`pack "${pack.id}": voice "${voiceId}" has no clips at ${srcDir}`);
+
+    assertCalloutScript(pack, voiceId, srcDir);
+  }
+
+  // A flagless run writes the record (#1667), so before a single clip is
+  // encoded: the existing record — a seal nobody can read is a run nobody can
+  // judge, so an unreadable one fails here rather than after the encode — and
+  // the inputs as the source tree stands now, to be compared with the tree
+  // after the zip.
+  const recording = writeArchive && writeCatalog;
+  const previous = recording ? readPackRecord(pack.id, recordsDir) : null;
+  const inputsBefore = recording ? computePackInputs(pack, { srcRoot, configsDir }) : null;
 
   const stageDir = path.join(outDir, pack.id);
   rmSync(stageDir, { recursive: true, force: true });
@@ -490,11 +510,6 @@ export async function packVoice({
 
   for (const voiceId of pack.voices) {
     const srcDir = path.join(srcRoot, voiceId);
-
-    if (!existsSync(srcDir)) throw new Error(`pack "${pack.id}": voice "${voiceId}" has no clips at ${srcDir}`);
-
-    assertCalloutScript(pack, voiceId, srcDir);
-
     const destDir = path.join(stageDir, VOICE_ROOT, voiceId);
     const { files, script } = await processVoiceTree({
       srcDir,
@@ -600,12 +615,10 @@ export async function packVoice({
   }
 
   // The seal check (#1667), before either file is written. The archive stays
-  // in `outDir` for inspection; a record that cannot be read is a failure too,
-  // since without it nobody can tell whether this version is sealed.
-  const previous = readPackRecord(pack.id, recordsDir);
+  // in `outDir` for inspection.
   const released = previous?.released;
 
-  if (released !== undefined && released.version === pack.version && released.sha256 !== sha256) {
+  if (previous !== null && isSealedAt(previous, pack.version) && released !== undefined && released.sha256 !== sha256) {
     throw new Error(
       `pack "${pack.id}": version ${pack.version} is released with sha256 ${released.sha256}, and the archive just ` +
         `packed has sha256 ${sha256} — a published archive never changes under its version. Bump \`version\` in ` +
@@ -614,16 +627,29 @@ export async function packVoice({
     );
   }
 
-  // The inputs are recomputed from the source tree the archive was just built
-  // from — the same walk, the same exact-name rule — so the record describes
-  // this archive and nothing else.
+  // The inputs again, from the source tree as it stands after the zip — the
+  // same walk, the same exact-name rule. They must be what they were before
+  // the encode, or the record would describe an archive never built from them.
   const inputs = computePackInputs(pack, { srcRoot, configsDir });
+
+  if (serializeSortedJson(inputs) !== serializeSortedJson(inputsBefore)) {
+    throw new Error(
+      `pack "${pack.id}": the source tree changed while packing (a clip, a script or a config under ${srcRoot} or ` +
+        `${configsDir}) — neither catalog/${pack.id}.json nor pack-records/${pack.id}.json was written; re-run ` +
+        `pack:voice ${pack.id} once the tree is still`,
+    );
+  }
+
+  // Both files are built before either is written, so a failure in building
+  // one leaves none.
+  const record = serializePackRecord(buildPackRecord(pack, { sha256, inputs, released }));
   const catalogPath = path.join(catalogDir, `${pack.id}.json`);
+  const recordPath = path.join(recordsDir, `${pack.id}.json`);
 
   mkdirSync(catalogDir, { recursive: true });
   writeFileSync(catalogPath, `${JSON.stringify(entry, null, 2)}\n`);
-
-  const recordPath = writePackRecord(buildPackRecord(pack, { sha256, inputs, released }), recordsDir);
+  mkdirSync(recordsDir, { recursive: true });
+  writeFileSync(recordPath, record);
 
   return { archivePath, stageDir, catalogPath, recordPath, entry, clips, scripts };
 }
