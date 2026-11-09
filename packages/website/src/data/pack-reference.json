@@ -66922,6 +66922,131 @@
       ]
     },
     {
+      "group": "sector-number",
+      "lines": [
+        {
+          "base": "1",
+          "texts": [
+            "Sector one."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "sectorStart.number"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "10",
+          "texts": [
+            "Sector ten."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "sectorStart.number"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "2",
+          "texts": [
+            "Sector two."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "sectorStart.number"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "3",
+          "texts": [
+            "Sector three."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "sectorStart.number"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "4",
+          "texts": [
+            "Sector four."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "sectorStart.number"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "5",
+          "texts": [
+            "Sector five."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "sectorStart.number"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "6",
+          "texts": [
+            "Sector six."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "sectorStart.number"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "7",
+          "texts": [
+            "Sector seven."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "sectorStart.number"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "8",
+          "texts": [
+            "Sector eight."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "sectorStart.number"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "9",
+          "texts": [
+            "Sector nine."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "sectorStart.number"
+          ],
+          "playedBy": null
+        }
+      ]
+    },
+    {
       "group": "session-start",
       "lines": [
         {
