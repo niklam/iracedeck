@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { COMMITTED_CAPTURE_DIR_REL } from "./capture-manifest.mjs";
 import {
   CapturePreconditionError,
   committedCaptureDir,
@@ -49,6 +50,11 @@ describe("the capture folders", () => {
   it("puts the local capture under local/ and the committed one in the website's assets", () => {
     expect(localCaptureDir(ROOT)).toBe(join(ROOT, "local", "settings-window-capture"));
     expect(committedCaptureDir(ROOT)).toBe(join(ROOT, "packages", "website", "src", "assets", "settings-window"));
+  });
+
+  it("builds the committed folder from the one constant the manifest's fixes name", () => {
+    expect(committedCaptureDir(ROOT)).toBe(join(ROOT, ...COMMITTED_CAPTURE_DIR_REL.split("/")));
+    expect(committedCaptureDir(REPO_ROOT)).toBe(join(REPO_ROOT, ...COMMITTED_CAPTURE_DIR_REL.split("/")));
   });
 
   it("resolves the repository root this file sits in", () => {

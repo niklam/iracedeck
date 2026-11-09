@@ -10,6 +10,7 @@ import {
   buildCaptureManifest,
   CAPTURE_MANIFEST_FILE,
   checkCaptureManifest,
+  COMMITTED_CAPTURE_DIR_REL,
   serializeCaptureManifest,
   sha256Hex,
 } from "./capture-manifest.mjs";
@@ -90,6 +91,12 @@ describe("the committed screenshot folder", () => {
     // Only the release hook writes it, through serializeCaptureManifest; a hand
     // edit that reorders or reformats it shows here.
     expect(manifestText).toBe(serializeCaptureManifest(manifest));
+  });
+
+  it("is named once, as the literal folder the fixes and the release hook use", () => {
+    // A literal, so a wrong constant cannot agree with itself.
+    expect(COMMITTED_CAPTURE_DIR_REL).toBe("packages/website/src/assets/settings-window");
+    expect(join(repoRoot, ...COMMITTED_CAPTURE_DIR_REL.split("/"))).toBe(assetsDir);
   });
 });
 

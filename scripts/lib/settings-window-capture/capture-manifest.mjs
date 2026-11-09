@@ -33,17 +33,26 @@ export const CAPTURE_MANIFEST_FILE = "capture.json";
  */
 export const BOOTSTRAP_RELEASE = "3.8.1";
 
-/** The folder the manifest guards, relative to the repository root. */
-const FOLDER = "packages/website/src/assets/settings-window/";
+/**
+ * The committed screenshot folder the manifest guards, relative to the
+ * repository root, with forward slashes and no trailing one. Its one
+ * definition: `run-capture.mjs`'s `committedCaptureDir` builds the absolute
+ * path from it, and the fixes below name it. Defined here because this module
+ * is the pure leaf the runner may import, never the other way round.
+ */
+export const COMMITTED_CAPTURE_DIR_REL = "packages/website/src/assets/settings-window";
+
+/** Puts the folder back as `master` has it: the fix for files a branch changed. */
+const CHECKOUT_MASTER_FOLDER = `git checkout origin/master -- ${COMMITTED_CAPTURE_DIR_REL}/`;
 
 const DROP_BRANCH_FILES =
   "screenshots are recaptured by the next stable release, never in a branch: drop the branch's files with " +
-  `\`git checkout origin/master -- ${FOLDER}\``;
+  `\`${CHECKOUT_MASTER_FOLDER}\``;
 
 const REMOVE_TAB_REMAINDER =
   "a removed tab's PNG and its manifest entry go together: delete the remainder " +
   "(or, if the tab was not meant to go, drop the branch's files with " +
-  `\`git checkout origin/master -- ${FOLDER}\`)`;
+  `\`${CHECKOUT_MASTER_FOLDER}\`)`;
 
 const SHA256_HEX = /^[0-9a-f]{64}$/;
 
@@ -187,7 +196,7 @@ function checkListing(entries, files, tabs) {
         message:
           `${CAPTURE_MANIFEST_FILE} lists ${name}, but the PNG is missing; if its tab is being removed, its ` +
           "SETTINGS_WINDOW_TABS line, PNG and manifest entry go together: delete the remainder; otherwise restore " +
-          `the PNG with \`git checkout origin/master -- ${FOLDER}\``,
+          `the PNG with \`${CHECKOUT_MASTER_FOLDER}\``,
       });
       continue;
     }

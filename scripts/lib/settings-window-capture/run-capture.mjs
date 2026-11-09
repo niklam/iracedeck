@@ -28,6 +28,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
+import { COMMITTED_CAPTURE_DIR_REL } from "./capture-manifest.mjs";
 import { captureSettingsWindow } from "./capture.mjs";
 import { connectCdp, waitForDebuggerUrl, waitForDevToolsPort } from "./cdp.mjs";
 import { isProcessAlive, killProcessTree, listProcessesNamingDir } from "./process-tree.mjs";
@@ -49,14 +50,15 @@ export function localCaptureDir(repoRoot) {
 }
 
 /**
- * The committed screenshots the website renders. Only the stable release's
- * capture writes here (#1536).
+ * The committed screenshots the website renders, at
+ * {@link COMMITTED_CAPTURE_DIR_REL}. Only the stable release's capture writes
+ * here (#1536).
  *
  * @param {string} repoRoot
  * @returns {string}
  */
 export function committedCaptureDir(repoRoot) {
-  return join(repoRoot, "packages", "website", "src", "assets", "settings-window");
+  return join(repoRoot, ...COMMITTED_CAPTURE_DIR_REL.split("/"));
 }
 
 /**
