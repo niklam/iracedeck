@@ -441,7 +441,7 @@ export function createTrackSectorsState(): TrackSectorsState {
  * The corner-name callouts (issue #888, moved to a slice under #1588 in
  * #1573): the lead-point sweep `diffCornerName` runs over the track's corner
  * markers (`diff/lead-point-sweep.ts`), and the marker cache the translator's
- * `resolveCornerMarkersCached` keeps for it. `diffCornerName` resets the two
+ * `resolveCornerMarkersCached` keeps for it. `diffCornerName` resets the
  * sweep fields when a gate fails; the cache is the resolver's alone. Reset per
  * session and at a disconnect with the rest of the state, and wiped whole at a
  * replay glance: the next live tick re-resolves the markers and seeds a fresh
@@ -457,10 +457,20 @@ export type CornerNameState = {
   leadPrevPct: number | null;
   /**
    * Marker indices (into {@link markers}) already announced or consumed this
-   * lap. Cleared when the lead point wraps past S/F, on teleport re-anchor,
-   * and whenever the gates fail.
+   * lap. Cleared when the lead point wraps past S/F (restored to
+   * {@link spokenBeforeBackingOver} instead when that is set), on teleport
+   * re-anchor, and whenever the gates fail.
    */
   spoken: Set<number>;
+  /**
+   * {@link spoken} as it stood when the lead point last backed over the
+   * start/finish line under hard braking, `null` when it has not: the next
+   * forward wrap restores it rather than clearing, so the lap's first corner
+   * is not called twice (`LeadPointSweep` in `diff/lead-point-sweep.ts`).
+   * Cleared by that wrap, a teleport re-anchor, a backward jump and whenever
+   * the gates fail.
+   */
+  spokenBeforeBackingOver: Set<number> | null;
   /**
    * The `trackSessionKey` (`${TrackID}|${SessionNum}`) {@link markers} was
    * resolved for; `""` before the first resolution. A tick with another key
@@ -476,7 +486,7 @@ export type CornerNameState = {
 
 /** A {@link CornerNameState} with no pass under way and no markers resolved: the initial state. */
 export function createCornerNameState(): CornerNameState {
-  return { leadPrevPct: null, spoken: new Set(), markersKey: "", markers: null };
+  return { leadPrevPct: null, spoken: new Set(), spokenBeforeBackingOver: null, markersKey: "", markers: null };
 }
 
 /**
@@ -497,14 +507,24 @@ export type SectorStartState = {
   /**
    * Sector indices (0 is the sector that starts at the line) already
    * announced or consumed this lap. Cleared when the lead point wraps past
-   * S/F, on teleport re-anchor, and whenever the gates fail.
+   * S/F (restored to {@link spokenBeforeBackingOver} instead when that is
+   * set), on teleport re-anchor, and whenever the gates fail.
    */
   spoken: Set<number>;
+  /**
+   * {@link spoken} as it stood when the lead point last backed over the
+   * start/finish line under hard braking, `null` when it has not: the next
+   * forward wrap restores it rather than clearing, so sector 1 is not
+   * re-emitted (`LeadPointSweep` in `diff/lead-point-sweep.ts`). Cleared by
+   * that wrap, a teleport re-anchor, a backward jump and whenever the gates
+   * fail.
+   */
+  spokenBeforeBackingOver: Set<number> | null;
 };
 
 /** A {@link SectorStartState} with no pass under way: the initial state. */
 export function createSectorStartState(): SectorStartState {
-  return { leadPrevPct: null, spoken: new Set() };
+  return { leadPrevPct: null, spoken: new Set(), spokenBeforeBackingOver: null };
 }
 
 export type MaterialSample = {
