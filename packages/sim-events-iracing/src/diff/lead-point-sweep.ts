@@ -13,9 +13,10 @@
  * set, cleared when the lead point wraps past S/F). Reversing never fires and
  * never moves the previous point back, so nothing is swept twice. A
  * discontinuous jump forward (tow, reset to pits, replay scrub) re-anchors
- * silently and clears the set so the fresh run announces again; one backward,
- * over {@link CORNER_TELEPORT_THRESHOLD} behind the furthest point, re-anchors
- * there and keeps the set until the next wrap. Several starts swept in one
+ * silently and clears the set so the fresh run announces again; one backward
+ * re-anchors there and keeps the set until the next wrap. A jump is a single
+ * tick's step over {@link CORNER_TELEPORT_THRESHOLD}, measured from the last
+ * tick's point, so a gradual retreat is never one. Several starts swept in one
  * tick speak only the one nearest the lead point (no stale burst — the
  * #480/#838 rule).
  *
@@ -54,12 +55,18 @@ export const CORNER_LEAD_MAX_PCT = 0.2;
 export type LeadPointSweep = {
   /**
    * The furthest point the lead point has reached, folded into [0, 1): the
-   * previous tick's lead point, except that a reverse within
-   * {@link CORNER_TELEPORT_THRESHOLD} leaves it where it was. `null` until
-   * the first valid tick seeds it silently, and after
-   * {@link resetLeadPointSweep}.
+   * previous tick's lead point, except that reversing leaves it where it
+   * was. A jump (tow, reset) re-anchors it. `null` until the first valid tick
+   * seeds it silently, and after {@link resetLeadPointSweep}.
    */
   leadPrevPct: number | null;
+  /**
+   * Last tick's lead point, folded into [0, 1): what a jump is measured
+   * against, one tick at a time, so a gradual retreat under braking, however
+   * far it adds up to, is never read as one. `null` with
+   * {@link leadPrevPct}.
+   */
+  leadLastPct: number | null;
   /**
    * Indices (into the starts the diff sweeps) already consumed this lap.
    * Cleared when the lead point wraps forward past S/F, on a forward
@@ -98,6 +105,7 @@ export function leadPointPct(
  */
 export function resetLeadPointSweep(sweep: LeadPointSweep): void {
   sweep.leadPrevPct = null;
+  sweep.leadLastPct = null;
 
   if (sweep.spoken.size > 0) sweep.spoken.clear();
 }
@@ -110,12 +118,11 @@ export function resetLeadPointSweep(sweep: LeadPointSweep): void {
  * already spoken this lap is consumed (added to `spoken`); only the one
  * nearest the lead point is returned. A first tick (no previous point) seeds
  * silently. Reversing never fires and never moves the previous point back, so
- * nothing is swept twice: a reverse within {@link CORNER_TELEPORT_THRESHOLD}
- * of the previous point leaves it at the furthest point reached, and one
- * further back (a tow or reset behind the car) re-anchors there and keeps
- * `spoken`. A forward jump over the threshold re-anchors, clears `spoken` and
- * returns nothing; a wrap past S/F clears `spoken` before the interval is
- * read.
+ * nothing is swept twice, however far a gradual retreat goes. A jump is one
+ * tick's step over {@link CORNER_TELEPORT_THRESHOLD} from the last tick's
+ * point: backward (a tow or reset behind the car) it re-anchors and keeps
+ * `spoken`; forward it re-anchors, clears `spoken` and returns nothing. A wrap
+ * past S/F clears `spoken` before the interval is read.
  *
  * @param sweep the diff's sweep state, written in place
  * @param leadPoint this tick's lead point ({@link leadPointPct})
@@ -124,39 +131,51 @@ export function resetLeadPointSweep(sweep: LeadPointSweep): void {
  */
 export function sweepLeadPoint(sweep: LeadPointSweep, leadPoint: number, starts: readonly number[]): number {
   const prev = sweep.leadPrevPct;
+  const last = sweep.leadLastPct;
+
+  sweep.leadLastPct = leadPoint;
 
   // First valid tick of a pass: seed silently. Starts "behind" the lead point
   // simply aren't in any future forward interval this lap, so there is no
   // burst and no explicit seeding pass needed.
-  if (prev === null) {
+  if (prev === null || last === null) {
     sweep.leadPrevPct = leadPoint;
 
     return -1;
   }
 
-  // Signed forward delta folded into (-0.5, 0.5]: negative = reversing.
-  const delta = ((leadPoint - prev + 1.5) % 1) - 0.5;
+  // A jump is judged one tick at a time, from last tick's point: the step
+  // folded into (-0.5, 0.5]. Measured from the furthest point instead, a
+  // gradual retreat under braking would add up to one.
+  const step = ((leadPoint - last + 1.5) % 1) - 0.5;
 
-  if (delta <= 0) {
-    // Reversing never fires. Within the threshold the previous point holds at
-    // the furthest point reached, so the way forward again sweeps nothing
-    // twice, and a slide back over the line and forward again is no wrap. A
-    // backward discontinuity (tow, reset behind the car) re-anchors and keeps
-    // what the lap has spoken.
-    if (delta < -CORNER_TELEPORT_THRESHOLD) sweep.leadPrevPct = leadPoint;
+  if (step < -CORNER_TELEPORT_THRESHOLD) {
+    // A backward discontinuity (tow, reset behind the car) re-anchors and
+    // keeps what the lap has spoken.
+    sweep.leadPrevPct = leadPoint;
 
     return -1;
   }
 
-  sweep.leadPrevPct = leadPoint;
-
-  if (delta > CORNER_TELEPORT_THRESHOLD) {
-    // Tow / reset / scrub — re-anchor, clear the lap's spoken set, stay
-    // silent. The next genuine crossings announce as a fresh pass.
+  if (step > CORNER_TELEPORT_THRESHOLD) {
+    // Tow / reset / scrub forward — re-anchor, clear the lap's spoken set,
+    // stay silent. The next genuine crossings announce as a fresh pass.
+    sweep.leadPrevPct = leadPoint;
     sweep.spoken.clear();
 
     return -1;
   }
+
+  // Signed forward delta from the furthest point, folded into (-0.5, 0.5]: at
+  // or behind it, the lead point is reversing or still making its way back.
+  // That never fires and never moves the previous point back, so the way
+  // forward again sweeps nothing twice, and a slide back over the line and
+  // forward again is no wrap.
+  const delta = ((leadPoint - prev + 1.5) % 1) - 0.5;
+
+  if (delta <= 0) return -1;
+
+  sweep.leadPrevPct = leadPoint;
 
   // The lead point wrapped past S/F inside this tick's interval: a new lap.
   if (leadPoint < prev) sweep.spoken.clear();

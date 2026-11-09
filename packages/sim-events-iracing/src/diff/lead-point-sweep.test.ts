@@ -11,7 +11,7 @@ import {
 
 /** A sweep with no pass under way. */
 function freshSweep(): LeadPointSweep {
-  return { leadPrevPct: null, spoken: new Set() };
+  return { leadPrevPct: null, leadLastPct: null, spoken: new Set() };
 }
 
 /**
@@ -21,7 +21,9 @@ function freshSweep(): LeadPointSweep {
  */
 function driveForward(sweep: LeadPointSweep, to: number, starts: readonly number[]): number[] {
   const step = 1 / 64;
-  const from = sweep.leadPrevPct!;
+  // From where the lead point is now, which after a retreat is behind the
+  // furthest point the sweep holds.
+  const from = sweep.leadLastPct!;
   const ticks = Math.ceil(((to - from + 1) % 1) / step);
   const announced: number[] = [];
   let point = from;
@@ -128,6 +130,7 @@ describe("sweepLeadPoint", () => {
 
     // Across the line: 0.984375 → 0.015625.
     sweep.leadPrevPct = 0.984375;
+    sweep.leadLastPct = 0.984375;
 
     expect(sweepLeadPoint(sweep, 0.015625, STARTS)).toBe(-1);
     expect(sweep.spoken.size).toBe(0);
@@ -197,18 +200,21 @@ describe("sweepLeadPoint", () => {
     expect(driveForward(sweep, 0.265625, STARTS)).toEqual([0]);
   });
 
-  it("re-anchors once a slow retreat takes the lead point more than the threshold behind its furthest point", () => {
-    sweepLeadPoint(sweep, 0.3125, STARTS);
+  it("holds the furthest point through a slow retreat however far it adds up to, since a jump is one tick's step", () => {
+    sweepLeadPoint(sweep, 0.234375, STARTS);
+    expect(driveForward(sweep, 0.3125, STARTS)).toEqual([0]);
 
-    // Back in ticks of 1/64, each well under the threshold.
-    expect(sweepLeadPoint(sweep, 0.296875, STARTS)).toBe(-1);
-    expect(sweepLeadPoint(sweep, 0.28125, STARTS)).toBe(-1);
-    expect(sweepLeadPoint(sweep, 0.265625, STARTS)).toBe(-1);
+    // Back in ticks of 1/64, each well under the threshold, to 0.234375:
+    // 0.078125 behind the furthest point in all, over the threshold.
+    for (const point of [0.296875, 0.28125, 0.265625, 0.25, 0.234375]) {
+      expect(sweepLeadPoint(sweep, point, STARTS)).toBe(-1);
+    }
+
     expect(sweep.leadPrevPct).toBe(0.3125);
 
-    // 0.0546875 behind the furthest point: over the threshold, re-anchored there.
-    expect(sweepLeadPoint(sweep, 0.2578125, STARTS)).toBe(-1);
-    expect(sweep.leadPrevPct).toBe(0.2578125);
+    // Forward again over the 0.25 start, spoken before the retreat: nothing
+    // twice; the next start announces as ever.
+    expect(driveForward(sweep, 0.515625, STARTS)).toEqual([1]);
   });
 
   it("re-anchors silently on a jump over the teleport threshold, and clears the spoken set", () => {
@@ -326,6 +332,26 @@ describe("sweepLeadPoint when the lead point backs over the line", () => {
     expect(driveForward(sweep, 0.015625, starts)).toEqual([0]);
   });
 
+  it("does not repeat the lap's first start when braking takes the lead point back over the line, in small steps, further than the threshold", () => {
+    crossTheLine();
+
+    // Back in ticks of 1/128 from 0.01171875 to 0.9375: 0.07421875 behind the
+    // furthest point in all, each step well under the threshold.
+    let point = 0.01171875;
+
+    for (let i = 0; i < 9; i++) {
+      point = (point - 1 / 128 + 1) % 1;
+
+      expect(sweepLeadPoint(sweep, point, STARTS)).toBe(-1);
+    }
+
+    expect(sweep.leadPrevPct).toBe(0.01171875);
+
+    // Forward again over the line: no wrap, the start just past it stays silent.
+    expect(driveForward(sweep, 0.015625, STARTS)).toEqual([]);
+    expect(driveForward(sweep, 0.515625, STARTS)).toEqual([1]);
+  });
+
   it.each([
     ["a backward jump over the threshold re-anchors behind the line: the next wrap is a new lap", 0.9375, [0]],
     ["a reverse within the threshold of its furthest point keeps it: there is no wrap", 0.97265625, []],
@@ -362,7 +388,7 @@ describe("sweepLeadPoint when the lead point backs over the line", () => {
 
 describe("resetLeadPointSweep", () => {
   it("clears the previous point and the spoken set, so the next point seeds silently", () => {
-    const sweep: LeadPointSweep = { leadPrevPct: 0.234375, spoken: new Set([2]) };
+    const sweep: LeadPointSweep = { leadPrevPct: 0.234375, leadLastPct: 0.234375, spoken: new Set([2]) };
 
     resetLeadPointSweep(sweep);
 

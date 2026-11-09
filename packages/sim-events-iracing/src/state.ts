@@ -458,6 +458,11 @@ export type CornerNameState = {
    */
   leadPrevPct: number | null;
   /**
+   * Last tick's lead point: what a jump (tow, reset) is measured against,
+   * one tick at a time (`LeadPointSweep`). `null` with `leadPrevPct`.
+   */
+  leadLastPct: number | null;
+  /**
    * Marker indices (into {@link markers}) already announced or consumed this
    * lap. Cleared when the lead point wraps forward past S/F, on a forward
    * teleport re-anchor, and whenever the gates fail.
@@ -478,7 +483,7 @@ export type CornerNameState = {
 
 /** A {@link CornerNameState} with no pass under way and no markers resolved: the initial state. */
 export function createCornerNameState(): CornerNameState {
-  return { leadPrevPct: null, spoken: new Set(), markersKey: "", markers: null };
+  return { leadPrevPct: null, leadLastPct: null, spoken: new Set(), markersKey: "", markers: null };
 }
 
 /**
@@ -499,6 +504,11 @@ export type SectorStartState = {
    */
   leadPrevPct: number | null;
   /**
+   * Last tick's lead point: what a jump (tow, reset) is measured against,
+   * one tick at a time (`LeadPointSweep`). `null` with `leadPrevPct`.
+   */
+  leadLastPct: number | null;
+  /**
    * Sector indices (0 is the sector that starts at the line) already
    * announced or consumed this lap. Cleared when the lead point wraps forward
    * past S/F, on a forward teleport re-anchor, and whenever the gates fail.
@@ -508,7 +518,7 @@ export type SectorStartState = {
 
 /** A {@link SectorStartState} with no pass under way: the initial state. */
 export function createSectorStartState(): SectorStartState {
-  return { leadPrevPct: null, spoken: new Set() };
+  return { leadPrevPct: null, leadLastPct: null, spoken: new Set() };
 }
 
 export type MaterialSample = {
