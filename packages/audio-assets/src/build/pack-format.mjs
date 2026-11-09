@@ -53,7 +53,9 @@ export const MANIFEST_FILE = "voice-pack.json";
  * arguments — what `archiveFormatIdentity` records, since a `Date` has no
  * machine-independent JSON form.
  */
-export const ZIP_ENTRY_MTIME_FIELDS = Object.freeze([1980, 0, 1, 0, 0, 0]);
+export const ZIP_ENTRY_MTIME_FIELDS = Object.freeze(
+  /** @type {readonly [number, number, number, number, number, number]} */ ([1980, 0, 1, 0, 0, 0]),
+);
 const ZIP_ENTRY_MTIME = new Date(...ZIP_ENTRY_MTIME_FIELDS);
 
 /**

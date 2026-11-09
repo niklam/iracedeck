@@ -45,6 +45,16 @@ import {
   parseArgs,
   serializeSortedJson,
 } from "../scripts/pack-voice.mjs";
+import {
+  buildPackRecord,
+  checkPackRecords,
+  computePackInputs,
+  packRecordPath,
+  readPackRecord,
+  sealPackRecords,
+  serializePackRecord,
+  writePackRecord,
+} from "./build/pack-record.mjs";
 import { VOICE_PACKS } from "./build/voice-packs.mjs";
 
 /**
@@ -309,6 +319,7 @@ describe("packVoice", () => {
       configsDir,
       outDir: path.join(root, "out-1"),
       catalogDir: path.join(root, "catalog-1"),
+      recordsDir: path.join(root, "records-1"),
       cacheDir: path.join(root, "cache-1"),
     });
     second = await packVoice({
@@ -317,6 +328,7 @@ describe("packVoice", () => {
       configsDir,
       outDir: path.join(root, "out-2"),
       catalogDir: path.join(root, "catalog-2"),
+      recordsDir: path.join(root, "records-2"),
       cacheDir: path.join(root, "cache-2"),
     });
   }, 60_000);
@@ -441,6 +453,151 @@ describe("packVoice", () => {
     expect(first.archivePath).toBe(path.join(root, "out-1", "testvoice-1.2.3.zip"));
   });
 
+  /**
+   * The pack record (#1667): written beside the entry by the same run, from
+   * the tree the archive was just built from, and the one place the packer
+   * learns whether the version it is packing has been released.
+   */
+  describe("the pack record", () => {
+    const sealedRoots = (name: string) => ({
+      catalogDir: path.join(root, `catalog-${name}`),
+      recordsDir: path.join(root, `records-${name}`),
+      outDir: path.join(root, `out-${name}`),
+    });
+
+    /** `first`'s entry and record copied under a new name, the record sealed at `released` (default: its own sha). */
+    function copyOfFirst(name: string, released?: { version: string; sha256: string }) {
+      const roots = sealedRoots(name);
+
+      mkdirSync(roots.catalogDir, { recursive: true });
+      mkdirSync(roots.recordsDir, { recursive: true });
+      copyFileSync(first.catalogPath!, path.join(roots.catalogDir, "testvoice.json"));
+
+      const record = readPackRecord(pack.id, path.join(root, "records-1"))!;
+
+      writePackRecord(
+        buildPackRecord(pack, {
+          sha256: record.sha256,
+          inputs: record.inputs,
+          released: released ?? { version: pack.version, sha256: record.sha256 },
+        }),
+        roots.recordsDir,
+      );
+
+      return {
+        ...roots,
+        entryBytes: () => readFileSync(path.join(roots.catalogDir, "testvoice.json"), "utf-8"),
+        recordBytes: () => readFileSync(packRecordPath(pack.id, roots.recordsDir), "utf-8"),
+      };
+    }
+
+    it("is written beside the entry, from the archive it just packed and the tree it was built from", () => {
+      expect(first.recordPath).toBe(path.join(root, "records-1", "testvoice.json"));
+
+      const raw = readFileSync(first.recordPath!, "utf-8");
+      const record = readPackRecord(pack.id, path.join(root, "records-1"));
+
+      expect(record).toEqual(
+        buildPackRecord(pack, { sha256: first.entry.sha256, inputs: computePackInputs(pack, { srcRoot, configsDir }) }),
+      );
+      expect(record!.released).toBeUndefined();
+      expect(record!.inputs.voices.testvoice).toMatchObject({ clips: 2 });
+      expect(raw).toBe(serializePackRecord(record!));
+      expect(raw).not.toContain("\r");
+
+      // And the tree it describes passes the rules it will be held to.
+      expect(
+        checkPackRecords({
+          packs: [pack],
+          srcRoot,
+          configsDir,
+          catalogDir: path.join(root, "catalog-1"),
+          recordsDir: path.join(root, "records-1"),
+        }),
+      ).toEqual([]);
+      // Two independent runs agree on it, as on the archive.
+      expect(readPackRecord(pack.id, path.join(root, "records-2"))).toEqual(record);
+    });
+
+    it("carries an existing released seal over a re-pack untouched", async () => {
+      const roots = copyOfFirst("resealed");
+      const before = roots.recordBytes();
+
+      // Sealed by the one function that writes `released`, as the hook would.
+      expect(sealPackRecords({ packs: [pack], srcRoot, configsDir, ...roots }).sealed).toEqual([]);
+
+      const result = await packVoice({ pack, srcRoot, configsDir, ...roots, cacheDir: path.join(root, "cache-1") });
+
+      expect(result.entry).toEqual(first.entry);
+      expect(roots.recordBytes()).toBe(before);
+      expect(readPackRecord(pack.id, roots.recordsDir)!.released).toEqual({
+        version: pack.version,
+        sha256: first.entry.sha256,
+      });
+    }, 60_000);
+
+    it("refuses a changed archive under a sealed version, leaving entry and record byte-untouched and the archive in dist", async () => {
+      // A seal at THIS version naming another archive: the one just packed
+      // differs, so the published archive would change under its version.
+      const published = "f".repeat(64);
+      const roots = copyOfFirst("sealed-changed", { version: pack.version, sha256: published });
+      const entryBefore = roots.entryBytes();
+      const recordBefore = roots.recordBytes();
+
+      await expect(
+        packVoice({ pack, srcRoot, configsDir, ...roots, cacheDir: path.join(root, "cache-1") }),
+      ).rejects.toThrow(
+        new RegExp(
+          `^pack "testvoice": version 1\\.2\\.3 is released with sha256 ${published}, and the archive just packed has ` +
+            `sha256 ${first.entry.sha256} — a published archive never changes under its version\\. Bump \`version\` in ` +
+            `src/build/voice-packs\\.mjs and re-run pack:voice testvoice; neither catalog/testvoice\\.json nor ` +
+            `pack-records/testvoice\\.json was written`,
+        ),
+      );
+
+      expect(roots.entryBytes()).toBe(entryBefore);
+      expect(roots.recordBytes()).toBe(recordBefore);
+      // The archive is there to inspect — and it is the one the message describes.
+      const archivePath = path.join(roots.outDir, "testvoice-1.2.3.zip");
+      expect(existsSync(archivePath)).toBe(true);
+      expect(sha256(readFileSync(archivePath))).toBe(first.entry.sha256);
+    }, 60_000);
+
+    it("writes the record for an unchanged archive under a sealed version whose inputs changed — no bump needed", async () => {
+      // The record says the pipeline was something else when this archive was
+      // packed; the bytes came out identical anyway (an ffmpeg-static bump
+      // that changed nothing, say). Inputs decide a re-pack, bytes a bump.
+      const roots = copyOfFirst("sealed-same");
+      const stale = readPackRecord(pack.id, roots.recordsDir)!;
+
+      writePackRecord({ ...stale, inputs: { ...stale.inputs, pipeline: "0".repeat(64) } }, roots.recordsDir);
+      expect(checkPackRecords({ packs: [pack], srcRoot, configsDir, ...roots }).map((problem) => problem.part)).toEqual(
+        ["inputs.pipeline"],
+      );
+
+      const result = await packVoice({ pack, srcRoot, configsDir, ...roots, cacheDir: path.join(root, "cache-1") });
+
+      expect(result.entry.sha256).toBe(first.entry.sha256);
+      expect(readPackRecord(pack.id, roots.recordsDir)).toEqual({
+        ...stale,
+        released: { version: pack.version, sha256: first.entry.sha256 },
+      });
+      expect(checkPackRecords({ packs: [pack], srcRoot, configsDir, ...roots })).toEqual([]);
+    }, 60_000);
+
+    it("refuses to pack over a record it cannot read, writing no entry", async () => {
+      const roots = sealedRoots("unreadable");
+
+      mkdirSync(roots.recordsDir, { recursive: true });
+      writeFileSync(packRecordPath(pack.id, roots.recordsDir), "{ not json");
+
+      await expect(
+        packVoice({ pack, srcRoot, configsDir, ...roots, cacheDir: path.join(root, "cache-1") }),
+      ).rejects.toThrow(/testvoice\.json could not be read as JSON/);
+      expect(existsSync(roots.catalogDir)).toBe(false);
+    }, 60_000);
+  });
+
   it("with writeCatalog false stages and zips but leaves the catalog directory untouched", async () => {
     // The dev loop's `--no-catalog` (#1143). The committed entry is the
     // release contract — its `sha256` is what the installer compares against
@@ -451,6 +608,7 @@ describe("packVoice", () => {
     // the packer declining to write rather than a directory it never created:
     // the assertion would hold for the wrong reason against a bare path.
     const catalogDir = mkdtempSync(path.join(tmpdir(), "ird-pack-no-catalog-"));
+    const recordsDir = mkdtempSync(path.join(tmpdir(), "ird-pack-no-catalog-records-"));
     const outDir = path.join(root, "out-no-catalog");
 
     try {
@@ -460,6 +618,7 @@ describe("packVoice", () => {
         configsDir,
         outDir,
         catalogDir,
+        recordsDir,
         // The first run's cache: this case is about the catalog, not the
         // encode, and a cold cache would re-run ffmpeg to prove nothing.
         cacheDir: path.join(root, "cache-1"),
@@ -469,6 +628,9 @@ describe("packVoice", () => {
       expect(existsSync(path.join(catalogDir, `${pack.id}.json`))).toBe(false);
       expect(readdirSync(catalogDir)).toEqual([]);
       expect(result.catalogPath).toBeUndefined();
+      // And the record goes with the entry (#1667): same flag, same silence.
+      expect(readdirSync(recordsDir)).toEqual([]);
+      expect(result.recordPath).toBeUndefined();
 
       // Everything the dev loop needs still happened: the stage, its manifest
       // and the archive.
@@ -481,15 +643,18 @@ describe("packVoice", () => {
       expect(result.entry).toEqual(first.entry);
     } finally {
       rmSync(catalogDir, { recursive: true, force: true });
+      rmSync(recordsDir, { recursive: true, force: true });
     }
   }, 60_000);
 
-  it("with writeArchive false stages the tree and writes no archive and no catalog entry", async () => {
+  it("with writeArchive false stages the tree and writes no archive, no catalog entry and no record", async () => {
     // `--stage-only` (#1214), what the build's `stage:dev-voices` task runs.
-    // The catalog directory EXISTS and is empty, as above, and `writeCatalog`
-    // is left at its default of true: the archive flag alone must withhold
-    // the entry, since there is no archive for it to describe.
+    // The catalog and records directories EXIST and are empty, as above, and
+    // `writeCatalog` is left at its default of true: the archive flag alone
+    // must withhold the entry and the record, since there is no archive for
+    // them to describe.
     const catalogDir = mkdtempSync(path.join(tmpdir(), "ird-pack-stage-only-"));
+    const recordsDir = mkdtempSync(path.join(tmpdir(), "ird-pack-stage-only-records-"));
     const outDir = path.join(root, "out-stage-only");
 
     try {
@@ -499,12 +664,15 @@ describe("packVoice", () => {
         configsDir,
         outDir,
         catalogDir,
+        recordsDir,
         cacheDir: path.join(root, "cache-1"),
         writeArchive: false,
       });
 
       expect(readdirSync(catalogDir)).toEqual([]);
+      expect(readdirSync(recordsDir)).toEqual([]);
       expect(result.catalogPath).toBeUndefined();
+      expect(result.recordPath).toBeUndefined();
       expect(result.archivePath).toBeUndefined();
       expect(result.entry).toBeUndefined();
 
@@ -534,6 +702,7 @@ describe("packVoice", () => {
       expect(scan.packs.map((scanned) => [scanned.id, scanned.dir])).toEqual([[pack.id, result.stageDir]]);
     } finally {
       rmSync(catalogDir, { recursive: true, force: true });
+      rmSync(recordsDir, { recursive: true, force: true });
     }
   }, 60_000);
 
@@ -572,6 +741,7 @@ describe("packVoice", () => {
           configsDir,
           outDir: path.join(root, "out-3"),
           catalogDir: path.join(root, "catalog-3"),
+          recordsDir: path.join(root, "records-3"),
           cacheDir: path.join(root, "cache-3"),
         }),
       ).rejects.toThrow(/voice\/testvoice\/loose\.mp3 is not a clip the engine can play/);
@@ -580,6 +750,7 @@ describe("packVoice", () => {
     }
 
     expect(existsSync(path.join(root, "catalog-3", "testvoice.json"))).toBe(false);
+    expect(existsSync(path.join(root, "records-3"))).toBe(false);
   }, 30_000);
 
   // A pack must never ship a script the scanner will reject: the scanner
@@ -609,6 +780,7 @@ describe("packVoice", () => {
         configsDir,
         outDir: path.join(caseRoot, "out"),
         catalogDir: path.join(caseRoot, "catalog"),
+        recordsDir: path.join(caseRoot, "pack-records"),
         cacheDir: path.join(caseRoot, "cache"),
       });
 
@@ -877,10 +1049,12 @@ describe("parseArgs", () => {
 /**
  * The committed entries are produced by packing the real voices, which needs a
  * warm ffmpeg cache or minutes of encoding — so their `bytes` and `sha256` are
- * NOT re-derived here (that is a release step, run by hand). What IS checked is
- * everything cheap: every published pack has an entry, every entry parses under
- * the schema the plugin will parse it with, and the fields the registry owns
- * have not drifted from it.
+ * NOT re-derived here. Whether they are STALE is `pack-record.test.ts`'s job
+ * (#1667): the pack record beside each entry digests every input the archive
+ * was built from, and that test recomputes them from the tree. What IS checked
+ * here is everything cheap about the entry itself: every published pack has
+ * one, every entry parses under the schema the plugin will parse it with, and
+ * the fields the registry owns have not drifted from it.
  */
 describe("committed catalog entries", () => {
   it("has one entry per published pack, each matching its VOICE_PACKS definition", () => {

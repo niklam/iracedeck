@@ -4,13 +4,15 @@ import { BUNDLED_VOICE_IDS, VOICE_PACKS } from "./voice-packs.mjs";
 
 describe("voice-packs.mjs — the Terse pack (#999)", () => {
   it("registers the Terse pack as a second first-party pack, on demand (#999)", () => {
+    // The version is deliberately not pinned here: a pin only added an edit to
+    // every bump, and whether the version matches what was packed and released
+    // is the pack record's job (`pack-record.test.ts`, #1667).
     const terse = VOICE_PACKS.find((pack) => pack.id === "iracedeck-terse");
     expect(terse).toMatchObject({
       label: "Default (Short callouts)",
       author: "iRaceDeck",
       voices: ["shawn"],
       bundled: false,
-      version: "1.3.1",
     });
   });
 

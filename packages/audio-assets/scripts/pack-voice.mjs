@@ -15,7 +15,9 @@
  *   3. zips that stage, deterministically, to `dist/voice-packs/<id>-<version>.zip`
  *      — unless `--stage-only` is given (#1214), which stops at step 2;
  *   4. writes `catalog/<id>.json` with the archive's byte size and sha-256, the
- *      entry the website build assembles into `voice-catalog.json` — unless
+ *      entry the website build assembles into `voice-catalog.json`, and beside
+ *      it `pack-records/<id>.json` (#1667), the record of what the archive was
+ *      built from that `src/pack-record.test.ts` holds the tree to — unless
  *      `--no-catalog` is given (#1143), which stops at step 3.
  *
  * Usage: pnpm --filter @iracedeck/audio-assets pack:voice [<pack-id> ...] [--no-catalog | --stage-only]
@@ -41,7 +43,18 @@
  * deleting a file a maintainer may have built on purpose is not this flag's
  * business.
  *
- * Only the catalog entry is committed. The archive is a GitHub release asset,
+ * A SEALED VERSION IS FROZEN (#1667). When the record carries `released` at
+ * the pack's current version, the archive published under it must not change:
+ * a flagless run still packs, so the author has the archive to inspect, but
+ * if its sha-256 differs from `released.sha256` the run writes neither the
+ * entry nor the record and names the bump. An unchanged archive under a
+ * sealed version (an `ffmpeg-static` bump that left the output identical,
+ * say) writes the record with the new inputs; no bump is needed. Inputs
+ * decide when a re-pack is due, bytes decide when a bump is due. `released`
+ * itself is written only by the release hook and `seal:voice-packs`; this
+ * script preserves whatever it finds.
+ *
+ * Only the catalog entry and the record are committed. The archive is a GitHub release asset,
  * attached to the release the entry's `url` names by
  * `scripts/publish-voice-packs.mjs` — from the plugin's tag workflow on every
  * release, or from the manual "Publish voice packs" workflow between releases
@@ -87,6 +100,13 @@ import {
   serializeSortedJson,
   VOICE_ROOT,
 } from "../src/build/pack-format.mjs";
+import {
+  buildPackRecord,
+  computePackInputs,
+  PACK_RECORDS_DIR,
+  readPackRecord,
+  writePackRecord,
+} from "../src/build/pack-record.mjs";
 
 // The pack format moved to `src/build/pack-format.mjs` (#1667) so the pack
 // record can compute an archive's inputs without importing the packer. These
@@ -129,15 +149,17 @@ export const RELEASE_DOWNLOAD_BASE = "https://github.com/niklam/iracedeck/releas
  * @property {string} [configsDir] — holds `<voice-id>.voice.json`
  * @property {string} [outDir] — stage directory and archive land here
  * @property {string} [catalogDir] — `<pack-id>.json` lands here
+ * @property {string} [recordsDir] — the pack record `<pack-id>.json` lands here, beside the entry (#1667)
  * @property {string} [cacheDir] — processed-clip cache root; see `packVoice`
- * @property {boolean} [writeCatalog] — false leaves `catalogDir` untouched
- * @property {boolean} [writeArchive] — false writes no archive and no catalog entry (`--stage-only`)
+ * @property {boolean} [writeCatalog] — false leaves `catalogDir` and `recordsDir` untouched
+ * @property {boolean} [writeArchive] — false writes no archive, no catalog entry and no record (`--stage-only`)
  * @property {(message: string) => void} [logger]
  *
- * @typedef {object} PackedPack — a full run: stage, archive, and (unless withheld) the catalog entry
+ * @typedef {object} PackedPack — a full run: stage, archive, and (unless withheld) the catalog entry and the record
  * @property {string} archivePath
  * @property {string} stageDir
  * @property {string | undefined} catalogPath — `undefined` when `writeCatalog` was false
+ * @property {string | undefined} recordPath — `undefined` when `writeCatalog` was false
  * @property {CatalogEntry} entry
  * @property {number} clips
  * @property {number} scripts
@@ -146,6 +168,7 @@ export const RELEASE_DOWNLOAD_BASE = "https://github.com/niklam/iracedeck/releas
  * @property {undefined} archivePath
  * @property {string} stageDir
  * @property {undefined} catalogPath
+ * @property {undefined} recordPath
  * @property {undefined} entry
  * @property {number} clips
  * @property {number} scripts
@@ -396,17 +419,22 @@ export function buildCatalogEntry(pack, voices, { bytes, sha256 }) {
  * reach the archive anyway — but the on-disk stage should be the pack and
  * nothing else, since it is what a maintainer inspects or sideloads.
  *
- * Resolves to the archive, stage and catalog paths, the catalog entry, and two
- * counts: `clips` (mp3s, across every voice) and `scripts` (voices that ship a
- * callout script). The script is never counted as a clip. With `writeCatalog`
- * false the entry is still computed and returned — only the FILE is withheld,
- * and `catalogPath` is then `undefined`.
+ * Resolves to the archive, stage, catalog and record paths, the catalog entry,
+ * and two counts: `clips` (mp3s, across every voice) and `scripts` (voices
+ * that ship a callout script). The script is never counted as a clip. With
+ * `writeCatalog` false the entry is still computed and returned — only the
+ * FILES are withheld, and `catalogPath` and `recordPath` are then `undefined`.
  *
  * With `writeArchive` false (`--stage-only`, #1214) the run stops once the
  * stage and its manifest are written: no archive, so no entry to compute and
- * no catalog to write, whatever `writeCatalog` says. `archivePath`, `entry`
- * and `catalogPath` are then all `undefined`; every check above still runs,
- * since each is about the stage rather than the zip.
+ * no catalog or record to write, whatever `writeCatalog` says. `archivePath`,
+ * `entry`, `catalogPath` and `recordPath` are then all `undefined`; every
+ * check above still runs, since each is about the stage rather than the zip.
+ *
+ * The record (#1667) is written with the entry and only with it: the same
+ * run, so the two cannot disagree. An existing record's `released` is carried
+ * over untouched, and when it names the pack's current version a changed
+ * archive is refused before either file is written (see the header).
  *
  * Typed as three overloads so a caller gets the result shape its
  * `writeArchive` implies: a literal `false` resolves to a `StagedPack`, `true`
@@ -437,6 +465,7 @@ export async function packVoice({
   configsDir = CONFIGS_DIR,
   outDir = OUTPUT_DIR,
   catalogDir = CATALOG_DIR,
+  recordsDir = PACK_RECORDS_DIR,
   cacheDir,
   writeCatalog = true,
   writeArchive = true,
@@ -540,33 +569,63 @@ export async function packVoice({
   entries.push({ path: MANIFEST_FILE, data: manifestBytes });
 
   // `--stage-only`: the stage is the product. Nothing under `outDir` beside
-  // the stage and nothing under `catalogDir` is created, opened or removed.
+  // the stage and nothing under `catalogDir` or `recordsDir` is created,
+  // opened or removed.
   if (!writeArchive) {
-    return { archivePath: undefined, stageDir, catalogPath: undefined, entry: undefined, clips, scripts };
+    return {
+      archivePath: undefined,
+      stageDir,
+      catalogPath: undefined,
+      recordPath: undefined,
+      entry: undefined,
+      clips,
+      scripts,
+    };
   }
 
   const archive = createArchive(entries);
   const archivePath = path.join(outDir, archiveFileName(pack));
   writeFileSync(archivePath, archive);
 
-  const entry = buildCatalogEntry(pack, voices, {
-    bytes: archive.byteLength,
-    sha256: createHash("sha256").update(archive).digest("hex"),
-  });
+  const sha256 = createHash("sha256").update(archive).digest("hex");
+  const entry = buildCatalogEntry(pack, voices, { bytes: archive.byteLength, sha256 });
 
   // The entry is built either way — a caller that wants it can have it without
   // a second pack — but with `writeCatalog` false nothing under `catalogDir`
-  // is created, opened or removed, not even the directory itself. The path is
-  // the flag's one witness: `undefined` is what a caller reads, and what the
-  // summary line prints as "not written".
-  const catalogPath = writeCatalog ? path.join(catalogDir, `${pack.id}.json`) : undefined;
-
-  if (catalogPath !== undefined) {
-    mkdirSync(catalogDir, { recursive: true });
-    writeFileSync(catalogPath, `${JSON.stringify(entry, null, 2)}\n`);
+  // or `recordsDir` is created, opened or removed, not even the directories
+  // themselves. The paths are the flag's witnesses: `undefined` is what a
+  // caller reads, and what the summary lines print as "not written".
+  if (!writeCatalog) {
+    return { archivePath, stageDir, catalogPath: undefined, recordPath: undefined, entry, clips, scripts };
   }
 
-  return { archivePath, stageDir, catalogPath, entry, clips, scripts };
+  // The seal check (#1667), before either file is written. The archive stays
+  // in `outDir` for inspection; a record that cannot be read is a failure too,
+  // since without it nobody can tell whether this version is sealed.
+  const previous = readPackRecord(pack.id, recordsDir);
+  const released = previous?.released;
+
+  if (released !== undefined && released.version === pack.version && released.sha256 !== sha256) {
+    throw new Error(
+      `pack "${pack.id}": version ${pack.version} is released with sha256 ${released.sha256}, and the archive just ` +
+        `packed has sha256 ${sha256} — a published archive never changes under its version. Bump \`version\` in ` +
+        `src/build/voice-packs.mjs and re-run pack:voice ${pack.id}; neither catalog/${pack.id}.json nor ` +
+        `pack-records/${pack.id}.json was written (the archive is at ${archivePath} for inspection)`,
+    );
+  }
+
+  // The inputs are recomputed from the source tree the archive was just built
+  // from — the same walk, the same exact-name rule — so the record describes
+  // this archive and nothing else.
+  const inputs = computePackInputs(pack, { srcRoot, configsDir });
+  const catalogPath = path.join(catalogDir, `${pack.id}.json`);
+
+  mkdirSync(catalogDir, { recursive: true });
+  writeFileSync(catalogPath, `${JSON.stringify(entry, null, 2)}\n`);
+
+  const recordPath = writePackRecord(buildPackRecord(pack, { sha256, inputs, released }), recordsDir);
+
+  return { archivePath, stageDir, catalogPath, recordPath, entry, clips, scripts };
 }
 
 /**
@@ -628,6 +687,7 @@ async function main() {
       console.log(`  stage    ${result.stageDir}`);
       console.log(`  archive  not written (--stage-only)`);
       console.log(`  catalog  not written (--stage-only)`);
+      console.log(`  record   not written (--stage-only)`);
       continue;
     }
 
@@ -638,6 +698,7 @@ async function main() {
     console.log(`  sha256   ${result.entry.sha256}`);
     console.log(`  archive  ${result.archivePath}`);
     console.log(`  catalog  ${result.catalogPath ?? "not written (--no-catalog)"}`);
+    console.log(`  record   ${result.recordPath ?? "not written (--no-catalog)"}`);
     console.log(
       `  release  ${releaseTag(pack)} (asset ${archiveFileName(pack)}, published by scripts/publish-voice-packs.mjs)`,
     );
