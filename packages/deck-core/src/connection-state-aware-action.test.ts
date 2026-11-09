@@ -1,3 +1,9 @@
+/**
+ * ConnectionStateAwareAction over a mocked BaseAction: the binding delegates,
+ * the per-key "needs the sim" decision behind the disconnected look, and the
+ * sim-presence listener's lifetime (#1599). The look reaching the key image
+ * through the real BaseAction is `connection-state-aware-action.real-base.test.ts`.
+ */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { BaseAction } from "./base-action.js";
@@ -13,28 +19,39 @@ const {
   mockTap,
   mockHold,
   mockRelease,
-  mockIsReady,
   mockIsConfigured,
   mockIsKeyboardBound,
-  mockOnGlobalSettingsChange,
-  mockOnSimHubReachabilityChange,
-} = vi.hoisted(() => ({
-  mockTap: vi.fn().mockResolvedValue(true),
-  mockHold: vi.fn().mockResolvedValue(undefined),
-  mockRelease: vi.fn().mockResolvedValue(undefined),
-  mockIsReady: vi.fn(() => true),
-  mockIsConfigured: vi.fn((_key: string) => true),
-  mockIsKeyboardBound: vi.fn((_key: string) => true),
-  mockOnGlobalSettingsChange: vi.fn(() => vi.fn()),
-  mockOnSimHubReachabilityChange: vi.fn(() => vi.fn()),
-}));
+  mockGetGlobalSettings,
+  mockIsSimAbsent,
+  mockOnSimPresenceChange,
+  presenceListeners,
+} = vi.hoisted(() => {
+  const presenceListeners = new Set<(absent: boolean) => void>();
+
+  return {
+    mockTap: vi.fn().mockResolvedValue(true),
+    mockHold: vi.fn().mockResolvedValue(undefined),
+    mockRelease: vi.fn().mockResolvedValue(undefined),
+    mockIsConfigured: vi.fn((_key: string) => true),
+    mockIsKeyboardBound: vi.fn((_key: string) => true),
+    mockGetGlobalSettings: vi.fn((): Record<string, unknown> => ({ showDisconnectedState: true })),
+    mockIsSimAbsent: vi.fn(() => false),
+    mockOnSimPresenceChange: vi.fn((listener: (absent: boolean) => void) => {
+      presenceListeners.add(listener);
+
+      return () => {
+        presenceListeners.delete(listener);
+      };
+    }),
+    presenceListeners,
+  };
+});
 
 vi.mock("./binding-dispatcher.js", () => ({
   getBindingDispatcher: () => ({
     tap: mockTap,
     hold: mockHold,
     release: mockRelease,
-    isReady: mockIsReady,
     isConfigured: mockIsConfigured,
     isKeyboardBound: mockIsKeyboardBound,
   }),
@@ -50,7 +67,18 @@ vi.mock("./base-action.js", () => ({
       error: vi.fn(),
     };
 
-    setActive = vi.fn();
+    /** Settings per context, as the real BaseAction keeps them. */
+    readonly settingsByContext = new Map<string, unknown>();
+
+    refreshAllImages = vi.fn();
+
+    getContextSettings(contextId: string): unknown {
+      return this.settingsByContext.get(contextId);
+    }
+
+    showsDisconnected(): boolean {
+      return false;
+    }
 
     async onWillAppear() {}
     async onWillDisappear() {}
@@ -58,8 +86,12 @@ vi.mock("./base-action.js", () => ({
   },
 }));
 
-vi.mock("./simhub-service.js", () => ({
-  onSimHubReachabilityChange: mockOnSimHubReachabilityChange,
+// The real singleton for the connection; the presence signal is replaced so a
+// test sets the value and fires the change itself.
+vi.mock("./sim-connection.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./sim-connection.js")>()),
+  isSimAbsent: mockIsSimAbsent,
+  onSimPresenceChange: mockOnSimPresenceChange,
 }));
 
 vi.mock("@iracedeck/settings", async (importOriginal) => {
@@ -67,22 +99,39 @@ vi.mock("@iracedeck/settings", async (importOriginal) => {
 
   return {
     ...original,
-    getGlobalSettings: vi.fn(() => ({})),
-    onGlobalSettingsChange: mockOnGlobalSettingsChange,
+    getGlobalSettings: mockGetGlobalSettings,
+    onGlobalSettingsChange: vi.fn(() => vi.fn()),
   };
 });
 
+/** An action whose mode `"local"` needs no sim (like Pit Crew or Audio Controls' Radar category). */
 class TestAction extends ConnectionStateAwareAction {
+  readonly needsSimCalls: unknown[] = [];
+
+  protected override needsSim(settings: unknown): boolean {
+    this.needsSimCalls.push(settings);
+
+    return (settings as { mode?: string } | undefined)?.mode !== "local";
+  }
+
+  setContextSettings(contextId: string, settings: unknown): void {
+    (this as unknown as { settingsByContext: Map<string, unknown> }).settingsByContext.set(contextId, settings);
+  }
+
+  callShowsDisconnected(contextId: string): boolean {
+    return this.showsDisconnected(contextId);
+  }
+
   callUpdateConnectionState(): void {
     this.updateConnectionState();
   }
 
-  callGetConnectionStatus(): boolean {
-    return this.getConnectionStatus();
-  }
-
   callSetActiveBinding(key: string | string[] | null): void {
     this.setActiveBinding(key);
+  }
+
+  callGetConnectionStatus(): boolean {
+    return this.getConnectionStatus();
   }
 
   async callTapBinding(key: string): Promise<boolean> {
@@ -97,10 +146,6 @@ class TestAction extends ConnectionStateAwareAction {
     return this.releaseBinding(actionId);
   }
 
-  callIsActiveBindingMissing(): boolean {
-    return this.isActiveBindingMissing();
-  }
-
   callIsBindingMissing(keys: string | string[] | null | undefined): boolean {
     return this.isBindingMissing(keys);
   }
@@ -110,16 +155,22 @@ class TestAction extends ConnectionStateAwareAction {
   }
 }
 
-function getSetActive(action: TestAction) {
-  return (action as unknown as { setActive: ReturnType<typeof vi.fn> }).setActive;
+/** The default hook, unchanged. */
+class DefaultAction extends ConnectionStateAwareAction {
+  callNeedsSim(settings: unknown): boolean {
+    return this.needsSim(settings);
+  }
 }
 
-function getLogger(action: TestAction) {
-  return (
-    action as unknown as {
-      logger: { info: ReturnType<typeof vi.fn>; debug: ReturnType<typeof vi.fn>; warn: ReturnType<typeof vi.fn> };
-    }
-  ).logger;
+function getRefreshAllImages(action: ConnectionStateAwareAction): ReturnType<typeof vi.fn> {
+  return (action as unknown as { refreshAllImages: ReturnType<typeof vi.fn> }).refreshAllImages;
+}
+
+function contextEvent(id: string) {
+  return {
+    action: { id, setTitle: vi.fn(), setImage: vi.fn(), isKey: vi.fn().mockReturnValue(true) },
+    payload: { settings: {} },
+  } as never;
 }
 
 describe("ConnectionStateAwareAction", () => {
@@ -127,147 +178,156 @@ describe("ConnectionStateAwareAction", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    presenceListeners.clear();
+    mockGetGlobalSettings.mockReturnValue({ showDisconnectedState: true });
+    mockIsSimAbsent.mockReturnValue(false);
     _resetSimConnection();
     sim.fake = createFakeSimConnection();
     initializeSimConnection(sim.fake.connection);
     action = new TestAction();
   });
 
-  // --- Connection state (no active binding) ---
+  // --- The disconnected look (#1599) ---
 
-  describe("updateConnectionState (no active binding)", () => {
-    it("should set active when the sim is connected", () => {
-      sim.fake!.state.connected = true;
+  describe("needsSim", () => {
+    it("is true by default, whatever the settings", () => {
+      const defaultAction = new DefaultAction();
 
-      action.callUpdateConnectionState();
-
-      expect(getSetActive(action)).toHaveBeenCalledWith(true);
-    });
-
-    it("should set inactive when the sim is disconnected", () => {
-      sim.fake!.state.connected = false;
-
-      action.callUpdateConnectionState();
-
-      expect(getSetActive(action)).toHaveBeenCalledWith(false);
-    });
-
-    it("should not call setActive when status unchanged", () => {
-      sim.fake!.state.connected = true;
-
-      action.callUpdateConnectionState();
-      vi.clearAllMocks();
-
-      action.callUpdateConnectionState();
-
-      expect(getSetActive(action)).not.toHaveBeenCalled();
-    });
-
-    it("should log state transitions", () => {
-      sim.fake!.state.connected = true;
-
-      action.callUpdateConnectionState();
-
-      expect(getLogger(action).debug).toHaveBeenCalledWith("Readiness changed: null -> true");
-    });
-
-    it("should follow a sequence of connection changes, skipping the unchanged ones", () => {
-      sim.fake!.state.connected = false;
-      action.callUpdateConnectionState(); // null -> false
-      action.callUpdateConnectionState(); // false -> false (no change)
-
-      sim.fake!.state.connected = true;
-      action.callUpdateConnectionState(); // false -> true
-
-      sim.fake!.state.connected = false;
-      action.callUpdateConnectionState(); // true -> false
-
-      expect(getSetActive(action).mock.calls).toEqual([[false], [true], [false]]);
+      expect(defaultAction.callNeedsSim(undefined)).toBe(true);
+      expect(defaultAction.callNeedsSim({ mode: "local" })).toBe(true);
     });
   });
 
-  // --- Binding-aware readiness ---
+  describe("showsDisconnected", () => {
+    it("is true when the setting is on, the sim is absent and the key's mode needs the sim", () => {
+      mockIsSimAbsent.mockReturnValue(true);
+      action.setContextSettings("ctx-1", { mode: "sim" });
 
-  describe("setActiveBinding", () => {
-    it("should immediately evaluate readiness", () => {
-      mockIsReady.mockReturnValue(true);
-
-      action.callSetActiveBinding("myKey");
-
-      expect(mockIsReady).toHaveBeenCalledWith("myKey", expect.any(Boolean));
-      expect(getSetActive(action)).toHaveBeenCalledWith(true);
+      expect(action.callShowsDisconnected("ctx-1")).toBe(true);
     });
 
-    it("should show inactive when binding is not ready", () => {
-      mockIsReady.mockReturnValue(false);
+    it("is false while the sim is present", () => {
+      action.setContextSettings("ctx-1", { mode: "sim" });
 
-      action.callSetActiveBinding("myKey");
-
-      expect(getSetActive(action)).toHaveBeenCalledWith(false);
+      expect(action.callShowsDisconnected("ctx-1")).toBe(false);
     });
 
-    it("should subscribe to global settings changes", () => {
-      action.callSetActiveBinding("myKey");
+    it.each([{ showDisconnectedState: false }, {}])("is false with the setting off (%o)", (globals) => {
+      mockGetGlobalSettings.mockReturnValue(globals);
+      mockIsSimAbsent.mockReturnValue(true);
+      action.setContextSettings("ctx-1", { mode: "sim" });
 
-      expect(mockOnGlobalSettingsChange).toHaveBeenCalledOnce();
+      expect(action.callShowsDisconnected("ctx-1")).toBe(false);
     });
 
-    it("should only subscribe once even with multiple setActiveBinding calls", () => {
-      action.callSetActiveBinding("keyA");
-      action.callSetActiveBinding("keyB");
+    it("is false for a key whose mode needs no sim", () => {
+      mockIsSimAbsent.mockReturnValue(true);
+      action.setContextSettings("ctx-1", { mode: "local" });
 
-      expect(mockOnGlobalSettingsChange).toHaveBeenCalledOnce();
+      expect(action.callShowsDisconnected("ctx-1")).toBe(false);
     });
 
-    it("should re-evaluate readiness when global settings change", () => {
-      let globalSettingsCallback: unknown = null;
-      (mockOnGlobalSettingsChange as ReturnType<typeof vi.fn>).mockImplementation((cb: () => void) => {
-        globalSettingsCallback = cb;
+    it("hands needsSim the raw settings of the context being drawn, not another key's", () => {
+      mockIsSimAbsent.mockReturnValue(true);
+      const simMode = { mode: "sim" };
+      const localMode = { mode: "local" };
+      action.setContextSettings("ctx-sim", simMode);
+      action.setContextSettings("ctx-local", localMode);
 
-        return vi.fn();
-      });
+      expect([action.callShowsDisconnected("ctx-sim"), action.callShowsDisconnected("ctx-local")]).toEqual([
+        true,
+        false,
+      ]);
+      expect(action.needsSimCalls).toEqual([simMode, localMode]);
+    });
+  });
 
-      // Start ready
-      mockIsReady.mockReturnValue(true);
-      action.callSetActiveBinding("myKey");
-      expect(getSetActive(action)).toHaveBeenCalledWith(true);
+  describe("the sim-presence listener", () => {
+    it("is added when the first context appears, once for the action", async () => {
+      expect(mockOnSimPresenceChange).not.toHaveBeenCalled();
 
-      // Simulate global settings change making binding not ready
-      mockIsReady.mockReturnValue(false);
-      (globalSettingsCallback as () => void)();
+      await action.onWillAppear(contextEvent("ctx-1"));
+      await action.onWillAppear(contextEvent("ctx-2"));
 
-      expect(getSetActive(action)).toHaveBeenCalledWith(false);
+      expect(mockOnSimPresenceChange).toHaveBeenCalledOnce();
+      expect(presenceListeners.size).toBe(1);
     });
 
-    it("should fall back to the sim connection status when active binding cleared", () => {
-      // Start with SimHub binding ready, sim disconnected
-      mockIsReady.mockReturnValue(true);
-      sim.fake!.state.connected = false;
-      action.callSetActiveBinding("myKey");
-      expect(getSetActive(action)).toHaveBeenCalledWith(true);
+    it("pushes every live key's image again on a presence change", async () => {
+      await action.onWillAppear(contextEvent("ctx-1"));
 
-      // Clear active binding — falls back to the sim status (disconnected)
+      for (const listener of presenceListeners) listener(true);
+
+      expect(getRefreshAllImages(action)).toHaveBeenCalledOnce();
+    });
+
+    it("stays while another context is live, so one key leaving never stops the other's updates", async () => {
+      await action.onWillAppear(contextEvent("ctx-1"));
+      await action.onWillAppear(contextEvent("ctx-2"));
+
+      await action.onWillDisappear(contextEvent("ctx-1"));
+
+      expect(presenceListeners.size).toBe(1);
+
+      for (const listener of presenceListeners) listener(true);
+
+      expect(getRefreshAllImages(action)).toHaveBeenCalledOnce();
+    });
+
+    it("is removed when the last context disappears", async () => {
+      await action.onWillAppear(contextEvent("ctx-1"));
+      await action.onWillAppear(contextEvent("ctx-2"));
+
+      await action.onWillDisappear(contextEvent("ctx-2"));
+      await action.onWillDisappear(contextEvent("ctx-1"));
+
+      expect(presenceListeners.size).toBe(0);
+    });
+
+    it("is added again when a context appears after the last one left", async () => {
+      await action.onWillAppear(contextEvent("ctx-1"));
+      await action.onWillDisappear(contextEvent("ctx-1"));
+      await action.onWillAppear(contextEvent("ctx-1"));
+
+      expect(mockOnSimPresenceChange).toHaveBeenCalledTimes(2);
+      expect(presenceListeners.size).toBe(1);
+    });
+
+    it("belongs to its action: another action's last key leaving does not remove it", async () => {
+      const other = new TestAction();
+      await action.onWillAppear(contextEvent("ctx-1"));
+      await other.onWillAppear(contextEvent("ctx-2"));
+
+      await other.onWillDisappear(contextEvent("ctx-2"));
+
+      expect(presenceListeners.size).toBe(1);
+
+      for (const listener of presenceListeners) listener(false);
+
+      expect(getRefreshAllImages(action)).toHaveBeenCalledOnce();
+      expect(getRefreshAllImages(other)).not.toHaveBeenCalled();
+    });
+
+    it("subscribes nothing to the sim connection per context: there is no per-tick evaluation", async () => {
+      await action.onWillAppear(contextEvent("ctx-1"));
+
+      expect(sim.fake!.subscribers.size).toBe(0);
+    });
+  });
+
+  describe("deprecated shims", () => {
+    it("setActiveBinding and updateConnectionState do nothing", async () => {
+      await action.onWillAppear(contextEvent("ctx-1"));
+      vi.clearAllMocks();
+
+      action.callSetActiveBinding("someKey");
+      action.callSetActiveBinding(["a", "b"]);
       action.callSetActiveBinding(null);
-      expect(getSetActive(action)).toHaveBeenCalledWith(false);
-
-      // Sim connects — now ready
-      sim.fake!.state.connected = true;
-      action.callUpdateConnectionState();
-      expect(getSetActive(action)).toHaveBeenCalledWith(true);
-    });
-  });
-
-  describe("updateConnectionState (with active binding)", () => {
-    it("should use dispatcher isReady when active binding is set", () => {
-      action.callSetActiveBinding("myKey");
-      vi.clearAllMocks();
-
-      mockIsReady.mockReturnValue(true);
-      sim.fake!.state.connected = false;
-
       action.callUpdateConnectionState();
 
-      expect(mockIsReady).toHaveBeenCalledWith("myKey", false);
+      expect(getRefreshAllImages(action)).not.toHaveBeenCalled();
+      expect(mockIsConfigured).not.toHaveBeenCalled();
+      expect(sim.fake!.subscribers.size).toBe(0);
     });
   });
 
@@ -323,10 +383,8 @@ describe("ConnectionStateAwareAction", () => {
       sim.fake!.state.connected = false;
       expect(action.callGetConnectionStatus()).toBe(false);
     });
-  });
 
-  describe("multiple action instances", () => {
-    it("should read the one singleton connection live, so both follow a change made after they were built", () => {
+    it("reads the one singleton connection live, so every action follows a change made after it was built", () => {
       const action1 = new TestAction();
       const action2 = new TestAction();
 
@@ -344,60 +402,6 @@ describe("ConnectionStateAwareAction", () => {
 
       expect([action1.callGetConnectionStatus(), action2.callGetConnectionStatus()]).toEqual([false, false]);
     });
-
-    it("should have independent active state tracking", () => {
-      const action1 = new TestAction();
-      const action2 = new TestAction();
-
-      sim.fake!.state.connected = false;
-      action1.callUpdateConnectionState();
-
-      expect(getSetActive(action1)).toHaveBeenCalledWith(false);
-      expect(getSetActive(action2)).not.toHaveBeenCalled();
-    });
-  });
-
-  describe("isActiveBindingMissing", () => {
-    it("returns false when no binding is active (api/chat modes)", () => {
-      action.callSetActiveBinding(null);
-      expect(action.callIsActiveBindingMissing()).toBe(false);
-      // Must not even consult the dispatcher when there is no active key.
-      mockIsConfigured.mockClear();
-      action.callIsActiveBindingMissing();
-      expect(mockIsConfigured).not.toHaveBeenCalled();
-    });
-
-    it("returns true when the active binding is not configured", () => {
-      action.callSetActiveBinding("myKey");
-      mockIsConfigured.mockReturnValue(false);
-      expect(action.callIsActiveBindingMissing()).toBe(true);
-      expect(mockIsConfigured).toHaveBeenCalledWith("myKey");
-    });
-
-    it("returns false when the active binding is configured (keyboard or SimHub)", () => {
-      action.callSetActiveBinding("myKey");
-      mockIsConfigured.mockReturnValue(true);
-      expect(action.callIsActiveBindingMissing()).toBe(false);
-    });
-
-    it("warns for a multi-key mode when ANY key is unconfigured", () => {
-      action.callSetActiveBinding(["incKey", "decKey"]);
-      mockIsConfigured.mockImplementation((k: string) => k !== "decKey");
-      expect(action.callIsActiveBindingMissing()).toBe(true);
-    });
-
-    it("does not warn for a multi-key mode when all keys are configured", () => {
-      action.callSetActiveBinding(["incKey", "decKey"]);
-      mockIsConfigured.mockReturnValue(true);
-      expect(action.callIsActiveBindingMissing()).toBe(false);
-    });
-
-    it("ignores empty-string keys (fixed-key modes track nothing)", () => {
-      action.callSetActiveBinding("");
-      mockIsConfigured.mockClear();
-      expect(action.callIsActiveBindingMissing()).toBe(false);
-      expect(mockIsConfigured).not.toHaveBeenCalled();
-    });
   });
 
   describe("isBindingMissing (per-context, stateless)", () => {
@@ -409,12 +413,9 @@ describe("ConnectionStateAwareAction", () => {
       expect(mockIsConfigured).not.toHaveBeenCalled();
     });
 
-    it("does not depend on setActiveBinding (no cross-context bleed)", () => {
-      // Another context declared a missing binding...
-      action.callSetActiveBinding("otherKey");
-      mockIsConfigured.mockReturnValue(false);
-      // ...but THIS context's own configured key must read as present.
+    it("returns true when the binding is not configured, false when it is", () => {
       mockIsConfigured.mockImplementation((k: string) => k === "myKey");
+
       expect(action.callIsBindingMissing("myKey")).toBe(false);
       expect(action.callIsBindingMissing("otherKey")).toBe(true);
     });
@@ -424,118 +425,35 @@ describe("ConnectionStateAwareAction", () => {
       expect(action.callIsBindingMissing(["incKey", "decKey"])).toBe(true);
       expect(action.callIsBindingMissing(["incKey"])).toBe(false);
     });
-  });
 
-  // --- Lifecycle: onWillAppear / onWillDisappear ---
-
-  describe("onWillAppear", () => {
-    it("should subscribe to the sim connection for readiness tracking", async () => {
-      const ev = {
-        action: { id: "ctx-1", setTitle: vi.fn(), setImage: vi.fn(), isKey: vi.fn().mockReturnValue(true) },
-        payload: { settings: {} },
-      };
-
-      await action.onWillAppear(ev as never);
-
-      expect(sim.fake!.subscribers.has("_readiness:ctx-1")).toBe(true);
-    });
-
-    it("re-evaluates readiness on every sim tick", async () => {
-      const ev = {
-        action: { id: "ctx-1", setTitle: vi.fn(), setImage: vi.fn(), isKey: vi.fn().mockReturnValue(true) },
-        payload: { settings: {} },
-      };
-
-      await action.onWillAppear(ev as never);
-
-      sim.fake!.state.connected = true;
-      sim.fake!.tick();
-      expect(getSetActive(action)).toHaveBeenLastCalledWith(true);
-
-      sim.fake!.state.connected = false;
-      sim.fake!.tick();
-      expect(getSetActive(action)).toHaveBeenLastCalledWith(false);
-    });
-
-    it("re-evaluates readiness on a tick after init when the key appeared before the sim connection existed", async () => {
-      const ev = {
-        action: { id: "ctx-1", setTitle: vi.fn(), setImage: vi.fn(), isKey: vi.fn().mockReturnValue(true) },
-        payload: { settings: {} },
-      };
-      _resetSimConnection();
-
-      await action.onWillAppear(ev as never);
-      expect(sim.fake!.subscribers.has("_readiness:ctx-1")).toBe(false);
-
-      initializeSimConnection(sim.fake!.connection);
-      expect(sim.fake!.subscribers.has("_readiness:ctx-1")).toBe(true);
-
-      sim.fake!.state.connected = true;
-      sim.fake!.tick();
-      expect(getSetActive(action)).toHaveBeenLastCalledWith(true);
-
-      sim.fake!.state.connected = false;
-      sim.fake!.tick();
-      expect(getSetActive(action)).toHaveBeenLastCalledWith(false);
+    it("ignores empty-string keys (fixed-key modes track nothing)", () => {
+      mockIsConfigured.mockReturnValue(false);
+      expect(action.callIsBindingMissing(["", ""])).toBe(false);
     });
   });
 
-  describe("onWillDisappear", () => {
-    it("should unsubscribe from sim connection readiness tracking", async () => {
-      const ev = {
-        action: { id: "ctx-1", setTitle: vi.fn(), setImage: vi.fn(), isKey: vi.fn().mockReturnValue(true) },
-        payload: { settings: {} },
-      };
+  // --- Lifecycle hand-off ---
 
-      await action.onWillAppear(ev as never);
-      expect(sim.fake!.subscribers.has("_readiness:ctx-1")).toBe(true);
-
-      await action.onWillDisappear(ev as never);
-
-      expect(sim.fake!.subscribers.has("_readiness:ctx-1")).toBe(false);
-    });
-
-    it("should clean up global settings listener to prevent memory leaks", async () => {
-      const unsubscribeSpy = vi.fn();
-      (mockOnGlobalSettingsChange as ReturnType<typeof vi.fn>).mockReturnValue(unsubscribeSpy);
-
-      const ev = {
-        action: { id: "ctx-1", setTitle: vi.fn(), setImage: vi.fn(), isKey: vi.fn().mockReturnValue(true) },
-        payload: { settings: {} },
-      };
-
-      await action.onWillAppear(ev as never);
-      action.callSetActiveBinding("myKey");
-
-      await action.onWillDisappear(ev as never);
-
-      expect(unsubscribeSpy).toHaveBeenCalled();
-    });
-
-    it("should allow re-subscription after disappear and re-appear", async () => {
-      const ev = {
-        action: { id: "ctx-1", setTitle: vi.fn(), setImage: vi.fn(), isKey: vi.fn().mockReturnValue(true) },
-        payload: { settings: {} },
-      };
-
-      await action.onWillAppear(ev as never);
-      await action.onWillDisappear(ev as never);
-      expect(sim.fake!.subscribers.has("_readiness:ctx-1")).toBe(false);
-
-      await action.onWillAppear(ev as never);
-
-      expect(sim.fake!.subscribers.has("_readiness:ctx-1")).toBe(true);
-    });
-
-    it("should hand the event on to BaseAction's onWillDisappear", async () => {
-      const baseOnWillDisappear = vi.spyOn(BaseAction.prototype, "onWillDisappear");
-      const ev = {
-        action: { id: "ctx-1", setTitle: vi.fn(), setImage: vi.fn(), isKey: vi.fn().mockReturnValue(true) },
-        payload: { settings: {} },
-      };
+  describe("lifecycle", () => {
+    it("hands onWillAppear on to BaseAction", async () => {
+      const baseOnWillAppear = vi.spyOn(BaseAction.prototype, "onWillAppear");
+      const ev = contextEvent("ctx-1");
 
       try {
-        await action.onWillDisappear(ev as never);
+        await action.onWillAppear(ev);
+
+        expect(baseOnWillAppear).toHaveBeenCalledWith(ev);
+      } finally {
+        baseOnWillAppear.mockRestore();
+      }
+    });
+
+    it("hands onWillDisappear on to BaseAction", async () => {
+      const baseOnWillDisappear = vi.spyOn(BaseAction.prototype, "onWillDisappear");
+      const ev = contextEvent("ctx-1");
+
+      try {
+        await action.onWillDisappear(ev);
 
         expect(baseOnWillDisappear).toHaveBeenCalledWith(ev);
       } finally {

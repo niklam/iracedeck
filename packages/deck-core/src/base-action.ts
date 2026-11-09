@@ -2,15 +2,15 @@
  * Base Action for Deck Devices
  *
  * Platform-agnostic abstract base class for deck device actions with:
- * - SVG image management
- * - Per-instance active/inactive state tracking
+ * - SVG image management, through one funnel every key image passes
+ * - The disconnected look, decided per key by {@link BaseAction.showsDisconnected} (#1599)
  * - Flag overlay support (flashes flag colors when race flags are active)
  */
+import { applyDisconnectedLook, svgToDataUri } from "@iracedeck/icon-composer";
 import { type ILogger, silentLogger } from "@iracedeck/logger";
 import { getGlobalSettings, onGlobalSettingsChange } from "@iracedeck/settings";
 
 import { IconUpdateThrottle } from "./icon-update-throttle.js";
-import { applyInactiveOverlay, svgToDataUri } from "./overlay-utils.js";
 import { getPluginVersion, isPluginConfigInitialized } from "./plugin-config.js";
 import { getSimConnection, type OverlayFlag, type SimConnection } from "./sim-connection.js";
 import { resolveTitleTemplate, titleHasTemplate } from "./title-template.js";
@@ -49,9 +49,17 @@ interface ContextEntry {
  * Abstract base class for deck device actions.
  *
  * Features:
- * - Provides `setKeyImage(ev, svg)` for setting images
- * - Provides `setActive(isActive)` to track active state
- * - Subclasses should handle inactive appearance in their SVG generation
+ * - Provides `setKeyImage(ev, svg)` / `updateKeyImage(contextId, svg)` for
+ *   setting images. Every key image this class sends — those two, the
+ *   regenerate reconcile, the global-settings refresh, the flag-overlay restore
+ *   and the title-template watcher — goes through `decorateKeyImage`, which
+ *   draws the disconnected look over the image when
+ *   {@link BaseAction.showsDisconnected} is true for that context (#1599). The
+ *   stored original is always the undecorated image.
+ * - Keeps each live context's latest raw settings
+ *   ({@link BaseAction.getContextSettings}), so a per-key decision such as
+ *   "does this key's mode need the sim" reads that key's own settings rather
+ *   than one value shared by every key of the action.
  *
  * @template T - The settings type for this action
  */
@@ -62,15 +70,16 @@ export abstract class BaseAction<T = Record<string, unknown>> implements IDeckAc
   protected logger: ILogger;
 
   /**
-   * Per-instance active state
-   */
-  private _isActive = true;
-
-  /**
    * Per-instance storage: contextId -> { action, svg }
-   * Used to refresh images when active state changes
+   * Used to refresh images when the global settings or the sim's presence change
    */
   private contexts = new Map<string, ContextEntry>();
+
+  /**
+   * Each live context's latest raw settings, from `onWillAppear` and
+   * `onDidReceiveSettings`; dropped on `onWillDisappear` (#1599).
+   */
+  private contextSettings = new Map<string, unknown>();
 
   /** Contexts with flag overlay enabled (settings.flagsOverlay === true) */
   protected flagOverlayContexts = new Set<string>();
@@ -181,7 +190,7 @@ export abstract class BaseAction<T = Record<string, unknown>> implements IDeckAc
       // Skip contexts with active flag overlay, same gate as updateKeyImage/refreshAllImages.
       if (this.flagOverlayActive.has(contextId)) return;
 
-      const finalImage = this.applyOverlayIfNeeded(newSvg);
+      const finalImage = this.decorateKeyImage(contextId, newSvg);
 
       entry.action.setImage(finalImage).catch((err) => {
         this.logger.warn(`Failed to reconcile image for context ${contextId}: ${err}`);
@@ -192,15 +201,18 @@ export abstract class BaseAction<T = Record<string, unknown>> implements IDeckAc
   }
 
   /**
-   * Refresh all context images with current overlay state.
-   * Called when global settings change.
+   * Push every stored key image again, decorated for its context's current
+   * state — after the global settings change, and when a subclass's state
+   * behind {@link showsDisconnected} changes (the sim's presence). Contexts
+   * showing a flag-overlay frame are skipped; the flash's restore decorates
+   * them when it ends.
    */
-  private refreshAllImages(): void {
+  protected refreshAllImages(): void {
     for (const [contextId, { action, svg }] of this.contexts) {
       // Skip contexts with active flag overlay
       if (this.flagOverlayActive.has(contextId)) continue;
 
-      const finalImage = this.applyOverlayIfNeeded(svg);
+      const finalImage = this.decorateKeyImage(contextId, svg);
       action.setImage(finalImage).catch((err) => {
         this.logger.warn(`Failed to refresh image for context ${contextId}: ${err}`);
       });
@@ -208,67 +220,52 @@ export abstract class BaseAction<T = Record<string, unknown>> implements IDeckAc
   }
 
   /**
-   * Check if overlay should be applied based on active state and global settings.
-   * @returns true if overlay should be applied (inactive AND disableWhenDisconnected is true)
-   */
-  private shouldApplyOverlay(): boolean {
-    if (this._isActive) return false;
-
-    const globalSettings = getGlobalSettings();
-
-    return globalSettings.disableWhenDisconnected;
-  }
-
-  /**
-   * Apply the appropriate image based on active state and global settings.
-   * @param svg - The original SVG
-   * @returns The final image (with or without overlay)
-   */
-  private applyOverlayIfNeeded(svg: string): string {
-    return this.shouldApplyOverlay() ? applyInactiveOverlay(svg) : svg;
-  }
-
-  /**
-   * Toggle active state for this action instance.
-   * When inactive and disableWhenDisconnected is enabled, all stored images will have an overlay applied.
+   * Whether this context's key shows the disconnected look (#1599). `false`
+   * here; `ConnectionStateAwareAction` answers from the setting, the sim's
+   * presence and the context's mode. Asked on every image this class sends,
+   * so it must be cheap and must not send images itself.
    *
-   * @param isActive - Whether this action should appear active
+   * @param contextId - The context whose image is being sent
    */
-  setActive(isActive: boolean): void {
-    if (this._isActive === isActive) return;
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  protected showsDisconnected(contextId: string): boolean {
+    return false;
+  }
 
-    this.logger.info(`setActive: ${this._isActive} -> ${isActive}`);
-    this._isActive = isActive;
+  /**
+   * The context's latest raw settings, as the host last sent them in
+   * `onWillAppear` or `onDidReceiveSettings`; `undefined` for a context
+   * that has not appeared or has disappeared. Unparsed: a reader parses them
+   * with its own schema.
+   */
+  protected getContextSettings(contextId: string): unknown {
+    return this.contextSettings.get(contextId);
+  }
 
-    const applyOverlay = this.shouldApplyOverlay();
-    this.logger.info(`Refreshing ${this.contexts.size} contexts with overlay=${applyOverlay}`);
+  /**
+   * The one decoration every key image passes on its way to the device: the
+   * image with the disconnected look drawn over it when
+   * {@link showsDisconnected} is true for the context, else the image
+   * unchanged. Never stored: callers keep the original. A throw from
+   * {@link showsDisconnected} sends the image undecorated rather than none.
+   */
+  private decorateKeyImage(contextId: string, svg: string): string {
+    let disconnected: boolean;
 
-    for (const [contextId, { action, svg }] of this.contexts) {
-      // Skip contexts with active flag overlay
-      if (this.flagOverlayActive.has(contextId)) {
-        this.logger.trace(`setActive: skipped context ${contextId} (flag overlay active)`);
-        continue;
-      }
+    try {
+      disconnected = this.showsDisconnected(contextId);
+    } catch (err) {
+      this.logger.debug(`Disconnected look: deciding for context ${contextId} failed: ${err}`);
 
-      const finalImage = this.applyOverlayIfNeeded(svg);
-      this.logger.trace(`Updating context ${contextId} image`);
-      // Fire and forget - we don't want to block
-      action.setImage(finalImage).catch((err) => {
-        this.logger.warn(`Failed to update image for context ${contextId}: ${err}`);
-      });
+      return svg;
     }
+
+    return disconnected ? applyDisconnectedLook(svg) : svg;
   }
 
   /**
-   * Get the current active state for this action
-   */
-  getIsActive(): boolean {
-    return this._isActive;
-  }
-
-  /**
-   * Set the key image for an action. The image is stored for later reference.
-   * If inactive, the grayscale overlay is applied automatically.
+   * Set the key image for an action. The image is stored for later reference,
+   * and sent decorated with the disconnected look when the context shows it.
    *
    * @param ev - The event containing the action reference
    * @param svg - Raw SVG string or base64 data URI
@@ -282,7 +279,7 @@ export abstract class BaseAction<T = Record<string, unknown>> implements IDeckAc
 
     // Store original SVG for later refresh (always, even during flag overlay)
     this.contexts.set(ev.action.id, { action: ev.action, svg });
-    this.logger.debug(`setKeyImage: stored context ${ev.action.id}, isActive=${this._isActive}`);
+    this.logger.debug(`setKeyImage: stored context ${ev.action.id}`);
 
     // Skip visual update if flag overlay is active for this context
     if (this.flagOverlayActive.has(ev.action.id)) {
@@ -291,8 +288,7 @@ export abstract class BaseAction<T = Record<string, unknown>> implements IDeckAc
       return;
     }
 
-    // Apply overlay if inactive and global setting is enabled
-    const finalImage = this.applyOverlayIfNeeded(svg);
+    const finalImage = this.decorateKeyImage(ev.action.id, svg);
     await ev.action.setImage(finalImage);
     this.logger.trace(`setKeyImage: image set for ${ev.action.id}`);
   }
@@ -306,8 +302,8 @@ export abstract class BaseAction<T = Record<string, unknown>> implements IDeckAc
 
   /**
    * Update the key image for a context using a new SVG.
-   * Uses the stored action reference from a previous setKeyImage call.
-   * If inactive, the grayscale overlay is applied automatically.
+   * Uses the stored action reference from a previous setKeyImage call, and
+   * sends the image decorated with the disconnected look when the context shows it.
    *
    * @param contextId - The context ID to update
    * @param svg - Raw SVG string or base64 data URI
@@ -332,22 +328,24 @@ export abstract class BaseAction<T = Record<string, unknown>> implements IDeckAc
       return true;
     }
 
-    // Apply overlay if inactive and global setting is enabled
-    const finalImage = this.applyOverlayIfNeeded(svg);
+    const finalImage = this.decorateKeyImage(contextId, svg);
     await entry.action.setImage(finalImage);
-    this.logger.trace(`updateKeyImage: updated ${contextId}, isActive=${this._isActive}`);
+    this.logger.trace(`updateKeyImage: updated ${contextId}`);
 
     return true;
   }
 
   /**
    * Called when the action appears on the device.
-   * Persists addedWithVersion on first appearance and tracks flag overlay opt-in.
+   * Records the context's settings, persists addedWithVersion on first
+   * appearance and tracks flag overlay opt-in.
    *
    * Subclasses should call `super.onWillAppear(ev)` if they override this.
    */
   async onWillAppear(ev: IDeckWillAppearEvent<T>): Promise<void> {
     const settings = ev.payload.settings as Record<string, unknown>;
+
+    this.contextSettings.set(ev.action.id, settings);
 
     // Persist addedWithVersion on first appearance (missing = pre-existing instance).
     // Note: setSettings triggers onDidReceiveSettings — benign since it only re-reads
@@ -373,12 +371,16 @@ export abstract class BaseAction<T = Record<string, unknown>> implements IDeckAc
 
   /**
    * Called when action settings change from the Property Inspector.
-   * Updates flag overlay opt-in.
+   * Records the context's new settings and updates flag overlay opt-in.
    *
-   * Subclasses should call `super.onDidReceiveSettings(ev)` if they override this.
+   * Subclasses should call `super.onDidReceiveSettings(ev)` first if they
+   * override this, so an image they draw afterwards is decorated for the
+   * context's new settings.
    */
   async onDidReceiveSettings(ev: IDeckDidReceiveSettingsEvent<T>): Promise<void> {
     const settings = ev.payload.settings as Record<string, unknown>;
+
+    this.contextSettings.set(ev.action.id, settings);
 
     if (settings.flagsOverlay === true || settings.flagsOverlay === "true") {
       this.flagOverlayContexts.add(ev.action.id);
@@ -409,6 +411,7 @@ export abstract class BaseAction<T = Record<string, unknown>> implements IDeckAc
     this.cleanupFlagSubscriptionIfUnneeded();
     this.untrackTitleTemplateContext(ev.action.id);
     this.contexts.delete(ev.action.id);
+    this.contextSettings.delete(ev.action.id);
     this.logger.debug(`onWillDisappear: removed context ${ev.action.id}, remaining=${this.contexts.size}`);
   }
 
@@ -644,7 +647,7 @@ export abstract class BaseAction<T = Record<string, unknown>> implements IDeckAc
 
     if (!entry) return;
 
-    const finalImage = this.applyOverlayIfNeeded(entry.svg);
+    const finalImage = this.decorateKeyImage(contextId, entry.svg);
     entry.action.setImage(finalImage).catch((err) => {
       this.logger.warn(`Failed to restore image for context ${contextId}: ${err}`);
     });
@@ -767,7 +770,7 @@ export abstract class BaseAction<T = Record<string, unknown>> implements IDeckAc
    * convention applies to action-owned throttles, which CAN clear at
    * handler entry). That is
    * accepted: the same window exists for every base-owned subscription
-   * (flag flash, readiness), and the worst case is a setImage to a dead
+   * (flag flash, sim presence), and the worst case is a setImage to a dead
    * context whose rejection is caught and logged below.
    */
   private regenerateForTitleTemplate(contextId: string): void {
@@ -784,7 +787,7 @@ export abstract class BaseAction<T = Record<string, unknown>> implements IDeckAc
 
       if (this.flagOverlayActive.has(contextId)) return;
 
-      entry.action.setImage(this.applyOverlayIfNeeded(newSvg)).catch((err) => {
+      entry.action.setImage(this.decorateKeyImage(contextId, newSvg)).catch((err) => {
         this.logger.warn(`Failed to update title-template image for context ${contextId}: ${err}`);
       });
     } catch {
