@@ -14,7 +14,6 @@ const builtPage = join(
   "ui",
   "settings-window.html",
 );
-const assetsDir = join(repoRoot, "packages", "website", "src", "assets", "settings-window");
 
 describe("SETTINGS_WINDOW_TABS", () => {
   it("names a distinct screenshot file per tab", () => {
@@ -24,11 +23,9 @@ describe("SETTINGS_WINDOW_TABS", () => {
     expect(files.every((file) => file.endsWith(".png"))).toBe(true);
   });
 
-  it("has a screenshot committed for every tab", () => {
-    const missing = SETTINGS_WINDOW_TABS.filter((tab) => !existsSync(join(assetsDir, tab.file))).map((tab) => tab.file);
-
-    expect(missing, `Run "pnpm capture:settings" to generate: ${missing.join(", ")}`).toEqual([]);
-  });
+  // Whether each tab has its screenshot is `capture-manifest.test.mjs`'s to say
+  // (#1536): a tab added in a branch is pending until the next stable release
+  // captures it, since no branch commits a screenshot.
 });
 
 describe("parseNavPanes", () => {
@@ -51,7 +48,7 @@ describe("parseNavPanes", () => {
 // The freshness guard (#1010): screenshots cannot be diffed reliably across
 // machines, so what CI can enforce is that the documented tab list still
 // matches the page. Add or rename a tab and this fails, which is the prompt to
-// recapture and write the new section.
+// list it here and write its section; the next stable release captures it.
 
 describe("the first-run deep link's target", () => {
   it("still exists in the tab list", () => {
