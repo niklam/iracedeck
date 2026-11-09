@@ -224,6 +224,10 @@ export {
   resolveTimeRemainingS,
 } from "./session-limit.js";
 
+// Pit speed limit (#1476) — the one parser of `WeekendInfo.TrackPitSpeedLimit`,
+// shared by the translator's pit-speeding threshold and the Pit Speed Limiter key
+export { type ParsedPitSpeedLimit, parseTrackPitSpeedLimit } from "./pit-speed-limit.js";
+
 // Session info utilities
 export {
   type CameraGroup,
