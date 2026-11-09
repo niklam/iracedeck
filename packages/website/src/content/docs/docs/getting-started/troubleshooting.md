@@ -11,9 +11,9 @@ If the Elgato Marketplace install doesn't work, try these steps:
 2. Restart the Stream Deck software after installation
 3. If the plugin still doesn't appear, try uninstalling and reinstalling from the [Elgato Marketplace](https://marketplace.elgato.com/product/iracedeck-042a0efb-58aa-428c-b1de-8b6169edd21d)
 
-## Buttons show "disabled" or don't respond
+## Buttons are dimmed or don't respond
 
-iRaceDeck actions require iRacing to be running and connected. When iRacing is not running, buttons may appear disabled or grayed out. Start iRacing and the buttons will activate automatically.
+Most iRaceDeck actions need iRacing to be running and connected; a press while it isn't does nothing. Keys look the same whether iRacing is running or not, unless you have turned on [Disconnected Keys](/docs/getting-started/settings/#disconnected-keys), which dims every key that needs iRacing, with a small badge in the corner, while it isn't running. Start iRacing and the keys work again as soon as it connects.
 
 ## Buttons do nothing in iRacing (but the plugin looks connected)
 
