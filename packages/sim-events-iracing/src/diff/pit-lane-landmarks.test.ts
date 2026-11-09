@@ -103,7 +103,15 @@ type Harness = {
   tick(
     sessionTime: number,
     cars: Record<number, CarReading>,
-    opts?: { pace?: number | null; subSession?: number | null; sessionTick?: number; player?: number },
+    opts?: {
+      pace?: number | null;
+      subSession?: number | null;
+      sessionTick?: number;
+      /** `PlayerCarIdx`; absent when not given. */
+      player?: number;
+      /** The player's `OnPitRoad`; absent when not given. */
+      playerOnPit?: boolean;
+    },
   ): PendingEvent[];
 };
 
@@ -118,6 +126,8 @@ function harness(learner: PitLaneLandmarkLearner = loadedLearner(), logger?: ILo
       const t = telemetry(sessionTime, cars, opts.sessionTick);
 
       if (opts.player !== undefined) t.PlayerCarIdx = opts.player;
+
+      if (opts.playerOnPit !== undefined) t.OnPitRoad = opts.playerOnPit;
 
       diffPitLaneLandmarks(
         slice,
@@ -152,13 +162,32 @@ const STALL = TrkLoc.InPitStall;
 const OFF = TrkLoc.OffTrack;
 const GONE = TrkLoc.NotInWorld;
 
+/** How {@link drivePitVisit} reports the car's pit road. */
+type PitRoadFlags = {
+  /** What `CarIdxOnPitRoad` reads, given whether the car is really on pit road; the truth when absent. */
+  perCar?: (onPitRoad: boolean) => boolean;
+  /** The car is the player: `PlayerCarIdx` names it and `OnPitRoad` reads the truth. */
+  player?: boolean;
+};
+
 /**
  * Car 1 drives a whole pit visit at 0.1 s ticks: track → approach → pit road →
  * stall → pit road → approach → track. Returns every event, in order.
  */
-function drivePitVisit(h: Harness, car = 1, t0 = 100): PendingEvent[] {
+function drivePitVisit(h: Harness, car = 1, t0 = 100, flags: PitRoadFlags = {}): PendingEvent[] {
   const events: PendingEvent[] = [];
-  const at = (dt: number, reading: CarReading) => events.push(...h.tick(t0 + dt, { [car]: reading }));
+  const at = (dt: number, reading: CarReading) => {
+    const onPitRoad = reading.onPit ?? false;
+    const perCar = flags.perCar ? flags.perCar(onPitRoad) : onPitRoad;
+
+    events.push(
+      ...h.tick(
+        t0 + dt,
+        { [car]: { ...reading, onPit: perCar } },
+        flags.player ? { player: car, playerOnPit: onPitRoad } : {},
+      ),
+    );
+  };
 
   at(0.0, { surface: ON, pct: 0.3 });
   at(0.1, { surface: ON, pct: 0.301 }); // approach starts between 0.301 and 0.302
@@ -269,6 +298,134 @@ describe("diffPitLaneLandmarks", () => {
     });
   });
 
+  describe("whether CarIdxOnPitRoad is sound or not", () => {
+    const landmarks = (events: PendingEvent[]) => learned(events).map((e) => e.landmark);
+
+    it("a remote car whose flag is sound teaches all four", () => {
+      expect(landmarks(drivePitVisit(harness(), 1, 100))).toEqual([
+        "approachStart",
+        "pitRoadStart",
+        "pitRoadEnd",
+        "blendEnd",
+      ]);
+    });
+
+    it("a remote car whose flag reads true throughout teaches the approach, and the blend from its stall exit", () => {
+      expect(landmarks(drivePitVisit(harness(), 1, 100, { perCar: () => true }))).toEqual([
+        "approachStart",
+        "blendEnd",
+      ]);
+    });
+
+    it("a remote car whose flag reads false throughout teaches the approach, and the blend from its stall exit", () => {
+      expect(landmarks(drivePitVisit(harness(), 1, 100, { perCar: () => false }))).toEqual([
+        "approachStart",
+        "blendEnd",
+      ]);
+    });
+
+    it("the player teaches all four from OnPitRoad, whatever its CarIdxOnPitRoad reads", () => {
+      for (const perCar of [() => true, () => false, (onPitRoad: boolean) => onPitRoad]) {
+        expect(landmarks(drivePitVisit(harness(), 1, 100, { player: true, perCar }))).toEqual([
+          "approachStart",
+          "pitRoadStart",
+          "pitRoadEnd",
+          "blendEnd",
+        ]);
+      }
+    });
+
+    it("reads OnPitRoad for the player's car only", () => {
+      const h = harness();
+
+      // Car 2 is the player, car 1 is not: OnPitRoad true says nothing about car 1.
+      h.tick(10, { 1: { surface: APPROACH, pct: 0.31 }, 2: { surface: APPROACH, pct: 0.61 } }, { player: 2 });
+      const events = learned(
+        h.tick(
+          10.1,
+          { 1: { surface: APPROACH, pct: 0.311 }, 2: { surface: APPROACH, pct: 0.611 } },
+          { player: 2, playerOnPit: true },
+        ),
+      );
+
+      expect(events.map((e) => e.sample.key)).toEqual([`${SUBSESSION}:${SESSION_NUM}:2:pitRoadStart:3`]);
+      expect(h.slice.cars[1]).toMatchObject({ onPitRoad: false });
+    });
+
+    it("reads CarIdxOnPitRoad for the player when PlayerCarIdx or OnPitRoad is missing", () => {
+      const noScalar = harness();
+
+      noScalar.tick(10, { 2: { surface: APPROACH, pct: 0.31 } }, { player: 2 });
+      expect(
+        learned(noScalar.tick(10.1, { 2: { surface: APPROACH, onPit: true, pct: 0.311 } }, { player: 2 })).map(
+          (e) => e.landmark,
+        ),
+      ).toEqual(["pitRoadStart"]);
+
+      const noPlayer = harness();
+
+      noPlayer.tick(10, { 2: { surface: APPROACH, pct: 0.31 } }, { playerOnPit: false });
+      expect(
+        learned(noPlayer.tick(10.1, { 2: { surface: APPROACH, onPit: true, pct: 0.311 } }, { playerOnPit: false })).map(
+          (e) => e.landmark,
+        ),
+      ).toEqual(["pitRoadStart"]);
+    });
+  });
+
+  describe("the way out of the stall", () => {
+    it("marks the car as leaving the pit lane, whatever its pit-road flag reads", () => {
+      const h = harness();
+
+      h.tick(30, { 1: { surface: STALL, pct: 0.331 }, 2: { surface: STALL, onPit: true, pct: 0.341 } });
+      h.tick(30.1, { 1: { surface: APPROACH, pct: 0.3312 }, 2: { surface: APPROACH, onPit: true, pct: 0.3412 } });
+
+      expect(h.slice.cars[1]).toMatchObject({ fromPitLane: true });
+      expect(h.slice.cars[2]).toMatchObject({ fromPitLane: true });
+    });
+
+    it("does not mark a tow or a reset into the stall, nor a reset out of it", () => {
+      const h = harness();
+
+      h.tick(10, { 1: { surface: ON, pct: 0.7 } });
+      h.tick(10.1, { 1: { surface: STALL, pct: 0.331 } });
+      expect(h.slice.cars[1]).toMatchObject({ fromPitLane: false });
+      h.tick(10.2, { 1: { surface: ON, pct: 0.7 } });
+      expect(h.slice.cars[1]).toMatchObject({ fromPitLane: false });
+    });
+
+    it("clears the mark on any tick read OnTrack, even with the pit-road flag on", () => {
+      const h = harness();
+
+      h.tick(30, { 1: { surface: STALL, onPit: true, pct: 0.331 } });
+      h.tick(30.1, { 1: { surface: APPROACH, onPit: true, pct: 0.3312 } });
+      // Out of the world across the blend line: no edge, but the visit is over.
+      h.tick(35, { 1: { surface: GONE, onPit: true, pct: -1 } });
+      h.tick(40, { 1: { surface: ON, onPit: true, pct: 0.4 } });
+
+      expect(h.slice.cars[1]).toMatchObject({ fromPitLane: false, rejoinedAt: 40 });
+
+      // So its next pit entry is one, though its flag still reads true.
+      h.tick(100, { 1: { surface: ON, onPit: true, pct: 0.3, lap: 4 } });
+      expect(
+        learned(h.tick(100.1, { 1: { surface: APPROACH, onPit: true, pct: 0.301, lap: 4 } })).map((e) => e.landmark),
+      ).toEqual(["approachStart"]);
+    });
+
+    it("takes no blend line from a car that entered the approach from the track and left it without a stall or pit road", () => {
+      const h = harness();
+
+      // Spa's car 14: OnTrack → AproachingPits at 0.076 and back at 0.149, no stall.
+      h.tick(10, { 1: { surface: ON, pct: 0.076 } });
+      expect(learned(h.tick(10.1, { 1: { surface: APPROACH, pct: 0.0761 } })).map((e) => e.landmark)).toEqual([
+        "approachStart",
+      ]);
+      h.tick(19, { 1: { surface: APPROACH, pct: 0.1487 } });
+
+      expect(h.tick(19.1, { 1: { surface: ON, pct: 0.1488 } })).toEqual([]);
+    });
+  });
+
   describe("blendEnd needs pit road first", () => {
     it("does not take an approach-to-track edge from a car that was never on pit road", () => {
       const h = harness();
@@ -323,7 +480,7 @@ describe("diffPitLaneLandmarks", () => {
       h.tick(10, { 1: { surface: ON, pct: 0.5 } });
       // No drive leaves the mark on a car read OnTrack (the blend or the
       // OnTrack-off-pit-road tick clears it), so plant it: the rule is a guard.
-      h.slice.cars[1]!.fromPitRoad = true;
+      h.slice.cars[1]!.fromPitLane = true;
 
       expect(h.tick(10.1, { 1: { surface: APPROACH, onPit: true, pct: 0.501 } }).map((ev) => ev.data)).toEqual([
         expect.objectContaining({ landmark: "pitRoadStart" }),
@@ -364,7 +521,7 @@ describe("diffPitLaneLandmarks", () => {
       const h = harness();
 
       expect(h.tick(10, { 1: { surface: APPROACH, onPit: true, pct: 0.311 } })).toEqual([]);
-      expect(h.slice.cars[1]).toMatchObject({ surface: APPROACH, onPitRoad: true, fromPitRoad: false });
+      expect(h.slice.cars[1]).toMatchObject({ surface: APPROACH, onPitRoad: true, fromPitLane: false });
     });
 
     it("ignores a tow into the stall: no pit-road edge out of the world", () => {
@@ -544,7 +701,7 @@ describe("diffPitLaneLandmarks", () => {
       const blend = at(45.0, { surface: ON, pct: 0.3601 }, 2701);
 
       expect(blend.map((e) => e.landmark)).toEqual(["blendEnd"]);
-      expect(h.slice.cars[1]).toMatchObject({ fromPitRoad: false, rejoinedAt: 45 });
+      expect(h.slice.cars[1]).toMatchObject({ fromPitLane: false, rejoinedAt: 45 });
     });
   });
 

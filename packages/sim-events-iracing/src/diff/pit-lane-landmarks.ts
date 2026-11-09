@@ -12,35 +12,59 @@
  * `pitLane.landmarkLearned` when accepted. The four edges, in driving order:
  *
  * - `approachStart` — `CarIdxTrackSurface` `OnTrack → AproachingPits`, on the
- *   way in only: not while the car is coming from pit road, and not within
- *   {@link PIT_LANE_EDGE_SETTLE_S} of its rejoining the track.
- * - `pitRoadStart` — `CarIdxOnPitRoad` false → true, from `OnTrack` or
- *   `AproachingPits` into `AproachingPits`.
- * - `pitRoadEnd` — `CarIdxOnPitRoad` true → false, out of `AproachingPits`
- *   into `AproachingPits` or `OnTrack`. It arms the car's "came from pit
- *   road" flag, whether or not the sample is accepted.
- * - `blendEnd` — `AproachingPits → OnTrack` while that flag is set, including
+ *   way in only: not while the car is coming from the pit lane, and not
+ *   within {@link PIT_LANE_EDGE_SETTLE_S} of its rejoining the track.
+ * - `pitRoadStart` — the car's pit-road flag (below) false → true, from
+ *   `OnTrack` or `AproachingPits` into `AproachingPits`.
+ * - `pitRoadEnd` — the pit-road flag true → false, out of `AproachingPits`
+ *   into `AproachingPits` or `OnTrack`. It arms the car's "came from the pit
+ *   lane" mark, whether or not the sample is accepted.
+ * - `blendEnd` — `AproachingPits → OnTrack` while that mark is set, including
  *   on the tick that armed it (a pit lane that ends straight onto the track
- *   makes `pitRoadEnd` and `blendEnd` on one tick); it clears the flag, as
- *   does any tick read `OnTrack` off pit road.
+ *   makes `pitRoadEnd` and `blendEnd` on one tick); it clears the mark, as
+ *   does any tick read `OnTrack`. The mark is also armed when the car drives
+ *   out of its stall (`InPitStall → AproachingPits`), so the blend line is
+ *   learned from every stall exit, whatever the car's pit-road flag reads.
  *
- * **Why the pit-road edges read the surface too.** `CarIdxOnPitRoad` alone is
- * not a pit-road signal: the maintainer's local captures (not committed) read
- * it `true` for cars on the racing surface (`OnTrack`). In
- * `telemetry-watch-20261104-204104-531.jsonl` twelve cars (18–29) flip to it
- * at once around the line at 217.85 s, and car 16 about nine seconds
- * earlier. In `…20260917-191825-092.jsonl` one car's flag tracks the pace
- * car's pit-lane visit, from just after the pace car turns into the approach
- * until shortly before it reads `OnTrack` again, starting in the formation
- * lap or a caution. The flag also reads `true` for cars out of the world. A
- * car driving the pit lane reads `AproachingPits` there (the 2026-09-17
- * capture's start from pit road), so the pit side of each pit-road edge must
- * be `AproachingPits`: a car read `OnTrack` on both ticks never makes a
- * pit-road edge here. No capture shows a non-player car's real pit entry, so
- * this is the model those captures support, not a measured one. A pit lane
- * that does not read `AproachingPits` between the cones (possibly a dirt
- * oval's, see `diff/pit-lane.ts`) learns only `approachStart` there: the
- * pit-road and blend landmarks stay unlearned, and their consumers silent.
+ * **The pit-road flag.** The player's car reads the player's own
+ * `OnPitRoad`; every other car reads `CarIdxOnPitRoad` (and so does the
+ * player when `PlayerCarIdx` or `OnPitRoad` is missing). The edges must hold
+ * whether the per-car flag is right or wrong, because it has disagreed with
+ * the car's surface in the maintainer's local captures (not committed):
+ *
+ * - It reads `true` for cars on the racing surface (`OnTrack`). In
+ *   `telemetry-watch-20261104-204104-531.jsonl` twelve cars (18–29) flip to
+ *   it at once around the line at 217.85 s, and car 16 about nine seconds
+ *   earlier. In `…20260917-191825-092.jsonl` one car's flag tracks the pace
+ *   car's pit-lane visit, from just after the pace car turns into the
+ *   approach until shortly before it reads `OnTrack` again. The flag also
+ *   reads `true` for cars out of the world.
+ * - In one online practice session (`…20261109-211106-870.jsonl`, subsession
+ *   89998671, Spa 2024 Grand Prix) the player's `CarIdxOnPitRoad` read `true`
+ *   throughout, on the track too, so it never flipped; the player's
+ *   `OnPitRoad` read `true` in the pit lane (a snapshot at 1342.8 s) and
+ *   `false` on the track (the approach callout, which needs it `false`, fired
+ *   at both entries). Remote cars' flag disagreed with their surface: some
+ *   read `true` while racing and flipped on the track, and car 37 read
+ *   `false` through two drive-outs of its stall. Whether qualifying or a race
+ *   reads the same is not captured yet.
+ *
+ * So the player's pit road comes from `OnPitRoad`; any car's pit-road edge
+ * needs `AproachingPits` on its pit side (a car driving the pit lane reads it
+ * there, as every pit visit in the captures above does), so a flip on the
+ * racing surface teaches nothing; and the blend line is learned from a stall
+ * exit as well as from pit road ending. A remote car whose `CarIdxOnPitRoad`
+ * is sound teaches all four landmarks; one whose flag is not teaches
+ * `approachStart`, and `blendEnd` from its stall exits. The Spa session also
+ * shows how tightly the surface boundaries repeat: the approach start within
+ * 0.2 m on the player's entry there and two earlier ones, and the blend line
+ * within 1.6 m across the player's and car 37's drive-outs. Its pit exit lane
+ * also jumps 94 m along the lap (0.049 → 0.0626 at 6.93 km) in one tick, a
+ * few ticks before the blend line; no edge fell on that tick, and one that
+ * did would be refused as a teleport. A pit lane that does not read `AproachingPits` between the cones
+ * (possibly a dirt oval's, see `diff/pit-lane.ts`) learns only
+ * `approachStart` there: the pit-road and blend landmarks stay unlearned, and
+ * their consumers silent.
  *
  * **Acceptance** (spec decision 2): the previous tick is a road state of the
  * edge's own (never `InPitStall` or `NotInWorld`, so a tow, a reset or a
@@ -291,6 +315,8 @@ export function diffPitLaneLandmarks(
   const sessionTick = typeof telemetry.SessionTick === "number" ? telemetry.SessionTick : Number.NaN;
   const sessionNum = telemetry.SessionNum;
   const playerCarIdx = typeof telemetry.PlayerCarIdx === "number" ? telemetry.PlayerCarIdx : null;
+  // The player's own pit-road flag, read for the player's car (module comment).
+  const playerOnPitRoad = typeof telemetry.OnPitRoad === "boolean" ? telemetry.OnPitRoad : null;
   const track = learner.track;
   const trackLengthM = track?.trackLengthM ?? null;
   const notLearning = notLearningReason(learner, subSessionId, sessionNum, sessionTime);
@@ -303,7 +329,7 @@ export function diffPitLaneLandmarks(
     if (i === paceCarIdx) return;
 
     const surface = surfaces[i] ?? TrkLoc.NotInWorld;
-    const onPitRoad = onPitRoads[i] === true;
+    const onPitRoad = i === playerCarIdx && playerOnPitRoad !== null ? playerOnPitRoad : onPitRoads[i] === true;
     const pct = typeof pcts[i] === "number" ? pcts[i]! : -1;
     const estTime = typeof estTimes?.[i] === "number" ? estTimes[i]! : -1;
     const lap = typeof laps?.[i] === "number" ? laps[i]! : -1;
@@ -319,7 +345,7 @@ export function diffPitLaneLandmarks(
         sessionTime,
         sessionTick,
         lap,
-        fromPitRoad: false,
+        fromPitLane: false,
         pitRoadStartAt: null,
         pitRoadEndAt: null,
         rejoinedAt: null,
@@ -328,7 +354,7 @@ export function diffPitLaneLandmarks(
       return;
     }
 
-    let fromPitRoad = prev.fromPitRoad;
+    let fromPitLane = prev.fromPitLane;
     let pitRoadStartAt = prev.pitRoadStartAt;
     let pitRoadEndAt = prev.pitRoadEndAt;
     let rejoinedAt = prev.rejoinedAt;
@@ -353,7 +379,7 @@ export function diffPitLaneLandmarks(
         moved &&
         prev.surface === TrkLoc.OnTrack &&
         surface === TrkLoc.AproachingPits &&
-        !prev.fromPitRoad &&
+        !prev.fromPitLane &&
         !isSettling(prev.rejoinedAt, sessionTime)
       ) {
         (edges ??= []).push("approachStart");
@@ -380,24 +406,29 @@ export function diffPitLaneLandmarks(
           (edges ??= []).push("pitRoadEnd");
         }
 
-        if (leftThePitLane) fromPitRoad = true;
+        if (leftThePitLane) fromPitLane = true;
 
         pitRoadEndAt = sessionTime;
       }
 
-      // `fromPitRoad`, not `prev.fromPitRoad`: a pit lane that ends straight
-      // onto the track arms the flag and crosses the blend line on one tick.
-      if (prev.surface === TrkLoc.AproachingPits && surface === TrkLoc.OnTrack && fromPitRoad) {
+      // Out of the stall into the pit lane: on the way out, whatever the
+      // pit-road flag reads (module comment).
+      if (prev.surface === TrkLoc.InPitStall && surface === TrkLoc.AproachingPits) fromPitLane = true;
+
+      // `fromPitLane`, not `prev.fromPitLane`: a pit lane that ends straight
+      // onto the track arms the mark and crosses the blend line on one tick.
+      if (prev.surface === TrkLoc.AproachingPits && surface === TrkLoc.OnTrack && fromPitLane) {
         if (moved) (edges ??= []).push("blendEnd");
 
-        fromPitRoad = false;
+        fromPitLane = false;
         rejoinedAt = sessionTime;
       }
     }
 
-    // Back on the racing surface, off pit road: the pit visit is over.
-    if (fromPitRoad && surface === TrkLoc.OnTrack && !onPitRoad) {
-      fromPitRoad = false;
+    // Back on the racing surface: the pit visit is over. Not gated on the
+    // pit-road flag, which may read `true` on the track (module comment).
+    if (fromPitLane && surface === TrkLoc.OnTrack) {
+      fromPitLane = false;
       rejoinedAt = sessionTime;
     }
 
@@ -445,7 +476,7 @@ export function diffPitLaneLandmarks(
     const before = flip !== null ? { ...prev } : null;
 
     writeBaseline(prev, surface, onPitRoad, pct, estTime, sessionTime, sessionTick, lap);
-    prev.fromPitRoad = fromPitRoad;
+    prev.fromPitLane = fromPitLane;
     prev.pitRoadStartAt = pitRoadStartAt;
     prev.pitRoadEndAt = pitRoadEndAt;
     prev.rejoinedAt = rejoinedAt;

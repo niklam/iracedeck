@@ -298,7 +298,7 @@ export function createTrackGapsState(): TrackGapsState {
 export type PitLaneLandmarkCarTick = {
   /** `CarIdxTrackSurface` (a `TrkLoc`); `-1` (`NotInWorld`) when the car was out of the world. */
   surface: number;
-  /** `CarIdxOnPitRoad`. */
+  /** The car's pit-road flag: the player's `OnPitRoad` for the player's car, else `CarIdxOnPitRoad` (module comment). */
   onPitRoad: boolean;
   /** `CarIdxLapDistPct`; negative when the sim had no position for the car. */
   pct: number;
@@ -315,17 +315,18 @@ export type PitLaneLandmarkCarTick = {
   /** `CarIdxLap`. */
   lap: number;
   /**
-   * Set when the car leaves pit road (`CarIdxOnPitRoad` true → false out of
-   * the pit lane), cleared at its `blendEnd` edge or on any tick it reads
-   * `OnTrack` off pit road. While set, an `AproachingPits → OnTrack` edge is
+   * Set when the car is on its way out of the pit lane: its pit-road flag
+   * went true → false out of `AproachingPits`, or it drove out of its stall
+   * (`InPitStall → AproachingPits`). Cleared at its `blendEnd` edge or on any
+   * tick it reads `OnTrack`. While set, an `AproachingPits → OnTrack` edge is
    * the blend line, and an `OnTrack → AproachingPits` one is not a pit entry.
    */
-  fromPitRoad: boolean;
+  fromPitLane: boolean;
   /** `SessionTime` of the car's last raw pit-road on edge between two in-world ticks; `null` = none seen. */
   pitRoadStartAt: number | null;
   /** `SessionTime` of the car's last raw pit-road off edge between two in-world ticks; `null` = none seen. */
   pitRoadEndAt: number | null;
-  /** `SessionTime` at which {@link fromPitRoad} was last cleared; `null` = never this baseline. */
+  /** `SessionTime` at which {@link fromPitLane} was last cleared; `null` = never this baseline. */
   rejoinedAt: number | null;
 };
 
