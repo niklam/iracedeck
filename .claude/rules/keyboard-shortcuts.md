@@ -79,25 +79,9 @@ await this.releaseBinding(ev.action.id);
 - **Tap** (`tapBinding`): one-shot actions (toggle, cycle, select)
 - **Hold** (`holdBinding` + `releaseBinding`): continuous actions (look direction, push-to-talk)
 
-### Declaring active bindings for readiness tracking
+### No binding declaration
 
-Call `setActiveBinding()` in both `onWillAppear` and `onDidReceiveSettings` to declare which
-binding the action depends on. The base class automatically tracks readiness (active/inactive
-overlay) based on the binding type. Cleanup is automatic via `onWillDisappear`.
-
-```typescript
-override async onWillAppear(ev: IDeckWillAppearEvent<Settings>): Promise<void> {
-  await super.onWillAppear(ev);
-  const key = resolveSettingKey(ev.payload.settings);
-  this.setActiveBinding(key);
-}
-
-override async onDidReceiveSettings(ev: IDeckDidReceiveSettingsEvent<Settings>): Promise<void> {
-  await super.onDidReceiveSettings(ev);
-  const key = resolveSettingKey(ev.payload.settings);
-  this.setActiveBinding(key);
-}
-```
+An action declares nothing about the bindings it uses: `setActiveBinding()` and the readiness it fed were removed in #1599. The binding type never decides whether a key looks disconnected — a SimHub-bound mode needs the sim like any other — and the #612 missing-binding warning is computed per key with `isBindingMissing(<that key's binding key(s)>)` (`stream-deck-actions.md`).
 
 ### Long-press action pattern
 
@@ -253,9 +237,6 @@ adapter.connect();
 Use the binding dispatch delegates from `ConnectionStateAwareAction`:
 
 ```typescript
-// Declare binding for readiness tracking
-this.setActiveBinding("blackBoxLapTiming");
-
 // Execute (routes to keyboard or SimHub automatically)
 await this.tapBinding("blackBoxLapTiming");
 ```

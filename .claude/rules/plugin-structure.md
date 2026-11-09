@@ -73,7 +73,7 @@ packages/iracing-plugin-stream-deck-{name}/
     │   ├── plugin/                        # category-icon.png, marketplace.png (@1x and @2x); iracedeck.ico (Volume Mixer, #1253)
     │   └── actions/{action-name}/         # icon.svg, key.svg for each action
     └── ui/
-        ├── settings.html                  # Global settings (disableWhenDisconnected) — compiled from @iracedeck/pi-components
+        ├── settings.html                  # Plugin-level fallback PI: a link to the Settings window, no global controls (#1003) — compiled from @iracedeck/pi-components
         ├── sdpi-components.js             # Copied at build time from @iracedeck/pi-components/browser
         ├── pi-components.js               # Copied at build time from @iracedeck/pi-components/browser
         └── {action-name}.html             # Action-specific Property Inspector — compiled from @iracedeck/pi-components

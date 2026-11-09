@@ -86,6 +86,10 @@ The project's 700+ icon SVGs still deliberately use a minimal feature set, now f
 
 The centered ⚠️ overlay drawn on a key when a required binding is unset (`assembleIcon({ bindingMissing })` / `bindingWarningSvg()` in `@iracedeck/icon-composer`) is built **only** from `polygon`, `rect` (with `rx`), `circle`, and a `<g opacity="…">` dim wrapper — all in the safe, no-caveat feature set — so it renders identically whether or not `pngRasterization` is enabled. It uses no filters, masks, `clipPath`, or `<style>`/class-based styling. Keep it that way: the overlay must render correctly on the kill-switch fallback path too, since a missing binding is essential information.
 
+## Disconnected look (#1599)
+
+The disconnected look `BaseAction` draws over a key while the sim is absent (`applyDisconnectedLook` in `@iracedeck/icon-composer`, `disconnected-look.ts`) holds to the same set for the same reason: a key that cannot act is essential information. Its dim layer is one full-canvas `rect` with `fill-opacity`, and its badge is built only from `rect` (with `rx`), `circle`, `polygon` and `path`, with plain fills, strokes, `opacity` / `fill-opacity` and translate / scale / rotate transforms — no filter, mask, `clipPath`, gradient, text, `<style>` or class. It is inserted before the root `</svg>` and scaled to the root canvas. The look it replaced greyed the key with an `feColorMatrix` filter, which would have vanished silently with `pngRasterization` off. The function's tests assert the badge and the decorated output carry none of the excluded features; keep it that way.
+
 ## Reference Documentation
 
 - resvg (the rasterizer): https://github.com/linebender/resvg
