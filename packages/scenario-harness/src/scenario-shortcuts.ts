@@ -2675,8 +2675,8 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
   { id: "pit-exited", category: "Pit Lane", label: "Exited Pit Lane", event: "pitLane.exited", data: {} },
   // The pit exit beep (issue #1161): one tone on the Cue channel at the
   // `pitLane.exited` edge. The cue reads the published envelope's telemetry
-  // and stays silent on a positive "not in the car" or "replay", and the
-  // harness boots in the garage (`IsOnTrack: false`), so the patch puts the
+  // and stays silent on a positive "not in the car" (`IsOnTrack: false`), and
+  // the harness boots in the garage (`IsOnTrack: false`), so the patch puts the
   // player in the car first; "Exited Pit Lane" above, pressed on the boot
   // telemetry, is the silent control. The surface and a pit-lane speed are
   // pinned with it (#1349), so the car is the same one whatever the previous

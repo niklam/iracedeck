@@ -9,6 +9,7 @@
  * translator over the mock SDK, the plugins' Race Engineer wiring and the
  * seeded settings.
  */
+import { PIT_EXIT_CLIP } from "@iracedeck/audio-scenarios/pit-crew";
 import { AudioChannel } from "@iracedeck/audio-service";
 import { TrkLoc } from "@iracedeck/iracing-sdk";
 import { setCalloutEnabled } from "@iracedeck/settings";
@@ -27,9 +28,6 @@ vi.mock("@iracedeck/audio-service", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@iracedeck/audio-service")>()),
   getAudio: () => mixer,
 }));
-
-/** The tone `audio-scenarios`' pit exit engine names (`PIT_EXIT_CLIP`). */
-const PIT_EXIT_CLIP = "sfx/IRD-pit-exit.wav";
 
 /** How many times the pit exit tone was played on the Cue channel. */
 function beeps(): number {
