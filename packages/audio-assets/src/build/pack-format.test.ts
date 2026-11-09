@@ -11,9 +11,11 @@ import {
   isCanonicalPackVersion,
   listSourceClips,
   locateCalloutScript,
+  selectPacks,
   ZIP_ENTRY_MTIME_FIELDS,
   ZIP_ENTRY_OPTIONS,
 } from "./pack-format.mjs";
+import { VOICE_PACKS } from "./voice-packs.mjs";
 
 const tempDirs: string[] = [];
 
@@ -123,5 +125,31 @@ describe("archiveFormatIdentity", () => {
     // And it describes the options the archive is actually written with.
     expect(ZIP_ENTRY_OPTIONS).toMatchObject({ level: 9, os: 0, attrs: 0 });
     expect(ZIP_ENTRY_OPTIONS.mtime.getTime()).toBe(new Date(...ZIP_ENTRY_MTIME_FIELDS).getTime());
+  });
+});
+
+// The one selector the packer's command line, `sealPackRecords` and the seal
+// command share (#1667), so an unknown pack reads the same wherever it is typed.
+describe("selectPacks", () => {
+  const alpha = { id: "alpha", label: "Alpha", version: "1.0.0", voices: ["alpha"], bundled: false };
+  const beta = { id: "beta", label: "Beta", version: "2.0.0", voices: ["beta"], bundled: false };
+
+  it("is every pack, as a copy, when no id is named", () => {
+    const all = selectPacks([], [alpha, beta]);
+
+    expect(all).toEqual([alpha, beta]);
+    expect(all).not.toBe([alpha, beta]);
+    expect(selectPacks([]).map((pack) => pack.id)).toEqual(VOICE_PACKS.map((pack) => pack.id));
+  });
+
+  it("is the named packs in the order given, each once", () => {
+    expect(selectPacks(["beta", "alpha", "beta"], [alpha, beta])).toEqual([beta, alpha]);
+  });
+
+  it("refuses an unknown id naming the known ones, in the registry's order", () => {
+    expect(() => selectPacks(["alpha", "gamma"], [alpha, beta])).toThrow(
+      'unknown pack "gamma" — known packs: alpha, beta',
+    );
+    expect(() => selectPacks(["nope"])).toThrow(`known packs: ${VOICE_PACKS.map((pack) => pack.id).join(", ")}`);
   });
 });

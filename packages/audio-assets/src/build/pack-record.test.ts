@@ -632,6 +632,64 @@ describe("checkPackRecords", () => {
       expect(new Set(problems.map((problem) => problem.fix)).size).toBe(1);
     });
 
+    // Under a released version the fix depends on WHAT drifted. A changed clip,
+    // script or manifest changed the archive's bytes, so the bump comes first.
+    // A pipeline or archive-format change alone (an `ffmpeg-static` or `fflate`
+    // bump) may leave the bytes identical, and a bump would then change
+    // voice-pack.json, so the sha-256, and make every user re-download for
+    // nothing — so the fix is to re-pack first and bump only if the packer
+    // refuses. Both wordings, and the mixed case, which is the bump.
+    describe("the fix under a released version", () => {
+      const RELEASED = { released: { version: "1.2.3", sha256: SHA_A } };
+      const tooling = {
+        pipelineIdentity: { ...PIPELINE_IDENTITY, ffmpegStatic: "9.9.9" },
+        archiveFormat: { ...archiveFormatIdentity(), fflate: "0.0.1" },
+      };
+      const REPACK_FIRST =
+        `version 1.2.3 is released and only the encode pipeline or archive format changed: ${REPACK} first — ` +
+        "it writes the record when the archive's bytes are unchanged (no bump needed) and refuses when they changed, " +
+        `in which case bump \`version\` in src/build/voice-packs.mjs and run it again; then ${COMMIT_BOTH}`;
+      const BUMP = `version 1.2.3 is released: bump \`version\` in src/build/voice-packs.mjs, ${REPACK}, and ${COMMIT_BOTH}`;
+
+      it("asks for a re-pack first, and a bump only if the packer refuses, when only the pipeline and the archive format drifted", () => {
+        const { roots, writeRecord } = fixture();
+
+        writeRecord(RELEASED);
+
+        const problems = checkPackRecords({ packs: [PACK], ...roots, ...tooling });
+
+        expect(parts(problems)).toEqual(["inputs.pipeline", "inputs.archiveFormat"]);
+        expect(new Set(problems.map((problem) => problem.fix))).toEqual(new Set([REPACK_FIRST]));
+
+        const pipelineOnly = checkPackRecords({ packs: [PACK], ...roots, pipelineIdentity: tooling.pipelineIdentity });
+
+        expect(parts(pipelineOnly)).toEqual(["inputs.pipeline"]);
+        expect(pipelineOnly[0]!.fix).toBe(REPACK_FIRST);
+      });
+
+      it("asks for the bump when a clip, the script or the manifest drifted beside the pipeline", () => {
+        const { roots, voiceDir, writeRecord } = fixture();
+
+        writeRecord(RELEASED);
+        writeFileSync(path.join(voiceDir, "numbers", "1.mp3"), "ONE");
+
+        const problems = checkPackRecords({ packs: [PACK], ...roots, ...tooling });
+
+        expect(parts(problems)).toEqual(["inputs.pipeline", "inputs.archiveFormat", "voices.testvoice.clips"]);
+        // One fix for the pack: the clip's, not the pipeline's.
+        expect(new Set(problems.map((problem) => problem.fix))).toEqual(new Set([BUMP]));
+      });
+
+      it("still asks for only the re-pack while the version is not released, whatever drifted", () => {
+        const { roots } = fixture();
+
+        const problems = checkPackRecords({ packs: [PACK], ...roots, ...tooling });
+
+        expect(parts(problems)).toEqual(["inputs.pipeline", "inputs.archiveFormat"]);
+        expect(problems[0]!.fix).toBe(`version 1.2.3 is not released yet: ${REPACK}, and ${COMMIT_BOTH}`);
+      });
+    });
+
     it("names a voice that joined or left the pack", () => {
       const { roots, inputs } = fixture();
 

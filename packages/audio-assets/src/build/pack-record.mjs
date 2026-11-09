@@ -44,6 +44,7 @@ import {
   listSourceClips,
   locateCalloutScript,
   readVoiceEntries,
+  selectPacks,
   serializeSortedJson,
   VOICE_ROOT,
 } from "./pack-format.mjs";
@@ -367,19 +368,40 @@ function relativeToPackage(file) {
   return relative.startsWith("..") || path.isAbsolute(relative) ? file : relative.split(path.sep).join("/");
 }
 
+/** The parts of a record whose drift need not change the archive's bytes: the tools, not the content. */
+const TOOLING_PARTS = new Set(["inputs.pipeline", "inputs.archiveFormat"]);
+
 /**
- * The fix for a stale record, worded by rule 4: a released version needs a
- * bump before the re-pack, one not released yet needs only the re-pack.
+ * The fix for a stale record, worded by rule 4 and by WHAT drifted. A version
+ * not released yet needs only the re-pack. A released one whose clips, script
+ * or manifest changed needs a bump first: the archive's bytes have changed
+ * under a published version. But when only the encode pipeline or the archive
+ * format moved (an `ffmpeg-static` or `fflate` bump), the bytes may well be the
+ * same, and a bump then changes `voice-pack.json`, so the sha-256, and makes
+ * every user re-download the pack for nothing — so the fix is to re-pack
+ * FIRST: the packer writes the record when the archive is byte-identical and
+ * refuses when it is not, and only a refusal calls for the bump (the spec's
+ * packer section: inputs decide when a re-pack is due, bytes when a bump is).
  *
  * @param {VoicePackDefinition} pack
  * @param {boolean} released — whether `pack.version` is the record's `released.version`
+ * @param {readonly string[]} parts — the `part` of every rule-3 problem the pack has
  */
-function freshnessFix(pack, released) {
-  const rest = `run \`${PACK_COMMAND} ${pack.id}\`, and commit catalog/${pack.id}.json and pack-records/${pack.id}.json`;
+function freshnessFix(pack, released, parts) {
+  const repack = `run \`${PACK_COMMAND} ${pack.id}\``;
+  const commit = `commit catalog/${pack.id}.json and pack-records/${pack.id}.json`;
 
-  return released
-    ? `version ${pack.version} is released: bump \`version\` in ${REGISTRY_FILE}, ${rest}`
-    : `version ${pack.version} is not released yet: ${rest}`;
+  if (!released) return `version ${pack.version} is not released yet: ${repack}, and ${commit}`;
+
+  if (parts.length > 0 && parts.every((part) => TOOLING_PARTS.has(part))) {
+    return (
+      `version ${pack.version} is released and only the encode pipeline or archive format changed: ${repack} first — ` +
+      `it writes the record when the archive's bytes are unchanged (no bump needed) and refuses when they changed, ` +
+      `in which case bump \`version\` in ${REGISTRY_FILE} and run it again; then ${commit}`
+    );
+  }
+
+  return `version ${pack.version} is released: bump \`version\` in ${REGISTRY_FILE}, ${repack}, and ${commit}`;
 }
 
 /**
@@ -616,13 +638,20 @@ export function checkPackRecords(options = {}) {
     try {
       inputs = computePackInputs(pack, inputRoots);
     } catch (err) {
-      problem("inputs", `${pack.id}: ${err instanceof Error ? err.message : err}`, freshnessFix(pack, isReleased));
+      problem("inputs", `${pack.id}: ${err instanceof Error ? err.message : err}`, freshnessFix(pack, isReleased, []));
       continue;
     }
 
-    for (const { part, message } of diffInputs(pack, record.inputs, inputs)) {
-      problem(part, message, freshnessFix(pack, isReleased));
-    }
+    // One fix for the pack, worded by everything that drifted together: a
+    // pipeline bump beside a changed clip is the clip's fix, not the pipeline's.
+    const diffs = diffInputs(pack, record.inputs, inputs);
+    const fix = freshnessFix(
+      pack,
+      isReleased,
+      diffs.map(({ part }) => part),
+    );
+
+    for (const { part, message } of diffs) problem(part, message, fix);
   }
 
   // Rule 1, the other half: nothing in the records directory but a record per published pack.
@@ -711,13 +740,15 @@ export function formatPackRecordProblems(problems) {
  *
  * @param {{ packs?: readonly VoicePackDefinition[]; ids?: readonly string[]; dryRun?: boolean } & PackRoots} [options]
  *   — `packs` defaults to `VOICE_PACKS` and is what the checks run over; `ids` restricts the SEAL to those packs
- *   (default: every pack); `dryRun` reports what it would seal and writes nothing
+ *   (`selectPacks`: every pack when absent or empty, an unknown id refused before anything is checked); `dryRun`
+ *   reports what it would seal and writes nothing
  * @returns {{ sealed: { id: string; version: string; sha256: string; path: string }[]; written: string[] }}
  *   — `sealed` is every record this call sealed (or, dry, would seal); `written` the files it wrote
  */
 export function sealPackRecords(options = {}) {
-  const { packs = VOICE_PACKS, ids, dryRun = false, ...roots } = options;
+  const { packs = VOICE_PACKS, ids = [], dryRun = false, ...roots } = options;
   const recordsDir = roots.recordsDir ?? PACK_RECORDS_DIR;
+  const chosen = selectPacks(ids, packs);
   const problems = checkPackRecords({ packs, ...roots });
 
   if (problems.length > 0) {
@@ -729,18 +760,6 @@ export function sealPackRecords(options = {}) {
     throw error;
   }
 
-  const chosen =
-    ids === undefined
-      ? packs
-      : ids.map((id) => {
-          const pack = packs.find((candidate) => candidate.id === id);
-
-          if (pack === undefined) {
-            throw new Error(`unknown pack "${id}" — known packs: ${packs.map((candidate) => candidate.id).join(", ")}`);
-          }
-
-          return pack;
-        });
   /** @type {{ id: string; version: string; sha256: string; path: string }[]} */
   const sealed = [];
   /** @type {{ file: string; bytes: string }[]} */

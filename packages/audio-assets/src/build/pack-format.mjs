@@ -22,6 +22,7 @@ import path from "node:path";
 
 import { audioAssetsPath } from "./index.mjs";
 import { installedPackageVersion } from "./installed-version.mjs";
+import { VOICE_PACKS } from "./voice-packs.mjs";
 
 export { serializeSortedJson, sortKeysDeep } from "./stable-json.mjs";
 
@@ -42,6 +43,35 @@ export const CATALOG_DIR = path.join(audioAssetsPath, "catalog");
 
 /** The manifest's file name inside the archive — what the voice-packs scanner opens. */
 export const MANIFEST_FILE = "voice-pack.json";
+
+/**
+ * The packs `ids` name, in the order given and each once, out of `packs` —
+ * every pack when `ids` is empty. Throws on an id no pack has, naming the known
+ * ids. The ONE selector the packer's command line, `sealPackRecords` and the
+ * seal command share, so an unknown pack reads the same wherever it is typed.
+ *
+ * @param {readonly string[]} ids
+ * @param {readonly VoicePackDefinition[]} [packs] — the registry, `VOICE_PACKS`
+ * @returns {VoicePackDefinition[]}
+ */
+export function selectPacks(ids, packs = VOICE_PACKS) {
+  if (ids.length === 0) return [...packs];
+
+  /** @type {VoicePackDefinition[]} */
+  const chosen = [];
+
+  for (const id of ids) {
+    const pack = packs.find((candidate) => candidate.id === id);
+
+    if (pack === undefined) {
+      throw new Error(`unknown pack "${id}" — known packs: ${packs.map((candidate) => candidate.id).join(", ")}`);
+    }
+
+    if (!chosen.includes(pack)) chosen.push(pack);
+  }
+
+  return chosen;
+}
 
 /**
  * Is `value` a version the packer may write verbatim, and the record may name?

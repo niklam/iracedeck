@@ -86,7 +86,7 @@ import { existsSync, lstatSync, mkdirSync, readFileSync, rmSync, writeFileSync }
 import path from "node:path";
 import url from "node:url";
 
-import { audioAssetsPath, processVoiceTree, VOICE_PACKS } from "../src/build/index.mjs";
+import { audioAssetsPath, processVoiceTree } from "../src/build/index.mjs";
 import {
   buildVoicePackManifest,
   CATALOG_DIR,
@@ -97,6 +97,7 @@ import {
   locateCalloutScript,
   MANIFEST_FILE,
   readVoiceEntries,
+  selectPacks,
   serializeSortedJson,
   VOICE_ROOT,
 } from "../src/build/pack-format.mjs";
@@ -685,18 +686,6 @@ export function parseArgs(argv) {
   }
 
   return { ids, writeCatalog, writeArchive };
-}
-
-function selectPacks(requestedIds) {
-  if (requestedIds.length === 0) return VOICE_PACKS;
-
-  return requestedIds.map((id) => {
-    const pack = VOICE_PACKS.find((candidate) => candidate.id === id);
-
-    if (!pack) throw new Error(`unknown pack "${id}" — known packs: ${VOICE_PACKS.map((p) => p.id).join(", ")}`);
-
-    return pack;
-  });
 }
 
 async function main() {
