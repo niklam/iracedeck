@@ -2678,10 +2678,13 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
   // and stays silent on a positive "not in the car" (`IsOnTrack: false`), and
   // the harness boots in the garage (`IsOnTrack: false`), so the patch puts the
   // player in the car first; "Exited Pit Lane" above, pressed on the boot
-  // telemetry, is the silent control. The surface and a pit-lane speed are
-  // pinned with it (#1349), so the car is the same one whatever the previous
-  // button left: in the car off the track surface the translator would add
-  // its own `offTrack.started`. `OnPitRoad` is left alone on purpose:
+  // telemetry, is the silent control. The surface and the speed are pinned
+  // with it (#1349), so the car is the same one whatever the previous button
+  // left: in the car off the track surface the translator would add its own
+  // `offTrack.started`, and a car still on pit road from an earlier button
+  // must not be over any pit limit, or the speeding tick would start after
+  // the beep — so the speed is 0, which the beep does not need. `OnPitRoad`
+  // is left alone on purpose:
   // pinning it off after a button that left the car on pit road would be a
   // real exit edge the translator then announces too, beeping twice.
   {
@@ -2692,7 +2695,7 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
       "Crossing the pit exit line, where the speed limit ends: one short rising tone on the Cue channel, at the Radar volume. Silent with the Race Engineer or the Pit exit beep off.",
     event: "pitLane.exited",
     data: {},
-    telemetryPatch: { IsOnTrack: true, PlayerTrackSurface: TrkLoc.OnTrack, Speed: 15 },
+    telemetryPatch: { IsOnTrack: true, PlayerTrackSurface: TrkLoc.OnTrack, Speed: 0 },
   },
 
   // ── Pit-road speeding (issue #912) ──
