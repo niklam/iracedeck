@@ -31,15 +31,16 @@ It runs after `before:bump` has folded the fragments and bumped the version file
 The hook takes these steps in order:
 
 1. **Refuses a developer tree, before building.** That is a tree where `feature-flags.local.json` or `dev.local.json` exists at the root, or where `IRACEDECK_DEV_VOICES` is set. Either would build flags or a voice root that no user has into the shot.
-2. **Builds the Stream Deck plugin and its dependencies** with `turbo run build --filter=@iracedeck/iracing-plugin-stream-deck...`. This makes `ui/settings-window.html` carry the folded notes and the new version.
+2. **Snapshots what `before:bump` left.** Records each tracked change already in the tree (the version bumps, the fold) with its content hash, so step 7 can tell the hook's own changes from the build's. (Amended 2026-11-09: comparing against HEAD would refuse `before:bump`'s own changes.)
+3. **Builds the Stream Deck plugin and its dependencies** with `turbo run build --filter=@iracedeck/iracing-plugin-stream-deck...`. This makes `ui/settings-window.html` carry the folded notes and the new version.
    - Because the bumped `package.json` is among their turbo inputs, this also rebuilds `iracing-native` and `audio-native`. A stable release therefore needs the native toolchain (Visual Studio, node-gyp) as well as a Chromium browser.
    - An MSVC `LNK1318` abort is a toolchain hiccup: the remedy is to restore and rerun the release.
-3. **Runs `assertReleaseBuild`** (`scripts/lib/assert-release-build.mjs`) on the built plugin's `bin/config.json`, as a second, built-artifact check that no development voice root got in.
-4. **Captures into `packages/website/src/assets/settings-window/`** with one new option, `expectVersion`. Before the first shot, the capture reads `.sw-version` over CDP and refuses a page that does not say `v<version>`. That catches a stale build before it is committed, for example a turbo hit that missed the bump.
-5. **Writes `capture.json`** (see section 3).
-6. **Refuses any other tracked change.** If the build changed a tracked file outside that folder, the hook refuses, because release-it's commit would otherwise sweep it in unseen. Otherwise the hook stages the folder.
+4. **Runs `assertReleaseBuild`** (`scripts/lib/assert-release-build.mjs`) on the built plugin's `bin/config.json`, as a second, built-artifact check that no development voice root got in.
+5. **Captures into `packages/website/src/assets/settings-window/`** with one new option, `expectVersion`. Before the first shot, the capture reads `.sw-version` over CDP and refuses a page that does not say `v<version>`. That catches a stale build before it is committed, for example a turbo hit that missed the bump.
+6. **Writes `capture.json`** (see section 3).
+7. **Refuses any other tracked change.** If the build changed a tracked file outside that folder, compared with the step 2 snapshot, the hook refuses, because release-it's commit would otherwise sweep it in unseen. Otherwise the hook stages the folder.
 
-Any failure aborts the release before the commit, with a message naming `git restore --staged --worktree -- :/`. That restore is safe because release-it's `requireCleanWorkingDir` held at the start.
+Any failure aborts the release before the commit, with a message naming `git restore --staged --worktree -- :/` and, for a screenshot written for a tab that had none, `git clean -fd -- packages/website/src/assets/settings-window/` (amended 2026-11-09: a restore does not remove an untracked file). release-it arms its own rollback only in `beforeRelease`, after `after:bump`, so these commands are the only remedy. That restore is safe because release-it's `requireCleanWorkingDir` held at the start.
 
 A Support tab skipped for its image (rule 7 of `website-screenshots.md`) is a failure here too. A release already needs the network to push and to create the GitHub release, so a rerun is the remedy, and a partial set would put the previous version's header on the site.
 
@@ -138,11 +139,11 @@ A listed tab with neither file nor entry must produce none. A check that cannot 
 
 **`release-capture.test.mjs`,** with injected filesystem, environment, build, release-build assertion, capture, git and log:
 
-- On a stable version, the steps run in order: developer-tree check → build → `assertReleaseBuild` → capture → manifest → tracked-file check → stage.
+- On a stable version, the steps run in order: developer-tree check → snapshot → build → `assertReleaseBuild` → capture → manifest → tracked-file check → stage.
 - A prerelease or `-dev` version does nothing.
 - Each of `feature-flags.local.json`, `dev.local.json` and `IRACEDECK_DEV_VOICES` refuses before the build runs.
 - A built `bin/config.json` carrying `devVoicePacksRoot` refuses before the capture runs.
-- A failure at each step stops before staging and names `git restore --staged --worktree -- :/`.
+- A failure at each step stops before staging and names `git restore --staged --worktree -- :/` and the `git clean` of the screenshot folder.
 - A header-version mismatch is refused.
 - A tracked file changed by the build is refused.
 - The dry branch writes nothing.
