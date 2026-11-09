@@ -2,6 +2,7 @@ import type { ILogger } from "@iracedeck/logger";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  cleanupRetiredDisconnectedSetting,
   migrateGlobalSettingsKeys,
   migrateRaceEngineerVoiceId,
   seedBindingDefaultsIfAbsent,
@@ -200,6 +201,147 @@ describe("migrateGlobalSettingsKeys", () => {
     expect(cache().setupChassisLrSpringIncrease).toBe("OLD-BINDING");
     expect(cache().setupChassisLeftSpringIncrease).toBeUndefined();
     expect(store.saved).toHaveLength(savesAfterMigration + 1); // only the unrelated write
+  });
+});
+
+describe("cleanupRetiredDisconnectedSetting (#1599)", () => {
+  const RETIRED = "disableWhenDisconnected";
+
+  beforeEach(() => {
+    _resetGlobalSettings();
+  });
+
+  afterEach(() => {
+    _resetGlobalSettings();
+  });
+
+  it("is a passthrough key now, so a stored copy is visible in the cache (precondition)", async () => {
+    // Positive control for every test below: if the schema still declared the
+    // key, the cache would hold it on every store and "nothing to delete"
+    // could never be observed.
+    initWithStore({});
+    await tick();
+
+    expect(cache()).not.toHaveProperty(RETIRED);
+  });
+
+  it.each([true, false, "true", "false"])("deletes a stored %j from the cache and the file", async (value) => {
+    const store = initWithStore({ [RETIRED]: value, driverName: "nick" });
+    await tick();
+    expect(cache()[RETIRED]).toBe(value);
+
+    cleanupRetiredDisconnectedSetting(createMockLogger());
+
+    expect(cache()).not.toHaveProperty(RETIRED);
+    const lastSave = store.saved.at(-1) as Record<string, unknown>;
+    expect(lastSave).not.toHaveProperty(RETIRED);
+    // Nothing else in the file is touched.
+    expect(lastSave.driverName).toBe("nick");
+  });
+
+  it.each([
+    { stored: true, show: undefined, expected: false },
+    { stored: true, show: false, expected: false },
+    { stored: false, show: true, expected: true },
+    { stored: "true", show: undefined, expected: false },
+  ])(
+    "carries nothing over: retired $stored with showDisconnectedState $show leaves it at $expected",
+    async ({ stored, show, expected }) => {
+      const initial: Record<string, unknown> = { [RETIRED]: stored };
+
+      if (show !== undefined) initial.showDisconnectedState = show;
+
+      const store = initWithStore(initial);
+      await tick();
+
+      cleanupRetiredDisconnectedSetting(createMockLogger());
+
+      expect(cache().showDisconnectedState).toBe(expected);
+      expect((store.saved.at(-1) as Record<string, unknown>).showDisconnectedState).toBe(expected);
+    },
+  );
+
+  it("writes nothing and logs nothing when the file holds no retired key", async () => {
+    const store = initWithStore({ showDisconnectedState: true });
+    await tick();
+    const savesBefore = store.saved.length;
+    const logger = createMockLogger();
+
+    cleanupRetiredDisconnectedSetting(logger);
+
+    expect(store.saved).toHaveLength(savesBefore);
+    expect(cache().showDisconnectedState).toBe(true);
+    expect(logger.info).not.toHaveBeenCalled();
+    expect(logger.warn).not.toHaveBeenCalled();
+  });
+
+  it("logs the deletion at info, naming the key only at debug", async () => {
+    initWithStore({ [RETIRED]: true });
+    await tick();
+    const logger = createMockLogger();
+
+    cleanupRetiredDisconnectedSetting(logger);
+
+    expect(logger.info).toHaveBeenCalledWith("Deleted a retired global setting");
+    expect(logger.debug).toHaveBeenCalledWith(`Deleted: ${RETIRED}`);
+    expect(logger.warn).not.toHaveBeenCalled();
+  });
+
+  it("does nothing before the store is ready, then deletes once it is", async () => {
+    const store = initWithStore({ [RETIRED]: true });
+
+    cleanupRetiredDisconnectedSetting(createMockLogger());
+
+    // Not loaded yet: the cache is pure defaults and nothing has been written.
+    expect(isSettingsStoreReady()).toBe(false);
+    expect(store.saved).toHaveLength(0);
+
+    await tick();
+
+    expect(isSettingsStoreReady()).toBe(true);
+    expect(cache()).not.toHaveProperty(RETIRED);
+    expect(store.saved.at(-1) as Record<string, unknown>).not.toHaveProperty(RETIRED);
+  });
+
+  it("returns a disposer that cancels a still-pending cleanup", async () => {
+    initWithStore({ [RETIRED]: true });
+
+    const dispose = cleanupRetiredDisconnectedSetting(createMockLogger());
+    dispose();
+    await tick();
+
+    expect(cache()[RETIRED]).toBe(true);
+  });
+
+  it("is idempotent: a second run writes nothing", async () => {
+    const store = initWithStore({ [RETIRED]: "true" });
+    await tick();
+
+    cleanupRetiredDisconnectedSetting(createMockLogger());
+    const savesAfterFirst = store.saved.length;
+    const logger = createMockLogger();
+
+    cleanupRetiredDisconnectedSetting(logger);
+
+    expect(store.saved).toHaveLength(savesAfterFirst);
+    expect(cache()).not.toHaveProperty(RETIRED);
+    expect(logger.info).not.toHaveBeenCalled();
+  });
+
+  it("runs once per start: a copy written back later in the run waits for the next start", async () => {
+    initWithStore({ [RETIRED]: true });
+    await tick();
+
+    cleanupRetiredDisconnectedSetting(createMockLogger());
+    // An older page's whole-snapshot frame brings the key back.
+    updateGlobalSettings({ [RETIRED]: true });
+
+    expect(cache()[RETIRED]).toBe(true);
+
+    // The next start's run deletes it again.
+    cleanupRetiredDisconnectedSetting(createMockLogger());
+
+    expect(cache()).not.toHaveProperty(RETIRED);
   });
 });
 

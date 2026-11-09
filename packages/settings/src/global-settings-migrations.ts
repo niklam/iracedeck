@@ -1,7 +1,9 @@
 /**
- * Global-settings migrations, in three shapes: the one-shot key renames of
+ * Global-settings migrations, in four shapes: the one-shot key renames of
  * issue #953, the idempotent qualification of the Race Engineer voice id of
- * #1144, and the seed-if-absent binding defaults of #1277.
+ * #1144, the seed-if-absent binding defaults of #1277, and the marker-free
+ * deletion of a retired key (#1599, `cleanupRetiredDisconnectedSetting`,
+ * documented on the function).
  *
  * **Renames.** When a persisted global-settings key is renamed (e.g. the Setup
  * Chassis spring binding keys, `setupChassisLeftSpring*` →
@@ -154,6 +156,66 @@ export function migrateRaceEngineerVoiceId(availableVoices: readonly string[], l
   logger?.debug(`${stored} -> ${qualified}`);
 
   return true;
+}
+
+/**
+ * The global setting #1599 retired. Its name is never reused: a copy brought
+ * back by an older page or a late host merge must stay meaningless.
+ */
+const RETIRED_DISCONNECTED_KEY = "disableWhenDisconnected";
+
+/**
+ * Delete the retired `disableWhenDisconnected` key from the settings file
+ * (#1599), now or as soon as the stored settings are in.
+ *
+ * The key promised that presses are ignored while iRacing is not connected;
+ * nothing ever ignored them, and since January the box drew nothing either.
+ * Its successor, `showDisconnectedState`, defaults to off for everyone, and
+ * NOTHING CARRIES OVER from the old value:
+ *
+ * - an old `false` would only restate the new default;
+ * - an old `true` was never a choice — every install persisted the schema
+ *   default `true` — so turning the look on for those users would act on a
+ *   value they never picked.
+ *
+ * So the old value decides nothing and is simply deleted. Left in the file it
+ * would read as a live setting to anyone editing `global-settings.json` by
+ * hand.
+ *
+ * Marker-free: done and not-done are told apart by the key being in the cache
+ * or not, so it runs at every start once the store is ready
+ * (`runOnceSettingsStoreReady`) and writes only when the key is there. A copy
+ * brought back later (a whole-snapshot frame from an older page, a late
+ * `mergeMigration` on a `_migrationPending` store, a downgrade to 3.8 writing
+ * its default back) is deleted at the next start, which is harmless because
+ * nothing reads it. It needs no `isSettingsStoreHostDerived()` gate, unlike
+ * `seedBindingDefaultsIfAbsent`: it decides nothing on the ABSENCE of a key
+ * and destroys nothing anyone reads.
+ *
+ * Only correct once the key has left `GlobalSettingsSchema`: a declared field
+ * always holds its default in the cache and would come straight back.
+ *
+ * @param logger - Optional logger for cleanup reporting
+ * @returns A disposer that cancels a still-pending cleanup (for tests)
+ */
+export function cleanupRetiredDisconnectedSetting(logger?: ILogger): () => void {
+  return runOnceSettingsStoreReady(() => {
+    if (!(RETIRED_DISCONNECTED_KEY in getGlobalSettings())) return;
+
+    deleteGlobalSettings([RETIRED_DISCONNECTED_KEY]);
+
+    // `deleteGlobalSettings` reports nothing: a delete whose result fails to
+    // parse is skipped with its own error line. Read back rather than claim it.
+    if (RETIRED_DISCONNECTED_KEY in getGlobalSettings()) {
+      logger?.warn("Retired global setting could not be deleted");
+      logger?.debug(`Still stored: ${RETIRED_DISCONNECTED_KEY}`);
+
+      return;
+    }
+
+    logger?.info("Deleted a retired global setting");
+    logger?.debug(`Deleted: ${RETIRED_DISCONNECTED_KEY}`);
+  });
 }
 
 /** What the seed logs when the store is not host-derived, per reason. */
