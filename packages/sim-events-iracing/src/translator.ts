@@ -39,6 +39,7 @@ import {
   bindingLapsToGo,
   CarLeftRight,
   classPositionFromOrder,
+  classPositionOrOfficial,
   extractQualifyResults,
   extractSectorStarts,
   IRSDK_UNLIMITED_LAPS,
@@ -209,6 +210,23 @@ type TranslatorInstance = {
     telemetry: TelemetryData;
     sessionInfo: Record<string, unknown> | null;
     measurement: CautionGapMeasurement;
+  } | null;
+  /**
+   * The canonical order last resolved, keyed on the identity of every input it
+   * was computed from (#711). `handleLiveSteps` writes it from its own order
+   * step; `readCanonicalOrder` reuses it on a key match and otherwise computes
+   * and stores. `null` until first resolved and after a disconnect.
+   *
+   * Invariant: the key catches a replaced state object, never an in-place
+   * write. `positionLastKnownScores` and `positionFrozen` are written in place
+   * only by `updatePositionTracking`, before the order step writes this memo;
+   * any other writer of the order's inputs must set the memo to `null`.
+   */
+  canonicalOrderMemo: {
+    telemetry: TelemetryData;
+    sessionInfo: Record<string, unknown> | null;
+    state: TranslatorState;
+    positions: readonly number[];
   } | null;
   /** Cached pit speed limit (m/s) parsed from session YAML. 0 = not parsed. */
   pitSpeedLimitMps: number;
@@ -496,6 +514,7 @@ export function initializeSimEventsIracing(
     latestTelemetry: null,
     paceLineupMemo: null,
     cautionGapMemo: null,
+    canonicalOrderMemo: null,
     pitSpeedLimitMps: 0,
     pitSpeedLimitKey: "",
     lastTickInReplay: false,
@@ -1154,9 +1173,10 @@ export function getQualifyingInvalidationSnapshot(): QualifyingInvalidationSnaps
 /**
  * Player's CURRENT race position read from live telemetry (issue #574). Unlike
  * the standings-first {@link PlayerResultsSnapshot} used by `lap.completed`,
- * this is computed from the live `CarIdxLapDistPct` order via
- * `calculateFrozenRacePositions` so it reflects the position at the exact moment
- * the caller asks — not a value frozen at the last S/F crossing. A finished car
+ * this is read from the latest tick's canonical order — the live
+ * `CarIdxLapDistPct` order via `calculateFrozenRacePositions`, memoised per tick
+ * and frozen (#711) — so it reflects the latest frame, not a value frozen at
+ * the last S/F crossing. A finished car
  * that has left the world is kept at its finishing rank (issue #603) so the
  * spoken overall position doesn't climb as leaders peel into the garage. Used by
  * the "We're currently P[n]" voice readouts (overtake, race position-change,
@@ -1173,9 +1193,11 @@ export type LivePosition = {
   /**
    * Live class position (1-based) derived from the same frozen overall order as
    * {@link position} — the count of same-class cars (`CarIdxClass`) ranked ahead,
-   * +1 (see `classPositionFromOrder`). Falls back to the iRacing-authoritative
-   * `PlayerCarClassPosition` when the order-based value can't be derived (no
-   * `CarIdxClass`). `0` when unavailable. Updates continuously, not only at S/F.
+   * +1 (see `classPositionFromOrder`). For the player it falls back to the
+   * iRacing-authoritative `PlayerCarClassPosition` when the car's class is
+   * unknown (no `CarIdxClass` entry) — `classPositionOrOfficial`, the one
+   * derive-else-official policy (#711). `0` when unavailable. Updates
+   * continuously, not only at S/F.
    */
   classPosition: number;
   /** Whether the session has more than one car class on track. */
@@ -1191,21 +1213,22 @@ export function getLivePosition(): LivePosition | null {
 
   if (playerCarIdx < 0) return null;
 
-  // One shared read path (issue #622): the frozen-order rank + derived class
-  // position come from getLiveCarPosition so the player readout and the
-  // per-car reads can never silently diverge.
+  // One shared read path (issue #622): the frozen-order rank comes from
+  // getLiveCarPosition so the player readout and the per-car reads can never
+  // silently diverge; both read the tick's memoised order (#711).
   const base = getLiveCarPosition(playerCarIdx);
 
   if (!base) return null;
 
-  // Player-only extra: fall back to iRacing's official `PlayerCarClassPosition`
-  // when the class position can't be derived from the order (no `CarIdxClass`).
-  const classPosition =
-    base.classPosition > 0
-      ? base.classPosition
-      : typeof telemetry.PlayerCarClassPosition === "number" && telemetry.PlayerCarClassPosition > 0
-        ? telemetry.PlayerCarClassPosition
-        : 0;
+  // Player-only extra: the class position falls back to iRacing's official
+  // `PlayerCarClassPosition` when the car's class is unknown — the shared
+  // derive-else-official policy (#711).
+  const classPosition = classPositionOrOfficial(
+    readCanonicalOrder(instance),
+    telemetry.CarIdxClass,
+    playerCarIdx,
+    telemetry.PlayerCarClassPosition,
+  );
 
   return { ...base, classPosition };
 }
@@ -1213,7 +1236,8 @@ export function getLivePosition(): LivePosition | null {
 /**
  * Live position of an ARBITRARY car from the same canonical frozen order as
  * {@link getLivePosition} (issue #622 — the opponent-pit "P{n}" number
- * resolves at speak time). Returns `null` when telemetry isn't resolvable,
+ * resolves at speak time): the latest tick's memoised order (#711). Returns
+ * `null` when telemetry isn't resolvable,
  * `carIdx` is invalid, or the car has no rank in the order. `classPosition`
  * is `0` when underivable (no `CarIdxClass`) — there is no official per-car
  * fallback here; consumers fall back to their emit-time payload instead.
@@ -1225,7 +1249,10 @@ export function getLiveCarPosition(carIdx: number): LivePosition | null {
 
   const telemetry = instance.latestTelemetry;
   const sessionInfo = instance.controller.getSessionInfo() as Record<string, unknown> | null;
-  const positions = resolveCanonicalOrder(instance.state, telemetry, sessionInfo);
+  const positions = readCanonicalOrder(instance);
+
+  if (!positions) return null;
+
   const position = positions[carIdx] ?? 0;
 
   if (position <= 0) return null;
@@ -1255,6 +1282,13 @@ export function getLiveCarPosition(carIdx: number): LivePosition | null {
  * for race sessions; callers gate non-race sessions themselves (where the
  * lap-progress order isn't the standings).
  *
+ * It is the latest tick's order, memoised (#711): between ticks every reader
+ * gets the very array the tick's order consumers received, frozen, so a
+ * reader's write throws rather than corrupting `diffOvertakes`' next-tick
+ * baseline. A frame the tick resolved no order for (a replay frame, a tick
+ * whose order step threw) is computed on its first read and shared by the
+ * reads after it.
+ *
  * Note: during replay, `handleTick` returns at the replay guard before
  * `updatePositionTracking` runs, so the frozen-anchor state isn't maintained and
  * this falls back to the plain lap-progress order (no tow/finish freezing) —
@@ -1264,13 +1298,33 @@ export function getLiveCarPosition(carIdx: number): LivePosition | null {
  * correct order to reconstruct.
  */
 export function getLiveRacePositions(): readonly number[] | null {
-  if (!instance || !instance.latestTelemetry) return null;
+  return instance ? readCanonicalOrder(instance) : null;
+}
 
-  return resolveCanonicalOrder(
-    instance.state,
-    instance.latestTelemetry,
-    instance.controller.getSessionInfo() as Record<string, unknown> | null,
-  );
+/**
+ * The canonical order for the latest telemetry, through
+ * {@link TranslatorInstance.canonicalOrderMemo} (#711): the memo on a match of
+ * the telemetry, session-info and state objects, else a fresh
+ * {@link resolveCanonicalOrder}, stored. `null` without telemetry. The memo's
+ * one reader, behind every public order accessor.
+ */
+function readCanonicalOrder(self: TranslatorInstance): readonly number[] | null {
+  const telemetry = self.latestTelemetry;
+
+  if (!telemetry) return null;
+
+  const sessionInfo = self.controller.getSessionInfo() as Record<string, unknown> | null;
+  const memo = self.canonicalOrderMemo;
+
+  if (memo && memo.telemetry === telemetry && memo.sessionInfo === sessionInfo && memo.state === self.state) {
+    return memo.positions;
+  }
+
+  const positions = resolveCanonicalOrder(self.state, telemetry, sessionInfo);
+
+  self.canonicalOrderMemo = { telemetry, sessionInfo, state: self.state, positions };
+
+  return positions;
 }
 
 /**
@@ -1283,6 +1337,10 @@ export function getLiveRacePositions(): readonly number[] | null {
  * `isRaceSession` is an optional pass-through for `handleTick`, which has
  * already derived it for the rest of the tick — deriving it twice would mean
  * re-reading and re-classifying the session YAML on every tick for no gain.
+ *
+ * The array is frozen (#711): the tick's order consumers, `diffOvertakes`'
+ * next-tick baseline and every reader between ticks share it, so a write must
+ * throw rather than corrupt the others.
  */
 function resolveCanonicalOrder(
   state: TranslatorState,
@@ -1290,11 +1348,13 @@ function resolveCanonicalOrder(
   sessionInfo: Record<string, unknown> | null,
   isRaceSession?: boolean,
 ): readonly number[] {
-  return calculateCanonicalRacePositions(
-    state,
-    telemetry,
-    sessionInfo,
-    isRaceSession ?? resolveSessionType(sessionInfo, telemetry) === "Race",
+  return Object.freeze(
+    calculateCanonicalRacePositions(
+      state,
+      telemetry,
+      sessionInfo,
+      isRaceSession ?? resolveSessionType(sessionInfo, telemetry) === "Race",
+    ),
   );
 }
 
@@ -2370,6 +2430,8 @@ function handleDisconnect(self: TranslatorInstance): void {
   // session change, but not the sim going away.
   self.state = createInitialState();
   self.latestTelemetry = null;
+  // The order belongs to the telemetry just dropped (#711).
+  self.canonicalOrderMemo = null;
   self.pitSpeedLimitMps = 0;
   self.pitSpeedLimitKey = "";
   self.sessionIdentity = createSessionIdentityBaseline();
@@ -3297,6 +3359,14 @@ function handleLiveSteps(
         resolveCanonicalOrder(self.state, telemetry, sessionInfo, isRaceSession),
       )
     : VALUE_UNAVAILABLE;
+  // The readers between ticks share this order (#711): written unconditionally
+  // here, after the tracking update, so it replaces any entry a mid-tick reader
+  // stored from this telemetry's pre-tracking anchors. Every reset this tick
+  // (session change, replay wipe) ran before this point and nothing since has
+  // replaced `self.state`, so it is the state the order was computed from.
+  // When the order or its tracking threw, no order is kept and a reader
+  // recomputes, as it would without the memo.
+  self.canonicalOrderMemo = order.ok ? { telemetry, sessionInfo, state: self.state, positions: order.value } : null;
 
   if (order.ok) {
     handleOrderSteps(self, telemetry, sessionInfo, now, pending, emit, {

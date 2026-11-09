@@ -44,6 +44,8 @@ import {
 import { DAMAGE_DEBOUNCE_MS } from "./diff/damage.js";
 import { YELLOW_CLEARED_HOLD_MS } from "./diff/flags.js";
 import { INCIDENT_BURST_QUIET_MS } from "./diff/incidents.js";
+import { updatePositionTracking } from "./diff/race-finish.js";
+import { calculateCanonicalRacePositions } from "./race-order.js";
 import type { TranslatorState } from "./state.js";
 import {
   _resetSimEventsIracing,
@@ -75,6 +77,20 @@ import {
   readSimState,
   resolveLeaderLapTimeS,
 } from "./translator.js";
+
+// Pass-through spies for the canonical order memo tests (#711): they count the
+// order's computations and make the tracking step throw once. Every other test
+// sees the real functions.
+vi.mock("./race-order.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./race-order.js")>();
+
+  return { ...actual, calculateCanonicalRacePositions: vi.fn(actual.calculateCanonicalRacePositions) };
+});
+vi.mock("./diff/race-finish.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./diff/race-finish.js")>();
+
+  return { ...actual, updatePositionTracking: vi.fn(actual.updatePositionTracking) };
+});
 
 function createMockLogger(): ILogger {
   return {
@@ -793,6 +809,384 @@ describe("sim-events-iracing translator", () => {
       // car1 leads: the pole sitter pre-green, the race leader after it.
       expect(resolveLeaderLapTimeS(paceTelemetry(SessionState.ParadeLaps), [2, 1, 3])).toBeNull();
       expect(resolveLeaderLapTimeS(paceTelemetry(SessionState.Racing), [2, 1, 3])).toBe(180.4);
+    });
+  });
+
+  describe("canonical order memo (#711)", () => {
+    // `calculateCanonicalRacePositions` and `updatePositionTracking` are
+    // pass-through spies (the `vi.mock`s at the top of this file), so these
+    // tests count the order's computations and can make the tracking step
+    // throw; every other test sees the real functions.
+    const calculateSpy = vi.mocked(calculateCanonicalRacePositions);
+    const trackingSpy = vi.mocked(updatePositionTracking);
+
+    /** A four-car race, all one class, the player at car 0. */
+    const RACE_INFO = {
+      DriverInfo: {
+        DriverCarIdx: 0,
+        Drivers: [
+          { CarIdx: 0, CarClassID: 10 },
+          { CarIdx: 1, CarClassID: 10 },
+          { CarIdx: 2, CarClassID: 10 },
+          { CarIdx: 3, CarClassID: 10 },
+        ],
+      },
+      SessionInfo: {
+        Sessions: [
+          { SessionNum: 0, SessionType: "Race" },
+          { SessionNum: 1, SessionType: "Race" },
+        ],
+      },
+    };
+
+    /**
+     * A green-flag race tick. Car 3 is in the world unless `car3Gone`, when it
+     * reads as iRacing reports a car mid-tow: −1 counters, `NotInWorld`.
+     */
+    function raceTick(
+      lapDistPct: [number, number, number, number],
+      { car3Gone = false, ...overrides }: Partial<TelemetryData> & { car3Gone?: boolean } = {},
+    ): TelemetryData {
+      return telemetry({
+        SessionState: SessionState.Racing,
+        CarIdxLapCompleted: [10, 10, 10, car3Gone ? -1 : 9],
+        CarIdxLapDistPct: car3Gone ? [lapDistPct[0], lapDistPct[1], lapDistPct[2], -1] : [...lapDistPct],
+        CarIdxTrackSurface: [
+          TrkLoc.OnTrack,
+          TrkLoc.OnTrack,
+          TrkLoc.OnTrack,
+          car3Gone ? TrkLoc.NotInWorld : TrkLoc.OnTrack,
+        ],
+        CarIdxClass: [10, 10, 10, 10],
+        ...overrides,
+      });
+    }
+
+    /** The translator's state after the latest tick, read the way a Telemetry Snapshot reads it. */
+    function translatorState(): TranslatorState {
+      const snapshot = readSimState();
+
+      if (!snapshot.initialized) throw new Error("translator not initialized");
+
+      return snapshot.raw.state;
+    }
+
+    function start(options: { onStepError?: "rethrow" | "report" } = {}): MockController {
+      const controller = createMockController();
+      controller.__setSessionInfo(RACE_INFO);
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), {
+        onStepError: options.onStepError ?? "rethrow",
+      });
+
+      return controller;
+    }
+
+    /**
+     * Ticks until car 3 is frozen at its last on-track score (9.5) while it is
+     * out of the world, so the canonical order still ranks it P4. A reset that
+     * forgets the anchor drops it from the order (rank 0).
+     */
+    function freezeCar3(controller: MockController): void {
+      controller.__tick(raceTick([0.1, 0.5, 0.3, 0.5]));
+      controller.__tick(raceTick([0.11, 0.51, 0.31, 0.5], { car3Gone: true }));
+
+      expect(translatorState().positionFrozen.has(3)).toBe(true);
+      expect(getLiveRacePositions()).toEqual([3, 1, 2, 4]);
+    }
+
+    beforeEach(() => {
+      calculateSpy.mockClear();
+      trackingSpy.mockClear();
+    });
+
+    it("computes the order once per tick for every reader, not once per read", () => {
+      const controller = start();
+
+      controller.__tick(raceTick([0.1, 0.5, 0.3, 0.5]));
+
+      // The order step and the leader check (#771), which ranks the field
+      // before the tracking update and keeps its own computation.
+      expect(calculateSpy).toHaveBeenCalledTimes(2);
+
+      getLiveRacePositions();
+      getLiveRacePositions();
+      getLivePosition();
+      getLivePosition();
+      getLiveCarPosition(1);
+
+      // Without the memo every read recomputes: 2 + 5 = 7.
+      expect(calculateSpy).toHaveBeenCalledTimes(2);
+    });
+
+    it("hands every reader the array the tick's order step computed", () => {
+      const controller = start();
+
+      controller.__tick(raceTick([0.1, 0.5, 0.3, 0.5]));
+
+      // The leader check runs before the tracking update (#1278), so the order
+      // step's is the second computation of the tick.
+      expect(calculateSpy).toHaveBeenCalledTimes(2);
+      const leaderCheck = calculateSpy.mock.results[0]?.value as number[];
+      const orderStep = calculateSpy.mock.results[1]?.value as number[];
+
+      expect(leaderCheck).not.toBe(orderStep);
+      expect(getLiveRacePositions()).toBe(orderStep);
+      // `diffOvertakes` keeps the array it was handed as its next baseline: the same object.
+      expect(translatorState().lastFrozenPositions).toBe(orderStep);
+
+      const snapshot = readSimState();
+
+      if (!snapshot.initialized || "curatedError" in snapshot) throw new Error("no full snapshot");
+
+      expect(snapshot.order.positions).toBe(orderStep);
+    });
+
+    it("serves the new order after the next tick", () => {
+      const controller = start();
+
+      controller.__tick(raceTick([0.3, 0.32, 0.31, 0.5]));
+      expect(getLiveRacePositions()).toEqual([3, 1, 2, 4]);
+
+      // Car 0 passes car 2 and car 1, every car advancing less than a
+      // teleport's jump in the tick, so nobody freezes.
+      controller.__tick(raceTick([0.34, 0.33, 0.32, 0.51]));
+      const orderStep = calculateSpy.mock.results.at(-1)?.value as number[];
+
+      expect(getLiveRacePositions()).toBe(orderStep);
+      expect(getLiveRacePositions()).toEqual([1, 2, 3, 4]);
+      expect(getLivePosition()).toEqual({ position: 1, classPosition: 1, isMultiClass: false });
+    });
+
+    it("recomputes once when the session info is replaced between ticks", () => {
+      const controller = start();
+
+      controller.__tick(raceTick([0.1, 0.5, 0.3, 0.5]));
+      getLiveRacePositions();
+      expect(calculateSpy).toHaveBeenCalledTimes(2);
+
+      // A YAML update: the SDK parses a new object, same content.
+      controller.__setSessionInfo({ ...RACE_INFO });
+      const recomputed = getLiveRacePositions();
+
+      expect(calculateSpy).toHaveBeenCalledTimes(3);
+      expect(recomputed).toEqual([3, 1, 2, 4]);
+      // ...and that recomputation is the one the next reads share.
+      expect(getLiveRacePositions()).toBe(recomputed);
+      expect(getLiveCarPosition(1)?.position).toBe(1);
+      expect(calculateSpy).toHaveBeenCalledTimes(3);
+    });
+
+    it("forgets a frozen car across a session change", () => {
+      const controller = start();
+
+      freezeCar3(controller);
+      controller.__tick(raceTick([0.12, 0.52, 0.32, 0.5], { car3Gone: true, SessionNum: 1 }));
+
+      expect(getLiveRacePositions()).toEqual([3, 1, 2, 0]);
+      expect(getLiveCarPosition(3)).toBeNull();
+    });
+
+    it("forgets a frozen car across a disconnect and reconnect", () => {
+      const controller = start();
+
+      freezeCar3(controller);
+      controller.__tick(null, false);
+
+      expect(getLiveRacePositions()).toBeNull();
+      expect(getLivePosition()).toBeNull();
+
+      controller.__tick(raceTick([0.12, 0.52, 0.32, 0.5], { car3Gone: true }));
+
+      expect(getLiveRacePositions()).toEqual([3, 1, 2, 0]);
+    });
+
+    it("forgets a frozen car at the replay wipe, even after a read on the same frame before the wipe", () => {
+      const controller = start();
+      const readsInTeardown: Array<readonly number[] | null> = [];
+
+      // An active radar makes the replay-entry teardown publish
+      // `radar.changed → clear` before `wipeStateForReplay`, on the replay
+      // frame's own telemetry object: a reader there ranks the pre-wipe state.
+      getEventBus().subscribe("radar.changed", (ev) => {
+        if (ev.data.to === "clear") readsInTeardown.push(getLiveRacePositions());
+      });
+
+      controller.__tick(raceTick([0.1, 0.5, 0.3, 0.5]));
+      controller.__tick(raceTick([0.11, 0.51, 0.31, 0.5], { car3Gone: true, CarLeftRight: CarLeftRight.CarLeft }));
+      expect(getLiveRacePositions()).toEqual([3, 1, 2, 4]);
+
+      calculateSpy.mockClear();
+      controller.__tick(
+        raceTick([0.11, 0.51, 0.31, 0.5], {
+          car3Gone: true,
+          CarLeftRight: CarLeftRight.CarLeft,
+          IsReplayPlaying: true,
+        }),
+      );
+
+      expect(readsInTeardown).toEqual([[3, 1, 2, 4]]);
+      expect(calculateSpy).toHaveBeenCalledTimes(1);
+
+      // Same telemetry, same session info, but a new state object: the key
+      // misses, so the read ranks the wiped state, where car 3 has no anchor.
+      expect(getLiveRacePositions()).toEqual([3, 1, 2, 0]);
+      expect(calculateSpy).toHaveBeenCalledTimes(2);
+    });
+
+    it("drops a mid-tick read when the tracking step throws, so the next read ranks the post-tick state", async () => {
+      const { updatePositionTracking: realTracking } =
+        await vi.importActual<typeof import("./diff/race-finish.js")>("./diff/race-finish.js");
+      const { calculateCanonicalRacePositions: realCalculate } =
+        await vi.importActual<typeof import("./race-order.js")>("./race-order.js");
+      const controller = start({ onStepError: "report" });
+      const readsInSessionChanged: Array<readonly number[] | null> = [];
+
+      controller.__tick(raceTick([0.1, 0.5, 0.3, 0.5]));
+      getEventBus().subscribe("session.changed", () => readsInSessionChanged.push(getLiveRacePositions()));
+
+      // The tracking step writes car 1's anchor half-way and throws: the state
+      // after the tick ranks car 1 last, while the subscriber, before it, saw
+      // car 1 lead on the same telemetry, session info and (post-reset) state.
+      trackingSpy.mockImplementationOnce((state, tick) => {
+        realTracking(state, tick);
+        state.positionLastKnownScores[1] = 0;
+        state.positionFrozen.add(1);
+        throw new Error("tracking failed half-way");
+      });
+      const sessionChange = raceTick([0.11, 0.51, 0.31, 0.51], { SessionNum: 1 });
+
+      controller.__tick(sessionChange);
+
+      expect(trackingSpy).toHaveBeenCalledTimes(2);
+      expect(readsInSessionChanged).toEqual([[3, 1, 2, 4]]);
+
+      const fresh = realCalculate(translatorState(), sessionChange, RACE_INFO, true);
+
+      expect(fresh).toEqual([2, 4, 1, 3]);
+      expect(getLiveRacePositions()).toEqual(fresh);
+    });
+
+    it("computes a replay frame's order once, on its first read, as the plain lap-progress order", () => {
+      const controller = start();
+
+      controller.__tick(raceTick([0.1, 0.5, 0.3, 0.5]));
+      calculateSpy.mockClear();
+      controller.__tick(raceTick([0.11, 0.51, 0.31, 0.5], { car3Gone: true, IsReplayPlaying: true }));
+
+      // The guard returns before the order step.
+      expect(calculateSpy).not.toHaveBeenCalled();
+
+      const first = getLiveRacePositions();
+      const second = getLiveRacePositions();
+
+      expect(calculateSpy).toHaveBeenCalledTimes(1);
+      expect(second).toBe(first);
+      expect(first).toEqual([3, 1, 2, 0]);
+      expect(getLiveCarPosition(1)?.position).toBe(1);
+      expect(calculateSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it("freezes the shared array, so a reader's write throws instead of corrupting the next tick's baseline", () => {
+      const controller = start();
+
+      controller.__tick(raceTick([0.1, 0.5, 0.3, 0.5]));
+      const live = getLiveRacePositions();
+
+      expect(Object.isFrozen(live)).toBe(true);
+      expect(() => {
+        (live as unknown as number[])[0] = 99;
+      }).toThrow(TypeError);
+
+      // A lazily computed order (a replay frame) is frozen too.
+      controller.__tick(raceTick([0.11, 0.51, 0.31, 0.51], { IsReplayPlaying: true }));
+      expect(Object.isFrozen(getLiveRacePositions())).toBe(true);
+    });
+
+    describe("equivalence over a capture", () => {
+      type GapTick = {
+        t: number;
+        SessionFlags: number;
+        SessionState: number;
+        PaceMode: number;
+        CarIdxPaceLine: number[];
+        CarIdxPaceRow: number[];
+        CarIdxPaceFlags: number[];
+        CarIdxLapCompleted: number[];
+        CarIdxLapDistPct: number[];
+        CarIdxTrackSurface: number[];
+      };
+      const capture = JSON.parse(
+        readFileSync(new URL("./diff/__fixtures__/caution-gap-20261002.json", import.meta.url), "utf-8"),
+      ) as GapTick[];
+      /** Each snapshot is held for a few ticks, as the sim keeps ticking between changes. */
+      const HOLD_TICKS = 3;
+      /**
+       * The capture has no tow, so one car is towed into it: from the last held
+       * tick of the first snapshot it reads as iRacing reports a car mid-tow
+       * (−1 counters, `NotInWorld`). Its freeze changes the order on that very
+       * tick — before the tracking update it is unranked, after it is held at
+       * its anchor — which is what a memo written ahead of the tracking update
+       * would get wrong. (The snapshot gaps themselves read as teleports and
+       * freeze most of the field from the second snapshot on, but at the rank
+       * each car already held, so on their own they change no order.)
+       */
+      const TOWED_CAR = 5;
+      const TOW_FROM_TICK = HOLD_TICKS - 1;
+
+      it(
+        "serves on every tick exactly what a fresh computation on that tick's inputs returns — the anchors are " +
+          "written in place only by updatePositionTracking, before the order step writes the memo",
+        async () => {
+          const { calculateCanonicalRacePositions: realCalculate } =
+            await vi.importActual<typeof import("./race-order.js")>("./race-order.js");
+          const sessionInfo = {
+            DriverInfo: { DriverCarIdx: 0, PaceCarIdx: 20 },
+            SessionInfo: { Sessions: [{ SessionNum: 0, SessionType: "Race" }] },
+          };
+          const controller = createMockController();
+          controller.__setSessionInfo(sessionInfo);
+          initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
+
+          const towedFrozenAt: number[] = [];
+          let tickIndex = 0;
+
+          for (const snapshot of capture) {
+            for (let hold = 0; hold < HOLD_TICKS; hold++, tickIndex++) {
+              const towed = tickIndex >= TOW_FROM_TICK;
+              const withTow = (values: number[], value: number): number[] =>
+                towed ? values.map((v, i) => (i === TOWED_CAR ? value : v)) : values;
+              const tick = telemetry({
+                SessionTime: snapshot.t + hold * 0.25,
+                SessionFlags: snapshot.SessionFlags,
+                SessionState: snapshot.SessionState,
+                PaceMode: snapshot.PaceMode,
+                CarIdxPaceLine: snapshot.CarIdxPaceLine,
+                CarIdxPaceRow: snapshot.CarIdxPaceRow,
+                CarIdxPaceFlags: snapshot.CarIdxPaceFlags,
+                CarIdxLapCompleted: withTow(snapshot.CarIdxLapCompleted, -1),
+                CarIdxLapDistPct: withTow(snapshot.CarIdxLapDistPct, -1),
+                CarIdxTrackSurface: withTow(snapshot.CarIdxTrackSurface, TrkLoc.NotInWorld),
+              });
+              const wasFrozen = translatorState().positionFrozen.has(TOWED_CAR);
+
+              controller.__tick(tick);
+
+              const state = translatorState();
+
+              if (!wasFrozen && state.positionFrozen.has(TOWED_CAR)) towedFrozenAt.push(tickIndex);
+
+              expect(getLiveRacePositions(), `tick ${tickIndex}`).toEqual(
+                realCalculate(state, tick, sessionInfo, true),
+              );
+            }
+          }
+
+          // Vacuity guard: the towed car froze on its tow's first tick and is
+          // still ranked (held at its anchor) at the end, not dropped.
+          expect(towedFrozenAt).toEqual([TOW_FROM_TICK]);
+          expect(getLiveRacePositions()?.[TOWED_CAR]).toBeGreaterThan(0);
+        },
+      );
     });
   });
 
