@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { isDryRun, main, parseReleaseVersion, releaseItArgs, releaseVersionArgs } from "./release.mjs";
+import { isDryRun, main, parseReleaseVersion, releaseItArgs, releaseVersionArgs, withCi } from "./release.mjs";
 
 const ok = (stdout = "") => ({ status: 0, stdout, stderr: "", signal: null, output: [], pid: 1 });
 const failed = (status, stdout = "") => ({ ...ok(stdout), status });
@@ -49,6 +49,12 @@ describe("the argument helpers", () => {
     expect(releaseVersionArgs(["--preRelease=rc", "-d"])).toEqual(["--preRelease=rc", "--release-version"]);
   });
 
+  it("adds --ci once", () => {
+    expect(withCi(["9.9.9", "--dry-run"])).toEqual(["9.9.9", "--dry-run", "--ci"]);
+    expect(withCi(["--dry-run", "--ci"])).toEqual(["--dry-run", "--ci"]);
+    expect(withCi([])).toEqual(["--ci"]);
+  });
+
   it("reads the version as the last non-empty stdout line, and only a semver one", () => {
     expect(parseReleaseVersion("9.9.9-rc.1\n")).toBe("9.9.9-rc.1");
     expect(parseReleaseVersion("WARNING something\n3.9.0\r\n\n")).toBe("3.9.0");
@@ -95,6 +101,19 @@ describe("pnpm release:dry (main with a dry-run flag)", () => {
 
     main(["-d"], deps);
 
+    expect(deps.runHook.mock.calls[0][0]).toBe("3.9.0");
+  });
+
+  // Interactively, release-it's own dry run would prompt for a version and let
+  // the maintainer pick one the preview did not describe; with `--ci` it
+  // resolves the version exactly as the probe did, and a prompt in a dry run
+  // decides nothing anyway.
+  it("runs release-it's dry run with --ci, so it resolves the same version the preview described", () => {
+    const { deps, calls } = fakes({ version: ok("3.9.0\n") });
+
+    main(["--dry-run"], deps);
+
+    expect(calls()).toEqual([["--release-version"], ["--dry-run", "--ci"]]);
     expect(deps.runHook.mock.calls[0][0]).toBe("3.9.0");
   });
 

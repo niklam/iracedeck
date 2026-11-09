@@ -69,6 +69,17 @@ export function releaseVersionArgs(args) {
 }
 
 /**
+ * `args` with `--ci` once: release-it then resolves the version from the
+ * arguments and its default increment, as `--release-version` does, instead of
+ * prompting for one.
+ *
+ * @param {readonly string[]} args
+ */
+export function withCi(args) {
+  return args.includes("--ci") ? [...args] : [...args, "--ci"];
+}
+
+/**
  * The version from `release-it --release-version`'s stdout: its last non-empty
  * line, which must be a semver version. `null` for anything else, so a warning
  * or an error that landed on stdout is never run through the hook as a
@@ -166,7 +177,11 @@ export function main(
     }
   }
 
-  const result = runReleaseIt(args, { stdio: "inherit", env: childEnv });
+  // A dry run runs with `--ci`, so release-it resolves the version the way the
+  // probe did instead of prompting for one: interactively its version prompt
+  // would otherwise let the maintainer pick a version the preview above did not
+  // describe, and a prompt in a dry run decides nothing anyway.
+  const result = runReleaseIt(isDryRun(args) ? withCi(args) : args, { stdio: "inherit", env: childEnv });
 
   if (result.error) {
     error(String(result.error));
