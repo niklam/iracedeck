@@ -39,8 +39,6 @@ Behaviour that affects every key you press.
 
 **Focus iRacing** brings iRacing to the foreground before iRaceDeck sends input, so a press isn't lost to whatever window happened to have focus. **Always** (the default) does it before every press; **When required** does it only before a keyboard binding, a chat command or a touch-strip gesture that taps a binding — a key that talks to iRacing over its own API arrives whatever has focus, and a binding set to a SimHub role is handed to SimHub rather than pressed here, so neither pulls the sim over your window; **Never** turns it off. See [Focus iRacing Window](/docs/features/focus-iracing-window/).
 
-**Disable buttons when iRacing is not connected** greys out your keys and ignores presses while iRacing isn't running, so a stray press can't fire keystrokes into whatever else is in the foreground.
-
 **Mouse to Sim** decides where the [Mouse to Sim](/docs/actions/view-camera/view-adjustment/#mouse-to-sim) key parks your pointer inside the iRacing window. Pick a **Horizontal** and a **Vertical** anchor — a corner, an edge or the centre — then nudge the pointer away from it with the two **offset** sliders, which are percentages of the window (positive moves right and down), so your target holds its place at any resolution. The default, Center with Top plus 12.5%, lands on iRacing's own on-screen UI band, which is where the key has always put the pointer.
 
 **Dual-press** governs the keys and dials that do one thing on a tap and another on a hold. The **long-press threshold** is how long you must hold a key or dial before it counts as a long press, and it applies to every long press: the setup keys, the dials and the Press Sounds double bleep — shorter feels snappier, longer is more forgiving if you catch keys accidentally. **Directions** picks which way a tap goes on a setup key's View sub-mode; the hold always fires the opposite.
@@ -59,7 +57,7 @@ The same bindings also appear in each key's Property Inspector, filtered to just
 
 ### Appearance
 
-![The Appearance tab, showing title, colour, border, graphic and flag-flash defaults](../../../../assets/settings-window/appearance.png)
+![The Appearance tab, showing title, colour, border, graphic and flag-flash defaults and the Disconnected Keys setting](../../../../assets/settings-window/appearance.png)
 
 The look every key inherits. Anything set here is a **default**: a key that has its own override in its Property Inspector keeps it.
 
@@ -67,6 +65,15 @@ The look every key inherits. Anything set here is a **default**: a key that has 
 - **Colour defaults** — background, text and the two graphic slots, with **Default / White / Black** presets as a quick way to recolour the whole plugin. Some icons lock individual slots so their semantic colours (a green arrow, a red indicator) survive a preset.
 - **Border defaults** and **Graphic scale** — the border drawn around keys, and how large the artwork is drawn inside them (50–150%).
 - **Flag flash** — how long the flag overlay flashes after a new flag. Set it to `0` to keep flashing for as long as the flag is out.
+- **Disconnected Keys** — whether keys that need iRacing are dimmed while it isn't running (below). This one is not a default: it applies to every key, and no key overrides it.
+
+#### Disconnected Keys
+
+Turn on **Dim keys that need iRacing** to see at a glance which keys can't do anything while iRacing isn't running. Every such key is dimmed, with a small disconnected badge in its top-left corner. The key's own icon and title stay visible underneath, and any other look it has, such as the ⚠ of a missing key binding or the grey of a replay key with nothing to jump to, is dimmed along with it. It is off by default.
+
+The keys dim about 5 seconds after iRacing closes, or after the plugin starts with iRacing closed, so a brief drop in the connection never makes them flicker. They return to normal as soon as iRacing connects again. Pressing a dimmed key still sends the press.
+
+Keys that work without iRacing keep their normal look: [Pit Crew](/docs/actions/audio-voice/pit-crew/), [Switch Profile](/docs/actions/stream-deck/switch-profile/), the [Race Engineer Volume](/docs/actions/audio-voice/audio-controls/#race-engineer-volume) and [Radar Volume](/docs/actions/audio-voice/audio-controls/#radar-volume) keys of Audio Controls, and [Capture CPU Profile](/docs/actions/cockpit/telemetry-control/#capture-cpu-profile) on Telemetry Control. A key whose binding is set to a SimHub role is dimmed like any other, because SimHub passes the press on to iRacing. Dials and the Stream Deck + touch strip are not dimmed.
 
 ### Race Engineer
 

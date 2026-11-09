@@ -46,7 +46,7 @@ SimHub Control Mapper lets you map physical controller inputs (buttons, switches
 
 iRaceDeck connects to SimHub's HTTP API to fetch available roles and trigger them. The default connection is `127.0.0.1:8888` (SimHub's default). If your SimHub instance runs on a different host or port, update them in the [Settings window](/docs/getting-started/settings/#simhub), on the **SimHub** tab.
 
-When SimHub is not running or unreachable, bindings configured in SimHub mode will show an inactive overlay on the button.
+A key bound to a SimHub role needs both SimHub and iRacing running. Its look does not change while SimHub is unreachable. While iRacing isn't running it is dimmed like any other key that needs iRacing, if you have turned on [Disconnected Keys](/docs/getting-started/settings/#disconnected-keys).
 
 ## SDK vs Keyboard Actions
 
