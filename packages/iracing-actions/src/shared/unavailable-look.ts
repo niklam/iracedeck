@@ -8,7 +8,7 @@
  * `assembleIcon`'s `dimmed` — so a customised key still reads as itself, only
  * switched off.
  */
-import { hexToGrayscale } from "@iracedeck/deck-core";
+import { hexToGrayscale } from "@iracedeck/icon-composer";
 
 /** What an unavailable key hands `assembleIcon` in place of its resolved colours and border. */
 export interface UnavailableLook<B extends { borderColor: string }> {

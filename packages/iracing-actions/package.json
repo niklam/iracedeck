@@ -24,6 +24,7 @@
     "@iracedeck/deck-iracing": "workspace:*",
     "@iracedeck/diagnostics": "workspace:*",
     "@iracedeck/event-bus": "workspace:*",
+    "@iracedeck/icon-composer": "workspace:*",
     "@iracedeck/icons": "workspace:*",
     "@iracedeck/iracing-sdk": "workspace:*",
     "@iracedeck/logger": "workspace:*",

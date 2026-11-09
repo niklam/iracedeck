@@ -743,6 +743,9 @@ importers:
       '@iracedeck/event-bus':
         specifier: workspace:*
         version: link:../event-bus
+      '@iracedeck/icon-composer':
+        specifier: workspace:*
+        version: link:../icon-composer
       '@iracedeck/icons':
         specifier: workspace:*
         version: link:../icons
