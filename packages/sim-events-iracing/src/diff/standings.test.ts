@@ -91,6 +91,8 @@ describe("lapProgress", () => {
     { name: "a missing CarIdxLapDistPct entry", field: { CarIdxLapCompleted: [10], CarIdxLapDistPct: [] } },
     { name: "a negative CarIdxLapCompleted", field: { CarIdxLapCompleted: [-1], CarIdxLapDistPct: [0.5] } },
     { name: "a negative CarIdxLapDistPct", field: { CarIdxLapCompleted: [10], CarIdxLapDistPct: [-1] } },
+    { name: "a NaN CarIdxLapCompleted", field: { CarIdxLapCompleted: [NaN], CarIdxLapDistPct: [0.5] } },
+    { name: "a NaN CarIdxLapDistPct", field: { CarIdxLapCompleted: [10], CarIdxLapDistPct: [NaN] } },
   ])("is null for $name", ({ field }) => {
     expect(lapProgress(tel(field), 0)).toBeNull();
   });

@@ -53,14 +53,18 @@ export function standingPosition(
 /**
  * A car's lap-progress score, `CarIdxLapCompleted + CarIdxLapDistPct`.
  *
- * @returns The score, or `null` when either reading is missing or negative —
- * never a `0` stand-in, which could misread a lapped car as on the same lap
+ * @returns The score, or `null` when either reading is missing, negative or
+ * not finite — never a `0` stand-in, which could misread a lapped car as on
+ * the same lap, and never a `NaN`, against which every lap comparison is false
+ * and a car would read as on the same lap
  */
 export function lapProgress(telemetry: TelemetryData, carIdx: number): number | null {
   const lc = telemetry.CarIdxLapCompleted?.[carIdx];
   const dp = telemetry.CarIdxLapDistPct?.[carIdx];
 
-  if (typeof lc !== "number" || typeof dp !== "number" || lc < 0 || dp < 0) return null;
+  if (typeof lc !== "number" || typeof dp !== "number" || !Number.isFinite(lc) || !Number.isFinite(dp)) return null;
+
+  if (lc < 0 || dp < 0) return null;
 
   return lc + dp;
 }
