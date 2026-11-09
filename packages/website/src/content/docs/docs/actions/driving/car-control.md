@@ -22,16 +22,22 @@ Toggle the pit speed limiter.
 - **Method:** Key binding
 - **Dial:** No rotation support
 - **Default binding:** `A`
-- **Telemetry-aware icon:** Yes — the icon is tri-state and reflects the current pit limiter state from iRacing telemetry in real time. Every state keeps the pit-speed-limit number (a track value, so it stays meaningful even on cars with no limiter) and shows the state on a status bar at the bottom, matching the other tri-state buttons (Fast Repair, Windshield Tear-off, Auto-Fuel):
+- **Telemetry-aware icon:** Yes — the icon is tri-state and reflects the current pit limiter state from iRacing telemetry in real time. Every state keeps the pit-speed-limit number, a whole number in the unit chosen under **Unit** (a track value, so it stays meaningful even on cars with no limiter), and shows the state on a status bar at the bottom, matching the other tri-state buttons (Fast Repair, Windshield Tear-off, Auto-Fuel):
   - **On** — green `ON` bar and green border
   - **Off** — red `OFF` bar and red border
   - **Not available** — on cars without a pit limiter, a grey `N/A` bar and grey border, so you can tell at a glance the car has no limiter while still seeing the pit-speed limit. The button stays usable — pressing it still sends the configured binding.
 
 The `PIT LIMITER` title is hidden by default so the speed number can be shown larger; enable it from the Title Overrides section if you want the label (the number then shrinks to make room).
 
-#### Settings
+#### Setting: Unit
 
-- No additional settings
+The unit the pit-speed-limit number is shown in. Defaults to **Auto (from iRacing)**. The key shows the number alone, rounded to a whole number, with no unit label.
+
+- **Auto (from iRacing)** (default) — km/h or mph, following your iRacing display units
+- **km/h** — Kilometers per hour
+- **mph** — Miles per hour
+
+A limit the track posts in mph shows as posted: a 45 mph pit lane reads `45` in mph and `72` in km/h. Before a session loads, the key shows a placeholder of 80 km/h, which reads `50` in mph.
 
 ---
 
