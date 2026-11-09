@@ -42,13 +42,17 @@ export abstract class ConnectionStateAwareAction<T = Record<string, unknown>> ex
    * presence signal's subscription is queued and replayed at initialisation.
    */
   override async onWillAppear(ev: IDeckWillAppearEvent<T>): Promise<void> {
-    await super.onWillAppear(ev);
-
+    // Before awaiting super, whose first-appearance settings write can let this
+    // context's onWillDisappear run in between: recorded first, that
+    // disappearance removes it again; recorded after, the dead context would
+    // stay live and hold the listener for good.
     this.liveContexts.add(ev.action.id);
 
     if (!this.presenceUnsubscribe) {
-      this.presenceUnsubscribe = onSimPresenceChange(() => this.refreshAllImages());
+      this.presenceUnsubscribe = onSimPresenceChange(() => this.onSimPresenceChanged());
     }
+
+    await super.onWillAppear(ev);
   }
 
   /**
@@ -94,6 +98,18 @@ export abstract class ConnectionStateAwareAction<T = Record<string, unknown>> ex
       isSimAbsent() &&
       this.needsSim(this.getContextSettings(contextId))
     );
+  }
+
+  /**
+   * The sim's presence changed: push again only the keys whose image can
+   * change with it. With the setting off no key shows the look either way,
+   * and a key whose mode needs no sim never shows it, so both are skipped
+   * rather than re-sent (and, on Mirabox and Ulanzi, re-rasterised).
+   */
+  private onSimPresenceChanged(): void {
+    if (getGlobalSettings().showDisconnectedState !== true) return;
+
+    this.refreshAllImages((contextId) => this.needsSim(this.getContextSettings(contextId)));
   }
 
   // --- Connection and bindings ---

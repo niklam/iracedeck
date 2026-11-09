@@ -206,16 +206,33 @@ export abstract class BaseAction<T = Record<string, unknown>> implements IDeckAc
    * behind {@link showsDisconnected} changes (the sim's presence). Contexts
    * showing a flag-overlay frame are skipped; the flash's restore decorates
    * them when it ends.
+   *
+   * @param only - When given, only the contexts it returns `true` for are
+   *   pushed, so a change that cannot alter some keys' images skips them. A
+   *   throw from it pushes that context anyway, as an unfiltered refresh would.
    */
-  protected refreshAllImages(): void {
+  protected refreshAllImages(only?: (contextId: string) => boolean): void {
     for (const [contextId, { action, svg }] of this.contexts) {
       // Skip contexts with active flag overlay
       if (this.flagOverlayActive.has(contextId)) continue;
+
+      if (only && !this.isIncluded(only, contextId)) continue;
 
       const finalImage = this.decorateKeyImage(contextId, svg);
       action.setImage(finalImage).catch((err) => {
         this.logger.warn(`Failed to refresh image for context ${contextId}: ${err}`);
       });
+    }
+  }
+
+  /** A {@link refreshAllImages} filter's answer for one context; `true` when the filter throws. */
+  private isIncluded(only: (contextId: string) => boolean, contextId: string): boolean {
+    try {
+      return only(contextId);
+    } catch (err) {
+      this.logger.debug(`refreshAllImages: filter failed for context ${contextId}, pushing it anyway: ${err}`);
+
+      return true;
     }
   }
 

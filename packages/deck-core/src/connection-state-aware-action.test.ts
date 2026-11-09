@@ -245,12 +245,42 @@ describe("ConnectionStateAwareAction", () => {
       expect(presenceListeners.size).toBe(1);
     });
 
-    it("pushes every live key's image again on a presence change", async () => {
-      await action.onWillAppear(contextEvent("ctx-1"));
+    it("pushes again only the live keys whose mode needs the sim on a presence change", async () => {
+      await action.onWillAppear(contextEvent("ctx-sim"));
+      await action.onWillAppear(contextEvent("ctx-local"));
+      action.setContextSettings("ctx-sim", { mode: "sim" });
+      action.setContextSettings("ctx-local", { mode: "local" });
 
       for (const listener of presenceListeners) listener(true);
 
-      expect(getRefreshAllImages(action)).toHaveBeenCalledOnce();
+      const refresh = getRefreshAllImages(action);
+      expect(refresh).toHaveBeenCalledOnce();
+
+      const only = refresh.mock.calls[0][0] as (contextId: string) => boolean;
+      expect([only("ctx-sim"), only("ctx-local")]).toEqual([true, false]);
+    });
+
+    it("pushes nothing on a presence change while the setting is off: no key's image can change", async () => {
+      await action.onWillAppear(contextEvent("ctx-1"));
+      mockGetGlobalSettings.mockReturnValue({ showDisconnectedState: false });
+
+      for (const listener of presenceListeners) listener(true);
+
+      expect(getRefreshAllImages(action)).not.toHaveBeenCalled();
+    });
+
+    it("is released when the key disappears while its appearance is still awaiting the base class", async () => {
+      let finishAppear!: () => void;
+      vi.spyOn(BaseAction.prototype, "onWillAppear").mockImplementationOnce(
+        () => new Promise<void>((resolve) => (finishAppear = resolve)),
+      );
+
+      const appearing = action.onWillAppear(contextEvent("ctx-1"));
+      await action.onWillDisappear(contextEvent("ctx-1"));
+      finishAppear();
+      await appearing;
+
+      expect(presenceListeners.size).toBe(0);
     });
 
     it("stays while another context is live, so one key leaving never stops the other's updates", async () => {

@@ -77,8 +77,8 @@ class TestAction extends BaseAction {
   }
 
   // Expose protected refreshAllImages, which the presence listener calls.
-  refreshAll(): void {
-    this.refreshAllImages();
+  refreshAll(only?: (contextId: string) => boolean): void {
+    this.refreshAllImages(only);
   }
 
   // Expose the protected `flagOverlayActive` set for assertions.
@@ -1258,6 +1258,31 @@ describe("BaseAction disconnected look: the one image funnel (#1599)", () => {
 
     expect(lastImage(first)).toBe(decorated("<svg>a</svg>"));
     expect(lastImage(second)).toBe("<svg>b</svg>");
+  });
+
+  it("refreshAllImages with a filter pushes only the contexts it selects", async () => {
+    const action = new TestAction();
+    const first = fakeKey("ctx-a");
+    const second = fakeKey("ctx-b");
+    await action.registerKey(appearEvent(first), "<svg>a</svg>");
+    await action.registerKey(appearEvent(second), "<svg>b</svg>");
+    vi.mocked(first.setImage).mockClear();
+    vi.mocked(second.setImage).mockClear();
+
+    action.refreshAll((contextId) => contextId === "ctx-a");
+
+    expect(first.setImage).toHaveBeenCalledOnce();
+    expect(second.setImage).not.toHaveBeenCalled();
+  });
+
+  it("refreshAllImages pushes a context whose filter throws, as an unfiltered refresh would", async () => {
+    const { action, key } = await onScreen();
+
+    action.refreshAll(() => {
+      throw new Error("bad settings");
+    });
+
+    expect(key.setImage).toHaveBeenCalledOnce();
   });
 
   it("refreshAllImages skips a context showing a flag frame", async () => {
