@@ -320,6 +320,18 @@ export class PitCrew extends SimIRacingAction<PitCrewSettings> {
   /** Per-context unsubscribe callback for the global-settings listener. */
   private readonly listenerUnsubs = new Map<string, () => void>();
 
+  /**
+   * No Pit Crew key needs the sim (#1599): every mode — Race Engineer, Radar,
+   * Radar Volume, Corner Names — changes one of the plugin's own settings, so
+   * none shows the disconnected look while iRacing is closed.
+   *
+   * @param settings - The context's raw settings; every mode gives the same answer
+   */
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  protected override needsSim(settings: unknown): boolean {
+    return false;
+  }
+
   override async onWillAppear(ev: IDeckWillAppearEvent<PitCrewSettings>): Promise<void> {
     await super.onWillAppear(ev);
 
@@ -352,13 +364,13 @@ export class PitCrew extends SimIRacingAction<PitCrewSettings> {
     applyRadarEnabled();
     applyRaceEngineerAudio();
 
-    // Telemetry-connect radio check (issue #554). The base class already
-    // subscribes for readiness tracking; this is a *second* subscription
-    // dedicated to detecting false→true connection transitions. We can't
-    // hook the base class callback because it's private and concerns
-    // overlay readiness, not audio. Module-level `lastTelemetryConnected`
-    // dedups across every visible instance so the ack fires at most once
-    // per real transition.
+    // Telemetry-connect radio check (issue #554): an SDK subscription of its
+    // own, dedicated to detecting false→true connection transitions. The base
+    // class's sim-presence signal (#1599) cannot stand in for it: that signal
+    // is debounced for the disconnected look and turns present again only
+    // after an absence longer than its delay, while the radio check acks every
+    // reconnect. Module-level `lastTelemetryConnected` dedups across every
+    // visible instance so the ack fires at most once per real transition.
     this.sdkController.subscribe(RADIO_CHECK_SUB_PREFIX + contextId, () => {
       this.handleConnectionTickForRadioCheck();
     });

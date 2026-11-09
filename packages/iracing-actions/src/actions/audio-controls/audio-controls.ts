@@ -284,6 +284,21 @@ export class AudioControls extends ConnectionStateAwareAction<AudioControlsSetti
   /** Hold-to-repeat for volume keys in a paired style (#1453); Legacy keys step once per press. */
   private readonly repeat = new RepeatController(this.logger);
 
+  /**
+   * Whether a key needs the sim, for the disconnected look (#1599): the Race
+   * Engineer and Radar categories step the plugin's own audio buses and work
+   * with iRacing closed; Push to Talk, Voice Chat and Master reach iRacing.
+   * Read through {@link parseSettings}, the parse the key draws with, so a
+   * legacy or unparseable payload answers for the category the key shows.
+   * The keypad category decides: a dial is not given the look, and its
+   * settings carry a keypad category too, so a dial payload never throws.
+   *
+   * @param settings - The context's raw settings (possibly `undefined`)
+   */
+  protected override needsSim(settings: unknown): boolean {
+    return !isInternalAudioCategory(this.parseSettings(settings).category);
+  }
+
   override async onWillAppear(ev: IDeckWillAppearEvent<AudioControlsSettings>): Promise<void> {
     // BEFORE super: the base stamps a missing `addedWithVersion` with its own
     // setSettings({...payload, addedWithVersion}). Migrating first (and handing
