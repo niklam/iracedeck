@@ -4,6 +4,8 @@ import {
   createPitLaneLandmarkLearner,
   foldSample,
   loadPitLaneLandmarkLearner,
+  PIT_LANE_LOAD_RETRY_MS,
+  PIT_LANE_SECTION_UNAVAILABLE,
   PIT_LANE_SECTION_VERSION,
   type PitLaneLandmarkLearner,
   type PitLaneLandmarkRecord,
@@ -88,7 +90,7 @@ function loadedLearner(
 ): PitLaneLandmarkLearner {
   const learner = createPitLaneLandmarkLearner();
 
-  loadPitLaneLandmarkLearner(learner, track, () => section);
+  loadPitLaneLandmarkLearner(learner, track, () => section, 0);
 
   return learner;
 }
@@ -768,7 +770,7 @@ describe("seedPitLaneLandmarkLearner", () => {
     const { logger, warn, debug } = recordingLogger();
     const learner = createPitLaneLandmarkLearner();
 
-    seedPitLaneLandmarkLearner(learner, TRACK, () => stored(), logger);
+    seedPitLaneLandmarkLearner(learner, TRACK, () => stored(), 0, logger);
 
     expect(learner.key).toBe(pitLaneTrackKey(TRACK));
     expect(resolvePitLaneLandmarks(learner)!.pitRoadEnd).toMatchObject({ pct: 0.35, source: "current" });
@@ -783,9 +785,9 @@ describe("seedPitLaneLandmarkLearner", () => {
     const learner = createPitLaneLandmarkLearner();
     const loader = vi.fn((_track: PitLaneTrackIdentity) => null);
 
-    seedPitLaneLandmarkLearner(learner, null, loader, logger);
-    seedPitLaneLandmarkLearner(learner, TRACK, loader, logger);
-    seedPitLaneLandmarkLearner(learner, { ...TRACK }, loader, logger);
+    seedPitLaneLandmarkLearner(learner, null, loader, 0, logger);
+    seedPitLaneLandmarkLearner(learner, TRACK, loader, 0, logger);
+    seedPitLaneLandmarkLearner(learner, { ...TRACK }, loader, 0, logger);
 
     expect(loader).toHaveBeenCalledOnce();
     expect(debug).toHaveBeenCalledOnce();
@@ -803,6 +805,7 @@ describe("seedPitLaneLandmarkLearner", () => {
       () => {
         throw new Error("disk on fire");
       },
+      0,
       logger,
     );
 
@@ -816,11 +819,47 @@ describe("seedPitLaneLandmarkLearner", () => {
     const { logger, warn } = recordingLogger();
     const learner = createPitLaneLandmarkLearner();
 
-    seedPitLaneLandmarkLearner(learner, TRACK, () => ({ nonsense: true }) as unknown as PitLaneSection, logger);
+    seedPitLaneLandmarkLearner(learner, TRACK, () => ({ nonsense: true }) as unknown as PitLaneSection, 0, logger);
 
     expect(warn).toHaveBeenCalledExactlyOnceWith(
       "Pit-lane landmarks: the stored section for track 123 is unreadable; learning afresh",
     );
     expect(learner.section!.landmarks).toEqual({});
+  });
+
+  it("warns once when the store cannot read the track yet, retries at debug, and loads when it can", () => {
+    const { logger, warn, debug } = recordingLogger();
+    const learner = createPitLaneLandmarkLearner();
+    let readable = false;
+    const loader = vi.fn((_track: PitLaneTrackIdentity) => (readable ? stored() : PIT_LANE_SECTION_UNAVAILABLE));
+
+    seedPitLaneLandmarkLearner(learner, TRACK, loader, WALL_EPOCH, logger);
+
+    expect(warn).toHaveBeenCalledExactlyOnceWith(
+      "Pit-lane landmarks: the stored landmarks for track 123 cannot be read yet (attempt 1); learning meanwhile, retrying in 5 s",
+    );
+    expect(learner.section!.landmarks).toEqual({});
+
+    // Every tick before the back-off asks nothing.
+    seedPitLaneLandmarkLearner(learner, TRACK, loader, WALL_EPOCH + PIT_LANE_LOAD_RETRY_MS - 1, logger);
+    expect(loader).toHaveBeenCalledOnce();
+
+    seedPitLaneLandmarkLearner(learner, TRACK, loader, WALL_EPOCH + PIT_LANE_LOAD_RETRY_MS, logger);
+
+    expect(loader).toHaveBeenCalledTimes(2);
+    expect(warn).toHaveBeenCalledOnce();
+    expect(debug).toHaveBeenCalledExactlyOnceWith(
+      "Pit-lane landmarks: the stored landmarks for track 123 cannot be read yet (attempt 2); learning meanwhile, retrying in 10 s",
+    );
+
+    readable = true;
+    seedPitLaneLandmarkLearner(learner, TRACK, loader, WALL_EPOCH + 3 * PIT_LANE_LOAD_RETRY_MS, logger);
+
+    expect(loader).toHaveBeenCalledTimes(3);
+    expect(warn).toHaveBeenCalledOnce();
+    expect(debug).toHaveBeenLastCalledWith(
+      'Pit-lane landmarks: track 123 "testtrack" "Grand Prix" loaded with 1 landmark records',
+    );
+    expect(resolvePitLaneLandmarks(learner)!.pitRoadEnd).toMatchObject({ pct: 0.35, source: "current" });
   });
 });

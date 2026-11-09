@@ -41,6 +41,7 @@ import {
   applyTrackLength,
   foldSample,
   PIT_LANE_LANDMARK_NAMES,
+  PIT_LANE_SECTION_UNAVAILABLE,
   PIT_LANE_WINDOW_CAP,
   type PitLaneLandmarkName,
   type PitLaneLandmarks,
@@ -110,11 +111,15 @@ export interface TrackStore {
    * (`applyTrackLength`, a rebuild when it differs) with this process's
    * samples not yet written folded in. A copy. `null` when nothing is known:
    * no file, a file of another track (logged once, never written over), a
-   * newer build's file, or one that cannot be read or parsed — and no sample
+   * newer build's file, or one that cannot be parsed — and no sample
    * recorded meanwhile — and for an identity whose `sim` cannot name a
-   * folder (`isTrackDataSim`; warned once). SYNCHRONOUS, and never throws.
+   * folder (`isTrackDataSim`; warned once). `PIT_LANE_SECTION_UNAVAILABLE`
+   * when the file exists but cannot be read right now (a lock, a permission,
+   * a scanner): the learner asks again later, and that later load holds this
+   * process's samples recorded meanwhile, folded in as always.
+   * SYNCHRONOUS, and never throws.
    */
-  load(track: PitLaneTrackIdentity): PitLaneSection | null;
+  load(track: PitLaneTrackIdentity): PitLaneSection | null | typeof PIT_LANE_SECTION_UNAVAILABLE;
   /**
    * Fold one accepted sample (the `pitLane.landmarkLearned` payload) into the
    * track's section and schedule a write. Returns whether the fold accepted
@@ -802,6 +807,11 @@ export function createTrackStore(opts: TrackStoreOptions): TrackStore {
         const entry = entryFor(track);
 
         ensureRead(entry);
+
+        // The file is there but could not be read (an `unreadable` read
+        // leaves the entry unread): not "none", which the learner would
+        // keep for the session, but "ask again".
+        if (!entry.read) return PIT_LANE_SECTION_UNAVAILABLE;
 
         return hasLandmarks(entry.section) ? structuredClone(entry.section) : null;
       } catch (error: unknown) {

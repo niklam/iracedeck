@@ -171,19 +171,34 @@ export function resolvePitLaneTrackIdentity(sessionInfo: Record<string, unknown>
 
 /**
  * Load the translator's learner for the track in session (issue #1112) with
- * track-data's `loadPitLaneLandmarkLearner` — once per identity, a no-op
+ * track-data's `loadPitLaneLandmarkLearner` — once per identity, and again on
+ * its back-off while the store cannot read the track's file; a no-op
  * otherwise — and log what it did: a loader that threw or answered something
- * unreadable is a warn (the track learns afresh), any load a debug line.
+ * unreadable is a warn (the track learns afresh), the first "cannot read it
+ * yet" for an identity a warn and every retry after it a debug line (the
+ * track learns meanwhile and keeps it), any load a debug line.
+ *
+ * @param now - The wall clock, epoch ms: when an unavailable load is retried.
  */
 export function seedPitLaneLandmarkLearner(
   learner: PitLaneLandmarkLearner,
   track: PitLaneTrackIdentity | null,
   loader: PitLaneLandmarksLoader | null,
+  now: number,
   logger: ILogger,
 ): void {
-  const outcome = loadPitLaneLandmarkLearner(learner, track, loader);
+  const outcome = loadPitLaneLandmarkLearner(learner, track, loader, now);
 
   if (outcome.kind === "kept" || track === null) return;
+
+  if (outcome.kind === "unavailable") {
+    const message = `Pit-lane landmarks: the stored landmarks for track ${track.trackId} cannot be read yet (attempt ${outcome.attempt}); learning meanwhile, retrying in ${Math.round(outcome.retryInMs / 1000)} s`;
+
+    if (outcome.attempt === 1) logger.warn(message);
+    else logger.debug(message);
+
+    return;
+  }
 
   if (outcome.kind === "threw") {
     const message = outcome.error instanceof Error ? outcome.error.message : String(outcome.error);

@@ -18,7 +18,10 @@ import {
 import type { ILogger } from "@iracedeck/logger";
 import {
   foldSample,
+  PIT_LANE_LOAD_RETRY_MS,
+  PIT_LANE_SECTION_UNAVAILABLE,
   PIT_LANE_SECTION_VERSION,
+  type PitLaneLandmarksLoader,
   type PitLaneSection,
   type PitLaneTrackIdentity,
 } from "@iracedeck/track-data";
@@ -171,7 +174,7 @@ describe("pit-lane landmarks through handleTick (issue #1112)", () => {
   let logger: ILogger;
   let events: Learned[];
 
-  function init(loader?: (track: PitLaneTrackIdentity) => PitLaneSection | null): void {
+  function init(loader?: PitLaneLandmarksLoader): void {
     controller = createMockController();
     logger = createMockLogger();
     initializeSimEventsIracing(getEventBus(), controller, logger, {
@@ -374,6 +377,50 @@ describe("pit-lane landmarks through handleTick (issue #1112)", () => {
 
     expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining("store unavailable"));
     expect(events).toHaveLength(1);
+  });
+
+  it("learns while the store cannot read the track, asks again on the tick's clock, and keeps what it learned", () => {
+    vi.useFakeTimers({ now: 1_800_000_000_000 });
+
+    try {
+      const stored: PitLaneSection = {
+        version: PIT_LANE_SECTION_VERSION,
+        trackLength: TRACK.trackLength,
+        landmarks: {
+          approachStart: foldSample(
+            undefined,
+            { pct: 0.5009, estTime: 45, carClassId: 20, key: "disk", at: Date.now() - 60_000 },
+            "",
+            4000,
+          ).record!,
+        },
+      };
+      let readable = false;
+      const loader = vi.fn((_track: PitLaneTrackIdentity) => (readable ? stored : PIT_LANE_SECTION_UNAVAILABLE));
+
+      init(loader);
+      enterApproach(controller, 10, 1, 0.5);
+
+      expect(loader).toHaveBeenCalledOnce();
+      expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining("cannot be read yet (attempt 1)"));
+      expect(events).toHaveLength(1);
+      expect(getPitLaneLandmarks()!.approachStart).toBeNull();
+
+      readable = true;
+      vi.advanceTimersByTime(PIT_LANE_LOAD_RETRY_MS - 1);
+      controller.__tick(tick(15, {}));
+
+      expect(loader).toHaveBeenCalledOnce();
+
+      vi.advanceTimersByTime(1);
+      controller.__tick(tick(15.1, {}));
+
+      expect(loader).toHaveBeenCalledTimes(2);
+      // The stored sample and the one learned while waiting agree: published.
+      expect(getPitLaneLandmarks()!.approachStart).toMatchObject({ samples: 2, published: true, source: "current" });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("learns from nothing without a loader", () => {

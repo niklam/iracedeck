@@ -1,9 +1,15 @@
 import type { ILogger } from "@iracedeck/logger";
 import { silentLogger } from "@iracedeck/logger";
 import {
+  createPitLaneLandmarkLearner,
+  learnPitLaneLandmarks,
+  loadPitLaneLandmarkLearner,
+  PIT_LANE_LOAD_RETRY_MS,
+  PIT_LANE_SECTION_UNAVAILABLE,
   PIT_LANE_SECTION_VERSION,
   type PitLaneLandmarkName,
   type PitLaneLandmarkSample,
+  type PitLaneSection,
   type PitLaneTrackIdentity,
 } from "@iracedeck/track-data";
 import {
@@ -100,6 +106,15 @@ function spyLogger(): ILogger & Record<"trace" | "debug" | "info" | "warn" | "er
 
 function makeStore(overrides: Partial<TrackStoreOptions> = {}): TrackStore {
   return createTrackStore({ directory: dir, logger: silentLogger, ...overrides });
+}
+
+/** `store.load(track)` where the file is readable: a section or `null`, never the unavailable answer. */
+function loadedSection(store: TrackStore, track: PitLaneTrackIdentity): PitLaneSection | null {
+  const section = store.load(track);
+
+  expect(section).not.toBe(PIT_LANE_SECTION_UNAVAILABLE);
+
+  return section === PIT_LANE_SECTION_UNAVAILABLE ? null : section;
 }
 
 function record(
@@ -237,7 +252,7 @@ describe("load", () => {
     record(store, "a", 0.1, T0);
     record(store, "b", 0.1001, T0 + 1);
 
-    const section = store.load(TRACK);
+    const section = loadedSection(store, TRACK);
 
     expect(section?.landmarks.pitRoadStart?.window.map((kept) => kept.key)).toEqual(["a", "b"]);
     expect(section?.landmarks.pitRoadStart?.samples).toBe(2);
@@ -250,29 +265,32 @@ describe("load", () => {
 
     record(store, "a", 0.1, T0);
 
-    const first = store.load(TRACK)!;
+    const first = loadedSection(store, TRACK)!;
 
     first.landmarks.pitRoadStart!.window.length = 0;
 
-    expect(store.load(TRACK)?.landmarks.pitRoadStart?.window).toHaveLength(1);
+    expect(loadedSection(store, TRACK)?.landmarks.pitRoadStart?.window).toHaveLength(1);
   });
 
   it("reads the file once and serves it from memory after that", () => {
     writeTrackFile({}, { pitRoadEnd: recordOf([sample("disk", 0.2, T0 - 1000)]) });
     const store = makeStore();
 
-    expect(store.load(TRACK)?.landmarks.pitRoadEnd?.window.map((kept) => kept.key)).toEqual(["disk"]);
+    expect(loadedSection(store, TRACK)?.landmarks.pitRoadEnd?.window.map((kept) => kept.key)).toEqual(["disk"]);
 
     writeTrackFile({}, { pitRoadEnd: recordOf([sample("later", 0.2, T0 - 500)]) });
 
-    expect(store.load(TRACK)?.landmarks.pitRoadEnd?.window.map((kept) => kept.key)).toEqual(["disk"]);
+    expect(loadedSection(store, TRACK)?.landmarks.pitRoadEnd?.window.map((kept) => kept.key)).toEqual(["disk"]);
 
     // ...while a write merges what the disk holds by then.
     record(store, "mine", 0.2, T0, "pitRoadEnd");
     store.flushSync();
 
     expect(windowKeys(readFile(), "pitRoadEnd")).toEqual(["later", "mine"]);
-    expect(store.load(TRACK)?.landmarks.pitRoadEnd?.window.map((kept) => kept.key)).toEqual(["later", "mine"]);
+    expect(loadedSection(store, TRACK)?.landmarks.pitRoadEnd?.window.map((kept) => kept.key)).toEqual([
+      "later",
+      "mine",
+    ]);
   });
 
   it("never throws, whatever the IO does", () => {
@@ -546,6 +564,79 @@ describe("an unreadable file", () => {
 
     expect(windowKeys(readFile())).toEqual(["mine"]);
   });
+
+  it("loads as unavailable, not as none, and then with the samples recorded meanwhile", () => {
+    vi.useFakeTimers({ now: T0 });
+    writeTrackFile({}, { pitRoadStart: recordOf([sample("disk", 0.1, T0 - 5000)]) });
+    let locked = true;
+    const store = makeStore({
+      io: {
+        ...nodeTrackStoreIo,
+        readBytes: (path) => {
+          if (locked && path === filePath()) throw errno("EPERM");
+
+          return nodeTrackStoreIo.readBytes(path);
+        },
+      },
+    });
+
+    expect(store.load(TRACK)).toBe(PIT_LANE_SECTION_UNAVAILABLE);
+
+    record(store, "mine", 0.1001, T0);
+
+    expect(store.load(TRACK)).toBe(PIT_LANE_SECTION_UNAVAILABLE);
+
+    locked = false;
+
+    const section = loadedSection(store, TRACK);
+
+    expect(section?.landmarks.pitRoadStart?.window.map((kept) => kept.key)).toEqual(["disk", "mine"]);
+    expect(section?.landmarks.pitRoadStart?.samples).toBe(2);
+  });
+
+  it("gives the learner the stored section once it can be read, with what it learned meanwhile counted once", () => {
+    vi.useFakeTimers({ now: T0 });
+    writeTrackFile({}, { pitRoadStart: recordOf([sample("disk1", 0.1, T0 - 6000), sample("disk2", 0.1, T0 - 5000)]) });
+    let locked = true;
+    const store = makeStore({
+      io: {
+        ...nodeTrackStoreIo,
+        readBytes: (path) => {
+          if (locked && path === filePath()) throw errno("EBUSY");
+
+          return nodeTrackStoreIo.readBytes(path);
+        },
+      },
+    });
+    const learner = createPitLaneLandmarkLearner();
+    const loader = (track: PitLaneTrackIdentity) => store.load(track);
+
+    expect(loadPitLaneLandmarkLearner(learner, TRACK, loader, T0)).toMatchObject({ kind: "unavailable", attempt: 1 });
+
+    // The plugin's path: the learner accepts an edge, the store records the published sample.
+    const learned = sample("mine", 0.1001, T0);
+    const [result] = learnPitLaneLandmarks(
+      learner,
+      [{ landmark: "pitRoadStart", sample: learned }],
+      new Date(T0).toISOString(),
+    );
+
+    expect(result).toMatchObject({ accepted: true });
+    expect(record(store, "mine", 0.1001, T0)).toBe(true);
+
+    locked = false;
+
+    expect(loadPitLaneLandmarkLearner(learner, TRACK, loader, T0 + PIT_LANE_LOAD_RETRY_MS)).toEqual({
+      kind: "loaded",
+      records: 1,
+    });
+    expect(learner.section!.landmarks.pitRoadStart?.window.map((kept) => kept.key)).toEqual([
+      "disk1",
+      "disk2",
+      "mine",
+    ]);
+    expect(learner.section!.landmarks.pitRoadStart?.samples).toBe(3);
+  });
 });
 
 describe("a file from a newer build", () => {
@@ -569,7 +660,7 @@ describe("a file from a newer build", () => {
     expect(logger.warn).toHaveBeenCalledTimes(1);
     expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining("newer version"));
     // Kept in memory for this process.
-    expect(store.load(TRACK)?.landmarks.pitRoadStart?.window).toHaveLength(2);
+    expect(loadedSection(store, TRACK)?.landmarks.pitRoadStart?.window).toHaveLength(2);
   });
 });
 
@@ -584,7 +675,7 @@ describe("a file of another track", () => {
 
     record(store, "mine", 0.1, T0);
 
-    expect(store.load(TRACK)?.landmarks.pitRoadStart?.window.map((kept) => kept.key)).toEqual(["mine"]);
+    expect(loadedSection(store, TRACK)?.landmarks.pitRoadStart?.window.map((kept) => kept.key)).toEqual(["mine"]);
 
     store.flushSync();
 
@@ -637,8 +728,8 @@ describe("the sim's folder", () => {
 
     expect(other).toMatchObject({ sim: "other-sim", trackId: 101, trackName: "another sim's spa" });
     expect(windowKeys(other)).toEqual(["other"]);
-    expect(store.load(TRACK)?.landmarks.pitRoadStart?.window.map((kept) => kept.key)).toEqual(["mine"]);
-    expect(store.load(OTHER)?.landmarks.pitRoadStart?.window.map((kept) => kept.key)).toEqual(["other"]);
+    expect(loadedSection(store, TRACK)?.landmarks.pitRoadStart?.window.map((kept) => kept.key)).toEqual(["mine"]);
+    expect(loadedSection(store, OTHER)?.landmarks.pitRoadStart?.window.map((kept) => kept.key)).toEqual(["other"]);
   });
 
   it.each(["", "Iracing", "../escape", "a/b", "a\\b", ".", "-lead", "has space", "con", "LPT1", "x".repeat(33)])(
@@ -926,7 +1017,7 @@ describe("a rebuilt track", () => {
   it("loads with the old values under previous and the window reset", () => {
     writeTrackFile({}, { pitRoadStart: published });
     const store = makeStore();
-    const section = store.load(REBUILT);
+    const section = loadedSection(store, REBUILT);
 
     expect(section?.trackLength).toBe("6.95 km");
     expect(section?.landmarks.pitRoadStart).toMatchObject({

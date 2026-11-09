@@ -3535,14 +3535,15 @@ function handleLiveSteps(
   // to `null`, the answer for absent session info, which loads and learns
   // nothing. It is built once per session-info object (`pitLaneTrackMemo`),
   // so the learner's per-tick load is a reference check. The learner is
-  // loaded from the store once per identity, and again after a session
-  // change or a disconnect empties it; the diff then folds each accepted edge
+  // loaded from the store once per identity, again after a session change or
+  // a disconnect empties it, and on a back-off by this tick's `now` while the
+  // store cannot read the file yet; the diff then folds each accepted edge
   // into it. Live in-car only: a replay tick never gets here.
   const pitLaneTrack = steps.value("resolvePitLaneTrackIdentity", values, null, () =>
     resolvePitLaneTrackMemoised(self, sessionInfo),
   );
   steps.run("seedPitLaneLandmarkLearner", () =>
-    seedPitLaneLandmarkLearner(self.pitLaneLearner, pitLaneTrack, self.loadPitLaneLandmarks, self.logger),
+    seedPitLaneLandmarkLearner(self.pitLaneLearner, pitLaneTrack, self.loadPitLaneLandmarks, now, self.logger),
   );
   steps.live("diffPitLaneLandmarks", pending, () =>
     diffPitLaneLandmarks(
