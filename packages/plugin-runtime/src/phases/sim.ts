@@ -1,5 +1,5 @@
 /**
- * Phase 2 (#1349): the sim translator, the live race order it feeds the
+ * Phase 3 (#1349; 2 until #1112): the sim translator, the live race order it feeds the
  * template context, and the two read surfaces it hands on — the query-side
  * runtime the Race Engineer reads (#1378) and the host extension's sim
  * (#1500), so a plugin shell reads the session kind and the tick without
@@ -17,7 +17,7 @@ import {
   type SessionKind,
 } from "@iracedeck/sim-events-iracing";
 
-import type { Core, HostSim, Sim } from "../types.js";
+import type { Core, HostSim, Sim, TrackData } from "../types.js";
 
 /** Compiles only for `true`, so the conditional it is given fails the build when it is `false`. */
 type IsTrue<T extends true> = T;
@@ -41,7 +41,7 @@ export type SessionKindsAgree = IsTrue<
     : false
 >;
 
-export function initSim(core: Core): Sim {
+export function initSim(core: Core, trackData: TrackData): Sim {
   // Translate sdkController ticks → semantic events on the bus. The
   // translator and the replay recorder it starts (which publishes the
   // `replay.*` events on its own subscription) are the one producer of bus
@@ -49,13 +49,14 @@ export function initSim(core: Core): Sim {
   // settings-backed options — the fuel margin, the corner lead, the gap
   // threshold and consistency gate, the opponent-flag opt-ins and range —
   // are built by the Race Engineer's wiring (#1378), so the scenario harness
-  // runs the same ones.
-  initializeSimEventsIracing(
-    core.bus,
-    core.controller,
-    core.adapter.createLogger("SimEventsIracing"),
-    createIracingTranslatorOptions(),
-  );
+  // runs the same ones. Beside them, the pit-lane landmark learner's reader
+  // (#1112): the translator does no file IO, so it seeds each track's learned
+  // landmarks from the track store the previous phase built, at the first live
+  // tick of a track and again after a session change or a disconnect.
+  initializeSimEventsIracing(core.bus, core.controller, core.adapter.createLogger("SimEventsIracing"), {
+    ...createIracingTranslatorOptions(),
+    loadPitLaneLandmarks: (track) => trackData.store.load(track),
+  });
 
   // Feed the translator's live per-car race order into the template-context builder
   // so Telemetry Display / Chat / Race Admin driver prefixes report the same

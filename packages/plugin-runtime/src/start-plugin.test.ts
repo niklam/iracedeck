@@ -17,6 +17,7 @@ vi.mock("@iracedeck/settings-window", async (io) =>
 );
 vi.mock("@iracedeck/replay-store", async (io) => (await import("./test-support/module-mocks.js")).recordedModule(io));
 vi.mock("@iracedeck/replay-engine", async (io) => (await import("./test-support/module-mocks.js")).recordedModule(io));
+vi.mock("@iracedeck/track-store", async (io) => (await import("./test-support/module-mocks.js")).recordedModule(io));
 vi.mock("@iracedeck/app-updates", async (io) => (await import("./test-support/module-mocks.js")).recordedModule(io));
 vi.mock("@iracedeck/voice-packs", async (io) => (await import("./test-support/module-mocks.js")).recordedModule(io));
 vi.mock("@iracedeck/settings", async (io) => (await import("./test-support/module-mocks.js")).recordedModule(io));
@@ -68,7 +69,9 @@ vi.mock("./phases/sim.js", async (importOriginal) => {
  * phase's `configureReplayEngine` and the busy indicator's logger, set by
  * `registerActions` before the first action is constructed, are newer too (#1467),
  * and so is `initPressSounds`, which installs the press sound player before the
- * first action registers (#269).
+ * first action registers (#269). The track store phase (#1112) is newer
+ * too: the learned pit-lane landmarks' store, built before the sim phase
+ * because the translator takes its reader at construction.
  */
 function expectedOrder(withExtension: boolean): string[] {
   return [
@@ -86,18 +89,21 @@ function expectedOrder(withExtension: boolean): string[] {
     "registerStateSection", // settings
     "registerStateSection", // sim
     "registerStateSection", // raceEngineer
-    // 2 initSim
+    // 2 initTrackStore (#1112)
+    "initializeTrackStore",
+    "initializeEventBus().subscribe", // pitLane.landmarkLearned
+    // 3 initSim
     "createIracingTranslatorOptions", // the six settings-backed options, built by the wiring (#1378)
     "initializeSimEventsIracing",
     "getController().setLivePositionsProvider",
     "createIracingSimRuntime",
-    // 3 initInput
+    // 4 initInput
     "new IRacingNative",
     "initializeKeyboard",
     "initializeClipboard",
     "createSvgRasterizer",
     "initializeRasterizer",
-    // 4 initAudio
+    // 5 initAudio
     "new AudioNative",
     "initializeAudio",
     "getAudio().init",
@@ -106,7 +112,7 @@ function expectedOrder(withExtension: boolean): string[] {
     "applyRadarVolume",
     "applyRadarEnabled",
     "applyRaceEngineerAudio",
-    // 5 initVoicePacks
+    // 6 initVoicePacks
     "createVoiceScriptWarningReporter",
     "createVoicePackService",
     "createVoicePackService().refresh",
@@ -114,11 +120,11 @@ function expectedOrder(withExtension: boolean): string[] {
     "createVoicePackCatalogService",
     "createVoicePackInstaller",
     "createVoicePackLaunchStep",
-    // 6 initRaceEngineer
+    // 7 initRaceEngineer
     "initializeAudioScenarios",
     "wireRaceEngineer",
     "getScenarioEngine().setScripts",
-    // 7 initSettings
+    // 8 initSettings
     "onIRacingTerminated",
     "createFileSettingsStore",
     "createSettingsChannelPublisher",
@@ -128,7 +134,7 @@ function expectedOrder(withExtension: boolean): string[] {
     "createSettingsWindowController",
     "onGlobalSettingsChange", // the big listener
     "adapter.onPropertyInspectorDidAppear",
-    // 8 initReplay
+    // 9 initReplay
     "configureReplayEngine",
     "initializeReplaySessionStore",
     "initializeEventBus().subscribe", // replay.lapStarted
@@ -136,7 +142,7 @@ function expectedOrder(withExtension: boolean): string[] {
     "initializeEventBus().subscribe", // replay.greenFlag
     "initializeEventBus().subscribe", // replay.sessionStarted
     "initializeEventBus().subscribe", // replay.incident
-    // 9 registerActions
+    // 10 registerActions
     "initWindowFocus",
     "initMousePointer",
     "adapter.onKeyDown",
@@ -145,7 +151,7 @@ function expectedOrder(withExtension: boolean): string[] {
     "setReplayBusyIndicatorLogger",
     "initPressSounds", // #269
     "adapter.registerAction*",
-    // 10 startServices
+    // 11 startServices
     "initGlobalSettings",
     "createVoicePackLaunchStep().start",
     "migrateGlobalSettingsKeys",
@@ -159,7 +165,7 @@ function expectedOrder(withExtension: boolean): string[] {
     "startAudioSessionHold", // #1347
     "getController().subscribe", // elevation check
     "getController().subscribe", // replay session
-    // 11 connect
+    // 12 connect
     "adapter.connect",
   ];
 }
@@ -255,7 +261,7 @@ describe("startPlugin (#1349)", () => {
     const first = host.adapter.scopes.indexOf("WindowFocus");
     expect(first).toBeGreaterThanOrEqual(0);
     expect(host.adapter.scopes.slice(first)).toEqual([
-      // 9 registerActions — the mocked action lists use each UUID as its scope
+      // 10 registerActions — the mocked action lists use each UUID as its scope
       "WindowFocus",
       "MousePointer",
       "ReplayBusy", // newer than that file (#1467)
@@ -263,7 +269,7 @@ describe("startPlugin (#1349)", () => {
       "shared.a",
       "shared.b",
       "sd.switch-profile",
-      // 10 startServices
+      // 11 startServices
       "GlobalSettings",
       "SettingsMigration",
       "SettingsMigration", // the retired-key cleanup (#1599)
@@ -479,6 +485,53 @@ describe("startPlugin (#1349)", () => {
     expect(contexts[0].sim).toBe(builtSims[0].host);
     expect(wiredSims).toHaveLength(1);
     expect(wiredSims[0]).toBe(builtSims[0].runtime);
+  });
+
+  it("seeds the translator from the one track store, and shows and opens its folder from the settings (#1112)", () => {
+    const loaded = { name: "pit-lane section" };
+    const loads: unknown[] = [];
+    const trackStore = {
+      load: (track: unknown) => {
+        loads.push(track);
+
+        return loaded;
+      },
+    };
+    const translatorOptions: Record<string, unknown>[] = [];
+    const handlerDeps: Record<string, unknown>[] = [];
+    const written: Record<string, unknown>[] = [];
+    const settingsListeners: ((settings: unknown) => void)[] = [];
+    implement("resolveTrackDataDirectory", () => "C:/data/Track Data");
+    implement("initializeTrackStore", () => trackStore);
+    implement("createIracingTranslatorOptions", () => ({ getFuelLapsLeftMarginLaps: () => 0.5 }));
+    implement("initializeSimEventsIracing", (_bus, _controller, _logger, options) =>
+      translatorOptions.push(options as Record<string, unknown>),
+    );
+    implement("createSettingsWindowCommandHandler", (deps) => handlerDeps.push(deps as Record<string, unknown>));
+    implement("createSettingsWindowController().ensureStarted", () => new Promise(() => undefined));
+    implement("isSettingsStoreReady", () => true);
+    implement("updateGlobalSettings", (partial) => written.push(partial as Record<string, unknown>));
+    implement("onGlobalSettingsChange", (listener) => settingsListeners.push(listener as (settings: unknown) => void));
+
+    startPlugin(createHost());
+
+    // The translator gets the wiring's options and the store's reader, which reads through to the store.
+    expect(translatorOptions).toHaveLength(1);
+    expect(Object.keys(translatorOptions[0]).sort()).toEqual(["getFuelLapsLeftMarginLaps", "loadPitLaneLandmarks"]);
+    const track = { trackId: 1 };
+    expect((translatorOptions[0].loadPitLaneLandmarks as (track: unknown) => unknown)(track)).toBe(loaded);
+    expect(loads).toEqual([track]);
+
+    // The settings window opens the folder the store resolved, and the
+    // store-ready block (run by the settings phase's listener, the last one
+    // registered) publishes it.
+    expect(handlerDeps).toHaveLength(1);
+    expect(handlerDeps[0].trackDataPath).toBe("C:/data/Track Data");
+    expect(written.filter((partial) => "_trackDataPath" in partial)).toEqual([]);
+    settingsListeners.at(-1)?.({});
+    expect(written.filter((partial) => "_trackDataPath" in partial)).toEqual([
+      expect.objectContaining({ _trackDataPath: "C:/data/Track Data" }),
+    ]);
   });
 
   it("connects last", () => {

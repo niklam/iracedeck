@@ -1,5 +1,5 @@
 /**
- * Phase 5 (#1349, #1104): the voice-pack block, as five steps under
+ * Phase 6 (#1349, #1104; 5 until #1112): the voice-pack block, as five steps under
  * `voice-packs/` (#1377), each handing the next what it built:
  *
  * 1. `buildVoicePackScan` — the mutable state, the logger and roots, the

@@ -1,5 +1,5 @@
 /**
- * Phase 7 (#1349): the plugin-owned settings store, the settings window, the
+ * Phase 8 (#1349; 7 until #1112): the plugin-owned settings store, the settings window, the
  * startup notices (first run, changelog), the global-settings listener with
  * its one-shot store-ready block and its every-arrival banner re-assertions,
  * and the PI-appear re-pushes.
@@ -12,9 +12,10 @@
  *    which the body registers first.
  * 3. `initSettingsStore` — the file store and its exit flush, adjacent.
  * 4. `initSettingsWindow` — the channel publisher, the CPU profile capture, the update check,
- *    the controller and `openSettingsWindow`; it reads the store's path eagerly.
- * 5. `createStoreReadyStep` — the one-shot block, which arms the notices with the window's opener
- *    and starts the window's server.
+ *    the controller and `openSettingsWindow`; it reads the store's path eagerly, and hands the
+ *    window the track data folder (#1112) for its Open folder button.
+ * 5. `createStoreReadyStep` — the one-shot block, which arms the notices with the window's opener,
+ *    publishes the settings file's and the track data folder's paths, and starts the window's server.
  * 6. `createSettingsListener` / `createPropertyInspectorAppearHandler` — the two listeners,
  *    composed from the steps above.
  *
@@ -26,7 +27,7 @@ import { onIRacingTerminated } from "@iracedeck/deck-iracing";
 import { onGlobalSettingsChange } from "@iracedeck/settings";
 
 import { evaluateNativeAddonWarnings } from "../native-addons.js";
-import type { Audio, Core, Settings, VoicePacks } from "../types.js";
+import type { Audio, Core, Settings, TrackData, VoicePacks } from "../types.js";
 import { createAudioDeviceSync } from "./settings/audio-devices.js";
 import { createPropertyInspectorAppearHandler, createSettingsListener } from "./settings/listeners.js";
 import { initSettingsStore } from "./settings/settings-store.js";
@@ -34,7 +35,12 @@ import { initSettingsWindow } from "./settings/settings-window.js";
 import { createStartupNotices } from "./settings/startup-notices.js";
 import { createStoreReadyStep } from "./settings/store-ready.js";
 
-export function initSettings(core: Core, audio: Audio, voicePacks: VoicePacks): Settings {
+export function initSettings(
+  core: Core,
+  audio: Audio,
+  voicePacks: VoicePacks,
+  trackData: Pick<TrackData, "directory">,
+): Settings {
   // A native addon that failed to load gets an error banner (#1373). The statuses
   // are fixed for the run, so the records are computed once; the listener sets
   // them again on every settings arrival, because `_warnings` is run-scoped.
@@ -47,8 +53,9 @@ export function initSettings(core: Core, audio: Audio, voicePacks: VoicePacks): 
   onIRacingTerminated(notices.onSimExited);
 
   const store = initSettingsStore(core);
-  const settingsWindow = initSettingsWindow({ core, store, voicePacks });
-  const storeReady = createStoreReadyStep({ audio, voicePacks, store, settingsWindow, notices });
+  const trackDataPath = trackData.directory;
+  const settingsWindow = initSettingsWindow({ core, store, voicePacks, trackDataPath });
+  const storeReady = createStoreReadyStep({ audio, voicePacks, store, trackDataPath, settingsWindow, notices });
 
   onGlobalSettingsChange(createSettingsListener({ audioDevices, storeReady, voicePacks, nativeAddonWarnings }));
   core.adapter.onPropertyInspectorDidAppear(createPropertyInspectorAppearHandler({ audioDevices, voicePacks }));

@@ -1,5 +1,5 @@
 /**
- * Phase 3 (#1349): the native input layer — keyboard, clipboard — and the PNG
+ * Phase 4 (#1349; 3 until #1112): the native input layer — keyboard, clipboard — and the PNG
  * rasterizer for device-bound icons.
  */
 import { initializeClipboard, initializeKeyboard, initializeRasterizer } from "@iracedeck/deck-core";

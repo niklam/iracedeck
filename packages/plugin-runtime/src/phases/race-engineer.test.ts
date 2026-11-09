@@ -2,7 +2,7 @@ import { silentLogger } from "@iracedeck/logger";
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { cleanupTempBinDirs, createHost } from "../test-support/fake-host.js";
-import { callLog, implement, resetRecorder } from "../test-support/recorder.js";
+import { callLog, implement, resetRecorder, stub } from "../test-support/recorder.js";
 import { initAudio } from "./audio.js";
 import { initCore } from "./core.js";
 import { initRaceEngineer } from "./race-engineer.js";
@@ -39,7 +39,8 @@ function phases() {
   const host = createHost();
   const core = initCore(host);
   // The Race Engineer's half of the sim phase's handoff (#1500).
-  const sim = initSim(core).runtime;
+  // The track store is only read by the translator's loader, which no test here calls.
+  const sim = initSim(core, { store: stub("trackStore"), directory: "C:/data/Track Data" }).runtime;
   const audio = initAudio(core);
   const voicePacks = initVoicePacks(core, audio);
 

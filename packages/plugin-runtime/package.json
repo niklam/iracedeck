@@ -38,6 +38,7 @@
     "@iracedeck/settings": "workspace:*",
     "@iracedeck/settings-window": "workspace:*",
     "@iracedeck/sim-events-iracing": "workspace:*",
+    "@iracedeck/track-store": "workspace:*",
     "@iracedeck/voice-packs": "workspace:*"
   },
   "devDependencies": {

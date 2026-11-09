@@ -30,6 +30,7 @@ vi.mock("@iracedeck/audio-native", async (io) =>
 vi.mock("../../actions.js", async () => (await import("../../test-support/module-mocks.js")).actionsMock());
 
 const STORE_PATH = "C:/plugin/settings.json";
+const TRACK_DATA_PATH = "C:/data/Track Data";
 
 /** The step over recorded stand-ins: each collaborator's calls land in `callLog` under its own name. */
 function build() {
@@ -37,6 +38,7 @@ function build() {
     audio: stub("audio"),
     voicePacks: stub("voicePacks"),
     store: { path: STORE_PATH },
+    trackDataPath: TRACK_DATA_PATH,
     settingsWindow: stub("settingsWindow"),
     notices: stub("notices"),
   });
@@ -88,7 +90,7 @@ describe("createStoreReadyStep (#1377)", () => {
       "migrateStartupPolicies",
       "applyStartupFeatureGates",
       "audio.armFeatureGateSync",
-      "updateGlobalSettings", // _settingsStorePath
+      "updateGlobalSettings", // _settingsStorePath, _trackDataPath (#1112)
       "settingsWindow.controller.ensureStarted",
       "getGlobalSettings", // the catalog-override warning
     ]);
@@ -105,7 +107,7 @@ describe("createStoreReadyStep (#1377)", () => {
     expect(callLog).toEqual([]);
   });
 
-  it("deletes the retired keys and publishes the store path", () => {
+  it("deletes the retired keys and publishes the store path and the track data folder in one write (#1112)", () => {
     implement("isSettingsStoreReady", () => true);
     const deleted: unknown[] = [];
     const written: unknown[] = [];
@@ -118,7 +120,7 @@ describe("createStoreReadyStep (#1377)", () => {
       ["raceEngineerEnabled", "radarEnabled", "raceEngineerEnabledOnStartup", "radarEnabledOnStartup"],
       ["calloutEnabledFlagOneLapToGreen"],
     ]);
-    expect(written).toEqual([{ _settingsStorePath: STORE_PATH }]);
+    expect(written).toEqual([{ _settingsStorePath: STORE_PATH, _trackDataPath: TRACK_DATA_PATH }]);
   });
 
   it("arms the notices with the window's opener and runs them after the startup grace (#870)", async () => {

@@ -1,5 +1,5 @@
 /**
- * Phase 4 (#1349): the audio engine, rooted at the plugin's own assets, and
+ * Phase 5 (#1349; 4 until #1112): the audio engine, rooted at the plugin's own assets, and
  * the plugin-level syncers that keep its buses and the Race Engineer / Radar
  * gates in step with global settings.
  */

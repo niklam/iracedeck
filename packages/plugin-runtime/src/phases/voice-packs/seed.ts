@@ -1,5 +1,5 @@
 /**
- * Phase 5, step 2 (#1377): which compiled-in catalog entries the installer may
+ * Phase 6, step 2 (#1377): which compiled-in catalog entries the installer may
  * seed. A pure function of its inputs — the entries, the voices this build
  * bundles, the plugin's audio directory and a logger for the entries it skips —
  * so each branch is tested without a scan or an installer.

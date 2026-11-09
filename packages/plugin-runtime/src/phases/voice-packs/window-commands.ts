@@ -1,5 +1,5 @@
 /**
- * Phase 5, step 5 (#1377): the settings window's voice-pack commands — Rescan,
+ * Phase 6, step 5 (#1377): the settings window's voice-pack commands — Rescan,
  * Install, Remove and Open folder — over the service, the launch step, the
  * installer, the logger and the packs folder the scan named.
  */

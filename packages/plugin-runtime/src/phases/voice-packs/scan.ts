@@ -1,5 +1,5 @@
 /**
- * Phase 5, step 1 (#1377): the scan — the voice-pack phase's mutable state, its
+ * Phase 6, step 1 (#1377): the scan — the voice-pack phase's mutable state, its
  * logger and roots, the scanner port, the voice-pack service, the three deduped
  * run-scoped pushes and the missing-callout-script banner. The service calls
  * back into the pushes and the pushes read the service, so they are one step;

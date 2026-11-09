@@ -51,6 +51,8 @@ export interface SettingsWindowDeps {
   /** Built by the store step first: the command handler reads its `path` eagerly. */
   readonly store: Pick<SettingsStore, "path">;
   readonly voicePacks: VoicePacks;
+  /** The track store's folder (#1112), for the Diagnostics card's Open folder button. */
+  readonly trackDataPath: string;
 }
 
 export interface SettingsWindowStep {
@@ -61,7 +63,7 @@ export interface SettingsWindowStep {
   openSettingsWindow(options?: SettingsWindowOpenOptions): ReturnType<SettingsWindowController["open"]>;
 }
 
-export function initSettingsWindow({ core, store, voicePacks }: SettingsWindowDeps): SettingsWindowStep {
+export function initSettingsWindow({ core, store, voicePacks, trackDataPath }: SettingsWindowDeps): SettingsWindowStep {
   const settingsWindowLogger = core.adapter.createLogger("SettingsWindow");
   // Mirrors the store + the loopback channel to the deck host once per start
   // (#993 phase 2; the channel is never persisted in the store — a stale copy an
@@ -130,6 +132,10 @@ export function initSettingsWindow({ core, store, voicePacks }: SettingsWindowDe
         void getCpuProfileCapture().capture();
       },
       profilesPath: profilesDir,
+      // Diagnostics' Track data row (#1112): opens the learned track data
+      // folder with the voice-pack phase's directory opener above. The folder
+      // is the track store's; the page never names one.
+      trackDataPath,
     }),
     // The page can't probe SimHub itself (cross-origin, no CORS) — answer from the plugin's own view.
     simHub: { isReachable: isSimHubReachable, getRoles: () => getSimHub().getRoles() },

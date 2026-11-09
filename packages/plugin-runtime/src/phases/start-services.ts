@@ -1,5 +1,5 @@
 /**
- * Phase 10 (#1349; 9 until #1467): the global settings listener and what
+ * Phase 11 (#1349; 9 until #1467, 10 until #1112): the global settings listener and what
  * waits on it — the voice-pack launch step, the two binding migrations, the
  * retired-key cleanup (#1599), the host's extension, the settings-window
  * request, SimHub, the binding dispatcher, the app monitor, the audio session
