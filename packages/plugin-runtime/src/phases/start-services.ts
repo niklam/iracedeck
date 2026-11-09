@@ -1,9 +1,9 @@
 /**
  * Phase 10 (#1349; 9 until #1467): the global settings listener and what
  * waits on it — the voice-pack launch step, the two binding migrations, the
- * host's extension, the settings-window request, SimHub, the binding
- * dispatcher, the app monitor, the audio session hold, and the two SDK
- * subscribers. Everything here is registered before `startPlugin` connects
+ * retired-key cleanup (#1599), the host's extension, the settings-window
+ * request, SimHub, the binding dispatcher, the app monitor, the audio session
+ * hold, and the two SDK subscribers. Everything here is registered before `startPlugin` connects
  * the adapter. The extension reads the sim through the sim phase's `HostSim`
  * (#1500).
  */
@@ -23,6 +23,7 @@ import {
   onIRacingTerminated,
 } from "@iracedeck/deck-iracing";
 import {
+  cleanupRetiredDisconnectedSetting,
   initGlobalSettings,
   migrateGlobalSettingsKeys,
   onGlobalSettingsChange,
@@ -64,6 +65,11 @@ export function startServices(
 
   // Migrate the pre-#953 spring binding keys (Left/Right -> LR/RR) once real settings arrive
   migrateGlobalSettingsKeys(SETUP_CHASSIS_BINDING_KEY_RENAMES, core.adapter.createLogger("SettingsMigration"));
+
+  // Delete the retired `disableWhenDisconnected` key from the settings file
+  // (#1599). Its value carries nothing over to `showDisconnectedState`; every
+  // start, once the stored settings are in, and only when the key is there.
+  cleanupRetiredDisconnectedSetting(core.adapter.createLogger("SettingsMigration"));
 
   // Seed iRacing's Next / Previous Car bindings for anyone who has never stored
   // them (#1277): Cycle by Track Order now taps them, and before that nothing but
