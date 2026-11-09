@@ -197,7 +197,7 @@ describe("trackSessionKey", () => {
 
     expect(key).toBe("42|2");
     expect(snapshot.raw.state.trackLengthKey).toBe(key);
-    expect(snapshot.raw.state.cornerMarkersKey).toBe(key);
+    expect(snapshot.raw.state.cornerName.markersKey).toBe(key);
     expect(snapshot.raw.instance.pitSpeedLimitKey).toBe(key);
     expect(snapshot.raw.state.trackSectors.key).toBe(key);
   });

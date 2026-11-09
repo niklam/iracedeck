@@ -137,6 +137,7 @@ import { resolveStandingStart } from "./start-lights.js";
 import {
   type CautionEpisode,
   type CautionPhase,
+  type CornerNameState,
   createInitialState,
   type GapNeighborState,
   type LastStopTireTemps,
@@ -3370,8 +3371,8 @@ function handleLiveSteps(
   // speed→lap-fraction conversion; markers resolve from the bundled
   // lovely-track-data snapshot keyed by WeekendInfo.TrackName. An empty raw
   // session type means session info hasn't resolved — stay silent.
-  const cornerMarkers = steps.value("resolveCornerMarkersCached", values, self.state.cornerMarkers, () =>
-    resolveCornerMarkersCached(self.state, sessionInfo, telemetry),
+  const cornerMarkers = steps.value("resolveCornerMarkersCached", values, self.state.cornerName.markers, () =>
+    resolveCornerMarkersCached(self.state.cornerName, sessionInfo, telemetry),
   );
   // The track's sectors (issue #1573), resolved in every session type — not
   // gated on practice like the corner names — because `getTrackSectors()`
@@ -3384,7 +3385,7 @@ function handleLiveSteps(
   );
   steps.live("diffCornerName", pending, () =>
     diffCornerName(
-      self.state,
+      self.state.cornerName,
       telemetry,
       classifySession(sessionType)?.category === "practice",
       cornerMarkers,
@@ -3929,27 +3930,27 @@ function resolveTrackLengthMeters(
  * YAML tick lacked `TrackName`. Returns `null` for tracks not in the dataset.
  */
 function resolveCornerMarkersCached(
-  state: TranslatorState,
+  slice: CornerNameState,
   sessionInfo: Record<string, unknown> | null,
   telemetry: TelemetryData,
 ): CornerMarker[] | null {
-  if (!sessionInfo) return state.cornerMarkers;
+  if (!sessionInfo) return slice.markers;
 
   const weekend = sessionInfo.WeekendInfo as Record<string, unknown> | undefined;
   const key = trackSessionKey(sessionInfo, telemetry);
 
-  if (key !== state.cornerMarkersKey) {
-    state.cornerMarkersKey = key;
-    state.cornerMarkers = null;
-  } else if (state.cornerMarkers !== null) {
-    return state.cornerMarkers;
+  if (key !== slice.markersKey) {
+    slice.markersKey = key;
+    slice.markers = null;
+  } else if (slice.markers !== null) {
+    return slice.markers;
   }
 
   const trackName = typeof weekend?.TrackName === "string" ? weekend.TrackName : "";
 
-  if (trackName !== "") state.cornerMarkers = resolveCornerMarkers(trackName);
+  if (trackName !== "") slice.markers = resolveCornerMarkers(trackName);
 
-  return state.cornerMarkers;
+  return slice.markers;
 }
 
 /**

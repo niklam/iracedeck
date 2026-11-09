@@ -430,6 +430,48 @@ export function createTrackSectorsState(): TrackSectorsState {
   return { key: "", starts: null };
 }
 
+/**
+ * The corner-name callouts (issue #888, moved to a slice under #1588 in
+ * #1573): the lead-point sweep `diffCornerName` runs over the track's corner
+ * markers (`diff/lead-point-sweep.ts`), and the marker cache the translator's
+ * `resolveCornerMarkersCached` keeps for it. `diffCornerName` resets the two
+ * sweep fields when a gate fails; the cache is the resolver's alone. Reset per
+ * session and at a disconnect with the rest of the state, and wiped whole at a
+ * replay glance: the next live tick re-resolves the markers and seeds a fresh
+ * pass.
+ */
+export type CornerNameState = {
+  /**
+   * Previous tick's lead point (`LapDistPct` + speed-scaled lead offset,
+   * folded into [0, 1)). `null` until the first valid practice tick seeds it
+   * silently; reset to `null` whenever the diff's gates fail so a return to
+   * the track starts a fresh pass.
+   */
+  leadPrevPct: number | null;
+  /**
+   * Marker indices (into {@link markers}) already announced or consumed this
+   * lap. Cleared when the lead point wraps past S/F, on teleport re-anchor,
+   * and whenever the gates fail.
+   */
+  spoken: Set<number>;
+  /**
+   * The `trackSessionKey` (`${TrackID}|${SessionNum}`) {@link markers} was
+   * resolved for; `""` before the first resolution. A tick with another key
+   * re-resolves.
+   */
+  markersKey: string;
+  /**
+   * Resolved corner markers for the current track, `null` when not in the
+   * dataset or not resolved yet (retried every tick while null).
+   */
+  markers: CornerMarker[] | null;
+};
+
+/** A {@link CornerNameState} with no pass under way and no markers resolved: the initial state. */
+export function createCornerNameState(): CornerNameState {
+  return { leadPrevPct: null, spoken: new Set(), markersKey: "", markers: null };
+}
+
 export type MaterialSample = {
   t: number; // timestamp (ms since epoch)
   material: number; // TrkSurf-like enum value
@@ -487,25 +529,11 @@ export type TranslatorState = {
 
   // ── Corner-name callouts (issue #888) ────────────────────────────────────
   /**
-   * Previous tick's lead point (`LapDistPct` + speed-scaled lead offset,
-   * folded into [0, 1)). `null` until the first valid practice tick seeds it
-   * silently; reset to `null` whenever the diff's gates fail so a return to
-   * the track starts a fresh pass.
+   * The corner-name callouts' sweep and marker cache, one slice
+   * ({@link CornerNameState}). Reset per session and at a disconnect; wiped
+   * whole at a replay glance.
    */
-  cornerLeadPrevPct: number | null;
-  /**
-   * Marker indices (into the resolved marker array) already announced this
-   * lap. Cleared when the lead point wraps past S/F, on teleport re-anchor,
-   * and whenever the gates fail.
-   */
-  cornerSpoken: Set<number>;
-  /**
-   * Cache key (`${TrackID}|${SessionNum}`) for the resolved corner markers —
-   * the same invalidation pattern as `trackLengthKey`.
-   */
-  cornerMarkersKey: string;
-  /** Resolved corner markers for the current track, `null` when not in the dataset. */
-  cornerMarkers: CornerMarker[] | null;
+  cornerName: CornerNameState;
 
   /**
    * Whether the current lap began at pit exit. Set true by `diffPitLane`
@@ -1956,10 +1984,7 @@ export function createInitialState(): TranslatorState {
     pitBoxMarksSpoken: new Set(),
     pitBoxEntrySeeded: false,
 
-    cornerLeadPrevPct: null,
-    cornerSpoken: new Set(),
-    cornerMarkersKey: "",
-    cornerMarkers: null,
+    cornerName: createCornerNameState(),
 
     trackSectors: createTrackSectorsState(),
 
