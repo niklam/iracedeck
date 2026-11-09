@@ -8,6 +8,12 @@
 // SVG utilities
 export { dataUriToSvg, isDataUri, isRawSvg, svgToDataUri } from "./svg-utils.js";
 
+// Colour helpers
+export { hexToGrayscale } from "./color-utils.js";
+
+// Disconnected look (issue #1599)
+export { applyDisconnectedLook, DISCONNECTED_BADGE, DISCONNECTED_DIM_OPACITY } from "./disconnected-look.js";
+
 // Binding-missing warning overlay (issue #612)
 export {
   applyBindingWarning,
