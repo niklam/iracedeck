@@ -96,7 +96,7 @@ describe("global-common-* group partials", () => {
       "global-common-replay": ["replayJumpPlayback", "fastestLapSearchDelayMs"],
       "global-common-chat": ["chatOpenToPasteDelayMs", "chatPasteToEnterDelayMs", "chatEnterToCloseDelayMs"],
       "global-common-updates": ["changelogNotification"],
-      "global-common-diagnostics": ["debugLogging"],
+      "global-common-diagnostics": ["debugLogging", "_settingsStorePath", "_trackDataPath"],
       "global-profile-auto-switch": [
         "profileAutoSwitchEnabled",
         "profileForSessionKindTest",
@@ -188,6 +188,33 @@ describe("global-common-diagnostics.ejs storage row (#993)", () => {
     expect(pi).not.toContain("<ird-open-folder");
     expect(win).toContain('setting="_settingsStorePath"');
     expect(win).toContain("<ird-open-folder");
+  });
+
+  it("shows the track data path on both surfaces, and its Open folder button only in the window (#1112)", () => {
+    const pi = render("<%- include('global-common-diagnostics') %>");
+    const win = render("<%- include('global-common-diagnostics', { settingsWindow: true }) %>");
+
+    // A disabled textfield, like the settings-file row: the plugin writes the
+    // path, the page only shows it.
+    expect(pi).toMatch(/<sdpi-textfield setting="_trackDataPath" global disabled>/);
+    expect(win).toMatch(/<sdpi-textfield setting="_trackDataPath" global disabled>/);
+    expect(pi).not.toContain("<ird-open-track-data-folder");
+    expect(win).toContain("<ird-open-track-data-folder");
+  });
+
+  it("keeps each Open folder button under its own row (#1112)", () => {
+    const win = render("<%- include('global-common-diagnostics', { settingsWindow: true }) %>");
+    const at = (needle: string): number => {
+      const index = win.indexOf(needle);
+
+      expect(index, needle).toBeGreaterThanOrEqual(0);
+
+      return index;
+    };
+
+    expect(at('setting="_settingsStorePath"')).toBeLessThan(at("<ird-open-folder"));
+    expect(at("<ird-open-folder")).toBeLessThan(at('setting="_trackDataPath"'));
+    expect(at('setting="_trackDataPath"')).toBeLessThan(at("<ird-open-track-data-folder"));
   });
 
   it("renders the Capture CPU profile controls only in the window (#1338)", () => {
