@@ -216,7 +216,14 @@ describe("settings-window-changelog.ejs", () => {
     // Built in memory: the artifact is gitignored since #1386, and the suite must
     // not depend on a prior build having generated it.
     const real = buildComposedChangelogData(repoRoot);
-    const html = render(real.releases[0].version, real);
+    // The newest release a build can report: in the window after a stable fold
+    // (#1398) the top release is `Unreleased`, which no build reports, so the
+    // installed version is the dated release below it.
+    const installed = real.releases.find((release) => release.version !== UNRELEASED_LABEL);
+
+    if (!installed) throw new Error("the real changelog has no release a build can report");
+
+    const html = render(installed.version, real);
 
     expect(html.match(/<article class="sw-cl-release/g)).toHaveLength(real.releases.length);
     expect(html).toContain('<span class="sw-cl-badge">Installed</span>');
