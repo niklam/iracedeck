@@ -58,6 +58,58 @@ export const PANE_IMAGES_STATE_EXPRESSION = `(() => {
 })()`;
 
 /**
+ * The version the window's header prints (`<span class="sw-version">v…</span>`
+ * in `settings-window.ejs`), trimmed, or `null` when the page has no such
+ * element. Read once before the first shot when the caller names the version
+ * the build must carry (#1536).
+ *
+ * @internal Exported for testing
+ */
+export const HEADER_VERSION_EXPRESSION = `(() => {
+  const element = document.querySelector('.sw-version');
+  return element ? element.textContent.trim() : null;
+})()`;
+
+/**
+ * Refuse a page whose header does not print `v<expectVersion>` (#1536).
+ *
+ * The stable release captures the committed screenshots right after it bumps
+ * the version and rebuilds; a build that missed the bump (a stale turbo hit, a
+ * plugin built before the fold) would put the previous version's header and
+ * notes on the site. Checking the page itself, rather than the files that fed
+ * it, is what proves the shot shows the release.
+ *
+ * @param {any} cdp
+ * @param {string} sessionId
+ * @param {string} expectVersion - The bare version, as `3.9.0`.
+ * @throws When the header says anything else, is missing, or the page cannot answer.
+ */
+async function assertHeaderVersion(cdp, sessionId, expectVersion) {
+  const expected = `v${expectVersion}`;
+  const reply = await cdp.send(
+    "Runtime.evaluate",
+    { expression: HEADER_VERSION_EXPRESSION, returnByValue: true },
+    sessionId,
+  );
+  const shown = reply?.result?.value;
+
+  if (shown === expected) return;
+
+  const thrown = reply?.exceptionDetails?.exception?.description ?? reply?.exceptionDetails?.text;
+  let said;
+
+  if (thrown) said = `the page threw ${thrown} when its header version was read`;
+  else if (shown === null) said = `the page has no .sw-version element in its header`;
+  else if (typeof shown === "string") said = `its header says ${JSON.stringify(shown)}`;
+  else said = `the page answered ${JSON.stringify(shown)} for its header version`;
+
+  throw new Error(
+    `The settings page should show ${expected}, but ${said}. The plugin build does not carry the version ` +
+      `being captured; rebuild the Stream Deck plugin and capture again. No screenshot was written.`,
+  );
+}
+
+/**
  * How long `Browser.close` may take to answer before teardown stops waiting for
  * the reply (#1544). The reply is not what decides anything: whether the
  * browser's process has gone is, so a browser that never answers costs this
@@ -569,6 +621,10 @@ function reportWithoutLister({ browser, browserProcess, browserExited, closeProb
  * @param {{width: number, height: number}} options.size - Window size to emulate.
  * @param {number} [options.deviceScaleFactor] - 1 for actual size, 2 for HiDPI.
  * @param {readonly import("./tabs.mjs").SettingsWindowTab[]} [options.tabs]
+ * @param {string} [options.expectVersion] - The bare version (`3.9.0`) the
+ *   page's header must print as `v3.9.0`. Checked once the page has loaded and
+ *   before the first shot; any other header, or none, throws with nothing
+ *   written. Unset, the header is not read.
  * @param {object} deps - Injected collaborators.
  * @param {(opts: object) => Promise<{url: string, close: () => Promise<void>}>} deps.startServer
  * @param {() => Promise<{port: number, kill?: () => void}>} deps.launchBrowser - Starts
@@ -605,7 +661,16 @@ export async function captureSettingsWindow(options, deps) {
     size,
     deviceScaleFactor = 1,
     tabs = SETTINGS_WINDOW_TABS,
+    expectVersion,
   } = options;
+
+  // Before anything starts, so a caller's mistake costs no browser: an empty or
+  // non-string version could only ever be refused by the page, which would
+  // read as a stale build.
+  if (expectVersion !== undefined && (typeof expectVersion !== "string" || expectVersion === "")) {
+    throw new TypeError(`expectVersion must be a non-empty version string; got ${JSON.stringify(expectVersion)}.`);
+  }
+
   const {
     startServer,
     launchBrowser,
@@ -688,6 +753,10 @@ export async function captureSettingsWindow(options, deps) {
     }
 
     await delay(PAGE_SETTLE_MS);
+
+    // Inside the try, so a refusal still shuts the browser down and stops the
+    // server in the finally, like any other failure.
+    if (expectVersion !== undefined) await assertHeaderVersion(cdp, sessionId, expectVersion);
 
     for (const tab of tabs) {
       // Click the nav button exactly as a user would, rather than un-hiding
