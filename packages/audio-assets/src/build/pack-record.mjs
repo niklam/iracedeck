@@ -40,6 +40,7 @@ import {
   buildVoicePackManifest,
   CATALOG_DIR,
   CONFIGS_DIR,
+  isCanonicalPackVersion,
   listSourceClips,
   locateCalloutScript,
   readVoiceEntries,
@@ -59,6 +60,11 @@ const REGISTRY_FILE = "src/build/voice-packs.mjs";
 
 const sha256Hex = z.string().regex(/^[0-9a-f]{64}$/, "must be a lowercase 64-hex-digit sha-256");
 
+/** The packer's own version rule, so a record never names a version the packer would refuse to write. */
+const CANONICAL_VERSION_MESSAGE =
+  "must be a canonical semver version such as 1.2.3 — no leading v, no surrounding whitespace, no build metadata";
+const canonicalVersion = z.string().refine(isCanonicalPackVersion, CANONICAL_VERSION_MESSAGE);
+
 const VoiceInputsSchema = z.strictObject({
   clips: z.number().int().nonnegative(),
   clipsSha256: sha256Hex,
@@ -72,7 +78,7 @@ const PackInputsSchema = z.strictObject({
   voices: z.record(z.string(), VoiceInputsSchema),
 });
 
-const ReleasedSchema = z.strictObject({ version: z.string(), sha256: sha256Hex });
+const ReleasedSchema = z.strictObject({ version: canonicalVersion, sha256: sha256Hex });
 
 /**
  * The record's shape — strict, so a hand-edited or misspelled key fails the
@@ -80,7 +86,7 @@ const ReleasedSchema = z.strictObject({ version: z.string(), sha256: sha256Hex }
  */
 export const PackRecordSchema = z.strictObject({
   id: z.string(),
-  version: z.string(),
+  version: canonicalVersion,
   sha256: sha256Hex,
   inputs: PackInputsSchema,
   released: ReleasedSchema.optional(),
@@ -102,9 +108,11 @@ export const PackRecordSchema = z.strictObject({
  * @property {ReturnType<typeof archiveFormatIdentity>} [archiveFormat] — a test's seam; defaults to `archiveFormatIdentity()`
  *
  * @typedef {object} PackRecordProblem — one thing wrong with one pack's record
- * @property {string} pack — the pack id (a stray record's file stem)
- * @property {string} part — what is wrong: `record`, `registry`, `id`, `version`, `sha256`, `entry`,
- *   `released`, `inputs.pipeline`, `inputs.archiveFormat`, `inputs.manifest`, `voices.<id>.clips`, `voices.<id>.script`
+ * @property {string} pack — the pack id (a stray record's file stem, or `pack-records` for the directory itself)
+ * @property {string} part — what is wrong. Rule 1: `record` (missing or unreadable), `registry` (a stray file,
+ *   or the records directory is not one). Rule 2: `id`, `version`, `sha256`, `entry` (missing or unreadable).
+ *   Rule 4: `released`. Rule 3: `inputs` (could not be computed), `inputs.pipeline`, `inputs.archiveFormat`,
+ *   `inputs.manifest`, `voices.<id>` (a voice in only one of the two), `voices.<id>.clips`, `voices.<id>.script`.
  * @property {string} message — what differs, naming the pack and the file, for example
  *   `default: the clips under voice/default changed (4,811 now, 4,810 recorded)`
  * @property {string} fix — what to do about it, with the exact commands
@@ -126,6 +134,23 @@ const count = (n) => n.toLocaleString("en-US");
  */
 export function packRecordPath(id, recordsDir = PACK_RECORDS_DIR) {
   return path.join(recordsDir, `${id}.json`);
+}
+
+/**
+ * Is `version` the version `record` says is released? THE predicate every
+ * reader of a seal uses — the checker, the sealer, the packer and the publish
+ * script's `--publish` refusal — so they cannot disagree. Plain string
+ * equality is exact because both sides are canonical versions
+ * (`isCanonicalPackVersion`: no leading `v`, no whitespace, no build metadata),
+ * which the record's schema enforces on `released.version` and the packer on
+ * the definition's; under that rule two strings are equal exactly when semver
+ * says the versions are.
+ *
+ * @param {Pick<PackRecord, "released">} record
+ * @param {string} version
+ */
+export function isSealedAt(record, version) {
+  return record.released !== undefined && record.released.version === version;
 }
 
 /**
@@ -435,6 +460,22 @@ function diffInputs(pack, recorded, now) {
   return diffs;
 }
 
+/** `Thumbs.db`, `desktop.ini`: litter by name; dotfiles and `~` backups are recognised by shape below. */
+const LITTER_NAMES = new Set(["thumbs.db", "desktop.ini"]);
+
+/**
+ * Is `entry` something an editor or an operating system left in
+ * `pack-records/` rather than a file anyone wrote: a dotfile (`.DS_Store`,
+ * vim's `.x.json.swp`), a backup ending in `~`, `Thumbs.db` or `desktop.ini`?
+ * The stray-record check skips these, as the changelog fragments directory
+ * does; anything else that is not a published pack's record is a problem.
+ *
+ * @param {string} entry — a directory entry's name
+ */
+export function isRecordsDirLitter(entry) {
+  return entry.startsWith(".") || entry.endsWith("~") || LITTER_NAMES.has(entry.toLowerCase());
+}
+
 /**
  * Hold every pack in `packs` to the four rules, and the records directory to
  * rule 1. Pure over the tree: reads, never writes. Returns every problem found,
@@ -454,11 +495,24 @@ function diffInputs(pack, recorded, now) {
  *    rule: a published version is bumped, never rolled back), and when equal,
  *    the record's `sha256` — so the entry's — equals `released.sha256`.
  *
- * @param {{ packs?: readonly VoicePackDefinition[] } & PackRoots} [options] — `packs` defaults to `VOICE_PACKS`
+ * Never throws on what it checks: a registry version the packer would refuse,
+ * an unreadable record or entry, a missing voice tree or a records directory
+ * that is not one each come back as a problem.
+ *
+ * @param {{ packs?: readonly VoicePackDefinition[]; registry?: readonly VoicePackDefinition[] } & PackRoots} [options]
+ *   — `registry` is the whole pack list the stray-record check judges by, `packs` which of them to hold to rules
+ *   2 to 4. Both default to `VOICE_PACKS`; given only `packs`, the registry is `packs`, so a test over its own tree
+ *   needs one list, and a caller checking a subset of the real registry passes `registry: VOICE_PACKS` beside it
  * @returns {PackRecordProblem[]}
  */
 export function checkPackRecords(options = {}) {
-  const { packs = VOICE_PACKS, catalogDir = CATALOG_DIR, recordsDir = PACK_RECORDS_DIR, ...inputRoots } = options;
+  const {
+    packs = options.registry ?? VOICE_PACKS,
+    registry = packs,
+    catalogDir = CATALOG_DIR,
+    recordsDir = PACK_RECORDS_DIR,
+    ...inputRoots
+  } = options;
   /** @type {PackRecordProblem[]} */
   const problems = [];
 
@@ -487,6 +541,18 @@ export function checkPackRecords(options = {}) {
       continue;
     }
 
+    // The definition's version, before anything compares it: a registry entry
+    // the packer would refuse is reported, never thrown on.
+    const versionIsCanonical = isCanonicalPackVersion(pack.version);
+
+    if (!versionIsCanonical) {
+      problem(
+        "version",
+        `${pack.id}: ${REGISTRY_FILE} has version ${JSON.stringify(pack.version)}, which ${CANONICAL_VERSION_MESSAGE}`,
+        `fix \`version\` in ${REGISTRY_FILE}, then ${repack}`,
+      );
+    }
+
     // Rule 2.
     const bothFiles = `one run writes both files, so one of them was edited by hand or left out of the commit; ${repack}`;
 
@@ -498,7 +564,8 @@ export function checkPackRecords(options = {}) {
       problem(
         "version",
         `${pack.id}: ${recordFile} records version ${record.version}, but ${REGISTRY_FILE} says ${pack.version}`,
-        bothFiles,
+        `the version was bumped in ${REGISTRY_FILE} but the pack was not re-packed — or one file was edited by ` +
+          `hand or left out of the commit; ${repack}`,
       );
     }
 
@@ -521,37 +588,25 @@ export function checkPackRecords(options = {}) {
       );
     }
 
-    // Rule 4.
+    // Rule 4. The record's `released.version` is canonical by its schema; the
+    // definition's version is checked here, since a checker must never throw on
+    // what it is checking.
     const released = record.released;
-    let isReleased = false;
+    const isReleased = isSealedAt(record, pack.version);
 
-    if (released !== undefined) {
-      if (semver.valid(released.version) === null) {
+    if (released !== undefined && versionIsCanonical) {
+      if (semver.compare(pack.version, released.version) < 0) {
         problem(
           "released",
-          `${pack.id}: ${recordFile} names a released version "${released.version}" that is not a semver version`,
-          `restore ${recordFile} from git; \`released\` is written only by the release hook and the seal command`,
+          `${pack.id}: version ${pack.version} is below the released ${released.version} (${recordFile})`,
+          `a published version is bumped, never rolled back: set \`version\` in ${REGISTRY_FILE} to ${released.version} or above`,
         );
-      } else {
-        const order = semver.compare(pack.version, released.version);
-
-        if (order < 0) {
-          problem(
-            "released",
-            `${pack.id}: version ${pack.version} is below the released ${released.version} (${recordFile})`,
-            `a published version is bumped, never rolled back: set \`version\` in ${REGISTRY_FILE} to ${released.version} or above`,
-          );
-        } else if (order === 0) {
-          isReleased = true;
-
-          if (record.sha256 !== released.sha256) {
-            problem(
-              "released",
-              `${pack.id}: version ${pack.version} is released with sha256 ${released.sha256}, but ${recordFile} now carries ${record.sha256}`,
-              `a published archive never changes under its version: bump \`version\` in ${REGISTRY_FILE}, ${repack}`,
-            );
-          }
-        }
+      } else if (isReleased && record.sha256 !== released.sha256) {
+        problem(
+          "released",
+          `${pack.id}: version ${pack.version} is released with sha256 ${released.sha256}, but ${recordFile} now carries ${record.sha256}`,
+          `a published archive never changes under its version: bump \`version\` in ${REGISTRY_FILE}, ${repack}`,
+        );
       }
     }
 
@@ -572,9 +627,24 @@ export function checkPackRecords(options = {}) {
 
   // Rule 1, the other half: nothing in the records directory but a record per published pack.
   if (existsSync(recordsDir)) {
-    const known = new Set(packs.map((pack) => pack.id));
+    const known = new Set(registry.map((pack) => pack.id));
+    let names;
 
-    for (const name of readdirSync(recordsDir).sort()) {
+    try {
+      names = readdirSync(recordsDir).sort();
+    } catch (err) {
+      problems.push({
+        pack: "pack-records",
+        part: "registry",
+        message: `${relativeToPackage(recordsDir)} could not be listed: ${err instanceof Error ? err.message : err}`,
+        fix: `pack-records/ is the directory holding one <id>.json per published pack: restore it from git`,
+      });
+      names = [];
+    }
+
+    for (const name of names) {
+      if (isRecordsDirLitter(name)) continue;
+
       const stem = name.endsWith(".json") ? name.slice(0, -".json".length) : null;
 
       if (stem !== null && known.has(stem)) continue;
@@ -633,8 +703,8 @@ export function formatPackRecordProblems(problems) {
  * `checkPackRecords` over every pack first and throw on any problem (the
  * error's `problems` holds them, its message `formatPackRecordProblems`),
  * then set `released: { version, sha256 }` from the record's own fields on
- * every record whose `released.version` differs from the pack's — a record
- * already sealed at this version is left alone, bytes untouched.
+ * every record not already sealed at the pack's version (`isSealedAt`) — one
+ * that is stays alone, bytes untouched.
  *
  * The release hook calls this for a stable or `-rc` version; the seal command
  * before a between-releases publish. Both are the only writers of `released`.
@@ -673,15 +743,18 @@ export function sealPackRecords(options = {}) {
         });
   /** @type {{ id: string; version: string; sha256: string; path: string }[]} */
   const sealed = [];
-  /** @type {string[]} */
-  const written = [];
+  /** @type {{ file: string; bytes: string }[]} */
+  const pending = [];
 
+  // Two phases: every next record is read and built first, then every file is
+  // written, so a record that cannot be read or built leaves nothing sealed
+  // rather than the packs before it sealed and the rest not.
   for (const pack of chosen) {
     const record = readPackRecord(pack.id, recordsDir);
 
     // The checks passed, so the record exists, carries the pack's version, and
     // — when sealed at it already — carries this very sha256.
-    if (record === null || record.released?.version === pack.version) continue;
+    if (record === null || isSealedAt(record, pack.version)) continue;
 
     const file = packRecordPath(pack.id, recordsDir);
     const next = buildPackRecord(pack, {
@@ -691,8 +764,18 @@ export function sealPackRecords(options = {}) {
     });
 
     sealed.push({ id: pack.id, version: record.version, sha256: record.sha256, path: file });
+    pending.push({ file, bytes: serializePackRecord(next) });
+  }
 
-    if (!dryRun) written.push(writePackRecord(next, recordsDir));
+  /** @type {string[]} */
+  const written = [];
+
+  if (!dryRun) {
+    for (const { file, bytes } of pending) {
+      mkdirSync(path.dirname(file), { recursive: true });
+      writeFileSync(file, bytes);
+      written.push(file);
+    }
   }
 
   return { sealed, written };

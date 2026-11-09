@@ -27,6 +27,8 @@ import {
   computePackInputs,
   computeVoiceInputs,
   formatPackRecordProblems,
+  isRecordsDirLitter,
+  isSealedAt,
   type PackInputs,
   type PackRecord,
   packRecordPath,
@@ -433,6 +435,49 @@ describe("checkPackRecords", () => {
       ]);
     });
 
+    it("skips editor and OS litter in pack-records/, as the changelog fragments directory does", () => {
+      const { roots } = fixture();
+
+      for (const name of [".DS_Store", ".testvoice.json.swp", "testvoice.json~", "Thumbs.db", "desktop.ini"]) {
+        writeFileSync(path.join(roots.recordsDir, name), "");
+        expect(isRecordsDirLitter(name), name).toBe(true);
+      }
+
+      expect(isRecordsDirLitter("testvoice.json")).toBe(false);
+      expect(checkPackRecords({ packs: [PACK], ...roots })).toEqual([]);
+    });
+
+    it("judges strays by the registry, so a caller checking a subset of packs is not told the rest are strays", () => {
+      const { roots, inputs } = fixture();
+      const other = { ...PACK, id: "othervoice" };
+
+      writePackRecord(
+        buildPackRecord(other, { sha256: SHA_A, inputs: computePackInputs(other, roots) }),
+        roots.recordsDir,
+      );
+
+      // Only `packs`: the other record is a stray by that list.
+      expect(parts(checkPackRecords({ packs: [PACK], ...roots }))).toEqual(["registry"]);
+      // With the registry named, it is a pack not checked this time, and nothing else.
+      expect(checkPackRecords({ packs: [PACK], registry: [PACK, other], ...roots })).toEqual([]);
+      expect(inputs.voices.testvoice).toBeDefined();
+    });
+
+    it("reports a records path that is not a directory rather than throwing", () => {
+      const { roots } = fixture();
+
+      rmSync(roots.recordsDir, { recursive: true });
+      writeFileSync(roots.recordsDir, "not a directory");
+
+      const problems = checkPackRecords({ packs: [PACK], ...roots });
+
+      expect(problems.map((problem) => [problem.pack, problem.part])).toEqual([
+        ["testvoice", "record"],
+        ["pack-records", "registry"],
+      ]);
+      expect(problems[1]!.message).toMatch(/could not be listed/);
+    });
+
     it("passes with no records directory at all when there is no pack to record", () => {
       const { roots } = fixture();
 
@@ -672,15 +717,66 @@ describe("checkPackRecords", () => {
       );
     });
 
-    it("fails a released version that is not a semver version", () => {
+    it.each([
+      ["not a semver version", "latest"],
+      ["v-prefixed — the plugin would accept it, the record never names it", "v1.2.3"],
+      ["carrying build metadata — equal to 1.2.3 under semver, another string here", "1.2.3+build.7"],
+      ["padded with whitespace", " 1.2.3"],
+    ])("refuses a released version %s as not a record at all", (_what, version) => {
+      // Rule 4's "sealed at this version" is string equality (`isSealedAt`),
+      // exact only while every version it sees is canonical; the schema holds
+      // the record's side of that, so such a record is unreadable, never
+      // judged.
       const { roots, writeRecord } = fixture();
 
-      writeRecord({ released: { version: "latest", sha256: SHA_A } });
+      writeRecord({ released: { version, sha256: SHA_A } });
 
       const problems = checkPackRecords({ packs: [PACK], ...roots });
 
-      expect(parts(problems)).toEqual(["released"]);
-      expect(problems[0]!.message).toMatch(/released version "latest" that is not a semver version/);
+      expect(parts(problems)).toEqual(["record"]);
+      expect(problems[0]!.message).toMatch(
+        /testvoice\.json is not a pack record:\n {2}released\.version: must be a canonical semver version/,
+      );
+    });
+
+    it("refuses a record whose own version is not canonical, the same way", () => {
+      const { roots, writeRecord } = fixture();
+
+      writeRecord({ version: "v1.2.3" });
+
+      const problems = checkPackRecords({ packs: [PACK], ...roots });
+
+      expect(parts(problems)).toEqual(["record"]);
+      expect(problems[0]!.message).toMatch(/\n {2}version: must be a canonical semver version/);
+    });
+
+    it("never throws on a registry version the packer would refuse — it is a version problem", () => {
+      const { roots } = fixture();
+      const bad = { ...PACK, version: "1.2" };
+
+      const problems = checkPackRecords({ packs: [bad], ...roots });
+
+      // Rule 2 disagrees too (the record says 1.2.3), and so does the manifest,
+      // which carries the version; rule 4 is skipped rather than asked to
+      // compare a non-version.
+      expect(parts(problems)).toEqual(["version", "version", "inputs.manifest"]);
+      expect(problems[0]!.message).toBe(
+        'testvoice: src/build/voice-packs.mjs has version "1.2", which must be a canonical semver version such as 1.2.3 — no leading v, no surrounding whitespace, no build metadata',
+      );
+      expect(problems[0]!.fix).toBe(
+        "fix `version` in src/build/voice-packs.mjs, then run `pnpm --filter @iracedeck/audio-assets pack:voice testvoice` and commit catalog/testvoice.json and pack-records/testvoice.json",
+      );
+    });
+
+    it("skips rule 4 for a registry version it cannot compare, even with a seal in the record", () => {
+      const { roots, writeRecord } = fixture();
+
+      writeRecord({ released: { version: "1.2.3", sha256: SHA_A } });
+
+      const problems = checkPackRecords({ packs: [{ ...PACK, version: "v1.2.3" }], ...roots });
+
+      expect(parts(problems)).not.toContain("released");
+      expect(parts(problems)[0]).toBe("version");
     });
   });
 
@@ -696,6 +792,19 @@ describe("checkPackRecords", () => {
       ["othervoice", "record"],
       ["stray", "registry"],
     ]);
+  });
+});
+
+describe("isSealedAt — the one predicate for a sealed version", () => {
+  it("is true exactly when the record's released version is this version", () => {
+    const sealed = { released: { version: "1.2.3", sha256: SHA_A } };
+
+    expect(isSealedAt(sealed, "1.2.3")).toBe(true);
+    expect(isSealedAt(sealed, "1.2.4")).toBe(false);
+    expect(isSealedAt({ released: undefined }, "1.2.3")).toBe(false);
+    // Canonical on both sides, so string equality is semver equality; a
+    // non-canonical spelling never reaches it (the schema and the packer refuse).
+    expect(isSealedAt(sealed, "v1.2.3")).toBe(false);
   });
 });
 
@@ -748,6 +857,29 @@ describe("sealPackRecords", () => {
 
     expect(sealPackRecords({ packs: [PACK], ...roots })).toEqual({ sealed: [], written: [] });
     expect(recordBytes()).toBe(before);
+  });
+
+  it("seals every chosen pack in one call, writing nothing until every next record is built", () => {
+    const { roots } = fixture();
+    const other = { ...PACK, id: "othervoice" };
+
+    writePackRecord(
+      buildPackRecord(other, { sha256: SHA_A, inputs: computePackInputs(other, roots) }),
+      roots.recordsDir,
+    );
+    writeFileSync(
+      path.join(roots.catalogDir, "othervoice.json"),
+      `${JSON.stringify({ id: "othervoice", version: "1.2.3", sha256: SHA_A })}\n`,
+    );
+
+    const result = sealPackRecords({ packs: [PACK, other], ...roots });
+
+    expect(result.sealed.map((seal) => seal.id)).toEqual(["testvoice", "othervoice"]);
+    expect(result.written).toEqual([
+      packRecordPath("testvoice", roots.recordsDir),
+      packRecordPath("othervoice", roots.recordsDir),
+    ]);
+    expect(readPackRecord("othervoice", roots.recordsDir)!.released).toEqual({ version: "1.2.3", sha256: SHA_A });
   });
 
   it("re-seals a record sealed at an earlier version", () => {
