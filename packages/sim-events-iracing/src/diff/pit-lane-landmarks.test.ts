@@ -474,7 +474,7 @@ describe("diffPitLaneLandmarks", () => {
   });
 
   describe("approachStart is the way in only", () => {
-    it("takes no approach edge while the car is still marked as coming from pit road", () => {
+    it("takes no approach edge while the car is still marked as leaving the pit lane", () => {
       const h = harness();
 
       h.tick(10, { 1: { surface: ON, pct: 0.5 } });
