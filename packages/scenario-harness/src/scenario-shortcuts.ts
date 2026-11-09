@@ -2673,6 +2673,27 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
   { id: "stall-entered", category: "Pit Lane", label: "Entered Stall", event: "pitStall.entered", data: {} },
   { id: "stall-departed", category: "Pit Lane", label: "Departed Stall", event: "pitStall.departed", data: {} },
   { id: "pit-exited", category: "Pit Lane", label: "Exited Pit Lane", event: "pitLane.exited", data: {} },
+  // The pit exit beep (issue #1161): one tone on the Cue channel at the
+  // `pitLane.exited` edge. The cue reads the published envelope's telemetry
+  // and stays silent on a positive "not in the car" or "replay", and the
+  // harness boots in the garage (`IsOnTrack: false`), so the patch puts the
+  // player in the car first; "Exited Pit Lane" above, pressed on the boot
+  // telemetry, is the silent control. The surface and a pit-lane speed are
+  // pinned with it (#1349), so the car is the same one whatever the previous
+  // button left: in the car off the track surface the translator would add
+  // its own `offTrack.started`. `OnPitRoad` is left alone on purpose:
+  // pinning it off after a button that left the car on pit road would be a
+  // real exit edge the translator then announces too, beeping twice.
+  {
+    id: "pit-exit-beep",
+    category: "Pit Lane",
+    label: "Pit exit beep",
+    description:
+      "Crossing the pit exit line, where the speed limit ends: one short rising tone on the Cue channel, at the Radar volume. Silent with the Race Engineer or the Pit exit beep off.",
+    event: "pitLane.exited",
+    data: {},
+    telemetryPatch: { IsOnTrack: true, IsReplayPlaying: false, PlayerTrackSurface: TrkLoc.OnTrack, Speed: 15 },
+  },
 
   // ── Pit-road speeding (issue #912) ──
   // Episode edges for the repeating over-the-limit cue. `started` opens the
