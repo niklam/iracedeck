@@ -143,16 +143,6 @@ export const GlobalSettingsSchema = z
       .default(false)
       .catch(false),
     /**
-     * When true, buttons show inactive/disabled state when iRacing is not connected.
-     * Default: true. Uses the standard string/boolean coercion (issue #896) so a
-     * persisted string value can't abort the whole settings parse.
-     */
-    disableWhenDisconnected: z
-      .union([z.boolean(), z.string()])
-      .transform((val) => val === true || val === "true")
-      .default(true)
-      .catch(true),
-    /**
      * When true, the plugin writes verbose `DEBUG`-level logs; when false it
      * logs at `INFO` (issue #609). Production default is `false` so a fresh
      * install doesn't flood its `.log` with debug detail — debug logging is

@@ -281,7 +281,7 @@ describe("global-settings cache (synchronous update on local writes)", () => {
       raceEngineerVolume: 50,
       radarVolume: 50,
       backgroundVolume: 25,
-      disableWhenDisconnected: true,
+      showDisconnectedState: false,
       focusIRacingWindow: "always",
       enableFuelingOnChange: true,
       simHubHost: "127.0.0.1",
@@ -1236,11 +1236,21 @@ describe("schema hardening (issue #896)", () => {
     expect(parsed.chatPasteToEnterDelayMs).toBe(200);
   });
 
-  it("disableWhenDisconnected coerces PI string values like the other booleans", () => {
-    const parsedFalse = GlobalSettingsSchema.parse({ disableWhenDisconnected: "false" }) as Record<string, unknown>;
-    expect(parsedFalse.disableWhenDisconnected).toBe(false);
-    const parsedTrue = GlobalSettingsSchema.parse({ disableWhenDisconnected: "true" }) as Record<string, unknown>;
-    expect(parsedTrue.disableWhenDisconnected).toBe(true);
+  it("showDisconnectedState coerces PI string values like the other booleans", () => {
+    const parsedFalse = GlobalSettingsSchema.parse({ showDisconnectedState: "false" }) as Record<string, unknown>;
+    expect(parsedFalse.showDisconnectedState).toBe(false);
+    const parsedTrue = GlobalSettingsSchema.parse({ showDisconnectedState: "true" }) as Record<string, unknown>;
+    expect(parsedTrue.showDisconnectedState).toBe(true);
+  });
+
+  it("no longer declares the retired disableWhenDisconnected (#1599): no default, a stored value passes through", () => {
+    const empty = GlobalSettingsSchema.parse({}) as Record<string, unknown>;
+    expect(empty).not.toHaveProperty("disableWhenDisconnected");
+    // A stored copy is an ordinary passthrough key, kept as stored (not
+    // coerced) until the cleanup deletes it.
+    const stored = GlobalSettingsSchema.parse({ disableWhenDisconnected: "true" }) as Record<string, unknown>;
+    expect(stored.disableWhenDisconnected).toBe("true");
+    expect(stored.showDisconnectedState).toBe(false);
   });
 
   it("simHubHost falls back to the default on a non-string value", () => {
