@@ -126,6 +126,7 @@ export function buildTriggerDescription(dial: DialSettings): DeckTriggerDescript
   return description;
 }
 
+/** The deck's trigger-description label for a gesture slot, or `undefined` for `none` (no label shown). */
 function gestureLabel(action: GestureSlot): string | undefined {
   switch (action) {
     case "open-selected-box":
@@ -364,6 +365,11 @@ export class BlackBoxSelectorDialSurface extends ReleaseDialSurfaceBase<BlackBox
     return gestureSlots(dial);
   }
 
+  /**
+   * Runs one press or touch gesture: a single tap of the binding it names (the
+   * box chosen by `dial.pressBox`, or Toggle Black Box Size), never a #818 prime
+   * sequence. Exhaustive over {@link GESTURE_ACTIONS}.
+   */
   private async doGesture(ctx: BlackBoxDialContext, gesture: GestureSlot): Promise<void> {
     switch (gesture) {
       case "none":
