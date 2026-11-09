@@ -20,7 +20,7 @@ Each one only when the change needs it:
 - **`README.md`**: structure, action count, features, workflow.
 - **Architecture page** (`packages/website/src/content/docs/docs/development/architecture.md`) when packages, seams, data flow or the dependency graph changed.
 - **Rules, `CLAUDE.md` files and skills** whose conventions, APIs or listings the change moved. Rule edits keep `scripts/claude-rules-frontmatter.test.mjs` green; a topic rule is path-scoped.
-- **Settings-window screenshots** when the change makes one stale: `website-screenshots.md`.
+- **Settings-window screenshots** are never recaptured or committed in a branch: the stable release captures them, so a UI change or a fragment needs none. A new Settings-window tab gets its `###` section on `docs/getting-started/settings.mdx` with its shot placed as `<SettingsShot file="<tab>.png" alt="…" />`, and stays pending, with no PNG, until the release: `website-screenshots.md`.
 
 Write for the reader of each file: users on the website and in the changelog, Claude in rules and `CLAUDE.md` files. Paragraphs on one line, a language on every fenced block, no bare `<` or `{` in a fragment.
 

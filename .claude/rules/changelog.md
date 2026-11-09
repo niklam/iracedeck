@@ -52,6 +52,6 @@ The changelog records **what users get in a release**, not the PR history:
 
 ## Checking a fragment, and the rest of the pipeline
 
-The post-edit hook regenerates the changelog data whenever a fragment or `changelog.mdx` is edited in a Claude Code session, and that run is the fragment's validation; outside a session run `pnpm generate:changelog-data`. `pnpm test` composes and parses the real `changelog.d/` and `changelog.mdx` too. `changelog.json` is a gitignored build artifact, never committed. A fragment added or edited makes the Settings window screenshot stale (`@.claude/rules/website-screenshots.md`). Fixing a typo in a released section is an edit to `changelog.mdx`, not a fragment.
+The post-edit hook regenerates the changelog data whenever a fragment or `changelog.mdx` is edited in a Claude Code session, and that run is the fragment's validation; outside a session run `pnpm generate:changelog-data`. `pnpm test` composes and parses the real `changelog.d/` and `changelog.mdx` too. `changelog.json` is a gitignored build artifact, never committed. A fragment never needs a screenshot recapture: the stable release captures them (`@.claude/rules/website-screenshots.md`). Fixing a typo in a released section is an edit to `changelog.mdx`, not a fragment.
 
 How the fragments are composed, the fold at a stable release, the `changelog.json` artifact and the machine-read format of the dated sections are in `changelog-internals.md`, which loads with `changelog.d/`, `changelog.mdx` and the `scripts/` that read them.

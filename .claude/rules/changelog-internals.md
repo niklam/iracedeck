@@ -29,6 +29,7 @@ Nobody dates a section by hand. On a **stable** version, release-it's `before:bu
 - **Pre-releases** (`-dev` / `-rc` / `-alpha` / `-beta`) skip the fold, so an `-rc` build shows the fragments as Unreleased. Their notes are the eventual stable version's.
 - **No fragments** is a logged no-op: that version gets no section.
 - **`pnpm release:dry`** prints the section and the fragments it would delete, and writes nothing.
+- **The screenshot capture follows the bump** (#1536): the `after:bump` hook (`scripts/release-capture.mjs`) rebuilds the Stream Deck plugin and captures the Settings window, What's New showing the folded section, into the same commit. A stable release therefore needs a Chromium browser and the native toolchain, since the bumped version rebuilds `iracing-native` and `audio-native`; an MSVC `LNK1318` abort means restore and rerun (`website-screenshots.md`).
 
 Fragments travel with their code, so whatever a branch holds at its stable bump are that release's notes; back-merges are in `@.claude/rules/build-and-commit.md`.
 
