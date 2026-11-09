@@ -47,6 +47,7 @@ import {
   type PitLaneLandmarkSample,
   type PitLaneSection,
   type PitLaneTrackIdentity,
+  pitLaneTrackKey,
 } from "@iracedeck/track-data";
 import {
   constants,
@@ -248,18 +249,6 @@ function entryKey(track: PitLaneTrackIdentity): string {
 
 function hasLandmarks(section: PitLaneSection): boolean {
   return PIT_LANE_LANDMARK_NAMES.some((name) => section.landmarks[name] !== undefined);
-}
-
-function sameIdentity(a: PitLaneTrackIdentity, b: PitLaneTrackIdentity): boolean {
-  return (
-    a.sim === b.sim &&
-    a.trackId === b.trackId &&
-    a.trackName === b.trackName &&
-    a.trackConfigName === b.trackConfigName &&
-    a.trackLength === b.trackLength &&
-    a.trackLengthM === b.trackLengthM &&
-    a.trackVersion === b.trackVersion
-  );
 }
 
 export function createTrackStore(opts: TrackStoreOptions): TrackStore {
@@ -493,7 +482,8 @@ export function createTrackStore(opts: TrackStoreOptions): TrackStore {
       return entry;
     }
 
-    if (!sameIdentity(entry.identity, track)) {
+    // track-data's one definition of a changed identity, the one the learner reloads on.
+    if (pitLaneTrackKey(entry.identity) !== pitLaneTrackKey(track)) {
       entry.identity = { ...track };
 
       for (const [name, samples] of entry.own) {
