@@ -846,42 +846,48 @@ describe("release-hooks.mjs voice-pack records (in a temporary git repository)",
     expect(snapshot(sealedDir)).toEqual(sealedBefore);
   });
 
-  it("stops before the version bumps when a record cannot be written, and names a restore that works", () => {
-    const dir = makeRepo(TWO_FRAGMENTS, { unsealedPacks: true });
-    const versionFiles = Object.fromEntries(
-      VERSION_FILES.map((line) => line.slice(2)).map((rel) => [rel, read(dir, rel)]),
-    );
-    const before = snapshot(dir);
-    // The LAST pack's record is read-only: the checks read it fine, the sealer
-    // writes the first and fails on this one — the worst half-way state.
-    const last = VOICE_PACKS.at(-1);
-    const lockedFile = join(dir, recordPath(last));
-    chmodSync(lockedFile, 0o444);
-
-    try {
-      const result = runFixtureHook(dir, "1.0.0");
-
-      expect(result.status).not.toBe(0);
-      expect(result.stderr).toContain(
-        `The release stopped part-way: the changelog fold is done (${CHANGELOG_SOURCE_PATH} is written and the fragments are removed), but sealing the voice-pack records failed`,
+  // A read-only mode does not stop root on POSIX, so the write this case needs
+  // to fail would succeed there; `pack-voice.test.ts` guards its permission case
+  // the same way.
+  it.skipIf(process.getuid?.() === 0)(
+    "stops before the version bumps when a record cannot be written, and names a restore that works",
+    () => {
+      const dir = makeRepo(TWO_FRAGMENTS, { unsealedPacks: true });
+      const versionFiles = Object.fromEntries(
+        VERSION_FILES.map((line) => line.slice(2)).map((rel) => [rel, read(dir, rel)]),
       );
-      expect(result.stderr).toContain("The version files are untouched.");
-      const restore = `git restore --staged --worktree -- ${CHANGELOG_SOURCE_PATH} changelog.d ${PACK_RECORDS}`;
-      expect(result.stderr).toContain(restore);
-      // The fold is done, the first record is sealed, the last is not, and no
-      // version file moved.
-      expect(read(dir, CHANGELOG_SOURCE_PATH)).toContain("## 1.0.0");
-      expect(existsSync(join(dir, "changelog.d/11-a-feature.md"))).toBe(false);
-      expect(readPackRecord(VOICE_PACKS[0].id, packRoots(dir).recordsDir).released).toBeDefined();
-      expect(readPackRecord(last.id, packRoots(dir).recordsDir).released).toBeUndefined();
-      for (const [rel, text] of Object.entries(versionFiles)) expect(read(dir, rel)).toBe(text);
+      const before = snapshot(dir);
+      // The LAST pack's record is read-only: the checks read it fine, the sealer
+      // writes the first and fails on this one — the worst half-way state.
+      const last = VOICE_PACKS.at(-1);
+      const lockedFile = join(dir, recordPath(last));
+      chmodSync(lockedFile, 0o444);
 
-      // The restore the message names puts the tree back exactly.
-      chmodSync(lockedFile, 0o644);
-      fixtureGit(dir, ...restore.split(" ").slice(1));
-      expect(snapshot(dir)).toEqual(before);
-    } finally {
-      chmodSync(lockedFile, 0o644);
-    }
-  });
+      try {
+        const result = runFixtureHook(dir, "1.0.0");
+
+        expect(result.status).not.toBe(0);
+        expect(result.stderr).toContain(
+          `The release stopped part-way: the changelog fold is done (${CHANGELOG_SOURCE_PATH} is written and the fragments are removed), but sealing the voice-pack records failed`,
+        );
+        expect(result.stderr).toContain("The version files are untouched.");
+        const restore = `git restore --staged --worktree -- ${CHANGELOG_SOURCE_PATH} changelog.d ${PACK_RECORDS}`;
+        expect(result.stderr).toContain(restore);
+        // The fold is done, the first record is sealed, the last is not, and no
+        // version file moved.
+        expect(read(dir, CHANGELOG_SOURCE_PATH)).toContain("## 1.0.0");
+        expect(existsSync(join(dir, "changelog.d/11-a-feature.md"))).toBe(false);
+        expect(readPackRecord(VOICE_PACKS[0].id, packRoots(dir).recordsDir).released).toBeDefined();
+        expect(readPackRecord(last.id, packRoots(dir).recordsDir).released).toBeUndefined();
+        for (const [rel, text] of Object.entries(versionFiles)) expect(read(dir, rel)).toBe(text);
+
+        // The restore the message names puts the tree back exactly.
+        chmodSync(lockedFile, 0o644);
+        fixtureGit(dir, ...restore.split(" ").slice(1));
+        expect(snapshot(dir)).toEqual(before);
+      } finally {
+        chmodSync(lockedFile, 0o644);
+      }
+    },
+  );
 });
