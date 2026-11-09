@@ -339,12 +339,20 @@ export function measureLoudness(ffmpegPath, inputPath, normalization = VOICE_LOU
   });
 }
 
-/** How many decimals `step` is written with: 0.1 → 1, 0.25 → 2, 1 → 0. */
+/**
+ * How many decimals `step` is written with: 0.1 → 1, 0.25 → 2, 1 → 0,
+ * 1e-7 → 7. The fewest that print it exactly, found by `toFixed` rather than
+ * by reading `String(step)`, which switches to exponent notation below 1e-6.
+ * A step that is not a positive number with at most 20 decimals throws.
+ */
 function decimalsOf(step) {
-  const text = String(step);
-  const dot = text.indexOf(".");
+  if (!(step > 0) || !Number.isFinite(step)) throw new Error(`gainStepDb must be a positive number, got ${step}`);
 
-  return dot === -1 ? 0 : text.length - dot - 1;
+  for (let decimals = 0; decimals <= 20; decimals++) {
+    if (Number(step.toFixed(decimals)) === step) return decimals;
+  }
+
+  throw new Error(`gainStepDb has more than 20 decimals: ${step}`);
 }
 
 /**

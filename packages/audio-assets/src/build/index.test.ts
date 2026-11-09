@@ -777,6 +777,12 @@ describe("loudnessGain — the gain that moves a clip to the target (#1657)", ()
     expect(formatGainDb(6.25, { ...N, gainStepDb: 0.25 })).toBe("6.25");
   });
 
+  it("writes a step below 1e-6 with its own decimals, not as exponent notation", () => {
+    // `String(1e-7)` is "1e-7"; reading decimals off it gave 0.
+    expect(formatGainDb(1.2345678, { ...N, gainStepDb: 1e-7 })).toBe("1.2345678");
+    expect(() => formatGainDb(1, { ...N, gainStepDb: 0 })).toThrow(/positive/);
+  });
+
   it("passes exactly the clamp either way, without a warning", () => {
     expect(loudnessGain(-34)).toEqual({ gainDb: 12, warning: null });
     expect(loudnessGain(-10)).toEqual({ gainDb: -12, warning: null });
