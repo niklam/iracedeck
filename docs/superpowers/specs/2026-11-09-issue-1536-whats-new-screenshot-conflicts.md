@@ -32,7 +32,7 @@ The hook takes these steps in order:
 
 1. **Refuses a developer tree, before building.** That is a tree where `feature-flags.local.json` or `dev.local.json` exists at the root, or where `IRACEDECK_DEV_VOICES` is set. Either would build flags or a voice root that no user has into the shot.
 2. **Snapshots what `before:bump` left.** Records each tracked change already in the tree (the version bumps, the fold) with its content hash, so step 7 can tell the hook's own changes from the build's. (Amended 2026-11-09: comparing against HEAD would refuse `before:bump`'s own changes.)
-3. **Builds the Stream Deck plugin and its dependencies** with `turbo run build --filter=@iracedeck/iracing-plugin-stream-deck...`. This makes `ui/settings-window.html` carry the folded notes and the new version.
+3. **Builds the Stream Deck plugin and its dependencies** with `pnpm_config_verify_deps_before_run=false turbo run build --filter=@iracedeck/iracing-plugin-stream-deck... --output-logs=errors-only`. The variable is needed because `before:bump` rewrites every workspace `package.json` version, which pnpm's `verifyDepsBeforeRun: install` reads as dependencies out of date, so every task would reinstall at once (QA saw one `ERR_PNPM_EXECUTOR_SPAWN_LIFECYCLE` in six releases). `--output-logs=errors-only` keeps a successful build inside release-it's 1 MiB `exec` buffer, and a failed build repeats its last 200 lines on stderr, which is all release-it shows on a failure. (Amended 2026-11-09 from QA.) This makes `ui/settings-window.html` carry the folded notes and the new version.
    - Because the bumped `package.json` is among their turbo inputs, this also rebuilds `iracing-native` and `audio-native`. A stable release therefore needs the native toolchain (Visual Studio, node-gyp) as well as a Chromium browser.
    - An MSVC `LNK1318` abort is a toolchain hiccup: the remedy is to restore and rerun the release.
 4. **Runs `assertReleaseBuild`** (`scripts/lib/assert-release-build.mjs`) on the built plugin's `bin/config.json`, as a second, built-artifact check that no development voice root got in.
@@ -52,7 +52,7 @@ A version check could not do it. On `release/*`, a fix PR builds a stable versio
 
 So `pnpm capture:settings` writes to `local/settings-window-capture/`, which is gitignored by the root `local/*` entry, and never writes `capture.json`. It stays a way to look at a change. Only `release-capture` passes the committed folder as `outDir` and writes the manifest.
 
-In-flight branches that already committed a recapture drop it when they rebase, with `git checkout origin/master -- packages/website/src/assets/settings-window/`. The manifest test below turns their recapture red until they do, because the hashes no longer match.
+In-flight branches that already committed a recapture drop it when they rebase, with `git checkout origin/master -- packages/website/src/assets/settings-window/` plus `git rm` of each PNG the branch added that `master` lacks, which a checkout never deletes (amended 2026-11-09). The manifest test below turns their recapture red until they do, because the hashes no longer match.
 
 ### 3. `capture.json`
 
