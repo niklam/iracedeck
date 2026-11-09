@@ -63,6 +63,7 @@
     "watch:stream-deck": "pnpm --filter \"@iracedeck/iracing-plugin-stream-deck\" run watch",
     "release": "node scripts/release.mjs",
     "release:dry": "node scripts/release.mjs --dry-run",
+    "seal:voice-packs": "node scripts/seal-voice-packs.mjs",
     "prepare": "husky || exit 0"
   },
   "dependencies": {

@@ -189,7 +189,7 @@ Then regenerate the artifact and commit it with the config — in a Claude Code 
 ```bash
 pnpm generate:callout-scripts      # configs/*.voice.json → voice/<voice-id>/callouts.json (the post-edit hook runs this in a Claude session)
 pnpm generate:pack-reference       # → packages/website/src/data/pack-reference.json, off the BUILT audio-scenarios dist
-pnpm --filter @iracedeck/audio-assets pack:voice <pack-id>   # → packages/audio-assets/catalog/<pack-id>.json (iRaceDeck's own pack is `default`): callouts.json travels inside the archive, so a changed script is a changed archive, and the publish step refuses an archive whose bytes differ from the committed entry — a pack whose version is already published needs a `version` bump first (audio-assets CLAUDE.md, "Voice packs")
+pnpm --filter @iracedeck/audio-assets pack:voice <pack-id>   # → packages/audio-assets/catalog/<pack-id>.json + pack-records/<pack-id>.json, commit both (iRaceDeck's own pack is `default`): callouts.json travels inside the archive, so a changed script is a stale pack record and `pnpm test` (src/pack-record.test.ts) fails naming the pack and the script — a pack whose version is already released needs a `version` bump in src/build/voice-packs.mjs first, and the packer refuses without one (audio-assets CLAUDE.md, "Voice packs")
 ```
 
 Other voices script the same ids in their own words, or leave them out — absent means skipped, and an unknown pool, var, condition, case key, include or frame skips that one callout for that voice with ONE warn naming the reference (never an exception, never a half-played line). Only first-party voices — every voice in audio-assets' `VOICE_PACKS` — are held to completeness; a third-party pack is not.
@@ -242,7 +242,7 @@ pnpm install
 pnpm generate:callout-scripts   # only outside a Claude session (or after a hook failure) — the post-edit hook runs it on a config edit; the freshness test names the command either way
 pnpm build         # tsc — catches type-level issues vitest misses
 pnpm generate:pack-reference    # after any contract, description, vocabulary, bundled-script or bundled-clip change — AFTER build: it reads the built audio-scenarios dist, and `scripts/generate-pack-reference.test.mjs` fails on drift naming this command (and names `pnpm build` when the dist is missing or stale)
-pnpm --filter @iracedeck/audio-assets pack:voice <pack-id>   # after any script OR clip change to a packed voice (`default` for iRaceDeck's own) — the script ships inside the archive, so a changed archive needs a regenerated `catalog/<pack-id>.json`, and NO test catches a stale entry: the release's publish step does, by refusing it. A version already published needs a `version` bump first
+pnpm --filter @iracedeck/audio-assets pack:voice <pack-id>   # after any script OR clip change to a packed voice (`default` for iRaceDeck's own) — the script ships inside the archive, so a changed archive needs a regenerated `catalog/<pack-id>.json` AND `pack-records/<pack-id>.json`, committed together; `pnpm test` fails on a stale record (`audio-assets/src/pack-record.test.ts`, #1667), naming the pack and the part that changed. A version already released (the record's `released`) needs a `version` bump first
 pnpm test          # vitest — fast feedback loop
 pnpm lint:fix
 pnpm format:fix

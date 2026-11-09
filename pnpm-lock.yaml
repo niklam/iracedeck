@@ -316,6 +316,9 @@ importers:
       fflate:
         specifier: 0.8.3
         version: 0.8.3
+      semver:
+        specifier: 7.8.5
+        version: 7.8.5
       tsx:
         specifier: 4.23.15
         version: 4.23.15

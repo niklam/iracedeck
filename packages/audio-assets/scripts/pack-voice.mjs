@@ -15,7 +15,9 @@
  *   3. zips that stage, deterministically, to `dist/voice-packs/<id>-<version>.zip`
  *      — unless `--stage-only` is given (#1214), which stops at step 2;
  *   4. writes `catalog/<id>.json` with the archive's byte size and sha-256, the
- *      entry the website build assembles into `voice-catalog.json` — unless
+ *      entry the website build assembles into `voice-catalog.json`, and beside
+ *      it `pack-records/<id>.json` (#1667), the record of what the archive was
+ *      built from that `src/pack-record.test.ts` holds the tree to — unless
  *      `--no-catalog` is given (#1143), which stops at step 3.
  *
  * Usage: pnpm --filter @iracedeck/audio-assets pack:voice [<pack-id> ...] [--no-catalog | --stage-only]
@@ -41,7 +43,18 @@
  * deleting a file a maintainer may have built on purpose is not this flag's
  * business.
  *
- * Only the catalog entry is committed. The archive is a GitHub release asset,
+ * A SEALED VERSION IS FROZEN (#1667). When the record carries `released` at
+ * the pack's current version, the archive published under it must not change:
+ * a flagless run still packs, so the author has the archive to inspect, but
+ * if its sha-256 differs from `released.sha256` the run writes neither the
+ * entry nor the record and names the bump. An unchanged archive under a
+ * sealed version (an `ffmpeg-static` bump that left the output identical,
+ * say) writes the record with the new inputs; no bump is needed. Inputs
+ * decide when a re-pack is due, bytes decide when a bump is due. `released`
+ * itself is written only by the release hook and `seal:voice-packs`; this
+ * script preserves whatever it finds.
+ *
+ * Only the catalog entry and the record are committed. The archive is a GitHub release asset,
  * attached to the release the entry's `url` names by
  * `scripts/publish-voice-packs.mjs` — from the plugin's tag workflow on every
  * release, or from the manual "Publish voice packs" workflow between releases
@@ -55,7 +68,7 @@
  * exists to prevent. A zip records an entry order, a per-entry timestamp, an
  * origin OS and attributes, and optional extra fields, and every one of those
  * would vary between builds if left to defaults. This script pins all of them
- * (see `ZIP_ENTRY_OPTIONS` and `createArchive`), and `pack-voice.test.ts`
+ * (`ZIP_ENTRY_OPTIONS` and `createArchive` in `src/build/pack-format.mjs`), and `pack-voice.test.ts`
  * proves it by packing twice and comparing hashes rather than by trusting the
  * reasoning here.
  */
@@ -63,36 +76,58 @@ import {
   CALLOUT_SCRIPT_FILE,
   calloutScriptPath,
   dedupeDeclaredVoices,
-  displayLabel,
-  isSemverVersion,
   packId,
   parseCalloutScriptText,
   USABLE_VOICE_CLIP,
   validateVoicePackManifest,
-  VOICE_PACK_MANIFEST_SCHEMA_VERSION,
 } from "@iracedeck/callout-script";
-import { zipSync } from "fflate";
 import { createHash } from "node:crypto";
-import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import url from "node:url";
 
-import { audioAssetsPath, processVoiceTree, VOICE_PACKS } from "../src/build/index.mjs";
+import { audioAssetsPath, processVoiceTree } from "../src/build/index.mjs";
+import {
+  buildVoicePackManifest,
+  CATALOG_DIR,
+  CONFIGS_DIR,
+  countSourceClips,
+  createArchive,
+  isCanonicalPackVersion,
+  locateCalloutScript,
+  MANIFEST_FILE,
+  readVoiceEntries,
+  selectPacks,
+  serializeSortedJson,
+  VOICE_ROOT,
+} from "../src/build/pack-format.mjs";
+import {
+  buildPackRecord,
+  computePackInputs,
+  isSealedAt,
+  PACK_RECORDS_DIR,
+  readPackRecord,
+  serializePackRecord,
+} from "../src/build/pack-record.mjs";
 
-const VOICE_ROOT = "voice";
-const CONFIGS_DIR = path.join(audioAssetsPath, "configs");
-
-/** Where committed catalog entries live: one `<id>.json` per published pack. */
-export const CATALOG_DIR = path.join(audioAssetsPath, "catalog");
+// The pack format moved to `src/build/pack-format.mjs` (#1667) so the pack
+// record can compute an archive's inputs without importing the packer. These
+// names stay exported from here, unchanged, for the publish script, the
+// dev-voices stager and the tests.
+export {
+  buildVoicePackManifest,
+  CATALOG_DIR,
+  countSourceClips,
+  createArchive,
+  MANIFEST_FILE,
+  serializeSortedJson,
+} from "../src/build/pack-format.mjs";
 
 /**
  * Where staged pack trees and archives land. Gitignored (`.gitignore` beside
  * `package.json`): an archive is a release asset, never a repository file.
  */
 export const OUTPUT_DIR = path.join(audioAssetsPath, "dist", "voice-packs");
-
-/** The manifest's file name inside the archive — what the voice-packs scanner opens. */
-export const MANIFEST_FILE = "voice-pack.json";
 
 /**
  * Where archives are hosted. GitHub Releases rather than the website's
@@ -106,8 +141,8 @@ export const RELEASE_DOWNLOAD_BASE = "https://github.com/niklam/iracedeck/releas
 /**
  * @typedef {import("../src/build/voice-packs.mjs").VoicePackDefinition} VoicePackDefinition
  * @typedef {{ id: string; version: string }} PackIdentity
- * @typedef {{ id: string; label: string }} VoiceEntry
- * @typedef {{ path: string; data: Uint8Array }} ArchiveEntry
+ * @typedef {import("../src/build/pack-format.mjs").VoiceEntry} VoiceEntry
+ * @typedef {import("../src/build/pack-format.mjs").ArchiveEntry} ArchiveEntry
  * @typedef {ReturnType<typeof buildCatalogEntry>} CatalogEntry
  *
  * @typedef {object} PackVoiceOptions
@@ -115,16 +150,18 @@ export const RELEASE_DOWNLOAD_BASE = "https://github.com/niklam/iracedeck/releas
  * @property {string} [srcRoot] — holds `<voice-id>/…` source clip trees
  * @property {string} [configsDir] — holds `<voice-id>.voice.json`
  * @property {string} [outDir] — stage directory and archive land here
- * @property {string} [catalogDir] — `<pack-id>.json` lands here
+ * @property {string} [catalogDir] — `<pack-id>.json` lands here; given, `recordsDir` must be too
+ * @property {string} [recordsDir] — the pack record `<pack-id>.json` lands here, beside the entry (#1667); given, `catalogDir` must be too
  * @property {string} [cacheDir] — processed-clip cache root; see `packVoice`
- * @property {boolean} [writeCatalog] — false leaves `catalogDir` untouched
- * @property {boolean} [writeArchive] — false writes no archive and no catalog entry (`--stage-only`)
+ * @property {boolean} [writeCatalog] — false leaves `catalogDir` and `recordsDir` untouched
+ * @property {boolean} [writeArchive] — false writes no archive, no catalog entry and no record (`--stage-only`)
  * @property {(message: string) => void} [logger]
  *
- * @typedef {object} PackedPack — a full run: stage, archive, and (unless withheld) the catalog entry
+ * @typedef {object} PackedPack — a full run: stage, archive, and (unless withheld) the catalog entry and the record
  * @property {string} archivePath
  * @property {string} stageDir
  * @property {string | undefined} catalogPath — `undefined` when `writeCatalog` was false
+ * @property {string | undefined} recordPath — `undefined` when `writeCatalog` was false
  * @property {CatalogEntry} entry
  * @property {number} clips
  * @property {number} scripts
@@ -133,6 +170,7 @@ export const RELEASE_DOWNLOAD_BASE = "https://github.com/niklam/iracedeck/releas
  * @property {undefined} archivePath
  * @property {string} stageDir
  * @property {undefined} catalogPath
+ * @property {undefined} recordPath
  * @property {undefined} entry
  * @property {number} clips
  * @property {number} scripts
@@ -151,52 +189,6 @@ export function archiveFileName({ id, version }) {
 /** @param {PackIdentity} pack */
 export function archiveUrl(pack) {
   return `${RELEASE_DOWNLOAD_BASE}/${releaseTag(pack)}/${archiveFileName(pack)}`;
-}
-
-/**
- * The modification time recorded on every archive entry: the DOS epoch, which
- * is also the earliest time a zip can represent.
- *
- * Built from LOCAL date fields on purpose. fflate converts `mtime` to the zip's
- * DOS date/time with `getFullYear()`, `getMonth()`, `getDate()`, `getHours()`
- * and so on — local-time getters — so a fixed INSTANT (the same epoch written
- * as `new Date(315532800000)`) would encode differently on every machine east
- * or west of Greenwich, and on any machine west of it would read as 1979 and be
- * refused outright. Fixed FIELDS encode identically everywhere.
- */
-const ZIP_ENTRY_MTIME = new Date(1980, 0, 1, 0, 0, 0);
-
-/**
- * Per-entry zip options, every one of them pinned.
- *
- * - `level` fixed, because deflate output depends on it. 9 rather than the
- *   default 6: an archive is built once and downloaded many times, so the
- *   build is the right place to spend the CPU — even though MP3 data is already
- *   entropy-coded and gains little from any level.
- * - `mtime` — see `ZIP_ENTRY_MTIME`. Left unset, fflate stamps `Date.now()`.
- * - `os: 0` (MS-DOS) and `attrs: 0` — no origin platform, no permission bits.
- *   Unset they happen to encode as zero today, but the archive's bytes should
- *   not depend on what fflate does with `undefined`.
- * - no `extra` and no `comment`, so nothing platform-specific rides along.
- */
-const ZIP_ENTRY_OPTIONS = Object.freeze({ level: 9, mtime: ZIP_ENTRY_MTIME, os: 0, attrs: 0 });
-
-/**
- * Is `value` a version this script may write verbatim?
- *
- * Stricter than the scanner, on purpose. `isSemverVersion` is exactly what the
- * plugin ACCEPTS — `semver.valid`, which trims and allows one leading `v` — but
- * the packer does not only hand a version to the plugin: it writes it verbatim
- * into the release tag (`voices-<id>-<version>`), the archive's file name, the
- * catalog entry's `url` and the manifest. `" 1.1.2"` or `"v1.1.2"` would be a
- * version the plugin reads fine and a tag, a file name and a download url
- * nobody meant. So the definition must hold the CANONICAL spelling: a string
- * the plugin accepts, with no surrounding whitespace and no leading `v`.
- *
- * @param {unknown} value
- */
-function isCanonicalVersion(value) {
-  return typeof value === "string" && isSemverVersion(value) && value === value.trim() && !value.startsWith("v");
 }
 
 /** @param {import("zod").ZodType} schema @param {unknown} value */
@@ -219,7 +211,7 @@ function firstProblem(schema, value) {
  *   voice's source tree) before there is a manifest to validate, and an id the
  *   plugin would refuse must never reach the filesystem.
  * - `version` and `minPluginVersion` in their canonical spelling
- *   ({@link isCanonicalVersion}) — a rule the plugin does not have, because only
+ *   (`isCanonicalPackVersion`) — a rule the plugin does not have, because only
  *   the packer writes a version into a tag, a file name and a url. Each is
  *   checked for being a string first, so a number fails naming the field.
  * - `description`'s 300-character bound — `VoicePackCatalogEntrySchema`'s
@@ -234,19 +226,19 @@ function assertPackDefinition(pack) {
   const idProblem = firstProblem(packId, pack?.id);
 
   if (idProblem !== undefined) throw new Error(`${where}: id ${idProblem}`);
-  if (!isCanonicalVersion(pack.version)) {
+  if (!isCanonicalPackVersion(pack.version)) {
     throw new Error(
       `${where}: version must be a canonical semver version such as 1.2.3 — a string, no leading "v", ` +
-        `no surrounding whitespace — since it names the release tag, the archive and the catalog url`,
+        `no surrounding whitespace, no build metadata — since it names the release tag, the archive and the catalog url`,
     );
   }
   if (pack.description !== undefined && (typeof pack.description !== "string" || pack.description.length > 300)) {
     throw new Error(`${where}: description must be 300 characters or fewer`);
   }
-  if (pack.minPluginVersion !== undefined && !isCanonicalVersion(pack.minPluginVersion)) {
+  if (pack.minPluginVersion !== undefined && !isCanonicalPackVersion(pack.minPluginVersion)) {
     throw new Error(
       `${where}: minPluginVersion must be a canonical semver version such as 1.2.3 — a string, no leading "v", ` +
-        `no surrounding whitespace`,
+        `no surrounding whitespace, no build metadata`,
     );
   }
   if (!Array.isArray(pack.voices) || pack.voices.length === 0) {
@@ -306,12 +298,13 @@ function assertPackManifest(pack, manifest) {
  * cannot disagree about what is acceptable. A voice with no script at all is
  * a clips-only voice, which is valid.
  *
- * The file is found by its EXACT name in a directory listing, the way the
- * walk (`buildVoiceTreeTasks`) decides what to stage — not with `existsSync`,
- * which is case-insensitive on Windows. A `Callouts.json` would otherwise
- * validate here, be skipped by the walk, and ship a pack that is silent for
- * no reason anyone can see; so a wrong-cased name is refused outright, naming
- * the one the walk and the scanner look for.
+ * The file is found by its EXACT name in a directory listing
+ * (`locateCalloutScript`, the rule the pack record shares), the way the walk
+ * (`buildVoiceTreeTasks`) decides what to stage — not with `existsSync`, which
+ * is case-insensitive on Windows. A `Callouts.json` would otherwise validate
+ * here, be skipped by the walk, and ship a pack that is silent for no reason
+ * anyone can see; so a wrong-cased name is refused outright, naming the one
+ * the walk and the scanner look for.
  *
  * It must also be a REGULAR FILE, by `lstat` — the walk stages only what
  * `Dirent.isFile()` says is one, and a symlink, a junction or a directory of
@@ -325,8 +318,7 @@ function assertPackManifest(pack, manifest) {
  */
 function assertCalloutScript(pack, voiceId, srcDir) {
   const where = `pack "${pack.id}": ${calloutScriptPath(voiceId)}`;
-  const names = readdirSync(srcDir);
-  const wrongCase = names.find((name) => name !== CALLOUT_SCRIPT_FILE && name.toLowerCase() === CALLOUT_SCRIPT_FILE);
+  const { file, wrongCase } = locateCalloutScript(srcDir);
 
   if (wrongCase !== undefined) {
     throw new Error(
@@ -335,9 +327,8 @@ function assertCalloutScript(pack, voiceId, srcDir) {
     );
   }
 
-  if (!names.includes(CALLOUT_SCRIPT_FILE)) return;
+  if (file === null) return;
 
-  const file = path.join(srcDir, CALLOUT_SCRIPT_FILE);
   // The stat and the read are reported apart from the grammar's verdict, as
   // the scanner reports them: an EACCES — or a file that vanished between the
   // listing and here — is not "invalid JSON", and the author fixing it should
@@ -373,109 +364,6 @@ function assertCalloutScript(pack, voiceId, srcDir) {
 }
 
 /**
- * The voice's display name, from its generator config — the per-voice source
- * of truth. Read as JSON rather than through the generator's Zod schema, since
- * the label is the only field this script needs and pulling the whole
- * generator module in would mean running under tsx for one string.
- */
-function readVoiceLabel(configsDir, voiceId) {
-  const file = path.join(configsDir, `${voiceId}.voice.json`);
-
-  if (!existsSync(file)) throw new Error(`voice "${voiceId}": no ${file}`);
-
-  const label = JSON.parse(readFileSync(file, "utf-8")).label;
-
-  // The manifest schema's own `displayLabel` rule, so a label this accepts is
-  // one the scanner accepts.
-  if (!displayLabel.safeParse(label).success) {
-    throw new Error(`voice "${voiceId}": ${file} needs a "label" of 1-60 characters with no control characters`);
-  }
-
-  return label;
-}
-
-/**
- * The `voice-pack.json` object: exactly `VoicePackManifestSchema`'s shape,
- * nothing more. Unknown fields would be ignored by the scanner, but they would
- * also change the archive's bytes for no reader's benefit.
- *
- * @param {VoicePackDefinition} pack
- * @param {readonly VoiceEntry[]} voices
- */
-export function buildVoicePackManifest(pack, voices) {
-  return {
-    schema: VOICE_PACK_MANIFEST_SCHEMA_VERSION,
-    id: pack.id,
-    label: pack.label,
-    version: pack.version,
-    ...(pack.author === undefined ? {} : { author: pack.author }),
-    voices: voices.map(({ id, label }) => ({ id, label })),
-  };
-}
-
-function sortKeysDeep(value) {
-  if (Array.isArray(value)) return value.map(sortKeysDeep);
-  if (value !== null && typeof value === "object") {
-    return Object.fromEntries(
-      Object.keys(value)
-        .sort()
-        .map((key) => [key, sortKeysDeep(value[key])]),
-    );
-  }
-
-  return value;
-}
-
-/**
- * JSON with keys sorted at every depth, two-space indent, LF line endings and
- * a trailing newline. The archived manifest goes through this: `JSON.stringify`
- * writes keys in insertion order, so two code paths building the same object
- * in different orders would produce two different archives.
- *
- * @param {unknown} value
- */
-export function serializeSortedJson(value) {
-  return `${JSON.stringify(sortKeysDeep(value), null, 2)}\n`;
-}
-
-/**
- * The archive bytes for `{ path, data }` entries. Pure and synchronous — the
- * entries are its only input, so the same clips always give the same bytes,
- * which is what the determinism test calls twice and compares.
- *
- * Entries are sorted by path BEFORE being handed to fflate: it writes them in
- * object-insertion order, and both the local headers and the central directory
- * record that order, so the same files added in a different order are a
- * different archive. Sorted by UTF-16 code unit, never `localeCompare`, so the
- * order cannot depend on the building machine's locale.
- *
- * Paths are FLAT keys (`voice/default/flags/blue-01.mp3`), never nested
- * objects: fflate turns a nested object into an explicit directory entry of
- * zero bytes, and an installer walking entries would then have `voice/` and
- * `voice/default/` to reject or special-case. Flat keys also sidestep V8's
- * integer-key ordering — a key such as `"4"` would be hoisted ahead of the
- * sort — though no path here can be one, since every path contains a slash.
- *
- * @param {readonly ArchiveEntry[]} entries
- */
-export function createArchive(entries) {
-  const sorted = [...entries].sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
-  /** @type {Record<string, [Uint8Array, typeof ZIP_ENTRY_OPTIONS]>} */
-  const zippable = {};
-
-  for (const { path: entryPath, data } of sorted) {
-    if (entryPath.startsWith("/") || entryPath.includes("\\") || entryPath.split("/").includes("..")) {
-      throw new Error(`archive entry must be a relative POSIX path: ${entryPath}`);
-    }
-    if (entryPath in zippable) throw new Error(`duplicate archive entry: ${entryPath}`);
-
-    zippable[entryPath] = [data, ZIP_ENTRY_OPTIONS];
-  }
-
-  return zipSync(zippable);
-}
-
-/**
  * The catalog entry, in the field order the design spec's example uses so the
  * committed file reads the way the spec does. Order is fixed by construction
  * — that is all determinism needs from a file that is never hashed.
@@ -499,27 +387,6 @@ export function buildCatalogEntry(pack, voices, { bytes, sha256 }) {
 }
 
 /**
- * Every `.mp3` under `dir`, recursively.
- *
- * Deliberately a second, independent walk rather than a number the pipeline
- * reports about itself: it exists to check that pipeline, and a count derived
- * from the thing being checked would agree with it by construction.
- *
- * @param {string} dir
- * @returns {number}
- */
-export function countSourceClips(dir) {
-  let count = 0;
-
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    if (entry.isDirectory()) count += countSourceClips(path.join(dir, entry.name));
-    else if (entry.isFile() && entry.name.toLowerCase().endsWith(".mp3")) count += 1;
-  }
-
-  return count;
-}
-
-/**
  * Pack one voice pack. Every location is injectable so the tests can run the
  * whole thing — pipeline included — against a temporary tree, a temporary
  * cache and a temporary output, without touching the repository's own.
@@ -536,17 +403,28 @@ export function countSourceClips(dir) {
  * reach the archive anyway — but the on-disk stage should be the pack and
  * nothing else, since it is what a maintainer inspects or sideloads.
  *
- * Resolves to the archive, stage and catalog paths, the catalog entry, and two
- * counts: `clips` (mp3s, across every voice) and `scripts` (voices that ship a
- * callout script). The script is never counted as a clip. With `writeCatalog`
- * false the entry is still computed and returned — only the FILE is withheld,
- * and `catalogPath` is then `undefined`.
+ * Resolves to the archive, stage, catalog and record paths, the catalog entry,
+ * and two counts: `clips` (mp3s, across every voice) and `scripts` (voices
+ * that ship a callout script). The script is never counted as a clip. With
+ * `writeCatalog` false the entry is still computed and returned — only the
+ * FILES are withheld, and `catalogPath` and `recordPath` are then `undefined`.
  *
  * With `writeArchive` false (`--stage-only`, #1214) the run stops once the
  * stage and its manifest are written: no archive, so no entry to compute and
- * no catalog to write, whatever `writeCatalog` says. `archivePath`, `entry`
- * and `catalogPath` are then all `undefined`; every check above still runs,
- * since each is about the stage rather than the zip.
+ * no catalog or record to write, whatever `writeCatalog` says. `archivePath`,
+ * `entry`, `catalogPath` and `recordPath` are then all `undefined`; every
+ * check above still runs, since each is about the stage rather than the zip.
+ *
+ * The record (#1667) is written with the entry and only with it: the same
+ * run, so the two cannot disagree — and `catalogDir` and `recordsDir` are
+ * given together or not at all, so no caller can point the entry at a scratch
+ * directory while the record lands in the committed `pack-records/` (the
+ * publish script did exactly that in review). An existing record's `released`
+ * is carried over untouched, and when it names the pack's current version a
+ * changed archive is refused before either file is written (see the header).
+ * The inputs are taken BEFORE the encode and again after the zip; a source
+ * tree that moved in between would give a record describing an archive that
+ * was never built from it, so the run refuses to write either file.
  *
  * Typed as three overloads so a caller gets the result shape its
  * `writeArchive` implies: a literal `false` resolves to a `StagedPack`, `true`
@@ -576,20 +454,51 @@ export async function packVoice({
   srcRoot = path.join(audioAssetsPath, VOICE_ROOT),
   configsDir = CONFIGS_DIR,
   outDir = OUTPUT_DIR,
-  catalogDir = CATALOG_DIR,
+  catalogDir,
+  recordsDir,
   cacheDir,
   writeCatalog = true,
   writeArchive = true,
   logger,
 } = {}) {
   if (!pack) throw new Error("packVoice: pack is required");
+
+  if ((catalogDir === undefined) !== (recordsDir === undefined)) {
+    throw new Error(
+      "packVoice: catalogDir and recordsDir are given together or not at all — the catalog entry and the pack " +
+        "record are one pair, and a run that writes one to a scratch directory must not write the other to the " +
+        "committed one (#1667)",
+    );
+  }
+
+  catalogDir ??= CATALOG_DIR;
+  recordsDir ??= PACK_RECORDS_DIR;
   assertPackDefinition(pack);
 
-  /** @type {VoiceEntry[]} */
-  const voices = pack.voices.map((voiceId) => ({ id: voiceId, label: readVoiceLabel(configsDir, voiceId) }));
+  const voices = readVoiceEntries(pack, configsDir);
   const manifest = buildVoicePackManifest(pack, voices);
 
   assertPackManifest(pack, manifest);
+
+  // Every voice's source tree and script are checked before anything is read
+  // for the record or staged, so a missing tree or a refused script is reported
+  // in the packer's words rather than as a raw error from the inputs walk.
+  for (const voiceId of pack.voices) {
+    const srcDir = path.join(srcRoot, voiceId);
+
+    if (!existsSync(srcDir)) throw new Error(`pack "${pack.id}": voice "${voiceId}" has no clips at ${srcDir}`);
+
+    assertCalloutScript(pack, voiceId, srcDir);
+  }
+
+  // A flagless run writes the record (#1667), so before a single clip is
+  // encoded: the existing record — a seal nobody can read is a run nobody can
+  // judge, so an unreadable one fails here rather than after the encode — and
+  // the inputs as the source tree stands now, to be compared with the tree
+  // after the zip.
+  const recording = writeArchive && writeCatalog;
+  const previous = recording ? readPackRecord(pack.id, recordsDir) : null;
+  const inputsBefore = recording ? computePackInputs(pack, { srcRoot, configsDir }) : null;
 
   const stageDir = path.join(outDir, pack.id);
   rmSync(stageDir, { recursive: true, force: true });
@@ -602,11 +511,6 @@ export async function packVoice({
 
   for (const voiceId of pack.voices) {
     const srcDir = path.join(srcRoot, voiceId);
-
-    if (!existsSync(srcDir)) throw new Error(`pack "${pack.id}": voice "${voiceId}" has no clips at ${srcDir}`);
-
-    assertCalloutScript(pack, voiceId, srcDir);
-
     const destDir = path.join(stageDir, VOICE_ROOT, voiceId);
     const { files, script } = await processVoiceTree({
       srcDir,
@@ -681,33 +585,74 @@ export async function packVoice({
   entries.push({ path: MANIFEST_FILE, data: manifestBytes });
 
   // `--stage-only`: the stage is the product. Nothing under `outDir` beside
-  // the stage and nothing under `catalogDir` is created, opened or removed.
+  // the stage and nothing under `catalogDir` or `recordsDir` is created,
+  // opened or removed.
   if (!writeArchive) {
-    return { archivePath: undefined, stageDir, catalogPath: undefined, entry: undefined, clips, scripts };
+    return {
+      archivePath: undefined,
+      stageDir,
+      catalogPath: undefined,
+      recordPath: undefined,
+      entry: undefined,
+      clips,
+      scripts,
+    };
   }
 
   const archive = createArchive(entries);
   const archivePath = path.join(outDir, archiveFileName(pack));
   writeFileSync(archivePath, archive);
 
-  const entry = buildCatalogEntry(pack, voices, {
-    bytes: archive.byteLength,
-    sha256: createHash("sha256").update(archive).digest("hex"),
-  });
+  const sha256 = createHash("sha256").update(archive).digest("hex");
+  const entry = buildCatalogEntry(pack, voices, { bytes: archive.byteLength, sha256 });
 
   // The entry is built either way — a caller that wants it can have it without
   // a second pack — but with `writeCatalog` false nothing under `catalogDir`
-  // is created, opened or removed, not even the directory itself. The path is
-  // the flag's one witness: `undefined` is what a caller reads, and what the
-  // summary line prints as "not written".
-  const catalogPath = writeCatalog ? path.join(catalogDir, `${pack.id}.json`) : undefined;
-
-  if (catalogPath !== undefined) {
-    mkdirSync(catalogDir, { recursive: true });
-    writeFileSync(catalogPath, `${JSON.stringify(entry, null, 2)}\n`);
+  // or `recordsDir` is created, opened or removed, not even the directories
+  // themselves. The paths are the flag's witnesses: `undefined` is what a
+  // caller reads, and what the summary lines print as "not written".
+  if (!writeCatalog) {
+    return { archivePath, stageDir, catalogPath: undefined, recordPath: undefined, entry, clips, scripts };
   }
 
-  return { archivePath, stageDir, catalogPath, entry, clips, scripts };
+  // The seal check (#1667), before either file is written. The archive stays
+  // in `outDir` for inspection.
+  const released = previous?.released;
+
+  if (previous !== null && isSealedAt(previous, pack.version) && released !== undefined && released.sha256 !== sha256) {
+    throw new Error(
+      `pack "${pack.id}": version ${pack.version} is released with sha256 ${released.sha256}, and the archive just ` +
+        `packed has sha256 ${sha256} — a published archive never changes under its version. Bump \`version\` in ` +
+        `src/build/voice-packs.mjs and re-run pack:voice ${pack.id}; neither catalog/${pack.id}.json nor ` +
+        `pack-records/${pack.id}.json was written (the archive is at ${archivePath} for inspection)`,
+    );
+  }
+
+  // The inputs again, from the source tree as it stands after the zip — the
+  // same walk, the same exact-name rule. They must be what they were before
+  // the encode, or the record would describe an archive never built from them.
+  const inputs = computePackInputs(pack, { srcRoot, configsDir });
+
+  if (serializeSortedJson(inputs) !== serializeSortedJson(inputsBefore)) {
+    throw new Error(
+      `pack "${pack.id}": the source tree changed while packing (a clip, a script or a config under ${srcRoot} or ` +
+        `${configsDir}) — neither catalog/${pack.id}.json nor pack-records/${pack.id}.json was written; re-run ` +
+        `pack:voice ${pack.id} once the tree is still`,
+    );
+  }
+
+  // Both files are built before either is written, so a failure in building
+  // one leaves none.
+  const record = serializePackRecord(buildPackRecord(pack, { sha256, inputs, released }));
+  const catalogPath = path.join(catalogDir, `${pack.id}.json`);
+  const recordPath = path.join(recordsDir, `${pack.id}.json`);
+
+  mkdirSync(catalogDir, { recursive: true });
+  writeFileSync(catalogPath, `${JSON.stringify(entry, null, 2)}\n`);
+  mkdirSync(recordsDir, { recursive: true });
+  writeFileSync(recordPath, record);
+
+  return { archivePath, stageDir, catalogPath, recordPath, entry, clips, scripts };
 }
 
 /**
@@ -743,18 +688,6 @@ export function parseArgs(argv) {
   return { ids, writeCatalog, writeArchive };
 }
 
-function selectPacks(requestedIds) {
-  if (requestedIds.length === 0) return VOICE_PACKS;
-
-  return requestedIds.map((id) => {
-    const pack = VOICE_PACKS.find((candidate) => candidate.id === id);
-
-    if (!pack) throw new Error(`unknown pack "${id}" — known packs: ${VOICE_PACKS.map((p) => p.id).join(", ")}`);
-
-    return pack;
-  });
-}
-
 async function main() {
   const { ids, writeCatalog, writeArchive } = parseArgs(process.argv.slice(2));
 
@@ -769,6 +702,7 @@ async function main() {
       console.log(`  stage    ${result.stageDir}`);
       console.log(`  archive  not written (--stage-only)`);
       console.log(`  catalog  not written (--stage-only)`);
+      console.log(`  record   not written (--stage-only)`);
       continue;
     }
 
@@ -779,6 +713,7 @@ async function main() {
     console.log(`  sha256   ${result.entry.sha256}`);
     console.log(`  archive  ${result.archivePath}`);
     console.log(`  catalog  ${result.catalogPath ?? "not written (--no-catalog)"}`);
+    console.log(`  record   ${result.recordPath ?? "not written (--no-catalog)"}`);
     console.log(
       `  release  ${releaseTag(pack)} (asset ${archiveFileName(pack)}, published by scripts/publish-voice-packs.mjs)`,
     );

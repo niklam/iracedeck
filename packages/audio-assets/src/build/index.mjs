@@ -24,6 +24,8 @@ import path from "node:path";
 import url from "node:url";
 
 import { RADIO_ENGINEER_FILTER } from "../presets.mjs";
+import { installedPackageManifest, installedPackageVersion } from "./installed-version.mjs";
+import { serializeSortedJson } from "./stable-json.mjs";
 import { BUNDLED_VOICE_IDS } from "./voice-packs.mjs";
 
 // The bundled-vs-published voice list rides the same `./build` export the
@@ -95,12 +97,108 @@ const VOICE_ROOT = "voice";
 // (dropping to 11.025 kHz pushes the encoder into MPEG-2.5, which produces
 // an audibly hollow character on vocal formants). 32 kbps gives the
 // formants enough bits to stay clear at this sample rate.
-const ENCODE_ARGS = ["-ar", "16000", "-ac", "1", "-c:a", "libmp3lame", "-b:a", "32k"];
+const ENCODE_ARGS = Object.freeze(["-ar", "16000", "-ac", "1", "-c:a", "libmp3lame", "-b:a", "32k"]);
 
-// Cache key embeds both the filter chain and the encode args, so changing
-// either invalidates the processed-asset cache without manual wipe.
-function pipelineHash(chain, encodeArgs) {
-  return createHash("sha256").update(chain).update("\0").update(encodeArgs.join(" ")).digest("hex").slice(0, 8);
+/**
+ * The environment variable through which `ffmpeg-static` lets another binary
+ * stand in for the one it installed (`FFMPEG_BIN`): its `index.js` exports that
+ * path instead of its own when the variable is set. Read from the package's
+ * own `package.json` (`ffmpeg-static.binary-path-env-var`), the field its
+ * `index.js` reads, so a rename there is followed; the literal is the fallback
+ * for a manifest without it. Found through `installedPackageManifest`, the
+ * lookup the version uses, so an `exports` map that withholds `./package.json`
+ * cannot break the `./build` entry at import.
+ */
+const FFMPEG_BINARY_ENV_VAR = (() => {
+  const config = installedPackageManifest("ffmpeg-static", import.meta.url)["ffmpeg-static"];
+  const declared =
+    config !== null && typeof config === "object"
+      ? /** @type {Record<string, unknown>} */ (config)["binary-path-env-var"]
+      : undefined;
+
+  return typeof declared === "string" && declared !== "" ? declared : "FFMPEG_BIN";
+})();
+
+/**
+ * Everything a processed clip's bytes depend on besides the source clip
+ * itself (#1667), built from `env`: the radio filter chain, the encode
+ * arguments, and the `ffmpeg-static` release whose binary runs them, read from
+ * its installed `package.json` — the same resolution `require("ffmpeg-static")`
+ * below uses. That version names the binary that ran only while
+ * `ffmpeg-static` serves its own: with its `FFMPEG_BIN` override set, it
+ * exports that path instead, and a different binary from the same package
+ * version would otherwise keep the same cache key and pipeline hash. So the
+ * override, when set, is one more field — `ffmpegBinaryOverride`, the path as
+ * given — and absent otherwise, which keeps the hash of every record sealed
+ * before it existed exactly where it was.
+ *
+ * `PIPELINE_IDENTITY` is this over `process.env`, frozen, and what everything
+ * reads; the function is the seam a test builds another environment's identity
+ * through.
+ *
+ * @param {NodeJS.ProcessEnv} [env]
+ * @returns {import("./index.d.ts").PipelineIdentity}
+ */
+export function pipelineIdentity(env = process.env) {
+  const override = env[FFMPEG_BINARY_ENV_VAR];
+
+  return {
+    filter: RADIO_ENGINEER_FILTER,
+    encodeArgs: ENCODE_ARGS,
+    ffmpegStatic: installedPackageVersion("ffmpeg-static", import.meta.url),
+    ...(override ? { ffmpegBinaryOverride: override } : {}),
+  };
+}
+
+/**
+ * The pipeline identity of this process (`pipelineIdentity(process.env)`).
+ *
+ * ONE identity, two readers. `pipelineCacheKey` derives the processed-clip
+ * cache directory from it, so a change to any field — an `ffmpeg-static`
+ * bump included, which the old filter-plus-args key missed and so went on
+ * serving the previous binary's output from a warm cache — invalidates every
+ * cached clip once. And the pack record (`pack-record.mjs`) stores its hash
+ * as `inputs.pipeline`, so the same change marks every committed pack stale
+ * until it is re-packed. The two cannot drift, because neither restates the
+ * list.
+ *
+ * To make something new part of the pipeline, add ONE field here — #1657's
+ * loudness normalization goes in as a descriptor of its target and its
+ * method — and both the cache key and the record follow. Field names are
+ * part of the hash (it is a sorted-key JSON serialization), so renaming one
+ * is a re-encode too. Two rules for that field: it must be JSON-safe and never
+ * `undefined` — `JSON.stringify` drops an `undefined` property, so such a
+ * field would be silently absent from the hash — and EVERYTHING that changes a
+ * clip's output bytes must go through here. The fixed ffmpeg arguments in
+ * `runFfmpeg` (`-f mp3`, the loglevel flags) are not hashed; a change to them
+ * that moves the output is a change to this identity too, or the cache lies.
+ *
+ * @type {Readonly<import("./index.d.ts").PipelineIdentity>}
+ */
+export const PIPELINE_IDENTITY = Object.freeze(pipelineIdentity());
+
+/**
+ * The sha-256 of `identity` as sorted-key JSON (`serializeSortedJson`), so the
+ * order fields are declared in never moves it. This full digest is what the
+ * pack record stores as `inputs.pipeline`.
+ *
+ * @param {import("./index.d.ts").PipelineIdentity} [identity] — defaults to `PIPELINE_IDENTITY`; a test's seam
+ */
+export function pipelineIdentityHash(identity = PIPELINE_IDENTITY) {
+  return createHash("sha256").update(serializeSortedJson(identity)).digest("hex");
+}
+
+/**
+ * The processed-clip cache directory's name under `.cache/`: the first eight
+ * hex digits of `pipelineIdentityHash`. Short because it is a path component
+ * typed by hand when someone inspects the cache; a prefix of the identity's
+ * digest rather than a hash of its own, so there is exactly one notion of
+ * "the pipeline changed".
+ *
+ * @param {import("./index.d.ts").PipelineIdentity} [identity] — defaults to `PIPELINE_IDENTITY`; a test's seam
+ */
+export function pipelineCacheKey(identity = PIPELINE_IDENTITY) {
+  return pipelineIdentityHash(identity).slice(0, 8);
 }
 
 function runFfmpeg(ffmpegPath, inputPath, outputPath, filterChain) {
@@ -383,6 +481,7 @@ function buildVoiceTreeTasks(srcDir, cacheDir, destDir, { onFresh, onMiss, onScr
  * file of that name is ignored like any other non-mp3.
  *
  * Resolves to `{ files, script, processed, cached, pipelineHash }`, where
+ * `pipelineHash` is the cache key the run used (`pipelineCacheKey()`),
  * `files` is every clip written as a sorted list of POSIX paths relative to
  * `destDir` — the order a packer wants, and the list it should build its
  * archive from rather than re-walking the directory — and `script` is the
@@ -398,7 +497,7 @@ export async function processVoiceTree({ srcDir, destDir, cacheDir, logger } = {
   if (!srcDir) throw new Error("processVoiceTree: srcDir is required");
   if (!destDir) throw new Error("processVoiceTree: destDir is required");
 
-  const hash = pipelineHash(RADIO_ENGINEER_FILTER, ENCODE_ARGS);
+  const hash = pipelineCacheKey();
   const resolvedCacheDir = cacheDir ?? sharedVoiceCacheDir(srcDir, hash);
 
   return withCacheLock(() => runProcessVoiceTree({ srcDir, destDir, cacheDir: resolvedCacheDir, hash, logger }));
@@ -482,7 +581,7 @@ export async function prebuildAudioAssetCache({ logger } = {}) {
 
 async function runPrebuildCache({ logger }) {
   const ffmpegPath = require("ffmpeg-static");
-  const hash = pipelineHash(RADIO_ENGINEER_FILTER, ENCODE_ARGS);
+  const hash = pipelineCacheKey();
   const cacheRoot = path.join(CACHE_ROOT, hash);
   const concurrency = Math.min(4, Math.max(1, os.availableParallelism?.() ?? os.cpus().length));
 
@@ -517,8 +616,9 @@ async function runPrebuildCache({ logger }) {
  * as is each bundled voice's `voice/<voice-id>/callouts.json` (#1064).
  *
  * Processed outputs are cached at `packages/audio-assets/.cache/<pipeline-hash>/`
- * keyed on the filter chain + ffmpeg encode args, so changing either
- * invalidates the cache automatically. Per-file invalidation is content-based
+ * keyed on `PIPELINE_IDENTITY` — the filter chain, the ffmpeg encode args and
+ * the installed `ffmpeg-static` version — so changing any of them invalidates
+ * the cache automatically (#1667). Per-file invalidation is content-based
  * (rebuild unless the `<clip>.src.sha256` sidecar matches the source's current
  * bytes — never the mtime, which a Windows copy carries over from the file it
  * came from, #1143). The Rollup plugin and the scenario harness both call
@@ -557,7 +657,7 @@ export async function processAndCopyAudioAssets({
   if (!destRoot) throw new Error("processAndCopyAudioAssets: destRoot is required");
   if (!existsSync(srcRoot)) return;
 
-  const hash = pipelineHash(RADIO_ENGINEER_FILTER, ENCODE_ARGS);
+  const hash = pipelineCacheKey();
   const cacheRoot = cacheDir ?? sharedCacheRoot(srcRoot, hash);
 
   return withCacheLock(() => runProcessAndCopy({ srcRoot, destRoot, cacheRoot, hash, logger, wipe, voices }));

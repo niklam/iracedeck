@@ -69,6 +69,23 @@ function committedEntry(overrides = {}) {
 const LATEST_IS_PLUGIN = { ok: true, stdout: JSON.stringify({ tagName: "v3.1.0" }) };
 
 /**
+ * A committed pack record as the orchestrator reads it — for its seal alone;
+ * `released` names the version a tag run's release commit sealed (#1667).
+ * `version` is what the seal says is out; `null` leaves the record unsealed.
+ */
+function sealedRecord(version = "1.0.0") {
+  return version === null ? { released: undefined } : { released: { version, sha256: SHA } };
+}
+
+/** One problem as `checkPackRecords` reports it: the #1582 shape, a script changed with no re-pack. */
+const STALE_SCRIPT = {
+  pack: "default",
+  part: "voices.default.script",
+  message: "default: voice/default/callouts.json changed since catalog/default.json was packed",
+  fix: "version 1.0.0 is released: bump `version` in src/build/voice-packs.mjs, run `pnpm --filter @iracedeck/audio-assets pack:voice default`, and commit catalog/default.json and pack-records/default.json",
+};
+
+/**
  * Injected deps with every side effect faked. `gh` answers from a script keyed
  * by the subcommand (`view` / `create` / `upload` / `download` / `edit`), plus
  * `latest` for the tag-less `gh release view --json tagName` that reports the
@@ -82,6 +99,9 @@ const LATEST_IS_PLUGIN = { ok: true, stdout: JSON.stringify({ tagName: "v3.1.0" 
  *   the packs it is given, the state of a healthy repository
  * @param {string} [options.downloadedSha] — what the published asset hashes to
  * @param {(pack: object) => string} [options.archivePathFor] — where the fake packer says it wrote
+ * @param {object[]} [options.recordProblems] — what the record check finds; none, the state of a clean tree
+ * @param {object | null | ((id: string) => object | null)} [options.record] — the committed record, read
+ *   for its seal; by default every pack is sealed at its version, as a tag run's release commit leaves it
  */
 function fakeDeps({
   gh = {},
@@ -89,11 +109,16 @@ function fakeDeps({
   entryIds,
   downloadedSha = SHA,
   archivePathFor = (pack) => path.join(SCRATCH_DIR, "pack", `${pack.id}-${pack.version}.zip`),
+  recordProblems = [],
+  record = sealedRecord(),
 } = {}) {
   const committed = typeof entry === "function" ? entry : () => entry;
+  const records = typeof record === "function" ? record : () => record;
   const script = { latest: LATEST_IS_PLUGIN, ...gh };
   const deps = {
     ...(entryIds === undefined ? {} : { listCommittedEntryIds: vi.fn(() => entryIds) }),
+    checkRecords: vi.fn(() => recordProblems),
+    readRecord: vi.fn(records),
     pack: vi.fn(async (pack) => ({ entry: freshEntry(pack), archivePath: archivePathFor(pack) })),
     readCommittedEntry: vi.fn(committed),
     ensureDir: vi.fn(),
@@ -238,7 +263,7 @@ describe("publishVoicePacks — pack and verify", () => {
         `^default: the archive built here \\(sha256 ${SHA}, ${BYTES} bytes\\) does not match ` +
           `packages/audio-assets/catalog/default\\.json \\(sha256 ${"f".repeat(64)}, ${BYTES} bytes\\)\\. ` +
           `Run "pnpm --filter @iracedeck/audio-assets pack:voice", bump the pack version in voice-packs\\.mjs ` +
-          `if its clips changed, and commit the regenerated entry\\.`,
+          `if its clips changed, and commit the regenerated entry and record\\.`,
       ),
     );
     expect(message).toContain(JSON.stringify(freshEntry(PACK)));
@@ -378,6 +403,123 @@ describe("publishVoicePacks — a committed entry for no pack (#1392)", () => {
 
     expect(message).toMatch(/^default: no committed catalog entry at packages\/audio-assets\/catalog\/default\.json/);
     expect(deps.pack).toHaveBeenCalledTimes(1);
+  });
+});
+
+// Pass 1's second check (#1667): every pack's committed record is held to its
+// four rules before any pack is built. A stale record — #1582's clips or
+// script changed with nobody re-running pack:voice — therefore fails in seconds
+// with the pack, the input and the fix, instead of after encoding every clip,
+// and reads the same as the release hook's refusal.
+describe("publishVoicePacks — a stale pack record (#1667)", () => {
+  it.each([
+    ["a dry run", false],
+    ["a publish", true],
+  ])("refuses it on %s, printing every problem and its fix, before packing anything", async (_, publish) => {
+    const deps = fakeDeps({ gh: RELEASE_MISSING, recordProblems: [STALE_SCRIPT] });
+
+    const message = await failure(run(deps, { publish }));
+
+    expect(message).toMatch(
+      /^A voice pack's committed record \(packages\/audio-assets\/pack-records\) disagrees with the tree, so its catalog entry is not what this run would build\. Nothing was packed or published\.\n/,
+    );
+    expect(message).toContain(`  ${STALE_SCRIPT.message}`);
+    expect(message).toContain(`  fix: ${STALE_SCRIPT.fix}`);
+    expect(deps.checkRecords).toHaveBeenCalledTimes(1);
+    expect(deps.ensureDir).not.toHaveBeenCalled();
+    expect(deps.pack).not.toHaveBeenCalled();
+    expect(deps.readCommittedEntry).not.toHaveBeenCalled();
+    expect(deps.copyArchive).not.toHaveBeenCalled();
+    expect(deps.gh).not.toHaveBeenCalled();
+  });
+
+  it("runs after the orphan-entry check, so an entry for no pack is named first", async () => {
+    const deps = fakeDeps({ entryIds: ["default", "retired"], recordProblems: [STALE_SCRIPT] });
+
+    const message = await failure(run(deps));
+
+    expect(message).toContain("A committed catalog entry belongs to no pack in VOICE_PACKS");
+    expect(message).not.toContain(STALE_SCRIPT.message);
+    expect(deps.checkRecords).not.toHaveBeenCalled();
+  });
+
+  it("checks the records once per run and goes on to pack when they are clean", async () => {
+    const deps = fakeDeps({ entry: (id) => committedEntry(freshEntry({ ...PACK, id })) });
+
+    await run(deps, { packs: [PACK, OTHER] });
+
+    expect(deps.checkRecords).toHaveBeenCalledTimes(1);
+    expect(deps.pack).toHaveBeenCalledTimes(2);
+  });
+});
+
+// Pass 1's third check (#1667), with --publish only: a pack is published only
+// once its record says its current version is released. A tag run's release
+// commit has sealed every pack, so this bites a between-releases publish that
+// skipped `pnpm seal:voice-packs`, or a tagged -dev bump.
+describe("publishVoicePacks — an unsealed pack version (#1667)", () => {
+  const REFUSAL =
+    "default 1.0.0 is about to be published but is not sealed in pack-records/default.json — seal it on master first.";
+
+  it("refuses to publish a pack whose record carries no seal, before packing anything", async () => {
+    const deps = fakeDeps({ gh: RELEASE_MISSING, record: sealedRecord(null) });
+
+    const message = await failure(run(deps, { publish: true }));
+
+    expect(message.split("\n")[0]).toBe(REFUSAL);
+    expect(message).toContain(
+      "Run `pnpm seal:voice-packs default` on master, commit packages/audio-assets/pack-records/",
+    );
+    expect(message).toContain("Nothing was packed or published.");
+    expect(deps.readRecord).toHaveBeenCalledWith("default");
+    expect(deps.ensureDir).not.toHaveBeenCalled();
+    expect(deps.pack).not.toHaveBeenCalled();
+    expect(deps.copyArchive).not.toHaveBeenCalled();
+    expect(deps.gh).not.toHaveBeenCalled();
+  });
+
+  it("treats a seal at an older version, and a missing record, the same way", async () => {
+    const older = fakeDeps({ gh: RELEASE_MISSING, record: sealedRecord("0.9.0") });
+    const missing = fakeDeps({ gh: RELEASE_MISSING, record: null });
+
+    expect(await failure(run(older, { publish: true }))).toContain(REFUSAL);
+    expect(await failure(run(missing, { publish: true }))).toContain(REFUSAL);
+    expect(older.pack).not.toHaveBeenCalled();
+    expect(missing.pack).not.toHaveBeenCalled();
+  });
+
+  it("names every unsealed pack at once, and only those", async () => {
+    const deps = fakeDeps({
+      gh: RELEASE_MISSING,
+      record: (id) => (id === "default" ? sealedRecord() : sealedRecord(null)),
+    });
+
+    const message = await failure(run(deps, { publish: true, packs: [PACK, OTHER] }));
+
+    expect(message).toContain(
+      "other 1.0.0 is about to be published but is not sealed in pack-records/other.json — seal it on master first.",
+    );
+    expect(message).not.toContain("default 1.0.0 is about to be published");
+    expect(message).toContain("Run `pnpm seal:voice-packs other` on master");
+    expect(deps.pack).not.toHaveBeenCalled();
+  });
+
+  it("does not require a seal on a dry run, and does not read the records for one", async () => {
+    const deps = fakeDeps({ record: sealedRecord(null) });
+
+    const results = await run(deps);
+
+    expect(results[0].outcome).toBe("dry-run");
+    expect(deps.readRecord).not.toHaveBeenCalled();
+    expect(deps.pack).toHaveBeenCalledTimes(1);
+  });
+
+  it("publishes a pack sealed at its current version", async () => {
+    const deps = fakeDeps({ gh: RELEASE_MISSING, record: sealedRecord("1.0.0") });
+
+    const results = await run(deps, { publish: true });
+
+    expect(results[0].outcome).toBe("published");
   });
 });
 
