@@ -50,7 +50,7 @@ export interface TemplateContext {
  * `SDKController` passes a provider, because the translator computes the
  * canonical order when asked.
  */
-export type LivePositionsSource = number[] | null | (() => number[] | null);
+export type LivePositionsSource = readonly number[] | null | (() => readonly number[] | null);
 
 /**
  * @internal Exported for the test-only reference builder
@@ -408,7 +408,7 @@ interface DriverInputs {
   drivers: DriverEntry[];
   playerCarIdx: number;
   /** The canonical live race order, in race sessions only. */
-  order: number[] | undefined;
+  order: readonly number[] | undefined;
   estimates: IRatingEstimates | undefined;
 }
 
@@ -681,7 +681,7 @@ export function findDriverByRacePosition(
   drivers: DriverEntry[],
   telemetry: TelemetryData | null,
   offset: number,
-  positions?: number[],
+  positions?: readonly number[],
 ): DriverEntry | null {
   const posArray = positions ?? telemetry?.CarIdxPosition;
 
@@ -775,7 +775,7 @@ function resolveClassPosition(
 export function buildDriverFields(
   driver: DriverEntry,
   telemetry: TelemetryData | null,
-  order?: number[],
+  order?: readonly number[],
   playerCarIdx?: number,
   estimates?: IRatingEstimates,
 ): DriverFields {
@@ -831,7 +831,7 @@ export function buildSelfFields(
   driver: DriverEntry | undefined,
   playerCarIdx: number,
   telemetry: TelemetryData | null,
-  order?: number[],
+  order?: readonly number[],
   estimates?: IRatingEstimates,
 ): SelfDriverFields {
   if (!driver) return { ...EMPTY_SELF_FIELDS };
