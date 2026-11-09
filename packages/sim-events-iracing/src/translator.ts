@@ -3832,8 +3832,24 @@ function resolveIsMultiClass(sessionInfo: Record<string, unknown> | null): boole
 }
 
 /**
+ * The cache key every per-track, per-session cache of the translator is keyed
+ * by (issue #1573): `${TrackID}|${SessionNum}`, from `WeekendInfo.TrackID` and
+ * the tick's `SessionNum`, each `""` when absent. The track length (#574), the
+ * corner markers (#888) and the pit speed limit all invalidate on it, so a new
+ * track, or a new session at the same track, re-resolves each of them the same
+ * way. Built here once, so no cache can key differently from the others.
+ *
+ * @internal Exported for testing.
+ */
+export function trackSessionKey(sessionInfo: Record<string, unknown>, telemetry: TelemetryData): string {
+  const weekend = sessionInfo.WeekendInfo as Record<string, unknown> | undefined;
+
+  return `${String(weekend?.TrackID ?? "")}|${String(telemetry.SessionNum ?? "")}`;
+}
+
+/**
  * Read `SessionInfo.WeekendInfo.TrackLength` ("X.XXX km" or "X.XXX miles") in
- * meters and cache the result on `TranslatorState` keyed by `(TrackID, SessionNum)`
+ * meters and cache the result on `TranslatorState` keyed by {@link trackSessionKey}
  * (issue #574). Returns `null` when the YAML hasn't been seen yet, the field is
  * absent, or the format doesn't parse — the overtake diff treats null as "no
  * gap data" and lets emissions through without the physical-gap gate. Re-parses
@@ -3846,8 +3862,7 @@ function resolveTrackLengthMeters(
 ): number | null {
   if (!sessionInfo) return state.trackLengthMeters;
 
-  const weekend = sessionInfo.WeekendInfo as Record<string, unknown> | undefined;
-  const trackId = `${String(weekend?.TrackID ?? "")}|${String(telemetry.SessionNum ?? "")}`;
+  const trackId = trackSessionKey(sessionInfo, telemetry);
 
   if (trackId !== state.trackLengthKey) {
     state.trackLengthKey = trackId;
@@ -3865,7 +3880,7 @@ function resolveTrackLengthMeters(
 
 /**
  * Resolve (and cache) the bundled corner markers for the current track
- * (issue #888). Keyed by `(TrackID, SessionNum)` like the track-length cache;
+ * (issue #888). Keyed by {@link trackSessionKey} like the track-length cache;
  * re-resolves when the key changes and retries while null in case the first
  * YAML tick lacked `TrackName`. Returns `null` for tracks not in the dataset.
  */
@@ -3877,7 +3892,7 @@ function resolveCornerMarkersCached(
   if (!sessionInfo) return state.cornerMarkers;
 
   const weekend = sessionInfo.WeekendInfo as Record<string, unknown> | undefined;
-  const key = `${String(weekend?.TrackID ?? "")}|${String(telemetry.SessionNum ?? "")}`;
+  const key = trackSessionKey(sessionInfo, telemetry);
 
   if (key !== state.cornerMarkersKey) {
     state.cornerMarkersKey = key;
@@ -3901,7 +3916,7 @@ function resolvePitSpeedLimit(
   if (!sessionInfo) return self.pitSpeedLimitMps;
 
   const weekend = sessionInfo.WeekendInfo as Record<string, unknown> | undefined;
-  const trackId = `${String(weekend?.TrackID ?? "")}|${String(telemetry.SessionNum ?? "")}`;
+  const trackId = trackSessionKey(sessionInfo, telemetry);
 
   // Track or session changed — invalidate the cache. We re-parse below; if
   // the new session YAML is missing or malformed, the cached limit resets
