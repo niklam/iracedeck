@@ -144,6 +144,55 @@ describe("extractSectorStarts", () => {
     ).toEqual([0, 0.3, 0.6]);
   });
 
+  it("returns null for a gap in the SectorNums, which would shift every later sector's number", () => {
+    // Sector 1 is missing: index 1 would be spoken as sector 2 while iRacing
+    // calls it sector 3.
+    const info = withSectors([
+      { SectorNum: 0, SectorStartPct: 0 },
+      { SectorNum: 2, SectorStartPct: 0.4 },
+      { SectorNum: 3, SectorStartPct: 0.7 },
+    ]);
+
+    expect(extractSectorStarts(info)).toBeNull();
+    // Positive control: the same starts numbered 0, 1, 2 are three sectors.
+    expect(
+      extractSectorStarts(
+        withSectors([
+          { SectorNum: 0, SectorStartPct: 0 },
+          { SectorNum: 1, SectorStartPct: 0.4 },
+          { SectorNum: 2, SectorStartPct: 0.7 },
+        ]),
+      ),
+    ).toEqual([0, 0.4, 0.7]);
+  });
+
+  it("returns null when the first SectorNum is not 0", () => {
+    const info = withSectors([
+      { SectorNum: 1, SectorStartPct: 0 },
+      { SectorNum: 2, SectorStartPct: 0.5 },
+    ]);
+
+    expect(extractSectorStarts(info)).toBeNull();
+    // Positive control: numbered from 0, the same starts are two sectors.
+    expect(
+      extractSectorStarts(
+        withSectors([
+          { SectorNum: 0, SectorStartPct: 0 },
+          { SectorNum: 1, SectorStartPct: 0.5 },
+        ]),
+      ),
+    ).toEqual([0, 0.5]);
+  });
+
+  it("returns null for a SectorNum that is not a whole number", () => {
+    const info = withSectors([
+      { SectorNum: 0, SectorStartPct: 0 },
+      { SectorNum: 0.5, SectorStartPct: 0.5 },
+    ]);
+
+    expect(extractSectorStarts(info)).toBeNull();
+  });
+
   it.each([Number.NaN, Number.POSITIVE_INFINITY, "0.5", null, undefined])(
     "returns null for a start that is not a finite number (%s)",
     (start) => {
