@@ -24,6 +24,7 @@ import {
   IRACING_SESSION_TICKS_PER_S,
   PIT_LANE_EDGE_SETTLE_S,
   PIT_LANE_LANDMARKS_EVENTS,
+  PIT_LANE_MAX_EDGE_SPAN_S,
   PIT_LANE_MAX_PLAUSIBLE_SPEED_MPS,
   resolvePitLaneTrackIdentity,
   seedPitLaneLandmarkLearner,
@@ -287,6 +288,7 @@ describe("diffPitLaneLandmarks", () => {
 
       h.tick(40, { 1: { surface: APPROACH, onPit: true, pct: 0.35 } });
       h.tick(40.1, { 1: { surface: APPROACH, pct: 0.351 } });
+      h.tick(45, { 1: { surface: APPROACH, pct: 0.36 } });
       expect(learned(h.tick(45.1, { 1: { surface: ON, pct: 0.361 } })).map((e) => e.landmark)).toEqual(["blendEnd"]);
       h.tick(45.2, { 1: { surface: APPROACH, pct: 0.3615 } });
       // A second approach-to-track edge after the blend is not another blend.
@@ -327,6 +329,7 @@ describe("diffPitLaneLandmarks", () => {
 
       h.tick(40, { 1: { surface: APPROACH, onPit: true, pct: 0.35 } });
       h.tick(40.1, { 1: { surface: APPROACH, pct: 0.351 } });
+      h.tick(45, { 1: { surface: APPROACH, pct: 0.36 } });
       expect(learned(h.tick(45.1, { 1: { surface: ON, pct: 0.361 } }))).toHaveLength(1); // blendEnd
       // A flicker at the blend line.
       expect(h.tick(45.1 + PIT_LANE_EDGE_SETTLE_S - 0.2, { 1: { surface: APPROACH, pct: 0.3611 } })).toEqual([]);
@@ -343,6 +346,7 @@ describe("diffPitLaneLandmarks", () => {
 
       h.tick(30, { 1: { surface: STALL, onPit: true, pct: 0.331 } });
       h.tick(30.1, { 1: { surface: APPROACH, onPit: true, pct: 0.3312 } });
+      h.tick(40, { 1: { surface: APPROACH, onPit: true, pct: 0.35 } });
       const events = learned(h.tick(40.1, { 1: { surface: APPROACH, pct: 0.351 } }));
 
       expect(events.map((e) => e.landmark)).toEqual(["pitRoadEnd"]);
@@ -682,6 +686,99 @@ describe("diffPitLaneLandmarks", () => {
 
       expect(retried.map((e) => e.sample.key)).toEqual([`${SUBSESSION}:${SESSION_NUM}:2:approachStart:3`]);
       expect(retried[0]!.summary).toMatchObject({ samples: 2, published: true });
+    });
+
+    it("learns no edge across a car's failed run once it recovers, and learns its next one-tick edge", () => {
+      const steps = new TickSteps({
+        boundary: createErrorBoundary({ logger: silentLogger, now: () => 0 }),
+        prefix: "translator:",
+      });
+      const slice = createPitLaneLandmarksState();
+      const learner = loadedLearner();
+      const fault = { on: false };
+      const run = (sessionTime: number, cars: Record<number, CarReading>): PendingEvent[] => {
+        // A row read on every tick, so the unit throws whether or not it sees an edge.
+        const t = telemetry(sessionTime, cars) as { CarIdxTrackSurface: number[] };
+        const surfaces = t.CarIdxTrackSurface.slice();
+
+        Object.defineProperty(t.CarIdxTrackSurface, 2, {
+          get: () => {
+            if (fault.on) throw new Error("odd surface row");
+
+            return surfaces[2];
+          },
+        });
+
+        const pending: PendingEvent[] = [];
+
+        steps.live("diffPitLaneLandmarks", pending, () =>
+          diffPitLaneLandmarks(
+            slice,
+            learner,
+            t as never,
+            null,
+            SUBSESSION,
+            WALL_EPOCH + Math.round(sessionTime * 1000),
+            (ev) => pending.push(ev),
+            steps.runUnit,
+          ),
+        );
+
+        return pending;
+      };
+
+      run(10, { 2: { surface: ON, pct: 0.5 } });
+
+      // Into the approach at 50 m/s, and the unit throws on every tick for 3 s:
+      // the baseline stays at 10 s, on the racing surface.
+      fault.on = true;
+
+      for (let step = 1; step < 30; step++) {
+        expect(run(10 + step / 10, { 2: { surface: APPROACH, pct: 0.5 + step * 0.00125 } })).toEqual([]);
+      }
+
+      expect(slice.cars[2]).toMatchObject({ surface: ON, sessionTime: 10 });
+
+      // Recovered: 150 m in 3 s passes the speed check, but the two ticks are
+      // too far apart to sample the edge between them.
+      fault.on = false;
+
+      expect(run(13, { 2: { surface: APPROACH, pct: 0.5375 } })).toEqual([]);
+      expect(slice.cars[2]).toMatchObject({ surface: APPROACH, sessionTime: 13, pct: 0.5375 });
+      expect(learner.section!.landmarks.approachStart).toBeUndefined();
+
+      // The next edge is one tick long, and is learned.
+      expect(
+        learned(run(13.1, { 2: { surface: APPROACH, onPit: true, pct: 0.53875 } })).map((e) => e.landmark),
+      ).toEqual(["pitRoadStart"]);
+    });
+  });
+
+  describe("the span of an edge", () => {
+    it("is at most PIT_LANE_MAX_EDGE_SPAN_S: an edge over a longer span is not learned, though the move is plausible", () => {
+      const h = harness();
+      const late = 10 + PIT_LANE_MAX_EDGE_SPAN_S + 0.05;
+
+      // 4 m in 1.05 s: well under the speed ceiling.
+      h.tick(10, { 1: { surface: ON, pct: 0.5 } });
+
+      expect(h.tick(late, { 1: { surface: APPROACH, pct: 0.501 } })).toEqual([]);
+      // The car not read for longer is re-seeded by the tick...
+      expect(h.slice.cars[1]).toMatchObject({ surface: APPROACH, pct: 0.501, sessionTime: late });
+      // ...and its next one-tick edge is learned.
+      expect(
+        learned(h.tick(late + 0.1, { 1: { surface: APPROACH, onPit: true, pct: 0.5012 } })).map((e) => e.landmark),
+      ).toEqual(["pitRoadStart"]);
+    });
+
+    it("includes the span itself", () => {
+      const h = harness();
+
+      h.tick(10, { 1: { surface: ON, pct: 0.5 } });
+
+      expect(
+        learned(h.tick(10 + PIT_LANE_MAX_EDGE_SPAN_S, { 1: { surface: APPROACH, pct: 0.501 } })).map((e) => e.landmark),
+      ).toEqual(["approachStart"]);
     });
   });
 });

@@ -48,6 +48,10 @@
  * that tick (no faster than {@link PIT_LANE_MAX_PLAUSIBLE_SPEED_MPS}, judged
  * wrap-aware on the track length, so a jump is a teleport, and timed by
  * `SessionTime`, or by `SessionTick` on a tick where `SessionTime` repeated),
+ * the two ticks are at most {@link PIT_LANE_MAX_EDGE_SPAN_S} apart (a car
+ * not read for longer, as when its unit threw on many ticks in a row, is
+ * re-seeded by the tick: its baseline moves on and its pit-visit state
+ * follows what the two readings show, but no edge between them is sampled),
  * and it is not the pace car. A car's first tick only seeds it, and a tick with no position or
  * out of the world (`NotInWorld`) updates its baseline and accepts nothing.
  * With no track length, no track identity or no subsession nothing is
@@ -108,6 +112,19 @@ export const PIT_LANE_LANDMARKS_EVENTS = ["pitLane.landmarkLearned"] as const sa
  * rejects only teleports.
  */
 export const PIT_LANE_MAX_PLAUSIBLE_SPEED_MPS = 150;
+
+/**
+ * The longest span between an edge's two ticks, in seconds, for the edge to
+ * be learned. A reasoned default, to be tuned on captures: consecutive live
+ * ticks are 1/60 s apart, and even a stalled `SessionTime` or a slow tick
+ * leaves them far under a second, while a car whose unit threw on many ticks
+ * in a row keeps its baseline from before the run. Across such a gap the
+ * speed check stops meaning anything (at {@link PIT_LANE_MAX_PLAUSIBLE_SPEED_MPS}
+ * a gap of trackLength / 150 s admits any move), and the midpoint of two
+ * distant ticks is not where the edge was. So a car not read for longer is
+ * re-seeded by the tick (its baseline moves to it) and not learned from.
+ */
+export const PIT_LANE_MAX_EDGE_SPAN_S = 1;
 
 /**
  * How long after one edge its reverse is not taken as a landmark, in seconds
@@ -315,8 +332,7 @@ export function diffPitLaneLandmarks(
       const pitRoadOn = !prev.onPitRoad && onPitRoad;
       const pitRoadOff = prev.onPitRoad && !onPitRoad;
       const moved =
-        learning &&
-        isPlausibleMove(prev.pct, pct, elapsedSeconds(prev, sessionTime, sessionTick), trackLengthM as number);
+        learning && isDrivenEdge(prev.pct, pct, elapsedSeconds(prev, sessionTime, sessionTick), trackLengthM as number);
 
       if (
         moved &&
@@ -434,12 +450,14 @@ function elapsedSeconds(prev: PitLaneLandmarkCarTick, sessionTime: number, sessi
 }
 
 /**
- * Whether a car got from `fromPct` to `toPct` by driving: time moved forward
- * ({@link elapsedSeconds}), and the shorter way round the lap is no longer
- * than {@link PIT_LANE_MAX_PLAUSIBLE_SPEED_MPS} allows in that time.
+ * Whether a car got from `fromPct` to `toPct` by driving, on two ticks close
+ * enough to sample an edge between: time moved forward
+ * ({@link elapsedSeconds}) by no more than {@link PIT_LANE_MAX_EDGE_SPAN_S},
+ * and the shorter way round the lap is no longer than
+ * {@link PIT_LANE_MAX_PLAUSIBLE_SPEED_MPS} allows in that time.
  */
-function isPlausibleMove(fromPct: number, toPct: number, elapsed: number, trackLengthM: number): boolean {
-  if (!Number.isFinite(elapsed) || elapsed <= 0) return false;
+function isDrivenEdge(fromPct: number, toPct: number, elapsed: number, trackLengthM: number): boolean {
+  if (!Number.isFinite(elapsed) || elapsed <= 0 || elapsed > PIT_LANE_MAX_EDGE_SPAN_S) return false;
 
   return Math.abs(pitLaneSignedDeltaPct(fromPct, toPct)) * trackLengthM <= PIT_LANE_MAX_PLAUSIBLE_SPEED_MPS * elapsed;
 }
