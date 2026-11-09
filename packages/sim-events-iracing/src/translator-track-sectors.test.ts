@@ -339,3 +339,68 @@ describe("getTrackSectors", () => {
     expect(after.raw.state.trackSectors).toBe(slice);
   });
 });
+
+describe("sectorStart.approaching through the tick", () => {
+  /** Every `sectorStart.approaching` the bus carries, as its payload. */
+  function collect(): Array<{ sector: number; sectorCount: number; nextCornerInS: number | null }> {
+    const seen: Array<{ sector: number; sectorCount: number; nextCornerInS: number | null }> = [];
+
+    getEventBus().subscribe("sectorStart.approaching", (event) => {
+      seen.push(event.data);
+    });
+
+    return seen;
+  }
+
+  // 44 m/s × 1 s (the default corner call lead) on 4000 m: the lead point is
+  // 0.011 lap ahead, so 0.18 → 0.19 sweeps it from 0.191 to 0.201, across
+  // sector 2's start at 0.2.
+  it.each(["Offline Testing", "Practice", "Lone Practice"])(
+    "publishes as the lead point crosses a sector start in a %s session",
+    (sessionType) => {
+      const seen = collect();
+
+      start(sessionInfo({ sessionType, sectors: FIVE_SECTORS }));
+      controller.__tick(tick(0, { LapDistPct: 0.18 }));
+      controller.__tick(tick(0, { LapDistPct: 0.19 }));
+
+      // No TrackName in the session info, so no corner markers: null, not silent.
+      expect(seen).toEqual([{ sector: 2, sectorCount: 5, nextCornerInS: null }]);
+    },
+  );
+
+  it.each(["Race", "Open Qualify", "Lone Qualify", "Warmup"])("is silent in a %s session", (sessionType) => {
+    const seen = collect();
+
+    start(sessionInfo({ sessionType, sectors: FIVE_SECTORS }));
+    controller.__tick(tick(0, { LapDistPct: 0.18 }));
+    controller.__tick(tick(0, { LapDistPct: 0.19 }));
+
+    expect(seen).toEqual([]);
+    // The sectors are there all the same: the silence is the session gate's.
+    expect(getTrackSectors()).toEqual({ starts: [0, 0.2, 0.4, 0.6, 0.8] });
+  });
+
+  it("publishes nothing for a crossing in a replay, and the next live crossing after the grace publishes", () => {
+    vi.useFakeTimers();
+    const seen = collect();
+
+    start(sessionInfo({ sessionType: "Offline Testing", sectors: FIVE_SECTORS }));
+    controller.__tick(tick(0, { LapDistPct: 0.18 }));
+    // On track and crossing sector 2's start, but in a replay.
+    controller.__tick(tick(0, { LapDistPct: 0.19, IsReplayPlaying: true }));
+
+    expect(seen).toEqual([]);
+
+    // Back to live, inside the exit grace: still the replay's (#1324).
+    controller.__tick(tick(0, { LapDistPct: 0.195 }));
+
+    expect(seen).toEqual([]);
+
+    vi.advanceTimersByTime(REPLAY_EXIT_GRACE_MS + 1);
+    controller.__tick(tick(0, { LapDistPct: 0.38 }));
+    controller.__tick(tick(0, { LapDistPct: 0.39 }));
+
+    expect(seen).toEqual([{ sector: 3, sectorCount: 5, nextCornerInS: null }]);
+  });
+});

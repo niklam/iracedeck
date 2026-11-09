@@ -127,6 +127,7 @@ vi.mock("./diff/gaps.js", async (io) => harness.spy(await io(), { diffGaps: 7 })
 vi.mock("./diff/track-gaps.js", async (io) => harness.spy(await io(), { diffTrackGaps: null }));
 vi.mock("./diff/pit-box-countdown.js", async (io) => harness.spy(await io(), { diffPitBoxCountdown: 4 }));
 vi.mock("./diff/corner-name.js", async (io) => harness.spy(await io(), { diffCornerName: 6 }));
+vi.mock("./diff/sector-start.js", async (io) => harness.spy(await io(), { diffSectorStart: 7 }));
 vi.mock("./diff/fuel-laps-left.js", async (io) => harness.spy(await io(), { diffFuelLapsLeft: 7 }));
 vi.mock("./diff/fuel-laps.js", async (io) => harness.spy(await io(), { diffFuelLaps: null }));
 vi.mock("./diff/radar.js", async (io) => harness.spy(await io(), { diffRadar: 2 }));

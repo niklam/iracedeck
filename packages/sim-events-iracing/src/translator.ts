@@ -102,6 +102,7 @@ import { diffPitsOpen } from "./diff/pits-open.js";
 import { updatePositionTracking } from "./diff/race-finish.js";
 import { diffRadar, resolveRadarState } from "./diff/radar.js";
 import { diffRollingStart } from "./diff/rolling-start.js";
+import { diffSectorStart } from "./diff/sector-start.js";
 import { updateStallVisit } from "./diff/stall-visit.js";
 import { diffStartCountdown, diffStartLights } from "./diff/start-lights.js";
 import { diffTireTemps, readTireTempsLeavingCar } from "./diff/tire-temps.js";
@@ -170,7 +171,7 @@ const SUBSCRIPTION_ID = "__sim-events-iracing__";
  * one step's first error. `tick-steps.source.test.ts` counts the ids in both
  * `handleTick`s and fails until this number matches; a new step changes it.
  */
-export const TRANSLATOR_REPORTER_MAX_KEYS = 56 * TICK_STEP_KEYS_PER_ID;
+export const TRANSLATOR_REPORTER_MAX_KEYS = 57 * TICK_STEP_KEYS_PER_ID;
 
 /** The step name every {@link onTranslatorTick} listener is called under: one id, `translator:onTranslatorTick`. */
 const TICK_LISTENER_STEP = "onTranslatorTick";
@@ -3379,8 +3380,10 @@ function handleLiveSteps(
   // serves every feature that reads them. Keyed like the corner markers, and
   // resolved on live ticks only; the slice is kept across a replay glance
   // (`wipeStateForReplay`), and the key re-validates on the first live tick
-  // back.
-  steps.value("resolveTrackSectorsCached", values, self.state.trackSectors.starts, () =>
+  // back. Captured as a value so the sector-start diff reads it at the call
+  // (#1588), with `steps.value`'s last-good fallback should the resolution
+  // throw.
+  const trackSectors = steps.value("resolveTrackSectorsCached", values, self.state.trackSectors.starts, () =>
     resolveTrackSectorsCached(self.state.trackSectors, sessionInfo, telemetry),
   );
   steps.live("diffCornerName", pending, () =>
@@ -3388,6 +3391,24 @@ function handleLiveSteps(
       self.state.cornerName,
       telemetry,
       classifySession(sessionType)?.category === "practice",
+      cornerMarkers,
+      trackLengthMeters,
+      self.getCornerCalloutLeadSeconds,
+      emit,
+    ),
+  );
+  // Sector-start calls (issue #1573): the corner names' lead point and sweep
+  // over the track's sector starts, practice/test only (gated in the diff),
+  // right after the corner names so a corner swept on the same tick is
+  // published first. Behind the replay guard like everything here, so a replay
+  // never publishes one. The corner markers only measure `nextCornerInS`; a
+  // track without them still gets every sector start.
+  steps.live("diffSectorStart", pending, () =>
+    diffSectorStart(
+      self.state.sectorStart,
+      telemetry,
+      classifySession(sessionType)?.category === "practice",
+      trackSectors,
       cornerMarkers,
       trackLengthMeters,
       self.getCornerCalloutLeadSeconds,

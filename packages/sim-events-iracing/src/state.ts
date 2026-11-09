@@ -472,6 +472,34 @@ export function createCornerNameState(): CornerNameState {
   return { leadPrevPct: null, spoken: new Set(), markersKey: "", markers: null };
 }
 
+/**
+ * The sector-start calls (issue #1573): the lead-point sweep `diffSectorStart`
+ * runs over the track's sector starts (`diff/lead-point-sweep.ts`), apart from
+ * the corner names' own so each call keeps its own pass. Written by
+ * `diffSectorStart` alone, which resets it when a gate fails. Reset per session
+ * and at a disconnect with the rest of the state, and wiped whole at a replay
+ * glance: the first live tick back seeds a fresh pass silently.
+ */
+export type SectorStartState = {
+  /**
+   * Previous tick's lead point (`LapDistPct` + speed-scaled lead offset,
+   * folded into [0, 1)). `null` until the first valid practice tick seeds it
+   * silently; reset to `null` whenever the diff's gates fail.
+   */
+  leadPrevPct: number | null;
+  /**
+   * Sector indices (0 is the sector that starts at the line) already
+   * announced or consumed this lap. Cleared when the lead point wraps past
+   * S/F, on teleport re-anchor, and whenever the gates fail.
+   */
+  spoken: Set<number>;
+};
+
+/** A {@link SectorStartState} with no pass under way: the initial state. */
+export function createSectorStartState(): SectorStartState {
+  return { leadPrevPct: null, spoken: new Set() };
+}
+
 export type MaterialSample = {
   t: number; // timestamp (ms since epoch)
   material: number; // TrkSurf-like enum value
@@ -551,6 +579,11 @@ export type TranslatorState = {
    * its key re-validated on the next live tick.
    */
   trackSectors: TrackSectorsState;
+  /**
+   * The sector-start calls' sweep, one slice ({@link SectorStartState}).
+   * Reset per session and at a disconnect; wiped whole at a replay glance.
+   */
+  sectorStart: SectorStartState;
 
   // ── Flags ───────────────────────────────────────────────────────────────
   flagStateInitialized: boolean;
@@ -1987,6 +2020,7 @@ export function createInitialState(): TranslatorState {
     cornerName: createCornerNameState(),
 
     trackSectors: createTrackSectorsState(),
+    sectorStart: createSectorStartState(),
 
     flagStateInitialized: false,
     activeFlags: new Set(),

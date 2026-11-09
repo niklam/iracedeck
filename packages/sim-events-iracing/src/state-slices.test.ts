@@ -29,7 +29,7 @@ import {
  * Not here: "Track-order gaps outside a race (issue #1515)" (`trackGaps`),
  * "Fastest lap of the race (issue #1571)" (`fastestLap`) and
  * "Laps-of-fuel-left callouts (issue #838)" (`fuelCallout`) and "Track
- * sectors (issue #1573)" (`trackSectors`), whose only members are slices, the
+ * sectors (issue #1573)" (`trackSectors`, `sectorStart`), whose only members are slices, the
  * `lapCrossing` slice under "Lap completion", and the `cornerName` slice under
  * "Corner-name callouts (issue #888)".
  */
@@ -329,7 +329,15 @@ const SLICE_READS_ALLOWED: SliceReadAllowList = {
 };
 
 /** The slices the tree has, by key. */
-const SLICE_KEYS = ["trackGaps", "fastestLap", "fuelCallout", "lapCrossing", "trackSectors", "cornerName"];
+const SLICE_KEYS = [
+  "trackGaps",
+  "fastestLap",
+  "fuelCallout",
+  "lapCrossing",
+  "trackSectors",
+  "cornerName",
+  "sectorStart",
+];
 
 const violationNames = (scan: SliceScan): string[] => scan.violations.map((v) => `${v.rule}:${v.name}`);
 const violationKeys = (scan: SliceScan): string[] =>

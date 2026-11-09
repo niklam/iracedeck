@@ -58,6 +58,7 @@ import { REPLAY_INCIDENTS_EVENTS } from "./diff/replay-incidents.js";
 import { REPLAY_LAPS_EVENTS } from "./diff/replay-laps.js";
 import { REPLAY_SESSIONS_EVENTS } from "./diff/replay-sessions.js";
 import { ROLLING_START_EVENTS } from "./diff/rolling-start.js";
+import { SECTOR_START_EVENTS } from "./diff/sector-start.js";
 import { START_COUNTDOWN_EVENTS, START_LIGHTS_EVENTS } from "./diff/start-lights.js";
 import { TIRE_WEAR_EVENTS } from "./diff/tire-wear.js";
 import { TOGGLES_EVENTS } from "./diff/toggles.js";
@@ -146,6 +147,7 @@ export const TICK_ORDER: readonly TickStage[] = [
     events: PIT_BOX_COUNTDOWN_EVENTS,
   },
   { stage: "diffCornerName", source: "diff/corner-name.ts", via: "pending", events: CORNER_NAME_EVENTS },
+  { stage: "diffSectorStart", source: "diff/sector-start.ts", via: "pending", events: SECTOR_START_EVENTS },
   { stage: "diffFuelLapsLeft", source: "diff/fuel-laps-left.ts", via: "pending", events: FUEL_LAPS_LEFT_EVENTS },
   { stage: "diffRadar", source: "diff/radar.ts", via: "pending", events: RADAR_EVENTS },
   { stage: "diffPitSpeeding", source: "diff/pit-speeding.ts", via: "pending", events: PIT_SPEEDING_EVENTS },
