@@ -1,13 +1,15 @@
 /**
- * Learned pit-lane landmarks (issue #1112): the translator's half of the
- * learner.
+ * Learned pit-lane landmarks (issue #1112): iRacing's half of the learner —
+ * the track identity of the session, the per-car edge detector, and the
+ * logging around track-data's learner.
  *
  * iRacing reports which state each car is in but never where those states
  * change. This diff watches every car but the pace car and turns each edge it
- * drives into a {@link PitLaneLandmarkSample}, which it folds into the
- * learner's section with track-data's `foldSample` — the same fold the
- * landmark store (`@iracedeck/track-store`) runs on what it receives — and
- * publishes as `pitLane.landmarkLearned`. The four edges, in driving order:
+ * drives into a {@link PitLaneLandmarkSample}, which it hands to
+ * `@iracedeck/track-data`'s sim-neutral learner (`learnPitLaneLandmarks`,
+ * folding with `foldSample` — the same fold the landmark store,
+ * `@iracedeck/track-store`, runs on what it receives) and publishes as
+ * `pitLane.landmarkLearned` when accepted. The four edges, in driving order:
  *
  * - `approachStart` — `CarIdxTrackSurface` `OnTrack → AproachingPits`, on the
  *   way in only: not while the car is coming from pit road, and not within
@@ -61,11 +63,11 @@
  * wall clock the translator hands in.
  *
  * **A unit per car** (#1559): each car runs through the `runUnit` the
- * translator hands in. The work that can throw (the readings, the samples,
- * the folds and summaries) runs first; then the learner takes the folded
- * records, the events are emitted, and the car's baseline is written last, so
- * a car whose unit throws learns nothing that tick and is read again on the
- * next.
+ * translator hands in. The readings and samples come first; then one call to
+ * `learnPitLaneLandmarks` folds and summarises all of the car's edges before
+ * it replaces the learner's section (all or nothing), the events are emitted,
+ * and the car's baseline is written last, so a car whose unit throws learns
+ * nothing that tick and is read again on the next.
  *
  * No replay term: a replay tick, a saved replay included, never reaches this
  * diff (the translator's replay guard), so it learns from live, in-car
@@ -75,22 +77,17 @@ import type { SimEventName } from "@iracedeck/event-bus";
 import { type TelemetryData, TrkLoc } from "@iracedeck/iracing-sdk";
 import type { ILogger } from "@iracedeck/logger";
 import {
-  applyTrackLength,
-  foldSample,
+  learnPitLaneLandmarks,
+  loadPitLaneLandmarkLearner,
   normalizePitLanePct,
-  normalizePitLaneSection,
-  PIT_LANE_LANDMARK_NAMES,
+  type PitLaneLandmarkLearner,
   type PitLaneLandmarkName,
-  type PitLaneLandmarkRecord,
   type PitLaneLandmarkSample,
-  type PitLaneLandmarkSummary,
+  type PitLaneLandmarksLoader,
+  type PitLaneLearnerEdge,
   pitLaneMidpointPct,
-  type PitLaneResolvedLandmark,
-  type PitLaneSection,
   pitLaneSignedDeltaPct,
   type PitLaneTrackIdentity,
-  resolvePublishedLandmark,
-  summarizeLandmark,
 } from "@iracedeck/track-data";
 
 import type { PitLaneLandmarkCarTick, PitLaneLandmarksState } from "../state.js";
@@ -121,36 +118,6 @@ export const PIT_LANE_MAX_PLAUSIBLE_SPEED_MPS = 150;
  * guards the median against it rather than recording that it happens.
  */
 export const PIT_LANE_EDGE_SETTLE_S = 3;
-
-/**
- * Where the plugin's landmark store hands the translator a track's learned
- * section (issue #1112): `null` when it has none. Called at most once per
- * track per session (`loadPitLaneLandmarkLearner`), from a live tick.
- */
-export type PitLaneLandmarksLoader = (track: PitLaneTrackIdentity) => PitLaneSection | null;
-
-/**
- * The learned landmarks of the track in session (issue #1112). Held on the
- * translator instance, not in `TranslatorState`: it must survive the replay
- * wipe, which every garage visit makes. Emptied at a session change and a
- * disconnect, so the next live tick loads it again from the store: the
- * store's current section, including its unwritten samples. Another plugin
- * process's samples reach it only through the store's own merge when it
- * writes the file.
- */
-export type PitLaneLandmarkLearner = {
-  /** {@link pitLaneTrackKey} of {@link track} once loaded; `null` = not loaded. */
-  key: string | null;
-  /** The identity the section was loaded for, carried on every event; `null` = not loaded. */
-  track: PitLaneTrackIdentity | null;
-  /** The track's section, as loaded and then folded into; `null` = not loaded. */
-  section: PitLaneSection | null;
-};
-
-/** A learner with nothing loaded. */
-export function createPitLaneLandmarkLearner(): PitLaneLandmarkLearner {
-  return { key: null, track: null, section: null };
-}
 
 /**
  * The track in session, as the landmark store keys it (issue #1112), from
@@ -189,95 +156,36 @@ export function resolvePitLaneTrackIdentity(sessionInfo: Record<string, unknown>
   };
 }
 
-/** Every field of the identity in one string: a learner is loaded again when it changes. */
-export function pitLaneTrackKey(track: PitLaneTrackIdentity): string {
-  return JSON.stringify([
-    track.trackId,
-    track.trackName,
-    track.trackConfigName,
-    track.trackLength,
-    track.trackLengthM,
-    track.trackVersion,
-  ]);
-}
-
 /**
- * Load the learner for `track`, once per identity (issue #1112): a no-op
- * while the learner already holds this identity, or with no identity yet.
- * Otherwise the loader's section, read leniently (`normalizePitLaneSection`,
- * so a malformed or newer one counts as none), is brought in line with the
- * session's track length (`applyTrackLength`: a changed length is a rebuild,
- * whose published values become `previous`). A loader that throws, returns
- * `null` or returns something unreadable, or no loader at all, leaves an empty
- * section for this track, and is not asked again until the identity changes
- * or the learner is emptied.
+ * Load the translator's learner for the track in session (issue #1112) with
+ * track-data's `loadPitLaneLandmarkLearner` — once per identity, a no-op
+ * otherwise — and log what it did: a loader that threw or answered something
+ * unreadable is a warn (the track learns afresh), any load a debug line.
  */
-export function loadPitLaneLandmarkLearner(
+export function seedPitLaneLandmarkLearner(
   learner: PitLaneLandmarkLearner,
   track: PitLaneTrackIdentity | null,
   loader: PitLaneLandmarksLoader | null,
   logger: ILogger,
 ): void {
-  if (track === null) return;
+  const outcome = loadPitLaneLandmarkLearner(learner, track, loader);
 
-  const key = pitLaneTrackKey(track);
+  if (outcome.kind === "kept" || track === null) return;
 
-  if (key === learner.key) return;
+  if (outcome.kind === "threw") {
+    const message = outcome.error instanceof Error ? outcome.error.message : String(outcome.error);
 
-  let section: PitLaneSection;
-
-  try {
-    const loaded = loader === null ? null : loader({ ...track });
-    const readable = loaded === null ? null : normalizePitLaneSection(loaded);
-
-    if (loaded !== null && readable === null) {
-      logger.warn(`Pit-lane landmarks: the stored section for track ${track.trackId} is unreadable; learning afresh`);
-    }
-
-    section = applyTrackLength(readable ?? undefined, track.trackLength, track.trackLengthM);
-  } catch (error) {
-    logger.warn(
-      `Pit-lane landmarks: loading track ${track.trackId} failed (${error instanceof Error ? error.message : String(error)}); learning afresh`,
-    );
-    section = applyTrackLength(undefined, track.trackLength, track.trackLengthM);
+    logger.warn(`Pit-lane landmarks: loading track ${track.trackId} failed (${message}); learning afresh`);
+  } else if (outcome.kind === "unreadable") {
+    logger.warn(`Pit-lane landmarks: the stored section for track ${track.trackId} is unreadable; learning afresh`);
   }
 
-  learner.key = key;
-  learner.track = track;
-  learner.section = section;
   logger.debug(
     `Pit-lane landmarks: track ${track.trackId} "${track.trackName}" "${track.trackConfigName}" loaded with ${
-      PIT_LANE_LANDMARK_NAMES.filter((name) => section.landmarks[name] !== undefined).length
+      outcome.kind === "loaded" ? outcome.records : 0
     } landmark records`,
   );
 }
-
-/**
- * What a consumer may use for each landmark of the loaded track
- * (`resolvePublishedLandmark`), or `null` when nothing is loaded.
- */
-export function resolvePitLaneLandmarks(
-  learner: PitLaneLandmarkLearner,
-): Record<PitLaneLandmarkName, PitLaneResolvedLandmark | null> | null {
-  const { track, section } = learner;
-
-  if (track === null || section === null) return null;
-
-  return {
-    approachStart: resolvePublishedLandmark(section.landmarks.approachStart, track.trackLengthM),
-    pitRoadStart: resolvePublishedLandmark(section.landmarks.pitRoadStart, track.trackLengthM),
-    pitRoadEnd: resolvePublishedLandmark(section.landmarks.pitRoadEnd, track.trackLengthM),
-    blendEnd: resolvePublishedLandmark(section.landmarks.blendEnd, track.trackLengthM),
-  };
-}
-
-/** One landmark a car's tick accepted, folded and summarised, waiting for the commit. */
-type Accepted = {
-  landmark: PitLaneLandmarkName;
-  sample: PitLaneLandmarkSample;
-  record: PitLaneLandmarkRecord;
-  summary: PitLaneLandmarkSummary;
-};
 
 function isInWorld(surface: number, pct: number): boolean {
   return surface !== TrkLoc.NotInWorld && pct >= 0;
@@ -296,7 +204,7 @@ function isSettling(since: number | null, sessionTime: number): boolean {
  * each accepted sample (module comment).
  *
  * @param slice - The per-car baselines, written in place.
- * @param learner - The loaded track's section; replaced (never mutated) by the folded one on an accepted sample.
+ * @param learner - The loaded track; track-data's `learnPitLaneLandmarks` replaces (never mutates) its section on an accepted sample.
  * @param paceCarIdx - The pace car, which never teaches a landmark; `null` when unknown.
  * @param subSessionId - `WeekendInfo.SubSessionID` for the sample keys (`readSubSessionId`); `null`, unreadable, learns nothing.
  * @param now - The wall clock, epoch ms: each sample's `at`, and the folded records' `updatedAt`.
@@ -430,62 +338,39 @@ export function diffPitLaneLandmarks(
       rejoinedAt = sessionTime;
     }
 
-    // The work that can throw: the samples, the folds, the summaries.
-    let accepted: Accepted[] | null = null;
-
+    // The samples, then track-data's learner: it folds every edge of this
+    // car before it touches the section (all or nothing), so a throw here
+    // leaves the learner as it was and the edges are read again next tick.
     if (edges !== null && learning) {
-      const section = learner.section as PitLaneSection;
       const reading = readSampleSide(prev, pct, estTime, lap);
       const carClassId = classes?.[i];
 
-      for (const landmark of edges) {
-        if (reading === null || typeof carClassId !== "number") break;
-
-        const sample: PitLaneLandmarkSample = {
-          pct: reading.pct,
-          estTime: reading.estTime,
-          carClassId,
-          key: `${subSessionId}:${sessionNum as number}:${i}:${landmark}:${reading.lap}`,
-          at: now,
-        };
-        const result = foldSample(
-          section.landmarks[landmark],
-          sample,
-          (nowIso ??= new Date(now).toISOString()),
-          trackLengthM,
-        );
-
-        if (!result.accepted) continue;
-
-        (accepted ??= []).push({
+      if (reading !== null && typeof carClassId === "number") {
+        const offered: PitLaneLearnerEdge[] = edges.map((landmark) => ({
           landmark,
-          sample,
-          record: result.record,
-          summary: summarizeLandmark(result.record, trackLengthM),
-        });
-      }
-    }
+          sample: {
+            pct: reading.pct,
+            estTime: reading.estTime,
+            carClassId,
+            key: `${subSessionId}:${sessionNum as number}:${i}:${landmark}:${reading.lap}`,
+            at: now,
+          } satisfies PitLaneLandmarkSample,
+        }));
 
-    // The commit: nothing below throws. The learner takes the folded records,
-    // the events go out, and the baseline is written last.
-    if (accepted !== null) {
-      const section = learner.section as PitLaneSection;
-      const landmarks = { ...section.landmarks };
+        // Then the events, and the baseline is written last.
+        for (const result of learnPitLaneLandmarks(learner, offered, (nowIso ??= new Date(now).toISOString()))) {
+          if (!result.accepted) continue;
 
-      for (const entry of accepted) landmarks[entry.landmark] = entry.record;
-
-      learner.section = { ...section, landmarks };
-
-      for (const entry of accepted) {
-        unitEmit({
-          event: "pitLane.landmarkLearned",
-          data: {
-            track: { ...(track as PitLaneTrackIdentity) },
-            landmark: entry.landmark,
-            sample: entry.sample,
-            summary: entry.summary,
-          },
-        });
+          unitEmit({
+            event: "pitLane.landmarkLearned",
+            data: {
+              track: { ...(track as PitLaneTrackIdentity) },
+              landmark: result.landmark,
+              sample: result.sample,
+              summary: result.summary,
+            },
+          });
+        }
       }
     }
 

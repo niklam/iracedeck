@@ -7,7 +7,8 @@
  * iRacing's `WeekendInfo.TrackName`.
  *
  * Also the pure model of learned pit-lane landmarks (`pit-lane-landmarks.ts`,
- * #1112): positions measured from live telemetry, not Lovely Sim Racing data.
+ * #1112) and the sim-neutral learner over it (`pit-lane-learner.ts`):
+ * positions measured from live telemetry, not Lovely Sim Racing data.
  */
 export { CORNER_DATA_ATTRIBUTION } from "./attribution.js";
 export { type CornerMarker, listCornerNames, resolveCornerMarkers } from "./corner-data.js";
@@ -46,3 +47,15 @@ export {
   resolvePublishedLandmark,
   summarizeLandmark,
 } from "./pit-lane-landmarks.js";
+export {
+  createPitLaneLandmarkLearner,
+  learnPitLaneLandmarks,
+  loadPitLaneLandmarkLearner,
+  type PitLaneLandmarkLearner,
+  type PitLaneLandmarksLoader,
+  type PitLaneLearnerEdge,
+  type PitLaneLearnerLoad,
+  type PitLaneLearnerResult,
+  pitLaneTrackKey,
+  resolvePitLaneLandmarks,
+} from "./pit-lane-learner.js";

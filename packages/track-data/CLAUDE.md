@@ -3,7 +3,7 @@
 Two kinds of track data, kept apart. Zero runtime dependencies, and no IO: nothing here reads a file or the clock.
 
 - **Corner markers** — bundled from Lovely Sim Racing, keyed by `WeekendInfo.TrackName` (`corner-data.ts`, `corners.iracing.ts`, `normalize.ts`).
-- **Pit-lane landmarks** — the pure model of the four pit-lane positions learned from live telemetry (`pit-lane-landmarks.ts`, #1112). Learned values are not Lovely data and carry none of its licence terms.
+- **Pit-lane landmarks** — the pure model of the four pit-lane positions learned from live telemetry (`pit-lane-landmarks.ts`, #1112), and the sim-neutral learner over it (`pit-lane-learner.ts`). Learned values are not Lovely data and carry none of its licence terms.
 
 ## License
 
@@ -17,7 +17,16 @@ A corner the refresh adds then needs a hand-authored `corner-names` entry and cl
 
 ## Pit-lane landmarks
 
-`approachStart`, `pitRoadStart`, `pitRoadEnd`, `blendEnd` (`PIT_LANE_LANDMARK_NAMES`, driving order). The translator (`sim-events-iracing`) turns each accepted edge into a `PitLaneLandmarkSample`; `@iracedeck/track-store` persists the section; both fold with this module so they agree. Design: `docs/superpowers/specs/2026-09-04-issue-1112-pit-lane-landmarks.md` and its 2026-11-09 amendments.
+`approachStart`, `pitRoadStart`, `pitRoadEnd`, `blendEnd` (`PIT_LANE_LANDMARK_NAMES`, driving order). A sim's translator (`sim-events-iracing` today) turns each edge a car drives into a `PitLaneLandmarkSample` and hands it to the learner here; `@iracedeck/track-store` persists the section; both fold with this module so they agree. Design: `docs/superpowers/specs/2026-09-04-issue-1112-pit-lane-landmarks.md` and its 2026-11-09 amendments.
+
+### The learner (`pit-lane-learner.ts`)
+
+Everything about learning that is not reading telemetry lives here, so a second sim's translator learns by the same rules without reimplementing any of it. The translator keeps only its track identity resolver, its per-car edge detector and the logging.
+
+- **`PitLaneLandmarkLearner`** (`createPitLaneLandmarkLearner`) holds the track in session: `key` (`pitLaneTrackKey`, every identity field in one opaque string), `track` and `section`. A translator keeps one on its instance and replaces it with a fresh one on a session change or a disconnect.
+- **`loadPitLaneLandmarkLearner(learner, track, loader)`** loads once per identity through a `PitLaneLandmarksLoader` (the plugin wires it to the track store) and returns a `PitLaneLearnerLoad` — `kept`, `loaded` (with the known-landmark count), `none`, `unreadable` or `threw` — for the caller to log; it takes no logger. Every outcome but `kept` loads the learner (empty, on a failure), so the loader is not asked again until the identity changes. The section is read with `normalizePitLaneSection` and brought to the track length with `applyTrackLength`.
+- **`learnPitLaneLandmarks(learner, edges, now)`** folds one car's edges of one tick and returns a `PitLaneLearnerResult` per edge, in order: accepted with the landmark's summary (what the translator publishes), or rejected with the fold's reason (`unloaded` when no track is loaded). It is all or nothing: every fold and summary runs before the section is replaced, so a throw part-way leaves the learner as it was — what lets the translator run each car as a unit (#1559).
+- **`resolvePitLaneLandmarks(learner)`** is the consumer view per landmark (`resolvePublishedLandmark`), `null` until a track is loaded.
 
 - **`foldSample(record, sample, now, trackLengthM)`** is the only way a sample enters a record. It rejects a malformed sample (`invalid`), a duplicate (same `key`, `at` under `PIT_LANE_DUPLICATE_WINDOW_MS` apart) and a sample older than every sample of a full window (`stale`, which would be evicted at once). An accepted one joins a window of the last `PIT_LANE_WINDOW_CAP` samples ordered by `at` then `key`, so eviction on a tie is deterministic; `pct` becomes the circular median of the window, and `estTimeByClass` per car class the median estTime of the samples within tolerance of it and on its side of the S/F line (`CarIdxEstTime` restarts there). `samples` counts accepted samples that entered the window, so with a full window it can differ by one with fold order (a sample folded after newer ones is `stale`, folded before them it enters and is evicted): the window set is order-independent, and nothing is double-counted or lost; `updatedAt` is the fold's `now`; `previous` is dropped once the landmark publishes again. It never mutates its input.
 - **Published** means at least `PIT_LANE_MIN_AGREEING_SAMPLES` window samples within `PIT_LANE_TOLERANCE_M` of the median (`PIT_LANE_TOLERANCE_PCT` when the track length is unknown). The tolerance is a half-width, so two samples up to twice it apart agree. `resolvePublishedLandmark` is the consumer view: current values when published, else the pre-rebuild `previous`, else `null` — never an estimate.

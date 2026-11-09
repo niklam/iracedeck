@@ -60,9 +60,13 @@ import {
 import { createErrorBoundary, type ErrorPolicy, type ILogger, silentLogger } from "@iracedeck/logger";
 import {
   type CornerMarker,
+  createPitLaneLandmarkLearner,
+  type PitLaneLandmarkLearner,
   type PitLaneLandmarkName,
+  type PitLaneLandmarksLoader,
   type PitLaneResolvedLandmark,
   resolveCornerMarkers,
+  resolvePitLaneLandmarks,
 } from "@iracedeck/track-data";
 
 import { type CautionGapMeasurement, measureCautionGap } from "./diff/caution-gap.js";
@@ -102,13 +106,9 @@ import { diffPaceLaps, resolvePaceCarIdx } from "./diff/pace-laps.js";
 import { type PaceLineup, resolvePaceLineup } from "./diff/pace-lineup.js";
 import { diffPitBoxCountdown } from "./diff/pit-box-countdown.js";
 import {
-  createPitLaneLandmarkLearner,
   diffPitLaneLandmarks,
-  loadPitLaneLandmarkLearner,
-  type PitLaneLandmarkLearner,
-  type PitLaneLandmarksLoader,
-  resolvePitLaneLandmarks,
   resolvePitLaneTrackIdentity,
+  seedPitLaneLandmarkLearner,
 } from "./diff/pit-lane-landmarks.js";
 import { diffPitLane } from "./diff/pit-lane.js";
 import { buildSnapshot as buildReadbackSnapshot, diffPitReadback } from "./diff/pit-readback.js";
@@ -3502,8 +3502,8 @@ function handleLiveSteps(
   const pitLaneTrack = steps.value("resolvePitLaneTrackIdentity", values, null, () =>
     resolvePitLaneTrackIdentity(sessionInfo),
   );
-  steps.run("loadPitLaneLandmarkLearner", () =>
-    loadPitLaneLandmarkLearner(self.pitLaneLearner, pitLaneTrack, self.loadPitLaneLandmarks, self.logger),
+  steps.run("seedPitLaneLandmarkLearner", () =>
+    seedPitLaneLandmarkLearner(self.pitLaneLearner, pitLaneTrack, self.loadPitLaneLandmarks, self.logger),
   );
   steps.live("diffPitLaneLandmarks", pending, () =>
     diffPitLaneLandmarks(

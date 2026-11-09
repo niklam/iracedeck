@@ -1,27 +1,28 @@
 import { TrkLoc } from "@iracedeck/iracing-sdk";
 import { createErrorBoundary, type ILogger, silentLogger } from "@iracedeck/logger";
 import {
+  createPitLaneLandmarkLearner,
   foldSample,
+  loadPitLaneLandmarkLearner,
   PIT_LANE_SECTION_VERSION,
+  type PitLaneLandmarkLearner,
   type PitLaneLandmarkRecord,
   type PitLaneSection,
   type PitLaneTrackIdentity,
+  pitLaneTrackKey,
+  resolvePitLaneLandmarks,
 } from "@iracedeck/track-data";
 import { describe, expect, it, vi } from "vitest";
 
 import { createPitLaneLandmarksState, type PitLaneLandmarksState } from "../state.js";
 import { TickSteps } from "../tick-steps.js";
 import {
-  createPitLaneLandmarkLearner,
   diffPitLaneLandmarks,
-  loadPitLaneLandmarkLearner,
   PIT_LANE_EDGE_SETTLE_S,
   PIT_LANE_LANDMARKS_EVENTS,
   PIT_LANE_MAX_PLAUSIBLE_SPEED_MPS,
-  type PitLaneLandmarkLearner,
-  pitLaneTrackKey,
-  resolvePitLaneLandmarks,
   resolvePitLaneTrackIdentity,
+  seedPitLaneLandmarkLearner,
 } from "./pit-lane-landmarks.js";
 import type { PendingEvent } from "./types.js";
 
@@ -75,7 +76,7 @@ function loadedLearner(
 ): PitLaneLandmarkLearner {
   const learner = createPitLaneLandmarkLearner();
 
-  loadPitLaneLandmarkLearner(learner, track, () => section, silentLogger);
+  loadPitLaneLandmarkLearner(learner, track, () => section);
 
   return learner;
 }
@@ -664,7 +665,12 @@ describe("resolvePitLaneTrackIdentity", () => {
   });
 });
 
-describe("loadPitLaneLandmarkLearner", () => {
+/**
+ * The load itself (once per identity, the rebuild, the outcomes) is
+ * track-data's and tested there (`pit-lane-learner.test.ts`); this is the
+ * translator's wrapper, which logs what it did.
+ */
+describe("seedPitLaneLandmarkLearner", () => {
   /** A record of two agreeing samples: published under the 4 km geometry. */
   function publishedRecord(pct: number): PitLaneLandmarkRecord {
     const a = foldSample(
@@ -683,99 +689,78 @@ describe("loadPitLaneLandmarkLearner", () => {
     return b.record!;
   }
 
-  function stored(trackLength = TRACK.trackLength): PitLaneSection {
-    return { version: PIT_LANE_SECTION_VERSION, trackLength, landmarks: { pitRoadEnd: publishedRecord(0.35) } };
+  function stored(): PitLaneSection {
+    return {
+      version: PIT_LANE_SECTION_VERSION,
+      trackLength: TRACK.trackLength,
+      landmarks: { pitRoadEnd: publishedRecord(0.35) },
+    };
   }
 
-  it("seeds from the loader, which gets a copy of the identity", () => {
-    const loader = vi.fn((_track: PitLaneTrackIdentity) => stored());
-    const learner = createPitLaneLandmarkLearner();
-
-    loadPitLaneLandmarkLearner(learner, TRACK, loader, silentLogger);
-
-    expect(loader).toHaveBeenCalledOnce();
-    expect(loader.mock.calls[0]![0]).toEqual(TRACK);
-    expect(loader.mock.calls[0]![0]).not.toBe(TRACK);
-    expect(learner.key).toBe(pitLaneTrackKey(TRACK));
-    expect(learner.track).toBe(TRACK);
-    expect(resolvePitLaneLandmarks(learner)).toEqual({
-      approachStart: null,
-      pitRoadStart: null,
-      pitRoadEnd: expect.objectContaining({ pct: 0.35, samples: 2, published: true, source: "current" }),
-      blendEnd: null,
-    });
-  });
-
-  it("asks once per identity, and again when the identity changes", () => {
-    const loader = vi.fn((_track: PitLaneTrackIdentity) => null);
-    const learner = createPitLaneLandmarkLearner();
-
-    loadPitLaneLandmarkLearner(learner, TRACK, loader, silentLogger);
-    loadPitLaneLandmarkLearner(learner, { ...TRACK }, loader, silentLogger);
-    expect(loader).toHaveBeenCalledOnce();
-
-    loadPitLaneLandmarkLearner(learner, { ...TRACK, trackVersion: "2027.01.01.01" }, loader, silentLogger);
-    expect(loader).toHaveBeenCalledTimes(2);
-  });
-
-  it("does nothing without an identity", () => {
-    const loader = vi.fn((_track: PitLaneTrackIdentity) => stored());
-    const learner = createPitLaneLandmarkLearner();
-
-    loadPitLaneLandmarkLearner(learner, null, loader, silentLogger);
-
-    expect(loader).not.toHaveBeenCalled();
-    expect(resolvePitLaneLandmarks(learner)).toBeNull();
-  });
-
-  it("starts empty for a null answer or no loader", () => {
-    for (const loader of [() => null, null]) {
-      const learner = createPitLaneLandmarkLearner();
-
-      loadPitLaneLandmarkLearner(learner, TRACK, loader, silentLogger);
-
-      expect(learner.section).toEqual({
-        version: PIT_LANE_SECTION_VERSION,
-        trackLength: TRACK.trackLength,
-        landmarks: {},
-      });
-    }
-  });
-
-  it("starts empty, warns and does not ask again when the loader throws", () => {
+  function recordingLogger() {
     const warn = vi.fn();
-    const loader = vi.fn((): PitLaneSection | null => {
-      throw new Error("disk on fire");
-    });
+    const debug = vi.fn();
+
+    return { logger: { ...silentLogger, warn, debug }, warn, debug };
+  }
+
+  it("loads through track-data's learner and logs the record count at debug", () => {
+    const { logger, warn, debug } = recordingLogger();
     const learner = createPitLaneLandmarkLearner();
 
-    loadPitLaneLandmarkLearner(learner, TRACK, loader, { ...silentLogger, warn });
-    loadPitLaneLandmarkLearner(learner, TRACK, loader, { ...silentLogger, warn });
+    seedPitLaneLandmarkLearner(learner, TRACK, () => stored(), logger);
+
+    expect(learner.key).toBe(pitLaneTrackKey(TRACK));
+    expect(resolvePitLaneLandmarks(learner)!.pitRoadEnd).toMatchObject({ pct: 0.35, source: "current" });
+    expect(warn).not.toHaveBeenCalled();
+    expect(debug).toHaveBeenCalledExactlyOnceWith(
+      'Pit-lane landmarks: track 123 "testtrack" "Grand Prix" loaded with 1 landmark records',
+    );
+  });
+
+  it("logs nothing when it keeps what it has, or has no identity", () => {
+    const { logger, warn, debug } = recordingLogger();
+    const learner = createPitLaneLandmarkLearner();
+    const loader = vi.fn((_track: PitLaneTrackIdentity) => null);
+
+    seedPitLaneLandmarkLearner(learner, null, loader, logger);
+    seedPitLaneLandmarkLearner(learner, TRACK, loader, logger);
+    seedPitLaneLandmarkLearner(learner, { ...TRACK }, loader, logger);
 
     expect(loader).toHaveBeenCalledOnce();
-    expect(warn).toHaveBeenCalledWith(expect.stringContaining("disk on fire"));
+    expect(debug).toHaveBeenCalledOnce();
+    expect(debug).toHaveBeenCalledWith(expect.stringContaining("loaded with 0 landmark records"));
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it("warns when the loader throws, and learns afresh", () => {
+    const { logger, warn } = recordingLogger();
+    const learner = createPitLaneLandmarkLearner();
+
+    seedPitLaneLandmarkLearner(
+      learner,
+      TRACK,
+      () => {
+        throw new Error("disk on fire");
+      },
+      logger,
+    );
+
+    expect(warn).toHaveBeenCalledExactlyOnceWith(
+      "Pit-lane landmarks: loading track 123 failed (disk on fire); learning afresh",
+    );
     expect(learner.section!.landmarks).toEqual({});
   });
 
-  it("starts empty and warns on an unreadable or newer section", () => {
-    for (const bad of [{ nonsense: true }, { ...stored(), version: PIT_LANE_SECTION_VERSION + 1 }]) {
-      const warn = vi.fn();
-      const learner = createPitLaneLandmarkLearner();
-
-      loadPitLaneLandmarkLearner(learner, TRACK, () => bad as unknown as PitLaneSection, { ...silentLogger, warn });
-
-      expect(warn).toHaveBeenCalledOnce();
-      expect(learner.section!.landmarks).toEqual({});
-    }
-  });
-
-  it("applies a track rebuild: the published values become the fallback", () => {
+  it("warns on an unreadable section, and learns afresh", () => {
+    const { logger, warn } = recordingLogger();
     const learner = createPitLaneLandmarkLearner();
 
-    loadPitLaneLandmarkLearner(learner, TRACK, () => stored("3.99 km"), silentLogger);
+    seedPitLaneLandmarkLearner(learner, TRACK, () => ({ nonsense: true }) as unknown as PitLaneSection, logger);
 
-    expect(learner.section!.trackLength).toBe(TRACK.trackLength);
-    expect(learner.section!.landmarks.pitRoadEnd).toMatchObject({ samples: 0, window: [] });
-    expect(resolvePitLaneLandmarks(learner)!.pitRoadEnd).toMatchObject({ pct: 0.35, source: "previous" });
+    expect(warn).toHaveBeenCalledExactlyOnceWith(
+      "Pit-lane landmarks: the stored section for track 123 is unreadable; learning afresh",
+    );
+    expect(learner.section!.landmarks).toEqual({});
   });
 });

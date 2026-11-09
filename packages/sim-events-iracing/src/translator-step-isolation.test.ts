@@ -129,7 +129,7 @@ vi.mock("./diff/pit-box-countdown.js", async (io) => harness.spy(await io(), { d
 vi.mock("./diff/pit-lane-landmarks.js", async (io) =>
   harness.spy(await io(), {
     diffPitLaneLandmarks: 6,
-    loadPitLaneLandmarkLearner: null,
+    seedPitLaneLandmarkLearner: null,
     resolvePitLaneTrackIdentity: null,
   }),
 );
@@ -397,7 +397,7 @@ describe("every step, made to throw in turn (#1559)", () => {
     { throwing: "resolveTrackType", ids: ["resolveTrackType"], skipped: [] },
     { throwing: "resolveCollisionCarValue", ids: ["resolveCollisionCarValue"], skipped: [] },
     { throwing: "resolvePitLaneTrackIdentity", ids: ["resolvePitLaneTrackIdentity"], skipped: [] },
-    { throwing: "loadPitLaneLandmarkLearner", ids: ["loadPitLaneLandmarkLearner"], skipped: [] },
+    { throwing: "seedPitLaneLandmarkLearner", ids: ["seedPitLaneLandmarkLearner"], skipped: [] },
     // Only the tick's own read: `diffCaution` and the recorder resolve the pace car themselves.
     { throwing: "resolvePaceCarIdx", ids: ["resolvePaceCarIdx"], skipped: [], firstCallOnly: true },
     { throwing: "updateStallVisit", ids: ["updateStallVisit"], skipped: ["diffTireWear"] },

@@ -177,14 +177,11 @@ export {
 } from "./diff/opponent-pit.js";
 export { OVERTAKE_HOLD_MS, OVERTAKE_MAX_JUMP } from "./diff/overtakes.js";
 export { PIT_APPROACH_COOLDOWN_MS } from "./diff/pit-lane.js";
-// The learned pit-lane landmarks (issue #1112): the loader a plugin hands
-// `initializeSimEventsIracing` (`loadPitLaneLandmarks`) and the learner's
-// acceptance constants. `getPitLaneLandmarks()` above is the read side.
-export {
-  PIT_LANE_EDGE_SETTLE_S,
-  PIT_LANE_MAX_PLAUSIBLE_SPEED_MPS,
-  type PitLaneLandmarksLoader,
-} from "./diff/pit-lane-landmarks.js";
+// The learned pit-lane landmarks (issue #1112): the edge detector's acceptance
+// constants. `getPitLaneLandmarks()` above is the read side; the loader type a
+// plugin hands `initializeSimEventsIracing` (`loadPitLaneLandmarks`) is
+// `@iracedeck/track-data`'s `PitLaneLandmarksLoader`.
+export { PIT_LANE_EDGE_SETTLE_S, PIT_LANE_MAX_PLAUSIBLE_SPEED_MPS } from "./diff/pit-lane-landmarks.js";
 export {
   PIT_STATUS_EMPTY_STOP_MAX_MS,
   PIT_STATUS_MOVEMENT_SPEED_MPS,
