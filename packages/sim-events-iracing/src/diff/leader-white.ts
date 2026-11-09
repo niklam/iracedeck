@@ -119,7 +119,7 @@ export function diffLeaderWhite(
   isRaceSession: boolean,
   preGreen: boolean,
   postRace: boolean,
-  frozenPositions: number[],
+  frozenPositions: readonly number[],
   emit: EmitFn<(typeof LEADER_WHITE_EVENTS)[number]>,
 ): void {
   const leaderIdx = frozenPositions.findIndex((p) => p === 1);

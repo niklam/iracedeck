@@ -133,7 +133,7 @@ export function diffOvertakes(
    * from the previous tick). Optional and trailing; `null` means "compute live
    * positions myself" (existing call sites / tests).
    */
-  frozenPositions: number[] | null = null,
+  frozenPositions: readonly number[] | null = null,
 ): void {
   const onPitRoad = telemetry.OnPitRoad ?? false;
 
@@ -471,8 +471,8 @@ export function diffOvertakes(
  * caller gates on `!useClass`.
  */
 function isRetirementGain(
-  prevFrozen: number[],
-  currentPositions: number[],
+  prevFrozen: readonly number[],
+  currentPositions: readonly number[],
   playerCarIdx: number,
   positionFrozen: Set<number>,
   justReleased: Set<number>,
@@ -544,7 +544,7 @@ function resetOvertakeState(state: TranslatorState): void {
  * field is smaller than `targetRank`, or the target slot is vacant
  * because the car DCed mid-tick).
  */
-function findCarIdxAtPosition(positions: number[], targetRank: number): number {
+function findCarIdxAtPosition(positions: readonly number[], targetRank: number): number {
   for (let i = 0; i < positions.length; i++) {
     if (positions[i] === targetRank) return i;
   }

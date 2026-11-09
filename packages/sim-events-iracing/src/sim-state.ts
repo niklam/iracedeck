@@ -111,7 +111,7 @@ export type SimInstanceFlags = {
 /** The player's place in the race, by each source that states one. */
 export type SimOrderState = {
   /** The canonical live order, 1-based rank by car index (`getLiveRacePositions()`). */
-  positions: number[] | null;
+  positions: readonly number[] | null;
   /** The player's live position (`getLivePosition()`). */
   player: LivePosition | null;
   /** The qualifying grid slot (`getStartingGridPosition()`). */

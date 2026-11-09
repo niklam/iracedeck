@@ -1650,7 +1650,7 @@ export type TranslatorState = {
    * remembers the frozen car was ever ahead. `[]` until the first tick.
    * Issue #603.
    */
-  lastFrozenPositions: number[];
+  lastFrozenPositions: readonly number[];
   /**
    * Per-car score (`lc + dp`) from the previous in-world tick (issue #697).
    * `updatePositionTracking` compares it against the current score to tell

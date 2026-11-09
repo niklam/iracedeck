@@ -42,7 +42,7 @@ export const SAME_LAP_SPAN = 1.0;
  * @returns The position, or `0` when it cannot be resolved
  */
 export function standingPosition(
-  positions: number[],
+  positions: readonly number[],
   carClasses: number[] | undefined,
   carIdx: number,
   isMultiClass: boolean,
@@ -86,7 +86,7 @@ export type PlayerStanding = {
  */
 export function resolvePlayerStanding(
   telemetry: TelemetryData,
-  positions: number[],
+  positions: readonly number[],
   playerCarIdx: number,
   isMultiClass: boolean,
 ): PlayerStanding {
@@ -142,7 +142,7 @@ export type Standing =
  */
 export function resolveStanding(
   telemetry: TelemetryData,
-  positions: number[],
+  positions: readonly number[],
   player: PlayerStanding,
   playerCarIdx: number,
   carIdx: number,

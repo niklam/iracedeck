@@ -1263,7 +1263,7 @@ export function getLiveCarPosition(carIdx: number): LivePosition | null {
  * breaks the forward-motion assumption the freezing relies on, so there's no
  * correct order to reconstruct.
  */
-export function getLiveRacePositions(): number[] | null {
+export function getLiveRacePositions(): readonly number[] | null {
   if (!instance || !instance.latestTelemetry) return null;
 
   return resolveCanonicalOrder(
@@ -1289,7 +1289,7 @@ function resolveCanonicalOrder(
   telemetry: TelemetryData,
   sessionInfo: Record<string, unknown> | null,
   isRaceSession?: boolean,
-): number[] {
+): readonly number[] {
   return calculateCanonicalRacePositions(
     state,
     telemetry,
@@ -1774,7 +1774,7 @@ function resolvePlayerIsLeader(
  * (`@.claude/rules/race-positions.md`), which is what keeps this the project's
  * one leader-pace reading rather than a second source.
  */
-export function resolveLeaderLapTimeS(telemetry: TelemetryData, positions: number[]): number | null {
+export function resolveLeaderLapTimeS(telemetry: TelemetryData, positions: readonly number[]): number | null {
   return leaderRecentLapS(
     telemetry,
     positions.findIndex((position) => position === 1),
@@ -1848,7 +1848,7 @@ export type GapHorizonPlayer = {
  */
 export function resolveGapLapsRemaining(
   telemetry: TelemetryData,
-  positions: number[],
+  positions: readonly number[],
   leaderCrossedSinceExpiry: boolean,
   player: GapHorizonPlayer,
 ): number | null {
@@ -2148,7 +2148,7 @@ function fuelLapsLeftStats(self: TranslatorInstance): FuelStats {
  */
 function fuelLeaderFinish(
   telemetry: TelemetryData,
-  positions: number[],
+  positions: readonly number[],
   playerCarIdx: number,
   state: TranslatorState,
   playerLapS: number,
@@ -3442,7 +3442,7 @@ function handleLiveSteps(
 
 /** What {@link handleOrderSteps} reads besides the tick: the values `handleLiveSteps` resolved. */
 type OrderStepValues = {
-  canonicalPositions: number[];
+  canonicalPositions: readonly number[];
   isRaceSession: boolean;
   playerCarIdx: number;
   paceCarIdx: number | null;

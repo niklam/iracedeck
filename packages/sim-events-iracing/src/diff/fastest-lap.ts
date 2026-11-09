@@ -267,7 +267,7 @@ export function diffFastestLap(
   paceCarIdx: number | null,
   isRaceSession: boolean,
   isMultiClass: boolean | null,
-  positions: number[],
+  positions: readonly number[],
   emit: EmitFn<(typeof FASTEST_LAP_EVENTS)[number]>,
   now: number,
   lapsJudgedThrough: number | null,
@@ -393,7 +393,7 @@ function buildPayload(
   record: FastestLapRecord,
   lap: number,
   previous: FastestLapRecord | null,
-  positions: number[],
+  positions: readonly number[],
   carClasses: number[] | undefined,
   ctx: { playerCarIdx: number; projection: boolean; isMultiClass: boolean | null; playerLapsCompleted: number },
 ): FastestLapPayload {

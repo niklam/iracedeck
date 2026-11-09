@@ -922,7 +922,7 @@ function trackCautionEpisode(state: TranslatorState): void {
  * line 0, row 1. `null` when neither can be read, which costs silence rather
  * than some other car's laps.
  */
-function resolveLeaderIdx(telemetry: TelemetryData, canonicalPositions: number[] | null): number | null {
+function resolveLeaderIdx(telemetry: TelemetryData, canonicalPositions: readonly number[] | null): number | null {
   if (canonicalPositions) {
     const leader = canonicalPositions.findIndex((position) => position === 1);
 
@@ -946,7 +946,10 @@ function resolveLeaderIdx(telemetry: TelemetryData, canonicalPositions: number[]
  * −1 sentinel included, since a baseline taken from it would report the first
  * real value as a crossing.
  */
-function resolveLeaderLapCompleted(telemetry: TelemetryData, canonicalPositions: number[] | null): number | null {
+function resolveLeaderLapCompleted(
+  telemetry: TelemetryData,
+  canonicalPositions: readonly number[] | null,
+): number | null {
   const idx = resolveLeaderIdx(telemetry, canonicalPositions);
   const laps = telemetry.CarIdxLapCompleted;
 
@@ -1039,7 +1042,7 @@ function diffCautionEpisode(
   state: TranslatorState,
   telemetry: TelemetryData,
   sessionInfo: Record<string, unknown> | null,
-  canonicalPositions: number[] | null,
+  canonicalPositions: readonly number[] | null,
   seeding: boolean,
   emit: EmitFn<(typeof CAUTION_EVENTS)[number]>,
   now: number,
@@ -1390,7 +1393,7 @@ export function diffCaution(
   state: TranslatorState,
   telemetry: TelemetryData,
   sessionInfo: Record<string, unknown> | null,
-  canonicalPositions: number[] | null,
+  canonicalPositions: readonly number[] | null,
   emit: EmitFn<(typeof CAUTION_EVENTS)[number]>,
   options: CautionDiffOptions = {},
 ): void {

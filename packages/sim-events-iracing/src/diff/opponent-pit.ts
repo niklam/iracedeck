@@ -96,7 +96,7 @@ type Classification = {
  */
 function classify(
   telemetry: TelemetryData,
-  positions: number[],
+  positions: readonly number[],
   player: PlayerStanding,
   playerCarIdx: number,
   carIdx: number,
@@ -135,7 +135,7 @@ export function diffOpponentPit(
   preGreen: boolean,
   postRace: boolean,
   isMultiClass: boolean,
-  frozenPositions: number[],
+  frozenPositions: readonly number[],
   now: number,
   emit: EmitFn<(typeof OPPONENT_PIT_EVENTS)[number]>,
   runUnit: UnitRunner = runUnitsDirectly,
