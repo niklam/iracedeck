@@ -19,6 +19,7 @@ import { createPitLaneLandmarksState, type PitLaneLandmarksState } from "../stat
 import { TickSteps } from "../tick-steps.js";
 import {
   diffPitLaneLandmarks,
+  IRACING_SESSION_TICKS_PER_S,
   PIT_LANE_EDGE_SETTLE_S,
   PIT_LANE_LANDMARKS_EVENTS,
   PIT_LANE_MAX_PLAUSIBLE_SPEED_MPS,
@@ -45,10 +46,19 @@ const CARS = 6;
 /** One car's readings on one tick; anything left out takes the default below. */
 type CarReading = { surface: number; onPit?: boolean; pct: number; est?: number; lap?: number; cls?: number };
 
-/** A tick's telemetry: the cars named, every other slot out of the world. */
-function telemetry(sessionTime: number, cars: Record<number, CarReading>, size = CARS): Record<string, unknown> {
+/**
+ * A tick's telemetry: the cars named, every other slot out of the world.
+ * `SessionTick` is the session time at iRacing's 60 Hz unless given.
+ */
+function telemetry(
+  sessionTime: number,
+  cars: Record<number, CarReading>,
+  sessionTick = Math.round(sessionTime * IRACING_SESSION_TICKS_PER_S),
+  size = CARS,
+): Record<string, unknown> {
   const t = {
     SessionTime: sessionTime,
+    SessionTick: sessionTick,
     SessionNum: SESSION_NUM,
     CarIdxTrackSurface: Array<number>(size).fill(TrkLoc.NotInWorld),
     CarIdxOnPitRoad: Array<boolean>(size).fill(false),
@@ -90,7 +100,7 @@ type Harness = {
   tick(
     sessionTime: number,
     cars: Record<number, CarReading>,
-    opts?: { pace?: number | null; subSession?: number | null },
+    opts?: { pace?: number | null; subSession?: number | null; sessionTick?: number },
   ): PendingEvent[];
 };
 
@@ -106,7 +116,7 @@ function harness(learner: PitLaneLandmarkLearner = loadedLearner()): Harness {
       diffPitLaneLandmarks(
         slice,
         learner,
-        telemetry(sessionTime, cars) as never,
+        telemetry(sessionTime, cars, opts.sessionTick) as never,
         opts.pace === undefined ? null : opts.pace,
         opts.subSession === undefined ? SUBSESSION : opts.subSession,
         WALL_EPOCH + Math.round(sessionTime * 1000),
@@ -386,12 +396,13 @@ describe("diffPitLaneLandmarks", () => {
       expect(events.map((e) => e.sample.key)).toEqual([`${SUBSESSION}:${SESSION_NUM}:2:approachStart:4`]);
     });
 
-    it("ignores an edge whose session time did not move forward", () => {
+    it("ignores an edge on a tick where neither SessionTime nor SessionTick moved forward", () => {
       const h = harness();
 
-      h.tick(10, { 1: { surface: ON, pct: 0.5 } });
+      h.tick(10, { 1: { surface: ON, pct: 0.5 } }, { sessionTick: 600 });
 
-      expect(h.tick(10, { 1: { surface: APPROACH, pct: 0.5001 } })).toEqual([]);
+      expect(h.tick(10, { 1: { surface: APPROACH, pct: 0.5001 } }, { sessionTick: 600 })).toEqual([]);
+      expect(h.slice.cars[1]).toMatchObject({ surface: APPROACH, sessionTime: 10, sessionTick: 600 });
     });
 
     it("never learns from the pace car", () => {
@@ -477,6 +488,51 @@ describe("diffPitLaneLandmarks", () => {
       h.tick(10, { 1: { surface: ON, pct: 0.5 } });
 
       expect(h.tick(10.1, { 1: { surface: APPROACH, pct: 0.501, est: -1 } })).toEqual([]);
+    });
+  });
+
+  describe("a tick whose SessionTime repeated while SessionTick advanced", () => {
+    it("times the move by SessionTick and takes the edge", () => {
+      const h = harness();
+
+      h.tick(10, { 1: { surface: ON, pct: 0.5 } }, { sessionTick: 600 });
+      const events = learned(h.tick(10, { 1: { surface: APPROACH, pct: 0.5001 } }, { sessionTick: 601 }));
+
+      expect(events.map((e) => e.landmark)).toEqual(["approachStart"]);
+      expect(h.slice.cars[1]).toMatchObject({ sessionTime: 10, sessionTick: 601 });
+    });
+
+    it("still ignores a teleport: one tick is 1/60 s at the speed ceiling", () => {
+      const h = harness();
+      const oneTickPct = PIT_LANE_MAX_PLAUSIBLE_SPEED_MPS / IRACING_SESSION_TICKS_PER_S / TRACK.trackLengthM!;
+
+      h.tick(10, { 1: { surface: ON, pct: 0.5 }, 2: { surface: ON, pct: 0.6 } }, { sessionTick: 600 });
+      const events = learned(
+        h.tick(
+          10,
+          {
+            1: { surface: APPROACH, pct: 0.5 + oneTickPct * 1.01 },
+            2: { surface: APPROACH, pct: 0.6 + oneTickPct * 0.99 },
+          },
+          { sessionTick: 601 },
+        ),
+      );
+
+      expect(events.map((e) => e.sample.key)).toEqual([`${SUBSESSION}:${SESSION_NUM}:2:approachStart:3`]);
+    });
+
+    it("keeps the stop's blendEnd when the blend tick is the stalled one", () => {
+      const h = harness();
+      const at = (t: number, reading: CarReading, sessionTick?: number) =>
+        learned(h.tick(t, { 1: reading }, sessionTick === undefined ? {} : { sessionTick }));
+
+      at(40.0, { surface: APPROACH, onPit: true, pct: 0.35 });
+      at(40.1, { surface: APPROACH, pct: 0.351 });
+      at(45.0, { surface: APPROACH, pct: 0.36 }, 2700);
+      const blend = at(45.0, { surface: ON, pct: 0.3601 }, 2701);
+
+      expect(blend.map((e) => e.landmark)).toEqual(["blendEnd"]);
+      expect(h.slice.cars[1]).toMatchObject({ fromPitRoad: false, rejoinedAt: 45 });
     });
   });
 

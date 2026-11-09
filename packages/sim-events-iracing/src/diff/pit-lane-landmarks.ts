@@ -46,8 +46,9 @@
  * edge's own (never `InPitStall` or `NotInWorld`, so a tow, a reset or a
  * teleport to the stall makes none), the car moved a plausible distance since
  * that tick (no faster than {@link PIT_LANE_MAX_PLAUSIBLE_SPEED_MPS}, judged
- * wrap-aware on the track length, so a jump is a teleport), and it is not the
- * pace car. A car's first tick only seeds it, and a tick with no position or
+ * wrap-aware on the track length, so a jump is a teleport, and timed by
+ * `SessionTime`, or by `SessionTick` on a tick where `SessionTime` repeated),
+ * and it is not the pace car. A car's first tick only seeds it, and a tick with no position or
  * out of the world (`NotInWorld`) updates its baseline and accepts nothing.
  * With no track length, no track identity or no subsession nothing is
  * learned, though the baselines still advance. A sample the fold rejects (a
@@ -119,6 +120,15 @@ export const PIT_LANE_MAX_PLAUSIBLE_SPEED_MPS = 150;
  * guards the median against it rather than recording that it happens.
  */
 export const PIT_LANE_EDGE_SETTLE_S = 3;
+
+/**
+ * iRacing's telemetry rate: `SessionTick` advances this many times per second.
+ * The plausibility check's fallback clock (`tickDelta / IRACING_SESSION_TICKS_PER_S`
+ * seconds) on a tick whose `SessionTime` did not move: the capture review
+ * found `SessionTime` repeating for one tick every 15–40 s while
+ * `SessionTick` advances, which would otherwise lose an edge on that tick.
+ */
+export const IRACING_SESSION_TICKS_PER_S = 60;
 
 /**
  * The track in session, as the landmark store keys it (issue #1112): `sim` is
@@ -233,6 +243,7 @@ export function diffPitLaneLandmarks(
   const laps = telemetry.CarIdxLap as number[] | undefined;
   const classes = telemetry.CarIdxClass as number[] | undefined;
   const sessionTime = typeof telemetry.SessionTime === "number" ? telemetry.SessionTime : Number.NaN;
+  const sessionTick = typeof telemetry.SessionTick === "number" ? telemetry.SessionTick : Number.NaN;
   const sessionNum = telemetry.SessionNum;
   const track = learner.track;
   const trackLengthM = track?.trackLengthM ?? null;
@@ -267,6 +278,7 @@ export function diffPitLaneLandmarks(
         pct,
         estTime,
         sessionTime,
+        sessionTick,
         lap,
         fromPitRoad: false,
         pitRoadStartAt: null,
@@ -287,7 +299,9 @@ export function diffPitLaneLandmarks(
     if (isInWorld(surface, pct) && isInWorld(prev.surface, prev.pct)) {
       const pitRoadOn = !prev.onPitRoad && onPitRoad;
       const pitRoadOff = prev.onPitRoad && !onPitRoad;
-      const moved = learning && isPlausibleMove(prev.pct, prev.sessionTime, pct, sessionTime, trackLengthM as number);
+      const moved =
+        learning &&
+        isPlausibleMove(prev.pct, pct, elapsedSeconds(prev, sessionTime, sessionTick), trackLengthM as number);
 
       if (
         moved &&
@@ -377,7 +391,7 @@ export function diffPitLaneLandmarks(
       }
     }
 
-    writeBaseline(prev, surface, onPitRoad, pct, estTime, sessionTime, lap);
+    writeBaseline(prev, surface, onPitRoad, pct, estTime, sessionTime, sessionTick, lap);
     prev.fromPitRoad = fromPitRoad;
     prev.pitRoadStartAt = pitRoadStartAt;
     prev.pitRoadEndAt = pitRoadEndAt;
@@ -388,19 +402,28 @@ export function diffPitLaneLandmarks(
 }
 
 /**
- * Whether a car got from `fromPct` to `toPct` by driving: time moved forward,
- * and the shorter way round the lap is no longer than
- * {@link PIT_LANE_MAX_PLAUSIBLE_SPEED_MPS} allows in that time.
+ * The seconds between the car's previous tick and this one: the `SessionTime`
+ * delta when it is positive, else, when `SessionTime` stalled (or went
+ * backwards) but `SessionTick` advanced, that many ticks at
+ * {@link IRACING_SESSION_TICKS_PER_S}. `NaN` when neither clock moved forward,
+ * which no move is plausible in.
  */
-function isPlausibleMove(
-  fromPct: number,
-  fromTime: number,
-  toPct: number,
-  toTime: number,
-  trackLengthM: number,
-): boolean {
-  const elapsed = toTime - fromTime;
+function elapsedSeconds(prev: PitLaneLandmarkCarTick, sessionTime: number, sessionTick: number): number {
+  const elapsed = sessionTime - prev.sessionTime;
 
+  if (Number.isFinite(elapsed) && elapsed > 0) return elapsed;
+
+  const ticks = sessionTick - prev.sessionTick;
+
+  return Number.isFinite(ticks) && ticks > 0 ? ticks / IRACING_SESSION_TICKS_PER_S : Number.NaN;
+}
+
+/**
+ * Whether a car got from `fromPct` to `toPct` by driving: time moved forward
+ * ({@link elapsedSeconds}), and the shorter way round the lap is no longer
+ * than {@link PIT_LANE_MAX_PLAUSIBLE_SPEED_MPS} allows in that time.
+ */
+function isPlausibleMove(fromPct: number, toPct: number, elapsed: number, trackLengthM: number): boolean {
   if (!Number.isFinite(elapsed) || elapsed <= 0) return false;
 
   return Math.abs(pitLaneSignedDeltaPct(fromPct, toPct)) * trackLengthM <= PIT_LANE_MAX_PLAUSIBLE_SPEED_MPS * elapsed;
@@ -439,6 +462,7 @@ function writeBaseline(
   pct: number,
   estTime: number,
   sessionTime: number,
+  sessionTick: number,
   lap: number,
 ): void {
   baseline.surface = surface;
@@ -446,5 +470,6 @@ function writeBaseline(
   baseline.pct = pct;
   baseline.estTime = estTime;
   baseline.sessionTime = sessionTime;
+  baseline.sessionTick = sessionTick;
   baseline.lap = lap;
 }

@@ -306,6 +306,12 @@ export type PitLaneLandmarkCarTick = {
   estTime: number;
   /** `SessionTime`, seconds: the plausibility check's clock. */
   sessionTime: number;
+  /**
+   * `SessionTick`; `NaN` when the telemetry had none. The plausibility check's
+   * clock on a tick whose `SessionTime` did not move (it repeats for a tick
+   * now and then while `SessionTick` advances).
+   */
+  sessionTick: number;
   /** `CarIdxLap`. */
   lap: number;
   /**
