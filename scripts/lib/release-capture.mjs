@@ -33,8 +33,10 @@
  *    `v<version>`; a tab the capture skipped (the Support tab's image did not
  *    load) is a failure here, since a partial set would put the previous
  *    version's header on the site.
- * 6. Write `capture.json` and hold the folder as written to it, which refuses a
- *    stray PNG of a tab the list does not name.
+ * 6. Refuse a file in the folder that git would stage and that is neither a PNG
+ *    nor the manifest (gitignored OS litter such as `Thumbs.db` passes, since
+ *    `git add` leaves it out). Write `capture.json` and hold the folder as
+ *    written to it, which refuses a stray PNG of a tab the list does not name.
  * 7. Refuse any tracked change outside the folder that step 2 did not record,
  *    because release-it's `git add . --update` would sweep it into the release
  *    commit unseen. Then stage the folder, which release-it's own `--update`
@@ -239,6 +241,32 @@ function realGit(root, args, input) {
     input,
     stdio: ["pipe", "pipe", "inherit"],
   });
+}
+
+/**
+ * The paths among `paths` (repo-relative) that git ignores, which `git add`
+ * leaves out: `git check-ignore`, NUL-separated both ways. A tracked path is
+ * never reported, since `git add` stages its changes whatever the ignore rules
+ * say. git exits 1 when it ignores none of them, which `execFileSync` reports
+ * by throwing; that is an empty answer here, and any other failure is rethrown.
+ *
+ * @param {string} root
+ * @param {readonly string[]} paths
+ * @param {typeof realGit} git
+ * @returns {Set<string>}
+ */
+function gitIgnoredPaths(root, paths, git) {
+  if (paths.length === 0) return new Set();
+
+  let output;
+  try {
+    output = git(root, ["check-ignore", "--stdin", "-z"], paths.map((p) => `${p}\0`).join(""));
+  } catch (thrown) {
+    if (/** @type {{ status?: unknown }} */ (thrown)?.status === 1) return new Set();
+    throw thrown;
+  }
+
+  return new Set(output.split("\0").filter((p) => p !== ""));
 }
 
 /** A path under `root` as git names it: relative, forward slashes. */
@@ -505,13 +533,23 @@ export async function releaseCapture(
       );
     }
 
-    // 6. The manifest, then the folder as written held to it.
+    // 6. Nothing but screenshots for git to stage, the manifest, then the folder
+    // as written held to it. OS litter such as Thumbs.db is gitignored, so the
+    // `git add` below leaves it out; only a name git would stage is refused.
     const entries = fs.readdirSync(folder);
-    const stray = entries.filter((name) => !name.endsWith(".png") && name !== CAPTURE_MANIFEST_FILE);
+    const others = entries.filter((name) => !name.endsWith(".png") && name !== CAPTURE_MANIFEST_FILE);
+    const ignored = gitIgnoredPaths(
+      root,
+      others.map((name) => `${folderRel}/${name}`),
+      git,
+    );
+    const stray = others.filter((name) => !ignored.has(`${folderRel}/${name}`));
     if (stray.length > 0) {
+      const one = stray.length === 1;
       return fail(
-        `The release stopped: ${folderRel}/ holds ${stray.join(", ")}, which is neither a screenshot nor ${CAPTURE_MANIFEST_FILE}; ` +
-          "staging the folder would commit it. Remove it, then release again.",
+        `The release stopped: ${folderRel}/ holds ${stray.join(", ")}, which ${one ? "is" : "are"} neither a screenshot nor ` +
+          `${CAPTURE_MANIFEST_FILE} and not gitignored; staging the folder would commit ${one ? "it" : "them"}. ` +
+          `Remove ${one ? "it" : "them"}, then release again.`,
       );
     }
 

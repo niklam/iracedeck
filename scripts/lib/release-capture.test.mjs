@@ -88,13 +88,25 @@ function trees() {
   return { head, files };
 }
 
+/** The OS litter the root `.gitignore` names, by base name. */
+const GITIGNORED_LITTER = new Set(["Thumbs.db", ".DS_Store", "desktop.ini"]);
+
 /**
  * Every collaborator faked over `trees()`, each pushing its step onto `trace`.
- * `git` answers the three commands the hook uses from the fake tree, the way
+ * `git` answers the four commands the hook uses from the fake tree, the way
  * git would: `diff HEAD` names every path whose content differs from HEAD,
- * `hash-object` hashes the working-tree content, `add` is recorded.
+ * `hash-object` hashes the working-tree content, `check-ignore` names the
+ * paths whose base name is in `ignored`, `add` is recorded.
  */
-function fakes({ env = {}, build, capture, assertReleaseBuild, head: headOverride, files: filesOverride } = {}) {
+function fakes({
+  env = {},
+  build,
+  capture,
+  assertReleaseBuild,
+  head: headOverride,
+  files: filesOverride,
+  ignored = GITIGNORED_LITTER,
+} = {}) {
   const { head, files } = trees();
   Object.assign(head, headOverride);
   Object.assign(files, filesOverride);
@@ -153,6 +165,20 @@ function fakes({ env = {}, build, capture, assertReleaseBuild, head: headOverrid
       trace.push(`stage:${args.slice(2).join(" ")}`);
 
       return "";
+    }
+    if (args[0] === "check-ignore") {
+      // As git answers through execFileSync: the ignored paths NUL-terminated,
+      // and exit 1 — a throw carrying `status` — when it ignores none.
+      expect(args).toEqual(["check-ignore", "--stdin", "-z"]);
+      const hits = input
+        .split("\0")
+        .filter((name) => name !== "")
+        .filter((name) => ignored.has(path.posix.basename(name)));
+      if (hits.length === 0) {
+        throw Object.assign(new Error("Command failed: git check-ignore --stdin -z"), { status: 1 });
+      }
+
+      return hits.map((name) => `${name}\0`).join("");
     }
     throw new Error(`unexpected git ${args.join(" ")}`);
   });
@@ -280,6 +306,33 @@ describe("releaseCapture on a stable version", () => {
       expect(manifest.files[file]).toBe(sha256Hex(encode(`png:${file}@${VERSION}`)));
     }
     expect(written).toBe(`${JSON.stringify(manifest, null, 2)}\n`);
+  });
+
+  it("lets gitignored OS litter in the folder through, since git add leaves it out", async () => {
+    const f = fakes({
+      files: { [`${FOLDER_REL}/Thumbs.db`]: "litter", [`${FOLDER_REL}/.DS_Store`]: "litter" },
+    });
+
+    const status = await releaseCapture(VERSION, f.deps);
+
+    expect(f.errors()).toBe("");
+    expect(status).toBe(0);
+    expect(f.staged()).toEqual([`stage:${FOLDER_REL}`]);
+    expect(f.deps.git).toHaveBeenCalledWith(
+      ROOT,
+      ["check-ignore", "--stdin", "-z"],
+      `${FOLDER_REL}/Thumbs.db\0${FOLDER_REL}/.DS_Store\0`,
+    );
+    const manifest = JSON.parse(f.files[`${FOLDER_REL}/${CAPTURE_MANIFEST_FILE}`]);
+    expect(Object.keys(manifest.files)).toEqual(SETTINGS_WINDOW_TABS.map((tab) => tab.file).sort());
+  });
+
+  it("asks git nothing about ignores when the folder holds only screenshots and the manifest", async () => {
+    const f = fakes();
+
+    await releaseCapture(VERSION, f.deps);
+
+    expect(f.deps.git.mock.calls.map(([, args]) => args[0])).not.toContain("check-ignore");
   });
 
   it("lets before:bump's own changes through: the version files, the fold, the fragment removal, a sealed record", async () => {
@@ -486,14 +539,53 @@ describe("a failure at each step stops before staging and names the restore", ()
     expect(manifest.files).not.toHaveProperty("old-tab.png");
   });
 
-  it("a file in the folder that is neither a PNG nor the manifest", async () => {
-    const f = fakes({ files: { [`${FOLDER_REL}/Thumbs.db`]: "junk" } });
+  it("a file in the folder that is neither a PNG nor the manifest, and not gitignored", async () => {
+    const f = fakes({ files: { [`${FOLDER_REL}/notes.txt`]: "junk" } });
 
     const status = await releaseCapture(VERSION, f.deps);
 
     expectRefusedBeforeStaging(f, status);
-    expect(f.errors()).toContain("holds Thumbs.db");
+    expect(f.errors()).toContain(
+      `${FOLDER_REL}/ holds notes.txt, which is neither a screenshot nor ${CAPTURE_MANIFEST_FILE} and not gitignored; ` +
+        "staging the folder would commit it. Remove it, then release again.",
+    );
+    expect(f.deps.git).toHaveBeenCalledWith(ROOT, ["check-ignore", "--stdin", "-z"], `${FOLDER_REL}/notes.txt\0`);
     expect(f.deps.fs.writeFileSync).not.toHaveBeenCalled();
+  });
+
+  it("names only the files git would stage when gitignored litter sits beside them", async () => {
+    const f = fakes({
+      files: {
+        [`${FOLDER_REL}/Thumbs.db`]: "litter",
+        [`${FOLDER_REL}/notes.txt`]: "junk",
+        [`${FOLDER_REL}/draft.psd`]: "junk",
+      },
+    });
+
+    const status = await releaseCapture(VERSION, f.deps);
+
+    expectRefusedBeforeStaging(f, status);
+    expect(f.errors()).toContain(`holds notes.txt, draft.psd, which are neither`);
+    expect(f.errors()).toContain("would commit them. Remove them,");
+    expect(f.errors()).not.toContain("Thumbs.db");
+  });
+
+  it("a git check-ignore that fails outright, not just finding nothing ignored", async () => {
+    const f = fakes({ files: { [`${FOLDER_REL}/notes.txt`]: "junk" } });
+    const git = f.deps.git;
+    f.deps.git = vi.fn((root, args, input) => {
+      if (args[0] === "check-ignore") {
+        throw Object.assign(new Error("fatal: not a git repository"), { status: 128 });
+      }
+
+      return git(root, args, input);
+    });
+
+    const status = await releaseCapture(VERSION, f.deps);
+
+    expectRefusedBeforeStaging(f, status);
+    expect(f.errors()).toContain("unexpected error");
+    expect(f.errors()).toContain("fatal: not a git repository");
   });
 
   it("a changelog with no dated section", async () => {
