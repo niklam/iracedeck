@@ -8,6 +8,7 @@ import { installedPackageVersion } from "./installed-version.mjs";
 import {
   archiveFormatIdentity,
   countSourceClips,
+  isCanonicalPackVersion,
   listSourceClips,
   locateCalloutScript,
   ZIP_ENTRY_MTIME_FIELDS,
@@ -87,6 +88,24 @@ describe("locateCalloutScript — the exact-name rule", () => {
     writeFileSync(path.join(root, "Callouts.json"), "{}");
 
     expect(locateCalloutScript(root)).toEqual({ file: null, wrongCase: "Callouts.json" });
+  });
+});
+
+describe("isCanonicalPackVersion — the spelling the packer writes and the record names", () => {
+  it.each(["1.2.3", "1.2.3-rc.1", "10.0.0-dev.0"])("accepts %s", (version) => {
+    expect(isCanonicalPackVersion(version)).toBe(true);
+  });
+
+  it.each([
+    ["a leading v, which the plugin would accept", "v1.2.3"],
+    ["surrounding whitespace, which the plugin would trim", " 1.2.3"],
+    ["a trailing newline", "1.2.3\n"],
+    ["build metadata, which semver ignores when comparing", "1.2.3+build.7"],
+    ["two parts", "1.2"],
+    ["a number", 1],
+    ["nothing", undefined],
+  ])("refuses %s", (_what, version) => {
+    expect(isCanonicalPackVersion(version)).toBe(false);
   });
 });
 

@@ -10,7 +10,12 @@
  * (`scripts/publish-voice-packs.mjs`, `stage-dev-voices.mjs`, the tests) are
  * unchanged.
  */
-import { CALLOUT_SCRIPT_FILE, displayLabel, VOICE_PACK_MANIFEST_SCHEMA_VERSION } from "@iracedeck/callout-script";
+import {
+  CALLOUT_SCRIPT_FILE,
+  displayLabel,
+  isSemverVersion,
+  VOICE_PACK_MANIFEST_SCHEMA_VERSION,
+} from "@iracedeck/callout-script";
 import { zipSync } from "fflate";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
@@ -37,6 +42,35 @@ export const CATALOG_DIR = path.join(audioAssetsPath, "catalog");
 
 /** The manifest's file name inside the archive — what the voice-packs scanner opens. */
 export const MANIFEST_FILE = "voice-pack.json";
+
+/**
+ * Is `value` a version the packer may write verbatim, and the record may name?
+ *
+ * Stricter than the scanner, on purpose. `isSemverVersion` is exactly what the
+ * plugin ACCEPTS — `semver.valid`, which trims and allows one leading `v` —
+ * but the packer does not only hand a version to the plugin: it writes it
+ * verbatim into the release tag (`voices-<id>-<version>`), the archive's file
+ * name, the catalog entry's `url` and the manifest. `" 1.1.2"` or `"v1.1.2"`
+ * would be a version the plugin reads fine and a tag, a file name and a
+ * download url nobody meant. So a definition must hold the CANONICAL spelling:
+ * a string the plugin accepts, with no surrounding whitespace, no leading `v`
+ * and no build metadata (`1.2.3+build`) — semver ignores metadata when
+ * comparing, so two spellings would name one release, and the pack record's
+ * "sealed at this version" (`isSealedAt`) is plain string equality precisely
+ * because every version it sees has passed this (#1667).
+ *
+ * @param {unknown} value
+ * @returns {value is string}
+ */
+export function isCanonicalPackVersion(value) {
+  return (
+    typeof value === "string" &&
+    isSemverVersion(value) &&
+    value === value.trim() &&
+    !value.startsWith("v") &&
+    !value.includes("+")
+  );
+}
 
 /**
  * The modification time recorded on every archive entry: the DOS epoch, which

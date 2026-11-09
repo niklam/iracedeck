@@ -119,7 +119,12 @@ const ENCODE_ARGS = Object.freeze(["-ar", "16000", "-ac", "1", "-c:a", "libmp3la
  * loudness normalization goes in as a descriptor of its target and its
  * method — and both the cache key and the record follow. Field names are
  * part of the hash (it is a sorted-key JSON serialization), so renaming one
- * is a re-encode too.
+ * is a re-encode too. Two rules for that field: it must be JSON-safe and never
+ * `undefined` — `JSON.stringify` drops an `undefined` property, so such a
+ * field would be silently absent from the hash — and EVERYTHING that changes a
+ * clip's output bytes must go through here. The fixed ffmpeg arguments in
+ * `runFfmpeg` (`-f mp3`, the loglevel flags) are not hashed; a change to them
+ * that moves the output is a change to this identity too, or the cache lies.
  *
  * @type {Readonly<import("./index.d.ts").PipelineIdentity>}
  */
