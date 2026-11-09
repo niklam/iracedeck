@@ -4,9 +4,11 @@
  * Pure, and the whole product decision in one function:
  *
  * - **Dated means published.** The version still in development is composed
- *   from the fragments in `changelog.d/` as an `_Unreleased_` release, and only
- *   the release tooling's fold gives it a date, when it writes the section into
- *   `changelog.mdx` (`scripts/lib/changelog-fold.mjs`). Announcing that
+ *   from the fragments in `changelog.d/` as an undated release (`## X.Y.Z` /
+ *   `_Unreleased_`, or `## Unreleased` between a stable fold and the next
+ *   version bump, #1398), and only the release tooling's fold gives it a date,
+ *   when it writes the section into `changelog.mdx`
+ *   (`scripts/lib/changelog-fold.mjs`). Announcing that
  *   would be exactly the complaint #1011 fixed — a version the user cannot
  *   have — so an undated release is never an available update. "Dated" means a
  *   real calendar date, not merely a non-null string: the artifact arrives over
