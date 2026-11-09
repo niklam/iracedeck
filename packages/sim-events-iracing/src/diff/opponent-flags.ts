@@ -60,8 +60,9 @@
  * pending flag: same class (a readable `CarIdxClass` must match the
  * player's in any session — `isMultiClass` reads false while session info is
  * missing — and in multi-class an unreadable class does not qualify), same
- * lap (lap-progress scores within one lap — the #622 `classify` structure;
- * an unreadable player progress is its own reason), then
+ * lap (lap-progress scores within one lap; an unreadable player progress is
+ * its own reason) — the shared standings check (`resolveStanding` in
+ * `standings.ts`, #950), which opponent-pit reads too — then
  * - `"ahead"`: one to {@link OPPONENT_FLAG_AHEAD_WINDOW} class positions
  *   ahead, and
  * - `"behind"`: exactly one class position behind,
@@ -206,7 +207,6 @@
  */
 import { OpponentPenaltyFlag, type SimEventName } from "@iracedeck/event-bus";
 import {
-  classPositionFromOrder,
   decodePenaltyFlags,
   Flags,
   getCarNumberFromSessionInfo,
@@ -219,6 +219,7 @@ import { type ILogger, silentLogger } from "@iracedeck/logger";
 import type { TranslatorState } from "../state.js";
 import { runUnitsDirectly, type UnitRunner } from "../tick-steps.js";
 import { coerceSettingNumber } from "./setting-number.js";
+import { type PlayerStanding, resolvePlayerStanding, resolveStanding, type StandingMiss } from "./standings.js";
 import type { EmitFn } from "./types.js";
 
 /** Rolling window for counting recently-announced flagged cars. */
@@ -343,16 +344,15 @@ export type OpponentFlagResolvers = {
   getRangeSeconds: () => number;
 };
 
-/** Why a pending flag did not announce — the #1273 "held back" reason. */
+/**
+ * Why a pending flag did not announce — the #1273 "held back" reason: a
+ * standings miss (`standings.ts`), or one of the flag policy's own.
+ */
 type HeldBackReason =
+  | StandingMiss
   | "player-in-pits"
   | "not-in-world"
   | "car-in-pits"
-  | "class-unreadable"
-  | "different-class"
-  | "position-unresolved"
-  | "player-progress-unreadable"
-  | "different-lap"
   | "outside-positions"
   | "gap-unreadable"
   | "gap-over-range"
@@ -387,33 +387,6 @@ type Assessment = Qualified | NotQualified;
 
 function unqualified(reason: HeldBackReason): NotQualified {
   return { reason, carPos: 0, playerPos: 0, gapSeconds: null };
-}
-
-/**
- * The player's side of every qualification, the same for every car in one
- * announce pass — resolved once per pass rather than once per flagged car
- * (the class position is an O(field) walk).
- */
-type PlayerStanding = {
-  /** The player's (class) position; `0` when unresolved. */
-  pos: number;
-  /** The player's lap progress (`CarIdxLapCompleted + CarIdxLapDistPct`); `null` when unreadable. */
-  progress: number | null;
-};
-
-function resolvePlayerStanding(
-  telemetry: TelemetryData,
-  positions: number[],
-  playerCarIdx: number,
-  isMultiClass: boolean,
-): PlayerStanding {
-  const pos = isMultiClass
-    ? classPositionFromOrder(positions, telemetry.CarIdxClass as number[] | undefined, playerCarIdx)
-    : (positions[playerCarIdx] ?? 0);
-  const lc = telemetry.CarIdxLapCompleted?.[playerCarIdx] ?? -1;
-  const dp = telemetry.CarIdxLapDistPct?.[playerCarIdx] ?? -1;
-
-  return { pos, progress: lc < 0 || dp < 0 ? null : lc + dp };
 }
 
 /**
@@ -458,11 +431,10 @@ function isPlayerInPits(telemetry: TelemetryData, playerCarIdx: number): boolean
  * pending flag on the car is opted in: for a car whose every pending flag is
  * opted out the gap could change nothing, so the car reads `opted-out` there.
  *
- * Class: a readable class that differs from the player's never qualifies,
- * whatever `isMultiClass` says — `isMultiClass` is false while session info
- * is missing, and a single-class session's classes are all equal anyway. An
- * unreadable class fails only in a multi-class session, where the class
- * decides the class positions too.
+ * Class, positions and same lap are the shared standings check
+ * (`resolveStanding`, #950): a miss there is held back with its own reason
+ * and both positions it resolved. The windows, the gap and the range are this
+ * policy's own.
  */
 function assess(
   telemetry: TelemetryData,
@@ -475,40 +447,12 @@ function assess(
   rangeSeconds: number,
   needGap: boolean,
 ): Assessment {
-  const carClasses = telemetry.CarIdxClass as number[] | undefined;
-  const playerClass = carClasses?.[playerCarIdx];
-  const carClass = carClasses?.[carIdx];
-  const classesReadable = typeof playerClass === "number" && typeof carClass === "number";
+  const standing = resolveStanding(telemetry, positions, player, playerCarIdx, carIdx, isMultiClass);
+  const { carPos, playerPos } = standing;
 
-  if (isMultiClass && !classesReadable) {
-    return { reason: "class-unreadable", carPos: 0, playerPos: 0, gapSeconds: null };
-  }
+  if (standing.reason !== null) return { reason: standing.reason, carPos, playerPos, gapSeconds: null };
 
-  if (classesReadable && playerClass !== carClass) {
-    return { reason: "different-class", carPos: 0, playerPos: 0, gapSeconds: null };
-  }
-
-  const carPos = isMultiClass ? classPositionFromOrder(positions, carClasses, carIdx) : (positions[carIdx] ?? 0);
-  const playerPos = player.pos;
-
-  if (carPos <= 0 || playerPos <= 0) return { reason: "position-unresolved", carPos, playerPos, gapSeconds: null };
-
-  // Same lap: lap-progress scores within one full lap. Raw `CarIdxLap`
-  // equality misbehaves around S/F crossings; the score form is what the
-  // position machinery ranks by. The car's own progress passed the caller's
-  // in-world test; the player's may still be unreadable — its own reason,
-  // since nothing is known about the lap then.
-  if (player.progress === null) {
-    return { reason: "player-progress-unreadable", carPos, playerPos, gapSeconds: null };
-  }
-
-  const lc = telemetry.CarIdxLapCompleted;
-  const dp = telemetry.CarIdxLapDistPct;
-  const scoreGap = Math.abs((lc?.[carIdx] ?? 0) + (dp?.[carIdx] ?? 0) - player.progress);
-
-  if (scoreGap >= 1.0) return { reason: "different-lap", carPos, playerPos, gapSeconds: null };
-
-  const delta = playerPos - carPos;
+  const delta = standing.placesAhead;
   let relation: "ahead" | "behind";
 
   if (delta >= 1 && delta <= OPPONENT_FLAG_AHEAD_WINDOW) {

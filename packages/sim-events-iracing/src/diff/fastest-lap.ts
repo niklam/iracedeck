@@ -82,15 +82,11 @@
  * payload's positions read, and after `diffLaps`, which leaves the claim.
  */
 import type { SimEventName } from "@iracedeck/event-bus";
-import {
-  classPositionFromOrder,
-  getCarNumberFromSessionInfo,
-  isPreGreen,
-  type TelemetryData,
-} from "@iracedeck/iracing-sdk";
+import { getCarNumberFromSessionInfo, isPreGreen, type TelemetryData } from "@iracedeck/iracing-sdk";
 
 import type { FastestLapRecord, FastestLapState } from "../state.js";
 import { type FastestLapJudge, LAP_RESULTS_SYNC_MAX_WAIT_MS, LAP_TIME_REFRESH_ALLOWANCE_MS } from "./laps.js";
+import { standingPosition } from "./standings.js";
 import type { EmitFn } from "./types.js";
 
 /** The events {@link diffFastestLap} emits (issue #1499): its emitter's type, and its row in `TICK_ORDER`. */
@@ -193,16 +189,6 @@ type FastestLapPayload = {
   playerLapsCompleted: number;
   isMultiClass?: boolean;
 };
-
-/** A car's effective position from the canonical order: class space in a multi-class race, overall otherwise. */
-function effectivePosition(
-  positions: number[],
-  carClasses: number[] | undefined,
-  carIdx: number,
-  isMultiClass: boolean,
-): number {
-  return isMultiClass ? classPositionFromOrder(positions, carClasses, carIdx) : (positions[carIdx] ?? 0);
-}
 
 /** The player's completed-lap count as `lap.completed` reports it (`LapCompleted`), `0` before the first crossing. */
 function playerLapsCompleted(telemetry: TelemetryData): number {
@@ -427,12 +413,12 @@ function buildPayload(
 
   if (record.carNumber !== null) data.carNumber = record.carNumber;
 
-  const position = effectivePosition(positions, carClasses, record.carIdx, ctx.projection);
+  const position = standingPosition(positions, carClasses, record.carIdx, ctx.projection);
 
   if (position > 0) data.position = position;
 
   if (ctx.playerCarIdx >= 0) {
-    const playerPosition = effectivePosition(positions, carClasses, ctx.playerCarIdx, ctx.projection);
+    const playerPosition = standingPosition(positions, carClasses, ctx.playerCarIdx, ctx.projection);
 
     if (playerPosition > 0) data.playerPosition = playerPosition;
   }
