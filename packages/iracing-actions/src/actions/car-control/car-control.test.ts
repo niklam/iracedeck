@@ -103,21 +103,25 @@ vi.mock("@iracedeck/icons/car-control/second-down-shift.svg", () => ({
   default: "<svg>second-down-shift-icon</svg>",
 }));
 
-vi.mock("@iracedeck/iracing-sdk", async (importOriginal) => ({
+vi.mock("@iracedeck/iracing-sdk", async (importOriginal) => {
   // The real parser and enum, so the key's figure is read from the string iRacing publishes (#1476).
-  DisplayUnits: (await importOriginal<typeof import("@iracedeck/iracing-sdk")>()).DisplayUnits,
-  parseTrackPitSpeedLimit: (await importOriginal<typeof import("@iracedeck/iracing-sdk")>()).parseTrackPitSpeedLimit,
-  hasFlag: (value: number, flag: number) => (value & flag) !== 0,
-  hasPitLimiter: (t: { dcPitSpeedLimiterToggle?: unknown } | null) => t?.dcPitSpeedLimiterToggle !== undefined,
-  hasVisor: (t: { dcTearOffVisor?: unknown } | null) => t?.dcTearOffVisor !== undefined,
-  hasWipers: (t: { dcToggleWindshieldWipers?: unknown; dcTriggerWindshieldWipers?: unknown } | null) =>
-    t?.dcToggleWindshieldWipers !== undefined || t?.dcTriggerWindshieldWipers !== undefined,
-  isLiveOnTrack: (t: { IsOnTrack?: unknown; IsReplayPlaying?: unknown } | null | undefined) =>
-    t?.IsOnTrack === true && t?.IsReplayPlaying !== true,
-  isPitLimiterEngaged: (t: { EngineWarnings?: number } | null) => ((t?.EngineWarnings ?? 0) & 0x0010) !== 0,
-  EngineWarnings: { PitSpeedLimiter: 0x0010, EngineStalled: 0x0008 },
-  SessionState: { Invalid: 0, GetInCar: 1, Warmup: 2, ParadeLaps: 3, Racing: 4, Checkered: 5, CoolDown: 6 },
-}));
+  const { DisplayUnits, parseTrackPitSpeedLimit } = await importOriginal<typeof import("@iracedeck/iracing-sdk")>();
+
+  return {
+    DisplayUnits,
+    parseTrackPitSpeedLimit,
+    hasFlag: (value: number, flag: number) => (value & flag) !== 0,
+    hasPitLimiter: (t: { dcPitSpeedLimiterToggle?: unknown } | null) => t?.dcPitSpeedLimiterToggle !== undefined,
+    hasVisor: (t: { dcTearOffVisor?: unknown } | null) => t?.dcTearOffVisor !== undefined,
+    hasWipers: (t: { dcToggleWindshieldWipers?: unknown; dcTriggerWindshieldWipers?: unknown } | null) =>
+      t?.dcToggleWindshieldWipers !== undefined || t?.dcTriggerWindshieldWipers !== undefined,
+    isLiveOnTrack: (t: { IsOnTrack?: unknown; IsReplayPlaying?: unknown } | null | undefined) =>
+      t?.IsOnTrack === true && t?.IsReplayPlaying !== true,
+    isPitLimiterEngaged: (t: { EngineWarnings?: number } | null) => ((t?.EngineWarnings ?? 0) & 0x0010) !== 0,
+    EngineWarnings: { PitSpeedLimiter: 0x0010, EngineStalled: 0x0008 },
+    SessionState: { Invalid: 0, GetInCar: 1, Warmup: 2, ParadeLaps: 3, Racing: 4, Checkered: 5, CoolDown: 6 },
+  };
+});
 
 vi.mock("@iracedeck/icon-composer", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@iracedeck/icon-composer")>()),
