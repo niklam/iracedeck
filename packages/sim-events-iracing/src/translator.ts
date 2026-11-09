@@ -3947,8 +3947,11 @@ function resolveCornerMarkersCached(
  * `SplitTimeInfo.Sectors`, through `extractSectorStarts`, which returns `null`
  * for sectors it cannot count from the start/finish line. Keyed by
  * {@link trackSessionKey} like the corner markers: re-resolves when the key
- * changes, and retries while null in case the first session-info read lacked
- * `SplitTimeInfo`. Absent session info keeps what the slice holds.
+ * changes. A null is retried only while the session info has not carried the
+ * `Sectors` list, in case the first read lacked `SplitTimeInfo`; once a parse
+ * has seen the list its result stands for the key (`settled`), so sectors that
+ * fail validation are not re-parsed on every tick of the session. Absent
+ * session info keeps what the slice holds.
  */
 function resolveTrackSectorsCached(
   slice: TrackSectorsState,
@@ -3962,11 +3965,16 @@ function resolveTrackSectorsCached(
   if (key !== slice.key) {
     slice.key = key;
     slice.starts = null;
-  } else if (slice.starts !== null) {
+    slice.settled = false;
+  } else if (slice.starts !== null || slice.settled) {
     return slice.starts;
   }
 
   slice.starts = extractSectorStarts(sessionInfo);
+
+  const splitTimeInfo = sessionInfo.SplitTimeInfo as Record<string, unknown> | null | undefined;
+
+  slice.settled = Array.isArray(splitTimeInfo?.Sectors);
 
   return slice.starts;
 }

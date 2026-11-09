@@ -8,6 +8,7 @@
 import { _resetEventBus, getEventBus, initializeEventBus } from "@iracedeck/event-bus";
 import {
   CarLeftRight,
+  extractSectorStarts,
   REPLAY_EXIT_GRACE_MS,
   ReplayStateTracker,
   type SDKController,
@@ -20,6 +21,14 @@ import type { ILogger } from "@iracedeck/logger";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { _resetSimEventsIracing, initializeSimEventsIracing, readSimState, trackSessionKey } from "./translator.js";
+
+// The real sector parser behind a spy, so a test can count how often the
+// translator's cache runs it.
+vi.mock("@iracedeck/iracing-sdk", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@iracedeck/iracing-sdk")>();
+
+  return { ...actual, extractSectorStarts: vi.fn(actual.extractSectorStarts) };
+});
 
 /**
  * The translator's cached sector starts, as its `trackSectors` slice holds
@@ -302,8 +311,65 @@ describe("the cached track sectors", () => {
 
     expect(cachedSectors()).toBeNull();
 
-    // Positive control: the same session with valid sectors answers.
-    controller.__setSessionInfo(sessionInfo({ sectors: THREE_SECTORS }));
+    // Positive control: valid sectors answer. Under a new TrackID, since an
+    // invalid list stands for its key (the next test).
+    controller.__setSessionInfo(sessionInfo({ trackId: 7, sectors: THREE_SECTORS }));
+    controller.__tick(tick());
+
+    expect(cachedSectors()).toEqual([0, 0.333333, 0.666667]);
+  });
+
+  it("parses sectors that fail validation once per key, and retries only while the list is absent", () => {
+    const parse = vi.mocked(extractSectorStarts);
+
+    start(sessionInfo());
+    parse.mockClear();
+
+    // No SplitTimeInfo yet: every tick retries. This is also the spy's
+    // positive control, so the counts below cannot pass on a dead counter.
+    controller.__tick(tick());
+    controller.__tick(tick());
+
+    expect(parse).toHaveBeenCalledTimes(2);
+
+    // The list arrives under the same key and fails validation (sector 1 off
+    // the line): parsed once, and the null then stands while the key holds.
+    controller.__setSessionInfo(
+      sessionInfo({
+        sectors: [
+          { SectorNum: 0, SectorStartPct: 0.1 },
+          { SectorNum: 1, SectorStartPct: 0.5 },
+        ],
+      }),
+    );
+    controller.__tick(tick());
+    controller.__tick(tick());
+    controller.__tick(tick());
+
+    expect(parse).toHaveBeenCalledTimes(3);
+    expect(cachedSectors()).toBeNull();
+
+    // A new key parses again.
+    controller.__setSessionInfo(sessionInfo({ trackId: 7, sectors: THREE_SECTORS }));
+    controller.__tick(tick());
+
+    expect(parse).toHaveBeenCalledTimes(4);
+    expect(cachedSectors()).toEqual([0, 0.333333, 0.666667]);
+  });
+
+  it("keeps retrying while SplitTimeInfo carries no Sectors list", () => {
+    const parse = vi.mocked(extractSectorStarts);
+    const info = sessionInfo();
+
+    start({ ...info, SplitTimeInfo: {} });
+    parse.mockClear();
+    controller.__tick(tick());
+    controller.__tick(tick());
+
+    expect(parse).toHaveBeenCalledTimes(2);
+    expect(cachedSectors()).toBeNull();
+
+    controller.__setSessionInfo({ ...info, SplitTimeInfo: { Sectors: THREE_SECTORS } });
     controller.__tick(tick());
 
     expect(cachedSectors()).toEqual([0, 0.333333, 0.666667]);

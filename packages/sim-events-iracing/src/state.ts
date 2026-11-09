@@ -418,15 +418,23 @@ export type TrackSectorsState = {
    * The sector start fractions of the lap, ordered by sector, the first at the
    * start/finish line (`0`); `null` while unresolved, or when the session info
    * has no sectors or its sectors fail `extractSectorStarts`' validation. A
-   * null is retried every tick, in case the first session-info read lacked
-   * `SplitTimeInfo`.
+   * null is retried every tick until {@link settled}, in case the first
+   * session-info read lacked `SplitTimeInfo`.
    */
   starts: readonly number[] | null;
+  /**
+   * Whether {@link starts} is final for {@link key}: set once a parse ran
+   * against session info whose `SplitTimeInfo.Sectors` was present (a list),
+   * whatever it returned, so sectors that fail validation are parsed once per
+   * key rather than on every tick of the session. `false` while the session
+   * info has not carried the list yet, and reset with a new key.
+   */
+  settled: boolean;
 };
 
 /** A {@link TrackSectorsState} resolved for no track: the initial state. */
 export function createTrackSectorsState(): TrackSectorsState {
-  return { key: "", starts: null };
+  return { key: "", starts: null, settled: false };
 }
 
 /**
@@ -574,8 +582,8 @@ export type TranslatorState = {
   // ── Track sectors (issue #1573) ─────────────────────────────────────────
   /**
    * The current track's sectors, one slice ({@link TrackSectorsState}).
-   * Reset per session and at a disconnect; kept whole across a replay glance,
-   * its key re-validated on the next live tick.
+   * Reset per session and at a disconnect; wiped whole at a replay glance,
+   * like the other track caches, and re-resolved on the next live tick.
    */
   trackSectors: TrackSectorsState;
   /**
