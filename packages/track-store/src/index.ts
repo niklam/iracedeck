@@ -15,6 +15,7 @@ export {
   TRACK_FILE_VERSION,
   type TrackFile,
   type TrackFileEnvelope,
+  type TrackFileMismatch,
   trackFileMismatch,
   trackFileName,
   type TrackFileRead,

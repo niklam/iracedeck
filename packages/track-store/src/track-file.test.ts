@@ -180,16 +180,27 @@ describe("trackFileMismatch", () => {
 
   it("compares the envelope's sim with the identity's", () => {
     expect(trackFileMismatch(parsed({ sim: "other-sim" }), { ...TRACK, sim: "other-sim" })).toBeNull();
-    expect(trackFileMismatch(parsed(), { ...TRACK, sim: "other-sim" })).toBe('sim "iracing" is not "other-sim"');
+    expect(trackFileMismatch(parsed(), { ...TRACK, sim: "other-sim" })).toEqual({
+      kind: "foreign",
+      reason: 'sim "iracing" is not "other-sim"',
+    });
   });
 
   it.each([
-    ["trackId", { trackId: 102 }],
-    ["trackName", { trackName: "monza" }],
-    ["trackConfigName", { trackConfigName: "Oval" }],
-    ["sim", { sim: "othersim" }],
-  ])("refuses a different %s", (field, overrides) => {
-    expect(trackFileMismatch(parsed(overrides), TRACK)).toContain(field);
+    ["trackId", "foreign", { trackId: 102 }],
+    ["sim", "foreign", { sim: "othersim" }],
+    ["trackName", "renamed", { trackName: "monza" }],
+    ["trackConfigName", "renamed", { trackConfigName: "Oval" }],
+  ])("refuses a different %s as %s", (field, kind, overrides) => {
+    const mismatch = trackFileMismatch(parsed(overrides), TRACK);
+
+    expect(mismatch?.kind).toBe(kind);
+    expect(mismatch?.reason).toContain(field);
+  });
+
+  it("calls a file foreign when its key fields differ as well as its names", () => {
+    expect(trackFileMismatch(parsed({ trackId: 102, trackName: "monza" }), TRACK)?.kind).toBe("foreign");
+    expect(trackFileMismatch(parsed({ sim: "othersim", trackConfigName: "Oval" }), TRACK)?.kind).toBe("foreign");
   });
 });
 

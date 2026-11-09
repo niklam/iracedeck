@@ -665,8 +665,8 @@ describe("a file from a newer build", () => {
 });
 
 describe("a file of another track", () => {
-  it("is treated as no data and never written over", () => {
-    const text = writeTrackFile({ trackName: "monza full" }, { pitRoadStart: recordOf([sample("theirs", 0.5, T0)]) });
+  it("is one whose envelope names another TrackID: treated as no data and never written over", () => {
+    const text = writeTrackFile({ trackId: 999 }, { pitRoadStart: recordOf([sample("theirs", 0.5, T0)]) });
     const logger = spyLogger();
     const store = makeStore({ logger });
 
@@ -695,6 +695,152 @@ describe("a file of another track", () => {
     store.flushSync();
 
     expect(readFileSync(filePath(), "utf-8")).toBe(text);
+    expect(readdirSync(simDir)).toEqual(["track_101.json"]);
+  });
+});
+
+describe("a track the sim renamed", () => {
+  const OLD_NAMES = [
+    ["name", { trackName: "spa 2023 gp" }, 'trackName "spa 2023 gp" is not "spa 2024 gp"'],
+    ["configuration", { trackConfigName: "Grand Prix Pits" }, 'trackConfigName "Grand Prix Pits" is not "Grand Prix"'],
+  ] as const;
+
+  function mismatchAsides(): string[] {
+    return readdirSync(simDir)
+      .filter((name) => name.startsWith("track_101.mismatch-"))
+      .sort();
+  }
+
+  it.each(OLD_NAMES)(
+    "(old %s) is no data to load, and the write preserves it aside and starts the file afresh",
+    (_label, overrides, reason) => {
+      const text = writeTrackFile(overrides, { pitRoadStart: recordOf([sample("theirs", 0.5, T0 - 5000)]) });
+      const logger = spyLogger();
+      const store = makeStore({ logger, now: () => new Date(T0) });
+
+      expect(store.load(TRACK)).toBeNull();
+      // Load never moves anything.
+      expect(readdirSync(simDir)).toEqual(["track_101.json"]);
+      expect(readFileSync(filePath(), "utf-8")).toBe(text);
+      expect(logger.warn).not.toHaveBeenCalled();
+
+      record(store, "mine", 0.1, T0);
+      store.flushSync();
+
+      expect(mismatchAsides()).toEqual(["track_101.mismatch-2026-11-09T12-00-00-000Z.json"]);
+      expect(readFileSync(join(simDir, "track_101.mismatch-2026-11-09T12-00-00-000Z.json"))).toEqual(
+        Buffer.from(text, "utf-8"),
+      );
+      expect(readFile()).toMatchObject({ trackName: TRACK.trackName, trackConfigName: TRACK.trackConfigName });
+      expect(windowKeys(readFile())).toEqual(["mine"]);
+      expect(logger.warn).toHaveBeenCalledExactlyOnceWith(
+        expect.stringContaining(`was written under another name (${reason}); preserved as `),
+      );
+    },
+  );
+
+  it("is set aside once: the next write merges into the fresh file", () => {
+    vi.useFakeTimers({ now: T0 });
+    writeTrackFile({ trackName: "spa 2023 gp" }, { pitRoadStart: recordOf([sample("theirs", 0.5, T0 - 5000)]) });
+    const logger = spyLogger();
+    const store = makeStore({ logger });
+
+    record(store, "first", 0.1, T0);
+    vi.advanceTimersByTime(TRACK_STORE_WRITE_DEBOUNCE_MS);
+    // The settle check after the write, then a second sample's write.
+    vi.advanceTimersByTime(TRACK_STORE_WRITE_DEBOUNCE_MS);
+    record(store, "second", 0.1001, T0 + 10_000);
+    vi.advanceTimersByTime(TRACK_STORE_WRITE_MAX_WAIT_MS * 3);
+
+    expect(mismatchAsides()).toHaveLength(1);
+    expect(windowKeys(readFile())).toEqual(["first", "second"]);
+    expect(readFile().pitLane.landmarks.pitRoadStart?.samples).toBe(2);
+    expect(logger.warn).toHaveBeenCalledOnce();
+  });
+
+  it("is never set aside by the settle check, only by a write of a new sample", () => {
+    vi.useFakeTimers({ now: T0 });
+    const store = makeStore();
+
+    record(store, "mine", 0.1, T0);
+    vi.advanceTimersByTime(TRACK_STORE_WRITE_DEBOUNCE_MS);
+    expect(windowKeys(readFile())).toEqual(["mine"]);
+
+    // A write under the old names lands after ours, before the settle check.
+    const old = writeTrackFile({ trackName: "spa 2023 gp" }, { pitRoadStart: recordOf([sample("old", 0.5, T0)]) });
+
+    vi.advanceTimersByTime(TRACK_STORE_WRITE_DEBOUNCE_MS);
+
+    expect(readFileSync(filePath(), "utf-8")).toBe(old);
+    expect(mismatchAsides()).toEqual([]);
+
+    record(store, "next", 0.1001, T0 + 10_000);
+    vi.advanceTimersByTime(TRACK_STORE_WRITE_DEBOUNCE_MS);
+
+    expect(mismatchAsides()).toHaveLength(1);
+    expect(windowKeys(readFile())).toEqual(["mine", "next"]);
+  });
+
+  it("is preserved as a copy, once, when it cannot be renamed", () => {
+    vi.useFakeTimers({ now: T0 });
+    const text = writeTrackFile({ trackConfigName: "Grand Prix Pits" });
+    let tmpRenameFailures = 1;
+    let copies = 0;
+    const store = makeStore({
+      retryDelaysMs: [100],
+      io: {
+        ...nodeTrackStoreIo,
+        rename: (from, to) => {
+          if (to.includes(".mismatch-")) throw errno("EPERM");
+
+          if (tmpRenameFailures > 0 && from.endsWith(".tmp")) {
+            tmpRenameFailures--;
+            throw errno("EPERM");
+          }
+
+          nodeTrackStoreIo.rename(from, to);
+        },
+        copyExclusive: (from, to) => (copies++, nodeTrackStoreIo.copyExclusive(from, to)),
+      },
+    });
+
+    record(store, "a", 0.1, T0);
+    vi.advanceTimersByTime(TRACK_STORE_WRITE_DEBOUNCE_MS);
+
+    expect(readFileSync(filePath(), "utf-8")).toBe(text);
+    expect(copies).toBe(1);
+
+    vi.advanceTimersByTime(100);
+
+    expect(copies).toBe(1);
+    expect(mismatchAsides()).toHaveLength(1);
+    expect(readFileSync(join(simDir, mismatchAsides()[0]!), "utf-8")).toBe(text);
+    expect(windowKeys(readFile())).toEqual(["a"]);
+  });
+
+  it("is never written over when it cannot be preserved", () => {
+    const text = writeTrackFile({ trackName: "spa 2023 gp" });
+    const logger = spyLogger();
+    const store = makeStore({
+      logger,
+      io: {
+        ...nodeTrackStoreIo,
+        rename: (from, to) => {
+          if (to.includes(".mismatch-")) throw errno("EPERM");
+
+          nodeTrackStoreIo.rename(from, to);
+        },
+        copyExclusive: () => {
+          throw errno("EACCES");
+        },
+      },
+    });
+
+    record(store, "a", 0.1, T0);
+    store.flushSync();
+
+    expect(readFileSync(filePath(), "utf-8")).toBe(text);
+    expect(logger.error).toHaveBeenCalledWith(expect.stringContaining("could not be preserved"));
   });
 });
 

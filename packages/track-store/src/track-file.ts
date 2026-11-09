@@ -234,23 +234,47 @@ export function readTrackFile(path: string, readText: (path: string) => string):
 }
 
 /**
- * Why a file must not be merged with the session's track, or `null` when it
- * may. A file whose TrackID, name or configuration differs from the session's,
- * or whose envelope names another simulator than the identity's `sim`, is not
- * this track's, whatever its folder and file name say: it is neither read as
- * data nor written over. An envelope with no `sim` (read as `""`) is judged
- * by the rest: the folder already names the sim.
+ * Why a file must not be merged with the session's track.
+ *
+ * - `foreign` — its own key fields name another track: the envelope's
+ *   TrackID, or a non-empty envelope `sim`, differs from the identity's. It
+ *   is not this track's file at all, whatever its folder and name say: never
+ *   read as data, never written over.
+ * - `renamed` — the same sim and TrackID under another `trackName` or
+ *   `trackConfigName`: the sim renamed the track or its configuration. Not
+ *   read as data, since its landmarks were learned under the old names; the
+ *   store's next write preserves it aside and starts the file afresh, so a
+ *   renamed track keeps learning and the old file can still be re-keyed by
+ *   hand (the raw names in the envelope exist for that).
  */
-export function trackFileMismatch(file: ParsedTrackFile, track: PitLaneTrackIdentity): string | null {
-  if (file.trackId !== track.trackId) return `trackId ${file.trackId} is not ${track.trackId}`;
+export type TrackFileMismatch = { kind: "foreign" | "renamed"; reason: string };
 
-  if (file.trackName !== track.trackName) return `trackName "${file.trackName}" is not "${track.trackName}"`;
-
-  if (file.trackConfigName !== track.trackConfigName) {
-    return `trackConfigName "${file.trackConfigName}" is not "${track.trackConfigName}"`;
+/**
+ * Why a file must not be merged with the session's track
+ * ({@link TrackFileMismatch}), or `null` when it may. An envelope with no
+ * `sim` (read as `""`) is judged by the rest: the folder already names the
+ * sim. The key fields are checked first, so a file that differs in those and
+ * in a name is `foreign`.
+ */
+export function trackFileMismatch(file: ParsedTrackFile, track: PitLaneTrackIdentity): TrackFileMismatch | null {
+  if (file.trackId !== track.trackId) {
+    return { kind: "foreign", reason: `trackId ${file.trackId} is not ${track.trackId}` };
   }
 
-  if (file.sim !== "" && file.sim !== track.sim) return `sim "${file.sim}" is not "${track.sim}"`;
+  if (file.sim !== "" && file.sim !== track.sim) {
+    return { kind: "foreign", reason: `sim "${file.sim}" is not "${track.sim}"` };
+  }
+
+  if (file.trackName !== track.trackName) {
+    return { kind: "renamed", reason: `trackName "${file.trackName}" is not "${track.trackName}"` };
+  }
+
+  if (file.trackConfigName !== track.trackConfigName) {
+    return {
+      kind: "renamed",
+      reason: `trackConfigName "${file.trackConfigName}" is not "${track.trackConfigName}"`,
+    };
+  }
 
   return null;
 }

@@ -29,8 +29,10 @@
  * replace (temp file + rename), a trailing debounce capped by a max wait,
  * failed writes retried on `WRITE_RETRY_DELAYS_MS` and kept for the shutdown
  * flush, a corrupt file moved aside as `track_<id>.corrupt-<iso>.json` in its
- * sim's folder and never overwritten or deleted, a file written by a newer
- * build never written. IO is synchronous: the file is a few kilobytes,
+ * sim's folder and never overwritten or deleted (and, the same way, the
+ * track's file under the names the sim used before renaming it, as
+ * `track_<id>.mismatch-<iso>.json`), a file written by a newer build or for
+ * another track never written. IO is synchronous: the file is a few kilobytes,
  * written at most a few times a minute, and a synchronous read-merge-rename
  * leaves no await in which this process could interleave with itself.
  * Compact JSON.
@@ -110,8 +112,10 @@ export interface TrackStore {
    * (read once per track, then cached) brought to the session's track length
    * (`applyTrackLength`, a rebuild when it differs) with this process's
    * samples not yet written folded in. A copy. `null` when nothing is known:
-   * no file, a file of another track (logged once, never written over), a
-   * newer build's file, or one that cannot be parsed — and no sample
+   * no file, a file of another track (logged once, never written over), the
+   * track's file under the names it had before the sim renamed it (set aside
+   * by the next write, never by a load), a newer build's file, or one that
+   * cannot be parsed — and no sample
    * recorded meanwhile — and for an identity whose `sim` cannot name a
    * folder (`isTrackDataSim`; warned once). `PIT_LANE_SECTION_UNAVAILABLE`
    * when the file exists but cannot be read right now (a lock, a permission,
@@ -199,8 +203,16 @@ interface OwnSample {
   trackLength: string;
 }
 
-/** Why a file is not used. */
-type Refusal = "mismatch" | "newerVersion" | "newerSection";
+/** Why a file is not used and never written: another track's, or a newer build's. */
+type Refusal = "foreign" | "newerVersion" | "newerSection";
+
+/**
+ * Why a file is preserved aside before a write replaces it, which names the
+ * aside `track_<id>.<suffix>-<iso>.json`: `corrupt` (not a track file this
+ * build reads) or `mismatch` (this track's file under the names the sim used
+ * before a rename).
+ */
+type AsideReason = { suffix: "corrupt" } | { suffix: "mismatch"; mismatch: string };
 
 interface TrackEntry {
   /** `<directory>\<sim>`: the file, its temp file and its corrupt asides live here. */
@@ -216,6 +228,12 @@ interface TrackEntry {
   read: boolean;
   /** Why the file on disk is not used, when it is not. */
   refusal: Refusal | null;
+  /**
+   * The file on disk is this track's (same sim and TrackID) under another
+   * name or configuration: why, for the log. Not used as data; the next save
+   * sets it aside and writes afresh. `null` otherwise.
+   */
+  renamed: string | null;
   /** In memory: the base's section at the session's track length plus this process's samples. */
   section: PitLaneSection;
   /** This process's own recent samples per landmark, oldest first, for the re-fold on write. */
@@ -371,18 +389,23 @@ export function createTrackStore(opts: TrackStoreOptions): TrackStore {
 
   /**
    * Take a read of the file into the entry: the base it now merges onto, and
-   * why the file is refused when it is. A `corrupt` file is no base; only a
-   * write moves it aside. An `unreadable` one changes nothing.
+   * why the file is refused when it is. A `corrupt` file and a `renamed` one
+   * (this track's under its old names) are no base; only a write moves them
+   * aside. An `unreadable` one changes nothing.
    */
-  function absorb(entry: TrackEntry, result: TrackFileRead): "use" | "corrupt" | "unreadable" | "refused" {
+  function absorb(entry: TrackEntry, result: TrackFileRead): "use" | "corrupt" | "renamed" | "unreadable" | "refused" {
     const name = entry.label;
-    let verdict: "use" | "corrupt" | "refused";
+    let verdict: "use" | "corrupt" | "renamed" | "refused";
+
+    if (result.kind === "unreadable") {
+      logger.debug(`Track data file ${name} could not be read: ${String(result.error)}`);
+
+      return "unreadable";
+    }
+
+    entry.renamed = null;
 
     switch (result.kind) {
-      case "unreadable":
-        logger.debug(`Track data file ${name} could not be read: ${String(result.error)}`);
-
-        return "unreadable";
       case "absent":
         entry.base = undefined;
         entry.refusal = null;
@@ -412,14 +435,22 @@ export function createTrackStore(opts: TrackStoreOptions): TrackStore {
           entry.base = result.file;
           entry.refusal = null;
           verdict = "use";
+        } else if (mismatch.kind === "renamed") {
+          entry.base = undefined;
+          entry.refusal = null;
+          entry.renamed = mismatch.reason;
+          verdict = "renamed";
+          logger.debug(
+            `Track data file ${name} was written under another name (${mismatch.reason}); it is not read, and the next write preserves it aside`,
+          );
         } else {
           entry.base = undefined;
-          entry.refusal = "mismatch";
+          entry.refusal = "foreign";
           verdict = "refused";
           warnOnce(
             entry,
-            `mismatch:${mismatch}`,
-            `Track data file ${name} belongs to another track (${mismatch}); it is not read and never written`,
+            `foreign:${mismatch.reason}`,
+            `Track data file ${name} belongs to another track (${mismatch.reason}); it is not read and never written`,
           );
         }
 
@@ -474,6 +505,7 @@ export function createTrackStore(opts: TrackStoreOptions): TrackStore {
         base: undefined,
         read: false,
         refusal: null,
+        renamed: null,
         section: applyTrackLength(undefined, track.trackLength, track.trackLengthM),
         own: new Map(),
         dirty: false,
@@ -524,9 +556,9 @@ export function createTrackStore(opts: TrackStoreOptions): TrackStore {
     entry.own.set(landmark, samples);
   }
 
-  /** A free `track_<id>.corrupt-<iso>.json` name in the entry's folder; never one that exists. */
-  function asidePath(entry: TrackEntry): string {
-    const stem = `track_${entry.identity.trackId}.corrupt-${isoStamp(now())}`;
+  /** A free `track_<id>.<suffix>-<iso>.json` name in the entry's folder; never one that exists. */
+  function asidePath(entry: TrackEntry, suffix: AsideReason["suffix"]): string {
+    const stem = `track_${entry.identity.trackId}.${suffix}-${isoStamp(now())}`;
     let candidate = join(entry.folder, `${stem}.json`);
 
     for (let n = 1; io.exists(candidate); n++) candidate = join(entry.folder, `${stem}-${n}.json`);
@@ -535,14 +567,14 @@ export function createTrackStore(opts: TrackStoreOptions): TrackStore {
   }
 
   /**
-   * An existing `track_<id>.corrupt-*.json` whose bytes equal `original`, so a
-   * file that survives every attempt (locked, undeletable) is preserved once,
-   * not once per write — the settings store's rule. Bytes, never decoded text:
-   * two different invalid-UTF-8 files decode to the same replacement
-   * characters.
+   * An existing `track_<id>.<suffix>-*.json` whose bytes equal `original`, so
+   * a file that survives every attempt (locked, undeletable) is preserved
+   * once, not once per write — the settings store's rule. Bytes, never
+   * decoded text: two different invalid-UTF-8 files decode to the same
+   * replacement characters.
    */
-  function identicalAside(entry: TrackEntry, original: Buffer): string | undefined {
-    const prefix = `track_${entry.identity.trackId}.corrupt-`;
+  function identicalAside(entry: TrackEntry, original: Buffer, suffix: AsideReason["suffix"]): string | undefined {
+    const prefix = `track_${entry.identity.trackId}.${suffix}-`;
 
     for (const name of io.readdir(entry.folder)) {
       if (!name.startsWith(prefix) || !name.endsWith(".json")) continue;
@@ -558,12 +590,14 @@ export function createTrackStore(opts: TrackStoreOptions): TrackStore {
   }
 
   /**
-   * Preserve a corrupt file under another name. `classified` is the content
-   * that was read and judged corrupt: the file is re-read first and moved
-   * only while it still holds exactly those bytes, so another process's valid
-   * write landing meanwhile is never moved aside (`changed`: classify again).
-   * `moved` means the original path may now be written over; `failed` that it
-   * must not be (the write is retried).
+   * Preserve a file a write is about to replace under another name: a
+   * corrupt one, or this track's file under the names the sim used before a
+   * rename (`reason`, which names the aside). `classified` is the content that
+   * was read and judged so: the file is re-read first and moved only while it
+   * still holds exactly those bytes, so another process's write landing
+   * meanwhile is never moved aside (`changed`: classify again). `moved` means
+   * the original path may now be written over; `failed` that it must not be
+   * (the write is retried).
    *
    * When the rename is refused the file is copied instead and the original is
    * left where it is: the write that follows renames over it, which replaces
@@ -572,8 +606,9 @@ export function createTrackStore(opts: TrackStoreOptions): TrackStore {
    * again with nothing written over it; here a write always follows, and a
    * retried one finds the identical aside and copies nothing.
    */
-  function moveAside(entry: TrackEntry, classified: Buffer): "moved" | "changed" | "failed" {
+  function moveAside(entry: TrackEntry, classified: Buffer, reason: AsideReason): "moved" | "changed" | "failed" {
     const name = entry.label;
+    const what = reason.suffix === "corrupt" ? "is not valid" : `was written under another name (${reason.mismatch})`;
     let current: Buffer;
 
     try {
@@ -581,36 +616,36 @@ export function createTrackStore(opts: TrackStoreOptions): TrackStore {
     } catch (error: unknown) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") return "changed";
 
-      logger.debug(`Corrupt track data file ${name} could not be re-read: ${String(error)}`);
+      logger.debug(`Track data file ${name} to preserve could not be re-read: ${String(error)}`);
 
       return "failed";
     }
 
     if (!current.equals(classified)) return "changed";
 
-    const aside = asidePath(entry);
+    const aside = asidePath(entry, reason.suffix);
 
     try {
       io.rename(entry.path, aside);
-      logger.warn(`Track data file ${name} is not valid; preserved as ${aside} and started fresh`);
+      logger.warn(`Track data file ${name} ${what}; preserved as ${aside} and started fresh`);
 
       return "moved";
     } catch (renameError: unknown) {
       logger.debug(`Move-aside rename failed: ${String(renameError)}`);
 
       try {
-        const existing = identicalAside(entry, current);
+        const existing = identicalAside(entry, current, reason.suffix);
 
         if (existing === undefined) {
           io.copyExclusive(entry.path, aside);
-          logger.warn(`Track data file ${name} is not valid and could not be moved; preserved as a copy, ${aside}`);
+          logger.warn(`Track data file ${name} ${what} and could not be moved; preserved as a copy, ${aside}`);
         } else {
-          logger.debug(`Track data file ${name} is not valid; an identical copy is already preserved as ${existing}`);
+          logger.debug(`Track data file ${name} ${what}; an identical copy is already preserved as ${existing}`);
         }
 
         return "moved";
       } catch (copyError: unknown) {
-        logger.error(`Track data file ${name} is not valid and could not be preserved; it is not written over`);
+        logger.error(`Track data file ${name} ${what} and could not be preserved; it is not written over`);
         logger.debug(`Copy also failed: ${String(copyError)}`);
 
         return "failed";
@@ -670,6 +705,10 @@ export function createTrackStore(opts: TrackStoreOptions): TrackStore {
 
     if (verdict === "refused") return "refused";
 
+    // The settle check never sets a renamed file aside: only a save does, so
+    // a file is moved at most once per learned sample, never in a loop.
+    if (verdict === "renamed" && mode === "verify") return "unchanged";
+
     const fileLength = entry.base?.pitLane?.trackLength;
 
     if (mode === "verify" && fileLength !== undefined && fileLength !== entry.identity.trackLength) {
@@ -691,8 +730,12 @@ export function createTrackStore(opts: TrackStoreOptions): TrackStore {
 
     if (mode === "verify" && accepted === 0) return "unchanged";
 
-    if (verdict === "corrupt") {
-      const aside = moveAside(entry, bytes!);
+    if (verdict === "corrupt" || verdict === "renamed") {
+      const aside = moveAside(
+        entry,
+        bytes!,
+        verdict === "corrupt" ? { suffix: "corrupt" } : { suffix: "mismatch", mismatch: entry.renamed ?? "" },
+      );
 
       if (aside === "changed") return "changed";
 
