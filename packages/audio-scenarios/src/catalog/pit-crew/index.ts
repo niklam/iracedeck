@@ -336,6 +336,7 @@ export {
   PACE_LEVEL_S,
   PACE_REPEAT_LAPS,
   paceGapOf,
+  paceTenths,
   pictureDue,
   readSectorComparisonDebugState,
   resetSectorComparison,

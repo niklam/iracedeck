@@ -560,13 +560,24 @@ function sectorRef(sector: number | null): string | null {
   return sector === null ? null : poolRef(SECTOR_NUMBER_GROUP, String(sector));
 }
 
-/** The leader's pace gap, unsigned and rounded to the tenth, as whole seconds and tenths; `null` for a neighbour. */
+/**
+ * A pace gap as it is read aloud: unsigned, rounded half up to the tenth, as
+ * whole seconds and tenths. The rounding carries the thresholds' tolerance
+ * ({@link EPS}): a pace summed from sector deltas that is 0.75 s on the
+ * timing screen can arrive as 0.7499999, and is read "point eight", as a
+ * person would read it, never "point seven".
+ */
+export function paceTenths(pace: number): { seconds: number; tenths: number } {
+  const totalTenths = Math.round(Math.abs(pace) * 10 + EPS);
+
+  return { seconds: Math.floor(totalTenths / 10), tenths: totalTenths % 10 };
+}
+
+/** The leader's pace gap as {@link paceTenths} reads it; `null` for a neighbour. */
 function paceParts(picture: SectorPicture | null): { seconds: number; tenths: number } | null {
   if (picture?.pace === null || picture?.pace === undefined) return null;
 
-  const totalTenths = Math.round(Math.abs(picture.pace) * 10);
-
-  return { seconds: Math.floor(totalTenths / 10), tenths: totalTenths % 10 };
+  return paceTenths(picture.pace);
 }
 
 /** Whether the player's lap the event closed was recorded clean (decision 4), read from the comparison. */

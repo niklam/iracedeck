@@ -37,6 +37,7 @@ import {
   PACE_LEVEL_S,
   PACE_REPEAT_LAPS,
   paceGapOf,
+  paceTenths,
   pictureDue,
   readSectorComparisonDebugState,
   resetSectorComparison,
@@ -1376,6 +1377,20 @@ describe("the contracts", () => {
       "calloutEnabledSectorComparisonAhead",
       "calloutEnabledSectorComparisonBehind",
     ]);
+  });
+});
+
+describe("paceTenths", () => {
+  it("rounds half up to the tenth, unsigned, through a summing artefact", () => {
+    // Sector deltas of 0.2, 0.3 and 0.25 s taken as player minus target
+    // times sum to 0.7499999999999964 in binary floating point.
+    const pace = 30 - 29.8 + (40 - 39.7) + (25 - 24.75);
+
+    expect(pace).toBeLessThan(0.75);
+    expect(paceTenths(pace)).toEqual({ seconds: 0, tenths: 8 });
+    expect(paceTenths(-0.5)).toEqual({ seconds: 0, tenths: 5 });
+    expect(paceTenths(0.74)).toEqual({ seconds: 0, tenths: 7 });
+    expect(paceTenths(1.96)).toEqual({ seconds: 2, tenths: 0 });
   });
 });
 
