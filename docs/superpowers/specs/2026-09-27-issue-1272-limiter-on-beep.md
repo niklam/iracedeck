@@ -19,9 +19,10 @@ The Race Engineer plays one short tone the moment the player's pit limiter engag
 `diffToggles` seeds its baselines silently on the first tick and on any tick with `IsOnTrack` false, and `handleTick` returns at the replay guard before any diff and wipes state on both replay edges. So:
 
 - **Connect, plugin restart, session change.** First tick after the wipe is a seed. A limiter already on when the engineer starts listening does not beep: unlike #912's level-driven tick, this is a one-shot about a moment, and the moment has passed.
-- **Out of the car, tow, reset.** `IsOnTrack` is false on those ticks, so the baseline follows the bit and there is no edge when the car comes back.
+- **Out of the car.** `IsOnTrack` is false on those ticks, so the baseline follows the bit and there is no edge when the car comes back.
+- **Tow, reset.** `IsOnTrack` stays true through a tow or a reset: the car leaves the world for a tick (`PlayerTrackSurface` −1) with the driver still in it, then lands in the stall (`tire-temps-tow-20261011.json` ticks 18→19, `tire-temps-stops-20261011.json` ticks 27→28, the same path #1161 found). Today the stall seed hides a limiter change on the landing tick, but that seed no longer covers the limiter (next section). So, the same way as pit service: while the player's car is out of the world, and for `LIMITER_SERVICE_SETTLE_MS` (500 ms) after it is back, the limiter baseline follows the bit silently. No capture records `EngineWarnings` across a reset, so whether iRacing moves the bit there is unknown; the rule makes the answer not matter. (Amended 2026-11-10 from the #1272 lead's plan; an earlier version said `IsOnTrack` was false on a tow or reset.)
 - **Replay.** No diff runs, and the first live tick after it re-seeds.
-- **Pit service.** While `PitstopActive` is true, and for `LIMITER_SERVICE_SETTLE_MS` (500 ms) after it falls, the limiter baseline follows the bit silently. This is the one new rule, and the next section says why.
+- **Pit service.** While `PitstopActive` is true, and for `LIMITER_SERVICE_SETTLE_MS` (500 ms) after it falls, the limiter baseline follows the bit silently. This and the tow/reset rule above are the two new rules, and the next section says why the limiter needs them.
 
 Every other engagement beeps, the pit box included: a press in the stall after the car has been placed there at the start of a session or reset to it, and a press after a stop, before pulling away.
 
@@ -113,9 +114,9 @@ Suite:
 
 - Engine: beeps on `on: true`, silent on `on: false`; silent with the toggle off and with the Race Engineer master off, both read live at the event; plays on `AudioChannel.Cue` with the new file.
 - Channel: `AudioChannel.Cue` routes to the Alerts bus at the Radar channel's mix ratio, and a Radar Volume change reaches it; an end callback is registered for it, so the device-idle release still fires after a beep; `stopAllChannels` clears it; the mock accepts channel 5.
-- Translator (`toggles`): no `limiterToggled { on: true }` on the first tick with the bit set, after `IsOnTrack` false→true with the bit set, on leaving the stall with the bit set, or on the first live tick after a replay; exactly one per off→on edge on track, on pit road and in the pit stall, including two for on→off→on.
+- Translator (`toggles`): no `limiterToggled { on: true }` on the first tick with the bit set, after `IsOnTrack` false→true with the bit set, on a tow or reset (a tick out of the world, then the stall) whether or not the bit changes across it or within 500 ms after, on leaving the stall with the bit set, or on the first live tick after a replay; exactly one per off→on edge on track, on pit road and in the pit stall, including two for on→off→on.
 - Translator, service: no `limiterToggled` for a bit change while `PitstopActive` is true, on the tick it falls, or within `LIMITER_SERVICE_SETTLE_MS` after; one for the first change after the tail; the pit-service, tire, DRS and P2P bits still seed silently in the stall, as before.
-- Settings: the schema default is `true`, and each plugin's closure reads the key.
+- Settings: the schema default is `false` (amended 2026-11-09), and each plugin's closure reads the key.
 
 By hand, in iRacing, on a full native rebuild with the deck host closed:
 
