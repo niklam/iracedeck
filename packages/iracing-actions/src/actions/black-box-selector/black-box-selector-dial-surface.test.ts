@@ -6,14 +6,20 @@ import { actionPressShapes, describePressShapes } from "../../shared/press-shape
 import {
   buildTriggerDescription,
   DialSettings,
+  firingGestures,
+  GESTURE_ACTIONS,
   renderAdjustControlKnob,
   renderAdjustControlStrip,
   renderBlackBoxKnob,
   renderBlackBoxStrip,
   renderSelectControlKnob,
   renderSelectControlStrip,
+  resolveGestures,
+  ROTATION_GESTURE_DEFAULTS,
+  ROTATIONS,
+  SWITCHED_ROTATION,
 } from "./black-box-selector-dial-surface.js";
-import { BlackBoxSelector } from "./black-box-selector.js";
+import { BlackBoxSelector, BlackBoxSelectorSettings } from "./black-box-selector.js";
 
 const { mockTapBinding, mockIsBindingMissing, mockDualPressThreshold, mockRotatedClassifier, globalListeners } =
   vi.hoisted(() => ({
@@ -157,21 +163,38 @@ function elementNames(svg: string): Set<string> {
 
 describe("black-box-selector dial-surface pure helpers", () => {
   describe("DialSettings defaults", () => {
-    it("defaults pressBox to lap-timing and every gesture slot to none", () => {
+    it("defaults pressBox to lap-timing and the touch slots to none, and leaves Press and Long Press unset (#1585)", () => {
       const parsed = DialSettings.parse({});
 
       expect(parsed.pressBox).toBe("lap-timing");
-      expect(parsed.pressAction).toBe("none");
-      expect(parsed.longPressAction).toBe("none");
       expect(parsed.tapAction).toBe("none");
       expect(parsed.longTouchAction).toBe("none");
+      // No default is banked into these two: the rotation decides at read time.
+      expect("pressAction" in parsed).toBe(false);
+      expect("longPressAction" in parsed).toBe(false);
     });
 
     it("fills defaults for a partially-specified dial (prefault)", () => {
       const parsed = DialSettings.parse({ pressBox: "fuel" });
 
       expect(parsed.pressBox).toBe("fuel");
+      expect(parsed.tapAction).toBe("none");
+      expect(parsed.pressAction).toBeUndefined();
+    });
+
+    it("keeps a stored none in Press and Long Press, apart from an unset slot (#1585)", () => {
+      const parsed = DialSettings.parse({ rotation: "select-control", pressAction: "none", longPressAction: "none" });
+
       expect(parsed.pressAction).toBe("none");
+      expect(parsed.longPressAction).toBe("none");
+    });
+
+    it("leaves both slots unset through the action's whole settings, with no dial stored at all (#1585)", () => {
+      const { dial } = BlackBoxSelectorSettings.parse({});
+
+      expect(dial.rotation).toBe("boxes");
+      expect("pressAction" in dial).toBe(false);
+      expect("longPressAction" in dial).toBe(false);
     });
 
     it("accepts Toggle Box Size in every gesture slot (#1238)", () => {
@@ -463,7 +486,9 @@ describe("BlackBoxSelector dial surface", () => {
     setThresholdMs: (ms) => {
       mockDualPressThreshold.value = ms;
     },
-    readsStoredSettings: false,
+    // The surface persists settings plugin-side, so its release and touch read
+    // the settings its context stored, not the input event's (rule 10, #1585).
+    readsStoredSettings: true,
     // No key declares a shape, so every key is the wrapper's tap, the repeating
     // Increment / Decrement included: a repeat's steps are their own feedback (#269).
     keyCases: [
@@ -486,12 +511,15 @@ describe("BlackBoxSelector dial surface", () => {
     ],
   });
 
+  // Every slot acts, and Switch Select / Adjust is on the release and the long
+  // touch, so a late event is also held to writing no settings (#1585).
   const lateInputSettings = withDial({
+    rotation: "select-control",
     pressBox: "fuel",
-    pressAction: "open-selected-box",
-    longPressAction: "open-selected-box",
+    pressAction: "switch-rotation",
+    longPressAction: "switch-rotation",
     tapAction: "open-selected-box",
-    longTouchAction: "open-selected-box",
+    longTouchAction: "switch-rotation",
   });
 
   describeLateInput({
@@ -737,12 +765,23 @@ describe("BlackBoxSelector dial surface", () => {
       },
     );
 
-    it("follows a rotation changed in the event's settings", async () => {
+    it("turns the rotation its context stored, not one an input event's settings carry (rule 10)", async () => {
       const ctx = dialContext("r-change");
       await appear(ctx, withDial({}));
       mockTapBinding.mockClear();
 
       await action.onDialRotate(rotateEvent(ctx, withDial({ rotation: "adjust-control" }), 1) as never);
+
+      expect(mockTapBinding.mock.calls).toEqual([["blackBoxCycleNext"]]);
+    });
+
+    it("follows a rotation delivered through didReceiveSettings", async () => {
+      const ctx = dialContext("r-delivered");
+      await appear(ctx, withDial({}));
+      await action.onDidReceiveSettings(eventFor(ctx, withDial({ rotation: "adjust-control" })) as never);
+      mockTapBinding.mockClear();
+
+      await action.onDialRotate(rotateEvent(ctx, withDial({}), 1) as never);
 
       expect(mockTapBinding.mock.calls).toEqual([["blackBoxIncrementControl"]]);
     });
@@ -760,7 +799,10 @@ describe("BlackBoxSelector dial surface", () => {
 
     it("pushes the rotation's label as the trigger description", async () => {
       const ctx = dialContext("r-desc");
-      await appear(ctx, withDial({ rotation: "select-control", pressAction: "toggle-control" }));
+      await appear(
+        ctx,
+        withDial({ rotation: "select-control", pressAction: "toggle-control", longPressAction: "none" }),
+      );
 
       expect(ctx.setTriggerDescription).toHaveBeenLastCalledWith({
         rotate: "Select control",
@@ -839,6 +881,515 @@ describe("BlackBoxSelector dial surface", () => {
         ["blackBoxSelectNextControl"],
         ["blackBoxDecrementControl"],
       ]);
+    });
+  });
+
+  describe("Switch Select / Adjust (#1585)", () => {
+    const PAIRS = {
+      "select-control": ["blackBoxSelectNextControl", "blackBoxSelectPreviousControl"],
+      "adjust-control": ["blackBoxIncrementControl", "blackBoxDecrementControl"],
+    } as const;
+    const ARROWS = { "select-control": ["up", "down"], "adjust-control": ["left", "right"] } as const;
+    const LABELS = { "select-control": "Select control", "adjust-control": "Adjust control" } as const;
+
+    type Switchable = keyof typeof PAIRS;
+
+    /** The whole stored settings of a dial: a keypad half the write must carry over untouched, and the dial half. */
+    function stored(dial: Record<string, unknown>) {
+      return { mode: "next", blackBox: "fuel", flagsOverlay: true, dial };
+    }
+
+    function lastCanvas(ctx: DialContext): string {
+      return decodeURIComponent(ctx.setDialCanvas.mock.calls.at(-1)?.[0] as string);
+    }
+
+    async function press(ctx: DialContext, settings: Record<string, unknown>, holdMs = 0) {
+      await action.onDialDown(eventFor(ctx, settings) as never);
+      vi.advanceTimersByTime(holdMs);
+      await action.onDialUp(eventFor(ctx, settings) as never);
+    }
+
+    it("swaps Select Control and Adjust Control, and leaves a boxes dial alone", () => {
+      expect(SWITCHED_ROTATION).toEqual({ "select-control": "adjust-control", "adjust-control": "select-control" });
+    });
+
+    it.each([
+      ["select-control", "adjust-control"],
+      ["adjust-control", "select-control"],
+    ] as const)("a press on a %s dial switches it to %s and persists that", async (from, to) => {
+      const ctx = dialContext(`sw-${from}`);
+      const settings = stored({ rotation: from, pressAction: "switch-rotation" });
+      await appear(ctx, settings);
+      mockTapBinding.mockClear();
+      ctx.setDialCanvas.mockClear();
+      ctx.setTriggerDescription.mockClear();
+
+      await press(ctx, settings);
+
+      // The RAW settings with only the rotation changed: the keypad half is
+      // carried over, and no schema default is banked into a key nobody set.
+      expect(ctx.setSettings.mock.calls).toEqual([
+        [
+          {
+            mode: "next",
+            blackBox: "fuel",
+            flagsOverlay: true,
+            dial: { rotation: to, pressAction: "switch-rotation" },
+          },
+        ],
+      ]);
+      // The switch itself sends nothing to the sim.
+      expect(mockTapBinding).not.toHaveBeenCalled();
+      // The strip and the trigger description show the new rotation at once.
+      expect(arrowDirections(lastCanvas(ctx))).toEqual(ARROWS[to]);
+      expect(ctx.setTriggerDescription).toHaveBeenLastCalledWith(expect.objectContaining({ rotate: LABELS[to] }));
+    });
+
+    it("turns the new pair after a switch, though the events still carry the old rotation", async () => {
+      const ctx = dialContext("sw-stale");
+      const settings = stored({ rotation: "select-control", pressAction: "switch-rotation" });
+      await appear(ctx, settings);
+      await press(ctx, settings);
+      mockTapBinding.mockClear();
+
+      // The host has not echoed the write: this payload is the pre-switch one.
+      await action.onDialRotate(rotateEvent(ctx, settings, 1) as never);
+      await action.onDialRotate(rotateEvent(ctx, settings, -1) as never);
+
+      expect(mockTapBinding.mock.calls).toEqual([[PAIRS["adjust-control"][0]], [PAIRS["adjust-control"][1]]]);
+    });
+
+    it("moves the #612 dim to the new rotation's pair", async () => {
+      const ctx = dialContext("sw-warn");
+      const settings = stored({ rotation: "select-control", pressAction: "switch-rotation" });
+      await appear(ctx, settings);
+      mockIsBindingMissing.mockImplementation(((keys: string[]) => keys.includes("blackBoxIncrementControl")) as never);
+
+      expect(lastCanvas(ctx)).not.toContain("binding-warning");
+
+      await press(ctx, settings);
+
+      expect(lastCanvas(ctx)).toContain("binding-warning");
+    });
+
+    it("flips back on a quick double press: the second lands while the first write is in flight", async () => {
+      const ctx = dialContext("sw-double");
+      const settings = stored({ rotation: "select-control", pressAction: "switch-rotation" });
+      await appear(ctx, settings);
+
+      // The first write stays pending until released.
+      let release: () => void = () => {};
+      ctx.setSettings.mockImplementationOnce(() => new Promise<void>((resolve) => (release = resolve)));
+
+      await action.onDialDown(eventFor(ctx, settings) as never);
+      const first = action.onDialUp(eventFor(ctx, settings) as never);
+      // Let the first press reach its write, which now hangs.
+      await vi.waitFor(() => expect(ctx.setSettings).toHaveBeenCalledTimes(1));
+
+      // The second press arrives with the same, pre-switch payload.
+      await press(ctx, settings);
+      release();
+      await first;
+
+      const written = ctx.setSettings.mock.calls.map(([s]) => (s as { dial: { rotation: string } }).dial.rotation);
+
+      expect(written).toEqual(["adjust-control", "select-control"]);
+      expect(arrowDirections(lastCanvas(ctx))).toEqual(ARROWS["select-control"]);
+      expect(ctx.setTriggerDescription).toHaveBeenLastCalledWith(
+        expect.objectContaining({ rotate: LABELS["select-control"] }),
+      );
+
+      mockTapBinding.mockClear();
+      await action.onDialRotate(rotateEvent(ctx, settings, 1) as never);
+
+      expect(mockTapBinding.mock.calls).toEqual([[PAIRS["select-control"][0]]]);
+    });
+
+    it.each([
+      ["a long press", "longPressAction"],
+      ["a tap of the display", "tapAction"],
+      ["a long touch", "longTouchAction"],
+    ] as const)("switches from %s too", async (_name, slot) => {
+      const ctx = dialContext(`sw-${slot}`);
+      const settings = stored({ rotation: "adjust-control", pressAction: "none", [slot]: "switch-rotation" });
+      await appear(ctx, settings);
+
+      if (slot === "longPressAction") await press(ctx, settings, 600);
+      else await action.onTouchTap(touchEvent(ctx, settings, slot === "longTouchAction") as never);
+
+      expect(ctx.setSettings).toHaveBeenCalledTimes(1);
+      expect(ctx.setSettings.mock.calls[0][0]).toMatchObject({ dial: { rotation: "select-control" } });
+      expect(arrowDirections(lastCanvas(ctx))).toEqual(ARROWS["select-control"]);
+    });
+
+    it("does nothing on a dial that cycles boxes, and says so at debug", async () => {
+      const ctx = dialContext("sw-boxes");
+      const settings = stored({
+        rotation: "boxes",
+        pressAction: "switch-rotation",
+        longPressAction: "switch-rotation",
+        tapAction: "switch-rotation",
+        longTouchAction: "switch-rotation",
+      });
+      await appear(ctx, settings);
+      mockTapBinding.mockClear();
+      ctx.setDialCanvas.mockClear();
+      ctx.setTriggerDescription.mockClear();
+      const debug = action["logger"].debug as ReturnType<typeof vi.fn>;
+      debug.mockClear();
+
+      await press(ctx, settings);
+      await press(ctx, settings, 600);
+      await action.onTouchTap(touchEvent(ctx, settings, false) as never);
+      await action.onTouchTap(touchEvent(ctx, settings, true) as never);
+
+      expect(ctx.setSettings).not.toHaveBeenCalled();
+      expect(mockTapBinding).not.toHaveBeenCalled();
+      expect(ctx.setDialCanvas).not.toHaveBeenCalled();
+      expect(ctx.setTriggerDescription).not.toHaveBeenCalled();
+      expect(debug.mock.calls.filter(([line]) => /Switch Select \/ Adjust ignored/.test(String(line)))).toHaveLength(4);
+
+      // And the dial still cycles boxes.
+      await action.onDialRotate(rotateEvent(ctx, settings, 1) as never);
+
+      expect(mockTapBinding.mock.calls).toEqual([["blackBoxCycleNext"]]);
+    });
+
+    it("hints and sounds nothing for it on a dial that cycles boxes", async () => {
+      const ctx = dialContext("sw-boxes-silent");
+      const settings = stored({
+        rotation: "boxes",
+        pressAction: "switch-rotation",
+        longPressAction: "switch-rotation",
+        tapAction: "switch-rotation",
+        longTouchAction: "switch-rotation",
+      });
+      await appear(ctx, settings);
+
+      expect(ctx.setTriggerDescription).toHaveBeenLastCalledWith({ rotate: "Cycle black boxes" });
+      expect(action.dialPressShape(eventFor(ctx, settings) as never)).toMatchObject({ short: false, long: false });
+      expect(action.touchPressShape(touchEvent(ctx, settings, false) as never)).toEqual({ kind: "none" });
+      expect(action.touchPressShape(touchEvent(ctx, settings, true) as never)).toEqual({ kind: "none" });
+    });
+
+    it("clicks and bleeps for it on a Select dial, where it acts", async () => {
+      const ctx = dialContext("sw-select-sounds");
+      const settings = stored({
+        rotation: "select-control",
+        pressAction: "switch-rotation",
+        longPressAction: "switch-rotation",
+        tapAction: "switch-rotation",
+      });
+      await appear(ctx, settings);
+
+      expect(action.dialPressShape(eventFor(ctx, settings) as never)).toMatchObject({ short: true, long: true });
+      expect(action.touchPressShape(touchEvent(ctx, settings, false) as never)).toEqual({ kind: "tap" });
+    });
+
+    it("switches in memory but writes nothing, with a warning, when the release carries no settings", async () => {
+      const ctx = dialContext("sw-empty");
+      const settings = stored({ rotation: "select-control", pressAction: "switch-rotation" });
+      await appear(ctx, settings);
+      mockTapBinding.mockClear();
+
+      await action.onDialDown(eventFor(ctx, settings) as never);
+      await action.onDialUp(eventFor(ctx, {}) as never);
+
+      expect(ctx.setSettings).not.toHaveBeenCalled();
+      expect(action["logger"].warn).toHaveBeenCalledWith(expect.stringContaining("rotation switch not persisted"));
+      expect(arrowDirections(lastCanvas(ctx))).toEqual(ARROWS["adjust-control"]);
+    });
+
+    it("keeps a rotation the Property Inspector sets after a switch", async () => {
+      const ctx = dialContext("sw-pi");
+      const settings = stored({ rotation: "select-control", pressAction: "switch-rotation" });
+      await appear(ctx, settings);
+      await press(ctx, settings);
+
+      await action.onDidReceiveSettings(
+        eventFor(ctx, stored({ rotation: "boxes", pressAction: "switch-rotation" })) as never,
+      );
+      mockTapBinding.mockClear();
+      await action.onDialRotate(rotateEvent(ctx, settings, 1) as never);
+
+      expect(mockTapBinding.mock.calls).toEqual([["blackBoxCycleNext"]]);
+      expect(lastCanvas(ctx)).toContain(">BLACK BOX<");
+    });
+
+    it("switches from a knob press where the extended gestures are off, with no trigger description", async () => {
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", false);
+      const ctx = dialContext("sw-knob", KNOB);
+      const settings = stored({ rotation: "adjust-control", pressAction: "switch-rotation" });
+      await appear(ctx, settings);
+
+      // A knob press of any length is a short press.
+      await press(ctx, settings, 2000);
+
+      expect(ctx.setSettings.mock.calls).toEqual([
+        [expect.objectContaining({ dial: { rotation: "select-control", pressAction: "switch-rotation" } })],
+      ]);
+      expect(arrowDirections(lastCanvas(ctx))).toEqual(ARROWS["select-control"]);
+      expect(lastCanvas(ctx)).toContain('viewBox="0 0 176 112"');
+      expect(ctx.setTriggerDescription).not.toHaveBeenCalled();
+    });
+
+    it("is offered in every gesture slot's schema", () => {
+      const parsed = DialSettings.parse({
+        pressAction: "switch-rotation",
+        longPressAction: "switch-rotation",
+        tapAction: "switch-rotation",
+        longTouchAction: "switch-rotation",
+      });
+
+      expect(resolveGestures(parsed)).toEqual({
+        press: "switch-rotation",
+        longPress: "switch-rotation",
+        tap: "switch-rotation",
+        longTouch: "switch-rotation",
+      });
+      expect(GESTURE_ACTIONS.at(-1)).toBe("none");
+    });
+
+    it.each(["select-control", "adjust-control"] as Switchable[])("labels it on a %s dial", (rotation) => {
+      const desc = buildTriggerDescription(
+        DialSettings.parse({
+          rotation,
+          pressAction: "switch-rotation",
+          longPressAction: "none",
+          tapAction: "switch-rotation",
+          longTouchAction: "switch-rotation",
+        }),
+      );
+
+      expect(desc).toEqual({
+        rotate: LABELS[rotation],
+        push: "Switch Select / Adjust",
+        touch: "Switch Select / Adjust",
+        longTouch: "Switch Select / Adjust",
+      });
+    });
+  });
+
+  describe("Press and Long Press defaults follow the rotation (#1585)", () => {
+    // What is stored in a slot: nothing, the user's own None, or a gesture.
+    const STORED = [undefined, "none", "next-control"] as const;
+    // What is stored as the rotation: nothing (every dial from before the choice), or each choice.
+    const STORED_ROTATIONS = [undefined, ...ROTATIONS] as const;
+    const MATRIX = STORED_ROTATIONS.flatMap((rotation) => STORED.map((value) => [rotation, value] as const));
+
+    function dialWith(rotation: string | undefined, slots: Record<string, string | undefined>) {
+      const dial: Record<string, unknown> = {};
+
+      if (rotation !== undefined) dial.rotation = rotation;
+
+      for (const [slot, value] of Object.entries(slots)) {
+        if (value !== undefined) dial[slot] = value;
+      }
+
+      return dial;
+    }
+
+    /** What the spec says an unset slot does, written out rather than read from the table under test. */
+    function expectedDefault(rotation: string | undefined, slot: "press" | "longPress"): string {
+      if (rotation !== "select-control" && rotation !== "adjust-control") return "none";
+
+      return slot === "press" ? "toggle-control" : "switch-rotation";
+    }
+
+    it("defaults a Select or Adjust dial to Toggle Selected Control and Switch Select / Adjust, and a boxes dial to none", () => {
+      expect(ROTATION_GESTURE_DEFAULTS).toEqual({
+        boxes: { pressAction: "none", longPressAction: "none" },
+        "select-control": { pressAction: "toggle-control", longPressAction: "switch-rotation" },
+        "adjust-control": { pressAction: "toggle-control", longPressAction: "switch-rotation" },
+      });
+    });
+
+    it.each(MATRIX)("Press with rotation %s and %s stored", (rotation, value) => {
+      const resolved = resolveGestures(DialSettings.parse(dialWith(rotation, { pressAction: value })));
+
+      expect(resolved.press).toBe(value ?? expectedDefault(rotation, "press"));
+    });
+
+    it.each(MATRIX)("Long Press with rotation %s and %s stored", (rotation, value) => {
+      const resolved = resolveGestures(DialSettings.parse(dialWith(rotation, { longPressAction: value })));
+
+      expect(resolved.longPress).toBe(value ?? expectedDefault(rotation, "longPress"));
+    });
+
+    it.each(STORED_ROTATIONS)("Tap Display and Long Touch stay none with rotation %s", (rotation) => {
+      const resolved = resolveGestures(DialSettings.parse(dialWith(rotation, {})));
+
+      expect(resolved.tap).toBe("none");
+      expect(resolved.longTouch).toBe("none");
+    });
+
+    it("announces a default exactly as it resolves it, wherever the default acts", () => {
+      for (const rotation of ["select-control", "adjust-control"] as const) {
+        const dial = DialSettings.parse({ rotation });
+
+        expect(firingGestures(dial), rotation).toEqual(resolveGestures(dial));
+      }
+    });
+
+    it.each(["select-control", "adjust-control"] as const)(
+      "an untouched %s dial toggles the selected control on a press and switches on a long press",
+      async (rotation) => {
+        const ctx = dialContext(`gd-${rotation}`);
+        const settings = withDial({ rotation });
+        await appear(ctx, settings);
+        mockTapBinding.mockClear();
+
+        await action.onDialDown(eventFor(ctx, settings) as never);
+        await action.onDialUp(eventFor(ctx, settings) as never);
+
+        expect(mockTapBinding.mock.calls).toEqual([["blackBoxToggleControl"]]);
+        expect(ctx.setSettings).not.toHaveBeenCalled();
+
+        await action.onDialDown(eventFor(ctx, settings) as never);
+        vi.advanceTimersByTime(600);
+        await action.onDialUp(eventFor(ctx, settings) as never);
+
+        // The switch is written over the raw settings: the slots stay unset.
+        expect(ctx.setSettings.mock.calls).toEqual([[{ dial: { rotation: SWITCHED_ROTATION[rotation] } }]]);
+        expect(mockTapBinding).toHaveBeenCalledTimes(1);
+      },
+    );
+
+    it("keeps its defaults across its own switch: the next press still toggles, the next long press switches back", async () => {
+      const ctx = dialContext("gd-round-trip");
+      const settings = withDial({ rotation: "select-control" });
+      await appear(ctx, settings);
+      mockTapBinding.mockClear();
+
+      for (let i = 0; i < 2; i++) {
+        await action.onDialDown(eventFor(ctx, settings) as never);
+        vi.advanceTimersByTime(600);
+        await action.onDialUp(eventFor(ctx, settings) as never);
+      }
+
+      await action.onDialDown(eventFor(ctx, settings) as never);
+      await action.onDialUp(eventFor(ctx, settings) as never);
+
+      expect(ctx.setSettings.mock.calls.map(([s]) => (s as { dial: { rotation: string } }).dial.rotation)).toEqual([
+        "adjust-control",
+        "select-control",
+      ]);
+      expect(mockTapBinding.mock.calls).toEqual([["blackBoxToggleControl"]]);
+    });
+
+    it.each(["select-control", "adjust-control"] as const)(
+      "a stored none wins on a %s dial: neither release fires",
+      async (rotation) => {
+        const ctx = dialContext(`gd-none-${rotation}`);
+        const settings = withDial({ rotation, pressAction: "none", longPressAction: "none" });
+        await appear(ctx, settings);
+        mockTapBinding.mockClear();
+
+        await action.onDialDown(eventFor(ctx, settings) as never);
+        await action.onDialUp(eventFor(ctx, settings) as never);
+        await action.onDialDown(eventFor(ctx, settings) as never);
+        vi.advanceTimersByTime(600);
+        await action.onDialUp(eventFor(ctx, settings) as never);
+
+        expect(mockTapBinding).not.toHaveBeenCalled();
+        expect(ctx.setSettings).not.toHaveBeenCalled();
+        expect(action.dialPressShape(eventFor(ctx, settings) as never)).toMatchObject({ short: false, long: false });
+        expect(ctx.setTriggerDescription).toHaveBeenLastCalledWith({
+          rotate: rotation === "select-control" ? "Select control" : "Adjust control",
+        });
+      },
+    );
+
+    it.each([
+      ["no settings at all", {}],
+      ["an empty dial", withDial({})],
+      ["a dial from before the choice", withDial({ pressBox: "fuel", colors: { borderColor: "#112233" } })],
+      ["a boxes dial", withDial({ rotation: "boxes" })],
+    ] as const)(
+      "an existing instance with %s is unchanged: nothing fires and the press is silent",
+      async (_name, s) => {
+        const settings = s as Record<string, unknown>;
+        const ctx = dialContext("gd-existing");
+        await appear(ctx, settings);
+        mockTapBinding.mockClear();
+
+        expect(action.dialPressShape(eventFor(ctx, settings) as never)).toEqual({
+          kind: "release",
+          thresholdMs: 500,
+          short: false,
+          long: false,
+        });
+        expect(action.touchPressShape(touchEvent(ctx, settings, false) as never)).toEqual({ kind: "none" });
+        expect(action.touchPressShape(touchEvent(ctx, settings, true) as never)).toEqual({ kind: "none" });
+        expect(ctx.setTriggerDescription).toHaveBeenLastCalledWith({ rotate: "Cycle black boxes" });
+
+        await action.onDialDown(eventFor(ctx, settings) as never);
+        await action.onDialUp(eventFor(ctx, settings) as never);
+        await action.onDialDown(eventFor(ctx, settings) as never);
+        vi.advanceTimersByTime(600);
+        await action.onDialUp(eventFor(ctx, settings) as never);
+        await action.onTouchTap(touchEvent(ctx, settings, false) as never);
+        await action.onTouchTap(touchEvent(ctx, settings, true) as never);
+
+        expect(mockTapBinding).not.toHaveBeenCalled();
+        expect(ctx.setSettings).not.toHaveBeenCalled();
+      },
+    );
+
+    it.each(["select-control", "adjust-control"] as const)(
+      "an untouched %s dial clicks on a press and bleeps on a long press, and hints both",
+      async (rotation) => {
+        const ctx = dialContext(`gd-shape-${rotation}`);
+        const settings = withDial({ rotation });
+        await appear(ctx, settings);
+
+        expect(action.dialPressShape(eventFor(ctx, settings) as never)).toEqual({
+          kind: "release",
+          thresholdMs: 500,
+          short: true,
+          long: true,
+        });
+        // The touch slots have no default: a tap of the display stays silent.
+        expect(action.touchPressShape(touchEvent(ctx, settings, false) as never)).toEqual({ kind: "none" });
+        expect(action.touchPressShape(touchEvent(ctx, settings, true) as never)).toEqual({ kind: "none" });
+        expect(ctx.setTriggerDescription).toHaveBeenLastCalledWith({
+          rotate: rotation === "select-control" ? "Select control" : "Adjust control",
+          push: "Toggle selected control (hold: Switch Select / Adjust)",
+        });
+      },
+    );
+
+    it("a stored gesture wins over the default in the shape and the hint too", async () => {
+      const ctx = dialContext("gd-stored");
+      const settings = withDial({ rotation: "adjust-control", pressAction: "next-control", longPressAction: "none" });
+      await appear(ctx, settings);
+
+      expect(action.dialPressShape(eventFor(ctx, settings) as never)).toMatchObject({ short: true, long: false });
+      expect(ctx.setTriggerDescription).toHaveBeenLastCalledWith({
+        rotate: "Adjust control",
+        push: "Select next control",
+      });
+    });
+
+    it("on a knob an untouched Adjust dial toggles on every press and never switches", async () => {
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", false);
+      const ctx = dialContext("gd-knob", KNOB);
+      const settings = withDial({ rotation: "adjust-control" });
+      await appear(ctx, settings);
+      mockTapBinding.mockClear();
+
+      await action.onDialDown(eventFor(ctx, settings) as never);
+      vi.advanceTimersByTime(2000);
+      await action.onDialUp(eventFor(ctx, settings) as never);
+
+      expect(mockTapBinding.mock.calls).toEqual([["blackBoxToggleControl"]]);
+      expect(ctx.setSettings).not.toHaveBeenCalled();
+      expect(action.dialPressShape(eventFor(ctx, settings) as never)).toEqual({
+        kind: "release",
+        thresholdMs: Number.POSITIVE_INFINITY,
+        short: true,
+        long: false,
+      });
     });
   });
 

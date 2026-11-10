@@ -188,7 +188,7 @@ describe("action-comms catalog", () => {
     }
   });
 
-  it("describes every Black Box dial rotation as the pair the surface turns, and every gesture but none (#1585)", () => {
+  it("describes every Black Box dial rotation as the pair the surface turns, and every gesture that reaches iRacing (#1585)", () => {
     // A rotation whose descriptor named other keys than the surface taps would
     // warn about one pair while the turn presses another.
     const dial = COMMS_CATALOG["black-box-selector-dial"];
@@ -204,8 +204,13 @@ describe("action-comms catalog", () => {
       });
     }
 
+    // The gestures that send nothing to iRacing have no entry, so the status
+    // line renders nothing for them: `none`, and `switch-rotation`, which only
+    // flips the dial's own rotation (as Fuel Service's `switch-mode` does).
+    const sendsNothing: ReadonlySet<string> = new Set(["none", "switch-rotation"]);
+
     for (const gesture of BLACK_BOX_DIAL_GESTURES) {
-      if (gesture === "none") expect(dial[gesture]).toBeUndefined();
+      if (sendsNothing.has(gesture)) expect(dial[gesture], gesture).toBeUndefined();
       else expect(dial[gesture], gesture).toBeDefined();
     }
 

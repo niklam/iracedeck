@@ -382,11 +382,13 @@ export class BlackBoxSelector extends ConnectionStateAwareAction<BlackBoxSelecto
   }
 
   override async onDialUp(ev: IDeckDialUpEvent<BlackBoxSelectorSettings>): Promise<void> {
-    await this.dialSurface.up(ev.action.id);
+    // The raw settings ride along for the Switch Select / Adjust gesture, which
+    // persists over them rather than over the parsed ones (rule 10).
+    await this.dialSurface.up(ev.action.id, ev.payload.settings);
   }
 
   override async onTouchTap(ev: IDeckTouchTapEvent<BlackBoxSelectorSettings>): Promise<void> {
     const settings = this.parseSettings(ev.payload.settings);
-    await this.dialSurface.touchTap(ev.action, settings.dial, ev.payload.hold === true);
+    await this.dialSurface.touchTap(ev.action, settings.dial, ev.payload.hold === true, ev.payload.settings);
   }
 }

@@ -116,6 +116,7 @@
 					<option value="next-control">Select Next Control</option>
 					<option value="previous-control">Select Previous Control</option>
 					<option value="toggle-control">Toggle Selected Control</option>
+					<option value="switch-rotation">Switch Select / Adjust</option>
 				</sdpi-select>
 			</sdpi-item>
 			<ird-binding-status mode-setting="dial.pressAction" comms='<%= JSON.stringify(__dialComms) %>'></ird-binding-status>
@@ -129,6 +130,24 @@
 				Control and the press on Select Next Control, one dial walks the box's controls
 				and changes each.
 			</div>
+			<div class="ird-supporting-text">
+				Switch Select / Adjust changes this dial's Mode between Select Control and
+				Adjust Control, so one dial can both move between the open box's controls and
+				change them. It needs no binding, and does nothing while the Mode is Cycle
+				Black Boxes.
+			</div>
+			<% if (locals.platform?.features?.dialExtendedGestures !== false) { %>
+			<div class="ird-supporting-text">
+				While the Mode is Select Control or Adjust Control, a Press Action you have not
+				chosen is Toggle Selected Control and a Long Press you have not chosen is Switch
+				Select / Adjust. Choose None to turn either off.
+			</div>
+			<% } else { %>
+			<div class="ird-supporting-text">
+				While the Mode is Select Control or Adjust Control, a Press Action you have not
+				chosen is Toggle Selected Control. Choose None to turn it off.
+			</div>
+			<% } %>
 
 			<% if (locals.platform?.features?.dialExtendedGestures !== false) { %>
 			<sdpi-item label="Long Press">
@@ -139,6 +158,7 @@
 					<option value="next-control">Select Next Control</option>
 					<option value="previous-control">Select Previous Control</option>
 					<option value="toggle-control">Toggle Selected Control</option>
+					<option value="switch-rotation">Switch Select / Adjust</option>
 				</sdpi-select>
 			</sdpi-item>
 			<ird-binding-status mode-setting="dial.longPressAction" comms='<%= JSON.stringify(__dialComms) %>'></ird-binding-status>
@@ -151,6 +171,7 @@
 					<option value="next-control">Select Next Control</option>
 					<option value="previous-control">Select Previous Control</option>
 					<option value="toggle-control">Toggle Selected Control</option>
+					<option value="switch-rotation">Switch Select / Adjust</option>
 				</sdpi-select>
 			</sdpi-item>
 			<ird-binding-status mode-setting="dial.tapAction" comms='<%= JSON.stringify(__dialComms) %>'></ird-binding-status>
@@ -163,6 +184,7 @@
 					<option value="next-control">Select Next Control</option>
 					<option value="previous-control">Select Previous Control</option>
 					<option value="toggle-control">Toggle Selected Control</option>
+					<option value="switch-rotation">Switch Select / Adjust</option>
 				</sdpi-select>
 			</sdpi-item>
 			<ird-binding-status mode-setting="dial.longTouchAction" comms='<%= JSON.stringify(__dialComms) %>'></ird-binding-status>
@@ -190,6 +212,23 @@
 		<%- include('dial-controller') %>
 
 		<script>
+			// What a Press Action and a Long Press nobody has chosen do, by the dial's
+			// Mode (#1585). A copy of ROTATION_GESTURE_DEFAULTS in the dial surface,
+			// which black-box-selector-pi.test.ts holds this line to.
+			const DIAL_GESTURE_DEFAULTS = {"boxes":{"pressAction":"none","longPressAction":"none"},"select-control":{"pressAction":"toggle-control","longPressAction":"switch-rotation"},"adjust-control":{"pressAction":"toggle-control","longPressAction":"switch-rotation"}};
+
+			// Shows an unset slot's default for the dial's Mode without storing it:
+			// sdpi-select only draws its `default` (and the binding status line reads
+			// it), and writes a setting only when the user picks an option. So the slot
+			// stays unset, and the plugin resolves it from the Mode at each press.
+			function applyDialGestureDefaults(rotation) {
+				const defaults = DIAL_GESTURE_DEFAULTS[rotation] || DIAL_GESTURE_DEFAULTS.boxes;
+
+				for (const slot of Object.keys(defaults)) {
+					document.querySelector(`sdpi-select[setting="dial.${slot}"]`)?.setAttribute("default", defaults[slot]);
+				}
+			}
+
 			function updateVisibility(mode) {
 				// Show the Black Box dropdown only in Direct mode
 				document.getElementById("blackbox-item")?.classList.toggle("hidden", mode !== "direct");
@@ -223,6 +262,25 @@
 							updateVisibility(currentMode);
 						}
 					});
+				}
+
+				const rotationSelect = document.querySelector('sdpi-select[setting="dial.rotation"]');
+
+				if (rotationSelect) {
+					let lastRotation = null;
+					const syncGestureDefaults = () => {
+						const rotation = rotationSelect.value || "boxes";
+
+						if (rotation === lastRotation) return;
+
+						lastRotation = rotation;
+						applyDialGestureDefaults(rotation);
+					};
+
+					syncGestureDefaults();
+					rotationSelect.addEventListener("change", syncGestureDefaults);
+					rotationSelect.addEventListener("input", syncGestureDefaults);
+					window.irdPoll(syncGestureDefaults);
 				}
 
 				if ((await window.irdResolveController()) === "Encoder") {

@@ -157,9 +157,13 @@ export const COMMS_CATALOG: Record<string, ActionCommEntry> = {
   // the keyBy descriptor (the audio-controls `mute-unmute` pattern);
   // `toggle-size` taps Toggle Black Box Size (#1238); `toggle-control`,
   // `next-control` and `previous-control` tap the selected-control presses
-  // (#1585). Every dial path is keybind-backed — black-box selection has no SDK
-  // support. A separate entry from the keypad map: the keypad `next`/`previous`
-  // are single keys, the dial rotation needs both.
+  // (#1585). Every dial path that reaches iRacing is keybind-backed — black-box
+  // selection has no SDK support. The gesture values "switch-rotation" and
+  // "none" are intentionally omitted: switch-rotation only flips the dial's own
+  // `dial.rotation` and sends nothing to iRacing, so the status line renders
+  // nothing for it (like Fuel Service's "switch-mode"). A separate entry from
+  // the keypad map: the keypad `next`/`previous` are single keys, the dial
+  // rotation needs both.
   "black-box-selector-dial": entry("dial.rotation", {
     boxes: pair(BLACK_BOX_CONTROL_KEYS.cycleNext, BLACK_BOX_CONTROL_KEYS.cyclePrevious),
     "select-control": pair(BLACK_BOX_CONTROL_KEYS.selectNextControl, BLACK_BOX_CONTROL_KEYS.selectPreviousControl),

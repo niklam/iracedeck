@@ -16,7 +16,17 @@
  * Toggle Black Box Size binding (#1238), or taps Toggle / Select Next / Select
  * Previous Control (#1585) — each the same single tap its keypad press sends.
  * With rotation on Adjust Control and the press on Next Control, one dial
- * walks the box's controls and adjusts each.
+ * walks the box's controls and adjusts each. One gesture sends nothing to the
+ * sim: Switch Select / Adjust flips this dial's own `dial.rotation` between
+ * Select Control and Adjust Control and persists it, so one dial can do both.
+ * On a Select or Adjust dial a Press the user never set toggles the selected
+ * control and a Long Press switches Select / Adjust ({@link resolveGestures});
+ * a dial that cycles boxes keeps both at None, as before the choice existed.
+ *
+ * The surface persists settings plugin-side, so its context is authoritative
+ * (encoders rule 10): `willAppear` / `didReceiveSettings` assign the dial
+ * settings, and every turn, release and touch reads them from the context,
+ * never from an input event's payload.
  *
  * iRacing exposes no telemetry for which black box is currently open, nor for
  * the selected control (the documented #782 identity-only compromise), so the
@@ -50,8 +60,9 @@ import { BLACK_BOX_CONTROL_KEYS, BLACK_BOX_GLOBAL_KEYS, type BlackBoxId } from "
 import { dialAppearanceFields, type DialBoxColors, resolveDialBoxColors } from "../../shared/dial-box.js";
 import { KNOB_BOX_HEIGHT, KNOB_BOX_WIDTH } from "../../shared/dial-knob-box.js";
 import { pushDialNameIcon } from "../../shared/dial-name-icon.js";
+import { persistDialPatch } from "../../shared/dial-persist.js";
 import { classifyDialReleaseForHost } from "../../shared/dial-release.js";
-import { type DialGestures, gestureSlots, ReleaseDialSurfaceBase } from "../../shared/dial-surface-base.js";
+import { type DialGestures, ReleaseDialSurfaceBase } from "../../shared/dial-surface-base.js";
 
 /** Cap on binding taps dispatched for one rotate event (a fast spin coalesces ticks). */
 const MAX_TAPS_PER_EVENT = 5;
@@ -110,7 +121,8 @@ export const PRESS_BOXES = [
  * `open-selected-box` taps the per-box binding chosen by `dial.pressBox`;
  * `toggle-size` taps Toggle Black Box Size (#1238); `toggle-control`,
  * `next-control` and `previous-control` tap Toggle / Select Next / Select
- * Previous Control (#1585).
+ * Previous Control (#1585); `switch-rotation` sends nothing and flips this
+ * dial's `dial.rotation` between Select Control and Adjust Control (#1585).
  */
 export const GESTURE_ACTIONS = [
   "open-selected-box",
@@ -118,9 +130,39 @@ export const GESTURE_ACTIONS = [
   "toggle-control",
   "next-control",
   "previous-control",
+  "switch-rotation",
   "none",
 ] as const;
 export type GestureSlot = (typeof GESTURE_ACTIONS)[number];
+
+/**
+ * The rotation `switch-rotation` takes each rotation to (#1585): Select Control
+ * and Adjust Control swap. `boxes` has no entry, so the gesture does nothing on
+ * a dial that cycles boxes — it never takes a dial to or from `boxes`.
+ */
+export const SWITCHED_ROTATION: Partial<Record<DialRotation, DialRotation>> = {
+  "select-control": "adjust-control",
+  "adjust-control": "select-control",
+};
+
+/**
+ * What a Press and a Long Press do on a dial whose slot the user never stored,
+ * by what the dial turns (#1585). On a Select or Adjust dial a press toggles
+ * the selected control and a long press switches Select / Adjust; a dial that
+ * cycles boxes — every dial stored before the choice existed — keeps `none`,
+ * so no dial a user already has changes. The touch slots have no entry: Tap
+ * Display and Long Touch default to `none` on every rotation (VR safety). The
+ * PI repeats this table to show an unset slot's default, and a test holds the
+ * copy to it.
+ */
+export const ROTATION_GESTURE_DEFAULTS: Record<
+  DialRotation,
+  { pressAction: GestureSlot; longPressAction: GestureSlot }
+> = {
+  boxes: { pressAction: "none", longPressAction: "none" },
+  "select-control": { pressAction: "toggle-control", longPressAction: "switch-rotation" },
+  "adjust-control": { pressAction: "toggle-control", longPressAction: "switch-rotation" },
+};
 
 /**
  * The binding each selected-control gesture taps (#1585) — the keys the keypad
@@ -139,8 +181,13 @@ export const DialSettings = z
     rotation: z.enum(ROTATIONS).default("boxes"),
     // Which box a press opens directly (the keypad Direct mode's 11 options).
     pressBox: z.enum(PRESS_BOXES).default("lap-timing"),
-    pressAction: z.enum(GESTURE_ACTIONS).default("none"),
-    longPressAction: z.enum(GESTURE_ACTIONS).default("none"),
+    // No schema default on these two (#1585): a slot the user never stored
+    // stays unset in the parsed settings and takes its default from the
+    // rotation at read time (resolveGestures), so a stored `none` — the user's
+    // own choice — is told apart from a slot nobody set. Read them through
+    // resolveGestures, never directly.
+    pressAction: z.enum(GESTURE_ACTIONS).optional(),
+    longPressAction: z.enum(GESTURE_ACTIONS).optional(),
     tapAction: z.enum(GESTURE_ACTIONS).default("none"),
     longTouchAction: z.enum(GESTURE_ACTIONS).default("none"),
     // Dash-box appearance overrides (colors, issue #811).
@@ -150,12 +197,64 @@ export const DialSettings = z
 
 export type DialSettings = z.infer<typeof DialSettings>;
 
+/** The four gesture slots of one dial, each resolved to the gesture it stands for. */
+export interface ResolvedGestures {
+  press: GestureSlot;
+  longPress: GestureSlot;
+  tap: GestureSlot;
+  longTouch: GestureSlot;
+}
+
+/**
+ * The gesture each slot of a dial stands for (#1585) — the ONE place a slot is
+ * read. A stored value always wins, `none` included; an unset Press or Long
+ * Press takes the rotation's default from {@link ROTATION_GESTURE_DEFAULTS}.
+ * The release, the touch, the press shapes and the trigger description all
+ * read the slots through here, so they cannot disagree about a default.
+ */
+export function resolveGestures(dial: DialSettings): ResolvedGestures {
+  const defaults = ROTATION_GESTURE_DEFAULTS[dial.rotation];
+
+  return {
+    press: dial.pressAction ?? defaults.pressAction,
+    longPress: dial.longPressAction ?? defaults.longPressAction,
+    tap: dial.tapAction,
+    longTouch: dial.longTouchAction,
+  };
+}
+
+/** Whether a resolved gesture does anything on this dial: `switch-rotation` has nothing to switch on a boxes dial. */
+function gestureFires(dial: DialSettings, gesture: GestureSlot): boolean {
+  if (gesture === "none") return false;
+
+  return gesture !== "switch-rotation" || SWITCHED_ROTATION[dial.rotation] !== undefined;
+}
+
+/**
+ * {@link resolveGestures} with every slot that would do nothing on this dial
+ * as `none` — what the dial announces: the press sounds (#269) and the
+ * trigger description. A sound or a hint for Switch Select / Adjust on a dial
+ * that cycles boxes would promise a change that never comes.
+ */
+export function firingGestures(dial: DialSettings): ResolvedGestures {
+  const resolved = resolveGestures(dial);
+  const firing = (gesture: GestureSlot): GestureSlot => (gestureFires(dial, gesture) ? gesture : "none");
+
+  return {
+    press: firing(resolved.press),
+    longPress: firing(resolved.longPress),
+    tap: firing(resolved.tap),
+    longTouch: firing(resolved.longTouch),
+  };
+}
+
 /** @internal Exported for testing */
 export function buildTriggerDescription(dial: DialSettings): DeckTriggerDescription {
   const description: DeckTriggerDescription = { rotate: rotationLabel(dial.rotation) };
+  const gestures = firingGestures(dial);
 
-  const pushLabel = gestureLabel(dial.pressAction);
-  const holdLabel = gestureLabel(dial.longPressAction);
+  const pushLabel = gestureLabel(gestures.press);
+  const holdLabel = gestureLabel(gestures.longPress);
 
   if (pushLabel && holdLabel) {
     description.push = `${pushLabel} (hold: ${holdLabel})`;
@@ -165,13 +264,13 @@ export function buildTriggerDescription(dial: DialSettings): DeckTriggerDescript
     description.push = `Hold: ${holdLabel}`;
   }
 
-  const tapLabel = gestureLabel(dial.tapAction);
+  const tapLabel = gestureLabel(gestures.tap);
 
   if (tapLabel) {
     description.touch = tapLabel;
   }
 
-  const longTouchLabel = gestureLabel(dial.longTouchAction);
+  const longTouchLabel = gestureLabel(gestures.longTouch);
 
   if (longTouchLabel) {
     description.longTouch = longTouchLabel;
@@ -210,6 +309,8 @@ function gestureLabel(action: GestureSlot): string | undefined {
       return "Select next control";
     case "previous-control":
       return "Select previous control";
+    case "switch-rotation":
+      return "Switch Select / Adjust";
     case "none":
       return undefined;
     default: {
@@ -468,6 +569,11 @@ function renderBlackBoxFor(canvas: DialCanvasProfile, rotation: DialRotation, ar
 }
 
 interface BlackBoxDialContext {
+  /**
+   * The dial's settings, authoritative between settings deliveries (rule 10):
+   * assigned by `willAppear` / `didReceiveSettings` and by the Switch Select /
+   * Adjust gesture, never refreshed from an input event's payload.
+   */
   dial: DialSettings;
   action: IDeckActionContext;
   pressStart: number;
@@ -489,6 +595,7 @@ export class BlackBoxSelectorDialSurface extends ReleaseDialSurfaceBase<BlackBox
 
   async willAppear(action: IDeckActionContext, dial: DialSettings): Promise<void> {
     const ctx = this.ensureContext(action, dial);
+    ctx.dial = dial;
 
     pushDialNameIcon(action, { line1: "BLACK", line2: "BOX", backgroundColor: "#2a2a2a" }, this.host.logger);
 
@@ -502,6 +609,7 @@ export class BlackBoxSelectorDialSurface extends ReleaseDialSurfaceBase<BlackBox
 
   async didReceiveSettings(action: IDeckActionContext, dial: DialSettings): Promise<void> {
     const ctx = this.ensureContext(action, dial);
+    ctx.dial = dial;
 
     await this.applyTriggerDescription(ctx);
     await this.renderFeedback(ctx);
@@ -518,6 +626,8 @@ export class BlackBoxSelectorDialSurface extends ReleaseDialSurfaceBase<BlackBox
 
     if (ticks === 0) return;
 
+    // From the context, not the event (see refreshContext): the rotation may
+    // have been switched by a gesture the event's settings do not carry yet.
     const { rotation } = ctx.dial;
     const keys = ROTATION_KEYS[rotation];
     const key = ticks > 0 ? keys.clockwise : keys.counterClockwise;
@@ -540,7 +650,7 @@ export class BlackBoxSelectorDialSurface extends ReleaseDialSurfaceBase<BlackBox
     ctx.rotatedWhilePressed = false;
   }
 
-  async up(actionId: string): Promise<void> {
+  async up(actionId: string, rawSettings?: unknown): Promise<void> {
     const ctx = this.contextsState.get(actionId);
 
     if (!ctx) return;
@@ -561,27 +671,31 @@ export class BlackBoxSelectorDialSurface extends ReleaseDialSurfaceBase<BlackBox
 
     if (kind === "push-turn") return;
 
-    const gesture = kind === "long" ? ctx.dial.longPressAction : ctx.dial.pressAction;
+    const gestures = resolveGestures(ctx.dial);
+    const gesture = kind === "long" ? gestures.longPress : gestures.press;
 
     if (gesture === "none") return;
 
     this.host.logger.info(kind === "long" ? "Black box dial long-pressed" : "Black box dial pressed");
-    await this.doGesture(ctx, gesture);
+    await this.doGesture(ctx, gesture, rawSettings);
   }
 
-  async touchTap(action: IDeckActionContext, dial: DialSettings, hold: boolean): Promise<void> {
+  async touchTap(action: IDeckActionContext, dial: DialSettings, hold: boolean, rawSettings?: unknown): Promise<void> {
     if (!__FEATURE_DIAL_EXTENDED_GESTURES__) return;
 
-    const gesture = hold ? dial.longTouchAction : dial.tapAction;
-
-    if (gesture === "none") return;
-
+    // The gesture is read from the context, not the event payload — the same
+    // stale-settings model `up()` follows (see refreshContext).
     const ctx = this.inputContext(action, dial, "touchTap");
 
     if (!ctx) return;
 
+    const gestures = resolveGestures(ctx.dial);
+    const gesture = hold ? gestures.longTouch : gestures.tap;
+
+    if (gesture === "none") return;
+
     this.host.logger.info(hold ? "Black box dial long touch" : "Black box dial tap");
-    await this.doGesture(ctx, gesture);
+    await this.doGesture(ctx, gesture, rawSettings);
   }
 
   refreshAll(): void {
@@ -601,21 +715,35 @@ export class BlackBoxSelectorDialSurface extends ReleaseDialSurfaceBase<BlackBox
     return { dial, action, pressStart: 0, rotatedWhilePressed: false, lastWarn: null };
   }
 
-  protected override refreshContext(ctx: BlackBoxDialContext, action: IDeckActionContext, dial: DialSettings): void {
+  /**
+   * An EXISTING context keeps its `dial` settings (rule 10): they change only
+   * through `willAppear` / `didReceiveSettings`, which assign `ctx.dial`
+   * explicitly, and through the Switch Select / Adjust gesture. An input event's
+   * payload must not refresh them: the host never echoes the gesture's
+   * plugin-side setSettings back, and a host that fills event payloads from a
+   * per-context cache could hand back the rotation from before the switch,
+   * silently undoing it. So only the action is refreshed.
+   */
+  protected override refreshContext(ctx: BlackBoxDialContext, action: IDeckActionContext, _dial: DialSettings): void {
     ctx.action = action;
-    ctx.dial = dial;
   }
 
-  protected override dialGestures(_ctx: BlackBoxDialContext, dial: DialSettings): DialGestures {
-    return gestureSlots(dial);
+  /**
+   * The gestures this context announces, read from the context, not the event
+   * (an input event does not refresh this surface's settings), with its unset
+   * slots resolved and its no-op ones silent ({@link firingGestures}).
+   */
+  protected override dialGestures(ctx: BlackBoxDialContext, _dial: DialSettings): DialGestures {
+    return firingGestures(ctx.dial);
   }
 
   /**
    * Runs one press or touch gesture: a single tap of the binding it names (the
    * box chosen by `dial.pressBox`, Toggle Black Box Size, or a selected-control
-   * press), never a #818 prime sequence. Exhaustive over {@link GESTURE_ACTIONS}.
+   * press), never a #818 prime sequence — or the Select / Adjust switch, which
+   * sends nothing to the sim. Exhaustive over {@link GESTURE_ACTIONS}.
    */
-  private async doGesture(ctx: BlackBoxDialContext, gesture: GestureSlot): Promise<void> {
+  private async doGesture(ctx: BlackBoxDialContext, gesture: GestureSlot, rawSettings?: unknown): Promise<void> {
     switch (gesture) {
       case "none":
         return;
@@ -645,6 +773,10 @@ export class BlackBoxSelectorDialSurface extends ReleaseDialSurfaceBase<BlackBox
         await this.host.tapBinding(GESTURE_CONTROL_KEYS[gesture]);
 
         return;
+      case "switch-rotation":
+        await this.switchRotation(ctx, rawSettings);
+
+        return;
       default: {
         // A new gesture must be dispatched here: this line stops compiling until it is.
         const unhandled: never = gesture;
@@ -652,6 +784,37 @@ export class BlackBoxSelectorDialSurface extends ReleaseDialSurfaceBase<BlackBox
         throw new Error(`Black Box Selector: no dial gesture "${String(unhandled)}"`);
       }
     }
+  }
+
+  /**
+   * Switch Select / Adjust (#1585): flips this dial between Select Control and
+   * Adjust Control, redraws it and persists the choice, so it survives a
+   * restart and the Property Inspector's Mode shows it. Nothing on a dial that
+   * cycles boxes.
+   */
+  private async switchRotation(ctx: BlackBoxDialContext, rawSettings: unknown): Promise<void> {
+    const next = SWITCHED_ROTATION[ctx.dial.rotation];
+
+    if (!next) {
+      this.host.logger.debug(`Switch Select / Adjust ignored: the dial turns ${ctx.dial.rotation}`);
+
+      return;
+    }
+
+    this.host.logger.info(`Black box dial switched rotation to ${next}`);
+
+    // The host never echoes a plugin-side setSettings back as
+    // didReceiveSettings, so ctx.dial is what the next turn taps and the next
+    // gesture flips from — and it flips BEFORE anything is awaited, so a second
+    // press landing while the write is in flight flips back rather than
+    // repeating this one (rule 10).
+    ctx.dial = { ...ctx.dial, rotation: next };
+
+    // The dial shows the new rotation at once; the write follows. Each reads
+    // ctx.dial when it runs, so two quick switches end on the last one's look.
+    await this.applyTriggerDescription(ctx);
+    await this.renderFeedback(ctx);
+    await persistDialPatch(ctx.action, rawSettings, { rotation: next }, this.host.logger, "rotation switch");
   }
 
   /** The strip warns when either binding the context's rotation turns is unset (#612, #1585). */
