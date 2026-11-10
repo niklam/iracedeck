@@ -2,7 +2,13 @@ import type { CommDescriptor } from "@iracedeck/deck-core";
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
+import { BLACK_BOX_SELECTED_CONTROL_KEYS, BLACK_BOX_SELECTED_CONTROLS } from "../shared/black-box.js";
 import { DIAL_CATEGORIES, DIAL_PRESS_ACTIONS } from "./audio-controls/audio-controls-settings.js";
+import {
+  GESTURE_ACTIONS as BLACK_BOX_DIAL_GESTURES,
+  ROTATION_KEYS as BLACK_BOX_ROTATION_KEYS,
+  ROTATIONS as BLACK_BOX_ROTATIONS,
+} from "./black-box-selector/black-box-selector-dial-surface.js";
 import { type ActionCommMeta, COMMS_CATALOG } from "./comms-catalog.js";
 import { REPLAY_DIAL_GESTURES, REPLAY_DIAL_MODES } from "./replay-control/replay-control-dial-settings.js";
 
@@ -168,5 +174,51 @@ describe("action-comms catalog", () => {
       if (gesture === "none") expect(dial[gesture]).toBeUndefined();
       else expect(dial[gesture], gesture).toEqual({ method: "api" });
     }
+  });
+
+  it("resolves Black Box Selector's Selected Control mode by its control setting (#1585)", () => {
+    expect(COMMS_CATALOG["black-box-selector"]["selected-control"]).toEqual({
+      method: "keybind",
+      binding: { scope: "global", keyBy: { setting: "control", map: BLACK_BOX_SELECTED_CONTROL_KEYS } },
+    });
+
+    for (const control of BLACK_BOX_SELECTED_CONTROLS) {
+      expect(BLACK_BOX_SELECTED_CONTROL_KEYS[control], control).toMatch(/^blackBox/);
+    }
+  });
+
+  it("describes every Black Box dial rotation as the pair the surface turns, and every gesture but none (#1585)", () => {
+    // A rotation whose descriptor named other keys than the surface taps would
+    // warn about one pair while the turn presses another.
+    const dial = COMMS_CATALOG["black-box-selector-dial"];
+
+    expect(dial._meta.modeSetting).toBe("dial.rotation");
+
+    for (const rotation of BLACK_BOX_ROTATIONS) {
+      const { clockwise, counterClockwise } = BLACK_BOX_ROTATION_KEYS[rotation];
+
+      expect(dial[rotation], rotation).toEqual({
+        method: "keybind",
+        binding: { scope: "global", keys: [clockwise, counterClockwise] },
+      });
+    }
+
+    for (const gesture of BLACK_BOX_DIAL_GESTURES) {
+      if (gesture === "none") expect(dial[gesture]).toBeUndefined();
+      else expect(dial[gesture], gesture).toBeDefined();
+    }
+
+    expect(dial["toggle-control"]).toEqual({
+      method: "keybind",
+      binding: { scope: "global", key: "blackBoxToggleControl" },
+    });
+    expect(dial["next-control"]).toEqual({
+      method: "keybind",
+      binding: { scope: "global", key: "blackBoxSelectNextControl" },
+    });
+    expect(dial["previous-control"]).toEqual({
+      method: "keybind",
+      binding: { scope: "global", key: "blackBoxSelectPreviousControl" },
+    });
   });
 });
