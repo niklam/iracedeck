@@ -10,6 +10,7 @@ import { FUEL_CALLOUTS } from "./families/fuel.js";
 import { GAP_CALLOUTS } from "./families/gaps.js";
 import { INCIDENT_CALLOUTS } from "./families/incident.js";
 import { LAP_TIME_CALLOUTS } from "./families/lap-time.js";
+import { LIMITER_CUE_CALLOUTS } from "./families/limiter-cue.js";
 import { NO_LIMITER_CALLOUTS } from "./families/no-limiter.js";
 import { OPPONENT_FLAG_CALLOUTS } from "./families/opponent-flags.js";
 import { OPPONENT_PIT_CALLOUTS } from "./families/opponent-pit.js";
@@ -52,7 +53,7 @@ export const CALLOUT_PI_GROUPS = [
   { id: "start-lights", title: "Start Lights", families: [START_LIGHT_CALLOUTS] },
   { id: "rolling-start", title: "Rolling Start", families: [ROLLING_START_CALLOUTS] },
   { id: "pit-window", title: "Pit Window", families: [PIT_WINDOW_CALLOUTS] },
-  { id: "pit-limiter", title: "Pit Limiter", families: [PIT_LIMITER_CALLOUTS] },
+  { id: "pit-limiter", title: "Pit Limiter", families: [PIT_LIMITER_CALLOUTS, LIMITER_CUE_CALLOUTS] },
   { id: "no-pit-limiter", title: "No Pit Limiter", families: [NO_LIMITER_CALLOUTS] },
   { id: "opponent-pits", title: "Opponent Pits", families: [OPPONENT_PIT_CALLOUTS] },
   { id: "opponent-flags", title: "Opponent Flags", families: [OPPONENT_FLAG_CALLOUTS] },
