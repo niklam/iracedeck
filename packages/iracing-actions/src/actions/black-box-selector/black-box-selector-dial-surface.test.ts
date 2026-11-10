@@ -1015,6 +1015,23 @@ describe("BlackBoxSelector dial surface", () => {
       expect(mockTapBinding.mock.calls).toEqual([[key], [key]]);
     });
 
+    it.each(GESTURES)("logs %s at info as the event alone, and names the gesture only at debug", async (gesture) => {
+      const ctx = dialContext(`glog-${gesture}`);
+      const settings = allSlots(gesture);
+      await appear(ctx, settings);
+      const info = action["logger"].info as ReturnType<typeof vi.fn>;
+      const debug = action["logger"].debug as ReturnType<typeof vi.fn>;
+      info.mockClear();
+      debug.mockClear();
+
+      await action.onDialDown(eventFor(ctx, settings) as never);
+      await action.onDialUp(eventFor(ctx, settings) as never);
+
+      // logging.md: an info line says what happened, with no values; the value goes to debug.
+      expect(info.mock.calls).toEqual([["Black box dial pressed"], ["Black box dial sent a selected-control press"]]);
+      expect(debug).toHaveBeenCalledWith(`Selected-control press: ${gesture}`);
+    });
+
     it("walks and adjusts the open box from one dial: Adjust Control with Press on Next Control", async () => {
       const ctx = dialContext("g-walk");
       const settings = withDial({ rotation: "adjust-control", pressAction: "next-control" });
@@ -1093,6 +1110,25 @@ describe("BlackBoxSelector dial surface", () => {
       // The strip and the trigger description show the new rotation at once.
       expect(arrowDirections(lastCanvas(ctx))).toEqual(ARROWS[to]);
       expect(ctx.setTriggerDescription).toHaveBeenLastCalledWith(expect.objectContaining({ rotate: LABELS[to] }));
+    });
+
+    it.each([
+      ["select-control", "adjust-control"],
+      ["adjust-control", "select-control"],
+    ] as const)("logs a switch from %s at info as the event alone, and both Modes only at debug", async (from, to) => {
+      const ctx = dialContext(`sw-log-${from}`);
+      const settings = stored({ rotation: from, pressAction: "switch-rotation" });
+      await appear(ctx, settings);
+      const info = action["logger"].info as ReturnType<typeof vi.fn>;
+      const debug = action["logger"].debug as ReturnType<typeof vi.fn>;
+      info.mockClear();
+      debug.mockClear();
+
+      await press(ctx, settings);
+
+      // logging.md: an info line says what happened, with no values; the rotations go to debug.
+      expect(info.mock.calls).toEqual([["Black box dial pressed"], ["Black box dial switched rotation"]]);
+      expect(debug).toHaveBeenCalledWith(`Switch Select / Adjust: ${from} → ${to}`);
     });
 
     it("turns the new pair after a switch, though the events still carry the old rotation", async () => {

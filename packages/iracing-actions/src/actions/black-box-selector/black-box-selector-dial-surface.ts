@@ -941,7 +941,8 @@ export class BlackBoxSelectorDialSurface extends ReleaseDialSurfaceBase<BlackBox
       case "toggle-control":
       case "next-control":
       case "previous-control":
-        this.host.logger.info(`Black box dial gesture ${gesture}`);
+        this.host.logger.info("Black box dial sent a selected-control press");
+        this.host.logger.debug(`Selected-control press: ${gesture}`);
         // Mirrors the keypad Selected Control mode's press: one tap on the open box (#1585).
         await this.host.tapBinding(GESTURE_CONTROL_KEYS[gesture]);
 
@@ -974,7 +975,8 @@ export class BlackBoxSelectorDialSurface extends ReleaseDialSurfaceBase<BlackBox
       return;
     }
 
-    this.host.logger.info(`Black box dial switched rotation to ${next}`);
+    this.host.logger.info("Black box dial switched rotation");
+    this.host.logger.debug(`Switch Select / Adjust: ${ctx.dial.rotation} → ${next}`);
 
     // The host never echoes a plugin-side setSettings back as
     // didReceiveSettings, so ctx.dial is what the next turn taps and the next
