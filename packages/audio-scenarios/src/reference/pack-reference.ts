@@ -219,8 +219,10 @@ export type PackReferenceInput = {
   manifestClips: readonly string[];
   /**
    * The clips plugin code plays by path outside any script, with the words
-   * for each — the runner's `PLUGIN_PLAYED_CLIPS` (`scripts/lib/lint-pack-run.mjs`),
-   * the plugin's knowledge rather than this builder's. Written onto the
+   * for each — the runner's `pluginPlayedClips(DRIVER_NAME_ALIASES)`
+   * (`scripts/lib/lint-pack-run.mjs`, the `names` line's words composed from
+   * the driver-name alias map, #1580), the plugin's knowledge rather than
+   * this builder's. Written onto the
    * matching recording lines as `playedBy`.
    */
   pluginPlayed: readonly PluginPlayedClip[];
