@@ -70,7 +70,7 @@ These apply to every Pit Crew button at once, so they live in the [Settings wind
 - **Your Name** — name the engineer addresses you by; resolves a clip from `voice/<voice>/names/`.
 - **Race Engineer Volume** (0–100, default 50) — slider + Test button for the engineer voice (`AudioBus.Voice`). Sliding to 0 silences voice scenarios without disabling the Race Engineer feature.
 - **Background Volume** (0–100, default 25) — slider + Test button for the pit ambience and walkie-talkie SFX (`AudioBus.Background`, which carries both the ambient loop and the radio open/close SFX). The Test button plays the selected voice's own radio frame around a short silence — minus whichever half you have switched off under **Radio Frame** (the **Radio beeps** and **Pit ambience** checkboxes on the same tab), so what you hear is what a real callout's frame will carry. A voice that defines no radio frame previews the built-in tick-open + ambient + tick-close instead. The test gives way to the engineer: pressed while he is talking it does nothing, and a callout arriving mid-test cuts it short. Defaults to 25 so it sits under the engineer voice cleanly out of the box; turn it up if you want a louder pit-lane atmosphere. Only takes effect while Race Engineer is enabled — when the engineer is off, Background is muted regardless of this value.
-- **Radar Volume** (0–100, default 50) — slider + Test button. Shared across every Pit Crew instance; the button lets you preview the left → right → both sequence without waiting for a live proximity event. Sliding to 0 mutes the radar without toggling the feature off. Radar Volume is also the level of iRaceDeck's other tones: the [pit road speeding](#pit-road-speeding) tick, the [pit exit beep](#pit-exit-beep), and the [tick on every volume step](/docs/actions/audio-voice/audio-controls/#a-tick-on-every-step) of iRacing's voice chat, master and spotter volume from [Audio Controls](/docs/actions/audio-voice/audio-controls/) and [AI Spotter Controls](/docs/actions/audio-voice/ai-spotter-controls/#a-tick-on-every-step). The volume step tick never plays below 20, so it stays audible with Radar Volume at 0, and a Radar or Race Engineer volume step ticks at the level it sets rather than at this one. The slider itself makes no tick; use its Test button.
+- **Radar Volume** (0–100, default 50) — slider + Test button. Shared across every Pit Crew instance; the button lets you preview the left → right → both sequence without waiting for a live proximity event. Sliding to 0 mutes the radar without toggling the feature off. Radar Volume is also the level of iRaceDeck's other tones: the [pit road speeding](#pit-road-speeding) tick, the [pit exit beep](#pit-exit-beep), the [limiter on beep](#limiter-on-beep), and the [tick on every volume step](/docs/actions/audio-voice/audio-controls/#a-tick-on-every-step) of iRacing's voice chat, master and spotter volume from [Audio Controls](/docs/actions/audio-voice/audio-controls/) and [AI Spotter Controls](/docs/actions/audio-voice/ai-spotter-controls/#a-tick-on-every-step). The volume step tick never plays below 20, so it stays audible with Radar Volume at 0, and a Radar or Race Engineer volume step ticks at the level it sets rather than at this one. The slider itself makes no tick; use its Test button.
 - **Output Device** — the audio device used for the iRaceDeck audio engine; shared globally across the plugin. The selection is persisted by the platform-stable device id (WASAPI endpoint ID on Windows), so it survives replug and Windows audio-preference changes — no need to re-pick after rebooting or moving the headset to a different USB port.
 
 ## Race Engineer voice coverage
@@ -530,6 +530,18 @@ Like the speeding tick, it isn't a spoken line, so it plays with every voice, a 
 
 It is off by default: turn it on in the Settings window under **Race Engineer Callouts → Pit Speeding → Pit exit beep**. Turning the Race Engineer master off silences it too.
 
+## Limiter on beep
+
+The moment your pit limiter switches on, a short falling two-note beep plays — so you know it took without looking at the dash, even when you press the button at speed on the way into the pits. It plays wherever you are: out on the circuit, on the pit approach, between the cones, or stopped in your pit box. It falls where the [pit exit beep](#pit-exit-beep) rises, so the two never sound alike: falling means the limiter now holds you, rising means the limit is off. Neither sounds like the [speeding tick](#pit-road-speeding).
+
+It doesn't matter who switched the limiter on: if iRacing's pit limiter driving aid engages it for you, that beeps too. Every switch-on beeps, so on, off and on again quickly gives two beeps. Switching it off makes no sound, so a quick double press on the way in that leaves it off gives one beep and then nothing — listen for the second one. A car without a pit limiter never hears it, since there is nothing to switch on.
+
+It only marks a moment you were there for. A press while the crew is working on your car, or in the half second after they finish, makes no sound, and neither does a tow or a reset, getting in or out of the car, or watching a replay. Connecting to iRacing, or the plugin restarting, with the limiter already on is silent too: the moment it switched on has passed.
+
+Like the pit exit beep, it isn't a spoken line, so it plays with every voice, a voice pack without a callout script included, and it doesn't wait its turn on the radio. The [pit entry readback](#pit-service-readback) and the [limiter reminders](#pit-limiter-reminders) on the way in neither cut it short nor hold it back. It plays at your **Radar volume**, so turning radar volume to zero silences it too, but on the same channel of its own as the pit exit beep, so neither the [Radar](#radar) ticking with a car alongside nor the [speeding tick](#pit-road-speeding) can cut it off.
+
+It is off by default: turn it on in the Settings window under **Race Engineer Callouts → Pit Limiter → Limiter on beep**. Turning the Race Engineer master off silences it too.
+
 ## Pit limiter reminders
 
 Speeding is only half of what can go wrong with a pit limiter, and what the engineer can usefully say about it depends on whether your car has one at all. So these callouts come in two groups that never both apply — the plugin checks for the limiter control itself rather than inferring it from how the car is behaving, and stays quiet when it cannot tell.
@@ -735,12 +747,13 @@ Under **Pit Speeding**, two callouts are toggleable:
 - **Pit road speeding** — the repeating tick that sounds while you're over the pit lane speed limit (see [Pit road speeding](#pit-road-speeding) above). It plays at your Radar volume. Enabled by default.
 - **Pit exit beep** — the short beep as you cross the pit exit line (see [Pit exit beep](#pit-exit-beep) above). It plays at your Radar volume. Off by default.
 
-Under **Pit Limiter**, four callouts are toggleable, all enabled by default. They only ever fire on a car that has a pit limiter (see [Pit limiter reminders](#pit-limiter-reminders) above):
+Under **Pit Limiter**, five callouts are toggleable. The first four are enabled by default and only ever fire on a car that has a pit limiter (see [Pit limiter reminders](#pit-limiter-reminders) above):
 
 - **Limiter off on pit road** — the limiter was still off a couple of seconds after you entered the pits.
 - **Limiter dropped** — the limiter came off again while you are still on pit road.
 - **Limiter still on after pit exit** — the limiter was still engaged shortly after you left pit road.
 - **Speeding (limiter car)** — the spoken line that follows the tick when you are over the limit.
+- **Limiter on beep** — the short beep the moment your pit limiter switches on (see [Limiter on beep](#limiter-on-beep) above). It plays at your Radar volume. Off by default.
 
 Under **No Pit Limiter**, two callouts are toggleable, both enabled by default. These are the mirror group, and only ever fire on a car with no pit limiter:
 
