@@ -50,7 +50,7 @@ describe("buildPitCrewDeps", () => {
   });
   afterEach(() => vi.restoreAllMocks());
 
-  it("builds all 33 dependencies, so none falls back to DEFAULT_DEPS", () => {
+  it("builds all 34 dependencies, so none falls back to DEFAULT_DEPS", () => {
     const built = buildPitCrewDeps(fakeDeps(), noCaches);
 
     expect(Object.keys(built)).toHaveLength(34);
