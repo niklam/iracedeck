@@ -235,7 +235,10 @@ function modePresentation(
  * title, since their status bar already reads the state, and Radar Volume
  * shows it, since the title is the volume readout. The global Show title
  * setting therefore applies to none of them; a per-key override still does.
- * Colours and border are the same in both.
+ * The toggles also lock the title position to top: their status bar is drawn
+ * over y 100–144 after the title, so a title turned on per key at the default
+ * bottom position would be hidden under it. Colours and border are the same
+ * in both.
  */
 export function templateFor(mode: Mode): string {
   return mode === "radar-volume" ? pitCrewRadarVolumeTemplate : pitCrewTemplate;

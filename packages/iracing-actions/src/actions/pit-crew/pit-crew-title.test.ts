@@ -2,7 +2,9 @@
  * Pit Crew's title defaults (#1479): the three toggle keys hide their title by
  * default and the two Radar Volume keys show theirs, both with `showTitle`
  * locked so the global Show title setting no longer applies; a per-key Title
- * Override still wins.
+ * Override still wins. The toggles also lock their title position to top,
+ * because their status bar is drawn over the bottom of the key after the
+ * title: a title turned on per key would come back hidden under it.
  *
  * Runs over the REAL deck-core title resolution and graphic-area sizing and the
  * REAL icon templates. The canonical action-test mock of deck-core in
@@ -89,6 +91,18 @@ function texts(svg: string): string[] {
   return [...svg.matchAll(/<text[^>]*>([^<]*)<\/text>/g)].map((m) => m[1]!);
 }
 
+/** The baseline y of the `<text>` element drawing `line`. */
+function textY(svg: string, line: string): number {
+  const match = [...svg.matchAll(/<text[^>]*\by="([\d.]+)"[^>]*>([^<]*)<\/text>/g)].find((m) => m[2] === line);
+
+  if (!match) throw new Error(`no <text> drawing "${line}" in the rendered key`);
+
+  return Number(match[1]);
+}
+
+/** Where the toggles' status bar starts (`statusBarOn` / `statusBarOff`: y 100–144, drawn over the title). */
+const STATUS_BAR_TOP = 100;
+
 /** The scale the artwork is drawn at: larger means a larger artwork area. */
 function artworkScale(svg: string): number {
   const match = svg.match(/<g transform="translate\([^)]*\) scale\(([\d.]+)\)">/);
@@ -131,12 +145,29 @@ describe("Pit Crew title defaults (#1479)", () => {
           for (const line of lines) expect(drawn).toContain(line);
         });
 
-        it("draws larger artwork with no title than with one above the status bar", () => {
-          // A top title takes room from the artwork above the status bar. At the
-          // default bottom position the title sits on the status bar's band,
-          // which already caps the artwork, so the area barely changes there.
-          mockGetGlobalSettings.mockReturnValue({ titleShowTitle: true, titlePosition: "top" });
+        it.each([["bottom"], ["middle"], ["custom"], ["unset"]])(
+          "draws a title turned on per key at the top, clear of the status bar, with the global position %s",
+          (position) => {
+            mockGetGlobalSettings.mockReturnValue(position === "unset" ? {} : { titlePosition: position });
 
+            const svg = render({ ...settings, titleOverrides: { showTitle: true } });
+
+            // The status bar is drawn after the title over y 100–144, so a title
+            // at the default bottom position would come back hidden under it.
+            for (const line of lines) expect(textY(svg, line)).toBeLessThan(STATUS_BAR_TOP / 2);
+          },
+        );
+
+        it("still draws the title where a per-key Position override puts it", () => {
+          mockGetGlobalSettings.mockReturnValue({ titlePosition: "top" });
+
+          const svg = render({ ...settings, titleOverrides: { showTitle: true, position: "bottom" } });
+
+          expect(textY(svg, lines[lines.length - 1]!)).toBe(130);
+        });
+
+        it("draws larger artwork with no title than with one turned on per key", () => {
+          // A top title takes room from the artwork above the status bar.
           const hidden = artworkScale(render(settings));
           const shown = artworkScale(render({ ...settings, titleOverrides: { showTitle: true } }));
 
@@ -164,6 +195,19 @@ describe("Pit Crew title defaults (#1479)", () => {
 
           for (const line of lines) expect(drawn).not.toContain(line);
         });
+
+        // Only showTitle is locked here: no status bar covers the bottom, so the
+        // readout follows the global position. Baselines from calculateYPositions
+        // at the default 18 px: top starts at 26, bottom ends at 130.
+        it("draws the readout at the top with the global position top", () => {
+          mockGetGlobalSettings.mockReturnValue({ titlePosition: "top" });
+
+          expect(textY(render(settings), lines[0])).toBe(26);
+        });
+
+        it("draws the readout at the bottom with the global position unset", () => {
+          expect(textY(render(settings), lines[1])).toBe(130);
+        });
       });
     }
   });
@@ -179,9 +223,10 @@ describe("Pit Crew title defaults (#1479)", () => {
   });
 
   describe("templates", () => {
-    it("hides the toggle title by default and locks showTitle", () => {
+    it("hides the toggle title by default at the top and locks showTitle and position", () => {
       expect(desc(pitCrewTemplate).title.showTitle).toBe(false);
-      expect(desc(pitCrewTemplate).title.locked).toEqual(["showTitle"]);
+      expect(desc(pitCrewTemplate).title.position).toBe("top");
+      expect(desc(pitCrewTemplate).title.locked).toEqual(["showTitle", "position"]);
     });
 
     it("shows the Radar Volume title by default and locks showTitle", () => {
