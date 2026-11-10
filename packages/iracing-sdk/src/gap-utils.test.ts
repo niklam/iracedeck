@@ -15,6 +15,8 @@ import {
   appendProgressSample,
   classifyGapTrend,
   crossingTimeAt,
+  GAP_TRACE_MAX_STEP,
+  GAP_TRACE_MIN_STEP,
   GAP_TRACE_SPAN_LAPS,
   lapDeltaBetween,
   type ProgressTrace,
@@ -70,6 +72,46 @@ describe("appendProgressSample", () => {
 
     expect(trace[0]!.progress).toBeGreaterThanOrEqual(1.5 - GAP_TRACE_SPAN_LAPS - 0.011);
     expect(trace[trace.length - 1]!.progress).toBeCloseTo(1.5, 5);
+  });
+
+  describe("returns what it did with the reading (issue #1572)", () => {
+    it('"appended" for the first sample and for a step past the minimum', () => {
+      const trace: ProgressTrace = [];
+
+      expect(appendProgressSample(trace, 5.0, 100)).toBe("appended");
+      // 1.5 × the minimum: `5 + GAP_TRACE_MIN_STEP - 5` rounds just under it.
+      expect(appendProgressSample(trace, 5.0 + 1.5 * GAP_TRACE_MIN_STEP, 100.1)).toBe("appended");
+      expect(trace).toHaveLength(2);
+    });
+
+    it('"skipped" for a step under the minimum, forwards or a hair backwards, recording nothing', () => {
+      const trace: ProgressTrace = [];
+      appendProgressSample(trace, 5.0, 100);
+
+      expect(appendProgressSample(trace, 5.001, 100.05)).toBe("skipped");
+      expect(appendProgressSample(trace, 4.999, 100.1)).toBe("skipped");
+      expect(trace).toEqual([{ progress: 5.0, time: 100 }]);
+    });
+
+    it('"reset" for a backwards step past the minimum', () => {
+      const trace: ProgressTrace = [];
+      appendProgressSample(trace, 5.0, 100);
+
+      expect(appendProgressSample(trace, 4.2, 120)).toBe("reset");
+      expect(trace).toEqual([{ progress: 4.2, time: 120 }]);
+    });
+
+    it('"reset" for a forward step past GAP_TRACE_MAX_STEP, and "appended" for one at it', () => {
+      const atMax: ProgressTrace = [];
+      appendProgressSample(atMax, 5.0, 100);
+      // Exactly the bar is still a drivable step (the reset needs `>`).
+      expect(appendProgressSample(atMax, 5.0 + GAP_TRACE_MAX_STEP, 102)).toBe("appended");
+
+      const pastMax: ProgressTrace = [];
+      appendProgressSample(pastMax, 5.0, 100);
+      expect(appendProgressSample(pastMax, 5.0 + GAP_TRACE_MAX_STEP + 0.001, 102)).toBe("reset");
+      expect(pastMax).toHaveLength(1);
+    });
   });
 });
 

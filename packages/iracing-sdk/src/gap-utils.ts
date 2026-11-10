@@ -38,6 +38,16 @@ export const GAP_TRACE_MIN_STEP = 0.002;
 export const GAP_TRACE_MAX_STEP = 0.05;
 
 /**
+ * What {@link appendProgressSample} did with a reading (issue #1572):
+ * `"appended"` — recorded after the last sample, or as the first of an empty
+ * trace; `"skipped"` — within {@link GAP_TRACE_MIN_STEP} of the last sample,
+ * so not recorded; `"reset"` — a discontinuity emptied the trace and the
+ * reading started it again. The sector timer reads `"reset"` as "this car's
+ * motion was not continuous", the one definition of absence the gaps use too.
+ */
+export type ProgressSampleVerdict = "appended" | "skipped" | "reset";
+
+/**
  * Append a progress sample to a trace, keeping it ascending and pruned to
  * {@link GAP_TRACE_SPAN_LAPS}. A DISCONTINUITY in either direction — a
  * backwards jump (tow, teleport, session reset) or a forward jump past
@@ -46,17 +56,21 @@ export const GAP_TRACE_MAX_STEP = 0.05;
  * discontinuity would lie about crossing times: `crossingTimeAt` interpolates
  * linearly between adjacent samples, so a lookup landing inside an undriven
  * span would return a time off by the whole absence.
+ *
+ * @returns what was done with the reading ({@link ProgressSampleVerdict})
  */
-export function appendProgressSample(trace: ProgressTrace, progress: number, time: number): void {
+export function appendProgressSample(trace: ProgressTrace, progress: number, time: number): ProgressSampleVerdict {
   const last = trace.length > 0 ? trace[trace.length - 1] : undefined;
+  let verdict: ProgressSampleVerdict = "appended";
 
   if (last !== undefined) {
     const step = progress - last.progress;
 
     if (step < -GAP_TRACE_MIN_STEP || step > GAP_TRACE_MAX_STEP) {
       trace.length = 0;
+      verdict = "reset";
     } else if (step < GAP_TRACE_MIN_STEP) {
-      return;
+      return "skipped";
     }
   }
 
@@ -68,6 +82,8 @@ export function appendProgressSample(trace: ProgressTrace, progress: number, tim
   while (drop < trace.length - 1 && trace[drop]!.progress < minProgress) drop++;
 
   if (drop > 0) trace.splice(0, drop);
+
+  return verdict;
 }
 
 /**
