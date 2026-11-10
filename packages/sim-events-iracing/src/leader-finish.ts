@@ -296,7 +296,7 @@ export function fuelFinishToleranceLaps(timeRemainS: number, lapTimeS: number): 
  */
 export function predictLeaderChequered(
   telemetry: TelemetryData,
-  positions: number[],
+  positions: readonly number[],
   leaderLapTimeS: number | null,
   expiry: LeaderClockExpiry,
   crossingCheckLapS: number | null = leaderLapTimeS,
@@ -408,7 +408,11 @@ function readCarLapPosition(telemetry: TelemetryData, carIdx: number): { lapsCom
  * @param positions - the tick's canonical live order (1-based rank by car index)
  * @param playerCarIdx - the player's car index (`DriverInfo.DriverCarIdx`), `-1` when unknown
  */
-export function readLeaderGap(telemetry: TelemetryData, positions: number[], playerCarIdx: number): LeaderGap | null {
+export function readLeaderGap(
+  telemetry: TelemetryData,
+  positions: readonly number[],
+  playerCarIdx: number,
+): LeaderGap | null {
   return readLeaderGapAt(
     telemetry,
     positions.findIndex((position) => position === 1),
@@ -522,7 +526,7 @@ export function lapCountCrossings(gap: LeaderGap, leaderCrossings: number): numb
  */
 export function resolveLeaderFinish(
   telemetry: TelemetryData,
-  positions: number[],
+  positions: readonly number[],
   playerCarIdx: number,
   leaderLapTimeS: number | null,
   expiry: LeaderClockExpiry,

@@ -15,7 +15,7 @@
 import type { ExpressionValue, VariableLookupResult } from "./expression-evaluator.js";
 import { extractQualifyResults } from "./grid-utils.js";
 import { estimateIRatingChanges, type IRatingEstimates, resolveIRatingEstimateOrder } from "./irating-utils.js";
-import { classPositionFromOrder } from "./position-utils.js";
+import { classPositionOrOfficial } from "./position-utils.js";
 import type { SDKController } from "./SDKController.js";
 import { formatSessionClock, resolveLapsRemaining, resolveShownTimeRemainingS } from "./session-limit.js";
 import { findNearestCarOnTrack } from "./track-utils.js";
@@ -50,7 +50,7 @@ export interface TemplateContext {
  * `SDKController` passes a provider, because the translator computes the
  * canonical order when asked.
  */
-export type LivePositionsSource = number[] | null | (() => number[] | null);
+export type LivePositionsSource = readonly number[] | null | (() => readonly number[] | null);
 
 /**
  * @internal Exported for the test-only reference builder
@@ -408,7 +408,7 @@ interface DriverInputs {
   drivers: DriverEntry[];
   playerCarIdx: number;
   /** The canonical live race order, in race sessions only. */
-  order: number[] | undefined;
+  order: readonly number[] | undefined;
   estimates: IRatingEstimates | undefined;
 }
 
@@ -681,7 +681,7 @@ export function findDriverByRacePosition(
   drivers: DriverEntry[],
   telemetry: TelemetryData | null,
   offset: number,
-  positions?: number[],
+  positions?: readonly number[],
 ): DriverEntry | null {
   const posArray = positions ?? telemetry?.CarIdxPosition;
 
@@ -735,37 +735,29 @@ function firstPositive(...values: (number | undefined)[]): number | undefined {
 }
 
 /**
- * Live class position for a car: the count of same-class cars (`CarIdxClass`)
+ * Live class position for a car, by the one derive-else-official policy,
+ * `classPositionOrOfficial` (#711): the count of same-class cars (`CarIdxClass`)
  * ranked ahead of it in the canonical live race `order`, +1 — derived from the
  * single source of truth, exactly like the overall position. Once a live order
- * exists it is authoritative: a car not in it (rank 0) renders blank rather than
- * falling back to the official counter. The official `CarIdxClassPosition` is
- * used only when there's no live order at all (non-race / pre-init) or there's a
- * live order but no `CarIdxClass` to derive from. A non-positive official counter
- * (0 = not classified) renders blank, not "0".
+ * exists and the car's class is known it is authoritative: a car not in it
+ * (rank 0) renders blank rather than falling back to the official counter. The
+ * official `CarIdxClassPosition` is used only when there's no live order at all
+ * (non-race / pre-init) or the car's class id is unknown. Unknown (`0`, which
+ * includes a non-positive official counter) renders blank, not "0".
  */
 function resolveClassPosition(
-  order: number[] | undefined,
+  order: readonly number[] | undefined,
   telemetry: TelemetryData | null,
   carIdx: number,
 ): number | undefined {
-  if (order) {
-    const carIdxClass = telemetry?.CarIdxClass as number[] | undefined;
-
-    // With both an order and class data, the order is the sole source — a car not
-    // in it stays blank, never the stale official counter.
-    if (Array.isArray(carIdxClass)) {
-      const derived = classPositionFromOrder(order, carIdxClass, carIdx);
-
-      return derived > 0 ? derived : undefined;
-    }
-
-    // Live order but no class data to derive from → official class counter.
-    return firstPositive(telemetry?.CarIdxClassPosition?.[carIdx]);
-  }
-
-  // No live order (non-race / pre-init) → official class counter.
-  return firstPositive(telemetry?.CarIdxClassPosition?.[carIdx]);
+  return (
+    classPositionOrOfficial(
+      order,
+      telemetry?.CarIdxClass as number[] | undefined,
+      carIdx,
+      telemetry?.CarIdxClassPosition?.[carIdx],
+    ) || undefined
+  );
 }
 
 /**
@@ -783,7 +775,7 @@ function resolveClassPosition(
 export function buildDriverFields(
   driver: DriverEntry,
   telemetry: TelemetryData | null,
-  order?: number[],
+  order?: readonly number[],
   playerCarIdx?: number,
   estimates?: IRatingEstimates,
 ): DriverFields {
@@ -839,7 +831,7 @@ export function buildSelfFields(
   driver: DriverEntry | undefined,
   playerCarIdx: number,
   telemetry: TelemetryData | null,
-  order?: number[],
+  order?: readonly number[],
   estimates?: IRatingEstimates,
 ): SelfDriverFields {
   if (!driver) return { ...EMPTY_SELF_FIELDS };

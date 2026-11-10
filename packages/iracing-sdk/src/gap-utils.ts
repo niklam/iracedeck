@@ -126,7 +126,7 @@ const NO_NEIGHBORS: StandingsNeighbors = { aheadIdx: -1, behindIdx: -1, leaderId
  * relying on class-id conventions alone is not a guarantee (issue #933).
  */
 export function resolveClassNeighbors(
-  positions: number[],
+  positions: readonly number[],
   carIdxClass: number[] | undefined,
   carIdx: number,
   excludeIdx?: number | null,

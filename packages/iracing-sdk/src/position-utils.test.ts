@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { calculateRacePositions, classPositionFromOrder } from "./position-utils.js";
+import { calculateRacePositions, classPositionFromOrder, classPositionOrOfficial } from "./position-utils.js";
 import type { TelemetryData } from "./types.js";
 
 function makeTelemetry(overrides: Partial<TelemetryData> = {}): TelemetryData {
@@ -181,5 +181,46 @@ describe("classPositionFromOrder", () => {
     const carIdxClass = [10]; // no class for carIdx 1
 
     expect(classPositionFromOrder(positions, carIdxClass, 1)).toBe(0);
+  });
+});
+
+describe("classPositionOrOfficial (#711)", () => {
+  // Overall order: car 1 leads, car 0 second, car 2 third, car 3 unranked.
+  const order = [2, 1, 3, 0];
+  // Cars 0, 2 and 3 are class 10; car 1 is class 20.
+  const carIdxClass = [10, 20, 10, 10];
+
+  it("returns the official counter when there is no order", () => {
+    expect(classPositionOrOfficial(null, carIdxClass, 2, 4)).toBe(4);
+    expect(classPositionOrOfficial(undefined, carIdxClass, 2, 4)).toBe(4);
+  });
+
+  it("returns 0 when the official counter is not positive and there is no order", () => {
+    expect(classPositionOrOfficial(null, carIdxClass, 2, 0)).toBe(0);
+    expect(classPositionOrOfficial(null, carIdxClass, 2, -1)).toBe(0);
+    expect(classPositionOrOfficial(null, carIdxClass, 2, undefined)).toBe(0);
+    expect(classPositionOrOfficial(null, carIdxClass, 2, Number.NaN)).toBe(0);
+  });
+
+  it("derives the class position from the order when the car's class is known", () => {
+    // Car 2 (class 10) has car 0 (class 10, rank 2) ahead; the official 7 is ignored.
+    expect(classPositionOrOfficial(order, carIdxClass, 2, 7)).toBe(2);
+    expect(classPositionOrOfficial(order, carIdxClass, 0, 7)).toBe(1);
+  });
+
+  it("returns 0 for a car the order does not rank, even with a positive official counter", () => {
+    // An order is authoritative: an unranked car reads blank, never the official counter.
+    expect(classPositionOrOfficial(order, carIdxClass, 3, 5)).toBe(0);
+  });
+
+  it("returns the official counter when there is an order but no CarIdxClass", () => {
+    expect(classPositionOrOfficial(order, undefined, 2, 3)).toBe(3);
+    expect(classPositionOrOfficial(order, undefined, 2, 0)).toBe(0);
+  });
+
+  it("returns the official counter when CarIdxClass lacks the car's entry", () => {
+    // The class cannot be derived, which is not the same as the car being absent.
+    expect(classPositionOrOfficial(order, [10, 20], 2, 3)).toBe(3);
+    expect(classPositionOrOfficial(order, [10, 20], 2, undefined)).toBe(0);
   });
 });

@@ -100,7 +100,7 @@ export class SDKController {
    * continuously-updating order for driver positions instead of iRacing's
    * start/finish-line-frozen `CarIdxPosition`.
    */
-  private livePositionsProvider: (() => number[] | null) | null = null;
+  private livePositionsProvider: (() => readonly number[] | null) | null = null;
   /**
    * iRacing's `SessionTick` value at the last notified frame. We poll
    * faster than iRacing's native write rate (see TELEMETRY_INTERVAL_MS)
@@ -556,7 +556,7 @@ export class SDKController {
    * `getLiveRacePositions`. Passing `null` clears it — template positions then fall
    * back per car to iRacing's official `CarIdxPosition`.
    */
-  setLivePositionsProvider(provider: (() => number[] | null) | null): void {
+  setLivePositionsProvider(provider: (() => readonly number[] | null) | null): void {
     this.livePositionsProvider = provider;
   }
 
@@ -564,7 +564,7 @@ export class SDKController {
    * Current live per-car race order from the injected provider, or `null` when no
    * provider is set or it has no data yet.
    */
-  getLiveRacePositions(): number[] | null {
+  getLiveRacePositions(): readonly number[] | null {
     return this.livePositionsProvider?.() ?? null;
   }
 }

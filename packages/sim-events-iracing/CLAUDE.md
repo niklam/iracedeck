@@ -9,7 +9,7 @@ The iRacing translator (`initializeSimEventsIracing`, `src/translator.ts`): it d
 
 ## What it owns besides the events
 
-- **The canonical live order** — `getLiveRacePositions` / `getLivePosition` (`race-order.ts`). Every position consumer must use it; see `.claude/rules/race-positions.md`.
+- **The canonical live order** — `getLiveRacePositions` / `getLivePosition` (`translator.ts`, memoised once per tick on `canonicalOrderMemo`; `race-order.ts` holds only the choice between its sources). Every position consumer must use it; see `.claude/rules/race-positions.md`.
 - **The pace lineup, that rule's one carve-out** — who a driver lines up behind under a caution or in a rolling-start formation: `getPaceLineup()` (`diff/pace-lineup.ts`), whose `anchor` says which of the two frames the rows were counted in (#1127 / #1167); the formation as a state, `getRollingStartFormation()` (#1167); and the caution catch-up reading, `getCautionGap()` — measured in `diff/caution-gap.ts`, decided by `diffCatchUp` in `diff/caution.ts` (#1168).
 - **The track-order gaps** Session Info's Gaps shows outside a race: `getTrackGaps()` (`diff/track-gaps.ts`, #1515), the nearest cars ahead and behind on track in practice, warmup, testing and open qualifying (Lone Qualify and Lone Practice excluded), measured by the race gaps' crossing time over per-car odometer traces. Mutually exclusive with `getLiveGaps()`, which answers only in a race past the green. Deliberately not on `SimRuntime`, so the Race Engineer's gap callouts stay race-only.
 - **The last-stop tire temperature reading** Session Info shows (`getLastStopTireTemps`, #254).

@@ -967,7 +967,7 @@ export interface CameraDialHost {
    * non-race session, or before it is available) — the surface then falls back
    * to the official `CarIdxPosition` telemetry.
    */
-  getRacePositions(): number[] | null;
+  getRacePositions(): readonly number[] | null;
   /** Enabled camera-group names (the global `cameraGroupSubset`). */
   getEnabledCameraGroups(): string[];
   /** Colour-resolved carousel glyph for a group name, or null when unmapped. */
@@ -1321,7 +1321,7 @@ export class CameraDialSurface extends ReleaseDialSurfaceBase<CameraDialContext,
   }
 
   /** The race order, canonical first, official `CarIdxPosition` as fallback (`resolveRaceOrder`, #968). */
-  private resolveOrder(telemetry: TelemetryData | null): number[] | null {
+  private resolveOrder(telemetry: TelemetryData | null): readonly number[] | null {
     return resolveRaceOrder(this.host.getRacePositions(), telemetry?.CarIdxPosition);
   }
 

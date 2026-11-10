@@ -387,7 +387,7 @@ export function diffGaps(
   isRaceSession: boolean,
   playerCarIdx: number,
   paceCarIdx: number | null,
-  frozenPositions: number[] | null,
+  frozenPositions: readonly number[] | null,
   getThresholdSeconds: () => number,
   emit: EmitFn<(typeof GAPS_EVENTS)[number]>,
   /**

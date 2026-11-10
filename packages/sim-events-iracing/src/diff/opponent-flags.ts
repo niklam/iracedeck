@@ -438,7 +438,7 @@ function isPlayerInPits(telemetry: TelemetryData, playerCarIdx: number): boolean
  */
 function assess(
   telemetry: TelemetryData,
-  positions: number[],
+  positions: readonly number[],
   player: PlayerStanding,
   playerCarIdx: number,
   carIdx: number,
@@ -529,7 +529,7 @@ export function diffOpponentFlags(
   preGreen: boolean,
   postRace: boolean,
   isMultiClass: boolean,
-  frozenPositions: number[],
+  frozenPositions: readonly number[],
   resolvers: OpponentFlagResolvers,
   now: number,
   emit: EmitFn<(typeof OPPONENT_FLAGS_EVENTS)[number]>,

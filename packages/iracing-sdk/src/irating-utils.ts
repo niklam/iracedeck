@@ -88,7 +88,7 @@ export interface IRatingFieldDriver {
 export interface IRatingEstimateInput {
   drivers: IRatingFieldDriver[];
   /** Canonical live order: 1-based rank by carIdx, 0 = not classified. */
-  order: number[];
+  order: readonly number[];
   /** Per-car class id (telemetry CarIdxClass). Missing → single-class field. */
   carIdxClass?: number[];
 }
@@ -104,7 +104,7 @@ export interface IRatingEstimateOrderSources {
   /** Raw iRacing SessionType ("Race", "Open Qualify", "Lone Qualify", "Practice", …). */
   sessionType: string | undefined;
   /** Canonical live race order (1-based rank by carIdx, 0 = not classified). */
-  liveOrder?: number[] | null;
+  liveOrder?: readonly number[] | null;
   /** Official standings counters (telemetry `CarIdxPosition`). */
   officialPositions?: ArrayLike<number> | null;
   /** Qualifying results from the top-level session-YAML `QualifyResultsInfo.Results` key. */
@@ -145,14 +145,14 @@ function normalizeOfficialOrder(positions: ArrayLike<number>): number[] {
  * first usable source applies. Practice / testing / warmup get no estimate:
  * null.
  */
-export function resolveIRatingEstimateOrder(sources: IRatingEstimateOrderSources): number[] | null {
+export function resolveIRatingEstimateOrder(sources: IRatingEstimateOrderSources): readonly number[] | null {
   const { sessionType, liveOrder, officialPositions, qualifyResults, playerCarIdx } = sources;
   const isRace = sessionType === "Race";
   const isQualifying = typeof sessionType === "string" && sessionType.includes("Qualify");
 
   if (!isRace && !isQualifying) return null;
 
-  const candidates: (() => number[] | null)[] = [
+  const candidates: (() => readonly number[] | null)[] = [
     () =>
       isRace && Array.isArray(liveOrder) && hasClassifiedCar(liveOrder) ? liveOrder : null,
     () =>
@@ -161,7 +161,7 @@ export function resolveIRatingEstimateOrder(sources: IRatingEstimateOrderSources
       Array.isArray(qualifyResults) ? calculateGridPositions(qualifyResults) : null,
   ];
   const anchored = typeof playerCarIdx === "number" && playerCarIdx >= 0;
-  let firstUsable: number[] | null = null;
+  let firstUsable: readonly number[] | null = null;
 
   for (const candidate of candidates) {
     const order = candidate();

@@ -198,7 +198,7 @@ function walkCarIdx(telemetry: TelemetryData | null): number | undefined {
 }
 
 /** The race order now: the canonical one, official `CarIdxPosition` as the fallback. */
-function raceOrder(io: ReplayDialStepIo, telemetry: TelemetryData | null): number[] | null {
+function raceOrder(io: ReplayDialStepIo, telemetry: TelemetryData | null): readonly number[] | null {
   return resolveRaceOrder(io.racePositions(), telemetry?.CarIdxPosition);
 }
 
