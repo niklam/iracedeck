@@ -14,9 +14,12 @@ import { describe, expect, it } from "vitest";
  * the `Encoder` controller must declare `dialPressShape`, an action source
  * that constructs a `DualPressTracker` must declare `keyPressShape` (every
  * tracker today records a key-down; Car Control's dial path shares its tracker,
- * but no host manifest declares Car Control as a dial), and an action that
- * handles a touch must declare `touchPressShape`, or every touch clicks, a
- * gesture set to None included, and a Long Touch clicks instead of bleeping.
+ * but no host manifest declares Car Control as a dial), an action source that
+ * constructs a `RepeatController` must declare `keyPressShape` too, since a key
+ * that repeats while held is a `hold` and should bleep twice at its threshold
+ * (#1585), and an action that handles a touch must declare `touchPressShape`,
+ * or every touch clicks, a gesture set to None included, and a Long Touch
+ * clicks instead of bleeping.
  */
 
 const ACTIONS_DIR = import.meta.dirname;
@@ -65,6 +68,16 @@ function sourceDeclaringUuid(uuid: string): ActionSource | undefined {
 
 const encoders = encoderUuids();
 const dualPressSources = sources.filter((s) => /\bnew DualPressTracker\s*\(/.test(s.text));
+const repeatSources = sources.filter((s) => /\bnew RepeatController\s*\(/.test(s.text));
+
+/**
+ * Actions that repeat a held key but declared no `keyPressShape` when the
+ * RepeatController check was added (#1585), so their held keys click once and
+ * never bleep. Each is a known gap, left for its own issue rather than changed
+ * here; the test below fails once an entry declares the member or stops
+ * repeating, so the list cannot go stale.
+ */
+const REPEAT_WITHOUT_KEY_PRESS_SHAPE = ["fuel-service/fuel-service.ts", "replay-control/replay-control.ts"];
 const touchSources = sources.filter((s) =>
   /^[ \t]+(?:override[ \t]+)?(?:async[ \t]+)?onTouchTap[ \t]*\(/m.test(s.text),
 );
@@ -115,6 +128,28 @@ describe("press shape coverage (#269)", () => {
       expect(declaresMember(source.text, "keyPressShape"), `${source.file} has no keyPressShape`).toBe(true);
     },
   );
+
+  it("finds the actions that construct a RepeatController (#1585)", () => {
+    expect(repeatSources.map((s) => s.file)).toEqual(
+      expect.arrayContaining(["setup-brakes/setup-brakes.ts", "black-box-selector/black-box-selector.ts"]),
+    );
+  });
+
+  it.each(
+    repeatSources.filter((s) => !REPEAT_WITHOUT_KEY_PRESS_SHAPE.includes(s.file)).map((s) => [s.file, s] as const),
+  )("repeating action %s declares keyPressShape (#1585)", (_file, source) => {
+    expect(declaresMember(source.text, "keyPressShape"), `${source.file} has no keyPressShape`).toBe(true);
+  });
+
+  it.each(REPEAT_WITHOUT_KEY_PRESS_SHAPE)("known gap %s still repeats without a keyPressShape", (file) => {
+    const source = repeatSources.find((s) => s.file === file);
+
+    expect(source, `${file} no longer constructs a RepeatController: drop it from the list`).toBeDefined();
+    expect(
+      source && declaresMember(source.text, "keyPressShape"),
+      `${file} now declares keyPressShape: drop it from the list`,
+    ).toBe(false);
+  });
 
   it("finds the actions that handle a touch", () => {
     expect(touchSources.map((s) => s.file)).toContain("setup-aero/setup-aero.ts");

@@ -285,6 +285,24 @@ describe("BlackBoxSelector dial surface", () => {
       mockDualPressThreshold.value = ms;
     },
     readsStoredSettings: false,
+    keyCases: [
+      { name: "a Direct key taps once on key down", settings: { mode: "direct" }, shape: { kind: "tap" } },
+      {
+        name: "Increment Selected Control repeats while held (#1585)",
+        settings: { mode: "selected-control", control: "increment" },
+        shape: { kind: "hold", thresholdMs: 500 },
+      },
+      {
+        name: "Decrement Selected Control repeats while held (#1585)",
+        settings: { mode: "selected-control", control: "decrement" },
+        shape: { kind: "hold", thresholdMs: 500 },
+      },
+      {
+        name: "Toggle Selected Control taps once (#1585)",
+        settings: { mode: "selected-control", control: "toggle" },
+        shape: { kind: "tap" },
+      },
+    ],
   });
 
   const lateInputSettings = withDial({

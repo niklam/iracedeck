@@ -98,6 +98,28 @@ export const BLACK_BOX_CONTROL_KEYS = {
   toggleControl: "blackBoxToggleControl",
 } as const;
 
+/**
+ * The presses of the Black Box Selector's Selected Control mode (#1585), in the
+ * order its Control dropdown lists them: the stored values of its `control`
+ * setting.
+ */
+export const BLACK_BOX_SELECTED_CONTROLS = ["next", "previous", "increment", "decrement", "toggle"] as const;
+
+export type BlackBoxSelectedControl = (typeof BLACK_BOX_SELECTED_CONTROLS)[number];
+
+/**
+ * The binding each Selected Control press taps (#1585). Shared by the keypad
+ * mode and the #612 comms catalog, which resolves the mode's binding by the
+ * `control` setting through this map.
+ */
+export const BLACK_BOX_SELECTED_CONTROL_KEYS: Record<BlackBoxSelectedControl, string> = {
+  next: BLACK_BOX_CONTROL_KEYS.selectNextControl,
+  previous: BLACK_BOX_CONTROL_KEYS.selectPreviousControl,
+  increment: BLACK_BOX_CONTROL_KEYS.incrementControl,
+  decrement: BLACK_BOX_CONTROL_KEYS.decrementControl,
+  toggle: BLACK_BOX_CONTROL_KEYS.toggleControl,
+};
+
 /** The box pressed first, to force a deterministic switch to the target. */
 export const PRIME_BLACK_BOX: BlackBoxId = "lap-timing";
 
