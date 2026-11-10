@@ -99,6 +99,8 @@ The Pit Crew page's "Pit-box count-in" section gains one sentence: a pit entry r
 
 Niklas, 2026-11-10: "Session-start and race-start briefs should be dropped if cut off. I've been in situation where the race-start brief played like 4 times due to lights, then traffic." A brief is a long, one-off summary of the session. Replaying it whole after the start lights or a spotter call cut it repeats what the driver has already half-heard, at the busiest moment of the session. So both brief contracts are not stashed when an interrupt cuts them: the cut ends the brief, logged at debug as dropped. A brief that only waits its turn and was never cut still plays within its 8 s window, as today. This applies to the session-start and race-start briefs only. Every other queueable line keeps the stash, bounded by decision 3.
 
+The mechanism is a contract field, `dropWhenCut?: boolean`, declared in `dsl.ts`. Validation requires `queueable` with it and refuses it alongside `resumable`. The stash checks it and, instead of stashing, logs `Scenario "<id>" dropped — cut` at debug. `session-start.ts` and `race-start.ts` set it. It is not surfaced in `contracts()` or the pack reference. It is not the rejected restart-on-cut flag, which would exempt a line from the due-time rule; this one only says "never replay me after a cut". Decision 8's artifacts gain `dsl.ts`, `validation.ts`, `session-start.ts` and `race-start.ts`. (Amended 2026-11-10, from the #1681 lead's plan. Its run of master's engine confirmed that the readback resume is dropped below about 77 km/h today, so the Bug Fixes fragment stays.)
+
 ## Approaches weighed and rejected
 
 - **Keep the restart.** Then `maxQueueWaitMs` bounds the wait, not the lateness, and #1676's 1.5 s is not a bound.
