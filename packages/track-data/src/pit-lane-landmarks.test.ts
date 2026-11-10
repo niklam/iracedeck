@@ -122,7 +122,8 @@ describe("wrap-aware helpers", () => {
   });
 
   it("derives the tolerance from the track length, with a fallback", () => {
-    expect(pitLaneTolerancePct(5000)).toBeCloseTo(0.003);
+    // 5 m on 5 km.
+    expect(pitLaneTolerancePct(5000)).toBeCloseTo(0.001, 12);
     expect(pitLaneTolerancePct(null)).toBe(PIT_LANE_TOLERANCE_PCT);
     expect(pitLaneTolerancePct(0)).toBe(PIT_LANE_TOLERANCE_PCT);
     expect(pitLaneTolerancePct(Number.NaN)).toBe(PIT_LANE_TOLERANCE_PCT);
