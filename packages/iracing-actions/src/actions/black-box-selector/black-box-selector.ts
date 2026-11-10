@@ -51,7 +51,7 @@ import {
   BLACK_BOX_SELECTED_CONTROLS,
   type BlackBoxSelectedControl,
 } from "../../shared/black-box.js";
-import { RepeatController } from "../../shared/repeat-controller.js";
+import { RepeatController, type RepeatOptions } from "../../shared/repeat-controller.js";
 import { BlackBoxSelectorDialSurface, DialSettings } from "./black-box-selector-dial-surface.js";
 
 const DIRECT_ICONS: Record<string, string> = {
@@ -315,16 +315,20 @@ export class BlackBoxSelector extends ConnectionStateAwareAction<BlackBoxSelecto
     // Increment / Decrement Selected Control repeat while held (#1585). Armed
     // SYNCHRONOUSLY, before the first tap's await, so a racing keyUp always
     // finds the timers to clear. A tap that did not go out ends the repeat.
-    this.repeat.onKeyDown(ev.action.id, {
+    const options: RepeatOptions = {
       holdMs: getDualPressThresholdMs(),
       intervalMs: ADJUST_REPEAT_INTERVAL_MS,
       safetyMs: ADJUST_REPEAT_SAFETY_MS,
       execute: () => this.tapBinding(settingKey),
-    });
+    };
+    this.repeat.onKeyDown(ev.action.id, options);
 
     const sent = await this.tapBinding(settingKey);
 
-    if (!sent) {
+    // Only this press's own repeat: while the tap was in flight the key may
+    // have been released and pressed again, and that newer press's repeat is
+    // not this failure's to end.
+    if (!sent && this.repeat.timers.get(ev.action.id)?.options === options) {
       this.repeat.clear(ev.action.id);
     }
   }

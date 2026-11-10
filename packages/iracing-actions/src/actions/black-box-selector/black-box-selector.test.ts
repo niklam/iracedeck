@@ -606,6 +606,41 @@ describe("BlackBoxSelector", () => {
         expect(mockTapBinding).toHaveBeenCalledTimes(1);
       });
 
+      it("a stale first-tap failure of an earlier press leaves a newer press's repeat running", async () => {
+        // Press A's first tap is still in flight when A is released and B is
+        // pressed; A's tap then fails. That failure ends A's repeat, which is
+        // already gone, and must not clear the one B armed.
+        let settleA: (sent: boolean) => void = () => undefined;
+        let settleB: (sent: boolean) => void = () => undefined;
+        mockTapBinding
+          .mockImplementationOnce(() => new Promise<boolean>((resolve) => (settleA = resolve)))
+          .mockImplementationOnce(() => new Promise<boolean>((resolve) => (settleB = resolve)));
+
+        const pressedA = press("k9", "increment");
+        await release("k9", "increment");
+        const pressedB = press("k9", "increment");
+        settleA(false);
+        await pressedA;
+        settleB(true);
+        await pressedB;
+
+        expect(mockTapBinding).toHaveBeenCalledTimes(2);
+
+        // B is still held: past the hold threshold (500 ms) and one interval (150 ms) it repeats.
+        await vi.advanceTimersByTimeAsync(500 + 150);
+
+        expect(mockTapBinding).toHaveBeenCalledTimes(3);
+
+        await vi.advanceTimersByTimeAsync(150);
+
+        expect(mockTapBinding).toHaveBeenCalledTimes(4);
+
+        await release("k9", "increment");
+        await vi.advanceTimersByTimeAsync(3000);
+
+        expect(mockTapBinding).toHaveBeenCalledTimes(4);
+      });
+
       it("declares no keyPressShape, so a repeating key has the default tap shape (#269)", () => {
         // A hold-to-repeat key's steps are its own feedback: the press sounds
         // click once on key down and never bleep at the threshold.
