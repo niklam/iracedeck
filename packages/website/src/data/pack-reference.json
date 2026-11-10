@@ -4,7 +4,8 @@
       "packages/audio-scenarios/src/catalog/pit-crew",
       "packages/audio-assets/voice/default/callouts.json",
       "packages/audio-assets/configs/default.voice.json",
-      "packages/audio-assets/manifest.json"
+      "packages/audio-assets/manifest.json",
+      "packages/callout-script/src/driver-name-aliases.ts"
     ]
   },
   "callouts": [
@@ -51612,7 +51613,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [],
-          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships, plus every alias whose canonical it ships, are the names its users can be called by: dominik is spoken with dominic's clips, geoff is spoken with jeff's clips and kris is spoken with chris's clips. A voice that records an alias spelling itself plays its own clips for it. The group is optional."
         },
         {
           "base": "ade",
@@ -51622,7 +51623,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [],
-          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships, plus every alias whose canonical it ships, are the names its users can be called by: dominik is spoken with dominic's clips, geoff is spoken with jeff's clips and kris is spoken with chris's clips. A voice that records an alias spelling itself plays its own clips for it. The group is optional."
         },
         {
           "base": "al",
@@ -51632,7 +51633,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [],
-          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships, plus every alias whose canonical it ships, are the names its users can be called by: dominik is spoken with dominic's clips, geoff is spoken with jeff's clips and kris is spoken with chris's clips. A voice that records an alias spelling itself plays its own clips for it. The group is optional."
         },
         {
           "base": "alex",
@@ -51642,7 +51643,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [],
-          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships, plus every alias whose canonical it ships, are the names its users can be called by: dominik is spoken with dominic's clips, geoff is spoken with jeff's clips and kris is spoken with chris's clips. A voice that records an alias spelling itself plays its own clips for it. The group is optional."
         },
         {
           "base": "alexei",
@@ -51652,7 +51653,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [],
-          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships, plus every alias whose canonical it ships, are the names its users can be called by: dominik is spoken with dominic's clips, geoff is spoken with jeff's clips and kris is spoken with chris's clips. A voice that records an alias spelling itself plays its own clips for it. The group is optional."
         },
         {
           "base": "andre",
@@ -51662,7 +51663,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [],
-          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships, plus every alias whose canonical it ships, are the names its users can be called by: dominik is spoken with dominic's clips, geoff is spoken with jeff's clips and kris is spoken with chris's clips. A voice that records an alias spelling itself plays its own clips for it. The group is optional."
         },
         {
           "base": "andrew",
@@ -51672,7 +51673,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [],
-          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships, plus every alias whose canonical it ships, are the names its users can be called by: dominik is spoken with dominic's clips, geoff is spoken with jeff's clips and kris is spoken with chris's clips. A voice that records an alias spelling itself plays its own clips for it. The group is optional."
         },
         {
           "base": "andris",
@@ -51682,7 +51683,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [],
-          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships, plus every alias whose canonical it ships, are the names its users can be called by: dominik is spoken with dominic's clips, geoff is spoken with jeff's clips and kris is spoken with chris's clips. A voice that records an alias spelling itself plays its own clips for it. The group is optional."
         },
         {
           "base": "andy",
@@ -51692,7 +51693,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [],
-          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships, plus every alias whose canonical it ships, are the names its users can be called by: dominik is spoken with dominic's clips, geoff is spoken with jeff's clips and kris is spoken with chris's clips. A voice that records an alias spelling itself plays its own clips for it. The group is optional."
         },
         {
           "base": "ant",
@@ -51702,7 +51703,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [],
-          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships, plus every alias whose canonical it ships, are the names its users can be called by: dominik is spoken with dominic's clips, geoff is spoken with jeff's clips and kris is spoken with chris's clips. A voice that records an alias spelling itself plays its own clips for it. The group is optional."
         },
         {
           "base": "anthony",
@@ -51712,7 +51713,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [],
-          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships, plus every alias whose canonical it ships, are the names its users can be called by: dominik is spoken with dominic's clips, geoff is spoken with jeff's clips and kris is spoken with chris's clips. A voice that records an alias spelling itself plays its own clips for it. The group is optional."
         },
         {
           "base": "bill",
@@ -51722,7 +51723,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [],
-          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships, plus every alias whose canonical it ships, are the names its users can be called by: dominik is spoken with dominic's clips, geoff is spoken with jeff's clips and kris is spoken with chris's clips. A voice that records an alias spelling itself plays its own clips for it. The group is optional."
         },
         {
           "base": "bird",
@@ -51732,7 +51733,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [],
-          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships, plus every alias whose canonical it ships, are the names its users can be called by: dominik is spoken with dominic's clips, geoff is spoken with jeff's clips and kris is spoken with chris's clips. A voice that records an alias spelling itself plays its own clips for it. The group is optional."
         },
         {
           "base": "bob",
@@ -51742,7 +51743,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [],
-          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships, plus every alias whose canonical it ships, are the names its users can be called by: dominik is spoken with dominic's clips, geoff is spoken with jeff's clips and kris is spoken with chris's clips. A voice that records an alias spelling itself plays its own clips for it. The group is optional."
         },
         {
           "base": "boss",
@@ -51752,7 +51753,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [],
-          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships, plus every alias whose canonical it ships, are the names its users can be called by: dominik is spoken with dominic's clips, geoff is spoken with jeff's clips and kris is spoken with chris's clips. A voice that records an alias spelling itself plays its own clips for it. The group is optional."
         },
         {
           "base": "brad",
@@ -51762,7 +51763,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [],
-          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships, plus every alias whose canonical it ships, are the names its users can be called by: dominik is spoken with dominic's clips, geoff is spoken with jeff's clips and kris is spoken with chris's clips. A voice that records an alias spelling itself plays its own clips for it. The group is optional."
         },
         {
           "base": "brandon",
@@ -51772,7 +51773,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [],
-          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships, plus every alias whose canonical it ships, are the names its users can be called by: dominik is spoken with dominic's clips, geoff is spoken with jeff's clips and kris is spoken with chris's clips. A voice that records an alias spelling itself plays its own clips for it. The group is optional."
         },
         {
           "base": "brant",
@@ -51782,7 +51783,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [],
-          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships, plus every alias whose canonical it ships, are the names its users can be called by: dominik is spoken with dominic's clips, geoff is spoken with jeff's clips and kris is spoken with chris's clips. A voice that records an alias spelling itself plays its own clips for it. The group is optional."
         },
         {
           "base": "brenton",
@@ -51792,7 +51793,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [],
-          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships, plus every alias whose canonical it ships, are the names its users can be called by: dominik is spoken with dominic's clips, geoff is spoken with jeff's clips and kris is spoken with chris's clips. A voice that records an alias spelling itself plays its own clips for it. The group is optional."
         },
         {
           "base": "carl",
@@ -51802,7 +51803,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [],
-          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships, plus every alias whose canonical it ships, are the names its users can be called by: dominik is spoken with dominic's clips, geoff is spoken with jeff's clips and kris is spoken with chris's clips. A voice that records an alias spelling itself plays its own clips for it. The group is optional."
         },
         {
           "base": "carter",
@@ -51812,7 +51813,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [],
-          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships, plus every alias whose canonical it ships, are the names its users can be called by: dominik is spoken with dominic's clips, geoff is spoken with jeff's clips and kris is spoken with chris's clips. A voice that records an alias spelling itself plays its own clips for it. The group is optional."
         },
         {
           "base": "casey",
@@ -51822,7 +51823,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [],
-          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships, plus every alias whose canonical it ships, are the names its users can be called by: dominik is spoken with dominic's clips, geoff is spoken with jeff's clips and kris is spoken with chris's clips. A voice that records an alias spelling itself plays its own clips for it. The group is optional."
         },
         {
           "base": "champ",
@@ -51832,7 +51833,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [],
-          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships, plus every alias whose canonical it ships, are the names its users can be called by: dominik is spoken with dominic's clips, geoff is spoken with jeff's clips and kris is spoken with chris's clips. A voice that records an alias spelling itself plays its own clips for it. The group is optional."
         },
         {
           "base": "chip",
@@ -51842,7 +51843,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [],
-          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships, plus every alias whose canonical it ships, are the names its users can be called by: dominik is spoken with dominic's clips, geoff is spoken with jeff's clips and kris is spoken with chris's clips. A voice that records an alias spelling itself plays its own clips for it. The group is optional."
         },
         {
           "base": "chris",
@@ -51852,7 +51853,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [],
-          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships, plus every alias whose canonical it ships, are the names its users can be called by: dominik is spoken with dominic's clips, geoff is spoken with jeff's clips and kris is spoken with chris's clips. A voice that records an alias spelling itself plays its own clips for it. The group is optional."
         },
         {
           "base": "cole",
@@ -51862,7 +51863,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [],
-          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships, plus every alias whose canonical it ships, are the names its users can be called by: dominik is spoken with dominic's clips, geoff is spoken with jeff's clips and kris is spoken with chris's clips. A voice that records an alias spelling itself plays its own clips for it. The group is optional."
         },
         {
           "base": "craig",
@@ -51872,7 +51873,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [],
-          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships, plus every alias whose canonical it ships, are the names its users can be called by: dominik is spoken with dominic's clips, geoff is spoken with jeff's clips and kris is spoken with chris's clips. A voice that records an alias spelling itself plays its own clips for it. The group is optional."
         },
         {
           "base": "daniel",
@@ -51882,7 +51883,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [],
-          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships, plus every alias whose canonical it ships, are the names its users can be called by: dominik is spoken with dominic's clips, geoff is spoken with jeff's clips and kris is spoken with chris's clips. A voice that records an alias spelling itself plays its own clips for it. The group is optional."
         },
         {
           "base": "dave",
@@ -51892,7 +51893,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [],
-          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships, plus every alias whose canonical it ships, are the names its users can be called by: dominik is spoken with dominic's clips, geoff is spoken with jeff's clips and kris is spoken with chris's clips. A voice that records an alias spelling itself plays its own clips for it. The group is optional."
         },
         {
           "base": "david",
@@ -51902,7 +51903,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [],
-          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships, plus every alias whose canonical it ships, are the names its users can be called by: dominik is spoken with dominic's clips, geoff is spoken with jeff's clips and kris is spoken with chris's clips. A voice that records an alias spelling itself plays its own clips for it. The group is optional."
         },
         {
           "base": "dean",
@@ -51912,7 +51913,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [],
-          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships, plus every alias whose canonical it ships, are the names its users can be called by: dominik is spoken with dominic's clips, geoff is spoken with jeff's clips and kris is spoken with chris's clips. A voice that records an alias spelling itself plays its own clips for it. The group is optional."
         },
         {
           "base": "dev",
@@ -51922,7 +51923,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [],
-          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships, plus every alias whose canonical it ships, are the names its users can be called by: dominik is spoken with dominic's clips, geoff is spoken with jeff's clips and kris is spoken with chris's clips. A voice that records an alias spelling itself plays its own clips for it. The group is optional."
         },
         {
           "base": "dominic",
@@ -51932,17 +51933,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [],
-          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
-        },
-        {
-          "base": "dominik",
-          "texts": [
-            "Dominik"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [],
-          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships, plus every alias whose canonical it ships, are the names its users can be called by: dominik is spoken with dominic's clips, geoff is spoken with jeff's clips and kris is spoken with chris's clips. A voice that records an alias spelling itself plays its own clips for it. The group is optional."
         },
         {
           "base": "drew",
@@ -51952,7 +51943,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [],
-          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships, plus every alias whose canonical it ships, are the names its users can be called by: dominik is spoken with dominic's clips, geoff is spoken with jeff's clips and kris is spoken with chris's clips. A voice that records an alias spelling itself plays its own clips for it. The group is optional."
         },
         {
           "base": "driver",
@@ -51962,7 +51953,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [],
-          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships, plus every alias whose canonical it ships, are the names its users can be called by: dominik is spoken with dominic's clips, geoff is spoken with jeff's clips and kris is spoken with chris's clips. A voice that records an alias spelling itself plays its own clips for it. The group is optional."
         },
         {
           "base": "dustin",
@@ -51972,7 +51963,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [],
-          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships, plus every alias whose canonical it ships, are the names its users can be called by: dominik is spoken with dominic's clips, geoff is spoken with jeff's clips and kris is spoken with chris's clips. A voice that records an alias spelling itself plays its own clips for it. The group is optional."
         },
         {
           "base": "dylan",
@@ -51982,7 +51973,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [],
-          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships, plus every alias whose canonical it ships, are the names its users can be called by: dominik is spoken with dominic's clips, geoff is spoken with jeff's clips and kris is spoken with chris's clips. A voice that records an alias spelling itself plays its own clips for it. The group is optional."
         },
         {
           "base": "elias",
@@ -51992,7 +51983,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [],
-          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships, plus every alias whose canonical it ships, are the names its users can be called by: dominik is spoken with dominic's clips, geoff is spoken with jeff's clips and kris is spoken with chris's clips. A voice that records an alias spelling itself plays its own clips for it. The group is optional."
         },
         {
           "base": "felix",
@@ -52002,7 +51993,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [],
-          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships, plus every alias whose canonical it ships, are the names its users can be called by: dominik is spoken with dominic's clips, geoff is spoken with jeff's clips and kris is spoken with chris's clips. A voice that records an alias spelling itself plays its own clips for it. The group is optional."
         },
         {
           "base": "fox",
@@ -52012,7 +52003,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [],
-          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships, plus every alias whose canonical it ships, are the names its users can be called by: dominik is spoken with dominic's clips, geoff is spoken with jeff's clips and kris is spoken with chris's clips. A voice that records an alias spelling itself plays its own clips for it. The group is optional."
         },
         {
           "base": "fredrich",
@@ -52022,17 +52013,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [],
-          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
-        },
-        {
-          "base": "geoff",
-          "texts": [
-            "Jeff"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [],
-          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships, plus every alias whose canonical it ships, are the names its users can be called by: dominik is spoken with dominic's clips, geoff is spoken with jeff's clips and kris is spoken with chris's clips. A voice that records an alias spelling itself plays its own clips for it. The group is optional."
         },
         {
           "base": "glen",
@@ -52042,7 +52023,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [],
-          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships, plus every alias whose canonical it ships, are the names its users can be called by: dominik is spoken with dominic's clips, geoff is spoken with jeff's clips and kris is spoken with chris's clips. A voice that records an alias spelling itself plays its own clips for it. The group is optional."
         },
         {
           "base": "guido",
@@ -52052,7 +52033,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [],
-          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships, plus every alias whose canonical it ships, are the names its users can be called by: dominik is spoken with dominic's clips, geoff is spoken with jeff's clips and kris is spoken with chris's clips. A voice that records an alias spelling itself plays its own clips for it. The group is optional."
         },
         {
           "base": "hector",
@@ -52062,7 +52043,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [],
-          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships, plus every alias whose canonical it ships, are the names its users can be called by: dominik is spoken with dominic's clips, geoff is spoken with jeff's clips and kris is spoken with chris's clips. A voice that records an alias spelling itself plays its own clips for it. The group is optional."
         },
         {
           "base": "hesham",
@@ -52072,7 +52053,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [],
-          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships, plus every alias whose canonical it ships, are the names its users can be called by: dominik is spoken with dominic's clips, geoff is spoken with jeff's clips and kris is spoken with chris's clips. A voice that records an alias spelling itself plays its own clips for it. The group is optional."
         },
         {
           "base": "holger",
@@ -52082,7 +52063,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [],
-          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships, plus every alias whose canonical it ships, are the names its users can be called by: dominik is spoken with dominic's clips, geoff is spoken with jeff's clips and kris is spoken with chris's clips. A voice that records an alias spelling itself plays its own clips for it. The group is optional."
         },
         {
           "base": "hope",
@@ -52092,7 +52073,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [],
-          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships, plus every alias whose canonical it ships, are the names its users can be called by: dominik is spoken with dominic's clips, geoff is spoken with jeff's clips and kris is spoken with chris's clips. A voice that records an alias spelling itself plays its own clips for it. The group is optional."
         },
         {
           "base": "ivan",
@@ -52102,7 +52083,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [],
-          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships, plus every alias whose canonical it ships, are the names its users can be called by: dominik is spoken with dominic's clips, geoff is spoken with jeff's clips and kris is spoken with chris's clips. A voice that records an alias spelling itself plays its own clips for it. The group is optional."
         },
         {
           "base": "ivo",
@@ -52112,7 +52093,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [],
-          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships, plus every alias whose canonical it ships, are the names its users can be called by: dominik is spoken with dominic's clips, geoff is spoken with jeff's clips and kris is spoken with chris's clips. A voice that records an alias spelling itself plays its own clips for it. The group is optional."
         },
         {
           "base": "jace",
@@ -52122,7 +52103,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [],
-          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships, plus every alias whose canonical it ships, are the names its users can be called by: dominik is spoken with dominic's clips, geoff is spoken with jeff's clips and kris is spoken with chris's clips. A voice that records an alias spelling itself plays its own clips for it. The group is optional."
         },
         {
           "base": "jack",
@@ -52132,7 +52113,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [],
-          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships, plus every alias whose canonical it ships, are the names its users can be called by: dominik is spoken with dominic's clips, geoff is spoken with jeff's clips and kris is spoken with chris's clips. A voice that records an alias spelling itself plays its own clips for it. The group is optional."
         },
         {
           "base": "jakub",
@@ -52142,7 +52123,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [],
-          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships, plus every alias whose canonical it ships, are the names its users can be called by: dominik is spoken with dominic's clips, geoff is spoken with jeff's clips and kris is spoken with chris's clips. A voice that records an alias spelling itself plays its own clips for it. The group is optional."
         },
         {
           "base": "james",
@@ -52152,7 +52133,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [],
-          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships, plus every alias whose canonical it ships, are the names its users can be called by: dominik is spoken with dominic's clips, geoff is spoken with jeff's clips and kris is spoken with chris's clips. A voice that records an alias spelling itself plays its own clips for it. The group is optional."
         },
         {
           "base": "jasper",
@@ -52162,7 +52143,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [],
-          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships, plus every alias whose canonical it ships, are the names its users can be called by: dominik is spoken with dominic's clips, geoff is spoken with jeff's clips and kris is spoken with chris's clips. A voice that records an alias spelling itself plays its own clips for it. The group is optional."
         },
         {
           "base": "jeff",
@@ -52172,7 +52153,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [],
-          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships, plus every alias whose canonical it ships, are the names its users can be called by: dominik is spoken with dominic's clips, geoff is spoken with jeff's clips and kris is spoken with chris's clips. A voice that records an alias spelling itself plays its own clips for it. The group is optional."
         },
         {
           "base": "jimmy",
@@ -52182,7 +52163,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [],
-          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships, plus every alias whose canonical it ships, are the names its users can be called by: dominik is spoken with dominic's clips, geoff is spoken with jeff's clips and kris is spoken with chris's clips. A voice that records an alias spelling itself plays its own clips for it. The group is optional."
         },
         {
           "base": "johan",
@@ -52192,7 +52173,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [],
-          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships, plus every alias whose canonical it ships, are the names its users can be called by: dominik is spoken with dominic's clips, geoff is spoken with jeff's clips and kris is spoken with chris's clips. A voice that records an alias spelling itself plays its own clips for it. The group is optional."
         },
         {
           "base": "jon",
@@ -52202,7 +52183,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [],
-          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships, plus every alias whose canonical it ships, are the names its users can be called by: dominik is spoken with dominic's clips, geoff is spoken with jeff's clips and kris is spoken with chris's clips. A voice that records an alias spelling itself plays its own clips for it. The group is optional."
         },
         {
           "base": "jorge",
@@ -52212,7 +52193,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [],
-          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships, plus every alias whose canonical it ships, are the names its users can be called by: dominik is spoken with dominic's clips, geoff is spoken with jeff's clips and kris is spoken with chris's clips. A voice that records an alias spelling itself plays its own clips for it. The group is optional."
         },
         {
           "base": "jorgen",
@@ -52222,7 +52203,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [],
-          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships, plus every alias whose canonical it ships, are the names its users can be called by: dominik is spoken with dominic's clips, geoff is spoken with jeff's clips and kris is spoken with chris's clips. A voice that records an alias spelling itself plays its own clips for it. The group is optional."
         },
         {
           "base": "jose",
@@ -52232,7 +52213,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [],
-          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships, plus every alias whose canonical it ships, are the names its users can be called by: dominik is spoken with dominic's clips, geoff is spoken with jeff's clips and kris is spoken with chris's clips. A voice that records an alias spelling itself plays its own clips for it. The group is optional."
         },
         {
           "base": "juan",
@@ -52242,7 +52223,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [],
-          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships, plus every alias whose canonical it ships, are the names its users can be called by: dominik is spoken with dominic's clips, geoff is spoken with jeff's clips and kris is spoken with chris's clips. A voice that records an alias spelling itself plays its own clips for it. The group is optional."
         },
         {
           "base": "jurgen",
@@ -52252,7 +52233,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [],
-          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships, plus every alias whose canonical it ships, are the names its users can be called by: dominik is spoken with dominic's clips, geoff is spoken with jeff's clips and kris is spoken with chris's clips. A voice that records an alias spelling itself plays its own clips for it. The group is optional."
         },
         {
           "base": "jurgmaister",
@@ -52262,7 +52243,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [],
-          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships, plus every alias whose canonical it ships, are the names its users can be called by: dominik is spoken with dominic's clips, geoff is spoken with jeff's clips and kris is spoken with chris's clips. A voice that records an alias spelling itself plays its own clips for it. The group is optional."
         },
         {
           "base": "justin",
@@ -52272,7 +52253,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [],
-          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships, plus every alias whose canonical it ships, are the names its users can be called by: dominik is spoken with dominic's clips, geoff is spoken with jeff's clips and kris is spoken with chris's clips. A voice that records an alias spelling itself plays its own clips for it. The group is optional."
         },
         {
           "base": "kanki",
@@ -52282,7 +52263,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [],
-          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships, plus every alias whose canonical it ships, are the names its users can be called by: dominik is spoken with dominic's clips, geoff is spoken with jeff's clips and kris is spoken with chris's clips. A voice that records an alias spelling itself plays its own clips for it. The group is optional."
         },
         {
           "base": "kev",
@@ -52292,7 +52273,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [],
-          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships, plus every alias whose canonical it ships, are the names its users can be called by: dominik is spoken with dominic's clips, geoff is spoken with jeff's clips and kris is spoken with chris's clips. A voice that records an alias spelling itself plays its own clips for it. The group is optional."
         },
         {
           "base": "kevin",
@@ -52302,17 +52283,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [],
-          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
-        },
-        {
-          "base": "kris",
-          "texts": [
-            "Kris"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [],
-          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships, plus every alias whose canonical it ships, are the names its users can be called by: dominik is spoken with dominic's clips, geoff is spoken with jeff's clips and kris is spoken with chris's clips. A voice that records an alias spelling itself plays its own clips for it. The group is optional."
         },
         {
           "base": "lee",
@@ -52322,7 +52293,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [],
-          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships, plus every alias whose canonical it ships, are the names its users can be called by: dominik is spoken with dominic's clips, geoff is spoken with jeff's clips and kris is spoken with chris's clips. A voice that records an alias spelling itself plays its own clips for it. The group is optional."
         },
         {
           "base": "lex",
@@ -52332,7 +52303,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [],
-          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships, plus every alias whose canonical it ships, are the names its users can be called by: dominik is spoken with dominic's clips, geoff is spoken with jeff's clips and kris is spoken with chris's clips. A voice that records an alias spelling itself plays its own clips for it. The group is optional."
         },
         {
           "base": "liam",
@@ -52342,7 +52313,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [],
-          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships, plus every alias whose canonical it ships, are the names its users can be called by: dominik is spoken with dominic's clips, geoff is spoken with jeff's clips and kris is spoken with chris's clips. A voice that records an alias spelling itself plays its own clips for it. The group is optional."
         },
         {
           "base": "lorenzo",
@@ -52352,7 +52323,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [],
-          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships, plus every alias whose canonical it ships, are the names its users can be called by: dominik is spoken with dominic's clips, geoff is spoken with jeff's clips and kris is spoken with chris's clips. A voice that records an alias spelling itself plays its own clips for it. The group is optional."
         },
         {
           "base": "manfred",
@@ -52362,7 +52333,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [],
-          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships, plus every alias whose canonical it ships, are the names its users can be called by: dominik is spoken with dominic's clips, geoff is spoken with jeff's clips and kris is spoken with chris's clips. A voice that records an alias spelling itself plays its own clips for it. The group is optional."
         },
         {
           "base": "marco",
@@ -52372,7 +52343,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [],
-          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships, plus every alias whose canonical it ships, are the names its users can be called by: dominik is spoken with dominic's clips, geoff is spoken with jeff's clips and kris is spoken with chris's clips. A voice that records an alias spelling itself plays its own clips for it. The group is optional."
         },
         {
           "base": "marcus",
@@ -52382,7 +52353,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [],
-          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships, plus every alias whose canonical it ships, are the names its users can be called by: dominik is spoken with dominic's clips, geoff is spoken with jeff's clips and kris is spoken with chris's clips. A voice that records an alias spelling itself plays its own clips for it. The group is optional."
         },
         {
           "base": "mark",
@@ -52392,7 +52363,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [],
-          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships, plus every alias whose canonical it ships, are the names its users can be called by: dominik is spoken with dominic's clips, geoff is spoken with jeff's clips and kris is spoken with chris's clips. A voice that records an alias spelling itself plays its own clips for it. The group is optional."
         },
         {
           "base": "martin",
@@ -52402,7 +52373,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [],
-          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships, plus every alias whose canonical it ships, are the names its users can be called by: dominik is spoken with dominic's clips, geoff is spoken with jeff's clips and kris is spoken with chris's clips. A voice that records an alias spelling itself plays its own clips for it. The group is optional."
         },
         {
           "base": "marty",
@@ -52412,7 +52383,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [],
-          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships, plus every alias whose canonical it ships, are the names its users can be called by: dominik is spoken with dominic's clips, geoff is spoken with jeff's clips and kris is spoken with chris's clips. A voice that records an alias spelling itself plays its own clips for it. The group is optional."
         },
         {
           "base": "mate",
@@ -52422,7 +52393,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [],
-          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships, plus every alias whose canonical it ships, are the names its users can be called by: dominik is spoken with dominic's clips, geoff is spoken with jeff's clips and kris is spoken with chris's clips. A voice that records an alias spelling itself plays its own clips for it. The group is optional."
         },
         {
           "base": "matt",
@@ -52432,7 +52403,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [],
-          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships, plus every alias whose canonical it ships, are the names its users can be called by: dominik is spoken with dominic's clips, geoff is spoken with jeff's clips and kris is spoken with chris's clips. A voice that records an alias spelling itself plays its own clips for it. The group is optional."
         },
         {
           "base": "matthew",
@@ -52442,7 +52413,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [],
-          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships, plus every alias whose canonical it ships, are the names its users can be called by: dominik is spoken with dominic's clips, geoff is spoken with jeff's clips and kris is spoken with chris's clips. A voice that records an alias spelling itself plays its own clips for it. The group is optional."
         },
         {
           "base": "matthias",
@@ -52452,7 +52423,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [],
-          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships, plus every alias whose canonical it ships, are the names its users can be called by: dominik is spoken with dominic's clips, geoff is spoken with jeff's clips and kris is spoken with chris's clips. A voice that records an alias spelling itself plays its own clips for it. The group is optional."
         },
         {
           "base": "miguel",
@@ -52462,7 +52433,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [],
-          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships, plus every alias whose canonical it ships, are the names its users can be called by: dominik is spoken with dominic's clips, geoff is spoken with jeff's clips and kris is spoken with chris's clips. A voice that records an alias spelling itself plays its own clips for it. The group is optional."
         },
         {
           "base": "mike",
@@ -52472,7 +52443,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [],
-          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships, plus every alias whose canonical it ships, are the names its users can be called by: dominik is spoken with dominic's clips, geoff is spoken with jeff's clips and kris is spoken with chris's clips. A voice that records an alias spelling itself plays its own clips for it. The group is optional."
         },
         {
           "base": "miquel",
@@ -52482,7 +52453,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [],
-          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships, plus every alias whose canonical it ships, are the names its users can be called by: dominik is spoken with dominic's clips, geoff is spoken with jeff's clips and kris is spoken with chris's clips. A voice that records an alias spelling itself plays its own clips for it. The group is optional."
         },
         {
           "base": "nick",
@@ -52492,7 +52463,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [],
-          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships, plus every alias whose canonical it ships, are the names its users can be called by: dominik is spoken with dominic's clips, geoff is spoken with jeff's clips and kris is spoken with chris's clips. A voice that records an alias spelling itself plays its own clips for it. The group is optional."
         },
         {
           "base": "niklas",
@@ -52502,7 +52473,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [],
-          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships, plus every alias whose canonical it ships, are the names its users can be called by: dominik is spoken with dominic's clips, geoff is spoken with jeff's clips and kris is spoken with chris's clips. A voice that records an alias spelling itself plays its own clips for it. The group is optional."
         },
         {
           "base": "noj",
@@ -52512,7 +52483,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [],
-          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships, plus every alias whose canonical it ships, are the names its users can be called by: dominik is spoken with dominic's clips, geoff is spoken with jeff's clips and kris is spoken with chris's clips. A voice that records an alias spelling itself plays its own clips for it. The group is optional."
         },
         {
           "base": "oivindl",
@@ -52522,7 +52493,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [],
-          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships, plus every alias whose canonical it ships, are the names its users can be called by: dominik is spoken with dominic's clips, geoff is spoken with jeff's clips and kris is spoken with chris's clips. A voice that records an alias spelling itself plays its own clips for it. The group is optional."
         },
         {
           "base": "olle",
@@ -52532,7 +52503,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [],
-          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships, plus every alias whose canonical it ships, are the names its users can be called by: dominik is spoken with dominic's clips, geoff is spoken with jeff's clips and kris is spoken with chris's clips. A voice that records an alias spelling itself plays its own clips for it. The group is optional."
         },
         {
           "base": "pablo",
@@ -52542,7 +52513,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [],
-          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships, plus every alias whose canonical it ships, are the names its users can be called by: dominik is spoken with dominic's clips, geoff is spoken with jeff's clips and kris is spoken with chris's clips. A voice that records an alias spelling itself plays its own clips for it. The group is optional."
         },
         {
           "base": "patrick",
@@ -52552,7 +52523,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [],
-          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships, plus every alias whose canonical it ships, are the names its users can be called by: dominik is spoken with dominic's clips, geoff is spoken with jeff's clips and kris is spoken with chris's clips. A voice that records an alias spelling itself plays its own clips for it. The group is optional."
         },
         {
           "base": "peter",
@@ -52562,7 +52533,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [],
-          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships, plus every alias whose canonical it ships, are the names its users can be called by: dominik is spoken with dominic's clips, geoff is spoken with jeff's clips and kris is spoken with chris's clips. A voice that records an alias spelling itself plays its own clips for it. The group is optional."
         },
         {
           "base": "raymond",
@@ -52572,7 +52543,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [],
-          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships, plus every alias whose canonical it ships, are the names its users can be called by: dominik is spoken with dominic's clips, geoff is spoken with jeff's clips and kris is spoken with chris's clips. A voice that records an alias spelling itself plays its own clips for it. The group is optional."
         },
         {
           "base": "rich",
@@ -52582,7 +52553,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [],
-          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships, plus every alias whose canonical it ships, are the names its users can be called by: dominik is spoken with dominic's clips, geoff is spoken with jeff's clips and kris is spoken with chris's clips. A voice that records an alias spelling itself plays its own clips for it. The group is optional."
         },
         {
           "base": "rickybobby",
@@ -52592,7 +52563,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [],
-          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships, plus every alias whose canonical it ships, are the names its users can be called by: dominik is spoken with dominic's clips, geoff is spoken with jeff's clips and kris is spoken with chris's clips. A voice that records an alias spelling itself plays its own clips for it. The group is optional."
         },
         {
           "base": "rob",
@@ -52602,7 +52573,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [],
-          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships, plus every alias whose canonical it ships, are the names its users can be called by: dominik is spoken with dominic's clips, geoff is spoken with jeff's clips and kris is spoken with chris's clips. A voice that records an alias spelling itself plays its own clips for it. The group is optional."
         },
         {
           "base": "robbie",
@@ -52612,7 +52583,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [],
-          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships, plus every alias whose canonical it ships, are the names its users can be called by: dominik is spoken with dominic's clips, geoff is spoken with jeff's clips and kris is spoken with chris's clips. A voice that records an alias spelling itself plays its own clips for it. The group is optional."
         },
         {
           "base": "robin",
@@ -52622,7 +52593,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [],
-          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships, plus every alias whose canonical it ships, are the names its users can be called by: dominik is spoken with dominic's clips, geoff is spoken with jeff's clips and kris is spoken with chris's clips. A voice that records an alias spelling itself plays its own clips for it. The group is optional."
         },
         {
           "base": "ron",
@@ -52632,7 +52603,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [],
-          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships, plus every alias whose canonical it ships, are the names its users can be called by: dominik is spoken with dominic's clips, geoff is spoken with jeff's clips and kris is spoken with chris's clips. A voice that records an alias spelling itself plays its own clips for it. The group is optional."
         },
         {
           "base": "schumi",
@@ -52642,7 +52613,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [],
-          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships, plus every alias whose canonical it ships, are the names its users can be called by: dominik is spoken with dominic's clips, geoff is spoken with jeff's clips and kris is spoken with chris's clips. A voice that records an alias spelling itself plays its own clips for it. The group is optional."
         },
         {
           "base": "senior",
@@ -52652,7 +52623,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [],
-          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships, plus every alias whose canonical it ships, are the names its users can be called by: dominik is spoken with dominic's clips, geoff is spoken with jeff's clips and kris is spoken with chris's clips. A voice that records an alias spelling itself plays its own clips for it. The group is optional."
         },
         {
           "base": "shamoy",
@@ -52662,7 +52633,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [],
-          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships, plus every alias whose canonical it ships, are the names its users can be called by: dominik is spoken with dominic's clips, geoff is spoken with jeff's clips and kris is spoken with chris's clips. A voice that records an alias spelling itself plays its own clips for it. The group is optional."
         },
         {
           "base": "shannon",
@@ -52672,7 +52643,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [],
-          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships, plus every alias whose canonical it ships, are the names its users can be called by: dominik is spoken with dominic's clips, geoff is spoken with jeff's clips and kris is spoken with chris's clips. A voice that records an alias spelling itself plays its own clips for it. The group is optional."
         },
         {
           "base": "shawn",
@@ -52682,7 +52653,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [],
-          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships, plus every alias whose canonical it ships, are the names its users can be called by: dominik is spoken with dominic's clips, geoff is spoken with jeff's clips and kris is spoken with chris's clips. A voice that records an alias spelling itself plays its own clips for it. The group is optional."
         },
         {
           "base": "tim",
@@ -52692,7 +52663,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [],
-          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships, plus every alias whose canonical it ships, are the names its users can be called by: dominik is spoken with dominic's clips, geoff is spoken with jeff's clips and kris is spoken with chris's clips. A voice that records an alias spelling itself plays its own clips for it. The group is optional."
         },
         {
           "base": "tom",
@@ -52702,7 +52673,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [],
-          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships, plus every alias whose canonical it ships, are the names its users can be called by: dominik is spoken with dominic's clips, geoff is spoken with jeff's clips and kris is spoken with chris's clips. A voice that records an alias spelling itself plays its own clips for it. The group is optional."
         },
         {
           "base": "tony",
@@ -52712,7 +52683,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [],
-          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships, plus every alias whose canonical it ships, are the names its users can be called by: dominik is spoken with dominic's clips, geoff is spoken with jeff's clips and kris is spoken with chris's clips. A voice that records an alias spelling itself plays its own clips for it. The group is optional."
         },
         {
           "base": "ville",
@@ -52722,7 +52693,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [],
-          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships, plus every alias whose canonical it ships, are the names its users can be called by: dominik is spoken with dominic's clips, geoff is spoken with jeff's clips and kris is spoken with chris's clips. A voice that records an alias spelling itself plays its own clips for it. The group is optional."
         },
         {
           "base": "viperbiker",
@@ -52732,7 +52703,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [],
-          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships, plus every alias whose canonical it ships, are the names its users can be called by: dominik is spoken with dominic's clips, geoff is spoken with jeff's clips and kris is spoken with chris's clips. A voice that records an alias spelling itself plays its own clips for it. The group is optional."
         },
         {
           "base": "yeray",
@@ -52742,7 +52713,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [],
-          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships, plus every alias whose canonical it ships, are the names its users can be called by: dominik is spoken with dominic's clips, geoff is spoken with jeff's clips and kris is spoken with chris's clips. A voice that records an alias spelling itself plays its own clips for it. The group is optional."
         },
         {
           "base": "zeus",
@@ -52752,7 +52723,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [],
-          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships, plus every alias whose canonical it ships, are the names its users can be called by: dominik is spoken with dominic's clips, geoff is spoken with jeff's clips and kris is spoken with chris's clips. A voice that records an alias spelling itself plays its own clips for it. The group is optional."
         },
         {
           "base": "zoltan",
@@ -52762,7 +52733,7 @@
           "takes": 1,
           "usedBy": [],
           "viaVar": [],
-          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships, plus every alias whose canonical it ships, are the names its users can be called by: dominik is spoken with dominic's clips, geoff is spoken with jeff's clips and kris is spoken with chris's clips. A voice that records an alias spelling itself plays its own clips for it. The group is optional."
         }
       ]
     },
@@ -62563,18 +62534,6 @@
           "playedBy": null
         },
         {
-          "base": "dominik",
-          "texts": [
-            "Come on, Dominik."
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "overtake.lost.comeOn"
-          ],
-          "playedBy": null
-        },
-        {
           "base": "drew",
           "texts": [
             "Come on, Drew."
@@ -62662,18 +62621,6 @@
           "base": "fredrich",
           "texts": [
             "Come on, Fredrich."
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "overtake.lost.comeOn"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "geoff",
-          "texts": [
-            "Come on, Jeff."
           ],
           "takes": 1,
           "usedBy": [],
@@ -62998,18 +62945,6 @@
           "base": "kevin",
           "texts": [
             "Come on, Kevin."
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "overtake.lost.comeOn"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "kris",
-          "texts": [
-            "Come on, Kris."
           ],
           "takes": 1,
           "usedBy": [],
@@ -64126,18 +64061,6 @@
           "playedBy": null
         },
         {
-          "base": "dominik",
-          "texts": [
-            "Dominik,"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceEnd.greeting"
-          ],
-          "playedBy": null
-        },
-        {
           "base": "drew",
           "texts": [
             "Drew,"
@@ -64225,18 +64148,6 @@
           "base": "fredrich",
           "texts": [
             "Fredrich,"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceEnd.greeting"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "geoff",
-          "texts": [
-            "Jeff,"
           ],
           "takes": 1,
           "usedBy": [],
@@ -64561,18 +64472,6 @@
           "base": "kevin",
           "texts": [
             "Kevin,"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceEnd.greeting"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "kris",
-          "texts": [
-            "Kris,"
           ],
           "takes": 1,
           "usedBy": [],
@@ -65552,18 +65451,6 @@
           "playedBy": null
         },
         {
-          "base": "dominik",
-          "texts": [
-            "Time to race, Dominik."
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.greeting"
-          ],
-          "playedBy": null
-        },
-        {
           "base": "drew",
           "texts": [
             "Time to race, Drew."
@@ -65651,18 +65538,6 @@
           "base": "fredrich",
           "texts": [
             "Time to race, Fredrich."
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.greeting"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "geoff",
-          "texts": [
-            "Time to race, Jeff."
           ],
           "takes": 1,
           "usedBy": [],
@@ -65987,18 +65862,6 @@
           "base": "kevin",
           "texts": [
             "Time to race, Kevin."
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "raceStart.greeting"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "kris",
-          "texts": [
-            "Time to race, Kris."
           ],
           "takes": 1,
           "usedBy": [],
@@ -67788,18 +67651,6 @@
           "playedBy": null
         },
         {
-          "base": "dominik",
-          "texts": [
-            "Ok, Dominik,"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "sessionStart.greeting"
-          ],
-          "playedBy": null
-        },
-        {
           "base": "drew",
           "texts": [
             "Ok, Drew,"
@@ -67887,18 +67738,6 @@
           "base": "fredrich",
           "texts": [
             "Ok, Fredrich,"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "sessionStart.greeting"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "geoff",
-          "texts": [
-            "Ok, Jeff,"
           ],
           "takes": 1,
           "usedBy": [],
@@ -68223,18 +68062,6 @@
           "base": "kevin",
           "texts": [
             "Ok, Kevin,"
-          ],
-          "takes": 1,
-          "usedBy": [],
-          "viaVar": [
-            "sessionStart.greeting"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "kris",
-          "texts": [
-            "Ok, Kris,"
           ],
           "takes": 1,
           "usedBy": [],
