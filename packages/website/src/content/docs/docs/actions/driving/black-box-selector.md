@@ -1,17 +1,17 @@
 ---
 title: Black Box Selector
-description: Navigate iRacing's black box overlays with direct selection or cycling, and toggle their size.
+description: Navigate iRacing's black box overlays with direct selection or cycling, toggle their size, and work the open box's controls.
 sidebar:
   badge:
-    text: "4 modes"
+    text: "5 modes"
     variant: tip
 ---
 
-Open any of iRacing's black box overlays directly, cycle through them sequentially, or switch the open black box between its small and large size. Direct-selection acts as a toggle — pressing a button opens the black box, and pressing it again while that black box is already selected closes it. Placed on a **Stream Deck+ dial**, the same action becomes a black-box browser — turn to step through the boxes and press to open one — see [On a dial](#on-a-dial) below.
+Open any of iRacing's black box overlays directly, cycle through them sequentially, switch the open black box between its small and large size, or work the controls inside the open box — select a control, change it or toggle it. Direct-selection acts as a toggle — pressing a button opens the black box, and pressing it again while that black box is already selected closes it. Placed on a **Stream Deck+ dial** or a **Mirabox knob**, the same action becomes a black-box dial — turn to step through the boxes, or to select and adjust the open box's controls, and press to open one — see [On a dial](#on-a-dial) below.
 
 ## Modes
 
-Select the mode from the **Mode** dropdown in the Property Inspector. In **Direct** mode, also pick which overlay the button opens from the **Black Box** dropdown.
+Select the mode from the **Mode** dropdown in the Property Inspector. In **Direct** mode, also pick which overlay the button opens from the **Black Box** dropdown; in **Selected Control** mode, pick what the key does from the **Control** dropdown.
 
 ### Direct
 
@@ -95,22 +95,63 @@ iRacing ships **Toggle Black Box Size** without a key, so assign one in iRacing'
 
 - No additional settings
 
-## On a dial
+---
 
-Placed on a Stream Deck+ dial or a Mirabox knob, Black Box Selector becomes a black-box browser. Turning the dial steps through iRacing's black boxes — clockwise for the next box, counter-clockwise for the previous — using the same **Cycle Next** and **Cycle Previous** key bindings the keypad Next and Previous modes use, so no extra configuration is needed if you already use them. A press can jump straight to one box you pick, or toggle the open box's size. The Property Inspector automatically shows the dial settings below (instead of the keypad Mode and Black Box) when the instance sits on a dial. See [Dials](/docs/features/dials/) for how the shared dial gestures work.
+### Selected Control
 
-iRacing reports no telemetry for which black box is currently open, so the touch strip can't track your position in the ring — it shows the action's identity only: a "BB" badge and the "BLACK BOX" wordmark. This is the same documented limitation as the other key-binding-driven dials. You can still recolor the strip's border, label, and background in the **Dash Box Appearance** section of the dial settings.
+Work the controls inside the black box that is open. Many of iRacing's black boxes, such as the In-Car box with brake bias or the Pit-Stop box with its requests, have a selected control: you move the selection between the box's controls, then change or toggle the one selected. This mode puts one of those presses on a key, picked from the **Control** dropdown, so a few neighbouring keys can work a whole box.
+
+The key shows a small d-pad on the black box frame with the part it presses lit: up for Select Previous Control, down for Select Next Control, left for Decrement, right for Increment and the centre for Toggle.
+
+These presses act on whichever box is open. If no black box is open, the press does nothing in the sim — open one first, for example with a Direct key.
+
+iRaceDeck ships all five controls without a key. For each one you use, assign a key in iRacing's controls first, then set the same key on its binding in the Property Inspector or on the [Key Bindings tab](/docs/getting-started/settings/#key-bindings) of iRaceDeck's settings window. Until it is set, the key shows the missing-binding warning and the Property Inspector says the binding is not set.
 
 #### Details
 
-- **Method:** Key binding — rotation uses the **Cycle Next** and **Cycle Previous** bindings; **Open Selected Box** uses the per-box binding of the box you choose in **Box to Open**, and **Toggle Box Size** uses the **Toggle Black Box Size** binding. Black box selection has no iRacing API command, so every dial path needs a binding. Configure them in the **Related Key Bindings** section; the Property Inspector shows a status line indicating whether each is set.
-- **Dial:** Rotating cycles through the black boxes (clockwise = next, counter-clockwise = previous), one box per detent; a fast spin steps several at once. Both the Cycle Next and Cycle Previous bindings must be set.
-- **Telemetry-aware:** No — iRacing exposes no open-box state, so the touch strip is a static identity readout.
+- **Method:** Key binding
+- **Dial:** No rotation support
+- **Default binding:** No default key binding
+- **Telemetry-aware icon:** No
+
+#### Setting: Control
+
+Which press on the open box's selected control the key sends (default *Select Next Control*). Each option has its own key binding of the same name.
+
+- **Select Next Control** (default) — moves the selection to the next control in the open box. The key shows **NEXT CTRL**.
+- **Select Previous Control** — moves the selection to the previous control. The key shows **PREV CTRL**.
+- **Increment Selected Control** — increases the selected control, such as moving brake bias one step. Holding the key repeats it until you let go. The key shows **CTRL +**.
+- **Decrement Selected Control** — decreases the selected control. Holding the key repeats it until you let go. The key shows **CTRL -**.
+- **Toggle Selected Control** — switches the selected control, for a control that is either on or off. The key shows **CTRL TOGGLE**.
+
+Select Next, Select Previous and Toggle send one press however long you hold the key, so a long press never skips past a control.
+
+## On a dial
+
+Placed on a Stream Deck+ dial or a Mirabox knob, Black Box Selector becomes a black-box dial. Its **Mode** dropdown picks what turning it does: step through iRacing's black boxes (the default), move between the controls of the open box, or change the selected control. A press can jump straight to one box you pick, toggle the open box's size, or select or toggle a control. The Property Inspector automatically shows the dial settings below (instead of the keypad Mode and Black Box) when the instance sits on a dial. See [Dials](/docs/features/dials/) for how the shared dial gestures work.
+
+iRacing reports neither which black box is open nor which control is selected, so the touch strip can't show live state. It shows a "BB" badge and a word naming what a turn does: **BLACK BOX**, **SELECT** or **ADJUST**, following the Mode. This is the same documented limitation as the other key-binding-driven dials. You can still recolor the strip's border, label, and background in the **Dash Box Appearance** section of the dial settings.
+
+#### Details
+
+- **Method:** Key binding — rotation uses the pair of bindings its Mode turns (see **Mode** below); **Open Selected Box** uses the per-box binding of the box you choose in **Box to Open**, **Toggle Box Size** uses the **Toggle Black Box Size** binding, and the control gestures use the **Select Next Control**, **Select Previous Control** and **Toggle Selected Control** bindings. Black boxes have no iRacing API command, so every dial path needs a binding. Configure them in the **Related Key Bindings** section; the Property Inspector shows a status line indicating whether each is set.
+- **Dial:** Rotating taps the Mode's pair of bindings — clockwise for the next box, the next control or an increase, counter-clockwise for the reverse — one tap per detent; a fast spin steps several at once. Both bindings of the chosen Mode must be set.
+- **Telemetry-aware:** No — iRacing exposes no open-box or selected-control state, so the touch strip is a static identity readout.
 
 #### Controls
 
 - **Elgato Stream Deck+** — dial rotation, a press (short or long), and a touchscreen readout that always shows. A touchscreen tap or long tap runs its own configured Tap Display / Long Touch action.
 - **Mirabox knob** — turn and push, with the same label drawn on the screen above the knob; the Push slot only (see [Dials](/docs/features/dials/#mirabox-knobs)).
+
+#### Setting: Mode
+
+What turning the dial does (the **Mode** dropdown, default *Cycle Black Boxes*). Clockwise is always forward or up.
+
+- **Cycle Black Boxes** (default) — steps through iRacing's black boxes: clockwise taps **Cycle Next**, counter-clockwise **Cycle Previous**, the same bindings the keypad Next and Previous modes use. The strip reads **BLACK BOX**. A dial you set up before this choice existed keeps working this way.
+- **Select Control** — moves between the controls of the open box: clockwise taps **Select Next Control**, counter-clockwise **Select Previous Control**. The strip reads **SELECT**.
+- **Adjust Control** — changes the selected control of the open box, such as brake bias in the In-Car box: clockwise taps **Increment Selected Control**, counter-clockwise **Decrement Selected Control**. The strip reads **ADJUST**.
+
+The strip dims under the missing-binding warning when either binding of the chosen Mode is not set. In Select Control and Adjust Control, turning with no black box open does nothing in the sim.
 
 #### Setting: Box to Open
 
@@ -123,9 +164,18 @@ What a short or long press of the dial button does, chosen from:
 - **None** (default for both) — does nothing.
 - **Open Selected Box** — opens the box picked in **Box to Open**.
 - **Toggle Box Size** — switches the open black box between its small and large size, like the keypad Toggle Size mode. It needs the **Toggle Black Box Size** binding, which has no default key.
+- **Select Next Control** — moves the selection to the next control in the open box, like the keypad Selected Control mode.
+- **Select Previous Control** — moves the selection to the previous control in the open box.
+- **Toggle Selected Control** — switches the selected control of the open box.
 
-A press is classified when you release the dial — a hold past the [Long-press threshold](/docs/features/dials/#the-long-press-threshold) fires the Long Press action. Turning the dial while pressed cycles boxes (a "push + turn") and never fires the press action.
+The three control gestures need their bindings, which have no default key.
+
+A press is classified when you release the dial — a hold past the [Long-press threshold](/docs/features/dials/#the-long-press-threshold) fires the Long Press action. Turning the dial while pressed does what a turn does (a "push + turn") and never fires the press action.
+
+:::tip
+Set the Mode to **Adjust Control** and Press Action to **Select Next Control**, and one dial or knob works the whole box: press to move to the next control, turn to change it. Open the box first — with a Direct key, or on a Stream Deck+ with Long Press set to **Open Selected Box**.
+:::
 
 #### Setting: Tap Display / Long Touch
 
-Optional touch-strip gestures (Stream Deck+ only), each offering the same choices as Press Action: **None**, **Open Selected Box** or **Toggle Box Size**. Both default to **None** for VR safety.
+Optional touch-strip gestures (Stream Deck+ only), each offering the same choices as Press Action: **None**, **Open Selected Box**, **Toggle Box Size**, **Select Next Control**, **Select Previous Control** or **Toggle Selected Control**. Both default to **None** for VR safety.
