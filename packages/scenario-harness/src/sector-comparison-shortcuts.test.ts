@@ -12,6 +12,9 @@ import {
   selectSectorCall,
   type SpokenSectorPicture,
 } from "@iracedeck/audio-scenarios/pit-crew";
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 import { SCENARIO_SHORTCUTS } from "./scenario-shortcuts.js";
@@ -101,6 +104,9 @@ describe("the Sectors shortcuts", () => {
       expect(input.player.recentLaps.at(-1)).toMatchObject({ lap, clean: true });
 
       for (const car of cars) {
+        // Completed on the player's lap, so the five recorded laps are its last five completed.
+        expect(car.lapsCompleted).toBe(lap);
+        expect(car.recentLaps.at(-1)?.lap).toBe(lap);
         expect(car.recentLaps).toHaveLength(5);
         expect(car.recentLaps.every((l) => l.clean && l.sectorTimes.length === input.sectorCount)).toBe(true);
       }
@@ -176,6 +182,12 @@ describe("validateSectorComparison", () => {
     expect(validateSectorComparison(null)).toBeNull();
   });
 
+  it("accepts a car with no completed-lap count (out of the world)", () => {
+    const retired = { ...VALID, ahead: { ...VALID.ahead, lapsCompleted: null } };
+
+    expect(validateSectorComparison(retired)).toBe(retired);
+  });
+
   it.each([
     ["a non-object", 42, "body must be an object or null"],
     ["a bad sector count", { ...VALID, sectorCount: -1 }, "sectorCount must be a non-negative integer"],
@@ -191,11 +203,41 @@ describe("validateSectorComparison", () => {
       "ahead.gapSeconds must be a finite number or null",
     ],
     [
+      "a bad completed-lap count",
+      { ...VALID, ahead: { ...VALID.ahead, lapsCompleted: -1 } },
+      "ahead.lapsCompleted must be a non-negative integer or null",
+    ],
+    [
       "a bad lap",
       { ...VALID, player: { ...VALID.player, recentLaps: [{ lap: 1, sectorTimes: ["x"], clean: true }] } },
       "player.recentLaps[0].sectorTimes must be an array of finite numbers or null",
     ],
   ])("rejects %s", (_label, body, expected) => {
     expect(validateSectorComparison(body)).toBe(expected);
+  });
+});
+
+describe("the UI clears the comparison before any other shortcut (#1572)", () => {
+  // `ui/app.js` has no build and no DOM here, so its shortcut handler is read as text.
+  const appJs = readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "ui", "app.js"), "utf-8");
+
+  it("posts null when the shortcut carries no comparison, and does so before the shortcut publishes", () => {
+    const push = appJs.indexOf('await post("/api/sector-comparison/snapshot", s.sectorComparisonSnapshot);');
+    const clear = appJs.indexOf('await post("/api/sector-comparison/snapshot", null);');
+    const publish = appJs.indexOf('await post("/api/bus/publish", { event: s.event, data: s.data });');
+
+    expect(push).toBeGreaterThan(-1);
+    expect(clear).toBeGreaterThan(push);
+    expect(publish).toBeGreaterThan(clear);
+
+    // The clear is the push's `else`: nothing but the branch and comments between them.
+    const between = appJs
+      .slice(push, clear)
+      .split("\n")
+      .slice(1)
+      .map((line) => line.trim())
+      .filter((line) => line !== "" && !line.startsWith("//"));
+
+    expect(between).toEqual(["} else {"]);
   });
 });
