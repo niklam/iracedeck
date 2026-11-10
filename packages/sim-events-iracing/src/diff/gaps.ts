@@ -34,7 +34,7 @@ import {
   crossingTimeAt,
   type GapTrendDirection,
   lapDeltaBetween,
-  type ProgressTrace,
+  type ReadonlyProgressTrace,
   recentProgressRate,
   resolveClassNeighbors,
   type StandingsNeighbors,
@@ -199,7 +199,7 @@ export type PairGapReading = { gapSeconds: number | null; etaReading: boolean };
  * does not engage.
  */
 export function readPairGap(
-  traces: readonly (ProgressTrace | undefined)[],
+  traces: readonly (ReadonlyProgressTrace | undefined)[],
   leaderIdx: number,
   leaderProgress: number,
   chaserIdx: number,
@@ -222,11 +222,11 @@ export function readPairGap(
 /** What {@link readGapAt} reads: the pair's traces, where each car is on its own trace, and where to look. */
 export type GapReadingInput = {
   /** The leading car's progress→time trace (undefined = none recorded). */
-  leaderTrace: ProgressTrace | undefined;
+  leaderTrace: ReadonlyProgressTrace | undefined;
   /** The leading car's progress now, on its own trace's scale (for its recent rate). */
   leaderProgress: number;
   /** The chasing car's progress→time trace (undefined = none recorded). */
-  chaserTrace: ProgressTrace | undefined;
+  chaserTrace: ReadonlyProgressTrace | undefined;
   /** The chasing car's progress now, on its own trace's scale (for its recent rate). */
   chaserProgress: number;
   /** The point on the LEADER's trace where the chaser stands now. */
@@ -386,8 +386,11 @@ export const GAPS_EVENTS = ["gap.thresholdCrossed", "gap.trendChanged"] as const
  *
  * @returns the class neighbours and class leader it resolved from the
  * canonical order this tick (issue #1572: the one resolution per tick, handed
- * on as a value to the sector timer), or `null` on a tick it resolved none —
- * no progress tick, or no valid reading for the player.
+ * on as a value to the sector timer). `null` means it did not resolve them:
+ * there was no progress tick, or no valid reading for the player. A result
+ * whose three indices are all `-1` means it did and none is resolvable (no
+ * `CarIdxClass`, or the player unranked in the order); a single `-1` is
+ * simply no such car.
  */
 export function diffGaps(
   state: TranslatorState,
@@ -645,7 +648,7 @@ function computeSide(
   /** The progress tick's readings (`CarProgressTick.progress`): every car's progress this tick, null = none. */
   progress: readonly (number | null)[],
   /** The progress tick's traces (`CarProgressTick.traces`): every car's crossing-time trace after this tick's samples. */
-  traces: readonly (ProgressTrace | undefined)[],
+  traces: readonly (ReadonlyProgressTrace | undefined)[],
   playerCarIdx: number,
   playerProgress: number,
   sessionTime: number,

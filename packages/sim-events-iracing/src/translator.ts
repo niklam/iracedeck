@@ -3925,7 +3925,8 @@ function handleOrderSteps(
   // same-tick fact handed on as a returned value (#1559): `null` on a tick it
   // resolved none, and when the step threw. The sector timer (issue #1572)
   // takes it from here, with `carProgressTick`, right after this step.
-  let classNeighbors: StandingsNeighbors | null = null;
+  // Declared with a cast so the type survives the assignment in the closure.
+  let classNeighbors = null as StandingsNeighbors | null;
 
   steps.live("diffGaps", pending, () => {
     classNeighbors = diffGaps(
@@ -3937,8 +3938,9 @@ function handleOrderSteps(
       canonicalPositions,
       self.getGapAlertThresholdSeconds,
       emit,
-      // Only a race has a horizon; `diffGaps` returns at its first gate in
-      // any other session, so the estimate is not computed there.
+      // Only a race has a horizon; in any other session the progress step's
+      // gate has refused the tick and `diffGaps` blanks and returns on it, so
+      // the estimate is not computed there.
       isRaceSession
         ? resolveGapLapsRemaining(telemetry, canonicalPositions, self.state.leaderWhitePostExpiryCrossed, {
             carIdx: playerCarIdx,

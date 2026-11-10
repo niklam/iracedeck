@@ -19,7 +19,7 @@ import {
   appendProgressSample,
   GAP_TRACE_MAX_STEP,
   isPreGreen,
-  type ProgressTrace,
+  type ReadonlyProgressTrace,
   type TelemetryData,
 } from "@iracedeck/iracing-sdk";
 
@@ -98,13 +98,20 @@ export type CarProgressTick = {
   /**
    * Per car: its progress ({@link readCarProgress}: `CarIdxLapCompleted +
    * CarIdxLapDistPct`, corrected at the line) when both readings are finite
-   * and non-negative, else null.
+   * and non-negative, else null. Sized to the shorter of the two arrays
+   * (`min(CarIdxLapCompleted.length, CarIdxLapDistPct.length)`), so an index
+   * past it reads `undefined`: no reading either.
    */
   progress: readonly (number | null)[];
-  /** Per car: true when this tick's sample reset the car's trace. */
+  /** Per car: true when this tick's sample reset the car's trace. Sized as `progress` is. */
   traceReset: readonly boolean[];
-  /** The traces after this tick's samples (the slice's own array, read-only to consumers). */
-  traces: readonly (ProgressTrace | undefined)[];
+  /**
+   * The traces after this tick's samples, sparse-indexed by carIdx. Live: the
+   * slice's own array, which the next tick's samples are appended to, so it
+   * is valid only for the tick it came with — read it during that tick and
+   * keep no reference to it or to a trace in it.
+   */
+  traces: readonly (ReadonlyProgressTrace | undefined)[];
 };
 
 /**
