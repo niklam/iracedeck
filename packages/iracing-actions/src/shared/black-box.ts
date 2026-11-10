@@ -76,18 +76,26 @@ export const BLACK_BOX_GLOBAL_KEYS: Record<BlackBoxId, string> = {
 
 /**
  * The global-settings keys of the Black Box group's controls that name no box:
- * the two cycle steps and Toggle Black Box Size (#1238), which resizes whatever
- * box is shown. Single source for the Black Box Selector's keypad modes, its dial
- * surface and the #612 comms catalog. None of them is ever a prime candidate —
- * cycling could land on the target itself, and resizing opens nothing — which is
- * why {@link resolvePrimeKey} scans {@link BLACK_BOX_GLOBAL_KEYS} only.
- * Together with that map these are exactly the Black Box rows of
- * `key-bindings.json`, which a cross-check test guards.
+ * the two cycle steps, Toggle Black Box Size (#1238), which resizes whatever
+ * box is shown, and the five controls that operate the selected control of the
+ * open box (#1585) — select the next / previous control, increment / decrement
+ * it, and toggle it. Single source for the Black Box Selector's keypad modes,
+ * its dial surface and the #612 comms catalog. None of them is ever a prime
+ * candidate — cycling could land on the target itself, and resizing or
+ * operating a control opens nothing — which is why {@link resolvePrimeKey}
+ * scans {@link BLACK_BOX_GLOBAL_KEYS} only. Together with that map these are
+ * exactly the Black Box rows of `key-bindings.json`, which a cross-check test
+ * guards.
  */
 export const BLACK_BOX_CONTROL_KEYS = {
   cycleNext: "blackBoxCycleNext",
   cyclePrevious: "blackBoxCyclePrevious",
   toggleSize: "blackBoxToggleSize",
+  selectNextControl: "blackBoxSelectNextControl",
+  selectPreviousControl: "blackBoxSelectPreviousControl",
+  incrementControl: "blackBoxIncrementControl",
+  decrementControl: "blackBoxDecrementControl",
+  toggleControl: "blackBoxToggleControl",
 } as const;
 
 /** The box pressed first, to force a deterministic switch to the target. */

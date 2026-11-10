@@ -55,12 +55,50 @@ describe("BLACK_BOX_CONTROL_KEYS (#1238)", () => {
     return json.blackBox.map((row) => row.setting);
   }
 
-  it("names the cycle pair and Toggle Black Box Size", () => {
+  it("names the cycle pair, Toggle Black Box Size and the five selected-control keys (#1585)", () => {
     expect(BLACK_BOX_CONTROL_KEYS).toEqual({
       cycleNext: "blackBoxCycleNext",
       cyclePrevious: "blackBoxCyclePrevious",
       toggleSize: "blackBoxToggleSize",
+      selectNextControl: "blackBoxSelectNextControl",
+      selectPreviousControl: "blackBoxSelectPreviousControl",
+      incrementControl: "blackBoxIncrementControl",
+      decrementControl: "blackBoxDecrementControl",
+      toggleControl: "blackBoxToggleControl",
     });
+  });
+
+  it("ships the five selected-control rows unassigned, with their labels (#1585)", () => {
+    const json = JSON.parse(readFileSync(KEY_BINDINGS_PATH, "utf8")) as {
+      blackBox: { id: string; label: string; default: string; setting: string }[];
+    };
+    const selectedControlKeys: string[] = [
+      BLACK_BOX_CONTROL_KEYS.selectNextControl,
+      BLACK_BOX_CONTROL_KEYS.selectPreviousControl,
+      BLACK_BOX_CONTROL_KEYS.incrementControl,
+      BLACK_BOX_CONTROL_KEYS.decrementControl,
+      BLACK_BOX_CONTROL_KEYS.toggleControl,
+    ];
+
+    expect(json.blackBox.filter((row) => selectedControlKeys.includes(row.setting))).toEqual([
+      { id: "selectNextControl", label: "Select Next Control", default: "", setting: "blackBoxSelectNextControl" },
+      {
+        id: "selectPreviousControl",
+        label: "Select Previous Control",
+        default: "",
+        setting: "blackBoxSelectPreviousControl",
+      },
+      { id: "incrementControl", label: "Increment Selected Control", default: "", setting: "blackBoxIncrementControl" },
+      { id: "decrementControl", label: "Decrement Selected Control", default: "", setting: "blackBoxDecrementControl" },
+      { id: "toggleControl", label: "Toggle Selected Control", default: "", setting: "blackBoxToggleControl" },
+    ]);
+  });
+
+  it("never primes with a control key, even when only the controls and the target are bound (#1585)", () => {
+    const bound = new Set<string>([...Object.values(BLACK_BOX_CONTROL_KEYS), BLACK_BOX_GLOBAL_KEYS.fuel]);
+    const isBound = (key: string) => bound.has(key);
+
+    expect(resolvePrimeKey("fuel", isBound, isBound)).toBeNull();
   });
 
   it("shares no key with the box map, so no control is ever a prime candidate", () => {
