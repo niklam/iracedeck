@@ -37,9 +37,12 @@ const CategorySchema = z.object({
 
 const ReleaseSchema = z.object({
   version: z.string(),
-  // `null` for the release still in development, which is composed from the
-  // fragments in `changelog.d/`; the release fold writes it into
-  // `changelog.mdx` with its date when a stable version is cut, which is what
+  // `null` for an undated release: the one still in development, composed from
+  // the fragments in `changelog.d/` either as `## X.Y.Z` / `_Unreleased_` or,
+  // between a stable fold and the next version bump, as `## Unreleased`, whose
+  // `version` is then that label rather than a semver (#1398), which is why
+  // `version` is only a string here. The release fold writes the fragments into
+  // `changelog.mdx` with a date when a stable version is cut, which is what
   // makes a release count as published (see `selectAvailableUpdates`).
   date: z.string().nullable(),
   categories: z.array(CategorySchema).max(PUBLISHED_CHANGELOG_MAX_CATEGORIES),

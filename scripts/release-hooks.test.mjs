@@ -30,7 +30,8 @@ import {
 import { VOICE_PACKS } from "../packages/audio-assets/src/build/voice-packs.mjs";
 import { buildChangelogData, CHANGELOG_DATA_PATH, CHANGELOG_SOURCE_PATH } from "./lib/changelog-data.mjs";
 import { formatLocalDate } from "./lib/changelog-fold.mjs";
-import { composeChangelog, loadChangelogSources, UNRELEASED_DATE_LINE } from "./lib/changelog-fragments.mjs";
+import { composeChangelog, loadChangelogSources } from "./lib/changelog-fragments.mjs";
+import { UNRELEASED_LABEL } from "./lib/changelog-parse.mjs";
 
 // scripts/release-hooks.test.mjs lives in scripts/, so the repo root is one up.
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -383,6 +384,69 @@ const TWO_FRAGMENTS = {
   "12-a-fix.md": fragmentText("Bug Fixes", 50, "A new fix."),
 };
 
+/**
+ * Release `version` as release-it does: the hook bumps the packages and the
+ * manifest, folds the changelog on a stable version and stages it all, then
+ * release-it bumps the root package.json itself and commits everything as
+ * `chore(release): v<version>`.
+ */
+function releaseAsReleaseIt(dir, version) {
+  const result = runFixtureHook(dir, version);
+  expect(result.status, result.stderr).toBe(0);
+  writeJson(dir, "package.json", { name: "fixture", version });
+  fixtureGit(dir, "add", "--", "package.json");
+  fixtureGit(dir, "commit", "-q", "-m", `chore(release): v${version}`);
+  expect(fixtureGit(dir, "status", "--porcelain")).toBe("");
+  return result;
+}
+
+/**
+ * What every reader composes from the tree on disk (a preview, as
+ * `changelog-composed.mjs` and the website plugin run it): the composed text,
+ * and each release of the parsed data as `[version, null | "dated"]`.
+ */
+function composeTree(dir) {
+  const sources = loadChangelogSources(dir);
+  const text = composeChangelog(sources.mdx, sources.fragments, sources.version, { mode: "preview" });
+  const releases = buildChangelogData(text).releases.map(({ version, date }) => [
+    version,
+    date === null ? null : "dated",
+  ]);
+  return { text, releases };
+}
+
+/**
+ * Back-merge `branch` into the checked-out branch with a regular merge, as
+ * build-and-commit.md prescribes: each conflict is resolved in the checked-out
+ * side's favour by stripping the markers in place, keeping that side's hunk and
+ * everything git merged around it, never by taking the whole file. Returns the
+ * paths that conflicted, sorted.
+ */
+function backMerge(dir, branch) {
+  // The fixture inherits the developer's git config; the resolution below reads
+  // the two-sided marker style, so a global diff3 / zdiff3 must not apply here.
+  fixtureGit(dir, "config", "merge.conflictStyle", "merge");
+  const merge = spawnSync("git", ["merge", "-q", "--no-ff", "--no-edit", branch], { cwd: dir, encoding: "utf-8" });
+  const conflicted = fixtureGit(dir, "diff", "--name-only", "--diff-filter=U")
+    .trim()
+    .split("\n")
+    .filter(Boolean)
+    .sort();
+  if (conflicted.length === 0) {
+    expect(merge.status, `${merge.stdout}${merge.stderr}`).toBe(0);
+    return conflicted;
+  }
+  for (const rel of conflicted) {
+    const resolved = read(dir, rel).replace(/^<<<<<<< [^\n]*\n([\s\S]*?)^=======\n[\s\S]*?^>>>>>>> [^\n]*\n/gm, "$1");
+    expect(resolved, rel).not.toMatch(/^(<{7}|={7}|>{7})/m);
+    write(dir, rel, resolved);
+  }
+  fixtureGit(dir, "add", "--", ...conflicted);
+  fixtureGit(dir, "commit", "-q", "--no-edit");
+  expect(fixtureGit(dir, "status", "--porcelain")).toBe("");
+  return conflicted;
+}
+
 describe("release-hooks.mjs fold (in a temporary git repository)", { timeout: 60_000 }, () => {
   it("folds the fragments into a dated section on a stable release and stages the edit and the deletions", () => {
     const dir = makeRepo(TWO_FRAGMENTS);
@@ -588,13 +652,166 @@ describe("release-hooks.mjs fold (in a temporary git repository)", { timeout: 60
 
     // And the merged tree composes: 1.1.0 Unreleased on top of the dated 1.0.0.
     const sources = loadChangelogSources(dir);
-    expect(sources.version).toBe("1.1.0");
+    expect(sources.version).toBe("1.1.0-dev.0");
     const data = buildChangelogData(
-      composeChangelog(sources.mdx, sources.fragments, sources.version, UNRELEASED_DATE_LINE),
+      composeChangelog(sources.mdx, sources.fragments, sources.version, { mode: "preview" }),
     );
     expect(data.releases.map(({ version, date }) => [version, date === null ? null : "dated"])).toEqual([
       ["1.1.0", null],
       ["1.0.0", "dated"],
+      ["0.9.0", "dated"],
+    ]);
+  });
+
+  // #1398: between a stable release and the next version bump the root version
+  // names a release whose section is already dated. A fragment merged in that
+  // window composes as an undated "## Unreleased" section, which the next
+  // stable fold takes into its own dated section; the label is never written.
+  it("composes a fragment merged after master's own release as Unreleased, and folds it into the next release", () => {
+    const dir = makeRepo({ "10-shipped.md": fragmentText("Features", 50, "Shipped in 1.0.0.") });
+    releaseAsReleaseIt(dir, "1.0.0");
+
+    // The window: the version still names the release just made, and a fix lands.
+    write(dir, "changelog.d/20-after.md", fragmentText("Bug Fixes", 50, "Merged after 1.0.0."));
+    commitAll(dir, "fix: merged after the release");
+    expect(loadChangelogSources(dir).version).toBe("1.0.0");
+
+    const window = composeTree(dir);
+    expect(window.releases).toEqual([
+      [UNRELEASED_LABEL, null],
+      ["1.0.0", "dated"],
+      ["0.9.0", "dated"],
+    ]);
+    expect(window.text).toContain(`## ${UNRELEASED_LABEL}\n\n**Bug Fixes**\n\n- Merged after 1.0.0.\n\n## 1.0.0\n`);
+    // The window section exists only in composed text.
+    expect(read(dir, CHANGELOG_SOURCE_PATH)).not.toContain(UNRELEASED_LABEL);
+
+    const patch = releaseAsReleaseIt(dir, "1.0.1");
+
+    expect(patch.stdout).toContain('Folded 1 fragment into "## 1.0.1"');
+    const mdx = read(dir, CHANGELOG_SOURCE_PATH);
+    expect(mdx).toMatch(
+      /^## 1\.0\.1\n\n_\d{4}-\d{2}-\d{2}_\n\n\*\*Bug Fixes\*\*\n\n- Merged after 1\.0\.0\.\n\n## 1\.0\.0\n/m,
+    );
+    expect(mdx).not.toContain(UNRELEASED_LABEL);
+    expect(mdx.match(/^- Merged after 1\.0\.0\.$/gm)).toHaveLength(1);
+    expect(readdirSync(join(dir, "changelog.d"))).toEqual(["README.md"]);
+    expect(composeTree(dir).releases).toEqual([
+      ["1.0.1", "dated"],
+      ["1.0.0", "dated"],
+      ["0.9.0", "dated"],
+    ]);
+  });
+
+  it("carries a hotfix's window on a release branch through its patch release and the back-merge into master", () => {
+    const dir = makeRepo({ "10-inherited.md": fragmentText("Features", 50, "Inherited from master.") });
+    fixtureGit(dir, "checkout", "-q", "-b", "release/1.0");
+    releaseAsReleaseIt(dir, "1.0.0");
+
+    // A hotfix PR into the release branch after its stable release: the window there.
+    write(dir, "changelog.d/20-hotfix.md", fragmentText("Bug Fixes", 50, "Hotfixed on the release branch."));
+    commitAll(dir, "fix: hotfix on the release branch");
+    expect(composeTree(dir).releases).toEqual([
+      [UNRELEASED_LABEL, null],
+      ["1.0.0", "dated"],
+      ["0.9.0", "dated"],
+    ]);
+
+    releaseAsReleaseIt(dir, "1.0.1");
+    const releaseMdx = read(dir, CHANGELOG_SOURCE_PATH);
+    expect(releaseMdx).toMatch(
+      /^## 1\.0\.1\n\n_\d{4}-\d{2}-\d{2}_\n\n\*\*Bug Fixes\*\*\n\n- Hotfixed on the release branch\.\n/m,
+    );
+    expect(releaseMdx).not.toContain(UNRELEASED_LABEL);
+
+    // Meanwhile master takes its -dev bump and gains a fragment of its own.
+    fixtureGit(dir, "checkout", "-q", "master");
+    releaseAsReleaseIt(dir, "1.1.0-dev.0");
+    write(dir, "changelog.d/30-next.md", fragmentText("Features", 50, "Next on master."));
+    commitAll(dir, "feat: next on master");
+    const masterVersionFiles = Object.fromEntries(
+      ["package.json", ...VERSION_FILES.map((line) => line.slice(2))].map((rel) => [rel, read(dir, rel)]),
+    );
+
+    const conflicted = backMerge(dir, "release/1.0");
+
+    // Both sides moved every version file, and those are the only conflicts;
+    // each resolves to master's own bytes.
+    expect(conflicted).toEqual(Object.keys(masterVersionFiles).sort());
+    for (const [rel, text] of Object.entries(masterVersionFiles)) expect(read(dir, rel), rel).toBe(text);
+    expect(JSON.parse(read(dir, "package.json")).version).toBe("1.1.0-dev.0");
+
+    // The release's fragments shipped and are gone; master's own survives.
+    expect(readdirSync(join(dir, "changelog.d")).sort()).toEqual(["30-next.md", "README.md"]);
+    expect(read(dir, CHANGELOG_SOURCE_PATH)).toBe(releaseMdx);
+
+    const merged = composeTree(dir);
+    expect(merged.releases).toEqual([
+      ["1.1.0", null],
+      ["1.0.1", "dated"],
+      ["1.0.0", "dated"],
+      ["0.9.0", "dated"],
+    ]);
+    expect(merged.text).toContain("## 1.1.0\n\n_Unreleased_\n\n**Features**\n\n- Next on master.\n\n## 1.0.1\n");
+  });
+
+  it("puts master in the window through a back-merge of its release branch's fold, until its next release", () => {
+    const dir = makeRepo({ "10-inherited.md": fragmentText("Features", 50, "Inherited from master.") });
+    releaseAsReleaseIt(dir, "1.1.0-dev.0");
+    fixtureGit(dir, "checkout", "-q", "-b", "release/1.1");
+    releaseAsReleaseIt(dir, "1.1.0");
+
+    // master gains a fragment after the branch point.
+    fixtureGit(dir, "checkout", "-q", "master");
+    write(dir, "changelog.d/30-after-branch.md", fragmentText("Features", 50, "After the branch point."));
+    commitAll(dir, "feat: after the branch point");
+
+    const conflicted = backMerge(dir, "release/1.1");
+
+    // master has not moved a version file since the branch point, so git takes
+    // the release's 1.1.0 without a conflict.
+    expect(conflicted).toEqual([]);
+    expect(JSON.parse(read(dir, "package.json")).version).toBe("1.1.0");
+    expect(readdirSync(join(dir, "changelog.d")).sort()).toEqual(["30-after-branch.md", "README.md"]);
+
+    const expectedWindow = [
+      [UNRELEASED_LABEL, null],
+      ["1.1.0", "dated"],
+      ["0.9.0", "dated"],
+    ];
+    const window = composeTree(dir);
+    expect(window.releases).toEqual(expectedWindow);
+    expect(window.text).toContain(`## ${UNRELEASED_LABEL}\n\n**Features**\n\n- After the branch point.\n\n## 1.1.0\n`);
+    expect(read(dir, CHANGELOG_SOURCE_PATH)).not.toContain(UNRELEASED_LABEL);
+
+    // The window is the root version being exactly 1.1.0. A master that kept a
+    // pre-release of it, 1.1.0-dev.0, is behind the dated 1.1.0 and is refused
+    // rather than composed as the window: composed green, it would surface only at
+    // its next patch release, 1.1.0, whose fold meets "## 1.1.0" and calls the
+    // tree half-folded, which it is not. The merger bumps it to the next -dev
+    // before pushing. (A master
+    // already bumped past the branch point would resolve the version conflict to
+    // its own 1.2.0-dev.0 and compose the normal `## 1.2.0` / `_Unreleased_`.)
+    writeJson(dir, "package.json", { name: "fixture", version: "1.1.0-dev.0" });
+    expect(() => composeTree(dir)).toThrow(
+      /1\.1\.0-dev\.0 \(package\.json\) is a pre-release of "## 1\.1\.0".*bump the version to the next -dev/,
+    );
+    fixtureGit(dir, "restore", "--", "package.json");
+    expect(fixtureGit(dir, "status", "--porcelain")).toBe("");
+
+    // master's next stable release folds the fragment into its own dated section.
+    const patch = releaseAsReleaseIt(dir, "1.1.1");
+
+    expect(patch.stdout).toContain('Folded 1 fragment into "## 1.1.1"');
+    const mdx = read(dir, CHANGELOG_SOURCE_PATH);
+    expect(mdx).toMatch(
+      /^## 1\.1\.1\n\n_\d{4}-\d{2}-\d{2}_\n\n\*\*Features\*\*\n\n- After the branch point\.\n\n## 1\.1\.0\n/m,
+    );
+    expect(mdx).not.toContain(UNRELEASED_LABEL);
+    expect(readdirSync(join(dir, "changelog.d"))).toEqual(["README.md"]);
+    expect(composeTree(dir).releases).toEqual([
+      ["1.1.1", "dated"],
+      ["1.1.0", "dated"],
       ["0.9.0", "dated"],
     ]);
   });

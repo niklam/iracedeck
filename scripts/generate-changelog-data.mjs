@@ -5,7 +5,9 @@
  * in-development fragments in changelog.d/, so the plugin's Settings window can
  * render its own What's New pane instead of embedding the website (issue #1011).
  *
- * The fragments are composed in as the `_Unreleased_` release through
+ * The fragments are composed in as the undated in-development release
+ * (`## <version>` / `_Unreleased_`, or `## Unreleased` between a stable fold and
+ * the next version bump, #1398) through
  * scripts/lib/changelog-composed.mjs, the same path the website's published copy
  * takes (#1386). The output is a gitignored build artifact: turbo's
  * `//#generate:changelog-data` task runs this before every plugin build, and the

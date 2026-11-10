@@ -44,7 +44,9 @@ export function formatLocalDate(date) {
  * Pure: the caller loads the sources (`loadChangelogSources`, which already
  * validates every fragment) and supplies the date. A pre-release, or a stable
  * release with no fragments, is a skip with a reason. Otherwise the fragments
- * are composed with `_<date>_` and the result is run through `buildChangelogData`
+ * are composed in fold mode as `## <version>` / `_<date>_` (never the preview
+ * window's `## Unreleased`: the version is the release's, not `package.json`'s)
+ * and the result is run through `buildChangelogData`
  * — the same parser and inline renderer the What's New pane is built with — so
  * anything that would break a reader throws here, before the hook writes.
  *
@@ -52,8 +54,9 @@ export function formatLocalDate(date) {
  * @param {string} version - The release version, as release-it passes it.
  * @param {string} date - `YYYY-MM-DD`.
  * @returns {SkippedFold | PlannedFold}
- * @throws on an invalid composition (see `composeChangelog`) or a changelog the
- *   parser refuses.
+ * @throws on an invalid composition (see `composeChangelog`; a `## <version>`
+ *   section already there is a half-folded tree) or a changelog the parser
+ *   refuses.
  */
 export function planChangelogFold({ mdx, fragments }, version, date) {
   if (version.includes("-")) {
@@ -69,13 +72,12 @@ export function planChangelogFold({ mdx, fragments }, version, date) {
     };
   }
 
-  const dateLine = `_${date}_`;
-  const { content, section } = composeChangelogParts(mdx, fragments, version, dateLine);
+  const { content, section } = composeChangelogParts(mdx, fragments, version, { mode: "fold", date });
   buildChangelogData(content);
 
   return {
     fold: true,
-    reason: `Folded ${fragments.length} fragment${fragments.length === 1 ? "" : "s"} into "## ${version}" → ${dateLine}`,
+    reason: `Folded ${fragments.length} fragment${fragments.length === 1 ? "" : "s"} into "## ${version}" → _${date}_`,
     content,
     section,
     fragmentPaths: fragments.map(({ fileName }) => `${CHANGELOG_FRAGMENTS_DIR}/${fileName}`),

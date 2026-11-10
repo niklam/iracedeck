@@ -3,6 +3,15 @@
 // `changelog.mdx` through this module, so the website preview, the plugin's
 // What's New pane and the release fold all see the same text.
 //
+// Composing runs in one of two modes over one shared core (#1398): a preview,
+// handed the root `package.json` version as written, writes `## <X.Y.Z>` /
+// `_Unreleased_`, or `## Unreleased` with no date line in the window after a
+// stable fold, when the root version is still exactly the newest dated section
+// (a pre-release of that version is refused as behind it); the fold, handed the
+// plain release version, writes `## <version>` / `_<date>_`. The rules are on
+// `sectionFor` and `composeChangelogParts`, decided in
+// `docs/superpowers/specs/2026-11-08-issue-1398-changelog-fragment-release-window.md`.
+//
 // Everything here is pure except `loadChangelogSources`, the one thin loader that
 // reads the tree. The format is deliberately STRICT, in the manner of
 // `changelog-parse.mjs`: anything that is not exactly the documented shape is an
@@ -25,7 +34,7 @@ import path from "node:path";
 
 import { CHANGELOG_SOURCE_PATH } from "./changelog-data.mjs";
 import { renderInlineMarkdown } from "./changelog-inline-html.mjs";
-import { CHANGELOG_CATEGORIES } from "./changelog-parse.mjs";
+import { CHANGELOG_CATEGORIES, compareVersions, UNRELEASED_LABEL } from "./changelog-parse.mjs";
 
 /** The fragment directory, relative to the repository root. */
 export const CHANGELOG_FRAGMENTS_DIR = "changelog.d";
@@ -39,7 +48,11 @@ export const CHANGELOG_FRAGMENTS_README = "README.md";
 // ending in `~` are recognised by shape in `isFragmentDirLitter`.
 const LITTER_NAMES = new Set(["thumbs.db", "desktop.ini"]);
 
-/** The date line of a section that has not shipped yet. */
+/**
+ * The date line a preview writes under `## <version>` when the in-development
+ * version is newer than every released section (the normal case). In the window
+ * after a stable fold the section is `## Unreleased` with no date line instead.
+ */
 export const UNRELEASED_DATE_LINE = "_Unreleased_";
 
 /** Thrown for any fragment, or any composition, that does not follow the format. */
@@ -91,6 +104,11 @@ const CODE_SPAN = /`[^`]+`/g;
 // in `changelog-parse.mjs`, which the composed text is parsed with afterwards.
 const VERSION_HEADING = /^##[ \t]+(.*?)[ \t]*$/;
 const PLAIN_VERSION = /^\d+\.\d+\.\d+$/;
+// The root `package.json` version a preview is handed: a plain `X.Y.Z`,
+// optionally followed by a `-` pre-release suffix (`1.2.0-dev.0`, `1.2.0-rc.1`).
+// Group 1 is the plain version, group 2 the suffix without its `-`. Build
+// metadata (`+…`) is not accepted, as the loader never has.
+const ROOT_VERSION = /^(\d+\.\d+\.\d+)(?:-(.*))?$/;
 const DATE_LINE = /^_\d{4}-\d{2}-\d{2}_$/;
 const UNRELEASED_LINE = /^_Unreleased_[ \t]*$/;
 const BULLET_LINE = /^-[ \t]+(.*\S)[ \t]*$/;
@@ -279,18 +297,34 @@ export function sortFragments(fragments) {
  * by its bullets, every block separated by one blank line. The text ends with a
  * single newline after the last bullet.
  *
- * @param {string} version - A plain `X.Y.Z`.
- * @param {string} dateLine - `_Unreleased_` or `_YYYY-MM-DD_`.
+ * The window section (#1398) is the same call with `UNRELEASED_LABEL` for the
+ * version and `null` for the date line: `## Unreleased`, then the categories.
+ * The label takes no date line and a version always takes one, so neither mix
+ * can be written.
+ *
+ * @param {string} version - A plain `X.Y.Z`, or `UNRELEASED_LABEL`.
+ * @param {string | null} dateLine - `_Unreleased_` or `_YYYY-MM-DD_` for a
+ *   version; `null` for the label.
  * @param {readonly ChangelogFragment[]} fragments - At least one; sorted here.
  * @returns {string}
  */
 export function renderReleaseSection(version, dateLine, fragments) {
-  if (!PLAIN_VERSION.test(version)) {
-    throw new Error(`renderReleaseSection: version ${JSON.stringify(version)} is not a plain X.Y.Z`);
-  }
-  if (dateLine !== UNRELEASED_DATE_LINE && !DATE_LINE.test(dateLine)) {
+  const isLabel = version === UNRELEASED_LABEL;
+  if (!isLabel && !PLAIN_VERSION.test(version)) {
     throw new Error(
-      `renderReleaseSection: date line ${JSON.stringify(dateLine)} must be "${UNRELEASED_DATE_LINE}" or "_YYYY-MM-DD_"`,
+      `renderReleaseSection: version ${JSON.stringify(version)} is not a plain X.Y.Z or "${UNRELEASED_LABEL}"`,
+    );
+  }
+  if (isLabel && dateLine !== null) {
+    throw new Error(
+      `renderReleaseSection: "## ${UNRELEASED_LABEL}" takes no date line, got ${JSON.stringify(dateLine)}`,
+    );
+  }
+  if (!isLabel && dateLine !== UNRELEASED_DATE_LINE && !DATE_LINE.test(String(dateLine))) {
+    throw new Error(
+      dateLine === null
+        ? `renderReleaseSection: release ${version} needs a date line ("${UNRELEASED_DATE_LINE}" or "_YYYY-MM-DD_")`
+        : `renderReleaseSection: date line ${JSON.stringify(dateLine)} must be "${UNRELEASED_DATE_LINE}" or "_YYYY-MM-DD_"`,
     );
   }
   if (fragments.length === 0) {
@@ -298,7 +332,7 @@ export function renderReleaseSection(version, dateLine, fragments) {
     throw new Error(`renderReleaseSection: release ${version} has no fragments to render`);
   }
 
-  const lines = [`## ${version}`, "", dateLine, ""];
+  const lines = isLabel ? [`## ${version}`, ""] : [`## ${version}`, "", dateLine, ""];
   let current = null;
   for (const fragment of sortFragments(fragments)) {
     if (fragment.category !== current) {
@@ -314,10 +348,12 @@ export function renderReleaseSection(version, dateLine, fragments) {
 }
 
 /**
- * Refuse an `_Unreleased_` line in changelog.mdx. Once the notes are fragments, a
- * hand-written in-development section is the old habit coming back, and with no
- * fragments to compose it would otherwise pass every reader silently. It runs
- * whatever the fragment count; `composeChangelog` calls it first.
+ * Refuse a hand-written in-development section in changelog.mdx: an
+ * `_Unreleased_` line, or a `## Unreleased` heading (`UNRELEASED_LABEL`), which
+ * exists only in composed text. Once the notes are fragments, either is the old
+ * habit coming back, and with no fragments to compose it would otherwise pass
+ * every reader silently. It runs whatever the fragment count and the mode;
+ * `composeChangelog` calls it first.
  *
  * @param {string} mdx - The full contents of changelog.mdx.
  * @throws {ChangelogFragmentError} naming the line.
@@ -325,65 +361,241 @@ export function renderReleaseSection(version, dateLine, fragments) {
 export function assertNoInDevelopmentSection(mdx) {
   const lines = String(mdx).split(/\r?\n/);
   for (let i = 0; i < lines.length; i++) {
-    if (UNRELEASED_LINE.test(lines[i])) {
+    const found = UNRELEASED_LINE.test(lines[i])
+      ? UNRELEASED_DATE_LINE
+      : VERSION_HEADING.exec(lines[i])?.[1] === UNRELEASED_LABEL
+        ? `## ${UNRELEASED_LABEL}`
+        : null;
+    if (found !== null) {
       throw new ChangelogFragmentError(
         CHANGELOG_SOURCE_PATH,
         i + 1,
-        `"_Unreleased_" left in changelog.mdx: in-development notes are fragments in ${CHANGELOG_FRAGMENTS_DIR}/, not a section`,
+        `"${found}" left in changelog.mdx: in-development notes are fragments in ${CHANGELOG_FRAGMENTS_DIR}/, not a section`,
       );
     }
   }
 }
 
 /**
+ * How a composition is used, which decides the version rules and the section's
+ * heading and date line:
+ *
+ * - `{ mode: "preview" }` — a reader showing the tree as it stands (the What's
+ *   New data, the website page). `version` is the root `package.json` version
+ *   as written, pre-release suffix and all: the composer needs the suffix to tell
+ *   the window from a pre-release of the newest dated version, and strips it
+ *   itself for the heading, so no caller holds a stripped copy that could
+ *   disagree with it.
+ * - `{ mode: "fold", date }` — the stable release writing the fragments into
+ *   changelog.mdx. `version` is the release version, a plain `X.Y.Z`; `date`
+ *   is `YYYY-MM-DD`.
+ *
+ * @typedef {{ mode: "preview" } | { mode: "fold", date: string }} ComposeMode
+ */
+
+const FOLD_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * Refuse anything but exactly `{ mode: "preview" }` or `{ mode: "fold", date }`.
+ * A programming error rather than a changelog one, so a plain Error.
+ *
+ * @param {unknown} mode
+ * @returns {ComposeMode}
+ */
+function checkComposeMode(mode) {
+  const describe = () => JSON.stringify(mode) ?? String(mode);
+  if (mode === null || typeof mode !== "object" || Array.isArray(mode)) {
+    throw new Error(
+      `composeChangelog: mode ${describe()} must be { mode: "preview" } or { mode: "fold", date: "YYYY-MM-DD" }`,
+    );
+  }
+  const keys = Object.keys(mode).sort();
+  if (mode.mode === "preview" && keys.length === 1) return mode;
+  if (mode.mode === "fold" && keys.length === 2 && keys[0] === "date" && keys[1] === "mode") {
+    if (typeof mode.date === "string" && FOLD_DATE.test(mode.date)) return mode;
+    throw new Error(`composeChangelog: fold mode needs a date as "YYYY-MM-DD", got ${JSON.stringify(mode.date)}`);
+  }
+  throw new Error(
+    `composeChangelog: mode ${describe()} must be { mode: "preview" } or { mode: "fold", date: "YYYY-MM-DD" }`,
+  );
+}
+
+/**
+ * Split the version a composition is handed, after its mode's rule: a fold takes
+ * only a plain `X.Y.Z`; a preview takes the root version as written, `X.Y.Z`
+ * or a pre-release of one. A programming error rather than a changelog one (the
+ * loader has already refused a malformed root version), so a plain Error.
+ *
+ * @param {unknown} version
+ * @param {ComposeMode} mode
+ * @returns {{ written: string, plain: string, prerelease: string | null }}
+ */
+function parseComposeVersion(version, mode) {
+  if (mode.mode === "fold") {
+    if (typeof version !== "string" || !PLAIN_VERSION.test(version)) {
+      throw new Error(`composeChangelog: fold version ${JSON.stringify(version)} is not a plain X.Y.Z`);
+    }
+    return { written: version, plain: version, prerelease: null };
+  }
+  const match = typeof version === "string" ? ROOT_VERSION.exec(version) : null;
+  if (!match) {
+    throw new Error(
+      `composeChangelog: preview version ${JSON.stringify(version)} is not X.Y.Z or a pre-release of one (X.Y.Z-…)`,
+    );
+  }
+  return { written: version, plain: match[1], prerelease: match[2] ?? null };
+}
+
+/**
+ * Every `## ` heading of changelog.mdx in file order, with its 1-based line.
+ *
+ * @param {string[]} lines - changelog.mdx, split into lines.
+ * @returns {{ version: string, line: number }[]}
+ */
+function versionHeadings(lines) {
+  const headings = [];
+  for (let i = 0; i < lines.length; i++) {
+    const heading = VERSION_HEADING.exec(lines[i]);
+    if (heading) headings.push({ version: heading[1], line: i + 1 });
+  }
+  return headings;
+}
+
+/**
+ * The heading and date line the fragments are written under, after the version
+ * rules of `mode`. Only called while fragments exist.
+ *
+ * A fold refuses a `## <version>` section anywhere: a stable release always
+ * names a new version, so meeting its own section means a release already wrote
+ * it and stopped before deleting the fragments (`release-hooks.mjs` relies on
+ * this to refuse a re-run over that tree).
+ *
+ * A preview compares V, the root version without its pre-release suffix, with
+ * the newest `## ` section (N):
+ * - no `## ` heading, or V newer than N: `## V` / `_Unreleased_`, whether or
+ *   not the root version carries a suffix (the normal `3.9.0-dev.0` over
+ *   `## 3.8.1`);
+ * - the root version exactly N, with no suffix (the window after a stable fold,
+ *   #1398): `## Unreleased`, no date line;
+ * - a pre-release of N (`3.8.1-dev.0` over `## 3.8.1`): refused, since it is
+ *   behind N in semver. Taken as the window it would compose green, and the
+ *   missed bump would surface only at the next patch release, whose fold meets
+ *   `## N` and calls the tree half-folded;
+ * - V older than N, or V's section further down: refused, a misconfigured tree
+ *   rather than a window.
+ * A newest heading that is not a plain version is left to the parser, which
+ * every composed text goes through and which names it; the preview then writes
+ * `## V` / `_Unreleased_` above it, as it always has.
+ *
+ * @param {{ version: string, line: number }[]} headings - every `## ` heading of
+ *   changelog.mdx in file order, as `versionHeadings` returns them.
+ * @param {{ written: string, plain: string, prerelease: string | null }} parsed -
+ *   the version as handed in, the plain `X.Y.Z` it starts with, and its
+ *   pre-release suffix (`null` without one, always for a fold).
+ * @param {ComposeMode} mode
+ * @returns {{ heading: string, dateLine: string | null }}
+ * @throws {ChangelogFragmentError} naming the line.
+ */
+function sectionFor(headings, { written, plain: version, prerelease }, mode) {
+  const own = headings.find((heading) => heading.version === version);
+
+  if (mode.mode === "fold") {
+    if (own) {
+      throw new ChangelogFragmentError(
+        CHANGELOG_SOURCE_PATH,
+        own.line,
+        `a "## ${version}" section already exists while ${CHANGELOG_FRAGMENTS_DIR}/ still holds fragments: this is a half-folded tree, where a release wrote the section and stopped before removing the fragments. Run the "git restore" the release hook printed, then release again`,
+      );
+    }
+    return { heading: version, dateLine: `_${mode.date}_` };
+  }
+
+  const newest = headings[0];
+  if (newest === undefined || !PLAIN_VERSION.test(newest.version)) {
+    return { heading: version, dateLine: UNRELEASED_DATE_LINE };
+  }
+  // A release that stopped after writing the newest section and before bumping
+  // the version files leaves a tree that reads as behind that section, so both
+  // refusals below name its remedy beside the bump.
+  const halfFolded = `If a release stopped part-way after writing "## ${newest.version}", run the "git restore" the release hook printed, then release again`;
+  if (compareVersions(version, newest.version) < 0) {
+    throw new ChangelogFragmentError(
+      CHANGELOG_SOURCE_PATH,
+      newest.line,
+      `the in-development version ${written} (package.json) is behind the newest section "## ${newest.version}" while ${CHANGELOG_FRAGMENTS_DIR}/ holds fragments. ${halfFolded}; otherwise bump the version to ${newest.version} or later`,
+    );
+  }
+  if (own === newest && prerelease !== null) {
+    throw new ChangelogFragmentError(
+      CHANGELOG_SOURCE_PATH,
+      newest.line,
+      `the in-development version ${written} (package.json) is a pre-release of "## ${newest.version}", which is already released, so it is behind it while ${CHANGELOG_FRAGMENTS_DIR}/ holds fragments. ${halfFolded}; otherwise bump the version to the next -dev, past ${newest.version}`,
+    );
+  }
+  if (own && own !== newest) {
+    throw new ChangelogFragmentError(
+      CHANGELOG_SOURCE_PATH,
+      own.line,
+      `a "## ${version}" section already exists below the newest section "## ${newest.version}" while ${CHANGELOG_FRAGMENTS_DIR}/ holds fragments — the sections are out of newest-first order`,
+    );
+  }
+  if (own) return { heading: UNRELEASED_LABEL, dateLine: null };
+  return { heading: version, dateLine: UNRELEASED_DATE_LINE };
+}
+
+/**
  * Compose the changelog and return it together with the section it inserted:
- * the fragments rendered as the `version` section and inserted before the first
- * `## ` heading. With no fragments the MDX is returned unchanged (after the
- * `_Unreleased_` check) and the section is `null`, so a tree with nothing in
- * development reads exactly as it does after a release.
+ * the fragments rendered as one section and inserted before the first `## `
+ * heading (or appended after the preamble when there is none). With no
+ * fragments the MDX is returned unchanged (after the in-development check) and
+ * the section is `null`, so a tree with nothing in development reads exactly as
+ * it does after a release — whatever its version, in either mode.
+ *
+ * Which section, by `mode` (see `sectionFor`): a fold writes `## <version>` /
+ * `_<date>_`; a preview writes `## <X.Y.Z>` / `_Unreleased_` under `version`
+ * without its pre-release suffix, or, in the window after a stable fold where
+ * `version` is exactly the newest dated section, `## Unreleased` with no date
+ * line. A pre-release of the newest dated section is refused.
  *
  * A reader that needs the section on its own (the website page, the fold's dry
  * run) takes it from here, so it passes exactly the checks the composed file
  * does and is rendered once.
  *
- * The existing-`## <version>` check runs only while fragments exist, on purpose:
- * on a stable release commit the version is the plain `X.Y.Z` whose dated section
- * the fold has just written, with no fragments left, and the release build
- * composes exactly that tree.
+ * The version rules run only while fragments exist, on purpose: on a stable
+ * release commit the version is the plain `X.Y.Z` whose dated section the fold
+ * has just written, with no fragments left, and the release build composes
+ * exactly that tree. Without fragments only the version's shape is checked.
  *
  * @param {string} mdx - The full contents of changelog.mdx.
  * @param {readonly ChangelogFragment[]} fragments
- * @param {string} version - The in-development `X.Y.Z`.
- * @param {string} dateLine - `_Unreleased_` for a preview, `_YYYY-MM-DD_` for the fold.
+ * @param {string} version - For a preview, the root `package.json` version as
+ *   written: `X.Y.Z` or a pre-release of one (`X.Y.Z-…`), stripped here for the
+ *   heading. For a fold, the release version, a plain `X.Y.Z`.
+ * @param {ComposeMode} mode
  * @returns {{ content: string, section: string | null }} the composed MDX, in the
  *   MDX's own line endings, and the section as `renderReleaseSection` writes it
  *   (LF), or `null` with no fragments.
- * @throws {ChangelogFragmentError} on a leftover `_Unreleased_` line, an existing
- *   `## <version>` section, two fragments with the same bullet, or a fragment
- *   whose bullet repeats a dated one.
+ * @throws {ChangelogFragmentError} on a hand-written in-development section (an
+ *   `_Unreleased_` line or a `## Unreleased` heading), a fold over an existing
+ *   `## <version>` section, a preview whose version is behind the newest section
+ *   (a pre-release of it included) or has a section below it, two fragments with
+ *   the same bullet, or a fragment whose bullet repeats a dated one.
+ * @throws {Error} on a mode that is not one of the two, a fold version that is
+ *   not a plain `X.Y.Z`, or a preview version that is not `X.Y.Z` or a
+ *   pre-release of one.
  */
-export function composeChangelogParts(mdx, fragments, version, dateLine) {
+export function composeChangelogParts(mdx, fragments, version, mode) {
+  checkComposeMode(mode);
+  const parsed = parseComposeVersion(version, mode);
   assertNoInDevelopmentSection(mdx);
   if (fragments.length === 0) return { content: mdx, section: null };
 
   const source = String(mdx);
   const lines = source.split(/\r?\n/);
-
-  let firstHeading = -1;
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    const heading = VERSION_HEADING.exec(line);
-    if (heading) {
-      if (firstHeading === -1) firstHeading = i;
-      if (heading[1] === version) {
-        throw new ChangelogFragmentError(
-          CHANGELOG_SOURCE_PATH,
-          i + 1,
-          `a "## ${version}" section already exists while ${CHANGELOG_FRAGMENTS_DIR}/ holds fragments for that version — bump the version to the next -dev first`,
-        );
-      }
-    }
-  }
+  const headings = versionHeadings(lines);
+  const { heading, dateLine } = sectionFor(headings, parsed, mode);
+  // 0-based index of the first `## ` line, where the section is inserted; -1 when there is none.
+  const firstHeading = headings.length === 0 ? -1 : headings[0].line - 1;
 
   // Two fragments with one bullet (a copied file, or a follow-up that added a
   // fragment instead of editing the first) would list the change twice.
@@ -420,7 +632,7 @@ export function composeChangelogParts(mdx, fragments, version, dateLine) {
   }
 
   const eol = source.includes("\r\n") ? "\r\n" : "\n";
-  const section = renderReleaseSection(version, dateLine, fragments);
+  const section = renderReleaseSection(heading, dateLine, fragments);
   const inserted = section.replace(/\n/g, eol);
 
   if (firstHeading === -1) {
@@ -439,13 +651,14 @@ export function composeChangelogParts(mdx, fragments, version, dateLine) {
  *
  * @param {string} mdx - The full contents of changelog.mdx.
  * @param {readonly ChangelogFragment[]} fragments
- * @param {string} version - The in-development `X.Y.Z`.
- * @param {string} dateLine - `_Unreleased_` for a preview, `_YYYY-MM-DD_` for the fold.
+ * @param {string} version - For a preview, the root `package.json` version as
+ *   written (`X.Y.Z` or `X.Y.Z-…`); for a fold, the plain release version.
+ * @param {ComposeMode} mode - `{ mode: "preview" }` or `{ mode: "fold", date }`.
  * @returns {string}
  * @throws {ChangelogFragmentError} as `composeChangelogParts` does.
  */
-export function composeChangelog(mdx, fragments, version, dateLine) {
-  return composeChangelogParts(mdx, fragments, version, dateLine).content;
+export function composeChangelog(mdx, fragments, version, mode) {
+  return composeChangelogParts(mdx, fragments, version, mode).content;
 }
 
 /**
@@ -465,7 +678,9 @@ export function isFragmentDirLitter(entry) {
 /**
  * Read everything a reader composes from: the MDX, every fragment (validated and
  * sorted) and the in-development version, which is the root `package.json`
- * version with any `-…` suffix stripped.
+ * version as written, pre-release suffix included. A preview is handed it
+ * unchanged: the composer strips the suffix for the heading itself and needs it
+ * to refuse a pre-release of the newest dated version.
  *
  * @param {string} root - The repository root.
  * @returns {{ mdx: string, fragments: ChangelogFragment[], version: string }}
@@ -476,8 +691,7 @@ export function loadChangelogSources(root) {
   const mdx = readFileSync(path.join(root, CHANGELOG_SOURCE_PATH), "utf8");
 
   const packageVersion = JSON.parse(readFileSync(path.join(root, "package.json"), "utf8")).version;
-  const version = String(packageVersion).replace(/-.*$/, "");
-  if (!PLAIN_VERSION.test(version)) {
+  if (typeof packageVersion !== "string" || !ROOT_VERSION.test(packageVersion)) {
     throw new ChangelogFragmentError(
       "package.json",
       null,
@@ -511,5 +725,5 @@ export function loadChangelogSources(root) {
     fragments.push(parseFragment(entry, readFileSync(full, "utf8")));
   }
 
-  return { mdx, fragments: sortFragments(fragments), version };
+  return { mdx, fragments: sortFragments(fragments), version: packageVersion };
 }

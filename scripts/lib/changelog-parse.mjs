@@ -21,6 +21,13 @@ export const CHANGELOG_CATEGORIES = Object.freeze([
   "Maintenance",
 ]);
 
+/**
+ * The heading of the section the fragments compose into while the root version
+ * already has a dated section (the window after a stable fold, #1398): `## Unreleased`,
+ * with no date line. It exists only in composed text, never in changelog.mdx.
+ */
+export const UNRELEASED_LABEL = "Unreleased";
+
 /** Thrown for any line the pane could not render. Carries the 1-based line number. */
 export class ChangelogParseError extends Error {
   /**
@@ -42,12 +49,15 @@ const CATEGORY_LINE = /^\*\*(.+?)\*\*[ \t]*$/;
 const BULLET_LINE = /^-[ \t]+(.*\S)[ \t]*$/;
 
 /**
- * Compare two plain `X.Y.Z` versions numerically. Both are known to match
- * PLAIN_VERSION by the time this is called, so no parse guard is needed.
+ * Compare two plain `X.Y.Z` versions numerically. The caller checks both are
+ * plain first (the parser by its heading rule, the composer before it compares),
+ * so no parse guard is needed here.
  *
+ * @param {string} a
+ * @param {string} b
  * @returns {number} negative when `a` is older than `b`, positive when newer.
  */
-function compareVersions(a, b) {
+export function compareVersions(a, b) {
   const left = a.split(".").map(Number);
   const right = b.split(".").map(Number);
 
@@ -69,6 +79,12 @@ function compareVersions(a, b) {
  * Everything before the first `## <version>` heading — frontmatter, the `import`
  * line, `<ChangelogLeadIn />` and the intro paragraph — is skipped. Bullet text is
  * returned verbatim (still markdown); rendering it is a separate concern.
+ *
+ * Every heading is a plain `X.Y.Z`, except a `## Unreleased` (`UNRELEASED_LABEL`)
+ * section the composer writes in the window after a stable fold: accepted only as
+ * the first release, with no date line, and yielded as
+ * `{ version: "Unreleased", date: null, categories }`. The newest-first check
+ * starts from the release below it.
  *
  * @param {string} source - The full contents of changelog.mdx.
  * @returns {{ releases: ChangelogRelease[] }}
@@ -110,6 +126,16 @@ export function parseChangelog(source) {
     }
   };
 
+  // Start a release: every piece of per-release state is reset here, for a plain
+  // version and the Unreleased section alike.
+  const openRelease = (version) => {
+    release = { version, date: null, categories: [] };
+    releases.push(release);
+    category = null;
+    highestCategoryIndex = -1;
+    sawDateLine = false;
+  };
+
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     const lineNumber = i + 1;
@@ -119,6 +145,18 @@ export function parseChangelog(source) {
     const heading = VERSION_HEADING.exec(line);
     if (heading) {
       const version = heading[1];
+      // The composed window section (#1398): only ever the newest entry, and
+      // undated by construction. A second one is "not first" too.
+      if (version === UNRELEASED_LABEL) {
+        if (releases.length > 0) {
+          throw new ChangelogParseError(
+            `"## ${UNRELEASED_LABEL}" may only be the first release (it is the in-development section above the newest dated one)`,
+            lineNumber,
+          );
+        }
+        openRelease(version);
+        continue;
+      }
       if (!PLAIN_VERSION.test(version)) {
         throw new ChangelogParseError(
           `heading "## ${version}" is not a version number (expected e.g. "## 1.2.3")`,
@@ -131,8 +169,10 @@ export function parseChangelog(source) {
       // The pane leans on the list being strictly newest-first: it renders in file
       // order and calls the top entry the in-development one, so a section filed in
       // the wrong place would show the running version buried mid-list.
+      // The Unreleased section carries no version, so the check starts from the
+      // release below it (it can only be the first, so nothing is above it).
       const above = releases[releases.length - 1];
-      if (above && compareVersions(version, above.version) > 0) {
+      if (above && above.version !== UNRELEASED_LABEL && compareVersions(version, above.version) > 0) {
         throw new ChangelogParseError(
           `release ${version} is newer than ${above.version} above it — the list must be strictly newest-first`,
           lineNumber,
@@ -140,12 +180,7 @@ export function parseChangelog(source) {
       }
       closeRelease(lineNumber);
       seenVersions.add(version);
-
-      release = { version, date: null, categories: [] };
-      releases.push(release);
-      category = null;
-      highestCategoryIndex = -1;
-      sawDateLine = false;
+      openRelease(version);
       continue;
     }
 
@@ -153,6 +188,11 @@ export function parseChangelog(source) {
     if (release === null) continue;
 
     if (DATE_LINE.test(line) || UNRELEASED_LINE.test(line)) {
+      // The heading already says it; a date line under it would print the word
+      // twice (`_Unreleased_`) or claim a release date (`_YYYY-MM-DD_`).
+      if (release.version === UNRELEASED_LABEL) {
+        throw new ChangelogParseError(`release ${UNRELEASED_LABEL} takes no date line`, lineNumber);
+      }
       if (sawDateLine) {
         throw new ChangelogParseError(`release ${release.version} has more than one date line`, lineNumber);
       }

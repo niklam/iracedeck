@@ -1,6 +1,6 @@
 # Changelog fragments
 
-The release notes for the version in development live here, one file per bullet. Every reader composes them into `packages/website/src/content/docs/changelog.mdx` as that version's section: the website's changelog page, the plugin's What's New tab and the release itself. At a stable release the fragments are folded into a dated section of `changelog.mdx` and deleted, so this folder is empty again apart from this file.
+The release notes for the version in development live here, one file per bullet. Every reader composes them into `packages/website/src/content/docs/changelog.mdx` as that version's section: the website's changelog page, the plugin's What's New tab and the release itself. A fragment merged after a stable release, before the version is bumped again, shows in an `Unreleased` section until the next stable release folds it. At a stable release the fragments are folded into a dated section of `changelog.mdx` and deleted, so this folder is empty again apart from this file.
 
 ## A fragment
 

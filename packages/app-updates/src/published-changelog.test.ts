@@ -137,6 +137,7 @@ describe("parsePublishedChangelog", () => {
 const scriptsLib = (name: string) => url.pathToFileURL(path.join(repoRoot, "scripts", "lib", name)).href;
 const { buildComposedChangelogData } = await import(scriptsLib("changelog-composed.mjs"));
 const { serializeChangelogData } = await import(scriptsLib("changelog-data.mjs"));
+const { UNRELEASED_LABEL }: { UNRELEASED_LABEL: string } = await import(scriptsLib("changelog-parse.mjs"));
 
 describe("published changelog headroom (#1101)", () => {
   const artifact: string = serializeChangelogData(buildComposedChangelogData(repoRoot));
@@ -153,5 +154,35 @@ describe("published changelog headroom (#1101)", () => {
     expect(releases.length).toBeLessThan(PUBLISHED_CHANGELOG_MAX_RELEASES / 2);
     expect(Math.max(...categories.map((c) => c.length))).toBeLessThan(PUBLISHED_CHANGELOG_MAX_CATEGORIES / 2);
     expect(Math.max(...categories.flat().map((c) => c.items.length))).toBeLessThan(PUBLISHED_CHANGELOG_MAX_ITEMS / 2);
+  });
+});
+
+describe("the Unreleased section of the window after a stable fold (#1398)", () => {
+  // Between a stable fold and the next version bump the fragments compose as
+  // `## Unreleased` with no date line, and a site deployed from a branch in that
+  // window publishes it as the first release. Every plugin already in the field
+  // must still read the artifact: `version` is only a string here and `date`
+  // only nullable, so the label parses like any other undated release. The label
+  // comes from the parser's constant, so a renamed label is tested as shipped.
+  it("parses an artifact whose first release is the label with no date", () => {
+    const releases = parsePublishedChangelog({
+      _meta: { generatedFrom: "…", generatedBy: "…", note: "…" },
+      releases: [
+        {
+          version: UNRELEASED_LABEL,
+          date: null,
+          categories: [{ title: "Features", items: ["Merged after the fold."] }],
+        },
+        { version: "2.6.0", date: "2026-08-14", categories: [{ title: "Bug Fixes", items: ["Shipped."] }] },
+      ],
+    });
+
+    expect(releases).toHaveLength(2);
+    expect(releases?.[0]).toEqual({
+      version: UNRELEASED_LABEL,
+      date: null,
+      categories: [{ title: "Features", items: ["Merged after the fold."] }],
+    });
+    expect(releases?.[1].version).toBe("2.6.0");
   });
 });

@@ -1,7 +1,20 @@
+import path from "node:path";
+import url from "node:url";
 import { describe, expect, it } from "vitest";
 
 import type { PublishedRelease } from "./published-changelog.js";
 import { selectAvailableUpdates } from "./update-check.js";
+
+// The label of the section the fragments compose into between a stable fold and
+// the next version bump (#1398). Taken from the parser that owns it rather than
+// written out, so a renamed label is tested as shipped. The root script is an
+// untyped `.mjs` outside this package's `rootDir`, so it is imported by computed
+// URL, which keeps it out of the `tsc` program that emits `dist/` (the same
+// route as `published-changelog.test.ts`).
+const repoRoot = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), "../../..");
+const { UNRELEASED_LABEL }: { UNRELEASED_LABEL: string } = await import(
+  url.pathToFileURL(path.join(repoRoot, "scripts", "lib", "changelog-parse.mjs")).href
+);
 
 function release(version: string, date: string | null = "2026-08-14"): PublishedRelease {
   return { version, date, categories: [{ title: "Features", items: ["A thing."] }] };
@@ -28,6 +41,27 @@ describe("selectAvailableUpdates", () => {
     });
 
     expect(found).toEqual([]);
+  });
+
+  describe("the Unreleased section of the window after a stable fold (#1398)", () => {
+    // A site deployed from a branch in that window publishes `## Unreleased` as
+    // its first release, undated. It is not a version anyone can install, so it
+    // must never be offered, and its label must never reach semver.
+    it.each(["0.0.1", "2.4.0", "2.6.0", "3.0.0-dev.0", "3.0.0-rc.1", "99.0.0"])(
+      "never offers it to a build at %s",
+      (installedVersion) => {
+        expect(selectAvailableUpdates({ installedVersion, releases: [release(UNRELEASED_LABEL, null)] })).toEqual([]);
+      },
+    );
+
+    it("still offers the dated release below it that is newer than the installed one", () => {
+      const found = selectAvailableUpdates({
+        installedVersion: "2.5.0",
+        releases: [release(UNRELEASED_LABEL, null), release("2.6.0"), release("2.5.0")],
+      });
+
+      expect(found.map((r) => r.version)).toEqual(["2.6.0"]);
+    });
   });
 
   it.each(["", "not-a-date", "2026-02-30", "2026-13-01", "2026-8-14", "2026-08-14T00:00:00Z"])(

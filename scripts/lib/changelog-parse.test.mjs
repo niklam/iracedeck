@@ -3,7 +3,13 @@ import path from "node:path";
 import url from "node:url";
 import { describe, expect, it } from "vitest";
 
-import { CHANGELOG_CATEGORIES, ChangelogParseError, parseChangelog } from "./changelog-parse.mjs";
+import {
+  CHANGELOG_CATEGORIES,
+  ChangelogParseError,
+  compareVersions,
+  parseChangelog,
+  UNRELEASED_LABEL,
+} from "./changelog-parse.mjs";
 
 const __dirname = path.dirname(url.fileURLToPath(import.meta.url));
 const REAL_CHANGELOG = path.resolve(__dirname, "../../packages/website/src/content/docs/changelog.mdx");
@@ -303,6 +309,11 @@ Some trailing prose.
       ).toThrow(/Unrecognised line/);
     });
 
+    it("throws on a heading that only resembles the Unreleased label", () => {
+      expect(() => parseChangelog("## unreleased\n\n**Features**\n\n- One.\n")).toThrow(/not a version number/);
+      expect(() => parseChangelog("## Unreleased 1.2.0\n\n**Features**\n\n- One.\n")).toThrow(/not a version number/);
+    });
+
     it("names the line number so the offending entry can be found", () => {
       let error;
       try {
@@ -313,6 +324,124 @@ Some trailing prose.
 
       expect(error).toBeInstanceOf(ChangelogParseError);
       expect(error.message).toContain("line 5");
+    });
+  });
+
+  // The section the composer writes for fragments merged after a stable fold, while
+  // the root version still names the newest dated release (#1398).
+  describe(`the "## ${UNRELEASED_LABEL}" section`, () => {
+    const DATED_BELOW = `## 1.2.0
+
+_2026-01-02_
+
+**Bug Fixes**
+
+- A shipped fix.
+
+## 1.1.0
+
+_2025-12-01_
+
+**Features**
+
+- An older feature.
+`;
+    const WINDOW = `## ${UNRELEASED_LABEL}
+
+**Features**
+
+- Not out yet.
+
+`;
+
+    /** The error `fn` throws, for asserting its line and message. */
+    const parseError = (fn) => {
+      try {
+        fn();
+      } catch (error) {
+        return error;
+      }
+      return undefined;
+    };
+
+    it("is accepted as the first release, undated, above the dated one", () => {
+      const { releases } = parseChangelog(`${PREAMBLE}${WINDOW}${DATED_BELOW}`);
+
+      expect(releases).toEqual([
+        { version: UNRELEASED_LABEL, date: null, categories: [{ title: "Features", items: ["Not out yet."] }] },
+        { version: "1.2.0", date: "2026-01-02", categories: [{ title: "Bug Fixes", items: ["A shipped fix."] }] },
+        { version: "1.1.0", date: "2025-12-01", categories: [{ title: "Features", items: ["An older feature."] }] },
+      ]);
+    });
+
+    it("is accepted as the only release", () => {
+      const { releases } = parseChangelog(`${PREAMBLE}${WINDOW}`);
+
+      expect(releases).toEqual([
+        { version: UNRELEASED_LABEL, date: null, categories: [{ title: "Features", items: ["Not out yet."] }] },
+      ]);
+    });
+
+    it("is refused when it is not the first release, naming its line", () => {
+      const source = `## 1.2.0\n\n_2026-01-02_\n\n**Features**\n\n- One.\n\n${WINDOW}`;
+      const error = parseError(() => parseChangelog(source));
+
+      expect(error).toBeInstanceOf(ChangelogParseError);
+      expect(error.line).toBe(9);
+      expect(error.message).toMatch(new RegExp(`"## ${UNRELEASED_LABEL}" may only be the first release`));
+    });
+
+    it("is refused the second time it appears", () => {
+      const error = parseError(() => parseChangelog(`${WINDOW}${WINDOW}`));
+
+      expect(error).toBeInstanceOf(ChangelogParseError);
+      expect(error.line).toBe(7);
+      expect(error.message).toMatch(new RegExp(`"## ${UNRELEASED_LABEL}" may only be the first release`));
+    });
+
+    for (const [name, dateLine] of [
+      ["a dated", "_2026-01-02_"],
+      ["an _Unreleased_", "_Unreleased_"],
+    ]) {
+      it(`is refused with ${name} date line under it, naming that line`, () => {
+        const source = `## ${UNRELEASED_LABEL}\n\n${dateLine}\n\n**Features**\n\n- Not out yet.\n\n${DATED_BELOW}`;
+        const error = parseError(() => parseChangelog(source));
+
+        expect(error).toBeInstanceOf(ChangelogParseError);
+        expect(error.line).toBe(3);
+        expect(error.message).toMatch(new RegExp(`release ${UNRELEASED_LABEL} takes no date line`));
+      });
+    }
+
+    it("is refused with no categories", () => {
+      expect(() => parseChangelog(`## ${UNRELEASED_LABEL}\n\n${DATED_BELOW}`)).toThrow(
+        new RegExp(`release ${UNRELEASED_LABEL} has no categories`),
+      );
+      expect(() => parseChangelog(`## ${UNRELEASED_LABEL}\n`)).toThrow(
+        new RegExp(`release ${UNRELEASED_LABEL} has no categories`),
+      );
+    });
+
+    it("keeps the usual category and bullet rules", () => {
+      expect(() => parseChangelog(`## ${UNRELEASED_LABEL}\n\n- A loose bullet.\n`)).toThrow(/before any category/);
+      expect(() => parseChangelog(`## ${UNRELEASED_LABEL}\n\n**Fixes**\n\n- One.\n`)).toThrow(/Unknown category/);
+    });
+
+    it("still order-checks the release below it against the one below that", () => {
+      const misfiled = DATED_BELOW.replace("## 1.1.0", "## 1.3.0");
+      const error = parseError(() => parseChangelog(`${WINDOW}${misfiled}`));
+
+      expect(error).toBeInstanceOf(ChangelogParseError);
+      expect(error.message).toMatch(/release 1\.3\.0 is newer than 1\.2\.0 above it/);
+    });
+  });
+
+  describe("compareVersions", () => {
+    it("orders plain versions numerically, not as text", () => {
+      expect(compareVersions("1.10.0", "1.9.0")).toBeGreaterThan(0);
+      expect(compareVersions("1.9.0", "1.10.0")).toBeLessThan(0);
+      expect(compareVersions("2.0.0", "1.99.99")).toBeGreaterThan(0);
+      expect(compareVersions("1.2.3", "1.2.3")).toBe(0);
     });
   });
 

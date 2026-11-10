@@ -4,6 +4,7 @@ import url from "node:url";
 import { describe, expect, it } from "vitest";
 
 import { buildComposedChangelogData } from "../../../../scripts/lib/changelog-composed.mjs";
+import { UNRELEASED_LABEL } from "../../../../scripts/lib/changelog-parse.mjs";
 
 /**
  * Renders the REAL `partials/settings-window-changelog.ejs` (not a fixture).
@@ -139,6 +140,56 @@ describe("settings-window-changelog.ejs", () => {
     });
   });
 
+  describe("the Unreleased section of the window after a stable fold (#1398)", () => {
+    // Between a stable fold and the next version bump the fragments compose as
+    // `## Unreleased` with no date line, above the dated section of the version
+    // the build still reports. The version is taken from the parser's constant,
+    // never written out here: the partial compares against a hand-kept literal
+    // (EJS cannot import), and this is what fails if the two drift apart.
+    const WINDOW = {
+      _meta: {},
+      releases: [
+        {
+          version: UNRELEASED_LABEL,
+          date: null,
+          categories: [{ title: "Features", items: ["Merged after the fold."] }],
+        },
+        {
+          version: "1.2.0",
+          date: "2026-11-01",
+          categories: [{ title: "Bug Fixes", items: ["Shipped in 1.2.0."] }],
+        },
+      ],
+    };
+
+    function cards(html: string): string[] {
+      return html.match(/<article class="sw-cl-release[\s\S]*?<\/article>/g) ?? [];
+    }
+
+    it("titles the card with the label and prints it once, with no date chip", () => {
+      const [unreleased] = cards(render("1.2.0", WINDOW));
+
+      expect(unreleased).toContain(`<h3 class="sw-cl-version">${UNRELEASED_LABEL}</h3>\n\t\t</div>`);
+      expect(unreleased).not.toContain("sw-cl-date");
+      expect(unreleased.split(UNRELEASED_LABEL)).toHaveLength(2);
+    });
+
+    it("badges the dated release the build reports, not the Unreleased card", () => {
+      const [unreleased, installed] = cards(render("1.2.0", WINDOW));
+
+      expect(unreleased).not.toContain("sw-cl-badge");
+      expect(unreleased).toMatch(/^<article class="sw-cl-release">/);
+      expect(installed).toMatch(/^<article class="sw-cl-release installed">/);
+      expect(installed).toContain('<h3 class="sw-cl-version">1.2.0</h3>');
+      expect(installed).toContain('<span class="sw-cl-date">2026-11-01</span>');
+      expect(installed).toContain('<span class="sw-cl-badge">Installed</span>');
+    });
+
+    it("finds the installed release below it, so no missing-notes line is shown", () => {
+      expect(render("1.2.0", WINDOW)).not.toContain("No release notes for version");
+    });
+  });
+
   it("degrades to a plain line rather than an empty pane if the artifact carries nothing", () => {
     const html = render("2.5.0", { _meta: {}, releases: [] });
 
@@ -165,7 +216,14 @@ describe("settings-window-changelog.ejs", () => {
     // Built in memory: the artifact is gitignored since #1386, and the suite must
     // not depend on a prior build having generated it.
     const real = buildComposedChangelogData(repoRoot);
-    const html = render(real.releases[0].version, real);
+    // The newest release a build can report: in the window after a stable fold
+    // (#1398) the top release is `Unreleased`, which no build reports, so the
+    // installed version is the dated release below it.
+    const installed = real.releases.find((release) => release.version !== UNRELEASED_LABEL);
+
+    if (!installed) throw new Error("the real changelog has no release a build can report");
+
+    const html = render(installed.version, real);
 
     expect(html.match(/<article class="sw-cl-release/g)).toHaveLength(real.releases.length);
     expect(html).toContain('<span class="sw-cl-badge">Installed</span>');

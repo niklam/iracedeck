@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildComposedChangelogData, readComposedChangelog } from "./changelog-composed.mjs";
 import { buildChangelogData, CHANGELOG_SOURCE_PATH } from "./changelog-data.mjs";
 import { CHANGELOG_FRAGMENTS_DIR, loadChangelogSources } from "./changelog-fragments.mjs";
+import { UNRELEASED_LABEL } from "./changelog-parse.mjs";
 
 const REPO_ROOT = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), "../..");
 
@@ -64,6 +65,41 @@ describe("readComposedChangelog / buildComposedChangelogData", () => {
       { title: "Bug Fixes", items: ["A new fix."] },
     ]);
     expect(readComposedChangelog(root)).toContain("## 1.3.0\n\n_Unreleased_\n");
+  });
+
+  it("composes the fragments as the Unreleased release while the version is still the newest dated one (#1398)", () => {
+    write("package.json", JSON.stringify({ version: "1.2.0" }));
+    write(`${CHANGELOG_FRAGMENTS_DIR}/9-a-feature.md`, fragment("Features", 50, "Merged after the fold."));
+
+    const data = buildComposedChangelogData(root);
+
+    expect(data.releases.map((r) => [r.version, r.date])).toEqual([
+      [UNRELEASED_LABEL, null],
+      ["1.2.0", "2026-01-05"],
+    ]);
+    expect(data.releases[0].categories).toEqual([{ title: "Features", items: ["Merged after the fold."] }]);
+    const composed = readComposedChangelog(root);
+    expect(composed).toContain(
+      `${PREAMBLE}## ${UNRELEASED_LABEL}\n\n**Features**\n\n- Merged after the fold.\n\n## 1.2.0\n`,
+    );
+    expect(composed).not.toContain("_Unreleased_");
+  });
+
+  it("refuses a pre-release of the newest dated version while fragments exist, rather than the window (#1398)", () => {
+    write("package.json", JSON.stringify({ version: "1.2.0-dev.0" }));
+    write(`${CHANGELOG_FRAGMENTS_DIR}/9-a-feature.md`, fragment("Features", 50, "Merged after the fold."));
+
+    expect(() => buildComposedChangelogData(root)).toThrow(
+      /1\.2\.0-dev\.0 \(package\.json\) is a pre-release of "## 1\.2\.0".*next -dev/,
+    );
+    expect(() => readComposedChangelog(root)).toThrow(/is a pre-release of "## 1\.2\.0"/);
+  });
+
+  it("refuses a version behind the newest dated section while fragments exist", () => {
+    write("package.json", JSON.stringify({ version: "1.1.0" }));
+    write(`${CHANGELOG_FRAGMENTS_DIR}/9-a-feature.md`, fragment("Features", 50, "On a stale branch."));
+
+    expect(() => buildComposedChangelogData(root)).toThrow(/1\.1\.0.*behind the newest section "## 1\.2\.0"/);
   });
 
   it("returns the MDX unchanged, and builds exactly its data, with no fragments", () => {
