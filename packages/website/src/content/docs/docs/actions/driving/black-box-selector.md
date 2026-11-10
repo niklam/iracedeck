@@ -167,7 +167,7 @@ What a short or long press of the dial button does, chosen from:
 - **Select Next Control** — moves the selection to the next control in the open box, like the keypad Selected Control mode.
 - **Select Previous Control** — moves the selection to the previous control in the open box.
 - **Toggle Selected Control** — switches the selected control of the open box. The default Press Action on a Select Control or Adjust Control dial.
-- **Switch Select / Adjust** — changes this dial's **Mode** between **Select Control** and **Adjust Control**, and the arrows on the strip change with it. The new Mode is saved with the dial, so it is still there after a restart, and the Mode dropdown in the Property Inspector shows it. It sends nothing to iRacing and needs no binding. On a Cycle Black Boxes dial it does nothing. The default Long Press on a Select Control or Adjust Control dial.
+- **Switch Select / Adjust** — changes this dial's **Mode** between **Select Control** and **Adjust Control**, and the arrows on the strip change with it. The new Mode is saved with the dial, so it is still there after a restart, and the Mode dropdown in the Property Inspector shows it. It sends nothing to iRacing and needs no binding. On a Cycle Black Boxes dial it does nothing. The default Long Press on a Select Control or Adjust Control dial. On a Stream Deck+, once you have held long enough the strip already shows the other Mode's arrows above a small bar, so you can let go when you see them; turning or letting go early keeps the current Mode.
 
 The three control gestures need their bindings, which have no default key.
 
