@@ -442,6 +442,13 @@ export type SectorTimesState = {
    * a tick it threw on (cleared on entry, written last).
    */
   lastSessionTime: number | null;
+  /**
+   * How many sectors the timer measured with on the last tick it consumed:
+   * the length of the sector starts it was handed, so a reader reports the
+   * count the recorded laps were measured against. `null` on a tick it
+   * recorded nothing (no progress reading, no sectors), and before the first.
+   */
+  sectorCount: number | null;
   /** See {@link SectorTargets}. Cleared on a tick with no progress reading. */
   targets: SectorTargets;
 };
@@ -453,6 +460,7 @@ export function createSectorTimesState(): SectorTimesState {
     lapInProgress: [],
     completedLaps: [],
     lastSessionTime: null,
+    sectorCount: null,
     targets: { leaderIdx: -1, aheadIdx: -1, behindIdx: -1 },
   };
 }

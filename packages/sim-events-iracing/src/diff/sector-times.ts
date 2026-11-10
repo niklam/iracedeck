@@ -123,6 +123,7 @@ export function diffSectorTimes(
   const lastSessionTime = slice.lastSessionTime;
 
   slice.lastSessionTime = null;
+  slice.sectorCount = null;
 
   slice.targets.leaderIdx = tick === null ? -1 : (neighbours?.leaderIdx ?? -1);
   slice.targets.aheadIdx = tick === null ? -1 : (neighbours?.aheadIdx ?? -1);
@@ -134,6 +135,9 @@ export function diffSectorTimes(
 
     return;
   }
+
+  // The sector count every lap below is measured against, for the reader.
+  slice.sectorCount = sectorStarts.length;
 
   const t1 = tick.sessionTime;
   const span = lastSessionTime === null ? null : t1 - lastSessionTime;

@@ -534,6 +534,7 @@ describe("diffSectorTimes: the history and its lifecycles", () => {
       lapInProgress: [],
       completedLaps: [],
       lastSessionTime: null,
+      sectorCount: null,
       targets: { leaderIdx: -1, aheadIdx: -1, behindIdx: -1 },
     });
   });
@@ -610,5 +611,43 @@ describe("diffSectorTimes: targets", () => {
     feed.none(some);
 
     expect(slice.targets).toEqual(none);
+  });
+});
+
+describe("diffSectorTimes: the sector count it measured with (#1572)", () => {
+  it("records the count of the starts it was handed on a tick it consumed", () => {
+    const slice = createSectorTimesState();
+    const feed = feeder(slice);
+
+    expect(slice.sectorCount).toBeNull();
+
+    feed(100, [1.5]);
+    expect(slice.sectorCount).toBe(3);
+
+    feed(100.1, [1.501], { starts: [0, 0.5] });
+    expect(slice.sectorCount).toBe(2);
+  });
+
+  it("is null on a tick it recorded nothing: no progress reading, or a track with no sectors", () => {
+    const slice = createSectorTimesState();
+    const feed = feeder(slice);
+
+    feed(100, [1.5]);
+    feed.none();
+    expect(slice.sectorCount).toBeNull();
+
+    feed(100.1, [1.501]);
+    expect(slice.sectorCount).toBe(3);
+
+    feed(100.2, [1.502], { starts: null });
+    expect(slice.sectorCount).toBeNull();
+  });
+
+  it("starts fresh at a replay glance, until the next live tick records again", () => {
+    const slice = createSectorTimesState();
+
+    feeder(slice)(100, [1.5]);
+
+    expect(resetSectorTimesForReplay(slice).sectorCount).toBeNull();
   });
 });

@@ -1943,6 +1943,13 @@ export type SectorCarSnapshot = {
    * cannot be read and for the player's own entry.
    */
   gapSeconds: number | null;
+  /**
+   * How many laps the car has completed now (`CarIdxLapCompleted`), counted
+   * the way {@link SectorLapTimes.lap} is, whether or not the timer measured
+   * them; `null` when the sim reads none for the car (iRacing's `-1` for a car
+   * out of the world, in the garage or retired).
+   */
+  lapsCompleted: number | null;
   /** The car's recorded laps, newest last ({@link getCarSectorTimes}). */
   recentLaps: readonly SectorLapTimes[];
 };
@@ -1952,7 +1959,7 @@ export type SectorCarSnapshot = {
  * (issue #1572). A target that does not exist is `null`.
  */
 export type SectorComparisonSnapshot = {
-  /** How many sectors the track has. */
+  /** How many sectors the track has: the count the timer measured the recorded laps against. */
   sectorCount: number;
   player: SectorCarSnapshot;
   /**
@@ -1985,9 +1992,12 @@ export function getSectorComparison(): SectorComparisonSnapshot | null {
 
   const self = instance;
   const telemetry = instance.latestTelemetry;
-  const sectorStarts = self.state.trackSectors.starts;
+  // The count the timer measured with on its last tick, never the sectors
+  // resolved again here: the two could disagree for a tick, and the laps are
+  // the timer's.
+  const sectorCount = self.state.sectorTimes.sectorCount;
 
-  if (sectorStarts === null) return null;
+  if (sectorCount === null) return null;
 
   const sessionInfo = self.controller.getSessionInfo() as Record<string, unknown> | null;
 
@@ -1998,22 +2008,31 @@ export function getSectorComparison(): SectorComparisonSnapshot | null {
   if (playerCarIdx < 0) return null;
 
   const { leaderIdx, aheadIdx, behindIdx } = self.state.sectorTimes.targets;
+  const lapCompleted = telemetry.CarIdxLapCompleted as readonly number[] | undefined;
   const car = (carIdx: number, gapSeconds: number | null): SectorCarSnapshot => ({
     carIdx,
     carNumber: getCarNumberFromSessionInfo(sessionInfo, carIdx),
     gapSeconds,
+    lapsCompleted: readLapsCompleted(lapCompleted, carIdx),
     recentLaps: recentSectorLaps(self, carIdx),
   });
   // A target ahead of the player in the race: the gap from it back to the player.
   const carAhead = (carIdx: number): SectorCarSnapshot => car(carIdx, liveGapBetween(self, carIdx, playerCarIdx));
 
   return {
-    sectorCount: sectorStarts.length,
+    sectorCount,
     player: car(playerCarIdx, null),
     leader: leaderIdx < 0 || leaderIdx === playerCarIdx ? null : carAhead(leaderIdx),
     ahead: aheadIdx < 0 ? null : carAhead(aheadIdx),
     behind: behindIdx < 0 ? null : car(behindIdx, liveGapBetween(self, playerCarIdx, behindIdx)),
   };
+}
+
+/** A car's `CarIdxLapCompleted` as a count: `null` when absent, not finite or negative (a car out of the world). */
+function readLapsCompleted(lapCompleted: readonly number[] | undefined, carIdx: number): number | null {
+  const laps = lapCompleted?.[carIdx];
+
+  return typeof laps === "number" && Number.isFinite(laps) && laps >= 0 ? laps : null;
 }
 
 /** Whether a car's raw lap/percent pair reports live on-track progress. */

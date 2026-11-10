@@ -358,6 +358,53 @@ describe("getSectorComparison (#1572)", () => {
     },
   );
 
+  it("reports each car's completed laps as the sim counts them, and none for a car out of the world", () => {
+    start(sessionInfo());
+    drive(MID_FIELD, 100, 3);
+
+    const snapshot = comparison();
+
+    expect(snapshot.player.lapsCompleted).toBe(5);
+    expect(snapshot.leader?.lapsCompleted).toBe(5);
+
+    // Car 2 (the class leader) retires to the garage: iRacing reads -1 for it.
+    const next = drive(MID_FIELD, 100.6, 1);
+
+    controller.__tick(
+      tick(next.sessionTime, next.progress, {
+        CarIdxLapCompleted: next.progress.map((p, i) => (i === 2 ? -1 : Math.floor(p))),
+      }),
+    );
+
+    // It is still the class leader the order names; whether to compare with it is the catalog's call.
+    expect(getSectorComparison()?.leader).toMatchObject({ carIdx: 2, lapsCompleted: null });
+    expect(getSectorComparison()?.ahead?.lapsCompleted).toBe(5);
+  });
+
+  it("reads the sector count the timer measured with, and is null on a tick the timer recorded nothing", () => {
+    start(sessionInfo());
+
+    const next = drive(MID_FIELD, 100, 3);
+    const state = () => {
+      const s = readSimState();
+
+      if (!s.initialized) throw new Error("not initialised");
+
+      return s.raw.state;
+    };
+
+    expect(state().sectorTimes.sectorCount).toBe(3);
+    expect(comparison().sectorCount).toBe(3);
+
+    // The player not racing: the progress step refuses the tick, so the timer
+    // records nothing, though the track's sectors are still resolved.
+    controller.__tick(tick(next.sessionTime, next.progress, { LapCompleted: -1 }));
+
+    expect(state().trackSectors.starts).not.toBeNull();
+    expect(state().sectorTimes.sectorCount).toBeNull();
+    expect(getSectorComparison()).toBeNull();
+  });
+
   it("is null at a track with no sectors, and with sectors that cannot be counted from the line", () => {
     start(sessionInfo({ sectors: undefined }));
     drive(MID_FIELD, 100, 3);
@@ -467,6 +514,7 @@ describe("the recorded laps through the tick (#1572)", () => {
       lastProgress: [],
       lapInProgress: [],
       lastSessionTime: null,
+      sectorCount: null,
       targets: { leaderIdx: -1, aheadIdx: -1, behindIdx: -1 },
     });
     expect(getCarSectorTimes(2)?.recentLaps.map((lap) => lap.lap)).toEqual([7, 8]);
