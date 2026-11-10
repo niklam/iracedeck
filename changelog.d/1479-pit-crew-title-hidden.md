@@ -3,4 +3,4 @@ category: Improvements
 weight: 45
 ---
 
-**Pit Crew** Race Engineer, Radar and Corner Names keys now hide their title by default, so the artwork fills the key above the green/red status bar, and the global **Show title text on key** setting no longer applies to them. Existing keys lose their title too, unless you turned it on for that key, in which case it now sits at the top of the key, clear of the status bar. To bring a title back, set **Title Overrides → Show Title** to **Yes** in the key's settings. A key still on the old **Radar Volume** mode now always shows its volume readout, which some setups used to hide. See [Pit Crew](/docs/actions/audio-voice/pit-crew/).
+**Pit Crew** Race Engineer, Radar and Corner Names keys now hide their title by default whatever the global **Show title text on key** setting, so the artwork fills the key above the status bar, while a title turned on with **Title Overrides → Show Title** (existing per-key ones included) sits at the top by default and a key still on the old **Radar Volume** mode now shows its volume readout by default. See [Pit Crew](/docs/actions/audio-voice/pit-crew/).

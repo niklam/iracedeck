@@ -34,7 +34,7 @@ When iRacing telemetry first starts flowing — typically a few seconds after yo
 - **Dial:** No rotation support
 - **Default binding:** None — button-driven feature, no keyboard binding
 - **Telemetry-aware icon:** Yes — the status bar reflects the current global flag
-- **Title:** Hidden by default, so the artwork fills the key above the status bar. The Settings window's **Show title text on key** and title **Position** settings don't apply to this key; to show the title, set **Title Overrides → Show Title** to **Yes** in the key's Property Inspector, and it appears at the top of the key, clear of the status bar
+- **Title:** Hidden by default, so the artwork fills the key above the status bar. The Settings window's **Show title text on key** and title **Position** settings don't apply to this key; to show the title, set **Title Overrides → Show Title** to **Yes** in the key's Property Inspector, and it appears at the top of the key by default, clear of the status bar; a **Position** override on the key still moves it
 
 ### Radar
 
@@ -47,7 +47,7 @@ The Settings window's **Radar → Enabled** checkbox flips this same state, and 
 - **Dial:** No rotation support
 - **Default binding:** None — button-driven feature, no keyboard binding
 - **Telemetry-aware icon:** Yes — the status bar reflects the current global flag
-- **Title:** Hidden by default, so the artwork fills the key above the status bar. The Settings window's **Show title text on key** and title **Position** settings don't apply to this key; to show the title, set **Title Overrides → Show Title** to **Yes** in the key's Property Inspector, and it appears at the top of the key, clear of the status bar
+- **Title:** Hidden by default, so the artwork fills the key above the status bar. The Settings window's **Show title text on key** and title **Position** settings don't apply to this key; to show the title, set **Title Overrides → Show Title** to **Yes** in the key's Property Inspector, and it appears at the top of the key by default, clear of the status bar; a **Position** override on the key still moves it
 
 ### Corner Names
 
@@ -60,7 +60,7 @@ The engineer confirms each press with a short line — *"Roger that. Corner call
 - **Dial:** No rotation support
 - **Default binding:** None — button-driven feature, no keyboard binding
 - **Telemetry-aware icon:** Yes — the status bar reflects the current global flag
-- **Title:** Hidden by default, so the artwork fills the key above the status bar. The Settings window's **Show title text on key** and title **Position** settings don't apply to this key; to show the title, set **Title Overrides → Show Title** to **Yes** in the key's Property Inspector, and it appears at the top of the key, clear of the status bar
+- **Title:** Hidden by default, so the artwork fills the key above the status bar. The Settings window's **Show title text on key** and title **Position** settings don't apply to this key; to show the title, set **Title Overrides → Show Title** to **Yes** in the key's Property Inspector, and it appears at the top of the key by default, clear of the status bar; a **Position** override on the key still moves it
 
 ## Global Audio Settings (shared across every Pit Crew button)
 
