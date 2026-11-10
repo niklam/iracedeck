@@ -305,16 +305,26 @@ export function createTrackGapsState(): TrackGapsState {
  */
 export type CarProgressState = {
   /**
+   * Per car, by carIdx: the progress the step last read for it, after the
+   * start/finish correction (`readCarProgress`), which the next tick's
+   * reading is corrected against. `undefined` = no reading on the last tick:
+   * dropped on any tick the car has no valid reading, and for every car on a
+   * tick the step's gate refuses, so a correction never bridges a tick that
+   * was not read.
+   */
+  lastProgress: (number | undefined)[];
+  /**
    * Per-car crossing-time traces: a rolling ~1.15-lap history of
-   * `CarIdxLapCompleted + CarIdxLapDistPct` progress against `SessionTime`,
-   * sparse-indexed by carIdx; undefined = no valid reading yet.
+   * progress (`CarIdxLapCompleted + CarIdxLapDistPct`, corrected at the
+   * line) against `SessionTime`, sparse-indexed by carIdx; undefined = no
+   * valid reading yet.
    */
   traces: (ProgressTrace | undefined)[];
 };
 
 /** No car traced (issue #1572): the initial state. */
 export function createCarProgressState(): CarProgressState {
-  return { traces: [] };
+  return { lastProgress: [], traces: [] };
 }
 
 /**

@@ -590,6 +590,7 @@ export function diffGaps(
     state,
     telemetry,
     "ahead",
+    progressTick.progress,
     progressTick.traces,
     playerCarIdx,
     playerProgress,
@@ -603,6 +604,7 @@ export function diffGaps(
     state,
     telemetry,
     "behind",
+    progressTick.progress,
     progressTick.traces,
     playerCarIdx,
     playerProgress,
@@ -640,6 +642,8 @@ function computeSide(
   state: TranslatorState,
   telemetry: TelemetryData,
   side: Side,
+  /** The progress tick's readings (`CarProgressTick.progress`): every car's progress this tick, null = none. */
+  progress: readonly (number | null)[],
   /** The progress tick's traces (`CarProgressTick.traces`): every car's crossing-time trace after this tick's samples. */
   traces: readonly (ProgressTrace | undefined)[],
   playerCarIdx: number,
@@ -656,12 +660,14 @@ function computeSide(
 
   if (idx < 0) return null;
 
-  const lc = telemetry.CarIdxLapCompleted as number[];
-  const pct = telemetry.CarIdxLapDistPct as number[];
-  const neighborLc = lc[idx];
-  const neighborPct = pct[idx];
+  // The progress step's reading, as the player's is: the same scale as the
+  // traces, start/finish correction included (issue #1572), so a neighbour
+  // whose lap counter and lap fraction disagree for a tick at the line is not
+  // read a lap away. Null (not finite, or negative) and undefined (past the
+  // arrays) are both "no reading".
+  const neighborProgress = progress[idx] ?? null;
 
-  if (neighborLc === undefined || neighborLc < 0 || neighborPct === undefined || neighborPct < 0) {
+  if (neighborProgress === null) {
     // Neighbor has no live progress this tick (blink / not in world) — hold
     // identity but show no numbers. A due checkpoint here is one the side
     // cannot sample, so it breaks both rate chains like any other.
@@ -673,7 +679,6 @@ function computeSide(
     return { carIdx: idx, gapSeconds: null, lapDelta: 0, trend: null };
   }
 
-  const neighborProgress = neighborLc + neighborPct;
   const lapDelta =
     side === "ahead"
       ? lapDeltaBetween(neighborProgress, playerProgress)

@@ -1935,6 +1935,75 @@ describe("readPairGap (issues #1285, #1274)", () => {
   });
 });
 
+describe("diffGaps — a lap counter and a lap fraction that disagree at the line (issue #1572)", () => {
+  // iRacing does not always move `CarIdxLapCompleted` and wrap
+  // `CarIdxLapDistPct` on the same tick. Read as a plain sum, the car is a
+  // whole lap away for that tick: its trace was reset twice and its pair read
+  // a lap apart, so the gap went blank until the trace covered the chaser
+  // again. The progress step now reads through it.
+  const lapTime = 90;
+  const stepLaps = 0.005;
+
+  /**
+   * Drive the three cars (AHEAD 2 s up the road, BEHIND 3 s back) across the
+   * line with `car`'s arrays disagreeing for the one tick at its crossing,
+   * and return both gaps on every tick from that one on.
+   */
+  function crossWithDesync(car: number, kind: "counterLeads" | "fractionLeads"): { ahead: unknown; behind: unknown }[] {
+    const state = createInitialState();
+    const { emit } = collect();
+    const readings: { ahead: unknown; behind: unknown }[] = [];
+    let desynced = false;
+
+    for (let i = 0; ; i++) {
+      const p = 2.5 + i * stepLaps;
+
+      if (p > 3.2) break;
+
+      const progress = [p, p + 2 / lapTime, p - 3 / lapTime];
+      const telemetry = tick(p * lapTime, progress);
+      const laps = telemetry.CarIdxLapCompleted as number[];
+      const here = Math.floor(progress[car]!);
+
+      if (!desynced && kind === "counterLeads" && Math.floor(progress[car]! + stepLaps) > here) {
+        // The last tick before the line: the counter has already moved.
+        laps[car] = here + 1;
+        desynced = true;
+      } else if (!desynced && kind === "fractionLeads" && Math.floor(progress[car]! - stepLaps) < here && here === 3) {
+        // The first tick past the line: the counter has not moved yet.
+        laps[car] = here - 1;
+        desynced = true;
+      }
+
+      diffGaps(state, telemetry, true, PLAYER, null, [2, 1, 3], () => GAP_DEFAULT_ALERT_THRESHOLD_S, emit);
+
+      if (desynced) readings.push({ ahead: state.gapLiveAhead, behind: state.gapLiveBehind });
+    }
+
+    expect(desynced).toBe(true);
+
+    return readings;
+  }
+
+  it.each([
+    ["the car ahead's counter leads its fraction", AHEAD, "counterLeads"],
+    ["the car ahead's fraction leads its counter", AHEAD, "fractionLeads"],
+    ["the player's counter leads its fraction", PLAYER, "counterLeads"],
+    ["the player's fraction leads its counter", PLAYER, "fractionLeads"],
+    ["the car behind's counter leads its fraction", BEHIND, "counterLeads"],
+    ["the car behind's fraction leads its counter", BEHIND, "fractionLeads"],
+  ] as const)("keeps both gaps readable on every tick when %s", (_name, car, kind) => {
+    const readings = crossWithDesync(car, kind);
+
+    expect(readings.length).toBeGreaterThan(20);
+
+    for (const { ahead, behind } of readings) {
+      expect(ahead).toMatchObject({ carIdx: AHEAD, lapDelta: 0, gapSeconds: expect.closeTo(2, 1) });
+      expect(behind).toMatchObject({ carIdx: BEHIND, lapDelta: 0, gapSeconds: expect.closeTo(3, 1) });
+    }
+  });
+});
+
 describe("diffGaps — the class neighbours it returns (issue #1572)", () => {
   const args = [PLAYER, null, [2, 1, 3], () => GAP_DEFAULT_ALERT_THRESHOLD_S] as const;
 

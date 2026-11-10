@@ -72,7 +72,7 @@ import {
   resolvePitLaneLandmarks,
 } from "@iracedeck/track-data";
 
-import { stepCarProgress } from "./diff/car-progress.js";
+import { readCarProgress, stepCarProgress } from "./diff/car-progress.js";
 import { type CautionGapMeasurement, measureCautionGap } from "./diff/caution-gap.js";
 import { CATCH_UP_CLEAR_MULTIPLE, type CatchUpBlock, diffCaution, resolveCatchUpBlocks } from "./diff/caution.js";
 import { CORNER_CALLOUT_DEFAULT_LEAD_SECONDS, diffCornerName } from "./diff/corner-name.js";
@@ -1875,13 +1875,20 @@ function liveGapBetween(self: TranslatorInstance, aheadCarIdx: number, behindCar
   if (!hasLiveProgress(aheadLc, aheadPct)) return null;
 
   const sessionInfo = self.controller.getSessionInfo() as Record<string, unknown> | null;
+  // Each car on the scale of the traces (issue #1572): the progress step
+  // corrects a reading whose lap counter and lap fraction disagree for a tick
+  // at the line, so the same correction is applied here, against the progress
+  // the step last read for the car (this tick or the one before, whichever
+  // side of the step the caller runs on; none outside the step's gate, where
+  // the reading is the plain sum).
+  const lastProgress = self.state.carProgress.lastProgress;
 
   return readPairGap(
     self.state.carProgress.traces,
     aheadCarIdx,
-    aheadLc! + aheadPct!,
+    readCarProgress(lastProgress[aheadCarIdx], aheadLc!, aheadPct!),
     behindCarIdx,
-    behindLc! + behindPct!,
+    readCarProgress(lastProgress[behindCarIdx], behindLc!, behindPct!),
     sessionTime,
     resolveTrackLengthMeters(self.state, sessionInfo, telemetry),
   ).gapSeconds;
