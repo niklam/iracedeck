@@ -689,14 +689,6 @@
       "generatedAt": "2026-05-14T18:37:33.016Z",
       "requestId": "9FZSPv9PydyPyClvmSzh"
     },
-    "voice/default/names/kris.mp3": {
-      "hash": "99b52bc9ae1e51bc",
-      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
-      "model": "eleven_flash_v2_5",
-      "textPreview": "Kris",
-      "generatedAt": "2026-05-14T18:37:33.166Z",
-      "requestId": "RzVep5va83OQtmKNOmZo"
-    },
     "voice/default/names/lee.mp3": {
       "hash": "0d8f9d4c69f446cd",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
@@ -2249,14 +2241,6 @@
       "generatedAt": "2026-05-14T18:37:41.417Z",
       "requestId": "n812n0ovVN3RSnlwvgq8"
     },
-    "voice/default/session-start-greeting/kris.mp3": {
-      "hash": "0ac55d0d5d33bf4e",
-      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
-      "model": "eleven_flash_v2_5",
-      "textPreview": "Ok, Kris,",
-      "generatedAt": "2026-05-14T18:37:41.580Z",
-      "requestId": "s3vEDdmg2QTpYPB8POaf"
-    },
     "voice/default/session-start-greeting/lee.mp3": {
       "hash": "a036180f1774873b",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
@@ -3545,14 +3529,6 @@
       "generatedAt": "2026-05-17T16:20:24.470Z",
       "requestId": "mJu5KoSI2jWsOfFaCpY5"
     },
-    "voice/default/race-end-greeting/kris.mp3": {
-      "hash": "5dd4db1222249464",
-      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
-      "model": "eleven_flash_v2_5",
-      "textPreview": "Kris,",
-      "generatedAt": "2026-05-17T16:20:24.647Z",
-      "requestId": "MHg5zvbXaduT2k2hvA6Y"
-    },
     "voice/default/race-end-greeting/lee.mp3": {
       "hash": "4ef4b04cdd3a24d6",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
@@ -4553,14 +4529,6 @@
       "generatedAt": "2026-05-19T17:35:24.153Z",
       "requestId": "Bvx8sPxJvMT5wI9JqwbM"
     },
-    "voice/default/race-start-greeting/kris.mp3": {
-      "hash": "f6b337f66434e48f",
-      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
-      "model": "eleven_flash_v2_5",
-      "textPreview": "Time to race, Kris.",
-      "generatedAt": "2026-05-19T17:35:24.316Z",
-      "requestId": "RaH48oudLaLYtnhI7xKB"
-    },
     "voice/default/race-start-greeting/lee.mp3": {
       "hash": "1219d87a2c385d2b",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
@@ -5128,14 +5096,6 @@
       "textPreview": "Come on, Kevin.",
       "generatedAt": "2026-05-24T13:23:23.745Z",
       "requestId": "fSyjvfypMWYrg5YSgxpi"
-    },
-    "voice/default/position-overtake-come-on/kris.mp3": {
-      "hash": "2702c0dda68ae479",
-      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
-      "model": "eleven_flash_v2_5",
-      "textPreview": "Come on, Kris.",
-      "generatedAt": "2026-05-24T13:23:23.893Z",
-      "requestId": "RBK3It0y2kbIvDIu1yXk"
     },
     "voice/default/position-overtake-come-on/lee.mp3": {
       "hash": "67e1256b4e20f951",
@@ -11225,14 +11185,6 @@
       "generatedAt": "2026-08-30T15:20:40.763Z",
       "requestId": "wHtAiJFbCMKQJuS5grFt"
     },
-    "voice/default/names/dominik.mp3": {
-      "hash": "1cd100a155d0f275",
-      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
-      "model": "eleven_flash_v2_5",
-      "textPreview": "Dominik",
-      "generatedAt": "2026-09-06T12:28:23.717Z",
-      "requestId": "L6ROMzokZLdsgl1rDNG5"
-    },
     "voice/default/names/hope.mp3": {
       "hash": "db6a33c7b7c4192c",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
@@ -11328,14 +11280,6 @@
       "textPreview": "Viperbiker",
       "generatedAt": "2026-09-06T12:28:25.609Z",
       "requestId": "WqL47LO91Y8HR7O9sCDV"
-    },
-    "voice/default/session-start-greeting/dominik.mp3": {
-      "hash": "a80edc02ae243096",
-      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
-      "model": "eleven_flash_v2_5",
-      "textPreview": "Ok, Dominik,",
-      "generatedAt": "2026-09-06T12:28:25.770Z",
-      "requestId": "OELucdbCUe4Fah5NLMlu"
     },
     "voice/default/session-start-greeting/hope.mp3": {
       "hash": "1bf2a1376ebe2bee",
@@ -11433,14 +11377,6 @@
       "generatedAt": "2026-09-06T12:28:27.710Z",
       "requestId": "DWex7meUxTrtnCgn6q9L"
     },
-    "voice/default/race-end-greeting/dominik.mp3": {
-      "hash": "9225d580b2cc3e28",
-      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
-      "model": "eleven_flash_v2_5",
-      "textPreview": "Dominik,",
-      "generatedAt": "2026-09-06T12:28:27.862Z",
-      "requestId": "AoUlxOGJBz54cYRby9K0"
-    },
     "voice/default/race-end-greeting/hope.mp3": {
       "hash": "d82dc1210892a1d3",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
@@ -11537,14 +11473,6 @@
       "generatedAt": "2026-09-06T12:28:29.714Z",
       "requestId": "p3yZXK0oqhMfWxyV2P3F"
     },
-    "voice/default/race-start-greeting/dominik.mp3": {
-      "hash": "3a8f30a20b7071f1",
-      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
-      "model": "eleven_flash_v2_5",
-      "textPreview": "Time to race, Dominik.",
-      "generatedAt": "2026-09-06T12:28:29.884Z",
-      "requestId": "FHDAf8CB68NyJIsXSXrv"
-    },
     "voice/default/race-start-greeting/hope.mp3": {
       "hash": "dfde5623224ddf49",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
@@ -11640,14 +11568,6 @@
       "textPreview": "Time to race, Viperbiker.",
       "generatedAt": "2026-09-06T12:28:31.996Z",
       "requestId": "9SFno3jqZgro7vBcjoRu"
-    },
-    "voice/default/position-overtake-come-on/dominik.mp3": {
-      "hash": "7372cbaf0bad238f",
-      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
-      "model": "eleven_flash_v2_5",
-      "textPreview": "Come on, Dominik.",
-      "generatedAt": "2026-09-06T12:28:32.165Z",
-      "requestId": "b08f6VAIFMbby3sEPXNL"
     },
     "voice/default/position-overtake-come-on/hope.mp3": {
       "hash": "00ce1a3e8561daa2",
@@ -24929,14 +24849,6 @@
       "generatedAt": "2026-09-11T08:00:41.007Z",
       "requestId": "DLRgSp3zLgoIbGpr3a0A"
     },
-    "voice/shawn/names/dominik.mp3": {
-      "hash": "1cd100a155d0f275",
-      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
-      "model": "eleven_flash_v2_5",
-      "textPreview": "Dominik",
-      "generatedAt": "2026-09-11T08:00:41.219Z",
-      "requestId": "98ccBq4d3zyZ1vjjOaZ2"
-    },
     "voice/shawn/names/driver.mp3": {
       "hash": "a04a9da51d5adc5c",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
@@ -25184,14 +25096,6 @@
       "textPreview": "Kevin",
       "generatedAt": "2026-09-11T08:00:47.168Z",
       "requestId": "sAZYalBhIf4qH61CQRef"
-    },
-    "voice/shawn/names/kris.mp3": {
-      "hash": "99b52bc9ae1e51bc",
-      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
-      "model": "eleven_flash_v2_5",
-      "textPreview": "Kris",
-      "generatedAt": "2026-09-11T08:00:47.341Z",
-      "requestId": "BIq3QL45y4eNToYql0DO"
     },
     "voice/shawn/names/lee.mp3": {
       "hash": "0d8f9d4c69f446cd",
@@ -25817,14 +25721,6 @@
       "generatedAt": "2026-09-11T08:01:03.520Z",
       "requestId": "rTi0doAmYI7WvSnAD3Lf"
     },
-    "voice/shawn/session-start-greeting/dominik.mp3": {
-      "hash": "a80edc02ae243096",
-      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
-      "model": "eleven_flash_v2_5",
-      "textPreview": "Ok, Dominik,",
-      "generatedAt": "2026-09-11T08:01:03.747Z",
-      "requestId": "R8CZyY0RTDVMOmof1kGi"
-    },
     "voice/shawn/session-start-greeting/driver.mp3": {
       "hash": "589d8f138065a197",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
@@ -26072,14 +25968,6 @@
       "textPreview": "Ok, Kevin,",
       "generatedAt": "2026-09-11T08:01:10.044Z",
       "requestId": "K9fOlzFP06SOZlYw61Zl"
-    },
-    "voice/shawn/session-start-greeting/kris.mp3": {
-      "hash": "0ac55d0d5d33bf4e",
-      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
-      "model": "eleven_flash_v2_5",
-      "textPreview": "Ok, Kris,",
-      "generatedAt": "2026-09-11T08:01:10.220Z",
-      "requestId": "6cLm6SudykU7y5CqkyIh"
     },
     "voice/shawn/session-start-greeting/lee.mp3": {
       "hash": "a036180f1774873b",
@@ -28169,14 +28057,6 @@
       "generatedAt": "2026-09-11T08:02:43.159Z",
       "requestId": "b9HPQ9eavN5t2tacDURf"
     },
-    "voice/shawn/race-end-greeting/dominik.mp3": {
-      "hash": "9225d580b2cc3e28",
-      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
-      "model": "eleven_flash_v2_5",
-      "textPreview": "Dominik,",
-      "generatedAt": "2026-09-11T08:02:43.370Z",
-      "requestId": "6j3SE8T9DLqVLzhXewM0"
-    },
     "voice/shawn/race-end-greeting/driver.mp3": {
       "hash": "0c574f038fbe052d",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
@@ -28424,14 +28304,6 @@
       "textPreview": "Kevin,",
       "generatedAt": "2026-09-11T08:02:49.379Z",
       "requestId": "PoRafah5b9C54jtTr16k"
-    },
-    "voice/shawn/race-end-greeting/kris.mp3": {
-      "hash": "5dd4db1222249464",
-      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
-      "model": "eleven_flash_v2_5",
-      "textPreview": "Kris,",
-      "generatedAt": "2026-09-11T08:02:49.541Z",
-      "requestId": "iCJ6qjmrabaMuWlMQiZE"
     },
     "voice/shawn/race-end-greeting/lee.mp3": {
       "hash": "4ef4b04cdd3a24d6",
@@ -29001,14 +28873,6 @@
       "generatedAt": "2026-09-11T08:03:03.655Z",
       "requestId": "MNk1XPh6Nzqy2kkqbFwD"
     },
-    "voice/shawn/race-start-greeting/dominik.mp3": {
-      "hash": "3a8f30a20b7071f1",
-      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
-      "model": "eleven_flash_v2_5",
-      "textPreview": "Time to race, Dominik.",
-      "generatedAt": "2026-09-11T08:03:03.854Z",
-      "requestId": "VAQYDi7A8jsfzX0L6vFn"
-    },
     "voice/shawn/race-start-greeting/driver.mp3": {
       "hash": "33ff0b1465800880",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
@@ -29256,14 +29120,6 @@
       "textPreview": "Time to race, Kevin.",
       "generatedAt": "2026-09-11T08:03:10.192Z",
       "requestId": "ku2r32rdAnYlcQ1COlhB"
-    },
-    "voice/shawn/race-start-greeting/kris.mp3": {
-      "hash": "f6b337f66434e48f",
-      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
-      "model": "eleven_flash_v2_5",
-      "textPreview": "Time to race, Kris.",
-      "generatedAt": "2026-09-11T08:03:10.384Z",
-      "requestId": "7TfiVUSeaQdRd3ko4NaZ"
     },
     "voice/shawn/race-start-greeting/lee.mp3": {
       "hash": "1219d87a2c385d2b",
@@ -29777,14 +29633,6 @@
       "generatedAt": "2026-09-11T08:03:23.677Z",
       "requestId": "g4iQGw1QcArsC0mBdxfC"
     },
-    "voice/shawn/position-overtake-come-on/dominik.mp3": {
-      "hash": "7372cbaf0bad238f",
-      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
-      "model": "eleven_flash_v2_5",
-      "textPreview": "Come on, Dominik.",
-      "generatedAt": "2026-09-11T08:03:23.862Z",
-      "requestId": "Lfq8Jvck7MvsuI9uDiX5"
-    },
     "voice/shawn/position-overtake-come-on/driver.mp3": {
       "hash": "d8229c095dc10d76",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
@@ -30032,14 +29880,6 @@
       "textPreview": "Come on, Kevin.",
       "generatedAt": "2026-09-11T08:03:30.212Z",
       "requestId": "IK5PZkhLrOP0livo1IGP"
-    },
-    "voice/shawn/position-overtake-come-on/kris.mp3": {
-      "hash": "2702c0dda68ae479",
-      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
-      "model": "eleven_flash_v2_5",
-      "textPreview": "Come on, Kris.",
-      "generatedAt": "2026-09-11T08:03:30.394Z",
-      "requestId": "qphg4kyKwwfDGhWWej5O"
     },
     "voice/shawn/position-overtake-come-on/lee.mp3": {
       "hash": "67e1256b4e20f951",
@@ -76145,46 +75985,6 @@
       "generatedAt": "2026-11-01T17:33:37.972Z",
       "requestId": "fpMkKNFUB1P5xBU4HCuF"
     },
-    "voice/default/names/geoff.mp3": {
-      "hash": "db20124edc7e0058",
-      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
-      "model": "eleven_flash_v2_5",
-      "textPreview": "Jeff",
-      "generatedAt": "2026-11-01T17:33:35.782Z",
-      "requestId": "cP4MviUBst60LqxlZdhM"
-    },
-    "voice/default/session-start-greeting/geoff.mp3": {
-      "hash": "6fe7c2d602d8d7a1",
-      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
-      "model": "eleven_flash_v2_5",
-      "textPreview": "Ok, Jeff,",
-      "generatedAt": "2026-11-01T17:33:36.293Z",
-      "requestId": "afHNASp1GAD13xu06kqc"
-    },
-    "voice/default/race-start-greeting/geoff.mp3": {
-      "hash": "c45befd734996895",
-      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
-      "model": "eleven_flash_v2_5",
-      "textPreview": "Time to race, Jeff.",
-      "generatedAt": "2026-11-01T17:33:37.302Z",
-      "requestId": "jRtg9AIrFF6a8FrJzpRL"
-    },
-    "voice/default/race-end-greeting/geoff.mp3": {
-      "hash": "04813aabbfbe29b8",
-      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
-      "model": "eleven_flash_v2_5",
-      "textPreview": "Jeff,",
-      "generatedAt": "2026-11-01T17:33:36.774Z",
-      "requestId": "QVTjTw3CEbz5V7lg6Tul"
-    },
-    "voice/default/position-overtake-come-on/geoff.mp3": {
-      "hash": "22bce035a8488c25",
-      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
-      "model": "eleven_flash_v2_5",
-      "textPreview": "Come on, Jeff.",
-      "generatedAt": "2026-11-01T17:33:37.972Z",
-      "requestId": "fpMkKNFUB1P5xBU4HCuF"
-    },
     "voice/shawn/names/dev.mp3": {
       "hash": "d9b241dd65192897",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
@@ -76192,14 +75992,6 @@
       "textPreview": "Dev",
       "generatedAt": "2026-11-01T17:33:25.818Z",
       "requestId": "XOig2DENpdN5nyDPQsLV"
-    },
-    "voice/shawn/names/geoff.mp3": {
-      "hash": "db20124edc7e0058",
-      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
-      "model": "eleven_flash_v2_5",
-      "textPreview": "Jeff",
-      "generatedAt": "2026-11-01T17:33:35.782Z",
-      "requestId": "cP4MviUBst60LqxlZdhM"
     },
     "voice/shawn/names/jeff.mp3": {
       "hash": "db20124edc7e0058",
@@ -76249,14 +76041,6 @@
       "generatedAt": "2026-11-01T17:33:26.311Z",
       "requestId": "5j0YXB5aV5QyHoUtQjEj"
     },
-    "voice/shawn/session-start-greeting/geoff.mp3": {
-      "hash": "6fe7c2d602d8d7a1",
-      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
-      "model": "eleven_flash_v2_5",
-      "textPreview": "Ok, Jeff,",
-      "generatedAt": "2026-11-01T17:33:36.293Z",
-      "requestId": "afHNASp1GAD13xu06kqc"
-    },
     "voice/shawn/session-start-greeting/jeff.mp3": {
       "hash": "6fe7c2d602d8d7a1",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
@@ -76304,14 +76088,6 @@
       "textPreview": "Time to race, Dev.",
       "generatedAt": "2026-11-01T17:33:27.340Z",
       "requestId": "StUrhSowQ1FO9BnszV73"
-    },
-    "voice/shawn/race-start-greeting/geoff.mp3": {
-      "hash": "c45befd734996895",
-      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
-      "model": "eleven_flash_v2_5",
-      "textPreview": "Time to race, Jeff.",
-      "generatedAt": "2026-11-01T17:33:37.302Z",
-      "requestId": "jRtg9AIrFF6a8FrJzpRL"
     },
     "voice/shawn/race-start-greeting/jeff.mp3": {
       "hash": "c45befd734996895",
@@ -76361,14 +76137,6 @@
       "generatedAt": "2026-11-01T17:33:26.811Z",
       "requestId": "4NDdknOlnFQGxCXDD0OH"
     },
-    "voice/shawn/race-end-greeting/geoff.mp3": {
-      "hash": "04813aabbfbe29b8",
-      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
-      "model": "eleven_flash_v2_5",
-      "textPreview": "Jeff,",
-      "generatedAt": "2026-11-01T17:33:36.774Z",
-      "requestId": "QVTjTw3CEbz5V7lg6Tul"
-    },
     "voice/shawn/race-end-greeting/jeff.mp3": {
       "hash": "04813aabbfbe29b8",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
@@ -76416,14 +76184,6 @@
       "textPreview": "Come on, Dev.",
       "generatedAt": "2026-11-01T17:33:27.902Z",
       "requestId": "OV6pChaSwvzHTPWlaL7d"
-    },
-    "voice/shawn/position-overtake-come-on/geoff.mp3": {
-      "hash": "22bce035a8488c25",
-      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
-      "model": "eleven_flash_v2_5",
-      "textPreview": "Come on, Jeff.",
-      "generatedAt": "2026-11-01T17:33:37.972Z",
-      "requestId": "fpMkKNFUB1P5xBU4HCuF"
     },
     "voice/shawn/position-overtake-come-on/jeff.mp3": {
       "hash": "22bce035a8488c25",
