@@ -74,7 +74,7 @@ const repeatSources = sources.filter((s) => /\bnew RepeatController\s*\(/.test(s
  * Actions that repeat a held key but declared no `keyPressShape` when the
  * RepeatController check was added (#1585), so their held keys click once and
  * never bleep. Each is a known gap, left for its own issue rather than changed
- * here; the test below fails once an entry declares the member or stops
+ * here (#1686); the test below fails once an entry declares the member or stops
  * repeating, so the list cannot go stale.
  */
 const REPEAT_WITHOUT_KEY_PRESS_SHAPE = ["fuel-service/fuel-service.ts", "replay-control/replay-control.ts"];
