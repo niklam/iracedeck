@@ -58,6 +58,7 @@ import {
   createHoldPreview,
   type DeckTriggerDescription,
   type DialCanvasProfile,
+  type DialReleaseKind,
   getDualPressThresholdMs,
   type HoldPreview,
   type IDeckActionContext,
@@ -798,36 +799,29 @@ export class BlackBoxSelectorDialSurface extends ReleaseDialSurfaceBase<BlackBox
 
     if (!ctx) return;
 
+    const pressStartMs = ctx.pressStart;
+    ctx.pressStart = 0;
+    // Classified BEFORE the preview comes down, so the teardown knows whether
+    // this release switches the rotation. Reads only, and nothing returns
+    // before the teardown; `null` is a release with no press to measure (a
+    // stray second release).
+    const release = pressStartMs === 0 ? null : this.classifyRelease(ctx, pressStartMs);
+
     // Take the preview off the strip before ANY of the early returns below
     // (the hold preview's trap 4): a release that fires nothing — a stray
     // release, a push+turn, a short press on a `none` slot — must still revert
-    // what the hold drew. A long release that switches then draws the new
-    // rotation through the switch itself.
-    ctx.holdPreview.up();
+    // what the hold drew. A release that switches draws the new rotation
+    // through the switch itself, with no revert frame first (endHoldPreview).
+    this.endHoldPreview(ctx, release?.gesture ?? "none");
 
-    const pressStartMs = ctx.pressStart;
-    ctx.pressStart = 0;
+    if (!release) return;
 
-    if (pressStartMs === 0) return;
+    if (release.kind === "push-turn") return;
 
-    // Where the extended gestures are compiled out a release is never long: a
-    // knob press never reports its release (`classifyDialReleaseForHost`).
-    const kind = classifyDialReleaseForHost({
-      pressStartMs,
-      nowMs: Date.now(),
-      rotatedWhilePressed: ctx.rotatedWhilePressed,
-      thresholdMs: getDualPressThresholdMs(),
-    });
+    if (release.gesture === "none") return;
 
-    if (kind === "push-turn") return;
-
-    const gestures = resolveGestures(ctx.dial);
-    const gesture = kind === "long" ? gestures.longPress : gestures.press;
-
-    if (gesture === "none") return;
-
-    this.host.logger.info(kind === "long" ? "Black box dial long-pressed" : "Black box dial pressed");
-    await this.doGesture(ctx, gesture, rawSettings);
+    this.host.logger.info(release.kind === "long" ? "Black box dial long-pressed" : "Black box dial pressed");
+    await this.doGesture(ctx, release.gesture, rawSettings);
   }
 
   async touchTap(action: IDeckActionContext, dial: DialSettings, hold: boolean, rawSettings?: unknown): Promise<void> {
@@ -908,6 +902,52 @@ export class BlackBoxSelectorDialSurface extends ReleaseDialSurfaceBase<BlackBox
    */
   protected override dialGestures(ctx: BlackBoxDialContext, _dial: DialSettings): DialGestures {
     return firingGestures(ctx.dial);
+  }
+
+  /**
+   * What a release is, and the gesture it fires: `none` for a push+turn, which
+   * fires nothing. It only reads — the clock, the threshold and the context's
+   * settings — so `up` can ask it before the hold preview comes down.
+   */
+  private classifyRelease(
+    ctx: BlackBoxDialContext,
+    pressStartMs: number,
+  ): { kind: DialReleaseKind; gesture: GestureSlot } {
+    // Where the extended gestures are compiled out a release is never long: a
+    // knob press never reports its release (`classifyDialReleaseForHost`).
+    const kind = classifyDialReleaseForHost({
+      pressStartMs,
+      nowMs: Date.now(),
+      rotatedWhilePressed: ctx.rotatedWhilePressed,
+      thresholdMs: getDualPressThresholdMs(),
+    });
+
+    if (kind === "push-turn") return { kind, gesture: "none" };
+
+    const gestures = resolveGestures(ctx.dial);
+
+    return { kind, gesture: kind === "long" ? gestures.longPress : gestures.press };
+  }
+
+  /**
+   * Takes the hold preview down at a release (#1120), given the gesture the
+   * release fires. A release that switches Select / Adjust draws the new
+   * rotation itself, through {@link switchRotation}, so the preview is dropped
+   * WITHOUT a revert frame: that frame would put the OLD rotation's strip up
+   * between the preview and the new one, a flash of the look the release has
+   * just left. `dispose` is the hold preview's teardown for exactly this — a
+   * settings change whose own render is the revert. Every other release
+   * reverts as it always has.
+   */
+  private endHoldPreview(ctx: BlackBoxDialContext, gesture: GestureSlot): void {
+    if (gesture === "switch-rotation" && gestureFires(ctx.dial, gesture)) {
+      ctx.holdPreview.dispose();
+      ctx.previewRotation = null;
+
+      return;
+    }
+
+    ctx.holdPreview.up();
   }
 
   /**

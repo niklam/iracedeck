@@ -1373,6 +1373,11 @@ describe("BlackBoxSelector dial surface", () => {
       return `data:image/svg+xml,${svg}`;
     }
 
+    /** Every frame pushed to the strip since the last clear, decoded, in order. */
+    function canvases(ctx: DialContext): string[] {
+      return ctx.setDialCanvas.mock.calls.map(([uri]) => decodeURIComponent(uri as string));
+    }
+
     async function hold(ctx: DialContext, settings: Record<string, unknown>, ms: number) {
       await action.onDialDown(eventFor(ctx, settings) as never);
       vi.advanceTimersByTime(ms);
@@ -1446,6 +1451,100 @@ describe("BlackBoxSelector dial surface", () => {
       ]);
       expect(lastCanvas(ctx)).toBe(frame(renderAdjustControlStrip(ARGS)));
       expect(ctx.setTriggerDescription).toHaveBeenLastCalledWith(expect.objectContaining({ rotate: "Adjust control" }));
+    });
+
+    it.each([
+      ["select-control", renderAdjustControlPendingStrip, renderAdjustControlStrip, renderSelectControlStrip],
+      ["adjust-control", renderSelectControlPendingStrip, renderSelectControlStrip, renderAdjustControlStrip],
+    ] as const)(
+      "a long release that switches a %s dial pushes ONE frame after the preview, the new Mode's strip, never the old one's",
+      async (rotation, preview, next, old) => {
+        const { ctx, settings } = await appearHeld(`hp-commit-once-${rotation}`, { rotation });
+
+        await hold(ctx, settings, 500);
+
+        expect(canvases(ctx)).toEqual([frame(preview(ARGS))]);
+
+        ctx.setDialCanvas.mockClear();
+        await action.onDialUp(eventFor(ctx, settings) as never);
+        vi.advanceTimersByTime(1000);
+
+        // No revert frame of the old Mode between the preview and the switch's own frame.
+        expect(canvases(ctx)).toEqual([frame(next(ARGS))]);
+        expect(canvases(ctx)).not.toContain(frame(old(ARGS)));
+        expect(ctx.setSettings).toHaveBeenCalledTimes(1);
+
+        // The strip's signature caught up with the frame: an echo pushes nothing more.
+        for (const listener of globalListeners) listener();
+
+        expect(canvases(ctx)).toEqual([frame(next(ARGS))]);
+      },
+    );
+
+    it("a short release that switches while the preview shows pushes only the new Mode's strip too", async () => {
+      // The threshold is raised mid-hold, after the preview showed: the release
+      // classifies short, and the Press is the switch.
+      const { ctx, settings } = await appearHeld("hp-commit-short", {
+        rotation: "select-control",
+        pressAction: "switch-rotation",
+      });
+
+      await hold(ctx, settings, 500);
+      mockDualPressThreshold.value = 2000;
+      ctx.setDialCanvas.mockClear();
+      await action.onDialUp(eventFor(ctx, settings) as never);
+
+      expect(canvases(ctx)).toEqual([frame(renderAdjustControlStrip(ARGS))]);
+      expect(ctx.setSettings.mock.calls[0][0]).toMatchObject({ dial: { rotation: "adjust-control" } });
+    });
+
+    it("a short release that does something else while the preview shows reverts to the dial's own strip", async () => {
+      // As above, the threshold raised mid-hold; the Press is the default toggle.
+      const { ctx, settings } = await appearHeld("hp-revert-short", { rotation: "select-control" });
+
+      await hold(ctx, settings, 500);
+      mockDualPressThreshold.value = 2000;
+      ctx.setDialCanvas.mockClear();
+      await action.onDialUp(eventFor(ctx, settings) as never);
+
+      expect(canvases(ctx)).toEqual([frame(renderSelectControlStrip(ARGS))]);
+      expect(mockTapBinding.mock.calls).toEqual([["blackBoxToggleControl"]]);
+      expect(ctx.setSettings).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      [
+        "a Long Press stored as something else",
+        { longPressAction: "toggle-control" },
+        renderSelectControlStrip,
+        [["blackBoxToggleControl"]],
+      ],
+      // Switch Select / Adjust has nothing to switch there, so it fires nothing and the strip reverts.
+      [
+        "a dial that cycles boxes, with Switch Select / Adjust stored",
+        { rotation: "boxes", longPressAction: "switch-rotation" },
+        renderBlackBoxStrip,
+        [],
+      ],
+    ] as const)("a long release reverts the preview as before on %s", async (name, patch, revertedTo, taps) => {
+      const { ctx, settings } = await appearHeld(`hp-revert-long-${name}`, { rotation: "select-control" });
+
+      await hold(ctx, settings, 500);
+      // The preview shows only for a switch that acts, so the context's
+      // settings are changed under it, with no settings delivery to redraw.
+      const state = action["dialSurface"]["contextsState"].get(`hp-revert-long-${name}`);
+
+      expect(state).toBeDefined();
+
+      if (state) state.dial = { ...state.dial, ...patch };
+
+      mockTapBinding.mockClear();
+      ctx.setDialCanvas.mockClear();
+      await action.onDialUp(eventFor(ctx, settings) as never);
+
+      expect(canvases(ctx)).toEqual([frame(revertedTo(ARGS))]);
+      expect(mockTapBinding.mock.calls).toEqual(taps);
+      expect(ctx.setSettings).not.toHaveBeenCalled();
     });
 
     it("pushes neither a preview nor a revert for a short release, and the disarmed timer never fires", async () => {
