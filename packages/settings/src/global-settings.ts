@@ -382,12 +382,14 @@ export const GlobalSettingsSchema = z
       .default(true)
       .catch(true),
     /**
-     * Driver name the Race Engineer addresses the user as — the key
-     * under `voice/<voice>/names/` (e.g., `"niklas"`, `"oivindl"`).
-     * Substituted into welcome / pit-callout flows by referencing
-     * `voice/{voice}/names/{driverName}.mp3`. Empty string means "no
-     * name picked" — the plugin seeds the first available name on
-     * startup.
+     * Driver name the Race Engineer addresses the user as — a spelling
+     * from `_driverNames` (e.g., `"niklas"`, `"geoff"`), resolved to its
+     * clip at speak time: per voice, the spelling's own clips when the
+     * voice records it, else its alias's canonical (`geoff` → `jeff`,
+     * `@iracedeck/callout-script`'s `DRIVER_NAME_ALIASES`, issue #1580).
+     * The spelling picked is what is stored and never rewritten. Empty
+     * string means "no name picked" — the plugin seeds the first
+     * available name on startup.
      */
     driverName: z.preprocess((val) => (val === undefined || val === null ? "" : val), z.string().default("")),
     /**
@@ -2038,8 +2040,12 @@ export function resolveActiveRaceEngineerVoice(
 }
 
 /**
- * Resolve the active driver-name key (the name the engineer addresses
- * the user as). Returns the persisted value when present in the list,
+ * Resolve the active driver-name spelling (the name the engineer addresses
+ * the user as): a spelling from `_driverNames`, resolved to its clip at
+ * speak time — per voice, against that voice's own recorded names, so an
+ * alias such as `geoff` is returned as `geoff` here and spoken with
+ * `jeff`'s clips by a voice that records only `jeff` (issue #1580). Returns
+ * the persisted value when present in the list,
  * otherwise `defaultName` if supplied and present in the list, otherwise
  * the first list entry, or `null` when no names exist (caller should
  * skip name-dependent playback). `defaultName` mirrors the `default`
