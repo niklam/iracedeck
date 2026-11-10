@@ -1038,10 +1038,13 @@ export type SimEventMap = {
    * Never fired for a state the player did not switch in front of the
    * translator: not on the first live tick after it starts listening (connect,
    * a session change, the end of a replay glance) whatever the limiter reads,
-   * not while the driver is out of the car, not during pit service and for
-   * half a second after it ends, and not while the car is out of the world (a
-   * tow or a reset) and for half a second after it is back. A change made in
-   * one of those windows is absorbed, never announced later.
+   * not while the driver is out of the car, not during pit service and for a
+   * short settle after it ends, and not while the car is out of the world (a
+   * tow or a reset) and for a short settle after it is back. A change made in
+   * one of those windows is absorbed, never announced later. The settle's
+   * length belongs to the emitting translator, since it absorbs that sim's
+   * own noise (iRacing's: `LIMITER_SERVICE_SETTLE_MS` in
+   * `sim-events-iracing/src/diff/limiter-toggle.ts`).
    */
   "carControl.limiterToggled": SimEvent<"carControl.limiterToggled", { on: boolean }>;
   "limiter.dropped": SimEvent<"limiter.dropped", EmptySimEventPayload>;

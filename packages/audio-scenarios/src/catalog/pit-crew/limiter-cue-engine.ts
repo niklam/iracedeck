@@ -18,11 +18,14 @@
  * silent. No debounce: a quick on→off→on is two engagements and two beeps.
  *
  * **It trusts the event and reads no telemetry.** Every silence the spec names
- * is the translator's (`diff/toggles.ts`): the first tick after a connect, a
- * restart, a session change or a replay seeds the baseline silently, so a
- * limiter already on does not beep; so does every tick out of the car; and the
- * limiter's baseline follows the bit silently while pit service is active or
- * the car is out of the world (a tow or reset), and for 500 ms after either.
+ * is part of the event's contract, stated on `carControl.limiterToggled` in
+ * the `@iracedeck/event-bus` catalog, and owned by the emitting translator
+ * (iRacing's is `sim-events-iracing/src/diff/limiter-toggle.ts`): the first
+ * tick after a connect, a restart, a session change or a replay seeds the
+ * baseline silently, so a limiter already on does not beep; so does every tick
+ * out of the car; and the baseline follows the bit silently while pit service
+ * is active or the car is out of the world (a tow or reset), and for a short
+ * settle after either.
  * Unlike the exit beep, there is no edge here whose own tick can be the wrong
  * moment, so a second check in the engine would only be a second answer to a
  * question the translator owns (`race-engineer-callouts.md`, #1324). It also
