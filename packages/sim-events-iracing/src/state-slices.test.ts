@@ -29,6 +29,7 @@ import {
  * Not here: "Track-order gaps outside a race (issue #1515)" (`trackGaps`),
  * "Pit-lane landmarks (issue #1112)" (`pitLaneLandmarks`),
  * "Car progress (issue #1572)" (`carProgress`),
+ * "Sector times (issue #1572)" (`sectorTimes`),
  * "Fastest lap of the race (issue #1571)" (`fastestLap`),
  * "Laps-of-fuel-left callouts (issue #838)" (`fuelCallout`) and "Track
  * sectors (issue #1573)" (`trackSectors`, `sectorStart`), whose only members are slices, the
@@ -341,6 +342,7 @@ const SLICE_KEYS = [
   "sectorStart",
   "limiterToggle",
   "carProgress",
+  "sectorTimes",
 ];
 
 const violationNames = (scan: SliceScan): string[] => scan.violations.map((v) => `${v.rule}:${v.name}`);
