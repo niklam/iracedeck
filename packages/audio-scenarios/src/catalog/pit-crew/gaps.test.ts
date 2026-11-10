@@ -43,6 +43,7 @@ import {
   tryClaimGapCallout,
 } from "./gaps.js";
 import { registerPitCrew } from "./index.js";
+import { _resetLimiterCueEngine } from "./limiter-cue-engine.js";
 import { PERMISSIVE_OVERTAKE_GATE } from "./overtake-gate.js";
 import { _resetPitExitCueEngine } from "./pit-exit-cue-engine.js";
 import { _resetPitSpeedingEngine } from "./pit-speeding-engine.js";
@@ -872,6 +873,7 @@ describe("the gap contracts through the catalog's registration (issue #1171)", (
     _resetSpotterEngine();
     _resetPitSpeedingEngine();
     _resetPitExitCueEngine();
+    _resetLimiterCueEngine();
     vi.clearAllMocks();
   });
 

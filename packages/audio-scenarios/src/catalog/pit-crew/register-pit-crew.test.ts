@@ -73,6 +73,7 @@ import {
   stopRaceEngineerScenarios,
   type TireWearCalloutId,
 } from "./index.js";
+import { _resetLimiterCueEngine } from "./limiter-cue-engine.js";
 import { NO_LIMITER_CLIP_SOURCES } from "./no-limiter.js";
 import { _resetPitExitCueEngine } from "./pit-exit-cue-engine.js";
 import { LIMITER_MISSING_DELAY_MS, LIMITER_ON_TRACK_DELAY_MS, PIT_LIMITER_CLIP_SOURCES } from "./pit-limiter.js";
@@ -605,6 +606,7 @@ afterEach(() => {
   _resetSpotterEngine();
   _resetPitSpeedingEngine();
   _resetPitExitCueEngine();
+  _resetLimiterCueEngine();
   _setFurledRaisedSpoken(false);
   _resetLastIncidentPoints();
   vi.clearAllMocks();

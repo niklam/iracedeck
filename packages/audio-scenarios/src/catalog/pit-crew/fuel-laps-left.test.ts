@@ -43,6 +43,7 @@ import {
   FUEL_LAPS_LEFT_SCENARIO_IDS,
 } from "./fuel-laps-left.js";
 import { type FuelCalloutId, registerPitCrew } from "./index.js";
+import { _resetLimiterCueEngine } from "./limiter-cue-engine.js";
 import { _resetPitExitCueEngine } from "./pit-exit-cue-engine.js";
 import { _resetPitSpeedingEngine } from "./pit-speeding-engine.js";
 import { _resetRadarEngine } from "./radar-engine.js";
@@ -383,6 +384,7 @@ describe("FUEL_LAPS_LEFT_CONTRACTS opt-in gating (issue #838)", () => {
     _resetSpotterEngine();
     _resetPitSpeedingEngine();
     _resetPitExitCueEngine();
+    _resetLimiterCueEngine();
   });
 
   it("fires a count and the confirmation when their opt-ins are on", () => {

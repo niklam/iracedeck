@@ -26,6 +26,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AudioAssetsManifest } from "../../interpreter.js";
 import { _resetAudioScenarios, getScenarioEngine, initializeAudioScenarios } from "../../interpreter.js";
 import { type PitCrewDeps, registerPitCrew } from "./index.js";
+import { _resetLimiterCueEngine } from "./limiter-cue-engine.js";
 import { _resetPitExitCueEngine, PIT_EXIT_CLIP } from "./pit-exit-cue-engine.js";
 import { _resetPitSpeedingEngine } from "./pit-speeding-engine.js";
 import { _resetRadarEngine } from "./radar-engine.js";
@@ -116,6 +117,7 @@ function boot(deps: Partial<PitCrewDeps> = {}): void {
   _resetSpotterEngine();
   _resetPitSpeedingEngine();
   _resetPitExitCueEngine();
+  _resetLimiterCueEngine();
   bus = createMockBus();
   audio = createTimedAudio((channel) => (channel === AudioChannel.SFX ? SFX_CLIP_MS : VOICE_CLIP_MS));
   mixer.current = audio;

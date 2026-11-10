@@ -25,6 +25,7 @@ import { _resetAudioScenarios, initializeAudioScenarios, poolMemberPattern } fro
 import { familyGate } from "./callout-gate.test-util.js";
 import { familyReferences } from "./family-references.test-util.js";
 import { _resetPositionReadoutCooldown, registerPitCrew } from "./index.js";
+import { _resetLimiterCueEngine } from "./limiter-cue-engine.js";
 import {
   buildOvertakeGainedContract,
   buildOvertakeLostContract,
@@ -240,6 +241,7 @@ afterEach(() => {
   _resetSpotterEngine();
   _resetPitSpeedingEngine();
   _resetPitExitCueEngine();
+  _resetLimiterCueEngine();
   _resetPositionReadoutCooldown();
   vi.clearAllMocks();
 });

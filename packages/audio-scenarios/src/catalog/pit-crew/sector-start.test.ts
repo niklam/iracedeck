@@ -28,6 +28,7 @@ import { familyGate } from "./callout-gate.test-util.js";
 import type { CornerNameSnapshot } from "./corner-name.js";
 import { familyReferences } from "./family-references.test-util.js";
 import { registerPitCrew } from "./index.js";
+import { _resetLimiterCueEngine } from "./limiter-cue-engine.js";
 import { _resetPitExitCueEngine } from "./pit-exit-cue-engine.js";
 import { _resetPitSpeedingEngine } from "./pit-speeding-engine.js";
 import { _resetRadarEngine } from "./radar-engine.js";
@@ -399,6 +400,7 @@ describe("the sector-start callout in the real registerPitCrew", () => {
     _resetSpotterEngine();
     _resetPitSpeedingEngine();
     _resetPitExitCueEngine();
+    _resetLimiterCueEngine();
     vi.useRealTimers();
     vi.clearAllMocks();
   });

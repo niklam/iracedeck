@@ -37,6 +37,7 @@ import {
 import { familyGate } from "./callout-gate.test-util.js";
 import { familyReferences } from "./family-references.test-util.js";
 import { registerPitCrew, type StartLightCalloutId } from "./index.js";
+import { _resetLimiterCueEngine } from "./limiter-cue-engine.js";
 import { _resetPitExitCueEngine } from "./pit-exit-cue-engine.js";
 import { _resetPitSpeedingEngine } from "./pit-speeding-engine.js";
 import { _resetRadarEngine } from "./radar-engine.js";
@@ -432,6 +433,7 @@ describe("START_LIGHT_CONTRACTS opt-in gating (issue #480)", () => {
     _resetSpotterEngine();
     _resetPitSpeedingEngine();
     _resetPitExitCueEngine();
+    _resetLimiterCueEngine();
   });
 
   it("fires gantry lines and countdown numbers when both opt-ins are on", () => {

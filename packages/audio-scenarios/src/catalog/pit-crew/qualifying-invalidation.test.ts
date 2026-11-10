@@ -30,6 +30,7 @@ import { familyGate } from "./callout-gate.test-util.js";
 import { familyReferences } from "./family-references.test-util.js";
 import { _resetLastIncidentPoints, INCIDENT_SCENARIO_IDS } from "./incidents.js";
 import { registerPitCrew } from "./index.js";
+import { _resetLimiterCueEngine } from "./limiter-cue-engine.js";
 import { _resetPitExitCueEngine } from "./pit-exit-cue-engine.js";
 import { _resetPitSpeedingEngine } from "./pit-speeding-engine.js";
 import {
@@ -209,6 +210,7 @@ afterEach(() => {
   _resetSpotterEngine();
   _resetPitSpeedingEngine();
   _resetPitExitCueEngine();
+  _resetLimiterCueEngine();
   vi.clearAllMocks();
   vi.useRealTimers();
 });
@@ -965,6 +967,7 @@ describe("the incident line's yield to the lap-invalidation line (issues #1122, 
     _resetSpotterEngine();
     _resetPitSpeedingEngine();
     _resetPitExitCueEngine();
+    _resetLimiterCueEngine();
     _resetLastIncidentPoints();
     resetQualifyingInvalidationLatch();
     bus = createMockBus();

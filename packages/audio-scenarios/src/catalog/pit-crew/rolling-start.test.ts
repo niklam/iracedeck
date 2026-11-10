@@ -41,6 +41,7 @@ import { registerCautionVocabulary } from "./caution.js";
 import { familyReferences } from "./family-references.test-util.js";
 import { CAUTION_MAX_QUEUE_WAIT_MS } from "./flag-alerts.js";
 import { registerPitCrew, type RollingStartCalloutId, SCENARIO_ID_TO_ROLLING_START_ID } from "./index.js";
+import { _resetLimiterCueEngine } from "./limiter-cue-engine.js";
 import type { NamingEpisode } from "./named-car.js";
 import { _resetPitExitCueEngine } from "./pit-exit-cue-engine.js";
 import { _resetPitSpeedingEngine } from "./pit-speeding-engine.js";
@@ -984,6 +985,7 @@ describe("the formation calls through registerPitCrew", () => {
     _resetSpotterEngine();
     _resetPitSpeedingEngine();
     _resetPitExitCueEngine();
+    _resetLimiterCueEngine();
   });
 
   it.each(IDS)("%s speaks when its opt-in is on", (id) => {
