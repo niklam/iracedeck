@@ -1771,6 +1771,31 @@ describe("BlackBoxSelector dial surface", () => {
       expect(lastCanvas(ctx)).toBe(frame(renderSelectControlPendingStrip(ARGS)));
     });
 
+    it("re-aims a showing preview when a Tap switches the rotation mid-hold, and the long release does what it shows", async () => {
+      const { ctx, settings } = await appearHeld("hp-tap-switch", {
+        rotation: "select-control",
+        tapAction: "switch-rotation",
+      });
+
+      await hold(ctx, settings, 500);
+
+      expect(lastCanvas(ctx)).toBe(frame(renderAdjustControlPendingStrip(ARGS)));
+
+      // The Tap switches Select to Adjust while the long press is still held.
+      await action.onTouchTap(touchEvent(ctx, settings, false) as never);
+
+      // The long release would now switch Adjust back to Select, so that is the promise.
+      expect(lastCanvas(ctx)).toBe(frame(renderSelectControlPendingStrip(ARGS)));
+
+      await action.onDialUp(eventFor(ctx, settings) as never);
+
+      expect(ctx.setSettings.mock.calls.map(([written]) => written.dial.rotation)).toEqual([
+        "adjust-control",
+        "select-control",
+      ]);
+      expect(lastCanvas(ctx)).toBe(frame(renderSelectControlStrip(ARGS)));
+    });
+
     it("tears a showing preview down on disappear without pushing a revert frame", async () => {
       const { ctx, settings } = await appearHeld("hp-dispose", { rotation: "select-control" });
 

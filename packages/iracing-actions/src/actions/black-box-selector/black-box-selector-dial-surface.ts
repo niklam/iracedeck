@@ -1026,6 +1026,14 @@ export class BlackBoxSelectorDialSurface extends ReleaseDialSurfaceBase<BlackBox
     // repeating this one (rule 10).
     ctx.dial = { ...ctx.dial, rotation: next };
 
+    // A long press still held (a Tap or Long Touch switched mid-hold) releases
+    // into these settings, so a showing preview is re-resolved from them, as
+    // didReceiveSettings does: it now promises the switch back. A release that
+    // commits a switch drops its preview before it gets here (endHoldPreview).
+    if (ctx.previewRotation !== null) {
+      ctx.previewRotation = pendingRotationPreview(ctx.dial);
+    }
+
     // The dial shows the new rotation at once; the write follows. Each reads
     // ctx.dial when it runs, so two quick switches end on the last one's look.
     await this.applyTriggerDescription(ctx);
