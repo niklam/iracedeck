@@ -54,12 +54,15 @@ export const ANY_BASE = "*";
  * Two of these are the second step of a chain that stops at the first clip
  * it cannot start (`playVoiceSequence` in audio-toggles.ts, `if (!ok)
  * finish()`): the connect radio check and the Test button both play
- * `names/<driver>` FIRST, and the driver name resolves from the union of
- * every installed voice's names (`scanDriverNames`; `resolveActiveDriverName`
- * falls back to `driver`, then to the first name) — so a pack that records
- * `toggle/radio-check` or `welcome/greeting` without a `names/` clip for the
- * name the user is set to plays nothing at all for either. The `playedBy`
- * text says so, since it is what a pack author reads.
+ * `names/<driver>` FIRST. The name is CHOSEN from `selectableDriverNames` —
+ * every installed voice's names plus the aliases whose canonical one of them
+ * records (#1580; `resolveActiveDriverName` falls back to `driver`, then to
+ * the first name) — and its CLIP from the active voice's own names
+ * (`driverNameClip`: the spelling, else its alias's canonical). So a pack
+ * that records `toggle/radio-check` or `welcome/greeting` without a `names/`
+ * clip for the name the user is set to (or its canonical) plays nothing at
+ * all for either. The `playedBy` text says so, since it is what a pack
+ * author reads.
  *
  * @type {readonly { group: string, base: string, playedBy: string }[]}
  */
