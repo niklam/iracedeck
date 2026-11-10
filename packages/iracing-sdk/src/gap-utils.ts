@@ -42,8 +42,11 @@ export const GAP_TRACE_MAX_STEP = 0.05;
  * `"appended"` — recorded after the last sample, or as the first of an empty
  * trace; `"skipped"` — within {@link GAP_TRACE_MIN_STEP} of the last sample,
  * so not recorded; `"reset"` — a discontinuity emptied the trace and the
- * reading started it again. The sector timer reads `"reset"` as "this car's
- * motion was not continuous", the one definition of absence the gaps use too.
+ * reading started it again. `"reset"` proves the car's motion was not
+ * continuous since its last sample, the one definition of absence the gaps
+ * use too. Its absence proves nothing about a tick the reading was never
+ * taken on: a caller that needs continuity from one tick to the next must
+ * also know that no tick was missed in between.
  */
 export type ProgressSampleVerdict = "appended" | "skipped" | "reset";
 
