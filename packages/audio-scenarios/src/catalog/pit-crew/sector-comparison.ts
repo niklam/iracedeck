@@ -85,7 +85,14 @@ export type SectorCarInput = {
   carNumber: string | null;
   /** The live gap to the player in seconds (the gap display's reading); null for the player or when unknown. */
   gapSeconds: number | null;
-  /** Completed laps, newest last (at most 8). */
+  /**
+   * How many laps the car has completed now, counted the way
+   * {@link SectorLapInput.lap} is, whether or not its sector times were
+   * measured; null when the sim reports none for the car (it is out of the
+   * world: in the garage or retired).
+   */
+  lapsCompleted: number | null;
+  /** Recorded laps, newest last (at most 8); a lap the timer could not measure is missing. */
   recentLaps: readonly SectorLapInput[];
 };
 
@@ -163,6 +170,12 @@ function median(values: readonly number[]): number {
  * {@link SECTOR_RECENT_LAPS} completed laps, or `null` when there are fewer
  * than that many (decision 5).
  *
+ * The five are the car's own last five completed laps by number, counted
+ * back from `lapsCompleted`, measured or not: the timer leaves out a lap it
+ * could not measure, so the last five recorded laps can reach back a whole
+ * stint. A car the sim reports no lap count for (`lapsCompleted` null) is
+ * not running and has no reference, so no call compares with it.
+ *
  * A usable lap is a clean lap with a time for every one of `sectorCount`
  * sectors. A clean lap with a sector unmeasured, or recorded against a
  * different sector count, still counts as one of the five recent laps but
@@ -172,8 +185,11 @@ function median(values: readonly number[]): number {
  * case is a guard, not a policy.
  */
 export function sectorReference(car: SectorCarInput, sectorCount: number): number[] | null {
+  if (car.lapsCompleted === null) return null;
+
+  const oldestOutside = car.lapsCompleted - SECTOR_RECENT_LAPS;
   const usable = car.recentLaps
-    .slice(-SECTOR_RECENT_LAPS)
+    .filter((lap) => lap.lap > oldestOutside)
     .filter((lap) => lap.clean && lap.sectorTimes.length === sectorCount && lap.sectorTimes.every(isSectorTime))
     .slice(-SECTOR_REFERENCE_LAPS);
 
@@ -567,25 +583,24 @@ export function buildSectorComparison(deps: SectorComparisonDeps): {
   contracts: readonly ScenarioContract[];
 } {
   /**
-   * The selection for this envelope: computed by the first `where:` that
-   * reaches it and kept for the other two, so the three see one answer even
-   * if the comparison moves between their timers. Older laps' entries are
-   * pruned here.
+   * Decide this envelope once, for the first `where:` that gets past the
+   * cheap gates: build the comparison, check the player's lap was recorded
+   * clean (decision 4: a pit lap or an off-track lap of the player's produces
+   * no call), and select. The answer is stored, a refusal as a null picture,
+   * so the other two `where:`s read it without building the comparison again
+   * and the three see one answer even if it moves between their timers.
+   * Older laps' entries are pruned here.
    */
-  const selectionFor = (
-    ev: SimEventOf<SimEventName>,
-    lap: number,
-    input: SectorComparisonInput,
-  ): SectorPicture | null => {
-    const known = selections.get(ev);
-
-    if (known !== undefined) return known.picture;
-
+  const decide = (ev: SimEventOf<SimEventName>, lap: number): SectorPicture | null => {
     for (const [key, entry] of selections) {
       if (entry.lap < lap) selections.delete(key);
     }
 
-    const picture = selectSectorCall(input, lap, deps.isSelectable, { spoken: spokenPictures, lastCallLap });
+    const input = deps.getSectorComparison();
+    const picture =
+      input !== null && playerLapClean(input, lap)
+        ? selectSectorCall(input, lap, deps.isSelectable, { spoken: spokenPictures, lastCallLap })
+        : null;
 
     selections.set(ev, { lap, picture });
 
@@ -664,6 +679,11 @@ export function buildSectorComparison(deps: SectorComparisonDeps): {
       where: (ev) => {
         if (ev.event !== "lap.completed") return false;
 
+        // Decided already by a sibling's `where:` for this lap: its answer.
+        const known = selections.get(ev);
+
+        if (known !== undefined) return known.picture?.target === target;
+
         // Race only (decision 7), as the neighbours read the session.
         if (!isRaceSession(deps.getSessionClass())) return false;
 
@@ -676,13 +696,7 @@ export function buildSectorComparison(deps: SectorComparisonDeps): {
 
         if (deps.getUnderFullCourseCaution() || deps.getRaceFinishedFired()) return false;
 
-        const input = deps.getSectorComparison();
-
-        // The player's lap must be one the timer recorded clean (decision 4):
-        // a pit lap or an off-track lap of the player's produces no call.
-        if (input === null || !playerLapClean(input, data.lap)) return false;
-
-        return selectionFor(ev, data.lap, input)?.target === target;
+        return decide(ev, data.lap)?.target === target;
       },
     },
     speakGate: {

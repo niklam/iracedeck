@@ -74,6 +74,7 @@ describe("buildPitCrewDeps", () => {
       carIdx,
       carNumber: String(carIdx),
       gapSeconds,
+      lapsCompleted: 9,
       recentLaps: [lap],
     });
     let snapshot: SectorComparisonInput | null = null;

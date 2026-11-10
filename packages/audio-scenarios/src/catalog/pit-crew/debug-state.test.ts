@@ -698,9 +698,9 @@ describe("the family readers", () => {
     const sectors = (times: number[]) => [1, 2, 3].map((lap) => ({ lap, sectorTimes: times, clean: true }));
     const comparison = {
       sectorCount: 2,
-      player: { carIdx: 0, carNumber: "1", gapSeconds: null, recentLaps: sectors([30, 40]) },
+      player: { carIdx: 0, carNumber: "1", gapSeconds: null, lapsCompleted: 3, recentLaps: sectors([30, 40]) },
       leader: null,
-      ahead: { carIdx: 12, carNumber: "12", gapSeconds: 1, recentLaps: sectors([30, 40.5]) },
+      ahead: { carIdx: 12, carNumber: "12", gapSeconds: 1, lapsCompleted: 3, recentLaps: sectors([30, 40.5]) },
       behind: null,
     };
     const [, ahead] = buildSectorComparison({

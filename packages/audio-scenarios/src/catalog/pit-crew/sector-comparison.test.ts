@@ -90,6 +90,7 @@ function car(
     carIdx,
     carNumber: opts.carNumber === undefined ? String(carIdx) : opts.carNumber,
     gapSeconds: opts.gap === undefined ? 1 : opts.gap,
+    lapsCompleted: opts.lastLap ?? 5,
     recentLaps: lapsOf(sectors, opts.lastLap ?? 5),
   };
 }
@@ -100,7 +101,7 @@ function player(lap = 5, sectors: readonly number[] = P, lastClean = true): Sect
 
   laps[laps.length - 1] = { ...laps[laps.length - 1], clean: lastClean };
 
-  return { carIdx: 0, carNumber: "1", gapSeconds: null, recentLaps: laps };
+  return { carIdx: 0, carNumber: "1", gapSeconds: null, lapsCompleted: lap, recentLaps: laps };
 }
 
 function input(overrides: Partial<SectorComparisonInput> = {}): SectorComparisonInput {
@@ -128,10 +129,12 @@ function memory(spoken: Partial<Record<SectorTarget, SpokenSectorPicture>>, last
 // ─── The reference ───────────────────────────────────────────────────────────
 
 describe("the reference (decision 5)", () => {
-  const laps = (spec: [number, number, boolean][]): SectorCarInput => ({
+  /** A car with these laps recorded, whose completed-lap count is its newest recorded lap unless given. */
+  const laps = (spec: [number, number, boolean][], lapsCompleted?: number | null): SectorCarInput => ({
     carIdx: 3,
     carNumber: "3",
     gapSeconds: 1,
+    lapsCompleted: lapsCompleted === undefined ? (spec.at(-1)?.[0] ?? 0) : lapsCompleted,
     recentLaps: spec.map(([lap, t, clean]) => ({ lap, sectorTimes: [t, 2 * t], clean })),
   });
 
@@ -198,13 +201,85 @@ describe("the reference (decision 5)", () => {
       { lap: 2, sectorTimes: [30, 60], clean: true },
       { lap: 3, sectorTimes: [30, 60], clean: true },
     ];
-    const withNull = { ...laps([]), recentLaps: [...base, { lap: 4, sectorTimes: [30, null], clean: true }] };
-    const wrongCount = { ...laps([]), recentLaps: [...base, { lap: 4, sectorTimes: [30, 30, 30], clean: true }] };
-    const complete = { ...laps([]), recentLaps: [...base, { lap: 4, sectorTimes: [30, 60], clean: true }] };
+    const withNull = { ...laps([], 4), recentLaps: [...base, { lap: 4, sectorTimes: [30, null], clean: true }] };
+    const wrongCount = { ...laps([], 4), recentLaps: [...base, { lap: 4, sectorTimes: [30, 30, 30], clean: true }] };
+    const complete = { ...laps([], 4), recentLaps: [...base, { lap: 4, sectorTimes: [30, 60], clean: true }] };
 
     expect(sectorReference(withNull, 2)).toBeNull();
     expect(sectorReference(wrongCount, 2)).toBeNull();
     expect(sectorReference(complete, 2)).toEqual([30, 60]);
+  });
+
+  it("counts the five back from the car's completed laps, not its recorded ones: laps it was not measured on still count", () => {
+    // Completed 12 laps; recorded only 2..6 (the timer missed the rest): the
+    // last five completed are 8..12, and none of them was recorded.
+    const recordedLongAgo = laps(
+      [
+        [2, 30, true],
+        [3, 30, true],
+        [4, 30, true],
+        [5, 30, true],
+        [6, 30, true],
+      ],
+      12,
+    );
+
+    expect(sectorReference(recordedLongAgo, 2)).toBeNull();
+    // The positive control: the same laps with the car on lap 6 are its last five.
+    expect(sectorReference({ ...recordedLongAgo, lapsCompleted: 6 }, 2)).toEqual([30, 60]);
+  });
+
+  it("uses only the window when three clean laps are inside it and older ones outside", () => {
+    // Completed 10: the window is 6..10. Laps 1..4 (a slower stint) are outside it.
+    const c = laps(
+      [
+        [1, 40, true],
+        [2, 40, true],
+        [3, 40, true],
+        [4, 40, true],
+        [7, 30, true],
+        [9, 31, true],
+        [10, 32, true],
+      ],
+      10,
+    );
+
+    expect(sectorReference(c, 2)).toEqual([31, 62]);
+    // The bound is exact: with laps 9 and 10, lap 6 is inside the window ending at 10 and lap 5 is not.
+    const edge = (lap: number) =>
+      laps(
+        [
+          [lap, 50, true],
+          [9, 31, true],
+          [10, 32, true],
+        ],
+        10,
+      );
+
+    expect(sectorReference(edge(6), 2)).toEqual([32, 64]);
+    expect(sectorReference(edge(5), 2)).toBeNull();
+  });
+
+  it("is null for a car the sim reports no lap count for (out of the world: retired, in the garage)", () => {
+    const retired = laps(
+      [
+        [3, 30, true],
+        [4, 30, true],
+        [5, 30, true],
+      ],
+      null,
+    );
+
+    expect(sectorReference(retired, 2)).toBeNull();
+    expect(sectorReference({ ...retired, lapsCompleted: 5 }, 2)).toEqual([30, 60]);
+  });
+
+  it("holds the player to the same window: no reference once the player's own recorded laps are too old", () => {
+    const stale = { ...player(5), lapsCompleted: 11 };
+
+    expect(sectorReference(player(5), 3)).toEqual([...P]);
+    expect(sectorReference(stale, 3)).toBeNull();
+    expect(selectSectorCall(input({ player: stale, ahead: AHEAD_SLOW_S2 }), 11, ALL, EMPTY_MEMORY)).toBeNull();
   });
 
   it("uses the window sizes the spec sets", () => {
@@ -323,6 +398,12 @@ describe("the leader's picture (decision 6)", () => {
       lossSector: 2,
       gainSector: null,
     });
+  });
+
+  it("is silent about a leader the sim reports no lap count for (retired, in the garage), however its old laps read", () => {
+    expect(leaderPicture(input({ leader: { ...LEADER_MOST, lapsCompleted: null } }))).toBeNull();
+    // The positive control: the same leader still running.
+    expect(leaderPicture(input({ leader: LEADER_MOST }))?.shape).toBe("slower");
   });
 
   it("is silent on a track with one sector, with no leader, or with no reference on either side", () => {
@@ -654,6 +735,8 @@ let underCaution: boolean;
 let raceFinished: boolean;
 let latestLap: LapCompletedSnapshot | null;
 let enabled: Record<string, boolean>;
+/** How many times the catalog has read the comparison. */
+let comparisonReads: number;
 
 /** The deps `registerPitCrew` hands the family, for a test that builds the contracts again. */
 function familyDeps(isSelectable: SectorComparisonDeps["isSelectable"]): SectorComparisonDeps {
@@ -718,6 +801,7 @@ beforeEach(() => {
   latestLap = null;
   // The every-lap call is off unless a test puts it on, so a lap's line is the sector call alone.
   enabled = { calloutEnabledLapTimeEveryLap: false };
+  comparisonReads = 0;
   bus = createMockBus();
   audio = createFakeAudio();
   initializeAudioScenarios(bus, audio, manifest, mockLogger as never, () => VOICE);
@@ -728,7 +812,11 @@ beforeEach(() => {
     getUnderFullCourseCaution: () => underCaution,
     getRaceFinishedFired: () => raceFinished,
     getLapCompletedSnapshot: () => latestLap,
-    getSectorComparison: () => comparison,
+    getSectorComparison: () => {
+      comparisonReads++;
+
+      return comparison;
+    },
   });
   getScenarioEngine().defineContract({
     id: "test.holder",
@@ -899,6 +987,34 @@ describe("the gates at the line (decision 7)", () => {
     flush();
 
     expect(line()).toEqual([]);
+  });
+
+  it("builds the comparison once per lap for the three contracts, and keeps one answer for all three", () => {
+    lapDone(5, { leader: LEADER_MOST, ahead: AHEAD_SLOW_S2, behind: BEHIND_QUICK_S3 });
+
+    expect(comparisonReads).toBe(1);
+    expect(readSectorComparisonDebugState().pendingSelections).toBe(1);
+    expect(sectorLine()[0]).toBe("car-number/12");
+  });
+
+  it("keeps a refused lap's answer too, so the other two contracts read it without building the comparison again", () => {
+    comparison = input({ player: player(5, P, false), ahead: AHEAD_SLOW_S2 });
+    latestLap = lapPayload(5);
+    bus.publishEvent("lap.completed", latestLap);
+    flush();
+
+    expect(comparisonReads).toBe(1);
+    expect(readSectorComparisonDebugState().pendingSelections).toBe(1);
+    expect(line()).toEqual([]);
+  });
+
+  it("speaks nothing about a retired class leader, and the leader call stays silent after it", () => {
+    lapDone(5, { leader: { ...LEADER_MOST, lapsCompleted: null } });
+    expect(line()).toEqual([]);
+
+    // The positive control: the leader still running is called.
+    lapDone(5, { leader: LEADER_MOST });
+    expect(sectorLine()[0]).toBe("sector-comparison/leader-slower");
   });
 
   it("is silent when the player's own lap was not recorded clean, and speaks when it was", () => {

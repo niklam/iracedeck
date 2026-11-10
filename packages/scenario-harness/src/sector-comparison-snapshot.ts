@@ -64,6 +64,13 @@ function validateCar(car: unknown, where: string): string | null {
     return `${where}.gapSeconds must be a finite number or null`;
   }
 
+  if (
+    c.lapsCompleted !== null &&
+    (typeof c.lapsCompleted !== "number" || !Number.isInteger(c.lapsCompleted) || c.lapsCompleted < 0)
+  ) {
+    return `${where}.lapsCompleted must be a non-negative integer or null`;
+  }
+
   if (!Array.isArray(c.recentLaps)) return `${where}.recentLaps must be an array`;
 
   for (const [i, lap] of c.recentLaps.entries()) {
@@ -138,7 +145,8 @@ export type ComposedTarget = {
  * A comparison whose reference gaps are exactly `deltas` (player minus target,
  * per sector), the player's newest lap being `lap`.
  *
- * Every car carries five clean laps ending on `lap`, so each reference is the
+ * Every car has completed `lap` laps and carries five clean laps ending on
+ * it, its last five completed, so each reference is the
  * median of three identical laps and the delta of a sector is the difference
  * of the two cars' times. `sectorCount` sectors use the first `sectorCount` of
  * {@link PLAYER_SECTOR_TIMES}. A target left out is `null`.
@@ -163,6 +171,8 @@ export function composeSectorComparison(options: {
       carIdx: target.carIdx,
       carNumber: target.carNumber,
       gapSeconds: target.gapSeconds,
+      // Every car is on the player's lap, so its five recorded laps are its last five completed.
+      lapsCompleted: options.lap,
       recentLaps: composedLaps(options.lap, times),
     };
   };
@@ -173,6 +183,7 @@ export function composeSectorComparison(options: {
       carIdx: options.player.carIdx,
       carNumber: options.player.carNumber,
       gapSeconds: null,
+      lapsCompleted: options.lap,
       recentLaps: composedLaps(options.lap, playerTimes),
     },
     leader: car(options.leader),
