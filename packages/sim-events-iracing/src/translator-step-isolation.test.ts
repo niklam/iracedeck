@@ -124,6 +124,7 @@ vi.mock("./diff/fastest-lap.js", async (io) => harness.spy(await io(), { diffFas
 vi.mock("./diff/opponent-flags.js", async (io) => harness.spy(await io(), { diffOpponentFlags: 12 }));
 vi.mock("./diff/leader-white.js", async (io) => harness.spy(await io(), { diffLeaderWhite: 7 }));
 vi.mock("./diff/overtakes.js", async (io) => harness.spy(await io(), { diffOvertakes: 7 }));
+vi.mock("./diff/car-progress.js", async (io) => harness.spy(await io(), { stepCarProgress: null }));
 vi.mock("./diff/gaps.js", async (io) => harness.spy(await io(), { diffGaps: 7 }));
 vi.mock("./diff/track-gaps.js", async (io) => harness.spy(await io(), { diffTrackGaps: null }));
 vi.mock("./diff/pit-box-countdown.js", async (io) => harness.spy(await io(), { diffPitBoxCountdown: 4 }));
@@ -654,6 +655,32 @@ describe("decision 3: a value that throws takes its last value this session", ()
 
     expect(reported()).toContain("translator:resolvePlayerResultsSnapshot");
     expect(argsOf("diffLaps")?.[4]).toBeNull();
+  });
+
+  it("hands diffGaps no progress tick when stepCarProgress throws, never the last tick's (#1572)", () => {
+    // A tick the progress gate reads: a session time and both progress arrays.
+    const racing = (sessionTime: number, pct: number): TelemetryData =>
+      telemetry({
+        SessionTime: sessionTime,
+        LapCompleted: 3,
+        CarIdxLapCompleted: [3, 3],
+        CarIdxLapDistPct: [pct, pct - 0.1],
+      } as Partial<TelemetryData>);
+
+    start();
+    runTick(racing(100, 0.5));
+    // The step ran before the gap diff and handed it the tick it read.
+    expect(harness.calls.map((c) => c.stage).filter((s) => s === "stepCarProgress" || s === "diffGaps")).toEqual([
+      "stepCarProgress",
+      "diffGaps",
+    ]);
+    expect(argsOf("diffGaps")?.[2]).toMatchObject({ sessionTime: 100, progress: [3.5, 3.4] });
+
+    harness.control.throwing.set("stepCarProgress", TRANSLATOR_ID);
+    runTick(racing(101, 0.51));
+
+    expect(reported()).toEqual(["translator:stepCarProgress"]);
+    expect(argsOf("diffGaps")?.[2]).toBeNull();
   });
 
   it("hands diffFlags false when resolvePlayerIsLeader throws", () => {

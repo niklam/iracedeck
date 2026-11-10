@@ -1177,7 +1177,7 @@ describe("readSimState — a replay-wiped translator", () => {
     expect(live.gaps).not.toBeNull();
     expect(live.gaps).toEqual(getLiveGaps());
     expect(live.trackGaps).toEqual(getTrackGaps());
-    expect(live.raw.state.gapTraces.length).toBeGreaterThan(0);
+    expect(live.raw.state.carProgress.traces.length).toBeGreaterThan(0);
     expect(live.order.player?.position).toBe(2);
     expect(live.fuel.history).toHaveLength(2);
     expect(simStateHeadline(live)[0]![0]).toBe("Fuel per lap");
@@ -1198,7 +1198,7 @@ describe("readSimState — a replay-wiped translator", () => {
     expect(wiped.inReplay).toBe(true);
     expect(wiped.raw.instance.lastTickInReplay).toBe(true);
     expect(wiped.gaps).toBeNull();
-    expect(wiped.raw.state.gapTraces).toEqual([]);
+    expect(wiped.raw.state.carProgress.traces).toEqual([]);
     expect(wiped.raw.state.positionFrozen.size).toBe(0);
     expect(wiped.raw.state.positionLastKnownScores).toEqual([]);
     // The order is whatever `getLiveRacePositions()` answers during a replay —

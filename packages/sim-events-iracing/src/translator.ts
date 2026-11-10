@@ -55,6 +55,7 @@ import {
   resolveTimeRemainingS,
   type SDKController,
   SessionState,
+  type StandingsNeighbors,
   type TelemetryData,
   TrkLoc,
 } from "@iracedeck/iracing-sdk";
@@ -71,6 +72,7 @@ import {
   resolvePitLaneLandmarks,
 } from "@iracedeck/track-data";
 
+import { stepCarProgress } from "./diff/car-progress.js";
 import { type CautionGapMeasurement, measureCautionGap } from "./diff/caution-gap.js";
 import { CATCH_UP_CLEAR_MULTIPLE, type CatchUpBlock, diffCaution, resolveCatchUpBlocks } from "./diff/caution.js";
 import { CORNER_CALLOUT_DEFAULT_LEAD_SECONDS, diffCornerName } from "./diff/corner-name.js";
@@ -1875,7 +1877,7 @@ function liveGapBetween(self: TranslatorInstance, aheadCarIdx: number, behindCar
   const sessionInfo = self.controller.getSessionInfo() as Record<string, unknown> | null;
 
   return readPairGap(
-    self.state.gapTraces,
+    self.state.carProgress.traces,
     aheadCarIdx,
     aheadLc! + aheadPct!,
     behindCarIdx,
@@ -3832,7 +3834,7 @@ function handleOrderSteps(
   // (individual lines + the distinct-car burst aggregate). Consumes the same
   // canonical frozen order as the diffs above; the race gap is the gap
   // display's own pair reading (#933's crossing time, or the #1285 ETA behind
-  // a crawling car) from the traces `diffGaps` last advanced (one tick old
+  // a crawling car) from the traces `stepCarProgress` last advanced (one tick old
   // here, which a seconds-scale range cannot notice), and the per-flag
   // opt-in resolver is enforced here so disabled subjects never feed the
   // aggregation. Session info names the car (`carNumber`). The per-car store
@@ -3903,11 +3905,26 @@ function handleOrderSteps(
   // `diffLaps`' crossing record, both earlier this tick, have already
   // written what `tookChequeredAt` reads. The estimate is read from
   // telemetry for this one diff, so it is part of its step (#1559).
-  steps.live("diffGaps", pending, () =>
-    diffGaps(
+  //
+  // The car-progress step (issue #1572) runs first, once: it holds the gate
+  // on when race progress is read, appends each car's reading to its trace in
+  // the `carProgress` slice and hands the tick's readings on as a value. A
+  // throw reads as the failed gate (`null`), never as the last tick's
+  // readings, which would be stale progress stamped as this tick's.
+  const carProgressTick = steps.fallbackValue("stepCarProgress", null, () =>
+    stepCarProgress(self.state.carProgress, telemetry, isRaceSession, playerCarIdx, canonicalPositions),
+  );
+  // The class neighbours and class leader `diffGaps` resolved this tick, a
+  // same-tick fact handed on as a returned value (#1559): `null` on a tick it
+  // resolved none, and when the step threw. The sector timer (issue #1572)
+  // takes it from here, with `carProgressTick`, right after this step.
+  let classNeighbors: StandingsNeighbors | null = null;
+
+  steps.live("diffGaps", pending, () => {
+    classNeighbors = diffGaps(
       self.state,
       telemetry,
-      isRaceSession,
+      carProgressTick,
       playerCarIdx,
       paceCarIdx,
       canonicalPositions,
@@ -3930,8 +3947,11 @@ function handleOrderSteps(
       // which is what keeps a gap call off the very tick a caution is thrown
       // and lets the restart mark stop on the green's own tick (issue #1171).
       self.state.cautionPhase !== "none",
-    ),
-  );
+    );
+  });
+
+  // Not read yet: the sector timer's step lands here (issue #1572).
+  void classNeighbors;
 }
 
 function publish(self: TranslatorInstance, pending: PendingEvent, telemetry: TelemetryData, timestamp: number): void {

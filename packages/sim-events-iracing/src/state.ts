@@ -245,8 +245,8 @@ export type TrackGapSideState = {
  * The track-order gaps outside a race (issue #1515, `diff/track-gaps.ts`):
  * the gaps to the cars physically ahead and behind on the road in practice,
  * warmup, testing and open qualifying. A store of its own, never shared with
- * the race's `gapTraces`: the two diffs' session gates are disjoint, so only
- * one of them ever grows in a session.
+ * the race's `carProgress.traces`: the two session gates are disjoint, so
+ * only one of them ever grows in a session.
  *
  * Traces are keyed on a per-car odometer — the lap distance driven since the
  * car was last seen arriving on the road, folded across the start/finish
@@ -287,6 +287,34 @@ export function createTrackGapsState(): TrackGapsState {
     ahead: { carIdx: -1, trend: { lastCheckpoint: null, ema: null, samples: 0 }, live: null },
     behind: { carIdx: -1, trend: { lastCheckpoint: null, ema: null, samples: 0 }, live: null },
   };
+}
+
+/**
+ * Every car's race progress (issue #1572, `diff/car-progress.ts`): the
+ * crossing-time traces the gap model reads (issue #933), written by
+ * `stepCarProgress` alone, once per live tick, in a race past the green while
+ * the player is racing. `diffGaps` and the sector timer take that step's
+ * returned tick; the translator's pair reading (`getLiveGapBetween`, the
+ * opponent-flag range) reads the traces here. All math on a trace lives in
+ * `@iracedeck/iracing-sdk` `gap-utils.ts`.
+ *
+ * Recreated with the state at a session change and a disconnect, and wiped
+ * whole at the replay wipe: a replay-timeline reading must never sit in a
+ * trace a live crossing time is interpolated on, so every car's trace starts
+ * again on the first live tick back.
+ */
+export type CarProgressState = {
+  /**
+   * Per-car crossing-time traces: a rolling ~1.15-lap history of
+   * `CarIdxLapCompleted + CarIdxLapDistPct` progress against `SessionTime`,
+   * sparse-indexed by carIdx; undefined = no valid reading yet.
+   */
+  traces: (ProgressTrace | undefined)[];
+};
+
+/** No car traced (issue #1572): the initial state. */
+export function createCarProgressState(): CarProgressState {
+  return { traces: [] };
 }
 
 /**
@@ -1567,14 +1595,11 @@ export type TranslatorState = {
   /** Cache key (`${TrackID}|${SessionNum}`) for invalidating `trackLengthMeters`. */
   trackLengthKey: string;
 
+  // ── Car progress (issue #1572) ──────────────────────────────────────────
+  /** See {@link CarProgressState}. Wiped with the rest of the state on a replay glance. */
+  carProgress: CarProgressState;
+
   // ── Gaps (issue #933) ───────────────────────────────────────────────────
-  /**
-   * Per-car crossing-time traces: rolling ~1.15-lap history of
-   * `lapCompleted + lapDistPct` progress against `SessionTime`, sparse-indexed
-   * by carIdx. Owned here; all math on them lives in
-   * `@iracedeck/iracing-sdk` `gap-utils.ts`.
-   */
-  gapTraces: (ProgressTrace | undefined)[];
   /** Cached class-neighbor car indices from the last tick (−1 = none). */
   gapAheadIdx: number;
   gapBehindIdx: number;
@@ -2315,7 +2340,8 @@ export function createInitialState(): TranslatorState {
     trackLengthMeters: null,
     trackLengthKey: "",
 
-    gapTraces: [],
+    carProgress: createCarProgressState(),
+
     gapAheadIdx: -1,
     gapBehindIdx: -1,
     gapLiveAhead: null,

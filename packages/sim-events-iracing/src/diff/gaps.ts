@@ -1,8 +1,10 @@
 /**
  * Gap tracking diff (issue #933).
  *
- * Owns the stateful side of the crossing-time gap model: records every live
- * car's progress→SessionTime trace each tick, resolves the player's
+ * Owns the stateful side of the crossing-time gap model: takes the tick's car
+ * progress and the progress→SessionTime traces behind it from the progress
+ * step (`stepCarProgress` in `car-progress.ts`, issue #1572, which records
+ * them and holds the gate on when they are read), resolves the player's
  * class-standings neighbors from the canonical frozen order, computes the
  * live gaps the `getLiveGaps()` accessor exposes (switching to a chaser-ETA
  * reading when the pair's leading car is stopped/crawling), maintains the
@@ -28,20 +30,20 @@
  */
 import type { SimEventName } from "@iracedeck/event-bus";
 import {
-  appendProgressSample,
   classifyGapTrend,
   crossingTimeAt,
   type GapTrendDirection,
-  isPreGreen,
   lapDeltaBetween,
   type ProgressTrace,
   recentProgressRate,
   resolveClassNeighbors,
+  type StandingsNeighbors,
   type TelemetryData,
   TrkLoc,
 } from "@iracedeck/iracing-sdk";
 
 import type { GapNeighborState, TranslatorState, TrendChain } from "../state.js";
+import type { CarProgressTick } from "./car-progress.js";
 import { coerceSettingNumber } from "./setting-number.js";
 import type { EmitFn } from "./types.js";
 
@@ -197,7 +199,7 @@ export type PairGapReading = { gapSeconds: number | null; etaReading: boolean };
  * does not engage.
  */
 export function readPairGap(
-  traces: TranslatorState["gapTraces"],
+  traces: readonly (ProgressTrace | undefined)[],
   leaderIdx: number,
   leaderProgress: number,
   chaserIdx: number,
@@ -378,13 +380,27 @@ export const GAPS_EVENTS = ["gap.thresholdCrossed", "gap.trendChanged"] as const
 /**
  * Per-tick gap tracking. Called from the translator's `handleTick` after the
  * frozen positions are computed (the same canonical array `diffOvertakes`
- * consumes). `paceCarIdx` is excluded from neighbor resolution explicitly —
- * the canonical order has no pace-car filter of its own.
+ * consumes) and right after the progress step, whose result it is handed.
+ * `paceCarIdx` is excluded from neighbor resolution explicitly — the
+ * canonical order has no pace-car filter of its own.
+ *
+ * @returns the class neighbours and class leader it resolved from the
+ * canonical order this tick (issue #1572: the one resolution per tick, handed
+ * on as a value to the sector timer), or `null` on a tick it resolved none —
+ * no progress tick, or no valid reading for the player.
  */
 export function diffGaps(
   state: TranslatorState,
   telemetry: TelemetryData,
-  isRaceSession: boolean,
+  /**
+   * This tick's car progress (issue #1572): the value `stepCarProgress`
+   * returned, which recorded the traces and holds the gate once — a race
+   * session, the progress arrays, a finite `SessionTime`, a player index, a
+   * canonical order, past the green, the player racing. `null` = the gate
+   * failed (or the step threw): no gaps this tick, and the live snapshots go
+   * blank.
+   */
+  progressTick: CarProgressTick | null,
   playerCarIdx: number,
   paceCarIdx: number | null,
   frozenPositions: readonly number[] | null,
@@ -422,7 +438,7 @@ export function diffGaps(
    * and the display trend are not affected.
    */
   underFullCourseCaution: boolean = false,
-): void {
+): StandingsNeighbors | null {
   // Under a full-course caution the gap model is not racing (issue #1171).
   // Every piece of callout bookkeeping means "since the last announcement, in
   // this racing situation", and the pickup voids that situation: a 10 s gap
@@ -444,72 +460,33 @@ export function diffGaps(
     resetLapHistory(state, "behind");
   }
 
-  const lc = telemetry.CarIdxLapCompleted as number[] | undefined;
-  const pct = telemetry.CarIdxLapDistPct as number[] | undefined;
-  // Finite, not merely numeric: `typeof NaN === "number"`, and a NaN session
-  // time would be stamped into every trace and surface as a NaN gap.
-  const rawSessionTime = telemetry.SessionTime;
-  const sessionTime = typeof rawSessionTime === "number" && Number.isFinite(rawSessionTime) ? rawSessionTime : null;
-  const playerRacing = !(typeof telemetry.LapCompleted === "number" && telemetry.LapCompleted < 0);
-
-  if (
-    !isRaceSession ||
-    !Array.isArray(lc) ||
-    !Array.isArray(pct) ||
-    sessionTime === null ||
-    playerCarIdx < 0 ||
-    frozenPositions === null ||
-    isPreGreen(telemetry) ||
-    !playerRacing
-  ) {
-    // Keep the traces — a brief gate flicker must not wipe a lap of history
-    // (session change recreates the whole state anyway). Only the live
-    // snapshots go blank.
+  // 1) The tick's progress. The gate is the progress step's (`stepCarProgress`
+  // holds it once, and a tick with a canonical order is one of its
+  // conditions, so the `frozenPositions` test here only narrows the type).
+  // The step keeps the traces on a failed gate — a brief flicker must not
+  // wipe a lap of history — so only the live snapshots go blank.
+  if (progressTick === null || frozenPositions === null) {
     state.gapLiveAhead = null;
     state.gapLiveBehind = null;
     state.gapEtaReadingAhead = false;
     state.gapEtaReadingBehind = false;
 
-    return;
+    return null;
   }
 
-  // 1) Record every live car's progress trace.
-  const carCount = Math.min(lc.length, pct.length);
+  const sessionTime = progressTick.sessionTime;
+  // Null for a reading that is not finite or is negative, undefined for an
+  // index past the arrays: either way the player has no progress this tick.
+  const playerProgress = progressTick.progress[playerCarIdx] ?? null;
 
-  for (let i = 0; i < carCount; i++) {
-    const laps = lc[i]!;
-    const dist = pct[i]!;
-
-    // Finite check first: `NaN < 0` is false, so a bare range guard lets a
-    // NaN sample through — and a NaN in a trace is permanent, since every
-    // comparison in `appendProgressSample` (backwards reset, dedupe, prune)
-    // is false against it. The trace would then grow unbounded and every
-    // crossing-time lookup on it would return garbage.
-    if (!Number.isFinite(laps) || !Number.isFinite(dist) || laps < 0 || dist < 0) continue;
-
-    let trace = state.gapTraces[i];
-
-    if (!trace) {
-      trace = [];
-      state.gapTraces[i] = trace;
-    }
-
-    appendProgressSample(trace, laps + dist, sessionTime);
-  }
-
-  const playerLc = lc[playerCarIdx];
-  const playerPct = pct[playerCarIdx];
-
-  if (!Number.isFinite(playerLc) || playerLc! < 0 || !Number.isFinite(playerPct) || playerPct! < 0) {
+  if (playerProgress === null) {
     state.gapLiveAhead = null;
     state.gapLiveBehind = null;
     state.gapEtaReadingAhead = false;
     state.gapEtaReadingBehind = false;
 
-    return;
+    return null;
   }
-
-  const playerProgress = playerLc + playerPct;
 
   // 2) Resolve neighbors from the canonical order; identity change resets a side.
   const neighbors = resolveClassNeighbors(
@@ -613,6 +590,7 @@ export function diffGaps(
     state,
     telemetry,
     "ahead",
+    progressTick.traces,
     playerCarIdx,
     playerProgress,
     sessionTime,
@@ -625,6 +603,7 @@ export function diffGaps(
     state,
     telemetry,
     "behind",
+    progressTick.traces,
     playerCarIdx,
     playerProgress,
     sessionTime,
@@ -639,7 +618,7 @@ export function diffGaps(
   // 4) Relevance-driven callout events + threshold episodes. Not under a
   // full-course caution (issue #1171): nothing is evaluated, so nothing is
   // emitted and the bookkeeping held above stays at rest.
-  if (underFullCourseCaution) return;
+  if (underFullCourseCaution) return neighbors;
 
   maybeEmitCalloutEvents(
     state,
@@ -652,6 +631,8 @@ export function diffGaps(
     getMinChangeSeconds,
     emit,
   );
+
+  return neighbors;
 }
 
 /** Compute one side's live snapshot, maintaining its checkpoint ring. */
@@ -659,6 +640,8 @@ function computeSide(
   state: TranslatorState,
   telemetry: TelemetryData,
   side: Side,
+  /** The progress tick's traces (`CarProgressTick.traces`): every car's crossing-time trace after this tick's samples. */
+  traces: readonly (ProgressTrace | undefined)[],
   playerCarIdx: number,
   playerProgress: number,
   sessionTime: number,
@@ -707,24 +690,8 @@ function computeSide(
     // `readPairGap`, shared with the opponent-flag race gap).
     const reading =
       side === "ahead"
-        ? readPairGap(
-            state.gapTraces,
-            idx,
-            neighborProgress,
-            playerCarIdx,
-            playerProgress,
-            sessionTime,
-            trackLengthMeters,
-          )
-        : readPairGap(
-            state.gapTraces,
-            playerCarIdx,
-            playerProgress,
-            idx,
-            neighborProgress,
-            sessionTime,
-            trackLengthMeters,
-          );
+        ? readPairGap(traces, idx, neighborProgress, playerCarIdx, playerProgress, sessionTime, trackLengthMeters)
+        : readPairGap(traces, playerCarIdx, playerProgress, idx, neighborProgress, sessionTime, trackLengthMeters);
 
     gapSeconds = reading.gapSeconds;
     etaRegime = reading.etaReading;
