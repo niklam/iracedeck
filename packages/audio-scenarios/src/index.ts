@@ -36,7 +36,13 @@ export {
   initializeAudioScenarios,
   isAudioScenariosInitialized,
 } from "./interpreter.js";
-export { manifestVoices, mergeManifests, referenceVoice, scanDriverNames, scanRaceEngineerVoices } from "./manifest.js";
+export {
+  manifestVoices,
+  mergeManifests,
+  referenceVoice,
+  scanRaceEngineerVoices,
+  selectableDriverNames,
+} from "./manifest.js";
 // What stands in for a part of the snapshot state that could not be read
 // (issue #1387): `ScenarioEngineState` and the pit-crew reader's result name it.
 export type { StatePartError } from "./state-part.js";

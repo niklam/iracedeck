@@ -71,6 +71,7 @@
  * race-start, not a rejection.
  */
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
+import type { DriverNameGroup } from "@iracedeck/callout-script";
 import { type CalloutIdOf, SESSION_START_CALLOUTS } from "@iracedeck/callout-settings";
 import { type SessionStartSnapshot, TrackWetness } from "@iracedeck/event-bus";
 import type { ILogger } from "@iracedeck/logger";
@@ -79,6 +80,7 @@ import type { TelemetryData } from "@iracedeck/sim-events-iracing";
 import type { ScenarioContract } from "../../dsl.js";
 import { poolRef } from "../../dsl.js";
 import type { IScenarioEngine } from "../../interpreter.js";
+import { driverNameRef } from "./driver-name-ref.js";
 import {
   buildStartBriefSpeakGate,
   describeMissingStartConditions,
@@ -121,6 +123,9 @@ export type SessionStartSnapshotResolver = () => SessionStartSnapshot | null;
  */
 export const SESSION_START_DELAY_MS = 3000;
 
+/** The driver-name group the greeting is spoken from (issue #1580). */
+const SESSION_START_GREETING_GROUP: DriverNameGroup = "session-start-greeting";
+
 /** Wetness enum → `session-start/wetness-<suffix>.mp3` clip suffix. */
 const WETNESS_CLIP_SUFFIX: Readonly<Partial<Record<TrackWetness, string>>> = {
   [TrackWetness.Dry]: "dry",
@@ -148,7 +153,7 @@ const WETNESS_CLIP_SUFFIX: Readonly<Partial<Record<TrackWetness, string>>> = {
  * generated reference (#1066).
  */
 export function registerSessionStartVocabulary(
-  engine: Pick<IScenarioEngine, "defineVar" | "defineCond">,
+  engine: Pick<IScenarioEngine, "defineVar" | "defineCond" | "recordedBases">,
   getSnapshot: SessionStartSnapshotResolver,
   getSetupWarningMismatch: SetupWarningResolver = () => false,
 ): void {
@@ -157,7 +162,7 @@ export function registerSessionStartVocabulary(
     () => {
       const s = getSnapshot();
 
-      return s ? poolRef("session-start-greeting", s.driverName) : null;
+      return s ? driverNameRef(engine, SESSION_START_GREETING_GROUP, s.driverName) : null;
     },
     'The session-start greeting with the driver\'s name — "ok, <name>" as one clip per name the voice recorded. Draws from the session-start-greeting clip group; a name the voice lacks resolves to nothing, so keep it optional.',
   );

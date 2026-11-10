@@ -8,7 +8,9 @@
  * takes (`names/<name>-01.mp3`), and since #1173 the name list offers only
  * bases, so that would silence both lines in such a pack for every user. This
  * resolves the name against the engine's live manifest — the built-in clips
- * plus every installed pack — with {@link driverNameClip}.
+ * plus every installed pack — with {@link driverNameClip}, which also plays an
+ * alias spelling (`geoff`) with its canonical's clip (`jeff`) in a voice that
+ * records only the canonical (issue #1580), judged by `voice`'s own names.
  */
 import { getScenarioEngine, isAudioScenariosInitialized } from "../../interpreter.js";
 import { driverNameClip } from "../../manifest.js";

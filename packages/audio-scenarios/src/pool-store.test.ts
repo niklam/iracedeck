@@ -349,3 +349,62 @@ describe("views", () => {
     expect(logger.error).toHaveBeenCalledWith(expect.stringContaining('malformed pool reference "pool:nobase/"'));
   });
 });
+
+describe("recordedBases (#1580)", () => {
+  const names = manifest([
+    "voice/v1/names/jeff.mp3",
+    "voice/v1/names/adam-01.mp3",
+    "voice/v1/names/adam-02.mp3",
+    "voice/v1/names/r2d2.mp3",
+    "voice/v1/names/sub/nested.mp3",
+    "voice/v1/names/upper.MP3",
+    "voice/v1/greet/hi-01.mp3",
+    "voice/v2/names/geoff.mp3",
+    "names/jeff.mp3",
+  ]);
+
+  beforeEach(() => {
+    store = new PoolStore(names, logger, () => voice, noScriptPools);
+  });
+
+  it("answers for the ACTIVE voice only, folding takes onto their base", () => {
+    expect([...store.recordedBases("names")].sort()).toEqual(["adam", "jeff", "r2d2"]);
+
+    voice = "v2";
+
+    expect([...store.recordedBases("names")]).toEqual(["geoff"]);
+  });
+
+  it("reads only the asked group", () => {
+    expect([...store.recordedBases("greet")]).toEqual(["hi"]);
+    expect([...store.recordedBases("race-end-greeting")]).toEqual([]);
+  });
+
+  it("is empty when no voice is active", () => {
+    voice = null;
+
+    expect(store.recordedBases("names").size).toBe(0);
+  });
+
+  it("is memoised per voice and group", () => {
+    const first = store.recordedBases("names");
+
+    voice = "v2";
+    store.recordedBases("names");
+    voice = "v1";
+
+    expect(store.recordedBases("names")).toBe(first);
+    expect(store.recordedBases("greet")).not.toBe(first);
+  });
+
+  it("is re-derived after setManifest, so a rescan is never served a stale set", () => {
+    const before = store.recordedBases("names");
+
+    store.setManifest(manifest(["voice/v1/names/chris-01.mp3"]));
+
+    const after = store.recordedBases("names");
+
+    expect(after).not.toBe(before);
+    expect([...after]).toEqual(["chris"]);
+  });
+});

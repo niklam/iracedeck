@@ -76,6 +76,7 @@
  * of the brief plays (issue #1284).
  */
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
+import type { DriverNameGroup } from "@iracedeck/callout-script";
 import { type CalloutIdOf, RACE_START_CALLOUTS } from "@iracedeck/callout-settings";
 import { type RaceStartSnapshot, type SessionCategory, type SessionClass, TrackWetness } from "@iracedeck/event-bus";
 import { isPostRace, SessionState } from "@iracedeck/iracing-sdk";
@@ -85,6 +86,7 @@ import type { TelemetryData } from "@iracedeck/sim-events-iracing";
 import type { ScenarioContext, ScenarioContract, SpeakGate } from "../../dsl.js";
 import { poolRef } from "../../dsl.js";
 import type { IScenarioEngine } from "../../interpreter.js";
+import { driverNameRef } from "./driver-name-ref.js";
 import {
   TEMPERATURE_UNIT_DESCRIPTION,
   temperatureNumberDescription,
@@ -228,7 +230,7 @@ const WETNESS_CLIP_SUFFIX: Readonly<Partial<Record<TrackWetness, string>>> = {
   [TrackWetness.ExtremelyWet]: "extremely-wet",
 };
 
-const RACE_START_GREETING_GROUP = "race-start-greeting";
+const RACE_START_GREETING_GROUP: DriverNameGroup = "race-start-greeting";
 const SESSION_START_GROUP = "session-start";
 const POSITION_NUMBER_GROUP = "position-number";
 
@@ -309,7 +311,7 @@ export function resolveRaceStartGridPosition(snapshot: RaceStartSnapshot | null)
  * descriptions feed the generated reference (#1066).
  */
 export function registerRaceStartVocabulary(
-  engine: Pick<IScenarioEngine, "defineVar" | "defineCond" | "defineCase">,
+  engine: Pick<IScenarioEngine, "defineVar" | "defineCond" | "defineCase" | "recordedBases">,
   getSnapshot: RaceStartSnapshotResolver,
   getSetupWarningMismatch: SetupWarningResolver = () => false,
 ): void {
@@ -326,7 +328,7 @@ export function registerRaceStartVocabulary(
 
       const name = s.driverName && s.driverName.length > 0 ? s.driverName : "driver";
 
-      return poolRef(RACE_START_GREETING_GROUP, name);
+      return driverNameRef(engine, RACE_START_GREETING_GROUP, name);
     },
     'The race-start greeting with the driver\'s name — "time to race, <name>" as one clip per name the voice recorded (the generic driver clip when no name is picked). Draws from the race-start-greeting clip group; a name the voice lacks resolves to nothing, so keep it optional.',
   );

@@ -1,5 +1,7 @@
+import { DRIVER_NAME_ALIASES } from "@iracedeck/callout-script";
 import { describe, expect, it } from "vitest";
 
+import * as packageIndex from "./index.js";
 import { poolMemberPattern } from "./interpreter.js";
 import {
   type AudioAssetsManifest,
@@ -7,8 +9,8 @@ import {
   manifestVoices,
   mergeManifests,
   referenceVoice,
-  scanDriverNames,
   scanRaceEngineerVoices,
+  selectableDriverNames,
 } from "./manifest.js";
 
 const manifest: AudioAssetsManifest = {
@@ -90,9 +92,9 @@ describe("referenceVoice", () => {
   });
 });
 
-describe("scanDriverNames", () => {
+describe("selectableDriverNames — the recorded names", () => {
   it("returns the union of driver names across voices, sorted", () => {
-    expect(scanDriverNames(manifest)).toEqual(["niklas", "oivindl"]);
+    expect(selectableDriverNames(manifest)).toEqual(["niklas", "oivindl"]);
   });
 
   it("strips the .mp3 extension from each name", () => {
@@ -100,7 +102,7 @@ describe("scanDriverNames", () => {
       ...manifest,
       clips: ["voice/luca/names/with.dot.mp3"],
     };
-    expect(scanDriverNames(m)).toEqual(["with.dot"]);
+    expect(selectableDriverNames(m)).toEqual(["with.dot"]);
   });
 
   it("ignores clips that aren't direct children of voice/<voice>/names/", () => {
@@ -108,7 +110,7 @@ describe("scanDriverNames", () => {
       ...manifest,
       clips: ["voice/luca/names/sub/nested.mp3", "voice/luca/welcome.mp3"],
     };
-    expect(scanDriverNames(m)).toEqual([]);
+    expect(selectableDriverNames(m)).toEqual([]);
   });
 
   describe("name takes (#1173)", () => {
@@ -117,7 +119,7 @@ describe("scanDriverNames", () => {
     // greetings are played under, so a take lists as its base — otherwise the
     // dropdown carries `niklas-01` beside `niklas`, and picking it names a base
     // the bare clips never join.
-    const names = (...clips: string[]): string[] => scanDriverNames({ ...manifest, clips });
+    const names = (...clips: string[]): string[] => selectableDriverNames({ ...manifest, clips });
 
     it("lists a bare clip as itself", () => {
       expect(names("voice/luca/names/niklas.mp3")).toEqual(["niklas"]);
@@ -172,6 +174,57 @@ describe("scanDriverNames", () => {
   });
 });
 
+describe("selectableDriverNames — the alias rows (#1580)", () => {
+  const names = (...clips: string[]): string[] => selectableDriverNames({ ...manifest, clips });
+
+  it("lists an alias while some voice records its canonical", () => {
+    expect(names("voice/luca/names/jeff.mp3", "voice/luca/names/adam.mp3")).toEqual(["adam", "geoff", "jeff"]);
+  });
+
+  it("lists an alias when only a take of its canonical is recorded", () => {
+    expect(names("voice/snoop/names/jeff-01.mp3")).toEqual(["geoff", "jeff"]);
+  });
+
+  it("lists the canonical from any voice, so the alias row is the union's", () => {
+    expect(names("voice/luca/names/adam.mp3", "voice/snoop/names/dominic.mp3")).toEqual(["adam", "dominic", "dominik"]);
+  });
+
+  it("does not list an alias whose canonical no voice records", () => {
+    expect(names("voice/luca/names/adam.mp3")).toEqual(["adam"]);
+  });
+
+  it("lists a name once when a voice records the alias spelling too", () => {
+    expect(names("voice/luca/names/jeff.mp3", "voice/snoop/names/geoff.mp3")).toEqual(["geoff", "jeff"]);
+  });
+
+  it("lists a recorded alias spelling even when no voice records its canonical", () => {
+    expect(names("voice/snoop/names/geoff.mp3")).toEqual(["geoff"]);
+  });
+
+  it("sorts the alias among the names, not beside its canonical", () => {
+    expect(names("voice/luca/names/chris.mp3", "voice/luca/names/ken.mp3", "voice/luca/names/lars.mp3")).toEqual([
+      "chris",
+      "ken",
+      "kris",
+      "lars",
+    ]);
+  });
+
+  it("offers every alias of the map once all canonicals are recorded", () => {
+    const canonicals = [...new Set(Object.values(DRIVER_NAME_ALIASES))];
+    const listed = names(...canonicals.map((name) => `voice/luca/names/${name}.mp3`));
+
+    expect(listed).toEqual([...canonicals, ...Object.keys(DRIVER_NAME_ALIASES)].sort());
+  });
+});
+
+describe("the package index (#1580)", () => {
+  it("exports selectableDriverNames as the only producer of the name list", () => {
+    expect(packageIndex).toHaveProperty("selectableDriverNames");
+    expect(packageIndex).not.toHaveProperty("scanDriverNames");
+  });
+});
+
 describe("driverNameClip (#1173)", () => {
   // The radio check and the Test button play a name by path. Since the list
   // offers only bases, a pack that records a name only as takes has to be
@@ -217,6 +270,44 @@ describe("driverNameClip (#1173)", () => {
 
       expect(poolMemberPattern("names", "niklas").exec(clip ?? "")?.[1]).toBe(voice);
     }
+  });
+});
+
+describe("driverNameClip — alias spellings (#1580)", () => {
+  const clipFor = (clips: string[], voice: string, name: string): string | null =>
+    driverNameClip({ ...manifest, clips }, voice, name);
+
+  it("plays the canonical's clip for an alias in a voice that records only the canonical", () => {
+    expect(clipFor(["voice/luca/names/jeff.mp3"], "luca", "geoff")).toBe("voice/luca/names/jeff.mp3");
+  });
+
+  it("plays the canonical's lowest take when the canonical is recorded only as takes", () => {
+    expect(clipFor(["voice/snoop/names/jeff-02.mp3", "voice/snoop/names/jeff-01.mp3"], "snoop", "geoff")).toBe(
+      "voice/snoop/names/jeff-01.mp3",
+    );
+  });
+
+  it("plays the voice's own clip for the alias spelling when it records one", () => {
+    expect(clipFor(["voice/luca/names/jeff.mp3", "voice/luca/names/geoff-01.mp3"], "luca", "geoff")).toBe(
+      "voice/luca/names/geoff-01.mp3",
+    );
+  });
+
+  it("resolves against the voice it is passed, not another voice's names", () => {
+    // `snoop` records the alias spelling, `luca` only the canonical: each
+    // voice speaks Geoff from its own clips.
+    const clips = ["voice/luca/names/jeff.mp3", "voice/snoop/names/geoff.mp3", "voice/snoop/names/jeff.mp3"];
+
+    expect(clipFor(clips, "luca", "geoff")).toBe("voice/luca/names/jeff.mp3");
+    expect(clipFor(clips, "snoop", "geoff")).toBe("voice/snoop/names/geoff.mp3");
+  });
+
+  it("returns null when the voice records neither spelling, even when another voice records the canonical", () => {
+    expect(clipFor(["voice/luca/names/jeff.mp3", "voice/snoop/names/adam.mp3"], "snoop", "geoff")).toBeNull();
+  });
+
+  it("does not resolve a canonical to its alias", () => {
+    expect(clipFor(["voice/luca/names/geoff.mp3"], "luca", "jeff")).toBeNull();
   });
 });
 
