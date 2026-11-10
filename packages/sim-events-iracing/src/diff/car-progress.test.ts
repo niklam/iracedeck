@@ -25,6 +25,7 @@ import { describe, expect, it } from "vitest";
 import { type CarProgressState, createCarProgressState } from "../state.js";
 import {
   CAR_PROGRESS_LINE_GUARD_PCT,
+  CAR_PROGRESS_LINE_MAX_TICK_STEP,
   confirmedLastProgress,
   readCarProgress,
   stepCarProgress,
@@ -348,6 +349,22 @@ describe("readCarProgress — the start/finish correction", () => {
     expect(readCarProgress(6.95, 5, 1 - CAR_PROGRESS_LINE_GUARD_PCT)).toBeCloseTo(6.95, 10);
   });
 
+  it("leaves a one-tick hop across the line as it reads: a tick's travel bounds the correction, not a sample's", () => {
+    // The counter did not move and the fraction jumped the line: 0.04 lap in
+    // a tick, which the trace's own 0.05 bound between samples would pass.
+    expect(readCarProgress(5.98, 5, 0.02)).toBe(5.02);
+    expect(readCarProgress(6.02, 6, 0.98)).toBe(6.98);
+    // The same with the counter a lap the other way.
+    expect(readCarProgress(5.98, 6, 0.98 + 0.015)).toBe(6 + (0.98 + 0.015));
+  });
+
+  it("corrects up to a tick's travel and no further", () => {
+    expect(CAR_PROGRESS_LINE_MAX_TICK_STEP).toBe(0.01);
+    // 0.009 lap on from 6.995: corrected. 0.011 lap on: not.
+    expect(readCarProgress(6.995, 6, 0.004)).toBeCloseTo(7.004, 10);
+    expect(readCarProgress(6.995, 6, 0.006)).toBe(6.006);
+  });
+
   it("leaves a step near the line as it reads when the car could not have driven there", () => {
     // Towed from 80% of the lap to a stall just past the line, a lap down.
     expect(readCarProgress(6.8, 5, 0.01)).toBe(5.01);
@@ -370,12 +387,31 @@ function raw(sessionTime: number, cars: [number, number][], overrides: Partial<T
 
 describe("stepCarProgress — a counter and a fraction that disagree at the line", () => {
   /**
-   * Two clean ticks (t = 100, 100.1) that leave car 1 at `6 + first` then
-   * `6 + second`: the second continues the first, so car 1's last progress is
-   * confirmed and the next tick's reading is corrected against it.
+   * Clean ticks that leave car 1 at `6 + first` (t = 100) then `6 + second`
+   * (t = 100.1), its last progress confirmed, so the next tick's reading is
+   * corrected against it. Two earlier ticks (t = 99.8, 99.9) read the car
+   * clear of the line guard band first: a run that began inside the band
+   * would never confirm.
    */
   function confirmed(first: number, second: number): CarProgressState {
     const slice = createCarProgressState();
+    const clear = Math.min(first - 0.005, 0.949);
+
+    step(
+      slice,
+      raw(99.8, [
+        [6, 0.498],
+        [6, clear - 0.005],
+      ]),
+    );
+    step(
+      slice,
+      raw(99.9, [
+        [6, 0.499],
+        [6, clear],
+      ]),
+    );
+    expect(confirmedLastProgress(slice, 1)).toBe(6 + clear);
 
     step(
       slice,
@@ -418,8 +454,8 @@ describe("stepCarProgress — a counter and a fraction that disagree at the line
     expect(after!.progress[1]).toBe(7.0021);
     expect(after!.traceReset).toEqual([false, false]);
     // One unbroken trace through the crossing, ascending.
-    expect(slice.traces[1]!.map((sample) => sample.time)).toEqual([100, 100.1, 100.3]);
-    expect(slice.traces[1]!.map((sample) => sample.progress)).toEqual([6.9939, 6.9989, 7.0021]);
+    expect(slice.traces[1]!.map((sample) => sample.time)).toEqual([99.8, 99.9, 100, 100.1, 100.3]);
+    expect(slice.traces[1]!.map((sample) => sample.progress)).toEqual([6.944, 6.949, 6.9939, 6.9989, 7.0021]);
   });
 
   it("records the corrected reading in the trace when it is a sample's step on", () => {
@@ -435,7 +471,7 @@ describe("stepCarProgress — a counter and a fraction that disagree at the line
 
     expect(at!.progress[1]).toBeCloseTo(6.998, 10);
     expect(at!.traceReset[1]).toBe(false);
-    expect(slice.traces[1]).toEqual([
+    expect(slice.traces[1]!.slice(2)).toEqual([
       { progress: 6.989, time: 100 },
       { progress: 6.994, time: 100.1 },
       { progress: expect.closeTo(6.998, 10), time: 100.2 },
@@ -536,6 +572,23 @@ describe("stepCarProgress — a counter and a fraction that disagree at the line
     expect(confirmedLastProgress(slice, 1)).toBeUndefined();
   });
 
+  it("still resets the trace on a one-tick hop across the line with the counter unchanged", () => {
+    const slice = confirmed(0.975, 0.98);
+    const hopped = step(
+      slice,
+      raw(100.2, [
+        [6, 0.502],
+        [6, 0.02],
+      ]),
+    );
+
+    // Not 7.02: the car did not drive 0.04 lap in a tick.
+    expect(hopped!.progress[1]).toBe(6.02);
+    expect(hopped!.traceReset).toEqual([false, true]);
+    expect(slice.traces[1]).toEqual([{ progress: 6.02, time: 100.2 }]);
+    expect(confirmedLastProgress(slice, 1)).toBeUndefined();
+  });
+
   it("keeps each car's last progress as the corrected reading, still confirmed", () => {
     const slice = confirmed(0.9979, 0.9999);
 
@@ -578,6 +631,141 @@ describe("stepCarProgress — a last progress is corrected against only once it 
     expect(slice.lastProgressConfirmed).toEqual([true, true]);
     expect(confirmedLastProgress(slice, 0)).toBe(6.501);
     expect(confirmedLastProgress(slice, 1)).toBe(6.401);
+  });
+
+  it("does not confirm a run of readings that began inside the line guard band until one is clear of it", () => {
+    const slice = createCarProgressState();
+
+    step(
+      slice,
+      raw(100, [
+        [6, 0.5],
+        [6, 0.02],
+      ]),
+    );
+    step(
+      slice,
+      raw(100.1, [
+        [6, 0.501],
+        [6, 0.03],
+      ]),
+    );
+    // Two readings that agree, both inside the band: they could both be a lap off.
+    expect(slice.lastProgress[1]).toBe(6.03);
+    expect(confirmedLastProgress(slice, 1)).toBeUndefined();
+
+    step(
+      slice,
+      raw(100.2, [
+        [6, 0.502],
+        [6, 0.045],
+      ]),
+    );
+    expect(confirmedLastProgress(slice, 1)).toBeUndefined();
+
+    step(
+      slice,
+      raw(100.3, [
+        [6, 0.503],
+        [6, 0.06],
+      ]),
+    );
+    expect(confirmedLastProgress(slice, 1)).toBe(6 + 0.06);
+  });
+
+  it("keeps a confirmed progress confirmed through the guard band", () => {
+    const slice = createCarProgressState();
+
+    step(
+      slice,
+      raw(100, [
+        [6, 0.5],
+        [6, 0.93],
+      ]),
+    );
+    step(
+      slice,
+      raw(100.1, [
+        [6, 0.501],
+        [6, 0.94],
+      ]),
+    );
+    expect(confirmedLastProgress(slice, 1)).toBe(6 + 0.94);
+
+    step(
+      slice,
+      raw(100.2, [
+        [6, 0.502],
+        [6, 0.96],
+      ]),
+    );
+    step(
+      slice,
+      raw(100.3, [
+        [6, 0.503],
+        [6, 0.99],
+      ]),
+    );
+    expect(confirmedLastProgress(slice, 1)).toBe(6 + 0.99);
+  });
+
+  it("does not carry on a first reading when the counter leads the fraction for two ticks", () => {
+    const slice = createCarProgressState();
+
+    // Car 1 is first read while its counter has stepped and its fraction has
+    // not wrapped, and is still so on the next tick: truly at 6.9998 and
+    // 6.9999, it reads 7.9998 and 7.9999. The two agree with each other.
+    step(
+      slice,
+      raw(100, [
+        [6, 0.5],
+        [7, 0.9998],
+      ]),
+    );
+
+    const second = step(
+      slice,
+      raw(100.1, [
+        [6, 0.501],
+        [7, 0.9999],
+      ]),
+    );
+
+    expect(second!.progress[1]).toBe(7.9999);
+    expect(confirmedLastProgress(slice, 1)).toBeUndefined();
+
+    // The fraction wraps: the true reading, taken as it stands and not a lap high.
+    const next = step(
+      slice,
+      raw(100.2, [
+        [6, 0.502],
+        [7, 0.0001],
+      ]),
+    );
+
+    expect(next!.progress[1]).toBe(7.0001);
+    expect(next!.traceReset).toEqual([false, true]);
+
+    const readings: (number | null | undefined)[] = [];
+    const resets: (boolean | undefined)[] = [];
+
+    for (let k = 1; k <= 30; k++) {
+      const read = step(
+        slice,
+        raw(100.2 + k * 0.1, [
+          [6, 0.502 + k * 0.001],
+          [7, 0.0001 + k * 0.004],
+        ]),
+      );
+
+      readings.push(read!.progress[1]);
+      resets.push(read!.traceReset[1]);
+    }
+
+    expect(readings).toEqual(Array.from({ length: 30 }, (_, i) => 7 + (0.0001 + (i + 1) * 0.004)));
+    expect(resets).toEqual(new Array(30).fill(false));
+    // Clear of the band by now, and confirmed at the true lap.
+    expect(confirmedLastProgress(slice, 1)).toBe(7 + (0.0001 + 30 * 0.004));
   });
 
   it("has no confirmed progress for a car it has never read", () => {
@@ -746,9 +934,10 @@ describe("stepCarProgress — a last progress is corrected against only once it 
         [7, 0.0021],
       ]),
     );
-    expect(confirmedLastProgress(slice, 1)).toBe(7.0021);
+    // Continuing, but still inside the guard band, where agreement confirms nothing.
+    expect(confirmedLastProgress(slice, 1)).toBeUndefined();
 
-    // Round the lap to the line again.
+    // Round the lap to the line again, confirmed once clear of the band.
     let time = 100.2;
     let pct = 0.0021;
 

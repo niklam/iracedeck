@@ -656,9 +656,13 @@ describe("sim-events-iracing translator", () => {
     });
     /** Laps per tick: every car at 0.01 lap/s, ten ticks a second. */
     const STEP = 0.001;
-    const TICKS = 100;
-    /** True progress at tick `k`: the player mid-lap, AHEAD about to cross the line, BEHIND two seconds after it. */
-    const at = (k: number): number[] => [4.3 + STEP * k, 4.9605 + STEP * k, 4.9405 + STEP * k];
+    const TICKS = 120;
+    /**
+     * True progress at tick `k`: the player mid-lap, AHEAD on its way to the
+     * line, BEHIND two seconds after it. Both start clear of the line guard
+     * band, where a first reading can be confirmed.
+     */
+    const at = (k: number): number[] => [4.3 + STEP * k, 4.9405 + STEP * k, 4.9205 + STEP * k];
 
     /**
      * Drive the three cars across the line with `car`'s two arrays disagreeing
@@ -714,10 +718,10 @@ describe("sim-events-iracing translator", () => {
     // ETA regime with no separation (0 s). Only the leading car a lap HIGH
     // read right by accident, since the lookup is at the chaser's progress.
     it.each([
-      ["the chasing car's counter leads its fraction", BEHIND, "counterLeads", 59],
-      ["the chasing car's fraction leads its counter", BEHIND, "fractionLeads", 60],
-      ["the leading car's counter leads its fraction", AHEAD, "counterLeads", 39],
-      ["the leading car's fraction leads its counter", AHEAD, "fractionLeads", 40],
+      ["the chasing car's counter leads its fraction", BEHIND, "counterLeads", 79],
+      ["the chasing car's fraction leads its counter", BEHIND, "fractionLeads", 80],
+      ["the leading car's counter leads its fraction", AHEAD, "counterLeads", 59],
+      ["the leading car's fraction leads its counter", AHEAD, "fractionLeads", 60],
     ] as const)("stays at the pair's two seconds on every tick when %s", (_name, car, kind, expectedTick) => {
       const { gaps, desyncTick } = drive(car, kind);
 

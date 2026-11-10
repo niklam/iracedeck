@@ -316,14 +316,17 @@ export type CarProgressState = {
    */
   lastProgress: (number | undefined)[];
   /**
-   * Per car, by carIdx: whether {@link lastProgress} continued the reading
-   * before it (within half a lap), so its lap count is one two readings agree
-   * on. False (a hole reads as false) for a car's first reading after none,
-   * and for a reading that did not continue the last: such a reading may have
-   * been taken on the very tick the car's lap counter and lap fraction
-   * disagree at the line, a whole lap off, and correcting the next reading
-   * against it would carry that lap on. Cleared wherever the last progress
-   * is.
+   * Per car, by carIdx: whether {@link lastProgress} may be corrected
+   * against. True once a reading continued the one before it (within half a
+   * lap) and either that one was confirmed or this one was read clear of the
+   * line guard band; it then holds while each reading continues the last.
+   * False (a hole reads as false) for a car's first reading after none, for a
+   * reading that did not continue the last, and for a run of readings that
+   * began inside the band and has not left it: such a reading may have been
+   * taken while the car's lap counter and lap fraction disagree at the line,
+   * a whole lap off (two of them agree with each other when the disagreement
+   * lasts two ticks), and correcting the next reading against it would carry
+   * that lap on. Cleared wherever the last progress is.
    */
   lastProgressConfirmed: boolean[];
   /**
@@ -332,7 +335,10 @@ export type CarProgressState = {
    * completed, so it is null after a tick the gate refused, after a tick the
    * step threw on, and before the first. Handed on as the next tick's
    * `previousSessionTime`, which is how a consumer knows the tick it last
-   * took is the one directly before this one.
+   * took is the one the step read before this one. Nothing clears it on a
+   * tick the step is not called on at all (the canonical order threw): that
+   * tick is bridged like a telemetry tick that never arrived, a wider tick
+   * pair the consumer bounds for itself.
    */
   lastReadSessionTime: number | null;
   /**

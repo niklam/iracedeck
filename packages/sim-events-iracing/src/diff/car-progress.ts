@@ -17,7 +17,6 @@
  */
 import {
   appendProgressSample,
-  GAP_TRACE_MAX_STEP,
   isPreGreen,
   type ReadonlyProgressTrace,
   type TelemetryData,
@@ -35,6 +34,19 @@ import type { CarProgressState } from "../state.js";
  * A whole-lap step anywhere else on the lap is a real discontinuity.
  */
 export const CAR_PROGRESS_LINE_GUARD_PCT = 0.05;
+
+/**
+ * The furthest (laps) a corrected reading may be from the last progress: one
+ * tick's travel, not the 0.05 lap that `GAP_TRACE_MAX_STEP` allows between
+ * two recorded SAMPLES of a trace. The disagreement {@link readCarProgress}
+ * reads through leaves the car where one tick of driving put it. At 60 Hz
+ * even a 15 s lap is 0.0011 lap per tick, so 0.01 lap covers any car on any
+ * track with several dropped ticks to spare, while a hop across the line
+ * with the counter unchanged (5.98 to 5.02, a teleport that the trace's own
+ * bound would pass as a 0.04 lap drive to 6.02) stays the discontinuity it
+ * is.
+ */
+export const CAR_PROGRESS_LINE_MAX_TICK_STEP = 0.01;
 
 /**
  * The furthest (laps) a reading may be from the last progress and still be
@@ -63,11 +75,13 @@ const CAR_PROGRESS_CONTINUOUS_LAPS = 0.5;
  * So when the sum is more than half a lap from the last progress, the lap
  * count is taken from the last progress instead: the fraction plus the whole
  * number of laps that puts it nearest the last progress. That candidate is
- * used only when it is within `GAP_TRACE_MAX_STEP` of the last progress (the
- * car could have driven there) AND the fraction is within
+ * used only when it is within {@link CAR_PROGRESS_LINE_MAX_TICK_STEP} of the
+ * last progress (the car could have driven there in a tick) AND the fraction
+ * is within
  * {@link CAR_PROGRESS_LINE_GUARD_PCT} of the line (the only place the arrays
- * disagree). Anything else — a tow, a teleport to the pits, a counter rewound
- * mid-lap — is returned as the plain sum and stays the discontinuity it is.
+ * disagree). Anything else — a tow, a teleport to the pits, a hop across the
+ * line, a counter rewound mid-lap — is returned as the plain sum and stays
+ * the discontinuity it is.
  *
  * `previous` must be a confirmed progress, never merely the last one. A car's
  * first reading can itself be taken on a disagreeing tick (the player's is at
@@ -81,21 +95,38 @@ export function readCarProgress(previous: number | undefined, lapCompleted: numb
 
   if (previous === undefined || Math.abs(raw - previous) <= CAR_PROGRESS_CONTINUOUS_LAPS) return raw;
 
-  const nearLine = lapDistPct <= CAR_PROGRESS_LINE_GUARD_PCT || lapDistPct >= 1 - CAR_PROGRESS_LINE_GUARD_PCT;
-
-  if (!nearLine) return raw;
+  if (!isNearLine(lapDistPct)) return raw;
 
   const candidate = lapDistPct + Math.round(previous - lapDistPct);
 
-  return Math.abs(candidate - previous) <= GAP_TRACE_MAX_STEP ? candidate : raw;
+  return Math.abs(candidate - previous) <= CAR_PROGRESS_LINE_MAX_TICK_STEP ? candidate : raw;
+}
+
+/**
+ * Whether a lap fraction is within {@link CAR_PROGRESS_LINE_GUARD_PCT} of the
+ * start/finish line, on either side: the only stretch where a car's lap
+ * counter and lap fraction can disagree.
+ */
+function isNearLine(lapDistPct: number): boolean {
+  return lapDistPct <= CAR_PROGRESS_LINE_GUARD_PCT || lapDistPct >= 1 - CAR_PROGRESS_LINE_GUARD_PCT;
 }
 
 /**
  * The progress last read for a car, when a reading may be corrected against
- * it: only once it is confirmed — it continued the reading before it, so two
- * readings agree on its lap count. `undefined` for a car with no reading on
- * the last tick, for a first reading after none, and for one that did not
- * continue the last. The one rule for every reader that puts a raw reading on
+ * it: only once it is confirmed. A reading is confirmed when it continued the
+ * reading before it (within half a lap) AND either that one was confirmed
+ * already or this one was read clear of the line guard band. Agreement alone
+ * is not enough near the line: a disagreement that lasts two ticks gives two
+ * wrong readings that agree with each other, so a car first read inside the
+ * band stays unconfirmed until it is read outside it, where the two arrays
+ * cannot disagree. The cost is accepted: a car first read (after a blink,
+ * say) within the band and crossing on a disagreeing tick is not corrected
+ * there, and loses that crossing to a trace reset — a missing lap for the
+ * sector timer, never a wrong one.
+ *
+ * `undefined` for a car with no reading on the last tick, for a first reading
+ * after none, for one that did not continue the last, and for a run of
+ * readings that began inside the band and has not left it. The one rule for every reader that puts a raw reading on
  * the traces' scale through {@link readCarProgress}: the step itself, and the
  * translator's pair reading (`getLiveGapBetween`).
  */
@@ -111,11 +142,21 @@ export function confirmedLastProgress(slice: CarProgressState, carIdx: number): 
  * tick to measure against the next (the sector timer's crossing
  * interpolation) may bridge from the tick it last consumed only when this
  * tick's {@link CarProgressTick.previousSessionTime} equals that tick's
- * `sessionTime`. Otherwise at least one tick in between was not read — the
- * gate refused it, the step threw on it, or the consumer never saw it — and
- * EVERY car's continuity is broken, whatever `traceReset` says: a reset
- * proves a discontinuity, but no reset proves nothing about ticks nobody
- * read.
+ * `sessionTime`. Otherwise a tick in between broke the chain — the gate
+ * refused it, the step threw on it, or the consumer skipped a tick the step
+ * read — and EVERY car's continuity is broken, whatever `traceReset` says: a
+ * reset proves a discontinuity, but no reset proves nothing about such a
+ * tick.
+ *
+ * **What the rule does not see.** Only a tick the step was CALLED on and
+ * refused or threw on breaks the chain. A tick on which the step was not
+ * called at all (the canonical order threw, so the translator skipped every
+ * step that consumes it, this one and its consumers alike) leaves
+ * `lastReadSessionTime` standing, so the next tick names the tick before the
+ * gap as its previous one and is bridged across it. That is the same as a
+ * telemetry tick that never arrived: a wider tick pair, which the consumer
+ * bounds for itself (the sector timer measures no crossing across a pair
+ * more than `SECTOR_MAX_TICK_SPAN_S` apart).
  */
 export type CarProgressTick = {
   /** The tick's `SessionTime`, finite. */
@@ -123,7 +164,9 @@ export type CarProgressTick = {
   /**
    * The `sessionTime` of the tick the step read directly before this one, or
    * null when it read none: the first tick, the tick after one the gate
-   * refused, and the tick after one the step threw on.
+   * refused, and the tick after one the step threw on. A tick the step was
+   * not called on is not seen here, so the two may be further apart than one
+   * tick (see the type's note).
    */
   previousSessionTime: number | null;
   /**
@@ -165,7 +208,8 @@ export type CarProgressTick = {
  * progress that is confirmed ({@link confirmedLastProgress}); a first reading
  * after none is taken as it stands, and if it was a lap off (taken on a
  * disagreeing tick) the next true reading replaces it at the cost of one
- * trace reset, rather than inheriting its lap. The tick also says which tick
+ * trace reset, rather than inheriting its lap. A run of readings that began
+ * near the line confirms only once the car is read clear of it. The tick also says which tick
  * was read directly before it (`previousSessionTime`), null unless that one
  * read every car. `traceReset` is true only where `appendProgressSample`
  * answered `"reset"`: the reading was a discontinuity (a backwards step, or a
@@ -231,6 +275,7 @@ export function stepCarProgress(
     }
 
     const previous = slice.lastProgress[i];
+    const previousConfirmed = slice.lastProgressConfirmed[i] === true;
     const carProgress = readCarProgress(confirmedLastProgress(slice, i), laps, dist);
     let trace = slice.traces[i];
 
@@ -241,10 +286,14 @@ export function stepCarProgress(
 
     progress[i] = carProgress;
     traceReset[i] = appendProgressSample(trace, carProgress, sessionTime) === "reset";
-    // Confirmed when it continues the reading before it, whatever that one
-    // was: two readings that agree to within half a lap agree on the lap.
+    // Confirmed when it continues the reading before it AND that one was
+    // confirmed or this one is clear of the line: inside the guard band two
+    // readings can agree with each other and both be a lap off (a
+    // disagreement lasting two ticks), so agreement there confirms nothing.
     slice.lastProgressConfirmed[i] =
-      previous !== undefined && Math.abs(carProgress - previous) <= CAR_PROGRESS_CONTINUOUS_LAPS;
+      previous !== undefined &&
+      Math.abs(carProgress - previous) <= CAR_PROGRESS_CONTINUOUS_LAPS &&
+      (previousConfirmed || !isNearLine(dist));
     slice.lastProgress[i] = carProgress;
   }
 
