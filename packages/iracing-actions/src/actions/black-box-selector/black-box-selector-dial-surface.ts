@@ -44,13 +44,24 @@
  * warning refreshes on global-settings changes (`refreshAll`), per context
  * since each dial may turn a different pair, not from telemetry, so this
  * surface never subscribes to the telemetry tick.
+ *
+ * The Switch Select / Adjust long press previews its outcome mid-hold on a
+ * Stream Deck+ strip (encoders rule 9, #1120): the switch is the plugin's own
+ * setting, so its result is knowable. Past the long-press threshold the strip
+ * shows the OTHER rotation's arrows above the shared pending bar
+ * (`renderSelectControlPendingStrip` / `renderAdjustControlPendingStrip`), and
+ * a long release commits the switch. A knob never reports its release, so it
+ * never previews.
  */
 import {
   applyBindingWarning,
+  createHoldPreview,
   type DeckTriggerDescription,
   type DialCanvasProfile,
   getDualPressThresholdMs,
+  type HoldPreview,
   type IDeckActionContext,
+  NOOP_HOLD_PREVIEW,
   svgToDataUri,
 } from "@iracedeck/deck-core";
 import type { ILogger } from "@iracedeck/logger";
@@ -61,6 +72,7 @@ import { dialAppearanceFields, type DialBoxColors, resolveDialBoxColors } from "
 import { KNOB_BOX_HEIGHT, KNOB_BOX_WIDTH } from "../../shared/dial-knob-box.js";
 import { pushDialNameIcon } from "../../shared/dial-name-icon.js";
 import { persistDialPatch } from "../../shared/dial-persist.js";
+import { renderPendingBar } from "../../shared/dial-preview.js";
 import { classifyDialReleaseForHost } from "../../shared/dial-release.js";
 import { type DialGestures, ReleaseDialSurfaceBase } from "../../shared/dial-surface-base.js";
 
@@ -135,12 +147,15 @@ export const GESTURE_ACTIONS = [
 ] as const;
 export type GestureSlot = (typeof GESTURE_ACTIONS)[number];
 
+/** The rotations Switch Select / Adjust moves between: every rotation but `boxes`. */
+export type SwitchableRotation = Exclude<DialRotation, "boxes">;
+
 /**
  * The rotation `switch-rotation` takes each rotation to (#1585): Select Control
  * and Adjust Control swap. `boxes` has no entry, so the gesture does nothing on
  * a dial that cycles boxes — it never takes a dial to or from `boxes`.
  */
-export const SWITCHED_ROTATION: Partial<Record<DialRotation, DialRotation>> = {
+export const SWITCHED_ROTATION: Partial<Record<DialRotation, SwitchableRotation>> = {
   "select-control": "adjust-control",
   "adjust-control": "select-control",
 };
@@ -246,6 +261,23 @@ export function firingGestures(dial: DialSettings): ResolvedGestures {
     tap: firing(resolved.tap),
     longTouch: firing(resolved.longTouch),
   };
+}
+
+/**
+ * @internal Exported for testing
+ *
+ * The rotation a long release would switch this dial to — what its hold
+ * previews (encoders rule 9, #1120) — or `null` when the Long Press is not
+ * Switch Select / Adjust, or is but has nothing to switch (a dial that cycles
+ * boxes). Reads the slot through {@link resolveGestures}, so an unset Long
+ * Press on a Select or Adjust dial previews, and the target from
+ * {@link SWITCHED_ROTATION}, the table the switch itself reads: what the strip
+ * promises mid-hold is what the release does.
+ */
+export function pendingRotationPreview(dial: DialSettings): SwitchableRotation | null {
+  if (resolveGestures(dial).longPress !== "switch-rotation") return null;
+
+  return SWITCHED_ROTATION[dial.rotation] ?? null;
 }
 
 /** @internal Exported for testing */
@@ -527,6 +559,58 @@ export function renderAdjustControlKnob({ colors, bindingMissing }: BlackBoxDraw
 }
 
 /**
+ * Top edge of the pending bar on the two hold-preview strips (#1120, #1585):
+ * low in the panel, under the arrows, at the same height on both so the mark
+ * sits still whichever way the switch goes.
+ */
+const PENDING_BAR_Y = 77;
+
+/** The shared pending bar, centred under a hold-preview strip's arrows, in their colour. */
+function stripPendingBar(color: string): string {
+  return renderPendingBar({ centerX: STRIP_WIDTH / 2, y: PENDING_BAR_Y, width: STRIP_WIDTH, color });
+}
+
+/**
+ * @internal Exported for testing
+ *
+ * The hold preview of a switch TO Select Control (#1120, #1585), shown while
+ * the Long Press is held past the threshold on an Adjust dial: the Select
+ * Control strip's up and down arrows around the centre dot, a touch smaller
+ * and nudged up, above the shared pending bar. A drawing of its own, so the
+ * approved {@link renderSelectControlStrip} stays exactly as it is.
+ */
+export function renderSelectControlPendingStrip({ colors, bindingMissing }: BlackBoxDrawingArgs): string {
+  const c = colors.label;
+  const content =
+    arrow("up", 100, 26, 40, 18, c) +
+    centreDot(100, 44.5, 5, c) +
+    arrow("down", 100, 63, 40, 18, c) +
+    stripPendingBar(c);
+
+  return screenSvg(STRIP_WIDTH, STRIP_HEIGHT, stripFrame(colors), content, bindingMissing);
+}
+
+/**
+ * @internal Exported for testing
+ *
+ * The hold preview of a switch TO Adjust Control (#1120, #1585), shown while
+ * the Long Press is held past the threshold on a Select dial: the Adjust
+ * Control strip's left and right arrows around the centre dot, at their own
+ * size and nudged up, above the shared pending bar. A drawing of its own, so
+ * the approved {@link renderAdjustControlStrip} stays exactly as it is.
+ */
+export function renderAdjustControlPendingStrip({ colors, bindingMissing }: BlackBoxDrawingArgs): string {
+  const c = colors.label;
+  const content =
+    arrow("left", 66, 43, 48, 30, c) +
+    centreDot(100, 43, 6, c) +
+    arrow("right", 134, 43, 48, 30, c) +
+    stripPendingBar(c);
+
+  return screenSvg(STRIP_WIDTH, STRIP_HEIGHT, stripFrame(colors), content, bindingMissing);
+}
+
+/**
  * The strip and knob drawings for what a turn does (#1585) — exhaustive over
  * {@link ROTATIONS}, so a new rotation cannot silently borrow another's screen.
  */
@@ -547,17 +631,45 @@ function drawingsFor(rotation: DialRotation): { strip: BlackBoxDrawing; knob: Bl
 }
 
 /**
- * Picks Black Box's own drawing for the dial's screen and the rotation —
- * exhaustive over the profile ids, like `renderDialBox`, so a new canvas cannot
- * silently get the strip drawing.
+ * The hold-preview strip for a switch to `target` (#1120, #1585) — exhaustive
+ * over the two rotations the switch reaches.
  */
-function renderBlackBoxFor(canvas: DialCanvasProfile, rotation: DialRotation, args: BlackBoxDrawingArgs): string {
+function pendingStripFor(target: SwitchableRotation): BlackBoxDrawing {
+  switch (target) {
+    case "select-control":
+      return renderSelectControlPendingStrip;
+    case "adjust-control":
+      return renderAdjustControlPendingStrip;
+    default: {
+      const unhandled: never = target;
+
+      throw new Error(`Black Box Selector: no hold preview for dial rotation "${String(unhandled)}"`);
+    }
+  }
+}
+
+/**
+ * Picks Black Box's own drawing for the dial's screen and the rotation, or the
+ * hold preview of the switch to `pending` while one is showing — exhaustive
+ * over the profile ids, like `renderDialBox`, so a new canvas cannot silently
+ * get the strip drawing.
+ */
+function renderBlackBoxFor(
+  canvas: DialCanvasProfile,
+  rotation: DialRotation,
+  pending: SwitchableRotation | null,
+  args: BlackBoxDrawingArgs,
+): string {
   const drawings = drawingsFor(rotation);
 
   switch (canvas.id) {
     case "sd-plus-strip":
-      return drawings.strip(args);
+      return pending ? pendingStripFor(pending)(args) : drawings.strip(args);
     case "stream-dock-knob":
+      // A knob never previews: its press never reports a release, so no hold
+      // is armed (NOOP_HOLD_PREVIEW), and showPreview refuses any screen but
+      // the strip. `pending` is null here in practice; were it not, the knob
+      // would still show its own rotation, never a promise it cannot keep.
       return drawings.knob(args);
     default: {
       // A new DialCanvasId must get its own drawing here: this line stops compiling until it does.
@@ -578,8 +690,20 @@ interface BlackBoxDialContext {
   action: IDeckActionContext;
   pressStart: number;
   rotatedWhilePressed: boolean;
-  /** Last-rendered missing-binding state, so a global-settings echo re-renders only on change. */
-  lastWarn: boolean | null;
+  /**
+   * The rotation the strip is previewing mid-hold (#1120), or null when no
+   * preview is showing. It lives on the context and EVERY render draws it
+   * (`refreshAll`'s #612 re-render and a settings delivery included), so a
+   * redraw mid-hold keeps the preview rather than wiping it.
+   */
+  previewRotation: SwitchableRotation | null;
+  /** The display-only hold-preview timer for this context (the no-op where extended gestures are compiled out). */
+  holdPreview: HoldPreview;
+  /**
+   * The displayed signature of the last frame pushed, so a global-settings
+   * echo re-renders only when the strip would change.
+   */
+  lastRenderSig: string | null;
 }
 
 export interface BlackBoxSelectorDialHost {
@@ -604,12 +728,24 @@ export class BlackBoxSelectorDialSurface extends ReleaseDialSurfaceBase<BlackBox
   }
 
   willDisappear(actionId: string): void {
+    // The context is gone, so a revert frame pushed at it would be wasted:
+    // tear the preview down without one.
+    this.contextsState.get(actionId)?.holdPreview.dispose();
     this.forgetContext(actionId);
   }
 
   async didReceiveSettings(action: IDeckActionContext, dial: DialSettings): Promise<void> {
     const ctx = this.ensureContext(action, dial);
     ctx.dial = dial;
+
+    // A hold in progress keeps going, and its release reads these settings, so
+    // a showing preview is re-resolved from them rather than dropped: an echo
+    // of unchanged settings keeps it, a changed Long Press or rotation turns it
+    // into what the release will now do, or into none. A timer that has not
+    // fired yet reads them when it fires.
+    if (ctx.previewRotation !== null) {
+      ctx.previewRotation = pendingRotationPreview(dial);
+    }
 
     await this.applyTriggerDescription(ctx);
     await this.renderFeedback(ctx);
@@ -622,6 +758,10 @@ export class BlackBoxSelectorDialSurface extends ReleaseDialSurfaceBase<BlackBox
 
     if (pressed) {
       ctx.rotatedWhilePressed = true;
+      // Push+turn pre-empts the long press, so the preview goes at once rather
+      // than at the release — beside the flag it mirrors and ahead of the
+      // zero-tick return, so the two always agree.
+      ctx.holdPreview.rotated();
     }
 
     if (ticks === 0) return;
@@ -648,12 +788,22 @@ export class BlackBoxSelectorDialSurface extends ReleaseDialSurfaceBase<BlackBox
 
     ctx.pressStart = Date.now();
     ctx.rotatedWhilePressed = false;
+    // The only timer this arms DRAWS and never dispatches: press vs long press
+    // is still classified once, at the release (#1120).
+    ctx.holdPreview.down();
   }
 
   async up(actionId: string, rawSettings?: unknown): Promise<void> {
     const ctx = this.contextsState.get(actionId);
 
     if (!ctx) return;
+
+    // Take the preview off the strip before ANY of the early returns below
+    // (the hold preview's trap 4): a release that fires nothing — a stray
+    // release, a push+turn, a short press on a `none` slot — must still revert
+    // what the hold drew. A long release that switches then draws the new
+    // rotation through the switch itself.
+    ctx.holdPreview.up();
 
     const pressStartMs = ctx.pressStart;
     ctx.pressStart = 0;
@@ -701,9 +851,11 @@ export class BlackBoxSelectorDialSurface extends ReleaseDialSurfaceBase<BlackBox
   refreshAll(): void {
     for (const ctx of this.contextsState.values()) {
       // Only the missing-binding warning can change from global settings; skip
-      // an echo that leaves it unchanged so the dial screen stays under ≤10 pushes/s.
-      // Per context: each dial's warning is about the pair its own rotation turns.
-      if (this.computeBindingMissing(ctx) === ctx.lastWarn) continue;
+      // an echo that leaves the strip unchanged so the dial screen stays under
+      // ≤10 pushes/s. Per context: each dial's warning is about the pair its own
+      // rotation turns, or mid-hold the previewed one. A re-render draws the
+      // preview too, so a hold survives this.
+      if (this.displayedSignature(ctx) === ctx.lastRenderSig) continue;
 
       this.renderFeedback(ctx).catch((err) => {
         this.host.logger.debug(`Dial feedback refresh failed: ${String(err)}`);
@@ -712,7 +864,28 @@ export class BlackBoxSelectorDialSurface extends ReleaseDialSurfaceBase<BlackBox
   }
 
   protected override createContext(action: IDeckActionContext, dial: DialSettings): BlackBoxDialContext {
-    return { dial, action, pressStart: 0, rotatedWhilePressed: false, lastWarn: null };
+    const ctx: BlackBoxDialContext = {
+      dial,
+      action,
+      pressStart: 0,
+      rotatedWhilePressed: false,
+      previewRotation: null,
+      // Replaced just below: the preview's callbacks close over the context
+      // being built. Where extended gestures are compiled out the no-op stays.
+      holdPreview: NOOP_HOLD_PREVIEW,
+      lastRenderSig: null,
+    };
+    ctx.holdPreview = __FEATURE_DIAL_EXTENDED_GESTURES__
+      ? createHoldPreview({
+          // The same value the release classifier reads, so the strip changes
+          // at exactly the instant a release starts counting as long.
+          thresholdMs: () => getDualPressThresholdMs(),
+          onThreshold: () => this.showPreview(ctx),
+          onCancel: () => this.hidePreview(ctx),
+        })
+      : NOOP_HOLD_PREVIEW;
+
+    return ctx;
   }
 
   /**
@@ -817,11 +990,69 @@ export class BlackBoxSelectorDialSurface extends ReleaseDialSurfaceBase<BlackBox
     await persistDialPatch(ctx.action, rawSettings, { rotation: next }, this.host.logger, "rotation switch");
   }
 
-  /** The strip warns when either binding the context's rotation turns is unset (#612, #1585). */
+  /**
+   * The hold-preview threshold callback (#1120): previews the switch a long
+   * release would make. Returns whether a preview frame was pushed: none when
+   * the Long Press is not a switch that does something on this dial
+   * ({@link pendingRotationPreview}), and none on any screen but the Stream
+   * Deck+ strip. Fires nothing — the release still decides.
+   */
+  private showPreview(ctx: BlackBoxDialContext): boolean {
+    if (ctx.action.dialCanvas()?.id !== "sd-plus-strip") return false;
+
+    const target = pendingRotationPreview(ctx.dial);
+
+    if (!target) return false;
+
+    ctx.previewRotation = target;
+    this.host.logger.debug(`Black box dial hold preview: ${target}`);
+    // Runs from a timer callback, with no caller left to catch a rejection.
+    this.renderFeedback(ctx).catch((err) => {
+      this.host.logger.debug(`Dial hold preview render failed: ${String(err)}`);
+    });
+
+    return true;
+  }
+
+  /**
+   * The hold-preview cancel callback (#1120): back to the dial's own rotation.
+   * Pushes nothing when the strip already shows it, as after a settings
+   * delivery mid-hold that dropped the preview.
+   */
+  private hidePreview(ctx: BlackBoxDialContext): void {
+    ctx.previewRotation = null;
+
+    if (this.displayedSignature(ctx) === ctx.lastRenderSig) return;
+
+    this.renderFeedback(ctx).catch((err) => {
+      this.host.logger.debug(`Dial hold preview revert failed: ${String(err)}`);
+    });
+  }
+
+  /**
+   * The rotation the strip shows: the previewed one mid-hold, the dial's own
+   * otherwise. Its pair is what the #612 warning is about, so the preview
+   * frame warns exactly as the strip will once the release commits.
+   */
+  private displayedRotation(ctx: BlackBoxDialContext): DialRotation {
+    return ctx.previewRotation ?? ctx.dial.rotation;
+  }
+
+  /** The strip warns when either binding the displayed rotation turns is unset (#612, #1585). */
   private computeBindingMissing(ctx: BlackBoxDialContext): boolean {
-    const keys = ROTATION_KEYS[ctx.dial.rotation];
+    const keys = ROTATION_KEYS[this.displayedRotation(ctx)];
 
     return this.host.isBindingMissing([keys.clockwise, keys.counterClockwise]);
+  }
+
+  /**
+   * What the strip shows, as one string: the rotation, the pending preview and
+   * the #612 warning. The preview is part of the DISPLAYED state (the hold
+   * preview's trap 3): without it, a global-settings echo mid-hold or after
+   * the revert would compare equal and leave a stale frame up.
+   */
+  private displayedSignature(ctx: BlackBoxDialContext): string {
+    return [ctx.dial.rotation, ctx.previewRotation ?? "", this.computeBindingMissing(ctx) ? "warn" : ""].join("|");
   }
 
   private async applyTriggerDescription(ctx: BlackBoxDialContext): Promise<void> {
@@ -837,10 +1068,17 @@ export class BlackBoxSelectorDialSurface extends ReleaseDialSurfaceBase<BlackBox
 
     if (!canvas) return;
 
-    const bindingMissing = this.computeBindingMissing(ctx);
-    const args = { colors: resolveDialBoxColors(ctx.dial.colors, ACCENT), bindingMissing };
-    await ctx.action.setDialCanvas(svgToDataUri(renderBlackBoxFor(canvas, ctx.dial.rotation, args)));
+    // Taken with the frame, before the push is awaited, so it names what this
+    // frame draws even if the state moves on meanwhile.
+    const signature = this.displayedSignature(ctx);
+    const args = {
+      colors: resolveDialBoxColors(ctx.dial.colors, ACCENT),
+      bindingMissing: this.computeBindingMissing(ctx),
+    };
+    // EVERY render carries the pending preview, so a redraw mid-hold keeps it.
+    const svg = renderBlackBoxFor(canvas, ctx.dial.rotation, ctx.previewRotation, args);
+    await ctx.action.setDialCanvas(svgToDataUri(svg));
 
-    ctx.lastWarn = bindingMissing;
+    ctx.lastRenderSig = signature;
   }
 }

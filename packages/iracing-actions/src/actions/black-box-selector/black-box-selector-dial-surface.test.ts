@@ -8,11 +8,14 @@ import {
   DialSettings,
   firingGestures,
   GESTURE_ACTIONS,
+  pendingRotationPreview,
   renderAdjustControlKnob,
+  renderAdjustControlPendingStrip,
   renderAdjustControlStrip,
   renderBlackBoxKnob,
   renderBlackBoxStrip,
   renderSelectControlKnob,
+  renderSelectControlPendingStrip,
   renderSelectControlStrip,
   resolveGestures,
   ROTATION_GESTURE_DEFAULTS,
@@ -32,8 +35,12 @@ const { mockTapBinding, mockIsBindingMissing, mockDualPressThreshold, mockRotate
 
 vi.mock("@iracedeck/deck-core", async () => {
   const { z } = await import("zod");
+  // The REAL hold preview: its timer behaviour is under test, and a stub would only assert the stub.
+  const dialGesture = await import("@iracedeck/deck-core/testing");
 
   return {
+    createHoldPreview: dialGesture.createHoldPreview,
+    NOOP_HOLD_PREVIEW: dialGesture.NOOP_HOLD_PREVIEW,
     CommonSettings: {
       extend: (shape: never) => z.object(shape).passthrough(),
     },
@@ -159,6 +166,28 @@ function centroid(triangle: Point[]): Point {
 /** The element names an SVG uses, its root included. */
 function elementNames(svg: string): Set<string> {
   return new Set([...svg.matchAll(/<([a-zA-Z][\w-]*)/g)].map(([, name]) => name));
+}
+
+/** The shared pending bar's geometry and colour in a drawing, one entry per bar (#1120). */
+function pendingBars(svg: string): Array<{ x: number; y: number; width: number; height: number; fill: string }> {
+  return [
+    ...svg.matchAll(
+      /<rect data-pending-bar="true" x="([\d.]+)" y="([\d.]+)" width="([\d.]+)" height="([\d.]+)" rx="[\d.]+" fill="([^"]+)"\/>/g,
+    ),
+  ].map(([, x, y, width, height, fill]) => ({
+    x: Number(x),
+    y: Number(y),
+    width: Number(width),
+    height: Number(height),
+    fill,
+  }));
+}
+
+/** The lowest and highest y any arrow reaches, its 2px stroke included. */
+function arrowsYExtent(svg: string): [number, number] {
+  const ys = polygons(svg).flatMap((triangle) => triangle.map(([, y]) => y));
+
+  return [Math.min(...ys) - 1, Math.max(...ys) + 1];
 }
 
 describe("black-box-selector dial-surface pure helpers", () => {
@@ -453,6 +482,127 @@ describe("black-box-selector dial-surface pure helpers", () => {
         expect(svg.indexOf(frame)).toBeLessThan(svg.indexOf("<polygon"));
       },
     );
+  });
+
+  describe("pendingRotationPreview (#1120, #1585)", () => {
+    it.each([
+      ["select-control", "adjust-control"],
+      ["adjust-control", "select-control"],
+    ] as const)("previews the switch from %s to %s for an unset Long Press, which defaults to it", (from, to) => {
+      expect(pendingRotationPreview(DialSettings.parse({ rotation: from }))).toBe(to);
+    });
+
+    it.each(["select-control", "adjust-control"] as const)(
+      "previews the switch table's target for an explicit Switch Select / Adjust on a %s dial",
+      (rotation) => {
+        const dial = DialSettings.parse({ rotation, longPressAction: "switch-rotation" });
+
+        // The very table the switch reads, so the promise is what the release does.
+        expect(pendingRotationPreview(dial)).toBe(SWITCHED_ROTATION[rotation]);
+      },
+    );
+
+    it.each([undefined, "switch-rotation"])(
+      "previews nothing on a dial that cycles boxes (Long Press %s), where the switch is a no-op",
+      (longPressAction) => {
+        expect(pendingRotationPreview(DialSettings.parse({ rotation: "boxes", longPressAction }))).toBeNull();
+        expect(pendingRotationPreview(DialSettings.parse({ longPressAction }))).toBeNull();
+      },
+    );
+
+    it.each(GESTURE_ACTIONS.filter((gesture) => gesture !== "switch-rotation"))(
+      "previews nothing when the Long Press is %s",
+      (longPressAction) => {
+        for (const rotation of ROTATIONS) {
+          expect(pendingRotationPreview(DialSettings.parse({ rotation, longPressAction }))).toBeNull();
+        }
+      },
+    );
+  });
+
+  describe("hold-preview strips (#1120, #1585)", () => {
+    const colors = { border: "#112233", label: "#445566", value: "#778800", background: "#778899" };
+    const STRIP_FRAME = '<rect x="7" y="7" width="186" height="86" rx="10"';
+    // The panel's inner edge: the 9px border is centred on the 7px inset.
+    const PANEL_TOP = 7 + 9 / 2;
+    const PANEL_BOTTOM = 100 - PANEL_TOP;
+
+    const PREVIEWS = [
+      // Held on an Adjust dial: the switch goes to Select, so its up and down arrows.
+      ["renderSelectControlPendingStrip", renderSelectControlPendingStrip, renderSelectControlStrip, ["up", "down"]],
+      // Held on a Select dial: the switch goes to Adjust, so its left and right arrows.
+      ["renderAdjustControlPendingStrip", renderAdjustControlPendingStrip, renderAdjustControlStrip, ["left", "right"]],
+    ] as const;
+
+    it.each(PREVIEWS)("%s draws the target's arrows over one pending bar", (_name, render, _normal, directions) => {
+      const svg = render({ colors, bindingMissing: false });
+
+      expect(arrowDirections(svg)).toEqual(directions);
+      expect(pendingBars(svg)).toHaveLength(1);
+      expect(svg).not.toContain("<text");
+      expect(svg).not.toContain("binding-warning");
+    });
+
+    it.each(PREVIEWS)("%s sits in the strip's panel frame", (_name, render) => {
+      const svg = render({ colors, bindingMissing: false });
+
+      expect(svg).toContain('viewBox="0 0 200 100"');
+      expect(svg).toContain(`${STRIP_FRAME} fill="#778899" stroke="#112233"`);
+    });
+
+    it.each(PREVIEWS)("%s centres the bar under the arrows in their colour, inside the panel", (_name, render) => {
+      const svg = render({ colors, bindingMissing: false });
+      const [bar] = pendingBars(svg);
+      const [top, bottom] = arrowsYExtent(svg);
+
+      expect(bar.fill).toBe("#445566");
+      expect(bar.x + bar.width / 2).toBe(100);
+      expect(bar.y).toBeGreaterThan(bottom);
+      expect(bar.y + bar.height).toBeLessThanOrEqual(PANEL_BOTTOM);
+      expect(top).toBeGreaterThanOrEqual(PANEL_TOP);
+    });
+
+    it.each(PREVIEWS)("%s nudges the arrows up from the normal strip's", (_name, render, normal) => {
+      const [previewTop, previewBottom] = arrowsYExtent(render({ colors, bindingMissing: false }));
+      const [normalTop, normalBottom] = arrowsYExtent(normal({ colors, bindingMissing: false }));
+
+      expect((previewTop + previewBottom) / 2).toBeLessThan((normalTop + normalBottom) / 2);
+    });
+
+    it.each(PREVIEWS)("%s keeps the arrow style and the muted centre dot midway", (_name, render) => {
+      const svg = render({ colors, bindingMissing: false });
+      const arrows = [...svg.matchAll(/<polygon [^>]*\/>/g)].map(([el]) => el);
+      const dot = /<circle cx="([\d.]+)" cy="([\d.]+)" r="[\d.]+" ([^>]*)\/>/.exec(svg);
+      const [first, second] = polygons(svg).map(centroid);
+
+      expect(arrows).toHaveLength(2);
+
+      for (const el of arrows) {
+        expect(el).toContain('fill="#445566" stroke="#445566" stroke-width="2" stroke-linejoin="round"');
+      }
+
+      expect(dot?.[3]).toBe('fill="#445566" stroke="#445566" stroke-width="2" opacity="0.35"');
+      expect(Number(dot?.[1])).toBeCloseTo((first[0] + second[0]) / 2);
+      expect(Number(dot?.[2])).toBeCloseTo((first[1] + second[1]) / 2);
+    });
+
+    it.each(PREVIEWS)("%s draws only shapes the deck renderers support", (_name, render) => {
+      expect([...elementNames(render({ colors, bindingMissing: false }))].sort()).toEqual([
+        "circle",
+        "polygon",
+        "rect",
+        "svg",
+      ]);
+    });
+
+    it.each(PREVIEWS)("%s dims the arrows and the bar under the #612 warning, leaving the frame", (_name, render) => {
+      const svg = render({ colors, bindingMissing: true });
+
+      // The test double appends the marker to the content it wraps: frame, then arrows and bar, then it.
+      expect(svg).toContain("<binding-warning/></svg>");
+      expect(svg.indexOf(STRIP_FRAME)).toBeLessThan(svg.indexOf("<polygon"));
+      expect(svg.indexOf("data-pending-bar")).toBeLessThan(svg.indexOf("<binding-warning/>"));
+    });
   });
 });
 
@@ -1167,6 +1317,373 @@ describe("BlackBoxSelector dial surface", () => {
         touch: "Switch Select / Adjust",
         longTouch: "Switch Select / Adjust",
       });
+    });
+  });
+
+  describe("hold preview of Switch Select / Adjust (#1120, #1585)", () => {
+    const ARGS = { colors: resolveDialBoxColors(undefined, "#d4a017"), bindingMissing: false };
+
+    /** The whole stored settings of a dial, with a keypad half the switch's write carries over. */
+    function stored(dial: Record<string, unknown>) {
+      return { mode: "next", blackBox: "fuel", dial };
+    }
+
+    function lastCanvas(ctx: DialContext): string {
+      return decodeURIComponent(ctx.setDialCanvas.mock.calls.at(-1)?.[0] as string);
+    }
+
+    /** The exact data URI the surface pushes for a drawing. */
+    function frame(svg: string): string {
+      return `data:image/svg+xml,${svg}`;
+    }
+
+    async function hold(ctx: DialContext, settings: Record<string, unknown>, ms: number) {
+      await action.onDialDown(eventFor(ctx, settings) as never);
+      vi.advanceTimersByTime(ms);
+    }
+
+    async function appearHeld(id: string, dial: Record<string, unknown>, canvas: typeof STRIP | typeof KNOB = STRIP) {
+      const ctx = dialContext(id, canvas);
+      const settings = stored(dial);
+      await appear(ctx, settings);
+      ctx.setDialCanvas.mockClear();
+
+      return { ctx, settings };
+    }
+
+    it.each([
+      ["select-control", renderAdjustControlPendingStrip, ["left", "right"]],
+      ["adjust-control", renderSelectControlPendingStrip, ["up", "down"]],
+    ] as const)(
+      "on a %s dial with Long Press unset, shows the other Mode's arrows over the bar at the threshold, not before",
+      async (rotation, preview, directions) => {
+        const { ctx, settings } = await appearHeld(`hp-${rotation}`, { rotation });
+
+        await hold(ctx, settings, 499);
+
+        expect(ctx.setDialCanvas).not.toHaveBeenCalled();
+
+        vi.advanceTimersByTime(1);
+
+        expect(ctx.setDialCanvas).toHaveBeenCalledTimes(1);
+        expect(lastCanvas(ctx)).toBe(frame(preview(ARGS)));
+        expect(arrowDirections(lastCanvas(ctx))).toEqual(directions);
+        expect(lastCanvas(ctx)).toContain("data-pending-bar");
+        // A preview fires nothing: the release decides.
+        expect(ctx.setSettings).not.toHaveBeenCalled();
+        expect(mockTapBinding).not.toHaveBeenCalled();
+      },
+    );
+
+    it("previews an explicitly stored Switch Select / Adjust too", async () => {
+      const { ctx, settings } = await appearHeld("hp-explicit", {
+        rotation: "adjust-control",
+        longPressAction: "switch-rotation",
+      });
+
+      await hold(ctx, settings, 500);
+
+      expect(lastCanvas(ctx)).toBe(frame(renderSelectControlPendingStrip(ARGS)));
+    });
+
+    it("follows the configured long-press threshold rather than a constant", async () => {
+      mockDualPressThreshold.value = 900;
+      const { ctx, settings } = await appearHeld("hp-threshold", { rotation: "select-control" });
+
+      await hold(ctx, settings, 899);
+
+      expect(ctx.setDialCanvas).not.toHaveBeenCalled();
+
+      vi.advanceTimersByTime(1);
+
+      expect(lastCanvas(ctx)).toBe(frame(renderAdjustControlPendingStrip(ARGS)));
+    });
+
+    it("commits the switch the preview promised on a long release, ending on the new Mode's normal strip", async () => {
+      const { ctx, settings } = await appearHeld("hp-commit", { rotation: "select-control" });
+
+      await hold(ctx, settings, 500);
+      await action.onDialUp(eventFor(ctx, settings) as never);
+
+      expect(ctx.setSettings.mock.calls).toEqual([
+        [{ mode: "next", blackBox: "fuel", dial: { rotation: "adjust-control" } }],
+      ]);
+      expect(lastCanvas(ctx)).toBe(frame(renderAdjustControlStrip(ARGS)));
+      expect(ctx.setTriggerDescription).toHaveBeenLastCalledWith(expect.objectContaining({ rotate: "Adjust control" }));
+    });
+
+    it("pushes neither a preview nor a revert for a short release, and the disarmed timer never fires", async () => {
+      const { ctx, settings } = await appearHeld("hp-short", { rotation: "select-control", pressAction: "none" });
+
+      await hold(ctx, settings, 200);
+      await action.onDialUp(eventFor(ctx, settings) as never);
+      vi.advanceTimersByTime(1000);
+
+      expect(ctx.setDialCanvas).not.toHaveBeenCalled();
+      expect(ctx.setSettings).not.toHaveBeenCalled();
+    });
+
+    it("a short press after an earlier preview toggles the control and shows the current Mode", async () => {
+      const { ctx, settings } = await appearHeld("hp-short-after", { rotation: "adjust-control" });
+
+      // A hold reverted by a push+turn, then an ordinary short press.
+      await hold(ctx, settings, 500);
+      await action.onDialRotate(rotateEvent(ctx, settings, 0, true) as never);
+      await action.onDialUp(eventFor(ctx, settings) as never);
+      mockTapBinding.mockClear();
+      ctx.setDialCanvas.mockClear();
+
+      await hold(ctx, settings, 100);
+      await action.onDialUp(eventFor(ctx, settings) as never);
+      vi.advanceTimersByTime(1000);
+
+      expect(mockTapBinding.mock.calls).toEqual([["blackBoxToggleControl"]]);
+      expect(ctx.setDialCanvas).not.toHaveBeenCalled();
+      expect(ctx.setSettings).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ["a turn", 1],
+      ["a zero-tick turn", 0],
+    ] as const)(
+      "reverts at once on push+turn mid-hold (%s), and the release switches nothing",
+      async (_name, ticks) => {
+        const { ctx, settings } = await appearHeld(`hp-push-turn-${ticks}`, { rotation: "select-control" });
+
+        await hold(ctx, settings, 500);
+
+        expect(lastCanvas(ctx)).toContain("data-pending-bar");
+
+        ctx.setDialCanvas.mockClear();
+        await action.onDialRotate(rotateEvent(ctx, settings, ticks, true) as never);
+
+        expect(ctx.setDialCanvas).toHaveBeenCalledTimes(1);
+        expect(lastCanvas(ctx)).toBe(frame(renderSelectControlStrip(ARGS)));
+
+        // A push+turn fires nothing on release and needs no second revert.
+        ctx.setDialCanvas.mockClear();
+        await action.onDialUp(eventFor(ctx, settings) as never);
+
+        expect(ctx.setDialCanvas).not.toHaveBeenCalled();
+        expect(ctx.setSettings).not.toHaveBeenCalled();
+      },
+    );
+
+    it("reverts a showing preview on a release that fires nothing, before the early returns", async () => {
+      const { ctx, settings } = await appearHeld("hp-stray", { rotation: "select-control" });
+
+      await hold(ctx, settings, 500);
+      // The press start is gone (a stray second release reads it as 0) — the
+      // revert must not sit behind that return.
+      const state = action["dialSurface"]["contextsState"].get("hp-stray");
+
+      expect(state).toBeDefined();
+
+      if (state) state.pressStart = 0;
+
+      ctx.setDialCanvas.mockClear();
+      await action.onDialUp(eventFor(ctx, settings) as never);
+
+      expect(ctx.setDialCanvas).toHaveBeenCalledTimes(1);
+      expect(lastCanvas(ctx)).toBe(frame(renderSelectControlStrip(ARGS)));
+      expect(ctx.setSettings).not.toHaveBeenCalled();
+    });
+
+    it("warns on the preview frame about the previewed Mode's pair (#612)", async () => {
+      // Only the Adjust pair is unbound: the Select strip is clean, its preview of Adjust is not.
+      mockIsBindingMissing.mockImplementation(((keys: string[]) => keys.includes("blackBoxIncrementControl")) as never);
+      const ctx = dialContext("hp-warn");
+      const settings = stored({ rotation: "select-control" });
+      await appear(ctx, settings);
+
+      expect(lastCanvas(ctx)).not.toContain("binding-warning");
+
+      await hold(ctx, settings, 500);
+
+      expect(lastCanvas(ctx)).toBe(frame(renderAdjustControlPendingStrip({ ...ARGS, bindingMissing: true })));
+    });
+
+    it("keeps the preview through a global-settings echo that changes nothing", async () => {
+      const { ctx, settings } = await appearHeld("hp-echo-global", { rotation: "select-control" });
+
+      await hold(ctx, settings, 500);
+      ctx.setDialCanvas.mockClear();
+
+      for (const listener of globalListeners) listener();
+
+      expect(ctx.setDialCanvas).not.toHaveBeenCalled();
+    });
+
+    it("redraws the preview, not the normal strip, when a global-settings change moves the #612 warning mid-hold", async () => {
+      const { ctx, settings } = await appearHeld("hp-refresh", { rotation: "select-control" });
+
+      await hold(ctx, settings, 500);
+      mockIsBindingMissing.mockImplementation(((keys: string[]) => keys.includes("blackBoxDecrementControl")) as never);
+
+      for (const listener of globalListeners) listener();
+
+      expect(lastCanvas(ctx)).toBe(frame(renderAdjustControlPendingStrip({ ...ARGS, bindingMissing: true })));
+
+      // And the release still commits what was promised.
+      await action.onDialUp(eventFor(ctx, settings) as never);
+
+      expect(lastCanvas(ctx)).toBe(frame(renderAdjustControlStrip({ ...ARGS, bindingMissing: true })));
+    });
+
+    it("pushes nothing on a global-settings echo after the revert", async () => {
+      const { ctx, settings } = await appearHeld("hp-echo-after", { rotation: "select-control" });
+
+      await hold(ctx, settings, 500);
+      await action.onDialRotate(rotateEvent(ctx, settings, 0, true) as never);
+      ctx.setDialCanvas.mockClear();
+
+      for (const listener of globalListeners) listener();
+
+      expect(ctx.setDialCanvas).not.toHaveBeenCalled();
+    });
+
+    it("keeps the preview through a settings echo mid-hold, and the release still commits", async () => {
+      const { ctx, settings } = await appearHeld("hp-echo-settings", { rotation: "select-control" });
+
+      await hold(ctx, settings, 500);
+      await action.onDidReceiveSettings(eventFor(ctx, settings) as never);
+
+      expect(lastCanvas(ctx)).toBe(frame(renderAdjustControlPendingStrip(ARGS)));
+
+      await action.onDialUp(eventFor(ctx, settings) as never);
+
+      expect(ctx.setSettings.mock.calls[0][0]).toMatchObject({ dial: { rotation: "adjust-control" } });
+      expect(lastCanvas(ctx)).toBe(frame(renderAdjustControlStrip(ARGS)));
+    });
+
+    it("still previews at the threshold after a settings echo early in the hold", async () => {
+      const { ctx, settings } = await appearHeld("hp-echo-early", { rotation: "adjust-control" });
+
+      await hold(ctx, settings, 200);
+      await action.onDidReceiveSettings(eventFor(ctx, settings) as never);
+      vi.advanceTimersByTime(300);
+
+      expect(lastCanvas(ctx)).toBe(frame(renderSelectControlPendingStrip(ARGS)));
+    });
+
+    it("drops the preview when a settings change mid-hold makes the Long Press something else", async () => {
+      const { ctx, settings } = await appearHeld("hp-settings-change", { rotation: "select-control" });
+
+      await hold(ctx, settings, 500);
+      const changed = stored({ rotation: "select-control", longPressAction: "none" });
+      await action.onDidReceiveSettings(eventFor(ctx, changed) as never);
+
+      expect(lastCanvas(ctx)).toBe(frame(renderSelectControlStrip(ARGS)));
+
+      // The strip already shows the dial's own Mode: the release pushes no second revert and switches nothing.
+      ctx.setDialCanvas.mockClear();
+      await action.onDialUp(eventFor(ctx, changed) as never);
+
+      expect(ctx.setDialCanvas).not.toHaveBeenCalled();
+      expect(ctx.setSettings).not.toHaveBeenCalled();
+    });
+
+    it("re-aims the preview when a settings change mid-hold switches the rotation", async () => {
+      const { ctx, settings } = await appearHeld("hp-settings-rotation", { rotation: "select-control" });
+
+      await hold(ctx, settings, 500);
+      await action.onDidReceiveSettings(eventFor(ctx, stored({ rotation: "adjust-control" })) as never);
+
+      // The release would now switch Adjust to Select, so that is the promise.
+      expect(lastCanvas(ctx)).toBe(frame(renderSelectControlPendingStrip(ARGS)));
+    });
+
+    it("tears a showing preview down on disappear without pushing a revert frame", async () => {
+      const { ctx, settings } = await appearHeld("hp-dispose", { rotation: "select-control" });
+
+      await hold(ctx, settings, 500);
+      ctx.setDialCanvas.mockClear();
+      await action.onWillDisappear(eventFor(ctx, settings) as never);
+      await action.onDialUp(eventFor(ctx, settings) as never);
+      vi.advanceTimersByTime(1000);
+
+      expect(ctx.setDialCanvas).not.toHaveBeenCalled();
+      expect(ctx.setSettings).not.toHaveBeenCalled();
+    });
+
+    it("disarms a pending preview timer on disappear", async () => {
+      const { ctx, settings } = await appearHeld("hp-dispose-armed", { rotation: "select-control" });
+      const timersBefore = vi.getTimerCount();
+
+      await hold(ctx, settings, 200);
+
+      expect(vi.getTimerCount()).toBe(timersBefore + 1);
+
+      await action.onWillDisappear(eventFor(ctx, settings) as never);
+
+      expect(vi.getTimerCount()).toBe(timersBefore);
+
+      vi.advanceTimersByTime(1000);
+
+      expect(ctx.setDialCanvas).not.toHaveBeenCalled();
+    });
+
+    it("previews nothing on a dial that cycles boxes, even with Switch Select / Adjust stored", async () => {
+      const { ctx, settings } = await appearHeld("hp-boxes", {
+        rotation: "boxes",
+        longPressAction: "switch-rotation",
+      });
+
+      await hold(ctx, settings, 600);
+      await action.onDialUp(eventFor(ctx, settings) as never);
+
+      expect(ctx.setDialCanvas).not.toHaveBeenCalled();
+    });
+
+    it.each(["none", "toggle-control", "open-selected-box"] as const)(
+      "previews nothing when the Long Press is %s",
+      async (longPressAction) => {
+        const { ctx, settings } = await appearHeld(`hp-other-${longPressAction}`, {
+          rotation: "select-control",
+          longPressAction,
+        });
+
+        await hold(ctx, settings, 600);
+
+        expect(ctx.setDialCanvas).not.toHaveBeenCalled();
+
+        await action.onDialUp(eventFor(ctx, settings) as never);
+
+        expect(ctx.setSettings).not.toHaveBeenCalled();
+      },
+    );
+
+    it("previews nothing on a knob screen, though the long release still switches", async () => {
+      const { ctx, settings } = await appearHeld("hp-knob", { rotation: "select-control" }, KNOB);
+
+      await hold(ctx, settings, 600);
+
+      expect(ctx.setDialCanvas).not.toHaveBeenCalled();
+
+      await action.onDialUp(eventFor(ctx, settings) as never);
+
+      expect(lastCanvas(ctx)).toBe(frame(renderAdjustControlKnob(ARGS)));
+    });
+
+    it("with the extended gestures compiled out, arms no timer and pushes no preview frame", async () => {
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", false);
+      const { ctx, settings } = await appearHeld("hp-flag-off", {
+        rotation: "select-control",
+        pressAction: "none",
+        longPressAction: "switch-rotation",
+      });
+      const timersBefore = vi.getTimerCount();
+
+      await action.onDialDown(eventFor(ctx, settings) as never);
+
+      expect(vi.getTimerCount()).toBe(timersBefore);
+
+      vi.advanceTimersByTime(2000);
+      await action.onDialUp(eventFor(ctx, settings) as never);
+
+      expect(ctx.setDialCanvas).not.toHaveBeenCalled();
+      // Every release is short there, and the Press is None.
+      expect(ctx.setSettings).not.toHaveBeenCalled();
     });
   });
 
