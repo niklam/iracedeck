@@ -21,11 +21,15 @@
  * iRacing exposes no telemetry for which black box is currently open, nor for
  * the selected control (the documented #782 identity-only compromise), so the
  * dial's own screen — the Stream Deck+ strip or the Stream Dock knob segment —
- * is STATIC: it shows action identity — a "BB" badge and a wordmark naming what
- * a turn does (BLACK BOX / SELECT / ADJUST) — with no readback, drawn by this
- * surface itself for each screen (`renderBlackBoxStrip` / `renderBlackBoxKnob`,
- * #1013). Its only live element is the #612 missing-binding warning, which dims
- * the drawing when either binding of the chosen rotation isn't set — a
+ * is STATIC: it shows what a turn does, with no readback, drawn by this surface
+ * itself for each screen and each rotation (#1013, #1585). Cycle Black Boxes
+ * shows a "BB" badge over the BLACK BOX wordmark (`renderBlackBoxStrip` /
+ * `renderBlackBoxKnob`). Select Control and Adjust Control show no badge and no
+ * word: a large up/down (Select) or left/right (Adjust) arrow pair around the
+ * d-pad's muted centre dot, drawn like the Selected Control key icons
+ * (`renderSelectControlStrip` / `Knob`, `renderAdjustControlStrip` / `Knob`).
+ * Its only live element is the #612 missing-binding warning, which dims the
+ * drawing when either binding of the chosen rotation isn't set — a
  * gesture's binding is reported by its PI status line, not on the strip; the
  * warning refreshes on global-settings changes (`refreshAll`), per context
  * since each dial may turn a different pair, not from telemetry, so this
@@ -35,7 +39,6 @@ import {
   applyBindingWarning,
   type DeckTriggerDescription,
   type DialCanvasProfile,
-  escapeXml,
   getDualPressThresholdMs,
   type IDeckActionContext,
   svgToDataUri,
@@ -217,113 +220,244 @@ function gestureLabel(action: GestureSlot): string | undefined {
   }
 }
 
+/** What every dial-screen drawing takes. */
+interface BlackBoxDrawingArgs {
+  colors: DialBoxColors;
+  bindingMissing: boolean;
+}
+
+/** One drawing of the dial's screen. */
+type BlackBoxDrawing = (args: BlackBoxDrawingArgs) => string;
+
+const STRIP_WIDTH = 200;
+const STRIP_HEIGHT = 100;
+
+/** The muted opacity of the d-pad key icons' unlit parts, which the arrow screens' centre dot takes. */
+const MUTED_OPACITY = 0.35;
+
+/** The stroke the approved d-pad key icons draw their arrows and centre dot with. */
+const ARROW_STROKE_WIDTH = 2;
+
+/** The Stream Deck+ strip slot's inset panel, the frame every strip drawing sits in. */
+function stripFrame(colors: DialBoxColors): string {
+  const inset = 7;
+
+  return `<rect x="${inset}" y="${inset}" width="${STRIP_WIDTH - 2 * inset}" height="${STRIP_HEIGHT - 2 * inset}" rx="10" fill="${colors.background}" stroke="${colors.border}" stroke-width="9"/>`;
+}
+
+/**
+ * The knob segment's panel: the shared knob box's frame (inset 5, stroke 6,
+ * outer radius 18 → rx 13), so Black Box sits in the same frame as every other
+ * knob surface.
+ */
+function knobFrame(colors: DialBoxColors): string {
+  const inset = 5;
+
+  return `<rect x="${inset}" y="${inset}" width="${KNOB_BOX_WIDTH - 2 * inset}" height="${KNOB_BOX_HEIGHT - 2 * inset}" rx="13" fill="${colors.background}" stroke="${colors.border}" stroke-width="6"/>`;
+}
+
+/**
+ * Wraps a drawing's frame and content into the screen's SVG. When the
+ * rotation's bindings are not all set, the content dims under the centred #612
+ * warning triangle; the frame stays as it is.
+ */
+function screenSvg(width: number, height: number, frame: string, content: string, bindingMissing: boolean): string {
+  return (
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}">` +
+    frame +
+    `${bindingMissing ? applyBindingWarning(content, { width, height }) : content}</svg>`
+  );
+}
+
+/** Rounds a coordinate to two decimals, so a drawing's numbers stay short and stable. */
+function round(n: number): number {
+  return Math.round(n * 100) / 100;
+}
+
+type ArrowDirection = "up" | "down" | "left" | "right";
+
+/**
+ * A filled arrow triangle centred on (cx, cy), `base` across its base and
+ * `depth` from base to apex, drawn as the approved d-pad key icons draw theirs:
+ * filled, with a same-colour round-joined stroke.
+ */
+function arrow(direction: ArrowDirection, cx: number, cy: number, base: number, depth: number, color: string): string {
+  const hb = base / 2;
+  const hd = depth / 2;
+  let points: Array<[number, number]>;
+
+  switch (direction) {
+    case "up":
+      points = [
+        [cx, cy - hd],
+        [cx + hb, cy + hd],
+        [cx - hb, cy + hd],
+      ];
+      break;
+    case "down":
+      points = [
+        [cx, cy + hd],
+        [cx - hb, cy - hd],
+        [cx + hb, cy - hd],
+      ];
+      break;
+    case "left":
+      points = [
+        [cx - hd, cy],
+        [cx + hd, cy - hb],
+        [cx + hd, cy + hb],
+      ];
+      break;
+    case "right":
+      points = [
+        [cx + hd, cy],
+        [cx - hd, cy + hb],
+        [cx - hd, cy - hb],
+      ];
+      break;
+    default: {
+      const unhandled: never = direction;
+
+      throw new Error(`Black Box Selector: no arrow pointing "${String(unhandled)}"`);
+    }
+  }
+
+  const coords = points.map(([x, y]) => `${round(x)},${round(y)}`).join(" ");
+
+  return `<polygon points="${coords}" fill="${color}" stroke="${color}" stroke-width="${ARROW_STROKE_WIDTH}" stroke-linejoin="round"/>`;
+}
+
+/** The d-pad's centre toggle, muted: the point the arrow screens' arrows sit around. */
+function centreDot(cx: number, cy: number, radius: number, color: string): string {
+  return `<circle cx="${round(cx)}" cy="${round(cy)}" r="${round(radius)}" fill="${color}" stroke="${color}" stroke-width="${ARROW_STROKE_WIDTH}" opacity="${MUTED_OPACITY}"/>`;
+}
+
+/** The BLACK BOX wordmark under the Cycle Black Boxes screen's badge, centred on x. */
+function blackBoxText(x: number, baseline: number, size: number, color: string): string {
+  return `<text x="${x}" y="${baseline}" text-anchor="middle" fill="${color}" font-family="Arial, sans-serif" font-size="${size}" font-weight="bold">BLACK BOX</text>`;
+}
+
 /**
  * @internal Exported for testing
  *
- * The wordmark the dial's screen shows under the badge (#1585): what a turn
- * does, since iRacing reports neither the open box nor the selected control.
+ * The Cycle Black Boxes strip (`boxes`): the 200×100 touch-strip slot as one
+ * self-drawn pixmap, an inset rounded panel with a "BB" badge over the BLACK BOX
+ * wordmark — action identity only, since iRacing exposes no open-box readback.
+ * Text y values are BASELINES (the deck app's QT renderer ignores
+ * dominant-baseline).
  */
-export function rotationWordmark(rotation: DialRotation): string {
+export function renderBlackBoxStrip({ colors, bindingMissing }: BlackBoxDrawingArgs): string {
+  const content =
+    `<rect x="72" y="20" width="56" height="34" rx="7" fill="none" stroke="${colors.border}" stroke-width="3"/>` +
+    `<text x="100" y="45" text-anchor="middle" fill="${colors.label}" font-family="Arial, sans-serif" font-size="22" font-weight="bold">BB</text>` +
+    blackBoxText(100, 78, 17, colors.label);
+
+  return screenSvg(STRIP_WIDTH, STRIP_HEIGHT, stripFrame(colors), content, bindingMissing);
+}
+
+/**
+ * @internal Exported for testing
+ *
+ * The knob-screen version of {@link renderBlackBoxStrip} (#1013): the same badge
+ * and wordmark, composed for the squarer 176×112 segment — the badge larger and
+ * higher, the wordmark on its own line beneath, centred on x.
+ */
+export function renderBlackBoxKnob({ colors, bindingMissing }: BlackBoxDrawingArgs): string {
+  const content =
+    `<rect x="56" y="18" width="64" height="40" rx="8" fill="none" stroke="${colors.border}" stroke-width="3"/>` +
+    `<text x="88" y="47" text-anchor="middle" fill="${colors.label}" font-family="Arial, sans-serif" font-size="26" font-weight="bold">BB</text>` +
+    blackBoxText(88, 90, 18, colors.label);
+
+  return screenSvg(KNOB_BOX_WIDTH, KNOB_BOX_HEIGHT, knobFrame(colors), content, bindingMissing);
+}
+
+/**
+ * @internal Exported for testing
+ *
+ * The Select Control strip (`select-control`, #1585): no badge and no word, a
+ * large up and down arrow around the d-pad's muted centre dot — the pair the
+ * Selected Control key icons light for walking the controls. Arrows take the
+ * label colour, as the dial side markers do.
+ */
+export function renderSelectControlStrip({ colors, bindingMissing }: BlackBoxDrawingArgs): string {
+  const c = colors.label;
+  const content = arrow("up", 100, 29, 46, 22, c) + centreDot(100, 50, 5, c) + arrow("down", 100, 71, 46, 22, c);
+
+  return screenSvg(STRIP_WIDTH, STRIP_HEIGHT, stripFrame(colors), content, bindingMissing);
+}
+
+/**
+ * @internal Exported for testing
+ *
+ * The Adjust Control strip (`adjust-control`, #1585): a large left and right
+ * arrow around the muted centre dot — the pair the key icons light for
+ * changing the selected control.
+ */
+export function renderAdjustControlStrip({ colors, bindingMissing }: BlackBoxDrawingArgs): string {
+  const c = colors.label;
+  const content = arrow("left", 66, 50, 48, 30, c) + centreDot(100, 50, 6, c) + arrow("right", 134, 50, 48, 30, c);
+
+  return screenSvg(STRIP_WIDTH, STRIP_HEIGHT, stripFrame(colors), content, bindingMissing);
+}
+
+/**
+ * @internal Exported for testing
+ *
+ * The knob-screen version of {@link renderSelectControlStrip}, larger for the
+ * squarer 176×112 segment.
+ */
+export function renderSelectControlKnob({ colors, bindingMissing }: BlackBoxDrawingArgs): string {
+  const c = colors.label;
+  const content = arrow("up", 88, 31, 52, 25, c) + centreDot(88, 56, 6, c) + arrow("down", 88, 81, 52, 25, c);
+
+  return screenSvg(KNOB_BOX_WIDTH, KNOB_BOX_HEIGHT, knobFrame(colors), content, bindingMissing);
+}
+
+/**
+ * @internal Exported for testing
+ *
+ * The knob-screen version of {@link renderAdjustControlStrip}.
+ */
+export function renderAdjustControlKnob({ colors, bindingMissing }: BlackBoxDrawingArgs): string {
+  const c = colors.label;
+  const content = arrow("left", 52, 56, 52, 32, c) + centreDot(88, 56, 6, c) + arrow("right", 124, 56, 52, 32, c);
+
+  return screenSvg(KNOB_BOX_WIDTH, KNOB_BOX_HEIGHT, knobFrame(colors), content, bindingMissing);
+}
+
+/**
+ * The strip and knob drawings for what a turn does (#1585) — exhaustive over
+ * {@link ROTATIONS}, so a new rotation cannot silently borrow another's screen.
+ */
+function drawingsFor(rotation: DialRotation): { strip: BlackBoxDrawing; knob: BlackBoxDrawing } {
   switch (rotation) {
     case "boxes":
-      return "BLACK BOX";
+      return { strip: renderBlackBoxStrip, knob: renderBlackBoxKnob };
     case "select-control":
-      return "SELECT";
+      return { strip: renderSelectControlStrip, knob: renderSelectControlKnob };
     case "adjust-control":
-      return "ADJUST";
+      return { strip: renderAdjustControlStrip, knob: renderAdjustControlKnob };
     default: {
       const unhandled: never = rotation;
 
-      throw new Error(`Black Box Selector: no wordmark for dial rotation "${String(unhandled)}"`);
+      throw new Error(`Black Box Selector: no drawing for dial rotation "${String(unhandled)}"`);
     }
   }
 }
 
-/** What the strip and the knob drawings take. */
-interface BlackBoxDrawingArgs {
-  colors: DialBoxColors;
-  bindingMissing: boolean;
-  /** The wordmark under the badge; {@link rotationWordmark}. Defaults to `BLACK BOX`. */
-  wordmark?: string;
-}
-
 /**
- * @internal Exported for testing
- *
- * Draws the 200×100 touch-strip slot as one self-drawn pixmap: an inset rounded
- * panel with a "BB" badge and a wordmark naming what a turn does — action
- * identity only, since iRacing exposes no open-box readback. When either
- * binding of the chosen rotation is unset the content dims under the centered
- * #612 warning triangle. Text y values are BASELINES (the deck app's QT
- * renderer ignores dominant-baseline); the wordmark is centred on x, so the
- * shorter SELECT / ADJUST sit where BLACK BOX does.
+ * Picks Black Box's own drawing for the dial's screen and the rotation —
+ * exhaustive over the profile ids, like `renderDialBox`, so a new canvas cannot
+ * silently get the strip drawing.
  */
-export function renderBlackBoxStrip(args: BlackBoxDrawingArgs): string {
-  const { colors, bindingMissing, wordmark = "BLACK BOX" } = args;
-  const w = 200;
-  const h = 100;
-  const inset = 7;
-  const strokeWidth = 9;
-  const innerRx = 10;
+function renderBlackBoxFor(canvas: DialCanvasProfile, rotation: DialRotation, args: BlackBoxDrawingArgs): string {
+  const drawings = drawingsFor(rotation);
 
-  const panel = `<rect x="${inset}" y="${inset}" width="${w - 2 * inset}" height="${h - 2 * inset}" rx="${innerRx}" fill="${colors.background}" stroke="${colors.border}" stroke-width="${strokeWidth}"/>`;
-
-  const badge =
-    `<rect x="72" y="20" width="56" height="34" rx="7" fill="none" stroke="${colors.border}" stroke-width="3"/>` +
-    `<text x="100" y="45" text-anchor="middle" fill="${colors.label}" font-family="Arial, sans-serif" font-size="22" font-weight="bold">BB</text>`;
-
-  const label = `<text x="100" y="78" text-anchor="middle" fill="${colors.label}" font-family="Arial, sans-serif" font-size="17" font-weight="bold">${escapeXml(wordmark)}</text>`;
-
-  const content = badge + label;
-
-  return (
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}">` +
-    panel +
-    `${bindingMissing ? applyBindingWarning(content, { width: w, height: h }) : content}</svg>`
-  );
-}
-
-/**
- * @internal Exported for testing
- *
- * The knob-screen version of {@link renderBlackBoxStrip} (#1013): the same
- * badge and wordmark, composed for the squarer 176×112 segment — the badge
- * larger and higher, the wordmark on its own line beneath, centred on x. The
- * panel frame is the shared knob box's (inset 5, stroke 6, outer radius 18 →
- * rx 13), so Black Box sits in the same frame as every other knob surface.
- */
-export function renderBlackBoxKnob(args: BlackBoxDrawingArgs): string {
-  const { colors, bindingMissing, wordmark = "BLACK BOX" } = args;
-  const w = KNOB_BOX_WIDTH;
-  const h = KNOB_BOX_HEIGHT;
-  const inset = 5;
-  const strokeWidth = 6;
-
-  const panel = `<rect x="${inset}" y="${inset}" width="${w - 2 * inset}" height="${h - 2 * inset}" rx="13" fill="${colors.background}" stroke="${colors.border}" stroke-width="${strokeWidth}"/>`;
-  const badge =
-    `<rect x="56" y="18" width="64" height="40" rx="8" fill="none" stroke="${colors.border}" stroke-width="3"/>` +
-    `<text x="88" y="47" text-anchor="middle" fill="${colors.label}" font-family="Arial, sans-serif" font-size="26" font-weight="bold">BB</text>`;
-  const label = `<text x="88" y="90" text-anchor="middle" fill="${colors.label}" font-family="Arial, sans-serif" font-size="18" font-weight="bold">${escapeXml(wordmark)}</text>`;
-  const content = badge + label;
-
-  return (
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}">` +
-    panel +
-    `${bindingMissing ? applyBindingWarning(content, { width: w, height: h }) : content}</svg>`
-  );
-}
-
-/**
- * Picks Black Box's own drawing for the dial's screen — exhaustive over the
- * profile ids, like `renderDialBox`, so a new canvas cannot silently get the
- * strip drawing.
- */
-function renderBlackBoxFor(canvas: DialCanvasProfile, args: BlackBoxDrawingArgs): string {
   switch (canvas.id) {
     case "sd-plus-strip":
-      return renderBlackBoxStrip(args);
+      return drawings.strip(args);
     case "stream-dock-knob":
-      return renderBlackBoxKnob(args);
+      return drawings.knob(args);
     default: {
       // A new DialCanvasId must get its own drawing here: this line stops compiling until it does.
       const unhandled: never = canvas.id;
@@ -541,12 +675,8 @@ export class BlackBoxSelectorDialSurface extends ReleaseDialSurfaceBase<BlackBox
     if (!canvas) return;
 
     const bindingMissing = this.computeBindingMissing(ctx);
-    const args = {
-      colors: resolveDialBoxColors(ctx.dial.colors, ACCENT),
-      bindingMissing,
-      wordmark: rotationWordmark(ctx.dial.rotation),
-    };
-    await ctx.action.setDialCanvas(svgToDataUri(renderBlackBoxFor(canvas, args)));
+    const args = { colors: resolveDialBoxColors(ctx.dial.colors, ACCENT), bindingMissing };
+    await ctx.action.setDialCanvas(svgToDataUri(renderBlackBoxFor(canvas, ctx.dial.rotation, args)));
 
     ctx.lastWarn = bindingMissing;
   }

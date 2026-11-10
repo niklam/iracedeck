@@ -1,13 +1,17 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { resolveDialBoxColors } from "../../shared/dial-box.js";
 import { describeLateInput } from "../../shared/dial-late-input.test-support.js";
 import { actionPressShapes, describePressShapes } from "../../shared/press-shape.test-support.js";
 import {
   buildTriggerDescription,
   DialSettings,
+  renderAdjustControlKnob,
+  renderAdjustControlStrip,
   renderBlackBoxKnob,
   renderBlackBoxStrip,
-  rotationWordmark,
+  renderSelectControlKnob,
+  renderSelectControlStrip,
 } from "./black-box-selector-dial-surface.js";
 import { BlackBoxSelector } from "./black-box-selector.js";
 
@@ -107,6 +111,48 @@ function touchEvent(action: DialContext, settings: Record<string, unknown>, hold
 
 function withDial(dial: Record<string, unknown>) {
   return { dial };
+}
+
+type Point = [number, number];
+
+/** Each `<polygon>`'s vertices, in document order. */
+function polygons(svg: string): Point[][] {
+  return [...svg.matchAll(/<polygon points="([^"]+)"/g)].map(([, points]) =>
+    points.split(" ").map((pair) => pair.split(",").map(Number) as Point),
+  );
+}
+
+/**
+ * The way each arrow triangle points, in document order: the apex is the vertex
+ * off the line its other two share, so an arrow reads by its geometry rather
+ * than by its coordinates.
+ */
+function arrowDirections(svg: string): string[] {
+  return polygons(svg).map((triangle) => {
+    for (let i = 0; i < 3; i++) {
+      const apex = triangle[i];
+      const [a, b] = triangle.filter((_, j) => j !== i);
+
+      if (a[1] === b[1]) return apex[1] < a[1] ? "up" : "down";
+
+      if (a[0] === b[0]) return apex[0] < a[0] ? "left" : "right";
+    }
+
+    throw new Error(`not an axis-aligned arrow: ${JSON.stringify(triangle)}`);
+  });
+}
+
+/** A triangle's centroid. */
+function centroid(triangle: Point[]): Point {
+  return [
+    (triangle[0][0] + triangle[1][0] + triangle[2][0]) / 3,
+    (triangle[0][1] + triangle[1][1] + triangle[2][1]) / 3,
+  ];
+}
+
+/** The element names an SVG uses, its root included. */
+function elementNames(svg: string): Set<string> {
+  return new Set([...svg.matchAll(/<([a-zA-Z][\w-]*)/g)].map(([, name]) => name));
 }
 
 describe("black-box-selector dial-surface pure helpers", () => {
@@ -247,27 +293,10 @@ describe("black-box-selector dial-surface pure helpers", () => {
         longTouch: "Select next control",
       });
     });
-
-    it.each([
-      ["boxes", "BLACK BOX"],
-      ["select-control", "SELECT"],
-      ["adjust-control", "ADJUST"],
-    ] as const)("names a %s turn %s on the dial screen", (rotation, wordmark) => {
-      expect(rotationWordmark(rotation)).toBe(wordmark);
-    });
   });
 
   describe("renderBlackBoxStrip", () => {
     const colors = { border: "#d4a017", label: "#d4a017", value: "#d4a017", background: "#0d0d0d" };
-
-    it.each(["SELECT", "ADJUST"])("draws the %s wordmark centred under the badge (#1585)", (wordmark) => {
-      const svg = renderBlackBoxStrip({ colors, bindingMissing: false, wordmark });
-
-      expect(svg).toContain(">BB<");
-      expect(svg).toContain(`<text x="100" y="78" text-anchor="middle"`);
-      expect(svg).toContain(`>${wordmark}<`);
-      expect(svg).not.toContain(">BLACK BOX<");
-    });
 
     it("draws the BB badge and BLACK BOX wordmark (identity only)", () => {
       const svg = renderBlackBoxStrip({ colors, bindingMissing: false });
@@ -297,15 +326,6 @@ describe("black-box-selector dial-surface pure helpers", () => {
 
   describe("renderBlackBoxKnob (#1013)", () => {
     const colors = { border: "#d4a017", label: "#d4a017", value: "#d4a017", background: "#0d0d0d" };
-
-    it.each(["SELECT", "ADJUST"])("draws the %s wordmark centred under the badge (#1585)", (wordmark) => {
-      const svg = renderBlackBoxKnob({ colors, bindingMissing: false, wordmark });
-
-      expect(svg).toContain(">BB<");
-      expect(svg).toContain(`<text x="88" y="90" text-anchor="middle"`);
-      expect(svg).toContain(`>${wordmark}<`);
-      expect(svg).not.toContain(">BLACK BOX<");
-    });
 
     it("draws the same identity on the 176x112 knob screen", () => {
       const svg = renderBlackBoxKnob({ colors, bindingMissing: false });
@@ -339,6 +359,77 @@ describe("black-box-selector dial-surface pure helpers", () => {
 
       expect(svg).toContain("binding-warning");
     });
+  });
+
+  describe("Select Control and Adjust Control arrow screens (#1585)", () => {
+    const colors = { border: "#112233", label: "#445566", value: "#445566", background: "#778899" };
+    const STRIP_FRAME = '<rect x="7" y="7" width="186" height="86" rx="10"';
+    const KNOB_FRAME = '<rect x="5" y="5" width="166" height="102" rx="13"';
+
+    const SCREENS = [
+      ["renderSelectControlStrip", renderSelectControlStrip, "0 0 200 100", STRIP_FRAME, ["up", "down"]],
+      ["renderAdjustControlStrip", renderAdjustControlStrip, "0 0 200 100", STRIP_FRAME, ["left", "right"]],
+      ["renderSelectControlKnob", renderSelectControlKnob, "0 0 176 112", KNOB_FRAME, ["up", "down"]],
+      ["renderAdjustControlKnob", renderAdjustControlKnob, "0 0 176 112", KNOB_FRAME, ["left", "right"]],
+    ] as const;
+
+    it.each(SCREENS)("%s draws its two arrows and no badge or word", (_name, render, _viewBox, _frame, directions) => {
+      const svg = render({ colors, bindingMissing: false });
+
+      expect(arrowDirections(svg)).toEqual(directions);
+      expect(svg).not.toContain("<text");
+      expect(svg).not.toContain(">BB<");
+      expect(svg).not.toContain("binding-warning");
+    });
+
+    it.each(SCREENS)("%s sits in its screen's panel frame", (_name, render, viewBox, frame) => {
+      const svg = render({ colors, bindingMissing: false });
+
+      expect(svg).toContain(`viewBox="${viewBox}"`);
+      expect(svg).toContain(`${frame} fill="#778899" stroke="#112233"`);
+    });
+
+    it.each(SCREENS)(
+      "%s draws its arrows like the d-pad key icons: filled, 2px round-joined, in the label colour",
+      (_name, render) => {
+        const svg = render({ colors, bindingMissing: false });
+        const arrows = [...svg.matchAll(/<polygon [^>]*\/>/g)].map(([el]) => el);
+
+        expect(arrows).toHaveLength(2);
+
+        for (const el of arrows) {
+          expect(el).toContain('fill="#445566" stroke="#445566" stroke-width="2" stroke-linejoin="round"');
+          expect(el).not.toContain("opacity");
+        }
+      },
+    );
+
+    it.each(SCREENS)("%s puts the muted centre dot midway between the arrows", (_name, render) => {
+      const svg = render({ colors, bindingMissing: false });
+      const dot = /<circle cx="([\d.]+)" cy="([\d.]+)" r="[\d.]+" ([^>]*)\/>/.exec(svg);
+      const [first, second] = polygons(svg).map(centroid);
+
+      expect(dot?.[3]).toBe('fill="#445566" stroke="#445566" stroke-width="2" opacity="0.35"');
+      expect(Number(dot?.[1])).toBeCloseTo((first[0] + second[0]) / 2);
+      expect(Number(dot?.[2])).toBeCloseTo((first[1] + second[1]) / 2);
+    });
+
+    it.each(SCREENS)("%s draws only shapes the deck renderers support", (_name, render) => {
+      const svg = render({ colors, bindingMissing: false });
+
+      expect([...elementNames(svg)].sort()).toEqual(["circle", "polygon", "rect", "svg"]);
+    });
+
+    it.each(SCREENS)(
+      "%s dims its arrows under the #612 warning, leaving the frame",
+      (_name, render, _viewBox, frame) => {
+        const svg = render({ colors, bindingMissing: true });
+
+        // The test double appends the marker to the content it wraps, so the frame comes before the arrows and it after.
+        expect(svg).toContain("<binding-warning/></svg>");
+        expect(svg.indexOf(frame)).toBeLessThan(svg.indexOf("<polygon"));
+      },
+    );
   });
 });
 
@@ -752,11 +843,41 @@ describe("BlackBoxSelector dial surface", () => {
   });
 
   describe("strip and #612 dim follow the rotation (#1585)", () => {
+    const SCREENS = {
+      boxes: { strip: renderBlackBoxStrip, knob: renderBlackBoxKnob },
+      "select-control": { strip: renderSelectControlStrip, knob: renderSelectControlKnob },
+      "adjust-control": { strip: renderAdjustControlStrip, knob: renderAdjustControlKnob },
+    } as const;
+
     it.each([
-      ["boxes", "BLACK BOX", ["blackBoxCycleNext", "blackBoxCyclePrevious"]],
-      ["select-control", "SELECT", ["blackBoxSelectNextControl", "blackBoxSelectPreviousControl"]],
-      ["adjust-control", "ADJUST", ["blackBoxIncrementControl", "blackBoxDecrementControl"]],
-    ] as const)("a %s dial shows %s and warns on its own pair", async (rotation, wordmark, pair) => {
+      ["boxes", "strip", STRIP],
+      ["boxes", "knob", KNOB],
+      ["select-control", "strip", STRIP],
+      ["select-control", "knob", KNOB],
+      ["adjust-control", "strip", STRIP],
+      ["adjust-control", "knob", KNOB],
+    ] as const)(
+      "a %s dial on the %s screen pushes that rotation's drawing for that screen",
+      async (rotation, screen, canvas) => {
+        const ctx = dialContext(`s-${rotation}-${screen}`, canvas);
+        await appear(ctx, withDial({ rotation }));
+
+        const decoded = decodeURIComponent(ctx.setDialCanvas.mock.calls.at(-1)?.[0] as string);
+        const expected = SCREENS[rotation][screen]({
+          colors: resolveDialBoxColors(undefined, "#d4a017"),
+          bindingMissing: false,
+        });
+
+        expect(decoded).toBe(`data:image/svg+xml,${expected}`);
+        expect(decoded).toContain(`viewBox="0 0 ${canvas.width} ${canvas.height}"`);
+      },
+    );
+
+    it.each([
+      ["boxes", ["blackBoxCycleNext", "blackBoxCyclePrevious"]],
+      ["select-control", ["blackBoxSelectNextControl", "blackBoxSelectPreviousControl"]],
+      ["adjust-control", ["blackBoxIncrementControl", "blackBoxDecrementControl"]],
+    ] as const)("a %s dial warns on its own pair", async (rotation, pair) => {
       mockIsBindingMissing.mockImplementation(((keys: string[]) => keys[0] === pair[0]) as never);
       const ctx = dialContext(`w-${rotation}`);
       await appear(ctx, withDial({ rotation }));
@@ -764,9 +885,37 @@ describe("BlackBoxSelector dial surface", () => {
       const decoded = decodeURIComponent(ctx.setDialCanvas.mock.calls.at(-1)?.[0] as string);
 
       expect(mockIsBindingMissing).toHaveBeenCalledWith([...pair]);
-      expect(decoded).toContain(`>${wordmark}<`);
       expect(decoded).toContain("binding-warning");
     });
+
+    it("shows Cycle Black Boxes as the BB badge and BLACK BOX, with no arrows", async () => {
+      const ctx = dialContext("w-boxes-look");
+      await appear(ctx, withDial({ rotation: "boxes" }));
+
+      const decoded = decodeURIComponent(ctx.setDialCanvas.mock.calls.at(-1)?.[0] as string);
+
+      expect(decoded).toContain(">BB<");
+      expect(decoded).toContain(">BLACK BOX<");
+      expect(arrowDirections(decoded)).toEqual([]);
+    });
+
+    it.each([
+      ["select-control", "strip", STRIP, ["up", "down"]],
+      ["select-control", "knob", KNOB, ["up", "down"]],
+      ["adjust-control", "strip", STRIP, ["left", "right"]],
+      ["adjust-control", "knob", KNOB, ["left", "right"]],
+    ] as const)(
+      "shows a %s dial on the %s screen as its arrows, with no badge or word",
+      async (rotation, screen, canvas, directions) => {
+        const ctx = dialContext(`w-${rotation}-${screen}-look`, canvas);
+        await appear(ctx, withDial({ rotation }));
+
+        const decoded = decodeURIComponent(ctx.setDialCanvas.mock.calls.at(-1)?.[0] as string);
+
+        expect(arrowDirections(decoded)).toEqual(directions);
+        expect(decoded).not.toContain("<text");
+      },
+    );
 
     it("does not warn an Adjust Control dial for unset Cycle bindings", async () => {
       mockIsBindingMissing.mockImplementation(((keys: string[]) => keys.includes("blackBoxCycleNext")) as never);
@@ -778,16 +927,6 @@ describe("BlackBoxSelector dial surface", () => {
       expect(decoded).not.toContain("binding-warning");
     });
 
-    it("draws the rotation's wordmark on the knob screen too", async () => {
-      const ctx = dialContext("w-knob", KNOB);
-      await appear(ctx, withDial({ rotation: "select-control" }));
-
-      const decoded = decodeURIComponent(ctx.setDialCanvas.mock.calls.at(-1)?.[0] as string);
-
-      expect(decoded).toContain('viewBox="0 0 176 112"');
-      expect(decoded).toContain(">SELECT<");
-    });
-
     it("re-renders on a settings change that switches the rotation", async () => {
       const ctx = dialContext("w-switch");
       await appear(ctx, withDial({}));
@@ -796,7 +935,8 @@ describe("BlackBoxSelector dial surface", () => {
 
       const decoded = decodeURIComponent(ctx.setDialCanvas.mock.calls.at(-1)?.[0] as string);
 
-      expect(decoded).toContain(">ADJUST<");
+      expect(arrowDirections(decoded)).toEqual(["left", "right"]);
+      expect(decoded).not.toContain(">BLACK BOX<");
     });
 
     it("refreshes each dial against its own rotation's pair on a global-settings change", async () => {
