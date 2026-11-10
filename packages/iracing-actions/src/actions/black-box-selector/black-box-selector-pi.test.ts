@@ -17,8 +17,11 @@ import {
  * rotations, the gestures each slot offers, and what a Press and a Long Press
  * nobody has chosen do in each Mode. A stale copy fails quietly — a dropdown
  * that shows one default while the dial runs another — so these hold it, and
- * they run the template's own script to hold that showing a default never
- * stores it: an unset slot must stay unset for the plugin to resolve.
+ * they run the template's own script against a stub `sdpi-select`
+ * (`class extends HTMLElement {}`), which proves only that the script never sets
+ * `.value`. That a real `sdpi-select` treats `default` as render-only, so an unset
+ * slot stays unset for the plugin to resolve, is pinned against the vendored
+ * bundle in pi-components' `sdpi-select-default.test.ts`.
  */
 // Read by path: under jsdom the global URL is the DOM's, which node:fs does not take.
 const template = readFileSync(join(import.meta.dirname, "black-box-selector.ejs"), "utf-8");
