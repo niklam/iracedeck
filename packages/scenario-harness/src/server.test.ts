@@ -8,6 +8,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { MockPlatformAdapter } from "./mock-platform-adapter.js";
 import { MockSDKController } from "./mock-sdk-controller.js";
+import {
+  composeSectorComparison,
+  getHarnessSectorComparison,
+  setHarnessSectorComparison,
+} from "./sector-comparison-snapshot.js";
 import { createServer } from "./server.js";
 
 const PACKAGE_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -174,5 +179,60 @@ describe("POST /api/telemetry", () => {
     expect(res.statusCode).toBe(400);
     expect(ticks).toEqual([]);
     expect(controller.getState().telemetry).toMatchObject({ Speed: 0 });
+  });
+});
+
+describe("POST /api/sector-comparison/snapshot", () => {
+  let app: FastifyInstance;
+
+  beforeEach(async () => {
+    initializeEventBus(silentLogger);
+    app = await createServer({
+      controller: new MockSDKController(),
+      adapter: {} as unknown as MockPlatformAdapter,
+      bus: getEventBus(),
+      audio: createFakeAudio(),
+      packageRoot: PACKAGE_ROOT,
+      logger: silentLogger,
+      refreshAudioAssets: async () => {},
+      wipeAudioCache: async () => {},
+    });
+  });
+
+  afterEach(async () => {
+    setHarnessSectorComparison(null);
+    await app.close();
+    _resetEventBus();
+  });
+
+  it("stores a composed comparison for the sector-comparison dependency and clears it on null (#1572)", async () => {
+    const comparison = composeSectorComparison({ lap: 10, sectorCount: 3, player: { carIdx: 5, carNumber: "5" } });
+
+    const stored = await app.inject({ method: "POST", url: "/api/sector-comparison/snapshot", payload: comparison });
+
+    expect(stored.statusCode).toBe(204);
+    expect(getHarnessSectorComparison()).toEqual(comparison);
+
+    const cleared = await app.inject({
+      method: "POST",
+      url: "/api/sector-comparison/snapshot",
+      headers: { "content-type": "application/json" },
+      payload: "null",
+    });
+
+    expect(cleared.statusCode).toBe(204);
+    expect(getHarnessSectorComparison()).toBeNull();
+  });
+
+  it("rejects a malformed comparison with a 400, keeping what was stored", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/sector-comparison/snapshot",
+      payload: { sectorCount: "3" },
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toEqual({ error: "sectorCount must be a non-negative integer" });
+    expect(getHarnessSectorComparison()).toBeNull();
   });
 });
