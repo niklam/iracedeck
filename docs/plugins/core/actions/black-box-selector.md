@@ -37,7 +37,7 @@ Cycles through or directly selects iRacing black box screens, toggles the open b
 
 ### Touchscreen (Elgato only)
 
-- The 200×100 strip slot is self-drawn as one pixmap showing the action's **identity only** — a "BB" badge and a wordmark naming what a turn does (`BLACK BOX`, `SELECT` or `ADJUST` for `boxes`, `select-control`, `adjust-control`; `rotationWordmark`, #1585) — with no readback. iRacing exposes no telemetry for which black box is currently open or which control is selected, so the strip cannot show live state (the same #782 identity-only compromise as other dials with no telemetry readback).
+- The 200×100 strip slot is self-drawn as one pixmap showing the action's **identity only** — what a turn does, with no readback: a "BB" badge over `BLACK BOX` for `boxes`, and no badge or word for the other two (#1585) — a large up/down arrow pair around a muted centre dot for `select-control`, a left/right pair for `adjust-control`, drawn like the Selected Control key icons. iRacing exposes no telemetry for which black box is currently open or which control is selected, so the strip cannot show live state (the same #782 identity-only compromise as other dials with no telemetry readback).
 - **Tap Display**: Runs the configured **Tap Display** gesture. Default **None** (VR safety).
 - **Long Touch**: Runs the configured **Long Touch** gesture. Default **None** (VR safety).
 - The strip's only live element is the #612 missing-binding warning, which dims the strip when either binding of the chosen rotation's pair is unset; it refreshes per dial on global-settings changes, not telemetry, so the surface never subscribes to the telemetry tick.
@@ -97,9 +97,9 @@ The Property Inspector shows the settings for the surface the instance sits on: 
 | Long Touch | Dropdown | None | What a touch-strip long tap does, or None to disable it (Elgato only) |
 
 #### Dial Mode Options (`dial.rotation`)
-- **Cycle Black Boxes** (`boxes`, default) - Clockwise Cycle Next, counter-clockwise Cycle Previous; strip wordmark `BLACK BOX`
-- **Select Control** (`select-control`) - Clockwise Select Next Control, counter-clockwise Select Previous Control; strip wordmark `SELECT`
-- **Adjust Control** (`adjust-control`) - Clockwise Increment Selected Control, counter-clockwise Decrement Selected Control; strip wordmark `ADJUST`
+- **Cycle Black Boxes** (`boxes`, default) - Clockwise Cycle Next, counter-clockwise Cycle Previous; strip shows the "BB" badge and `BLACK BOX`
+- **Select Control** (`select-control`) - Clockwise Select Next Control, counter-clockwise Select Previous Control; strip shows up/down arrows
+- **Adjust Control** (`adjust-control`) - Clockwise Increment Selected Control, counter-clockwise Decrement Selected Control; strip shows left/right arrows
 
 #### Gesture Action Options (Press Action, Long Press, Tap Display, Long Touch)
 - **None** - The gesture does nothing; rotation still does what its Mode says
@@ -176,11 +176,13 @@ All Direct mode icons include a small "BB" label in the corner to distinguish th
 
 ### Dial (touch strip)
 
-A dial instance has no keypad icon — its display is the self-drawn 200×100 touch-strip slot on a Stream Deck+, or a separate knob drawing at 176×112 on the screen above a Mirabox knob (`renderBlackBoxStrip` / `renderBlackBoxKnob`). Unlike other dials, the strip shows **identity only**: iRacing exposes no telemetry for which black box is open, so there is no live readback to render.
+A dial instance has no keypad icon — its display is the self-drawn 200×100 touch-strip slot on a Stream Deck+, or a separate knob drawing at 176×112 on the screen above a Mirabox knob, one pair per Mode (`renderBlackBoxStrip` / `renderBlackBoxKnob` for Cycle Black Boxes, `renderSelectControlStrip` / `renderSelectControlKnob`, `renderAdjustControlStrip` / `renderAdjustControlKnob`). Unlike other dials, the strip shows **identity only**: iRacing exposes no telemetry for which black box is open, so there is no live readback to render.
 
 | State | Strip slot |
 |-------|------------|
-| Normal | Inset panel with a "BB" badge and the Mode's wordmark: `BLACK BOX`, `SELECT` or `ADJUST` |
+| Normal, Cycle Black Boxes | Inset panel with a "BB" badge and `BLACK BOX` |
+| Normal, Select Control | Inset panel with a large up and down arrow around a muted centre dot; no badge or word |
+| Normal, Adjust Control | Inset panel with a large left and right arrow around a muted centre dot; no badge or word |
 | Rotation binding missing | Same panel, dimmed under the centered #612 warning triangle (either binding of the chosen Mode's pair is unset) |
 
 ## Notes

@@ -130,7 +130,7 @@ Select Next, Select Previous and Toggle send one press however long you hold the
 
 Placed on a Stream Deck+ dial or a Mirabox knob, Black Box Selector becomes a black-box dial. Its **Mode** dropdown picks what turning it does: step through iRacing's black boxes (the default), move between the controls of the open box, or change the selected control. A press can jump straight to one box you pick, toggle the open box's size, or select or toggle a control. The Property Inspector automatically shows the dial settings below (instead of the keypad Mode and Black Box) when the instance sits on a dial. See [Dials](/docs/features/dials/) for how the shared dial gestures work.
 
-iRacing reports neither which black box is open nor which control is selected, so the touch strip can't show live state. It shows a "BB" badge and a word naming what a turn does: **BLACK BOX**, **SELECT** or **ADJUST**, following the Mode. This is the same documented limitation as the other key-binding-driven dials. You can still recolor the strip's border, label, and background in the **Dash Box Appearance** section of the dial settings.
+iRacing reports neither which black box is open nor which control is selected, so the touch strip can't show live state. It shows what a turn does, following the Mode: a "BB" badge and **BLACK BOX** for Cycle Black Boxes, up and down arrows for Select Control, and left and right arrows for Adjust Control. This is the same documented limitation as the other key-binding-driven dials. You can still recolor the strip's border, label, and background in the **Dash Box Appearance** section of the dial settings.
 
 #### Details
 
@@ -148,8 +148,8 @@ iRacing reports neither which black box is open nor which control is selected, s
 What turning the dial does (the **Mode** dropdown, default *Cycle Black Boxes*). Clockwise is always forward or up.
 
 - **Cycle Black Boxes** (default) — steps through iRacing's black boxes: clockwise taps **Cycle Next**, counter-clockwise **Cycle Previous**, the same bindings the keypad Next and Previous modes use. The strip reads **BLACK BOX**. A dial you set up before this choice existed keeps working this way.
-- **Select Control** — moves between the controls of the open box: clockwise taps **Select Next Control**, counter-clockwise **Select Previous Control**. The strip reads **SELECT**.
-- **Adjust Control** — changes the selected control of the open box, such as brake bias in the In-Car box: clockwise taps **Increment Selected Control**, counter-clockwise **Decrement Selected Control**. The strip reads **ADJUST**.
+- **Select Control** — moves between the controls of the open box: clockwise taps **Select Next Control**, counter-clockwise **Select Previous Control**. The strip shows up and down arrows.
+- **Adjust Control** — changes the selected control of the open box, such as brake bias in the In-Car box: clockwise taps **Increment Selected Control**, counter-clockwise **Decrement Selected Control**. The strip shows left and right arrows.
 
 The strip dims under the missing-binding warning when either binding of the chosen Mode is not set. In Select Control and Adjust Control, turning with no black box open does nothing in the sim.
 
