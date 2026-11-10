@@ -217,11 +217,11 @@ describe("validateSectorComparison", () => {
   });
 });
 
-describe("the UI clears the comparison before any other shortcut (#1572)", () => {
+describe("the UI clears the comparison before another shortcut's lap (#1572)", () => {
   // `ui/app.js` has no build and no DOM here, so its shortcut handler is read as text.
   const appJs = readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "ui", "app.js"), "utf-8");
 
-  it("posts null when the shortcut carries no comparison, and does so before the shortcut publishes", () => {
+  it("posts null when a shortcut without a comparison publishes a lap.completed, before it publishes", () => {
     const push = appJs.indexOf('await post("/api/sector-comparison/snapshot", s.sectorComparisonSnapshot);');
     const clear = appJs.indexOf('await post("/api/sector-comparison/snapshot", null);');
     const publish = appJs.indexOf('await post("/api/bus/publish", { event: s.event, data: s.data });');
@@ -238,6 +238,19 @@ describe("the UI clears the comparison before any other shortcut (#1572)", () =>
       .map((line) => line.trim())
       .filter((line) => line !== "" && !line.startsWith("//"));
 
-    expect(between).toEqual(["} else {"]);
+    expect(between).toEqual(["} else if (publishesLapCompleted) {"]);
+  });
+
+  it("clears only for a shortcut that publishes a lap.completed, so an unrelated press cannot silence a pending call", () => {
+    // The sector contracts read the comparison 500 ms after their publish
+    // (their triggerDelay): a clear from any button pressed in that window
+    // would leave them nothing to say.
+    const condition = appJs.indexOf("const publishesLapCompleted =");
+    const push = appJs.indexOf('await post("/api/sector-comparison/snapshot", s.sectorComparisonSnapshot);');
+
+    expect(condition).toBeGreaterThan(-1);
+    expect(condition).toBeLessThan(push);
+    expect(appJs.slice(condition, push)).toContain('s.event === "lap.completed"');
+    expect(appJs.slice(condition, push)).toContain('e.event === "lap.completed"');
   });
 });
