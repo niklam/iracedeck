@@ -16,8 +16,8 @@ import {
   getScenarioEngine,
   isAudioScenariosInitialized,
   mergeManifests,
-  scanDriverNames,
   scanRaceEngineerVoices,
+  selectableDriverNames,
 } from "@iracedeck/audio-scenarios";
 import { getAudio } from "@iracedeck/audio-service";
 import { getDevVoicePacksRoot } from "@iracedeck/deck-core";
@@ -84,7 +84,7 @@ export function buildVoicePackScan(core: Pick<Core, "adapter">, audio: Pick<Audi
   const state: VoicePackState = {
     activeManifest: audioAssetsManifest,
     raceEngineerVoices: scanRaceEngineerVoices(audioAssetsManifest),
-    driverNames: scanDriverNames(audioAssetsManifest),
+    driverNames: selectableDriverNames(audioAssetsManifest),
     activeScripts: new Map(),
     lastPublished: { voiceList: "", voiceLabels: "", driverNames: "", packList: "", status: "" },
   };
@@ -231,7 +231,7 @@ export function buildVoicePackScan(core: Pick<Core, "adapter">, audio: Pick<Audi
     applyManifest: (fragments) => {
       state.activeManifest = mergeManifests(audioAssetsManifest, fragments);
       state.raceEngineerVoices = scanRaceEngineerVoices(state.activeManifest);
-      state.driverNames = scanDriverNames(state.activeManifest);
+      state.driverNames = selectableDriverNames(state.activeManifest);
 
       // Guarded because the first scan runs BEFORE the engine is constructed, so
       // startup needs no reload — every later refresh does.
