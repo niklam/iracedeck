@@ -63,11 +63,19 @@ function makeBus(): IEventBus {
 
 let bus: IEventBus;
 
-/** Publish `pitLane.exited` with the tick's telemetry, as the translator's envelope carries it. */
-function exitPitRoad(telemetry: unknown = { IsOnTrack: true, IsReplayPlaying: false }): void {
+/**
+ * Publish `pitLane.exited` with exactly this envelope telemetry. No default, so
+ * an explicit `undefined` reaches the engine as `undefined`.
+ */
+function publishExited(telemetry: unknown): void {
   const event = { event: "pitLane.exited", timestamp: 0, telemetry, data: {} } as SimEventOf<"pitLane.exited">;
 
   for (const handler of Array.from(handlers.get("pitLane.exited") ?? [])) handler(event);
+}
+
+/** Publish `pitLane.exited` with the tick's telemetry, as the translator's envelope carries it. */
+function exitPitRoad(telemetry: unknown = { IsOnTrack: true, IsReplayPlaying: false }): void {
+  publishExited(telemetry);
 }
 
 let masterEnabled = true;
@@ -228,7 +236,7 @@ describe("pit exit cue engine", () => {
       ["a non-object telemetry value", 42],
     ])("plays with %s — unknown data never silences the cue (#912)", (_label, telemetry) => {
       register();
-      exitPitRoad(telemetry);
+      publishExited(telemetry);
 
       expect(hoisted.audio.playOnChannel).toHaveBeenCalledExactlyOnceWith(AudioChannel.Cue, PIT_EXIT_CLIP);
     });
