@@ -314,6 +314,15 @@ export type CarProgressState = {
    */
   lastProgress: (number | undefined)[];
   /**
+   * `SessionTime` of the last tick the step read every car on, or null: the
+   * step clears it on entry and writes it only once its per-car loop has
+   * completed, so it is null after a tick the gate refused, after a tick the
+   * step threw on, and before the first. Handed on as the next tick's
+   * `previousSessionTime`, which is how a consumer knows the tick it last
+   * took is the one directly before this one.
+   */
+  lastReadSessionTime: number | null;
+  /**
    * Per-car crossing-time traces: a rolling ~1.15-lap history of
    * progress (`CarIdxLapCompleted + CarIdxLapDistPct`, corrected at the
    * line) against `SessionTime`, sparse-indexed by carIdx; undefined = no
@@ -324,7 +333,7 @@ export type CarProgressState = {
 
 /** No car traced (issue #1572): the initial state. */
 export function createCarProgressState(): CarProgressState {
-  return { lastProgress: [], traces: [] };
+  return { lastProgress: [], lastReadSessionTime: null, traces: [] };
 }
 
 /**

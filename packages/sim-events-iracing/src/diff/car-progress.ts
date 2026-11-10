@@ -72,10 +72,29 @@ export function readCarProgress(previous: number | undefined, lapCompleted: numb
   return Math.abs(candidate - previous) <= GAP_TRACE_MAX_STEP ? candidate : raw;
 }
 
-/** One live tick's race progress for every car: what {@link stepCarProgress} read and did. */
+/**
+ * One live tick's race progress for every car: what {@link stepCarProgress}
+ * read and did.
+ *
+ * **Continuity across ticks.** A consumer that keeps a car's reading from one
+ * tick to measure against the next (the sector timer's crossing
+ * interpolation) may bridge from the tick it last consumed only when this
+ * tick's {@link CarProgressTick.previousSessionTime} equals that tick's
+ * `sessionTime`. Otherwise at least one tick in between was not read — the
+ * gate refused it, the step threw on it, or the consumer never saw it — and
+ * EVERY car's continuity is broken, whatever `traceReset` says: a reset
+ * proves a discontinuity, but no reset proves nothing about ticks nobody
+ * read.
+ */
 export type CarProgressTick = {
   /** The tick's `SessionTime`, finite. */
   sessionTime: number;
+  /**
+   * The `sessionTime` of the tick the step read directly before this one, or
+   * null when it read none: the first tick, the tick after one the gate
+   * refused, and the tick after one the step threw on.
+   */
+  previousSessionTime: number | null;
   /**
    * Per car: its progress ({@link readCarProgress}: `CarIdxLapCompleted +
    * CarIdxLapDistPct`, corrected at the line) when both readings are finite
@@ -104,7 +123,8 @@ export type CarProgressTick = {
  * Otherwise every car up to the shorter of the two arrays gets an entry: its
  * progress, or `null` for a reading that is not finite or is negative (a car
  * out of the world reads `-1`), which leaves its trace untouched and drops
- * its last progress. `traceReset`
+ * its last progress. The tick also says which tick was read directly before
+ * it (`previousSessionTime`), null unless that one read every car. `traceReset`
  * is true only where `appendProgressSample` answered `"reset"`: the reading
  * was a discontinuity (a backwards step, or a forward one past
  * `GAP_TRACE_MAX_STEP`), so the car's motion since its last sample was not
@@ -118,6 +138,13 @@ export function stepCarProgress(
   /** The canonical live order this tick (`race-positions.md`); `null` = none, which fails the gate. */
   frozenPositions: readonly number[] | null,
 ): CarProgressTick | null {
+  // Cleared before anything can fail and written last, so it is null on the
+  // next tick unless this one read every car: a refused gate and a throw in
+  // the loop both read as "no previous tick".
+  const previousSessionTime = slice.lastReadSessionTime;
+
+  slice.lastReadSessionTime = null;
+
   const lc = telemetry.CarIdxLapCompleted as number[] | undefined;
   const pct = telemetry.CarIdxLapDistPct as number[] | undefined;
   // Finite, not merely numeric: `typeof NaN === "number"`, and a NaN session
@@ -175,5 +202,7 @@ export function stepCarProgress(
   // A car the arrays no longer reach has no reading either.
   if (slice.lastProgress.length > carCount) slice.lastProgress.length = carCount;
 
-  return { sessionTime, progress, traceReset, traces: slice.traces };
+  slice.lastReadSessionTime = sessionTime;
+
+  return { sessionTime, previousSessionTime, progress, traceReset, traces: slice.traces };
 }

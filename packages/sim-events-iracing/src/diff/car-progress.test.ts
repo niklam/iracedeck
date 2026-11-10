@@ -9,6 +9,8 @@
  *   - `traceReset` is true exactly on a sample that reset the car's trace
  *   - the traces grow as `appendProgressSample` dictates, and the tick hands
  *     the slice's own array on
+ *   - `previousSessionTime` names the tick read directly before, and is null
+ *     whenever a tick in between was refused or threw
  *   - the start/finish correction: a lap counter and a lap fraction that
  *     disagree for a tick at the line read as continuous motion, in either
  *     direction, while every other whole-lap or backwards step stays the
@@ -115,6 +117,7 @@ describe("stepCarProgress — a read tick", () => {
 
     expect(read).toEqual({
       sessionTime: 100,
+      previousSessionTime: null,
       progress: [2.5, 3.25, 1.75],
       traceReset: [false, false, false],
       traces: [[{ progress: 2.5, time: 100 }], [{ progress: 3.25, time: 100 }], [{ progress: 1.75, time: 100 }]],
@@ -241,6 +244,59 @@ describe("stepCarProgress — traceReset and the traces", () => {
 
     expect(read!.traceReset).toEqual([false, false, false]);
     expect(slice.traces[1]).toEqual([{ progress: at(2.61), time: 101 }]);
+  });
+});
+
+describe("stepCarProgress — previousSessionTime", () => {
+  it("is null on the first tick", () => {
+    expect(step(createCarProgressState(), tick(100, [2.5, 2.6, 2.4]))!.previousSessionTime).toBeNull();
+  });
+
+  it("is the first tick's session time on the second of two consecutive read ticks", () => {
+    const slice = createCarProgressState();
+    const first = step(slice, tick(100, [2.5, 2.6, 2.4]));
+    const second = step(slice, tick(100.25, [2.51, 2.61, 2.41]));
+    const third = step(slice, tick(100.5, [2.52, 2.62, 2.42]));
+
+    expect(second!.previousSessionTime).toBe(first!.sessionTime);
+    expect(third!.previousSessionTime).toBe(second!.sessionTime);
+  });
+
+  it("is null on the tick after one the gate refused, and links again from there", () => {
+    const slice = createCarProgressState();
+
+    step(slice, tick(100, [2.5, 2.6, 2.4]));
+    expect(step(slice, tick(101, [2.51, 2.61, 2.41]), { isRaceSession: false })).toBeNull();
+    expect(slice.lastReadSessionTime).toBeNull();
+
+    const back = step(slice, tick(102, [2.52, 2.62, 2.42]));
+
+    expect(back!.previousSessionTime).toBeNull();
+    expect(step(slice, tick(103, [2.53, 2.63, 2.43]))!.previousSessionTime).toBe(102);
+  });
+
+  it("is null on the tick after one the step threw on part-way through its cars", () => {
+    const slice = createCarProgressState();
+
+    step(slice, tick(100, [2.5, 2.6, 2.4]));
+
+    // A reading that throws for the second car: the first car is already read.
+    const broken = tick(101, [2.51, 2.61, 2.41]);
+
+    Object.defineProperty(broken.CarIdxLapDistPct as number[], 1, {
+      get: () => {
+        throw new Error("reading broke");
+      },
+    });
+
+    expect(() => step(slice, broken)).toThrow("reading broke");
+    expect(slice.traces[0]).toHaveLength(2);
+    expect(slice.lastReadSessionTime).toBeNull();
+
+    const next = step(slice, tick(102, [2.52, 2.62, 2.42]));
+
+    expect(next!.previousSessionTime).toBeNull();
+    expect(next!.sessionTime).toBe(102);
   });
 });
 
