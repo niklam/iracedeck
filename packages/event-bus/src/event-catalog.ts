@@ -1029,6 +1029,20 @@ export type SimEventMap = {
   "pitService.stopEmpty": SimEvent<"pitService.stopEmpty", EmptySimEventPayload>;
   "carControl.drsToggled": SimEvent<"carControl.drsToggled", { on: boolean }>;
   "carControl.p2pToggled": SimEvent<"carControl.p2pToggled", { on: boolean }>;
+  /**
+   * The player's pit limiter was switched on (`on: true`) or off — by the
+   * driver or by the sim's own pit-limiter aid (issue #1272). Fires once per
+   * change, with no debounce, wherever the car is: on the circuit, on pit road
+   * and stopped in its pit stall. On → off → on is two `on: true`.
+   *
+   * Never fired for a state the player did not switch in front of the
+   * translator: not on the first live tick after it starts listening (connect,
+   * a session change, the end of a replay glance) whatever the limiter reads,
+   * not while the driver is out of the car, not during pit service and for
+   * half a second after it ends, and not while the car is out of the world (a
+   * tow or a reset) and for half a second after it is back. A change made in
+   * one of those windows is absorbed, never announced later.
+   */
   "carControl.limiterToggled": SimEvent<"carControl.limiterToggled", { on: boolean }>;
   "limiter.dropped": SimEvent<"limiter.dropped", EmptySimEventPayload>;
   "limiter.missing": SimEvent<"limiter.missing", EmptySimEventPayload>;
