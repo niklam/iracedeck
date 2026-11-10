@@ -373,22 +373,24 @@ describe("BlackBoxSelector dial surface", () => {
       mockDualPressThreshold.value = ms;
     },
     readsStoredSettings: false,
+    // No key declares a shape, so every key is the wrapper's tap, the repeating
+    // Increment / Decrement included: a repeat's steps are their own feedback (#269).
     keyCases: [
-      { name: "a Direct key taps once on key down", settings: { mode: "direct" }, shape: { kind: "tap" } },
+      { name: "a Direct key: no keyPressShape, so the wrapper's tap", settings: { mode: "direct" }, shape: undefined },
       {
-        name: "Increment Selected Control repeats while held (#1585)",
+        name: "Increment Selected Control, which repeats: the wrapper's tap (#1585)",
         settings: { mode: "selected-control", control: "increment" },
-        shape: { kind: "hold", thresholdMs: 500 },
+        shape: undefined,
       },
       {
-        name: "Decrement Selected Control repeats while held (#1585)",
+        name: "Decrement Selected Control, which repeats: the wrapper's tap (#1585)",
         settings: { mode: "selected-control", control: "decrement" },
-        shape: { kind: "hold", thresholdMs: 500 },
+        shape: undefined,
       },
       {
-        name: "Toggle Selected Control taps once (#1585)",
+        name: "Toggle Selected Control: the wrapper's tap (#1585)",
         settings: { mode: "selected-control", control: "toggle" },
-        shape: { kind: "tap" },
+        shape: undefined,
       },
     ],
   });

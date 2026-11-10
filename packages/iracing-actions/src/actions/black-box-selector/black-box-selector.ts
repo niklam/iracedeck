@@ -216,21 +216,12 @@ function blackBoxIconFor(settings: BlackBoxSelectorSettings): { iconSvg: string;
  * Selected Control do, as every directional adjust key in the plugin does, so a
  * brake-bias or pit-request change is not one press per step. Every other press
  * is a single tap: repeating a selection, a toggle or a box hotkey on a long
- * press would overshoot.
+ * press would overshoot. Every key, a repeating one included, has the press
+ * sounds' default tap shape: no `keyPressShape`, since a repeat's steps are
+ * their own feedback and release does nothing a bleep could promise (#269).
  */
 export function blackBoxKeyRepeats(settings: BlackBoxSelectorSettings): boolean {
   return settings.mode === "selected-control" && (settings.control === "increment" || settings.control === "decrement");
-}
-
-/**
- * @internal Exported for testing
- *
- * The press sounds' shape of a key press (#269): the hold shape, at the
- * threshold the repeat waits out, for a key that repeats while held
- * ({@link blackBoxKeyRepeats}); a tap for every other key.
- */
-export function blackBoxKeyPressShape(settings: BlackBoxSelectorSettings): PressShape {
-  return blackBoxKeyRepeats(settings) ? { kind: "hold", thresholdMs: getDualPressThresholdMs() } : { kind: "tap" };
 }
 
 /**
@@ -306,11 +297,6 @@ export class BlackBoxSelector extends ConnectionStateAwareAction<BlackBoxSelecto
     }
 
     await this.updateDisplay(ev, settings);
-  }
-
-  /** The press sounds' shape of a key press (#269); see {@link blackBoxKeyPressShape}. */
-  keyPressShape(ev: IDeckKeyDownEvent<BlackBoxSelectorSettings>): PressShape {
-    return blackBoxKeyPressShape(this.parseSettings(ev.payload.settings));
   }
 
   override async onKeyDown(ev: IDeckKeyDownEvent<BlackBoxSelectorSettings>): Promise<void> {

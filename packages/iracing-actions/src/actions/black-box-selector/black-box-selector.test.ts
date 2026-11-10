@@ -4,7 +4,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BLACK_BOX_CONTROL_KEYS } from "../../shared/black-box.js";
 import {
   BLACK_BOX_GLOBAL_KEYS,
-  blackBoxKeyPressShape,
   blackBoxKeyRepeats,
   BlackBoxSelector,
   BlackBoxSelectorSettings,
@@ -260,7 +259,7 @@ describe("BlackBoxSelector", () => {
     });
   });
 
-  describe("press repeat and press shape (#1585)", () => {
+  describe("press repeat (#1585)", () => {
     it.each([
       [{ mode: "selected-control", control: "increment" }, true],
       [{ mode: "selected-control", control: "decrement" }, true],
@@ -272,25 +271,6 @@ describe("BlackBoxSelector", () => {
       [{ mode: "toggle-size", control: "increment" }, false],
     ] as const)("repeats %o: %s", (settings, repeats) => {
       expect(blackBoxKeyRepeats(BlackBoxSelectorSettings.parse(settings))).toBe(repeats);
-    });
-
-    it.each(["increment", "decrement"] as const)("declares %s a hold at the dual-press threshold", (control) => {
-      expect(blackBoxKeyPressShape(BlackBoxSelectorSettings.parse({ mode: "selected-control", control }))).toEqual({
-        kind: "hold",
-        thresholdMs: 500,
-      });
-    });
-
-    it.each([
-      { mode: "selected-control", control: "next" },
-      { mode: "selected-control", control: "previous" },
-      { mode: "selected-control", control: "toggle" },
-      { mode: "direct", control: "increment" },
-      { mode: "next" },
-      { mode: "previous" },
-      { mode: "toggle-size" },
-    ] as const)("declares %o a tap", (settings) => {
-      expect(blackBoxKeyPressShape(BlackBoxSelectorSettings.parse(settings))).toEqual({ kind: "tap" });
     });
   });
 
@@ -626,13 +606,10 @@ describe("BlackBoxSelector", () => {
         expect(mockTapBinding).toHaveBeenCalledTimes(1);
       });
 
-      it("declares the key press shape through keyPressShape", () => {
-        expect(
-          action.keyPressShape(fakeEvent("k9", { mode: "selected-control", control: "increment" }) as never),
-        ).toEqual({ kind: "hold", thresholdMs: 500 });
-        expect(action.keyPressShape(fakeEvent("k9", { mode: "selected-control", control: "toggle" }) as never)).toEqual(
-          { kind: "tap" },
-        );
+      it("declares no keyPressShape, so a repeating key has the default tap shape (#269)", () => {
+        // A hold-to-repeat key's steps are its own feedback: the press sounds
+        // click once on key down and never bleep at the threshold.
+        expect("keyPressShape" in action).toBe(false);
       });
 
       it("shows the missing-binding state for the chosen control's binding", async () => {
