@@ -242,9 +242,9 @@ describe("black-box-selector dial-surface pure helpers", () => {
 
       expect(desc).toEqual({
         rotate: "Adjust control",
-        push: "Next control (hold: Previous control)",
-        touch: "Toggle control",
-        longTouch: "Next control",
+        push: "Select next control (hold: Select previous control)",
+        touch: "Toggle selected control",
+        longTouch: "Select next control",
       });
     });
 
@@ -669,7 +669,10 @@ describe("BlackBoxSelector dial surface", () => {
       const ctx = dialContext("r-desc");
       await appear(ctx, withDial({ rotation: "select-control", pressAction: "toggle-control" }));
 
-      expect(ctx.setTriggerDescription).toHaveBeenLastCalledWith({ rotate: "Select control", push: "Toggle control" });
+      expect(ctx.setTriggerDescription).toHaveBeenLastCalledWith({
+        rotate: "Select control",
+        push: "Toggle selected control",
+      });
     });
   });
 

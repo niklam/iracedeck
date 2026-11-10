@@ -119,6 +119,17 @@ export const GESTURE_ACTIONS = [
 ] as const;
 export type GestureSlot = (typeof GESTURE_ACTIONS)[number];
 
+/**
+ * The binding each selected-control gesture taps (#1585) — the keys the keypad
+ * Selected Control mode's Toggle / Next / Previous presses use. One map for the
+ * dispatch and the #612 comms catalog, which a test holds to it.
+ */
+export const GESTURE_CONTROL_KEYS = {
+  "toggle-control": BLACK_BOX_CONTROL_KEYS.toggleControl,
+  "next-control": BLACK_BOX_CONTROL_KEYS.selectNextControl,
+  "previous-control": BLACK_BOX_CONTROL_KEYS.selectPreviousControl,
+} as const satisfies Partial<Record<GestureSlot, string>>;
+
 export const DialSettings = z
   .object({
     // What a turn does (#1585); missing on a dial stored before the choice, which keeps cycling boxes.
@@ -191,11 +202,11 @@ function gestureLabel(action: GestureSlot): string | undefined {
     case "toggle-size":
       return "Toggle box size";
     case "toggle-control":
-      return "Toggle control";
+      return "Toggle selected control";
     case "next-control":
-      return "Next control";
+      return "Select next control";
     case "previous-control":
-      return "Previous control";
+      return "Select previous control";
     case "none":
       return undefined;
     default: {
@@ -493,19 +504,11 @@ export class BlackBoxSelectorDialSurface extends ReleaseDialSurfaceBase<BlackBox
 
         return;
       case "toggle-control":
-        this.host.logger.info("Black box dial toggled selected control");
-        // Mirrors the keypad Selected Control mode's Toggle: one tap on the open box (#1585).
-        await this.host.tapBinding(BLACK_BOX_CONTROL_KEYS.toggleControl);
-
-        return;
       case "next-control":
-        this.host.logger.info("Black box dial selected next control");
-        await this.host.tapBinding(BLACK_BOX_CONTROL_KEYS.selectNextControl);
-
-        return;
       case "previous-control":
-        this.host.logger.info("Black box dial selected previous control");
-        await this.host.tapBinding(BLACK_BOX_CONTROL_KEYS.selectPreviousControl);
+        this.host.logger.info(`Black box dial gesture ${gesture}`);
+        // Mirrors the keypad Selected Control mode's press: one tap on the open box (#1585).
+        await this.host.tapBinding(GESTURE_CONTROL_KEYS[gesture]);
 
         return;
       default: {

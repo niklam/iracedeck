@@ -6,6 +6,7 @@ import { BLACK_BOX_SELECTED_CONTROL_KEYS, BLACK_BOX_SELECTED_CONTROLS } from "..
 import { DIAL_CATEGORIES, DIAL_PRESS_ACTIONS } from "./audio-controls/audio-controls-settings.js";
 import {
   GESTURE_ACTIONS as BLACK_BOX_DIAL_GESTURES,
+  GESTURE_CONTROL_KEYS as BLACK_BOX_GESTURE_CONTROL_KEYS,
   ROTATION_KEYS as BLACK_BOX_ROTATION_KEYS,
   ROTATIONS as BLACK_BOX_ROTATIONS,
 } from "./black-box-selector/black-box-selector-dial-surface.js";
@@ -208,17 +209,10 @@ describe("action-comms catalog", () => {
       else expect(dial[gesture], gesture).toBeDefined();
     }
 
-    expect(dial["toggle-control"]).toEqual({
-      method: "keybind",
-      binding: { scope: "global", key: "blackBoxToggleControl" },
-    });
-    expect(dial["next-control"]).toEqual({
-      method: "keybind",
-      binding: { scope: "global", key: "blackBoxSelectNextControl" },
-    });
-    expect(dial["previous-control"]).toEqual({
-      method: "keybind",
-      binding: { scope: "global", key: "blackBoxSelectPreviousControl" },
-    });
+    // The control gestures name the keys the surface taps, so a status line never
+    // reports one binding while the press sends another.
+    for (const [gesture, key] of Object.entries(BLACK_BOX_GESTURE_CONTROL_KEYS)) {
+      expect(dial[gesture], gesture).toEqual({ method: "keybind", binding: { scope: "global", key } });
+    }
   });
 });
