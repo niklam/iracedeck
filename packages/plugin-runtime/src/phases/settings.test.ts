@@ -36,6 +36,8 @@ vi.mock("@iracedeck/race-engineer-wiring", async () =>
 );
 vi.mock("../actions.js", async () => (await import("../test-support/module-mocks.js")).actionsMock());
 
+const TRACK_DATA_DIR = "C:/data/Track Data";
+
 function boot(extension?: PluginExtension) {
   const handlerDeps: Record<string, unknown>[] = [];
   const listeners: ((settings: unknown) => void)[] = [];
@@ -47,7 +49,7 @@ function boot(extension?: PluginExtension) {
   const audio = initAudio(core);
   const voicePacks = initVoicePacks(core, audio);
   implement("onGlobalSettingsChange", (listener) => listeners.push(listener as never));
-  const settings = initSettings(core, audio, voicePacks);
+  const settings = initSettings(core, audio, voicePacks, { directory: TRACK_DATA_DIR });
 
   return { host, handlerDeps, listeners, settings, voicePacks, audio };
 }
@@ -121,6 +123,24 @@ describe("initSettings", () => {
     // two share one lock and one status key; never a capture of the window's own.
     expect(callLog).toEqual(["getCpuProfileCapture", "getCpuProfileCapture().capture"]);
     expect(String(handlerDeps[0].profilesPath)).toMatch(/[\\/]profiles$/);
+  });
+
+  it("hands the window the track store's folder and publishes it with the settings file's path once the store is ready (#1112)", () => {
+    const written: Record<string, unknown>[] = [];
+    implement("isSettingsStoreReady", () => true);
+    implement("getGlobalSettings", () => ({}));
+    implement("updateGlobalSettings", (partial) => written.push(partial as Record<string, unknown>));
+    const { handlerDeps, listeners } = boot();
+
+    // The Diagnostics card's Open folder button opens the store's folder, never one the page names.
+    expect(handlerDeps[0].trackDataPath).toBe(TRACK_DATA_DIR);
+    expect(written.filter((partial) => "_trackDataPath" in partial)).toEqual([]);
+
+    listeners.at(-1)?.({});
+
+    expect(written.filter((partial) => "_trackDataPath" in partial)).toEqual([
+      { _settingsStorePath: expect.anything(), _trackDataPath: TRACK_DATA_DIR },
+    ]);
   });
 
   it("gives the version check no deviceType without a host extension (Mirabox, Ulanzi)", async () => {

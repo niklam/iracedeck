@@ -3,7 +3,8 @@
  * notices, the startup migrations and the per-feature startup policies (issue
  * #1007, replacing the "On startup" defaults of #482 — a policy of
  * `remember-last` now leaves the previous session's gate alone instead of
- * overriding it), then the notices' grace timer, publishing the store path,
+ * overriding it), then the notices' grace timer, publishing the settings
+ * file's and the track data folder's paths,
  * starting the settings server and the catalog-override warning. The Pit Crew action's own
  * onGlobalSettingsChange listener picks up the echoed runtime keys and
  * re-applies them to the audio buses / radar engine, so no further wiring is
@@ -33,6 +34,8 @@ export interface StoreReadyDeps {
   readonly voicePacks: VoicePacks;
   /** Only its path is read: the Diagnostics card shows it. */
   readonly store: Pick<SettingsStore, "path">;
+  /** The track store's folder (#1112): the Diagnostics card's Track data row shows it. */
+  readonly trackDataPath: string;
   readonly settingsWindow: SettingsWindowStep;
   readonly notices: StartupNotices;
 }
@@ -46,6 +49,7 @@ export function createStoreReadyStep({
   audio,
   voicePacks,
   store,
+  trackDataPath,
   settingsWindow,
   notices,
 }: StoreReadyDeps): StoreReadyStep {
@@ -120,8 +124,12 @@ export function createStoreReadyStep({
       // I/O at construction) — publish it unconditionally here, NOT inside the
       // ensureStarted().then() below, so a bind/firewall failure that rejects
       // the settings server still leaves the path visible for the rest of the
-      // process life. That's exactly when a diagnostic aid matters most.
-      updateGlobalSettings({ _settingsStorePath: store.path });
+      // process life. That's exactly when a diagnostic aid matters most. The
+      // track data folder (#1112) is the Diagnostics card's "Track data" row,
+      // known as early and published in the same write for the same reason.
+      // Both are passthrough keys the plugin rewrites at every start, so a
+      // value an older run left is replaced.
+      updateGlobalSettings({ _settingsStorePath: store.path, _trackDataPath: trackDataPath });
 
       // #993: the settings server is the channel every UI uses; publish where it
       // is (the ONE host mirror per start — full store + `_settingsChannel` —

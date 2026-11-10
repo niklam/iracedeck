@@ -7,6 +7,7 @@ import { initReplay } from "./phases/replay.js";
 import { initSettings } from "./phases/settings.js";
 import { initSim } from "./phases/sim.js";
 import { startServices } from "./phases/start-services.js";
+import { initTrackStore } from "./phases/track-store.js";
 import { initVoicePacks } from "./phases/voice-packs.js";
 import type { PluginHost } from "./types.js";
 
@@ -19,14 +20,15 @@ import type { PluginHost } from "./types.js";
  */
 export function startPlugin(host: PluginHost): void {
   const core = initCore(host);
-  const sim = initSim(core);
+  const trackData = initTrackStore(core);
+  const sim = initSim(core, trackData);
   const input = initInput(core);
   const audio = initAudio(core);
   const voicePacks = initVoicePacks(core, audio);
 
   initRaceEngineer(core, sim.runtime, audio, voicePacks);
 
-  const settings = initSettings(core, audio, voicePacks);
+  const settings = initSettings(core, audio, voicePacks, trackData);
 
   const replay = initReplay(core);
   registerActions(core, input);

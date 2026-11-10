@@ -1,5 +1,5 @@
 /**
- * Phase 5, step 3 (#1377): the download side — storage, the catalog service and
+ * Phase 6, step 3 (#1377): the download side — storage, the catalog service and
  * the installer, built over the scan's root, scanner port, service and state,
  * and the seedable packs the phase computed. Returns the installer, the one
  * product the rest of the phase and the later phases use.

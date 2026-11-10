@@ -114,7 +114,7 @@ packages/
   iracing-sdk/                 TypeScript SDK: telemetry, session info, broadcast commands
   event-bus/                   Typed pub/sub with the canonical sim-event catalog (sim- and audio-agnostic)
   sim-events-iracing/          The iRacing translator (SDK ticks to bus events) and the replay recorder
-  track-data/                  Bundled Lovely Sim Racing corner markers
+  track-data/                  Bundled Lovely Sim Racing corner markers; the pit-lane landmark model
 
   # Audio and the Race Engineer
   audio-native/                C++ N-API addon: the miniaudio five-channel mixer
@@ -138,6 +138,7 @@ packages/
   fetch-utils/                 Request deadline and byte-capped JSON read for Node and the PI bundle
   settings/                    Global settings: schema, settings store, migrations, PI warnings, first run
   replay-store/                Per-session replay store: markers, laps, greens, session starts, incidents
+  track-store/                 Per-track store: learned pit-lane landmarks, shared by every deck host
   replay-engine/               iRacing replay engine: command gate, cursor, jump playback, speed state, lap walks
   diagnostics/                 Self-diagnostics: watchdog, resource monitor, CPU profiles, snapshot sections
   app-updates/                 Version-upgrade changelog opener and the What's New update check
@@ -166,7 +167,7 @@ packages/
 | `@iracedeck/iracing-sdk` | TypeScript SDK: `SDKController`, session YAML and the broadcast `Commands` |
 | `@iracedeck/event-bus` | Typed pub/sub with the canonical sim-event catalog; depends on no simulator SDK |
 | `@iracedeck/sim-events-iracing` | The iRacing translator, from SDK ticks to bus events, the replay recorder, and the canonical live race order |
-| `@iracedeck/track-data` | Bundled corner markers from Lovely Sim Racing, keyed by track name |
+| `@iracedeck/track-data` | Bundled corner markers from Lovely Sim Racing, keyed by track name, and the pure model of the pit-lane landmarks learned from live telemetry |
 | **Audio and the Race Engineer** | |
 | `@iracedeck/audio-native` | C++ Node.js addon around miniaudio: a five-channel mixer with device selection; mocked off Windows |
 | `@iracedeck/audio-service` | The mixer singleton over `audio-native`: buses, voice sequences and the device lifecycle |
@@ -187,6 +188,7 @@ packages/
 | `@iracedeck/fetch-utils` | `abortAfter` and `readCappedJson`: request helpers shared by app-updates, voice-packs and the PI bundle |
 | `@iracedeck/settings` | Global settings below the deck layer: schema, migrations, the plugin-owned settings store, PI warnings, first run |
 | `@iracedeck/replay-store` | The per-session replay store: markers, laps, greens, session starts and incidents, one file per `SubSessionID` |
+| `@iracedeck/track-store` | The per-track store: the learned pit-lane landmarks, one file per `TrackID` in a folder every deck host shares, merged on every write |
 | `@iracedeck/replay-engine` | The iRacing replay engine the replay actions share: the replay command gate, cursor, jump playback, speed state and lap walks |
 | `@iracedeck/diagnostics` | Self-diagnostics: the main-thread watchdog, the resource monitor, CPU profiles and the Telemetry Snapshot's state sections |
 | `@iracedeck/app-updates` | The version-upgrade changelog opener and the settings window's What's New update check |
@@ -210,8 +212,8 @@ packages/
 
 ```text
 Plugin start (each plugin's plugin.ts is a shell: build the adapter, call startPlugin)
-  -> plugin-runtime (eleven startup phases: core, sim, input, audio, voice packs,
-     Race Engineer, settings, replay, actions, services, connect)
+  -> plugin-runtime (twelve startup phases: core, track store, sim, input, audio,
+     voice packs, Race Engineer, settings, replay, actions, services, connect)
     -> initSim starts the sim translator (sim-events-iracing) and returns its query side
       -> race-engineer-wiring builds the Race Engineer's dependencies from it
 

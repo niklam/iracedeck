@@ -17,10 +17,21 @@
   <sdpi-textfield setting="_settingsStorePath" global disabled></sdpi-textfield>
 </sdpi-item>
 <div class="ird-supporting-text">Where iRaceDeck stores every setting on this page. Back this file up to keep your configuration.</div>
+<%# Open folder buttons: window only — a PI's sendToPlugin goes to its action, not the settings-window handler. %>
+<% if (locals.settingsWindow) { %>
+<div class="ird-open-settings"><ird-open-folder></ird-open-folder></div>
+<% } %>
+<%# Track data (#1112): the learned per-track data folder, shared by every deck host. %>
+<sdpi-item label="Track data">
+  <sdpi-textfield setting="_trackDataPath" global disabled></sdpi-textfield>
+</sdpi-item>
+<div class="ird-supporting-text">Where iRaceDeck keeps what it learns about each track while you drive, such as where the pit lane starts and ends. Every deck app on this PC shares this folder.</div>
+<% if (locals.settingsWindow) { %>
+<div class="ird-open-settings"><ird-open-track-data-folder></ird-open-track-data-folder></div>
+<% } %>
 <%# Renders nothing unless the catalog override is set (#1100). %>
 <ird-dev-base-url></ird-dev-base-url>
 <% if (locals.settingsWindow) { %>
-<div class="ird-open-settings"><ird-open-folder></ird-open-folder></div>
 <%# Capture CPU profile (#1338): window only, like Open folder above — a PI's sendToPlugin goes to its action. %>
 <sdpi-item label="CPU profile">
   <div class="ird-cpu-profile-buttons">

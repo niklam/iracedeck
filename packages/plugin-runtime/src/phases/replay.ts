@@ -1,5 +1,5 @@
 /**
- * Phase 8 (#1467): the replay layer — the per-session replay store with its
+ * Phase 9 (#1467; 8 until #1112): the replay layer — the per-session replay store with its
  * exit flush and the bus subscriptions that feed it, and the replay engine,
  * configured once with what it needs from the deck layer (the SDK controller,
  * the replay and camera command surfaces, a logger) and the two settings it

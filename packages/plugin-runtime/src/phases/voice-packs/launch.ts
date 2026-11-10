@@ -1,5 +1,5 @@
 /**
- * Phase 5, step 4 (#1377): the launch step, built over the installer and the
+ * Phase 6, step 4 (#1377): the launch step, built over the installer and the
  * scan's service, dev root and logger. Built here, started by `startServices`.
  */
 import { getGlobalSettings, onGlobalSettingsChange, whenSettingsStoreSettled } from "@iracedeck/settings";

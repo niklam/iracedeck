@@ -174,11 +174,13 @@ Below the settings are the **release notes for every version of iRaceDeck**, new
 
 ### Diagnostics
 
-<SettingsShot file="diagnostics.png" alt="The Diagnostics tab, showing the debug logging toggle and the settings file path" />
+<SettingsShot file="diagnostics.png" alt="The Diagnostics tab, showing the debug logging toggle, the settings file path and the track data folder" />
 
 **Enable debug logging** writes verbose detail to the plugin log. Leave it off for normal use — it takes effect immediately, with no restart, so switch it on only to capture a log when reporting a problem, then switch it back off.
 
 **Settings file** shows exactly where your configuration lives, with an **Open folder** button that reveals it in Explorer. Copying that one file backs up everything on this page — see [Where Your Settings Are Stored](#where-your-settings-are-stored).
+
+**Track data** shows the folder where iRaceDeck keeps what it learns about each track, with an **Open track data folder** button that opens it in Explorer. Every deck app on your PC shares this folder — see [What iRaceDeck Learns About Tracks](#what-iracedeck-learns-about-tracks).
 
 **Capture CPU profile** records 30 seconds of what iRaceDeck is doing and saves it as two files in a `profiles` folder next to the plugin log: a `.cpuprofile` that opens in Chrome's DevTools, and a `.txt` summary listing where the time went. Press it while the problem is happening — a slow deck, or high CPU use in Task Manager — and the line under the button counts down, then shows the saved file's name. **Open folder** beside it opens the `profiles` folder; attach both files to your report. The folder keeps the five newest captures and deletes older ones. See [If iRaceDeck uses a lot of CPU](/docs/getting-started/troubleshooting/#if-iracedeck-uses-a-lot-of-cpu).
 
@@ -260,6 +262,16 @@ A red banner at the top of the Settings window and of every key's Property Inspe
 4. Start your deck software again.
 
 The banner only describes the start that found the mistake. If you restart before fixing the file, the next start finds a valid settings file — the one iRaceDeck just wrote — and shows no banner, but your set-aside file stays in the same folder until you delete it.
+
+## What iRaceDeck Learns About Tracks
+
+iRacing reports what each car is doing — approaching the pits, on pit road, back on track — but not where on the track one of those changes. So iRaceDeck learns it. While you drive, it watches every car in the session, yours included, enter and leave the pits and records four points on each track: where the pit approach begins, where pit road starts, where pit road ends, and where the pit exit lane ends and cars are back on track. Each point is the middle of the latest readings, so one odd car cannot move it, and a point counts as learned only once at least two readings agree on it. It keeps refining as more cars pit, and a second visit to a track starts from what the first one learned.
+
+It learns only while you are in the car in a live session — never from a replay, or while you watch the session from the garage. When iRacing changes a track's layout, iRaceDeck notices from the track's new length and learns that track again, keeping the old points until the new ones are settled.
+
+Nothing is announced from these points yet: they are what pit-lane calls will build on, and such a call stays silent on a track iRaceDeck has not learned rather than guess.
+
+What it learns is kept in one small file per track, under `%LOCALAPPDATA%\iRaceDeck\Track Data\`. Unlike your settings, this folder is shared by every deck app on your PC: a pit lane is the same whichever deck you drive with, so a Stream Deck and an Ulanzi Deck installation learn together instead of twice. Nothing in it leaves your PC. The **Diagnostics** tab shows the folder and has an **Open track data folder** button. Deleting a track's file while every deck app is closed only means iRaceDeck learns that track again (while one is running, it keeps what it learned this run and writes that back the next time it learns something on that track). A damaged file is never overwritten: the next time iRaceDeck saves something it learned on that track, it moves the damaged file aside next to the original first.
 
 ## How It Works
 

@@ -275,6 +275,48 @@ describe("createSettingsWindowCommandHandler", () => {
 
     expect(openDirectory).not.toHaveBeenCalled();
   });
+
+  it("opens the injected track data DIRECTORY on openTrackDataFolder, never a path from the page (#1112)", () => {
+    const openDirectory = vi.fn();
+    const openFolder = vi.fn();
+    const handle = createSettingsWindowCommandHandler({
+      writeSettings: vi.fn(),
+      openDirectory,
+      openFolder,
+      trackDataPath: "C:/data/Track Data",
+      profilesPath: "C:/logs/profiles",
+      voicePacksPath: "C:/packs",
+      storePath: "C:/s/global-settings.json",
+    });
+
+    handle({ event: "openTrackDataFolder", path: "C:/Windows/evil" });
+
+    expect(openDirectory).toHaveBeenCalledTimes(1);
+    expect(openDirectory).toHaveBeenCalledWith("C:/data/Track Data");
+    expect(openFolder).not.toHaveBeenCalled();
+  });
+
+  it("ignores openTrackDataFolder when no track data directory is injected", () => {
+    const openDirectory = vi.fn();
+    const handle = createSettingsWindowCommandHandler({ writeSettings: vi.fn(), openDirectory });
+
+    handle({ event: "openTrackDataFolder", path: "C:/Windows/evil" });
+
+    expect(openDirectory).not.toHaveBeenCalled();
+  });
+
+  it("ignores openTrackDataFolder when no directory opener is injected", () => {
+    const openFolder = vi.fn();
+    const handle = createSettingsWindowCommandHandler({
+      writeSettings: vi.fn(),
+      openFolder,
+      trackDataPath: "C:/data/Track Data",
+    });
+
+    expect(() => handle({ event: "openTrackDataFolder" })).not.toThrow();
+    // Never falls back to the file-revealing delegate, which would land one level up.
+    expect(openFolder).not.toHaveBeenCalled();
+  });
 });
 
 describe("enableFeatureWrites", () => {

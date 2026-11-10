@@ -23,6 +23,8 @@ vi.mock("@iracedeck/audio-native", async (io) =>
 );
 vi.mock("../../actions.js", async () => (await import("../../test-support/module-mocks.js")).actionsMock());
 
+const TRACK_DATA_PATH = "C:/data/Track Data";
+
 /** A store whose path counts its reads, to tell an eager read from a deferred one. */
 function countingStore(path: string): { readonly path: string; reads: number } {
   return {
@@ -60,7 +62,12 @@ describe("initSettingsWindow (#1377)", () => {
   it("builds the publisher, capture, update check, handler and controller in today's order and scopes", () => {
     const { core, adapter } = createFakeCore();
 
-    initSettingsWindow({ core, store: { path: "C:/settings.json" }, voicePacks: stub("voicePacks") });
+    initSettingsWindow({
+      core,
+      store: { path: "C:/settings.json" },
+      voicePacks: stub("voicePacks"),
+      trackDataPath: TRACK_DATA_PATH,
+    });
 
     expect(callLog.filter((n) => n.startsWith("create") || n.startsWith("init"))).toEqual([
       "createSettingsChannelPublisher",
@@ -77,7 +84,7 @@ describe("initSettingsWindow (#1377)", () => {
     const { core } = createFakeCore();
     const store = countingStore("C:/settings.json");
 
-    initSettingsWindow({ core, store, voicePacks: stub("voicePacks") });
+    initSettingsWindow({ core, store, voicePacks: stub("voicePacks"), trackDataPath: TRACK_DATA_PATH });
 
     expect(handlerDeps[0].storePath).toBe("C:/settings.json");
     expect(store.reads).toBe(1);
@@ -85,12 +92,31 @@ describe("initSettingsWindow (#1377)", () => {
     expect(store.reads).toBe(2);
   });
 
+  it("hands the command handler the track store's folder for the Diagnostics card's Open folder button (#1112)", () => {
+    const { core } = createFakeCore();
+
+    initSettingsWindow({
+      core,
+      store: { path: "C:/settings.json" },
+      voicePacks: stub("voicePacks"),
+      trackDataPath: TRACK_DATA_PATH,
+    });
+
+    expect(handlerDeps).toHaveLength(1);
+    expect(handlerDeps[0].trackDataPath).toBe(TRACK_DATA_PATH);
+  });
+
   it("publishes the channel of a server that starts later, through the publisher", () => {
     const { core } = createFakeCore();
     const published: unknown[] = [];
     implement("createSettingsChannelPublisher().publish", (channel) => published.push(channel));
 
-    const step = initSettingsWindow({ core, store: { path: "C:/settings.json" }, voicePacks: stub("voicePacks") });
+    const step = initSettingsWindow({
+      core,
+      store: { path: "C:/settings.json" },
+      voicePacks: stub("voicePacks"),
+      trackDataPath: TRACK_DATA_PATH,
+    });
     (controllerOptions[0].onStarted as (channel: unknown) => void)({ port: 2, token: "t" });
 
     expect(published).toEqual([{ port: 2, token: "t" }]);
@@ -104,7 +130,12 @@ describe("initSettingsWindow (#1377)", () => {
     const { core } = createFakeCore();
     const options: unknown[] = [];
     implement("controller.open", (o) => options.push(o));
-    const step = initSettingsWindow({ core, store: { path: "C:/settings.json" }, voicePacks: stub("voicePacks") });
+    const step = initSettingsWindow({
+      core,
+      store: { path: "C:/settings.json" },
+      voicePacks: stub("voicePacks"),
+      trackDataPath: TRACK_DATA_PATH,
+    });
     callLog.length = 0;
 
     void step.openSettingsWindow({ pane: "getting-started" });

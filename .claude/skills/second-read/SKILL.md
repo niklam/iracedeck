@@ -15,7 +15,7 @@ After the `/code-review` findings that hold are applied, before manual testing, 
 
 - **a gate or guard** — `scripts/claude-hooks/**`, the guard tests under `scripts/` and the `scripts/lib/` modules they read, the settings window's request guard and server, lint rules that enforce a boundary;
 - **a build, release or publish path** — `.github/workflows/**`, the build, release and publish scripts under `scripts/`, `turbo.json`, `packages/plugin-build/**`, a new package or a changed workspace dependency edge;
-- **a state machine** — `packages/sim-events-iracing/src/**`, the interpreter and catalog in `packages/audio-scenarios/src/**`, the settings store and migrations, `packages/replay-store/**`, the audio device lifecycle.
+- **a state machine** — `packages/sim-events-iracing/src/**`, the interpreter and catalog in `packages/audio-scenarios/src/**`, the settings store and migrations, `packages/replay-store/**`, `packages/track-store/**`, the audio device lifecycle.
 
 Not for prose, icons, regenerated artifacts, PI templates or mechanical renames. An action is not on the list; run it on one only when the action adds a state machine of its own.
 

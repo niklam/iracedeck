@@ -47,6 +47,7 @@ import { OPPONENT_PIT_EVENTS } from "./diff/opponent-pit.js";
 import { OVERTAKES_EVENTS } from "./diff/overtakes.js";
 import { PACE_LAPS_EVENTS } from "./diff/pace-laps.js";
 import { PIT_BOX_COUNTDOWN_EVENTS } from "./diff/pit-box-countdown.js";
+import { PIT_LANE_LANDMARKS_EVENTS } from "./diff/pit-lane-landmarks.js";
 import { PIT_LANE_EVENTS } from "./diff/pit-lane.js";
 import { PIT_READBACK_EVENTS } from "./diff/pit-readback.js";
 import { PIT_SPEEDING_EVENTS } from "./diff/pit-speeding.js";
@@ -145,6 +146,12 @@ export const TICK_ORDER: readonly TickStage[] = [
     source: "diff/pit-box-countdown.ts",
     via: "pending",
     events: PIT_BOX_COUNTDOWN_EVENTS,
+  },
+  {
+    stage: "diffPitLaneLandmarks",
+    source: "diff/pit-lane-landmarks.ts",
+    via: "pending",
+    events: PIT_LANE_LANDMARKS_EVENTS,
   },
   { stage: "diffCornerName", source: "diff/corner-name.ts", via: "pending", events: CORNER_NAME_EVENTS },
   { stage: "diffSectorStart", source: "diff/sector-start.ts", via: "pending", events: SECTOR_START_EVENTS },

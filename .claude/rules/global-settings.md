@@ -128,7 +128,7 @@ The store is `initGlobalSettings`'s required third argument, created before it w
 
 **The loopback guard is token-first.** `authorizeSettingsRequest` accepts any request carrying the valid launch token **regardless of `Origin`** (PIs are `file://` or host-served). Without a token, `Origin` (when present) must equal the loopback origin exactly, and only then is the `SameSite=Strict` cookie compared — the DNS-rebinding mitigation. Never emit a CORS header; bind `127.0.0.1` only. `onUpgradeDecision` reports every upgrade verdict, logged at debug (`Settings socket accepted/rejected …`).
 
-`_settingsStorePath` is published unconditionally (not inside the server's `then`), for the Diagnostics "Settings file" row — see `settings-window.md`.
+`_settingsStorePath` is published unconditionally (not inside the server's `then`), for the Diagnostics "Settings file" row, and `_trackDataPath` in the same `updateGlobalSettings` call for its "Track data" row (#1112) — see `settings-window.md`.
 
 **`isSettingsStoreReady()`** — true once the cache reflects the store (loaded, migrated or fresh); replaced the removed `hasReceivedHostSettings()`. Before it, the cache is schema defaults with no passthrough keys, so anything that must not act on defaults gates on it: `focusIRacingIfEnabled()`, `focusIRacingBeforeInput()`, the migrations and the binding-default seed in `global-settings-migrations.ts` (both through `runOnceSettingsStoreReady(action)`, which runs the action once at the first ready moment and marks itself done BEFORE calling it, since a write fans out to the change listeners synchronously), the `startupDefaultsApplied` block in `plugin-runtime`'s settings phase. **Any consumer deciding on the ABSENCE of a key must wait for it.** Never use `isGlobalSettingsInitialized()` (init was called) as this gate.
 
@@ -147,6 +147,7 @@ The store is `initGlobalSettings`'s required third argument, created before it w
 **Passthrough keys the store introduces:**
 
 - `_settingsStorePath` — the resolved file path; plugin-written.
+- `_trackDataPath` (#1112) — the track store's root folder, shared by every deck host; plugin-written at every start beside `_settingsStorePath`, so a stale value is replaced.
 - `_firstRunVersion` (#1061) — the version that resolved the Getting Started decision; a version not `true`, written on every resolution, and **never** run-scoped (the page would reappear every start).
 - `_migrationPending` / `_migrationAbandoned` — both **must persist**; never route `_migrationAbandoned` into a store anyone is told is safe to delete.
 - `_settingsChannel` (`{ port, token }`) — **never in the file** (per-process; the publisher removes a stale copy); it exists only in the host mirror, which is what a PI's bootstrap read returns.

@@ -9,7 +9,10 @@
  * cannot drift silently.
  */
 import { OpponentPenaltyFlag } from "@iracedeck/event-bus";
-import type { SimEventName, TireWearReport } from "@iracedeck/event-bus";
+import type { SimEventMap, SimEventName, TireWearReport } from "@iracedeck/event-bus";
+
+/** The `pitLane.landmarkLearned` payload, read off the catalog (issue #1112). */
+type PitLaneLandmarkLearnedData = SimEventMap["pitLane.landmarkLearned"]["data"];
 
 /**
  * A tire-wear report as `tireWear.reported` carries it (issue #1108): each zone
@@ -81,6 +84,26 @@ export const EVENT_TEMPLATES = [
   { name: "pitLane.approaching", description: "Approaching pit entry", data: {} },
   { name: "pitLane.entered", description: "Crossed onto pit road", data: {} },
   { name: "pitLane.exited", description: "Left pit road", data: {} },
+  {
+    name: "pitLane.landmarkLearned",
+    description:
+      "The translator accepted a pit-lane landmark edge from a car (issue #1112) — the landmark store folds the sample; no callout",
+    // Checked against the catalog: this payload is a contract the store folds.
+    data: {
+      track: {
+        sim: "iracing",
+        trackId: 324,
+        trackName: "tsukuba 2kfull",
+        trackConfigName: "2000 Full",
+        trackVersion: "2025.09.30.01",
+        trackLength: "2.05 km",
+        trackLengthM: 2050,
+      },
+      landmark: "pitRoadEnd",
+      sample: { pct: 0.0634, estTime: 4.27, carClassId: 0, key: "0:0:7:pitRoadEnd:3", at: 1794225600000 },
+      summary: { pct: 0.0631, estTimeByClass: { "0": 4.25 }, samples: 3, published: true },
+    } satisfies PitLaneLandmarkLearnedData,
+  },
   { name: "pitStall.entered", description: "Stopped in your pit stall", data: {} },
   { name: "pitStall.departed", description: "Left pit stall", data: {} },
   {

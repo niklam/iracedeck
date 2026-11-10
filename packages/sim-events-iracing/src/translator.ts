@@ -48,6 +48,7 @@ import {
   isReplayOnlySession,
   nearestCarGapMeters,
   type QualifyResultEntry,
+  readSubSessionId,
   type ReplayState,
   resolveLapsRemaining,
   resolveTimeRemainingS,
@@ -57,7 +58,17 @@ import {
   TrkLoc,
 } from "@iracedeck/iracing-sdk";
 import { createErrorBoundary, type ErrorPolicy, type ILogger, silentLogger } from "@iracedeck/logger";
-import { type CornerMarker, resolveCornerMarkers } from "@iracedeck/track-data";
+import {
+  type CornerMarker,
+  createPitLaneLandmarkLearner,
+  type PitLaneLandmarkLearner,
+  type PitLaneLandmarkName,
+  type PitLaneLandmarksLoader,
+  type PitLaneResolvedLandmark,
+  type PitLaneTrackIdentity,
+  resolveCornerMarkers,
+  resolvePitLaneLandmarks,
+} from "@iracedeck/track-data";
 
 import { type CautionGapMeasurement, measureCautionGap } from "./diff/caution-gap.js";
 import { CATCH_UP_CLEAR_MULTIPLE, type CatchUpBlock, diffCaution, resolveCatchUpBlocks } from "./diff/caution.js";
@@ -95,6 +106,11 @@ import { diffOvertakes } from "./diff/overtakes.js";
 import { diffPaceLaps, resolvePaceCarIdx } from "./diff/pace-laps.js";
 import { type PaceLineup, resolvePaceLineup } from "./diff/pace-lineup.js";
 import { diffPitBoxCountdown } from "./diff/pit-box-countdown.js";
+import {
+  diffPitLaneLandmarks,
+  resolvePitLaneTrackIdentity,
+  seedPitLaneLandmarkLearner,
+} from "./diff/pit-lane-landmarks.js";
 import { diffPitLane } from "./diff/pit-lane.js";
 import { buildSnapshot as buildReadbackSnapshot, diffPitReadback } from "./diff/pit-readback.js";
 import { diffPitSpeeding } from "./diff/pit-speeding.js";
@@ -172,7 +188,7 @@ const SUBSCRIPTION_ID = "__sim-events-iracing__";
  * one step's first error. `tick-steps.source.test.ts` counts the ids in both
  * `handleTick`s and fails until this number matches; a new step changes it.
  */
-export const TRANSLATOR_REPORTER_MAX_KEYS = 57 * TICK_STEP_KEYS_PER_ID;
+export const TRANSLATOR_REPORTER_MAX_KEYS = 60 * TICK_STEP_KEYS_PER_ID;
 
 /** The step name every {@link onTranslatorTick} listener is called under: one id, `translator:onTranslatorTick`. */
 const TICK_LISTENER_STEP = "onTranslatorTick";
@@ -306,6 +322,35 @@ type TranslatorInstance = {
    */
   fuelLaps: FuelLapTracker;
   /**
+   * The learned pit-lane landmarks of the track in session (issue #1112),
+   * which `diffPitLaneLandmarks` folds each accepted edge into and
+   * `getPitLaneLandmarks()` reads. Instance-level — NOT `TranslatorState` —
+   * like `fuelLaps`, so the replay guard's wipes (every garage visit) keep
+   * it. Emptied by `resetPerSessionState` and `handleDisconnect`, so the
+   * first live tick after either loads it again through
+   * {@link loadPitLaneLandmarks}: the store's current section, including its
+   * unwritten samples.
+   */
+  pitLaneLearner: PitLaneLandmarkLearner;
+  /**
+   * The track identity `resolvePitLaneTrackIdentity` last built (issue
+   * #1112), keyed on the session-info object it read, as
+   * {@link TranslatorInstance.paceLineupMemo} is and for the same reason: the
+   * SDK hands back the same parsed object until the YAML changes. So a tick
+   * with unchanged session info hands the learner the very identity it holds,
+   * which `loadPitLaneLandmarkLearner` keeps by reference, and neither the
+   * identity, the track length nor its key is rebuilt. Dropped with the
+   * learner. `null` until first resolved.
+   */
+  pitLaneTrackMemo: {
+    sessionInfo: Record<string, unknown> | null;
+    track: PitLaneTrackIdentity | null;
+  } | null;
+  /** The store's loader the learner is seeded from (issue #1112); `null` when none was given (learn from empty). */
+  loadPitLaneLandmarks: PitLaneLandmarksLoader | null;
+  /** Scoped logger for the pit-lane landmark edge diagnostics (issue #1112), all at debug. */
+  pitLaneLandmarkLogger: ILogger;
+  /**
    * Live-read safety margin (laps) for the laps-of-fuel-left callouts
    * (issue #838). Plugins wire it to the `fuelCalloutMarginLaps` global
    * setting (sanitized); defaults to the constant when no closure is given.
@@ -428,6 +473,17 @@ export type SimEventsIracingOptions = SimEventsIracingSettingsOptions & {
   onStepError?: ErrorPolicy;
   /** The step reporter's clock, in milliseconds. Default: `Date.now()`, read on every call. A test passes a fake. */
   errorClock?: () => number;
+  /**
+   * The pit-lane landmark store's reader (issue #1112): the learned section of
+   * a track, or `null` when there is none. The translator does no file IO; a
+   * plugin wires this to `@iracedeck/track-store`. Called from a live tick,
+   * once per track identity, again after a session change or a disconnect;
+   * what it returns is read leniently and brought in line with the session's
+   * track length (a changed length is a rebuild). A throw, a `null` or an
+   * unreadable answer leaves the learner empty for that track. Default: no
+   * loader, so every session learns from nothing.
+   */
+  loadPitLaneLandmarks?: PitLaneLandmarksLoader;
 };
 
 let instance: TranslatorInstance | null = null;
@@ -525,6 +581,10 @@ export function initializeSimEventsIracing(
     freshConnectFireChecked: false,
     freshConnectReplaySkipLogged: false,
     fuelLaps: createFuelLapTracker(),
+    pitLaneLearner: createPitLaneLandmarkLearner(),
+    pitLaneTrackMemo: null,
+    loadPitLaneLandmarks: options.loadPitLaneLandmarks ?? null,
+    pitLaneLandmarkLogger: logger.createScope("PitLaneLandmarks"),
     getFuelLapsLeftMarginLaps: options.getFuelLapsLeftMarginLaps ?? (() => FUEL_CALLOUT_DEFAULT_MARGIN_LAPS),
     getCornerCalloutLeadSeconds: options.getCornerCalloutLeadSeconds ?? (() => CORNER_CALLOUT_DEFAULT_LEAD_SECONDS),
     getGapAlertThresholdSeconds: options.getGapAlertThresholdSeconds ?? (() => GAP_DEFAULT_ALERT_THRESHOLD_S),
@@ -696,6 +756,45 @@ export function getFuelStats(windowLaps: number): FuelStats {
  */
 export function getLastStopTireTemps(): LastStopTireTemps | null {
   return instance?.state.lastStopTireTemps ?? null;
+}
+
+/**
+ * The learned pit-lane landmarks of the track in session (issue #1112), by
+ * landmark: each one's current values once enough samples agree, the values
+ * from before a track rebuild while the new geometry is relearned (`source:
+ * "previous"`), else `null` (`resolvePublishedLandmark` in
+ * `@iracedeck/track-data`). The whole answer is `null` before the translator
+ * is initialised and until a live tick has loaded the track — after a
+ * session change or a disconnect too, until the next live tick.
+ *
+ * A landmark accepted mid-session is in the answer from the tick that
+ * accepted it. A consumer that finds `null` — for the whole answer or for the
+ * landmark it needs — says nothing and logs at debug (spec decision 5): it
+ * never estimates a position from the track length or a default pit-lane
+ * fraction, a wrong number spoken with confidence.
+ */
+export function getPitLaneLandmarks(): Record<PitLaneLandmarkName, PitLaneResolvedLandmark | null> | null {
+  return instance ? resolvePitLaneLandmarks(instance.pitLaneLearner) : null;
+}
+
+/**
+ * `resolvePitLaneTrackIdentity` once per session-info object (issue #1112):
+ * the same identity object while the SDK hands back the same session info,
+ * so the learner keeps it by reference. See `pitLaneTrackMemo`.
+ */
+function resolvePitLaneTrackMemoised(
+  self: TranslatorInstance,
+  sessionInfo: Record<string, unknown> | null,
+): PitLaneTrackIdentity | null {
+  const memo = self.pitLaneTrackMemo;
+
+  if (memo !== null && memo.sessionInfo === sessionInfo) return memo.track;
+
+  const track = resolvePitLaneTrackIdentity(sessionInfo);
+
+  self.pitLaneTrackMemo = { sessionInfo, track };
+
+  return track;
 }
 
 /**
@@ -2471,6 +2570,10 @@ function handleDisconnect(self: TranslatorInstance): void {
   // disconnect means the sim is gone — reset it fully so a later reconnect
   // seeds cleanly (issue #465).
   self.fuelLaps = createFuelLapTracker();
+  // The learned pit-lane landmarks (issue #1112) are reloaded from the store
+  // on the first live tick after a reconnect.
+  self.pitLaneLearner = createPitLaneLandmarkLearner();
+  self.pitLaneTrackMemo = null;
 }
 
 /**
@@ -2749,6 +2852,13 @@ function resetPerSessionState(self: TranslatorInstance, telemetry: TelemetryData
   // fuel. `diffFuelLaps` executes the wipe on the first live-in-car tick of
   // the new session.
   self.fuelLaps.pendingSessionWipe = true;
+
+  // The learned pit-lane landmarks (issue #1112): emptied, so the first live
+  // tick of the new session loads them again from the store — its current
+  // section, including its unwritten samples — whether or not the track
+  // changed.
+  self.pitLaneLearner = createPitLaneLandmarkLearner();
+  self.pitLaneTrackMemo = null;
 }
 
 /**
@@ -3422,6 +3532,34 @@ function handleLiveSteps(
   );
   steps.live("diffPitBoxCountdown", pending, () =>
     diffPitBoxCountdown(self.state, telemetry, pitBoxTrkPct, trackLengthMeters, emit),
+  );
+  // Learned pit-lane landmarks (issue #1112), from every car but the pace car.
+  // The track identity falls back to its last good answer this session, else
+  // to `null`, the answer for absent session info, which loads and learns
+  // nothing. It is built once per session-info object (`pitLaneTrackMemo`),
+  // so the learner's per-tick load is a reference check. The learner is
+  // loaded from the store once per identity, again after a session change or
+  // a disconnect empties it, and on a back-off by this tick's `now` while the
+  // store cannot read the file yet; the diff then folds each accepted edge
+  // into it. Live in-car only: a replay tick never gets here.
+  const pitLaneTrack = steps.value("resolvePitLaneTrackIdentity", values, null, () =>
+    resolvePitLaneTrackMemoised(self, sessionInfo),
+  );
+  steps.run("seedPitLaneLandmarkLearner", () =>
+    seedPitLaneLandmarkLearner(self.pitLaneLearner, pitLaneTrack, self.loadPitLaneLandmarks, now, self.logger),
+  );
+  steps.live("diffPitLaneLandmarks", pending, () =>
+    diffPitLaneLandmarks(
+      self.state.pitLaneLandmarks,
+      self.pitLaneLearner,
+      telemetry,
+      paceCarIdx,
+      readSubSessionId(sessionInfo),
+      now,
+      emit,
+      steps.runUnit,
+      self.pitLaneLandmarkLogger,
+    ),
   );
   // Corner-name callouts (issue #888). Practice/test only — the diff gates on
   // the classified session type (diff-side per #655, so the harness can fire

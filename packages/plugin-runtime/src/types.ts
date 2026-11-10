@@ -20,6 +20,7 @@ import type {
   SettingsWindowController,
   SettingsWindowOpenOptions,
 } from "@iracedeck/settings-window";
+import type { TrackStore } from "@iracedeck/track-store";
 import type { VoicePackInstaller, VoicePackLaunchStep, VoicePackService } from "@iracedeck/voice-packs";
 
 import type { NativeAddonStatuses } from "./native-addons.js";
@@ -104,7 +105,19 @@ export interface Core {
 }
 
 /**
- * Phase 2's handoff (#1378, #1500): the running sim, read through two
+ * Phase 2's handoff (#1112): the per-track store the learned pit-lane
+ * landmarks persist in, and the folder it owns. The sim phase seeds the
+ * translator from `store.load`; the settings phase shows `directory` on the
+ * Diagnostics card and opens it from the window.
+ */
+export interface TrackData {
+  readonly store: TrackStore;
+  /** `%LOCALAPPDATA%\iRaceDeck\Track Data` (or `IRACEDECK_TRACK_DATA_DIR`), shared by every deck host. */
+  readonly directory: string;
+}
+
+/**
+ * Phase 3's handoff (#1378, #1500): the running sim, read through two
  * interfaces — the Race Engineer's `runtime` and the host extension's `host`.
  */
 export interface Sim {
@@ -112,12 +125,12 @@ export interface Sim {
   readonly host: HostSim;
 }
 
-/** Phase 3's handoff: the native input layer, used again by window focus (phase 9) and the elevation check (phase 10). */
+/** Phase 4's handoff: the native input layer, used again by window focus (phase 10) and the elevation check (phase 11). */
 export interface Input {
   readonly native: IRacingNative;
 }
 
-/** Phase 4's handoff. */
+/** Phase 5's handoff. */
 export interface Audio {
   /** `<plugin>/assets/audio`, the first and highest-precedence audio root. */
   readonly rootDir: string;
@@ -154,7 +167,7 @@ type VoicePackWindowCommands = Required<
   >
 >;
 
-/** Phase 5's handoff. */
+/** Phase 6's handoff. */
 export interface VoicePacks {
   readonly state: VoicePackState;
   readonly logger: ILogger;
@@ -171,13 +184,13 @@ export interface VoicePacks {
   refreshCatalog(): void;
 }
 
-/** Phase 7's handoff. */
+/** Phase 8's handoff. */
 export interface Settings {
   readonly store: SettingsStore;
   openSettingsWindow(options?: SettingsWindowOpenOptions): ReturnType<SettingsWindowController["open"]>;
 }
 
-/** Phase 8's handoff (#1467): the per-session replay store, fed by the bus and read by the replay subscriber. */
+/** Phase 9's handoff (#1467): the per-session replay store, fed by the bus and read by the replay subscriber. */
 export interface Replay {
   readonly replayStore: ReplaySessionStore;
 }

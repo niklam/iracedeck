@@ -3,7 +3,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
-import { buildSeedSettings, SEED_STORE_PATH } from "./seed.mjs";
+import { buildSeedSettings, SEED_STORE_PATH, SEED_TRACK_DATA_PATH } from "./seed.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 
@@ -55,6 +55,11 @@ describe("buildSeedSettings", () => {
   it("shows a fake settings path, never the capturing machine's own", () => {
     expect(buildSeedSettings()._settingsStorePath).toBe(SEED_STORE_PATH);
     expect(SEED_STORE_PATH).toContain("Driver");
+  });
+
+  it("shows a fake track data folder, never the capturing machine's own", () => {
+    expect(buildSeedSettings()._trackDataPath).toBe(SEED_TRACK_DATA_PATH);
+    expect(SEED_TRACK_DATA_PATH).toContain("Driver");
   });
 
   it("stores key bindings in the JSON shape the binding inputs parse", () => {

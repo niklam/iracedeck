@@ -1,0 +1,979 @@
+/**
+ * The per-track store (issue #1112): a process singleton and the only owner
+ * of `%LOCALAPPDATA%\iRaceDeck\Track Data\<sim>\track_<TrackID>.json`. The
+ * folder is the identity's `sim`, so the tracks of two simulators never share
+ * a file even when their ids collide; the store is told no sim of its own.
+ *
+ * It persists the pit-lane landmarks the translator learns. The translator
+ * publishes each accepted edge as `pitLane.landmarkLearned`; the plugin hands
+ * the payload to {@link TrackStore.recordSample}, which folds it with
+ * `@iracedeck/track-data`'s `foldSample` — the same model the translator uses,
+ * never a copy of it — and schedules a write. At session start the plugin
+ * seeds the translator from {@link TrackStore.load}.
+ *
+ * The folder is shared by every deck host (spec decision 3), so two plugin
+ * processes may write one file. Every write therefore re-reads the file and
+ * re-folds this process's own recent samples into what it finds, instead of
+ * writing its in-memory copy over the other process's: folding is idempotent
+ * (a duplicate key under a minute apart is skipped, a sample older than a
+ * full window is stale), so re-folding a sample already on disk changes
+ * nothing. Nothing but a track rebuild ever removes a landmark sample, which
+ * is what makes a merge on write safe here where the replay store had to go
+ * per ecosystem. The same re-fold heals the one race left: another process
+ * renaming its write between this process's read and its rename drops this
+ * process's samples from the file; the settle check one debounce after every
+ * write re-reads the file and writes again when any of its own samples is
+ * missing.
+ *
+ * Write discipline follows `@iracedeck/settings`' `settings-store.ts`: atomic
+ * replace (temp file + rename), a trailing debounce capped by a max wait,
+ * failed writes retried on `WRITE_RETRY_DELAYS_MS` and kept for the shutdown
+ * flush, a corrupt file moved aside as `track_<id>.corrupt-<iso>.json` in its
+ * sim's folder and never overwritten or deleted (and, the same way, the
+ * track's file under the names the sim used before renaming it, as
+ * `track_<id>.mismatch-<iso>.json`), a file written by a newer build or for
+ * another track never written. IO is synchronous: the file is a few kilobytes,
+ * written at most a few times a minute, and a synchronous read-merge-rename
+ * leaves no await in which this process could interleave with itself.
+ * Compact JSON.
+ */
+import type { ILogger } from "@iracedeck/logger";
+import { WRITE_RETRY_DELAYS_MS } from "@iracedeck/settings";
+import {
+  applyTrackLength,
+  foldSample,
+  PIT_LANE_LANDMARK_NAMES,
+  PIT_LANE_SECTION_UNAVAILABLE,
+  PIT_LANE_WINDOW_CAP,
+  type PitLaneLandmarkName,
+  type PitLaneLandmarks,
+  type PitLaneLandmarkSample,
+  type PitLaneSection,
+  type PitLaneTrackIdentity,
+  pitLaneTrackKey,
+} from "@iracedeck/track-data";
+import {
+  constants,
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  renameSync,
+  statSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
+import { join } from "node:path";
+
+import {
+  buildTrackFile,
+  isTrackDataSim,
+  type ParsedTrackFile,
+  readTrackFile,
+  trackFileMismatch,
+  trackFileName,
+  type TrackFileRead,
+  trackSimDirectory,
+} from "./track-file.js";
+
+/** Trailing debounce for a track's write: a burst of edges (a pit cycle's four) lands as one file. */
+export const TRACK_STORE_WRITE_DEBOUNCE_MS = 2_000;
+
+/** The longest an unsaved sample waits for the disk, however many follow it. */
+export const TRACK_STORE_WRITE_MAX_WAIT_MS = 10_000;
+
+/**
+ * This process's own samples kept per landmark for the re-fold on write.
+ * Twice the window: a sample older than a full window is stale and could not
+ * re-enter it anyway, and the margin covers another process's samples
+ * interleaving with ours.
+ */
+export const TRACK_STORE_OWN_SAMPLES_CAP = 2 * PIT_LANE_WINDOW_CAP;
+
+/**
+ * A temp file older than this is removed on init even when its pid names a
+ * running process: no write takes ten minutes, so the pid has been reused.
+ */
+export const TRACK_STORE_STALE_TEMP_MS = 10 * 60_000;
+
+/** The `pitLane.landmarkLearned` payload as the store reads it; its `summary` is not read. */
+export interface TrackStoreSampleInput {
+  track: PitLaneTrackIdentity;
+  landmark: PitLaneLandmarkName;
+  sample: PitLaneLandmarkSample;
+}
+
+export interface TrackStore {
+  /** The track data root; each sim's `track_*.json` files are in `<directory>\<sim>`. */
+  readonly directory: string;
+  /**
+   * The track's pit-lane section, for seeding the translator: the file
+   * (read once per track, then cached) brought to the session's track length
+   * (`applyTrackLength`, a rebuild when it differs) with this process's
+   * samples not yet written folded in. A copy. `null` when nothing is known:
+   * no file, a file of another track (logged once, never written over), the
+   * track's file under the names it had before the sim renamed it (set aside
+   * by the next write, never by a load), a newer build's file, or one that
+   * cannot be parsed — and no sample
+   * recorded meanwhile — and for an identity whose `sim` cannot name a
+   * folder (`isTrackDataSim`; warned once). `PIT_LANE_SECTION_UNAVAILABLE`
+   * when the file exists but cannot be read right now (a lock, a permission,
+   * a scanner): the learner asks again later, and that later load holds this
+   * process's samples recorded meanwhile, folded in as always.
+   * SYNCHRONOUS, and never throws.
+   */
+  load(track: PitLaneTrackIdentity): PitLaneSection | null | typeof PIT_LANE_SECTION_UNAVAILABLE;
+  /**
+   * Fold one accepted sample (the `pitLane.landmarkLearned` payload) into the
+   * track's section and schedule a write. Returns whether the fold accepted
+   * it; a duplicate, a stale or a malformed sample, or one whose identity's
+   * `sim` cannot name a folder (warned once), changes nothing. Never throws.
+   */
+  recordSample(input: TrackStoreSampleInput): boolean;
+  /**
+   * Write every pending track SYNCHRONOUSLY, merged as any write is, for
+   * `process.on("exit")`. Clears the timers; the store stays usable.
+   */
+  flushSync(): void;
+}
+
+/** The file operations the store uses; a seam so tests can fail or interleave them. */
+export interface TrackStoreIo {
+  /** The file's raw bytes: decoded as UTF-8 to parse, compared as bytes to tell corrupt files apart. */
+  readBytes(path: string): Buffer;
+  writeText(path: string, text: string): void;
+  rename(from: string, to: string): void;
+  unlink(path: string): void;
+  /** Copy that fails when `to` exists. */
+  copyExclusive(from: string, to: string): void;
+  mkdirp(path: string): void;
+  readdir(path: string): string[];
+  exists(path: string): boolean;
+  mtimeMs(path: string): number;
+  /** Whether a process with this pid is running. */
+  isProcessAlive(pid: number): boolean;
+}
+
+export const nodeTrackStoreIo: TrackStoreIo = {
+  readBytes: (path) => readFileSync(path),
+  writeText: (path, text) => writeFileSync(path, text, "utf-8"),
+  rename: (from, to) => renameSync(from, to),
+  unlink: (path) => unlinkSync(path),
+  copyExclusive: (from, to) => copyFileSync(from, to, constants.COPYFILE_EXCL),
+  mkdirp: (path) => {
+    mkdirSync(path, { recursive: true });
+  },
+  readdir: (path) => readdirSync(path),
+  exists: (path) => existsSync(path),
+  mtimeMs: (path) => statSync(path).mtimeMs,
+  isProcessAlive: (pid) => {
+    try {
+      process.kill(pid, 0);
+
+      return true;
+    } catch (error: unknown) {
+      // EPERM: the process exists but belongs to someone else.
+      return (error as NodeJS.ErrnoException).code === "EPERM";
+    }
+  },
+};
+
+export interface TrackStoreOptions {
+  /** The track data root, `resolveTrackDataDirectory({ env: process.env })`; each sim's files go in a subfolder. */
+  directory: string;
+  logger: ILogger;
+  /** Clock, for `updatedAt`, the debounce and the corrupt-aside name (test hook). */
+  now?: () => Date;
+  /** Trailing debounce; default {@link TRACK_STORE_WRITE_DEBOUNCE_MS}. */
+  debounceMs?: number;
+  /** The most an unsaved sample waits; default {@link TRACK_STORE_WRITE_MAX_WAIT_MS}. */
+  maxWaitMs?: number;
+  /** Retry schedule after a failed write; default the settings store's `WRITE_RETRY_DELAYS_MS`. */
+  retryDelaysMs?: readonly number[];
+  /** File operations; default {@link nodeTrackStoreIo} (test hook). */
+  io?: TrackStoreIo;
+  /** The pid in this process's temp-file names; default `process.pid` (test hook: two stores as two processes). */
+  pid?: number;
+}
+
+/** One of this process's own samples, with the track length it was learned under. */
+interface OwnSample {
+  sample: PitLaneLandmarkSample;
+  trackLength: string;
+}
+
+/** Why a file is not used and never written: another track's, or a newer build's. */
+type Refusal = "foreign" | "newerVersion" | "newerSection";
+
+/**
+ * Why a file is preserved aside before a write replaces it, which names the
+ * aside `track_<id>.<suffix>-<iso>.json`: `corrupt` (not a track file this
+ * build reads) or `mismatch` (this track's file under the names the sim used
+ * before a rename).
+ */
+type AsideReason = { suffix: "corrupt" } | { suffix: "mismatch"; mismatch: string };
+
+interface TrackEntry {
+  /** `<directory>\<sim>`: the file, its temp file and its corrupt asides live here. */
+  folder: string;
+  path: string;
+  /** `<sim>/track_<id>.json`, for log lines. */
+  label: string;
+  /** The session's identity, as last passed to `load` or `recordSample`. */
+  identity: PitLaneTrackIdentity;
+  /** The file as last read or written, when it is this track's and this build reads it. */
+  base: ParsedTrackFile | undefined;
+  /** A read has classified the file (anything but unreadable): `load` serves from memory. */
+  read: boolean;
+  /** Why the file on disk is not used, when it is not. */
+  refusal: Refusal | null;
+  /**
+   * The file on disk is this track's (same sim and TrackID) under another
+   * name or configuration: why, for the log. Not used as data; the next save
+   * sets it aside and writes afresh. `null` otherwise.
+   */
+  renamed: string | null;
+  /** In memory: the base's section at the session's track length plus this process's samples. */
+  section: PitLaneSection;
+  /** This process's own recent samples per landmark, oldest first, for the re-fold on write. */
+  own: Map<PitLaneLandmarkName, OwnSample[]>;
+  /** A sample not yet on disk. */
+  dirty: boolean;
+  firstDirtyAt: number;
+  /** The settle check after a write is due. */
+  verifyPending: boolean;
+  retryAttempt: number;
+  timer?: ReturnType<typeof setTimeout>;
+  /** Once-warnings already given for this track. */
+  warned: Set<string>;
+}
+
+type WriteMode = "save" | "verify";
+
+/** How often a write re-classifies a file that changed under it before it gives up until the retry. */
+const RECLASSIFY_ATTEMPTS = 3;
+type WriteOutcome = "done" | "unchanged" | "refused" | "retry";
+
+/** Per store, clears its timers without writing; used by {@link _resetTrackStore}. */
+const timerCleaners = new WeakMap<TrackStore, () => void>();
+
+function isoStamp(date: Date): string {
+  return date.toISOString().replace(/[:.]/g, "-");
+}
+
+/** The temp files the atomic write uses, and nothing else: `track_<id>.json.<pid>.tmp`. */
+const TEMP_FILE = /^track_\d+\.json\.(\d+)\.tmp$/;
+
+/** The key of a track's entry: its sim and its id, which are what name its file. */
+function entryKey(track: PitLaneTrackIdentity): string {
+  return `${track.sim}/${track.trackId}`;
+}
+
+function hasLandmarks(section: PitLaneSection): boolean {
+  return PIT_LANE_LANDMARK_NAMES.some((name) => section.landmarks[name] !== undefined);
+}
+
+export function createTrackStore(opts: TrackStoreOptions): TrackStore {
+  const { directory, logger } = opts;
+  const now = opts.now ?? (() => new Date());
+  const debounceMs = opts.debounceMs ?? TRACK_STORE_WRITE_DEBOUNCE_MS;
+  const maxWaitMs = opts.maxWaitMs ?? TRACK_STORE_WRITE_MAX_WAIT_MS;
+  const retryDelaysMs = opts.retryDelaysMs ?? WRITE_RETRY_DELAYS_MS;
+  const io = opts.io ?? nodeTrackStoreIo;
+  const pid = opts.pid ?? process.pid;
+  const entries = new Map<string, TrackEntry>();
+  /** The refused `sim` values already warned about. */
+  const warnedSims = new Set<string>();
+
+  removeStaleTempFiles();
+
+  /**
+   * Remove temp files a crashed process left behind, in every sim's folder
+   * present: only names of this store's own pattern, and only when their pid
+   * is not a running process or they are older than
+   * {@link TRACK_STORE_STALE_TEMP_MS} — another live plugin process may be
+   * mid-write in the same folder. Our own pid at init is a previous
+   * process's: this one has not written yet. Nothing at the root, and no
+   * folder whose name is not a sim's, is touched.
+   */
+  function removeStaleTempFiles(): void {
+    let sims: string[];
+
+    try {
+      sims = io.readdir(directory).filter(isTrackDataSim);
+    } catch {
+      return; // no folder yet, or unreadable — nothing to clean
+    }
+
+    for (const sim of sims) removeStaleTempFilesIn(sim);
+  }
+
+  function removeStaleTempFilesIn(sim: string): void {
+    const folder = trackSimDirectory(directory, sim);
+    let names: string[];
+
+    try {
+      names = io.readdir(folder);
+    } catch {
+      return; // a file named like a sim, or unreadable — nothing to clean
+    }
+
+    for (const name of names) {
+      const match = TEMP_FILE.exec(name);
+
+      if (!match) continue;
+
+      const path = join(folder, name);
+      const ownerPid = Number(match[1]);
+
+      try {
+        const ageMs = now().getTime() - io.mtimeMs(path);
+
+        if (ownerPid !== pid && ageMs < TRACK_STORE_STALE_TEMP_MS && io.isProcessAlive(ownerPid)) continue;
+
+        io.unlink(path);
+        logger.debug(`Removed a stale track-data temp file: ${sim}/${name}`);
+      } catch (error: unknown) {
+        logger.debug(`Stale track-data temp file ${sim}/${name} could not be removed: ${String(error)}`);
+      }
+    }
+  }
+
+  function warnOnce(entry: TrackEntry, key: string, message: string): void {
+    if (entry.warned.has(key)) {
+      logger.debug(message);
+
+      return;
+    }
+
+    entry.warned.add(key);
+    logger.warn(message);
+  }
+
+  /**
+   * `base` brought to the session's track length, with this process's own
+   * samples of that length re-folded in (oldest first). `accepted` counts the
+   * re-folds that changed something: zero when every own sample is already
+   * there (or stale).
+   */
+  function mergeOwn(
+    base: PitLaneSection | undefined,
+    entry: TrackEntry,
+  ): { section: PitLaneSection; accepted: number } {
+    const { identity } = entry;
+    const section = applyTrackLength(base, identity.trackLength, identity.trackLengthM);
+    const landmarks: PitLaneLandmarks = { ...section.landmarks };
+    const at = now().toISOString();
+    let accepted = 0;
+
+    for (const [name, samples] of entry.own) {
+      for (const own of samples) {
+        if (own.trackLength !== identity.trackLength) continue;
+
+        const result = foldSample(landmarks[name], own.sample, at, identity.trackLengthM);
+
+        if (result.accepted) {
+          landmarks[name] = result.record;
+          accepted++;
+        }
+      }
+    }
+
+    return { section: accepted === 0 ? section : { ...section, landmarks }, accepted };
+  }
+
+  function recompute(entry: TrackEntry): void {
+    entry.section = mergeOwn(entry.base?.pitLane, entry).section;
+  }
+
+  /**
+   * Take a read of the file into the entry: the base it now merges onto, and
+   * why the file is refused when it is. A `corrupt` file and a `renamed` one
+   * (this track's under its old names) are no base; only a write moves them
+   * aside. An `unreadable` one changes nothing.
+   */
+  function absorb(entry: TrackEntry, result: TrackFileRead): "use" | "corrupt" | "renamed" | "unreadable" | "refused" {
+    const name = entry.label;
+    let verdict: "use" | "corrupt" | "renamed" | "refused";
+
+    if (result.kind === "unreadable") {
+      logger.debug(`Track data file ${name} could not be read: ${String(result.error)}`);
+
+      return "unreadable";
+    }
+
+    entry.renamed = null;
+
+    switch (result.kind) {
+      case "absent":
+        entry.base = undefined;
+        entry.refusal = null;
+        verdict = "use";
+        break;
+      case "corrupt":
+        entry.base = undefined;
+        entry.refusal = null;
+        verdict = "corrupt";
+        logger.debug(`Track data file ${name} is not valid: ${String(result.error)}`);
+        break;
+      case "newerVersion":
+      case "newerSection":
+        entry.base = undefined;
+        entry.refusal = result.kind;
+        verdict = "refused";
+        warnOnce(
+          entry,
+          result.kind,
+          `Track data file ${name} was written by a newer version of iRaceDeck (${result.kind === "newerVersion" ? "file" : "pit-lane section"} version ${result.version}); it is not read and never written`,
+        );
+        break;
+      case "ok": {
+        const mismatch = trackFileMismatch(result.file, entry.identity);
+
+        if (mismatch === null) {
+          entry.base = result.file;
+          entry.refusal = null;
+          verdict = "use";
+        } else if (mismatch.kind === "renamed") {
+          entry.base = undefined;
+          entry.refusal = null;
+          entry.renamed = mismatch.reason;
+          verdict = "renamed";
+          logger.debug(
+            `Track data file ${name} was written under another name (${mismatch.reason}); it is not read, and the next write preserves it aside`,
+          );
+        } else {
+          entry.base = undefined;
+          entry.refusal = "foreign";
+          verdict = "refused";
+          warnOnce(
+            entry,
+            `foreign:${mismatch.reason}`,
+            `Track data file ${name} belongs to another track (${mismatch.reason}); it is not read and never written`,
+          );
+        }
+
+        break;
+      }
+    }
+
+    entry.read = true;
+    recompute(entry);
+
+    return verdict;
+  }
+
+  /**
+   * Whether the identity's `sim` can name a folder; one that cannot is
+   * refused, with a warn once per value per process.
+   */
+  function acceptsSim(track: PitLaneTrackIdentity): boolean {
+    if (isTrackDataSim(track.sim)) return true;
+
+    const sim = String(track.sim);
+    const message = `Track data for sim ${JSON.stringify(sim)} is not stored: a sim must be lowercase letters, digits and hyphens to name its folder`;
+
+    if (warnedSims.has(sim)) logger.debug(message);
+    else {
+      warnedSims.add(sim);
+      logger.warn(message);
+    }
+
+    return false;
+  }
+
+  /**
+   * The entry for a track (keyed by its sim and id), created on first use; an
+   * identity that changed (a rebuilt track's length, a renamed configuration)
+   * is taken and the file is re-read on next use. Own samples of another
+   * track length are dropped: they belong to the old geometry. The caller has
+   * checked the sim ({@link acceptsSim}).
+   */
+  function entryFor(track: PitLaneTrackIdentity): TrackEntry {
+    const key = entryKey(track);
+    let entry = entries.get(key);
+
+    if (entry === undefined) {
+      const folder = trackSimDirectory(directory, track.sim);
+
+      entry = {
+        folder,
+        path: join(folder, trackFileName(track.trackId)),
+        label: `${track.sim}/${trackFileName(track.trackId)}`,
+        identity: { ...track },
+        base: undefined,
+        read: false,
+        refusal: null,
+        renamed: null,
+        section: applyTrackLength(undefined, track.trackLength, track.trackLengthM),
+        own: new Map(),
+        dirty: false,
+        firstDirtyAt: 0,
+        verifyPending: false,
+        retryAttempt: 0,
+        warned: new Set(),
+      };
+      entries.set(key, entry);
+
+      return entry;
+    }
+
+    // track-data's one definition of a changed identity, the one the learner reloads on.
+    if (pitLaneTrackKey(entry.identity) !== pitLaneTrackKey(track)) {
+      entry.identity = { ...track };
+
+      for (const [name, samples] of entry.own) {
+        entry.own.set(
+          name,
+          samples.filter((own) => own.trackLength === track.trackLength),
+        );
+      }
+
+      entry.read = false;
+      recompute(entry);
+    }
+
+    return entry;
+  }
+
+  function ensureRead(entry: TrackEntry): void {
+    if (!entry.read)
+      absorb(
+        entry,
+        readTrackFile(entry.path, (path) => io.readBytes(path).toString("utf-8")),
+      );
+  }
+
+  function rememberOwn(entry: TrackEntry, landmark: PitLaneLandmarkName, sample: PitLaneLandmarkSample): void {
+    const samples = entry.own.get(landmark) ?? [];
+
+    samples.push({ sample: { ...sample }, trackLength: entry.identity.trackLength });
+    samples.sort((a, b) => a.sample.at - b.sample.at);
+
+    if (samples.length > TRACK_STORE_OWN_SAMPLES_CAP) samples.splice(0, samples.length - TRACK_STORE_OWN_SAMPLES_CAP);
+
+    entry.own.set(landmark, samples);
+  }
+
+  /** A free `track_<id>.<suffix>-<iso>.json` name in the entry's folder; never one that exists. */
+  function asidePath(entry: TrackEntry, suffix: AsideReason["suffix"]): string {
+    const stem = `track_${entry.identity.trackId}.${suffix}-${isoStamp(now())}`;
+    let candidate = join(entry.folder, `${stem}.json`);
+
+    for (let n = 1; io.exists(candidate); n++) candidate = join(entry.folder, `${stem}-${n}.json`);
+
+    return candidate;
+  }
+
+  /**
+   * An existing `track_<id>.<suffix>-*.json` whose bytes equal `original`, so
+   * a file that survives every attempt (locked, undeletable) is preserved
+   * once, not once per write — the settings store's rule. Bytes, never
+   * decoded text: two different invalid-UTF-8 files decode to the same
+   * replacement characters.
+   */
+  function identicalAside(entry: TrackEntry, original: Buffer, suffix: AsideReason["suffix"]): string | undefined {
+    const prefix = `track_${entry.identity.trackId}.${suffix}-`;
+
+    for (const name of io.readdir(entry.folder)) {
+      if (!name.startsWith(prefix) || !name.endsWith(".json")) continue;
+
+      try {
+        if (io.readBytes(join(entry.folder, name)).equals(original)) return name;
+      } catch {
+        // an aside that cannot be read is no match
+      }
+    }
+
+    return undefined;
+  }
+
+  /**
+   * Preserve a file a write is about to replace under another name: a
+   * corrupt one, or this track's file under the names the sim used before a
+   * rename (`reason`, which names the aside). `classified` is the content that
+   * was read and judged so: the file is re-read first and moved only while it
+   * still holds exactly those bytes, so another process's write landing
+   * meanwhile is never moved aside (`changed`: classify again). `moved` means
+   * the original path may now be written over; `failed` that it must not be
+   * (the write is retried).
+   *
+   * When the rename is refused the file is copied instead and the original is
+   * left where it is: the write that follows renames over it, which replaces
+   * the target on Windows too. The settings and replay stores unlink the
+   * original after the copy because a later open would otherwise preserve it
+   * again with nothing written over it; here a write always follows, and a
+   * retried one finds the identical aside and copies nothing.
+   */
+  function moveAside(entry: TrackEntry, classified: Buffer, reason: AsideReason): "moved" | "changed" | "failed" {
+    const name = entry.label;
+    const what = reason.suffix === "corrupt" ? "is not valid" : `was written under another name (${reason.mismatch})`;
+    let current: Buffer;
+
+    try {
+      current = io.readBytes(entry.path);
+    } catch (error: unknown) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return "changed";
+
+      logger.debug(`Track data file ${name} to preserve could not be re-read: ${String(error)}`);
+
+      return "failed";
+    }
+
+    if (!current.equals(classified)) return "changed";
+
+    const aside = asidePath(entry, reason.suffix);
+
+    try {
+      io.rename(entry.path, aside);
+      logger.warn(`Track data file ${name} ${what}; preserved as ${aside} and started fresh`);
+
+      return "moved";
+    } catch (renameError: unknown) {
+      logger.debug(`Move-aside rename failed: ${String(renameError)}`);
+
+      try {
+        const existing = identicalAside(entry, current, reason.suffix);
+
+        if (existing === undefined) {
+          io.copyExclusive(entry.path, aside);
+          logger.warn(`Track data file ${name} ${what} and could not be moved; preserved as a copy, ${aside}`);
+        } else {
+          logger.debug(`Track data file ${name} ${what}; an identical copy is already preserved as ${existing}`);
+        }
+
+        return "moved";
+      } catch (copyError: unknown) {
+        logger.error(`Track data file ${name} ${what} and could not be preserved; it is not written over`);
+        logger.debug(`Copy also failed: ${String(copyError)}`);
+
+        return "failed";
+      }
+    }
+  }
+
+  function writeAtomic(entry: TrackEntry, text: string): void {
+    const tmp = `${entry.path}.${pid}.tmp`;
+
+    try {
+      io.mkdirp(entry.folder);
+      io.writeText(tmp, text);
+      io.rename(tmp, entry.path);
+    } catch (error: unknown) {
+      try {
+        io.unlink(tmp);
+      } catch {
+        // best effort — the temp file may never have been created
+      }
+
+      throw error;
+    }
+  }
+
+  /**
+   * Re-read the file, merge this process's samples into it, write it.
+   * `verify` (the settle check) writes only when one of this process's
+   * samples is missing from the file, and never rebuilds: a file at another
+   * track length than this process's identity is left as it is.
+   */
+  function writeEntry(entry: TrackEntry, mode: WriteMode): WriteOutcome {
+    for (let attempt = 1; attempt <= RECLASSIFY_ATTEMPTS; attempt++) {
+      const outcome = writeEntryOnce(entry, mode);
+
+      if (outcome !== "changed") return outcome;
+    }
+
+    logger.debug(`Track data file ${entry.label} kept changing under the write`);
+
+    return "retry";
+  }
+
+  function writeEntryOnce(entry: TrackEntry, mode: WriteMode): WriteOutcome | "changed" {
+    const name = entry.label;
+    let bytes: Buffer | undefined;
+    const verdict = absorb(
+      entry,
+      readTrackFile(entry.path, (path) => {
+        bytes = io.readBytes(path);
+
+        return bytes.toString("utf-8");
+      }),
+    );
+
+    if (verdict === "unreadable") return "retry";
+
+    if (verdict === "refused") return "refused";
+
+    // The settle check never sets a renamed file aside: only a save does, so
+    // a file is moved at most once per learned sample, never in a loop.
+    if (verdict === "renamed" && mode === "verify") return "unchanged";
+
+    const fileLength = entry.base?.pitLane?.trackLength;
+
+    if (mode === "verify" && fileLength !== undefined && fileLength !== entry.identity.trackLength) {
+      // Never rebuild from the settle check: two processes on two builds of
+      // one track would otherwise rebuild the file back and forth every
+      // debounce, each discarding the other's windows. A save still rebuilds,
+      // so the file follows whichever process last learned a sample.
+      warnOnce(
+        entry,
+        `length:${fileLength}`,
+        `Track data file ${name} holds track length "${fileLength}" while this session has "${entry.identity.trackLength}"; another process may be on another build of the track, so it is only written when a sample is learned`,
+      );
+
+      return "unchanged";
+    }
+
+    const existed = entry.base !== undefined;
+    const { section, accepted } = mergeOwn(entry.base?.pitLane, entry);
+
+    if (mode === "verify" && accepted === 0) return "unchanged";
+
+    if (verdict === "corrupt" || verdict === "renamed") {
+      const aside = moveAside(
+        entry,
+        bytes!,
+        verdict === "corrupt" ? { suffix: "corrupt" } : { suffix: "mismatch", mismatch: entry.renamed ?? "" },
+      );
+
+      if (aside === "changed") return "changed";
+
+      if (aside === "failed") return "retry";
+    }
+
+    const pitLane: PitLaneSection = { ...section, trackVersion: entry.identity.trackVersion };
+    const file = buildTrackFile(entry.base, entry.identity, pitLane);
+
+    try {
+      writeAtomic(entry, JSON.stringify(file) + "\n");
+    } catch (error: unknown) {
+      logger.debug(`Track data write of ${name} failed: ${String(error)}`);
+
+      return "retry";
+    }
+
+    entry.base = file;
+    entry.section = pitLane;
+
+    if (existed) {
+      logger.debug(
+        mode === "verify"
+          ? `Track data ${name} rewritten: ${accepted} sample(s) another process's write had dropped`
+          : `Track data ${name} written`,
+      );
+    } else {
+      logger.info(`Track data file created: ${name}`);
+    }
+
+    return "done";
+  }
+
+  function arm(entry: TrackEntry, delayMs: number): void {
+    if (entry.timer !== undefined) clearTimeout(entry.timer);
+
+    entry.timer = setTimeout(() => {
+      entry.timer = undefined;
+
+      try {
+        if (entry.dirty) attempt(entry, "save");
+        else if (entry.verifyPending) attempt(entry, "verify");
+      } catch (error: unknown) {
+        // A timer callback's throw would be uncaught; the sample stays in
+        // memory for the next one or the shutdown flush.
+        logger.error(`Track data write of ${entry.label} failed: ${String(error)}`);
+      }
+    }, delayMs);
+    entry.timer.unref?.();
+  }
+
+  function attempt(entry: TrackEntry, mode: WriteMode): void {
+    entry.verifyPending = false;
+
+    const outcome = writeEntry(entry, mode);
+
+    switch (outcome) {
+      case "done":
+        entry.dirty = false;
+        entry.retryAttempt = 0;
+        entry.verifyPending = true;
+        arm(entry, debounceMs);
+        break;
+      case "unchanged":
+        break;
+      case "refused":
+        // Kept in memory for load(); a newer or foreign file is never written.
+        entry.dirty = false;
+        break;
+      case "retry": {
+        // A failed settle check stays a settle check: marking it dirty would
+        // retry it as a save, which rebuilds a file at another track length —
+        // exactly what the settle check must never do.
+        if (mode === "verify") entry.verifyPending = true;
+        else if (!entry.dirty) {
+          entry.dirty = true;
+          entry.firstDirtyAt = now().getTime();
+        }
+
+        const delay = retryDelaysMs[entry.retryAttempt];
+
+        if (delay === undefined) {
+          logger.warn(`Track data ${entry.label} could not be written; retrying on the next sample or at shutdown`);
+          break;
+        }
+
+        entry.retryAttempt++;
+        logger.debug(`Retrying the track data write in ${delay} ms (attempt ${entry.retryAttempt})`);
+        arm(entry, delay);
+        break;
+      }
+    }
+  }
+
+  /** A new sample: debounce the write, but never past the max wait from the first unsaved one. */
+  function scheduleSave(entry: TrackEntry): void {
+    const nowMs = now().getTime();
+
+    if (!entry.dirty) {
+      entry.dirty = true;
+      entry.firstDirtyAt = nowMs;
+    }
+
+    entry.retryAttempt = 0;
+    entry.verifyPending = false;
+    arm(entry, Math.max(0, Math.min(debounceMs, entry.firstDirtyAt + maxWaitMs - nowMs)));
+  }
+
+  const store: TrackStore = {
+    directory,
+
+    load(track) {
+      try {
+        if (!acceptsSim(track)) return null;
+
+        const entry = entryFor(track);
+
+        ensureRead(entry);
+
+        // The file is there but could not be read (an `unreadable` read
+        // leaves the entry unread): not "none", which the learner would
+        // keep for the session, but "ask again".
+        if (!entry.read) return PIT_LANE_SECTION_UNAVAILABLE;
+
+        return hasLandmarks(entry.section) ? structuredClone(entry.section) : null;
+      } catch (error: unknown) {
+        logger.error(`Track data for track ${track.trackId} could not be loaded: ${String(error)}`);
+
+        return null;
+      }
+    },
+
+    recordSample({ track, landmark, sample }) {
+      try {
+        if (!(PIT_LANE_LANDMARK_NAMES as readonly string[]).includes(landmark)) {
+          logger.debug(`Track data sample for an unknown landmark ignored: ${String(landmark)}`);
+
+          return false;
+        }
+
+        if (!acceptsSim(track)) return false;
+
+        const entry = entryFor(track);
+
+        ensureRead(entry);
+
+        const result = foldSample(entry.section.landmarks[landmark], sample, now().toISOString(), track.trackLengthM);
+
+        if (!result.accepted) {
+          logger.debug(`Track data sample for ${landmark} not folded: ${result.reason}`);
+
+          return false;
+        }
+
+        entry.section = { ...entry.section, landmarks: { ...entry.section.landmarks, [landmark]: result.record } };
+        rememberOwn(entry, landmark, sample);
+        scheduleSave(entry);
+
+        return true;
+      } catch (error: unknown) {
+        logger.error(`Track data sample could not be recorded: ${String(error)}`);
+
+        return false;
+      }
+    },
+
+    flushSync() {
+      for (const entry of entries.values()) {
+        if (entry.timer !== undefined) {
+          clearTimeout(entry.timer);
+          entry.timer = undefined;
+        }
+
+        const mode: WriteMode | undefined = entry.dirty ? "save" : entry.verifyPending ? "verify" : undefined;
+
+        if (mode === undefined) continue;
+
+        entry.verifyPending = false;
+
+        try {
+          const outcome = writeEntry(entry, mode);
+
+          if (outcome === "done" || outcome === "refused") entry.dirty = false;
+          else if (outcome === "retry") {
+            logger.error(`Track data ${entry.label} could not be written at shutdown`);
+          }
+        } catch (error: unknown) {
+          logger.error(`Track data shutdown flush failed: ${String(error)}`);
+        }
+      }
+    },
+  };
+
+  timerCleaners.set(store, () => {
+    for (const entry of entries.values()) {
+      if (entry.timer !== undefined) clearTimeout(entry.timer);
+
+      entry.timer = undefined;
+    }
+  });
+
+  return store;
+}
+
+/**
+ * The one store of this process. Nothing reads it back: there is no getter,
+ * because the plugin threads the handle `initializeTrackStore` returns to the
+ * one place that needs it, and a global one would invite reading the file
+ * around the translator (spec decision 4: consumers read the translator).
+ * It is kept only so a second store cannot be created, since two stores in
+ * one process would share its pid in their temp-file names and each re-fold
+ * only its own samples.
+ */
+let trackStore: TrackStore | null = null;
+
+/**
+ * Create the process's track store. Called once at plugin startup; the
+ * plugin also registers `process.on("exit", () => store.flushSync())` and
+ * threads the returned handle to its consumers.
+ *
+ * @throws Error if called more than once
+ */
+export function initializeTrackStore(options: TrackStoreOptions): TrackStore {
+  if (trackStore) {
+    throw new Error("Track store already initialized. initializeTrackStore() should only be called once.");
+  }
+
+  trackStore = createTrackStore(options);
+
+  return trackStore;
+}
+
+/**
+ * Reset the singleton (for testing purposes only).
+ * @internal
+ */
+export function _resetTrackStore(): void {
+  if (trackStore) timerCleaners.get(trackStore)?.();
+
+  trackStore = null;
+}
