@@ -28,11 +28,12 @@ Cycles through or directly selects iRacing black box screens, toggles the open b
   - `boxes` (**Cycle Black Boxes**, the default) — clockwise **Cycle Next**, counter-clockwise **Cycle Previous**, the same bindings the keypad Next/Previous mode uses. A dial stored before the choice existed has no `dial.rotation` and parses to `boxes`, so it is unchanged.
   - `select-control` (**Select Control**) — clockwise **Select Next Control**, counter-clockwise **Select Previous Control**.
   - `adjust-control` (**Adjust Control**) — clockwise **Increment Selected Control**, counter-clockwise **Decrement Selected Control**.
-- **Push** (short press, fires on `dialUp`): Runs the configured **Press Action** gesture. Default **None**.
-- **Long Press** (held past the **Long-press threshold** global setting, default 500 ms, with no turn, fires on `dialUp`): Runs the configured **Long Press** gesture. Default **None**.
+- **Push** (short press, fires on `dialUp`): Runs the configured **Press Action** gesture. Default by rotation (below): **Toggle Selected Control** on `select-control` / `adjust-control`, **None** on `boxes`.
+- **Long Press** (held past the **Long-press threshold** global setting, default 500 ms, with no turn, fires on `dialUp`): Runs the configured **Long Press** gesture. Default **Switch Select / Adjust** on `select-control` / `adjust-control`, **None** on `boxes`.
+- **Rotation-resolved defaults** (#1585, the one dial with gesture defaults other than None): `dial.pressAction` / `dial.longPressAction` have no schema default, so a slot the user never stored stays unset and `resolveGestures` gives it its default from `ROTATION_GESTURE_DEFAULTS` at read time; a stored value always wins, `none` included. Every dial stored before #1585 parses to `boxes` and keeps None. The PI shows an unset slot's default by retargeting the dropdown's render-only `default` attribute from the Mode, so it never writes the slot. The press sounds and the trigger description read the slots through `firingGestures`, which also silences `switch-rotation` on a `boxes` dial.
 - Press and long-press are classified at `dialUp` (a duration comparison, with a guard so a rotation while held pre-empts both press actions) — there is no mid-hold timer.
-- The gesture actions are **Open Selected Box**, which taps the per-box binding chosen by the **Box to Open** setting — the same 11 bindings the keypad Direct mode uses; like a Direct keypad press, it toggles the box: pressing again while it is already open closes it — and **Toggle Box Size** (#1238), which single-taps `blackBoxToggleSize` exactly like the keypad Toggle Size mode — and the three one-shot selected-control presses (#1585): **Select Next Control** (`next-control`), **Select Previous Control** (`previous-control`) and **Toggle Selected Control** (`toggle-control`), each a single tap of its binding. The strip's #612 dim tracks only the pair the chosen rotation turns, so an unset gesture binding does not dim it (its PI status line reports it).
-- With rotation on **Adjust Control** and the press on **Select Next Control**, one dial walks the open box's controls and adjusts each.
+- The gesture actions are **Open Selected Box**, which taps the per-box binding chosen by the **Box to Open** setting — the same 11 bindings the keypad Direct mode uses; like a Direct keypad press, it toggles the box: pressing again while it is already open closes it — and **Toggle Box Size** (#1238), which single-taps `blackBoxToggleSize` exactly like the keypad Toggle Size mode — and the three one-shot selected-control presses (#1585): **Select Next Control** (`next-control`), **Select Previous Control** (`previous-control`) and **Toggle Selected Control** (`toggle-control`), each a single tap of its binding — and **Switch Select / Adjust** (`switch-rotation`, #1585), which sends nothing: it flips this dial's `dial.rotation` between `select-control` and `adjust-control` (`SWITCHED_ROTATION`), redraws the strip and trigger description at once and persists the patch through `persistDialPatch`, so it survives a restart and the PI's Mode follows; on a `boxes` dial it does nothing (logged at debug). The surface therefore keeps its context authoritative (encoders rule 10): `refreshContext` refreshes the action only, and the gesture updates `ctx.dial` before the write, so a quick double press flips back. It has no binding and no comms entry, like Fuel Service's `switch-mode`. The strip's #612 dim tracks only the pair the chosen rotation turns, so an unset gesture binding does not dim it (its PI status line reports it).
+- With the defaults, one Select Control dial works the whole box: turn to pick a control, long-press to Adjust, turn to change it, press to toggle it, long-press back. On a Mirabox knob (no long press) the same comes from Press on **Switch Select / Adjust**, or rotation on **Adjust Control** with Press on **Select Next Control**.
 - There is no Push + Turn gesture: a turn while pressed does what the rotation does and fires no press.
 
 ### Touchscreen (Elgato only)
@@ -44,7 +45,7 @@ Cycles through or directly selects iRacing black box screens, toggles the open b
 
 ### Platform availability (dial)
 
-On a **Mirabox knob** (#1013) the same dial surface runs with its identity drawing on the 176×112 screen above the knob; a knob has turn and push only (pushing the knob, however long, or tapping its screen fires Press once, at the moment of pressing), so the dial PI shows only the rotation settings, the appearance colours and the Push slot. The Ulanzi manifest declares no dial controllers. See `docs/reference/stream-deck-plus-encoders.md` §8.
+On a **Mirabox knob** (#1013) the same dial surface runs with its identity drawing on the 176×112 screen above the knob; a knob has turn and push only (pushing the knob, however long, or tapping its screen fires Press once, at the moment of pressing), so the dial PI shows only the rotation settings, the appearance colours and the Push slot, whose rotation-resolved default (Toggle Selected Control on Select / Adjust) still applies. The Ulanzi manifest declares no dial controllers. See `docs/reference/stream-deck-plus-encoders.md` §8.
 
 ## Settings
 
@@ -91,8 +92,8 @@ The Property Inspector shows the settings for the surface the instance sits on: 
 |---------|------|---------|-------------|
 | Mode | Dropdown | Cycle Black Boxes | What a turn does (`dial.rotation`, #1585) |
 | Box to Open | Dropdown | Lap Timing | Which box the **Open Selected Box** gesture opens — the same 11 options as the keypad's Black Box setting |
-| Press Action | Dropdown | None | What a short dial press does |
-| Long Press | Dropdown | None | What a long dial press does |
+| Press Action | Dropdown | Toggle Selected Control on Select / Adjust Control, None on Cycle Black Boxes | What a short dial press does (unset until chosen; resolved from the Mode) |
+| Long Press | Dropdown | Switch Select / Adjust on Select / Adjust Control, None on Cycle Black Boxes | What a long dial press does (unset until chosen; resolved from the Mode) |
 | Tap Display | Dropdown | None | What a touch-strip tap does, or None to disable taps (Elgato only) |
 | Long Touch | Dropdown | None | What a touch-strip long tap does, or None to disable it (Elgato only) |
 
@@ -108,6 +109,7 @@ The Property Inspector shows the settings for the surface the instance sits on: 
 - **Select Next Control** - Taps the **Select Next Control** binding, same as the keypad Selected Control mode's Select Next Control
 - **Select Previous Control** - Taps the **Select Previous Control** binding
 - **Toggle Selected Control** - Taps the **Toggle Selected Control** binding
+- **Switch Select / Adjust** - Flips this dial's Mode between Select Control and Adjust Control and saves it; sends nothing to iRacing; does nothing on a Cycle Black Boxes dial
 
 There is no Push + Turn gesture for the dial — a turn while pressed does what the Mode's rotation does.
 
@@ -150,7 +152,7 @@ There is no Push + Turn gesture for the dial — a turn while pressed does what 
 
 ### Dial
 
-The dial reuses the bindings above rather than defining its own — Rotate taps the pair its Mode names (the keypad Next/Previous bindings for Cycle Black Boxes, Select Next / Previous Control for Select Control, Increment / Decrement Selected Control for Adjust Control), the **Open Selected Box** gesture taps the same per-box binding as keypad Direct mode for whichever box **Box to Open** selects, the **Toggle Box Size** gesture taps the same `blackBoxToggleSize` binding as keypad Toggle Size mode, and the three control gestures tap the same bindings as the keypad Selected Control mode.
+The dial reuses the bindings above rather than defining its own — Rotate taps the pair its Mode names (the keypad Next/Previous bindings for Cycle Black Boxes, Select Next / Previous Control for Select Control, Increment / Decrement Selected Control for Adjust Control), the **Open Selected Box** gesture taps the same per-box binding as keypad Direct mode for whichever box **Box to Open** selects, the **Toggle Box Size** gesture taps the same `blackBoxToggleSize` binding as keypad Toggle Size mode, and the three control gestures tap the same bindings as the keypad Selected Control mode. **Switch Select / Adjust** uses no binding.
 
 ## Icon States
 
