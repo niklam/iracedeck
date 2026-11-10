@@ -532,7 +532,7 @@ It is off by default: turn it on in the Settings window under **Race Engineer Ca
 
 ## Limiter on beep
 
-The moment your pit limiter switches on, a short falling two-note beep plays — so you know it took without looking at the dash, even when you press the button at speed on the way into the pits. It plays wherever you are: out on the circuit, on the pit approach, between the cones, or stopped in your pit box. It falls where the [pit exit beep](#pit-exit-beep) rises, so the two never sound alike: falling means the limiter now holds you, rising means the limit is off. Neither sounds like the [speeding tick](#pit-road-speeding).
+The moment your pit limiter switches on, a short falling two-note beep plays — so you know it took without looking at the dash, even when you press the button at speed on the way into the pits. It plays wherever you are: out on the circuit, on the pit approach, between the cones, or stopped in your pit box. It falls where the [pit exit beep](#pit-exit-beep) rises, so the two never sound alike: falling means the limiter now holds you, rising means the pit speed limit has ended. Neither sounds like the [speeding tick](#pit-road-speeding).
 
 It doesn't matter who switched the limiter on: if iRacing's pit limiter driving aid engages it for you, that beeps too. Every switch-on beeps, so on, off and on again quickly gives two beeps. Switching it off makes no sound, so a quick double press on the way in that leaves it off gives one beep and then nothing — listen for the second one. A car without a pit limiter never hears it, since there is nothing to switch on.
 
