@@ -2640,6 +2640,22 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
       Speed: 0,
     },
   },
+  // The limiter-on beep (issue #1272): one tone on the Cue channel at the
+  // limiter's off→on edge. The engine trusts the event and reads no telemetry
+  // (the translator owns every silence), so the button needs no patch to be
+  // heard on the boot telemetry. It deliberately carries none: a patch setting
+  // the `EngineWarnings` bit would be a real off→on edge the translator then
+  // announces too, beeping twice. The silent controls are the Race Engineer
+  // master and the Limiter on beep checkbox in the Global Settings panel.
+  {
+    id: "limiter-on-beep",
+    category: "Pit Limiter",
+    label: "Limiter on beep",
+    description:
+      "The pit limiter engaging: one short falling tone on the Cue channel, at the Radar volume. Silent with the Race Engineer or the Limiter on beep off.",
+    event: "carControl.limiterToggled",
+    data: { on: true },
+  },
 
   // ── No Pit Limiter (issue #1051) — cars with NO limiter ──
   // The mirror family. Its gate is `telemetry != null && !hasPitLimiter(t)`,

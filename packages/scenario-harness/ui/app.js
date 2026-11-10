@@ -182,6 +182,12 @@ function renderSettings() {
       label: "Pit Exit Beep",
       type: "checkbox",
     },
+    // Off by default for users (#1272), seeded on by bootstrap-settings.ts.
+    {
+      key: "calloutEnabledLimiterEngagedCue",
+      label: "Limiter On Beep",
+      type: "checkbox",
+    },
     {
       key: "radarVolume",
       label: "Radar Volume",

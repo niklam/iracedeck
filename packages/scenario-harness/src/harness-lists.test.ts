@@ -91,10 +91,16 @@ const SETUP_PRESS_FIRST: Readonly<Record<string, string>> = {
 /**
  * Events a catalog engine consumes directly rather than through a contract's
  * `event`: `radar.changed` feeds the radar and spotter engines (whose
- * spotter contracts carry no event), and the two `pitSpeeding` edges open and
- * close the pit-speeding engine's tick loop.
+ * spotter contracts carry no event), the two `pitSpeeding` edges open and
+ * close the pit-speeding engine's tick loop, and `carControl.limiterToggled`
+ * plays the limiter cue engine's beep (#1272).
  */
-const ENGINE_EVENTS: readonly SimEventName[] = ["radar.changed", "pitSpeeding.started", "pitSpeeding.ended"];
+const ENGINE_EVENTS: readonly SimEventName[] = [
+  "radar.changed",
+  "pitSpeeding.started",
+  "pitSpeeding.ended",
+  "carControl.limiterToggled",
+];
 
 /**
  * Shortcuts that publish an event nothing in the Race Engineer reads today

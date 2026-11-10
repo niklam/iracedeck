@@ -78,6 +78,10 @@ export function seedGlobalSettings(adapter: MockPlatformAdapter): BootstrapDefau
     // shortcut is heard on a freshly booted harness; the Global Settings
     // panel's checkbox turns it off.
     calloutEnabledPitExitCue: true,
+    // Off by default for users (#1272), on here so the "Limiter on beep"
+    // shortcut is heard on a freshly booted harness; the Global Settings
+    // panel's checkbox turns it off.
+    calloutEnabledLimiterEngagedCue: true,
   });
 
   return { raceEngineerVoices, driverNames };
