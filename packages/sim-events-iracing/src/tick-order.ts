@@ -41,6 +41,7 @@ import { INCIDENTS_EVENTS } from "./diff/incidents.js";
 import { LAPS_EVENTS } from "./diff/laps.js";
 import { LEADER_WHITE_EVENTS } from "./diff/leader-white.js";
 import { LIFECYCLE_EVENTS } from "./diff/lifecycle.js";
+import { LIMITER_TOGGLE_EVENTS } from "./diff/limiter-toggle.js";
 import { LIMITER_EVENTS } from "./diff/limiter.js";
 import { OPPONENT_FLAGS_EVENTS } from "./diff/opponent-flags.js";
 import { OPPONENT_PIT_EVENTS } from "./diff/opponent-pit.js";
@@ -129,6 +130,7 @@ export const TICK_ORDER: readonly TickStage[] = [
   { stage: "diffRollingStart", source: "diff/rolling-start.ts", via: "pending", events: ROLLING_START_EVENTS },
   { stage: "diffPitsOpen", source: "diff/pits-open.ts", via: "pending", events: PITS_OPEN_EVENTS },
   { stage: "diffToggles", source: "diff/toggles.ts", via: "pending", events: TOGGLES_EVENTS },
+  { stage: "diffLimiterToggle", source: "diff/limiter-toggle.ts", via: "pending", events: LIMITER_TOGGLE_EVENTS },
   { stage: "diffPitStatus", source: "diff/pit-status.ts", via: "pending", events: PIT_STATUS_EVENTS },
   { stage: "diffPitReadback", source: "diff/pit-readback.ts", via: "pending", events: PIT_READBACK_EVENTS },
   { stage: "diffTireWear", source: "diff/tire-wear.ts", via: "pending", events: TIRE_WEAR_EVENTS },

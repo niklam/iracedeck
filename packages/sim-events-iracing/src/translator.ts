@@ -95,6 +95,7 @@ import { COLLISION_CAR_VALUE_PAVEMENT, diffIncidents, resolveCollisionCarValue }
 import { diffLaps, tookChequeredAt } from "./diff/laps.js";
 import { diffLeaderWhite } from "./diff/leader-white.js";
 import { diffLifecycle } from "./diff/lifecycle.js";
+import { diffLimiterToggle } from "./diff/limiter-toggle.js";
 import { diffLimiter } from "./diff/limiter.js";
 import {
   diffOpponentFlags,
@@ -189,7 +190,7 @@ const SUBSCRIPTION_ID = "__sim-events-iracing__";
  * one step's first error. `tick-steps.source.test.ts` counts the ids in both
  * `handleTick`s and fails until this number matches; a new step changes it.
  */
-export const TRANSLATOR_REPORTER_MAX_KEYS = 60 * TICK_STEP_KEYS_PER_ID;
+export const TRANSLATOR_REPORTER_MAX_KEYS = 61 * TICK_STEP_KEYS_PER_ID;
 
 /** The step name every {@link onTranslatorTick} listener is called under: one id, `translator:onTranslatorTick`. */
 const TICK_LISTENER_STEP = "onTranslatorTick";
@@ -3396,6 +3397,11 @@ function handleLiveSteps(
   steps.live("diffToggles", pending, () => {
     fuelPlanChanged = diffToggles(self.state, telemetry, now, emit);
   });
+  // The pit limiter on / off edge (issue #1272), out of `diffToggles` because it
+  // publishes in the pit stall too, where that diff seeds every toggle; silent
+  // during pit service and around a tow or reset instead. Placed where its
+  // emit used to be, at the end of the toggle group.
+  steps.live("diffLimiterToggle", pending, () => diffLimiterToggle(self.state.limiterToggle, telemetry, now, emit));
   // diffPitStatus emits `pitService.statusChanged` for in-progress / complete
   // / positioning / can't-fix-that transitions (issue #479), and
   // `pitService.stopEmpty` when a short `PitstopActive` pulse falls while the

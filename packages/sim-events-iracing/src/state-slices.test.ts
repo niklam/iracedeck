@@ -138,7 +138,6 @@ const LEGACY_FLAT_MEMBERS: FlatMemberPin = {
     "toggleStateInitialized",
     "lastPitSvFlags",
     "lastPitSvCompound",
-    "lastLimiterActive",
     "lastP2PActive",
     "lastDrsActive",
     "fuelDebounce",
@@ -339,6 +338,7 @@ const SLICE_KEYS = [
   "trackSectors",
   "cornerName",
   "sectorStart",
+  "limiterToggle",
 ];
 
 const violationNames = (scan: SliceScan): string[] => scan.violations.map((v) => `${v.rule}:${v.name}`);
