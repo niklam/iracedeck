@@ -2,12 +2,13 @@
  * Audio Service Singleton — Multi-Channel Mixer (miniaudio)
  *
  * Provides a multi-channel audio mixer via the miniaudio native engine.
- * Five independent channels can play simultaneously:
+ * Six independent channels can play simultaneously:
  *   Channel 0 (Ambient)  — pit lane background noise loop
  *   Channel 1 (SFX)      — walkie-talkie open/close ticks
  *   Channel 2 (Voice)    — engineer messages, reminders, toggles
  *   Channel 3 (Radar)    — directional radar ticks
  *   Channel 4 (Feedback) — control feedback, the volume step tick (#1455)
+ *   Channel 5 (Cue)      — one-shot pit-lane tones, the pit exit beep (#1161)
  *
  * Every channel routes to exactly one bus, with one exception: Feedback
  * routes to none. Its level is passed per play
@@ -57,6 +58,13 @@ export enum AudioChannel {
   Radar = 3,
   /** Control feedback such as the volume step tick (#1455). Routed to no bus. */
   Feedback = 4,
+  /**
+   * One-shot pit-lane tones (#1161, #1272), on the Alerts bus at Radar's mix
+   * ratio so they follow the Radar Volume slider, but on a channel of their
+   * own: `playOnChannel` replaces what a channel is playing, and the radar
+   * resumes ticking the moment the car leaves pit road.
+   */
+  Cue = 5,
 }
 
 /** Every mixer channel, in index order. */
@@ -102,6 +110,7 @@ const CHANNEL_BUS_MAP: Readonly<Record<AudioChannel, AudioBus | null>> = {
   [AudioChannel.Voice]: AudioBus.Voice,
   [AudioChannel.Radar]: AudioBus.Alerts,
   [AudioChannel.Feedback]: null,
+  [AudioChannel.Cue]: AudioBus.Alerts,
 };
 
 const CHANNEL_MIX_RATIO: Readonly<Record<AudioChannel, number>> = {
@@ -110,6 +119,8 @@ const CHANNEL_MIX_RATIO: Readonly<Record<AudioChannel, number>> = {
   [AudioChannel.Voice]: 1.0,
   [AudioChannel.Radar]: 1.0,
   [AudioChannel.Feedback]: 1.0,
+  // Radar's ratio: the pit-lane tones sit at the level of its ticks.
+  [AudioChannel.Cue]: 1.0,
 };
 
 // ─── Perceptual volume curve (#531) ──────────────────────────────────────────

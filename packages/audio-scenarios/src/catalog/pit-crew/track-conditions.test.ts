@@ -39,6 +39,7 @@ import {
 import { familyGate } from "./callout-gate.test-util.js";
 import { familyReferences } from "./family-references.test-util.js";
 import { registerPitCrew, type TrackConditionsCalloutId } from "./index.js";
+import { _resetPitExitCueEngine } from "./pit-exit-cue-engine.js";
 import { _resetPitSpeedingEngine } from "./pit-speeding-engine.js";
 import { _resetRadarEngine } from "./radar-engine.js";
 import { _resetSpotterEngine } from "./spotter-engine.js";
@@ -345,6 +346,7 @@ describe("TRACK_CONDITIONS_CONTRACTS opt-in gating (issue #526)", () => {
     _resetRadarEngine();
     _resetSpotterEngine();
     _resetPitSpeedingEngine();
+    _resetPitExitCueEngine();
   });
 
   it("fires a worsening and a drying line when the opt-in is on", () => {

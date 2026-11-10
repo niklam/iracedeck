@@ -99,7 +99,7 @@ Adjust iRaceDeck's own **Race Engineer voice** level — the same level as the R
 
 ### Radar Volume
 
-Adjust iRaceDeck's own proximity **Radar** tick level — the same level as the Radar Volume slider in the Pit Crew settings. This controls iRaceDeck audio, not iRacing, so it needs no iRacing key binding.
+Adjust iRaceDeck's own proximity **Radar** tick level — the same level as the Radar Volume slider in the Pit Crew settings. It is also the level of the pit-lane tones: the [pit road speeding](/docs/actions/audio-voice/pit-crew/#pit-road-speeding) tick and the [pit exit beep](/docs/actions/audio-voice/pit-crew/#pit-exit-beep). This controls iRaceDeck audio, not iRacing, so it needs no iRacing key binding.
 
 #### Details
 

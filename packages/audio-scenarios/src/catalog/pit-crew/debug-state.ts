@@ -35,6 +35,7 @@ import { readFlagAlertsDebugState } from "./flag-alerts.js";
 import { readGapsDebugState } from "./gaps.js";
 import { readIncidentsDebugState } from "./incidents.js";
 import { readOpponentPitDebugState } from "./opponent-pit.js";
+import { readPitExitCueDebugState } from "./pit-exit-cue-engine.js";
 import { readPitSpeedingDebugState } from "./pit-speeding-engine.js";
 import { readPositionReadoutDebugState } from "./position-readout.js";
 import { readQualifyingInvalidationDebugState } from "./qualifying-invalidation.js";
@@ -55,6 +56,7 @@ function readFamilies() {
     gaps: readStatePart(() => readGapsDebugState()),
     incidents: readStatePart(() => readIncidentsDebugState()),
     opponentPit: readStatePart(() => readOpponentPitDebugState()),
+    pitExitCue: readStatePart(() => readPitExitCueDebugState()),
     pitSpeeding: readStatePart(() => readPitSpeedingDebugState()),
     positionReadout: readStatePart(() => readPositionReadoutDebugState()),
     qualifyingInvalidation: readStatePart(() => readQualifyingInvalidationDebugState()),

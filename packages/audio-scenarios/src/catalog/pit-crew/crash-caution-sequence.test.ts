@@ -51,6 +51,7 @@ import { _resetAudioScenarios, getScenarioEngine, initializeAudioScenarios } fro
 import { familyGate } from "./callout-gate.test-util.js";
 import { _resetLastIncidentPoints } from "./incidents.js";
 import { registerPitCrew } from "./index.js";
+import { _resetPitExitCueEngine } from "./pit-exit-cue-engine.js";
 import { _resetPitSpeedingEngine } from "./pit-speeding-engine.js";
 import { resetQualifyingInvalidationLatch } from "./qualifying-invalidation.js";
 import { _resetRadarEngine } from "./radar-engine.js";
@@ -144,6 +145,7 @@ beforeEach(() => {
   _resetRadarEngine();
   _resetSpotterEngine();
   _resetPitSpeedingEngine();
+  _resetPitExitCueEngine();
   _resetLastIncidentPoints();
   resetQualifyingInvalidationLatch();
   bus = createMockBus();

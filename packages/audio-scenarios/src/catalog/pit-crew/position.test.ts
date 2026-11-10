@@ -41,6 +41,7 @@ import { _resetAudioScenarios, initializeAudioScenarios, poolMemberPattern } fro
 import { familyGate } from "./callout-gate.test-util.js";
 import { familyReferences } from "./family-references.test-util.js";
 import { _resetPositionReadoutCooldown, canAnnouncePosition, registerPitCrew } from "./index.js";
+import { _resetPitExitCueEngine } from "./pit-exit-cue-engine.js";
 import { _resetPitSpeedingEngine } from "./pit-speeding-engine.js";
 import { readPositionReadoutDebugState, registerPositionReadoutVocabulary } from "./position-readout.js";
 import {
@@ -739,6 +740,7 @@ describe("position-change contract — the catalog's opt-in wrapper", () => {
     _resetRadarEngine();
     _resetSpotterEngine();
     _resetPitSpeedingEngine();
+    _resetPitExitCueEngine();
   });
 
   it("fires through the real registration when the opt-in is on", () => {

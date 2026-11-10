@@ -71,6 +71,7 @@ import {
 import { familyReferences } from "./family-references.test-util.js";
 import { buildFlagAlerts, CAUTION_MAX_QUEUE_WAIT_MS, WAVING_FLAG_COOLDOWN_MS } from "./flag-alerts.js";
 import { registerPitCrew } from "./index.js";
+import { _resetPitExitCueEngine } from "./pit-exit-cue-engine.js";
 import { _resetPitSpeedingEngine } from "./pit-speeding-engine.js";
 import { _resetRadarEngine } from "./radar-engine.js";
 import { _resetSpotterEngine } from "./spotter-engine.js";
@@ -3176,6 +3177,7 @@ describe("the catch-up calls (#1168)", () => {
       _resetRadarEngine();
       _resetSpotterEngine();
       _resetPitSpeedingEngine();
+      _resetPitExitCueEngine();
     });
 
     it("declares the two switches in the caution family, on by default", () => {
@@ -3208,6 +3210,7 @@ describe("the catch-up calls (#1168)", () => {
       _resetRadarEngine();
       _resetSpotterEngine();
       _resetPitSpeedingEngine();
+      _resetPitExitCueEngine();
 
       enabled = new Map([["catch-up", false]]);
       expect(fire("catch-up-reminder")).toEqual([NONAME]);

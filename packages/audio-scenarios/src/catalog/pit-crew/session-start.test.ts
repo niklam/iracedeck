@@ -30,6 +30,7 @@ import {
 import { familyGate } from "./callout-gate.test-util.js";
 import { familyReferences } from "./family-references.test-util.js";
 import { registerPitCrew } from "./index.js";
+import { _resetPitExitCueEngine } from "./pit-exit-cue-engine.js";
 import { _resetPitSpeedingEngine } from "./pit-speeding-engine.js";
 import { buildStartBriefSpeakGate, START_BRIEF_SETTLE_MAX_MS, START_BRIEF_SETTLE_POLL_MS } from "./race-start.js";
 import { _resetRadarEngine } from "./radar-engine.js";
@@ -320,6 +321,7 @@ afterEach(() => {
   _resetRadarEngine();
   _resetSpotterEngine();
   _resetPitSpeedingEngine();
+  _resetPitExitCueEngine();
   vi.clearAllMocks();
   vi.useRealTimers();
 });

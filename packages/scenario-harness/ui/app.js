@@ -176,6 +176,12 @@ function renderSettings() {
       label: "Radar Enabled",
       type: "checkbox",
     },
+    // Off by default for users (#1161), seeded on by bootstrap-settings.ts.
+    {
+      key: "calloutEnabledPitExitCue",
+      label: "Pit Exit Beep",
+      type: "checkbox",
+    },
     {
       key: "radarVolume",
       label: "Radar Volume",

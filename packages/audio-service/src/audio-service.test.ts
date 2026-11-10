@@ -640,7 +640,7 @@ describe("AudioService", () => {
     it("is the channel after Radar, so a .node built before it refuses it", () => {
       expect(channelEnumsInSync).toBe(true);
       expect(AudioChannel.Feedback).toBe(4);
-      expect(ALL_CHANNELS).toEqual([0, 1, 2, 3, 4]);
+      expect(ALL_CHANNELS).toEqual([0, 1, 2, 3, 4, 5]);
     });
 
     it("setBusVolume on every bus leaves it alone", () => {
@@ -655,7 +655,7 @@ describe("AudioService", () => {
       expect(touched).not.toContain(AudioChannel.Feedback);
       // Positive control: every channel in a bus was written.
       expect(new Set(touched)).toEqual(
-        new Set([AudioChannel.Ambient, AudioChannel.SFX, AudioChannel.Voice, AudioChannel.Radar]),
+        new Set([AudioChannel.Ambient, AudioChannel.SFX, AudioChannel.Voice, AudioChannel.Radar, AudioChannel.Cue]),
       );
     });
 
@@ -702,12 +702,14 @@ describe("AudioService", () => {
       const { native } = createServiceWithEndCallbacks();
       vi.clearAllMocks();
 
-      for (const ch of [AudioChannel.Ambient, AudioChannel.SFX, AudioChannel.Voice, AudioChannel.Radar]) {
+      const bused = [AudioChannel.Ambient, AudioChannel.SFX, AudioChannel.Voice, AudioChannel.Radar, AudioChannel.Cue];
+
+      for (const ch of bused) {
         expect(getAudio().playOnChannelAtLevel(ch, "/tick.wav", 0.5)).toBe(false);
       }
 
       expect(native.playOnChannel).not.toHaveBeenCalled();
-      expect(mockLogger.warn).toHaveBeenCalledTimes(4);
+      expect(mockLogger.warn).toHaveBeenCalledTimes(bused.length);
     });
 
     it("returns false before init, and when the native play fails", () => {
@@ -762,6 +764,111 @@ describe("AudioService", () => {
       // The one-shot completion callback is dropped, not fired.
       expect(oneShot).not.toHaveBeenCalled();
       // Idle again, so the device release arms.
+      vi.advanceTimersByTime(IDLE_STOP_DELAY_MS);
+      expect(native.stopAudioEngine).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe("Cue channel (#1161 — one-shot pit-lane tones, on the Alerts bus)", () => {
+    function createServiceWithEndCallbacks() {
+      const native = createMockNative();
+      const endCallbacks: Record<number, () => void> = {};
+      (native.setChannelEndCallback as ReturnType<typeof vi.fn>).mockImplementation((ch: number, cb: () => void) => {
+        endCallbacks[ch] = cb;
+      });
+      initializeAudio(mockLogger as never, native);
+      getAudio().init();
+
+      return { native, endCallbacks };
+    }
+
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("is the channel after Feedback, so a .node built before it refuses it", () => {
+      expect(channelEnumsInSync).toBe(true);
+      expect(AudioChannel.Cue).toBe(5);
+      expect(ALL_CHANNELS.at(-1)).toBe(AudioChannel.Cue);
+    });
+
+    it("follows the Alerts bus volume at Radar's mix ratio", () => {
+      const { native } = createServiceWithEndCallbacks();
+      vi.clearAllMocks();
+
+      getAudio().setBusVolume(AudioBus.Alerts, 0.5);
+
+      const calls = (native.setChannelVolume as ReturnType<typeof vi.fn>).mock.calls;
+      const radar = calls.find(([ch]) => ch === AudioChannel.Radar)?.[1];
+      const cue = calls.find(([ch]) => ch === AudioChannel.Cue)?.[1];
+      // 0.5^2.5 ≈ 0.17678, times the shared ratio of 1.0.
+      expect(radar).toBeCloseTo(0.1768, 4);
+      expect(cue).toBe(radar);
+
+      // And the next play on it carries that level.
+      getAudio().playOnChannel(AudioChannel.Cue, "/beep.wav");
+      expect(native.playOnChannel).toHaveBeenLastCalledWith(AudioChannel.Cue, "/beep.wav", false, radar);
+    });
+
+    it("is left alone by the other buses", () => {
+      const { native } = createServiceWithEndCallbacks();
+      vi.clearAllMocks();
+
+      getAudio().setBusVolume(AudioBus.Voice, 0.3);
+      getAudio().setBusVolume(AudioBus.Background, 0.3);
+
+      const touched = (native.setChannelVolume as ReturnType<typeof vi.fn>).mock.calls.map(([ch]) => ch);
+      expect(touched).not.toContain(AudioChannel.Cue);
+      // Positive control: those buses' own channels were written.
+      expect(touched).toContain(AudioChannel.Voice);
+    });
+
+    it("plays beside a Radar tick: neither play stops the other channel", () => {
+      const { native } = createServiceWithEndCallbacks();
+
+      getAudio().playOnChannel(AudioChannel.Radar, "/tick.wav");
+      getAudio().playOnChannel(AudioChannel.Cue, "/beep.wav");
+      getAudio().playOnChannel(AudioChannel.Radar, "/tick.wav");
+
+      expect(native.stopChannel).not.toHaveBeenCalled();
+      const channels = (native.playOnChannel as ReturnType<typeof vi.fn>).mock.calls.map(([ch]) => ch);
+      expect(channels).toEqual([AudioChannel.Radar, AudioChannel.Cue, AudioChannel.Radar]);
+    });
+
+    it("registers a native end callback for it, so the device releases after a beep (#849)", () => {
+      const { native, endCallbacks } = createServiceWithEndCallbacks();
+      const onComplete = vi.fn();
+      getAudio().setPlaybackObserver({ onComplete });
+
+      expect(typeof endCallbacks[AudioChannel.Cue]).toBe("function");
+
+      getAudio().playOnChannel(AudioChannel.Cue, "/beep.wav");
+      expect(native.startAudioEngine).toHaveBeenCalledTimes(1);
+
+      vi.advanceTimersByTime(IDLE_STOP_DELAY_MS * 2);
+      expect(native.stopAudioEngine).not.toHaveBeenCalled();
+
+      endCallbacks[AudioChannel.Cue]();
+      expect(onComplete).toHaveBeenCalledWith(AudioChannel.Cue);
+
+      vi.advanceTimersByTime(IDLE_STOP_DELAY_MS);
+      expect(native.stopAudioEngine).toHaveBeenCalledTimes(1);
+    });
+
+    it("stopAllChannels clears it", () => {
+      const { native } = createServiceWithEndCallbacks();
+      const onComplete = vi.fn();
+      getAudio().setPlaybackObserver({ onComplete });
+      getAudio().playOnChannel(AudioChannel.Cue, "/beep.wav");
+
+      getAudio().stopAllChannels();
+
+      expect(onComplete).toHaveBeenCalledWith(AudioChannel.Cue);
+      expect(getAudio().isChannelPlaying(AudioChannel.Cue)).toBe(false);
       vi.advanceTimersByTime(IDLE_STOP_DELAY_MS);
       expect(native.stopAudioEngine).toHaveBeenCalledTimes(1);
     });

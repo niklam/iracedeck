@@ -2,7 +2,7 @@
  * @iracedeck/audio-native
  *
  * Native Node.js addon wrapping the miniaudio single-header library.
- * Provides a 5-channel mixer (one channel per {@link AudioChannel} entry) used by
+ * Provides a 6-channel mixer (one channel per {@link AudioChannel} entry) used by
  * the Race Engineer, the radar and other audio actions.
  *
  * On non-Windows platforms, a mock implementation is used automatically
@@ -41,6 +41,12 @@ export enum AudioChannel {
    * `@iracedeck/audio-service`: each clip is played at a level its caller passes.
    */
   Feedback = 4,
+  /**
+   * One-shot pit-lane tones: the pit exit beep (#1161) and the limiter-on beep
+   * (#1272). Routed to the Alerts bus beside Radar in `@iracedeck/audio-service`,
+   * so a radar or speeding tick mixes with a beep instead of cutting it.
+   */
+  Cue = 5,
 }
 
 /**

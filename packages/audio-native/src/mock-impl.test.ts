@@ -41,13 +41,14 @@ describe("AudioNativeMock", () => {
       expect(mock.playOnChannel(2, "/other.mp3", true, 0.5)).toBe(true);
     });
 
-    it("accepts every channel, the Feedback channel included (#1455)", () => {
+    it("accepts every channel, the Feedback (#1455) and Cue (#1161) channels included", () => {
       for (const channel of [
         AudioChannel.Ambient,
         AudioChannel.SFX,
         AudioChannel.Voice,
         AudioChannel.Radar,
         AudioChannel.Feedback,
+        AudioChannel.Cue,
       ]) {
         expect(mock.playOnChannel(channel, "/tick.mp3", false, 0.3)).toBe(true);
         expect(() => mock.setChannelEndCallback(channel, () => {})).not.toThrow();

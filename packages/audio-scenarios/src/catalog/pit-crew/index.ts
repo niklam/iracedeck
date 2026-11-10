@@ -99,6 +99,7 @@ import {
   OPPONENT_PIT_CALLOUTS,
   OVERTAKE_CALLOUTS,
   PIT_BOX_CALLOUTS,
+  PIT_EXIT_CALLOUTS,
   PIT_LIMITER_CALLOUTS,
   PIT_READBACK_CALLOUTS,
   PIT_SERVICE_REQUEST_CALLOUTS,
@@ -183,6 +184,7 @@ import {
   SCENARIO_ID_TO_OVERTAKE_ID,
 } from "./overtake.js";
 import { PIT_BOX_CONTRACTS } from "./pit-box.js";
+import { registerPitExitCueEngine } from "./pit-exit-cue-engine.js";
 import { buildPitLimiter, SCENARIO_ID_TO_PIT_LIMITER_ID } from "./pit-limiter.js";
 import { registerPitSpeedingEngine } from "./pit-speeding-engine.js";
 import { buildPitStatus, PIT_STATUS_NOTHING_TO_DO_SCENARIO_ID } from "./pit-status.js";
@@ -283,6 +285,7 @@ export {
   type PitReadbackCalloutId,
   type ReadbackSnapshotResolver,
 } from "./readback.js";
+export { PIT_EXIT_CLIP, readPitExitCueDebugState } from "./pit-exit-cue-engine.js";
 export { type PitLimiterCalloutId, PIT_LIMITER_SCENARIO_IDS } from "./pit-limiter.js";
 export {
   registerTireWearVocabulary,
@@ -1157,6 +1160,8 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
   // Read inside the imperative speeding engine (issue #912): the cue plays
   // direct, so there is no `where:` to gate.
   const getPitSpeedingCalloutEnabled = enabledIn(PIT_SPEEDING_CALLOUTS);
+  // Read inside the one-shot pit exit cue engine (issue #1161), the same way.
+  const getPitExitCalloutEnabled = enabledIn(PIT_EXIT_CALLOUTS);
   const getPitLimiterCalloutEnabled = enabledIn(PIT_LIMITER_CALLOUTS);
   const getNoLimiterCalloutEnabled = enabledIn(NO_LIMITER_CALLOUTS);
 
@@ -1170,6 +1175,12 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
     getMasterEnabled: d.getRaceEngineerMasterEnabled,
     getCueEnabled: () => getPitSpeedingCalloutEnabled("cue"),
     getLatestTelemetry: d.getLatestTelemetry,
+    logger,
+  });
+
+  registerPitExitCueEngine(bus, {
+    getMasterEnabled: d.getRaceEngineerMasterEnabled,
+    getCueEnabled: () => getPitExitCalloutEnabled("cue"),
     logger,
   });
 
