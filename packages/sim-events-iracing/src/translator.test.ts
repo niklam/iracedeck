@@ -57,6 +57,7 @@ import {
   getLastStopTireTemps,
   getLatestTelemetry,
   getLiveCarPosition,
+  getLiveGapBetween,
   getLiveOpponentFlags,
   getLivePosition,
   getLiveRacePositions,
@@ -630,6 +631,110 @@ describe("sim-events-iracing translator", () => {
       expect(lines[0]).toContain("Opponent flag announced");
       expect(lines[0]).toContain("carNumber=07");
       expect(scoped.info).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("getLiveGapBetween across the start/finish line (issue #1572)", () => {
+    // iRacing does not always step `CarIdxLapCompleted` and wrap
+    // `CarIdxLapDistPct` on the same tick, so for one tick at the line a car's
+    // plain sum is a whole lap off. The progress step reads through that and
+    // records the corrected progress in the traces; this pair reading has to
+    // put each car on the same scale, or it looks the pair up a lap away.
+    const AHEAD = 1;
+    const BEHIND = 2;
+    const session = (): Record<string, unknown> => ({
+      DriverInfo: {
+        DriverCarIdx: 0,
+        Drivers: [
+          { CarIdx: 0, CarNumber: "1" },
+          { CarIdx: 1, CarNumber: "07" },
+          { CarIdx: 2, CarNumber: "22" },
+        ],
+      },
+      SessionInfo: { Sessions: [{ SessionNum: 0, SessionType: "Race" }] },
+      WeekendInfo: { TrackID: 1, TrackLength: "4.00 km" },
+    });
+    /** Laps per tick: every car at 0.01 lap/s, ten ticks a second. */
+    const STEP = 0.001;
+    const TICKS = 100;
+    /** True progress at tick `k`: the player mid-lap, AHEAD about to cross the line, BEHIND two seconds after it. */
+    const at = (k: number): number[] => [4.3 + STEP * k, 4.9605 + STEP * k, 4.9405 + STEP * k];
+
+    /**
+     * Drive the three cars across the line with `car`'s two arrays disagreeing
+     * on the one tick at its crossing, reading the pair's gap after every tick.
+     */
+    function drive(
+      car: number,
+      kind: "counterLeads" | "fractionLeads",
+    ): { gaps: (number | null)[]; desyncTick: number } {
+      const controller = createMockController();
+
+      controller.__setSessionInfo(session());
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
+
+      const gaps: (number | null)[] = [];
+      let desyncTick = -1;
+
+      for (let k = 0; k <= TICKS; k++) {
+        const progress = at(k);
+        const laps = progress.map((p) => Math.floor(p));
+        const pct = progress.map((p, i) => p - laps[i]!);
+        const here = laps[car]!;
+
+        if (kind === "counterLeads" && Math.floor(at(k + 1)[car]!) > here) {
+          // The last tick before the line: the counter has already stepped.
+          laps[car] = here + 1;
+          desyncTick = k;
+        } else if (kind === "fractionLeads" && k > 0 && Math.floor(at(k - 1)[car]!) < here) {
+          // The first tick past the line: the counter has not stepped yet.
+          laps[car] = here - 1;
+          desyncTick = k;
+        }
+
+        controller.__tick(
+          telemetry({
+            SessionState: SessionState.Racing,
+            SessionTime: 100 + k / 10,
+            CarIdxLapCompleted: laps,
+            CarIdxLapDistPct: pct,
+            CarIdxTrackSurface: [TrkLoc.OnTrack, TrkLoc.OnTrack, TrkLoc.OnTrack],
+            CarIdxClass: [0, 0, 0],
+          }),
+        );
+        gaps.push(getLiveGapBetween(AHEAD, BEHIND));
+      }
+
+      return { gaps, desyncTick };
+    }
+
+    // What the plain sum did on the disagreeing tick, per case: the chasing
+    // car a lap off looks the leader's trace up where it has no sample (null);
+    // the leading car a lap LOW reads as stopped, so the pair falls into the
+    // ETA regime with no separation (0 s). Only the leading car a lap HIGH
+    // read right by accident, since the lookup is at the chaser's progress.
+    it.each([
+      ["the chasing car's counter leads its fraction", BEHIND, "counterLeads", 59],
+      ["the chasing car's fraction leads its counter", BEHIND, "fractionLeads", 60],
+      ["the leading car's counter leads its fraction", AHEAD, "counterLeads", 39],
+      ["the leading car's fraction leads its counter", AHEAD, "fractionLeads", 40],
+    ] as const)("stays at the pair's two seconds on every tick when %s", (_name, car, kind, expectedTick) => {
+      const { gaps, desyncTick } = drive(car, kind);
+
+      // The fixture did disagree, on the tick at the car's crossing.
+      expect(desyncTick).toBe(expectedTick);
+      // Before the leader's trace reaches back to the chaser there is no gap to read.
+      expect(gaps[0]).toBeNull();
+
+      const read = gaps.slice(25);
+
+      expect(read).toHaveLength(TICKS - 24);
+      expect(gaps[desyncTick]).toBeCloseTo(2, 5);
+
+      for (const [i, gap] of read.entries()) {
+        expect(gap, `tick ${i + 25}`).not.toBeNull();
+        expect(gap, `tick ${i + 25}`).toBeCloseTo(2, 5);
+      }
     });
   });
 
