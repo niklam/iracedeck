@@ -8,7 +8,7 @@
  *   Channel 2 (Voice)    — engineer messages, reminders, toggles
  *   Channel 3 (Radar)    — directional radar ticks
  *   Channel 4 (Feedback) — control feedback, the volume step tick (#1455)
- *   Channel 5 (Cue)      — one-shot pit-lane tones, the pit exit beep (#1161)
+ *   Channel 5 (Cue)      — one-shot pit-lane tones: the pit exit beep (#1161) and the limiter-on beep (#1272)
  *
  * Every channel routes to exactly one bus, with one exception: Feedback
  * routes to none. Its level is passed per play
