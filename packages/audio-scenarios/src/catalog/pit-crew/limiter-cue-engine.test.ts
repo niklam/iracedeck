@@ -65,8 +65,15 @@ function makeBus(): IEventBus {
 
 let bus: IEventBus;
 
-/** Publish `carControl.limiterToggled` as the translator does, with this envelope telemetry. */
-function toggle(on: boolean, telemetry: unknown = { IsOnTrack: true }): void {
+/** The envelope telemetry a press carries when the test names none: the player in the car. */
+const IN_CAR: unknown = { IsOnTrack: true };
+
+/**
+ * Publish `carControl.limiterToggled` as the translator does, with this
+ * envelope telemetry. No default parameter: one would turn an explicit
+ * `undefined` into `IN_CAR`, and the envelope rows below test `undefined`.
+ */
+function toggle(on: boolean, telemetry: unknown): void {
   const event = {
     event: "carControl.limiterToggled",
     timestamp: 0,
@@ -77,8 +84,9 @@ function toggle(on: boolean, telemetry: unknown = { IsOnTrack: true }): void {
   for (const handler of Array.from(handlers.get("carControl.limiterToggled") ?? [])) handler(event);
 }
 
-const engage = (telemetry?: unknown): void => toggle(true, telemetry);
-const disengage = (): void => toggle(false);
+/** An off→on press; with no argument it carries `IN_CAR`, with one (even `undefined`) exactly that. */
+const engage = (...args: [telemetry?: unknown]): void => toggle(true, args.length === 0 ? IN_CAR : args[0]);
+const disengage = (): void => toggle(false, IN_CAR);
 
 let masterEnabled = true;
 let cueEnabled = true;
