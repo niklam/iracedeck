@@ -1604,6 +1604,49 @@ describe("BlackBoxSelector dial surface", () => {
       },
     );
 
+    it("reverts on a push+turn that lands while the preview frame's push is still in flight", async () => {
+      const { ctx, settings } = await appearHeld("hp-push-turn-in-flight", { rotation: "select-control" });
+      let landPreview: () => void = () => undefined;
+      ctx.setDialCanvas.mockImplementationOnce(() => new Promise<void>((resolve) => (landPreview = resolve)));
+
+      await hold(ctx, settings, 500);
+
+      expect(canvases(ctx)).toEqual([frame(renderAdjustControlPendingStrip(ARGS))]);
+
+      // The cancel arrives before the preview frame's push has resolved.
+      await action.onDialRotate(rotateEvent(ctx, settings, 0, true) as never);
+      landPreview();
+      await vi.advanceTimersByTimeAsync(0);
+
+      // The strip ends on the dial's own Mode, not on the preview that landed late.
+      expect(canvases(ctx)).toEqual([
+        frame(renderAdjustControlPendingStrip(ARGS)),
+        frame(renderSelectControlStrip(ARGS)),
+      ]);
+
+      // And the ≤10 pushes/s dedupe still holds: an echo and the release push nothing more.
+      for (const listener of globalListeners) listener();
+
+      await action.onDialUp(eventFor(ctx, settings) as never);
+
+      expect(canvases(ctx)).toHaveLength(2);
+      expect(ctx.setSettings).not.toHaveBeenCalled();
+    });
+
+    it("re-pushes a frame whose push failed on the next global-settings refresh", async () => {
+      const { ctx, settings } = await appearHeld("hp-push-failed", { rotation: "select-control" });
+      ctx.setDialCanvas.mockRejectedValueOnce(new Error("host gone"));
+
+      await hold(ctx, settings, 500);
+      await vi.advanceTimersByTimeAsync(0);
+      ctx.setDialCanvas.mockClear();
+
+      // The preview never reached the strip, so the refresh draws it rather than skipping as unchanged.
+      for (const listener of globalListeners) listener();
+
+      expect(canvases(ctx)).toEqual([frame(renderAdjustControlPendingStrip(ARGS))]);
+    });
+
     it("reverts a showing preview on a release that fires nothing, before the early returns", async () => {
       const { ctx, settings } = await appearHeld("hp-stray", { rotation: "select-control" });
 

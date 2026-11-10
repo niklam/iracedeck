@@ -701,8 +701,9 @@ interface BlackBoxDialContext {
   /** The display-only hold-preview timer for this context (the no-op where extended gestures are compiled out). */
   holdPreview: HoldPreview;
   /**
-   * The displayed signature of the last frame pushed, so a global-settings
-   * echo re-renders only when the strip would change.
+   * The displayed signature of the last frame whose push STARTED (cleared when
+   * that push fails), which is the frame the strip ends on, so a global-settings
+   * echo or a preview revert re-renders only when the strip would change.
    */
   lastRenderSig: string | null;
 }
@@ -1119,8 +1120,21 @@ export class BlackBoxSelectorDialSurface extends ReleaseDialSurfaceBase<BlackBox
     };
     // EVERY render carries the pending preview, so a redraw mid-hold keeps it.
     const svg = renderBlackBoxFor(canvas, ctx.dial.rotation, ctx.previewRotation, args);
-    await ctx.action.setDialCanvas(svgToDataUri(svg));
 
+    // Recorded as the push STARTS: the strip ends on the last frame started,
+    // so a skip decided while this push is in flight must compare against it.
+    // Set after the await, a cancel landing mid-push would compare against the
+    // frame before the preview, skip its revert, and leave the preview up.
     ctx.lastRenderSig = signature;
+
+    try {
+      await ctx.action.setDialCanvas(svgToDataUri(svg));
+    } catch (err) {
+      // The frame never reached the strip: forget it, unless a later frame has
+      // started since, so the next refresh draws it rather than skipping.
+      if (ctx.lastRenderSig === signature) ctx.lastRenderSig = null;
+
+      throw err;
+    }
   }
 }
