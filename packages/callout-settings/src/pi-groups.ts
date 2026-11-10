@@ -30,6 +30,7 @@ import { RACE_START_CALLOUTS } from "./families/race-start.js";
 import { RACE_STATUS_CALLOUTS } from "./families/race-status.js";
 import { PIT_READBACK_CALLOUTS } from "./families/readback.js";
 import { ROLLING_START_CALLOUTS } from "./families/rolling-start.js";
+import { SECTOR_COMPARISON_CALLOUTS } from "./families/sector-comparison.js";
 import { SECTOR_START_CALLOUTS } from "./families/sector-start.js";
 import { SESSION_START_CALLOUTS } from "./families/session-start.js";
 import { SETUP_WARNING_CALLOUTS } from "./families/setup-warning.js";
@@ -74,7 +75,7 @@ export const CALLOUT_PI_GROUPS = [
   { id: "qualifying", title: "Qualifying", families: [QUALIFYING_INVALIDATION_CALLOUTS] },
   { id: "race", title: "Race", families: [RACE_START_CALLOUTS, RACE_STATUS_CALLOUTS, RACE_END_CALLOUTS] },
   { id: "overtakes", title: "Overtakes", families: [OVERTAKE_CALLOUTS] },
-  { id: "gaps", title: "Gaps", families: [GAP_CALLOUTS] },
+  { id: "gaps", title: "Gaps", families: [GAP_CALLOUTS, SECTOR_COMPARISON_CALLOUTS] },
   { id: "spotter", title: "Spotter", families: [SPOTTER_CALLOUTS] },
   { id: "pit-box", title: "Pit Box", families: [PIT_BOX_CALLOUTS] },
   { id: "pit-speeding", title: "Pit Speeding", families: [PIT_SPEEDING_CALLOUTS, PIT_EXIT_CALLOUTS] },

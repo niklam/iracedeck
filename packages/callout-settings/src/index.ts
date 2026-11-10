@@ -33,6 +33,7 @@ export { RACE_ENGINEER_TOGGLE_CALLOUTS } from "./families/race-engineer-toggle.j
 export { RACE_START_CALLOUTS } from "./families/race-start.js";
 export { RACE_STATUS_CALLOUTS } from "./families/race-status.js";
 export { ROLLING_START_CALLOUTS } from "./families/rolling-start.js";
+export { SECTOR_COMPARISON_CALLOUTS } from "./families/sector-comparison.js";
 export { SECTOR_START_CALLOUTS } from "./families/sector-start.js";
 export { SESSION_START_CALLOUTS } from "./families/session-start.js";
 export { SETUP_WARNING_CALLOUTS } from "./families/setup-warning.js";
