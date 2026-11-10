@@ -5,6 +5,7 @@ import {
   type RaceFinishedSnapshot,
   resolveGapCooldownMs,
   resolveStillThereIntervalMs,
+  type SectorComparisonInput,
   SPOTTER_STILL_THERE_SECONDS_KEY,
   type SpotterTrackDirection,
 } from "@iracedeck/audio-scenarios/pit-crew";
@@ -104,6 +105,12 @@ export function buildPitCrewDeps(
     // time, so one queued behind another line is refused once the driver has
     // closed up; `null` while the player holds no pace row.
     getCautionGap: () => sim.getCautionGap(),
+    // The sector comparison (issue #1572): the translator's facts (each car's
+    // recent laps' sector times, its car number and live gap) in the catalog's
+    // own type. The two shapes are declared field for field alike, so this is
+    // a pass-through the compiler checks; the reference, the thresholds and the
+    // cadence stay in the catalog.
+    getSectorComparison: (): SectorComparisonInput | null => sim.getSectorComparison(),
     logger: logger.createScope("PitCrewScenarios"),
     getPitActionsAllowed: () => sim.isPitActionsAllowed(),
     getReadbackSnapshot: () => sim.getReadbackSnapshot(),

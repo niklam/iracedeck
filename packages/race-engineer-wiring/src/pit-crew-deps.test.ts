@@ -1,4 +1,4 @@
-import type { SpotterTrackDirection } from "@iracedeck/audio-scenarios/pit-crew";
+import type { SectorComparisonInput, SpotterTrackDirection } from "@iracedeck/audio-scenarios/pit-crew";
 import { silentLogger } from "@iracedeck/logger";
 import { _resetGlobalSettings, evaluateSetupWarning, updateGlobalSettings } from "@iracedeck/settings";
 import { TrackDirection } from "@iracedeck/sim-events-iracing";
@@ -53,7 +53,7 @@ describe("buildPitCrewDeps", () => {
   it("builds all 33 dependencies, so none falls back to DEFAULT_DEPS", () => {
     const built = buildPitCrewDeps(fakeDeps(), noCaches);
 
-    expect(Object.keys(built)).toHaveLength(33);
+    expect(Object.keys(built)).toHaveLength(34);
 
     for (const [key, value] of Object.entries(built)) expect(value, key).toBeDefined();
   });
@@ -66,6 +66,23 @@ describe("buildPitCrewDeps", () => {
 
     formation = { id: 7, firstFollowCarIdx: 9 };
     expect(built.getRollingStartFormation()).toEqual({ id: 7, firstFollowCarIdx: 9 });
+  });
+
+  it("hands the callouts the translator's sector comparison, read live (#1572)", () => {
+    const lap = { lap: 9, sectorTimes: [30.1, 40.2, 25.3], clean: true };
+    const car = (carIdx: number, gapSeconds: number | null) => ({
+      carIdx,
+      carNumber: String(carIdx),
+      gapSeconds,
+      recentLaps: [lap],
+    });
+    let snapshot: SectorComparisonInput | null = null;
+    const built = buildPitCrewDeps(fakeDeps({ sim: fakeSim({ getSectorComparison: () => snapshot }) }), noCaches);
+
+    expect(built.getSectorComparison()).toBeNull();
+
+    snapshot = { sectorCount: 3, player: car(5, null), leader: car(1, 4.2), ahead: car(3, 1.1), behind: null };
+    expect(built.getSectorComparison()).toEqual(snapshot);
   });
 
   it("hands the callouts the translator's caution gap, read live (#1168)", () => {
