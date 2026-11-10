@@ -112,8 +112,8 @@ export function diffSectorTimes(
   /**
    * The class neighbours and class leader `diffGaps` resolved this tick from
    * the canonical order, as it returned them; `null` (or `undefined`) = none
-   * resolved, or `diffGaps` threw. Recorded as they are: the reader decides
-   * what a leader call may name.
+   * resolved, or `diffGaps` threw. Recorded as they are; what a call may name
+   * is the catalog's decision.
    */
   neighbours: StandingsNeighbors | null | undefined,
   runUnit: UnitRunner = runUnitsDirectly,

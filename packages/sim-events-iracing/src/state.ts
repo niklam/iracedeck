@@ -358,10 +358,12 @@ export type SectorLap = {
    */
   sectorTimes: readonly (number | null)[];
   /**
-   * Whether the lap counts for a comparison (the #1572 spec's decision 4):
-   * false when any tick of it read the car off the racing surface or under a
-   * full-course caution, when it is the race's opening lap, or when a sector
-   * time is not positive.
+   * Whether the lap counts for a comparison (the #1572 spec's decision 4),
+   * implementing the contract the catalog documents on
+   * `SectorLapInput.clean`: false when any tick of it read the car's
+   * `CarIdxTrackSurface` as anything but `OnTrack` (off track, approaching
+   * the pits, in the stall, not in the world) or a full-course caution out,
+   * when it is the race's opening lap, or when a sector time is not positive.
    */
   clean: boolean;
 };
@@ -384,8 +386,8 @@ export type SectorLapInProgress = {
  * carIdx; `-1` = none. The class neighbours and class leader as `diffGaps`
  * resolved them from the canonical order, unfiltered: `leaderIdx` is the
  * player's own index when the player leads the class, and may equal
- * `aheadIdx`. The reader (`getSectorComparison`) decides what a leader call
- * may name.
+ * `aheadIdx`. The reader (`getSectorComparison`) drops only the player's own
+ * index; what a call may name is the catalog's decision.
  */
 export type SectorTargets = { leaderIdx: number; aheadIdx: number; behindIdx: number };
 

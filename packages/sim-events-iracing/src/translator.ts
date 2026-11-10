@@ -1954,10 +1954,9 @@ export type SectorComparisonSnapshot = {
   sectorCount: number;
   player: SectorCarSnapshot;
   /**
-   * The player's class leader; `null` when the player leads the class, and
-   * when the class leader is the car directly ahead, which {@link ahead}
-   * already names (the #1572 spec's decision 7: one car is never the subject
-   * of two calls).
+   * The player's class leader; `null` when the player leads the class or no
+   * leader is known. It may be the same car as {@link ahead}: whether one car
+   * may be the subject of two calls is the catalog's decision, not a fact.
    */
   leader: SectorCarSnapshot | null;
   /** The car one class position ahead of the player. */
@@ -2009,7 +2008,7 @@ export function getSectorComparison(): SectorComparisonSnapshot | null {
   return {
     sectorCount: sectorStarts.length,
     player: car(playerCarIdx, null),
-    leader: leaderIdx < 0 || leaderIdx === playerCarIdx || leaderIdx === aheadIdx ? null : carAhead(leaderIdx),
+    leader: leaderIdx < 0 || leaderIdx === playerCarIdx ? null : carAhead(leaderIdx),
     ahead: aheadIdx < 0 ? null : carAhead(aheadIdx),
     behind: behindIdx < 0 ? null : car(behindIdx, liveGapBetween(self, playerCarIdx, behindIdx)),
   };
@@ -3618,7 +3617,7 @@ function handleLiveSteps(
   // `race-order.ts`. Everywhere else this IS `calculateFrozenRacePositions`.
   //
   // The order has no fallback (#1559, decision 3): when it, or the tracking it
-  // is read from, throws, its six consumers below are not called this tick — an
+  // is read from, throws, its consumers in `handleOrderSteps` are not called this tick — an
   // order computed from half-written anchors is not the canonical one, and a
   // stale one would present the field as it was while the traces move on. A
   // skipped step advances no baseline, so it sees the change on the next tick

@@ -65,6 +65,16 @@ export type SectorLapInput = {
   lap: number;
   /** One per sector, in order; null where that crossing was not measured. */
   sectorTimes: readonly (number | null)[];
+  /**
+   * Whether the lap counts for a comparison. One rule for every car, the
+   * player included, so a strictly filtered lap is never compared with a
+   * leniently filtered one: the car stayed on the racing surface the whole lap
+   * (never in the pit lane or its stall, never off track, always in the
+   * world), no full-course caution was out on any part of it, it is not the
+   * race's opening lap, and every sector was measured and is positive. The
+   * family relies on each part: a pit, off-track or caution lap of the
+   * player's says nothing, and the first comparison comes from lap 4.
+   */
   clean: boolean;
 };
 
@@ -83,7 +93,7 @@ export type SectorCarInput = {
 export type SectorComparisonInput = {
   sectorCount: number;
   player: SectorCarInput;
-  /** The class leader; null when the player leads the class. */
+  /** The class leader; null when the player leads the class or no leader is known. May be the same car as `ahead`: the selection skips the leader then. */
   leader: SectorCarInput | null;
   /** The class neighbours; null when there is none. */
   ahead: SectorCarInput | null;

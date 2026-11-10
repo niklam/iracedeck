@@ -319,7 +319,7 @@ describe("getSectorComparison (#1572)", () => {
     expect(snapshot.behind?.carIdx).toBe(2);
   });
 
-  it("has no leader when the class leader is the car directly ahead, which the car ahead names", () => {
+  it("names the class leader even when it is the car directly ahead: who a call names is the catalog's", () => {
     start(sessionInfo());
     // Car 3 drops behind the player: car 2 is both the class leader and the car ahead.
     drive([5.4, 5.9, 5.8, 5.2, 5.3], 100, 3);
@@ -331,7 +331,8 @@ describe("getSectorComparison (#1572)", () => {
       aheadIdx: 2,
       behindIdx: 4,
     });
-    expect(snapshot.leader).toBeNull();
+    expect(snapshot.leader?.carIdx).toBe(2);
+    expect(snapshot.leader).toEqual(snapshot.ahead);
     expect(snapshot.ahead?.carIdx).toBe(2);
     expect(snapshot.behind?.carIdx).toBe(4);
   });
