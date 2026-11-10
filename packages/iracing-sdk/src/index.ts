@@ -136,6 +136,7 @@ export {
   lapDeltaBetween,
   type ProgressSample,
   type ProgressSampleVerdict,
+  type ReadonlyProgressTrace,
   type ProgressTrace,
   recentProgressRate,
   resolveClassNeighbors,

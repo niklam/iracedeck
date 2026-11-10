@@ -18,6 +18,9 @@ export type ProgressSample = { progress: number; time: number };
 /** Rolling per-car trace, ascending by progress. Owned by translator state. */
 export type ProgressTrace = ProgressSample[];
 
+/** A {@link ProgressTrace} as a reader takes it: neither the trace nor a sample may be written. */
+export type ReadonlyProgressTrace = readonly Readonly<ProgressSample>[];
+
 /** How much history each trace keeps, in laps. Covers same-lap gaps plus margin. */
 export const GAP_TRACE_SPAN_LAPS = 1.15;
 
@@ -94,7 +97,7 @@ export function appendProgressSample(trace: ProgressTrace, progress: number, tim
  * interpolated between the bracketing samples. `null` when the trace doesn't
  * cover the point — callers fall back (cold start) rather than extrapolate.
  */
-export function crossingTimeAt(trace: ProgressTrace, progress: number): number | null {
+export function crossingTimeAt(trace: ReadonlyProgressTrace, progress: number): number | null {
   if (trace.length === 0) return null;
 
   if (progress < trace[0]!.progress || progress > trace[trace.length - 1]!.progress) return null;
@@ -203,7 +206,7 @@ export function resolveClassNeighbors(
  * trace doesn't reach back far enough to measure.
  */
 export function recentProgressRate(
-  trace: ProgressTrace | undefined,
+  trace: ReadonlyProgressTrace | undefined,
   currentProgress: number,
   now: number,
   windowSeconds: number,
@@ -211,7 +214,7 @@ export function recentProgressRate(
   if (!trace || trace.length === 0) return null;
 
   const cutoff = now - windowSeconds;
-  let ref: ProgressSample | null = null;
+  let ref: Readonly<ProgressSample> | null = null;
 
   for (let i = trace.length - 1; i >= 0; i--) {
     if (trace[i]!.time <= cutoff) {
