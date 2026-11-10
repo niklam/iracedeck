@@ -14,7 +14,7 @@ These are the dynamic-render icons used by the black-box selector action. Each i
 
 ## Inner Black Box Frame (the family identity)
 
-All 14 icons share one flat frame, filled with the key background and outlined in the primary graphic colour:
+All 19 icons share one flat frame, filled with the key background and outlined in the primary graphic colour:
 
 ```svg
 <rect x="10" y="12" width="76" height="44" rx="6" fill="{{backgroundColor}}" stroke="{{graphic1Color}}" stroke-width="3.5"/>
@@ -45,12 +45,13 @@ Content is flat: linework and silhouettes in `{{graphic1Color}}`, interior detai
 | weather | small cloud + cyan rain, clear of the border |
 | next / previous | double chevrons pointing the cycle direction: the rear chevron solid, the one ahead of it at 55% opacity |
 | toggle-size | a solid small box in the bottom-left corner of a muted (55% opacity) larger outline box sharing that corner, with a diagonal double-headed arrow between their top-right corners, all `{{graphic1Color}}`; it reads as "resize", not as any one box (#1238) |
+| next-control / previous-control / increment-control / decrement-control / toggle-control | one d-pad, the same in all five: four triangles pointing out (up, down, left, right) around a centre circle, all `{{graphic1Color}}` with a 2px round-joined stroke; the part the press is solid and the other four at 0.35 opacity — down for next, up for previous, right for increment, left for decrement, the centre circle for toggle. It is iRacing's own model (the five work as a d-pad on the open box), so the five read as one set and as "inside a box" without looking like any one box (#1585) |
 
 Quick Access deliberately avoids Relative's language: no row is filled edge to edge and no row is highlighted as a whole, because three full-width rows with one picked out in amber is what identifies Relative. The chevrons and the switch carry Quick Access's identity instead.
 
 ## Text Labels
 
-Single-line labels (FUEL, TIRES, QUICK ACCESS, …) render via the title system — no text elements in the artwork except in-frame data values (`12.5`, `1:23.4`) and glyph text (Standings' `1`). The label a key shows comes from `BLACK_BOX_TITLE_TEXT` in `black-box-selector.ts`, which overrides the `<desc>` title, so change both together: editing only the `<desc>` changes nothing on the key.
+Single-line labels (FUEL, TIRES, QUICK ACCESS, …) render via the title system — no text elements in the artwork except in-frame data values (`12.5`, `1:23.4`) and glyph text (Standings' `1`). The label a key shows comes from `black-box-selector.ts` — `BLACK_BOX_TITLE_TEXT` for the eleven boxes, `SELECTED_CONTROL_TITLE_TEXT` for the five d-pad keys (`NEXT CTRL`, `PREV CTRL`, `CTRL +`, `CTRL -`, `CTRL TOGGLE`), and inline in `blackBoxIconFor` for Next, Previous and Toggle Size — which overrides the `<desc>` title, so change both together: editing only the `<desc>` changes nothing on the key.
 
 ## Static Key Icon (`black-box-selector/key.svg`, 72×72)
 
