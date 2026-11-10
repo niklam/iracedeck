@@ -7,6 +7,7 @@ import {
   DialSettings,
   renderBlackBoxKnob,
   renderBlackBoxStrip,
+  rotationWordmark,
 } from "./black-box-selector-dial-surface.js";
 import { BlackBoxSelector } from "./black-box-selector.js";
 
@@ -187,8 +188,86 @@ describe("black-box-selector dial-surface pure helpers", () => {
     });
   });
 
+  describe("dial.rotation (#1585)", () => {
+    it("parses a dial stored before the choice existed as cycling boxes", () => {
+      expect(DialSettings.parse({}).rotation).toBe("boxes");
+      expect(DialSettings.parse({ pressBox: "fuel", pressAction: "open-selected-box" }).rotation).toBe("boxes");
+    });
+
+    it.each(["boxes", "select-control", "adjust-control"] as const)("accepts rotation %s", (rotation) => {
+      expect(DialSettings.parse({ rotation }).rotation).toBe(rotation);
+    });
+
+    it("rejects a rotation it does not know", () => {
+      expect(DialSettings.safeParse({ rotation: "cycle" }).success).toBe(false);
+    });
+
+    it.each(["toggle-control", "next-control", "previous-control"] as const)(
+      "accepts %s in every gesture slot",
+      (gesture) => {
+        const parsed = DialSettings.parse({
+          pressAction: gesture,
+          longPressAction: gesture,
+          tapAction: gesture,
+          longTouchAction: gesture,
+        });
+
+        expect([parsed.pressAction, parsed.longPressAction, parsed.tapAction, parsed.longTouchAction]).toEqual([
+          gesture,
+          gesture,
+          gesture,
+          gesture,
+        ]);
+      },
+    );
+
+    it.each([
+      ["boxes", "Cycle black boxes"],
+      ["select-control", "Select control"],
+      ["adjust-control", "Adjust control"],
+    ] as const)("labels a %s turn %s", (rotation, label) => {
+      expect(buildTriggerDescription(DialSettings.parse({ rotation })).rotate).toBe(label);
+    });
+
+    it("labels the three selected-control gestures", () => {
+      const desc = buildTriggerDescription(
+        DialSettings.parse({
+          rotation: "adjust-control",
+          pressAction: "next-control",
+          longPressAction: "previous-control",
+          tapAction: "toggle-control",
+          longTouchAction: "next-control",
+        }),
+      );
+
+      expect(desc).toEqual({
+        rotate: "Adjust control",
+        push: "Next control (hold: Previous control)",
+        touch: "Toggle control",
+        longTouch: "Next control",
+      });
+    });
+
+    it.each([
+      ["boxes", "BLACK BOX"],
+      ["select-control", "SELECT"],
+      ["adjust-control", "ADJUST"],
+    ] as const)("names a %s turn %s on the dial screen", (rotation, wordmark) => {
+      expect(rotationWordmark(rotation)).toBe(wordmark);
+    });
+  });
+
   describe("renderBlackBoxStrip", () => {
     const colors = { border: "#d4a017", label: "#d4a017", value: "#d4a017", background: "#0d0d0d" };
+
+    it.each(["SELECT", "ADJUST"])("draws the %s wordmark centred under the badge (#1585)", (wordmark) => {
+      const svg = renderBlackBoxStrip({ colors, bindingMissing: false, wordmark });
+
+      expect(svg).toContain(">BB<");
+      expect(svg).toContain(`<text x="100" y="78" text-anchor="middle"`);
+      expect(svg).toContain(`>${wordmark}<`);
+      expect(svg).not.toContain(">BLACK BOX<");
+    });
 
     it("draws the BB badge and BLACK BOX wordmark (identity only)", () => {
       const svg = renderBlackBoxStrip({ colors, bindingMissing: false });
@@ -218,6 +297,15 @@ describe("black-box-selector dial-surface pure helpers", () => {
 
   describe("renderBlackBoxKnob (#1013)", () => {
     const colors = { border: "#d4a017", label: "#d4a017", value: "#d4a017", background: "#0d0d0d" };
+
+    it.each(["SELECT", "ADJUST"])("draws the %s wordmark centred under the badge (#1585)", (wordmark) => {
+      const svg = renderBlackBoxKnob({ colors, bindingMissing: false, wordmark });
+
+      expect(svg).toContain(">BB<");
+      expect(svg).toContain(`<text x="88" y="90" text-anchor="middle"`);
+      expect(svg).toContain(`>${wordmark}<`);
+      expect(svg).not.toContain(">BLACK BOX<");
+    });
 
     it("draws the same identity on the 176x112 knob screen", () => {
       const svg = renderBlackBoxKnob({ colors, bindingMissing: false });
@@ -522,6 +610,208 @@ describe("BlackBoxSelector dial surface", () => {
 
       expect(mockIsBindingMissing).toHaveBeenCalledWith(["blackBoxCycleNext", "blackBoxCyclePrevious"]);
       expect(mockIsBindingMissing).not.toHaveBeenCalledWith(expect.arrayContaining(["blackBoxToggleSize"]));
+    });
+  });
+
+  describe("rotation choice (#1585)", () => {
+    it.each([
+      ["boxes", "blackBoxCycleNext", "blackBoxCyclePrevious"],
+      ["select-control", "blackBoxSelectNextControl", "blackBoxSelectPreviousControl"],
+      ["adjust-control", "blackBoxIncrementControl", "blackBoxDecrementControl"],
+    ] as const)("a %s turn taps %s clockwise and %s counter-clockwise", async (rotation, cw, ccw) => {
+      const ctx = dialContext(`r-${rotation}`);
+      const settings = withDial({ rotation });
+      await appear(ctx, settings);
+      mockTapBinding.mockClear();
+
+      await action.onDialRotate(rotateEvent(ctx, settings, 2) as never);
+      await action.onDialRotate(rotateEvent(ctx, settings, -1) as never);
+
+      expect(mockTapBinding.mock.calls).toEqual([[cw], [cw], [ccw]]);
+    });
+
+    it.each(["select-control", "adjust-control"] as const)(
+      "caps a fast %s spin at 5 taps per event",
+      async (rotation) => {
+        const ctx = dialContext(`rc-${rotation}`);
+        const settings = withDial({ rotation });
+        await appear(ctx, settings);
+        mockTapBinding.mockClear();
+
+        await action.onDialRotate(rotateEvent(ctx, settings, -9) as never);
+
+        expect(mockTapBinding).toHaveBeenCalledTimes(5);
+      },
+    );
+
+    it("follows a rotation changed in the event's settings", async () => {
+      const ctx = dialContext("r-change");
+      await appear(ctx, withDial({}));
+      mockTapBinding.mockClear();
+
+      await action.onDialRotate(rotateEvent(ctx, withDial({ rotation: "adjust-control" }), 1) as never);
+
+      expect(mockTapBinding.mock.calls).toEqual([["blackBoxIncrementControl"]]);
+    });
+
+    it("degrades an unknown stored rotation to the dial defaults, so the dial still cycles boxes", async () => {
+      const ctx = dialContext("r-garbage");
+      const settings = withDial({ rotation: "sideways" });
+      await appear(ctx, settings);
+      mockTapBinding.mockClear();
+
+      await action.onDialRotate(rotateEvent(ctx, settings, 1) as never);
+
+      expect(mockTapBinding.mock.calls).toEqual([["blackBoxCycleNext"]]);
+    });
+
+    it("pushes the rotation's label as the trigger description", async () => {
+      const ctx = dialContext("r-desc");
+      await appear(ctx, withDial({ rotation: "select-control", pressAction: "toggle-control" }));
+
+      expect(ctx.setTriggerDescription).toHaveBeenLastCalledWith({ rotate: "Select control", push: "Toggle control" });
+    });
+  });
+
+  describe("selected-control gestures (#1585)", () => {
+    const GESTURES = [
+      ["toggle-control", "blackBoxToggleControl"],
+      ["next-control", "blackBoxSelectNextControl"],
+      ["previous-control", "blackBoxSelectPreviousControl"],
+    ] as const;
+
+    function allSlots(gesture: string) {
+      return withDial({
+        rotation: "adjust-control",
+        pressAction: gesture,
+        longPressAction: gesture,
+        tapAction: gesture,
+        longTouchAction: gesture,
+      });
+    }
+
+    it.each(GESTURES)("%s taps %s once on a short press", async (gesture, key) => {
+      const ctx = dialContext(`gp-${gesture}`);
+      const settings = allSlots(gesture);
+      await appear(ctx, settings);
+      mockTapBinding.mockClear();
+
+      await action.onDialDown(eventFor(ctx, settings) as never);
+      await action.onDialUp(eventFor(ctx, settings) as never);
+
+      expect(mockTapBinding.mock.calls).toEqual([[key]]);
+    });
+
+    it.each(GESTURES)("%s taps %s once on a long press", async (gesture, key) => {
+      const ctx = dialContext(`gl-${gesture}`);
+      const settings = allSlots(gesture);
+      await appear(ctx, settings);
+      mockTapBinding.mockClear();
+
+      await action.onDialDown(eventFor(ctx, settings) as never);
+      vi.advanceTimersByTime(600);
+      await action.onDialUp(eventFor(ctx, settings) as never);
+
+      expect(mockTapBinding.mock.calls).toEqual([[key]]);
+    });
+
+    it.each(GESTURES)("%s taps %s once on a tap and on a long touch", async (gesture, key) => {
+      const ctx = dialContext(`gt-${gesture}`);
+      const settings = allSlots(gesture);
+      await appear(ctx, settings);
+      mockTapBinding.mockClear();
+
+      await action.onTouchTap(touchEvent(ctx, settings, false) as never);
+      await action.onTouchTap(touchEvent(ctx, settings, true) as never);
+
+      expect(mockTapBinding.mock.calls).toEqual([[key], [key]]);
+    });
+
+    it("walks and adjusts the open box from one dial: Adjust Control with Press on Next Control", async () => {
+      const ctx = dialContext("g-walk");
+      const settings = withDial({ rotation: "adjust-control", pressAction: "next-control" });
+      await appear(ctx, settings);
+      mockTapBinding.mockClear();
+
+      await action.onDialRotate(rotateEvent(ctx, settings, 1) as never);
+      await action.onDialDown(eventFor(ctx, settings) as never);
+      await action.onDialUp(eventFor(ctx, settings) as never);
+      await action.onDialRotate(rotateEvent(ctx, settings, -1) as never);
+
+      expect(mockTapBinding.mock.calls).toEqual([
+        ["blackBoxIncrementControl"],
+        ["blackBoxSelectNextControl"],
+        ["blackBoxDecrementControl"],
+      ]);
+    });
+  });
+
+  describe("strip and #612 dim follow the rotation (#1585)", () => {
+    it.each([
+      ["boxes", "BLACK BOX", ["blackBoxCycleNext", "blackBoxCyclePrevious"]],
+      ["select-control", "SELECT", ["blackBoxSelectNextControl", "blackBoxSelectPreviousControl"]],
+      ["adjust-control", "ADJUST", ["blackBoxIncrementControl", "blackBoxDecrementControl"]],
+    ] as const)("a %s dial shows %s and warns on its own pair", async (rotation, wordmark, pair) => {
+      mockIsBindingMissing.mockImplementation(((keys: string[]) => keys[0] === pair[0]) as never);
+      const ctx = dialContext(`w-${rotation}`);
+      await appear(ctx, withDial({ rotation }));
+
+      const decoded = decodeURIComponent(ctx.setDialCanvas.mock.calls.at(-1)?.[0] as string);
+
+      expect(mockIsBindingMissing).toHaveBeenCalledWith([...pair]);
+      expect(decoded).toContain(`>${wordmark}<`);
+      expect(decoded).toContain("binding-warning");
+    });
+
+    it("does not warn an Adjust Control dial for unset Cycle bindings", async () => {
+      mockIsBindingMissing.mockImplementation(((keys: string[]) => keys.includes("blackBoxCycleNext")) as never);
+      const ctx = dialContext("w-adjust-cycle-unset");
+      await appear(ctx, withDial({ rotation: "adjust-control" }));
+
+      const decoded = decodeURIComponent(ctx.setDialCanvas.mock.calls.at(-1)?.[0] as string);
+
+      expect(decoded).not.toContain("binding-warning");
+    });
+
+    it("draws the rotation's wordmark on the knob screen too", async () => {
+      const ctx = dialContext("w-knob", KNOB);
+      await appear(ctx, withDial({ rotation: "select-control" }));
+
+      const decoded = decodeURIComponent(ctx.setDialCanvas.mock.calls.at(-1)?.[0] as string);
+
+      expect(decoded).toContain('viewBox="0 0 176 112"');
+      expect(decoded).toContain(">SELECT<");
+    });
+
+    it("re-renders on a settings change that switches the rotation", async () => {
+      const ctx = dialContext("w-switch");
+      await appear(ctx, withDial({}));
+
+      await action.onDidReceiveSettings(eventFor(ctx, withDial({ rotation: "adjust-control" })) as never);
+
+      const decoded = decodeURIComponent(ctx.setDialCanvas.mock.calls.at(-1)?.[0] as string);
+
+      expect(decoded).toContain(">ADJUST<");
+    });
+
+    it("refreshes each dial against its own rotation's pair on a global-settings change", async () => {
+      const boxes = dialContext("w-refresh-boxes");
+      const adjust = dialContext("w-refresh-adjust");
+      await appear(boxes, withDial({ rotation: "boxes" }));
+      await appear(adjust, withDial({ rotation: "adjust-control" }));
+      const boxesPushes = boxes.setDialCanvas.mock.calls.length;
+      const adjustPushes = adjust.setDialCanvas.mock.calls.length;
+
+      // Unbind only the Adjust pair: the Adjust dial dims, the Boxes dial is left alone.
+      mockIsBindingMissing.mockImplementation(((keys: string[]) => keys.includes("blackBoxIncrementControl")) as never);
+
+      for (const listener of globalListeners) listener();
+
+      await vi.runAllTimersAsync();
+
+      expect(boxes.setDialCanvas.mock.calls.length).toBe(boxesPushes);
+      expect(adjust.setDialCanvas.mock.calls.length).toBe(adjustPushes + 1);
+      expect(decodeURIComponent(adjust.setDialCanvas.mock.calls.at(-1)?.[0] as string)).toContain("binding-warning");
     });
   });
 
