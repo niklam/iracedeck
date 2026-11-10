@@ -42,6 +42,7 @@ import {
   classPositionOrOfficial,
   extractQualifyResults,
   extractSectorStarts,
+  getCarNumberFromSessionInfo,
   IRSDK_UNLIMITED_LAPS,
   isPostRace,
   isPreGreen,
@@ -125,6 +126,7 @@ import { updatePositionTracking } from "./diff/race-finish.js";
 import { diffRadar, resolveRadarState } from "./diff/radar.js";
 import { diffRollingStart } from "./diff/rolling-start.js";
 import { diffSectorStart } from "./diff/sector-start.js";
+import { diffSectorTimes } from "./diff/sector-times.js";
 import { updateStallVisit } from "./diff/stall-visit.js";
 import { diffStartCountdown, diffStartLights } from "./diff/start-lights.js";
 import { diffTireTemps, readTireTempsLeavingCar } from "./diff/tire-temps.js";
@@ -167,7 +169,9 @@ import {
   type RaceFinishResult,
   resetFastestLapBaselines,
   resetFuelCalloutBaselines,
+  resetSectorTimesForReplay,
   type RollingStartFormation,
+  type SectorLap,
   type TrackSectorsState,
   type TranslatorState,
 } from "./state.js";
@@ -1894,6 +1898,123 @@ function liveGapBetween(self: TranslatorInstance, aheadCarIdx: number, behindCar
   ).gapSeconds;
 }
 
+/**
+ * One lap a car completed, as the sector timer measured it (issue #1572): the
+ * state's own record under its public name — an alias, not a copy, so the two
+ * cannot drift. `lap` is the car's completed-lap count once the lap was done
+ * (the race's opening lap is 1), `sectorTimes` its sector times in seconds by
+ * sector, and `clean` whether it counts for a comparison.
+ */
+export type SectorLapTimes = SectorLap;
+
+/** A car's recorded laps (issue #1572), newest last, at most the timer's history bound. */
+export type CarSectorTimes = { recentLaps: readonly SectorLapTimes[] };
+
+/**
+ * Any car's recorded sector times (issue #1572): its last completed laps as
+ * the sector timer (`diff/sector-times.ts`) measured them in a race, newest
+ * last, unclean laps included with `clean: false`. Facts only; nothing is
+ * averaged or compared here. `null` before the translator is initialised and
+ * for an index that is no car index; a car with no lap recorded yet answers
+ * an empty list. The laps are cleared by a session change and a disconnect
+ * and kept through a replay glance.
+ */
+export function getCarSectorTimes(carIdx: number): CarSectorTimes | null {
+  if (!instance || !Number.isInteger(carIdx) || carIdx < 0) return null;
+
+  return { recentLaps: recentSectorLaps(instance, carIdx) };
+}
+
+/** A copy of a car's recorded laps, so a caller never holds the list the timer appends to. */
+function recentSectorLaps(self: TranslatorInstance, carIdx: number): readonly SectorLapTimes[] {
+  return [...(self.state.sectorTimes.completedLaps[carIdx] ?? [])];
+}
+
+/** One car of a {@link SectorComparisonSnapshot} (issue #1572). */
+export type SectorCarSnapshot = {
+  carIdx: number;
+  /** The car's number as the session spells it (`"007"`), `null` when the session info does not name the car. */
+  carNumber: string | null;
+  /**
+   * The live race gap between this car and the player in seconds
+   * ({@link getLiveGapBetween}, the gap display's reading), `null` when it
+   * cannot be read and for the player's own entry.
+   */
+  gapSeconds: number | null;
+  /** The car's recorded laps, newest last ({@link getCarSectorTimes}). */
+  recentLaps: readonly SectorLapTimes[];
+};
+
+/**
+ * The player's sector times beside those of the cars they are compared with
+ * (issue #1572). A target that does not exist is `null`.
+ */
+export type SectorComparisonSnapshot = {
+  /** How many sectors the track has. */
+  sectorCount: number;
+  player: SectorCarSnapshot;
+  /**
+   * The player's class leader; `null` when the player leads the class, and
+   * when the class leader is the car directly ahead, which {@link ahead}
+   * already names (the #1572 spec's decision 7: one car is never the subject
+   * of two calls).
+   */
+  leader: SectorCarSnapshot | null;
+  /** The car one class position ahead of the player. */
+  ahead: SectorCarSnapshot | null;
+  /** The car one class position behind the player. */
+  behind: SectorCarSnapshot | null;
+};
+
+/**
+ * The sector comparison's facts (issue #1572): the track's sector count and,
+ * for the player, the class leader and the two class neighbours, each car's
+ * index, number, live gap to the player and recorded laps. The targets are
+ * the ones `diffGaps` resolved from the canonical order on the last live tick
+ * (`.claude/rules/race-positions.md`), as the sector timer recorded them.
+ * Policy — the reference lap, the thresholds, who is named when — is the
+ * catalog's.
+ *
+ * `null` before the translator has a tick, outside a race (the session-type
+ * test the gap model is gated on), with no player car index, and at a track
+ * with no sectors that can be counted from the line.
+ */
+export function getSectorComparison(): SectorComparisonSnapshot | null {
+  if (!instance || !instance.latestTelemetry) return null;
+
+  const self = instance;
+  const telemetry = instance.latestTelemetry;
+  const sectorStarts = self.state.trackSectors.starts;
+
+  if (sectorStarts === null) return null;
+
+  const sessionInfo = self.controller.getSessionInfo() as Record<string, unknown> | null;
+
+  if (resolveSessionType(sessionInfo, telemetry) !== "Race") return null;
+
+  const playerCarIdx = resolvePlayerCarIdx(sessionInfo);
+
+  if (playerCarIdx < 0) return null;
+
+  const { leaderIdx, aheadIdx, behindIdx } = self.state.sectorTimes.targets;
+  const car = (carIdx: number, gapSeconds: number | null): SectorCarSnapshot => ({
+    carIdx,
+    carNumber: getCarNumberFromSessionInfo(sessionInfo, carIdx),
+    gapSeconds,
+    recentLaps: recentSectorLaps(self, carIdx),
+  });
+  // A target ahead of the player in the race: the gap from it back to the player.
+  const carAhead = (carIdx: number): SectorCarSnapshot => car(carIdx, liveGapBetween(self, carIdx, playerCarIdx));
+
+  return {
+    sectorCount: sectorStarts.length,
+    player: car(playerCarIdx, null),
+    leader: leaderIdx < 0 || leaderIdx === playerCarIdx || leaderIdx === aheadIdx ? null : carAhead(leaderIdx),
+    ahead: aheadIdx < 0 ? null : carAhead(aheadIdx),
+    behind: behindIdx < 0 ? null : car(behindIdx, liveGapBetween(self, playerCarIdx, behindIdx)),
+  };
+}
+
 /** Whether a car's raw lap/percent pair reports live on-track progress. */
 function hasLiveProgress(lapCompleted: number | undefined, lapDistPct: number | undefined): boolean {
   return (
@@ -2764,6 +2885,10 @@ function wipeStateForReplay(self: TranslatorInstance): void {
     // mark survive the glance, the rest re-seeds; which part, and why, is
     // `resetFastestLapBaselines`' (issue #1588).
     fastestLap: resetFastestLapBaselines(self.state.fastestLap),
+    // The sector timer's completed laps (issue #1572) are facts about laps
+    // already run, so they survive the glance; the laps in progress, the
+    // previous readings and the targets do not (`resetSectorTimesForReplay`).
+    sectorTimes: resetSectorTimesForReplay(self.state.sectorTimes),
     // The gap diff's restart mark (issue #1171) is the one piece of gap state
     // kept: it is a point in the live race's distance, one lap past where the
     // player was when the caution ended, and the lap up to it is kept out of
@@ -3513,6 +3638,19 @@ function handleLiveSteps(
   // When the order or its tracking threw, no order is kept and a reader
   // recomputes, as it would without the memo.
   self.canonicalOrderMemo = order.ok ? { telemetry, sessionInfo, state: self.state, positions: order.value } : null;
+  // The track's sectors (issue #1573), resolved in every session type — not
+  // gated on practice like the corner names — because this value is the one
+  // place any feature reads them: the race sector timer in the order steps
+  // (issue #1572), which is why it is resolved ahead of them, and the
+  // sector-start diff further down. Keyed like the corner markers, resolved
+  // on live ticks only and wiped at a replay like them. Captured as a value
+  // so each diff reads it at the call (#1588), with `steps.value`'s last-good
+  // fallback should the resolution throw. A reader outside the translator
+  // would get a sim-neutral `SimRuntime` member, never a getter over this
+  // cache.
+  const trackSectors = steps.value("resolveTrackSectorsCached", values, self.state.trackSectors.starts, () =>
+    resolveTrackSectorsCached(self.state.trackSectors, sessionInfo, telemetry),
+  );
 
   if (order.ok) {
     handleOrderSteps(self, telemetry, sessionInfo, now, pending, emit, {
@@ -3523,6 +3661,7 @@ function handleLiveSteps(
       isMultiClass,
       trackLengthMeters,
       startingGridPosition,
+      trackSectors,
     });
   }
 
@@ -3582,17 +3721,6 @@ function handleLiveSteps(
   // lovely-track-data snapshot keyed by WeekendInfo.TrackName.
   const cornerMarkers = steps.value("resolveCornerMarkersCached", values, self.state.cornerName.markers, () =>
     resolveCornerMarkersCached(self.state.cornerName, sessionInfo, telemetry),
-  );
-  // The track's sectors (issue #1573), resolved in every session type — not
-  // gated on practice like the corner names — because this value is the one
-  // place any feature reads them: the sector-start diff below, and #1572's
-  // race sector timer. Keyed like the corner markers, resolved on live ticks
-  // only and wiped at a replay like them. Captured as a value so each diff
-  // reads it at the call (#1588), with `steps.value`'s last-good fallback
-  // should the resolution throw. A reader outside the translator would get a
-  // sim-neutral `SimRuntime` member, never a getter over this cache.
-  const trackSectors = steps.value("resolveTrackSectorsCached", values, self.state.trackSectors.starts, () =>
-    resolveTrackSectorsCached(self.state.trackSectors, sessionInfo, telemetry),
   );
   // Sector-start calls (issue #1573): the corner names' lead point and sweep
   // over the track's sector starts, practice/test only (gated in the diff).
@@ -3705,6 +3833,8 @@ type OrderStepValues = {
   isMultiClass: boolean | null;
   trackLengthMeters: number | null;
   startingGridPosition: number | null;
+  /** The track's sector starts this tick (`resolveTrackSectorsCached`); `null` = none. */
+  trackSectors: readonly number[] | null;
 };
 
 /**
@@ -3730,6 +3860,7 @@ function handleOrderSteps(
     isMultiClass,
     trackLengthMeters,
     startingGridPosition,
+    trackSectors,
   } = values;
 
   // The full-course caution sequence (issue #1127). MUST run AFTER
@@ -3959,8 +4090,24 @@ function handleOrderSteps(
     );
   });
 
-  // Not read yet: the sector timer's step lands here (issue #1572).
-  void classNeighbors;
+  // The sector timer (issue #1572): every car's sector times, interpolated
+  // between this progress tick and the one before, and the cars the player is
+  // compared with. Right after `diffGaps`, whose neighbours it records; it
+  // reads none of that diff's state and publishes nothing. A progress tick the
+  // step threw on reads as no tick, never as a broken lap, and a wider tick
+  // pair after it is caught by the timer's own span bound. The caution phase
+  // is the one `diffCaution` settled earlier this tick.
+  steps.run("diffSectorTimes", () =>
+    diffSectorTimes(
+      self.state.sectorTimes,
+      carProgressTick,
+      trackSectors,
+      telemetry.CarIdxTrackSurface as number[] | undefined,
+      self.state.cautionPhase !== "none",
+      classNeighbors,
+      steps.runUnit,
+    ),
+  );
 }
 
 function publish(self: TranslatorInstance, pending: PendingEvent, telemetry: TelemetryData, timestamp: number): void {
