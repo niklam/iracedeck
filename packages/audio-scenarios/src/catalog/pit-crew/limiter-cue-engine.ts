@@ -107,13 +107,16 @@ export type LimiterCueDeps = {
 };
 
 /**
- * What the last `carControl.limiterToggled` did, for the Telemetry Snapshot:
- * whether the tone was asked for, or why it stayed silent (`off-edge` is the
- * limiter switching off, which never beeps). `null` until the first event
- * after registration.
+ * What the last ENGAGEMENT (`carControl.limiterToggled` with `on: true`) did,
+ * for the Telemetry Snapshot: whether the tone was asked for, or why it stayed
+ * silent. `null` until the first engagement after registration. An off edge
+ * never changes it, so a snapshot taken after the driver switches the limiter
+ * off at pit exit still says why the engagement before it was silent.
  */
-export type LimiterCueOutcome =
-  "played" | "off-edge" | "master-off" | "cue-off" | "playback-failed" | "playback-refused";
+export type LimiterCueOutcome = "played" | "master-off" | "cue-off" | "playback-failed" | "playback-refused";
+
+/** Which way the limiter last switched, as the event said: `null` until the first event after registration. */
+export type LimiterCueEdge = "on" | "off";
 
 const DEFAULT_DEPS: LimiterCueDeps = {
   getMasterEnabled: () => true,
@@ -123,14 +126,14 @@ const DEFAULT_DEPS: LimiterCueDeps = {
 let deps: LimiterCueDeps = DEFAULT_DEPS;
 let registeredBus: IEventBus | null = null;
 let lastOutcome: LimiterCueOutcome | null = null;
+let lastEdge: LimiterCueEdge | null = null;
 
 function handleToggled(event: SimEventOf<"carControl.limiterToggled">): void {
-  // The off edge is checked first: it is no engagement, whatever the gates say.
-  if (!event.data.on) {
-    lastOutcome = "off-edge";
+  lastEdge = event.data.on ? "on" : "off";
 
-    return;
-  }
+  // The off edge is checked first: it is no engagement, whatever the gates say,
+  // and it leaves the last engagement's outcome standing.
+  if (!event.data.on) return;
 
   // Read live at the event, never captured at registration, so a toggle takes
   // effect on the next engagement with no push path from the settings listener.
@@ -193,6 +196,7 @@ export function _resetLimiterCueEngine(): void {
   deps = DEFAULT_DEPS;
   registeredBus = null;
   lastOutcome = null;
+  lastEdge = null;
 }
 
 /**
@@ -200,6 +204,10 @@ export function _resetLimiterCueEngine(): void {
  * read, and safe before `registerLimiterCueEngine`. The bus is reported as
  * `registered`; `deps` is closures and a logger and is left out.
  */
-export function readLimiterCueDebugState(): { registered: boolean; lastOutcome: LimiterCueOutcome | null } {
-  return { registered: registeredBus !== null, lastOutcome };
+export function readLimiterCueDebugState(): {
+  registered: boolean;
+  lastEdge: LimiterCueEdge | null;
+  lastOutcome: LimiterCueOutcome | null;
+} {
+  return { registered: registeredBus !== null, lastEdge, lastOutcome };
 }

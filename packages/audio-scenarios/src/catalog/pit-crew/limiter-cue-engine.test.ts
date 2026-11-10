@@ -154,7 +154,7 @@ describe("limiter cue engine", () => {
       engage();
 
       expect(logger.info).toHaveBeenCalledWith("Limiter cue played");
-      expect(readLimiterCueDebugState()).toEqual({ registered: true, lastOutcome: "played" });
+      expect(readLimiterCueDebugState()).toEqual({ registered: true, lastEdge: "on", lastOutcome: "played" });
     });
   });
 
@@ -165,7 +165,7 @@ describe("limiter cue engine", () => {
 
       expect(hoisted.audio.playOnChannel).not.toHaveBeenCalled();
       expect(hoisted.getAudio).not.toHaveBeenCalled();
-      expect(readLimiterCueDebugState().lastOutcome).toBe("off-edge");
+      expect(readLimiterCueDebugState()).toMatchObject({ lastEdge: "off", lastOutcome: null });
     });
 
     it("reports the off edge even with the gates off: it is no engagement whatever they say", () => {
@@ -174,7 +174,19 @@ describe("limiter cue engine", () => {
       cueEnabled = false;
       disengage();
 
-      expect(readLimiterCueDebugState().lastOutcome).toBe("off-edge");
+      expect(readLimiterCueDebugState()).toMatchObject({ lastEdge: "off", lastOutcome: null });
+    });
+
+    it("leaves the last engagement's outcome standing, so a snapshot after it still says why that one was silent", () => {
+      register();
+      cueEnabled = false;
+      engage();
+
+      expect(readLimiterCueDebugState()).toMatchObject({ lastEdge: "on", lastOutcome: "cue-off" });
+
+      disengage();
+
+      expect(readLimiterCueDebugState()).toMatchObject({ lastEdge: "off", lastOutcome: "cue-off" });
     });
   });
 
@@ -327,13 +339,13 @@ describe("limiter cue engine", () => {
     });
 
     it("reads as unregistered with no outcome before registration and after a reset", () => {
-      expect(readLimiterCueDebugState()).toEqual({ registered: false, lastOutcome: null });
+      expect(readLimiterCueDebugState()).toEqual({ registered: false, lastEdge: null, lastOutcome: null });
 
       register();
       engage();
       _resetLimiterCueEngine();
 
-      expect(readLimiterCueDebugState()).toEqual({ registered: false, lastOutcome: null });
+      expect(readLimiterCueDebugState()).toEqual({ registered: false, lastEdge: null, lastOutcome: null });
     });
   });
 });

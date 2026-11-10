@@ -128,7 +128,7 @@ const UNTOUCHED_FAMILIES = {
   flagAlerts: { furledRaisedSpoken: false },
   gaps: { lastGapCalloutAt: null },
   incidents: { lastIncidentPoints: null },
-  limiterCue: { registered: false, lastOutcome: null },
+  limiterCue: { registered: false, lastEdge: null, lastOutcome: null },
   opponentPit: { pendingNearby: null },
   pitExitCue: { registered: false, lastOutcome: null },
   pitSpeeding: { registered: false, ticking: false, episodeActive: false, lastSessionTick: null },
@@ -737,8 +737,9 @@ describe("the family readers", () => {
 
     expect(readPitExitCueDebugState().lastOutcome).toBe("played");
 
-    // So does the limiter cue (#1272), the off edge included.
-    expect(readLimiterCueDebugState()).toEqual({ registered: true, lastOutcome: null });
+    // So does the limiter cue (#1272): the off edge is recorded as the last edge
+    // and leaves the engagement's outcome standing.
+    expect(readLimiterCueDebugState()).toEqual({ registered: true, lastEdge: null, lastOutcome: null });
 
     bus.publishEvent("carControl.limiterToggled", { on: true });
 
@@ -746,7 +747,7 @@ describe("the family readers", () => {
 
     bus.publishEvent("carControl.limiterToggled", { on: false });
 
-    expect(readLimiterCueDebugState().lastOutcome).toBe("off-edge");
+    expect(readLimiterCueDebugState()).toMatchObject({ lastEdge: "off", lastOutcome: "played" });
 
     bus.publishEvent("radar.changed", { from: "clear", to: "two-right" });
     bus.publishEvent("radar.changed", { from: "two-right", to: "clear" });

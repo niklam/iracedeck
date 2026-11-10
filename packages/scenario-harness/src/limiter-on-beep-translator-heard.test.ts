@@ -118,8 +118,9 @@ describe("the limiter-on beep through the real translator (issue #1272)", () => 
       apply(ticks({ ...CIRCUIT, ...LIMITER_OFF }, 5));
 
       expect(beeps()).toBe(1);
-      // Positive control: the off edge reached the engine and was refused there.
-      expect(readLimiterCueDebugState().lastOutcome).toBe("off-edge");
+      // Positive control: the off edge reached the engine, which played nothing
+      // and left the engagement's outcome standing.
+      expect(readLimiterCueDebugState()).toMatchObject({ lastEdge: "off", lastOutcome: "played" });
 
       apply(ticks({ ...CIRCUIT, ...LIMITER_ON }, 3));
 
