@@ -15,12 +15,20 @@
  *     disagree for a tick at the line read as continuous motion, in either
  *     direction, while every other whole-lap or backwards step stays the
  *     discontinuity it is
+ *   - the correction reads only against a confirmed last progress, so a first
+ *     reading taken on a disagreeing tick is replaced by the next true one and
+ *     never carried on (the player's own first crossing at the race start)
  */
 import { GAP_TRACE_MAX_STEP, GAP_TRACE_MIN_STEP, SessionState, type TelemetryData } from "@iracedeck/iracing-sdk";
 import { describe, expect, it } from "vitest";
 
 import { type CarProgressState, createCarProgressState } from "../state.js";
-import { CAR_PROGRESS_LINE_GUARD_PCT, readCarProgress, stepCarProgress } from "./car-progress.js";
+import {
+  CAR_PROGRESS_LINE_GUARD_PCT,
+  confirmedLastProgress,
+  readCarProgress,
+  stepCarProgress,
+} from "./car-progress.js";
 
 const PLAYER = 0;
 const ORDER: readonly number[] = [1, 2, 3];
@@ -348,40 +356,52 @@ describe("readCarProgress — the start/finish correction", () => {
   });
 });
 
-describe("stepCarProgress — a counter and a fraction that disagree at the line", () => {
-  /** A tick from each car's raw `[CarIdxLapCompleted, CarIdxLapDistPct]`. */
-  function raw(sessionTime: number, cars: [number, number][], overrides: Partial<TelemetryData> = {}): TelemetryData {
-    return {
-      SessionTime: sessionTime,
-      LapCompleted: 6,
-      SessionState: SessionState.Racing,
-      CarIdxLapCompleted: cars.map(([laps]) => laps),
-      CarIdxLapDistPct: cars.map(([, pct]) => pct),
-      ...overrides,
-    } as unknown as TelemetryData;
-  }
+/** A tick from each car's raw `[CarIdxLapCompleted, CarIdxLapDistPct]`, the player first. */
+function raw(sessionTime: number, cars: [number, number][], overrides: Partial<TelemetryData> = {}): TelemetryData {
+  return {
+    SessionTime: sessionTime,
+    LapCompleted: cars[PLAYER]![0],
+    SessionState: SessionState.Racing,
+    CarIdxLapCompleted: cars.map(([laps]) => laps),
+    CarIdxLapDistPct: cars.map(([, pct]) => pct),
+    ...overrides,
+  } as unknown as TelemetryData;
+}
 
-  it.each([
-    ["the counter leads the fraction", [7, 0.9999] as [number, number], 6.9999],
-    ["the fraction leads the counter", [6, 0.0001] as [number, number], 7.0001],
-  ])("reads continuous motion when %s for a tick, and resets no trace", (_name, desync, expected) => {
+describe("stepCarProgress — a counter and a fraction that disagree at the line", () => {
+  /**
+   * Two clean ticks (t = 100, 100.1) that leave car 1 at `6 + first` then
+   * `6 + second`: the second continues the first, so car 1's last progress is
+   * confirmed and the next tick's reading is corrected against it.
+   */
+  function confirmed(first: number, second: number): CarProgressState {
     const slice = createCarProgressState();
 
     step(
       slice,
       raw(100, [
         [6, 0.5],
-        [6, 0.9939],
+        [6, first],
       ]),
     );
     step(
       slice,
       raw(100.1, [
         [6, 0.501],
-        [6, 0.9989],
+        [6, second],
       ]),
     );
 
+    expect(confirmedLastProgress(slice, 1)).toBe(6 + second);
+
+    return slice;
+  }
+
+  it.each([
+    ["the counter leads the fraction", [7, 0.9999] as [number, number], 6.9999],
+    ["the fraction leads the counter", [6, 0.0001] as [number, number], 7.0001],
+  ])("reads continuous motion when %s for a tick, and resets no trace", (_name, desync, expected) => {
+    const slice = confirmed(0.9939, 0.9989);
     const at = step(slice, raw(100.2, [[6, 0.502], desync]));
 
     expect(at!.progress[1]).toBeCloseTo(expected, 10);
@@ -403,21 +423,12 @@ describe("stepCarProgress — a counter and a fraction that disagree at the line
   });
 
   it("records the corrected reading in the trace when it is a sample's step on", () => {
-    const slice = createCarProgressState();
-
-    step(
-      slice,
-      raw(100, [
-        [6, 0.5],
-        [6, 0.994],
-      ]),
-    );
-
+    const slice = confirmed(0.989, 0.994);
     // The counter has moved, the fraction has not wrapped: 7.998 as it reads.
     const at = step(
       slice,
-      raw(100.1, [
-        [6, 0.501],
+      raw(100.2, [
+        [6, 0.502],
         [7, 0.998],
       ]),
     );
@@ -425,81 +436,57 @@ describe("stepCarProgress — a counter and a fraction that disagree at the line
     expect(at!.progress[1]).toBeCloseTo(6.998, 10);
     expect(at!.traceReset[1]).toBe(false);
     expect(slice.traces[1]).toEqual([
-      { progress: 6.994, time: 100 },
-      { progress: expect.closeTo(6.998, 10), time: 100.1 },
+      { progress: 6.989, time: 100 },
+      { progress: 6.994, time: 100.1 },
+      { progress: expect.closeTo(6.998, 10), time: 100.2 },
     ]);
   });
 
   it("still resets the trace on a backwards tow far from the line", () => {
-    const slice = createCarProgressState();
-
-    step(
-      slice,
-      raw(100, [
-        [6, 0.5],
-        [6, 0.9],
-      ]),
-    );
-
+    const slice = confirmed(0.895, 0.9);
     const towed = step(
       slice,
-      raw(100.1, [
-        [6, 0.501],
+      raw(100.2, [
+        [6, 0.502],
         [6, 0.2],
       ]),
     );
 
     expect(towed!.progress[1]).toBe(6.2);
     expect(towed!.traceReset).toEqual([false, true]);
-    expect(slice.traces[1]).toEqual([{ progress: 6.2, time: 100.1 }]);
+    expect(slice.traces[1]).toEqual([{ progress: 6.2, time: 100.2 }]);
   });
 
   it.each([
     ["forwards", [7, 0.5] as [number, number], 7.5],
     ["backwards", [5, 0.5] as [number, number], 5.5],
   ])("still resets the trace on a whole-lap step %s outside the guard band", (_name, stepped, expected) => {
-    const slice = createCarProgressState();
-
-    step(
-      slice,
-      raw(100, [
-        [6, 0.5],
-        [6, 0.499],
-      ]),
-    );
-
-    const read = step(slice, raw(100.1, [[6, 0.501], stepped]));
+    const slice = confirmed(0.494, 0.499);
+    const read = step(slice, raw(100.2, [[6, 0.502], stepped]));
 
     expect(read!.progress[1]).toBe(expected);
     expect(read!.traceReset).toEqual([false, true]);
   });
 
   it("corrects nothing across a tick the car had no valid reading on", () => {
-    const slice = createCarProgressState();
+    const slice = confirmed(0.9979, 0.9999);
 
     step(
       slice,
-      raw(100, [
-        [6, 0.5],
-        [6, 0.9999],
-      ]),
-    );
-    expect(slice.lastProgress[1]).toBe(6.9999);
-
-    step(
-      slice,
-      raw(100.1, [
-        [6, 0.501],
+      raw(100.2, [
+        [6, 0.502],
         [-1, -1],
       ]),
     );
     expect(slice.lastProgress[1]).toBeUndefined();
+    expect(slice.lastProgressConfirmed[1]).toBe(false);
+    expect(confirmedLastProgress(slice, 1)).toBeUndefined();
 
-    // With the last progress gone, the same reading the correction would take is read as it stands.
+    // With the last progress gone, the reading the correction would have taken to 6.99995 is read as it stands.
     const read = step(
       slice,
-      raw(100.2, [
-        [6, 0.502],
+      raw(100.3, [
+        [6, 0.503],
         [7, 0.99995],
       ]),
     );
@@ -509,33 +496,28 @@ describe("stepCarProgress — a counter and a fraction that disagree at the line
   });
 
   it("corrects nothing across a tick the gate refused, and drops every car's last progress there", () => {
-    const slice = createCarProgressState();
+    const slice = confirmed(0.9979, 0.9999);
 
-    step(
-      slice,
-      raw(100, [
-        [6, 0.5],
-        [6, 0.9999],
-      ]),
-    );
-    expect(slice.lastProgress).toEqual([6.5, 6.9999]);
+    expect(slice.lastProgress).toEqual([6.501, 6.9999]);
+    expect(slice.lastProgressConfirmed).toEqual([true, true]);
 
     expect(
       step(
         slice,
-        raw(100.1, [
-          [6, 0.501],
+        raw(100.2, [
+          [6, 0.502],
           [6, 0.99995],
         ]),
         { isRaceSession: false },
       ),
     ).toBeNull();
     expect(slice.lastProgress).toEqual([]);
+    expect(slice.lastProgressConfirmed).toEqual([]);
 
     const read = step(
       slice,
-      raw(100.2, [
-        [6, 0.502],
+      raw(100.3, [
+        [6, 0.503],
         [7, 0.99995],
       ]),
     );
@@ -544,25 +526,323 @@ describe("stepCarProgress — a counter and a fraction that disagree at the line
     expect(read!.traceReset[1]).toBe(true);
   });
 
-  it("keeps each car's last progress as the corrected reading", () => {
+  it("drops the last progress of a car the arrays no longer reach", () => {
+    const slice = confirmed(0.9979, 0.9999);
+
+    step(slice, raw(100.2, [[6, 0.502]]));
+
+    expect(slice.lastProgress).toEqual([6.502]);
+    expect(slice.lastProgressConfirmed).toEqual([true]);
+    expect(confirmedLastProgress(slice, 1)).toBeUndefined();
+  });
+
+  it("keeps each car's last progress as the corrected reading, still confirmed", () => {
+    const slice = confirmed(0.9979, 0.9999);
+
+    step(
+      slice,
+      raw(100.2, [
+        [6, 0.502],
+        [7, 0.99995],
+      ]),
+    );
+
+    expect(slice.lastProgress[0]).toBe(6.502);
+    expect(slice.lastProgress[1]).toBeCloseTo(6.99995, 10);
+    expect(confirmedLastProgress(slice, 1)).toBeCloseTo(6.99995, 10);
+  });
+});
+
+describe("stepCarProgress — a last progress is corrected against only once it is confirmed", () => {
+  it("confirms a reading when it continues the one before it, not on the first", () => {
     const slice = createCarProgressState();
 
     step(
       slice,
       raw(100, [
         [6, 0.5],
-        [6, 0.9999],
+        [6, 0.4],
+      ]),
+    );
+    expect(slice.lastProgress).toEqual([6.5, 6.4]);
+    expect(slice.lastProgressConfirmed).toEqual([false, false]);
+    expect(confirmedLastProgress(slice, 0)).toBeUndefined();
+
+    step(
+      slice,
+      raw(100.1, [
+        [6, 0.501],
+        [6, 0.401],
+      ]),
+    );
+    expect(slice.lastProgressConfirmed).toEqual([true, true]);
+    expect(confirmedLastProgress(slice, 0)).toBe(6.501);
+    expect(confirmedLastProgress(slice, 1)).toBe(6.401);
+  });
+
+  it("has no confirmed progress for a car it has never read", () => {
+    const slice = createCarProgressState();
+
+    expect(confirmedLastProgress(slice, 3)).toBeUndefined();
+    expect(confirmedLastProgress(slice, -1)).toBeUndefined();
+  });
+
+  it("unconfirms a reading that did not continue the one before it, until the next one does", () => {
+    const slice = createCarProgressState();
+
+    step(
+      slice,
+      raw(100, [
+        [6, 0.5],
+        [6, 0.895],
       ]),
     );
     step(
       slice,
       raw(100.1, [
         [6, 0.501],
-        [7, 0.99995],
+        [6, 0.9],
+      ]),
+    );
+    expect(confirmedLastProgress(slice, 1)).toBe(6.9);
+
+    // Towed back most of a lap: a new start, not a continuation.
+    step(
+      slice,
+      raw(100.2, [
+        [6, 0.502],
+        [6, 0.2],
+      ]),
+    );
+    expect(slice.lastProgress[1]).toBe(6.2);
+    expect(confirmedLastProgress(slice, 1)).toBeUndefined();
+
+    step(
+      slice,
+      raw(100.3, [
+        [6, 0.503],
+        [6, 0.201],
+      ]),
+    );
+    expect(confirmedLastProgress(slice, 1)).toBe(6.201);
+  });
+
+  it("does not carry on a first reading taken while the counter led the fraction", () => {
+    const slice = createCarProgressState();
+    // Car 1 is first read on the very tick its counter has stepped and its
+    // fraction has not wrapped: truly at 6.9999, it reads 7.9999.
+    const seed = step(
+      slice,
+      raw(100, [
+        [6, 0.5],
+        [7, 0.9999],
       ]),
     );
 
-    expect(slice.lastProgress[0]).toBe(6.501);
-    expect(slice.lastProgress[1]).toBeCloseTo(6.99995, 10);
+    expect(seed!.progress[1]).toBe(7.9999);
+
+    // The next reading is true, and is taken as it stands: one reset, because
+    // the seed was a lap off, and no lap added to this or any later reading.
+    const next = step(
+      slice,
+      raw(100.1, [
+        [6, 0.501],
+        [7, 0.0001],
+      ]),
+    );
+
+    expect(next!.progress[1]).toBe(7.0001);
+    expect(next!.traceReset).toEqual([false, true]);
+
+    const readings: (number | null | undefined)[] = [];
+    const resets: (boolean | undefined)[] = [];
+
+    for (let k = 1; k <= 30; k++) {
+      const read = step(
+        slice,
+        raw(100.1 + k * 0.1, [
+          [6, 0.501 + k * 0.001],
+          [7, 0.0001 + k * 0.004],
+        ]),
+      );
+
+      readings.push(read!.progress[1]);
+      resets.push(read!.traceReset[1]);
+    }
+
+    expect(readings).toEqual(Array.from({ length: 30 }, (_, i) => 7 + (0.0001 + (i + 1) * 0.004)));
+    expect(resets).toEqual(new Array(30).fill(false));
+    expect(slice.traces[1]![0]).toEqual({ progress: 7.0001, time: 100.1 });
+  });
+
+  it("does not carry on a first reading taken while the fraction led the counter", () => {
+    const slice = createCarProgressState();
+    // First read on the tick its fraction has wrapped and its counter has not
+    // stepped: truly at 7.0001, it reads 6.0001.
+    const seed = step(
+      slice,
+      raw(100, [
+        [6, 0.5],
+        [6, 0.0001],
+      ]),
+    );
+
+    expect(seed!.progress[1]).toBe(6.0001);
+
+    const next = step(
+      slice,
+      raw(100.1, [
+        [6, 0.501],
+        [7, 0.0002],
+      ]),
+    );
+
+    expect(next!.progress[1]).toBe(7.0002);
+    expect(next!.traceReset).toEqual([false, true]);
+
+    const readings: (number | null | undefined)[] = [];
+    const resets: (boolean | undefined)[] = [];
+
+    for (let k = 1; k <= 30; k++) {
+      const read = step(
+        slice,
+        raw(100.1 + k * 0.1, [
+          [6, 0.501 + k * 0.001],
+          [7, 0.0002 + k * 0.004],
+        ]),
+      );
+
+      readings.push(read!.progress[1]);
+      resets.push(read!.traceReset[1]);
+    }
+
+    expect(readings).toEqual(Array.from({ length: 30 }, (_, i) => 7 + (0.0002 + (i + 1) * 0.004)));
+    expect(resets).toEqual(new Array(30).fill(false));
+  });
+
+  it("corrects a later disagreeing tick once two readings have confirmed each other", () => {
+    const slice = createCarProgressState();
+
+    // A wrong seed, then the true reading that replaces it, then one that confirms it.
+    step(
+      slice,
+      raw(100, [
+        [6, 0.5],
+        [7, 0.9999],
+      ]),
+    );
+    step(
+      slice,
+      raw(100.1, [
+        [6, 0.501],
+        [7, 0.0001],
+      ]),
+    );
+    expect(confirmedLastProgress(slice, 1)).toBeUndefined();
+    step(
+      slice,
+      raw(100.2, [
+        [6, 0.502],
+        [7, 0.0021],
+      ]),
+    );
+    expect(confirmedLastProgress(slice, 1)).toBe(7.0021);
+
+    // Round the lap to the line again.
+    let time = 100.2;
+    let pct = 0.0021;
+
+    while (pct + 0.04 < 0.9999) {
+      pct += 0.04;
+      time += 0.1;
+      step(
+        slice,
+        raw(time, [
+          [6, 0.5],
+          [7, pct],
+        ]),
+      );
+    }
+
+    step(
+      slice,
+      raw(time + 0.1, [
+        [6, 0.5],
+        [7, 0.9999],
+      ]),
+    );
+
+    const desync = step(
+      slice,
+      raw(time + 0.2, [
+        [6, 0.5],
+        [8, 0.99995],
+      ]),
+    );
+
+    expect(desync!.progress[1]).toBeCloseTo(7.99995, 10);
+    expect(desync!.traceReset[1]).toBe(false);
+  });
+
+  it("reads the player's first crossing at the race start, where the gate opens on the counter's own step", () => {
+    const slice = createCarProgressState();
+
+    // On the grid behind the line: the player has completed no lap, so the gate is shut.
+    expect(
+      step(
+        slice,
+        raw(99.9, [
+          [-1, 0.9998],
+          [-1, 0.99],
+        ]),
+      ),
+    ).toBeNull();
+
+    // The player's counter steps to 0 a tick before its fraction wraps: the
+    // gate opens on exactly this tick, and the reading is a lap high.
+    const opened = step(
+      slice,
+      raw(100, [
+        [0, 0.9999],
+        [-1, 0.992],
+      ]),
+    );
+
+    expect(opened!.progress).toEqual([0.9999, null]);
+    expect(confirmedLastProgress(slice, PLAYER)).toBeUndefined();
+
+    // The fraction wraps: the player is just past the line on lap one, not a lap further on.
+    const wrapped = step(
+      slice,
+      raw(100.1, [
+        [0, 0.0001],
+        [-1, 0.994],
+      ]),
+    );
+
+    expect(wrapped!.progress[PLAYER]).toBe(0.0001);
+    expect(wrapped!.traceReset[PLAYER]).toBe(true);
+
+    const readings: (number | null | undefined)[] = [];
+    const resets: (boolean | undefined)[] = [];
+
+    for (let k = 1; k <= 20; k++) {
+      const read = step(
+        slice,
+        raw(100.1 + k * 0.1, [
+          [0, 0.0001 + k * 0.004],
+          [-1, 0.994],
+        ]),
+      );
+
+      readings.push(read!.progress[PLAYER]);
+      resets.push(read!.traceReset[PLAYER]);
+    }
+
+    expect(readings).toEqual(Array.from({ length: 20 }, (_, i) => 0.0001 + (i + 1) * 0.004));
+    expect(resets).toEqual(new Array(20).fill(false));
+    // The trace starts at the true reading and runs unbroken from it.
+    expect(slice.traces[PLAYER]![0]).toEqual({ progress: 0.0001, time: 100.1 });
+    expect(slice.traces[PLAYER]).toHaveLength(21);
   });
 });

@@ -37,9 +37,20 @@ import type { CarProgressState } from "../state.js";
 export const CAR_PROGRESS_LINE_GUARD_PCT = 0.05;
 
 /**
+ * The furthest (laps) a reading may be from the last progress and still be
+ * taken as continuing it. A lap counter and a lap fraction that disagree put
+ * the sum a whole lap off, so half a lap separates "the car moved on" from
+ * "a lap appeared or vanished": {@link readCarProgress} looks for the
+ * disagreement only beyond it, and the step confirms a last progress only
+ * within it.
+ */
+const CAR_PROGRESS_CONTINUOUS_LAPS = 0.5;
+
+/**
  * A car's race progress this tick, from its `CarIdxLapCompleted` and
- * `CarIdxLapDistPct` (both finite and non-negative) and the progress last
- * read for it (`undefined` = none).
+ * `CarIdxLapDistPct` (both finite and non-negative) and the CONFIRMED
+ * progress last read for it ({@link confirmedLastProgress}; `undefined` =
+ * none, and the reading is the plain sum).
  *
  * Normally the plain sum. At the start/finish line the two arrays do not
  * always move on the same tick (issue #1572; a replay capture of 2026-11-10
@@ -57,11 +68,18 @@ export const CAR_PROGRESS_LINE_GUARD_PCT = 0.05;
  * {@link CAR_PROGRESS_LINE_GUARD_PCT} of the line (the only place the arrays
  * disagree). Anything else — a tow, a teleport to the pits, a counter rewound
  * mid-lap — is returned as the plain sum and stays the discontinuity it is.
+ *
+ * `previous` must be a confirmed progress, never merely the last one. A car's
+ * first reading can itself be taken on a disagreeing tick (the player's is at
+ * every race start where the counter leads: the gate opens on the tick
+ * `LapCompleted` steps from -1 to 0), a whole lap off; correcting the next,
+ * true reading against that would carry the wrong lap on until the car left
+ * the guard band.
  */
 export function readCarProgress(previous: number | undefined, lapCompleted: number, lapDistPct: number): number {
   const raw = lapCompleted + lapDistPct;
 
-  if (previous === undefined || Math.abs(raw - previous) <= 0.5) return raw;
+  if (previous === undefined || Math.abs(raw - previous) <= CAR_PROGRESS_CONTINUOUS_LAPS) return raw;
 
   const nearLine = lapDistPct <= CAR_PROGRESS_LINE_GUARD_PCT || lapDistPct >= 1 - CAR_PROGRESS_LINE_GUARD_PCT;
 
@@ -70,6 +88,19 @@ export function readCarProgress(previous: number | undefined, lapCompleted: numb
   const candidate = lapDistPct + Math.round(previous - lapDistPct);
 
   return Math.abs(candidate - previous) <= GAP_TRACE_MAX_STEP ? candidate : raw;
+}
+
+/**
+ * The progress last read for a car, when a reading may be corrected against
+ * it: only once it is confirmed — it continued the reading before it, so two
+ * readings agree on its lap count. `undefined` for a car with no reading on
+ * the last tick, for a first reading after none, and for one that did not
+ * continue the last. The one rule for every reader that puts a raw reading on
+ * the traces' scale through {@link readCarProgress}: the step itself, and the
+ * translator's pair reading (`getLiveGapBetween`).
+ */
+export function confirmedLastProgress(slice: CarProgressState, carIdx: number): number | undefined {
+  return slice.lastProgressConfirmed[carIdx] === true ? slice.lastProgress[carIdx] : undefined;
 }
 
 /**
@@ -130,12 +161,16 @@ export type CarProgressTick = {
  * Otherwise every car up to the shorter of the two arrays gets an entry: its
  * progress, or `null` for a reading that is not finite or is negative (a car
  * out of the world reads `-1`), which leaves its trace untouched and drops
- * its last progress. The tick also says which tick was read directly before
- * it (`previousSessionTime`), null unless that one read every car. `traceReset`
- * is true only where `appendProgressSample` answered `"reset"`: the reading
- * was a discontinuity (a backwards step, or a forward one past
- * `GAP_TRACE_MAX_STEP`), so the car's motion since its last sample was not
- * continuous.
+ * its last progress. A reading is corrected at the line only against a last
+ * progress that is confirmed ({@link confirmedLastProgress}); a first reading
+ * after none is taken as it stands, and if it was a lap off (taken on a
+ * disagreeing tick) the next true reading replaces it at the cost of one
+ * trace reset, rather than inheriting its lap. The tick also says which tick
+ * was read directly before it (`previousSessionTime`), null unless that one
+ * read every car. `traceReset` is true only where `appendProgressSample`
+ * answered `"reset"`: the reading was a discontinuity (a backwards step, or a
+ * forward one past `GAP_TRACE_MAX_STEP`), so the car's motion since its last
+ * sample was not continuous.
  */
 export function stepCarProgress(
   slice: CarProgressState,
@@ -171,6 +206,7 @@ export function stepCarProgress(
     !playerRacing
   ) {
     slice.lastProgress.length = 0;
+    slice.lastProgressConfirmed.length = 0;
 
     return null;
   }
@@ -190,10 +226,12 @@ export function stepCarProgress(
     // crossing-time lookup on it would return garbage.
     if (!Number.isFinite(laps) || !Number.isFinite(dist) || laps < 0 || dist < 0) {
       slice.lastProgress[i] = undefined;
+      slice.lastProgressConfirmed[i] = false;
       continue;
     }
 
-    const carProgress = readCarProgress(slice.lastProgress[i], laps, dist);
+    const previous = slice.lastProgress[i];
+    const carProgress = readCarProgress(confirmedLastProgress(slice, i), laps, dist);
     let trace = slice.traces[i];
 
     if (!trace) {
@@ -203,11 +241,17 @@ export function stepCarProgress(
 
     progress[i] = carProgress;
     traceReset[i] = appendProgressSample(trace, carProgress, sessionTime) === "reset";
+    // Confirmed when it continues the reading before it, whatever that one
+    // was: two readings that agree to within half a lap agree on the lap.
+    slice.lastProgressConfirmed[i] =
+      previous !== undefined && Math.abs(carProgress - previous) <= CAR_PROGRESS_CONTINUOUS_LAPS;
     slice.lastProgress[i] = carProgress;
   }
 
   // A car the arrays no longer reach has no reading either.
   if (slice.lastProgress.length > carCount) slice.lastProgress.length = carCount;
+
+  if (slice.lastProgressConfirmed.length > carCount) slice.lastProgressConfirmed.length = carCount;
 
   slice.lastReadSessionTime = sessionTime;
 

@@ -306,13 +306,26 @@ export function createTrackGapsState(): TrackGapsState {
 export type CarProgressState = {
   /**
    * Per car, by carIdx: the progress the step last read for it, after the
-   * start/finish correction (`readCarProgress`), which the next tick's
-   * reading is corrected against. `undefined` = no reading on the last tick:
-   * dropped on any tick the car has no valid reading, and for every car on a
-   * tick the step's gate refuses, so a correction never bridges a tick that
-   * was not read.
+   * start/finish correction (`readCarProgress`). `undefined` = no reading on
+   * the last tick: dropped on any tick the car has no valid reading, and for
+   * every car on a tick the step's gate refuses, so a correction never
+   * bridges a tick that was not read. The next tick's reading is corrected
+   * against it only once it is confirmed ({@link lastProgressConfirmed});
+   * read it through `confirmedLastProgress`, never directly, to correct a
+   * reading.
    */
   lastProgress: (number | undefined)[];
+  /**
+   * Per car, by carIdx: whether {@link lastProgress} continued the reading
+   * before it (within half a lap), so its lap count is one two readings agree
+   * on. False (a hole reads as false) for a car's first reading after none,
+   * and for a reading that did not continue the last: such a reading may have
+   * been taken on the very tick the car's lap counter and lap fraction
+   * disagree at the line, a whole lap off, and correcting the next reading
+   * against it would carry that lap on. Cleared wherever the last progress
+   * is.
+   */
+  lastProgressConfirmed: boolean[];
   /**
    * `SessionTime` of the last tick the step read every car on, or null: the
    * step clears it on entry and writes it only once its per-car loop has
@@ -333,7 +346,7 @@ export type CarProgressState = {
 
 /** No car traced (issue #1572): the initial state. */
 export function createCarProgressState(): CarProgressState {
-  return { lastProgress: [], lastReadSessionTime: null, traces: [] };
+  return { lastProgress: [], lastProgressConfirmed: [], lastReadSessionTime: null, traces: [] };
 }
 
 /**

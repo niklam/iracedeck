@@ -73,7 +73,7 @@ import {
   resolvePitLaneLandmarks,
 } from "@iracedeck/track-data";
 
-import { readCarProgress, stepCarProgress } from "./diff/car-progress.js";
+import { confirmedLastProgress, readCarProgress, stepCarProgress } from "./diff/car-progress.js";
 import { type CautionGapMeasurement, measureCautionGap } from "./diff/caution-gap.js";
 import { CATCH_UP_CLEAR_MULTIPLE, type CatchUpBlock, diffCaution, resolveCatchUpBlocks } from "./diff/caution.js";
 import { CORNER_CALLOUT_DEFAULT_LEAD_SECONDS, diffCornerName } from "./diff/corner-name.js";
@@ -1881,18 +1881,20 @@ function liveGapBetween(self: TranslatorInstance, aheadCarIdx: number, behindCar
   const sessionInfo = self.controller.getSessionInfo() as Record<string, unknown> | null;
   // Each car on the scale of the traces (issue #1572): the progress step
   // corrects a reading whose lap counter and lap fraction disagree for a tick
-  // at the line, so the same correction is applied here, against the progress
-  // the step last read for the car (this tick or the one before, whichever
-  // side of the step the caller runs on; none outside the step's gate, where
-  // the reading is the plain sum).
-  const lastProgress = self.state.carProgress.lastProgress;
+  // at the line, so the same correction is applied here, by the same rule:
+  // against the progress the step last read for the car (this tick or the one
+  // before, whichever side of the step the caller runs on) and only once that
+  // progress is confirmed, so a first reading taken on a disagreeing tick is
+  // never carried on. With none (outside the step's gate too) the reading is
+  // the plain sum.
+  const carProgress = self.state.carProgress;
 
   return readPairGap(
-    self.state.carProgress.traces,
+    carProgress.traces,
     aheadCarIdx,
-    readCarProgress(lastProgress[aheadCarIdx], aheadLc!, aheadPct!),
+    readCarProgress(confirmedLastProgress(carProgress, aheadCarIdx), aheadLc!, aheadPct!),
     behindCarIdx,
-    readCarProgress(lastProgress[behindCarIdx], behindLc!, behindPct!),
+    readCarProgress(confirmedLastProgress(carProgress, behindCarIdx), behindLc!, behindPct!),
     sessionTime,
     resolveTrackLengthMeters(self.state, sessionInfo, telemetry),
   ).gapSeconds;
