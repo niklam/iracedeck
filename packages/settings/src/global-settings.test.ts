@@ -588,6 +588,49 @@ describe("gap callout settings (issue #933)", () => {
   });
 });
 
+describe("approaching-traffic settings (issue #1113)", () => {
+  const FIELDS = [
+    { key: "trafficNoticeSeconds", min: 5, max: 60, fallback: 20 },
+    { key: "trafficHoldSeconds", min: 2, max: 15, fallback: 6 },
+    { key: "trafficPitExitBeforeSeconds", min: 0, max: 10, fallback: 2 },
+    { key: "trafficPitExitAfterSeconds", min: 0, max: 15, fallback: 4 },
+  ] as const;
+
+  const read = (key: string, value: unknown): unknown =>
+    (GlobalSettingsSchema.parse({ [key]: value }) as Record<string, unknown>)[key];
+
+  it("defaults the opt-ins on, the windows to 20 / 6 s and the pit-exit window to 2 s before and 4 s after", () => {
+    const parsed = GlobalSettingsSchema.parse({});
+
+    expect(parsed.calloutEnabledTrafficRejoin).toBe(true);
+    expect(parsed.calloutEnabledTrafficPitExit).toBe(true);
+    expect(parsed.trafficNoticeSeconds).toBe(20);
+    expect(parsed.trafficHoldSeconds).toBe(6);
+    expect(parsed.trafficPitExitBeforeSeconds).toBe(2);
+    expect(parsed.trafficPitExitAfterSeconds).toBe(4);
+  });
+
+  it.each(FIELDS)("$key keeps both ends of its range and coerces a numeric string", ({ key, min, max }) => {
+    expect(read(key, min)).toBe(min);
+    expect(read(key, max)).toBe(max);
+    expect(read(key, String(max - 1))).toBe(max - 1);
+  });
+
+  // An empty-ish value must not coerce to 0: for the two pit-exit sides 0 is
+  // in range and would silently close that side of the window.
+  it.each(
+    FIELDS.flatMap((field) =>
+      [field.min - 1, field.max + 1, "junk", "", "  ", null, {}].map((value) => ({ ...field, value })),
+    ),
+  )("$key falls back to its default on $value without stalling the rest of the parse", ({ key, fallback, value }) => {
+    const result = GlobalSettingsSchema.safeParse({ [key]: value, spotterStillThereSeconds: 5 });
+
+    expect(result.success).toBe(true);
+    expect((result.data as Record<string, unknown>)[key]).toBe(fallback);
+    expect(result.data?.spotterStillThereSeconds).toBe(5);
+  });
+});
+
 describe("resolveActiveRaceEngineerVoice", () => {
   beforeEach(() => {
     _resetGlobalSettings();
