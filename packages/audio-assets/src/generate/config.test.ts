@@ -566,12 +566,11 @@ describe("buildEntryOptions", () => {
 
 describe("entryHash", () => {
   function hashOf(voice: VoiceConfig, ref: string): string {
-    const lookup = buildEntryLookup(voice);
-    const dep = lookup.get(ref);
+    const dep = buildEntryLookup(voice).get(ref);
 
     if (!dep) throw new Error(`test setup: no entry "${ref}"`);
 
-    return entryHash(dep.entry, dep.groupName, voice, lookup);
+    return entryHash(dep.entry, voice);
   }
 
   it("is stable for the same config", () => {
@@ -587,46 +586,59 @@ describe("entryHash", () => {
     expect(hashOf(a, "numbers/1")).not.toBe(hashOf(b, "numbers/1"));
   });
 
-  it("cascades a dependency's content change into dependents, transitively", () => {
-    const make = (introText: string): VoiceConfig =>
-      buildVoiceConfig({
-        intro: [{ name: "x", text: introText }],
-        mid: [{ name: "x", text: "mid", previous_request_ids: ["intro/x"] }],
-        leaf: [{ name: "x", text: "leaf", previous_request_ids: ["mid/x"] }],
-      });
-    const a = make("the pit speed limit is");
-    const b = make("the pit lane limit is");
+  it("changes when the entry's own seed or model changes", () => {
+    const base = buildVoiceConfig({ numbers: [{ name: "1", text: "one" }] });
+    const seeded = buildVoiceConfig({ numbers: [{ name: "1", text: "one", seed: 2 }] });
+    const otherModel = buildVoiceConfig({ numbers: [{ name: "1", text: "one" }] }, { model_id: "eleven_v4" });
 
-    // Direct dependent and the transitive (grandparent-removed) dependent
-    // both shift when the root entry's config changes.
-    expect(hashOf(a, "mid/x")).not.toBe(hashOf(b, "mid/x"));
-    expect(hashOf(a, "leaf/x")).not.toBe(hashOf(b, "leaf/x"));
+    expect(hashOf(seeded, "numbers/1")).not.toBe(hashOf(base, "numbers/1"));
+    expect(hashOf(otherModel, "numbers/1")).not.toBe(hashOf(base, "numbers/1"));
   });
 
-  it("leaves an entry that doesn't reference the changed one untouched", () => {
-    const make = (introText: string): VoiceConfig =>
+  it("changes when the entry's raw reference strings change", () => {
+    const make = (ref: string): VoiceConfig =>
       buildVoiceConfig({
-        intro: [{ name: "x", text: introText }],
-        numbers: [
-          { name: "1", text: "one", previous_request_ids: ["intro/x"] },
-          { name: "2", text: "two" },
+        intro: [
+          { name: "a", text: "intro a" },
+          { name: "b", text: "intro b" },
         ],
+        numbers: [{ name: "1", text: "one", previous_request_ids: [ref] }],
       });
-    const a = make("intro a");
-    const b = make("intro b");
 
-    expect(hashOf(a, "numbers/1")).not.toBe(hashOf(b, "numbers/1")); // references intro/x
-    expect(hashOf(a, "numbers/2")).toBe(hashOf(b, "numbers/2")); // independent
+    expect(hashOf(make("intro/a"), "numbers/1")).not.toBe(hashOf(make("intro/b"), "numbers/1"));
   });
 
-  it("guards against a reference cycle instead of recursing forever", () => {
-    // `detectReferenceCycles` is the real gate, but `entryHash` must also
-    // fail loudly rather than overflow the stack if ever handed a cycle.
-    const voice = buildVoiceConfig({
-      units: [{ name: "kmh", text: "kilometers per hour", previous_request_ids: ["numbers/80"] }],
-      numbers: [{ name: "80", text: "eighty", next_request_ids: ["units/kmh"] }],
-    });
+  // #1643: on eleven_v4 a take is never reproduced, so re-cutting a dependent
+  // because its dependency changed would replace an approved take with an
+  // unheard one. A dependency's change reaches no other entry's hash.
+  it("does not change when an entry it references changes, directly or transitively", () => {
+    const make = (introText: string, introSeed: number): VoiceConfig =>
+      buildVoiceConfig({
+        intro: [{ name: "x", text: introText, seed: introSeed }],
+        mid: [{ name: "x", text: "mid", previous_request_ids: ["intro/x"] }],
+        leaf: [{ name: "x", text: "leaf", previous_request_ids: ["mid/x"], next_request_ids: ["intro/x"] }],
+      });
+    const a = make("the pit speed limit is", 1);
+    const b = make("the pit lane limit is", 7);
 
-    expect(() => hashOf(voice, "units/kmh")).toThrow(/Reference cycle reached/);
+    expect(hashOf(a, "intro/x")).not.toBe(hashOf(b, "intro/x"));
+    expect(hashOf(a, "mid/x")).toBe(hashOf(b, "mid/x"));
+    expect(hashOf(a, "leaf/x")).toBe(hashOf(b, "leaf/x"));
+  });
+
+  it("ignores enable_logging, which does not change the audio", () => {
+    const a = buildVoiceConfig({ numbers: [{ name: "1", text: "one" }] }, { enable_logging: false });
+    const b = buildVoiceConfig({ numbers: [{ name: "1", text: "one" }] }, { enable_logging: true });
+
+    expect(hashOf(a, "numbers/1")).toBe(hashOf(b, "numbers/1"));
+  });
+
+  it("is the same for one request under two voices that share an ElevenLabs voice id, in any group", () => {
+    const a = buildVoiceConfig({ numbers: [{ name: "1", text: "one" }] }, { label: "A" });
+    const b = buildVoiceConfig({ other: [{ name: "1", text: "one" }] }, { label: "B" });
+    const c = buildVoiceConfig({ numbers: [{ name: "1", text: "one" }] }, { id: "another-voice-id" });
+
+    expect(hashOf(a, "numbers/1")).toBe(hashOf(b, "other/1"));
+    expect(hashOf(a, "numbers/1")).not.toBe(hashOf(c, "numbers/1"));
   });
 });

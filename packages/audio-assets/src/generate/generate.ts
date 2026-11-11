@@ -5,11 +5,12 @@
  * Reads every `configs/<voice-id>.voice.json` file, iterates each voice's
  * groups × entries, skips any entry whose output MP3 already exists AND
  * whose content hash in `generate.manifest.json` matches the current one.
- * The hash (`entryHash`) is a pure function of config content — the entry's
- * own audio-affecting options plus the recursive hashes of its request-id
- * dependencies — so it's stable across runs and re-cuts only on a real
- * config change. Remaining entries are fetched from the ElevenLabs TTS API
- * and written to `packages/audio-assets/voice/<voice>/<group>/<name>.mp3`.
+ * The hash (`entryHash`) is a pure function of the entry's OWN request — its
+ * audio-affecting options and the raw `<group>/<entry-name>` reference
+ * strings, never the hashes of the entries they name — so it's stable across
+ * runs and re-cuts only that entry on a real config change. Remaining
+ * entries are fetched from the ElevenLabs TTS API and written to
+ * `packages/audio-assets/voice/<voice>/<group>/<name>.mp3`.
  *
  * Per-voice file shape
  *   Every voice is fully self-contained. There is no shared root config:
@@ -39,10 +40,12 @@
  *     - a raw ElevenLabs request-id string (no `/`, passed through verbatim).
  *   References are resolved per-voice — the same chain block produces a
  *   per-voice link without duplication. The resolved provider IDs feed only
- *   the API call; the cache hash uses the *raw reference strings* plus the
- *   referenced entries' content hashes, so re-cutting a dependency (which
- *   gets a fresh provider ID) does NOT thrash every dependent — only a real
- *   config change to a dependency cascades.
+ *   the API call; the cache hash uses the *raw reference strings* alone, so
+ *   neither re-cutting a dependency (a fresh provider ID) nor changing its
+ *   config re-cuts a dependent (#1643). On `eleven_v4` no request ever
+ *   returns the same take twice, so a clip on disk is the only copy of an
+ *   approved take: a dependent keeps its take, conditioned on the superseded
+ *   one, until someone re-cuts it on purpose (a seed bump).
  *
  *   The reference graph must be acyclic — `detectReferenceCycles` rejects
  *   cycles up front. Run dependencies before dependents, either by ordering
@@ -95,7 +98,6 @@ import process from "node:process";
 import url from "node:url";
 
 import {
-  buildEntryLookup,
   buildEntryOptions,
   detectReferenceCycles,
   entryHash,
@@ -200,9 +202,8 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  // Reject reference cycles up front — `entryHash` recurses through
-  // dependencies, and a cyclic graph can't be generated from an empty
-  // manifest anyway. Fail fast with the cycle path before any API work.
+  // Reject reference cycles up front — a cyclic graph can't be generated
+  // dependencies-first from an empty manifest. Fail fast with the cycle path before any API work.
   try {
     for (const [voiceName, voice] of voiceConfigs) {
       detectReferenceCycles(voiceName, voice);
@@ -229,11 +230,6 @@ async function main(): Promise<void> {
   for (const [voiceName, voice] of voiceConfigs) {
     if (scope.voices && !scope.voices.includes(voiceName)) continue;
 
-    // `entryHash` hashes dependencies recursively — build the lookup and a
-    // shared memo once per voice so each entry is hashed at most once.
-    const lookup = buildEntryLookup(voice);
-    const hashMemo = new Map<string, string>();
-
     for (const [groupName, entries] of Object.entries(voice.groups)) {
       if (scope.groups && !scope.groups.includes(groupName)) continue;
 
@@ -243,11 +239,10 @@ async function main(): Promise<void> {
         const relPath = clipRelPath(voiceName, groupName, entry.name);
         const absPath = path.join(packageRoot, relPath);
 
-        // The cache key is a pure function of config content (this entry's
-        // own settings + the recursive hashes of its references) — it does
-        // NOT depend on the manifest or any volatile provider request ID,
-        // so it's stable across runs and cycle-safe.
-        const hash = entryHash(entry, groupName, voice, lookup, hashMemo);
+        // The cache key is a pure function of this entry's own request — it
+        // does NOT depend on the manifest, on any volatile provider request
+        // ID, or on the entries it references.
+        const hash = entryHash(entry, voice);
         const manifestEntry = manifest.entries[relPath];
         const cached = manifestEntry?.hash === hash && existsSync(absPath);
 
