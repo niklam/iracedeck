@@ -29,8 +29,10 @@
  *   `CarIdxEstTime` — the same quantity measured directly.
  * A span that crosses the start/finish line adds the class's reference lap.
  * Which phase applies is read from `OnPitRoad` AND the position against
- * `pitRoadEnd`, so a player's `OnPitRoad` stuck true (measured at Spa,
- * #1112) cannot keep the pit-road formula running past the end of pit road.
+ * `pitRoadEnd`, so the player-level `OnPitRoad` (which reads correctly; the
+ * per-car `CarIdxOnPitRoad` is the one #1112 measured stuck true) and a
+ * landmark learned a little late cannot keep the pit-road formula running
+ * past the end of pit road between them.
  * No player-class reference anywhere, no pit speed limit or no track length
  * means no ETA: no callout, one debug line per episode. Never a guess.
  *
@@ -41,6 +43,15 @@
  * class. `traffic` when a timed car's arrival less the player's ETA lies in
  * `[−before, +after]` (both ends inclusive), or when any car is untimed: a
  * car nobody can time is never a clear. `clear` otherwise.
+ *
+ * **The before side looks back.** The arrival model answers only the NEXT
+ * arrival, in [0, lap): a car that crossed `blendEnd` half a second ago reads
+ * a lap away. Once the player's ETA is under `before`, part of the before
+ * window lies in the past, and that car is practically alongside. So each
+ * timed car's previous crossing is tested too, at `seconds − classLap − eta`
+ * with the car's own class lap (`resolveClassLapTime`); a car whose class lap
+ * is unknown has only its next crossing tested. A car is in the window when
+ * either crossing is, and the reported nearest considers both.
  *
  * **When it speaks.** Once, at the first evaluation with the ETA under the
  * notice window; then again only when the verdict flips before the player
@@ -350,30 +361,37 @@ function evaluate(
   ];
   const arrivals = computeTrafficArrivals(curves, blendEnd.pct, sources, telemetry, facts.playerCarIdx, facts.classes);
   const untimed = arrivals.filter((a): a is UntimedArrival => !a.timed);
-  let nearest: TimedArrival | null = null;
+  let nearest: { car: TimedArrival; relative: number } | null = null;
   let inWindow = false;
 
   for (const arrival of arrivals) {
     if (!arrival.timed) continue;
 
-    const relative = arrival.seconds - eta.seconds;
+    // Its next crossing, and the one before it (module header): the before
+    // window reaches into the past once the player is that close.
+    const classLap = resolveClassLapTime(curves, facts.classes, arrival.classId);
+    const crossings = [arrival.seconds - eta.seconds];
 
-    if (nearest === null || Math.abs(relative) < Math.abs(nearest.seconds - eta.seconds)) nearest = arrival;
+    if (classLap !== null) crossings.push(arrival.seconds - classLap - eta.seconds);
 
-    if (relative >= -before && relative <= after) inWindow = true;
+    for (const relative of crossings) {
+      if (nearest === null || Math.abs(relative) < Math.abs(nearest.relative)) nearest = { car: arrival, relative };
+
+      if (relative >= -before && relative <= after) inWindow = true;
+    }
   }
 
   const verdict = inWindow || untimed.length > 0 ? "traffic" : "clear";
 
   if (verdict === episode.spokenVerdict) return;
 
-  const relative = nearest === null ? null : Math.round((nearest.seconds - eta.seconds) * 10) / 10;
+  const relative = nearest === null ? null : Math.round(nearest.relative * 10) / 10;
   const flip = episode.spokenVerdict !== null;
 
   emit({ event: "traffic.pitExit", data: relative === null ? { verdict } : { verdict, seconds: relative } });
   logger.debug(
     `PitExit: emit ${verdict} (${flip ? "flipped" : "first call"}; eta ${eta.seconds.toFixed(2)} s on ${eta.phase}, window -${before}/+${after} s; ` +
-      `${nearest === null ? "no timed car" : `nearest car ${nearest.carIdx} at ${(nearest.seconds - eta.seconds).toFixed(2)} s via ${nearest.source}`}; ` +
+      `${nearest === null ? "no timed car" : `nearest car ${nearest.car.carIdx} at ${nearest.relative.toFixed(2)} s via ${nearest.car.source}`}; ` +
       `untimed: ${untimed.length === 0 ? "none" : untimed.map((car) => `car ${car.carIdx} (${car.reason})`).join(", ")})`,
   );
   episode.spokenVerdict = verdict;

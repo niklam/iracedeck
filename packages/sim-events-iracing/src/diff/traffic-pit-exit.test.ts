@@ -109,11 +109,13 @@ function harness({
   trackLengthMeters = TRACK_M as number | null,
   pitSpeedLimitMps = PIT_LIMIT_MPS,
   curves = learnedCurves(),
+  classes = CLASSES as TrafficClassInfo | null,
 }: {
   landmarks?: TrafficPitExitLandmarks | null;
   trackLengthMeters?: number | null;
   pitSpeedLimitMps?: number;
   curves?: TrafficArrivalState;
+  classes?: TrafficClassInfo | null;
 } = {}) {
   const episode = createTrafficPitExitEpisode();
   const events: PitExit[] = [];
@@ -128,7 +130,7 @@ function harness({
       episode,
       curves,
       t,
-      { playerCarIdx: PLAYER, classes: CLASSES, trackLengthMeters, pitSpeedLimitMps, readLandmarks },
+      { playerCarIdx: PLAYER, classes, trackLengthMeters, pitSpeedLimitMps, readLandmarks },
       {
         getNoticeSeconds: () => windows.notice,
         getBeforeSeconds: () => windows.before,
@@ -296,7 +298,7 @@ describe("diffTrafficPitExit", () => {
       expect(lines(h.debug).at(-1)).toMatch(/eta 15\.6\d s on blend/);
     });
 
-    it("past pitRoadEnd with the player's OnPitRoad stuck true: still the blend formula", () => {
+    it("past pitRoadEnd by position with OnPitRoad still true (a landmark learned late): still the blend formula", () => {
       const h = harness({
         landmarks: { pitRoadEnd: landmark(0.125, {}), blendEnd: landmark(0.1875, {}) },
       });
@@ -410,6 +412,74 @@ describe("diffTrafficPitExit", () => {
       h.depart(tel());
 
       expect(h.events).toEqual([{ verdict: "clear" }]);
+    });
+  });
+
+  describe("a car that has just crossed the blend (the before side looks back)", () => {
+    /** Landmarks with no per-class time: both read the curve, 93.75 s at the blend. */
+    const curveLandmarks: TrafficPitExitLandmarks = { pitRoadEnd: landmark(0.125, {}), blendEnd: landmark(0.1875, {}) };
+    /** The player 0.5 s from the blend: 93.25 s on the curve at 0.1865. */
+    const nearBlend = (cars: Car[]): TrafficPitExitTelemetry => tel({ pct: 0.1865, cars });
+    /** A car that crossed the blend `ago` s ago: just past it on the lap, its next crossing about a lap away. */
+    const crossed = (ago: number): Car => ({ idx: 5, pct: (93.75 + ago) / 500, est: 93.75 + ago });
+
+    /** The curve with no sample near the line and no session lap time: the class lap is unknown. */
+    function lapUnknown(): { curves: TrafficArrivalState; classes: TrafficClassInfo } {
+      const curves = learnedCurves();
+
+      curves.curves[String(CLS)]!.bins.fill(null, 480);
+
+      return { curves, classes: { lapTimeByClass: {}, classByCarIdx: [] } };
+    }
+
+    it("is traffic for a car that crossed 1 s ago with the player 0.5 s out: it is alongside", () => {
+      const h = harness({ landmarks: curveLandmarks });
+
+      h.depart(nearBlend([crossed(1)]));
+
+      // Next crossing ≈ 498.5 s after the player; the previous one −1.5 s.
+      expect(h.events).toEqual([{ verdict: "traffic", seconds: -1.5 }]);
+    });
+
+    it("is clear for a car that crossed 3 s ago at the default 2 s before", () => {
+      const h = harness({ landmarks: curveLandmarks });
+
+      h.depart(nearBlend([crossed(3)]));
+
+      expect(h.events).toEqual([{ verdict: "clear", seconds: -3.5 }]);
+    });
+
+    it("never flips to clear as the car crosses the blend just ahead of the player", () => {
+      const h = harness({ landmarks: curveLandmarks });
+
+      // 1.5 s out (92.25 s at 0.1845), the car arrives in 1 s: −0.5 s, traffic.
+      h.depart(tel({ pct: 0.1845, cars: [{ idx: 5, pct: 0.1855, est: 92.75 }] }));
+      // Then it has crossed, 1 s before the player's 0.5 s: its next crossing
+      // is a lap away, and without the look back this would flip to clear.
+      h.after(TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS, nearBlend([crossed(1)]));
+
+      expect(h.events).toEqual([{ verdict: "traffic", seconds: -0.5 }]);
+    });
+
+    it.each([1, 3])(
+      "skips the past test with the class lap unknown (crossed %s s ago): the car is untimed, so traffic",
+      (ago) => {
+        const h = harness({ landmarks: curveLandmarks, ...lapUnknown() });
+
+        h.depart(nearBlend([crossed(ago)]));
+
+        expect(h.events).toEqual([{ verdict: "traffic" }]);
+        expect(lines(h.debug).at(-1)).toContain("untimed: car 5 (noClassLap)");
+      },
+    );
+
+    it("tests only the next crossing of a car short of the blend with the class lap unknown", () => {
+      const h = harness({ landmarks: curveLandmarks, ...lapUnknown() });
+
+      // 10 s from the blend: +9.5 s, outside the window; no past crossing to test.
+      h.depart(nearBlend([{ idx: 5, pct: 0.1675, est: 83.75 }]));
+
+      expect(h.events).toEqual([{ verdict: "clear", seconds: 9.5 }]);
     });
   });
 
