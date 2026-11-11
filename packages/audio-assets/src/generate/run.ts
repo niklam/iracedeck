@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 import { buildEntryOptions, entryHash, resolveEntryRequestIds, type VoiceConfig } from "./config.ts";
@@ -42,6 +42,8 @@ export interface RunOptions {
 export interface RunCounts {
   /** Requested from ElevenLabs (or would be, in a dry run). */
   generated: number;
+  /** Copied from another voice's take of the identical request (or would be, in a dry run). */
+  copied: number;
   skipped: number;
   failed: number;
   /** A pause mark, or a dependency that is out of date and not cut in this run. */
@@ -64,7 +66,7 @@ const consoleLog: RunLog = {
 };
 
 export function emptyCounts(): RunCounts {
-  return { generated: 0, skipped: 0, failed: 0, refused: 0 };
+  return { generated: 0, copied: 0, skipped: 0, failed: 0, refused: 0 };
 }
 
 export function textPreview(text: string, max = 60): string {
@@ -96,6 +98,70 @@ export function invalidateProcessedCache(root: string, relPath: string): void {
   }
 }
 
+type ManifestRow = Manifest["entries"][string];
+
+/**
+ * A take another voice may copy: a clip with its manifest row, or — in a dry
+ * run only — one this run would write (`row` null), so the dry run reports
+ * the copies the live run will make.
+ */
+export interface TakeSource {
+  relPath: string;
+  voiceName: string;
+  /** `<group>/<entry-name>` */
+  key: string;
+  row: ManifestRow | null;
+}
+
+const CLIP_REL_PATH = /^voice\/([^/]+)\/([^/]+)\/([^/]+)\.mp3$/;
+
+/** `voice/<voice>/<group>/<name>.mp3` → its voice and `<group>/<name>` key, or null for any other path. */
+export function parseClipRelPath(relPath: string): { voiceName: string; key: string } | null {
+  const match = CLIP_REL_PATH.exec(relPath);
+
+  return match ? { voiceName: match[1]!, key: `${match[2]}/${match[3]}` } : null;
+}
+
+/**
+ * Every take the run knows of, by the hash of the request that cut it: the
+ * manifest's rows at the start, and each clip the run writes (or would
+ * write) as it goes, replacing that path's previous row so a superseded
+ * take is never offered.
+ */
+class TakeIndex {
+  private readonly byHash = new Map<string, Map<string, TakeSource>>();
+  private readonly hashByRelPath = new Map<string, string>();
+
+  constructor(manifest: Manifest) {
+    for (const [relPath, row] of Object.entries(manifest.entries)) {
+      const parsed = parseClipRelPath(relPath);
+
+      if (parsed) this.set(row.hash, { relPath, ...parsed, row });
+    }
+  }
+
+  set(hash: string, source: TakeSource): void {
+    const previous = this.hashByRelPath.get(source.relPath);
+
+    if (previous !== undefined) this.byHash.get(previous)?.delete(source.relPath);
+
+    this.hashByRelPath.set(source.relPath, hash);
+
+    let sources = this.byHash.get(hash);
+
+    if (!sources) {
+      sources = new Map();
+      this.byHash.set(hash, sources);
+    }
+
+    sources.set(source.relPath, source);
+  }
+
+  sources(hash: string): TakeSource[] {
+    return Array.from(this.byHash.get(hash)?.values() ?? []);
+  }
+}
+
 /** The `--voice/--group/--entry` flags that would cut exactly one entry. */
 export function scopeFlagsFor(voiceName: string, key: string): string {
   const slash = key.indexOf("/");
@@ -119,6 +185,11 @@ export function scopeFlagsFor(voiceName: string, key: string): string {
  * - **Failed with its dependency** — a dependency in scope that failed or was
  *   refused in this run fails every entry conditioned on it, naming it. It
  *   never falls back to the request id the manifest held before.
+ * - **Copied** — an entry whose hash equals a take another voice already
+ *   holds (or cut earlier in this run) gets that take's bytes and request id
+ *   instead of a new API call: a request already paid for is never paid
+ *   again. Default runs first, so the verbatim entries of Short callouts
+ *   find the fresh Default takes. `pickCopySource` says which take is chosen.
  *
  * Returns the counts; the caller decides the exit code.
  */
@@ -131,6 +202,7 @@ export async function runGeneration(options: RunOptions): Promise<RunResult> {
   const totals = emptyCounts();
   const perVoice = new Map<string, RunCounts>();
   const clipExists = (relPath: string): boolean => existsSync(path.join(root, relPath));
+  const takes = new TakeIndex(manifest);
 
   for (const voiceName of orderVoices(voiceConfigs.keys())) {
     if (scope.voices && !scope.voices.includes(voiceName)) continue;
@@ -165,6 +237,29 @@ export async function runGeneration(options: RunOptions): Promise<RunResult> {
       if (!clipExists(relPath)) return "its clip is missing";
 
       return null;
+    };
+
+    // Request id → the clip of THIS voice holding that take, and the sources
+    // this voice has copied from in this run: one take is never copied into
+    // two clips of the same voice (see `pickCopySource`).
+    const heldRequestIds = new Map<string, string>();
+
+    for (const [relPath, row] of Object.entries(manifest.entries)) {
+      if (row.requestId && parseClipRelPath(relPath)?.voiceName === voiceName)
+        heldRequestIds.set(row.requestId, relPath);
+    }
+
+    const copiedFrom = new Set<string>();
+
+    /** Record a clip this voice now holds (or would hold, in a dry run) so later lookups see it. */
+    const recordTake = (key: string, relPath: string, hash: string, row: ManifestRow | null): void => {
+      const previous = manifest.entries[relPath]?.requestId;
+
+      if (previous && heldRequestIds.get(previous) === relPath) heldRequestIds.delete(previous);
+
+      if (row?.requestId) heldRequestIds.set(row.requestId, relPath);
+
+      takes.set(hash, { relPath, voiceName, key, row });
     };
 
     const inScope = (node: OrderedEntry): boolean =>
@@ -247,11 +342,67 @@ export async function runGeneration(options: RunOptions): Promise<RunResult> {
         log.warn(`[generate] ${relPath}  —  grandfathered text: ${describePauseMarks(pauseMarks)}`);
       }
 
+      // A request already paid for is never paid again (#1643). The hash
+      // covers the ElevenLabs voice id, the model and every audio-affecting
+      // option, so a take of the same hash under another voice is the same
+      // request: copy its bytes and its request id instead of a new call.
+      const source = pickCopySource(takes.sources(hash), {
+        voiceName,
+        key,
+        relPath,
+        clipExists,
+        heldRequestIds,
+        copiedFrom,
+      });
+
+      if (source) {
+        log.info(`${dryRun ? "[dry-run] WOULD COPY" : "[copy]"} ${relPath} from ${source.relPath}`);
+
+        if (dryRun) {
+          copiedFrom.add(source.relPath);
+          recordTake(key, relPath, hash, null);
+          outcomes.set(key, "cut");
+          count("copied");
+          continue;
+        }
+
+        try {
+          const sourceRow = source.row!;
+
+          mkdirSync(path.dirname(absPath), { recursive: true });
+          copyFileSync(path.join(root, source.relPath), absPath);
+          invalidateProcessedCache(root, relPath);
+
+          const row: ManifestRow = {
+            hash,
+            voiceId: voice.id,
+            model: sourceRow.model,
+            textPreview: sourceRow.textPreview,
+            generatedAt: now().toISOString(),
+            requestId: sourceRow.requestId,
+          };
+
+          recordTake(key, relPath, hash, row);
+          manifest.entries[relPath] = row;
+          persistManifest(manifest);
+          copiedFrom.add(source.relPath);
+          outcomes.set(key, "cut");
+          count("copied");
+        } catch (err) {
+          log.error(`[copy] ${relPath}  —  FAILED: ${err instanceof Error ? err.message : String(err)}`);
+          outcomes.set(key, "failed");
+          count("failed");
+        }
+
+        continue;
+      }
+
       const prefix = dryRun ? "[dry-run] WOULD GENERATE" : "[generate]";
 
       log.info(`${prefix} ${relPath}  —  "${textPreview(entry.text)}"`);
 
       if (dryRun) {
+        recordTake(key, relPath, hash, null);
         outcomes.set(key, "cut");
         count("generated");
         continue;
@@ -277,7 +428,8 @@ export async function runGeneration(options: RunOptions): Promise<RunResult> {
         mkdirSync(path.dirname(absPath), { recursive: true });
         writeFileSync(absPath, mp3);
         invalidateProcessedCache(root, relPath);
-        manifest.entries[relPath] = {
+
+        const row: ManifestRow = {
           hash,
           voiceId: voice.id,
           model: synthOptions.model_id,
@@ -285,6 +437,9 @@ export async function runGeneration(options: RunOptions): Promise<RunResult> {
           generatedAt: now().toISOString(),
           requestId,
         };
+
+        recordTake(key, relPath, hash, row);
+        manifest.entries[relPath] = row;
         // Persist after every success so a partial failure mid-run doesn't
         // lose progress / force re-fetches on the next invocation.
         persistManifest(manifest);
@@ -301,11 +456,52 @@ export async function runGeneration(options: RunOptions): Promise<RunResult> {
   return { totals, perVoice };
 }
 
+/**
+ * The take an entry copies instead of a new request, or null to request one.
+ *
+ * Eligible: a take of the same hash under ANOTHER voice whose clip exists (or,
+ * in a dry run, one this run would write). Never one of the entry's own
+ * voice: pool variants (`blue-01`, `blue-02`) share text and, with every seed
+ * at 1, a hash; they are distinct takes on purpose, and copying one into the
+ * other would collapse the pool. For the same reason a take is never copied
+ * into two clips of one voice: a source this voice copied from earlier in the
+ * run, or whose request id another of its clips already holds, is passed over.
+ * Of the rest, the take under the same `<group>/<entry-name>` wins, so each
+ * variant copies its own counterpart; otherwise the first known.
+ */
+export function pickCopySource(
+  candidates: readonly TakeSource[],
+  target: {
+    voiceName: string;
+    key: string;
+    relPath: string;
+    clipExists: (relPath: string) => boolean;
+    heldRequestIds: ReadonlyMap<string, string>;
+    copiedFrom: ReadonlySet<string>;
+  },
+): TakeSource | null {
+  const eligible = candidates.filter((source) => {
+    if (source.voiceName === target.voiceName) return false;
+
+    if (target.copiedFrom.has(source.relPath)) return false;
+
+    if (source.row === null) return true;
+
+    const holder = source.row.requestId ? target.heldRequestIds.get(source.row.requestId) : undefined;
+
+    if (holder !== undefined && holder !== target.relPath) return false;
+
+    return target.clipExists(source.relPath);
+  });
+
+  return eligible.find((source) => source.key === target.key) ?? eligible[0] ?? null;
+}
+
 function describeCounts(counts: RunCounts, dryRun: boolean): string {
-  const verb = dryRun ? "would be generated" : "generated";
+  const would = dryRun ? "would be " : "";
 
   return (
-    `${counts.generated} ${verb}, ${counts.skipped} skipped (cache hit), ` +
+    `${counts.generated} ${would}generated, ${counts.copied} ${would}copied, ${counts.skipped} skipped (cache hit), ` +
     `${counts.failed} failed, ${counts.refused} refused (pause marks or a stale dependency)`
   );
 }

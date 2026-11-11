@@ -125,7 +125,7 @@ describe("runGeneration — order", () => {
 
     expect(synthesize.mock.calls.map(([options]) => options.text)).toEqual(["Last lap was.", "point four"]);
     expect(synthesize.mock.calls[1]![0].previous_request_ids).toEqual(["req-1"]);
-    expect(result.totals).toEqual({ generated: 2, skipped: 0, failed: 0, refused: 0 });
+    expect(result.totals).toEqual({ generated: 2, copied: 0, skipped: 0, failed: 0, refused: 0 });
     expect(readClip("voice/default/intro/x.mp3")).toBe("take 1 of Last lap was.");
     expect(manifest.entries["voice/default/tail/x.mp3"]).toEqual({
       hash: hashOf(voice, "tail/x"),
@@ -154,6 +154,9 @@ describe("runGeneration — order", () => {
 
     expect([...result.perVoice.keys()]).toEqual(["default", "alpha", "zeta"]);
     expect(synthesize.mock.calls[0]![0].text).toBe("hello");
+    // zeta's identical request finds alpha's take, cut earlier in the run.
+    expect(synthesize).toHaveBeenCalledTimes(2);
+    expect(result.perVoice.get("zeta")!.copied).toBe(1);
   });
 
   it("persists the manifest after every clip it writes and drops the processed copies", async () => {
@@ -191,7 +194,7 @@ describe("runGeneration — cache", () => {
 
     // The intro's seed bump re-cuts the intro alone: the approved tail take stays.
     expect(synthesize.mock.calls.map(([options]) => options.text)).toEqual(["Last lap was."]);
-    expect(result.totals).toEqual({ generated: 1, skipped: 1, failed: 0, refused: 0 });
+    expect(result.totals).toEqual({ generated: 1, copied: 0, skipped: 1, failed: 0, refused: 0 });
     expect(readClip("voice/default/tail/x.mp3")).toBe("old voice/default/tail/x.mp3");
   });
 
@@ -233,7 +236,7 @@ describe("runGeneration — stale dependencies", () => {
     const result = await promise;
 
     expect(synthesize).not.toHaveBeenCalled();
-    expect(result.totals).toEqual({ generated: 0, skipped: 0, failed: 0, refused: 1 });
+    expect(result.totals).toEqual({ generated: 0, copied: 0, skipped: 0, failed: 0, refused: 1 });
     expect(manifest.entries["voice/default/tail/x.mp3"]).toBeUndefined();
     expect(log.lines.join("\n")).toContain(
       'voice/default/tail/x.mp3  —  REFUSED: dependency "intro/x" is out of date (its manifest row was cut from a different config) and is not cut in this run; cut it first with --voice default --group intro --entry x',
@@ -252,7 +255,7 @@ describe("runGeneration — stale dependencies", () => {
       dryRun: true,
     });
 
-    expect((await promise).totals).toEqual({ generated: 0, skipped: 0, failed: 0, refused: 1 });
+    expect((await promise).totals).toEqual({ generated: 0, copied: 0, skipped: 0, failed: 0, refused: 1 });
     expect(log.lines.join("\n")).toContain('REFUSED: dependency "intro/x" is out of date');
   });
 
@@ -307,7 +310,7 @@ describe("runGeneration — stale dependencies", () => {
       scope: { voices: null, groups: null, entries: ["x"] },
     });
 
-    expect((await promise).totals).toEqual({ generated: 2, skipped: 0, failed: 0, refused: 0 });
+    expect((await promise).totals).toEqual({ generated: 2, copied: 0, skipped: 0, failed: 0, refused: 0 });
     expect(synthesize.mock.calls[1]![0].previous_request_ids).toEqual(["req-1"]);
   });
 
@@ -318,7 +321,7 @@ describe("runGeneration — stale dependencies", () => {
 
     const { promise, synthesize } = run({ voiceConfigs: new Map([["default", voice]]), manifest, dryRun: true });
 
-    expect((await promise).totals).toEqual({ generated: 2, skipped: 0, failed: 0, refused: 0 });
+    expect((await promise).totals).toEqual({ generated: 2, copied: 0, skipped: 0, failed: 0, refused: 0 });
     expect(synthesize).not.toHaveBeenCalled();
     expect(manifest.entries["voice/default/intro/x.mp3"]!.hash).toBe("flash-era-hash");
     expect(fs.existsSync(path.join(root, "voice/default/tail/x.mp3"))).toBe(false);
@@ -342,7 +345,7 @@ describe("runGeneration — stale dependencies", () => {
     const result = await promise;
 
     expect(synthesize).toHaveBeenCalledTimes(1);
-    expect(result.totals).toEqual({ generated: 0, skipped: 0, failed: 3, refused: 0 });
+    expect(result.totals).toEqual({ generated: 0, copied: 0, skipped: 0, failed: 3, refused: 0 });
     expect(log.lines.join("\n")).toContain(
       'voice/default/tail/x.mp3  —  FAILED: dependency "intro/x" failed in this run',
     );
@@ -364,8 +367,247 @@ describe("runGeneration — stale dependencies", () => {
     const result = await promise;
 
     expect(synthesize).not.toHaveBeenCalled();
-    expect(result.totals).toEqual({ generated: 0, skipped: 0, failed: 1, refused: 1 });
+    expect(result.totals).toEqual({ generated: 0, copied: 0, skipped: 0, failed: 1, refused: 1 });
     expect(log.lines.join("\n")).toContain('FAILED: dependency "intro/x" was refused in this run');
+  });
+});
+
+describe("runGeneration — copies between voices", () => {
+  const groups = {
+    intro: [{ name: "x", text: "Last lap was." }],
+    tail: [{ name: "x", text: "point four", previous_request_ids: ["intro/x"] }],
+  };
+
+  it("copies an identical entry under a second voice instead of requesting it", async () => {
+    const manifest = emptyManifest();
+    const shawn = buildVoice(groups, { label: "Short callouts" });
+
+    const { promise, synthesize, persistManifest } = run({
+      voiceConfigs: new Map([
+        ["shawn", shawn],
+        ["default", buildVoice(groups)],
+      ]),
+      manifest,
+    });
+    const result = await promise;
+
+    expect(synthesize).toHaveBeenCalledTimes(2);
+    expect(result.perVoice.get("default")).toEqual({ generated: 2, copied: 0, skipped: 0, failed: 0, refused: 0 });
+    expect(result.perVoice.get("shawn")).toEqual({ generated: 0, copied: 2, skipped: 0, failed: 0, refused: 0 });
+    expect(persistManifest).toHaveBeenCalledTimes(4);
+
+    for (const key of ["intro/x", "tail/x"]) {
+      const source = manifest.entries[`voice/default/${key}.mp3`]!;
+
+      expect(readClip(`voice/shawn/${key}.mp3`)).toBe(readClip(`voice/default/${key}.mp3`));
+      expect(manifest.entries[`voice/shawn/${key}.mp3`]).toEqual({
+        hash: hashOf(shawn, key),
+        voiceId: "eleven-voice-id",
+        model: source.model,
+        textPreview: source.textPreview,
+        generatedAt: NOW.toISOString(),
+        requestId: source.requestId,
+      });
+    }
+  });
+
+  it("copies byte for byte from a take already on disk, under another group and name", async () => {
+    const manifest = emptyManifest();
+    const shawn = buildVoice({ g: [{ name: "y", text: "Box this lap" }] });
+    const defaultVoice = buildVoice({ pit: [{ name: "box", text: "Box this lap" }] });
+    const bytes = Buffer.from([0xff, 0xfb, 0x90, 0x00, 0x0a, 0x0d, 0x1a]);
+
+    fs.mkdirSync(path.join(root, "voice/default/pit"), { recursive: true });
+    fs.writeFileSync(path.join(root, "voice/default/pit/box.mp3"), bytes);
+    manifest.entries["voice/default/pit/box.mp3"] = {
+      hash: hashOf(defaultVoice, "pit/box"),
+      voiceId: "eleven-voice-id",
+      model: "eleven_v4",
+      textPreview: "Box this lap",
+      generatedAt: "2026-11-01T00:00:00.000Z",
+      requestId: "req-paid-once",
+    };
+
+    const processed = path.join(root, ".cache", "filter-abc", "voice", "shawn", "g", "y.mp3");
+
+    fs.mkdirSync(path.dirname(processed), { recursive: true });
+    fs.writeFileSync(processed, "stale processed");
+
+    const { promise, synthesize, log } = run({
+      voiceConfigs: new Map([
+        ["default", defaultVoice],
+        ["shawn", shawn],
+      ]),
+      manifest,
+      scope: { voices: ["shawn"], groups: null, entries: null },
+    });
+    const result = await promise;
+
+    expect(synthesize).not.toHaveBeenCalled();
+    expect(result.totals.copied).toBe(1);
+    expect(fs.readFileSync(path.join(root, "voice/shawn/g/y.mp3")).equals(bytes)).toBe(true);
+    expect(manifest.entries["voice/shawn/g/y.mp3"]!.requestId).toBe("req-paid-once");
+    expect(fs.existsSync(processed)).toBe(false);
+    expect(log.lines).toContain("[copy] voice/shawn/g/y.mp3 from voice/default/pit/box.mp3");
+  });
+
+  it("reports WOULD COPY in a dry run, against a take the same dry run would cut, and writes nothing", async () => {
+    const manifest = emptyManifest();
+
+    const { promise, synthesize, log } = run({
+      voiceConfigs: new Map([
+        ["default", buildVoice(groups)],
+        ["shawn", buildVoice(groups)],
+      ]),
+      manifest,
+      dryRun: true,
+    });
+    const result = await promise;
+
+    expect(synthesize).not.toHaveBeenCalled();
+    expect(result.totals).toEqual({ generated: 2, copied: 2, skipped: 0, failed: 0, refused: 0 });
+    expect(log.lines).toContain("[dry-run] WOULD COPY voice/shawn/intro/x.mp3 from voice/default/intro/x.mp3");
+    expect(log.lines).toContain("[dry-run] WOULD COPY voice/shawn/tail/x.mp3 from voice/default/tail/x.mp3");
+    expect(manifest.entries).toEqual({});
+    expect(fs.existsSync(path.join(root, "voice"))).toBe(false);
+  });
+
+  it("requests rather than copies when the other voice's clip is missing, or its row is stale", async () => {
+    const defaultVoice = buildVoice({ g: [{ name: "x", text: "hello" }] });
+    const shawn = buildVoice({ g: [{ name: "x", text: "hello" }] });
+    const manifest = emptyManifest();
+
+    manifest.entries["voice/default/g/x.mp3"] = {
+      hash: hashOf(defaultVoice, "g/x"),
+      voiceId: "eleven-voice-id",
+      model: "eleven_v4",
+      textPreview: "hello",
+      generatedAt: "2026-11-01T00:00:00.000Z",
+      requestId: "req-gone",
+    };
+
+    const missing = run({
+      voiceConfigs: new Map([
+        ["default", defaultVoice],
+        ["shawn", shawn],
+      ]),
+      manifest,
+      scope: { voices: ["shawn"], groups: null, entries: null },
+      dryRun: true,
+    });
+
+    expect((await missing.promise).totals).toEqual({ generated: 1, copied: 0, skipped: 0, failed: 0, refused: 0 });
+
+    const stale = emptyManifest();
+
+    seed(stale, "voice/default/g/x.mp3", "flash-era-hash", "req-flash");
+
+    const staleRun = run({
+      voiceConfigs: new Map([
+        ["default", defaultVoice],
+        ["shawn", shawn],
+      ]),
+      manifest: stale,
+      scope: { voices: ["shawn"], groups: null, entries: null },
+      dryRun: true,
+    });
+
+    expect((await staleRun.promise).totals).toEqual({ generated: 1, copied: 0, skipped: 0, failed: 0, refused: 0 });
+  });
+
+  it("never copies across a different ElevenLabs voice id, model or text", async () => {
+    const base = { g: [{ name: "x", text: "hello" }] };
+
+    for (const other of [
+      buildVoice(base, { id: "another-eleven-voice" }),
+      buildVoice(base, { model_id: "eleven_flash_v2_5" }),
+      buildVoice({ g: [{ name: "x", text: "hello there" }] }),
+    ]) {
+      const { promise, synthesize } = run({
+        voiceConfigs: new Map([
+          ["default", buildVoice(base)],
+          ["shawn", other],
+        ]),
+        manifest: emptyManifest(),
+      });
+
+      expect((await promise).totals.copied).toBe(0);
+      expect(synthesize).toHaveBeenCalledTimes(2);
+    }
+  });
+
+  it("copies each pool variant from its own counterpart, never one take into two clips", async () => {
+    const pool = {
+      flags: [
+        { name: "blue-01", text: "Blue flag" },
+        { name: "blue-02", text: "Blue flag" },
+      ],
+    };
+    const manifest = emptyManifest();
+
+    const { promise, synthesize } = run({
+      voiceConfigs: new Map([
+        ["default", buildVoice(pool)],
+        ["shawn", buildVoice(pool)],
+      ]),
+      manifest,
+    });
+    const result = await promise;
+
+    // Default's two variants share a hash but are two requests: two takes.
+    expect(synthesize).toHaveBeenCalledTimes(2);
+    expect(result.perVoice.get("shawn")!.copied).toBe(2);
+    expect(readClip("voice/shawn/flags/blue-01.mp3")).toBe(readClip("voice/default/flags/blue-01.mp3"));
+    expect(readClip("voice/shawn/flags/blue-02.mp3")).toBe(readClip("voice/default/flags/blue-02.mp3"));
+    expect(readClip("voice/shawn/flags/blue-01.mp3")).not.toBe(readClip("voice/shawn/flags/blue-02.mp3"));
+  });
+
+  it("requests a variant whose only same-hash take another of its clips already holds", async () => {
+    const manifest = emptyManifest();
+    const defaultVoice = buildVoice({ flags: [{ name: "blue", text: "Blue flag" }] });
+    const shawn = buildVoice({
+      flags: [
+        { name: "blue-01", text: "Blue flag" },
+        { name: "blue-02", text: "Blue flag" },
+      ],
+    });
+
+    const { promise, synthesize } = run({
+      voiceConfigs: new Map([
+        ["default", defaultVoice],
+        ["shawn", shawn],
+      ]),
+      manifest,
+    });
+    const result = await promise;
+
+    expect(result.perVoice.get("shawn")).toEqual({ generated: 1, copied: 1, skipped: 0, failed: 0, refused: 0 });
+    expect(synthesize).toHaveBeenCalledTimes(2);
+    expect(manifest.entries["voice/shawn/flags/blue-01.mp3"]!.requestId).not.toBe(
+      manifest.entries["voice/shawn/flags/blue-02.mp3"]!.requestId,
+    );
+  });
+
+  it("still refuses a copy whose dependency in its own voice is stale and out of scope", async () => {
+    const manifest = emptyManifest();
+    const defaultVoice = buildVoice(groups);
+    const shawn = buildVoice(groups);
+
+    seed(manifest, "voice/default/intro/x.mp3", hashOf(defaultVoice, "intro/x"), "req-intro");
+    seed(manifest, "voice/default/tail/x.mp3", hashOf(defaultVoice, "tail/x"), "req-tail");
+    seed(manifest, "voice/shawn/intro/x.mp3", "flash-era-hash", "req-flash");
+
+    const { promise, synthesize } = run({
+      voiceConfigs: new Map([
+        ["default", defaultVoice],
+        ["shawn", shawn],
+      ]),
+      manifest,
+      scope: { voices: ["shawn"], groups: ["tail"], entries: null },
+    });
+
+    expect((await promise).totals).toEqual({ generated: 0, copied: 0, skipped: 0, failed: 0, refused: 1 });
+    expect(synthesize).not.toHaveBeenCalled();
   });
 });
 
@@ -379,20 +621,20 @@ describe("scopeFlagsFor", () => {
 
 describe("formatRunSummary", () => {
   it("prints the totals, and a line per voice when more than one ran", () => {
-    const counts = { generated: 1, skipped: 2, failed: 0, refused: 3 };
+    const counts = { generated: 1, copied: 4, skipped: 2, failed: 0, refused: 3 };
     const lines = formatRunSummary(
       {
         totals: counts,
         perVoice: new Map([
           ["default", counts],
-          ["shawn", { generated: 0, skipped: 0, failed: 0, refused: 0 }],
+          ["shawn", { generated: 0, copied: 0, skipped: 0, failed: 0, refused: 0 }],
         ]),
       },
       true,
     );
 
     expect(lines[0]).toBe(
-      "Done. 1 would be generated, 2 skipped (cache hit), 0 failed, 3 refused (pause marks or a stale dependency)",
+      "Done. 1 would be generated, 4 would be copied, 2 skipped (cache hit), 0 failed, 3 refused (pause marks or a stale dependency)",
     );
     expect(lines).toHaveLength(3);
     expect(lines[1]).toMatch(/^ {2}default: 1 would be generated/);
