@@ -32,6 +32,7 @@ import {
   START_LIGHT_CALLOUTS,
   TIRE_WEAR_CALLOUTS,
   TRACK_CONDITIONS_CALLOUTS,
+  TRAFFIC_CALLOUTS,
 } from "@iracedeck/callout-settings";
 import { describe, expect, it } from "vitest";
 
@@ -68,6 +69,7 @@ import { SCENARIO_ID_TO_PIT_READBACK_ID } from "./readback.js";
 import { SCENARIO_ID_TO_SECTOR_COMPARISON_ID } from "./sector-comparison.js";
 import { SCENARIO_ID_TO_SECTOR_START_ID } from "./sector-start.js";
 import { SCENARIO_ID_TO_SESSION_START_ID } from "./session-start.js";
+import { SCENARIO_ID_TO_TRAFFIC_ID } from "./traffic.js";
 
 // Vite's `import.meta.glob`, typed for the one form the completeness check
 // uses, as `sim-events-iracing`'s tick-order test does: this package's tests
@@ -214,6 +216,7 @@ const GATED: readonly GatedFamily[] = [
   { name: "start-light", scenarios: SCENARIO_ID_TO_START_LIGHT_ID, family: START_LIGHT_CALLOUTS },
   { name: "tire-wear", scenarios: SCENARIO_ID_TO_TIRE_WEAR_ID, family: TIRE_WEAR_CALLOUTS },
   { name: "track-conditions", scenarios: SCENARIO_ID_TO_TRACK_CONDITIONS_ID, family: TRACK_CONDITIONS_CALLOUTS },
+  { name: "traffic", scenarios: SCENARIO_ID_TO_TRAFFIC_ID, family: TRAFFIC_CALLOUTS },
 ];
 
 describe.each(GATED)("$name scenarios", ({ scenarios, family }) => {
