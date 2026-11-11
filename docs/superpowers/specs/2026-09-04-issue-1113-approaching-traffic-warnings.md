@@ -81,6 +81,60 @@ Hold and pit-exit traffic fire at `WEIGHT.SAFETY` with `interrupt: true`: a car 
 
 `traffic.rejoin { verdict: "clear" | "notice" | "hold" | "go", seconds?: number }` and `traffic.pitExit { verdict: "clear" | "traffic", seconds?: number }`, with harness entries. The pit-exit lines speak no number; `seconds` (the nearest car's arrival relative to the player's, negative before) stays on the event for logs and the harness. The harness needs a multi-car telemetry preset for both, since the existing shortcuts drive single events, not a field.
 
+## Amendment, 2026-11-11: alert, never instruct; a number only for a close car; pit exit at the stall
+
+Decided by Niklas directly with the #1113 lead, after three drafts he turned down (a hold/go instruction, coarse buckets, and "about ten" for nineteen seconds). This section supersedes decision 3, decision 4's rejoin windows and the parts of decisions 5–8 it names, and the earlier 2026-11-10 amendments where they differ.
+
+The engineer alerts, never instructs; he gives a number only for a close car; the pit-exit call is made at the stall.
+
+**Rejoin (replaces decision 3).** A stopped driver is never told to hold or go. The lines name fixed bands of the nearest predicted arrival:
+
+| Nearest arrival | Line |
+|---|---|
+| under 2 s | "Car right behind you. Watch out." |
+| 2 s to under 10 s, first call | "Car coming, about N seconds. Watch out." (N in whole seconds, rounded down) |
+| 2 s to under 10 s, later | "Now N seconds." |
+| 10 s to under 15 s | "Next car is more than ten seconds away. Be careful." |
+| 15 s or more, or no car | "Clear to rejoin." |
+
+**When the engineer speaks:**
+- **On entry:** always, so silence never means clear.
+- **On a closer band:** whenever the nearest car moves into one.
+- **"Now N":** while a car is under 10 s, each time N has dropped by 3 or more.
+- **After a close car:** once a car under 10 s has passed, he says the band of the next car once ("Clear to rejoin." or "more than ten").
+- **A car falling away** is otherwise not re-announced.
+
+The lines under 10 s, and "right behind", cut in.
+
+**An untimed car** (decision 5) withholds the two reassuring lines, "more than ten" and "Clear to rejoin." If it is the only car, the engine is silent and logs at debug.
+
+The number lines are recorded whole. The lap-time number clips were rejected: they are cut to run into "point", Terse has no "seconds" clip, and "N point M seconds" claims a precision the prediction does not have.
+
+The bands are fixed because the wording names them. This supersedes decision 4's user-set rejoin windows.
+
+**Pit exit (decision 5).**
+- **When:** the call is made the moment the player leaves the pit box, and again only if the verdict flips before the merge.
+- **Wording:** the lines are worded as the estimate they are:
+  - Default: "We're estimating traffic at the pit exit. Watch out." / "Looks like the pit exit will be clear."
+  - Terse: "Traffic likely at pit exit. Watch out." / "Pit exit looks clear."
+- **Priority:** both lines cut in, so they trump the exit readback and the tire-wear report. Those are queueable and play afterwards.
+- **Window:** the traffic window keeps `trafficPitExitBeforeSeconds` / `trafficPitExitAfterSeconds` (2 / 4).
+
+**Settings (decisions 4 and 7).** The two pit-exit window sliders and the two opt-ins. No rejoin windows and no look-ahead.
+
+**Weights (decision 6).** The rejoin lines under 10 s, "right behind", and both pit-exit lines fire at `WEIGHT.SAFETY` with `interrupt: true`. "More than ten" and "Clear to rejoin." use `WEIGHT.SAFETY` without interrupt.
+
+**Events (decision 8).**
+`traffic.rejoin` is one of:
+- `{ verdict: "rightBehind" }`
+- `{ verdict: "near"; seconds: number; first: boolean }` (`seconds` 2–9)
+- `{ verdict: "overTen" }`
+- `{ verdict: "clear" }`
+
+`traffic.pitExit` is unchanged.
+
+**Lines are composed from pools (maintainer, 2026-11-11).** A first call under 10 s is an intro, a middle naming the seconds, and an outro, each a whole sentence picked at random from its pool: eight intros, two middle wordings per number, eight outros. A "now" update is an update intro and a middle. The fixed lines (right behind, more than ten, clear to rejoin, and the two pit-exit lines) have four variants each. The joins fall at sentence ends, where a pause is natural, so variety costs no seam inside a sentence. The exact texts are in the voice configs.
+
 ## Alternatives rejected
 
 **Extending the gap engine.** It is built to suppress exactly these states and keyed to class standings; adding a stopped mode to it would fight its own gates.
