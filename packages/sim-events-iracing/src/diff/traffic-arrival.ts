@@ -8,7 +8,8 @@
  * current position, measured on the car's OWN class's reference lap, so for
  * a class it is a function of lap position alone. A car's time to reach P is
  * then `T_C(P) − CarIdxEstTime[car]`, with `T_C(P)` its class's reference time
- * at P, wrapped round the lap when the car is already past P. Using any other
+ * at P, wrapped round the lap when the car is ahead of P on the lap (decided by
+ * position, never by the sign of the difference). Using any other
  * class's reference — the player's own `CarIdxEstTime` on rejoin, say — is off
  * by the class offset, about five seconds between GTP and GTD at Monza's
  * Roggia chicane, wider than the pit-exit window.
@@ -125,12 +126,13 @@ export type TrafficReferenceSource = {
 };
 
 /**
- * Why a candidate car has no arrival time: no class for it (`noClass`), no
- * valid `CarIdxEstTime` (`noEstTime`), no source answered for its class
- * (`noReference`), or it is past P and its class's lap is unknown, so its
- * next visit cannot be timed (`noClassLap`).
+ * Why a candidate car has no arrival time: the target position is not a lap
+ * position (`noTarget`), no class for the car (`noClass`), no valid
+ * `CarIdxEstTime` (`noEstTime`), no source answered for its class
+ * (`noReference`), or it is ahead of P on the lap and its class's lap is
+ * unknown, so its next visit cannot be timed (`noClassLap`).
  */
-export type TrafficUntimedReason = "noClass" | "noEstTime" | "noReference" | "noClassLap";
+export type TrafficUntimedReason = "noTarget" | "noClass" | "noEstTime" | "noReference" | "noClassLap";
 
 /** One candidate car's arrival at P: in `seconds`, timed by `source`, or untimed for `reason`. */
 export type TrafficArrival =
@@ -375,16 +377,41 @@ export function resolveClassLapTime(
 }
 
 /**
- * A car's arrival at P, from its class's reference at P and its own
- * `CarIdxEstTime`: the difference when the car is behind P on the lap, else
- * the difference plus the class lap (`null` when that is unknown). A car whose
- * time runs past the lap end — at the line just as P lies right after it, the
- * per-car offset's doing — arrives now (`0`), never a lap later.
+ * Whether a car at lap position `carPct` must cross the start/finish line
+ * before it reaches P (`targetPct`, in [0, 1)): exactly when it is ahead of P
+ * on the lap. A position the sim reads as 1 or just past it (on the line, its
+ * time already restarted) counts as 0. The wrap is decided here, by position,
+ * never by the sign of `T(P) − estTime`: each car's estTime carries an offset
+ * of its own (±0.2 s typically, about 1 s at worst; module header), so a car
+ * just behind P can read a reference time past P's and one just past P a time
+ * short of it, and a sign test would put the first a lap away — a false clear
+ * — and the second arriving now.
  */
-export function arrivalSeconds(referenceAtP: number, carEstTime: number, classLap: number | null): number | null {
+export function crossesLineBefore(carPct: number, targetPct: number): boolean {
+  const pct = carPct >= 1 ? carPct - 1 : carPct;
+
+  return pct > targetPct;
+}
+
+/**
+ * A car's arrival at P, from its class's reference at P and its own
+ * `CarIdxEstTime`, given whether it crosses the line first
+ * ({@link crossesLineBefore}). A car that does arrives in
+ * `T(P) − estTime + classLap`, and is untimed (`null`) while the class lap is
+ * unknown. One that does not arrives in `T(P) − estTime`, needing no lap; a
+ * negative value there is the car's own offset with the car right behind P,
+ * so it arrives now (`0`). Clamped at 0 on the wrapping side too, for the same
+ * offset on a car right behind the line with P right after it.
+ */
+export function arrivalSeconds(
+  referenceAtP: number,
+  carEstTime: number,
+  crossesLine: boolean,
+  classLap: number | null,
+): number | null {
   const raw = referenceAtP - carEstTime;
 
-  if (raw >= 0) return raw;
+  if (!crossesLine) return Math.max(0, raw);
 
   if (classLap === null) return null;
 
@@ -438,12 +465,16 @@ export function scaledReferenceSource(
 }
 
 /**
- * Every candidate car's arrival at P (module header): timed by the first of
- * `sources` that answers for its class, or untimed with the reason. The wrap
- * for a car past P uses {@link resolveClassLapTime}. Pure; reads the slice.
+ * Every candidate car's arrival at P (`targetPct`, the lap position the
+ * sources answer for; module header): timed by the first of `sources` that
+ * answers for its class, or untimed with the reason. Whether a car wraps is
+ * decided by its position against P ({@link crossesLineBefore}); the wrap
+ * adds {@link resolveClassLapTime}. A `targetPct` outside [0, 1) times no car
+ * (`noTarget`), every candidate still reported. Pure; reads the slice.
  */
 export function computeTrafficArrivals(
   slice: Readonly<TrafficArrivalState>,
+  targetPct: number,
   sources: readonly TrafficReferenceSource[],
   telemetry: TrafficTelemetry,
   playerCarIdx: number,
@@ -464,8 +495,15 @@ export function computeTrafficArrivals(
 
     if (!isRacingSurface(surfaces[carIdx]) || typeof pct !== "number" || !(pct >= 0)) continue;
 
+    const classId = resolveCarClassId(telemetry, classes, carIdx);
+
+    if (!isLapFraction(targetPct)) {
+      arrivals.push({ carIdx, classId, timed: false, reason: "noTarget" });
+      continue;
+    }
+
     arrivals.push(
-      timeCar(slice, sources, estTimes[carIdx], resolveCarClassId(telemetry, classes, carIdx), carIdx, classes),
+      timeCar(slice, sources, estTimes[carIdx], crossesLineBefore(pct, targetPct), classId, carIdx, classes),
     );
   }
 
@@ -476,6 +514,7 @@ function timeCar(
   slice: Readonly<TrafficArrivalState>,
   sources: readonly TrafficReferenceSource[],
   estTime: number | undefined,
+  crossesLine: boolean,
   classId: number | null,
   carIdx: number,
   classes: TrafficClassInfo | null,
@@ -489,7 +528,8 @@ function timeCar(
 
     if (reference === null) continue;
 
-    const seconds = arrivalSeconds(reference, estTime, resolveClassLapTime(slice, classes, classId));
+    const classLap = crossesLine ? resolveClassLapTime(slice, classes, classId) : null;
+    const seconds = arrivalSeconds(reference, estTime, crossesLine, classLap);
 
     if (seconds === null) return { carIdx, classId, timed: false, reason: "noClassLap" };
 

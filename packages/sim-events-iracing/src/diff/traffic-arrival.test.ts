@@ -5,6 +5,7 @@ import { createTrafficArrivalState, type TrafficArrivalState } from "../state.js
 import {
   arrivalSeconds,
   computeTrafficArrivals,
+  crossesLineBefore,
   curveLapEnd,
   curveReferenceSource,
   landmarkReferenceSource,
@@ -327,22 +328,47 @@ describe("resolveClassLapTime", () => {
   });
 });
 
+describe("crossesLineBefore", () => {
+  it("is true exactly when the car is ahead of P on the lap", () => {
+    expect(crossesLineBefore(0.501, 0.5)).toBe(true);
+    expect(crossesLineBefore(0.998, 0.005)).toBe(true);
+    expect(crossesLineBefore(0.5, 0.5)).toBe(false);
+    expect(crossesLineBefore(0.499, 0.5)).toBe(false);
+    expect(crossesLineBefore(0.002, 0.998)).toBe(false);
+  });
+
+  it("reads a car on the line at position 1 or just past it as position 0", () => {
+    expect(crossesLineBefore(1.0000126, 0.3)).toBe(false);
+    expect(crossesLineBefore(1, 0)).toBe(false);
+  });
+});
+
 describe("arrivalSeconds", () => {
-  it("is the reference at P minus the car's estTime when the car is behind P on the lap", () => {
-    expect(arrivalSeconds(40, 30, 100)).toBe(10);
-    expect(arrivalSeconds(40, 30, null)).toBe(10);
+  it("is the reference at P minus the car's estTime for a car behind P, needing no class lap", () => {
+    expect(arrivalSeconds(40, 30, false, 100)).toBe(10);
+    expect(arrivalSeconds(40, 30, false, null)).toBe(10);
   });
 
-  it("wraps a car already past P round to its next visit by adding the class lap", () => {
-    expect(arrivalSeconds(10, 95, 100)).toBe(15);
+  it("is 0, never a lap, for a car right behind P whose own offset reads past P's time", () => {
+    expect(arrivalSeconds(40, 40.3, false, 100)).toBe(0);
+    expect(arrivalSeconds(40, 40.3, false, null)).toBe(0);
   });
 
-  it("is null for a car past P when the class lap is unknown", () => {
-    expect(arrivalSeconds(10, 95, null)).toBeNull();
+  it("adds the class lap for a car that crosses the line first", () => {
+    expect(arrivalSeconds(10, 95, true, 100)).toBe(15);
   });
 
-  it("is 0 for a car whose estTime runs past the lap end (about to cross the line just before P)", () => {
-    expect(arrivalSeconds(0.05, 100.2, 100)).toBe(0);
+  it("is a lap, never now, for a car just past P whose own offset reads short of P's time", () => {
+    expect(arrivalSeconds(40, 39.85, true, 100)).toBeCloseTo(100.15, 10);
+  });
+
+  it("is null only on the wrapping side when the class lap is unknown", () => {
+    expect(arrivalSeconds(10, 95, true, null)).toBeNull();
+    expect(arrivalSeconds(40, 39.85, true, null)).toBeNull();
+  });
+
+  it("is 0 for a crossing car whose estTime runs past the lap end, with P right after the line", () => {
+    expect(arrivalSeconds(0.05, 100.2, true, 100)).toBe(0);
   });
 });
 
@@ -404,7 +430,7 @@ describe("computeTrafficArrivals", () => {
       always("scaled", 50),
     ];
 
-    const arrivals = byCar(computeTrafficArrivals(slice, sources, telemetry, 0, null));
+    const arrivals = byCar(computeTrafficArrivals(slice, 0.5, sources, telemetry, 0, null));
 
     expect(arrivals.get(1)).toEqual({ carIdx: 1, classId: 1, timed: true, seconds: 20, source: "landmark" });
     expect(arrivals.get(2)).toEqual({ carIdx: 2, classId: 2, timed: true, seconds: 30, source: "curve" });
@@ -422,7 +448,7 @@ describe("computeTrafficArrivals", () => {
     ]);
     const sources = [{ name: "curve", referenceAt: (cls: number) => (cls === 1 ? 50 : null) }] as const;
 
-    const arrivals = byCar(computeTrafficArrivals(slice, sources, telemetry, 0, null));
+    const arrivals = byCar(computeTrafficArrivals(slice, 0.5, sources, telemetry, 0, null));
 
     expect(arrivals.get(1)).toEqual({ carIdx: 1, classId: 9, timed: false, reason: "noReference" });
     expect(arrivals.get(2)).toEqual({ carIdx: 2, classId: 1, timed: false, reason: "noClassLap" });
@@ -430,7 +456,7 @@ describe("computeTrafficArrivals", () => {
     expect(arrivals.get(4)).toEqual({ carIdx: 4, classId: null, timed: false, reason: "noClass" });
 
     // Positive control: with the class lap known the car past P is timed, wrapped.
-    const wrapped = byCar(computeTrafficArrivals(slice, sources, telemetry, 0, classInfo({ "1": 100 })));
+    const wrapped = byCar(computeTrafficArrivals(slice, 0.5, sources, telemetry, 0, classInfo({ "1": 100 })));
 
     expect(wrapped.get(2)).toEqual({ carIdx: 2, classId: 1, timed: true, seconds: 70, source: "curve" });
   });
@@ -450,15 +476,86 @@ describe("computeTrafficArrivals", () => {
     ]);
     const classes = classInfo({ "1": 100, "11": 110 }, [1, 1, 1, 1, 1, 1, 1, 11]);
 
-    const arrivals = computeTrafficArrivals(slice, [always("curve", 30)], telemetry, 0, classes);
+    const arrivals = computeTrafficArrivals(slice, 0.5, [always("curve", 30)], telemetry, 0, classes);
 
     expect(arrivals.map((arrival) => arrival.carIdx)).toEqual([5, 6, 7]);
     expect(arrivals.every((arrival) => arrival.timed)).toBe(true);
     expect(arrivals[2]).toMatchObject({ classId: 11, seconds: 20 });
   });
 
+  describe("decides the wrap by position, not by the sign of the difference", () => {
+    /** One car (car 1, class 1) against P, with the reference at P given; the player, car 0, elsewhere. */
+    function arrive(
+      targetPct: number,
+      referenceAtP: number,
+      car: { pct: number; est: number },
+      lap: number | null,
+    ): TrafficArrival {
+      const telemetry = tel([
+        { idx: 0, pct: 0.7, est: 70 },
+        { idx: 1, ...car },
+      ]);
+      const classes = lap === null ? null : classInfo({ "1": lap });
+      const [arrival] = computeTrafficArrivals(
+        createTrafficArrivalState(),
+        targetPct,
+        [always("curve", referenceAtP)],
+        telemetry,
+        0,
+        classes,
+      );
+
+      return arrival;
+    }
+
+    it("times a car 0.001 lap behind P whose offset reads 0.3 s past P as arriving now, lap known or not", () => {
+      expect(arrive(0.5, 50, { pct: 0.499, est: 50.3 }, 100)).toMatchObject({ timed: true, seconds: 0 });
+      expect(arrive(0.5, 50, { pct: 0.499, est: 50.3 }, null)).toMatchObject({ timed: true, seconds: 0 });
+    });
+
+    it("times a car 0.001 lap past P whose offset reads 0.15 s short of P as a lap away", () => {
+      const arrival = arrive(0.5, 50, { pct: 0.501, est: 49.85 }, 100);
+
+      expect(arrival).toMatchObject({ timed: true });
+      expect(arrival.timed && arrival.seconds).toBeCloseTo(100.15, 10);
+      // The lap is needed on this side only.
+      expect(arrive(0.5, 50, { pct: 0.501, est: 49.85 }, null)).toMatchObject({ timed: false, reason: "noClassLap" });
+    });
+
+    it("times a car just before the line with P just after it through the wrap", () => {
+      const arrival = arrive(0.005, 0.5, { pct: 0.998, est: 99.8 }, 100);
+
+      expect(arrival.timed && arrival.seconds).toBeCloseTo(0.7, 10);
+    });
+
+    it("times a car just after the line with P just before it as most of a lap away, no wrap", () => {
+      const arrival = arrive(0.998, 99.8, { pct: 0.002, est: 0.2 }, null);
+
+      expect(arrival.timed && arrival.seconds).toBeCloseTo(99.6, 10);
+    });
+
+    it("reads a car on the line at position 1, its time restarted, as behind P", () => {
+      const arrival = arrive(0.3, 30, { pct: 1.0000126, est: 0.0019 }, null);
+
+      expect(arrival.timed && arrival.seconds).toBeCloseTo(29.9981, 10);
+    });
+  });
+
+  it("reports every candidate untimed for a target position outside [0, 1)", () => {
+    const telemetry = tel([
+      { idx: 0, pct: 0.5, est: 50 },
+      { idx: 1, pct: 0.1, est: 10 },
+    ]);
+
+    for (const target of [-0.1, 1, Number.NaN]) {
+      expect(
+        computeTrafficArrivals(createTrafficArrivalState(), target, [always("curve", 30)], telemetry, 0, null),
+      ).toEqual([{ carIdx: 1, classId: 1, timed: false, reason: "noTarget" }]);
+    }
+  });
+
   it("answers nothing without the per-car arrays", () => {
-    expect(computeTrafficArrivals(createTrafficArrivalState(), [], {} as TelemetryData, 0, null)).toEqual([]);
+    expect(computeTrafficArrivals(createTrafficArrivalState(), 0.5, [], {} as TelemetryData, 0, null)).toEqual([]);
   });
 
   it("wraps with the class curve's lap end when the class has one", () => {
@@ -473,7 +570,7 @@ describe("computeTrafficArrivals", () => {
       { idx: 0, pct: 0.1, est: 10 },
       { idx: 1, pct: 0.9, est: 90 },
     ]);
-    const [arrival] = computeTrafficArrivals(slice, [always("scaled", 10)], telemetry, 0, classInfo({ "1": 101 }));
+    const [arrival] = computeTrafficArrivals(slice, 0.1, [always("scaled", 10)], telemetry, 0, classInfo({ "1": 101 }));
 
     // The curve ends at 100.0; CarClassEstLapTime would have said 21 s.
     expect(arrival).toMatchObject({ carIdx: 1, timed: true });
@@ -512,7 +609,7 @@ describe("computeTrafficArrivals", () => {
       updateTrafficReferenceCurves(slice, roggia, classes);
 
       const sources = [curveReferenceSource(slice, 0.3778), scaledReferenceSource(40.028, GTD, classes)];
-      const [arrival] = computeTrafficArrivals(slice, sources, stopped, player, classes);
+      const [arrival] = computeTrafficArrivals(slice, 0.3778, sources, stopped, player, classes);
       // The GTP curve at 0.3778, between cars 6 and 5: 34.908 s.
       const gtpAtP = 34.535 + ((0.3778 - 0.3756) / (0.3834 - 0.3756)) * (35.857 - 34.535);
 
@@ -526,7 +623,7 @@ describe("computeTrafficArrivals", () => {
     it("falls back to scaling before the GTP class has driven past P, within a few tenths of the curve", () => {
       const slice = createTrafficArrivalState();
       const sources = [curveReferenceSource(slice, 0.3778), scaledReferenceSource(40.028, GTD, classes)];
-      const [arrival] = computeTrafficArrivals(slice, sources, stopped, player, classes);
+      const [arrival] = computeTrafficArrivals(slice, 0.3778, sources, stopped, player, classes);
 
       expect(arrival).toMatchObject({ carIdx: 8, classId: GTP, timed: true, source: "scaled" });
       // 40.028 × 91.6077 / 105.5726 = 34.733 s at P, against the curve's 34.908.
