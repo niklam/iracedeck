@@ -134,6 +134,11 @@ import { diffTireWear } from "./diff/tire-wear.js";
 import { diffToggles } from "./diff/toggles.js";
 import { diffTrackGaps } from "./diff/track-gaps.js";
 import { diffTrackWetness, resolveReportedTrackWetness } from "./diff/track-wetness.js";
+import {
+  resolveTrafficClassInfo,
+  type TrafficClassInfo,
+  updateTrafficReferenceCurves,
+} from "./diff/traffic-arrival.js";
 import type { EmitFn, PendingEvent } from "./diff/types.js";
 import {
   isClockExpiryConfirmed,
@@ -354,6 +359,18 @@ type TranslatorInstance = {
   pitLaneTrackMemo: {
     sessionInfo: Record<string, unknown> | null;
     track: PitLaneTrackIdentity | null;
+  } | null;
+  /**
+   * The class lap times and each car's class `resolveTrafficClassInfo` last
+   * read (issue #1113), keyed on the session-info object it read, as
+   * {@link TranslatorInstance.pitLaneTrackMemo} is: the SDK hands back the
+   * same parsed object until the YAML changes, so the driver list is walked
+   * once per change rather than on every tick. Needs no reset: a new object
+   * re-reads it. `null` until first resolved.
+   */
+  trafficClassMemo: {
+    sessionInfo: Record<string, unknown> | null;
+    classes: TrafficClassInfo | null;
   } | null;
   /** The store's loader the learner is seeded from (issue #1112); `null` when none was given (learn from empty). */
   loadPitLaneLandmarks: PitLaneLandmarksLoader | null;
@@ -592,6 +609,7 @@ export function initializeSimEventsIracing(
     fuelLaps: createFuelLapTracker(),
     pitLaneLearner: createPitLaneLandmarkLearner(),
     pitLaneTrackMemo: null,
+    trafficClassMemo: null,
     loadPitLaneLandmarks: options.loadPitLaneLandmarks ?? null,
     pitLaneLandmarkLogger: logger.createScope("PitLaneLandmarks"),
     getFuelLapsLeftMarginLaps: options.getFuelLapsLeftMarginLaps ?? (() => FUEL_CALLOUT_DEFAULT_MARGIN_LAPS),
@@ -784,6 +802,25 @@ export function getLastStopTireTemps(): LastStopTireTemps | null {
  */
 export function getPitLaneLandmarks(): Record<PitLaneLandmarkName, PitLaneResolvedLandmark | null> | null {
   return instance ? resolvePitLaneLandmarks(instance.pitLaneLearner) : null;
+}
+
+/**
+ * `resolveTrafficClassInfo` once per session-info object (issue #1113). See
+ * `trafficClassMemo`.
+ */
+function resolveTrafficClassInfoMemoised(
+  self: TranslatorInstance,
+  sessionInfo: Record<string, unknown> | null,
+): TrafficClassInfo | null {
+  const memo = self.trafficClassMemo;
+
+  if (memo !== null && memo.sessionInfo === sessionInfo) return memo.classes;
+
+  const classes = resolveTrafficClassInfo(sessionInfo);
+
+  self.trafficClassMemo = { sessionInfo, classes };
+
+  return classes;
 }
 
 /**
@@ -2946,6 +2983,13 @@ function wipeStateForReplay(self: TranslatorInstance): void {
     // the one replay that must not keep it; the guard in `handleTick` clears
     // it there.
     lastStopTireTemps: self.state.lastStopTireTemps,
+    // The approaching-traffic reference curves (issue #1113), kept whole: a
+    // curve is a function of the track and the car class, which a garage
+    // visit or a replay glance does not change, and only live ticks feed it,
+    // so no replay reading can have reached it. Wiping it would only cost the
+    // arrivals their exact tier until every class had driven another lap. A
+    // session change and a disconnect still recreate it.
+    trafficArrival: self.state.trafficArrival,
   };
 
   self.state = createInitialState();
@@ -3748,6 +3792,20 @@ function handleLiveSteps(
       steps.runUnit,
       self.pitLaneLandmarkLogger,
     ),
+  );
+  // Approaching-traffic reference curves (issue #1113): every car on the
+  // racing surface is a sample of its class's reference time at its lap
+  // position, in every session type, so a class's curve is learned by the time
+  // a rejoin or a pit exit asks for it. The class info (lap times, the pace
+  // car's class) is read once per session-info object and falls back to its
+  // last good answer this session, else to `null`, the answer for absent
+  // session info, which still learns every car the telemetry gives a class.
+  // Publishes no event.
+  const trafficClasses = steps.value("resolveTrafficClassInfo", values, null, () =>
+    resolveTrafficClassInfoMemoised(self, sessionInfo),
+  );
+  steps.run("updateTrafficReferenceCurves", () =>
+    updateTrafficReferenceCurves(self.state.trafficArrival, telemetry, trafficClasses),
   );
   // The corner-name markers (issue #888), resolved from the bundled
   // lovely-track-data snapshot keyed by WeekendInfo.TrackName.
