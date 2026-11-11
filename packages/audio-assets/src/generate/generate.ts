@@ -78,6 +78,18 @@
  *                                   whichever groups are iterated. Repeatable.
  *                                   The way to cut a SLICE of one large group
  *                                   (#1127: 21 of the 1,110 car numbers).
+ *   --import <dir>                  Import takes cut outside the generator
+ *                                   (#1643): every `ok` record of
+ *                                   `<dir>/trial-manifest.json`, its file
+ *                                   `<dir>/voice/<voice>/<group>/<name>.mp3`
+ *                                   copied byte for byte and given a manifest
+ *                                   row with the entry's current hash and the
+ *                                   trial's request id, so nothing re-cuts it.
+ *                                   Any unknown entry, missing file or model
+ *                                   mismatch refuses the whole import and
+ *                                   writes nothing. Composes with --dry-run;
+ *                                   refuses --voice/--group/--entry; needs no
+ *                                   API key. See `import-takes.ts`.
  *
  * The three filters compose as an intersection: --voice default --group
  * numbers only touches voice/default/numbers/, and --group car-number --entry
@@ -102,6 +114,7 @@ import url from "node:url";
 
 import { detectReferenceCycles, loadVoiceConfigs } from "./config.ts";
 import { synthesizeSpeech } from "./elevenlabs.ts";
+import { importTakes, parseImportArg } from "./import-takes.ts";
 import { loadManifest, saveManifest } from "./manifest.ts";
 import { loadGrandfatheredPauseMarks } from "./pause-marks.ts";
 import { formatRunSummary, runGeneration } from "./run.ts";
@@ -138,16 +151,27 @@ function fail(err: unknown): never {
 async function main(): Promise<void> {
   loadDotenv();
 
+  let importDir: string | null;
   let scope: Scope;
   let remaining: string[];
 
   try {
-    ({ scope, remaining } = parseScopeArgs(process.argv.slice(2)));
+    let rest: string[];
+
+    ({ importDir, rest } = parseImportArg(process.argv.slice(2)));
+    ({ scope, remaining } = parseScopeArgs(rest));
   } catch (err) {
     fail(err);
   }
 
   const dryRun = remaining.includes("--dry-run");
+
+  if (importDir !== null) {
+    await runImport(importDir, scope, dryRun);
+
+    return;
+  }
+
   const apiKey = process.env.ELEVENLABS_API_KEY;
 
   if (!dryRun && !apiKey) {
@@ -194,6 +218,38 @@ async function main(): Promise<void> {
   for (const line of formatRunSummary(result, dryRun)) console.log(line);
 
   if (result.totals.failed > 0 || result.totals.refused > 0) process.exitCode = 1;
+}
+
+/** `--import <dir>`: no API call, so no key; every record of the trial, so no scope. */
+async function runImport(importDir: string, scope: Scope, dryRun: boolean): Promise<void> {
+  if (scope.voices || scope.groups || scope.entries) {
+    fail(
+      "--import imports every ok record of the trial and cannot be combined with --voice, --group or --entry. " +
+        "To import fewer takes, give it a directory holding only those records.",
+    );
+  }
+
+  const voiceConfigs = loadVoiceConfigs(CONFIGS_DIR);
+
+  if (dryRun) console.log("[dry-run] No file writes, no manifest changes.");
+
+  const dir = path.resolve(importDir);
+  const result = importTakes({
+    dir,
+    voiceConfigs,
+    manifest: loadManifest(MANIFEST_PATH),
+    root: packageRoot,
+    dryRun,
+    persistManifest: (manifest) => saveManifest(MANIFEST_PATH, manifest),
+  });
+
+  console.log();
+  console.log(
+    `Done. ${result.imported} ${dryRun ? "would be imported" : "imported"}, ${result.skipped} skipped (not ok), ` +
+      `${result.problems.length} problem(s)`,
+  );
+
+  if (result.problems.length > 0) process.exitCode = 1;
 }
 
 main().catch((err) => {

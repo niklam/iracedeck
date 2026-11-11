@@ -67,10 +67,11 @@ pnpm --filter @iracedeck/audio-assets pack:voice default
 
 | Flag | Description |
 |---|---|
-| `--dry-run` | List entries that would be generated/skipped. No API calls, no file writes, no manifest changes. |
+| `--dry-run` | List entries that would be generated, copied, skipped or refused. No API calls, no file writes, no manifest changes. |
 | `--voice <key>[,<key>...]` | Only iterate the named voices (e.g. `luca`). Repeatable. |
 | `--group <name>[,<name>...]` | Only iterate the named groups (e.g. `numbers`). Repeatable. |
 | `--entry <name>[,<name>...]` | Only iterate entries with these names, in whichever groups are iterated (e.g. `0,09`). Repeatable. The way to cut a slice of one large group — added for #1127 so 21 of the 1,110 car numbers could be auditioned before the rest were paid for. |
+| `--import <dir>` | Import takes cut outside the generator (#1643). `<dir>` holds `trial-manifest.json` (`{ "model", "records": [{ "key": "voice/<voice>/<group>/<name>", "status": "ok" \| "error", "requestId" }] }`) and the files `voice/<voice>/<group>/<name>.mp3`. Each `ok` take is copied byte for byte into `voice/` and given a manifest row with the entry's current hash and the trial's request id, so no later run re-cuts it; other records are skipped. An unknown voice, group or entry, a missing file or request id, a model other than the entry's `model_id`, or a record `text` other than the config's refuses the whole import and writes nothing. Composes with `--dry-run`; cannot be combined with `--voice`, `--group` or `--entry`; needs no API key. |
 
 `--voice`, `--group` and `--entry` accept either the space-separated form
 (`--voice luca`) or the equals form (`--voice=luca`). They compose as an
@@ -80,6 +81,8 @@ that reaches them, still reports them as out of date. Unknown names exit non-zer
 with the list of valid choices; an entry name is checked against the groups the
 scope iterates, so a slice that would match nothing is refused rather than
 reported as a full cache hit.
+
+Within each voice a run cuts dependencies first: a stable topological order over the `previous_request_ids` / `next_request_ids` references, config order as the tie-break, with `default` run before every other voice. An entry is hashed on its own request only, so changing an entry re-cuts that entry and none that reference it (#1643). An entry about to be cut whose referenced entry is out of date and is not cut earlier in the same run is refused, naming that entry and the `--voice/--group/--entry` scope that cuts it; one whose dependency fails or is refused in the run fails with it. An entry whose hash equals a take another voice already holds is copied (clip and request id) instead of requested, reported as `WOULD COPY` in a dry run.
 
 ### Examples
 
