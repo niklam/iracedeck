@@ -18,6 +18,7 @@ import dashBoxIconSvg from "@iracedeck/icons/toggle-ui-elements/dash-box.svg";
 import displayRefCarIconSvg from "@iracedeck/icons/toggle-ui-elements/display-ref-car.svg";
 import drivingLineIconSvg from "@iracedeck/icons/toggle-ui-elements/driving-line.svg";
 import fpsNetworkDisplayIconSvg from "@iracedeck/icons/toggle-ui-elements/fps-network-display.svg";
+import minimalDriveUiIconSvg from "@iracedeck/icons/toggle-ui-elements/minimal-drive-ui.svg";
 import radioDisplayIconSvg from "@iracedeck/icons/toggle-ui-elements/radio-display.svg";
 import replayUiIconSvg from "@iracedeck/icons/toggle-ui-elements/replay-ui.svg";
 import speedGearPedalsIconSvg from "@iracedeck/icons/toggle-ui-elements/speed-gear-pedals.svg";
@@ -28,17 +29,25 @@ import { CameraState, hasFlag } from "@iracedeck/iracing-sdk";
 import { getGlobalColors } from "@iracedeck/settings";
 import z from "zod";
 
-type UiElement =
-  | "dash-box"
-  | "speed-gear-pedals"
-  | "radio-display"
-  | "fps-network-display"
-  | "weather-radar"
-  | "virtual-mirror"
-  | "ui-edit-mode"
-  | "driving-line"
-  | "display-ref-car"
-  | "replay-ui";
+/** Every `element` value, in one place: the settings enum and the per-element maps below derive from it. */
+const UI_ELEMENTS = [
+  "dash-box",
+  "speed-gear-pedals",
+  "radio-display",
+  "fps-network-display",
+  "weather-radar",
+  "virtual-mirror",
+  "ui-edit-mode",
+  "driving-line",
+  "minimal-drive-ui",
+  "display-ref-car",
+  "replay-ui",
+] as const;
+
+type UiElement = (typeof UI_ELEMENTS)[number];
+
+/** The elements pressed through a key binding; Replay UI uses the SDK instead. */
+type KeybindUiElement = Exclude<UiElement, "replay-ui">;
 
 const ELEMENT_ICONS: Record<UiElement, string> = {
   "dash-box": dashBoxIconSvg,
@@ -49,6 +58,7 @@ const ELEMENT_ICONS: Record<UiElement, string> = {
   "virtual-mirror": virtualMirrorIconSvg,
   "ui-edit-mode": uiEditModeIconSvg,
   "driving-line": drivingLineIconSvg,
+  "minimal-drive-ui": minimalDriveUiIconSvg,
   "display-ref-car": displayRefCarIconSvg,
   "replay-ui": replayUiIconSvg,
 };
@@ -65,6 +75,7 @@ const UI_ELEMENT_TITLES: Record<UiElement, string> = {
   "virtual-mirror": "MIRROR\nVIRTUAL",
   "ui-edit-mode": "MODE\nUI EDIT",
   "driving-line": "TOGGLE\nDRIVING LINE",
+  "minimal-drive-ui": "MINIMAL\nDRIVE UI",
   "display-ref-car": "CAR\nREFERENCE",
   "replay-ui": "TOGGLE\nREPLAY UI",
 };
@@ -73,9 +84,10 @@ const UI_ELEMENT_TITLES: Record<UiElement, string> = {
  * @internal Exported for testing
  *
  * Mapping from UI element setting values (kebab-case) to global settings keys.
- * Does not include "replay-ui" since that uses the SDK, not keyboard shortcuts.
+ * Does not include "replay-ui" since that uses the SDK, not keyboard shortcuts;
+ * every other element must have an entry, which the type enforces.
  */
-export const UI_ELEMENT_GLOBAL_KEYS: Record<string, string> = {
+export const UI_ELEMENT_GLOBAL_KEYS: Readonly<Record<KeybindUiElement, string>> = {
   "dash-box": "toggleUiDashBox",
   "speed-gear-pedals": "toggleUiSpeedGearPedals",
   "radio-display": "toggleUiRadioDisplay",
@@ -84,27 +96,20 @@ export const UI_ELEMENT_GLOBAL_KEYS: Record<string, string> = {
   "virtual-mirror": "toggleUiVirtualMirror",
   "ui-edit-mode": "toggleUiEditMode",
   "driving-line": "toggleUiDrivingLine",
+  "minimal-drive-ui": "toggleUiMinimalDriveUi",
   "display-ref-car": "toggleUiDisplayRefCar",
 };
+
+/** The global key binding an element taps, or `undefined` for Replay UI (SDK). */
+function bindingKeyFor(element: UiElement): string | undefined {
+  return element === "replay-ui" ? undefined : UI_ELEMENT_GLOBAL_KEYS[element];
+}
 
 /**
  * @internal Exported for testing
  */
 export const ToggleUiElementsSettings = CommonSettings.extend({
-  element: z
-    .enum([
-      "dash-box",
-      "speed-gear-pedals",
-      "radio-display",
-      "fps-network-display",
-      "weather-radar",
-      "virtual-mirror",
-      "ui-edit-mode",
-      "driving-line",
-      "display-ref-car",
-      "replay-ui",
-    ])
-    .default("dash-box"),
+  element: z.enum(UI_ELEMENTS).default("dash-box"),
 });
 
 export type ToggleUiElementsSettings = z.infer<typeof ToggleUiElementsSettings>;
@@ -204,30 +209,20 @@ export class ToggleUiElements extends SimIRacingAction<ToggleUiElementsSettings>
     }
   }
 
-  private async sendKeyBindingForElement(element: string): Promise<void> {
-    const settingKey = UI_ELEMENT_GLOBAL_KEYS[element];
-
-    if (!settingKey) {
-      this.logger.warn(`No global key mapping for element: ${element}`);
-
-      return;
-    }
-
-    await this.tapBinding(settingKey);
+  private async sendKeyBindingForElement(element: KeybindUiElement): Promise<void> {
+    await this.tapBinding(UI_ELEMENT_GLOBAL_KEYS[element]);
   }
 
   private async updateDisplay(
     ev: IDeckWillAppearEvent<ToggleUiElementsSettings> | IDeckDidReceiveSettingsEvent<ToggleUiElementsSettings>,
     settings: ToggleUiElementsSettings,
   ): Promise<void> {
-    const svgDataUri = generateToggleUiElementsSvg(
-      settings,
-      this.isBindingMissing(UI_ELEMENT_GLOBAL_KEYS[settings.element]),
-    );
+    const bindingKey = bindingKeyFor(settings.element);
+    const svgDataUri = generateToggleUiElementsSvg(settings, this.isBindingMissing(bindingKey));
     await ev.action.setTitle("");
     await this.setKeyImage(ev, svgDataUri);
     this.setRegenerateCallback(ev.action.id, () =>
-      generateToggleUiElementsSvg(settings, this.isBindingMissing(UI_ELEMENT_GLOBAL_KEYS[settings.element])),
+      generateToggleUiElementsSvg(settings, this.isBindingMissing(bindingKey)),
     );
   }
 }

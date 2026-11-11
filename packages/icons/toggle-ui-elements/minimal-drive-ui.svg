@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 92 56" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#1a3a3a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"MINIMAL\nDRIVE UI"},"border":{"color":"#3a6a6a"}}</desc>
+
+
+    <rect x="2" y="2" width="88" height="52" rx="6" fill="#1a2a2a" stroke="#888888" stroke-width="3"/>
+    <rect x="10" y="10" width="26" height="12" rx="2" fill="#888888" opacity="0.3" stroke="none"/>
+    <rect x="40" y="24" width="18" height="10" rx="2" fill="#888888" opacity="0.3" stroke="none"/>
+    <rect x="62" y="36" width="20" height="10" rx="2" fill="#888888" opacity="0.3" stroke="none"/>
+    <rect x="60" y="10" width="22" height="18" rx="2" fill="{{graphic1Color}}" stroke="none"/>
+    <rect x="10" y="38" width="30" height="8" rx="2" fill="{{graphic1Color}}" stroke="none"/>
+
+</svg>

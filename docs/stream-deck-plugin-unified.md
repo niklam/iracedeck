@@ -77,6 +77,8 @@ Toggles various UI display elements on/off.
 | Weather Radar         | Shift+Alt+R | -               | None       | -     |
 | Virtual Mirror        | Alt+M       | -               | None       | -     |
 | UI Edit Mode          | Alt+K       | -               | None       | -     |
+| Driving Line          | Ctrl+Alt+L  | -               | None       | -     |
+| Minimal Drive UI      | _(configurable)_ | Toggle Minimal Drive UI | None | Unassigned by default, in iRacing too (#1584) |
 | Display Reference Car | Ctrl+C      | -               | None       | -     |
 | Replay UI Visibility  | _(SDK)_     | SDK             | None       | -     |
 

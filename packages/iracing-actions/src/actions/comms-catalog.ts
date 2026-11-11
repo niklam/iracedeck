@@ -542,6 +542,7 @@ export const COMMS_CATALOG: Record<string, ActionCommEntry> = {
     "virtual-mirror": keybind("toggleUiVirtualMirror"),
     "ui-edit-mode": keybind("toggleUiEditMode"),
     "driving-line": keybind("toggleUiDrivingLine"),
+    "minimal-drive-ui": keybind("toggleUiMinimalDriveUi"),
     "display-ref-car": keybind("toggleUiDisplayRefCar"),
     "replay-ui": api,
   }),

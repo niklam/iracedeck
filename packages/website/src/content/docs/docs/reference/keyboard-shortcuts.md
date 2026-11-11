@@ -48,6 +48,8 @@ Actions marked "Available via SDK" use SDK commands directly and don't require k
 | Toggle Weather Radar | Shift+Alt+R | No | Toggle Weather Radar |
 | Toggle Virtual Mirror | Alt+M | No | Toggle Virtual Mirror |
 | Toggle UI Edit | Alt+K | No | Toggle UI Edit |
+| Toggle Driving Line | Ctrl+Alt+L | No | Driving Line |
+| Toggle Minimal Drive UI | - | No | Toggle Minimal Drive UI |
 | Adjust UI Size | Ctrl+PageDown / Ctrl+PageUp | No | Scale UI Up / Down |
 | Pause Sim | Shift+P | No | Pause Sim |
 
