@@ -54,5 +54,9 @@ export type {
   TireCornerWear,
   TireWearReport,
   TireZone,
+  TrafficPitExit,
+  TrafficPitExitVerdict,
+  TrafficRejoin,
+  TrafficRejoinVerdict,
 } from "./event-catalog.js";
 export { OpponentPenaltyFlag, TrackWetness } from "./event-catalog.js";

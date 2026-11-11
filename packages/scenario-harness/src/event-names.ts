@@ -107,6 +107,18 @@ export const EVENT_TEMPLATES = [
   { name: "pitStall.entered", description: "Stopped in your pit stall", data: {} },
   { name: "pitStall.departed", description: "Left pit stall", data: {} },
   {
+    name: "traffic.rejoin",
+    description:
+      "Stopped on track, whether a car is coming (issue #1113) — verdict: clear / notice / hold / go; seconds: the notice window for clear, the nearest car's arrival for notice and hold, absent for go",
+    data: { verdict: "hold", seconds: 4 } satisfies SimEventMap["traffic.rejoin"]["data"],
+  },
+  {
+    name: "traffic.pitExit",
+    description:
+      "Leaving the pits, whether a car reaches the exit blend when you do (issue #1113) — verdict: clear / traffic; seconds: the nearest car's arrival relative to yours (negative before), not spoken",
+    data: { verdict: "traffic", seconds: 1.5 } satisfies SimEventMap["traffic.pitExit"]["data"],
+  },
+  {
     name: "pitBox.countdown",
     description: "Pit-box count-in mark (issue #600) — five 120 m → pit-now 20 m to the box",
     data: { mark: "three" },

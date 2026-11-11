@@ -11,6 +11,10 @@ import type {
   SessionClass,
   SessionStartConditions,
   SimEventMap,
+  TrafficPitExit,
+  TrafficPitExitVerdict,
+  TrafficRejoin,
+  TrafficRejoinVerdict,
 } from "./index.js";
 
 /**
@@ -74,5 +78,32 @@ describe("pitLane.landmarkLearned", () => {
     expectTypeOf<Data["landmark"]>().toEqualTypeOf<PitLaneLandmarkName>();
     expectTypeOf<Data["sample"]>().toEqualTypeOf<PitLaneLandmarkSample>();
     expectTypeOf<Data["summary"]>().toEqualTypeOf<PitLaneLandmarkSummary>();
+  });
+});
+
+/**
+ * #1113: the approaching-traffic payloads are sim-neutral verdicts with an
+ * optional number of seconds. Pinned so a change to what the callouts read is
+ * a deliberate edit here too (type test: a mismatch fails `pnpm typecheck`).
+ */
+describe("traffic.rejoin and traffic.pitExit", () => {
+  it("carries a rejoin verdict and, except for go, its seconds", () => {
+    expectTypeOf<SimEventMap["traffic.rejoin"]["event"]>().toEqualTypeOf<"traffic.rejoin">();
+    expectTypeOf<SimEventMap["traffic.rejoin"]["data"]>().toEqualTypeOf<{
+      verdict: "clear" | "notice" | "hold" | "go";
+      seconds?: number;
+    }>();
+    expectTypeOf<SimEventMap["traffic.rejoin"]["data"]>().toEqualTypeOf<TrafficRejoin>();
+    expectTypeOf<TrafficRejoin["verdict"]>().toEqualTypeOf<TrafficRejoinVerdict>();
+  });
+
+  it("carries a pit-exit verdict and the nearest car's relative arrival", () => {
+    expectTypeOf<SimEventMap["traffic.pitExit"]["event"]>().toEqualTypeOf<"traffic.pitExit">();
+    expectTypeOf<SimEventMap["traffic.pitExit"]["data"]>().toEqualTypeOf<{
+      verdict: "clear" | "traffic";
+      seconds?: number;
+    }>();
+    expectTypeOf<SimEventMap["traffic.pitExit"]["data"]>().toEqualTypeOf<TrafficPitExit>();
+    expectTypeOf<TrafficPitExit["verdict"]>().toEqualTypeOf<TrafficPitExitVerdict>();
   });
 });

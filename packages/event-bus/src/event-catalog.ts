@@ -652,6 +652,47 @@ export type PitLaneLandmarkLearned = {
 };
 
 /**
+ * The Race Engineer's verdict on rejoining the track from a stop (issue
+ * #1113): `clear` (no car inside the notice window), `notice` (a car inside
+ * it, outside the hold window: get moving), `hold` (a car inside the hold
+ * window: stay put), and `go` (after a hold, nothing inside the hold window
+ * any more).
+ */
+export type TrafficRejoinVerdict = "clear" | "notice" | "hold" | "go";
+
+/** Payload of `traffic.rejoin` (issue #1113). */
+export type TrafficRejoin = {
+  verdict: TrafficRejoinVerdict;
+  /**
+   * Whole seconds, rounded down (the cautious direction). For `clear`, the
+   * notice window the line speaks ("nothing behind you for the next N
+   * seconds"); for `notice` and `hold`, the nearest timed car's arrival at the
+   * player's position, at least 2 for `notice` and at least 1 for `hold`.
+   * Absent for `go`.
+   */
+  seconds?: number;
+};
+
+/**
+ * The Race Engineer's verdict on the pit exit (issue #1113): `traffic` when a
+ * car reaches the end of the exit blend close to the player's own arrival
+ * there (or a car's arrival cannot be timed), `clear` otherwise.
+ */
+export type TrafficPitExitVerdict = "clear" | "traffic";
+
+/** Payload of `traffic.pitExit` (issue #1113). */
+export type TrafficPitExit = {
+  verdict: TrafficPitExitVerdict;
+  /**
+   * The nearest timed car's arrival at the end of the exit blend relative to
+   * the player's own, in seconds (negative: before the player). For logs and
+   * the scenario harness; the lines speak no number. Absent when no car on
+   * track could be timed.
+   */
+  seconds?: number;
+};
+
+/**
  * Discriminated union of every event the bus knows about, keyed by event
  * name. Each entry binds an event name to its payload type — adding an
  * event means adding an entry here.
@@ -677,6 +718,24 @@ export type SimEventMap = {
   "pitLane.landmarkLearned": SimEvent<"pitLane.landmarkLearned", PitLaneLandmarkLearned>;
   "pitStall.entered": SimEvent<"pitStall.entered", EmptySimEventPayload>;
   "pitStall.departed": SimEvent<"pitStall.departed", EmptySimEventPayload>;
+  /**
+   * The player is stopped or crawling on the racing surface (or beside it),
+   * out of the pits, past the green (issue #1113): whether a car is coming.
+   * Published on the stop's first verdict, on every verdict change, and when
+   * the nearest arrival has moved by a few seconds since the last one; `go`
+   * once after a hold, when nothing is inside the hold window any more. Never
+   * on every evaluation. From live, in-car telemetry only.
+   */
+  "traffic.rejoin": SimEvent<"traffic.rejoin", TrafficRejoin>;
+  /**
+   * The player is driving out of the pits (issue #1113): whether a car on
+   * track will reach the end of the exit blend about when they do. Published
+   * once when the player's own arrival there drops under the notice window,
+   * and again only if the verdict flips before they reach it. Nothing when
+   * the track's pit-lane landmarks are not learned. From live, in-car
+   * telemetry only.
+   */
+  "traffic.pitExit": SimEvent<"traffic.pitExit", TrafficPitExit>;
   /**
    * Pit-box count-in (issue #600). Fired once per distance mark as the player
    * drives down pit road toward their own pit box: "five" (120 m remaining),
