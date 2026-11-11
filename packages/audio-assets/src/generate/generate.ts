@@ -67,7 +67,8 @@
  * matching the existing convention (see root .gitignore and the mirabox
  * plugin's MIRABOX_PLUGINS_DIR setup).
  *
- * Flags:
+ * Flags (any other argument refuses the run before anything is loaded, so a
+ * typo such as `--dryrun` can never start a paid run — `cli-args.ts`):
  *   --dry-run                       Report which entries would be generated /
  *                                   skipped without calling the API, writing
  *                                   files, or updating the manifest.
@@ -112,13 +113,14 @@ import path from "node:path";
 import process from "node:process";
 import url from "node:url";
 
+import { type GenerateArgs, parseGenerateArgs } from "./cli-args.ts";
 import { detectReferenceCycles, loadVoiceConfigs } from "./config.ts";
 import { synthesizeSpeech } from "./elevenlabs.ts";
-import { importTakes, parseImportArg } from "./import-takes.ts";
+import { importTakes } from "./import-takes.ts";
 import { loadManifest, saveManifest } from "./manifest.ts";
 import { loadGrandfatheredPauseMarks } from "./pause-marks.ts";
 import { formatRunSummary, runGeneration } from "./run.ts";
-import { formatScope, parseScopeArgs, type Scope, validateScope } from "./scope.ts";
+import { formatScope, type Scope, validateScope } from "./scope.ts";
 
 const __dirname = path.dirname(url.fileURLToPath(import.meta.url));
 const packageRoot = path.resolve(__dirname, "../..");
@@ -149,22 +151,20 @@ function fail(err: unknown): never {
 }
 
 async function main(): Promise<void> {
-  loadDotenv();
-
-  let importDir: string | null;
-  let scope: Scope;
-  let remaining: string[];
+  // First, before anything is loaded: an argument the generator does not
+  // read (a `--dryrun` typo) refuses the run rather than being ignored into
+  // a paid one.
+  let args: GenerateArgs;
 
   try {
-    let rest: string[];
-
-    ({ importDir, rest } = parseImportArg(process.argv.slice(2)));
-    ({ scope, remaining } = parseScopeArgs(rest));
+    args = parseGenerateArgs(process.argv.slice(2));
   } catch (err) {
     fail(err);
   }
 
-  const dryRun = remaining.includes("--dry-run");
+  const { scope, dryRun, importDir } = args;
+
+  loadDotenv();
 
   if (importDir !== null) {
     await runImport(importDir, scope, dryRun);

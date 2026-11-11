@@ -82,7 +82,9 @@ with the list of valid choices; an entry name is checked against the groups the
 scope iterates, so a slice that would match nothing is refused rather than
 reported as a full cache hit.
 
-Within each voice a run cuts dependencies first: a stable topological order over the `previous_request_ids` / `next_request_ids` references, config order as the tie-break, with `default` run before every other voice. An entry is hashed on its own request only, so changing an entry re-cuts that entry and none that reference it (#1643). An entry about to be cut whose referenced entry is out of date and is not cut earlier in the same run is refused, naming that entry and the `--voice/--group/--entry` scope that cuts it; one whose dependency fails or is refused in the run fails with it. An entry whose hash equals a take another voice already holds is copied (clip and request id) instead of requested, reported as `WOULD COPY` in a dry run.
+Within each voice a run cuts dependencies first: a stable topological order over the `previous_request_ids` / `next_request_ids` references, config order as the tie-break, with `default` run before every other voice. An entry is hashed on its own request only, so changing an entry re-cuts that entry and none that reference it (#1643). An entry about to be cut whose referenced entry is out of date and is not cut earlier in the same run is refused, naming that entry and the `--voice/--group/--entry` scope that cuts it; one whose dependency fails or is refused in the run fails with it. An entry whose request is identical to a take another voice already holds (the same hash, and every `<group>/<entry-name>` reference resolving to the same request id in both voices) is copied (clip and request id) instead of requested, reported as `WOULD COPY` in a dry run; a dry run plans what each clip will hold, so its counts are the live run's.
+
+Any other argument refuses the run before anything is loaded, naming it and listing the valid flags, so a typo such as `--dryrun` never starts a paid run.
 
 ### Examples
 
