@@ -52,6 +52,12 @@
  * (`renderSelectControlPendingStrip` / `renderAdjustControlPendingStrip`), and
  * a long release commits the switch. A knob never reports its release, so it
  * never previews.
+ *
+ * Every push to the dial's screen goes through one per-context
+ * {@link IconUpdateThrottle} (encoders rule 6, at most 10 per second): a burst
+ * of distinct frames — quick switches, a preview and its revert, a refresh —
+ * sends the first at once and coalesces the rest into one trailing push that
+ * draws the state at that moment, so the strip always ends on the latest look.
  */
 import {
   applyBindingWarning,
@@ -61,6 +67,7 @@ import {
   type DialReleaseKind,
   getDualPressThresholdMs,
   type HoldPreview,
+  IconUpdateThrottle,
   type IDeckActionContext,
   NOOP_HOLD_PREVIEW,
   svgToDataUri,
@@ -703,9 +710,24 @@ interface BlackBoxDialContext {
   /**
    * The displayed signature of the last frame whose push STARTED (cleared when
    * that push fails), which is the frame the strip ends on, so a global-settings
-   * echo or a preview revert re-renders only when the strip would change.
+   * echo or a preview revert re-renders only when the strip would change. A
+   * trailing push still waiting in the throttle draws the state at its flush,
+   * so a skip decided against this while one waits still ends on the latest.
    */
   lastRenderSig: string | null;
+  /**
+   * This context's screen pushes, at most 10 per second (encoders rule 6). Its
+   * lifetime is the context's: `willDisappear` clears it, so no trailing push
+   * reaches a dial that is gone.
+   */
+  renderThrottle: IconUpdateThrottle;
+  /**
+   * The next flush pushes even when the signature is unchanged: an appear or a
+   * settings delivery, whose colours the signature does not carry. Kept on the
+   * context, not in the scheduled closure, because the throttle runs only the
+   * latest schedule and a later unforced one must not drop it.
+   */
+  renderForced: boolean;
 }
 
 export interface BlackBoxSelectorDialHost {
@@ -726,13 +748,16 @@ export class BlackBoxSelectorDialSurface extends ReleaseDialSurfaceBase<BlackBox
     pushDialNameIcon(action, { line1: "BLACK", line2: "BOX", backgroundColor: "#2a2a2a" }, this.host.logger);
 
     await this.applyTriggerDescription(ctx);
-    await this.renderFeedback(ctx);
+    this.scheduleRender(ctx, true);
   }
 
   willDisappear(actionId: string): void {
-    // The context is gone, so a revert frame pushed at it would be wasted:
-    // tear the preview down without one.
-    this.contextsState.get(actionId)?.holdPreview.dispose();
+    const ctx = this.contextsState.get(actionId);
+
+    // The context is gone, so a frame pushed at it would be wasted: tear the
+    // preview down without a revert, and drop any trailing push still waiting.
+    ctx?.holdPreview.dispose();
+    ctx?.renderThrottle.clear(actionId);
     this.forgetContext(actionId);
   }
 
@@ -750,7 +775,7 @@ export class BlackBoxSelectorDialSurface extends ReleaseDialSurfaceBase<BlackBox
     }
 
     await this.applyTriggerDescription(ctx);
-    await this.renderFeedback(ctx);
+    this.scheduleRender(ctx, true);
   }
 
   async rotate(action: IDeckActionContext, dial: DialSettings, ticks: number, pressed: boolean): Promise<void> {
@@ -846,15 +871,13 @@ export class BlackBoxSelectorDialSurface extends ReleaseDialSurfaceBase<BlackBox
   refreshAll(): void {
     for (const ctx of this.contextsState.values()) {
       // Only the missing-binding warning can change from global settings; skip
-      // an echo that leaves the strip unchanged so the dial screen stays under
-      // ≤10 pushes/s. Per context: each dial's warning is about the pair its own
-      // rotation turns, or mid-hold the previewed one. A re-render draws the
-      // preview too, so a hold survives this.
+      // an echo that leaves the strip unchanged, so it spends none of the
+      // throttle's ≤10 pushes/s. Per context: each dial's warning is about the
+      // pair its own rotation turns, or mid-hold the previewed one. A re-render
+      // draws the preview too, so a hold survives this.
       if (this.displayedSignature(ctx) === ctx.lastRenderSig) continue;
 
-      this.renderFeedback(ctx).catch((err) => {
-        this.host.logger.debug(`Dial feedback refresh failed: ${String(err)}`);
-      });
+      this.scheduleRender(ctx, false);
     }
   }
 
@@ -869,6 +892,8 @@ export class BlackBoxSelectorDialSurface extends ReleaseDialSurfaceBase<BlackBox
       // being built. Where extended gestures are compiled out the no-op stays.
       holdPreview: NOOP_HOLD_PREVIEW,
       lastRenderSig: null,
+      renderThrottle: new IconUpdateThrottle(),
+      renderForced: false,
     };
     ctx.holdPreview = __FEATURE_DIAL_EXTENDED_GESTURES__
       ? createHoldPreview({
@@ -1035,29 +1060,27 @@ export class BlackBoxSelectorDialSurface extends ReleaseDialSurfaceBase<BlackBox
     }
 
     // The dial shows the new rotation at once; the write follows. Each reads
-    // ctx.dial when it runs, so two quick switches end on the last one's look.
+    // ctx.dial when it runs, so two quick switches end on the last one's look
+    // (the strip's push is throttled, and its trailing flush draws the latest).
     // A display call that fails must not cost the write: the context already
     // turns the new rotation, so skipping it would leave the stored settings
-    // and the Property Inspector on the old one until the next switch. Each is
-    // caught on its own, so a failed hint still lets the strip redraw.
+    // and the Property Inspector on the old one until the next switch. The
+    // strip's push cannot reject here (its flush logs a failure itself), so a
+    // failed hint still lets the strip redraw.
     try {
       await this.applyTriggerDescription(ctx);
     } catch (err) {
       this.host.logger.debug(`Dial trigger description failed after a rotation switch: ${String(err)}`);
     }
 
-    try {
-      await this.renderFeedback(ctx);
-    } catch (err) {
-      this.host.logger.debug(`Dial render failed after a rotation switch: ${String(err)}`);
-    }
+    this.scheduleRender(ctx, false);
 
     await persistDialPatch(ctx.action, rawSettings, { rotation: next }, this.host.logger, "rotation switch");
   }
 
   /**
    * The hold-preview threshold callback (#1120): previews the switch a long
-   * release would make. Returns whether a preview frame was pushed: none when
+   * release would make. Returns whether a preview frame was queued: none when
    * the Long Press is not a switch that does something on this dial
    * ({@link pendingRotationPreview}), and none on any screen but the Stream
    * Deck+ strip. Fires nothing — the release still decides.
@@ -1071,10 +1094,7 @@ export class BlackBoxSelectorDialSurface extends ReleaseDialSurfaceBase<BlackBox
 
     ctx.previewRotation = target;
     this.host.logger.debug(`Black box dial hold preview: ${target}`);
-    // Runs from a timer callback, with no caller left to catch a rejection.
-    this.renderFeedback(ctx).catch((err) => {
-      this.host.logger.debug(`Dial hold preview render failed: ${String(err)}`);
-    });
+    this.scheduleRender(ctx, false);
 
     return true;
   }
@@ -1089,9 +1109,7 @@ export class BlackBoxSelectorDialSurface extends ReleaseDialSurfaceBase<BlackBox
 
     if (this.displayedSignature(ctx) === ctx.lastRenderSig) return;
 
-    this.renderFeedback(ctx).catch((err) => {
-      this.host.logger.debug(`Dial hold preview revert failed: ${String(err)}`);
-    });
+    this.scheduleRender(ctx, false);
   }
 
   /**
@@ -1126,6 +1144,46 @@ export class BlackBoxSelectorDialSurface extends ReleaseDialSurfaceBase<BlackBox
     await ctx.action.setTriggerDescription(buildTriggerDescription(ctx.dial));
   }
 
+  /**
+   * Queues a push of the dial's screen through the context's throttle (rule 6).
+   * Outside its window the flush runs at once; inside it, the throttle keeps
+   * only the latest schedule and runs it at the window's end. The flush builds
+   * the frame from the state at THAT moment, so the strip always ends on the
+   * latest look and never on a frame the state has already left (the no-flash
+   * commit relies on this: a switch's frame is whatever the state is when it
+   * flushes, never the old rotation's). `force` pushes even an unchanged
+   * signature (appear, settings: the colours are not in it).
+   */
+  private scheduleRender(ctx: BlackBoxDialContext, force: boolean): void {
+    if (force) ctx.renderForced = true;
+
+    ctx.renderThrottle.schedule(ctx.action.id, () => this.flushRender(ctx));
+  }
+
+  /**
+   * The throttle's flush: pushes the current frame unless the strip already
+   * ends on it. Runs from a timer or a fire-and-forget call with no caller
+   * left to catch a rejection, so a failed push is logged here; its signature
+   * was already forgotten, so the next refresh draws it again.
+   */
+  private async flushRender(ctx: BlackBoxDialContext): Promise<void> {
+    // A context that went away (or was replaced) since the schedule draws
+    // nothing. `willDisappear` clears the throttle; this guards a replacement.
+    if (this.contextsState.get(ctx.action.id) !== ctx) return;
+
+    const forced = ctx.renderForced;
+    ctx.renderForced = false;
+
+    if (!forced && this.displayedSignature(ctx) === ctx.lastRenderSig) return;
+
+    try {
+      await this.renderFeedback(ctx);
+    } catch (err) {
+      this.host.logger.debug(`Black box dial render failed: ${String(err)}`);
+    }
+  }
+
+  /** Draws and pushes the frame for the current state. Only {@link flushRender} calls it. */
   private async renderFeedback(ctx: BlackBoxDialContext): Promise<void> {
     // The dial's own screen decides the drawing; a key or a host with no dial
     // screen has nothing to draw on (#1013).

@@ -41,6 +41,8 @@ vi.mock("@iracedeck/deck-core", async () => {
   return {
     createHoldPreview: dialGesture.createHoldPreview,
     NOOP_HOLD_PREVIEW: dialGesture.NOOP_HOLD_PREVIEW,
+    // The REAL 10/s throttle too: which frames a burst ends on is under test.
+    IconUpdateThrottle: dialGesture.IconUpdateThrottle,
     CommonSettings: {
       extend: (shape: never) => z.object(shape).passthrough(),
     },
@@ -624,8 +626,19 @@ describe("BlackBoxSelector dial surface", () => {
     vi.unstubAllGlobals();
   });
 
+  /**
+   * Lets the dial's render throttle (rule 6, 10 pushes/s) run a trailing push,
+   * as the deck's next 100 ms would. A frame pushed within 100 ms of the last
+   * waits for the window's end; this moves the clock past it.
+   */
+  function flushFrames() {
+    vi.advanceTimersByTime(100);
+  }
+
+  /** Puts the dial on the deck, then lets its appear frame's throttle window pass, as it would before a person acts. */
   async function appear(ctx: DialContext, settings: Record<string, unknown> = {}) {
     await action.onWillAppear(eventFor(ctx, settings) as never);
+    flushFrames();
   }
 
   describePressShapes({
@@ -1176,6 +1189,7 @@ describe("BlackBoxSelector dial surface", () => {
       await press(ctx, settings);
       release();
       await first;
+      flushFrames();
 
       const written = ctx.setSettings.mock.calls.map(([s]) => (s as { dial: { rotation: string } }).dial.rotation);
 
@@ -1331,6 +1345,7 @@ describe("BlackBoxSelector dial surface", () => {
       await action.onDidReceiveSettings(
         eventFor(ctx, stored({ rotation: "boxes", pressAction: "switch-rotation" })) as never,
       );
+      flushFrames();
       mockTapBinding.mockClear();
       await action.onDialRotate(rotateEvent(ctx, settings, 1) as never);
 
@@ -1481,6 +1496,7 @@ describe("BlackBoxSelector dial surface", () => {
 
       await hold(ctx, settings, 500);
       await action.onDialUp(eventFor(ctx, settings) as never);
+      flushFrames();
 
       expect(ctx.setSettings.mock.calls).toEqual([
         [{ mode: "next", blackBox: "fuel", dial: { rotation: "adjust-control" } }],
@@ -1529,6 +1545,7 @@ describe("BlackBoxSelector dial surface", () => {
       mockDualPressThreshold.value = 2000;
       ctx.setDialCanvas.mockClear();
       await action.onDialUp(eventFor(ctx, settings) as never);
+      flushFrames();
 
       expect(canvases(ctx)).toEqual([frame(renderAdjustControlStrip(ARGS))]);
       expect(ctx.setSettings.mock.calls[0][0]).toMatchObject({ dial: { rotation: "adjust-control" } });
@@ -1542,6 +1559,7 @@ describe("BlackBoxSelector dial surface", () => {
       mockDualPressThreshold.value = 2000;
       ctx.setDialCanvas.mockClear();
       await action.onDialUp(eventFor(ctx, settings) as never);
+      flushFrames();
 
       expect(canvases(ctx)).toEqual([frame(renderSelectControlStrip(ARGS))]);
       expect(mockTapBinding.mock.calls).toEqual([["blackBoxToggleControl"]]);
@@ -1577,6 +1595,7 @@ describe("BlackBoxSelector dial surface", () => {
       mockTapBinding.mockClear();
       ctx.setDialCanvas.mockClear();
       await action.onDialUp(eventFor(ctx, settings) as never);
+      flushFrames();
 
       expect(canvases(ctx)).toEqual([frame(revertedTo(ARGS))]);
       expect(mockTapBinding.mock.calls).toEqual(taps);
@@ -1601,6 +1620,7 @@ describe("BlackBoxSelector dial surface", () => {
       await hold(ctx, settings, 500);
       await action.onDialRotate(rotateEvent(ctx, settings, 0, true) as never);
       await action.onDialUp(eventFor(ctx, settings) as never);
+      flushFrames();
       mockTapBinding.mockClear();
       ctx.setDialCanvas.mockClear();
 
@@ -1627,6 +1647,7 @@ describe("BlackBoxSelector dial surface", () => {
 
         ctx.setDialCanvas.mockClear();
         await action.onDialRotate(rotateEvent(ctx, settings, ticks, true) as never);
+        flushFrames();
 
         expect(ctx.setDialCanvas).toHaveBeenCalledTimes(1);
         expect(lastCanvas(ctx)).toBe(frame(renderSelectControlStrip(ARGS)));
@@ -1634,6 +1655,7 @@ describe("BlackBoxSelector dial surface", () => {
         // A push+turn fires nothing on release and needs no second revert.
         ctx.setDialCanvas.mockClear();
         await action.onDialUp(eventFor(ctx, settings) as never);
+        flushFrames();
 
         expect(ctx.setDialCanvas).not.toHaveBeenCalled();
         expect(ctx.setSettings).not.toHaveBeenCalled();
@@ -1652,7 +1674,8 @@ describe("BlackBoxSelector dial surface", () => {
       // The cancel arrives before the preview frame's push has resolved.
       await action.onDialRotate(rotateEvent(ctx, settings, 0, true) as never);
       landPreview();
-      await vi.advanceTimersByTimeAsync(0);
+      // The revert is the second frame inside the throttle's window, so it is the trailing push.
+      await vi.advanceTimersByTimeAsync(100);
 
       // The strip ends on the dial's own Mode, not on the preview that landed late.
       expect(canvases(ctx)).toEqual([
@@ -1664,6 +1687,7 @@ describe("BlackBoxSelector dial surface", () => {
       for (const listener of globalListeners) listener();
 
       await action.onDialUp(eventFor(ctx, settings) as never);
+      flushFrames();
 
       expect(canvases(ctx)).toHaveLength(2);
       expect(ctx.setSettings).not.toHaveBeenCalled();
@@ -1679,6 +1703,8 @@ describe("BlackBoxSelector dial surface", () => {
 
       // The preview never reached the strip, so the refresh draws it rather than skipping as unchanged.
       for (const listener of globalListeners) listener();
+
+      flushFrames();
 
       expect(canvases(ctx)).toEqual([frame(renderAdjustControlPendingStrip(ARGS))]);
     });
@@ -1697,6 +1723,7 @@ describe("BlackBoxSelector dial surface", () => {
 
       ctx.setDialCanvas.mockClear();
       await action.onDialUp(eventFor(ctx, settings) as never);
+      flushFrames();
 
       expect(ctx.setDialCanvas).toHaveBeenCalledTimes(1);
       expect(lastCanvas(ctx)).toBe(frame(renderSelectControlStrip(ARGS)));
@@ -1725,6 +1752,8 @@ describe("BlackBoxSelector dial surface", () => {
 
       for (const listener of globalListeners) listener();
 
+      flushFrames();
+
       expect(ctx.setDialCanvas).not.toHaveBeenCalled();
     });
 
@@ -1736,10 +1765,13 @@ describe("BlackBoxSelector dial surface", () => {
 
       for (const listener of globalListeners) listener();
 
+      flushFrames();
+
       expect(lastCanvas(ctx)).toBe(frame(renderAdjustControlPendingStrip({ ...ARGS, bindingMissing: true })));
 
       // And the release still commits what was promised.
       await action.onDialUp(eventFor(ctx, settings) as never);
+      flushFrames();
 
       expect(lastCanvas(ctx)).toBe(frame(renderAdjustControlStrip({ ...ARGS, bindingMissing: true })));
     });
@@ -1749,9 +1781,12 @@ describe("BlackBoxSelector dial surface", () => {
 
       await hold(ctx, settings, 500);
       await action.onDialRotate(rotateEvent(ctx, settings, 0, true) as never);
+      flushFrames();
       ctx.setDialCanvas.mockClear();
 
       for (const listener of globalListeners) listener();
+
+      flushFrames();
 
       expect(ctx.setDialCanvas).not.toHaveBeenCalled();
     });
@@ -1761,10 +1796,12 @@ describe("BlackBoxSelector dial surface", () => {
 
       await hold(ctx, settings, 500);
       await action.onDidReceiveSettings(eventFor(ctx, settings) as never);
+      flushFrames();
 
       expect(lastCanvas(ctx)).toBe(frame(renderAdjustControlPendingStrip(ARGS)));
 
       await action.onDialUp(eventFor(ctx, settings) as never);
+      flushFrames();
 
       expect(ctx.setSettings.mock.calls[0][0]).toMatchObject({ dial: { rotation: "adjust-control" } });
       expect(lastCanvas(ctx)).toBe(frame(renderAdjustControlStrip(ARGS)));
@@ -1786,12 +1823,14 @@ describe("BlackBoxSelector dial surface", () => {
       await hold(ctx, settings, 500);
       const changed = stored({ rotation: "select-control", longPressAction: "none" });
       await action.onDidReceiveSettings(eventFor(ctx, changed) as never);
+      flushFrames();
 
       expect(lastCanvas(ctx)).toBe(frame(renderSelectControlStrip(ARGS)));
 
       // The strip already shows the dial's own Mode: the release pushes no second revert and switches nothing.
       ctx.setDialCanvas.mockClear();
       await action.onDialUp(eventFor(ctx, changed) as never);
+      flushFrames();
 
       expect(ctx.setDialCanvas).not.toHaveBeenCalled();
       expect(ctx.setSettings).not.toHaveBeenCalled();
@@ -1802,6 +1841,7 @@ describe("BlackBoxSelector dial surface", () => {
 
       await hold(ctx, settings, 500);
       await action.onDidReceiveSettings(eventFor(ctx, stored({ rotation: "adjust-control" })) as never);
+      flushFrames();
 
       // The release would now switch Adjust to Select, so that is the promise.
       expect(lastCanvas(ctx)).toBe(frame(renderSelectControlPendingStrip(ARGS)));
@@ -1819,11 +1859,13 @@ describe("BlackBoxSelector dial surface", () => {
 
       // The Tap switches Select to Adjust while the long press is still held.
       await action.onTouchTap(touchEvent(ctx, settings, false) as never);
+      flushFrames();
 
       // The long release would now switch Adjust back to Select, so that is the promise.
       expect(lastCanvas(ctx)).toBe(frame(renderSelectControlPendingStrip(ARGS)));
 
       await action.onDialUp(eventFor(ctx, settings) as never);
+      flushFrames();
 
       expect(ctx.setSettings.mock.calls.map(([written]) => written.dial.rotation)).toEqual([
         "adjust-control",
@@ -2146,6 +2188,144 @@ describe("BlackBoxSelector dial surface", () => {
         short: true,
         long: false,
       });
+    });
+  });
+
+  describe("render throttle (encoders rule 6)", () => {
+    const ARGS = { colors: resolveDialBoxColors(undefined, "#d4a017"), bindingMissing: false };
+
+    function stored(dial: Record<string, unknown>) {
+      return { mode: "next", blackBox: "fuel", dial };
+    }
+
+    function frame(svg: string): string {
+      return `data:image/svg+xml,${svg}`;
+    }
+
+    function canvases(ctx: DialContext): string[] {
+      return ctx.setDialCanvas.mock.calls.map(([uri]) => decodeURIComponent(uri as string));
+    }
+
+    async function press(ctx: DialContext, settings: Record<string, unknown>) {
+      await action.onDialDown(eventFor(ctx, settings) as never);
+      await action.onDialUp(eventFor(ctx, settings) as never);
+    }
+
+    it("pushes at most 10 frames in any second of rapid switches, and ends on the latest rotation", async () => {
+      const ctx = dialContext("thr-burst");
+      const settings = stored({ rotation: "select-control", pressAction: "switch-rotation" });
+      await appear(ctx, settings);
+      const pushedAt: number[] = [];
+      ctx.setDialCanvas.mockClear();
+      ctx.setDialCanvas.mockImplementation(async () => {
+        pushedAt.push(Date.now());
+      });
+
+      // 31 switches, one every 30 ms: each draws a distinct strip from the one before.
+      for (let i = 0; i < 31; i++) {
+        await press(ctx, settings);
+        vi.advanceTimersByTime(30);
+      }
+
+      flushFrames();
+
+      // Far fewer pushes than switches, and no 1 s window holds more than 10.
+      expect(pushedAt.length).toBeGreaterThan(1);
+      expect(pushedAt.length).toBeLessThan(31);
+
+      for (let i = 0; i + 10 < pushedAt.length; i++) {
+        expect(pushedAt[i + 10] - pushedAt[i]).toBeGreaterThanOrEqual(1000);
+      }
+
+      // An odd number of switches from Select ends on Adjust: the strip shows it, and the store agrees.
+      expect(canvases(ctx).at(-1)).toBe(frame(renderAdjustControlStrip(ARGS)));
+      expect(ctx.setSettings.mock.calls.at(-1)?.[0]).toMatchObject({ dial: { rotation: "adjust-control" } });
+    });
+
+    it("coalesces a preview's revert and a switch inside one window into the switched strip, never the old one", async () => {
+      const ctx = dialContext("thr-preview-switch");
+      const settings = stored({ rotation: "select-control", tapAction: "switch-rotation" });
+      await appear(ctx, settings);
+      ctx.setDialCanvas.mockClear();
+
+      await action.onDialDown(eventFor(ctx, settings) as never);
+      vi.advanceTimersByTime(500);
+
+      expect(canvases(ctx)).toEqual([frame(renderAdjustControlPendingStrip(ARGS))]);
+
+      // Inside the preview frame's window: a push+turn reverts it, then a Tap switches the dial.
+      await action.onDialRotate(rotateEvent(ctx, settings, 0, true) as never);
+      await action.onTouchTap(touchEvent(ctx, settings, false) as never);
+      await action.onDialUp(eventFor(ctx, settings) as never);
+
+      expect(canvases(ctx)).toHaveLength(1);
+
+      flushFrames();
+
+      // One trailing push, of the state it flushed at: the old Mode's revert frame never went out.
+      expect(canvases(ctx)).toEqual([
+        frame(renderAdjustControlPendingStrip(ARGS)),
+        frame(renderAdjustControlStrip(ARGS)),
+      ]);
+      expect(canvases(ctx)).not.toContain(frame(renderSelectControlStrip(ARGS)));
+    });
+
+    it("still pushes a settings delivery that lands inside the window, though its signature is unchanged", async () => {
+      const ctx = dialContext("thr-forced");
+      const settings = stored({ rotation: "adjust-control" });
+      await appear(ctx, settings);
+      ctx.setDialCanvas.mockClear();
+
+      await action.onDidReceiveSettings(eventFor(ctx, settings) as never);
+      await action.onDidReceiveSettings(eventFor(ctx, settings) as never);
+
+      // An unforced refresh in between must not cancel the forced push it shares the flush with.
+      for (const listener of globalListeners) listener();
+
+      expect(ctx.setDialCanvas).toHaveBeenCalledTimes(1);
+
+      flushFrames();
+
+      expect(canvases(ctx)).toEqual([frame(renderAdjustControlStrip(ARGS)), frame(renderAdjustControlStrip(ARGS))]);
+    });
+
+    it("drops a trailing push on disappear: no frame reaches a dial that is gone", async () => {
+      const ctx = dialContext("thr-dispose");
+      const settings = stored({ rotation: "select-control", pressAction: "switch-rotation" });
+      await appear(ctx, settings);
+      ctx.setDialCanvas.mockClear();
+      const timersBefore = vi.getTimerCount();
+
+      // The first switch pushes at once; the second, inside its window, waits for the trailing push.
+      await press(ctx, settings);
+      await press(ctx, settings);
+
+      expect(canvases(ctx)).toEqual([frame(renderAdjustControlStrip(ARGS))]);
+      expect(vi.getTimerCount()).toBe(timersBefore + 1);
+
+      await action.onWillDisappear(eventFor(ctx, settings) as never);
+
+      expect(vi.getTimerCount()).toBe(timersBefore);
+
+      vi.advanceTimersByTime(1000);
+
+      expect(canvases(ctx)).toEqual([frame(renderAdjustControlStrip(ARGS))]);
+    });
+
+    it("draws a reappeared dial's trailing push for the new context only", async () => {
+      const ctx = dialContext("thr-reappear");
+      const settings = stored({ rotation: "select-control", pressAction: "switch-rotation" });
+      await appear(ctx, settings);
+      await press(ctx, settings);
+      await press(ctx, settings);
+      await action.onWillDisappear(eventFor(ctx, settings) as never);
+      ctx.setDialCanvas.mockClear();
+
+      // The same id appears again at once: its own appear frame goes out, nothing of the old context's.
+      await appear(ctx, stored({ rotation: "adjust-control" }));
+      vi.advanceTimersByTime(1000);
+
+      expect(canvases(ctx)).toEqual([frame(renderAdjustControlStrip(ARGS))]);
     });
   });
 
