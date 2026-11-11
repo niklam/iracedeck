@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   createTrafficArrivalState,
-  createTrafficRejoinEpisode,
+  createTrafficRejoinState,
   type TrafficArrivalState,
   type TrafficCurveBin,
 } from "../state.js";
@@ -102,7 +102,7 @@ function harness({
   curves = learnedCurves(),
   classes = CLASSES as TrafficClassInfo | null,
 }: { notice?: number; hold?: number; curves?: TrafficArrivalState; classes?: TrafficClassInfo | null } = {}) {
-  const episode = createTrafficRejoinEpisode();
+  const episode = createTrafficRejoinState();
   const events: Rejoin[] = [];
   const debug = vi.fn<(line: string) => void>();
   const logger: ILogger = { ...silentLogger, debug };
@@ -190,8 +190,8 @@ describe("diffTrafficRejoin", () => {
       off.stop(tel({ PlayerTrackSurface: TrkLoc.OffTrack }));
       unread.stop(tel({ OnPitRoad: undefined }));
 
-      expect(off.events).toEqual([{ verdict: "clear", seconds: 20 }]);
-      expect(unread.events).toEqual([{ verdict: "clear", seconds: 20 }]);
+      expect(off.events).toEqual([{ verdict: "clear", windowSeconds: 20 }]);
+      expect(unread.events).toEqual([{ verdict: "clear", windowSeconds: 20 }]);
     });
 
     it("starts after the green in a session winding down too (Checkered, CoolDown)", () => {
@@ -200,7 +200,7 @@ describe("diffTrafficRejoin", () => {
 
         h.stop(tel({ SessionState: state }));
 
-        expect(h.events, String(state)).toEqual([{ verdict: "clear", seconds: 20 }]);
+        expect(h.events, String(state)).toEqual([{ verdict: "clear", windowSeconds: 20 }]);
       }
     });
 
@@ -231,7 +231,7 @@ describe("diffTrafficRejoin", () => {
       expect(h.events).toEqual([]);
 
       h.after(1, tel({ Speed: 1 }));
-      expect(h.events).toEqual([{ verdict: "clear", seconds: 20 }]);
+      expect(h.events).toEqual([{ verdict: "clear", windowSeconds: 20 }]);
       expect(h.episode.active).toBe(true);
     });
 
@@ -306,8 +306,8 @@ describe("diffTrafficRejoin", () => {
       h.stop();
 
       expect(h.events).toEqual([
-        { verdict: "clear", seconds: 20 },
-        { verdict: "clear", seconds: 20 },
+        { verdict: "clear", windowSeconds: 20 },
+        { verdict: "clear", windowSeconds: 20 },
       ]);
     });
   });
@@ -319,8 +319,8 @@ describe("diffTrafficRejoin", () => {
       [6.5, { verdict: "notice", seconds: 6 }],
       [7, { verdict: "notice", seconds: 7 }],
       [20, { verdict: "notice", seconds: 20 }],
-      [20.5, { verdict: "clear", seconds: 20 }],
-      [45, { verdict: "clear", seconds: 20 }],
+      [20.5, { verdict: "clear", windowSeconds: 20 }],
+      [45, { verdict: "clear", windowSeconds: 20 }],
     ];
 
     it.each(cases)("a car %s s away is %j (both window ends inclusive)", (seconds, expected) => {
@@ -336,7 +336,7 @@ describe("diffTrafficRejoin", () => {
 
       h.stop(tel({ cars: [] }));
 
-      expect(h.events).toEqual([{ verdict: "clear", seconds: 35 }]);
+      expect(h.events).toEqual([{ verdict: "clear", windowSeconds: 35 }]);
     });
 
     it("goes by the nearest car, whatever the order", () => {
@@ -354,7 +354,7 @@ describe("diffTrafficRejoin", () => {
 
       h.stop(tel({ cars: [inPits, ahead] }));
 
-      expect(h.events).toEqual([{ verdict: "clear", seconds: 20 }]);
+      expect(h.events).toEqual([{ verdict: "clear", windowSeconds: 20 }]);
     });
 
     it("clamps the hold window to the notice window", () => {
@@ -363,7 +363,7 @@ describe("diffTrafficRejoin", () => {
       h.stop(tel({ cars: [behind(5, 12)] }));
 
       // Unclamped, 12 s would be inside the 15 s hold window.
-      expect(h.events).toEqual([{ verdict: "clear", seconds: 10 }]);
+      expect(h.events).toEqual([{ verdict: "clear", windowSeconds: 10 }]);
     });
 
     it("reads the windows live at each evaluation", () => {
@@ -375,7 +375,7 @@ describe("diffTrafficRejoin", () => {
       h.after(TRAFFIC_REJOIN_EVAL_INTERVAL_MS, t);
 
       expect(h.events).toEqual([
-        { verdict: "clear", seconds: 20 },
+        { verdict: "clear", windowSeconds: 20 },
         { verdict: "notice", seconds: 25 },
       ]);
     });
@@ -430,7 +430,7 @@ describe("diffTrafficRejoin", () => {
 
       h.stop(tel());
 
-      expect(h.events).toEqual([{ verdict: "clear", seconds: 20 }]);
+      expect(h.events).toEqual([{ verdict: "clear", windowSeconds: 20 }]);
     });
   });
 
@@ -489,7 +489,7 @@ describe("diffTrafficRejoin", () => {
       h.after(TRAFFIC_REJOIN_EVAL_INTERVAL_MS, tel({ cars: [behind(5, 30)] }));
       h.after(TRAFFIC_REJOIN_EVAL_INTERVAL_MS, tel({ cars: [] }));
 
-      expect(h.events).toEqual([{ verdict: "clear", seconds: 20 }]);
+      expect(h.events).toEqual([{ verdict: "clear", windowSeconds: 20 }]);
     });
 
     it("speaks every verdict change", () => {
@@ -501,7 +501,7 @@ describe("diffTrafficRejoin", () => {
       step([behind(5, 6)]);
 
       expect(h.events).toEqual([
-        { verdict: "clear", seconds: 20 },
+        { verdict: "clear", windowSeconds: 20 },
         { verdict: "notice", seconds: 19 },
         { verdict: "hold", seconds: 6 },
       ]);
@@ -577,7 +577,7 @@ describe("diffTrafficRejoin", () => {
 
       expect(h.events).toEqual([
         { verdict: "notice", seconds: 10 },
-        { verdict: "clear", seconds: 20 },
+        { verdict: "clear", windowSeconds: 20 },
       ]);
     });
   });

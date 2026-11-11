@@ -64,7 +64,7 @@ import type { TelemetryData } from "@iracedeck/iracing-sdk";
 import type { ILogger } from "@iracedeck/logger";
 import { type PitLaneResolvedLandmark, pitLaneSignedDeltaPct } from "@iracedeck/track-data";
 
-import { createTrafficPitExitEpisode, type TrafficArrivalState, type TrafficPitExitEpisode } from "../state.js";
+import { createTrafficPitExitState, type TrafficArrivalState, type TrafficPitExitState } from "../state.js";
 import { isRacingSurface } from "./track-surface.js";
 import {
   computeTrafficArrivals,
@@ -166,14 +166,14 @@ function endReason(telemetry: TrafficPitExitTelemetry, playerPct: unknown): stri
 /**
  * The pit-exit detector's per-tick step: watches the stall edge, runs the
  * episode and its evaluations, and emits `traffic.pitExit` by the rules in
- * the module header. Owns `episode` (`state.traffic.pitExit`) and writes
+ * the module header. Owns `episode` (`state.trafficPitExit`) and writes
  * nothing else; its stall baseline is written last.
  *
  * @param episode The pit-exit episode, mutated in place.
  * @param curves The per-class reference curves (`state.trafficArrival`, written by `updateTrafficReferenceCurves` earlier in the tick), read only.
  */
 export function diffTrafficPitExit(
-  episode: TrafficPitExitEpisode,
+  episode: TrafficPitExitState,
   curves: Readonly<TrafficArrivalState>,
   telemetry: TrafficPitExitTelemetry,
   facts: TrafficPitExitFacts,
@@ -189,7 +189,7 @@ export function diffTrafficPitExit(
   if (departed) {
     if (episode.active) logger.debug("PitExit: episode ended (left the stall again)");
 
-    Object.assign(episode, createTrafficPitExitEpisode(), { active: true });
+    Object.assign(episode, createTrafficPitExitState(), { active: true });
     logger.debug(
       `PitExit: episode started (left the stall at pct=${isFiniteNumber(playerPct) ? playerPct.toFixed(4) : "?"})`,
     );
@@ -209,9 +209,9 @@ export function diffTrafficPitExit(
 }
 
 /** Ends the episode silently, keeping the stall baseline (written after). */
-function end(episode: TrafficPitExitEpisode, reason: string, logger: ILogger): void {
+function end(episode: TrafficPitExitState, reason: string, logger: ILogger): void {
   logger.debug(`PitExit: episode ended (${reason})`);
-  Object.assign(episode, createTrafficPitExitEpisode(), { lastInPitStall: episode.lastInPitStall });
+  Object.assign(episode, createTrafficPitExitState(), { lastInPitStall: episode.lastInPitStall });
 }
 
 /** The player's class's reference time at a landmark: its own per-class time, else the class curve there. */
@@ -300,7 +300,7 @@ function playerEta(
 
 /** One evaluation: the landmarks, the ETA, then the verdict and whether to speak it (module header). */
 function evaluate(
-  episode: TrafficPitExitEpisode,
+  episode: TrafficPitExitState,
   curves: Readonly<TrafficArrivalState>,
   telemetry: TrafficPitExitTelemetry,
   playerPct: number,

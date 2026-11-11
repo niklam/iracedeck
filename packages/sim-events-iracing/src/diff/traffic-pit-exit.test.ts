@@ -6,7 +6,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   createTrafficArrivalState,
-  createTrafficPitExitEpisode,
+  createTrafficPitExitState,
   type TrafficArrivalState,
   type TrafficCurveBin,
 } from "../state.js";
@@ -117,7 +117,7 @@ function harness({
   curves?: TrafficArrivalState;
   classes?: TrafficClassInfo | null;
 } = {}) {
-  const episode = createTrafficPitExitEpisode();
+  const episode = createTrafficPitExitState();
   const events: PitExit[] = [];
   const debug = vi.fn<(line: string) => void>();
   const logger: ILogger = { ...silentLogger, debug };

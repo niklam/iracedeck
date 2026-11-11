@@ -14,6 +14,9 @@ import type {
   TrafficPitExit,
   TrafficPitExitVerdict,
   TrafficRejoin,
+  TrafficRejoinApproaching,
+  TrafficRejoinClear,
+  TrafficRejoinGo,
   TrafficRejoinVerdict,
 } from "./index.js";
 
@@ -89,12 +92,23 @@ describe("pitLane.landmarkLearned", () => {
 describe("traffic.rejoin and traffic.pitExit", () => {
   it("carries a rejoin verdict and, except for go, its seconds", () => {
     expectTypeOf<SimEventMap["traffic.rejoin"]["event"]>().toEqualTypeOf<"traffic.rejoin">();
-    expectTypeOf<SimEventMap["traffic.rejoin"]["data"]>().toEqualTypeOf<{
-      verdict: "clear" | "notice" | "hold" | "go";
-      seconds?: number;
-    }>();
+    expectTypeOf<SimEventMap["traffic.rejoin"]["data"]>().toEqualTypeOf<
+      { verdict: "clear"; windowSeconds: number } | { verdict: "notice" | "hold"; seconds: number } | { verdict: "go" }
+    >();
     expectTypeOf<SimEventMap["traffic.rejoin"]["data"]>().toEqualTypeOf<TrafficRejoin>();
+    expectTypeOf<TrafficRejoin>().toEqualTypeOf<TrafficRejoinClear | TrafficRejoinApproaching | TrafficRejoinGo>();
     expectTypeOf<TrafficRejoin["verdict"]>().toEqualTypeOf<TrafficRejoinVerdict>();
+  });
+
+  it("refuses a rejoin payload whose number does not match its verdict", () => {
+    // @ts-expect-error a clear speaks the window, not an arrival
+    const clearWithSeconds: TrafficRejoin = { verdict: "clear", seconds: 20 };
+    // @ts-expect-error a hold always carries its arrival
+    const holdWithout: TrafficRejoin = { verdict: "hold" };
+    // @ts-expect-error a go carries no number
+    const goWithSeconds: TrafficRejoin = { verdict: "go", seconds: 3 };
+
+    expectTypeOf([clearWithSeconds, holdWithout, goWithSeconds]).toBeArray();
   });
 
   it("carries a pit-exit verdict and the nearest car's relative arrival", () => {

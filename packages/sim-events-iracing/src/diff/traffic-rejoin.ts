@@ -51,7 +51,7 @@ import type { SimEventName } from "@iracedeck/event-bus";
 import { isPreGreen, type TelemetryData } from "@iracedeck/iracing-sdk";
 import type { ILogger } from "@iracedeck/logger";
 
-import { createTrafficRejoinEpisode, type TrafficArrivalState, type TrafficRejoinEpisode } from "../state.js";
+import { createTrafficRejoinState, type TrafficArrivalState, type TrafficRejoinState } from "../state.js";
 import { isRacingSurface } from "./track-surface.js";
 import {
   computeTrafficArrivals,
@@ -178,7 +178,7 @@ function describeUntimed(untimed: readonly UntimedArrival[]): string {
 /**
  * The rejoin detector's per-tick step: runs the entry dwell, the episode and
  * its evaluations, and emits `traffic.rejoin` by the rules in the module
- * header. Owns `episode` (`state.traffic.rejoin`) and writes nothing else.
+ * header. Owns `episode` (`state.trafficRejoin`) and writes nothing else.
  *
  * @param episode The rejoin episode, mutated in place.
  * @param curves The per-class reference curves (`state.trafficArrival`, written by `updateTrafficReferenceCurves` earlier in the tick), read only.
@@ -186,7 +186,7 @@ function describeUntimed(untimed: readonly UntimedArrival[]): string {
  * @param classes The class lap times and each car's class (`resolveTrafficClassInfo`), `null` without session info.
  */
 export function diffTrafficRejoin(
-  episode: TrafficRejoinEpisode,
+  episode: TrafficRejoinState,
   curves: Readonly<TrafficArrivalState>,
   telemetry: TrafficRejoinTelemetry,
   playerCarIdx: number,
@@ -201,7 +201,7 @@ export function diffTrafficRejoin(
   if (gate !== null) {
     if (episode.active) logger.debug(`Rejoin: episode ended (${gate})`);
 
-    Object.assign(episode, createTrafficRejoinEpisode());
+    Object.assign(episode, createTrafficRejoinState());
 
     return;
   }
@@ -221,7 +221,7 @@ export function diffTrafficRejoin(
 
     if (elapsed(now, episode.slowSince) < TRAFFIC_REJOIN_ENTRY_DWELL_MS) return;
 
-    Object.assign(episode, createTrafficRejoinEpisode(), { active: true });
+    Object.assign(episode, createTrafficRejoinState(), { active: true });
     logger.debug(`Rejoin: episode started (pct=${pct.toFixed(4)}, speed=${speed.toFixed(1)} m/s)`);
     evaluate(episode, curves, telemetry, pct, playerCarIdx, classes, windows, now, emit, logger);
 
@@ -233,7 +233,7 @@ export function diffTrafficRejoin(
 
     if (elapsed(now, episode.movingSince) >= TRAFFIC_REJOIN_END_DWELL_MS) {
       logger.debug(`Rejoin: episode ended (moving at ${speed.toFixed(1)} m/s)`);
-      Object.assign(episode, createTrafficRejoinEpisode());
+      Object.assign(episode, createTrafficRejoinState());
 
       return;
     }
@@ -248,7 +248,7 @@ export function diffTrafficRejoin(
 
 /** One evaluation: time the cars to P, take the table's verdict, and speak by the rules (module header). */
 function evaluate(
-  episode: TrafficRejoinEpisode,
+  episode: TrafficRejoinState,
   curves: Readonly<TrafficArrivalState>,
   telemetry: TrafficRejoinTelemetry,
   pct: number,
@@ -319,14 +319,19 @@ function evaluate(
 
   if (!changed && !moved) return;
 
-  const seconds =
-    verdict === "clear"
-      ? Math.floor(notice)
-      : verdict === "notice"
-        ? Math.max(TRAFFIC_REJOIN_MIN_NOTICE_SECONDS, Math.floor(nearestSeconds as number))
-        : Math.max(TRAFFIC_REJOIN_MIN_HOLD_SECONDS, Math.floor(nearestSeconds as number));
+  let seconds: number;
 
-  emit({ event: "traffic.rejoin", data: { verdict, seconds } });
+  if (verdict === "clear") {
+    seconds = Math.floor(notice);
+    emit({ event: "traffic.rejoin", data: { verdict, windowSeconds: seconds } });
+  } else {
+    // Not clear, so a timed car set the verdict.
+    const floor = verdict === "notice" ? TRAFFIC_REJOIN_MIN_NOTICE_SECONDS : TRAFFIC_REJOIN_MIN_HOLD_SECONDS;
+
+    seconds = Math.max(floor, Math.floor(nearestSeconds as number));
+    emit({ event: "traffic.rejoin", data: { verdict, seconds } });
+  }
+
   logger.debug(
     `Rejoin: emit ${verdict} ${seconds} s (${describeNearest(nearest)}; ${changed ? "verdict changed" : "arrival moved"})`,
   );

@@ -245,7 +245,7 @@ describe("the approaching-traffic detectors through handleTick (issue #1113)", (
       controller.__tick(tick({ pct: 0.5 }, 0.2));
       vi.advanceTimersByTime(TRAFFIC_REJOIN_ENTRY_DWELL_MS);
       controller.__tick(tick({ pct: 0.5 }, 0.2));
-      expect(rejoin).toEqual([{ verdict: "clear", seconds: 20 }]);
+      expect(rejoin).toEqual([{ verdict: "clear", windowSeconds: 20 }]);
 
       // Car 1 at 0.2 reads 18 s: 27 s away, beyond the notice window.
       controller.__tick(tick({ pct: 0.5, replay: true }, 0.2));
@@ -258,14 +258,14 @@ describe("the approaching-traffic detectors through handleTick (issue #1113)", (
 
       if (!back.initialized) throw new Error("translator not initialised");
 
-      expect(back.raw.state.traffic.rejoin.active).toBe(false);
+      expect(back.raw.state.trafficRejoin.active).toBe(false);
 
       vi.advanceTimersByTime(TRAFFIC_REJOIN_ENTRY_DWELL_MS);
       controller.__tick(tick({ pct: 0.5 }, 0.2));
 
       expect(rejoin).toEqual([
-        { verdict: "clear", seconds: 20 },
-        { verdict: "clear", seconds: 20 },
+        { verdict: "clear", windowSeconds: 20 },
+        { verdict: "clear", windowSeconds: 20 },
       ]);
     });
   });

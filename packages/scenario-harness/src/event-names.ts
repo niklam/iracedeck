@@ -109,7 +109,7 @@ export const EVENT_TEMPLATES = [
   {
     name: "traffic.rejoin",
     description:
-      "Stopped on track, whether a car is coming (issue #1113) — verdict: clear / notice / hold / go; seconds: the notice window for clear, the nearest car's arrival for notice and hold, absent for go",
+      "Stopped on track, whether a car is coming (issue #1113) — verdict: clear (with windowSeconds, the notice window) / notice / hold (with seconds, the nearest car's arrival) / go (no number)",
     data: { verdict: "hold", seconds: 4 } satisfies SimEventMap["traffic.rejoin"]["data"],
   },
   {

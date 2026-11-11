@@ -597,12 +597,27 @@ export function createTrafficArrivalState(): TrafficArrivalState {
 }
 
 /**
- * One rejoin episode (issue #1113, `diff/traffic-rejoin.ts`): the player
- * stopped or crawling on the circuit, from the end of the entry dwell to the
- * car moving again (or a gate failing). Also holds the entry dwell's timer
- * while no episode runs. Times are the tick's wall clock (`now`, ms).
+ * The rejoin detector's state (issue #1113, spec decisions 2 and 3,
+ * `diff/traffic-rejoin.ts`): one episode — the player stopped or crawling on
+ * the circuit, from the end of the entry dwell to the car moving again (or a
+ * gate failing) — and the entry dwell's timer while no episode runs. Written
+ * by `diffTrafficRejoin` alone; the curves it reads are their own slice
+ * ({@link TrafficArrivalState}), handed to it as a value. Times are the
+ * tick's wall clock (`now`, ms).
+ *
+ * Recreated at a session change and a disconnect with the rest of the state,
+ * and **wiped whole at the replay wipe** (not in `preservedAcrossReplay`). An
+ * episode is a run of live facts — a dwell timer, what was last said about
+ * the cars around the player — and a garage visit or a replay glance breaks
+ * that run: the car may come back towed, reset or somewhere else, and the
+ * traffic picture has moved on. A car still stopped on the first tick back
+ * starts a fresh episode after the entry dwell and says where the traffic is
+ * now, which is what a driver back from a replay glance needs. Keeping half
+ * of the episode would be worse than re-seeding: a `goPending` or a last
+ * verdict carried into a new picture would speak a `go`, or keep quiet,
+ * about cars the driver never heard of.
  */
-export type TrafficRejoinEpisode = {
+export type TrafficRejoinState = {
   /** Whether an episode is running. */
   active: boolean;
   /** Before an episode: when the current run of gated crawl-speed ticks began; `null` outside one. */
@@ -625,8 +640,8 @@ export type TrafficRejoinEpisode = {
   untimedLogged: boolean;
 };
 
-/** No episode, no dwell running (issue #1113). */
-export function createTrafficRejoinEpisode(): TrafficRejoinEpisode {
+/** No episode, no dwell running (issue #1113): the initial state. */
+export function createTrafficRejoinState(): TrafficRejoinState {
   return {
     active: false,
     slowSince: null,
@@ -640,13 +655,24 @@ export function createTrafficRejoinEpisode(): TrafficRejoinEpisode {
 }
 
 /**
- * One pit-exit episode (issue #1113, `diff/traffic-pit-exit.ts`): from the
- * player driving out of the stall to passing the end of the exit blend (or
- * back on the racing surface, or a tow, a reset or leaving the car). Also
- * holds the stall baseline the start is read from. Times are the tick's wall
- * clock (`now`, ms).
+ * The pit-exit detector's state (issue #1113, spec decision 5,
+ * `diff/traffic-pit-exit.ts`): one episode — from the player driving out of
+ * the stall to passing the end of the exit blend (or back on the racing
+ * surface, or a tow, a reset or leaving the car) — and the stall baseline its
+ * start is read from. Written by `diffTrafficPitExit` alone; the curves it
+ * reads are their own slice ({@link TrafficArrivalState}), handed to it as a
+ * value. Times are the tick's wall clock (`now`, ms).
+ *
+ * Recreated at a session change and a disconnect with the rest of the state,
+ * and **wiped whole at the replay wipe** (not in `preservedAcrossReplay`). The
+ * stall baseline must never be a replay-timeline reading, and a pit exit
+ * glanced away from part-way has lost the run its verdict rests on: with the
+ * baseline gone no departure is seen on the way back, so that exit gets no
+ * call, and silence is better than a verdict made from half an episode. A
+ * spoken verdict carried into a new picture would speak a flip about cars
+ * the driver never heard of.
  */
-export type TrafficPitExitEpisode = {
+export type TrafficPitExitState = {
   /** `PlayerCarInPitStall` on the previous tick; `null` until a tick has seeded it. */
   lastInPitStall: boolean | null;
   /** Whether an episode is running. */
@@ -661,8 +687,8 @@ export type TrafficPitExitEpisode = {
   noEtaLogged: boolean;
 };
 
-/** No episode, no stall baseline (issue #1113). */
-export function createTrafficPitExitEpisode(): TrafficPitExitEpisode {
+/** No episode, no stall baseline (issue #1113): the initial state. */
+export function createTrafficPitExitState(): TrafficPitExitState {
   return {
     lastInPitStall: null,
     active: false,
@@ -671,39 +697,6 @@ export function createTrafficPitExitEpisode(): TrafficPitExitEpisode {
     landmarksMissingLogged: false,
     noEtaLogged: false,
   };
-}
-
-/**
- * The approaching-traffic detectors' episodes (issue #1113, spec decisions 2,
- * 3 and 5): the rejoin episode `diffTrafficRejoin` runs and the pit-exit
- * episode `diffTrafficPitExit` runs, each owned by its diff alone. The curves
- * both read are a slice of their own ({@link TrafficArrivalState}), handed to
- * them as a value.
- *
- * Recreated at a session change and a disconnect with the rest of the state,
- * and **wiped whole at the replay wipe** (not in `preservedAcrossReplay`). An
- * episode is a run of live facts — a dwell timer, a stall baseline, what was
- * last said about the cars around the player — and a garage visit or a replay
- * glance breaks that run: the car may come back towed, reset or somewhere
- * else, and the traffic picture has moved on. Re-seeding is the safe side.
- * A car still stopped on the first tick back starts a fresh episode after the
- * entry dwell and says where the traffic is now, which is what a driver back
- * from a replay glance needs. A pit exit glanced away from part-way loses its
- * call: the stall baseline is gone, so no departure is seen, and silence is
- * better than a verdict made from half an episode. Keeping half of it would
- * be worse than either: a `goPending` or a spoken verdict carried into a new
- * picture would speak a `go` or a flip about cars the driver never heard of.
- */
-export type TrafficState = {
-  /** See {@link TrafficRejoinEpisode}. */
-  rejoin: TrafficRejoinEpisode;
-  /** See {@link TrafficPitExitEpisode}. */
-  pitExit: TrafficPitExitEpisode;
-};
-
-/** No episode of either kind (issue #1113): the initial state. */
-export function createTrafficState(): TrafficState {
-  return { rejoin: createTrafficRejoinEpisode(), pitExit: createTrafficPitExitEpisode() };
 }
 
 /**
@@ -2089,10 +2082,15 @@ export type TranslatorState = {
    */
   trafficArrival: TrafficArrivalState;
   /**
-   * The rejoin and pit-exit episodes ({@link TrafficState}). Reset per session
-   * and at a disconnect; wiped whole at a replay glance.
+   * The rejoin detector's episode ({@link TrafficRejoinState}). Reset per
+   * session and at a disconnect; wiped whole at a replay glance.
    */
-  traffic: TrafficState;
+  trafficRejoin: TrafficRejoinState;
+  /**
+   * The pit-exit detector's episode and stall baseline ({@link TrafficPitExitState}).
+   * Reset per session and at a disconnect; wiped whole at a replay glance.
+   */
+  trafficPitExit: TrafficPitExitState;
 
   // ── Self-managed running order (issue #603) ─────────────────────────────
   /**
@@ -2729,7 +2727,8 @@ export function createInitialState(): TranslatorState {
 
     pitLaneLandmarks: createPitLaneLandmarksState(),
     trafficArrival: createTrafficArrivalState(),
-    traffic: createTrafficState(),
+    trafficRejoin: createTrafficRejoinState(),
+    trafficPitExit: createTrafficPitExitState(),
 
     positionLastKnownScores: [],
     positionFrozen: new Set(),

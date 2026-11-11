@@ -660,18 +660,32 @@ export type PitLaneLandmarkLearned = {
  */
 export type TrafficRejoinVerdict = "clear" | "notice" | "hold" | "go";
 
-/** Payload of `traffic.rejoin` (issue #1113). */
-export type TrafficRejoin = {
-  verdict: TrafficRejoinVerdict;
+/** `traffic.rejoin` with nobody inside the notice window (issue #1113). */
+export type TrafficRejoinClear = {
+  verdict: "clear";
   /**
-   * Whole seconds, rounded down (the cautious direction). For `clear`, the
-   * notice window the line speaks ("nothing behind you for the next N
-   * seconds"); for `notice` and `hold`, the nearest timed car's arrival at the
-   * player's position, at least 2 for `notice` and at least 1 for `hold`.
-   * Absent for `go`.
+   * The notice window the line speaks ("nothing behind you for the next N
+   * seconds"), in whole seconds rounded down.
    */
-  seconds?: number;
+  windowSeconds: number;
 };
+
+/** `traffic.rejoin` with a car inside the notice window (`notice`) or the hold window (`hold`) (issue #1113). */
+export type TrafficRejoinApproaching = {
+  verdict: "notice" | "hold";
+  /**
+   * The nearest timed car's arrival at the player's position, in whole
+   * seconds rounded down (the cautious direction): at least 2 for `notice`
+   * and at least 1 for `hold`, the bottoms of their clip ranges.
+   */
+  seconds: number;
+};
+
+/** `traffic.rejoin` after a hold, once nothing is inside the hold window (issue #1113). Carries no number. */
+export type TrafficRejoinGo = { verdict: "go" };
+
+/** Payload of `traffic.rejoin` (issue #1113): one member per verdict, each carrying exactly the number its line speaks. */
+export type TrafficRejoin = TrafficRejoinClear | TrafficRejoinApproaching | TrafficRejoinGo;
 
 /**
  * The Race Engineer's verdict on the pit exit (issue #1113): `traffic` when a

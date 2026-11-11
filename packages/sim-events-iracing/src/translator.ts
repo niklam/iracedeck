@@ -3046,9 +3046,10 @@ function wipeStateForReplay(self: TranslatorInstance): void {
     // arrivals their exact tier until every class had driven another lap. A
     // session change and a disconnect still recreate it.
     trafficArrival: self.state.trafficArrival,
-    // Its episodes (`traffic`) are deliberately not here: a rejoin or pit-exit
-    // episode is wiped whole and re-seeds from the first tick back, for the
-    // reasons on `TrafficState` in `state.ts`.
+    // The detectors' slices (`trafficRejoin`, `trafficPitExit`) are
+    // deliberately not here: each episode is wiped whole and re-seeds from the
+    // first tick back, for the reasons on `TrafficRejoinState` and
+    // `TrafficPitExitState` in `state.ts`.
   };
 
   self.state = createInitialState();
@@ -3869,14 +3870,14 @@ function handleLiveSteps(
   // The approaching-traffic detectors (issue #1113): stopped on the circuit,
   // and driving out of the pits. Both after the curve update, so they time
   // the cars against curves that include this tick's samples, and both read
-  // the curves as a value; each owns its own episode in the `traffic` slice.
+  // the curves as a value; each owns its own slice (`trafficRejoin`, `trafficPitExit`).
   // The pit exit reads #1112's learner through a closure, so the landmark
   // view is built only at its once-a-second evaluation, and the track length
   // and pit speed limit this tick already resolved. Both log to the
   // translator's own logger at debug, each line led by `Rejoin:` / `PitExit:`.
   steps.live("diffTrafficRejoin", pending, () =>
     diffTrafficRejoin(
-      self.state.traffic.rejoin,
+      self.state.trafficRejoin,
       self.state.trafficArrival,
       telemetry,
       playerCarIdx,
@@ -3889,7 +3890,7 @@ function handleLiveSteps(
   );
   steps.live("diffTrafficPitExit", pending, () =>
     diffTrafficPitExit(
-      self.state.traffic.pitExit,
+      self.state.trafficPitExit,
       self.state.trafficArrival,
       telemetry,
       {
