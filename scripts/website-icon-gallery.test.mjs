@@ -108,6 +108,25 @@ describe("website icon gallery", () => {
     expect(leaking).toEqual([]);
   });
 
+  it("files every Pit Crew template under the Pit Crew action, one sample per mode", () => {
+    // pit-crew-radar-volume.svg (#1479) would otherwise fall through to the
+    // flat "Dynamic templates" section with no sample and no owning action.
+    const pitCrew = entries.filter((entry) => /\/icons\/pit-crew(-[a-z-]+)?\.svg$/.test(entry.path));
+
+    expect(pitCrew.map((entry) => entry.name).sort()).toEqual([
+      "pit-crew-corner-names",
+      "pit-crew-engineer",
+      "pit-crew-radar",
+      "pit-crew-radar-volume",
+    ]);
+
+    for (const entry of pitCrew) {
+      expect(entry, entry.name).toMatchObject({ class: "dynamic", family: "pit-crew", actions: ["pit-crew"] });
+    }
+
+    expect(readFileSync(path.join(assetsDir, "dynamic", "pit-crew-radar-volume.svg"), "utf-8")).toContain(">VOL +<");
+  });
+
   it("draws a sample value into the template icons that carry one", () => {
     const expected = {
       "camera-focus/switch-by-car-number": ">42<",

@@ -249,6 +249,12 @@
     "graphic1Color": "#ffffff",
     "borderColor": "#5a6a5a"
   },
+  "pit-crew-radar-volume": {
+    "backgroundColor": "#2a3a5a",
+    "textColor": "#ffffff",
+    "graphic1Color": "#ffffff",
+    "borderColor": "#4a5a7a"
+  },
   "pit-crew": {
     "backgroundColor": "#2a3a5a",
     "textColor": "#ffffff",

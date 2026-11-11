@@ -11,6 +11,8 @@ Pit Crew bundles iRaceDeck's pit-side audio into one Stream Deck action. It expo
 
 Radar volume (Up/Down stepping) lives in the [Audio Controls](/docs/actions/audio-voice/audio-controls/) action under the **Radar** mode, alongside the **Race Engineer** volume buttons.
 
+A Pit Crew key still set to the old **Radar Volume** mode keeps working, and keeps its `VOL +` / `VOL −` title with the volume percentage whatever the Settings window's **Show title text on key** setting says, because that title is the key's readout. New keys can't pick that mode; use Audio Controls → **Radar** instead.
+
 Both the Race Engineer and Radar gates ship **off by default** so a fresh install stays quiet until you opt in. The first press of each toggle is what enables it; the on/off state is plugin-wide, so two Pit Crew buttons (e.g. one on a Stream Deck, one on a Mirabox) always agree.
 
 ## Modes
@@ -32,6 +34,7 @@ When iRacing telemetry first starts flowing — typically a few seconds after yo
 - **Dial:** No rotation support
 - **Default binding:** None — button-driven feature, no keyboard binding
 - **Telemetry-aware icon:** Yes — the status bar reflects the current global flag
+- **Title:** Hidden by default, so the artwork fills the key above the status bar. The Settings window's **Show title text on key** and title **Position** settings don't apply to this key; to show the title, set **Title Overrides → Show Title** to **Yes** in the key's Property Inspector, and it appears at the top of the key by default, clear of the status bar; a **Position** override on the key still moves it
 
 ### Radar
 
@@ -44,6 +47,7 @@ The Settings window's **Radar → Enabled** checkbox flips this same state, and 
 - **Dial:** No rotation support
 - **Default binding:** None — button-driven feature, no keyboard binding
 - **Telemetry-aware icon:** Yes — the status bar reflects the current global flag
+- **Title:** Hidden by default, so the artwork fills the key above the status bar. The Settings window's **Show title text on key** and title **Position** settings don't apply to this key; to show the title, set **Title Overrides → Show Title** to **Yes** in the key's Property Inspector, and it appears at the top of the key by default, clear of the status bar; a **Position** override on the key still moves it
 
 ### Corner Names
 
@@ -56,6 +60,7 @@ The engineer confirms each press with a short line — *"Roger that. Corner call
 - **Dial:** No rotation support
 - **Default binding:** None — button-driven feature, no keyboard binding
 - **Telemetry-aware icon:** Yes — the status bar reflects the current global flag
+- **Title:** Hidden by default, so the artwork fills the key above the status bar. The Settings window's **Show title text on key** and title **Position** settings don't apply to this key; to show the title, set **Title Overrides → Show Title** to **Yes** in the key's Property Inspector, and it appears at the top of the key by default, clear of the status bar; a **Position** override on the key still moves it
 
 ## Global Audio Settings (shared across every Pit Crew button)
 

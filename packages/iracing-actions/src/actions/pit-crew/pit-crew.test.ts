@@ -129,6 +129,13 @@ vi.mock("../../../icons/pit-crew.svg", () => ({
     '<svg xmlns="http://www.w3.org/2000/svg"><desc>{"colors":{"backgroundColor":"#2c3e50","textColor":"#ffffff","graphic1Color":"#ffffff"}}</desc>{{iconContent}}</svg>',
 }));
 
+// The Radar Volume modes' own template (#1479); its title defaults are tested
+// over the real templates in `pit-crew-title.test.ts`.
+vi.mock("../../../icons/pit-crew-radar-volume.svg", () => ({
+  default:
+    '<svg xmlns="http://www.w3.org/2000/svg"><desc>{"colors":{"backgroundColor":"#2c3e50","textColor":"#ffffff","graphic1Color":"#ffffff"}}</desc>{{iconContent}}</svg>',
+}));
+
 vi.mock("../../icons/status-bar.js", () => ({
   borderColorForState: vi.fn((state: string) => (state === "on" ? "#2ecc71" : "#e74c3c")),
   statusBarOn: vi.fn(() => '<rect class="status-bar-on"/>'),

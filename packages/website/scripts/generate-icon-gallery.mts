@@ -134,27 +134,43 @@ const STATUS_BAR_TEMPLATES = new Set([
  *     "DEPLOY", MODE_COLOR "#3498db"; value-bearing (view-mguk-deploy-mode, formatInteger).
  */
 /**
- * Pit Crew renders THREE of its four `mode` settings as toggle buttons with a
- * status-bar on/off indicator — `race-engineer`, `radar` and `corner-names`
- * (pit-crew.ts `modePresentation()`: each returns a `stateIndicator` of
- * `"on"`/`"off"`). The fourth mode, `radar-volume`, is a +/- stepper with no
- * status bar (`stateIndicator: null`) so it gets no distinct sample (gallery
- * restructure wave, item 2's investigation).
+ * Pit Crew's two templates, each rendered as one gallery sample per mode it
+ * serves (pit-crew.ts `templateFor()`), keyed by the template's file basename.
  *
- * pit-crew.svg (the physical dynamic template both modes share) exposes only
- * ONE `{{iconContent}}` placeholder — no separate `{{titleContent}}` token —
- * because the real action bakes title + artwork + status bar into
- * `iconContent` itself (`generatePitCrewSvg()`: `iconContent =
- * scaledGraphic + titleText + statusBar`). So each gallery sample supplies the
- * full `iconContent` as a sample title (bottomY 92, clear of the status bar,
- * matching `STATUS_BAR_TEMPLATES`' convention) plus `statusBarOn()`, leaving
- * the artwork blank like every other dynamic-template sample.
+ * `pit-crew.svg` serves the three toggle modes — `race-engineer`, `radar` and
+ * `corner-names` — which draw a status-bar on/off indicator (pit-crew.ts
+ * `modePresentation()`: each returns a `stateIndicator` of `"on"`/`"off"`).
+ * `pit-crew-radar-volume.svg` serves the legacy `radar-volume` stepper, which
+ * has no status bar (`stateIndicator: null`) and whose title is its volume
+ * readout (#1479).
+ *
+ * Neither template has a separate `{{titleContent}}` token: the real action
+ * bakes title + artwork + status bar into `iconContent` itself
+ * (`generatePitCrewSvg()`: `iconContent = scaledGraphic + titleText +
+ * statusBar`). So each sample supplies the full `iconContent` as a sample
+ * title plus `statusBarOn()` where the mode has one, leaving the artwork blank
+ * like every other dynamic-template sample. A toggle hides its title by
+ * default since #1479; the sample keeps it as the card's label, drawn at the
+ * top, where pit-crew.svg's locked position puts a title turned on per key
+ * (the status bar would cover a bottom one). Radar Volume's readout sits at the
+ * default bottom, where the global position puts it unless moved.
  */
-const PIT_CREW_SAMPLES: { key: string; title: string }[] = [
-  { key: "pit-crew-engineer", title: "RACE\nENGINEER" },
-  { key: "pit-crew-radar", title: "RADAR" },
-  { key: "pit-crew-corner-names", title: "CORNER\nNAMES" },
-];
+/** First baseline of a top title at the default 18 px (icon-composer `calculateYPositions`: fontSize + 8). */
+const TOP_TITLE_FIRST_BASELINE = 26;
+
+/** `sampleTitle`'s `bottomY` for a title drawn from the top, whose lines it spaces 20 px apart. */
+function topSampleTitleBottomY(title: string): number {
+  return TOP_TITLE_FIRST_BASELINE + 20 * (title.split("\n").length - 1);
+}
+
+const PIT_CREW_SAMPLES: Record<string, { key: string; title: string; statusBar: boolean }[]> = {
+  "pit-crew": [
+    { key: "pit-crew-engineer", title: "RACE\nENGINEER", statusBar: true },
+    { key: "pit-crew-radar", title: "RADAR", statusBar: true },
+    { key: "pit-crew-corner-names", title: "CORNER\nNAMES", statusBar: true },
+  ],
+  "pit-crew-radar-volume": [{ key: "pit-crew-radar-volume", title: "VOL +\n50%", statusBar: false }],
+};
 
 interface DialBoxSampleSpec {
   key: string;
@@ -508,10 +524,14 @@ for (const file of readdirSync(DYNAMIC_ROOT)) {
   const sourcePath = path.join(DYNAMIC_ROOT, file);
   const svg = readFileSync(sourcePath, "utf-8");
 
-  if (name === "pit-crew") {
-    for (const pitCrewSample of PIT_CREW_SAMPLES) {
+  const pitCrewSamples = Object.hasOwn(PIT_CREW_SAMPLES, name) ? PIT_CREW_SAMPLES[name] : undefined;
+
+  if (pitCrewSamples) {
+    for (const pitCrewSample of pitCrewSamples) {
       const sitePath = `dynamic/${pitCrewSample.key}.svg`;
-      const iconContent = sampleTitle(pitCrewSample.title, 92) + statusBarOn();
+      const iconContent = pitCrewSample.statusBar
+        ? sampleTitle(pitCrewSample.title, topSampleTitleBottomY(pitCrewSample.title)) + statusBarOn()
+        : sampleTitle(pitCrewSample.title);
       writeAsset(sitePath, renderDynamicTemplate(svg, { iconContent }));
       entries.push({
         class: "dynamic",
