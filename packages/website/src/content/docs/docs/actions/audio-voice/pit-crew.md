@@ -682,6 +682,58 @@ Two callout opt-ins live under **Race Engineer Callouts → Spotter** in the Set
 - **Repeat reminder while alongside** (`calloutEnabledSpotterStillThere`) — the "Still there." / "Hold your line." loop that repeats for as long as a car stays beside you.
 - **Reminder interval (s)** (`spotterStillThereSeconds`, 1–10, default 3) — how often that reminder repeats. Read live, so a change takes effect on the next reminder without a restart.
 
+## Approaching traffic (rejoining and pit exit)
+
+Two moments ask the same question — will a car arrive where you are about to be? — and the Race Engineer answers both: when your car has stopped on the circuit after a spin, a stall or a stop to avoid a crash, and when you drive out of your pit stall after a stop. He looks at every car on the track or just off it, whatever its class and the pace car included, and works out when each one will reach the point that matters from iRacing's own reference lap times, so the track's fast and slow sections are already in the number. Cars in the pits and cars not on the track are left out.
+
+### What the engineer says
+
+The lines in iRaceDeck's two voices, with twenty, fifteen and three seconds as examples (the engineer speaks the number that applies):
+
+| Call | Default | Default (Short callouts) |
+| --- | --- | --- |
+| Clear | *"Nothing behind you for the next twenty seconds."* | *"Clear behind for twenty seconds."* |
+| Get moving | *"Car approaching in about fifteen seconds. Get moving."* | *"Car coming in fifteen seconds. Get going."* |
+| Hold | *"Car approaching, three seconds, hold."* | *"Car coming, three seconds, hold."* |
+| Go | *"Clear, go."* | *"Clear, go."* |
+| Pit exit traffic | *"Watch out for traffic at pit exit."* | *"Traffic at pit exit."* |
+| Pit exit clear | *"Pit exit seems to be clear."* | *"Pit exit clear."* |
+
+The four calls you hear while stopped play without the radio beeps, like the spotter's: they can come every few seconds while you sit there, and a beep either side of each would drown the words. The two pit exit calls come once per exit and keep the radio frame.
+
+### Rejoining after a stop
+
+The calls start once your car has been stopped or crawling, under about 11 km/h, for a second and a half, while you are in the car, on the track or beside it (grass, gravel, run-off), off pit road, and with the session running — never on the grid, in the warmup or on the parade laps before a start. No incident is needed: a spin, a stall, a stop to avoid a crash and a spin iRacing never scored all get the same answer. Which way your car is facing makes no difference, since the traffic comes along the track either way, and a yellow flag does not stop the calls, since the cars still arrive.
+
+The engineer always says something at that first moment: after a spin, silence cannot be told apart from an engineer who did not notice. What he says depends on the nearest car coming up to where you are:
+
+- **Clear** — no car will reach you within the **Traffic look-ahead** (default 20 seconds). The line speaks the look-ahead itself.
+- **Get moving** — a car will reach you inside the look-ahead but outside the **Traffic hold window** (default 6 seconds). There is time to go, and the number says how much.
+- **Hold** — a car will reach you inside the hold window: stay where you are until it has gone by. This call cuts whatever the engineer was saying.
+- **Go** — after a hold, as soon as nothing will reach you inside the hold window any more.
+
+While you stay stopped he checks again every second, and speaks again only when the call changes, or when the nearest car's time has moved by three seconds or more since he last said it, so a car closing steadily is not counted down second by second. The number is whole seconds, rounded down: a car 4.9 seconds away is four seconds. The calls end, without a word, once you have been moving above about 29 km/h for two seconds, or when you reach pit road or leave the car; creeping through a gravel trap at walking pace keeps them going.
+
+### Leaving the pits
+
+As you drive out of your pit stall, the engineer works out when you will reach the end of the pit exit lane, where it joins the track — at the pit speed limit to the end of pit road, then at racing pace — and whether a car on the track will get there at about the same time. A car counts as traffic when it arrives anywhere from **Pit exit window before you** (default 2 seconds) ahead of you to **Pit exit window after you** (default 4 seconds) behind you. The window is wider behind you on purpose: a car arriving after you is at full speed while you are still accelerating, so it closes on you, while one that gets there first is already ahead and matters only when it is practically alongside.
+
+He speaks once, when you are within the **Traffic look-ahead** of the end of the exit lane — early enough to act on, late enough that the picture has settled — and again only if the answer changes before you get there. The calls carry no number: at the pit exit the window is the information, and you cannot sit and wait the way a stopped car can. The traffic call cuts whatever the engineer was saying; the clear call waits its turn. Nothing more is said once you are back on the track, and a tow, a reset or leaving the car ends it too. A drive-through, which never stops in your stall, gets no call.
+
+The call needs to know where the track's pit road ends and where the exit lane joins the track, which iRaceDeck [learns while you drive](/docs/getting-started/settings/#what-iracedeck-learns-about-tracks). On a track where it has not learned both yet, there is no pit exit call at all rather than a guess. Online, that usually takes two of your own pit stops at the track, because iRacing does not report other drivers' pit road reliably there; what it learns is kept, so from then on the call is there on every visit.
+
+### Multiclass races
+
+Every car is timed at its own class's pace. iRacing keeps a separate reference lap per class, so the engineer learns each class's reference lap from that class's cars as they drive and times every car against its own: a prototype closing on your GT car is timed at prototype pace, not at yours. A class's timing is exact once its cars have driven past the point in question, which is usually within the first lap; until then it is estimated from the class's lap time.
+
+A car that cannot be timed at all — which should practically never happen — never turns a call into a clear. At the pit exit it counts as traffic. When you are stopped, the engineer still gives the get-moving and hold calls for the cars he can time but will not say clear, and if that car is the only one around he says nothing.
+
+### When the radio is busy
+
+A newer traffic call replaces an older one, whether it is still waiting or already playing, and a call that cannot be spoken within three seconds is dropped rather than played late: the numbers count down while a line waits, and a hold heard four seconds late is about a car that has already gone by. The engineer speaks again at the next change, so nothing is lost.
+
+Two opt-ins, both on by default, and the four timing sliders above live under **Race Engineer Callouts → Traffic** in the Settings window — see [the opt-in list below](#race-engineer-callouts-per-subject-opt-inout). With the Race Engineer master off, both calls are silent.
+
 ## Readouts on request (Session Info)
 
 Besides the calls it makes on its own, the engineer reads out a figure when you ask for it: press a [Session Info](/docs/actions/display-session/session-info/) key showing fuel used last lap, average fuel per lap, track temperature or air temperature, and the engineer says the value the key shows. It is switched per key with **Speak value on press**, not under **Race Engineer Callouts** — see [Speak value on press](/docs/actions/display-session/session-info/#speak-value-on-press).
@@ -849,6 +901,15 @@ Under **Spotter**, two callouts are toggleable, both enabled by default (see [Sp
 - **Announce cars around you** (`calloutEnabledSpotterCars`) — every transition call (car / two cars / one car / three wide / clear / combined). Disabling silences the spoken calls while leaving the focus gate and "still there" reminder logic intact.
 - **Repeat reminder while alongside** (`calloutEnabledSpotterStillThere`) — the "Still there." reminder loop. Disabling stops the loop without affecting the transition calls.
 - **Reminder interval (s)** (`spotterStillThereSeconds`, 1–10, default 3) — how often the "still there" reminder repeats while a car is alongside. Read live.
+
+Under **Traffic**, two callouts are toggleable, both enabled by default, with four timing sliders below them (see [Approaching traffic](#approaching-traffic-rejoining-and-pit-exit) above for the full behavior). The sliders are read live, so a change applies to the next call:
+
+- **Traffic when rejoining** (`calloutEnabledTrafficRejoin`) — the clear, get-moving, hold and go calls while you are stopped or crawling on the track.
+- **Traffic at pit exit** (`calloutEnabledTrafficPitExit`) — the traffic or clear call as you drive out of your pit stall.
+- **Traffic look-ahead (s)** (`trafficNoticeSeconds`, 5–60, default 20) — how far ahead the engineer looks for approaching cars when you are stopped on track, and how long before you reach the end of the pit exit it gives the pit exit call.
+- **Traffic hold window (s)** (`trafficHoldSeconds`, 2–15, default 6) — when you are stopped on track and a car will reach you within this time, the engineer tells you to hold rather than go. It is never longer than the look-ahead: set it longer and the look-ahead is used.
+- **Pit exit window before you (s)** (`trafficPitExitBeforeSeconds`, 0–10, default 2) — a car reaching the point where the pit exit joins the track up to this long before you counts as traffic; 0 ignores cars that get there first.
+- **Pit exit window after you (s)** (`trafficPitExitAfterSeconds`, 0–15, default 4) — a car reaching the point where the pit exit joins the track up to this long after you counts as traffic; 0 ignores cars that get there after you.
 
 Under **Caution**, eleven callouts are toggleable, all enabled by default (see [Full-course caution](#full-course-caution) above for the full behavior). They only ever fire in a race, while you are live in the car, and only as part of a full-course caution — with one exception: **Pace car off** also plays at an opening rolling start.
 
