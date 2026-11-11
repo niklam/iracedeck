@@ -98,4 +98,4 @@ Hold and pit-exit traffic fire at `WEIGHT.SAFETY` with `interrupt: true`: a car 
 
 ## Verification
 
-Arrival-primitive tests: wrap-around, cars ahead, in pits, not in world. Detector tests for the entry gates and the verdict table. Harness: a stopped player with cars at 25 s, 12 s and 4 s, watching the verdicts change as they pass; a pit exit with the landmarks seeded and cars at 3 s before, 1 s before, 3 s after and 5 s after the player's arrival (traffic, traffic, traffic, clear at the defaults). Manual: a deliberate spin in practice on a busy server, and a pit stop with traffic.
+Arrival-primitive tests: wrap-around, cars ahead, in pits, not in world. Detector tests for the entry gates and the verdict table. Harness: a stopped player with cars at 25 s, 12 s and 4 s, watching the verdicts change as they pass; a pit exit with the landmarks seeded and cars at 3 s before, 1 s before, 3 s after and 5 s after the player's arrival (clear, traffic, traffic, clear at the defaults of 2 s before and 4 s after; amended 2026-11-10 to match decision 5's lopsided window). Manual: a deliberate spin in practice on a busy server, and a pit stop with traffic.
