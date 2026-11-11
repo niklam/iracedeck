@@ -611,6 +611,119 @@ describe("runGeneration — copies between voices", () => {
   });
 });
 
+describe("runGeneration — a copy needs the same resolved references", () => {
+  const dependent = { name: "x", text: "point four", previous_request_ids: ["intro/x"] };
+
+  for (const dryRun of [false, true]) {
+    const mode = dryRun ? "dry run" : "live run";
+
+    it(`cuts, not copies, a dependent whose dependency is a different take in each voice (${mode})`, async () => {
+      const groups = { intro: [{ name: "x", text: "Last lap was." }], tail: [dependent] };
+      const defaultVoice = buildVoice(groups);
+      const shawn = buildVoice(groups);
+      const manifest = emptyManifest();
+
+      // Same config, same hash — but each voice's intro was cut separately.
+      seed(manifest, "voice/default/intro/x.mp3", hashOf(defaultVoice, "intro/x"), "req-default-intro");
+      seed(manifest, "voice/shawn/intro/x.mp3", hashOf(shawn, "intro/x"), "req-shawn-intro");
+
+      const { promise, synthesize, log } = run({
+        voiceConfigs: new Map([
+          ["default", defaultVoice],
+          ["shawn", shawn],
+        ]),
+        manifest,
+        dryRun,
+      });
+      const result = await promise;
+
+      expect(result.perVoice.get("shawn")).toEqual({ generated: 1, copied: 0, skipped: 1, failed: 0, refused: 0 });
+      expect(log.lines.some((line) => line.includes("COPY"))).toBe(false);
+
+      if (!dryRun) {
+        expect(synthesize).toHaveBeenCalledTimes(2);
+        expect(synthesize.mock.calls[1]![0].previous_request_ids).toEqual(["req-shawn-intro"]);
+        expect(manifest.entries["voice/shawn/tail/x.mp3"]!.requestId).not.toBe(
+          manifest.entries["voice/default/tail/x.mp3"]!.requestId,
+        );
+      }
+    });
+
+    it(`copies a dependent whose dependency is itself a copy, so both resolve to one id (${mode})`, async () => {
+      const groups = { intro: [{ name: "x", text: "Last lap was." }], tail: [dependent] };
+      const defaultVoice = buildVoice(groups);
+      const shawn = buildVoice(groups);
+      const manifest = emptyManifest();
+
+      // The intro is cut fresh in Default and copied into Short callouts in this run.
+      seed(manifest, "voice/default/intro/x.mp3", "flash-era-hash", "req-flash-default");
+      seed(manifest, "voice/shawn/intro/x.mp3", "flash-era-hash", "req-flash-shawn");
+
+      const { promise, synthesize, log } = run({
+        voiceConfigs: new Map([
+          ["default", defaultVoice],
+          ["shawn", shawn],
+        ]),
+        manifest,
+        dryRun,
+      });
+      const result = await promise;
+
+      expect(result.perVoice.get("default")).toEqual({ generated: 2, copied: 0, skipped: 0, failed: 0, refused: 0 });
+      expect(result.perVoice.get("shawn")).toEqual({ generated: 0, copied: 2, skipped: 0, failed: 0, refused: 0 });
+
+      if (dryRun) {
+        expect(log.lines).toContain("[dry-run] WOULD COPY voice/shawn/tail/x.mp3 from voice/default/tail/x.mp3");
+      } else {
+        expect(synthesize).toHaveBeenCalledTimes(2);
+        expect(manifest.entries["voice/shawn/tail/x.mp3"]!.requestId).toBe(
+          manifest.entries["voice/default/tail/x.mp3"]!.requestId,
+        );
+      }
+    });
+
+    it(`cuts a dependent whose dependency each voice cuts fresh in the same run (${mode})`, async () => {
+      const defaultVoice = buildVoice({ intro: [{ name: "x", text: "Last lap was." }], tail: [dependent] });
+      const shawn = buildVoice({ intro: [{ name: "x", text: "Lap." }], tail: [dependent] });
+      const manifest = emptyManifest();
+
+      expect(hashOf(shawn, "tail/x")).toBe(hashOf(defaultVoice, "tail/x"));
+
+      const { promise, synthesize } = run({
+        voiceConfigs: new Map([
+          ["default", defaultVoice],
+          ["shawn", shawn],
+        ]),
+        manifest,
+        dryRun,
+      });
+      const result = await promise;
+
+      expect(result.perVoice.get("shawn")).toEqual({ generated: 2, copied: 0, skipped: 0, failed: 0, refused: 0 });
+
+      if (!dryRun) {
+        expect(synthesize).toHaveBeenCalledTimes(4);
+        // Short callouts' tail is conditioned on its own new intro, req-3.
+        expect(synthesize.mock.calls[3]![0].previous_request_ids).toEqual(["req-3"]);
+      }
+    });
+  }
+
+  it("copies an entry with no references whatever its dependencies elsewhere", async () => {
+    const groups = { g: [{ name: "x", text: "Box this lap" }] };
+    const { promise } = run({
+      voiceConfigs: new Map([
+        ["default", buildVoice(groups)],
+        ["shawn", buildVoice(groups)],
+      ]),
+      manifest: emptyManifest(),
+      dryRun: true,
+    });
+
+    expect((await promise).perVoice.get("shawn")!.copied).toBe(1);
+  });
+});
+
 describe("scopeFlagsFor", () => {
   it("names the voice, the group and the entry", () => {
     expect(scopeFlagsFor("shawn", "lap-time-intro/best-lap-yet")).toBe(
