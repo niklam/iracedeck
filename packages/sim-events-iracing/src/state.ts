@@ -546,6 +546,57 @@ export function createPitLaneLandmarksState(): PitLaneLandmarksState {
 }
 
 /**
+ * One bin of a class's reference curve (issue #1113, `diff/traffic-arrival.ts`):
+ * the running mean of the `(CarIdxLapDistPct, CarIdxEstTime)` samples that
+ * fell into the bin. The mean of points on the curve is a point on it (to
+ * within the curve's bend across one bin), so the pair is used as one sample.
+ */
+export type TrafficCurveBin = {
+  /** Mean `CarIdxLapDistPct` of the samples folded in, in the bin's range. */
+  pct: number;
+  /** Mean `CarIdxEstTime` of the same samples, seconds. */
+  estTime: number;
+  /**
+   * The running mean's weight: samples folded in, capped at
+   * `TRAFFIC_CURVE_SAMPLE_CAP`, so a later sample still counts for at least
+   * `1 / cap` and one car's offset fades as other cars pass.
+   */
+  samples: number;
+};
+
+/** One car class's reference curve (issue #1113): fixed bins over [0, 1), `null` while a bin has no sample. */
+export type TrafficReferenceCurve = {
+  /** `TRAFFIC_CURVE_BINS` entries; bin `i` holds the samples with `pct` in `[i / bins, (i + 1) / bins)`. */
+  bins: (TrafficCurveBin | null)[];
+};
+
+/**
+ * The approaching-traffic arrival model's learned reference curves (issue
+ * #1113, spec decision 5, "Settled (amended 2026-11-10)"): per car class, the
+ * class's reference-lap time (`CarIdxEstTime`) by lap position, fed every live
+ * tick by `updateTrafficReferenceCurves` from every car on the racing surface,
+ * and read by the arrival primitive (`diff/traffic-arrival.ts`). Plain records
+ * and arrays, so the Telemetry Snapshot's `raw.state` dump carries it.
+ *
+ * Recreated with the state at a session change and a disconnect: a new
+ * session can be another track, and one lap of any car of a class re-learns
+ * its curve. Kept whole at the replay wipe (`preservedAcrossReplay`): the
+ * curve is a function of the track and the class, which a garage visit or a
+ * replay glance does not change, and only live ticks feed it, so no replay
+ * reading can reach it — wiping it would only cost the arrivals their exact
+ * tier until every class had driven another lap.
+ */
+export type TrafficArrivalState = {
+  /** By `CarClassID` as a string (the key `estTimeByClass` uses); a class appears with its first sample. */
+  curves: Record<string, TrafficReferenceCurve>;
+};
+
+/** No class learned yet (issue #1113): the initial state. */
+export function createTrafficArrivalState(): TrafficArrivalState {
+  return { curves: {} };
+}
+
+/**
  * The laps-of-fuel-left callouts' state (issue #838; one slice since #1405
  * moved it under #1588's convention): the mid-lap sampling baselines, the
  * refuel tracker, the stint's announce floor and reassurance latch, and the
@@ -1920,6 +1971,14 @@ export type TranslatorState = {
   /** See {@link PitLaneLandmarksState}. Wiped with the rest of the state on a replay glance. */
   pitLaneLandmarks: PitLaneLandmarksState;
 
+  // ── Approaching traffic (issue #1113) ──────────────────────────────────
+  /**
+   * The per-class reference curves the arrival model reads, one slice
+   * ({@link TrafficArrivalState}). Reset per session and at a disconnect;
+   * kept whole at a replay glance.
+   */
+  trafficArrival: TrafficArrivalState;
+
   // ── Self-managed running order (issue #603) ─────────────────────────────
   /**
    * Per-car last-known good score (`CarIdxLapCompleted + CarIdxLapDistPct`) from
@@ -2554,6 +2613,7 @@ export function createInitialState(): TranslatorState {
     trackGaps: createTrackGapsState(),
 
     pitLaneLandmarks: createPitLaneLandmarksState(),
+    trafficArrival: createTrafficArrivalState(),
 
     positionLastKnownScores: [],
     positionFrozen: new Set(),
