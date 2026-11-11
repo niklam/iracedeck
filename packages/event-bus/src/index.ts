@@ -57,9 +57,10 @@ export type {
   TrafficPitExit,
   TrafficPitExitVerdict,
   TrafficRejoin,
-  TrafficRejoinApproaching,
   TrafficRejoinClear,
-  TrafficRejoinGo,
+  TrafficRejoinNear,
+  TrafficRejoinOverTen,
+  TrafficRejoinRightBehind,
   TrafficRejoinVerdict,
 } from "./event-catalog.js";
 export { OpponentPenaltyFlag, TrackWetness } from "./event-catalog.js";

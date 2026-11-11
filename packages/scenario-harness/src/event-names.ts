@@ -109,8 +109,8 @@ export const EVENT_TEMPLATES = [
   {
     name: "traffic.rejoin",
     description:
-      "Stopped on track, whether a car is coming (issue #1113) — verdict: clear (with windowSeconds, the notice window) / notice / hold (with seconds, the nearest car's arrival) / go (no number)",
-    data: { verdict: "hold", seconds: 4 } satisfies SimEventMap["traffic.rejoin"]["data"],
+      "Stopped on track, which band the nearest coming car is in (issue #1113) — verdict: rightBehind (under 2 s) / near (2–9 s, with seconds, and first: true for the car-coming line, false for a later count) / overTen (10–14 s) / clear (15 s or more, or no car)",
+    data: { verdict: "near", seconds: 6, first: true } satisfies SimEventMap["traffic.rejoin"]["data"],
   },
   {
     name: "traffic.pitExit",

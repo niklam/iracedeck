@@ -137,7 +137,7 @@ vi.mock("./diff/pit-lane-landmarks.js", async (io) =>
   }),
 );
 vi.mock("./diff/sector-start.js", async (io) => harness.spy(await io(), { diffSectorStart: 6 }));
-vi.mock("./diff/traffic-rejoin.js", async (io) => harness.spy(await io(), { diffTrafficRejoin: 7 }));
+vi.mock("./diff/traffic-rejoin.js", async (io) => harness.spy(await io(), { diffTrafficRejoin: 6 }));
 vi.mock("./diff/traffic-pit-exit.js", async (io) => harness.spy(await io(), { diffTrafficPitExit: 6 }));
 vi.mock("./diff/corner-name.js", async (io) => harness.spy(await io(), { diffCornerName: 6 }));
 vi.mock("./diff/fuel-laps-left.js", async (io) => harness.spy(await io(), { diffFuelLapsLeft: 7 }));

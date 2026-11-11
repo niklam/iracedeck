@@ -2,8 +2,9 @@
  * The approaching-traffic detectors through the real tick (issue #1113): a
  * stopped player hears `traffic.rejoin` from the curves the same ticks learn,
  * a player driving out of the stall hears `traffic.pitExit` against the
- * landmarks #1112's learner loaded, the windows come from the options, and a
- * replay glance wipes an episode, which the first ticks back start afresh.
+ * landmarks #1112's learner loaded, the pit-exit window comes from the
+ * options, and a replay glance wipes an episode, which the first ticks back
+ * start afresh.
  */
 import { _resetEventBus, getEventBus, initializeEventBus, type SimEventMap } from "@iracedeck/event-bus";
 import {
@@ -201,7 +202,7 @@ describe("the approaching-traffic detectors through handleTick (issue #1113)", (
   });
 
   describe("traffic.rejoin", () => {
-    it("holds for a car the curve times 4.5 s away, and says go once it is by", () => {
+    it("says a car the curve times 4.5 s away is near, and clear once it is by", () => {
       init();
 
       // The player's own sample at 0.5 is the class curve there (45 s); car 1
@@ -210,22 +211,12 @@ describe("the approaching-traffic detectors through handleTick (issue #1113)", (
       vi.advanceTimersByTime(TRAFFIC_REJOIN_ENTRY_DWELL_MS);
       controller.__tick(tick({ pct: 0.5 }, 0.45));
 
-      expect(rejoin).toEqual([{ verdict: "hold", seconds: 4 }]);
+      expect(rejoin).toEqual([{ verdict: "near", seconds: 4, first: true }]);
 
       vi.advanceTimersByTime(TRAFFIC_REJOIN_EVAL_INTERVAL_MS);
       controller.__tick(tick({ pct: 0.5 }, 0.52));
 
-      expect(rejoin).toEqual([{ verdict: "hold", seconds: 4 }, { verdict: "go" }]);
-    });
-
-    it("reads its windows from the options", () => {
-      init({ getTrafficNoticeSeconds: () => 30, getTrafficHoldSeconds: () => 3 });
-
-      controller.__tick(tick({ pct: 0.5 }, 0.45));
-      vi.advanceTimersByTime(TRAFFIC_REJOIN_ENTRY_DWELL_MS);
-      controller.__tick(tick({ pct: 0.5 }, 0.45));
-
-      expect(rejoin).toEqual([{ verdict: "notice", seconds: 4 }]);
+      expect(rejoin).toEqual([{ verdict: "near", seconds: 4, first: true }, { verdict: "clear" }]);
     });
 
     it("says nothing for a car driving past at speed", () => {
@@ -245,9 +236,9 @@ describe("the approaching-traffic detectors through handleTick (issue #1113)", (
       controller.__tick(tick({ pct: 0.5 }, 0.2));
       vi.advanceTimersByTime(TRAFFIC_REJOIN_ENTRY_DWELL_MS);
       controller.__tick(tick({ pct: 0.5 }, 0.2));
-      expect(rejoin).toEqual([{ verdict: "clear", windowSeconds: 20 }]);
+      expect(rejoin).toEqual([{ verdict: "clear" }]);
 
-      // Car 1 at 0.2 reads 18 s: 27 s away, beyond the notice window.
+      // Car 1 at 0.2 reads 18 s: 27 s away, clear.
       controller.__tick(tick({ pct: 0.5, replay: true }, 0.2));
 
       // Back to live, past the replay state's exit grace (#1324).
@@ -263,10 +254,7 @@ describe("the approaching-traffic detectors through handleTick (issue #1113)", (
       vi.advanceTimersByTime(TRAFFIC_REJOIN_ENTRY_DWELL_MS);
       controller.__tick(tick({ pct: 0.5 }, 0.2));
 
-      expect(rejoin).toEqual([
-        { verdict: "clear", windowSeconds: 20 },
-        { verdict: "clear", windowSeconds: 20 },
-      ]);
+      expect(rejoin).toEqual([{ verdict: "clear" }, { verdict: "clear" }]);
     });
   });
 

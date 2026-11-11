@@ -1,18 +1,11 @@
 import { describe, expect, it } from "vitest";
 
+import * as trafficSettings from "./traffic-settings.js";
 import {
-  sanitizeTrafficHoldSeconds,
-  sanitizeTrafficNoticeSeconds,
   sanitizeTrafficPitExitAfterSeconds,
   sanitizeTrafficPitExitBeforeSeconds,
-  TRAFFIC_DEFAULT_HOLD_SECONDS,
-  TRAFFIC_DEFAULT_NOTICE_SECONDS,
   TRAFFIC_DEFAULT_PIT_EXIT_AFTER_SECONDS,
   TRAFFIC_DEFAULT_PIT_EXIT_BEFORE_SECONDS,
-  TRAFFIC_HOLD_MAX_SECONDS,
-  TRAFFIC_HOLD_MIN_SECONDS,
-  TRAFFIC_NOTICE_MAX_SECONDS,
-  TRAFFIC_NOTICE_MIN_SECONDS,
   TRAFFIC_PIT_EXIT_AFTER_MAX_SECONDS,
   TRAFFIC_PIT_EXIT_AFTER_MIN_SECONDS,
   TRAFFIC_PIT_EXIT_BEFORE_MAX_SECONDS,
@@ -20,20 +13,6 @@ import {
 } from "./traffic-settings.js";
 
 const SETTINGS = [
-  {
-    name: "notice",
-    sanitize: sanitizeTrafficNoticeSeconds,
-    min: TRAFFIC_NOTICE_MIN_SECONDS,
-    max: TRAFFIC_NOTICE_MAX_SECONDS,
-    fallback: TRAFFIC_DEFAULT_NOTICE_SECONDS,
-  },
-  {
-    name: "hold",
-    sanitize: sanitizeTrafficHoldSeconds,
-    min: TRAFFIC_HOLD_MIN_SECONDS,
-    max: TRAFFIC_HOLD_MAX_SECONDS,
-    fallback: TRAFFIC_DEFAULT_HOLD_SECONDS,
-  },
   {
     name: "pit exit before",
     sanitize: sanitizeTrafficPitExitBeforeSeconds,
@@ -52,12 +31,6 @@ const SETTINGS = [
 
 describe("approaching-traffic setting bounds (#1113)", () => {
   it("are the spec's defaults and slider ranges", () => {
-    expect([TRAFFIC_NOTICE_MIN_SECONDS, TRAFFIC_DEFAULT_NOTICE_SECONDS, TRAFFIC_NOTICE_MAX_SECONDS]).toEqual([
-      5,
-      20,
-      60,
-    ]);
-    expect([TRAFFIC_HOLD_MIN_SECONDS, TRAFFIC_DEFAULT_HOLD_SECONDS, TRAFFIC_HOLD_MAX_SECONDS]).toEqual([2, 6, 15]);
     expect([
       TRAFFIC_PIT_EXIT_BEFORE_MIN_SECONDS,
       TRAFFIC_DEFAULT_PIT_EXIT_BEFORE_SECONDS,
@@ -68,6 +41,19 @@ describe("approaching-traffic setting bounds (#1113)", () => {
       TRAFFIC_DEFAULT_PIT_EXIT_AFTER_SECONDS,
       TRAFFIC_PIT_EXIT_AFTER_MAX_SECONDS,
     ]).toEqual([0, 4, 15]);
+  });
+
+  it("are the pit-exit window's two sides only: rejoin's bands are fixed and the look-ahead is gone (amended 2026-11-11)", () => {
+    expect(Object.keys(trafficSettings).sort()).toEqual([
+      "TRAFFIC_DEFAULT_PIT_EXIT_AFTER_SECONDS",
+      "TRAFFIC_DEFAULT_PIT_EXIT_BEFORE_SECONDS",
+      "TRAFFIC_PIT_EXIT_AFTER_MAX_SECONDS",
+      "TRAFFIC_PIT_EXIT_AFTER_MIN_SECONDS",
+      "TRAFFIC_PIT_EXIT_BEFORE_MAX_SECONDS",
+      "TRAFFIC_PIT_EXIT_BEFORE_MIN_SECONDS",
+      "sanitizeTrafficPitExitAfterSeconds",
+      "sanitizeTrafficPitExitBeforeSeconds",
+    ]);
   });
 });
 

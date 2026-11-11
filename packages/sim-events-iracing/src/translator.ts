@@ -142,8 +142,6 @@ import {
 import { diffTrafficPitExit } from "./diff/traffic-pit-exit.js";
 import { diffTrafficRejoin } from "./diff/traffic-rejoin.js";
 import {
-  TRAFFIC_DEFAULT_HOLD_SECONDS,
-  TRAFFIC_DEFAULT_NOTICE_SECONDS,
   TRAFFIC_DEFAULT_PIT_EXIT_AFTER_SECONDS,
   TRAFFIC_DEFAULT_PIT_EXIT_BEFORE_SECONDS,
 } from "./diff/traffic-settings.js";
@@ -409,14 +407,13 @@ type TranslatorInstance = {
    */
   getGapMinChangeSeconds: () => number;
   /**
-   * Live-read approaching-traffic windows (issue #1113): the notice window
-   * both detectors share, rejoin's hold window and the pit exit's window
-   * either side of the player's arrival. Plugins wire them to the four
-   * `traffic*Seconds` global settings through the `sanitizeTraffic*`
-   * sanitizers; each defaults to its constant when no closure is given.
+   * Live-read pit-exit traffic window (issue #1113): how long before and after
+   * the player's own arrival at the end of the exit blend a car counts as
+   * traffic. Plugins wire them to the two `trafficPitExit*Seconds` global
+   * settings through their `sanitizeTrafficPitExit*` sanitizers; each
+   * defaults to its constant when no closure is given. Rejoin reads no
+   * setting: its bands are fixed.
    */
-  getTrafficNoticeSeconds: () => number;
-  getTrafficHoldSeconds: () => number;
   getTrafficPitExitBeforeSeconds: () => number;
   getTrafficPitExitAfterSeconds: () => number;
   /**
@@ -498,21 +495,6 @@ export type SimEventsIracingSettingsOptions = {
    * {@link OPPONENT_FLAG_DEFAULT_RANGE_SECONDS}.
    */
   getOpponentFlagRangeSeconds?: () => number;
-  /**
-   * Live-read notice window (seconds) of the approaching-traffic callouts
-   * (issue #1113): how far ahead rejoin looks for a car, and the ETA under
-   * which the pit-exit verdict is first spoken. Plugins compose it from the
-   * `trafficNoticeSeconds` global setting via `sanitizeTrafficNoticeSeconds`.
-   * Default: a constant {@link TRAFFIC_DEFAULT_NOTICE_SECONDS}.
-   */
-  getTrafficNoticeSeconds?: () => number;
-  /**
-   * Live-read hold window (seconds) of the rejoin callout (issue #1113),
-   * clamped to the notice window by the detector. Plugins compose it from the
-   * `trafficHoldSeconds` global setting via `sanitizeTrafficHoldSeconds`.
-   * Default: a constant {@link TRAFFIC_DEFAULT_HOLD_SECONDS}.
-   */
-  getTrafficHoldSeconds?: () => number;
   /**
    * Live-read pit-exit window (seconds) before the player's own arrival at the
    * end of the exit blend (issue #1113). Plugins compose it from the
@@ -666,8 +648,6 @@ export function initializeSimEventsIracing(
     getCornerCalloutLeadSeconds: options.getCornerCalloutLeadSeconds ?? (() => CORNER_CALLOUT_DEFAULT_LEAD_SECONDS),
     getGapAlertThresholdSeconds: options.getGapAlertThresholdSeconds ?? (() => GAP_DEFAULT_ALERT_THRESHOLD_S),
     getGapMinChangeSeconds: options.getGapMinChangeSeconds ?? (() => GAP_DEFAULT_MIN_CHANGE_S),
-    getTrafficNoticeSeconds: options.getTrafficNoticeSeconds ?? (() => TRAFFIC_DEFAULT_NOTICE_SECONDS),
-    getTrafficHoldSeconds: options.getTrafficHoldSeconds ?? (() => TRAFFIC_DEFAULT_HOLD_SECONDS),
     getTrafficPitExitBeforeSeconds:
       options.getTrafficPitExitBeforeSeconds ?? (() => TRAFFIC_DEFAULT_PIT_EXIT_BEFORE_SECONDS),
     getTrafficPitExitAfterSeconds:
@@ -3882,7 +3862,6 @@ function handleLiveSteps(
       telemetry,
       playerCarIdx,
       trafficClasses,
-      { getNoticeSeconds: self.getTrafficNoticeSeconds, getHoldSeconds: self.getTrafficHoldSeconds },
       now,
       emit,
       self.logger,
@@ -3901,7 +3880,6 @@ function handleLiveSteps(
         readLandmarks: () => resolvePitLaneLandmarks(self.pitLaneLearner),
       },
       {
-        getNoticeSeconds: self.getTrafficNoticeSeconds,
         getBeforeSeconds: self.getTrafficPitExitBeforeSeconds,
         getAfterSeconds: self.getTrafficPitExitAfterSeconds,
       },

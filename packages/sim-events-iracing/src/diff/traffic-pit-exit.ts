@@ -53,11 +53,16 @@
  * is unknown has only its next crossing tested. A car is in the window when
  * either crossing is, and the reported nearest considers both.
  *
- * **When it speaks.** Once, at the first evaluation with the ETA under the
- * notice window; then again only when the verdict flips before the player
- * reaches `blendEnd`. The lines speak no number; `seconds` (the nearest timed
- * car's arrival relative to the player's, to a tenth, negative before) is for
- * logs and the harness.
+ * **When it speaks** (amended 2026-11-11: the call is made at the stall). At
+ * the episode's first evaluation, which is the departure tick itself whenever
+ * the landmarks and the ETA resolve there, however far off the merge is: the
+ * call is made the moment the player leaves the pit box, early enough to act
+ * on and ahead of the readback and tire lines it trumps. An evaluation that
+ * cannot resolve them stays silent and the first one that can makes the call.
+ * After that, again only when the verdict flips before the player reaches
+ * `blendEnd`. The lines speak no number; `seconds` (the nearest timed car's
+ * arrival relative to the player's, to a tenth, negative before) is for logs
+ * and the harness.
  */
 import type { SimEventName } from "@iracedeck/event-bus";
 import type { TelemetryData } from "@iracedeck/iracing-sdk";
@@ -119,8 +124,6 @@ export type TrafficPitExitFacts = {
 
 /** The windows the episode reads, live at each evaluation; each closure is the plugin's sanitized setting. */
 export type TrafficPitExitWindows = {
-  /** `trafficNoticeSeconds`: the ETA under which the verdict is first spoken. */
-  getNoticeSeconds: () => number;
   /** `trafficPitExitBeforeSeconds`: a car arriving up to this long before the player is traffic. */
   getBeforeSeconds: () => number;
   /** `trafficPitExitAfterSeconds`: a car arriving up to this long after the player is traffic. */
@@ -344,10 +347,6 @@ function evaluate(
 
     return;
   }
-
-  const notice = windows.getNoticeSeconds();
-
-  if (episode.spokenVerdict === null && !(eta.seconds < notice)) return;
 
   const before = windows.getBeforeSeconds();
   const after = windows.getAfterSeconds();

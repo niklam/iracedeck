@@ -17,8 +17,6 @@ import {
   sanitizeGapAlertThresholdSeconds,
   sanitizeGapMinChangeSeconds,
   sanitizeOpponentFlagRangeSeconds,
-  sanitizeTrafficHoldSeconds,
-  sanitizeTrafficNoticeSeconds,
   sanitizeTrafficPitExitAfterSeconds,
   sanitizeTrafficPitExitBeforeSeconds,
   type SimEventsIracingSettingsOptions,
@@ -71,12 +69,9 @@ export function createIracingTranslatorOptions(): Required<SimEventsIracingSetti
     // race gap, ahead or behind, is announced. Read live per announce so a
     // settings change applies to the next one; clamp mirrors the schema.
     getOpponentFlagRangeSeconds: () => sanitizeOpponentFlagRangeSeconds(getGlobalSettings().opponentFlagRangeSeconds),
-    // The approaching-traffic windows (issue #1113): the notice window both
-    // detectors share, rejoin's hold window (the detector keeps it at or under
-    // the notice window), and the pit exit's window either side of the
-    // player's arrival at the end of the blend. Read live at each evaluation.
-    getTrafficNoticeSeconds: () => sanitizeTrafficNoticeSeconds(getGlobalSettings().trafficNoticeSeconds),
-    getTrafficHoldSeconds: () => sanitizeTrafficHoldSeconds(getGlobalSettings().trafficHoldSeconds),
+    // The pit-exit traffic window (issue #1113): how long before and after the
+    // player's arrival at the end of the blend a car counts as traffic. Read
+    // live at each evaluation. Rejoin has no setting: its bands are fixed.
     getTrafficPitExitBeforeSeconds: () =>
       sanitizeTrafficPitExitBeforeSeconds(getGlobalSettings().trafficPitExitBeforeSeconds),
     getTrafficPitExitAfterSeconds: () =>

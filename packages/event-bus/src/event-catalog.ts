@@ -653,39 +653,41 @@ export type PitLaneLandmarkLearned = {
 
 /**
  * The Race Engineer's verdict on rejoining the track from a stop (issue
- * #1113): `clear` (no car inside the notice window), `notice` (a car inside
- * it, outside the hold window: get moving), `hold` (a car inside the hold
- * window: stay put), and `go` (after a hold, nothing inside the hold window
- * any more).
+ * #1113, amended 2026-11-11): the fixed band the nearest predicted arrival
+ * at the player's position falls in. `rightBehind` under 2 s, `near` from
+ * 2 s to under 10 s, `overTen` from 10 s to under 15 s, `clear` at 15 s or
+ * more or with no car at all. The engineer alerts, never instructs: no verdict
+ * tells a stopped driver to hold or go.
  */
-export type TrafficRejoinVerdict = "clear" | "notice" | "hold" | "go";
+export type TrafficRejoinVerdict = "rightBehind" | "near" | "overTen" | "clear";
 
-/** `traffic.rejoin` with nobody inside the notice window (issue #1113). */
-export type TrafficRejoinClear = {
-  verdict: "clear";
-  /**
-   * The notice window the line speaks ("nothing behind you for the next N
-   * seconds"), in whole seconds rounded down.
-   */
-  windowSeconds: number;
-};
+/** `traffic.rejoin` with the nearest car under 2 s away (issue #1113). Carries no number. */
+export type TrafficRejoinRightBehind = { verdict: "rightBehind" };
 
-/** `traffic.rejoin` with a car inside the notice window (`notice`) or the hold window (`hold`) (issue #1113). */
-export type TrafficRejoinApproaching = {
-  verdict: "notice" | "hold";
+/** `traffic.rejoin` with the nearest car from 2 s to under 10 s away (issue #1113). */
+export type TrafficRejoinNear = {
+  verdict: "near";
   /**
    * The nearest timed car's arrival at the player's position, in whole
-   * seconds rounded down (the cautious direction): at least 2 for `notice`
-   * and at least 1 for `hold`, the bottoms of their clip ranges.
+   * seconds rounded down (the cautious direction): 2 to 9.
    */
   seconds: number;
+  /**
+   * `true` on the call that brings a car into the band ("Car coming, about N
+   * seconds"), `false` on a later count of the same approach ("Now N
+   * seconds").
+   */
+  first: boolean;
 };
 
-/** `traffic.rejoin` after a hold, once nothing is inside the hold window (issue #1113). Carries no number. */
-export type TrafficRejoinGo = { verdict: "go" };
+/** `traffic.rejoin` with the nearest car from 10 s to under 15 s away (issue #1113). Carries no number. */
+export type TrafficRejoinOverTen = { verdict: "overTen" };
 
-/** Payload of `traffic.rejoin` (issue #1113): one member per verdict, each carrying exactly the number its line speaks. */
-export type TrafficRejoin = TrafficRejoinClear | TrafficRejoinApproaching | TrafficRejoinGo;
+/** `traffic.rejoin` with no car within 15 s (issue #1113). Carries no number. */
+export type TrafficRejoinClear = { verdict: "clear" };
+
+/** Payload of `traffic.rejoin` (issue #1113): one member per verdict; only `near` carries a number. */
+export type TrafficRejoin = TrafficRejoinRightBehind | TrafficRejoinNear | TrafficRejoinOverTen | TrafficRejoinClear;
 
 /**
  * The Race Engineer's verdict on the pit exit (issue #1113): `traffic` when a
@@ -734,20 +736,21 @@ export type SimEventMap = {
   "pitStall.departed": SimEvent<"pitStall.departed", EmptySimEventPayload>;
   /**
    * The player is stopped or crawling on the racing surface (or beside it),
-   * out of the pits, past the green (issue #1113): whether a car is coming.
-   * Published on the stop's first verdict, on every verdict change, and when
-   * the nearest arrival has moved by a few seconds since the last one; `go`
-   * once after a hold, when nothing is inside the hold window any more. Never
-   * on every evaluation. From live, in-car telemetry only.
+   * out of the pits, past the green (issue #1113): which band the nearest
+   * coming car is in. Published on the stop's first verdict, whenever the
+   * nearest car moves into a closer band, on a `near` count each time its
+   * whole seconds have dropped by 3 or more, and once for the next car after
+   * a close one has gone by. Never on every evaluation. From live, in-car
+   * telemetry only.
    */
   "traffic.rejoin": SimEvent<"traffic.rejoin", TrafficRejoin>;
   /**
    * The player is driving out of the pits (issue #1113): whether a car on
    * track will reach the end of the exit blend about when they do. Published
-   * once when the player's own arrival there drops under the notice window,
-   * and again only if the verdict flips before they reach it. Nothing when
-   * the track's pit-lane landmarks are not learned. From live, in-car
-   * telemetry only.
+   * once at the stall departure (the first evaluation that can time the
+   * player's arrival), and again only if the verdict flips before they reach
+   * it. Nothing when the track's pit-lane landmarks are not learned. From
+   * live, in-car telemetry only.
    */
   "traffic.pitExit": SimEvent<"traffic.pitExit", TrafficPitExit>;
   /**

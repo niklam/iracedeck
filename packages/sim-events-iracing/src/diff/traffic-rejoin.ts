@@ -1,7 +1,9 @@
 /**
- * Rejoining from a stop (issue #1113, spec decisions 2 and 3): while the
- * player is stopped or crawling on the circuit, whether a car is coming, and
- * how soon. Publishes `traffic.rejoin`.
+ * Rejoining from a stop (issue #1113, spec decisions 2 and 3 as amended on
+ * 2026-11-11): while the player is stopped or crawling on the circuit, which
+ * fixed band the nearest coming car is in. Publishes `traffic.rejoin`. The
+ * engineer alerts, never instructs: no line tells a stopped driver to hold or
+ * to go.
  *
  * **The episode.** It starts once every entry gate has held, with the car
  * below {@link TRAFFIC_REJOIN_CRAWL_MPS}, for {@link TRAFFIC_REJOIN_ENTRY_DWELL_MS}.
@@ -18,36 +20,44 @@
  * hysteresis, so a car creeping through a gravel trap does not flicker in and
  * out of an episode.
  *
- * **The verdict.** On entry and then every
- * {@link TRAFFIC_REJOIN_EVAL_INTERVAL_MS}, every car on the racing surface is
- * timed to the player's lap position P through `computeTrafficArrivals`: its
- * class's learned curve at P first, then the player's own `CarIdxEstTime`
- * scaled to its class. The nearest timed arrival gives `hold` at or inside
- * the hold window, `notice` at or inside the notice window, `clear` beyond it
- * (or with no car at all). The hold window is clamped to the notice window
- * here: the two are separate settings and neither sanitizer rewrites the
- * other.
+ * **The band.** On entry and then every {@link TRAFFIC_REJOIN_EVAL_INTERVAL_MS},
+ * every car on the racing surface is timed to the player's lap position P
+ * through `computeTrafficArrivals`: its class's learned curve at P first, then
+ * the player's own `CarIdxEstTime` scaled to its class. The nearest timed
+ * arrival `s` names the band: `rightBehind` under
+ * {@link TRAFFIC_REJOIN_RIGHT_BEHIND_S}, `near` under
+ * {@link TRAFFIC_REJOIN_OVER_TEN_S} with N the whole seconds rounded down (2
+ * to 9, the cautious direction: a car at 4.9 s is "about four seconds"),
+ * `overTen` under {@link TRAFFIC_REJOIN_CLEAR_S}, and `clear` from there on or
+ * with no timed car. The edges are fixed, not settings, because the lines name
+ * them.
  *
- * **When it speaks.** On the episode's first verdict, on a verdict change,
- * and when the nearest arrival has moved by
- * {@link TRAFFIC_REJOIN_REANNOUNCE_DELTA_S} or more since the value last
- * spoken (`notice` and `hold` only: a clear line carries the window, not an
- * arrival) — never on every evaluation. After a hold, the first evaluation
- * with nothing timed inside the hold window says `go` instead of the table's
- * verdict, once; the table's verdict at that moment becomes the baseline, so
- * the evaluations after it speak only on the ordinary rules.
+ * **When it speaks**, never on every evaluation:
+ * - **Entry:** the episode's first band, always, so silence never means clear.
+ * - **A closer band:** whenever the nearest car moves into one.
+ * - **Near counting down:** the first call into `near` is `first: true` ("Car
+ *   coming, about N seconds"); while still `near`, a `first: false` call ("Now
+ *   N seconds") each time N has dropped by {@link TRAFFIC_REJOIN_COUNT_STEP_S}
+ *   or more since the last spoken N. A different, closer car becoming the
+ *   nearest is counted by the same rule.
+ * - **After a close car:** once the car the last close call (`near` or
+ *   `rightBehind`) was about has gone by, the next car's band is said once:
+ *   `overTen` or `clear` in the usual case, and the next car's own close call
+ *   (a `near` with `first: true`) when it is close too. The car has gone by
+ *   when no source times it any more, or its arrival has reached the clear
+ *   band: an approaching car's arrival only falls, so from under 10 s it gets
+ *   there only by wrapping round the lap behind the player.
+ * - **Otherwise** a band moving away is not re-announced: a car whose arrival
+ *   drifts from 9.8 s to 10.2 s is still the same car coming.
  *
- * **Untimed cars.** A car no source can time only withholds `clear` (and the
- * `go` that also says clear): timed cars still give their notice and hold. A
- * clear withheld that way — untimed cars the only ones, or the timed ones all
- * beyond the notice window — emits nothing, and is logged once per episode at
- * debug with each car's reason (spec decision 5: never invent a number).
- *
- * **The seconds.** Whole seconds, rounded down, the cautious direction: a car
- * at 4.9 s is "four seconds". At least 2 for a notice and 1 for a hold, the
- * bottoms of their clip ranges; a clear speaks the notice window.
+ * **Untimed cars.** A car no source can time withholds the two reassuring
+ * lines, `overTen` and `clear`, and nothing else: timed cars still get their
+ * `near` and `rightBehind`. A withheld line is not marked as spoken, so it is
+ * said at the first evaluation that can say it. It is logged once per episode
+ * at debug with each untimed car's reason, which is all an untimed car alone
+ * ever produces (spec decision 5: never invent a number).
  */
-import type { SimEventName } from "@iracedeck/event-bus";
+import type { SimEventName, TrafficRejoin, TrafficRejoinVerdict } from "@iracedeck/event-bus";
 import { isPreGreen, type TelemetryData } from "@iracedeck/iracing-sdk";
 import type { ILogger } from "@iracedeck/logger";
 
@@ -100,26 +110,32 @@ export const TRAFFIC_REJOIN_END_DWELL_MS = 2_000;
 export const TRAFFIC_REJOIN_EVAL_INTERVAL_MS = 1_000;
 
 /**
- * How far the nearest arrival must move (s) from the value last spoken before
- * an unchanged notice or hold is said again: enough that the new number is
- * news (a car at 15 s heard again at 12 s), not so little that a steadily
- * closing car is counted down second by second.
+ * Under this arrival (s) the nearest car is "right behind you": the
+ * maintainer's wording (2026-11-11) gives no number below 2, because by then a
+ * count is no use, only the warning is.
  */
-export const TRAFFIC_REJOIN_REANNOUNCE_DELTA_S = 3;
+export const TRAFFIC_REJOIN_RIGHT_BEHIND_S = 2;
 
-/** The lowest number a notice speaks (s): the bottom of its clip range. */
-export const TRAFFIC_REJOIN_MIN_NOTICE_SECONDS = 2;
+/**
+ * Under this arrival (s), and from {@link TRAFFIC_REJOIN_RIGHT_BEHIND_S}, the
+ * nearest car is `near` and its whole seconds are spoken: the maintainer gives
+ * a number only for a close car, and close is under ten seconds.
+ */
+export const TRAFFIC_REJOIN_OVER_TEN_S = 10;
 
-/** The lowest number a hold speaks (s): the bottom of its clip range. */
-export const TRAFFIC_REJOIN_MIN_HOLD_SECONDS = 1;
+/**
+ * From {@link TRAFFIC_REJOIN_OVER_TEN_S} to under this arrival (s) the next car
+ * is "more than ten seconds away"; at or beyond it, or with no car at all, it
+ * is "Clear to rejoin": the maintainer's two reassuring bands.
+ */
+export const TRAFFIC_REJOIN_CLEAR_S = 15;
 
-/** The windows the episode reads, live at each evaluation; each closure is the plugin's sanitized setting. */
-export type TrafficRejoinWindows = {
-  /** `trafficNoticeSeconds`: how far ahead the engineer looks. */
-  getNoticeSeconds: () => number;
-  /** `trafficHoldSeconds`: a car inside it means stay put; clamped to the notice window here. */
-  getHoldSeconds: () => number;
-};
+/**
+ * How far the spoken whole seconds of a `near` car must drop (s) before "Now
+ * N" is said: the maintainer's "each time N has dropped by 3 or more", so a
+ * car closing from 9 is counted at 6 and 3, never second by second.
+ */
+export const TRAFFIC_REJOIN_COUNT_STEP_S = 3;
 
 /** The telemetry the rejoin detector reads: the gates, the speed and the arrival model's arrays. */
 export type TrafficRejoinTelemetry = TrafficTelemetry &
@@ -128,7 +144,13 @@ export type TrafficRejoinTelemetry = TrafficTelemetry &
 /** Which entry gate refused a tick, named in the episode-end debug line. */
 type RejoinGate = "notInCar" | "inGarage" | "surface" | "pitRoad" | "preGreen" | "noSpeed" | "noPosition";
 
-type TableVerdict = "clear" | "notice" | "hold";
+type Band = TrafficRejoinVerdict;
+
+/** Each band's closeness: a lower rank is a closer car. */
+const BAND_RANK: Record<Band, number> = { rightBehind: 0, near: 1, overTen: 2, clear: 3 };
+
+/** Why an evaluation speaks, named in its debug line. */
+type SpeakReason = "entry" | "closer band" | "count" | "after a close car";
 
 type TimedArrival = Extract<TrafficArrival, { timed: true }>;
 type UntimedArrival = Extract<TrafficArrival, { timed: false }>;
@@ -191,7 +213,6 @@ export function diffTrafficRejoin(
   telemetry: TrafficRejoinTelemetry,
   playerCarIdx: number,
   classes: TrafficClassInfo | null,
-  windows: TrafficRejoinWindows,
   now: number,
   emit: EmitFn<(typeof TRAFFIC_REJOIN_EVENTS)[number]>,
   logger: ILogger,
@@ -223,7 +244,7 @@ export function diffTrafficRejoin(
 
     Object.assign(episode, createTrafficRejoinState(), { active: true });
     logger.debug(`Rejoin: episode started (pct=${pct.toFixed(4)}, speed=${speed.toFixed(1)} m/s)`);
-    evaluate(episode, curves, telemetry, pct, playerCarIdx, classes, windows, now, emit, logger);
+    evaluate(episode, curves, telemetry, pct, playerCarIdx, classes, now, emit, logger);
 
     return;
   }
@@ -243,10 +264,61 @@ export function diffTrafficRejoin(
 
   if (episode.lastEvalAt !== null && elapsed(now, episode.lastEvalAt) < TRAFFIC_REJOIN_EVAL_INTERVAL_MS) return;
 
-  evaluate(episode, curves, telemetry, pct, playerCarIdx, classes, windows, now, emit, logger);
+  evaluate(episode, curves, telemetry, pct, playerCarIdx, classes, now, emit, logger);
 }
 
-/** One evaluation: time the cars to P, take the table's verdict, and speak by the rules (module header). */
+/** The band of the nearest timed arrival (module header); `clear` with no timed car. */
+function bandOf(seconds: number | null): Band {
+  if (seconds === null || seconds >= TRAFFIC_REJOIN_CLEAR_S) return "clear";
+
+  if (seconds < TRAFFIC_REJOIN_RIGHT_BEHIND_S) return "rightBehind";
+
+  return seconds < TRAFFIC_REJOIN_OVER_TEN_S ? "near" : "overTen";
+}
+
+/** Whether the car the last close call was about has gone by (module header); `false` with no such call. */
+function closeCarGone(closeCarIdx: number | null, arrivals: readonly TrafficArrival[]): boolean {
+  if (closeCarIdx === null) return false;
+
+  const car = arrivals.find((arrival) => arrival.carIdx === closeCarIdx);
+
+  return car === undefined || !car.timed || car.seconds >= TRAFFIC_REJOIN_CLEAR_S;
+}
+
+/** Why this evaluation speaks, by the rules in the module header; `null` when it stays quiet. */
+function speakReason(
+  episode: TrafficRejoinState,
+  band: Band,
+  wholeSeconds: number | null,
+  arrivals: readonly TrafficArrival[],
+): SpeakReason | null {
+  if (episode.spokenBand === null) return "entry";
+
+  if (closeCarGone(episode.closeCarIdx, arrivals)) return "after a close car";
+
+  if (BAND_RANK[band] < BAND_RANK[episode.spokenBand]) return "closer band";
+
+  if (
+    band === "near" &&
+    episode.spokenBand === "near" &&
+    wholeSeconds !== null &&
+    episode.spokenSeconds !== null &&
+    episode.spokenSeconds - wholeSeconds >= TRAFFIC_REJOIN_COUNT_STEP_S
+  ) {
+    return "count";
+  }
+
+  return null;
+}
+
+/** "near 6 s (first)", "rightBehind": the payload as its debug line names it. */
+function describePayload(payload: TrafficRejoin): string {
+  return payload.verdict === "near"
+    ? `near ${payload.seconds} s (${payload.first ? "first" : "count"})`
+    : payload.verdict;
+}
+
+/** One evaluation: time the cars to P, take the band, and speak by the rules (module header). */
 function evaluate(
   episode: TrafficRejoinState,
   curves: Readonly<TrafficArrivalState>,
@@ -254,15 +326,12 @@ function evaluate(
   pct: number,
   playerCarIdx: number,
   classes: TrafficClassInfo | null,
-  windows: TrafficRejoinWindows,
   now: number,
   emit: EmitFn<(typeof TRAFFIC_REJOIN_EVENTS)[number]>,
   logger: ILogger,
 ): void {
   episode.lastEvalAt = now;
 
-  const notice = windows.getNoticeSeconds();
-  const hold = Math.min(windows.getHoldSeconds(), notice);
   const playerClass = resolveCarClassId(telemetry, classes, playerCarIdx);
   const playerEstTime = telemetry.CarIdxEstTime?.[playerCarIdx];
   const sources = [
@@ -277,66 +346,31 @@ function evaluate(
     if (arrival.timed && (nearest === null || arrival.seconds < nearest.seconds)) nearest = arrival;
   }
 
-  const verdict: TableVerdict =
-    nearest !== null && nearest.seconds <= hold
-      ? "hold"
-      : nearest !== null && nearest.seconds <= notice
-        ? "notice"
-        : "clear";
-  const nearestSeconds = nearest?.seconds ?? null;
+  const band = bandOf(nearest?.seconds ?? null);
+  // Only `near` has a nearest car in [2, 10), so its whole seconds are 2 to 9.
+  const wholeSeconds = band === "near" && nearest !== null ? Math.floor(nearest.seconds) : null;
+  const reason = speakReason(episode, band, wholeSeconds, arrivals);
 
-  // "Clear, go" after a hold: says clear too, so an untimed car withholds it.
-  if (verdict !== "hold" && episode.goPending && untimed.length === 0) {
-    emit({ event: "traffic.rejoin", data: { verdict: "go" } });
-    logger.debug(`Rejoin: emit go (${describeNearest(nearest)}; table says ${verdict})`);
-    episode.goPending = false;
-    episode.lastVerdict = verdict;
-    episode.lastSeconds = nearestSeconds;
+  if (reason === null) return;
 
-    return;
-  }
-
-  if (verdict === "clear" && untimed.length > 0) {
+  if ((band === "overTen" || band === "clear") && untimed.length > 0) {
     if (!episode.untimedLogged) {
       episode.untimedLogged = true;
       logger.debug(
-        `Rejoin: clear withheld by untimed cars: ${describeUntimed(untimed)} (${describeNearest(nearest)}, notice ${notice} s)`,
+        `Rejoin: ${band} withheld by untimed cars: ${describeUntimed(untimed)} (${describeNearest(nearest)}; ${reason})`,
       );
     }
 
     return;
   }
 
-  const changed = verdict !== episode.lastVerdict;
-  const moved =
-    !changed &&
-    verdict !== "clear" &&
-    nearestSeconds !== null &&
-    episode.lastSeconds !== null &&
-    Math.abs(nearestSeconds - episode.lastSeconds) >= TRAFFIC_REJOIN_REANNOUNCE_DELTA_S;
+  // `wholeSeconds` is set exactly when the band is `near`.
+  const payload: TrafficRejoin =
+    band === "near" ? { verdict: band, seconds: wholeSeconds as number, first: reason !== "count" } : { verdict: band };
 
-  if (verdict === "hold") episode.goPending = true;
-
-  if (!changed && !moved) return;
-
-  let seconds: number;
-
-  if (verdict === "clear") {
-    seconds = Math.floor(notice);
-    emit({ event: "traffic.rejoin", data: { verdict, windowSeconds: seconds } });
-  } else {
-    // Not clear, so a timed car set the verdict.
-    const floor = verdict === "notice" ? TRAFFIC_REJOIN_MIN_NOTICE_SECONDS : TRAFFIC_REJOIN_MIN_HOLD_SECONDS;
-
-    seconds = Math.max(floor, Math.floor(nearestSeconds as number));
-    emit({ event: "traffic.rejoin", data: { verdict, seconds } });
-  }
-
-  logger.debug(
-    `Rejoin: emit ${verdict} ${seconds} s (${describeNearest(nearest)}; ${changed ? "verdict changed" : "arrival moved"})`,
-  );
-  episode.lastVerdict = verdict;
-  episode.lastSeconds = nearestSeconds;
-
-  if (verdict !== "hold") episode.goPending = false;
+  emit({ event: "traffic.rejoin", data: payload });
+  logger.debug(`Rejoin: emit ${describePayload(payload)} (${describeNearest(nearest)}; ${reason})`);
+  episode.spokenBand = band;
+  episode.spokenSeconds = wholeSeconds;
+  episode.closeCarIdx = (band === "near" || band === "rightBehind") && nearest !== null ? nearest.carIdx : null;
 }

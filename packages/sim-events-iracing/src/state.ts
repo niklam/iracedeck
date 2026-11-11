@@ -613,8 +613,8 @@ export function createTrafficArrivalState(): TrafficArrivalState {
  * traffic picture has moved on. A car still stopped on the first tick back
  * starts a fresh episode after the entry dwell and says where the traffic is
  * now, which is what a driver back from a replay glance needs. Keeping half
- * of the episode would be worse than re-seeding: a `goPending` or a last
- * verdict carried into a new picture would speak a `go`, or keep quiet,
+ * of the episode would be worse than re-seeding: a band or a close car carried
+ * into a new picture would speak an after-a-close-car line, or keep quiet,
  * about cars the driver never heard of.
  */
 export type TrafficRejoinState = {
@@ -626,17 +626,17 @@ export type TrafficRejoinState = {
   movingSince: number | null;
   /** When the episode last evaluated the arrivals; `null` before its first evaluation. */
   lastEvalAt: number | null;
+  /** The band last spoken this episode; `null` until the entry call is spoken. */
+  spokenBand: "rightBehind" | "near" | "overTen" | "clear" | null;
+  /** The whole seconds of the last `near` call, the base of the drop-by-3 count; `null` when the last call was another band. */
+  spokenSeconds: number | null;
   /**
-   * The verdict the re-announce rules compare against: the one last spoken,
-   * or after a `go`, the table's verdict at that moment (spoken as `go`).
-   * `null` before the episode's first emit.
+   * The car the last close call (`near` or `rightBehind`) was about, whose
+   * passing earns the next car's band one call; `null` when the last call was
+   * `overTen` or `clear`.
    */
-  lastVerdict: "clear" | "notice" | "hold" | null;
-  /** The nearest timed arrival (s, unrounded) behind {@link lastVerdict}; `null` when it had none. */
-  lastSeconds: number | null;
-  /** A hold was spoken and no other verdict since: the next evaluation with nothing inside the hold window says `go`. */
-  goPending: boolean;
-  /** The once-per-episode debug line for a clear withheld by untimed cars has been written. */
+  closeCarIdx: number | null;
+  /** The once-per-episode debug line for a reassuring line withheld by untimed cars has been written. */
   untimedLogged: boolean;
 };
 
@@ -647,9 +647,9 @@ export function createTrafficRejoinState(): TrafficRejoinState {
     slowSince: null,
     movingSince: null,
     lastEvalAt: null,
-    lastVerdict: null,
-    lastSeconds: null,
-    goPending: false,
+    spokenBand: null,
+    spokenSeconds: null,
+    closeCarIdx: null,
     untimedLogged: false,
   };
 }

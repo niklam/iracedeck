@@ -14,9 +14,10 @@ import type {
   TrafficPitExit,
   TrafficPitExitVerdict,
   TrafficRejoin,
-  TrafficRejoinApproaching,
   TrafficRejoinClear,
-  TrafficRejoinGo,
+  TrafficRejoinNear,
+  TrafficRejoinOverTen,
+  TrafficRejoinRightBehind,
   TrafficRejoinVerdict,
 } from "./index.js";
 
@@ -85,30 +86,54 @@ describe("pitLane.landmarkLearned", () => {
 });
 
 /**
- * #1113: the approaching-traffic payloads are sim-neutral verdicts with an
- * optional number of seconds. Pinned so a change to what the callouts read is
- * a deliberate edit here too (type test: a mismatch fails `pnpm typecheck`).
+ * #1113: the approaching-traffic payloads are sim-neutral verdicts. A rejoin
+ * verdict names a fixed band and only `near` carries a number, with whether it
+ * is the band's first call; a pit-exit verdict carries the nearest car's
+ * relative arrival for logs. Pinned so a change to what the callouts read is a
+ * deliberate edit here too (type test: a mismatch fails `pnpm typecheck`).
  */
 describe("traffic.rejoin and traffic.pitExit", () => {
-  it("carries a rejoin verdict and, except for go, its seconds", () => {
+  it("carries a rejoin band, and for near its whole seconds and whether it is the first call", () => {
     expectTypeOf<SimEventMap["traffic.rejoin"]["event"]>().toEqualTypeOf<"traffic.rejoin">();
     expectTypeOf<SimEventMap["traffic.rejoin"]["data"]>().toEqualTypeOf<
-      { verdict: "clear"; windowSeconds: number } | { verdict: "notice" | "hold"; seconds: number } | { verdict: "go" }
+      | { verdict: "rightBehind" }
+      | { verdict: "near"; seconds: number; first: boolean }
+      | { verdict: "overTen" }
+      | { verdict: "clear" }
     >();
     expectTypeOf<SimEventMap["traffic.rejoin"]["data"]>().toEqualTypeOf<TrafficRejoin>();
-    expectTypeOf<TrafficRejoin>().toEqualTypeOf<TrafficRejoinClear | TrafficRejoinApproaching | TrafficRejoinGo>();
+    expectTypeOf<TrafficRejoin>().toEqualTypeOf<
+      TrafficRejoinRightBehind | TrafficRejoinNear | TrafficRejoinOverTen | TrafficRejoinClear
+    >();
     expectTypeOf<TrafficRejoin["verdict"]>().toEqualTypeOf<TrafficRejoinVerdict>();
+    expectTypeOf<TrafficRejoinVerdict>().toEqualTypeOf<"rightBehind" | "near" | "overTen" | "clear">();
   });
 
-  it("refuses a rejoin payload whose number does not match its verdict", () => {
-    // @ts-expect-error a clear speaks the window, not an arrival
-    const clearWithSeconds: TrafficRejoin = { verdict: "clear", seconds: 20 };
-    // @ts-expect-error a hold always carries its arrival
-    const holdWithout: TrafficRejoin = { verdict: "hold" };
-    // @ts-expect-error a go carries no number
-    const goWithSeconds: TrafficRejoin = { verdict: "go", seconds: 3 };
+  it("refuses a rejoin payload whose fields do not match its verdict", () => {
+    // @ts-expect-error a near call always carries its seconds
+    const nearWithoutSeconds: TrafficRejoin = { verdict: "near", first: true };
+    // @ts-expect-error a near call always says whether it is the first
+    const nearWithoutFirst: TrafficRejoin = { verdict: "near", seconds: 5 };
+    // @ts-expect-error right behind speaks no number
+    const rightBehindWithSeconds: TrafficRejoin = { verdict: "rightBehind", seconds: 1 };
+    // @ts-expect-error over ten speaks no number
+    const overTenWithSeconds: TrafficRejoin = { verdict: "overTen", seconds: 12 };
+    // @ts-expect-error clear speaks no window any more
+    const clearWithWindow: TrafficRejoin = { verdict: "clear", windowSeconds: 20 };
+    // @ts-expect-error the old instructions are gone: the engineer never says hold
+    const hold: TrafficRejoin = { verdict: "hold", seconds: 4 };
+    // @ts-expect-error nor go
+    const go: TrafficRejoin = { verdict: "go" };
 
-    expectTypeOf([clearWithSeconds, holdWithout, goWithSeconds]).toBeArray();
+    expectTypeOf([
+      nearWithoutSeconds,
+      nearWithoutFirst,
+      rightBehindWithSeconds,
+      overTenWithSeconds,
+      clearWithWindow,
+      hold,
+      go,
+    ]).toBeArray();
   });
 
   it("carries a pit-exit verdict and the nearest car's relative arrival", () => {
