@@ -145,24 +145,26 @@ const TRAFFIC_TEARDOWN: readonly TelemetryStep[] = [
 /** Where the player stops: P, 0.6 of the lap, class A reference 48 s. */
 export const TRAFFIC_REJOIN_STOP_PCT = 0.6;
 
-/** The class-B car the verdicts follow: 25.5, 12.5, then 4.5 s from P, then past it. */
+/** The class-B car the verdicts follow: 25.5, 12.5, 8.5, 5.5, then 1.5 s from P, then past it. */
 export const TRAFFIC_REJOIN_LEAD_CAR_IDX = 3;
 
-/** A class-A car nine seconds behind the lead car. */
+/** A class-A car behind the lead car, which becomes the nearest once the lead car has gone by. */
 export const TRAFFIC_REJOIN_MID_CAR_IDX = 5;
 
-/** A class-B car twenty seconds behind the lead car. */
+/** A class-B car behind the class-A car. */
 export const TRAFFIC_REJOIN_TAIL_CAR_IDX = 9;
 
 /**
- * Each car's arrival at P (seconds) in the four snapshots, `null` once it is
- * past P. The lead car's are the 25, 12 and 4 s of the spec's test plan; the
- * two behind it keep the train a train.
+ * Each car's arrival at P (seconds) in the seven snapshots, `null` once it is
+ * past P. The lead car walks every band in turn (clear, over ten, near, near
+ * three seconds closer, right behind); the class-A car behind it is the next
+ * car's band once the lead has gone by (over ten, then close on its own); the
+ * tail keeps the train a train.
  */
 const REJOIN_ARRIVALS: Record<number, readonly (number | null)[]> = {
-  [TRAFFIC_REJOIN_LEAD_CAR_IDX]: [25.5, 12.5, 4.5, null],
-  [TRAFFIC_REJOIN_MID_CAR_IDX]: [34.5, 21.5, 13.5, 9.5],
-  [TRAFFIC_REJOIN_TAIL_CAR_IDX]: [45.5, 32.5, 24.5, 20.5],
+  [TRAFFIC_REJOIN_LEAD_CAR_IDX]: [25.5, 12.5, 8.5, 5.5, 1.5, null, null],
+  [TRAFFIC_REJOIN_MID_CAR_IDX]: [34.5, 22.5, 18.5, 15.5, 11.5, 10.5, 6.5],
+  [TRAFFIC_REJOIN_TAIL_CAR_IDX]: [45.5, 33.5, 29.5, 26.5, 22.5, 21.5, 17.5],
 };
 
 const REJOIN_CLASSES: Record<number, number> = {
@@ -184,7 +186,7 @@ function rejoinPlayer(): FieldCar {
   };
 }
 
-/** Snapshot `n` (0–3) of the train: every car where its arrival at P puts it. */
+/** Snapshot `n` (0–6) of the train: every car where its arrival at P puts it. */
 function rejoinSnapshot(n: number): Record<string, unknown> {
   const cars: FieldCar[] = [rejoinPlayer()];
 
@@ -241,10 +243,11 @@ const REJOIN_DRIVE_AWAY_MS = 2500;
 /**
  * Stopped on the circuit with a train of three cars coming (issue #1113, spec
  * "Verification"): the player spins to a stop at P while a class-B car closes
- * from 25 to 12 to 4 seconds away and goes by, a class-A car nine seconds
- * behind it and a class-B car twenty. Through the real rejoin detector:
- * `clear` (the window, 20 s at the default) on entry, `notice` 12, `hold` 4,
- * then `go` once the lead car is past and the next is outside the hold window.
+ * from 25 s to 12, 8, 5 and 1.5 s away and goes by, with a class-A car and a
+ * class-B car behind it. Through the real rejoin detector: `clear` on entry,
+ * `overTen`, `near` 8 (first), `near` 5 (the count, three seconds closer),
+ * `rightBehind`, then once the lead car is past the next car's band once
+ * (`overTen`), and its own close call when it closes (`near` 6, first).
  *
  * Opens inside a replay-mode bracket that puts the player on the circuit at
  * racing speed, off pit road and racing under green, then a seeding tick; then
@@ -259,8 +262,8 @@ export const TRAFFIC_REJOIN_SEQUENCE: readonly TelemetryStep[] = rejoinSequence(
 
 /**
  * The same run without the learning lap, for the test's control: class B has
- * no curve at P, so its two cars are untimed and only the class-A car is
- * heard.
+ * no curve at P, so its two cars are untimed and withhold `overTen` and
+ * `clear` only; the class-A car is timed, so its `near` is still heard.
  *
  * @internal Exported for testing
  */
@@ -295,9 +298,7 @@ function rejoinSequence(learn: boolean): TelemetryStep[] {
       : []),
     // The spin: stopped at P, the train 25.5 / 34.5 / 45.5 s away.
     { patch: { Speed: 0, ...rejoinSnapshot(0) }, holdMs: REJOIN_ENTRY_HOLD_MS, tick: true },
-    { patch: rejoinSnapshot(1), holdMs: REJOIN_SNAPSHOT_HOLD_MS, tick: true },
-    { patch: rejoinSnapshot(2), holdMs: REJOIN_SNAPSHOT_HOLD_MS, tick: true },
-    { patch: rejoinSnapshot(3), holdMs: REJOIN_SNAPSHOT_HOLD_MS, tick: true },
+    ...[1, 2, 3, 4, 5, 6].map((n) => ({ patch: rejoinSnapshot(n), holdMs: REJOIN_SNAPSHOT_HOLD_MS, tick: true })),
     // Away again: the episode ends once the car has been moving for two seconds.
     { patch: { Speed: RACING_SPEED_MPS }, holdMs: REJOIN_DRIVE_AWAY_MS, tick: true },
     ...TRAFFIC_TEARDOWN,
@@ -387,13 +388,13 @@ const PIT_EXIT_LISTEN_MS = 4000;
  * through the real pit-exit detector, against the landmarks of
  * {@link trafficPitExitLandmarkSection} — which must already be in the
  * translator's learner: the detector stays silent on a track whose landmarks
- * are not learned. At the default window (2 s before, 4 s after) the four
+ * are not learned. At the fixed window (2 s before, 4 s after) the four
  * {@link TRAFFIC_PIT_EXIT_CASES} are `clear`, `traffic`, `traffic`, `clear`.
  *
  * Opens inside a replay-mode bracket that puts the player in the stall (the
  * limiter on, so the limiter family stays quiet) and the car on track, then a
- * seeding tick, so the detector's stall baseline is live; then the departure,
- * held while the line plays; then the teardown bracket.
+ * seeding tick, so the detector's stall baseline is live; then the departure
+ * (the call is made on that tick, at the stall), held while the line plays; then the teardown bracket.
  */
 export function trafficPitExitSequence(relativeSeconds: number): readonly TelemetryStep[] {
   const car = pitExitCar(relativeSeconds);

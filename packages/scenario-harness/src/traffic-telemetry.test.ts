@@ -1,8 +1,7 @@
 /**
  * The approaching-traffic telemetry (issue #1113) through the real translator
- * on the mock SDK: the rejoin train is heard as clear → notice → hold → go,
- * and the four pit-exit cases as clear, traffic, traffic, clear at the default
- * window. Every event in the catalog is recorded, so a line the run lets slip
+ * on the mock SDK: the rejoin train is heard as every band in turn,
+ * and the four pit-exit cases as clear, traffic, traffic, clear. Every event in the catalog is recorded, so a line the run lets slip
  * from another family cannot hide.
  */
 import { _resetEventBus, getEventBus, initializeEventBus } from "@iracedeck/event-bus";
@@ -101,17 +100,22 @@ afterEach(() => {
 });
 
 describe("the rejoin train (issue #1113)", () => {
-  it.each(["race", "race-oval"])("is heard as clear, notice 12, hold 4, then go, and nothing else (%s)", (preset) => {
+  const BANDS = [
+    { verdict: "clear" },
+    { verdict: "overTen" },
+    { verdict: "near", seconds: 8, first: true },
+    { verdict: "near", seconds: 5, first: false },
+    { verdict: "rightBehind" },
+    { verdict: "overTen" },
+    { verdict: "near", seconds: 6, first: true },
+  ].map((data) => ({ event: "traffic.rejoin", data }));
+
+  it.each(["race", "race-oval"])("is heard as every band in turn, and nothing else (%s)", (preset) => {
     const { controller, events } = startTranslator(preset);
 
     runSequence(controller, TRAFFIC_REJOIN_SEQUENCE);
 
-    expect(events).toEqual([
-      { event: "traffic.rejoin", data: { verdict: "clear", windowSeconds: 20 } },
-      { event: "traffic.rejoin", data: { verdict: "notice", seconds: 12 } },
-      { event: "traffic.rejoin", data: { verdict: "hold", seconds: 4 } },
-      { event: "traffic.rejoin", data: { verdict: "go" } },
-    ]);
+    expect(events).toEqual(BANDS);
   });
 
   it("plays the same on a second press", () => {
@@ -121,23 +125,20 @@ describe("the rejoin train (issue #1113)", () => {
     events.length = 0;
     runSequence(controller, TRAFFIC_REJOIN_SEQUENCE);
 
-    expect(events.map((e) => (e.data as { verdict: string }).verdict)).toEqual(["clear", "notice", "hold", "go"]);
+    expect(events).toEqual(BANDS);
   });
 
-  it("times the class-B cars by class B's own curve: without the learning lap only the class-A car is heard", () => {
+  it("times the class-B cars by class B's own curve: without the learning lap only the class-A car's close call is heard", () => {
     // Control: the lead and tail cars are class B, and the presets carry no
     // class lap times to scale the player's class by, so with no class-B
-    // samples at P both are untimed. They withhold every clear (and the go),
-    // and the class-A car, nine seconds behind the lead, is the only arrival:
-    // heard at 13 s, and again at 9 s, four seconds closer.
+    // samples at P both are untimed. They withhold overTen and clear, not a
+    // close call: the timed class-A car is heard once it is under ten seconds.
+    // The lead car's own near and rightBehind are not heard, being untimed.
     const { controller, events } = startTranslator("race");
 
     runSequence(controller, TRAFFIC_REJOIN_SEQUENCE_UNLEARNED);
 
-    expect(events).toEqual([
-      { event: "traffic.rejoin", data: { verdict: "notice", seconds: 13 } },
-      { event: "traffic.rejoin", data: { verdict: "notice", seconds: 9 } },
-    ]);
+    expect(events).toEqual([{ event: "traffic.rejoin", data: { verdict: "near", seconds: 6, first: true } }]);
   });
 
   it("stays silent with no session preset: no player car, no position", () => {
@@ -161,7 +162,7 @@ describe("the pit-exit cases (issue #1113)", () => {
     expect(TRAFFIC_PIT_EXIT_PLAYER_ETA_S).toBeCloseTo(4.86, 6);
   });
 
-  // At the default window, 2 s before to 4 s after the player's arrival.
+  // The window is 2 s before to 4 s after the player's arrival; the call is made on the departure tick.
   const EXPECTED = [
     { relative: -3, verdict: "clear" },
     { relative: -1, verdict: "traffic" },
