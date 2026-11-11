@@ -176,6 +176,27 @@ export {
   OPPONENT_FLAG_RANGE_MIN_SECONDS,
   sanitizeOpponentFlagRangeSeconds,
 } from "./diff/opponent-flags.js";
+// The approaching-traffic windows' bounds and sanitizers (issue #1113) — the
+// plugins wire the translator's four traffic settings through them, the
+// `sanitizeGapAlertThresholdSeconds` precedent.
+export {
+  sanitizeTrafficHoldSeconds,
+  sanitizeTrafficNoticeSeconds,
+  sanitizeTrafficPitExitAfterSeconds,
+  sanitizeTrafficPitExitBeforeSeconds,
+  TRAFFIC_DEFAULT_HOLD_SECONDS,
+  TRAFFIC_DEFAULT_NOTICE_SECONDS,
+  TRAFFIC_DEFAULT_PIT_EXIT_AFTER_SECONDS,
+  TRAFFIC_DEFAULT_PIT_EXIT_BEFORE_SECONDS,
+  TRAFFIC_HOLD_MAX_SECONDS,
+  TRAFFIC_HOLD_MIN_SECONDS,
+  TRAFFIC_NOTICE_MAX_SECONDS,
+  TRAFFIC_NOTICE_MIN_SECONDS,
+  TRAFFIC_PIT_EXIT_AFTER_MAX_SECONDS,
+  TRAFFIC_PIT_EXIT_AFTER_MIN_SECONDS,
+  TRAFFIC_PIT_EXIT_BEFORE_MAX_SECONDS,
+  TRAFFIC_PIT_EXIT_BEFORE_MIN_SECONDS,
+} from "./diff/traffic-settings.js";
 export {
   OPPONENT_PIT_AGGREGATE_THRESHOLD,
   OPPONENT_PIT_AGGREGATE_WINDOW_MS,
