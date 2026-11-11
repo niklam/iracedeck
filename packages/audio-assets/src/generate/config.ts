@@ -63,12 +63,20 @@ const entryName = z
 // valid TTS input ("zero"). Refuses booleans, null, arrays, objects.
 const textual = z.union([z.string(), z.number()]).transform((v) => String(v));
 
+// Every field but stability and similarity is optional with NO default: a
+// voice sends exactly the settings its config writes, nothing filled in.
+// eleven_v4 has no speed or style control (ElevenLabs' v4 docs; a probe at
+// speed 0.7 and 1.2 returned identical lengths, #1643), so a v4 voice leaves
+// them out rather than sending values the model ignores. `clone_strength`
+// (0-1) is v4's: how closely a Professional Voice Clone fine-tuned for v4
+// follows its training samples.
 export const VoiceSettingsSchema = z.strictObject({
   stability: z.number().min(0).max(1),
   similarity_boost: z.number().min(0).max(1),
-  style: z.number().min(0).max(1).default(0),
-  speed: z.number().min(0.7).max(1.2).default(1.0),
-  use_speaker_boost: z.boolean().default(true),
+  style: z.number().min(0).max(1).optional(),
+  speed: z.number().min(0.7).max(1.2).optional(),
+  use_speaker_boost: z.boolean().optional(),
+  clone_strength: z.number().min(0).max(1).optional(),
   // ElevenLabs accepts language_code as a top-level body field, but we group
   // it here so it rides along with stability/speed/etc. and can be set at any
   // level (voice, entry) — useful for per-entry overrides like
@@ -90,6 +98,7 @@ export const VoiceSettingsOverrideSchema = z.strictObject({
   style: z.number().min(0).max(1).optional(),
   speed: z.number().min(0.7).max(1.2).optional(),
   use_speaker_boost: z.boolean().optional(),
+  clone_strength: z.number().min(0).max(1).optional(),
   language_code: z.string().optional(),
 });
 

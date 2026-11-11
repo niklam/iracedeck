@@ -343,7 +343,27 @@ describe("resolveVoiceSettings", () => {
   it("returns the voice settings when entry has none", () => {
     const voice = buildVoiceConfig({});
 
-    expect(resolveVoiceSettings(voice)).toMatchObject({ stability: 1, similarity_boost: 1, speed: 1, style: 0 });
+    expect(resolveVoiceSettings(voice)).toEqual({ stability: 1, similarity_boost: 1 });
+  });
+
+  it("fills in no setting the config does not write (#1643: eleven_v4 has no speed or style)", () => {
+    const voice = buildVoiceConfig(
+      {},
+      { voice_settings: { stability: 0.5, similarity_boost: 0.75, clone_strength: 0 } },
+    );
+    const entry = EntrySchema.parse({ name: "x", text: "hi" });
+
+    expect(buildEntryOptions(entry, voice).voice_settings).toEqual({
+      stability: 0.5,
+      similarity_boost: 0.75,
+      clone_strength: 0,
+    });
+  });
+
+  it("refuses a clone_strength outside 0-1", () => {
+    expect(() =>
+      buildVoiceConfig({}, { voice_settings: { stability: 0.5, similarity_boost: 0.75, clone_strength: 1.5 } }),
+    ).toThrow();
   });
 
   it("shallow-merges entry overrides on top of voice settings", () => {
