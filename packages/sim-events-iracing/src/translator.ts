@@ -139,6 +139,14 @@ import {
   type TrafficClassInfo,
   updateTrafficReferenceCurves,
 } from "./diff/traffic-arrival.js";
+import { diffTrafficPitExit } from "./diff/traffic-pit-exit.js";
+import { diffTrafficRejoin } from "./diff/traffic-rejoin.js";
+import {
+  TRAFFIC_DEFAULT_HOLD_SECONDS,
+  TRAFFIC_DEFAULT_NOTICE_SECONDS,
+  TRAFFIC_DEFAULT_PIT_EXIT_AFTER_SECONDS,
+  TRAFFIC_DEFAULT_PIT_EXIT_BEFORE_SECONDS,
+} from "./diff/traffic-settings.js";
 import type { EmitFn, PendingEvent } from "./diff/types.js";
 import {
   isClockExpiryConfirmed,
@@ -202,7 +210,7 @@ const SUBSCRIPTION_ID = "__sim-events-iracing__";
  * one step's first error. `tick-steps.source.test.ts` counts the ids in both
  * `handleTick`s and fails until this number matches; a new step changes it.
  */
-export const TRANSLATOR_REPORTER_MAX_KEYS = 64 * TICK_STEP_KEYS_PER_ID;
+export const TRANSLATOR_REPORTER_MAX_KEYS = 66 * TICK_STEP_KEYS_PER_ID;
 
 /** The step name every {@link onTranslatorTick} listener is called under: one id, `translator:onTranslatorTick`. */
 const TICK_LISTENER_STEP = "onTranslatorTick";
@@ -401,6 +409,17 @@ type TranslatorInstance = {
    */
   getGapMinChangeSeconds: () => number;
   /**
+   * Live-read approaching-traffic windows (issue #1113): the notice window
+   * both detectors share, rejoin's hold window and the pit exit's window
+   * either side of the player's arrival. Plugins wire them to the four
+   * `traffic*Seconds` global settings through the `sanitizeTraffic*`
+   * sanitizers; each defaults to its constant when no closure is given.
+   */
+  getTrafficNoticeSeconds: () => number;
+  getTrafficHoldSeconds: () => number;
+  getTrafficPitExitBeforeSeconds: () => number;
+  getTrafficPitExitAfterSeconds: () => number;
+  /**
    * The live-read resolvers `diffOpponentFlags` consumes, bound once at init:
    * the per-flag opt-in (issue #936 — enforced in the diff, not only at the
    * audio layer, so a disabled subject never consumes the burst-aggregation
@@ -479,6 +498,37 @@ export type SimEventsIracingSettingsOptions = {
    * {@link OPPONENT_FLAG_DEFAULT_RANGE_SECONDS}.
    */
   getOpponentFlagRangeSeconds?: () => number;
+  /**
+   * Live-read notice window (seconds) of the approaching-traffic callouts
+   * (issue #1113): how far ahead rejoin looks for a car, and the ETA under
+   * which the pit-exit verdict is first spoken. Plugins compose it from the
+   * `trafficNoticeSeconds` global setting via `sanitizeTrafficNoticeSeconds`.
+   * Default: a constant {@link TRAFFIC_DEFAULT_NOTICE_SECONDS}.
+   */
+  getTrafficNoticeSeconds?: () => number;
+  /**
+   * Live-read hold window (seconds) of the rejoin callout (issue #1113),
+   * clamped to the notice window by the detector. Plugins compose it from the
+   * `trafficHoldSeconds` global setting via `sanitizeTrafficHoldSeconds`.
+   * Default: a constant {@link TRAFFIC_DEFAULT_HOLD_SECONDS}.
+   */
+  getTrafficHoldSeconds?: () => number;
+  /**
+   * Live-read pit-exit window (seconds) before the player's own arrival at the
+   * end of the exit blend (issue #1113). Plugins compose it from the
+   * `trafficPitExitBeforeSeconds` global setting via
+   * `sanitizeTrafficPitExitBeforeSeconds`. Default: a constant
+   * {@link TRAFFIC_DEFAULT_PIT_EXIT_BEFORE_SECONDS}.
+   */
+  getTrafficPitExitBeforeSeconds?: () => number;
+  /**
+   * Live-read pit-exit window (seconds) after the player's own arrival at the
+   * end of the exit blend (issue #1113). Plugins compose it from the
+   * `trafficPitExitAfterSeconds` global setting via
+   * `sanitizeTrafficPitExitAfterSeconds`. Default: a constant
+   * {@link TRAFFIC_DEFAULT_PIT_EXIT_AFTER_SECONDS}.
+   */
+  getTrafficPitExitAfterSeconds?: () => number;
 };
 
 /**
@@ -616,6 +666,12 @@ export function initializeSimEventsIracing(
     getCornerCalloutLeadSeconds: options.getCornerCalloutLeadSeconds ?? (() => CORNER_CALLOUT_DEFAULT_LEAD_SECONDS),
     getGapAlertThresholdSeconds: options.getGapAlertThresholdSeconds ?? (() => GAP_DEFAULT_ALERT_THRESHOLD_S),
     getGapMinChangeSeconds: options.getGapMinChangeSeconds ?? (() => GAP_DEFAULT_MIN_CHANGE_S),
+    getTrafficNoticeSeconds: options.getTrafficNoticeSeconds ?? (() => TRAFFIC_DEFAULT_NOTICE_SECONDS),
+    getTrafficHoldSeconds: options.getTrafficHoldSeconds ?? (() => TRAFFIC_DEFAULT_HOLD_SECONDS),
+    getTrafficPitExitBeforeSeconds:
+      options.getTrafficPitExitBeforeSeconds ?? (() => TRAFFIC_DEFAULT_PIT_EXIT_BEFORE_SECONDS),
+    getTrafficPitExitAfterSeconds:
+      options.getTrafficPitExitAfterSeconds ?? (() => TRAFFIC_DEFAULT_PIT_EXIT_AFTER_SECONDS),
     opponentFlagResolvers: {
       getCalloutEnabled: options.getOpponentFlagCalloutEnabled ?? (() => true),
       getRaceGap: (aheadCarIdx, behindCarIdx) => liveGapBetween(self, aheadCarIdx, behindCarIdx),
@@ -2990,6 +3046,9 @@ function wipeStateForReplay(self: TranslatorInstance): void {
     // arrivals their exact tier until every class had driven another lap. A
     // session change and a disconnect still recreate it.
     trafficArrival: self.state.trafficArrival,
+    // Its episodes (`traffic`) are deliberately not here: a rejoin or pit-exit
+    // episode is wiped whole and re-seeds from the first tick back, for the
+    // reasons on `TrafficState` in `state.ts`.
   };
 
   self.state = createInitialState();
@@ -3806,6 +3865,49 @@ function handleLiveSteps(
   );
   steps.run("updateTrafficReferenceCurves", () =>
     updateTrafficReferenceCurves(self.state.trafficArrival, telemetry, trafficClasses),
+  );
+  // The approaching-traffic detectors (issue #1113): stopped on the circuit,
+  // and driving out of the pits. Both after the curve update, so they time
+  // the cars against curves that include this tick's samples, and both read
+  // the curves as a value; each owns its own episode in the `traffic` slice.
+  // The pit exit reads #1112's learner through a closure, so the landmark
+  // view is built only at its once-a-second evaluation, and the track length
+  // and pit speed limit this tick already resolved. Both log to the
+  // translator's own logger at debug, each line led by `Rejoin:` / `PitExit:`.
+  steps.live("diffTrafficRejoin", pending, () =>
+    diffTrafficRejoin(
+      self.state.traffic.rejoin,
+      self.state.trafficArrival,
+      telemetry,
+      playerCarIdx,
+      trafficClasses,
+      { getNoticeSeconds: self.getTrafficNoticeSeconds, getHoldSeconds: self.getTrafficHoldSeconds },
+      now,
+      emit,
+      self.logger,
+    ),
+  );
+  steps.live("diffTrafficPitExit", pending, () =>
+    diffTrafficPitExit(
+      self.state.traffic.pitExit,
+      self.state.trafficArrival,
+      telemetry,
+      {
+        playerCarIdx,
+        classes: trafficClasses,
+        trackLengthMeters,
+        pitSpeedLimitMps,
+        readLandmarks: () => resolvePitLaneLandmarks(self.pitLaneLearner),
+      },
+      {
+        getNoticeSeconds: self.getTrafficNoticeSeconds,
+        getBeforeSeconds: self.getTrafficPitExitBeforeSeconds,
+        getAfterSeconds: self.getTrafficPitExitAfterSeconds,
+      },
+      now,
+      emit,
+      self.logger,
+    ),
   );
   // The corner-name markers (issue #888), resolved from the bundled
   // lovely-track-data snapshot keyed by WeekendInfo.TrackName.

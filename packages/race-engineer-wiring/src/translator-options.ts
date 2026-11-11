@@ -4,7 +4,7 @@
  * same decision from opposite sides: the runtime is what the Race Engineer
  * reads of the translator, the options are what the translator reads of the
  * Race Engineer's settings. The plugins' sim phase and the scenario harness
- * both call it, so the six settings apply in the harness as they do in the
+ * both call it, so the ten settings apply in the harness as they do in the
  * plugin.
  */
 import { OPPONENT_PENALTY_FLAG_TO_CALLOUT_ID, type OpponentFlagCalloutId } from "@iracedeck/audio-scenarios/pit-crew";
@@ -17,6 +17,10 @@ import {
   sanitizeGapAlertThresholdSeconds,
   sanitizeGapMinChangeSeconds,
   sanitizeOpponentFlagRangeSeconds,
+  sanitizeTrafficHoldSeconds,
+  sanitizeTrafficNoticeSeconds,
+  sanitizeTrafficPitExitAfterSeconds,
+  sanitizeTrafficPitExitBeforeSeconds,
   type SimEventsIracingSettingsOptions,
 } from "@iracedeck/sim-events-iracing";
 
@@ -67,5 +71,15 @@ export function createIracingTranslatorOptions(): Required<SimEventsIracingSetti
     // race gap, ahead or behind, is announced. Read live per announce so a
     // settings change applies to the next one; clamp mirrors the schema.
     getOpponentFlagRangeSeconds: () => sanitizeOpponentFlagRangeSeconds(getGlobalSettings().opponentFlagRangeSeconds),
+    // The approaching-traffic windows (issue #1113): the notice window both
+    // detectors share, rejoin's hold window (the detector keeps it at or under
+    // the notice window), and the pit exit's window either side of the
+    // player's arrival at the end of the blend. Read live at each evaluation.
+    getTrafficNoticeSeconds: () => sanitizeTrafficNoticeSeconds(getGlobalSettings().trafficNoticeSeconds),
+    getTrafficHoldSeconds: () => sanitizeTrafficHoldSeconds(getGlobalSettings().trafficHoldSeconds),
+    getTrafficPitExitBeforeSeconds: () =>
+      sanitizeTrafficPitExitBeforeSeconds(getGlobalSettings().trafficPitExitBeforeSeconds),
+    getTrafficPitExitAfterSeconds: () =>
+      sanitizeTrafficPitExitAfterSeconds(getGlobalSettings().trafficPitExitAfterSeconds),
   };
 }

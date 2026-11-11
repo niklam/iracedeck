@@ -336,6 +336,7 @@ const SLICE_KEYS = [
   "trackGaps",
   "pitLaneLandmarks",
   "trafficArrival",
+  "traffic",
   "fastestLap",
   "fuelCallout",
   "lapCrossing",

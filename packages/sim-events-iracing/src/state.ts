@@ -597,6 +597,116 @@ export function createTrafficArrivalState(): TrafficArrivalState {
 }
 
 /**
+ * One rejoin episode (issue #1113, `diff/traffic-rejoin.ts`): the player
+ * stopped or crawling on the circuit, from the end of the entry dwell to the
+ * car moving again (or a gate failing). Also holds the entry dwell's timer
+ * while no episode runs. Times are the tick's wall clock (`now`, ms).
+ */
+export type TrafficRejoinEpisode = {
+  /** Whether an episode is running. */
+  active: boolean;
+  /** Before an episode: when the current run of gated crawl-speed ticks began; `null` outside one. */
+  slowSince: number | null;
+  /** In an episode: when the current run of ticks above the end speed began; `null` outside one. */
+  movingSince: number | null;
+  /** When the episode last evaluated the arrivals; `null` before its first evaluation. */
+  lastEvalAt: number | null;
+  /**
+   * The verdict the re-announce rules compare against: the one last spoken,
+   * or after a `go`, the table's verdict at that moment (spoken as `go`).
+   * `null` before the episode's first emit.
+   */
+  lastVerdict: "clear" | "notice" | "hold" | null;
+  /** The nearest timed arrival (s, unrounded) behind {@link lastVerdict}; `null` when it had none. */
+  lastSeconds: number | null;
+  /** A hold was spoken and no other verdict since: the next evaluation with nothing inside the hold window says `go`. */
+  goPending: boolean;
+  /** The once-per-episode debug line for a clear withheld by untimed cars has been written. */
+  untimedLogged: boolean;
+};
+
+/** No episode, no dwell running (issue #1113). */
+export function createTrafficRejoinEpisode(): TrafficRejoinEpisode {
+  return {
+    active: false,
+    slowSince: null,
+    movingSince: null,
+    lastEvalAt: null,
+    lastVerdict: null,
+    lastSeconds: null,
+    goPending: false,
+    untimedLogged: false,
+  };
+}
+
+/**
+ * One pit-exit episode (issue #1113, `diff/traffic-pit-exit.ts`): from the
+ * player driving out of the stall to passing the end of the exit blend (or
+ * back on the racing surface, or a tow, a reset or leaving the car). Also
+ * holds the stall baseline the start is read from. Times are the tick's wall
+ * clock (`now`, ms).
+ */
+export type TrafficPitExitEpisode = {
+  /** `PlayerCarInPitStall` on the previous tick; `null` until a tick has seeded it. */
+  lastInPitStall: boolean | null;
+  /** Whether an episode is running. */
+  active: boolean;
+  /** When the episode last evaluated; `null` before its first evaluation. */
+  lastEvalAt: number | null;
+  /** The verdict last spoken this episode; `null` until the first is. */
+  spokenVerdict: "clear" | "traffic" | null;
+  /** The once-per-episode debug line for unlearned landmarks has been written. */
+  landmarksMissingLogged: boolean;
+  /** The once-per-episode debug line for an ETA that cannot be computed has been written. */
+  noEtaLogged: boolean;
+};
+
+/** No episode, no stall baseline (issue #1113). */
+export function createTrafficPitExitEpisode(): TrafficPitExitEpisode {
+  return {
+    lastInPitStall: null,
+    active: false,
+    lastEvalAt: null,
+    spokenVerdict: null,
+    landmarksMissingLogged: false,
+    noEtaLogged: false,
+  };
+}
+
+/**
+ * The approaching-traffic detectors' episodes (issue #1113, spec decisions 2,
+ * 3 and 5): the rejoin episode `diffTrafficRejoin` runs and the pit-exit
+ * episode `diffTrafficPitExit` runs, each owned by its diff alone. The curves
+ * both read are a slice of their own ({@link TrafficArrivalState}), handed to
+ * them as a value.
+ *
+ * Recreated at a session change and a disconnect with the rest of the state,
+ * and **wiped whole at the replay wipe** (not in `preservedAcrossReplay`). An
+ * episode is a run of live facts — a dwell timer, a stall baseline, what was
+ * last said about the cars around the player — and a garage visit or a replay
+ * glance breaks that run: the car may come back towed, reset or somewhere
+ * else, and the traffic picture has moved on. Re-seeding is the safe side.
+ * A car still stopped on the first tick back starts a fresh episode after the
+ * entry dwell and says where the traffic is now, which is what a driver back
+ * from a replay glance needs. A pit exit glanced away from part-way loses its
+ * call: the stall baseline is gone, so no departure is seen, and silence is
+ * better than a verdict made from half an episode. Keeping half of it would
+ * be worse than either: a `goPending` or a spoken verdict carried into a new
+ * picture would speak a `go` or a flip about cars the driver never heard of.
+ */
+export type TrafficState = {
+  /** See {@link TrafficRejoinEpisode}. */
+  rejoin: TrafficRejoinEpisode;
+  /** See {@link TrafficPitExitEpisode}. */
+  pitExit: TrafficPitExitEpisode;
+};
+
+/** No episode of either kind (issue #1113): the initial state. */
+export function createTrafficState(): TrafficState {
+  return { rejoin: createTrafficRejoinEpisode(), pitExit: createTrafficPitExitEpisode() };
+}
+
+/**
  * The laps-of-fuel-left callouts' state (issue #838; one slice since #1405
  * moved it under #1588's convention): the mid-lap sampling baselines, the
  * refuel tracker, the stint's announce floor and reassurance latch, and the
@@ -1978,6 +2088,11 @@ export type TranslatorState = {
    * kept whole at a replay glance.
    */
   trafficArrival: TrafficArrivalState;
+  /**
+   * The rejoin and pit-exit episodes ({@link TrafficState}). Reset per session
+   * and at a disconnect; wiped whole at a replay glance.
+   */
+  traffic: TrafficState;
 
   // ── Self-managed running order (issue #603) ─────────────────────────────
   /**
@@ -2614,6 +2729,7 @@ export function createInitialState(): TranslatorState {
 
     pitLaneLandmarks: createPitLaneLandmarksState(),
     trafficArrival: createTrafficArrivalState(),
+    traffic: createTrafficState(),
 
     positionLastKnownScores: [],
     positionFrozen: new Set(),

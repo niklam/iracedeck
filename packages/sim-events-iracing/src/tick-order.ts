@@ -65,6 +65,8 @@ import { START_COUNTDOWN_EVENTS, START_LIGHTS_EVENTS } from "./diff/start-lights
 import { TIRE_WEAR_EVENTS } from "./diff/tire-wear.js";
 import { TOGGLES_EVENTS } from "./diff/toggles.js";
 import { TRACK_WETNESS_EVENTS } from "./diff/track-wetness.js";
+import { TRAFFIC_PIT_EXIT_EVENTS } from "./diff/traffic-pit-exit.js";
+import { TRAFFIC_REJOIN_EVENTS } from "./diff/traffic-rejoin.js";
 
 /**
  * One stage of a tick that can publish.
@@ -160,6 +162,13 @@ export const TICK_ORDER: readonly TickStage[] = [
     source: "diff/pit-lane-landmarks.ts",
     via: "pending",
     events: PIT_LANE_LANDMARKS_EVENTS,
+  },
+  { stage: "diffTrafficRejoin", source: "diff/traffic-rejoin.ts", via: "pending", events: TRAFFIC_REJOIN_EVENTS },
+  {
+    stage: "diffTrafficPitExit",
+    source: "diff/traffic-pit-exit.ts",
+    via: "pending",
+    events: TRAFFIC_PIT_EXIT_EVENTS,
   },
   // Sector start before the corner name (#1676). The two calls one tick sweeps
   // are published in the order their markers were crossed, a tie (a corner at
