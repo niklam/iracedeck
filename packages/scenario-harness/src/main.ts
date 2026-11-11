@@ -86,7 +86,12 @@ async function main(): Promise<void> {
   audioLog.info("Processing audio assets (radio filter — first run takes a moment)");
   // The harness auditions every published voice (#1034 stage 3); only a plugin
   // build filters the copy down to the bundled set.
-  await processAndCopyAudioAssets({ destRoot: audioBasePath, logger: (m) => audioLog.info(m), voices: "all" });
+  await processAndCopyAudioAssets({
+    destRoot: audioBasePath,
+    logger: (m) => audioLog.info(m),
+    warn: (m) => audioLog.warn(m),
+    voices: "all",
+  });
   audioLog.debug(`Audio base path: ${audioBasePath}`);
   const audioNative = new AudioNative();
   const audio = initializeAudio(audioLog, audioNative, [audioBasePath]);
@@ -260,6 +265,7 @@ async function main(): Promise<void> {
         await processAndCopyAudioAssets({
           destRoot: audioBasePath,
           logger: (m) => audioLog.info(m),
+          warn: (m) => audioLog.warn(m),
           wipe: false,
           voices: "all",
         });
@@ -271,6 +277,7 @@ async function main(): Promise<void> {
         await processAndCopyAudioAssets({
           destRoot: audioBasePath,
           logger: (m) => audioLog.info(m),
+          warn: (m) => audioLog.warn(m),
           wipe: false,
           voices: "all",
         });

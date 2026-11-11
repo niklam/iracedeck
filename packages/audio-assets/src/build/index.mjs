@@ -23,7 +23,7 @@ import os from "node:os";
 import path from "node:path";
 import url from "node:url";
 
-import { RADIO_ENGINEER_FILTER } from "../presets.mjs";
+import { RADIO_ENGINEER_FILTER, VOICE_LOUDNESS_NORMALIZATION } from "../presets.mjs";
 import { installedPackageManifest, installedPackageVersion } from "./installed-version.mjs";
 import { serializeSortedJson } from "./stable-json.mjs";
 import { BUNDLED_VOICE_IDS } from "./voice-packs.mjs";
@@ -121,8 +121,11 @@ const FFMPEG_BINARY_ENV_VAR = (() => {
 
 /**
  * Everything a processed clip's bytes depend on besides the source clip
- * itself (#1667), built from `env`: the radio filter chain, the encode
- * arguments, and the `ffmpeg-static` release whose binary runs them, read from
+ * itself (#1667), built from `env`: the radio filter chain, the loudness
+ * normalization that sets each clip's gain ahead of it (`loudness`, #1657 — the
+ * whole `VOICE_LOUDNESS_NORMALIZATION` descriptor: target, clamp, rounding step,
+ * silence floor and measurement method), the encode arguments, and the
+ * `ffmpeg-static` release whose binary runs them, read from
  * its installed `package.json` — the same resolution `require("ffmpeg-static")`
  * below uses. That version names the binary that ran only while
  * `ffmpeg-static` serves its own: with its `FFMPEG_BIN` override set, it
@@ -144,6 +147,7 @@ export function pipelineIdentity(env = process.env) {
 
   return {
     filter: RADIO_ENGINEER_FILTER,
+    loudness: VOICE_LOUDNESS_NORMALIZATION,
     encodeArgs: ENCODE_ARGS,
     ffmpegStatic: installedPackageVersion("ffmpeg-static", import.meta.url),
     ...(override ? { ffmpegBinaryOverride: override } : {}),
@@ -163,15 +167,18 @@ export function pipelineIdentity(env = process.env) {
  * list.
  *
  * To make something new part of the pipeline, add ONE field here — #1657's
- * loudness normalization goes in as a descriptor of its target and its
- * method — and both the cache key and the record follow. Field names are
- * part of the hash (it is a sorted-key JSON serialization), so renaming one
- * is a re-encode too. Two rules for that field: it must be JSON-safe and never
- * `undefined` — `JSON.stringify` drops an `undefined` property, so such a
- * field would be silently absent from the hash — and EVERYTHING that changes a
- * clip's output bytes must go through here. The fixed ffmpeg arguments in
- * `runFfmpeg` (`-f mp3`, the loglevel flags) are not hashed; a change to them
+ * loudness normalization went in this way, as `loudness`, a descriptor of its
+ * target and its method — and both the cache key and the record follow. Field
+ * names are part of the hash (it is a sorted-key JSON serialization), so
+ * renaming one is a re-encode too. Two rules for that field: it must be
+ * JSON-safe and never `undefined` — `JSON.stringify` drops an `undefined`
+ * property, so such a field would be silently absent from the hash — and
+ * EVERYTHING that changes a clip's output bytes must go through here. The fixed
+ * ffmpeg arguments in `runFfmpeg` (`-f mp3`, the loglevel flags) and in
+ * `measureLoudness` (`-nostats`, `-f null`) are not hashed; a change to them
  * that moves the output is a change to this identity too, or the cache lies.
+ * The measurement's variable part — its loop count and filter — is built from
+ * the hashed descriptor itself, so what runs cannot drift from what is hashed.
  *
  * @type {Readonly<import("./index.d.ts").PipelineIdentity>}
  */
@@ -233,6 +240,197 @@ function runFfmpeg(ffmpegPath, inputPath, outputPath, filterChain) {
       else reject(new Error(`ffmpeg exit ${code}: ${stderr.trim() || "no output"}`));
     });
   });
+}
+
+/** The last lines of ffmpeg's stderr an error quotes: the summary or the failure, not the whole log. */
+const STDERR_TAIL_LINES = 20;
+
+function stderrTail(stderr) {
+  const lines = stderr.trim().split(/\r?\n/);
+
+  return lines.slice(-STDERR_TAIL_LINES).join("\n") || "no output";
+}
+
+/**
+ * The ffmpeg arguments that measure `inputPath`'s integrated loudness, built
+ * from `normalization.measurement` — the descriptor the pipeline identity
+ * hashes — so the method that runs is always the method the hash names.
+ * `-stream_loop` counts REPEATS, so `loops` copies of the clip are one fewer.
+ * No `-loglevel error`: the `ebur128` summary is printed at info level, and is
+ * the whole point of the run. `-nostats` drops the progress line only.
+ *
+ * @param {string} inputPath
+ * @param {import("./index.d.ts").VoiceLoudnessNormalization} normalization
+ * @returns {string[]}
+ */
+function loudnessMeasurementArgs(inputPath, normalization) {
+  const { loops, filter } = normalization.measurement;
+
+  return [
+    "-hide_banner",
+    "-nostats",
+    "-stream_loop",
+    String(loops - 1),
+    "-i",
+    inputPath,
+    "-af",
+    filter,
+    "-f",
+    "null",
+    "-",
+  ];
+}
+
+/**
+ * The integrated loudness (LUFS) the `ebur128` summary in `stderr` reports, or
+ * `-Infinity` when it reports `-inf` (nothing above the absolute gate). Throws
+ * when there is no summary to read: a gain is never guessed.
+ *
+ * The LAST summary wins, so a log that carried an earlier, partial one can
+ * never be read in place of the final reading.
+ *
+ * @internal Exported for testing.
+ * @param {string} stderr
+ * @returns {number}
+ */
+export function parseIntegratedLoudness(stderr) {
+  const pattern = /Integrated loudness:\s*I:\s*(-inf|-?\d+(?:\.\d+)?)\s*LUFS/g;
+  let last = null;
+
+  for (const match of stderr.matchAll(pattern)) last = match[1];
+
+  if (last === null) throw new Error(`no ebur128 integrated loudness in ffmpeg's output:\n${stderrTail(stderr)}`);
+
+  return last === "-inf" ? Number.NEGATIVE_INFINITY : Number(last);
+}
+
+/**
+ * Measure `inputPath`'s integrated loudness (ITU-R BS.1770) with the method
+ * `normalization.measurement` names. Rejects, quoting the tail of ffmpeg's
+ * stderr, on a non-zero exit or a summary it cannot read — never resolves to a
+ * guess, since a wrong reading is a wrong gain baked into a shipped clip.
+ *
+ * @internal Exported for testing: the tests measure processed output the same way.
+ * @param {string} ffmpegPath
+ * @param {string} inputPath
+ * @param {import("./index.d.ts").VoiceLoudnessNormalization} [normalization]
+ * @returns {Promise<number>} LUFS; `-Infinity` for a clip with nothing above the absolute gate
+ */
+export function measureLoudness(ffmpegPath, inputPath, normalization = VOICE_LOUDNESS_NORMALIZATION) {
+  return new Promise((resolve, reject) => {
+    const proc = spawn(ffmpegPath, loudnessMeasurementArgs(inputPath, normalization));
+    let stderr = "";
+    proc.stderr.on("data", (chunk) => {
+      stderr += chunk.toString();
+    });
+    proc.on("error", reject);
+    proc.on("close", (code) => {
+      if (code !== 0) {
+        reject(new Error(`ffmpeg loudness measurement exit ${code}: ${stderrTail(stderr)}`));
+        return;
+      }
+
+      try {
+        resolve(parseIntegratedLoudness(stderr));
+      } catch (err) {
+        reject(err);
+      }
+    });
+  });
+}
+
+/**
+ * How many decimals `step` is written with: 0.1 → 1, 0.25 → 2, 1 → 0,
+ * 1e-7 → 7. The fewest that print it exactly, found by `toFixed` rather than
+ * by reading `String(step)`, which switches to exponent notation below 1e-6.
+ * A step that is not a positive number with at most 20 decimals throws.
+ */
+function decimalsOf(step) {
+  if (!(step > 0) || !Number.isFinite(step)) throw new Error(`gainStepDb must be a positive number, got ${step}`);
+
+  for (let decimals = 0; decimals <= 20; decimals++) {
+    if (Number(step.toFixed(decimals)) === step) return decimals;
+  }
+
+  throw new Error(`gainStepDb has more than 20 decimals: ${step}`);
+}
+
+/**
+ * `gainDb` as the `volume=` filter reads it: fixed to the rounding step's
+ * decimals, so the filter string carries neither float noise (`6.699999…`)
+ * nor a negative zero (`-0.0`).
+ *
+ * @internal Exported for testing.
+ * @param {number} gainDb
+ * @param {import("./index.d.ts").VoiceLoudnessNormalization} [normalization]
+ * @returns {string}
+ */
+export function formatGainDb(gainDb, normalization = VOICE_LOUDNESS_NORMALIZATION) {
+  const text = gainDb.toFixed(decimalsOf(normalization.gainStepDb));
+
+  return /^-0(\.0*)?$/.test(text) ? text.slice(1) : text;
+}
+
+/** A reading as a warning quotes it: one decimal, or `-inf`. */
+function formatLufs(lufs) {
+  return Number.isFinite(lufs) ? `${lufs.toFixed(1)} LUFS` : `${lufs < 0 ? "-" : ""}inf LUFS`;
+}
+
+/**
+ * The static gain that moves a clip measured at `measuredLufs` to the target
+ * (#1657) — pure, so its boundaries are table-tested without ffmpeg.
+ *
+ * - Below `silenceFloorLufs`, or `-Infinity`: the clip is taken as silence,
+ *   the gain is 0 and `warning` says so.
+ * - Otherwise `targetLufs - measuredLufs`, rounded to `gainStepDb` (half away
+ *   from zero, on the step count, so the result is the same on every machine
+ *   and is never `-0`), then clamped to `±maxGainDb`. A gain of exactly the
+ *   clamp passes; one that rounds past it is clamped, with a `warning`.
+ *
+ * `warning` is the reading and the decision, without the clip's name, which
+ * only the caller knows; `null` when the clip needs no attention.
+ *
+ * @internal Exported for testing.
+ * @param {number} measuredLufs
+ * @param {import("./index.d.ts").VoiceLoudnessNormalization} [normalization]
+ * @returns {{ gainDb: number; warning: string | null }}
+ */
+export function loudnessGain(measuredLufs, normalization = VOICE_LOUDNESS_NORMALIZATION) {
+  const { targetLufs, maxGainDb, gainStepDb, silenceFloorLufs } = normalization;
+
+  if (Number.isNaN(measuredLufs) || measuredLufs === Number.POSITIVE_INFINITY) {
+    throw new Error(`loudnessGain: not a loudness reading: ${measuredLufs}`);
+  }
+
+  if (measuredLufs < silenceFloorLufs) {
+    return {
+      gainDb: 0,
+      warning:
+        `measured ${formatLufs(measuredLufs)}, below the ${silenceFloorLufs} LUFS silence floor — taken as ` +
+        `silence and left at 0 dB; fix the clip`,
+    };
+  }
+
+  const steps = (targetLufs - measuredLufs) / gainStepDb;
+  const roundedSteps = Math.sign(steps) * Math.round(Math.abs(steps));
+  const decimals = decimalsOf(gainStepDb);
+  // Through the fixed-decimal text, so 67 steps of 0.1 is 6.7, not 6.700000000000001.
+  // `+ 0` turns a negative zero into zero.
+  const gainDb = Number((roundedSteps * gainStepDb).toFixed(decimals)) + 0;
+
+  if (Math.abs(gainDb) > maxGainDb) {
+    const clamped = Math.sign(gainDb) * maxGainDb;
+    const signed = (value) => `${value > 0 ? "+" : ""}${formatGainDb(value, normalization)}`;
+
+    return {
+      gainDb: clamped,
+      warning:
+        `measured ${formatLufs(measuredLufs)}, which needs ${signed(gainDb)} dB to reach ${targetLufs} LUFS — ` +
+        `clamped to ${signed(clamped)} dB; fix the clip`,
+    };
+  }
+
+  return { gainDb, warning: null };
 }
 
 async function runWithConcurrency(tasks, limit) {
@@ -330,12 +528,26 @@ let tempInvocationCounter = 0;
  * could be encoded as the new ones, and the sidecar would then vouch for audio
  * it never produced.
  *
- * ffmpeg's own output is written to a `.tmp` file and only `renameSync`'d onto
+ * ffmpeg runs TWICE on that one snapshot (#1657). First `measureLoudness`
+ * reads the clip's integrated loudness and `loudnessGain` turns it into the
+ * static gain that brings it to `VOICE_LOUDNESS_NORMALIZATION`'s target — the
+ * descriptor the pipeline identity hashes as `loudness`; then the encode runs
+ * with `volume=<gain>dB,` in front of `filterChain`. Measuring the snapshot,
+ * not `sourcePath`, is the same rule as encoding it: the gain baked into the
+ * output is the gain of the bytes the sidecar names. A failed measurement
+ * fails the clip exactly as a failed encode does, with nothing published,
+ * because a gain is never guessed. The reading has no cache of its own: a clip
+ * is measured only when it is re-encoded, and the content check keeps the
+ * output it produced fresh. Resolves to `{ measuredLufs, gainDb, warning }`,
+ * where `warning` says what was wrong with the reading (silence, or a gain
+ * past the clamp) for the caller to report under the clip's name, or is `null`.
+ *
+ * ffmpeg's output is written to a `.tmp` file and only `renameSync`'d onto
  * `cachedPath` once it succeeds, so a failed or killed encode can never leave a
  * partial file at the path `cacheIsFresh` trusts. Both temp files carry a
  * per-invocation suffix (the counter above) and are cleaned up unconditionally.
  *
- * Publish order, once ffmpeg has succeeded: the EXISTING sidecar is removed
+ * Publish order, once both ffmpeg runs have succeeded: the EXISTING sidecar is removed
  * first, the new output is renamed onto `cachedPath` second, and the new
  * sidecar is written last. A process killed between any two of those steps
  * must never leave a cache entry `cacheIsFresh` calls fresh but that
@@ -349,6 +561,7 @@ let tempInvocationCounter = 0;
  * and correct). Never a live pairing of the wrong two.
  */
 async function processClipIntoCache(ffmpegPath, sourcePath, cachedPath, filterChain) {
+  const normalization = VOICE_LOUDNESS_NORMALIZATION;
   const bytes = readFileSync(sourcePath);
   const digest = hashBytes(bytes);
 
@@ -359,10 +572,19 @@ async function processClipIntoCache(ffmpegPath, sourcePath, cachedPath, filterCh
 
   try {
     writeFileSync(snapshotPath, bytes);
-    await runFfmpeg(ffmpegPath, snapshotPath, outputTmpPath, filterChain);
+    const measuredLufs = await measureLoudness(ffmpegPath, snapshotPath, normalization);
+    const { gainDb, warning } = loudnessGain(measuredLufs, normalization);
+    await runFfmpeg(
+      ffmpegPath,
+      snapshotPath,
+      outputTmpPath,
+      `volume=${formatGainDb(gainDb, normalization)}dB,${filterChain}`,
+    );
     rmSync(digestPath, { force: true });
     renameSync(outputTmpPath, cachedPath);
     writeFileSync(digestPath, digest, "utf-8");
+
+    return { measuredLufs, gainDb, warning };
   } catch (err) {
     rmSync(outputTmpPath, { force: true });
     throw err;
@@ -383,6 +605,35 @@ export function wipeProcessedCache() {
     if (!existsSync(CACHE_ROOT)) return;
     rmSync(CACHE_ROOT, { recursive: true, force: true });
   });
+}
+
+/**
+ * The function a walker hands each re-encoded clip's result to, which reports
+ * the clip's loudness `warning` (#1657) — silence, or a gain past the clamp —
+ * under the clip's name: its POSIX path relative to `voiceRoot`, the folder
+ * holding the voices (`<voice-id>/<group>/<clip>.mp3`). It goes to `warn`;
+ * a caller that gave none still sees it through `logger`, marked as a warning,
+ * since a build-output warning is fixed at the clip and must not vanish.
+ *
+ * Only a clip that is (re-)encoded is measured, so only such a clip can warn: a
+ * warm cache repeats nothing. A cold build — CI, the publish workflow, the
+ * first build after the pipeline identity changes — re-encodes every clip and
+ * so reports every one.
+ *
+ * @param {{ warn?: (message: string) => void; logger?: (message: string) => void }} sinks
+ * @param {string} voiceRoot
+ * @returns {(srcPath: string, result: { warning: string | null }) => void}
+ */
+function loudnessWarningReporter({ warn, logger }, voiceRoot) {
+  const emit = warn ?? ((message) => logger?.(`WARNING: ${message}`));
+
+  return (srcPath, { warning }) => {
+    if (warning === null) return;
+
+    const clip = path.relative(voiceRoot, srcPath).split(path.sep).join("/");
+
+    emit(`Voice clip ${clip}: ${warning}`);
+  };
 }
 
 // Recursively walk a voice subtree, queuing every .mp3 for radio-filter
@@ -451,8 +702,9 @@ function buildVoiceTreeTasks(srcDir, cacheDir, destDir, { onFresh, onMiss, onScr
 }
 
 /**
- * Run every `.mp3` under `srcDir` (at any depth) through the radio-filter +
- * encode pipeline and write the results under `destDir`, mirroring the tree.
+ * Run every `.mp3` under `srcDir` (at any depth) through the loudness
+ * normalization + radio-filter + encode pipeline and write the results under
+ * `destDir`, mirroring the tree.
  *
  * This is the pipeline `processAndCopyAudioAssets` applies to the whole
  * `voice/` tree, exposed for ONE subtree so the voice-pack packer
@@ -490,17 +742,23 @@ function buildVoiceTreeTasks(srcDir, cacheDir, destDir, { onFresh, onMiss, onScr
  * packer counts that list against the source's mp3s and checks each entry
  * against the clip grammar, and a json in it would fail both.
  *
+ * `warn` receives each loudness warning (#1657) of a clip this run re-encodes,
+ * named `<voice-id>/<group>/<clip>.mp3` (relative to the folder holding
+ * `srcDir`); without it the warning goes to `logger`, marked `WARNING:`. A
+ * cache hit is not re-measured and so never warns — see
+ * `loudnessWarningReporter`.
+ *
  * @param {import("./index.d.ts").ProcessVoiceTreeOptions} options
  * @returns {Promise<import("./index.d.ts").ProcessVoiceTreeResult>}
  */
-export async function processVoiceTree({ srcDir, destDir, cacheDir, logger } = {}) {
+export async function processVoiceTree({ srcDir, destDir, cacheDir, logger, warn } = {}) {
   if (!srcDir) throw new Error("processVoiceTree: srcDir is required");
   if (!destDir) throw new Error("processVoiceTree: destDir is required");
 
   const hash = pipelineCacheKey();
   const resolvedCacheDir = cacheDir ?? sharedVoiceCacheDir(srcDir, hash);
 
-  return withCacheLock(() => runProcessVoiceTree({ srcDir, destDir, cacheDir: resolvedCacheDir, hash, logger }));
+  return withCacheLock(() => runProcessVoiceTree({ srcDir, destDir, cacheDir: resolvedCacheDir, hash, logger, warn }));
 }
 
 // The `.cache/<hash>/voice/<…>` path `processAndCopyAudioAssets` would use for
@@ -516,9 +774,10 @@ function sharedVoiceCacheDir(srcDir, hash) {
   return path.join(CACHE_ROOT, hash, VOICE_ROOT, relative);
 }
 
-async function runProcessVoiceTree({ srcDir, destDir, cacheDir, hash, logger }) {
+async function runProcessVoiceTree({ srcDir, destDir, cacheDir, hash, logger, warn }) {
   const ffmpegPath = require("ffmpeg-static");
   const concurrency = Math.min(4, Math.max(1, os.availableParallelism?.() ?? os.cpus().length));
+  const reportLoudness = loudnessWarningReporter({ warn, logger }, path.dirname(path.resolve(srcDir)));
 
   const files = [];
   let script = null;
@@ -535,7 +794,7 @@ async function runProcessVoiceTree({ srcDir, destDir, cacheDir, hash, logger }) 
       cached++;
     },
     onMiss: async (srcPath, cachedPath, currentDest, fileName) => {
-      await processClipIntoCache(ffmpegPath, srcPath, cachedPath, RADIO_ENGINEER_FILTER);
+      reportLoudness(srcPath, await processClipIntoCache(ffmpegPath, srcPath, cachedPath, RADIO_ENGINEER_FILTER));
       copyFileSync(cachedPath, path.join(currentDest, fileName));
       files.push(relativeTo(currentDest, fileName));
       processed++;
@@ -563,7 +822,8 @@ async function runProcessVoiceTree({ srcDir, destDir, cacheDir, hash, logger }) 
 
 /**
  * Warm `.cache/<pipeline-hash>/voice/...` by running every source voice clip
- * through ffmpeg, without copying anywhere. Intended to run as its own turbo
+ * through ffmpeg (loudness measurement, then the encode), without copying
+ * anywhere. Intended to run as its own turbo
  * task (`@iracedeck/audio-assets#build`) before the plugin builds, so the
  * parallel per-plugin `processAndCopyAudioAssets` calls find a fully-warm
  * cache and only ever read from it — no two processes contend over the same
@@ -572,14 +832,16 @@ async function runProcessVoiceTree({ srcDir, destDir, cacheDir, hash, logger }) 
  * Per-file content check (`cacheIsFresh`) makes a warm cache a no-op, so this
  * is cheap to run on every build.
  *
- * `logger` is an optional `(msg: string) => void` for build-summary output.
+ * `logger` is an optional `(msg: string) => void` for build-summary output;
+ * `warn` receives each loudness warning (#1657) of a clip this run re-encodes,
+ * falling back to `logger` (see `loudnessWarningReporter`).
  */
-export async function prebuildAudioAssetCache({ logger } = {}) {
+export async function prebuildAudioAssetCache({ logger, warn } = {}) {
   if (!existsSync(audioAssetsPath)) return;
-  return withCacheLock(() => runPrebuildCache({ logger }));
+  return withCacheLock(() => runPrebuildCache({ logger, warn }));
 }
 
-async function runPrebuildCache({ logger }) {
+async function runPrebuildCache({ logger, warn }) {
   const ffmpegPath = require("ffmpeg-static");
   const hash = pipelineCacheKey();
   const cacheRoot = path.join(CACHE_ROOT, hash);
@@ -593,13 +855,14 @@ async function runPrebuildCache({ logger }) {
 
   let processed = 0;
   let cached = 0;
+  const reportLoudness = loudnessWarningReporter({ warn, logger }, voiceSrc);
 
   const tasks = buildVoiceTreeTasks(voiceSrc, path.join(cacheRoot, VOICE_ROOT), null, {
     onFresh: () => {
       cached++;
     },
     onMiss: async (srcPath, cachedPath) => {
-      await processClipIntoCache(ffmpegPath, srcPath, cachedPath, RADIO_ENGINEER_FILTER);
+      reportLoudness(srcPath, await processClipIntoCache(ffmpegPath, srcPath, cachedPath, RADIO_ENGINEER_FILTER));
       processed++;
     },
   });
@@ -611,13 +874,17 @@ async function runPrebuildCache({ logger }) {
 
 /**
  * Copies `packages/audio-assets/` into `destRoot`. Every .mp3 under voice/
- * (at any depth) passes through ffmpeg with RADIO_ENGINEER_FILTER applied;
+ * (at any depth) passes through ffmpeg twice: its integrated loudness is
+ * measured, then it is encoded with the static gain that brings it to
+ * `VOICE_LOUDNESS_NORMALIZATION`'s target ahead of RADIO_ENGINEER_FILTER
+ * (#1657), and with `ENCODE_ARGS`;
  * everything outside voice/ (currently sfx/, ambient/) is copied unchanged,
  * as is each bundled voice's `voice/<voice-id>/callouts.json` (#1064).
  *
  * Processed outputs are cached at `packages/audio-assets/.cache/<pipeline-hash>/`
- * keyed on `PIPELINE_IDENTITY` — the filter chain, the ffmpeg encode args and
- * the installed `ffmpeg-static` version — so changing any of them invalidates
+ * keyed on `PIPELINE_IDENTITY` — the filter chain, the loudness normalization
+ * descriptor, the ffmpeg encode args and the installed `ffmpeg-static`
+ * version — so changing any of them invalidates
  * the cache automatically (#1667). Per-file invalidation is content-based
  * (rebuild unless the `<clip>.src.sha256` sidecar matches the source's current
  * bytes — never the mtime, which a Windows copy carries over from the file it
@@ -625,6 +892,9 @@ async function runPrebuildCache({ logger }) {
  * this — the cache is shared across them.
  *
  * `logger` is an optional `(msg: string) => void` for build-summary output.
+ * `warn` receives each loudness warning (#1657) of a clip this run re-encodes,
+ * named `<voice-id>/<group>/<clip>.mp3`, falling back to `logger` (see
+ * `loudnessWarningReporter`); the Rollup plugin passes its `this.warn`.
  *
  * `wipe` (default `true`) controls whether `destRoot` is emptied before the
  * copy. The plugin Rollup build wants `true` so renamed/removed source
@@ -649,6 +919,7 @@ async function runPrebuildCache({ logger }) {
 export async function processAndCopyAudioAssets({
   destRoot,
   logger,
+  warn,
   wipe = true,
   srcRoot = audioAssetsPath,
   cacheDir,
@@ -660,7 +931,7 @@ export async function processAndCopyAudioAssets({
   const hash = pipelineCacheKey();
   const cacheRoot = cacheDir ?? sharedCacheRoot(srcRoot, hash);
 
-  return withCacheLock(() => runProcessAndCopy({ srcRoot, destRoot, cacheRoot, hash, logger, wipe, voices }));
+  return withCacheLock(() => runProcessAndCopy({ srcRoot, destRoot, cacheRoot, hash, logger, warn, wipe, voices }));
 }
 
 // The `.cache/<hash>/` root the build shares with the packer — for this
@@ -675,9 +946,10 @@ function sharedCacheRoot(srcRoot, hash) {
   return path.join(CACHE_ROOT, hash);
 }
 
-async function runProcessAndCopy({ srcRoot, destRoot, cacheRoot, hash, logger, wipe, voices }) {
+async function runProcessAndCopy({ srcRoot, destRoot, cacheRoot, hash, logger, warn, wipe, voices }) {
   const ffmpegPath = require("ffmpeg-static");
   const concurrency = Math.min(4, Math.max(1, os.availableParallelism?.() ?? os.cpus().length));
+  const reportLoudness = loudnessWarningReporter({ warn, logger }, path.join(srcRoot, VOICE_ROOT));
 
   if (wipe) {
     // Clear destRoot before recreating so renamed/removed top-level folders
@@ -755,7 +1027,10 @@ async function runProcessAndCopy({ srcRoot, destRoot, cacheRoot, hash, logger, w
                 cached++;
               },
               onMiss: async (srcPath, cachedPath, currentDest, fileName) => {
-                await processClipIntoCache(ffmpegPath, srcPath, cachedPath, RADIO_ENGINEER_FILTER);
+                reportLoudness(
+                  srcPath,
+                  await processClipIntoCache(ffmpegPath, srcPath, cachedPath, RADIO_ENGINEER_FILTER),
+                );
                 copyFileSync(cachedPath, path.join(currentDest, fileName));
                 processed++;
               },
@@ -786,14 +1061,15 @@ async function runProcessAndCopy({ srcRoot, destRoot, cacheRoot, hash, logger, w
 /**
  * Rollup plugin. On generateBundle, processes and copies the audio assets
  * into `{sdPlugin}/assets/audio/`. Thin wrapper around
- * `processAndCopyAudioAssets`.
+ * `processAndCopyAudioAssets`; a clip's loudness warning (#1657) is a Rollup
+ * warning, printed with the build's other `(!)` lines.
  */
 export function processAndCopyAudioAssetsPlugin({ sdPlugin }) {
   return {
     name: "process-and-copy-audio-assets",
     async generateBundle() {
       const destRoot = path.join(sdPlugin, "assets", "audio");
-      await processAndCopyAudioAssets({ destRoot, logger: this.info?.bind(this) });
+      await processAndCopyAudioAssets({ destRoot, logger: this.info?.bind(this), warn: this.warn?.bind(this) });
     },
   };
 }

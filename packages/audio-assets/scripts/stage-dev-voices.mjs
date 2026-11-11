@@ -68,10 +68,11 @@ export const REPO_ROOT = path.resolve(audioAssetsPath, "..", "..");
  * @param {object} [options]
  * @param {string} [options.repoRoot]
  * @param {(root: string) => DevVoiceRoot} [options.resolve]
- * @param {(options: { pack: VoicePackDefinition; writeArchive: false; logger?: (message: string) => void }) => Promise<{ clips: number; scripts: number; stageDir: string }>} [options.packVoice]
+ * @param {(options: { pack: VoicePackDefinition; writeArchive: false; logger?: (message: string) => void; warn?: (message: string) => void }) => Promise<{ clips: number; scripts: number; stageDir: string }>} [options.packVoice]
  * @param {readonly VoicePackDefinition[]} [options.packs]
  * @param {string} [options.outputDir] — where the packer stages; must equal the resolved default root
  * @param {(message: string) => void} [options.log]
+ * @param {(message: string) => void} [options.warn] — each re-encoded clip's loudness warning (#1657)
  * @param {() => number} [options.now] — milliseconds, for the wall-time line
  * @param {(dir: string) => string[]} [options.listDirectories] — the directory names directly in `dir`, `[]` when it does not exist
  * @param {(dir: string) => void} [options.removeDirectory]
@@ -84,6 +85,7 @@ export async function stageDevVoices({
   packs = VOICE_PACKS,
   outputDir = OUTPUT_DIR,
   log = (message) => console.log(message),
+  warn = (message) => console.warn(message),
   now = () => performance.now(),
   listDirectories = listDirectoriesIn,
   removeDirectory = (dir) => rmSync(dir, { recursive: true, force: true }),
@@ -126,7 +128,7 @@ export async function stageDevVoices({
   const staged = [];
 
   for (const pack of packs) {
-    const result = await stage({ pack, writeArchive: false, logger: log });
+    const result = await stage({ pack, writeArchive: false, logger: log, warn });
 
     log(
       `  staged ${pack.id}@${pack.version}: ${result.clips} clips, ${result.scripts} callout ` +

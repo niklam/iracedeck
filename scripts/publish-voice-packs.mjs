@@ -664,6 +664,7 @@ async function main() {
             catalogDir: path.join(scratchDir, "catalog"),
             recordsDir: path.join(scratchDir, "records"),
             logger: log,
+            warn: (message) => console.warn(message),
           }),
         readCommittedEntry: (id) => {
           const file = path.join(CATALOG_DIR, `${id}.json`);

@@ -4,4 +4,4 @@
 // from it. See `prebuildAudioAssetCache` for the contention rationale.
 import { prebuildAudioAssetCache } from "./index.mjs";
 
-await prebuildAudioAssetCache({ logger: (msg) => console.log(msg) });
+await prebuildAudioAssetCache({ logger: (msg) => console.log(msg), warn: (msg) => console.warn(msg) });

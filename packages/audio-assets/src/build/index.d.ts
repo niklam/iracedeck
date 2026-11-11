@@ -1,6 +1,24 @@
 export declare const audioAssetsPath: string;
 
 /**
+ * How every voice clip is loudness-normalized ahead of the radio filter
+ * (#1657): `VOICE_LOUDNESS_NORMALIZATION` in `src/presets.mjs`, which documents
+ * each value.
+ */
+export type VoiceLoudnessNormalization = {
+  /** The integrated loudness every clip is moved to, in LUFS. */
+  targetLufs: number;
+  /** The clamp on the gain, either way, in dB. */
+  maxGainDb: number;
+  /** The gain is rounded to this step, in dB, and printed with its decimals. */
+  gainStepDb: number;
+  /** A reading below this (LUFS) is taken as silence: 0 dB and a warning. */
+  silenceFloorLufs: number;
+  /** How a clip is measured: `loops` copies of it through `filter`. */
+  measurement: { loops: number; filter: string };
+};
+
+/**
  * Everything a processed clip's bytes depend on besides the source clip
  * (#1667). Hashed as sorted-key JSON for both the processed-clip cache key and
  * the pack record's `inputs.pipeline`; a new pipeline input is one more field.
@@ -8,6 +26,8 @@ export declare const audioAssetsPath: string;
 export type PipelineIdentity = {
   /** The radio filter chain, `RADIO_ENGINEER_FILTER`. */
   filter: string;
+  /** The loudness normalization ahead of the filter, `VOICE_LOUDNESS_NORMALIZATION` (#1657). */
+  loudness: VoiceLoudnessNormalization;
   /** The ffmpeg encode arguments. */
   encodeArgs: readonly string[];
   /** The installed `ffmpeg-static` version, read from its `package.json`. */
@@ -32,9 +52,55 @@ export declare function pipelineIdentityHash(identity?: PipelineIdentity): strin
 /** The processed-clip cache directory name under `.cache/`: the first eight hex digits of `pipelineIdentityHash`. */
 export declare function pipelineCacheKey(identity?: PipelineIdentity): string;
 
+/**
+ * The integrated loudness an `ebur128` summary in ffmpeg's stderr reports
+ * (`-Infinity` for `-inf`); throws when there is none.
+ *
+ * @internal Exported for testing.
+ */
+export declare function parseIntegratedLoudness(stderr: string): number;
+
+/**
+ * Measure `inputPath`'s integrated loudness (LUFS) the way the pipeline does;
+ * rejects on a failed run or an unreadable summary.
+ *
+ * @internal Exported for testing.
+ */
+export declare function measureLoudness(
+  ffmpegPath: string,
+  inputPath: string,
+  normalization?: VoiceLoudnessNormalization,
+): Promise<number>;
+
+/**
+ * The static gain that moves a clip measured at `measuredLufs` to the target:
+ * rounded, clamped, 0 for silence; `warning` says why a clip needs attention.
+ *
+ * @internal Exported for testing.
+ */
+export declare function loudnessGain(
+  measuredLufs: number,
+  normalization?: VoiceLoudnessNormalization,
+): { gainDb: number; warning: string | null };
+
+/**
+ * `gainDb` as the `volume=` filter reads it: the step's decimals, never `-0`.
+ *
+ * @internal Exported for testing.
+ */
+export declare function formatGainDb(gainDb: number, normalization?: VoiceLoudnessNormalization): string;
+
+/**
+ * Where a clip's loudness warning goes (#1657). Called only for a clip the run
+ * re-encodes, with `Voice clip <voice-id>/<group>/<clip>.mp3: <reading and
+ * decision>`. Absent, the warning goes to `logger`, prefixed `WARNING: `.
+ */
+export type LoudnessWarn = (message: string) => void;
+
 export type ProcessAndCopyAudioAssetsOptions = {
   destRoot: string;
   logger?: (message: string) => void;
+  warn?: LoudnessWarn;
   /** Empty `destRoot` before copying. Default: true (Rollup plugin behavior). Pass false for live in-place refresh. */
   wipe?: boolean;
   /**
@@ -58,6 +124,7 @@ export declare function processAndCopyAudioAssetsPlugin(options: { sdPlugin: str
 
 export type PrebuildAudioAssetCacheOptions = {
   logger?: (message: string) => void;
+  warn?: LoudnessWarn;
 };
 
 export declare function prebuildAudioAssetCache(options?: PrebuildAudioAssetCacheOptions): Promise<void>;
@@ -80,6 +147,7 @@ export type ProcessVoiceTreeOptions = {
    */
   cacheDir?: string;
   logger?: (message: string) => void;
+  warn?: LoudnessWarn;
 };
 
 export type ProcessVoiceTreeResult = {

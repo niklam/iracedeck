@@ -56,7 +56,8 @@ pnpm --filter @iracedeck/audio-assets generate:dry-run
 pnpm --filter @iracedeck/audio-assets generate:manifest
 
 # Pack a voice for the download catalog (all packs when no id is given):
-# radio-filters the clips, zips them deterministically into dist/voice-packs/,
+# evens out each clip's loudness and radio-filters it (the committed clips are
+# never rewritten), zips them deterministically into dist/voice-packs/,
 # and writes catalog/<id>.json and pack-records/<id>.json; commit both.
 # See CLAUDE.md "Voice packs".
 pnpm --filter @iracedeck/audio-assets pack:voice default
