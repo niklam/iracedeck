@@ -66,6 +66,8 @@ ElevenLabs is paid per character and the full run is roughly 9,500 clips, so not
 - **A newer model without request stitching, conditioning on `previous_text` instead.** `previous_text` is the weaker signal, and Niklas's rule is that every clip carries `previous_request_ids`.
 - **A new voice id instead of re-cutting `default`.** It would be a new pack users must choose, not an upgrade of the one they have.
 
+**One text change rides along (amended 2026-11-11).** `lap-time-intro/first-good-lap` becomes "That lap was." in both voices (from "That lap was"), text and conditioning already approved by Niklas for #1688, so the intro is cut once, on the new model, and its dependents are conditioned on it. Every other line keeps its text.
+
 ## Out of scope
 
 - Any change to what the engineer says: text, scripts and callouts stay as they are.
