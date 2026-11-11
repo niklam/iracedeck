@@ -7,12 +7,12 @@ generator that produces them.
 
 ```text
 packages/audio-assets/
-├── ambient/                 # Looping ambient audio
+├── sfx/                     # Non-voice sounds: radio ticks, the ambient pit loop, radar tones
 ├── voice/                   # Generated TTS clips, keyed by <voice>/<group>/<name>.mp3
 ├── catalog/                 # One committed <pack-id>.json per published voice pack
 ├── pack-records/            # What each pack's archive was built from, and whether it is released
 ├── dist/voice-packs/        # Staged packs + archives from pack:voice (gitignored)
-├── generate.config.json     # TTS source: voices, groups, entries, voice settings
+├── configs/                 # TTS source: one <voice-id>.voice.json per voice (groups, entries, voice settings, callout script)
 ├── generate.manifest.json   # TTS cache: per-entry hash + ElevenLabs request id
 ├── manifest.json            # Authored manifest: every voice in this package
 ├── manifest.bundled.json    # The bundled slice a plugin compiles in and ships
@@ -31,7 +31,7 @@ both are regenerated from the file tree by
 
 ## TTS generator
 
-Reads `generate.config.json`, iterates voices × groups × entries, and writes
+Reads every `configs/*.voice.json`, iterates voices × groups × entries, and writes
 any missing or stale `voice/<voice>/<group>/<name>.mp3` files by calling the
 ElevenLabs TTS API. An entry is considered up-to-date when its output file
 exists *and* its hash in `generate.manifest.json` matches the current
