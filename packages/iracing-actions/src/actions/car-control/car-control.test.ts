@@ -6,6 +6,7 @@ import triggerWipersIcon from "@iracedeck/icons/cockpit-misc/trigger-wipers.svg"
 import type { TelemetryData } from "@iracedeck/iracing-sdk";
 import { getGlobalSettings } from "@iracedeck/settings";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { ZodRawShape } from "zod";
 
 import ignitionTemplate from "../../../icons/car-control-ignition.svg";
 import starterTemplate from "../../../icons/car-control-starter.svg";
@@ -13,9 +14,9 @@ import {
   CAR_CONTROL_GLOBAL_KEYS,
   CarControl,
   CarControlSettings,
+  displayedPitSpeedLimit,
   generateCarControlSvg,
   getEnterExitTowState,
-  getPitSpeedLimit,
   getSessionContext,
   hasEngineCaught,
   ignitionArtwork,
@@ -26,9 +27,10 @@ import {
   isPitLimiterActive,
   isPitLimiterAvailable,
   isPushToPassActive,
-  parsePitSpeedLimit,
   pitLimiterSpeedGraphic,
   pitLimiterToggleState,
+  PitSpeedUnitField,
+  resolvePitSpeedDisplayUnit,
   STARTER_CHUK_MS,
   STARTER_CRANK_FRAMES_MS,
   starterArtwork,
@@ -36,14 +38,18 @@ import {
 } from "./car-control.js";
 
 const {
-  mockGetSessionInfo,
+  carControlShape,
   mockTapBinding,
   mockHoldBinding,
   mockReleaseBinding,
   mockPressKeyCombination,
   mockReleaseKeyCombination,
 } = vi.hoisted(() => ({
-  mockGetSessionInfo: vi.fn((): Record<string, unknown> | null => null),
+  /**
+   * The fields `CarControlSettings` adds to `CommonSettings`, captured by the identity mock of
+   * `CommonSettings.extend` so a test can rebuild the real schema from them (#1476).
+   */
+  carControlShape: { current: undefined as ZodRawShape | undefined },
   mockTapBinding: vi.fn().mockResolvedValue(undefined),
   mockHoldBinding: vi.fn().mockResolvedValue(undefined),
   mockReleaseBinding: vi.fn().mockResolvedValue(undefined),
@@ -97,23 +103,25 @@ vi.mock("@iracedeck/icons/car-control/second-down-shift.svg", () => ({
   default: "<svg>second-down-shift-icon</svg>",
 }));
 
-vi.mock("@iracedeck/iracing-sdk", () => ({
-  hasFlag: (value: number, flag: number) => (value & flag) !== 0,
-  hasPitLimiter: (t: { dcPitSpeedLimiterToggle?: unknown } | null) => t?.dcPitSpeedLimiterToggle !== undefined,
-  hasVisor: (t: { dcTearOffVisor?: unknown } | null) => t?.dcTearOffVisor !== undefined,
-  hasWipers: (t: { dcToggleWindshieldWipers?: unknown; dcTriggerWindshieldWipers?: unknown } | null) =>
-    t?.dcToggleWindshieldWipers !== undefined || t?.dcTriggerWindshieldWipers !== undefined,
-  isLiveOnTrack: (t: { IsOnTrack?: unknown; IsReplayPlaying?: unknown } | null | undefined) =>
-    t?.IsOnTrack === true && t?.IsReplayPlaying !== true,
-  isPitLimiterEngaged: (t: { EngineWarnings?: number } | null) => ((t?.EngineWarnings ?? 0) & 0x0010) !== 0,
-  EngineWarnings: { PitSpeedLimiter: 0x0010, EngineStalled: 0x0008 },
-  SessionState: { Invalid: 0, GetInCar: 1, Warmup: 2, ParadeLaps: 3, Racing: 4, Checkered: 5, CoolDown: 6 },
-}));
+vi.mock("@iracedeck/iracing-sdk", async (importOriginal) => {
+  // The real parser and enum, so the key's figure is read from the string iRacing publishes (#1476).
+  const { DisplayUnits, parseTrackPitSpeedLimit } = await importOriginal<typeof import("@iracedeck/iracing-sdk")>();
 
-vi.mock("@iracedeck/deck-iracing", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@iracedeck/deck-iracing")>()),
-  getSDK: vi.fn(() => ({ sdk: { getSessionInfo: mockGetSessionInfo } })),
-}));
+  return {
+    DisplayUnits,
+    parseTrackPitSpeedLimit,
+    hasFlag: (value: number, flag: number) => (value & flag) !== 0,
+    hasPitLimiter: (t: { dcPitSpeedLimiterToggle?: unknown } | null) => t?.dcPitSpeedLimiterToggle !== undefined,
+    hasVisor: (t: { dcTearOffVisor?: unknown } | null) => t?.dcTearOffVisor !== undefined,
+    hasWipers: (t: { dcToggleWindshieldWipers?: unknown; dcTriggerWindshieldWipers?: unknown } | null) =>
+      t?.dcToggleWindshieldWipers !== undefined || t?.dcTriggerWindshieldWipers !== undefined,
+    isLiveOnTrack: (t: { IsOnTrack?: unknown; IsReplayPlaying?: unknown } | null | undefined) =>
+      t?.IsOnTrack === true && t?.IsReplayPlaying !== true,
+    isPitLimiterEngaged: (t: { EngineWarnings?: number } | null) => ((t?.EngineWarnings ?? 0) & 0x0010) !== 0,
+    EngineWarnings: { PitSpeedLimiter: 0x0010, EngineStalled: 0x0008 },
+    SessionState: { Invalid: 0, GetInCar: 1, Warmup: 2, ParadeLaps: 3, Racing: 4, Checkered: 5, CoolDown: 6 },
+  };
+});
 
 vi.mock("@iracedeck/icon-composer", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@iracedeck/icon-composer")>()),
@@ -138,7 +146,9 @@ vi.mock("@iracedeck/deck-core", async (importOriginal) => ({
     clearAll(): void {}
   },
   CommonSettings: {
-    extend: (_fields: unknown) => {
+    extend: (fields: ZodRawShape) => {
+      carControlShape.current = fields;
+
       // Return a mock Zod-like schema
       const schema = {
         parse: (data: Record<string, unknown>) => ({ ...data }),
@@ -1098,51 +1108,243 @@ describe("CarControl", () => {
     });
   });
 
-  describe("parsePitSpeedLimit", () => {
-    it("should parse '80.00 kph' to 80", () => {
-      expect(parsePitSpeedLimit("80.00 kph")).toBe(80);
+  describe("PitSpeedUnitField (issue #1476)", () => {
+    it("reads a missing value as auto", () => {
+      expect(PitSpeedUnitField.parse(undefined)).toBe("auto");
     });
 
-    it("should parse '60.00 mph' to 60", () => {
-      expect(parsePitSpeedLimit("60.00 mph")).toBe(60);
+    it("reads a value this version does not know as auto", () => {
+      expect(PitSpeedUnitField.parse("knots")).toBe("auto");
+      expect(PitSpeedUnitField.parse(3)).toBe("auto");
     });
 
-    it("should parse '100.50 kph' to 100", () => {
-      expect(parsePitSpeedLimit("100.50 kph")).toBe(100);
-    });
-
-    it("should return 80 for undefined", () => {
-      expect(parsePitSpeedLimit(undefined)).toBe(80);
-    });
-
-    it("should return 80 for empty string", () => {
-      expect(parsePitSpeedLimit("")).toBe(80);
-    });
-
-    it("should return 80 for non-numeric string", () => {
-      expect(parsePitSpeedLimit("unknown")).toBe(80);
+    it("keeps each known value", () => {
+      expect(PitSpeedUnitField.parse("auto")).toBe("auto");
+      expect(PitSpeedUnitField.parse("kmh")).toBe("kmh");
+      expect(PitSpeedUnitField.parse("mph")).toBe("mph");
     });
   });
 
-  describe("getPitSpeedLimit", () => {
-    it("should return speed from session info", () => {
-      mockGetSessionInfo.mockReturnValue({
-        WeekendInfo: { TrackPitSpeedLimit: "80.00 kph" },
-      });
+  describe("CarControlSettings pitSpeedUnit, through the real schema (issue #1476)", () => {
+    /** The action's schema as production builds it: the real CommonSettings extended with its fields. */
+    async function realSchema() {
+      const { CommonSettings } = await vi.importActual<typeof import("@iracedeck/deck-core")>("@iracedeck/deck-core");
 
-      expect(getPitSpeedLimit()).toBe(80);
+      expect(carControlShape.current).toBeDefined();
+
+      return CommonSettings.extend(carControlShape.current!);
+    }
+
+    it("is a real, strict schema (an unknown Mode fails it), so the cases below prove something", async () => {
+      const schema = await realSchema();
+
+      expect(schema.safeParse({ control: "warp-drive" }).success).toBe(false);
     });
 
-    it("should return 80 when session info is null", () => {
-      mockGetSessionInfo.mockReturnValue(null);
+    it("parses a key stored without pitSpeedUnit as auto", async () => {
+      const schema = await realSchema();
 
-      expect(getPitSpeedLimit()).toBe(80);
+      expect(schema.parse({ control: "pit-speed-limiter" }).pitSpeedUnit).toBe("auto");
     });
 
-    it("should return 80 when WeekendInfo is missing", () => {
-      mockGetSessionInfo.mockReturnValue({});
+    it("parses an unknown stored unit as auto and keeps the key's other settings", async () => {
+      const schema = await realSchema();
+      const parsed = schema.safeParse({ control: "escape", autoHold: true, pitSpeedUnit: "knots" });
 
-      expect(getPitSpeedLimit()).toBe(80);
+      expect(parsed.success).toBe(true);
+      expect(parsed.data).toMatchObject({ control: "escape", autoHold: true, pitSpeedUnit: "auto" });
+    });
+
+    it("keeps a stored km/h or mph", async () => {
+      const schema = await realSchema();
+
+      expect(schema.parse({ control: "pit-speed-limiter", pitSpeedUnit: "kmh" }).pitSpeedUnit).toBe("kmh");
+      expect(schema.parse({ control: "pit-speed-limiter", pitSpeedUnit: "mph" }).pitSpeedUnit).toBe("mph");
+    });
+  });
+
+  describe("resolvePitSpeedDisplayUnit (issue #1476)", () => {
+    it("follows DisplayUnits under auto: English is mph, Metric is km/h", () => {
+      expect(resolvePitSpeedDisplayUnit("auto", 0)).toBe("mph");
+      expect(resolvePitSpeedDisplayUnit("auto", 1)).toBe("kmh");
+    });
+
+    it("reads a missing DisplayUnits as metric", () => {
+      expect(resolvePitSpeedDisplayUnit("auto", undefined)).toBe("kmh");
+    });
+
+    it("ignores DisplayUnits when the key is set to a unit", () => {
+      expect(resolvePitSpeedDisplayUnit("kmh", 0)).toBe("kmh");
+      expect(resolvePitSpeedDisplayUnit("mph", 1)).toBe("mph");
+      expect(resolvePitSpeedDisplayUnit("mph", undefined)).toBe("mph");
+    });
+  });
+
+  describe("displayedPitSpeedLimit (issue #1476)", () => {
+    const POSTED_45_MPH = { value: 72.42, unit: "kmh" as const };
+    const ROAD_80_KMH = { value: 80, unit: "kmh" as const };
+    const PUBLISHED_45_MPH = { value: 45, unit: "mph" as const };
+
+    it.each([
+      ["72.42 kph in km/h draws 72", POSTED_45_MPH, "kmh", 72],
+      ["72.42 kph in mph draws 45 (44.9997, rounded to the posted figure)", POSTED_45_MPH, "mph", 45],
+      ["80.00 kph in km/h draws 80", ROAD_80_KMH, "kmh", 80],
+      ["80.00 kph in mph draws 50", ROAD_80_KMH, "mph", 50],
+      ["45 mph in mph draws 45", PUBLISHED_45_MPH, "mph", 45],
+      ["45 mph in km/h draws 72", PUBLISHED_45_MPH, "kmh", 72],
+      ["no limit in km/h draws the 80 placeholder", null, "kmh", 80],
+      ["no limit in mph draws the placeholder converted, 50", null, "mph", 50],
+    ] as const)("%s", (_name, parsed, unit, expected) => {
+      expect(displayedPitSpeedLimit(parsed, unit, undefined)).toBe(expected);
+    });
+
+    it("rounds to the nearest whole number rather than truncating", () => {
+      expect(displayedPitSpeedLimit({ value: 100.5, unit: "kmh" }, "kmh", undefined)).toBe(101);
+      expect(displayedPitSpeedLimit({ value: 100.49, unit: "kmh" }, "kmh", undefined)).toBe(100);
+    });
+
+    it("always returns an integer", () => {
+      for (const value of [0, 12.34, 44.99, 59.99, 72.42, 88.5, 100.5, 112.65]) {
+        for (const unit of ["kmh", "mph"] as const) {
+          for (const target of ["auto", "kmh", "mph"] as const) {
+            for (const displayUnits of [0, 1, undefined]) {
+              expect(Number.isInteger(displayedPitSpeedLimit({ value, unit }, target, displayUnits))).toBe(true);
+            }
+          }
+        }
+      }
+    });
+
+    it("follows DisplayUnits under auto: 0 → mph, 1 → km/h, missing → km/h", () => {
+      expect(displayedPitSpeedLimit(POSTED_45_MPH, "auto", 0)).toBe(45);
+      expect(displayedPitSpeedLimit(POSTED_45_MPH, "auto", 1)).toBe(72);
+      expect(displayedPitSpeedLimit(POSTED_45_MPH, "auto", undefined)).toBe(72);
+      expect(displayedPitSpeedLimit(null, "auto", 0)).toBe(50);
+      expect(displayedPitSpeedLimit(null, "auto", undefined)).toBe(80);
+    });
+
+    it("ignores DisplayUnits when the key is set to km/h or mph", () => {
+      expect(displayedPitSpeedLimit(POSTED_45_MPH, "kmh", 0)).toBe(72);
+      expect(displayedPitSpeedLimit(POSTED_45_MPH, "mph", 1)).toBe(45);
+    });
+  });
+
+  describe("pit speed limiter units on the key (issue #1476)", () => {
+    const METRIC = { EngineWarnings: 0, dcPitSpeedLimiterToggle: false, DisplayUnits: 1 } as TelemetryData;
+    const IMPERIAL = { EngineWarnings: 0, dcPitSpeedLimiterToggle: false, DisplayUnits: 0 } as TelemetryData;
+
+    let action: CarControl;
+
+    beforeEach(() => {
+      action = new CarControl();
+      vi.mocked(action["sdkController"].getSessionInfo).mockReturnValue({
+        WeekendInfo: { TrackPitSpeedLimit: "72.42 kph" },
+      } as never);
+    });
+
+    function setTelemetry(frame: TelemetryData | null): void {
+      vi.mocked(action["sdkController"].getCurrentTelemetry).mockReturnValue(frame);
+    }
+
+    /** Appear with the given unit, then return a tick that feeds a frame and settles the render. */
+    async function appear(pitSpeedUnit: string, frame: TelemetryData) {
+      setTelemetry(frame);
+      await action.onWillAppear(fakeEvent("action-1", { control: "pit-speed-limiter", pitSpeedUnit }) as any);
+      const onTelemetry = vi.mocked(action["sdkController"].subscribe).mock.calls[0][1] as (
+        t: TelemetryData | null,
+      ) => void;
+
+      return async (next: TelemetryData) => {
+        setTelemetry(next);
+        onTelemetry(next);
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      };
+    }
+
+    const updates = () => vi.mocked(action["updateKeyImage"]).mock.calls.length;
+    const lastUpdate = () => decodeURIComponent(vi.mocked(action["updateKeyImage"]).mock.calls.at(-1)![1]);
+    const firstImage = () => decodeURIComponent(vi.mocked(action["setKeyImage"]).mock.calls.at(-1)![1]);
+
+    it("puts the figure in the key's unit into the telemetry state, from the session's TrackPitSpeedLimit", () => {
+      const state = (unit: "auto" | "kmh" | "mph", frame: TelemetryData | null) =>
+        action["getTelemetryState"](frame, { control: "pit-speed-limiter", pitSpeedUnit: unit }).pitSpeedLimit;
+
+      expect(state("auto", IMPERIAL)).toBe(45);
+      expect(state("auto", METRIC)).toBe(72);
+      expect(state("auto", null)).toBe(72);
+      expect(state("kmh", IMPERIAL)).toBe(72);
+      expect(state("mph", METRIC)).toBe(45);
+    });
+
+    it("falls back to the 80 km/h placeholder in the key's unit with no session", () => {
+      vi.mocked(action["sdkController"].getSessionInfo).mockReturnValue(null);
+
+      expect(
+        action["getTelemetryState"](IMPERIAL, { control: "pit-speed-limiter", pitSpeedUnit: "auto" }).pitSpeedLimit,
+      ).toBe(50);
+      expect(
+        action["getTelemetryState"](IMPERIAL, { control: "pit-speed-limiter", pitSpeedUnit: "kmh" }).pitSpeedLimit,
+      ).toBe(80);
+    });
+
+    it("draws the placeholder in the setting's unit when there is no telemetry state", () => {
+      const draw = (pitSpeedUnit: "auto" | "kmh" | "mph") =>
+        decodeURIComponent(
+          generateCarControlSvg(CarControlSettings.parse({ control: "pit-speed-limiter", pitSpeedUnit })),
+        );
+
+      expect(draw("auto")).toContain(">80</text>");
+      expect(draw("kmh")).toContain(">80</text>");
+      expect(draw("mph")).toContain(">50</text>");
+    });
+
+    it("keys the render on the displayed figure", () => {
+      const settings = CarControlSettings.parse({ control: "pit-speed-limiter", pitSpeedUnit: "auto" });
+      const key = (pitSpeedLimit: number) =>
+        action["buildStateKey"](settings, { pitLimiterAvailable: true, pitLimiterActive: false, pitSpeedLimit });
+
+      expect(key(72)).not.toBe(key(45));
+      expect(key(72)).toBe(key(72));
+    });
+
+    it("redraws under auto when DisplayUnits changes, and not when it stays the same", async () => {
+      const tick = await appear("auto", METRIC);
+
+      expect(firstImage()).toContain(">72</text>");
+
+      await tick(METRIC);
+      expect(updates()).toBe(0);
+
+      await tick(IMPERIAL);
+      expect(updates()).toBe(1);
+      expect(lastUpdate()).toContain(">45</text>");
+
+      await tick(IMPERIAL);
+      expect(updates()).toBe(1);
+
+      await tick(METRIC);
+      expect(updates()).toBe(2);
+      expect(lastUpdate()).toContain(">72</text>");
+    });
+
+    it("does not redraw under km/h when DisplayUnits changes", async () => {
+      const tick = await appear("kmh", METRIC);
+
+      expect(firstImage()).toContain(">72</text>");
+
+      await tick(IMPERIAL);
+      await tick(METRIC);
+      expect(updates()).toBe(0);
+    });
+
+    it("redraws in the new unit when the setting changes", async () => {
+      await appear("kmh", IMPERIAL);
+      expect(firstImage()).toContain(">72</text>");
+
+      await action.onDidReceiveSettings(
+        fakeEvent("action-1", { control: "pit-speed-limiter", pitSpeedUnit: "mph" }) as any,
+      );
+      expect(firstImage()).toContain(">45</text>");
     });
   });
 
@@ -2356,10 +2558,10 @@ describe("CarControl", () => {
       (action as any).sdkController.getSessionInfo = vi.fn(() => ({
         SessionInfo: { Sessions: [{ SessionNum: 0, SessionType: "Race" }] },
       }));
-      const state = action["getTelemetryState"](
-        { IsOnTrack: false, SessionNum: 0, SessionState: 4 } as any,
-        "enter-exit-tow",
-      );
+      const state = action["getTelemetryState"]({ IsOnTrack: false, SessionNum: 0, SessionState: 4 } as any, {
+        control: "enter-exit-tow",
+        pitSpeedUnit: "auto",
+      });
 
       expect(state.enterExitTowState).toBe("enter-car");
       expect(state.sessionContext).toBe("race");
@@ -2404,17 +2606,20 @@ describe("CarControl", () => {
 
     it("should compute pitLimiterAvailable=false for a car without a limiter", () => {
       const action = new CarControl();
-      const state = action["getTelemetryState"]({ EngineWarnings: 0 } as any, "pit-speed-limiter");
+      const state = action["getTelemetryState"]({ EngineWarnings: 0 } as any, {
+        control: "pit-speed-limiter",
+        pitSpeedUnit: "auto",
+      });
 
       expect(state.pitLimiterAvailable).toBe(false);
     });
 
     it("should compute pitLimiterAvailable=true for a car with a limiter", () => {
       const action = new CarControl();
-      const state = action["getTelemetryState"](
-        { EngineWarnings: 0, dcPitSpeedLimiterToggle: false } as any,
-        "pit-speed-limiter",
-      );
+      const state = action["getTelemetryState"]({ EngineWarnings: 0, dcPitSpeedLimiterToggle: false } as any, {
+        control: "pit-speed-limiter",
+        pitSpeedUnit: "auto",
+      });
 
       expect(state.pitLimiterAvailable).toBe(true);
     });

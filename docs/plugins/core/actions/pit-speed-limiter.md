@@ -19,7 +19,16 @@ Toggles the pit lane speed limiter.
 
 ## Settings
 
-None.
+| Setting | Type | Default | Description |
+|---------|------|---------|-------------|
+| Unit (`pitSpeedUnit`) | Dropdown | Auto (from iRacing) | Unit the pit-speed-limit number is drawn in; shown only in the Pit Speed Limiter mode (#1476) |
+
+### Unit Options
+- **Auto (from iRacing)** (`auto`) - km/h or mph, following the live `DisplayUnits` (`0` English shows mph, `1` Metric km/h; missing reads as metric)
+- **km/h** (`kmh`) - Always kilometers per hour
+- **mph** (`mph`) - Always miles per hour
+
+The key draws a whole number only, with no unit label. `TrackPitSpeedLimit` is parsed with its published decimals by `parseTrackPitSpeedLimit` in `@iracedeck/iracing-sdk`, converted, then rounded to the nearest whole number, so a limit posted as 45 mph (published as `72.42 kph`) draws `45` in mph and `72` in km/h. With no session the placeholder 80 km/h draws `50` in mph. A key stored without the setting reads `auto`, and an unknown stored value falls back to `auto`.
 
 ## Keyboard Simulation
 

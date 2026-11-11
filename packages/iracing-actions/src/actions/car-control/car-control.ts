@@ -26,7 +26,7 @@ import {
   resolveTitleSettings,
   svgToDataUri,
 } from "@iracedeck/deck-core";
-import { getSDK, SimIRacingAction } from "@iracedeck/deck-iracing";
+import { SimIRacingAction } from "@iracedeck/deck-iracing";
 import enterCarIcon from "@iracedeck/icons/car-control/enter-car.svg";
 import escapeIcon from "@iracedeck/icons/car-control/escape.svg";
 import exitCarIcon from "@iracedeck/icons/car-control/exit-car.svg";
@@ -45,11 +45,14 @@ import starterIcon from "@iracedeck/icons/car-control/starter.svg";
 import tearOffVisorIcon from "@iracedeck/icons/car-control/tear-off-visor.svg";
 import towIcon from "@iracedeck/icons/car-control/tow.svg";
 import {
+  DisplayUnits,
   EngineWarnings,
   hasFlag,
   hasPitLimiter,
   isLiveOnTrack,
   isPitLimiterEngaged,
+  type ParsedPitSpeedLimit,
+  parseTrackPitSpeedLimit,
   SessionState,
   type TelemetryData,
 } from "@iracedeck/iracing-sdk";
@@ -141,7 +144,26 @@ const CAR_CONTROL_STATIC_TITLES: Partial<Record<CarControlType, string>> = {
   "second-down-shift": "SHIFT DOWN",
 };
 
-const DEFAULT_PIT_SPEED = 80;
+/** The limit the key shows, in km/h, before a session publishes one. */
+const DEFAULT_PIT_SPEED_KMH = 80;
+
+/** Kilometres per hour in one mile per hour (exact, by the definition of the mile). */
+const KMH_PER_MPH = 1.609344;
+
+/** @internal Exported for testing */
+export const PIT_SPEED_UNIT_OPTIONS = ["auto", "kmh", "mph"] as const;
+
+/** @internal Exported for testing */
+export type PitSpeedUnit = (typeof PIT_SPEED_UNIT_OPTIONS)[number];
+
+/**
+ * @internal Exported for testing
+ *
+ * The Pit Speed Limiter's Unit setting (issue #1476). A missing key reads `auto`, and so does
+ * a value this version does not know (one a later version adds): `.catch` keeps an unknown
+ * value from failing the whole settings parse, which would reset every other setting of the key.
+ */
+export const PitSpeedUnitField = z.enum(PIT_SPEED_UNIT_OPTIONS).default("auto").catch("auto");
 
 /**
  * Controls that use telemetry-driven dynamic icons.
@@ -196,26 +218,40 @@ export const STARTER_CHUK_MS = 200;
 /**
  * @internal Exported for testing
  *
- * Parse the pit speed limit from session info string (e.g. "80.00 kph") to an integer.
+ * The unit the Pit Speed Limiter key draws in (issue #1476): `kmh` and `mph` as set; `auto`
+ * follows iRacing's `DisplayUnits`, English (0) showing mph. Metric, a missing `DisplayUnits`
+ * and no telemetry at all show km/h, as Session Info and the translator read it. Anything but
+ * `kmh` / `mph` counts as `auto`, so a settings object that never went through the schema
+ * still draws.
  */
-export function parsePitSpeedLimit(value: string | undefined): number {
-  if (!value) return DEFAULT_PIT_SPEED;
+export function resolvePitSpeedDisplayUnit(unit: PitSpeedUnit, displayUnits: number | undefined): "kmh" | "mph" {
+  if (unit === "kmh" || unit === "mph") return unit;
 
-  const match = value.match(/^(\d+)/);
-
-  return match ? parseInt(match[1], 10) : DEFAULT_PIT_SPEED;
+  return displayUnits === DisplayUnits.English ? "mph" : "kmh";
 }
 
 /**
  * @internal Exported for testing
  *
- * Get pit speed limit from session info.
+ * The whole number the Pit Speed Limiter key draws (issue #1476), from the parsed
+ * `TrackPitSpeedLimit`, the key's Unit setting and iRacing's `DisplayUnits`.
+ *
+ * The conversion starts from the full published value and only the result is rounded, to
+ * the nearest whole number: a limit posted as 45 mph is published as `"72.42 kph"`, which is
+ * 44.9997 mph and must draw `45`, not the `44` a truncation would. With no parsed limit the
+ * key shows its 80 km/h placeholder, converted the same way (50 mph).
  */
-export function getPitSpeedLimit(): number {
-  const sessionInfo = getSDK().sdk.getSessionInfo();
-  const weekendInfo = sessionInfo?.WeekendInfo as Record<string, unknown> | undefined;
+export function displayedPitSpeedLimit(
+  parsed: Pick<ParsedPitSpeedLimit, "value" | "unit"> | null,
+  unit: PitSpeedUnit,
+  displayUnits: number | undefined,
+): number {
+  const limit = parsed ?? { value: DEFAULT_PIT_SPEED_KMH, unit: "kmh" };
+  const target = resolvePitSpeedDisplayUnit(unit, displayUnits);
 
-  return parsePitSpeedLimit(weekendInfo?.TrackPitSpeedLimit as string | undefined);
+  if (limit.unit === target) return Math.round(limit.value);
+
+  return Math.round(target === "mph" ? limit.value / KMH_PER_MPH : limit.value * KMH_PER_MPH);
 }
 
 /**
@@ -697,6 +733,7 @@ export type CarControlTelemetryState = {
   pitLimiterActive?: boolean;
   /** Whether the current car has a pit limiter (issue #638). false ⇒ greyed N/A state. */
   pitLimiterAvailable?: boolean;
+  /** The whole number the key draws, already in the key's unit (issue #1476). */
   pitSpeedLimit?: number;
   pushToPassActive?: boolean;
   drsActive?: boolean;
@@ -749,6 +786,8 @@ export const CarControlSettings = CommonSettings.extend({
     .transform((arr) => [...new Set(arr)]),
   /** Wipers and Visor (#1463): what a tap does on a wiper car; a long press does the other. */
   wipersOnTap: WipersOnTapField,
+  /** Pit Speed Limiter (#1476): the unit the limit is drawn in; `auto` follows iRacing. */
+  pitSpeedUnit: PitSpeedUnitField,
 });
 
 export type CarControlSettings = z.infer<typeof CarControlSettings>;
@@ -771,7 +810,8 @@ export function generateCarControlSvg(
   // state — but keeps its distinctive speed-number circle as the central graphic. The
   // not-available state is reached on cars without a pit limiter (`hasPitLimiter` false).
   if (control === "pit-speed-limiter") {
-    const speed = telemetryState?.pitSpeedLimit ?? DEFAULT_PIT_SPEED;
+    // With no telemetry state the key shows its placeholder in the key's unit (auto: km/h).
+    const speed = telemetryState?.pitSpeedLimit ?? displayedPitSpeedLimit(null, settings.pitSpeedUnit, undefined);
     // Availability defaults true (undefined ⇒ keep the on/off look until a car snapshot says otherwise).
     const isAvailable = telemetryState?.pitLimiterAvailable ?? true;
     const isActive = telemetryState?.pitLimiterActive ?? false;
@@ -1366,7 +1406,7 @@ export class CarControl extends SimIRacingAction<CarControlSettings> {
       return false;
     }
 
-    const state = this.getTelemetryState(telemetry, "starter", contextId);
+    const state = this.getTelemetryState(telemetry, settings, contextId);
     const svgDataUri = generateCarControlSvg(settings, state, this.isBindingMissing(CAR_CONTROL_GLOBAL_KEYS.starter));
 
     void this.updateKeyImage(contextId, svgDataUri).catch((err) =>
@@ -1541,18 +1581,22 @@ export class CarControl extends SimIRacingAction<CarControlSettings> {
    * `contextId` lets a running Starter flash (issue #1438) put its current frame into the
    * state, so every path that renders the key — the frame step, the regenerate callback a
    * global-settings change runs — draws the same frame rather than the bare state.
+   *
+   * The settings carry the Pit Speed Limiter's unit (issue #1476): the state holds the figure
+   * as drawn, so the state key changes exactly when the drawn number does.
    */
   private getTelemetryState(
     telemetry: TelemetryData | null,
-    control: CarControlType,
+    settings: Pick<CarControlSettings, "control" | "pitSpeedUnit">,
     contextId?: string,
   ): CarControlTelemetryState {
+    const { control } = settings;
     const state: CarControlTelemetryState = {};
 
     if (control === "pit-speed-limiter") {
       state.pitLimiterActive = isPitLimiterActive(telemetry);
       state.pitLimiterAvailable = isPitLimiterAvailable(telemetry);
-      state.pitSpeedLimit = getPitSpeedLimit();
+      state.pitSpeedLimit = this.getDisplayedPitSpeedLimit(telemetry, settings.pitSpeedUnit);
     } else if (control === "push-to-pass") {
       if (telemetry) state.pushToPassActive = isPushToPassActive(telemetry);
     } else if (control === "drs") {
@@ -1576,12 +1620,23 @@ export class CarControl extends SimIRacingAction<CarControlSettings> {
     return state;
   }
 
+  /** The pit speed limit as the key draws it, from the session's `TrackPitSpeedLimit` (issue #1476). */
+  private getDisplayedPitSpeedLimit(telemetry: TelemetryData | null, unit: PitSpeedUnit): number {
+    const weekendInfo = this.sdkController.getSessionInfo()?.WeekendInfo as Record<string, unknown> | undefined;
+
+    return displayedPitSpeedLimit(
+      parseTrackPitSpeedLimit(weekendInfo?.TrackPitSpeedLimit),
+      unit,
+      telemetry?.DisplayUnits,
+    );
+  }
+
   private async updateDisplay(
     ev: IDeckWillAppearEvent<CarControlSettings> | IDeckDidReceiveSettingsEvent<CarControlSettings>,
     settings: CarControlSettings,
   ): Promise<void> {
     const telemetry = this.sdkController.getCurrentTelemetry();
-    const telemetryState = this.getTelemetryState(telemetry, settings.control);
+    const telemetryState = this.getTelemetryState(telemetry, settings);
 
     const svgDataUri = generateCarControlSvg(
       settings,
@@ -1592,7 +1647,7 @@ export class CarControl extends SimIRacingAction<CarControlSettings> {
     await this.setKeyImage(ev, svgDataUri);
     this.setRegenerateCallback(ev.action.id, () => {
       const currentTelemetry = this.sdkController.getCurrentTelemetry();
-      const currentState = this.getTelemetryState(currentTelemetry, settings.control, ev.action.id);
+      const currentState = this.getTelemetryState(currentTelemetry, settings, ev.action.id);
 
       return generateCarControlSvg(settings, currentState, this.isRequiredBindingMissing(settings, currentState));
     });
@@ -1618,7 +1673,11 @@ export class CarControl extends SimIRacingAction<CarControlSettings> {
         telemetryState.pitLimiterActive ?? false,
       );
 
-      return `pit-speed-limiter|${toggleState}|${telemetryState.pitSpeedLimit ?? DEFAULT_PIT_SPEED}|${borderKey}|${warn}`;
+      // The figure is already in the key's unit (issue #1476), so a unit change that changes
+      // the drawn number redraws and one that does not, does not.
+      const speed = telemetryState.pitSpeedLimit ?? displayedPitSpeedLimit(null, settings.pitSpeedUnit, undefined);
+
+      return `pit-speed-limiter|${toggleState}|${speed}|${borderKey}|${warn}`;
     }
 
     if (settings.control === "push-to-pass") {
@@ -1674,7 +1733,7 @@ export class CarControl extends SimIRacingAction<CarControlSettings> {
       return;
     }
 
-    const telemetryState = this.getTelemetryState(telemetry, settings.control);
+    const telemetryState = this.getTelemetryState(telemetry, settings);
     const stateKey = this.buildStateKey(settings, telemetryState);
     const lastStateKey = this.lastState.get(contextId);
 
@@ -1692,7 +1751,7 @@ export class CarControl extends SimIRacingAction<CarControlSettings> {
       if (!storedSettings || !TELEMETRY_AWARE_CONTROLS.has(storedSettings.control)) return;
 
       const currentTelemetry = this.sdkController.getCurrentTelemetry();
-      const currentState = this.getTelemetryState(currentTelemetry, storedSettings.control, contextId);
+      const currentState = this.getTelemetryState(currentTelemetry, storedSettings, contextId);
       const svgDataUri = generateCarControlSvg(
         storedSettings,
         currentState,
@@ -1701,7 +1760,7 @@ export class CarControl extends SimIRacingAction<CarControlSettings> {
       await this.updateKeyImage(contextId, svgDataUri);
       this.setRegenerateCallback(contextId, () => {
         const t = this.sdkController.getCurrentTelemetry();
-        const s = this.getTelemetryState(t, storedSettings.control, contextId);
+        const s = this.getTelemetryState(t, storedSettings, contextId);
 
         return generateCarControlSvg(storedSettings, s, this.isRequiredBindingMissing(storedSettings, s));
       });
