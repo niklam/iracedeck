@@ -1,65 +1,79 @@
 /**
- * Approaching-traffic family (issue #1113) — the Race Engineer's answer to
- * "is anything coming?" at two moments: stopped or crawling on track after a
- * spin or a stall (`traffic.rejoin`), and on the way out of the pits
- * (`traffic.pitExit`). The translator's detectors (`diff/traffic-rejoin.ts`,
- * `diff/traffic-pit-exit.ts` in `@iracedeck/sim-events-iracing`) decide the
- * verdict and when it is worth saying again; the contracts here only filter
- * on it and schedule the line.
+ * Approaching-traffic family (issue #1113, amended 2026-11-11) — the Race
+ * Engineer's answer to "is anything coming?" at two moments: stopped or
+ * crawling on track after a spin or a stall (`traffic.rejoin`), and leaving
+ * the pit box (`traffic.pitExit`). The translator's detectors
+ * (`diff/traffic-rejoin.ts`, `diff/traffic-pit-exit.ts` in
+ * `@iracedeck/sim-events-iracing`) decide the band, the number and every
+ * timing rule — when a line is first said, when it is counted down, when the
+ * next car's band follows a close one; the contracts here only map the event
+ * to a line and schedule it.
  *
  * The code below decides WHETHER and WHEN each line fires and how it is
  * scheduled; WHAT is said lives in the active voice's `callouts.json` under
- * the same ids (`scenarios["pit-crew.traffic-rejoin-hold"]`, …), paired at
- * `setScripts` time.
+ * the same ids (`scenarios["pit-crew.traffic-rejoin-near-first"]`, …), paired
+ * at `setScripts` time.
  *
- * **One contract per verdict, not one contract with a `case`.** Whether a
- * line may cut the one in flight is a contract field, and the verdicts need
- * different answers: a hold (a car arriving within the hold window) and a
- * pit-exit traffic warning cut whatever the engineer is saying, while a
- * notice, a clear and a "go" wait their turn. One contract could carry only
- * one `interrupt`. Separate contracts also give each verdict its own harness
- * button, its own reference description and its own script entry, so a pack
- * can phrase every one; the `traffic.rejoinVerdict` / `traffic.pitExitVerdict`
- * cases are still published for a pack that wants to share one body.
+ * **The engineer alerts, never instructs.** The rejoin lines name a fixed
+ * band of the nearest predicted arrival — right behind (under 2 s), a number
+ * (2 s to under 10 s), more than ten (10 s to under 15 s), clear (15 s or
+ * more, or no car) — and never tell a stopped driver to hold or go. Only the
+ * close band speaks a number; the bands are fixed because the words name
+ * them.
  *
- * **One family.** All six share `family: "traffic"` (spec decision 6): a
- * fresh verdict replaces a stale one in flight wholesale, whatever the
- * weights — a "Clear, go." arriving while "hold" still plays cuts it.
+ * **One contract per line, not one contract with a `case`.** Whether a line
+ * may cut the one in flight is a contract field, and the lines need different
+ * answers: the close calls (right behind, and both number calls) and both
+ * pit-exit lines cut whatever the engineer is saying, while "more than ten"
+ * and "clear to rejoin" wait their turn. One contract could carry only one
+ * `interrupt`. The `near` verdict is two contracts on its `first` flag — the
+ * call that brings a car into the band, and the later count — because the
+ * two are worded differently and a pack phrases each. Separate contracts also
+ * give each line its own harness button, reference description and script
+ * entry; the `traffic.rejoinBand` / `traffic.pitExitVerdict` cases and the
+ * `traffic.rejoinFirst` condition are still published for a pack that wants
+ * to share one body.
  *
- * **Never queued, never stale.** `queueable: false` on every contract: a
- * verdict that cannot take the bus is dropped rather than replayed late,
- * because the detector re-speaks on the next verdict change (or, stopped, on
- * the next few seconds of movement in the nearest gap), so the newer fire is
- * the one worth hearing. Two more fields hold that promise for the fires the
- * engine parks anyway — a heavier fire without `interrupt` waits for the line
- * in flight, queueable or not: each trigger's contracts share one
- * `supersedeGroup`, so a newer verdict removes a waiting older one instead of
- * letting it play after it, and `maxQueueWaitMs` is cut to
- * {@link TRAFFIC_MAX_QUEUE_WAIT_MS}, because the numbers count down while a
- * line waits — "car approaching, three seconds, hold" heard four seconds late
- * describes a car that has already passed.
+ * **Composed lines (maintainer, 2026-11-11).** A first call in the close band
+ * is three whole sentences picked at random from three pools — an intro
+ * ("Car coming."), the middle naming the seconds ("About five seconds."),
+ * an outro ("Watch out.") — and a later count is an update intro and the
+ * middle ("Closer now. About five seconds."). The joins fall at sentence
+ * ends, where a pause is natural, so variety costs no seam inside a sentence.
+ * The middle is the {@link REJOIN_SECONDS_VAR} var: the event's `seconds`
+ * resolved to the `traffic/rejoin-mid-<N>` pool, whose takes are the voice's
+ * different wordings of the same figure. The fixed lines are pools of four.
  *
- * **Weights (spec decision 6).** Hold and pit-exit traffic sit at
- * `WEIGHT.SAFETY` with `interrupt: true`: a car arriving in three seconds cuts
- * routine chatter mid-sentence. Notice, clear and go are `WEIGHT.SAFETY`
- * without interrupt. `PROXIMITY` is not used — it is the spotter's, for cars
- * alongside, and a hold is about a car that is not yet alongside.
+ * **One family.** All seven share `family: "traffic"` (spec decision 6): a
+ * fresh line replaces a stale one in flight wholesale, whatever the weights —
+ * a closer count arriving while the previous one still plays cuts it.
+ *
+ * **Never queued, never stale.** `queueable: false` on every contract: a line
+ * that cannot take the bus is dropped rather than replayed late, because the
+ * detector speaks again on the next band change or the next count, so the
+ * newer fire is the one worth hearing. Two more fields hold that promise for
+ * the fires the engine parks anyway — a heavier fire without `interrupt`
+ * waits for the line in flight, queueable or not: each trigger's contracts
+ * share one `supersedeGroup`, so a newer verdict removes a waiting older one
+ * instead of letting it play after it, and `maxQueueWaitMs` is cut to
+ * {@link TRAFFIC_MAX_QUEUE_WAIT_MS}, because the number counts down while a
+ * line waits — "about five seconds" heard four seconds late describes a car
+ * that has already passed.
+ *
+ * **Weights (spec decision 6, as amended).** Every line sits at
+ * `WEIGHT.SAFETY`. The close calls and both pit-exit lines interrupt: a car
+ * arriving within seconds cuts routine chatter mid-sentence, and the pit-exit
+ * call — made the moment the player leaves the box — trumps the exit readback
+ * and the tire-wear report, which are queueable and play afterwards. "More
+ * than ten" and "clear to rejoin" do not interrupt. `PROXIMITY` is not used —
+ * it is the spotter's, for cars alongside, and these are about cars that are
+ * not yet alongside.
  *
  * **Frames.** The rejoin lines are unframed (`NO_FRAME`): they repeat while
  * the car stays stopped, at the detector's cadence, and the open and close
  * ticks around every one would drown the words — the spotter precedent. The
- * pit-exit lines are spoken once per exit and keep the default radio frame.
- *
- * **The numbers are whole lines.** Each numbered rejoin line is recorded
- * once per value, number included ("Car approaching, three seconds, hold.")
- * — a figure spliced between two fixed clips would leave two seams, and
- * conditioning cannot reach a join with sixty predecessors (#1108, #1187).
- * The `traffic.rejoin*Line` vars resolve the event's number — the clear
- * verdict's `windowSeconds`, a notice's or hold's `seconds` — to that value's
- * clip, `traffic/rejoin-<verdict>-<n>`, as a size-one pool; a value the voice
- * has no clip for resolves to nothing and the callout is skipped whole
- * (#835), never a line with a gap. There is no range here: the clips that
- * exist define what is speakable (#836).
+ * pit-exit lines are spoken once per exit (again only if the verdict flips)
+ * and keep the default radio frame.
  *
  * Session gating (live in the car, on track, off pit road, past the green)
  * lives in the translator's detectors, NOT here, so the contracts stay
@@ -68,19 +82,13 @@
  */
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import { type CalloutIdOf, TRAFFIC_CALLOUTS } from "@iracedeck/callout-settings";
-import type {
-  SimEventOf,
-  TrafficPitExit,
-  TrafficPitExitVerdict,
-  TrafficRejoin,
-  TrafficRejoinVerdict,
-} from "@iracedeck/event-bus";
+import type { SimEventOf, TrafficPitExit, TrafficPitExitVerdict, TrafficRejoin } from "@iracedeck/event-bus";
 
 import type { ScenarioContext, ScenarioContract } from "../../dsl.js";
 import { NO_FRAME, poolRef, WEIGHT } from "../../dsl.js";
 import type { IScenarioEngine } from "../../interpreter.js";
 
-/** The clip group every traffic line lives in, the fixed lines and the numbered ones alike. */
+/** The clip group every traffic line lives in, the fixed lines and the middles alike. */
 export const TRAFFIC_GROUP = "traffic";
 
 /**
@@ -92,33 +100,92 @@ export const TRAFFIC_GROUP = "traffic";
  */
 export const TRAFFIC_MAX_QUEUE_WAIT_MS = 3000;
 
-/** The supersede group of the four rejoin verdicts: a newer one makes a waiting older one wrong. */
+/** The supersede group of the rejoin lines: a newer one makes a waiting older one wrong. */
 export const TRAFFIC_REJOIN_SUPERSEDE_GROUP = "traffic-rejoin";
 
-/** The supersede group of the two pit-exit verdicts. */
+/** The supersede group of the two pit-exit lines. */
 export const TRAFFIC_PIT_EXIT_SUPERSEDE_GROUP = "traffic-pit-exit";
 
-/** The rejoin verdicts that speak a number, each through its own line var. */
-export type TrafficRejoinNumberedVerdict = Exclude<TrafficRejoinVerdict, "go">;
+/**
+ * The close band's whole seconds, as the event defines them: `near` carries
+ * 2 to 9 (the nearest arrival from 2 s to under 10 s, rounded down). A value
+ * outside is a malformed payload — a harness or third-party publisher — and
+ * says nothing rather than naming a figure the band does not hold.
+ */
+export const TRAFFIC_NEAR_MIN_SECONDS = 2;
+export const TRAFFIC_NEAR_MAX_SECONDS = 9;
+
+/** The var that speaks the close band's seconds as a whole sentence. */
+export const REJOIN_SECONDS_VAR = "traffic.rejoinSeconds";
 
 /**
- * Each contract's `description` (#1066): the sim moment, for a pack author,
- * in the sim's terms rather than the detector's.
+ * The seven lines, rejoin first in band order, then the pit exit. Each key is
+ * the contract id's suffix, `pit-crew.traffic-<key>`.
  */
-const REJOIN_DESCRIPTIONS: Record<TrafficRejoinVerdict, string> = {
-  clear:
-    "You are stopped or crawling on track, off pit road, and no car will reach you within the notice window set in the Race Engineer settings.",
-  notice:
-    "You are stopped or crawling on track and the nearest car will reach you inside the notice window but outside the hold window, so you should get moving.",
-  hold: "You are stopped or crawling on track and the nearest car will reach you inside the hold window, so you should stay put until it has passed.",
-  go: "After a hold call, the car you were holding for has passed and no other car will reach you inside the hold window, so you can rejoin.",
+export type TrafficLine =
+  | "rejoin-right-behind"
+  | "rejoin-near-first"
+  | "rejoin-near-update"
+  | "rejoin-over-ten"
+  | "rejoin-clear"
+  | "pit-exit-traffic"
+  | "pit-exit-clear";
+
+type RejoinLine = Extract<TrafficLine, `rejoin-${string}`>;
+type PitExitLine = Extract<TrafficLine, `pit-exit-${string}`>;
+
+type LineSpec = {
+  /** Whether the line cuts a lower-weight line in flight. */
+  interrupt: boolean;
+  /** One sentence for a pack author, in the sim's terms (#1066). */
+  description: string;
 };
 
-const PIT_EXIT_DESCRIPTIONS: Record<TrafficPitExitVerdict, string> = {
-  traffic:
-    "Leaving the pits after a stop, a car on track is predicted to reach the end of the pit exit blend line around the same time as you.",
-  clear:
-    "Leaving the pits after a stop, no car on track is predicted to reach the end of the pit exit blend line around the same time as you.",
+const REJOIN_LINES: Record<RejoinLine, LineSpec & { matches: (d: TrafficRejoin) => boolean }> = {
+  "rejoin-right-behind": {
+    interrupt: true,
+    description: "You are stopped or crawling on track and the nearest car will reach you in under two seconds.",
+    matches: (d) => d.verdict === "rightBehind",
+  },
+  "rejoin-near-first": {
+    interrupt: true,
+    description:
+      "You are stopped or crawling on track and a car comes within ten seconds of reaching you: the first call about it, naming its arrival in whole seconds.",
+    matches: (d) => d.verdict === "near" && d.first === true,
+  },
+  "rejoin-near-update": {
+    interrupt: true,
+    description:
+      "You are still stopped and the car within ten seconds keeps closing: called again each time its arrival has dropped by three seconds or more.",
+    matches: (d) => d.verdict === "near" && d.first === false,
+  },
+  "rejoin-over-ten": {
+    interrupt: false,
+    description:
+      "You are stopped or crawling on track and the nearest car is ten to fifteen seconds away, said on stopping, as it closes, or once a close car has gone by.",
+    matches: (d) => d.verdict === "overTen",
+  },
+  "rejoin-clear": {
+    interrupt: false,
+    description:
+      "You are stopped or crawling on track and no car is within fifteen seconds of you, said on stopping or once a close car has gone by.",
+    matches: (d) => d.verdict === "clear",
+  },
+};
+
+const PIT_EXIT_LINES: Record<PitExitLine, LineSpec & { verdict: TrafficPitExitVerdict }> = {
+  "pit-exit-traffic": {
+    interrupt: true,
+    verdict: "traffic",
+    description:
+      "As you leave your pit box, a car on track is predicted to reach the end of the pit exit blend line around the same time as you.",
+  },
+  "pit-exit-clear": {
+    interrupt: true,
+    verdict: "clear",
+    description:
+      "As you leave your pit box, no car on track is predicted to reach the end of the pit exit blend line around the same time as you.",
+  },
 };
 
 /** The rejoin payload of the fire's own event, or null for any other event (or an imperative fire). */
@@ -132,92 +199,62 @@ function pitExitOf(ctx: Pick<ScenarioContext, "event">): TrafficPitExit | null {
 }
 
 /**
- * The number a numbered rejoin verdict speaks, narrowed on the verdict: the
- * notice window for a clear, the nearest car's arrival for a notice or a
- * hold. Null for `go`, which speaks none.
+ * The middle's clip base for a rejoin payload, `rejoin-mid-<N>`, or null when
+ * it is not a `near` verdict or its `seconds` is not a whole number in the
+ * close band. The payload is checked at run time too, since a harness or a
+ * third-party publisher may hand over a malformed one.
  */
-function rejoinNumber(data: TrafficRejoin): number | null {
-  switch (data.verdict) {
-    case "clear":
-      return data.windowSeconds;
-    case "notice":
-    case "hold":
-      return data.seconds;
-    case "go":
-      return null;
-  }
+export function rejoinMidBase(data: TrafficRejoin | null | undefined): string | null {
+  if (!data || data.verdict !== "near") return null;
+
+  const n = data.seconds;
+
+  if (typeof n !== "number" || !Number.isInteger(n)) return null;
+
+  if (n < TRAFFIC_NEAR_MIN_SECONDS || n > TRAFFIC_NEAR_MAX_SECONDS) return null;
+
+  return `rejoin-mid-${n}`;
 }
 
 /**
- * The clip base a numbered rejoin line speaks for `verdict`, or null when the
- * event is not that verdict or carries no usable count. Only a known-ness
- * check — a positive whole number — never a range: a value the voice has no
- * clip for aborts the callout at expansion (#835, #836). The payload is
- * checked at run time too, since a harness or a third-party publisher may
- * hand over a malformed one.
+ * Register the vocabulary the traffic script references (issue #1113): the
+ * middle var, the band case and the first-call condition for the rejoin, and
+ * the verdict and nearest-side cases for the pit exit. Must run before the
+ * contracts are defined so the first `setScripts` compile sees every name.
  */
-export function rejoinLineBase(
-  verdict: TrafficRejoinNumberedVerdict,
-  data: TrafficRejoin | null | undefined,
-): string | null {
-  if (!data || data.verdict !== verdict) return null;
+export function registerTrafficVocabulary(
+  engine: Pick<IScenarioEngine, "defineVar" | "defineCond" | "defineCase">,
+): void {
+  engine.defineVar(
+    REJOIN_SECONDS_VAR,
+    (ctx) => {
+      const base = rejoinMidBase(rejoinOf(ctx));
 
-  const n = rejoinNumber(data);
+      return base === null ? null : poolRef(TRAFFIC_GROUP, base);
+    },
+    "The nearest car's arrival in whole seconds, 2 to 9, as a whole sentence drawn from the traffic group's rejoin-mid pool for that number (traffic/rejoin-mid-5 is \"About five seconds.\"), each take a different wording. Nothing outside the close band.",
+  );
 
-  if (typeof n !== "number" || !Number.isInteger(n) || n <= 0) return null;
+  engine.defineCond(
+    "traffic.rejoinFirst",
+    (ctx) => {
+      const data = rejoinOf(ctx);
 
-  return `rejoin-${verdict}-${n}`;
-}
-
-const REJOIN_LINE_VARS: Record<TrafficRejoinNumberedVerdict, { name: string; description: string }> = {
-  clear: {
-    name: "traffic.rejoinClearLine",
-    description:
-      'The whole clear line for the notice window the event carries, drawn from the traffic group (traffic/rejoin-clear-20 is "Nothing behind you for the next twenty seconds."). Nothing on any other verdict, or for a window the voice has no clip for.',
-  },
-  notice: {
-    name: "traffic.rejoinNoticeLine",
-    description:
-      'The whole notice line for the nearest car\'s arrival in whole seconds, drawn from the traffic group (traffic/rejoin-notice-15 is "Car approaching in about fifteen seconds. Get moving."). Nothing on any other verdict, or for a count the voice has no clip for.',
-  },
-  hold: {
-    name: "traffic.rejoinHoldLine",
-    description:
-      'The whole hold line for the nearest car\'s arrival in whole seconds, drawn from the traffic group (traffic/rejoin-hold-3 is "Car approaching, three seconds, hold."). Nothing on any other verdict, or for a count the voice has no clip for.',
-  },
-};
-
-/**
- * Register the vocabulary the traffic script references (issue #1113): one
- * var per numbered rejoin line, and the verdict cases a pack may branch on.
- * Must run before the contracts are defined so the first `setScripts` compile
- * sees every name.
- */
-export function registerTrafficVocabulary(engine: Pick<IScenarioEngine, "defineVar" | "defineCase">): void {
-  for (const verdict of ["clear", "notice", "hold"] as const) {
-    const { name, description } = REJOIN_LINE_VARS[verdict];
-
-    engine.defineVar(
-      name,
-      (ctx) => {
-        const base = rejoinLineBase(verdict, rejoinOf(ctx));
-
-        return base === null ? null : poolRef(TRAFFIC_GROUP, base);
-      },
-      description,
-    );
-  }
+      return data?.verdict === "near" && data.first === true;
+    },
+    "True on the call that brings a car within ten seconds of reaching you, false on a later count of the same approach and on every other rejoin line.",
+  );
 
   engine.defineCase(
-    "traffic.rejoinVerdict",
+    "traffic.rejoinBand",
     (ctx) => rejoinOf(ctx)?.verdict ?? null,
     {
-      clear: "No car will reach you within the notice window.",
-      notice: "A car will reach you inside the notice window but outside the hold window: get moving.",
-      hold: "A car will reach you inside the hold window: stay put.",
-      go: "After a hold, nothing will reach you inside the hold window any more: go.",
+      rightBehind: "The nearest car will reach you in under two seconds.",
+      near: "The nearest car will reach you in two to nine seconds.",
+      overTen: "The nearest car is ten to fifteen seconds away.",
+      clear: "No car is within fifteen seconds of you.",
     },
-    "The verdict on rejoining the track from a stop, read from the event that fired the line.",
+    "The band the nearest car's predicted arrival falls in while you are stopped on track, read from the event that fired the line.",
   );
 
   engine.defineCase(
@@ -249,70 +286,71 @@ export function registerTrafficVocabulary(engine: Pick<IScenarioEngine, "defineV
   );
 }
 
-function rejoinContract(verdict: TrafficRejoinVerdict): ScenarioContract {
+function trafficContract(line: TrafficLine, spec: LineSpec): ScenarioContract {
   return {
-    id: `pit-crew.traffic-rejoin-${verdict}`,
+    id: `pit-crew.traffic-${line}`,
     channel: AudioChannel.Voice,
     bus: AudioBus.Voice,
     base: "voice/{voice}",
     family: "traffic",
     weight: WEIGHT.SAFETY,
-    // Only a hold cuts the line in flight: a car is arriving within seconds.
-    interrupt: verdict === "hold",
+    interrupt: spec.interrupt,
     queueable: false,
-    supersedeGroup: TRAFFIC_REJOIN_SUPERSEDE_GROUP,
     maxQueueWaitMs: TRAFFIC_MAX_QUEUE_WAIT_MS,
+    description: spec.description,
+  };
+}
+
+function rejoinContract(line: RejoinLine): ScenarioContract {
+  const spec = REJOIN_LINES[line];
+
+  return {
+    ...trafficContract(line, spec),
+    supersedeGroup: TRAFFIC_REJOIN_SUPERSEDE_GROUP,
     // Unframed: the rejoin lines repeat while the car stays stopped, and the
     // radio ticks around every one would drown the words (the spotter's
     // reason, decision D1 of #651).
     frame: NO_FRAME,
-    description: REJOIN_DESCRIPTIONS[verdict],
     when: {
       event: "traffic.rejoin",
-      where: (e) => (e as SimEventOf<"traffic.rejoin">).data.verdict === verdict,
+      where: (e) => spec.matches((e as SimEventOf<"traffic.rejoin">).data),
     },
   };
 }
 
-function pitExitContract(verdict: TrafficPitExitVerdict): ScenarioContract {
+function pitExitContract(line: PitExitLine): ScenarioContract {
+  const spec = PIT_EXIT_LINES[line];
+
   return {
-    id: `pit-crew.traffic-pit-exit-${verdict}`,
-    channel: AudioChannel.Voice,
-    bus: AudioBus.Voice,
-    base: "voice/{voice}",
-    family: "traffic",
-    weight: WEIGHT.SAFETY,
-    // Traffic at the merge cuts the line in flight; a clear exit waits its turn.
-    interrupt: verdict === "traffic",
-    queueable: false,
+    ...trafficContract(line, spec),
     supersedeGroup: TRAFFIC_PIT_EXIT_SUPERSEDE_GROUP,
-    maxQueueWaitMs: TRAFFIC_MAX_QUEUE_WAIT_MS,
-    description: PIT_EXIT_DESCRIPTIONS[verdict],
     when: {
       event: "traffic.pitExit",
-      where: (e) => (e as SimEventOf<"traffic.pitExit">).data.verdict === verdict,
+      where: (e) => (e as SimEventOf<"traffic.pitExit">).data.verdict === spec.verdict,
     },
   };
 }
 
 export const TRAFFIC_CONTRACTS: readonly ScenarioContract[] = [
-  rejoinContract("clear"),
-  rejoinContract("notice"),
-  rejoinContract("hold"),
-  rejoinContract("go"),
-  pitExitContract("traffic"),
-  pitExitContract("clear"),
+  rejoinContract("rejoin-right-behind"),
+  rejoinContract("rejoin-near-first"),
+  rejoinContract("rejoin-near-update"),
+  rejoinContract("rejoin-over-ten"),
+  rejoinContract("rejoin-clear"),
+  pitExitContract("pit-exit-traffic"),
+  pitExitContract("pit-exit-clear"),
 ];
 
 /** The traffic family's opt-in ids: `rejoin` and `pit-exit` (`@iracedeck/callout-settings`). */
 export type TrafficCalloutId = CalloutIdOf<typeof TRAFFIC_CALLOUTS>;
 
-/** Every rejoin verdict rides the `rejoin` opt-in, both pit-exit verdicts the `pit-exit` one. */
+/** Every rejoin line rides the `rejoin` opt-in, both pit-exit lines the `pit-exit` one. */
 export const SCENARIO_ID_TO_TRAFFIC_ID: Record<string, TrafficCalloutId> = {
+  "pit-crew.traffic-rejoin-right-behind": "rejoin",
+  "pit-crew.traffic-rejoin-near-first": "rejoin",
+  "pit-crew.traffic-rejoin-near-update": "rejoin",
+  "pit-crew.traffic-rejoin-over-ten": "rejoin",
   "pit-crew.traffic-rejoin-clear": "rejoin",
-  "pit-crew.traffic-rejoin-notice": "rejoin",
-  "pit-crew.traffic-rejoin-hold": "rejoin",
-  "pit-crew.traffic-rejoin-go": "rejoin",
   "pit-crew.traffic-pit-exit-traffic": "pit-exit",
   "pit-crew.traffic-pit-exit-clear": "pit-exit",
 };
@@ -323,12 +361,17 @@ export const TRAFFIC_SCENARIO_IDS: readonly string[] = TRAFFIC_CONTRACTS.map((c)
  * The clip sources the traffic script addresses directly — every
  * `pool:traffic/<base>` the bundled script may write, as a literal list. The
  * completeness tests read it: the bundled voice must ship a clip for each, and
- * the bundled script must reference exactly this set. The numbered rejoin
- * lines are not sources: they are the `traffic.rejoin*Line` vars, drawn from
- * the same group at speak time.
+ * the bundled script must reference exactly this set. The middles are not
+ * sources: they are the {@link REJOIN_SECONDS_VAR} var, drawn from the same
+ * group at speak time.
  */
 export const TRAFFIC_CLIP_SOURCES: readonly { group: typeof TRAFFIC_GROUP; base: string }[] = [
-  { group: TRAFFIC_GROUP, base: "rejoin-go" },
+  { group: TRAFFIC_GROUP, base: "rejoin-intro" },
+  { group: TRAFFIC_GROUP, base: "rejoin-outro" },
+  { group: TRAFFIC_GROUP, base: "rejoin-update" },
+  { group: TRAFFIC_GROUP, base: "rejoin-right-behind" },
+  { group: TRAFFIC_GROUP, base: "rejoin-over-ten" },
+  { group: TRAFFIC_GROUP, base: "rejoin-clear" },
   { group: TRAFFIC_GROUP, base: "pit-exit-traffic" },
   { group: TRAFFIC_GROUP, base: "pit-exit-clear" },
 ];
