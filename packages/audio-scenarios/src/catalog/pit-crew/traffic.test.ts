@@ -3,7 +3,8 @@
  *
  * Six contracts, one per verdict: four off `traffic.rejoin`, two off
  * `traffic.pitExit`. The rejoin numbers are whole recorded lines drawn
- * through the `traffic.rejoin*Line` vars from the event's own `seconds`. The
+ * through the `traffic.rejoin*Line` vars from the event's own number (the
+ * clear verdict's `windowSeconds`, a notice's or hold's `seconds`). The
  * fire-through cases run the family through the real engine against a
  * script fixture shaped like the bundled one (a contract is silent without a
  * script, and these tests are about the contracts and the vocabulary, not the
@@ -19,6 +20,7 @@ import type {
   SimEventName,
   SimEventOf,
   TrafficPitExitVerdict,
+  TrafficRejoin,
   TrafficRejoinVerdict,
 } from "@iracedeck/event-bus";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -186,12 +188,26 @@ function contract(id: string): ScenarioContract {
   return c;
 }
 
-function rejoinEvent(verdict: TrafficRejoinVerdict, seconds?: number): SimEventOf<"traffic.rejoin"> {
+/**
+ * The payload of a rejoin verdict with its number in the field that verdict
+ * carries: `windowSeconds` for clear, `seconds` for notice and hold, none for
+ * go. A numbered verdict given no number is malformed on purpose — what a
+ * broken publisher would send — and is cast past the union.
+ */
+function rejoinData(verdict: TrafficRejoinVerdict, n?: number): TrafficRejoin {
+  if (verdict === "go") return { verdict };
+
+  if (n === undefined) return { verdict } as unknown as TrafficRejoin;
+
+  return verdict === "clear" ? { verdict, windowSeconds: n } : { verdict, seconds: n };
+}
+
+function rejoinEvent(verdict: TrafficRejoinVerdict, n?: number): SimEventOf<"traffic.rejoin"> {
   return {
     event: "traffic.rejoin",
     timestamp: 0,
     telemetry: null,
-    data: seconds === undefined ? { verdict } : { verdict, seconds },
+    data: rejoinData(verdict, n),
   };
 }
 
@@ -331,7 +347,7 @@ describe("TRAFFIC_CONTRACTS", () => {
 
 describe("rejoinLineBase", () => {
   it("names the value's clip base for its own verdict", () => {
-    expect(rejoinLineBase("clear", { verdict: "clear", seconds: 20 })).toBe("rejoin-clear-20");
+    expect(rejoinLineBase("clear", { verdict: "clear", windowSeconds: 20 })).toBe("rejoin-clear-20");
     expect(rejoinLineBase("notice", { verdict: "notice", seconds: 12 })).toBe("rejoin-notice-12");
     expect(rejoinLineBase("hold", { verdict: "hold", seconds: 1 })).toBe("rejoin-hold-1");
   });
@@ -339,15 +355,20 @@ describe("rejoinLineBase", () => {
   it("is null for another verdict, a missing payload, or a count that is not a positive whole number", () => {
     expect(rejoinLineBase("hold", { verdict: "notice", seconds: 4 })).toBeNull();
     expect(rejoinLineBase("hold", null)).toBeNull();
-    expect(rejoinLineBase("hold", { verdict: "hold" })).toBeNull();
+    expect(rejoinLineBase("hold", rejoinData("hold"))).toBeNull();
     expect(rejoinLineBase("hold", { verdict: "hold", seconds: 0 })).toBeNull();
     expect(rejoinLineBase("hold", { verdict: "hold", seconds: -3 })).toBeNull();
     expect(rejoinLineBase("hold", { verdict: "hold", seconds: 3.5 })).toBeNull();
     expect(rejoinLineBase("hold", { verdict: "hold", seconds: Number.NaN })).toBeNull();
   });
 
+  it("reads each verdict's own field: a clear's window, never a stray seconds", () => {
+    expect(rejoinLineBase("clear", { verdict: "clear", seconds: 20 } as unknown as TrafficRejoin)).toBeNull();
+    expect(rejoinLineBase("hold", { verdict: "hold", windowSeconds: 3 } as unknown as TrafficRejoin)).toBeNull();
+  });
+
   it("applies no range — a large count still names a base, and the clips decide whether it is speakable", () => {
-    expect(rejoinLineBase("clear", { verdict: "clear", seconds: 90 })).toBe("rejoin-clear-90");
+    expect(rejoinLineBase("clear", { verdict: "clear", windowSeconds: 90 })).toBe("rejoin-clear-90");
   });
 });
 
@@ -454,7 +475,7 @@ describe("the traffic lines through the engine", () => {
     ["hold", 1, "traffic/rejoin-hold-1-01.mp3"],
     ["hold", 14, "traffic/rejoin-hold-14-01.mp3"],
   ] as const)("a %s verdict at %i s plays that value's whole line, unframed", (verdict, seconds, clip) => {
-    bus.publishEvent("traffic.rejoin", { verdict, seconds });
+    bus.publishEvent("traffic.rejoin", rejoinData(verdict, seconds));
     flush(audio);
 
     expect(voicePaths()).toEqual([`voice/${VOICE}/${clip}`]);
@@ -470,9 +491,9 @@ describe("the traffic lines through the engine", () => {
   });
 
   it("a hold at 1 s is not taken for a take of the 14 s line, nor the reverse — each value is its own pool", () => {
-    bus.publishEvent("traffic.rejoin", { verdict: "hold", seconds: 1 });
+    bus.publishEvent("traffic.rejoin", rejoinData("hold", 1));
     flush(audio);
-    bus.publishEvent("traffic.rejoin", { verdict: "hold", seconds: 14 });
+    bus.publishEvent("traffic.rejoin", rejoinData("hold", 14));
     flush(audio);
 
     expect(voicePaths()).toEqual([
@@ -494,21 +515,21 @@ describe("the traffic lines through the engine", () => {
   });
 
   it("a count the voice has no clip for skips the line whole (#835), and the next speakable verdict still plays", () => {
-    bus.publishEvent("traffic.rejoin", { verdict: "hold", seconds: 9 });
-    bus.publishEvent("traffic.rejoin", { verdict: "notice", seconds: 33 });
-    bus.publishEvent("traffic.rejoin", { verdict: "clear", seconds: 45 });
+    bus.publishEvent("traffic.rejoin", rejoinData("hold", 9));
+    bus.publishEvent("traffic.rejoin", rejoinData("notice", 33));
+    bus.publishEvent("traffic.rejoin", rejoinData("clear", 45));
     flush(audio);
 
     expect(voicePaths()).toEqual([]);
 
-    bus.publishEvent("traffic.rejoin", { verdict: "hold", seconds: 4 });
+    bus.publishEvent("traffic.rejoin", rejoinData("hold", 4));
     flush(audio);
 
     expect(voicePaths()).toEqual([`voice/${VOICE}/traffic/rejoin-hold-4-01.mp3`]);
   });
 
-  it("a numbered verdict with no seconds says nothing", () => {
-    bus.publishEvent("traffic.rejoin", { verdict: "hold" });
+  it("a numbered verdict with no number says nothing", () => {
+    bus.publishEvent("traffic.rejoin", rejoinData("hold"));
     flush(audio);
 
     expect(voicePaths()).toEqual([]);
@@ -521,7 +542,7 @@ describe("scheduling against other lines", () => {
 
     expect(voicePaths()).toEqual([CHATTER_CLIP]);
 
-    bus.publishEvent("traffic.rejoin", { verdict: "hold", seconds: 4 });
+    bus.publishEvent("traffic.rejoin", rejoinData("hold", 4));
 
     expect(audio._stopped).toContain(AudioChannel.Voice);
     expect(voicePaths()).toEqual([CHATTER_CLIP, `voice/${VOICE}/traffic/rejoin-hold-4-01.mp3`]);
@@ -529,7 +550,7 @@ describe("scheduling against other lines", () => {
 
   it("a notice lets the ordinary line finish, then plays", () => {
     bus.publishEvent("pitStall.entered", {});
-    bus.publishEvent("traffic.rejoin", { verdict: "notice", seconds: 12 });
+    bus.publishEvent("traffic.rejoin", rejoinData("notice", 12));
 
     expect(voicePaths()).toEqual([CHATTER_CLIP]);
     expect(audio._stopped).not.toContain(AudioChannel.Voice);
@@ -564,7 +585,7 @@ describe("scheduling against other lines", () => {
   });
 
   it("a newer verdict replaces the one in flight — go cuts a hold still playing", () => {
-    bus.publishEvent("traffic.rejoin", { verdict: "hold", seconds: 4 });
+    bus.publishEvent("traffic.rejoin", rejoinData("hold", 4));
     bus.publishEvent("traffic.rejoin", { verdict: "go" });
 
     expect(audio._stopped).toContain(AudioChannel.Voice);
@@ -576,7 +597,7 @@ describe("scheduling against other lines", () => {
 
   it("a hold cannot cut a heavier line, and is dropped rather than queued behind it", () => {
     bus.publishEvent("pitStall.departed", {});
-    bus.publishEvent("traffic.rejoin", { verdict: "hold", seconds: 4 });
+    bus.publishEvent("traffic.rejoin", rejoinData("hold", 4));
     flush(audio);
 
     expect(voicePaths()).toEqual([CRITICAL_CLIP]);
@@ -586,8 +607,8 @@ describe("scheduling against other lines", () => {
     bus.publishEvent("pitStall.entered", {});
     // Both wait for the ordinary line (heavier, no interrupt): the notice
     // first, then the clear that replaced it.
-    bus.publishEvent("traffic.rejoin", { verdict: "notice", seconds: 12 });
-    bus.publishEvent("traffic.rejoin", { verdict: "clear", seconds: 20 });
+    bus.publishEvent("traffic.rejoin", rejoinData("notice", 12));
+    bus.publishEvent("traffic.rejoin", rejoinData("clear", 20));
     flush(audio);
 
     expect(voicePaths()).toEqual([CHATTER_CLIP, `voice/${VOICE}/traffic/rejoin-clear-20-01.mp3`]);
@@ -598,7 +619,7 @@ describe("scheduling against other lines", () => {
     vi.setSystemTime(0);
 
     bus.publishEvent("pitStall.entered", {});
-    bus.publishEvent("traffic.rejoin", { verdict: "notice", seconds: 12 });
+    bus.publishEvent("traffic.rejoin", rejoinData("notice", 12));
 
     vi.setSystemTime(TRAFFIC_MAX_QUEUE_WAIT_MS + 1);
     flush(audio);

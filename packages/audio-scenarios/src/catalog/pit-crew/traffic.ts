@@ -54,7 +54,8 @@
  * once per value, number included ("Car approaching, three seconds, hold.")
  * — a figure spliced between two fixed clips would leave two seams, and
  * conditioning cannot reach a join with sixty predecessors (#1108, #1187).
- * The `traffic.rejoin*Line` vars resolve the event's `seconds` to that value's
+ * The `traffic.rejoin*Line` vars resolve the event's number — the clear
+ * verdict's `windowSeconds`, a notice's or hold's `seconds` — to that value's
  * clip, `traffic/rejoin-<verdict>-<n>`, as a size-one pool; a value the voice
  * has no clip for resolves to nothing and the callout is skipped whole
  * (#835), never a line with a gap. There is no range here: the clips that
@@ -131,10 +132,29 @@ function pitExitOf(ctx: Pick<ScenarioContext, "event">): TrafficPitExit | null {
 }
 
 /**
+ * The number a numbered rejoin verdict speaks, narrowed on the verdict: the
+ * notice window for a clear, the nearest car's arrival for a notice or a
+ * hold. Null for `go`, which speaks none.
+ */
+function rejoinNumber(data: TrafficRejoin): number | null {
+  switch (data.verdict) {
+    case "clear":
+      return data.windowSeconds;
+    case "notice":
+    case "hold":
+      return data.seconds;
+    case "go":
+      return null;
+  }
+}
+
+/**
  * The clip base a numbered rejoin line speaks for `verdict`, or null when the
  * event is not that verdict or carries no usable count. Only a known-ness
  * check — a positive whole number — never a range: a value the voice has no
- * clip for aborts the callout at expansion (#835, #836).
+ * clip for aborts the callout at expansion (#835, #836). The payload is
+ * checked at run time too, since a harness or a third-party publisher may
+ * hand over a malformed one.
  */
 export function rejoinLineBase(
   verdict: TrafficRejoinNumberedVerdict,
@@ -142,11 +162,11 @@ export function rejoinLineBase(
 ): string | null {
   if (!data || data.verdict !== verdict) return null;
 
-  const { seconds } = data;
+  const n = rejoinNumber(data);
 
-  if (typeof seconds !== "number" || !Number.isInteger(seconds) || seconds <= 0) return null;
+  if (typeof n !== "number" || !Number.isInteger(n) || n <= 0) return null;
 
-  return `rejoin-${verdict}-${seconds}`;
+  return `rejoin-${verdict}-${n}`;
 }
 
 const REJOIN_LINE_VARS: Record<TrafficRejoinNumberedVerdict, { name: string; description: string }> = {
