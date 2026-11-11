@@ -1036,8 +1036,22 @@ export class BlackBoxSelectorDialSurface extends ReleaseDialSurfaceBase<BlackBox
 
     // The dial shows the new rotation at once; the write follows. Each reads
     // ctx.dial when it runs, so two quick switches end on the last one's look.
-    await this.applyTriggerDescription(ctx);
-    await this.renderFeedback(ctx);
+    // A display call that fails must not cost the write: the context already
+    // turns the new rotation, so skipping it would leave the stored settings
+    // and the Property Inspector on the old one until the next switch. Each is
+    // caught on its own, so a failed hint still lets the strip redraw.
+    try {
+      await this.applyTriggerDescription(ctx);
+    } catch (err) {
+      this.host.logger.debug(`Dial trigger description failed after a rotation switch: ${String(err)}`);
+    }
+
+    try {
+      await this.renderFeedback(ctx);
+    } catch (err) {
+      this.host.logger.debug(`Dial render failed after a rotation switch: ${String(err)}`);
+    }
+
     await persistDialPatch(ctx.action, rawSettings, { rotation: next }, this.host.logger, "rotation switch");
   }
 

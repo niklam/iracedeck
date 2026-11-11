@@ -1286,6 +1286,42 @@ describe("BlackBoxSelector dial surface", () => {
       expect(arrowDirections(lastCanvas(ctx))).toEqual(ARROWS["adjust-control"]);
     });
 
+    it.each(["setDialCanvas", "setTriggerDescription"] as const)(
+      "persists the new rotation though %s rejects, and logs the failure at debug",
+      async (call) => {
+        const ctx = dialContext(`sw-display-fails-${call}`);
+        const settings = stored({ rotation: "select-control", pressAction: "switch-rotation" });
+        await appear(ctx, settings);
+        ctx[call].mockRejectedValueOnce(new Error("host gone"));
+        const debug = action["logger"].debug as ReturnType<typeof vi.fn>;
+        debug.mockClear();
+
+        await press(ctx, settings);
+
+        // The context turns the new rotation, so the stored settings and the PI must follow it.
+        expect(ctx.setSettings.mock.calls).toEqual([
+          [expect.objectContaining({ dial: { rotation: "adjust-control", pressAction: "switch-rotation" } })],
+        ]);
+        expect(debug).toHaveBeenCalledWith(expect.stringContaining("host gone"));
+
+        mockTapBinding.mockClear();
+        await action.onDialRotate(rotateEvent(ctx, settings, 1) as never);
+
+        expect(mockTapBinding.mock.calls).toEqual([[PAIRS["adjust-control"][0]]]);
+      },
+    );
+
+    it("still redraws the strip when the trigger description of a switch rejects", async () => {
+      const ctx = dialContext("sw-hint-fails");
+      const settings = stored({ rotation: "select-control", pressAction: "switch-rotation" });
+      await appear(ctx, settings);
+      ctx.setTriggerDescription.mockRejectedValueOnce(new Error("host gone"));
+
+      await press(ctx, settings);
+
+      expect(arrowDirections(lastCanvas(ctx))).toEqual(ARROWS["adjust-control"]);
+    });
+
     it("keeps a rotation the Property Inspector sets after a switch", async () => {
       const ctx = dialContext("sw-pi");
       const settings = stored({ rotation: "select-control", pressAction: "switch-rotation" });
