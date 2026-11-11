@@ -12,6 +12,7 @@ import {
   type CalloutSettingKey,
   FLAG_CALLOUTS,
   type RegisteredCalloutFamily,
+  TRAFFIC_CALLOUTS,
 } from "./index.js";
 
 const entries = CALLOUT_FAMILIES.flatMap((f) => Object.values(f.callouts));
@@ -99,5 +100,37 @@ describe("Lap Time group (#1163, #1571)", () => {
   it("ships both new opt-ins on", () => {
     expect(calloutDefault("calloutEnabledLapTimeEveryLap")).toBe(true);
     expect(calloutDefault("calloutEnabledFastestLap")).toBe(true);
+  });
+});
+
+describe("Traffic group (#1113)", () => {
+  it("renders the rejoin and pit-exit opt-ins under its own heading, right after Spotter", () => {
+    const ids = CALLOUT_PI_GROUPS.map((g) => g.id);
+    const group = CALLOUT_PI_GROUPS.find((g) => g.id === "traffic");
+    const rows = group?.families.flatMap((f: CalloutFamily) => Object.values(f.callouts));
+
+    expect(ids.indexOf("traffic")).toBe(ids.indexOf("spotter") + 1);
+    expect(group?.title).toBe("Traffic");
+    expect(rows?.map((e) => [e.key, e.label])).toEqual([
+      ["calloutEnabledTrafficRejoin", "Traffic when rejoining"],
+      ["calloutEnabledTrafficPitExit", "Traffic at pit exit"],
+    ]);
+  });
+
+  it("keeps the pit-exit traffic opt-in out of the Pit Speeding group, where the pit exit beep lives", () => {
+    const pitSpeeding = CALLOUT_PI_GROUPS.find((g) => g.id === "pit-speeding");
+    const keys = pitSpeeding?.families.flatMap((f: CalloutFamily) => Object.values(f.callouts).map((e) => e.key));
+
+    expect(keys).not.toContain("calloutEnabledTrafficPitExit");
+  });
+
+  it("ships both opt-ins on", () => {
+    expect(calloutDefault("calloutEnabledTrafficRejoin")).toBe(true);
+    expect(calloutDefault("calloutEnabledTrafficPitExit")).toBe(true);
+  });
+
+  it("maps the traffic family's ids to their keys", () => {
+    expect(calloutKey(TRAFFIC_CALLOUTS, "rejoin")).toBe("calloutEnabledTrafficRejoin");
+    expect(calloutKey(TRAFFIC_CALLOUTS, "pit-exit")).toBe("calloutEnabledTrafficPitExit");
   });
 });
