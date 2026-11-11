@@ -590,8 +590,6 @@ describe("gap callout settings (issue #933)", () => {
 
 describe("approaching-traffic settings (issue #1113)", () => {
   const FIELDS = [
-    { key: "trafficNoticeSeconds", min: 5, max: 60, fallback: 20 },
-    { key: "trafficHoldSeconds", min: 2, max: 15, fallback: 6 },
     { key: "trafficPitExitBeforeSeconds", min: 0, max: 10, fallback: 2 },
     { key: "trafficPitExitAfterSeconds", min: 0, max: 15, fallback: 4 },
   ] as const;
@@ -599,15 +597,19 @@ describe("approaching-traffic settings (issue #1113)", () => {
   const read = (key: string, value: unknown): unknown =>
     (GlobalSettingsSchema.parse({ [key]: value }) as Record<string, unknown>)[key];
 
-  it("defaults the opt-ins on, the windows to 20 / 6 s and the pit-exit window to 2 s before and 4 s after", () => {
+  it("defaults the opt-ins on and the pit-exit window to 2 s before and 4 s after", () => {
     const parsed = GlobalSettingsSchema.parse({});
 
     expect(parsed.calloutEnabledTrafficRejoin).toBe(true);
     expect(parsed.calloutEnabledTrafficPitExit).toBe(true);
-    expect(parsed.trafficNoticeSeconds).toBe(20);
-    expect(parsed.trafficHoldSeconds).toBe(6);
     expect(parsed.trafficPitExitBeforeSeconds).toBe(2);
     expect(parsed.trafficPitExitAfterSeconds).toBe(4);
+  });
+
+  it("has no rejoin windows and no look-ahead: the bands are fixed and the pit-exit call is made at the stall (amended 2026-11-11)", () => {
+    const keys = Object.keys(GlobalSettingsSchema.shape).filter((key) => key.startsWith("traffic"));
+
+    expect(keys.sort()).toEqual(["trafficPitExitAfterSeconds", "trafficPitExitBeforeSeconds"]);
   });
 
   it.each(FIELDS)("$key keeps both ends of its range and coerces a numeric string", ({ key, min, max }) => {

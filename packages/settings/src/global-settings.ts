@@ -428,7 +428,7 @@ export const GlobalSettingsSchema = z
      */
     gapCalloutMinChangeSeconds: z.coerce.number().min(0).max(10).default(1.5).catch(1.5),
     /**
-     * Approaching-traffic windows (issue #1113, spec decisions 4 and 5). The
+     * The pit-exit traffic window (issue #1113, spec decisions 4 and 5). The
      * defaults and ranges are the translator's `TRAFFIC_*` constants in
      * `@iracedeck/sim-events-iracing` (`diff/traffic-settings.ts`), and the
      * settings window's sliders a third copy; race-engineer-wiring's
@@ -438,17 +438,14 @@ export const GlobalSettingsSchema = z
      * Read live by the translator, so a slider change applies to the next
      * verdict. No migration: an absent key reads as the default.
      *
-     * - `trafficNoticeSeconds` (5–60, default 20): how far ahead the engineer
-     *   looks for a car, shared by the rejoin and pit-exit callouts — rejoin's
-     *   "nothing behind you" window, and the player's ETA to the pit-exit
-     *   merge under which the pit-exit verdict is spoken.
-     * - `trafficHoldSeconds` (2–15, default 6): rejoin's "hold" window. The
-     *   detector clamps it to at most the notice window at use; the schema
-     *   keeps the two independent so neither slider rewrites the other.
      * - `trafficPitExitBeforeSeconds` (0–10, default 2) and
      *   `trafficPitExitAfterSeconds` (0–15, default 4): a car arriving at the
      *   end of the pit-exit blend from this long before the player to this long
      *   after counts as traffic. Lopsided on purpose (decision 5).
+     *
+     * The rejoin call has no setting (amended 2026-11-11): its bands are fixed
+     * because its lines name them, and the pit-exit call is made at the stall
+     * departure, so there is no look-ahead either.
      *
      * The `fuelCalloutMarginLaps` preprocess shape rather than the bare
      * `gapAlertThresholdSeconds` one: `z.coerce.number()` turns `null`, `""`
@@ -457,14 +454,6 @@ export const GlobalSettingsSchema = z
      * the default instead. `.catch` per #896 keeps any other malformed value
      * from aborting the whole settings parse.
      */
-    trafficNoticeSeconds: z.preprocess(
-      (val) => (val == null || (typeof val === "string" && val.trim() === "") ? undefined : val),
-      z.coerce.number().min(5).max(60).default(20).catch(20),
-    ),
-    trafficHoldSeconds: z.preprocess(
-      (val) => (val == null || (typeof val === "string" && val.trim() === "") ? undefined : val),
-      z.coerce.number().min(2).max(15).default(6).catch(6),
-    ),
     trafficPitExitBeforeSeconds: z.preprocess(
       (val) => (val == null || (typeof val === "string" && val.trim() === "") ? undefined : val),
       z.coerce.number().min(0).max(10).default(2).catch(2),
