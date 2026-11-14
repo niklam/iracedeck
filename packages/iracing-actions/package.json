@@ -38,8 +38,8 @@
     "@iracedeck/audio-assets": "workspace:*",
     "@iracedeck/pi-components": "workspace:*",
     "@tsconfig/node22": "22.0.6",
-    "@types/node": "26.6.5",
+    "@types/node": "26.6.6",
     "typescript": "5.9.3",
-    "vitest": "5.0.5"
+    "vitest": "5.1.0"
   }
 }
