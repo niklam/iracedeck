@@ -16,6 +16,7 @@ import {
   readFileSync,
   renameSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from "node:fs";
 import { createRequire } from "node:module";
@@ -442,6 +443,8 @@ export function loudnessGain(measuredLufs, normalization = VOICE_LOUDNESS_NORMAL
 /** WAVE format tags: IEEE float, and the extensible header that names its real format in a subformat GUID. */
 const WAVE_FORMAT_IEEE_FLOAT = 3;
 const WAVE_FORMAT_EXTENSIBLE = 0xfffe;
+/** The data-chunk size a WAV muxer writes when it cannot seek back to the real one. */
+const WAV_SIZE_UNKNOWN = 0xffffffff;
 
 /**
  * Decode `inputPath` to 32-bit float PCM at its own sample rate and channel
@@ -453,9 +456,10 @@ const WAVE_FORMAT_EXTENSIBLE = 0xfffe;
  *
  * ffmpeg writes the WAV to a pipe, where it cannot seek back to fill in the
  * chunk sizes; `parseWavF32` reads the data chunk to the end of the stream.
- * Rejects on a non-zero exit, quoting the tail of ffmpeg's stderr, or on output
- * that is not float WAV — a clip that cannot be decoded fails, as a failed
- * encode does.
+ * Rejects on a non-zero exit, quoting the tail of ffmpeg's stderr, on output
+ * that is not float WAV, or on a decode that yields no frames at all — a clip
+ * that cannot be decoded fails, as a failed encode does, rather than being
+ * encoded as an empty clip.
  *
  * @internal Exported for testing: the tests read processed output back with it.
  * @param {string} ffmpegPath
@@ -496,7 +500,19 @@ export function decodePcm(ffmpegPath, inputPath) {
       }
 
       try {
-        resolve(parseWavF32(Buffer.concat(chunks)));
+        const pcm = parseWavF32(Buffer.concat(chunks));
+
+        // A decode that exits 0 with no frames would otherwise trim, measure
+        // and encode an empty clip without a word: fail the clip instead.
+        if (pcm.samples.length === 0) {
+          const size = existsSync(inputPath) ? statSync(inputPath).size : 0;
+
+          throw new Error(
+            `ffmpeg decoded no audio frames from ${inputPath} (${size} bytes)${stderr.trim() ? `: ${stderrTail(stderr)}` : ""}`,
+          );
+        }
+
+        resolve(pcm);
       } catch (err) {
         reject(err);
       }
@@ -509,12 +525,15 @@ export function decodePcm(ffmpegPath, inputPath) {
  * `fmt ` chunk may be the extensible form (its subformat then names the float
  * format), other chunks (`LIST`, `fact`) are skipped, and the `data` chunk's
  * size is read only as far as the buffer goes, since a piped WAV carries a
- * placeholder there. A trailing partial frame is dropped.
+ * placeholder there: a size of 0 or 0xFFFFFFFF reads to the end of the
+ * buffer (ffmpeg 6.1, the `ffmpeg-static` 5.3 binary, writes 0xFFFFFFFF;
+ * other versions write 0). A trailing partial frame is dropped.
  *
+ * @internal Exported for testing.
  * @param {Buffer} wav
  * @returns {import("./index.d.ts").DecodedPcm}
  */
-function parseWavF32(wav) {
+export function parseWavF32(wav) {
   if (wav.length < 12 || wav.toString("latin1", 0, 4) !== "RIFF" || wav.toString("latin1", 8, 12) !== "WAVE") {
     throw new Error(`decoded audio is not a WAV file (${wav.length} bytes)`);
   }
@@ -548,7 +567,8 @@ function parseWavF32(wav) {
 
       if (channels < 1 || sampleRate < 1) throw new Error(`decoded WAV has ${channels} channels at ${sampleRate} Hz`);
 
-      const available = Math.min(size, wav.length - body);
+      const toEnd = size === 0 || size === WAV_SIZE_UNKNOWN;
+      const available = toEnd ? wav.length - body : Math.min(size, wav.length - body);
       const frames = Math.floor(available / (4 * channels));
       const samples = new Float32Array(frames * channels);
 

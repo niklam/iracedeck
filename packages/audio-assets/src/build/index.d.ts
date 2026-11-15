@@ -107,11 +107,20 @@ export declare function loudnessGain(
 
 /**
  * Decode a clip to 32-bit float PCM at its own rate and channel count (#1643);
- * rejects on a failed run or output that is not float WAV.
+ * rejects on a failed run, output that is not float WAV, or a decode with no frames.
  *
  * @internal Exported for testing.
  */
 export declare function decodePcm(ffmpegPath: string, inputPath: string): Promise<DecodedPcm>;
+
+/**
+ * The samples of a 32-bit float WAV as ffmpeg's `wav` muxer writes one; a
+ * data-chunk size of 0 or 0xFFFFFFFF (a piped WAV's placeholder) reads to the
+ * end of the buffer.
+ *
+ * @internal Exported for testing.
+ */
+export declare function parseWavF32(wav: Buffer): DecodedPcm;
 
 /**
  * The first `frames` frames of `pcm` as a 32-bit float WAV file's bytes.

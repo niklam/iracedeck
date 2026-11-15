@@ -28,6 +28,7 @@ import {
   loudnessGain,
   measureLoudness,
   parseIntegratedLoudness,
+  parseWavF32,
   PIPELINE_IDENTITY,
   pipelineCacheKey,
   pipelineIdentity,
@@ -1355,4 +1356,82 @@ describe("trailing-silence trim — on synthesized clips (#1643)", () => {
     expect(kinds).toEqual(["decode"]);
     expect(listFilesIfAny(cacheDir)).toEqual([]);
   }, 30_000);
+
+  it("fails the clip when a non-empty source decodes to no frames, encoding nothing", async () => {
+    const root = tempDir("ird-trim-zero-frames-");
+    const srcDir = path.join(root, "voice", "alpha");
+    const cacheDir = path.join(root, "cache");
+    const kinds: string[] = [];
+    // A valid float WAV holding no frames: ffmpeg decodes it with exit 0 and
+    // a header-only WAV, the shape that used to encode an empty clip.
+    const empty = encodeWavF32({ sampleRate: 44_100, channels: 1, samples: new Float32Array(0) }, 0);
+    const clip = path.join(srcDir, "flags", "empty.mp3");
+
+    writeFile(clip, empty);
+    expect(empty.length).toBeGreaterThan(0);
+
+    await expect(decodePcm(FFMPEG, clip)).rejects.toThrow(
+      new RegExp(`^ffmpeg decoded no audio frames from .*empty\\.mp3 \\(${empty.length} bytes\\)`),
+    );
+
+    spawnHook.onSpawn = (args) => {
+      kinds.push(spawnKind(args));
+    };
+
+    await expect(processVoiceTree({ srcDir, destDir: path.join(root, "dest"), cacheDir })).rejects.toThrow(
+      /^ffmpeg decoded no audio frames from /,
+    );
+    expect(kinds).toEqual(["decode"]);
+    expect(listFilesIfAny(cacheDir)).toEqual([]);
+  }, 30_000);
+
+  it("reads every frame of ffmpeg's real piped WAV, whose data size is a placeholder", async () => {
+    const root = tempDir("ird-trim-piped-");
+    const samples = Float32Array.from({ length: 300 }, (_, i) => Math.sin(i / 5) * 0.5);
+    const file = path.join(root, "clip.wav");
+
+    writeFileSync(file, encodeWavF32({ sampleRate: 44_100, channels: 1, samples }, 300));
+
+    // The bytes decodePcm parses, straight from the installed ffmpeg-static.
+    const piped = execFileSync(FFMPEG, [
+      ...["-hide_banner", "-loglevel", "error", "-i", file],
+      ...["-map", "0:a:0", "-c:a", "pcm_f32le", "-f", "wav", "pipe:1"],
+    ]);
+    const dataAt = piped.indexOf("data", 12, "latin1");
+
+    // The positive control: this ffmpeg really writes a placeholder, not the size.
+    expect([0, 0xffffffff]).toContain(piped.readUInt32LE(dataAt + 4));
+    expect(Array.from(parseWavF32(piped).samples)).toEqual(Array.from(samples));
+  }, 30_000);
+});
+
+describe("parseWavF32 — the data chunk's size placeholders", () => {
+  /** A float WAV of `samples` (mono) whose data-chunk size field reads `size`. */
+  function wavWithDataSize(samples: Float32Array, size: number): Buffer {
+    const wav = encodeWavF32({ sampleRate: 8_000, channels: 1, samples }, samples.length);
+    const dataAt = wav.indexOf("data", 12, "latin1");
+
+    wav.writeUInt32LE(size, dataAt + 4);
+
+    return wav;
+  }
+
+  const samples = Float32Array.from([0.25, -0.5, 0.75, -1, 0.125]);
+
+  for (const [label, size] of [
+    ["0", 0],
+    ["0xFFFFFFFF", 0xffffffff],
+  ] as const) {
+    it(`reads a data size of ${label} to the end of the buffer`, () => {
+      const parsed = parseWavF32(wavWithDataSize(samples, size));
+
+      expect(parsed).toMatchObject({ sampleRate: 8_000, channels: 1 });
+      expect(Array.from(parsed.samples)).toEqual(Array.from(samples));
+    });
+  }
+
+  it("reads a real size as far as it goes, and no further than the buffer", () => {
+    expect(Array.from(parseWavF32(wavWithDataSize(samples, 8)).samples)).toEqual(Array.from(samples.subarray(0, 2)));
+    expect(parseWavF32(wavWithDataSize(samples, 4 * 100)).samples).toHaveLength(5);
+  });
 });
