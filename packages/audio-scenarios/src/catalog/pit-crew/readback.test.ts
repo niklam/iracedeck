@@ -18,7 +18,7 @@ import defaultScript from "@iracedeck/audio-assets/voice/default/callouts.json" 
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import { createFakeAudio, type FakeAudio } from "@iracedeck/audio-service/testing";
 import { type CalloutScript } from "@iracedeck/callout-script";
-import { FLAG_CALLOUTS, PIT_READBACK_CALLOUTS } from "@iracedeck/callout-settings";
+import { FLAG_CALLOUTS, PIT_READBACK_CALLOUTS, SPOTTER_CALLOUTS } from "@iracedeck/callout-settings";
 import type { IEventBus, PitReadbackSnapshot, SimEventMap, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import { classifySession } from "@iracedeck/sim-events-iracing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -264,6 +264,8 @@ let audio: FakeAudio;
 let engine: IScenarioEngine;
 let flagsEnabled: Map<FlagCalloutId, boolean>;
 let readbackEnabled: Map<PitReadbackCalloutId, boolean>;
+/** The spotter's "Cars" opt-in; "Still there" stays on (issue #1681's floor-held cut). */
+let spotterCarsEnabled: boolean;
 let currentSnapshot: PitReadbackSnapshot | null;
 
 type Reason = SimEventMap["pitService.readbackRequested"]["data"]["reason"];
@@ -306,6 +308,7 @@ beforeEach(() => {
   vi.useFakeTimers();
   flagsEnabled = new Map();
   readbackEnabled = new Map();
+  spotterCarsEnabled = true;
   currentSnapshot = null;
   mockSessionType.mockReturnValue("Race");
   bus = createMockBus();
@@ -320,7 +323,8 @@ beforeEach(() => {
     logger: mockLogger as never,
     isCalloutEnabled: (key) =>
       familyGate(FLAG_CALLOUTS, (id) => flagsEnabled.get(id) ?? true)(key) &&
-      familyGate(PIT_READBACK_CALLOUTS, (id) => readbackEnabled.get(id) ?? true)(key),
+      familyGate(PIT_READBACK_CALLOUTS, (id) => readbackEnabled.get(id) ?? true)(key) &&
+      familyGate(SPOTTER_CALLOUTS, (id) => id !== "cars" || spotterCarsEnabled)(key),
     getReadbackSnapshot: () => currentSnapshot,
   });
   // After the registration, as the plugins do: the readback's body and its
@@ -1050,6 +1054,122 @@ describe("the readback's wait covers the count-in train (issue #1681)", () => {
       "pit-readback/fast-repair-on.mp3",
       "pit-readback/windshield-on.mp3",
     ]);
+  });
+
+  describe("an exit readback deferred behind a heavier line", () => {
+    /** The entry readback plays from 0 s; the "five" cuts it at 3 s and holds the bus for its 0.84 s clip. */
+    function entryCutByTheFive(): void {
+      currentSnapshot = FULL_SERVICE;
+      bus.publishEvent("pitService.readbackRequested", { reason: "entry" });
+      audio._triggerChannelEnd(AudioChannel.SFX); // the frame's open tick → the limiter pre-opener
+      vi.advanceTimersByTime(LIMITER_OPENER_MS);
+      audio._triggerChannelEnd(AudioChannel.Voice); // → opener-entry
+      vi.advanceTimersByTime(CUT_AT_MS - LIMITER_OPENER_MS);
+      bus.publishEvent("pitBox.countdown", { mark: "five" });
+      expect(mockLogger.debug).toHaveBeenCalledWith(`Scenario "${ENTRY_ID}" pending (1 of 1) — stashed (preempted)`);
+      vi.advanceTimersByTime(400);
+    }
+
+    /** The "five" ends, the hold runs out, and everything left plays. */
+    function playOut(): void {
+      vi.advanceTimersByTime(MARK_CLIP_MS - 400);
+      audio._triggerChannelEnd(AudioChannel.Voice);
+      vi.advanceTimersByTime(PIT_BOX_PENDING_HOLD_MS);
+      flush(audio);
+    }
+
+    function heardAfterTheFive(): string[] {
+      const paths = voicePaths();
+
+      return paths
+        .slice(paths.indexOf(`voice/${VOICE}/pit-box/five-01.mp3`) + 1)
+        .map((p) => p.split(`voice/${VOICE}/`)[1]);
+    }
+
+    it("drops the entry readback waiting beside it, when the exit is offered to the queue", () => {
+      entryCutByTheFive();
+      bus.publishEvent("pitService.readbackRequested", { reason: "exit" }); // the "five" holds the bus
+
+      expect(mockLogger.debug).toHaveBeenCalledWith(
+        `Scenario "${ENTRY_ID}" dropped — superseded by "pit-crew.pit-readback-exit"`,
+      );
+      expect(mockLogger.debug).toHaveBeenCalledWith(
+        'Scenario "pit-crew.pit-readback-exit" pending (1 of 1) — deferred (bus busy)',
+      );
+
+      playOut();
+
+      expect(infoMessages()).not.toContain(`Resuming scenario "${ENTRY_ID}"`);
+      expect(heardAfterTheFive()).toEqual([
+        "pit-readback/opener-exit.mp3",
+        "pit-readback/fuel-on.mp3",
+        "pit-readback/tires-all.mp3",
+        "pit-readback/fast-repair-on.mp3",
+        "pit-readback/windshield-on.mp3",
+      ]);
+    });
+
+    it("without the exit readback, the entry readback resumes after the hold (positive control)", () => {
+      entryCutByTheFive();
+      playOut();
+
+      expect(infoMessages()).toContain(`Resuming scenario "${ENTRY_ID}"`);
+      expect(heardAfterTheFive()[0]).toBe("pit-readback/opener-entry.mp3");
+    });
+  });
+
+  // Reachable because the focus floor is checked before the same-family
+  // replacement: an exit readback arriving while the entry readback plays
+  // under the spotter's floor waits below the floor instead of replacing the
+  // entry. The floor is up without a call cutting the entry when "Cars" is
+  // off and "Still there" on; the meatball then cuts the entry, whose stash
+  // yields to the newer exit readback (`yieldsToGroup`).
+  describe("an entry readback cut after an exit readback queued below the spotter's floor", () => {
+    /** The entry readback plays from 0 s; at 0.5 s a car pulls alongside, raising the floor without a call. */
+    function entryPlayingUnderTheFloor(): void {
+      spotterCarsEnabled = false;
+      currentSnapshot = FULL_SERVICE;
+      bus.publishEvent("pitService.readbackRequested", { reason: "entry" });
+      audio._triggerChannelEnd(AudioChannel.SFX); // the frame's open tick → the limiter pre-opener
+      vi.advanceTimersByTime(500);
+      bus.publishEvent("radar.changed", { from: "clear", to: "left" });
+      vi.advanceTimersByTime(500);
+    }
+
+    /** At 1.5 s the meatball cuts the entry readback; then the car is gone and everything left plays. */
+    function meatballThenClear(): void {
+      vi.advanceTimersByTime(500);
+      bus.publishEvent("flag.meatball.raised", {});
+      vi.advanceTimersByTime(500);
+      bus.publishEvent("radar.changed", { from: "left", to: "clear" });
+      flush(audio);
+    }
+
+    it("the entry readback's stash yields to the waiting exit readback", () => {
+      entryPlayingUnderTheFloor();
+      bus.publishEvent("pitService.readbackRequested", { reason: "exit" });
+
+      expect(mockLogger.debug).toHaveBeenCalledWith(
+        'Scenario "pit-crew.pit-readback-exit" pending (1 of 1) — deferred (below focus floor (spotter))',
+      );
+
+      meatballThenClear();
+
+      expect(mockLogger.debug).toHaveBeenCalledWith(
+        `Scenario "${ENTRY_ID}" dropped — superseded by "pit-crew.pit-readback-exit"`,
+      );
+      expect(infoMessages()).not.toContain(`Resuming scenario "${ENTRY_ID}"`);
+      expect(voicePaths().filter((p) => p.endsWith("/pit-readback/opener-entry-limiter.mp3"))).toHaveLength(1);
+      expect(voicePaths()).toContain(`voice/${VOICE}/pit-readback/opener-exit.mp3`);
+    });
+
+    it("without the exit readback, the cut entry readback is stashed and resumes (positive control)", () => {
+      entryPlayingUnderTheFloor();
+      meatballThenClear();
+
+      expect(mockLogger.debug).toHaveBeenCalledWith(`Scenario "${ENTRY_ID}" pending (1 of 1) — stashed (preempted)`);
+      expect(infoMessages()).toContain(`Resuming scenario "${ENTRY_ID}"`);
+    });
   });
 
   it("pins both readbacks to READBACK_MAX_QUEUE_WAIT_MS (30 s) in the shared pit-readback group", () => {
