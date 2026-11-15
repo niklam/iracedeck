@@ -385,10 +385,12 @@ const FUEL_MARGIN_NOT_MIGRATED: Readonly<Record<"not-ready" | "not-read-yet" | "
  *   (`{ ...host, ...file }`), so the moved 0 survives it.
  * - `not-read-yet` (the `_migrationPending` countdown, or a fresh start whose
  *   host read timed out) — writes nothing, marker included. When the host's
- *   answer lands, `mergeMigration` lets the host's stored 0.3 win over the
- *   file's new default 0 (a default-valued file key loses), while a passthrough
- *   marker survives the merge; a marker written now would leave the host's 0.3
- *   in place for good. The start whose host answer lands runs it.
+ *   answer lands, `mergeMigration` lets the host's value win over the file's
+ *   default, whether the file was born under the new default 0 or, written by
+ *   an older build, under the old 0.3 (`FORMER_SCHEMA_DEFAULTS`); a
+ *   default-valued file key loses either way. A passthrough marker survives
+ *   the merge, so a marker written now would leave a host's 0.3 in place for
+ *   good. The start whose host answer lands runs it.
  * - `unparseable` — writes nothing, marker included. The cache is then only
  *   schema defaults (already 0) and the real file is left untouched on disk; a
  *   marker over defaults would mark done an install whose file still holds 0.3.

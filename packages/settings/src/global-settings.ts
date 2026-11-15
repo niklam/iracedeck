@@ -1038,18 +1038,63 @@ function persist(store: SettingsStore | null): void {
 }
 
 /**
+ * Earlier schema defaults of keys whose default has since changed, which
+ * {@link mergeMigration} reads as untouched exactly like the current default
+ * (#1679).
+ *
+ * A defaults-born settings file (`_migrationPending`) holds the defaults of the
+ * build that WROTE it, because every start persists the whole parsed cache. The
+ * deck host's answer may only land under a later build, and if that build has
+ * changed a default, the file's old default no longer equals the schema's: it
+ * would read as the user's choice and beat the host's real value. For
+ * `fuelCalloutMarginLaps` that is a 0.3 written by 3.8 beating a host's 1.0,
+ * which `migrateFuelMarginDefault` then moves to 0 — and the user's 1.0 is gone
+ * from both copies. Listed here, the old default loses to the host as the
+ * current one does, and a host that itself holds the old default hands it to
+ * that migration.
+ *
+ * **A default change that must reach pending installs adds its old value
+ * here**, beside the migration that moves the old value. Values are compared
+ * with {@link sameValue}, so the string a Property Inspector saved matches the
+ * number. An entry stays once added: a file can sit pending across any number
+ * of builds. Only {@link mergeMigration} reads this; the give-up retry's
+ * `{ ...host, ...file }` merge is file-authoritative by design (#1047) and
+ * must not consult it.
+ *
+ * @internal Exported for tests.
+ */
+export const FORMER_SCHEMA_DEFAULTS: Readonly<Record<string, readonly unknown[]>> = Object.freeze({
+  fuelCalloutMarginLaps: Object.freeze([0.3]),
+});
+
+/**
+ * Whether `value` is `key`'s schema default, now or in an earlier build
+ * ({@link FORMER_SCHEMA_DEFAULTS}). False for a key the schema does not declare.
+ */
+function isSchemaDefaultValue(key: string, value: unknown, defaults: Record<string, unknown>): boolean {
+  if (!(key in defaults)) return false;
+
+  if (sameValue(defaults[key], value)) return true;
+
+  // `hasOwn`, not `in`: a stored key named `constructor` must not reach an
+  // inherited member of the table.
+  return Object.hasOwn(FORMER_SCHEMA_DEFAULTS, key) && FORMER_SCHEMA_DEFAULTS[key].some((v) => sameValue(v, value));
+}
+
+/**
  * Merge the deck host's migration answer under a settings file that was born
  * WITHOUT it (a fresh start, see MIGRATION_PENDING_KEY): the host supplies
- * every key, and the file wins only where it deviates from the schema default —
- * a value still at its default in a defaults-born file was almost certainly
- * never touched, so the host's (the user's real, pre-#993) value is the one to
- * keep; anything the user changed in the meantime survives. Passthrough keys
- * the file added (device lists, `_lastSeenVersion`, …) have no default and so
- * always win. With no file at all (`base` = {}) this is the plain host copy.
+ * every key, and the file wins only where it deviates from the schema default
+ * or a former default listed in {@link FORMER_SCHEMA_DEFAULTS} — a value still
+ * at a default in a defaults-born file was almost certainly never touched, so
+ * the host's (the user's real, pre-#993) value is the one to keep; anything
+ * the user changed in the meantime survives. Passthrough keys the file added
+ * (device lists, `_lastSeenVersion`, …) have no default and so always win.
+ * With no file at all (`base` = {}) this is the plain host copy.
  *
  * So this merge does NOT bound what an accepted payload can do (#1053): a key
- * the file left at its schema default loses to the payload, and with no file
- * the payload becomes the whole cache. The bound belongs to the give-up retry,
+ * the file left at a schema default loses to the payload, and with no file the
+ * payload becomes the whole cache. The bound belongs to the give-up retry,
  * which uses `{ ...raw, ...migrationBase }` instead — see the call sites.
  */
 function mergeMigration(host: Record<string, unknown>, base: Record<string, unknown>): Record<string, unknown> {
@@ -1059,7 +1104,7 @@ function mergeMigration(host: Record<string, unknown>, base: Record<string, unkn
   for (const [key, value] of Object.entries(base)) {
     if (key === MIGRATION_PENDING_KEY) continue;
 
-    if (key in defaults && sameValue(defaults[key], value)) continue;
+    if (isSchemaDefaultValue(key, value, defaults)) continue;
 
     merged[key] = value;
   }

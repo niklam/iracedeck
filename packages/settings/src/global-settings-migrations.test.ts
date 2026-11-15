@@ -983,6 +983,51 @@ describe("migrateFuelMarginDefault (#1679)", () => {
       expect(lastSave(second)).toMatchObject({ fuelCalloutMarginLaps: 0, [MARKER]: VERSION });
     });
 
+    describe("a pending file an older build wrote under the old default 0.3", () => {
+      /** What a 3.8 fresh start persisted: its defaults (0.3 among them) and the countdown. */
+      const bornUnderOldDefault = (): Record<string, unknown> =>
+        defaultsFile({ fuelCalloutMarginLaps: 0.3, [MIGRATION_PENDING_KEY]: 1 });
+
+      /** The start whose host answer lands, with the migration called at startup as every plugin does. */
+      async function answerWith(host: Record<string, unknown>): Promise<{ store: MemoryStore; logger: ILogger }> {
+        const { adapter, echo } = createEchoAdapter();
+        const store = createMemorySettingsStore(bornUnderOldDefault());
+        initGlobalSettings(adapter, createMockLogger(), store);
+        const logger = createMockLogger();
+        migrateFuelMarginDefault(VERSION, logger);
+        await tick();
+
+        expect(isSettingsStoreReady()).toBe(false); // the read is out
+
+        echo(host);
+
+        expect(getSettingsStoreSource()).toBe("host");
+        expect(getSettingsStoreHostDerivation()).toBe("host-derived");
+
+        return { store, logger };
+      }
+
+      it("keeps the host's chosen margin: the file's old default does not beat it and is not then moved", async () => {
+        const { store, logger } = await answerWith({ fuelCalloutMarginLaps: 1, driverName: "from the host" });
+
+        expect(cache().fuelCalloutMarginLaps).toBe(1);
+        expect(cache()[MARKER]).toBe(VERSION);
+        expect(lastSave(store)).toMatchObject({ fuelCalloutMarginLaps: 1, [MARKER]: VERSION });
+        expect(logger.info).not.toHaveBeenCalledWith(MOVED);
+        expect(logger.debug).toHaveBeenCalledWith(expect.stringContaining("marked done; nothing to move"));
+      });
+
+      it("moves the host's own 0.3, the old default it persisted, to 0", async () => {
+        const { store, logger } = await answerWith({ fuelCalloutMarginLaps: 0.3, driverName: "from the host" });
+
+        expect(cache().fuelCalloutMarginLaps).toBe(0);
+        expect(cache()[MARKER]).toBe(VERSION);
+        expect(cache().driverName).toBe("from the host");
+        expect(lastSave(store)).toMatchObject({ fuelCalloutMarginLaps: 0, [MARKER]: VERSION });
+        expect(logger.info).toHaveBeenCalledWith(MOVED);
+      });
+    });
+
     it("writes nothing on a fresh start whose host read timed out", async () => {
       vi.useFakeTimers();
       const store = initSilentHost();
