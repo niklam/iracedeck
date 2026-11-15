@@ -2,8 +2,6 @@
   "default": {
     "flags/green-held-04": "Stand by... It's racing the moment the green drops.",
     "flags/green-held-05": "Last few seconds behind the pace car. Get set — clean launch, smart into turn one.",
-    "flags/dq-scoring-invalid-01": "D-Q. <break time=\"0.3s\" /> Scoring's off.",
-    "rolling-start/pace-car-moving-leader-01": "Pace car's rolling. <break time=\"0.3s\" /> You're on pole — just you and the pace car.",
     "pit-actions/tires-on-lf": "We'll change the left-front at the next pit stop.",
     "pit-actions/tires-on-rf": "We'll change the right-front at the next pit stop.",
     "pit-actions/tires-on-lr": "We'll change the left-rear at the next pit stop.",

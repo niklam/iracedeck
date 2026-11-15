@@ -18,7 +18,7 @@ const grandfathered = loadGrandfatheredPauseMarks(audioAssetsPath);
 const voiceIds = [...configs.keys()];
 
 // The size of each voice's grandfathered list when the rule landed (#1518). Only ever lowered.
-const GRANDFATHERED_COUNTS: Record<string, number> = { default: 852, shawn: 853 };
+const GRANDFATHERED_COUNTS: Record<string, number> = { default: 850, shawn: 853 };
 
 describe("clip text", () => {
   it("finds the voice configs", () => {
