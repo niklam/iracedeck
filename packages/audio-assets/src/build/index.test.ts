@@ -18,10 +18,12 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { RADIO_ENGINEER_FILTER, VOICE_LOUDNESS_NORMALIZATION } from "../presets.mjs";
+import { RADIO_ENGINEER_FILTER, VOICE_LOUDNESS_NORMALIZATION, VOICE_TAIL_TRIM } from "../presets.mjs";
 import {
   audioAssetsPath,
   BUNDLED_VOICE_IDS,
+  decodePcm,
+  encodeWavF32,
   formatGainDb,
   loudnessGain,
   measureLoudness,
@@ -32,6 +34,7 @@ import {
   pipelineIdentityHash,
   processAndCopyAudioAssets,
   processVoiceTree,
+  tailTrimFrames,
 } from "./index.mjs";
 import { installedPackageVersion } from "./installed-version.mjs";
 
@@ -57,12 +60,15 @@ vi.mock("node:child_process", async (importOriginal) => {
 });
 
 /**
- * Which of a clip's two ffmpeg runs (#1657) an argv is: the loudness
- * measurement writes to the `null` muxer, the encode to `mp3`. Each spawn-hook
- * test below names the run it acts on, so its claim stays about that run.
+ * Which of a clip's three ffmpeg runs an argv is: the decode the
+ * trailing-silence trim reads (#1643) writes to the `wav` muxer, the loudness
+ * measurement (#1657) to `null`, the encode to `mp3`. Each spawn-hook test
+ * below names the run it acts on, so its claim stays about that run.
  */
-function spawnKind(args: readonly string[]): "measure" | "encode" | "other" {
+function spawnKind(args: readonly string[]): "decode" | "measure" | "encode" | "other" {
   const muxers = args.flatMap((arg, i) => (arg === "-f" ? [args[i + 1]] : []));
+
+  if (muxers.includes("wav")) return "decode";
 
   if (muxers.includes("null")) return "measure";
 
@@ -152,7 +158,7 @@ it("has the sample clip to build its fixtures from", () => {
  * warm cache went on serving the previous binary's output.
  */
 describe("PIPELINE_IDENTITY — the cache key and the record's pipeline digest", () => {
-  it("names the filter chain, the loudness normalization, the encode args and the installed ffmpeg-static version, frozen", () => {
+  it("names the filter chain, the loudness normalization, the tail trim, the encode args and the installed ffmpeg-static version, frozen", () => {
     expect(PIPELINE_IDENTITY).toEqual({
       filter: RADIO_ENGINEER_FILTER,
       loudness: {
@@ -162,15 +168,18 @@ describe("PIPELINE_IDENTITY — the cache key and the record's pipeline digest",
         silenceFloorLufs: -50,
         measurement: { loops: 8, filter: "ebur128=framelog=quiet" },
       },
+      tailTrim: { keepMs: 20, thresholdDbfs: -45, windowMs: 10 },
       encodeArgs: ["-ar", "16000", "-ac", "1", "-c:a", "libmp3lame", "-b:a", "32k"],
       ffmpegStatic: installedPackageVersion("ffmpeg-static", import.meta.url),
     });
     // The very descriptor the pipeline runs with, not a copy that could drift.
     expect(PIPELINE_IDENTITY.loudness).toBe(VOICE_LOUDNESS_NORMALIZATION);
+    expect(PIPELINE_IDENTITY.tailTrim).toBe(VOICE_TAIL_TRIM);
     expect(Object.isFrozen(PIPELINE_IDENTITY)).toBe(true);
     expect(Object.isFrozen(PIPELINE_IDENTITY.encodeArgs)).toBe(true);
     expect(Object.isFrozen(PIPELINE_IDENTITY.loudness)).toBe(true);
     expect(Object.isFrozen(PIPELINE_IDENTITY.loudness.measurement)).toBe(true);
+    expect(Object.isFrozen(PIPELINE_IDENTITY.tailTrim)).toBe(true);
   });
 
   // ffmpeg-static exports the path in its FFMPEG_BIN variable instead of its
@@ -200,6 +209,11 @@ describe("PIPELINE_IDENTITY — the cache key and the record's pipeline digest",
     const reordered = {
       ffmpegStatic: PIPELINE_IDENTITY.ffmpegStatic,
       encodeArgs: PIPELINE_IDENTITY.encodeArgs,
+      tailTrim: {
+        windowMs: PIPELINE_IDENTITY.tailTrim.windowMs,
+        thresholdDbfs: PIPELINE_IDENTITY.tailTrim.thresholdDbfs,
+        keepMs: PIPELINE_IDENTITY.tailTrim.keepMs,
+      },
       loudness: {
         measurement: { ...PIPELINE_IDENTITY.loudness.measurement },
         silenceFloorLufs: PIPELINE_IDENTITY.loudness.silenceFloorLufs,
@@ -244,6 +258,27 @@ describe("PIPELINE_IDENTITY — the cache key and the record's pipeline digest",
 
     for (const variant of variants) {
       const identity = { ...PIPELINE_IDENTITY, loudness: variant };
+
+      expect(pipelineIdentityHash(identity)).not.toBe(current);
+      expect(pipelineCacheKey(identity)).not.toBe(pipelineCacheKey());
+    }
+  });
+
+  // #1643: the trim is a pipeline input like the normalization, so keeping
+  // more or less silence, or finding the speech end another way, re-encodes
+  // every cached clip once and marks every committed pack stale.
+  it("changes the cache key and the pipeline digest with any part of the tail trim", () => {
+    const current = pipelineIdentityHash();
+    const tailTrim = PIPELINE_IDENTITY.tailTrim;
+    const variants = [
+      { ...tailTrim, keepMs: tailTrim.keepMs + 1 },
+      { ...tailTrim, keepMs: 0 },
+      { ...tailTrim, thresholdDbfs: tailTrim.thresholdDbfs - 5 },
+      { ...tailTrim, windowMs: tailTrim.windowMs * 2 },
+    ];
+
+    for (const variant of variants) {
+      const identity = { ...PIPELINE_IDENTITY, tailTrim: variant };
 
       expect(pipelineIdentityHash(identity)).not.toBe(current);
       expect(pipelineCacheKey(identity)).not.toBe(pipelineCacheKey());
@@ -439,9 +474,9 @@ describe("processVoiceTree — cache freshness", () => {
 
       spawned.push({ kind, input: spawnInput(args) });
 
-      // The swap: happens once the FIRST ffmpeg run — the loudness
-      // measurement (#1657) — has already been launched, so both runs (the
-      // measurement and the encode after it) see a replaced source if either
+      // The swap: happens once the FIRST ffmpeg run — the decode the trim
+      // reads (#1643) — has already been launched, so every run (the decode,
+      // the measurement and the encode after it) sees a replaced source if any
       // were pointed at it.
       if (spawned.length === 1) copyFileSync(OTHER_SAMPLE_CLIP, clip);
     };
@@ -449,13 +484,15 @@ describe("processVoiceTree — cache freshness", () => {
     const result = await processVoiceTree({ srcDir, destDir, cacheDir });
 
     expect(result.processed).toBe(1);
-    expect(spawned.map(({ kind }) => kind)).toEqual(["measure", "encode"]);
-    // Both runs read ONE snapshot: the gain baked in is the gain of the bytes
-    // that were encoded, and those are the bytes the sidecar names.
-    expect(spawned[1]!.input).toBe(spawned[0]!.input);
+    expect(spawned.map(({ kind }) => kind)).toEqual(["decode", "measure", "encode"]);
+    // The measurement and the encode read ONE trimmed snapshot: the gain baked
+    // in is the gain of the audio that was encoded, and that audio is decoded
+    // from the bytes the sidecar names.
+    expect(spawned[2]!.input).toBe(spawned[1]!.input);
+
     // The bug this replaces handed ffmpeg `sourcePath` itself, so a swap
     // landing here would change what got encoded. Assert the fix never does.
-    expect(spawned[0]!.input).not.toBe(clip);
+    for (const { input } of spawned) expect(input).not.toBe(clip);
 
     // The sidecar must still name the ORIGINAL bytes — the ones read before
     // the swap — never the replacement the source holds now.
@@ -517,9 +554,9 @@ describe("processVoiceTree — cache freshness", () => {
 
     const sidecarAtSpawn: Record<string, string | false> = {};
 
-    // Observed at both launches (#1657): the measurement, and the encode — the
-    // later of the two, so the last moment before ffmpeg can have produced
-    // anything to publish.
+    // Observed at every launch: the decode (#1643), the measurement (#1657),
+    // and the encode — the last of them, so the last moment before ffmpeg can
+    // have produced anything to publish.
     spawnHook.onSpawn = (args) => {
       const kind = spawnKind(args);
 
@@ -530,7 +567,7 @@ describe("processVoiceTree — cache freshness", () => {
 
     await processVoiceTree({ srcDir, destDir, cacheDir });
 
-    expect(sidecarAtSpawn).toEqual({ measure: originalSidecar, encode: originalSidecar });
+    expect(sidecarAtSpawn).toEqual({ decode: originalSidecar, measure: originalSidecar, encode: originalSidecar });
   }, 60_000);
 
   /**
@@ -567,7 +604,7 @@ describe("processVoiceTree — cache freshness", () => {
     };
 
     await expect(processVoiceTree({ srcDir, destDir, cacheDir })).rejects.toThrow(/^ffmpeg exit /);
-    expect(kinds).toEqual(["measure", "encode"]);
+    expect(kinds).toEqual(["decode", "measure", "encode"]);
 
     // Nothing published: the old audio and its sidecar are exactly what they
     // were, still paired, and no temp file survives the failure.
@@ -604,7 +641,7 @@ describe("processVoiceTree — cache freshness", () => {
     };
 
     await expect(processVoiceTree({ srcDir, destDir, cacheDir })).rejects.toThrow(/^ffmpeg loudness measurement exit /);
-    expect(kinds).toEqual(["measure"]);
+    expect(kinds).toEqual(["decode", "measure"]);
     expect(readFileSync(cachedClip).equals(originalCached)).toBe(true);
     expect(readFileSync(sidecarPath, "utf-8")).toBe(originalSidecar);
     expect(listFiles(cacheDir).filter((f) => f.endsWith(".tmp"))).toEqual([]);
@@ -915,8 +952,8 @@ describe("loudness normalization — on synthesized clips (#1657)", () => {
     spawnHook.onSpawn = (args) => {
       if (spawnKind(args) !== "encode") return;
 
-      // The snapshot is `<cachedPath>.<pid>.<n>.src.tmp`.
-      const clip = path.basename(spawnInput(args)).replace(/\.\d+\.\d+\.src\.tmp$/, "");
+      // The encode reads the trimmed snapshot, `<cachedPath>.<pid>.<n>.pcm.tmp` (#1643).
+      const clip = path.basename(spawnInput(args)).replace(/\.\d+\.\d+\.pcm\.tmp$/, "");
 
       filters.set(clip, args[args.indexOf("-af") + 1]!);
     };
@@ -1077,4 +1114,245 @@ describe("loudness normalization — on synthesized clips (#1657)", () => {
     expect(secondLog.some((line) => line.includes("0 processed, 1 cache-hit"))).toBe(true);
     expect(warnings).toEqual([]);
   }, 60_000);
+});
+
+/**
+ * The trailing-silence trim's boundaries (#1643), on PCM built in the test at
+ * 1000 Hz, so one frame is one millisecond and the default descriptor's 10 ms
+ * window is ten frames and its 20 ms of kept silence is twenty. A constant
+ * 0.5 is -6 dBFS, far above the -45 dBFS threshold; zero is silence.
+ */
+describe("tailTrimFrames — how much of a clip survives the trim (#1643)", () => {
+  /** Mono PCM at 1000 Hz: each `[value, frames]` run in order. */
+  function pcm(...runs: [number, number][]): { sampleRate: number; channels: number; samples: Float32Array } {
+    const values = runs.flatMap(([value, frames]) => Array<number>(frames).fill(value));
+
+    return { sampleRate: 1000, channels: 1, samples: Float32Array.from(values) };
+  }
+
+  it("cuts a long tail to keepMs after the end of the last speech window", () => {
+    // Speech ends inside the window [90, 100), so the speech end is 100.
+    expect(tailTrimFrames(pcm([0.5, 95], [0, 305]))).toBe(120);
+    expect(tailTrimFrames(pcm([0.5, 100], [0, 300]))).toBe(120);
+  });
+
+  it("leaves a clip whose tail is shorter than keepMs exactly as long as it was", () => {
+    expect(tailTrimFrames(pcm([0.5, 100], [0, 5]))).toBe(105);
+    expect(tailTrimFrames(pcm([0.5, 100], [0, 20]))).toBe(120);
+    expect(tailTrimFrames(pcm([0.5, 100]))).toBe(100);
+  });
+
+  it("keeps leading silence, since only the end is ever cut", () => {
+    expect(tailTrimFrames(pcm([0, 200], [0.5, 100], [0, 300]))).toBe(320);
+  });
+
+  it("leaves a clip with no window at the threshold untouched — silence, or noise below it", () => {
+    expect(tailTrimFrames(pcm([0, 500]))).toBe(500);
+    expect(tailTrimFrames(pcm([10 ** (-50 / 20), 500]))).toBe(500);
+    expect(tailTrimFrames(pcm())).toBe(0);
+  });
+
+  it("takes a quiet decay above the threshold as speech, and noise below it as silence", () => {
+    // -40 dBFS is above the threshold: the decay runs to 300, then 20 kept.
+    expect(tailTrimFrames(pcm([0.5, 100], [10 ** (-40 / 20), 200], [0, 300]))).toBe(320);
+    // -50 dBFS is below it: the speech ends at 100.
+    expect(tailTrimFrames(pcm([0.5, 100], [10 ** (-50 / 20), 200], [0, 300]))).toBe(120);
+  });
+
+  it("measures a window over every channel of a frame", () => {
+    // Stereo, speech in the right channel only, for 100 frames, then silence.
+    const samples = new Float32Array(400 * 2);
+
+    for (let frame = 0; frame < 100; frame++) samples[frame * 2 + 1] = 0.5;
+
+    expect(tailTrimFrames({ sampleRate: 1000, channels: 2, samples })).toBe(120);
+  });
+
+  it("counts a short last window as a window", () => {
+    expect(tailTrimFrames(pcm([0, 100], [0.5, 5]))).toBe(105);
+  });
+
+  it("turns its lengths into whole frames at the clip's own rate", () => {
+    // 44.1 kHz: a 441-frame window, 882 frames kept. One second of speech
+    // ends on a window boundary, so the cut is exactly 44100 + 882.
+    const samples = new Float32Array(44_100 * 2);
+
+    samples.fill(0.5, 0, 44_100);
+    expect(tailTrimFrames({ sampleRate: 44_100, channels: 1, samples })).toBe(44_100 + 882);
+  });
+
+  it("uses the descriptor it is given", () => {
+    const clip = pcm([0.5, 100], [0, 300]);
+
+    expect(tailTrimFrames(clip, { ...VOICE_TAIL_TRIM, keepMs: 0 })).toBe(100);
+    expect(tailTrimFrames(clip, { ...VOICE_TAIL_TRIM, keepMs: 50 })).toBe(150);
+    expect(tailTrimFrames(clip, { ...VOICE_TAIL_TRIM, thresholdDbfs: 0 })).toBe(400);
+    expect(() => tailTrimFrames(clip, { ...VOICE_TAIL_TRIM, windowMs: 0 })).toThrow(/not a trim descriptor/);
+  });
+});
+
+/**
+ * The trim end to end (#1643), on clips synthesized with ffmpeg's `lavfi`
+ * sources as the loudness tests do: a 1 kHz tone with chosen silence before
+ * and after it, encoded to mp3 as a generated clip is. Each processed clip is
+ * read back with `decodePcm` and scanned for its first and last window at the
+ * threshold, so the claims are about the audio that ships, not the frame count
+ * the trim computed.
+ */
+describe("trailing-silence trim — on synthesized clips (#1643)", () => {
+  const FFMPEG = createRequire(import.meta.url)("ffmpeg-static") as string;
+  const { keepMs, windowMs } = VOICE_TAIL_TRIM;
+
+  type Shape = { leadMs: number; toneMs: number; tailMs: number };
+
+  /** Encode `leadMs` of silence, `toneMs` of a 1 kHz tone, then `tailMs` of silence, to `file`. */
+  function synthesize(file: string, { leadMs, toneMs, tailMs }: Shape): string {
+    mkdirSync(path.dirname(file), { recursive: true });
+
+    const frames = (ms: number) => (44_100 * ms) / 1000;
+    const silence = (ms: number) => `anullsrc=r=44100:cl=mono,atrim=end_sample=${frames(ms)}`;
+    const tone = `sine=frequency=1000:sample_rate=44100,atrim=end_sample=${frames(toneMs)}`;
+
+    execFileSync(FFMPEG, [
+      "-y",
+      "-hide_banner",
+      "-loglevel",
+      "error",
+      "-filter_complex",
+      `${silence(leadMs)}[a];${tone}[b];${silence(tailMs)}[c];[a][b][c]concat=n=3:v=0:a=1`,
+      "-ac",
+      "1",
+      "-c:a",
+      "libmp3lame",
+      "-b:a",
+      "128k",
+      file,
+    ]);
+
+    return file;
+  }
+
+  type Profile = { durationMs: number; firstSpeechMs: number; speechEndMs: number };
+
+  /** The clip's length, and where its first threshold window starts and its last one ends, in ms. */
+  async function profile(file: string): Promise<Profile> {
+    const decoded = await decodePcm(FFMPEG, file);
+    const { sampleRate, samples } = decoded;
+    const window = Math.round((sampleRate * windowMs) / 1000);
+    const threshold = 10 ** (VOICE_TAIL_TRIM.thresholdDbfs / 20);
+    let first = -1;
+    let last = -1;
+
+    expect(decoded.channels).toBe(1);
+
+    for (let start = 0; start < samples.length; start += window) {
+      const end = Math.min(start + window, samples.length);
+      let sum = 0;
+
+      for (let i = start; i < end; i++) sum += samples[i]! * samples[i]!;
+
+      if (sum / (end - start) >= threshold * threshold) {
+        if (first < 0) first = start;
+
+        last = end;
+      }
+    }
+
+    const ms = (frames: number) => (frames * 1000) / sampleRate;
+
+    return { durationMs: ms(samples.length), firstSpeechMs: ms(first), speechEndMs: ms(last) };
+  }
+
+  async function processOne(prefix: string, shape: Shape): Promise<{ source: Profile; output: Profile }> {
+    const root = tempDir(prefix);
+    const srcDir = path.join(root, "voice", "alpha");
+    const destDir = path.join(root, "dest");
+    const source = synthesize(path.join(srcDir, "flags", "tone.mp3"), shape);
+
+    await processVoiceTree({ srcDir, destDir, cacheDir: path.join(root, "cache") });
+
+    return { source: await profile(source), output: await profile(path.join(destDir, "flags", "tone.mp3")) };
+  }
+
+  it("cuts 300 ms of trailing silence to keepMs after the tone", async () => {
+    const { source, output } = await processOne("ird-trim-long-tail-", { leadMs: 0, toneMs: 800, tailMs: 300 });
+
+    // The positive control: the source really has the tail to cut.
+    expect(source.durationMs - source.speechEndMs).toBeGreaterThan(250);
+    // The tone still ends where it did, and keepMs after it the clip ends, to
+    // within a window either way (the speech end is found to one window).
+    expect(Math.abs(output.speechEndMs - source.speechEndMs)).toBeLessThanOrEqual(windowMs);
+    expect(Math.abs(output.durationMs - (source.speechEndMs + keepMs))).toBeLessThanOrEqual(windowMs);
+    expect(output.durationMs).toBeLessThan(source.durationMs - 200);
+  }, 60_000);
+
+  it("never lengthens a clip whose tail is shorter than keepMs", async () => {
+    const { source, output } = await processOne("ird-trim-short-tail-", { leadMs: 0, toneMs: 800, tailMs: 5 });
+
+    expect(source.durationMs - source.speechEndMs).toBeLessThan(keepMs);
+    // Untouched: the same length as its source, to within a millisecond of the
+    // resample, and in particular no silence added.
+    expect(Math.abs(output.durationMs - source.durationMs)).toBeLessThanOrEqual(1);
+  }, 60_000);
+
+  it("keeps the leading silence", async () => {
+    const { source, output } = await processOne("ird-trim-lead-", { leadMs: 200, toneMs: 600, tailMs: 300 });
+
+    expect(Math.abs(source.firstSpeechMs - 200)).toBeLessThanOrEqual(windowMs);
+    expect(Math.abs(output.firstSpeechMs - source.firstSpeechMs)).toBeLessThanOrEqual(windowMs);
+    // And the tail was still cut.
+    expect(Math.abs(output.durationMs - (source.speechEndMs + keepMs))).toBeLessThanOrEqual(windowMs);
+  }, 60_000);
+
+  it("gives byte-identical output for the same source, processed twice", async () => {
+    const root = tempDir("ird-trim-deterministic-");
+    const source = synthesize(path.join(root, "tone.mp3"), { leadMs: 50, toneMs: 700, tailMs: 300 });
+    const runs: Buffer[] = [];
+
+    for (const run of ["first", "second"]) {
+      const srcDir = path.join(root, run, "voice", "alpha");
+      const destDir = path.join(root, run, "dest");
+
+      writeFile(path.join(srcDir, "flags", "tone.mp3"), readFileSync(source));
+      await processVoiceTree({ srcDir, destDir, cacheDir: path.join(root, run, "cache") });
+      runs.push(readFileSync(path.join(destDir, "flags", "tone.mp3")));
+    }
+
+    expect(runs[0]!.length).toBeGreaterThan(0);
+    expect(runs[0]!.equals(runs[1]!)).toBe(true);
+  }, 60_000);
+
+  it("writes a float WAV that ffmpeg reads back sample for sample", async () => {
+    const root = tempDir("ird-trim-wav-");
+    const samples = Float32Array.from({ length: 2 * 300 }, (_, i) => Math.sin(i / 7) * 0.8);
+    const decoded = { sampleRate: 22_050, channels: 2, samples };
+    const file = path.join(root, "clip.wav");
+
+    writeFileSync(file, encodeWavF32(decoded, 250));
+
+    const read = await decodePcm(FFMPEG, file);
+
+    expect(read.sampleRate).toBe(22_050);
+    expect(read.channels).toBe(2);
+    expect(Array.from(read.samples)).toEqual(Array.from(samples.subarray(0, 2 * 250)));
+    expect(() => encodeWavF32(decoded, 301)).toThrow(/301 frames requested/);
+  }, 30_000);
+
+  it("fails the clip when the decode fails, encoding nothing", async () => {
+    const root = tempDir("ird-trim-decode-failure-");
+    const srcDir = path.join(root, "voice", "alpha");
+    const cacheDir = path.join(root, "cache");
+    const kinds: string[] = [];
+
+    writeFile(path.join(srcDir, "flags", "broken.mp3"), "not an mp3");
+    spawnHook.onSpawn = (args) => {
+      kinds.push(spawnKind(args));
+    };
+
+    await expect(processVoiceTree({ srcDir, destDir: path.join(root, "dest"), cacheDir })).rejects.toThrow(
+      /^ffmpeg decode exit /,
+    );
+    expect(kinds).toEqual(["decode"]);
+    expect(listFilesIfAny(cacheDir)).toEqual([]);
+  }, 30_000);
 });

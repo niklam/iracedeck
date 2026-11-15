@@ -19,6 +19,26 @@ export type VoiceLoudnessNormalization = {
 };
 
 /**
+ * How much trailing silence a voice clip keeps (#1643): `VOICE_TAIL_TRIM` in
+ * `src/presets.mjs`, which documents each value.
+ */
+export type VoiceTailTrim = {
+  /** The silence left after the speech end, in milliseconds. */
+  keepMs: number;
+  /** A window is speech when its RMS is at or above this, in dBFS (full scale = 1.0). */
+  thresholdDbfs: number;
+  /** The length of the non-overlapping windows the clip is scanned in, in milliseconds. */
+  windowMs: number;
+};
+
+/** A clip decoded to 32-bit float PCM: interleaved `samples`, `channels` per frame. */
+export type DecodedPcm = {
+  sampleRate: number;
+  channels: number;
+  samples: Float32Array;
+};
+
+/**
  * Everything a processed clip's bytes depend on besides the source clip
  * (#1667). Hashed as sorted-key JSON for both the processed-clip cache key and
  * the pack record's `inputs.pipeline`; a new pipeline input is one more field.
@@ -28,6 +48,8 @@ export type PipelineIdentity = {
   filter: string;
   /** The loudness normalization ahead of the filter, `VOICE_LOUDNESS_NORMALIZATION` (#1657). */
   loudness: VoiceLoudnessNormalization;
+  /** The trailing-silence trim ahead of the loudness step, `VOICE_TAIL_TRIM` (#1643). */
+  tailTrim: VoiceTailTrim;
   /** The ffmpeg encode arguments. */
   encodeArgs: readonly string[];
   /** The installed `ffmpeg-static` version, read from its `package.json`. */
@@ -82,6 +104,30 @@ export declare function loudnessGain(
   measuredLufs: number,
   normalization?: VoiceLoudnessNormalization,
 ): { gainDb: number; warning: string | null };
+
+/**
+ * Decode a clip to 32-bit float PCM at its own rate and channel count (#1643);
+ * rejects on a failed run or output that is not float WAV.
+ *
+ * @internal Exported for testing.
+ */
+export declare function decodePcm(ffmpegPath: string, inputPath: string): Promise<DecodedPcm>;
+
+/**
+ * The first `frames` frames of `pcm` as a 32-bit float WAV file's bytes.
+ *
+ * @internal Exported for testing.
+ */
+export declare function encodeWavF32(pcm: DecodedPcm, frames: number): Buffer;
+
+/**
+ * How many of `pcm`'s frames survive the trailing-silence trim: the speech end
+ * plus `keepMs`, never more than the clip holds; all of them for a clip with
+ * no speech (#1643).
+ *
+ * @internal Exported for testing.
+ */
+export declare function tailTrimFrames(pcm: DecodedPcm, trim?: VoiceTailTrim): number;
 
 /**
  * `gainDb` as the `volume=` filter reads it: the step's decimals, never `-0`.

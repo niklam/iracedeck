@@ -37,6 +37,12 @@
  * If a final consonant IS ever swallowed, fix it where it happens — in the
  * audio service's end-callback handling — rather than padding 2800 clips.
  *
+ * The seams are now kept tight from the other side (#1643): since `eleven_v4`
+ * no clip is generated with `next_text`, every clip ends naturally with its own
+ * trailing silence, and the build trims that silence down to 20 ms ahead of
+ * this chain (`VOICE_TAIL_TRIM` below). That step only ever removes audio; the
+ * rule above — nothing adds silence to every clip — still holds.
+ *
  * **Every clip reaches this chain already loudness-normalized (#1657).** The
  * build prepends a static `volume=<gain>dB` measured from the clip itself (see
  * `VOICE_LOUDNESS_NORMALIZATION` below), so the 8 dB pre-gain drives every
@@ -92,4 +98,47 @@ export const VOICE_LOUDNESS_NORMALIZATION = Object.freeze({
   gainStepDb: 0.1,
   silenceFloorLufs: -50,
   measurement: Object.freeze({ loops: 8, filter: "ebur128=framelog=quiet" }),
+});
+
+/**
+ * How much of a voice clip's trailing silence survives the build (#1643): the
+ * clip is cut `keepMs` after its speech ends, so two clips played back to back
+ * join with at most that much silence between them.
+ *
+ * **Why it exists.** Until #1643 a clip that something follows was generated
+ * with `next_text`, which shaped its last word to run straight into the next
+ * clip and left it with almost no tail. `eleven_v4` truncates such a clip
+ * mid-sound instead — the word is cut off before it decays — so every
+ * `next_text` was removed from the voice configs (Niklas, 2026-11-15). A clip
+ * now ends naturally, with its own decay and up to a few hundred milliseconds of
+ * silence after it, and that silence is what this trims. The build cannot tell
+ * which clips used to run into another, so every voice clip gets it. 20 ms is
+ * Niklas's choice after a listening test of the lap time 1:36.673 joined with
+ * 0 ms and with 20 ms left: he heard no difference between them.
+ *
+ * **It is not #1108's pad coming back.** The reverted `apad` (see
+ * `RADIO_ENGINEER_FILTER` above) appended silence to every clip; this removes
+ * silence and never adds any. A clip with less than `keepMs` of tail after its
+ * speech is left exactly as long as it was, and so is a clip with no speech at
+ * all. Leading silence is never touched.
+ *
+ * - `keepMs` — the silence left after the speech end, in milliseconds.
+ * - `thresholdDbfs` — a window is speech when its RMS, relative to a
+ *   full-scale sample of 1.0, is at or above this. -45 dBFS sits below a
+ *   word's decay and above the generator's noise floor (about -85 dBFS on the
+ *   Default voice's clips).
+ * - `windowMs` — the length of the non-overlapping windows the clip is scanned
+ *   in, from its first sample. The speech end is the end of the last window at
+ *   or above the threshold, so it is accurate to one window.
+ *
+ * Both lengths become whole sample counts at the clip's own sample rate
+ * (rounded), and the cut is made on the decoded samples, so the same source
+ * bytes give the same output bytes on every machine. The descriptor is the
+ * pipeline identity's `tailTrim` field, so changing any value here re-encodes
+ * every clip once and marks every committed pack stale, as a filter change does.
+ */
+export const VOICE_TAIL_TRIM = Object.freeze({
+  keepMs: 20,
+  thresholdDbfs: -45,
+  windowMs: 10,
 });

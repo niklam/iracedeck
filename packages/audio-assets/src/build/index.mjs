@@ -23,7 +23,7 @@ import os from "node:os";
 import path from "node:path";
 import url from "node:url";
 
-import { RADIO_ENGINEER_FILTER, VOICE_LOUDNESS_NORMALIZATION } from "../presets.mjs";
+import { RADIO_ENGINEER_FILTER, VOICE_LOUDNESS_NORMALIZATION, VOICE_TAIL_TRIM } from "../presets.mjs";
 import { installedPackageManifest, installedPackageVersion } from "./installed-version.mjs";
 import { serializeSortedJson } from "./stable-json.mjs";
 import { BUNDLED_VOICE_IDS } from "./voice-packs.mjs";
@@ -124,7 +124,9 @@ const FFMPEG_BINARY_ENV_VAR = (() => {
  * itself (#1667), built from `env`: the radio filter chain, the loudness
  * normalization that sets each clip's gain ahead of it (`loudness`, #1657 — the
  * whole `VOICE_LOUDNESS_NORMALIZATION` descriptor: target, clamp, rounding step,
- * silence floor and measurement method), the encode arguments, and the
+ * silence floor and measurement method), the trailing-silence trim that runs
+ * ahead of both (`tailTrim`, #1643 — the whole `VOICE_TAIL_TRIM` descriptor:
+ * the silence kept, the speech threshold and the window), the encode arguments, and the
  * `ffmpeg-static` release whose binary runs them, read from
  * its installed `package.json` — the same resolution `require("ffmpeg-static")`
  * below uses. That version names the binary that ran only while
@@ -148,6 +150,7 @@ export function pipelineIdentity(env = process.env) {
   return {
     filter: RADIO_ENGINEER_FILTER,
     loudness: VOICE_LOUDNESS_NORMALIZATION,
+    tailTrim: VOICE_TAIL_TRIM,
     encodeArgs: ENCODE_ARGS,
     ffmpegStatic: installedPackageVersion("ffmpeg-static", import.meta.url),
     ...(override ? { ffmpegBinaryOverride: override } : {}),
@@ -168,17 +171,20 @@ export function pipelineIdentity(env = process.env) {
  *
  * To make something new part of the pipeline, add ONE field here — #1657's
  * loudness normalization went in this way, as `loudness`, a descriptor of its
- * target and its method — and both the cache key and the record follow. Field
+ * target and its method, and #1643's trailing-silence trim as `tailTrim` — and
+ * both the cache key and the record follow. Field
  * names are part of the hash (it is a sorted-key JSON serialization), so
  * renaming one is a re-encode too. Two rules for that field: it must be
  * JSON-safe and never `undefined` — `JSON.stringify` drops an `undefined`
  * property, so such a field would be silently absent from the hash — and
  * EVERYTHING that changes a clip's output bytes must go through here. The fixed
- * ffmpeg arguments in `runFfmpeg` (`-f mp3`, the loglevel flags) and in
- * `measureLoudness` (`-nostats`, `-f null`) are not hashed; a change to them
+ * ffmpeg arguments in `runFfmpeg` (`-f mp3`, the loglevel flags), in
+ * `measureLoudness` (`-nostats`, `-f null`) and in `decodePcm` (the 32-bit
+ * float WAV the trim and both later runs read) are not hashed; a change to them
  * that moves the output is a change to this identity too, or the cache lies.
- * The measurement's variable part — its loop count and filter — is built from
- * the hashed descriptor itself, so what runs cannot drift from what is hashed.
+ * The measurement's variable part — its loop count and filter — and the trim's
+ * threshold, window and kept silence are read from the hashed descriptors
+ * themselves, so what runs cannot drift from what is hashed.
  *
  * @type {Readonly<import("./index.d.ts").PipelineIdentity>}
  */
@@ -433,6 +439,230 @@ export function loudnessGain(measuredLufs, normalization = VOICE_LOUDNESS_NORMAL
   return { gainDb, warning: null };
 }
 
+/** WAVE format tags: IEEE float, and the extensible header that names its real format in a subformat GUID. */
+const WAVE_FORMAT_IEEE_FLOAT = 3;
+const WAVE_FORMAT_EXTENSIBLE = 0xfffe;
+
+/**
+ * Decode `inputPath` to 32-bit float PCM at its own sample rate and channel
+ * count (#1643) — the samples the trailing-silence trim scans and cuts, and,
+ * written back as WAV by `encodeWavF32`, what the loudness measurement and the
+ * encode read. Float, because ffmpeg's mp3 decoder produces float: the samples
+ * here are exactly the ones the radio filter would have been fed from the mp3,
+ * so a clip with nothing to trim is encoded from the very same audio.
+ *
+ * ffmpeg writes the WAV to a pipe, where it cannot seek back to fill in the
+ * chunk sizes; `parseWavF32` reads the data chunk to the end of the stream.
+ * Rejects on a non-zero exit, quoting the tail of ffmpeg's stderr, or on output
+ * that is not float WAV — a clip that cannot be decoded fails, as a failed
+ * encode does.
+ *
+ * @internal Exported for testing: the tests read processed output back with it.
+ * @param {string} ffmpegPath
+ * @param {string} inputPath
+ * @returns {Promise<import("./index.d.ts").DecodedPcm>}
+ */
+export function decodePcm(ffmpegPath, inputPath) {
+  return new Promise((resolve, reject) => {
+    const args = [
+      "-hide_banner",
+      "-loglevel",
+      "error",
+      "-i",
+      inputPath,
+      "-map",
+      "0:a:0",
+      "-c:a",
+      "pcm_f32le",
+      "-f",
+      "wav",
+      "pipe:1",
+    ];
+    const proc = spawn(ffmpegPath, args);
+    /** @type {Buffer[]} */
+    const chunks = [];
+    let stderr = "";
+    proc.stdout.on("data", (chunk) => {
+      chunks.push(chunk);
+    });
+    proc.stderr.on("data", (chunk) => {
+      stderr += chunk.toString();
+    });
+    proc.on("error", reject);
+    proc.on("close", (code) => {
+      if (code !== 0) {
+        reject(new Error(`ffmpeg decode exit ${code}: ${stderrTail(stderr)}`));
+        return;
+      }
+
+      try {
+        resolve(parseWavF32(Buffer.concat(chunks)));
+      } catch (err) {
+        reject(err);
+      }
+    });
+  });
+}
+
+/**
+ * The samples of a 32-bit float WAV, as ffmpeg's `wav` muxer writes one: the
+ * `fmt ` chunk may be the extensible form (its subformat then names the float
+ * format), other chunks (`LIST`, `fact`) are skipped, and the `data` chunk's
+ * size is read only as far as the buffer goes, since a piped WAV carries a
+ * placeholder there. A trailing partial frame is dropped.
+ *
+ * @param {Buffer} wav
+ * @returns {import("./index.d.ts").DecodedPcm}
+ */
+function parseWavF32(wav) {
+  if (wav.length < 12 || wav.toString("latin1", 0, 4) !== "RIFF" || wav.toString("latin1", 8, 12) !== "WAVE") {
+    throw new Error(`decoded audio is not a WAV file (${wav.length} bytes)`);
+  }
+
+  /** @type {{ sampleRate: number; channels: number } | null} */
+  let format = null;
+  let offset = 12;
+
+  while (offset + 8 <= wav.length) {
+    const id = wav.toString("latin1", offset, offset + 4);
+    const size = wav.readUInt32LE(offset + 4);
+    const body = offset + 8;
+
+    if (id === "fmt ") {
+      if (size < 16 || body + size > wav.length)
+        throw new Error(`decoded WAV has a truncated fmt chunk (${size} bytes)`);
+
+      const tag = wav.readUInt16LE(body);
+      const formatTag = tag === WAVE_FORMAT_EXTENSIBLE && size >= 26 ? wav.readUInt16LE(body + 24) : tag;
+      const bits = wav.readUInt16LE(body + 14);
+
+      if (formatTag !== WAVE_FORMAT_IEEE_FLOAT || bits !== 32) {
+        throw new Error(`decoded WAV is not 32-bit float (format ${formatTag}, ${bits} bits)`);
+      }
+
+      format = { channels: wav.readUInt16LE(body + 2), sampleRate: wav.readUInt32LE(body + 4) };
+    } else if (id === "data") {
+      if (format === null) throw new Error("decoded WAV has its data chunk before its fmt chunk");
+
+      const { sampleRate, channels } = format;
+
+      if (channels < 1 || sampleRate < 1) throw new Error(`decoded WAV has ${channels} channels at ${sampleRate} Hz`);
+
+      const available = Math.min(size, wav.length - body);
+      const frames = Math.floor(available / (4 * channels));
+      const samples = new Float32Array(frames * channels);
+
+      for (let i = 0; i < samples.length; i++) samples[i] = wav.readFloatLE(body + 4 * i);
+
+      return { sampleRate, channels, samples };
+    }
+
+    offset = body + size + (size & 1);
+  }
+
+  throw new Error("decoded WAV has no data chunk");
+}
+
+/**
+ * The first `frames` frames of `pcm` as a 32-bit float WAV: a plain `fmt `
+ * chunk (IEEE float, `cbSize` 0), a `fact` chunk with the frame count, then the
+ * samples. Every size is written, so ffmpeg reads exactly these frames. The
+ * samples are written bit for bit as decoded.
+ *
+ * @internal Exported for testing.
+ * @param {import("./index.d.ts").DecodedPcm} pcm
+ * @param {number} frames — at most the frames `pcm` holds
+ * @returns {Buffer}
+ */
+export function encodeWavF32(pcm, frames) {
+  const { sampleRate, channels, samples } = pcm;
+  const sampleCount = frames * channels;
+
+  if (!Number.isInteger(frames) || frames < 0 || sampleCount > samples.length) {
+    throw new Error(`encodeWavF32: ${frames} frames requested, ${samples.length / channels} decoded`);
+  }
+
+  const dataBytes = sampleCount * 4;
+  const header = 12 + (8 + 18) + (8 + 4) + 8;
+  const wav = Buffer.alloc(header + dataBytes);
+  // `write` returns the bytes it wrote; the `write<Int>` methods return the next offset.
+  let at = 0;
+
+  at += wav.write("RIFF", at, "latin1");
+  at = wav.writeUInt32LE(header - 8 + dataBytes, at);
+  at += wav.write("WAVE", at, "latin1");
+  at += wav.write("fmt ", at, "latin1");
+  at = wav.writeUInt32LE(18, at);
+  at = wav.writeUInt16LE(WAVE_FORMAT_IEEE_FLOAT, at);
+  at = wav.writeUInt16LE(channels, at);
+  at = wav.writeUInt32LE(sampleRate, at);
+  at = wav.writeUInt32LE(sampleRate * channels * 4, at);
+  at = wav.writeUInt16LE(channels * 4, at);
+  at = wav.writeUInt16LE(32, at);
+  at = wav.writeUInt16LE(0, at);
+  at += wav.write("fact", at, "latin1");
+  at = wav.writeUInt32LE(4, at);
+  at = wav.writeUInt32LE(frames, at);
+  at += wav.write("data", at, "latin1");
+  at = wav.writeUInt32LE(dataBytes, at);
+
+  for (let i = 0; i < sampleCount; i++) at = wav.writeFloatLE(samples[i], at);
+
+  return wav;
+}
+
+/**
+ * How many of `pcm`'s frames survive the trailing-silence trim (#1643): the
+ * speech end plus `trim.keepMs`, never more than the clip holds. Pure, so its
+ * boundaries are table-tested without ffmpeg.
+ *
+ * The clip is scanned from its first frame in non-overlapping windows of
+ * `trim.windowMs` (the last one may be shorter); a window is speech when the
+ * mean of its squared samples, over every channel, is at least the square of
+ * `trim.thresholdDbfs` as a linear amplitude. The speech end is the end of the
+ * last such window. Both lengths are rounded to whole frames at the clip's own
+ * rate, and the cut is a frame index, so no float time ever reaches ffmpeg; the
+ * one transcendental, the threshold's `10 **`, is computed by V8's own math
+ * library and so is the same on every machine running the same Node.
+ *
+ * Returns the clip's own length — nothing trimmed — when no window reaches the
+ * threshold (a silent clip, which the loudness step then warns about), or when
+ * less than `keepMs` follows the speech end. Leading silence is never touched.
+ *
+ * @internal Exported for testing.
+ * @param {import("./index.d.ts").DecodedPcm} pcm
+ * @param {import("./index.d.ts").VoiceTailTrim} [trim]
+ * @returns {number} frames to keep
+ */
+export function tailTrimFrames(pcm, trim = VOICE_TAIL_TRIM) {
+  const { sampleRate, channels, samples } = pcm;
+  const { keepMs, thresholdDbfs, windowMs } = trim;
+
+  if (!(windowMs > 0) || !(keepMs >= 0) || !Number.isFinite(thresholdDbfs)) {
+    throw new Error(`tailTrimFrames: not a trim descriptor: ${JSON.stringify(trim)}`);
+  }
+
+  const frames = Math.floor(samples.length / channels);
+  const windowFrames = Math.max(1, Math.round((sampleRate * windowMs) / 1000));
+  const keepFrames = Math.round((sampleRate * keepMs) / 1000);
+  const threshold = 10 ** (thresholdDbfs / 20);
+  const thresholdSquare = threshold * threshold;
+  let speechEnd = 0;
+
+  for (let start = 0; start < frames; start += windowFrames) {
+    const end = Math.min(start + windowFrames, frames);
+    let sum = 0;
+
+    for (let i = start * channels; i < end * channels; i++) sum += samples[i] * samples[i];
+
+    if (sum / ((end - start) * channels) >= thresholdSquare) speechEnd = end;
+  }
+
+  if (speechEnd === 0) return frames;
+
+  return Math.min(frames, speechEnd + keepFrames);
+}
+
 async function runWithConcurrency(tasks, limit) {
   const queue = [...tasks];
   let failed = null;
@@ -528,13 +758,24 @@ let tempInvocationCounter = 0;
  * could be encoded as the new ones, and the sidecar would then vouch for audio
  * it never produced.
  *
- * ffmpeg runs TWICE on that one snapshot (#1657). First `measureLoudness`
- * reads the clip's integrated loudness and `loudnessGain` turns it into the
- * static gain that brings it to `VOICE_LOUDNESS_NORMALIZATION`'s target — the
- * descriptor the pipeline identity hashes as `loudness`; then the encode runs
- * with `volume=<gain>dB,` in front of `filterChain`. Measuring the snapshot,
- * not `sourcePath`, is the same rule as encoding it: the gain baked into the
- * output is the gain of the bytes the sidecar names. A failed measurement
+ * ffmpeg runs THREE times, every run on that one snapshot or on audio derived
+ * from it. First `decodePcm` decodes it to float PCM, and `tailTrimFrames`
+ * finds how much of it to keep: everything up to `VOICE_TAIL_TRIM.keepMs` after
+ * the speech ends (#1643) — the descriptor the pipeline identity hashes as
+ * `tailTrim`. Those frames are written to a second snapshot, a float WAV, and
+ * the two later runs read it, so the gain is measured on exactly the audio that
+ * ships. The cut is made here on the decoded samples, not by an `atrim` in the
+ * encode's filter chain, because the measurement loops its input
+ * (`-stream_loop`) and an `atrim` there would cut the looped stream rather than
+ * each copy; and not by an extra mp3 encode, which would add a second lossy
+ * generation and the encoder's own delay and padding. Then (#1657) `measureLoudness`
+ * reads the trimmed clip's integrated loudness and `loudnessGain` turns it into
+ * the static gain that brings it to `VOICE_LOUDNESS_NORMALIZATION`'s target —
+ * the descriptor the pipeline identity hashes as `loudness`; then the encode
+ * runs with `volume=<gain>dB,` in front of `filterChain`. Reading the
+ * snapshots, not `sourcePath`, is the same rule for all three: the gain baked
+ * into the output is the gain of the bytes the sidecar names. A failed decode
+ * or measurement
  * fails the clip exactly as a failed encode does, with nothing published,
  * because a gain is never guessed. The reading has no cache of its own: a clip
  * is measured only when it is re-encoded, and the content check keeps the
@@ -544,10 +785,10 @@ let tempInvocationCounter = 0;
  *
  * ffmpeg's output is written to a `.tmp` file and only `renameSync`'d onto
  * `cachedPath` once it succeeds, so a failed or killed encode can never leave a
- * partial file at the path `cacheIsFresh` trusts. Both temp files carry a
+ * partial file at the path `cacheIsFresh` trusts. All three temp files carry a
  * per-invocation suffix (the counter above) and are cleaned up unconditionally.
  *
- * Publish order, once both ffmpeg runs have succeeded: the EXISTING sidecar is removed
+ * Publish order, once every ffmpeg run has succeeded: the EXISTING sidecar is removed
  * first, the new output is renamed onto `cachedPath` second, and the new
  * sidecar is written last. A process killed between any two of those steps
  * must never leave a cache entry `cacheIsFresh` calls fresh but that
@@ -567,16 +808,19 @@ async function processClipIntoCache(ffmpegPath, sourcePath, cachedPath, filterCh
 
   const invocationId = `${process.pid}.${tempInvocationCounter++}`;
   const snapshotPath = `${cachedPath}.${invocationId}.src.tmp`;
+  const trimmedPath = `${cachedPath}.${invocationId}.pcm.tmp`;
   const outputTmpPath = `${cachedPath}.${invocationId}.tmp`;
   const digestPath = sourceDigestPath(cachedPath);
 
   try {
     writeFileSync(snapshotPath, bytes);
-    const measuredLufs = await measureLoudness(ffmpegPath, snapshotPath, normalization);
+    const pcm = await decodePcm(ffmpegPath, snapshotPath);
+    writeFileSync(trimmedPath, encodeWavF32(pcm, tailTrimFrames(pcm, VOICE_TAIL_TRIM)));
+    const measuredLufs = await measureLoudness(ffmpegPath, trimmedPath, normalization);
     const { gainDb, warning } = loudnessGain(measuredLufs, normalization);
     await runFfmpeg(
       ffmpegPath,
-      snapshotPath,
+      trimmedPath,
       outputTmpPath,
       `volume=${formatGainDb(gainDb, normalization)}dB,${filterChain}`,
     );
@@ -590,6 +834,7 @@ async function processClipIntoCache(ffmpegPath, sourcePath, cachedPath, filterCh
     throw err;
   } finally {
     rmSync(snapshotPath, { force: true });
+    rmSync(trimmedPath, { force: true });
   }
 }
 
