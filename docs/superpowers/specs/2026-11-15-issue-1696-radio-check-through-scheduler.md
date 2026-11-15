@@ -10,9 +10,9 @@ The telemetry-connect radio check (#554) is played by Pit Crew straight onto `Au
 
 ## Decisions
 
-1. **The radio check becomes a fire on the Voice bus,** through a new `IScenarioEngine` entry point beside `playFramePreview`: `playClips(id, paths, { weight })`. It plays exactly the clip paths given, in order, on the Voice channel, with no radio frame (as today), through `Playback` like any fire.
+1. **The radio check becomes a fire on the Voice bus,** through a new `IScenarioEngine` entry point beside `playFramePreview`: `playClips(id, paths, { weight, whenBusy })`. It plays exactly the clip paths given, in order, on the Voice channel, with no radio frame (as today), through `Playback` like any fire.
 2. **It is arbitrated like a contract's fire once it holds the bus.** An arriving fire of equal or lower weight waits when queueable and drops when not; a heavier one without `interrupt` waits for it; a heavier one with `interrupt` cuts it. A cut clip fire is over: it is never stashed or replayed. The radio check uses weight `NORMAL`, so the NORMAL, queueable session-start and race-start briefs wait behind it and play right after, and the safety band can still cut it.
-3. **It starts only on a free bus** — no active fire, an empty queue, no focus floor — the test `playFramePreview` uses, except that the frame preview yields to it as to any callout. On a busy bus it plays nothing and returns `"bus-busy"`; the radio check then logs `Radio check skipped — the engineer holds the radio` at debug. The engineer already speaking is the confirmation the line exists to give, and a late ack would be noise.
+3. **What it does on a busy bus is an option, `whenBusy`.** This spec defines one value, `"skip"`, which the radio check uses: it starts only on a free bus (no active fire, an empty queue, no focus floor), the test `playFramePreview` uses, except that the frame preview yields to it as to any callout. On a busy bus it plays nothing and returns `"bus-busy"`; the radio check then logs `Radio check skipped — the engineer holds the radio` at debug. The engineer already speaking is the confirmation the line exists to give, and a late ack would be noise.
 4. **The trigger and the gates stay in Pit Crew.** The rising-edge detection, the Race Engineer master gate, the opt-in, the voice and the name clip are unchanged; only the play call moves. With the engine not initialised, Pit Crew plays as it does today.
 5. **No script, no pack change.** The clips stay "played by path outside any script", so every installed pack, third-party ones included, keeps the line, and the pack reference and linter are unchanged.
 
@@ -27,6 +27,7 @@ The telemetry-connect radio check (#554) is played by Pit Crew straight onto `Au
 - The corner-names, Race Engineer on/off and Test-button acknowledgments, which also play by path; the corner-names one can cut a callout and strand its fire. Its own issue, since a key press needs an answer even while the engineer talks.
 - Where the radio check is triggered (a visible Pit Crew key's SDK subscription).
 - How long a waiting fire may wait and when that wait starts (#1681).
+- Other `whenBusy` values, such as an acknowledgment that cuts the running callout and lets it resume (#1698). (Amended 2026-11-15: the busy rule is an option so #1698 can add its value; #1696 implements and tests only `"skip"`.)
 
 ## Testing
 
