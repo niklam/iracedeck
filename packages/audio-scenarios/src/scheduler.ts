@@ -439,7 +439,7 @@ export class Scheduler implements PlaybackListener {
     event: SimEventOf<SimEventName> | null,
     resume?: ResumeState,
     admitted = false,
-    queuedAt?: number,
+    dueAt?: number,
   ): void {
     const now = Date.now();
 
@@ -459,7 +459,7 @@ export class Scheduler implements PlaybackListener {
     // admits the safety-flag callouts while holding back routine chatter.
     if (this.belowFloor(state, entry.raw.focusOwner, weight)) {
       const reason = `below focus floor (${state.schedule.focus?.ownerId ?? ""})`;
-      this.queueOrDrop(entry, event, weight, state, reason, resume, admitted, queuedAt);
+      this.queueOrDrop(entry, event, weight, state, reason, resume, admitted, dueAt);
 
       return;
     }
@@ -511,13 +511,13 @@ export class Scheduler implements PlaybackListener {
         // Higher weight, no interrupt: win the bus but let the current line
         // finish — wait in the queue, queueable or not.
         const reason = "waiting for bus (higher weight, no interrupt)";
-        this.enqueue(entry.raw.id, event, weight, state, reason, resume, admitted, queuedAt);
+        this.enqueue(entry.raw.id, event, weight, state, reason, resume, admitted, dueAt);
 
         return;
       }
 
       // Equal or lower weight: can't take the bus now.
-      this.queueOrDrop(entry, event, weight, state, "bus busy", resume, admitted, queuedAt);
+      this.queueOrDrop(entry, event, weight, state, "bus busy", resume, admitted, dueAt);
 
       return;
     }
@@ -529,7 +529,7 @@ export class Scheduler implements PlaybackListener {
     // busy bus, and the drain plays the two in order.
     if (state.schedule.queue.hasLeaderFor(entry.raw.id, now)) {
       const reason = "the fire it waits behind is pending";
-      this.enqueue(entry.raw.id, event, weight, state, reason, resume, admitted, queuedAt);
+      this.enqueue(entry.raw.id, event, weight, state, reason, resume, admitted, dueAt);
 
       return;
     }
@@ -583,10 +583,10 @@ export class Scheduler implements PlaybackListener {
     reason: string,
     resume?: ResumeState,
     admitted = false,
-    queuedAt?: number,
+    dueAt?: number,
   ): void {
     if (entry.raw.queueable === true) {
-      this.enqueue(entry.raw.id, event, weight, state, `deferred (${reason})`, resume, admitted, queuedAt);
+      this.enqueue(entry.raw.id, event, weight, state, `deferred (${reason})`, resume, admitted, dueAt);
     } else {
       this.logger.debug(`Scenario "${entry.raw.id}" dropped (${reason})`);
     }
@@ -597,7 +597,7 @@ export class Scheduler implements PlaybackListener {
    * heaviest first, then the longest-waiting, a `queueBehind` follower right
    * after its leader — supersedes any waiting fire of its group, applies the
    * cap and drops what has waited too long; this logs every drop and the
-   * newcomer's place. `queuedAt` is the time of the fire's FIRST deferral: a
+   * newcomer's place. `dueAt` is the time of the fire's FIRST deferral: a
    * replay deferred again passes its own, so its max wait still runs from
    * then. `admitted` travels with the fire (see `WaitingFire.admitted`).
    * `yieldsToGroup` marks an interrupt's stash, which gives way to a newer
@@ -611,7 +611,7 @@ export class Scheduler implements PlaybackListener {
     reason: string,
     resume?: ResumeState,
     admitted = false,
-    queuedAt: number = Date.now(),
+    dueAt: number = Date.now(),
     yieldsToGroup = false,
   ): void {
     const raw = this.deps.contracts.get(id)?.raw;
@@ -620,9 +620,9 @@ export class Scheduler implements PlaybackListener {
         id,
         weight,
         group: raw?.supersedeGroup ?? id,
-        queuedAt,
+        dueAt,
         maxWaitMs: raw?.maxQueueWaitMs ?? DEFAULT_MAX_QUEUE_WAIT_MS,
-        fire: { id, event, weight, resume, admitted, queuedAt },
+        fire: { id, event, weight, resume, admitted, dueAt },
         yieldsToGroup,
       },
       Date.now(),
@@ -883,7 +883,7 @@ export class Scheduler implements PlaybackListener {
    * for it — leaves the bus idle and the loop takes the next entry at once,
    * so a refused head never stalls the queue and a leader's follower plays
    * next. A replay that is deferred again (re-offered with its original
-   * `queuedAt`) stops the drain rather than taking it off the queue again.
+   * `dueAt`) stops the drain rather than taking it off the queue again.
    */
   private drainPending(state: BusView): void {
     this.clearPendingHold(state);
@@ -897,7 +897,7 @@ export class Scheduler implements PlaybackListener {
 
       this.replayWaiting(entry.fire);
 
-      // Deferred again: it is back in the queue with its original `queuedAt`
+      // Deferred again: it is back in the queue with its original `dueAt`
       // — stop, rather than take the same fire off the queue in a loop. A
       // defensive bound: `playableAtIdle` filters out every idle-bus
       // re-deferral `attemptFire` knows today (the focus floor, a waiting
@@ -928,6 +928,6 @@ export class Scheduler implements PlaybackListener {
     }
 
     this.logger.debug(`Replaying pending scenario "${waiting.id}"`);
-    this.attemptFire(entry, waiting.event, waiting.resume, waiting.admitted, waiting.queuedAt);
+    this.attemptFire(entry, waiting.event, waiting.resume, waiting.admitted, waiting.dueAt);
   }
 }

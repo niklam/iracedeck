@@ -75,7 +75,7 @@ export type WaitingFire = {
    * outlive its max wait by being re-parked. A fire an interrupt cut out of
    * playback is a new deferral and starts a new one.
    */
-  queuedAt: number;
+  dueAt: number;
 };
 
 /** Where an interrupted resumable fire left off, for continuation at idle-replay. */

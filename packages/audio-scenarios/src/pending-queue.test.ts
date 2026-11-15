@@ -7,8 +7,8 @@ function relations(map: Record<string, string[]>) {
   return (followerId: string, leaderId: string) => map[followerId]?.includes(leaderId) ?? false;
 }
 
-function input(id: string, weight: number, queuedAt = 0, extra: Partial<OfferInput<string>> = {}): OfferInput<string> {
-  return { id, weight, group: id, queuedAt, maxWaitMs: 8000, fire: id, ...extra };
+function input(id: string, weight: number, dueAt = 0, extra: Partial<OfferInput<string>> = {}): OfferInput<string> {
+  return { id, weight, group: id, dueAt, maxWaitMs: 8000, fire: id, ...extra };
 }
 
 const ids = (q: PendingQueue<string>) => q.ordered().map((e) => e.id);
@@ -47,7 +47,7 @@ describe("PendingQueue (issue #1185)", () => {
     q.offer(input("readout", 40, 0), 0);
     q.offer(input("readout", 40, 5), 5);
     expect(q.size).toBe(1);
-    expect(q.ordered()[0].queuedAt).toBe(5);
+    expect(q.ordered()[0].dueAt).toBe(5);
   });
 
   it("a stash that yields to its group is itself dropped when a newer entry of the group waits", () => {
@@ -60,7 +60,7 @@ describe("PendingQueue (issue #1185)", () => {
     ]);
     expect(r.position).toBeNull();
     expect(ids(q)).toEqual(["b"]);
-    expect(q.ordered()[0].queuedAt).toBe(10);
+    expect(q.ordered()[0].dueAt).toBe(10);
   });
 
   it("a stash that yields to its group waits as usual when nothing of its group waits", () => {
@@ -171,10 +171,10 @@ describe("PendingQueue (issue #1185)", () => {
     expect(q.next(8000).entry?.id).toBe("a");
   });
 
-  it("a re-offered entry keeps its original queuedAt, so its wait runs from the first deferral", () => {
+  it("a re-offered entry keeps its original dueAt, so its wait runs from the first deferral", () => {
     const q = new PendingQueue<string>(relations({}));
     q.offer(input("a", 50, 0), 5000);
-    expect(q.ordered()[0].queuedAt).toBe(0);
+    expect(q.ordered()[0].dueAt).toBe(0);
     const { entry, drops } = q.next(8500);
     expect(entry).toBeNull();
     expect(drops).toEqual([

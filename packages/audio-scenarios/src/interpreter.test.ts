@@ -3344,7 +3344,7 @@ describe("bounded pending queue (issue #1185)", () => {
       define("owner", WEIGHT.PROXIMITY, { queueable: false, focusOwner: "spotter" });
     }
 
-    it("(6) a fire kept below the floor across a drain keeps its first queuedAt and expires 8 s after it", () => {
+    it("(6) a fire kept below the floor across a drain keeps its first dueAt and expires 8 s after it", () => {
       defineOwner();
       define("a", WEIGHT.NORMAL);
       engine.acquireFocus(AudioBus.Voice, "spotter", WEIGHT.SAFETY);
@@ -3949,7 +3949,7 @@ describe("bounded pending queue (issue #1185)", () => {
             id: "q.a",
             weight: WEIGHT.NORMAL,
             group: "penalty",
-            queuedAt: 1_000_250,
+            dueAt: 1_000_250,
             maxWaitMs: 30_000,
             after: null,
           },

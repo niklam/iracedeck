@@ -4,7 +4,7 @@
  *
  * Pure: no timers, no logger. Every operation returns what left the queue
  * without playing and why, and the interpreter logs it. Placement is
- * heaviest first, then oldest `queuedAt`, then insertion; a `queueBehind`
+ * heaviest first, then oldest `dueAt`, then insertion; a `queueBehind`
  * follower sits right after its leader whatever the weights and does not
  * count toward the cap. A newcomer supersedes any waiting entry of its
  * `group`, which is how the features the single slot provided by eviction
@@ -33,7 +33,7 @@ export type QueuedFire<F> = {
   /** The supersede group (spec §3); defaults to the contract id upstream. */
   readonly group: string;
   /** When the fire was FIRST deferred; a re-deferral keeps it. */
-  readonly queuedAt: number;
+  readonly dueAt: number;
   readonly maxWaitMs: number;
   /** The waiting entry this one plays right after (`queueBehind`), or null. */
   after: string | null;
@@ -47,7 +47,7 @@ export type OfferInput<F> = {
   id: string;
   weight: number;
   group: string;
-  queuedAt: number;
+  dueAt: number;
   maxWaitMs: number;
   fire: F;
   /**
@@ -84,20 +84,20 @@ export type OfferResult<F> = {
   behind: string | null;
 };
 
-/** Play order: heaviest, then oldest `queuedAt`, then earliest insertion. */
+/** Play order: heaviest, then oldest `dueAt`, then earliest insertion. */
 const byPriority = <F>(a: QueuedFire<F>, b: QueuedFire<F>): number =>
-  b.weight - a.weight || a.queuedAt - b.queuedAt || a.seq - b.seq;
+  b.weight - a.weight || a.dueAt - b.dueAt || a.seq - b.seq;
 
 /**
- * Cap-victim order: lightest, then oldest `queuedAt`, then earliest insertion.
+ * Cap-victim order: lightest, then oldest `dueAt`, then earliest insertion.
  * Not the reverse of `byPriority` — within a weight the OLDEST goes, since it
  * is the nearest to its max wait and the most likely to be stale.
  */
 const byVictim = <F>(a: QueuedFire<F>, b: QueuedFire<F>): number =>
-  a.weight - b.weight || a.queuedAt - b.queuedAt || a.seq - b.seq;
+  a.weight - b.weight || a.dueAt - b.dueAt || a.seq - b.seq;
 
 /** Whether an entry has waited past its max wait at `now` (exactly at it is still served). */
-const isExpired = <F>(e: QueuedFire<F>, now: number): boolean => now - e.queuedAt > e.maxWaitMs;
+const isExpired = <F>(e: QueuedFire<F>, now: number): boolean => now - e.dueAt > e.maxWaitMs;
 
 export class PendingQueue<F> {
   private entries: QueuedFire<F>[] = [];
@@ -249,7 +249,7 @@ export class PendingQueue<F> {
     for (const e of [...this.entries]) {
       if (isExpired(e, now)) {
         this.removeEntry(e);
-        drops.push({ entry: e, reason: { kind: "expired", waitedMs: now - e.queuedAt, maxWaitMs: e.maxWaitMs } });
+        drops.push({ entry: e, reason: { kind: "expired", waitedMs: now - e.dueAt, maxWaitMs: e.maxWaitMs } });
       }
     }
 
