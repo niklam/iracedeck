@@ -1062,6 +1062,52 @@ describe("migrateFuelMarginDefault (#1679)", () => {
       expect(logger.info).toHaveBeenCalledWith(MOVED);
     });
 
+    it("keeps the moved 0 when a later upgrade re-asks the host of an abandoned store, and does not run again", async () => {
+      // Why an abandoned store may be migrated at all: the re-ask a newer build
+      // makes (#1047) merges the host UNDER the file, so the host's stale 0.3
+      // cannot bring the old default back.
+      const first = createMemorySettingsStore(
+        defaultsFile({ fuelCalloutMarginLaps: 0.3, [MIGRATION_ABANDONED_KEY]: VERSION }),
+      );
+      // The build that gave up is the one running, so this start does not re-ask.
+      initGlobalSettings(createMockAdapter(), createMockLogger(), first, { pluginVersion: VERSION });
+      migrateFuelMarginDefault(VERSION, createMockLogger());
+      await tick();
+
+      expect(getSettingsStoreHostDerivation()).toBe("abandoned");
+      expect(cache().fuelCalloutMarginLaps).toBe(0);
+      expect(cache()[MARKER]).toBe(VERSION);
+
+      // The next start, a semver-newer build, on the bytes that start wrote.
+      const file = lastSave(first);
+      expect(file).toMatchObject({ fuelCalloutMarginLaps: 0, [MARKER]: VERSION, [MIGRATION_ABANDONED_KEY]: VERSION });
+      _resetGlobalSettings();
+      const { adapter, echo } = createEchoAdapter();
+      const second = createMemorySettingsStore(file);
+      initGlobalSettings(adapter, createMockLogger(), second, { pluginVersion: "3.10.0" });
+      const logger = createMockLogger();
+      migrateFuelMarginDefault("3.10.0", logger);
+      await tick();
+
+      expect(adapter.getGlobalSettings).toHaveBeenCalledTimes(1); // the re-ask
+      expect(isSettingsStoreReady()).toBe(false);
+
+      // The host was never mirrored to while abandoned, so it still holds 0.3.
+      echo({ fuelCalloutMarginLaps: 0.3, blackBoxLapTiming: "from the host" });
+
+      // A real answer retires the give-up: the store is host-derived now.
+      expect(getSettingsStoreSource()).toBe("host");
+      expect(getSettingsStoreHostDerivation()).toBe("host-derived");
+      expect(cache().fuelCalloutMarginLaps).toBe(0);
+      expect(cache().blackBoxLapTiming).toBe("from the host"); // the host did fill a key the file never held
+      // The first run's marker, not this build's: the migration did not run again.
+      expect(cache()[MARKER]).toBe(VERSION);
+      expect(lastSave(second)).toMatchObject({ fuelCalloutMarginLaps: 0, [MARKER]: VERSION });
+      expect(logger.info).not.toHaveBeenCalled();
+      expect(logger.debug).not.toHaveBeenCalled();
+      expect(logger.warn).not.toHaveBeenCalled();
+    });
+
     it("writes nothing, marker included, when the stored file cannot be parsed; the next readable start migrates", async () => {
       const file = { fuelCalloutMarginLaps: 0.3, driverName: "kept" };
       const store = initWithStore(file);
