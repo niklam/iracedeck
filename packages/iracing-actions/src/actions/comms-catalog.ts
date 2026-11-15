@@ -35,7 +35,7 @@ import {
   keybindKeys,
 } from "@iracedeck/deck-core";
 
-import { BLACK_BOX_CONTROL_KEYS, BLACK_BOX_GLOBAL_KEYS } from "../shared/black-box.js";
+import { BLACK_BOX_CONTROL_KEYS, BLACK_BOX_GLOBAL_KEYS, BLACK_BOX_SELECTED_CONTROL_KEYS } from "../shared/black-box.js";
 import { CAR_CYCLE_BINDING_KEYS } from "../shared/car-cycle-bindings.js";
 import { SPOTTER_GLOBAL_KEYS } from "../shared/spotter-bindings.js";
 import {
@@ -142,23 +142,37 @@ export const COMMS_CATALOG: Record<string, ActionCommEntry> = {
     next: keybind(BLACK_BOX_CONTROL_KEYS.cycleNext),
     previous: keybind(BLACK_BOX_CONTROL_KEYS.cyclePrevious),
     "toggle-size": keybind(BLACK_BOX_CONTROL_KEYS.toggleSize),
+    // One mode for the five presses on the open box's selected control (#1585),
+    // its binding resolved by the `control` sub-setting as Direct's is by `blackBox`.
+    "selected-control": keybindBy("control", BLACK_BOX_SELECTED_CONTROL_KEYS),
   }),
 
-  // The dial surface of Black Box Selector (#808). Rotation always cycles — there
-  // is no rotation-setting selector — so it is a single fixed mode the PI selects
-  // via `default-mode="cycle"` (there is no `dial.rotation` control to read;
-  // `_meta.modeSetting` names a setting that never exists in the DOM). The
-  // "cycle" descriptor is the next/previous key PAIR (warn if either is unset).
-  // The press gesture `open-selected-box` opens the box chosen by `dial.pressBox`,
-  // reusing the keypad Direct mode's per-box keys via the keyBy descriptor (the
-  // audio-controls `mute-unmute` pattern); `toggle-size` taps Toggle Black Box
-  // Size (#1238). Every dial path is keybind-backed — black-box selection has no
-  // SDK support. A separate entry from the keypad map:
-  // the keypad `next`/`previous` are single keys, the dial rotation needs both.
+  // The dial surface of Black Box Selector (#808). The rotation descriptors are
+  // keyed by `dial.rotation` (#1585): `boxes` (the default) cycles the boxes,
+  // `select-control` walks the open box's controls and `adjust-control` changes
+  // the selected one, each the clockwise / counter-clockwise key PAIR (warn if
+  // either is unset) — the pairs the surface's ROTATION_KEYS turns, which a test
+  // holds this map to. The press gesture `open-selected-box` opens the box
+  // chosen by `dial.pressBox`, reusing the keypad Direct mode's per-box keys via
+  // the keyBy descriptor (the audio-controls `mute-unmute` pattern);
+  // `toggle-size` taps Toggle Black Box Size (#1238); `toggle-control`,
+  // `next-control` and `previous-control` tap the selected-control presses
+  // (#1585). Every dial path that reaches iRacing is keybind-backed — black-box
+  // selection has no SDK support. The gesture values "switch-rotation" and
+  // "none" are intentionally omitted: switch-rotation only flips the dial's own
+  // `dial.rotation` and sends nothing to iRacing, so the status line renders
+  // nothing for it (like Fuel Service's "switch-mode"). A separate entry from
+  // the keypad map: the keypad `next`/`previous` are single keys, the dial
+  // rotation needs both.
   "black-box-selector-dial": entry("dial.rotation", {
-    cycle: pair(BLACK_BOX_CONTROL_KEYS.cycleNext, BLACK_BOX_CONTROL_KEYS.cyclePrevious),
+    boxes: pair(BLACK_BOX_CONTROL_KEYS.cycleNext, BLACK_BOX_CONTROL_KEYS.cyclePrevious),
+    "select-control": pair(BLACK_BOX_CONTROL_KEYS.selectNextControl, BLACK_BOX_CONTROL_KEYS.selectPreviousControl),
+    "adjust-control": pair(BLACK_BOX_CONTROL_KEYS.incrementControl, BLACK_BOX_CONTROL_KEYS.decrementControl),
     "open-selected-box": keybindBy("dial.pressBox", BLACK_BOX_GLOBAL_KEYS),
     "toggle-size": keybind(BLACK_BOX_CONTROL_KEYS.toggleSize),
+    "toggle-control": keybind(BLACK_BOX_CONTROL_KEYS.toggleControl),
+    "next-control": keybind(BLACK_BOX_CONTROL_KEYS.selectNextControl),
+    "previous-control": keybind(BLACK_BOX_CONTROL_KEYS.selectPreviousControl),
   }),
 
   "splits-delta-cycle": entry("mode", {

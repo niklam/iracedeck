@@ -17,9 +17,28 @@
 					<option value="next">Next</option>
 					<option value="previous">Previous</option>
 					<option value="toggle-size">Toggle Size</option>
+					<option value="selected-control">Selected Control</option>
 				</sdpi-select>
 			</sdpi-item>
 			<ird-binding-status mode-setting="<%= __comms._meta.modeSetting %>" comms='<%= JSON.stringify(__comms) %>'></ird-binding-status>
+
+			<!-- Selected Control mode: which press on the open box's selected control (#1585) -->
+			<sdpi-item label="Control" id="control-item" class="hidden">
+				<sdpi-select id="control-select" setting="control" default="next">
+					<option value="next">Select Next Control</option>
+					<option value="previous">Select Previous Control</option>
+					<option value="increment">Increment Selected Control</option>
+					<option value="decrement">Decrement Selected Control</option>
+					<option value="toggle">Toggle Selected Control</option>
+				</sdpi-select>
+			</sdpi-item>
+			<div class="ird-supporting-text hidden" id="control-help">
+				Acts on the selected control of whichever black box is open, such as brake
+				bias in the In-car box. Select Next and Previous move between its controls,
+				Increment and Decrement change the selected one and repeat while held, and
+				Toggle switches it. With no box open, iRacing does nothing. Each uses its
+				binding below.
+			</div>
 
 			<!-- Direct mode: black box selector -->
 			<sdpi-item label="Black Box" id="blackbox-item">
@@ -39,22 +58,32 @@
 			</sdpi-item>
 		</div>
 
-		<!-- Dial settings — shown only when this instance is a dial (#808). Rotation
-		     always cycles next/previous; there is no rotation Setting to pick. -->
+		<!-- Dial settings — shown only when this instance is a dial (#808). The Mode
+		     picks what a turn does (dial.rotation, #1585). -->
 		<div id="dial-settings" class="hidden">
-			<ird-binding-status mode-setting="<%= __dialComms._meta.modeSetting %>" default-mode="cycle" comms='<%= JSON.stringify(__dialComms) %>'></ird-binding-status>
+			<sdpi-item label="Mode">
+				<sdpi-select setting="dial.rotation" default="boxes">
+					<option value="boxes">Cycle Black Boxes</option>
+					<option value="select-control">Select Control</option>
+					<option value="adjust-control">Adjust Control</option>
+				</sdpi-select>
+			</sdpi-item>
+			<ird-binding-status mode-setting="<%= __dialComms._meta.modeSetting %>" default-mode="boxes" comms='<%= JSON.stringify(__dialComms) %>'></ird-binding-status>
 			<% if (locals.platform?.features?.dialExtendedGestures !== false) { %>
 			<div class="ird-supporting-text">
-				Turn the dial to step through iRacing's black boxes — clockwise for the next
-				box, counter-clockwise for the previous. Set the Cycle Next and Cycle Previous
-				bindings below. iRacing reports no open-box state, so the touch strip shows the
-				action's identity only.
+				Turn the dial to step through iRacing's black boxes, to move between the
+				controls of the open box, or to change the selected control — clockwise for
+				the next box, the next control or an increase, counter-clockwise for the
+				reverse. Each Mode uses its pair of bindings below. iRacing reports neither the
+				open box nor the selected control, so the touch strip shows only what a turn
+				does.
 			</div>
 			<% } else { %>
 			<div class="ird-supporting-text">
-				Turn the knob to step through iRacing's black boxes — clockwise for the next
-				box, counter-clockwise for the previous. Set the Cycle Next and Cycle Previous
-				bindings below.
+				Turn the knob to step through iRacing's black boxes, to move between the
+				controls of the open box, or to change the selected control — clockwise for
+				the next box, the next control or an increase, counter-clockwise for the
+				reverse. Each Mode uses its pair of bindings below.
 			</div>
 			<% } %>
 
@@ -84,6 +113,10 @@
 					<option value="none">None</option>
 					<option value="open-selected-box">Open Selected Box</option>
 					<option value="toggle-size">Toggle Box Size</option>
+					<option value="next-control">Select Next Control</option>
+					<option value="previous-control">Select Previous Control</option>
+					<option value="toggle-control">Toggle Selected Control</option>
+					<option value="switch-rotation">Switch Select / Adjust</option>
 				</sdpi-select>
 			</sdpi-item>
 			<ird-binding-status mode-setting="dial.pressAction" comms='<%= JSON.stringify(__dialComms) %>'></ird-binding-status>
@@ -91,6 +124,30 @@
 				Toggle Box Size switches the black box that is showing between its small and
 				large size, whichever box it is. It uses the Toggle Black Box Size binding below.
 			</div>
+			<div class="ird-supporting-text">
+				Select Next Control, Select Previous Control and Toggle Selected Control act on
+				the open box, as the keypad's Selected Control mode does. With the Mode on Adjust
+				Control and the press on Select Next Control, one dial walks the box's controls
+				and changes each.
+			</div>
+			<div class="ird-supporting-text">
+				Switch Select / Adjust changes this dial's Mode between Select Control and
+				Adjust Control, so one dial can both move between the open box's controls and
+				change them. It needs no binding, and does nothing while the Mode is Cycle
+				Black Boxes.
+			</div>
+			<% if (locals.platform?.features?.dialExtendedGestures !== false) { %>
+			<div class="ird-supporting-text">
+				While the Mode is Select Control or Adjust Control, a Press Action you have not
+				chosen is Toggle Selected Control and a Long Press you have not chosen is Switch
+				Select / Adjust. Choose None to turn either off.
+			</div>
+			<% } else { %>
+			<div class="ird-supporting-text">
+				While the Mode is Select Control or Adjust Control, a Press Action you have not
+				chosen is Toggle Selected Control. Choose None to turn it off.
+			</div>
+			<% } %>
 
 			<% if (locals.platform?.features?.dialExtendedGestures !== false) { %>
 			<sdpi-item label="Long Press">
@@ -98,6 +155,10 @@
 					<option value="none">None</option>
 					<option value="open-selected-box">Open Selected Box</option>
 					<option value="toggle-size">Toggle Box Size</option>
+					<option value="next-control">Select Next Control</option>
+					<option value="previous-control">Select Previous Control</option>
+					<option value="toggle-control">Toggle Selected Control</option>
+					<option value="switch-rotation">Switch Select / Adjust</option>
 				</sdpi-select>
 			</sdpi-item>
 			<ird-binding-status mode-setting="dial.longPressAction" comms='<%= JSON.stringify(__dialComms) %>'></ird-binding-status>
@@ -107,6 +168,10 @@
 					<option value="none">None</option>
 					<option value="open-selected-box">Open Selected Box</option>
 					<option value="toggle-size">Toggle Box Size</option>
+					<option value="next-control">Select Next Control</option>
+					<option value="previous-control">Select Previous Control</option>
+					<option value="toggle-control">Toggle Selected Control</option>
+					<option value="switch-rotation">Switch Select / Adjust</option>
 				</sdpi-select>
 			</sdpi-item>
 			<ird-binding-status mode-setting="dial.tapAction" comms='<%= JSON.stringify(__dialComms) %>'></ird-binding-status>
@@ -116,6 +181,10 @@
 					<option value="none">None</option>
 					<option value="open-selected-box">Open Selected Box</option>
 					<option value="toggle-size">Toggle Box Size</option>
+					<option value="next-control">Select Next Control</option>
+					<option value="previous-control">Select Previous Control</option>
+					<option value="toggle-control">Toggle Selected Control</option>
+					<option value="switch-rotation">Switch Select / Adjust</option>
 				</sdpi-select>
 			</sdpi-item>
 			<ird-binding-status mode-setting="dial.longTouchAction" comms='<%= JSON.stringify(__dialComms) %>'></ird-binding-status>
@@ -143,12 +212,31 @@
 		<%- include('dial-controller') %>
 
 		<script>
-			function updateVisibility(mode) {
-				const blackboxItem = document.getElementById("blackbox-item");
-				if (!blackboxItem) return;
+			// What a Press Action and a Long Press nobody has chosen do, by the dial's
+			// Mode (#1585). A copy of ROTATION_GESTURE_DEFAULTS in the dial surface,
+			// which black-box-selector-pi.test.ts holds this line to.
+			const DIAL_GESTURE_DEFAULTS = {"boxes":{"pressAction":"none","longPressAction":"none"},"select-control":{"pressAction":"toggle-control","longPressAction":"switch-rotation"},"adjust-control":{"pressAction":"toggle-control","longPressAction":"switch-rotation"}};
 
-				// Show black box selector only in Direct mode
-				blackboxItem.classList.toggle("hidden", mode !== "direct");
+			// Shows an unset slot's default for the dial's Mode without storing it:
+			// sdpi-select only draws its `default` (and the binding status line reads
+			// it), and writes a setting only when the user picks an option. So the slot
+			// stays unset, and the plugin resolves it from the Mode at each press.
+			function applyDialGestureDefaults(rotation) {
+				const defaults = DIAL_GESTURE_DEFAULTS[rotation] || DIAL_GESTURE_DEFAULTS.boxes;
+
+				for (const slot of Object.keys(defaults)) {
+					document.querySelector(`sdpi-select[setting="dial.${slot}"]`)?.setAttribute("default", defaults[slot]);
+				}
+			}
+
+			function updateVisibility(mode) {
+				// Show the Black Box dropdown only in Direct mode
+				document.getElementById("blackbox-item")?.classList.toggle("hidden", mode !== "direct");
+
+				// Show the Control dropdown and its help only in Selected Control mode (#1585)
+				const selectedControl = mode === "selected-control";
+				document.getElementById("control-item")?.classList.toggle("hidden", !selectedControl);
+				document.getElementById("control-help")?.classList.toggle("hidden", !selectedControl);
 			}
 
 			// Wait for web components to be defined
@@ -174,6 +262,25 @@
 							updateVisibility(currentMode);
 						}
 					});
+				}
+
+				const rotationSelect = document.querySelector('sdpi-select[setting="dial.rotation"]');
+
+				if (rotationSelect) {
+					let lastRotation = null;
+					const syncGestureDefaults = () => {
+						const rotation = rotationSelect.value || "boxes";
+
+						if (rotation === lastRotation) return;
+
+						lastRotation = rotation;
+						applyDialGestureDefaults(rotation);
+					};
+
+					syncGestureDefaults();
+					rotationSelect.addEventListener("change", syncGestureDefaults);
+					rotationSelect.addEventListener("input", syncGestureDefaults);
+					window.irdPoll(syncGestureDefaults);
 				}
 
 				if ((await window.irdResolveController()) === "Encoder") {

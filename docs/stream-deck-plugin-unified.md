@@ -27,7 +27,7 @@ Each sub-action specifies a long-press behavior that determines what happens whe
 
 ## Main Action 1: Black Box Selector
 
-Opens a specific black box, cycles through them, or toggles the open box between small and large.
+Opens a specific black box, cycles through them, toggles the open box between small and large, or operates the open box's selected control.
 
 | Sub-Action           | Default Key      | iRacing Setting | Long-Press | Notes |
 | -------------------- | ---------------- | --------------- | ---------- | ----- |
@@ -45,8 +45,13 @@ Opens a specific black box, cycles through them, or toggles the open box between
 | Cycle Next           | _(configurable)_ | -               | None       | -     |
 | Cycle Previous       | _(configurable)_ | -               | None       | -     |
 | Toggle Size          | _(configurable)_ | Toggle Black Box Size | None | Acts on whichever box is shown (#1238) |
+| Select Next Control  | _(configurable)_ | Select Next Control | None | Selected Control mode; acts on the open box (#1585) |
+| Select Previous Control | _(configurable)_ | Select Previous Control | None | Selected Control mode (#1585) |
+| Increment Selected Control | _(configurable)_ | Increment Selected Control | Repeat | Selected Control mode (#1585) |
+| Decrement Selected Control | _(configurable)_ | Decrement Selected Control | Repeat | Selected Control mode (#1585) |
+| Toggle Selected Control | _(configurable)_ | Toggle Selected Control | None | Selected Control mode (#1585) |
 
-**Type:** Multi-toggle with mode selector (Direct/Next/Previous/Toggle Size)
+**Type:** Multi-toggle with mode selector (Direct/Next/Previous/Toggle Size/Selected Control)
 
 ---
 

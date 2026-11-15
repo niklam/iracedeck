@@ -1,9 +1,10 @@
 import { assembleIcon } from "@iracedeck/deck-core";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { BLACK_BOX_CONTROL_KEYS } from "../../shared/black-box.js";
 import {
   BLACK_BOX_GLOBAL_KEYS,
+  blackBoxKeyRepeats,
   BlackBoxSelector,
   BlackBoxSelectorSettings,
   generateBlackBoxSelectorSvg,
@@ -55,6 +56,21 @@ vi.mock("@iracedeck/icons/black-box-selector/previous.svg", () => ({
 }));
 vi.mock("@iracedeck/icons/black-box-selector/toggle-size.svg", () => ({
   default: '<svg xmlns="http://www.w3.org/2000/svg">toggle-size</svg>',
+}));
+vi.mock("@iracedeck/icons/black-box-selector/next-control.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">next-control</svg>',
+}));
+vi.mock("@iracedeck/icons/black-box-selector/previous-control.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">previous-control</svg>',
+}));
+vi.mock("@iracedeck/icons/black-box-selector/increment-control.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">increment-control</svg>',
+}));
+vi.mock("@iracedeck/icons/black-box-selector/decrement-control.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">decrement-control</svg>',
+}));
+vi.mock("@iracedeck/icons/black-box-selector/toggle-control.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">toggle-control</svg>',
 }));
 
 vi.mock("@iracedeck/deck-core", async () => {
@@ -150,6 +166,15 @@ const ALL_BLACK_BOXES = [
   "weather",
 ] as const;
 
+/** Each Selected Control press (#1585): its binding, its icon and its default title. */
+const SELECTED_CONTROLS = [
+  ["next", "blackBoxSelectNextControl", "next-control", "NEXT CTRL"],
+  ["previous", "blackBoxSelectPreviousControl", "previous-control", "PREV CTRL"],
+  ["increment", "blackBoxIncrementControl", "increment-control", "CTRL +"],
+  ["decrement", "blackBoxDecrementControl", "decrement-control", "CTRL -"],
+  ["toggle", "blackBoxToggleControl", "toggle-control", "CTRL TOGGLE"],
+] as const;
+
 describe("BlackBoxSelector", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -183,7 +208,7 @@ describe("BlackBoxSelector", () => {
   });
 
   describe("BlackBoxSelectorSettings mode (#1238)", () => {
-    it.each(["direct", "next", "previous", "toggle-size"] as const)("parses mode %s", (mode) => {
+    it.each(["direct", "next", "previous", "toggle-size", "selected-control"] as const)("parses mode %s", (mode) => {
       expect(BlackBoxSelectorSettings.parse({ mode }).mode).toBe(mode);
     });
 
@@ -197,6 +222,55 @@ describe("BlackBoxSelector", () => {
 
     it("keeps the stored box while in Toggle Size, so switching back restores it", () => {
       expect(BlackBoxSelectorSettings.parse({ mode: "toggle-size", blackBox: "weather" }).blackBox).toBe("weather");
+    });
+  });
+
+  describe("BlackBoxSelectorSettings control (#1585)", () => {
+    it.each(SELECTED_CONTROLS.map(([control]) => control))("parses control %s", (control) => {
+      expect(BlackBoxSelectorSettings.parse({ mode: "selected-control", control }).control).toBe(control);
+    });
+
+    it("defaults to Select Next Control", () => {
+      expect(BlackBoxSelectorSettings.parse({ mode: "selected-control" }).control).toBe("next");
+    });
+
+    it("rejects a control it does not know", () => {
+      expect(BlackBoxSelectorSettings.safeParse({ mode: "selected-control", control: "reset" }).success).toBe(false);
+    });
+
+    it("still parses a stored setting from before the mode existed, unchanged", () => {
+      const parsed = BlackBoxSelectorSettings.parse({ mode: "direct", blackBox: "fuel" });
+
+      expect(parsed.mode).toBe("direct");
+      expect(parsed.blackBox).toBe("fuel");
+      expect(resolveBlackBoxSettingKey(parsed)).toBe("blackBoxFuel");
+    });
+
+    it("keeps the box and the control each while the other mode is chosen", () => {
+      const inControl = BlackBoxSelectorSettings.parse({
+        mode: "selected-control",
+        blackBox: "weather",
+        control: "toggle",
+      });
+      const inDirect = BlackBoxSelectorSettings.parse({ mode: "direct", blackBox: "weather", control: "toggle" });
+
+      expect(inControl.blackBox).toBe("weather");
+      expect(inDirect.control).toBe("toggle");
+    });
+  });
+
+  describe("press repeat (#1585)", () => {
+    it.each([
+      [{ mode: "selected-control", control: "increment" }, true],
+      [{ mode: "selected-control", control: "decrement" }, true],
+      [{ mode: "selected-control", control: "next" }, false],
+      [{ mode: "selected-control", control: "previous" }, false],
+      [{ mode: "selected-control", control: "toggle" }, false],
+      [{ mode: "direct", control: "increment" }, false],
+      [{ mode: "next", control: "decrement" }, false],
+      [{ mode: "toggle-size", control: "increment" }, false],
+    ] as const)("repeats %o: %s", (settings, repeats) => {
+      expect(blackBoxKeyRepeats(BlackBoxSelectorSettings.parse(settings))).toBe(repeats);
     });
   });
 
@@ -214,14 +288,41 @@ describe("BlackBoxSelector", () => {
       expect(resolveBlackBoxSettingKey(BlackBoxSelectorSettings.parse(settings))).toBe(key);
     });
 
+    it.each(SELECTED_CONTROLS.map(([control, key]) => [control, key]))(
+      "maps Selected Control %s to %s, whatever box is stored (#1585)",
+      (control, key) => {
+        expect(
+          resolveBlackBoxSettingKey(
+            BlackBoxSelectorSettings.parse({ mode: "selected-control", control, blackBox: "fuel" }),
+          ),
+        ).toBe(key);
+      },
+    );
+
     it("throws on a mode it has no key for, rather than falling through to another mode's", () => {
       expect(() =>
-        resolveBlackBoxSettingKey({ ...BlackBoxSelectorSettings.parse({}), mode: "selected-control" } as never),
-      ).toThrow(/selected-control/);
+        resolveBlackBoxSettingKey({ ...BlackBoxSelectorSettings.parse({}), mode: "make-large" } as never),
+      ).toThrow(/make-large/);
     });
   });
 
   describe("generateBlackBoxSelectorSvg", () => {
+    it.each(SELECTED_CONTROLS.map(([control, , icon, title]) => [control, icon, title]))(
+      "draws Selected Control %s with its %s icon, titled %s (#1585)",
+      (control, icon, title) => {
+        const decoded = decodeURIComponent(
+          generateBlackBoxSelectorSvg(
+            BlackBoxSelectorSettings.parse({ mode: "selected-control", control, blackBox: "fuel" }),
+          ),
+        );
+
+        expect(decoded).toContain(`>${icon}<`);
+        expect(decoded).toContain(title);
+        expect(decoded).not.toContain(`\n${title}`);
+        expect(decoded).not.toContain(">fuel<");
+      },
+    );
+
     it("draws the Toggle Size icon titled BOX SIZE (#1238)", () => {
       const decoded = decodeURIComponent(
         generateBlackBoxSelectorSvg(BlackBoxSelectorSettings.parse({ mode: "toggle-size", blackBox: "fuel" })),
@@ -388,6 +489,173 @@ describe("BlackBoxSelector", () => {
         await action.onKeyDown(fakeEvent("a1", { mode: "toggle-size", blackBox: "fuel" }) as never);
 
         expect(mockTapBinding.mock.calls).toEqual([["blackBoxToggleSize"]]);
+      });
+    });
+
+    describe("Selected Control presses (#1585)", () => {
+      beforeEach(() => {
+        vi.useFakeTimers();
+        mockTapBinding.mockResolvedValue(true);
+      });
+
+      afterEach(() => {
+        vi.useRealTimers();
+        mockTapBinding.mockResolvedValue(undefined);
+      });
+
+      function press(id: string, control: string) {
+        return action.onKeyDown(fakeEvent(id, { mode: "selected-control", control }) as never);
+      }
+
+      function release(id: string, control: string) {
+        return action.onKeyUp(fakeEvent(id, { mode: "selected-control", control }) as never);
+      }
+
+      it.each([
+        ["next", "blackBoxSelectNextControl"],
+        ["previous", "blackBoxSelectPreviousControl"],
+        ["toggle", "blackBoxToggleControl"],
+      ] as const)("taps %s once, however long it is held", async (control, key) => {
+        await press("k1", control);
+        await vi.advanceTimersByTimeAsync(3000);
+        await release("k1", control);
+
+        expect(mockTapBinding.mock.calls).toEqual([[key]]);
+      });
+
+      it.each([
+        ["increment", "blackBoxIncrementControl"],
+        ["decrement", "blackBoxDecrementControl"],
+      ] as const)("taps %s once on a quick press", async (control, key) => {
+        await press("k2", control);
+        await vi.advanceTimersByTimeAsync(200);
+        await release("k2", control);
+        await vi.advanceTimersByTimeAsync(3000);
+
+        expect(mockTapBinding.mock.calls).toEqual([[key]]);
+      });
+
+      it.each([
+        ["increment", "blackBoxIncrementControl"],
+        ["decrement", "blackBoxDecrementControl"],
+      ] as const)("repeats %s while held and stops on release", async (control, key) => {
+        await press("k3", control);
+        expect(mockTapBinding).toHaveBeenCalledTimes(1);
+
+        // The hold threshold (500 ms), then one repeat every 150 ms.
+        await vi.advanceTimersByTimeAsync(499);
+        expect(mockTapBinding).toHaveBeenCalledTimes(1);
+        await vi.advanceTimersByTimeAsync(1 + 150);
+        expect(mockTapBinding).toHaveBeenCalledTimes(2);
+        await vi.advanceTimersByTimeAsync(300);
+        expect(mockTapBinding).toHaveBeenCalledTimes(4);
+
+        await release("k3", control);
+        await vi.advanceTimersByTimeAsync(3000);
+
+        expect(mockTapBinding).toHaveBeenCalledTimes(4);
+        expect(new Set(mockTapBinding.mock.calls.map(([k]) => k))).toEqual(new Set([key]));
+      });
+
+      it("ends the repeat when the first tap does not go out", async () => {
+        mockTapBinding.mockResolvedValueOnce(false);
+
+        await press("k4", "increment");
+        await vi.advanceTimersByTimeAsync(3000);
+
+        expect(mockTapBinding).toHaveBeenCalledTimes(1);
+      });
+
+      it("ends the repeat when a repeated tap does not go out", async () => {
+        await press("k5", "decrement");
+        mockTapBinding.mockResolvedValueOnce(false);
+        await vi.advanceTimersByTimeAsync(650);
+        expect(mockTapBinding).toHaveBeenCalledTimes(2);
+
+        await vi.advanceTimersByTimeAsync(3000);
+
+        expect(mockTapBinding).toHaveBeenCalledTimes(2);
+      });
+
+      it("stops repeating when the settings change mid-hold", async () => {
+        await press("k6", "increment");
+        await action.onDidReceiveSettings(fakeEvent("k6", { mode: "selected-control", control: "next" }) as never);
+        await vi.advanceTimersByTimeAsync(3000);
+
+        expect(mockTapBinding).toHaveBeenCalledTimes(1);
+      });
+
+      it("stops repeating when the key disappears mid-hold", async () => {
+        await press("k7", "increment");
+        await action.onWillDisappear(fakeEvent("k7", { mode: "selected-control", control: "increment" }) as never);
+        await vi.advanceTimersByTimeAsync(3000);
+
+        expect(mockTapBinding).toHaveBeenCalledTimes(1);
+      });
+
+      it("arms the repeat before the first tap settles, so a release during it still stops it", async () => {
+        let settle: (sent: boolean) => void = () => undefined;
+        mockTapBinding.mockImplementationOnce(() => new Promise<boolean>((resolve) => (settle = resolve)));
+
+        const pressed = press("k8", "increment");
+        await release("k8", "increment");
+        settle(true);
+        await pressed;
+        await vi.advanceTimersByTimeAsync(3000);
+
+        expect(mockTapBinding).toHaveBeenCalledTimes(1);
+      });
+
+      it("a stale first-tap failure of an earlier press leaves a newer press's repeat running", async () => {
+        // Press A's first tap is still in flight when A is released and B is
+        // pressed; A's tap then fails. That failure ends A's repeat, which is
+        // already gone, and must not clear the one B armed.
+        let settleA: (sent: boolean) => void = () => undefined;
+        let settleB: (sent: boolean) => void = () => undefined;
+        mockTapBinding
+          .mockImplementationOnce(() => new Promise<boolean>((resolve) => (settleA = resolve)))
+          .mockImplementationOnce(() => new Promise<boolean>((resolve) => (settleB = resolve)));
+
+        const pressedA = press("k9", "increment");
+        await release("k9", "increment");
+        const pressedB = press("k9", "increment");
+        settleA(false);
+        await pressedA;
+        settleB(true);
+        await pressedB;
+
+        expect(mockTapBinding).toHaveBeenCalledTimes(2);
+
+        // B is still held: past the hold threshold (500 ms) and one interval (150 ms) it repeats.
+        await vi.advanceTimersByTimeAsync(500 + 150);
+
+        expect(mockTapBinding).toHaveBeenCalledTimes(3);
+
+        await vi.advanceTimersByTimeAsync(150);
+
+        expect(mockTapBinding).toHaveBeenCalledTimes(4);
+
+        await release("k9", "increment");
+        await vi.advanceTimersByTimeAsync(3000);
+
+        expect(mockTapBinding).toHaveBeenCalledTimes(4);
+      });
+
+      it("declares no keyPressShape, so a repeating key has the default tap shape (#269)", () => {
+        // A hold-to-repeat key's steps are its own feedback: the press sounds
+        // click once on key down and never bleep at the threshold.
+        expect("keyPressShape" in action).toBe(false);
+      });
+
+      it("shows the missing-binding state for the chosen control's binding", async () => {
+        vi.mocked(action["isBindingMissing"]).mockImplementation((key) => key === "blackBoxDecrementControl");
+
+        await action.onWillAppear(fakeEvent("k10", { mode: "selected-control", control: "decrement" }) as never);
+
+        expect(action["isBindingMissing"]).toHaveBeenCalledWith("blackBoxDecrementControl");
+        expect(vi.mocked(assembleIcon)).toHaveBeenLastCalledWith(
+          expect.objectContaining({ bindingMissing: true, title: expect.objectContaining({ titleText: "CTRL -" }) }),
+        );
       });
     });
 

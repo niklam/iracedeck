@@ -116,19 +116,55 @@
         "scope": "global",
         "key": "blackBoxToggleSize"
       }
+    },
+    "selected-control": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keyBy": {
+          "setting": "control",
+          "map": {
+            "next": "blackBoxSelectNextControl",
+            "previous": "blackBoxSelectPreviousControl",
+            "increment": "blackBoxIncrementControl",
+            "decrement": "blackBoxDecrementControl",
+            "toggle": "blackBoxToggleControl"
+          }
+        }
+      }
     }
   },
   "black-box-selector-dial": {
     "_meta": {
       "modeSetting": "dial.rotation"
     },
-    "cycle": {
+    "boxes": {
       "method": "keybind",
       "binding": {
         "scope": "global",
         "keys": [
           "blackBoxCycleNext",
           "blackBoxCyclePrevious"
+        ]
+      }
+    },
+    "select-control": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "blackBoxSelectNextControl",
+          "blackBoxSelectPreviousControl"
+        ]
+      }
+    },
+    "adjust-control": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "blackBoxIncrementControl",
+          "blackBoxDecrementControl"
         ]
       }
     },
@@ -159,6 +195,27 @@
       "binding": {
         "scope": "global",
         "key": "blackBoxToggleSize"
+      }
+    },
+    "toggle-control": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "blackBoxToggleControl"
+      }
+    },
+    "next-control": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "blackBoxSelectNextControl"
+      }
+    },
+    "previous-control": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "blackBoxSelectPreviousControl"
       }
     }
   },

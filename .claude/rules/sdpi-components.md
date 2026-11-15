@@ -23,7 +23,7 @@ Most input components share these attributes:
 |-----------|------|-------------|
 | `setting` | `string` | Settings key for auto-persistence. Supports dot-notation for nested paths (e.g., `foo.bar.prop` creates `{"foo":{"bar":{"prop":"value"}}}`). |
 | `global` | `boolean` | When present, persists to **global settings** instead of per-action settings. |
-| `default` | `string` | Initial value when no persisted value exists. |
+| `default` | `string` | Value shown when no persisted value exists. Render-only: never written to settings (see `<sdpi-select>`). |
 | `disabled` | `boolean` | Disables the input. |
 | `value` | varies | Current value; also the persisted setting value. |
 
@@ -142,7 +142,7 @@ Value type: `boolean`, `number`, or `string` (default).
 | Attribute | Type | Description |
 |-----------|------|-------------|
 | `setting` | `string` | Settings key. |
-| `default` | `string` | Default selected value. |
+| `default` | `string` | Option shown selected while the setting is unset. |
 | `placeholder` | `string` | Hint text when no selection. |
 | `value-type` | `string` | `"boolean"`, `"number"`, or `"string"` (default). |
 | `datasource` | `string` | Remote data source event name. |
@@ -152,6 +152,8 @@ Value type: `boolean`, `number`, or `string` (default).
 | `loading` | `string` | Text shown while loading. |
 
 Supports `<option>` and `<optgroup>` children.
+
+**`default` is render-only** (verified in the vendored `sdpi-components.js`): the component draws `value ?? default` and saves only when `value` changes, i.e. when the user picks an option, writing that one key into the settings. So an untouched dropdown's key stays absent from the stored settings, and the plugin's own schema default (or resolver) decides what it means; changing the attribute from script changes only what is shown. Black Box Selector's dial relies on this to show rotation-resolved gesture defaults without storing them (#1585).
 
 ```html
 <sdpi-select setting="color" placeholder="Choose a color">

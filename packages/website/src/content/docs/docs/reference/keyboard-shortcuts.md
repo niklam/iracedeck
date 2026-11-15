@@ -68,7 +68,14 @@ Actions marked "Available via SDK" use SDK commands directly and don't require k
 | Quick Access | F9 | No | Quick Access |
 | Radio Adjustments | F10 | No | Radio Adjustments Black Box |
 | Weather Black Box | F11 | No | Weather Black Box |
+| Cycle Black Box Next | - | No | Next Black Box |
+| Cycle Black Box Previous | - | No | Previous Black Box |
 | Toggle Black Box Size | - | No | Toggle Black Box Size |
+| Select Next Control | - | No | Select Next Control |
+| Select Previous Control | - | No | Select Previous Control |
+| Increment Selected Control | - | No | Increment Selected Control |
+| Decrement Selected Control | - | No | Decrement Selected Control |
+| Toggle Selected Control | - | No | Toggle Selected Control |
 
 ### Split-Time Delta
 

@@ -93,7 +93,7 @@ Prefer short, single-line titles — only use the two-line `"subLabel\nmainLabel
 Extends Default Key Icon Type (Standard label layout) with an inner black box frame. See [black-box-icons.md](black-box-icons.md) for details.
 
 - Adds inner black box frame: flat, filled with `{{backgroundColor}}` and outlined in `{{graphic1Color}}` (3.5px)
-- Single-line title (the box's name) rendered by the title system from `BLACK_BOX_TITLE_TEXT`
+- Single-line title rendered by the title system: the box's name from `BLACK_BOX_TITLE_TEXT`, or a Selected Control key's `NEXT CTRL` / `PREV CTRL` / `CTRL +` / `CTRL -` / `CTRL TOGGLE` from `SELECTED_CONTROL_TITLE_TEXT` (#1585)
 - Background: #2a2a2a
 - Reference: `packages/icons/black-box-selector/`
 

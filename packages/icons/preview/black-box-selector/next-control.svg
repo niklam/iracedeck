@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 81.3 49.3">
+  <desc>{"colors":{"backgroundColor":"#2a2a2a","textColor":"#ffffff","graphic1Color":"#ffffff","graphic2Color":"#4fc3f7"},"title":{"text":"NEXT CTRL"},"border":{"color":"#5a5a5a"}}</desc>
+  <defs>
+
+  </defs>
+  <g transform="translate(-7.2 -9.2)">
+
+    <rect x="10" y="12" width="76" height="44" rx="6" fill="#2a2a2a" stroke="#ffffff" stroke-width="3.5"/>
+    <polygon points="48,16 54,24.5 42,24.5" fill="#ffffff" stroke="#ffffff" stroke-width="2" stroke-linejoin="round" opacity="0.35"/>
+    <polygon points="30,34 38.5,28 38.5,40" fill="#ffffff" stroke="#ffffff" stroke-width="2" stroke-linejoin="round" opacity="0.35"/>
+    <polygon points="66,34 57.5,40 57.5,28" fill="#ffffff" stroke="#ffffff" stroke-width="2" stroke-linejoin="round" opacity="0.35"/>
+    <circle cx="48" cy="34" r="5.5" fill="#ffffff" stroke="#ffffff" stroke-width="2" stroke-linejoin="round" opacity="0.35"/>
+    <polygon points="48,52 42,43.5 54,43.5" fill="#ffffff" stroke="#ffffff" stroke-width="2" stroke-linejoin="round"/>
+  </g>
+</svg>

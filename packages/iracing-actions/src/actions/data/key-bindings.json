@@ -13,7 +13,32 @@
     { "id": "weather", "label": "Weather", "default": "F11", "setting": "blackBoxWeather" },
     { "id": "cycleNext", "label": "Cycle Next", "default": "", "setting": "blackBoxCycleNext" },
     { "id": "cyclePrevious", "label": "Cycle Previous", "default": "", "setting": "blackBoxCyclePrevious" },
-    { "id": "toggleSize", "label": "Toggle Black Box Size", "default": "", "setting": "blackBoxToggleSize" }
+    { "id": "toggleSize", "label": "Toggle Black Box Size", "default": "", "setting": "blackBoxToggleSize" },
+    {
+      "id": "selectNextControl",
+      "label": "Select Next Control",
+      "default": "",
+      "setting": "blackBoxSelectNextControl"
+    },
+    {
+      "id": "selectPreviousControl",
+      "label": "Select Previous Control",
+      "default": "",
+      "setting": "blackBoxSelectPreviousControl"
+    },
+    {
+      "id": "incrementControl",
+      "label": "Increment Selected Control",
+      "default": "",
+      "setting": "blackBoxIncrementControl"
+    },
+    {
+      "id": "decrementControl",
+      "label": "Decrement Selected Control",
+      "default": "",
+      "setting": "blackBoxDecrementControl"
+    },
+    { "id": "toggleControl", "label": "Toggle Selected Control", "default": "", "setting": "blackBoxToggleControl" }
   ],
   "splitsDelta": [
     { "id": "next", "label": "Next", "default": "Tab", "setting": "splitsDeltaNext" },
