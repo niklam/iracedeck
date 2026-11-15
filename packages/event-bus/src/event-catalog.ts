@@ -748,7 +748,10 @@ export type SimEventMap = {
    * clip base (`corner-names/<slug>-01.mp3`) — the slug rides in the payload
    * so audio consumers never import the dataset package. Once per corner per
    * lap; the audio scenario's `family: "corner-name"` lets consecutive
-   * corners preempt an in-flight name cleanly.
+   * corners preempt an in-flight name cleanly. A corner marker swept in the
+   * same tick as a sector start is published AFTER that tick's
+   * `sectorStart.approaching` (issue #1676), so the sector call is the one
+   * heard on the line and the name follows it.
    */
   "cornerName.approaching": SimEvent<"cornerName.approaching", { name: string; slug: string }>;
   /**
