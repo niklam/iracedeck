@@ -3,6 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   cleanupRetiredDisconnectedSetting,
+  FUEL_MARGIN_DEFAULT_MIGRATED_KEY,
+  migrateFuelMarginDefault,
   migrateGlobalSettingsKeys,
   migrateRaceEngineerVoiceId,
   seedBindingDefaultsIfAbsent,
@@ -10,6 +12,7 @@ import {
 import {
   _resetGlobalSettings,
   getGlobalSettings,
+  getSettingsStoreHostDerivation,
   getSettingsStoreSource,
   GlobalSettingsSchema,
   initGlobalSettings,
@@ -63,6 +66,27 @@ const RENAMES = {
 };
 
 const cache = (): Record<string, unknown> => getGlobalSettings() as Record<string, unknown>;
+
+/** An adapter whose host answer the test can deliver (`echo`). */
+function createEchoAdapter(): { adapter: SettingsHost; echo: (settings: unknown) => void } {
+  let echo: EchoCallback = () => {};
+
+  const adapter: SettingsHost = {
+    onDidReceiveGlobalSettings: (cb: EchoCallback) => {
+      echo = cb;
+    },
+    setGlobalSettings: vi.fn<(settings: Record<string, unknown>) => void>(),
+    getGlobalSettings: vi.fn<() => void>(),
+  };
+
+  return { adapter, echo: (settings) => echo(settings) };
+}
+
+/** A defaults-born file, as a fresh start persisted it. */
+const defaultsFile = (extra: Record<string, unknown>): Record<string, unknown> => ({
+  ...(GlobalSettingsSchema.parse({}) as Record<string, unknown>),
+  ...extra,
+});
 
 describe("runOnceSettingsStoreReady", () => {
   beforeEach(() => {
@@ -478,27 +502,6 @@ describe("seedBindingDefaultsIfAbsent (#1277)", () => {
   const PREV_STORED = '{"type":"keyboard","key":"v","modifiers":["shift"],"code":"KeyV"}';
   const CUSTOM = JSON.stringify({ type: "keyboard", key: "n", modifiers: ["ctrl"], code: "KeyN" });
 
-  /** An adapter whose host answer the test can deliver (`echo`). */
-  function createEchoAdapter(): { adapter: SettingsHost; echo: (settings: unknown) => void } {
-    let echo: EchoCallback = () => {};
-
-    const adapter: SettingsHost = {
-      onDidReceiveGlobalSettings: (cb: EchoCallback) => {
-        echo = cb;
-      },
-      setGlobalSettings: vi.fn<(settings: Record<string, unknown>) => void>(),
-      getGlobalSettings: vi.fn<() => void>(),
-    };
-
-    return { adapter, echo: (settings) => echo(settings) };
-  }
-
-  /** A defaults-born file, as a fresh start persisted it. */
-  const defaultsFile = (extra: Record<string, unknown>): Record<string, unknown> => ({
-    ...(GlobalSettingsSchema.parse({}) as Record<string, unknown>),
-    ...extra,
-  });
-
   beforeEach(() => {
     _resetGlobalSettings();
   });
@@ -759,6 +762,344 @@ describe("seedBindingDefaultsIfAbsent (#1277)", () => {
       expect(isSettingsStoreHostDerived()).toBe(false);
       expect(cache().replayControlNextCar).toBeUndefined();
       expect(logger.info).toHaveBeenCalledWith(expect.stringContaining("could not be parsed"));
+    });
+  });
+});
+
+describe("migrateFuelMarginDefault (#1679)", () => {
+  const MARKER = FUEL_MARGIN_DEFAULT_MIGRATED_KEY;
+  const VERSION = "3.9.0";
+  const MOVED = "Fuel margin moved from the old default 0.3 to 0";
+  const REJECTED = "Fuel margin default migration write was rejected";
+
+  const lastSave = (store: MemoryStore): Record<string, unknown> => store.saved.at(-1) as Record<string, unknown>;
+
+  /** A silent host and a short migration deadline: the host read times out. */
+  function initSilentHost(initial?: Record<string, unknown>): MemoryStore {
+    const store = createMemorySettingsStore(initial);
+    initGlobalSettings(createMockAdapter(), createMockLogger(), store, { migrationTimeoutMs: 20 });
+
+    return store;
+  }
+
+  beforeEach(() => {
+    _resetGlobalSettings();
+  });
+
+  afterEach(() => {
+    _resetGlobalSettings();
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  it("starts from a schema default of 0 and a marker the schema does not declare (precondition)", async () => {
+    // Positive control: a stored 0 must be the new default for "leaves 0
+    // alone" to mean anything, and the marker must be a passthrough key or a
+    // "not marked" store could never be observed.
+    initWithStore({});
+    await tick();
+
+    expect(cache().fuelCalloutMarginLaps).toBe(0);
+    expect(cache()).not.toHaveProperty(MARKER);
+  });
+
+  it("moves a stored 0.3 to 0 and marks it with the running version, in one write", async () => {
+    const store = initWithStore({ fuelCalloutMarginLaps: 0.3, driverName: "kept" });
+    await tick();
+    expect(cache().fuelCalloutMarginLaps).toBe(0.3);
+    const savesBefore = store.saved.length;
+    const logger = createMockLogger();
+
+    migrateFuelMarginDefault(VERSION, logger);
+
+    expect(cache().fuelCalloutMarginLaps).toBe(0);
+    expect(cache()[MARKER]).toBe(VERSION);
+    expect(store.saved).toHaveLength(savesBefore + 1);
+    expect(lastSave(store)).toMatchObject({ fuelCalloutMarginLaps: 0, [MARKER]: VERSION, driverName: "kept" });
+    expect(logger.info).toHaveBeenCalledWith(MOVED);
+    expect(logger.warn).not.toHaveBeenCalled();
+  });
+
+  it("moves a hand-edited string 0.3, which the parse reads as the number", async () => {
+    initWithStore({ fuelCalloutMarginLaps: "0.3" });
+    await tick();
+
+    migrateFuelMarginDefault(VERSION, createMockLogger());
+
+    expect(cache().fuelCalloutMarginLaps).toBe(0);
+    expect(cache()[MARKER]).toBe(VERSION);
+  });
+
+  it.each([0.4, 0, 0.2, 1])("leaves a stored %d alone and marks it done, logging only at debug", async (value) => {
+    const store = initWithStore({ fuelCalloutMarginLaps: value });
+    await tick();
+    const savesBefore = store.saved.length;
+    const logger = createMockLogger();
+
+    migrateFuelMarginDefault(VERSION, logger);
+
+    expect(cache().fuelCalloutMarginLaps).toBe(value);
+    expect(cache()[MARKER]).toBe(VERSION);
+    expect(store.saved).toHaveLength(savesBefore + 1);
+    expect(lastSave(store)).toMatchObject({ fuelCalloutMarginLaps: value, [MARKER]: VERSION });
+    expect(logger.info).not.toHaveBeenCalled();
+    expect(logger.warn).not.toHaveBeenCalled();
+    expect(logger.debug).toHaveBeenCalledWith(expect.stringContaining("marked done; nothing to move"));
+  });
+
+  it("marks a fresh install (nothing stored) without moving anything", async () => {
+    const { adapter, echo } = createEchoAdapter();
+    initGlobalSettings(adapter, createMockLogger(), createMemorySettingsStore());
+    migrateFuelMarginDefault(VERSION, createMockLogger());
+    await tick();
+
+    echo({});
+
+    expect(getSettingsStoreSource()).toBe("host");
+    expect(cache().fuelCalloutMarginLaps).toBe(0);
+    expect(cache()[MARKER]).toBe(VERSION);
+  });
+
+  it.each([true, VERSION, "3.8.0"])("does nothing on a store already marked %j, even with 0.3 stored", async (mark) => {
+    const store = initWithStore({ fuelCalloutMarginLaps: 0.3, [MARKER]: mark });
+    await tick();
+    const savesBefore = store.saved.length;
+    const logger = createMockLogger();
+
+    migrateFuelMarginDefault(VERSION, logger);
+
+    expect(cache().fuelCalloutMarginLaps).toBe(0.3);
+    expect(cache()[MARKER]).toBe(mark);
+    expect(store.saved).toHaveLength(savesBefore);
+    expect(logger.info).not.toHaveBeenCalled();
+    expect(logger.debug).not.toHaveBeenCalled();
+  });
+
+  it("keeps a 0.3 the user chose again after the upgrade, at every later start", async () => {
+    const store = initWithStore({ fuelCalloutMarginLaps: 0.3 });
+    await tick();
+    migrateFuelMarginDefault(VERSION, createMockLogger());
+    updateGlobalSettings({ fuelCalloutMarginLaps: 0.3 }); // the slider, put back
+    const file = lastSave(store);
+
+    // The next start loads that file.
+    _resetGlobalSettings();
+    const next = initWithStore(file);
+    await tick();
+    const savesBefore = next.saved.length;
+
+    migrateFuelMarginDefault(VERSION, createMockLogger());
+
+    expect(cache().fuelCalloutMarginLaps).toBe(0.3);
+    expect(next.saved).toHaveLength(savesBefore);
+  });
+
+  it.each([undefined, "", "   "])("marks true when the running version is %j", async (version) => {
+    initWithStore({ fuelCalloutMarginLaps: 0.3 });
+    await tick();
+
+    migrateFuelMarginDefault(version, createMockLogger());
+
+    expect(cache().fuelCalloutMarginLaps).toBe(0);
+    expect(cache()[MARKER]).toBe(true);
+  });
+
+  it("trims the version it records", async () => {
+    initWithStore({});
+    await tick();
+
+    migrateFuelMarginDefault(` ${VERSION} `, createMockLogger());
+
+    expect(cache()[MARKER]).toBe(VERSION);
+  });
+
+  it("does nothing before the store is ready, then runs at the ready moment", async () => {
+    const store = initWithStore({ fuelCalloutMarginLaps: 0.3 });
+
+    migrateFuelMarginDefault(VERSION, createMockLogger());
+    // A change before ready must not trigger it either.
+    updateGlobalSettings({ someOtherKey: "early" });
+
+    expect(isSettingsStoreReady()).toBe(false);
+    expect(store.saved).toHaveLength(0);
+    expect(cache()).not.toHaveProperty(MARKER);
+
+    await tick();
+
+    expect(cache().fuelCalloutMarginLaps).toBe(0);
+    expect(cache()[MARKER]).toBe(VERSION);
+    expect(lastSave(store)).toMatchObject({ fuelCalloutMarginLaps: 0, [MARKER]: VERSION });
+  });
+
+  it("returns a disposer that cancels a still-pending migration", async () => {
+    initWithStore({ fuelCalloutMarginLaps: 0.3 });
+
+    migrateFuelMarginDefault(VERSION, createMockLogger())();
+    await tick();
+
+    expect(cache().fuelCalloutMarginLaps).toBe(0.3);
+    expect(cache()).not.toHaveProperty(MARKER);
+  });
+
+  describe("by the store's host-read status", () => {
+    it("writes nothing while the pending-migration countdown runs, then moves the host's 0.3 on the start whose answer lands", async () => {
+      // A defaults-born file under the new default (0) whose host read is
+      // still pending. The host holds the old default 0.3.
+      vi.useFakeTimers();
+      const first = initSilentHost(defaultsFile({ [MIGRATION_PENDING_KEY]: 1 }));
+      const logger = createMockLogger();
+      migrateFuelMarginDefault(VERSION, logger);
+
+      await vi.advanceTimersByTimeAsync(30);
+
+      expect(isSettingsStoreReady()).toBe(true);
+      expect(getSettingsStoreHostDerivation()).toBe("not-read-yet");
+      expect(cache()).not.toHaveProperty(MARKER);
+      expect(first.saved.every((saved) => !(MARKER in saved))).toBe(true);
+      expect(logger.debug).toHaveBeenCalledWith(expect.stringContaining("have not been read from the deck host yet"));
+      expect(logger.info).not.toHaveBeenCalled();
+
+      // The next start: the host answers. `mergeMigration` lets the host's 0.3
+      // win over the file's default 0, so a marker written above would have
+      // left 0.3 in place for good.
+      const file = lastSave(first);
+      _resetGlobalSettings();
+      vi.useRealTimers();
+      const { adapter, echo } = createEchoAdapter();
+      const second = createMemorySettingsStore(file);
+      initGlobalSettings(adapter, createMockLogger(), second);
+      const nextLogger = createMockLogger();
+      migrateFuelMarginDefault(VERSION, nextLogger);
+      await tick();
+
+      echo({ fuelCalloutMarginLaps: 0.3, driverName: "from the host" });
+
+      expect(getSettingsStoreSource()).toBe("host");
+      expect(getSettingsStoreHostDerivation()).toBe("host-derived");
+      expect(nextLogger.info).toHaveBeenCalledWith(MOVED); // the merge did hand it 0.3
+      expect(cache().fuelCalloutMarginLaps).toBe(0);
+      expect(cache()[MARKER]).toBe(VERSION);
+      expect(cache().driverName).toBe("from the host");
+      expect(lastSave(second)).toMatchObject({ fuelCalloutMarginLaps: 0, [MARKER]: VERSION });
+    });
+
+    it("writes nothing on a fresh start whose host read timed out", async () => {
+      vi.useFakeTimers();
+      const store = initSilentHost();
+      const logger = createMockLogger();
+      migrateFuelMarginDefault(VERSION, logger);
+
+      await vi.advanceTimersByTimeAsync(30);
+
+      expect(getSettingsStoreSource()).toBe("fresh");
+      expect(getSettingsStoreHostDerivation()).toBe("not-read-yet");
+      expect(cache()).not.toHaveProperty(MARKER);
+      expect(store.saved.length).toBeGreaterThan(0); // the fresh start did save
+      expect(store.saved.every((saved) => !(MARKER in saved))).toBe(true);
+      expect(logger.debug).toHaveBeenCalledWith(expect.stringContaining("have not been read from the deck host yet"));
+    });
+
+    it("migrates a store whose host migration was given up on", async () => {
+      const store = initWithStore(defaultsFile({ fuelCalloutMarginLaps: 0.3, [MIGRATION_ABANDONED_KEY]: "3.3.0" }));
+      await tick();
+      expect(getSettingsStoreHostDerivation()).toBe("abandoned");
+      // The load itself re-stamps the give-up (no version passed to init).
+      const giveUp = cache()[MIGRATION_ABANDONED_KEY];
+      const logger = createMockLogger();
+
+      migrateFuelMarginDefault(VERSION, logger);
+
+      expect(cache().fuelCalloutMarginLaps).toBe(0);
+      expect(cache()[MARKER]).toBe(VERSION);
+      expect(cache()[MIGRATION_ABANDONED_KEY]).toBe(giveUp); // the give-up guard is untouched
+      expect(getSettingsStoreHostDerivation()).toBe("abandoned");
+      expect(lastSave(store)).toMatchObject({ fuelCalloutMarginLaps: 0, [MARKER]: VERSION });
+      expect(logger.info).toHaveBeenCalledWith(MOVED);
+    });
+
+    it("writes nothing, marker included, when the stored file cannot be parsed; the next readable start migrates", async () => {
+      const file = { fuelCalloutMarginLaps: 0.3, driverName: "kept" };
+      const store = initWithStore(file);
+      // parseWithSalvage gives up wholesale on a failure it cannot pin to a key.
+      vi.spyOn(GlobalSettingsSchema, "safeParse").mockReturnValueOnce({
+        success: false,
+        error: { issues: [{ path: [] }] },
+      } as unknown as ReturnType<typeof GlobalSettingsSchema.safeParse>);
+      const logger = createMockLogger();
+      migrateFuelMarginDefault(VERSION, logger);
+
+      await tick();
+
+      expect(isSettingsStoreReady()).toBe(true);
+      expect(getSettingsStoreHostDerivation()).toBe("unparseable");
+      expect(cache().driverName).not.toBe("kept"); // proof the salvage-failed path ran
+      expect(cache().fuelCalloutMarginLaps).toBe(0); // only the schema default
+      expect(cache()).not.toHaveProperty(MARKER);
+      expect(store.saved).toHaveLength(0); // the file on disk is left as it was
+      expect(logger.debug).toHaveBeenCalledWith(expect.stringContaining("could not be parsed"));
+      expect(logger.info).not.toHaveBeenCalled();
+
+      // The next start reads the same, untouched file, and it parses.
+      _resetGlobalSettings();
+      vi.restoreAllMocks();
+      const next = initWithStore(file);
+      const nextLogger = createMockLogger();
+      migrateFuelMarginDefault(VERSION, nextLogger);
+      await tick();
+
+      expect(getSettingsStoreHostDerivation()).toBe("host-derived");
+      expect(cache().fuelCalloutMarginLaps).toBe(0);
+      expect(cache()[MARKER]).toBe(VERSION);
+      expect(lastSave(next)).toMatchObject({ fuelCalloutMarginLaps: 0, [MARKER]: VERSION, driverName: "kept" });
+      expect(nextLogger.info).toHaveBeenCalledWith(MOVED);
+    });
+  });
+
+  describe("reads back what the write stored", () => {
+    it("warns, and claims nothing, when the write is rejected; the next start tries again", async () => {
+      initWithStore({ fuelCalloutMarginLaps: 0.3 });
+      await tick();
+      const logger = createMockLogger();
+      // The migration's own write fails its parse wholesale, so
+      // updateGlobalSettings drops it.
+      vi.spyOn(GlobalSettingsSchema, "safeParse").mockReturnValueOnce({
+        success: false,
+        error: { issues: [{ path: [] }] },
+      } as unknown as ReturnType<typeof GlobalSettingsSchema.safeParse>);
+
+      migrateFuelMarginDefault(VERSION, logger);
+
+      expect(cache().fuelCalloutMarginLaps).toBe(0.3);
+      expect(cache()).not.toHaveProperty(MARKER);
+      expect(logger.warn).toHaveBeenCalledWith(REJECTED);
+      expect(logger.debug).toHaveBeenCalledWith(expect.stringContaining("Stored after the write"));
+      expect(logger.info).not.toHaveBeenCalled();
+
+      // Unmarked, so the next run moves it.
+      migrateFuelMarginDefault(VERSION, createMockLogger());
+
+      expect(cache().fuelCalloutMarginLaps).toBe(0);
+      expect(cache()[MARKER]).toBe(VERSION);
+    });
+
+    it("warns when the marker landed but the value did not", async () => {
+      initWithStore({ fuelCalloutMarginLaps: 0.3 });
+      await tick();
+      const logger = createMockLogger();
+      const realSafeParse = GlobalSettingsSchema.safeParse.bind(GlobalSettingsSchema);
+      // The write's parse keeps the marker and puts the old value back.
+      vi.spyOn(GlobalSettingsSchema, "safeParse").mockImplementationOnce((input) => {
+        const result = realSafeParse(input);
+
+        return result.success ? { ...result, data: { ...result.data, fuelCalloutMarginLaps: 0.3 } } : result;
+      });
+
+      migrateFuelMarginDefault(VERSION, logger);
+
+      expect(cache()[MARKER]).toBe(VERSION);
+      expect(cache().fuelCalloutMarginLaps).toBe(0.3);
+      expect(logger.warn).toHaveBeenCalledWith(REJECTED);
+      expect(logger.info).not.toHaveBeenCalledWith(MOVED);
     });
   });
 });

@@ -1,9 +1,10 @@
 /**
- * Global-settings migrations, in four shapes: the one-shot key renames of
+ * Global-settings migrations, in five shapes: the one-shot key renames of
  * issue #953, the idempotent qualification of the Race Engineer voice id of
- * #1144, the seed-if-absent binding defaults of #1277, and the marker-free
+ * #1144, the seed-if-absent binding defaults of #1277, the marker-free
  * deletion of a retired key (#1599, `cleanupRetiredDisconnectedSetting`,
- * documented on the function).
+ * documented on the function), and the move of a changed default's exact old
+ * value (#1679, `migrateFuelMarginDefault`).
  *
  * **Renames.** When a persisted global-settings key is renamed (e.g. the Setup
  * Chassis spring binding keys, `setupChassisLeftSpring*` →
@@ -72,6 +73,15 @@
  * Accepted (spec, 2026-09-28): seeding them would mean letting the host win
  * over the file for seeded keys in the migration merge — a change to the
  * settings write path for a small group.
+ *
+ * **A changed default.** `migrateFuelMarginDefault` is the fifth shape: a
+ * schema default that changed (`fuelCalloutMarginLaps`, 0.3 → 0) reaches new
+ * installs only, because every start persists the whole parsed cache, so every
+ * existing install has the old default written down whether or not anyone
+ * chose it. The migration moves a stored value of EXACTLY the old default to
+ * the new one, once, and records that it ran in a durable marker written in the
+ * same call. Unlike the seed it runs on an abandoned store; like the seed it
+ * waits on a store not read from the host yet. The function says why.
  */
 import { defaultBindingStoredValue, ENSURED_VOICE_PACK_ID } from "@iracedeck/app-constants";
 import { qualifyVoiceId, splitVoiceId } from "@iracedeck/callout-script";
@@ -313,5 +323,130 @@ export function seedBindingDefaultsIfAbsent(defaults: Readonly<Record<string, st
       logger?.warn("Binding default seed write was rejected");
       logger?.debug(`Not stored: ${rejected.join(", ")}`);
     }
+  });
+}
+
+/**
+ * Passthrough marker recording that {@link migrateFuelMarginDefault} has run
+ * (#1679). Holds the plugin version that ran it (`true` when that version is
+ * unknown), the `_migrationAbandoned` shape (#1047). Durable and never
+ * run-scoped: without it the next start would move a 0.3 the user chose again
+ * after the upgrade.
+ */
+export const FUEL_MARGIN_DEFAULT_MIGRATED_KEY = "_fuelMarginDefaultMigrated";
+
+/**
+ * The `fuelCalloutMarginLaps` schema default before #1679. Every install that
+ * started under it persisted it, so a stored 0.3 says nothing about a choice.
+ * Compared exactly (`===`) against the parsed cache: any other value, 0.2 or
+ * 0.4 included, can only have been set on the slider.
+ */
+const OLD_FUEL_MARGIN_DEFAULT_LAPS = 0.3;
+
+/** The `fuelCalloutMarginLaps` default since #1679, which the old one moves to. */
+const NEW_FUEL_MARGIN_DEFAULT_LAPS = 0;
+
+/** What the fuel-margin migration logs (debug) when the store's state makes it wait, per reason. */
+const FUEL_MARGIN_NOT_MIGRATED: Readonly<Record<"not-ready" | "not-read-yet" | "unparseable", string>> = {
+  "not-ready": "Fuel margin default migration skipped: the settings store is not ready",
+  "not-read-yet":
+    "Fuel margin default migration skipped: the stored settings have not been read from the deck host yet; a start whose host answer lands will run it",
+  unparseable:
+    "Fuel margin default migration skipped: the stored settings could not be parsed; a start with a readable file will run it",
+};
+
+/**
+ * Move a stored `fuelCalloutMarginLaps` of exactly the old default 0.3 to the
+ * new default 0, once (#1679), now or as soon as the stored settings are in.
+ *
+ * **What it moves.** Only the number 0.3 as the parsed cache holds it. A
+ * schema default reaches new installs only — every start writes the whole
+ * parsed cache back to the file — so every existing install has 0.3 stored
+ * whether or not anyone chose it, and #1599's rule applies: a value every
+ * install persisted as a default is not a user's choice. Any other value is
+ * one, and is left alone; never widen this to a range (`≤ 0.3`), which would
+ * overwrite a deliberate 0.1 or 0.2. A user who picked 0.3 on purpose cannot be
+ * told apart from one who never touched the slider and is moved too; the
+ * changelog says so, and the slider puts it back.
+ *
+ * **Marked done.** {@link FUEL_MARGIN_DEFAULT_MIGRATED_KEY}, holding
+ * `pluginVersion` (`true` when blank or unknown), is written in the SAME
+ * `updateGlobalSettings` call as the value, and written even when nothing
+ * moved, so a user who sets 0.3 again after the upgrade keeps it at every
+ * later start. Any value under the key counts as done.
+ *
+ * **When it runs.** Once per start, at the first moment the store is ready
+ * (`runOnceSettingsStoreReady`), until marked. It reads
+ * `getSettingsStoreHostDerivation()` first:
+ *
+ * - `host-derived` — runs.
+ * - `abandoned` (#1041) — runs, unlike the #1277 seed. Its file is the
+ *   settings, and a later upgrade's re-ask merges the host UNDER the file
+ *   (`{ ...host, ...file }`), so the moved 0 survives it.
+ * - `not-read-yet` (the `_migrationPending` countdown, or a fresh start whose
+ *   host read timed out) — writes nothing, marker included. When the host's
+ *   answer lands, `mergeMigration` lets the host's stored 0.3 win over the
+ *   file's new default 0 (a default-valued file key loses), while a passthrough
+ *   marker survives the merge; a marker written now would leave the host's 0.3
+ *   in place for good. The start whose host answer lands runs it.
+ * - `unparseable` — writes nothing, marker included. The cache is then only
+ *   schema defaults (already 0) and the real file is left untouched on disk; a
+ *   marker over defaults would mark done an install whose file still holds 0.3.
+ *   The next start with a readable file runs it.
+ *
+ * `updateGlobalSettings` reports nothing — a write whose parse fails is dropped
+ * with its own error line — so the result is read back: info when the value
+ * moved, debug when only the marker was written, and a warning when either did
+ * not land.
+ *
+ * @param pluginVersion - The running plugin version (`getPluginVersion()`); the settings package cannot read it
+ * @param logger - Optional logger for migration reporting
+ * @returns A disposer that cancels a still-pending migration (for tests)
+ */
+export function migrateFuelMarginDefault(pluginVersion: string | undefined, logger?: ILogger): () => void {
+  return runOnceSettingsStoreReady(() => {
+    if (getGlobalSettings()[FUEL_MARGIN_DEFAULT_MIGRATED_KEY] !== undefined) return;
+
+    const derivation = getSettingsStoreHostDerivation();
+
+    if (derivation !== "host-derived" && derivation !== "abandoned") {
+      logger?.debug(FUEL_MARGIN_NOT_MIGRATED[derivation]);
+
+      return;
+    }
+
+    const before = getGlobalSettings().fuelCalloutMarginLaps;
+    const move = before === OLD_FUEL_MARGIN_DEFAULT_LAPS;
+    const marker = pluginVersion?.trim() || true;
+
+    updateGlobalSettings(
+      move
+        ? { fuelCalloutMarginLaps: NEW_FUEL_MARGIN_DEFAULT_LAPS, [FUEL_MARGIN_DEFAULT_MIGRATED_KEY]: marker }
+        : { [FUEL_MARGIN_DEFAULT_MIGRATED_KEY]: marker },
+    );
+
+    const stored = getGlobalSettings();
+    const markerLanded = stored[FUEL_MARGIN_DEFAULT_MIGRATED_KEY] === marker;
+    const valueLanded = !move || stored.fuelCalloutMarginLaps === NEW_FUEL_MARGIN_DEFAULT_LAPS;
+
+    if (!markerLanded || !valueLanded) {
+      logger?.warn("Fuel margin default migration write was rejected");
+      logger?.debug(
+        `Stored after the write: fuelCalloutMarginLaps=${JSON.stringify(stored.fuelCalloutMarginLaps)}, ${FUEL_MARGIN_DEFAULT_MIGRATED_KEY}=${JSON.stringify(stored[FUEL_MARGIN_DEFAULT_MIGRATED_KEY] ?? null)}`,
+      );
+
+      return;
+    }
+
+    if (move) {
+      logger?.info("Fuel margin moved from the old default 0.3 to 0");
+      logger?.debug(`Marked ${FUEL_MARGIN_DEFAULT_MIGRATED_KEY}: ${JSON.stringify(marker)}`);
+
+      return;
+    }
+
+    logger?.debug(
+      `Fuel margin default migration marked done; nothing to move (stored ${JSON.stringify(before)}, marked ${JSON.stringify(marker)})`,
+    );
   });
 }
