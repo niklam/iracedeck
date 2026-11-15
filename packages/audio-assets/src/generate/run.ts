@@ -34,6 +34,8 @@ export interface RunOptions {
   synthesize: Synthesize;
   /** Writes the manifest; called after every clip a live run writes, so a crash mid-run loses nothing. */
   persistManifest: (manifest: Manifest) => void;
+  /** How a failed save is retried; `MANIFEST_SAVE_RETRY` when omitted. */
+  manifestSaveRetry?: ManifestSaveRetry;
   /** voice id → `<group>/<name>` → the frozen text a pause mark is grandfathered for. */
   grandfathered?: GrandfatheredPauseMarks;
   now?: () => Date;
@@ -55,6 +57,12 @@ export interface RunResult {
   totals: RunCounts;
   /** Per voice, in the order the run visited them. */
   perVoice: Map<string, RunCounts>;
+  /**
+   * The clips written in this run whose manifest rows are not on disk: every
+   * save failed, the final one included. Empty on success; anything here
+   * fails the run, since the next run would pay to cut these clips again.
+   */
+  unsavedRows: string[];
 }
 
 /** What became of an entry this run; only entries in scope get one. */
@@ -100,6 +108,123 @@ export function invalidateProcessedCache(root: string, relPath: string): void {
 }
 
 type ManifestRow = Manifest["entries"][string];
+
+/** How a failed manifest save is retried: `attempts` writes in all, `delayMs` apart. */
+export interface ManifestSaveRetry {
+  attempts: number;
+  delayMs: number;
+  /** Blocks for `ms`; a test's seam. Defaults to a synchronous wait. */
+  sleep?: (ms: number) => void;
+}
+
+/**
+ * Three attempts a quarter of a second apart: long enough to outlast the
+ * brief lock Windows takes on a file another process (an indexer, a virus
+ * scanner, an editor) has just opened, which is what failed a real save on
+ * #1643 ("UNKNOWN: unknown error, open …generate.manifest.json").
+ */
+export const MANIFEST_SAVE_RETRY: ManifestSaveRetry = { attempts: 3, delayMs: 250 };
+
+function sleepSync(ms: number): void {
+  if (ms > 0) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
+/**
+ * The manifest's writer for a run or an import (#1643). A clip that is on
+ * disk with its row set in memory is done, whatever the save does: a failed
+ * save must never mark it failed, fail its dependents, or lose its row.
+ *
+ * `save` writes after each clip, retrying a failure `retry.attempts` times
+ * in all. Still failing, it warns and keeps the clip in its unsaved set; the
+ * next successful save writes the whole manifest, that row included, and
+ * clears the set. `flush` is the run's last attempt: when anything is
+ * unsaved it saves once more (retried alike) and returns the clips whose
+ * rows are still not on disk, naming them in an error.
+ */
+export class ManifestSaver {
+  private readonly unsaved = new Set<string>();
+  private readonly manifest: Manifest;
+  private readonly persist: (manifest: Manifest) => void;
+  private readonly log: RunLog;
+  private readonly tag: string;
+  private readonly retry: ManifestSaveRetry;
+
+  /** `tag` is the log prefix: `generate` or `import`. */
+  constructor(
+    manifest: Manifest,
+    persist: (manifest: Manifest) => void,
+    log: RunLog,
+    tag: string,
+    retry: ManifestSaveRetry = MANIFEST_SAVE_RETRY,
+  ) {
+    this.manifest = manifest;
+    this.persist = persist;
+    this.log = log;
+    this.tag = tag;
+    this.retry = retry;
+  }
+
+  /** Save after `relPath`'s row was set. Never throws. */
+  save(relPath: string): void {
+    this.unsaved.add(relPath);
+
+    const err = this.attempt();
+
+    if (err === null) return;
+
+    this.log.warn(
+      `[${this.tag}] ${relPath}  —  manifest save failed after ${this.retry.attempts} attempt(s): ${errorMessage(err)}. ` +
+        "The clip and its row are kept; the manifest is saved again before the run ends.",
+    );
+  }
+
+  /** The final save when a row is unsaved; returns the clips whose rows are still not on disk. */
+  flush(): string[] {
+    if (this.unsaved.size === 0) return [];
+
+    const pending = [...this.unsaved];
+    const err = this.attempt();
+
+    if (err === null) {
+      this.log.info(`[${this.tag}] manifest saved on the final attempt, with the rows of ${pending.join(", ")}`);
+
+      return [];
+    }
+
+    this.log.error(
+      `[${this.tag}] FAILED to save the manifest: ${errorMessage(err)}. These clips are on disk without their ` +
+        `rows, and the next run would cut them again: ${pending.join(", ")}`,
+    );
+
+    return pending;
+  }
+
+  /** One retried save: null when it landed, else the last error. Clears the unsaved set on success. */
+  private attempt(): unknown {
+    const attempts = Math.max(1, this.retry.attempts);
+    const sleep = this.retry.sleep ?? sleepSync;
+    let last: unknown = null;
+
+    for (let i = 0; i < attempts; i++) {
+      if (i > 0) sleep(this.retry.delayMs);
+
+      try {
+        this.persist(this.manifest);
+        this.unsaved.clear();
+
+        return null;
+      } catch (err) {
+        last = err ?? new Error("unknown error");
+      }
+    }
+
+    return last;
+  }
+}
 
 /**
  * A take another voice may copy: a clip with its manifest row, or — in a dry
@@ -214,6 +339,16 @@ export async function runGeneration(options: RunOptions): Promise<RunResult> {
   const grandfathered = options.grandfathered ?? {};
   const now = options.now ?? (() => new Date());
   const log = options.log ?? consoleLog;
+  const saver = new ManifestSaver(manifest, persistManifest, log, "generate", options.manifestSaveRetry);
+  // Belt-and-braces (see `invalidateProcessedCache`), so a failure here only
+  // warns: the clip and its row are already in place.
+  const dropProcessed = (relPath: string): void => {
+    try {
+      invalidateProcessedCache(root, relPath);
+    } catch (err) {
+      log.warn(`[generate] ${relPath}  —  could not drop its processed copies: ${errorMessage(err)}`);
+    }
+  };
 
   const totals = emptyCounts();
   const perVoice = new Map<string, RunCounts>();
@@ -420,33 +555,33 @@ export async function runGeneration(options: RunOptions): Promise<RunResult> {
         }
 
         try {
-          const sourceRow = source.row!;
-
           mkdirSync(path.dirname(absPath), { recursive: true });
           copyFileSync(path.join(root, source.relPath), absPath);
-          invalidateProcessedCache(root, relPath);
-
-          const row: ManifestRow = {
-            hash,
-            voiceId: voice.id,
-            model: sourceRow.model,
-            textPreview: sourceRow.textPreview,
-            generatedAt: now().toISOString(),
-            requestId: sourceRow.requestId,
-          };
-
-          recordTake(key, relPath, hash, row, row.requestId ?? null);
-          manifest.entries[relPath] = row;
-          persistManifest(manifest);
-          copiedFrom.add(source.relPath);
-          outcomes.set(key, "cut");
-          count("copied");
         } catch (err) {
-          log.error(`[copy] ${relPath}  —  FAILED: ${err instanceof Error ? err.message : String(err)}`);
+          log.error(`[copy] ${relPath}  —  FAILED: ${errorMessage(err)}`);
           outcomes.set(key, "failed");
           count("failed");
+          continue;
         }
 
+        // The clip is on disk: from here it is cut, whatever the save does.
+        const sourceRow = source.row!;
+        const row: ManifestRow = {
+          hash,
+          voiceId: voice.id,
+          model: sourceRow.model,
+          textPreview: sourceRow.textPreview,
+          generatedAt: now().toISOString(),
+          requestId: sourceRow.requestId,
+        };
+
+        recordTake(key, relPath, hash, row, row.requestId ?? null);
+        manifest.entries[relPath] = row;
+        copiedFrom.add(source.relPath);
+        outcomes.set(key, "cut");
+        count("copied");
+        dropProcessed(relPath);
+        saver.save(relPath);
         continue;
       }
 
@@ -471,44 +606,51 @@ export async function runGeneration(options: RunOptions): Promise<RunResult> {
         // proved current, or wrote earlier in this run.
         synthOptions = resolveEntryRequestIds(buildEntryOptions(entry, voice), voiceName, manifest);
       } catch (err) {
-        log.error(`[generate] ${relPath}  —  FAILED: ${err instanceof Error ? err.message : String(err)}`);
+        log.error(`[generate] ${relPath}  —  FAILED: ${errorMessage(err)}`);
         outcomes.set(key, "failed");
         count("failed");
         continue;
       }
 
+      let requestId: SynthesizeResult["requestId"];
+
       try {
-        const { mp3, requestId } = await synthesize(synthOptions);
+        const take = await synthesize(synthOptions);
 
+        requestId = take.requestId;
         mkdirSync(path.dirname(absPath), { recursive: true });
-        writeFileSync(absPath, mp3);
-        invalidateProcessedCache(root, relPath);
-
-        const row: ManifestRow = {
-          hash,
-          voiceId: voice.id,
-          model: synthOptions.model_id,
-          textPreview: textPreview(entry.text, 80),
-          generatedAt: now().toISOString(),
-          requestId,
-        };
-
-        recordTake(key, relPath, hash, row, requestId);
-        manifest.entries[relPath] = row;
-        // Persist after every success so a partial failure mid-run doesn't
-        // lose progress / force re-fetches on the next invocation.
-        persistManifest(manifest);
-        outcomes.set(key, "cut");
-        count("generated");
+        writeFileSync(absPath, take.mp3);
       } catch (err) {
-        log.error(`[generate] ${relPath}  —  FAILED: ${err instanceof Error ? err.message : String(err)}`);
+        log.error(`[generate] ${relPath}  —  FAILED: ${errorMessage(err)}`);
         outcomes.set(key, "failed");
         count("failed");
+        continue;
       }
+
+      // The paid take is on disk: from here it is cut, whatever the save
+      // does. A failed save is retried, and the run saves once more before
+      // it returns (`ManifestSaver`), so the row is never lost silently.
+      const row: ManifestRow = {
+        hash,
+        voiceId: voice.id,
+        model: synthOptions.model_id,
+        textPreview: textPreview(entry.text, 80),
+        generatedAt: now().toISOString(),
+        requestId,
+      };
+
+      recordTake(key, relPath, hash, row, requestId);
+      manifest.entries[relPath] = row;
+      outcomes.set(key, "cut");
+      count("generated");
+      dropProcessed(relPath);
+      // Persist after every clip so a crash mid-run doesn't lose progress
+      // or force re-fetches on the next invocation.
+      saver.save(relPath);
     }
   }
 
-  return { totals, perVoice };
+  return { totals, perVoice, unsavedRows: saver.flush() };
 }
 
 /**
@@ -572,12 +714,22 @@ function describeCounts(counts: RunCounts, dryRun: boolean): string {
   );
 }
 
-/** The closing summary: the totals line, then one line per voice when more than one ran. */
+/**
+ * The closing summary: the totals line, then one line per voice when more
+ * than one ran, then the clips whose manifest rows could not be saved.
+ */
 export function formatRunSummary(result: RunResult, dryRun: boolean): string[] {
   const lines = [`Done. ${describeCounts(result.totals, dryRun)}`];
 
   if (result.perVoice.size > 1) {
     for (const [voiceName, counts] of result.perVoice) lines.push(`  ${voiceName}: ${describeCounts(counts, dryRun)}`);
+  }
+
+  if (result.unsavedRows.length > 0) {
+    lines.push(
+      `Manifest NOT saved: ${result.unsavedRows.length} clip(s) on disk have no row in generate.manifest.json, ` +
+        `and the next run would cut them again: ${result.unsavedRows.join(", ")}`,
+    );
   }
 
   return lines;

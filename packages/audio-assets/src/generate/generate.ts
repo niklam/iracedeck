@@ -217,7 +217,9 @@ async function main(): Promise<void> {
 
   for (const line of formatRunSummary(result, dryRun)) console.log(line);
 
-  if (result.totals.failed > 0 || result.totals.refused > 0) process.exitCode = 1;
+  // A clip whose row never reached the manifest fails the run too: the next
+  // run would pay to cut it again (#1643).
+  if (result.totals.failed > 0 || result.totals.refused > 0 || result.unsavedRows.length > 0) process.exitCode = 1;
 }
 
 /** `--import <dir>`: no API call, so no key; every record of the trial, so no scope. */

@@ -6,7 +6,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildEntryLookup, entryHash, type VoiceConfig, VoiceConfigSchema } from "./config.ts";
 import type { SynthesizeOptions, SynthesizeResult } from "./elevenlabs.ts";
 import type { Manifest } from "./manifest.ts";
-import { formatRunSummary, runGeneration, type RunLog, type RunOptions, scopeFlagsFor } from "./run.ts";
+import {
+  formatRunSummary,
+  MANIFEST_SAVE_RETRY,
+  ManifestSaver,
+  runGeneration,
+  type RunLog,
+  type RunOptions,
+  scopeFlagsFor,
+} from "./run.ts";
 
 const NOW = new Date("2026-11-11T12:00:00.000Z");
 const UNSCOPED = { voices: null, groups: null, entries: null };
@@ -92,7 +100,7 @@ function seed(manifest: Manifest, relPath: string, hash: string, requestId: stri
 function run(overrides: Partial<RunOptions> & Pick<RunOptions, "voiceConfigs" | "manifest">) {
   const log = captureLog();
   const synthesize = overrides.synthesize ?? fakeSynthesize();
-  const persistManifest = vi.fn<(manifest: Manifest) => void>();
+  const persistManifest = overrides.persistManifest ?? vi.fn<(manifest: Manifest) => void>();
   const promise = runGeneration({
     scope: UNSCOPED,
     dryRun: false,
@@ -104,7 +112,12 @@ function run(overrides: Partial<RunOptions> & Pick<RunOptions, "voiceConfigs" | 
     synthesize,
   });
 
-  return { promise, log, synthesize: synthesize as ReturnType<typeof fakeSynthesize>, persistManifest };
+  return {
+    promise,
+    log,
+    synthesize: synthesize as ReturnType<typeof fakeSynthesize>,
+    persistManifest: persistManifest as ReturnType<typeof vi.fn<(manifest: Manifest) => void>>,
+  };
 }
 
 const emptyManifest = (): Manifest => ({ version: 1, entries: {} });
@@ -199,6 +212,147 @@ describe("runGeneration — order", () => {
 
     expect(persistManifest).toHaveBeenCalledTimes(1);
     expect(fs.existsSync(processed)).toBe(false);
+  });
+});
+
+describe("runGeneration — a failed manifest save (#1643)", () => {
+  const chain = {
+    intro: [{ name: "x", text: "Last lap was." }],
+    tail: [{ name: "x", text: "point four", previous_request_ids: ["intro/x"] }],
+  };
+  // What Windows gave on the real run, while something held the file briefly.
+  const locked = () => new Error("UNKNOWN: unknown error, open 'generate.manifest.json'");
+
+  /** A persistManifest that throws on the calls `failOn` picks (1-based), and the sleeps between attempts. */
+  function flakySave(failOn: (call: number) => boolean) {
+    let call = 0;
+    const persistManifest = vi.fn<(manifest: Manifest) => void>(() => {
+      call++;
+
+      if (failOn(call)) throw locked();
+    });
+    const sleeps: number[] = [];
+
+    return {
+      persistManifest,
+      retry: { attempts: 3, delayMs: 40, sleep: (ms: number) => void sleeps.push(ms) },
+      sleeps,
+    };
+  }
+
+  it("retries a save that throws once, and the clip and its dependents are cut", async () => {
+    const manifest = emptyManifest();
+    const { persistManifest, retry, sleeps } = flakySave((call) => call === 1);
+    const { promise, synthesize, log } = run({
+      voiceConfigs: new Map([["default", buildVoice(chain)]]),
+      manifest,
+      persistManifest,
+      manifestSaveRetry: retry,
+    });
+    const result = await promise;
+
+    expect(result.totals).toEqual({ generated: 2, copied: 0, skipped: 0, failed: 0, refused: 0 });
+    expect(result.unsavedRows).toEqual([]);
+    expect(synthesize.mock.calls[1]![0].previous_request_ids).toEqual(["req-1"]);
+    // intro: a failed attempt and the retry; tail: one save.
+    expect(persistManifest).toHaveBeenCalledTimes(3);
+    expect(sleeps).toEqual([40]);
+    expect(log.lines.some((line) => line.includes("FAILED") || line.includes("manifest save failed"))).toBe(false);
+  });
+
+  it("keeps a clip cut when every save fails, cuts its dependents and copies, and reports the unsaved rows", async () => {
+    const manifest = emptyManifest();
+    const { persistManifest, retry } = flakySave(() => true);
+    const { promise, synthesize, log } = run({
+      voiceConfigs: new Map([
+        ["default", buildVoice(chain)],
+        ["shawn", buildVoice(chain)],
+      ]),
+      manifest,
+      persistManifest,
+      manifestSaveRetry: retry,
+    });
+    const result = await promise;
+    const clips = [
+      "voice/default/intro/x.mp3",
+      "voice/default/tail/x.mp3",
+      "voice/shawn/intro/x.mp3",
+      "voice/shawn/tail/x.mp3",
+    ];
+
+    expect(result.perVoice.get("default")).toEqual({ generated: 2, copied: 0, skipped: 0, failed: 0, refused: 0 });
+    expect(result.perVoice.get("shawn")).toEqual({ generated: 0, copied: 2, skipped: 0, failed: 0, refused: 0 });
+    // The dependent was conditioned on the take the row holds in memory.
+    expect(synthesize.mock.calls[1]![0].previous_request_ids).toEqual(["req-1"]);
+    expect(Object.keys(manifest.entries).sort()).toEqual(clips);
+
+    for (const clip of clips) expect(fs.existsSync(path.join(root, clip))).toBe(true);
+
+    // Four clips' saves and the final one, three attempts each.
+    expect(persistManifest).toHaveBeenCalledTimes(15);
+    expect(result.unsavedRows).toEqual(clips);
+    expect(log.lines.filter((line) => line.includes("manifest save failed after 3 attempt(s)"))).toHaveLength(4);
+    expect(log.lines.at(-1)).toBe(
+      "[generate] FAILED to save the manifest: UNKNOWN: unknown error, open 'generate.manifest.json'. " +
+        `These clips are on disk without their rows, and the next run would cut them again: ${clips.join(", ")}`,
+    );
+  });
+
+  it("saves the held rows on the final attempt when the file is free again", async () => {
+    const manifest = emptyManifest();
+    // The clip's own three attempts fail; the final save's second lands.
+    const { persistManifest, retry } = flakySave((call) => call <= 4);
+    const { promise, log } = run({
+      voiceConfigs: new Map([["default", buildVoice({ g: [{ name: "x", text: "hello" }] })]]),
+      manifest,
+      persistManifest,
+      manifestSaveRetry: retry,
+    });
+    const result = await promise;
+
+    expect(result.totals.generated).toBe(1);
+    expect(result.unsavedRows).toEqual([]);
+    expect(persistManifest).toHaveBeenCalledTimes(5);
+    expect(persistManifest.mock.calls.at(-1)![0].entries["voice/default/g/x.mp3"]!.requestId).toBe("req-1");
+    expect(log.lines.at(-1)).toBe(
+      "[generate] manifest saved on the final attempt, with the rows of voice/default/g/x.mp3",
+    );
+  });
+
+  it("waits between attempts with the default synchronous sleep", () => {
+    let calls = 0;
+    const saver = new ManifestSaver(
+      emptyManifest(),
+      () => {
+        if (++calls === 1) throw locked();
+      },
+      captureLog(),
+      "generate",
+      { attempts: 3, delayMs: 30 },
+    );
+    const started = performance.now();
+
+    saver.save("voice/default/g/x.mp3");
+
+    expect(calls).toBe(2);
+    // Timer granularity on Windows: allow a few ms under the nominal delay.
+    expect(performance.now() - started).toBeGreaterThanOrEqual(25);
+    expect(saver.flush()).toEqual([]);
+    expect(MANIFEST_SAVE_RETRY).toEqual({ attempts: 3, delayMs: 250 });
+  });
+
+  it("makes no final save when every save landed, and none in a dry run", async () => {
+    for (const dryRun of [false, true]) {
+      const { promise, persistManifest } = run({
+        voiceConfigs: new Map([["default", buildVoice(chain)]]),
+        manifest: emptyManifest(),
+        dryRun,
+      });
+      const result = await promise;
+
+      expect(result.unsavedRows).toEqual([]);
+      expect(persistManifest).toHaveBeenCalledTimes(dryRun ? 0 : 2);
+    }
   });
 });
 
@@ -766,6 +920,7 @@ describe("formatRunSummary", () => {
           ["default", counts],
           ["shawn", { generated: 0, copied: 0, skipped: 0, failed: 0, refused: 0 }],
         ]),
+        unsavedRows: [],
       },
       true,
     );
@@ -775,5 +930,22 @@ describe("formatRunSummary", () => {
     );
     expect(lines).toHaveLength(3);
     expect(lines[1]).toMatch(/^ {2}default: 1 would be generated/);
+  });
+
+  it("names the clips whose manifest rows could not be saved", () => {
+    const counts = { generated: 2, copied: 0, skipped: 0, failed: 0, refused: 0 };
+    const lines = formatRunSummary(
+      {
+        totals: counts,
+        perVoice: new Map([["default", counts]]),
+        unsavedRows: ["voice/default/g/a.mp3", "voice/default/g/b.mp3"],
+      },
+      false,
+    );
+
+    expect(lines).toEqual([
+      "Done. 2 generated, 0 copied, 0 skipped (cache hit), 0 failed, 0 refused (pause marks, driver-name aliases or a stale dependency)",
+      "Manifest NOT saved: 2 clip(s) on disk have no row in generate.manifest.json, and the next run would cut them again: voice/default/g/a.mp3, voice/default/g/b.mp3",
+    ]);
   });
 });
