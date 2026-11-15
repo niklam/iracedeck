@@ -52,7 +52,7 @@ The spoken count is `floor(rawLapsLeft − margin − lapFractionRemaining)`. Ro
 ## Testing
 
 - **Schema:** a settings file with no key parses to 0; `null`, `""` and a malformed value fall back to 0.
-- **The three copies:** `translator-options.test.ts` and `race-engineer-callouts-sliders.test.ts` pass with the new default and fail if any one copy is left at 0.3.
+- **The three copies:** `translator-options.test.ts` and `race-engineer-callouts-sliders.test.ts` hold the three equal and fail if any one copy is left at 0.3. Both accept a default that sits on a bound, as 0 is the minimum, and probe just inside each bound, so a moved schema bound is still caught.
 - **Migration**, against the memory store: stored 0.3 → 0 and the marker written; stored 0.4 and 0 → unchanged, marker written; already marked with 0.3 stored → unchanged; `_migrationPending` set → nothing written, then the start after a host answer merging 0.3 → 0 and marked; `_migrationAbandoned` → migrated; a store that is not ready → nothing.
 - **Translator:** `diffFuelLapsLeft` with no injected margin uses 0.
 - **Manual:** with a settings file holding `"fuelCalloutMarginLaps": 0.3` and no marker, start the plugin; the settings window's slider reads 0, the file holds 0 and the marker, and the log has the info line. Set the slider to 0.3, restart, and it stays 0.3.
