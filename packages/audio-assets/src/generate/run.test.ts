@@ -109,6 +109,30 @@ function run(overrides: Partial<RunOptions> & Pick<RunOptions, "voiceConfigs" | 
 
 const emptyManifest = (): Manifest => ({ version: 1, entries: {} });
 
+describe("runGeneration — driver-name aliases (#1580)", () => {
+  it("refuses an alias spelling in a name group before any call, dry run alike", async () => {
+    const voice = buildVoice({
+      names: [
+        { name: "geoff", text: "Geoff" },
+        { name: "jeff", text: "Jeff" },
+      ],
+    });
+
+    for (const dryRun of [false, true]) {
+      const manifest = emptyManifest();
+      const { promise, log, synthesize } = run({ voiceConfigs: new Map([["default", voice]]), manifest, dryRun });
+      const result = await promise;
+
+      expect(result.totals.refused).toBe(1);
+      expect(synthesize.mock.calls.map(([options]) => options.text)).toEqual(dryRun ? [] : ["Jeff"]);
+      expect(log.lines.some((line) => line.includes("voice/default/names/geoff.mp3") && line.includes("REFUSED"))).toBe(
+        true,
+      );
+      expect(manifest.entries["voice/default/names/geoff.mp3"]).toBeUndefined();
+    }
+  });
+});
+
 describe("runGeneration — order", () => {
   it("cuts a dependency listed after its dependent first, and the dependent gets its new request id", async () => {
     const voice = buildVoice({
@@ -747,7 +771,7 @@ describe("formatRunSummary", () => {
     );
 
     expect(lines[0]).toBe(
-      "Done. 1 would be generated, 4 would be copied, 2 skipped (cache hit), 0 failed, 3 refused (pause marks or a stale dependency)",
+      "Done. 1 would be generated, 4 would be copied, 2 skipped (cache hit), 0 failed, 3 refused (pause marks, driver-name aliases or a stale dependency)",
     );
     expect(lines).toHaveLength(3);
     expect(lines[1]).toMatch(/^ {2}default: 1 would be generated/);

@@ -2,6 +2,7 @@ import { copyFileSync, existsSync, mkdirSync, readdirSync, rmSync, writeFileSync
 import path from "node:path";
 
 import { buildEntryOptions, entryHash, resolveEntryRequestIds, type VoiceConfig } from "./config.ts";
+import { describeDriverNameAlias, driverNameAliasOf } from "./driver-name-aliases.ts";
 import type { SynthesizeOptions, SynthesizeResult } from "./elevenlabs.ts";
 import { clipRelPath, type Manifest } from "./manifest.ts";
 import {
@@ -303,6 +304,19 @@ export async function runGeneration(options: RunOptions): Promise<RunResult> {
       const manifestEntry = manifest.entries[relPath];
       const cached = manifestEntry?.hash === hash && clipExists(relPath);
 
+      // A driver-name alias (#1580) plays its canonical's clips, so an entry
+      // recording one in a name group is refused, dry run included — a batch
+      // that re-adds `geoff` fails before it is paid for. Ahead of the cache
+      // hit, like the pause-mark refusal below.
+      const aliasOf = driverNameAliasOf(groupName, entry.name);
+
+      if (aliasOf !== null) {
+        log.error(`[generate] ${relPath}  —  REFUSED: ${describeDriverNameAlias(entry.name, aliasOf)}`);
+        outcomes.set(key, "refused");
+        count("refused");
+        continue;
+      }
+
       // Refused in a dry run alike, so an author sees it before spending
       // credit (#1518), and ahead of the cache hit, so a marked clip copied
       // in with its manifest row is refused too. A grandfathered entry whose
@@ -554,7 +568,7 @@ function describeCounts(counts: RunCounts, dryRun: boolean): string {
 
   return (
     `${counts.generated} ${would}generated, ${counts.copied} ${would}copied, ${counts.skipped} skipped (cache hit), ` +
-    `${counts.failed} failed, ${counts.refused} refused (pause marks or a stale dependency)`
+    `${counts.failed} failed, ${counts.refused} refused (pause marks, driver-name aliases or a stale dependency)`
   );
 }
 
