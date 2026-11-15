@@ -1,12 +1,13 @@
 /**
- * Sector-start callout tests (issue #1573).
+ * Sector-start callout tests (issues #1573, #1676).
  *
  * Three layers: the contract and vocabulary on their own; the family alone on
  * a real engine with the bundled voice's real script entry, over a fixture
  * manifest that ships the sector-number clips (so nothing here waits for the
- * recorded clips); and the real `registerPitCrew`, where the corner-name
- * opt-in, the active voice's script and a corner name holding the bus decide
- * whether a sector start is spoken.
+ * recorded clips); and the real `registerPitCrew` on the fake audio, where a
+ * clip plays until the test ends it, so the order in which a sector call and
+ * a corner name due at the same moment are heard, and how late either may
+ * start, are measured on the fake clock.
  */
 import { PUBLISHED_VOICE_IDS } from "@iracedeck/audio-assets/build";
 import manifestJson from "@iracedeck/audio-assets/manifest.json" with { type: "json" };
@@ -25,19 +26,19 @@ import type { AudioAssetsManifest, IScenarioEngine } from "../../interpreter.js"
 import { _resetAudioScenarios, getScenarioEngine, initializeAudioScenarios } from "../../interpreter.js";
 import { descriptionNamesGroup } from "../../reference/pack-reference.js";
 import { familyGate } from "./callout-gate.test-util.js";
-import type { CornerNameSnapshot } from "./corner-name.js";
+import { buildCornerNameContract, type CornerNameSnapshot, MARKER_CALL_MAX_LAG_MS } from "./corner-name.js";
 import { familyReferences } from "./family-references.test-util.js";
 import { registerPitCrew } from "./index.js";
+import type { LapCompletedSnapshot } from "./lap-time.js";
 import { _resetLimiterCueEngine } from "./limiter-cue-engine.js";
 import { _resetPitExitCueEngine } from "./pit-exit-cue-engine.js";
 import { _resetPitSpeedingEngine } from "./pit-speeding-engine.js";
 import { _resetRadarEngine } from "./radar-engine.js";
 import {
-  buildSectorStartContract,
   registerSectorStartVocabulary,
   SCENARIO_ID_TO_SECTOR_START_ID,
   SECTOR_START_CLIP_SOURCES,
-  SECTOR_START_CORNER_CLEARANCE_S,
+  SECTOR_START_CONTRACT,
   SECTOR_START_SCENARIO_IDS,
   type SectorStartData,
 } from "./sector-start.js";
@@ -99,7 +100,7 @@ function flush(audio: FakeAudio, iterations = 10): void {
 }
 
 function sectorData(overrides: Partial<SectorStartData> = {}): SectorStartData {
-  return { sector: 3, sectorCount: 4, nextCornerInS: null, ...overrides };
+  return { sector: 3, sectorCount: 4, ...overrides };
 }
 
 function sectorEvent(data: SectorStartData): SimEventOf<"sectorStart.approaching"> {
@@ -124,9 +125,9 @@ const SCRIPT = defaultScript as CalloutScript;
 const SECTOR_START_ID = "pit-crew.sector-start-approaching";
 const CORNER_NAME_ID = "pit-crew.corner-name-approaching";
 
-describe("buildSectorStartContract", () => {
-  it("is a terse, unframed chatter line in its own family that never waits and never cuts — the words are the voice script's", () => {
-    const c = buildSectorStartContract(() => true);
+describe("SECTOR_START_CONTRACT", () => {
+  it("is a terse, unframed chatter line in its own family that waits but never cuts — the words are the voice script's", () => {
+    const c = SECTOR_START_CONTRACT;
 
     expect(c.id).toBe(SECTOR_START_ID);
     expect(c.when?.event).toBe("sectorStart.approaching");
@@ -136,53 +137,38 @@ describe("buildSectorStartContract", () => {
     expect(c.family).toBe("sector-start");
     expect(c.weight).toBe(WEIGHT.CHATTER);
     expect(c.interrupt).toBe(false);
-    expect(c.queueable).toBe(false);
+    expect(c.queueable).toBe(true);
     expect(c.frame).toBe(NO_FRAME);
     expect("sequence" in c).toBe(false);
   });
 
+  it("pins the bounds (#1676): both marker calls give up 1.5 s late, the sector call queues and the corner name does not", () => {
+    const corner = buildCornerNameContract(() => null);
+
+    expect(MARKER_CALL_MAX_LAG_MS).toBe(1500);
+    expect(SECTOR_START_CONTRACT.maxQueueWaitMs).toBe(MARKER_CALL_MAX_LAG_MS);
+    expect(corner.maxQueueWaitMs).toBe(MARKER_CALL_MAX_LAG_MS);
+    expect(SECTOR_START_CONTRACT.queueable).toBe(true);
+    expect(corner.queueable).toBe(false);
+    expect(corner.family).not.toBe(SECTOR_START_CONTRACT.family);
+    expect(corner.interrupt ?? false).toBe(false);
+  });
+
   it("where: refuses sector one at the line, and passes the same event for sector two", () => {
-    const where = buildSectorStartContract(() => false).when!.where!;
+    const where = SECTOR_START_CONTRACT.when!.where!;
 
     expect(where(sectorEvent(sectorData({ sector: 1 })))).toBe(false);
     expect(where(sectorEvent(sectorData({ sector: 2 })))).toBe(true);
   });
 
   it("where: refuses a sector that is not a whole number from one up", () => {
-    const where = buildSectorStartContract(() => false).when!.where!;
+    const where = SECTOR_START_CONTRACT.when!.where!;
 
     for (const sector of [0, -2, 2.5, Number.NaN, Number.POSITIVE_INFINITY]) {
       expect(where(sectorEvent(sectorData({ sector }))), String(sector)).toBe(false);
     }
 
     expect(where(sectorEvent(sectorData({ sector: 7, sectorCount: 7 })))).toBe(true);
-  });
-
-  it("where: yields to a spoken corner due within the clearance, inclusive, and to nothing past it", () => {
-    let wouldSpeak = true;
-    const where = buildSectorStartContract(() => wouldSpeak).when!.where!;
-
-    expect(SECTOR_START_CORNER_CLEARANCE_S).toBe(1.5);
-    expect(where(sectorEvent(sectorData({ nextCornerInS: 0 })))).toBe(false);
-    expect(where(sectorEvent(sectorData({ nextCornerInS: 1.5 })))).toBe(false);
-    expect(where(sectorEvent(sectorData({ nextCornerInS: 1.6 })))).toBe(true);
-    expect(where(sectorEvent(sectorData({ nextCornerInS: null })))).toBe(true);
-
-    wouldSpeak = false;
-    expect(where(sectorEvent(sectorData({ nextCornerInS: 0.5 })))).toBe(true);
-  });
-
-  it("where: asks whether the corner call would speak only when a corner is due", () => {
-    const wouldSpeak = vi.fn(() => true);
-    const where = buildSectorStartContract(wouldSpeak).when!.where!;
-
-    where(sectorEvent(sectorData({ nextCornerInS: 30 })));
-    where(sectorEvent(sectorData({ nextCornerInS: null })));
-    where(sectorEvent(sectorData({ sector: 1, nextCornerInS: 0.5 })));
-    expect(wouldSpeak).not.toHaveBeenCalled();
-
-    where(sectorEvent(sectorData({ nextCornerInS: 0.5 })));
-    expect(wouldSpeak).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -277,15 +263,13 @@ describe("the sector-start callout alone, through the real script entry", () => 
   let bus: ReturnType<typeof createMockBus>;
   let audio: FakeAudio;
   let engine: IScenarioEngine;
-  let cornerWouldSpeak: boolean;
 
   beforeEach(() => {
-    cornerWouldSpeak = true;
     bus = createMockBus();
     audio = createFakeAudio();
     engine = initializeAudioScenarios(bus, audio, manifest, mockLogger as never, () => VOICE);
     registerSectorStartVocabulary(engine);
-    engine.defineContract(buildSectorStartContract(() => cornerWouldSpeak));
+    engine.defineContract(SECTOR_START_CONTRACT);
     engine.setScripts(new Map([[VOICE, FAMILY_SCRIPT]]));
   });
 
@@ -313,17 +297,6 @@ describe("the sector-start callout alone, through the real script entry", () => 
 
   it("skips a sector the voice has no clip for whole (issue #835)", () => {
     expect(cross({ sector: 11, sectorCount: 11 })).toEqual([]);
-  });
-
-  it("yields to a corner due at 1.5 s that would be spoken, and speaks at 1.6 s", () => {
-    expect(cross({ nextCornerInS: 1.5 })).toEqual([]);
-    expect(cross({ nextCornerInS: 1.6 })).toEqual([`voice/${VOICE}/sector-number/3-01.mp3`]);
-  });
-
-  it("speaks with a corner due at 0.5 s when the corner call would not be spoken", () => {
-    cornerWouldSpeak = false;
-
-    expect(cross({ nextCornerInS: 0.5 })).toEqual([`voice/${VOICE}/sector-number/3-01.mp3`]);
   });
 
   it("compiles for the test voice with nothing skipped", () => {
@@ -367,15 +340,20 @@ describe("the sector-start callout in the real registerPitCrew", () => {
   const BUNDLED = manifestJson as AudioAssetsManifest;
   const CORNER_CLIP = /^voice\/default\/corner-names\/eau-rouge(?:-\d+)?\.mp3$/;
   const SECTOR_CLIP = /^voice\/default\/sector-number\//;
+  const SECTOR_THREE = "voice/default/sector-number/3-01.mp3";
+  const LAP_TIME_BEST_ID = "pit-crew.lap-time-best";
+  const LAP_TIME_LAST_ID = "pit-crew.lap-time-last";
 
   let bus: ReturnType<typeof createMockBus>;
   let audio: FakeAudio;
   let corner: CornerNameSnapshot | null;
+  let lap: LapCompletedSnapshot | null;
   let isCalloutEnabled: (key: CalloutSettingKey) => boolean;
 
   beforeEach(() => {
     vi.useFakeTimers();
     corner = null;
+    lap = null;
     isCalloutEnabled = () => true;
     bus = createMockBus();
     audio = createFakeAudio();
@@ -390,6 +368,7 @@ describe("the sector-start callout in the real registerPitCrew", () => {
       logger: mockLogger as never,
       isCalloutEnabled: (key) => isCalloutEnabled(key),
       getCornerNameSnapshot: () => corner,
+      getLapCompletedSnapshot: () => lap,
     });
     getScenarioEngine().setScripts(new Map([[VOICE, SCRIPT]]));
   });
@@ -413,6 +392,22 @@ describe("the sector-start callout in the real registerPitCrew", () => {
     return played().filter((p) => SECTOR_CLIP.test(p));
   }
 
+  function cornerCalls(): string[] {
+    return played().filter((p) => CORNER_CLIP.test(p));
+  }
+
+  /** Every scenario that took the bus, in order, from the engine's own log line. */
+  function started(): string[] {
+    return mockLogger.info.mock.calls
+      .map(([m]) => /^Playing scenario "([^"]+)"$/.exec(String(m))?.[1])
+      .filter((id): id is string => id !== undefined);
+  }
+
+  /** Whether the engine logged dropping `id` from the queue for waiting too long. */
+  function droppedStale(id: string): boolean {
+    return mockLogger.debug.mock.calls.some(([m]) => String(m).startsWith(`Scenario "${id}" dropped — waited `));
+  }
+
   function cross(data: Partial<SectorStartData>): string[] {
     audio._played.length = 0;
     bus.publishEvent("sectorStart.approaching", sectorData(data));
@@ -421,35 +416,265 @@ describe("the sector-start callout in the real registerPitCrew", () => {
     return sectorCalls();
   }
 
+  function approachSectorThree(): void {
+    bus.publishEvent("sectorStart.approaching", sectorData({ sector: 3, sectorCount: 4 }));
+  }
+
   function approachEauRouge(): void {
     corner = { name: "Eau Rouge", slug: "eau-rouge" };
     bus.publishEvent("cornerName.approaching", corner);
   }
 
-  it("the bundled manifest ships the corner the held-bus cases play — their positive control", () => {
+  /** The clip on the voice channel finishes. */
+  function endVoiceClip(): void {
+    audio._triggerChannelEnd(AudioChannel.Voice);
+  }
+
+  it("the bundled manifest ships the corner the overlap cases play — their positive control", () => {
     expect(BUNDLED.clips.some((clip) => CORNER_CLIP.test(clip))).toBe(true);
   });
 
-  it("is silent with a scripted corner due at 1.5 s while the corner names are on, and speaks at 1.6 s", () => {
-    expect(cross({ nextCornerInS: 1.5 })).toEqual([]);
-    expect(cross({ nextCornerInS: 1.6 })).toEqual(["voice/default/sector-number/3-01.mp3"]);
+  describe("no overlap: each call on an idle bus starts at once", () => {
+    it("the sector call", () => {
+      approachSectorThree();
+
+      expect(played()).toEqual([SECTOR_THREE]);
+    });
+
+    it("the corner name", () => {
+      approachEauRouge();
+
+      expect(played()).toHaveLength(1);
+      expect(played()[0]).toMatch(CORNER_CLIP);
+    });
   });
 
-  it("speaks with a corner due at 0.5 s once the corner names are switched off", () => {
-    expect(cross({ nextCornerInS: 0.5 })).toEqual([]);
+  describe("sector first: the corner name waits for it (#1676)", () => {
+    /** "Sector three." at 0, Eau Rouge 0.3 s into it; the sector clip ends `endAfterCornerMs` after the corner arrived. */
+    function sectorThenCorner(endAfterCornerMs: number): void {
+      approachSectorThree();
+      vi.advanceTimersByTime(300);
+      approachEauRouge();
+      vi.advanceTimersByTime(endAfterCornerMs);
+      endVoiceClip();
+    }
 
-    isCalloutEnabled = familyGate(CORNER_NAME_CALLOUTS, () => false);
+    it("plays the corner name the moment the sector clip ends, and never cuts the sector clip", () => {
+      approachSectorThree();
+      vi.advanceTimersByTime(300);
+      approachEauRouge();
 
-    expect(cross({ nextCornerInS: 0.5 })).toEqual(["voice/default/sector-number/3-01.mp3"]);
+      // Heavier but not an interrupt: it waits rather than cutting.
+      expect(played()).toEqual([SECTOR_THREE]);
+
+      vi.advanceTimersByTime(500);
+      endVoiceClip();
+
+      expect(played()).toHaveLength(2);
+      expect(played()[0]).toBe(SECTOR_THREE);
+      expect(played()[1]).toMatch(CORNER_CLIP);
+      expect(audio._stopped).not.toContain(AudioChannel.Voice);
+    });
+
+    it("still plays the corner name when the sector clip ends 1.4 s after the corner was due — the control for the drop below", () => {
+      sectorThenCorner(1400);
+
+      expect(cornerCalls()).toHaveLength(1);
+      expect(droppedStale(CORNER_NAME_ID)).toBe(false);
+    });
+
+    it("drops the corner name as stale when the sector clip ends 1.6 s after it was due", () => {
+      sectorThenCorner(1600);
+      flush(audio);
+
+      expect(played()).toEqual([SECTOR_THREE]);
+      expect(droppedStale(CORNER_NAME_ID)).toBe(true);
+    });
   });
 
-  it("speaks with a corner due at 0.5 s when the voice does not script the corner names", () => {
-    const scenarios = Object.fromEntries(Object.entries(SCRIPT.scenarios).filter(([id]) => id !== CORNER_NAME_ID));
+  describe("corner first: the sector call waits for it (#1676)", () => {
+    /** Eau Rouge at 0, "Sector three." 0.3 s into it; the corner clip ends `endAfterSectorMs` after the sector call arrived. */
+    function cornerThenSector(endAfterSectorMs: number): void {
+      approachEauRouge();
+      vi.advanceTimersByTime(300);
+      approachSectorThree();
+      vi.advanceTimersByTime(endAfterSectorMs);
+      endVoiceClip();
+    }
 
-    getScenarioEngine().setScripts(new Map([[VOICE, { ...SCRIPT, scenarios }]]));
+    it("plays the sector call the moment the corner name ends, and never cuts the corner name", () => {
+      approachEauRouge();
+      vi.advanceTimersByTime(300);
+      approachSectorThree();
 
-    expect(getScenarioEngine().isScripted(CORNER_NAME_ID)).toBe(false);
-    expect(cross({ nextCornerInS: 0.5 })).toEqual(["voice/default/sector-number/3-01.mp3"]);
+      // Lighter: it waits in the queue instead of being dropped.
+      expect(cornerCalls()).toHaveLength(1);
+      expect(sectorCalls()).toEqual([]);
+
+      vi.advanceTimersByTime(500);
+      endVoiceClip();
+
+      expect(played()).toHaveLength(2);
+      expect(played()[0]).toMatch(CORNER_CLIP);
+      expect(played()[1]).toBe(SECTOR_THREE);
+      expect(audio._stopped).not.toContain(AudioChannel.Voice);
+    });
+
+    it("still plays the sector call when the corner name ends 1.4 s after it was due — the control for the drop below", () => {
+      cornerThenSector(1400);
+
+      expect(sectorCalls()).toEqual([SECTOR_THREE]);
+      expect(droppedStale(SECTOR_START_ID)).toBe(false);
+    });
+
+    it("drops the sector call as stale when the corner name ends 1.6 s after it was due", () => {
+      cornerThenSector(1600);
+      flush(audio);
+
+      expect(sectorCalls()).toEqual([]);
+      expect(cornerCalls()).toHaveLength(1);
+      expect(droppedStale(SECTOR_START_ID)).toBe(true);
+    });
+  });
+
+  describe("behind other lines", () => {
+    /** A 1:23.4 session-best lap in practice: the NORMAL-weight best-lap readout. */
+    const BEST_LAP: LapCompletedSnapshot = {
+      lap: 4,
+      lapTime: 83.4,
+      isBest: true,
+      isFirstValid: false,
+      sessionType: "practice",
+    };
+
+    /** The best-lap readout starts; the sector call arrives 0.2 s in; the readout ends `endAfterSectorMs` after it. */
+    function lapTimeThenSector(endAfterSectorMs: number): void {
+      lap = BEST_LAP;
+      bus.publishEvent("lap.completed", BEST_LAP);
+
+      expect(started()).toEqual([LAP_TIME_BEST_ID]);
+
+      vi.advanceTimersByTime(200);
+      approachSectorThree();
+
+      expect(sectorCalls()).toEqual([]);
+
+      vi.advanceTimersByTime(endAfterSectorMs);
+      flush(audio, 40);
+    }
+
+    it("a sector call arriving during a lap-time readout is heard after it when the readout ends within 1.5 s", () => {
+      lapTimeThenSector(1400);
+
+      expect(started()).toEqual([LAP_TIME_BEST_ID, SECTOR_START_ID]);
+      expect(sectorCalls()).toEqual([SECTOR_THREE]);
+    });
+
+    it("and dropped as stale when the readout ends later", () => {
+      lapTimeThenSector(1600);
+
+      expect(started()).toEqual([LAP_TIME_BEST_ID]);
+      expect(sectorCalls()).toEqual([]);
+      expect(droppedStale(SECTOR_START_ID)).toBe(true);
+    });
+
+    it("a CHATTER line arriving while the sector call waits plays after it — equal weight goes by age", () => {
+      approachEauRouge();
+      vi.advanceTimersByTime(200);
+      approachSectorThree();
+      vi.advanceTimersByTime(200);
+
+      // A lap that is not a best: the every-lap readout, CHATTER and queueable.
+      lap = { ...BEST_LAP, isBest: false };
+      bus.publishEvent("lap.completed", lap);
+
+      expect(started()).toEqual([CORNER_NAME_ID]);
+
+      vi.advanceTimersByTime(200);
+      flush(audio, 40);
+
+      expect(started()).toEqual([CORNER_NAME_ID, SECTOR_START_ID, LAP_TIME_LAST_ID]);
+    });
+
+    it("a sector call cut by an interrupt line replays whole once that line ends, within 1.5 s of being due", () => {
+      // A test-local stand-in for the spotter's transition call: the real one
+      // speaks only a clip its engine stashed from radar ticks, and holds a
+      // SAFETY focus floor while a car is alongside.
+      const CUT_ID = "test.proximity-interrupt";
+
+      getScenarioEngine().defineContract({
+        id: CUT_ID,
+        channel: AudioChannel.Voice,
+        bus: AudioBus.Voice,
+        base: "voice/{voice}",
+        weight: WEIGHT.PROXIMITY,
+        interrupt: true,
+        queueable: false,
+        frame: NO_FRAME,
+        description: "A proximity line that cuts anything in flight.",
+      });
+      getScenarioEngine().setScripts(
+        new Map([
+          [
+            VOICE,
+            {
+              ...SCRIPT,
+              scenarios: {
+                ...SCRIPT.scenarios,
+                [CUT_ID]: { comment: "Test.", test: "Test.", sequence: ["pool:corner-names/eau-rouge"] },
+              },
+            },
+          ],
+        ]),
+      );
+
+      approachSectorThree();
+      vi.advanceTimersByTime(300);
+      getScenarioEngine().fire(CUT_ID);
+
+      expect(audio._stopped).toContain(AudioChannel.Voice);
+      expect(started()).toEqual([SECTOR_START_ID, CUT_ID]);
+
+      vi.advanceTimersByTime(500);
+      endVoiceClip();
+
+      expect(started()).toEqual([SECTOR_START_ID, CUT_ID, SECTOR_START_ID]);
+      expect(sectorCalls()).toEqual([SECTOR_THREE, SECTOR_THREE]);
+      expect(droppedStale(SECTOR_START_ID)).toBe(false);
+    });
+  });
+
+  describe("no suppression left (#1676)", () => {
+    for (const cornerNamesOn of [true, false]) {
+      it(`speaks a sector start with a corner due right after it while the corner names are ${cornerNamesOn ? "on" : "off"}`, () => {
+        if (!cornerNamesOn) isCalloutEnabled = familyGate(CORNER_NAME_CALLOUTS, () => false);
+
+        approachSectorThree();
+        vi.advanceTimersByTime(300);
+        approachEauRouge();
+        vi.advanceTimersByTime(300);
+        flush(audio);
+
+        expect(sectorCalls()).toEqual([SECTOR_THREE]);
+        expect(cornerCalls()).toHaveLength(cornerNamesOn ? 1 : 0);
+        expect(played()[0]).toBe(SECTOR_THREE);
+      });
+    }
+
+    it("speaks a sector start with a corner due right after it when the voice does not script the corner names", () => {
+      const scenarios = Object.fromEntries(Object.entries(SCRIPT.scenarios).filter(([id]) => id !== CORNER_NAME_ID));
+
+      getScenarioEngine().setScripts(new Map([[VOICE, { ...SCRIPT, scenarios }]]));
+
+      expect(getScenarioEngine().isScripted(CORNER_NAME_ID)).toBe(false);
+
+      approachSectorThree();
+      vi.advanceTimersByTime(300);
+      approachEauRouge();
+      flush(audio);
+
+      expect(played()).toEqual([SECTOR_THREE]);
+    });
   });
 
   it("is silenced by its own opt-in alone", () => {
@@ -464,30 +689,6 @@ describe("the sector-start callout in the real registerPitCrew", () => {
     expect(cross({ sector: 1 })).toEqual([]);
     expect(cross({ sector: 11, sectorCount: 11 })).toEqual([]);
     expect(cross({ sector: 2 })).toEqual(["voice/default/sector-number/2-01.mp3"]);
-  });
-
-  it("is dropped, never queued, when a corner name holds the bus", () => {
-    approachEauRouge();
-    expect(played().filter((p) => CORNER_CLIP.test(p))).toHaveLength(1);
-
-    bus.publishEvent("sectorStart.approaching", sectorData({ nextCornerInS: null }));
-    flush(audio, 40);
-    vi.advanceTimersByTime(30_000);
-    flush(audio, 40);
-
-    expect(sectorCalls()).toEqual([]);
-  });
-
-  it("never cuts or delays a corner name playing on the bus", () => {
-    approachEauRouge();
-
-    const before = played().length;
-
-    bus.publishEvent("sectorStart.approaching", sectorData({ nextCornerInS: null }));
-
-    expect(audio._stopped).not.toContain(AudioChannel.Voice);
-    expect(played()).toHaveLength(before);
-    expect(played().filter((p) => CORNER_CLIP.test(p))).toHaveLength(1);
   });
 
   it("maps its one scenario id to the sector-starts opt-in", () => {

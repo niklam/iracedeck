@@ -3588,29 +3588,30 @@ function handleLiveSteps(
   const trackSectors = steps.value("resolveTrackSectorsCached", values, self.state.trackSectors.starts, () =>
     resolveTrackSectorsCached(self.state.trackSectors, sessionInfo, telemetry),
   );
-  steps.live("diffCornerName", pending, () =>
-    diffCornerName(
-      self.state.cornerName,
-      telemetry,
-      classifySession(sessionType)?.category === "practice",
-      cornerMarkers,
-      trackLengthMeters,
-      self.getCornerCalloutLeadSeconds,
-      emit,
-    ),
-  );
   // Sector-start calls (issue #1573): the corner names' lead point and sweep
-  // over the track's sector starts, practice/test only (gated in the diff),
-  // right after the corner names so a corner swept on the same tick is
-  // published first. Behind the replay guard like everything here, so a replay
-  // never publishes one. The corner markers only measure `nextCornerInS`; a
-  // track without them still gets every sector start.
+  // over the track's sector starts, practice/test only (gated in the diff).
+  // Called right BEFORE the corner names (#1676): a sector start and a corner
+  // marker swept on one tick are a corner at the sector line, and the sector
+  // call is the one on the line, so it is published first and the corner name
+  // queues behind it on the voice bus. Behind the replay guard like everything
+  // here, so a replay never publishes one. It reads no corner markers: a track
+  // without them still gets every sector start.
   steps.live("diffSectorStart", pending, () =>
     diffSectorStart(
       self.state.sectorStart,
       telemetry,
       classifySession(sessionType)?.category === "practice",
       trackSectors,
+      trackLengthMeters,
+      self.getCornerCalloutLeadSeconds,
+      emit,
+    ),
+  );
+  steps.live("diffCornerName", pending, () =>
+    diffCornerName(
+      self.state.cornerName,
+      telemetry,
+      classifySession(sessionType)?.category === "practice",
       cornerMarkers,
       trackLengthMeters,
       self.getCornerCalloutLeadSeconds,

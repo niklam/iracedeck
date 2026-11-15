@@ -141,8 +141,8 @@ vi.mock("./diff/overtakes.js", async (io) => harness.spy(await io(), { diffOvert
 vi.mock("./diff/gaps.js", async (io) => harness.spy(await io(), { diffGaps: 7 }));
 vi.mock("./diff/pit-box-countdown.js", async (io) => harness.spy(await io(), { diffPitBoxCountdown: 4 }));
 vi.mock("./diff/pit-lane-landmarks.js", async (io) => harness.spy(await io(), { diffPitLaneLandmarks: 6 }));
+vi.mock("./diff/sector-start.js", async (io) => harness.spy(await io(), { diffSectorStart: 6 }));
 vi.mock("./diff/corner-name.js", async (io) => harness.spy(await io(), { diffCornerName: 6 }));
-vi.mock("./diff/sector-start.js", async (io) => harness.spy(await io(), { diffSectorStart: 7 }));
 vi.mock("./diff/fuel-laps-left.js", async (io) => harness.spy(await io(), { diffFuelLapsLeft: 7 }));
 vi.mock("./diff/radar.js", async (io) => harness.spy(await io(), { diffRadar: 2 }));
 vi.mock("./diff/pit-speeding.js", async (io) => harness.spy(await io(), { diffPitSpeeding: 4 }));
@@ -656,6 +656,17 @@ describe("TICK_ORDER", () => {
       expect(teardown).toBeGreaterThan(0);
       expect(teardown).toBe(firstPending - 1);
       expect(TICK_ORDER.slice(firstPending).every((s) => s.via === "pending")).toBe(true);
+    });
+
+    // The call-order test proves the table is the code; this pins the order a
+    // feature depends on (#1676): on a tick that sweeps both, the sector call is
+    // on the line and is published first, the corner name queuing behind it.
+    it("runs diffSectorStart directly before diffCornerName", () => {
+      const sector = TICK_ORDER.findIndex((s) => s.stage === "diffSectorStart");
+      const corner = TICK_ORDER.findIndex((s) => s.stage === "diffCornerName");
+
+      expect(sector).toBeGreaterThanOrEqual(0);
+      expect(corner).toBe(sector + 1);
     });
   });
 

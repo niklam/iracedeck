@@ -18,7 +18,12 @@
  * is the contract's `frame: NO_FRAME` (`"none"`) that enforces this now.
  * `family: "corner-name"` so back-to-back corners preempt the in-flight
  * name; `queueable: false` because a name that missed its moment must drop,
- * never replay late. Weight stays at the default `WEIGHT.NORMAL`.
+ * never replay late. Weight stays at the default `WEIGHT.NORMAL`, so a name
+ * that arrives while a lighter line plays (a sector start, #1676, or a
+ * `CHATTER` position call) waits in the bus's queue for it, queueable or
+ * not, and plays the moment it ends; {@link MARKER_CALL_MAX_LAG_MS} bounds
+ * that wait, so a name more than 1.5 s late is dropped rather than naming a
+ * corner the driver is already in.
  *
  * Snapshot-driven builder shape (issue #558, the lap-time precedent): the
  * clip resolver reads a plugin-owned cache of the latest event payload at
@@ -44,6 +49,22 @@ export type CornerNameSnapshot = SimEventOf<"cornerName.approaching">["data"];
 export type CornerNameSnapshotResolver = () => CornerNameSnapshot | null;
 
 const CORNER_NAME_GROUP = "corner-names";
+
+/**
+ * The longest a track-marker call — a corner name or a sector start — may
+ * start after it was due, in milliseconds (#1676), set as `maxQueueWaitMs` on
+ * both contracts. The two often come due together, and the bus plays the
+ * second right after the first; a call still waiting past this is stale and
+ * dropped. At the default 1 s lead a call 1.5 s late starts half a second
+ * past its marker, the latest a corner is still "called as it starts" — any
+ * later and it names a corner the driver is already in, #888's reason the
+ * names never replay late. It clears every measured bundled overlap: a
+ * corner behind "Sector three." waits at most 1.02 s, a sector call behind
+ * a corner name at most 1.62 s only when the two markers coincide on the
+ * longest names. A constant rather than one scaled by the lead, because a
+ * pack's longer clips are exactly what it exists to cut off.
+ */
+export const MARKER_CALL_MAX_LAG_MS = 1500;
 
 /**
  * Register the vocabulary the corner-name script references (issue #1065):
@@ -81,6 +102,9 @@ export function buildCornerNameContract(getSnapshot: CornerNameSnapshotResolver)
     base: "voice/{voice}",
     family: "corner-name",
     queueable: false,
+    // A name waiting for a lighter line in flight (it is heavier, so it
+    // waits queueable or not) is dropped once it is this late (#1676).
+    maxQueueWaitMs: MARKER_CALL_MAX_LAG_MS,
     frame: NO_FRAME,
     description:
       "Your car reaches the point about a second (the configured lead) before a named corner in a practice or test session, once per corner per lap; qualifying and races stay silent.",

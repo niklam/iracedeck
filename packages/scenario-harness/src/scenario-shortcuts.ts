@@ -4408,8 +4408,10 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
   // ── Sector starts (issue #1573) ──
   // Fire the event directly, bypassing the practice/test gate and the lead
   // point sweep of the translator diff. The contract decides what is said:
-  // sector one at the line is silent, as is a sector start with a spoken
-  // corner due within 1.5 s, and a sector with no clip is skipped whole.
+  // sector one at the line is silent, and a sector with no clip is skipped
+  // whole. A corner name due at the same moment is heard too (#1676): the
+  // two corner-and-sector shortcuts publish both in one call, in the order
+  // the translator would, and the second plays straight after the first.
   {
     id: "sector-start-three",
     category: "Corner Names",
@@ -4417,7 +4419,7 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
     description:
       'Sector-start callout on a four-sector track, no corner due — spoken as "Sector three." (practice/test).',
     event: "sectorStart.approaching",
-    data: { sector: 3, sectorCount: 4, nextCornerInS: null },
+    data: { sector: 3, sectorCount: 4 },
   },
   {
     id: "sector-start-one-at-line",
@@ -4425,16 +4427,27 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
     label: "Sector one at the line",
     description: "Sector one starts at the start/finish line: silent by design, the line is never called.",
     event: "sectorStart.approaching",
-    data: { sector: 1, sectorCount: 4, nextCornerInS: null },
+    data: { sector: 1, sectorCount: 4 },
   },
   {
     id: "sector-start-corner-due",
     category: "Corner Names",
     label: "Sector start with a corner due",
     description:
-      "Sector three with a corner 0.8 s past its start: silent while Corner names are on (the corner call wins), spoken once they are off.",
+      'Sector three with Eau Rouge at its start, published in that order: "Sector three." then "Eau Rouge" straight after, nothing cut; with Corner names off, "Sector three." alone (practice/test).',
+    precedingEvents: [{ event: "sectorStart.approaching", data: { sector: 3, sectorCount: 4 } }],
+    event: "cornerName.approaching",
+    data: { name: "Eau Rouge", slug: "eau-rouge" },
+  },
+  {
+    id: "corner-then-sector-start",
+    category: "Corner Names",
+    label: "Corner then sector start",
+    description:
+      'Eau Rouge just before the start of sector three, published in that order: "Eau Rouge" then "Sector three." straight after, nothing cut (practice/test).',
+    precedingEvents: [{ event: "cornerName.approaching", data: { name: "Eau Rouge", slug: "eau-rouge" } }],
     event: "sectorStart.approaching",
-    data: { sector: 3, sectorCount: 4, nextCornerInS: 0.8 },
+    data: { sector: 3, sectorCount: 4 },
   },
   {
     id: "sector-start-eleven",
@@ -4442,7 +4455,7 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
     label: "Sector eleven",
     description: "Sector eleven of eleven: silent, since the voice records sector-number clips one to ten only.",
     event: "sectorStart.approaching",
-    data: { sector: 11, sectorCount: 11, nextCornerInS: null },
+    data: { sector: 11, sectorCount: 11 },
   },
 
   // ── Gaps (issue #933) ──

@@ -13,11 +13,12 @@
  * reversing, silent re-anchor on a teleport, only the nearest of several
  * crossed in one tick. On pit road a crossing is consumed and not published.
  *
- * Each event carries `nextCornerInS`, the time at the current speed from the
- * sector start to the next corner marker `diffCornerName` sweeps, so a
- * consumer can tell a sector call that would crowd a corner call. It is
- * measured, never a reason to stay silent: a track with no corner data still
- * gets every sector start, with `nextCornerInS: null`.
+ * The diff knows nothing of the corner names beyond sharing their sweep: a
+ * sector call and a corner name that come due together are both published,
+ * and the voice bus's queue plays the second after the first (#1676). On a
+ * tick that sweeps both a sector start and a corner marker the translator
+ * runs this diff first (`TICK_ORDER`), so the sector call, the one on the
+ * line, is published first.
  *
  * Session gating lives HERE (the #655 / #888 diff-side precedent) so the
  * scenario harness can publish the event freely without iRacing. Replays never
@@ -25,7 +26,6 @@
  */
 import type { SimEventName } from "@iracedeck/event-bus";
 import type { TelemetryData } from "@iracedeck/iracing-sdk";
-import type { CornerMarker } from "@iracedeck/track-data";
 
 import type { SectorStartState } from "../state.js";
 import { leadPointPct, resetLeadPointSweep, sweepLeadPoint } from "./lead-point-sweep.js";
@@ -33,41 +33,6 @@ import type { EmitFn } from "./types.js";
 
 /** The events {@link diffSectorStart} emits: its emitter's type, and its row in `TICK_ORDER`. */
 export const SECTOR_START_EVENTS = ["sectorStart.approaching"] as const satisfies readonly SimEventName[];
-
-/**
- * Seconds, at `speed`, from a sector start to the next corner marker forward
- * of it on the lap, wrapping the line; a marker exactly at the sector start is
- * 0 s away. No reach bound: the next corner may be most of a lap away.
- *
- * @param sectorStartPct the sector start, as a lap fraction
- * @param markers the track's corner markers, the ones `diffCornerName` sweeps
- * @param trackLengthMeters the track's length
- * @param speed the car's speed in m/s
- * @returns the seconds, or `null` with no markers, no track length or no speed
- * @internal Exported for testing.
- */
-export function secondsToNextCorner(
-  sectorStartPct: number,
-  markers: readonly CornerMarker[] | null,
-  trackLengthMeters: number | null,
-  speed: number | undefined,
-): number | null {
-  if (markers === null || markers.length === 0) return null;
-
-  if (trackLengthMeters === null || !(trackLengthMeters > 0)) return null;
-
-  if (typeof speed !== "number" || !(speed > 0)) return null;
-
-  let nearest = Infinity;
-
-  for (const marker of markers) {
-    const forward = (marker.startPct - sectorStartPct + 1) % 1;
-
-    if (forward < nearest) nearest = forward;
-  }
-
-  return (nearest * trackLengthMeters) / speed;
-}
 
 /**
  * Publish `sectorStart.approaching` as the player's lead point crosses a
@@ -80,8 +45,6 @@ export function secondsToNextCorner(
  * @param sectors the track's sector starts, the translator's
  *   `resolveTrackSectorsCached` value, read at the call (#1588);
  *   `null` when the track has none it can count
- * @param cornerMarkers the track's corner markers, the translator's
- *   `resolveCornerMarkersCached` value; only `nextCornerInS` reads them
  * @param trackLengthMeters the track length, the translator's
  *   `resolveTrackLengthMeters` value
  * @param getLeadSeconds the live corner-call lead (`cornerCalloutLeadSeconds`)
@@ -92,14 +55,13 @@ export function diffSectorStart(
   telemetry: TelemetryData,
   isPracticeSession: boolean,
   sectors: readonly number[] | null,
-  cornerMarkers: readonly CornerMarker[] | null,
   trackLengthMeters: number | null,
   getLeadSeconds: () => number,
   emit: EmitFn<(typeof SECTOR_START_EVENTS)[number]>,
 ): void {
   // Gates: practice-like session, sectors and track length known, live in the
   // car, valid lap position. Anything missing → silent AND the pass resets, so
-  // returning to the track starts a fresh run. Corner markers are no gate.
+  // returning to the track starts a fresh run.
   if (!isPracticeSession || sectors === null || sectors.length === 0) {
     resetLeadPointSweep(slice);
 
@@ -130,10 +92,6 @@ export function diffSectorStart(
 
   emit({
     event: "sectorStart.approaching",
-    data: {
-      sector: idx + 1,
-      sectorCount: sectors.length,
-      nextCornerInS: secondsToNextCorner(sectors[idx]!, cornerMarkers, trackLengthMeters, telemetry.Speed),
-    },
+    data: { sector: idx + 1, sectorCount: sectors.length },
   });
 }

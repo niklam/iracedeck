@@ -155,8 +155,10 @@ export const TICK_ORDER: readonly TickStage[] = [
     via: "pending",
     events: PIT_LANE_LANDMARKS_EVENTS,
   },
-  { stage: "diffCornerName", source: "diff/corner-name.ts", via: "pending", events: CORNER_NAME_EVENTS },
+  // Sector start before the corner name (#1676): on one tick that sweeps both,
+  // the sector call is on the line and is published first.
   { stage: "diffSectorStart", source: "diff/sector-start.ts", via: "pending", events: SECTOR_START_EVENTS },
+  { stage: "diffCornerName", source: "diff/corner-name.ts", via: "pending", events: CORNER_NAME_EVENTS },
   { stage: "diffFuelLapsLeft", source: "diff/fuel-laps-left.ts", via: "pending", events: FUEL_LAPS_LEFT_EVENTS },
   { stage: "diffRadar", source: "diff/radar.ts", via: "pending", events: RADAR_EVENTS },
   { stage: "diffPitSpeeding", source: "diff/pit-speeding.ts", via: "pending", events: PIT_SPEEDING_EVENTS },

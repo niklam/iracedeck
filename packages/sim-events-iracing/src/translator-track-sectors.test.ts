@@ -3,7 +3,9 @@
  * #1573): the one `trackSessionKey` all four are keyed by, and the track's
  * sectors as the `trackSectors` slice caches them — in every session type,
  * re-resolved on a new `(TrackID, SessionNum)`, `null` for sectors that fail
- * validation, and wiped at a replay like the other track caches.
+ * validation, and wiped at a replay like the other track caches; and the
+ * order a sector start and a corner name swept on one tick reach the bus in
+ * (#1676).
  */
 import { _resetEventBus, getEventBus, initializeEventBus } from "@iracedeck/event-bus";
 import {
@@ -18,6 +20,7 @@ import {
   TrkLoc,
 } from "@iracedeck/iracing-sdk";
 import type { ILogger } from "@iracedeck/logger";
+import { type CornerMarker } from "@iracedeck/track-data";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { _resetSimEventsIracing, initializeSimEventsIracing, readSimState, trackSessionKey } from "./translator.js";
@@ -28,6 +31,24 @@ vi.mock("@iracedeck/iracing-sdk", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@iracedeck/iracing-sdk")>();
 
   return { ...actual, extractSectorStarts: vi.fn(actual.extractSectorStarts) };
+});
+
+/** A track name no bundled snapshot carries, given {@link TEST_RING_MARKERS} below. */
+const TEST_RING = "Test Ring";
+
+/** One corner exactly at the five-sector layout's sector 2 start (0.2): a corner at the sector line. */
+const TEST_RING_MARKERS: CornerMarker[] = [{ startPct: 0.2, name: "Line Corner", slug: "line-corner" }];
+
+// The bundled corner data, with one synthetic track whose marker sits where the
+// tests need it; every other name resolves as it really does.
+vi.mock("@iracedeck/track-data", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@iracedeck/track-data")>();
+
+  return {
+    ...actual,
+    resolveCornerMarkers: (trackName: string) =>
+      trackName === TEST_RING ? TEST_RING_MARKERS : actual.resolveCornerMarkers(trackName),
+  };
 });
 
 /**
@@ -401,8 +422,8 @@ describe("the cached track sectors", () => {
 
 describe("sectorStart.approaching through the tick", () => {
   /** Every `sectorStart.approaching` the bus carries, as its payload. */
-  function collect(): Array<{ sector: number; sectorCount: number; nextCornerInS: number | null }> {
-    const seen: Array<{ sector: number; sectorCount: number; nextCornerInS: number | null }> = [];
+  function collect(): Array<{ sector: number; sectorCount: number }> {
+    const seen: Array<{ sector: number; sectorCount: number }> = [];
 
     getEventBus().subscribe("sectorStart.approaching", (event) => {
       seen.push(event.data);
@@ -423,8 +444,9 @@ describe("sectorStart.approaching through the tick", () => {
       controller.__tick(tick(0, { LapDistPct: 0.18 }));
       controller.__tick(tick(0, { LapDistPct: 0.19 }));
 
-      // No TrackName in the session info, so no corner markers: null, not silent.
-      expect(seen).toEqual([{ sector: 2, sectorCount: 5, nextCornerInS: null }]);
+      // No TrackName in the session info, so no corner markers: the sector
+      // start is published all the same.
+      expect(seen).toEqual([{ sector: 2, sectorCount: 5 }]);
     },
   );
 
@@ -460,6 +482,51 @@ describe("sectorStart.approaching through the tick", () => {
     controller.__tick(tick(0, { LapDistPct: 0.38 }));
     controller.__tick(tick(0, { LapDistPct: 0.39 }));
 
-    expect(seen).toEqual([{ sector: 3, sectorCount: 5, nextCornerInS: null }]);
+    expect(seen).toEqual([{ sector: 3, sectorCount: 5 }]);
+  });
+});
+
+describe("a sector start and a corner name swept on one tick (#1676)", () => {
+  /** Every sector-start and corner-name event the bus carries, in the order it carries them. */
+  function collectInOrder(): string[] {
+    const seen: string[] = [];
+
+    getEventBus().subscribe("sectorStart.approaching", (event) => {
+      seen.push(`sector ${event.data.sector}`);
+    });
+    getEventBus().subscribe("cornerName.approaching", (event) => {
+      seen.push(`corner ${event.data.name}`);
+    });
+
+    return seen;
+  }
+
+  function startOnTestRing(sectors: unknown): void {
+    const info = sessionInfo({ sessionType: "Offline Testing", sectors });
+    (info.WeekendInfo as Record<string, unknown>).TrackName = TEST_RING;
+    start(info);
+  }
+
+  // As above, 0.18 → 0.19 sweeps the lead point from 0.191 to 0.201, over
+  // both sector 2's start and the corner at 0.2.
+  it("publishes sectorStart.approaching before cornerName.approaching", () => {
+    const seen = collectInOrder();
+
+    startOnTestRing(FIVE_SECTORS);
+    controller.__tick(tick(0, { LapDistPct: 0.18 }));
+    controller.__tick(tick(0, { LapDistPct: 0.19 }));
+
+    expect(seen).toEqual(["sector 2", "corner Line Corner"]);
+  });
+
+  it("publishes the corner alone on the same tick with no sector start in the swept interval", () => {
+    const seen = collectInOrder();
+
+    // Three sectors at 0, 0.333 and 0.667: none between 0.191 and 0.201.
+    startOnTestRing(THREE_SECTORS);
+    controller.__tick(tick(0, { LapDistPct: 0.18 }));
+    controller.__tick(tick(0, { LapDistPct: 0.19 }));
+
+    expect(seen).toEqual(["corner Line Corner"]);
   });
 });
