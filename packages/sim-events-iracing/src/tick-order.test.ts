@@ -1060,6 +1060,52 @@ describe("TICK_ORDER", () => {
         );
         expect(v).toHaveLength(3);
       });
+
+      // #1676: `orderMarkerCalls` can publish the corner name ahead of the
+      // sector call, so the table's order of those two rows certifies nothing.
+      it("refuses a pair whose end stage can be published ahead of the trigger stage (reordersWith)", () => {
+        const order: TickStage[] = [
+          stage("diffTrigger", ["limiter.dropped"]),
+          { ...stage("diffEnd", ["pitLane.exited"]), reordersWith: "diffTrigger" },
+        ];
+        const v = findEndsOnOrderViolations(order, "limiter.dropped", "pitLane.exited");
+
+        expect(v).toEqual([expect.objectContaining({ kind: "variable-order", triggerStage: "diffTrigger" })]);
+        expect(v[0]!.message).toContain("cannot certify this pair");
+        // The control: the same rows without the link certify the pair.
+        expect(
+          findEndsOnOrderViolations(
+            [stage("diffTrigger", ["limiter.dropped"]), stage("diffEnd", ["pitLane.exited"])],
+            "limiter.dropped",
+            "pitLane.exited",
+          ),
+        ).toEqual([]);
+      });
+
+      it("refuses the sector-start / corner-name pair in the real table, either way round", () => {
+        expect(
+          findEndsOnOrderViolations(CONTROLLER_TICK_ORDER, "sectorStart.approaching", "cornerName.approaching").map(
+            (x) => x.kind,
+          ),
+        ).toEqual(["variable-order"]);
+        expect(
+          findEndsOnOrderViolations(CONTROLLER_TICK_ORDER, "cornerName.approaching", "sectorStart.approaching").map(
+            (x) => x.kind,
+          ),
+        ).toEqual(["trigger-after-end"]);
+      });
+
+      it("every reordersWith names a stage earlier in its table", () => {
+        for (const order of [TICK_ORDER, REPLAY_RECORDER_ORDER]) {
+          order.forEach((s, i) => {
+            if (s.reordersWith === undefined) return;
+
+            const earlier = order.slice(0, i).map((x) => x.stage);
+
+            expect(earlier, `${s.stage}.reordersWith`).toContain(s.reordersWith);
+          });
+        }
+      });
     });
 
     it("a module's emitter refuses an event its list does not name", () => {
