@@ -1,10 +1,17 @@
 import { copyFileSync, existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
-import { buildEntryOptions, entryHash, resolveEntryRequestIds, type VoiceConfig } from "./config.ts";
+import {
+  buildEntryLookup,
+  buildEntryOptions,
+  entryHash,
+  isReference,
+  resolveEntryRequestIds,
+  type VoiceConfig,
+} from "./config.ts";
 import { describeDriverNameAlias, driverNameAliasOf } from "./driver-name-aliases.ts";
 import type { SynthesizeOptions, SynthesizeResult } from "./elevenlabs.ts";
-import { clipRelPath, type Manifest } from "./manifest.ts";
+import { clipRelPath, type Conditioning, type Manifest } from "./manifest.ts";
 import {
   describePauseMarks,
   findEntryPauseMarks,
@@ -303,6 +310,24 @@ export function scopeFlagsFor(voiceName: string, key: string): string {
 }
 
 /**
+ * The conditioning a request sends, or undefined when it sends no request
+ * ids at all; a list the request leaves out is left out here too.
+ */
+export function conditioningOf(previous: string[] | undefined, next: string[] | undefined): Conditioning | undefined {
+  if (previous === undefined && next === undefined) return undefined;
+
+  return { ...(previous !== undefined ? { previous } : {}), ...(next !== undefined ? { next } : {}) };
+}
+
+/** Whether `here` (this voice's resolution, `null` for an unresolvable reference) is exactly `recorded`, in order. */
+function sameIds(here: readonly (string | null)[] | undefined, recorded: readonly string[] | undefined): boolean {
+  const a = here ?? [];
+  const b = recorded ?? [];
+
+  return a.length === b.length && a.every((id, i) => id !== null && id === b[i]);
+}
+
+/**
  * The generator's run: every voice in scope (Default first), each voice's
  * entries in scope dependencies-first, each one skipped, refused, or cut.
  *
@@ -321,10 +346,13 @@ export function scopeFlagsFor(voiceName: string, key: string): string {
  * - **Copied** — an entry whose request is identical to a take another
  *   voice already holds (or cut earlier in this run) gets that take's bytes
  *   and request id instead of a new API call: a request already paid for is
- *   never paid again. Identical means the same hash AND every
- *   `<group>/<entry-name>` reference resolving to the same provider request
- *   id in both voices (`pickCopySource`). Default runs first, so the verbatim
- *   entries of Short callouts find the fresh Default takes.
+ *   never paid again. Identical means the same hash, a source row that is
+ *   current in its own voice and has a request id, AND the request ids this
+ *   voice would send equal to the ones the source take was conditioned on:
+ *   its row's `conditionedOn`, or, for a row written before that was
+ *   recorded, what its references resolve to in its voice today
+ *   (`pickCopySource`). Default runs first, so the verbatim entries of Short
+ *   callouts find the fresh Default takes.
  *
  * A dry run decides exactly as a live run would. It keeps the request id
  * each clip would hold by the end of the run in `planned`: a would-generate
@@ -359,6 +387,28 @@ export async function runGeneration(options: RunOptions): Promise<RunResult> {
   const planned = new Map<string, string | null>();
   const requestIdAt = (relPath: string): string | null =>
     planned.has(relPath) ? planned.get(relPath)! : (manifest.entries[relPath]?.requestId ?? null);
+  // relPath → what the take that clip holds now in this run was conditioned
+  // on (would be, in a dry run). Absent → the manifest's row.
+  const plannedConditioning = new Map<string, Conditioning | undefined>();
+  const conditioningAt = (relPath: string): Conditioning | undefined =>
+    plannedConditioning.has(relPath) ? plannedConditioning.get(relPath) : manifest.entries[relPath]?.conditionedOn;
+  // voice name → `<group>/<name>` → the entry's current hash in its config.
+  const currentHashes = new Map<string, Map<string, string>>();
+  const currentHashOf = (voiceName: string, key: string): string | null => {
+    let hashes = currentHashes.get(voiceName);
+
+    if (!hashes) {
+      const voice = voiceConfigs.get(voiceName);
+
+      hashes = new Map();
+
+      if (voice) for (const [ref, { entry }] of buildEntryLookup(voice)) hashes.set(ref, entryHash(entry, voice));
+
+      currentHashes.set(voiceName, hashes);
+    }
+
+    return hashes.get(key) ?? null;
+  };
 
   for (const voiceName of orderVoices(voiceConfigs.keys())) {
     if (scope.voices && !scope.voices.includes(voiceName)) continue;
@@ -376,6 +426,9 @@ export async function runGeneration(options: RunOptions): Promise<RunResult> {
     const hashes = new Map(order.map((node) => [node.key, entryHash(node.entry, voice)]));
     const outcomes = new Map<string, Outcome>();
     const relPathOf = (key: string): string => relPathFor(voiceName, key);
+    /** The ids `ids` resolve to in this voice now (planned, in a dry run); `null` where a reference has none. */
+    const resolveHere = (ids: readonly string[] | undefined): (string | null)[] | undefined =>
+      ids?.map((id) => (isReference(id) ? requestIdAt(relPathOf(id)) : id));
 
     /** Why the clip `key` names is out of date, or null when its row and file match its config. */
     const staleness = (key: string): string | null => {
@@ -414,6 +467,7 @@ export async function runGeneration(options: RunOptions): Promise<RunResult> {
       hash: string,
       row: ManifestRow | null,
       requestId: string | null,
+      conditionedOn: Conditioning | undefined,
     ): void => {
       const previous = requestIdAt(relPath);
 
@@ -422,6 +476,7 @@ export async function runGeneration(options: RunOptions): Promise<RunResult> {
       if (requestId) heldRequestIds.set(requestId, relPath);
 
       planned.set(relPath, requestId);
+      plannedConditioning.set(relPath, conditionedOn);
       takes.set(hash, { relPath, voiceName, key, row });
     };
 
@@ -522,11 +577,12 @@ export async function runGeneration(options: RunOptions): Promise<RunResult> {
       // covers the ElevenLabs voice id, the model, every audio-affecting
       // option and the RAW reference strings — but a reference resolves per
       // voice, to that voice's own take of the entry it names. So a take is
-      // the same request only when the hash matches AND every reference
-      // resolves to the same provider request id in the source's voice as in
-      // this one; then copy its bytes and its request id instead of a call.
-      // Otherwise this voice's seam differs, and the entry is cut.
+      // the same request only when the hash matches AND the request ids this
+      // voice would send are the ones the take was conditioned on; then copy
+      // its bytes and its request id instead of a call. Otherwise this
+      // voice's seam differs, and the entry is cut.
       const references = entryReferences(entry);
+      const here = { previous: resolveHere(entry.previous_request_ids), next: resolveHere(entry.next_request_ids) };
       const source = pickCopySource(takes.sources(hash), {
         voiceName,
         key,
@@ -535,12 +591,29 @@ export async function runGeneration(options: RunOptions): Promise<RunResult> {
         requestIdOf: requestIdAt,
         heldRequestIds,
         copiedFrom,
-        resolvesAlike: (candidate) =>
-          references.every((ref) => {
-            const here = requestIdAt(relPathOf(ref));
+        // A row is trusted only while it is current in its own voice: a clip
+        // re-cut there whose row never reached disk (every save failed, or
+        // the process died between the write and the save) still carries
+        // its OLD hash beside NEW bytes. A pending take (dry run) is current
+        // by construction.
+        isCurrent: (candidate) =>
+          candidate.row === null || currentHashOf(candidate.voiceName, candidate.key) === candidate.row.hash,
+        resolvesAlike: (candidate) => {
+          const recorded = conditioningAt(candidate.relPath);
 
-            return here !== null && here === requestIdAt(relPathFor(candidate.voiceName, ref));
-          }),
+          // What the take was really conditioned on, when its row says.
+          if (recorded !== undefined) {
+            return sameIds(here.previous, recorded.previous) && sameIds(here.next, recorded.next);
+          }
+
+          // A row written before `conditionedOn` was recorded: its
+          // references as they resolve in its voice today.
+          return references.every((ref) => {
+            const id = requestIdAt(relPathOf(ref));
+
+            return id !== null && id === requestIdAt(relPathFor(candidate.voiceName, ref));
+          });
+        },
       });
 
       if (source) {
@@ -548,7 +621,7 @@ export async function runGeneration(options: RunOptions): Promise<RunResult> {
 
         if (dryRun) {
           copiedFrom.add(source.relPath);
-          recordTake(key, relPath, hash, null, requestIdAt(source.relPath));
+          recordTake(key, relPath, hash, null, requestIdAt(source.relPath), conditioningAt(source.relPath));
           outcomes.set(key, "cut");
           count("copied");
           continue;
@@ -565,6 +638,7 @@ export async function runGeneration(options: RunOptions): Promise<RunResult> {
         }
 
         // The clip is on disk: from here it is cut, whatever the save does.
+        // The take's own conditioning travels with it.
         const sourceRow = source.row!;
         const row: ManifestRow = {
           hash,
@@ -573,9 +647,10 @@ export async function runGeneration(options: RunOptions): Promise<RunResult> {
           textPreview: sourceRow.textPreview,
           generatedAt: now().toISOString(),
           requestId: sourceRow.requestId,
+          ...(sourceRow.conditionedOn !== undefined ? { conditionedOn: sourceRow.conditionedOn } : {}),
         };
 
-        recordTake(key, relPath, hash, row, row.requestId ?? null);
+        recordTake(key, relPath, hash, row, row.requestId ?? null, row.conditionedOn);
         manifest.entries[relPath] = row;
         copiedFrom.add(source.relPath);
         outcomes.set(key, "cut");
@@ -592,7 +667,20 @@ export async function runGeneration(options: RunOptions): Promise<RunResult> {
       if (dryRun) {
         // A placeholder no provider id can equal, unique to this clip: a
         // fresh take matches nothing but itself and its copies.
-        recordTake(key, relPath, hash, null, `planned:${relPath}`);
+        // It would be conditioned on what its references resolve to now,
+        // planned ids included; unknown when one resolves to nothing (the
+        // live run fails such an entry).
+        const resolved = (ids: (string | null)[] | undefined): ids is string[] | undefined =>
+          ids === undefined || ids.every((id) => id !== null);
+
+        recordTake(
+          key,
+          relPath,
+          hash,
+          null,
+          `planned:${relPath}`,
+          resolved(here.previous) && resolved(here.next) ? conditioningOf(here.previous, here.next) : undefined,
+        );
         outcomes.set(key, "cut");
         count("generated");
         continue;
@@ -630,6 +718,7 @@ export async function runGeneration(options: RunOptions): Promise<RunResult> {
       // The paid take is on disk: from here it is cut, whatever the save
       // does. A failed save is retried, and the run saves once more before
       // it returns (`ManifestSaver`), so the row is never lost silently.
+      const conditionedOn = conditioningOf(synthOptions.previous_request_ids, synthOptions.next_request_ids);
       const row: ManifestRow = {
         hash,
         voiceId: voice.id,
@@ -637,9 +726,10 @@ export async function runGeneration(options: RunOptions): Promise<RunResult> {
         textPreview: textPreview(entry.text, 80),
         generatedAt: now().toISOString(),
         requestId,
+        ...(conditionedOn !== undefined ? { conditionedOn } : {}),
       };
 
-      recordTake(key, relPath, hash, row, requestId);
+      recordTake(key, relPath, hash, row, requestId, conditionedOn);
       manifest.entries[relPath] = row;
       outcomes.set(key, "cut");
       count("generated");
@@ -666,11 +756,18 @@ export async function runGeneration(options: RunOptions): Promise<RunResult> {
  * Of the rest, the take under the same `<group>/<entry-name>` wins, so each
  * variant copies its own counterpart; otherwise the first known.
  *
+ * Never a take that cannot be proven to be this request: one whose row is
+ * not current in its own voice (`isCurrent`: its entry is gone, or its row's
+ * hash is not that entry's hash today; a clip re-cut there whose row never
+ * reached disk carries its old hash beside new bytes), and never one with no
+ * request id, which no dependent could be conditioned on either and which
+ * the held-id guard above cannot see, so a pool could collapse through it.
+ *
  * And only a take whose request really was this one: `resolvesAlike` holds
- * when every reference of the entry resolves, in the source's voice, to the
- * same provider request id it resolves to in this one. A voice whose
- * dependency is a different take (different text, or cut separately) gets
- * its own take, conditioned on its own dependency.
+ * when the request ids this entry would send are the ones the take was
+ * conditioned on. A voice whose dependency is a different take (different
+ * text, cut separately, or re-cut since the take was made) gets its own
+ * take, conditioned on its own dependency.
  */
 export function pickCopySource(
   candidates: readonly TakeSource[],
@@ -683,6 +780,8 @@ export function pickCopySource(
     requestIdOf: (relPath: string) => string | null;
     heldRequestIds: ReadonlyMap<string, string>;
     copiedFrom: ReadonlySet<string>;
+    /** Whether the source's row is current in its own voice's config. */
+    isCurrent: (source: TakeSource) => boolean;
     resolvesAlike: (source: TakeSource) => boolean;
   },
 ): TakeSource | null {
@@ -691,8 +790,13 @@ export function pickCopySource(
 
     if (target.copiedFrom.has(source.relPath)) return false;
 
+    if (!target.isCurrent(source)) return false;
+
     const requestId = target.requestIdOf(source.relPath);
-    const holder = requestId ? target.heldRequestIds.get(requestId) : undefined;
+
+    if (requestId === null) return false;
+
+    const holder = target.heldRequestIds.get(requestId);
 
     if (holder !== undefined && holder !== target.relPath) return false;
 

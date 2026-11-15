@@ -171,6 +171,7 @@ describe("runGeneration — order", () => {
       textPreview: "point four",
       generatedAt: NOW.toISOString(),
       requestId: "req-2",
+      conditionedOn: { previous: ["req-1"] },
     });
   });
 
@@ -585,6 +586,7 @@ describe("runGeneration — copies between voices", () => {
         textPreview: source.textPreview,
         generatedAt: NOW.toISOString(),
         requestId: source.requestId,
+        conditionedOn: source.conditionedOn,
       });
     }
   });
@@ -786,6 +788,188 @@ describe("runGeneration — copies between voices", () => {
 
     expect((await promise).totals).toEqual({ generated: 0, copied: 0, skipped: 0, failed: 0, refused: 1 });
     expect(synthesize).not.toHaveBeenCalled();
+  });
+});
+
+describe("runGeneration — a copy source must be provably the same request (#1643)", () => {
+  const hello = buildVoice({ g: [{ name: "x", text: "hello" }] });
+
+  for (const dryRun of [false, true]) {
+    const mode = dryRun ? "dry run" : "live";
+
+    it(`never copies a row that is stale in its own voice: new bytes under an old hash (${mode})`, async () => {
+      // shawn's g/x was re-cut from "goodbye" but its row never reached disk:
+      // the row still carries the hash of "hello", the clip holds new words.
+      const manifest = emptyManifest();
+
+      seed(manifest, "voice/shawn/g/x.mp3", hashOf(hello, "g/x"), "req-goodbye", "take of goodbye");
+
+      const { promise, synthesize } = run({
+        voiceConfigs: new Map([
+          ["default", hello],
+          ["shawn", buildVoice({ g: [{ name: "x", text: "goodbye" }] })],
+        ]),
+        manifest,
+        dryRun,
+        scope: { voices: ["default"], groups: null, entries: null },
+      });
+      const result = await promise;
+
+      expect(result.totals).toEqual({ generated: 1, copied: 0, skipped: 0, failed: 0, refused: 0 });
+      expect(synthesize.mock.calls.map(([options]) => options.text)).toEqual(dryRun ? [] : ["hello"]);
+
+      if (!dryRun) expect(readClip("voice/default/g/x.mp3")).toBe("take 1 of hello");
+    });
+
+    it(`never copies a row whose entry is gone from its voice's config (${mode})`, async () => {
+      const manifest = emptyManifest();
+
+      seed(manifest, "voice/shawn/g/x.mp3", hashOf(hello, "g/x"), "req-hello");
+
+      const { promise } = run({
+        voiceConfigs: new Map([
+          ["default", hello],
+          ["shawn", buildVoice({ g: [{ name: "y", text: "hello" }] })],
+        ]),
+        manifest,
+        dryRun,
+        scope: { voices: ["default"], groups: null, entries: null },
+      });
+
+      expect((await promise).totals).toEqual({ generated: 1, copied: 0, skipped: 0, failed: 0, refused: 0 });
+    });
+
+    it(`never copies a take with no request id (${mode})`, async () => {
+      const manifest = emptyManifest();
+
+      seed(manifest, "voice/shawn/g/x.mp3", hashOf(hello, "g/x"), "unused");
+      manifest.entries["voice/shawn/g/x.mp3"]!.requestId = null;
+
+      const { promise, log } = run({
+        voiceConfigs: new Map([
+          ["default", hello],
+          ["shawn", hello],
+        ]),
+        manifest,
+        dryRun,
+        scope: { voices: ["default"], groups: null, entries: null },
+      });
+
+      expect((await promise).totals).toEqual({ generated: 1, copied: 0, skipped: 0, failed: 0, refused: 0 });
+      expect(log.lines.some((line) => line.includes("COPY") || line.startsWith("[copy]"))).toBe(false);
+    });
+  }
+
+  it("still copies the same row once it is current in its own voice", async () => {
+    const manifest = emptyManifest();
+
+    seed(manifest, "voice/shawn/g/x.mp3", hashOf(hello, "g/x"), "req-hello");
+
+    const { promise, synthesize } = run({
+      voiceConfigs: new Map([
+        ["default", hello],
+        ["shawn", hello],
+      ]),
+      manifest,
+      scope: { voices: ["default"], groups: null, entries: null },
+    });
+
+    expect((await promise).totals).toEqual({ generated: 0, copied: 1, skipped: 0, failed: 0, refused: 0 });
+    expect(synthesize).not.toHaveBeenCalled();
+  });
+});
+
+describe("runGeneration — a copy needs the take's own conditioning (#1643)", () => {
+  const groups = {
+    d: [{ name: "x", text: "Last lap was." }],
+    e: [{ name: "x", text: "point four", previous_request_ids: ["d/x"] }],
+  };
+  const voice = buildVoice(groups);
+
+  /**
+   * Default's E was cut conditioned on D's take r1; then a seed bump re-cut
+   * D to r2 while E stayed cached (no cascade). Shawn's D is a copy of r2.
+   */
+  function reCutDependency(conditionedOn: Manifest["entries"][string]["conditionedOn"]): Manifest {
+    const manifest = emptyManifest();
+
+    seed(manifest, "voice/default/d/x.mp3", hashOf(voice, "d/x"), "r2");
+    seed(manifest, "voice/default/e/x.mp3", hashOf(voice, "e/x"), "rE");
+    seed(manifest, "voice/shawn/d/x.mp3", hashOf(voice, "d/x"), "r2");
+
+    if (conditionedOn) manifest.entries["voice/default/e/x.mp3"]!.conditionedOn = conditionedOn;
+
+    return manifest;
+  }
+
+  for (const dryRun of [false, true]) {
+    const mode = dryRun ? "dry run" : "live";
+
+    it(`cuts, not copies, a take conditioned on a dependency take since re-cut (${mode})`, async () => {
+      const manifest = reCutDependency({ previous: ["r1"] });
+      const { promise, synthesize } = run({
+        voiceConfigs: new Map([
+          ["default", voice],
+          ["shawn", voice],
+        ]),
+        manifest,
+        dryRun,
+      });
+      const result = await promise;
+
+      expect(result.perVoice.get("shawn")).toEqual({ generated: 1, copied: 0, skipped: 1, failed: 0, refused: 0 });
+
+      if (!dryRun) {
+        expect(synthesize.mock.calls.map(([options]) => options.previous_request_ids)).toEqual([["r2"]]);
+        expect(manifest.entries["voice/shawn/e/x.mp3"]!.conditionedOn).toEqual({ previous: ["r2"] });
+      }
+    });
+
+    it(`still copies a legacy row with no conditionedOn, by its references' ids today (${mode})`, async () => {
+      const manifest = reCutDependency(undefined);
+      const { promise, synthesize } = run({
+        voiceConfigs: new Map([
+          ["default", voice],
+          ["shawn", voice],
+        ]),
+        manifest,
+        dryRun,
+      });
+      const result = await promise;
+
+      expect(result.perVoice.get("shawn")).toEqual({ generated: 0, copied: 1, skipped: 1, failed: 0, refused: 0 });
+      expect(synthesize).not.toHaveBeenCalled();
+
+      if (!dryRun) {
+        expect(manifest.entries["voice/shawn/e/x.mp3"]!.requestId).toBe("rE");
+        expect(manifest.entries["voice/shawn/e/x.mp3"]).not.toHaveProperty("conditionedOn");
+      }
+    });
+  }
+
+  it("copies a take whose recorded conditioning is what this voice would send, and carries it", async () => {
+    const manifest = reCutDependency({ previous: ["r2"] });
+    const { promise, synthesize } = run({
+      voiceConfigs: new Map([
+        ["default", voice],
+        ["shawn", voice],
+      ]),
+      manifest,
+    });
+
+    expect((await promise).perVoice.get("shawn")!.copied).toBe(1);
+    expect(synthesize).not.toHaveBeenCalled();
+    expect(manifest.entries["voice/shawn/e/x.mp3"]!.conditionedOn).toEqual({ previous: ["r2"] });
+  });
+
+  it("records no conditionedOn on a cut whose request sends no request ids", async () => {
+    const manifest = emptyManifest();
+    const { promise } = run({ voiceConfigs: new Map([["default", voice]]), manifest });
+
+    await promise;
+
+    expect(manifest.entries["voice/default/d/x.mp3"]).not.toHaveProperty("conditionedOn");
+    expect(manifest.entries["voice/default/e/x.mp3"]!.conditionedOn).toEqual({ previous: ["req-1"] });
   });
 });
 

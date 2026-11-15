@@ -2,6 +2,20 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { z } from "zod";
 
+/**
+ * The provider request ids a take was really conditioned on: the resolved
+ * `previous_request_ids` / `next_request_ids` its request sent, in order
+ * (#1643). Not the same as what its references resolve to today: a seed bump
+ * re-cuts a dependency while its dependents stay cached, still conditioned on
+ * the superseded take.
+ */
+export const ConditioningSchema = z.object({
+  previous: z.array(z.string()).optional(),
+  next: z.array(z.string()).optional(),
+});
+
+export type Conditioning = z.infer<typeof ConditioningSchema>;
+
 export const ManifestEntrySchema = z.object({
   hash: z.string(),
   voiceId: z.string(),
@@ -12,6 +26,10 @@ export const ManifestEntrySchema = z.object({
   // didn't return one (shouldn't normally happen). Paste into another entry's
   // previous_request_ids / next_request_ids to chain prosody context.
   requestId: z.string().nullable().optional(),
+  // Written on every cut whose request carried request ids, carried on a
+  // copy; absent on every row written before #1643's second read and on an
+  // `--import`ed one, which a copy decision then reads the old way.
+  conditionedOn: ConditioningSchema.optional(),
 });
 
 export const ManifestSchema = z.object({
