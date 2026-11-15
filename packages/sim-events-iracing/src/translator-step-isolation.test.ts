@@ -104,6 +104,7 @@ vi.mock("./diff/pace-laps.js", async (io) => harness.spy(await io(), { diffPaceL
 vi.mock("./diff/rolling-start.js", async (io) => harness.spy(await io(), { diffRollingStart: 3 }));
 vi.mock("./diff/pits-open.js", async (io) => harness.spy(await io(), { diffPitsOpen: 3 }));
 vi.mock("./diff/toggles.js", async (io) => harness.spy(await io(), { diffToggles: 3 }));
+vi.mock("./diff/limiter-toggle.js", async (io) => harness.spy(await io(), { diffLimiterToggle: 3 }));
 vi.mock("./diff/pit-status.js", async (io) => harness.spy(await io(), { diffPitStatus: 3 }));
 vi.mock("./diff/pit-readback.js", async (io) => harness.spy(await io(), { diffPitReadback: 3 }));
 vi.mock("./diff/stall-visit.js", async (io) => harness.spy(await io(), { updateStallVisit: null }));

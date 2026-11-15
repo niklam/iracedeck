@@ -121,7 +121,7 @@ export enum AudioChannel {
   Voice = 2, // engineer voice messages, reminders, toggles
   Radar = 3, // directional radar ticks (independent)
   Feedback = 4, // control feedback, the volume step tick (#1455); no bus
-  Cue = 5, // one-shot pit-lane tones, the pit exit beep (#1161); Alerts bus
+  Cue = 5, // one-shot pit-lane tones, the pit exit beep (#1161) and the limiter-on beep (#1272); Alerts bus
 }
 ```
 

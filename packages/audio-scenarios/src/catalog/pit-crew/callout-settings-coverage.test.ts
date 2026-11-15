@@ -159,9 +159,10 @@ const PIT_CREW_MODULES = import.meta.glob(["./**/*.ts", "!./**/*.test.ts", "!./*
  * and how each is gated instead:
  *
  * - `SPOTTER_CALLOUTS` (`cars`, `still-there`), `PIT_SPEEDING_CALLOUTS`
- *   (`cue`) and `PIT_EXIT_CALLOUTS` (`cue`): read inside their imperative
- *   engines (`registerSpotterEngine`, `registerPitSpeedingEngine`,
- *   `registerPitExitCueEngine`), which play direct rather than through a
+ *   (`cue`), `PIT_EXIT_CALLOUTS` (`cue`) and `LIMITER_CUE_CALLOUTS` (`cue`):
+ *   read inside their imperative engines (`registerSpotterEngine`,
+ *   `registerPitSpeedingEngine`, `registerPitExitCueEngine`,
+ *   `registerLimiterCueEngine`), which play direct rather than through a
  *   scenario `where:`.
  * - `PIT_SERVICE_REQUEST_CALLOUTS` (`requests`): one gate over all the toggle
  *   confirmations, applied by `wrapPitServiceRequestsScenario`.

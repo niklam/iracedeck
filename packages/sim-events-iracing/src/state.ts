@@ -582,6 +582,46 @@ export function createSectorStartState(): SectorStartState {
   return { leadPrevPct: null, leadLastPct: null, spoken: new Set() };
 }
 
+/**
+ * The pit limiter's on / off edge (issue #1272): the baseline
+ * `diffLimiterToggle` publishes `carControl.limiterToggled` against, and the
+ * window in which that baseline follows the bit without a word. Apart from the
+ * other car-control toggles because the limiter left `diffToggles`' stall seed:
+ * it publishes in the pit stall too, and is silenced instead during pit service
+ * and around a tow or reset (`diff/limiter-toggle.ts` says why). Written by
+ * `diffLimiterToggle` alone. Reset per session and at a disconnect with the rest
+ * of the state, and wiped whole at a replay glance: the first live tick after it
+ * re-seeds, so a limiter switched while the replay was up is never announced.
+ */
+export type LimiterToggleState = {
+  /**
+   * Whether {@link active} has been seeded. `false` until the first live tick,
+   * which seeds silently: a limiter already on when the translator starts
+   * listening is not an engagement it saw.
+   */
+  initialized: boolean;
+  /** The last tick's `EngineWarnings.PitSpeedLimiter` bit: the baseline an edge is measured against. */
+  active: boolean;
+  /**
+   * Whether the last tick was held: `PitstopActive` true, or the player's car
+   * out of the world (`PlayerTrackSurface` `NotInWorld`). The tick that clears
+   * a hold re-arms {@link settleUntil} from itself, so the tail covers that
+   * tick whatever the tick spacing.
+   */
+  held: boolean;
+  /**
+   * Until when (ms, the tick clock) the baseline keeps following the bit
+   * silently after a hold: `LIMITER_SERVICE_SETTLE_MS` past the tick that
+   * cleared it. `0` before any hold.
+   */
+  settleUntil: number;
+};
+
+/** A {@link LimiterToggleState} not yet seeded and with no hold behind it: the initial state. */
+export function createLimiterToggleState(): LimiterToggleState {
+  return { initialized: false, active: false, held: false, settleUntil: 0 };
+}
+
 export type MaterialSample = {
   t: number; // timestamp (ms since epoch)
   material: number; // TrkSurf-like enum value
@@ -1206,7 +1246,6 @@ export type TranslatorState = {
   toggleStateInitialized: boolean;
   lastPitSvFlags: number; // For tire & pit-service bits this is the BASELINE (last emitted), not "previous tick".
   lastPitSvCompound: number;
-  lastLimiterActive: boolean;
   lastP2PActive: boolean;
   lastDrsActive: boolean;
   // Pit-service debounce — coalesce iRacing's multi-tick transitions and
@@ -1240,6 +1279,14 @@ export type TranslatorState = {
   // Tire debounce — same model but over a 4-bit set rather than a single bit.
   lastSeenTireFlags: number; // most recent observed tire bits (any tick)
   lastTireChangeAt: number; // 0 = stable; >0 = ms timestamp of most recent tire flag flip
+
+  // ── Pit limiter on / off (issue #1272) ─────────────────────────────────
+  /**
+   * The limiter's toggle baseline and its service / tow settle window, one
+   * slice ({@link LimiterToggleState}). Reset per session and at a disconnect;
+   * wiped whole at a replay glance.
+   */
+  limiterToggle: LimiterToggleState;
 
   // ── Pit-service readback (issue #476) ──────────────────────────────────
   pitReadbackInitialized: boolean;
@@ -2186,7 +2233,6 @@ export function createInitialState(): TranslatorState {
     toggleStateInitialized: false,
     lastPitSvFlags: 0,
     lastPitSvCompound: 0,
-    lastLimiterActive: false,
     lastP2PActive: false,
     lastDrsActive: false,
     fuelDebounce: { pendingAt: 0, lastSeen: false },
@@ -2197,6 +2243,8 @@ export function createInitialState(): TranslatorState {
     autoFuelSwitchHeld: null,
     lastSeenTireFlags: 0,
     lastTireChangeAt: 0,
+
+    limiterToggle: createLimiterToggleState(),
 
     pitReadbackInitialized: false,
     pitReadbackPrevOnPitRoad: false,

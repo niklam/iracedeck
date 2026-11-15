@@ -13,6 +13,7 @@ export { FUEL_CALLOUTS } from "./families/fuel.js";
 export { GAP_CALLOUTS } from "./families/gaps.js";
 export { INCIDENT_CALLOUTS } from "./families/incident.js";
 export { LAP_TIME_CALLOUTS } from "./families/lap-time.js";
+export { LIMITER_CUE_CALLOUTS } from "./families/limiter-cue.js";
 export { NO_LIMITER_CALLOUTS } from "./families/no-limiter.js";
 export { OPPONENT_FLAG_CALLOUTS } from "./families/opponent-flags.js";
 export { OPPONENT_PIT_CALLOUTS } from "./families/opponent-pit.js";

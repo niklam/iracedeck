@@ -39,6 +39,7 @@ import { _resetAudioScenarios, getScenarioEngine, initializeAudioScenarios } fro
 import { familyGate } from "./callout-gate.test-util.js";
 import { familyReferences } from "./family-references.test-util.js";
 import { _resetPositionReadoutCooldown, canAnnouncePosition, registerPitCrew } from "./index.js";
+import { _resetLimiterCueEngine } from "./limiter-cue-engine.js";
 import { _resetPitExitCueEngine } from "./pit-exit-cue-engine.js";
 import { _resetPitSpeedingEngine } from "./pit-speeding-engine.js";
 import { readPositionReadoutDebugState } from "./position-readout.js";
@@ -221,6 +222,7 @@ afterEach(() => {
   _resetSpotterEngine();
   _resetPitSpeedingEngine();
   _resetPitExitCueEngine();
+  _resetLimiterCueEngine();
   _resetPositionReadoutCooldown();
   vi.clearAllMocks();
 });

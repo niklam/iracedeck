@@ -41,6 +41,7 @@ import {
   type LapCompletedSnapshot,
   SCENARIO_ID_TO_LAP_TIME_ID,
 } from "./lap-time.js";
+import { _resetLimiterCueEngine } from "./limiter-cue-engine.js";
 import { _resetPitExitCueEngine } from "./pit-exit-cue-engine.js";
 import { _resetPitSpeedingEngine } from "./pit-speeding-engine.js";
 import { _resetRadarEngine } from "./radar-engine.js";
@@ -248,6 +249,7 @@ afterEach(() => {
   _resetSpotterEngine();
   _resetPitSpeedingEngine();
   _resetPitExitCueEngine();
+  _resetLimiterCueEngine();
   vi.clearAllMocks();
   vi.useRealTimers();
 });

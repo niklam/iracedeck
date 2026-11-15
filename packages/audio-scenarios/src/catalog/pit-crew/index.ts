@@ -94,6 +94,7 @@ import {
   GAP_CALLOUTS,
   INCIDENT_CALLOUTS,
   LAP_TIME_CALLOUTS,
+  LIMITER_CUE_CALLOUTS,
   NO_LIMITER_CALLOUTS,
   OPPONENT_FLAG_CALLOUTS,
   OPPONENT_PIT_CALLOUTS,
@@ -163,6 +164,7 @@ import {
   registerLapTimeVocabulary,
   SCENARIO_ID_TO_LAP_TIME_ID,
 } from "./lap-time.js";
+import { registerLimiterCueEngine } from "./limiter-cue-engine.js";
 import { NO_LIMITER_CONTRACTS, registerNoLimiterVocabulary, SCENARIO_ID_TO_NO_LIMITER_ID } from "./no-limiter.js";
 import {
   OPPONENT_FLAG_CONTRACTS,
@@ -285,6 +287,7 @@ export {
   type PitReadbackCalloutId,
   type ReadbackSnapshotResolver,
 } from "./readback.js";
+export { LIMITER_ON_CLIP, readLimiterCueDebugState } from "./limiter-cue-engine.js";
 export { PIT_EXIT_CLIP, readPitExitCueDebugState } from "./pit-exit-cue-engine.js";
 export { type PitLimiterCalloutId, PIT_LIMITER_SCENARIO_IDS } from "./pit-limiter.js";
 export {
@@ -1162,6 +1165,8 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
   const getPitSpeedingCalloutEnabled = enabledIn(PIT_SPEEDING_CALLOUTS);
   // Read inside the one-shot pit exit cue engine (issue #1161), the same way.
   const getPitExitCalloutEnabled = enabledIn(PIT_EXIT_CALLOUTS);
+  // And inside the one-shot limiter cue engine (issue #1272).
+  const getLimiterCueCalloutEnabled = enabledIn(LIMITER_CUE_CALLOUTS);
   const getPitLimiterCalloutEnabled = enabledIn(PIT_LIMITER_CALLOUTS);
   const getNoLimiterCalloutEnabled = enabledIn(NO_LIMITER_CALLOUTS);
 
@@ -1181,6 +1186,12 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
   registerPitExitCueEngine(bus, {
     getMasterEnabled: d.getRaceEngineerMasterEnabled,
     getCueEnabled: () => getPitExitCalloutEnabled("cue"),
+    logger,
+  });
+
+  registerLimiterCueEngine(bus, {
+    getMasterEnabled: d.getRaceEngineerMasterEnabled,
+    getCueEnabled: () => getLimiterCueCalloutEnabled("cue"),
     logger,
   });
 
@@ -1370,8 +1381,11 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
 
   // Pit-limiter family (issue #1051) — cars WITH a limiter. Dormant from the
   // day it was written until #1051: nothing imported this module, so the
-  // translator published `limiter.missing` / `.dropped` / `.speeding` and
-  // `carControl.limiterToggled` into a bus with no subscriber. Contracts since
+  // translator published `limiter.missing` / `.dropped` / `.speeding` into a
+  // bus with no subscriber. None of its contracts fires on
+  // `carControl.limiterToggled` (#1051 moved `limiter-on-track` to
+  // `pitLane.exited`); the limiter cue engine above is that event's one
+  // subscriber (#1272), a tone rather than a line. Contracts since
   // #1065: each line is the active voice's (`scenarios["pit-crew.limiter-*"]`,
   // addressing `pool:pit-limiter/<base>`), and the two delayed warnings'
   // scripts wrap their body in the `limiter.still*` gates registered here —

@@ -24,6 +24,7 @@ import * as gapsModule from "./gaps.js";
 import { _resetGapCalloutCooldown, readGapsDebugState, tryClaimGapCallout } from "./gaps.js";
 import { _resetLastIncidentPoints, INCIDENT_CONTRACTS, readIncidentsDebugState } from "./incidents.js";
 import { registerPitCrew } from "./index.js";
+import { _resetLimiterCueEngine, readLimiterCueDebugState } from "./limiter-cue-engine.js";
 import { _resetOpponentPitPending, OPPONENT_PIT_CONTRACTS, readOpponentPitDebugState } from "./opponent-pit.js";
 import { _resetPitExitCueEngine, readPitExitCueDebugState } from "./pit-exit-cue-engine.js";
 import { _resetPitSpeedingEngine, readPitSpeedingDebugState } from "./pit-speeding-engine.js";
@@ -109,6 +110,7 @@ const FAMILY_KEYS = [
   "flagAlerts",
   "gaps",
   "incidents",
+  "limiterCue",
   "opponentPit",
   "pitExitCue",
   "pitSpeeding",
@@ -126,6 +128,7 @@ const UNTOUCHED_FAMILIES = {
   flagAlerts: { furledRaisedSpoken: false },
   gaps: { lastGapCalloutAt: null },
   incidents: { lastIncidentPoints: null },
+  limiterCue: { registered: false, lastEdge: null, lastOutcome: null },
   opponentPit: { pendingNearby: null },
   pitExitCue: { registered: false, lastOutcome: null },
   pitSpeeding: { registered: false, ticking: false, episodeActive: false, lastSessionTick: null },
@@ -190,6 +193,7 @@ afterEach(() => {
   _resetSpotterEngine();
   _resetPitSpeedingEngine();
   _resetPitExitCueEngine();
+  _resetLimiterCueEngine();
   _resetBackgroundTest();
   _setFurledRaisedSpoken(false);
   _resetGapCalloutCooldown();
@@ -237,6 +241,7 @@ describe("readRaceEngineerState", () => {
     expect(Object.keys(state.families).sort()).toEqual(FAMILY_KEYS);
     expect(state.families).toEqual({
       ...UNTOUCHED_FAMILIES,
+      limiterCue: { ...UNTOUCHED_FAMILIES.limiterCue, registered: true },
       pitExitCue: { ...UNTOUCHED_FAMILIES.pitExitCue, registered: true },
       pitSpeeding: { ...UNTOUCHED_FAMILIES.pitSpeeding, registered: true },
       radar: { ...UNTOUCHED_FAMILIES.radar, registered: true },
@@ -408,7 +413,7 @@ describe("a part that cannot be read fails alone", () => {
     expect(JSON.parse(JSON.stringify(state))).toEqual(state);
   });
 
-  it("an engine that cannot describe itself leaves all thirteen families intact", () => {
+  it("an engine that cannot describe itself leaves all fourteen families intact", () => {
     const engine = startEngine();
 
     registerPitCrew(bus, SIM_READS);
@@ -422,6 +427,7 @@ describe("a part that cannot be read fails alone", () => {
     expect(state.families).toEqual({
       ...UNTOUCHED_FAMILIES,
       flagAlerts: { furledRaisedSpoken: true },
+      limiterCue: { ...UNTOUCHED_FAMILIES.limiterCue, registered: true },
       pitExitCue: { ...UNTOUCHED_FAMILIES.pitExitCue, registered: true },
       pitSpeeding: { ...UNTOUCHED_FAMILIES.pitSpeeding, registered: true },
       radar: { ...UNTOUCHED_FAMILIES.radar, registered: true },
@@ -717,7 +723,7 @@ describe("the family readers", () => {
     expect(readBackgroundTestDebugState()).toEqual({ testInFlight: false, builtInFramePlaying: false });
   });
 
-  it("the four engines: registration, the episode and the timers as booleans", () => {
+  it("the five engines: registration, the episode and the timers as booleans", () => {
     startEngine();
     registerPitCrew(bus, SIM_READS);
 
@@ -730,6 +736,18 @@ describe("the family readers", () => {
     bus.publishEvent("pitLane.exited");
 
     expect(readPitExitCueDebugState().lastOutcome).toBe("played");
+
+    // So does the limiter cue (#1272): the off edge is recorded as the last edge
+    // and leaves the engagement's outcome standing.
+    expect(readLimiterCueDebugState()).toEqual({ registered: true, lastEdge: null, lastOutcome: null });
+
+    bus.publishEvent("carControl.limiterToggled", { on: true });
+
+    expect(readLimiterCueDebugState().lastOutcome).toBe("played");
+
+    bus.publishEvent("carControl.limiterToggled", { on: false });
+
+    expect(readLimiterCueDebugState()).toMatchObject({ lastEdge: "off", lastOutcome: "played" });
 
     bus.publishEvent("radar.changed", { from: "clear", to: "two-right" });
     bus.publishEvent("radar.changed", { from: "two-right", to: "clear" });

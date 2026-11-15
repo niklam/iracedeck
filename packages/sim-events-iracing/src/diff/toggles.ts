@@ -24,14 +24,15 @@
  *     tire bits in the same tick; we suppress the cascading
  *     tireService.changed for that transition so the compound voice line
  *     is the single canonical confirmation (see the compound block).
- *   - carControl.drsToggled / p2pToggled / limiterToggled { on } — on
- *     respective bit changes.
+ *   - carControl.drsToggled / p2pToggled { on } — on respective bit changes.
  *
  * Seeded on first tick (or when IsOnTrack is false) to avoid false
- * transitions on connect / garage returns.
+ * transitions on connect / garage returns, and in the pit stall (below).
+ * The pit limiter is not here: it publishes in the stall too, so it has a
+ * diff of its own, `limiter-toggle.ts` (issue #1272).
  */
 import type { PitServiceKind, SimEventName } from "@iracedeck/event-bus";
-import { isPitLimiterEngaged, PitSvFlags, type TelemetryData } from "@iracedeck/iracing-sdk";
+import { PitSvFlags, type TelemetryData } from "@iracedeck/iracing-sdk";
 
 import type { ServiceDebounceState, TranslatorState } from "../state.js";
 import type { EmitFn, PendingEvent } from "./types.js";
@@ -213,7 +214,6 @@ function tireSet(flags: number): Set<string> {
 /** The events {@link diffToggles} emits (issue #1499): its emitter's type, and its row in `TICK_ORDER`. */
 export const TOGGLES_EVENTS = [
   "carControl.drsToggled",
-  "carControl.limiterToggled",
   "carControl.p2pToggled",
   "pitService.autoFuelSwitched",
   "pitService.toggled",
@@ -239,7 +239,6 @@ export function diffToggles(
   emit: EmitFn<(typeof TOGGLES_EVENTS)[number]>,
 ): boolean {
   const pitSvFlags = telemetry.PitSvFlags ?? 0;
-  const limiter = isPitLimiterEngaged(telemetry);
   const p2p = telemetry.P2P_Status === true;
   const drs = (telemetry.DRS_Status ?? 0) > 0;
   const isOnTrack = telemetry.IsOnTrack ?? false;
@@ -260,7 +259,6 @@ export function diffToggles(
     state.toggleStateInitialized = true;
     state.lastPitSvFlags = pitSvFlags;
     state.lastPitSvCompound = pitSvCompound;
-    state.lastLimiterActive = limiter;
     state.lastP2PActive = p2p;
     state.lastDrsActive = drs;
     state.lastSeenTireFlags = currTireBits;
@@ -475,10 +473,6 @@ export function diffToggles(
     emit({ event: "carControl.p2pToggled", data: { on: p2p } });
   }
 
-  if (state.lastLimiterActive !== limiter) {
-    emit({ event: "carControl.limiterToggled", data: { on: limiter } });
-  }
-
   // All pit-service bits (fuel, windshield, fast-repair, 4 tires) advance
   // only when their respective debounce fires. Other bits in PitSvFlags pass
   // through unchanged so any future non-debounced flag stays correct.
@@ -491,7 +485,6 @@ export function diffToggles(
     (nextBaselineFastRepair ? PitSvFlags.FastRepair : 0) |
     nextBaselineTireBits;
   state.lastPitSvCompound = pitSvCompound;
-  state.lastLimiterActive = limiter;
   state.lastP2PActive = p2p;
   state.lastDrsActive = drs;
 

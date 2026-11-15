@@ -20,14 +20,16 @@
  * lands. The other silent paths — first tick, off track, in the stall — are
  * unchanged.
  *
- * The broader toggle behaviour (tires, compound, car controls, the stall
- * seed) is covered end-to-end in `translator.test.ts`.
+ * The stall seed of the toggles this diff still owns is pinned at the end
+ * (issue #1272); the pit limiter left it for `limiter-toggle.ts`. The broader
+ * toggle behaviour (tires, compound, car controls) is covered end-to-end in
+ * `translator.test.ts`.
  */
-import { PitSvFlags, type TelemetryData } from "@iracedeck/iracing-sdk";
+import { EngineWarnings, PitSvFlags, type TelemetryData } from "@iracedeck/iracing-sdk";
 import { describe, expect, it } from "vitest";
 
 import { createInitialState, type TranslatorState } from "../state.js";
-import { diffToggles, PIT_SERVICE_DEBOUNCE_MS } from "./toggles.js";
+import { diffToggles, PIT_SERVICE_DEBOUNCE_MS, TIRE_DEBOUNCE_MS } from "./toggles.js";
 import type { PendingEvent } from "./types.js";
 
 type Tick = {
@@ -454,5 +456,71 @@ describe("diffToggles — auto-fuel (issue #474)", () => {
         { event: "pitService.toggled", data: { service: "fastRepair", on: false } },
       ]);
     });
+  });
+});
+
+/**
+ * The stall seed after the limiter left it (issue #1272): every toggle this diff
+ * still owns follows its bit silently in the pit stall, while the limiter is no
+ * longer this diff's at all — `limiter-toggle.ts` publishes it, in the stall
+ * too.
+ */
+describe("diffToggles — the stall seed (issue #1272)", () => {
+  const TIRES_ALL =
+    PitSvFlags.LFTireChange | PitSvFlags.RFTireChange | PitSvFlags.LRTireChange | PitSvFlags.RRTireChange;
+
+  type Bits = { drs: boolean; p2p: boolean; flags: number; limiter: boolean; inStall: boolean };
+
+  function tick(state: TranslatorState, now: number, { drs, p2p, flags, limiter, inStall }: Bits): PendingEvent[] {
+    const events: PendingEvent[] = [];
+    const telemetry = {
+      PitSvFlags: flags,
+      IsOnTrack: true,
+      PlayerCarInPitStall: inStall,
+      OnPitRoad: inStall,
+      DRS_Status: drs ? 2 : 0,
+      P2P_Status: p2p,
+      EngineWarnings: limiter ? EngineWarnings.PitSpeedLimiter : 0,
+    } as TelemetryData;
+
+    diffToggles(state, telemetry, now, (e) => events.push(e));
+
+    return events;
+  }
+
+  const OFF: Bits = { drs: false, p2p: false, flags: 0, limiter: false, inStall: false };
+  const FLIPPED = { drs: true, p2p: true, flags: PitSvFlags.FuelFill | PitSvFlags.FastRepair | TIRES_ALL };
+
+  /** Every owned toggle flipped at `T_EDGE` and held past both debounce windows. */
+  function flipAndSettle(state: TranslatorState, inStall: boolean): PendingEvent[] {
+    tick(state, 0, { ...OFF, inStall });
+
+    return [
+      ...tick(state, T_EDGE, { ...OFF, ...FLIPPED, inStall }),
+      ...tick(state, T_EDGE + TIRE_DEBOUNCE_MS, { ...OFF, ...FLIPPED, inStall }),
+    ];
+  }
+
+  it("seeds DRS, P2P, the pit-service bits and the tires silently in the stall", () => {
+    expect(flipAndSettle(createInitialState(), true)).toEqual([]);
+  });
+
+  it("publishes the same flips off the stall, so the silence above is the seed's", () => {
+    expect(flipAndSettle(createInitialState(), false).map((e) => e.event)).toEqual([
+      "carControl.drsToggled",
+      "carControl.p2pToggled",
+      "pitService.toggled",
+      "pitService.toggled",
+      "tireService.changed",
+    ]);
+  });
+
+  it("publishes no limiter edge, on track or in the stall", () => {
+    const state = createInitialState();
+
+    tick(state, 0, OFF);
+    expect(tick(state, T_EDGE, { ...OFF, limiter: true })).toEqual([]);
+    expect(tick(state, T_EDGE + 16, { ...OFF, limiter: false, inStall: true })).toEqual([]);
+    expect(tick(state, T_EDGE + 32, { ...OFF, limiter: true, inStall: true })).toEqual([]);
   });
 });

@@ -29,6 +29,7 @@ import { _resetAudioScenarios, initializeAudioScenarios, poolMemberPattern } fro
 import { familyGate } from "./callout-gate.test-util.js";
 import { familyReferences } from "./family-references.test-util.js";
 import { type FlagCalloutId, type PitReadbackCalloutId, registerPitCrew } from "./index.js";
+import { _resetLimiterCueEngine } from "./limiter-cue-engine.js";
 import { PIT_BOX_PENDING_HOLD_MS } from "./pit-box.js";
 import { _resetPitExitCueEngine } from "./pit-exit-cue-engine.js";
 import { _resetPitSpeedingEngine } from "./pit-speeding-engine.js";
@@ -334,6 +335,7 @@ afterEach(() => {
   _resetSpotterEngine();
   _resetPitSpeedingEngine();
   _resetPitExitCueEngine();
+  _resetLimiterCueEngine();
   vi.clearAllMocks();
   vi.useRealTimers();
 });
