@@ -8,6 +8,27 @@ import { type ImportOptions, importTakes, parseImportArg } from "./import-takes.
 import type { Manifest } from "./manifest.ts";
 import type { RunLog } from "./run.ts";
 
+/**
+ * The real `node:fs`, with a seam on `copyFileSync`: a hook that returns true
+ * for a destination makes the copy write a partial file there and then fail
+ * as a full disk does.
+ */
+const fsHook = vi.hoisted(() => ({ failsAt: null as ((destination: string) => boolean) | null }));
+
+vi.mock("node:fs", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs")>();
+  const copyFileSync: typeof actual.copyFileSync = (source, destination, mode) => {
+    if (typeof destination === "string" && fsHook.failsAt?.(destination)) {
+      actual.writeFileSync(destination, "partial");
+      throw Object.assign(new Error(`ENOSPC: no space left on device, copyfile '${destination}'`), { code: "ENOSPC" });
+    }
+
+    actual.copyFileSync(source, destination, mode);
+  };
+
+  return { ...actual, default: { ...actual, copyFileSync }, copyFileSync };
+});
+
 const NOW = new Date("2026-11-11T12:00:00.000Z");
 
 function buildVoice(groups: Record<string, Array<Record<string, unknown>>>, overrides: Record<string, unknown> = {}) {
@@ -40,9 +61,18 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  fsHook.failsAt = null;
   fs.rmSync(trialDir, { recursive: true, force: true });
   fs.rmSync(root, { recursive: true, force: true });
 });
+
+/** Every file under `root`, as POSIX paths relative to it. */
+function filesUnderRoot(): string[] {
+  return (fs.readdirSync(root, { recursive: true, withFileTypes: true }) as fs.Dirent[])
+    .filter((entry) => entry.isFile())
+    .map((entry) => path.relative(root, path.join(entry.parentPath, entry.name)).split(path.sep).join("/"))
+    .sort();
+}
 
 /** A trial take on disk, under the trial's `voice/<voice>/<group>/<name>.mp3`. */
 function writeTake(key: string, bytes: Buffer): void {
@@ -168,6 +198,27 @@ describe("importTakes", () => {
     expect(persistManifest).toHaveBeenCalledTimes(1);
     expect(persistManifest.mock.calls[0]![0].entries[`${INTRO}.mp3`]!.requestId).toBe("req-intro");
     expect(log.lines.some((line) => line.startsWith(`[import] FAILED: ${DECIMAL}.mp3: copy failed: `))).toBe(true);
+    // The temp file the failed rename left was removed.
+    expect(filesUnderRoot()).toEqual([`${INTRO}.mp3`]);
+  });
+
+  it("leaves no partial take, and no temp file, when a copy fails part-way", () => {
+    writeTake(INTRO, INTRO_BYTES);
+    writeTake(DECIMAL, DECIMAL_BYTES);
+    writeTrial([
+      { key: INTRO, status: "ok", requestId: "req-intro" },
+      { key: DECIMAL, status: "ok", requestId: "req-decimal" },
+    ]);
+    // Any copy of the second take into the voice tree, straight or through a temp file.
+    fsHook.failsAt = (destination) => destination.startsWith(path.join(root, `${DECIMAL}.mp3`));
+
+    const manifest: Manifest = { version: 1, entries: {} };
+    const { result } = runImport(manifest);
+
+    expect(result.imported).toBe(1);
+    expect(result.problems[0]).toMatch(new RegExp(`^${DECIMAL}\\.mp3: copy failed: ENOSPC`));
+    expect(filesUnderRoot()).toEqual([`${INTRO}.mp3`]);
+    expect(Object.keys(manifest.entries)).toEqual([`${INTRO}.mp3`]);
   });
 
   it("reports takes whose rows no save could write, keeping them in memory", () => {

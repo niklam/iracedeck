@@ -1,4 +1,4 @@
-import { copyFileSync, existsSync, mkdirSync, readFileSync, statSync } from "node:fs";
+import { copyFileSync, existsSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { z } from "zod";
 
@@ -11,7 +11,14 @@ import {
   type GrandfatheredPauseMarks,
   isGrandfathered,
 } from "./pause-marks.ts";
-import { invalidateProcessedCache, ManifestSaver, type ManifestSaveRetry, type RunLog, textPreview } from "./run.ts";
+import {
+  invalidateProcessedCache,
+  ManifestSaver,
+  type ManifestSaveRetry,
+  placeFileAtomically,
+  type RunLog,
+  textPreview,
+} from "./run.ts";
 
 /**
  * One take in an out-of-band trial's record: `key` is the clip's path
@@ -347,8 +354,9 @@ export function importTakes(options: ImportOptions): ImportResult {
     const target = path.join(root, take.relPath);
 
     try {
-      mkdirSync(path.dirname(target), { recursive: true });
-      copyFileSync(take.source, target);
+      // Through a temp file, so a copy that fails part-way leaves no partial
+      // mp3 where a row would later accept it (`placeFileAtomically`).
+      placeFileAtomically(target, (tempPath) => copyFileSync(take.source, tempPath));
     } catch (err) {
       // The rows of the takes already copied were saved as each landed:
       // their bytes are on disk, and a row left stale would have the next

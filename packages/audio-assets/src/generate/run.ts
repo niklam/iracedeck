@@ -1,4 +1,4 @@
-import { copyFileSync, existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 import {
@@ -134,6 +134,36 @@ export const MANIFEST_SAVE_RETRY: ManifestSaveRetry = { attempts: 3, delayMs: 25
 
 function sleepSync(ms: number): void {
   if (ms > 0) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+let tempFileCounter = 0;
+
+/**
+ * Put a clip at `absPath` all at once (#1643): `write` fills a temp file
+ * beside it, under a name unique to this process and call, which is then
+ * renamed onto `absPath`. A write that fails part-way (a full disk) leaves
+ * the temp file, which is removed, never a partial mp3 at `absPath` that a
+ * matching manifest row would read as a cache hit or a copy would reuse.
+ * Throws whatever `write` or the rename threw; the previous clip, if any, is
+ * then untouched.
+ */
+export function placeFileAtomically(absPath: string, write: (tempPath: string) => void): void {
+  mkdirSync(path.dirname(absPath), { recursive: true });
+
+  const tempPath = `${absPath}.${process.pid}.${tempFileCounter++}.tmp`;
+
+  try {
+    write(tempPath);
+    renameSync(tempPath, absPath);
+  } catch (err) {
+    try {
+      rmSync(tempPath, { force: true });
+    } catch {
+      // The original failure is the one worth reporting.
+    }
+
+    throw err;
+  }
 }
 
 function errorMessage(err: unknown): string {
@@ -295,6 +325,9 @@ class TakeIndex {
   }
 }
 
+/** The row fields a dry run's planned clip stands on in `resolutionView`; only its request id is read. */
+const PLANNED_ROW: ManifestRow = { hash: "", voiceId: "", model: "", textPreview: "", generatedAt: "" };
+
 /** `voice/<voice>/<group>/<name>.mp3` for a `<group>/<name>` key. */
 function relPathFor(voiceName: string, key: string): string {
   const slash = key.indexOf("/");
@@ -349,8 +382,9 @@ function sameIds(here: readonly (string | null)[] | undefined, recorded: readonl
  *   never paid again. Identical means the same hash, a source row that is
  *   current in its own voice and has a request id, AND the request ids this
  *   voice would send equal to the ones the source take was conditioned on:
- *   its row's `conditionedOn`, or, for a row written before that was
- *   recorded, what its references resolve to in its voice today
+ *   its row's `conditionedOn`. A row without one (written before it was
+ *   recorded, or `--import`ed) is copied only into an entry that references
+ *   nothing, since nothing proves what it was conditioned on
  *   (`pickCopySource`). Default runs first, so the verbatim entries of Short
  *   callouts find the fresh Default takes.
  *
@@ -429,6 +463,27 @@ export async function runGeneration(options: RunOptions): Promise<RunResult> {
     /** The ids `ids` resolve to in this voice now (planned, in a dry run); `null` where a reference has none. */
     const resolveHere = (ids: readonly string[] | undefined): (string | null)[] | undefined =>
       ids?.map((id) => (isReference(id) ? requestIdAt(relPathOf(id)) : id));
+    /**
+     * The rows `resolveEntryRequestIds` reads for `references`, as this run
+     * holds them: the manifest's, with the request id each clip holds now in
+     * the run (in a dry run, the planned one) laid over it.
+     */
+    const resolutionView = (references: readonly string[]): Manifest => {
+      const entries: Manifest["entries"] = {};
+
+      for (const ref of references) {
+        const relPath = relPathOf(ref);
+        const row = manifest.entries[relPath];
+
+        if (planned.has(relPath)) {
+          entries[relPath] = { ...(row ?? PLANNED_ROW), requestId: planned.get(relPath) ?? null };
+        } else if (row) {
+          entries[relPath] = row;
+        }
+      }
+
+      return { version: 1, entries };
+    };
 
     /** Why the clip `key` names is out of date, or null when its row and file match its config. */
     const staleness = (key: string): string | null => {
@@ -606,13 +661,12 @@ export async function runGeneration(options: RunOptions): Promise<RunResult> {
             return sameIds(here.previous, recorded.previous) && sameIds(here.next, recorded.next);
           }
 
-          // A row written before `conditionedOn` was recorded: its
-          // references as they resolve in its voice today.
-          return references.every((ref) => {
-            const id = requestIdAt(relPathOf(ref));
-
-            return id !== null && id === requestIdAt(relPathFor(candidate.voiceName, ref));
-          });
+          // A row with no record of its conditioning (written before it was
+          // recorded, or `--import`ed) proves nothing about it: what its
+          // references resolve to today may not be what it was cut against,
+          // since a dependency may have been re-cut in both voices since.
+          // Only an entry that references nothing can be copied from it.
+          return references.length === 0;
         },
       });
 
@@ -628,8 +682,7 @@ export async function runGeneration(options: RunOptions): Promise<RunResult> {
         }
 
         try {
-          mkdirSync(path.dirname(absPath), { recursive: true });
-          copyFileSync(path.join(root, source.relPath), absPath);
+          placeFileAtomically(absPath, (tempPath) => copyFileSync(path.join(root, source.relPath), tempPath));
         } catch (err) {
           log.error(`[copy] ${relPath}  —  FAILED: ${errorMessage(err)}`);
           outcomes.set(key, "failed");
@@ -660,43 +713,41 @@ export async function runGeneration(options: RunOptions): Promise<RunResult> {
         continue;
       }
 
+      let synthOptions: Omit<SynthesizeOptions, "apiKey">;
+
+      try {
+        // Resolve `<group>/<entry-name>` references to the provider request
+        // IDs of the dependencies' current takes — rows the checks above
+        // proved current, or wrote (would write) earlier in this run. One
+        // resolution for both modes, through `resolutionView`, so a dry run
+        // fails exactly what the live run fails (a dependency row with no
+        // request id), with the same message, and its dependents with it.
+        synthOptions = resolveEntryRequestIds(buildEntryOptions(entry, voice), voiceName, resolutionView(references));
+      } catch (err) {
+        log.error(`[generate] ${relPath}  —  FAILED: ${errorMessage(err)}`);
+        outcomes.set(key, "failed");
+        count("failed");
+        continue;
+      }
+
       const prefix = dryRun ? "[dry-run] WOULD GENERATE" : "[generate]";
 
       log.info(`${prefix} ${relPath}  —  "${textPreview(entry.text)}"`);
 
       if (dryRun) {
         // A placeholder no provider id can equal, unique to this clip: a
-        // fresh take matches nothing but itself and its copies.
-        // It would be conditioned on what its references resolve to now,
-        // planned ids included; unknown when one resolves to nothing (the
-        // live run fails such an entry).
-        const resolved = (ids: (string | null)[] | undefined): ids is string[] | undefined =>
-          ids === undefined || ids.every((id) => id !== null);
-
+        // fresh take matches nothing but itself and its copies. It would be
+        // conditioned on the ids just resolved, planned ones included.
         recordTake(
           key,
           relPath,
           hash,
           null,
           `planned:${relPath}`,
-          resolved(here.previous) && resolved(here.next) ? conditioningOf(here.previous, here.next) : undefined,
+          conditioningOf(synthOptions.previous_request_ids, synthOptions.next_request_ids),
         );
         outcomes.set(key, "cut");
         count("generated");
-        continue;
-      }
-
-      let synthOptions: Omit<SynthesizeOptions, "apiKey">;
-
-      try {
-        // Resolve `<group>/<entry-name>` references to the provider request
-        // IDs of the dependencies' current takes — rows the checks above
-        // proved current, or wrote earlier in this run.
-        synthOptions = resolveEntryRequestIds(buildEntryOptions(entry, voice), voiceName, manifest);
-      } catch (err) {
-        log.error(`[generate] ${relPath}  —  FAILED: ${errorMessage(err)}`);
-        outcomes.set(key, "failed");
-        count("failed");
         continue;
       }
 
@@ -706,8 +757,7 @@ export async function runGeneration(options: RunOptions): Promise<RunResult> {
         const take = await synthesize(synthOptions);
 
         requestId = take.requestId;
-        mkdirSync(path.dirname(absPath), { recursive: true });
-        writeFileSync(absPath, take.mp3);
+        placeFileAtomically(absPath, (tempPath) => writeFileSync(tempPath, take.mp3));
       } catch (err) {
         log.error(`[generate] ${relPath}  —  FAILED: ${errorMessage(err)}`);
         outcomes.set(key, "failed");

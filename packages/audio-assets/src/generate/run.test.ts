@@ -16,6 +16,33 @@ import {
   scopeFlagsFor,
 } from "./run.ts";
 
+/**
+ * The real `node:fs`, with a seam on the two calls that put a clip down: a
+ * hook that returns true for a destination makes the call write a partial
+ * file there and then fail as a full disk does.
+ */
+const fsHook = vi.hoisted(() => ({ failsAt: null as ((destination: string) => boolean) | null }));
+
+vi.mock("node:fs", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs")>();
+  const failPartWay = (destination: unknown): void => {
+    if (typeof destination === "string" && fsHook.failsAt?.(destination)) {
+      actual.writeFileSync(destination, "partial");
+      throw Object.assign(new Error(`ENOSPC: no space left on device, write '${destination}'`), { code: "ENOSPC" });
+    }
+  };
+  const writeFileSync: typeof actual.writeFileSync = (file, data, options) => {
+    failPartWay(file);
+    actual.writeFileSync(file, data, options);
+  };
+  const copyFileSync: typeof actual.copyFileSync = (source, destination, mode) => {
+    failPartWay(destination);
+    actual.copyFileSync(source, destination, mode);
+  };
+
+  return { ...actual, default: { ...actual, writeFileSync, copyFileSync }, writeFileSync, copyFileSync };
+});
+
 const NOW = new Date("2026-11-11T12:00:00.000Z");
 const UNSCOPED = { voices: null, groups: null, entries: null };
 
@@ -70,8 +97,17 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  fsHook.failsAt = null;
   fs.rmSync(root, { recursive: true, force: true });
 });
+
+/** Every file under `root`, as POSIX paths relative to it. */
+function filesUnderRoot(): string[] {
+  return (fs.readdirSync(root, { recursive: true, withFileTypes: true }) as fs.Dirent[])
+    .filter((entry) => entry.isFile())
+    .map((entry) => path.relative(root, path.join(entry.parentPath, entry.name)).split(path.sep).join("/"))
+    .sort();
+}
 
 function writeClip(relPath: string, bytes: string): void {
   const abs = path.join(root, relPath);
@@ -791,6 +827,136 @@ describe("runGeneration — copies between voices", () => {
   });
 });
 
+describe("runGeneration — a clip is put down whole or not at all (#1643)", () => {
+  // Any write of a clip, straight or through a temp file beside it.
+  const clipWrite = (destination: string) => /\.mp3(\.\d+\.\d+\.tmp)?$/.test(destination);
+
+  it("leaves no partial take at the clip's path, and no temp file, when the write fails part-way", async () => {
+    const manifest = emptyManifest();
+
+    fsHook.failsAt = clipWrite;
+
+    const { promise, log, persistManifest } = run({
+      voiceConfigs: new Map([["default", buildVoice({ g: [{ name: "x", text: "hello" }] })]]),
+      manifest,
+    });
+    const result = await promise;
+
+    expect(result.totals).toEqual({ generated: 0, copied: 0, skipped: 0, failed: 1, refused: 0 });
+    expect(filesUnderRoot()).toEqual([]);
+    expect(manifest.entries).toEqual({});
+    expect(persistManifest).not.toHaveBeenCalled();
+    expect(log.lines.join("\n")).toContain("voice/default/g/x.mp3  —  FAILED: ENOSPC");
+  });
+
+  it("keeps the previous clip untouched when a re-cut's write fails", async () => {
+    const voice = buildVoice({ g: [{ name: "x", text: "hello" }] });
+    const manifest = emptyManifest();
+
+    seed(manifest, "voice/default/g/x.mp3", "old-hash", "req-old", "the old take");
+    fsHook.failsAt = clipWrite;
+
+    const result = await run({ voiceConfigs: new Map([["default", voice]]), manifest }).promise;
+
+    expect(result.totals.failed).toBe(1);
+    expect(filesUnderRoot()).toEqual(["voice/default/g/x.mp3"]);
+    expect(readClip("voice/default/g/x.mp3")).toBe("the old take");
+    // The row still names the old config, so the next run cuts it again.
+    expect(manifest.entries["voice/default/g/x.mp3"]!.hash).toBe("old-hash");
+  });
+
+  it("leaves no partial copy at the clip's path, and no temp file, when a copy fails part-way", async () => {
+    const hello = buildVoice({ g: [{ name: "x", text: "hello" }] });
+    const manifest = emptyManifest();
+
+    seed(manifest, "voice/default/g/x.mp3", hashOf(hello, "g/x"), "req-hello");
+    fsHook.failsAt = clipWrite;
+
+    const { promise, synthesize } = run({
+      voiceConfigs: new Map([
+        ["default", hello],
+        ["shawn", hello],
+      ]),
+      manifest,
+      scope: { voices: ["shawn"], groups: null, entries: null },
+    });
+    const result = await promise;
+
+    expect(result.totals).toEqual({ generated: 0, copied: 0, skipped: 0, failed: 1, refused: 0 });
+    expect(synthesize).not.toHaveBeenCalled();
+    expect(filesUnderRoot()).toEqual(["voice/default/g/x.mp3"]);
+    expect(manifest.entries["voice/shawn/g/x.mp3"]).toBeUndefined();
+  });
+
+  it("writes through a temp file and leaves only the clip behind", async () => {
+    const written: string[] = [];
+
+    fsHook.failsAt = (destination) => {
+      written.push(path.relative(root, destination).split(path.sep).join("/"));
+
+      return false;
+    };
+
+    await run({
+      voiceConfigs: new Map([["default", buildVoice({ g: [{ name: "x", text: "hello" }] })]]),
+      manifest: emptyManifest(),
+    }).promise;
+
+    expect(written).toHaveLength(1);
+    expect(written[0]).toMatch(/^voice\/default\/g\/x\.mp3\.\d+\.\d+\.tmp$/);
+    expect(filesUnderRoot()).toEqual(["voice/default/g/x.mp3"]);
+    expect(readClip("voice/default/g/x.mp3")).toBe("take 1 of hello");
+  });
+});
+
+describe("runGeneration — a dependency with no request id (#1643)", () => {
+  it("fails the entry and its dependents alike in a live run and a dry run", async () => {
+    const chain = buildVoice({
+      intro: [{ name: "x", text: "Last lap was." }],
+      tail: [{ name: "x", text: "point four", previous_request_ids: ["intro/x"] }],
+      tip: [{ name: "x", text: "and change", previous_request_ids: ["tail/x"] }],
+    });
+    const outcomes: Record<string, { totals: unknown; failures: string[] }> = {};
+
+    for (const dryRun of [false, true]) {
+      const manifest = emptyManifest();
+
+      // Current, with its clip, but no request id to condition on.
+      seed(manifest, "voice/default/intro/x.mp3", hashOf(chain, "intro/x"), "unused");
+      manifest.entries["voice/default/intro/x.mp3"]!.requestId = null;
+
+      const { promise, synthesize, log } = run({ voiceConfigs: new Map([["default", chain]]), manifest, dryRun });
+      const result = await promise;
+
+      expect(synthesize).not.toHaveBeenCalled();
+      outcomes[dryRun ? "dry" : "live"] = {
+        totals: result.totals,
+        failures: log.lines.filter((line) => line.includes("FAILED")),
+      };
+    }
+
+    expect(outcomes.live!.totals).toEqual({ generated: 0, copied: 0, skipped: 1, failed: 2, refused: 0 });
+    expect(outcomes.dry).toEqual(outcomes.live);
+    expect(outcomes.live!.failures).toEqual([
+      expect.stringMatching(
+        /^\[generate\] voice\/default\/tail\/x\.mp3 {2}— {2}FAILED: Reference "intro\/x" for voice "default" resolved to manifest entry "voice\/default\/intro\/x\.mp3" but it has no requestId/,
+      ),
+      '[generate] voice/default/tip/x.mp3  —  FAILED: dependency "tail/x" failed in this run',
+    ]);
+  });
+
+  it("still plans a dependent of a would-be cut, through the planned id", async () => {
+    const chain = buildVoice({
+      intro: [{ name: "x", text: "Last lap was." }],
+      tail: [{ name: "x", text: "point four", previous_request_ids: ["intro/x"] }],
+    });
+    const result = await run({ voiceConfigs: new Map([["default", chain]]), manifest: emptyManifest(), dryRun: true })
+      .promise;
+
+    expect(result.totals).toEqual({ generated: 2, copied: 0, skipped: 0, failed: 0, refused: 0 });
+  });
+});
+
 describe("runGeneration — a copy source must be provably the same request (#1643)", () => {
   const hello = buildVoice({ g: [{ name: "x", text: "hello" }] });
 
@@ -925,7 +1091,9 @@ describe("runGeneration — a copy needs the take's own conditioning (#1643)", (
       }
     });
 
-    it(`still copies a legacy row with no conditionedOn, by its references' ids today (${mode})`, async () => {
+    it(`cuts, not copies, a referenced legacy row with no conditionedOn, even when today's ids agree (${mode})`, async () => {
+      // Default's D and shawn's D both hold r2 today, but nothing records
+      // what Default's E was cut against: it may predate both.
       const manifest = reCutDependency(undefined);
       const { promise, synthesize } = run({
         voiceConfigs: new Map([
@@ -937,12 +1105,39 @@ describe("runGeneration — a copy needs the take's own conditioning (#1643)", (
       });
       const result = await promise;
 
-      expect(result.perVoice.get("shawn")).toEqual({ generated: 0, copied: 1, skipped: 1, failed: 0, refused: 0 });
+      expect(result.perVoice.get("shawn")).toEqual({ generated: 1, copied: 0, skipped: 1, failed: 0, refused: 0 });
+
+      if (!dryRun) {
+        expect(synthesize.mock.calls.map(([options]) => options.previous_request_ids)).toEqual([["r2"]]);
+        expect(manifest.entries["voice/shawn/e/x.mp3"]!.conditionedOn).toEqual({ previous: ["r2"] });
+      }
+    });
+
+    it(`still copies a legacy row with no conditionedOn into an entry that references nothing (${mode})`, async () => {
+      // Shawn lacks D; Default's legacy D references nothing, so its request
+      // is the whole of the proof.
+      const manifest = reCutDependency(undefined);
+
+      delete manifest.entries["voice/shawn/d/x.mp3"];
+      fs.rmSync(path.join(root, "voice/shawn/d/x.mp3"));
+
+      const { promise, synthesize } = run({
+        voiceConfigs: new Map([
+          ["default", voice],
+          ["shawn", voice],
+        ]),
+        manifest,
+        dryRun,
+        scope: { voices: ["shawn"], groups: ["d"], entries: null },
+      });
+      const result = await promise;
+
+      expect(result.totals).toEqual({ generated: 0, copied: 1, skipped: 0, failed: 0, refused: 0 });
       expect(synthesize).not.toHaveBeenCalled();
 
       if (!dryRun) {
-        expect(manifest.entries["voice/shawn/e/x.mp3"]!.requestId).toBe("rE");
-        expect(manifest.entries["voice/shawn/e/x.mp3"]).not.toHaveProperty("conditionedOn");
+        expect(manifest.entries["voice/shawn/d/x.mp3"]!.requestId).toBe("r2");
+        expect(manifest.entries["voice/shawn/d/x.mp3"]).not.toHaveProperty("conditionedOn");
       }
     });
   }
