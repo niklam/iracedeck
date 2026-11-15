@@ -323,7 +323,7 @@ In a multi-class race the grid position is your **class** grid slot, not your ov
 
 Because the callout fires off the session-change event, it arrives in time to be useful during grid prep — even if you sit in the garage. Practice and qualifying sessions get the same treatment from the session-start brief above, which fires the same way at session start.
 
-If the start lights or the spotter cut the brief short, the brief is not repeated, so a busy start never plays it over and over.
+If an urgent call, such as the start lights or the spotter calling a car alongside, cuts the brief short, the brief is not repeated, so a busy start never plays it over and over.
 
 ## Setup Warning
 
