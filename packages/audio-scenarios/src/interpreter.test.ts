@@ -3204,10 +3204,6 @@ describe("bounded pending queue (issue #1185)", () => {
 
   afterEach(() => {
     vi.useRealTimers();
-    // (7) installs a debug implementation that counts replays of "q.a" and
-    // throws past ten; `clearAllMocks` keeps an implementation, so without
-    // this its count would run on into every later test that replays "q.a".
-    mockLogger.debug.mockReset();
   });
 
   /** A queueable scenario `q.<name>` that plays the one clip `q/<name>.mp3`. */
@@ -3374,23 +3370,29 @@ describe("bounded pending queue (issue #1185)", () => {
       define("a", WEIGHT.NORMAL);
       engine.acquireFocus(AudioBus.Voice, "spotter", WEIGHT.SAFETY);
       // Turns a drain that keeps replaying the same entry into a failure
-      // rather than a hung worker.
+      // rather than a hung worker. Removed in the `finally`: `clearAllMocks`
+      // keeps an implementation, so its count would otherwise run on into
+      // every later test that replays "q.a".
       let replays = 0;
       mockLogger.debug.mockImplementation((msg: string) => {
         if (msg === 'Replaying pending scenario "q.a"' && ++replays > 10) throw new Error("the drain loops");
       });
 
-      engine.fire("q.a");
-      engine.fire("q.owner");
-      endClip(); // the drain runs with the floor held
+      try {
+        engine.fire("q.a");
+        engine.fire("q.owner");
+        endClip(); // the drain runs with the floor held
 
-      expect(replays).toBeLessThanOrEqual(1);
-      expect(heard()).toEqual(["owner"]);
+        expect(replays).toBeLessThanOrEqual(1);
+        expect(heard()).toEqual(["owner"]);
 
-      engine.releaseFocus(AudioBus.Voice, "spotter");
-      flushVoiceAndSfx(audio);
+        engine.releaseFocus(AudioBus.Voice, "spotter");
+        flushVoiceAndSfx(audio);
 
-      expect(heard()).toEqual(["owner", "a"]);
+        expect(heard()).toEqual(["owner", "a"]);
+      } finally {
+        mockLogger.debug.mockReset();
+      }
     });
 
     it("(8) entries below the floor stay; the first at or above it plays at the next drain; on release the rest drain one at a time", () => {
