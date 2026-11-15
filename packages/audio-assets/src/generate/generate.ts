@@ -86,8 +86,9 @@
  *                                   copied byte for byte and given a manifest
  *                                   row with the entry's current hash and the
  *                                   trial's request id, so nothing re-cuts it.
- *                                   Any unknown entry, missing file, model or
- *                                   speaker (voiceId) mismatch, driver-name
+ *                                   Any unknown entry, missing file, model,
+ *                                   speaker (voiceId), settings or seed
+ *                                   mismatch, driver-name
  *                                   alias or ungrandfathered pause mark
  *                                   refuses the whole import and writes
  *                                   nothing. Composes with --dry-run;
