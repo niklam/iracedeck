@@ -875,6 +875,21 @@ describe("migrateFuelMarginDefault (#1679)", () => {
     expect(logger.debug).not.toHaveBeenCalled();
   });
 
+  it.each([false, "", "  ", "false", 0, null])(
+    "runs over a marker of %j, which records no run, and rewrites it",
+    async (mark) => {
+      initWithStore({ fuelCalloutMarginLaps: 0.3, [MARKER]: mark });
+      await tick();
+      const logger = createMockLogger();
+
+      migrateFuelMarginDefault(VERSION, logger);
+
+      expect(cache().fuelCalloutMarginLaps).toBe(0);
+      expect(cache()[MARKER]).toBe(VERSION);
+      expect(logger.info).toHaveBeenCalledWith("Fuel margin moved from the old default 0.3 to 0");
+    },
+  );
+
   it("keeps a 0.3 the user chose again after the upgrade, at every later start", async () => {
     const store = initWithStore({ fuelCalloutMarginLaps: 0.3 });
     await tick();

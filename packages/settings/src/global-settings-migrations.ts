@@ -346,6 +346,18 @@ const OLD_FUEL_MARGIN_DEFAULT_LAPS = 0.3;
 /** The `fuelCalloutMarginLaps` default since #1679, which the old one moves to. */
 const NEW_FUEL_MARGIN_DEFAULT_LAPS = 0;
 
+/**
+ * Whether {@link FUEL_MARGIN_DEFAULT_MIGRATED_KEY} records a run: `true`, or a
+ * non-blank version string other than `"false"` — the shape the migration
+ * writes. Any other stored value (`false`, `""`, `0`, `null`) is a marker
+ * nobody wrote as a record of a run, so the migration runs again.
+ */
+function isFuelMarginMigrated(marker: unknown): boolean {
+  if (marker === true) return true;
+
+  return typeof marker === "string" && marker.trim() !== "" && marker.trim().toLowerCase() !== "false";
+}
+
 /** What the fuel-margin migration logs (debug) when the store's state makes it wait, per reason. */
 const FUEL_MARGIN_NOT_MIGRATED: Readonly<Record<"not-ready" | "not-read-yet" | "unparseable", string>> = {
   "not-ready": "Fuel margin default migration skipped: the settings store is not ready",
@@ -373,7 +385,11 @@ const FUEL_MARGIN_NOT_MIGRATED: Readonly<Record<"not-ready" | "not-read-yet" | "
  * `pluginVersion` (`true` when blank or unknown), is written in the SAME
  * `updateGlobalSettings` call as the value, and written even when nothing
  * moved, so a user who sets 0.3 again after the upgrade keeps it at every
- * later start. Any value under the key counts as done.
+ * later start. Done is the shape its writer leaves, `true` or a version
+ * string ({@link isFuelMarginMigrated}); anything else under the key (a
+ * hand-edited `false`, `""`, `0`) counts as not run, so it is run and the
+ * marker rewritten, and the snapshot, which keeps only that shape, never shows
+ * an install as unmarked while the migration treats it as done.
  *
  * **When it runs.** Once per start, at the first moment the store is ready
  * (`runOnceSettingsStoreReady`), until marked. It reads
@@ -407,7 +423,7 @@ const FUEL_MARGIN_NOT_MIGRATED: Readonly<Record<"not-ready" | "not-read-yet" | "
  */
 export function migrateFuelMarginDefault(pluginVersion: string | undefined, logger?: ILogger): () => void {
   return runOnceSettingsStoreReady(() => {
-    if (getGlobalSettings()[FUEL_MARGIN_DEFAULT_MIGRATED_KEY] !== undefined) return;
+    if (isFuelMarginMigrated(getGlobalSettings()[FUEL_MARGIN_DEFAULT_MIGRATED_KEY])) return;
 
     const derivation = getSettingsStoreHostDerivation();
 
