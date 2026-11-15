@@ -156,6 +156,7 @@ function expectedOrder(withExtension: boolean): string[] {
     "createVoicePackLaunchStep().start",
     "migrateGlobalSettingsKeys",
     "cleanupRetiredDisconnectedSetting", // #1599
+    "migrateFuelMarginDefault", // #1679
     "seedBindingDefaultsIfAbsent",
     ...(withExtension ? ["extension.start"] : []),
     "adapter.onOpenSettingsRequest",
@@ -273,6 +274,7 @@ describe("startPlugin (#1349)", () => {
       "GlobalSettings",
       "SettingsMigration",
       "SettingsMigration", // the retired-key cleanup (#1599)
+      "SettingsMigration", // the fuel margin default migration (#1679)
       "SettingsMigration",
       "SimHub",
       "BindingDispatcher",
@@ -281,6 +283,16 @@ describe("startPlugin (#1349)", () => {
       "Elevation",
       "ReplaySession",
     ]);
+  });
+
+  it("hands the fuel margin default migration the running plugin version, which its marker records (#1679)", () => {
+    const versions: unknown[] = [];
+    implement("getPluginVersion", () => "9.9.9-test");
+    implement("migrateFuelMarginDefault", (version) => versions.push(version));
+
+    startPlugin(createHost());
+
+    expect(versions).toEqual(["9.9.9-test"]);
   });
 
   it("installs the press sound player once, before the first action, and registers every handler wrapped (#269)", () => {

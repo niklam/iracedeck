@@ -1,9 +1,10 @@
 /**
  * Phase 11 (#1349; 9 until #1467, 10 until #1112): the global settings listener and what
  * waits on it — the voice-pack launch step, the two binding migrations, the
- * retired-key cleanup (#1599), the host's extension, the settings-window
- * request, SimHub, the binding dispatcher, the app monitor, the audio session
- * hold, and the two SDK subscribers. Everything here is registered before `startPlugin` connects
+ * retired-key cleanup (#1599), the fuel margin default migration (#1679), the
+ * host's extension, the settings-window request, SimHub, the binding
+ * dispatcher, the app monitor, the audio session hold, and the two SDK
+ * subscribers. Everything here is registered before `startPlugin` connects
  * the adapter. The extension reads the sim through the sim phase's `HostSim`
  * (#1500).
  */
@@ -25,6 +26,7 @@ import {
 import {
   cleanupRetiredDisconnectedSetting,
   initGlobalSettings,
+  migrateFuelMarginDefault,
   migrateGlobalSettingsKeys,
   onGlobalSettingsChange,
   seedBindingDefaultsIfAbsent,
@@ -70,6 +72,12 @@ export function startServices(
   // (#1599). Its value carries nothing over to `showDisconnectedState`; every
   // start, once the stored settings are in, and only when the key is there.
   cleanupRetiredDisconnectedSetting(core.adapter.createLogger("SettingsMigration"));
+
+  // Move a stored fuel margin of exactly the old default 0.3 to the new default
+  // 0, once (#1679); any other value is left alone. Every start until marked,
+  // once the stored settings are in, never on a store still waiting for the
+  // deck host's settings. The marker it writes records this version.
+  migrateFuelMarginDefault(getPluginVersion(), core.adapter.createLogger("SettingsMigration"));
 
   // Seed iRacing's Next / Previous Car bindings for anyone who has never stored
   // them (#1277): Cycle by Track Order now taps them, and before that nothing but
