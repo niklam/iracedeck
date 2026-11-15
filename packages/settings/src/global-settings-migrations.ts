@@ -331,7 +331,7 @@ export function seedBindingDefaultsIfAbsent(defaults: Readonly<Record<string, st
  * (#1679). Holds the plugin version that ran it (`true` when that version is
  * unknown), the `_migrationAbandoned` shape (#1047). Durable and never
  * run-scoped: without it the next start would move a 0.3 the user chose again
- * after the upgrade.
+ * once the migration had run.
  */
 export const FUEL_MARGIN_DEFAULT_MIGRATED_KEY = "_fuelMarginDefaultMigrated";
 
@@ -384,8 +384,12 @@ const FUEL_MARGIN_NOT_MIGRATED: Readonly<Record<"not-ready" | "not-read-yet" | "
  * **Marked done.** {@link FUEL_MARGIN_DEFAULT_MIGRATED_KEY}, holding
  * `pluginVersion` (`true` when blank or unknown), is written in the SAME
  * `updateGlobalSettings` call as the value, and written even when nothing
- * moved, so a user who sets 0.3 again after the upgrade keeps it at every
- * later start. Done is the shape its writer leaves, `true` or a version
+ * moved, so a user who sets 0.3 again once it has run keeps it at every later
+ * start. Before then, on a store that has not read the deck host yet, a 0.3
+ * set on the slider counts as the former default and yields to the host's
+ * value when its answer lands (`FORMER_SCHEMA_DEFAULTS` in `mergeMigration`):
+ * the same premise that already lets any default-valued key in such a file
+ * yield to the host. Done is the shape its writer leaves, `true` or a version
  * string ({@link isFuelMarginMigrated}); anything else under the key (a
  * hand-edited `false`, `""`, `0`) counts as not run, so it is run and the
  * marker rewritten, and the snapshot, which keeps only that shape, never shows
