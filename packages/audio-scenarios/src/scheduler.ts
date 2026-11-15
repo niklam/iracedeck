@@ -27,7 +27,9 @@
  *     ops + position; the idle-replay re-expands and, when the expansion is
  *     unchanged, continues from the interrupted clip (re-keying the radio
  *     frame) instead of re-firing from the top (issue #758). A changed
- *     expansion falls back to a full fresh replay (#481 freshness).
+ *     expansion falls back to a full fresh replay (#481 freshness). One
+ *     whose contract declares `dropWhenCut` is not stashed at all: the cut
+ *     ends it (issue #1681).
  *   - Deferred fires wait in a bounded per-bus queue (`PendingQueue`, issue
  *     #1185): heaviest first, then the longest-waiting, then arrival order.
  *     A lighter newcomer waits rather than being dropped, and a heavier one
@@ -705,7 +707,8 @@ export class Scheduler implements PlaybackListener {
    * A fire that began before the last `session.changed` is not stashed at
    * all: it is dropped, logged as `session changed` (see
    * `sessionGeneration`). Neither is the cut tail of an ended fire (issue
-   * #1407), which is never re-queued.
+   * #1407), which is never re-queued, nor a fire whose contract declares
+   * `dropWhenCut` (issue #1681): the cut ends it, logged as `cut`.
    */
   private stashRunningIfQueueable(state: BusView, running: CompiledScenario | undefined): void {
     const active = state.transport.active;
@@ -718,6 +721,14 @@ export class Scheduler implements PlaybackListener {
 
     if (active.sessionGeneration !== this.sessionGeneration) {
       this.logger.debug(`Scenario "${active.id}" dropped — session changed`);
+
+      return;
+    }
+
+    // A long one-off line the driver has already half heard (the briefs) is
+    // never replayed after a cut (issue #1681); only its cut is its end.
+    if (running.raw.dropWhenCut === true) {
+      this.logger.debug(`Scenario "${active.id}" dropped — cut`);
 
       return;
     }

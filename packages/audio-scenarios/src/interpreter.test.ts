@@ -4295,6 +4295,51 @@ describe("bounded pending queue (issue #1185)", () => {
 
       expect(heard()).toEqual(["a", "x", "a", "b"]);
     });
+
+    describe("dropWhenCut", () => {
+      it("a contract that declares it is dropped at the cut and never replayed", () => {
+        define("a", WEIGHT.NORMAL, { dropWhenCut: true });
+        defineInterrupt();
+
+        engine.fire("q.a");
+        vi.advanceTimersByTime(1000);
+        engine.fire("q.x");
+
+        expect(mockLogger.debug).toHaveBeenCalledWith('Scenario "q.a" dropped — cut');
+        expect(waitingIds()).toEqual([]);
+
+        flushVoiceAndSfx(audio);
+
+        expect(heard()).toEqual(["a", "x"]);
+      });
+
+      it("the same contract only waiting its turn, never cut, still plays within its max wait", () => {
+        holdBus();
+        define("a", WEIGHT.NORMAL, { dropWhenCut: true });
+
+        engine.fire("q.a");
+        vi.advanceTimersByTime(7000);
+        endClip();
+
+        expect(heard()).toEqual(["busy", "a"]);
+      });
+
+      it("a plain queueable contract cut the same way is still stashed (positive control)", () => {
+        define("a", WEIGHT.NORMAL);
+        defineInterrupt();
+
+        engine.fire("q.a");
+        vi.advanceTimersByTime(1000);
+        engine.fire("q.x");
+
+        expect(mockLogger.debug).not.toHaveBeenCalledWith('Scenario "q.a" dropped — cut');
+        expect(waitingIds()).toEqual(["q.a"]);
+
+        flushVoiceAndSfx(audio);
+
+        expect(heard()).toEqual(["a", "x", "a"]);
+      });
+    });
   });
 });
 

@@ -332,6 +332,19 @@ export type ScenarioContract = {
    */
   resumable?: boolean;
   /**
+   * When an `interrupt` cuts this queueable fire mid-playback, drop it
+   * instead of stashing it for replay (`true`; issue #1681) — logged at
+   * debug as `dropped — cut`. For a long one-off line the driver has already
+   * half heard, such as the session-start and race-start briefs, which a
+   * replay would repeat from the top at the busiest moment of the session.
+   * An ordinary wait in the queue is unaffected: a fire only deferred behind
+   * another line, never cut, still plays within its `maxQueueWaitMs`. Not an
+   * exemption from the due time a stash keeps — it only says "never replay
+   * me after a cut". Requires `queueable: true` and excludes `resumable`
+   * (both validated at load time).
+   */
+  dropWhenCut?: boolean;
+  /**
    * Contract ids this fire waits BEHIND rather than competes with (issue
    * #1108) — an ordering constraint between two fires that should both be
    * heard. While a named contract waits in the bus's queue, this fire is
