@@ -237,14 +237,19 @@ describe("numeric Race Engineer settings against the translator's bounds (#1376)
   it.each(NUMERIC_OPTIONS)(
     "$key accepts exactly the translator's clamp range",
     ({ key, sanitize, fallback, min, max }) => {
-      // Out of range the schema's `.catch` answers the default, so a probe
-      // past a bound only tells "rejected" from "kept" while the default
-      // sits strictly inside the range.
-      expect(fallback, "the default lies strictly inside the range").toBeGreaterThan(min);
-      expect(fallback, "the default lies strictly inside the range").toBeLessThan(max);
+      // Out of range the schema's `.catch` answers the default. A default ON a
+      // bound (the fuel margin's 0, #1679) makes the probe AT that bound
+      // vacuous: kept and rejected both answer the default. So each bound is
+      // also probed just inside it, where kept answers the probe and rejected
+      // answers the default, which tells a bound moved inwards by more than
+      // OUTSIDE — the same resolution the probes past the bounds have.
+      expect(fallback, "the default lies within the range").toBeGreaterThanOrEqual(min);
+      expect(fallback, "the default lies within the range").toBeLessThanOrEqual(max);
 
       expect(parsed(key, min), "the schema keeps the minimum").toBe(min);
       expect(parsed(key, max), "the schema keeps the maximum").toBe(max);
+      expect(parsed(key, min + OUTSIDE), "the schema keeps a value just above the minimum").toBe(min + OUTSIDE);
+      expect(parsed(key, max - OUTSIDE), "the schema keeps a value just below the maximum").toBe(max - OUTSIDE);
       expect(sanitize(min), "the sanitizer keeps the minimum").toBe(min);
       expect(sanitize(max), "the sanitizer keeps the maximum").toBe(max);
 

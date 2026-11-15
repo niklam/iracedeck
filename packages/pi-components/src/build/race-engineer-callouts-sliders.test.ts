@@ -109,14 +109,23 @@ describe("race-engineer-callouts sliders against the settings schema (#1376)", (
       const max = numberAttribute(slider, "max");
       const fallback = defaults[key];
 
-      // Out of range the schema's `.catch` answers the default, so a probe
-      // past an end only tells "rejected" from "kept" while the default sits
-      // strictly inside the range.
-      expect(fallback, "the default lies strictly inside the slider's range").toBeGreaterThan(min);
-      expect(fallback, "the default lies strictly inside the slider's range").toBeLessThan(max);
+      // Out of range the schema's `.catch` answers the default. A default ON
+      // an end (the fuel margin's 0, #1679) makes the probe AT that end
+      // vacuous: kept and rejected both answer the default. So each end is
+      // also probed just inside it, where kept answers the probe and rejected
+      // answers the default, which tells a schema bound moved inwards by more
+      // than OUTSIDE — the same resolution the probes past the ends have.
+      expect(fallback, "the default lies within the slider's range").toBeGreaterThanOrEqual(min);
+      expect(fallback, "the default lies within the slider's range").toBeLessThanOrEqual(max);
 
       expect(parsed(key, min), "the schema keeps the slider's minimum").toBe(min);
       expect(parsed(key, max), "the schema keeps the slider's maximum").toBe(max);
+      expect(parsed(key, min + OUTSIDE), "the schema keeps a value just above the slider's minimum").toBe(
+        min + OUTSIDE,
+      );
+      expect(parsed(key, max - OUTSIDE), "the schema keeps a value just below the slider's maximum").toBe(
+        max - OUTSIDE,
+      );
       expect(parsed(key, min - OUTSIDE), "the schema rejects just below the slider's minimum").toBe(fallback);
       expect(parsed(key, max + OUTSIDE), "the schema rejects just above the slider's maximum").toBe(fallback);
     },
