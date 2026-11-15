@@ -8,6 +8,7 @@ import { silentLogger } from "@iracedeck/logger";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { FIRST_RUN_VERSION_KEY, runFirstRunCheck } from "./first-run.js";
+import { FUEL_MARGIN_DEFAULT_MIGRATED_KEY, migrateFuelMarginDefault } from "./global-settings-migrations.js";
 import {
   _resetGlobalSettings,
   getGlobalSettings,
@@ -98,7 +99,7 @@ describe("readSettingsForSnapshot", () => {
   });
 
   describe("the allow-list", () => {
-    it("keeps exactly five internal keys", () => {
+    it("keeps exactly six internal keys", () => {
       expect([...SNAPSHOT_KEPT_INTERNAL_KEYS].sort()).toEqual(
         [
           PI_WARNINGS_KEY,
@@ -106,6 +107,7 @@ describe("readSettingsForSnapshot", () => {
           MIGRATION_PENDING_KEY,
           MIGRATION_ABANDONED_KEY,
           VOICE_PACKS_KEY,
+          FUEL_MARGIN_DEFAULT_MIGRATED_KEY,
         ].sort(),
       );
       // Named here so that keeping either takes an edit to this test as well.
@@ -118,6 +120,7 @@ describe("readSettingsForSnapshot", () => {
         [SETTINGS_CHANNEL_KEY]: { port: PORT, token: TOKEN },
         [LAST_SEEN_VERSION_KEY]: "3.5.0",
         [MIGRATION_ABANDONED_KEY]: "3.4.0",
+        [FUEL_MARGIN_DEFAULT_MIGRATED_KEY]: "3.9.0",
         [FIRST_RUN_VERSION_KEY]: "3.4.0",
         _settingsStorePath: "C:/Users/someone/AppData/Local/iRaceDeck/Settings/x/global-settings.json",
         _lastChangelogOpenedAt: 1791727391482,
@@ -139,7 +142,13 @@ describe("readSettingsForSnapshot", () => {
       const internal = Object.keys(result).filter((key) => key.startsWith("_"));
 
       expect(internal.sort()).toEqual(
-        [PI_WARNINGS_KEY, LAST_SEEN_VERSION_KEY, MIGRATION_ABANDONED_KEY, VOICE_PACKS_KEY].sort(),
+        [
+          PI_WARNINGS_KEY,
+          LAST_SEEN_VERSION_KEY,
+          MIGRATION_ABANDONED_KEY,
+          VOICE_PACKS_KEY,
+          FUEL_MARGIN_DEFAULT_MIGRATED_KEY,
+        ].sort(),
       );
       expect(JSON.stringify(result)).not.toContain("someone");
       expect(JSON.stringify(result)).not.toContain("LEAK");
@@ -396,6 +405,57 @@ describe("readSettingsForSnapshot", () => {
 
       expect(MIGRATION_PENDING_KEY in result).toBe(false);
       expect(MIGRATION_ABANDONED_KEY in result).toBe(false);
+    });
+  });
+
+  describe("the fuel margin migration marker (#1679)", () => {
+    // Through the real writer, so a renamed key cannot leave the reader keeping
+    // a name nothing writes any more.
+    it("keeps the version the migration itself records, beside the margin it moved", async () => {
+      await startWith({ fuelCalloutMarginLaps: 0.3 });
+      expect(FUEL_MARGIN_DEFAULT_MIGRATED_KEY in cache()).toBe(false);
+
+      migrateFuelMarginDefault("3.9.0", silentLogger);
+
+      const result = readSettingsForSnapshot();
+
+      expect(result[FUEL_MARGIN_DEFAULT_MIGRATED_KEY]).toBe("3.9.0");
+      expect(result.fuelCalloutMarginLaps).toBe(0);
+    });
+
+    it("keeps the true a build that cannot name its version records", async () => {
+      await startWith({});
+
+      migrateFuelMarginDefault(undefined, silentLogger);
+      expect(cache()[FUEL_MARGIN_DEFAULT_MIGRATED_KEY]).toBe(true);
+
+      expect(readSettingsForSnapshot()[FUEL_MARGIN_DEFAULT_MIGRATED_KEY]).toBe(true);
+    });
+
+    it("is absent from the snapshot when the settings do not hold it", async () => {
+      await startWith({ driverName: "nick" });
+
+      expect(FUEL_MARGIN_DEFAULT_MIGRATED_KEY in readSettingsForSnapshot()).toBe(false);
+      expect(
+        FUEL_MARGIN_DEFAULT_MIGRATED_KEY in readSettingsForSnapshot({ [FUEL_MARGIN_DEFAULT_MIGRATED_KEY]: undefined }),
+      ).toBe(false);
+    });
+
+    it.each([
+      ["false", false],
+      ["a number", 1],
+      ["an object", { LEAK: "object" }],
+      ["a list", ["LEAK-list"]],
+      ["null", null],
+      ["a string longer than a version can be", `LEAK-${"9".repeat(300)}`],
+    ])("writes the rejected marker, and none of the value, for %s", async (_name, stored) => {
+      await startWith({ [FUEL_MARGIN_DEFAULT_MIGRATED_KEY]: stored });
+      expect(cache()[FUEL_MARGIN_DEFAULT_MIGRATED_KEY]).toEqual(stored);
+
+      const result = readSettingsForSnapshot();
+
+      expect(result[FUEL_MARGIN_DEFAULT_MIGRATED_KEY]).toEqual(REJECTED);
+      expect(JSON.stringify(result)).not.toContain("LEAK");
     });
   });
 
