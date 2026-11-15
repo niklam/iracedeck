@@ -52,12 +52,11 @@ function writeTake(key: string, bytes: Buffer): void {
   fs.writeFileSync(abs, bytes);
 }
 
-/** `trial-manifest.json`; `top` defaults to the speaker the test configs use, as #1643's trials record it. */
-function writeTrial(
-  records: unknown[],
-  model = "eleven_v4",
-  top: Record<string, unknown> = { voiceId: "eleven-voice-id" },
-): void {
+/** The speaker and settings the test configs resolve to, as #1643's trials record them. */
+const RECORDED = { voiceId: "eleven-voice-id", settings: { stability: 1, similarity_boost: 1 } };
+
+/** `trial-manifest.json`; `top` defaults to `RECORDED`. */
+function writeTrial(records: unknown[], model = "eleven_v4", top: Record<string, unknown> = RECORDED): void {
   fs.writeFileSync(path.join(trialDir, "trial-manifest.json"), JSON.stringify({ model, ...top, records }, null, 2));
 }
 
@@ -295,7 +294,7 @@ describe("importTakes", () => {
       writeTake(INTRO, INTRO_BYTES);
       writeTrial([{ key: INTRO, status: "ok", requestId: "req-intro" }], "eleven_v4", {
         voiceId: "TABZn6CDfjMNGrsnGzzD",
-        settings: { stability: 0.5 },
+        settings: RECORDED.settings,
       });
 
       const manifest: Manifest = { version: 1, entries: {} };
@@ -361,6 +360,92 @@ describe("importTakes", () => {
       expect(log.lines.filter((line) => line.includes("records no voiceId"))).toEqual([
         '[import] voice "default": the trial records no voiceId for 2 take(s), so their speaker was not checked against "eleven-voice-id"',
         '[import] voice "shawn": the trial records no voiceId for 1 take(s), so their speaker was not checked against "eleven-voice-id"',
+      ]);
+    });
+  });
+
+  describe("the voice settings and the seed", () => {
+    it("refuses settings that are not the entry's resolved voice_settings, naming both", () => {
+      writeTake(INTRO, INTRO_BYTES);
+      writeTrial([{ key: INTRO, status: "ok", requestId: "req-intro" }], "eleven_v4", {
+        voiceId: "eleven-voice-id",
+        settings: { stability: 1, similarity_boost: 1, clone_strength: 0 },
+      });
+
+      const manifest: Manifest = { version: 1, entries: {} };
+      const { result, persistManifest } = runImport(manifest);
+
+      expect(result.problems).toEqual([
+        `${INTRO}: cut with settings {"clone_strength":0,"similarity_boost":1,"stability":1}, but the config resolves them to {"similarity_boost":1,"stability":1}`,
+      ]);
+      expect(manifest.entries).toEqual({});
+      expect(persistManifest).not.toHaveBeenCalled();
+      expect(fs.existsSync(path.join(root, "voice"))).toBe(false);
+    });
+
+    it("compares with the entry's own overrides, leaving language_code out as the request body does", () => {
+      const overridden = buildVoice({
+        "lap-time-intro": [
+          {
+            name: "first-good-lap",
+            text: "That lap was.",
+            voice_settings: { stability: 0.5, language_code: "fi" },
+          },
+        ],
+      });
+
+      writeTake(INTRO, INTRO_BYTES);
+      writeTrial([{ key: INTRO, status: "ok", requestId: "req-intro" }], "eleven_v4", {
+        voiceId: "eleven-voice-id",
+        settings: { similarity_boost: 1, stability: 0.5 },
+      });
+
+      const { result, log } = runImport(
+        { version: 1, entries: {} },
+        { voiceConfigs: new Map([["default", overridden]]) },
+      );
+
+      expect(result).toEqual({ imported: 1, skipped: 0, problems: [] });
+      expect(log.lines.some((line) => line.includes("not checked"))).toBe(false);
+    });
+
+    it("refuses a record seed that is not the entry's, and imports a matching one", () => {
+      const seeded = buildVoice({
+        "lap-time-intro": [{ name: "first-good-lap", text: "That lap was.", seed: 3 }],
+        "lap-time-decimal": [{ name: "5", text: "point five" }],
+      });
+
+      writeTake(INTRO, INTRO_BYTES);
+      writeTake(DECIMAL, DECIMAL_BYTES);
+      writeTrial([
+        { key: INTRO, status: "ok", requestId: "req-intro", seed: 1 },
+        { key: DECIMAL, status: "ok", requestId: "req-decimal", seed: 1 },
+      ]);
+
+      const refused = runImport({ version: 1, entries: {} }, { voiceConfigs: new Map([["default", seeded]]) });
+
+      expect(refused.result.problems).toEqual([`${INTRO}: cut with seed 1, but the config says 3`]);
+      expect(fs.existsSync(path.join(root, "voice"))).toBe(false);
+
+      writeTrial([
+        { key: INTRO, status: "ok", requestId: "req-intro", seed: 3 },
+        { key: DECIMAL, status: "ok", requestId: "req-decimal", seed: 1 },
+      ]);
+
+      const accepted = runImport({ version: 1, entries: {} }, { voiceConfigs: new Map([["default", seeded]]) });
+
+      expect(accepted.result).toEqual({ imported: 2, skipped: 0, problems: [] });
+    });
+
+    it("imports a trial that records no settings, warning once per voice", () => {
+      writeTake(INTRO, INTRO_BYTES);
+      writeTrial([{ key: INTRO, status: "ok", requestId: "req-intro" }], "eleven_v4", { voiceId: "eleven-voice-id" });
+
+      const { result, log } = runImport({ version: 1, entries: {} });
+
+      expect(result).toEqual({ imported: 1, skipped: 0, problems: [] });
+      expect(log.lines.filter((line) => line.includes("not checked"))).toEqual([
+        `[import] voice "default": the trial records no settings for 1 take(s), so their voice settings were not checked against the config's`,
       ]);
     });
   });
@@ -443,6 +528,22 @@ describe("importTakes", () => {
     fs.writeFileSync(path.join(trialDir, "trial-manifest.json"), "{ not json");
 
     expect(runImport({ version: 1, entries: {} }).result.problems[0]).toMatch(/^trial-manifest\.json is not JSON: /);
+  });
+
+  it("lists a group named like an Object.prototype key as unknown rather than throwing", () => {
+    writeTrial([
+      { key: "voice/default/constructor/x", status: "ok", requestId: "a" },
+      { key: "voice/default/__proto__/x", status: "ok", requestId: "b" },
+      { key: "voice/default/hasOwnProperty/x", status: "ok", requestId: "c" },
+    ]);
+
+    const { result } = runImport({ version: 1, entries: {} });
+
+    expect(result.problems).toEqual([
+      'voice/default/constructor/x: unknown entry (no group "constructor" in configs/)',
+      'voice/default/__proto__/x: unknown entry (no group "__proto__" in configs/)',
+      'voice/default/hasOwnProperty/x: unknown entry (no group "hasOwnProperty" in configs/)',
+    ]);
   });
 
   it("refuses a key that is not voice/<voice>/<group>/<name>", () => {

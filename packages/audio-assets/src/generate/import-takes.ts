@@ -2,7 +2,7 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, statSync } from "nod
 import path from "node:path";
 import { z } from "zod";
 
-import { type Entry, entryHash, type VoiceConfig } from "./config.ts";
+import { type Entry, entryHash, resolveVoiceSettings, stableStringify, type VoiceConfig } from "./config.ts";
 import { describeDriverNameAlias, driverNameAliasOf } from "./driver-name-aliases.ts";
 import { clipRelPath, type Manifest } from "./manifest.ts";
 import {
@@ -17,10 +17,10 @@ import { invalidateProcessedCache, ManifestSaver, type ManifestSaveRetry, type R
  * One take in an out-of-band trial's record: `key` is the clip's path
  * without `.mp3` (`voice/<voice>/<group>/<name>`), `requestId` the
  * ElevenLabs request id the take was cut under. Other fields a trial script
- * writes (`inTrialRefs`, `crossModelRefs`, `seed`, …) are kept but not read,
- * except `text`, which must match the entry's config text when present, and
- * `voiceId`, the ElevenLabs voice that spoke it, which must match the voice
- * config's `id` when present.
+ * writes (`inTrialRefs`, `crossModelRefs`, …) are kept but not read, except
+ * `text`, which must match the entry's config text, `voiceId`, the ElevenLabs
+ * voice that spoke it, which must match the voice config's `id`, and `seed`,
+ * which must match the entry's seed — each only when present.
  */
 export const TrialRecordSchema = z.looseObject({
   key: z.string().min(1),
@@ -28,16 +28,18 @@ export const TrialRecordSchema = z.looseObject({
   requestId: z.string().nullable().optional(),
   text: z.string().optional(),
   voiceId: z.string().min(1).optional(),
+  seed: z.number().int().optional(),
 });
 
 /**
  * `trial-manifest.json`: one model for every record. #1572's trial script
- * writes no speaker; #1643's trials record the ElevenLabs `voiceId` at the
- * top level (with their `settings`, kept but not read).
+ * writes no speaker; #1643's trials record the ElevenLabs `voiceId` and the
+ * `settings` they sent (the request body's `voice_settings`) at the top level.
  */
 export const TrialManifestSchema = z.looseObject({
   model: z.string().min(1),
   voiceId: z.string().min(1).optional(),
+  settings: z.record(z.string(), z.unknown()).optional(),
   records: z.array(TrialRecordSchema),
 });
 
@@ -137,13 +139,15 @@ const consoleLog: RunLog = {
  * resolved `model_id` (the row's hash would then describe a request the take
  * was not cut with); text that is not the entry's config text; a speaker
  * (`voiceId`, the trial's or the record's) that is not the voice config's
- * `id`; one key imported twice. An entry a run would refuse is refused here
- * too, with the same checks ahead of its cache hit: a driver-name alias
- * (#1580) and pause marks the grandfathered list does not cover (#1518) —
- * imported, such a take would have every later run refuse its entry. A trial
- * that records no speaker is imported, with a warning per voice that its
- * speaker was not checked. Records whose status is not `ok` are skipped,
- * said so.
+ * `id`; trial `settings` that are not the entry's resolved `voice_settings`
+ * (without `language_code`, as the request body carries them); a record
+ * `seed` that is not the entry's; one key imported twice. An entry a run
+ * would refuse is refused here too, with the same checks ahead of its cache
+ * hit: a driver-name alias (#1580) and pause marks the grandfathered list
+ * does not cover (#1518) — imported, such a take would have every later run
+ * refuse its entry. A trial that records no speaker or no settings is
+ * imported, with a warning per voice that they were not checked. Records
+ * whose status is not `ok` are skipped, said so.
  */
 export function importTakes(options: ImportOptions): ImportResult {
   const { dir, voiceConfigs, manifest, root, dryRun, persistManifest } = options;
@@ -182,9 +186,10 @@ export function importTakes(options: ImportOptions): ImportResult {
   const planned: PlannedTake[] = [];
   const skippedKeys: string[] = [];
   const seen = new Set<string>();
-  // voice name → how many of its takes record no speaker; and the takes whose
-  // marks are grandfathered, warned about as a run warns.
+  // voice name → how many of its takes record no speaker / no settings; and
+  // the takes whose marks are grandfathered, warned about as a run warns.
   const unrecordedSpeaker = new Map<string, number>();
+  const unrecordedSettings = new Map<string, number>();
   const grandfatheredMarks: string[] = [];
 
   for (const record of trial.records) {
@@ -210,10 +215,13 @@ export function importTakes(options: ImportOptions): ImportResult {
     seen.add(record.key);
 
     const voice = voiceConfigs.get(voiceName);
-    const entry = voice?.groups[groupName]?.find((candidate) => candidate.name === entryName);
+    // Own keys only: a group named like an Object.prototype key
+    // (`constructor`) is an unknown group, not a TypeError.
+    const group = voice && Object.hasOwn(voice.groups, groupName) ? voice.groups[groupName] : undefined;
+    const entry = group?.find((candidate) => candidate.name === entryName);
 
     if (!voice || !entry) {
-      const missing = !voice ? `voice "${voiceName}"` : !voice.groups[groupName] ? `group "${groupName}"` : "entry";
+      const missing = !voice ? `voice "${voiceName}"` : !group ? `group "${groupName}"` : "entry";
 
       problems.push(`${record.key}: unknown entry (no ${missing} in configs/)`);
       continue;
@@ -236,6 +244,27 @@ export function importTakes(options: ImportOptions): ImportResult {
 
     if (trial.voiceId === undefined && record.voiceId === undefined) {
       unrecordedSpeaker.set(voiceName, (unrecordedSpeaker.get(voiceName) ?? 0) + 1);
+    }
+
+    // The voice settings and the seed are hashed, so a take cut with others
+    // would be imported under a hash that describes a request it was not
+    // cut with. Compared as the request body carries the settings: the
+    // entry's resolved `voice_settings` without `language_code`, which is
+    // sent as a top-level field (`buildEntryOptions`).
+    if (trial.settings !== undefined) {
+      const { language_code: _language, ...settings } = resolveVoiceSettings(voice, entry);
+      const recorded = stableStringify(trial.settings);
+      const config = stableStringify(settings);
+
+      if (recorded !== config) {
+        problems.push(`${record.key}: cut with settings ${recorded}, but the config resolves them to ${config}`);
+      }
+    } else {
+      unrecordedSettings.set(voiceName, (unrecordedSettings.get(voiceName) ?? 0) + 1);
+    }
+
+    if (record.seed !== undefined && record.seed !== entry.seed) {
+      problems.push(`${record.key}: cut with seed ${record.seed}, but the config says ${entry.seed}`);
     }
 
     // What a run refuses ahead of its cache hit (`runGeneration`), refused
@@ -290,6 +319,13 @@ export function importTakes(options: ImportOptions): ImportResult {
     log.warn(
       `[import] voice "${voiceName}": the trial records no voiceId for ${count} take(s), so their speaker was not ` +
         `checked against "${voiceConfigs.get(voiceName)!.id}"`,
+    );
+  }
+
+  for (const [voiceName, count] of unrecordedSettings) {
+    log.warn(
+      `[import] voice "${voiceName}": the trial records no settings for ${count} take(s), so their voice ` +
+        "settings were not checked against the config's",
     );
   }
 
