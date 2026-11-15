@@ -357,9 +357,14 @@ export function buildSessionStartContract(
     },
     // Queueable (#1284): the brief now fires anywhere from 3 to 10 s after the
     // transition, when other callouts are as likely to hold the bus, and a
-    // session brief a few seconds late is still the session brief.
+    // session brief a few seconds late is still the session brief. That is a
+    // brief waiting its turn, never one already begun: `dropWhenCut` (#1681)
+    // ends a brief the spotter call or another interrupt cuts, since a long
+    // one-off summary is never replayed after the driver has half heard it
+    // (Niklas once heard the race-start brief play four times at a start).
     speakGate: buildStartBriefSpeakGate(getLatestTelemetry),
     queueable: true,
+    dropWhenCut: true,
     description:
       "A practice or qualifying session begins and iRacing reports the track conditions, or ten seconds pass, in the garage or on track — but not when iRaceDeck connects while you are out lapping.",
   };
