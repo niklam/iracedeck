@@ -3,7 +3,12 @@
  * interpreter ↔ validation circular import. Both modules consume these
  * symbols, so they live in a leaf module that depends on neither.
  */
-import { qualifiedVoiceId, stripTakeSuffix } from "@iracedeck/callout-script";
+import {
+  DRIVER_NAME_ALIASES,
+  qualifiedVoiceId,
+  resolveDriverNameSlug,
+  stripTakeSuffix,
+} from "@iracedeck/callout-script";
 
 /** Manifest shape the scenario engine consumes; matches `@iracedeck/audio-assets/manifest.json`. */
 export type AudioAssetsManifest = {
@@ -69,11 +74,37 @@ export function referenceVoice(manifest: AudioAssetsManifest): string | null {
 const CANONICAL_VOICES = ["default", qualifiedVoiceId("default", "default")] as const;
 
 /**
- * Sorted array of available driver-name keys (the names the engineer can
- * address the user as) derived from `voice/<voice>/names/<name>.mp3`
- * paths. The set is the union across voices — a name only present for one
- * voice still shows up; runtime playback skips gracefully when the active
- * voice has no clip for the chosen name.
+ * The names a user can pick as the name the engineer calls them by (issue
+ * #1580) — the one exported producer of the Your Name list, so no consumer
+ * can publish a list without the alias rows: every name any installed voice
+ * records under `names/` (a take folded onto its base), plus every alias of
+ * `@iracedeck/callout-script`'s `DRIVER_NAME_ALIASES` whose canonical that
+ * set contains — `geoff` is offered while some voice records `jeff`, and is
+ * spoken with `jeff`'s clips by any voice that does not record `geoff`
+ * itself. Deduplicated (a voice recording `dominik` and the alias give one
+ * row) and sorted; slugs are lowercase ASCII, so the order is alphabetical
+ * and an alias sits among the names, not beside its canonical.
+ *
+ * The union across voices is right for the LIST only — a name only one voice
+ * records still shows up, and runtime playback skips gracefully when the
+ * active voice has no clip for it. Which clip set speaks a picked spelling is
+ * decided per voice, from that voice's own names (`driverNameRef`,
+ * {@link driverNameClip}), never from this union.
+ */
+export function selectableDriverNames(manifest: AudioAssetsManifest): string[] {
+  const names = new Set(scanDriverNames(manifest));
+
+  for (const [alias, canonical] of Object.entries(DRIVER_NAME_ALIASES)) {
+    if (names.has(canonical)) names.add(alias);
+  }
+
+  return Array.from(names).sort();
+}
+
+/**
+ * Every driver name any voice records, derived from
+ * `voice/<voice>/names/<name>.mp3` paths — the union across voices, before
+ * {@link selectableDriverNames} adds the alias rows.
  *
  * A name is a pool BASE, because that is how it is spoken: the engine plays
  * the chosen name as the `<name>` pool of each greeting group
@@ -86,7 +117,7 @@ const CANONICAL_VOICES = ["default", qualifiedVoiceId("default", "default")] as 
  * `stripTakeSuffix`, the same two-digit rule, so a name that merely ends in
  * digits (`r2d2`, `abc-1`) is left as it is.
  */
-export function scanDriverNames(manifest: AudioAssetsManifest): string[] {
+function scanDriverNames(manifest: AudioAssetsManifest): string[] {
   const names = new Set<string>();
 
   for (const clip of manifest.clips) {
@@ -108,30 +139,42 @@ export function scanDriverNames(manifest: AudioAssetsManifest): string[] {
 /**
  * The clip that speaks `name` in `voice`, for the players that address a
  * driver name by PATH rather than as a pool — the radio check and the Race
- * Engineer Test button (issue #1173). The bare `names/<name>.mp3` when the
- * voice has one, otherwise its lowest take (`names/<name>-01.mp3`) — the
- * same `stripTakeSuffix` fold {@link scanDriverNames} lists by, so every
- * name the list offers is heard in a pack that records names only as takes.
- * `null` when the voice has no clip for the name at all.
+ * Engineer Test button (issue #1173). The name is first resolved against
+ * THIS voice's own take-folded `names/` bases in `manifest` (issue #1580,
+ * `resolveDriverNameSlug`): the spelling when the voice records it, else its
+ * alias's canonical when the voice records that, else the spelling as is.
+ * Then the bare `names/<slug>.mp3` when the voice has one, otherwise its
+ * lowest take (`names/<slug>-01.mp3`) — the same `stripTakeSuffix` fold the
+ * name list is built by, so every name the list offers is heard in a pack
+ * that records names only as takes. `null` when the voice has no clip for
+ * the name at all.
+ *
+ * Both callers resolved `voice` themselves and play a path built from it, so
+ * the name is resolved against exactly the voice whose clip is about to
+ * play — never against the engine's idea of the active voice.
  */
 export function driverNameClip(manifest: AudioAssetsManifest, voice: string, name: string): string | null {
   const dir = `voice/${voice}/names/`;
-  const bare = `${dir}${name}.mp3`;
-  let lowestTake: string | null = null;
+  // Per recorded base, the clip that speaks it: the bare file, else the lowest take.
+  const clipOf = new Map<string, string>();
 
   for (const clip of manifest.clips) {
-    if (clip === bare) return bare;
-
     if (!clip.startsWith(dir) || !clip.endsWith(".mp3")) continue;
 
     const file = clip.slice(dir.length, -".mp3".length);
 
-    if (file.includes("/") || stripTakeSuffix(file) !== name) continue;
+    if (file.length === 0 || file.includes("/")) continue;
 
-    if (lowestTake === null || clip < lowestTake) lowestTake = clip;
+    const base = stripTakeSuffix(file);
+    const held = clipOf.get(base);
+    const isBare = file === base;
+
+    if (held === undefined || isBare || (held !== `${dir}${base}.mp3` && clip < held)) clipOf.set(base, clip);
   }
 
-  return lowestTake;
+  const slug = resolveDriverNameSlug(name, new Set(clipOf.keys())) ?? name;
+
+  return clipOf.get(slug) ?? null;
 }
 
 /**

@@ -52,7 +52,7 @@ function setup(initialised: boolean) {
   implement("isGlobalSettingsInitialized", () => settings.initialised);
   implement("updateGlobalSettings", (partial) => writes.push(partial as Record<string, unknown>));
   implement("scanRaceEngineerVoices", () => ["default::default"]);
-  implement("scanDriverNames", () => ["adam"]);
+  implement("selectableDriverNames", () => ["adam"]);
   implement("orderRaceEngineerVoices", (voices) => voices);
   implement("voiceDisplayLabels", () => ({}));
   implement("migrateRaceEngineerVoiceId", () => undefined);

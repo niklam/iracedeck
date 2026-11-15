@@ -102,6 +102,7 @@ import {
   loadVoiceConfigs,
   resolveEntryRequestIds,
 } from "./config.ts";
+import { describeDriverNameAlias, driverNameAliasOf } from "./driver-name-aliases.ts";
 import { type SynthesizeOptions, synthesizeSpeech } from "./elevenlabs.ts";
 import { clipRelPath, loadManifest, saveManifest } from "./manifest.ts";
 import {
@@ -255,6 +256,17 @@ async function main(): Promise<void> {
         // in with its manifest row is refused too. A grandfathered entry whose
         // text is unchanged is re-cut as before — a dependency's new take or a
         // voice-wide setting reaches it — but said so.
+        // A driver-name alias (#1580) plays its canonical's clips, so an entry
+        // recording one in a name group is refused the same way, dry run
+        // included — a batch that re-adds `geoff` fails before it is paid for.
+        const aliasOf = driverNameAliasOf(groupName, entry.name);
+
+        if (aliasOf !== null) {
+          console.error(`[generate] ${relPath}  —  REFUSED: ${describeDriverNameAlias(entry.name, aliasOf)}`);
+          refused++;
+          continue;
+        }
+
         const pauseMarks = findEntryPauseMarks(entry);
         const allowed =
           pauseMarks.length === 0 || isGrandfathered(entry, grandfathered[voiceName]?.[`${groupName}/${entry.name}`]);
@@ -327,7 +339,7 @@ async function main(): Promise<void> {
   console.log();
   const verb = dryRun ? "would be generated" : "generated";
   console.log(
-    `Done. ${generated} ${verb}, ${skipped} skipped (cache hit), ${failed} failed, ${refused} refused (pause marks)`,
+    `Done. ${generated} ${verb}, ${skipped} skipped (cache hit), ${failed} failed, ${refused} refused (pause marks or driver-name aliases)`,
   );
 
   if (failed > 0 || refused > 0) process.exitCode = 1;

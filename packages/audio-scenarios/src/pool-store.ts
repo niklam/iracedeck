@@ -15,6 +15,7 @@
  * The manifest is read live through `currentManifest()` and `hasClip()` on
  * every use, never captured, because `setManifest` swaps it.
  */
+import { stripTakeSuffix } from "@iracedeck/callout-script";
 import type { ILogger } from "@iracedeck/logger";
 
 import type { ExecOp } from "./engine-types.js";
@@ -105,6 +106,12 @@ export class PoolStore {
    * (`clearScriptPools`).
    */
   private readonly scriptPoolState = new Map<string, Map<string, PoolState>>();
+  /**
+   * `recordedBases` per voice, then per group (issue #1580). Built lazily on
+   * first ask; cleared by `setManifest`, the one thing that changes what a
+   * voice records.
+   */
+  private readonly recordedBasesByVoice = new Map<string, Map<string, ReadonlySet<string>>>();
 
   constructor(
     manifest: AudioAssetsManifest,
@@ -129,6 +136,37 @@ export class PoolStore {
   /** Whether the manifest in force carries `path`. */
   hasClip(path: string): boolean {
     return this.clipSet.has(path);
+  }
+
+  /**
+   * The take-folded bases the ACTIVE voice records in `group` (issue #1580):
+   * every `voice/<voice>/<group>/<name>.mp3` of the manifest in force, each
+   * `<name>` folded onto its base by `stripTakeSuffix` — the same reading the
+   * pool rule (`poolMemberPattern`) gives a file, so a base listed here is a
+   * pool that has members for this voice. Empty when no voice is active.
+   * Memoised per voice and group; `setManifest` drops the memo, so a rescan
+   * is never served a stale set.
+   */
+  recordedBases(group: string): ReadonlySet<string> {
+    const voice = this.getActiveVoice();
+
+    if (voice === null) return EMPTY_BASES;
+
+    let perVoice = this.recordedBasesByVoice.get(voice);
+
+    if (!perVoice) {
+      perVoice = new Map();
+      this.recordedBasesByVoice.set(voice, perVoice);
+    }
+
+    let bases = perVoice.get(group);
+
+    if (!bases) {
+      bases = scanRecordedBases(this.manifest, voice, group);
+      perVoice.set(group, bases);
+    }
+
+    return bases;
   }
 
   /** Every code-registered pool and cached dynamic ref by key — the view validation reads. */
@@ -252,6 +290,8 @@ export class PoolStore {
     // Script-defined pools are derived per voice from the manifest too (issue
     // #1064); drop every cached member list so the next pick rebuilds it.
     this.scriptPoolState.clear();
+    // What each voice records is read from the manifest too (issue #1580).
+    this.recordedBasesByVoice.clear();
 
     // Re-derive every manifest-backed pool from its recorded `(group, base)`.
     // Members are per-voice, so a pack arriving or leaving changes what a pool
@@ -479,6 +519,27 @@ export class PoolStore {
 
     return clips[idx];
   }
+}
+
+/** The answer for no active voice: nothing is recorded. */
+const EMPTY_BASES: ReadonlySet<string> = new Set<string>();
+
+/** `recordedBases`' scan: the take-folded `<name>` of every `voice/<voice>/<group>/<name>.mp3`. */
+function scanRecordedBases(manifest: AudioAssetsManifest, voice: string, group: string): ReadonlySet<string> {
+  const dir = `voice/${voice}/${group}/`;
+  const bases = new Set<string>();
+
+  for (const clip of manifest.clips) {
+    if (!clip.startsWith(dir) || !clip.endsWith(".mp3")) continue;
+
+    const file = clip.slice(dir.length, -".mp3".length);
+
+    if (file.length === 0 || file.includes("/")) continue;
+
+    bases.add(stripTakeSuffix(file));
+  }
+
+  return bases;
 }
 
 /** Escape a literal string for embedding in a RegExp source. */

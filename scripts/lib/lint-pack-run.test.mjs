@@ -17,9 +17,13 @@ import {
   EXIT_USAGE,
   PLUGIN_PLAYED_BASES,
   PLUGIN_PLAYED_CLIPS,
+  pluginPlayedClips,
   runLintPack,
   USAGE,
 } from "./lint-pack-run.mjs";
+
+/** A hand-made alias map, so the composed `names` text needs no built dist. */
+const HAND_MADE_ALIASES = Object.freeze({ zed: "zack", abe: "abraham", "jean-luc": "jl" });
 
 const repoRoot = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), "../..");
 
@@ -187,7 +191,7 @@ describe("runLintPack", () => {
         .map((clip) => clip.slice(prefix.length, -".mp3".length).replace(/-\d{2}$/, "")),
     );
 
-    for (const { group, base, playedBy } of PLUGIN_PLAYED_CLIPS) {
+    for (const { group, base, playedBy } of pluginPlayedClips(HAND_MADE_ALIASES)) {
       expect(playedBy.length, `${group}/${base}`).toBeGreaterThan(0);
 
       if (base === ANY_BASE) {
@@ -265,5 +269,59 @@ describe("createLintPackFileSystem", () => {
 
     expect(asDirectory.ok).toBe(false);
     expect(asDirectory.missing).toBe(false);
+  });
+});
+
+describe("pluginPlayedClips (#1580)", () => {
+  const namesLine = (aliases) => pluginPlayedClips(aliases).find((clip) => clip.group === "names").playedBy;
+
+  it("keeps every row of the static list, in order, with the same group and base", () => {
+    const clips = pluginPlayedClips(HAND_MADE_ALIASES);
+
+    expect(clips.map(({ group, base }) => `${group}/${base}`)).toEqual([...PLUGIN_PLAYED_BASES]);
+    expect(Object.isFrozen(clips)).toBe(true);
+  });
+
+  it("passes every fixed sentence through unchanged", () => {
+    const clips = pluginPlayedClips(HAND_MADE_ALIASES);
+
+    PLUGIN_PLAYED_CLIPS.forEach((row, index) => {
+      if (typeof row.playedBy === "string") expect(clips[index].playedBy).toBe(row.playedBy);
+    });
+    expect(PLUGIN_PLAYED_CLIPS.filter((row) => typeof row.playedBy === "function").map((row) => row.group)).toEqual([
+      "names",
+    ]);
+  });
+
+  it("lists every alias with its canonical on the names line, sorted by alias", () => {
+    const text = namesLine(HAND_MADE_ALIASES);
+
+    for (const [alias, canonical] of Object.entries(HAND_MADE_ALIASES)) {
+      expect(text).toContain(`${alias} is spoken with ${canonical}'s clips`);
+    }
+
+    expect(text).toContain(
+      "abe is spoken with abraham's clips, jean-luc is spoken with jl's clips and zed is spoken with zack's clips.",
+    );
+  });
+
+  it("says that the aliases of a shipped canonical are names too, and that a recorded alias plays its own clips", () => {
+    const text = namesLine(HAND_MADE_ALIASES);
+
+    expect(text).toContain(
+      "The names a pack ships, plus every alias whose canonical it ships, are the names its users can be called by",
+    );
+    expect(text).toContain("A voice that records an alias spelling itself plays its own clips for it.");
+  });
+
+  it("reads one alias without a list", () => {
+    expect(namesLine({ geoff: "jeff" })).toContain("called by: geoff is spoken with jeff's clips. A voice");
+  });
+
+  it("drops the alias sentences for an empty map", () => {
+    const text = namesLine({});
+
+    expect(text).toContain("The names a pack ships are the names its users can be called by");
+    expect(text).not.toContain("alias");
   });
 });

@@ -38,6 +38,7 @@ export const AUDIO_MANIFEST_PATH = "packages/audio-assets/manifest.json";
 export const BUNDLED_VOICE = "default";
 
 const AUDIO_SCENARIOS_DIST = "packages/audio-scenarios/dist";
+const CALLOUT_SCRIPT_DIST = "packages/callout-script/dist";
 
 /**
  * Import one module of the built `@iracedeck/audio-scenarios` dist, with a
@@ -45,16 +46,39 @@ const AUDIO_SCENARIOS_DIST = "packages/audio-scenarios/dist";
  *
  * @param {string} relative - Path inside the dist, e.g. `index.js`.
  */
-async function importDist(relative) {
-  const file = path.join(repoRoot, AUDIO_SCENARIOS_DIST, relative);
+function importDist(relative) {
+  return importBuilt(AUDIO_SCENARIOS_DIST, relative);
+}
+
+/**
+ * Import one module of a package's built dist BY PATH, with a message naming
+ * the fix when it is not there. By path because the repository root depends
+ * on no workspace package, so plain Node cannot resolve one by name from here.
+ *
+ * @param {string} dist - The package's dist directory, repo-relative.
+ * @param {string} relative - Path inside the dist, e.g. `index.js`.
+ */
+async function importBuilt(dist, relative) {
+  const file = path.join(repoRoot, dist, relative);
 
   if (!existsSync(file)) {
     throw new Error(
-      `${AUDIO_SCENARIOS_DIST}/${relative} is missing — the root scripts read the BUILT package. Run \`pnpm build\` first.`,
+      `${dist}/${relative} is missing — the root scripts read the BUILT package. Run \`pnpm build\` first.`,
     );
   }
 
   return import(url.pathToFileURL(file).href);
+}
+
+/**
+ * The built `@iracedeck/callout-script` package — for the driver-name alias
+ * map the pack reference states on the `names` line (#1580), which no
+ * audio-scenarios export carries.
+ *
+ * @returns {Promise<typeof import("@iracedeck/callout-script")>}
+ */
+export function importCalloutScript() {
+  return importBuilt(CALLOUT_SCRIPT_DIST, "index.js");
 }
 
 /**

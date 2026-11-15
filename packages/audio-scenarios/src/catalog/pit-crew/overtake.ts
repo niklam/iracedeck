@@ -40,12 +40,13 @@
  * (`getRaceFinishedFired`) — no overtake commentary after the checkered.
  */
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
+import type { DriverNameGroup } from "@iracedeck/callout-script";
 import { type CalloutIdOf, OVERTAKE_CALLOUTS } from "@iracedeck/callout-settings";
 import type { SimEventOf } from "@iracedeck/event-bus";
 
 import type { ScenarioContext, ScenarioContract } from "../../dsl.js";
-import { poolRef } from "../../dsl.js";
 import type { IScenarioEngine } from "../../interpreter.js";
+import { driverNameRef } from "./driver-name-ref.js";
 import { overtakeContextAllows, type OvertakeGateResolver } from "./overtake-gate.js";
 import { shouldReactToOvertake } from "./position-readout.js";
 
@@ -57,7 +58,7 @@ import { shouldReactToOvertake } from "./position-readout.js";
  */
 export type OvertakeDriverNameResolver = () => string | null;
 
-const COME_ON_GROUP = "position-overtake-come-on";
+const COME_ON_GROUP: DriverNameGroup = "position-overtake-come-on";
 
 /**
  * Pick the effective overall vs class position from an overtake payload.
@@ -156,7 +157,7 @@ export function resolveOvertakeGainedReaction(ctx: ScenarioContext): OvertakeGai
  * the contracts are defined so the first `setScripts` compile sees them.
  */
 export function registerOvertakeVocabulary(
-  engine: Pick<IScenarioEngine, "defineVar" | "defineCase">,
+  engine: Pick<IScenarioEngine, "defineVar" | "defineCase" | "recordedBases">,
   getDriverName: OvertakeDriverNameResolver,
 ): void {
   engine.defineCase(
@@ -171,7 +172,7 @@ export function registerOvertakeVocabulary(
     () => {
       const name = getDriverName();
 
-      return name ? poolRef(COME_ON_GROUP, name) : null;
+      return name ? driverNameRef(engine, COME_ON_GROUP, name) : null;
     },
     'The "Come on, <name>." opener of the lost-position line, a full clip per driver name from the position-overtake-come-on group (position-overtake-come-on/driver is the generic fallback). A complete sentence on its own, so the bundled script makes it optional: a voice without the chosen name\'s clip skips it and the line still plays.',
   );

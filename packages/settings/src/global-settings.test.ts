@@ -741,6 +741,35 @@ describe("resolveActiveDriverName", () => {
       expect(resolveActiveDriverName(available, "driver")).toBe("driver");
     });
   });
+
+  describe("a persisted alias spelling (#1580)", () => {
+    // The list carries an alias row (`geoff`) while some voice records its
+    // canonical (`jeff`); the setting keeps the spelling picked, and the clip
+    // is chosen per voice at speak time — so this resolves to the spelling.
+
+    it("returns a stored alias as itself when the list carries it", async () => {
+      await initWithStore({ driverName: "geoff" });
+
+      expect(resolveActiveDriverName(["adam", "driver", "geoff", "jeff"], "driver")).toBe("geoff");
+    });
+
+    it("falls back as for any other name when the list does not carry it", async () => {
+      await initWithStore({ driverName: "geoff" });
+
+      expect(resolveActiveDriverName(["adam", "driver", "niklas"], "driver")).toBe("driver");
+      expect(resolveActiveDriverName(["adam", "niklas"])).toBe("adam");
+    });
+
+    it("never rewrites the stored spelling to its canonical", async () => {
+      const { store } = await initWithStore({ driverName: "geoff" });
+      const saves = store.saved.length;
+
+      resolveActiveDriverName(["geoff", "jeff"], "driver");
+
+      expect(getGlobalSettings().driverName).toBe("geoff");
+      expect(store.saved).toHaveLength(saves);
+    });
+  });
 });
 
 describe("flagFlashDurationSeconds (issue #490)", () => {

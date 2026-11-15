@@ -6,7 +6,7 @@
  * with sensible defaults so scenarios fire on a freshly booted harness
  * without any UI interaction.
  */
-import { type AudioAssetsManifest, scanDriverNames, scanRaceEngineerVoices } from "@iracedeck/audio-scenarios";
+import { type AudioAssetsManifest, scanRaceEngineerVoices, selectableDriverNames } from "@iracedeck/audio-scenarios";
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 
@@ -51,7 +51,7 @@ export type BootstrapDefaults = {
 export function seedGlobalSettings(adapter: MockPlatformAdapter): BootstrapDefaults {
   const manifest = getAudioAssetsManifest();
   const raceEngineerVoices = scanRaceEngineerVoices(manifest);
-  const driverNames = scanDriverNames(manifest);
+  const driverNames = selectableDriverNames(manifest);
 
   adapter.setGlobalSettings({
     _raceEngineerVoices: JSON.stringify(raceEngineerVoices),

@@ -293,6 +293,16 @@ export interface IScenarioEngine {
   /** @internal Exported for testing — the manifest currently in force. */
   currentManifest(): AudioAssetsManifest;
   /**
+   * The take-folded bases the ACTIVE voice records in `group` (issue #1580):
+   * the `<name>` of every `voice/<voice>/<group>/<name>.mp3` in the manifest
+   * in force, a `-NN` take folded onto its base the way the pool rule reads
+   * it. Empty when no voice is active. A driver-name var asks it for the
+   * `names` group to decide which clip set speaks a spelling
+   * (`driverNameRef`); the answer is memoised and re-derived after every
+   * `setManifest`.
+   */
+  recordedBases(group: string): ReadonlySet<string>;
+  /**
    * Register a variable a sequence reads with `{{name}}`: a clip path or a
    * `pool:<group>/<base>` reference, or `null` for "nothing to say". The
    * description feeds the generated reference (#1066). The resolver receives
@@ -655,6 +665,10 @@ class ScenarioEngine implements IScenarioEngine {
 
   currentManifest(): AudioAssetsManifest {
     return this.poolStore.currentManifest();
+  }
+
+  recordedBases(group: string): ReadonlySet<string> {
+    return this.poolStore.recordedBases(group);
   }
 
   defineVar(name: string, resolver: VocabularyResolver<string | null>, description = ""): void {

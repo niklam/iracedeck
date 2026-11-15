@@ -40,9 +40,14 @@
  * the plugin's voice-pack catalog compares the value with semver and keeps such a pack listed but
  * not offered, and the launch step leaves an installed managed pack where it
  * is. Raise it in the same change that makes a pack's script use a name or key
- * a released plugin lacks; both packs are at 3.7.0 because their `radio` frame
- * carries a `cut` tail (#1407) — before that 3.6.0, for the rolling-start
- * entries' `rollingStart.*` names (#1167), and 3.5.0 for the start briefs'
+ * a released plugin lacks. A pack also needs a plugin whose driver-name alias
+ * map (`@iracedeck/callout-script`'s `DRIVER_NAME_ALIASES`) serves the
+ * spellings it no longer records: an older plugin lists only the names a voice
+ * records, so its users who picked such a spelling would fall back to `driver`.
+ * Both packs are at 3.9.0 for that reason, having dropped their Dominik, Geoff
+ * and Kris clips (#1580) — before that 3.7.0, because their `radio` frame
+ * carries a `cut` tail (#1407), 3.6.0 for the rolling-start entries'
+ * `rollingStart.*` names (#1167), and 3.5.0 for the start briefs'
  * `sessionStart.wetnessKnown` / `raceStart.wetnessKnown` (#1284).
  * A pre-release of the named version counts as that version (`3.6.0-dev.0`
  * is offered a pack that needs `3.6.0`): `isVoicePackOfferable` strips the
@@ -68,21 +73,21 @@ export const VOICE_PACKS = Object.freeze([
   Object.freeze({
     id: "default",
     label: "Default",
-    version: "1.5.1",
+    version: "2.0.0",
     description: "The Race Engineer voice iRaceDeck ships with.",
     author: "iRaceDeck",
     voices: Object.freeze(["default"]),
-    minPluginVersion: "3.7.0",
+    minPluginVersion: "3.9.0",
     bundled: false,
   }),
   Object.freeze({
     id: "iracedeck-terse",
     label: "Default (Short callouts)",
-    version: "1.4.1",
+    version: "2.0.0",
     description: "The Default engineer in radio shorthand: shorter race-time calls, most of them the fact itself.",
     author: "iRaceDeck",
     voices: Object.freeze(["shawn"]),
-    minPluginVersion: "3.7.0",
+    minPluginVersion: "3.9.0",
     bundled: false,
   }),
 ]);

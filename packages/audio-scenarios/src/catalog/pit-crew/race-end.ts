@@ -45,12 +45,14 @@
  * moment.
  */
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
+import type { DriverNameGroup } from "@iracedeck/callout-script";
 import { type CalloutIdOf, RACE_END_CALLOUTS } from "@iracedeck/callout-settings";
 import type { SimEventOf } from "@iracedeck/event-bus";
 
 import { poolRef, WEIGHT } from "../../dsl.js";
 import type { ScenarioContract } from "../../dsl.js";
 import type { IScenarioEngine } from "../../interpreter.js";
+import { driverNameRef } from "./driver-name-ref.js";
 
 /**
  * Plugin-composed snapshot the vocabulary reads at fire time. Combines the
@@ -67,7 +69,7 @@ export type RaceFinishedSnapshot = SimEventOf<"race.finished">["data"] & {
 
 export type RaceFinishedSnapshotResolver = () => RaceFinishedSnapshot | null;
 
-const RACE_END_GREETING_GROUP = "race-end-greeting";
+const RACE_END_GREETING_GROUP: DriverNameGroup = "race-end-greeting";
 const RACE_END_GROUP = "race-end";
 const POSITION_GROUP_NUMBER = "position-number";
 
@@ -140,7 +142,7 @@ export function resolveRaceEndResult(snapshot: RaceFinishedSnapshot | null): Rac
  * of the format; the descriptions feed the generated reference (#1066).
  */
 export function registerRaceEndVocabulary(
-  engine: Pick<IScenarioEngine, "defineVar" | "defineCase">,
+  engine: Pick<IScenarioEngine, "defineVar" | "defineCase" | "recordedBases">,
   getSnapshot: RaceFinishedSnapshotResolver,
 ): void {
   engine.defineVar(
@@ -154,7 +156,7 @@ export function registerRaceEndVocabulary(
       // session-start scenario's behavior.
       const name = s.driverName && s.driverName.length > 0 ? s.driverName : "driver";
 
-      return poolRef(RACE_END_GREETING_GROUP, name);
+      return driverNameRef(engine, RACE_END_GREETING_GROUP, name);
     },
     "The driver's name as a race-end greeting, one clip per name the voice recorded (the generic driver clip when no name is picked). Draws from the race-end-greeting clip group — a name the voice lacks resolves to nothing, so keep it optional.",
   );

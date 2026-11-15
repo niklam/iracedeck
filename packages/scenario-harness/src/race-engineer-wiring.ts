@@ -3,7 +3,7 @@
  * makes and `race-engineer-wiring.test.ts` checks, so the test cannot drift
  * from what the harness boots.
  */
-import { type AudioAssetsManifest, scanDriverNames, scanRaceEngineerVoices } from "@iracedeck/audio-scenarios";
+import { type AudioAssetsManifest, scanRaceEngineerVoices, selectableDriverNames } from "@iracedeck/audio-scenarios";
 import type { PitCrewDeps } from "@iracedeck/audio-scenarios/pit-crew";
 import type { IEventBus } from "@iracedeck/event-bus";
 import type { ILogger } from "@iracedeck/logger";
@@ -29,7 +29,7 @@ export type HarnessVoiceState = {
  */
 export function applyMergedManifest(voices: HarnessVoiceState, merged: AudioAssetsManifest): void {
   voices.raceEngineerVoices = scanRaceEngineerVoices(merged);
-  voices.driverNames = scanDriverNames(merged);
+  voices.driverNames = selectableDriverNames(merged);
 }
 
 /**

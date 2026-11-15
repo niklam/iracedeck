@@ -43,6 +43,14 @@ export const ANY_BASE = "*";
  * linter and the pure builder are both ignorant of the plugin; each entry
  * names the code that plays it, and a new by-path consumer is a new entry.
  *
+ * One `playedBy` is not a fixed sentence: the `names` row's is a function of
+ * the driver-name alias map (#1580), since which names a pack's users can be
+ * called by depends on the map — `@iracedeck/callout-script`'s, which plain
+ * Node reaches here only through its built dist. The linter reads no
+ * `playedBy`, so it keeps this static list; the reference takes the finished
+ * entries from {@link pluginPlayedClips}, after `catalog-engine.mjs`'s
+ * `importCalloutScript` has loaded that dist.
+ *
  * The exemption is per CLIP: the plugin plays each of these by its exact
  * name (`toggle/radio-check-01.mp3` — the `-01` take, not the pool), so a
  * misspelled sibling in the same group (`toggle/radio-chek`) is the orphan it
@@ -54,14 +62,17 @@ export const ANY_BASE = "*";
  * Two of these are the second step of a chain that stops at the first clip
  * it cannot start (`playVoiceSequence` in audio-toggles.ts, `if (!ok)
  * finish()`): the connect radio check and the Test button both play
- * `names/<driver>` FIRST, and the driver name resolves from the union of
- * every installed voice's names (`scanDriverNames`; `resolveActiveDriverName`
- * falls back to `driver`, then to the first name) — so a pack that records
- * `toggle/radio-check` or `welcome/greeting` without a `names/` clip for the
- * name the user is set to plays nothing at all for either. The `playedBy`
- * text says so, since it is what a pack author reads.
+ * `names/<driver>` FIRST. The name is CHOSEN from `selectableDriverNames` —
+ * every installed voice's names plus the aliases whose canonical one of them
+ * records (#1580; `resolveActiveDriverName` falls back to `driver`, then to
+ * the first name) — and its CLIP from the active voice's own names
+ * (`driverNameClip`: the spelling, else its alias's canonical). So a pack
+ * that records `toggle/radio-check` or `welcome/greeting` without a `names/`
+ * clip for the name the user is set to (or its canonical) plays nothing at
+ * all for either. The `playedBy` text says so, since it is what a pack
+ * author reads.
  *
- * @type {readonly { group: string, base: string, playedBy: string }[]}
+ * @type {readonly { group: string, base: string, playedBy: string | ((aliases: Readonly<Record<string, string>>) => string) }[]}
  */
 export const PLUGIN_PLAYED_CLIPS = Object.freeze([
   {
@@ -116,10 +127,57 @@ export const PLUGIN_PLAYED_CLIPS = Object.freeze([
     // pit-crew.ts (`playRadioCheck`) and voice-test.ts (`playRaceEngineerVoiceTest`):
     // `driverNameClipPath(voice, driverName)` (audio-scenarios' pit-crew subpath) — the bare
     // `names/<name>.mp3`, else its lowest take (#1173) — the name from `resolveActiveDriverName`.
-    playedBy:
-      "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional.",
+    // The name's clip is the voice's own, else its alias's canonical (#1580).
+    playedBy: namesPlayedBy,
   },
 ]);
+
+/**
+ * The `names` row's `playedBy` for an alias map (alias → canonical), saying
+ * the three things an author must know (spec #1580, decision 1): the names a
+ * pack ships plus every alias whose canonical it ships are the names its
+ * users can be called by; which aliases there are; and that a voice which
+ * records an alias spelling itself plays its own clips for it.
+ *
+ * @param {Readonly<Record<string, string>>} aliases - alias slug → canonical slug
+ * @returns {string}
+ */
+function namesPlayedBy(aliases) {
+  const opening =
+    "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting.";
+  const pairs = Object.entries(aliases)
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+    .map(([alias, canonical]) => `${alias} is spoken with ${canonical}'s clips`);
+
+  if (pairs.length === 0) {
+    return `${opening} The names a pack ships are the names its users can be called by; the group is optional.`;
+  }
+
+  const list = pairs.length === 1 ? pairs[0] : `${pairs.slice(0, -1).join(", ")} and ${pairs[pairs.length - 1]}`;
+
+  return (
+    `${opening} The names a pack ships, plus every alias whose canonical it ships, are the names its users can be called by: ` +
+    `${list}. A voice that records an alias spelling itself plays its own clips for it. The group is optional.`
+  );
+}
+
+/**
+ * {@link PLUGIN_PLAYED_CLIPS} with every `playedBy` a finished sentence —
+ * what `buildPackReference` takes as `pluginPlayed`. `aliases` is
+ * `@iracedeck/callout-script`'s `DRIVER_NAME_ALIASES`, which
+ * `pack-reference-data.mjs` loads from the built dist and hands in, so the
+ * reference states exactly the map the plugin resolves names by.
+ *
+ * @param {Readonly<Record<string, string>>} aliases - alias slug → canonical slug
+ * @returns {readonly { group: string, base: string, playedBy: string }[]}
+ */
+export function pluginPlayedClips(aliases) {
+  return Object.freeze(
+    PLUGIN_PLAYED_CLIPS.map(({ group, base, playedBy }) =>
+      Object.freeze({ group, base, playedBy: typeof playedBy === "function" ? playedBy(aliases) : playedBy }),
+    ),
+  );
+}
 
 /** The `group/base` keys of `PLUGIN_PLAYED_CLIPS`, `group/*` for a group played whole — what `lintPack` takes. */
 export const PLUGIN_PLAYED_BASES = Object.freeze(PLUGIN_PLAYED_CLIPS.map((clip) => `${clip.group}/${clip.base}`));

@@ -8,9 +8,13 @@
  * what they hold. And, since #1134, the pack FORMAT's own rules
  * (`voice-pack.ts`): the `voice-pack.json` schema and reader, which clip paths
  * the engine can reach, the script size cap, the id-vs-folder rule and the
- * voice de-duplication. A leaf package — `zod` is its only dependency — so the
- * engine, the pack scanner, the pack linter and the asset packer can all
- * validate the same contract without depending on each other.
+ * voice de-duplication. And, since #1580, how a pack's driver-name clips are
+ * read (`driver-name-aliases.ts`): the groups a name is spoken from, the
+ * shared map of spellings that play another name's clips, its validator and
+ * the resolver that picks a voice's clip set for a spelling. A leaf package —
+ * `zod` is its only dependency — so the engine, the pack scanner, the pack
+ * linter and the asset packer can all validate the same contract without
+ * depending on each other.
  */
 export {
   AMBIENT_ACTIONS,
@@ -56,6 +60,13 @@ export {
   type VarDrivenGroup,
   VOICE_CLIP_PATH,
 } from "./coverage.js";
+export {
+  DRIVER_NAME_ALIASES,
+  DRIVER_NAME_GROUPS,
+  type DriverNameGroup,
+  resolveDriverNameSlug,
+  validateDriverNameAliases,
+} from "./driver-name-aliases.js";
 export { CALLOUT_SCRIPT_FILE, calloutScriptPath } from "./paths.js";
 export {
   collectLiteralClips,

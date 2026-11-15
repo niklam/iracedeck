@@ -7,7 +7,7 @@
 // registered engine and the manifest off the built dist, `buildPackReference`
 // (the package's pure builder) owns the shape and the sorting, and this module
 // reads the two source files the engine does not (the bundled script and the
-// voice config — `PACK_REFERENCE_SOURCES` names all four), adds the plugin's
+// voice config — `PACK_REFERENCE_SOURCES` names all five), adds the plugin's
 // list of clips it plays by path, and hands everything over. The generator
 // script is left with file I/O and a summary; the freshness test rebuilds
 // through the same function and compares text.
@@ -15,8 +15,14 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import url from "node:url";
 
-import { AUDIO_MANIFEST_PATH, BUNDLED_VOICE, importAudioScenarios, registerCatalogEngine } from "./catalog-engine.mjs";
-import { PLUGIN_PLAYED_CLIPS } from "./lint-pack-run.mjs";
+import {
+  AUDIO_MANIFEST_PATH,
+  BUNDLED_VOICE,
+  importAudioScenarios,
+  importCalloutScript,
+  registerCatalogEngine,
+} from "./catalog-engine.mjs";
+import { pluginPlayedClips } from "./lint-pack-run.mjs";
 
 const repoRoot = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), "../..");
 
@@ -35,6 +41,9 @@ export const BUNDLED_VOICE_CONFIG_PATH = `packages/audio-assets/configs/${BUNDLE
 /** The catalog whose `contracts()` and `vocabulary()` the reference publishes — the source tree, not the dist the scripts load it from. */
 export const CATALOG_SOURCE_PATH = "packages/audio-scenarios/src/catalog/pit-crew";
 
+/** The driver-name alias map the `names` recording line states (#1580) — the source, not the dist it is loaded from. */
+export const DRIVER_NAME_ALIASES_SOURCE_PATH = "packages/callout-script/src/driver-name-aliases.ts";
+
 /**
  * What the generator reads, repo-relative, recorded in the artifact as
  * `_meta.generatedFrom` — the provenance shape `changelog.json` and
@@ -47,6 +56,7 @@ export const PACK_REFERENCE_SOURCES = Object.freeze([
   BUNDLED_SCRIPT_PATH,
   BUNDLED_VOICE_CONFIG_PATH,
   AUDIO_MANIFEST_PATH,
+  DRIVER_NAME_ALIASES_SOURCE_PATH,
 ]);
 
 function readJson(relative) {
@@ -63,6 +73,7 @@ export async function buildPackReferenceData() {
   // The engine's active voice is irrelevant here — nothing fires, and the
   // builder is told which voice's clips to read explicitly below.
   const { engine, manifest, audioScenarios } = await registerCatalogEngine();
+  const { DRIVER_NAME_ALIASES } = await importCalloutScript();
   const script = readJson(BUNDLED_SCRIPT_PATH);
   const { groups } = readJson(BUNDLED_VOICE_CONFIG_PATH);
 
@@ -75,8 +86,10 @@ export async function buildPackReferenceData() {
     manifestClips: manifest.clips,
     // The clips plugin code plays by path, written onto their recording
     // lines as `playedBy` — the one list the linter exempts by, so the site
-    // renders the artifact and keeps no list of its own.
-    pluginPlayed: PLUGIN_PLAYED_CLIPS,
+    // renders the artifact and keeps no list of its own. The `names` line's
+    // words state the driver-name alias map, read from the built dist so
+    // they name exactly the map the plugin resolves by (#1580).
+    pluginPlayed: pluginPlayedClips(DRIVER_NAME_ALIASES),
     voice: BUNDLED_VOICE,
   });
 }
