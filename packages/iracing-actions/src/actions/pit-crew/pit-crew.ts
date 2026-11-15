@@ -1,3 +1,4 @@
+import { getScenarioEngine, isAudioScenariosInitialized, WEIGHT } from "@iracedeck/audio-scenarios";
 import { driverNameClipPath, setRadarEnabled } from "@iracedeck/audio-scenarios/pit-crew";
 import {
   applyGraphicTransform,
@@ -134,6 +135,14 @@ export function _setLastTelemetryConnectedForTests(value: boolean | null): void 
 
 /** SDK subscription id prefix for the per-instance radio-check listener. */
 const RADIO_CHECK_SUB_PREFIX = "pitCrewRadioCheck:";
+
+/**
+ * @internal Exported for testing.
+ *
+ * The id the radio check plays under on the Race Engineer's scheduler (#1696):
+ * what its logs and state snapshot name the fire. Names no scripted contract.
+ */
+export const RADIO_CHECK_CLIPS_ID = "pit-crew.radio-check";
 
 /**
  * @internal Exported for testing.
@@ -509,6 +518,12 @@ export class PitCrew extends SimIRacingAction<PitCrewSettings> {
    * definition when this fires (gate-off path short-circuits earlier),
    * so `AudioBus.Voice` is already audible at the slider value.
    *
+   * It plays through the Race Engineer's scheduler as a NORMAL fire (#1696),
+   * so a callout that arrives meanwhile (the session-start brief) waits for it
+   * instead of talking over it. On a busy bus it is skipped: the engineer
+   * already speaking is the confirmation the line gives. With the engine not
+   * initialised it plays straight onto the Voice channel, as before.
+   *
    * The name clip comes from `driverNameClipPath`, so a voice pack that
    * records names only as takes (`names/<name>-01.mp3`) is heard here too
    * (#1173).
@@ -530,8 +545,27 @@ export class PitCrew extends SimIRacingAction<PitCrewSettings> {
       return;
     }
 
+    const paths = [driverNameClipPath(voice, driverName), `voice/${voice}/toggle/radio-check-01.mp3`];
+
+    if (!isAudioScenariosInitialized()) {
+      this.logger.info("Telemetry connected — playing radio check");
+      playVoiceSequence(paths);
+
+      return;
+    }
+
+    const result = getScenarioEngine().playClips(RADIO_CHECK_CLIPS_ID, paths, {
+      weight: WEIGHT.NORMAL,
+      whenBusy: "skip",
+    });
+
+    if (result === "bus-busy") {
+      this.logger.debug("Radio check skipped — the engineer holds the radio");
+
+      return;
+    }
+
     this.logger.info("Telemetry connected — playing radio check");
-    playVoiceSequence([driverNameClipPath(voice, driverName), `voice/${voice}/toggle/radio-check-01.mp3`]);
   }
 
   private toggleRadar(): void {
