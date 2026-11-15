@@ -55,13 +55,17 @@
  *     that event's own contracts are dispatched, and a line still playing
  *     from the session that ended is not stashed when an interrupt cuts it,
  *     so nothing from that session is spoken in the new one.
+ *   - A code-owned clip list (`playClips`, issue #1696 — the radio check)
+ *     takes only a free Voice bus, cutting a frame preview as a callout
+ *     does, and then holds it at its weight like a contract's fire; its id
+ *     names no contract, so an interrupt that cuts it stashes nothing.
  *
  * It expands nothing itself (`expansion.prepare` hands back an uncommitted
  * fire) and plays nothing itself (`playback`). The per-bus loops here —
  * `stopAll`, `cancelDisabled`, the session-change clear — run over the one
  * bus table, in its order, calling playback once per bus.
  */
-import { AudioBus } from "@iracedeck/audio-service";
+import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import type { SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import type { ILogger } from "@iracedeck/logger";
 
@@ -79,7 +83,7 @@ import {
   type WaitingFire,
 } from "./engine-types.js";
 import type { Expansion } from "./expansion.js";
-import type { FramePreviewResult } from "./interpreter.js";
+import type { FramePreviewResult, PlayClipsOptions, PlayClipsResult } from "./interpreter.js";
 import type { QueuedFire, QueueDrop, QueueDropReason } from "./pending-queue.js";
 import { opLabel, type Playback, type PlaybackListener } from "./playback.js";
 import type { PoolStore } from "./pool-store.js";
@@ -202,7 +206,9 @@ export class Scheduler implements PlaybackListener {
 
     const state = this.buses.get(AudioBus.Voice);
 
-    if (state.transport.active !== null || state.schedule.queue.size > 0 || state.schedule.focus !== null) {
+    // The preview starts only on a free bus, never over another preview:
+    // anything on the bus, waiting for it or holding a floor keeps it off.
+    if (this.busHeldBy(state, false) !== null) {
       this.logger.debug(`Frame preview "${frameName}" skipped — the Voice bus is in use`);
 
       return "bus-busy";
@@ -250,6 +256,93 @@ export class Scheduler implements PlaybackListener {
     this.deps.playback.stepNext(AudioBus.Voice);
 
     return "playing";
+  }
+
+  /**
+   * See `IScenarioEngine.playClips` (issue #1696). A code-owned clip list
+   * played as a fire of its own on the Voice bus, so arbitration orders it:
+   * no frame, no expansion, no gate, no cooldown. Once it holds the bus
+   * `attemptFire` arbitrates it by its `weight` like any running fire, and
+   * because its `id` names no contract every lookup by it misses — no
+   * family, no `pendingHoldMs`, nothing to stash when an interrupt cuts it
+   * (`stashRunningIfQueueable` stashes only a running contract). That is
+   * why an id naming a contract is refused: the clip fire would be taken for
+   * it — stashed, held, matched by family, ended or disabled as it.
+   */
+  playClips(id: string, paths: readonly string[], options: PlayClipsOptions): PlayClipsResult {
+    if (id === FRAME_PREVIEW_ID) throw new Error(`playClips: "${id}" is the frame preview's id`);
+
+    if (this.deps.contracts.get(id) !== undefined)
+      throw new Error(`playClips: "${id}" names a registered contract — a clip fire must not stand in for one`);
+
+    if (paths.length === 0) throw new Error(`playClips: "${id}" has no clips to play`);
+
+    const state = this.buses.get(AudioBus.Voice);
+    // The frame preview yields to a clip fire as to any callout (issue #1124).
+    const heldBy = this.busHeldBy(state, true);
+
+    if (heldBy !== null) {
+      switch (options.whenBusy) {
+        case "skip":
+          this.logger.debug(`Clips "${id}" skipped — the Voice bus is in use (${heldBy})`);
+
+          return "bus-busy";
+        default: {
+          const unhandled: never = options.whenBusy;
+
+          throw new Error(`playClips: unknown whenBusy "${String(unhandled)}"`);
+        }
+      }
+    }
+
+    this.yieldPreview(AudioBus.Voice, state);
+
+    const ops: ExecOp[] = paths.map((path) => ({ kind: "play", channel: AudioChannel.Voice, path }));
+
+    this.deps.playback.takeBus({
+      id,
+      bus: AudioBus.Voice,
+      weight: options.weight,
+      ops,
+      sourceOps: ops,
+      sourceStart: 0,
+      prerollCount: 0,
+      event: null,
+      sessionGeneration: this.sessionGeneration,
+      cutTail: [],
+      ended: false,
+    });
+
+    this.logger.info(`Playing clips "${id}"`);
+    this.logger.debug(`Ops (${ops.length}): ${ops.map(opLabel).join(" | ")}`);
+
+    this.deps.playback.stepNext(AudioBus.Voice);
+
+    return "playing";
+  }
+
+  /**
+   * What keeps an imperative play — `playFramePreview`, `playClips` — off a
+   * bus, as the reason its skip line names, or `null` when the bus is free:
+   * a fire playing, a fire waiting for the bus, or a focus floor held. With
+   * `previewYields` a running frame preview counts as free, as it does for
+   * an arriving callout (`attemptFire`); the preview itself passes `false`,
+   * so it never starts over another preview.
+   */
+  private busHeldBy(state: BusView, previewYields: boolean): string | null {
+    const active = state.transport.active;
+
+    if (active !== null && !(previewYields && active.id === FRAME_PREVIEW_ID)) return `"${active.id}" is playing`;
+
+    const waiting = state.schedule.queue.ordered()[0];
+
+    if (waiting !== undefined) return `"${waiting.id}" is waiting`;
+
+    const focus = state.schedule.focus;
+
+    if (focus !== null) return `focus floor held by "${focus.ownerId}"`;
+
+    return null;
   }
 
   /**

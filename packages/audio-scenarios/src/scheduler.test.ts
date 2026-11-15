@@ -1008,3 +1008,192 @@ describe("the frame preview", () => {
     expect(h.waiting()).toEqual([]);
   });
 });
+
+// ─── a clip fire (issue #1696) ───────────────────────────────────────────────
+
+describe("a clip fire", () => {
+  const CLIPS = ["voice/v1/names/niklas.mp3", "voice/v1/toggle/radio-check-01.mp3"];
+  const SKIP = { weight: 50, whenBusy: "skip" } as const;
+
+  it("takes an idle bus with the clips as play ops on Voice — no frame, no cut tail, no event — and logs the id", () => {
+    const h = harness();
+    h.scheduler.clearQueuesForSessionChange();
+
+    expect(h.scheduler.playClips("clips", CLIPS, SKIP)).toBe("playing");
+
+    expect(h.calls).toEqual([
+      ["takeBus", "clips"],
+      ["stepNext", AudioBus.Voice],
+    ]);
+    const start = h.starts.at(-1)!;
+    expect(start).toEqual({
+      id: "clips",
+      bus: AudioBus.Voice,
+      weight: 50,
+      ops: [play(CLIPS[0]), play(CLIPS[1])],
+      sourceOps: start.ops,
+      sourceStart: 0,
+      prerollCount: 0,
+      event: null,
+      sessionGeneration: 1,
+      cutTail: [],
+      ended: false,
+      onSettled: undefined,
+    });
+    expect(start.sourceOps).toBe(start.ops);
+    expect(start.ops.every((op) => op.frame === undefined)).toBe(true);
+    expect(logged("info")).toEqual(['Playing clips "clips"']);
+    expect(logged("debug")).toEqual([
+      `Ops (2): play[${AudioChannel.Voice}] ${CLIPS[0]} | play[${AudioChannel.Voice}] ${CLIPS[1]}`,
+    ]);
+  });
+
+  it("answers `bus-busy` and plays nothing when a fire plays, a fire waits or a focus floor is held — naming why", () => {
+    const h = harness();
+    h.define({ id: "a" });
+    h.define({ id: "b", queueable: true });
+
+    h.fire("a");
+    expect(h.scheduler.playClips("clips", CLIPS, SKIP)).toBe("bus-busy");
+    h.fire("b");
+    h.finish();
+    h.finish();
+    h.scheduler.acquireFocus(AudioBus.Voice, "spotter", 50);
+    expect(h.scheduler.playClips("clips", CLIPS, SKIP)).toBe("bus-busy");
+    h.scheduler.releaseFocus(AudioBus.Voice, "spotter");
+    h.define({ id: "mark", pendingHoldMs: 300 });
+    h.define({ id: "line", queueable: true });
+    h.fire("mark");
+    h.fire("line");
+    h.finish();
+    expect(h.active()).toBeNull();
+    expect(h.scheduler.playClips("clips", CLIPS, SKIP)).toBe("bus-busy");
+
+    expect(h.only("takeBus").filter(([, id]) => id === "clips")).toEqual([]);
+    expect(logged("debug").filter((l) => l.startsWith("Clips"))).toEqual([
+      'Clips "clips" skipped — the Voice bus is in use ("a" is playing)',
+      'Clips "clips" skipped — the Voice bus is in use (focus floor held by "spotter")',
+      'Clips "clips" skipped — the Voice bus is in use ("line" is waiting)',
+    ]);
+    expect(logged("info").filter((l) => l.startsWith("Playing clips"))).toEqual([]);
+  });
+
+  it("cuts a running frame preview and plays, as a callout does", () => {
+    const h = harness();
+    const onComplete = vi.fn();
+    h.scheduler.playFramePreview("radio", 500, onComplete);
+    h.calls.length = 0;
+
+    expect(h.scheduler.playClips("clips", CLIPS, SKIP)).toBe("playing");
+
+    expect(h.calls).toEqual([
+      ["cancel", FRAME_PREVIEW_ID],
+      ["takeBus", "clips"],
+      ["stepNext", AudioBus.Voice],
+    ]);
+  });
+
+  it("the frame preview does not yield to another preview: a running preview still answers it `bus-busy`", () => {
+    const h = harness();
+    h.scheduler.playFramePreview("radio", 500);
+
+    expect(h.scheduler.playFramePreview("radio", 500)).toBe("bus-busy");
+    expect(h.only("cancel")).toEqual([]);
+  });
+
+  it("holds the bus at its weight: an equal one drops when not queueable, waits when queueable; nothing stashes it", () => {
+    const h = harness();
+    h.define({ id: "drops", weight: 50 });
+    h.define({ id: "waits", weight: 50, queueable: true });
+    h.define({ id: "lighter", weight: 25, queueable: true });
+    h.scheduler.playClips("clips", CLIPS, SKIP);
+
+    h.fire("drops");
+    h.fire("waits");
+    h.fire("lighter");
+
+    expect(h.active()?.id).toBe("clips");
+    expect(h.waiting()).toEqual(["waits", "lighter"]);
+    expect(logged("debug")).toContain('Scenario "drops" dropped (bus busy)');
+
+    // It finishes like any fire: no contract names it, so no hold — the queue drains.
+    h.finish();
+    expect(h.active()?.id).toBe("waits");
+    expect(h.waiting()).toEqual(["lighter"]);
+  });
+
+  it("a heavier fire without interrupt waits for it, queueable or not", () => {
+    const h = harness();
+    h.define({ id: "heavier", weight: 75 });
+    h.scheduler.playClips("clips", CLIPS, SKIP);
+
+    h.fire("heavier");
+
+    expect(h.active()?.id).toBe("clips");
+    expect(h.waiting()).toEqual(["heavier"]);
+    h.finish();
+    expect(h.active()?.id).toBe("heavier");
+  });
+
+  it("a heavier `interrupt` fire cuts it, and the cut clip fire is never stashed", () => {
+    const h = harness();
+    h.define({ id: "safety", weight: 75, interrupt: true });
+    h.scheduler.playClips("clips", CLIPS, SKIP);
+    h.calls.length = 0;
+
+    h.fire("safety");
+
+    expect(h.only("cancel", "takeBus")).toEqual([
+      ["cancel", "clips"],
+      ["takeBus", "safety"],
+    ]);
+    expect(h.waiting()).toEqual([]);
+    h.finish();
+    expect(h.active()).toBeNull();
+    expect(h.only("takeBus")).toEqual([["takeBus", "safety"]]);
+  });
+
+  it("an equal `interrupt` fire does not cut it", () => {
+    const h = harness();
+    h.define({ id: "same", weight: 50, interrupt: true, queueable: true });
+    h.scheduler.playClips("clips", CLIPS, SKIP);
+
+    h.fire("same");
+
+    expect(h.active()?.id).toBe("clips");
+    expect(h.waiting()).toEqual(["same"]);
+  });
+
+  it("stopAll clears it", () => {
+    const h = harness();
+    h.define({ id: "next" });
+    h.scheduler.playClips("clips", CLIPS, SKIP);
+
+    h.scheduler.stopAll();
+
+    expect(h.active()).toBeNull();
+    h.fire("next");
+    expect(h.active()?.id).toBe("next");
+  });
+
+  it("refuses an id that names a registered contract, or the frame preview's, whatever the bus holds", () => {
+    const h = harness();
+    h.define({ id: "pit-crew.session-start" });
+
+    expect(() => h.scheduler.playClips("pit-crew.session-start", CLIPS, SKIP)).toThrow(
+      /"pit-crew\.session-start" names a registered contract/,
+    );
+    expect(() => h.scheduler.playClips(FRAME_PREVIEW_ID, CLIPS, SKIP)).toThrow(/is the frame preview's id/);
+    h.fire("pit-crew.session-start");
+    expect(() => h.scheduler.playClips("pit-crew.session-start", CLIPS, SKIP)).toThrow(/names a registered contract/);
+    expect(h.only("takeBus")).toEqual([["takeBus", "pit-crew.session-start"]]);
+  });
+
+  it("refuses an empty clip list rather than answer as if it had played or skipped", () => {
+    const h = harness();
+
+    expect(() => h.scheduler.playClips("clips", [], SKIP)).toThrow(/no clips to play/);
+    expect(h.calls).toEqual([]);
+    expect(h.active()).toBeNull();
+  });
+});

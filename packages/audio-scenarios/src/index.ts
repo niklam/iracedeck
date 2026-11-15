@@ -27,6 +27,9 @@ export type {
   FrameOptions,
   FramePreviewResult,
   IScenarioEngine,
+  PlayClipsOptions,
+  PlayClipsResult,
+  PlayClipsWhenBusy,
   ScenarioEngineState,
   VocabularyReport,
 } from "./interpreter.js";
