@@ -830,8 +830,13 @@ describe("setup-warning patterns (issue #625)", () => {
 });
 
 describe("fuelCalloutMarginLaps (issue #838)", () => {
-  it("defaults to 0.3 when not specified", () => {
+  it("defaults to 0 laps when not specified (issue #1679)", () => {
     const parsed = GlobalSettingsSchema.parse({}) as Record<string, unknown>;
+    expect(parsed.fuelCalloutMarginLaps).toBe(0);
+  });
+
+  it("keeps a stored 0.3, the old default: moving it is the one-shot migration's job, not the schema's", () => {
+    const parsed = GlobalSettingsSchema.parse({ fuelCalloutMarginLaps: 0.3 }) as Record<string, unknown>;
     expect(parsed.fuelCalloutMarginLaps).toBe(0.3);
   });
 
@@ -847,12 +852,10 @@ describe("fuelCalloutMarginLaps (issue #838)", () => {
     ).toBe(0.7);
   });
 
-  it("normalizes empty-ish persisted values to the default instead of coercing them to 0", () => {
-    // z.coerce.number() alone would turn null / "" / whitespace into 0 and
-    // silently disable the safety margin.
+  it("sends empty-ish persisted values down the default path", () => {
     for (const value of [null, "", "  ", "\t\n"]) {
       const parsed = GlobalSettingsSchema.parse({ fuelCalloutMarginLaps: value }) as Record<string, unknown>;
-      expect(parsed.fuelCalloutMarginLaps).toBe(0.3);
+      expect(parsed.fuelCalloutMarginLaps).toBe(0);
     }
   });
 
@@ -860,7 +863,7 @@ describe("fuelCalloutMarginLaps (issue #838)", () => {
     for (const value of ["abc", -1, 99, NaN]) {
       expect(() => GlobalSettingsSchema.parse({ fuelCalloutMarginLaps: value })).not.toThrow();
       const parsed = GlobalSettingsSchema.parse({ fuelCalloutMarginLaps: value }) as Record<string, unknown>;
-      expect(parsed.fuelCalloutMarginLaps).toBe(0.3);
+      expect(parsed.fuelCalloutMarginLaps).toBe(0);
     }
   });
 });

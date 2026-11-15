@@ -430,21 +430,22 @@ export const GlobalSettingsSchema = z
     /**
      * Safety margin in laps subtracted from the raw laps-of-fuel-left
      * estimate before the Race Engineer derives the spoken count (issue
-     * #838). The spoken number is deliberately conservative relative to
-     * Session Info's Laps to Empty display. Range 0.0–3.0 in 0.1 steps,
-     * default 0.3. The default and range are the translator's
-     * `FUEL_CALLOUT_*` constants in `@iracedeck/sim-events-iracing`; the
-     * race-engineer-wiring `translator-options.test.ts` fails when either
-     * side moves (#1376). The preprocess
-     * normalizes empty-ish persisted values (`null`, `""`, whitespace) to
-     * the default — `z.coerce.number()` would otherwise turn them into `0`
-     * and silently disable the margin — and the `.catch` keeps any other
-     * malformed value from aborting the whole settings parse (the
-     * `changelogNotification` precedent).
+     * #838). Range 0.0–3.0 in 0.1 steps, default 0 (#1679): rounding the
+     * count down already makes every call conservative, and since #1405 the
+     * end-of-race coverage check no longer reads the margin, so a nonzero
+     * default only moved the box call a lap early. The default and range are
+     * the translator's `FUEL_CALLOUT_*` constants in
+     * `@iracedeck/sim-events-iracing`; the race-engineer-wiring
+     * `translator-options.test.ts` fails when either side moves (#1376). The
+     * preprocess sends empty-ish persisted values (`null`, `""`, whitespace)
+     * down the schema's default path rather than through
+     * `z.coerce.number()`, so they follow the default wherever it is set,
+     * and the `.catch` keeps any other malformed value from aborting the
+     * whole settings parse (the `changelogNotification` precedent).
      */
     fuelCalloutMarginLaps: z.preprocess(
       (val) => (val == null || (typeof val === "string" && val.trim() === "") ? undefined : val),
-      z.coerce.number().min(0).max(3).default(0.3).catch(0.3),
+      z.coerce.number().min(0).max(3).default(0).catch(0),
     ),
     /**
      * Corner-name announcement lead in seconds (issue #888) — how far ahead
@@ -453,8 +454,10 @@ export const GlobalSettingsSchema = z
      * `CORNER_CALLOUT_*_SECONDS` constants in `@iracedeck/sim-events-iracing`,
      * held together by race-engineer-wiring's `translator-options.test.ts`
      * (#1376).
-     * Same preprocess/catch shape as `fuelCalloutMarginLaps` so empty-ish or
-     * malformed persisted values fall back instead of aborting the parse.
+     * Same preprocess/catch shape as `fuelCalloutMarginLaps`: empty-ish
+     * persisted values take the default 1 (`z.coerce.number()` would read
+     * them as 0, no lead at all) and malformed ones fall back instead of
+     * aborting the parse.
      */
     cornerCalloutLeadSeconds: z.preprocess(
       (val) => (val == null || (typeof val === "string" && val.trim() === "") ? undefined : val),

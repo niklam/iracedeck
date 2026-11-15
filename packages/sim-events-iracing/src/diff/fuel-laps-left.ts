@@ -5,7 +5,7 @@
  * FULL laps the driver can complete after finishing the current lap:
  *
  *   rawLapsLeft = FuelLevel / avg          (validated estimator, issue #465)
- *   effective   = rawLapsLeft − margin     (user margin, default 0.3 laps)
+ *   effective   = rawLapsLeft − margin     (user margin, default 0 laps, #1679)
  *   count       = max(0, floor(effective − remaining lap fraction))
  *
  * and emits `fuel.lapsLeft.crossed { count, lapsLeft }` when `count` is a NEW
@@ -13,7 +13,7 @@
  * fuel" call. The estimator is the same `getFuelStats()` source Session
  * Info's Laps to Empty display uses (issue #748), over the same default
  * 5-lap window, so the spoken number tracks the displayed one (minus the
- * deliberately conservative margin).
+ * user margin, when one is set).
  *
  * Announcement rules:
  *   - Each count fires at most once per stint, and only on a DESCENDING
@@ -124,11 +124,12 @@ export const FUEL_LAPS_LEFT_WINDOW_LAPS = 5;
 export const FUEL_LAPS_LEFT_SAMPLE_PCT = 0.5;
 
 /**
- * Default safety margin (laps) subtracted from the raw estimate. Must match
+ * Default safety margin (laps) subtracted from the raw estimate: none
+ * (#1679), since rounding the count down is already conservative. Must match
  * the `fuelCalloutMarginLaps` schema default in
  * `@iracedeck/settings` `global-settings.ts`.
  */
-export const FUEL_CALLOUT_DEFAULT_MARGIN_LAPS = 0.3;
+export const FUEL_CALLOUT_DEFAULT_MARGIN_LAPS = 0;
 
 /** Margin slider bounds (laps) — mirrors the Zod schema in `@iracedeck/settings` `global-settings.ts`. */
 export const FUEL_CALLOUT_MARGIN_MIN_LAPS = 0;
