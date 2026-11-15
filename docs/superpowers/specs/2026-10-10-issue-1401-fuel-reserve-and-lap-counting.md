@@ -30,6 +30,8 @@ Rejected for the cap: **a share of the tank** (`DriverCarFuelMaxLtr`), which res
 
 ### 2. The lap margin shrinks to estimate error
 
+> **Re-plan before building (2026-11-15):** #1679 moved this default to **0** in 3.9.0 and migrated a stored 0.3 to 0, and its changelog invites a driver to set 0.3 back by hand. So the default change and the 0.3 → 0.1 migration below are void as written: no build's default is 0.3 any more, and that migration would overwrite a deliberate choice. Decide the margin's default and whether any migration remains before #1401 is built. Spec: `2026-11-10-issue-1679-fuel-margin-default-zero.md`.
+
 With the reserve covering the unusable fuel, the margin only has to cover the average being off over the laps between the call and the stop. The default goes from **0.3 to 0.1** laps.
 
 A schema default reaches new installs only (`global-settings.md`), and the defaults are written into every settings file, so an untouched 0.3 cannot be told from a chosen one. A one-shot migration in `global-settings-migrations.ts`, guarded by a passthrough marker, moves a stored margin of exactly 0.3 to 0.1 and leaves every other value alone. Without it, existing users would get the reserve on top of the old margin and hear the box call earlier than today. A driver who deliberately chose 0.3 loses that choice once; the changelog says so.
