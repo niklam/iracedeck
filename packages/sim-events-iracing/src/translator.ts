@@ -3568,12 +3568,8 @@ function handleLiveSteps(
       self.pitLaneLandmarkLogger,
     ),
   );
-  // Corner-name callouts (issue #888). Practice/test only — the diff gates on
-  // the classified session type (diff-side per #655, so the harness can fire
-  // the event directly). Reuses the cached trackLengthMeters for the
-  // speed→lap-fraction conversion; markers resolve from the bundled
-  // lovely-track-data snapshot keyed by WeekendInfo.TrackName. An empty raw
-  // session type means session info hasn't resolved — stay silent.
+  // The corner-name markers (issue #888), resolved from the bundled
+  // lovely-track-data snapshot keyed by WeekendInfo.TrackName.
   const cornerMarkers = steps.value("resolveCornerMarkersCached", values, self.state.cornerName.markers, () =>
     resolveCornerMarkersCached(self.state.cornerName, sessionInfo, telemetry),
   );
@@ -3607,6 +3603,11 @@ function handleLiveSteps(
       emit,
     ),
   );
+  // Corner-name callouts (issue #888). Practice/test only — the diff gates on
+  // the classified session type (diff-side per #655, so the harness can fire
+  // the event directly). Reuses the cached trackLengthMeters for the
+  // speed→lap-fraction conversion. An empty raw session type means session
+  // info hasn't resolved — stay silent.
   steps.live("diffCornerName", pending, () =>
     diffCornerName(
       self.state.cornerName,
