@@ -3,7 +3,14 @@ import path from "node:path";
 import { z } from "zod";
 
 import { type Entry, entryHash, type VoiceConfig } from "./config.ts";
+import { describeDriverNameAlias, driverNameAliasOf } from "./driver-name-aliases.ts";
 import { clipRelPath, type Manifest } from "./manifest.ts";
+import {
+  describePauseMarks,
+  findEntryPauseMarks,
+  type GrandfatheredPauseMarks,
+  isGrandfathered,
+} from "./pause-marks.ts";
 import { invalidateProcessedCache, ManifestSaver, type ManifestSaveRetry, type RunLog, textPreview } from "./run.ts";
 
 /**
@@ -11,18 +18,26 @@ import { invalidateProcessedCache, ManifestSaver, type ManifestSaveRetry, type R
  * without `.mp3` (`voice/<voice>/<group>/<name>`), `requestId` the
  * ElevenLabs request id the take was cut under. Other fields a trial script
  * writes (`inTrialRefs`, `crossModelRefs`, `seed`, …) are kept but not read,
- * except `text`, which must match the entry's config text when present.
+ * except `text`, which must match the entry's config text when present, and
+ * `voiceId`, the ElevenLabs voice that spoke it, which must match the voice
+ * config's `id` when present.
  */
 export const TrialRecordSchema = z.looseObject({
   key: z.string().min(1),
   status: z.enum(["ok", "error"]),
   requestId: z.string().nullable().optional(),
   text: z.string().optional(),
+  voiceId: z.string().min(1).optional(),
 });
 
-/** `trial-manifest.json`, the shape #1572's trial script writes: one model for every record. */
+/**
+ * `trial-manifest.json`: one model for every record. #1572's trial script
+ * writes no speaker; #1643's trials record the ElevenLabs `voiceId` at the
+ * top level (with their `settings`, kept but not read).
+ */
 export const TrialManifestSchema = z.looseObject({
   model: z.string().min(1),
+  voiceId: z.string().min(1).optional(),
   records: z.array(TrialRecordSchema),
 });
 
@@ -76,6 +91,8 @@ export interface ImportOptions {
   persistManifest: (manifest: Manifest) => void;
   /** How a failed save is retried; `MANIFEST_SAVE_RETRY` when omitted. */
   manifestSaveRetry?: ManifestSaveRetry;
+  /** voice id → `<group>/<name>` → the frozen text a pause mark is grandfathered for, as a run reads it. */
+  grandfathered?: GrandfatheredPauseMarks;
   now?: () => Date;
   log?: RunLog;
 }
@@ -118,11 +135,19 @@ const consoleLog: RunLog = {
  * refuses the whole import, naming every problem: an unknown voice, group or
  * entry; a missing file or request id; a trial model that is not the entry's
  * resolved `model_id` (the row's hash would then describe a request the take
- * was not cut with); text that is not the entry's config text; one key
- * imported twice. Records whose status is not `ok` are skipped, said so.
+ * was not cut with); text that is not the entry's config text; a speaker
+ * (`voiceId`, the trial's or the record's) that is not the voice config's
+ * `id`; one key imported twice. An entry a run would refuse is refused here
+ * too, with the same checks ahead of its cache hit: a driver-name alias
+ * (#1580) and pause marks the grandfathered list does not cover (#1518) —
+ * imported, such a take would have every later run refuse its entry. A trial
+ * that records no speaker is imported, with a warning per voice that its
+ * speaker was not checked. Records whose status is not `ok` are skipped,
+ * said so.
  */
 export function importTakes(options: ImportOptions): ImportResult {
   const { dir, voiceConfigs, manifest, root, dryRun, persistManifest } = options;
+  const grandfathered = options.grandfathered ?? {};
   const now = options.now ?? (() => new Date());
   const log = options.log ?? consoleLog;
   const refuse = (problems: string[]): ImportResult => {
@@ -157,6 +182,10 @@ export function importTakes(options: ImportOptions): ImportResult {
   const planned: PlannedTake[] = [];
   const skippedKeys: string[] = [];
   const seen = new Set<string>();
+  // voice name → how many of its takes record no speaker; and the takes whose
+  // marks are grandfathered, warned about as a run warns.
+  const unrecordedSpeaker = new Map<string, number>();
+  const grandfatheredMarks: string[] = [];
 
   for (const record of trial.records) {
     if (record.status !== "ok") {
@@ -190,6 +219,42 @@ export function importTakes(options: ImportOptions): ImportResult {
       continue;
     }
 
+    // The speaker: a take cut with another ElevenLabs voice would be
+    // imported under this one's name and hash, and never re-cut.
+    const speakers = [
+      ["the trial", trial.voiceId],
+      ["the record", record.voiceId],
+    ] as const;
+
+    for (const [where, recorded] of speakers) {
+      if (recorded !== undefined && recorded !== voice.id) {
+        problems.push(
+          `${record.key}: spoken by ElevenLabs voice "${recorded}" (${where}), but voice "${voiceName}" has id "${voice.id}"`,
+        );
+      }
+    }
+
+    if (trial.voiceId === undefined && record.voiceId === undefined) {
+      unrecordedSpeaker.set(voiceName, (unrecordedSpeaker.get(voiceName) ?? 0) + 1);
+    }
+
+    // What a run refuses ahead of its cache hit (`runGeneration`), refused
+    // here too: an imported take for such an entry is one every later run
+    // refuses.
+    const aliasOf = driverNameAliasOf(groupName, entryName);
+
+    if (aliasOf !== null) problems.push(`${record.key}: ${describeDriverNameAlias(entryName, aliasOf)}`);
+
+    const pauseMarks = findEntryPauseMarks(entry);
+
+    if (pauseMarks.length > 0) {
+      if (isGrandfathered(entry, grandfathered[voiceName]?.[`${groupName}/${entryName}`])) {
+        grandfatheredMarks.push(`${record.key}  —  grandfathered text: ${describePauseMarks(pauseMarks)}`);
+      } else {
+        problems.push(`${record.key}: ${describePauseMarks(pauseMarks)}`);
+      }
+    }
+
     const source = path.join(dir, `${record.key}.mp3`);
 
     if (!existsSync(source) || !statSync(source).isFile()) problems.push(`${record.key}: ${source} does not exist`);
@@ -220,6 +285,15 @@ export function importTakes(options: ImportOptions): ImportResult {
   if (problems.length > 0) return refuse(problems);
 
   for (const key of skippedKeys) log.info(`[import] ${key}  —  skipped`);
+
+  for (const [voiceName, count] of unrecordedSpeaker) {
+    log.warn(
+      `[import] voice "${voiceName}": the trial records no voiceId for ${count} take(s), so their speaker was not ` +
+        `checked against "${voiceConfigs.get(voiceName)!.id}"`,
+    );
+  }
+
+  for (const line of grandfatheredMarks) log.warn(`[import] ${line}`);
 
   // `problems` is empty here (any refuses above); from now on it collects
   // what stopped the import part-way.

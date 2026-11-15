@@ -86,9 +86,11 @@
  *                                   copied byte for byte and given a manifest
  *                                   row with the entry's current hash and the
  *                                   trial's request id, so nothing re-cuts it.
- *                                   Any unknown entry, missing file or model
- *                                   mismatch refuses the whole import and
- *                                   writes nothing. Composes with --dry-run;
+ *                                   Any unknown entry, missing file, model or
+ *                                   speaker (voiceId) mismatch, driver-name
+ *                                   alias or ungrandfathered pause mark
+ *                                   refuses the whole import and writes
+ *                                   nothing. Composes with --dry-run;
  *                                   refuses --voice/--group/--entry; needs no
  *                                   API key. See `import-takes.ts`.
  *
@@ -243,6 +245,7 @@ async function runImport(importDir: string, scope: Scope, dryRun: boolean): Prom
     root: packageRoot,
     dryRun,
     persistManifest: (manifest) => saveManifest(MANIFEST_PATH, manifest),
+    grandfathered: loadGrandfatheredPauseMarks(packageRoot),
   });
 
   console.log();

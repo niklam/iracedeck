@@ -52,8 +52,13 @@ function writeTake(key: string, bytes: Buffer): void {
   fs.writeFileSync(abs, bytes);
 }
 
-function writeTrial(records: unknown[], model = "eleven_v4"): void {
-  fs.writeFileSync(path.join(trialDir, "trial-manifest.json"), JSON.stringify({ model, records }, null, 2));
+/** `trial-manifest.json`; `top` defaults to the speaker the test configs use, as #1643's trials record it. */
+function writeTrial(
+  records: unknown[],
+  model = "eleven_v4",
+  top: Record<string, unknown> = { voiceId: "eleven-voice-id" },
+): void {
+  fs.writeFileSync(path.join(trialDir, "trial-manifest.json"), JSON.stringify({ model, ...top, records }, null, 2));
 }
 
 function captureLog(): RunLog & { lines: string[] } {
@@ -283,6 +288,147 @@ describe("importTakes", () => {
       `${INTRO}: imported twice`,
     ]);
     expect(fs.existsSync(path.join(root, "voice"))).toBe(false);
+  });
+
+  describe("the speaker", () => {
+    it("refuses a trial whose voiceId is not the voice config's id, naming both, and writes nothing", () => {
+      writeTake(INTRO, INTRO_BYTES);
+      writeTrial([{ key: INTRO, status: "ok", requestId: "req-intro" }], "eleven_v4", {
+        voiceId: "TABZn6CDfjMNGrsnGzzD",
+        settings: { stability: 0.5 },
+      });
+
+      const manifest: Manifest = { version: 1, entries: {} };
+      const { result, persistManifest } = runImport(manifest);
+
+      expect(result.problems).toEqual([
+        `${INTRO}: spoken by ElevenLabs voice "TABZn6CDfjMNGrsnGzzD" (the trial), but voice "default" has id "eleven-voice-id"`,
+      ]);
+      expect(manifest.entries).toEqual({});
+      expect(persistManifest).not.toHaveBeenCalled();
+      expect(fs.existsSync(path.join(root, "voice"))).toBe(false);
+    });
+
+    it("refuses a record whose own voiceId differs, even when the trial's matches", () => {
+      writeTake(INTRO, INTRO_BYTES);
+      writeTrial([{ key: INTRO, status: "ok", requestId: "req-intro", voiceId: "other-voice" }]);
+
+      const { result } = runImport({ version: 1, entries: {} });
+
+      expect(result.problems).toEqual([
+        `${INTRO}: spoken by ElevenLabs voice "other-voice" (the record), but voice "default" has id "eleven-voice-id"`,
+      ]);
+      expect(fs.existsSync(path.join(root, "voice"))).toBe(false);
+    });
+
+    it("imports a matching speaker, at the top or on the record, without a warning", () => {
+      writeTake(INTRO, INTRO_BYTES);
+      writeTake(DECIMAL, DECIMAL_BYTES);
+      writeTrial(
+        [
+          { key: INTRO, status: "ok", requestId: "req-intro" },
+          { key: DECIMAL, status: "ok", requestId: "req-decimal", voiceId: "eleven-voice-id" },
+        ],
+        "eleven_v4",
+        { voiceId: "eleven-voice-id" },
+      );
+
+      const { result, log } = runImport({ version: 1, entries: {} });
+
+      expect(result).toEqual({ imported: 2, skipped: 0, problems: [] });
+      expect(log.lines.some((line) => line.includes("voiceId"))).toBe(false);
+    });
+
+    it("imports a trial that records no speaker, warning once per voice", () => {
+      writeTake(INTRO, INTRO_BYTES);
+      writeTake(DECIMAL, DECIMAL_BYTES);
+      writeTake("voice/shawn/lap-time-intro/first-good-lap", INTRO_BYTES);
+      writeTrial(
+        [
+          { key: INTRO, status: "ok", requestId: "req-intro" },
+          { key: DECIMAL, status: "ok", requestId: "req-decimal" },
+          { key: "voice/shawn/lap-time-intro/first-good-lap", status: "ok", requestId: "req-shawn" },
+        ],
+        "eleven_v4",
+        {},
+      );
+
+      const manifest: Manifest = { version: 1, entries: {} };
+      const { result, log } = runImport(manifest);
+
+      expect(result).toEqual({ imported: 3, skipped: 0, problems: [] });
+      expect(Object.keys(manifest.entries)).toHaveLength(3);
+      expect(log.lines.filter((line) => line.includes("records no voiceId"))).toEqual([
+        '[import] voice "default": the trial records no voiceId for 2 take(s), so their speaker was not checked against "eleven-voice-id"',
+        '[import] voice "shawn": the trial records no voiceId for 1 take(s), so their speaker was not checked against "eleven-voice-id"',
+      ]);
+    });
+  });
+
+  describe("what a run would refuse", () => {
+    it("refuses a driver-name alias, as a run does (#1580)", () => {
+      const names = buildVoice({
+        names: [
+          { name: "geoff", text: "Geoff" },
+          { name: "jeff", text: "Jeff" },
+        ],
+      });
+
+      writeTake("voice/default/names/geoff", INTRO_BYTES);
+      writeTake("voice/default/names/jeff", INTRO_BYTES);
+      writeTrial([
+        { key: "voice/default/names/geoff", status: "ok", requestId: "a" },
+        { key: "voice/default/names/jeff", status: "ok", requestId: "b" },
+      ]);
+
+      const manifest: Manifest = { version: 1, entries: {} };
+      const { result } = runImport(manifest, { voiceConfigs: new Map([["default", names]]) });
+
+      expect(result.problems).toEqual([
+        'voice/default/names/geoff: "geoff" is a driver-name alias of "jeff" and plays its clips — record "jeff" instead and remove this entry',
+      ]);
+      expect(manifest.entries).toEqual({});
+      expect(fs.existsSync(path.join(root, "voice"))).toBe(false);
+    });
+
+    it("refuses pause marks the grandfathered list does not cover (#1518)", () => {
+      const marked = buildVoice({ "lap-time-intro": [{ name: "first-good-lap", text: "That lap: was." }] });
+
+      writeTake(INTRO, INTRO_BYTES);
+      writeTrial([{ key: INTRO, status: "ok", requestId: "req-intro" }]);
+
+      const manifest: Manifest = { version: 1, entries: {} };
+      const { result } = runImport(manifest, {
+        voiceConfigs: new Map([["default", marked]]),
+        // Listed under another text: an edit, not the frozen line.
+        grandfathered: { default: { "lap-time-intro/first-good-lap": "That lap: was" } },
+      });
+
+      expect(result.problems).toEqual([
+        `${INTRO}: text carries pause marks ":": ElevenLabs reads them as a pause and may fill it with a hesitation sound. Write a period where a pause is needed (#1518).`,
+      ]);
+      expect(manifest.entries).toEqual({});
+      expect(fs.existsSync(path.join(root, "voice"))).toBe(false);
+    });
+
+    it("imports a grandfathered entry whose text is the frozen one, saying so", () => {
+      const marked = buildVoice({ "lap-time-intro": [{ name: "first-good-lap", text: "That lap: was." }] });
+
+      writeTake(INTRO, INTRO_BYTES);
+      writeTrial([{ key: INTRO, status: "ok", requestId: "req-intro" }]);
+
+      const manifest: Manifest = { version: 1, entries: {} };
+      const { result, log } = runImport(manifest, {
+        voiceConfigs: new Map([["default", marked]]),
+        grandfathered: { default: { "lap-time-intro/first-good-lap": "That lap: was." } },
+      });
+
+      expect(result).toEqual({ imported: 1, skipped: 0, problems: [] });
+      expect(manifest.entries[`${INTRO}.mp3`]!.requestId).toBe("req-intro");
+      expect(log.lines).toContain(
+        `[import] ${INTRO}  —  grandfathered text: text carries pause marks ":": ElevenLabs reads them as a pause and may fill it with a hesitation sound. Write a period where a pause is needed (#1518).`,
+      );
+    });
   });
 
   it("refuses a missing or malformed trial manifest", () => {
