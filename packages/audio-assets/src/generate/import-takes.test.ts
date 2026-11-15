@@ -137,9 +137,60 @@ describe("importTakes", () => {
     });
     expect(manifest.entries[`${DECIMAL}.mp3`]!.hash).toBe(hashOf(defaultVoice, "lap-time-decimal/5"));
     expect(manifest.entries[`${DECIMAL}.mp3`]!.requestId).toBe("req-decimal");
-    expect(persistManifest).toHaveBeenCalledTimes(1);
+    // Once per take, as each lands: the first save already holds the first row.
+    expect(persistManifest).toHaveBeenCalledTimes(2);
+    expect(Object.keys(persistManifest.mock.calls[0]![0].entries)).toContain(`${INTRO}.mp3`);
     expect(fs.existsSync(processed)).toBe(false);
     expect(log.lines).toContain("[import] voice/default/lap-time-decimal/6 (status error)  —  skipped");
+  });
+
+  it("keeps the saved rows of the takes before a copy that fails midway, and stops there", () => {
+    writeTake(INTRO, INTRO_BYTES);
+    writeTake(DECIMAL, DECIMAL_BYTES);
+    writeTrial([
+      { key: INTRO, status: "ok", requestId: "req-intro" },
+      { key: DECIMAL, status: "ok", requestId: "req-decimal" },
+    ]);
+    // A directory where the second take's file goes: its copy fails.
+    fs.mkdirSync(path.join(root, `${DECIMAL}.mp3`), { recursive: true });
+
+    const manifest: Manifest = { version: 1, entries: {} };
+    const { result, log, persistManifest } = runImport(manifest);
+
+    expect(result.imported).toBe(1);
+    expect(result.problems).toHaveLength(1);
+    expect(result.problems[0]).toMatch(new RegExp(`^${DECIMAL}\\.mp3: copy failed: `));
+    expect(Object.keys(manifest.entries)).toEqual([`${INTRO}.mp3`]);
+    expect(persistManifest).toHaveBeenCalledTimes(1);
+    expect(persistManifest.mock.calls[0]![0].entries[`${INTRO}.mp3`]!.requestId).toBe("req-intro");
+    expect(log.lines.some((line) => line.startsWith(`[import] FAILED: ${DECIMAL}.mp3: copy failed: `))).toBe(true);
+  });
+
+  it("reports takes whose rows no save could write, keeping them in memory", () => {
+    writeTake(INTRO, INTRO_BYTES);
+    writeTake(DECIMAL, DECIMAL_BYTES);
+    writeTrial([
+      { key: INTRO, status: "ok", requestId: "req-intro" },
+      { key: DECIMAL, status: "ok", requestId: "req-decimal" },
+    ]);
+
+    const manifest: Manifest = { version: 1, entries: {} };
+    const persistManifest = vi.fn<(manifest: Manifest) => void>(() => {
+      throw new Error("UNKNOWN: unknown error, open 'generate.manifest.json'");
+    });
+    const { result, log } = runImport(manifest, {
+      persistManifest,
+      manifestSaveRetry: { attempts: 2, delayMs: 0, sleep: () => {} },
+    });
+
+    expect(result.imported).toBe(2);
+    expect(result.problems).toEqual([
+      `the manifest could not be saved; these takes are on disk without their rows: ${INTRO}.mp3, ${DECIMAL}.mp3`,
+    ]);
+    expect(Object.keys(manifest.entries)).toEqual([`${INTRO}.mp3`, `${DECIMAL}.mp3`]);
+    // Two takes' saves and the final one, two attempts each.
+    expect(persistManifest).toHaveBeenCalledTimes(6);
+    expect(log.lines.filter((line) => line.includes("manifest save failed after 2 attempt(s)"))).toHaveLength(2);
   });
 
   it("reports and writes nothing in a dry run", () => {

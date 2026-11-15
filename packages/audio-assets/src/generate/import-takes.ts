@@ -4,7 +4,7 @@ import { z } from "zod";
 
 import { type Entry, entryHash, type VoiceConfig } from "./config.ts";
 import { clipRelPath, type Manifest } from "./manifest.ts";
-import { invalidateProcessedCache, type RunLog, textPreview } from "./run.ts";
+import { invalidateProcessedCache, ManifestSaver, type ManifestSaveRetry, type RunLog, textPreview } from "./run.ts";
 
 /**
  * One take in an out-of-band trial's record: `key` is the clip's path
@@ -72,8 +72,10 @@ export interface ImportOptions {
   /** The package root the clips are imported into (`<root>/voice/…`). */
   root: string;
   dryRun: boolean;
-  /** Called once, after every take is in place. */
+  /** Writes the manifest; called after every take copied in, so a crash mid-import loses no row. */
   persistManifest: (manifest: Manifest) => void;
+  /** How a failed save is retried; `MANIFEST_SAVE_RETRY` when omitted. */
+  manifestSaveRetry?: ManifestSaveRetry;
   now?: () => Date;
   log?: RunLog;
 }
@@ -219,7 +221,10 @@ export function importTakes(options: ImportOptions): ImportResult {
 
   for (const key of skippedKeys) log.info(`[import] ${key}  —  skipped`);
 
+  // `problems` is empty here (any refuses above); from now on it collects
+  // what stopped the import part-way.
   let imported = 0;
+  const saver = new ManifestSaver(manifest, persistManifest, log, "import", options.manifestSaveRetry);
 
   for (const take of planned) {
     log.info(`${dryRun ? "[dry-run] WOULD IMPORT" : "[import]"} ${take.relPath} from ${take.source}`);
@@ -234,17 +239,15 @@ export function importTakes(options: ImportOptions): ImportResult {
     try {
       mkdirSync(path.dirname(target), { recursive: true });
       copyFileSync(take.source, target);
-      invalidateProcessedCache(root, take.relPath);
     } catch (err) {
-      // Keep the rows of the takes already copied: their bytes are on disk,
-      // and a row left stale would have the next run re-cut them.
-      const problem = `${take.relPath}: copy failed: ${err instanceof Error ? err.message : String(err)}`;
+      // The rows of the takes already copied were saved as each landed:
+      // their bytes are on disk, and a row left stale would have the next
+      // run re-cut them.
+      const problem = `${take.relPath}: copy failed: ${errorMessage(err)}`;
 
       log.error(`[import] FAILED: ${problem}`);
-
-      if (imported > 0) persistManifest(manifest);
-
-      return { imported, skipped: skippedKeys.length, problems: [problem] };
+      problems.push(problem);
+      break;
     }
 
     manifest.entries[take.relPath] = {
@@ -256,9 +259,27 @@ export function importTakes(options: ImportOptions): ImportResult {
       requestId: take.requestId,
     };
     imported++;
+
+    try {
+      invalidateProcessedCache(root, take.relPath);
+    } catch (err) {
+      log.warn(`[import] ${take.relPath}  —  could not drop its processed copies: ${errorMessage(err)}`);
+    }
+
+    // Saved after each take, as a run saves after each clip, so a crash
+    // mid-import leaves no take on disk without its row.
+    saver.save(take.relPath);
   }
 
-  if (!dryRun && imported > 0) persistManifest(manifest);
+  const unsaved = saver.flush();
 
-  return { imported, skipped: skippedKeys.length, problems: [] };
+  if (unsaved.length > 0) {
+    problems.push(`the manifest could not be saved; these takes are on disk without their rows: ${unsaved.join(", ")}`);
+  }
+
+  return { imported, skipped: skippedKeys.length, problems };
+}
+
+function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
 }
