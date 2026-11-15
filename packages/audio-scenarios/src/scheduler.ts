@@ -35,8 +35,12 @@
  *     `supersedeGroup` (the contract id by default); an arrival above
  *     `PENDING_QUEUE_CAPACITY` roots drops the lightest, then oldest — one
  *     entry per arrival, so a follower that drop frees stays;
- *     a fire not started within its `maxQueueWaitMs` of its FIRST deferral
- *     is dropped when the queue is next read. Every such drop is logged.
+ *     a fire not started within its `maxQueueWaitMs` of its due time is
+ *     dropped when the queue is next read. The due time is when the fire was
+ *     first offered to its bus, and a cut fire keeps its due time (issue
+ *     #1681): the stash an interrupt makes carries it, so a cut line already
+ *     past its max wait is refused by the queue at the cut, and one still
+ *     inside it orders and falls to the cap by it. Every such drop is logged.
  *   - The bus drains its queue one fire at a time as it idles, replaying
  *     each through `attemptFire`: a replay that does not take the bus (gate
  *     refused, expansion aborted, no script, cooldown, disabled) drains the
@@ -245,6 +249,8 @@ export class Scheduler implements PlaybackListener {
       prerollCount: 0,
       event: null,
       sessionGeneration: this.sessionGeneration,
+      // Never stashed, so never read: the preview's own start.
+      dueAt: Date.now(),
       cutTail: [],
       ended: false,
       onSettled: onComplete,
@@ -432,16 +438,20 @@ export class Scheduler implements PlaybackListener {
    * expansion and the gate, then the bus take. `event` is `null` for an
    * imperative fire. The last three parameters are the idle-replay's
    * (`replayWaiting`): the stash to continue from, whether the fire already
-   * passed its gate (`WaitingFire.admitted`), and when it was first deferred.
+   * passed its gate (`WaitingFire.admitted`), and its due time. A fresh
+   * fire is due now, the moment it is first offered to its bus (issue
+   * #1681); the due time travels with it from here, into the queue and onto
+   * the bus, so a stash made when an interrupt cuts it keeps it.
    */
   attemptFire(
     entry: CompiledScenario,
     event: SimEventOf<SimEventName> | null,
     resume?: ResumeState,
     admitted = false,
-    dueAt?: number,
+    replayDueAt?: number,
   ): void {
     const now = Date.now();
+    const dueAt = replayDueAt ?? now;
 
     // A resume is a continuation of a fire that already passed (and stamped)
     // the cooldown — re-checking it here would drop the tail of an
@@ -502,7 +512,7 @@ export class Scheduler implements PlaybackListener {
 
         if (!admitted) this.supersedeWaitingOfGroup(state, entry);
 
-        this.executeFire(entry, event, expanded, resume);
+        this.executeFire(entry, event, expanded, resume, dueAt);
 
         return;
       }
@@ -544,7 +554,7 @@ export class Scheduler implements PlaybackListener {
 
     if (!admitted) this.supersedeWaitingOfGroup(state, entry);
 
-    this.executeFire(entry, event, expanded, resume);
+    this.executeFire(entry, event, expanded, resume, dueAt);
   }
 
   /**
@@ -581,9 +591,9 @@ export class Scheduler implements PlaybackListener {
     weight: number,
     state: BusView,
     reason: string,
-    resume?: ResumeState,
-    admitted = false,
-    dueAt?: number,
+    resume: ResumeState | undefined,
+    admitted: boolean,
+    dueAt: number,
   ): void {
     if (entry.raw.queueable === true) {
       this.enqueue(entry.raw.id, event, weight, state, `deferred (${reason})`, resume, admitted, dueAt);
@@ -596,10 +606,12 @@ export class Scheduler implements PlaybackListener {
    * Offer a fire to the bus's queue (issue #1185). The queue places it —
    * heaviest first, then the longest-waiting, a `queueBehind` follower right
    * after its leader — supersedes any waiting fire of its group, applies the
-   * cap and drops what has waited too long; this logs every drop and the
-   * newcomer's place. `dueAt` is the time of the fire's FIRST deferral: a
-   * replay deferred again passes its own, so its max wait still runs from
-   * then. `admitted` travels with the fire (see `WaitingFire.admitted`).
+   * cap and drops what has waited too long — the newcomer itself when it is
+   * already past its max wait; this logs every drop and the newcomer's
+   * place. `dueAt` is the fire's due time (issue #1681): a replay deferred
+   * again passes its own and an interrupt's stash the one it played with, so
+   * the max wait runs from when the fire was first offered to its bus.
+   * `admitted` travels with the fire (see `WaitingFire.admitted`).
    * `yieldsToGroup` marks an interrupt's stash, which gives way to a newer
    * waiting fire of its group instead of replacing it.
    */
@@ -609,9 +621,9 @@ export class Scheduler implements PlaybackListener {
     weight: number,
     state: BusView,
     reason: string,
-    resume?: ResumeState,
-    admitted = false,
-    dueAt: number = Date.now(),
+    resume: ResumeState | undefined,
+    admitted: boolean,
+    dueAt: number,
     yieldsToGroup = false,
   ): void {
     const raw = this.deps.contracts.get(id)?.raw;
@@ -675,9 +687,13 @@ export class Scheduler implements PlaybackListener {
    * When an interrupt cut a queueable fire, keep it for idle-replay. It was
    * playing, so it had passed its gate: the stash is marked `admitted`
    * whether it resumes from the cut (`resumable`) or replays whole, and the
-   * replay is not asked again (issue #1138). It is a new deferral, so its max
-   * wait runs from now; a full queue may drop it as the cap's victim, which
-   * is logged like any other drop and discards its resume with it.
+   * replay is not asked again (issue #1138). It keeps its due time (issue
+   * #1681), so the time it waited and played before the cut counts against
+   * its max wait: one already past it is refused by the queue and logged as
+   * `waited`, and one inside it plays ahead of an equal-weight fire deferred
+   * while it played, and is the first equal-weight victim of a full queue's
+   * cap. Either drop is logged like any other and discards its resume with
+   * it.
    *
    * A fire of its `supersedeGroup` already waiting arrived while this one
    * played, so it is the newer: the stash yields to it and is dropped,
@@ -710,7 +726,17 @@ export class Scheduler implements PlaybackListener {
       running.raw.resumable === true
         ? buildResumeState(active, this.getActiveVoice(), this.deps.scripts.generation)
         : undefined;
-    this.enqueue(active.id, active.event, active.weight, state, "stashed (preempted)", resume, true, undefined, true);
+    this.enqueue(
+      active.id,
+      active.event,
+      active.weight,
+      state,
+      "stashed (preempted)",
+      resume,
+      true,
+      active.dueAt,
+      true,
+    );
   }
 
   /**
@@ -795,7 +821,8 @@ export class Scheduler implements PlaybackListener {
     entry: CompiledScenario,
     event: SimEventOf<SimEventName> | null,
     prepared: PreparedFire,
-    resume?: ResumeState,
+    resume: ResumeState | undefined,
+    dueAt: number,
   ): void {
     const expanded = prepared.ops;
 
@@ -834,6 +861,7 @@ export class Scheduler implements PlaybackListener {
       prerollCount,
       event,
       sessionGeneration: this.sessionGeneration,
+      dueAt,
       cutTail: prepared.cutTail,
       ended: false,
     });

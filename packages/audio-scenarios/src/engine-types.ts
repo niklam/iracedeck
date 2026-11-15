@@ -70,10 +70,12 @@ export type WaitingFire = {
    */
   admitted: boolean;
   /**
-   * When the fire was FIRST deferred (issue #1185). The max wait is measured
-   * from it, and a replay that is deferred again keeps it, so a fire cannot
-   * outlive its max wait by being re-parked. A fire an interrupt cut out of
-   * playback is a new deferral and starts a new one.
+   * When the fire was due: the moment it was first offered to its bus
+   * (issue #1681), whether it was deferred then or took the bus. The max wait
+   * is measured from it (issue #1185), and every re-park keeps it — a replay
+   * deferred again, and a fire an interrupt cut out of playback, which
+   * carries the `ActiveFire.dueAt` it played with — so a fire cannot outlive
+   * its max wait by being re-parked or cut.
    */
   dueAt: number;
 };
@@ -265,6 +267,14 @@ export type ActiveFire = {
    * #1185). An interrupt that cuts it in a later session does not stash it.
    */
   sessionGeneration: number;
+  /**
+   * When this fire was due (issue #1681, see `WaitingFire.dueAt`): the
+   * replay's own when it came off the queue, else the moment it was offered
+   * and took the bus. An interrupt's stash re-queues it with this, so a cut
+   * fire keeps its due time. A cut tail an end plays carries its fire's; the
+   * frame preview, never stashed, takes its start.
+   */
+  dueAt: number;
   /**
    * What an end plays once words have been heard (issue #1407): the frame's
    * `cut` — else its `close` — expanded and tagged `cut` with the fire. The

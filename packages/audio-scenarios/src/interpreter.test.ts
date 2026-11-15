@@ -3204,6 +3204,10 @@ describe("bounded pending queue (issue #1185)", () => {
 
   afterEach(() => {
     vi.useRealTimers();
+    // (7) installs a debug implementation that counts replays of "q.a" and
+    // throws past ten; `clearAllMocks` keeps an implementation, so without
+    // this its count would run on into every later test that replays "q.a".
+    mockLogger.debug.mockReset();
   });
 
   /** A queueable scenario `q.<name>` that plays the one clip `q/<name>.mp3`. */
@@ -4121,6 +4125,175 @@ describe("bounded pending queue (issue #1185)", () => {
 
       expect(mockLogger.debug).toHaveBeenCalledWith('Scenario "q.a" dropped — waited 9000 ms (max 8000 ms)');
       expect(voiceBus().waiting).toEqual([]);
+    });
+  });
+
+  // Each drop half has its replay half beside it, in the same fixture, as its
+  // positive control. Before #1681 the stash restarted the max wait at the cut,
+  // so every drop half below replayed instead.
+  describe("a cut line keeps its due time (issue #1681)", () => {
+    /** An interrupt line heavier than everything under test, holding the bus until `endClip()`. */
+    function defineInterrupt(): void {
+      define("x", WEIGHT.CRITICAL, { queueable: false, interrupt: true });
+    }
+
+    function waitingIds(): string[] {
+      return (engine.describeState().buses.find((b) => b.bus === "Voice")?.waiting ?? []).map((w) => w.id);
+    }
+
+    describe("played, then cut: due when it took the idle bus", () => {
+      function playThenCut(): void {
+        define("a", WEIGHT.NORMAL);
+        defineInterrupt();
+
+        engine.fire("q.a"); // t=0: takes the idle bus
+        vi.advanceTimersByTime(3000);
+        engine.fire("q.x"); // t=3 s: cuts it
+      }
+
+      it("replays at 7 s behind a 4 s interrupt line", () => {
+        playThenCut();
+        vi.advanceTimersByTime(4000);
+        endClip();
+
+        expect(heard()).toEqual(["a", "x", "a"]);
+      });
+
+      it("is dropped at 9 s behind a 6 s one, the wait counted from 0 s", () => {
+        playThenCut();
+        vi.advanceTimersByTime(6000);
+        endClip();
+
+        expect(mockLogger.debug).toHaveBeenCalledWith('Scenario "q.a" dropped — waited 9000 ms (max 8000 ms)');
+        expect(heard()).toEqual(["a", "x"]);
+      });
+    });
+
+    describe("deferred, played, then cut: due at its deferral, not at the start of play", () => {
+      function deferPlayThenCut(): void {
+        holdBus();
+        define("a", WEIGHT.NORMAL);
+        defineInterrupt();
+
+        engine.fire("q.a"); // t=0: deferred behind a 5 s line
+        vi.advanceTimersByTime(5000);
+        endClip(); // t=5 s: it plays
+        vi.advanceTimersByTime(1000);
+        engine.fire("q.x"); // t=6 s: cut
+      }
+
+      it("replays at 7.5 s behind a 1.5 s interrupt line", () => {
+        deferPlayThenCut();
+        vi.advanceTimersByTime(1500);
+        endClip();
+
+        expect(heard()).toEqual(["busy", "a", "x", "a"]);
+      });
+
+      it("is dropped at 8.5 s behind a 2.5 s one", () => {
+        deferPlayThenCut();
+        vi.advanceTimersByTime(2500);
+        endClip();
+
+        expect(mockLogger.debug).toHaveBeenCalledWith('Scenario "q.a" dropped — waited 8500 ms (max 8000 ms)');
+        expect(heard()).toEqual(["busy", "a", "x"]);
+      });
+    });
+
+    describe("past its ceiling at the cut", () => {
+      function deferPlayAndQueueChatter(): void {
+        holdBus();
+        define("a", WEIGHT.NORMAL);
+        defineInterrupt();
+
+        for (const name of ["b", "c", "d", "e"]) define(name, WEIGHT.CHATTER);
+
+        engine.fire("q.a"); // t=0: deferred behind a 7 s line
+        vi.advanceTimersByTime(7000);
+        endClip(); // t=7 s: it plays
+
+        for (const name of ["b", "c", "d", "e"]) {
+          vi.advanceTimersByTime(100);
+          engine.fire(`q.${name}`); // deferred while it plays: four roots, the cap
+        }
+      }
+
+      it("is dropped at the cut, not placed: the four lines deferred while it played all stay", () => {
+        deferPlayAndQueueChatter();
+        vi.advanceTimersByTime(1600);
+        engine.fire("q.x"); // t=9 s
+
+        expect(mockLogger.debug).toHaveBeenCalledWith('Scenario "q.a" dropped — waited 9000 ms (max 8000 ms)');
+        expect(mockLogger.debug).not.toHaveBeenCalledWith(expect.stringContaining("queue full"));
+        expect(waitingIds()).toEqual(["q.b", "q.c", "q.d", "q.e"]);
+
+        flushVoiceAndSfx(audio);
+
+        expect(heard()).toEqual(["busy", "a", "x", "b", "c", "d", "e"]);
+      });
+
+      it("is stashed when cut still inside its max wait (positive control)", () => {
+        deferPlayAndQueueChatter();
+        vi.advanceTimersByTime(400);
+        engine.fire("q.x"); // t=7.8 s
+
+        expect(mockLogger.debug).toHaveBeenCalledWith('Scenario "q.a" pending (1 of 4) — stashed (preempted)');
+        expect(mockLogger.debug).toHaveBeenCalledWith('Scenario "q.b" dropped — queue full (lightest)');
+        expect(waitingIds()).toEqual(["q.a", "q.c", "q.d", "q.e"]);
+      });
+    });
+
+    describe("cut twice: a resumed fire keeps its first due time", () => {
+      function playCutResumeCutAgain(): void {
+        define("a", WEIGHT.NORMAL, { resumable: true, sequence: ["q/a.mp3", "q/b.mp3", "q/c.mp3"] });
+        defineInterrupt();
+
+        engine.fire("q.a"); // t=0: a.mp3 plays
+        vi.advanceTimersByTime(1000);
+        endClip(); // t=1 s: b.mp3 plays
+        vi.advanceTimersByTime(1000);
+        engine.fire("q.x"); // t=2 s: cut
+        vi.advanceTimersByTime(1000);
+        endClip(); // t=3 s: resumes from b.mp3
+        vi.advanceTimersByTime(2000);
+        engine.fire("q.x"); // t=5 s: cut again
+      }
+
+      it("resumes again at 7 s behind a 2 s interrupt line", () => {
+        playCutResumeCutAgain();
+        vi.advanceTimersByTime(2000);
+        endClip();
+
+        expect(heard()).toEqual(["a", "b", "x", "b", "x", "b"]);
+        expect(mockLogger.info.mock.calls.filter(([l]) => l === 'Resuming scenario "q.a"')).toHaveLength(2);
+      });
+
+      it("is dropped at 9 s behind a 4 s one, the wait counted from 0 s rather than the second cut", () => {
+        playCutResumeCutAgain();
+        vi.advanceTimersByTime(4000);
+        endClip();
+
+        expect(mockLogger.debug).toHaveBeenCalledWith('Scenario "q.a" dropped — waited 9000 ms (max 8000 ms)');
+        expect(heard()).toEqual(["a", "b", "x", "b", "x"]);
+      });
+    });
+
+    it("a stash plays before an equal-weight fire deferred while it played", () => {
+      define("a", WEIGHT.NORMAL);
+      define("b", WEIGHT.NORMAL);
+      defineInterrupt();
+
+      engine.fire("q.a"); // t=0: plays
+      vi.advanceTimersByTime(1000);
+      engine.fire("q.b"); // t=1 s: deferred behind it
+      vi.advanceTimersByTime(1000);
+      engine.fire("q.x"); // t=2 s: cuts a, stashed due at 0 s
+
+      expect(waitingIds()).toEqual(["q.a", "q.b"]);
+
+      flushVoiceAndSfx(audio);
+
+      expect(heard()).toEqual(["a", "x", "a", "b"]);
     });
   });
 });

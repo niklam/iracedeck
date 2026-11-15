@@ -60,6 +60,7 @@ export type FireStart = Pick<
   | "prerollCount"
   | "event"
   | "sessionGeneration"
+  | "dueAt"
   | "cutTail"
   | "ended"
   | "onSettled"
@@ -102,6 +103,7 @@ export class Playback {
       usedChannels: collectUsedChannels(start.ops),
       event: start.event,
       sessionGeneration: start.sessionGeneration,
+      dueAt: start.dueAt,
       cutTail: start.cutTail,
       ended: start.ended,
       onSettled: start.onSettled,
@@ -272,6 +274,8 @@ export class Playback {
       prerollCount: 0,
       event: fire.event,
       sessionGeneration: fire.sessionGeneration,
+      // The same fire, so the same due time — though an ended tail is never stashed.
+      dueAt: fire.dueAt,
       cutTail: [],
       ended: true,
       onSettled: fire.onSettled,
