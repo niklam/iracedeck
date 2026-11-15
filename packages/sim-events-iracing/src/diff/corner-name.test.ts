@@ -28,8 +28,16 @@ describe("diffCornerName", () => {
     emit = vi.fn();
   });
 
-  function tick(lapDistPct: number, overrides: Partial<TelemetryData> = {}): void {
-    diffCornerName(state, telemetry({ LapDistPct: lapDistPct, ...overrides }), true, MARKERS, TRACK_LENGTH, LEAD, emit);
+  function tick(lapDistPct: number, overrides: Partial<TelemetryData> = {}): number | null {
+    return diffCornerName(
+      state,
+      telemetry({ LapDistPct: lapDistPct, ...overrides }),
+      true,
+      MARKERS,
+      TRACK_LENGTH,
+      LEAD,
+      emit,
+    );
   }
 
   it("seeds silently on the first valid tick", () => {
@@ -117,6 +125,58 @@ describe("diffCornerName", () => {
     diffCornerName(state, telemetry({ LapDistPct: 0.0905 }), true, null, TRACK_LENGTH, LEAD, emit);
     diffCornerName(state, telemetry({ LapDistPct: 0.0905 }), true, MARKERS, null, LEAD, emit);
     expect(emit).not.toHaveBeenCalled();
+  });
+
+  // #1676: the translator orders this call against a sector start swept on
+  // the same tick by how far behind the lead point each crossed start sits.
+  describe("returns how far behind the lead point the marker it published sits", () => {
+    it("for a crossing it publishes", () => {
+      // Lead point 0.095 → 0.1005, across Turn 1 at 0.1.
+      expect(tick(0.085)).toBeNull();
+      expect(tick(0.0905)).toBeCloseTo(0.0005, 12);
+    });
+
+    it("for the nearest marker when several cross in one tick", () => {
+      const dense: CornerMarker[] = [
+        { startPct: 0.1, name: "A", slug: "a" },
+        { startPct: 0.105, name: "B", slug: "b" },
+      ];
+
+      diffCornerName(state, telemetry({ LapDistPct: 0.08 }), true, dense, TRACK_LENGTH, LEAD, emit);
+      // Lead point 0.09 → 0.11: B, the one spoken, sits 0.005 behind it.
+      const behind = diffCornerName(state, telemetry({ LapDistPct: 0.1 }), true, dense, TRACK_LENGTH, LEAD, emit);
+
+      expect(emit).toHaveBeenCalledWith({ event: "cornerName.approaching", data: { name: "B", slug: "b" } });
+      expect(behind).toBeCloseTo(0.005, 12);
+    });
+
+    it("across the start/finish line", () => {
+      const lineCorner: CornerMarker[] = [{ startPct: 0.995, name: "Last", slug: "last" }];
+
+      // Lead point 0.99 → 0.0005, across the corner at 0.995.
+      diffCornerName(state, telemetry({ LapDistPct: 0.98 }), true, lineCorner, TRACK_LENGTH, LEAD, emit);
+      const behind = diffCornerName(
+        state,
+        telemetry({ LapDistPct: 0.9905 }),
+        true,
+        lineCorner,
+        TRACK_LENGTH,
+        LEAD,
+        emit,
+      );
+
+      expect(emit).toHaveBeenCalledTimes(1);
+      expect(behind).toBeCloseTo(0.0055, 12);
+    });
+
+    it("as null when nothing is crossed, for a crossing consumed on pit road, and when a gate fails", () => {
+      tick(0.05);
+
+      expect(tick(0.06)).toBeNull();
+      expect(tick(0.0905, { OnPitRoad: true })).toBeNull();
+      expect(tick(0.5, { IsOnTrack: false })).toBeNull();
+      expect(emit).not.toHaveBeenCalled();
+    });
   });
 
   it("clamps an absurd lead so a fast car on a short track cannot lap-wrap the lead point", () => {

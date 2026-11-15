@@ -155,8 +155,13 @@ export const TICK_ORDER: readonly TickStage[] = [
     via: "pending",
     events: PIT_LANE_LANDMARKS_EVENTS,
   },
-  // Sector start before the corner name (#1676): on one tick that sweeps both,
-  // the sector call is on the line and is published first.
+  // Sector start before the corner name (#1676). The two calls one tick sweeps
+  // are published in the order their markers were crossed, a tie (a corner at
+  // the sector line) to the sector call: `translator.ts` swaps them, after
+  // both have run, when the corner was crossed first. So these two rows' order
+  // holds on a one-frame tick and not on every tick, and an `endsOn` pair
+  // between `sectorStart.approaching` and `cornerName.approaching` cannot be
+  // judged from this table.
   { stage: "diffSectorStart", source: "diff/sector-start.ts", via: "pending", events: SECTOR_START_EVENTS },
   { stage: "diffCornerName", source: "diff/corner-name.ts", via: "pending", events: CORNER_NAME_EVENTS },
   { stage: "diffFuelLapsLeft", source: "diff/fuel-laps-left.ts", via: "pending", events: FUEL_LAPS_LEFT_EVENTS },

@@ -34,8 +34,8 @@ describe("diffSectorStart", () => {
       sectors = SECTORS as readonly number[] | null,
       trackLength = TRACK_LENGTH as number | null,
     } = {},
-  ): void {
-    diffSectorStart(
+  ): number | null {
+    return diffSectorStart(
       slice,
       telemetry({ LapDistPct: lapDistPct, ...overrides }),
       practice,
@@ -154,6 +154,40 @@ describe("diffSectorStart", () => {
     tick(0.2425, { LapDistPct: undefined });
 
     expect(emit).not.toHaveBeenCalled();
+  });
+
+  // #1676: the translator orders this call against a corner name swept on the
+  // same tick by how far behind the lead point each crossed start sits.
+  describe("returns how far behind the lead point the start it published sits", () => {
+    it("for a crossing it publishes", () => {
+      // Lead point 0.2375 → 0.2525, across sector 2's start at 0.25.
+      expect(tick(0.2275)).toBeNull();
+      expect(tick(0.2425)).toBeCloseTo(0.0025, 12);
+      expect(emit).toHaveBeenCalledTimes(1);
+    });
+
+    it("across the start/finish line, for sector 1", () => {
+      // Lead point 0.99 → 0.005, across sector 1's start at 0.
+      tick(0.98);
+
+      expect(tick(0.995)).toBeCloseTo(0.005, 12);
+      expect(sectorsEmitted()).toEqual([1]);
+    });
+
+    it("as null when nothing is crossed, and for a crossing consumed on pit road", () => {
+      tick(0.2);
+
+      expect(tick(0.21)).toBeNull();
+      expect(tick(0.2425, { OnPitRoad: true })).toBeNull();
+      expect(emit).not.toHaveBeenCalled();
+    });
+
+    it("as null when a gate fails", () => {
+      tick(0.2275);
+
+      expect(tick(0.2425, {}, { practice: false })).toBeNull();
+      expect(tick(0.2425, { IsOnTrack: false })).toBeNull();
+    });
   });
 
   it("resets its pass in place when a gate fails, so the slice object is kept", () => {

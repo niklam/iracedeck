@@ -4,8 +4,8 @@
  * sectors as the `trackSectors` slice caches them — in every session type,
  * re-resolved on a new `(TrackID, SessionNum)`, `null` for sectors that fail
  * validation, and wiped at a replay like the other track caches; and the
- * order a sector start and a corner name swept on one tick reach the bus in
- * (#1676).
+ * order a sector start and a corner name swept on one tick reach the bus in:
+ * the order their markers were crossed, a tie to the sector call (#1676).
  */
 import { _resetEventBus, getEventBus, initializeEventBus } from "@iracedeck/event-bus";
 import {
@@ -36,8 +36,16 @@ vi.mock("@iracedeck/iracing-sdk", async (importOriginal) => {
 /** A track name no bundled snapshot carries, given {@link TEST_RING_MARKERS} below. */
 const TEST_RING = "Test Ring";
 
-/** One corner exactly at the five-sector layout's sector 2 start (0.2): a corner at the sector line. */
-const TEST_RING_MARKERS: CornerMarker[] = [{ startPct: 0.2, name: "Line Corner", slug: "line-corner" }];
+/**
+ * Corners placed against the five-sector layout: one exactly at sector 2's
+ * start (0.2), a corner at the sector line; one 0.01 lap before sector 3's
+ * start (0.4); one 0.01 lap after sector 4's (0.6).
+ */
+const TEST_RING_MARKERS: CornerMarker[] = [
+  { startPct: 0.2, name: "Line Corner", slug: "line-corner" },
+  { startPct: 0.39, name: "Early Corner", slug: "early-corner" },
+  { startPct: 0.61, name: "Late Corner", slug: "late-corner" },
+];
 
 // The bundled corner data, with one synthetic track whose marker sits where the
 // tests need it; every other name resolves as it really does.
@@ -508,8 +516,9 @@ describe("a sector start and a corner name swept on one tick (#1676)", () => {
   }
 
   // As above, 0.18 → 0.19 sweeps the lead point from 0.191 to 0.201, over
-  // both sector 2's start and the corner at 0.2.
-  it("publishes sectorStart.approaching before cornerName.approaching", () => {
+  // both sector 2's start and the corner at 0.2: a tie, which goes to the
+  // sector call.
+  it("publishes sectorStart.approaching before cornerName.approaching for a corner at the sector line", () => {
     const seen = collectInOrder();
 
     startOnTestRing(FIVE_SECTORS);
@@ -528,5 +537,30 @@ describe("a sector start and a corner name swept on one tick (#1676)", () => {
     controller.__tick(tick(0, { LapDistPct: 0.19 }));
 
     expect(seen).toEqual(["corner Line Corner"]);
+  });
+
+  // A tick wider than one frame (an event-loop stall): 0.03 of a lap, under the
+  // sweep's 0.05 teleport threshold. 0.37 → 0.40 sweeps the lead point from
+  // 0.381 to 0.411, over the corner at 0.39 and then sector 3's start at 0.4.
+  it("publishes the corner name first on a wide tick that crosses its marker before the sector start", () => {
+    const seen = collectInOrder();
+
+    startOnTestRing(FIVE_SECTORS);
+    controller.__tick(tick(0, { LapDistPct: 0.37 }));
+    controller.__tick(tick(0, { LapDistPct: 0.4 }));
+
+    expect(seen).toEqual(["corner Early Corner", "sector 3"]);
+  });
+
+  // The same width: 0.57 → 0.60 sweeps from 0.581 to 0.611, over sector 4's
+  // start at 0.6 and then the corner at 0.61.
+  it("publishes the sector call first on a wide tick that crosses the sector start before the marker", () => {
+    const seen = collectInOrder();
+
+    startOnTestRing(FIVE_SECTORS);
+    controller.__tick(tick(0, { LapDistPct: 0.57 }));
+    controller.__tick(tick(0, { LapDistPct: 0.6 }));
+
+    expect(seen).toEqual(["sector 4", "corner Late Corner"]);
   });
 });

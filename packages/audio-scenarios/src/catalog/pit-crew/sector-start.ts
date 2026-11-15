@@ -25,7 +25,8 @@
  * and plays the moment it ends; when the corner name plays first, this
  * contract is `queueable`, so the sector call waits for the name rather
  * than being dropped. On a tick that sweeps both, the translator publishes
- * the sector start first, so the call lands on the line.
+ * them in the order the car reaches them, a corner at the sector line after
+ * the sector start, so that call lands on the line.
  *
  * **A call more than 1.5 s late is dropped.** Both contracts carry
  * {@link MARKER_CALL_MAX_LAG_MS} as `maxQueueWaitMs`, measured from the

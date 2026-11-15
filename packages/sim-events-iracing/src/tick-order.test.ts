@@ -659,8 +659,9 @@ describe("TICK_ORDER", () => {
     });
 
     // The call-order test proves the table is the code; this pins the order a
-    // feature depends on (#1676): on a tick that sweeps both, the sector call is
-    // on the line and is published first, the corner name queuing behind it.
+    // feature depends on (#1676): the two calls one tick sweeps are published
+    // in the order their markers were crossed, and a tie, a corner at the
+    // sector line, goes to the sector call because it runs first.
     it("runs diffSectorStart directly before diffCornerName", () => {
       const sector = TICK_ORDER.findIndex((s) => s.stage === "diffSectorStart");
       const corner = TICK_ORDER.findIndex((s) => s.stage === "diffCornerName");
