@@ -56,8 +56,8 @@ src/
                                          # /testing (a devDependency), never by relative path
   audio/                                 # Shared audio helpers: Race Engineer/Radar master gates and
                                          # the side effects of a gate change (feature-gates, #1007),
-                                         # voice-sequence player + toggle acknowledgment
-                                         # (audio-toggles), bus volume steppers (audio-volume) over the
+                                         # voice-sequence player + key-press acknowledgments
+                                         # (audio-toggles, playKeyAck, #1698), bus volume steppers (audio-volume) over the
                                          # level readers (audio-levels), the volume step tick
                                          # (volume-tick, #1455), the press sound player (press-sounds,
                                          # #269), the audio session hold that keeps the device open
@@ -104,6 +104,8 @@ The replay engine — the replay command gate (the one sender of replay commands
 The former `icon-update-throttle.ts` (per-context 10 Hz throttle + trailing-edge coalescer for telemetry-driven `setKeyImage` bursts, #493) moved to `@iracedeck/deck-core` in #899 — import `IconUpdateThrottle` from there.
 
 The top-level `icons/` directory holds one 144x144 runtime template per dynamic-icon action (content rendered from live telemetry) — see the directory for the current set and `.claude/rules/icons.md` for the template format.
+
+A Race Engineer line the plugin plays by path on the Voice channel — a key-press acknowledgment, the Settings window's voice Test, the radio check — goes through the scenario engine's `playClips` while the engine is up (`isAudioScenariosInitialized()`), never `playVoiceSequence` / `playOnChannel` beside it: a direct play over a callout takes the scheduler's one per-channel completion callback and strands that fire, leaving the engineer silent until `stopAll` (#1698). Key-press acks call `playKeyAck` in `audio/audio-toggles.ts` (`whenBusy: "interrupt"` at `NORMAL`); the radio check passes `whenBusy: "skip"` (#1696). The direct `playVoiceSequence` remains only for when the engine is not initialised. The engine side is in `packages/audio-scenarios/CLAUDE.md` (`scheduler.ts`).
 
 Press sounds (#269) are decided by `@iracedeck/deck-core`'s `withPressSounds`, which `plugin-runtime`'s `registerActions` wraps around every action; an action only declares its press shape — `keyPressShape`, `dialPressShape` and `touchPressShape`, the ones its surfaces need — and never plays a press sound itself. What plays is `audio/press-sounds.ts`: `PRESS_SOUND_CLIPS` (the single and the double bleep, WAVs at the `sfx/` root) and `playPressSound`, the `play` delegate handed to `initPressSounds`, which plays on `AudioChannel.Feedback` at the volume tick's level rule (`volumeTickLevel(readRadarVolume())`, floor included) and reads neither the mode nor the connection, since the wrapper owns those gates. The settings window's `press-tap` / `press-long` previews (`audio-previews.ts`) call it directly, whatever the setting says, and a Press sound other than `none` is the third gate of the audio session hold. Spec: docs/superpowers/specs/2026-10-28-issue-269-press-sounds.md.
 
