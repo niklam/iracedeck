@@ -397,12 +397,12 @@ describe("Settings (persisted legacy field stripping)", () => {
     expect(Settings.parse({ cornerNamesTap: "none" }).cornerNamesTap).toBe("corners");
   });
 
-  it("reads a target this build does not know as the default rather than failing the key (#1699)", () => {
+  it("reads a target this build does not know without failing the key: tap Corners, long press Nothing (#1699)", () => {
     const parsed = Settings.parse({ mode: "corner-names", cornerNamesTap: "flags", cornerNamesLongPress: 7 });
 
     expect(parsed.mode).toBe("corner-names");
     expect(parsed.cornerNamesTap).toBe("corners");
-    expect(parsed.cornerNamesLongPress).toBe("sectors");
+    expect(parsed.cornerNamesLongPress).toBe("none");
   });
 
   it("still accepts persisted race-engineer mode for backward compat", () => {

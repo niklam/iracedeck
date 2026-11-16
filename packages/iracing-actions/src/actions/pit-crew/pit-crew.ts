@@ -112,9 +112,12 @@ export const Settings = CommonSettings.extend({
   mode: z.enum(["race-engineer", "radar", "radar-volume", "corner-names"]).default("race-engineer"),
   direction: z.enum(["up", "down"]).default("up"),
   // A stored value this build does not know (a later version's target, a hand-edited
-  // profile) reads as the default rather than failing every parse of the key (#1699).
+  // profile) never fails the key's parse (#1699): a tap reads as the default, and a long
+  // press as Nothing, so an unknown gesture writes no global setting the user did not pick
+  // (the setup dials' gesture slots catch to "none" for the same reason). A missing key
+  // still reads the defaults, tap Corners and long press Sectors.
   cornerNamesTap: z.enum(["both", "corners", "sectors"]).default("corners").catch("corners"),
-  cornerNamesLongPress: z.enum(["none", "both", "corners", "sectors"]).default("sectors").catch("sectors"),
+  cornerNamesLongPress: z.enum(["none", "both", "corners", "sectors"]).default("sectors").catch("none"),
 });
 
 type PitCrewSettings = z.infer<typeof Settings>;
