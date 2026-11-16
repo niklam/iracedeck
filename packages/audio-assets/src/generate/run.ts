@@ -562,6 +562,36 @@ export async function runGeneration(options: RunOptions): Promise<RunResult> {
       takes.set(hash, { relPath, voiceName, key, row });
     };
 
+    /**
+     * Before a live run puts new bytes at `relPath`: drop the row there and
+     * save the manifest without it (`ManifestSaver.invalidate`). A row that
+     * reaches this point is stale or names a missing clip, but its hash may
+     * still be the entry's (the repair case); left in place beside new bytes
+     * while every later save failed, it would be read as a cache hit with
+     * its old request id. Returns the error when that save fails, after
+     * logging the entry FAILED; the caller then neither requests nor places
+     * anything. The row is not restored after a later failure: the next run
+     * would re-cut this entry either way.
+     */
+    const dropRowBeforePlacing = (relPath: string, tag: string, what: string): boolean => {
+      const previousId = requestIdAt(relPath);
+      const err = saver.invalidate(relPath);
+
+      if (err !== null) {
+        log.error(
+          `[${tag}] ${relPath}  —  FAILED: could not save the manifest without its current row before ${what}: ` +
+            `${errorMessage(err)}; the clip and its row were left as they were`,
+        );
+
+        return false;
+      }
+
+      // The take it named is going; this clip no longer holds its id.
+      if (previousId && heldRequestIds.get(previousId) === relPath) heldRequestIds.delete(previousId);
+
+      return true;
+    };
+
     const inScope = (node: OrderedEntry): boolean =>
       (!scope.groups || scope.groups.includes(node.groupName)) &&
       (!scope.entries || scope.entries.includes(node.entry.name));
@@ -711,6 +741,12 @@ export async function runGeneration(options: RunOptions): Promise<RunResult> {
           continue;
         }
 
+        if (!dropRowBeforePlacing(relPath, "copy", "copying the take in")) {
+          outcomes.set(key, "failed");
+          count("failed");
+          continue;
+        }
+
         try {
           placeFileAtomically(absPath, (tempPath) => copyFileSync(path.join(root, source.relPath), tempPath));
         } catch (err) {
@@ -778,6 +814,14 @@ export async function runGeneration(options: RunOptions): Promise<RunResult> {
         );
         outcomes.set(key, "cut");
         count("generated");
+        continue;
+      }
+
+      // Ahead of the request, so nothing is paid for a take the manifest
+      // could not record.
+      if (!dropRowBeforePlacing(relPath, "generate", "requesting a new take")) {
+        outcomes.set(key, "failed");
+        count("failed");
         continue;
       }
 

@@ -950,13 +950,16 @@ describe("runGeneration — a clip is put down whole or not at all (#1643)", () 
     seed(manifest, "voice/default/g/x.mp3", "old-hash", "req-old", "the old take");
     fsHook.failsAt = clipWrite;
 
-    const result = await run({ voiceConfigs: new Map([["default", voice]]), manifest }).promise;
+    const { promise, persistManifest } = run({ voiceConfigs: new Map([["default", voice]]), manifest });
+    const result = await promise;
 
     expect(result.totals.failed).toBe(1);
     expect(filesUnderRoot()).toEqual(["voice/default/g/x.mp3"]);
     expect(readClip("voice/default/g/x.mp3")).toBe("the old take");
-    // The row still names the old config, so the next run cuts it again.
-    expect(manifest.entries["voice/default/g/x.mp3"]!.hash).toBe("old-hash");
+    // The stale row was dropped, and saved, before the request: the next
+    // run cuts the entry again, as it would have under the stale row.
+    expect(manifest.entries).toEqual({});
+    expect(persistManifest).toHaveBeenCalledTimes(1);
   });
 
   it("leaves no partial copy at the clip's path, and no temp file, when a copy fails part-way", async () => {
@@ -1000,6 +1003,131 @@ describe("runGeneration — a clip is put down whole or not at all (#1643)", () 
     expect(written[0]).toMatch(/^voice\/default\/g\/x\.mp3\.\d+\.\d+\.tmp$/);
     expect(filesUnderRoot()).toEqual(["voice/default/g/x.mp3"]);
     expect(readClip("voice/default/g/x.mp3")).toBe("take 1 of hello");
+  });
+});
+
+describe("runGeneration — the row at a path is dropped before new bytes go there (#1643)", () => {
+  const chain = {
+    intro: [{ name: "x", text: "Last lap was." }],
+    tail: [{ name: "x", text: "point four", previous_request_ids: ["intro/x"] }],
+  };
+  const voice = buildVoice(chain);
+  const INTRO = "voice/default/intro/x.mp3";
+
+  /** The repair case: INTRO's row is current (its hash is the entry's) but its clip is missing. */
+  function currentRowMissingClip(): Manifest {
+    const manifest = emptyManifest();
+
+    seed(manifest, INTRO, hashOf(voice, "intro/x"), "req-old");
+    fs.rmSync(path.join(root, INTRO));
+
+    return manifest;
+  }
+
+  /** A persistManifest that lands only on the calls `landsOn` picks (1-based), keeping what each landed save wrote. */
+  function savesThatLand(landsOn: (call: number) => boolean) {
+    const written: Manifest[] = [];
+    let call = 0;
+    const persistManifest = vi.fn<(manifest: Manifest) => void>((manifest) => {
+      if (!landsOn(++call)) throw new Error("UNKNOWN: unknown error, open 'generate.manifest.json'");
+
+      written.push(JSON.parse(JSON.stringify(manifest)) as Manifest);
+    });
+
+    return { persistManifest, written, manifestSaveRetry: { attempts: 1, delayMs: 0, sleep: () => {} } };
+  }
+
+  it("requests nothing and places nothing when the save that drops the row fails, failing its dependents", async () => {
+    const manifest = currentRowMissingClip();
+    const oldRow = manifest.entries[INTRO];
+    const { persistManifest, written, manifestSaveRetry } = savesThatLand(() => false);
+    const { promise, synthesize, log } = run({
+      voiceConfigs: new Map([["default", voice]]),
+      manifest,
+      persistManifest,
+      manifestSaveRetry,
+    });
+    const result = await promise;
+
+    expect(synthesize).not.toHaveBeenCalled();
+    expect(result.totals).toEqual({ generated: 0, copied: 0, skipped: 0, failed: 2, refused: 0 });
+    expect(filesUnderRoot()).toEqual([]);
+    expect(manifest.entries).toEqual({ [INTRO]: oldRow });
+    expect(written).toEqual([]);
+    expect(log.lines).toContain(
+      `[generate] ${INTRO}  —  FAILED: could not save the manifest without its current row before requesting a new take: ` +
+        "UNKNOWN: unknown error, open 'generate.manifest.json'; the clip and its row were left as they were",
+    );
+    expect(log.lines).toContain(
+      '[generate] voice/default/tail/x.mp3  —  FAILED: dependency "intro/x" failed in this run',
+    );
+  });
+
+  it("never leaves the old row on disk beside the new take when every later save fails", async () => {
+    const manifest = currentRowMissingClip();
+    // Only the save that drops the old row lands.
+    const { persistManifest, written, manifestSaveRetry } = savesThatLand((call) => call === 1);
+    const { promise } = run({
+      voiceConfigs: new Map([["default", buildVoice({ intro: chain.intro })]]),
+      manifest,
+      persistManifest,
+      manifestSaveRetry,
+    });
+    const result = await promise;
+
+    expect(result.totals.generated).toBe(1);
+    expect(readClip(INTRO)).toBe("take 1 of Last lap was.");
+    // On disk: no row for the clip, so the next run re-cuts it rather than
+    // taking the new bytes as a cache hit under req-old.
+    expect(written.map((saved) => saved.entries)).toEqual([{}]);
+    expect(result.unsavedRows).toEqual([INTRO]);
+    expect(manifest.entries[INTRO]!.requestId).toBe("req-1");
+  });
+
+  it("copies nothing in when the save that drops the row fails", async () => {
+    const hello = buildVoice({ g: [{ name: "x", text: "hello" }] });
+    const manifest = emptyManifest();
+
+    seed(manifest, "voice/default/g/x.mp3", hashOf(hello, "g/x"), "req-hello");
+    seed(manifest, "voice/shawn/g/x.mp3", hashOf(hello, "g/x"), "req-shawn-old");
+    fs.rmSync(path.join(root, "voice/shawn/g/x.mp3"));
+
+    const { persistManifest, manifestSaveRetry } = savesThatLand(() => false);
+    const { promise, synthesize, log } = run({
+      voiceConfigs: new Map([
+        ["default", hello],
+        ["shawn", hello],
+      ]),
+      manifest,
+      persistManifest,
+      manifestSaveRetry,
+      scope: { voices: ["shawn"], groups: null, entries: null },
+    });
+    const result = await promise;
+
+    expect(result.totals).toEqual({ generated: 0, copied: 0, skipped: 0, failed: 1, refused: 0 });
+    expect(synthesize).not.toHaveBeenCalled();
+    expect(filesUnderRoot()).toEqual(["voice/default/g/x.mp3"]);
+    expect(manifest.entries["voice/shawn/g/x.mp3"]!.requestId).toBe("req-shawn-old");
+    expect(log.lines.join("\n")).toContain(
+      "[copy] voice/shawn/g/x.mp3  —  FAILED: could not save the manifest without its current row before copying the take in",
+    );
+  });
+
+  it("drops nothing in a dry run", async () => {
+    const manifest = currentRowMissingClip();
+    const { persistManifest, manifestSaveRetry } = savesThatLand(() => false);
+    const result = await run({
+      voiceConfigs: new Map([["default", voice]]),
+      manifest,
+      persistManifest,
+      manifestSaveRetry,
+      dryRun: true,
+    }).promise;
+
+    expect(result.totals).toEqual({ generated: 2, copied: 0, skipped: 0, failed: 0, refused: 0 });
+    expect(persistManifest).not.toHaveBeenCalled();
+    expect(manifest.entries[INTRO]!.requestId).toBe("req-old");
   });
 });
 
