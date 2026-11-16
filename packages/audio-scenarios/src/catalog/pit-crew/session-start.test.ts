@@ -1221,7 +1221,7 @@ describe("a clip fire at connect holds the Voice bus against the brief (issue #1
       active: { id: "pit-crew.radio-check" },
       waiting: [{ id: "pit-crew.session-start", maxWaitMs: DEFAULT_MAX_QUEUE_WAIT_MS }],
     });
-    const { queuedAt, maxWaitMs } = voiceBus()!.waiting[0];
+    const { dueAt, maxWaitMs } = voiceBus()!.waiting[0];
 
     // The second clip follows the first, and the brief still waits.
     audio._triggerChannelEnd(AudioChannel.Voice);
@@ -1230,7 +1230,7 @@ describe("a clip fire at connect holds the Voice bus against the brief (issue #1
 
     // The last clip ends: the brief takes the bus at once, its frame first,
     // having waited about 1.5 s — far inside its max wait.
-    const waitedMs = Date.now() - queuedAt;
+    const waitedMs = Date.now() - dueAt;
     audio._triggerChannelEnd(AudioChannel.Voice);
     expect(waitedMs).toBe(1500);
     expect(waitedMs).toBeLessThan(maxWaitMs);

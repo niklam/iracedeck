@@ -317,6 +317,8 @@ export class Scheduler implements PlaybackListener {
       prerollCount: 0,
       event: null,
       sessionGeneration: this.sessionGeneration,
+      // Never stashed (its id names no contract), so never read: its own start.
+      dueAt: Date.now(),
       cutTail: [],
       ended: false,
     });
