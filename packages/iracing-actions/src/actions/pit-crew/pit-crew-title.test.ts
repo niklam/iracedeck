@@ -64,11 +64,24 @@ vi.mock("../../audio/feature-gates.js", () => ({
   toggleRadarFeature: vi.fn(),
 }));
 
-/** Every line of each mode's default title, as the rendered `<text>` content. */
+/**
+ * Every line of each toggle's default title, as the rendered `<text>` content.
+ * A Corner Names key's follows what its tap toggles (#1699).
+ */
 const TOGGLES = [
-  { settings: { mode: "race-engineer" }, lines: ["RACE", "ENGINEER"] },
-  { settings: { mode: "radar" }, lines: ["RADAR"] },
-  { settings: { mode: "corner-names" }, lines: ["CORNER", "NAMES"] },
+  { name: "race-engineer", settings: { mode: "race-engineer" }, lines: ["RACE", "ENGINEER"] },
+  { name: "radar", settings: { mode: "radar" }, lines: ["RADAR"] },
+  { name: "corner-names", settings: { mode: "corner-names" }, lines: ["CORNER", "NAMES"] },
+  {
+    name: "corner-names, tap sectors",
+    settings: { mode: "corner-names", cornerNamesTap: "sectors" },
+    lines: ["SECTOR", "CALLS"],
+  },
+  {
+    name: "corner-names, tap both",
+    settings: { mode: "corner-names", cornerNamesTap: "both" },
+    lines: ["TRACK", "CALLS"],
+  },
 ] as const;
 
 const VOLUMES = [
@@ -125,8 +138,8 @@ describe("Pit Crew title defaults (#1479)", () => {
   });
 
   describe("toggle keys hide the title by default", () => {
-    for (const { settings, lines } of TOGGLES) {
-      describe(settings.mode, () => {
+    for (const { name, settings, lines } of TOGGLES) {
+      describe(name, () => {
         it.each(GLOBAL_SHOW_TITLE)("hides the title with the global Show title %s", (_label, global) => {
           mockGetGlobalSettings.mockReturnValue({ ...global });
 

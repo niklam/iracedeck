@@ -4,6 +4,7 @@ import type { z } from "zod";
 
 import { _resetFeatureGateSync } from "../../audio/feature-gates.js";
 import { _resetVolumeTicks } from "../../audio/volume-tick.js";
+import { borderColorForState, statusBarSplit } from "../../icons/status-bar.js";
 // Imports appear above the `vi.mock(...)` blocks because the repo-wide
 // prettier config (@elgato/prettier-config + @trivago/prettier-plugin-sort-imports)
 // hoists every import to the top and won't leave them interleaved with other
@@ -16,12 +17,16 @@ import {
   applyRaceEngineerAudio,
   applyRadarEnabled,
   applyRadarVolume,
+  cornerNamesIndicator,
+  cornerNamesPathContent,
   generatePitCrewSvg,
   PIT_CREW_UUID,
   PitCrew,
   playVoiceSequence,
   RADIO_CHECK_CLIPS_ID,
+  sectorCallsPathContent,
   Settings,
+  trackCallsPathContent,
 } from "./pit-crew.js";
 
 // ─── Hoisted mocks ──────────────────────────────────────────────────────────
@@ -147,6 +152,10 @@ vi.mock("../../icons/status-bar.js", () => ({
   borderColorForState: vi.fn((state: string) => (state === "on" ? "#2ecc71" : "#e74c3c")),
   statusBarOn: vi.fn(() => '<rect class="status-bar-on"/>'),
   statusBarOff: vi.fn(() => '<rect class="status-bar-off"/>'),
+  statusBarSplit: vi.fn(
+    (left: string, right: string, leftLabel: string, rightLabel: string) =>
+      `<rect class="status-bar-split" data-left="${left}:${leftLabel}" data-right="${right}:${rightLabel}"/>`,
+  ),
 }));
 
 vi.mock("@iracedeck/audio-scenarios/pit-crew", () => ({
@@ -1713,8 +1722,152 @@ describe("generatePitCrewSvg", () => {
 
   it("paints the status bar OFF for corner-names mode when the callout opt-in is disabled (#897)", () => {
     hoisted.setGlobalSettings({ calloutEnabledCornerNames: false });
-    const result = decodeURIComponent(generatePitCrewSvg(Settings.parse({ mode: "corner-names" })));
+    const result = decodeURIComponent(
+      generatePitCrewSvg(Settings.parse({ mode: "corner-names", cornerNamesLongPress: "none" })),
+    );
     expect(result).toContain("status-bar-off");
+  });
+
+  describe("corner-names key icon (#1699)", () => {
+    const CORNERS = "calloutEnabledCornerNames";
+    const SECTORS = "calloutEnabledSectorStarts";
+
+    function render(settings: TestInputs): string {
+      return decodeURIComponent(generatePitCrewSvg(Settings.parse({ mode: "corner-names", ...settings })));
+    }
+
+    it.each([
+      ["corners", cornerNamesPathContent, "CORNER\nNAMES"],
+      ["sectors", sectorCallsPathContent, "SECTOR\nCALLS"],
+      ["both", trackCallsPathContent, "TRACK\nCALLS"],
+    ] as const)("draws the glyph and default title of a tap set to %s", (tap, glyph, title) => {
+      const svg = render({ cornerNamesTap: tap, cornerNamesLongPress: "none" });
+
+      expect(svg).toContain(glyph("#ffffff"));
+      expect(svg).toContain(`>${title}</text>`);
+    });
+
+    it("draws a different glyph for each tap target, each the corner glyph's convention", () => {
+      const glyphs = [cornerNamesPathContent, sectorCallsPathContent, trackCallsPathContent].map((g) => g("#abc"));
+
+      expect(new Set(glyphs).size).toBe(3);
+
+      for (const glyph of glyphs) {
+        expect(glyph).toContain('fill="none" stroke="#abc"');
+        expect(glyph).not.toContain("{{");
+      }
+    });
+
+    it("keeps the glyph and title of the tap whatever the long press toggles", () => {
+      const svg = render({ cornerNamesTap: "sectors", cornerNamesLongPress: "both" });
+
+      expect(svg).toContain(sectorCallsPathContent("#ffffff"));
+      expect(svg).toContain(">SECTOR\nCALLS</text>");
+    });
+
+    describe("status bar over everything the key toggles", () => {
+      it.each([
+        ["corners", "none"],
+        ["corners", "corners"],
+      ] as const)("reads only the corners opt-in for tap %s, long press %s", (tap, long) => {
+        hoisted.setGlobalSettings({ [CORNERS]: false, [SECTORS]: true });
+        expect(cornerNamesIndicator(Settings.parse({ cornerNamesTap: tap, cornerNamesLongPress: long }))).toEqual({
+          kind: "toggle",
+          state: "off",
+        });
+
+        hoisted.setGlobalSettings({ [CORNERS]: true, [SECTORS]: false });
+        expect(cornerNamesIndicator(Settings.parse({ cornerNamesTap: tap, cornerNamesLongPress: long }))).toEqual({
+          kind: "toggle",
+          state: "on",
+        });
+      });
+
+      it.each([
+        ["sectors", "none"],
+        ["sectors", "sectors"],
+      ] as const)("reads only the sectors opt-in for tap %s, long press %s", (tap, long) => {
+        hoisted.setGlobalSettings({ [CORNERS]: true, [SECTORS]: false });
+        expect(cornerNamesIndicator(Settings.parse({ cornerNamesTap: tap, cornerNamesLongPress: long }))).toEqual({
+          kind: "toggle",
+          state: "off",
+        });
+
+        hoisted.setGlobalSettings({ [CORNERS]: false, [SECTORS]: true });
+        expect(cornerNamesIndicator(Settings.parse({ cornerNamesTap: tap, cornerNamesLongPress: long }))).toEqual({
+          kind: "toggle",
+          state: "on",
+        });
+      });
+
+      const COVERS_BOTH = [
+        ["corners", "sectors"],
+        ["sectors", "corners"],
+        ["both", "none"],
+        ["both", "both"],
+        ["both", "corners"],
+        ["corners", "both"],
+        ["sectors", "both"],
+      ] as const;
+
+      it.each(COVERS_BOTH)("reads the shared state when both opt-ins agree, for tap %s, long press %s", (tap, long) => {
+        hoisted.setGlobalSettings({ [CORNERS]: true, [SECTORS]: true });
+        expect(render({ cornerNamesTap: tap, cornerNamesLongPress: long })).toContain("status-bar-on");
+
+        hoisted.setGlobalSettings({ [CORNERS]: false, [SECTORS]: false });
+        expect(render({ cornerNamesTap: tap, cornerNamesLongPress: long })).toContain("status-bar-off");
+        expect(statusBarSplit).not.toHaveBeenCalled();
+      });
+
+      it.each(COVERS_BOTH)("splits the bar when the opt-ins disagree, for tap %s, long press %s", (tap, long) => {
+        hoisted.setGlobalSettings({ [CORNERS]: true, [SECTORS]: false });
+        const svg = render({ cornerNamesTap: tap, cornerNamesLongPress: long });
+
+        expect(svg).toContain('data-left="on:CORNER" data-right="off:SECTOR"');
+        expect(svg).not.toContain("status-bar-on");
+        expect(svg).not.toContain("status-bar-off");
+      });
+    });
+
+    it.each([
+      [true, false, "on", "off"],
+      [false, true, "off", "on"],
+    ] as const)(
+      "draws corners %s / sectors %s as a split bar with each half's state and a green border",
+      (corners, sectors, left, right) => {
+        hoisted.setGlobalSettings({ [CORNERS]: corners, [SECTORS]: sectors });
+
+        render({});
+
+        expect(statusBarSplit).toHaveBeenCalledWith(left, right, "CORNER", "SECTOR");
+        expect(borderColorForState).toHaveBeenLastCalledWith("on");
+      },
+    );
+
+    it("draws a red border when every opt-in the key covers is off", () => {
+      hoisted.setGlobalSettings({ [CORNERS]: false, [SECTORS]: false });
+
+      render({});
+
+      expect(borderColorForState).toHaveBeenLastCalledWith("off");
+    });
+
+    it("re-renders the key when the Settings window flips the sector calls", async () => {
+      const action = new PitCrew();
+      await action.onWillAppear(buildAppearEvent({ mode: "corner-names" }) as never);
+      const updateKeyImage = (action as unknown as { updateKeyImage: ReturnType<typeof vi.fn> }).updateKeyImage;
+      updateKeyImage.mockClear();
+
+      hoisted.setGlobalSettings({ ...hoisted.getGlobalSettings(), [SECTORS]: false });
+
+      for (const listener of hoisted.globalSettingsListeners) listener();
+
+      await vi.waitFor(() => expect(updateKeyImage).toHaveBeenCalled());
+
+      const [contextId, image] = updateKeyImage.mock.calls[0]!;
+      expect(contextId).toBe("ctx-1");
+      expect(decodeURIComponent(image as string)).toContain('data-left="on:CORNER" data-right="off:SECTOR"');
+    });
   });
 
   it("omits the status bar entirely for radar-volume mode (no on/off state)", () => {

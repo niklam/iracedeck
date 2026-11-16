@@ -37,6 +37,7 @@ import pitCrewRadarVolumeTemplate from "../../../icons/pit-crew-radar-volume.svg
 import pitCrewTemplate from "../../../icons/pit-crew.svg";
 import {
   isCornerNamesEnabled,
+  isSectorStartsEnabled,
   playVoiceLine,
   playVoiceSequence,
   readJsonStringArray,
@@ -54,7 +55,7 @@ import {
   stepRadarVolume,
 } from "../../audio/audio-volume.js";
 import { toggleRaceEngineerFeature, toggleRadarFeature } from "../../audio/feature-gates.js";
-import { borderColorForState, statusBarOff, statusBarOn } from "../../icons/status-bar.js";
+import { borderColorForState, statusBarOff, statusBarOn, statusBarSplit } from "../../icons/status-bar.js";
 
 // Re-export the shared audio-volume / audio-toggles helpers that the Pit Crew
 // test suite imports from this module by path (back-compat after the #590 and
@@ -209,18 +210,70 @@ function radarPathContent(color: string): string {
 }
 
 /**
+ * @internal Exported for testing.
+ *
  * Simple stroked corner-apex glyph for the Corner Names mode (issue #897) —
  * two concentric track-corner bends. Placeholder artwork, same convention as
  * the radar glyph. Drawn inside MECHANIC_BOUNDS so it flows through the same
- * scaling pipeline as the other glyphs.
+ * scaling pipeline as the other glyphs. Drawn on a Corner Names key whose tap
+ * toggles the corner calls (#1699).
  */
-function cornerNamesPathContent(color: string): string {
+export function cornerNamesPathContent(color: string): string {
   return (
     `<g fill="none" stroke="${color}" stroke-linecap="round" stroke-linejoin="round">` +
     `<path stroke-width="5" d="M 14 62 L 14 34 Q 14 14 34 14 L 60 14"/>` +
     `<path stroke-width="3" d="M 30 62 L 30 44 Q 30 30 44 30 L 60 30"/>` +
     `</g>`
   );
+}
+
+/**
+ * The sector mark (#1699): a timing line across a vertical track stretch whose
+ * edges run at x 14 and 30, as the corner glyph's straight leg does, with a
+ * flag on a pole at its right end. `y` is where the line crosses, `pole` how
+ * far above it the flag's top sits.
+ */
+function sectorMarkContent(color: string, y: number, pole: number): string {
+  const top = y - pole;
+
+  return (
+    `<g fill="none" stroke="${color}" stroke-linecap="round" stroke-linejoin="round">` +
+    `<path stroke-width="4" d="M 6 ${y} L 42 ${y}"/>` +
+    `<path stroke-width="3" d="M 42 ${y} L 42 ${top}"/>` +
+    `</g>` +
+    `<path fill="${color}" d="M 42 ${top} L 58 ${top + 6} L 42 ${top + 12} Z"/>`
+  );
+}
+
+/**
+ * @internal Exported for testing.
+ *
+ * Simple stroked sector glyph for a Corner Names key whose tap toggles the
+ * sector-start calls (#1699): a straight track stretch, its two edges in the
+ * corner glyph's stroke widths, crossed by the sector mark. Placeholder
+ * artwork in the corner glyph's convention, drawn inside MECHANIC_BOUNDS.
+ */
+export function sectorCallsPathContent(color: string): string {
+  return (
+    `<g fill="none" stroke="${color}" stroke-linecap="round" stroke-linejoin="round">` +
+    `<path stroke-width="5" d="M 14 66 L 14 6"/>` +
+    `<path stroke-width="3" d="M 30 66 L 30 6"/>` +
+    `</g>` +
+    sectorMarkContent(color, 44, 24)
+  );
+}
+
+/**
+ * @internal Exported for testing.
+ *
+ * Simple stroked glyph for a Corner Names key whose tap toggles both the
+ * corner and the sector calls (#1699): the corner glyph's bend with its
+ * straight leg crossed by the sector mark, the flag in the space below the
+ * inner bend. Placeholder artwork in the corner glyph's convention, drawn
+ * inside MECHANIC_BOUNDS.
+ */
+export function trackCallsPathContent(color: string): string {
+  return cornerNamesPathContent(color) + sectorMarkContent(color, 54, 18);
 }
 
 function arrowUpPath(color: string): string {
@@ -231,34 +284,94 @@ function arrowDownPath(color: string): string {
   return `<path fill="${color}" d="M35.7 65 L11 25 L26 25 L26 10 L45 10 L45 25 L60 25 Z"/>`;
 }
 
-/** Returns the per-mode default title text and whether the status bar paints. */
+/**
+ * What a toggle key's status bar shows: one on/off state across the full width,
+ * or, on a Corner Names key covering both track-call opt-ins while they
+ * disagree (#1699), each one's state in its own half.
+ */
+export type StateIndicator =
+  { kind: "toggle"; state: "on" | "off" } | { kind: "split"; corners: "on" | "off"; sectors: "on" | "off" };
+
+const onOff = (enabled: boolean): "on" | "off" => (enabled ? "on" : "off");
+
+/** The default title of a Corner Names key, by what its tap toggles (#1699). */
+const CORNER_NAMES_TITLES: Record<TrackCallTarget, string> = {
+  corners: "CORNER\nNAMES",
+  sectors: "SECTOR\nCALLS",
+  both: "TRACK\nCALLS",
+};
+
+/** The artwork of a Corner Names key, by what its tap toggles (#1699). */
+const CORNER_NAMES_ARTWORK: Record<TrackCallTarget, (color: string) => string> = {
+  corners: cornerNamesPathContent,
+  sectors: sectorCallsPathContent,
+  both: trackCallsPathContent,
+};
+
+/**
+ * @internal Exported for testing.
+ *
+ * The status of a Corner Names key (#1699), over every opt-in the key toggles:
+ * the union of its tap's and its long press's targets. One opt-in covered
+ * reads that one's state; both covered and agreeing reads the shared state;
+ * both covered and disagreeing reads a split bar.
+ */
+export function cornerNamesIndicator(settings: PitCrewSettings): StateIndicator {
+  const targets: readonly string[] = [settings.cornerNamesTap, settings.cornerNamesLongPress];
+  const coversCorners = targets.includes("corners") || targets.includes("both");
+  const coversSectors = targets.includes("sectors") || targets.includes("both");
+  const corners = onOff(isCornerNamesEnabled());
+  const sectors = onOff(isSectorStartsEnabled());
+
+  if (coversCorners && coversSectors) {
+    return corners === sectors ? { kind: "toggle", state: corners } : { kind: "split", corners, sectors };
+  }
+
+  return { kind: "toggle", state: coversSectors ? sectors : corners };
+}
+
+/** Returns the per-mode default title text and what the status bar paints, if anything. */
 function modePresentation(
-  mode: Mode,
-  direction: "up" | "down",
+  settings: PitCrewSettings,
   radarVolume: number,
-): { defaultTitle: string; stateIndicator: "on" | "off" | null } {
-  switch (mode) {
+): { defaultTitle: string; stateIndicator: StateIndicator | null } {
+  switch (settings.mode) {
     case "race-engineer":
       return {
         defaultTitle: "RACE\nENGINEER",
-        stateIndicator: isRaceEngineerEnabled() ? "on" : "off",
+        stateIndicator: { kind: "toggle", state: onOff(isRaceEngineerEnabled()) },
       };
     case "radar":
       return {
         defaultTitle: "RADAR",
-        stateIndicator: isRadarEnabled() ? "on" : "off",
+        stateIndicator: { kind: "toggle", state: onOff(isRadarEnabled()) },
       };
     case "radar-volume":
       return {
-        defaultTitle: `${direction === "up" ? "VOL +" : "VOL −"}\n${radarVolume}%`,
+        defaultTitle: `${settings.direction === "up" ? "VOL +" : "VOL −"}\n${radarVolume}%`,
         stateIndicator: null,
       };
     case "corner-names":
       return {
-        defaultTitle: "CORNER\nNAMES",
-        stateIndicator: isCornerNamesEnabled() ? "on" : "off",
+        defaultTitle: CORNER_NAMES_TITLES[settings.cornerNamesTap],
+        stateIndicator: cornerNamesIndicator(settings),
       };
   }
+}
+
+/** The status bar an indicator paints. */
+function statusBarFor(indicator: StateIndicator): string {
+  if (indicator.kind === "split") return statusBarSplit(indicator.corners, indicator.sectors, "CORNER", "SECTOR");
+
+  return indicator.state === "on" ? statusBarOn() : statusBarOff();
+}
+
+/**
+ * The border state an indicator paints. A split bar's is on: something is
+ * still talking, the same aggregate a "both" press reads (#1699).
+ */
+function borderStateFor(indicator: StateIndicator): "on" | "off" {
+  return indicator.kind === "split" ? "on" : indicator.state;
 }
 
 /**
@@ -291,7 +404,7 @@ export function generatePitCrewSvg(settings: PitCrewSettings): string {
 
   const graphicColor = colors.graphic1Color ?? WHITE;
   const graphic = resolveGraphicSettings(getGlobalGraphicSettings(), settings.graphicOverrides);
-  const { defaultTitle, stateIndicator } = modePresentation(settings.mode, settings.direction, readRadarVolume());
+  const { defaultTitle, stateIndicator } = modePresentation(settings, readRadarVolume());
   const title = resolveTitleSettings(template, getGlobalTitleSettings(), settings.titleOverrides, defaultTitle);
 
   // Status bar, when present, occupies y=100..144. Shrink the graphic area
@@ -308,7 +421,7 @@ export function generatePitCrewSvg(settings: PitCrewSettings): string {
           height: Math.min(fullGraphicArea.height, STATUS_BAR_TOP - PADDING - fullGraphicArea.y),
         };
 
-  const rawPath = pickArtwork(settings.mode, settings.direction, graphicColor);
+  const rawPath = pickArtwork(settings, graphicColor);
   const scaledGraphic = title.showGraphics
     ? applyGraphicTransform(rawPath, MECHANIC_BOUNDS, graphicArea, graphic.scale)
     : "";
@@ -324,14 +437,14 @@ export function generatePitCrewSvg(settings: PitCrewSettings): string {
       })
     : "";
 
-  const statusBar = stateIndicator === "on" ? statusBarOn() : stateIndicator === "off" ? statusBarOff() : "";
+  const statusBar = stateIndicator === null ? "" : statusBarFor(stateIndicator);
   const iconContent = scaledGraphic + titleText + statusBar;
 
   const border = resolveBorderSettings(
     template,
     getGlobalBorderSettings(),
     settings.borderOverrides,
-    stateIndicator !== null ? borderColorForState(stateIndicator) : undefined,
+    stateIndicator !== null ? borderColorForState(borderStateFor(stateIndicator)) : undefined,
   );
   const borderSvg = generateBorderParts(border);
 
@@ -345,16 +458,17 @@ export function generatePitCrewSvg(settings: PitCrewSettings): string {
   return svgToDataUri(svg);
 }
 
-function pickArtwork(mode: Mode, direction: "up" | "down", color: string): string {
-  switch (mode) {
+/** The artwork of a key; a Corner Names key's follows what its tap toggles (#1699). */
+function pickArtwork(settings: PitCrewSettings, color: string): string {
+  switch (settings.mode) {
     case "race-engineer":
       return mechanicPathContent(color);
     case "radar":
       return radarPathContent(color);
     case "radar-volume":
-      return radarPathContent(color) + (direction === "up" ? arrowUpPath(color) : arrowDownPath(color));
+      return radarPathContent(color) + (settings.direction === "up" ? arrowUpPath(color) : arrowDownPath(color));
     case "corner-names":
-      return cornerNamesPathContent(color);
+      return CORNER_NAMES_ARTWORK[settings.cornerNamesTap](color);
   }
 }
 
