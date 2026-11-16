@@ -1044,6 +1044,7 @@ describe("a clip fire", () => {
   it("takes an idle bus with the clips as play ops on Voice — no frame, no cut tail, no event — and logs the id", () => {
     const h = harness();
     h.scheduler.clearQueuesForSessionChange();
+    vi.setSystemTime(7000);
 
     expect(h.scheduler.playClips("clips", CLIPS, SKIP)).toBe("playing");
 
@@ -1062,6 +1063,8 @@ describe("a clip fire", () => {
       prerollCount: 0,
       event: null,
       sessionGeneration: 1,
+      // Its own start (issue #1681): never stashed, so never read.
+      dueAt: 7000,
       cutTail: [],
       ended: false,
       onSettled: undefined,
