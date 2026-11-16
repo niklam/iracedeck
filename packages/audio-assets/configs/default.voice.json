@@ -30327,7 +30327,7 @@
       },
       {
         "name": "intro-03",
-        "text": "You did a.",
+        "text": "You did a...",
         "previous_request_ids": [
           "lap-time-intro/best-lap-yet"
         ]
