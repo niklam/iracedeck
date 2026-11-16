@@ -493,7 +493,7 @@ The box location comes straight from iRacing (`DriverInfo.DriverPitTrkPct`), so 
 
 The count-in fires whenever you're on pit road approaching your box, so it isn't tied to having requested pit service — a drive-through will count down too.
 
-The count-in takes priority over the [pit entry readback](#pit-service-readback): a readback the count-in cuts short continues where it left off once the count is done.
+The count-in takes priority over the [pit entry readback](#pit-service-readback): a readback the count-in cuts short continues where it left off once the count is done, or starts over if you changed the queued service in the meantime.
 
 ## Pit road speeding
 
