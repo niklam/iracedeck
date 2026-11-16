@@ -347,15 +347,15 @@ The first one that applies speaks for the lap and the others stay quiet. When th
 
 None of them speaks on the final lap of a race, where the race-end result takes the floor, or while a [full-course caution](#full-course-caution) is out. Lap times of 11 minutes or longer stay silent too — the engineer never speaks a partial readout. A lap iRacing doesn't count, such as a track-limits cut, stays silent as well: iRacing gives it no time, so there is nothing to read.
 
-**Default (Short callouts)** makes all three calls in fewer words — *"Last lap. One forty-five point two three seven."*, *"Fastest lap for you. One twenty-three point four."*, *"Fastest lap for car five. One twenty-three point four."*
+**Default (Short callouts)** makes all three calls in fewer words — *"Last lap. One forty-five point two three seven."*, *"Fastest lap for you. One twenty-three point four five six."*, *"Fastest lap for car five. One twenty-three point four five six."*
 
 ### Best lap
 
-The engineer announces your lap time when you just set a new personal best — *"That was your best lap yet. One minute, twenty-three point four seconds."* The first best lap of a session uses a different intro since there's no prior best to beat — *"That lap was one minute, twenty-three point four seconds."*
+The engineer announces your lap time when you just set a new personal best — *"That was your best lap yet. One twenty-three point four five six."* The first best lap of a session uses a different intro since there's no prior best to beat — *"That lap was. One twenty-three point four five six."*
 
 Your best lap is iRacing's: the engineer calls a lap your best exactly when iRacing takes it as your best lap. A lap with an off-track that iRacing still counts can be your best; a lap iRacing doesn't count, such as a track-limits cut, never is. Nor, after a rolling start, is the lap you start the race on: iRacing times it from the green but doesn't take it as a best lap, so it goes to [Every lap](#every-lap) instead.
 
-Sub-1-minute laps skip the minute clip — *"That was your best lap yet. Thirty-four point eight seconds."* The lap time is announced to one decimal place (rounded to the nearest tenth). The minute-clip range stops at 10 for now; the minute coverage will expand in follow-up releases.
+The time is read the way a timing screen shows it, to the thousandth, just as [Every lap](#every-lap) reads it: a lap under a minute starts with the seconds — *"That was your best lap yet. Thirty-four point eight one two."* — and trailing zeros are left off, so 1:23.450 is *"one twenty-three point four five"*. Like the other lap-time calls, it stays silent for a lap of 11 minutes or longer.
 
 Besides the final lap of a race and a caution, the best-lap callout is also silent for the lap that ends a caution, which you complete a few seconds after the green: a lap behind the pace car is timed like any other, so without that it could be announced as your best yet at forty-odd seconds.
 
@@ -369,13 +369,13 @@ This is the least urgent line on the radio, so fuel, flag and position calls go 
 
 ### Fastest lap of the race
 
-In races, the engineer tells you whenever a car in your class sets a new fastest lap of the race — yours or anyone else's. The line says whose it is, then the time to the tenth, the way a timing screen shows it:
+In races, the engineer tells you whenever a car in your class sets a new fastest lap of the race — yours or anyone else's. The line says whose it is, then the time the way a timing screen shows it, to the thousandth, as [Every lap](#every-lap) reads it:
 
-- **Yours** — *"That's the fastest lap of the race. One twenty-three point four."* On that lap this replaces the best-lap call.
-- **Taken from you** — when another car beats the fastest lap you held, whoever it is: *"Car five just took the fastest lap from you. One twenty-three point four."*
-- **The leader** — *"The leader just set the fastest lap of the race. One twenty-three point four."*
-- **The car in front of you, or behind you** — *"The car in front of you just set the fastest lap. One twenty-three point four. Gap is one point two seconds."* (or *"The car behind you …"*). The gap is added when that car is still your neighbour, on the same lap as you, and the gap is under a minute.
-- **Any other car**, by number and position — *"Car five in pee six just set the fastest lap of the race. One twenty-three point four."*
+- **Yours** — *"That's the fastest lap of the race. One twenty-three point four five six."* On that lap this replaces the best-lap call.
+- **Taken from you** — when another car beats the fastest lap you held, whoever it is: *"Car five just took the fastest lap from you. One twenty-three point four five six."*
+- **The leader** — *"The leader just set the fastest lap of the race. One twenty-three point four five six."*
+- **The car in front of you, or behind you** — *"The car in front of you just set the fastest lap. One twenty-three point four five six. Gap is one point two seconds."* (or *"The car behind you …"*). The gap is added when that car is still your neighbour, on the same lap as you, and the gap is under a minute; the gap is read to the tenth, like the [gap callouts](#gap-callouts-car-ahead--car-behind).
+- **Any other car**, by number and position — *"Car five in pee six just set the fastest lap of the race. One twenty-three point four five six."*
 
 "In front of you" and "behind you" mean your neighbours in the class standings, as in the [gap callouts](#gap-callouts-car-ahead--car-behind), not the car nearest to you on track, and the positions are read at the moment the line is spoken. In a multi-class race everything here is about your class: another class's laps never count, and "the leader" is your class leader. A lap of yours can set the record only when iRacing takes it as your best lap, so neither a lap iRacing doesn't count, such as a track-limits cut, nor, after a rolling start, the lap you start the race on, which iRacing doesn't take as a best, is ever announced as the fastest lap of the race.
 
