@@ -31330,16 +31330,12 @@
       ]
     },
     "pit-crew.lap-time-best": {
-      "comment": "A new session-best lap, or the driver's first valid lap: the intro (best-lap-yet or first-good-lap), then the time as minute, seconds and tenths. The minute is a hard if here — a terse pack may write it as optional, since the assumed minute is understood, but only where that minute is 1; every other component is required, because a time missing its seconds is not a time.",
-      "test": "Harness → Scenario Shortcuts → Lap Time → Best Lap 1:03.4 (Best Lap 0:34.8 for a lap without the minute, First Valid Lap 2:07.0 for the other intro). In-sim: set a personal best in any session, or complete the first clean lap of a session.",
+      "comment": "A new session-best lap, or the driver's first valid lap: the intro (best-lap-yet or first-good-lap), then the lap time to the thousandth read as whole phrases, the way every lap is read, the minute and seconds as one clip and the thousandths as another (one twenty three, point four five six). Both halves are required, because a time missing either is not a time; a lap the voice has no clock clip for, eleven minutes and up, drops the whole line.",
+      "test": "Harness → Scenario Shortcuts → Lap Time → Best Lap 1:23.456 (Best Lap 0:34.812 for a lap under a minute, First Valid Lap 2:07.007 for the other intro). In-sim: set a personal best in any session, or complete the first clean lap of a session.",
       "sequence": [
         "{{lapTime.intro}}",
-        {
-          "if": "lapTime.hasMinuteComponent",
-          "then": ["{{lapTime.minute}}"]
-        },
-        "{{lapTime.second}}",
-        "{{lapTime.decimal}}"
+        "{{lapTime.clock}}",
+        "{{lapTime.thousandths}}"
       ]
     },
     "pit-crew.gap-trend": {
@@ -31722,7 +31718,7 @@
       "sequence": ["{{spotterClip}}"]
     },
     "pit-crew.fastest-lap-race": {
-      "comment": "The race's fastest lap is set — says who set it (you, the leader, the car ahead or behind, or another car by number and position) in one sentence-final clip, then the lap time to the tenth as the minute and seconds clock followed by the tenth, then, after a short pause, the gap when there is one (the tenth ends its own sentence).",
+      "comment": "The race's fastest lap is set — says who set it (you, the leader, the car ahead or behind, or another car by number and position) in one sentence-final clip, then the lap time to the thousandth as whole phrases, the minute and seconds clock followed by the thousandths, the way every lap is read, then, after a short pause, the gap to the tenth when there is one (the thousandths end the time, so the two are never joined).",
       "test": "Harness → Fastest Lap → Yours (Taken from you, Leader, Car ahead, Car behind, Other car for the other lines; Yours in the grace plays the best-lap line). In-sim: an offline AI race; set the fastest lap of the race from lap 3 on, or let an AI car beat it.",
       "sequence": [
         {
@@ -31753,8 +31749,8 @@
             ]
           }
         },
-        "{{fastestLap.clock}}",
-        "{{fastestLap.decimal}}",
+        "{{fastestLap.thousandthsClock}}",
+        "{{fastestLap.thousandths}}",
         {
           "optional": [
             "pause:150",

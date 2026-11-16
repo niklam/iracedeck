@@ -1,16 +1,18 @@
 /**
- * Lap-time contract tests: the best lap (issue #555; scripted since #1065)
- * and every lap (issue #1163).
+ * Lap-time contract tests: the best lap (issue #555; scripted since #1065;
+ * read to the thousandth since #1688) and every lap (issue #1163).
  *
  * Drives the contracts through the real scenario engine — same harness shape
- * as `session-start.test.ts` — with the bundled voice's REAL `callouts.json`
- * entry for the best lap, so var resolution and the conditional minute
- * clause all run the production compile + expansion path; what the engineer
- * says is the script's. The every-lap entry is hand-built here (its bundled
- * entry is authored with its clips), in the shape this file's header states.
+ * as `session-start.test.ts` — with the bundled voices' REAL `callouts.json`
+ * entries for the best lap, so var resolution runs the production compile +
+ * expansion path; what the engineer says is the script's. The every-lap entry
+ * is hand-built here, in the shape `lap-time.ts`'s header states, and so is
+ * #555's full form, which no first-party script reads any more but the
+ * vocabulary still publishes for pack scripts (#1688, decision 5).
  */
 import manifestJson from "@iracedeck/audio-assets/manifest.json" with { type: "json" };
 import defaultScript from "@iracedeck/audio-assets/voice/default/callouts.json" with { type: "json" };
+import shawnScript from "@iracedeck/audio-assets/voice/shawn/callouts.json" with { type: "json" };
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import { createFakeAudio, type FakeAudio } from "@iracedeck/audio-service/testing";
 import { type CalloutScript } from "@iracedeck/callout-script";
@@ -123,8 +125,10 @@ const manifest: AudioAssetsManifest = {
     ...SECOND_NAMES.map((n) => `voice/${VOICE}/lap-time-second/${n}.mp3`),
     ...DECIMAL_NAMES.map((n) => `voice/${VOICE}/lap-time-decimal/${n}.mp3`),
     // Beyond the historical 10-minute bound — speakability derives from the
-    // clips that exist, not a code constant (issue #836).
+    // clips that exist, not a code constant (issue #836): a twelfth minute
+    // for the full form, one twelve-thirty clock phrase for the compact one.
     `voice/${VOICE}/lap-time-minute/12.mp3`,
+    `voice/${VOICE}/lap-time-clock/12m30.mp3`,
     // The every-lap readout's clips (#1163).
     `voice/${VOICE}/lap-time-last/intro-01.mp3`,
     ...CLOCK_NAMES.map((n) => `voice/${VOICE}/lap-time-clock/${n}.mp3`),
@@ -167,6 +171,46 @@ const BEST_LAP_SCRIPT: CalloutScript = {
 const LAP_TIME_SCRIPT: CalloutScript = {
   ...BEST_LAP_SCRIPT,
   scenarios: { ...BEST_LAP_SCRIPT.scenarios, "pit-crew.lap-time-last": LAST_ENTRY },
+};
+
+/** Both first-party voices' scripts; each one's best-lap entry runs over the test voice's clips. */
+const BUNDLED_SCRIPTS: ReadonlyArray<{ voice: string; script: CalloutScript }> = [
+  { voice: "default", script: SCRIPT },
+  { voice: "shawn", script: shawnScript as CalloutScript },
+];
+
+/** The test script with `script`'s own best-lap entry and frames in place of the default voice's. */
+function withBestLapOf(script: CalloutScript): CalloutScript {
+  return {
+    ...script,
+    scenarios: {
+      "pit-crew.lap-time-best": script.scenarios["pit-crew.lap-time-best"],
+      "pit-crew.lap-time-last": LAST_ENTRY,
+    },
+    fragments: {},
+  };
+}
+
+/**
+ * #555's full form, the best-lap entry the first-party scripts carried before
+ * #1688: what a pack script may still write, since its vars and condition
+ * stay published (decision 5).
+ */
+const FULL_FORM_ENTRY = {
+  comment: "A new best lap, in the full form.",
+  test: "Harness → Scenario Shortcuts → Lap Time → Best Lap 1:23.456.",
+  sequence: [
+    "{{lapTime.intro}}",
+    { if: "lapTime.hasMinuteComponent", then: ["{{lapTime.minute}}"] },
+    "{{lapTime.second}}",
+    "{{lapTime.decimal}}",
+  ],
+};
+
+/** The test script with the full form as its best-lap entry, as a pack would write it. */
+const FULL_FORM_SCRIPT: CalloutScript = {
+  ...LAP_TIME_SCRIPT,
+  scenarios: { ...LAP_TIME_SCRIPT.scenarios, "pit-crew.lap-time-best": FULL_FORM_ENTRY },
 };
 
 function snap(overrides: Partial<CountedLapCompleted> = {}): LapCompletedSnapshot {
@@ -284,23 +328,22 @@ describe("splitLapTime", () => {
   });
 });
 
+/** The voice clips played, as `<group>/<base>`. */
+function clips(): string[] {
+  return voicePaths().map((p) => p.split(`voice/${VOICE}/`)[1].replace(/\.mp3$/, ""));
+}
+
 describe("lap-time scenario", () => {
-  it("plays the full readout for a 1:03.4 new personal best", () => {
+  it("reads a 1:03.4 new personal best to the thousandth: the intro, the clock 1m03 and 400", () => {
     fire(snap({ lapTime: 63.4 }));
 
-    expect(hasClip("/lap-time-intro/best-lap-yet.mp3")).toBe(true);
-    expect(hasClip("/lap-time-minute/1.mp3")).toBe(true);
-    expect(hasClip("/lap-time-second/3.mp3")).toBe(true);
-    expect(hasClip("/lap-time-decimal/4.mp3")).toBe(true);
+    expect(clips()).toEqual(["lap-time-intro/best-lap-yet", "lap-time-clock/1m03", "lap-time-thousandths/400"]);
   });
 
-  it("skips the minute clip for a sub-1-minute lap", () => {
+  it("reads a sub-minute lap from lap-time-second with no clock phrase (8.7)", () => {
     fire(snap({ lapTime: 8.7 }));
 
-    expect(hasClip("/lap-time-intro/best-lap-yet.mp3")).toBe(true);
-    expect(voicePaths().some((p) => p.includes("/lap-time-minute/"))).toBe(false);
-    expect(hasClip("/lap-time-second/8.mp3")).toBe(true);
-    expect(hasClip("/lap-time-decimal/7.mp3")).toBe(true);
+    expect(clips()).toEqual(["lap-time-intro/best-lap-yet", "lap-time-second/8", "lap-time-thousandths/700"]);
   });
 
   it("uses the first-good-lap intro when there is no prior best", () => {
@@ -336,37 +379,29 @@ describe("lap-time scenario", () => {
     expect(hasClip("/lap-time-intro/best-lap-yet.mp3")).toBe(true);
   });
 
-  it("stays silent when the minute component has no clip (11:05.5, no 11.mp3 staged)", () => {
+  it("stays silent when the clock has no clip (11:05.5, no 11m05 staged)", () => {
     fire(snap({ lapTime: 665.5 }));
 
     expect(voicePaths()).toEqual([]);
   });
 
-  it("speaks any minute value that has a clip — no hardcoded minute bound (issue #836)", () => {
-    // 12:30.5 — beyond the historical 10-minute constant, but 12.mp3 exists.
+  it("speaks any clock that has a clip — no hardcoded minute bound (issue #836)", () => {
+    // 12:30.5 — beyond the historical 10-minute constant, but 12m30 exists.
     fire(snap({ lapTime: 750.5 }));
 
-    expect(hasClip("/lap-time-minute/12.mp3")).toBe(true);
-    expect(hasClip("/lap-time-second/30.mp3")).toBe(true);
-    expect(hasClip("/lap-time-decimal/5.mp3")).toBe(true);
+    expect(clips()).toEqual(["lap-time-intro/best-lap-yet", "lap-time-clock/12m30", "lap-time-thousandths/500"]);
   });
 
-  it("plays a full 1:23.4 readout — verifies expanded seconds coverage (0–59)", () => {
-    fire(snap({ lapTime: 83.4 }));
+  it("reads 1:23.456 as 1m23 and 456 — the third digit a best lap carries (#1688)", () => {
+    fire(snap({ lapTime: 83.456 }));
 
-    expect(hasClip("/lap-time-intro/best-lap-yet.mp3")).toBe(true);
-    expect(hasClip("/lap-time-minute/1.mp3")).toBe(true);
-    expect(hasClip("/lap-time-second/23.mp3")).toBe(true);
-    expect(hasClip("/lap-time-decimal/4.mp3")).toBe(true);
+    expect(clips()).toEqual(["lap-time-intro/best-lap-yet", "lap-time-clock/1m23", "lap-time-thousandths/456"]);
   });
 
-  it("plays a sub-1-min lap with seconds-component=34 (was out of scope in v1)", () => {
-    fire(snap({ lapTime: 34.8 }));
+  it("reads a sub-minute lap of 34.812 as thirty four and 812", () => {
+    fire(snap({ lapTime: 34.812 }));
 
-    expect(hasClip("/lap-time-intro/best-lap-yet.mp3")).toBe(true);
-    expect(voicePaths().some((p) => p.includes("/lap-time-minute/"))).toBe(false);
-    expect(hasClip("/lap-time-second/34.mp3")).toBe(true);
-    expect(hasClip("/lap-time-decimal/8.mp3")).toBe(true);
+    expect(clips()).toEqual(["lap-time-intro/best-lap-yet", "lap-time-second/34", "lap-time-thousandths/812"]);
   });
 
   it("is suppressed when the per-callout opt-in is off", () => {
@@ -444,14 +479,13 @@ describe("lap-time scenario", () => {
     expect(hasClip("/lap-time-intro/best-lap-yet.mp3")).toBe(true);
   });
 
-  it("reads the components in the script's order: intro, minute, seconds, tenths", () => {
+  it("reads the components in the script's order: intro, clock, thousandths", () => {
     fire(snap({ lapTime: 63.4 }));
 
     expect(voicePaths().map((p) => p.split(`voice/${VOICE}/`)[1])).toEqual([
       "lap-time-intro/best-lap-yet.mp3",
-      "lap-time-minute/1.mp3",
-      "lap-time-second/3.mp3",
-      "lap-time-decimal/4.mp3",
+      "lap-time-clock/1m03.mp3",
+      "lap-time-thousandths/400.mp3",
     ]);
   });
 
@@ -461,6 +495,82 @@ describe("lap-time scenario", () => {
     fire(snap({ lapTime: 63.4 }));
 
     expect(audio._played).toEqual([]);
+  });
+});
+
+describe("both first-party voices read the best lap to the thousandth (#1688)", () => {
+  for (const { voice, script } of BUNDLED_SCRIPTS) {
+    describe(`voice "${voice}"`, () => {
+      beforeEach(() => {
+        getScenarioEngine().setScripts(new Map([[VOICE, withBestLapOf(script)]]));
+      });
+
+      it("reads a first valid lap as first-good-lap, the clock and the thousandths", () => {
+        fire(snap({ lapTime: 127.007, isFirstValid: true, previousBestLapTime: undefined }));
+
+        expect(clips()).toEqual(["lap-time-intro/first-good-lap", "lap-time-clock/2m07", "lap-time-thousandths/007"]);
+      });
+
+      it("reads a personal best as best-lap-yet, the clock and the thousandths", () => {
+        fire(snap({ lapTime: 83.456 }));
+
+        expect(clips()).toEqual(["lap-time-intro/best-lap-yet", "lap-time-clock/1m23", "lap-time-thousandths/456"]);
+      });
+
+      it("reads a personal best under a minute with the seconds word", () => {
+        fire(snap({ lapTime: 34.812 }));
+
+        expect(clips()).toEqual(["lap-time-intro/best-lap-yet", "lap-time-second/34", "lap-time-thousandths/812"]);
+      });
+
+      it("drops the whole line at the ceiling — 11:00.000 and 10:59.9996 — and 10:59.9994 still speaks", () => {
+        fire(snap({ lapTime: 660.0 }));
+        fire(snap({ lap: 6, lapTime: 659.9996, isFirstValid: true, previousBestLapTime: undefined }));
+
+        // Nothing at all, not the intro alone: the whole line aborts.
+        expect(voicePaths()).toEqual([]);
+
+        fire(snap({ lap: 7, lapTime: 659.9994 }));
+        expect(clips()).toEqual(["lap-time-intro/best-lap-yet", "lap-time-clock/10m59", "lap-time-thousandths/999"]);
+      });
+    });
+  }
+});
+
+describe("#555's full form, kept for pack scripts (#1688, decision 5)", () => {
+  beforeEach(() => {
+    getScenarioEngine().setScripts(new Map([[VOICE, FULL_FORM_SCRIPT]]));
+  });
+
+  it("still reads a 1:03.4 best as minute, seconds and tenths, rounded to the tenth", () => {
+    fire(snap({ lapTime: 63.44 }));
+
+    expect(clips()).toEqual([
+      "lap-time-intro/best-lap-yet",
+      "lap-time-minute/1",
+      "lap-time-second/3",
+      "lap-time-decimal/4",
+    ]);
+  });
+
+  it("still skips the minute for a lap under a minute (34.8)", () => {
+    fire(snap({ lapTime: 34.8 }));
+
+    expect(clips()).toEqual(["lap-time-intro/best-lap-yet", "lap-time-second/34", "lap-time-decimal/8"]);
+  });
+
+  it("still speaks any minute that has a clip, and drops the line at one that has none", () => {
+    fire(snap({ lapTime: 750.5 }));
+    expect(clips()).toEqual([
+      "lap-time-intro/best-lap-yet",
+      "lap-time-minute/12",
+      "lap-time-second/30",
+      "lap-time-decimal/5",
+    ]);
+
+    audio._played.length = 0;
+    fire(snap({ lap: 6, lapTime: 665.5 }));
+    expect(voicePaths()).toEqual([]);
   });
 });
 
@@ -528,6 +638,9 @@ describe("registerLapTimeVocabulary (issue #1065)", () => {
   });
 
   it("lapTime.hasMinuteComponent is true from one minute up and false below it, or with no lap yet", () => {
+    // Read through the full form, the one script shape that gates on it.
+    getScenarioEngine().setScripts(new Map([[VOICE, FULL_FORM_SCRIPT]]));
+
     const cond = (lapTime: number | null) => {
       lastSnapshot = lapTime === null ? null : snap({ lapTime });
 
@@ -546,57 +659,71 @@ describe("registerLapTimeVocabulary (issue #1065)", () => {
   });
 });
 
-describe("the bundled script's lap-time entry (issue #1065)", () => {
-  it("scripts the best-lap contract with a comment, a Lap Time harness route and a sequence", () => {
-    for (const id of ["pit-crew.lap-time-best"]) {
-      const entry = SCRIPT.scenarios[id];
+describe("the bundled scripts' lap-time entry (issues #1065, #1688)", () => {
+  it("scripts the best-lap contract with a comment, a Lap Time harness route and a sequence, in both voices", () => {
+    for (const { voice, script } of BUNDLED_SCRIPTS) {
+      const entry = script.scenarios["pit-crew.lap-time-best"];
 
-      expect(entry, `no script entry for ${id}`).toBeDefined();
-      expect(entry.comment?.length ?? 0, `${id}: comment`).toBeGreaterThan(0);
-      expect(entry.test, `${id}: test`).toMatch(/^Harness → Scenario Shortcuts → Lap Time → Best Lap 1:03\.4/);
+      expect(entry, `${voice}: no script entry`).toBeDefined();
+      expect(entry.comment?.length ?? 0, `${voice}: comment`).toBeGreaterThan(0);
+      // The harness labels the best-lap shortcuts read to the thousandth.
+      expect(entry.test, `${voice}: test`).toMatch(
+        /^Harness → Scenario Shortcuts → Lap Time → Best Lap 1:23\.456 \(Best Lap 0:34\.812 .*First Valid Lap 2:07\.007/,
+      );
       expect(entry.skip).toBeUndefined();
-      expect(entry.sequence?.length ?? 0, `${id}: sequence`).toBeGreaterThan(0);
     }
   });
 
-  it("keeps the minute as a hard if — the spec's boundary case — and the other three components required", () => {
-    expect(SCRIPT.scenarios["pit-crew.lap-time-best"].sequence).toEqual([
-      "{{lapTime.intro}}",
-      { if: "lapTime.hasMinuteComponent", then: ["{{lapTime.minute}}"] },
-      "{{lapTime.second}}",
-      "{{lapTime.decimal}}",
-    ]);
+  it("reads the best lap in the compact form, both halves required, in both voices", () => {
+    for (const { voice, script } of BUNDLED_SCRIPTS) {
+      expect(script.scenarios["pit-crew.lap-time-best"].sequence, voice).toEqual([
+        "{{lapTime.intro}}",
+        "{{lapTime.clock}}",
+        "{{lapTime.thousandths}}",
+      ]);
+    }
   });
 
-  it("references only vocabulary the lap-time family registers, and no pool, frame, fragment or alias", () => {
-    const refs = familyReferences(BEST_LAP_SCRIPT);
+  it("references only vocabulary the lap-time family registers, and no pool, condition, frame, fragment or alias", () => {
     const vocabulary = getScenarioEngine().vocabulary();
 
-    expect(refs.vars).toEqual(["lapTime.decimal", "lapTime.intro", "lapTime.minute", "lapTime.second"]);
-    expect(refs.conds).toEqual(["lapTime.hasMinuteComponent"]);
-    expect(refs.cases).toEqual([]);
-    expect(refs.pools).toEqual([]);
-    expect(refs.frames).toEqual([]);
-    expect(refs.includes).toEqual([]);
+    for (const { voice, script } of BUNDLED_SCRIPTS) {
+      const refs = familyReferences(withBestLapOf(script));
+
+      // The every-lap entry's vars and pool are the hand-built one's; the
+      // best lap adds only its intro.
+      expect(refs.vars, voice).toEqual(["lapTime.clock", "lapTime.intro", "lapTime.thousandths"]);
+      expect(refs.conds, voice).toEqual([]);
+      expect(refs.cases, voice).toEqual([]);
+      expect(refs.pools, voice).toEqual(["lap-time-last/intro"]);
+      expect(refs.frames, voice).toEqual([]);
+      expect(refs.includes, voice).toEqual([]);
+
+      for (const v of refs.vars) expect(vocabulary.vars.map((x) => x.name)).toContain(v);
+    }
+
     expect(Object.keys(LAP_TIME_SCRIPT.pools ?? {})).toEqual([]);
-
-    for (const v of refs.vars) expect(vocabulary.vars.map((x) => x.name)).toContain(v);
-
-    for (const c of refs.conds) expect(vocabulary.conds.map((x) => x.name)).toContain(c);
   });
 
-  it("publishes as its one direct clip source the every-lap intro, the only pool either entry addresses — and the bundled voice ships the four groups the best lap's vars draw from", () => {
+  it("publishes as its one direct clip source the every-lap intro, the only pool either entry addresses — and both bundled voices ship the four groups the best lap's vars draw from", () => {
     expect(LAP_TIME_CLIP_SOURCES).toEqual([{ group: "lap-time-last", base: "intro" }]);
     expect(familyReferences({ ...LAP_TIME_SCRIPT, scenarios: { "pit-crew.lap-time-last": LAST_ENTRY } }).pools).toEqual(
       LAP_TIME_CLIP_SOURCES.map(({ group, base }) => `${group}/${base}`),
     );
 
-    for (const group of ["lap-time-intro", "lap-time-minute", "lap-time-second", "lap-time-decimal"]) {
-      expect(
-        MANIFEST.clips.some((clip) => clip.startsWith(`voice/${VOICE}/${group}/`)),
-        `no voice/${VOICE}/${group}/ clip in manifest.json`,
-      ).toBe(true);
+    let checked = 0;
+
+    for (const { voice } of BUNDLED_SCRIPTS) {
+      for (const group of ["lap-time-intro", "lap-time-clock", "lap-time-second", "lap-time-thousandths"]) {
+        expect(
+          MANIFEST.clips.some((clip) => clip.startsWith(`voice/${voice}/${group}/`)),
+          `no voice/${voice}/${group}/ clip in manifest.json`,
+        ).toBe(true);
+        checked++;
+      }
     }
+
+    expect(checked).toBe(8);
   });
 
   it("compiles for the test voice with nothing skipped — no unknown var, condition or fragment", () => {
