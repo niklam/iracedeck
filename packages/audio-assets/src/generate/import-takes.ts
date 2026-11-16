@@ -6,10 +6,11 @@ import { type Entry, entryHash, resolveVoiceSettings, stableStringify, type Voic
 import { describeDriverNameAlias, driverNameAliasOf } from "./driver-name-aliases.ts";
 import { clipRelPath, type Manifest } from "./manifest.ts";
 import {
+  type ApprovedPauseMarks,
   describePauseMarks,
   findEntryPauseMarks,
   type GrandfatheredPauseMarks,
-  isGrandfathered,
+  pauseMarkStanding,
 } from "./pause-marks.ts";
 import {
   invalidateProcessedCache,
@@ -102,6 +103,8 @@ export interface ImportOptions {
   manifestSaveRetry?: ManifestSaveRetry;
   /** voice id → `<group>/<name>` → the frozen text a pause mark is grandfathered for, as a run reads it. */
   grandfathered?: GrandfatheredPauseMarks;
+  /** voice id → `<group>/<name>` → the text Niklas approved a pause mark in (#1643), as a run reads it. */
+  approved?: ApprovedPauseMarks;
   now?: () => Date;
   log?: RunLog;
 }
@@ -150,8 +153,8 @@ const consoleLog: RunLog = {
  * (without `language_code`, as the request body carries them); a record
  * `seed` that is not the entry's; one key imported twice. An entry a run
  * would refuse is refused here too, with the same checks ahead of its cache
- * hit: a driver-name alias (#1580) and pause marks the grandfathered list
- * does not cover (#1518) — imported, such a take would have every later run
+ * hit: a driver-name alias (#1580) and pause marks neither the grandfathered
+ * nor the approved list covers (#1518) — imported, such a take would have every later run
  * refuse its entry. A trial that records no speaker or no settings is
  * imported, with a warning per voice that they were not checked. Records
  * whose status is not `ok` are skipped, said so.
@@ -159,6 +162,7 @@ const consoleLog: RunLog = {
 export function importTakes(options: ImportOptions): ImportResult {
   const { dir, voiceConfigs, manifest, root, dryRun, persistManifest } = options;
   const grandfathered = options.grandfathered ?? {};
+  const approved = options.approved ?? {};
   const now = options.now ?? (() => new Date());
   const log = options.log ?? consoleLog;
   const refuse = (problems: string[]): ImportResult => {
@@ -282,13 +286,16 @@ export function importTakes(options: ImportOptions): ImportResult {
     if (aliasOf !== null) problems.push(`${record.key}: ${describeDriverNameAlias(entryName, aliasOf)}`);
 
     const pauseMarks = findEntryPauseMarks(entry);
+    const entryKey = `${groupName}/${entryName}`;
+    const standing = pauseMarkStanding(entry, {
+      grandfathered: grandfathered[voiceName]?.[entryKey],
+      approved: approved[voiceName]?.[entryKey],
+    });
 
-    if (pauseMarks.length > 0) {
-      if (isGrandfathered(entry, grandfathered[voiceName]?.[`${groupName}/${entryName}`])) {
-        grandfatheredMarks.push(`${record.key}  —  grandfathered text: ${describePauseMarks(pauseMarks)}`);
-      } else {
-        problems.push(`${record.key}: ${describePauseMarks(pauseMarks)}`);
-      }
+    if (standing === "grandfathered") {
+      grandfatheredMarks.push(`${record.key}  —  grandfathered text: ${describePauseMarks(pauseMarks)}`);
+    } else if (standing === "refused") {
+      problems.push(`${record.key}: ${describePauseMarks(pauseMarks)}`);
     }
 
     const source = path.join(dir, `${record.key}.mp3`);

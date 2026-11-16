@@ -13,10 +13,11 @@ import { describeDriverNameAlias, driverNameAliasOf } from "./driver-name-aliase
 import type { SynthesizeOptions, SynthesizeResult } from "./elevenlabs.ts";
 import { clipRelPath, type Conditioning, type Manifest } from "./manifest.ts";
 import {
+  type ApprovedPauseMarks,
   describePauseMarks,
   findEntryPauseMarks,
   type GrandfatheredPauseMarks,
-  isGrandfathered,
+  pauseMarkStanding,
 } from "./pause-marks.ts";
 import { entryReferences, type OrderedEntry, orderVoices, topologicalEntryOrder } from "./run-order.ts";
 import type { Scope } from "./scope.ts";
@@ -45,6 +46,8 @@ export interface RunOptions {
   manifestSaveRetry?: ManifestSaveRetry;
   /** voice id → `<group>/<name>` → the frozen text a pause mark is grandfathered for. */
   grandfathered?: GrandfatheredPauseMarks;
+  /** voice id → `<group>/<name>` → the text Niklas approved a pause mark in (#1643). */
+  approved?: ApprovedPauseMarks;
   now?: () => Date;
   log?: RunLog;
 }
@@ -399,6 +402,7 @@ function sameIds(here: readonly (string | null)[] | undefined, recorded: readonl
 export async function runGeneration(options: RunOptions): Promise<RunResult> {
   const { voiceConfigs, manifest, scope, dryRun, root, synthesize, persistManifest } = options;
   const grandfathered = options.grandfathered ?? {};
+  const approved = options.approved ?? {};
   const now = options.now ?? (() => new Date());
   const log = options.log ?? consoleLog;
   const saver = new ManifestSaver(manifest, persistManifest, log, "generate", options.manifestSaveRetry);
@@ -566,11 +570,14 @@ export async function runGeneration(options: RunOptions): Promise<RunResult> {
       // credit (#1518), and ahead of the cache hit, so a marked clip copied
       // in with its manifest row is refused too. A grandfathered entry whose
       // text is unchanged is re-cut as before — a voice-wide setting reaches
-      // it — but said so.
+      // it — but said so; an approved one (#1643) is cut quietly.
       const pauseMarks = findEntryPauseMarks(entry);
-      const allowed = pauseMarks.length === 0 || isGrandfathered(entry, grandfathered[voiceName]?.[key]);
+      const standing = pauseMarkStanding(entry, {
+        grandfathered: grandfathered[voiceName]?.[key],
+        approved: approved[voiceName]?.[key],
+      });
 
-      if (!allowed) {
+      if (standing === "refused") {
         log.error(`[generate] ${relPath}  —  REFUSED: ${describePauseMarks(pauseMarks)}`);
         outcomes.set(key, "refused");
         count("refused");
@@ -624,7 +631,7 @@ export async function runGeneration(options: RunOptions): Promise<RunResult> {
         continue;
       }
 
-      if (pauseMarks.length > 0) {
+      if (standing === "grandfathered") {
         log.warn(`[generate] ${relPath}  —  grandfathered text: ${describePauseMarks(pauseMarks)}`);
       }
 

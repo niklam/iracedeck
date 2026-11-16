@@ -89,7 +89,8 @@
  *                                   Any unknown entry, missing file, model,
  *                                   speaker (voiceId), settings or seed
  *                                   mismatch, driver-name
- *                                   alias or ungrandfathered pause mark
+ *                                   alias or a pause mark neither the
+ *                                   grandfathered nor the approved list covers
  *                                   refuses the whole import and writes
  *                                   nothing. Composes with --dry-run;
  *                                   refuses --voice/--group/--entry; needs no
@@ -121,7 +122,7 @@ import { detectReferenceCycles, loadVoiceConfigs } from "./config.ts";
 import { synthesizeSpeech } from "./elevenlabs.ts";
 import { importTakes } from "./import-takes.ts";
 import { loadManifest, saveManifest } from "./manifest.ts";
-import { loadGrandfatheredPauseMarks } from "./pause-marks.ts";
+import { loadApprovedPauseMarks, loadGrandfatheredPauseMarks } from "./pause-marks.ts";
 import { formatRunSummary, runGeneration } from "./run.ts";
 import { formatScope, type Scope, validateScope } from "./scope.ts";
 
@@ -214,6 +215,7 @@ async function main(): Promise<void> {
     synthesize: (options) => synthesizeSpeech({ apiKey: apiKey!, ...options }),
     persistManifest: (manifest) => saveManifest(MANIFEST_PATH, manifest),
     grandfathered: loadGrandfatheredPauseMarks(packageRoot),
+    approved: loadApprovedPauseMarks(packageRoot),
   });
 
   console.log();
@@ -247,6 +249,7 @@ async function runImport(importDir: string, scope: Scope, dryRun: boolean): Prom
     dryRun,
     persistManifest: (manifest) => saveManifest(MANIFEST_PATH, manifest),
     grandfathered: loadGrandfatheredPauseMarks(packageRoot),
+    approved: loadApprovedPauseMarks(packageRoot),
   });
 
   console.log();

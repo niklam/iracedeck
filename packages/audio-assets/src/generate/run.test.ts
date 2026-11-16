@@ -393,6 +393,100 @@ describe("runGeneration — a failed manifest save (#1643)", () => {
   });
 });
 
+describe("runGeneration — pause marks (#1518, #1643)", () => {
+  const INTRO = "voice/default/lap-time-last/intro-03.mp3";
+  const APPROVED = { default: { "lap-time-last/intro-03": "You did a..." } };
+  const marksIn = (log: { lines: string[] }) => log.lines.filter((line) => line.includes("pause mark"));
+
+  it("cuts an approved entry whose text is the approved one, quietly, dry run alike", async () => {
+    const voice = buildVoice({ "lap-time-last": [{ name: "intro-03", text: "You did a..." }] });
+
+    for (const dryRun of [false, true]) {
+      const { promise, log, synthesize } = run({
+        voiceConfigs: new Map([["default", voice]]),
+        manifest: emptyManifest(),
+        dryRun,
+        approved: APPROVED,
+      });
+      const result = await promise;
+
+      expect(result.totals).toEqual({ generated: 1, copied: 0, skipped: 0, failed: 0, refused: 0 });
+      expect(synthesize.mock.calls.map(([options]) => options.text)).toEqual(dryRun ? [] : ["You did a..."]);
+      expect(marksIn(log)).toEqual([]);
+    }
+  });
+
+  it("refuses the same mark in an entry the approval does not hold, before any call, dry run alike", async () => {
+    // An edited text, another entry, and the approved text in a voice the approval does not name.
+    const edited = buildVoice({
+      "lap-time-last": [
+        { name: "intro-03", text: "You did a... lap." },
+        { name: "intro-04", text: "You did a..." },
+      ],
+    });
+    const other = buildVoice({ "lap-time-last": [{ name: "intro-03", text: "You did a..." }] });
+
+    for (const dryRun of [false, true]) {
+      const manifest = emptyManifest();
+      const { promise, log, synthesize } = run({
+        voiceConfigs: new Map([
+          ["default", edited],
+          ["other", other],
+        ]),
+        manifest,
+        dryRun,
+        approved: APPROVED,
+      });
+      const result = await promise;
+
+      expect(result.totals.refused).toBe(3);
+      expect(synthesize).not.toHaveBeenCalled();
+      expect(marksIn(log)).toEqual([
+        `[generate] ${INTRO}  —  REFUSED: text carries pause marks "...": ElevenLabs reads them as a pause and may fill it with a hesitation sound. Write a period where a pause is needed (#1518).`,
+        expect.stringMatching(/^\[generate\] voice\/default\/lap-time-last\/intro-04\.mp3 {2}— {2}REFUSED: /),
+        expect.stringMatching(/^\[generate\] voice\/other\/lap-time-last\/intro-03\.mp3 {2}— {2}REFUSED: /),
+      ]);
+      expect(manifest.entries).toEqual({});
+    }
+  });
+
+  it("refuses an unlisted marked entry ahead of its cache hit", async () => {
+    const voice = buildVoice({ "lap-time-last": [{ name: "intro-03", text: "You did a..." }] });
+    const manifest = emptyManifest();
+
+    seed(manifest, INTRO, hashOf(voice, "lap-time-last/intro-03"), "req-copied-in");
+
+    const { promise } = run({ voiceConfigs: new Map([["default", voice]]), manifest });
+
+    expect((await promise).totals).toEqual({ generated: 0, copied: 0, skipped: 0, failed: 0, refused: 1 });
+  });
+
+  it("skips an approved entry on its cache hit", async () => {
+    const voice = buildVoice({ "lap-time-last": [{ name: "intro-03", text: "You did a..." }] });
+    const manifest = emptyManifest();
+
+    seed(manifest, INTRO, hashOf(voice, "lap-time-last/intro-03"), "req-approved");
+
+    const { promise } = run({ voiceConfigs: new Map([["default", voice]]), manifest, approved: APPROVED });
+
+    expect((await promise).totals).toEqual({ generated: 0, copied: 0, skipped: 1, failed: 0, refused: 0 });
+  });
+
+  it("cuts a grandfathered entry with its warning", async () => {
+    const voice = buildVoice({ "lap-time-last": [{ name: "intro-03", text: "You did a..." }] });
+    const { promise, log } = run({
+      voiceConfigs: new Map([["default", voice]]),
+      manifest: emptyManifest(),
+      grandfathered: APPROVED,
+    });
+
+    expect((await promise).totals.generated).toBe(1);
+    expect(marksIn(log)).toEqual([
+      `[generate] ${INTRO}  —  grandfathered text: text carries pause marks "...": ElevenLabs reads them as a pause and may fill it with a hesitation sound. Write a period where a pause is needed (#1518).`,
+    ]);
+  });
+});
+
 describe("runGeneration — cache", () => {
   it("skips an entry whose row matches its hash and whose clip exists, even when its dependency is stale", async () => {
     const voice = buildVoice({

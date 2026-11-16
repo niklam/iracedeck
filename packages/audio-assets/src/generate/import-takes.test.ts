@@ -565,6 +565,42 @@ describe("importTakes", () => {
         `[import] ${INTRO}  —  grandfathered text: text carries pause marks ":": ElevenLabs reads them as a pause and may fill it with a hesitation sound. Write a period where a pause is needed (#1518).`,
       );
     });
+
+    it("imports an approved entry whose text is the approved one, without the grandfathered warning (#1643)", () => {
+      const marked = buildVoice({ "lap-time-intro": [{ name: "first-good-lap", text: "That lap... was." }] });
+
+      writeTake(INTRO, INTRO_BYTES);
+      writeTrial([{ key: INTRO, status: "ok", requestId: "req-intro" }]);
+
+      const manifest: Manifest = { version: 1, entries: {} };
+      const { result, log } = runImport(manifest, {
+        voiceConfigs: new Map([["default", marked]]),
+        approved: { default: { "lap-time-intro/first-good-lap": "That lap... was." } },
+      });
+
+      expect(result).toEqual({ imported: 1, skipped: 0, problems: [] });
+      expect(manifest.entries[`${INTRO}.mp3`]!.requestId).toBe("req-intro");
+      expect(log.lines.filter((line) => line.includes("pause mark"))).toEqual([]);
+    });
+
+    it("refuses an entry whose approved text was edited, though it keeps the approved mark (#1643)", () => {
+      const marked = buildVoice({ "lap-time-intro": [{ name: "first-good-lap", text: "That lap... was it." }] });
+
+      writeTake(INTRO, INTRO_BYTES);
+      writeTrial([{ key: INTRO, status: "ok", requestId: "req-intro" }]);
+
+      const manifest: Manifest = { version: 1, entries: {} };
+      const { result } = runImport(manifest, {
+        voiceConfigs: new Map([["default", marked]]),
+        approved: { default: { "lap-time-intro/first-good-lap": "That lap... was." } },
+      });
+
+      expect(result.problems).toEqual([
+        `${INTRO}: text carries pause marks "...": ElevenLabs reads them as a pause and may fill it with a hesitation sound. Write a period where a pause is needed (#1518).`,
+      ]);
+      expect(manifest.entries).toEqual({});
+      expect(fs.existsSync(path.join(root, "voice"))).toBe(false);
+    });
   });
 
   it("refuses a missing or malformed trial manifest", () => {

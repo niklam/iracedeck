@@ -1,12 +1,21 @@
-import { describe, expect, it } from "vitest";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { type VoiceConfig, VoiceConfigSchema } from "./config.ts";
 import {
+  APPROVED_FILE,
   checkPauseMarks,
   describePauseMarks,
   findEntryPauseMarks,
   findPauseMarks,
+  GRANDFATHERED_FILE,
+  isApproved,
   isGrandfathered,
+  loadApprovedPauseMarks,
+  loadGrandfatheredPauseMarks,
+  pauseMarkStanding,
 } from "./pause-marks.ts";
 
 function buildVoiceConfig(groups: Record<string, Array<Record<string, unknown>>>): VoiceConfig {
@@ -113,6 +122,7 @@ describe("checkPauseMarks", () => {
     expect(checkPauseMarks("voice-id", voiceOk, { "tires/old-01": "Left-front." })).toEqual({
       refused: [],
       stale: [],
+      staleApproved: [],
     });
   });
 
@@ -143,7 +153,140 @@ describe("checkPauseMarks", () => {
     const fixed = buildVoiceConfig({ tires: [{ name: "old-01", text: "Left front." }] });
 
     expect(checkPauseMarks("voice-id", fixed, { "tires/old-01": "Left-front.", "tires/gone-01": "Gone-now." })).toEqual(
-      { refused: [], stale: ["tires/old-01", "tires/gone-01"] },
+      { refused: [], stale: ["tires/old-01", "tires/gone-01"], staleApproved: [] },
     );
+  });
+
+  it("passes an entry the approved list holds with its text (#1643)", () => {
+    expect(
+      checkPauseMarks("voice-id", voice, { "tires/old-01": "Left-front." }, { "tires/new-01": "Right-rear." }),
+    ).toEqual({ refused: [], stale: [], staleApproved: [] });
+  });
+
+  // The positive control for the real tree's approved-list check in `clip-text.test.ts`.
+  it("refuses an approved entry whose text was edited, and calls its approval stale", () => {
+    const edited = buildVoiceConfig({ tires: [{ name: "new-01", text: "The right-rear." }] });
+
+    expect(checkPauseMarks("voice-id", edited, undefined, { "tires/new-01": "Right-rear." })).toMatchObject({
+      refused: [{ key: "tires/new-01" }],
+      stale: [],
+      staleApproved: ["tires/new-01"],
+    });
+  });
+
+  // The state the issue lead's config edit resolves: the approved take's text
+  // is not yet the config's, and the config's own text carries no mark.
+  it("calls an approval stale while the config still holds other, clean text", () => {
+    const before = buildVoiceConfig({ "lap-time-last": [{ name: "intro-03", text: "You did a." }] });
+
+    expect(checkPauseMarks("default", before, undefined, { "lap-time-last/intro-03": "You did a..." })).toEqual({
+      refused: [],
+      stale: [],
+      staleApproved: ["lap-time-last/intro-03"],
+    });
+  });
+
+  it("calls an approval stale once its entry is gone", () => {
+    expect(
+      checkPauseMarks(
+        "voice-id",
+        voice,
+        { "tires/old-01": "Left-front." },
+        {
+          "tires/new-01": "Right-rear.",
+          "tires/gone-01": "Gone-now.",
+        },
+      ).staleApproved,
+    ).toEqual(["tires/gone-01"]);
+  });
+});
+
+describe("isApproved", () => {
+  const entry = { name: "intro-03", text: "You did a...", seed: 1 };
+
+  it("approves an entry whose text is the approved one", () => {
+    expect(isApproved(entry, "You did a...")).toBe(true);
+  });
+
+  it("ignores everything but the text fields", () => {
+    expect(isApproved({ ...entry, seed: 7, previous_request_ids: ["x/y"] }, "You did a...")).toBe(true);
+  });
+
+  it("does not approve an unlisted entry", () => {
+    expect(isApproved(entry, undefined)).toBe(false);
+  });
+
+  it("does not approve an edited text", () => {
+    expect(isApproved({ ...entry, text: "You did a…" }, "You did a...")).toBe(false);
+  });
+
+  it("does not approve a mark added to the conditioning text", () => {
+    expect(isApproved({ ...entry, previous_text: "Last lap:" }, "You did a...")).toBe(false);
+  });
+});
+
+describe("pauseMarkStanding", () => {
+  const marked = { name: "intro-03", text: "You did a...", seed: 1 };
+
+  it("calls an entry with no mark clean, whatever the lists hold", () => {
+    expect(pauseMarkStanding({ ...marked, text: "You did a." }, { grandfathered: undefined, approved: "x" })).toBe(
+      "clean",
+    );
+  });
+
+  it("calls an entry the approved list holds approved", () => {
+    expect(pauseMarkStanding(marked, { grandfathered: undefined, approved: "You did a..." })).toBe("approved");
+  });
+
+  it("calls an entry the grandfathered list holds grandfathered", () => {
+    expect(pauseMarkStanding(marked, { grandfathered: "You did a...", approved: undefined })).toBe("grandfathered");
+  });
+
+  // An approval is the newer, explicit decision, and is cut without the
+  // grandfathered warning.
+  it("prefers the approval when both lists hold the text", () => {
+    expect(pauseMarkStanding(marked, { grandfathered: "You did a...", approved: "You did a..." })).toBe("approved");
+  });
+
+  it("refuses an entry neither list holds with its text", () => {
+    expect(pauseMarkStanding(marked, { grandfathered: "You did a..", approved: "You did a.." })).toBe("refused");
+    expect(pauseMarkStanding(marked, { grandfathered: undefined, approved: undefined })).toBe("refused");
+  });
+});
+
+describe("loading the lists", () => {
+  let root: string;
+
+  beforeEach(() => {
+    root = fs.mkdtempSync(path.join(os.tmpdir(), "pause-marks-"));
+  });
+
+  afterEach(() => {
+    fs.rmSync(root, { recursive: true, force: true });
+  });
+
+  it.each([
+    ["grandfathered", GRANDFATHERED_FILE, loadGrandfatheredPauseMarks],
+    ["approved", APPROVED_FILE, loadApprovedPauseMarks],
+  ])("reads the %s list from its own file", (_label, file, load) => {
+    const list = { default: { "lap-time-last/intro-03": "You did a..." } };
+
+    fs.writeFileSync(path.join(root, file), JSON.stringify(list));
+
+    expect(load(root)).toEqual(list);
+  });
+
+  it("refuses a malformed list, naming the file and the bad key", () => {
+    fs.writeFileSync(path.join(root, APPROVED_FILE), JSON.stringify({ default: { "lap-time-last/intro-03": 3 } }));
+
+    expect(() => loadApprovedPauseMarks(root)).toThrow(
+      'pause-marks.approved.json must map each voice id to "<group>/<name>" → text: default["lap-time-last/intro-03"]: ',
+    );
+  });
+
+  it("does not read the approved list from the grandfathered file", () => {
+    fs.writeFileSync(path.join(root, GRANDFATHERED_FILE), JSON.stringify({ default: {} }));
+
+    expect(() => loadApprovedPauseMarks(root)).toThrow(/ENOENT/);
   });
 });
