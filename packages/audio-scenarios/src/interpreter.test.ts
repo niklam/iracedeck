@@ -4130,6 +4130,40 @@ describe("bounded pending queue (issue #1185)", () => {
     });
   });
 
+  // A key-press ack (issue #1698) cuts a queueable, non-resumable line inside
+  // its cooldown: the stash replays whole — its cooldown was stamped when it
+  // started playing, so it does not hold the replay back — but only within the
+  // line's first due time plus its max wait (issue #1681), like any stash.
+  describe("an ack cuts a line inside its cooldown (issue #1698)", () => {
+    function playThenAck(): void {
+      define("a", WEIGHT.NORMAL, { cooldown: 60_000 });
+
+      engine.fire("q.a"); // t=0: takes the idle bus and stamps its cooldown
+      vi.advanceTimersByTime(3000);
+      // t=3 s: the ack cuts it, holding the bus until endClip()
+      expect(engine.playClips("pit-crew.ack", ["q/x.mp3"], { weight: WEIGHT.NORMAL, whenBusy: "interrupt" })).toBe(
+        "playing",
+      );
+    }
+
+    it("replays whole at 7 s behind a 4 s ack, well inside its 60 s cooldown", () => {
+      playThenAck();
+      vi.advanceTimersByTime(4000);
+      endClip();
+
+      expect(heard()).toEqual(["a", "x", "a"]);
+    });
+
+    it("is dropped at 9 s behind a 6 s ack, the wait counted from its first due time", () => {
+      playThenAck();
+      vi.advanceTimersByTime(6000);
+      endClip();
+
+      expect(mockLogger.debug).toHaveBeenCalledWith('Scenario "q.a" dropped — waited 9000 ms (max 8000 ms)');
+      expect(heard()).toEqual(["a", "x"]);
+    });
+  });
+
   // Each drop half has its replay half beside it, in the same fixture, as its
   // positive control. Before #1681 the stash restarted the max wait at the cut,
   // so every drop half below replayed instead.
