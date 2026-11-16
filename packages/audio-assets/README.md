@@ -7,12 +7,12 @@ generator that produces them.
 
 ```text
 packages/audio-assets/
-├── ambient/                 # Looping ambient audio
+├── sfx/                     # Non-voice sounds: radio ticks, the ambient pit loop, radar tones
 ├── voice/                   # Generated TTS clips, keyed by <voice>/<group>/<name>.mp3
 ├── catalog/                 # One committed <pack-id>.json per published voice pack
 ├── pack-records/            # What each pack's archive was built from, and whether it is released
 ├── dist/voice-packs/        # Staged packs + archives from pack:voice (gitignored)
-├── generate.config.json     # TTS source: voices, groups, entries, voice settings
+├── configs/                 # TTS source: one <voice-id>.voice.json per voice (groups, entries, voice settings, callout script)
 ├── generate.manifest.json   # TTS cache: per-entry hash + ElevenLabs request id
 ├── manifest.json            # Authored manifest: every voice in this package
 ├── manifest.bundled.json    # The bundled slice a plugin compiles in and ships
@@ -31,7 +31,7 @@ both are regenerated from the file tree by
 
 ## TTS generator
 
-Reads `generate.config.json`, iterates voices × groups × entries, and writes
+Reads every `configs/*.voice.json`, iterates voices × groups × entries, and writes
 any missing or stale `voice/<voice>/<group>/<name>.mp3` files by calling the
 ElevenLabs TTS API. An entry is considered up-to-date when its output file
 exists *and* its hash in `generate.manifest.json` matches the current
@@ -67,10 +67,11 @@ pnpm --filter @iracedeck/audio-assets pack:voice default
 
 | Flag | Description |
 |---|---|
-| `--dry-run` | List entries that would be generated/skipped. No API calls, no file writes, no manifest changes. |
+| `--dry-run` | List entries that would be generated, copied, skipped or refused. No API calls, no file writes, no manifest changes. |
 | `--voice <key>[,<key>...]` | Only iterate the named voices (e.g. `luca`). Repeatable. |
 | `--group <name>[,<name>...]` | Only iterate the named groups (e.g. `numbers`). Repeatable. |
 | `--entry <name>[,<name>...]` | Only iterate entries with these names, in whichever groups are iterated (e.g. `0,09`). Repeatable. The way to cut a slice of one large group — added for #1127 so 21 of the 1,110 car numbers could be auditioned before the rest were paid for. |
+| `--import <dir>` | Import takes cut outside the generator (#1643). `<dir>` holds `trial-manifest.json` (`{ "model", "voiceId"?, "settings"?, "records": [{ "key": "voice/<voice>/<group>/<name>", "status": "ok" \| "error", "requestId", "voiceId"?, "seed"? }] }`) and the files `voice/<voice>/<group>/<name>.mp3`. Each `ok` take is copied byte for byte into `voice/` and given a manifest row with the entry's current hash and the trial's request id, so no later run re-cuts it; other records are skipped. An unknown voice, group or entry, a missing file or request id, a model other than the entry's `model_id`, a record `text` other than the config's, a `voiceId` (the trial's or the record's) other than the voice config's `id`, top-level `settings` other than the entry's resolved `voice_settings` (without `language_code`), a record `seed` other than the entry's, a driver-name alias or a pause mark neither the grandfathered nor the approved list covers (`pause-marks.grandfathered.json`, `pause-marks.approved.json`) refuses the whole import and writes nothing; a trial with no `voiceId` or no `settings` imports with a warning per voice that they were not checked. The manifest is saved after each take, as a run saves after each clip. Composes with `--dry-run`; cannot be combined with `--voice`, `--group` or `--entry`; needs no API key. |
 
 `--voice`, `--group` and `--entry` accept either the space-separated form
 (`--voice luca`) or the equals form (`--voice=luca`). They compose as an
@@ -80,6 +81,12 @@ that reaches them, still reports them as out of date. Unknown names exit non-zer
 with the list of valid choices; an entry name is checked against the groups the
 scope iterates, so a slice that would match nothing is refused rather than
 reported as a full cache hit.
+
+Within each voice a run cuts dependencies first: a stable topological order over the `previous_request_ids` / `next_request_ids` references, config order as the tie-break, with `default` run before every other voice. An entry is hashed on its own request only, so changing an entry re-cuts that entry and none that reference it (#1643). An entry about to be cut whose referenced entry is out of date and is not cut earlier in the same run is refused, naming that entry and the `--voice/--group/--entry` scope that cuts it; one whose dependency fails or is refused in the run fails with it. An entry whose request is identical to a take another voice already holds (the same hash, a source row that is current in its own voice and has a request id, and the request ids this voice would send equal to the ones that take was conditioned on: its row's `conditionedOn`; an older row without one is copied only into an entry that references nothing) is copied (clip and request id) instead of requested, reported as `WOULD COPY` in a dry run; a dry run plans what each clip will hold, so its counts are the live run's.
+
+The manifest is saved after every clip a run writes or copies. A clip on disk with its row set counts as cut even when that save fails: the save is retried (3 attempts, 250 ms apart), and the run saves once more before it ends. If that fails too, the summary names the clips on disk without a row and the run exits 1; run again once the file is free, or the next run pays for those clips again.
+
+Any other argument refuses the run before anything is loaded, naming it and listing the valid flags, so a typo such as `--dryrun` never starts a paid run.
 
 ### Examples
 

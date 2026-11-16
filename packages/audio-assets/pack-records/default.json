@@ -1,16 +1,16 @@
 {
   "id": "default",
   "version": "2.0.0",
-  "sha256": "5de422b7a5a96477eb56abce8f4aef53767be1f26a2ad86a62e4322b13d0abc2",
+  "sha256": "6d5ac076cb82a043f18f62b4d8d129bf3f0f94c77c1a33f39cc969437cd2b3b6",
   "inputs": {
-    "pipeline": "874d684787e86d57530e26683a0f03f6a513b3f9e51ed64a7df0c23f7588239d",
+    "pipeline": "07ed37b8d7bc4aad9397ad201cfe00b15ab93746cab67e206e5babbc7f13f3fa",
     "archiveFormat": "dff24c496d1c311953f8cd6b9a8aeee12dc6eaca81e3bc3ad645794093cc71ca",
     "manifest": "6c07820159eb63d6ffd4f43a3050b74e062ae7bfad21a1f3f2350c96fc0378e0",
     "voices": {
       "default": {
         "clips": 4805,
-        "clipsSha256": "d4bdd7ef769a1eeb6c7b36aeef459efb4fde66bb8323f6edfa2c2eb2ca058067",
-        "script": "9cabb0528719aeead72171c71ea8b3392705c36b20efb87c94e03e346939c655"
+        "clipsSha256": "ee797ab56572ca6e8d078fceeacaf83d79311d791b96bc8e1af3b5ce088f9230",
+        "script": "a824bda1c6b4ebd9bd42df0640e068e00d3b17387b701a93b3a53e87522fa955"
       }
     }
   },

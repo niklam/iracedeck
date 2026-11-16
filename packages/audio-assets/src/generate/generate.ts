@@ -5,11 +5,12 @@
  * Reads every `configs/<voice-id>.voice.json` file, iterates each voice's
  * groups × entries, skips any entry whose output MP3 already exists AND
  * whose content hash in `generate.manifest.json` matches the current one.
- * The hash (`entryHash`) is a pure function of config content — the entry's
- * own audio-affecting options plus the recursive hashes of its request-id
- * dependencies — so it's stable across runs and re-cuts only on a real
- * config change. Remaining entries are fetched from the ElevenLabs TTS API
- * and written to `packages/audio-assets/voice/<voice>/<group>/<name>.mp3`.
+ * The hash (`entryHash`) is a pure function of the entry's OWN request — its
+ * audio-affecting options and the raw `<group>/<entry-name>` reference
+ * strings, never the hashes of the entries they name — so it's stable across
+ * runs and re-cuts only that entry on a real config change. Remaining
+ * entries are fetched from the ElevenLabs TTS API and written to
+ * `packages/audio-assets/voice/<voice>/<group>/<name>.mp3`.
  *
  * Per-voice file shape
  *   Every voice is fully self-contained. There is no shared root config:
@@ -39,17 +40,22 @@
  *     - a raw ElevenLabs request-id string (no `/`, passed through verbatim).
  *   References are resolved per-voice — the same chain block produces a
  *   per-voice link without duplication. The resolved provider IDs feed only
- *   the API call; the cache hash uses the *raw reference strings* plus the
- *   referenced entries' content hashes, so re-cutting a dependency (which
- *   gets a fresh provider ID) does NOT thrash every dependent — only a real
- *   config change to a dependency cascades.
+ *   the API call; the cache hash uses the *raw reference strings* alone, so
+ *   neither re-cutting a dependency (a fresh provider ID) nor changing its
+ *   config re-cuts a dependent (#1643). On `eleven_v4` a re-cut is not
+ *   guaranteed to return the same take, so a clip on disk is the only copy of an
+ *   approved take: a dependent keeps its take, conditioned on the superseded
+ *   one, until someone re-cuts it on purpose (a seed bump).
  *
  *   The reference graph must be acyclic — `detectReferenceCycles` rejects
- *   cycles up front. Run dependencies before dependents, either by ordering
- *   groups in the config so deps come first, or by scoping with
- *   `--voice <v> --group <g>`. A reference whose target is missing from the
- *   manifest fails that entry loudly with the offending ref, the lookup
- *   path, and a suggested command.
+ *   cycles up front. A run orders each voice's entries dependencies first
+ *   (`run-order.ts`: a stable topological sort, config order as the
+ *   tie-break) and visits Default before the other voices. An entry whose
+ *   dependency is out of date and not cut earlier in the same run is
+ *   REFUSED, naming the dependency and the `--voice/--group/--entry` scope
+ *   that cuts it, so no new take is ever conditioned on a superseded one; a
+ *   dependency that fails or is refused in the run fails its dependents.
+ *   See `runGeneration` in `run.ts`, which holds the whole loop.
  *
  *   Unknown reference names (typos) are caught at config-parse time with a
  *   list of valid `<group>/<entry-name>` candidates.
@@ -61,7 +67,8 @@
  * matching the existing convention (see root .gitignore and the mirabox
  * plugin's MIRABOX_PLUGINS_DIR setup).
  *
- * Flags:
+ * Flags (any other argument refuses the run before anything is loaded, so a
+ * typo such as `--dryrun` can never start a paid run — `cli-args.ts`):
  *   --dry-run                       Report which entries would be generated /
  *                                   skipped without calling the API, writing
  *                                   files, or updating the manifest.
@@ -72,6 +79,22 @@
  *                                   whichever groups are iterated. Repeatable.
  *                                   The way to cut a SLICE of one large group
  *                                   (#1127: 21 of the 1,110 car numbers).
+ *   --import <dir>                  Import takes cut outside the generator
+ *                                   (#1643): every `ok` record of
+ *                                   `<dir>/trial-manifest.json`, its file
+ *                                   `<dir>/voice/<voice>/<group>/<name>.mp3`
+ *                                   copied byte for byte and given a manifest
+ *                                   row with the entry's current hash and the
+ *                                   trial's request id, so nothing re-cuts it.
+ *                                   Any unknown entry, missing file, model,
+ *                                   speaker (voiceId), settings or seed
+ *                                   mismatch, driver-name
+ *                                   alias or a pause mark neither the
+ *                                   grandfathered nor the approved list covers
+ *                                   refuses the whole import and writes
+ *                                   nothing. Composes with --dry-run;
+ *                                   refuses --voice/--group/--entry; needs no
+ *                                   API key. See `import-takes.ts`.
  *
  * The three filters compose as an intersection: --voice default --group
  * numbers only touches voice/default/numbers/, and --group car-number --entry
@@ -89,60 +112,25 @@
  *   pnpm --filter @iracedeck/audio-assets generate --voice default --group numbers
  *   pnpm --filter @iracedeck/audio-assets generate --voice default --group car-number --entry 0,1,2
  */
-import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import url from "node:url";
 
-import {
-  buildEntryLookup,
-  buildEntryOptions,
-  detectReferenceCycles,
-  entryHash,
-  loadVoiceConfigs,
-  resolveEntryRequestIds,
-} from "./config.ts";
-import { describeDriverNameAlias, driverNameAliasOf } from "./driver-name-aliases.ts";
-import { type SynthesizeOptions, synthesizeSpeech } from "./elevenlabs.ts";
-import { clipRelPath, loadManifest, saveManifest } from "./manifest.ts";
-import {
-  describePauseMarks,
-  findEntryPauseMarks,
-  isGrandfathered,
-  loadGrandfatheredPauseMarks,
-} from "./pause-marks.ts";
-import { formatScope, parseScopeArgs, type Scope, validateScope } from "./scope.ts";
+import { type GenerateArgs, parseGenerateArgs } from "./cli-args.ts";
+import { detectReferenceCycles, loadVoiceConfigs } from "./config.ts";
+import { synthesizeSpeech } from "./elevenlabs.ts";
+import { importTakes } from "./import-takes.ts";
+import { loadManifest, saveManifest } from "./manifest.ts";
+import { loadApprovedPauseMarks, loadGrandfatheredPauseMarks } from "./pause-marks.ts";
+import { formatRunSummary, runGeneration } from "./run.ts";
+import { formatScope, type Scope, validateScope } from "./scope.ts";
 
 const __dirname = path.dirname(url.fileURLToPath(import.meta.url));
 const packageRoot = path.resolve(__dirname, "../..");
 const repoRoot = path.resolve(packageRoot, "../..");
 const CONFIGS_DIR = path.join(packageRoot, "configs");
 const MANIFEST_PATH = path.join(packageRoot, "generate.manifest.json");
-const CACHE_ROOT = path.join(packageRoot, ".cache");
-
-/**
- * Drop the processed mp3 for `relPath` from every filter-hash subdir under
- * `.cache/`. No-op when `.cache/` doesn't exist yet (clean tree).
- *
- * This used to be the ONLY thing standing between a re-cut clip and a stale
- * processed copy: the build helper compared mtimes, which a git checkout or a
- * `cp -p` defeats by preserving an older source mtime on changed content.
- * Since #1143 the build keys on the source BYTES, so a re-cut clip invalidates
- * itself and this is belt-and-braces — kept because deleting what we know is
- * dead costs nothing. It leaves the entry's `.src.sha256` sidecar behind; with
- * the clip gone the cache reads as stale anyway, and the next build overwrites
- * both.
- */
-function invalidateProcessedCache(relPath: string): void {
-  if (!existsSync(CACHE_ROOT)) return;
-
-  for (const entry of readdirSync(CACHE_ROOT, { withFileTypes: true })) {
-    if (!entry.isDirectory()) continue;
-
-    const cachedPath = path.join(CACHE_ROOT, entry.name, relPath);
-    rmSync(cachedPath, { force: true });
-  }
-}
 
 /**
  * Load environment variables from `<repoRoot>/.env.local` (preferred) or
@@ -161,24 +149,33 @@ function loadDotenv(): void {
   }
 }
 
-function textPreview(text: string, max = 60): string {
-  return text.length <= max ? text : text.slice(0, max - 1) + "…";
+function fail(err: unknown): never {
+  console.error(err instanceof Error ? err.message : String(err));
+  process.exit(1);
 }
 
 async function main(): Promise<void> {
-  loadDotenv();
-
-  let scope: Scope;
-  let remaining: string[];
+  // First, before anything is loaded: an argument the generator does not
+  // read (a `--dryrun` typo) refuses the run rather than being ignored into
+  // a paid one.
+  let args: GenerateArgs;
 
   try {
-    ({ scope, remaining } = parseScopeArgs(process.argv.slice(2)));
+    args = parseGenerateArgs(process.argv.slice(2));
   } catch (err) {
-    console.error(err instanceof Error ? err.message : String(err));
-    process.exit(1);
+    fail(err);
   }
 
-  const dryRun = remaining.includes("--dry-run");
+  const { scope, dryRun, importDir } = args;
+
+  loadDotenv();
+
+  if (importDir !== null) {
+    await runImport(importDir, scope, dryRun);
+
+    return;
+  }
+
   const apiKey = process.env.ELEVENLABS_API_KEY;
 
   if (!dryRun && !apiKey) {
@@ -195,25 +192,13 @@ async function main(): Promise<void> {
 
   try {
     validateScope(scope, voiceConfigs);
-  } catch (err) {
-    console.error(err instanceof Error ? err.message : String(err));
-    process.exit(1);
-  }
 
-  // Reject reference cycles up front — `entryHash` recurses through
-  // dependencies, and a cyclic graph can't be generated from an empty
-  // manifest anyway. Fail fast with the cycle path before any API work.
-  try {
-    for (const [voiceName, voice] of voiceConfigs) {
-      detectReferenceCycles(voiceName, voice);
-    }
+    // Reject reference cycles up front — a cyclic graph has no
+    // dependencies-first order and can't be generated from an empty manifest.
+    for (const [voiceName, voice] of voiceConfigs) detectReferenceCycles(voiceName, voice);
   } catch (err) {
-    console.error(err instanceof Error ? err.message : String(err));
-    process.exit(1);
+    fail(err);
   }
-
-  const manifest = loadManifest(MANIFEST_PATH);
-  const grandfathered = loadGrandfatheredPauseMarks(packageRoot);
 
   const scopeSummary = formatScope(scope);
 
@@ -221,128 +206,59 @@ async function main(): Promise<void> {
 
   if (dryRun) console.log("[dry-run] No API calls, no file writes, no manifest changes.");
 
-  let generated = 0;
-  let skipped = 0;
-  let failed = 0;
-  let refused = 0;
-
-  for (const [voiceName, voice] of voiceConfigs) {
-    if (scope.voices && !scope.voices.includes(voiceName)) continue;
-
-    // `entryHash` hashes dependencies recursively — build the lookup and a
-    // shared memo once per voice so each entry is hashed at most once.
-    const lookup = buildEntryLookup(voice);
-    const hashMemo = new Map<string, string>();
-
-    for (const [groupName, entries] of Object.entries(voice.groups)) {
-      if (scope.groups && !scope.groups.includes(groupName)) continue;
-
-      for (const entry of entries) {
-        if (scope.entries && !scope.entries.includes(entry.name)) continue;
-
-        const relPath = clipRelPath(voiceName, groupName, entry.name);
-        const absPath = path.join(packageRoot, relPath);
-
-        // The cache key is a pure function of config content (this entry's
-        // own settings + the recursive hashes of its references) — it does
-        // NOT depend on the manifest or any volatile provider request ID,
-        // so it's stable across runs and cycle-safe.
-        const hash = entryHash(entry, groupName, voice, lookup, hashMemo);
-        const manifestEntry = manifest.entries[relPath];
-        const cached = manifestEntry?.hash === hash && existsSync(absPath);
-
-        // Refused in a dry run alike, so an author sees it before spending
-        // credit (#1518), and ahead of the cache hit, so a marked clip copied
-        // in with its manifest row is refused too. A grandfathered entry whose
-        // text is unchanged is re-cut as before — a dependency's new take or a
-        // voice-wide setting reaches it — but said so.
-        // A driver-name alias (#1580) plays its canonical's clips, so an entry
-        // recording one in a name group is refused the same way, dry run
-        // included — a batch that re-adds `geoff` fails before it is paid for.
-        const aliasOf = driverNameAliasOf(groupName, entry.name);
-
-        if (aliasOf !== null) {
-          console.error(`[generate] ${relPath}  —  REFUSED: ${describeDriverNameAlias(entry.name, aliasOf)}`);
-          refused++;
-          continue;
-        }
-
-        const pauseMarks = findEntryPauseMarks(entry);
-        const allowed =
-          pauseMarks.length === 0 || isGrandfathered(entry, grandfathered[voiceName]?.[`${groupName}/${entry.name}`]);
-
-        if (!allowed) {
-          console.error(`[generate] ${relPath}  —  REFUSED: ${describePauseMarks(pauseMarks)}`);
-          refused++;
-          continue;
-        }
-
-        if (cached) {
-          skipped++;
-          continue;
-        }
-
-        if (pauseMarks.length > 0) {
-          console.warn(`[generate] ${relPath}  —  grandfathered text: ${describePauseMarks(pauseMarks)}`);
-        }
-
-        const prefix = dryRun ? "[dry-run] WOULD GENERATE" : "[generate]";
-        console.log(`${prefix} ${relPath}  —  "${textPreview(entry.text)}"`);
-
-        if (dryRun) {
-          generated++;
-          continue;
-        }
-
-        let synthOptions: Omit<SynthesizeOptions, "apiKey">;
-
-        try {
-          // Resolve `<group>/<entry-name>` references to concrete provider
-          // request IDs for the API call. Can fail if a dependency isn't in
-          // the manifest yet (first-ever run, or wrong --group scope order);
-          // treat as a per-entry failure so the rest of the run continues.
-          synthOptions = resolveEntryRequestIds(buildEntryOptions(entry, voice), voiceName, manifest);
-        } catch (err) {
-          const message = err instanceof Error ? err.message : String(err);
-          console.error(`[generate] ${relPath}  —  FAILED: ${message}`);
-          failed++;
-          continue;
-        }
-
-        try {
-          const { mp3, requestId } = await synthesizeSpeech({ apiKey: apiKey!, ...synthOptions });
-
-          mkdirSync(path.dirname(absPath), { recursive: true });
-          writeFileSync(absPath, mp3);
-          invalidateProcessedCache(relPath);
-          manifest.entries[relPath] = {
-            hash,
-            voiceId: voice.id,
-            model: synthOptions.model_id,
-            textPreview: textPreview(entry.text, 80),
-            generatedAt: new Date().toISOString(),
-            requestId,
-          };
-          // Persist after every success so a partial failure mid-run doesn't
-          // lose progress / force re-fetches on the next invocation.
-          saveManifest(MANIFEST_PATH, manifest);
-          generated++;
-        } catch (err) {
-          const message = err instanceof Error ? err.message : String(err);
-          console.error(`[generate] ${relPath}  —  FAILED: ${message}`);
-          failed++;
-        }
-      }
-    }
-  }
+  const result = await runGeneration({
+    voiceConfigs,
+    manifest: loadManifest(MANIFEST_PATH),
+    scope,
+    dryRun,
+    root: packageRoot,
+    synthesize: (options) => synthesizeSpeech({ apiKey: apiKey!, ...options }),
+    persistManifest: (manifest) => saveManifest(MANIFEST_PATH, manifest),
+    grandfathered: loadGrandfatheredPauseMarks(packageRoot),
+    approved: loadApprovedPauseMarks(packageRoot),
+  });
 
   console.log();
-  const verb = dryRun ? "would be generated" : "generated";
+
+  for (const line of formatRunSummary(result, dryRun)) console.log(line);
+
+  // A clip whose row never reached the manifest fails the run too: the next
+  // run would pay to cut it again (#1643).
+  if (result.totals.failed > 0 || result.totals.refused > 0 || result.unsavedRows.length > 0) process.exitCode = 1;
+}
+
+/** `--import <dir>`: no API call, so no key; every record of the trial, so no scope. */
+async function runImport(importDir: string, scope: Scope, dryRun: boolean): Promise<void> {
+  if (scope.voices || scope.groups || scope.entries) {
+    fail(
+      "--import imports every ok record of the trial and cannot be combined with --voice, --group or --entry. " +
+        "To import fewer takes, give it a directory holding only those records.",
+    );
+  }
+
+  const voiceConfigs = loadVoiceConfigs(CONFIGS_DIR);
+
+  if (dryRun) console.log("[dry-run] No file writes, no manifest changes.");
+
+  const dir = path.resolve(importDir);
+  const result = importTakes({
+    dir,
+    voiceConfigs,
+    manifest: loadManifest(MANIFEST_PATH),
+    root: packageRoot,
+    dryRun,
+    persistManifest: (manifest) => saveManifest(MANIFEST_PATH, manifest),
+    grandfathered: loadGrandfatheredPauseMarks(packageRoot),
+    approved: loadApprovedPauseMarks(packageRoot),
+  });
+
+  console.log();
   console.log(
-    `Done. ${generated} ${verb}, ${skipped} skipped (cache hit), ${failed} failed, ${refused} refused (pause marks or driver-name aliases)`,
+    `Done. ${result.imported} ${dryRun ? "would be imported" : "imported"}, ${result.skipped} skipped (not ok), ` +
+      `${result.problems.length} problem(s)`,
   );
 
-  if (failed > 0 || refused > 0) process.exitCode = 1;
+  if (result.problems.length > 0) process.exitCode = 1;
 }
 
 main().catch((err) => {

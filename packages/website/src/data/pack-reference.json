@@ -3777,7 +3777,7 @@
       "speakGate": "Re-checked at speak time: the rolling-start formation is still running.",
       "endsOn": null,
       "base": "voice/{voice}",
-      "comment": "The pace car has started moving the field onto the formation lap of a rolling start, and who you form up behind, read from the pace rows at the moment it is spoken. On pole: \"Pace car's rolling. You're on pole — just you and the pace car.\" With only the pace car ahead in your own line but not leading — typically the outside car of a double-file front row — \"Pace car's rolling. Nothing ahead of you but the pace car.\", since that car is not on pole and nothing establishes its row. Otherwise the lane and the car ahead: \"Inside line, behind\" or \"Outside line, behind\" on an oval running double file, \"Form up behind\" with no lane anywhere else or single file, and then the number — a clip of its own that says \"car\" and the number, spoken the way the sim spells it. With no lineup to read, or a car ahead the session cannot name, one of the five numberless lines (\"…get moving and follow the car ahead.\"): the call asks rollingStart.hasFollowCarNumber before choosing a numbered wording, because the lead-in and the number are one optional clause and an optional clause alone expands to nothing. Race-only and live in the car; it waits behind a line in progress rather than being dropped, and stays unsaid once the formation is over.",
+      "comment": "The pace car has started moving the field onto the formation lap of a rolling start, and who you form up behind, read from the pace rows at the moment it is spoken. On pole: \"Pace car's rolling. You're on pole. Just you and the pace car.\" With only the pace car ahead in your own line but not leading — typically the outside car of a double-file front row — \"Pace car's rolling. Nothing ahead of you but the pace car.\", since that car is not on pole and nothing establishes its row. Otherwise the lane and the car ahead: \"Inside line, behind\" or \"Outside line, behind\" on an oval running double file, \"Form up behind\" with no lane anywhere else or single file, and then the number — a clip of its own that says \"car\" and the number, spoken the way the sim spells it. With no lineup to read, or a car ahead the session cannot name, one of the five numberless lines (\"…get moving and follow the car ahead.\"): the call asks rollingStart.hasFollowCarNumber before choosing a numbered wording, because the lead-in and the number are one optional clause and an optional clause alone expands to nothing. Race-only and live in the car; it waits behind a line in progress rather than being dropped, and stays unsaid once the formation is over.",
       "test": "Harness → Scenario Shortcuts → Rolling Start → Formation (oval, two laps), with the race session preset on an oval — expect \"Pace car's rolling\" with the lane and \"behind car …\" as the field rolls; Rolling Start → Pace car moving fires the event alone, and speaks only while a formation is running. In-sim: sit on the grid of a rolling-start race and wait for the pace car to pull away.",
       "skip": false,
       "references": {
@@ -23921,7 +23921,7 @@
           "base": "catch-up",
           "texts": [
             "Close it up. Catch",
-            "Gap's opened. <break time=\"0.3s\" /> Close up on",
+            "Gap's opened. Close up on",
             "You've dropped back. Catch up to"
           ],
           "takes": 3,
@@ -23934,8 +23934,8 @@
         {
           "base": "catch-up-again",
           "texts": [
-            "Still a gap. <break time=\"0.3s\" /> Close up on",
-            "Keep closing. <break time=\"0.3s\" /> You're still off the back of"
+            "Still a gap. Close up on",
+            "Keep closing. You're still off the back of"
           ],
           "takes": 2,
           "usedBy": [
@@ -23989,7 +23989,7 @@
         {
           "base": "follow-behind",
           "texts": [
-            "Single file. <break time=\"0.3s\" /> Line up behind",
+            "Single file. Line up behind",
             "We're single file — you'll be behind",
             "Line up behind"
           ],
@@ -24004,7 +24004,7 @@
           "base": "follow-leader",
           "texts": [
             "You're leading them — it's just you and the pace car.",
-            "You're first in line. <break time=\"0.3s\" /> Nothing ahead but the pace car."
+            "You're first in line. Nothing ahead but the pace car."
           ],
           "takes": 2,
           "usedBy": [
@@ -24108,7 +24108,7 @@
         {
           "base": "one-to-go-inside",
           "texts": [
-            "One lap to green. <break time=\"0.3s\" /> Take the inside line behind"
+            "One lap to green. Take the inside line behind"
           ],
           "takes": 1,
           "usedBy": [
@@ -24121,7 +24121,7 @@
         {
           "base": "one-to-go-leader",
           "texts": [
-            "One lap to green. <break time=\"0.3s\" /> You're leading them away."
+            "One lap to green. You're leading them away."
           ],
           "takes": 1,
           "usedBy": [
@@ -24134,7 +24134,7 @@
         {
           "base": "one-to-go-outside",
           "texts": [
-            "One lap to green. <break time=\"0.3s\" /> Take the outside line behind"
+            "One lap to green. Take the outside line behind"
           ],
           "takes": 1,
           "usedBy": [
@@ -24147,7 +24147,7 @@
         {
           "base": "one-to-go-plain",
           "texts": [
-            "One lap to green. <break time=\"0.3s\" /> Line up behind"
+            "One lap to green. Line up behind"
           ],
           "takes": 1,
           "usedBy": [
@@ -29613,7 +29613,7 @@
         {
           "base": "black",
           "texts": [
-            "We got the black flag. <break time=\"0.3s\" /> We have three laps to serve the penalty."
+            "We got the black flag. We have three laps to serve the penalty."
           ],
           "takes": 1,
           "usedBy": [
@@ -29625,8 +29625,8 @@
         {
           "base": "blue",
           "texts": [
-            "Blue flag. <break time=\"0.3s\" /> Faster car approaching.",
-            "Blue flag. <break time=\"0.3s\" /> Check your mirrors."
+            "Blue flag. Faster car approaching.",
+            "Blue flag. Check your mirrors."
           ],
           "takes": 2,
           "usedBy": [
@@ -29639,8 +29639,8 @@
           "base": "caution-waving",
           "texts": [
             "Caution! Caution! Yellow flag is out.",
-            "Full course caution. <break time=\"0.3s\" /> Slow down and close up safely.",
-            "Caution's out. <break time=\"0.3s\" /> Ease off and close up."
+            "Full course caution. Slow down and close up safely.",
+            "Caution's out. Ease off and close up."
           ],
           "takes": 3,
           "usedBy": [
@@ -29652,7 +29652,7 @@
         {
           "base": "checkered-practice",
           "texts": [
-            "Checkered flag. <break time=\"0.3s\" /> Practice session is over."
+            "Checkered flag. Practice session is over."
           ],
           "takes": 1,
           "usedBy": [
@@ -29664,7 +29664,7 @@
         {
           "base": "checkered-qualifying",
           "texts": [
-            "Checkered flag. <break time=\"0.3s\" /> That's it for the qualifying session."
+            "Checkered flag. That's it for the qualifying session."
           ],
           "takes": 1,
           "usedBy": [
@@ -29676,7 +29676,7 @@
         {
           "base": "checkered-race",
           "texts": [
-            "Checkered flag. <break time=\"0.3s\" /> That's it for the race, well done."
+            "Checkered flag. That's it for the race, well done."
           ],
           "takes": 1,
           "usedBy": [
@@ -29700,7 +29700,7 @@
         {
           "base": "debris",
           "texts": [
-            "There's debris on track. <break time=\"0.3s\" /> Be careful.",
+            "There's debris on track. Be careful.",
             "There's dirt on the track. Watch out.",
             "The track might be slippery here. Focus."
           ],
@@ -29714,7 +29714,7 @@
         {
           "base": "disqualify",
           "texts": [
-            "Disqualified. <break time=\"0.3s\" /> Pull off."
+            "Disqualified. Pull off."
           ],
           "takes": 1,
           "usedBy": [
@@ -29726,7 +29726,7 @@
         {
           "base": "dq-scoring-invalid",
           "texts": [
-            "D-Q. <break time=\"0.3s\" /> Scoring's off."
+            "D Q. Scoring's off."
           ],
           "takes": 1,
           "usedBy": [
@@ -29750,7 +29750,7 @@
         {
           "base": "furled",
           "texts": [
-            "We got the furled black flag. <break time=\"0.3s\" /> We're going to need to give that time back."
+            "We got the furled black flag. We're going to need to give that time back."
           ],
           "takes": 1,
           "usedBy": [
@@ -29827,7 +29827,7 @@
         {
           "base": "meatball",
           "texts": [
-            "We got the meatball flag. <break time=\"0.3s\" /> We'll need to pit for repairs."
+            "We got the meatball flag. We'll need to pit for repairs."
           ],
           "takes": 1,
           "usedBy": [
@@ -29863,8 +29863,8 @@
         {
           "base": "white-last-lap",
           "texts": [
-            "This is the last lap. <break time=\"0.3s\" /> Give it everything.",
-            "Final lap now. <break time=\"0.3s\" /> Make it count."
+            "This is the last lap. Give it everything.",
+            "Final lap now. Make it count."
           ],
           "takes": 2,
           "usedBy": [
@@ -29912,8 +29912,8 @@
         {
           "base": "white-race",
           "texts": [
-            "White flag. <break time=\"0.3s\" /> We're about to start the final lap.",
-            "White flag is out. <break time=\"0.3s\" /> Final lap coming up."
+            "White flag. We're about to start the final lap.",
+            "White flag is out. Final lap coming up."
           ],
           "takes": 2,
           "usedBy": [
@@ -29978,7 +29978,7 @@
         {
           "base": "laps-left-1",
           "texts": [
-            "We're estimating only 1 more lap of fuel after completing this one. <break time=\"0.3s\" /> Plan to box."
+            "We're estimating only 1 more lap of fuel after completing this one. Plan to box."
           ],
           "takes": 1,
           "usedBy": [
@@ -30098,7 +30098,7 @@
         {
           "base": "laps-left-box",
           "texts": [
-            "Box this lap for fuel. <break time=\"0.3s\" /> Box this lap."
+            "Box this lap for fuel. Box this lap."
           ],
           "takes": 1,
           "usedBy": [
@@ -30110,7 +30110,7 @@
         {
           "base": "race-covered",
           "texts": [
-            "We have enough fuel to finish the race. <break time=\"0.3s\" /> No need to box for fuel."
+            "We have enough fuel to finish the race. No need to box for fuel."
           ],
           "takes": 1,
           "usedBy": [
@@ -38352,7 +38352,7 @@
         {
           "base": "first-good-lap",
           "texts": [
-            "That lap was"
+            "That lap was."
           ],
           "takes": 1,
           "usedBy": [],
@@ -38371,7 +38371,7 @@
           "texts": [
             "Last lap was.",
             "That one was.",
-            "You did a."
+            "You did a..."
           ],
           "takes": 3,
           "usedBy": [
@@ -59268,7 +59268,7 @@
         {
           "base": "black-ahead-tail",
           "texts": [
-            "ahead has a black flag. <break time=\"0.3s\" /> They'll be serving a penalty."
+            "ahead has a black flag. They'll be serving a penalty."
           ],
           "takes": 1,
           "usedBy": [
@@ -59435,7 +59435,7 @@
           "texts": [
             "The leader is pitting.",
             "Leader's coming in.",
-            "Heads up. <break time=\"0.3s\" /> The leader is pitting."
+            "Heads up. The leader is pitting."
           ],
           "takes": 3,
           "usedBy": [
@@ -59502,7 +59502,7 @@
         {
           "base": "auto-fuel-off-no-refuel",
           "texts": [
-            "Auto fuel is off. <break time=\"0.3s\" /> We're not refueling at the next pit stop."
+            "Auto fuel is off. We're not refueling at the next pit stop."
           ],
           "takes": 1,
           "usedBy": [
@@ -59514,7 +59514,7 @@
         {
           "base": "auto-fuel-off-refuel",
           "texts": [
-            "Auto fuel is off. <break time=\"0.3s\" /> The plan is still to refuel during the next pit stop."
+            "Auto fuel is off. The plan is still to refuel during the next pit stop."
           ],
           "takes": 1,
           "usedBy": [
@@ -59526,7 +59526,7 @@
         {
           "base": "auto-fuel-on-no-refuel",
           "texts": [
-            "Auto fuel is on. <break time=\"0.3s\" /> We're not refueling at the next pit stop."
+            "Auto fuel is on. We're not refueling at the next pit stop."
           ],
           "takes": 1,
           "usedBy": [
@@ -59538,7 +59538,7 @@
         {
           "base": "auto-fuel-on-refuel",
           "texts": [
-            "Auto fuel is on. <break time=\"0.3s\" /> We're refueling at the next pit stop."
+            "Auto fuel is on. We're refueling at the next pit stop."
           ],
           "takes": 1,
           "usedBy": [
@@ -59920,9 +59920,9 @@
         {
           "base": "dropped",
           "texts": [
-            "Your limiter dropped. <break time=\"0.3s\" /> Turn it back on.",
-            "The limiter came off. <break time=\"0.3s\" /> Put it back on.",
-            "Limiter's dropped out. <break time=\"0.3s\" /> Get it back on."
+            "Your limiter dropped. Turn it back on.",
+            "The limiter came off. Put it back on.",
+            "Limiter's dropped out. Get it back on."
           ],
           "takes": 3,
           "usedBy": [
@@ -59936,9 +59936,9 @@
         {
           "base": "entry",
           "texts": [
-            "Pit entry. <break time=\"0.3s\" /> Mind the limit.",
-            "Entering the pitlane. <break time=\"0.3s\" /> Mind the speed.",
-            "Coming into the pits. <break time=\"0.3s\" /> Watch your speed."
+            "Pit entry. Mind the limit.",
+            "Entering the pitlane. Mind the speed.",
+            "Coming into the pits. Watch your speed."
           ],
           "takes": 3,
           "usedBy": [
@@ -59952,9 +59952,9 @@
         {
           "base": "missing",
           "texts": [
-            "The pit limiter is off. <break time=\"0.3s\" /> Please, turn it on.",
+            "The pit limiter is off. Please, turn it on.",
             "Before you go, turn on the pit limiter.",
-            "Pit limiter's still off. <break time=\"0.3s\" /> Switch it on."
+            "Pit limiter's still off. Switch it on."
           ],
           "takes": 3,
           "usedBy": [
@@ -59968,9 +59968,9 @@
         {
           "base": "no-limiter-speeding",
           "texts": [
-            "Over the limit. <break time=\"0.3s\" /> Lift.",
-            "Over the pit limit. <break time=\"0.3s\" /> Lift now.",
-            "You're too quick. <break time=\"0.3s\" /> Lift."
+            "Over the limit. Lift.",
+            "Over the pit limit. Lift now.",
+            "You're too quick. Lift."
           ],
           "takes": 3,
           "usedBy": [
@@ -59984,9 +59984,9 @@
         {
           "base": "on-track",
           "texts": [
-            "Your pit limiter is on. <break time=\"0.3s\" /> Turn it off.",
-            "Limiter's still engaged. <break time=\"0.3s\" /> Switch it off.",
-            "You've still got the pit limiter on. <break time=\"0.3s\" /> Turn it off."
+            "Your pit limiter is on. Turn it off.",
+            "Limiter's still engaged. Switch it off.",
+            "You've still got the pit limiter on. Turn it off."
           ],
           "takes": 3,
           "usedBy": [
@@ -60000,9 +60000,9 @@
         {
           "base": "speeding",
           "texts": [
-            "You are speeding. <break time=\"0.3s\" /> Slow down.",
-            "Too fast. <break time=\"0.3s\" /> Slow it down.",
-            "You're speeding on pit road. <break time=\"0.3s\" /> Ease off."
+            "You are speeding. Slow down.",
+            "Too fast. Slow it down.",
+            "You're speeding on pit road. Ease off."
           ],
           "takes": 3,
           "usedBy": [
@@ -60097,7 +60097,7 @@
         {
           "base": "fast-repair-on",
           "texts": [
-            ". <break time=\"0.3s\" /> We have some damage, and we're going to use the fast repair."
+            ". We have some damage, and we're going to use the fast repair."
           ],
           "takes": 1,
           "usedBy": [
@@ -60148,7 +60148,7 @@
         {
           "base": "opener-entry-limiter",
           "texts": [
-            "Remember the pit limiter. <break time=\"0.3s\" />"
+            "Remember the pit limiter."
           ],
           "takes": 1,
           "usedBy": [
@@ -60582,7 +60582,7 @@
           "texts": [
             "Pits are closed.",
             "Pit lane's closed now.",
-            "Heads up. <break time=\"0.3s\" /> Pits are closed.",
+            "Heads up. Pits are closed.",
             "Just so you know, pit lane's closed.",
             "Pits are closed for now."
           ],
@@ -60598,7 +60598,7 @@
           "texts": [
             "Pits are open.",
             "Pit lane's open now.",
-            "Heads up. <break time=\"0.3s\" /> Pits are open.",
+            "Heads up. Pits are open.",
             "Just so you know, pit lane's open.",
             "Pits are open if you need them."
           ],
@@ -62063,7 +62063,7 @@
         {
           "base": "nice-pass-leader",
           "texts": [
-            "Nice pass! <break time=\"0.3s\"/> We're now leading race. <break time=\"0.4s\"/> Let's keep it that way!"
+            "Nice pass! <break time=\"0.3s\"/> We're now leading race. Let's keep it that way!"
           ],
           "takes": 1,
           "usedBy": [
@@ -62075,7 +62075,7 @@
         {
           "base": "nice-pass-leader-class",
           "texts": [
-            "Nice pass! <break time=\"0.3s\"/> We're now leading our class. <break time=\"0.4s\"/> Let's keep it that way!"
+            "Nice pass! <break time=\"0.3s\"/> We're now leading our class. Let's keep it that way!"
           ],
           "takes": 1,
           "usedBy": [
@@ -62087,7 +62087,7 @@
         {
           "base": "nice-pass-p2",
           "texts": [
-            "Nice pass! <break time=\"0.3s\"/> We're up to second. <break time=\"0.3s\"/> The lead is in our sights."
+            "Nice pass! <break time=\"0.3s\"/> We're up to second. The lead is in our sights."
           ],
           "takes": 1,
           "usedBy": [
@@ -62099,7 +62099,7 @@
         {
           "base": "nice-pass-p2-class",
           "texts": [
-            "Nice pass! <break time=\"0.3s\"/> Up to second in class. <break time=\"0.3s\"/> The class lead is in our sights."
+            "Nice pass! <break time=\"0.3s\"/> Up to second in class. The class lead is in our sights."
           ],
           "takes": 1,
           "usedBy": [
@@ -63647,7 +63647,7 @@
         {
           "base": "we-won",
           "texts": [
-            "well done, <break time=\"0.3s\"/> that's a win. <break time=\"0.3s\"/> Congratulations!!!"
+            "well done, <break time=\"0.3s\"/> that's a win. Congratulations!!!"
           ],
           "takes": 1,
           "usedBy": [],
@@ -66711,7 +66711,7 @@
           "texts": [
             "Pace car's rolling. Time to go, get moving and follow the car ahead.",
             "Here we go, pace car's away. Get going and keep it tight in formation.",
-            "Pace car's moving. <break time=\"0.2s\" /> Off you go. Stay in line and mind your spacing.",
+            "Pace car's moving. Off you go. Stay in line and mind your spacing.",
             "And we're rolling. Pace car's underway, so get moving and settle into formation.",
             "Pace car's on the move. Get going, keep your position, and start working some heat into the tyres."
           ],
@@ -66725,7 +66725,7 @@
         {
           "base": "pace-car-moving-behind",
           "texts": [
-            "Pace car's rolling. <break time=\"0.3s\" /> Form up behind"
+            "Pace car's rolling. Form up behind"
           ],
           "takes": 1,
           "usedBy": [
@@ -66737,7 +66737,7 @@
         {
           "base": "pace-car-moving-front-row",
           "texts": [
-            "Pace car's rolling. <break time=\"0.3s\" /> Nothing ahead of you but the pace car."
+            "Pace car's rolling. Nothing ahead of you but the pace car."
           ],
           "takes": 1,
           "usedBy": [
@@ -66749,7 +66749,7 @@
         {
           "base": "pace-car-moving-inside",
           "texts": [
-            "Pace car's rolling. <break time=\"0.3s\" /> Inside line, behind"
+            "Pace car's rolling. Inside line, behind"
           ],
           "takes": 1,
           "usedBy": [
@@ -66761,7 +66761,7 @@
         {
           "base": "pace-car-moving-leader",
           "texts": [
-            "Pace car's rolling. <break time=\"0.3s\" /> You're on pole — just you and the pace car."
+            "Pace car's rolling. You're on pole. Just you and the pace car."
           ],
           "takes": 1,
           "usedBy": [
@@ -66773,7 +66773,7 @@
         {
           "base": "pace-car-moving-outside",
           "texts": [
-            "Pace car's rolling. <break time=\"0.3s\" /> Outside line, behind"
+            "Pace car's rolling. Outside line, behind"
           ],
           "takes": 1,
           "usedBy": [
@@ -69790,7 +69790,7 @@
         {
           "base": "corner-names-off",
           "texts": [
-            "Copy that. <break time=\"0.2s\"/> Dropping the corner calls."
+            "Copy that. Dropping the corner calls."
           ],
           "takes": 1,
           "usedBy": [],
@@ -69800,7 +69800,7 @@
         {
           "base": "corner-names-on",
           "texts": [
-            "Roger that. <break time=\"0.2s\"/> Corner calls coming up."
+            "Roger that. Corner calls coming up."
           ],
           "takes": 1,
           "usedBy": [],
@@ -69820,7 +69820,7 @@
         {
           "base": "radio-check",
           "texts": [
-            "Radio check, radio check. <break time=\"0.2s\"/> Standing by."
+            "Radio check, radio check. Standing by."
           ],
           "takes": 1,
           "usedBy": [],
@@ -69830,7 +69830,7 @@
         {
           "base": "resuming",
           "texts": [
-            "Roger that. <break time=\"0.3s\"/> Resuming communication."
+            "Roger that. Resuming communication."
           ],
           "takes": 1,
           "usedBy": [],
@@ -69845,7 +69845,7 @@
         {
           "base": "drying-dry",
           "texts": [
-            "Track is fully dry now. <break time=\"0.3s\" /> Conditions are good."
+            "Track is fully dry now. Conditions are good."
           ],
           "takes": 1,
           "usedBy": [
@@ -69857,7 +69857,7 @@
         {
           "base": "drying-lightly-wet",
           "texts": [
-            "Track is drying. <break time=\"0.3s\" /> Light wetness now."
+            "Track is drying. Light wetness now."
           ],
           "takes": 1,
           "usedBy": [
@@ -69881,7 +69881,7 @@
         {
           "base": "drying-mostly-dry",
           "texts": [
-            "Track is drying up. <break time=\"0.3s\" /> Mostly dry now, there might still be some puddles."
+            "Track is drying up. Mostly dry now, there might still be some puddles."
           ],
           "takes": 1,
           "usedBy": [
@@ -69893,7 +69893,7 @@
         {
           "base": "drying-very-lightly-wet",
           "texts": [
-            "Conditions are improving. <break time=\"0.3s\" /> Track is just very lightly wet."
+            "Conditions are improving. Track is just very lightly wet."
           ],
           "takes": 1,
           "usedBy": [
@@ -69905,7 +69905,7 @@
         {
           "base": "drying-very-wet",
           "texts": [
-            "Conditions are improving slightly. <break time=\"0.3s\" /> Still very wet though, be careful."
+            "Conditions are improving slightly. Still very wet though, be careful."
           ],
           "takes": 1,
           "usedBy": [
@@ -69917,7 +69917,7 @@
         {
           "base": "worsening-extremely-wet",
           "texts": [
-            "It's pouring. <break time=\"0.3s\" /> The track is water logged, you might need a boat instead."
+            "It's pouring. The track is water logged, you might need a boat instead."
           ],
           "takes": 1,
           "usedBy": [
@@ -69929,7 +69929,7 @@
         {
           "base": "worsening-lightly-wet",
           "texts": [
-            "It's getting wetter. <break time=\"0.3s\" /> Light wetness on the track now."
+            "It's getting wetter. Light wetness on the track now."
           ],
           "takes": 1,
           "usedBy": [
@@ -69941,7 +69941,7 @@
         {
           "base": "worsening-moderately-wet",
           "texts": [
-            "Conditions are getting worse. <break time=\"0.3s\" /> The track is wet."
+            "Conditions are getting worse. The track is wet."
           ],
           "takes": 1,
           "usedBy": [
@@ -69953,7 +69953,7 @@
         {
           "base": "worsening-mostly-dry",
           "texts": [
-            "Conditions are starting to change. <break time=\"0.3s\" /> The track is mostly dry, there might be some damp spots."
+            "Conditions are starting to change. The track is mostly dry, there might be some damp spots."
           ],
           "takes": 1,
           "usedBy": [
@@ -69977,7 +69977,7 @@
         {
           "base": "worsening-very-wet",
           "texts": [
-            "It's getting really wet out there. <break time=\"0.3s\" /> Very wet conditions, be careful."
+            "It's getting really wet out there. Very wet conditions, be careful."
           ],
           "takes": 1,
           "usedBy": [

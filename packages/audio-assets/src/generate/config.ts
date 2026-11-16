@@ -63,12 +63,20 @@ const entryName = z
 // valid TTS input ("zero"). Refuses booleans, null, arrays, objects.
 const textual = z.union([z.string(), z.number()]).transform((v) => String(v));
 
+// Every field but stability and similarity is optional with NO default: a
+// voice sends exactly the settings its config writes, nothing filled in.
+// eleven_v4 has no speed or style control (ElevenLabs' v4 docs; a probe at
+// speed 0.7 and 1.2 returned identical lengths, #1643), so a v4 voice leaves
+// them out rather than sending values the model ignores. `clone_strength`
+// (0-1) is v4's: how closely a Professional Voice Clone fine-tuned for v4
+// follows its training samples.
 export const VoiceSettingsSchema = z.strictObject({
   stability: z.number().min(0).max(1),
   similarity_boost: z.number().min(0).max(1),
-  style: z.number().min(0).max(1).default(0),
-  speed: z.number().min(0.7).max(1.2).default(1.0),
-  use_speaker_boost: z.boolean().default(true),
+  style: z.number().min(0).max(1).optional(),
+  speed: z.number().min(0.7).max(1.2).optional(),
+  use_speaker_boost: z.boolean().optional(),
+  clone_strength: z.number().min(0).max(1).optional(),
   // ElevenLabs accepts language_code as a top-level body field, but we group
   // it here so it rides along with stability/speed/etc. and can be set at any
   // level (voice, entry) — useful for per-entry overrides like
@@ -90,6 +98,7 @@ export const VoiceSettingsOverrideSchema = z.strictObject({
   style: z.number().min(0).max(1).optional(),
   speed: z.number().min(0.7).max(1.2).optional(),
   use_speaker_boost: z.boolean().optional(),
+  clone_strength: z.number().min(0).max(1).optional(),
   language_code: z.string().optional(),
 });
 
@@ -103,8 +112,10 @@ export const ApplyTextNormalizationSchema = z.enum(["auto", "on", "off"]);
 export const EntrySchema = z.strictObject({
   name: entryName,
   text: textual.pipe(z.string().min(1)),
-  // Deterministic seed for the ElevenLabs request. Same seed + same voice +
-  // same text + same settings = byte-identical audio. Defaults to 1 if omitted.
+  // Seed for the ElevenLabs request. Defaults to 1 if omitted. On Flash the
+  // same seed + voice + text + settings reproduced a take; `eleven_v4` never
+  // does (#1643), so a seed is now only the way to ask for a DIFFERENT take —
+  // bumping it re-cuts this entry alone (see `entryHash`).
   seed: z.number().int().min(0).max(4_294_967_295).default(1),
   // Context to improve prosody on line boundaries. ElevenLabs uses these as
   // "what came before / after this clip" hints without speaking them.
@@ -332,10 +343,10 @@ export function validateReferences(voiceId: string, voice: VoiceConfig): void {
  *
  * Resolution is per-voice: the same reference produces `default`'s
  * requestId for voice `default`, `titan`'s requestId for voice `titan`.
- * The dependency must already exist in the manifest (run
- * `--voice <v> --group <dep-group>` first, or order dependencies before
- * dependents in the config so a single full run completes them in the
- * right order).
+ * The dependency must already exist in the manifest. A run orders its
+ * entries dependencies-first (`run-order.ts`) and refuses an entry whose
+ * dependency is out of date and not cut earlier in the same run, so by the
+ * time this is called the row it reads is the dependency's current take.
  *
  * Returns `undefined` when given `undefined` so callers can still drop the
  * field from the request body when no chain context is configured.
@@ -377,9 +388,9 @@ export function resolveRequestIds(
 export type EntryRef = { groupName: string; entry: Entry };
 
 /**
- * Build a `<group>/<entry-name>` → entry lookup for one voice. Used by
- * `entryHash` to recurse into request-id dependencies and by the generator
- * to map references back to their config entries.
+ * Build a `<group>/<entry-name>` → entry lookup for one voice. Used by the
+ * generator's run order and stale-dependency check to map references back to
+ * their config entries.
  */
 export function buildEntryLookup(voice: VoiceConfig): Map<string, EntryRef> {
   const lookup = new Map<string, EntryRef>();
@@ -395,11 +406,10 @@ export function buildEntryLookup(voice: VoiceConfig): Map<string, EntryRef> {
 
 /**
  * Reject any reference *cycle* in a voice's `<group>/<entry-name>` request-id
- * graph (A → B → … → A). The generator requires an acyclic graph because:
- *   - `entryHash` hashes dependencies recursively — a cycle would recurse
- *     forever (and conceptually has no fixed-point content hash);
- *   - `resolveRequestIds` needs each dependency generated *before* its
- *     dependents, which a cycle makes impossible from an empty manifest.
+ * graph (A → B → … → A). The generator requires an acyclic graph because
+ * `resolveRequestIds` needs each dependency generated *before* its
+ * dependents — the run is ordered topologically (`run-order.ts`), and a
+ * cycle has no such order and cannot be generated from an empty manifest.
  *
  * Runs before any generation work so a cyclic config fails fast with the
  * exact cycle path rather than looping or deadlocking mid-run. Raw
@@ -532,77 +542,36 @@ export function resolveEntryRequestIds(
 /**
  * Content hash for one entry — the generator's cache key.
  *
- * Hashes the entry's own audio-affecting config (text, voice settings,
- * model, seed, the **raw** request-id reference strings, …) plus, for every
- * `<group>/<entry-name>` reference, the recursively-computed `entryHash` of
- * that dependency. So the key changes when the entry's own config changes
- * *or* when any (transitive) dependency's config changes — but NOT when a
- * dependency is merely re-cut and handed a fresh provider request ID.
+ * Hashes the entry's OWN request only: everything `buildEntryOptions` puts in
+ * it except `enable_logging` (which does not change the audio) — text, voice
+ * id, model, voice settings, seed, conditioning text, and the **raw**
+ * `<group>/<entry-name>` reference strings in `previous_request_ids` /
+ * `next_request_ids`. It deliberately does NOT fold in the hashes of the
+ * entries those strings reference (#1643).
  *
- * This is why request-id stitching no longer makes the cache thrash: the
- * provider returns a new request ID on every generation, and hashing those
- * would re-cut every dependent on every run (and loop forever on a cycle).
- * Hashing config content instead is stable and still cascades correctly on
- * a real change. The recursion terminates because `detectReferenceCycles`
- * guarantees the graph is acyclic; the `visiting` guard turns any missed
- * cycle into a clear error rather than a stack overflow.
+ * Why no cascade: ElevenLabs' `eleven_v4` returns different bytes for a
+ * byte-identical request (#1643's seed test: they sounded the same, but a
+ * re-cut is not guaranteed to return the approved take). A clip on disk is
+ * therefore the only copy of a take the maintainer approved, and a cache key
+ * that cascaded through the reference graph would re-cut every dependent —
+ * each a brand-new take nobody has heard — whenever one dependency changed
+ * (a seed bump on one lap-time intro reached 1,698 clips). So a change to an
+ * entry re-cuts exactly that entry; its dependents keep their takes, still
+ * conditioned on the superseded one, until someone re-cuts one on purpose.
+ * The generator's run order and stale-dependency refusal (`run.ts`) are what
+ * keep a NEW take from ever being conditioned on an out-of-date dependency.
  *
- * An entry with **no** `<group>/<entry-name>` dependencies keeps the
- * pre-existing cache-key shape (hash of its options alone) — its hashing
- * semantics never changed, so it must stay a cache hit. Only entries that
- * actually have dependency references move to the `{ self, deps }` shape.
+ * Volatile provider request ids never reach the hash either: the references
+ * stay raw here and are resolved only for the API call
+ * (`resolveEntryRequestIds`), so re-cutting a dependency does not invalidate
+ * anything else.
  *
- * `memo` is shared across a voice's entries so each entry is hashed once.
+ * Two entries — in two voices — with the same hash make the same request to
+ * the same ElevenLabs voice, which is what lets the generator copy a take
+ * between voices instead of paying for it twice.
  */
-export function entryHash(
-  entry: Entry,
-  groupName: string,
-  voice: VoiceConfig,
-  lookup: Map<string, EntryRef>,
-  memo: Map<string, string> = new Map(),
-  visiting: Set<string> = new Set(),
-): string {
-  const key = `${groupName}/${entry.name}`;
-  const cached = memo.get(key);
+export function entryHash(entry: Entry, voice: VoiceConfig): string {
+  const { enable_logging: _omitted, ...requestOptions } = buildEntryOptions(entry, voice);
 
-  if (cached !== undefined) return cached;
-
-  if (visiting.has(key)) {
-    throw new Error(
-      `Reference cycle reached "${key}" while hashing — call detectReferenceCycles() before entryHash().`,
-    );
-  }
-
-  visiting.add(key);
-
-  const { enable_logging: _omitted, ...selfOptions } = buildEntryOptions(entry, voice);
-
-  const depHashes: string[] = [];
-
-  for (const id of [...(entry.previous_request_ids ?? []), ...(entry.next_request_ids ?? [])]) {
-    if (!isReference(id)) continue;
-
-    const dep = lookup.get(id);
-
-    if (!dep) {
-      // `validateReferences` already rejects unknown references at load time;
-      // this guards against a lookup built from a different voice.
-      throw new Error(`entryHash: reference "${id}" on "${key}" has no matching entry in the lookup.`);
-    }
-
-    depHashes.push(entryHash(dep.entry, dep.groupName, voice, lookup, memo, visiting));
-  }
-
-  visiting.delete(key);
-
-  // Ref-less entries hash their options directly (the historical shape), so
-  // a config that doesn't use request-id chains sees no churn from this
-  // change. Entries with dependencies fold in the recursive dep hashes.
-  const hashInput = depHashes.length === 0 ? selfOptions : { self: selfOptions, deps: depHashes };
-
-  const hash = createHash("sha256").update(stableStringify(hashInput)).digest("hex").slice(0, 16);
-
-  memo.set(key, hash);
-
-  return hash;
+  return createHash("sha256").update(stableStringify(requestOptions)).digest("hex").slice(0, 16);
 }
