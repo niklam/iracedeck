@@ -71,6 +71,16 @@ function tick(overrides: Partial<TelemetryData> = {}): TelemetryData {
   } as TelemetryData;
 }
 
+/**
+ * The margin every runner sample uses unless a test passes its own. Pinned to
+ * 0.3 laps, the default before #1679: the worked numbers in this file were
+ * derived with it (the `− 0.3 − 0.45` / `− 0.75` in the comments), and a
+ * nonzero margin keeps the subtraction exercised in every count. The real
+ * default, {@link FUEL_CALLOUT_DEFAULT_MARGIN_LAPS}, is 0 and is tested on its
+ * own below.
+ */
+const FIXTURE_MARGIN_LAPS = 0.3;
+
 type RunOptions = {
   race?: boolean;
   avg?: number | null;
@@ -93,7 +103,7 @@ function makeRunner(events: PendingEvent[], slice: FuelCalloutState = createFuel
       {
         race = true,
         avg = 2,
-        margin = FUEL_CALLOUT_DEFAULT_MARGIN_LAPS,
+        margin = FIXTURE_MARGIN_LAPS,
         avgLapTime = null,
         leaderLap = null,
         chequeredInS = null,
@@ -162,6 +172,19 @@ describe("diffFuelLapsLeft — sampling", () => {
 
     expect(counts(events)).toEqual([2]);
     expect((events[0]!.data as { lapsLeft: number }).lapsLeft).toBeCloseTo(2.75);
+  });
+
+  it("subtracts nothing at the default margin (issue #1679)", () => {
+    const events: PendingEvent[] = [];
+    const { run } = makeRunner(events);
+
+    // raw = 5.4 / 2 = 2.7, no margin: floor(2.7 − 0.5) = 2. The old 0.3
+    // default would have said floor(2.4 − 0.5) = 1, a lap early.
+    run(tick({ LapDistPct: 0.45, FuelLevel: 5.42 }), { margin: FUEL_CALLOUT_DEFAULT_MARGIN_LAPS });
+    run(tick({ LapDistPct: 0.5, FuelLevel: 5.4 }), { margin: FUEL_CALLOUT_DEFAULT_MARGIN_LAPS });
+
+    expect(counts(events)).toEqual([2]);
+    expect((events[0]!.data as { lapsLeft: number }).lapsLeft).toBeCloseTo(2.7);
   });
 
   it("does not sample without a crossing, and only once per lap on a back-and-forth wobble", () => {
@@ -790,6 +813,10 @@ describe("sanitizeFuelCalloutMarginLaps", () => {
     expect(sanitizeFuelCalloutMarginLaps(0)).toBe(0);
     expect(sanitizeFuelCalloutMarginLaps(0.7)).toBe(0.7);
     expect(sanitizeFuelCalloutMarginLaps("1.5")).toBe(1.5);
+  });
+
+  it("defaults to no margin (issue #1679)", () => {
+    expect(FUEL_CALLOUT_DEFAULT_MARGIN_LAPS).toBe(0);
   });
 
   it("falls back to the default on missing or malformed values", () => {

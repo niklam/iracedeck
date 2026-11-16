@@ -437,7 +437,8 @@ describe("readSimState — the laps-of-fuel-left figure", () => {
   });
 
   it("is covered when the lap counter says the tank outlasts the race", () => {
-    const { controller } = start();
+    // The count below was worked out at a 0.3-lap margin, the default before #1679.
+    const { controller } = start(RACE_SESSION, { getFuelLapsLeftMarginLaps: () => 0.3 });
     const limits = { SessionLapsRemainEx: 3, SessionTimeRemain: IRSDK_UNLIMITED_TIME };
 
     driveTwoValidLaps(controller, limits);
@@ -657,7 +658,8 @@ describe("readSimState — the expired-clock confirmation (issue #1405)", () => 
    * for each of `clocks` but the last, and the mid-lap sample with the last.
    */
   function sample(...clocks: number[]): { spoken: string[]; counts: number[] } {
-    const { controller } = start();
+    // The counts below were worked out at a 0.3-lap margin, the default before #1679.
+    const { controller } = start(RACE_SESSION, { getFuelLapsLeftMarginLaps: () => 0.3 });
     const spoken: string[] = [];
     const counts: number[] = [];
 

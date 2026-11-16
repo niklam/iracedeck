@@ -16,6 +16,7 @@ import {
   _resetGlobalSettings,
   DEFAULT_RACE_ENGINEER_VOICE,
   deleteGlobalSettings,
+  FORMER_SCHEMA_DEFAULTS,
   frameOptionsFromSettings,
   getGlobalSettings,
   getSettingsStoreSource,
@@ -34,6 +35,7 @@ import {
   onGlobalSettingsChange,
   resolveActiveDriverName,
   resolveActiveRaceEngineerVoice,
+  sameValue,
   setCalloutEnabled,
   updateGlobalSettings,
   whenSettingsStoreSettled,
@@ -830,8 +832,13 @@ describe("setup-warning patterns (issue #625)", () => {
 });
 
 describe("fuelCalloutMarginLaps (issue #838)", () => {
-  it("defaults to 0.3 when not specified", () => {
+  it("defaults to 0 laps when not specified (issue #1679)", () => {
     const parsed = GlobalSettingsSchema.parse({}) as Record<string, unknown>;
+    expect(parsed.fuelCalloutMarginLaps).toBe(0);
+  });
+
+  it("keeps a stored 0.3, the old default: moving it is the one-shot migration's job, not the schema's", () => {
+    const parsed = GlobalSettingsSchema.parse({ fuelCalloutMarginLaps: 0.3 }) as Record<string, unknown>;
     expect(parsed.fuelCalloutMarginLaps).toBe(0.3);
   });
 
@@ -847,12 +854,10 @@ describe("fuelCalloutMarginLaps (issue #838)", () => {
     ).toBe(0.7);
   });
 
-  it("normalizes empty-ish persisted values to the default instead of coercing them to 0", () => {
-    // z.coerce.number() alone would turn null / "" / whitespace into 0 and
-    // silently disable the safety margin.
+  it("sends empty-ish persisted values down the default path", () => {
     for (const value of [null, "", "  ", "\t\n"]) {
       const parsed = GlobalSettingsSchema.parse({ fuelCalloutMarginLaps: value }) as Record<string, unknown>;
-      expect(parsed.fuelCalloutMarginLaps).toBe(0.3);
+      expect(parsed.fuelCalloutMarginLaps).toBe(0);
     }
   });
 
@@ -860,7 +865,7 @@ describe("fuelCalloutMarginLaps (issue #838)", () => {
     for (const value of ["abc", -1, 99, NaN]) {
       expect(() => GlobalSettingsSchema.parse({ fuelCalloutMarginLaps: value })).not.toThrow();
       const parsed = GlobalSettingsSchema.parse({ fuelCalloutMarginLaps: value }) as Record<string, unknown>;
-      expect(parsed.fuelCalloutMarginLaps).toBe(0.3);
+      expect(parsed.fuelCalloutMarginLaps).toBe(0);
     }
   });
 });
@@ -1567,6 +1572,96 @@ describe("single-writer store (issue #993)", () => {
     expect(settings[MIGRATION_PENDING_KEY]).toBeUndefined();
     expect(store.saved.at(-1)).not.toHaveProperty(MIGRATION_PENDING_KEY);
     expect(hostMirrorPayload({ port: 1, token: "t" })).toMatchObject({ blackBoxLapTiming: binding });
+  });
+
+  describe("a pending file an older build wrote, holding a former default (#1679)", () => {
+    /**
+     * What a 3.8 fresh start persisted: that build's defaults, the fuel margin's
+     * 0.3 among them, plus the countdown. Under today's default 0 the file's 0.3
+     * no longer equals the schema default.
+     */
+    const bornUnderOldDefault = (extra: Record<string, unknown> = {}) => ({
+      ...(GlobalSettingsSchema.parse({}) as Record<string, unknown>),
+      fuelCalloutMarginLaps: 0.3,
+      [MIGRATION_PENDING_KEY]: 1,
+      ...extra,
+    });
+
+    it("lists the old fuel margin default, on a schema key whose default has moved off it (precondition)", () => {
+      const defaults = GlobalSettingsSchema.parse({}) as Record<string, unknown>;
+
+      expect(FORMER_SCHEMA_DEFAULTS.fuelCalloutMarginLaps).toEqual([0.3]);
+
+      for (const [key, formers] of Object.entries(FORMER_SCHEMA_DEFAULTS)) {
+        // A key the schema does not declare has no default to have been.
+        expect(defaults).toHaveProperty(key);
+        expect(formers.length).toBeGreaterThan(0);
+
+        // A "former" default equal to today's is a stale or mistyped entry.
+        for (const former of formers) expect(sameValue(former, defaults[key])).toBe(false);
+      }
+    });
+
+    it.each([
+      ["the number", 0.3],
+      ["the string a Property Inspector saves", "0.3"],
+    ])("the file's old default as %s loses to the host's own value", async (_name, stored) => {
+      const start = await startWith(bornUnderOldDefault({ fuelCalloutMarginLaps: stored }));
+
+      expect(isSettingsStoreReady()).toBe(false); // waiting for the host
+      expect(start.mock.getGlobalSettings).toHaveBeenCalledTimes(1);
+
+      start.mock.echo?.({ fuelCalloutMarginLaps: 1 });
+      await start.store.flush();
+
+      expect(getSettingsStoreSource()).toBe("host");
+      expect(getGlobalSettings().fuelCalloutMarginLaps).toBe(1);
+      expect(start.store.saved.at(-1)).toMatchObject({ fuelCalloutMarginLaps: 1 });
+      expect(start.store.saved.at(-1)).not.toHaveProperty(MIGRATION_PENDING_KEY);
+    });
+
+    it("a host that itself holds the old default hands that on (the one-shot migration moves it later)", async () => {
+      const start = await startWith(bornUnderOldDefault());
+
+      start.mock.echo?.({ fuelCalloutMarginLaps: 0.3, driverName: "host-nick" });
+      await start.store.flush();
+
+      expect(getSettingsStoreSource()).toBe("host");
+      expect(getGlobalSettings().fuelCalloutMarginLaps).toBe(0.3);
+      expect(getGlobalSettings().driverName).toBe("host-nick");
+    });
+
+    it("a host with no value for the key leaves the schema default, not the file's old one", async () => {
+      const start = await startWith(bornUnderOldDefault());
+
+      start.mock.echo?.({ driverName: "host-nick" });
+      await start.store.flush();
+
+      expect(getGlobalSettings().fuelCalloutMarginLaps).toBe(0);
+    });
+
+    it("a value that was never a default still beats the host, as before", async () => {
+      const start = await startWith(bornUnderOldDefault({ fuelCalloutMarginLaps: 0.4 }));
+
+      start.mock.echo?.({ fuelCalloutMarginLaps: 1 });
+      await start.store.flush();
+
+      expect(getGlobalSettings().fuelCalloutMarginLaps).toBe(0.4);
+      expect(start.store.saved.at(-1)).toMatchObject({ fuelCalloutMarginLaps: 0.4 });
+    });
+
+    it("a former default belongs to its own key: the same value under another key still beats the host", async () => {
+      const start = await startWith(bornUnderOldDefault({ driverName: "0.3" }));
+
+      start.mock.echo?.({ driverName: "host-nick", focusIRacingWindow: false, fuelCalloutMarginLaps: 1 });
+      await start.store.flush();
+
+      // Not a default of driverName's, so a choice: the file wins.
+      expect(getGlobalSettings().driverName).toBe("0.3");
+      // A key at its CURRENT default loses to the host exactly as it did.
+      expect(getGlobalSettings().focusIRacingWindow).toBe("never");
+      expect(getGlobalSettings().fuelCalloutMarginLaps).toBe(1);
+    });
   });
 
   it("a fresh-born file whose host is STILL silent keeps the marker and still skips the mirror — defaults are never mirrored over an unread host copy", async () => {

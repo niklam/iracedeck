@@ -3054,6 +3054,14 @@ describe("sim-events-iracing translator", () => {
   });
 
   describe("laps-of-fuel-left crossings (issue #838)", () => {
+    /**
+     * The margin the recipes below were worked out with: 0.3 laps, the default
+     * before #1679 (the `− 0.3 − 0.45` in their comments). Injected so they keep
+     * testing the counts they were written for; the real default is tested on
+     * its own.
+     */
+    const recipeMargin = (): number => 0.3;
+
     it("emits fuel.lapsLeft.crossed on descending mid-lap crossings, once per stint, re-armed by a refuel", () => {
       const controller = createMockController();
       const bus = getEventBus();
@@ -3063,7 +3071,10 @@ describe("sim-events-iracing translator", () => {
         SessionInfo: { Sessions: [{ SessionType: "Race" }] },
         DriverInfo: { DriverCarIdx: 0 },
       });
-      initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
+      initializeSimEventsIracing(bus, controller, createMockLogger(), {
+        onStepError: "rethrow",
+        getFuelLapsLeftMarginLaps: recipeMargin,
+      });
 
       // Build two validated laps (~2 L / ~90 s each) through the real #465
       // tracker: each boundary pairs the LapDistPct wrap with the Lap counter
@@ -3109,6 +3120,37 @@ describe("sim-events-iracing translator", () => {
       expect((handler.mock.calls[2]![0] as SimEventOf<"fuel.lapsLeft.crossed">).data.count).toBe(1);
     });
 
+    it("subtracts no margin when none is injected (issue #1679)", () => {
+      const controller = createMockController();
+      const bus = getEventBus();
+      const handler = vi.fn();
+      bus.subscribe("fuel.lapsLeft.crossed", handler);
+      controller.__setSessionInfo({
+        SessionInfo: { Sessions: [{ SessionType: "Race" }] },
+        DriverInfo: { DriverCarIdx: 0 },
+      });
+      initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
+
+      // The first test's two validated laps (1.9 L and 2.0 L: avg 1.95).
+      controller.__tick(telemetry({ Lap: 1, LapDistPct: 0.9, SessionTime: 0, FuelLevel: 64 }));
+      controller.__tick(telemetry({ Lap: 2, LapDistPct: 0.05, SessionTime: 5, FuelLevel: 63.9 }));
+      controller.__tick(telemetry({ Lap: 2, LapDistPct: 0.55, SessionTime: 45, FuelLevel: 63 }));
+      controller.__tick(telemetry({ Lap: 2, LapDistPct: 0.9, SessionTime: 80, FuelLevel: 62.2 }));
+      controller.__tick(telemetry({ Lap: 3, LapDistPct: 0.05, SessionTime: 90, FuelLevel: 62 }));
+      controller.__tick(telemetry({ Lap: 3, LapDistPct: 0.55, SessionTime: 135, FuelLevel: 61 }));
+      controller.__tick(telemetry({ Lap: 3, LapDistPct: 0.9, SessionTime: 170, FuelLevel: 60.2 }));
+      controller.__tick(telemetry({ Lap: 4, LapDistPct: 0.05, SessionTime: 180, FuelLevel: 60 }));
+
+      // floor(4.9/1.95 − 0.45) = 2, where the old 0.3 default said 1.
+      controller.__tick(telemetry({ Lap: 4, LapDistPct: 0.45, SessionTime: 200, FuelLevel: 5.0 }));
+      controller.__tick(telemetry({ Lap: 4, LapDistPct: 0.55, SessionTime: 210, FuelLevel: 4.9 }));
+
+      expect(handler).toHaveBeenCalledTimes(1);
+      const { data } = handler.mock.calls[0]![0] as SimEventOf<"fuel.lapsLeft.crossed">;
+      expect(data.count).toBe(2);
+      expect(data.lapsLeft).toBeCloseTo(4.9 / 1.95);
+    });
+
     /** The translator's live state, through the snapshot's raw half, which holds it by reference. */
     function liveState(): TranslatorState {
       const snapshot = readSimState();
@@ -3132,7 +3174,10 @@ describe("sim-events-iracing translator", () => {
         SessionInfo: { Sessions: [{ SessionType: "Race" }] },
         DriverInfo: { DriverCarIdx: 0 },
       });
-      initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
+      initializeSimEventsIracing(bus, controller, createMockLogger(), {
+        onStepError: "rethrow",
+        getFuelLapsLeftMarginLaps: recipeMargin,
+      });
 
       controller.__tick(telemetry({ Lap: 1, LapDistPct: 0.9, SessionTime: 0, FuelLevel: 64 }));
       controller.__tick(telemetry({ Lap: 2, LapDistPct: 0.05, SessionTime: 5, FuelLevel: 63.9 }));
@@ -3205,7 +3250,10 @@ describe("sim-events-iracing translator", () => {
         SessionInfo: { Sessions: [{ SessionType: "Race" }] },
         DriverInfo: { DriverCarIdx: 0 },
       });
-      initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
+      initializeSimEventsIracing(bus, controller, createMockLogger(), {
+        onStepError: "rethrow",
+        getFuelLapsLeftMarginLaps: recipeMargin,
+      });
 
       // Leader (carIdx 1) runs two laps ahead of the player (carIdx 0).
       const field = (playerLap: number, playerPct: number): Partial<TelemetryData> => ({

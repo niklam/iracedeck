@@ -8,6 +8,7 @@
 import { PI_WARNINGS_KEY, VOICE_PACKS_KEY } from "@iracedeck/app-constants";
 import { z } from "zod";
 
+import { FUEL_MARGIN_DEFAULT_MIGRATED_KEY } from "./global-settings-migrations.js";
 import { getGlobalSettings, MIGRATION_ABANDONED_KEY, MIGRATION_PENDING_KEY } from "./global-settings.js";
 import { parseStoredWarnings } from "./pi-warnings.js";
 
@@ -48,8 +49,13 @@ function readStoredMigrationPending(stored: unknown): number | undefined {
   return typeof stored === "number" && Number.isFinite(stored) && stored >= 0 ? stored : undefined;
 }
 
-/** `_migrationAbandoned`: the plugin version that gave up on the migration, or `true` from a build that could not name its own. */
-function readStoredMigrationAbandoned(stored: unknown): string | true | undefined {
+/**
+ * A marker holding the plugin version that wrote it, or `true` from a build that
+ * could not name its own: `_migrationAbandoned` (the version that gave up on the
+ * host migration) and `_fuelMarginDefaultMigrated` (the version that ran the
+ * fuel margin's default migration, #1679), whose writers share that shape.
+ */
+function readStoredVersionMarker(stored: unknown): string | true | undefined {
   return stored === true ? true : readStoredVersion(stored);
 }
 
@@ -124,6 +130,12 @@ function readStoredVoicePacks(stored: unknown): z.infer<typeof SnapshotVoicePack
  *   reverted".
  * - `_voicePacks` — what the voice-pack scan found and what it refused, which
  *   is the question behind "the engineer is silent".
+ * - `_fuelMarginDefaultMigrated` — whether, and under which version, the fuel
+ *   margin's old default 0.3 was moved to 0 (#1679). Read beside
+ *   `fuelCalloutMarginLaps` it tells "the migration moved it" from "the user
+ *   set it", the question behind "the box call changed": a 0.3 under the
+ *   marker was chosen after the migration ran, and no marker means it has not
+ *   run yet.
  *
  * **Not here, and not to be added by reflex:**
  *
@@ -145,8 +157,9 @@ const KEPT_INTERNAL_KEY_READERS: ReadonlyMap<string, KeptInternalKeyReader> = ne
   [PI_WARNINGS_KEY, parseStoredWarnings],
   [LAST_SEEN_VERSION_KEY, readStoredVersion],
   [MIGRATION_PENDING_KEY, readStoredMigrationPending],
-  [MIGRATION_ABANDONED_KEY, readStoredMigrationAbandoned],
+  [MIGRATION_ABANDONED_KEY, readStoredVersionMarker],
   [VOICE_PACKS_KEY, readStoredVoicePacks],
+  [FUEL_MARGIN_DEFAULT_MIGRATED_KEY, readStoredVersionMarker],
 ]);
 
 /** Internal keys the snapshot keeps. Everything else starting with `_` is dropped. */
