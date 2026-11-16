@@ -1,16 +1,33 @@
 /**
- * Race Engineer voice plumbing: the sequence player, its JSON-list reader, the
- * toggle acknowledgment, and the corner-name callout opt-in.
+ * Race Engineer voice plumbing: the one router every plugin-played Voice line
+ * goes through ({@link playVoiceLine}), the key-press acknowledgment
+ * ({@link playKeyAck}), the master toggle acknowledgment, the JSON-list
+ * reader, and the corner-name callout opt-in.
  *
  * Extracted from Pit Crew for issue #782 so the Audio Controls dial's
  * Mute/Unmute and the Pit Crew toggle keys share one pathway (the same move
  * #590 made for the volume steppers). The master gates themselves moved on to
  * `feature-gates.ts` (issue #1007), which owns the side effects of a gate
  * change so a settings-window checkbox behaves exactly like a deck key; this
- * module keeps the voice plumbing those acknowledgments ride on. Pit Crew
- * re-exports {@link playVoiceSequence} for its own preview/radio-check paths
- * and test back-compat.
+ * module keeps the voice plumbing those acknowledgments ride on.
+ *
+ * Since issue #1698 every line the plugin plays by path — the key acks, the
+ * Race Engineer on/off acks, the voice Test and the radio check — goes through
+ * {@link playVoiceLine}, which hands it to the scenario engine's scheduler
+ * while the engine is up. A line played straight onto the Voice channel
+ * beside the engine cut a callout and took the channel's one completion
+ * callback from it, so the callout's fire never ended and the engineer went
+ * quiet until the master was switched off. {@link playVoiceSequence}, the
+ * direct play, is left as the fallback for an engine that is not initialised;
+ * Pit Crew re-exports it for test back-compat.
  */
+import {
+  getScenarioEngine,
+  isAudioScenariosInitialized,
+  type PlayClipsResult,
+  type PlayClipsWhenBusy,
+  WEIGHT,
+} from "@iracedeck/audio-scenarios";
 import { AudioBus, AudioChannel, getAudio } from "@iracedeck/audio-service";
 import type { ILogger } from "@iracedeck/logger";
 import {
@@ -20,12 +37,7 @@ import {
   setCalloutEnabled,
 } from "@iracedeck/settings";
 
-import {
-  applyRaceEngineerAudio,
-  isRaceEngineerEnabled,
-  readRaceEngineerVolume,
-  setRaceEngineerToggleInFlight,
-} from "./audio-volume.js";
+import { claimRaceEngineerBypass, isRaceEngineerEnabled, readRaceEngineerVolume } from "./audio-volume.js";
 
 /**
  * Read the per-callout opt-in for the Race Engineer toggle acknowledgment
@@ -61,7 +73,10 @@ export function readJsonStringArray(key: string): string[] {
 }
 
 /**
- * Chain-play a sequence of clip paths on `AudioChannel.Voice`. Registers
+ * Chain-play a sequence of clip paths on `AudioChannel.Voice`, beside the
+ * scenario engine — {@link playVoiceLine}'s fallback for an engine that is not
+ * initialised, and nothing else's (issue #1698): played while the engine is up
+ * it would cut a callout and take its completion callback. Registers
  * the next-step `onChannelComplete` before each `playOnChannel` so the
  * sequence keeps stepping naturally as each clip ends. A failed
  * `playOnChannel` (e.g. clip missing — likely until the user has run
@@ -126,38 +141,139 @@ export function playVoiceSequence(paths: readonly string[], onComplete?: () => v
   return true;
 }
 
+/** How {@link playVoiceLine} plays a line on a Voice bus that is not free, and what it runs when the line is over. */
+export type VoiceLineOptions = { whenBusy: PlayClipsWhenBusy; onComplete?: () => void };
+
 /**
- * Play a toggle acknowledgment clip (`going-silent-01` /
- * `resuming-01`) on `AudioChannel.Voice`. Sets
- * `raceEngineerToggleInFlight` so `applyRaceEngineerAudio` keeps Voice
- * audible regardless of the master gate, forces the Voice bus to the
- * current `raceEngineerVolume`, and clears the flag + re-applies audio
- * when the clip finishes (or fails to start — `playVoiceSequence` fires
- * `onComplete` synchronously on a missing-clip failure so the flag
- * never gets stuck).
+ * Play a plugin's own Voice line — clips by path, outside any script — through
+ * the one route every such line takes (issue #1698).
+ *
+ * With the scenario engine initialised the line goes to its scheduler as a
+ * clip fire at `WEIGHT.NORMAL` (`playClips`), so it is arbitrated with the
+ * callouts instead of playing over them; `whenBusy` says what happens on a bus
+ * that is not free (`"skip"`: nothing; `"interrupt"`: it cuts what is not
+ * heavier than NORMAL, and a cut callout comes back after it), and the answer
+ * is the engine's. `id` names the fire in the log and must name no registered
+ * contract — use a namespace no contract uses (`toggle.<clip>`).
+ *
+ * With the engine not initialised there is nothing to arbitrate with, so the
+ * line plays straight onto the Voice channel ({@link playVoiceSequence}),
+ * cutting whatever was there, and the answer is always `"playing"`; a clip
+ * that fails to start ends the line at once there too.
+ *
+ * `onComplete` runs once when the line is over, however it ends — finished,
+ * cut, stopped, or every clip failing, possibly before this returns — and
+ * never when the answer is `"bus-busy"`, where nothing started: a caller that
+ * set an in-flight flag clears it on that answer itself.
+ *
+ * Throws on an empty `paths` in both modes, as `playClips` does: there is no
+ * line, and either answer would misreport it.
+ */
+export function playVoiceLine(id: string, paths: readonly string[], options: VoiceLineOptions): PlayClipsResult {
+  if (paths.length === 0) throw new Error(`playVoiceLine: "${id}" has no clips to play`);
+
+  if (!isAudioScenariosInitialized()) {
+    playVoiceSequence(paths, options.onComplete);
+
+    return "playing";
+  }
+
+  return getScenarioEngine().playClips(id, paths, { weight: WEIGHT.NORMAL, ...options });
+}
+
+/**
+ * The fire id an acknowledgment clip plays under: `toggle.<clip>`, a namespace
+ * no contract uses, so `playClips` never takes the line for a callout.
+ */
+function ackFireId(clip: string): string {
+  return `toggle.${clip}`;
+}
+
+/** The active voice's `toggle/<clip>.mp3`, or `null` when no voice is available yet. */
+function ackClipPath(clip: string): string | null {
+  const voice = resolveActiveRaceEngineerVoice(readJsonStringArray("_raceEngineerVoices"));
+
+  return voice ? `voice/${voice}/toggle/${clip}.mp3` : null;
+}
+
+/**
+ * Speak a key press's acknowledgment — `voice/<active voice>/toggle/<clip>.mp3`
+ * — the one entry point every Pit Crew key ack plays through (issue #1698).
+ *
+ * The driver pressed the key, so the answer comes now: the clip plays with
+ * `whenBusy: "interrupt"`, cutting a callout that is not heavier than NORMAL
+ * (the callout comes back after it) and a previous ack still playing, so two
+ * quick presses speak only the newer state. A heavier call holding the radio
+ * — a safety-band line, the spotter's focus — keeps it, and the ack is left
+ * out with a debug line: the toggle has already applied, and the key icon
+ * shows the new state. Skipped with a debug line when no voice is available.
+ *
+ * The caller owns the gates (the Race Engineer master, the ack's opt-in); this
+ * only plays.
+ */
+export function playKeyAck(clip: string, logger: ILogger): void {
+  const path = ackClipPath(clip);
+
+  if (path === null) {
+    logger.debug(`Key ack ${clip} skipped — no voice available`);
+
+    return;
+  }
+
+  if (playVoiceLine(ackFireId(clip), [path], { whenBusy: "interrupt" }) === "bus-busy") {
+    logger.debug(`Key ack ${clip} skipped — the engineer holds the radio for a heavier call`);
+  }
+}
+
+/**
+ * Play a Race Engineer master toggle acknowledgment (`going-silent-01` /
+ * `resuming-01`) through {@link playVoiceLine}, with `whenBusy: "interrupt"`
+ * as every key ack (issue #1698): "going silent" finds a free bus after the
+ * gate's `stopAll`, "resuming" cuts a callout that arrived first.
+ *
+ * Raises the `toggle` bypass so `applyRaceEngineerAudio` keeps Voice audible
+ * regardless of the master gate, forces the Voice bus to the current
+ * `raceEngineerVolume`, and hangs the bypass's release on the line's
+ * `onComplete`, which clears it and re-applies audio when the line is over —
+ * finished, cut, stopped, or its clip failing to start. On `"bus-busy"` the
+ * line never started, so `onComplete` will not run and the release runs here.
+ * The release is a claim's (`claimRaceEngineerBypass`): an older ack's
+ * completion, arriving inside this one's `playClips` because this one cut it,
+ * finds its claim stale and leaves the flag this ack raised alone.
  *
  * Skipped silently when no voice is available (fresh install before
  * the voice list has been pushed); the toggle itself still applies so
  * the user's gate state can never desync from the audio state.
  */
 export function playToggleAck(clipName: "going-silent-01" | "resuming-01", logger: ILogger): void {
-  const voice = resolveActiveRaceEngineerVoice(readJsonStringArray("_raceEngineerVoices"));
+  const path = ackClipPath(clipName);
 
-  if (!voice) {
+  if (path === null) {
     logger.debug(`Toggle ack ${clipName} skipped — no voice available`);
 
     return;
   }
 
-  setRaceEngineerToggleInFlight(true);
+  const release = claimRaceEngineerBypass("toggle");
   // Force Voice to the slider value so the ack is audible regardless of
   // the master gate. Mirrors how the Voice Test bypasses the gate.
   getAudio().setBusVolume(AudioBus.Voice, readRaceEngineerVolume() / 100);
 
-  playVoiceSequence([`voice/${voice}/toggle/${clipName}.mp3`], () => {
-    setRaceEngineerToggleInFlight(false);
-    applyRaceEngineerAudio();
-  });
+  let result: PlayClipsResult;
+
+  try {
+    result = playVoiceLine(ackFireId(clipName), [path], { whenBusy: "interrupt", onComplete: release });
+  } catch (error) {
+    // Nothing started, so nothing will run the release: drop the bypass here
+    // rather than leave Voice held open past the master gate.
+    release();
+    throw error;
+  }
+
+  if (result === "bus-busy") {
+    release();
+    logger.debug(`Toggle ack ${clipName} skipped — the engineer holds the radio for a heavier call`);
+  }
 }
 
 /**
@@ -191,7 +307,9 @@ export function isCornerNamesToggleAckEnabled(): boolean {
  * unlike the master toggle this flip never mutes the Voice bus, so no
  * in-flight bypass or bus-volume force is needed — with the master on, Voice
  * is already at the slider value. Master off means a silent flip (the
- * engineer is off the air). Skipped silently when no voice is available.
+ * engineer is off the air). It plays through {@link playKeyAck}, so it cuts in
+ * through the scheduler rather than stranding the callout it interrupts
+ * (issue #1698); skipped with a debug line when no voice is available.
  */
 export function toggleCornerNamesFeature(logger: ILogger): boolean {
   const next = !isCornerNamesEnabled();
@@ -200,13 +318,7 @@ export function toggleCornerNamesFeature(logger: ILogger): boolean {
   setCalloutEnabled("calloutEnabledCornerNames", next);
 
   if (isRaceEngineerEnabled() && isCornerNamesToggleAckEnabled()) {
-    const voice = resolveActiveRaceEngineerVoice(readJsonStringArray("_raceEngineerVoices"));
-
-    if (voice) {
-      playVoiceSequence([`voice/${voice}/toggle/corner-names-${next ? "on" : "off"}-01.mp3`]);
-    } else {
-      logger.debug("Corner names toggle ack skipped — no voice available");
-    }
+    playKeyAck(`corner-names-${next ? "on" : "off"}-01`, logger);
   }
 
   return next;

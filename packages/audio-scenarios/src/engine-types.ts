@@ -296,9 +296,11 @@ export type ActiveFire = {
   ended: boolean;
   /**
    * Run once when the fire leaves the bus, whether it finished or was cut
-   * (`settle`). Only the frame preview sets it (issue #1124): its caller
-   * holds the Background bus open for the preview and must release it
-   * however the preview ends.
+   * (`settle`). Only the imperative plays set it: the frame preview (issue
+   * #1124), whose caller holds the Background bus open for the preview and
+   * must release it however the preview ends, and a clip fire given an
+   * `onComplete` (`playClips`, issue #1698), whose caller clears an
+   * in-flight flag.
    */
   onSettled?: () => void;
 };

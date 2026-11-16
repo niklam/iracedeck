@@ -1,4 +1,3 @@
-import { getScenarioEngine, isAudioScenariosInitialized, WEIGHT } from "@iracedeck/audio-scenarios";
 import { driverNameClipPath, setRadarEnabled } from "@iracedeck/audio-scenarios/pit-crew";
 import {
   applyGraphicTransform,
@@ -35,6 +34,7 @@ import pitCrewRadarVolumeTemplate from "../../../icons/pit-crew-radar-volume.svg
 import pitCrewTemplate from "../../../icons/pit-crew.svg";
 import {
   isCornerNamesEnabled,
+  playVoiceLine,
   playVoiceSequence,
   readJsonStringArray,
   toggleCornerNamesFeature,
@@ -522,7 +522,8 @@ export class PitCrew extends SimIRacingAction<PitCrewSettings> {
    * so a callout that arrives meanwhile (the session-start brief) waits for it
    * instead of talking over it. On a busy bus it is skipped: the engineer
    * already speaking is the confirmation the line gives. With the engine not
-   * initialised it plays straight onto the Voice channel, as before.
+   * initialised it plays straight onto the Voice channel, as before — both
+   * through `playVoiceLine`, the route every plugin-played line takes (#1698).
    *
    * The name clip comes from `driverNameClipPath`, so a voice pack that
    * records names only as takes (`names/<name>-01.mp3`) is heard here too
@@ -547,19 +548,7 @@ export class PitCrew extends SimIRacingAction<PitCrewSettings> {
 
     const paths = [driverNameClipPath(voice, driverName), `voice/${voice}/toggle/radio-check-01.mp3`];
 
-    if (!isAudioScenariosInitialized()) {
-      this.logger.info("Telemetry connected — playing radio check");
-      playVoiceSequence(paths);
-
-      return;
-    }
-
-    const result = getScenarioEngine().playClips(RADIO_CHECK_CLIPS_ID, paths, {
-      weight: WEIGHT.NORMAL,
-      whenBusy: "skip",
-    });
-
-    if (result === "bus-busy") {
+    if (playVoiceLine(RADIO_CHECK_CLIPS_ID, paths, { whenBusy: "skip" }) === "bus-busy") {
       this.logger.debug("Radio check skipped — the engineer holds the radio");
 
       return;
