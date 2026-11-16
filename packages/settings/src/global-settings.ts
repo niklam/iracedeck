@@ -1620,6 +1620,18 @@ export function setCalloutEnabled(key: CalloutSettingKey, enabled: boolean): voi
 }
 
 /**
+ * Switch several Race Engineer callouts on or off together in ONE
+ * {@link updateGlobalSettings} call (#1699), so the global-settings listeners
+ * see a single change: a key bound to both opt-ins re-renders once, and the
+ * Settings window never shows half a toggle. An empty list writes nothing.
+ */
+export function setCalloutsEnabled(keys: readonly CalloutSettingKey[], enabled: boolean): void {
+  if (keys.length === 0) return;
+
+  updateGlobalSettings(Object.fromEntries(keys.map((key) => [key, enabled])));
+}
+
+/**
  * Whether the cache reflects the settings store yet — loaded from the file, or
  * migrated once from the deck host (issue #993). Before that it is pure schema
  * defaults (passthrough keys absent), so any consumer deciding on the ABSENCE
