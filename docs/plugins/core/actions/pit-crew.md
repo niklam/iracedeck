@@ -1,6 +1,6 @@
 # Pit Crew
 
-Multi-mode action covering the iRaceDeck pit-side audio framework. Modes available today: **Race Engineer Toggle** (gates the voice scenario engine), **Radar** (toggles the directional proximity tick loop), **Corner Names** (toggles the corner-name callouts in practice/test, issue #897), and **Radar Volume** (steps the radar volume up or down, deprecated and hidden from the PI). The Race Engineer voice catalog covers pit-service confirmations, pit-lane callouts, the full set of flag transitions described below, and the spotter side-awareness callout family (a Race Engineer voice family, not a separate mode — see [Spotter calls](#spotter-calls)).
+Multi-mode action covering the iRaceDeck pit-side audio framework. Modes available today: **Race Engineer Toggle** (gates the voice scenario engine), **Radar** (toggles the directional proximity tick loop), **Corner Names** (toggles the corner-name callouts, the sector-start calls or both in practice/test, chosen per tap and long press; issues #897, #1699), and **Radar Volume** (steps the radar volume up or down, deprecated and hidden from the PI). The Race Engineer voice catalog covers pit-service confirmations, pit-lane callouts, the full set of flag transitions described below, and the spotter side-awareness callout family (a Race Engineer voice family, not a separate mode — see [Spotter calls](#spotter-calls)).
 
 ## Properties
 
@@ -25,7 +25,11 @@ Multi-mode action covering the iRaceDeck pit-side audio framework. Modes availab
 When iRacing telemetry first starts flowing into the plugin (false → true SDK connection transition), the Race Engineer announces "<name>, radio check. Standing by." so the driver has audible confirmation that the plugin is talking to iRacing. Gated on both the Race Engineer master gate AND a dedicated per-callout opt-in (**Race Engineer Callouts → Telemetry Connect**) so the user can keep the master ack but suppress the connect line, or vice versa. Module-level dedup across every visible Pit Crew instance ensures the line fires at most once per real connect; reconnecting (iRacing close + relaunch, transient SDK drop) replays it.
 - **Radar mode**: Flips the plugin-global `radarEnabled` and stops/starts the directional proximity tick loop synchronously. Off by default — pressing the key once starts the loop. Used by Radar alongside the per-instance Radar Test button.
 - **Radar Volume mode**: Steps the plugin-global `radarVolume` by ±5, clamped to 0–100. Takes effect immediately on `AudioBus.Alerts`. Direction is configured per button (Up or Down). Stepping to 0 mutes the radar without toggling the feature off. Deprecated (#590) — hidden from the PI Mode dropdown but kept functional for existing buttons.
-- **Corner Names mode**: Flips the plugin-global `calloutEnabledCornerNames` opt-in (issue #897) — the same setting as the **Race Engineer Callouts → Corner Names** PI checkbox, so key and checkbox mirror each other. Unlike the Race Engineer / Radar gates this setting ships **on** by default. The engineer confirms each press ("Roger that. Corner calls coming up." / "Copy that. Dropping the corner calls.") when the Race Engineer master gate is on, gated by its own opt-in (`calloutEnabledToggleCornerNames`, **Toggle on/off acknowledgment** in the Corner Names PI group). With the master off the flip is silent — and the corner callouts themselves stay quiet regardless, since every engineer callout requires the master.
+- **Corner Names mode**: Toggles the corner-name callouts (`calloutEnabledCornerNames`, issue #897), the sector-start calls (`calloutEnabledSectorStarts`, #1573) or both, chosen separately for a tap (`cornerNamesTap`, default `corners`) and a long press (`cornerNamesLongPress`, default `sectors`; issue #1699). These are the same settings as the Settings window's **Race Engineer Callouts → Corner Names and Sectors** checkboxes, so key and checkboxes mirror each other. Unlike the Race Engineer / Radar gates both ship **on** by default.
+  - **Targets**: `corners` flips `calloutEnabledCornerNames`; `sectors` flips `calloutEnabledSectorStarts`; `both` turns both off when either is on and both on when both are off, in one global-settings write. From a mixed state `both` therefore always silences.
+  - **Press timing**: with a distinct long press the press is classified on release through deck-core's `DualPressTracker` against the global `dualPressThresholdMs` (Long-press threshold, default 500 ms), as Wipers and Visor and the setup keys do — key-down records, key-up toggles once. With `cornerNamesLongPress` = `none` or equal to `cornerNamesTap`, the key toggles on key-down and the release does nothing. A release with no recorded key-down toggles nothing. Press sounds (#269): `keyPressShape` is `release` with a long bleep when classified, `tap` otherwise.
+  - **Acknowledgment**: one whole-phrase clip per target and resulting state, played by path from the `toggle` group — `corner-names-on-01` / `-off-01` ("Roger that. Corner calls coming up." / "Copy that. Dropping the corner calls."), `sector-starts-on-01` / `-off-01` ("… Sector calls coming up." / "… Dropping the sector calls."), `track-calls-on-01` / `-off-01` ("… Corner and sector calls coming up." / "… Dropping the corner and sector calls."). The clip states the resulting state, so `both` from a mixed state speaks the off clip. Played when the Race Engineer master gate is on, gated by the one opt-in `calloutEnabledToggleCornerNames` (**Toggle on/off acknowledgment**) for every target; a pack without the clip plays nothing and the toggle still applies. With the master off the flip is silent — and the callouts themselves stay quiet regardless, since every engineer callout requires the master.
+  - **Existing keys**: no migration; a key stored before #1699 reads the schema defaults, so its tap still toggles the corner names and a long press now toggles the sector calls.
 
 ### Race Engineer voice coverage
 
@@ -117,16 +121,33 @@ Both opt-ins (and the interval) are read live on every event/tick, so changing t
 |---------|------|---------|-------------|
 | Mode | Dropdown | Race Engineer Toggle | Selects what the key press does |
 | Direction | Dropdown | Up | Up / Down step, visible only when Mode = Radar Volume |
+| Tap toggles (`cornerNamesTap`) | Dropdown | Corners | What a tap toggles, visible only when Mode = Corner Names |
+| Long press toggles (`cornerNamesLongPress`) | Dropdown | Sectors | What a hold past the Long-press threshold toggles, visible only when Mode = Corner Names |
 
 ### Mode Options
 - **Race Engineer Toggle** - Toggles the engineer voice on/off
 - **Radar** - Toggles the directional proximity ticks on/off
-- **Corner Names** - Toggles the corner-name callouts (practice/test) on/off
+- **Corner Names** - Toggles the corner-name callouts, the sector-start calls or both (practice/test), chosen per tap and long press
 - **Radar Volume** - Steps the global Radar volume up or down (deprecated, hidden from the dropdown)
 
 ### Direction Options
 - **Up** - Bumps Radar volume by 5 (max 100)
 - **Down** - Reduces Radar volume by 5 (min 0)
+
+### Tap Toggles Options
+- **Both** (`both`) - Both opt-ins: off when either is on, on when both are off
+- **Corners** (`corners`, default) - `calloutEnabledCornerNames`
+- **Sectors** (`sectors`) - `calloutEnabledSectorStarts`
+
+There is no Nothing option for the tap: a Corner Names key that only works on a long press would look broken.
+
+### Long Press Toggles Options
+- **Nothing** (`none`) - No long press; the key acts on key-down
+- **Both** (`both`) - Both opt-ins, as above
+- **Corners** (`corners`) - `calloutEnabledCornerNames`
+- **Sectors** (`sectors`, default) - `calloutEnabledSectorStarts`
+
+A long press equal to the tap target behaves like Nothing. Both settings are part of Pit Crew's action settings schema (a persisted contract) and are ignored in every mode but Corner Names.
 
 ### Plugin-global Audio Settings (in the Pit Crew accordion, not under Global Settings)
 
@@ -147,12 +168,18 @@ None. Pit Crew drives its own audio framework; it does not emit keyboard events.
 
 The toggle modes (Race Engineer, Radar, Corner Names) paint a status bar on the lower third of the key (green when the feature is on, red when off). Radar Volume modes paint no status bar — the current volume shows as a percentage in the title.
 
+Corner Names (#1699): the glyph and default title follow `cornerNamesTap`; the status bar and border follow every opt-in the key covers — the union of the tap's and the long press's targets. A key covering both opt-ins that disagree shows a split bar (`statusBarSplit`): `CORNER` on the left half, `SECTOR` on the right, each half green or red, with a green border because the aggregate (on when either is on) is on. The key re-renders on every global-settings change, so the bar follows a Settings window click or another key.
+
 | Mode / State | Icon |
 |--------------|------|
 | Radar — on | Radar-sweep glyph, status bar green |
 | Radar — off | Radar-sweep glyph, status bar red |
-| Corner Names — on | Corner-bend glyph (two concentric apex curves), status bar green |
-| Corner Names — off | Corner-bend glyph, status bar red |
+| Corner Names, tap Corners | Corner-bend glyph (two concentric apex curves), default title `CORNER NAMES` |
+| Corner Names, tap Sectors | Sector glyph, default title `SECTOR CALLS` |
+| Corner Names, tap Both | Combined glyph (the corner bend crossed by the sector mark), default title `TRACK CALLS` |
+| Corner Names — covered opt-ins on (or one covered, on) | Status bar `ON` green, green border |
+| Corner Names — covered opt-ins off (or one covered, off) | Status bar `OFF` red, red border |
+| Corner Names — covers both, they disagree | Split status bar: `CORNER` / `SECTOR` halves, each green or red; green border |
 | Radar Volume Up | Radar glyph + up arrow, title shows `VOL +` and current % |
 | Radar Volume Down | Radar glyph + down arrow, title shows `VOL −` and current % |
 
