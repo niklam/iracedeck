@@ -55,7 +55,13 @@ import {
   stepRadarVolume,
 } from "../../audio/audio-volume.js";
 import { toggleRaceEngineerFeature, toggleRadarFeature } from "../../audio/feature-gates.js";
-import { borderColorForState, statusBarOff, statusBarOn, statusBarSplit } from "../../icons/status-bar.js";
+import {
+  borderColorForState,
+  statusBarOff,
+  statusBarOn,
+  statusBarSplit,
+  type ToggleState,
+} from "../../icons/status-bar.js";
 
 // Re-export the shared audio-volume / audio-toggles helpers that the Pit Crew
 // test suite imports from this module by path (back-compat after the #590 and
@@ -105,8 +111,10 @@ export const PIT_CREW_UUID = "com.iracedeck.sd.core.pit-crew";
 export const Settings = CommonSettings.extend({
   mode: z.enum(["race-engineer", "radar", "radar-volume", "corner-names"]).default("race-engineer"),
   direction: z.enum(["up", "down"]).default("up"),
-  cornerNamesTap: z.enum(["both", "corners", "sectors"]).default("corners"),
-  cornerNamesLongPress: z.enum(["none", "both", "corners", "sectors"]).default("sectors"),
+  // A stored value this build does not know (a later version's target, a hand-edited
+  // profile) reads as the default rather than failing every parse of the key (#1699).
+  cornerNamesTap: z.enum(["both", "corners", "sectors"]).default("corners").catch("corners"),
+  cornerNamesLongPress: z.enum(["none", "both", "corners", "sectors"]).default("sectors").catch("sectors"),
 });
 
 type PitCrewSettings = z.infer<typeof Settings>;
@@ -289,10 +297,12 @@ function arrowDownPath(color: string): string {
  * or, on a Corner Names key covering both track-call opt-ins while they
  * disagree (#1699), each one's state in its own half.
  */
-export type StateIndicator =
-  { kind: "toggle"; state: "on" | "off" } | { kind: "split"; corners: "on" | "off"; sectors: "on" | "off" };
+export type StateIndicator = { kind: "toggle"; state: OnOff } | { kind: "split"; corners: OnOff; sectors: OnOff };
 
-const onOff = (enabled: boolean): "on" | "off" => (enabled ? "on" : "off");
+/** A toggle state that is never N/A: every Pit Crew toggle reads a boolean. */
+type OnOff = Exclude<ToggleState, "na">;
+
+const onOff = (enabled: boolean): OnOff => (enabled ? "on" : "off");
 
 /** The default title of a Corner Names key, by what its tap toggles (#1699). */
 const CORNER_NAMES_TITLES: Record<TrackCallTarget, string> = {
@@ -317,9 +327,10 @@ const CORNER_NAMES_ARTWORK: Record<TrackCallTarget, (color: string) => string> =
  * both covered and disagreeing reads a split bar.
  */
 export function cornerNamesIndicator(settings: PitCrewSettings): StateIndicator {
-  const targets: readonly string[] = [settings.cornerNamesTap, settings.cornerNamesLongPress];
-  const coversCorners = targets.includes("corners") || targets.includes("both");
-  const coversSectors = targets.includes("sectors") || targets.includes("both");
+  const targets = [settings.cornerNamesTap, settings.cornerNamesLongPress] as const;
+  const covers = (target: TrackCallTarget): boolean => targets.some((t) => t === target || t === "both");
+  const coversCorners = covers("corners");
+  const coversSectors = covers("sectors");
   const corners = onOff(isCornerNamesEnabled());
   const sectors = onOff(isSectorStartsEnabled());
 
@@ -370,7 +381,7 @@ function statusBarFor(indicator: StateIndicator): string {
  * The border state an indicator paints. A split bar's is on: something is
  * still talking, the same aggregate a "both" press reads (#1699).
  */
-function borderStateFor(indicator: StateIndicator): "on" | "off" {
+function borderStateFor(indicator: StateIndicator): OnOff {
   return indicator.kind === "split" ? "on" : indicator.state;
 }
 

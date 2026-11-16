@@ -385,7 +385,7 @@ describe("Settings (persisted legacy field stripping)", () => {
     expect(settings.cornerNamesLongPress).toBe("sectors");
   });
 
-  it("accepts every tap and long-press target, and refuses a tap of none (#1699)", () => {
+  it("accepts every tap and long-press target, and never stores a tap of none (#1699)", () => {
     for (const tap of ["both", "corners", "sectors"] as const) {
       expect(Settings.parse({ cornerNamesTap: tap }).cornerNamesTap).toBe(tap);
     }
@@ -394,7 +394,15 @@ describe("Settings (persisted legacy field stripping)", () => {
       expect(Settings.parse({ cornerNamesLongPress: long }).cornerNamesLongPress).toBe(long);
     }
 
-    expect(Settings.safeParse({ cornerNamesTap: "none" }).success).toBe(false);
+    expect(Settings.parse({ cornerNamesTap: "none" }).cornerNamesTap).toBe("corners");
+  });
+
+  it("reads a target this build does not know as the default rather than failing the key (#1699)", () => {
+    const parsed = Settings.parse({ mode: "corner-names", cornerNamesTap: "flags", cornerNamesLongPress: 7 });
+
+    expect(parsed.mode).toBe("corner-names");
+    expect(parsed.cornerNamesTap).toBe("corners");
+    expect(parsed.cornerNamesLongPress).toBe("sectors");
   });
 
   it("still accepts persisted race-engineer mode for backward compat", () => {
