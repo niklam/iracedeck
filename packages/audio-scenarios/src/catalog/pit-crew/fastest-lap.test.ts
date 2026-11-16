@@ -1,13 +1,15 @@
 /**
  * The fastest lap of the race (issue #1571): the contract driven through the
  * real scenario engine and the real `registerPitCrew`, over a hand-built
- * default-voice entry in the shape the spec's decision 4 gives (its bundled
- * entry is authored with its clips) and a manifest of exactly the clips the
- * lines below need. The holder case, the positions, the gap clause, the
- * grace, the caution and finish gates, the drop rule and the scheduling are
- * each pinned with a positive control beside the refusal.
+ * default-voice entry in the shape the spec's decision 4 gives, the time read
+ * to the thousandth since #1688 (pinned to both bundled entries below), and a
+ * manifest of exactly the clips the lines below need. The holder case, the
+ * positions, the gap clause, the grace, the caution and finish gates, the drop
+ * rule and the scheduling are each pinned with a positive control beside the
+ * refusal.
  */
 import defaultScript from "@iracedeck/audio-assets/voice/default/callouts.json" with { type: "json" };
+import shawnScript from "@iracedeck/audio-assets/voice/shawn/callouts.json" with { type: "json" };
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import { createFakeAudio, type FakeAudio } from "@iracedeck/audio-service/testing";
 import { type CalloutScript, type CalloutScriptEntry, collectScriptReferences } from "@iracedeck/callout-script";
@@ -16,7 +18,7 @@ import type { CountedLapCompleted, IEventBus, SimEventName, SimEventOf } from "@
 import { classifySession, type LiveGaps } from "@iracedeck/sim-events-iracing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { WEIGHT } from "../../dsl.js";
+import { type ScenarioContext, WEIGHT } from "../../dsl.js";
 import type { AudioAssetsManifest } from "../../interpreter.js";
 import { _resetAudioScenarios, getScenarioEngine, initializeAudioScenarios } from "../../interpreter.js";
 import { descriptionNamesGroup } from "../../reference/pack-reference.js";
@@ -93,7 +95,7 @@ function createMockBus(): IEventBus & { publishEvent: (name: SimEventName, data:
  * The default voice's entry, in the shape of revision 6 of the clip contract:
  * each line that leads into the time one take addressed as a pool, ending its
  * sentence, `taken-from-you` one take ending in a pause, then the clock and
- * the tenths as whole phrases.
+ * the thousandths as whole phrases (#1688).
  */
 const DEFAULT_ENTRY: CalloutScriptEntry = {
   comment: "A new fastest lap of the race in our class.",
@@ -115,8 +117,8 @@ const DEFAULT_ENTRY: CalloutScriptEntry = {
         ],
       },
     },
-    "{{fastestLap.clock}}",
-    "{{fastestLap.decimal}}",
+    "{{fastestLap.thousandthsClock}}",
+    "{{fastestLap.thousandths}}",
     { optional: ["pause:150", "{{fastestLap.gapIntro}}", "{{fastestLap.gapSecond}}", "{{fastestLap.gapDecimal}}"] },
   ],
 };
@@ -137,8 +139,8 @@ const SHORT_CALLS_ENTRY: CalloutScriptEntry = {
         other: ["pool:fastest-lap/for", "{{fastestLap.carNumber}}"],
       },
     },
-    "{{fastestLap.clock}}",
-    "{{fastestLap.decimal}}",
+    "{{fastestLap.thousandthsClock}}",
+    "{{fastestLap.thousandths}}",
     { optional: ["pause:150", "{{fastestLap.gapIntro}}", "{{fastestLap.gapSecond}}", "{{fastestLap.gapDecimal}}"] },
   ],
 };
@@ -166,20 +168,20 @@ const manifest: AudioAssetsManifest = {
     `voice/${VOICE}/fastest-lap/taken-from-you-01.mp3`,
     ...["5", "7", "42"].map((n) => `voice/${VOICE}/car-number/${n}.mp3`),
     ...["1", "2", "3", "4", "6", "8"].map((n) => `voice/${VOICE}/position-number/${n}.mp3`),
-    // The compact form to the tenth: every clock phrase 1m00–10m59, #555's
-    // plain seconds (the gap clause's too), and the tenths, one take each.
+    // The compact form to the thousandth (#1688): every clock phrase
+    // 1m00–10m59, #555's plain seconds (the gap clause's too), and the
+    // thousandths 000–999, one take each — and nothing for an eleventh minute.
     ...Array.from({ length: 10 }, (_, m) => m + 1).flatMap((m) =>
       Array.from({ length: 60 }, (_, ss) => `voice/${VOICE}/lap-time-clock/${m}m${String(ss).padStart(2, "0")}.mp3`),
     ),
     ...Array.from({ length: 60 }, (_, s) => `voice/${VOICE}/lap-time-second/${s}.mp3`),
-    ...Array.from({ length: 10 }, (_, d) => `voice/${VOICE}/lap-time-tenths/${d}.mp3`),
-    // The gap clause.
+    ...Array.from({ length: 1000 }, (_, d) => `voice/${VOICE}/lap-time-thousandths/${String(d).padStart(3, "0")}.mp3`),
+    // The gap clause, still at the tenth.
     `voice/${VOICE}/gap/readout-intro-01.mp3`,
     `voice/${VOICE}/lap-time-decimal/2.mp3`,
-    // The best-lap readout the precedence and the queue tests use.
+    // The best-lap readout's intro, for the precedence and the queue tests; its
+    // time is the compact clips above.
     `voice/${VOICE}/lap-time-intro/best-lap-yet.mp3`,
-    `voice/${VOICE}/lap-time-minute/1.mp3`,
-    `voice/${VOICE}/lap-time-decimal/4.mp3`,
   ],
   ambientLoop: "sfx/IRD-ambient-pit.mp3",
   ticks: { open: "sfx/IRD-tick-open.mp3", close: "sfx/IRD-tick-close.mp3" },
@@ -279,7 +281,8 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-const TIME = ["lap-time-clock/1m23", "lap-time-tenths/4"];
+/** The 1:23.4 every record below sets unless it says otherwise, read to the thousandth. */
+const TIME = ["lap-time-clock/1m23", "lap-time-thousandths/400"];
 
 describe("the holder case, from payloads built for each key (live reads unknown)", () => {
   it("yours: the player set it", () => {
@@ -324,10 +327,10 @@ describe("the holder case, from payloads built for each key (live reads unknown)
     expect(line()).toEqual([]);
   });
 
-  it("speaks a sub-minute record without a minute (58.1)", () => {
-    fire(record({ position: 1, lapTime: 58.1 }));
+  it("speaks a sub-minute record without a minute (58.041)", () => {
+    fire(record({ position: 1, lapTime: 58.041 }));
 
-    expect(line()).toEqual(["fastest-lap/leader", "lap-time-second/58", "lap-time-tenths/1"]);
+    expect(line()).toEqual(["fastest-lap/leader", "lap-time-second/58", "lap-time-thousandths/041"]);
   });
 });
 
@@ -368,40 +371,53 @@ describe("the line before the time (#1163)", () => {
 
   it("reads 4:05.0 and 2:00.0 as the clock phrases 4m05 and 2m00", () => {
     fire(record({ position: 1, lapTime: 245.0 }));
-    expect(line()).toEqual(["fastest-lap/leader", "lap-time-clock/4m05", "lap-time-tenths/0"]);
+    expect(line()).toEqual(["fastest-lap/leader", "lap-time-clock/4m05", "lap-time-thousandths/000"]);
 
     audio._played.length = 0;
     fire(record({ position: 1, lapTime: 120.0 }));
-    expect(line()).toEqual(["fastest-lap/leader", "lap-time-clock/2m00", "lap-time-tenths/0"]);
+    expect(line()).toEqual(["fastest-lap/leader", "lap-time-clock/2m00", "lap-time-thousandths/000"]);
   });
 
-  it("reads 1:23.44 as 1m23 and point four", () => {
-    fire(record({ position: 1, lapTime: 83.44 }));
-
-    expect(line()).toEqual(["fastest-lap/leader", "lap-time-clock/1m23", "lap-time-tenths/4"]);
-  });
-
-  it("reads 59.96 as the minute it rounds into: 1m00 and point oh — 59.94 stays fifty nine", () => {
-    fire(record({ position: 1, lapTime: 59.96 }));
-    expect(line()).toEqual(["fastest-lap/leader", "lap-time-clock/1m00", "lap-time-tenths/0"]);
+  it("reads 1:23.456 as 1m23 and point four five six, and 2:05.007 as 2m05 and 007 (#1688)", () => {
+    fire(record({ position: 1, lapTime: 83.456 }));
+    expect(line()).toEqual(["fastest-lap/leader", "lap-time-clock/1m23", "lap-time-thousandths/456"]);
 
     audio._played.length = 0;
-    fire(record({ position: 1, lapTime: 59.94 }));
-    expect(line()).toEqual(["fastest-lap/leader", "lap-time-second/59", "lap-time-tenths/9"]);
+    fire(record({ position: 1, lapTime: 125.007 }));
+    expect(line()).toEqual(["fastest-lap/leader", "lap-time-clock/2m05", "lap-time-thousandths/007"]);
   });
 
-  it("aborts 10:59.96, which rounds into an eleventh minute no clip covers — 10:59.94 still speaks", () => {
-    fire(record({ position: 1, lapTime: 659.96 }));
+  it("rounds once at the thousandth: 1:23.4564 is 456 and 1:23.4566 is 457", () => {
+    fire(record({ position: 1, lapTime: 83.4564 }));
+    expect(line()).toEqual(["fastest-lap/leader", "lap-time-clock/1m23", "lap-time-thousandths/456"]);
+
+    audio._played.length = 0;
+    fire(record({ position: 1, lapTime: 83.4566 }));
+    expect(line()).toEqual(["fastest-lap/leader", "lap-time-clock/1m23", "lap-time-thousandths/457"]);
+  });
+
+  it("reads 59.9996 as the minute it rounds into: 1m00 and point zero — 59.9994 stays fifty nine", () => {
+    fire(record({ position: 1, lapTime: 59.9996 }));
+    expect(line()).toEqual(["fastest-lap/leader", "lap-time-clock/1m00", "lap-time-thousandths/000"]);
+
+    audio._played.length = 0;
+    fire(record({ position: 1, lapTime: 59.9994 }));
+    expect(line()).toEqual(["fastest-lap/leader", "lap-time-second/59", "lap-time-thousandths/999"]);
+  });
+
+  it("aborts 11:00.000 and 10:59.9996, which rounds into an eleventh minute no clip covers — 10:59.9994 still speaks", () => {
+    fire(record({ position: 1, lapTime: 660.0 }));
+    fire(record({ position: 1, lapTime: 659.9996 }));
     expect(line()).toEqual([]);
 
-    fire(record({ position: 1, lapTime: 659.94 }));
-    expect(line()).toEqual(["fastest-lap/leader", "lap-time-clock/10m59", "lap-time-tenths/9"]);
+    fire(record({ position: 1, lapTime: 659.9994 }));
+    expect(line()).toEqual(["fastest-lap/leader", "lap-time-clock/10m59", "lap-time-thousandths/999"]);
   });
 
   it("reads a record under a second as zero point N", () => {
     fire(record({ position: 1, lapTime: 0.9 }));
 
-    expect(line()).toEqual(["fastest-lap/leader", "lap-time-second/0", "lap-time-tenths/9"]);
+    expect(line()).toEqual(["fastest-lap/leader", "lap-time-second/0", "lap-time-thousandths/900"]);
   });
 });
 
@@ -495,7 +511,7 @@ describe("the gap clause", () => {
   const gaps = (side: "ahead" | "behind", carIdx: number, gapSeconds: number | null, lapDelta = 0): LiveGaps =>
     ({ ahead: null, behind: null, [side]: { carIdx, gapSeconds, lapDelta } }) as unknown as LiveGaps;
   const GAP = ["gap/readout-intro", "lap-time-second/1", "lap-time-decimal/2"];
-  it("plays for ahead when the live neighbour ahead is the fire's car on the same lap under a minute, the time still ending on the plain tenths", () => {
+  it("plays for ahead when the live neighbour ahead is the fire's car on the same lap under a minute, the time still ending on the thousandths and the gap at the tenth", () => {
     liveGaps = gaps("ahead", 3, 1.2);
     fire(record({ position: 3, playerPosition: 4 }));
 
@@ -509,23 +525,23 @@ describe("the gap clause", () => {
     expect(line()).toEqual(["fastest-lap/behind", ...TIME, ...GAP]);
   });
 
-  /** Publish the record and play its line up to the end of the tenths, ending each clip as it starts, with no time passing. */
-  function playThroughTheTenths(data: FastestLapData): void {
+  /** Publish the record and play its line up to the end of the thousandths, ending each clip as it starts, with no time passing. */
+  function playThroughTheTime(data: FastestLapData): void {
     bus.publishEvent("fastestLap.set", data);
 
-    for (let i = 0; i < 20 && !line().includes("lap-time-tenths/4"); i++) {
+    for (let i = 0; i < 20 && !line().includes("lap-time-thousandths/400"); i++) {
       vi.advanceTimersByTime(0);
       audio._triggerChannelEnd(AudioChannel.SFX);
       audio._triggerChannelEnd(AudioChannel.Voice);
     }
 
-    expect(line().at(-1)).toBe("lap-time-tenths/4");
+    expect(line().at(-1)).toBe("lap-time-thousandths/400");
     audio._triggerChannelEnd(AudioChannel.Voice);
   }
 
-  it('does not join the tenths to "Gap is": the clause opens after a 150 ms pause', () => {
+  it('does not join the thousandths to "Gap is": the clause opens after a 150 ms pause', () => {
     liveGaps = gaps("ahead", 3, 1.2);
-    playThroughTheTenths(record({ position: 3, playerPosition: 4 }));
+    playThroughTheTime(record({ position: 3, playerPosition: 4 }));
 
     vi.advanceTimersByTime(149);
     expect(line()).not.toContain("gap/readout-intro");
@@ -534,9 +550,9 @@ describe("the gap clause", () => {
     expect(line().at(-1)).toBe("gap/readout-intro");
   });
 
-  it("drops the pause with the clause: with no gap to read, the line closes as the tenths end", () => {
+  it("drops the pause with the clause: with no gap to read, the line closes as the thousandths end", () => {
     liveGaps = null;
-    playThroughTheTenths(record({ position: 3, playerPosition: 4 }));
+    playThroughTheTime(record({ position: 3, playerPosition: 4 }));
 
     // The close tick follows at once, with no pause held for a clause that is not there.
     expect(audio._played.at(-1)).toEqual({ channel: AudioChannel.SFX, path: "sfx/IRD-tick-close.mp3", loop: false });
@@ -623,12 +639,8 @@ describe("the gates", () => {
     bus.publishEvent("fastestLap.set", record({ isPlayer: true, carIdx: 0 }));
     flush();
 
-    expect(line()).toEqual([
-      "lap-time-intro/best-lap-yet",
-      "lap-time-minute/1",
-      "lap-time-second/23",
-      "lap-time-decimal/4",
-    ]);
+    // The best lap reads the same time the same way (#1688): one rounding.
+    expect(line()).toEqual(["lap-time-intro/best-lap-yet", ...TIME]);
   });
 
   it("with its opt-in on speaks the player's lap alone — no best-lap line (the positive control)", () => {
@@ -785,16 +797,36 @@ describe("the vocabulary", () => {
       "fastestLap.gapSecond",
       "fastestLap.position",
       "fastestLap.previousCarNumber",
+      "fastestLap.thousandths",
+      "fastestLap.thousandthsClock",
     ]);
 
     // Each time var names the groups it draws from, which the coverage tooling attributes clips by.
     const description = (name: string) => vars.find((v) => v.name === name)?.description ?? "";
+    const named: Readonly<Record<string, readonly string[]>> = {
+      "fastestLap.clock": ["lap-time-clock", "lap-time-second"],
+      "fastestLap.decimal": ["lap-time-tenths"],
+      "fastestLap.thousandthsClock": ["lap-time-clock", "lap-time-second"],
+      "fastestLap.thousandths": ["lap-time-thousandths"],
+    };
+    const TIME_GROUPS = ["lap-time-clock", "lap-time-second", "lap-time-tenths", "lap-time-thousandths"];
+    let checked = 0;
 
-    expect(descriptionNamesGroup(description("fastestLap.clock"), "lap-time-clock")).toBe(true);
-    expect(descriptionNamesGroup(description("fastestLap.clock"), "lap-time-second")).toBe(true);
-    expect(descriptionNamesGroup(description("fastestLap.decimal"), "lap-time-tenths")).toBe(true);
-    // The positive control: a group a var does not draw from is not named.
-    expect(descriptionNamesGroup(description("fastestLap.decimal"), "lap-time-clock")).toBe(false);
+    for (const [name, groups] of Object.entries(named)) {
+      // The positive control: a group a var does not draw from is not named.
+      for (const group of TIME_GROUPS) {
+        expect(descriptionNamesGroup(description(name), group), `${name} names ${group}`).toBe(groups.includes(group));
+        checked++;
+      }
+    }
+
+    expect(checked).toBe(16);
+
+    // Each pair says it is a pair, naming its partner (decision 3).
+    expect(description("fastestLap.clock")).toContain("fastestLap.decimal");
+    expect(description("fastestLap.decimal")).toContain("fastestLap.clock");
+    expect(description("fastestLap.thousandthsClock")).toContain("fastestLap.thousandths,");
+    expect(description("fastestLap.thousandths")).toContain("fastestLap.thousandthsClock");
 
     expect(conds.filter((c) => ours(c.name)).map((c) => c.name)).toEqual([]);
 
@@ -837,5 +869,111 @@ describe("the vocabulary", () => {
       "fastest-lap/taken-from-you",
       "fastest-lap/yours",
     ]);
+  });
+
+  it("the hand-built entries are both voices' bundled entries, reading the thousandths pair (#1688)", () => {
+    const bundled = (script: unknown) => (script as CalloutScript).scenarios["pit-crew.fastest-lap-race"]?.sequence;
+
+    expect(bundled(defaultScript)).toEqual(DEFAULT_ENTRY.sequence);
+    expect(bundled(shawnScript)).toEqual(SHORT_CALLS_ENTRY.sequence);
+
+    // Neither reads the tenths pair any more (the positive control on the pin above).
+    for (const script of [defaultScript, shawnScript]) {
+      const { vars } = collectScriptReferences({
+        ...(script as CalloutScript),
+        scenarios: { id: (script as CalloutScript).scenarios["pit-crew.fastest-lap-race"] },
+        fragments: {},
+        frames: {},
+      });
+
+      expect(vars).toContain("fastestLap.thousandthsClock");
+      expect(vars).toContain("fastestLap.thousandths");
+      expect(vars).not.toContain("fastestLap.clock");
+      expect(vars).not.toContain("fastestLap.decimal");
+    }
+  });
+});
+
+describe("the time vars: the thousandths pair and the tenths pair (#1688)", () => {
+  type Resolver = (ctx: ScenarioContext) => string | null;
+
+  /** Every var the family registers, resolved against a `fastestLap.set` fire of `lapTime`. */
+  function resolveAt(lapTime: number): (name: string) => string | null {
+    const resolvers = new Map<string, Resolver>();
+
+    buildFastestLap({
+      getRaceFinishedFired: () => false,
+      getUnderFullCourseCaution: () => false,
+      getLapCompletedSnapshot: () => null,
+      getLiveCarPosition: () => null,
+      getLivePosition: () => null,
+      getLiveGaps: () => null,
+    }).registerVocabulary({
+      defineVar: (name: string, resolver: Resolver) => resolvers.set(name, resolver),
+      defineCond: () => undefined,
+      defineCase: () => undefined,
+    } as never);
+
+    const data = record({ lapTime });
+    const ctx: ScenarioContext = {
+      event: { event: "fastestLap.set", timestamp: 0, telemetry: null, data } as unknown as ScenarioContext["event"],
+      telemetry: null,
+      data,
+      now: 0,
+      vars: {},
+    };
+
+    return (name) => {
+      const resolver = resolvers.get(name);
+
+      expect(resolver, `${name} is registered`).toBeDefined();
+
+      return resolver!(ctx);
+    };
+  }
+
+  const thousandths = (lapTime: number) => {
+    const at = resolveAt(lapTime);
+
+    return [at("fastestLap.thousandthsClock"), at("fastestLap.thousandths")];
+  };
+  const tenths = (lapTime: number) => {
+    const at = resolveAt(lapTime);
+
+    return [at("fastestLap.clock"), at("fastestLap.decimal")];
+  };
+
+  it("reads 1:23.456, 58.041 and 2:05.007 to the thousandth", () => {
+    expect(thousandths(83.456)).toEqual(["pool:lap-time-clock/1m23", "pool:lap-time-thousandths/456"]);
+    expect(thousandths(58.041)).toEqual(["pool:lap-time-second/58", "pool:lap-time-thousandths/041"]);
+    expect(thousandths(125.007)).toEqual(["pool:lap-time-clock/2m05", "pool:lap-time-thousandths/007"]);
+  });
+
+  it("carries 59.9996 into the minute, 1m00 and 000", () => {
+    expect(thousandths(59.9996)).toEqual(["pool:lap-time-clock/1m00", "pool:lap-time-thousandths/000"]);
+  });
+
+  it("resolves 11:00.000 to a clock no voice ships, so the line aborts at expansion", () => {
+    // The ceiling is the clips', not the code's: 11m00 has no clip (the
+    // end-to-end abort is in "the line before the time" above).
+    expect(thousandths(660.0)).toEqual(["pool:lap-time-clock/11m00", "pool:lap-time-thousandths/000"]);
+  });
+
+  it("resolves nothing for a fire with no lap time to read", () => {
+    expect(thousandths(0)).toEqual([null, null]);
+    expect(thousandths(Number.NaN)).toEqual([null, null]);
+  });
+
+  it("keeps the tenths pair exactly as it was: 1:23.4, 58.1 and the 59.96 carry", () => {
+    expect(tenths(83.4)).toEqual(["pool:lap-time-clock/1m23", "pool:lap-time-tenths/4"]);
+    expect(tenths(58.1)).toEqual(["pool:lap-time-second/58", "pool:lap-time-tenths/1"]);
+    expect(tenths(59.96)).toEqual(["pool:lap-time-clock/1m00", "pool:lap-time-tenths/0"]);
+  });
+
+  it("rounds each pair at its own precision, so 1:23.96 is 1m24 point zero to the tenth and 1m23 point nine six zero to the thousandth", () => {
+    // The positive control on decision 3: the tenths clock beside the
+    // thousandths fraction would read the lap a second off.
+    expect(tenths(83.96)).toEqual(["pool:lap-time-clock/1m24", "pool:lap-time-tenths/0"]);
+    expect(thousandths(83.96)).toEqual(["pool:lap-time-clock/1m23", "pool:lap-time-thousandths/960"]);
   });
 });

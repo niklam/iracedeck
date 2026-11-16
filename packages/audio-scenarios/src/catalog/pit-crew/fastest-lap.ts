@@ -15,13 +15,15 @@
  *   ahead / behind  the car is the player's race neighbour in class
  *   other           anything else, named by car number and position
  *
- * followed by the time in the compact form to the tenth ("one twenty three
- * point four", `lap-time-readout.ts`) as two whole phrases, the clock and the
- * tenths, and, for `ahead` and `behind` only, an optional gap clause read
- * through the gap family's own speakable-gap rule ({@link fireGap}, the one
- * check the three gap vars resolve on). The tenths end their sentence either
- * way ("point four."), and the clause opens with a pause: a break before
- * "Gap is" is natural (Niklas), so the two are never joined. Every line that leads into the time ends its own sentence (revision 6
+ * followed by the time in the compact form to the thousandth ("one twenty
+ * three point four five six", `lap-time-readout.ts`) as two whole phrases, the
+ * clock and the thousandths, rounded once exactly as the best-lap and
+ * every-lap calls round it (#1688), and, for `ahead` and `behind` only, an
+ * optional gap clause read through the gap family's own speakable-gap rule
+ * ({@link fireGap}, the one check the three gap vars resolve on), whose gap
+ * stays at the tenth. The thousandths end the time either way, and the clause
+ * opens with a pause: a break before "Gap is" is natural (Niklas), so the two
+ * are never joined. Every line that leads into the time ends its own sentence (revision 6
  * of the clip contract, Niklas: the period "makes it end cleanly and sharp"),
  * so each is one take whatever the time opens with, and the script addresses
  * every piece of the line as a pool: `fastest-lap/<holder>` per case, `in`
@@ -33,9 +35,17 @@
  *       taken-from-you: [{{fastestLap.carNumber}}, pool:fastest-lap/taken-from-you, pause:150],
  *       …,
  *       other: [{{fastestLap.carNumber}}, pool:fastest-lap/in, {{fastestLap.position}}, pool:fastest-lap/other] } }
- *   {{fastestLap.clock}}
- *   {{fastestLap.decimal}}
+ *   {{fastestLap.thousandthsClock}}
+ *   {{fastestLap.thousandths}}
  *   { optional: [pause:150, {{fastestLap.gapIntro}}, {{fastestLap.gapSecond}}, {{fastestLap.gapDecimal}}] }
+ *
+ * The time is published as two pairs of vars, each a clock and its fraction
+ * rounded at one precision, and a pair is only ever read together:
+ * `fastestLap.thousandthsClock` with `fastestLap.thousandths`, which the
+ * first-party scripts read, and #1571's tenths pair `fastestLap.clock` with
+ * `fastestLap.decimal`, kept unchanged for the pack scripts that read it
+ * (#1688). Mixing the two would read 1:23.96 a second off, since the tenths
+ * clock rounds it into 1m24.
  *
  * Positions are read LIVE when the line speaks, through the canonical order
  * (`race-positions.md`) in the payload's projection (class positions in a
@@ -72,7 +82,7 @@ import type { IScenarioEngine } from "../../interpreter.js";
 import type { UnderCautionResolver } from "./caution.js";
 import { type LiveGapsResolver, speakableGap, type SpeakableGap } from "./gaps.js";
 import { fastestLapAnnounceable, lapStillCurrent } from "./lap-announcement.js";
-import { compactClockRef, compactTenthsRef } from "./lap-time-readout.js";
+import { compactClockRef, compactTenthsRef, compactThousandthsRef } from "./lap-time-readout.js";
 import type { LapCompletedSnapshotResolver } from "./lap-time.js";
 import type { LiveCarPositionResolver, LivePositionResolver } from "./position-readout.js";
 
@@ -256,7 +266,7 @@ export function buildFastestLap(deps: FastestLapDeps): {
 
         return t === null ? null : compactClockRef(t, "tenths");
       },
-      'The minutes and seconds of the fastest lap read the way a timing screen does, rounded to the tenth, as one clip: from a minute up a phrase from the lap-time-clock clip group, base <m>m<ss> ("one twenty three", lap-time-clock/1m23 for 1:23.4; lap-time-clock/1m00 for 59.96); under a minute the seconds word from the lap-time-second clip group (lap-time-second/58 for 58.1). A minute the voice has no clip for, 11 and up, aborts the line.',
+      'The minutes and seconds of the fastest lap read the way a timing screen does, rounded to the tenth, as one clip: from a minute up a phrase from the lap-time-clock clip group, base <m>m<ss> ("one twenty three", lap-time-clock/1m23 for 1:23.4; lap-time-clock/1m00 for 59.96); under a minute the seconds word from the lap-time-second clip group (lap-time-second/58 for 58.1). The clock of the tenths pair, read together with fastestLap.decimal, which rounds the lap at the same precision; the first-party scripts read the thousandths pair, fastestLap.thousandthsClock and fastestLap.thousandths, instead. A minute the voice has no clip for, 11 and up, aborts the line.',
     );
 
     engine.defineVar(
@@ -266,7 +276,27 @@ export function buildFastestLap(deps: FastestLapDeps): {
 
         return t === null ? null : compactTenthsRef(t);
       },
-      'The tenths of the fastest lap ("point four."), from the lap-time-tenths clip group: lap-time-tenths/<d>, one take that ends its sentence, whether the line ends there or the gap clause follows after a pause.',
+      'The tenths of the fastest lap ("point four."), from the lap-time-tenths clip group: lap-time-tenths/<d>, one take that ends its sentence, whether the line ends there or the gap clause follows after a pause. The fraction of the tenths pair, read together with fastestLap.clock, which rounds the lap at the same precision; the first-party scripts read the thousandths pair, fastestLap.thousandthsClock and fastestLap.thousandths, instead.',
+    );
+
+    engine.defineVar(
+      "fastestLap.thousandthsClock",
+      (ctx) => {
+        const t = lapTimeOf(ctx);
+
+        return t === null ? null : compactClockRef(t, "thousandths");
+      },
+      'The minutes and seconds of the fastest lap read the way a timing screen does, rounded to the thousandth, as one clip: from a minute up a phrase from the lap-time-clock clip group, base <m>m<ss> ("one twenty three", lap-time-clock/1m23 for 1:23.456; "two oh five", lap-time-clock/2m05 for 2:05.007; lap-time-clock/1m00 for 59.9996); under a minute the seconds word from the lap-time-second clip group (lap-time-second/58 for 58.041). The clock of the thousandths pair, read together with fastestLap.thousandths, which rounds the lap at the same precision; the first-party scripts read this pair. A minute the voice has no clip for, 11 and up, aborts the line.',
+    );
+
+    engine.defineVar(
+      "fastestLap.thousandths",
+      (ctx) => {
+        const t = lapTimeOf(ctx);
+
+        return t === null ? null : compactThousandthsRef(t);
+      },
+      'The fraction of the fastest lap to the thousandth, spoken with the point ("point four five six"), from the lap-time-thousandths clip group: base <ddd>, the rounded value as three digits (lap-time-thousandths/456 for 1:23.456, 007 for 2:05.007, 000 for 59.9996). It ends the time, whether the line ends there or the gap clause follows after a pause. The fraction of the thousandths pair, read together with fastestLap.thousandthsClock, which rounds the lap at the same precision; the first-party scripts read this pair.',
     );
 
     engine.defineVar(

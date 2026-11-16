@@ -37,21 +37,26 @@
  * The code below decides WHETHER a lap is worth a readout and how it is
  * scheduled; WHAT is read out lives in the active voice's `callouts.json`
  * under the same id (`scenarios["pit-crew.lap-time-best"]`), paired at
- * `setScripts` time. The bundled script's shape:
+ * `setScripts` time. Since #1688 the bundled scripts read the best lap the way
+ * they read every lap, in the compact form to the thousandth, so the three
+ * lap-time calls round a lap once and identically; the shape:
  *   [radio open]
- *   {{lapTime.intro}}             best-lap-yet  OR  first-good-lap
- *   {{lapTime.minute}}            CONDITIONAL on `lapTime.hasMinuteComponent`
- *                                 — skipped for sub-1-min laps
- *   {{lapTime.second}}            whole-second component, with trailing comma
- *   {{lapTime.decimal}}           "point N seconds." — terminates the readout
+ *   {{lapTime.intro}}        best-lap-yet  OR  first-good-lap, one take that
+ *                            ends its own sentence
+ *   {{lapTime.clock}}        "one twenty three" (lap-time-clock), or under a
+ *                            minute "fifty eight" (lap-time-second)
+ *   {{lapTime.thousandths}}  "point four five six" — ends the line
  *   [radio close]
  *
- * The minute clause is the #1064 spec's boundary case: dropping the minute is
- * a real convention in racing (the assumed minute is understood), so whether
- * a voice keeps the hard `if` or writes `{ optional: ["{{lapTime.minute}}"] }`
- * for a terser register is the pack's decision, not this file's. The bundled
- * script keeps the hard `if` — the assumed minute only holds where it is 1,
- * and an 8:32.4 lap read as "thirty-two four" is nonsense.
+ * #555's full form ("one minute, twenty-three, point four seconds.") stays in
+ * the vocabulary for pack scripts, unchanged: `lapTime.minute`,
+ * `lapTime.second` and `lapTime.decimal`, rounded to the tenth, with the
+ * minute gated by `lapTime.hasMinuteComponent`. Its minute clause is the #1064
+ * spec's boundary case: dropping the minute is a real convention in racing
+ * (the assumed minute is understood), so whether a script keeps a hard `if`
+ * or writes `{ optional: ["{{lapTime.minute}}"] }` for a terser register is
+ * the pack's decision, not this file's — the assumed minute only holds where
+ * it is 1, and an 8:32.4 lap read as "thirty-two four" is nonsense.
  *
  * No leading pause: the translator now triggers `lap.completed` on
  * `LapLastLapTime` updating (which iRacing publishes after the S/F crossing
@@ -70,7 +75,7 @@
  *
  * Clip scope derives from the manifest (issues #835/#836): each component
  * resolver returns a pool reference — split and resolved through the shared
- * `lap-time-readout.ts` (#1163, #1571), whose full form this is — and a lap time whose minute component has
+ * `lap-time-readout.ts` (#1163, #1571, #1688) — and a lap time whose minute component has
  * no clip for the active voice aborts the whole readout at expansion — never
  * partial readouts, no hardcoded bounds.
  */
@@ -157,7 +162,7 @@ export function registerLapTimeVocabulary(
 
       return fullMinuteRef(s.lapTime);
     },
-    "The whole-minute part of the lap time, as one clip per minute value; nothing for a lap under a minute. Draws from the lap-time-minute clip group — a minute the voice has no clip for aborts the readout.",
+    "The whole-minute part of the lap time, as one clip per minute value; nothing for a lap under a minute. Draws from the lap-time-minute clip group — a minute the voice has no clip for aborts the readout. Part of the full form, rounded to the tenth and read with lapTime.second and lapTime.decimal; the first-party scripts read the compact form, lapTime.clock and lapTime.thousandths, instead.",
   );
 
   engine.defineVar(
@@ -169,7 +174,7 @@ export function registerLapTimeVocabulary(
 
       return fullSecondRef(s.lapTime);
     },
-    "The whole-second part of the lap time (0 to 59), one clip per value with a trailing comma. Draws from the lap-time-second clip group.",
+    "The whole-second part of the lap time (0 to 59), one clip per value with a trailing comma. Draws from the lap-time-second clip group. Part of the full form, rounded to the tenth and read with lapTime.minute and lapTime.decimal.",
   );
 
   engine.defineVar(
@@ -181,7 +186,7 @@ export function registerLapTimeVocabulary(
 
       return fullDecimalRef(s.lapTime);
     },
-    'The tenths of a second (0 to 9), spoken as "point N seconds" — the clip that ends the readout. Draws from the lap-time-decimal clip group.',
+    'The tenths of a second (0 to 9), spoken as "point N seconds" — the clip that ends the readout. Draws from the lap-time-decimal clip group. Part of the full form, rounded to the tenth and read with lapTime.minute and lapTime.second.',
   );
 
   engine.defineCond(
