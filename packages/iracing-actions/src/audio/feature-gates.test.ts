@@ -1,4 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { type PlayClipsOptions, WEIGHT } from "@iracedeck/audio-scenarios";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   _resetFeatureGateSync,
@@ -49,6 +50,31 @@ vi.mock("@iracedeck/audio-scenarios/pit-crew", () => ({
   isBackgroundTestInFlight: hoisted.isBackgroundTestInFlight,
   setRadarEnabled: hoisted.setRadarEnabled,
   stopRaceEngineerScenarios: hoisted.stopRaceEngineerScenarios,
+}));
+
+// The scenario engine the acknowledgments play through (#1698). Uninitialised
+// by default, so the tests above play straight onto the Voice channel, the
+// fallback; `WEIGHT` and the rest stay real.
+const scenarios = vi.hoisted(() => {
+  let initialized = false;
+  const playClips = vi.fn<(id: string, paths: readonly string[], options: PlayClipsOptions) => "playing" | "bus-busy">(
+    () => "playing",
+  );
+
+  return {
+    playClips,
+    isAudioScenariosInitialized: vi.fn(() => initialized),
+    getScenarioEngine: vi.fn(() => ({ playClips })),
+    setInitialized: (value: boolean): void => {
+      initialized = value;
+    },
+  };
+});
+
+vi.mock("@iracedeck/audio-scenarios", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@iracedeck/audio-scenarios")>()),
+  getScenarioEngine: scenarios.getScenarioEngine,
+  isAudioScenariosInitialized: scenarios.isAudioScenariosInitialized,
 }));
 
 vi.mock("@iracedeck/audio-service", () => ({
@@ -140,6 +166,73 @@ describe("feature gates", () => {
       toggleRaceEngineerFeature(logger);
 
       expect(hoisted.playOnChannel).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe("toggleRaceEngineerFeature through the scheduler (#1698)", () => {
+    /** The line on the bus: an ack cuts it, and the engine's stopAll settles it. */
+    let running: (() => void) | undefined;
+
+    beforeEach(() => {
+      running = undefined;
+      scenarios.setInitialized(true);
+      scenarios.playClips.mockImplementation((_id, _paths, options) => {
+        const cut = running;
+        running = options.onComplete;
+        cut?.();
+
+        return "playing";
+      });
+      hoisted.stopRaceEngineerScenarios.mockImplementation(() => {
+        const stopped = running;
+        running = undefined;
+        stopped?.();
+      });
+      hoisted.setGlobalSettings(withVoices({ raceEngineerVolume: 80 }));
+    });
+
+    afterEach(() => {
+      // End the ack still playing, so its bypass does not outlive the test.
+      running?.();
+      scenarios.setInitialized(false);
+      scenarios.playClips.mockReset();
+      hoisted.stopRaceEngineerScenarios.mockReset();
+    });
+
+    /** The Voice bus (id 0) volumes written since the last clear. */
+    function voiceWrites(): unknown[] {
+      return hoisted.setBusVolume.mock.calls.filter(([bus]) => bus === 0).map(([, value]) => value);
+    }
+
+    it("plays each acknowledgment as a NORMAL clip fire that cuts in, never straight onto Voice", () => {
+      toggleRaceEngineerFeature(logger);
+      toggleRaceEngineerFeature(logger);
+
+      expect(
+        scenarios.playClips.mock.calls.map(([id, paths, options]) => [id, paths, options.weight, options.whenBusy]),
+      ).toEqual([
+        ["toggle.resuming-01", ["voice/default/toggle/resuming-01.mp3"], WEIGHT.NORMAL, "interrupt"],
+        ["toggle.going-silent-01", ["voice/default/toggle/going-silent-01.mp3"], WEIGHT.NORMAL, "interrupt"],
+      ]);
+      expect(hoisted.playOnChannel).not.toHaveBeenCalled();
+    });
+
+    it("off, on and off quickly: no earlier ack's completion mutes the final going silent", () => {
+      hoisted.setGlobalSettings(withVoices({ raceEngineerVolume: 80, pitCrewRaceEngineerEnabled: true }));
+
+      toggleRaceEngineerFeature(logger); // off: going silent
+      toggleRaceEngineerFeature(logger); // on: resuming cuts it
+      hoisted.setBusVolume.mockClear();
+      toggleRaceEngineerFeature(logger); // off: stopAll settles resuming, then going silent
+
+      // Whatever the earlier acks' completions did, the last Voice write
+      // leaves the bus audible for the ack now playing.
+      expect(voiceWrites().at(-1)).toBe(0.8);
+
+      // That ack's completion is the one that mutes Voice.
+      hoisted.setBusVolume.mockClear();
+      running?.();
+      expect(voiceWrites()).toEqual([0]);
     });
   });
 

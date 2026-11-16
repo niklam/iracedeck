@@ -22,7 +22,7 @@
  * another file.
  *
  * The voice plumbing the acknowledgment rides on (`playToggleAck`,
- * `playVoiceSequence`) stays in `audio-toggles.ts`; the dependency runs one
+ * `playVoiceLine`) stays in `audio-toggles.ts`; the dependency runs one
  * way, so there is no cycle.
  */
 import { setRadarEnabled, stopRaceEngineerScenarios } from "@iracedeck/audio-scenarios/pit-crew";
@@ -57,8 +57,8 @@ function applyRaceEngineerGate(next: boolean, logger: ILogger): void {
 
   // Apply the gate to Voice + Background synchronously so an in-flight
   // engineer clip is silenced on the same tick the user pressed the key.
-  // The acknowledgment (issue #554) layers on top via
-  // `raceEngineerToggleInFlight` — when set, `applyRaceEngineerAudio` leaves
+  // The acknowledgment (issue #554) layers on top via the `toggle` bypass
+  // (`claimRaceEngineerBypass`) — while raised, `applyRaceEngineerAudio` leaves
   // Voice audible so the "going silent" / "resuming" line plays through,
   // while Background and every other Voice consumer mute immediately.
   applyRaceEngineerAudio();
@@ -67,8 +67,10 @@ function applyRaceEngineerGate(next: boolean, logger: ILogger): void {
   // ambient bed) and free the scenario bus. `applyRaceEngineerAudio` only
   // mutes the buses — without this the ambient is orphaned (audible again on
   // re-enable) and the stuck `playingId` drops every later callout as "bus
-  // busy". The going-silent acknowledgment below plays directly on Voice, not
-  // through the engine, so it is unaffected by the cancel (issue #587).
+  // busy" (issue #587). The cancel comes first: the going-silent
+  // acknowledgment below plays through the engine (issue #1698), so it finds
+  // the bus free — and an earlier "resuming" still playing is settled by the
+  // cancel, its release clearing only its own claim on the bypass.
   if (!next) {
     stopRaceEngineerScenarios();
   }

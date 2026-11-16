@@ -36,31 +36,90 @@ export { readBackgroundVolume, readRaceEngineerVolume, readRadarVolume, VOLUME_M
 // ─── Race Engineer master-gate in-flight bypass flags ────────────────────────
 
 /**
- * Whether the Race Engineer voice Test preview is currently playing. Tracked
- * at module scope so the global-settings listener (which calls
- * {@link applyRaceEngineerAudio} whenever any global changes) doesn't re-mute
- * {@link AudioBus.Voice} mid-preview when Race Engineer is off — moving the
- * volume slider during the test would otherwise cut it off.
+ * One master-gate bypass: whether its line is playing, and the generation of
+ * the claim that owns it (see {@link claimRaceEngineerBypass}).
  */
-let raceEngineerTestInFlight = false;
+type Bypass = { inFlight: boolean; generation: number };
 
 /**
- * Whether a Race Engineer toggle acknowledgment ("going silent" / "resuming")
- * is currently playing. Same bypass mechanic as {@link raceEngineerTestInFlight}:
- * when true, {@link applyRaceEngineerAudio} leaves {@link AudioBus.Voice}
- * audible even though the master gate just flipped to off, so the ack clip
- * plays through. See issue #554.
+ * The two bypasses {@link applyRaceEngineerAudio} honours.
+ *
+ * - `test` — the Race Engineer voice Test preview is playing. Tracked at
+ *   module scope so the global-settings listener (which calls
+ *   {@link applyRaceEngineerAudio} whenever any global changes) doesn't
+ *   re-mute {@link AudioBus.Voice} mid-preview when Race Engineer is off —
+ *   moving the volume slider during the test would otherwise cut it off.
+ * - `toggle` — a Race Engineer toggle acknowledgment ("going silent" /
+ *   "resuming") is playing. Same mechanic: {@link AudioBus.Voice} stays
+ *   audible even though the master gate just flipped to off, so the ack clip
+ *   plays through (issue #554).
  */
-let raceEngineerToggleInFlight = false;
+export type RaceEngineerBypass = "test" | "toggle";
 
-/** Set the Race Engineer Voice Test bypass flag. */
-export function setRaceEngineerTestInFlight(value: boolean): void {
-  raceEngineerTestInFlight = value;
+const bypasses: Record<RaceEngineerBypass, Bypass> = {
+  test: { inFlight: false, generation: 0 },
+  toggle: { inFlight: false, generation: 0 },
+};
+
+/**
+ * Raise a bypass for one line and return its release: the release clears the
+ * flag and re-applies {@link applyRaceEngineerAudio}, but only while this claim
+ * is still the flag's newest — a later claim, a direct set, or the release
+ * having already run makes it a no-op (issue #1698).
+ *
+ * The release is the line's completion callback, and through the scenario
+ * engine a completion can arrive late and out of order: a key-press line
+ * plays with `whenBusy: "interrupt"`, so a second press cuts the first line
+ * inside the new `playClips` call, after the new claim has raised the flag
+ * and before the new line takes the bus. Without the generation, the first
+ * line's release would clear the flag the second line just raised and
+ * re-apply the gate under it — the Race Engineer toggled off, on and off
+ * quickly would mute its own "going silent". With it, each line's release
+ * clears only its own claim, and the newest line's completion is the one that
+ * puts the bus back.
+ *
+ * One mechanism for both flags, since both hang on the same completion.
+ */
+export function claimRaceEngineerBypass(kind: RaceEngineerBypass): () => void {
+  const bypass = bypasses[kind];
+  const generation = ++bypass.generation;
+  bypass.inFlight = true;
+
+  return () => {
+    if (bypass.generation !== generation) return;
+
+    // Bumped so this release, called again, finds itself stale.
+    bypass.generation++;
+    bypass.inFlight = false;
+    applyRaceEngineerAudio();
+  };
 }
 
-/** Set the Race Engineer toggle-acknowledgment bypass flag. */
+/**
+ * Set a bypass flag directly. Invalidates every outstanding claim on it, so
+ * a release still pending from before can no longer touch the flag.
+ */
+function setBypass(kind: RaceEngineerBypass, value: boolean): void {
+  bypasses[kind].generation++;
+  bypasses[kind].inFlight = value;
+}
+
+/**
+ * Set the Race Engineer Voice Test bypass flag directly, outside any claim —
+ * {@link stopRaceEngineerPlayback} and tests. A line that plays uses
+ * {@link claimRaceEngineerBypass}.
+ */
+export function setRaceEngineerTestInFlight(value: boolean): void {
+  setBypass("test", value);
+}
+
+/**
+ * Set the Race Engineer toggle-acknowledgment bypass flag directly, outside
+ * any claim — {@link stopRaceEngineerPlayback} and tests. A line that plays
+ * uses {@link claimRaceEngineerBypass}.
+ */
 export function setRaceEngineerToggleInFlight(value: boolean): void {
-  raceEngineerToggleInFlight = value;
+  setBypass("toggle", value);
 }
 
 // ─── Feature gates ───────────────────────────────────────────────────────────
@@ -120,7 +179,7 @@ export function applyRaceEngineerAudio(): void {
   const voice = readRaceEngineerVolume() / 100;
   const background = readBackgroundVolume() / 100;
 
-  const voiceUnmuted = enabled || raceEngineerTestInFlight || raceEngineerToggleInFlight;
+  const voiceUnmuted = enabled || bypasses.test.inFlight || bypasses.toggle.inFlight;
   const backgroundUnmuted = enabled || isBackgroundTestInFlight();
 
   getAudio().setBusVolume(AudioBus.Voice, voiceUnmuted ? voice : 0);
@@ -214,14 +273,17 @@ export function stepRaceEngineerVolumeBy(steps: number): number {
  * playback is three coupled facts about audio state, and a plugin repeating
  * them is three chances to learn only two.
  *
- * The third is the one that is easy to miss. `stopChannel` drops the one-shot
- * completion callback a voice Test installs, so a preview interrupted here
- * would never run its own cleanup and `raceEngineerTestInFlight` would stay
- * true — a stuck bypass holding {@link AudioBus.Voice} unmuted while the master
- * gate says off. Nothing is audible in that state today, since callouts are
- * gated before they reach the bus; it is a trap waiting for the first Voice
- * path that is not. Clearing the flag and re-applying puts the bus back where
- * the gate says it belongs.
+ * The third is the one that is easy to miss: the voice Test's bypass flag. With
+ * the scenario engine up the Test plays through it (issue #1698), and the
+ * `stopAll` inside `stopRaceEngineerScenarios` settles its clip fire, which runs
+ * its release. With the engine not initialised it plays straight onto the
+ * Voice channel, and `stopChannel` drops the one-shot completion callback that
+ * sequence installed, so a preview interrupted here would never run its own
+ * cleanup and the `test` bypass would stay raised — a stuck bypass holding
+ * {@link AudioBus.Voice} unmuted while the master gate says off. Clearing the
+ * flag regardless, and re-applying, puts the bus back where the gate says it
+ * belongs; the direct set also invalidates any release still outstanding, so
+ * nothing from before the stop can touch the flag after it.
  */
 export function stopRaceEngineerPlayback(): void {
   try {
@@ -232,13 +294,14 @@ export function stopRaceEngineerPlayback(): void {
     // throw above would otherwise leave a bypass flag stuck true forever while
     // the caller's own error handling swallowed the exception.
     //
-    // BOTH flags, not just the Test one. `playToggleAck` sets
-    // `raceEngineerToggleInFlight` and relies on the same voice-sequence
-    // completion chain that `stopChannel` severs — the scenario engine never
-    // touches it — so interrupting a master-toggle acknowledgement strands it
-    // by the identical mechanism the comment above describes for its twin. The
-    // first version of this function cleared one and missed the other, which is
-    // the whole reason a single function exists instead of three call sites.
+    // BOTH flags, not just the Test one. `playToggleAck` raises the `toggle`
+    // bypass and hangs its release on the same completion as the Test — the
+    // clip fire's settle with the engine up, the voice-sequence chain that
+    // `stopChannel` severs without it — so interrupting a master-toggle
+    // acknowledgement strands it by the identical mechanism the comment above
+    // describes for its twin. The first version of this function cleared one
+    // and missed the other, which is the whole reason a single function exists
+    // instead of three call sites.
     setRaceEngineerTestInFlight(false);
     setRaceEngineerToggleInFlight(false);
     applyRaceEngineerAudio();

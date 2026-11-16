@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   applyRaceEngineerAudio,
   applyRadarVolume,
+  claimRaceEngineerBypass,
   isRaceEngineerEnabled,
   isRadarEnabled,
   readBackgroundVolume,
@@ -412,9 +413,9 @@ describe("stopRaceEngineerPlayback (#1100)", () => {
     setRaceEngineerToggleInFlight(false);
   });
 
-  // Both bypass flags are released by the same mechanism `stopChannel` severs —
-  // the voice-sequence completion chain — and the scenario engine owns neither,
-  // so stopping playback has to clear both itself. Missing one leaves it true
+  // Both bypass flags are released by the same completion — the clip fire's
+  // settle with the engine up, the voice-sequence chain `stopChannel` severs
+  // without it — so stopping playback has to clear both itself. Missing one leaves it true
   // for the process lifetime, holding the Voice bus open while the master gate
   // says off. The first version of this function cleared the Test flag and
   // missed the toggle flag, which is why the test drives both.
@@ -457,5 +458,110 @@ describe("stopRaceEngineerPlayback (#1100)", () => {
 
     expect(() => stopRaceEngineerPlayback()).toThrow("engine is wedged");
     expect(hoisted.setBusVolume).toHaveBeenCalledWith(0, 0);
+  });
+
+  it("leaves a release still pending from before the stop unable to touch a later claim (#1698)", () => {
+    hoisted.setGlobalSettings({ pitCrewRaceEngineerEnabled: false, raceEngineerVolume: 60 });
+    const beforeStop = claimRaceEngineerBypass("test");
+    stopRaceEngineerPlayback();
+    claimRaceEngineerBypass("test");
+    vi.clearAllMocks();
+
+    beforeStop();
+
+    expect(hoisted.setBusVolume).not.toHaveBeenCalled();
+    applyRaceEngineerAudio();
+    expect(hoisted.setBusVolume).toHaveBeenCalledWith(0, 0.6);
+  });
+});
+
+describe("claimRaceEngineerBypass (#1698)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // The Race Engineer is off, so Voice is muted unless a bypass holds it.
+    hoisted.setGlobalSettings({ pitCrewRaceEngineerEnabled: false, raceEngineerVolume: 60 });
+    setRaceEngineerTestInFlight(false);
+    setRaceEngineerToggleInFlight(false);
+  });
+
+  afterEach(() => {
+    setRaceEngineerTestInFlight(false);
+    setRaceEngineerToggleInFlight(false);
+  });
+
+  /** The Voice bus (id 0) volumes written since the last clear. */
+  function voiceWrites(): unknown[] {
+    return hoisted.setBusVolume.mock.calls.filter(([bus]) => bus === 0).map(([, value]) => value);
+  }
+
+  /** What the gate now does to Voice: the slider value while a bypass holds it, 0 otherwise. */
+  function gatedVoice(): unknown {
+    hoisted.setBusVolume.mockClear();
+    applyRaceEngineerAudio();
+
+    return voiceWrites().at(-1);
+  }
+
+  it.each(["test", "toggle"] as const)(
+    "the %s claim raises the bypass, and its release lowers it and re-applies",
+    (kind) => {
+      const release = claimRaceEngineerBypass(kind);
+      expect(gatedVoice()).toBe(0.6);
+
+      hoisted.setBusVolume.mockClear();
+      release();
+
+      expect(voiceWrites()).toEqual([0]);
+      expect(gatedVoice()).toBe(0);
+    },
+  );
+
+  it.each(["test", "toggle"] as const)("a %s release superseded by a newer claim does nothing", (kind) => {
+    const older = claimRaceEngineerBypass(kind);
+    const newer = claimRaceEngineerBypass(kind);
+    hoisted.setBusVolume.mockClear();
+
+    older();
+
+    expect(voiceWrites()).toEqual([]);
+    expect(gatedVoice()).toBe(0.6);
+
+    newer();
+    expect(gatedVoice()).toBe(0);
+  });
+
+  it("a release that runs twice re-applies once, and cannot lower a claim made between", () => {
+    const first = claimRaceEngineerBypass("toggle");
+    first();
+    const second = claimRaceEngineerBypass("toggle");
+    hoisted.setBusVolume.mockClear();
+
+    first();
+
+    expect(voiceWrites()).toEqual([]);
+    expect(gatedVoice()).toBe(0.6);
+    second();
+  });
+
+  it("a direct set invalidates an outstanding release", () => {
+    const release = claimRaceEngineerBypass("test");
+    setRaceEngineerTestInFlight(true);
+    hoisted.setBusVolume.mockClear();
+
+    release();
+
+    expect(voiceWrites()).toEqual([]);
+    expect(gatedVoice()).toBe(0.6);
+  });
+
+  it("the two bypasses are independent: lowering one leaves the other holding Voice", () => {
+    const test = claimRaceEngineerBypass("test");
+    const toggle = claimRaceEngineerBypass("toggle");
+
+    test();
+    expect(gatedVoice()).toBe(0.6);
+
+    toggle();
+    expect(gatedVoice()).toBe(0);
   });
 });

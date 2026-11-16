@@ -20,10 +20,10 @@ import type { ILogger } from "@iracedeck/logger";
 
 import {
   applyRaceEngineerAudio,
+  claimRaceEngineerBypass,
   readBackgroundVolume,
   readFrameOptions,
   readRaceEngineerVolume,
-  setRaceEngineerTestInFlight,
 } from "./audio-volume.js";
 import { playPressSound } from "./press-sounds.js";
 import { playRaceEngineerVoiceTest } from "./voice-test.js";
@@ -48,21 +48,27 @@ export function runAudioPreview(kind: AudioPreviewKind, logger: ILogger): void {
 
       // Force the Voice bus to the slider value so the preview is audible even
       // when Race Engineer is off (the master gate would otherwise hold it at
-      // 0). Set the in-flight flag first so any global-settings listener firing
+      // 0). Raise the Test bypass first so any global-settings listener firing
       // mid-preview (e.g. user dragging the volume slider) doesn't re-mute the
       // bus via applyRaceEngineerAudio.
-      setRaceEngineerTestInFlight(true);
+      //
+      // The release clears the bypass and re-applies the gate, and runs as the
+      // preview's completion. It is a claim's (issue #1698): the Test plays
+      // through the scheduler and cuts an earlier Test still playing, whose
+      // completion then runs inside this one's start — after this claim raised
+      // the flag — and must leave it alone.
+      const release = claimRaceEngineerBypass("test");
       getAudio().setBusVolume(AudioBus.Voice, readRaceEngineerVolume() / 100);
 
-      const started = playRaceEngineerVoiceTest(() => {
-        setRaceEngineerTestInFlight(false);
-        applyRaceEngineerAudio();
-      });
+      const result = playRaceEngineerVoiceTest(release);
 
-      if (!started) {
-        setRaceEngineerTestInFlight(false);
-        applyRaceEngineerAudio();
+      // Nothing started on these two answers, so the completion will not run.
+      if (result === "no-voice") {
+        release();
         logger.warn("Race engineer voice test skipped — no voice available");
+      } else if (result === "bus-busy") {
+        release();
+        logger.debug("Race engineer voice test skipped — the engineer holds the radio for a heavier call");
       }
 
       break;

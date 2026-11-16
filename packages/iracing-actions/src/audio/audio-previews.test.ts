@@ -2,35 +2,49 @@ import { type ILogger, silentLogger } from "@iracedeck/logger";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { AUDIO_PREVIEW_KINDS, isAudioPreviewKind, runAudioPreview } from "./audio-previews.js";
+import { applyRaceEngineerAudio, setRaceEngineerTestInFlight } from "./audio-volume.js";
 
-const mocks = vi.hoisted(() => ({
-  playRadarTest: vi.fn(),
-  playBackgroundTest: vi.fn((): string => "voice-frame"),
-  playRaceEngineerVoiceTest: vi.fn(() => true),
-  setBusVolume: vi.fn(),
-  applyRaceEngineerAudio: vi.fn(),
-  setRaceEngineerTestInFlight: vi.fn(),
-  readRaceEngineerVolume: vi.fn(() => 80),
-  readBackgroundVolume: vi.fn(() => 40),
-  readFrameOptions: vi.fn(() => ({ beeps: true, ambience: true })),
-  playPressSound: vi.fn(),
-}));
+const mocks = vi.hoisted(() => {
+  let globalSettings: Record<string, unknown> = {};
+
+  return {
+    playRadarTest: vi.fn(),
+    playBackgroundTest: vi.fn((): string => "voice-frame"),
+    playRaceEngineerVoiceTest: vi.fn<(onComplete?: () => void) => "playing" | "bus-busy" | "no-voice">(() => "playing"),
+    setBusVolume: vi.fn(),
+    readFrameOptions: vi.fn(() => ({ beeps: true, ambience: true })),
+    playPressSound: vi.fn(),
+    getGlobalSettings: vi.fn(() => globalSettings),
+    setGlobalSettings: (next: Record<string, unknown>): void => {
+      globalSettings = next;
+    },
+  };
+});
 
 vi.mock("@iracedeck/audio-scenarios/pit-crew", () => ({
   playRadarTest: mocks.playRadarTest,
   playBackgroundTest: mocks.playBackgroundTest,
+  isBackgroundTestInFlight: () => false,
+  stopRaceEngineerScenarios: vi.fn(),
 }));
 vi.mock("@iracedeck/audio-service", () => ({
-  AudioBus: { Voice: "voice", Background: "background" },
+  AudioBus: { Voice: "voice", Background: "background", Alerts: "alerts" },
+  AudioChannel: { Voice: "voice" },
   getAudio: () => ({ setBusVolume: mocks.setBusVolume }),
 }));
-vi.mock("./audio-volume.js", () => ({
-  applyRaceEngineerAudio: mocks.applyRaceEngineerAudio,
-  setRaceEngineerTestInFlight: mocks.setRaceEngineerTestInFlight,
-  readRaceEngineerVolume: mocks.readRaceEngineerVolume,
-  readBackgroundVolume: mocks.readBackgroundVolume,
+vi.mock("@iracedeck/settings", () => ({
+  frameOptionsFromSettings: vi.fn(),
+  getGlobalSettings: mocks.getGlobalSettings,
+  updateGlobalSettings: vi.fn(),
+}));
+// The real bypass flags and gate (#1698): the Voice Test's in-flight handling
+// is checked by what `applyRaceEngineerAudio` then does to the Voice bus. Only
+// the frame switches are stubbed, so each test can hand in its own.
+vi.mock("./audio-volume.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./audio-volume.js")>()),
   readFrameOptions: mocks.readFrameOptions,
 }));
+vi.mock("./volume-tick.js", () => ({ playVolumeTick: vi.fn() }));
 vi.mock("./press-sounds.js", () => ({
   playPressSound: mocks.playPressSound,
 }));
@@ -40,10 +54,45 @@ vi.mock("./voice-test.js", () => ({
 
 const logger: ILogger = { ...silentLogger, warn: vi.fn(), info: vi.fn(), debug: vi.fn() };
 
+/** The Voice bus volumes written since the last clear, in order. */
+function voiceWrites(): unknown[] {
+  return mocks.setBusVolume.mock.calls.filter(([bus]) => bus === "voice").map(([, value]) => value);
+}
+
+/**
+ * Whether the Test bypass is still raised: with the Race Engineer off, the
+ * gate leaves Voice at the slider value only while a bypass holds it.
+ */
+function testBypassRaised(): boolean {
+  mocks.setBusVolume.mockClear();
+  applyRaceEngineerAudio();
+
+  return voiceWrites().at(-1) === 0.8;
+}
+
+/** Start a voice Test and return the completion it handed the player. */
+function startVoiceTest(): () => void {
+  let onComplete: (() => void) | undefined;
+  mocks.playRaceEngineerVoiceTest.mockImplementationOnce((cb?: () => void) => {
+    onComplete = cb;
+
+    return "playing";
+  });
+
+  runAudioPreview("voice", logger);
+
+  if (!onComplete) throw new Error("the voice Test handed no completion");
+
+  return onComplete;
+}
+
 describe("runAudioPreview", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.playRaceEngineerVoiceTest.mockReturnValue(true);
+    // The Race Engineer is off, so Voice is muted unless a bypass holds it.
+    mocks.setGlobalSettings({ raceEngineerVolume: 80, backgroundVolume: 40 });
+    mocks.playRaceEngineerVoiceTest.mockReturnValue("playing");
+    setRaceEngineerTestInFlight(false);
   });
 
   it("radar: plays the radar test", () => {
@@ -52,33 +101,72 @@ describe("runAudioPreview", () => {
     expect(mocks.playRadarTest).toHaveBeenCalledTimes(1);
   });
 
-  it("voice: forces the Voice bus to the slider value, marks the test in flight, restores on completion", () => {
-    let onComplete: (() => void) | undefined;
-    mocks.playRaceEngineerVoiceTest.mockImplementation((cb?: () => void) => {
-      onComplete = cb;
+  it("voice: forces the Voice bus to the slider value, holds the bypass, and restores on completion", () => {
+    const onComplete = startVoiceTest();
 
-      return true;
-    });
+    expect(voiceWrites()).toEqual([0.8]);
+    expect(testBypassRaised()).toBe(true);
+
+    mocks.setBusVolume.mockClear();
+    onComplete();
+
+    // The completion lowered the bypass and re-applied the gate: Race Engineer
+    // off, so Voice mutes.
+    expect(voiceWrites()).toEqual([0]);
+    expect(testBypassRaised()).toBe(false);
+  });
+
+  it("voice: when no voice is available, lowers the bypass and warns", () => {
+    mocks.playRaceEngineerVoiceTest.mockReturnValue("no-voice");
 
     runAudioPreview("voice", logger);
 
-    expect(mocks.setRaceEngineerTestInFlight).toHaveBeenCalledWith(true);
-    expect(mocks.setBusVolume).toHaveBeenCalledWith("voice", 0.8);
-    onComplete?.();
-    expect(mocks.setRaceEngineerTestInFlight).toHaveBeenLastCalledWith(false);
-    expect(mocks.applyRaceEngineerAudio).toHaveBeenCalled();
+    expect(voiceWrites().at(-1)).toBe(0);
+    expect(testBypassRaised()).toBe(false);
+    expect(logger.warn).toHaveBeenCalledWith("Race engineer voice test skipped — no voice available");
   });
 
-  it("voice: when no voice is available, clears the in-flight flag and warns", () => {
-    mocks.playRaceEngineerVoiceTest.mockReturnValue(false);
+  it("voice: when a heavier call holds the radio, lowers the bypass and says so at debug (#1698)", () => {
+    // `"bus-busy"`: nothing started, so the completion never runs — the
+    // runner lowers the bypass itself.
+    mocks.playRaceEngineerVoiceTest.mockReturnValue("bus-busy");
 
     runAudioPreview("voice", logger);
 
-    expect(mocks.setRaceEngineerTestInFlight).toHaveBeenLastCalledWith(false);
-    expect(mocks.applyRaceEngineerAudio).toHaveBeenCalled();
-    expect(logger.warn).toHaveBeenCalled();
+    expect(voiceWrites().at(-1)).toBe(0);
+    expect(testBypassRaised()).toBe(false);
+    expect(logger.debug).toHaveBeenCalledWith(
+      "Race engineer voice test skipped — the engineer holds the radio for a heavier call",
+    );
+    expect(logger.warn).not.toHaveBeenCalled();
   });
 
+  it("voice: an earlier Test's completion, arriving after a second press, leaves the newer Test's bypass alone (#1698)", () => {
+    // Test pressed twice: the second cuts the first through the scheduler, and
+    // the first's completion runs after the second has raised the bypass.
+    const first = startVoiceTest();
+    const second = startVoiceTest();
+
+    mocks.setBusVolume.mockClear();
+    first();
+
+    expect(voiceWrites()).toEqual([]);
+    expect(testBypassRaised()).toBe(true);
+
+    second();
+
+    expect(testBypassRaised()).toBe(false);
+  });
+
+  it("voice: a completion that runs twice re-applies the gate once", () => {
+    const onComplete = startVoiceTest();
+
+    onComplete();
+    mocks.setBusVolume.mockClear();
+    onComplete();
+
+    expect(voiceWrites()).toEqual([]);
+  });
   it("background: forces the Background bus to the slider value and restores on completion", () => {
     runAudioPreview("background", logger);
 
