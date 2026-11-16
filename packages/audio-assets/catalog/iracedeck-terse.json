@@ -9,8 +9,8 @@
       "label": "Default (Short callouts)"
     }
   ],
-  "bytes": 26920855,
-  "sha256": "1d8fa029689b425511cbe4d78f9432b49651fa3931e49a9f7719057e35f8efa7",
+  "bytes": 26920853,
+  "sha256": "01feaf80128d65881fb2d915e1e734f33409d262f4365f9cec26d38620098a9a",
   "url": "https://github.com/niklam/iracedeck/releases/download/voices-iracedeck-terse-2.0.0/iracedeck-terse-2.0.0.zip",
   "minPluginVersion": "3.9.0"
 }
