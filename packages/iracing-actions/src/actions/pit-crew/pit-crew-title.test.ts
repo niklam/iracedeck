@@ -53,9 +53,10 @@ vi.mock("../../audio/audio-volume.js", () => ({
 
 vi.mock("../../audio/audio-toggles.js", () => ({
   isCornerNamesEnabled: () => true,
+  isSectorStartsEnabled: () => true,
   playVoiceSequence: vi.fn(),
   readJsonStringArray: () => [],
-  toggleCornerNamesFeature: vi.fn(),
+  toggleTrackCallouts: vi.fn(() => ({})),
 }));
 
 vi.mock("../../audio/feature-gates.js", () => ({

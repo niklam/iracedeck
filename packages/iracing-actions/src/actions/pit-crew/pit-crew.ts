@@ -3,13 +3,16 @@ import {
   applyGraphicTransform,
   CommonSettings,
   computeGraphicArea,
+  DualPressTracker,
   generateBorderParts,
   generateTitleText,
+  getDualPressThresholdMs,
   getGlobalBorderSettings,
   getGlobalGraphicSettings,
   getGlobalTitleSettings,
   type IDeckDidReceiveSettingsEvent,
   type IDeckKeyDownEvent,
+  type IDeckKeyUpEvent,
   type IDeckWillAppearEvent,
   type IDeckWillDisappearEvent,
   type PressShape,
@@ -37,7 +40,8 @@ import {
   playVoiceLine,
   playVoiceSequence,
   readJsonStringArray,
-  toggleCornerNamesFeature,
+  toggleTrackCallouts,
+  type TrackCallTarget,
 } from "../../audio/audio-toggles.js";
 import {
   applyRaceEngineerAudio,
@@ -82,10 +86,13 @@ export const PIT_CREW_UUID = "com.iracedeck.sd.core.pit-crew";
  *     the step is up or down. Hidden from the Property Inspector (issue #590)
  *     in favour of the Audio Controls "Radar" volume buttons, but kept
  *     functional so existing buttons configured with this mode keep working.
- *   - `corner-names`: flips the global `calloutEnabledCornerNames` opt-in
- *     (issue #897) — the same setting the PI checkbox writes, so key and
- *     checkbox mirror each other. Speaks a toggle acknowledgment when the
- *     Race Engineer master gate is on.
+ *   - `corner-names`: flips the track-call opt-ins (issues #897, #1699) —
+ *     `calloutEnabledCornerNames`, `calloutEnabledSectorStarts` or both, the
+ *     same settings the Settings window checkboxes write, so key and checkbox
+ *     mirror each other. `cornerNamesTap` names what a tap toggles and
+ *     `cornerNamesLongPress` what a hold past the long-press threshold
+ *     toggles (`none`: nothing). Read in this mode only. Speaks a toggle
+ *     acknowledgment when the Race Engineer master gate is on.
  *
  * All user-visible feature state (enabled flags, volume) lives in global
  * settings so every Pit Crew button reflects the same values. Persisted
@@ -97,10 +104,28 @@ export const PIT_CREW_UUID = "com.iracedeck.sd.core.pit-crew";
 export const Settings = CommonSettings.extend({
   mode: z.enum(["race-engineer", "radar", "radar-volume", "corner-names"]).default("race-engineer"),
   direction: z.enum(["up", "down"]).default("up"),
+  cornerNamesTap: z.enum(["both", "corners", "sectors"]).default("corners"),
+  cornerNamesLongPress: z.enum(["none", "both", "corners", "sectors"]).default("sectors"),
 });
 
 type PitCrewSettings = z.infer<typeof Settings>;
 type Mode = PitCrewSettings["mode"];
+
+/**
+ * How a Corner Names press is handled (#1699): toggled at key-down when the
+ * long press has nothing distinct to do (`none`, or the tap's own target), or
+ * classified as a tap or a long press on release otherwise.
+ */
+type CornerNamesPress = { kind: "down"; target: TrackCallTarget } | { kind: "classify" };
+
+/** @internal Exported for testing. */
+export function cornerNamesPress(settings: PitCrewSettings): CornerNamesPress {
+  const long = settings.cornerNamesLongPress;
+
+  return long === "none" || long === settings.cornerNamesTap
+    ? { kind: "down", target: settings.cornerNamesTap }
+    : { kind: "classify" };
+}
 
 // ─── Global-state helpers ─────────────────────────────────────────────────────
 
@@ -345,6 +370,9 @@ export class PitCrew extends SimIRacingAction<PitCrewSettings> {
   /** Per-context unsubscribe callback for the global-settings listener. */
   private readonly listenerUnsubs = new Map<string, () => void>();
 
+  /** Classifies a Corner Names press as a tap or a long press, on release (#1699). */
+  private readonly dualPress = new DualPressTracker();
+
   /**
    * No Pit Crew key needs the sim (#1599): every mode — Race Engineer, Radar,
    * Radar Volume, Corner Names — changes one of the plugin's own settings, so
@@ -416,6 +444,7 @@ export class PitCrew extends SimIRacingAction<PitCrewSettings> {
 
     this.listenerUnsubs.get(contextId)?.();
     this.listenerUnsubs.delete(contextId);
+    this.dualPress.clear(contextId);
     this.settingsCache.delete(contextId);
     this.visibleContexts.delete(contextId);
     this.sdkController.unsubscribe(RADIO_CHECK_SUB_PREFIX + contextId);
@@ -436,10 +465,20 @@ export class PitCrew extends SimIRacingAction<PitCrewSettings> {
 
   /**
    * The shape of a key press, for the press sounds (#269): a Radar Volume step makes none,
-   * since its #1455 tick is the press sound; every other mode toggles once on key-down.
+   * since its #1455 tick is the press sound; a Corner Names key with a distinct long press
+   * (#1699) is classified on release, against the same live threshold its release reads;
+   * every other press toggles once on key-down.
    */
   keyPressShape(ev: IDeckKeyDownEvent<PitCrewSettings>): PressShape {
-    return Settings.parse(ev.payload.settings).mode === "radar-volume" ? { kind: "none" } : { kind: "tap" };
+    const settings = Settings.parse(ev.payload.settings);
+
+    if (settings.mode === "radar-volume") return { kind: "none" };
+
+    if (settings.mode === "corner-names" && cornerNamesPress(settings).kind === "classify") {
+      return { kind: "release", thresholdMs: getDualPressThresholdMs(), short: true, long: true };
+    }
+
+    return { kind: "tap" };
   }
 
   override async onKeyDown(ev: IDeckKeyDownEvent<PitCrewSettings>): Promise<void> {
@@ -457,11 +496,50 @@ export class PitCrew extends SimIRacingAction<PitCrewSettings> {
         this.logger.info(`Radar volume ${settings.direction} → ${next}`);
         break;
       }
-      case "corner-names":
-        toggleCornerNamesFeature(this.logger);
+      case "corner-names": {
+        const press = cornerNamesPress(settings);
+
+        if (press.kind === "classify") {
+          // Toggled on release, once the press is known to be a tap or a long press.
+          this.dualPress.recordKeyDown(ev.action.id);
+
+          return;
+        }
+
+        this.dualPress.clear(ev.action.id);
+        toggleTrackCallouts(press.target, this.logger);
         break;
+      }
     }
 
+    await this.rerenderAll();
+  }
+
+  /**
+   * Corner Names release (#1699): classify a press timed at key-down against the live
+   * long-press threshold and toggle what the key's settings name for it. A release with no
+   * timed key-down (any other mode, a key that toggled at key-down, a stray release) does
+   * nothing, and a long press set to Nothing at release toggles nothing.
+   */
+  override async onKeyUp(ev: IDeckKeyUpEvent<PitCrewSettings>): Promise<void> {
+    const press = this.dualPress.computeOutcome<"tap" | "long">(ev.action.id, "tap", "long");
+
+    if (press === undefined) return;
+
+    const settings = Settings.parse(ev.payload.settings);
+
+    if (settings.mode !== "corner-names") return;
+
+    const target = press === "tap" ? settings.cornerNamesTap : settings.cornerNamesLongPress;
+
+    if (target === "none") {
+      this.logger.debug("Corner Names: long press set to Nothing, press ignored");
+
+      return;
+    }
+
+    this.logger.debug(`Corner Names: ${press} press toggles ${target}`);
+    toggleTrackCallouts(target, this.logger);
     await this.rerenderAll();
   }
 

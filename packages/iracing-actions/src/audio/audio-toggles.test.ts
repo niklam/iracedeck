@@ -11,7 +11,6 @@ import {
   playTrackCallsAck,
   playVoiceLine,
   readJsonStringArray,
-  toggleCornerNamesFeature,
   toggleTrackCallouts,
 } from "./audio-toggles.js";
 import { setRaceEngineerToggleInFlight } from "./audio-volume.js";
@@ -346,18 +345,6 @@ describe("audio-toggles", () => {
 
       expect(hoisted.playOnChannel).not.toHaveBeenCalled();
       expect(logger.debug).toHaveBeenCalledWith("Key ack sector-starts-off-01 skipped — no voice available");
-    });
-  });
-
-  describe("toggleCornerNamesFeature (deprecated, removed by #1699 T2)", () => {
-    it("delegates to the corners target and returns its new state", () => {
-      hoisted.setGlobalSettings({ pitCrewRaceEngineerEnabled: true, _raceEngineerVoices: JSON.stringify(["default"]) });
-
-      expect(toggleCornerNamesFeature(logger)).toBe(false);
-      expect(hoisted.setCalloutEnabled).toHaveBeenCalledWith("calloutEnabledCornerNames", false);
-      expect(hoisted.playOnChannel).toHaveBeenCalledWith(0, "voice/default/toggle/corner-names-off-01.mp3");
-
-      expect(toggleCornerNamesFeature(logger)).toBe(true);
     });
   });
 

@@ -404,12 +404,3 @@ export function toggleTrackCallouts(target: TrackCallTarget, logger: ILogger): T
 export function playTrackCallsAck(clip: TrackCallsAckClip, logger: ILogger): void {
   playKeyAck(clip, logger);
 }
-
-/**
- * Flip the corner-name callout opt-in. Returns the NEW state.
- *
- * @deprecated — removed by #1699 T2; call `toggleTrackCallouts("corners", logger)`.
- */
-export function toggleCornerNamesFeature(logger: ILogger): boolean {
-  return toggleTrackCallouts("corners", logger).corners === true;
-}

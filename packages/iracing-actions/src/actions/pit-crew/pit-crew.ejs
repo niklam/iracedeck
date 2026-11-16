@@ -25,6 +25,25 @@
 			</sdpi-select>
 		</sdpi-item>
 
+		<sdpi-item id="corner-names-tap-item" class="hidden" label="Tap toggles">
+			<sdpi-select setting="cornerNamesTap" default="corners">
+				<option value="both">Both</option>
+				<option value="corners">Corners</option>
+				<option value="sectors">Sectors</option>
+			</sdpi-select>
+		</sdpi-item>
+		<sdpi-item id="corner-names-long-item" class="hidden" label="Long press toggles">
+			<sdpi-select setting="cornerNamesLongPress" default="sectors">
+				<option value="none">Nothing</option>
+				<option value="both">Both</option>
+				<option value="corners">Corners</option>
+				<option value="sectors">Sectors</option>
+			</sdpi-select>
+		</sdpi-item>
+		<div class="ird-supporting-text hidden" id="corner-names-note">
+			Corners are the corner-name calls, Sectors the sector-start calls. Both turns them all off when either is on, and on when both are off. A long press is a hold past the Long-press threshold in iRaceDeck Settings.
+		</div>
+
 		<%# The Race Engineer voice, volumes, callout opt-ins and setup-warning
 		    patterns are plugin-global, so since #1003 they live only in the
 		    settings window — reachable from the button below. Their audio
@@ -34,13 +53,17 @@
 
 		<script>
 		(function() {
-			// Direction visibility — hide unless Mode = radar-volume. sdpi-select
-			// events can be flaky (see session-info.ejs precedent), so combine
-			// change/input listeners with a polling fallback.
-			async function initializeDirectionVisibility() {
+			// Per-mode visibility — Direction only for Mode = radar-volume, the
+			// tap / long-press targets and their note only for Mode = corner-names
+			// (#1699). sdpi-select events can be flaky (see session-info.ejs
+			// precedent), so combine change/input listeners with a polling fallback.
+			async function initializeModeVisibility() {
 				await customElements.whenDefined("sdpi-select");
 				const modeSelect = document.getElementById("mode-select");
 				const directionItem = document.getElementById("direction-item");
+				const cornerNamesItems = ["corner-names-tap-item", "corner-names-long-item", "corner-names-note"]
+					.map((id) => document.getElementById(id))
+					.filter((el) => el);
 				if (!modeSelect || !directionItem) return;
 
 				// Radar Volume is deprecated here (issue #590) — it now lives in the
@@ -61,8 +84,8 @@
 
 				const update = (mode) => {
 					syncRadarVolumeOption(mode);
-					if (mode === "radar-volume") directionItem.classList.remove("hidden");
-					else directionItem.classList.add("hidden");
+					directionItem.classList.toggle("hidden", mode !== "radar-volume");
+					for (const el of cornerNamesItems) el.classList.toggle("hidden", mode !== "corner-names");
 				};
 
 				update(modeSelect.value || "race-engineer");
@@ -78,8 +101,8 @@
 					}
 				});
 			}
-			if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", initializeDirectionVisibility);
-			else initializeDirectionVisibility();
+			if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", initializeModeVisibility);
+			else initializeModeVisibility();
 		})();
 		</script>
 
