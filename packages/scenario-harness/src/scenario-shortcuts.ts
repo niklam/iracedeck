@@ -3422,17 +3422,18 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
   trackConditions("drying", "dry", "Dry", TrackWetness.Dry),
 
   // ── Lap Time ──
-  // `lap.completed` transitions where `isBest` is true (issue #555). Current
-  // clip scope is minutes 1–10, whole seconds 0–59, decimals 0–9 — laps over
-  // 10 minutes are dropped by the scenario's `where:` predicate (good for
-  // verifying the gate). Same-family preempt works between two shortcuts
-  // fired in quick succession.
+  // `lap.completed` transitions where `isBest` is true (issue #555), read to
+  // the thousandth in the compact form since #1688. Clip scope is the clock
+  // phrases 1:00–10:59 (seconds 0–59 under a minute) and thousandths 000–999 —
+  // a lap of 11 minutes or more has no clock clip, so its whole line aborts
+  // at expansion (good for verifying the ceiling). Same-family preempt works
+  // between two shortcuts fired in quick succession.
   {
     id: "lap-best-1m-03s",
     category: "Lap Time",
     label: "Best Lap 1:03.450",
     description:
-      'New PB with a prior best — engineer says "That was your best lap yet. One minute, three point four seconds."',
+      'New PB with a prior best — engineer says "That was your best lap yet. One oh three point four five." (the trailing zero is left off)',
     event: "lap.completed",
     data: {
       lap: 5,
@@ -3449,7 +3450,7 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
     category: "Lap Time",
     label: "Best Lap 1:23.456",
     description:
-      'Mid-range PB exercising the expanded seconds coverage — "One minute, twenty three point four seconds."',
+      'Mid-range PB, all three thousandths — "That was your best lap yet. One twenty three point four five six."',
     event: "lap.completed",
     data: {
       lap: 5,
@@ -3466,7 +3467,7 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
     category: "Lap Time",
     label: "Best Lap 0:34.812",
     description:
-      'Sub-1-minute new PB — engineer skips the minute clip ("That was your best lap yet. Thirty four point eight seconds.")',
+      'Sub-1-minute new PB — the time starts with the seconds ("That was your best lap yet. Thirty four point eight one two.")',
     event: "lap.completed",
     data: {
       lap: 5,
@@ -3533,7 +3534,7 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
     category: "Lap Time",
     label: "Best Lap 11:05.500 (out of scope)",
     description:
-      "Minute component (11) exceeds LAP_TIME_MINUTE_MAX (10) — the scenario's `where:` predicate short-circuits and no audio plays. Use this to verify the gate still suppresses over-long laps.",
+      "An 11-minute lap has no lap-time-clock clip (they stop at 10:59), so the whole line aborts at expansion and no audio plays — not even the intro. Use this to verify the ceiling still silences over-long laps.",
     event: "lap.completed",
     data: {
       lap: 5,

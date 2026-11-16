@@ -75,9 +75,10 @@
  *
  * Clip scope derives from the manifest (issues #835/#836): each component
  * resolver returns a pool reference — split and resolved through the shared
- * `lap-time-readout.ts` (#1163, #1571, #1688) — and a lap time whose minute component has
- * no clip for the active voice aborts the whole readout at expansion — never
- * partial readouts, no hardcoded bounds.
+ * `lap-time-readout.ts` (#1163, #1571, #1688) — and a lap time whose clock
+ * phrase (or, in the full form, whose minute) has no clip for the active voice
+ * aborts the whole readout at expansion — never partial readouts, no
+ * hardcoded bounds.
  */
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import { type CalloutIdOf, LAP_TIME_CALLOUTS } from "@iracedeck/callout-settings";
