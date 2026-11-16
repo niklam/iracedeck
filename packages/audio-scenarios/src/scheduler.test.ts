@@ -1273,6 +1273,20 @@ describe("a clip fire that interrupts", () => {
     expect(h.waiting()).toEqual([]);
   });
 
+  it("replays a cut queueable, non-resumable fire whole even inside its cooldown", () => {
+    const h = harness();
+    h.define({ id: "line", weight: 50, queueable: true, cooldown: 60_000 });
+    h.fire("line");
+
+    expect(h.scheduler.playClips("ack", CLIPS, ACK)).toBe("playing");
+    expect(h.waiting()).toEqual(["line"]);
+
+    // The stash started playing and stamped its own cooldown: the replay must not be held to it.
+    h.finish();
+    expect(h.active()?.id).toBe("line");
+    expect(h.waiting()).toEqual([]);
+  });
+
   it("cuts a lighter non-queueable fire and stashes nothing", () => {
     const h = harness();
     h.define({ id: "chatter", weight: 10 });

@@ -311,6 +311,19 @@ export class Scheduler implements PlaybackListener {
           }
 
           this.cutForClips(id, state);
+
+          // The cut fire's `onSettled` ran inside the cut, and a caller's
+          // completion may have put a fire on the bus meanwhile: never take
+          // the bus from under it. Only an active fire counts here — the
+          // queue now holds the stash itself, which plays after the clips.
+          const taken = state.transport.active;
+
+          if (taken !== null && taken.id !== FRAME_PREVIEW_ID) {
+            this.logger.debug(`Clips "${id}" skipped — the Voice bus was taken while cutting`);
+
+            return "bus-busy";
+          }
+
           break;
         }
         default: {
@@ -523,8 +536,19 @@ export class Scheduler implements PlaybackListener {
 
     // A resume is a continuation of a fire that already passed (and stamped)
     // the cooldown — re-checking it here would drop the tail of an
-    // interrupted line (issue #758).
-    if (!resume && entry.raw.cooldown && entry.lastFireAt > 0 && now - entry.lastFireAt < entry.raw.cooldown) return;
+    // interrupted line (issue #758). So is a whole replay of a cut line: an
+    // `admitted` fire is a stash (`stashRunningIfQueueable`), which started
+    // playing and stamped its own cooldown, so the check would drop the line
+    // it is meant to bring back (issue #1698, where any key-press ack can
+    // cut a queueable line inside its cooldown).
+    if (
+      !resume &&
+      !admitted &&
+      entry.raw.cooldown &&
+      entry.lastFireAt > 0 &&
+      now - entry.lastFireAt < entry.raw.cooldown
+    )
+      return;
 
     const bus = entry.raw.bus;
     const state = this.buses.get(bus);

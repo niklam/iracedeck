@@ -5237,6 +5237,21 @@ describe("playClips — a key-press acknowledgment cuts in through the scheduler
     expect(voiceBus()?.active).toBeNull();
   });
 
+  it("answers `bus-busy`, taking nothing, when the cut fire's completion put another fire on the bus", () => {
+    // A completion that starts a line: it runs inside the cut, so the bus is no longer the ack's to take.
+    const late = vi.fn(() =>
+      engine.playClips("pit-crew.late-line", [RC1], { weight: WEIGHT.NORMAL, whenBusy: "skip" }),
+    );
+    engine.playClips(ACK_ID, [ACK], { ...INTERRUPT, onComplete: late });
+
+    expect(engine.playClips("pit-crew.second-ack", [ACK2], INTERRUPT)).toBe("bus-busy");
+
+    expect(late).toHaveBeenCalledTimes(1);
+    expect(voiceBus()?.playingId).toBe("pit-crew.late-line");
+    flushVoiceAndSfx(audio);
+    expect(voicePaths()).toEqual([ACK, RC1]);
+  });
+
   it("on an idle bus it plays as `skip` does, and then holds the bus like any clip fire", () => {
     defineLine({ queueable: true, sequence: [A] });
 
