@@ -30,13 +30,13 @@
  *
  * **A call more than 1.5 s late is dropped.** Both contracts carry
  * {@link MARKER_CALL_MAX_LAG_MS} as `maxQueueWaitMs`, measured from the
- * fire's arrival: a sector named well after the car has passed its start is
- * a wrong call, not a late one (#888's reasoning for the corner names). The
- * one path past the bound is a sector call cut mid-word by a heavier
- * `interrupt` line (the spotter): the engine stashes it and replays it whole
- * with its wait restarted at the cut, until #1681 keeps a stash's first due
- * time. Being queueable, it also waits behind any other line in flight, and
- * heavier waiting lines go before it.
+ * fire's due time: a sector named well after the car has passed its start
+ * is a wrong call, not a late one (#888's reasoning for the corner names).
+ * That holds on every path: a sector call cut mid-word by a heavier
+ * `interrupt` line (the spotter) is stashed with its first due time (#1681),
+ * so it replays whole only if that is still within 1.5 s, however many cuts
+ * it took. Being queueable, it also waits behind any other line in flight,
+ * and heavier waiting lines go before it.
  *
  * Session gating (practice and test only) lives in the translator diff, not
  * here (#655, #888), so the contract stays firable from the scenario harness.
