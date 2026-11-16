@@ -326,6 +326,12 @@ export class Scheduler implements PlaybackListener {
           if (changed !== null) {
             this.logger.debug(`Clips "${id}" skipped — ${changed}`);
 
+            // The cut left the bus idle when only a floor was raised: drain
+            // what may play under it (a fire at or above the floor, the cut
+            // line's stash once the floor drops), as after any fire, rather
+            // than leave the queue stalled until the next arrival.
+            if (state.transport.active === null) this.drainPending(state);
+
             return "bus-busy";
           }
 

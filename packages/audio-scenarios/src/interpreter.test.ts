@@ -5299,6 +5299,31 @@ describe("playClips — a key-press acknowledgment cuts in through the scheduler
     engine.releaseFocus(AudioBus.Voice, "spotter");
   });
 
+  it("drains a waiting fire that clears the floor when the cut fire's completion raised one", () => {
+    // A 75-weight line, no interrupt, waits behind the first ack; the second
+    // ack cuts the first, whose completion raises a SAFETY floor, so the second
+    // ack is refused — and the bus, idle now, must still play the waiting line.
+    engine.defineScenario({
+      id: "test.heavy",
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      weight: 75,
+      queueable: true,
+      sequence: [FUEL],
+    });
+    const raise = vi.fn(() => engine.acquireFocus(AudioBus.Voice, "spotter", WEIGHT.SAFETY));
+    engine.playClips(ACK_ID, [ACK], { ...INTERRUPT, onComplete: raise });
+    engine.fire("test.heavy");
+    expect(voiceBus()?.waiting).toEqual([expect.objectContaining({ id: "test.heavy" })]);
+
+    expect(engine.playClips("pit-crew.second-ack", [ACK2], INTERRUPT)).toBe("bus-busy");
+
+    expect(voiceBus()?.playingId).toBe("test.heavy");
+    flushVoiceAndSfx(audio);
+    expect(voicePaths()).toEqual([ACK, FUEL]);
+    engine.releaseFocus(AudioBus.Voice, "spotter");
+  });
+
   it("on an idle bus it plays as `skip` does, and then holds the bus like any clip fire", () => {
     defineLine({ queueable: true, sequence: [A] });
 
