@@ -141,6 +141,17 @@ describe("runAudioPreview", () => {
     expect(logger.warn).not.toHaveBeenCalled();
   });
 
+  it("voice: when the play throws, lowers the bypass and rethrows (#1698)", () => {
+    mocks.playRaceEngineerVoiceTest.mockImplementation(() => {
+      throw new Error("boom");
+    });
+
+    expect(() => runAudioPreview("voice", logger)).toThrow("boom");
+
+    expect(voiceWrites().at(-1)).toBe(0);
+    expect(testBypassRaised()).toBe(false);
+  });
+
   it("voice: an earlier Test's completion, arriving after a second press, leaves the newer Test's bypass alone (#1698)", () => {
     // Test pressed twice: the second cuts the first through the scheduler, and
     // the first's completion runs after the second has raised the bypass.

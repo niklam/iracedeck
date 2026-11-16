@@ -259,7 +259,16 @@ export function playToggleAck(clipName: "going-silent-01" | "resuming-01", logge
   // the master gate. Mirrors how the Voice Test bypasses the gate.
   getAudio().setBusVolume(AudioBus.Voice, readRaceEngineerVolume() / 100);
 
-  const result = playVoiceLine(ackFireId(clipName), [path], { whenBusy: "interrupt", onComplete: release });
+  let result: PlayClipsResult;
+
+  try {
+    result = playVoiceLine(ackFireId(clipName), [path], { whenBusy: "interrupt", onComplete: release });
+  } catch (error) {
+    // Nothing started, so nothing will run the release: drop the bypass here
+    // rather than leave Voice held open past the master gate.
+    release();
+    throw error;
+  }
 
   if (result === "bus-busy") {
     release();

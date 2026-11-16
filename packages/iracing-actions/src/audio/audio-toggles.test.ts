@@ -410,6 +410,18 @@ describe("audio-toggles", () => {
       );
     });
 
+    it("lowers the bypass and re-applies the gate when the play throws, then rethrows", () => {
+      scenarios.setInitialized(true);
+      scenarios.playClips.mockImplementation(() => {
+        throw new Error("boom");
+      });
+
+      expect(() => playToggleAck("resuming-01", logger)).toThrow("boom");
+
+      // Raised to the slider for the ack, then back to the gate: Race Engineer off, no bypass.
+      expect(voiceWrites()).toEqual([0.8, 0]);
+    });
+
     it("an earlier ack's completion, run inside the newer ack's play because it cut it, leaves the newer bypass alone", () => {
       // Off, on, off quickly: each ack cuts the one before inside its own
       // playClips, after its own claim raised the bypass.

@@ -60,7 +60,15 @@ export function runAudioPreview(kind: AudioPreviewKind, logger: ILogger): void {
       const release = claimRaceEngineerBypass("test");
       getAudio().setBusVolume(AudioBus.Voice, readRaceEngineerVolume() / 100);
 
-      const result = playRaceEngineerVoiceTest(release);
+      let result: ReturnType<typeof playRaceEngineerVoiceTest>;
+
+      try {
+        result = playRaceEngineerVoiceTest(release);
+      } catch (error) {
+        // Nothing started, so nothing will run the release.
+        release();
+        throw error;
+      }
 
       // Nothing started on these two answers, so the completion will not run.
       if (result === "no-voice") {

@@ -105,18 +105,29 @@ function setBypass(kind: RaceEngineerBypass, value: boolean): void {
 }
 
 /**
- * Set the Race Engineer Voice Test bypass flag directly, outside any claim —
- * {@link stopRaceEngineerPlayback} and tests. A line that plays uses
- * {@link claimRaceEngineerBypass}.
+ * Drop every bypass and invalidate every outstanding claim, so no release
+ * still pending can raise or clear a flag afterwards — the stop path's one
+ * call ({@link stopRaceEngineerPlayback}). A line that plays raises its
+ * bypass only through {@link claimRaceEngineerBypass}.
+ */
+function releaseAllRaceEngineerBypasses(): void {
+  setBypass("test", false);
+  setBypass("toggle", false);
+}
+
+/**
+ * @internal Test-only: set the Race Engineer Voice Test bypass flag directly,
+ * outside any claim. Production code raises it only through
+ * {@link claimRaceEngineerBypass}, whose release a cut line cannot misuse.
  */
 export function setRaceEngineerTestInFlight(value: boolean): void {
   setBypass("test", value);
 }
 
 /**
- * Set the Race Engineer toggle-acknowledgment bypass flag directly, outside
- * any claim — {@link stopRaceEngineerPlayback} and tests. A line that plays
- * uses {@link claimRaceEngineerBypass}.
+ * @internal Test-only: set the Race Engineer toggle-acknowledgment bypass flag
+ * directly, outside any claim. Production code raises it only through
+ * {@link claimRaceEngineerBypass}.
  */
 export function setRaceEngineerToggleInFlight(value: boolean): void {
   setBypass("toggle", value);
@@ -302,8 +313,7 @@ export function stopRaceEngineerPlayback(): void {
     // describes for its twin. The first version of this function cleared one
     // and missed the other, which is the whole reason a single function exists
     // instead of three call sites.
-    setRaceEngineerTestInFlight(false);
-    setRaceEngineerToggleInFlight(false);
+    releaseAllRaceEngineerBypasses();
     applyRaceEngineerAudio();
   }
 }
