@@ -26,7 +26,12 @@
  * contract is `queueable`, so the sector call waits for the name rather
  * than being dropped. On a tick that sweeps both, the translator publishes
  * them in the order the car reaches them, a corner at the sector line after
- * the sector start, so that call lands on the line.
+ * the sector start, so that call lands on the line. Track order holds while
+ * one of the two takes the bus; when a third line is already playing as
+ * both come due, both wait and the queue plays the heavier corner name
+ * first, the sector call after it only if still within its bound (spec
+ * decision 4; a `queueBehind` between them would change how corner names
+ * wait behind every other line, so it is not declared).
  *
  * **A call more than 1.5 s late is dropped.** Both contracts carry
  * {@link MARKER_CALL_MAX_LAG_MS} as `maxQueueWaitMs`, measured from the
