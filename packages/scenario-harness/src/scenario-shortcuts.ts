@@ -2353,8 +2353,8 @@ const CAUTION_CATCH_UP_SHORTCUT: TelemetrySequenceShortcut = {
   ],
 };
 
-/** The lap time every Fastest Lap shortcut sets: 1:23.4. */
-const FASTEST_LAP_TIME = 83.4;
+/** The lap time every Fastest Lap shortcut sets: 1:23.456. */
+const FASTEST_LAP_TIME = 83.456;
 
 /**
  * The player's completed-lap count on a remote car's record. The fastest-lap
@@ -2403,7 +2403,7 @@ function playerFastestLapCompleted(lap: number): PublishedEvent {
       isBest: true,
       isFirstValid: false,
       bestLapTime: FASTEST_LAP_TIME,
-      previousBestLapTime: 85.0,
+      previousBestLapTime: 85.012,
       sessionType: "race",
       isClassFastestLapOfRace: true,
     },
@@ -3430,16 +3430,16 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
   {
     id: "lap-best-1m-03s",
     category: "Lap Time",
-    label: "Best Lap 1:03.4",
+    label: "Best Lap 1:03.450",
     description:
       'New PB with a prior best — engineer says "That was your best lap yet. One minute, three point four seconds."',
     event: "lap.completed",
     data: {
       lap: 5,
-      lapTime: 63.4,
+      lapTime: 63.45,
       isBest: true,
       isFirstValid: false,
-      bestLapTime: 63.4,
+      bestLapTime: 63.45,
       previousBestLapTime: 64.1,
       sessionType: "race",
     },
@@ -3447,66 +3447,83 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
   {
     id: "lap-best-1m-23s",
     category: "Lap Time",
-    label: "Best Lap 1:23.4",
+    label: "Best Lap 1:23.456",
     description:
       'Mid-range PB exercising the expanded seconds coverage — "One minute, twenty three point four seconds."',
     event: "lap.completed",
     data: {
       lap: 5,
-      lapTime: 83.4,
+      lapTime: 83.456,
       isBest: true,
       isFirstValid: false,
-      bestLapTime: 83.4,
-      previousBestLapTime: 85.0,
+      bestLapTime: 83.456,
+      previousBestLapTime: 85.012,
       sessionType: "race",
     },
   },
   {
     id: "lap-best-sub-minute",
     category: "Lap Time",
-    label: "Best Lap 0:34.8",
+    label: "Best Lap 0:34.812",
     description:
       'Sub-1-minute new PB — engineer skips the minute clip ("That was your best lap yet. Thirty four point eight seconds.")',
     event: "lap.completed",
     data: {
       lap: 5,
-      lapTime: 34.8,
+      lapTime: 34.812,
       isBest: true,
       isFirstValid: false,
-      bestLapTime: 34.8,
+      bestLapTime: 34.812,
       previousBestLapTime: 35.5,
+      sessionType: "race",
+    },
+  },
+  {
+    id: "lap-best-carry",
+    category: "Lap Time",
+    label: "Best Lap 59.9996 (carry to 1:00.000)",
+    description:
+      "Rounds up across the minute — 59.9996 s reads as one minute, zero seconds, zero thousandths, not sixty seconds.",
+    event: "lap.completed",
+    data: {
+      lap: 5,
+      lapTime: 59.9996,
+      isBest: true,
+      isFirstValid: false,
+      bestLapTime: 59.9996,
+      previousBestLapTime: 60.5,
       sessionType: "race",
     },
   },
   {
     id: "lap-first-valid-2m-07s",
     category: "Lap Time",
-    label: "First Valid Lap 2:07.0",
+    label: "First Valid Lap 2:07.007",
     description:
       'Driver\'s first valid lap of the session — engineer uses the "That lap was" intro instead of "best lap yet".',
     event: "lap.completed",
     data: {
       lap: 1,
-      lapTime: 127.0,
+      lapTime: 127.007,
       isBest: true,
       isFirstValid: true,
-      bestLapTime: 127.0,
+      bestLapTime: 127.007,
       sessionType: "race",
     },
   },
   {
     id: "lap-best-boundary-10m-59s",
     category: "Lap Time",
-    label: "Best Lap 10:59.9 (top boundary)",
+    label: "Best Lap 10:59.999 (top boundary)",
     description:
-      "Top of the current clip range — minutes=10, seconds=59, decimal=9. Verifies the upper boundary is speakable.",
+      "Top of the current clip range — minutes=10, seconds=59, thousandths=999. Verifies the upper boundary is speakable.",
     event: "lap.completed",
     data: {
       lap: 3,
-      lapTime: 659.9,
+      lapTime: 659.999,
       isBest: true,
       isFirstValid: false,
-      bestLapTime: 659.9,
+      bestLapTime: 659.999,
       previousBestLapTime: 662.4,
       sessionType: "race",
     },
@@ -3514,7 +3531,7 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
   {
     id: "lap-out-of-scope",
     category: "Lap Time",
-    label: "Best Lap 11:05.5 (out of scope)",
+    label: "Best Lap 11:05.500 (out of scope)",
     description:
       "Minute component (11) exceeds LAP_TIME_MINUTE_MAX (10) — the scenario's `where:` predicate short-circuits and no audio plays. Use this to verify the gate still suppresses over-long laps.",
     event: "lap.completed",
@@ -3605,7 +3622,7 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
       carIdx: 0,
       isPlayer: true,
       lap: 5,
-      previous: { carIdx: 7, lapTime: 85.0, isPlayer: false, carNumber: "7" },
+      previous: { carIdx: 7, lapTime: 85.012, isPlayer: false, carNumber: "7" },
       position: 4,
       playerPosition: 4,
       playerLapsCompleted: 5,
@@ -3621,7 +3638,7 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
       isPlayer: false,
       lap: 5,
       carNumber: "5",
-      previous: { carIdx: 0, lapTime: 84.9, isPlayer: true },
+      previous: { carIdx: 0, lapTime: 84.937, isPlayer: true },
       position: 6,
       playerPosition: 4,
     },
