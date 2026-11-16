@@ -95,6 +95,29 @@ export type FrameOptions = { beeps: boolean; ambience: boolean };
 export type FramePreviewResult = "playing" | "no-frame" | "bus-busy";
 
 /**
+ * What `playClips` does when the Voice bus is not free (issue #1696). One
+ * value today: `"skip"` plays nothing and answers `"bus-busy"`. A string
+ * union rather than a boolean so #1698 can add its value — an
+ * acknowledgment that cuts the running callout and lets it resume — as a
+ * compile-checked arm of the scheduler's switch.
+ */
+export type PlayClipsWhenBusy = "skip";
+
+/**
+ * How `playClips` plays (issue #1696): the `weight` the clip fire holds the
+ * bus at, compared against every fire that arrives while it plays, and what
+ * it does on a bus that is not free (`whenBusy`).
+ */
+export type PlayClipsOptions = { weight: number; whenBusy: PlayClipsWhenBusy };
+
+/**
+ * What `playClips` did (issue #1696): took the Voice bus and started the
+ * first clip, or found the bus not free and, under `whenBusy: "skip"`,
+ * played nothing.
+ */
+export type PlayClipsResult = "playing" | "bus-busy";
+
+/**
  * What the engine's vocabulary registries hold, for the generated pack-author
  * reference and `lint:pack` (#1066): every var, condition and case with its
  * description, and each case's declared key set with what each key means.
@@ -389,6 +412,35 @@ export interface IScenarioEngine {
    * once when the switches leave the frame nothing to play.
    */
   playFramePreview(frameName: string, holdMs: number, onComplete?: () => void): FramePreviewResult;
+  /**
+   * Play a code-owned clip list on the Voice bus as a fire of its own (issue
+   * #1696) — the telemetry-connect radio check, whose clips are played by
+   * path outside any script. It plays exactly `paths`, in order, on the
+   * Voice channel, with no radio frame, no gate, no cooldown and no resume:
+   * the engine sees it, so arbitration orders it instead of a callout
+   * playing over it.
+   *
+   * It starts only on a free bus — nothing playing, nothing waiting, no
+   * focus floor held — except that a running frame preview yields to it, as
+   * to any callout. On a bus that is not free it does what `whenBusy` says:
+   * `"skip"` plays nothing, logs why at debug and returns `"bus-busy"`
+   * (#1698 will add a value that cuts and resumes the running callout).
+   *
+   * Once it holds the bus it is arbitrated like a contract's fire at
+   * `options.weight`: an arriving fire of equal or lower weight waits when
+   * queueable and drops when not; a heavier one waits for it, or cuts it
+   * when it has `interrupt`. A cut clip fire is over — never stashed, never
+   * replayed. When it finishes the queue drains as after any fire;
+   * `stopAll` clears it; `describeState` shows it as the active fire under
+   * `id`.
+   *
+   * `id` is the caller's, for the log and `describeState`
+   * (`"pit-crew.radio-check"`). Throws when `id` names a registered
+   * contract, or is the frame preview's, since the clip fire would then be
+   * taken for it; and when `paths` is empty, since there is no line to
+   * arbitrate and either answer would misreport what happened.
+   */
+  playClips(id: string, paths: readonly string[], options: PlayClipsOptions): PlayClipsResult;
   stopAll(): void;
   /**
    * Raise an exclusive-focus weight floor on a bus (issue #652). While held,
@@ -787,6 +839,10 @@ class ScenarioEngine implements IScenarioEngine {
 
   playFramePreview(frameName: string, holdMs: number, onComplete?: () => void): FramePreviewResult {
     return this.scheduler.playFramePreview(frameName, holdMs, onComplete);
+  }
+
+  playClips(id: string, paths: readonly string[], options: PlayClipsOptions): PlayClipsResult {
+    return this.scheduler.playClips(id, paths, options);
   }
 
   stopAll(): void {

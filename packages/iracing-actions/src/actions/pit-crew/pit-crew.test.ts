@@ -1,3 +1,4 @@
+import { WEIGHT } from "@iracedeck/audio-scenarios";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { z } from "zod";
 
@@ -19,6 +20,7 @@ import {
   PIT_CREW_UUID,
   PitCrew,
   playVoiceSequence,
+  RADIO_CHECK_CLIPS_ID,
   Settings,
 } from "./pit-crew.js";
 
@@ -149,6 +151,31 @@ vi.mock("@iracedeck/audio-scenarios/pit-crew", () => ({
   playRadarTest: hoisted.playRadarTest,
   setRadarEnabled: hoisted.setRadarEnabled,
   stopRaceEngineerScenarios: hoisted.stopRaceEngineerScenarios,
+}));
+
+// The scenario engine the radio check plays through (#1696). Uninitialised by
+// default, so a test that does not opt in plays as before the engine existed;
+// `WEIGHT` and the rest of the package stay real.
+const scenarios = vi.hoisted(() => {
+  let initialized = false;
+  const playClips = vi.fn<
+    (id: string, paths: readonly string[], options: { weight: number; whenBusy: "skip" }) => "playing" | "bus-busy"
+  >(() => "playing");
+
+  return {
+    playClips,
+    isAudioScenariosInitialized: vi.fn(() => initialized),
+    getScenarioEngine: vi.fn(() => ({ playClips })),
+    setInitialized: (value: boolean): void => {
+      initialized = value;
+    },
+  };
+});
+
+vi.mock("@iracedeck/audio-scenarios", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@iracedeck/audio-scenarios")>()),
+  getScenarioEngine: scenarios.getScenarioEngine,
+  isAudioScenariosInitialized: scenarios.isAudioScenariosInitialized,
 }));
 
 vi.mock("@iracedeck/audio-service", () => ({
@@ -307,6 +334,8 @@ beforeEach(() => {
   // Cold start for the telemetry-connect tracker — every radio-check test
   // can rely on null → first true firing the ack (no prior observation).
   _setLastTelemetryConnectedForTests(null);
+  scenarios.setInitialized(false);
+  scenarios.playClips.mockReturnValue("playing");
 });
 
 describe("PIT_CREW_UUID", () => {
@@ -898,6 +927,9 @@ describe("PitCrew action", () => {
   });
 
   describe("telemetry-connect radio check (#554 follow-up)", () => {
+    const NAME_CLIP = "voice/default/names/niklas.mp3";
+    const RADIO_CHECK_CLIP = "voice/default/toggle/radio-check-01.mp3";
+
     function setVoice(voice: string | null): void {
       voiceResolvers.resolveActiveRaceEngineerVoice.mockReturnValue(voice);
     }
@@ -906,56 +938,64 @@ describe("PitCrew action", () => {
       voiceResolvers.resolveActiveDriverName.mockReturnValue(name);
     }
 
+    /** Mounts one Pit Crew key with the given connection state and clears the mount's calls. */
+    async function mount(connected: boolean, contextId = "ctx-1"): Promise<PitCrew> {
+      hoisted.setSdkConnected(connected);
+      const action = new PitCrew();
+      await action.onWillAppear(buildAppearEvent({}, contextId) as never);
+      vi.clearAllMocks();
+
+      return action;
+    }
+
+    beforeEach(() => {
+      // The plugin runs the radio check through the Race Engineer's scheduler (#1696);
+      // the direct play is the fallback for an engine that is not up, tested below.
+      scenarios.setInitialized(true);
+    });
+
     afterEach(() => {
       voiceResolvers.resolveActiveRaceEngineerVoice.mockReturnValue(null);
       voiceResolvers.resolveActiveDriverName.mockReturnValue(null);
     });
 
-    it("plays the name + radio-check sequence on the first false→true tick when both gates allow", async () => {
+    it("plays the name + radio-check clips through the scheduler on the first false→true tick (#1696)", async () => {
       setVoice("default");
       setName("niklas");
       hoisted.setGlobalSettings({ pitCrewRaceEngineerEnabled: true });
-      hoisted.setSdkConnected(false);
-
-      const action = new PitCrew();
-      await action.onWillAppear(buildAppearEvent() as never);
-      vi.clearAllMocks();
+      const action = await mount(false);
 
       // Tick 1 — still disconnected, no fire.
       hoisted.fireAllSdkTicks();
-      expect(hoisted.playOnChannel).not.toHaveBeenCalled();
+      expect(scenarios.playClips).not.toHaveBeenCalled();
 
       // Tick 2 — connected (first false → true), should fire.
       hoisted.setSdkConnected(true);
       hoisted.fireAllSdkTicks();
 
-      // First clip in the sequence — playVoiceSequence plays the second
-      // clip on the channel-complete callback, which we don't simulate here.
-      expect(hoisted.playOnChannel).toHaveBeenCalledWith(2, "voice/default/names/niklas.mp3");
+      expect(scenarios.playClips).toHaveBeenCalledTimes(1);
+      expect(scenarios.playClips).toHaveBeenCalledWith(RADIO_CHECK_CLIPS_ID, [NAME_CLIP, RADIO_CHECK_CLIP], {
+        weight: WEIGHT.NORMAL,
+        whenBusy: "skip",
+      });
+      expect(hoisted.playOnChannel).not.toHaveBeenCalled();
+      expect(action["logger"].info).toHaveBeenCalledWith("Telemetry connected — playing radio check");
     });
 
-    it("plays the full name → radio-check chain when the channel-complete callback fires", async () => {
+    it("skips with a debug line when the engineer holds the radio (#1696)", async () => {
       setVoice("default");
       setName("niklas");
       hoisted.setGlobalSettings({ pitCrewRaceEngineerEnabled: true });
-      hoisted.setSdkConnected(true);
-
-      const action = new PitCrew();
-      await action.onWillAppear(buildAppearEvent() as never);
-      vi.clearAllMocks();
+      scenarios.playClips.mockReturnValue("bus-busy");
+      const action = await mount(true);
 
       hoisted.fireAllSdkTicks();
 
-      // First clip queued.
-      expect(hoisted.playOnChannel).toHaveBeenCalledWith(2, "voice/default/names/niklas.mp3");
-
-      // Simulate the native engine firing channel-complete after the
-      // name clip. The next playStep registration runs and queues the
-      // radio-check clip.
-      const firstCompletionCb = hoisted.onChannelComplete.mock.calls.at(-1)?.[1] as () => void;
-      firstCompletionCb();
-
-      expect(hoisted.playOnChannel).toHaveBeenCalledWith(2, "voice/default/toggle/radio-check-01.mp3");
+      expect(scenarios.playClips).toHaveBeenCalledTimes(1);
+      expect(hoisted.playOnChannel).not.toHaveBeenCalled();
+      expect(action["logger"].debug).toHaveBeenCalledWith("Radio check skipped — the engineer holds the radio");
+      // Nothing played, so nothing claims it did.
+      expect(action["logger"].info).not.toHaveBeenCalledWith("Telemetry connected — playing radio check");
     });
 
     it("opens with the name clip the voice actually has, a take included (#1173)", async () => {
@@ -964,35 +1004,29 @@ describe("PitCrew action", () => {
       setVoice("snoop");
       setName("niklas");
       hoisted.setGlobalSettings({ pitCrewRaceEngineerEnabled: true });
-      hoisted.setSdkConnected(true);
-
-      const action = new PitCrew();
-      await action.onWillAppear(buildAppearEvent() as never);
-      vi.clearAllMocks();
+      await mount(true);
       hoisted.driverNameClipPath.mockReturnValueOnce("voice/snoop/names/niklas-01.mp3");
 
       hoisted.fireAllSdkTicks();
 
       expect(hoisted.driverNameClipPath).toHaveBeenCalledWith("snoop", "niklas");
-      expect(hoisted.playOnChannel).toHaveBeenCalledWith(2, "voice/snoop/names/niklas-01.mp3");
+      expect(scenarios.playClips.mock.calls[0]?.[1]).toEqual([
+        "voice/snoop/names/niklas-01.mp3",
+        "voice/snoop/toggle/radio-check-01.mp3",
+      ]);
     });
 
     it("does not fire again on subsequent connected ticks (module-level dedup)", async () => {
       setVoice("default");
       setName("niklas");
       hoisted.setGlobalSettings({ pitCrewRaceEngineerEnabled: true });
-      hoisted.setSdkConnected(true);
-
-      const action = new PitCrew();
-      await action.onWillAppear(buildAppearEvent() as never);
-      vi.clearAllMocks();
+      await mount(true);
 
       hoisted.fireAllSdkTicks(); // first true tick — fires
-      const callsAfterFirstTick = hoisted.playOnChannel.mock.calls.length;
       hoisted.fireAllSdkTicks(); // second true tick — no-op
       hoisted.fireAllSdkTicks(); // third true tick — no-op
 
-      expect(hoisted.playOnChannel.mock.calls.length).toBe(callsAfterFirstTick);
+      expect(scenarios.playClips).toHaveBeenCalledTimes(1);
     });
 
     it("dedups across multiple Pit Crew instances — only the first observer fires", async () => {
@@ -1012,53 +1046,42 @@ describe("PitCrew action", () => {
       // observation, so the second observer's branch is a no-op.
       hoisted.fireAllSdkTicks();
 
-      // First clip in the sequence is queued exactly once.
-      const namePathCalls = hoisted.playOnChannel.mock.calls.filter(
-        ([, path]) => path === "voice/default/names/niklas.mp3",
-      );
-      expect(namePathCalls).toHaveLength(1);
+      expect(hoisted.sdkSubscribers.size).toBe(2);
+      expect(scenarios.playClips).toHaveBeenCalledTimes(1);
     });
 
     it("re-fires after a disconnect/reconnect (true→false→true)", async () => {
       setVoice("default");
       setName("niklas");
       hoisted.setGlobalSettings({ pitCrewRaceEngineerEnabled: true });
-      hoisted.setSdkConnected(true);
-
-      const action = new PitCrew();
-      await action.onWillAppear(buildAppearEvent() as never);
-      vi.clearAllMocks();
+      await mount(true);
 
       hoisted.fireAllSdkTicks(); // first connect → fires
-      expect(hoisted.playOnChannel).toHaveBeenCalledTimes(1);
+      expect(scenarios.playClips).toHaveBeenCalledTimes(1);
 
       hoisted.setSdkConnected(false);
       hoisted.fireAllSdkTicks(); // disconnect tick — tracker flips back
 
       hoisted.setSdkConnected(true);
-      vi.clearAllMocks();
       hoisted.fireAllSdkTicks(); // reconnect → fires again
 
-      expect(hoisted.playOnChannel).toHaveBeenCalledWith(2, "voice/default/names/niklas.mp3");
+      expect(scenarios.playClips).toHaveBeenCalledTimes(2);
     });
 
     it("skips when Race Engineer is disabled but still updates the tracker", async () => {
       setVoice("default");
       setName("niklas");
       hoisted.setGlobalSettings({ pitCrewRaceEngineerEnabled: false });
-      hoisted.setSdkConnected(true);
-
-      const action = new PitCrew();
-      await action.onWillAppear(buildAppearEvent() as never);
-      vi.clearAllMocks();
+      await mount(true);
 
       hoisted.fireAllSdkTicks();
-      expect(hoisted.playOnChannel).not.toHaveBeenCalled();
+      expect(scenarios.playClips).not.toHaveBeenCalled();
 
       // Tracker still flipped — re-enabling RE without a real disconnect
       // doesn't retroactively fire the radio check.
       hoisted.setGlobalSettings({ pitCrewRaceEngineerEnabled: true });
       hoisted.fireAllSdkTicks();
+      expect(scenarios.playClips).not.toHaveBeenCalled();
       expect(hoisted.playOnChannel).not.toHaveBeenCalled();
     });
 
@@ -1069,13 +1092,10 @@ describe("PitCrew action", () => {
         pitCrewRaceEngineerEnabled: true,
         calloutEnabledTelemetryConnectRadioCheck: false,
       });
-      hoisted.setSdkConnected(true);
-
-      const action = new PitCrew();
-      await action.onWillAppear(buildAppearEvent() as never);
-      vi.clearAllMocks();
+      await mount(true);
 
       hoisted.fireAllSdkTicks();
+      expect(scenarios.playClips).not.toHaveBeenCalled();
       expect(hoisted.playOnChannel).not.toHaveBeenCalled();
     });
 
@@ -1083,13 +1103,10 @@ describe("PitCrew action", () => {
       setVoice(null);
       setName("niklas");
       hoisted.setGlobalSettings({ pitCrewRaceEngineerEnabled: true });
-      hoisted.setSdkConnected(true);
-
-      const action = new PitCrew();
-      await action.onWillAppear(buildAppearEvent() as never);
-      vi.clearAllMocks();
+      await mount(true);
 
       hoisted.fireAllSdkTicks();
+      expect(scenarios.playClips).not.toHaveBeenCalled();
       expect(hoisted.playOnChannel).not.toHaveBeenCalled();
     });
 
@@ -1097,14 +1114,41 @@ describe("PitCrew action", () => {
       setVoice("default");
       setName(null);
       hoisted.setGlobalSettings({ pitCrewRaceEngineerEnabled: true });
-      hoisted.setSdkConnected(true);
-
-      const action = new PitCrew();
-      await action.onWillAppear(buildAppearEvent() as never);
-      vi.clearAllMocks();
+      await mount(true);
 
       hoisted.fireAllSdkTicks();
+      expect(scenarios.playClips).not.toHaveBeenCalled();
       expect(hoisted.playOnChannel).not.toHaveBeenCalled();
+    });
+
+    describe("with the scenario engine not initialised", () => {
+      beforeEach(() => {
+        scenarios.setInitialized(false);
+      });
+
+      it("plays the sequence directly on the Voice channel, as before #1696", async () => {
+        setVoice("default");
+        setName("niklas");
+        hoisted.setGlobalSettings({ pitCrewRaceEngineerEnabled: true });
+        const action = await mount(true);
+
+        hoisted.fireAllSdkTicks();
+
+        // First clip in the sequence — playVoiceSequence plays the second
+        // clip on the channel-complete callback.
+        expect(hoisted.playOnChannel).toHaveBeenCalledTimes(1);
+        expect(hoisted.playOnChannel).toHaveBeenCalledWith(2, NAME_CLIP);
+        expect(scenarios.getScenarioEngine).not.toHaveBeenCalled();
+        expect(scenarios.playClips).not.toHaveBeenCalled();
+        expect(action["logger"].info).toHaveBeenCalledWith("Telemetry connected — playing radio check");
+
+        // Simulate the native engine firing channel-complete after the
+        // name clip: the radio-check clip follows.
+        const firstCompletionCb = hoisted.onChannelComplete.mock.calls.at(-1)?.[1] as () => void;
+        firstCompletionCb();
+
+        expect(hoisted.playOnChannel).toHaveBeenLastCalledWith(2, RADIO_CHECK_CLIP);
+      });
     });
 
     it("unsubscribes the radio-check listener on onWillDisappear", async () => {

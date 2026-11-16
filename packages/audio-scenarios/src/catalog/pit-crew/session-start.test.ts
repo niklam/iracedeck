@@ -20,6 +20,7 @@ import type { TelemetryData } from "@iracedeck/iracing-sdk";
 import { classifySession } from "@iracedeck/sim-events-iracing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { DEFAULT_MAX_QUEUE_WAIT_MS, WEIGHT } from "../../dsl.js";
 import type { AudioAssetsManifest } from "../../interpreter.js";
 import {
   _resetAudioScenarios,
@@ -1067,5 +1068,83 @@ describe("the bundled script's session-start entry (issue #1065)", () => {
       .filter((message) => message.includes("session-start"));
 
     expect(sessionStartWarnings).toEqual([]);
+  });
+});
+
+// ─── the radio check holds the bus (issue #1696) ─────────────────────────────
+
+describe("a clip fire at connect holds the Voice bus against the brief (issue #1696)", () => {
+  // What Pit Crew's radio check plays at telemetry connect: the driver's name, then "radio check".
+  const RADIO_CHECK = [`voice/${VOICE}/names/niklas.mp3`, `voice/${VOICE}/toggle/radio-check-01.mp3`];
+  const GARAGE = { IsOnTrack: false, IsReplayPlaying: false };
+  const CONNECT = { from: -1, to: 0 };
+
+  function voiceBus() {
+    return getScenarioEngine()
+      .describeState()
+      .buses.find((b) => b.bus === "Voice");
+  }
+
+  it("the brief that comes due mid-check waits, then plays right after the last clip — inside its max wait", () => {
+    publish(snap(), CONNECT, GARAGE);
+    expect(
+      getScenarioEngine().playClips("pit-crew.radio-check", RADIO_CHECK, { weight: WEIGHT.NORMAL, whenBusy: "skip" }),
+    ).toBe("playing");
+
+    // The brief comes due while the name clip still plays: nothing else starts.
+    vi.advanceTimersByTime(SESSION_START_DELAY_MS + 500);
+    expect(audio._played).toEqual([{ channel: AudioChannel.Voice, path: RADIO_CHECK[0], loop: false }]);
+    expect(voiceBus()).toMatchObject({
+      active: { id: "pit-crew.radio-check" },
+      waiting: [{ id: "pit-crew.session-start", maxWaitMs: DEFAULT_MAX_QUEUE_WAIT_MS }],
+    });
+    const { queuedAt, maxWaitMs } = voiceBus()!.waiting[0];
+
+    // The second clip follows the first, and the brief still waits.
+    audio._triggerChannelEnd(AudioChannel.Voice);
+    vi.advanceTimersByTime(1000);
+    expect(audio._played.map((p) => p.path)).toEqual(RADIO_CHECK);
+
+    // The last clip ends: the brief takes the bus at once, its frame first,
+    // having waited about 1.5 s — far inside its max wait.
+    const waitedMs = Date.now() - queuedAt;
+    audio._triggerChannelEnd(AudioChannel.Voice);
+    expect(waitedMs).toBe(1500);
+    expect(waitedMs).toBeLessThan(maxWaitMs);
+    expect(audio._played.at(-1)).toEqual({ channel: AudioChannel.SFX, path: "sfx/IRD-tick-open.mp3", loop: false });
+    flush(audio);
+
+    expect(voicePaths().slice(0, 2)).toEqual(RADIO_CHECK);
+    expect(hasClip("/session-start-greeting/niklas.mp3")).toBe(true);
+    expect(hasClip("/session-start/session-qualifying.mp3")).toBe(true);
+    expect(hasClip("/session-start/wetness-mostly-dry.mp3")).toBe(true);
+    // It was never dropped.
+    expect(
+      mockLogger.debug.mock.calls.map(([m]) => String(m)).filter((m) => m.includes('"pit-crew.session-start" dropped')),
+    ).toEqual([]);
+  });
+
+  it("without the clip fire, the same connect starts the brief as the delay elapses (the control)", () => {
+    publish(snap(), CONNECT, GARAGE);
+
+    vi.advanceTimersByTime(SESSION_START_DELAY_MS + 500);
+
+    expect(audio._played[0]).toEqual({ channel: AudioChannel.SFX, path: "sfx/IRD-tick-open.mp3", loop: false });
+    flush(audio);
+    expect(hasClip("/session-start/session-qualifying.mp3")).toBe(true);
+  });
+
+  it("a check started while the brief already plays is skipped, and the brief plays on whole", () => {
+    publish(snap(), CONNECT, GARAGE);
+    vi.advanceTimersByTime(SESSION_START_DELAY_MS + 500);
+
+    expect(
+      getScenarioEngine().playClips("pit-crew.radio-check", RADIO_CHECK, { weight: WEIGHT.NORMAL, whenBusy: "skip" }),
+    ).toBe("bus-busy");
+    flush(audio);
+
+    expect(audio._stopped).not.toContain(AudioChannel.Voice);
+    expect(voicePaths().some((p) => RADIO_CHECK.includes(p))).toBe(false);
+    expect(hasClip("/session-start/wetness-mostly-dry.mp3")).toBe(true);
   });
 });

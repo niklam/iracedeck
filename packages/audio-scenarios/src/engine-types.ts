@@ -223,6 +223,12 @@ export class BusTable implements TransportTable, BusTableView, BusTransportTable
 }
 
 export type ActiveFire = {
+  /**
+   * The contract's id; `FRAME_PREVIEW_ID` for the frame preview (issue
+   * #1124); or, for a clip fire (`playClips`, issue #1696), the caller's id,
+   * which `playClips` guarantees names no contract — so every lookup of the
+   * running contract by it misses: no family, no `pendingHoldMs`, no stash.
+   */
   id: string;
   bus: AudioBus;
   /** Scheduling weight of this fire — compared against arriving fires. */
@@ -267,7 +273,8 @@ export type ActiveFire = {
    * ambience drops its ambient ops. A close fallback plays as the close
    * does, every clip a sound effect. Empty for a fire with no frame
    * around its body (`frame: "none"`, or a body with no clip), for a contract
-   * without `endsOn` (nothing ever ends it), and for the frame preview. Only
+   * without `endsOn` (nothing ever ends it), for the frame preview and for a
+   * clip fire (`playClips`). Only
    * `endFires` plays it: a fire cut for any other reason plays nothing more.
    */
   cutTail: ExecOp[];
