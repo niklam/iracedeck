@@ -313,13 +313,18 @@ export class Scheduler implements PlaybackListener {
           this.cutForClips(id, state);
 
           // The cut fire's `onSettled` ran inside the cut, and a caller's
-          // completion may have put a fire on the bus meanwhile: never take
-          // the bus from under it. Only an active fire counts here — the
-          // queue now holds the stash itself, which plays after the clips.
+          // completion may have changed the bus meanwhile — put a fire on it,
+          // or raised a focus floor: decide again on the bus as it is now.
+          // Only an active fire or a floor counts here — the queue now holds
+          // the stash itself, which plays after the clips.
           const taken = state.transport.active;
+          const changed =
+            taken !== null && taken.id !== FRAME_PREVIEW_ID
+              ? `"${taken.id}" took the bus while cutting`
+              : this.heavierThanClips(state, options.weight);
 
-          if (taken !== null && taken.id !== FRAME_PREVIEW_ID) {
-            this.logger.debug(`Clips "${id}" skipped — the Voice bus was taken while cutting`);
+          if (changed !== null) {
+            this.logger.debug(`Clips "${id}" skipped — ${changed}`);
 
             return "bus-busy";
           }

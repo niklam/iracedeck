@@ -5252,6 +5252,19 @@ describe("playClips — a key-press acknowledgment cuts in through the scheduler
     expect(voicePaths()).toEqual([ACK, RC1]);
   });
 
+  it("answers `bus-busy` when the cut fire's completion raised a focus floor above it", () => {
+    const raise = vi.fn(() => engine.acquireFocus(AudioBus.Voice, "spotter", WEIGHT.SAFETY));
+    engine.playClips(ACK_ID, [ACK], { ...INTERRUPT, onComplete: raise });
+
+    expect(engine.playClips("pit-crew.second-ack", [ACK2], INTERRUPT)).toBe("bus-busy");
+
+    expect(raise).toHaveBeenCalledTimes(1);
+    expect(voiceBus()?.active).toBeNull();
+    flushVoiceAndSfx(audio);
+    expect(voicePaths()).toEqual([ACK]);
+    engine.releaseFocus(AudioBus.Voice, "spotter");
+  });
+
   it("on an idle bus it plays as `skip` does, and then holds the bus like any clip fire", () => {
     defineLine({ queueable: true, sequence: [A] });
 
