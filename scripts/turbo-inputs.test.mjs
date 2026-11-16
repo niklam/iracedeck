@@ -36,6 +36,12 @@ import { SOURCES } from "../packages/plugin-build/src/plugin-rollup.mjs";
 //     file a task reads — a dependency's `dist/`, a generated JSON — is covered
 //     only by an explicit input, or by being the `outputs` of a task in its
 //     `dependsOn`, whose hash then stands for whatever produced it.
+//   * An explicit glob follows symlinks (since 2.11.11): over a package folder
+//     it hashes every file of pnpm's `node_modules/<dep>` links, which is why
+//     the website's `$TURBO_ROOT$/packages/icons/**` excludes that folder's
+//     `node_modules/`. git lists no path behind a link, so the cross-check sees
+//     such a file only where turbo lists it, and the ignore lookup asks git
+//     about the link instead.
 //   * A per-package entry (`@iracedeck/x#build`) REPLACES the generic `build`
 //     task; it does not merge with it.
 //   * A task's hash includes the hashes of the tasks in its `dependsOn`, so a
@@ -70,8 +76,9 @@ import { SOURCES } from "../packages/plugin-build/src/plugin-rollup.mjs";
 // a build reads through an npm package's own code; and an environment variable
 // a build reads (`env`). Where its model and turbo differ it errs strict: `**`
 // here does not match a dot-directory, while turbo's explicit globs hash such
-// files too (today only `packages/icons/node_modules/.bin/`, which the website's
-// `$TURBO_ROOT$/packages/icons/**` reaches). In a `!` exclusion the same
+// files too (today none: `packages/icons/node_modules/.bin/`, which the website's
+// `$TURBO_ROOT$/packages/icons/**` would reach, sits under the `node_modules/`
+// it excludes). In a `!` exclusion the same
 // strictness would err the other way, hashing what turbo excludes; the
 // cross-check reports that rather than allowing it.
 
@@ -86,7 +93,7 @@ const ROOT = "//";
 // the claims in the header comment, then the dry-run cross-check, whose
 // allowances (TURBO_IMPLICIT_GLOBAL_FILES and the dot-directory strictness)
 // must still be the only differences. Only then does this constant move.
-const MODELLED_TURBO_VERSION = "2.11.9";
+const MODELLED_TURBO_VERSION = "2.11.11";
 
 // The tasks the cross-check asks turbo to plan. Their dependsOn closure reaches
 // every task the checks reason about (`//#generate:changelog-data` through the
@@ -1071,25 +1078,33 @@ function ignoredFilesUnder(dirs) {
  * one `git check-ignore --stdin` call, and `isIgnored` asks for a path nothing
  * primed on its own. Tracked files are never ignored. The path need not exist,
  * which is what lets a `dist/` entry that is not built yet be recognised.
+ *
+ * A path beyond a symlink is asked about as that symlink: git refuses the path
+ * itself ("beyond a symbolic link") and its answer for the link is the answer
+ * for everything under it, since git never descends a link. Turbo's globs do
+ * (2.11.11 hashes pnpm's `node_modules/<dep>` links under an explicit glob), so
+ * the dry run can hand this lookup such a path.
  */
 function createIgnoreLookup(tracked) {
   const trackedSet = new Set(tracked);
   const known = new Map();
   const stats = { calls: 0 };
+  const linkOf = createSymlinkPrefixLookup();
   const prime = (paths) => {
     const fresh = [...new Set(paths)].filter((p) => !trackedSet.has(p) && !known.has(p));
     if (fresh.length === 0) return;
     stats.calls += 1;
+    const asked = new Map(fresh.map((p) => [p, linkOf(p) ?? p]));
     const result = spawnSync("git", ["check-ignore", "--stdin", "-z"], {
       cwd: repoRoot,
       encoding: "utf-8",
-      input: `${fresh.join("\0")}\0`,
+      input: `${[...new Set(asked.values())].join("\0")}\0`,
       maxBuffer: 64 * 1024 * 1024,
     });
     // Exit 1 means none of them is ignored; anything else is an error.
     if (result.status !== 0 && result.status !== 1) throw new Error(`git check-ignore failed: ${result.stderr}`);
     const ignored = new Set(result.stdout.split("\0").filter(Boolean));
-    for (const p of fresh) known.set(p, ignored.has(p));
+    for (const p of fresh) known.set(p, ignored.has(asked.get(p)));
   };
   const isIgnored = (p) => {
     if (trackedSet.has(p)) return false;
@@ -1097,6 +1112,38 @@ function createIgnoreLookup(tracked) {
     return known.get(p);
   };
   return { prime, isIgnored, stats };
+}
+
+/**
+ * A lookup from a repo-relative path to its shortest prefix that is a symlink
+ * on disk, strictly above the path itself, or `undefined` when it has none. A
+ * prefix that does not exist ends the walk, since nothing under it does either.
+ * Each prefix is `lstat`ed once.
+ */
+function createSymlinkPrefixLookup() {
+  const kinds = new Map();
+  const kindOf = (prefix) => {
+    if (!kinds.has(prefix)) {
+      let kind = "missing";
+      try {
+        kind = lstatSync(path.join(repoRoot, prefix)).isSymbolicLink() ? "link" : "other";
+      } catch {
+        // missing
+      }
+      kinds.set(prefix, kind);
+    }
+    return kinds.get(prefix);
+  };
+  return (p) => {
+    const segments = p.split("/");
+    for (let i = 1; i < segments.length; i += 1) {
+      const prefix = segments.slice(0, i).join("/");
+      const kind = kindOf(prefix);
+      if (kind === "link") return prefix;
+      if (kind === "missing") return undefined;
+    }
+    return undefined;
+  };
 }
 
 /** Every workspace package, plus the root as `//`: name -> { dir, manifest, deps } (deps = workspace names). */
@@ -1513,6 +1560,21 @@ describe("turbo hashes every file a cached task reads (#1491)", () => {
       expect(repo.isIgnored("packages/app-constants/package.json")).toBe(false);
       expect(ignore.stats.calls).toBeLessThan(5);
     });
+
+    it("answers for a path behind a pnpm link by asking git about the link", () => {
+      const link = "packages/icons/node_modules/@types/node";
+      expect(lstatSync(path.join(repoRoot, link)).isSymbolicLink(), `${link} is not a pnpm link`).toBe(true);
+      // Positive control: git refuses the path itself, which is what crashed
+      // the whole file once turbo 2.11.11 listed such paths.
+      const refused = spawnSync("git", ["check-ignore", `${link}/package.json`], { cwd: repoRoot, encoding: "utf-8" });
+      expect(refused.stderr).toMatch(/beyond a symbolic link/);
+      const lookup = createIgnoreLookup([]);
+      lookup.prime([`${link}/package.json`, `${link}/LICENSE`, "packages/app-constants/package.json"]);
+      expect(lookup.isIgnored(`${link}/package.json`)).toBe(true);
+      expect(lookup.isIgnored(`${link}/LICENSE`)).toBe(true);
+      expect(lookup.isIgnored("packages/app-constants/package.json")).toBe(false);
+      expect(lookup.stats.calls).toBe(1);
+    });
   });
 
   describe("the model against turbo's own dry run (#1503)", () => {
@@ -1611,7 +1673,7 @@ describe("turbo hashes every file a cached task reads (#1491)", () => {
           dryRun: MODELLED_TURBO_VERSION,
           schema,
         });
-      expect(at("https://v2-11-9.turborepo.dev/schema.json")).toEqual([]);
+      expect(at(`https://v${MODELLED_TURBO_VERSION.replaceAll(".", "-")}.turborepo.dev/schema.json`)).toEqual([]);
       expect(at("https://v2-11-8.turborepo.dev/schema.json")).toEqual([
         `turbo.json's "$schema" is 2.11.8, but scripts/turbo-inputs.test.mjs models turbo ${MODELLED_TURBO_VERSION}: ` +
           `re-verify the model against turbo 2.11.8 — the claims in the file's header comment, then "the model ` +
@@ -1709,13 +1771,15 @@ describe("turbo hashes every file a cached task reads (#1491)", () => {
       expect(explicitGlobs).toContain("packages/audio-assets/sfx/**");
       expect(explicitGlobs.some((g) => g.includes("$TURBO_") || g.startsWith("!"))).toBe(false);
       // They reach the candidates: an installed tree always has some, the
-      // `node_modules/.bin/` shims the website's `packages/icons/**` names.
+      // `node_modules/.bin/` shims the website's `packages/icons/**` names (and
+      // its `!…/node_modules/**` then excludes, so the cross-check asks about them).
       const ignoredOnDisk = onDisk.filter((f) => repo.isIgnored(f));
       expect(ignoredOnDisk.length, "no gitignored file on disk reached the cross-check's candidates").toBeGreaterThan(
         0,
       );
       expect(ignoredFilesMatching(["packages/icons/**"]).every((f) => repo.isIgnored(f))).toBe(true);
-      // pnpm's dependency links are symlinks, not files turbo hashes.
+      // pnpm's dependency links are symlinks, which git lists as no file; what
+      // turbo hashes behind one it lists itself (see the header).
       expect(ignoredOnDisk.filter((f) => /\/node_modules\/(typescript|vitest)$/.test(f))).toEqual([]);
     });
 
