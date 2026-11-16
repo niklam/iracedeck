@@ -42,8 +42,8 @@
  *   per-voice link without duplication. The resolved provider IDs feed only
  *   the API call; the cache hash uses the *raw reference strings* alone, so
  *   neither re-cutting a dependency (a fresh provider ID) nor changing its
- *   config re-cuts a dependent (#1643). On `eleven_v4` no request ever
- *   returns the same take twice, so a clip on disk is the only copy of an
+ *   config re-cuts a dependent (#1643). On `eleven_v4` a re-cut is not
+ *   guaranteed to return the same take, so a clip on disk is the only copy of an
  *   approved take: a dependent keeps its take, conditioned on the superseded
  *   one, until someone re-cuts it on purpose (a seed bump).
  *

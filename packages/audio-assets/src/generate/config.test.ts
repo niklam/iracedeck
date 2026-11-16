@@ -628,7 +628,7 @@ describe("entryHash", () => {
     expect(hashOf(make("intro/a"), "numbers/1")).not.toBe(hashOf(make("intro/b"), "numbers/1"));
   });
 
-  // #1643: on eleven_v4 a take is never reproduced, so re-cutting a dependent
+  // #1643: on eleven_v4 a re-cut is not guaranteed to return the approved take, so re-cutting a dependent
   // because its dependency changed would replace an approved take with an
   // unheard one. A dependency's change reaches no other entry's hash.
   it("does not change when an entry it references changes, directly or transitively", () => {

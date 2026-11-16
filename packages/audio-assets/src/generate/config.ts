@@ -549,8 +549,9 @@ export function resolveEntryRequestIds(
  * `next_request_ids`. It deliberately does NOT fold in the hashes of the
  * entries those strings reference (#1643).
  *
- * Why no cascade: ElevenLabs' `eleven_v4` never returns the same take twice,
- * even for a byte-identical request at the same seed. A clip on disk is
+ * Why no cascade: ElevenLabs' `eleven_v4` returns different bytes for a
+ * byte-identical request (#1643's seed test: they sounded the same, but a
+ * re-cut is not guaranteed to return the approved take). A clip on disk is
  * therefore the only copy of a take the maintainer approved, and a cache key
  * that cascaded through the reference graph would re-cut every dependent —
  * each a brand-new take nobody has heard — whenever one dependency changed
