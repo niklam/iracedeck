@@ -62,9 +62,13 @@
  *     from the session that ended is not stashed when an interrupt cuts it,
  *     so nothing from that session is spoken in the new one.
  *   - A code-owned clip list (`playClips`, issue #1696 — the radio check)
- *     takes only a free Voice bus, cutting a frame preview as a callout
- *     does, and then holds it at its weight like a contract's fire; its id
- *     names no contract, so an interrupt that cuts it stashes nothing.
+ *     takes a free Voice bus, cutting a frame preview as a callout does, and
+ *     then holds it at its weight like a contract's fire; its id names no
+ *     contract, so an interrupt that cuts it stashes nothing. On a bus that
+ *     is not free, `whenBusy: "skip"` plays nothing, and `"interrupt"` (a
+ *     key-press acknowledgment, issue #1698) cuts the running fire as an
+ *     `interrupt` contract does — stashing it when queueable — unless that
+ *     fire, or a held focus floor, is heavier than the clips' weight.
  *
  * It expands nothing itself (`expansion.prepare` hands back an uncommitted
  * fire) and plays nothing itself (`playback`). The per-bus loops here —
@@ -295,6 +299,20 @@ export class Scheduler implements PlaybackListener {
           this.logger.debug(`Clips "${id}" skipped — the Voice bus is in use (${heldBy})`);
 
           return "bus-busy";
+        case "interrupt": {
+          // The ack cuts in (issue #1698) — unless something heavier holds
+          // the radio: a safety-band line, or a floor the spotter raised.
+          const heavier = this.heavierThanClips(state, options.weight);
+
+          if (heavier !== null) {
+            this.logger.debug(`Clips "${id}" skipped — ${heavier}`);
+
+            return "bus-busy";
+          }
+
+          this.cutForClips(id, state);
+          break;
+        }
         default: {
           const unhandled: never = options.whenBusy;
 
@@ -321,6 +339,7 @@ export class Scheduler implements PlaybackListener {
       dueAt: Date.now(),
       cutTail: [],
       ended: false,
+      onSettled: options.onComplete,
     });
 
     this.logger.info(`Playing clips "${id}"`);
@@ -329,6 +348,51 @@ export class Scheduler implements PlaybackListener {
     this.deps.playback.stepNext(AudioBus.Voice);
 
     return "playing";
+  }
+
+  /**
+   * What keeps a `whenBusy: "interrupt"` clip fire of `weight` off the Voice
+   * bus (issue #1698), as the reason its skip line names, or `null` when it
+   * may cut in: a running fire heavier than it (the frame preview never
+   * counts, it yields to anything), or a focus floor that would hold back a
+   * fire of its weight with no focus owner — the same predicate a callout
+   * meets (`belowFloor`). A fire of equal weight is cut, unlike in
+   * `attemptFire`, where an equal `interrupt` waits: the driver pressed the
+   * key, so the answer is the newer line.
+   */
+  private heavierThanClips(state: BusView, weight: number): string | null {
+    const active = state.transport.active;
+
+    if (active !== null && active.id !== FRAME_PREVIEW_ID && active.weight > weight)
+      return `"${active.id}" is playing at weight ${active.weight}, above ${weight}`;
+
+    const focus = state.schedule.focus;
+
+    if (focus !== null && this.belowFloor(state, undefined, weight))
+      return `focus floor held by "${focus.ownerId}" at ${focus.floor}, above ${weight}`;
+
+    return null;
+  }
+
+  /**
+   * Cut the Voice bus's running fire for a `whenBusy: "interrupt"` clip fire
+   * (issue #1698), through the path an `interrupt` contract takes: stash it
+   * when it is queueable (`stashRunningIfQueueable` — a `resumable` one
+   * continues from the cut clip after the clips, another replays whole; a
+   * clip fire, the cut tail of an ended fire or a line from an earlier
+   * session is never stashed), then cancel it, so its fire settles and the
+   * bus is free. A bus with no running fire, or only the frame preview, is
+   * left to `yieldPreview`; fires waiting in the queue stay where they are
+   * and play after the clips.
+   */
+  private cutForClips(id: string, state: BusView): void {
+    const active = state.transport.active;
+
+    if (active === null || active.id === FRAME_PREVIEW_ID) return;
+
+    this.logger.debug(`Clips "${id}" cut "${active.id}" (weight ${active.weight})`);
+    this.stashRunningIfQueueable(state, this.deps.contracts.get(active.id));
+    this.deps.playback.cancelActiveFire(AudioBus.Voice);
   }
 
   /**

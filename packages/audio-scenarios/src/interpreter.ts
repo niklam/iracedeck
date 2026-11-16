@@ -95,25 +95,46 @@ export type FrameOptions = { beeps: boolean; ambience: boolean };
 export type FramePreviewResult = "playing" | "no-frame" | "bus-busy";
 
 /**
- * What `playClips` does when the Voice bus is not free (issue #1696). One
- * value today: `"skip"` plays nothing and answers `"bus-busy"`. A string
- * union rather than a boolean so #1698 can add its value — an
- * acknowledgment that cuts the running callout and lets it resume — as a
- * compile-checked arm of the scheduler's switch.
+ * What `playClips` does when the Voice bus is not free — a fire playing, a
+ * fire waiting for it, or a focus floor held:
+ *
+ * - `"skip"` (issue #1696, the radio check) plays nothing and answers
+ *   `"bus-busy"`: the line can wait for a quiet radio or be left out.
+ * - `"interrupt"` (issue #1698, a key-press acknowledgment) plays now: the
+ *   driver asked, so the answer comes at once. It cuts the running fire
+ *   exactly as an `interrupt` contract does — a queueable one is stashed and
+ *   comes back after the clips (a `resumable` one from the cut clip), any
+ *   other is over, and either way its fire settles — and plays ahead of the
+ *   fires waiting in the queue, which wait behind it. It never cuts anything
+ *   heavier than its `weight`: a running fire above it, or a focus floor
+ *   that holds back a fire of its weight, makes it play nothing and answer
+ *   `"bus-busy"`, as `"skip"` does. A fire of equal weight is cut.
+ *
+ * A string union rather than a boolean so each value is a compile-checked
+ * arm of the scheduler's switch.
  */
-export type PlayClipsWhenBusy = "skip";
+export type PlayClipsWhenBusy = "skip" | "interrupt";
 
 /**
- * How `playClips` plays (issue #1696): the `weight` the clip fire holds the
- * bus at, compared against every fire that arrives while it plays, and what
- * it does on a bus that is not free (`whenBusy`).
+ * How `playClips` plays: the `weight` the clip fire holds the bus at,
+ * compared against every fire that arrives while it plays — and, under
+ * `"interrupt"`, against what it would cut — and what it does on a bus that
+ * is not free (`whenBusy`, issue #1696).
+ *
+ * `onComplete` (issue #1698) runs once when the clip fire leaves the bus,
+ * however it leaves: its last clip finished (a clip that fails to play is
+ * skipped, so a list whose every clip fails finishes at once), a heavier
+ * `interrupt` fire or another clip fire cut it, or `stopAll`. It does not
+ * run when `playClips` answers `"bus-busy"`: nothing started, and the caller
+ * reads the result.
  */
-export type PlayClipsOptions = { weight: number; whenBusy: PlayClipsWhenBusy };
+export type PlayClipsOptions = { weight: number; whenBusy: PlayClipsWhenBusy; onComplete?: () => void };
 
 /**
  * What `playClips` did (issue #1696): took the Voice bus and started the
- * first clip, or found the bus not free and, under `whenBusy: "skip"`,
- * played nothing.
+ * first clip, or found the bus not free and played nothing — under
+ * `whenBusy: "skip"` whatever held it, under `"interrupt"` only something
+ * heavier than the clips (issue #1698).
  */
 export type PlayClipsResult = "playing" | "bus-busy";
 
@@ -418,25 +439,32 @@ export interface IScenarioEngine {
   playFramePreview(frameName: string, holdMs: number, onComplete?: () => void): FramePreviewResult;
   /**
    * Play a code-owned clip list on the Voice bus as a fire of its own (issue
-   * #1696) — the telemetry-connect radio check, whose clips are played by
-   * path outside any script. It plays exactly `paths`, in order, on the
-   * Voice channel, with no radio frame, no gate, no cooldown and no resume:
-   * the engine sees it, so arbitration orders it instead of a callout
-   * playing over it.
+   * #1696) — the lines the plugin plays by path outside any script: the
+   * telemetry-connect radio check, and the key-press acknowledgments (issue
+   * #1698). It plays exactly `paths`, in order, on the Voice channel, with
+   * no radio frame, no gate, no cooldown and no resume: the engine sees it,
+   * so arbitration orders it instead of a callout playing over it — and no
+   * callout's fire is left waiting for a clip end the plugin's own play
+   * would have taken from it.
    *
-   * It starts only on a free bus — nothing playing, nothing waiting, no
-   * focus floor held — except that a running frame preview yields to it, as
-   * to any callout. On a bus that is not free it does what `whenBusy` says:
-   * `"skip"` plays nothing, logs why at debug and returns `"bus-busy"`
-   * (#1698 will add a value that cuts and resumes the running callout).
+   * On a free bus — nothing playing, nothing waiting, no focus floor held —
+   * it starts at once, and a running frame preview yields to it as to any
+   * callout. On a bus that is not free it does what `whenBusy` says (see
+   * `PlayClipsWhenBusy`): `"skip"` plays nothing, logs why at debug and
+   * returns `"bus-busy"`; `"interrupt"` cuts the running fire as an
+   * `interrupt` contract does (stashing a queueable one to come back after
+   * it) and plays, unless a running fire or a held focus floor is heavier
+   * than `options.weight`, when it too plays nothing, logs why at debug and
+   * returns `"bus-busy"`.
    *
    * Once it holds the bus it is arbitrated like a contract's fire at
    * `options.weight`: an arriving fire of equal or lower weight waits when
    * queueable and drops when not; a heavier one waits for it, or cuts it
-   * when it has `interrupt`. A cut clip fire is over — never stashed, never
-   * replayed. When it finishes the queue drains as after any fire;
-   * `stopAll` clears it; `describeState` shows it as the active fire under
-   * `id`.
+   * when it has `interrupt`; a later `"interrupt"` clip fire cuts it. A cut
+   * clip fire is over — never stashed, never replayed. When it finishes the
+   * queue drains as after any fire; `stopAll` clears it; `describeState`
+   * shows it as the active fire under `id`. `options.onComplete` runs once
+   * when it leaves the bus, however it leaves, and never on `"bus-busy"`.
    *
    * `id` is the caller's, for the log and `describeState`
    * (`"pit-crew.radio-check"`). Throws when `id` names a registered

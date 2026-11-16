@@ -1226,3 +1226,194 @@ describe("a clip fire", () => {
     expect(h.active()).toBeNull();
   });
 });
+
+// ─── a clip fire that interrupts (issue #1698) ───────────────────────────────
+
+describe("a clip fire that interrupts", () => {
+  const CLIPS = ["voice/v1/pit-crew/track-calls-on.mp3"];
+  const ACK = { weight: 50, whenBusy: "interrupt" } as const;
+
+  it("on an idle bus does exactly what `skip` does", () => {
+    const skipped = harness();
+    const interrupting = harness();
+
+    expect(skipped.scheduler.playClips("ack", CLIPS, { weight: 50, whenBusy: "skip" })).toBe("playing");
+    expect(interrupting.scheduler.playClips("ack", CLIPS, ACK)).toBe("playing");
+
+    expect(interrupting.calls).toEqual(skipped.calls);
+    expect(interrupting.starts).toEqual(skipped.starts);
+  });
+
+  it("cuts a running fire of equal weight and stashes it when queueable — resumable, so with its position", () => {
+    const h = harness();
+    h.define({ id: "line", weight: 50, queueable: true, resumable: true });
+    h.fire("line");
+    h.calls.length = 0;
+    vi.clearAllMocks();
+
+    expect(h.scheduler.playClips("ack", CLIPS, ACK)).toBe("playing");
+
+    // Stash, cut, then take — the order an interrupt contract takes.
+    expect(h.calls).toEqual([
+      ["cancel", "line"],
+      ["takeBus", "ack"],
+      ["stepNext", AudioBus.Voice],
+    ]);
+    expect(h.active()?.id).toBe("ack");
+    expect(h.waiting()).toEqual(["line"]);
+    const stash = h.buses.get(AudioBus.Voice).schedule.queue.ordered()[0].fire;
+    expect(stash).toMatchObject({ id: "line", admitted: true });
+    expect(stash.resume).toBeDefined();
+    expect(logged("debug")).toContain('Clips "ack" cut "line" (weight 50)');
+    expect(logged("info")).toEqual(['Playing clips "ack"']);
+
+    // The ack finishes like any fire: the stash comes back, as the resume.
+    h.finish();
+    expect(h.active()?.id).toBe("line");
+    expect(h.waiting()).toEqual([]);
+  });
+
+  it("cuts a lighter non-queueable fire and stashes nothing", () => {
+    const h = harness();
+    h.define({ id: "chatter", weight: 10 });
+    h.fire("chatter");
+
+    expect(h.scheduler.playClips("ack", CLIPS, ACK)).toBe("playing");
+
+    expect(h.only("cancel", "takeBus")).toEqual([
+      ["takeBus", "chatter"],
+      ["cancel", "chatter"],
+      ["takeBus", "ack"],
+    ]);
+    expect(h.waiting()).toEqual([]);
+  });
+
+  it("answers `bus-busy` and leaves a heavier running fire alone, naming why", () => {
+    const h = harness();
+    h.define({ id: "safety", weight: 70, queueable: true });
+    h.fire("safety");
+    h.calls.length = 0;
+    vi.clearAllMocks();
+
+    expect(h.scheduler.playClips("ack", CLIPS, ACK)).toBe("bus-busy");
+
+    expect(h.calls).toEqual([]);
+    expect(h.active()?.id).toBe("safety");
+    expect(h.active()?.cancelled).toBe(false);
+    expect(h.waiting()).toEqual([]);
+    expect(logged("debug")).toEqual(['Clips "ack" skipped — "safety" is playing at weight 70, above 50']);
+    expect(logged("info")).toEqual([]);
+  });
+
+  it("answers `bus-busy` under a focus floor above its weight, and plays under one at or below it", () => {
+    const h = harness();
+    h.scheduler.acquireFocus(AudioBus.Voice, "spotter", 70);
+    vi.clearAllMocks();
+
+    expect(h.scheduler.playClips("ack", CLIPS, ACK)).toBe("bus-busy");
+    expect(h.calls).toEqual([]);
+    expect(logged("debug")).toEqual(['Clips "ack" skipped — focus floor held by "spotter" at 70, above 50']);
+
+    h.scheduler.acquireFocus(AudioBus.Voice, "spotter", 50);
+    expect(h.scheduler.playClips("ack", CLIPS, ACK)).toBe("playing");
+    expect(h.active()?.id).toBe("ack");
+  });
+
+  it("a floor the running fire's own owner holds still bars it when the floor is above its weight", () => {
+    const h = harness();
+    h.define({ id: "spotter.clear", weight: 50, focusOwner: "spotter" });
+    h.scheduler.acquireFocus(AudioBus.Voice, "spotter", 70);
+    h.fire("spotter.clear");
+
+    expect(h.scheduler.playClips("ack", CLIPS, ACK)).toBe("bus-busy");
+    expect(h.active()?.id).toBe("spotter.clear");
+  });
+
+  it("cuts a running clip fire and never stashes it", () => {
+    const h = harness();
+    h.scheduler.playClips("radio-check", CLIPS, { weight: 50, whenBusy: "skip" });
+
+    expect(h.scheduler.playClips("ack", CLIPS, ACK)).toBe("playing");
+
+    expect(h.only("cancel", "takeBus")).toEqual([
+      ["takeBus", "radio-check"],
+      ["cancel", "radio-check"],
+      ["takeBus", "ack"],
+    ]);
+    expect(h.waiting()).toEqual([]);
+  });
+
+  it("cuts an ended fire's cut tail and never stashes it, queueable or not", () => {
+    const h = harness();
+    h.define({ id: "line", weight: 50, queueable: true, resumable: true });
+    h.fire("line");
+    h.active()!.ended = true;
+
+    expect(h.scheduler.playClips("ack", CLIPS, ACK)).toBe("playing");
+
+    expect(h.only("cancel")).toEqual([["cancel", "line"]]);
+    expect(h.active()?.id).toBe("ack");
+    expect(h.waiting()).toEqual([]);
+  });
+
+  it("drops rather than stashes a line still playing from the session that ended", () => {
+    const h = harness();
+    h.define({ id: "line", weight: 50, queueable: true });
+    h.fire("line");
+    h.scheduler.clearQueuesForSessionChange();
+
+    expect(h.scheduler.playClips("ack", CLIPS, ACK)).toBe("playing");
+
+    expect(h.waiting()).toEqual([]);
+    expect(logged("debug")).toContain('Scenario "line" dropped — session changed');
+  });
+
+  it("cuts a running frame preview as `skip` does", () => {
+    const h = harness();
+    h.scheduler.playFramePreview("radio", 500);
+    h.calls.length = 0;
+
+    expect(h.scheduler.playClips("ack", CLIPS, ACK)).toBe("playing");
+
+    expect(h.calls).toEqual([
+      ["cancel", FRAME_PREVIEW_ID],
+      ["takeBus", "ack"],
+      ["stepNext", AudioBus.Voice],
+    ]);
+  });
+
+  it("plays ahead of a fire waiting for the idle bus (a pending hold), which then plays after it", () => {
+    const h = harness();
+    h.define({ id: "mark", pendingHoldMs: 300 });
+    h.define({ id: "line", queueable: true });
+    h.fire("mark");
+    h.fire("line");
+    h.finish();
+    expect(h.active()).toBeNull();
+    expect(h.waiting()).toEqual(["line"]);
+
+    expect(h.scheduler.playClips("ack", CLIPS, ACK)).toBe("playing");
+    expect(h.active()?.id).toBe("ack");
+    expect(h.waiting()).toEqual(["line"]);
+
+    // The hold the mark armed is obsolete once the ack holds the bus.
+    vi.advanceTimersByTime(300);
+    expect(h.active()?.id).toBe("ack");
+
+    h.finish();
+    expect(h.active()?.id).toBe("line");
+  });
+
+  it("hands its `onComplete` to playback as the fire's `onSettled`, under either `whenBusy`", () => {
+    const h = harness();
+    const onComplete = vi.fn();
+
+    h.scheduler.playClips("ack", CLIPS, { ...ACK, onComplete });
+    expect(h.starts.at(-1)?.onSettled).toBe(onComplete);
+
+    h.finish();
+    h.scheduler.playClips("radio-check", CLIPS, { weight: 50, whenBusy: "skip", onComplete });
+    expect(h.starts.at(-1)?.onSettled).toBe(onComplete);
+    expect(onComplete).not.toHaveBeenCalled();
+  });
+});

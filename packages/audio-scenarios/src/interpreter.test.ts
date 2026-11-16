@@ -5087,6 +5087,291 @@ describe("playClips — a code-owned clip list plays as a fire on the Voice bus 
   });
 });
 
+// ─── playClips whenBusy "interrupt" (issue #1698) ───────────────────────────
+
+describe("playClips — a key-press acknowledgment cuts in through the scheduler (issue #1698)", () => {
+  const ACK = "pit-crew/names/alice.mp3";
+  const ACK2 = "pit-crew/reminder/autofuel.mp3";
+  const A = "pit-crew/greeting/a.mp3";
+  const B = "pit-crew/greeting/b.mp3";
+  const TIRES = "pit-crew/reminder/tires.mp3";
+  const FUEL = "pit-crew/reminder/fuel.mp3";
+  const RC1 = "pit-crew/connector/and.mp3";
+  const RC2 = "pit-crew/connector/also.mp3";
+  const ACK_ID = "pit-crew.track-calls-ack";
+  const INTERRUPT = { weight: WEIGHT.NORMAL, whenBusy: "interrupt" } as const;
+
+  function voicePaths(): string[] {
+    return audio._played.filter((p) => p.channel === AudioChannel.Voice).map((p) => p.path);
+  }
+
+  function voiceBus(): ScenarioEngineState["buses"][number] | undefined {
+    return engine.describeState().buses.find((b) => b.bus === "Voice");
+  }
+
+  /** A three-clip callout at NORMAL — the ack's own weight — on the Voice bus. */
+  function defineLine(overrides: Partial<Scenario> = {}): void {
+    engine.defineScenario({
+      id: "test.line",
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      weight: WEIGHT.NORMAL,
+      sequence: [A, B, TIRES],
+      ...overrides,
+    });
+  }
+
+  /** The callout after: what the bug left waiting for a bus that never freed. */
+  function defineNext(): void {
+    engine.defineScenario({ id: "test.next", channel: AudioChannel.Voice, bus: AudioBus.Voice, sequence: [FUEL] });
+  }
+
+  /** Fire the line and run it to its second clip, so the cut lands mid-line. */
+  function lineAtSecondClip(): void {
+    engine.fire("test.line");
+    audio._triggerChannelEnd(AudioChannel.Voice);
+    expect(voicePaths()).toEqual([A, B]);
+  }
+
+  it("cuts a resumable callout, plays the ack, resumes the callout from the cut clip, and the next callout plays", () => {
+    defineLine({ queueable: true, resumable: true });
+    defineNext();
+    lineAtSecondClip();
+
+    expect(engine.playClips(ACK_ID, [ACK], INTERRUPT)).toBe("playing");
+    expect(audio._stopped).toEqual([AudioChannel.Voice]);
+    expect(voiceBus()).toMatchObject({ playingId: ACK_ID, waiting: [{ id: "test.line" }] });
+
+    flushVoiceAndSfx(audio);
+    expect(voicePaths()).toEqual([A, B, ACK, B, TIRES]);
+    expect(voiceBus()).toMatchObject({ active: null, waiting: [] });
+
+    // What the bug broke: the bus is free again, so the next callout plays.
+    engine.fire("test.next");
+    expect(voicePaths().at(-1)).toBe(FUEL);
+    audio._triggerChannelEnd(AudioChannel.Voice);
+    expect(voiceBus()).toMatchObject({ active: null, waiting: [] });
+  });
+
+  it("replays a queueable non-resumable callout whole after the ack", () => {
+    defineLine({ queueable: true });
+    lineAtSecondClip();
+
+    engine.playClips(ACK_ID, [ACK], INTERRUPT);
+    flushVoiceAndSfx(audio);
+
+    expect(voicePaths()).toEqual([A, B, ACK, A, B, TIRES]);
+    expect(voiceBus()).toMatchObject({ active: null, waiting: [] });
+  });
+
+  it("cuts a non-queueable callout for good: its fire settles, it never replays, and the next callout plays", () => {
+    defineLine({ weight: WEIGHT.CHATTER });
+    defineNext();
+    lineAtSecondClip();
+
+    expect(engine.playClips(ACK_ID, [ACK], INTERRUPT)).toBe("playing");
+    expect(voiceBus()).toMatchObject({ playingId: ACK_ID, waiting: [] });
+    flushVoiceAndSfx(audio);
+
+    expect(voicePaths()).toEqual([A, B, ACK]);
+    expect(voiceBus()?.active).toBeNull();
+    engine.fire("test.next");
+    expect(voicePaths()).toEqual([A, B, ACK, FUEL]);
+  });
+
+  it("answers bus-busy and plays nothing while a SAFETY fire plays, which plays on untouched", () => {
+    const onComplete = vi.fn();
+    defineLine({ id: "test.safety", weight: WEIGHT.SAFETY, sequence: [A, B] });
+    engine.fire("test.safety");
+
+    expect(engine.playClips(ACK_ID, [ACK], { ...INTERRUPT, onComplete })).toBe("bus-busy");
+    flushVoiceAndSfx(audio);
+
+    expect(audio._stopped).toEqual([]);
+    expect(voicePaths()).toEqual([A, B]);
+    expect(onComplete).not.toHaveBeenCalled();
+    expect(mockLogger.debug).toHaveBeenCalledWith(
+      `Clips "${ACK_ID}" skipped — "test.safety" is playing at weight ${WEIGHT.SAFETY}, above ${WEIGHT.NORMAL}`,
+    );
+  });
+
+  it("answers bus-busy on an idle bus under a SAFETY focus floor, and plays once it is released", () => {
+    const onComplete = vi.fn();
+    engine.acquireFocus(AudioBus.Voice, "spotter", WEIGHT.SAFETY);
+
+    expect(engine.playClips(ACK_ID, [ACK], { ...INTERRUPT, onComplete })).toBe("bus-busy");
+    expect(audio._played).toEqual([]);
+    expect(onComplete).not.toHaveBeenCalled();
+    expect(mockLogger.debug).toHaveBeenCalledWith(
+      `Clips "${ACK_ID}" skipped — focus floor held by "spotter" at ${WEIGHT.SAFETY}, above ${WEIGHT.NORMAL}`,
+    );
+
+    engine.releaseFocus(AudioBus.Voice, "spotter");
+    expect(engine.playClips(ACK_ID, [ACK], INTERRUPT)).toBe("playing");
+    expect(voicePaths()).toEqual([ACK]);
+  });
+
+  it("cuts a running clip fire (the radio check) and never replays it", () => {
+    engine.playClips("pit-crew.radio-check", [RC1, RC2], { weight: WEIGHT.NORMAL, whenBusy: "skip" });
+
+    expect(engine.playClips(ACK_ID, [ACK], INTERRUPT)).toBe("playing");
+    flushVoiceAndSfx(audio);
+
+    expect(voicePaths()).toEqual([RC1, ACK]);
+    expect(voiceBus()).toMatchObject({ active: null, waiting: [] });
+  });
+
+  it("two acks in a row: the second cuts the first, and only its clips play to the end", () => {
+    const first = vi.fn();
+    const second = vi.fn();
+
+    engine.playClips(ACK_ID, [ACK, ACK2], { ...INTERRUPT, onComplete: first });
+    expect(engine.playClips(ACK_ID, [ACK2], { ...INTERRUPT, onComplete: second })).toBe("playing");
+    expect(first).toHaveBeenCalledTimes(1);
+    expect(second).not.toHaveBeenCalled();
+
+    flushVoiceAndSfx(audio);
+    expect(voicePaths()).toEqual([ACK, ACK2]);
+    expect(first).toHaveBeenCalledTimes(1);
+    expect(second).toHaveBeenCalledTimes(1);
+    expect(voiceBus()?.active).toBeNull();
+  });
+
+  it("on an idle bus it plays as `skip` does, and then holds the bus like any clip fire", () => {
+    defineLine({ queueable: true, sequence: [A] });
+
+    expect(engine.playClips(ACK_ID, [ACK, ACK2], INTERRUPT)).toBe("playing");
+    expect(audio._played).toEqual([{ channel: AudioChannel.Voice, path: ACK, loop: false }]);
+
+    // An arriving fire of its weight waits for it rather than cutting it.
+    engine.fire("test.line");
+    expect(voiceBus()).toMatchObject({ playingId: ACK_ID, waiting: [{ id: "test.line" }] });
+
+    flushVoiceAndSfx(audio);
+    expect(voicePaths()).toEqual([ACK, ACK2, A]);
+  });
+
+  it("plays ahead of a fire waiting out a pending hold, which plays after it", () => {
+    vi.useFakeTimers();
+
+    try {
+      engine.defineScenario({
+        id: "test.mark",
+        channel: AudioChannel.Voice,
+        bus: AudioBus.Voice,
+        pendingHoldMs: 300,
+        sequence: [A],
+      });
+      defineLine({ queueable: true, sequence: [B] });
+      engine.fire("test.mark");
+      engine.fire("test.line");
+      audio._triggerChannelEnd(AudioChannel.Voice);
+      expect(voiceBus()?.active).toBeNull();
+
+      expect(engine.playClips(ACK_ID, [ACK], INTERRUPT)).toBe("playing");
+      vi.advanceTimersByTime(300);
+      expect(voicePaths()).toEqual([A, ACK]);
+
+      audio._triggerChannelEnd(AudioChannel.Voice);
+      expect(voicePaths()).toEqual([A, ACK, B]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("describeState shows the ack as the Voice bus's active fire, the cut callout waiting behind it", () => {
+    defineLine({ queueable: true, resumable: true });
+    lineAtSecondClip();
+
+    engine.playClips(ACK_ID, [ACK], INTERRUPT);
+
+    expect(voiceBus()).toMatchObject({
+      playingId: ACK_ID,
+      active: { id: ACK_ID, weight: WEIGHT.NORMAL, opIndex: 0, opCount: 1 },
+      waiting: [{ id: "test.line" }],
+    });
+  });
+
+  describe("onComplete", () => {
+    it("runs once when the last clip ends, with the bus already idle", () => {
+      let activeAtComplete: unknown = "not run";
+      const onComplete = vi.fn(() => {
+        activeAtComplete = voiceBus()?.active;
+      });
+
+      engine.playClips(ACK_ID, [ACK, ACK2], { ...INTERRUPT, onComplete });
+      audio._triggerChannelEnd(AudioChannel.Voice);
+      expect(onComplete).not.toHaveBeenCalled();
+
+      flushVoiceAndSfx(audio);
+      expect(onComplete).toHaveBeenCalledTimes(1);
+      expect(activeAtComplete).toBeNull();
+    });
+
+    it("runs once when a heavier interrupt contract cuts the ack", () => {
+      const onComplete = vi.fn();
+      defineLine({ id: "test.safety", weight: WEIGHT.SAFETY, interrupt: true, sequence: [FUEL] });
+
+      engine.playClips(ACK_ID, [ACK, ACK2], { ...INTERRUPT, onComplete });
+      engine.fire("test.safety");
+      expect(onComplete).toHaveBeenCalledTimes(1);
+
+      flushVoiceAndSfx(audio);
+      expect(voicePaths()).toEqual([ACK, FUEL]);
+      expect(onComplete).toHaveBeenCalledTimes(1);
+    });
+
+    it("runs once on stopAll", () => {
+      const onComplete = vi.fn();
+
+      engine.playClips(ACK_ID, [ACK], { ...INTERRUPT, onComplete });
+      engine.stopAll();
+      flushVoiceAndSfx(audio);
+
+      expect(onComplete).toHaveBeenCalledTimes(1);
+    });
+
+    it("runs once when a clip fails to play: a failing clip is skipped, and a list of only failing clips settles at once", () => {
+      const skipped = vi.fn();
+      audio.playOnChannel.mockReturnValueOnce(false);
+
+      engine.playClips(ACK_ID, [ACK, ACK2], { ...INTERRUPT, onComplete: skipped });
+      expect(voicePaths()).toEqual([ACK2]);
+      expect(skipped).not.toHaveBeenCalled();
+      flushVoiceAndSfx(audio);
+      expect(skipped).toHaveBeenCalledTimes(1);
+
+      const allFailed = vi.fn();
+      audio.playOnChannel.mockReturnValueOnce(false).mockReturnValueOnce(false);
+
+      expect(engine.playClips(ACK_ID, [ACK, ACK2], { ...INTERRUPT, onComplete: allFailed })).toBe("playing");
+      expect(allFailed).toHaveBeenCalledTimes(1);
+      expect(voiceBus()?.active).toBeNull();
+      flushVoiceAndSfx(audio);
+      expect(allFailed).toHaveBeenCalledTimes(1);
+    });
+
+    it('runs under `whenBusy: "skip"` too, and never when it answers bus-busy', () => {
+      const played = vi.fn();
+      const refused = vi.fn();
+
+      engine.playClips("pit-crew.radio-check", [RC1], { weight: WEIGHT.NORMAL, whenBusy: "skip", onComplete: played });
+      expect(
+        engine.playClips("pit-crew.radio-check", [RC2], {
+          weight: WEIGHT.NORMAL,
+          whenBusy: "skip",
+          onComplete: refused,
+        }),
+      ).toBe("bus-busy");
+      flushVoiceAndSfx(audio);
+
+      expect(played).toHaveBeenCalledTimes(1);
+      expect(refused).not.toHaveBeenCalled();
+      expect(voicePaths()).toEqual([RC1]);
+    });
+  });
+});
+
 // ─── Contracts, scripts, frames (issue #1064) ───────────────────────────────
 
 describe("pack-owned scripts (issue #1064)", () => {
