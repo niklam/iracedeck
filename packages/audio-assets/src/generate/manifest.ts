@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { z } from "zod";
 
@@ -53,6 +53,24 @@ export function loadManifest(manifestPath: string): Manifest {
   return ManifestSchema.parse(json);
 }
 
+let saveCounter = 0;
+
+/**
+ * Write the manifest whole or not at all (#1643): the JSON goes to a temp file
+ * beside it, which is renamed over the manifest only once fully written. A
+ * write that fails part-way (ENOSPC) leaves the previous manifest intact,
+ * never truncated, so the next run can still load it, and the temp file is
+ * removed. Writing the live path directly would truncate it on open, and a
+ * retry would truncate it again.
+ */
 export function saveManifest(manifestPath: string, manifest: Manifest): void {
-  writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + "\n", "utf-8");
+  const tempPath = `${manifestPath}.${process.pid}.${saveCounter++}.tmp`;
+
+  try {
+    writeFileSync(tempPath, JSON.stringify(manifest, null, 2) + "\n", "utf-8");
+    renameSync(tempPath, manifestPath);
+  } catch (err) {
+    rmSync(tempPath, { force: true });
+    throw err;
+  }
 }
