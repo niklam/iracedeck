@@ -222,6 +222,29 @@ export class ManifestSaver {
     );
   }
 
+  /**
+   * Drop `relPath`'s row and save the manifest without it, retried as `save`
+   * is, BEFORE new bytes go to that path: a row must never vouch for bytes it
+   * does not describe, which it would if the bytes were replaced and every
+   * later save failed. Returns null once the removal is on disk. On failure
+   * the row is put back in memory, since the bytes it describes have not
+   * moved, and the error is returned: the caller must not place the file.
+   * Never throws.
+   */
+  invalidate(relPath: string): unknown {
+    const row = this.manifest.entries[relPath];
+
+    if (row === undefined) return null;
+
+    delete this.manifest.entries[relPath];
+
+    const err = this.attempt();
+
+    if (err !== null) this.manifest.entries[relPath] = row;
+
+    return err;
+  }
+
   /** The final save when a row is unsaved; returns the clips whose rows are still not on disk. */
   flush(): string[] {
     if (this.unsaved.size === 0) return [];

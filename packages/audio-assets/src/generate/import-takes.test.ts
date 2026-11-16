@@ -171,9 +171,9 @@ describe("importTakes", () => {
     });
     expect(manifest.entries[`${DECIMAL}.mp3`]!.hash).toBe(hashOf(defaultVoice, "lap-time-decimal/5"));
     expect(manifest.entries[`${DECIMAL}.mp3`]!.requestId).toBe("req-decimal");
-    // Once per take, as each lands: the first save already holds the first row.
-    expect(persistManifest).toHaveBeenCalledTimes(2);
-    expect(Object.keys(persistManifest.mock.calls[0]![0].entries)).toContain(`${INTRO}.mp3`);
+    // The flash-era row is removed and saved before its clip is replaced,
+    // then the manifest is saved once per take, as each lands.
+    expect(persistManifest).toHaveBeenCalledTimes(3);
     expect(fs.existsSync(processed)).toBe(false);
     expect(log.lines).toContain("[import] voice/default/lap-time-decimal/6 (status error)  —  skipped");
   });
@@ -219,6 +219,102 @@ describe("importTakes", () => {
     expect(result.problems[0]).toMatch(new RegExp(`^${DECIMAL}\\.mp3: copy failed: ENOSPC`));
     expect(filesUnderRoot()).toEqual([`${INTRO}.mp3`]);
     expect(Object.keys(manifest.entries)).toEqual([`${INTRO}.mp3`]);
+  });
+
+  describe("a take imported over a clip that already has a row", () => {
+    const OLD_BYTES = Buffer.from("the approved old take");
+
+    /** INTRO and DECIMAL in the trial; INTRO already on disk with a CURRENT row (same hash) and its old request id. */
+    function overExisting(): Manifest {
+      writeTake(INTRO, INTRO_BYTES);
+      writeTake(DECIMAL, DECIMAL_BYTES);
+      writeTrial([
+        { key: INTRO, status: "ok", requestId: "req-new" },
+        { key: DECIMAL, status: "ok", requestId: "req-decimal" },
+      ]);
+      fs.mkdirSync(path.join(root, path.dirname(INTRO)), { recursive: true });
+      fs.writeFileSync(path.join(root, `${INTRO}.mp3`), OLD_BYTES);
+
+      return {
+        version: 1,
+        entries: {
+          [`${INTRO}.mp3`]: {
+            hash: hashOf(defaultVoice, "lap-time-intro/first-good-lap"),
+            voiceId: "eleven-voice-id",
+            model: "eleven_v4",
+            textPreview: "That lap was.",
+            generatedAt: "2026-11-01T00:00:00.000Z",
+            requestId: "req-old",
+          },
+        },
+      };
+    }
+
+    /** A persistManifest that lands only on the calls `landsOn` picks (1-based), keeping what each landed save wrote. */
+    function savesThatLand(landsOn: (call: number) => boolean) {
+      const written: string[] = [];
+      let call = 0;
+      const persistManifest = vi.fn<(manifest: Manifest) => void>((manifest) => {
+        if (!landsOn(++call)) throw new Error("UNKNOWN: unknown error, open 'generate.manifest.json'");
+
+        written.push(JSON.stringify(manifest));
+      });
+
+      return { persistManifest, written, retry: { attempts: 2, delayMs: 0, sleep: () => {} } };
+    }
+
+    it("places no new bytes when the save that drops the old row fails, and stops there", () => {
+      const manifest = overExisting();
+      const oldRow = manifest.entries[`${INTRO}.mp3`];
+      const { persistManifest, written, retry } = savesThatLand(() => false);
+      const { result } = runImport(manifest, { persistManifest, manifestSaveRetry: retry });
+
+      expect(result.imported).toBe(0);
+      expect(result.problems).toEqual([
+        `${INTRO}.mp3: could not save the manifest without its current row before replacing the clip: ` +
+          "UNKNOWN: unknown error, open 'generate.manifest.json'; the clip and its row were left as they were",
+      ]);
+      // The old take and its row, untouched; the second take never reached.
+      expect(fs.readFileSync(path.join(root, `${INTRO}.mp3`)).equals(OLD_BYTES)).toBe(true);
+      expect(manifest.entries).toEqual({ [`${INTRO}.mp3`]: oldRow });
+      expect(fs.existsSync(path.join(root, `${DECIMAL}.mp3`))).toBe(false);
+      expect(written).toEqual([]);
+    });
+
+    it("never leaves the old row on disk beside the new bytes when every later save fails", () => {
+      const manifest = overExisting();
+      // Only the save that drops the old row lands.
+      const { persistManifest, written, retry } = savesThatLand((call) => call === 1);
+      const { result } = runImport(manifest, { persistManifest, manifestSaveRetry: retry });
+
+      expect(result.imported).toBe(2);
+      expect(fs.readFileSync(path.join(root, `${INTRO}.mp3`)).equals(INTRO_BYTES)).toBe(true);
+      // What is on disk: no row for the replaced clip, so the next run
+      // re-cuts it rather than trusting its old request id.
+      expect(written).toHaveLength(1);
+      expect(JSON.parse(written[0]!).entries).toEqual({});
+      expect(result.problems).toEqual([
+        `the manifest could not be saved; these takes are on disk without their rows: ${INTRO}.mp3, ${DECIMAL}.mp3`,
+      ]);
+      // In memory, the new row.
+      expect(manifest.entries[`${INTRO}.mp3`]!.requestId).toBe("req-new");
+    });
+
+    it("puts the old row back, and saves it, when the copy then fails", () => {
+      const manifest = overExisting();
+      const oldRow = manifest.entries[`${INTRO}.mp3`];
+      const { persistManifest, written, retry } = savesThatLand(() => true);
+
+      fsHook.failsAt = (destination) => destination.startsWith(path.join(root, `${INTRO}.mp3`));
+
+      const { result } = runImport(manifest, { persistManifest, manifestSaveRetry: retry });
+
+      expect(result.imported).toBe(0);
+      expect(result.problems[0]).toMatch(new RegExp(`^${INTRO}\\.mp3: copy failed: ENOSPC`));
+      expect(fs.readFileSync(path.join(root, `${INTRO}.mp3`)).equals(OLD_BYTES)).toBe(true);
+      expect(manifest.entries).toEqual({ [`${INTRO}.mp3`]: oldRow });
+      expect(written.map((json) => JSON.parse(json).entries)).toEqual([{}, { [`${INTRO}.mp3`]: oldRow }]);
+    });
   });
 
   it("reports takes whose rows no save could write, keeping them in memory", () => {

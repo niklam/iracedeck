@@ -359,6 +359,25 @@ export function importTakes(options: ImportOptions): ImportResult {
     }
 
     const target = path.join(root, take.relPath);
+    const previousRow = manifest.entries[take.relPath];
+
+    // A row already at this path is removed, and the removal saved, before
+    // any byte moves: replacing the bytes under a row that still says the
+    // same hash would, should every later save fail, leave that row on disk
+    // vouching for bytes it does not describe (the next run would take them
+    // as a cache hit, and condition dependents on its old request id). At
+    // worst the row is now missing, and the next run re-cuts.
+    const invalidateError = saver.invalidate(take.relPath);
+
+    if (invalidateError !== null) {
+      const problem =
+        `${take.relPath}: could not save the manifest without its current row before replacing the clip: ` +
+        `${errorMessage(invalidateError)}; the clip and its row were left as they were`;
+
+      log.error(`[import] FAILED: ${problem}`);
+      problems.push(problem);
+      break;
+    }
 
     try {
       // Through a temp file, so a copy that fails part-way leaves no partial
@@ -372,6 +391,14 @@ export function importTakes(options: ImportOptions): ImportResult {
 
       log.error(`[import] FAILED: ${problem}`);
       problems.push(problem);
+
+      // The clip was not replaced, so its old row still describes it: put
+      // it back rather than make the next run re-cut an approved take.
+      if (previousRow !== undefined) {
+        manifest.entries[take.relPath] = previousRow;
+        saver.save(take.relPath);
+      }
+
       break;
     }
 
