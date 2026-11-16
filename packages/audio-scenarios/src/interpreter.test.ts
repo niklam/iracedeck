@@ -4280,6 +4280,39 @@ describe("bounded pending queue (issue #1185)", () => {
       });
     });
 
+    describe("cut twice: a non-resumable fire replays whole and keeps its first due time", () => {
+      function playCutReplayCutAgain(): void {
+        define("a", WEIGHT.NORMAL);
+        defineInterrupt();
+
+        engine.fire("q.a"); // t=0: takes the idle bus
+        vi.advanceTimersByTime(2000);
+        engine.fire("q.x"); // t=2 s: cuts it
+        vi.advanceTimersByTime(2000);
+        endClip(); // t=4 s: it replays whole
+        vi.advanceTimersByTime(1000);
+        engine.fire("q.x"); // t=5 s: cuts the replay
+      }
+
+      it("replays whole again at 7 s behind a 2 s interrupt line", () => {
+        playCutReplayCutAgain();
+        vi.advanceTimersByTime(2000);
+        endClip();
+
+        expect(heard()).toEqual(["a", "x", "a", "x", "a"]);
+        expect(mockLogger.info.mock.calls.filter(([l]) => String(l).startsWith("Resuming scenario"))).toHaveLength(0);
+      });
+
+      it("is dropped at 9 s behind a 4 s one, the wait counted from 0 s rather than the second cut", () => {
+        playCutReplayCutAgain();
+        vi.advanceTimersByTime(4000);
+        endClip();
+
+        expect(mockLogger.debug).toHaveBeenCalledWith('Scenario "q.a" dropped — waited 9000 ms (max 8000 ms)');
+        expect(heard()).toEqual(["a", "x", "a", "x"]);
+      });
+    });
+
     it("a stash plays before an equal-weight fire deferred while it played", () => {
       define("a", WEIGHT.NORMAL);
       define("b", WEIGHT.NORMAL);
