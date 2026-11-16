@@ -189,7 +189,8 @@ export function startBriefSessionStillCurrent(
 
 /**
  * The speak-time gate both start briefs carry (#1284, after the PR review):
- * since they became `queueable`, a brief can wait behind another line, and a
+ * since they became `queueable`, a brief can wait behind another line (only
+ * wait: a brief an interrupt cuts is dropped, never replayed, #1681), and a
  * session that changes again in that time makes it the brief of a session
  * that is over. It compares the session number on the event's own telemetry
  * — the tick that raised `session.changed` — with the live one, rather than
@@ -503,9 +504,15 @@ export function buildRaceStartContract(
     },
     // Queueable (#1284): the brief now fires anywhere from 3 to 10 s after the
     // transition, when other callouts are as likely to hold the bus, and a
-    // grid brief a few seconds late is still the grid brief.
+    // grid brief a few seconds late is still the grid brief. That is a brief
+    // waiting its turn, never one already begun: `dropWhenCut` (#1681) ends a
+    // brief the start lights or a spotter call cut, since a long one-off
+    // summary is never replayed after the driver has half heard it (Niklas
+    // once heard this brief play four times at a start, cut by the lights,
+    // then by traffic).
     speakGate: buildStartBriefSpeakGate(getLatestTelemetry),
     queueable: true,
+    dropWhenCut: true,
     description:
       "A race session begins and iRacing reports the track conditions, or ten seconds pass — a restart on the pre-green grid included, but not when iRaceDeck connects to a race already under way.",
   };

@@ -325,7 +325,7 @@ describe("readRaceEngineerState", () => {
 
     expect(voice).toMatchObject({ bus: "Voice", playingId: "t.holder", active: { id: "t.holder" } });
     expect(voice.waiting).toEqual([
-      { id: "t.line", weight: WEIGHT.NORMAL, group: "lines", queuedAt: 1_000_400, maxWaitMs: 12_000, after: null },
+      { id: "t.line", weight: WEIGHT.NORMAL, group: "lines", dueAt: 1_000_400, maxWaitMs: 12_000, after: null },
     ]);
   });
 

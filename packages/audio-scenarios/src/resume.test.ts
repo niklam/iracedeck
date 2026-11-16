@@ -73,6 +73,7 @@ function fire(overrides: Partial<ActiveFireView> = {}): ActiveFireView {
     usedChannels: new Set([AudioChannel.Voice, AudioChannel.SFX, AudioChannel.Ambient]),
     event: null,
     sessionGeneration: 0,
+    dueAt: 0,
     cutTail: [],
     ended: false,
     ...overrides,

@@ -4,13 +4,20 @@
  *
  * Pure: no timers, no logger. Every operation returns what left the queue
  * without playing and why, and the interpreter logs it. Placement is
- * heaviest first, then oldest `queuedAt`, then insertion; a `queueBehind`
+ * heaviest first, then oldest `dueAt`, then insertion; a `queueBehind`
  * follower sits right after its leader whatever the weights and does not
  * count toward the cap. A newcomer supersedes any waiting entry of its
  * `group`, which is how the features the single slot provided by eviction
  * survive (DQ over black, go over ready, an incident escalation, the newest
- * readout). Pacing is the per-entry max wait, checked whenever the queue is
- * read; the cap only bounds a pathological burst.
+ * readout). Pacing is the per-entry max wait, measured from the fire's due
+ * time (issue #1681) and checked whenever the queue is read and on every
+ * offer — a newcomer already past it is refused, never placed; the cap only
+ * bounds a pathological burst.
+ *
+ * A fire's due time is when it was first offered to its bus. A cut fire
+ * keeps its due time: an interrupt's stash comes back with the `dueAt` it
+ * played with, so the time it waited and played before the cut counts
+ * against its max wait, and it orders and falls to the cap by it too.
  *
  * One arrival drops at most one entry. When the victim is a leader, the
  * followers its drop frees become roots and may leave the queue over the
@@ -32,8 +39,12 @@ export type QueuedFire<F> = {
   readonly weight: number;
   /** The supersede group (spec §3); defaults to the contract id upstream. */
   readonly group: string;
-  /** When the fire was FIRST deferred; a re-deferral keeps it. */
-  readonly queuedAt: number;
+  /**
+   * When the fire was due: first offered to its bus (issue #1681). A
+   * re-deferral and an interrupt's stash both keep it. Play order, the cap's
+   * victim and expiry all read it.
+   */
+  readonly dueAt: number;
   readonly maxWaitMs: number;
   /** The waiting entry this one plays right after (`queueBehind`), or null. */
   after: string | null;
@@ -47,7 +58,7 @@ export type OfferInput<F> = {
   id: string;
   weight: number;
   group: string;
-  queuedAt: number;
+  dueAt: number;
   maxWaitMs: number;
   fire: F;
   /**
@@ -84,20 +95,24 @@ export type OfferResult<F> = {
   behind: string | null;
 };
 
-/** Play order: heaviest, then oldest `queuedAt`, then earliest insertion. */
+/** Play order: heaviest, then earliest `dueAt`, then earliest insertion. */
 const byPriority = <F>(a: QueuedFire<F>, b: QueuedFire<F>): number =>
-  b.weight - a.weight || a.queuedAt - b.queuedAt || a.seq - b.seq;
+  b.weight - a.weight || a.dueAt - b.dueAt || a.seq - b.seq;
 
 /**
- * Cap-victim order: lightest, then oldest `queuedAt`, then earliest insertion.
+ * Cap-victim order: lightest, then earliest `dueAt`, then earliest insertion.
  * Not the reverse of `byPriority` — within a weight the OLDEST goes, since it
  * is the nearest to its max wait and the most likely to be stale.
  */
 const byVictim = <F>(a: QueuedFire<F>, b: QueuedFire<F>): number =>
-  a.weight - b.weight || a.queuedAt - b.queuedAt || a.seq - b.seq;
+  a.weight - b.weight || a.dueAt - b.dueAt || a.seq - b.seq;
 
-/** Whether an entry has waited past its max wait at `now` (exactly at it is still served). */
-const isExpired = <F>(e: QueuedFire<F>, now: number): boolean => now - e.queuedAt > e.maxWaitMs;
+/**
+ * Whether a fire is past its max wait at `now`, counted from its due time
+ * (exactly at it is still served). The one predicate for a waiting entry and
+ * a newcomer alike.
+ */
+const isExpired = (e: { dueAt: number; maxWaitMs: number }, now: number): boolean => now - e.dueAt > e.maxWaitMs;
 
 export class PendingQueue<F> {
   private entries: QueuedFire<F>[] = [];
@@ -141,9 +156,24 @@ export class PendingQueue<F> {
     return out;
   }
 
+  /**
+   * Place a newcomer (see the module comment). One already past its max wait
+   * — an interrupt's stash that waited and played too long before the cut
+   * (issue #1681) — is refused before anything else is decided: it comes
+   * back as an `expired` drop, supersedes nothing of its group, does not
+   * count toward the cap and takes no position.
+   */
   offer(input: OfferInput<F>, now: number): OfferResult<F> {
     const drops = this.expire(now);
     const { yieldsToGroup, ...fields } = input;
+
+    if (isExpired(fields, now)) {
+      const entry: QueuedFire<F> = { ...fields, after: null, seq: this.seq++ };
+      drops.push({ entry, reason: expiredReason(entry, now) });
+
+      return { drops, position: null, size: this.entries.length, behind: null };
+    }
+
     const newer = yieldsToGroup === true ? this.entries.find((e) => e.group === input.group) : undefined;
 
     if (newer !== undefined) {
@@ -249,7 +279,7 @@ export class PendingQueue<F> {
     for (const e of [...this.entries]) {
       if (isExpired(e, now)) {
         this.removeEntry(e);
-        drops.push({ entry: e, reason: { kind: "expired", waitedMs: now - e.queuedAt, maxWaitMs: e.maxWaitMs } });
+        drops.push({ entry: e, reason: expiredReason(e, now) });
       }
     }
 
@@ -285,4 +315,9 @@ export class PendingQueue<F> {
 
     for (const f of this.entries) if (f.after === e.id) f.after = null;
   }
+}
+
+/** The drop reason of a fire past its max wait, its wait counted from its due time. */
+function expiredReason(e: { dueAt: number; maxWaitMs: number }, now: number): QueueDropReason {
+  return { kind: "expired", waitedMs: now - e.dueAt, maxWaitMs: e.maxWaitMs };
 }

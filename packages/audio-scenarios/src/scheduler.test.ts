@@ -326,6 +326,32 @@ describe("weight and interrupt", () => {
     expect(logged("debug")).toContain('Scenario "a" pending (1 of 1) — stashed (preempted)');
   });
 
+  it("a fire carries its due time onto the bus and back into the queue when an interrupt cuts it (issue #1681)", () => {
+    const h = harness();
+    h.define({ id: "hold", weight: 10 });
+    h.define({ id: "a", weight: 10, queueable: true });
+    h.define({ id: "b", weight: 20, interrupt: true });
+    const queue = (): readonly { id: string; dueAt: number; fire: WaitingFire }[] =>
+      h.buses.get(AudioBus.Voice).schedule.queue.ordered();
+
+    vi.setSystemTime(1000);
+    h.fire("hold");
+    expect(h.starts.at(-1)?.dueAt).toBe(1000);
+
+    vi.setSystemTime(2000);
+    h.fire("a"); // deferred: due now
+    expect(queue().map((e) => [e.id, e.dueAt, e.fire.dueAt])).toEqual([["a", 2000, 2000]]);
+
+    vi.setSystemTime(3000);
+    h.finish(); // the replay takes the bus with the due time it waited with
+    expect(h.starts.at(-1)).toMatchObject({ id: "a", dueAt: 2000 });
+
+    vi.setSystemTime(4000);
+    h.fire("b"); // cuts it: the stash keeps 2000, not the cut's 4000
+    expect(h.starts.at(-1)).toMatchObject({ id: "b", dueAt: 4000 });
+    expect(queue().map((e) => [e.id, e.dueAt, e.fire.dueAt])).toEqual([["a", 2000, 2000]]);
+  });
+
   it("a heavier `interrupt` arrival that expands to nothing leaves the line playing", () => {
     const h = harness();
     h.define({ id: "a", weight: 10, queueable: true });
@@ -1018,6 +1044,7 @@ describe("a clip fire", () => {
   it("takes an idle bus with the clips as play ops on Voice — no frame, no cut tail, no event — and logs the id", () => {
     const h = harness();
     h.scheduler.clearQueuesForSessionChange();
+    vi.setSystemTime(7000);
 
     expect(h.scheduler.playClips("clips", CLIPS, SKIP)).toBe("playing");
 
@@ -1036,6 +1063,8 @@ describe("a clip fire", () => {
       prerollCount: 0,
       event: null,
       sessionGeneration: 1,
+      // Its own start (issue #1681): never stashed, so never read.
+      dueAt: 7000,
       cutTail: [],
       ended: false,
       onSettled: undefined,

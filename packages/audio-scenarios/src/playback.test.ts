@@ -136,6 +136,7 @@ function start(ops: ExecOp[], overrides: Partial<FireStart> = {}): FireStart {
     prerollCount: 0,
     event: null,
     sessionGeneration: 0,
+    dueAt: 0,
     cutTail: [],
     ended: false,
     ...overrides,
@@ -169,7 +170,7 @@ describe("takeBus", () => {
     const ops = [sfx(TICK_OPEN, "open"), play("a.mp3"), ambient("stop", "close")];
     const onSettled = (): void => {};
 
-    h.playback.takeBus(start(ops, { onSettled, sessionGeneration: 3, cutTail: [play("nm.mp3")] }));
+    h.playback.takeBus(start(ops, { onSettled, sessionGeneration: 3, dueAt: 1234, cutTail: [play("nm.mp3")] }));
 
     expect(h.events).toEqual([["busTaken", AudioBus.Voice, { activeId: null }]]);
     expect(h.buses.get(AudioBus.Voice).transport.active).toEqual({
@@ -186,6 +187,7 @@ describe("takeBus", () => {
       usedChannels: new Set([AudioChannel.SFX, AudioChannel.Voice, AudioChannel.Ambient]),
       event: null,
       sessionGeneration: 3,
+      dueAt: 1234,
       cutTail: [play("nm.mp3")],
       ended: false,
       onSettled,
@@ -541,7 +543,7 @@ describe("playCutTail", () => {
       data: null,
     } as unknown as FireStart["event"];
 
-    run(h, start(BODY, { cutTail: TAIL_WITHOUT_STOP, onSettled, event, sessionGeneration: 4 }));
+    run(h, start(BODY, { cutTail: TAIL_WITHOUT_STOP, onSettled, event, sessionGeneration: 4, dueAt: 5678 }));
     h.complete(AudioChannel.SFX);
     // The open tick and the bed have played; "a.mp3" is in flight.
     const old = h.buses.get(AudioBus.Voice).transport.active;
@@ -576,6 +578,8 @@ describe("playCutTail", () => {
       usedChannels: new Set([AudioChannel.Voice, AudioChannel.SFX]),
       event,
       sessionGeneration: 4,
+      // The same fire, so the same due time (issue #1681).
+      dueAt: 5678,
       cutTail: [],
       ended: true,
       onSettled,

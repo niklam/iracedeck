@@ -20,7 +20,7 @@ import type { TelemetryData } from "@iracedeck/iracing-sdk";
 import { classifySession } from "@iracedeck/sim-events-iracing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { DEFAULT_MAX_QUEUE_WAIT_MS, WEIGHT } from "../../dsl.js";
+import { DEFAULT_MAX_QUEUE_WAIT_MS, NO_FRAME, WEIGHT } from "../../dsl.js";
 import type { AudioAssetsManifest } from "../../interpreter.js";
 import {
   _resetAudioScenarios,
@@ -173,6 +173,8 @@ const manifest: AudioAssetsManifest = {
     ...TEMP_CLIP_NAMES.map((n) => `voice/${VOICE}/numbers-degrees/${n}.mp3`),
     `voice/${VOICE}/setup-warning/qualifying-01.mp3`,
     `voice/${VOICE}/setup-warning/race-01.mp3`,
+    // The spotter's "Car left", the call that cuts a brief (issue #1681).
+    `voice/${VOICE}/spotter/car-left.mp3`,
     `voice/${BARE_VOICE}/session-start-greeting/driver.mp3`,
     ...SESSION_START_CLIPS.map((c) => `voice/${BARE_VOICE}/session-start/${c}.mp3`),
     ...TEMP_CLIP_NAMES.map((n) => `voice/${BARE_VOICE}/numbers-degrees/${n}.mp3`),
@@ -884,7 +886,128 @@ describe("settle wait for the conditions (issue #1284)", () => {
   });
 });
 
+// Issue #1681 (decision 9): a brief the spotter call cuts is dropped at the
+// cut, never replayed once the call is over — a long one-off summary the
+// driver has already half heard. A brief that only waits its turn still plays
+// within its 8 s wait, and another queueable line cut the same way is still
+// stashed and replayed: the positive control, in the same fixture.
+describe("a cut brief is dropped, never replayed (issue #1681)", () => {
+  const BRIEF_ID = "pit-crew.session-start";
+  /** A queueable line at the brief's own weight, for the positive control. */
+  const LINE_ID = "test.queueable-line";
+  const LINE_CLIP = "voice/{voice}/setup-warning/race-01.mp3";
+  /** A line heavier than the brief that does not interrupt. */
+  const HEAVIER_ID = "test.heavier-line";
+  const HEAVIER_CLIP = "voice/{voice}/setup-warning/qualifying-01.mp3";
+  const SPOTTER_CLIP = `voice/${VOICE}/spotter/car-left.mp3`;
+  const greetings = () => voicePaths().filter((p) => p.endsWith("/session-start-greeting/niklas.mp3"));
+  const heard = (clip: string) => voicePaths().filter((p) => p === clip.replace("{voice}", VOICE));
+
+  beforeEach(() => {
+    const engine = getScenarioEngine();
+
+    engine.defineScenario({
+      id: LINE_ID,
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      queueable: true,
+      frame: NO_FRAME,
+      sequence: [LINE_CLIP],
+    });
+    engine.defineScenario({
+      id: HEAVIER_ID,
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      weight: WEIGHT.SAFETY,
+      frame: NO_FRAME,
+      sequence: [HEAVIER_CLIP],
+    });
+    // The real spotter call, through the real spotter engine: the bundled
+    // script's entry beside the brief's.
+    engine.setScripts(
+      new Map([
+        [
+          VOICE,
+          {
+            ...SESSION_START_SCRIPT,
+            scenarios: {
+              ...SESSION_START_SCRIPT.scenarios,
+              "pit-crew.spotter-call": SCRIPT.scenarios["pit-crew.spotter-call"],
+            },
+          },
+        ],
+      ]),
+    );
+  });
+
+  /** A car pulls alongside at 1 s into the line: the spotter call cuts it, ends, and the car is gone. */
+  function cutBySpotterCall(): void {
+    vi.advanceTimersByTime(1000);
+    bus.publishEvent("radar.changed", { from: "clear", to: "left" });
+    expect(voicePaths().at(-1)).toBe(SPOTTER_CLIP);
+    vi.advanceTimersByTime(700);
+    audio._triggerChannelEnd(AudioChannel.Voice); // the call ends
+    bus.publishEvent("radar.changed", { from: "left", to: "clear" });
+    flush(audio);
+  }
+
+  it("the brief playing and cut by the spotter call is dropped at the cut and never replayed", () => {
+    publish(snap());
+    vi.advanceTimersByTime(SESSION_START_DELAY_MS);
+    audio._triggerChannelEnd(AudioChannel.SFX); // the frame's open tick → the greeting
+    expect(greetings()).toHaveLength(1);
+
+    cutBySpotterCall();
+
+    expect(mockLogger.debug).toHaveBeenCalledWith(`Scenario "${BRIEF_ID}" dropped — cut`);
+    expect(mockLogger.debug).not.toHaveBeenCalledWith(`Scenario "${BRIEF_ID}" pending (1 of 1) — stashed (preempted)`);
+    expect(greetings()).toHaveLength(1);
+    expect(voicePaths().at(-1)).toBe(SPOTTER_CLIP);
+  });
+
+  it("another queueable line cut the same way is still stashed and replays (positive control)", () => {
+    getScenarioEngine().fire(LINE_ID);
+    expect(heard(LINE_CLIP)).toHaveLength(1);
+
+    cutBySpotterCall();
+
+    expect(mockLogger.debug).toHaveBeenCalledWith(`Scenario "${LINE_ID}" pending (1 of 1) — stashed (preempted)`);
+    expect(heard(LINE_CLIP)).toHaveLength(2);
+    expect(voicePaths().at(-1)).toBe(LINE_CLIP.replace("{voice}", VOICE));
+  });
+
+  it("the brief only waiting its turn behind a heavier line, never cut, still plays within its 8 s wait", () => {
+    publish(snap());
+    vi.advanceTimersByTime(SESSION_START_DELAY_MS - 100);
+    getScenarioEngine().fire(HEAVIER_ID);
+    vi.advanceTimersByTime(100);
+
+    expect(mockLogger.debug).toHaveBeenCalledWith(`Scenario "${BRIEF_ID}" pending (1 of 1) — deferred (bus busy)`);
+    expect(greetings()).toEqual([]);
+
+    // The heavier line holds the bus 7.9 s past the brief's due time.
+    vi.advanceTimersByTime(7900);
+    audio._triggerChannelEnd(AudioChannel.Voice);
+    flush(audio);
+
+    expect(greetings()).toHaveLength(1);
+    expect(voicePaths()[0]).toBe(HEAVIER_CLIP.replace("{voice}", VOICE));
+    expect(hasClip("/session-start/wetness-mostly-dry.mp3")).toBe(true);
+    expect(mockLogger.debug.mock.calls.some(([m]) => String(m).startsWith(`Scenario "${BRIEF_ID}" dropped`))).toBe(
+      false,
+    );
+  });
+});
+
 describe("buildSessionStartContract (issue #1065)", () => {
+  it("drops a cut brief rather than replaying it: dropWhenCut (issue #1681)", () => {
+    const c = buildSessionStartContract({ getSessionStartSnapshot: () => null, getLatestTelemetry });
+
+    expect(c.dropWhenCut).toBe(true);
+    expect(c.queueable).toBe(true);
+    expect(c.resumable).toBeUndefined();
+  });
+
   it("carries no sequence and keeps every scheduling field verbatim — the 3 s trigger delay included, queueable since #1284 — taking the engine's default frame", () => {
     const c = buildSessionStartContract({ getSessionStartSnapshot: () => null, getLatestTelemetry });
 
@@ -1098,7 +1221,7 @@ describe("a clip fire at connect holds the Voice bus against the brief (issue #1
       active: { id: "pit-crew.radio-check" },
       waiting: [{ id: "pit-crew.session-start", maxWaitMs: DEFAULT_MAX_QUEUE_WAIT_MS }],
     });
-    const { queuedAt, maxWaitMs } = voiceBus()!.waiting[0];
+    const { dueAt, maxWaitMs } = voiceBus()!.waiting[0];
 
     // The second clip follows the first, and the brief still waits.
     audio._triggerChannelEnd(AudioChannel.Voice);
@@ -1107,7 +1230,7 @@ describe("a clip fire at connect holds the Voice bus against the brief (issue #1
 
     // The last clip ends: the brief takes the bus at once, its frame first,
     // having waited about 1.5 s — far inside its max wait.
-    const waitedMs = Date.now() - queuedAt;
+    const waitedMs = Date.now() - dueAt;
     audio._triggerChannelEnd(AudioChannel.Voice);
     expect(waitedMs).toBe(1500);
     expect(waitedMs).toBeLessThan(maxWaitMs);

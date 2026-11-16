@@ -27,7 +27,9 @@
  *     ops + position; the idle-replay re-expands and, when the expansion is
  *     unchanged, continues from the interrupted clip (re-keying the radio
  *     frame) instead of re-firing from the top (issue #758). A changed
- *     expansion falls back to a full fresh replay (#481 freshness).
+ *     expansion falls back to a full fresh replay (#481 freshness). One
+ *     whose contract declares `dropWhenCut` is not stashed at all: the cut
+ *     ends it (issue #1681).
  *   - Deferred fires wait in a bounded per-bus queue (`PendingQueue`, issue
  *     #1185): heaviest first, then the longest-waiting, then arrival order.
  *     A lighter newcomer waits rather than being dropped, and a heavier one
@@ -35,8 +37,12 @@
  *     `supersedeGroup` (the contract id by default); an arrival above
  *     `PENDING_QUEUE_CAPACITY` roots drops the lightest, then oldest — one
  *     entry per arrival, so a follower that drop frees stays;
- *     a fire not started within its `maxQueueWaitMs` of its FIRST deferral
- *     is dropped when the queue is next read. Every such drop is logged.
+ *     a fire not started within its `maxQueueWaitMs` of its due time is
+ *     dropped when the queue is next read. The due time is when the fire was
+ *     first offered to its bus, and a cut fire keeps its due time (issue
+ *     #1681): the stash an interrupt makes carries it, so a cut line already
+ *     past its max wait is refused by the queue at the cut, and one still
+ *     inside it orders and falls to the cap by it. Every such drop is logged.
  *   - The bus drains its queue one fire at a time as it idles, replaying
  *     each through `attemptFire`: a replay that does not take the bus (gate
  *     refused, expansion aborted, no script, cooldown, disabled) drains the
@@ -245,6 +251,8 @@ export class Scheduler implements PlaybackListener {
       prerollCount: 0,
       event: null,
       sessionGeneration: this.sessionGeneration,
+      // Never stashed, so never read: the preview's own start.
+      dueAt: Date.now(),
       cutTail: [],
       ended: false,
       onSettled: onComplete,
@@ -309,6 +317,8 @@ export class Scheduler implements PlaybackListener {
       prerollCount: 0,
       event: null,
       sessionGeneration: this.sessionGeneration,
+      // Never stashed (its id names no contract), so never read: its own start.
+      dueAt: Date.now(),
       cutTail: [],
       ended: false,
     });
@@ -432,16 +442,20 @@ export class Scheduler implements PlaybackListener {
    * expansion and the gate, then the bus take. `event` is `null` for an
    * imperative fire. The last three parameters are the idle-replay's
    * (`replayWaiting`): the stash to continue from, whether the fire already
-   * passed its gate (`WaitingFire.admitted`), and when it was first deferred.
+   * passed its gate (`WaitingFire.admitted`), and its due time. A fresh
+   * fire is due now, the moment it is first offered to its bus (issue
+   * #1681); the due time travels with it from here, into the queue and onto
+   * the bus, so a stash made when an interrupt cuts it keeps it.
    */
   attemptFire(
     entry: CompiledScenario,
     event: SimEventOf<SimEventName> | null,
     resume?: ResumeState,
     admitted = false,
-    queuedAt?: number,
+    replayDueAt?: number,
   ): void {
     const now = Date.now();
+    const dueAt = replayDueAt ?? now;
 
     // A resume is a continuation of a fire that already passed (and stamped)
     // the cooldown — re-checking it here would drop the tail of an
@@ -459,7 +473,7 @@ export class Scheduler implements PlaybackListener {
     // admits the safety-flag callouts while holding back routine chatter.
     if (this.belowFloor(state, entry.raw.focusOwner, weight)) {
       const reason = `below focus floor (${state.schedule.focus?.ownerId ?? ""})`;
-      this.queueOrDrop(entry, event, weight, state, reason, resume, admitted, queuedAt);
+      this.queueOrDrop(entry, event, weight, state, reason, resume, admitted, dueAt);
 
       return;
     }
@@ -502,7 +516,7 @@ export class Scheduler implements PlaybackListener {
 
         if (!admitted) this.supersedeWaitingOfGroup(state, entry);
 
-        this.executeFire(entry, event, expanded, resume);
+        this.executeFire(entry, event, expanded, resume, dueAt);
 
         return;
       }
@@ -511,13 +525,13 @@ export class Scheduler implements PlaybackListener {
         // Higher weight, no interrupt: win the bus but let the current line
         // finish — wait in the queue, queueable or not.
         const reason = "waiting for bus (higher weight, no interrupt)";
-        this.enqueue(entry.raw.id, event, weight, state, reason, resume, admitted, queuedAt);
+        this.enqueue(entry.raw.id, event, weight, state, reason, resume, admitted, dueAt);
 
         return;
       }
 
       // Equal or lower weight: can't take the bus now.
-      this.queueOrDrop(entry, event, weight, state, "bus busy", resume, admitted, queuedAt);
+      this.queueOrDrop(entry, event, weight, state, "bus busy", resume, admitted, dueAt);
 
       return;
     }
@@ -529,7 +543,7 @@ export class Scheduler implements PlaybackListener {
     // busy bus, and the drain plays the two in order.
     if (state.schedule.queue.hasLeaderFor(entry.raw.id, now)) {
       const reason = "the fire it waits behind is pending";
-      this.enqueue(entry.raw.id, event, weight, state, reason, resume, admitted, queuedAt);
+      this.enqueue(entry.raw.id, event, weight, state, reason, resume, admitted, dueAt);
 
       return;
     }
@@ -544,7 +558,7 @@ export class Scheduler implements PlaybackListener {
 
     if (!admitted) this.supersedeWaitingOfGroup(state, entry);
 
-    this.executeFire(entry, event, expanded, resume);
+    this.executeFire(entry, event, expanded, resume, dueAt);
   }
 
   /**
@@ -581,12 +595,12 @@ export class Scheduler implements PlaybackListener {
     weight: number,
     state: BusView,
     reason: string,
-    resume?: ResumeState,
-    admitted = false,
-    queuedAt?: number,
+    resume: ResumeState | undefined,
+    admitted: boolean,
+    dueAt: number,
   ): void {
     if (entry.raw.queueable === true) {
-      this.enqueue(entry.raw.id, event, weight, state, `deferred (${reason})`, resume, admitted, queuedAt);
+      this.enqueue(entry.raw.id, event, weight, state, `deferred (${reason})`, resume, admitted, dueAt);
     } else {
       this.logger.debug(`Scenario "${entry.raw.id}" dropped (${reason})`);
     }
@@ -596,10 +610,12 @@ export class Scheduler implements PlaybackListener {
    * Offer a fire to the bus's queue (issue #1185). The queue places it —
    * heaviest first, then the longest-waiting, a `queueBehind` follower right
    * after its leader — supersedes any waiting fire of its group, applies the
-   * cap and drops what has waited too long; this logs every drop and the
-   * newcomer's place. `queuedAt` is the time of the fire's FIRST deferral: a
-   * replay deferred again passes its own, so its max wait still runs from
-   * then. `admitted` travels with the fire (see `WaitingFire.admitted`).
+   * cap and drops what has waited too long — the newcomer itself when it is
+   * already past its max wait; this logs every drop and the newcomer's
+   * place. `dueAt` is the fire's due time (issue #1681): a replay deferred
+   * again passes its own and an interrupt's stash the one it played with, so
+   * the max wait runs from when the fire was first offered to its bus.
+   * `admitted` travels with the fire (see `WaitingFire.admitted`).
    * `yieldsToGroup` marks an interrupt's stash, which gives way to a newer
    * waiting fire of its group instead of replacing it.
    */
@@ -609,9 +625,9 @@ export class Scheduler implements PlaybackListener {
     weight: number,
     state: BusView,
     reason: string,
-    resume?: ResumeState,
-    admitted = false,
-    queuedAt: number = Date.now(),
+    resume: ResumeState | undefined,
+    admitted: boolean,
+    dueAt: number,
     yieldsToGroup = false,
   ): void {
     const raw = this.deps.contracts.get(id)?.raw;
@@ -620,9 +636,9 @@ export class Scheduler implements PlaybackListener {
         id,
         weight,
         group: raw?.supersedeGroup ?? id,
-        queuedAt,
+        dueAt,
         maxWaitMs: raw?.maxQueueWaitMs ?? DEFAULT_MAX_QUEUE_WAIT_MS,
-        fire: { id, event, weight, resume, admitted, queuedAt },
+        fire: { id, event, weight, resume, admitted, dueAt },
         yieldsToGroup,
       },
       Date.now(),
@@ -675,9 +691,13 @@ export class Scheduler implements PlaybackListener {
    * When an interrupt cut a queueable fire, keep it for idle-replay. It was
    * playing, so it had passed its gate: the stash is marked `admitted`
    * whether it resumes from the cut (`resumable`) or replays whole, and the
-   * replay is not asked again (issue #1138). It is a new deferral, so its max
-   * wait runs from now; a full queue may drop it as the cap's victim, which
-   * is logged like any other drop and discards its resume with it.
+   * replay is not asked again (issue #1138). It keeps its due time (issue
+   * #1681), so the time it waited and played before the cut counts against
+   * its max wait: one already past it is refused by the queue and logged as
+   * `waited`, and one inside it plays ahead of an equal-weight fire deferred
+   * while it played, and is the first equal-weight victim of a full queue's
+   * cap. Either drop is logged like any other and discards its resume with
+   * it.
    *
    * A fire of its `supersedeGroup` already waiting arrived while this one
    * played, so it is the newer: the stash yields to it and is dropped,
@@ -689,7 +709,8 @@ export class Scheduler implements PlaybackListener {
    * A fire that began before the last `session.changed` is not stashed at
    * all: it is dropped, logged as `session changed` (see
    * `sessionGeneration`). Neither is the cut tail of an ended fire (issue
-   * #1407), which is never re-queued.
+   * #1407), which is never re-queued, nor a fire whose contract declares
+   * `dropWhenCut` (issue #1681): the cut ends it, logged as `cut`.
    */
   private stashRunningIfQueueable(state: BusView, running: CompiledScenario | undefined): void {
     const active = state.transport.active;
@@ -706,11 +727,29 @@ export class Scheduler implements PlaybackListener {
       return;
     }
 
+    // A long one-off line the driver has already half heard (the briefs) is
+    // never replayed after a cut (issue #1681); only its cut is its end.
+    if (running.raw.dropWhenCut === true) {
+      this.logger.debug(`Scenario "${active.id}" dropped — cut`);
+
+      return;
+    }
+
     const resume =
       running.raw.resumable === true
         ? buildResumeState(active, this.getActiveVoice(), this.deps.scripts.generation)
         : undefined;
-    this.enqueue(active.id, active.event, active.weight, state, "stashed (preempted)", resume, true, undefined, true);
+    this.enqueue(
+      active.id,
+      active.event,
+      active.weight,
+      state,
+      "stashed (preempted)",
+      resume,
+      true,
+      active.dueAt,
+      true,
+    );
   }
 
   /**
@@ -795,7 +834,8 @@ export class Scheduler implements PlaybackListener {
     entry: CompiledScenario,
     event: SimEventOf<SimEventName> | null,
     prepared: PreparedFire,
-    resume?: ResumeState,
+    resume: ResumeState | undefined,
+    dueAt: number,
   ): void {
     const expanded = prepared.ops;
 
@@ -834,6 +874,7 @@ export class Scheduler implements PlaybackListener {
       prerollCount,
       event,
       sessionGeneration: this.sessionGeneration,
+      dueAt,
       cutTail: prepared.cutTail,
       ended: false,
     });
@@ -883,7 +924,7 @@ export class Scheduler implements PlaybackListener {
    * for it — leaves the bus idle and the loop takes the next entry at once,
    * so a refused head never stalls the queue and a leader's follower plays
    * next. A replay that is deferred again (re-offered with its original
-   * `queuedAt`) stops the drain rather than taking it off the queue again.
+   * `dueAt`) stops the drain rather than taking it off the queue again.
    */
   private drainPending(state: BusView): void {
     this.clearPendingHold(state);
@@ -897,7 +938,7 @@ export class Scheduler implements PlaybackListener {
 
       this.replayWaiting(entry.fire);
 
-      // Deferred again: it is back in the queue with its original `queuedAt`
+      // Deferred again: it is back in the queue with its original `dueAt`
       // — stop, rather than take the same fire off the queue in a loop. A
       // defensive bound: `playableAtIdle` filters out every idle-bus
       // re-deferral `attemptFire` knows today (the focus floor, a waiting
@@ -928,6 +969,6 @@ export class Scheduler implements PlaybackListener {
     }
 
     this.logger.debug(`Replaying pending scenario "${waiting.id}"`);
-    this.attemptFire(entry, waiting.event, waiting.resume, waiting.admitted, waiting.queuedAt);
+    this.attemptFire(entry, waiting.event, waiting.resume, waiting.admitted, waiting.dueAt);
   }
 }

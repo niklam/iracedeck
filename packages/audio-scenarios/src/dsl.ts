@@ -57,7 +57,9 @@ export const DEFAULT_WEIGHT: number = WEIGHT.NORMAL;
 
 /**
  * How long a deferred fire may wait for its bus before it is dropped
- * (issue #1185), measured from when it was FIRST deferred. A contract
+ * (issue #1185), measured from its due time: when it was first offered to
+ * its bus. A cut fire keeps its due time (issue #1681), so the time it
+ * waited and played before an interrupt cut it counts too. A contract
  * overrides it with `maxQueueWaitMs`.
  */
 export const DEFAULT_MAX_QUEUE_WAIT_MS = 8000;
@@ -304,7 +306,8 @@ export type ScenarioContract = {
    * one fire at a time as it idles. A lighter fire no longer loses to a heavier waiting one on
    * arrival, nor a heavier one evict it; both wait. A waiting fire of the
    * same `supersedeGroup` is replaced by the newer one, and a fire that has
-   * not started within its `maxQueueWaitMs` of being deferred is dropped.
+   * not started within its `maxQueueWaitMs` of its due time — when it was
+   * first offered to its bus, kept across a cut (issue #1681) — is dropped.
    * The deferred fire replays unconditionally — its
    * `where:` is NOT re-evaluated, because it decided at event time; what
    * must still hold at speak time is the contract's `speakGate` (issue
@@ -328,6 +331,19 @@ export type ScenarioContract = {
    * deterministic sequences like the pit-service readback.
    */
   resumable?: boolean;
+  /**
+   * When an `interrupt` cuts this queueable fire mid-playback, drop it
+   * instead of stashing it for replay (`true`; issue #1681) — logged at
+   * debug as `dropped — cut`. For a long one-off line the driver has already
+   * half heard, such as the session-start and race-start briefs, which a
+   * replay would repeat from the top at the busiest moment of the session.
+   * An ordinary wait in the queue is unaffected: a fire only deferred behind
+   * another line, never cut, still plays within its `maxQueueWaitMs`. Not an
+   * exemption from the due time a stash keeps — it only says "never replay
+   * me after a cut". Requires `queueable: true` and excludes `resumable`
+   * (both validated at load time).
+   */
+  dropWhenCut?: boolean;
   /**
    * Contract ids this fire waits BEHIND rather than competes with (issue
    * #1108) — an ordering constraint between two fires that should both be
@@ -367,8 +383,10 @@ export type ScenarioContract = {
   supersedeGroup?: string;
   /**
    * How long a deferred fire of this contract may wait before it is dropped
-   * (issue #1185). Defaults to `DEFAULT_MAX_QUEUE_WAIT_MS`. Give a longer wait
-   * only to a line that stays true for as long as it waits.
+   * (issue #1185), counted from its due time. A cut fire keeps its due time
+   * (issue #1681): a line an interrupt cut is replayed only while it is still
+   * inside this window. Defaults to `DEFAULT_MAX_QUEUE_WAIT_MS`. Give a longer
+   * wait only to a line that stays true for as long as it waits.
    */
   maxQueueWaitMs?: number;
   /**

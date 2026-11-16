@@ -336,6 +336,14 @@ export function registerReadbackVocabulary(
   );
 }
 
+/**
+ * How late either readback may still be heard, waiting its turn or resuming
+ * after a cut (issue #1681): 30 s, the tire-wear report's wait. It covers a
+ * full entry readback cut late by the pit-box count-in at a 60 km/h pit
+ * limit, which a 20 s wait would not. See the contract's comment.
+ */
+export const READBACK_MAX_QUEUE_WAIT_MS = 30_000;
+
 function readbackContract(reason: "entry" | "exit"): ScenarioContract {
   const isEntry = reason === "entry";
 
@@ -367,9 +375,28 @@ function readbackContract(reason: "entry" | "exit"): ScenarioContract {
     // re-firing from the top. The engine re-expands before resuming, so a
     // snapshot that changed while stashed still falls back to a full fresh
     // replay (the #481 freshness guarantee).
+    //
+    // `maxQueueWaitMs: READBACK_MAX_QUEUE_WAIT_MS` (issue #1681): a cut fire
+    // keeps its due time, so the resume after the count-in train is measured
+    // from when the readback took the bus, not from the cut. The time it
+    // played, the train ("five" to "pit now" is 6 s at a 60 km/h limit), the
+    // last mark's clip and the marks' 2.5 s pending hold all count: about
+    // 12.3 s for a full readback cut 3 s in. The 8 s default would drop that
+    // resume (as it already did before #1681 below about 77 km/h, measured
+    // from the cut). The longer wait is honest because the readback stays
+    // true while it waits: it re-expands from the live pit-service snapshot
+    // at replay (#481).
+    //
+    // `supersedeGroup: "pit-readback"` (issue #1681): the longer wait opens
+    // one wrong order, an entry readback still waiting when the stop is over.
+    // The exit readback is newer news about the same stop, so when it waits
+    // or takes the bus it drops a waiting entry readback. The tire-wear
+    // report's `queueBehind` names the exit readback by id and is untouched.
     weight: WEIGHT.CHATTER,
     queueable: true,
     resumable: true,
+    maxQueueWaitMs: READBACK_MAX_QUEUE_WAIT_MS,
+    supersedeGroup: "pit-readback",
     family: "pit-readback",
   };
 }

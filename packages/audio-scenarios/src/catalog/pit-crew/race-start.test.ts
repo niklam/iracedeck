@@ -21,6 +21,7 @@ import { SessionState, type TelemetryData } from "@iracedeck/iracing-sdk";
 import { classifySession } from "@iracedeck/sim-events-iracing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { NO_FRAME, WEIGHT } from "../../dsl.js";
 import type { AudioAssetsManifest } from "../../interpreter.js";
 import {
   _resetAudioScenarios,
@@ -177,6 +178,9 @@ const manifest: AudioAssetsManifest = {
     `voice/${VOICE}/position-number/70.mp3`,
     `voice/${VOICE}/setup-warning/qualifying-01.mp3`,
     `voice/${VOICE}/setup-warning/race-01.mp3`,
+    // The two lines that cut a brief at a start (issue #1681): the go and the spotter's "Car left".
+    `voice/${VOICE}/start-lights/start-go-01.mp3`,
+    `voice/${VOICE}/spotter/car-left.mp3`,
     `voice/${BARE_VOICE}/race-start-greeting/driver.mp3`,
     ...RACE_START_CLIPS.map((c) => `voice/${BARE_VOICE}/race-start/${c}.mp3`),
     ...SESSION_START_CLIPS.map((c) => `voice/${BARE_VOICE}/session-start/${c}.mp3`),
@@ -894,6 +898,144 @@ describe("settle wait for the conditions (issue #1284)", () => {
   });
 });
 
+// Issue #1681 (decision 9): a brief the start lights or the spotter call cut
+// is dropped at the cut, never replayed once the line is over — Niklas once
+// heard this brief play four times at a start, cut by the lights, then by
+// traffic. A brief that only waits its turn still plays within its 8 s wait,
+// and another queueable line cut the same way is still stashed and replayed:
+// the positive control, in the same fixture.
+describe("a cut brief is dropped, never replayed (issue #1681)", () => {
+  const BRIEF_ID = "pit-crew.race-start";
+  /** A queueable line at the brief's own weight, for the positive control. */
+  const LINE_ID = "test.queueable-line";
+  const LINE_CLIP = `voice/${VOICE}/setup-warning/race-01.mp3`;
+  /** A line heavier than the brief that does not interrupt. */
+  const HEAVIER_ID = "test.heavier-line";
+  const HEAVIER_CLIP = `voice/${VOICE}/setup-warning/qualifying-01.mp3`;
+  /** Live in the car: what the start-light gantry gate asks of the event's tick. */
+  const LIVE_IN_CAR = { IsOnTrack: true, IsReplayPlaying: false };
+  const greetings = () => voicePaths().filter((p) => p.endsWith("/race-start-greeting/niklas.mp3"));
+  const heard = (clip: string) => voicePaths().filter((p) => p === clip);
+
+  /** The two interrupt lines that cut a brief at a start, through the real catalog. */
+  const CUTS = [
+    {
+      name: "the start lights' go",
+      clip: `voice/${VOICE}/start-lights/start-go-01.mp3`,
+      cut: () => {
+        bus.publishEvent("startLight.start-go.raised", {}, LIVE_IN_CAR);
+        audio._triggerChannelEnd(AudioChannel.SFX); // its frame's open tick → the go
+      },
+      after: () => {},
+    },
+    {
+      name: "the spotter call",
+      clip: `voice/${VOICE}/spotter/car-left.mp3`,
+      cut: () => bus.publishEvent("radar.changed", { from: "clear", to: "left" }),
+      after: () => bus.publishEvent("radar.changed", { from: "left", to: "clear" }),
+    },
+  ] as const;
+
+  beforeEach(() => {
+    const engine = getScenarioEngine();
+
+    engine.defineScenario({
+      id: LINE_ID,
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      queueable: true,
+      frame: NO_FRAME,
+      sequence: ["voice/{voice}/setup-warning/race-01.mp3"],
+    });
+    engine.defineScenario({
+      id: HEAVIER_ID,
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      weight: WEIGHT.SAFETY,
+      frame: NO_FRAME,
+      sequence: ["voice/{voice}/setup-warning/qualifying-01.mp3"],
+    });
+    // The real go and spotter call: the bundled script's entries beside the brief's.
+    engine.setScripts(
+      new Map([
+        [
+          VOICE,
+          {
+            ...RACE_START_SCRIPT,
+            scenarios: {
+              ...RACE_START_SCRIPT.scenarios,
+              "pit-crew.start-light-go": SCRIPT.scenarios["pit-crew.start-light-go"],
+              "pit-crew.spotter-call": SCRIPT.scenarios["pit-crew.spotter-call"],
+            },
+          },
+        ],
+      ]),
+    );
+  });
+
+  /** 1 s into the line, `cut` cuts it; its line plays 0.7 s and ends; then everything left plays out. */
+  function cutBy({ clip, cut, after }: (typeof CUTS)[number]): void {
+    vi.advanceTimersByTime(1000);
+    cut();
+    expect(voicePaths().at(-1)).toBe(clip);
+    vi.advanceTimersByTime(700);
+    audio._triggerChannelEnd(AudioChannel.Voice);
+    after();
+    flush(audio);
+  }
+
+  describe.each(CUTS)("cut by $name", (cutter) => {
+    it("the brief playing is dropped at the cut and never replayed", () => {
+      publish(snap());
+      vi.advanceTimersByTime(RACE_START_DELAY_MS);
+      audio._triggerChannelEnd(AudioChannel.SFX); // the frame's open tick → the greeting
+      expect(greetings()).toHaveLength(1);
+
+      cutBy(cutter);
+
+      expect(mockLogger.debug).toHaveBeenCalledWith(`Scenario "${BRIEF_ID}" dropped — cut`);
+      expect(mockLogger.debug).not.toHaveBeenCalledWith(
+        `Scenario "${BRIEF_ID}" pending (1 of 1) — stashed (preempted)`,
+      );
+      expect(greetings()).toHaveLength(1);
+      expect(voicePaths().at(-1)).toBe(cutter.clip);
+    });
+
+    it("another queueable line cut the same way is still stashed and replays (positive control)", () => {
+      getScenarioEngine().fire(LINE_ID);
+      expect(heard(LINE_CLIP)).toHaveLength(1);
+
+      cutBy(cutter);
+
+      expect(mockLogger.debug).toHaveBeenCalledWith(`Scenario "${LINE_ID}" pending (1 of 1) — stashed (preempted)`);
+      expect(heard(LINE_CLIP)).toHaveLength(2);
+      expect(voicePaths().at(-1)).toBe(LINE_CLIP);
+    });
+  });
+
+  it("the brief only waiting its turn behind a heavier line, never cut, still plays within its 8 s wait", () => {
+    publish(snap());
+    vi.advanceTimersByTime(RACE_START_DELAY_MS - 100);
+    getScenarioEngine().fire(HEAVIER_ID);
+    vi.advanceTimersByTime(100);
+
+    expect(mockLogger.debug).toHaveBeenCalledWith(`Scenario "${BRIEF_ID}" pending (1 of 1) — deferred (bus busy)`);
+    expect(greetings()).toEqual([]);
+
+    // The heavier line holds the bus 7.9 s past the brief's due time.
+    vi.advanceTimersByTime(7900);
+    audio._triggerChannelEnd(AudioChannel.Voice);
+    flush(audio);
+
+    expect(greetings()).toHaveLength(1);
+    expect(voicePaths()[0]).toBe(HEAVIER_CLIP);
+    expect(hasClip("/session-start/wetness-mostly-dry.mp3")).toBe(true);
+    expect(mockLogger.debug.mock.calls.some(([m]) => String(m).startsWith(`Scenario "${BRIEF_ID}" dropped`))).toBe(
+      false,
+    );
+  });
+});
+
 describe("describeMissingStartConditions (issue #1284)", () => {
   it("is null once every condition is known", () => {
     expect(describeMissingStartConditions(snap())).toBeNull();
@@ -930,6 +1072,14 @@ describe("describeMissingStartConditions (issue #1284)", () => {
 });
 
 describe("buildRaceStartContract (issue #1065)", () => {
+  it("drops a cut brief rather than replaying it: dropWhenCut (issue #1681)", () => {
+    const c = buildRaceStartContract({ getRaceStartSnapshot: () => null, ...SIM_READS });
+
+    expect(c.dropWhenCut).toBe(true);
+    expect(c.queueable).toBe(true);
+    expect(c.resumable).toBeUndefined();
+  });
+
   it("carries no sequence and keeps every scheduling field verbatim — the 3 s trigger delay included, queueable since #1284 — taking the engine's default frame", () => {
     const c = buildRaceStartContract({ getRaceStartSnapshot: () => null, ...SIM_READS });
 

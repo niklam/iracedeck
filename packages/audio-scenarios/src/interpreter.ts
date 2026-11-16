@@ -241,8 +241,12 @@ export type ScenarioEngineState = {
       weight: number;
       /** The supersede group; the contract id when it declares none. */
       group: string;
-      /** `Date.now()` when the fire was first deferred. */
-      queuedAt: number;
+      /**
+       * `Date.now()` when the fire was due: first offered to its bus (issue
+       * #1681). A line an interrupt cut keeps the one it played with, so this
+       * can be earlier than the moment it was queued.
+       */
+      dueAt: number;
       maxWaitMs: number;
       /** The waiting leader this one plays right after (`queueBehind`), or `null`. */
       after: string | null;
@@ -886,7 +890,7 @@ function describeBus(bus: AudioBus, state: BusView | undefined): ScenarioEngineS
       id: e.id,
       weight: e.weight,
       group: e.group,
-      queuedAt: e.queuedAt,
+      dueAt: e.dueAt,
       maxWaitMs: e.maxWaitMs,
       after: e.after,
     })),

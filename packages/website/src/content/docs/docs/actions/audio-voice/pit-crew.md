@@ -117,7 +117,9 @@ The engineer also calls out every iRacing-reported pit-service status transition
 
 The engineer speaks one line at a time. A call that comes up while he is talking, or while the spotter is calling a car alongside, waits its turn instead of being lost, and when several calls are waiting the more urgent one goes first. Calls that pile up in a busy moment, such as a crash that brings out a full-course caution, wait their turn instead of crowding each other out — unless one would come too late to still be news, as below.
 
-Two things keep the radio from falling behind. A newer call replaces a waiting one that it makes out of date: a newer fuel estimate replaces the one still waiting, and a disqualification replaces a waiting black flag. And a call that can't be spoken within a few seconds of its moment is skipped, so you never hear a line about something that has already passed. News that stays true for longer waits longer: a penalty flag, the damage heads-up and the tire wear report wait up to half a minute for the radio, the full-course caution calls up to twenty seconds, and an incident call ten seconds.
+Two things keep the radio from falling behind. A newer call replaces a waiting one that it makes out of date: a newer fuel estimate replaces the one still waiting, and a disqualification replaces a waiting black flag. And a call that can't be spoken within a few seconds of its moment is skipped, so you never hear a line about something that has already passed. News that stays true for longer waits longer: a penalty flag, the damage heads-up, the tire wear report and the pit service readbacks wait up to half a minute for the radio, the full-course caution calls up to twenty seconds, and an incident call ten seconds.
+
+A call cut short by a more urgent one, such as the spotter calling a car alongside, is picked up again afterwards only within that same limit, counted from its moment rather than from the cut. The [session-start](#session-start) and [race-start](#race-start) briefs are not repeated at all once cut short.
 
 ## Start Lights
 
@@ -305,6 +307,8 @@ Right after a session change iRacing can take a moment to report the track condi
 
 Units follow iRacing's own display setting — metric drivers hear km/h and temperatures in Celsius, imperial drivers hear mph and temperatures in Fahrenheit. A temperature is read as its figure and the word "degrees" in one breath, and the unit's name isn't spoken, and a reading below zero is read as "minus" ("minus four degrees"). The pit speed limit is rounded to the nearest whole unit before it's spoken, and is only read out when it matches one of the known iRacing pit limits the engineer has a clip for — otherwise the pit-speed part of the brief is simply skipped rather than guessing a number.
 
+If an urgent call, such as the spotter calling a car alongside, cuts the brief short, the brief is not repeated.
+
 In **race** sessions the session-start brief is suppressed entirely — the dedicated **Race Start** callout below takes its place.
 
 ## Race Start
@@ -318,6 +322,8 @@ A few seconds after iRacing changes to a race session — even if you're still i
 In a multi-class race the grid position is your **class** grid slot, not your overall qualifying rank — so a GT3 racer who qualified P15 overall but third in class hears *"Qualifying put us to P three,"* and leading your class off the line plays *"Starting from pole."* This matches how the rest of the race callouts focus on your class.
 
 Because the callout fires off the session-change event, it arrives in time to be useful during grid prep — even if you sit in the garage. Practice and qualifying sessions get the same treatment from the session-start brief above, which fires the same way at session start.
+
+If an urgent call, such as the start lights or the spotter calling a car alongside, cuts the brief short, the brief is not repeated, so a busy start never plays it over and over.
 
 ## Setup Warning
 
@@ -486,6 +492,8 @@ As you drive down pit road toward your box, the Race Engineer counts the remaini
 The box location comes straight from iRacing (`DriverInfo.DriverPitTrkPct`), so the count-in works on your very first stop of a session — no need to have visited the box before. Each mark is spoken once per pit-road visit and the count resets when you leave pit road, so a second stop counts down again. If you join pit road already within range, only the marks still ahead of you are spoken, and once you've passed the box the count stops. The six marks share a `pit-box` family, so a quick approach that crosses two marks in close succession cleanly preempts the in-flight clip.
 
 The count-in fires whenever you're on pit road approaching your box, so it isn't tied to having requested pit service — a drive-through will count down too.
+
+The count-in takes priority over the [pit entry readback](#pit-service-readback): a readback the count-in cuts short continues where it left off once the count is done, or starts over if you changed the queued service in the meantime.
 
 ## Pit road speeding
 

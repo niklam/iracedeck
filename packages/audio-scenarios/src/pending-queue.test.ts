@@ -7,8 +7,8 @@ function relations(map: Record<string, string[]>) {
   return (followerId: string, leaderId: string) => map[followerId]?.includes(leaderId) ?? false;
 }
 
-function input(id: string, weight: number, queuedAt = 0, extra: Partial<OfferInput<string>> = {}): OfferInput<string> {
-  return { id, weight, group: id, queuedAt, maxWaitMs: 8000, fire: id, ...extra };
+function input(id: string, weight: number, dueAt = 0, extra: Partial<OfferInput<string>> = {}): OfferInput<string> {
+  return { id, weight, group: id, dueAt, maxWaitMs: 8000, fire: id, ...extra };
 }
 
 const ids = (q: PendingQueue<string>) => q.ordered().map((e) => e.id);
@@ -47,7 +47,7 @@ describe("PendingQueue (issue #1185)", () => {
     q.offer(input("readout", 40, 0), 0);
     q.offer(input("readout", 40, 5), 5);
     expect(q.size).toBe(1);
-    expect(q.ordered()[0].queuedAt).toBe(5);
+    expect(q.ordered()[0].dueAt).toBe(5);
   });
 
   it("a stash that yields to its group is itself dropped when a newer entry of the group waits", () => {
@@ -60,7 +60,7 @@ describe("PendingQueue (issue #1185)", () => {
     ]);
     expect(r.position).toBeNull();
     expect(ids(q)).toEqual(["b"]);
-    expect(q.ordered()[0].queuedAt).toBe(10);
+    expect(q.ordered()[0].dueAt).toBe(10);
   });
 
   it("a stash that yields to its group waits as usual when nothing of its group waits", () => {
@@ -171,15 +171,65 @@ describe("PendingQueue (issue #1185)", () => {
     expect(q.next(8000).entry?.id).toBe("a");
   });
 
-  it("a re-offered entry keeps its original queuedAt, so its wait runs from the first deferral", () => {
+  it("a re-offered entry keeps its original dueAt, so its wait runs from the first deferral", () => {
     const q = new PendingQueue<string>(relations({}));
     q.offer(input("a", 50, 0), 5000);
-    expect(q.ordered()[0].queuedAt).toBe(0);
+    expect(q.ordered()[0].dueAt).toBe(0);
     const { entry, drops } = q.next(8500);
     expect(entry).toBeNull();
     expect(drops).toEqual([
       { entry: expect.objectContaining({ id: "a" }), reason: { kind: "expired", waitedMs: 8500, maxWaitMs: 8000 } },
     ]);
+  });
+
+  describe("a newcomer already past its max wait (issue #1681)", () => {
+    it("is not placed: it comes back expired and leaves a waiting entry of its group in place", () => {
+      const q = new PendingQueue<string>(relations({}));
+      q.offer(input("newer", 50, 9000, { group: "lines" }), 9000);
+
+      const r = q.offer(input("cut", 50, 0, { group: "lines" }), 9000);
+
+      expect(r.drops).toEqual([
+        {
+          entry: expect.objectContaining({ id: "cut" }),
+          reason: { kind: "expired", waitedMs: 9000, maxWaitMs: 8000 },
+        },
+      ]);
+      expect(r.position).toBeNull();
+      expect(r.behind).toBeNull();
+      expect(ids(q)).toEqual(["newer"]);
+    });
+
+    it("does not count toward the cap, so no waiting entry is its victim", () => {
+      const q = new PendingQueue<string>(relations({}));
+
+      for (const [id, weight] of [
+        ["light", 10],
+        ["b", 50],
+        ["c", 50],
+        ["d", 50],
+      ] as const)
+        q.offer(input(id, weight, 9000), 9000);
+
+      const r = q.offer(input("cut", 50, 0), 9000);
+
+      expect(r.drops.map((d) => [d.entry.id, d.reason.kind])).toEqual([["cut", "expired"]]);
+      expect(r.position).toBeNull();
+      expect(ids(q)).toEqual(["b", "c", "d", "light"]);
+    });
+
+    it("exactly at its max wait is placed, and supersedes its group as usual", () => {
+      const q = new PendingQueue<string>(relations({}));
+      q.offer(input("older", 50, 7000, { group: "lines" }), 7000);
+
+      const r = q.offer(input("cut", 50, 0, { group: "lines" }), 8000);
+
+      expect(r.drops).toEqual([
+        { entry: expect.objectContaining({ id: "older" }), reason: { kind: "superseded", by: "cut" } },
+      ]);
+      expect(r.position).toBe(1);
+      expect(ids(q)).toEqual(["cut"]);
+    });
   });
 
   it("next() never serves a follower before its leader, and frees it once the leader is taken", () => {

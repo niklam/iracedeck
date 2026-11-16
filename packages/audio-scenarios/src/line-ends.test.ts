@@ -93,6 +93,7 @@ function fire(
     usedChannels: new Set(),
     event: null,
     sessionGeneration: 0,
+    dueAt: 0,
     cutTail: [],
     ended: false,
     ...f,

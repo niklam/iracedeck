@@ -53,6 +53,20 @@ export function validateScenario(
     errors.push("resumable requires queueable: true (only a queueable fire is stashed for idle-replay)");
   }
 
+  // Dropped when cut (issue #1681): only a queueable fire is ever stashed, so
+  // `dropWhenCut` without `queueable` would be a silent no-op like
+  // `resumable` above; and a fire that is never replayed after a cut has
+  // nothing to resume from, so the two together contradict each other.
+  if (s.dropWhenCut === true) {
+    if (s.queueable !== true) {
+      errors.push("dropWhenCut requires queueable: true (only a queueable fire is stashed for idle-replay)");
+    }
+
+    if (s.resumable === true) {
+      errors.push("dropWhenCut and resumable are mutually exclusive (a fire dropped when cut never resumes)");
+    }
+  }
+
   // Waiting behind another contract (issue #1108) is a refinement of
   // waiting at all: a non-queueable fire is dropped before the slot is ever
   // looked at, so `queueBehind` without `queueable` would be a silent no-op

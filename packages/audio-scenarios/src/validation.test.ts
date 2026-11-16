@@ -158,6 +158,45 @@ describe("validateScenario", () => {
     expect(errorLogs).toEqual([]);
   });
 
+  it("flags dropWhenCut without queueable (issue #1681)", () => {
+    engine.defineScenario({
+      id: "bad",
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      dropWhenCut: true,
+      sequence: ["pit-crew/greeting/a.mp3"],
+    });
+
+    expect(errorLogs.join("\n")).toContain("dropWhenCut requires queueable: true");
+  });
+
+  it("flags dropWhenCut together with resumable (issue #1681)", () => {
+    engine.defineScenario({
+      id: "bad",
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      queueable: true,
+      resumable: true,
+      dropWhenCut: true,
+      sequence: ["pit-crew/greeting/a.mp3"],
+    });
+
+    expect(errorLogs.join("\n")).toContain("dropWhenCut and resumable are mutually exclusive");
+  });
+
+  it("accepts dropWhenCut when queueable is set (issue #1681)", () => {
+    engine.defineScenario({
+      id: "good-drop-when-cut",
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      queueable: true,
+      dropWhenCut: true,
+      sequence: ["pit-crew/greeting/a.mp3"],
+    });
+
+    expect(errorLogs).toEqual([]);
+  });
+
   it("flags queueBehind without queueable (issue #1108)", () => {
     engine.defineScenario({
       id: "bad",
