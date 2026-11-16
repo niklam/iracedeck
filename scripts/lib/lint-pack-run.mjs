@@ -101,15 +101,15 @@ export const PLUGIN_PLAYED_CLIPS = Object.freeze([
   {
     group: "toggle",
     base: "corner-names-on",
-    // audio-toggles.ts (`toggleCornerNamesFeature`):
-    // `voice/${voice}/toggle/corner-names-${next ? "on" : "off"}-01.mp3`.
+    // audio-toggles.ts (`toggleTrackCallouts` → `playTrackCallsAck`, #1699):
+    // `voice/${voice}/toggle/corner-names-${on ? "on" : "off"}-01.mp3`.
     playedBy:
       "Played by the plugin itself, outside the script: the acknowledgment when corner-name callouts are switched on, as toggle/corner-names-on-01.",
   },
   {
     group: "toggle",
     base: "corner-names-off",
-    // audio-toggles.ts (`toggleCornerNamesFeature`), the `off` side.
+    // audio-toggles.ts (`toggleTrackCallouts` → `playTrackCallsAck`), the `off` side.
     playedBy:
       "Played by the plugin itself, outside the script: the acknowledgment when corner-name callouts are switched off, as toggle/corner-names-off-01.",
   },
