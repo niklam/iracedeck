@@ -665,6 +665,13 @@ export type TrafficRejoinState = {
   slowSince: number | null;
   /** In an episode: when the current run of ticks above the end speed began; `null` outside one. */
   movingSince: number | null;
+  /**
+   * In an episode: when the current run of ticks failing an entry gate began,
+   * `null` while every gate holds. The episode ends only once the failure has
+   * held for `TRAFFIC_REJOIN_GATE_GRACE_MS`, so a one-tick blip is not a new
+   * stop; leaving the car and the garage end it at once and never set it.
+   */
+  gateFailedSince: number | null;
   /** When the episode last evaluated the arrivals; `null` before its first evaluation. */
   lastEvalAt: number | null;
   /** The band last spoken this episode; `null` until the entry call is spoken. */
@@ -687,6 +694,7 @@ export function createTrafficRejoinState(): TrafficRejoinState {
     active: false,
     slowSince: null,
     movingSince: null,
+    gateFailedSince: null,
     lastEvalAt: null,
     spokenBand: null,
     spokenSeconds: null,

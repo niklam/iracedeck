@@ -26,6 +26,7 @@ import {
   TRAFFIC_REJOIN_END_DWELL_MS,
   TRAFFIC_REJOIN_ENTRY_DWELL_MS,
   TRAFFIC_REJOIN_EVAL_INTERVAL_MS,
+  TRAFFIC_REJOIN_GATE_GRACE_MS,
   TRAFFIC_REJOIN_MOVING_MPS,
   type TrafficRejoinTelemetry,
 } from "./traffic-rejoin.js";
@@ -286,6 +287,94 @@ describe("diffTrafficRejoin", () => {
       h.run(30_000, tel({ Speed: TRAFFIC_CRAWL_MPS + 1 }));
 
       expect(h.events).toEqual([]);
+    });
+  });
+
+  describe("a gate failing mid-episode", () => {
+    const blips: Array<[string, TickOptions]> = [
+      ["a Speed dropout", { Speed: undefined }],
+      ["a Speed read as NaN", { Speed: Number.NaN }],
+      ["a surface flicker", { PlayerTrackSurface: TrkLoc.NotInWorld }],
+      ["a lost lap position", { pct: -1 }],
+      ["an OnPitRoad flicker", { OnPitRoad: true }],
+      ["an unread SessionState", { SessionState: undefined }],
+    ];
+
+    it.each(blips)("keeps the episode through one tick of %s: no new episode, no repeated entry line", (_, blip) => {
+      const h = harness();
+      const cars = [behind(5, 12.5)];
+
+      h.stop(tel({ cars }));
+      h.after(100, tel({ cars, ...blip }));
+      h.run(5_000, tel({ cars }));
+
+      expect(h.events).toEqual([OVER_TEN]);
+      expect(h.episode.active).toBe(true);
+    });
+
+    it("ends it once the failure has held for the grace, silently, and a fresh dwell starts the next", () => {
+      const h = harness();
+      const cars = [behind(5, 12.5)];
+      const failing = tel({ cars, Speed: undefined });
+
+      h.stop(tel({ cars }));
+      h.after(100, failing);
+      h.after(TRAFFIC_REJOIN_GATE_GRACE_MS - 1, failing);
+      expect(h.episode.active).toBe(true);
+
+      h.after(1, failing);
+      expect(h.episode.active).toBe(false);
+      expect(h.events).toEqual([OVER_TEN]);
+
+      h.stop(tel({ cars }));
+      expect(h.events).toEqual([OVER_TEN, OVER_TEN]);
+    });
+
+    it("counts the grace from the first failing tick, whichever gate fails after it", () => {
+      const h = harness();
+
+      h.stop();
+      h.after(100, tel({ Speed: undefined }));
+      h.after(TRAFFIC_REJOIN_GATE_GRACE_MS / 2, tel({ OnPitRoad: true }));
+      h.after(TRAFFIC_REJOIN_GATE_GRACE_MS / 2, tel({ PlayerTrackSurface: TrkLoc.NotInWorld }));
+
+      expect(h.episode.active).toBe(false);
+    });
+
+    it("restarts the grace once every gate holds again", () => {
+      const h = harness();
+
+      h.stop();
+      h.after(100, tel({ Speed: undefined }));
+      h.after(TRAFFIC_REJOIN_GATE_GRACE_MS - 100, tel());
+      h.after(100, tel({ Speed: undefined }));
+      h.after(TRAFFIC_REJOIN_GATE_GRACE_MS - 1, tel({ Speed: undefined }));
+
+      expect(h.episode.active).toBe(true);
+    });
+
+    it.each([
+      ["leaving the car", { IsOnTrack: false }],
+      ["the garage", { IsInGarage: true }],
+    ] satisfies Array<[string, TickOptions]>)("ends it at once on %s, with no grace", (_, gate) => {
+      const h = harness();
+
+      h.stop();
+      h.after(100, tel(gate));
+
+      expect(h.episode.active).toBe(false);
+    });
+
+    it("says nothing while a gate fails, and evaluates on the first tick the gates hold again", () => {
+      const h = harness();
+
+      h.stop(tel({ cars: [behind(5, 12.5)] }));
+      // The car closes into near while the speed is unread: no evaluation.
+      h.after(TRAFFIC_REJOIN_EVAL_INTERVAL_MS, tel({ cars: [behind(5, 6.5)], Speed: undefined }));
+      expect(h.events).toEqual([OVER_TEN]);
+
+      h.after(100, tel({ cars: [behind(5, 6.4)] }));
+      expect(h.events).toEqual([OVER_TEN, near(6, true)]);
     });
   });
 
@@ -806,13 +895,21 @@ describe("diffTrafficRejoin", () => {
       );
     });
 
-    it("name the failed gate that ended an episode", () => {
+    it("name the failed gate that ended an episode, and a blip the episode was held through", () => {
       const h = harness();
 
       h.stop();
+      h.after(100, tel({ Speed: undefined }));
+      h.after(100, tel());
       h.after(100, tel({ OnPitRoad: true }));
+      h.after(TRAFFIC_REJOIN_GATE_GRACE_MS, tel({ OnPitRoad: true }));
 
-      expect(h.debug.mock.calls.flat().at(-1)).toBe("Rejoin: episode ended (pitRoad)");
+      expect(h.debug.mock.calls.flat().slice(-4)).toEqual([
+        "Rejoin: gate failed (noSpeed), episode held",
+        "Rejoin: gates hold again after 100 ms, episode kept",
+        "Rejoin: gate failed (pitRoad), episode held",
+        "Rejoin: episode ended (pitRoad)",
+      ]);
     });
   });
 });

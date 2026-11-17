@@ -14,11 +14,17 @@
  * `SessionState` past the green (`isPreGreen` false, which keeps the grid
  * out), a readable speed and a player position on the lap. No incident
  * precondition: a stall, a stop to avoid a crash and an unscored spin need
- * the same answer. It ends silently when any gate fails, or once the car has
- * been above {@link TRAFFIC_REJOIN_MOVING_MPS} for
- * {@link TRAFFIC_REJOIN_END_DWELL_MS}: the gap between the two speeds is the
- * hysteresis, so a car creeping through a gravel trap does not flicker in and
- * out of an episode.
+ * the same answer. It ends silently once the car has been above
+ * {@link TRAFFIC_REJOIN_MOVING_MPS} for {@link TRAFFIC_REJOIN_END_DWELL_MS}:
+ * the gap between the two speeds is the hysteresis, so a car creeping through
+ * a gravel trap does not flicker in and out of an episode. It ends silently
+ * at once when the player leaves the car or is in the garage, and on any
+ * other gate failing only once that failure has held for
+ * {@link TRAFFIC_REJOIN_GATE_GRACE_MS}: a tick or two the sim did not send or
+ * misread (a `Speed` dropout, a surface flicker at the edge of the run-off) is
+ * not the end of the stop, and ending on it would start a new episode after the
+ * entry dwell and repeat the entry line about the same cars. While a gate
+ * fails, nothing is evaluated or said.
  *
  * **The band.** On entry and then every {@link TRAFFIC_REJOIN_EVAL_INTERVAL_MS},
  * every car on the racing surface is timed to the player's lap position P
@@ -116,6 +122,16 @@ export const TRAFFIC_REJOIN_MOVING_MPS = 8;
 export const TRAFFIC_REJOIN_END_DWELL_MS = 2_000;
 
 /**
+ * How long an entry gate other than leaving the car or the garage must keep
+ * failing before a running episode ends (ms). Many times a blip at 60 Hz (a
+ * tick or two of a field the sim did not send or misread), so a blip keeps the
+ * episode and its record of what was said; short enough that a real change,
+ * such as rolling onto pit road, ends it within a second, with nothing spoken
+ * in between.
+ */
+export const TRAFFIC_REJOIN_GATE_GRACE_MS = 1_000;
+
+/**
  * How often an episode re-times the cars (ms): once a second, the resolution
  * the spoken whole seconds have. Each evaluation may or may not speak.
  */
@@ -142,6 +158,15 @@ const BAND_RANK: Record<Band, number> = { rightBehind: 0, near: 1, overTen: 2, c
 
 /** Why an evaluation speaks, named in its debug line. */
 type SpeakReason = "entry" | "closer band" | "count" | "after a close car";
+
+/**
+ * Whether a failed gate ends a running episode at once rather than after
+ * {@link TRAFFIC_REJOIN_GATE_GRACE_MS} (module header): leaving the car and the
+ * garage are what the player did, not a reading that blipped.
+ */
+function endsAtOnce(gate: RejoinGate): boolean {
+  return gate === "notInCar" || gate === "inGarage";
+}
 
 /** The first entry gate the tick fails, or `null` when every one holds (module header). */
 function failedGate(telemetry: TrafficRejoinTelemetry, playerCarIdx: number): RejoinGate | null {
@@ -206,11 +231,27 @@ export function diffTrafficRejoin(
   const gate = failedGate(telemetry, playerCarIdx);
 
   if (gate !== null) {
+    if (episode.active && !endsAtOnce(gate)) {
+      if (episode.gateFailedSince === null || episode.gateFailedSince > now) {
+        if (episode.gateFailedSince === null) logger.debug(`Rejoin: gate failed (${gate}), episode held`);
+
+        episode.gateFailedSince = now;
+      }
+
+      if (elapsed(now, episode.gateFailedSince) < TRAFFIC_REJOIN_GATE_GRACE_MS) return;
+    }
+
+    // Outside an episode, any failure restarts the entry dwell.
     if (episode.active) logger.debug(`Rejoin: episode ended (${gate})`);
 
     Object.assign(episode, createTrafficRejoinState());
 
     return;
+  }
+
+  if (episode.gateFailedSince !== null) {
+    logger.debug(`Rejoin: gates hold again after ${elapsed(now, episode.gateFailedSince)} ms, episode kept`);
+    episode.gateFailedSince = null;
   }
 
   // The gate checked both.
