@@ -72,7 +72,8 @@
  * cautious direction, since a car left out can never be a warning: on its
  * first readings, after a gap in them longer than
  * {@link TRAFFIC_MOTION_MAX_AGE_S}, after a jump faster than
- * {@link TRAFFIC_MOTION_MAX_PLAUSIBLE_MPS} (a tow, a reset), with a rate older
+ * {@link TRAFFIC_MOTION_MAX_PLAUSIBLE_MPS} (a tow, a reset; judged on every
+ * reading, a window not yet complete included), with a rate older
  * than {@link TRAFFIC_MOTION_MAX_AGE_S}, and without a track length or a
  * `SessionTime`. A close car that stops is therefore gone, as one that drove
  * by is, and comes back as a new car coming when it moves again.
@@ -153,7 +154,8 @@ export const TRAFFIC_MOTION_MAX_AGE_S = 1;
 
 /**
  * The fastest progress (m/s) a car is taken to have driven: 540 km/h, beyond
- * any car iRacing runs. Anything faster across a window is a tow, a reset or a
+ * any car iRacing runs. Anything faster since the window began, on any
+ * reading and not only the one that completes it, is a tow, a reset or a
  * reading that jumped, so the window restarts at the new position with no
  * rate. The pit-lane learner's own bound is the same number for the same
  * reason (`PIT_LANE_MAX_PLAUSIBLE_SPEED_MPS`), kept separate because that one
@@ -383,19 +385,25 @@ function nextMotion(
   // can span: start again here, with no rate.
   if (!(span > 0) || span > TRAFFIC_MOTION_MAX_AGE_S) return seedMotion(pct, sessionTime);
 
-  if (span < TRAFFIC_MOTION_WINDOW_S) return prev;
-
   // The shorter way round the lap, so a car crossing the line moves by its
   // few metres, not by a lap.
   const delta = pitLaneSignedDeltaPct(prev.fromPct, pct);
+  const hasLength = trackLengthMeters !== null && trackLengthMeters > 0;
 
-  // Without a track length no move can be judged plausible; a tow or a reset
-  // moves a car faster than any car drives.
-  if (trackLengthMeters === null || !(trackLengthMeters > 0)) return seedMotion(pct, sessionTime);
-
-  if (Math.abs(delta) * trackLengthMeters > TRAFFIC_MOTION_MAX_PLAUSIBLE_MPS * span) {
+  // A tow or a reset moves a car faster than any car drives. Judged before the
+  // window is complete too: a car measured standing that is towed or reset
+  // inside the window would otherwise keep its stale standing rate until the
+  // window completed, and be left out of the arrivals while it sat on the
+  // approach to P. Starting again with no rate counts it as moving.
+  if (hasLength && Math.abs(delta) * trackLengthMeters > TRAFFIC_MOTION_MAX_PLAUSIBLE_MPS * span) {
     return seedMotion(pct, sessionTime);
   }
+
+  // A plausible move inside the window is left unmeasured until it completes.
+  if (span < TRAFFIC_MOTION_WINDOW_S) return prev;
+
+  // Without a track length no move can be judged plausible, so none is measured.
+  if (!hasLength) return seedMotion(pct, sessionTime);
 
   return { fromPct: pct, fromTime: sessionTime, rate: delta / span, rateAt: sessionTime };
 }
