@@ -63,6 +63,7 @@ import {
 } from "./rolling-start-grid.js";
 import { type ComposedTarget, composeSectorComparison } from "./sector-comparison-snapshot.js";
 import type { ShortcutPrecondition } from "./shortcut-preconditions.js";
+import { TRAFFIC_REJOIN_SEQUENCE } from "./traffic-telemetry.js";
 
 /** Fields every shortcut carries, whatever it drives. */
 type ScenarioShortcutBase = {
@@ -2385,6 +2386,11 @@ const CAUTION_CATCH_UP_SHORTCUT: TelemetrySequenceShortcut = {
         OnPitRoad: false,
         PlayerCarInPitStall: false,
         PlayerTrackSurface: TrkLoc.OnTrack,
+        // Rolling with the pack at caution pace (#1113): pinned, so the car is
+        // never read as stopped on the circuit, which the rejoin detector would
+        // answer with a traffic line of its own whatever speed the previous
+        // button left the car at (#1349).
+        Speed: FORMATION_PACE_SPEED,
         SessionState: SessionState.Racing,
         SessionFlags: RACING_NO_FLAG,
         CarIdxPaceLine: NOBODY_LINED_UP,
@@ -3473,6 +3479,91 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
   radar("Both Sides", "clear", "both"),
   radar("Two Left", "left", "two-left"),
   radar("Two Right", "right", "two-right"),
+
+  // ── Traffic (issue #1113) ──
+  // `traffic.rejoin` / `traffic.pitExit` directly — bypasses the detectors'
+  // stopped-on-track and pit-exit gating, so each line is auditionable on
+  // demand. Only the close band speaks a number: its two calls are composed
+  // from pools (an intro or update intro, the seconds, and on the first call
+  // an outro), so a repeated press picks other takes. The pit-exit lines
+  // speak no number (the payload's seconds are for logs).
+  {
+    id: "traffic-rejoin-right-behind",
+    category: "Traffic",
+    label: "Rejoin right behind",
+    description:
+      'Stopped on track, the nearest car under 2 s away — "Car right behind you. Watch out." or another of its four lines. Cuts any lower-weight line in flight. Unframed.',
+    event: "traffic.rejoin",
+    data: { verdict: "rightBehind" },
+  },
+  {
+    id: "traffic-rejoin-near-first",
+    category: "Traffic",
+    label: "Rejoin near, first call",
+    description:
+      'Stopped on track, a car comes within 10 s: the first call, 5 s — an intro leading into the seconds, then an outro, e.g. "Car coming in about five seconds. Watch out." Cuts any lower-weight line in flight. Unframed.',
+    event: "traffic.rejoin",
+    data: { verdict: "near", seconds: 5, first: true },
+  },
+  {
+    id: "traffic-rejoin-near-update",
+    category: "Traffic",
+    label: "Rejoin near, count",
+    description:
+      'Still stopped, the same car now 2 s away: the count — an update intro leading into the seconds, e.g. "Getting closer, about two seconds." Press it while the first call still plays to hear the newer line replace it. Unframed.',
+    event: "traffic.rejoin",
+    data: { verdict: "near", seconds: 2, first: false },
+  },
+  {
+    id: "traffic-rejoin-over-ten",
+    category: "Traffic",
+    label: "Rejoin over ten",
+    description:
+      'Stopped on track, the nearest car 10 to 15 s away — "Next car is more than ten seconds away. Be careful." or another of its four lines. Waits for a line in flight. Unframed.',
+    event: "traffic.rejoin",
+    data: { verdict: "overTen" },
+  },
+  {
+    id: "traffic-rejoin-clear",
+    category: "Traffic",
+    label: "Rejoin clear",
+    description:
+      'Stopped on track, no car within 15 s — "Clear to rejoin." or another of its four lines. Waits for a line in flight. Unframed.',
+    event: "traffic.rejoin",
+    data: { verdict: "clear" },
+  },
+  {
+    id: "traffic-pit-exit-traffic",
+    category: "Traffic",
+    label: "Pit exit traffic",
+    description:
+      'Leaving the pit box, a car is predicted at the end of the exit blend 1.5 s after you — "We\'re estimating traffic at the pit exit. Watch out." or another of its four lines. Cuts any lower-weight line in flight, the exit readback and tire-wear report included.',
+    event: "traffic.pitExit",
+    data: { verdict: "traffic", seconds: 1.5 },
+  },
+  {
+    id: "traffic-pit-exit-clear",
+    category: "Traffic",
+    label: "Pit exit clear",
+    description:
+      'Leaving the pit box, the nearest car is predicted at the end of the exit blend 7 s after you — "Looks like the pit exit will be clear." or another of its four lines. Cuts any lower-weight line in flight, the exit readback and tire-wear report included.',
+    event: "traffic.pitExit",
+    data: { verdict: "clear", seconds: 7 },
+  },
+  // The rejoin detector itself (issue #1113): a field of three cars in two
+  // classes driven through the translator, so the verdicts, the numbers and
+  // when each is said are the detector's decisions, not a payload. The pit
+  // exit has no such button yet: the running harness's translator has no
+  // learned landmarks to judge it against (`traffic-telemetry.ts`).
+  {
+    id: "traffic-rejoin-train",
+    category: "Traffic",
+    label: "Rejoin → three cars coming",
+    requires: ["player-car-index", "sdk-connected"],
+    description:
+      'Drives the TRANSLATOR: you spin to a stop on the circuit while a car closes from 25 to 12, 8, 5 and 1.5 seconds away and goes by, with two more behind it, in two classes. About seventeen seconds. Apply the race session preset first (it names your car); no telemetry preset is needed, the button puts the field on track itself. Expect seven lines, each drawn from its pools so the wording varies: a clear line on stopping ("Clear to rejoin."), a more-than-ten line as the lead car closes to 12 s ("Next car is more than ten seconds away. Be careful."), the first call at 8 s ("Car coming in about eight seconds. Watch out."), the count at 5 s ("Getting closer, about five seconds."), the right-behind line at 1.5 s ("Car right behind you. Watch out."), and once it has gone by, the next car\'s band once ("Next car is more than ten seconds away. Be careful.") and its own first call at 6 s ("Car coming in about six seconds. Watch out."). Nothing as you drive away. Refused while the mock SDK is disconnected: a disconnected translator sees no ticks.',
+    telemetrySequence: TRAFFIC_REJOIN_SEQUENCE,
+  },
 
   // ── Track Conditions — Worsening ──
   // `track.wetness.changed` transitions where `to > from`. Bypasses the sim
