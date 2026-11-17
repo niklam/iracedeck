@@ -38,6 +38,7 @@ import {
   PIT_WINDOW_CALLOUTS,
   ROLLING_START_CALLOUTS,
   TIRE_WEAR_CALLOUTS,
+  TRAFFIC_CALLOUTS,
 } from "@iracedeck/callout-settings";
 import type { IEventBus, SessionClass, SimEventMap, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import { OpponentPenaltyFlag } from "@iracedeck/event-bus";
@@ -72,6 +73,7 @@ import {
   type RollingStartCalloutId,
   stopRaceEngineerScenarios,
   type TireWearCalloutId,
+  type TrafficCalloutId,
 } from "./index.js";
 import { _resetLimiterCueEngine } from "./limiter-cue-engine.js";
 import { NO_LIMITER_CLIP_SOURCES } from "./no-limiter.js";
@@ -403,6 +405,22 @@ const TELEMETRY_READOUT_CLIP_PATHS = [
   `voice/${VOICE}/numbers-degrees/41.mp3`,
 ] as const;
 
+// Approaching-traffic clips (issue #1113): one take of every pool the bundled
+// script addresses, and the four-second middle the composed lines speak.
+const TRAFFIC_CLIP_PATHS = [
+  ...[
+    "rejoin-intro",
+    "rejoin-outro",
+    "rejoin-update",
+    "rejoin-right-behind",
+    "rejoin-over-ten",
+    "rejoin-clear",
+    "pit-exit-traffic",
+    "pit-exit-clear",
+    "rejoin-mid-4",
+  ].map((base) => `voice/${VOICE}/traffic/${base}-01.mp3`),
+] as const;
+
 const manifest: AudioAssetsManifest = {
   clips: [
     "sfx/IRD-tick-open.mp3",
@@ -424,6 +442,7 @@ const manifest: AudioAssetsManifest = {
     ...PIT_LIMITER_CLIP_PATHS,
     ...TIRE_WEAR_CLIP_PATHS,
     ...TELEMETRY_READOUT_CLIP_PATHS,
+    ...TRAFFIC_CLIP_PATHS,
   ],
   ambientLoop: "sfx/IRD-ambient-pit.mp3",
   ticks: { open: "sfx/IRD-tick-open.mp3", close: "sfx/IRD-tick-close.mp3" },
@@ -511,6 +530,7 @@ let pitBoxEnabled: boolean;
 let pitWindowEnabled: Map<PitWindowCalloutId, boolean>;
 let tireWearEnabled: Map<TireWearCalloutId, boolean>;
 let opponentPitEnabled: Map<OpponentPitCalloutId, boolean>;
+let trafficEnabled: Map<TrafficCalloutId, boolean>;
 /** The shared `getLiveCarPosition` dep's answer for every car (#1577): opponent pit, opponent flags and fastest lap all read it. */
 let liveCarPosition: number | null;
 let rollingStartEnabled: Map<RollingStartCalloutId, boolean>;
@@ -543,6 +563,10 @@ beforeEach(() => {
     ["leader", true],
     ["nearby", true],
   ]);
+  trafficEnabled = new Map<TrafficCalloutId, boolean>([
+    ["rejoin", true],
+    ["pit-exit", true],
+  ]);
   liveCarPosition = 4;
   _resetOpponentPitPending();
   rollingStartEnabled = new Map<RollingStartCalloutId, boolean>([["pace-car", true]]);
@@ -573,6 +597,7 @@ beforeEach(() => {
     familyGate(ROLLING_START_CALLOUTS, (id) => rollingStartEnabled.get(id) ?? true),
     familyGate(FUEL_CALLOUTS, (id) => fuelEnabled.get(id) ?? true),
     familyGate(OPPONENT_PIT_CALLOUTS, (id) => opponentPitEnabled.get(id) ?? true),
+    familyGate(TRAFFIC_CALLOUTS, (id) => trafficEnabled.get(id) ?? true),
     familyGate(PIT_LIMITER_CALLOUTS, getPitLimiterEnabled),
     familyGate(NO_LIMITER_CALLOUTS, getNoLimiterEnabled),
   ];
@@ -930,7 +955,7 @@ describe("radio frame comes from the engine, not the catalog (issue #1064)", () 
     }
   });
 
-  it("only the five terse families opt out of the frame, and only via `frame: NO_FRAME`", () => {
+  it("only the six terse families opt out of the frame, and only via `frame: NO_FRAME`", () => {
     const explicit = registered().filter((s) => s.frame !== undefined);
 
     // Nothing names a frame other than the opt-out: the default (`radio`)
@@ -952,6 +977,10 @@ describe("radio frame comes from the engine, not the catalog (issue #1064)", () 
         // Spotter calls (decision D1) and their informational sibling.
         "pit-crew.spotter-call",
         "pit-crew.spotter-info",
+        // Rejoin traffic lines: repeated while the car stays stopped (#1113).
+        ...["right-behind", "near-first", "near-update", "over-ten", "clear"].map(
+          (line) => `pit-crew.traffic-rejoin-${line}`,
+        ),
       ].sort(),
     );
   });
@@ -1850,6 +1879,77 @@ describe("opponent-pit family registration (issue #622)", () => {
   it("is suppressed when the master gate is off", () => {
     voiceMasterEnabled = false;
     bus.publishEvent("opponentPit.entered", { relation: "leader", carIdx: 2, position: 1 } as never);
+    flush(audio);
+
+    expect(voiceClipsPlayed()).toEqual([]);
+  });
+});
+
+// Issue #1113: the approaching-traffic family is registered by
+// `registerPitCrew` and wrapped by the master gate and two opt-ins — `rejoin`
+// over the five rejoin lines, `pit-exit` over the two pit-exit ones — and
+// spoken through the bundled script. The line mapping, the vocabulary and the
+// scheduling are covered in `traffic.test.ts`; these confirm the wiring.
+describe("traffic family registration (issue #1113)", () => {
+  const clip = (base: string): string => `voice/${VOICE}/traffic/${base}-01.mp3`;
+
+  it.each([
+    { data: { verdict: "rightBehind" }, clips: ["rejoin-right-behind"] },
+    { data: { verdict: "near", seconds: 4, first: true }, clips: ["rejoin-intro", "rejoin-mid-4", "rejoin-outro"] },
+    { data: { verdict: "near", seconds: 4, first: false }, clips: ["rejoin-update", "rejoin-mid-4"] },
+    { data: { verdict: "overTen" }, clips: ["rejoin-over-ten"] },
+    { data: { verdict: "clear" }, clips: ["rejoin-clear"] },
+  ] satisfies ReadonlyArray<{ data: SimEventMap["traffic.rejoin"]["data"]; clips: string[] }>)(
+    "a rejoin $data.verdict plays its line when the opt-in is on",
+    ({ data, clips }) => {
+      bus.publishEvent("traffic.rejoin", data);
+      flush(audio);
+
+      expect(voiceClipsPlayed()).toEqual(clips.map(clip));
+    },
+  );
+
+  it.each([
+    { verdict: "traffic", base: "pit-exit-traffic" },
+    { verdict: "clear", base: "pit-exit-clear" },
+  ] as const)("a pit exit $verdict plays its line when the opt-in is on", ({ verdict, base }) => {
+    bus.publishEvent("traffic.pitExit", { verdict, seconds: 1 });
+    flush(audio);
+
+    expect(voiceClipsPlayed()).toEqual([clip(base)]);
+  });
+
+  it("the rejoin opt-in off silences every rejoin line but not the pit exit", () => {
+    trafficEnabled.set("rejoin", false);
+
+    bus.publishEvent("traffic.rejoin", { verdict: "rightBehind" });
+    bus.publishEvent("traffic.rejoin", { verdict: "near", seconds: 4, first: true });
+    bus.publishEvent("traffic.rejoin", { verdict: "clear" });
+    flush(audio);
+    expect(voiceClipsPlayed()).toEqual([]);
+
+    bus.publishEvent("traffic.pitExit", { verdict: "traffic", seconds: 1 });
+    flush(audio);
+    expect(voiceClipsPlayed()).toEqual([clip("pit-exit-traffic")]);
+  });
+
+  it("the pit-exit opt-in off silences both pit-exit lines but not the rejoin", () => {
+    trafficEnabled.set("pit-exit", false);
+
+    bus.publishEvent("traffic.pitExit", { verdict: "traffic", seconds: 1 });
+    bus.publishEvent("traffic.pitExit", { verdict: "clear" });
+    flush(audio);
+    expect(voiceClipsPlayed()).toEqual([]);
+
+    bus.publishEvent("traffic.rejoin", { verdict: "overTen" });
+    flush(audio);
+    expect(voiceClipsPlayed()).toEqual([clip("rejoin-over-ten")]);
+  });
+
+  it("is suppressed when the master gate is off", () => {
+    voiceMasterEnabled = false;
+    bus.publishEvent("traffic.rejoin", { verdict: "rightBehind" });
+    bus.publishEvent("traffic.pitExit", { verdict: "traffic", seconds: 1 });
     flush(audio);
 
     expect(voiceClipsPlayed()).toEqual([]);

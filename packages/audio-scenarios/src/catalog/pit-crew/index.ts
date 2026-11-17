@@ -121,6 +121,7 @@ import {
   START_LIGHT_CALLOUTS,
   TIRE_WEAR_CALLOUTS,
   TRACK_CONDITIONS_CALLOUTS,
+  TRAFFIC_CALLOUTS,
 } from "@iracedeck/callout-settings";
 import type { IEventBus, PitReadbackSnapshot, SessionClass, SessionStartSnapshot } from "@iracedeck/event-bus";
 import type { ILogger } from "@iracedeck/logger";
@@ -247,6 +248,7 @@ import { registerTelemetryReadoutVocabulary, TELEMETRY_READOUT_CONTRACTS } from 
 import { registerTireWearVocabulary, TIRE_WEAR_CONTRACTS } from "./tire-wear.js";
 import { AUTO_FUEL_CONTRACTS, TOGGLE_CONFIRMATION_CONTRACTS } from "./toggle-confirmations.js";
 import { TRACK_CONDITIONS_CONTRACTS } from "./track-conditions.js";
+import { registerTrafficVocabulary, SCENARIO_ID_TO_TRAFFIC_ID, TRAFFIC_CONTRACTS } from "./traffic.js";
 
 /**
  * Stop any in-flight Race Engineer callout (and its looping ambient bed) and
@@ -298,6 +300,14 @@ export {
 export { LIMITER_ON_CLIP, readLimiterCueDebugState } from "./limiter-cue-engine.js";
 export { PIT_EXIT_CLIP, readPitExitCueDebugState } from "./pit-exit-cue-engine.js";
 export { type PitLimiterCalloutId, PIT_LIMITER_SCENARIO_IDS } from "./pit-limiter.js";
+export {
+  registerTrafficVocabulary,
+  SCENARIO_ID_TO_TRAFFIC_ID,
+  TRAFFIC_CLIP_SOURCES,
+  TRAFFIC_CONTRACTS,
+  TRAFFIC_SCENARIO_IDS,
+  type TrafficCalloutId,
+} from "./traffic.js";
 export {
   registerTireWearVocabulary,
   TIRE_WEAR_CLIP_SOURCES,
@@ -1234,6 +1244,8 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
   const getLimiterCueCalloutEnabled = enabledIn(LIMITER_CUE_CALLOUTS);
   const getPitLimiterCalloutEnabled = enabledIn(PIT_LIMITER_CALLOUTS);
   const getNoLimiterCalloutEnabled = enabledIn(NO_LIMITER_CALLOUTS);
+  // `rejoin` gates the five rejoin lines, `pit-exit` the two pit-exit ones (issue #1113).
+  const getTrafficCalloutEnabled = enabledIn(TRAFFIC_CALLOUTS);
 
   registerRadarEngine(bus, {
     getMasterEnabled: d.getRadarMasterEnabled,
@@ -1538,6 +1550,24 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
           "opponent-pit callout",
           logger,
         ),
+      ),
+    );
+  }
+
+  // Approaching-traffic family (issue #1113). The vocabulary (the seconds var
+  // the close band's composed lines speak, the band case, the first-call
+  // condition, the pit-exit cases) registers before the contracts; the
+  // translator's detectors decide each band, its number and when it is worth
+  // saying again, and the seven contracts only map the event to a line. Two
+  // subjects gate them via `SCENARIO_ID_TO_TRAFFIC_ID`. One `family:
+  // "traffic"` so a fresh line replaces a stale one in flight (see the module
+  // header).
+  registerTrafficVocabulary(engine);
+
+  for (const c of TRAFFIC_CONTRACTS) {
+    engine.defineContract(
+      wrapWithMaster(
+        wrapCalloutScenario(c, SCENARIO_ID_TO_TRAFFIC_ID, getTrafficCalloutEnabled, "traffic callout", logger),
       ),
     );
   }
