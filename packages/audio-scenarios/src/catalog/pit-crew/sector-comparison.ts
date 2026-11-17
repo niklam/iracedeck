@@ -582,9 +582,9 @@ function paceParts(picture: SectorPicture | null): { seconds: number; tenths: nu
 
 /**
  * Whether the car a picture names is, in the live comparison, still the one
- * on that side: the class leader for the leader call, the same neighbour and
- * still within {@link SECTOR_BATTLE_GAP_S} for the car ahead or behind. No
- * live comparison is a no.
+ * on that side: the class leader, still running, for the leader call; the
+ * same neighbour and still within {@link SECTOR_BATTLE_GAP_S} for the car
+ * ahead or behind. No live comparison is a no.
  */
 export function stillTheNamedCar(picture: SectorPicture, live: SectorComparisonInput | null): boolean {
   if (live === null) return false;
@@ -593,7 +593,9 @@ export function stillTheNamedCar(picture: SectorPicture, live: SectorComparisonI
 
   if (car === null || car.carIdx !== picture.carIdx) return false;
 
-  return picture.target === "leader" || inBattleRange(car);
+  // A leader retired while the call waited stays frozen at the front of the
+  // order with no lap count; a neighbour in range is necessarily running.
+  return picture.target === "leader" ? car.lapsCompleted !== null : inBattleRange(car);
 }
 
 /** Whether the player's lap the event closed was recorded clean (decision 4), read from the comparison. */

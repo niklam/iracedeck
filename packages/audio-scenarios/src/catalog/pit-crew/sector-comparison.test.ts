@@ -1379,6 +1379,10 @@ describe("stillTheNamedCar", () => {
     expect(stillTheNamedCar(picture("ahead", 12), input({ ahead: { ...AHEAD_SLOW_S2, gapSeconds: 3.5 } }))).toBe(false);
     expect(stillTheNamedCar(picture("ahead", 12), input({ ahead: null }))).toBe(false);
     expect(stillTheNamedCar(picture("leader", 20), input({ leader: { ...LEADER_MOST, carIdx: 21 } }))).toBe(false);
+    // A leader retired while the call waited: still first in the frozen order, no lap count.
+    expect(stillTheNamedCar(picture("leader", 20), input({ leader: { ...LEADER_MOST, lapsCompleted: null } }))).toBe(
+      false,
+    );
     expect(stillTheNamedCar(picture("ahead", 12), null)).toBe(false);
   });
 });
