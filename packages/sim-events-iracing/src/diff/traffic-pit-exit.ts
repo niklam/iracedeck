@@ -11,6 +11,19 @@
  * (`IsOnTrack` not true), a tow or a reset (`NotInWorld`, or back in the
  * stall) ends it too. Every end is silent.
  *
+ * **A position the sim did not send is not the player leaving.** The player's
+ * lap position is unavailable on a tick whose `CarIdxLapDistPct` is missing or
+ * no array, whose player entry is missing or the player's index unknown, or
+ * whose entry is no lap position that is not negative: not a number, not
+ * finite, or clearly past the line. Such a tick holds the episode: no
+ * evaluation, nothing said, and the next readable tick evaluates as soon as
+ * the interval allows. Only a gap that lasts
+ * {@link TRAFFIC_PIT_EXIT_POSITION_GRACE_MS} ends it: ending on one tick would
+ * lose the call for the rest of that exit, since with the player already out
+ * of the stall no departure edge can start another. A definite not-in-world
+ * reading is the player leaving and ends it at once: `PlayerTrackSurface`
+ * `NotInWorld`, or the player's position negative (the sim's −1).
+ *
  * **The landmarks.** It needs both `pitRoadEnd` and `blendEnd` from #1112's
  * learner; with either unlearned it stays silent and logs once per episode at
  * debug. Never a position from a default pit-lane fraction (#1112's no-guess
@@ -98,7 +111,7 @@
  * and the harness.
  */
 import type { SimEventName } from "@iracedeck/event-bus";
-import type { TelemetryData } from "@iracedeck/iracing-sdk";
+import { type TelemetryData, TrkLoc } from "@iracedeck/iracing-sdk";
 import type { ILogger } from "@iracedeck/logger";
 import {
   normalizePitLanePct,
@@ -151,6 +164,20 @@ export const TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS = 1_000;
  * held: it is made at the departure.
  */
 export const TRAFFIC_PIT_EXIT_FLIP_CONFIRM_EVALUATIONS = 2;
+
+/**
+ * How long the player's lap position may stay unavailable before a running
+ * episode ends (ms; module header). The rejoin detector's gate grace
+ * (`TRAFFIC_REJOIN_GATE_GRACE_MS`), for the same reason: many times a blip at
+ * 60 Hz, a tick or two the sim did not send, so a blip keeps the episode and
+ * what it has said; and short, a single evaluation interval, so a position
+ * that is really gone ends the episode about when the next evaluation was
+ * due, with nothing said in between. Pit lane at the limit covers a few tens
+ * of metres in it, so the first readable tick after a blip still finds the
+ * player short of the blend in all but the last of an exit, where the end
+ * conditions take over.
+ */
+export const TRAFFIC_PIT_EXIT_POSITION_GRACE_MS = 1_000;
 
 /**
  * How far (m) a learned landmark may sit from where the player's own car
@@ -209,19 +236,38 @@ export type TrafficPitExitTelemetry = TrafficTelemetry &
 type NoEtaReason = "noPlayerClass" | "noReference" | "noClassLap" | "noTrackLength" | "noPitSpeedLimit";
 
 /**
- * Why a running episode ends on this tick, read before the landmarks; `null`
- * while it runs on. `playerPct` is already normalized
- * (`normalizeLapPosition`): a player on the start/finish line, read as 1 or a
- * hair past it, is in world.
+ * The player's lap position this tick (module header): where on the lap,
+ * normalized (`normalizeLapPosition`, so a player on the start/finish line,
+ * read as 1 or a hair past it, is that hair past 0); the sim's definite
+ * not-in-world reading; or nothing readable, which is data the sim did not send.
  */
-function endReason(telemetry: TrafficPitExitTelemetry, playerPct: number | null): string | null {
+type PlayerPosition =
+  { readonly kind: "onLap"; readonly pct: number } | { readonly kind: "notInWorld" } | { readonly kind: "unavailable" };
+
+/** Reads the player's lap position from the tick (module header). */
+function readPlayerPosition(telemetry: TrafficPitExitTelemetry, raw: unknown): PlayerPosition {
+  if (telemetry.PlayerTrackSurface === TrkLoc.NotInWorld) return { kind: "notInWorld" };
+
+  if (isFiniteNumber(raw) && raw < 0) return { kind: "notInWorld" };
+
+  const pct = normalizeLapPosition(raw);
+
+  return pct === null ? { kind: "unavailable" } : { kind: "onLap", pct };
+}
+
+/**
+ * Why a running episode ends at once on this tick, read before the
+ * landmarks; `null` while it runs on, or is held for a position the sim did
+ * not send (module header).
+ */
+function endReason(telemetry: TrafficPitExitTelemetry, position: PlayerPosition): string | null {
   if (telemetry.IsOnTrack !== true) return "left the car";
 
   if (telemetry.PlayerCarInPitStall === true) return "back in the stall";
 
   if (isRacingSurface(telemetry.PlayerTrackSurface)) return "on the racing surface";
 
-  if (playerPct === null) return "not in world";
+  if (position.kind === "notInWorld") return "not in world";
 
   return null;
 }
@@ -246,10 +292,8 @@ export function diffTrafficPitExit(
   logger: ILogger,
 ): void {
   const inStall = telemetry.PlayerCarInPitStall;
-  const rawPlayerPct = facts.playerCarIdx >= 0 ? telemetry.CarIdxLapDistPct?.[facts.playerCarIdx] : undefined;
-  // A pit exit across the start/finish line reads 1 or a hair past it on the
-  // line, its time already restarted: that hair past 0, never "not in world".
-  const playerPct = normalizeLapPosition(rawPlayerPct);
+  const rawPlayerPct: unknown = facts.playerCarIdx >= 0 ? telemetry.CarIdxLapDistPct?.[facts.playerCarIdx] : undefined;
+  const position = readPlayerPosition(telemetry, rawPlayerPct);
   const departed = episode.lastInPitStall === true && inStall === false && telemetry.OnPitRoad === true;
 
   if (departed) {
@@ -262,23 +306,49 @@ export function diffTrafficPitExit(
   }
 
   if (episode.active) {
-    const reason = endReason(telemetry, playerPct);
+    const reason = endReason(telemetry, position);
 
     if (reason !== null) {
       end(episode, reason, logger);
-    } else {
+    } else if (position.kind === "unavailable") {
+      holdWithoutPosition(episode, now, logger);
+    } else if (position.kind === "onLap") {
+      if (episode.positionUnavailableSince !== null) {
+        logger.debug(
+          `PitExit: player position back after ${elapsed(now, episode.positionUnavailableSince)} ms, episode kept`,
+        );
+        episode.positionUnavailableSince = null;
+      }
+
       // A wall clock that stepped back evaluates now: waiting the interval out
       // from a time still ahead would stop every evaluation for as long as the step.
       if (episode.lastEvalAt !== null && episode.lastEvalAt > now) episode.lastEvalAt = null;
 
       if (episode.lastEvalAt === null || elapsed(now, episode.lastEvalAt) >= TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS) {
-        // `endReason` refused a `null` position.
-        evaluate(episode, curves, telemetry, playerPct as number, facts, windows, now, emit, logger);
+        evaluate(episode, curves, telemetry, position.pct, facts, windows, now, emit, logger);
       }
     }
   }
 
   episode.lastInPitStall = typeof inStall === "boolean" ? inStall : null;
+}
+
+/**
+ * A tick without a readable player position (module header): holds the
+ * episode, with no evaluation, and ends it silently once the gap has lasted
+ * {@link TRAFFIC_PIT_EXIT_POSITION_GRACE_MS}. A wall clock that stepped back
+ * restarts the gap from now, so the step neither ends it early nor holds it on.
+ */
+function holdWithoutPosition(episode: TrafficPitExitState, now: number, logger: ILogger): void {
+  if (episode.positionUnavailableSince === null || episode.positionUnavailableSince > now) {
+    if (episode.positionUnavailableSince === null) logger.debug("PitExit: player position unavailable, episode held");
+
+    episode.positionUnavailableSince = now;
+  }
+
+  const gap = elapsed(now, episode.positionUnavailableSince);
+
+  if (gap >= TRAFFIC_PIT_EXIT_POSITION_GRACE_MS) end(episode, `player position unavailable for ${gap} ms`, logger);
 }
 
 /** Ends the episode silently, keeping the stall baseline (written after). */

@@ -741,6 +741,14 @@ export type TrafficPitExitState = {
   active: boolean;
   /** When the episode last evaluated; `null` before its first evaluation. */
   lastEvalAt: number | null;
+  /**
+   * In an episode: when the current run of ticks without a readable player
+   * lap position began, `null` while it reads. The episode is held, with no
+   * evaluation, and ends only once the gap has lasted
+   * `TRAFFIC_PIT_EXIT_POSITION_GRACE_MS`; a not-in-world reading ends it at
+   * once and never sets it.
+   */
+  positionUnavailableSince: number | null;
   /** The verdict last spoken this episode; `null` until the first is. */
   spokenVerdict: "clear" | "traffic" | null;
   /**
@@ -765,6 +773,7 @@ export function createTrafficPitExitState(): TrafficPitExitState {
     lastInPitStall: null,
     active: false,
     lastEvalAt: null,
+    positionUnavailableSince: null,
     spokenVerdict: null,
     flipVerdict: null,
     flipEvaluations: 0,

@@ -15,6 +15,7 @@ import {
   diffTrafficPitExit,
   TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS,
   TRAFFIC_PIT_EXIT_FLIP_CONFIRM_EVALUATIONS,
+  TRAFFIC_PIT_EXIT_POSITION_GRACE_MS,
   type TrafficPitExitLandmarks,
   type TrafficPitExitTelemetry,
 } from "./traffic-pit-exit.js";
@@ -214,6 +215,139 @@ describe("diffTrafficPitExit", () => {
 
       expect(h.episode.active).toBe(false);
       expect(h.events).toEqual([{ verdict: "traffic", seconds: 1 }]);
+    });
+
+    describe("a player position the sim did not send", () => {
+      it("is held for one second", () => {
+        expect(TRAFFIC_PIT_EXIT_POSITION_GRACE_MS).toBe(1_000);
+      });
+
+      /** Each way the player's position can be missing from a tick, with a car whose arrival is `relative` s after the player's. */
+      const dropouts: Array<[string, (relative: number) => TrafficPitExitTelemetry]> = [
+        ["the array missing", (r) => tel({ cars: [arriving(5, r)], CarIdxLapDistPct: undefined })],
+        [
+          "the array not an array",
+          (r) => tel({ cars: [arriving(5, r)], CarIdxLapDistPct: 0.1 as unknown as number[] }),
+        ],
+        ["the player's entry missing", (r) => tel({ cars: [arriving(5, r)], CarIdxLapDistPct: [] })],
+        ["the entry not a number", (r) => tel({ cars: [arriving(5, r)], pct: "0.1" as unknown as number })],
+        ["the entry NaN", (r) => tel({ cars: [arriving(5, r)], pct: Number.NaN })],
+        ["the entry infinite", (r) => tel({ cars: [arriving(5, r)], pct: Number.POSITIVE_INFINITY })],
+        ["the entry clearly past the line", (r) => tel({ cars: [arriving(5, r)], pct: 1.5 })],
+      ];
+
+      it.each(dropouts)(
+        "a one-tick dropout (%s) mid-exit keeps the episode, and the flip is spoken after it",
+        (_, gap) => {
+          const h = harness();
+
+          h.depart(tel({ cars: [arriving(5, 3)] }));
+          // The first evaluation of a flip to clear.
+          h.after(TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS, tel({ cars: [arriving(5, 5)] }));
+          h.after(100, gap(5));
+          expect(h.episode.active).toBe(true);
+
+          // The position back, an interval after the last evaluation: the flip's second.
+          h.after(TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS - 100, tel({ cars: [arriving(5, 5.5)] }));
+
+          expect(h.events).toEqual([
+            { verdict: "traffic", seconds: 3 },
+            { verdict: "clear", seconds: 5.5 },
+          ]);
+          expect(lines(h.debug)).toContain("PitExit: player position unavailable, episode held");
+          expect(lines(h.debug)).toContain("PitExit: player position back after 900 ms, episode kept");
+        },
+      );
+
+      it.each(dropouts)(
+        "a dropout (%s) on the departure tick holds the episode, and the first call follows",
+        (_, gap) => {
+          const h = harness();
+
+          h.depart(gap(1));
+          expect(h.episode.active).toBe(true);
+          expect(h.events).toEqual([]);
+
+          h.after(TRAFFIC_PIT_EXIT_POSITION_GRACE_MS / 2, tel({ cars: [arriving(5, 1)] }));
+
+          expect(h.events).toEqual([{ verdict: "traffic", seconds: 1 }]);
+        },
+      );
+
+      it("makes no evaluation while it lasts", () => {
+        const h = harness();
+
+        h.depart(tel({ cars: [arriving(5, 3)] }));
+        h.readLandmarks.mockClear();
+        h.after(TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS, tel({ cars: [arriving(5, 10)], CarIdxLapDistPct: undefined }));
+
+        expect(h.readLandmarks).not.toHaveBeenCalled();
+        expect(h.episode.lastEvalAt).not.toBeNull();
+      });
+
+      it("ends the episode silently once it has lasted the grace", () => {
+        const h = harness();
+        const gap = tel({ cars: [arriving(5, 10)], CarIdxLapDistPct: undefined });
+
+        h.depart(tel({ cars: [arriving(5, 1)] }));
+        h.after(100, gap);
+        h.after(TRAFFIC_PIT_EXIT_POSITION_GRACE_MS - 1, gap);
+        expect(h.episode.active).toBe(true);
+
+        h.after(1, gap);
+        expect(h.episode.active).toBe(false);
+        expect(lines(h.debug).at(-1)).toBe("PitExit: episode ended (player position unavailable for 1000 ms)");
+
+        // The position back, with no departure edge: nothing more this exit.
+        h.after(100, tel({ cars: [arriving(5, 10)] }));
+        h.after(TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS, tel({ cars: [arriving(5, 10)] }));
+        h.after(TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS, tel({ cars: [arriving(5, 10)] }));
+
+        expect(h.episode.active).toBe(false);
+        expect(h.events).toEqual([{ verdict: "traffic", seconds: 1 }]);
+      });
+
+      it("measures each gap from its own start", () => {
+        const h = harness();
+        const gap = tel({ cars: [arriving(5, 1)], CarIdxLapDistPct: undefined });
+
+        h.depart(tel({ cars: [arriving(5, 1)] }));
+        h.after(100, gap);
+        h.after(TRAFFIC_PIT_EXIT_POSITION_GRACE_MS - 100, tel({ cars: [arriving(5, 1)] }));
+        h.after(100, gap);
+        h.after(TRAFFIC_PIT_EXIT_POSITION_GRACE_MS - 1, gap);
+
+        expect(h.episode.active).toBe(true);
+      });
+
+      it("restarts the gap on a wall clock that stepped back, never ending at once", () => {
+        const h = harness();
+        const gap = tel({ cars: [arriving(5, 1)], CarIdxLapDistPct: undefined });
+
+        h.depart(tel({ cars: [arriving(5, 1)] }));
+        h.after(100, gap);
+        h.after(-30_000, gap);
+        h.after(TRAFFIC_PIT_EXIT_POSITION_GRACE_MS - 1, gap);
+        expect(h.episode.active).toBe(true);
+
+        h.after(1, gap);
+        expect(h.episode.active).toBe(false);
+      });
+
+      it.each([
+        ["NotInWorld with a position", { PlayerTrackSurface: TrkLoc.NotInWorld }],
+        ["NotInWorld with no position", { PlayerTrackSurface: TrkLoc.NotInWorld, CarIdxLapDistPct: undefined }],
+        ["the sim's −1 on pit road", { pct: -1 }],
+        ["a negative position", { pct: -0.25 }],
+      ] satisfies Array<[string, TickOptions]>)("still ends at once on a not-in-world reading: %s", (_, overrides) => {
+        const h = harness();
+
+        h.depart(tel({ cars: [arriving(5, 1)] }));
+        h.after(100, tel({ cars: [arriving(5, 1)], ...overrides }));
+
+        expect(h.episode.active).toBe(false);
+        expect(lines(h.debug).at(-1)).toBe("PitExit: episode ended (not in world)");
+      });
     });
 
     it("ends silently once the player is past blendEnd, whatever the verdict would be", () => {
@@ -712,6 +846,23 @@ describe("diffTrafficPitExit", () => {
         expect(h.events).toEqual([{ verdict: "clear" }]);
       },
     );
+
+    it("without CarIdxLapDistPct make no call, never a clear, log once, hold the episode and evaluate once it is back", () => {
+      const h = harness();
+      const missing = tel({ CarIdxLapDistPct: undefined });
+
+      h.depart(missing);
+      h.after(TRAFFIC_PIT_EXIT_POSITION_GRACE_MS / 2, missing);
+
+      expect(h.events).toEqual([]);
+      expect(h.episode.active).toBe(true);
+      expect(lines(h.debug).filter((line) => line.includes("player position unavailable"))).toHaveLength(1);
+
+      // The array back with nobody on track: the first call, a clear.
+      h.after(TRAFFIC_PIT_EXIT_POSITION_GRACE_MS / 4, tel());
+
+      expect(h.events).toEqual([{ verdict: "clear" }]);
+    });
 
     it("say clear with complete arrays and no car on track", () => {
       const h = harness();
