@@ -13,7 +13,7 @@ import defaultScript from "@iracedeck/audio-assets/voice/default/callouts.json" 
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import { createFakeAudio, type FakeAudio } from "@iracedeck/audio-service/testing";
 import { type CalloutScript, type CalloutScriptEntry, collectScriptReferences } from "@iracedeck/callout-script";
-import { SECTOR_COMPARISON_CALLOUTS } from "@iracedeck/callout-settings";
+import { type CalloutIdOf, LAP_TIME_CALLOUTS, SECTOR_COMPARISON_CALLOUTS } from "@iracedeck/callout-settings";
 import type { CountedLapCompleted, IEventBus, SessionClass, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import { classifySession } from "@iracedeck/sim-events-iracing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -22,6 +22,7 @@ import { WEIGHT } from "../../dsl.js";
 import type { AudioAssetsManifest } from "../../interpreter.js";
 import { _resetAudioScenarios, getScenarioEngine, initializeAudioScenarios } from "../../interpreter.js";
 import { descriptionNamesGroup } from "../../reference/pack-reference.js";
+import { familyGate } from "./callout-gate.test-util.js";
 import type { FastestLapData } from "./fastest-lap.js";
 import { registerPitCrew } from "./index.js";
 import type { LapCompletedSnapshot } from "./lap-time.js";
@@ -753,7 +754,10 @@ let session: SessionClass | null;
 let underCaution: boolean;
 let raceFinished: boolean;
 let latestLap: LapCompletedSnapshot | null;
-let enabled: Record<string, boolean>;
+/** The sector comparison opt-ins a test switched off. */
+let sectorOff: Set<CalloutIdOf<typeof SECTOR_COMPARISON_CALLOUTS>>;
+/** Whether the every-lap lap-time call is on; off unless a test puts it on. */
+let everyLap: boolean;
 /** How many times the catalog has read the comparison. */
 let comparisonReads: number;
 
@@ -819,7 +823,8 @@ beforeEach(() => {
   raceFinished = false;
   latestLap = null;
   // The every-lap call is off unless a test puts it on, so a lap's line is the sector call alone.
-  enabled = { calloutEnabledLapTimeEveryLap: false };
+  sectorOff = new Set();
+  everyLap = false;
   comparisonReads = 0;
   bus = createMockBus();
   audio = createFakeAudio();
@@ -827,7 +832,9 @@ beforeEach(() => {
   registerPitCrew(bus, {
     logger: mockLogger as never,
     getSessionClass: () => session,
-    isCalloutEnabled: (key) => enabled[key] ?? true,
+    isCalloutEnabled: (key) =>
+      familyGate(SECTOR_COMPARISON_CALLOUTS, (id) => !sectorOff.has(id))(key) &&
+      familyGate(LAP_TIME_CALLOUTS, (id) => id !== "every-lap" || everyLap)(key),
     getUnderFullCourseCaution: () => underCaution,
     getRaceFinishedFired: () => raceFinished,
     getLapCompletedSnapshot: () => latestLap,
@@ -1059,7 +1066,7 @@ describe("the gates at the line (decision 7)", () => {
   });
 
   it("each opt-in silences only its own target, and the next one due speaks", () => {
-    enabled.calloutEnabledSectorComparisonAhead = false;
+    sectorOff.add("ahead");
     lapDone(5, { leader: LEADER_MOST, ahead: AHEAD_SLOW_S2, behind: BEHIND_QUICK_S3 });
 
     expect(sectorLine()).toEqual(["car-number/7", "sector-comparison/behind-quicker", "sector-comparison-sector/3"]);
@@ -1354,7 +1361,7 @@ describe("at the line, after the lap-time calls (decision 8)", () => {
     });
 
     it("every lap", () => {
-      enabled.calloutEnabledLapTimeEveryLap = true;
+      everyLap = true;
 
       const waiting = heldLap(() => {
         comparison = input({ ahead: AHEAD_SLOW_S2 });
