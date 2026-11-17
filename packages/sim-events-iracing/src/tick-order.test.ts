@@ -332,7 +332,10 @@ function classifyRecorderPublishSites(
  * or after the last call; once the flush begins (the first publish no direct
  * stage can account for) no call may follow, and each publish must belong to
  * a `pending` stage that was called this tick, at or after the previous one.
- * A probe publish must belong to exactly the stage that made it. Greedy
+ * A probe publish must belong to exactly the stage that made it. The one
+ * exception to "at or after": a pending row that `reordersWith` an earlier
+ * one may be flushed ahead of it, so that earlier stage's publish may follow
+ * (#1676). Greedy
  * earliest matching, which is exact for "is this log a run of the table".
  * Returns the problems and, for each publish, the stage it was matched to.
  */
@@ -387,6 +390,23 @@ function checkTickLog(
     }
 
     const j = order.findIndex((s, k) => k >= flushCursor && s.via === "pending" && called.has(k) && belongs(s));
+
+    // The one way back (#1676): the row the flush is at declares, through
+    // `reordersWith`, that the tick may publish its events ahead of that
+    // earlier stage's, so the earlier stage's publish may follow it. The
+    // cursor stays where it is.
+    const declared = j < 0 && flushCursor >= 0 ? order[flushCursor]!.reordersWith : undefined;
+    const back =
+      declared === undefined
+        ? -1
+        : order.findIndex(
+            (s, k) => k < flushCursor && s.stage === declared && s.via === "pending" && called.has(k) && belongs(s),
+          );
+
+    if (back >= 0) {
+      matched.push({ event: entry.event, stage: order[back]!.stage });
+      continue;
+    }
 
     if (j < 0) {
       problems.push(`${label} was published after ${where()}, where the table has no stage that publishes it`);
@@ -1093,6 +1113,29 @@ describe("TICK_ORDER", () => {
             (x) => x.kind,
           ),
         ).toEqual(["trigger-after-end"]);
+      });
+
+      it("the log check accepts a flush that publishes a reordersWith row ahead of the row it names, and only that", () => {
+        const linked: TickStage[] = [
+          stage("diffEarly", ["sectorStart.approaching"]),
+          { ...stage("diffLate", ["cornerName.approaching"]), reordersWith: "diffEarly" },
+        ];
+        const reversed: LogEntry[] = [
+          { kind: "call", stage: "diffEarly" },
+          { kind: "call", stage: "diffLate" },
+          { kind: "publish", event: "cornerName.approaching" },
+          { kind: "publish", event: "sectorStart.approaching" },
+        ];
+
+        expect(checkTickLog(reversed, linked).problems).toEqual([]);
+        expect(checkTickLog(reversed, linked).matched.map((m) => m.stage)).toEqual(["diffLate", "diffEarly"]);
+        // The control: the same rows with no link refuse the reversed flush.
+        expect(
+          checkTickLog(reversed, [
+            stage("diffEarly", ["sectorStart.approaching"]),
+            stage("diffLate", ["cornerName.approaching"]),
+          ]).problems,
+        ).toHaveLength(1);
       });
 
       it("every reordersWith names a stage earlier in its table", () => {
