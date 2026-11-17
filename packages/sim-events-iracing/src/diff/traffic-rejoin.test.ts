@@ -434,6 +434,26 @@ describe("diffTrafficRejoin", () => {
       expect(h.episode.active).toBe(false);
     });
 
+    it("restarts the end dwell after a gate blip: it needs a fresh full run of moving", () => {
+      const h = harness();
+      const moving = tel({ Speed: TRAFFIC_REJOIN_MOVING_MPS + 1 });
+
+      h.stop();
+      h.after(100, moving);
+      // A Speed dropout at 1,500 ms, kept through the grace; moving again from 1,600.
+      h.after(1_400, tel({ Speed: undefined }));
+      h.after(100, moving);
+      // 2,000 ms after the first moving tick, but only 500 ms into the renewed run.
+      h.after(500, moving);
+      expect(h.episode.active).toBe(true);
+
+      h.after(TRAFFIC_REJOIN_END_DWELL_MS - 501, moving);
+      expect(h.episode.active).toBe(true);
+
+      h.after(1, moving);
+      expect(h.episode.active).toBe(false);
+    });
+
     it("speaks again on the next stop, after a fresh dwell", () => {
       const h = harness();
       const moving = tel({ Speed: 30 });

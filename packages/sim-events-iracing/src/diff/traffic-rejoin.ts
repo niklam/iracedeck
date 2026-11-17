@@ -15,8 +15,10 @@
  * out), a readable speed and a player position on the lap. No incident
  * precondition: a stall, a stop to avoid a crash and an unscored spin need
  * the same answer. It ends silently once the car has been above
- * {@link TRAFFIC_REJOIN_MOVING_MPS} for {@link TRAFFIC_REJOIN_END_DWELL_MS}:
- * the gap between the two speeds is the hysteresis, so a car creeping through
+ * {@link TRAFFIC_REJOIN_MOVING_MPS} for {@link TRAFFIC_REJOIN_END_DWELL_MS}
+ * in a row, every gate holding: a tick a gate fails restarts that run, as a
+ * tick at or below the speed does. The gap between the two speeds is the
+ * hysteresis, so a car creeping through
  * a gravel trap does not flicker in and out of an episode. It ends silently
  * at once when the player leaves the car or is in the garage, and on any
  * other gate failing only once that failure has held for
@@ -276,6 +278,11 @@ export function diffTrafficRejoin(
 
         episode.gateFailedSince = now;
       }
+
+      // The moving dwell is a continuous run of gated ticks: one a gate broke
+      // starts again from the next tick that moves, so a blip in the middle
+      // never lets a shorter renewed run end the episode.
+      episode.movingSince = null;
 
       if (elapsed(now, episode.gateFailedSince) < TRAFFIC_REJOIN_GATE_GRACE_MS) return;
     }
