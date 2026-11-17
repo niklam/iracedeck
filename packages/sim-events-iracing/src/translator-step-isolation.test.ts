@@ -137,6 +137,7 @@ vi.mock("./diff/pit-lane-landmarks.js", async (io) =>
   }),
 );
 vi.mock("./diff/sector-start.js", async (io) => harness.spy(await io(), { diffSectorStart: 6 }));
+vi.mock("./diff/traffic-arrival.js", async (io) => harness.spy(await io(), { updateTrafficReferenceCurves: null }));
 vi.mock("./diff/traffic-rejoin.js", async (io) => harness.spy(await io(), { diffTrafficRejoin: 6 }));
 vi.mock("./diff/traffic-pit-exit.js", async (io) => harness.spy(await io(), { diffTrafficPitExit: 6 }));
 vi.mock("./diff/corner-name.js", async (io) => harness.spy(await io(), { diffCornerName: 6 }));
@@ -547,6 +548,35 @@ describe("decision 2: a step is all or nothing", () => {
       expect(reported()).toEqual([id]);
     },
   );
+
+  // A per-car step that publishes nothing (#1113): the traffic reference
+  // curves fold each car as a unit, so a car whose unit throws loses that car's
+  // sample only, the later cars still fold, and the throw is reported under
+  // the step's id.
+  it("updateTrafficReferenceCurves runs its cars through the step's units: one car's throw costs that car only", () => {
+    start();
+    runTick();
+    const folded: number[] = [];
+    harness.control.overrides.set("updateTrafficReferenceCurves", (args) => {
+      const runUnit = args[3] as UnitRunner;
+
+      for (const car of [0, 1, 2]) {
+        runUnit(
+          () => undefined,
+          () => {
+            if (car === 1) throw new Error(`car ${car} broke`);
+
+            folded.push(car);
+          },
+        );
+      }
+    });
+
+    runTick();
+
+    expect(folded).toEqual([0, 2]);
+    expect(reported()).toEqual(["translator:updateTrafficReferenceCurves"]);
+  });
 });
 
 describe("decision 3: a value that throws takes its last value this session", () => {

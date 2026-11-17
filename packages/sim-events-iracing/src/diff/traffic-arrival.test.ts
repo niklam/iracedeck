@@ -2,6 +2,7 @@ import { type TelemetryData, TrkLoc } from "@iracedeck/iracing-sdk";
 import { describe, expect, it } from "vitest";
 
 import { createTrafficArrivalState, type TrafficArrivalState } from "../state.js";
+import type { UnitRunner } from "../tick-steps.js";
 import {
   arrivalSeconds,
   computeTrafficArrivals,
@@ -229,6 +230,58 @@ describe("updateTrafficReferenceCurves", () => {
     updateTrafficReferenceCurves(slice, tel([{ idx: 2, pct: 0.3, est: 30, cls: -1 }]), classInfo({}, [-1, -1, 11]));
 
     expect(Object.keys(slice.curves)).toEqual(["11"]);
+  });
+
+  describe("each car is a unit (#1559)", () => {
+    /** Telemetry whose car 1 throws when its lap position is read. */
+    function withFaultyCar(): TelemetryData {
+      const t = tel([
+        { idx: 0, pct: 0.2, est: 20 },
+        { idx: 1, pct: 0.3, est: 30 },
+        { idx: 2, pct: 0.4, est: 40 },
+      ]);
+
+      Object.defineProperty(t.CarIdxLapDistPct!, 1, {
+        get: () => {
+          throw new Error("car 1 broke");
+        },
+      });
+
+      return t;
+    }
+
+    it("runs every car through the runner it is handed, so one car's throw costs that car's sample only", () => {
+      const slice = createTrafficArrivalState();
+      const failed: number[] = [];
+      let unitIdx = 0;
+      // The translator's step runner, in miniature: a unit that throws is caught.
+      const runUnit: UnitRunner = (emit, unit) => {
+        const idx = unitIdx++;
+
+        try {
+          unit(emit);
+
+          return true;
+        } catch {
+          failed.push(idx);
+
+          return false;
+        }
+      };
+
+      updateTrafficReferenceCurves(slice, withFaultyCar(), null, runUnit);
+
+      expect(failed).toEqual([1]);
+      expect(referenceTimeAt(slice.curves["1"], 0.2)).toBe(20);
+      expect(referenceTimeAt(slice.curves["1"], 0.4)).toBe(40);
+      expect(slice.curves["1"].bins.filter((bin) => bin !== null)).toHaveLength(2);
+    });
+
+    it("lets the throw out with the default runner, so the diff's own tests stay loud", () => {
+      expect(() => updateTrafficReferenceCurves(createTrafficArrivalState(), withFaultyCar(), null)).toThrow(
+        "car 1 broke",
+      );
+    });
   });
 
   it("keeps a running mean per bin, so one car's offset fades as others pass", () => {

@@ -3840,12 +3840,13 @@ function handleLiveSteps(
   // car's class) is read once per session-info object and falls back to its
   // last good answer this session, else to `null`, the answer for absent
   // session info, which still learns every car the telemetry gives a class.
-  // Publishes no event.
+  // Each car is a unit of the step (#1559), so one car's throw drops that
+  // car's sample only. Publishes no event.
   const trafficClasses = steps.value("resolveTrafficClassInfo", values, null, () =>
     resolveTrafficClassInfoMemoised(self, sessionInfo),
   );
   steps.run("updateTrafficReferenceCurves", () =>
-    updateTrafficReferenceCurves(self.state.trafficArrival, telemetry, trafficClasses),
+    updateTrafficReferenceCurves(self.state.trafficArrival, telemetry, trafficClasses, steps.runUnit),
   );
   // The approaching-traffic detectors (issue #1113): stopped on the circuit,
   // and driving out of the pits. Both after the curve update, so they time

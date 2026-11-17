@@ -61,6 +61,7 @@
 import type { TelemetryData } from "@iracedeck/iracing-sdk";
 
 import { type TrafficArrivalState, type TrafficCurveBin, type TrafficReferenceCurve } from "../state.js";
+import { runUnitsDirectly, type UnitRunner } from "../tick-steps.js";
 import { isRacingSurface } from "./track-surface.js";
 
 /**
@@ -258,17 +259,25 @@ function foldCurveSample(curve: TrafficReferenceCurve, pct: number, estTime: num
   bin.samples = samples;
 }
 
+/** The outer emit a unit runner is handed by a step that publishes nothing. */
+function ignoreEvent(): void {}
+
 /**
  * The live-tick update: every car on the racing surface (`OnTrack` or
  * `OffTrack`) with a class, a position in [0, 1) and a finite non-negative
  * `CarIdxEstTime` is a sample of its class's curve, the player's car and the
  * pace car included. Never a pit-lane car. Writes the slice in place; a class
- * gets its curve with its first sample.
+ * gets its curve with its first sample. The cars are independent, so each is
+ * one unit of `runUnit` (#1559): a car whose unit throws loses that car's
+ * sample this tick and no other car's.
+ *
+ * @param runUnit - Runs each car as a unit: the translator's step runner, so one car's throw costs that car only. Defaults to {@link runUnitsDirectly}, which catches nothing
  */
 export function updateTrafficReferenceCurves(
   slice: TrafficArrivalState,
   telemetry: TrafficTelemetry,
   classes: TrafficClassInfo | null,
+  runUnit: UnitRunner = runUnitsDirectly,
 ): void {
   const pcts = telemetry.CarIdxLapDistPct;
   const estTimes = telemetry.CarIdxEstTime;
@@ -276,21 +285,26 @@ export function updateTrafficReferenceCurves(
 
   if (!Array.isArray(pcts) || !Array.isArray(estTimes) || !Array.isArray(surfaces)) return;
 
-  for (let carIdx = 0; carIdx < pcts.length; carIdx++) {
+  // The car the unit below reads, set by the loop: one closure per tick rather
+  // than one per car. It emits nothing.
+  let carIdx = 0;
+  const unit = (): void => {
     const pct = pcts[carIdx];
     const estTime = estTimes[carIdx];
 
-    if (!isRacingSurface(surfaces[carIdx]) || !isLapFraction(pct) || !isReferenceTime(estTime)) continue;
+    if (!isRacingSurface(surfaces[carIdx]) || !isLapFraction(pct) || !isReferenceTime(estTime)) return;
 
     const classId = resolveCarClassId(telemetry, classes, carIdx);
 
-    if (classId === null) continue;
+    if (classId === null) return;
 
     const key = String(classId);
     const curve = (slice.curves[key] ??= { bins: new Array<TrafficCurveBin | null>(TRAFFIC_CURVE_BINS).fill(null) });
 
     foldCurveSample(curve, pct, estTime);
-  }
+  };
+
+  for (carIdx = 0; carIdx < pcts.length; carIdx++) runUnit(ignoreEvent, unit);
 }
 
 /**
