@@ -730,6 +730,14 @@ export type TrafficPitExitState = {
   lastEvalAt: number | null;
   /** The verdict last spoken this episode; `null` until the first is. */
   spokenVerdict: "clear" | "traffic" | null;
+  /**
+   * The verdict other than the spoken one that the latest evaluations reached,
+   * held back until it has held for `TRAFFIC_PIT_EXIT_FLIP_CONFIRM_EVALUATIONS`;
+   * `null` while they agree with the spoken one.
+   */
+  flipVerdict: "clear" | "traffic" | null;
+  /** How many evaluations in a row have reached {@link TrafficPitExitState.flipVerdict}; 0 with none. */
+  flipEvaluations: number;
   /** The once-per-episode debug line for unlearned landmarks has been written. */
   landmarksMissingLogged: boolean;
   /** The once-per-episode debug line for an ETA that cannot be computed has been written. */
@@ -743,6 +751,8 @@ export function createTrafficPitExitState(): TrafficPitExitState {
     active: false,
     lastEvalAt: null,
     spokenVerdict: null,
+    flipVerdict: null,
+    flipEvaluations: 0,
     landmarksMissingLogged: false,
     noEtaLogged: false,
   };

@@ -14,6 +14,7 @@ import { TRAFFIC_CURVE_BINS, type TrafficClassInfo } from "./traffic-arrival.js"
 import {
   diffTrafficPitExit,
   TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS,
+  TRAFFIC_PIT_EXIT_FLIP_CONFIRM_EVALUATIONS,
   type TrafficPitExitLandmarks,
   type TrafficPitExitTelemetry,
 } from "./traffic-pit-exit.js";
@@ -205,8 +206,10 @@ describe("diffTrafficPitExit", () => {
       const h = harness();
 
       h.depart(tel({ cars: [arriving(5, 1)] }));
-      // A car now well clear of the window: a running episode would speak the flip.
+      // A car now well clear of the window: a running episode would speak the
+      // flip at its second evaluation.
       h.after(100, tel({ cars: [arriving(5, 10)], ...overrides }));
+      h.after(TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS, tel({ cars: [arriving(5, 10)], ...overrides }));
       h.after(TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS, tel({ cars: [arriving(5, 10)], ...overrides }));
 
       expect(h.episode.active).toBe(false);
@@ -291,6 +294,8 @@ describe("diffTrafficPitExit", () => {
       h.depart(tel({ pct: 0.1, cars: [{ idx: 5, pct: 0.05, est: 93.75 - 33.25 }] }));
       expect(h.events).toEqual([{ verdict: "traffic", seconds: 0 }]);
 
+      // Held for a second evaluation, as every flip is.
+      h.after(TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS, tel({ pct: 0.15625, OnPitRoad: false, cars: [car] }));
       h.after(TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS, tel({ pct: 0.15625, OnPitRoad: false, cars: [car] }));
 
       // +1 s with the after side at 0.5 s: only a 15.625 s ETA flips it to clear at +1.
@@ -363,11 +368,14 @@ describe("diffTrafficPitExit", () => {
       h.depart(tel({ pct: 0.975, cars: [{ idx: 5, pct: 0.979, est: 489.5 }] }));
       expect(h.events).toEqual([{ verdict: "traffic", seconds: 0 }]);
 
-      // Past the line with the player: 10 − 4 (0.008 of the lap) = 6 s.
-      h.after(
-        TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS,
-        tel({ pct: 0.008, OnPitRoad: false, cars: [{ idx: 5, pct: 0.995, est: 497 }] }),
-      );
+      // Past the line with the player: 10 − 4 (0.008 of the lap) = 6 s. Twice,
+      // as every flip is held for a second evaluation.
+      for (let i = 0; i < 2; i++) {
+        h.after(
+          TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS,
+          tel({ pct: 0.008, OnPitRoad: false, cars: [{ idx: 5, pct: 0.995, est: 497 }] }),
+        );
+      }
 
       // The car crosses the line too: 10 − 497 + 500 = 13 s, 7 s after the player.
       expect(h.events).toEqual([
@@ -588,14 +596,19 @@ describe("diffTrafficPitExit", () => {
       h.depart(rolling(0));
       expect(h.events).toEqual([{ verdict: "clear" }]);
 
-      h.after(TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS - 1, rolling(1, 0));
+      // Traffic at one evaluation: held.
+      h.after(TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS, rolling(1, 0));
       expect(h.events).toEqual([{ verdict: "clear" }]);
 
-      h.after(1, rolling(1, 0));
+      // Not an evaluation, or it would be the second and spoken.
+      h.after(TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS - 1, rolling(2, 0));
+      expect(h.events).toEqual([{ verdict: "clear" }]);
+
+      h.after(1, rolling(2, 0));
       expect(h.events).toEqual([{ verdict: "clear" }, { verdict: "traffic", seconds: 0 }]);
     });
 
-    it("speaks again on a flip of the verdict, and only then", () => {
+    it("speaks again on a flip of the verdict that holds, and only then", () => {
       const h = harness();
       const step = (cars: Car[]): void => h.after(TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS, tel({ cars }));
 
@@ -604,12 +617,80 @@ describe("diffTrafficPitExit", () => {
       step([arriving(5, 5)]);
       step([arriving(5, 6)]);
       step([arriving(5, -1)]);
+      step([arriving(5, -1.5)]);
 
       expect(h.events).toEqual([
         { verdict: "traffic", seconds: 3 },
-        { verdict: "clear", seconds: 5 },
-        { verdict: "traffic", seconds: -1 },
+        { verdict: "clear", seconds: 6 },
+        { verdict: "traffic", seconds: -1.5 },
       ]);
+    });
+
+    describe("a flip is held until it has held for TRAFFIC_PIT_EXIT_FLIP_CONFIRM_EVALUATIONS evaluations", () => {
+      const step = (h: ReturnType<typeof harness>, relative: number): void =>
+        h.after(TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS, tel({ cars: [arriving(5, relative)] }));
+
+      it("is two evaluations in a row", () => {
+        expect(TRAFFIC_PIT_EXIT_FLIP_CONFIRM_EVALUATIONS).toBe(2);
+      });
+
+      it.each([
+        ["traffic", [3.9, 4.1, 3.9, 4.1, 3.9, 4.1]],
+        ["clear", [4.1, 3.9, 4.1, 3.9, 4.1, 3.9]],
+      ] as const)(
+        "a car wobbling across the after edge (+4 s) is not re-spoken: the first call, %s, stands",
+        (first, wobble) => {
+          const h = harness();
+
+          h.depart(tel({ cars: [arriving(5, wobble[0])] }));
+
+          for (const relative of wobble.slice(1)) step(h, relative);
+
+          expect(h.events).toEqual([{ verdict: first, seconds: wobble[0] }]);
+        },
+      );
+
+      it("a sustained flip is spoken once, at its second evaluation", () => {
+        const h = harness();
+
+        h.depart(tel({ cars: [arriving(5, 3)] }));
+        step(h, 5);
+        expect(h.events).toEqual([{ verdict: "traffic", seconds: 3 }]);
+
+        step(h, 5.5);
+        step(h, 6);
+        step(h, 7);
+
+        expect(h.events).toEqual([
+          { verdict: "traffic", seconds: 3 },
+          { verdict: "clear", seconds: 5.5 },
+        ]);
+      });
+
+      it("logs a held flip at debug, naming the verdict that still stands", () => {
+        const h = harness();
+
+        h.depart(tel({ cars: [arriving(5, 3)] }));
+        step(h, 5);
+
+        expect(lines(h.debug).at(-1)).toBe("PitExit: clear at 1 of 2 evaluations, traffic still stands");
+      });
+
+      it("starts the count afresh in the next episode", () => {
+        const h = harness();
+
+        h.depart(tel({ cars: [arriving(5, 3)] }));
+        step(h, 5);
+        h.after(100, tel({ PlayerTrackSurface: TrkLoc.OnTrack }));
+        h.after(100, IN_STALL);
+        h.after(100, tel({ cars: [arriving(5, 1)] }));
+        step(h, 5);
+
+        expect(h.events).toEqual([
+          { verdict: "traffic", seconds: 3 },
+          { verdict: "traffic", seconds: 1 },
+        ]);
+      });
     });
 
     it("speaks again in the next episode", () => {

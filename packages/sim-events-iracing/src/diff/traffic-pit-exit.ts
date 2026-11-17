@@ -62,7 +62,10 @@
  * on and ahead of the readback and tire lines it trumps. An evaluation that
  * cannot resolve them stays silent and the first one that can makes the call.
  * After that, again only when the verdict flips before the player reaches
- * `blendEnd`. The lines speak no number; `seconds` (the nearest timed car's
+ * `blendEnd` and the flip holds for {@link TRAFFIC_PIT_EXIT_FLIP_CONFIRM_EVALUATIONS}
+ * evaluations in a row: both lines cut in, so a car wobbling across an edge
+ * of the window would otherwise have "traffic" and "clear" cut each other in
+ * turn. The lines speak no number; `seconds` (the nearest timed car's
  * arrival relative to the player's, to a tenth, negative before) is for logs
  * and the harness.
  */
@@ -100,6 +103,21 @@ export const TRAFFIC_PIT_EXIT_EVENTS = ["traffic.pitExit"] as const satisfies re
  * arrival walk costs nothing.
  */
 export const TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS = 1_000;
+
+/**
+ * How many evaluations in a row a flipped verdict must reach before it is
+ * spoken: two, so a flip is heard one evaluation (a second) after it is first
+ * seen and has held for about two seconds of the picture. A car whose
+ * predicted arrival sits at an edge of the window wobbles across it by a few
+ * tenths between evaluations — each car's `CarIdxEstTime` carries an offset of
+ * its own that moves (±0.2 s typically, the arrival model's header), and the
+ * player's ETA changes formula at the end of pit road — and both lines cut in,
+ * so speaking every wobble would alternate the two over each other. A verdict
+ * that holds at two evaluations is a change in the picture; one second is
+ * little of a pit exit that is called from the box. The first call is never
+ * held: it is made at the departure.
+ */
+export const TRAFFIC_PIT_EXIT_FLIP_CONFIRM_EVALUATIONS = 2;
 
 /** The two landmarks the detector reads, as `resolvePitLaneLandmarks` gives them; `null` while unlearned. */
 export type TrafficPitExitLandmarks = {
@@ -382,10 +400,31 @@ function evaluate(
 
   const verdict = inWindow || untimed.length > 0 ? "traffic" : "clear";
 
-  if (verdict === episode.spokenVerdict) return;
+  if (verdict === episode.spokenVerdict) {
+    // The spoken verdict holds: a flip seen before it was a wobble.
+    episode.flipVerdict = null;
+    episode.flipEvaluations = 0;
+
+    return;
+  }
+
+  const flip = episode.spokenVerdict !== null;
+
+  // A flip is spoken only once it has held (module header); the first call never waits.
+  if (flip) {
+    episode.flipEvaluations = episode.flipVerdict === verdict ? episode.flipEvaluations + 1 : 1;
+    episode.flipVerdict = verdict;
+
+    if (episode.flipEvaluations < TRAFFIC_PIT_EXIT_FLIP_CONFIRM_EVALUATIONS) {
+      logger.debug(
+        `PitExit: ${verdict} at ${episode.flipEvaluations} of ${TRAFFIC_PIT_EXIT_FLIP_CONFIRM_EVALUATIONS} evaluations, ${episode.spokenVerdict} still stands`,
+      );
+
+      return;
+    }
+  }
 
   const relative = nearest === null ? null : Math.round(nearest.relative * 10) / 10;
-  const flip = episode.spokenVerdict !== null;
 
   emit({ event: "traffic.pitExit", data: relative === null ? { verdict } : { verdict, seconds: relative } });
   logger.debug(
@@ -395,4 +434,6 @@ function evaluate(
       `${stationary.length === 0 ? "" : `; standing still: ${stationary.map((carIdx) => `car ${carIdx}`).join(", ")}`})`,
   );
   episode.spokenVerdict = verdict;
+  episode.flipVerdict = null;
+  episode.flipEvaluations = 0;
 }
