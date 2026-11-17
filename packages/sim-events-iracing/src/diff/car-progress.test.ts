@@ -30,6 +30,7 @@ import {
   confirmedLastProgress,
   readCarProgress,
   stepCarProgress,
+  withinCorrectionSpan,
 } from "./car-progress.js";
 
 const PLAYER = 0;
@@ -450,6 +451,43 @@ describe("stepCarProgress — a counter and a fraction that disagree at the line
 
     expect(later!.progress[1]).toBeCloseTo(7.985, 10);
     expect(later!.traceReset[1]).toBe(true);
+  });
+
+  it("takes the first reading after a long gap as a first reading: it confirms nothing, so the next one is not corrected against it", () => {
+    // Confirmed at 6.999 just before the line; a lap-long gap later the car
+    // is just past the line again, but the counter lags the fraction for a
+    // tick, so 8.001 reads as 7.001, two thousandths on from 6.999. Taken as
+    // continuing a confirmed reading it would be confirmed, and the synced
+    // 8.002 next would be corrected down to 7.002.
+    const slice = confirmed(0.994, 0.999);
+    const lagging = step(
+      slice,
+      raw(190.1, [
+        [6, 0.6],
+        [7, 0.001],
+      ]),
+    );
+
+    expect(lagging!.progress[1]).toBeCloseTo(7.001, 10);
+    expect(confirmedLastProgress(slice, 1)).toBeUndefined();
+
+    const synced = step(
+      slice,
+      raw(190.1 + 1 / 60, [
+        [6, 0.601],
+        [8, 0.002],
+      ]),
+    );
+
+    expect(synced!.progress[1]).toBeCloseTo(8.002, 10);
+  });
+
+  it("withinCorrectionSpan: a read up to the span ago, not longer, not none, not in the future", () => {
+    expect(withinCorrectionSpan(100, 100)).toBe(true);
+    expect(withinCorrectionSpan(100, 100 + CAR_PROGRESS_LINE_MAX_SPAN_S)).toBe(true);
+    expect(withinCorrectionSpan(100, 100 + CAR_PROGRESS_LINE_MAX_SPAN_S + 0.01)).toBe(false);
+    expect(withinCorrectionSpan(null, 100)).toBe(false);
+    expect(withinCorrectionSpan(100, 99.9)).toBe(false);
   });
 
   it("still corrects the same reading on the very next tick (the positive control)", () => {

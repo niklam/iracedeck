@@ -73,7 +73,7 @@ import {
   resolvePitLaneLandmarks,
 } from "@iracedeck/track-data";
 
-import { confirmedLastProgress, readCarProgress, stepCarProgress } from "./diff/car-progress.js";
+import { confirmedLastProgress, readCarProgress, stepCarProgress, withinCorrectionSpan } from "./diff/car-progress.js";
 import { type CautionGapMeasurement, measureCautionGap } from "./diff/caution-gap.js";
 import { CATCH_UP_CLEAR_MULTIPLE, type CatchUpBlock, diffCaution, resolveCatchUpBlocks } from "./diff/caution.js";
 import { CORNER_CALLOUT_DEFAULT_LEAD_SECONDS, diffCornerName } from "./diff/corner-name.js";
@@ -1887,14 +1887,19 @@ function liveGapBetween(self: TranslatorInstance, aheadCarIdx: number, behindCar
   // progress is confirmed, so a first reading taken on a disagreeing tick is
   // never carried on. With none (outside the step's gate too) the reading is
   // the plain sum.
+  // The step's span rule applies too (withinCorrectionSpan): progress last
+  // read longer ago than CAR_PROGRESS_LINE_MAX_SPAN_S is not corrected against.
   const carProgress = self.state.carProgress;
+  const inSpan = withinCorrectionSpan(carProgress.lastReadSessionTime, sessionTime);
+  const baseline = (carIdx: number): number | undefined =>
+    inSpan ? confirmedLastProgress(carProgress, carIdx) : undefined;
 
   return readPairGap(
     carProgress.traces,
     aheadCarIdx,
-    readCarProgress(confirmedLastProgress(carProgress, aheadCarIdx), aheadLc!, aheadPct!),
+    readCarProgress(baseline(aheadCarIdx), aheadLc!, aheadPct!),
     behindCarIdx,
-    readCarProgress(confirmedLastProgress(carProgress, behindCarIdx), behindLc!, behindPct!),
+    readCarProgress(baseline(behindCarIdx), behindLc!, behindPct!),
     sessionTime,
     resolveTrackLengthMeters(self.state, sessionInfo, telemetry),
   ).gapSeconds;

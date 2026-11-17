@@ -49,6 +49,19 @@ export const CAR_PROGRESS_LINE_GUARD_PCT = 0.05;
 export const CAR_PROGRESS_LINE_MAX_SPAN_S = 0.5;
 
 /**
+ * Whether a reading at `sessionTime` may be corrected against progress last
+ * read at `lastReadSessionTime`: the one span rule both readers apply (the
+ * progress step and the translator's pair-gap reading). `null` is no read.
+ */
+export function withinCorrectionSpan(lastReadSessionTime: number | null, sessionTime: number): boolean {
+  if (lastReadSessionTime === null) return false;
+
+  const since = sessionTime - lastReadSessionTime;
+
+  return since >= 0 && since <= CAR_PROGRESS_LINE_MAX_SPAN_S;
+}
+
+/**
  * The furthest (laps) a corrected reading may be from the last progress: one
  * tick's travel, not the 0.05 lap that `GAP_TRACE_MAX_STEP` allows between
  * two recorded SAMPLES of a trace. The disagreement {@link readCarProgress}
@@ -271,9 +284,7 @@ export function stepCarProgress(
   const carCount = Math.min(lc.length, pct.length);
   // The correction reads only across a short gap since the last read
   // (CAR_PROGRESS_LINE_MAX_SPAN_S); otherwise every reading stands as it is.
-  const sinceLastRead = previousSessionTime === null ? null : sessionTime - previousSessionTime;
-  const correctionBaseline =
-    sinceLastRead !== null && sinceLastRead >= 0 && sinceLastRead <= CAR_PROGRESS_LINE_MAX_SPAN_S;
+  const correctionBaseline = withinCorrectionSpan(previousSessionTime, sessionTime);
   const progress = new Array<number | null>(carCount).fill(null);
   const traceReset = new Array<boolean>(carCount).fill(false);
 
@@ -308,7 +319,10 @@ export function stepCarProgress(
     // confirmed or this one is clear of the line: inside the guard band two
     // readings can agree with each other and both be a lap off (a
     // disagreement lasting two ticks), so agreement there confirms nothing.
+    // After a gap past the span the reading is a first reading again: it
+    // continues nothing, and confirms only on the next one.
     slice.lastProgressConfirmed[i] =
+      correctionBaseline &&
       previous !== undefined &&
       Math.abs(carProgress - previous) <= CAR_PROGRESS_CONTINUOUS_LAPS &&
       (previousConfirmed || !isNearLine(dist));
