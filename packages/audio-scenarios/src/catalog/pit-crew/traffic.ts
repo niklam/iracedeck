@@ -119,7 +119,11 @@ export const TRAFFIC_REJOIN_SUPERSEDE_GROUP = "traffic-rejoin";
 /** The supersede group of the two pit-exit lines. */
 export const TRAFFIC_PIT_EXIT_SUPERSEDE_GROUP = "traffic-pit-exit";
 
-/** The var that speaks the close band's seconds as a whole sentence. */
+/**
+ * The var that speaks the close band's seconds: the clause that closes the
+ * `near` line's sentence after its lead-in ("Car coming in" or "Getting
+ * closer,", then "about five seconds."), never a sentence of its own.
+ */
 export const REJOIN_SECONDS_VAR = "traffic.rejoinSeconds";
 
 /**
@@ -266,7 +270,7 @@ export function registerTrafficVocabulary(
 
       return base === null ? null : poolRef(TRAFFIC_GROUP, base);
     },
-    "The nearest car's arrival in whole seconds, 2 to 9, as a whole sentence drawn from the traffic group's rejoin-mid pool for that number (traffic/rejoin-mid-5 is \"about five seconds.\"), each take a different wording. Nothing outside the close band.",
+    'The nearest car\'s arrival in whole seconds, 2 to 9, as the clause that closes the near line after its lead-in ("Car coming in" or "Getting closer,", then traffic/rejoin-mid-5, "about five seconds."), drawn from the traffic group\'s rejoin-mid pool for that number, each take a different wording. Nothing outside the close band.',
   );
 
   engine.defineCond(

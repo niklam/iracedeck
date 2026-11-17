@@ -484,6 +484,9 @@ describe("registerTrafficVocabulary", () => {
 
     expect(own(vars).map((v) => v.name)).toEqual([REJOIN_SECONDS_VAR]);
     expect(own(vars)[0].description).toMatch(/\btraffic group\b/);
+    // The middle closes the sentence its lead-in starts; it is not a sentence of its own.
+    expect(own(vars)[0].description).toMatch(/closes the near line after its lead-in/);
+    expect(own(vars)[0].description).not.toMatch(/whole sentence/);
     expect(own(conds).map((c) => c.name)).toEqual(["traffic.rejoinFirst"]);
     expect(
       own(cases)
