@@ -534,10 +534,12 @@ function raceStart(
  * memory between presses (the picture last spoken per target and the lap of
  * the last call, with no call within two laps of it), and the harness has no
  * per-press lap, so each button owns its lap (3 apart, ascending in the
- * list) and its cars: the buttons pressed one after another in any order
- * each speak once, a button pressed a second time is silent (its picture is
- * unchanged and its lap is the one just called), and a `session.changed`
- * (any Race Start button) clears the memory so it speaks again.
+ * list) and its cars: each button speaks on its first press, a button pressed
+ * again straight after itself is silent (its picture is unchanged and its lap
+ * is the one just called), and a `session.changed` (any Race Start button)
+ * clears the memory so it speaks again. Going back to an earlier button after
+ * a later one can speak it again: its lap is below the last call's, which the
+ * spacing does not cover, and its target's memory may hold the later picture.
  */
 const SECTOR_CALL_FIRST_LAP = 10;
 const SECTOR_CALL_LAP_STEP = 3;
@@ -567,7 +569,7 @@ function sectorCall(
     id: `sector-comparison-${id}`,
     category: "Sectors",
     label,
-    description: `${description} The comparison clips are awaiting approval, so this button is silent until they ship.`,
+    description,
     event: "lap.completed",
     data: {
       lap,
@@ -4625,9 +4627,8 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
   },
 
   // ── Sectors (issue #1572) ──
-  // The comparison clips are awaiting approval, so every button is silent
-  // until they ship. Deltas are the player's sector time minus the target's:
-  // a positive delta is a sector the target is quicker in.
+  // Deltas are the player's sector time minus the target's: a positive delta
+  // is a sector the target is quicker in.
   sectorCall(
     0,
     "leader-gain",
@@ -4674,7 +4675,7 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
     6,
     "same-picture-twice",
     "Same picture twice",
-    "A three-sector race with a car 1.8 s ahead that is 0.5 s slower than you through sector 3, no leader: the attack call naming sector 3. Press it twice: the second press is silent, its picture unchanged and its lap inside the two-lap spacing after the call. Any Race Start button clears that and lets it speak again.",
+    "A three-sector race with a car 1.8 s ahead that is 0.5 s slower than you through sector 3, no leader: the attack call naming sector 3. Press it twice in a row: the second press is silent, its picture unchanged and its lap inside the two-lap spacing after the call. Any Race Start button clears that and lets it speak again.",
     { ahead: [0, 0, -0.5] },
   ),
 ];

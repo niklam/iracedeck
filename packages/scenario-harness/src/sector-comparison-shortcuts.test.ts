@@ -79,7 +79,6 @@ describe("the Sectors shortcuts", () => {
       expect(s.event).toBe("lap.completed");
       expect(s.data).toMatchObject({ lapIsValid: true, sessionType: "race" });
       expect(s.data).not.toHaveProperty("wasCaution");
-      expect(s.description).toContain("awaiting approval");
     }
 
     for (let i = 1; i < laps.length; i++) expect(laps[i] - laps[i - 1]).toBeGreaterThanOrEqual(2);
