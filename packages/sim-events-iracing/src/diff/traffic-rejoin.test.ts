@@ -877,6 +877,44 @@ describe("diffTrafficRejoin", () => {
     });
   });
 
+  describe("missing per-car arrays", () => {
+    const missingLines = (debug: ReturnType<typeof vi.fn>): string[] =>
+      debug.mock.calls.map(([line]) => String(line)).filter((line) => line.includes("per-car arrays are missing"));
+
+    it.each(["CarIdxEstTime", "CarIdxTrackSurface"] as const)(
+      "without %s say nothing, never clear, mark nothing spoken and log once per episode",
+      (field) => {
+        const h = harness();
+        const missing = tel({ [field]: undefined });
+
+        h.stop(missing);
+        h.run(3_000, missing);
+
+        expect(h.events).toEqual([]);
+        expect(h.episode.active).toBe(true);
+        expect(h.episode.spokenBand).toBeNull();
+        expect(missingLines(h.debug)).toHaveLength(1);
+      },
+    );
+
+    it("hold the entry call until the arrays are back, then say it", () => {
+      const h = harness();
+
+      h.stop(tel({ CarIdxEstTime: undefined }));
+      h.step([behind(5, 12)]);
+
+      expect(h.events).toEqual([OVER_TEN]);
+    });
+
+    it("say clear with complete arrays and no car on track", () => {
+      const h = harness();
+
+      h.stop(tel());
+
+      expect(h.events).toEqual([CLEAR]);
+    });
+  });
+
   /**
    * The cars' progress measured as the translator measures it: every tick
    * runs `updateTrafficReferenceCurves` over the same slice before the

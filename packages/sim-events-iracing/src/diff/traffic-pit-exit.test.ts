@@ -661,6 +661,36 @@ describe("diffTrafficPitExit", () => {
     });
   });
 
+  describe("missing per-car arrays", () => {
+    it.each(["CarIdxEstTime", "CarIdxTrackSurface"] as const)(
+      "without %s make no call, never a clear, log once, and keep evaluating",
+      (field) => {
+        const h = harness();
+        const missing = tel({ [field]: undefined });
+
+        h.depart(missing);
+        h.after(TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS, missing);
+
+        expect(h.events).toEqual([]);
+        expect(h.episode.active).toBe(true);
+        expect(lines(h.debug).filter((line) => line.includes("per-car arrays are missing"))).toHaveLength(1);
+
+        // The arrays back with nobody on track: the first call, a clear.
+        h.after(TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS, tel());
+
+        expect(h.events).toEqual([{ verdict: "clear" }]);
+      },
+    );
+
+    it("say clear with complete arrays and no car on track", () => {
+      const h = harness();
+
+      h.depart(tel());
+
+      expect(h.events).toEqual([{ verdict: "clear" }]);
+    });
+  });
+
   describe("when it speaks", () => {
     /**
      * The player rolling down pit road at the limit from pct 0, where the ETA

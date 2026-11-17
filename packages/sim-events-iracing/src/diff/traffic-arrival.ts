@@ -677,7 +677,12 @@ export function scaledReferenceSource(
 
 /**
  * Every candidate car's arrival at P (`targetPct`, the lap position the
- * sources answer for; module header): timed by the first of `sources` that
+ * sources answer for; module header), or `null` when the telemetry lacks a
+ * per-car array the model reads (`CarIdxLapDistPct`, `CarIdxEstTime`,
+ * `CarIdxTrackSurface` absent or not an array): no data is not an empty
+ * track, so the caller must tell the two apart, and neither detector says
+ * clear on `null`. An empty array, from complete data, is no car on track.
+ * Each car is timed by the first of `sources` that
  * answers for its class, or untimed with the reason. Whether a car wraps is
  * decided by its position against P ({@link crossesLineBefore}); the wrap
  * adds {@link resolveClassLapTime}. A car standing still
@@ -698,12 +703,12 @@ export function computeTrafficArrivals(
   classes: TrafficClassInfo | null,
   trackLengthMeters: number | null,
   stationary?: number[],
-): TrafficArrival[] {
+): TrafficArrival[] | null {
   const pcts = telemetry.CarIdxLapDistPct;
   const estTimes = telemetry.CarIdxEstTime;
   const surfaces = telemetry.CarIdxTrackSurface;
 
-  if (!Array.isArray(pcts) || !Array.isArray(estTimes) || !Array.isArray(surfaces)) return [];
+  if (!Array.isArray(pcts) || !Array.isArray(estTimes) || !Array.isArray(surfaces)) return null;
 
   const sessionTime = isFiniteNumber(telemetry.SessionTime) ? telemetry.SessionTime : null;
   const arrivals: TrafficArrival[] = [];

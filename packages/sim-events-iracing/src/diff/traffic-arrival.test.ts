@@ -690,6 +690,15 @@ describe("the reference sources", () => {
   });
 });
 
+/** `computeTrafficArrivals` on complete per-car arrays, where it never answers `null`. */
+function arrivalsAt(...args: Parameters<typeof computeTrafficArrivals>): TrafficArrival[] {
+  const arrivals = computeTrafficArrivals(...args);
+
+  if (arrivals === null) throw new Error("computeTrafficArrivals answered null on complete arrays");
+
+  return arrivals;
+}
+
 describe("computeTrafficArrivals", () => {
   const always = (name: TrafficReferenceSource["name"], value: number | null): TrafficReferenceSource => ({
     name,
@@ -710,7 +719,7 @@ describe("computeTrafficArrivals", () => {
       always("scaled", 50),
     ];
 
-    const arrivals = byCar(computeTrafficArrivals(slice, 0.5, sources, telemetry, 0, null, null));
+    const arrivals = byCar(arrivalsAt(slice, 0.5, sources, telemetry, 0, null, null));
 
     expect(arrivals.get(1)).toEqual({ carIdx: 1, classId: 1, timed: true, seconds: 20, source: "landmark" });
     expect(arrivals.get(2)).toEqual({ carIdx: 2, classId: 2, timed: true, seconds: 30, source: "curve" });
@@ -728,7 +737,7 @@ describe("computeTrafficArrivals", () => {
     ]);
     const sources = [{ name: "curve", referenceAt: (cls: number) => (cls === 1 ? 50 : null) }] as const;
 
-    const arrivals = byCar(computeTrafficArrivals(slice, 0.5, sources, telemetry, 0, null, null));
+    const arrivals = byCar(arrivalsAt(slice, 0.5, sources, telemetry, 0, null, null));
 
     expect(arrivals.get(1)).toEqual({ carIdx: 1, classId: 9, timed: false, reason: "noReference" });
     expect(arrivals.get(2)).toEqual({ carIdx: 2, classId: 1, timed: false, reason: "noClassLap" });
@@ -736,7 +745,7 @@ describe("computeTrafficArrivals", () => {
     expect(arrivals.get(4)).toEqual({ carIdx: 4, classId: null, timed: false, reason: "noClass" });
 
     // Positive control: with the class lap known the car past P is timed, wrapped.
-    const wrapped = byCar(computeTrafficArrivals(slice, 0.5, sources, telemetry, 0, classInfo({ "1": 100 }), null));
+    const wrapped = byCar(arrivalsAt(slice, 0.5, sources, telemetry, 0, classInfo({ "1": 100 }), null));
 
     expect(wrapped.get(2)).toEqual({ carIdx: 2, classId: 1, timed: true, seconds: 70, source: "curve" });
   });
@@ -756,7 +765,7 @@ describe("computeTrafficArrivals", () => {
     ]);
     const classes = classInfo({ "1": 100, "11": 110 }, [1, 1, 1, 1, 1, 1, 1, 11]);
 
-    const arrivals = computeTrafficArrivals(slice, 0.5, [always("curve", 30)], telemetry, 0, classes, null);
+    const arrivals = arrivalsAt(slice, 0.5, [always("curve", 30)], telemetry, 0, classes, null);
 
     expect(arrivals.map((arrival) => arrival.carIdx)).toEqual([5, 6, 7]);
     expect(arrivals.every((arrival) => arrival.timed)).toBe(true);
@@ -776,7 +785,7 @@ describe("computeTrafficArrivals", () => {
         { idx: 1, ...car },
       ]);
       const classes = lap === null ? null : classInfo({ "1": lap });
-      const [arrival] = computeTrafficArrivals(
+      const [arrival] = arrivalsAt(
         createTrafficArrivalState(),
         targetPct,
         [always("curve", referenceAtP)],
@@ -831,7 +840,7 @@ describe("computeTrafficArrivals", () => {
     ]);
 
     const arrivals = byCar(
-      computeTrafficArrivals(createTrafficArrivalState(), 0.5, [always("curve", 30)], telemetry, 0, null, null),
+      arrivalsAt(createTrafficArrivalState(), 0.5, [always("curve", 30)], telemetry, 0, null, null),
     );
 
     // Behind P without a wrap: no class lap needed.
@@ -847,9 +856,9 @@ describe("computeTrafficArrivals", () => {
     ]);
 
     for (const target of [-0.1, 1, Number.NaN]) {
-      expect(
-        computeTrafficArrivals(createTrafficArrivalState(), target, [always("curve", 30)], telemetry, 0, null, null),
-      ).toEqual([{ carIdx: 1, classId: 1, timed: false, reason: "noTarget" }]);
+      expect(arrivalsAt(createTrafficArrivalState(), target, [always("curve", 30)], telemetry, 0, null, null)).toEqual([
+        { carIdx: 1, classId: 1, timed: false, reason: "noTarget" },
+      ]);
     }
   });
 
@@ -878,7 +887,7 @@ describe("computeTrafficArrivals", () => {
       updateTrafficReferenceCurves(slice, at(100.5), null, TRACK_M);
 
       const stationary: number[] = [];
-      const arrivals = computeTrafficArrivals(slice, 0.5, curve, at(100.5), 0, null, TRACK_M, stationary);
+      const arrivals = arrivalsAt(slice, 0.5, curve, at(100.5), 0, null, TRACK_M, stationary);
 
       expect(arrivals.map((arrival) => arrival.carIdx)).toEqual([2]);
       expect(stationary).toEqual([1]);
@@ -889,24 +898,36 @@ describe("computeTrafficArrivals", () => {
 
       updateTrafficReferenceCurves(slice, at(100), null, TRACK_M);
 
-      expect(computeTrafficArrivals(slice, 0.5, curve, at(100), 0, null, TRACK_M).map((a) => a.carIdx)).toEqual([
+      expect(arrivalsAt(slice, 0.5, curve, at(100), 0, null, TRACK_M).map((a) => a.carIdx)).toEqual([
         1,
         2,
       ]);
 
       updateTrafficReferenceCurves(slice, at(100.5), null, TRACK_M);
 
-      expect(computeTrafficArrivals(slice, 0.5, curve, at(100.5), 0, null, null).map((a) => a.carIdx)).toEqual([
+      expect(arrivalsAt(slice, 0.5, curve, at(100.5), 0, null, null).map((a) => a.carIdx)).toEqual([
         1,
         2,
       ]);
     });
   });
 
-  it("answers nothing without the per-car arrays", () => {
-    expect(computeTrafficArrivals(createTrafficArrivalState(), 0.5, [], {} as TelemetryData, 0, null, null)).toEqual(
-      [],
-    );
+  it("answers null, not an empty track, without the per-car arrays", () => {
+    expect(computeTrafficArrivals(createTrafficArrivalState(), 0.5, [], {} as TelemetryData, 0, null, null)).toBeNull();
+
+    const complete = tel([{ idx: 1, pct: 0.1, est: 10 }]);
+
+    for (const field of ["CarIdxLapDistPct", "CarIdxEstTime", "CarIdxTrackSurface"] as const) {
+      for (const value of [undefined, 0, "x"]) {
+        const telemetry = { ...complete, [field]: value } as unknown as TelemetryData;
+
+        expect(computeTrafficArrivals(createTrafficArrivalState(), 0.5, [], telemetry, 0, null, null)).toBeNull();
+      }
+    }
+  });
+
+  it("answers an empty list from complete arrays with no car on track", () => {
+    expect(computeTrafficArrivals(createTrafficArrivalState(), 0.5, [], tel([]), 0, null, null)).toEqual([]);
   });
 
   it("wraps with the class curve's lap end when the class has one", () => {
@@ -921,15 +942,7 @@ describe("computeTrafficArrivals", () => {
       { idx: 0, pct: 0.1, est: 10 },
       { idx: 1, pct: 0.9, est: 90 },
     ]);
-    const [arrival] = computeTrafficArrivals(
-      slice,
-      0.1,
-      [always("scaled", 10)],
-      telemetry,
-      0,
-      classInfo({ "1": 101 }),
-      null,
-    );
+    const [arrival] = arrivalsAt(slice, 0.1, [always("scaled", 10)], telemetry, 0, classInfo({ "1": 101 }), null);
 
     // The curve ends at 100.0; CarClassEstLapTime would have said 21 s.
     expect(arrival).toMatchObject({ carIdx: 1, timed: true });
@@ -968,7 +981,7 @@ describe("computeTrafficArrivals", () => {
       updateTrafficReferenceCurves(slice, roggia, classes, null);
 
       const sources = [curveReferenceSource(slice, 0.3778), scaledReferenceSource(40.028, GTD, classes)];
-      const [arrival] = computeTrafficArrivals(slice, 0.3778, sources, stopped, player, classes, null);
+      const [arrival] = arrivalsAt(slice, 0.3778, sources, stopped, player, classes, null);
       // The GTP curve at 0.3778, between cars 6 and 5: 34.908 s.
       const gtpAtP = 34.535 + ((0.3778 - 0.3756) / (0.3834 - 0.3756)) * (35.857 - 34.535);
 
@@ -982,7 +995,7 @@ describe("computeTrafficArrivals", () => {
     it("falls back to scaling before the GTP class has driven past P, within a few tenths of the curve", () => {
       const slice = createTrafficArrivalState();
       const sources = [curveReferenceSource(slice, 0.3778), scaledReferenceSource(40.028, GTD, classes)];
-      const [arrival] = computeTrafficArrivals(slice, 0.3778, sources, stopped, player, classes, null);
+      const [arrival] = arrivalsAt(slice, 0.3778, sources, stopped, player, classes, null);
 
       expect(arrival).toMatchObject({ carIdx: 8, classId: GTP, timed: true, source: "scaled" });
       // 40.028 × 91.6077 / 105.5726 = 34.733 s at P, against the curve's 34.908.

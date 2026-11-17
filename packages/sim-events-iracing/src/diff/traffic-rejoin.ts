@@ -81,6 +81,12 @@
  * said at the first evaluation that can say it. It is logged once per episode
  * at debug with each untimed car's reason, which is all an untimed car alone
  * ever produces (spec decision 5: never invent a number).
+ *
+ * **No per-car arrays.** Telemetry without an array the arrival model reads
+ * (`computeTrafficArrivals` answers `null`) is no picture at all, never an
+ * empty track: that evaluation says nothing, marks nothing spoken and leaves
+ * the close car as it was, so the first evaluation with the arrays says what
+ * it would have. Logged once per episode at debug.
  */
 import {
   type SimEventName,
@@ -433,6 +439,19 @@ function evaluate(
     trackLengthMeters,
     stationary,
   );
+
+  // No per-car arrays is no picture at all, never an empty track: nothing is
+  // said or marked spoken, and the close car is not followed, so the first
+  // evaluation with the arrays judges afresh (module header).
+  if (arrivals === null) {
+    if (!episode.arraysMissingLogged) {
+      episode.arraysMissingLogged = true;
+      logger.debug("Rejoin: silent, the per-car arrays are missing");
+    }
+
+    return;
+  }
+
   const untimed = arrivals.filter((a): a is UntimedArrival => !a.timed);
   let nearest: TimedArrival | null = null;
 

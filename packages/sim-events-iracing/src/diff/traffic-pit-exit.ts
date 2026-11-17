@@ -64,6 +64,9 @@
  * read as arriving with the player however long it stood there. `traffic` when a timed car's arrival less the player's ETA lies in
  * `[−before, +after]` (both ends inclusive), or when any car is untimed: a
  * car nobody can time is never a clear. `clear` otherwise.
+ * Telemetry without the per-car arrays the model reads is no verdict at all
+ * (`computeTrafficArrivals` answers `null`): no call, one debug line per
+ * episode, and the next evaluation tries again.
  *
  * **The before side looks back.** The arrival model answers only the NEXT
  * arrival, in [0, lap): a car that crossed `blendEnd` half a second ago reads
@@ -475,6 +478,18 @@ function evaluate(
     facts.trackLengthMeters,
     stationary,
   );
+
+  // No per-car arrays is no picture at all, never an empty track: no call,
+  // and the next evaluation tries again.
+  if (arrivals === null) {
+    if (!episode.arraysMissingLogged) {
+      episode.arraysMissingLogged = true;
+      logger.debug("PitExit: silent, the per-car arrays are missing");
+    }
+
+    return;
+  }
+
   const untimed = arrivals.filter((a): a is UntimedArrival => !a.timed);
   let nearest: { car: TimedArrival; relative: number } | null = null;
   let inWindow = false;

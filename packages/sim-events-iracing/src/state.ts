@@ -695,6 +695,8 @@ export type TrafficRejoinState = {
   closeCarSeconds: number | null;
   /** The once-per-episode debug line for a reassuring line withheld by untimed cars has been written. */
   untimedLogged: boolean;
+  /** The once-per-episode debug line for an evaluation without the per-car arrays has been written. */
+  arraysMissingLogged: boolean;
 };
 
 /** No episode, no dwell running (issue #1113): the initial state. */
@@ -710,6 +712,7 @@ export function createTrafficRejoinState(): TrafficRejoinState {
     closeCarIdx: null,
     closeCarSeconds: null,
     untimedLogged: false,
+    arraysMissingLogged: false,
   };
 }
 
@@ -752,6 +755,8 @@ export type TrafficPitExitState = {
   landmarksMissingLogged: boolean;
   /** The once-per-episode debug line for an ETA that cannot be computed has been written. */
   noEtaLogged: boolean;
+  /** The once-per-episode debug line for an evaluation without the per-car arrays has been written. */
+  arraysMissingLogged: boolean;
 };
 
 /** No episode, no stall baseline (issue #1113): the initial state. */
@@ -765,6 +770,7 @@ export function createTrafficPitExitState(): TrafficPitExitState {
     flipEvaluations: 0,
     landmarksMissingLogged: false,
     noEtaLogged: false,
+    arraysMissingLogged: false,
   };
 }
 
