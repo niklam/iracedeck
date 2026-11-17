@@ -27,7 +27,7 @@ import type {
 import { classifySession } from "@iracedeck/sim-events-iracing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { WEIGHT } from "../../dsl.js";
+import { type ScenarioContext, WEIGHT } from "../../dsl.js";
 import type { AudioAssetsManifest } from "../../interpreter.js";
 import { _resetAudioScenarios, getScenarioEngine, initializeAudioScenarios } from "../../interpreter.js";
 import { descriptionNamesGroup } from "../../reference/pack-reference.js";
@@ -41,6 +41,7 @@ import {
   LAP_TIME_CLIP_SOURCES,
   LAP_TIME_SCENARIO_IDS,
   type LapCompletedSnapshot,
+  registerLapTimeVocabulary,
   SCENARIO_ID_TO_LAP_TIME_ID,
 } from "./lap-time.js";
 import { _resetLimiterCueEngine } from "./limiter-cue-engine.js";
@@ -954,5 +955,98 @@ describe("buildLapTimeLastContract (issue #1163)", () => {
 
     expect(owned.when?.where?.(ev)).toBe(true);
     expect(notOwned.when?.where?.(ev)).toBe(false);
+  });
+});
+
+describe("every lapTime var reads the fire's own lap (#1688)", () => {
+  type Resolver = (ctx: ScenarioContext) => unknown;
+
+  /** Every var and condition the vocabulary registers, over a snapshot that is `latest`. */
+  function vocabulary(latest: LapCompletedSnapshot | null): Map<string, Resolver> {
+    const resolvers = new Map<string, Resolver>();
+
+    registerLapTimeVocabulary(
+      {
+        defineVar: (name: string, resolver: Resolver) => resolvers.set(name, resolver),
+        defineCond: (name: string, predicate: Resolver) => resolvers.set(name, predicate),
+      } as never,
+      () => latest,
+    );
+
+    return resolvers;
+  }
+
+  /** A fire of `lap`'s own `lap.completed`, or `null` for a fire with no lap event. */
+  function ctxOf(lap: LapCompletedSnapshot | null): ScenarioContext {
+    return {
+      event: lap
+        ? ({ event: "lap.completed", timestamp: 0, telemetry: null, data: lap } as unknown as ScenarioContext["event"])
+        : null,
+      telemetry: null,
+      data: lap,
+      now: 0,
+      vars: {},
+    };
+  }
+
+  // The best-lap line waited behind another one, and a newer lap completed
+  // before it spoke: the snapshot is that newer lap, a plain one under a
+  // minute, while the fire is the session's first valid lap.
+  const fired = snap({ lap: 1, lapTime: 127.007, isFirstValid: true, previousBestLapTime: undefined });
+  const newer = snap({ lap: 2, lapTime: 58.041, isBest: false, isFirstValid: false });
+
+  it("reads intro, clock and thousandths from the fire's lap, not the newer snapshot", () => {
+    const v = vocabulary(newer);
+    const ctx = ctxOf(fired);
+
+    expect(v.get("lapTime.intro")?.(ctx)).toBe("pool:lap-time-intro/first-good-lap");
+    expect(v.get("lapTime.clock")?.(ctx)).toBe("pool:lap-time-clock/2m07");
+    expect(v.get("lapTime.thousandths")?.(ctx)).toBe("pool:lap-time-thousandths/007");
+  });
+
+  it("reads #555's full form from the fire's lap too, so a pack script's line agrees with itself", () => {
+    const v = vocabulary(newer);
+    const ctx = ctxOf(fired);
+
+    expect(v.get("lapTime.minute")?.(ctx)).toBe("pool:lap-time-minute/2");
+    expect(v.get("lapTime.second")?.(ctx)).toBe("pool:lap-time-second/7");
+    expect(v.get("lapTime.decimal")?.(ctx)).toBe("pool:lap-time-decimal/0");
+    expect(v.get("lapTime.hasMinuteComponent")?.(ctx)).toBe(true);
+  });
+
+  it("falls back to the snapshot only for a fire with no lap event (the positive control)", () => {
+    const v = vocabulary(newer);
+    const ctx = ctxOf(null);
+
+    expect(v.get("lapTime.intro")?.(ctx)).toBe("pool:lap-time-intro/best-lap-yet");
+    expect(v.get("lapTime.clock")?.(ctx)).toBe("pool:lap-time-second/58");
+    expect(v.get("lapTime.second")?.(ctx)).toBe("pool:lap-time-second/58");
+    expect(v.get("lapTime.hasMinuteComponent")?.(ctx)).toBe(false);
+  });
+});
+
+describe("each first-party voice ships every clip its best-lap line can name (#1688)", () => {
+  // The fires above run every script over this file's own fixture clips, under
+  // one voice; this holds each voice's real clips to the line instead, since
+  // the coverage test skips var-driven groups whole.
+  const clips = new Set(MANIFEST.clips);
+  const expected = (voice: string): string[] => [
+    ...INTRO_NAMES.map((n) => `voice/${voice}/lap-time-intro/${n}.mp3`),
+    ...CLOCK_NAMES.map((n) => `voice/${voice}/lap-time-clock/${n}.mp3`),
+    ...SECOND_NAMES.map((n) => `voice/${voice}/lap-time-second/${n}.mp3`),
+    ...THOUSANDTHS_NAMES.map((n) => `voice/${voice}/lap-time-thousandths/${n}.mp3`),
+  ];
+
+  for (const { voice } of BUNDLED_SCRIPTS) {
+    it(`voice "${voice}": both intros, every clock 1:00–10:59, every second and every thousandth`, () => {
+      const wanted = expected(voice);
+
+      expect(wanted).toHaveLength(2 + 600 + 60 + 1000);
+      expect(wanted.filter((c) => !clips.has(c))).toEqual([]);
+    });
+  }
+
+  it("the positive control: a voice the manifest does not carry misses every one", () => {
+    expect(expected("no-such-voice").filter((c) => !clips.has(c))).toHaveLength(2 + 600 + 60 + 1000);
   });
 });

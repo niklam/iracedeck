@@ -64,14 +64,15 @@
  * scheduling already provides the post-line breathing room the pause used
  * to give artificially.
  *
- * Snapshot-at-fire-time (session-start pattern, issue #542): the var resolvers
- * read from a closure-bound `getSnapshot` so deferred replays speak the same
- * frozen lap data. The snapshot is the `lap.completed` event payload itself
- * — the plugin caches the latest one and exposes a getter. Lap events are
- * well-separated in time, so the cache-overwrite race between back-to-back
- * fires is not a practical concern. That is why the vocabulary, not the
- * contract, takes the resolver; the contract's builder keeps only the
- * race-finished gate its `where:` reads.
+ * Frozen lap data (session-start pattern, issue #542): every var resolver
+ * reads the fire's own `lap.completed` payload, so a deferred replay speaks the
+ * lap that fired it. The closure-bound `getSnapshot` — the latest payload, which
+ * the plugin caches — is only the fallback for a fire with no lap event. Until
+ * #1688 the best-lap vars read the snapshot alone; a best-lap line that waited
+ * while a newer lap completed could then have read that lap's intro beside
+ * its own time once the time vars read the payload. That is why the
+ * vocabulary, not the contract, takes the resolver; the contract's builder
+ * keeps only the race-finished gate its `where:` reads.
  *
  * Clip scope derives from the manifest (issues #835/#836): each component
  * resolver returns a pool reference — split and resolved through the shared
@@ -129,19 +130,33 @@ function hasMinuteComponent(snapshot: LapCompletedSnapshot | null): boolean {
 
 /**
  * Register the vocabulary the lap-time script references (issue #1065): the
- * four readout components as vars and the minute gate as a condition. Every
- * resolver reads the `lap.completed` snapshot through `getSnapshot` at
- * expansion time. Names and descriptions are the public API of the format;
+ * readout components as vars and the minute gates as conditions. Every
+ * resolver reads the fire's own `lap.completed` payload, falling back to the
+ * `getSnapshot` snapshot only for a fire with no lap event, so the intro and
+ * the time of one line always describe the same lap, however long the line
+ * waited (#1688). Names and descriptions are the public API of the format;
  * the descriptions feed the generated reference (#1066).
  */
 export function registerLapTimeVocabulary(
   engine: Pick<IScenarioEngine, "defineVar" | "defineCond">,
   getSnapshot: LapCompletedSnapshotResolver,
 ): void {
+  // The fire's own `lap.completed` payload, falling back to the snapshot for a
+  // fire with no lap event. Every var and condition below reads through it, so
+  // a best-lap line that waited behind another one while a newer lap completed
+  // still reads its own lap in every component, never the newer lap's intro
+  // beside its own time (#1688). Nothing is read from a lap the sim did not
+  // count (#1582).
+  const lapOf = (ctx: ScenarioContext): LapCompletedSnapshot | null =>
+    ctx.event?.event === "lap.completed"
+      ? ((ctx.data as LapCompletedSnapshot | null | undefined) ?? null)
+      : getSnapshot();
+  const countedLapOf = (ctx: ScenarioContext): CountedLapCompleted | null => countedLap(lapOf(ctx));
+
   engine.defineVar(
     "lapTime.intro",
-    () => {
-      const s = countedLap(getSnapshot());
+    (ctx) => {
+      const s = countedLapOf(ctx);
 
       if (!s) return null;
 
@@ -156,8 +171,8 @@ export function registerLapTimeVocabulary(
 
   engine.defineVar(
     "lapTime.minute",
-    () => {
-      const s = countedLap(getSnapshot());
+    (ctx) => {
+      const s = countedLapOf(ctx);
 
       if (!s) return null;
 
@@ -168,8 +183,8 @@ export function registerLapTimeVocabulary(
 
   engine.defineVar(
     "lapTime.second",
-    () => {
-      const s = countedLap(getSnapshot());
+    (ctx) => {
+      const s = countedLapOf(ctx);
 
       if (!s) return null;
 
@@ -180,8 +195,8 @@ export function registerLapTimeVocabulary(
 
   engine.defineVar(
     "lapTime.decimal",
-    () => {
-      const s = countedLap(getSnapshot());
+    (ctx) => {
+      const s = countedLapOf(ctx);
 
       if (!s) return null;
 
@@ -192,20 +207,13 @@ export function registerLapTimeVocabulary(
 
   engine.defineCond(
     "lapTime.hasMinuteComponent",
-    () => hasMinuteComponent(getSnapshot()),
+    (ctx) => hasMinuteComponent(lapOf(ctx)),
     "The lap is a minute or longer, so the minute word is spoken before the seconds. A pack may drop the minute with optional for a terse register; the assumed minute only holds where it is 1.",
   );
 
-  // The every-lap call's vocabulary (#1163): the compact readout to the
-  // thousandth. Its intro is no var — it ends its own sentence, so the script
-  // addresses it as pool:lap-time-last/intro. Each reads the fire's own
-  // `lap.completed` payload, falling back to the snapshot for a fire with no
-  // lap event, and reads nothing from a lap the sim did not count (#1582).
-  const lapOf = (ctx: ScenarioContext): LapCompletedSnapshot | null =>
-    ctx.event?.event === "lap.completed"
-      ? ((ctx.data as LapCompletedSnapshot | null | undefined) ?? null)
-      : getSnapshot();
-  const countedLapOf = (ctx: ScenarioContext): CountedLapCompleted | null => countedLap(lapOf(ctx));
+  // The compact readout to the thousandth (#1163), which every first-party
+  // lap-time call reads since #1688. The every-lap intro is no var — it ends
+  // its own sentence, so the script addresses it as pool:lap-time-last/intro.
 
   engine.defineVar(
     "lapTime.clock",
