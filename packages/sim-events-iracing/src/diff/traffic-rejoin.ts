@@ -6,7 +6,7 @@
  * to go.
  *
  * **The episode.** It starts once every entry gate has held, with the car
- * below {@link TRAFFIC_REJOIN_CRAWL_MPS}, for {@link TRAFFIC_REJOIN_ENTRY_DWELL_MS}.
+ * below {@link TRAFFIC_CRAWL_MPS}, for {@link TRAFFIC_REJOIN_ENTRY_DWELL_MS}.
  * Every gate is a positive read, so a field the sim did not send keeps the
  * engineer quiet rather than guessing: live in the car (`IsOnTrack` true),
  * `PlayerTrackSurface` the racing surface or beside it (`OnTrack` /
@@ -23,8 +23,12 @@
  * **The band.** On entry and then every {@link TRAFFIC_REJOIN_EVAL_INTERVAL_MS},
  * every car on the racing surface is timed to the player's lap position P
  * through `computeTrafficArrivals`: its class's learned curve at P first, then
- * the player's own `CarIdxEstTime` scaled to its class. The nearest timed
- * arrival `s` names the band: `rightBehind` under
+ * the player's own `CarIdxEstTime` scaled to its class. A car standing still
+ * behind the player — the other car of a multi-car incident, a stalled car —
+ * is not coming, and `computeTrafficArrivals` leaves it out (its module
+ * header): timed at reference pace it would read as arriving now for as long
+ * as it stood there, pin the band at `rightBehind` and hide every car really
+ * coming. The nearest timed arrival `s` names the band: `rightBehind` under
  * {@link TRAFFIC_REJOIN_RIGHT_BEHIND_S}, `near` under
  * {@link TRAFFIC_REJOIN_OVER_TEN_S} with N the whole seconds rounded down (2
  * to 9, the cautious direction: a car at 4.9 s is "about four seconds"),
@@ -45,9 +49,12 @@
  *   `rightBehind`) was about has gone by, the next car's band is said once:
  *   `overTen` or `clear` in the usual case, and the next car's own close call
  *   (a `near` with `first: true`) when it is close too. The car has gone by
- *   when no source times it any more, or its arrival has reached the clear
- *   band: an approaching car's arrival only falls, so from under 10 s it gets
- *   there only by wrapping round the lap behind the player.
+ *   when no source times it any more, it has stopped (left out as standing
+ *   still), or its arrival has reached the clear band: an approaching car's
+ *   arrival only falls, so from under 10 s it gets there only by wrapping
+ *   round the lap behind the player. A close car that stops is therefore
+ *   followed by the next car's band, and is a new car coming, with a closer
+ *   band of its own, once it moves again.
  * - **Otherwise** a band moving away is not re-announced: a car whose arrival
  *   drifts from 9.8 s to 10.2 s is still the same car coming.
  *
@@ -80,6 +87,7 @@ import {
   resolveCarClassId,
   scaledReferenceSource,
   type TimedArrival,
+  TRAFFIC_CRAWL_MPS,
   type TrafficArrival,
   type TrafficClassInfo,
   type TrafficTelemetry,
@@ -91,15 +99,6 @@ import type { EmitFn } from "./types.js";
 export const TRAFFIC_REJOIN_EVENTS = ["traffic.rejoin"] as const satisfies readonly SimEventName[];
 
 /**
- * Below this speed (m/s, about 11 km/h) the car counts as stopped or crawling.
- * Far under the slowest corner of any road course (a hairpin is taken at 50
- * km/h or more) and under any caution or formation pace, so a moving race car
- * never reads as one, while a car rolling backwards after a spin or creeping
- * out of the gravel still does.
- */
-export const TRAFFIC_REJOIN_CRAWL_MPS = 3;
-
-/**
  * How long the car must stay under the crawl speed, every gate holding, before
  * the episode starts (ms): a spin that ends with the car already pulling away,
  * or the instant of zero speed in a three-point turn, is not a rejoin.
@@ -108,7 +107,7 @@ export const TRAFFIC_REJOIN_ENTRY_DWELL_MS = 1_500;
 
 /**
  * Above this speed (m/s, about 29 km/h) the car counts as moving again. Well
- * above the crawl speed, so the band between them is the hysteresis: a car
+ * above the crawl speed ({@link TRAFFIC_CRAWL_MPS}), so the band between them is the hysteresis: a car
  * creeping through gravel at walking pace stays in its episode.
  */
 export const TRAFFIC_REJOIN_MOVING_MPS = 8;
@@ -172,6 +171,11 @@ function describeNearest(nearest: TimedArrival | null): string {
     : `nearest car ${nearest.carIdx} at ${nearest.seconds.toFixed(2)} s via ${nearest.source}`;
 }
 
+/** "; standing still: car 4, car 6", or nothing when no car was left out as standing still. */
+function describeStationary(stationary: readonly number[]): string {
+  return stationary.length === 0 ? "" : `; standing still: ${stationary.map((carIdx) => `car ${carIdx}`).join(", ")}`;
+}
+
 /** "car 3 (noReference), car 7 (noClass)". */
 function describeUntimed(untimed: readonly UntimedArrival[]): string {
   return untimed.map((car) => `car ${car.carIdx} (${car.reason})`).join(", ");
@@ -186,6 +190,7 @@ function describeUntimed(untimed: readonly UntimedArrival[]): string {
  * @param curves The per-class reference curves (`state.trafficArrival`, written by `updateTrafficReferenceCurves` earlier in the tick), read only.
  * @param playerCarIdx The player's car index (`resolvePlayerCarIdx`), `-1` when unknown, which fails the position gate.
  * @param classes The class lap times and each car's class (`resolveTrafficClassInfo`), `null` without session info.
+ * @param trackLengthMeters `WeekendInfo.TrackLength` in metres (`resolveTrackLengthMeters`), `null` while unknown: what turns a car's measured progress into a speed, without which no car is left out as standing still.
  */
 export function diffTrafficRejoin(
   episode: TrafficRejoinState,
@@ -193,6 +198,7 @@ export function diffTrafficRejoin(
   telemetry: TrafficRejoinTelemetry,
   playerCarIdx: number,
   classes: TrafficClassInfo | null,
+  trackLengthMeters: number | null,
   now: number,
   emit: EmitFn<(typeof TRAFFIC_REJOIN_EVENTS)[number]>,
   logger: ILogger,
@@ -212,7 +218,7 @@ export function diffTrafficRejoin(
   const pct = telemetry.CarIdxLapDistPct?.[playerCarIdx] as number;
 
   if (!episode.active) {
-    if (speed >= TRAFFIC_REJOIN_CRAWL_MPS) {
+    if (speed >= TRAFFIC_CRAWL_MPS) {
       episode.slowSince = null;
 
       return;
@@ -224,7 +230,7 @@ export function diffTrafficRejoin(
 
     Object.assign(episode, createTrafficRejoinState(), { active: true });
     logger.debug(`Rejoin: episode started (pct=${pct.toFixed(4)}, speed=${speed.toFixed(1)} m/s)`);
-    evaluate(episode, curves, telemetry, pct, playerCarIdx, classes, now, emit, logger);
+    evaluate(episode, curves, telemetry, pct, playerCarIdx, classes, trackLengthMeters, now, emit, logger);
 
     return;
   }
@@ -244,7 +250,7 @@ export function diffTrafficRejoin(
 
   if (episode.lastEvalAt !== null && elapsed(now, episode.lastEvalAt) < TRAFFIC_REJOIN_EVAL_INTERVAL_MS) return;
 
-  evaluate(episode, curves, telemetry, pct, playerCarIdx, classes, now, emit, logger);
+  evaluate(episode, curves, telemetry, pct, playerCarIdx, classes, trackLengthMeters, now, emit, logger);
 }
 
 /** The band of the nearest timed arrival (module header); `clear` with no timed car. */
@@ -306,6 +312,7 @@ function evaluate(
   pct: number,
   playerCarIdx: number,
   classes: TrafficClassInfo | null,
+  trackLengthMeters: number | null,
   now: number,
   emit: EmitFn<(typeof TRAFFIC_REJOIN_EVENTS)[number]>,
   logger: ILogger,
@@ -318,7 +325,17 @@ function evaluate(
     curveReferenceSource(curves, pct),
     scaledReferenceSource(isFiniteNumber(playerEstTime) ? playerEstTime : null, playerClass, classes),
   ];
-  const arrivals = computeTrafficArrivals(curves, pct, sources, telemetry, playerCarIdx, classes);
+  const stationary: number[] = [];
+  const arrivals = computeTrafficArrivals(
+    curves,
+    pct,
+    sources,
+    telemetry,
+    playerCarIdx,
+    classes,
+    trackLengthMeters,
+    stationary,
+  );
   const untimed = arrivals.filter((a): a is UntimedArrival => !a.timed);
   let nearest: TimedArrival | null = null;
 
@@ -337,7 +354,7 @@ function evaluate(
     if (!episode.untimedLogged) {
       episode.untimedLogged = true;
       logger.debug(
-        `Rejoin: ${band} withheld by untimed cars: ${describeUntimed(untimed)} (${describeNearest(nearest)}; ${reason})`,
+        `Rejoin: ${band} withheld by untimed cars: ${describeUntimed(untimed)} (${describeNearest(nearest)}; ${reason}${describeStationary(stationary)})`,
       );
     }
 
@@ -349,7 +366,9 @@ function evaluate(
     band === "near" ? { verdict: band, seconds: wholeSeconds as number, first: reason !== "count" } : { verdict: band };
 
   emit({ event: "traffic.rejoin", data: payload });
-  logger.debug(`Rejoin: emit ${describePayload(payload)} (${describeNearest(nearest)}; ${reason})`);
+  logger.debug(
+    `Rejoin: emit ${describePayload(payload)} (${describeNearest(nearest)}; ${reason}${describeStationary(stationary)})`,
+  );
   episode.spokenBand = band;
   episode.spokenSeconds = wholeSeconds;
   episode.closeCarIdx = (band === "near" || band === "rightBehind") && nearest !== null ? nearest.carIdx : null;

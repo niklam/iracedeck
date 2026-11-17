@@ -40,7 +40,9 @@
  * every car on the racing surface is timed to `blendEnd` through
  * `computeTrafficArrivals` — the landmark's time for its class, the class
  * curve at `blendEnd`, the player-class time at `blendEnd` scaled to its
- * class. `traffic` when a timed car's arrival less the player's ETA lies in
+ * class — but a car standing still, which that leaves out (its module
+ * header): timed at reference pace, a car stopped short of the blend would
+ * read as arriving with the player however long it stood there. `traffic` when a timed car's arrival less the player's ETA lies in
  * `[−before, +after]` (both ends inclusive), or when any car is untimed: a
  * car nobody can time is never a clear. `clear` otherwise.
  *
@@ -346,7 +348,17 @@ function evaluate(
     curveReferenceSource(curves, blendEnd.pct),
     scaledReferenceSource(playerClassAtBlend, playerClassId, facts.classes),
   ];
-  const arrivals = computeTrafficArrivals(curves, blendEnd.pct, sources, telemetry, facts.playerCarIdx, facts.classes);
+  const stationary: number[] = [];
+  const arrivals = computeTrafficArrivals(
+    curves,
+    blendEnd.pct,
+    sources,
+    telemetry,
+    facts.playerCarIdx,
+    facts.classes,
+    facts.trackLengthMeters,
+    stationary,
+  );
   const untimed = arrivals.filter((a): a is UntimedArrival => !a.timed);
   let nearest: { car: TimedArrival; relative: number } | null = null;
   let inWindow = false;
@@ -379,7 +391,8 @@ function evaluate(
   logger.debug(
     `PitExit: emit ${verdict} (${flip ? "flipped" : "first call"}; eta ${eta.seconds.toFixed(2)} s on ${eta.phase}, window -${before}/+${after} s; ` +
       `${nearest === null ? "no timed car" : `nearest car ${nearest.car.carIdx} at ${nearest.relative.toFixed(2)} s via ${nearest.car.source}`}; ` +
-      `untimed: ${untimed.length === 0 ? "none" : untimed.map((car) => `car ${car.carIdx} (${car.reason})`).join(", ")})`,
+      `untimed: ${untimed.length === 0 ? "none" : untimed.map((car) => `car ${car.carIdx} (${car.reason})`).join(", ")}` +
+      `${stationary.length === 0 ? "" : `; standing still: ${stationary.map((carIdx) => `car ${carIdx}`).join(", ")}`})`,
   );
   episode.spokenVerdict = verdict;
 }

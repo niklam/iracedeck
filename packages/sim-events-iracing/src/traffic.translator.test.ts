@@ -110,14 +110,18 @@ type Player = {
   replay?: boolean;
 };
 
-/** One tick: the player (car 0) as given, car 1 on track at `other` (`null`: not in world). Both class {@link CLS}. */
-function tick(player: Player, other: number | null): TelemetryData {
+/**
+ * One tick: the player (car 0) as given, car 1 on track at `other` (`null`: not
+ * in world), and with `more` car 2 on track at `more.car2`. All class
+ * {@link CLS}. `SessionTime` stands at 100 unless `more` moves it.
+ */
+function tick(player: Player, other: number | null, more?: { car2: number; sessionTime: number }): TelemetryData {
   const surface = player.surface ?? TrkLoc.OnTrack;
-  const pcts = [player.pct, other ?? -1];
+  const pcts = more === undefined ? [player.pct, other ?? -1] : [player.pct, other ?? -1, more.car2];
   const replay = player.replay ?? false;
 
   return {
-    SessionTime: 100,
+    SessionTime: more?.sessionTime ?? 100,
     OnPitRoad: player.onPitRoad ?? false,
     PlayerCarInPitStall: player.inStall ?? false,
     IsOnTrack: !replay,
@@ -148,11 +152,14 @@ function tick(player: Player, other: number | null): TelemetryData {
     CarIdxLapCompleted: pcts.map((p) => (p < 0 ? -1 : 3)),
     CarIdxLap: pcts.map((p) => (p < 0 ? -1 : 4)),
     CarIdxLapDistPct: pcts,
-    CarIdxTrackSurface: [surface, other === null ? TrkLoc.NotInWorld : TrkLoc.OnTrack],
-    CarIdxOnPitRoad: [player.onPitRoad ?? false, false],
+    CarIdxTrackSurface: [surface, other === null ? TrkLoc.NotInWorld : TrkLoc.OnTrack, TrkLoc.OnTrack].slice(
+      0,
+      pcts.length,
+    ),
+    CarIdxOnPitRoad: [player.onPitRoad ?? false, false, false].slice(0, pcts.length),
     CarIdxEstTime: pcts.map((p) => (p < 0 ? -1 : p * LAP_S)),
-    CarIdxClass: [CLS, CLS],
-    CarIdxLastLapTime: [LAP_S, LAP_S],
+    CarIdxClass: pcts.map(() => CLS),
+    CarIdxLastLapTime: pcts.map(() => LAP_S),
   } as TelemetryData;
 }
 
@@ -217,6 +224,24 @@ describe("the approaching-traffic detectors through handleTick (issue #1113)", (
       controller.__tick(tick({ pct: 0.5 }, 0.52));
 
       expect(rejoin).toEqual([{ verdict: "near", seconds: 4, first: true }, { verdict: "clear" }]);
+    });
+
+    it("leaves out a car standing still right behind, so the car really coming gets its call (the multi-car incident)", () => {
+      init();
+
+      // A tick every 125 ms on a SessionTime that runs with the clock. Car 2
+      // stopped 5 m behind the player on the 4 km track (0.11 s away at
+      // reference pace); car 1 coming at reference pace, 5.75 s away when the
+      // stop is recognised at t = 1.5.
+      const stoppedBehind = 0.5 - 5 / 4000;
+
+      for (let t = 0; t <= TRAFFIC_REJOIN_ENTRY_DWELL_MS / 1000; t += 0.125) {
+        if (t > 0) vi.advanceTimersByTime(125);
+
+        controller.__tick(tick({ pct: 0.5 }, (45 - (7.25 - t)) / LAP_S, { car2: stoppedBehind, sessionTime: 100 + t }));
+      }
+
+      expect(rejoin).toEqual([{ verdict: "near", seconds: 5, first: true }]);
     });
 
     it("says nothing for a car driving past at speed", () => {

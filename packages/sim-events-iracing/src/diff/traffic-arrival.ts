@@ -57,10 +57,35 @@
  * in the pits (`InPitStall`, `AproachingPits`). `CarIdxOnPitRoad` is never
  * read: it reads true for remote cars on the racing surface (#1112, amendment
  * 11). The pace car is a candidate: it does arrive.
+ *
+ * **A car standing still is not a candidate.** The model times every car at
+ * its class's reference pace, so a car stopped or crawling just behind P —
+ * the other half of a multi-car incident, a stalled car — reads as arriving
+ * now, stays the nearest for as long as it stands there, and hides every car
+ * really coming. So each car's progress along the lap is measured
+ * ({@link TrafficCarMotion} in `state.ts`): over a window of at least
+ * {@link TRAFFIC_MOTION_WINDOW_S} of `SessionTime`, the shorter way round the
+ * lap, so crossing the start/finish line is no jump. A car whose last rate,
+ * times the track length, is under {@link TRAFFIC_CRAWL_MPS} — standing,
+ * crawling, or going backwards — is left out of the arrivals altogether: not
+ * untimed, simply not coming. A car with no usable rate counts as moving, the
+ * cautious direction, since a car left out can never be a warning: on its
+ * first readings, after a gap in them longer than
+ * {@link TRAFFIC_MOTION_MAX_AGE_S}, after a jump faster than
+ * {@link TRAFFIC_MOTION_MAX_PLAUSIBLE_MPS} (a tow, a reset), with a rate older
+ * than {@link TRAFFIC_MOTION_MAX_AGE_S}, and without a track length or a
+ * `SessionTime`. A close car that stops is therefore gone, as one that drove
+ * by is, and comes back as a new car coming when it moves again.
  */
 import type { TelemetryData } from "@iracedeck/iracing-sdk";
+import { pitLaneSignedDeltaPct } from "@iracedeck/track-data";
 
-import { type TrafficArrivalState, type TrafficCurveBin, type TrafficReferenceCurve } from "../state.js";
+import {
+  type TrafficArrivalState,
+  type TrafficCarMotion,
+  type TrafficCurveBin,
+  type TrafficReferenceCurve,
+} from "../state.js";
 import { runUnitsDirectly, type UnitRunner } from "../tick-steps.js";
 import { isRacingSurface } from "./track-surface.js";
 
@@ -94,10 +119,52 @@ export const TRAFFIC_CURVE_MAX_SPAN_PCT = 0.01;
  */
 export const TRAFFIC_CURVE_SAMPLE_CAP = 64;
 
-/** The per-car arrays the arrival model reads. */
+/**
+ * The crawl speed, m/s (about 11 km/h), shared by both traffic detectors:
+ * under it the player's own car counts as stopped or crawling, which starts a
+ * rejoin, and another car counts as standing still, which leaves it out of the
+ * arrivals. Far under the slowest corner of any road course (a hairpin is
+ * taken at 50 km/h or more) and under any caution or formation pace, so a
+ * moving race car never reads as one, while a car rolling backwards after a
+ * spin or creeping out of the gravel still does.
+ */
+export const TRAFFIC_CRAWL_MPS = 3;
+
+/**
+ * The least `SessionTime` (s) a car's progress is measured over: half a
+ * second, about 30 ticks. A rate from one tick to the next would read zero
+ * whenever a tick repeated a remote car's position, and an evaluation landing
+ * there would leave out a car that is really coming — a false clear; over 30
+ * ticks one repeated reading moves the rate by a thirtieth. Short enough that
+ * a car that has stopped reads stopped within a second, under the detectors'
+ * one-second evaluation.
+ */
+export const TRAFFIC_MOTION_WINDOW_S = 0.5;
+
+/**
+ * The oldest reading (s of `SessionTime`) the motion measurement trusts: a
+ * window that began longer ago restarts with no rate, since the car went
+ * unread in between (in the pits, out of the world, a unit that threw), and a
+ * rate measured longer ago is not used, counting the car as moving. Twice the
+ * window, so a car read on every tick always has a rate younger than this,
+ * while one whose readings stopped counts as moving again within a second.
+ */
+export const TRAFFIC_MOTION_MAX_AGE_S = 1;
+
+/**
+ * The fastest progress (m/s) a car is taken to have driven: 540 km/h, beyond
+ * any car iRacing runs. Anything faster across a window is a tow, a reset or a
+ * reading that jumped, so the window restarts at the new position with no
+ * rate. The pit-lane learner's own bound is the same number for the same
+ * reason (`PIT_LANE_MAX_PLAUSIBLE_SPEED_MPS`), kept separate because that one
+ * is to be tuned on its captures.
+ */
+export const TRAFFIC_MOTION_MAX_PLAUSIBLE_MPS = 150;
+
+/** The per-car arrays the arrival model reads, and the session clock its motion measurement runs on. */
 export type TrafficTelemetry = Pick<
   TelemetryData,
-  "CarIdxLapDistPct" | "CarIdxEstTime" | "CarIdxTrackSurface" | "CarIdxClass"
+  "CarIdxLapDistPct" | "CarIdxEstTime" | "CarIdxTrackSurface" | "CarIdxClass" | "SessionTime"
 >;
 
 /**
@@ -262,21 +329,71 @@ function foldCurveSample(curve: TrafficReferenceCurve, pct: number, estTime: num
 /** The outer emit a unit runner is handed by a step that publishes nothing. */
 function ignoreEvent(): void {}
 
+/** A car's window starting at `pct` and `sessionTime`, with no rate yet. */
+function seedMotion(pct: number, sessionTime: number): TrafficCarMotion {
+  return { fromPct: pct, fromTime: sessionTime, rate: null, rateAt: null };
+}
+
+/**
+ * One reading of a car's progress (module header): the window it is in, or
+ * the rate that window measured and the next window starting here. Returns the
+ * car's new record, or `prev` itself when nothing changes.
+ */
+function nextMotion(
+  prev: TrafficCarMotion | undefined,
+  pct: number,
+  sessionTime: number,
+  trackLengthMeters: number | null,
+): TrafficCarMotion {
+  if (prev === undefined) return seedMotion(pct, sessionTime);
+
+  const span = sessionTime - prev.fromTime;
+
+  // `SessionTime` repeats a value for a tick now and then (#1112's capture
+  // review): no time passed, so nothing was measured.
+  if (span === 0) return prev;
+
+  // A clock that went backwards, or a car unread for longer than a window
+  // can span: start again here, with no rate.
+  if (!(span > 0) || span > TRAFFIC_MOTION_MAX_AGE_S) return seedMotion(pct, sessionTime);
+
+  if (span < TRAFFIC_MOTION_WINDOW_S) return prev;
+
+  // The shorter way round the lap, so a car crossing the line moves by its
+  // few metres, not by a lap.
+  const delta = pitLaneSignedDeltaPct(prev.fromPct, pct);
+
+  // Without a track length no move can be judged plausible; a tow or a reset
+  // moves a car faster than any car drives.
+  if (trackLengthMeters === null || !(trackLengthMeters > 0)) return seedMotion(pct, sessionTime);
+
+  if (Math.abs(delta) * trackLengthMeters > TRAFFIC_MOTION_MAX_PLAUSIBLE_MPS * span) {
+    return seedMotion(pct, sessionTime);
+  }
+
+  return { fromPct: pct, fromTime: sessionTime, rate: delta / span, rateAt: sessionTime };
+}
+
 /**
  * The live-tick update: every car on the racing surface (`OnTrack` or
  * `OffTrack`) with a class, a position in [0, 1) and a finite non-negative
  * `CarIdxEstTime` is a sample of its class's curve, the player's car and the
- * pace car included. Never a pit-lane car. Writes the slice in place; a class
- * gets its curve with its first sample. The cars are independent, so each is
- * one unit of `runUnit` (#1559): a car whose unit throws loses that car's
- * sample this tick and no other car's.
+ * pace car included. Never a pit-lane car. A class gets its curve with its
+ * first sample. Every car on the racing surface at a position in [0, 1) is
+ * also a reading of its progress (module header), on `SessionTime`; a tick
+ * without one measures nothing. Writes the slice in place. The cars are
+ * independent, so each is one unit of `runUnit` (#1559): a car whose unit
+ * throws loses that car's sample and reading this tick and no other car's,
+ * and its progress record, written last, is left as it was.
  *
+ * @param trackLengthMeters - `WeekendInfo.TrackLength` in metres (`resolveTrackLengthMeters`), `null` while unknown, which measures no rate: no move can be judged plausible without it.
  * @param runUnit - Runs each car as a unit: the translator's step runner, so one car's throw costs that car only. Defaults to {@link runUnitsDirectly}, which catches nothing
  */
 export function updateTrafficReferenceCurves(
   slice: TrafficArrivalState,
   telemetry: TrafficTelemetry,
   classes: TrafficClassInfo | null,
+  trackLengthMeters: number | null,
   runUnit: UnitRunner = runUnitsDirectly,
 ): void {
   const pcts = telemetry.CarIdxLapDistPct;
@@ -285,26 +402,61 @@ export function updateTrafficReferenceCurves(
 
   if (!Array.isArray(pcts) || !Array.isArray(estTimes) || !Array.isArray(surfaces)) return;
 
+  const sessionTime = isFiniteNumber(telemetry.SessionTime) ? telemetry.SessionTime : null;
+
   // The car the unit below reads, set by the loop: one closure per tick rather
   // than one per car. It emits nothing.
   let carIdx = 0;
   const unit = (): void => {
     const pct = pcts[carIdx];
+
+    if (!isRacingSurface(surfaces[carIdx]) || !isLapFraction(pct)) return;
+
     const estTime = estTimes[carIdx];
+    const classId = isReferenceTime(estTime) ? resolveCarClassId(telemetry, classes, carIdx) : null;
 
-    if (!isRacingSurface(surfaces[carIdx]) || !isLapFraction(pct) || !isReferenceTime(estTime)) return;
+    if (classId !== null) {
+      const key = String(classId);
+      const curve = (slice.curves[key] ??= {
+        bins: new Array<TrafficCurveBin | null>(TRAFFIC_CURVE_BINS).fill(null),
+      });
 
-    const classId = resolveCarClassId(telemetry, classes, carIdx);
+      foldCurveSample(curve, pct, estTime as number);
+    }
 
-    if (classId === null) return;
-
-    const key = String(classId);
-    const curve = (slice.curves[key] ??= { bins: new Array<TrafficCurveBin | null>(TRAFFIC_CURVE_BINS).fill(null) });
-
-    foldCurveSample(curve, pct, estTime);
+    // The car's progress record last (#1559's rule), so a throw above leaves
+    // its window as it was and the car is read again on the next tick.
+    if (sessionTime !== null)
+      slice.motion[carIdx] = nextMotion(slice.motion[carIdx], pct, sessionTime, trackLengthMeters);
   };
 
   for (carIdx = 0; carIdx < pcts.length; carIdx++) runUnit(ignoreEvent, unit);
+}
+
+/**
+ * Whether a car is known to be standing still (module header): its last rate,
+ * no older than {@link TRAFFIC_MOTION_MAX_AGE_S}, times the track length, is
+ * under {@link TRAFFIC_CRAWL_MPS} — a car going backwards included. Anything
+ * not known — no reading yet, no rate, a stale one, no `SessionTime` or no
+ * track length — is `false`: the car counts as moving, the cautious direction.
+ */
+export function isTrafficCarStationary(
+  slice: Readonly<TrafficArrivalState>,
+  carIdx: number,
+  sessionTime: number | null,
+  trackLengthMeters: number | null,
+): boolean {
+  if (sessionTime === null || trackLengthMeters === null || !(trackLengthMeters > 0)) return false;
+
+  const motion = slice.motion[carIdx];
+
+  if (motion === undefined || motion.rate === null || motion.rateAt === null) return false;
+
+  const age = sessionTime - motion.rateAt;
+
+  if (!(age >= 0) || age > TRAFFIC_MOTION_MAX_AGE_S) return false;
+
+  return motion.rate * trackLengthMeters < TRAFFIC_CRAWL_MPS;
 }
 
 /**
@@ -500,8 +652,14 @@ export function scaledReferenceSource(
  * sources answer for; module header): timed by the first of `sources` that
  * answers for its class, or untimed with the reason. Whether a car wraps is
  * decided by its position against P ({@link crossesLineBefore}); the wrap
- * adds {@link resolveClassLapTime}. A `targetPct` outside [0, 1) times no car
- * (`noTarget`), every candidate still reported. Pure; reads the slice.
+ * adds {@link resolveClassLapTime}. A car standing still
+ * ({@link isTrafficCarStationary}) is no candidate: it is left out, and its
+ * index added to `stationary` when the caller hands one in, for its log line.
+ * A `targetPct` outside [0, 1) times no car (`noTarget`), every candidate
+ * still reported. Pure but for `stationary`; reads the slice.
+ *
+ * @param trackLengthMeters - `WeekendInfo.TrackLength` in metres, `null` while unknown, which leaves no car out: a car's rate means nothing without it.
+ * @param stationary - Where the cars left out as standing still are listed, in index order; optional.
  */
 export function computeTrafficArrivals(
   slice: Readonly<TrafficArrivalState>,
@@ -510,6 +668,8 @@ export function computeTrafficArrivals(
   telemetry: TrafficTelemetry,
   playerCarIdx: number,
   classes: TrafficClassInfo | null,
+  trackLengthMeters: number | null,
+  stationary?: number[],
 ): TrafficArrival[] {
   const pcts = telemetry.CarIdxLapDistPct;
   const estTimes = telemetry.CarIdxEstTime;
@@ -517,6 +677,7 @@ export function computeTrafficArrivals(
 
   if (!Array.isArray(pcts) || !Array.isArray(estTimes) || !Array.isArray(surfaces)) return [];
 
+  const sessionTime = isFiniteNumber(telemetry.SessionTime) ? telemetry.SessionTime : null;
   const arrivals: TrafficArrival[] = [];
 
   for (let carIdx = 0; carIdx < pcts.length; carIdx++) {
@@ -525,6 +686,11 @@ export function computeTrafficArrivals(
     const pct = pcts[carIdx];
 
     if (!isRacingSurface(surfaces[carIdx]) || typeof pct !== "number" || !(pct >= 0)) continue;
+
+    if (isTrafficCarStationary(slice, carIdx, sessionTime, trackLengthMeters)) {
+      stationary?.push(carIdx);
+      continue;
+    }
 
     const classId = resolveCarClassId(telemetry, classes, carIdx);
 

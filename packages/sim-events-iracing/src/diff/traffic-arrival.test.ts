@@ -12,15 +12,20 @@ import {
   elapsed,
   isFiniteNumber,
   isLapFraction,
+  isTrafficCarStationary,
   landmarkReferenceSource,
   referenceTimeAt,
   resolveCarClassId,
   resolveClassLapTime,
   resolveTrafficClassInfo,
   scaledReferenceSource,
+  TRAFFIC_CRAWL_MPS,
   TRAFFIC_CURVE_BINS,
   TRAFFIC_CURVE_MAX_SPAN_PCT,
   TRAFFIC_CURVE_SAMPLE_CAP,
+  TRAFFIC_MOTION_MAX_AGE_S,
+  TRAFFIC_MOTION_MAX_PLAUSIBLE_MPS,
+  TRAFFIC_MOTION_WINDOW_S,
   type TrafficArrival,
   type TrafficClassInfo,
   type TrafficReferenceSource,
@@ -64,7 +69,7 @@ function tel(cars: Car[]): TelemetryData {
 
 /** Feeds each sample as its own tick of car 0, so every sample reaches the curve. */
 function learn(slice: TrafficArrivalState, samples: Array<[pct: number, est: number]>, cls = 1): void {
-  for (const [pct, est] of samples) updateTrafficReferenceCurves(slice, tel([{ idx: 0, pct, est, cls }]), null);
+  for (const [pct, est] of samples) updateTrafficReferenceCurves(slice, tel([{ idx: 0, pct, est, cls }]), null, null);
 }
 
 function classInfo(lapTimeByClass: Record<string, number>, classByCarIdx: number[] = []): TrafficClassInfo {
@@ -177,6 +182,7 @@ describe("updateTrafficReferenceCurves", () => {
         { idx: 1, pct: 0.5, est: 44, cls: 4029, surface: TrkLoc.OffTrack },
       ]),
       null,
+      null,
     );
 
     expect(Object.keys(slice.curves).sort()).toEqual(["4011", "4029"]);
@@ -206,12 +212,12 @@ describe("updateTrafficReferenceCurves", () => {
   ])("learns nothing from a car %s", (_label, override) => {
     const slice = createTrafficArrivalState();
 
-    updateTrafficReferenceCurves(slice, tel([{ idx: 0, pct: 0.3, est: 30, ...override }]), null);
+    updateTrafficReferenceCurves(slice, tel([{ idx: 0, pct: 0.3, est: 30, ...override }]), null, null);
 
     expect(slice.curves).toEqual({});
 
     // Positive control: the same car on the racing surface is learned.
-    updateTrafficReferenceCurves(slice, tel([{ idx: 0, pct: 0.3, est: 30 }]), null);
+    updateTrafficReferenceCurves(slice, tel([{ idx: 0, pct: 0.3, est: 30 }]), null, null);
 
     expect(Object.keys(slice.curves)).toEqual(["1"]);
   });
@@ -219,7 +225,7 @@ describe("updateTrafficReferenceCurves", () => {
   it("learns a car with OnPitRoad true while its surface reads OnTrack (#1112 amendment 11)", () => {
     const slice = createTrafficArrivalState();
 
-    updateTrafficReferenceCurves(slice, tel([{ idx: 0, pct: 0.3, est: 30, onPitRoad: true }]), null);
+    updateTrafficReferenceCurves(slice, tel([{ idx: 0, pct: 0.3, est: 30, onPitRoad: true }]), null, null);
 
     expect(referenceTimeAt(slice.curves["1"], 0.3)).toBe(30);
   });
@@ -227,7 +233,12 @@ describe("updateTrafficReferenceCurves", () => {
   it("learns the pace car under its DriverInfo class when CarIdxClass reads -1", () => {
     const slice = createTrafficArrivalState();
 
-    updateTrafficReferenceCurves(slice, tel([{ idx: 2, pct: 0.3, est: 30, cls: -1 }]), classInfo({}, [-1, -1, 11]));
+    updateTrafficReferenceCurves(
+      slice,
+      tel([{ idx: 2, pct: 0.3, est: 30, cls: -1 }]),
+      classInfo({}, [-1, -1, 11]),
+      null,
+    );
 
     expect(Object.keys(slice.curves)).toEqual(["11"]);
   });
@@ -269,7 +280,7 @@ describe("updateTrafficReferenceCurves", () => {
         }
       };
 
-      updateTrafficReferenceCurves(slice, withFaultyCar(), null, runUnit);
+      updateTrafficReferenceCurves(slice, withFaultyCar(), null, null, runUnit);
 
       expect(failed).toEqual([1]);
       expect(referenceTimeAt(slice.curves["1"], 0.2)).toBe(20);
@@ -278,7 +289,7 @@ describe("updateTrafficReferenceCurves", () => {
     });
 
     it("lets the throw out with the default runner, so the diff's own tests stay loud", () => {
-      expect(() => updateTrafficReferenceCurves(createTrafficArrivalState(), withFaultyCar(), null)).toThrow(
+      expect(() => updateTrafficReferenceCurves(createTrafficArrivalState(), withFaultyCar(), null, null)).toThrow(
         "car 1 broke",
       );
     });
@@ -301,6 +312,154 @@ describe("updateTrafficReferenceCurves", () => {
     learn(slice, [[0.3004, 30.5 + TRAFFIC_CURVE_SAMPLE_CAP]]);
 
     expect(bin()).toEqual({ pct: expect.closeTo(0.3004, 12), estTime: 31.5, samples: TRAFFIC_CURVE_SAMPLE_CAP });
+  });
+});
+
+/** 25 km, so 0.002 of the lap a second is 50 m/s and the crawl speed is 0.00012 of the lap a second. */
+const TRACK_M = 25_000;
+
+/** One tick of car 1 at `pct` on `SessionTime` `at`, read for its progress on the 25 km track. */
+function read(slice: TrafficArrivalState, at: number, pct: number, surface?: number): void {
+  updateTrafficReferenceCurves(
+    slice,
+    { ...tel([{ idx: 1, pct, est: pct * 100, surface }]), SessionTime: at },
+    null,
+    TRACK_M,
+  );
+}
+
+describe("the motion measurement", () => {
+  it("measures a car's progress over a window of at least TRAFFIC_MOTION_WINDOW_S, in laps a second", () => {
+    const slice = createTrafficArrivalState();
+
+    read(slice, 100, 0.2);
+    expect(slice.motion[1]).toEqual({ fromPct: 0.2, fromTime: 100, rate: null, rateAt: null });
+
+    read(slice, 100 + TRAFFIC_MOTION_WINDOW_S / 2, 0.2005);
+    expect(slice.motion[1]).toEqual({ fromPct: 0.2, fromTime: 100, rate: null, rateAt: null });
+
+    read(slice, 100 + TRAFFIC_MOTION_WINDOW_S, 0.201);
+    expect(slice.motion[1]).toEqual({
+      fromPct: 0.201,
+      fromTime: 100.5,
+      rate: expect.closeTo(0.002, 12),
+      rateAt: 100.5,
+    });
+  });
+
+  it("crosses the start/finish line the short way, so the line is no jump", () => {
+    const slice = createTrafficArrivalState();
+
+    read(slice, 100, 0.9995);
+    read(slice, 100.5, 0.0005);
+
+    expect(slice.motion[1]?.rate).toBeCloseTo(0.002, 12);
+  });
+
+  it("reads a car going backwards as a negative rate", () => {
+    const slice = createTrafficArrivalState();
+
+    read(slice, 100, 0.2);
+    read(slice, 100.5, 0.19995);
+
+    expect(slice.motion[1]?.rate).toBeCloseTo(-0.0001, 12);
+  });
+
+  it("starts again with no rate after a jump no car could drive: a tow, a reset", () => {
+    const slice = createTrafficArrivalState();
+
+    read(slice, 100, 0.2);
+    // 0.004 of 25 km in half a second is 200 m/s, past TRAFFIC_MOTION_MAX_PLAUSIBLE_MPS.
+    expect(0.004 * TRACK_M).toBeGreaterThan(TRAFFIC_MOTION_MAX_PLAUSIBLE_MPS * 0.5);
+    read(slice, 100.5, 0.204);
+
+    expect(slice.motion[1]).toEqual({ fromPct: 0.204, fromTime: 100.5, rate: null, rateAt: null });
+
+    // Positive control: a move the car could drive is measured.
+    read(slice, 101, 0.206);
+    expect(slice.motion[1]?.rate).toBeCloseTo(0.004, 12);
+  });
+
+  it("starts again with no rate after the car went unread for longer than TRAFFIC_MOTION_MAX_AGE_S", () => {
+    const slice = createTrafficArrivalState();
+
+    read(slice, 100, 0.2);
+    read(slice, 100.5, 0.2);
+    expect(slice.motion[1]?.rate).toBe(0);
+
+    // In the pits for a while: its record is left as it was.
+    read(slice, 101, 0.2, TrkLoc.InPitStall);
+    expect(slice.motion[1]).toMatchObject({ fromTime: 100.5, rate: 0 });
+
+    read(slice, 100.5 + TRAFFIC_MOTION_MAX_AGE_S + 0.25, 0.3);
+    expect(slice.motion[1]).toEqual({ fromPct: 0.3, fromTime: 101.75, rate: null, rateAt: null });
+  });
+
+  it("measures nothing on a tick whose SessionTime repeated, and starts again when it went backwards", () => {
+    const slice = createTrafficArrivalState();
+
+    read(slice, 100, 0.2);
+    read(slice, 100.5, 0.201);
+    read(slice, 100.5, 0.2011);
+    expect(slice.motion[1]).toMatchObject({ fromPct: 0.201, fromTime: 100.5 });
+
+    read(slice, 99, 0.202);
+    expect(slice.motion[1]).toEqual({ fromPct: 0.202, fromTime: 99, rate: null, rateAt: null });
+  });
+
+  it("reads no progress without a SessionTime, and measures no rate without a track length", () => {
+    const noClock = createTrafficArrivalState();
+    const noLength = createTrafficArrivalState();
+
+    updateTrafficReferenceCurves(noClock, tel([{ idx: 1, pct: 0.2, est: 20 }]), null, TRACK_M);
+    expect(noClock.motion).toEqual({});
+
+    for (const [at, pct] of [
+      [100, 0.2],
+      [100.5, 0.201],
+    ]) {
+      updateTrafficReferenceCurves(noLength, { ...tel([{ idx: 1, pct, est: 20 }]), SessionTime: at }, null, null);
+    }
+
+    expect(noLength.motion[1]).toMatchObject({ fromTime: 100.5, rate: null });
+  });
+});
+
+describe("isTrafficCarStationary", () => {
+  /** A slice where car 1's last rate is `lapsPerSecond`, measured at `SessionTime` 100. */
+  function measuredAt(lapsPerSecond: number): TrafficArrivalState {
+    const slice = createTrafficArrivalState();
+
+    slice.motion[1] = { fromPct: 0.2, fromTime: 100, rate: lapsPerSecond, rateAt: 100 };
+
+    return slice;
+  }
+
+  const crawl = TRAFFIC_CRAWL_MPS / TRACK_M;
+
+  it("is true under the crawl speed, standing or going backwards, and false at it or above", () => {
+    expect(isTrafficCarStationary(measuredAt(0), 1, 100, TRACK_M)).toBe(true);
+    expect(isTrafficCarStationary(measuredAt(crawl * 0.99), 1, 100, TRACK_M)).toBe(true);
+    expect(isTrafficCarStationary(measuredAt(-0.001), 1, 100, TRACK_M)).toBe(true);
+    expect(isTrafficCarStationary(measuredAt(crawl), 1, 100, TRACK_M)).toBe(false);
+    expect(isTrafficCarStationary(measuredAt(0.002), 1, 100, TRACK_M)).toBe(false);
+  });
+
+  it("is false whenever the measurement cannot say: the cautious direction", () => {
+    const standing = measuredAt(0);
+
+    expect(isTrafficCarStationary(standing, 1, 100 + TRAFFIC_MOTION_MAX_AGE_S, TRACK_M)).toBe(true);
+    // A rate older than the maximum age.
+    expect(isTrafficCarStationary(standing, 1, 100 + TRAFFIC_MOTION_MAX_AGE_S + 0.01, TRACK_M)).toBe(false);
+    // A clock behind the rate.
+    expect(isTrafficCarStationary(standing, 1, 99, TRACK_M)).toBe(false);
+    expect(isTrafficCarStationary(standing, 1, null, TRACK_M)).toBe(false);
+    expect(isTrafficCarStationary(standing, 1, 100, null)).toBe(false);
+    expect(isTrafficCarStationary(standing, 1, 100, 0)).toBe(false);
+    // No record, and a record with no rate yet.
+    expect(isTrafficCarStationary(standing, 2, 100, TRACK_M)).toBe(false);
+    standing.motion[1] = { fromPct: 0.2, fromTime: 100, rate: null, rateAt: null };
+    expect(isTrafficCarStationary(standing, 1, 100, TRACK_M)).toBe(false);
   });
 });
 
@@ -517,7 +676,7 @@ describe("computeTrafficArrivals", () => {
       always("scaled", 50),
     ];
 
-    const arrivals = byCar(computeTrafficArrivals(slice, 0.5, sources, telemetry, 0, null));
+    const arrivals = byCar(computeTrafficArrivals(slice, 0.5, sources, telemetry, 0, null, null));
 
     expect(arrivals.get(1)).toEqual({ carIdx: 1, classId: 1, timed: true, seconds: 20, source: "landmark" });
     expect(arrivals.get(2)).toEqual({ carIdx: 2, classId: 2, timed: true, seconds: 30, source: "curve" });
@@ -535,7 +694,7 @@ describe("computeTrafficArrivals", () => {
     ]);
     const sources = [{ name: "curve", referenceAt: (cls: number) => (cls === 1 ? 50 : null) }] as const;
 
-    const arrivals = byCar(computeTrafficArrivals(slice, 0.5, sources, telemetry, 0, null));
+    const arrivals = byCar(computeTrafficArrivals(slice, 0.5, sources, telemetry, 0, null, null));
 
     expect(arrivals.get(1)).toEqual({ carIdx: 1, classId: 9, timed: false, reason: "noReference" });
     expect(arrivals.get(2)).toEqual({ carIdx: 2, classId: 1, timed: false, reason: "noClassLap" });
@@ -543,7 +702,7 @@ describe("computeTrafficArrivals", () => {
     expect(arrivals.get(4)).toEqual({ carIdx: 4, classId: null, timed: false, reason: "noClass" });
 
     // Positive control: with the class lap known the car past P is timed, wrapped.
-    const wrapped = byCar(computeTrafficArrivals(slice, 0.5, sources, telemetry, 0, classInfo({ "1": 100 })));
+    const wrapped = byCar(computeTrafficArrivals(slice, 0.5, sources, telemetry, 0, classInfo({ "1": 100 }), null));
 
     expect(wrapped.get(2)).toEqual({ carIdx: 2, classId: 1, timed: true, seconds: 70, source: "curve" });
   });
@@ -563,7 +722,7 @@ describe("computeTrafficArrivals", () => {
     ]);
     const classes = classInfo({ "1": 100, "11": 110 }, [1, 1, 1, 1, 1, 1, 1, 11]);
 
-    const arrivals = computeTrafficArrivals(slice, 0.5, [always("curve", 30)], telemetry, 0, classes);
+    const arrivals = computeTrafficArrivals(slice, 0.5, [always("curve", 30)], telemetry, 0, classes, null);
 
     expect(arrivals.map((arrival) => arrival.carIdx)).toEqual([5, 6, 7]);
     expect(arrivals.every((arrival) => arrival.timed)).toBe(true);
@@ -590,6 +749,7 @@ describe("computeTrafficArrivals", () => {
         telemetry,
         0,
         classes,
+        null,
       );
 
       return arrival;
@@ -636,13 +796,65 @@ describe("computeTrafficArrivals", () => {
 
     for (const target of [-0.1, 1, Number.NaN]) {
       expect(
-        computeTrafficArrivals(createTrafficArrivalState(), target, [always("curve", 30)], telemetry, 0, null),
+        computeTrafficArrivals(createTrafficArrivalState(), target, [always("curve", 30)], telemetry, 0, null, null),
       ).toEqual([{ carIdx: 1, classId: 1, timed: false, reason: "noTarget" }]);
     }
   });
 
+  describe("a car standing still", () => {
+    /** Car 1 stopped 5 m behind P, car 2 coming 0.01 of the lap behind it at 50 m/s; the player, car 0, at P. */
+    function field(): { slice: TrafficArrivalState; at: (sessionTime: number) => TelemetryData } {
+      const slice = createTrafficArrivalState();
+      const at = (sessionTime: number): TelemetryData => ({
+        ...tel([
+          { idx: 0, pct: 0.5, est: 50 },
+          { idx: 1, pct: 0.5 - 5 / TRACK_M, est: 50 - 0.02 },
+          { idx: 2, pct: 0.49 + 0.002 * (sessionTime - 100), est: 49 + 0.2 * (sessionTime - 100) },
+        ]),
+        SessionTime: sessionTime,
+      });
+
+      return { slice, at };
+    }
+
+    const curve = [{ name: "curve" as const, referenceAt: () => 50 }];
+
+    it("is left out once it is measured standing, and listed for the log; a car coming is not", () => {
+      const { slice, at } = field();
+
+      updateTrafficReferenceCurves(slice, at(100), null, TRACK_M);
+      updateTrafficReferenceCurves(slice, at(100.5), null, TRACK_M);
+
+      const stationary: number[] = [];
+      const arrivals = computeTrafficArrivals(slice, 0.5, curve, at(100.5), 0, null, TRACK_M, stationary);
+
+      expect(arrivals.map((arrival) => arrival.carIdx)).toEqual([2]);
+      expect(stationary).toEqual([1]);
+    });
+
+    it("counts as coming before it has a rate, and without a track length to judge it by", () => {
+      const { slice, at } = field();
+
+      updateTrafficReferenceCurves(slice, at(100), null, TRACK_M);
+
+      expect(computeTrafficArrivals(slice, 0.5, curve, at(100), 0, null, TRACK_M).map((a) => a.carIdx)).toEqual([
+        1,
+        2,
+      ]);
+
+      updateTrafficReferenceCurves(slice, at(100.5), null, TRACK_M);
+
+      expect(computeTrafficArrivals(slice, 0.5, curve, at(100.5), 0, null, null).map((a) => a.carIdx)).toEqual([
+        1,
+        2,
+      ]);
+    });
+  });
+
   it("answers nothing without the per-car arrays", () => {
-    expect(computeTrafficArrivals(createTrafficArrivalState(), 0.5, [], {} as TelemetryData, 0, null)).toEqual([]);
+    expect(computeTrafficArrivals(createTrafficArrivalState(), 0.5, [], {} as TelemetryData, 0, null, null)).toEqual(
+      [],
+    );
   });
 
   it("wraps with the class curve's lap end when the class has one", () => {
@@ -657,7 +869,15 @@ describe("computeTrafficArrivals", () => {
       { idx: 0, pct: 0.1, est: 10 },
       { idx: 1, pct: 0.9, est: 90 },
     ]);
-    const [arrival] = computeTrafficArrivals(slice, 0.1, [always("scaled", 10)], telemetry, 0, classInfo({ "1": 101 }));
+    const [arrival] = computeTrafficArrivals(
+      slice,
+      0.1,
+      [always("scaled", 10)],
+      telemetry,
+      0,
+      classInfo({ "1": 101 }),
+      null,
+    );
 
     // The curve ends at 100.0; CarClassEstLapTime would have said 21 s.
     expect(arrival).toMatchObject({ carIdx: 1, timed: true });
@@ -693,10 +913,10 @@ describe("computeTrafficArrivals", () => {
     it("times the GTP car on the GTP curve, where the player's own estTime is five seconds off", () => {
       const slice = createTrafficArrivalState();
 
-      updateTrafficReferenceCurves(slice, roggia, classes);
+      updateTrafficReferenceCurves(slice, roggia, classes, null);
 
       const sources = [curveReferenceSource(slice, 0.3778), scaledReferenceSource(40.028, GTD, classes)];
-      const [arrival] = computeTrafficArrivals(slice, 0.3778, sources, stopped, player, classes);
+      const [arrival] = computeTrafficArrivals(slice, 0.3778, sources, stopped, player, classes, null);
       // The GTP curve at 0.3778, between cars 6 and 5: 34.908 s.
       const gtpAtP = 34.535 + ((0.3778 - 0.3756) / (0.3834 - 0.3756)) * (35.857 - 34.535);
 
@@ -710,7 +930,7 @@ describe("computeTrafficArrivals", () => {
     it("falls back to scaling before the GTP class has driven past P, within a few tenths of the curve", () => {
       const slice = createTrafficArrivalState();
       const sources = [curveReferenceSource(slice, 0.3778), scaledReferenceSource(40.028, GTD, classes)];
-      const [arrival] = computeTrafficArrivals(slice, 0.3778, sources, stopped, player, classes);
+      const [arrival] = computeTrafficArrivals(slice, 0.3778, sources, stopped, player, classes, null);
 
       expect(arrival).toMatchObject({ carIdx: 8, classId: GTP, timed: true, source: "scaled" });
       // 40.028 × 91.6077 / 105.5726 = 34.733 s at P, against the curve's 34.908.

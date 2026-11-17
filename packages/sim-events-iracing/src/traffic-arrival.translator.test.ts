@@ -253,9 +253,14 @@ describe("the traffic reference curves through handleTick (issue #1113)", () => 
 
     const learned = structuredClone(slice());
 
+    // The first live tick read every car's progress.
+    expect(learned.motion[2]).toEqual({ fromPct: 0.3756, fromTime: 100, rate: null, rateAt: null });
+
     controller.__tick(tick({ 2: { pct: 0.6, est: 60 } }, { replay: true }));
 
-    expect(slice()).toEqual(learned);
+    expect(slice().curves).toEqual(learned.curves);
+    // Each car's progress is a run of live readings the glance broke: measured afresh.
+    expect(slice().motion).toEqual({});
 
     // Back to live, past the replay state's exit grace (#1324): learning resumes.
     vi.advanceTimersByTime(REPLAY_EXIT_GRACE_MS + 1);

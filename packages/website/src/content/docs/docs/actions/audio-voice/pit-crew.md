@@ -684,7 +684,7 @@ Two callout opt-ins live under **Race Engineer Callouts → Spotter** in the Set
 
 ## Approaching traffic (rejoining and pit exit)
 
-Two moments ask the same question — will a car arrive where you are about to be? — and the Race Engineer answers both: when your car has stopped on the circuit after a spin, a stall or a stop to avoid a crash, and when you leave your pit box after a stop. He looks at every car on the track or just off it, whatever its class and the pace car included, and works out when each one will reach the point that matters from iRacing's own reference lap times, so the track's fast and slow sections are already in the number. Cars in the pits and cars not on the track are left out.
+Two moments ask the same question — will a car arrive where you are about to be? — and the Race Engineer answers both: when your car has stopped on the circuit after a spin, a stall or a stop to avoid a crash, and when you leave your pit box after a stop. He looks at every car on the track or just off it, whatever its class and the pace car included, and works out when each one will reach the point that matters from iRacing's own reference lap times, so the track's fast and slow sections are already in the number. Cars in the pits and cars not on the track are left out, and a car that has stopped behind you, such as the other car in a multi-car incident, is not counted as approaching.
 
 He warns you; he never tells you what to do. Whether to sit tight or go is your call, made with your own mirrors: the engineer tells you how close the traffic is.
 

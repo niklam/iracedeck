@@ -181,6 +181,7 @@ import {
   resetFastestLapBaselines,
   resetFuelCalloutBaselines,
   resetSectorTimesForReplay,
+  resetTrafficArrivalMotion,
   type RollingStartFormation,
   type SectorLap,
   type TrackSectorsState,
@@ -3019,13 +3020,11 @@ function wipeStateForReplay(self: TranslatorInstance): void {
     // the one replay that must not keep it; the guard in `handleTick` clears
     // it there.
     lastStopTireTemps: self.state.lastStopTireTemps,
-    // The approaching-traffic reference curves (issue #1113), kept whole: a
-    // curve is a function of the track and the car class, which a garage
-    // visit or a replay glance does not change, and only live ticks feed it,
-    // so no replay reading can have reached it. Wiping it would only cost the
-    // arrivals their exact tier until every class had driven another lap. A
-    // session change and a disconnect still recreate it.
-    trafficArrival: self.state.trafficArrival,
+    // The approaching-traffic arrival model (issue #1113): its reference
+    // curves are kept, each car's measured progress is not. Which part, and
+    // why, is `resetTrafficArrivalMotion`'s. A session change and a disconnect
+    // still recreate it whole.
+    trafficArrival: resetTrafficArrivalMotion(self.state.trafficArrival),
     // The detectors' slices (`trafficRejoin`, `trafficPitExit`) are
     // deliberately not here: each episode is wiped whole and re-seeds from the
     // first tick back, for the reasons on `TrafficRejoinState` and
@@ -3836,7 +3835,9 @@ function handleLiveSteps(
   // Approaching-traffic reference curves (issue #1113): every car on the
   // racing surface is a sample of its class's reference time at its lap
   // position, in every session type, so a class's curve is learned by the time
-  // a rejoin or a pit exit asks for it. The class info (lap times, the pace
+  // a rejoin or a pit exit asks for it. Each car's progress is measured on the
+  // same walk, over the track length, so a car standing still is left out of
+  // the arrivals. The class info (lap times, the pace
   // car's class) is read once per session-info object and falls back to its
   // last good answer this session, else to `null`, the answer for absent
   // session info, which still learns every car the telemetry gives a class.
@@ -3846,7 +3847,13 @@ function handleLiveSteps(
     resolveTrafficClassInfoMemoised(self, sessionInfo),
   );
   steps.run("updateTrafficReferenceCurves", () =>
-    updateTrafficReferenceCurves(self.state.trafficArrival, telemetry, trafficClasses, steps.runUnit),
+    updateTrafficReferenceCurves(
+      self.state.trafficArrival,
+      telemetry,
+      trafficClasses,
+      trackLengthMeters,
+      steps.runUnit,
+    ),
   );
   // The approaching-traffic detectors (issue #1113): stopped on the circuit,
   // and driving out of the pits. Both after the curve update, so they time
@@ -3863,6 +3870,7 @@ function handleLiveSteps(
       telemetry,
       playerCarIdx,
       trafficClasses,
+      trackLengthMeters,
       now,
       emit,
       self.logger,

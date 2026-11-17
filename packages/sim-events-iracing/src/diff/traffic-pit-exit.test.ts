@@ -490,6 +490,30 @@ describe("diffTrafficPitExit", () => {
     });
   });
 
+  describe("a car standing still", () => {
+    it("is left out: a car stopped short of the blend is not coming, however close its reference time", () => {
+      const curves = learnedCurves();
+
+      // Car 5 measured standing (rate 0) on the SessionTime this tick reads.
+      curves.motion[5] = { fromPct: 0.05, fromTime: 100, rate: 0, rateAt: 100 };
+
+      const h = harness({ curves });
+
+      h.depart(tel({ cars: [arriving(5, 1)], SessionTime: 100 }));
+
+      expect(h.events).toEqual([{ verdict: "clear" }]);
+      expect(lines(h.debug).at(-1)).toContain("untimed: none; standing still: car 5)");
+    });
+
+    it("counts as traffic until it has been measured: the cautious direction", () => {
+      const h = harness();
+
+      h.depart(tel({ cars: [arriving(5, 1)], SessionTime: 100 }));
+
+      expect(h.events).toEqual([{ verdict: "traffic", seconds: 1 }]);
+    });
+  });
+
   describe("untimed cars", () => {
     it("make it traffic, never a false clear, even with every timed car outside the window", () => {
       const h = harness();

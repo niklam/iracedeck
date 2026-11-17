@@ -571,29 +571,70 @@ export type TrafficReferenceCurve = {
 };
 
 /**
- * The approaching-traffic arrival model's learned reference curves (issue
- * #1113, spec decision 5, "Settled (amended 2026-11-10)"): per car class, the
- * class's reference-lap time (`CarIdxEstTime`) by lap position, fed every live
- * tick by `updateTrafficReferenceCurves` from every car on the racing surface,
- * and read by the arrival primitive (`diff/traffic-arrival.ts`). Plain records
- * and arrays, so the Telemetry Snapshot's `raw.state` dump carries it.
+ * One car's progress along the lap (issue #1113, `diff/traffic-arrival.ts`):
+ * where the window its rate is measured over began, and what the last
+ * completed window measured. A car standing still behind the player is timed
+ * at reference pace as arriving now, so the arrival model leaves out a car
+ * whose measured progress is under the crawl speed; this is that measurement.
+ */
+export type TrafficCarMotion = {
+  /** `CarIdxLapDistPct` where the current window began. */
+  fromPct: number;
+  /** `SessionTime` (s) where the current window began. */
+  fromTime: number;
+  /**
+   * Laps per second over the last completed window, negative for a car going
+   * backwards; `null` until a window completes after the car was first seen,
+   * after a gap in its readings, or after a jump no car could drive.
+   */
+  rate: number | null;
+  /** `SessionTime` (s) the rate was measured at, the end of its window; `null` with no rate. */
+  rateAt: number | null;
+};
+
+/**
+ * The approaching-traffic arrival model's learned state (issue #1113, spec
+ * decision 5, "Settled (amended 2026-11-10)"): per car class, the class's
+ * reference-lap time (`CarIdxEstTime`) by lap position, and per car, its
+ * measured progress. Fed every live tick by `updateTrafficReferenceCurves`
+ * from every car on the racing surface, and read by the arrival primitive
+ * (`diff/traffic-arrival.ts`). Plain records and arrays, so the Telemetry
+ * Snapshot's `raw.state` dump carries it.
  *
  * Recreated with the state at a session change and a disconnect: a new
  * session can be another track, and one lap of any car of a class re-learns
- * its curve. Kept whole at the replay wipe (`preservedAcrossReplay`): the
- * curve is a function of the track and the class, which a garage visit or a
- * replay glance does not change, and only live ticks feed it, so no replay
- * reading can reach it — wiping it would only cost the arrivals their exact
- * tier until every class had driven another lap.
+ * its curve. Kept in part at the replay wipe, by
+ * {@link resetTrafficArrivalMotion}.
  */
 export type TrafficArrivalState = {
   /** By `CarClassID` as a string (the key `estTimeByClass` uses); a class appears with its first sample. */
   curves: Record<string, TrafficReferenceCurve>;
+  /**
+   * Per car, by `CarIdx`: its progress; absent until the car is first read on
+   * the racing surface. A record rather than an array, so a car index with no
+   * reading leaves no hole the Telemetry Snapshot's JSON would turn into `null`.
+   */
+  motion: Partial<Record<number, TrafficCarMotion>>;
 };
 
-/** No class learned yet (issue #1113): the initial state. */
+/** No class learned and no car measured yet (issue #1113): the initial state. */
 export function createTrafficArrivalState(): TrafficArrivalState {
-  return { curves: {} };
+  return { curves: {}, motion: {} };
+}
+
+/**
+ * The part of the arrival model's state a replay glance or a garage visit
+ * keeps (issue #1113): the curves, by reference, and none of the cars'
+ * progress. A curve is a function of the track and the class, which a glance
+ * does not change, and only live ticks feed it, so no replay reading can have
+ * reached it; wiping it would only cost the arrivals their exact tier until
+ * every class had driven another lap. A car's progress is a run of live
+ * readings that the glance broke, so every car is measured afresh on the first
+ * ticks back, counting as moving until it has a rate again — the cautious
+ * direction.
+ */
+export function resetTrafficArrivalMotion(slice: TrafficArrivalState): TrafficArrivalState {
+  return { curves: slice.curves, motion: {} };
 }
 
 /**

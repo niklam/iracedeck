@@ -14,11 +14,15 @@ import {
   type TrafficArrivalState,
   type TrafficCurveBin,
 } from "../state.js";
-import { TRAFFIC_CURVE_BINS, type TrafficClassInfo } from "./traffic-arrival.js";
+import {
+  TRAFFIC_CRAWL_MPS,
+  TRAFFIC_CURVE_BINS,
+  type TrafficClassInfo,
+  updateTrafficReferenceCurves,
+} from "./traffic-arrival.js";
 import {
   diffTrafficRejoin,
   TRAFFIC_REJOIN_COUNT_STEP_S,
-  TRAFFIC_REJOIN_CRAWL_MPS,
   TRAFFIC_REJOIN_END_DWELL_MS,
   TRAFFIC_REJOIN_ENTRY_DWELL_MS,
   TRAFFIC_REJOIN_EVAL_INTERVAL_MS,
@@ -59,6 +63,9 @@ function learnedCurves(classes: Record<number, number> = { [FAST]: 1 }): Traffic
 }
 
 const CLASSES: TrafficClassInfo = { lapTimeByClass: { [FAST]: 500, [SLOW]: 1000 }, classByCarIdx: [] };
+
+/** 25 km: the fast class's 500 s reference lap at 50 m/s, so a car at its reference pace covers 0.002 of the lap a second. */
+const TRACK_M = 25_000;
 
 type Car = { idx: number; pct: number; est: number; cls?: number; surface?: number };
 
@@ -115,7 +122,8 @@ function tel({ cars = [], pct = 0.5, ...overrides }: TickOptions = {}): TrafficR
 function harness({
   curves = learnedCurves(),
   classes = CLASSES as TrafficClassInfo | null,
-}: { curves?: TrafficArrivalState; classes?: TrafficClassInfo | null } = {}) {
+  trackLengthMeters = TRACK_M as number | null,
+}: { curves?: TrafficArrivalState; classes?: TrafficClassInfo | null; trackLengthMeters?: number | null } = {}) {
   const episode = createTrafficRejoinState();
   const events: Rejoin[] = [];
   const debug = vi.fn<(line: string) => void>();
@@ -123,7 +131,17 @@ function harness({
   let now = 1_000_000;
 
   const tick = (t: TrafficRejoinTelemetry): void =>
-    diffTrafficRejoin(episode, curves, t, PLAYER, classes, now, (ev) => events.push(ev.data), logger);
+    diffTrafficRejoin(
+      episode,
+      curves,
+      t,
+      PLAYER,
+      classes,
+      trackLengthMeters,
+      now,
+      (ev) => events.push(ev.data),
+      logger,
+    );
 
   return {
     episode,
@@ -240,7 +258,7 @@ describe("diffTrafficRejoin", () => {
     it("starts only once the car has crawled for the whole dwell, and speaks on the start", () => {
       const h = harness();
 
-      h.tick(tel({ Speed: TRAFFIC_REJOIN_CRAWL_MPS - 0.01 }));
+      h.tick(tel({ Speed: TRAFFIC_CRAWL_MPS - 0.01 }));
       h.after(TRAFFIC_REJOIN_ENTRY_DWELL_MS - 1, tel({ Speed: 1 }));
       expect(h.events).toEqual([]);
 
@@ -253,7 +271,7 @@ describe("diffTrafficRejoin", () => {
       const h = harness();
 
       h.tick(tel());
-      h.after(1_000, tel({ Speed: TRAFFIC_REJOIN_CRAWL_MPS }));
+      h.after(1_000, tel({ Speed: TRAFFIC_CRAWL_MPS }));
       h.after(100, tel());
       h.after(TRAFFIC_REJOIN_ENTRY_DWELL_MS - 1, tel());
       expect(h.events).toEqual([]);
@@ -265,7 +283,7 @@ describe("diffTrafficRejoin", () => {
     it("never starts for a car driving through, however slowly it corners", () => {
       const h = harness();
 
-      h.run(30_000, tel({ Speed: TRAFFIC_REJOIN_CRAWL_MPS + 1 }));
+      h.run(30_000, tel({ Speed: TRAFFIC_CRAWL_MPS + 1 }));
 
       expect(h.events).toEqual([]);
     });
@@ -276,7 +294,7 @@ describe("diffTrafficRejoin", () => {
       const h = harness();
 
       h.stop();
-      h.run(10_000, tel({ Speed: (TRAFFIC_REJOIN_CRAWL_MPS + TRAFFIC_REJOIN_MOVING_MPS) / 2 }));
+      h.run(10_000, tel({ Speed: (TRAFFIC_CRAWL_MPS + TRAFFIC_REJOIN_MOVING_MPS) / 2 }));
 
       expect(h.episode.active).toBe(true);
     });
@@ -651,6 +669,109 @@ describe("diffTrafficRejoin", () => {
       h.stop(tel({ cars: [unknown] }));
 
       expect(withheldLines(h.debug)).toHaveLength(2);
+    });
+  });
+
+  /**
+   * The cars' progress measured as the translator measures it: every tick
+   * runs `updateTrafficReferenceCurves` over the same slice before the
+   * detector, on a `SessionTime` that advances with the clock. A tick every
+   * 125 ms, an exact binary fraction, so the time spans are exact and a motion
+   * window is four ticks. `t` is seconds since the first tick. Every car below
+   * is of the fast class and on its curve, so a sample folded in leaves the
+   * curve where it was; on the 25 km track one second of its reference time
+   * is 50 m.
+   */
+  describe("a car standing still behind the player", () => {
+    const TICK_MS = 125;
+
+    /** A fast-class car whose reference time is `est`: it arrives at the player's 0.5 in `250 − est` s. */
+    const at = (idx: number, est: number): Car => ({ idx, pct: est / TRAFFIC_CURVE_BINS, est });
+
+    function measured() {
+      const curves = learnedCurves();
+      const h = harness({ curves });
+      let t = 0;
+
+      return {
+        h,
+        /** Ticks on from the current time through `until` s, the cars where `carsAt` puts them at each tick. */
+        drive(until: number, carsAt: (t: number) => Car[]): void {
+          for (; t <= until; t += TICK_MS / 1000) {
+            const tick = tel({ cars: carsAt(t), SessionTime: 1000 + t });
+
+            updateTrafficReferenceCurves(curves, tick, CLASSES, TRACK_M);
+
+            if (t === 0) h.tick(tick);
+            else h.after(TICK_MS, tick);
+          }
+        },
+      };
+    }
+
+    it("is left out, so a real car behind it gets its own call (the multi-car incident)", () => {
+      const m = measured();
+
+      // Car 4 stopped 5 m behind the player: 0.1 s away at reference pace, so
+      // counted it would be right behind. Car 5 coming at reference pace,
+      // 5.75 s away when the stop is recognised.
+      m.drive(1.5, (t) => [at(4, 249.9), at(5, 250 - (7.25 - t))]);
+
+      expect(m.h.events).toEqual([near(5, true)]);
+      expect(m.h.debug.mock.calls.flat().at(-1)).toBe(
+        "Rejoin: emit near 5 s (first) (nearest car 5 at 5.75 s via curve; entry; standing still: car 4)",
+      );
+    });
+
+    it("is gone once a close car slows to a stop, and a new car coming once it moves again", () => {
+      const m = measured();
+      // Car 5 at reference pace from 8.25 s away, braking from t = 4 to a stop
+      // at t = 6, 3.25 s away; moving again at reference pace from t = 9.
+      const est = (t: number): number => {
+        if (t <= 4) return 250 - 8.25 + t;
+
+        if (t <= 6) return 245.75 + (t - 4) - (t - 4) ** 2 / 4;
+
+        return t <= 9 ? 246.75 : 246.75 + (t - 9);
+      };
+
+      m.drive(11, (t) => [at(5, est(t))]);
+
+      expect(m.h.events).toEqual([
+        near(6, true), // 1.5: 6.75 s, the entry
+        near(3, false), // 4.5: braking, 3.81 s, down 3
+        CLEAR, // 6.5: stopped 3.25 s away, so gone by: the next car's band
+        near(2, true), // 9.5: moving again, 2.75 s away, a new car coming
+        RIGHT_BEHIND, // 10.5: 1.75 s
+      ]);
+    });
+
+    it("counts as coming on the first tick it is read, before it has a rate: the cautious direction", () => {
+      const m = measured();
+
+      // Nobody until the stop is recognised; then car 4 appears, standing 5 m back.
+      m.drive(2.5, (t) => (t < 1.5 ? [] : [at(4, 249.9)]));
+
+      expect(m.h.events).toEqual([
+        RIGHT_BEHIND, // 1.5: read once, no rate yet
+        CLEAR, // 2.5: measured standing still, so gone by
+      ]);
+    });
+
+    it("leaves no car out without a track length to judge its speed by", () => {
+      const curves = learnedCurves();
+      const h = harness({ curves, trackLengthMeters: null });
+
+      for (let t = 0; t <= 1.5; t += TICK_MS / 1000) {
+        const tick = tel({ cars: [at(4, 249.9)], SessionTime: 1000 + t });
+
+        updateTrafficReferenceCurves(curves, tick, CLASSES, TRACK_M);
+
+        if (t === 0) h.tick(tick);
+        else h.after(TICK_MS, tick);
+      }
+
+      expect(h.events).toEqual([RIGHT_BEHIND]);
     });
   });
 
