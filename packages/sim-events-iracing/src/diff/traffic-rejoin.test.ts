@@ -28,6 +28,7 @@ import {
   TRAFFIC_REJOIN_EVAL_INTERVAL_MS,
   TRAFFIC_REJOIN_GATE_GRACE_MS,
   TRAFFIC_REJOIN_MOVING_MPS,
+  TRAFFIC_REJOIN_PASSED_RISE_S,
   type TrafficRejoinTelemetry,
 } from "./traffic-rejoin.js";
 
@@ -632,6 +633,91 @@ describe("diffTrafficRejoin", () => {
       h.step([{ ...behind(5, 5), surface: TrkLoc.InPitStall }]);
 
       expect(h.events).toEqual([near(6, true), CLEAR]);
+    });
+  });
+
+  /**
+   * A 13 s lap, shorter than the 15 s clear band (a short dirt oval): a car
+   * that has gone by re-times as the lap less a second or so, never 15 s, so
+   * it is known to have gone by only from its arrival rising.
+   */
+  describe("a lap shorter than the clear band", () => {
+    const LAP_S = 13;
+    const shortLap = (): ReturnType<typeof harness> =>
+      harness({
+        curves: learnedCurves({ [FAST]: LAP_S / TRAFFIC_CURVE_BINS }),
+        classes: { lapTimeByClass: { [FAST]: LAP_S }, classByCarIdx: [] },
+      });
+
+    /** A car `seconds` from the player at 0.5 (6.5 s into the lap): behind it under 6.5 s, ahead of it round the line from there. */
+    const coming = (idx: number, seconds: number): Car => {
+      const est = (LAP_S / 2 - seconds + LAP_S) % LAP_S;
+
+      return { idx, pct: est / LAP_S, est };
+    };
+
+    it("says the next car's close calls once the close car has gone by", () => {
+      const h = shortLap();
+
+      // Car 5 goes by between the fourth and fifth evaluations; car 6, a lap
+      // behind it, follows it in and goes by too; car 5 comes round again.
+      h.stop(tel({ cars: [coming(5, 3.5), coming(6, 8.2)] }));
+
+      for (let i = 1; i <= 9; i++) {
+        h.step([coming(5, (3.5 - i + LAP_S) % LAP_S), coming(6, (8.2 - i + LAP_S) % LAP_S)]);
+      }
+
+      expect(h.events).toEqual([
+        near(3, true), // car 5 at 3.5
+        RIGHT_BEHIND, // car 5 at 1.5
+        near(4, true), // car 5 by, at 12.5 now; car 6 at 4.2, a new car coming
+        RIGHT_BEHIND, // car 6 at 1.2
+        near(7, true), // car 6 by; car 5 round again at 7.5
+      ]);
+    });
+
+    it("says a lone close car again when it comes round again", () => {
+      const h = shortLap();
+
+      h.stop(tel({ cars: [coming(5, 3.5)] }));
+
+      // 2.5 to 0.5, by, then 12.5 down to 1.5 on its next lap.
+      for (let s = 2.5; s > 0; s--) h.step([coming(5, s)]);
+
+      for (let s = 12.5; s > 1; s--) h.step([coming(5, s)]);
+
+      expect(h.events).toEqual([
+        near(3, true), // 3.5
+        RIGHT_BEHIND, // 1.5
+        OVER_TEN, // 12.5: by, so its band is said once, as for the next car
+        near(9, true), // 9.5: a closer band
+        near(6, false), // 6.5
+        near(3, false), // 3.5
+        RIGHT_BEHIND, // 1.5
+      ]);
+    });
+
+    it("never says clear while a timed car is on the lap: every car is under 15 s away", () => {
+      const h = shortLap();
+
+      h.stop(tel({ cars: [coming(5, 12.5)] }));
+      h.step([coming(5, 11.5)]);
+
+      expect(h.events).toEqual([OVER_TEN]);
+    });
+  });
+
+  describe("the close car's arrival rising", () => {
+    it.each([
+      ["by the margin or less is the same car still coming", TRAFFIC_REJOIN_PASSED_RISE_S, [near(5, true)]],
+      ["by more than the margin is a car gone by", TRAFFIC_REJOIN_PASSED_RISE_S + 0.1, [near(5, true), near(7, true)]],
+    ] satisfies Array<[string, number, Rejoin[]]>)("%s", (_, rise, expected) => {
+      const h = harness();
+
+      h.stop(tel({ cars: [behind(5, 5.5)] }));
+      h.step([behind(5, 5.5 + rise)]);
+
+      expect(h.events).toEqual(expected);
     });
   });
 

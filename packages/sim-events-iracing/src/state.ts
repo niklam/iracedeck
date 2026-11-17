@@ -684,6 +684,15 @@ export type TrafficRejoinState = {
    * `overTen` or `clear`.
    */
   closeCarIdx: number | null;
+  /**
+   * The close car's arrival (s) at the last evaluation that timed it while it
+   * was still coming, `null` with no close car: an approaching car's arrival
+   * only falls, so one that rose by more than `TRAFFIC_REJOIN_PASSED_RISE_S`
+   * from it has wrapped round the lap past the player. Not moved once the car
+   * has gone by, so it stays gone on its way round again until the next line
+   * is spoken.
+   */
+  closeCarSeconds: number | null;
   /** The once-per-episode debug line for a reassuring line withheld by untimed cars has been written. */
   untimedLogged: boolean;
 };
@@ -699,6 +708,7 @@ export function createTrafficRejoinState(): TrafficRejoinState {
     spokenBand: null,
     spokenSeconds: null,
     closeCarIdx: null,
+    closeCarSeconds: null,
     untimedLogged: false,
   };
 }

@@ -56,13 +56,24 @@
  *   `overTen` or `clear` in the usual case, and the next car's own close call
  *   (a `near` with `first: true`) when it is close too. The car has gone by
  *   when no source times it any more, it has stopped (left out as standing
- *   still), or its arrival has reached the clear band: an approaching car's
- *   arrival only falls, so from under 10 s it gets there only by wrapping
- *   round the lap behind the player. A close car that stops is therefore
- *   followed by the next car's band, and is a new car coming, with a closer
- *   band of its own, once it moves again.
+ *   still), or it has wrapped round the lap past the player: an approaching
+ *   car's arrival only falls, so one that rose by more than
+ *   {@link TRAFFIC_REJOIN_PASSED_RISE_S} since the last evaluation that timed
+ *   it, or reached the clear band, went by. A car seen going by stays gone
+ *   until the next line is spoken, however near it reads on its way round
+ *   again. A close car that stops is therefore followed by the next car's
+ *   band, and is a new car coming, with a closer band of its own, once it
+ *   moves again.
  * - **Otherwise** a band moving away is not re-announced: a car whose arrival
  *   drifts from 9.8 s to 10.2 s is still the same car coming.
+ *
+ * **A lap shorter than the clear band** (a short oval, a dirt track: about
+ * 15 s or less). Every timed car is then under 15 s away, so `clear` is said
+ * only with no timed car on track, and a car that has gone by re-times as the
+ * lap less a second or so, under the clear band: it is known to have gone by
+ * from its arrival rising, never from reaching 15 s. Nothing else here
+ * assumes a lap of any length; the rise is caught on any lap longer than about
+ * twice {@link TRAFFIC_REJOIN_PASSED_RISE_S}.
  *
  * **Untimed cars.** A car no source can time withholds the two reassuring
  * lines, `overTen` and `clear`, and nothing else: timed cars still get their
@@ -143,6 +154,21 @@ export const TRAFFIC_REJOIN_EVAL_INTERVAL_MS = 1_000;
  * car closing from 9 is counted at 6 and 3, never second by second.
  */
 export const TRAFFIC_REJOIN_COUNT_STEP_S = 3;
+
+/**
+ * How far the close car's arrival must rise (s) from one evaluation that
+ * timed it to the next for the car to count as gone by (module header). A car
+ * coming at any pace has an arrival that falls; what can lift it without the
+ * car going by is noise in its `CarIdxEstTime`, whose offset is a car's own
+ * and steady (±0.2 s typically, about 1 s at worst; `traffic-arrival.ts`), so
+ * it moves far less than that between two evaluations a second apart, and
+ * the wrap at the start/finish line on a class lap from `CarClassEstLapTime`,
+ * which is up to 0.9 s short of where the time restarts (Spa). 2 s clears
+ * both together. Wrapping past the player lifts it by the lap less the car's
+ * progress either side of the player, about two seconds, so any lap longer
+ * than 4 s shows it, the shortest dirt oval included.
+ */
+export const TRAFFIC_REJOIN_PASSED_RISE_S = 2;
 
 /** The telemetry the rejoin detector reads: the gates, the speed and the arrival model's arrays. */
 export type TrafficRejoinTelemetry = TrafficTelemetry &
@@ -304,13 +330,31 @@ function bandOf(seconds: number | null): Band {
   return seconds < TRAFFIC_REJOIN_OVER_TEN_S ? "near" : "overTen";
 }
 
-/** Whether the car the last close call was about has gone by (module header); `false` with no such call. */
-function closeCarGone(closeCarIdx: number | null, arrivals: readonly TrafficArrival[]): boolean {
-  if (closeCarIdx === null) return false;
+/**
+ * Whether the car the last close call was about has gone by (module header);
+ * `false` with no such call. Follows that car's arrival in
+ * `episode.closeCarSeconds` while it is still coming, and leaves it once the
+ * car has gone by, so the car stays gone on its way round again. A car
+ * untimed or no longer a candidate (left the track, standing still) is gone
+ * while it stays so, and is compared with its last timed arrival when it is
+ * timed again.
+ */
+function closeCarGone(episode: TrafficRejoinState, arrivals: readonly TrafficArrival[]): boolean {
+  if (episode.closeCarIdx === null) return false;
 
-  const car = arrivals.find((arrival) => arrival.carIdx === closeCarIdx);
+  const car = arrivals.find((arrival) => arrival.carIdx === episode.closeCarIdx);
 
-  return car === undefined || !car.timed || car.seconds >= TRAFFIC_REJOIN_CLEAR_S;
+  if (car === undefined || !car.timed) return true;
+
+  const last = episode.closeCarSeconds;
+
+  if ((last !== null && car.seconds - last > TRAFFIC_REJOIN_PASSED_RISE_S) || car.seconds >= TRAFFIC_REJOIN_CLEAR_S) {
+    return true;
+  }
+
+  episode.closeCarSeconds = car.seconds;
+
+  return false;
 }
 
 /** Why this evaluation speaks, by the rules in the module header; `null` when it stays quiet. */
@@ -318,11 +362,11 @@ function speakReason(
   episode: TrafficRejoinState,
   band: Band,
   wholeSeconds: number | null,
-  arrivals: readonly TrafficArrival[],
+  closeGone: boolean,
 ): SpeakReason | null {
   if (episode.spokenBand === null) return "entry";
 
-  if (closeCarGone(episode.closeCarIdx, arrivals)) return "after a close car";
+  if (closeGone) return "after a close car";
 
   if (BAND_RANK[band] < BAND_RANK[episode.spokenBand]) return "closer band";
 
@@ -388,7 +432,9 @@ function evaluate(
   const band = bandOf(nearest?.seconds ?? null);
   // Only `near` has a nearest car in [2, 10), so its whole seconds are 2 to 9.
   const wholeSeconds = band === "near" && nearest !== null ? Math.floor(nearest.seconds) : null;
-  const reason = speakReason(episode, band, wholeSeconds, arrivals);
+  // Every evaluation, spoken or not, so the close car's arrival is followed from one to the next.
+  const closeGone = closeCarGone(episode, arrivals);
+  const reason = speakReason(episode, band, wholeSeconds, closeGone);
 
   if (reason === null) return;
 
@@ -413,5 +459,8 @@ function evaluate(
   );
   episode.spokenBand = band;
   episode.spokenSeconds = wholeSeconds;
-  episode.closeCarIdx = (band === "near" || band === "rightBehind") && nearest !== null ? nearest.carIdx : null;
+  const close = (band === "near" || band === "rightBehind") && nearest !== null ? nearest : null;
+
+  episode.closeCarIdx = close?.carIdx ?? null;
+  episode.closeCarSeconds = close?.seconds ?? null;
 }
