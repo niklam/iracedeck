@@ -25,6 +25,7 @@ import { describe, expect, it } from "vitest";
 import { type CarProgressState, createCarProgressState } from "../state.js";
 import {
   CAR_PROGRESS_LINE_GUARD_PCT,
+  CAR_PROGRESS_LINE_MAX_SPAN_S,
   CAR_PROGRESS_LINE_MAX_TICK_STEP,
   confirmedLastProgress,
   readCarProgress,
@@ -432,6 +433,38 @@ describe("stepCarProgress — a counter and a fraction that disagree at the line
 
     return slice;
   }
+
+  it("takes a reading as it stands after a long gap since the last read, so a whole lap is not hidden", () => {
+    // Confirmed at 6.975 / 6.98 by t = 100.1; 90 s later the car is near the
+    // line again a lap on, at 7.985. Against the stale progress the
+    // correction would read 6.985, a 0.005 step inside the per-tick bound,
+    // hiding the lap: only the time bound catches it.
+    const slice = confirmed(0.975, 0.98);
+    const later = step(
+      slice,
+      raw(190.1, [
+        [6, 0.6],
+        [7, 0.985],
+      ]),
+    );
+
+    expect(later!.progress[1]).toBeCloseTo(7.985, 10);
+    expect(later!.traceReset[1]).toBe(true);
+  });
+
+  it("still corrects the same reading on the very next tick (the positive control)", () => {
+    const slice = confirmed(0.975, 0.98);
+    const next = step(
+      slice,
+      raw(100.1 + CAR_PROGRESS_LINE_MAX_SPAN_S, [
+        [6, 0.502],
+        [7, 0.985],
+      ]),
+    );
+
+    expect(next!.progress[1]).toBeCloseTo(6.985, 10);
+    expect(next!.traceReset[1]).toBe(false);
+  });
 
   it.each([
     ["the counter leads the fraction", [7, 0.9999] as [number, number], 6.9999],

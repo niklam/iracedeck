@@ -36,6 +36,19 @@ import type { CarProgressState } from "../state.js";
 export const CAR_PROGRESS_LINE_GUARD_PCT = 0.05;
 
 /**
+ * The longest `SessionTime` gap (seconds) since the last read across which the
+ * line correction still trusts the confirmed progress (CodeRabbit CLI,
+ * #1572). The counter and the fraction disagree for a tick at the line, so
+ * the correction is a tick-to-tick rule; after a longer gap (ticks the step
+ * was never called on, telemetry that stalled) the car may have driven a whole
+ * lap, and a reading near the line taken against the stale progress would
+ * hide that lap as a 0.005 step. Past the bound the reading is taken as it
+ * stands, so a real lap reads as the discontinuity it is. Half a second allows
+ * a few dropped ticks.
+ */
+export const CAR_PROGRESS_LINE_MAX_SPAN_S = 0.5;
+
+/**
  * The furthest (laps) a corrected reading may be from the last progress: one
  * tick's travel, not the 0.05 lap that `GAP_TRACE_MAX_STEP` allows between
  * two recorded SAMPLES of a trace. The disagreement {@link readCarProgress}
@@ -256,6 +269,11 @@ export function stepCarProgress(
   }
 
   const carCount = Math.min(lc.length, pct.length);
+  // The correction reads only across a short gap since the last read
+  // (CAR_PROGRESS_LINE_MAX_SPAN_S); otherwise every reading stands as it is.
+  const sinceLastRead = previousSessionTime === null ? null : sessionTime - previousSessionTime;
+  const correctionBaseline =
+    sinceLastRead !== null && sinceLastRead >= 0 && sinceLastRead <= CAR_PROGRESS_LINE_MAX_SPAN_S;
   const progress = new Array<number | null>(carCount).fill(null);
   const traceReset = new Array<boolean>(carCount).fill(false);
 
@@ -276,7 +294,7 @@ export function stepCarProgress(
 
     const previous = slice.lastProgress[i];
     const previousConfirmed = slice.lastProgressConfirmed[i] === true;
-    const carProgress = readCarProgress(confirmedLastProgress(slice, i), laps, dist);
+    const carProgress = readCarProgress(correctionBaseline ? confirmedLastProgress(slice, i) : undefined, laps, dist);
     let trace = slice.traces[i];
 
     if (!trace) {
