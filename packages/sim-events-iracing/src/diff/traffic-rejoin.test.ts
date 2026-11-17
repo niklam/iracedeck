@@ -490,6 +490,20 @@ describe("diffTrafficRejoin", () => {
       h.after(1, tel({ cars: [behind(5, 8)] }));
       expect(h.events).toEqual([OVER_TEN, near(8, true)]);
     });
+
+    it("evaluates on the first tick after the wall clock steps back, then once a second from there", () => {
+      const h = harness();
+
+      h.stop(tel({ cars: [behind(5, 12)] }));
+      h.after(-30_000, tel({ cars: [behind(5, 8)] }));
+      expect(h.events).toEqual([OVER_TEN, near(8, true)]);
+
+      h.after(TRAFFIC_REJOIN_EVAL_INTERVAL_MS - 1, tel({ cars: [behind(5, 5)] }));
+      expect(h.events).toHaveLength(2);
+
+      h.after(1, tel({ cars: [behind(5, 5)] }));
+      expect(h.events.at(-1)).toEqual(near(5, false));
+    });
   });
 
   describe("a car closing in", () => {

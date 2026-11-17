@@ -246,8 +246,14 @@ export function diffTrafficPitExit(
 
     if (reason !== null) {
       end(episode, reason, logger);
-    } else if (episode.lastEvalAt === null || elapsed(now, episode.lastEvalAt) >= TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS) {
-      evaluate(episode, curves, telemetry, playerPct as number, facts, windows, now, emit, logger);
+    } else {
+      // A wall clock that stepped back evaluates now: waiting the interval out
+      // from a time still ahead would stop every evaluation for as long as the step.
+      if (episode.lastEvalAt !== null && episode.lastEvalAt > now) episode.lastEvalAt = null;
+
+      if (episode.lastEvalAt === null || elapsed(now, episode.lastEvalAt) >= TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS) {
+        evaluate(episode, curves, telemetry, playerPct as number, facts, windows, now, emit, logger);
+      }
     }
   }
 

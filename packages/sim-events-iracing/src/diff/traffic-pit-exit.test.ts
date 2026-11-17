@@ -676,6 +676,22 @@ describe("diffTrafficPitExit", () => {
       expect(h.events).toEqual([{ verdict: "clear" }, { verdict: "traffic", seconds: 0 }]);
     });
 
+    it("evaluates on the first tick after the wall clock steps back, then once a second from there", () => {
+      const h = harness();
+
+      h.depart(rolling(0));
+
+      // 30 s back: an evaluation, the first of a flip to traffic.
+      h.after(-30_000, rolling(1, 0));
+      expect(lines(h.debug).at(-1)).toContain("traffic at 1 of 2 evaluations");
+
+      h.after(TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS - 1, rolling(2, 0));
+      expect(h.events).toEqual([{ verdict: "clear" }]);
+
+      h.after(1, rolling(2, 0));
+      expect(h.events).toEqual([{ verdict: "clear" }, { verdict: "traffic", seconds: 0 }]);
+    });
+
     it("speaks again on a flip of the verdict that holds, and only then", () => {
       const h = harness();
       const step = (cars: Car[]): void => h.after(TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS, tel({ cars }));

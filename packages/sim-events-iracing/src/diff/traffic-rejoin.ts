@@ -316,6 +316,10 @@ export function diffTrafficRejoin(
     episode.movingSince = null;
   }
 
+  // A wall clock that stepped back evaluates now: waiting the interval out
+  // from a time still ahead would stop every evaluation for as long as the step.
+  if (episode.lastEvalAt !== null && episode.lastEvalAt > now) episode.lastEvalAt = null;
+
   if (episode.lastEvalAt !== null && elapsed(now, episode.lastEvalAt) < TRAFFIC_REJOIN_EVAL_INTERVAL_MS) return;
 
   evaluate(episode, curves, telemetry, pct, playerCarIdx, classes, trackLengthMeters, now, emit, logger);
