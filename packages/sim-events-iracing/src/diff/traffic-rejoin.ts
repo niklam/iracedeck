@@ -241,7 +241,8 @@ export function diffTrafficRejoin(
       if (elapsed(now, episode.gateFailedSince) < TRAFFIC_REJOIN_GATE_GRACE_MS) return;
     }
 
-    // Outside an episode, any failure restarts the entry dwell.
+    // Outside an episode any failure restarts the entry dwell; inside one, the
+    // failure ends it at once (the car left, the garage) or has outlasted the grace.
     if (episode.active) logger.debug(`Rejoin: episode ended (${gate})`);
 
     Object.assign(episode, createTrafficRejoinState());
