@@ -33,6 +33,22 @@
  * per-car `CarIdxOnPitRoad` is the one #1112 measured stuck true) and a
  * landmark learned a little late cannot keep the pit-road formula running
  * past the end of pit road between them.
+ *
+ * **Where the player is, along the lap.** Every distance is the forward one,
+ * in driving direction, never the shorter way round: a stall may lie more than
+ * half a lap before `blendEnd` (a pit road along both straights of a short
+ * oval), where the shorter way reads backwards. The player is short of
+ * `pitRoadEnd` while the forward distance to `blendEnd` exceeds the forward
+ * distance from `pitRoadEnd` to `blendEnd`. The player is past `blendEnd` once
+ * back on the racing surface (`AproachingPits` → `OnTrack` is the very edge
+ * the landmark is learned from), or at it, or less than
+ * {@link TRAFFIC_PIT_EXIT_LANDMARK_SLACK_M} beyond it with the surface not yet
+ * flipped, which is a landmark learned a few metres early: a forward distance
+ * a hair under a whole lap is a player just past the line, not a lap short of
+ * it. A `pitRoadEnd` learned within that slack after `blendEnd` (a pit lane
+ * ending straight onto the track makes both on one tick) is the same point,
+ * with no time between them. So no ETA ever carries a lap the player is not
+ * going to drive.
  * No player-class reference anywhere, no pit speed limit or no track length
  * means no ETA: no callout, one debug line per episode. Never a guess.
  *
@@ -72,7 +88,12 @@
 import type { SimEventName } from "@iracedeck/event-bus";
 import type { TelemetryData } from "@iracedeck/iracing-sdk";
 import type { ILogger } from "@iracedeck/logger";
-import { type PitLaneResolvedLandmark, pitLaneSignedDeltaPct } from "@iracedeck/track-data";
+import {
+  normalizePitLanePct,
+  PIT_LANE_TOLERANCE_M,
+  type PitLaneResolvedLandmark,
+  pitLaneTolerancePct,
+} from "@iracedeck/track-data";
 
 import { createTrafficPitExitState, type TrafficArrivalState, type TrafficPitExitState } from "../state.js";
 import { isRacingSurface } from "./track-surface.js";
@@ -118,6 +139,20 @@ export const TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS = 1_000;
  * held: it is made at the departure.
  */
 export const TRAFFIC_PIT_EXIT_FLIP_CONFIRM_EVALUATIONS = 2;
+
+/**
+ * How far (m) a learned landmark may sit from where the player's own car
+ * reads it and still count as the same point (module header): the player
+ * this far past `blendEnd`, still off the racing surface, is past it rather
+ * than a lap short of it, and a `pitRoadEnd` this far after `blendEnd` is at
+ * it. Three times the learner's agreement tolerance
+ * (`PIT_LANE_TOLERANCE_M`, 5 m): a published landmark lies within that of the
+ * drive-outs that taught it (the blend line repeated within 1.6 m across two
+ * cars' drive-outs at Spa, #1112), and the player's own edge falls within half
+ * a tick of it, a few metres at the speed of a pit exit. A pit lane is far
+ * longer, so no stall ever sits this close past the blend line.
+ */
+export const TRAFFIC_PIT_EXIT_LANDMARK_SLACK_M = 15;
 
 /** The two landmarks the detector reads, as `resolvePitLaneLandmarks` gives them; `null` while unlearned. */
 export type TrafficPitExitLandmarks = {
@@ -263,6 +298,40 @@ function referenceSpan(
 
 type Eta = { seconds: number; phase: "pitRoad" | "blend" } | { reason: NoEtaReason };
 
+/** The forward distance along the lap from `from` to `to`, in driving direction, in [0, 1). */
+function forwardPct(from: number, to: number): number {
+  return normalizePitLanePct(to - from);
+}
+
+/** {@link TRAFFIC_PIT_EXIT_LANDMARK_SLACK_M} as a lap fraction: from the track length when known, else on the learner's own fallback length. */
+function landmarkSlackPct(trackLengthMeters: number | null): number {
+  return (pitLaneTolerancePct(trackLengthMeters) * TRAFFIC_PIT_EXIT_LANDMARK_SLACK_M) / PIT_LANE_TOLERANCE_M;
+}
+
+/** Where the player is against the two landmarks, as forward lap fractions (module header). */
+type ExitPosition = {
+  /** From the player to `blendEnd`: more than 0 and at most a lap less the slack. */
+  readonly toBlendEnd: number;
+  /** From `pitRoadEnd` to `blendEnd`; 0 for a `pitRoadEnd` learned within the slack after `blendEnd`. */
+  readonly pitRoadEndToBlendEnd: number;
+};
+
+/** Where the player is against the landmarks (module header); `null` once at or past `blendEnd`. */
+function exitPosition(
+  playerPct: number,
+  pitRoadEnd: PitLaneResolvedLandmark,
+  blendEnd: PitLaneResolvedLandmark,
+  slackPct: number,
+): ExitPosition | null {
+  const toBlendEnd = forwardPct(playerPct, blendEnd.pct);
+
+  if (toBlendEnd === 0 || toBlendEnd > 1 - slackPct) return null;
+
+  const pitRoadEndToBlendEnd = forwardPct(pitRoadEnd.pct, blendEnd.pct);
+
+  return { toBlendEnd, pitRoadEndToBlendEnd: pitRoadEndToBlendEnd > 1 - slackPct ? 0 : pitRoadEndToBlendEnd };
+}
+
 /** The player's arrival at `blendEnd` (module header), or why it cannot be known. */
 function playerEta(
   curves: Readonly<TrafficArrivalState>,
@@ -272,6 +341,7 @@ function playerEta(
   facts: TrafficPitExitFacts,
   pitRoadEnd: PitLaneResolvedLandmark,
   blendEnd: PitLaneResolvedLandmark,
+  position: ExitPosition,
 ): Eta {
   if (playerClass === null) return { reason: "noPlayerClass" };
 
@@ -279,20 +349,28 @@ function playerEta(
 
   if (tBlend === null) return { reason: "noReference" };
 
-  const toPitRoadEnd = pitLaneSignedDeltaPct(playerPct, pitRoadEnd.pct);
-
-  if (telemetry.OnPitRoad === true && toPitRoadEnd >= 0) {
+  // Past `pitRoadEnd` is `OnPitRoad` turning false; the position check is the
+  // guard against a landmark learned a little late (module header).
+  if (telemetry.OnPitRoad === true && position.toBlendEnd > position.pitRoadEndToBlendEnd) {
     if (facts.trackLengthMeters === null || !(facts.trackLengthMeters > 0)) return { reason: "noTrackLength" };
 
     if (!(facts.pitSpeedLimitMps > 0)) return { reason: "noPitSpeedLimit" };
 
-    const tPitRoadEnd = landmarkTime(curves, pitRoadEnd, playerClass);
+    const toPitRoadEnd = position.toBlendEnd - position.pitRoadEndToBlendEnd;
+    let blend = 0;
 
-    if (tPitRoadEnd === null) return { reason: "noReference" };
+    // Two landmarks at one point have no time between them.
+    if (position.pitRoadEndToBlendEnd > 0) {
+      const tPitRoadEnd = landmarkTime(curves, pitRoadEnd, playerClass);
 
-    const blend = referenceSpan(curves, facts.classes, playerClass, pitRoadEnd.pct, blendEnd.pct, tPitRoadEnd, tBlend);
+      if (tPitRoadEnd === null) return { reason: "noReference" };
 
-    if (blend === null) return { reason: "noClassLap" };
+      const span = referenceSpan(curves, facts.classes, playerClass, pitRoadEnd.pct, blendEnd.pct, tPitRoadEnd, tBlend);
+
+      if (span === null) return { reason: "noClassLap" };
+
+      blend = span;
+    }
 
     return { seconds: (toPitRoadEnd * facts.trackLengthMeters) / facts.pitSpeedLimitMps + blend, phase: "pitRoad" };
   }
@@ -338,14 +416,16 @@ function evaluate(
     return;
   }
 
-  if (pitLaneSignedDeltaPct(playerPct, blendEnd.pct) <= 0) {
+  const position = exitPosition(playerPct, pitRoadEnd, blendEnd, landmarkSlackPct(facts.trackLengthMeters));
+
+  if (position === null) {
     end(episode, "past blendEnd", logger);
 
     return;
   }
 
   const playerClass = resolveCarClassId(telemetry, facts.classes, facts.playerCarIdx);
-  const eta = playerEta(curves, telemetry, playerPct, playerClass, facts, pitRoadEnd, blendEnd);
+  const eta = playerEta(curves, telemetry, playerPct, playerClass, facts, pitRoadEnd, blendEnd, position);
 
   if ("reason" in eta) {
     if (!episode.noEtaLogged) {

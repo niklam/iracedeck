@@ -383,6 +383,74 @@ describe("diffTrafficPitExit", () => {
         { verdict: "clear", seconds: 7 },
       ]);
     });
+
+    describe("from a stall more than half a lap before blendEnd (a pit road along both straights)", () => {
+      // Pit road ends at 0.75 (375 s), the blend at 0.80 (400 s); the stall at 0.20.
+      const FAR: TrafficPitExitLandmarks = {
+        pitRoadEnd: landmark(0.75, { [CLS]: 375 }),
+        blendEnd: landmark(0.8, { [CLS]: 400 }),
+      };
+
+      it("makes the call at the departure, on the pit-road formula over the whole pit road", () => {
+        const h = harness({ landmarks: FAR });
+
+        // 0.55 of 1,600 m = 880 m at 20 m/s = 44 s, + 400 − 375 = 69 s. A car
+        // reaching the blend at 70 s (400 − 330) is +1.
+        h.depart(tel({ pct: 0.2, cars: [{ idx: 5, pct: 0.66, est: 330 }] }));
+
+        expect(h.episode.active).toBe(true);
+        expect(h.events).toEqual([{ verdict: "traffic", seconds: 1 }]);
+        expect(lines(h.debug).at(-1)).toContain("eta 69.00 s on pitRoad");
+      });
+
+      it("runs on past pitRoadEnd on the blend formula, and ends past blendEnd", () => {
+        const h = harness({ landmarks: FAR });
+
+        h.depart(tel({ pct: 0.2, cars: [{ idx: 5, pct: 0.66, est: 330 }] }));
+        // Off pit road at 0.78 (390 s on the curve): 10 s to the blend, the car +1.
+        h.after(
+          TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS,
+          tel({ pct: 0.78, OnPitRoad: false, cars: [{ idx: 5, pct: 0.7, est: 389 }] }),
+        );
+
+        expect(h.episode.active).toBe(true);
+        expect(lines(h.debug).filter((line) => line.includes("ended"))).toEqual([]);
+
+        h.after(TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS, tel({ pct: 0.805, OnPitRoad: false }));
+
+        expect(h.episode.active).toBe(false);
+        expect(lines(h.debug).at(-1)).toBe("PitExit: episode ended (past blendEnd)");
+        expect(h.events).toEqual([{ verdict: "traffic", seconds: 1 }]);
+      });
+    });
+
+    it("counts a player a few metres past blendEnd, still off the racing surface, as past it, never a lap short", () => {
+      const h = harness();
+
+      h.depart(tel({ cars: [arriving(5, 10)] }));
+      // 8 m past the blend line on the 1,600 m track: the landmark learned a
+      // little early, the surface not flipped yet. A lap short, the car at +0
+      // would be judged against an ETA a lap away.
+      h.after(TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS, tel({ cars: [arriving(5, 0)], OnPitRoad: false, pct: 0.1925 }));
+      h.after(TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS, tel({ cars: [arriving(5, 0)], OnPitRoad: false, pct: 0.1925 }));
+
+      expect(h.episode.active).toBe(false);
+      expect(lines(h.debug)).toContain("PitExit: episode ended (past blendEnd)");
+      expect(h.events).toEqual([{ verdict: "clear", seconds: 10 }]);
+    });
+
+    it("adds no lap for a pitRoadEnd learned a hair after blendEnd (a pit lane ending straight onto the track)", () => {
+      // 0.16 m apart, in the wrong order: the same point, no time between them.
+      const h = harness({
+        landmarks: { pitRoadEnd: landmark(0.1876, { [CLS]: 60.05 }), blendEnd: landmark(0.1875, { [CLS]: 60 }) },
+      });
+
+      // 0.125 of 1,600 m = 200 m at 20 m/s = 10 s; a car reaching the blend at 11 s is +1.
+      h.depart(tel({ cars: [{ idx: 5, pct: 0.05, est: 49 }] }));
+
+      expect(h.events).toEqual([{ verdict: "traffic", seconds: 1 }]);
+      expect(lines(h.debug).at(-1)).toContain("eta 10.00 s on pitRoad");
+    });
   });
 
   describe("the window, at the defaults (2 s before, 4 s after)", () => {
