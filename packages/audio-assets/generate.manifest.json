@@ -76990,6 +76990,1206 @@
       "textPreview": "Copy that. Dropping the corner and sector calls.",
       "generatedAt": "2026-11-17T06:21:32.985Z",
       "requestId": "iHZ4wTpiltmO1CRs5FvO"
+    },
+    "voice/default/traffic/rejoin-intro-01.mp3": {
+      "hash": "48688ee451194ea7",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Car coming in",
+      "generatedAt": "2026-11-17T17:11:24.998Z",
+      "requestId": "PbEbxSBmrSvW2hqHiEVh"
+    },
+    "voice/default/traffic/rejoin-intro-02.mp3": {
+      "hash": "cdf6f12a997bda9c",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Traffic approaching in",
+      "generatedAt": "2026-11-17T17:11:25.907Z",
+      "requestId": "vlS5HRbuLYFgxdkfhsKQ"
+    },
+    "voice/default/traffic/rejoin-update-01.mp3": {
+      "hash": "eaf449dac1954f41",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Getting closer,",
+      "generatedAt": "2026-11-17T17:11:26.626Z",
+      "requestId": "INLXjGhlw4Cmb3ZILRxO"
+    },
+    "voice/default/traffic/rejoin-mid-5-01.mp3": {
+      "hash": "b8001317958d4e5e",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "about five seconds.",
+      "generatedAt": "2026-11-17T17:11:27.431Z",
+      "requestId": "OjSoj2HP8hLFunPUTXEY",
+      "conditionedOn": {
+        "previous": [
+          "PbEbxSBmrSvW2hqHiEVh",
+          "INLXjGhlw4Cmb3ZILRxO"
+        ]
+      }
+    },
+    "voice/default/traffic/rejoin-mid-5-02.mp3": {
+      "hash": "449ac69148696673",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "roughly five seconds.",
+      "generatedAt": "2026-11-17T17:11:28.299Z",
+      "requestId": "H4Knq1L6g5rPNDKMnbVQ",
+      "conditionedOn": {
+        "previous": [
+          "PbEbxSBmrSvW2hqHiEVh",
+          "INLXjGhlw4Cmb3ZILRxO"
+        ]
+      }
+    },
+    "voice/default/traffic/rejoin-outro-01.mp3": {
+      "hash": "90c0dcf370c9c430",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Watch out.",
+      "generatedAt": "2026-11-17T17:11:29.142Z",
+      "requestId": "jPmayk2zmSoBnf5xY6ma",
+      "conditionedOn": {
+        "previous": [
+          "OjSoj2HP8hLFunPUTXEY"
+        ]
+      }
+    },
+    "voice/default/traffic/rejoin-outro-02.mp3": {
+      "hash": "5ebec572ea3f09fd",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Careful.",
+      "generatedAt": "2026-11-17T17:11:29.727Z",
+      "requestId": "Awsrbxz3uRQewcfcxe76",
+      "conditionedOn": {
+        "previous": [
+          "OjSoj2HP8hLFunPUTXEY"
+        ]
+      }
+    },
+    "voice/default/traffic/rejoin-right-behind-01.mp3": {
+      "hash": "2d59043a5ab03439",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Car right behind you. Watch out.",
+      "generatedAt": "2026-11-17T17:11:30.746Z",
+      "requestId": "OG6UWP4wM1DKHba0a02M"
+    },
+    "voice/default/traffic/rejoin-clear-01.mp3": {
+      "hash": "b01be89f6aa8078d",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Clear to rejoin.",
+      "generatedAt": "2026-11-17T17:11:31.642Z",
+      "requestId": "csZfVE08iIZQ7l4csxnE"
+    },
+    "voice/default/traffic/pit-exit-traffic-01.mp3": {
+      "hash": "6febca0a84cf9604",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "We're estimating traffic at the pit exit. Watch out.",
+      "generatedAt": "2026-11-17T17:11:32.919Z",
+      "requestId": "Hw6Cr94nusOJNSYD0w0o"
+    },
+    "voice/default/traffic/pit-exit-clear-01.mp3": {
+      "hash": "ab764e92258b94c2",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Looks like the pit exit will be clear.",
+      "generatedAt": "2026-11-17T17:11:33.969Z",
+      "requestId": "cjHkBqRhPk2UZjSsG7Mj"
+    },
+    "voice/shawn/traffic/rejoin-intro-01.mp3": {
+      "hash": "48688ee451194ea7",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Car coming in",
+      "generatedAt": "2026-11-17T17:11:34.051Z",
+      "requestId": "PbEbxSBmrSvW2hqHiEVh"
+    },
+    "voice/shawn/traffic/rejoin-intro-02.mp3": {
+      "hash": "cdf6f12a997bda9c",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Traffic approaching in",
+      "generatedAt": "2026-11-17T17:11:34.067Z",
+      "requestId": "vlS5HRbuLYFgxdkfhsKQ"
+    },
+    "voice/shawn/traffic/rejoin-update-01.mp3": {
+      "hash": "eaf449dac1954f41",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Getting closer,",
+      "generatedAt": "2026-11-17T17:11:34.085Z",
+      "requestId": "INLXjGhlw4Cmb3ZILRxO"
+    },
+    "voice/shawn/traffic/rejoin-mid-5-01.mp3": {
+      "hash": "b8001317958d4e5e",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "about five seconds.",
+      "generatedAt": "2026-11-17T17:11:34.102Z",
+      "requestId": "OjSoj2HP8hLFunPUTXEY",
+      "conditionedOn": {
+        "previous": [
+          "PbEbxSBmrSvW2hqHiEVh",
+          "INLXjGhlw4Cmb3ZILRxO"
+        ]
+      }
+    },
+    "voice/shawn/traffic/rejoin-mid-5-02.mp3": {
+      "hash": "449ac69148696673",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "roughly five seconds.",
+      "generatedAt": "2026-11-17T17:11:34.122Z",
+      "requestId": "H4Knq1L6g5rPNDKMnbVQ",
+      "conditionedOn": {
+        "previous": [
+          "PbEbxSBmrSvW2hqHiEVh",
+          "INLXjGhlw4Cmb3ZILRxO"
+        ]
+      }
+    },
+    "voice/shawn/traffic/rejoin-outro-01.mp3": {
+      "hash": "90c0dcf370c9c430",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Watch out.",
+      "generatedAt": "2026-11-17T17:11:34.138Z",
+      "requestId": "jPmayk2zmSoBnf5xY6ma",
+      "conditionedOn": {
+        "previous": [
+          "OjSoj2HP8hLFunPUTXEY"
+        ]
+      }
+    },
+    "voice/shawn/traffic/rejoin-outro-02.mp3": {
+      "hash": "5ebec572ea3f09fd",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Careful.",
+      "generatedAt": "2026-11-17T17:11:34.152Z",
+      "requestId": "Awsrbxz3uRQewcfcxe76",
+      "conditionedOn": {
+        "previous": [
+          "OjSoj2HP8hLFunPUTXEY"
+        ]
+      }
+    },
+    "voice/shawn/traffic/rejoin-right-behind-01.mp3": {
+      "hash": "0422fe188d61000a",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Right behind you. Watch out.",
+      "generatedAt": "2026-11-17T17:11:35.005Z",
+      "requestId": "XiPTMbzsa3shSG1XXU6k"
+    },
+    "voice/shawn/traffic/rejoin-clear-01.mp3": {
+      "hash": "b01be89f6aa8078d",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Clear to rejoin.",
+      "generatedAt": "2026-11-17T17:11:35.022Z",
+      "requestId": "csZfVE08iIZQ7l4csxnE"
+    },
+    "voice/shawn/traffic/pit-exit-traffic-01.mp3": {
+      "hash": "406780d57b941e2b",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Traffic likely at pit exit. Watch out.",
+      "generatedAt": "2026-11-17T17:11:36.146Z",
+      "requestId": "RvSbVs9WqWF0AKVHvi6p"
+    },
+    "voice/shawn/traffic/pit-exit-clear-01.mp3": {
+      "hash": "6f31be37ec05c3b8",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Pit exit looks clear.",
+      "generatedAt": "2026-11-17T17:11:36.935Z",
+      "requestId": "3aPOlOrwFptk40Ch0KvD"
+    },
+    "voice/default/traffic/rejoin-intro-03.mp3": {
+      "hash": "2006b2db091f4dec",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Heads up, car on its way in",
+      "generatedAt": "2026-11-17T17:13:54.218Z",
+      "requestId": "hpd3wg1tUmq5MkDFONM8"
+    },
+    "voice/default/traffic/rejoin-intro-04.mp3": {
+      "hash": "d445bc0ad7d3d8a3",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Car arriving in",
+      "generatedAt": "2026-11-17T17:13:55.033Z",
+      "requestId": "oYRBzpVx1RMVeq5OR0kF"
+    },
+    "voice/default/traffic/rejoin-intro-05.mp3": {
+      "hash": "db57dd83d89b91a3",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Car behind you, arriving in",
+      "generatedAt": "2026-11-17T17:13:55.995Z",
+      "requestId": "AdX8OM4T2wGHGIUq8Aid"
+    },
+    "voice/default/traffic/rejoin-intro-06.mp3": {
+      "hash": "65e507576e977c6c",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "There's a car coming in",
+      "generatedAt": "2026-11-17T17:13:56.806Z",
+      "requestId": "rwJepIfAa179174y1Qdf"
+    },
+    "voice/default/traffic/rejoin-intro-07.mp3": {
+      "hash": "dd3ff27d98b83837",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Traffic on the way, arriving in",
+      "generatedAt": "2026-11-17T17:13:57.797Z",
+      "requestId": "TnD71nG1quuVSGQYOUmh"
+    },
+    "voice/default/traffic/rejoin-intro-08.mp3": {
+      "hash": "129a4b4c4b82642c",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Incoming car, here in",
+      "generatedAt": "2026-11-17T17:13:58.673Z",
+      "requestId": "IPxTftR47z2lrcbI3lyZ"
+    },
+    "voice/default/traffic/rejoin-update-02.mp3": {
+      "hash": "da1b8c0f02172c88",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Closer now,",
+      "generatedAt": "2026-11-17T17:13:59.470Z",
+      "requestId": "y2tfmbFpEiSA6lCUGEDY"
+    },
+    "voice/default/traffic/rejoin-update-03.mp3": {
+      "hash": "526b9e064d42ecbc",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Still coming,",
+      "generatedAt": "2026-11-17T17:14:00.334Z",
+      "requestId": "URamPJDjA2DBiNKcrMW1"
+    },
+    "voice/default/traffic/rejoin-update-04.mp3": {
+      "hash": "745248a276e8b76c",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Closing in,",
+      "generatedAt": "2026-11-17T17:14:00.998Z",
+      "requestId": "wYO9ea1LBMLQF96phe7q"
+    },
+    "voice/default/traffic/rejoin-update-05.mp3": {
+      "hash": "c50244b83fc4149e",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Nearly on you,",
+      "generatedAt": "2026-11-17T17:14:01.777Z",
+      "requestId": "j42LcDR8OLsbczKHR0hs"
+    },
+    "voice/default/traffic/rejoin-update-06.mp3": {
+      "hash": "07fddff8802883de",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Coming up,",
+      "generatedAt": "2026-11-17T17:14:02.406Z",
+      "requestId": "eMnJmjiQYDLrKfhxoKIZ"
+    },
+    "voice/default/traffic/rejoin-mid-2-01.mp3": {
+      "hash": "fc4ad798f72ad3ac",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "about two seconds.",
+      "generatedAt": "2026-11-17T17:14:03.133Z",
+      "requestId": "PmUhHh0ZIilHLqe1VmGu",
+      "conditionedOn": {
+        "previous": [
+          "PbEbxSBmrSvW2hqHiEVh",
+          "INLXjGhlw4Cmb3ZILRxO"
+        ]
+      }
+    },
+    "voice/default/traffic/rejoin-mid-2-02.mp3": {
+      "hash": "6411cd6da52dc8a5",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "roughly two seconds.",
+      "generatedAt": "2026-11-17T17:14:03.978Z",
+      "requestId": "Xpj5uX3GH4lqQxFU3dU3",
+      "conditionedOn": {
+        "previous": [
+          "PbEbxSBmrSvW2hqHiEVh",
+          "INLXjGhlw4Cmb3ZILRxO"
+        ]
+      }
+    },
+    "voice/default/traffic/rejoin-mid-3-01.mp3": {
+      "hash": "5ddf3c242cd19405",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "about three seconds.",
+      "generatedAt": "2026-11-17T17:14:04.757Z",
+      "requestId": "DsBp6NlQCSfni9Z2rsTG",
+      "conditionedOn": {
+        "previous": [
+          "PbEbxSBmrSvW2hqHiEVh",
+          "INLXjGhlw4Cmb3ZILRxO"
+        ]
+      }
+    },
+    "voice/default/traffic/rejoin-mid-3-02.mp3": {
+      "hash": "32c5da8e6515ec43",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "roughly three seconds.",
+      "generatedAt": "2026-11-17T17:14:05.568Z",
+      "requestId": "S3imQvGrHAib10EXrmho",
+      "conditionedOn": {
+        "previous": [
+          "PbEbxSBmrSvW2hqHiEVh",
+          "INLXjGhlw4Cmb3ZILRxO"
+        ]
+      }
+    },
+    "voice/default/traffic/rejoin-mid-4-01.mp3": {
+      "hash": "2b3968280e5991ab",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "about four seconds.",
+      "generatedAt": "2026-11-17T17:14:06.358Z",
+      "requestId": "nuV6e0IrAcXdhbbmh6TA",
+      "conditionedOn": {
+        "previous": [
+          "PbEbxSBmrSvW2hqHiEVh",
+          "INLXjGhlw4Cmb3ZILRxO"
+        ]
+      }
+    },
+    "voice/default/traffic/rejoin-mid-4-02.mp3": {
+      "hash": "4c1abd2e61775ff4",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "roughly four seconds.",
+      "generatedAt": "2026-11-17T17:14:07.249Z",
+      "requestId": "oiVKdtyDyVMX5FzAGZfc",
+      "conditionedOn": {
+        "previous": [
+          "PbEbxSBmrSvW2hqHiEVh",
+          "INLXjGhlw4Cmb3ZILRxO"
+        ]
+      }
+    },
+    "voice/default/traffic/rejoin-mid-6-01.mp3": {
+      "hash": "48d6a42cb675b285",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "about six seconds.",
+      "generatedAt": "2026-11-17T17:14:08.019Z",
+      "requestId": "rswkS5LuoM3PSyH8dG2u",
+      "conditionedOn": {
+        "previous": [
+          "PbEbxSBmrSvW2hqHiEVh",
+          "INLXjGhlw4Cmb3ZILRxO"
+        ]
+      }
+    },
+    "voice/default/traffic/rejoin-mid-6-02.mp3": {
+      "hash": "f750645f5e1d6700",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "roughly six seconds.",
+      "generatedAt": "2026-11-17T17:14:08.913Z",
+      "requestId": "NVLCswHkQiBNLyFPNgxr",
+      "conditionedOn": {
+        "previous": [
+          "PbEbxSBmrSvW2hqHiEVh",
+          "INLXjGhlw4Cmb3ZILRxO"
+        ]
+      }
+    },
+    "voice/default/traffic/rejoin-mid-7-01.mp3": {
+      "hash": "437c1c9801695c88",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "about seven seconds.",
+      "generatedAt": "2026-11-17T17:14:09.735Z",
+      "requestId": "4enwDFuwb7k9ydooERGO",
+      "conditionedOn": {
+        "previous": [
+          "PbEbxSBmrSvW2hqHiEVh",
+          "INLXjGhlw4Cmb3ZILRxO"
+        ]
+      }
+    },
+    "voice/default/traffic/rejoin-mid-7-02.mp3": {
+      "hash": "a26dae18dfc65eea",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "roughly seven seconds.",
+      "generatedAt": "2026-11-17T17:14:10.616Z",
+      "requestId": "DyYm2P3qTUdT4jDrK9Ug",
+      "conditionedOn": {
+        "previous": [
+          "PbEbxSBmrSvW2hqHiEVh",
+          "INLXjGhlw4Cmb3ZILRxO"
+        ]
+      }
+    },
+    "voice/default/traffic/rejoin-mid-8-01.mp3": {
+      "hash": "54660851a1b57c9b",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "about eight seconds.",
+      "generatedAt": "2026-11-17T17:14:11.430Z",
+      "requestId": "7hXATn3RnYcAjL3XcNo5",
+      "conditionedOn": {
+        "previous": [
+          "PbEbxSBmrSvW2hqHiEVh",
+          "INLXjGhlw4Cmb3ZILRxO"
+        ]
+      }
+    },
+    "voice/default/traffic/rejoin-mid-8-02.mp3": {
+      "hash": "a25b0c20049d3c13",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "roughly eight seconds.",
+      "generatedAt": "2026-11-17T17:14:12.301Z",
+      "requestId": "2VWbYAE6m9spYhCdPn63",
+      "conditionedOn": {
+        "previous": [
+          "PbEbxSBmrSvW2hqHiEVh",
+          "INLXjGhlw4Cmb3ZILRxO"
+        ]
+      }
+    },
+    "voice/default/traffic/rejoin-mid-9-01.mp3": {
+      "hash": "e5697ab17aaef19f",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "about nine seconds.",
+      "generatedAt": "2026-11-17T17:14:13.102Z",
+      "requestId": "Uwvz1GTVhaYDK4TZbO6z",
+      "conditionedOn": {
+        "previous": [
+          "PbEbxSBmrSvW2hqHiEVh",
+          "INLXjGhlw4Cmb3ZILRxO"
+        ]
+      }
+    },
+    "voice/default/traffic/rejoin-mid-9-02.mp3": {
+      "hash": "8b9c7f5219e1bb31",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "roughly nine seconds.",
+      "generatedAt": "2026-11-17T17:14:13.944Z",
+      "requestId": "vh3jeYSF8iggM1FfVnKd",
+      "conditionedOn": {
+        "previous": [
+          "PbEbxSBmrSvW2hqHiEVh",
+          "INLXjGhlw4Cmb3ZILRxO"
+        ]
+      }
+    },
+    "voice/default/traffic/rejoin-outro-03.mp3": {
+      "hash": "2bb0f21088513fd1",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Stay alert.",
+      "generatedAt": "2026-11-17T17:14:14.659Z",
+      "requestId": "DqLcNl1XJ8nQumF7LrUh",
+      "conditionedOn": {
+        "previous": [
+          "OjSoj2HP8hLFunPUTXEY"
+        ]
+      }
+    },
+    "voice/default/traffic/rejoin-outro-04.mp3": {
+      "hash": "7442756f0a204ffa",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Eyes on your mirrors.",
+      "generatedAt": "2026-11-17T17:14:15.468Z",
+      "requestId": "0vzHhHCHaXYpZUDokxks",
+      "conditionedOn": {
+        "previous": [
+          "OjSoj2HP8hLFunPUTXEY"
+        ]
+      }
+    },
+    "voice/default/traffic/rejoin-outro-05.mp3": {
+      "hash": "73412a8dfc846de9",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Heads up.",
+      "generatedAt": "2026-11-17T17:14:16.124Z",
+      "requestId": "Se90RzwbaImsL87PYX1g",
+      "conditionedOn": {
+        "previous": [
+          "OjSoj2HP8hLFunPUTXEY"
+        ]
+      }
+    },
+    "voice/default/traffic/rejoin-outro-06.mp3": {
+      "hash": "4b3472e787e282c4",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Look out.",
+      "generatedAt": "2026-11-17T17:14:16.787Z",
+      "requestId": "hSc6OhMTSP57V0gEJu71",
+      "conditionedOn": {
+        "previous": [
+          "OjSoj2HP8hLFunPUTXEY"
+        ]
+      }
+    },
+    "voice/default/traffic/rejoin-outro-07.mp3": {
+      "hash": "fa99d9155710cad8",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Mind the traffic.",
+      "generatedAt": "2026-11-17T17:14:17.530Z",
+      "requestId": "C1MoTcjl5dyJQGkzvBVJ",
+      "conditionedOn": {
+        "previous": [
+          "OjSoj2HP8hLFunPUTXEY"
+        ]
+      }
+    },
+    "voice/default/traffic/rejoin-outro-08.mp3": {
+      "hash": "59382f56a9315562",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Check your mirrors.",
+      "generatedAt": "2026-11-17T17:14:18.301Z",
+      "requestId": "XMOE9zrehcfZNycZzBeH",
+      "conditionedOn": {
+        "previous": [
+          "OjSoj2HP8hLFunPUTXEY"
+        ]
+      }
+    },
+    "voice/default/traffic/rejoin-right-behind-02.mp3": {
+      "hash": "c2ff914ce10ca23c",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Right on top of you. Careful.",
+      "generatedAt": "2026-11-17T17:14:19.431Z",
+      "requestId": "6RNhd9i914uqLbJNJUYh"
+    },
+    "voice/default/traffic/rejoin-right-behind-03.mp3": {
+      "hash": "ba43c756d1d092ab",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Car's right there. Watch out.",
+      "generatedAt": "2026-11-17T17:14:20.406Z",
+      "requestId": "hunQDTrBayYshB0VTtbE"
+    },
+    "voice/default/traffic/rejoin-right-behind-04.mp3": {
+      "hash": "b8016b5d77aa7ca3",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Car on you any moment. Careful.",
+      "generatedAt": "2026-11-17T17:14:21.401Z",
+      "requestId": "GBWBLXqurC0tkVspJbsd"
+    },
+    "voice/default/traffic/rejoin-over-ten-01.mp3": {
+      "hash": "90a376b059b820eb",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Next car is more than ten seconds away. Be careful.",
+      "generatedAt": "2026-11-17T17:14:22.889Z",
+      "requestId": "8ddhQS9Kbv557kg0nYEq"
+    },
+    "voice/default/traffic/rejoin-over-ten-02.mp3": {
+      "hash": "81d7ee54167e2241",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Next car is over ten seconds back.",
+      "generatedAt": "2026-11-17T17:14:24.069Z",
+      "requestId": "3011MfYpGChUPIiyzjfF"
+    },
+    "voice/default/traffic/rejoin-over-ten-03.mp3": {
+      "hash": "867add33153a3b25",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "More than ten seconds to the next car.",
+      "generatedAt": "2026-11-17T17:14:25.171Z",
+      "requestId": "wT2fWQ2tTyLfCNBSf7UI"
+    },
+    "voice/default/traffic/rejoin-over-ten-04.mp3": {
+      "hash": "7c80f0347650c8fd",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Next car is a good ten seconds off.",
+      "generatedAt": "2026-11-17T17:14:26.240Z",
+      "requestId": "zaCvyA6NDPDtXu1PqPou"
+    },
+    "voice/default/traffic/rejoin-clear-02.mp3": {
+      "hash": "5c97791883ff459c",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Nothing close. Clear to rejoin.",
+      "generatedAt": "2026-11-17T17:14:27.273Z",
+      "requestId": "7GWZMEeXLqiTZlJNMg2d"
+    },
+    "voice/default/traffic/rejoin-clear-03.mp3": {
+      "hash": "4c5c0d9e5c0139ca",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Track's clear behind you.",
+      "generatedAt": "2026-11-17T17:14:28.035Z",
+      "requestId": "qZ19hd7Rm1me6OmjRmnW"
+    },
+    "voice/default/traffic/rejoin-clear-04.mp3": {
+      "hash": "a6ca4f1db2a98ea6",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Clear behind, you can rejoin.",
+      "generatedAt": "2026-11-17T17:14:29.058Z",
+      "requestId": "E1vMySvL39xwB7Gqqk4C"
+    },
+    "voice/default/traffic/pit-exit-traffic-02.mp3": {
+      "hash": "94a046a810194569",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Looks like traffic at the pit exit. Careful.",
+      "generatedAt": "2026-11-17T17:14:30.084Z",
+      "requestId": "q6zcKOjFhCaS7cNLFBLO"
+    },
+    "voice/default/traffic/pit-exit-traffic-03.mp3": {
+      "hash": "66092ca59ebdbd19",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Expect a car at the pit exit. Watch out.",
+      "generatedAt": "2026-11-17T17:14:31.339Z",
+      "requestId": "pnhUPTi4flurDiNuGgwR"
+    },
+    "voice/default/traffic/pit-exit-traffic-04.mp3": {
+      "hash": "43a5973a8608dfa5",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Traffic likely as you exit. Keep your eyes open.",
+      "generatedAt": "2026-11-17T17:14:32.611Z",
+      "requestId": "FoAnAYagYfhUHkBocAym"
+    },
+    "voice/default/traffic/pit-exit-clear-02.mp3": {
+      "hash": "13fabf8d7d8d3150",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Pit exit should be clear.",
+      "generatedAt": "2026-11-17T17:14:33.533Z",
+      "requestId": "pt7q44CUlYVMngb9fGVj"
+    },
+    "voice/default/traffic/pit-exit-clear-03.mp3": {
+      "hash": "d2e64f9e102f6af1",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Nothing expected at the pit exit.",
+      "generatedAt": "2026-11-17T17:14:34.650Z",
+      "requestId": "7iWsTqZO15EDIQJLajRl"
+    },
+    "voice/default/traffic/pit-exit-clear-04.mp3": {
+      "hash": "9187e53581e26b0d",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Pit exit looks clear from here.",
+      "generatedAt": "2026-11-17T17:14:35.680Z",
+      "requestId": "WJulKOeRmwRN0XZRIkzz"
+    },
+    "voice/shawn/traffic/rejoin-intro-03.mp3": {
+      "hash": "2006b2db091f4dec",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Heads up, car on its way in",
+      "generatedAt": "2026-11-17T17:14:35.757Z",
+      "requestId": "hpd3wg1tUmq5MkDFONM8"
+    },
+    "voice/shawn/traffic/rejoin-intro-04.mp3": {
+      "hash": "d445bc0ad7d3d8a3",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Car arriving in",
+      "generatedAt": "2026-11-17T17:14:35.778Z",
+      "requestId": "oYRBzpVx1RMVeq5OR0kF"
+    },
+    "voice/shawn/traffic/rejoin-intro-05.mp3": {
+      "hash": "db57dd83d89b91a3",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Car behind you, arriving in",
+      "generatedAt": "2026-11-17T17:14:35.794Z",
+      "requestId": "AdX8OM4T2wGHGIUq8Aid"
+    },
+    "voice/shawn/traffic/rejoin-intro-06.mp3": {
+      "hash": "65e507576e977c6c",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "There's a car coming in",
+      "generatedAt": "2026-11-17T17:14:35.809Z",
+      "requestId": "rwJepIfAa179174y1Qdf"
+    },
+    "voice/shawn/traffic/rejoin-intro-07.mp3": {
+      "hash": "dd3ff27d98b83837",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Traffic on the way, arriving in",
+      "generatedAt": "2026-11-17T17:14:35.824Z",
+      "requestId": "TnD71nG1quuVSGQYOUmh"
+    },
+    "voice/shawn/traffic/rejoin-intro-08.mp3": {
+      "hash": "129a4b4c4b82642c",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Incoming car, here in",
+      "generatedAt": "2026-11-17T17:14:35.840Z",
+      "requestId": "IPxTftR47z2lrcbI3lyZ"
+    },
+    "voice/shawn/traffic/rejoin-update-02.mp3": {
+      "hash": "da1b8c0f02172c88",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Closer now,",
+      "generatedAt": "2026-11-17T17:14:35.856Z",
+      "requestId": "y2tfmbFpEiSA6lCUGEDY"
+    },
+    "voice/shawn/traffic/rejoin-update-03.mp3": {
+      "hash": "526b9e064d42ecbc",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Still coming,",
+      "generatedAt": "2026-11-17T17:14:35.871Z",
+      "requestId": "URamPJDjA2DBiNKcrMW1"
+    },
+    "voice/shawn/traffic/rejoin-update-04.mp3": {
+      "hash": "745248a276e8b76c",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Closing in,",
+      "generatedAt": "2026-11-17T17:14:35.887Z",
+      "requestId": "wYO9ea1LBMLQF96phe7q"
+    },
+    "voice/shawn/traffic/rejoin-update-05.mp3": {
+      "hash": "c50244b83fc4149e",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Nearly on you,",
+      "generatedAt": "2026-11-17T17:14:35.902Z",
+      "requestId": "j42LcDR8OLsbczKHR0hs"
+    },
+    "voice/shawn/traffic/rejoin-update-06.mp3": {
+      "hash": "07fddff8802883de",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Coming up,",
+      "generatedAt": "2026-11-17T17:14:35.917Z",
+      "requestId": "eMnJmjiQYDLrKfhxoKIZ"
+    },
+    "voice/shawn/traffic/rejoin-mid-2-01.mp3": {
+      "hash": "fc4ad798f72ad3ac",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "about two seconds.",
+      "generatedAt": "2026-11-17T17:14:35.932Z",
+      "requestId": "PmUhHh0ZIilHLqe1VmGu",
+      "conditionedOn": {
+        "previous": [
+          "PbEbxSBmrSvW2hqHiEVh",
+          "INLXjGhlw4Cmb3ZILRxO"
+        ]
+      }
+    },
+    "voice/shawn/traffic/rejoin-mid-2-02.mp3": {
+      "hash": "6411cd6da52dc8a5",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "roughly two seconds.",
+      "generatedAt": "2026-11-17T17:14:35.948Z",
+      "requestId": "Xpj5uX3GH4lqQxFU3dU3",
+      "conditionedOn": {
+        "previous": [
+          "PbEbxSBmrSvW2hqHiEVh",
+          "INLXjGhlw4Cmb3ZILRxO"
+        ]
+      }
+    },
+    "voice/shawn/traffic/rejoin-mid-3-01.mp3": {
+      "hash": "5ddf3c242cd19405",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "about three seconds.",
+      "generatedAt": "2026-11-17T17:14:35.963Z",
+      "requestId": "DsBp6NlQCSfni9Z2rsTG",
+      "conditionedOn": {
+        "previous": [
+          "PbEbxSBmrSvW2hqHiEVh",
+          "INLXjGhlw4Cmb3ZILRxO"
+        ]
+      }
+    },
+    "voice/shawn/traffic/rejoin-mid-3-02.mp3": {
+      "hash": "32c5da8e6515ec43",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "roughly three seconds.",
+      "generatedAt": "2026-11-17T17:14:35.980Z",
+      "requestId": "S3imQvGrHAib10EXrmho",
+      "conditionedOn": {
+        "previous": [
+          "PbEbxSBmrSvW2hqHiEVh",
+          "INLXjGhlw4Cmb3ZILRxO"
+        ]
+      }
+    },
+    "voice/shawn/traffic/rejoin-mid-4-01.mp3": {
+      "hash": "2b3968280e5991ab",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "about four seconds.",
+      "generatedAt": "2026-11-17T17:14:35.999Z",
+      "requestId": "nuV6e0IrAcXdhbbmh6TA",
+      "conditionedOn": {
+        "previous": [
+          "PbEbxSBmrSvW2hqHiEVh",
+          "INLXjGhlw4Cmb3ZILRxO"
+        ]
+      }
+    },
+    "voice/shawn/traffic/rejoin-mid-4-02.mp3": {
+      "hash": "4c1abd2e61775ff4",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "roughly four seconds.",
+      "generatedAt": "2026-11-17T17:14:36.017Z",
+      "requestId": "oiVKdtyDyVMX5FzAGZfc",
+      "conditionedOn": {
+        "previous": [
+          "PbEbxSBmrSvW2hqHiEVh",
+          "INLXjGhlw4Cmb3ZILRxO"
+        ]
+      }
+    },
+    "voice/shawn/traffic/rejoin-mid-6-01.mp3": {
+      "hash": "48d6a42cb675b285",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "about six seconds.",
+      "generatedAt": "2026-11-17T17:14:36.034Z",
+      "requestId": "rswkS5LuoM3PSyH8dG2u",
+      "conditionedOn": {
+        "previous": [
+          "PbEbxSBmrSvW2hqHiEVh",
+          "INLXjGhlw4Cmb3ZILRxO"
+        ]
+      }
+    },
+    "voice/shawn/traffic/rejoin-mid-6-02.mp3": {
+      "hash": "f750645f5e1d6700",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "roughly six seconds.",
+      "generatedAt": "2026-11-17T17:14:36.052Z",
+      "requestId": "NVLCswHkQiBNLyFPNgxr",
+      "conditionedOn": {
+        "previous": [
+          "PbEbxSBmrSvW2hqHiEVh",
+          "INLXjGhlw4Cmb3ZILRxO"
+        ]
+      }
+    },
+    "voice/shawn/traffic/rejoin-mid-7-01.mp3": {
+      "hash": "437c1c9801695c88",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "about seven seconds.",
+      "generatedAt": "2026-11-17T17:14:36.067Z",
+      "requestId": "4enwDFuwb7k9ydooERGO",
+      "conditionedOn": {
+        "previous": [
+          "PbEbxSBmrSvW2hqHiEVh",
+          "INLXjGhlw4Cmb3ZILRxO"
+        ]
+      }
+    },
+    "voice/shawn/traffic/rejoin-mid-7-02.mp3": {
+      "hash": "a26dae18dfc65eea",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "roughly seven seconds.",
+      "generatedAt": "2026-11-17T17:14:36.084Z",
+      "requestId": "DyYm2P3qTUdT4jDrK9Ug",
+      "conditionedOn": {
+        "previous": [
+          "PbEbxSBmrSvW2hqHiEVh",
+          "INLXjGhlw4Cmb3ZILRxO"
+        ]
+      }
+    },
+    "voice/shawn/traffic/rejoin-mid-8-01.mp3": {
+      "hash": "54660851a1b57c9b",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "about eight seconds.",
+      "generatedAt": "2026-11-17T17:14:36.101Z",
+      "requestId": "7hXATn3RnYcAjL3XcNo5",
+      "conditionedOn": {
+        "previous": [
+          "PbEbxSBmrSvW2hqHiEVh",
+          "INLXjGhlw4Cmb3ZILRxO"
+        ]
+      }
+    },
+    "voice/shawn/traffic/rejoin-mid-8-02.mp3": {
+      "hash": "a25b0c20049d3c13",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "roughly eight seconds.",
+      "generatedAt": "2026-11-17T17:14:36.120Z",
+      "requestId": "2VWbYAE6m9spYhCdPn63",
+      "conditionedOn": {
+        "previous": [
+          "PbEbxSBmrSvW2hqHiEVh",
+          "INLXjGhlw4Cmb3ZILRxO"
+        ]
+      }
+    },
+    "voice/shawn/traffic/rejoin-mid-9-01.mp3": {
+      "hash": "e5697ab17aaef19f",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "about nine seconds.",
+      "generatedAt": "2026-11-17T17:14:36.147Z",
+      "requestId": "Uwvz1GTVhaYDK4TZbO6z",
+      "conditionedOn": {
+        "previous": [
+          "PbEbxSBmrSvW2hqHiEVh",
+          "INLXjGhlw4Cmb3ZILRxO"
+        ]
+      }
+    },
+    "voice/shawn/traffic/rejoin-mid-9-02.mp3": {
+      "hash": "8b9c7f5219e1bb31",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "roughly nine seconds.",
+      "generatedAt": "2026-11-17T17:14:36.163Z",
+      "requestId": "vh3jeYSF8iggM1FfVnKd",
+      "conditionedOn": {
+        "previous": [
+          "PbEbxSBmrSvW2hqHiEVh",
+          "INLXjGhlw4Cmb3ZILRxO"
+        ]
+      }
+    },
+    "voice/shawn/traffic/rejoin-outro-03.mp3": {
+      "hash": "2bb0f21088513fd1",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Stay alert.",
+      "generatedAt": "2026-11-17T17:14:36.179Z",
+      "requestId": "DqLcNl1XJ8nQumF7LrUh",
+      "conditionedOn": {
+        "previous": [
+          "OjSoj2HP8hLFunPUTXEY"
+        ]
+      }
+    },
+    "voice/shawn/traffic/rejoin-outro-04.mp3": {
+      "hash": "7442756f0a204ffa",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Eyes on your mirrors.",
+      "generatedAt": "2026-11-17T17:14:36.194Z",
+      "requestId": "0vzHhHCHaXYpZUDokxks",
+      "conditionedOn": {
+        "previous": [
+          "OjSoj2HP8hLFunPUTXEY"
+        ]
+      }
+    },
+    "voice/shawn/traffic/rejoin-outro-05.mp3": {
+      "hash": "73412a8dfc846de9",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Heads up.",
+      "generatedAt": "2026-11-17T17:14:36.210Z",
+      "requestId": "Se90RzwbaImsL87PYX1g",
+      "conditionedOn": {
+        "previous": [
+          "OjSoj2HP8hLFunPUTXEY"
+        ]
+      }
+    },
+    "voice/shawn/traffic/rejoin-outro-06.mp3": {
+      "hash": "4b3472e787e282c4",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Look out.",
+      "generatedAt": "2026-11-17T17:14:36.226Z",
+      "requestId": "hSc6OhMTSP57V0gEJu71",
+      "conditionedOn": {
+        "previous": [
+          "OjSoj2HP8hLFunPUTXEY"
+        ]
+      }
+    },
+    "voice/shawn/traffic/rejoin-outro-07.mp3": {
+      "hash": "fa99d9155710cad8",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Mind the traffic.",
+      "generatedAt": "2026-11-17T17:14:36.240Z",
+      "requestId": "C1MoTcjl5dyJQGkzvBVJ",
+      "conditionedOn": {
+        "previous": [
+          "OjSoj2HP8hLFunPUTXEY"
+        ]
+      }
+    },
+    "voice/shawn/traffic/rejoin-outro-08.mp3": {
+      "hash": "59382f56a9315562",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Check your mirrors.",
+      "generatedAt": "2026-11-17T17:14:36.256Z",
+      "requestId": "XMOE9zrehcfZNycZzBeH",
+      "conditionedOn": {
+        "previous": [
+          "OjSoj2HP8hLFunPUTXEY"
+        ]
+      }
+    },
+    "voice/shawn/traffic/rejoin-right-behind-02.mp3": {
+      "hash": "b168e969f7c036f1",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "On you now. Careful.",
+      "generatedAt": "2026-11-17T17:14:37.262Z",
+      "requestId": "Sjknw4ikVX8BCOh0BV6b"
+    },
+    "voice/shawn/traffic/rejoin-right-behind-03.mp3": {
+      "hash": "6023a9bab5341423",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Right there. Watch out.",
+      "generatedAt": "2026-11-17T17:14:38.218Z",
+      "requestId": "FtoisppArX95DYXSw6lr"
+    },
+    "voice/shawn/traffic/rejoin-right-behind-04.mp3": {
+      "hash": "d9d6f5b42429d315",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Car on top of you.",
+      "generatedAt": "2026-11-17T17:14:39.091Z",
+      "requestId": "fLr6qvYTQ6anvwHTDEip"
+    },
+    "voice/shawn/traffic/rejoin-over-ten-01.mp3": {
+      "hash": "56226cf16f22429e",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Next car over ten seconds. Careful.",
+      "generatedAt": "2026-11-17T17:14:40.222Z",
+      "requestId": "qx9dfFl9AFPTwDUtoyK4"
+    },
+    "voice/shawn/traffic/rejoin-over-ten-02.mp3": {
+      "hash": "da5c3c17525a8caa",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Over ten back.",
+      "generatedAt": "2026-11-17T17:14:40.990Z",
+      "requestId": "3dui2YiXdDjNqeiansIm"
+    },
+    "voice/shawn/traffic/rejoin-over-ten-03.mp3": {
+      "hash": "e983f7ff2af28069",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Ten plus to the next car.",
+      "generatedAt": "2026-11-17T17:14:41.921Z",
+      "requestId": "DDOgO7L7fH0806yVIyJ2"
+    },
+    "voice/shawn/traffic/rejoin-over-ten-04.mp3": {
+      "hash": "c3d88262da18dc1e",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Next one's over ten.",
+      "generatedAt": "2026-11-17T17:14:42.668Z",
+      "requestId": "dDnJGi7ksq811J8sr2u4"
+    },
+    "voice/shawn/traffic/rejoin-clear-02.mp3": {
+      "hash": "ced00e3b5fdd2257",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Clear behind.",
+      "generatedAt": "2026-11-17T17:14:43.413Z",
+      "requestId": "qh7JUK1FsU2jS9NYGMVU"
+    },
+    "voice/shawn/traffic/rejoin-clear-03.mp3": {
+      "hash": "a85f96677f60a843",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "All clear behind.",
+      "generatedAt": "2026-11-17T17:14:44.245Z",
+      "requestId": "ZfWUOqu0XBhv1EjqIXwe"
+    },
+    "voice/shawn/traffic/rejoin-clear-04.mp3": {
+      "hash": "af1904ef6028723b",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Nothing close. Clear.",
+      "generatedAt": "2026-11-17T17:14:45.089Z",
+      "requestId": "fHehzxEqw4uo30NZu5AB"
+    },
+    "voice/shawn/traffic/pit-exit-traffic-02.mp3": {
+      "hash": "1483e682d8c33a53",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Car likely at the exit. Careful.",
+      "generatedAt": "2026-11-17T17:14:46.050Z",
+      "requestId": "LBAx2r2ZGf0I7j9EBQH8"
+    },
+    "voice/shawn/traffic/pit-exit-traffic-03.mp3": {
+      "hash": "8bc878ef8773742c",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Expect traffic at the exit.",
+      "generatedAt": "2026-11-17T17:14:46.899Z",
+      "requestId": "VRL5qnRfzCo39PfHu6KH"
+    },
+    "voice/shawn/traffic/pit-exit-traffic-04.mp3": {
+      "hash": "1db46f58923ac854",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Traffic at the exit, probably.",
+      "generatedAt": "2026-11-17T17:14:47.904Z",
+      "requestId": "BXPFDupxtuNtzWTjDB9Q"
+    },
+    "voice/shawn/traffic/pit-exit-clear-02.mp3": {
+      "hash": "a02d1a31c8f01f26",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Exit should be clear.",
+      "generatedAt": "2026-11-17T17:14:48.829Z",
+      "requestId": "gFs7M8pw4OO7yL8Xev4t"
+    },
+    "voice/shawn/traffic/pit-exit-clear-03.mp3": {
+      "hash": "4106ed73da68b630",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Nothing at the exit.",
+      "generatedAt": "2026-11-17T17:14:49.553Z",
+      "requestId": "BGjKfyleSgovzNRmf3of"
+    },
+    "voice/shawn/traffic/pit-exit-clear-04.mp3": {
+      "hash": "9fc386d53468b7f8",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Exit looks clean.",
+      "generatedAt": "2026-11-17T17:14:50.348Z",
+      "requestId": "GoScGTs6axwp5KRXAibB"
     }
   }
 }

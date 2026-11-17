@@ -30509,6 +30509,328 @@
           "lap-time-intro/best-lap-yet"
         ]
       }
+    ],
+    "traffic": [
+      {
+        "name": "rejoin-intro-01",
+        "text": "Car coming in"
+      },
+      {
+        "name": "rejoin-intro-02",
+        "text": "Traffic approaching in"
+      },
+      {
+        "name": "rejoin-intro-03",
+        "text": "Heads up, car on its way in"
+      },
+      {
+        "name": "rejoin-intro-04",
+        "text": "Car arriving in"
+      },
+      {
+        "name": "rejoin-intro-05",
+        "text": "Car behind you, arriving in"
+      },
+      {
+        "name": "rejoin-intro-06",
+        "text": "There's a car coming in"
+      },
+      {
+        "name": "rejoin-intro-07",
+        "text": "Traffic on the way, arriving in"
+      },
+      {
+        "name": "rejoin-intro-08",
+        "text": "Incoming car, here in"
+      },
+      {
+        "name": "rejoin-update-01",
+        "text": "Getting closer,"
+      },
+      {
+        "name": "rejoin-update-02",
+        "text": "Closer now,"
+      },
+      {
+        "name": "rejoin-update-03",
+        "text": "Still coming,"
+      },
+      {
+        "name": "rejoin-update-04",
+        "text": "Closing in,"
+      },
+      {
+        "name": "rejoin-update-05",
+        "text": "Nearly on you,"
+      },
+      {
+        "name": "rejoin-update-06",
+        "text": "Coming up,"
+      },
+      {
+        "name": "rejoin-mid-2-01",
+        "text": "about two seconds.",
+        "previous_request_ids": [
+          "traffic/rejoin-intro-01",
+          "traffic/rejoin-update-01"
+        ]
+      },
+      {
+        "name": "rejoin-mid-2-02",
+        "text": "roughly two seconds.",
+        "previous_request_ids": [
+          "traffic/rejoin-intro-01",
+          "traffic/rejoin-update-01"
+        ]
+      },
+      {
+        "name": "rejoin-mid-3-01",
+        "text": "about three seconds.",
+        "previous_request_ids": [
+          "traffic/rejoin-intro-01",
+          "traffic/rejoin-update-01"
+        ]
+      },
+      {
+        "name": "rejoin-mid-3-02",
+        "text": "roughly three seconds.",
+        "previous_request_ids": [
+          "traffic/rejoin-intro-01",
+          "traffic/rejoin-update-01"
+        ]
+      },
+      {
+        "name": "rejoin-mid-4-01",
+        "text": "about four seconds.",
+        "previous_request_ids": [
+          "traffic/rejoin-intro-01",
+          "traffic/rejoin-update-01"
+        ]
+      },
+      {
+        "name": "rejoin-mid-4-02",
+        "text": "roughly four seconds.",
+        "previous_request_ids": [
+          "traffic/rejoin-intro-01",
+          "traffic/rejoin-update-01"
+        ]
+      },
+      {
+        "name": "rejoin-mid-5-01",
+        "text": "about five seconds.",
+        "previous_request_ids": [
+          "traffic/rejoin-intro-01",
+          "traffic/rejoin-update-01"
+        ]
+      },
+      {
+        "name": "rejoin-mid-5-02",
+        "text": "roughly five seconds.",
+        "previous_request_ids": [
+          "traffic/rejoin-intro-01",
+          "traffic/rejoin-update-01"
+        ]
+      },
+      {
+        "name": "rejoin-mid-6-01",
+        "text": "about six seconds.",
+        "previous_request_ids": [
+          "traffic/rejoin-intro-01",
+          "traffic/rejoin-update-01"
+        ]
+      },
+      {
+        "name": "rejoin-mid-6-02",
+        "text": "roughly six seconds.",
+        "previous_request_ids": [
+          "traffic/rejoin-intro-01",
+          "traffic/rejoin-update-01"
+        ]
+      },
+      {
+        "name": "rejoin-mid-7-01",
+        "text": "about seven seconds.",
+        "previous_request_ids": [
+          "traffic/rejoin-intro-01",
+          "traffic/rejoin-update-01"
+        ]
+      },
+      {
+        "name": "rejoin-mid-7-02",
+        "text": "roughly seven seconds.",
+        "previous_request_ids": [
+          "traffic/rejoin-intro-01",
+          "traffic/rejoin-update-01"
+        ]
+      },
+      {
+        "name": "rejoin-mid-8-01",
+        "text": "about eight seconds.",
+        "previous_request_ids": [
+          "traffic/rejoin-intro-01",
+          "traffic/rejoin-update-01"
+        ]
+      },
+      {
+        "name": "rejoin-mid-8-02",
+        "text": "roughly eight seconds.",
+        "previous_request_ids": [
+          "traffic/rejoin-intro-01",
+          "traffic/rejoin-update-01"
+        ]
+      },
+      {
+        "name": "rejoin-mid-9-01",
+        "text": "about nine seconds.",
+        "previous_request_ids": [
+          "traffic/rejoin-intro-01",
+          "traffic/rejoin-update-01"
+        ]
+      },
+      {
+        "name": "rejoin-mid-9-02",
+        "text": "roughly nine seconds.",
+        "previous_request_ids": [
+          "traffic/rejoin-intro-01",
+          "traffic/rejoin-update-01"
+        ]
+      },
+      {
+        "name": "rejoin-outro-01",
+        "text": "Watch out.",
+        "previous_request_ids": [
+          "traffic/rejoin-mid-5-01"
+        ]
+      },
+      {
+        "name": "rejoin-outro-02",
+        "text": "Careful.",
+        "previous_request_ids": [
+          "traffic/rejoin-mid-5-01"
+        ]
+      },
+      {
+        "name": "rejoin-outro-03",
+        "text": "Stay alert.",
+        "previous_request_ids": [
+          "traffic/rejoin-mid-5-01"
+        ]
+      },
+      {
+        "name": "rejoin-outro-04",
+        "text": "Eyes on your mirrors.",
+        "previous_request_ids": [
+          "traffic/rejoin-mid-5-01"
+        ]
+      },
+      {
+        "name": "rejoin-outro-05",
+        "text": "Heads up.",
+        "previous_request_ids": [
+          "traffic/rejoin-mid-5-01"
+        ]
+      },
+      {
+        "name": "rejoin-outro-06",
+        "text": "Look out.",
+        "previous_request_ids": [
+          "traffic/rejoin-mid-5-01"
+        ]
+      },
+      {
+        "name": "rejoin-outro-07",
+        "text": "Mind the traffic.",
+        "previous_request_ids": [
+          "traffic/rejoin-mid-5-01"
+        ]
+      },
+      {
+        "name": "rejoin-outro-08",
+        "text": "Check your mirrors.",
+        "previous_request_ids": [
+          "traffic/rejoin-mid-5-01"
+        ]
+      },
+      {
+        "name": "rejoin-right-behind-01",
+        "text": "Car right behind you. Watch out."
+      },
+      {
+        "name": "rejoin-right-behind-02",
+        "text": "Right on top of you. Careful."
+      },
+      {
+        "name": "rejoin-right-behind-03",
+        "text": "Car's right there. Watch out."
+      },
+      {
+        "name": "rejoin-right-behind-04",
+        "text": "Car on you any moment. Careful."
+      },
+      {
+        "name": "rejoin-over-ten-01",
+        "text": "Next car is more than ten seconds away. Be careful."
+      },
+      {
+        "name": "rejoin-over-ten-02",
+        "text": "Next car is over ten seconds back."
+      },
+      {
+        "name": "rejoin-over-ten-03",
+        "text": "More than ten seconds to the next car."
+      },
+      {
+        "name": "rejoin-over-ten-04",
+        "text": "Next car is a good ten seconds off."
+      },
+      {
+        "name": "rejoin-clear-01",
+        "text": "Clear to rejoin."
+      },
+      {
+        "name": "rejoin-clear-02",
+        "text": "Nothing close. Clear to rejoin."
+      },
+      {
+        "name": "rejoin-clear-03",
+        "text": "Track's clear behind you."
+      },
+      {
+        "name": "rejoin-clear-04",
+        "text": "Clear behind, you can rejoin."
+      },
+      {
+        "name": "pit-exit-traffic-01",
+        "text": "We're estimating traffic at the pit exit. Watch out."
+      },
+      {
+        "name": "pit-exit-traffic-02",
+        "text": "Looks like traffic at the pit exit. Careful."
+      },
+      {
+        "name": "pit-exit-traffic-03",
+        "text": "Expect a car at the pit exit. Watch out."
+      },
+      {
+        "name": "pit-exit-traffic-04",
+        "text": "Traffic likely as you exit. Keep your eyes open."
+      },
+      {
+        "name": "pit-exit-clear-01",
+        "text": "Looks like the pit exit will be clear."
+      },
+      {
+        "name": "pit-exit-clear-02",
+        "text": "Pit exit should be clear."
+      },
+      {
+        "name": "pit-exit-clear-03",
+        "text": "Nothing expected at the pit exit."
+      },
+      {
+        "name": "pit-exit-clear-04",
+        "text": "Pit exit looks clear from here."
+      }
     ]
   },
   "scenarios": {
@@ -31893,6 +32215,41 @@
       "comment": "The spotter's informational lines — \"Clear\" once the car alongside has genuinely separated, and the still-there reminder (\"Still there\", \"Hold your line\") on its cadence while a car stays alongside. The same engine-picked spotterClip step as the call, at a lower weight so a reminder can never chop a critical line. No radio frame.",
       "test": "Harness → Radar → Clear (after Left or Right); the still-there reminder repeats on its own while a side stays occupied. In-sim: hold a car alongside for a few seconds, then let it go.",
       "sequence": ["{{spotterClip}}"]
+    },
+    "pit-crew.traffic-rejoin-right-behind": {
+      "comment": "Stopped or crawling on track with the nearest car under two seconds away: a whole line from a pool of four, such as \"Car right behind you. Watch out.\" or \"Right on top of you. Careful.\" It cuts anything in flight. No radio frame: the rejoin lines repeat while you stay stopped.",
+      "test": "Harness → Traffic → Rejoin right behind. In-sim: stop on track in practice just as a car is about to reach you.",
+      "sequence": ["pool:traffic/rejoin-right-behind"]
+    },
+    "pit-crew.traffic-rejoin-near-first": {
+      "comment": "The first call about a car two to nine seconds away, one sentence in three pieces each picked from its pool: an intro that leads into the seconds, the seconds, and an outro, such as \"Car coming in about five seconds. Watch out.\" It cuts anything in flight. No radio frame.",
+      "test": "Harness → Traffic → Rejoin near, first call. In-sim: stop on track as a car is a few seconds away.",
+      "sequence": ["pool:traffic/rejoin-intro", "{{traffic.rejoinSeconds}}", "pool:traffic/rejoin-outro"]
+    },
+    "pit-crew.traffic-rejoin-near-update": {
+      "comment": "A later count of the same approach, each time its arrival has dropped by three seconds or more: an update intro that leads into the seconds, and the seconds, such as \"Getting closer, about five seconds.\" It cuts anything in flight. No radio frame.",
+      "test": "Harness → Traffic → Rejoin near, count. In-sim: stay stopped on track while a car closes from about nine seconds away.",
+      "sequence": ["pool:traffic/rejoin-update", "{{traffic.rejoinSeconds}}"]
+    },
+    "pit-crew.traffic-rejoin-over-ten": {
+      "comment": "Stopped or crawling on track with the nearest car ten to fifteen seconds away: a whole line from a pool of four, such as \"Next car is more than ten seconds away. Be careful.\" or \"Next car is over ten seconds back.\" No radio frame.",
+      "test": "Harness → Traffic → Rejoin over ten. In-sim: stop on track with the nearest car a little over ten seconds away.",
+      "sequence": ["pool:traffic/rejoin-over-ten"]
+    },
+    "pit-crew.traffic-rejoin-clear": {
+      "comment": "Stopped or crawling on track with no car within fifteen seconds: a whole line from a pool of four, such as \"Clear to rejoin.\" or \"Nothing close. Clear to rejoin.\" No radio frame.",
+      "test": "Harness → Traffic → Rejoin clear. In-sim: stop on track in practice with no car close behind.",
+      "sequence": ["pool:traffic/rejoin-clear"]
+    },
+    "pit-crew.traffic-pit-exit-traffic": {
+      "comment": "As you leave your pit box, a car on track is predicted at the end of the exit blend line around the same time as you: a line from a pool of four, such as \"We're estimating traffic at the pit exit. Watch out.\" or \"Looks like traffic at the pit exit. Careful.\" It cuts anything in flight, so the exit readback and the tire-wear report play after it.",
+      "test": "Harness → Traffic → Pit exit traffic. In-sim: leave your pit box with a car on track about to pass the pit exit.",
+      "sequence": ["pool:traffic/pit-exit-traffic"]
+    },
+    "pit-crew.traffic-pit-exit-clear": {
+      "comment": "As you leave your pit box with no car predicted at the end of the exit blend line around the same time as you: a line from a pool of four, such as \"Looks like the pit exit will be clear.\" or \"Pit exit should be clear.\" It cuts anything in flight, so the exit readback and the tire-wear report play after it.",
+      "test": "Harness → Traffic → Pit exit clear. In-sim: leave your pit box with no car near the pit exit.",
+      "sequence": ["pool:traffic/pit-exit-clear"]
     },
     "pit-crew.fastest-lap-race": {
       "comment": "The race's fastest lap is set — says who set it (you, the leader, the car ahead or behind, or another car by number and position) in one sentence-final clip, then the lap time to the thousandth as whole phrases, the minute and seconds clock followed by the thousandths, the way every lap is read, then, after a short pause, the gap to the tenth when there is one (the thousandths end the time, so the two are never joined).",
