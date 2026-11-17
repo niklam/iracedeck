@@ -274,7 +274,7 @@ warning and no error (the family tests use hand-built manifests, which is how
 a family once shipped mute — the #1051 lesson), and `setScripts` compiles
 with nothing skipped and nothing warned. Since #1065 it holds the WHOLE
 catalog: its vacuity floor is `CATALOG_FLOOR` contracts (174 since #1572 — raise
-catalog: its vacuity floor is `CATALOG_FLOOR` contracts (177 since #1113 — raise
+catalog: its vacuity floor is `CATALOG_FLOOR` contracts (178 since #1113 — raise
 it to the new count in the same change that adds a contract) and exactly zero legacy scenarios,
 read off the `defineScenario` spy rather than the enumeration — which lists a
 legacy scenario beside the contracts — so a family re-added in the legacy
