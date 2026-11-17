@@ -23,6 +23,7 @@
 // the website build, naming the file.
 import path from "node:path";
 import url from "node:url";
+import { defineMdastPlugin } from "satteri";
 
 import { CHANGELOG_SOURCE_PATH } from "../../../scripts/lib/changelog-data.mjs";
 import { composeChangelogParts, loadChangelogSources } from "../../../scripts/lib/changelog-fragments.mjs";
@@ -45,11 +46,35 @@ export function changelogFragmentSection(root) {
 }
 
 /**
+ * The plugin that splices `section` into the page before its first `##`.
+ *
+ * Built with `defineMdastPlugin` so its type keeps the synchronous `before`:
+ * Sätteri types `markdownToHtml`'s result as a promise when any plugin's hook may
+ * return one, so a looser type here would make every caller's result async.
+ *
+ * @param {string} section - The in-development section as changelog markdown.
+ */
+function fragmentSectionPlugin(section) {
+  return defineMdastPlugin({
+    name: "iracedeck-changelog-fragments",
+    before(tree, ctx) {
+      const first = tree.children.findIndex((node) => node.type === "heading" && node.depth === 2);
+      // Fragments may not contain `<` or `{` outside a code span, so nothing in
+      // the section is JSX or an expression; keep any brace in code literal.
+      ctx.insertChildAt(tree, first === -1 ? tree.children.length : first, {
+        raw: section,
+        mdxExpressions: false,
+      });
+    },
+  });
+}
+
+/**
  * The plugin entry for `satteri({ mdastPlugins })`: a factory that joins the
  * pipeline for `changelog.mdx` only, and only while there are fragments.
  *
  * @param {{ root?: string }} [options] - `root` defaults to this repository.
- * @returns {(ctx: { fileURL: URL | undefined }) => object | undefined}
+ * @returns {(ctx: import("satteri").PluginFactoryContext) => ReturnType<typeof fragmentSectionPlugin> | undefined}
  */
 export function changelogFragmentsPlugin(options = {}) {
   const root = options.root ?? REPO_ROOT;
@@ -62,17 +87,6 @@ export function changelogFragmentsPlugin(options = {}) {
     const section = changelogFragmentSection(root);
     if (section === null) return undefined;
 
-    return {
-      name: "iracedeck-changelog-fragments",
-      before(tree, ctx) {
-        const first = tree.children.findIndex((node) => node.type === "heading" && node.depth === 2);
-        // Fragments may not contain `<` or `{` outside a code span, so nothing in
-        // the section is JSX or an expression; keep any brace in code literal.
-        ctx.insertChildAt(tree, first === -1 ? tree.children.length : first, {
-          raw: section,
-          mdxExpressions: false,
-        });
-      },
-    };
+    return fragmentSectionPlugin(section);
   };
 }
