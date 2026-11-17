@@ -4,6 +4,7 @@ import type { z } from "zod";
 
 import { _resetFeatureGateSync } from "../../audio/feature-gates.js";
 import { _resetVolumeTicks } from "../../audio/volume-tick.js";
+import { borderColorForState, statusBarSplit } from "../../icons/status-bar.js";
 // Imports appear above the `vi.mock(...)` blocks because the repo-wide
 // prettier config (@elgato/prettier-config + @trivago/prettier-plugin-sort-imports)
 // hoists every import to the top and won't leave them interleaved with other
@@ -16,12 +17,16 @@ import {
   applyRaceEngineerAudio,
   applyRadarEnabled,
   applyRadarVolume,
+  cornerNamesIndicator,
+  cornerNamesPathContent,
   generatePitCrewSvg,
   PIT_CREW_UUID,
   PitCrew,
   playVoiceSequence,
   RADIO_CHECK_CLIPS_ID,
+  sectorCallsPathContent,
   Settings,
+  trackCallsPathContent,
 } from "./pit-crew.js";
 
 // ─── Hoisted mocks ──────────────────────────────────────────────────────────
@@ -55,6 +60,10 @@ const hoisted = vi.hoisted(() => {
   const getGlobalSettings = vi.fn(() => globalSettings);
   // The real write goes through updateGlobalSettings; so does this one, so the flip is read back.
   const setCalloutEnabled = vi.fn((key: string, enabled: boolean) => updateGlobalSettings({ [key]: enabled }));
+  // The several-keys write (#1699): one update, as the real helper makes.
+  const setCalloutsEnabled = vi.fn((keys: readonly string[], enabled: boolean) =>
+    updateGlobalSettings(Object.fromEntries(keys.map((key) => [key, enabled]))),
+  );
   // The real lookup reads the parsed cache; here it reads the same mocked settings object.
   const isCalloutEnabled = vi.fn((key: string) => getGlobalSettings()[key] !== false);
   const globalSettingsListeners = new Set<() => void>();
@@ -98,6 +107,7 @@ const hoisted = vi.hoisted(() => {
     driverNameClipPath,
     updateGlobalSettings,
     setCalloutEnabled,
+    setCalloutsEnabled,
     getGlobalSettings,
     isCalloutEnabled,
     globalSettingsListeners,
@@ -142,6 +152,10 @@ vi.mock("../../icons/status-bar.js", () => ({
   borderColorForState: vi.fn((state: string) => (state === "on" ? "#2ecc71" : "#e74c3c")),
   statusBarOn: vi.fn(() => '<rect class="status-bar-on"/>'),
   statusBarOff: vi.fn(() => '<rect class="status-bar-off"/>'),
+  statusBarSplit: vi.fn(
+    (left: string, right: string, leftLabel: string, rightLabel: string) =>
+      `<rect class="status-bar-split" data-left="${left}:${leftLabel}" data-right="${right}:${rightLabel}"/>`,
+  ),
 }));
 
 vi.mock("@iracedeck/audio-scenarios/pit-crew", () => ({
@@ -195,8 +209,9 @@ const voiceResolvers = vi.hoisted(() => ({
   resolveActiveDriverName: vi.fn<(names: readonly string[], def?: string) => string | null>(() => null),
 }));
 
-vi.mock("@iracedeck/deck-core", async () => {
+vi.mock("@iracedeck/deck-core", async (importOriginal) => {
   const { z } = await import("zod");
+  const real = await importOriginal<typeof import("@iracedeck/deck-core")>();
 
   const CommonSettings = z.object({
     colorOverrides: z.unknown().optional(),
@@ -229,6 +244,10 @@ vi.mock("@iracedeck/deck-core", async () => {
   return {
     CommonSettings,
     ConnectionStateAwareAction: MockConnectionStateAwareAction,
+    // The real tap/long-press tracker and threshold reader, so a Corner Names press (#1699)
+    // is classified against the live `dualPressThresholdMs` in the mocked global settings.
+    DualPressTracker: real.DualPressTracker,
+    getDualPressThresholdMs: real.getDualPressThresholdMs,
     applyGraphicTransform: vi.fn((content: string) => content),
     computeGraphicArea: vi.fn(() => ({ x: 8, y: 8, width: 128, height: 84 })),
     generateBorderParts: vi.fn(() => ({ defs: "", rects: "" })),
@@ -282,6 +301,7 @@ vi.mock("@iracedeck/settings", () => ({
   resolveActiveRaceEngineerVoice: voiceResolvers.resolveActiveRaceEngineerVoice,
   updateGlobalSettings: hoisted.updateGlobalSettings,
   setCalloutEnabled: hoisted.setCalloutEnabled,
+  setCalloutsEnabled: hoisted.setCalloutsEnabled,
 }));
 
 // ─── Fixtures ───────────────────────────────────────────────────────────────
@@ -289,6 +309,8 @@ vi.mock("@iracedeck/settings", () => ({
 type TestInputs = {
   mode?: z.input<typeof Settings>["mode"];
   direction?: z.input<typeof Settings>["direction"];
+  cornerNamesTap?: z.input<typeof Settings>["cornerNamesTap"];
+  cornerNamesLongPress?: z.input<typeof Settings>["cornerNamesLongPress"];
   /** `_testRadarVolume` arrives from the PI as `String(Date.now())` — tests
    *  accept both to exercise the coercion path. */
   _testRadarVolume?: number | string;
@@ -354,6 +376,33 @@ describe("Settings (persisted legacy field stripping)", () => {
 
   it("accepts corner-names as a mode value (#897)", () => {
     expect(Settings.parse({ mode: "corner-names" }).mode).toBe("corner-names");
+  });
+
+  it("reads a Corner Names key stored with only its mode as tap Corners, long press Sectors (#1699)", () => {
+    const settings = Settings.parse({ mode: "corner-names" });
+
+    expect(settings.cornerNamesTap).toBe("corners");
+    expect(settings.cornerNamesLongPress).toBe("sectors");
+  });
+
+  it("accepts every tap and long-press target, and never stores a tap of none (#1699)", () => {
+    for (const tap of ["both", "corners", "sectors"] as const) {
+      expect(Settings.parse({ cornerNamesTap: tap }).cornerNamesTap).toBe(tap);
+    }
+
+    for (const long of ["none", "both", "corners", "sectors"] as const) {
+      expect(Settings.parse({ cornerNamesLongPress: long }).cornerNamesLongPress).toBe(long);
+    }
+
+    expect(Settings.parse({ cornerNamesTap: "none" }).cornerNamesTap).toBe("corners");
+  });
+
+  it("reads a target this build does not know without failing the key: tap Corners, long press Nothing (#1699)", () => {
+    const parsed = Settings.parse({ mode: "corner-names", cornerNamesTap: "flags", cornerNamesLongPress: 7 });
+
+    expect(parsed.mode).toBe("corner-names");
+    expect(parsed.cornerNamesTap).toBe("corners");
+    expect(parsed.cornerNamesLongPress).toBe("none");
   });
 
   it("still accepts persisted race-engineer mode for backward compat", () => {
@@ -1209,39 +1258,212 @@ describe("PitCrew action", () => {
     });
   });
 
-  describe("onKeyDown — corner-names mode (#897)", () => {
-    it("flips calloutEnabledCornerNames off from the default-on state", async () => {
-      const action = new PitCrew();
-      await action.onWillAppear(buildAppearEvent({ mode: "corner-names" }) as never);
+  describe("corner-names mode: what a tap and a long press toggle (#897, #1699)", () => {
+    const CORNERS = "calloutEnabledCornerNames";
+    const SECTORS = "calloutEnabledSectorStarts";
+    /** The settings write each target makes from the default state, where both opt-ins are on. */
+    const WRITE: Record<"corners" | "sectors" | "both", Record<string, boolean>> = {
+      corners: { [CORNERS]: false },
+      sectors: { [SECTORS]: false },
+      both: { [CORNERS]: false, [SECTORS]: false },
+    };
+    const THRESHOLD = 500;
+
+    let action: PitCrew;
+
+    /** Every global-settings write since the key appeared, in order. */
+    function writes(): Record<string, unknown>[] {
+      return hoisted.updateGlobalSettings.mock.calls.map(([partial]) => partial);
+    }
+
+    function cornerNames(settings: TestInputs = {}, actionId = "ctx-1"): never {
+      return buildAppearEvent({ mode: "corner-names", ...settings }, actionId) as never;
+    }
+
+    async function press(settings: TestInputs, holdMs: number): Promise<void> {
+      await action.onKeyDown(cornerNames(settings));
+      vi.advanceTimersByTime(holdMs);
+      await action.onKeyUp(cornerNames(settings));
+    }
+
+    function setThreshold(dualPressThresholdMs: number): void {
+      hoisted.setGlobalSettings({ ...hoisted.getGlobalSettings(), dualPressThresholdMs });
+    }
+
+    beforeEach(async () => {
+      vi.useFakeTimers();
+      action = new PitCrew();
+      await action.onWillAppear(cornerNames());
       vi.clearAllMocks();
-
-      await action.onKeyDown(buildAppearEvent({ mode: "corner-names" }) as never);
-
-      expect(hoisted.setCalloutEnabled).toHaveBeenCalledWith("calloutEnabledCornerNames", false);
-      expect(hoisted.setRadarEnabled).not.toHaveBeenCalled();
     });
 
-    it("flips back on when already off", async () => {
-      hoisted.setGlobalSettings({ calloutEnabledCornerNames: false });
-      const action = new PitCrew();
-      await action.onWillAppear(buildAppearEvent({ mode: "corner-names" }) as never);
-      vi.clearAllMocks();
+    afterEach(() => {
+      vi.useRealTimers();
+    });
 
-      await action.onKeyDown(buildAppearEvent({ mode: "corner-names" }) as never);
+    it.each([
+      ["corners", "sectors"],
+      ["sectors", "corners"],
+      ["both", "corners"],
+    ] as const)("a tap set to %s toggles exactly that on a release under the threshold", async (tap, long) => {
+      const settings = { cornerNamesTap: tap, cornerNamesLongPress: long };
 
-      expect(hoisted.setCalloutEnabled).toHaveBeenCalledWith("calloutEnabledCornerNames", true);
+      await action.onKeyDown(cornerNames(settings));
+      expect(writes()).toEqual([]);
+
+      vi.advanceTimersByTime(THRESHOLD - 1);
+      await action.onKeyUp(cornerNames(settings));
+
+      expect(writes()).toEqual([WRITE[tap]]);
+    });
+
+    it.each([
+      ["corners", "sectors"],
+      ["sectors", "corners"],
+      ["both", "corners"],
+    ] as const)("a long press set to %s toggles exactly that on a release at the threshold", async (long, tap) => {
+      const settings = { cornerNamesTap: tap, cornerNamesLongPress: long };
+
+      await action.onKeyDown(cornerNames(settings));
+      expect(writes()).toEqual([]);
+
+      vi.advanceTimersByTime(THRESHOLD);
+      await action.onKeyUp(cornerNames(settings));
+
+      expect(writes()).toEqual([WRITE[long]]);
+    });
+
+    it("a release well over the threshold is a long press too", async () => {
+      await press({}, 2000);
+
+      expect(writes()).toEqual([WRITE.sectors]);
+    });
+
+    it("toggles both opt-ins in one write for Both", async () => {
+      await press({ cornerNamesTap: "both", cornerNamesLongPress: "sectors" }, 100);
+
+      expect(hoisted.setCalloutsEnabled).toHaveBeenCalledTimes(1);
+      expect(hoisted.updateGlobalSettings).toHaveBeenCalledTimes(1);
+    });
+
+    it("reads a key stored with only the mode as a tap for corners and a long press for sectors", async () => {
+      await press({}, 100);
+      await press({}, 800);
+
+      expect(writes()).toEqual([WRITE.corners, WRITE.sectors]);
+    });
+
+    it.each([
+      ["corners", "none"],
+      ["sectors", "none"],
+      ["both", "none"],
+      ["corners", "corners"],
+      ["sectors", "sectors"],
+      ["both", "both"],
+    ] as const)(
+      "with tap %s and long press %s, toggles on key-down and the release sends nothing",
+      async (tap, long) => {
+        const settings = { cornerNamesTap: tap, cornerNamesLongPress: long };
+
+        await action.onKeyDown(cornerNames(settings));
+        expect(writes()).toEqual([WRITE[tap]]);
+
+        vi.advanceTimersByTime(THRESHOLD * 2);
+        await action.onKeyUp(cornerNames(settings));
+
+        expect(writes()).toEqual([WRITE[tap]]);
+      },
+    );
+
+    it("toggles nothing on a release with no recorded key-down", async () => {
+      await action.onKeyUp(cornerNames());
+
+      expect(writes()).toEqual([]);
+    });
+
+    it("toggles nothing on a second release of the same press", async () => {
+      await press({}, 100);
+      await action.onKeyUp(cornerNames());
+
+      expect(writes()).toEqual([WRITE.corners]);
+    });
+
+    it("toggles nothing when a long press is released with the long press set to Nothing meanwhile", async () => {
+      await action.onKeyDown(cornerNames());
+      vi.advanceTimersByTime(THRESHOLD);
+      await action.onKeyUp(cornerNames({ cornerNamesLongPress: "none" }));
+
+      expect(writes()).toEqual([]);
+    });
+
+    it("reads the threshold live from global settings on each press", async () => {
+      setThreshold(1000);
+      await press({}, 600);
+      setThreshold(300);
+      await press({}, 400);
+
+      expect(writes()).toEqual([WRITE.corners, WRITE.sectors]);
+    });
+
+    it("drops a press still held when the key disappears", async () => {
+      await action.onKeyDown(cornerNames());
+      await action.onWillDisappear(cornerNames());
+      await action.onKeyUp(cornerNames());
+
+      expect(writes()).toEqual([]);
+    });
+
+    it("times each key on its own", async () => {
+      await action.onKeyDown(cornerNames({}, "ctx-2"));
+      await action.onKeyUp(cornerNames({}, "ctx-1"));
+
+      expect(writes()).toEqual([]);
+    });
+
+    it("re-renders the key after the release toggles, and not at a key-down that toggles nothing", async () => {
+      const updateKeyImage = (action as unknown as { updateKeyImage: ReturnType<typeof vi.fn> }).updateKeyImage;
+
+      await action.onKeyDown(cornerNames());
+      expect(updateKeyImage).not.toHaveBeenCalled();
+
+      await action.onKeyUp(cornerNames());
+      expect(updateKeyImage).toHaveBeenCalledWith("ctx-1", expect.any(String));
+    });
+
+    it("re-renders the key after a key-down toggle", async () => {
+      const updateKeyImage = (action as unknown as { updateKeyImage: ReturnType<typeof vi.fn> }).updateKeyImage;
+
+      await action.onKeyDown(cornerNames({ cornerNamesLongPress: "none" }));
+
+      expect(updateKeyImage).toHaveBeenCalledWith("ctx-1", expect.any(String));
+    });
+
+    it("flips a switched-off opt-in back on", async () => {
+      hoisted.setGlobalSettings({ [CORNERS]: false });
+
+      await press({}, 100);
+
+      expect(hoisted.setCalloutEnabled).toHaveBeenCalledWith(CORNERS, true);
     });
 
     it("does not touch the race-engineer or radar gates", async () => {
-      const action = new PitCrew();
-      await action.onWillAppear(buildAppearEvent({ mode: "corner-names" }) as never);
-      vi.clearAllMocks();
+      await press({}, 100);
+      await press({}, 800);
 
-      await action.onKeyDown(buildAppearEvent({ mode: "corner-names" }) as never);
-
-      const updates = hoisted.updateGlobalSettings.mock.calls.flatMap(([partial]) => Object.keys(partial));
+      const updates = writes().flatMap((partial) => Object.keys(partial));
       expect(updates).not.toContain("pitCrewRaceEngineerEnabled");
       expect(updates).not.toContain("pitCrewRadarEnabled");
+      expect(hoisted.setRadarEnabled).not.toHaveBeenCalled();
+    });
+
+    it("leaves the other modes' key-up alone: a Radar press toggles once, on key-down", async () => {
+      const radar = buildAppearEvent({ mode: "radar" }) as never;
+
+      await action.onKeyDown(radar);
+      vi.advanceTimersByTime(THRESHOLD);
+      await action.onKeyUp(radar);
+
+      expect(writes()).toEqual([{ pitCrewRadarEnabled: false }]);
     });
   });
 
@@ -1412,12 +1634,45 @@ describe("PitCrew action", () => {
       },
     );
 
-    it.each(["race-engineer", "radar", "corner-names"] as const)(
-      "is a tap for %s, which toggles once on key-down",
-      (mode) => {
-        const action = new PitCrew();
+    it.each(["race-engineer", "radar"] as const)("is a tap for %s, which toggles once on key-down", (mode) => {
+      const action = new PitCrew();
 
-        expect(action.keyPressShape(buildAppearEvent({ mode }) as never)).toEqual({ kind: "tap" });
+      expect(action.keyPressShape(buildAppearEvent({ mode }) as never)).toEqual({ kind: "tap" });
+    });
+
+    it("is a release with both outcomes for a Corner Names key with a distinct long press (#1699)", () => {
+      const action = new PitCrew();
+
+      expect(action.keyPressShape(buildAppearEvent({ mode: "corner-names" }) as never)).toEqual({
+        kind: "release",
+        thresholdMs: 500,
+        short: true,
+        long: true,
+      });
+    });
+
+    it("carries the live long-press threshold for a Corner Names key (#1699)", () => {
+      hoisted.setGlobalSettings({ dualPressThresholdMs: 800 });
+
+      const shape = new PitCrew().keyPressShape(
+        buildAppearEvent({ mode: "corner-names", cornerNamesTap: "both", cornerNamesLongPress: "corners" }) as never,
+      );
+
+      expect(shape).toEqual({ kind: "release", thresholdMs: 800, short: true, long: true });
+    });
+
+    it.each([
+      ["corners", "none"],
+      ["sectors", "sectors"],
+      ["both", "both"],
+    ] as const)(
+      "is a tap for a Corner Names key with tap %s and long press %s, which toggles on key-down (#1699)",
+      (tap, long) => {
+        const shape = new PitCrew().keyPressShape(
+          buildAppearEvent({ mode: "corner-names", cornerNamesTap: tap, cornerNamesLongPress: long }) as never,
+        );
+
+        expect(shape).toEqual({ kind: "tap" });
       },
     );
 
@@ -1475,8 +1730,152 @@ describe("generatePitCrewSvg", () => {
 
   it("paints the status bar OFF for corner-names mode when the callout opt-in is disabled (#897)", () => {
     hoisted.setGlobalSettings({ calloutEnabledCornerNames: false });
-    const result = decodeURIComponent(generatePitCrewSvg(Settings.parse({ mode: "corner-names" })));
+    const result = decodeURIComponent(
+      generatePitCrewSvg(Settings.parse({ mode: "corner-names", cornerNamesLongPress: "none" })),
+    );
     expect(result).toContain("status-bar-off");
+  });
+
+  describe("corner-names key icon (#1699)", () => {
+    const CORNERS = "calloutEnabledCornerNames";
+    const SECTORS = "calloutEnabledSectorStarts";
+
+    function render(settings: TestInputs): string {
+      return decodeURIComponent(generatePitCrewSvg(Settings.parse({ mode: "corner-names", ...settings })));
+    }
+
+    it.each([
+      ["corners", cornerNamesPathContent, "CORNER\nNAMES"],
+      ["sectors", sectorCallsPathContent, "SECTOR\nCALLS"],
+      ["both", trackCallsPathContent, "TRACK\nCALLS"],
+    ] as const)("draws the glyph and default title of a tap set to %s", (tap, glyph, title) => {
+      const svg = render({ cornerNamesTap: tap, cornerNamesLongPress: "none" });
+
+      expect(svg).toContain(glyph("#ffffff"));
+      expect(svg).toContain(`>${title}</text>`);
+    });
+
+    it("draws a different glyph for each tap target, each the corner glyph's convention", () => {
+      const glyphs = [cornerNamesPathContent, sectorCallsPathContent, trackCallsPathContent].map((g) => g("#abc"));
+
+      expect(new Set(glyphs).size).toBe(3);
+
+      for (const glyph of glyphs) {
+        expect(glyph).toContain('fill="none" stroke="#abc"');
+        expect(glyph).not.toContain("{{");
+      }
+    });
+
+    it("keeps the glyph and title of the tap whatever the long press toggles", () => {
+      const svg = render({ cornerNamesTap: "sectors", cornerNamesLongPress: "both" });
+
+      expect(svg).toContain(sectorCallsPathContent("#ffffff"));
+      expect(svg).toContain(">SECTOR\nCALLS</text>");
+    });
+
+    describe("status bar over everything the key toggles", () => {
+      it.each([
+        ["corners", "none"],
+        ["corners", "corners"],
+      ] as const)("reads only the corners opt-in for tap %s, long press %s", (tap, long) => {
+        hoisted.setGlobalSettings({ [CORNERS]: false, [SECTORS]: true });
+        expect(cornerNamesIndicator(Settings.parse({ cornerNamesTap: tap, cornerNamesLongPress: long }))).toEqual({
+          kind: "toggle",
+          state: "off",
+        });
+
+        hoisted.setGlobalSettings({ [CORNERS]: true, [SECTORS]: false });
+        expect(cornerNamesIndicator(Settings.parse({ cornerNamesTap: tap, cornerNamesLongPress: long }))).toEqual({
+          kind: "toggle",
+          state: "on",
+        });
+      });
+
+      it.each([
+        ["sectors", "none"],
+        ["sectors", "sectors"],
+      ] as const)("reads only the sectors opt-in for tap %s, long press %s", (tap, long) => {
+        hoisted.setGlobalSettings({ [CORNERS]: true, [SECTORS]: false });
+        expect(cornerNamesIndicator(Settings.parse({ cornerNamesTap: tap, cornerNamesLongPress: long }))).toEqual({
+          kind: "toggle",
+          state: "off",
+        });
+
+        hoisted.setGlobalSettings({ [CORNERS]: false, [SECTORS]: true });
+        expect(cornerNamesIndicator(Settings.parse({ cornerNamesTap: tap, cornerNamesLongPress: long }))).toEqual({
+          kind: "toggle",
+          state: "on",
+        });
+      });
+
+      const COVERS_BOTH = [
+        ["corners", "sectors"],
+        ["sectors", "corners"],
+        ["both", "none"],
+        ["both", "both"],
+        ["both", "corners"],
+        ["corners", "both"],
+        ["sectors", "both"],
+      ] as const;
+
+      it.each(COVERS_BOTH)("reads the shared state when both opt-ins agree, for tap %s, long press %s", (tap, long) => {
+        hoisted.setGlobalSettings({ [CORNERS]: true, [SECTORS]: true });
+        expect(render({ cornerNamesTap: tap, cornerNamesLongPress: long })).toContain("status-bar-on");
+
+        hoisted.setGlobalSettings({ [CORNERS]: false, [SECTORS]: false });
+        expect(render({ cornerNamesTap: tap, cornerNamesLongPress: long })).toContain("status-bar-off");
+        expect(statusBarSplit).not.toHaveBeenCalled();
+      });
+
+      it.each(COVERS_BOTH)("splits the bar when the opt-ins disagree, for tap %s, long press %s", (tap, long) => {
+        hoisted.setGlobalSettings({ [CORNERS]: true, [SECTORS]: false });
+        const svg = render({ cornerNamesTap: tap, cornerNamesLongPress: long });
+
+        expect(svg).toContain('data-left="on:CORNER" data-right="off:SECTOR"');
+        expect(svg).not.toContain("status-bar-on");
+        expect(svg).not.toContain("status-bar-off");
+      });
+    });
+
+    it.each([
+      [true, false, "on", "off"],
+      [false, true, "off", "on"],
+    ] as const)(
+      "draws corners %s / sectors %s as a split bar with each half's state and a green border",
+      (corners, sectors, left, right) => {
+        hoisted.setGlobalSettings({ [CORNERS]: corners, [SECTORS]: sectors });
+
+        render({});
+
+        expect(statusBarSplit).toHaveBeenCalledWith(left, right, "CORNER", "SECTOR");
+        expect(borderColorForState).toHaveBeenLastCalledWith("on");
+      },
+    );
+
+    it("draws a red border when every opt-in the key covers is off", () => {
+      hoisted.setGlobalSettings({ [CORNERS]: false, [SECTORS]: false });
+
+      render({});
+
+      expect(borderColorForState).toHaveBeenLastCalledWith("off");
+    });
+
+    it("re-renders the key when the Settings window flips the sector calls", async () => {
+      const action = new PitCrew();
+      await action.onWillAppear(buildAppearEvent({ mode: "corner-names" }) as never);
+      const updateKeyImage = (action as unknown as { updateKeyImage: ReturnType<typeof vi.fn> }).updateKeyImage;
+      updateKeyImage.mockClear();
+
+      hoisted.setGlobalSettings({ ...hoisted.getGlobalSettings(), [SECTORS]: false });
+
+      for (const listener of hoisted.globalSettingsListeners) listener();
+
+      await vi.waitFor(() => expect(updateKeyImage).toHaveBeenCalled());
+
+      const [contextId, image] = updateKeyImage.mock.calls[0]!;
+      expect(contextId).toBe("ctx-1");
+      expect(decodeURIComponent(image as string)).toContain('data-left="on:CORNER" data-right="off:SECTOR"');
+    });
   });
 
   it("omits the status bar entirely for radar-volume mode (no on/off state)", () => {

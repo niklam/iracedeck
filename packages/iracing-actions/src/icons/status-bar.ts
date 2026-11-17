@@ -19,6 +19,7 @@ const WHITE = "#ffffff";
 const GREEN = "#2ecc71";
 const RED = "#e74c3c";
 const GRAY = "#888888";
+const DIVIDER = "#1a1a1a";
 
 /**
  * Tri-state toggle indication shared by the status bars, state-driven key
@@ -60,6 +61,38 @@ export function statusBarNA(): string {
     <rect x="0" y="100" width="144" height="44" fill="${GRAY}"/>
     <text x="72" y="129" text-anchor="middle"
           fill="${WHITE}" font-family="Arial, sans-serif" font-size="20" font-weight="bold">N/A</text>`;
+}
+
+/**
+ * Font size of the split bar's two labels. Sized so the widest label a caller
+ * passes, `CORNER`, fits its 72 px half with margin: bold Arial (and Arimo,
+ * which resvg renders it with and which shares Arial's metrics) advances
+ * C 0.722, O 0.778, R 0.722, N 0.722, E 0.667 em, so `CORNER` is 4.333 em,
+ * 60.7 px at 14 px (`SECTOR`, 4.167 em, is 58.3 px), leaving about 5 px a side
+ * in the 71 px each half keeps beside the divider. 16 px would reach 69.3 px.
+ */
+const SPLIT_LABEL_FONT_SIZE = 14;
+
+/**
+ * @internal Exported for testing
+ *
+ * Status bar split into two 72 px halves, for a key that covers two toggles
+ * whose states disagree (#1699): each half is green (on) or red (off) with its
+ * label centred in it, and a 2 px dark divider between them. Labels are fixed
+ * constants from the caller, so they are not escaped.
+ */
+export function statusBarSplit(left: "on" | "off", right: "on" | "off", leftLabel: string, rightLabel: string): string {
+  const leftFill = left === "on" ? GREEN : RED;
+  const rightFill = right === "on" ? GREEN : RED;
+
+  return `
+    <rect x="0" y="100" width="72" height="44" fill="${leftFill}"/>
+    <rect x="72" y="100" width="72" height="44" fill="${rightFill}"/>
+    <rect x="71" y="100" width="2" height="44" fill="${DIVIDER}"/>
+    <text x="36" y="127" text-anchor="middle"
+          fill="${WHITE}" font-family="Arial, sans-serif" font-size="${SPLIT_LABEL_FONT_SIZE}" font-weight="bold">${leftLabel}</text>
+    <text x="108" y="127" text-anchor="middle"
+          fill="${WHITE}" font-family="Arial, sans-serif" font-size="${SPLIT_LABEL_FONT_SIZE}" font-weight="bold">${rightLabel}</text>`;
 }
 
 /**

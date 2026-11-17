@@ -32,6 +32,7 @@ export {
   getGlobalSettings,
   isCalloutEnabled,
   setCalloutEnabled,
+  setCalloutsEnabled,
   getGlobalColors,
   onGlobalSettingsChange,
   updateGlobalSettings,

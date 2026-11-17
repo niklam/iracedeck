@@ -37,6 +37,7 @@ import {
   resolveActiveRaceEngineerVoice,
   sameValue,
   setCalloutEnabled,
+  setCalloutsEnabled,
   updateGlobalSettings,
   whenSettingsStoreSettled,
 } from "./global-settings.js";
@@ -371,6 +372,65 @@ describe("setCalloutEnabled (#1350)", () => {
     const misspelt = () =>
       // @ts-expect-error -- not a calloutEnabled* key in the registry
       setCalloutEnabled("calloutEnabledNoSuchCallout", true);
+
+    expect(misspelt).toBeTypeOf("function");
+  });
+});
+
+describe("setCalloutsEnabled (#1699)", () => {
+  let store: MemoryStore;
+
+  beforeEach(async () => {
+    _resetGlobalSettings();
+    ({ store } = await initWithStore());
+  });
+
+  it("writes every key in one settings change, both ways", () => {
+    const listener = vi.fn();
+    onGlobalSettingsChange(listener);
+    const savesBefore = store.saved.length;
+
+    setCalloutsEnabled(["calloutEnabledCornerNames", "calloutEnabledSectorStarts"], false);
+
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(store.saved.length - savesBefore).toBe(1);
+    expect(isCalloutEnabled("calloutEnabledCornerNames")).toBe(false);
+    expect(isCalloutEnabled("calloutEnabledSectorStarts")).toBe(false);
+
+    setCalloutsEnabled(["calloutEnabledCornerNames", "calloutEnabledSectorStarts"], true);
+
+    expect(listener).toHaveBeenCalledTimes(2);
+    expect(store.saved.length - savesBefore).toBe(2);
+    expect(isCalloutEnabled("calloutEnabledCornerNames")).toBe(true);
+    expect(isCalloutEnabled("calloutEnabledSectorStarts")).toBe(true);
+  });
+
+  it("leaves every other key alone", () => {
+    const before = getGlobalSettings();
+
+    setCalloutsEnabled(["calloutEnabledCornerNames", "calloutEnabledSectorStarts"], false);
+
+    expect({ ...getGlobalSettings(), calloutEnabledCornerNames: true, calloutEnabledSectorStarts: true }).toEqual(
+      before,
+    );
+  });
+
+  it("writes nothing for an empty list", () => {
+    const listener = vi.fn();
+    onGlobalSettingsChange(listener);
+    const savesBefore = store.saved.length;
+
+    setCalloutsEnabled([], false);
+
+    expect(listener).not.toHaveBeenCalled();
+    expect(store.saved.length).toBe(savesBefore);
+  });
+
+  it("accepts only registry keys", () => {
+    // Never called: the assertion is that the call does not compile.
+    const misspelt = () =>
+      // @ts-expect-error -- not a calloutEnabled* key in the registry
+      setCalloutsEnabled(["calloutEnabledCornerNames", "calloutEnabledNoSuchCallout"], true);
 
     expect(misspelt).toBeTypeOf("function");
   });

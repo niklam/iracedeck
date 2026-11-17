@@ -4,12 +4,14 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   isCornerNamesEnabled,
   isCornerNamesToggleAckEnabled,
+  isSectorStartsEnabled,
   isToggleAckEnabled,
   playKeyAck,
   playToggleAck,
+  playTrackCallsAck,
   playVoiceLine,
   readJsonStringArray,
-  toggleCornerNamesFeature,
+  toggleTrackCallouts,
 } from "./audio-toggles.js";
 import { setRaceEngineerToggleInFlight } from "./audio-volume.js";
 
@@ -76,6 +78,10 @@ const hoisted = vi.hoisted(() => {
   const getGlobalSettings = vi.fn(() => globalSettings);
   // The real write goes through updateGlobalSettings; so does this one, so the flip is read back.
   const setCalloutEnabled = vi.fn((key: string, enabled: boolean) => updateGlobalSettings({ [key]: enabled }));
+  // Like the real helper: every key in ONE updateGlobalSettings call.
+  const setCalloutsEnabled = vi.fn((keys: readonly string[], enabled: boolean) =>
+    updateGlobalSettings(Object.fromEntries(keys.map((key) => [key, enabled]))),
+  );
   // The real lookup reads the parsed cache; here it reads the same mocked settings object.
   const isCalloutEnabled = vi.fn((key: string) => getGlobalSettings()[key] !== false);
   const resolveActiveRaceEngineerVoice = vi.fn(() => "default");
@@ -88,6 +94,7 @@ const hoisted = vi.hoisted(() => {
     isBackgroundTestInFlight,
     updateGlobalSettings,
     setCalloutEnabled,
+    setCalloutsEnabled,
     getGlobalSettings,
     isCalloutEnabled,
     resolveActiveRaceEngineerVoice,
@@ -112,6 +119,7 @@ vi.mock("@iracedeck/settings", () => ({
   isCalloutEnabled: hoisted.isCalloutEnabled,
   updateGlobalSettings: hoisted.updateGlobalSettings,
   setCalloutEnabled: hoisted.setCalloutEnabled,
+  setCalloutsEnabled: hoisted.setCalloutsEnabled,
   resolveActiveRaceEngineerVoice: hoisted.resolveActiveRaceEngineerVoice,
 }));
 
@@ -159,96 +167,214 @@ describe("audio-toggles", () => {
     });
   });
 
-  describe("toggleCornerNamesFeature (issue #897)", () => {
-    it("disables from the default-on state, persists, and plays the off ack when the master is on", () => {
-      hoisted.setGlobalSettings({
-        pitCrewRaceEngineerEnabled: true,
-        _raceEngineerVoices: JSON.stringify(["default"]),
+  describe("toggleTrackCallouts (issues #897, #1699)", () => {
+    const VOICES = JSON.stringify(["default"]);
+
+    /** Settings with the master on and a voice available, so the ack plays. */
+    function withAck(extra: Record<string, unknown> = {}): void {
+      hoisted.setGlobalSettings({ pitCrewRaceEngineerEnabled: true, _raceEngineerVoices: VOICES, ...extra });
+    }
+
+    function state(): { corners: boolean; sectors: boolean } {
+      return {
+        corners: hoisted.getGlobalSettings().calloutEnabledCornerNames !== false,
+        sectors: hoisted.getGlobalSettings().calloutEnabledSectorStarts !== false,
+      };
+    }
+
+    describe("corners", () => {
+      it("flips only the corner-name opt-in, both ways", () => {
+        withAck();
+
+        expect(toggleTrackCallouts("corners", logger)).toEqual({ corners: false });
+        expect(state()).toEqual({ corners: false, sectors: true });
+
+        expect(toggleTrackCallouts("corners", logger)).toEqual({ corners: true });
+        expect(state()).toEqual({ corners: true, sectors: true });
+
+        expect(hoisted.updateGlobalSettings.mock.calls.map(([partial]) => partial)).toEqual([
+          { calloutEnabledCornerNames: false },
+          { calloutEnabledCornerNames: true },
+        ]);
       });
 
-      expect(toggleCornerNamesFeature(logger)).toBe(false);
-      expect(hoisted.setCalloutEnabled).toHaveBeenCalledWith("calloutEnabledCornerNames", false);
-      expect(hoisted.playOnChannel).toHaveBeenCalledWith(0, "voice/default/toggle/corner-names-off-01.mp3");
-    });
+      it("plays the corner-names ack for the resulting state", () => {
+        withAck();
 
-    it("re-enables from off and plays the on ack", () => {
-      hoisted.setGlobalSettings({
-        calloutEnabledCornerNames: false,
-        pitCrewRaceEngineerEnabled: true,
-        _raceEngineerVoices: JSON.stringify(["default"]),
+        toggleTrackCallouts("corners", logger);
+        expect(hoisted.playOnChannel).toHaveBeenLastCalledWith(0, "voice/default/toggle/corner-names-off-01.mp3");
+
+        toggleTrackCallouts("corners", logger);
+        expect(hoisted.playOnChannel).toHaveBeenLastCalledWith(0, "voice/default/toggle/corner-names-on-01.mp3");
       });
 
-      expect(toggleCornerNamesFeature(logger)).toBe(true);
-      expect(hoisted.setCalloutEnabled).toHaveBeenCalledWith("calloutEnabledCornerNames", true);
-      expect(hoisted.playOnChannel).toHaveBeenCalledWith(0, "voice/default/toggle/corner-names-on-01.mp3");
+      it("logs one info line naming the target and the result", () => {
+        withAck();
+
+        toggleTrackCallouts("corners", logger);
+        toggleTrackCallouts("corners", logger);
+
+        expect(vi.mocked(logger.info).mock.calls).toEqual([
+          ["Corner name callouts disabled"],
+          ["Corner name callouts enabled"],
+        ]);
+      });
     });
 
-    it("toggles silently when the Race Engineer master gate is off", () => {
-      hoisted.setGlobalSettings({ _raceEngineerVoices: JSON.stringify(["default"]) });
+    describe("sectors", () => {
+      it("flips only the sector-start opt-in, both ways", () => {
+        withAck();
 
-      expect(toggleCornerNamesFeature(logger)).toBe(false);
-      expect(hoisted.setCalloutEnabled).toHaveBeenCalledWith("calloutEnabledCornerNames", false);
-      expect(hoisted.playOnChannel).not.toHaveBeenCalled();
-    });
+        expect(toggleTrackCallouts("sectors", logger)).toEqual({ sectors: false });
+        expect(state()).toEqual({ corners: true, sectors: false });
 
-    it("toggles silently when the ack opt-in is off", () => {
-      hoisted.setGlobalSettings({
-        pitCrewRaceEngineerEnabled: true,
-        calloutEnabledToggleCornerNames: false,
-        _raceEngineerVoices: JSON.stringify(["default"]),
+        expect(toggleTrackCallouts("sectors", logger)).toEqual({ sectors: true });
+        expect(state()).toEqual({ corners: true, sectors: true });
+
+        expect(hoisted.updateGlobalSettings.mock.calls.map(([partial]) => partial)).toEqual([
+          { calloutEnabledSectorStarts: false },
+          { calloutEnabledSectorStarts: true },
+        ]);
       });
 
-      toggleCornerNamesFeature(logger);
-      expect(hoisted.playOnChannel).not.toHaveBeenCalled();
+      it("plays the sector-starts ack for the resulting state", () => {
+        withAck();
+
+        toggleTrackCallouts("sectors", logger);
+        expect(hoisted.playOnChannel).toHaveBeenLastCalledWith(0, "voice/default/toggle/sector-starts-off-01.mp3");
+
+        toggleTrackCallouts("sectors", logger);
+        expect(hoisted.playOnChannel).toHaveBeenLastCalledWith(0, "voice/default/toggle/sector-starts-on-01.mp3");
+      });
+
+      it("logs one info line naming the target and the result", () => {
+        withAck();
+
+        toggleTrackCallouts("sectors", logger);
+        toggleTrackCallouts("sectors", logger);
+
+        expect(vi.mocked(logger.info).mock.calls).toEqual([["Sector callouts disabled"], ["Sector callouts enabled"]]);
+      });
     });
 
-    it("still toggles when no voice is available (ack skipped silently)", () => {
-      hoisted.resolveActiveRaceEngineerVoice.mockReturnValue(null as never);
-      hoisted.setGlobalSettings({ pitCrewRaceEngineerEnabled: true });
+    describe("both", () => {
+      it.each([
+        { from: { corners: true, sectors: true }, to: false },
+        { from: { corners: false, sectors: false }, to: true },
+        { from: { corners: true, sectors: false }, to: false },
+        { from: { corners: false, sectors: true }, to: false },
+      ])("from corners $from.corners / sectors $from.sectors sets both to $to in one write", ({ from, to }) => {
+        withAck({ calloutEnabledCornerNames: from.corners, calloutEnabledSectorStarts: from.sectors });
 
-      expect(toggleCornerNamesFeature(logger)).toBe(false);
-      expect(hoisted.setCalloutEnabled).toHaveBeenCalledWith("calloutEnabledCornerNames", false);
-      expect(hoisted.playOnChannel).not.toHaveBeenCalled();
+        expect(toggleTrackCallouts("both", logger)).toEqual({ corners: to, sectors: to });
+        expect(state()).toEqual({ corners: to, sectors: to });
+
+        expect(hoisted.setCalloutsEnabled).toHaveBeenCalledTimes(1);
+        expect(hoisted.setCalloutsEnabled).toHaveBeenCalledWith(
+          ["calloutEnabledCornerNames", "calloutEnabledSectorStarts"],
+          to,
+        );
+        expect(hoisted.setCalloutEnabled).not.toHaveBeenCalled();
+        expect(hoisted.updateGlobalSettings).toHaveBeenCalledTimes(1);
+        expect(hoisted.updateGlobalSettings).toHaveBeenCalledWith({
+          calloutEnabledCornerNames: to,
+          calloutEnabledSectorStarts: to,
+        });
+
+        expect(hoisted.playOnChannel).toHaveBeenCalledTimes(1);
+        expect(hoisted.playOnChannel).toHaveBeenCalledWith(
+          0,
+          `voice/default/toggle/track-calls-${to ? "on" : "off"}-01.mp3`,
+        );
+        expect(vi.mocked(logger.info).mock.calls).toEqual([
+          [`Corner and sector callouts ${to ? "enabled" : "disabled"}`],
+        ]);
+      });
+    });
+
+    describe("the acknowledgment's gates", () => {
+      const TARGETS = ["corners", "sectors", "both"] as const;
+
+      it.each(TARGETS)("%s toggles silently when the Race Engineer master gate is off", (target) => {
+        hoisted.setGlobalSettings({ _raceEngineerVoices: VOICES });
+
+        toggleTrackCallouts(target, logger);
+
+        expect(hoisted.updateGlobalSettings).toHaveBeenCalledTimes(1);
+        expect(hoisted.playOnChannel).not.toHaveBeenCalled();
+      });
+
+      it.each(TARGETS)("%s toggles silently when the ack opt-in is off", (target) => {
+        withAck({ calloutEnabledToggleCornerNames: false });
+
+        toggleTrackCallouts(target, logger);
+
+        expect(hoisted.updateGlobalSettings).toHaveBeenCalledTimes(1);
+        expect(hoisted.playOnChannel).not.toHaveBeenCalled();
+      });
+
+      it.each(TARGETS)("%s still toggles when no voice is available, with a debug line", (target) => {
+        hoisted.resolveActiveRaceEngineerVoice.mockReturnValue(null as never);
+        hoisted.setGlobalSettings({ pitCrewRaceEngineerEnabled: true });
+
+        toggleTrackCallouts(target, logger);
+
+        expect(hoisted.updateGlobalSettings).toHaveBeenCalledTimes(1);
+        // From the default on/on, each target turns off what it names.
+        expect(state()).toEqual({ corners: target === "sectors", sectors: target === "corners" });
+        expect(hoisted.playOnChannel).not.toHaveBeenCalled();
+        expect(logger.debug).toHaveBeenCalledWith(expect.stringContaining("no voice available"));
+      });
     });
   });
 
-  describe("toggleCornerNamesFeature through the scheduler (#1698)", () => {
+  describe("playTrackCallsAck (#1699)", () => {
+    it("plays the clip by path from the active voice's toggle group", () => {
+      hoisted.resolveActiveRaceEngineerVoice.mockReturnValue("pack::voice" as never);
+
+      playTrackCallsAck("track-calls-on-01", logger);
+
+      expect(hoisted.playOnChannel).toHaveBeenCalledTimes(1);
+      expect(hoisted.playOnChannel).toHaveBeenCalledWith(0, "voice/pack::voice/toggle/track-calls-on-01.mp3");
+    });
+
+    it("plays nothing and logs at debug when no voice is available", () => {
+      hoisted.resolveActiveRaceEngineerVoice.mockReturnValue(null as never);
+
+      playTrackCallsAck("sector-starts-off-01", logger);
+
+      expect(hoisted.playOnChannel).not.toHaveBeenCalled();
+      expect(logger.debug).toHaveBeenCalledWith("Key ack sector-starts-off-01 skipped — no voice available");
+    });
+  });
+
+  describe("toggleTrackCallouts through the scheduler (#1698, #1699)", () => {
     beforeEach(() => {
       scenarios.setInitialized(true);
     });
 
     it.each([
-      [true, "corner-names-off-01", false],
-      [false, "corner-names-on-01", true],
-    ] as const)(
-      "from %s plays %s as a key ack that cuts in, never straight onto Voice",
-      (enabledBefore, clip, enabledAfter) => {
-        hoisted.setGlobalSettings({
-          calloutEnabledCornerNames: enabledBefore,
-          pitCrewRaceEngineerEnabled: true,
-          _raceEngineerVoices: JSON.stringify(["default"]),
-        });
+      ["corners", "corner-names-off-01"],
+      ["sectors", "sector-starts-off-01"],
+      ["both", "track-calls-off-01"],
+    ] as const)("%s plays %s as a key ack that cuts in, never straight onto Voice", (target, clip) => {
+      hoisted.setGlobalSettings({ pitCrewRaceEngineerEnabled: true, _raceEngineerVoices: JSON.stringify(["default"]) });
 
-        expect(toggleCornerNamesFeature(logger)).toBe(enabledAfter);
+      toggleTrackCallouts(target, logger);
 
-        expect(scenarios.playClips.mock.calls).toEqual([
-          [`toggle.${clip}`, [`voice/default/toggle/${clip}.mp3`], { weight: WEIGHT.NORMAL, whenBusy: "interrupt" }],
-        ]);
-        expect(hoisted.playOnChannel).not.toHaveBeenCalled();
-      },
-    );
+      expect(scenarios.playClips.mock.calls).toEqual([
+        [`toggle.${clip}`, [`voice/default/toggle/${clip}.mp3`], { weight: WEIGHT.NORMAL, whenBusy: "interrupt" }],
+      ]);
+      expect(hoisted.playOnChannel).not.toHaveBeenCalled();
+    });
 
     it("toggles silently when the master gate or the ack opt-in is off", () => {
       hoisted.setGlobalSettings({ _raceEngineerVoices: JSON.stringify(["default"]) });
-      expect(toggleCornerNamesFeature(logger)).toBe(false);
+      expect(toggleTrackCallouts("corners", logger)).toEqual({ corners: false });
 
       hoisted.setGlobalSettings({ pitCrewRaceEngineerEnabled: true, calloutEnabledToggleCornerNames: false });
-      expect(toggleCornerNamesFeature(logger)).toBe(false);
+      expect(toggleTrackCallouts("both", logger)).toEqual({ corners: false, sectors: false });
 
-      expect(hoisted.setCalloutEnabled.mock.calls).toEqual([
-        ["calloutEnabledCornerNames", false],
-        ["calloutEnabledCornerNames", false],
-      ]);
       expect(scenarios.playClips).not.toHaveBeenCalled();
     });
 
@@ -256,11 +382,11 @@ describe("audio-toggles", () => {
       scenarios.playClips.mockImplementation(() => "bus-busy");
       hoisted.setGlobalSettings({ pitCrewRaceEngineerEnabled: true });
 
-      expect(toggleCornerNamesFeature(logger)).toBe(false);
+      expect(toggleTrackCallouts("sectors", logger)).toEqual({ sectors: false });
 
-      expect(hoisted.setCalloutEnabled).toHaveBeenCalledWith("calloutEnabledCornerNames", false);
+      expect(hoisted.setCalloutEnabled).toHaveBeenCalledWith("calloutEnabledSectorStarts", false);
       expect(logger.debug).toHaveBeenCalledWith(
-        "Key ack corner-names-off-01 skipped — the engineer holds the radio for a heavier call",
+        "Key ack sector-starts-off-01 skipped — the engineer holds the radio for a heavier call",
       );
     });
   });
@@ -469,14 +595,27 @@ describe("audio-toggles", () => {
     });
   });
 
-  describe("isCornerNamesEnabled / isCornerNamesToggleAckEnabled", () => {
+  describe("isCornerNamesEnabled / isSectorStartsEnabled / isCornerNamesToggleAckEnabled", () => {
     it("default to enabled and only an explicit false opts out", () => {
       expect(isCornerNamesEnabled()).toBe(true);
+      expect(isSectorStartsEnabled()).toBe(true);
       expect(isCornerNamesToggleAckEnabled()).toBe(true);
 
-      hoisted.setGlobalSettings({ calloutEnabledCornerNames: false, calloutEnabledToggleCornerNames: false });
+      hoisted.setGlobalSettings({
+        calloutEnabledCornerNames: false,
+        calloutEnabledSectorStarts: false,
+        calloutEnabledToggleCornerNames: false,
+      });
       expect(isCornerNamesEnabled()).toBe(false);
+      expect(isSectorStartsEnabled()).toBe(false);
       expect(isCornerNamesToggleAckEnabled()).toBe(false);
+    });
+
+    it("read each opt-in on its own", () => {
+      hoisted.setGlobalSettings({ calloutEnabledSectorStarts: false });
+
+      expect(isCornerNamesEnabled()).toBe(true);
+      expect(isSectorStartsEnabled()).toBe(false);
     });
   });
 });

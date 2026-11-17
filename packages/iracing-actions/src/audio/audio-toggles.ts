@@ -2,7 +2,8 @@
  * Race Engineer voice plumbing: the one router every plugin-played Voice line
  * goes through ({@link playVoiceLine}), the key-press acknowledgment
  * ({@link playKeyAck}), the master toggle acknowledgment, the JSON-list
- * reader, and the corner-name callout opt-in.
+ * reader, and the track-call opt-ins (corner names and sector starts) behind
+ * the Pit Crew Corner Names key.
  *
  * Extracted from Pit Crew for issue #782 so the Audio Controls dial's
  * Mute/Unmute and the Pit Crew toggle keys share one pathway (the same move
@@ -35,6 +36,7 @@ import {
   isCalloutEnabled,
   resolveActiveRaceEngineerVoice,
   setCalloutEnabled,
+  setCalloutsEnabled,
 } from "@iracedeck/settings";
 
 import { claimRaceEngineerBypass, isRaceEngineerEnabled, readRaceEngineerVolume } from "./audio-volume.js";
@@ -288,38 +290,117 @@ export function isCornerNamesEnabled(): boolean {
 }
 
 /**
- * Per-callout opt-in for the Corner Names toggle acknowledgment (issue #897).
- * Same defaults-to-enabled live-read shape as {@link isToggleAckEnabled}.
+ * Whether the sector-start callouts (issue #1573) are enabled. Reads the
+ * opt-in the Settings window checkbox writes (`calloutEnabledSectorStarts`),
+ * which the Pit Crew Corner Names key also flips since #1699. Same
+ * live-read, only-an-explicit-false-opts-out shape as
+ * {@link isCornerNamesEnabled}.
+ */
+export function isSectorStartsEnabled(): boolean {
+  return isCalloutEnabled("calloutEnabledSectorStarts");
+}
+
+/**
+ * Per-callout opt-in for the Corner Names key's toggle acknowledgment (issue
+ * #897). Since #1699 it gates the ack of every target the key toggles —
+ * corners, sectors and both. Same defaults-to-enabled live-read shape as
+ * {@link isToggleAckEnabled}.
  */
 export function isCornerNamesToggleAckEnabled(): boolean {
   return isCalloutEnabled("calloutEnabledToggleCornerNames");
 }
 
 /**
- * Flip the corner-name callout opt-in (issue #897) — the pathway behind the
- * Pit Crew Corner Names toggle key. Returns the NEW state.
- *
- * The corner-name scenario reads the opt-in live on every event arrival, so
- * persisting the flip is the whole toggle — nothing to stop or re-register,
- * and an in-flight clip plays through (the #554 opt-in semantics).
- *
- * The acknowledgment plays only when the Race Engineer master gate is on:
- * unlike the master toggle this flip never mutes the Voice bus, so no
- * in-flight bypass or bus-volume force is needed — with the master on, Voice
- * is already at the slider value. Master off means a silent flip (the
- * engineer is off the air). It plays through {@link playKeyAck}, so it cuts in
- * through the scheduler rather than stranding the callout it interrupts
- * (issue #1698); skipped with a debug line when no voice is available.
+ * What one press of the Pit Crew Corner Names key toggles (#1699): the
+ * corner-name calls, the sector-start calls, or both together.
  */
-export function toggleCornerNamesFeature(logger: ILogger): boolean {
-  const next = !isCornerNamesEnabled();
-  logger.info(`Corner name callouts ${next ? "enabled" : "disabled"}`);
+export type TrackCallTarget = "corners" | "sectors" | "both";
 
-  setCalloutEnabled("calloutEnabledCornerNames", next);
+/**
+ * The new state of each track-call opt-in a {@link toggleTrackCallouts} call
+ * touched. A key it did not touch is absent: `corners` only for the
+ * `corners` and `both` targets, `sectors` only for `sectors` and `both`.
+ */
+export interface TrackCallsToggleResult {
+  corners?: boolean;
+  sectors?: boolean;
+}
 
-  if (isRaceEngineerEnabled() && isCornerNamesToggleAckEnabled()) {
-    playKeyAck(`corner-names-${next ? "on" : "off"}-01`, logger);
+/** One whole-phrase toggle ack clip in the `toggle` group, by target and resulting state. */
+export type TrackCallsAckClip = `${"corner-names" | "sector-starts" | "track-calls"}-${"on" | "off"}-01`;
+
+const ACK_CLIP_STEM: Record<TrackCallTarget, "corner-names" | "sector-starts" | "track-calls"> = {
+  corners: "corner-names",
+  sectors: "sector-starts",
+  both: "track-calls",
+};
+
+/**
+ * Flip the track-call opt-ins one press of the Pit Crew Corner Names key
+ * names (issues #897, #1699) and return the new state of each one touched.
+ *
+ * - `corners` flips `calloutEnabledCornerNames`.
+ * - `sectors` flips `calloutEnabledSectorStarts`.
+ * - `both` turns both off when either is on, and both on when both are off,
+ *   written in ONE settings update so the listeners see a single change. From
+ *   a mixed state the result is silence: the key's aggregate state reads "on"
+ *   whenever either is on, so a press on a key that shows ON always gives OFF.
+ *
+ * The scenarios read their opt-in live on every event, so persisting the
+ * flip is the whole toggle — nothing to stop or re-register, and an
+ * in-flight clip plays through (the #554 opt-in semantics).
+ *
+ * The acknowledgment states the RESULTING state (a "both" press from a mixed
+ * state speaks the off clip). It plays only when the Race Engineer master
+ * gate and the `calloutEnabledToggleCornerNames` opt-in are on: unlike the
+ * master toggle this flip never mutes the Voice bus, so no in-flight bypass
+ * or bus-volume force is needed. Master off means a silent flip (the
+ * engineer is off the air). The toggle applies whether or not the ack plays.
+ */
+export function toggleTrackCallouts(target: TrackCallTarget, logger: ILogger): TrackCallsToggleResult {
+  let result: TrackCallsToggleResult;
+  let on: boolean;
+
+  switch (target) {
+    case "corners": {
+      on = !isCornerNamesEnabled();
+      logger.info(`Corner name callouts ${on ? "enabled" : "disabled"}`);
+      setCalloutEnabled("calloutEnabledCornerNames", on);
+      result = { corners: on };
+      break;
+    }
+
+    case "sectors": {
+      on = !isSectorStartsEnabled();
+      logger.info(`Sector callouts ${on ? "enabled" : "disabled"}`);
+      setCalloutEnabled("calloutEnabledSectorStarts", on);
+      result = { sectors: on };
+      break;
+    }
+
+    case "both": {
+      on = !isCornerNamesEnabled() && !isSectorStartsEnabled();
+      logger.info(`Corner and sector callouts ${on ? "enabled" : "disabled"}`);
+      setCalloutsEnabled(["calloutEnabledCornerNames", "calloutEnabledSectorStarts"], on);
+      result = { corners: on, sectors: on };
+      break;
+    }
   }
 
-  return next;
+  if (isRaceEngineerEnabled() && isCornerNamesToggleAckEnabled()) {
+    playTrackCallsAck(`${ACK_CLIP_STEM[target]}-${on ? "on" : "off"}-01`, logger);
+  }
+
+  return result;
+}
+
+/**
+ * Play one Corner Names key acknowledgment (`voice/<voice>/toggle/<clip>.mp3`)
+ * — the single call site for all six track-call ack clips (#1699). It plays
+ * through {@link playKeyAck}, so it cuts in through the scheduler like every
+ * key ack instead of playing over a callout (#1698), and is skipped with a
+ * debug line when no voice is available. A pack without the clip plays nothing.
+ */
+export function playTrackCallsAck(clip: TrackCallsAckClip, logger: ILogger): void {
+  playKeyAck(clip, logger);
 }

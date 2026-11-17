@@ -25,7 +25,7 @@ Press sounds play only for a press that starts while iRacing is connected. With 
 The single bleep plays at the moment the press acts. It tells you the deck took the press, not that the sim did what the key asks: a key whose binding is not set still bleeps.
 
 - **Most keys act the moment you press them**, and bleep once then.
-- **A key or dial that does one thing on a tap and another on a long press** acts when you let go, so it bleeps once when you release a short press. A long press never gets the single bleep. That covers the setup keys' View sub-modes with dual-press on, Car Control's **Wipers and Visor** on a car with wipers, and the Stream Deck+ dials.
+- **A key or dial that does one thing on a tap and another on a long press** acts when you let go, so it bleeps once when you release a short press. A long press never gets the single bleep. That covers the setup keys' View sub-modes with dual-press on, Car Control's **Wipers and Visor** on a car with wipers, Pit Crew's **Corner Names** key while it has a long press, and the Stream Deck+ dials.
 - **A tap on the Stream Deck+ touch strip** bleeps once.
 
 ## When a Press Bleeps Twice

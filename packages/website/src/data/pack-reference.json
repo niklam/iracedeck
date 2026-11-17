@@ -71497,6 +71497,46 @@
           "usedBy": [],
           "viaVar": [],
           "playedBy": "Played by the plugin itself, outside the script: the acknowledgment when the Race Engineer is switched back on, as toggle/resuming-01."
+        },
+        {
+          "base": "sector-starts-off",
+          "texts": [
+            "Copy that. Dropping the sector calls."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [],
+          "playedBy": "Played by the plugin itself, outside the script: the acknowledgment when sector-start callouts are switched off from the Pit Crew Corner Names key, as toggle/sector-starts-off-01."
+        },
+        {
+          "base": "sector-starts-on",
+          "texts": [
+            "Roger that. Sector calls coming up."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [],
+          "playedBy": "Played by the plugin itself, outside the script: the acknowledgment when sector-start callouts are switched on from the Pit Crew Corner Names key, as toggle/sector-starts-on-01."
+        },
+        {
+          "base": "track-calls-off",
+          "texts": [
+            "Copy that. Dropping the corner and sector calls."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [],
+          "playedBy": "Played by the plugin itself, outside the script: the acknowledgment when corner-name and sector-start callouts are switched off together from the Pit Crew Corner Names key, as toggle/track-calls-off-01."
+        },
+        {
+          "base": "track-calls-on",
+          "texts": [
+            "Roger that. Corner and sector calls coming up."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [],
+          "playedBy": "Played by the plugin itself, outside the script: the acknowledgment when corner-name and sector-start callouts are switched on together from the Pit Crew Corner Names key, as toggle/track-calls-on-01."
         }
       ]
     },

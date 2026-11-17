@@ -76384,6 +76384,70 @@
       "textPreview": "Sector ten.",
       "generatedAt": "2026-11-15T17:35:06.999Z",
       "requestId": "vEl3KZIgdeXmqgtJsJs4"
+    },
+    "voice/default/toggle/sector-starts-on-01.mp3": {
+      "hash": "f3ec969a9ef46345",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Roger that. Sector calls coming up.",
+      "generatedAt": "2026-11-17T06:21:16.312Z",
+      "requestId": "HIKJKpVJj8Jkl1e57fDt"
+    },
+    "voice/default/toggle/sector-starts-off-01.mp3": {
+      "hash": "5d0aa0e106d33345",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Copy that. Dropping the sector calls.",
+      "generatedAt": "2026-11-17T06:21:17.301Z",
+      "requestId": "6GoFYUybskBPxakiPgRF"
+    },
+    "voice/default/toggle/track-calls-on-01.mp3": {
+      "hash": "070aaf8a0e6af085",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Roger that. Corner and sector calls coming up.",
+      "generatedAt": "2026-11-17T06:21:18.570Z",
+      "requestId": "RLMIfQ24IkXYCN2nlD8B"
+    },
+    "voice/default/toggle/track-calls-off-01.mp3": {
+      "hash": "3d7ce4105c01b83a",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Copy that. Dropping the corner and sector calls.",
+      "generatedAt": "2026-11-17T06:21:19.761Z",
+      "requestId": "iHZ4wTpiltmO1CRs5FvO"
+    },
+    "voice/shawn/toggle/sector-starts-on-01.mp3": {
+      "hash": "f3ec969a9ef46345",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Roger that. Sector calls coming up.",
+      "generatedAt": "2026-11-17T06:21:32.939Z",
+      "requestId": "HIKJKpVJj8Jkl1e57fDt"
+    },
+    "voice/shawn/toggle/sector-starts-off-01.mp3": {
+      "hash": "5d0aa0e106d33345",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Copy that. Dropping the sector calls.",
+      "generatedAt": "2026-11-17T06:21:32.955Z",
+      "requestId": "6GoFYUybskBPxakiPgRF"
+    },
+    "voice/shawn/toggle/track-calls-on-01.mp3": {
+      "hash": "070aaf8a0e6af085",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Roger that. Corner and sector calls coming up.",
+      "generatedAt": "2026-11-17T06:21:32.969Z",
+      "requestId": "RLMIfQ24IkXYCN2nlD8B"
+    },
+    "voice/shawn/toggle/track-calls-off-01.mp3": {
+      "hash": "3d7ce4105c01b83a",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Copy that. Dropping the corner and sector calls.",
+      "generatedAt": "2026-11-17T06:21:32.985Z",
+      "requestId": "iHZ4wTpiltmO1CRs5FvO"
     }
   }
 }

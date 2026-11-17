@@ -1375,6 +1375,22 @@
       {
         "name": "corner-names-off-01",
         "text": "Copy that. Dropping the corner calls."
+      },
+      {
+        "name": "sector-starts-on-01",
+        "text": "Roger that. Sector calls coming up."
+      },
+      {
+        "name": "sector-starts-off-01",
+        "text": "Copy that. Dropping the sector calls."
+      },
+      {
+        "name": "track-calls-on-01",
+        "text": "Roger that. Corner and sector calls coming up."
+      },
+      {
+        "name": "track-calls-off-01",
+        "text": "Copy that. Dropping the corner and sector calls."
       }
     ],
     "session-start": [
