@@ -750,7 +750,7 @@ describe("computeTrafficArrivals", () => {
     expect(wrapped.get(2)).toEqual({ carIdx: 2, classId: 1, timed: true, seconds: 70, source: "curve" });
   });
 
-  it("leaves out the player, cars not in world and cars in the pits by surface, and keeps the pace car", () => {
+  it("leaves out the player, cars not in world and cars in the pits by surface, and keeps the pace car and a racing-surface car with no position", () => {
     const slice = createTrafficArrivalState();
     const telemetry = tel([
       { idx: 0, pct: 0.5, est: 50 },
@@ -767,9 +767,12 @@ describe("computeTrafficArrivals", () => {
 
     const arrivals = arrivalsAt(slice, 0.5, [always("curve", 30)], telemetry, 0, classes, null);
 
-    expect(arrivals.map((arrival) => arrival.carIdx)).toEqual([5, 6, 7]);
-    expect(arrivals.every((arrival) => arrival.timed)).toBe(true);
-    expect(arrivals[2]).toMatchObject({ classId: 11, seconds: 20 });
+    // Car 4 is on the racing surface with no usable position: kept, untimed
+    // (below), never left out, so it cannot let a call read clear.
+    expect(arrivals.map((arrival) => arrival.carIdx)).toEqual([4, 5, 6, 7]);
+    expect(arrivals[0]).toEqual({ carIdx: 4, classId: 1, timed: false, reason: "noPosition" });
+    expect(arrivals.slice(1).every((arrival) => arrival.timed)).toBe(true);
+    expect(arrivals[3]).toMatchObject({ classId: 11, seconds: 20 });
   });
 
   describe("decides the wrap by position, not by the sign of the difference", () => {
@@ -847,6 +850,26 @@ describe("computeTrafficArrivals", () => {
     expect(arrivals.get(1)).toEqual({ carIdx: 1, classId: 1, timed: true, seconds: 29.999, source: "curve" });
     expect(arrivals.get(2)).toEqual({ carIdx: 2, classId: 1, timed: false, reason: "noPosition" });
     expect(arrivals.get(3)).toEqual({ carIdx: 3, classId: 1, timed: false, reason: "noPosition" });
+  });
+
+  it("keeps a racing-surface car with a missing, NaN or negative position as untimed, never leaving it out", () => {
+    const telemetry = tel([
+      { idx: 0, pct: 0.5, est: 50 },
+      { idx: 1, pct: Number.NaN, est: 10 },
+      { idx: 2, pct: -1, est: 10 },
+    ]);
+    // An on-track car whose entry is absent altogether.
+    (telemetry.CarIdxLapDistPct as unknown as (number | undefined)[])[3] = undefined;
+    (telemetry.CarIdxEstTime as number[])[3] = 10;
+    (telemetry.CarIdxTrackSurface as number[])[3] = (telemetry.CarIdxTrackSurface as number[])[0];
+
+    const arrivals = byCar(
+      arrivalsAt(createTrafficArrivalState(), 0.5, [always("curve", 30)], telemetry, 0, null, null),
+    );
+
+    for (const carIdx of [1, 2, 3]) {
+      expect(arrivals.get(carIdx)).toMatchObject({ carIdx, timed: false, reason: "noPosition" });
+    }
   });
 
   it("reports every candidate untimed for a target position outside [0, 1)", () => {

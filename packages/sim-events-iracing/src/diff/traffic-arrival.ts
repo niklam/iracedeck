@@ -718,7 +718,10 @@ export function computeTrafficArrivals(
 
     const pct = pcts[carIdx];
 
-    if (!isRacingSurface(surfaces[carIdx]) || typeof pct !== "number" || !(pct >= 0)) continue;
+    // Only the surface decides who is a candidate: a racing-surface car with
+    // an unusable position (missing, NaN, negative) is kept, as `noPosition`
+    // below, rather than left out, so it can never let a call read clear.
+    if (!isRacingSurface(surfaces[carIdx])) continue;
 
     if (isTrafficCarStationary(slice, carIdx, sessionTime, trackLengthMeters)) {
       stationary?.push(carIdx);
@@ -734,13 +737,15 @@ export function computeTrafficArrivals(
 
     // A racing-surface car whose position is no lap position cannot be placed
     // against P: untimed, never left out, so it can never be a clear.
-    if (normalizeLapPosition(pct) === null) {
+    const position = normalizeLapPosition(pct);
+
+    if (position === null) {
       arrivals.push({ carIdx, classId, timed: false, reason: "noPosition" });
       continue;
     }
 
     arrivals.push(
-      timeCar(slice, sources, estTimes[carIdx], crossesLineBefore(pct, targetPct), classId, carIdx, classes),
+      timeCar(slice, sources, estTimes[carIdx], crossesLineBefore(position, targetPct), classId, carIdx, classes),
     );
   }
 
