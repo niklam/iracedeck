@@ -76385,6 +76385,561 @@
       "generatedAt": "2026-11-15T17:35:06.999Z",
       "requestId": "vEl3KZIgdeXmqgtJsJs4"
     },
+    "voice/default/sector-comparison/leader-slower-01.mp3": {
+      "hash": "e6bbcd26cf47f0c8",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Pace check. The leader is quicker by",
+      "generatedAt": "2026-11-17T06:21:07.831Z",
+      "requestId": "2J8oLZkGhRWDjq8M9vzB",
+      "conditionedOn": {
+        "previous": [
+          "7sjlQmFJCPwj7CDqt0BM"
+        ]
+      }
+    },
+    "voice/default/sector-comparison/loss-most-01.mp3": {
+      "hash": "8ac5963c727d6628",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Most of it is in",
+      "generatedAt": "2026-11-17T06:21:08.616Z",
+      "requestId": "dFlj1bDduS2JBEaF1IFY",
+      "conditionedOn": {
+        "previous": [
+          "7sjlQmFJCPwj7CDqt0BM"
+        ]
+      }
+    },
+    "voice/default/sector-comparison/ahead-slower-01.mp3": {
+      "hash": "07ec5af0998b524a",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "ahead is slower than us in",
+      "generatedAt": "2026-11-17T06:21:09.542Z",
+      "requestId": "O5Gs29CF8SMrQOuQA8BT",
+      "conditionedOn": {
+        "previous": [
+          "T5aFeYwYd8K2uBa1DUZW",
+          "atFDKwhNf2Efeqzuv6Gx",
+          "9B7ONnhqA5qwLLYOQiMi"
+        ]
+      }
+    },
+    "voice/default/sector-comparison/behind-quicker-01.mp3": {
+      "hash": "df73a57a94f17701",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "behind is quicker than us in",
+      "generatedAt": "2026-11-17T06:21:10.536Z",
+      "requestId": "y1o5jbf6buRg5kdU6VUa",
+      "conditionedOn": {
+        "previous": [
+          "T5aFeYwYd8K2uBa1DUZW",
+          "atFDKwhNf2Efeqzuv6Gx",
+          "9B7ONnhqA5qwLLYOQiMi"
+        ]
+      }
+    },
+    "voice/default/sector-comparison-sector/2-01.mp3": {
+      "hash": "2936da39f2bc6139",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Sector two.",
+      "generatedAt": "2026-11-17T06:21:11.154Z",
+      "requestId": "QLCAeCFmchnUHmAQqtfW",
+      "conditionedOn": {
+        "previous": [
+          "dFlj1bDduS2JBEaF1IFY",
+          "O5Gs29CF8SMrQOuQA8BT",
+          "y1o5jbf6buRg5kdU6VUa"
+        ]
+      }
+    },
+    "voice/default/sector-comparison/chance-01.mp3": {
+      "hash": "81f830bed85b0d6b",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "That's our chance.",
+      "generatedAt": "2026-11-17T06:21:11.847Z",
+      "requestId": "2MZGO31ZDoHfrwVnPCtP",
+      "conditionedOn": {
+        "previous": [
+          "QLCAeCFmchnUHmAQqtfW"
+        ]
+      }
+    },
+    "voice/default/sector-comparison-sector/3-01.mp3": {
+      "hash": "3d9111843045de8d",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Sector three.",
+      "generatedAt": "2026-11-17T06:21:12.452Z",
+      "requestId": "dRU5679TTtqOiPCc1Fdy",
+      "conditionedOn": {
+        "previous": [
+          "dFlj1bDduS2JBEaF1IFY",
+          "O5Gs29CF8SMrQOuQA8BT",
+          "y1o5jbf6buRg5kdU6VUa"
+        ]
+      }
+    },
+    "voice/shawn/sector-comparison/leader-slower-01.mp3": {
+      "hash": "f9f28682c7324219",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Leader's quicker by",
+      "generatedAt": "2026-11-17T06:21:13.200Z",
+      "requestId": "3s21zXfhABqC0RaWsxZl",
+      "conditionedOn": {
+        "previous": [
+          "7sjlQmFJCPwj7CDqt0BM"
+        ]
+      }
+    },
+    "voice/shawn/sector-comparison/ahead-slower-01.mp3": {
+      "hash": "c7dc473e67676074",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "ahead, slower in",
+      "generatedAt": "2026-11-17T06:21:14.755Z",
+      "requestId": "wd8wQ4ugKEIaCNiEue3u",
+      "conditionedOn": {
+        "previous": [
+          "T5aFeYwYd8K2uBa1DUZW",
+          "atFDKwhNf2Efeqzuv6Gx",
+          "9B7ONnhqA5qwLLYOQiMi"
+        ]
+      }
+    },
+    "voice/shawn/sector-comparison/behind-quicker-01.mp3": {
+      "hash": "b7d93b0a05c3f17a",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "behind, quicker in",
+      "generatedAt": "2026-11-17T06:21:15.585Z",
+      "requestId": "7Uk6wLET3ki8SO3DFTcd",
+      "conditionedOn": {
+        "previous": [
+          "T5aFeYwYd8K2uBa1DUZW",
+          "atFDKwhNf2Efeqzuv6Gx",
+          "9B7ONnhqA5qwLLYOQiMi"
+        ]
+      }
+    },
+    "voice/shawn/sector-comparison-sector/2-01.mp3": {
+      "hash": "2936da39f2bc6139",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Sector two.",
+      "generatedAt": "2026-11-17T06:21:16.251Z",
+      "requestId": "2LQ8tOEL1tYDQYpffIvq",
+      "conditionedOn": {
+        "previous": [
+          "OFMuzDWYKetjtzfBdMt7",
+          "wd8wQ4ugKEIaCNiEue3u",
+          "7Uk6wLET3ki8SO3DFTcd"
+        ]
+      }
+    },
+    "voice/shawn/sector-comparison-sector/3-01.mp3": {
+      "hash": "3d9111843045de8d",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Sector three.",
+      "generatedAt": "2026-11-17T06:21:17.650Z",
+      "requestId": "ai2IhSN9hp7EcR21zXxF",
+      "conditionedOn": {
+        "previous": [
+          "OFMuzDWYKetjtzfBdMt7",
+          "wd8wQ4ugKEIaCNiEue3u",
+          "7Uk6wLET3ki8SO3DFTcd"
+        ]
+      }
+    },
+    "voice/shawn/sector-comparison/loss-most-01.mp3": {
+      "hash": "332cb1648dcc746a",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Most of it in",
+      "generatedAt": "2026-11-17T16:22:41.433Z",
+      "requestId": "Ldw6XrL0QaQBeHg7wwfA",
+      "conditionedOn": {
+        "previous": [
+          "7sjlQmFJCPwj7CDqt0BM"
+        ]
+      }
+    },
+    "voice/default/sector-comparison/leader-quicker-01.mp3": {
+      "hash": "19f9500380a39c95",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Pace check. We're quicker than the leader by",
+      "generatedAt": "2026-11-17T16:26:43.588Z",
+      "requestId": "cIjUbvopHYJxkAE8qaUt",
+      "conditionedOn": {
+        "previous": [
+          "7sjlQmFJCPwj7CDqt0BM"
+        ]
+      }
+    },
+    "voice/default/sector-comparison/loss-largest-01.mp3": {
+      "hash": "1eb075e146ce2806",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "We lose the most in",
+      "generatedAt": "2026-11-17T16:26:44.503Z",
+      "requestId": "bT5d60V4lVmTy3hHZPpE",
+      "conditionedOn": {
+        "previous": [
+          "7sjlQmFJCPwj7CDqt0BM"
+        ]
+      }
+    },
+    "voice/default/sector-comparison/loss-every-01.mp3": {
+      "hash": "28477d50c7a4978d",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "We're slower in every sector.",
+      "generatedAt": "2026-11-17T16:26:45.541Z",
+      "requestId": "TnzNYXOGaf9mObuF61tT",
+      "conditionedOn": {
+        "previous": [
+          "7sjlQmFJCPwj7CDqt0BM"
+        ]
+      }
+    },
+    "voice/default/sector-comparison/leader-gain-01.mp3": {
+      "hash": "03654460dc3371ab",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "They're quicker in",
+      "generatedAt": "2026-11-17T16:26:46.415Z",
+      "requestId": "O4FWYEtgPqKJeOA2X9Rn",
+      "conditionedOn": {
+        "previous": [
+          "DM5MxPQr7d3MMGmq8s69"
+        ]
+      }
+    },
+    "voice/default/sector-comparison-sector/1-01.mp3": {
+      "hash": "45f0b333fd6a1a56",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Sector one.",
+      "generatedAt": "2026-11-17T16:26:47.110Z",
+      "requestId": "65Jn38LDrm0R5f0gNE6E",
+      "conditionedOn": {
+        "previous": [
+          "dFlj1bDduS2JBEaF1IFY",
+          "O5Gs29CF8SMrQOuQA8BT",
+          "y1o5jbf6buRg5kdU6VUa"
+        ]
+      }
+    },
+    "voice/default/sector-comparison/gain-01.mp3": {
+      "hash": "9f576d587f64e4f4",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "We're quicker in",
+      "generatedAt": "2026-11-17T16:26:47.996Z",
+      "requestId": "ERehHOWhPeaIb1joqYt6",
+      "conditionedOn": {
+        "previous": [
+          "QLCAeCFmchnUHmAQqtfW"
+        ]
+      }
+    },
+    "voice/default/sector-comparison-sector/4-01.mp3": {
+      "hash": "5ef0acf4b5783725",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Sector four.",
+      "generatedAt": "2026-11-17T16:26:48.729Z",
+      "requestId": "KrNZCVR0ArWM8tfDJcww",
+      "conditionedOn": {
+        "previous": [
+          "dFlj1bDduS2JBEaF1IFY",
+          "O5Gs29CF8SMrQOuQA8BT",
+          "y1o5jbf6buRg5kdU6VUa"
+        ]
+      }
+    },
+    "voice/default/sector-comparison-sector/5-01.mp3": {
+      "hash": "b6c1d6d62b8964e4",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Sector five.",
+      "generatedAt": "2026-11-17T16:26:49.504Z",
+      "requestId": "ntmurarZ9vMMew9UjH9s",
+      "conditionedOn": {
+        "previous": [
+          "dFlj1bDduS2JBEaF1IFY",
+          "O5Gs29CF8SMrQOuQA8BT",
+          "y1o5jbf6buRg5kdU6VUa"
+        ]
+      }
+    },
+    "voice/default/sector-comparison-sector/6-01.mp3": {
+      "hash": "66f1d3a8a6f09eb7",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Sector six.",
+      "generatedAt": "2026-11-17T16:26:50.297Z",
+      "requestId": "jWkVHf3jXBxOZLd5R5pz",
+      "conditionedOn": {
+        "previous": [
+          "dFlj1bDduS2JBEaF1IFY",
+          "O5Gs29CF8SMrQOuQA8BT",
+          "y1o5jbf6buRg5kdU6VUa"
+        ]
+      }
+    },
+    "voice/default/sector-comparison-sector/7-01.mp3": {
+      "hash": "888bc07b93ecb757",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Sector seven.",
+      "generatedAt": "2026-11-17T16:26:51.045Z",
+      "requestId": "xrBVi17JqddSLxyrPx2u",
+      "conditionedOn": {
+        "previous": [
+          "dFlj1bDduS2JBEaF1IFY",
+          "O5Gs29CF8SMrQOuQA8BT",
+          "y1o5jbf6buRg5kdU6VUa"
+        ]
+      }
+    },
+    "voice/default/sector-comparison-sector/8-01.mp3": {
+      "hash": "cae644acb0f2428b",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Sector eight.",
+      "generatedAt": "2026-11-17T16:26:51.858Z",
+      "requestId": "1GEcj3y5E7fsCQvsQYOO",
+      "conditionedOn": {
+        "previous": [
+          "dFlj1bDduS2JBEaF1IFY",
+          "O5Gs29CF8SMrQOuQA8BT",
+          "y1o5jbf6buRg5kdU6VUa"
+        ]
+      }
+    },
+    "voice/default/sector-comparison-sector/9-01.mp3": {
+      "hash": "427dbf5532d2ab16",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Sector nine.",
+      "generatedAt": "2026-11-17T16:26:52.680Z",
+      "requestId": "4EYpZQiECXJhCmNCM2Cf",
+      "conditionedOn": {
+        "previous": [
+          "dFlj1bDduS2JBEaF1IFY",
+          "O5Gs29CF8SMrQOuQA8BT",
+          "y1o5jbf6buRg5kdU6VUa"
+        ]
+      }
+    },
+    "voice/default/sector-comparison-sector/10-01.mp3": {
+      "hash": "e646478d86378aeb",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Sector ten.",
+      "generatedAt": "2026-11-17T16:26:53.427Z",
+      "requestId": "xjK5uRXq7ld6r8Jd2vIN",
+      "conditionedOn": {
+        "previous": [
+          "dFlj1bDduS2JBEaF1IFY",
+          "O5Gs29CF8SMrQOuQA8BT",
+          "y1o5jbf6buRg5kdU6VUa"
+        ]
+      }
+    },
+    "voice/shawn/sector-comparison/leader-quicker-01.mp3": {
+      "hash": "f0302c47e3951360",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Quicker than the leader by",
+      "generatedAt": "2026-11-17T16:26:54.443Z",
+      "requestId": "IKmcz6SVhqEaASWTkI8h",
+      "conditionedOn": {
+        "previous": [
+          "7sjlQmFJCPwj7CDqt0BM"
+        ]
+      }
+    },
+    "voice/shawn/sector-comparison/loss-largest-01.mp3": {
+      "hash": "54acd4de78ab39bf",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Biggest loss in",
+      "generatedAt": "2026-11-17T16:26:55.309Z",
+      "requestId": "eYZr7vWeFgiNS9N5wZYH",
+      "conditionedOn": {
+        "previous": [
+          "7sjlQmFJCPwj7CDqt0BM"
+        ]
+      }
+    },
+    "voice/shawn/sector-comparison/loss-every-01.mp3": {
+      "hash": "4fe5fcf6f92b2fc8",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Slower everywhere.",
+      "generatedAt": "2026-11-17T16:26:56.207Z",
+      "requestId": "VyJVHckBxQOVi9zCkufy",
+      "conditionedOn": {
+        "previous": [
+          "7sjlQmFJCPwj7CDqt0BM"
+        ]
+      }
+    },
+    "voice/shawn/sector-comparison/leader-gain-01.mp3": {
+      "hash": "c52f58b0678591f3",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Leader's quicker in",
+      "generatedAt": "2026-11-17T16:26:57.141Z",
+      "requestId": "9bEgExGBcIeGlVOzAtgg",
+      "conditionedOn": {
+        "previous": [
+          "DM5MxPQr7d3MMGmq8s69"
+        ]
+      }
+    },
+    "voice/shawn/sector-comparison-sector/1-01.mp3": {
+      "hash": "45f0b333fd6a1a56",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Sector one.",
+      "generatedAt": "2026-11-17T16:26:57.914Z",
+      "requestId": "PbgItKYwFyRBFKSX9EPk",
+      "conditionedOn": {
+        "previous": [
+          "Ldw6XrL0QaQBeHg7wwfA",
+          "wd8wQ4ugKEIaCNiEue3u",
+          "7Uk6wLET3ki8SO3DFTcd"
+        ]
+      }
+    },
+    "voice/shawn/sector-comparison/gain-01.mp3": {
+      "hash": "79130c48b4cc7f8d",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Quicker in",
+      "generatedAt": "2026-11-17T16:26:58.934Z",
+      "requestId": "GD3v6qGpRXG6AwpqV0UH",
+      "conditionedOn": {
+        "previous": [
+          "2LQ8tOEL1tYDQYpffIvq"
+        ]
+      }
+    },
+    "voice/shawn/sector-comparison-sector/4-01.mp3": {
+      "hash": "5ef0acf4b5783725",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Sector four.",
+      "generatedAt": "2026-11-17T16:26:59.683Z",
+      "requestId": "Bdn83CLLv2JA9kxY8LIa",
+      "conditionedOn": {
+        "previous": [
+          "Ldw6XrL0QaQBeHg7wwfA",
+          "wd8wQ4ugKEIaCNiEue3u",
+          "7Uk6wLET3ki8SO3DFTcd"
+        ]
+      }
+    },
+    "voice/shawn/sector-comparison-sector/5-01.mp3": {
+      "hash": "b6c1d6d62b8964e4",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Sector five.",
+      "generatedAt": "2026-11-17T16:27:00.557Z",
+      "requestId": "xIsLXQLqPs8VKREX6tiy",
+      "conditionedOn": {
+        "previous": [
+          "Ldw6XrL0QaQBeHg7wwfA",
+          "wd8wQ4ugKEIaCNiEue3u",
+          "7Uk6wLET3ki8SO3DFTcd"
+        ]
+      }
+    },
+    "voice/shawn/sector-comparison-sector/6-01.mp3": {
+      "hash": "66f1d3a8a6f09eb7",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Sector six.",
+      "generatedAt": "2026-11-17T16:27:01.348Z",
+      "requestId": "XOQmR02v3EEuR6UPq8bP",
+      "conditionedOn": {
+        "previous": [
+          "Ldw6XrL0QaQBeHg7wwfA",
+          "wd8wQ4ugKEIaCNiEue3u",
+          "7Uk6wLET3ki8SO3DFTcd"
+        ]
+      }
+    },
+    "voice/shawn/sector-comparison-sector/7-01.mp3": {
+      "hash": "888bc07b93ecb757",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Sector seven.",
+      "generatedAt": "2026-11-17T16:27:02.145Z",
+      "requestId": "gwR3B01PORQOJUwWthrZ",
+      "conditionedOn": {
+        "previous": [
+          "Ldw6XrL0QaQBeHg7wwfA",
+          "wd8wQ4ugKEIaCNiEue3u",
+          "7Uk6wLET3ki8SO3DFTcd"
+        ]
+      }
+    },
+    "voice/shawn/sector-comparison-sector/8-01.mp3": {
+      "hash": "cae644acb0f2428b",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Sector eight.",
+      "generatedAt": "2026-11-17T16:27:03.015Z",
+      "requestId": "tW5yEbXKPaJQVIGcvOEw",
+      "conditionedOn": {
+        "previous": [
+          "Ldw6XrL0QaQBeHg7wwfA",
+          "wd8wQ4ugKEIaCNiEue3u",
+          "7Uk6wLET3ki8SO3DFTcd"
+        ]
+      }
+    },
+    "voice/shawn/sector-comparison-sector/9-01.mp3": {
+      "hash": "427dbf5532d2ab16",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Sector nine.",
+      "generatedAt": "2026-11-17T16:27:03.756Z",
+      "requestId": "fZTmf8gPh2W42D9WyUtN",
+      "conditionedOn": {
+        "previous": [
+          "Ldw6XrL0QaQBeHg7wwfA",
+          "wd8wQ4ugKEIaCNiEue3u",
+          "7Uk6wLET3ki8SO3DFTcd"
+        ]
+      }
+    },
+    "voice/shawn/sector-comparison-sector/10-01.mp3": {
+      "hash": "e646478d86378aeb",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Sector ten.",
+      "generatedAt": "2026-11-17T16:27:04.429Z",
+      "requestId": "fQqdde7MjmmrsgyTA81b",
+      "conditionedOn": {
+        "previous": [
+          "Ldw6XrL0QaQBeHg7wwfA",
+          "wd8wQ4ugKEIaCNiEue3u",
+          "7Uk6wLET3ki8SO3DFTcd"
+        ]
+      }
+    },
     "voice/default/toggle/sector-starts-on-01.mp3": {
       "hash": "f3ec969a9ef46345",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",

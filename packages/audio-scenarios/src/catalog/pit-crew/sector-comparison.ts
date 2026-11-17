@@ -536,7 +536,7 @@ export const SECTOR_COMPARISON_QUEUE_BEHIND: readonly string[] = [
   "pit-crew.lap-time-last",
 ];
 
-const SECTOR_NUMBER_GROUP = "sector-number";
+const SECTOR_NUMBER_GROUP = "sector-comparison-sector";
 const CAR_NUMBER_GROUP = "car-number";
 const SECONDS_GROUP = "lap-time-second";
 const DECIMAL_GROUP = "lap-time-decimal";
@@ -555,7 +555,7 @@ export const SECTOR_LOSS_SHAPE_KEYS: Readonly<Record<SectorLossShape, string>> =
   every: "The driver is slower than the leader in every sector of a track with three or more.",
 };
 
-/** A sector number as a `sector-number` pool reference; `null` for none. */
+/** A sector number as a `sector-comparison-sector` pool reference; `null` for none. */
 function sectorRef(sector: number | null): string | null {
   return sector === null ? null : poolRef(SECTOR_NUMBER_GROUP, String(sector));
 }
@@ -642,13 +642,13 @@ export function buildSectorComparison(deps: SectorComparisonDeps): {
     engine.defineVar(
       "sectorComparison.lossSector",
       (ctx) => sectorRef(stashedPicture(ctx)?.lossSector ?? null),
-      "The sector where the driver loses the most to the car the call is about (the leader's quicker sector, or the sector where the car behind is quicker), from the sector-number clip group; a sector with no clip skips the call.",
+      "The sector where the driver loses the most to the car the call is about (the leader's quicker sector, or the sector where the car behind is quicker), from the sector-comparison-sector clip group; a sector with no clip skips the call.",
     );
 
     engine.defineVar(
       "sectorComparison.gainSector",
       (ctx) => sectorRef(stashedPicture(ctx)?.gainSector ?? null),
-      "The sector where the driver gains the most on the car the call is about (on the leader, or where the car ahead is slower), from the sector-number clip group; a sector with no clip skips the call.",
+      "The sector where the driver gains the most on the car the call is about (on the leader, or where the car ahead is slower), from the sector-comparison-sector clip group; a sector with no clip skips the call.",
     );
 
     engine.defineVar(

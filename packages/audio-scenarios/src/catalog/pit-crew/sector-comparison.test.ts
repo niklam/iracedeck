@@ -25,6 +25,7 @@ import { descriptionNamesGroup } from "../../reference/pack-reference.js";
 import type { FastestLapData } from "./fastest-lap.js";
 import { registerPitCrew } from "./index.js";
 import type { LapCompletedSnapshot } from "./lap-time.js";
+import { _resetLimiterCueEngine } from "./limiter-cue-engine.js";
 import { _resetPitExitCueEngine } from "./pit-exit-cue-engine.js";
 import { _resetPitSpeedingEngine } from "./pit-speeding-engine.js";
 import { _resetRadarEngine } from "./radar-engine.js";
@@ -710,7 +711,7 @@ const manifest: AudioAssetsManifest = {
     "sfx/IRD-ambient-pit.mp3",
     ...SECTOR_COMPARISON_CLIP_SOURCES.map(({ group, base }) => `voice/${VOICE}/${group}/${base}-01.mp3`),
     // The sector clips stop at ten, as #1573's group does.
-    ...Array.from({ length: 10 }, (_, n) => `voice/${VOICE}/sector-number/${n + 1}.mp3`),
+    ...Array.from({ length: 10 }, (_, n) => `voice/${VOICE}/sector-comparison-sector/${n + 1}.mp3`),
     ...["3", "7", "12", "20"].map((n) => `voice/${VOICE}/car-number/${n}.mp3`),
     ...Array.from({ length: 60 }, (_, s) => `voice/${VOICE}/lap-time-second/${s}.mp3`),
     ...Array.from({ length: 10 }, (_, d) => `voice/${VOICE}/lap-time-decimal/${d}.mp3`),
@@ -777,7 +778,7 @@ function line(): string[] {
 
 /** Only the sector-comparison call's own clips (its group, the car numbers and the sectors), in order. */
 function sectorLine(): string[] {
-  return line().filter((c) => /^(sector-comparison|car-number|sector-number)\//.test(c));
+  return line().filter((c) => /^(sector-comparison|car-number|sector-comparison-sector)\//.test(c));
 }
 
 /** The player's lap `lap` completes with the comparison as given; the lap is published and played out. */
@@ -836,6 +837,7 @@ afterEach(() => {
   _resetSpotterEngine();
   _resetPitSpeedingEngine();
   _resetPitExitCueEngine();
+  _resetLimiterCueEngine();
   resetSectorComparison();
   vi.clearAllMocks();
   vi.useRealTimers();
@@ -850,9 +852,9 @@ describe("the lines (decision 9, the Default shape)", () => {
       "lap-time-second/0",
       "lap-time-decimal/5",
       "sector-comparison/loss-most",
-      "sector-number/2",
+      "sector-comparison-sector/2",
       "sector-comparison/gain",
-      "sector-number/3",
+      "sector-comparison-sector/3",
     ]);
   });
 
@@ -868,9 +870,9 @@ describe("the lines (decision 9, the Default shape)", () => {
       "lap-time-second/0",
       "lap-time-decimal/6",
       "sector-comparison/loss-largest",
-      "sector-number/3",
+      "sector-comparison-sector/3",
       "sector-comparison/gain",
-      "sector-number/4",
+      "sector-comparison-sector/4",
     ]);
   });
 
@@ -893,7 +895,7 @@ describe("the lines (decision 9, the Default shape)", () => {
       "lap-time-second/0",
       "lap-time-decimal/6",
       "sector-comparison/leader-gain",
-      "sector-number/2",
+      "sector-comparison-sector/2",
     ]);
   });
 
@@ -903,7 +905,7 @@ describe("the lines (decision 9, the Default shape)", () => {
     expect(line()).toEqual([
       "car-number/12",
       "sector-comparison/ahead-slower",
-      "sector-number/2",
+      "sector-comparison-sector/2",
       "sector-comparison/chance",
     ]);
   });
@@ -911,7 +913,7 @@ describe("the lines (decision 9, the Default shape)", () => {
   it("behind: the car and the sector it is quicker in", () => {
     lapDone(5, { behind: BEHIND_QUICK_S3 });
 
-    expect(line()).toEqual(["car-number/7", "sector-comparison/behind-quicker", "sector-number/3"]);
+    expect(line()).toEqual(["car-number/7", "sector-comparison/behind-quicker", "sector-comparison-sector/3"]);
   });
 
   it("skips the whole call for a sector with no clip (sector eleven), and speaks sector ten (the positive control)", () => {
@@ -933,7 +935,7 @@ describe("the lines (decision 9, the Default shape)", () => {
     expect(line()).toEqual([
       "car-number/12",
       "sector-comparison/ahead-slower",
-      "sector-number/10",
+      "sector-comparison-sector/10",
       "sector-comparison/chance",
     ]);
   });
@@ -1041,7 +1043,7 @@ describe("the gates at the line (decision 7)", () => {
     enabled.calloutEnabledSectorComparisonAhead = false;
     lapDone(5, { leader: LEADER_MOST, ahead: AHEAD_SLOW_S2, behind: BEHIND_QUICK_S3 });
 
-    expect(sectorLine()).toEqual(["car-number/7", "sector-comparison/behind-quicker", "sector-number/3"]);
+    expect(sectorLine()).toEqual(["car-number/7", "sector-comparison/behind-quicker", "sector-comparison-sector/3"]);
   });
 });
 
@@ -1053,7 +1055,7 @@ describe("the cadence (decision 7)", () => {
     expect(sectorLine()).toEqual([
       "car-number/12",
       "sector-comparison/ahead-slower",
-      "sector-number/2",
+      "sector-comparison-sector/2",
       "sector-comparison/chance",
     ]);
 
@@ -1062,7 +1064,7 @@ describe("the cadence (decision 7)", () => {
     expect(sectorLine()).toEqual([]);
 
     lapDone(7, all);
-    expect(sectorLine()).toEqual(["car-number/7", "sector-comparison/behind-quicker", "sector-number/3"]);
+    expect(sectorLine()).toEqual(["car-number/7", "sector-comparison/behind-quicker", "sector-comparison-sector/3"]);
 
     audio._played.length = 0;
     lapDone(8, all);
@@ -1085,7 +1087,7 @@ describe("the cadence (decision 7)", () => {
     expect(sectorLine()).toEqual([
       "car-number/20",
       "sector-comparison/ahead-slower",
-      "sector-number/2",
+      "sector-comparison-sector/2",
       "sector-comparison/chance",
     ]);
   });
@@ -1105,7 +1107,7 @@ describe("the cadence (decision 7)", () => {
     setScript({ behind: BEHIND_ENTRY });
     lapDone(5, all);
 
-    expect(sectorLine()).toEqual(["car-number/7", "sector-comparison/behind-quicker", "sector-number/3"]);
+    expect(sectorLine()).toEqual(["car-number/7", "sector-comparison/behind-quicker", "sector-comparison-sector/3"]);
     expect(Object.keys(readSectorComparisonDebugState().spokenPictures)).toEqual(["behind"]);
   });
 
@@ -1246,7 +1248,7 @@ describe("at the line, after the lap-time calls (decision 8)", () => {
     expect(played.slice(3)).toEqual([
       "car-number/12",
       "sector-comparison/ahead-slower",
-      "sector-number/2",
+      "sector-comparison-sector/2",
       "sector-comparison/chance",
     ]);
   });
@@ -1411,11 +1413,11 @@ describe("the vocabulary", () => {
 
     expect(descriptionNamesGroup(description("sectorComparison.paceSeconds"), "lap-time-second")).toBe(true);
     expect(descriptionNamesGroup(description("sectorComparison.paceDecimal"), "lap-time-decimal")).toBe(true);
-    expect(descriptionNamesGroup(description("sectorComparison.lossSector"), "sector-number")).toBe(true);
-    expect(descriptionNamesGroup(description("sectorComparison.gainSector"), "sector-number")).toBe(true);
+    expect(descriptionNamesGroup(description("sectorComparison.lossSector"), "sector-comparison-sector")).toBe(true);
+    expect(descriptionNamesGroup(description("sectorComparison.gainSector"), "sector-comparison-sector")).toBe(true);
     expect(descriptionNamesGroup(description("sectorComparison.carNumber"), "car-number")).toBe(true);
     // The positive control: a group a var does not draw from is not named.
-    expect(descriptionNamesGroup(description("sectorComparison.carNumber"), "sector-number")).toBe(false);
+    expect(descriptionNamesGroup(description("sectorComparison.carNumber"), "sector-comparison-sector")).toBe(false);
 
     expect(conds.filter((c) => ours(c.name)).map((c) => c.name)).toEqual(["sectorComparison.hasGain"]);
 
@@ -1452,9 +1454,11 @@ describe("the vocabulary", () => {
     expect(SECTOR_COMPARISON_CLIP_SOURCES.map(({ group, base }) => `${group}/${base}`).sort()).toEqual(addressed);
   });
 
-  it("the bundled entries are skipped in both voices until the clips are approved", () => {
-    for (const id of SECTOR_COMPARISON_SCENARIO_IDS) {
-      expect(SCRIPT.scenarios[id]?.skip, id).toBe(true);
-    }
+  it("the bundled Default entries are the drafted ones this file plays", () => {
+    expect(SCRIPT.scenarios["pit-crew.sector-comparison-leader"]?.sequence).toEqual(LEADER_ENTRY.sequence);
+    expect(SCRIPT.scenarios["pit-crew.sector-comparison-ahead"]?.sequence).toEqual(AHEAD_ENTRY.sequence);
+    expect(SCRIPT.scenarios["pit-crew.sector-comparison-behind"]?.sequence).toEqual(BEHIND_ENTRY.sequence);
+
+    for (const id of SECTOR_COMPARISON_SCENARIO_IDS) expect(SCRIPT.scenarios[id]?.skip, id).toBeUndefined();
   });
 });

@@ -4529,7 +4529,8 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
     id: "sector-start-eleven",
     category: "Corner Names",
     label: "Sector eleven",
-    description: "Sector eleven of eleven: silent, since the voice records sector-number clips one to ten only.",
+    description:
+      "Sector eleven of eleven: silent, since the voice records sector-comparison-sector clips one to ten only.",
     event: "sectorStart.approaching",
     data: { sector: 11, sectorCount: 11 },
   },
