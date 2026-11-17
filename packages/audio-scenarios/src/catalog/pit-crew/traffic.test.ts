@@ -23,6 +23,7 @@ import type {
   TrafficPitExitVerdict,
   TrafficRejoin,
 } from "@iracedeck/event-bus";
+import { TRAFFIC_REJOIN_NEAR_MAX_SECONDS, TRAFFIC_REJOIN_NEAR_MIN_SECONDS } from "@iracedeck/event-bus";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ScenarioContext, ScenarioContract } from "../../dsl.js";
@@ -39,8 +40,6 @@ import {
   TRAFFIC_CLIP_SOURCES,
   TRAFFIC_CONTRACTS,
   TRAFFIC_MAX_QUEUE_WAIT_MS,
-  TRAFFIC_NEAR_MAX_SECONDS,
-  TRAFFIC_NEAR_MIN_SECONDS,
   TRAFFIC_PIT_EXIT_SUPERSEDE_GROUP,
   TRAFFIC_REJOIN_SUPERSEDE_GROUP,
   TRAFFIC_SCENARIO_IDS,
@@ -370,12 +369,12 @@ describe("TRAFFIC_CONTRACTS", () => {
 
 describe("rejoinMidBase", () => {
   it("names the middle's pool for every whole second of the close band", () => {
-    for (let n = TRAFFIC_NEAR_MIN_SECONDS; n <= TRAFFIC_NEAR_MAX_SECONDS; n++) {
+    for (let n = TRAFFIC_REJOIN_NEAR_MIN_SECONDS; n <= TRAFFIC_REJOIN_NEAR_MAX_SECONDS; n++) {
       expect(rejoinMidBase(near(n, true))).toBe(`rejoin-mid-${n}`);
       expect(rejoinMidBase(near(n, false))).toBe(`rejoin-mid-${n}`);
     }
 
-    expect([TRAFFIC_NEAR_MIN_SECONDS, TRAFFIC_NEAR_MAX_SECONDS]).toEqual([2, 9]);
+    expect([TRAFFIC_REJOIN_NEAR_MIN_SECONDS, TRAFFIC_REJOIN_NEAR_MAX_SECONDS]).toEqual([2, 9]);
   });
 
   it("is null outside the close band, for a count that is not a whole number, and for any other verdict", () => {

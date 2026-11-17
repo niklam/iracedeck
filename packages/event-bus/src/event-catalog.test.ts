@@ -1,5 +1,12 @@
-import { describe, expectTypeOf, it } from "vitest";
+import { describe, expect, expectTypeOf, it } from "vitest";
 
+import {
+  TRAFFIC_REJOIN_CLEAR_S,
+  TRAFFIC_REJOIN_NEAR_MAX_SECONDS,
+  TRAFFIC_REJOIN_NEAR_MIN_SECONDS,
+  TRAFFIC_REJOIN_OVER_TEN_S,
+  TRAFFIC_REJOIN_RIGHT_BEHIND_S,
+} from "./index.js";
 import type {
   PitLaneLandmarkLearned,
   PitLaneLandmarkName,
@@ -134,6 +141,15 @@ describe("traffic.rejoin and traffic.pitExit", () => {
       hold,
       go,
     ]).toBeArray();
+  });
+
+  it("publishes the rejoin band edges as values, the near seconds derived from them", () => {
+    // The maintainer's fixed edges (2026-11-11): both the translator and the
+    // Race Engineer import these, so a change here is a change to the contract.
+    expect([TRAFFIC_REJOIN_RIGHT_BEHIND_S, TRAFFIC_REJOIN_OVER_TEN_S, TRAFFIC_REJOIN_CLEAR_S]).toEqual([2, 10, 15]);
+    expect([TRAFFIC_REJOIN_NEAR_MIN_SECONDS, TRAFFIC_REJOIN_NEAR_MAX_SECONDS]).toEqual([2, 9]);
+    expect(TRAFFIC_REJOIN_NEAR_MIN_SECONDS).toBe(TRAFFIC_REJOIN_RIGHT_BEHIND_S);
+    expect(TRAFFIC_REJOIN_NEAR_MAX_SECONDS).toBe(TRAFFIC_REJOIN_OVER_TEN_S - 1);
   });
 
   it("carries a pit-exit verdict and the nearest car's relative arrival", () => {

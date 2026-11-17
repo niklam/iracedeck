@@ -661,6 +661,34 @@ export type PitLaneLandmarkLearned = {
  */
 export type TrafficRejoinVerdict = "rightBehind" | "near" | "overTen" | "clear";
 
+/*
+ * The rejoin bands' edges (issue #1113, amended 2026-11-11), in seconds of the
+ * nearest predicted arrival. They are part of the `traffic.rejoin` contract,
+ * not a detail of either side: the translator's detector decides the band by
+ * them, and the Race Engineer's lines name them ("more than ten seconds") and
+ * accept only the `near` seconds they allow, so a publisher and a subscriber
+ * that disagreed would leave a `near` call silent. Both import them from here.
+ * Fixed, never settings, because the words name them.
+ */
+
+/** Under this arrival (s) the nearest car is `rightBehind`, and from it `near`: no number below 2, when a count is no use. */
+export const TRAFFIC_REJOIN_RIGHT_BEHIND_S = 2;
+
+/** Under this arrival (s) the nearest car is `near`, and from it `overTen`: a number only for a car under ten seconds away. */
+export const TRAFFIC_REJOIN_OVER_TEN_S = 10;
+
+/** Under this arrival (s) the nearest car is `overTen`, and from it, or with no car, `clear`. */
+export const TRAFFIC_REJOIN_CLEAR_S = 15;
+
+/** The smallest `seconds` a `near` verdict carries: the band's lower edge, {@link TRAFFIC_REJOIN_RIGHT_BEHIND_S}. */
+export const TRAFFIC_REJOIN_NEAR_MIN_SECONDS = TRAFFIC_REJOIN_RIGHT_BEHIND_S;
+
+/**
+ * The largest `seconds` a `near` verdict carries: the whole second below
+ * {@link TRAFFIC_REJOIN_OVER_TEN_S}, since the arrival is rounded down.
+ */
+export const TRAFFIC_REJOIN_NEAR_MAX_SECONDS = TRAFFIC_REJOIN_OVER_TEN_S - 1;
+
 /** `traffic.rejoin` with the nearest car under 2 s away (issue #1113). Carries no number. */
 export type TrafficRejoinRightBehind = { verdict: "rightBehind" };
 
@@ -669,7 +697,9 @@ export type TrafficRejoinNear = {
   verdict: "near";
   /**
    * The nearest timed car's arrival at the player's position, in whole
-   * seconds rounded down (the cautious direction): 2 to 9.
+   * seconds rounded down (the cautious direction):
+   * {@link TRAFFIC_REJOIN_NEAR_MIN_SECONDS} to
+   * {@link TRAFFIC_REJOIN_NEAR_MAX_SECONDS}, 2 to 9.
    */
   seconds: number;
   /**

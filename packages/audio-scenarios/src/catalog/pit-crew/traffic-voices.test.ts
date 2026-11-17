@@ -7,28 +7,22 @@
  *
  * Every number the detector can put on a `near` event must have its middle in
  * every first-party voice, or that call goes silent at that count (#835): the
- * close band is 2 to 9 whole seconds (`TRAFFIC_REJOIN_RIGHT_BEHIND_S` to
- * under `TRAFFIC_REJOIN_OVER_TEN_S` in `diff/traffic-rejoin.ts`, rounded
- * down), mirrored here as `TRAFFIC_NEAR_MIN_SECONDS` / `_MAX_SECONDS`.
+ * close band is 2 to 9 whole seconds (`TRAFFIC_REJOIN_NEAR_MIN_SECONDS` to
+ * `TRAFFIC_REJOIN_NEAR_MAX_SECONDS`, from `@iracedeck/event-bus`, the same
+ * band edges the translator's detector decides by).
  */
 import { PUBLISHED_VOICE_IDS } from "@iracedeck/audio-assets/build";
 import manifestJson from "@iracedeck/audio-assets/manifest.json" with { type: "json" };
 import defaultScript from "@iracedeck/audio-assets/voice/default/callouts.json" with { type: "json" };
 import shawnScript from "@iracedeck/audio-assets/voice/shawn/callouts.json" with { type: "json" };
 import { type CalloutScript } from "@iracedeck/callout-script";
+import { TRAFFIC_REJOIN_NEAR_MAX_SECONDS, TRAFFIC_REJOIN_NEAR_MIN_SECONDS } from "@iracedeck/event-bus";
 import { describe, expect, it } from "vitest";
 
 import type { AudioAssetsManifest } from "../../interpreter.js";
 import { poolMemberPattern } from "../../interpreter.js";
 import { familyReferences } from "./family-references.test-util.js";
-import {
-  REJOIN_SECONDS_VAR,
-  TRAFFIC_CLIP_SOURCES,
-  TRAFFIC_GROUP,
-  TRAFFIC_NEAR_MAX_SECONDS,
-  TRAFFIC_NEAR_MIN_SECONDS,
-  TRAFFIC_SCENARIO_IDS,
-} from "./traffic.js";
+import { REJOIN_SECONDS_VAR, TRAFFIC_CLIP_SOURCES, TRAFFIC_GROUP, TRAFFIC_SCENARIO_IDS } from "./traffic.js";
 
 const FIRST_PARTY: ReadonlyArray<{ voice: string; script: CalloutScript }> = [
   { voice: "default", script: defaultScript as CalloutScript },
@@ -74,8 +68,8 @@ function takes(voice: string, base: string): number {
 
 function closeBand(): number[] {
   return Array.from(
-    { length: TRAFFIC_NEAR_MAX_SECONDS - TRAFFIC_NEAR_MIN_SECONDS + 1 },
-    (_, i) => TRAFFIC_NEAR_MIN_SECONDS + i,
+    { length: TRAFFIC_REJOIN_NEAR_MAX_SECONDS - TRAFFIC_REJOIN_NEAR_MIN_SECONDS + 1 },
+    (_, i) => TRAFFIC_REJOIN_NEAR_MIN_SECONDS + i,
   );
 }
 
@@ -140,7 +134,7 @@ describe.each(FIRST_PARTY)("voice $voice", ({ voice, script }) => {
     const stray = CLIPS.filter((clip) => clip.startsWith(`voice/${voice}/traffic/rejoin-mid-`)).filter((clip) => {
       const n = Number(/rejoin-mid-(\d+)-\d+\.mp3$/.exec(clip)?.[1]);
 
-      return !(n >= TRAFFIC_NEAR_MIN_SECONDS && n <= TRAFFIC_NEAR_MAX_SECONDS);
+      return !(n >= TRAFFIC_REJOIN_NEAR_MIN_SECONDS && n <= TRAFFIC_REJOIN_NEAR_MAX_SECONDS);
     });
 
     expect(stray).toEqual([]);

@@ -82,7 +82,14 @@
  */
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import { type CalloutIdOf, TRAFFIC_CALLOUTS } from "@iracedeck/callout-settings";
-import type { SimEventOf, TrafficPitExit, TrafficPitExitVerdict, TrafficRejoin } from "@iracedeck/event-bus";
+import {
+  type SimEventOf,
+  TRAFFIC_REJOIN_NEAR_MAX_SECONDS,
+  TRAFFIC_REJOIN_NEAR_MIN_SECONDS,
+  type TrafficPitExit,
+  type TrafficPitExitVerdict,
+  type TrafficRejoin,
+} from "@iracedeck/event-bus";
 
 import type { ScenarioContext, ScenarioContract } from "../../dsl.js";
 import { NO_FRAME, poolRef, WEIGHT } from "../../dsl.js";
@@ -105,15 +112,6 @@ export const TRAFFIC_REJOIN_SUPERSEDE_GROUP = "traffic-rejoin";
 
 /** The supersede group of the two pit-exit lines. */
 export const TRAFFIC_PIT_EXIT_SUPERSEDE_GROUP = "traffic-pit-exit";
-
-/**
- * The close band's whole seconds, as the event defines them: `near` carries
- * 2 to 9 (the nearest arrival from 2 s to under 10 s, rounded down). A value
- * outside is a malformed payload — a harness or third-party publisher — and
- * says nothing rather than naming a figure the band does not hold.
- */
-export const TRAFFIC_NEAR_MIN_SECONDS = 2;
-export const TRAFFIC_NEAR_MAX_SECONDS = 9;
 
 /** The var that speaks the close band's seconds as a whole sentence. */
 export const REJOIN_SECONDS_VAR = "traffic.rejoinSeconds";
@@ -201,8 +199,12 @@ function pitExitOf(ctx: Pick<ScenarioContext, "event">): TrafficPitExit | null {
 /**
  * The middle's clip base for a rejoin payload, `rejoin-mid-<N>`, or null when
  * it is not a `near` verdict or its `seconds` is not a whole number in the
- * close band. The payload is checked at run time too, since a harness or a
- * third-party publisher may hand over a malformed one.
+ * close band — `TRAFFIC_REJOIN_NEAR_MIN_SECONDS` to
+ * `TRAFFIC_REJOIN_NEAR_MAX_SECONDS`, 2 to 9, the event's own range, imported
+ * from `@iracedeck/event-bus` as the translator's detector imports the band
+ * edges they come from. A value outside is a malformed payload — a harness or
+ * third-party publisher — and says nothing rather than naming a figure the
+ * band does not hold.
  */
 export function rejoinMidBase(data: TrafficRejoin | null | undefined): string | null {
   if (!data || data.verdict !== "near") return null;
@@ -211,7 +213,7 @@ export function rejoinMidBase(data: TrafficRejoin | null | undefined): string | 
 
   if (typeof n !== "number" || !Number.isInteger(n)) return null;
 
-  if (n < TRAFFIC_NEAR_MIN_SECONDS || n > TRAFFIC_NEAR_MAX_SECONDS) return null;
+  if (n < TRAFFIC_REJOIN_NEAR_MIN_SECONDS || n > TRAFFIC_REJOIN_NEAR_MAX_SECONDS) return null;
 
   return `rejoin-mid-${n}`;
 }

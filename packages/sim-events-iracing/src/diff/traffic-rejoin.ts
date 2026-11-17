@@ -30,7 +30,8 @@
  * to 9, the cautious direction: a car at 4.9 s is "about four seconds"),
  * `overTen` under {@link TRAFFIC_REJOIN_CLEAR_S}, and `clear` from there on or
  * with no timed car. The edges are fixed, not settings, because the lines name
- * them.
+ * them, and they are `@iracedeck/event-bus`'s, beside the payload: the Race
+ * Engineer's lines read the same constants, so the two sides cannot drift.
  *
  * **When it speaks**, never on every evaluation:
  * - **Entry:** the episode's first band, always, so silence never means clear.
@@ -57,7 +58,14 @@
  * at debug with each untimed car's reason, which is all an untimed car alone
  * ever produces (spec decision 5: never invent a number).
  */
-import type { SimEventName, TrafficRejoin, TrafficRejoinVerdict } from "@iracedeck/event-bus";
+import {
+  type SimEventName,
+  TRAFFIC_REJOIN_CLEAR_S,
+  TRAFFIC_REJOIN_OVER_TEN_S,
+  TRAFFIC_REJOIN_RIGHT_BEHIND_S,
+  type TrafficRejoin,
+  type TrafficRejoinVerdict,
+} from "@iracedeck/event-bus";
 import { isPreGreen, type TelemetryData } from "@iracedeck/iracing-sdk";
 import type { ILogger } from "@iracedeck/logger";
 
@@ -113,27 +121,6 @@ export const TRAFFIC_REJOIN_END_DWELL_MS = 2_000;
  * the spoken whole seconds have. Each evaluation may or may not speak.
  */
 export const TRAFFIC_REJOIN_EVAL_INTERVAL_MS = 1_000;
-
-/**
- * Under this arrival (s) the nearest car is "right behind you": the
- * maintainer's wording (2026-11-11) gives no number below 2, because by then a
- * count is no use, only the warning is.
- */
-export const TRAFFIC_REJOIN_RIGHT_BEHIND_S = 2;
-
-/**
- * Under this arrival (s), and from {@link TRAFFIC_REJOIN_RIGHT_BEHIND_S}, the
- * nearest car is `near` and its whole seconds are spoken: the maintainer gives
- * a number only for a close car, and close is under ten seconds.
- */
-export const TRAFFIC_REJOIN_OVER_TEN_S = 10;
-
-/**
- * From {@link TRAFFIC_REJOIN_OVER_TEN_S} to under this arrival (s) the next car
- * is "more than ten seconds away"; at or beyond it, or with no car at all, it
- * is "Clear to rejoin": the maintainer's two reassuring bands.
- */
-export const TRAFFIC_REJOIN_CLEAR_S = 15;
 
 /**
  * How far the spoken whole seconds of a `near` car must drop (s) before "Now

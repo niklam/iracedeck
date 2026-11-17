@@ -1,4 +1,9 @@
-import type { SimEventMap } from "@iracedeck/event-bus";
+import {
+  type SimEventMap,
+  TRAFFIC_REJOIN_CLEAR_S,
+  TRAFFIC_REJOIN_OVER_TEN_S,
+  TRAFFIC_REJOIN_RIGHT_BEHIND_S,
+} from "@iracedeck/event-bus";
 import { SessionState, TrkLoc } from "@iracedeck/iracing-sdk";
 import { type ILogger, silentLogger } from "@iracedeck/logger";
 import { describe, expect, it, vi } from "vitest";
@@ -12,15 +17,12 @@ import {
 import { TRAFFIC_CURVE_BINS, type TrafficClassInfo } from "./traffic-arrival.js";
 import {
   diffTrafficRejoin,
-  TRAFFIC_REJOIN_CLEAR_S,
   TRAFFIC_REJOIN_COUNT_STEP_S,
   TRAFFIC_REJOIN_CRAWL_MPS,
   TRAFFIC_REJOIN_END_DWELL_MS,
   TRAFFIC_REJOIN_ENTRY_DWELL_MS,
   TRAFFIC_REJOIN_EVAL_INTERVAL_MS,
   TRAFFIC_REJOIN_MOVING_MPS,
-  TRAFFIC_REJOIN_OVER_TEN_S,
-  TRAFFIC_REJOIN_RIGHT_BEHIND_S,
   type TrafficRejoinTelemetry,
 } from "./traffic-rejoin.js";
 
@@ -160,7 +162,7 @@ const withheldLines = (debug: ReturnType<typeof vi.fn>): string[] =>
 
 describe("diffTrafficRejoin", () => {
   describe("the band constants", () => {
-    it("are the maintainer's fixed edges and count step (2026-11-11)", () => {
+    it("are the maintainer's fixed edges, the event-bus contract's, and count step (2026-11-11)", () => {
       expect([TRAFFIC_REJOIN_RIGHT_BEHIND_S, TRAFFIC_REJOIN_OVER_TEN_S, TRAFFIC_REJOIN_CLEAR_S]).toEqual([2, 10, 15]);
       expect(TRAFFIC_REJOIN_COUNT_STEP_S).toBe(3);
     });
