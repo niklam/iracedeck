@@ -8,6 +8,9 @@ import {
   crossesLineBefore,
   curveLapEnd,
   curveReferenceSource,
+  elapsed,
+  isFiniteNumber,
+  isLapFraction,
   landmarkReferenceSource,
   referenceTimeAt,
   resolveCarClassId,
@@ -70,6 +73,37 @@ function classInfo(lapTimeByClass: Record<string, number>, classByCarIdx: number
 function byCar(arrivals: TrafficArrival[]): Map<number, TrafficArrival> {
   return new Map(arrivals.map((arrival) => [arrival.carIdx, arrival]));
 }
+
+describe("the shared helpers", () => {
+  it("isFiniteNumber: a number that is neither NaN nor infinite", () => {
+    expect([0, -3.5, 1e9].map(isFiniteNumber)).toEqual([true, true, true]);
+    expect([Number.NaN, Number.POSITIVE_INFINITY, "1", null, undefined].map(isFiniteNumber)).toEqual([
+      false,
+      false,
+      false,
+      false,
+      false,
+    ]);
+  });
+
+  it("isLapFraction: a number in [0, 1), so not the sim's -1, nor 1, nor NaN", () => {
+    expect([0, 0.5, 0.99999].map(isLapFraction)).toEqual([true, true, true]);
+    expect([-1, 1, 1.00001, Number.NaN, Number.POSITIVE_INFINITY, "0.5", undefined].map(isLapFraction)).toEqual([
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+    ]);
+  });
+
+  it("elapsed: the milliseconds since a time, a clock that stepped back reading as just now", () => {
+    expect(elapsed(1_500, 1_000)).toBe(500);
+    expect(elapsed(1_000, 1_500)).toBe(0);
+  });
+});
 
 describe("resolveTrafficClassInfo", () => {
   it("reads each class's CarClassEstLapTime and each car's CarClassID from DriverInfo", () => {

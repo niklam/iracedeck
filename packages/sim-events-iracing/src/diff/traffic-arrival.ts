@@ -150,11 +150,28 @@ export type TrafficArrival =
       readonly reason: TrafficUntimedReason;
     };
 
+/** A car the model timed: its arrival in `seconds`, and the source that timed it. */
+export type TimedArrival = Extract<TrafficArrival, { timed: true }>;
+
+/** A candidate car no source could time, with the reason. */
+export type UntimedArrival = Extract<TrafficArrival, { timed: false }>;
+
 /** The line itself: the reference time restarts at 0 there, so it is a sample every curve has. */
 const LINE: Readonly<TrafficCurveBin> = { pct: 0, estTime: 0, samples: 1 };
 
-function isLapFraction(value: unknown): value is number {
+/** A number that is neither `NaN` nor infinite. Shared by the traffic modules. */
+export function isFiniteNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+/** A lap position: a number in [0, 1), so neither `NaN`, the sim's −1 for a car not in world, nor 1. Shared by the traffic modules. */
+export function isLapFraction(value: unknown): value is number {
   return typeof value === "number" && value >= 0 && value < 1;
+}
+
+/** How long since `since` (ms); a clock that stepped back counts as just now. Shared by the traffic detectors. */
+export function elapsed(now: number, since: number): number {
+  return Math.max(0, now - since);
 }
 
 function isReferenceTime(value: unknown): value is number {

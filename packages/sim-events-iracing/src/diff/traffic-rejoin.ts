@@ -66,11 +66,16 @@ import { isRacingSurface } from "./track-surface.js";
 import {
   computeTrafficArrivals,
   curveReferenceSource,
+  elapsed,
+  isFiniteNumber,
+  isLapFraction,
   resolveCarClassId,
   scaledReferenceSource,
+  type TimedArrival,
   type TrafficArrival,
   type TrafficClassInfo,
   type TrafficTelemetry,
+  type UntimedArrival,
 } from "./traffic-arrival.js";
 import type { EmitFn } from "./types.js";
 
@@ -152,13 +157,6 @@ const BAND_RANK: Record<Band, number> = { rightBehind: 0, near: 1, overTen: 2, c
 /** Why an evaluation speaks, named in its debug line. */
 type SpeakReason = "entry" | "closer band" | "count" | "after a close car";
 
-type TimedArrival = Extract<TrafficArrival, { timed: true }>;
-type UntimedArrival = Extract<TrafficArrival, { timed: false }>;
-
-function isFiniteNumber(value: unknown): value is number {
-  return typeof value === "number" && Number.isFinite(value);
-}
-
 /** The first entry gate the tick fails, or `null` when every one holds (module header). */
 function failedGate(telemetry: TrafficRejoinTelemetry, playerCarIdx: number): RejoinGate | null {
   if (telemetry.IsOnTrack !== true) return "notInCar";
@@ -175,14 +173,9 @@ function failedGate(telemetry: TrafficRejoinTelemetry, playerCarIdx: number): Re
 
   const pct = playerCarIdx >= 0 ? telemetry.CarIdxLapDistPct?.[playerCarIdx] : undefined;
 
-  if (!isFiniteNumber(pct) || pct < 0 || pct >= 1) return "noPosition";
+  if (!isLapFraction(pct)) return "noPosition";
 
   return null;
-}
-
-/** How long since `since` (ms); a clock that stepped back counts as just now. */
-function elapsed(now: number, since: number): number {
-  return Math.max(0, now - since);
 }
 
 /** "car 5 at 4.62 s via curve", or what stands in for it when no car was timed. */

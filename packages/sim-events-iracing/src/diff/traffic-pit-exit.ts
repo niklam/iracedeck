@@ -74,14 +74,18 @@ import { isRacingSurface } from "./track-surface.js";
 import {
   computeTrafficArrivals,
   curveReferenceSource,
+  elapsed,
+  isFiniteNumber,
+  isLapFraction,
   landmarkReferenceSource,
   referenceTimeAt,
   resolveCarClassId,
   resolveClassLapTime,
   scaledReferenceSource,
-  type TrafficArrival,
+  type TimedArrival,
   type TrafficClassInfo,
   type TrafficTelemetry,
+  type UntimedArrival,
 } from "./traffic-arrival.js";
 import type { EmitFn } from "./types.js";
 
@@ -136,22 +140,6 @@ export type TrafficPitExitTelemetry = TrafficTelemetry &
 
 /** Why there is no ETA this evaluation, named in the once-per-episode debug line. */
 type NoEtaReason = "noPlayerClass" | "noReference" | "noClassLap" | "noTrackLength" | "noPitSpeedLimit";
-
-type TimedArrival = Extract<TrafficArrival, { timed: true }>;
-type UntimedArrival = Extract<TrafficArrival, { timed: false }>;
-
-function isFiniteNumber(value: unknown): value is number {
-  return typeof value === "number" && Number.isFinite(value);
-}
-
-function isLapFraction(value: unknown): value is number {
-  return isFiniteNumber(value) && value >= 0 && value < 1;
-}
-
-/** How long since `since` (ms); a clock that stepped back counts as just now. */
-function elapsed(now: number, since: number): number {
-  return Math.max(0, now - since);
-}
 
 /** Why a running episode ends on this tick, read before the landmarks; `null` while it runs on. */
 function endReason(telemetry: TrafficPitExitTelemetry, playerPct: unknown): string | null {
