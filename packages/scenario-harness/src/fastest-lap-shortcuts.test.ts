@@ -40,7 +40,7 @@ describe("Fastest Lap shortcuts", () => {
       "Yours in the grace",
     ]);
     expect(fastestLap.every((s) => (s as unknown as Published).event === "fastestLap.set")).toBe(true);
-    expect(fastestLap.every((s) => data(s).lapTime === 83.4)).toBe(true);
+    expect(fastestLap.every((s) => data(s).lapTime === 83.456)).toBe(true);
   });
 
   it("selects each holder key through the positions in the payload", () => {

@@ -1,9 +1,10 @@
 /**
- * One lap, one lap time (issues #1163, #1571): over the real
+ * One lap, one lap time (issues #1163, #1571, #1688): over the real
  * `registerPitCrew` and both first-party scripts, a lap and its
  * `fastestLap.set` make exactly the owner's lap-time contract speak — at
  * most one of the three — for every combination of the lap, the three
- * opt-ins and whether the voice scripts each contract.
+ * opt-ins and whether the voice scripts each contract, and whichever speaks
+ * reads the lap to the thousandth, rounded the same way.
  */
 import manifestJson from "@iracedeck/audio-assets/manifest.json" with { type: "json" };
 import defaultScript from "@iracedeck/audio-assets/voice/default/callouts.json" with { type: "json" };
@@ -27,8 +28,9 @@ import { _resetPitSpeedingEngine } from "./pit-speeding-engine.js";
 import { _resetRadarEngine } from "./radar-engine.js";
 import { _resetSpotterEngine } from "./spotter-engine.js";
 
+/** Every lap below is a 1:23.456, the time all three calls must read alike. */
 function lap(overrides: Partial<CountedLapCompleted> = {}): LapCompletedSnapshot {
-  return { lap: 5, lapTime: 83.4, isBest: false, isFirstValid: false, sessionType: "race", ...overrides };
+  return { lap: 5, lapTime: 83.456, isBest: false, isFirstValid: false, sessionType: "race", ...overrides };
 }
 
 const mockLogger = {
@@ -77,45 +79,30 @@ function createMockBus(): IEventBus & { publishEvent: (name: SimEventName, data:
 const LAP_TIME_IDS = ["pit-crew.fastest-lap-race", "pit-crew.lap-time-best", "pit-crew.lap-time-last"] as const;
 
 /**
- * Entries for the two new contracts, used only where a first-party script
- * does not carry its own yet (their bundled entries are authored with their
- * clips). A bundled entry, once there, is what runs.
- */
-const FALLBACK_ENTRIES: Record<string, CalloutScriptEntry> = {
-  "pit-crew.fastest-lap-race": {
-    comment: "Fastest lap.",
-    test: "Harness → Fastest Lap → Yours.",
-    sequence: [
-      {
-        case: "fastestLap.holder",
-        of: { yours: ["pool:fastest-lap/yours"], default: ["pool:fastest-lap/other"] },
-      },
-      "{{fastestLap.clock}}",
-      "{{fastestLap.decimal}}",
-    ],
-  },
-  "pit-crew.lap-time-last": {
-    comment: "Every lap.",
-    test: "Harness → Lap Time → Every lap.",
-    sequence: ["pool:lap-time-last/intro", "{{lapTime.clock}}", "{{lapTime.thousandths}}"],
-  },
-};
-
-/**
- * The clips the 1:23.4 lap needs in both readouts, per voice, beside the
- * bundled manifest: each line and the intro (one take each, ending its
- * sentence), the clock phrase 1m23, the tenths 4 and the thousandths 400.
+ * The clips the 1:23.456 lap needs in the three lines, per voice, beside the
+ * bundled manifest (which carries them too; staged here so the test does not
+ * lean on what the bundled manifest happens to hold): the player's fastest-lap
+ * line, the two intros, the clock phrase 1m23 and the thousandths 456.
  */
 function extraClips(voice: string): string[] {
   return [
     "fastest-lap/yours-01",
-    "fastest-lap/other-01",
+    "lap-time-intro/best-lap-yet",
     "lap-time-last/intro-01",
     "lap-time-clock/1m23",
-    "lap-time-tenths/4",
-    "lap-time-thousandths/400",
+    "lap-time-thousandths/456",
   ].map((c) => `voice/${voice}/${c}.mp3`);
 }
+
+/** The time each line ends on, one rounding for all three (#1688). */
+const TIME = ["lap-time-clock/1m23", "lap-time-thousandths/456"];
+
+/** What each owner's line plays for the lap, as `<group>/<base>`, take suffix dropped. */
+const EXPANSION: Readonly<Record<(typeof LAP_TIME_IDS)[number], readonly string[]>> = {
+  "pit-crew.fastest-lap-race": ["fastest-lap/yours", ...TIME],
+  "pit-crew.lap-time-best": ["lap-time-intro/best-lap-yet", ...TIME],
+  "pit-crew.lap-time-last": ["lap-time-last/intro", ...TIME],
+};
 
 const BUNDLED = manifestJson as AudioAssetsManifest;
 
@@ -124,11 +111,9 @@ const VOICES: ReadonlyArray<{ voice: string; script: CalloutScript }> = [
   { voice: "shawn", script: shawnScript as CalloutScript },
 ];
 
-/** The voice's script with the two new entries filled in where absent, minus the ids `unscripted` names. */
+/** The voice's script minus the ids `unscripted` names. */
 function scriptFor(base: CalloutScript, unscripted: ReadonlySet<string>): CalloutScript {
   const scenarios: Record<string, CalloutScriptEntry> = { ...base.scenarios };
-
-  for (const [id, entry] of Object.entries(FALLBACK_ENTRIES)) scenarios[id] ??= entry;
 
   for (const id of unscripted) delete scenarios[id];
 
@@ -184,6 +169,23 @@ describe("one lap, one lap time — the real registerPitCrew over both first-par
           .filter((id): id is string => id !== undefined && (LAP_TIME_IDS as readonly string[]).includes(id));
       }
 
+      /**
+       * The voice clips the lap-time lines played since the last clear, as
+       * `<group>/<base>` with a take suffix dropped — only the groups the
+       * three lines draw from, so another callout on the same lap stays out.
+       */
+      function lapTimeClips(): string[] {
+        return audio._played
+          .filter((p) => p.channel === AudioChannel.Voice)
+          .map((p) =>
+            p.path
+              .split(`voice/${voice}/`)[1]
+              .replace(/\.mp3$/, "")
+              .replace(/-\d\d$/, ""),
+          )
+          .filter((c) => /^(fastest-lap|lap-time-[a-z]+)\//.test(c));
+      }
+
       function flush(): void {
         for (let i = 0; i < 80; i++) {
           audio._triggerChannelEnd(AudioChannel.Voice);
@@ -192,6 +194,10 @@ describe("one lap, one lap time — the real registerPitCrew over both first-par
           vi.advanceTimersByTime(1000);
         }
       }
+
+      it("scripts all three lap-time contracts, so every combination below runs the bundled entries", () => {
+        for (const id of LAP_TIME_IDS) expect(script.scenarios[id], id).toBeDefined();
+      });
 
       it("speaks exactly the owner's line for every combination of the lap, the three opt-ins and the three script entries — and nothing only when no tier can speak", () => {
         const shapes: ReadonlyArray<{ name: string; data: LapCompletedSnapshot; fastest: boolean }> = [
@@ -232,6 +238,7 @@ describe("one lap, one lap time — the real registerPitCrew over both first-par
 
             for (const shape of shapes) {
               mockLogger.info.mockClear();
+              audio._played.length = 0;
               latest = shape.data;
               bus.publishEvent("lap.completed", shape.data);
 
@@ -250,7 +257,7 @@ describe("one lap, one lap time — the real registerPitCrew over both first-par
               flush();
 
               const owner = playerLapOwner(shape.data, tiers);
-              const expected =
+              const expected: Array<(typeof LAP_TIME_IDS)[number]> =
                 owner === "fastest-lap"
                   ? ["pit-crew.fastest-lap-race"]
                   : owner === "best-lap"
@@ -262,6 +269,8 @@ describe("one lap, one lap time — the real registerPitCrew over both first-par
 
               expect(played(), label).toEqual(expected);
               expect(played().length, label).toBeLessThanOrEqual(1);
+              // …and the line it spoke reads the lap to the thousandth (#1688).
+              expect(lapTimeClips(), label).toEqual(expected.length === 0 ? [] : EXPANSION[expected[0]]);
               checked++;
             }
           }

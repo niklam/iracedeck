@@ -1,18 +1,21 @@
 /**
- * The lap-time readout (issues #555, #1163, #1571): how a lap time is split
- * into spoken parts and which clip pool each part draws from. One module, so
- * no two callouts round the same lap differently, and a change to how a lap
- * time is split reaches every callout that reads one.
+ * The lap-time readout (issues #555, #1163, #1571, #1688): how a lap time is
+ * split into spoken parts and which clip pool each part draws from. One
+ * module, so no two callouts round the same lap differently, and a change to
+ * how a lap time is split reaches every callout that reads one.
  *
  * Two forms, each rounding ONCE at its own precision at the input boundary so
  * its parts stay internally consistent:
  *
- *   - **Full** (#555's best-lap call, tenths): "one minute, twenty-three,
- *     point four seconds." over the four `lap-time-*` groups — a minute clip
- *     that carries the word "minute", a second clip with a trailing comma, and
- *     a "point N seconds." tail.
- *   - **Compact** (#1163's every-lap call to the thousandth, #1571's
- *     fastest-lap call to the tenth): "one twenty three point four", the way a
+ *   - **Full** (#555's original best-lap readout, tenths): "one minute,
+ *     twenty-three, point four seconds." over the four `lap-time-*` groups — a
+ *     minute clip that carries the word "minute", a second clip with a
+ *     trailing comma, and a "point N seconds." tail. No first-party script
+ *     reads it since #1688; it stays in the vocabulary for pack scripts.
+ *   - **Compact** (every lap-time call in the first-party scripts — the
+ *     every-lap call (#1163), the best-lap call and the fastest-lap call
+ *     (#1688) — to the thousandth; the fastest-lap vocabulary keeps #1571's
+ *     tenths pair too): "one twenty three point four five six", the way a
  *     timing screen reads, as whole phrases rather than spliced words
  *     (revision 5 of the clip contract, after Niklas's trial). Two clips read
  *     the time:
