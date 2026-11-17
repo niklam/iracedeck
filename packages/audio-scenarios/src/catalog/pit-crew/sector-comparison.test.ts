@@ -67,6 +67,7 @@ import {
   type SectorTarget,
   selectSectorCall,
   type SpokenSectorPicture,
+  stillTheNamedCar,
 } from "./sector-comparison.js";
 import { _resetSpotterEngine } from "./spotter-engine.js";
 
@@ -995,7 +996,9 @@ describe("the gates at the line (decision 7)", () => {
   it("builds the comparison once per lap for the three contracts, and keeps one answer for all three", () => {
     lapDone(5, { leader: LEADER_MOST, ahead: AHEAD_SLOW_S2, behind: BEHIND_QUICK_S3 });
 
-    expect(comparisonReads).toBe(1);
+    // One build decides for all three contracts; the one call that speaks
+    // reads it once more at its gate, to check the named car is still there.
+    expect(comparisonReads).toBe(2);
     expect(readSectorComparisonDebugState().pendingSelections).toBe(1);
     expect(sectorLine()[0]).toBe("car-number/12");
   });
@@ -1187,6 +1190,27 @@ describe("the claim is the gate's (#1137, #1138)", () => {
     expect(readSectorComparisonDebugState().lastCallLap).toBeNull();
   });
 
+  it("a passed car is not named: the car ahead changed while the call waited refuses it, leaving the target due", () => {
+    holdTheBus();
+    publishLap(5, { ahead: AHEAD_SLOW_S2 });
+    comparison = input({ player: player(5), ahead: { ...AHEAD_SLOW_S2, carIdx: 31, carNumber: "31" } });
+    flush();
+
+    expect(sectorLine()).toEqual([]);
+    expect(readSectorComparisonDebugState().lastCallLap).toBeNull();
+    expect(readSectorComparisonDebugState().spokenPictures).toEqual({});
+  });
+
+  it("the named car out of range by the time it speaks refuses it too", () => {
+    holdTheBus();
+    publishLap(5, { ahead: AHEAD_SLOW_S2 });
+    comparison = input({ player: player(5), ahead: { ...AHEAD_SLOW_S2, gapSeconds: SECTOR_BATTLE_GAP_S + 1 } });
+    flush();
+
+    expect(sectorLine()).toEqual([]);
+    expect(readSectorComparisonDebugState().lastCallLap).toBeNull();
+  });
+
   it("a waiting call speaks when nothing changed (the positive control)", () => {
     holdTheBus();
     publishLap(5, { ahead: AHEAD_SLOW_S2 });
@@ -1332,6 +1356,33 @@ describe("at the line, after the lap-time calls (decision 8)", () => {
   });
 });
 
+describe("stillTheNamedCar", () => {
+  const picture = (target: "leader" | "ahead" | "behind", carIdx: number) =>
+    ({
+      target,
+      carIdx,
+      carNumber: null,
+      shape: null,
+      pace: null,
+      lossShape: null,
+      lossSector: null,
+      gainSector: 2,
+    }) as const;
+
+  it("holds for the same car on its side, the leader at any distance", () => {
+    expect(stillTheNamedCar(picture("ahead", 12), input({ ahead: AHEAD_SLOW_S2 }))).toBe(true);
+    expect(stillTheNamedCar(picture("leader", 20), input({ leader: { ...LEADER_MOST, gapSeconds: 40 } }))).toBe(true);
+  });
+
+  it("fails for another car on that side, a neighbour out of range, no car there, or no comparison", () => {
+    expect(stillTheNamedCar(picture("ahead", 12), input({ ahead: { ...AHEAD_SLOW_S2, carIdx: 31 } }))).toBe(false);
+    expect(stillTheNamedCar(picture("ahead", 12), input({ ahead: { ...AHEAD_SLOW_S2, gapSeconds: 3.5 } }))).toBe(false);
+    expect(stillTheNamedCar(picture("ahead", 12), input({ ahead: null }))).toBe(false);
+    expect(stillTheNamedCar(picture("leader", 20), input({ leader: { ...LEADER_MOST, carIdx: 21 } }))).toBe(false);
+    expect(stillTheNamedCar(picture("ahead", 12), null)).toBe(false);
+  });
+});
+
 describe("the contracts", () => {
   const built = buildSectorComparison(familyDeps(() => true));
 
@@ -1344,6 +1395,7 @@ describe("the contracts", () => {
       expect(c.weight).toBe(WEIGHT.CHATTER);
       expect(c.interrupt).toBe(false);
       expect(c.queueable).toBe(true);
+      expect(c.dropWhenCut).toBe(true);
       expect(c.maxQueueWaitMs).toBe(20_000);
       expect(c.triggerDelay).toBe(SECTOR_COMPARISON_TRIGGER_DELAY_MS);
       expect(c.family).toBe("sector-comparison");

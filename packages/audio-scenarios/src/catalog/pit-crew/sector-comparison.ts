@@ -580,6 +580,22 @@ function paceParts(picture: SectorPicture | null): { seconds: number; tenths: nu
   return paceTenths(picture.pace);
 }
 
+/**
+ * Whether the car a picture names is, in the live comparison, still the one
+ * on that side: the class leader for the leader call, the same neighbour and
+ * still within {@link SECTOR_BATTLE_GAP_S} for the car ahead or behind. No
+ * live comparison is a no.
+ */
+export function stillTheNamedCar(picture: SectorPicture, live: SectorComparisonInput | null): boolean {
+  if (live === null) return false;
+
+  const car = live[picture.target];
+
+  if (car === null || car.carIdx !== picture.carIdx) return false;
+
+  return picture.target === "leader" || inBattleRange(car);
+}
+
 /** Whether the player's lap the event closed was recorded clean (decision 4), read from the comparison. */
 function playerLapClean(input: SectorComparisonInput, lap: number): boolean {
   return input.player.recentLaps.some((l) => l.lap === lap && l.clean);
@@ -712,7 +728,7 @@ export function buildSectorComparison(deps: SectorComparisonDeps): {
     },
     speakGate: {
       description:
-        "The driver has not completed another lap since, no full-course caution is out and no other sector call has been made for this lap; speaking it records what was said.",
+        "No new lap since, no full-course caution, the named car still on its side and in range, and no other sector call this lap; speaking it records what was said.",
       admit: (ctx) => {
         if (ctx.event === null) return false;
 
@@ -727,6 +743,12 @@ export function buildSectorComparison(deps: SectorComparisonDeps): {
         // One call per spacing, whichever target: a second approval for the
         // same lap (the comparison moved between timers) is turned away here.
         if (insideSpacing(stashed.lap, lastCallLap, SECTOR_CALL_MIN_LAPS)) return false;
+
+        // The named car must still be the one on that side: a call waiting
+        // for the radio while the player passes the car it names would name
+        // it on the wrong side. Read live, and refused without a claim, so
+        // the target stays due for a later lap.
+        if (!stillTheNamedCar(stashed.picture, deps.getSectorComparison())) return false;
 
         // The claim, last (#1137): only a fire that goes on to play records
         // its picture, so a refused one leaves its target due.
@@ -744,6 +766,11 @@ export function buildSectorComparison(deps: SectorComparisonDeps): {
     weight: WEIGHT.CHATTER,
     interrupt: false,
     queueable: true,
+    // A call an interrupt cuts is dropped, never replayed: a replay is not
+    // asked the speak gate again, so it could speak under the caution or
+    // about the car that cut in (#1681). One waiting its first turn still
+    // queues and passes the gate.
+    dropWhenCut: true,
     maxQueueWaitMs: 20_000,
     triggerDelay: SECTOR_COMPARISON_TRIGGER_DELAY_MS,
     queueBehind: SECTOR_COMPARISON_QUEUE_BEHIND,

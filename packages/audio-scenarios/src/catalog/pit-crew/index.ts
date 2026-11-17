@@ -360,6 +360,7 @@ export {
   sectorDeltas,
   sectorReference,
   selectSectorCall,
+  stillTheNamedCar,
   type SectorCallMemory,
   type SectorCarInput,
   type SectorComparisonCalloutId,
