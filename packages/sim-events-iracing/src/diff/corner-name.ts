@@ -14,6 +14,11 @@
  * a teleport, and speaking only the nearest of several crossed in one tick.
  * On pit road crossings are consumed but not announced.
  *
+ * A corner name and a sector start swept on one tick are published in the
+ * order the lead point crossed them, a tie to the sector call (#1676): the
+ * translator reads how far behind the lead point each crossed start sits,
+ * which this diff returns (`diff/marker-call-order.ts`).
+ *
  * Session gating lives HERE (the #655 diff-side precedent) so the scenario
  * harness can fire `cornerName.approaching` freely without iRacing.
  */
@@ -23,6 +28,7 @@ import type { CornerMarker } from "@iracedeck/track-data";
 
 import type { CornerNameState } from "../state.js";
 import { leadPointPct, resetLeadPointSweep, sweepLeadPoint } from "./lead-point-sweep.js";
+import { lapFractionBehind } from "./marker-call-order.js";
 import { coerceSettingNumber } from "./setting-number.js";
 import type { EmitFn } from "./types.js";
 
@@ -71,6 +77,23 @@ function markerStarts(markers: readonly CornerMarker[]): readonly number[] {
 /** The events {@link diffCornerName} emits (issue #1499): its emitter's type, and its row in `TICK_ORDER`. */
 export const CORNER_NAME_EVENTS = ["cornerName.approaching"] as const satisfies readonly SimEventName[];
 
+/**
+ * Publish `cornerName.approaching` as the player's lead point crosses a corner
+ * marker, in a practice-like session.
+ *
+ * @param slice this diff's sweep state and the translator's marker cache,
+ *   the sweep written in place
+ * @param telemetry the tick's telemetry
+ * @param isPracticeSession whether the session classifies as practice;
+ *   anything else is silent
+ * @param markers the track's corner markers, `null` when it has none
+ * @param trackLengthMeters the track length
+ * @param getLeadSeconds the live corner-call lead (`cornerCalloutLeadSeconds`)
+ * @param emit the tick's emitter
+ * @returns how far behind this tick's lead point the marker it published
+ *   sits, as a lap fraction in [0, 1); `null` when it published nothing, a
+ *   crossing consumed on pit road included
+ */
 export function diffCornerName(
   slice: CornerNameState,
   telemetry: TelemetryData,
@@ -79,7 +102,7 @@ export function diffCornerName(
   trackLengthMeters: number | null,
   getLeadSeconds: () => number,
   emit: EmitFn<(typeof CORNER_NAME_EVENTS)[number]>,
-): void {
+): number | null {
   // Gates: practice-like session, live in the car, markers + track length
   // known, valid lap position. Anything missing → silent AND the pass state
   // resets, so returning to the track starts a fresh announced run. The
@@ -87,13 +110,13 @@ export function diffCornerName(
   if (!isPracticeSession || markers === null || markers.length === 0) {
     resetLeadPointSweep(slice);
 
-    return;
+    return null;
   }
 
   if (trackLengthMeters === null || trackLengthMeters <= 0 || telemetry.IsOnTrack !== true) {
     resetLeadPointSweep(slice);
 
-    return;
+    return null;
   }
 
   const lapDistPct = telemetry.LapDistPct;
@@ -101,18 +124,20 @@ export function diffCornerName(
   if (typeof lapDistPct !== "number" || lapDistPct < 0) {
     resetLeadPointSweep(slice);
 
-    return;
+    return null;
   }
 
   const leadPoint = leadPointPct(lapDistPct, telemetry.Speed, getLeadSeconds(), trackLengthMeters);
   const bestIdx = sweepLeadPoint(slice, leadPoint, markerStarts(markers));
 
-  if (bestIdx === -1) return;
+  if (bestIdx === -1) return null;
 
   // Pit lane parallels the track — consume crossings there, announce nothing.
-  if (telemetry.OnPitRoad === true) return;
+  if (telemetry.OnPitRoad === true) return null;
 
   const marker = markers[bestIdx]!;
 
   emit({ event: "cornerName.approaching", data: { name: marker.name, slug: marker.slug } });
+
+  return lapFractionBehind(leadPoint, marker.startPct);
 }

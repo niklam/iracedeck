@@ -748,7 +748,10 @@ export type SimEventMap = {
    * clip base (`corner-names/<slug>-01.mp3`) — the slug rides in the payload
    * so audio consumers never import the dataset package. Once per corner per
    * lap; the audio scenario's `family: "corner-name"` lets consecutive
-   * corners preempt an in-flight name cleanly.
+   * corners preempt an in-flight name cleanly. A corner marker and a sector
+   * start swept in one tick are published in the order the car reaches them,
+   * a sector start and corner marker at the same point the sector start
+   * first (issue #1676).
    */
   "cornerName.approaching": SimEvent<"cornerName.approaching", { name: string; slug: string }>;
   /**
@@ -756,7 +759,10 @@ export type SimEventMap = {
    * corner-name calls use) crossed the start of a sector, in a practice or test
    * session (issue #1573). Every sector start, sector 1 at the start/finish
    * line included; once per sector per lap. The translator reports every
-   * crossing; the audio contract decides which to speak.
+   * crossing; the audio contract decides which to speak. When a sector start
+   * and a corner marker fall in one tick, they are published in the order the
+   * car reaches them, a sector start and corner marker at the same point the
+   * sector start first (issue #1676).
    */
   "sectorStart.approaching": SimEvent<
     "sectorStart.approaching",
@@ -765,12 +771,6 @@ export type SimEventMap = {
       sector: number;
       /** How many sectors the track has. */
       sectorCount: number;
-      /**
-       * Seconds, at the current speed, from this sector start to the next corner
-       * this translator announces through `cornerName.approaching`. Null only when
-       * there is no corner data for the track, no track length or no speed.
-       */
-      nextCornerInS: number | null;
     }
   >;
   /**

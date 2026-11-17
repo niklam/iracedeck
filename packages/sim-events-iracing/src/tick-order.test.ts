@@ -141,8 +141,8 @@ vi.mock("./diff/overtakes.js", async (io) => harness.spy(await io(), { diffOvert
 vi.mock("./diff/gaps.js", async (io) => harness.spy(await io(), { diffGaps: 7 }));
 vi.mock("./diff/pit-box-countdown.js", async (io) => harness.spy(await io(), { diffPitBoxCountdown: 4 }));
 vi.mock("./diff/pit-lane-landmarks.js", async (io) => harness.spy(await io(), { diffPitLaneLandmarks: 6 }));
+vi.mock("./diff/sector-start.js", async (io) => harness.spy(await io(), { diffSectorStart: 6 }));
 vi.mock("./diff/corner-name.js", async (io) => harness.spy(await io(), { diffCornerName: 6 }));
-vi.mock("./diff/sector-start.js", async (io) => harness.spy(await io(), { diffSectorStart: 7 }));
 vi.mock("./diff/fuel-laps-left.js", async (io) => harness.spy(await io(), { diffFuelLapsLeft: 7 }));
 vi.mock("./diff/radar.js", async (io) => harness.spy(await io(), { diffRadar: 2 }));
 vi.mock("./diff/pit-speeding.js", async (io) => harness.spy(await io(), { diffPitSpeeding: 4 }));
@@ -332,7 +332,10 @@ function classifyRecorderPublishSites(
  * or after the last call; once the flush begins (the first publish no direct
  * stage can account for) no call may follow, and each publish must belong to
  * a `pending` stage that was called this tick, at or after the previous one.
- * A probe publish must belong to exactly the stage that made it. Greedy
+ * A probe publish must belong to exactly the stage that made it. The one
+ * exception to "at or after": a pending row that `reordersWith` an earlier
+ * one may be flushed ahead of it, so that earlier stage's publish may follow
+ * (#1676). Greedy
  * earliest matching, which is exact for "is this log a run of the table".
  * Returns the problems and, for each publish, the stage it was matched to.
  */
@@ -387,6 +390,23 @@ function checkTickLog(
     }
 
     const j = order.findIndex((s, k) => k >= flushCursor && s.via === "pending" && called.has(k) && belongs(s));
+
+    // The one way back (#1676): the row the flush is at declares, through
+    // `reordersWith`, that the tick may publish its events ahead of that
+    // earlier stage's, so the earlier stage's publish may follow it. The
+    // cursor stays where it is.
+    const declared = j < 0 && flushCursor >= 0 ? order[flushCursor]!.reordersWith : undefined;
+    const back =
+      declared === undefined
+        ? -1
+        : order.findIndex(
+            (s, k) => k < flushCursor && s.stage === declared && s.via === "pending" && called.has(k) && belongs(s),
+          );
+
+    if (back >= 0) {
+      matched.push({ event: entry.event, stage: order[back]!.stage });
+      continue;
+    }
 
     if (j < 0) {
       problems.push(`${label} was published after ${where()}, where the table has no stage that publishes it`);
@@ -656,6 +676,18 @@ describe("TICK_ORDER", () => {
       expect(teardown).toBeGreaterThan(0);
       expect(teardown).toBe(firstPending - 1);
       expect(TICK_ORDER.slice(firstPending).every((s) => s.via === "pending")).toBe(true);
+    });
+
+    // The call-order test proves the table is the code; this pins the order a
+    // feature depends on (#1676): the two calls one tick sweeps are published
+    // in the order their markers were crossed, and a tie, a corner at the
+    // sector line, goes to the sector call because it runs first.
+    it("runs diffSectorStart directly before diffCornerName", () => {
+      const sector = TICK_ORDER.findIndex((s) => s.stage === "diffSectorStart");
+      const corner = TICK_ORDER.findIndex((s) => s.stage === "diffCornerName");
+
+      expect(sector).toBeGreaterThanOrEqual(0);
+      expect(corner).toBe(sector + 1);
     });
   });
 
@@ -1047,6 +1079,75 @@ describe("TICK_ORDER", () => {
           "pitLane.exited",
         );
         expect(v).toHaveLength(3);
+      });
+
+      // #1676: `orderMarkerCalls` can publish the corner name ahead of the
+      // sector call, so the table's order of those two rows certifies nothing.
+      it("refuses a pair whose end stage can be published ahead of the trigger stage (reordersWith)", () => {
+        const order: TickStage[] = [
+          stage("diffTrigger", ["limiter.dropped"]),
+          { ...stage("diffEnd", ["pitLane.exited"]), reordersWith: "diffTrigger" },
+        ];
+        const v = findEndsOnOrderViolations(order, "limiter.dropped", "pitLane.exited");
+
+        expect(v).toEqual([expect.objectContaining({ kind: "variable-order", triggerStage: "diffTrigger" })]);
+        expect(v[0]!.message).toContain("cannot certify this pair");
+        // The control: the same rows without the link certify the pair.
+        expect(
+          findEndsOnOrderViolations(
+            [stage("diffTrigger", ["limiter.dropped"]), stage("diffEnd", ["pitLane.exited"])],
+            "limiter.dropped",
+            "pitLane.exited",
+          ),
+        ).toEqual([]);
+      });
+
+      it("refuses the sector-start / corner-name pair in the real table, either way round", () => {
+        expect(
+          findEndsOnOrderViolations(CONTROLLER_TICK_ORDER, "sectorStart.approaching", "cornerName.approaching").map(
+            (x) => x.kind,
+          ),
+        ).toEqual(["variable-order"]);
+        expect(
+          findEndsOnOrderViolations(CONTROLLER_TICK_ORDER, "cornerName.approaching", "sectorStart.approaching").map(
+            (x) => x.kind,
+          ),
+        ).toEqual(["trigger-after-end"]);
+      });
+
+      it("the log check accepts a flush that publishes a reordersWith row ahead of the row it names, and only that", () => {
+        const linked: TickStage[] = [
+          stage("diffEarly", ["sectorStart.approaching"]),
+          { ...stage("diffLate", ["cornerName.approaching"]), reordersWith: "diffEarly" },
+        ];
+        const reversed: LogEntry[] = [
+          { kind: "call", stage: "diffEarly" },
+          { kind: "call", stage: "diffLate" },
+          { kind: "publish", event: "cornerName.approaching" },
+          { kind: "publish", event: "sectorStart.approaching" },
+        ];
+
+        expect(checkTickLog(reversed, linked).problems).toEqual([]);
+        expect(checkTickLog(reversed, linked).matched.map((m) => m.stage)).toEqual(["diffLate", "diffEarly"]);
+        // The control: the same rows with no link refuse the reversed flush.
+        expect(
+          checkTickLog(reversed, [
+            stage("diffEarly", ["sectorStart.approaching"]),
+            stage("diffLate", ["cornerName.approaching"]),
+          ]).problems,
+        ).toHaveLength(1);
+      });
+
+      it("every reordersWith names a stage earlier in its table", () => {
+        for (const order of [TICK_ORDER, REPLAY_RECORDER_ORDER]) {
+          order.forEach((s, i) => {
+            if (s.reordersWith === undefined) return;
+
+            const earlier = order.slice(0, i).map((x) => x.stage);
+
+            expect(earlier, `${s.stage}.reordersWith`).toContain(s.reordersWith);
+          });
+        }
       });
     });
 

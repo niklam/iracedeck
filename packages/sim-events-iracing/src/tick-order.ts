@@ -79,12 +79,18 @@ import { TRACK_WETNESS_EVENTS } from "./diff/track-wetness.js";
  *   flushed at the end of the tick, in call order, after every direct publish.
  * - `events` — every event the stage can publish. For a diff module this is
  *   the module's own `<NAME>_EVENTS` list, which its emitter's type enforces.
+ * - `reordersWith` — set when the tick can move this stage's publishes ahead
+ *   of the named EARLIER stage's on one tick (#1676: `orderMarkerCalls`
+ *   publishes the corner name before the sector call when its marker was
+ *   crossed first). The two rows' order then holds on some ticks only, so
+ *   {@link findEndsOnOrderViolations} refuses to certify a pair between them.
  */
 export type TickStage = {
   readonly stage: string;
   readonly source: string;
   readonly via: "direct" | "pending";
   readonly events: readonly SimEventName[];
+  readonly reordersWith?: string;
 };
 
 /** The publish sites in `translator.ts` that end active-state loops (`publishActiveStateTeardown`). */
@@ -155,8 +161,20 @@ export const TICK_ORDER: readonly TickStage[] = [
     via: "pending",
     events: PIT_LANE_LANDMARKS_EVENTS,
   },
-  { stage: "diffCornerName", source: "diff/corner-name.ts", via: "pending", events: CORNER_NAME_EVENTS },
+  // Sector start before the corner name (#1676). The two calls one tick sweeps
+  // are published in the order their markers were crossed, a tie (a corner at
+  // the sector line) to the sector call: `translator.ts` swaps them, after
+  // both have run, when the corner was crossed first. So these two rows' order
+  // holds on a one-frame tick and not on every tick, which `reordersWith`
+  // records, and an `endsOn` pair between their events is refused.
   { stage: "diffSectorStart", source: "diff/sector-start.ts", via: "pending", events: SECTOR_START_EVENTS },
+  {
+    stage: "diffCornerName",
+    source: "diff/corner-name.ts",
+    via: "pending",
+    events: CORNER_NAME_EVENTS,
+    reordersWith: "diffSectorStart",
+  },
   { stage: "diffFuelLapsLeft", source: "diff/fuel-laps-left.ts", via: "pending", events: FUEL_LAPS_LEFT_EVENTS },
   { stage: "diffRadar", source: "diff/radar.ts", via: "pending", events: RADAR_EVENTS },
   { stage: "diffPitSpeeding", source: "diff/pit-speeding.ts", via: "pending", events: PIT_SPEEDING_EVENTS },
@@ -197,6 +215,12 @@ export type EndsOnOrderViolation =
       readonly message: string;
     }
   | { readonly kind: "same-stage"; readonly stage: string; readonly message: string }
+  | {
+      readonly kind: "variable-order";
+      readonly triggerStage: string;
+      readonly endStage: string;
+      readonly message: string;
+    }
   | { readonly kind: "never-published"; readonly event: SimEventName; readonly message: string };
 
 /**
@@ -207,6 +231,8 @@ export type EndsOnOrderViolation =
  *   stage that can publish `end`.
  * - `same-stage` — one stage can publish both. The table cannot see the order
  *   inside a stage, so this fails closed.
+ * - `variable-order` — the trigger's stage comes first in the table, but the
+ *   end's stage `reordersWith` it, so some ticks publish `end` first.
  * - `never-published` — no stage publishes the event. A misspelt or dropped
  *   event would otherwise pass vacuously, so a caller treats this as an error.
  *
@@ -250,6 +276,15 @@ export function findEndsOnOrderViolations(
             `${pair}: \`${triggerStage}\` publishes both, and the order table cannot see the order inside one stage, so this fails closed. ` +
             `Prove in that module's own tests that one call never emits \`${trigger}\` after \`${end}\` (drive a single call that would emit both and assert the emit order, ` +
             `or show the two are gated apart), then add an exemption for this pair to the check that applies this one (\`race-engineer-wiring\`'s \`ends-on-order.test.ts\`, which has no exemption list until one is needed), citing that test.`,
+        });
+      } else if (i < j && order[j]!.reordersWith === triggerStage) {
+        violations.push({
+          kind: "variable-order",
+          triggerStage,
+          endStage,
+          message:
+            `${pair}: \`${endStage}\` comes after \`${triggerStage}\` in the table, but the tick can publish its events ahead of \`${triggerStage}\`'s (\`reordersWith\`), ` +
+            `so on such a tick the line could play after its condition ended. The table cannot certify this pair: make the publish order fixed, or end the line on another event.`,
         });
       } else if (i > j) {
         violations.push({

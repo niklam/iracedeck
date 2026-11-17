@@ -223,10 +223,9 @@ import { registerRadarEngine } from "./radar-engine.js";
 import { PIT_READBACK_CONTRACTS, registerReadbackVocabulary, SCENARIO_ID_TO_PIT_READBACK_ID } from "./readback.js";
 import { buildRollingStartContracts, type RollingStartFormationResolver } from "./rolling-start.js";
 import {
-  buildSectorStartContract,
-  type CornerCallWouldSpeakResolver,
   registerSectorStartVocabulary,
   SCENARIO_ID_TO_SECTOR_START_ID,
+  SECTOR_START_CONTRACT,
 } from "./sector-start.js";
 import {
   buildSessionStartContract,
@@ -309,13 +308,12 @@ export {
   type CornerNameCalloutId,
   type CornerNameSnapshot,
   type CornerNameSnapshotResolver,
+  MARKER_CALL_MAX_LAG_MS,
 } from "./corner-name.js";
 export {
-  buildSectorStartContract,
-  type CornerCallWouldSpeakResolver,
   registerSectorStartVocabulary,
   SECTOR_START_CLIP_SOURCES,
-  SECTOR_START_CORNER_CLEARANCE_S,
+  SECTOR_START_CONTRACT,
   SECTOR_START_SCENARIO_IDS,
   type SectorStartCalloutId,
   type SectorStartData,
@@ -1222,15 +1220,6 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
       everyLap: getLapTimeCalloutEnabled("every-lap") && engine.isScripted("pit-crew.lap-time-last"),
     });
 
-  // Whether a corner name would be spoken (#1573), for the sector-start
-  // contract, which yields to a corner due just past its sector start: the
-  // corner-name opt-in is on AND the active voice scripts the corner-name
-  // contract, read live at each fire from the same gate and the engine's
-  // compiled scripts, as the lap-time precedence above does (the #1571
-  // owner-resolver precedent). It adds no `PitCrewDeps` key.
-  const cornerCallWouldSpeak: CornerCallWouldSpeakResolver = () =>
-    getCornerNameCalloutEnabled("corner-names") && engine.isScripted("pit-crew.corner-name-approaching");
-
   // The flag family, built once over its sim reads (#1378): the vocabulary and
   // the contracts share one set of gates, so the furled speak-time gates and
   // the conditions a pack may write stay one definition (#1138).
@@ -1807,13 +1796,14 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
 
   // Sector-start callout (issue #1573). The vocabulary (`sectorStart.number`,
   // `sectorStart.isFinal`) reads the fire's own event, so it needs no
-  // snapshot; the contract yields to a spoken corner due just past the sector
-  // start through `cornerCallWouldSpeak` above.
+  // snapshot. A corner name due at the same moment is not suppressed: the
+  // bus plays the two in the order they were published, the second queued
+  // behind the first (#1676).
   registerSectorStartVocabulary(engine);
   engine.defineContract(
     wrapWithMaster(
       wrapCalloutScenario(
-        buildSectorStartContract(cornerCallWouldSpeak),
+        SECTOR_START_CONTRACT,
         SCENARIO_ID_TO_SECTOR_START_ID,
         getSectorStartCalloutEnabled,
         "sector-start callout",

@@ -97,6 +97,7 @@ import { diffLeaderWhite } from "./diff/leader-white.js";
 import { diffLifecycle } from "./diff/lifecycle.js";
 import { diffLimiterToggle } from "./diff/limiter-toggle.js";
 import { diffLimiter } from "./diff/limiter.js";
+import { orderMarkerCalls } from "./diff/marker-call-order.js";
 import {
   diffOpponentFlags,
   OPPONENT_FLAG_DEFAULT_RANGE_SECONDS,
@@ -190,7 +191,7 @@ const SUBSCRIPTION_ID = "__sim-events-iracing__";
  * one step's first error. `tick-steps.source.test.ts` counts the ids in both
  * `handleTick`s and fails until this number matches; a new step changes it.
  */
-export const TRANSLATOR_REPORTER_MAX_KEYS = 61 * TICK_STEP_KEYS_PER_ID;
+export const TRANSLATOR_REPORTER_MAX_KEYS = 62 * TICK_STEP_KEYS_PER_ID;
 
 /** The step name every {@link onTranslatorTick} listener is called under: one id, `translator:onTranslatorTick`. */
 const TICK_LISTENER_STEP = "onTranslatorTick";
@@ -3568,12 +3569,8 @@ function handleLiveSteps(
       self.pitLaneLandmarkLogger,
     ),
   );
-  // Corner-name callouts (issue #888). Practice/test only — the diff gates on
-  // the classified session type (diff-side per #655, so the harness can fire
-  // the event directly). Reuses the cached trackLengthMeters for the
-  // speed→lap-fraction conversion; markers resolve from the bundled
-  // lovely-track-data snapshot keyed by WeekendInfo.TrackName. An empty raw
-  // session type means session info hasn't resolved — stay silent.
+  // The corner-name markers (issue #888), resolved from the bundled
+  // lovely-track-data snapshot keyed by WeekendInfo.TrackName.
   const cornerMarkers = steps.value("resolveCornerMarkersCached", values, self.state.cornerName.markers, () =>
     resolveCornerMarkersCached(self.state.cornerName, sessionInfo, telemetry),
   );
@@ -3588,8 +3585,37 @@ function handleLiveSteps(
   const trackSectors = steps.value("resolveTrackSectorsCached", values, self.state.trackSectors.starts, () =>
     resolveTrackSectorsCached(self.state.trackSectors, sessionInfo, telemetry),
   );
-  steps.live("diffCornerName", pending, () =>
-    diffCornerName(
+  // Sector-start calls (issue #1573): the corner names' lead point and sweep
+  // over the track's sector starts, practice/test only (gated in the diff).
+  // Called right BEFORE the corner names (#1676), and the two calls one tick
+  // sweeps are published in the order their markers were crossed, a tie to the
+  // sector call: each diff returns how far behind the lead point its crossed
+  // start sits, and `orderMarkerCalls` below swaps the two when the corner
+  // came first (a tick wider than one frame). A tie is a corner at the sector
+  // line, where the sector call is the one on the line; the second call queues
+  // behind the first on the voice bus. Behind the replay guard like everything
+  // here, so a replay never publishes one. It reads no corner markers: a track
+  // without them still gets every sector start.
+  const markerCallsFrom = pending.length;
+  const markerCallsBehind: { sector: number | null; corner: number | null } = { sector: null, corner: null };
+  steps.live("diffSectorStart", pending, () => {
+    markerCallsBehind.sector = diffSectorStart(
+      self.state.sectorStart,
+      telemetry,
+      classifySession(sessionType)?.category === "practice",
+      trackSectors,
+      trackLengthMeters,
+      self.getCornerCalloutLeadSeconds,
+      emit,
+    );
+  });
+  // Corner-name callouts (issue #888). Practice/test only — the diff gates on
+  // the classified session type (diff-side per #655, so the harness can fire
+  // the event directly). Reuses the cached trackLengthMeters for the
+  // speed→lap-fraction conversion. An empty raw session type means session
+  // info hasn't resolved — stay silent.
+  steps.live("diffCornerName", pending, () => {
+    markerCallsBehind.corner = diffCornerName(
       self.state.cornerName,
       telemetry,
       classifySession(sessionType)?.category === "practice",
@@ -3597,25 +3623,12 @@ function handleLiveSteps(
       trackLengthMeters,
       self.getCornerCalloutLeadSeconds,
       emit,
-    ),
-  );
-  // Sector-start calls (issue #1573): the corner names' lead point and sweep
-  // over the track's sector starts, practice/test only (gated in the diff),
-  // right after the corner names so a corner swept on the same tick is
-  // published first. Behind the replay guard like everything here, so a replay
-  // never publishes one. The corner markers only measure `nextCornerInS`; a
-  // track without them still gets every sector start.
-  steps.live("diffSectorStart", pending, () =>
-    diffSectorStart(
-      self.state.sectorStart,
-      telemetry,
-      classifySession(sessionType)?.category === "practice",
-      trackSectors,
-      cornerMarkers,
-      trackLengthMeters,
-      self.getCornerCalloutLeadSeconds,
-      emit,
-    ),
+    );
+  });
+  // A step that threw left its value `null` and its events truncated out of
+  // `pending`, so this reorders only two calls that both completed.
+  steps.run("orderMarkerCalls", () =>
+    orderMarkerCalls(pending, markerCallsFrom, markerCallsBehind.sector, markerCallsBehind.corner),
   );
   // Laps-of-fuel-left callout crossings (issue #838). Reads the SAME
   // validated estimator as Session Info's Laps to Empty (issue #748), over

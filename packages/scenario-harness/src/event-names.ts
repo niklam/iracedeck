@@ -138,7 +138,7 @@ export const EVENT_TEMPLATES = [
   {
     name: "sectorStart.approaching",
     description: "Approaching a sector start in practice/test (issue #1573)",
-    data: { sector: 3, sectorCount: 4, nextCornerInS: null },
+    data: { sector: 3, sectorCount: 4 },
   },
   {
     name: "pitService.readbackRequested",

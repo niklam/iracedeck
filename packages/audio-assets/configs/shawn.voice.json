@@ -30484,7 +30484,7 @@
       "sequence": ["{{cornerName.clip}}"]
     },
     "pit-crew.sector-start-approaching": {
-      "comment": "The sector the car is entering, as a bare \"Sector three.\" with no radio frame, spoken as the car reaches the sector start in practice and test sessions on the same lead as the corner names. Sector one at the line is never called, and a corner name due just past the start is spoken instead of the sector.",
+      "comment": "The sector the car is entering, as a bare \"Sector three.\" with no radio frame, spoken as the car reaches the sector start in practice and test sessions on the same lead as the corner names. Sector one at the line is never called. When a corner name falls on the same moment, both are spoken, the second straight after the first.",
       "test": "Harness → Corner Names → Sector three. In-sim: an Offline Testing lap at a track with three or more sectors; each sector start except the line is called once a lap.",
       "sequence": ["{{sectorStart.number}}"]
     },
