@@ -228,6 +228,22 @@ describe("diffTrafficRejoin", () => {
       expect(unread.events).toEqual([CLEAR]);
     });
 
+    it("starts on the start/finish line read as 1.0000126, timing the cars to the line", () => {
+      const h = harness();
+      // The player on the line, its time already restarted; a car 0.01 of the
+      // lap short of it (495 s) arrives in about 5 s (0.0063 − 495 + 500).
+      const base = tel({ pct: 1.0000126, cars: [{ idx: 5, pct: 0.99, est: 495 }] });
+      const onLine = {
+        ...base,
+        CarIdxEstTime: (base.CarIdxEstTime ?? []).map((est, idx) => (idx === PLAYER ? 0.0063 : est)),
+      };
+
+      h.stop(onLine);
+
+      expect(h.episode.active).toBe(true);
+      expect(h.events).toEqual([near(5, true)]);
+    });
+
     it("starts after the green in a session winding down too (Checkered, CoolDown)", () => {
       for (const state of [SessionState.Checkered, SessionState.CoolDown]) {
         const h = harness();

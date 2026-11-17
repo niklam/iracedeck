@@ -14,6 +14,7 @@ import {
   isLapFraction,
   isTrafficCarStationary,
   landmarkReferenceSource,
+  normalizeLapPosition,
   referenceTimeAt,
   resolveCarClassId,
   resolveClassLapTime,
@@ -23,6 +24,7 @@ import {
   TRAFFIC_CURVE_BINS,
   TRAFFIC_CURVE_MAX_SPAN_PCT,
   TRAFFIC_CURVE_SAMPLE_CAP,
+  TRAFFIC_LINE_OVERSHOOT_PCT,
   TRAFFIC_MOTION_MAX_AGE_S,
   TRAFFIC_MOTION_MAX_PLAUSIBLE_MPS,
   TRAFFIC_MOTION_WINDOW_S,
@@ -103,6 +105,33 @@ describe("the shared helpers", () => {
       false,
       false,
     ]);
+  });
+
+  it("normalizeLapPosition: [0, 1) as itself, the line read as 1 or a hair past it as that hair past 0", () => {
+    expect([0, 0.5, 0.99999].map(normalizeLapPosition)).toEqual([0, 0.5, 0.99999]);
+    expect(normalizeLapPosition(1)).toBe(0);
+    // The measured line readings (module header), and the overshoot's own edge.
+    expect(normalizeLapPosition(1.0000126)).toBeCloseTo(0.0000126, 12);
+    expect(normalizeLapPosition(1.00001)).toBeCloseTo(0.00001, 12);
+    expect(normalizeLapPosition(1 + TRAFFIC_LINE_OVERSHOOT_PCT)).toBeCloseTo(TRAFFIC_LINE_OVERSHOOT_PCT, 12);
+  });
+
+  it("normalizeLapPosition: null for negative, non-finite, clearly past 1 or not a number", () => {
+    expect(
+      [
+        -1,
+        -0.0001,
+        1 + 2 * TRAFFIC_LINE_OVERSHOOT_PCT,
+        1.5,
+        2,
+        Number.NaN,
+        Number.POSITIVE_INFINITY,
+        Number.NEGATIVE_INFINITY,
+        "0.5",
+        undefined,
+        null,
+      ].map(normalizeLapPosition),
+    ).toEqual(new Array(11).fill(null));
   });
 
   it("elapsed: the milliseconds since a time, a clock that stepped back reading as just now", () => {
@@ -587,6 +616,11 @@ describe("crossesLineBefore", () => {
     expect(crossesLineBefore(1.0000126, 0.3)).toBe(false);
     expect(crossesLineBefore(1, 0)).toBe(false);
   });
+
+  it("reads a position clearly past 1 as no position, never as a lap position less one", () => {
+    expect(crossesLineBefore(1.5, 0.3)).toBe(false);
+    expect(crossesLineBefore(Number.POSITIVE_INFINITY, 0.3)).toBe(false);
+  });
 });
 
 describe("arrivalSeconds", () => {
@@ -786,6 +820,24 @@ describe("computeTrafficArrivals", () => {
 
       expect(arrival.timed && arrival.seconds).toBeCloseTo(29.9981, 10);
     });
+  });
+
+  it("times a car on the line read as 1.0000126 as at the line, and a position clearly past 1 as untimed", () => {
+    const telemetry = tel([
+      { idx: 0, pct: 0.5, est: 50 },
+      { idx: 1, pct: 1.0000126, est: 0.001 },
+      { idx: 2, pct: 1.5, est: 10 },
+      { idx: 3, pct: Number.POSITIVE_INFINITY, est: 10 },
+    ]);
+
+    const arrivals = byCar(
+      computeTrafficArrivals(createTrafficArrivalState(), 0.5, [always("curve", 30)], telemetry, 0, null, null),
+    );
+
+    // Behind P without a wrap: no class lap needed.
+    expect(arrivals.get(1)).toEqual({ carIdx: 1, classId: 1, timed: true, seconds: 29.999, source: "curve" });
+    expect(arrivals.get(2)).toEqual({ carIdx: 2, classId: 1, timed: false, reason: "noPosition" });
+    expect(arrivals.get(3)).toEqual({ carIdx: 3, classId: 1, timed: false, reason: "noPosition" });
   });
 
   it("reports every candidate untimed for a target position outside [0, 1)", () => {

@@ -37,7 +37,10 @@
  * **Where the player is, along the lap.** Every distance is the forward one,
  * in driving direction, never the shorter way round: a stall may lie more than
  * half a lap before `blendEnd` (a pit road along both straights of a short
- * oval), where the shorter way reads backwards. The player is short of
+ * oval), where the shorter way reads backwards. The player's own position is
+ * read through `normalizeLapPosition`: on the start/finish line the sim reads
+ * 1 or a hair past it, with the time already restarted, which is that hair
+ * past 0, so a pit exit across the line runs on through it. The player is short of
  * `pitRoadEnd` while the forward distance to `blendEnd` exceeds the forward
  * distance from `pitRoadEnd` to `blendEnd`. The player is past `blendEnd` once
  * back on the racing surface (`AproachingPits` → `OnTrack` is the very edge
@@ -102,8 +105,8 @@ import {
   curveReferenceSource,
   elapsed,
   isFiniteNumber,
-  isLapFraction,
   landmarkReferenceSource,
+  normalizeLapPosition,
   referenceTimeAt,
   resolveCarClassId,
   resolveClassLapTime,
@@ -196,15 +199,20 @@ export type TrafficPitExitTelemetry = TrafficTelemetry &
 /** Why there is no ETA this evaluation, named in the once-per-episode debug line. */
 type NoEtaReason = "noPlayerClass" | "noReference" | "noClassLap" | "noTrackLength" | "noPitSpeedLimit";
 
-/** Why a running episode ends on this tick, read before the landmarks; `null` while it runs on. */
-function endReason(telemetry: TrafficPitExitTelemetry, playerPct: unknown): string | null {
+/**
+ * Why a running episode ends on this tick, read before the landmarks; `null`
+ * while it runs on. `playerPct` is already normalized
+ * (`normalizeLapPosition`): a player on the start/finish line, read as 1 or a
+ * hair past it, is in world.
+ */
+function endReason(telemetry: TrafficPitExitTelemetry, playerPct: number | null): string | null {
   if (telemetry.IsOnTrack !== true) return "left the car";
 
   if (telemetry.PlayerCarInPitStall === true) return "back in the stall";
 
   if (isRacingSurface(telemetry.PlayerTrackSurface)) return "on the racing surface";
 
-  if (!isLapFraction(playerPct)) return "not in world";
+  if (playerPct === null) return "not in world";
 
   return null;
 }
@@ -229,7 +237,10 @@ export function diffTrafficPitExit(
   logger: ILogger,
 ): void {
   const inStall = telemetry.PlayerCarInPitStall;
-  const playerPct = facts.playerCarIdx >= 0 ? telemetry.CarIdxLapDistPct?.[facts.playerCarIdx] : undefined;
+  const rawPlayerPct = facts.playerCarIdx >= 0 ? telemetry.CarIdxLapDistPct?.[facts.playerCarIdx] : undefined;
+  // A pit exit across the start/finish line reads 1 or a hair past it on the
+  // line, its time already restarted: that hair past 0, never "not in world".
+  const playerPct = normalizeLapPosition(rawPlayerPct);
   const departed = episode.lastInPitStall === true && inStall === false && telemetry.OnPitRoad === true;
 
   if (departed) {
@@ -237,7 +248,7 @@ export function diffTrafficPitExit(
 
     Object.assign(episode, createTrafficPitExitState(), { active: true });
     logger.debug(
-      `PitExit: episode started (left the stall at pct=${isFiniteNumber(playerPct) ? playerPct.toFixed(4) : "?"})`,
+      `PitExit: episode started (left the stall at pct=${isFiniteNumber(rawPlayerPct) ? rawPlayerPct.toFixed(4) : "?"})`,
     );
   }
 
@@ -252,6 +263,7 @@ export function diffTrafficPitExit(
       if (episode.lastEvalAt !== null && episode.lastEvalAt > now) episode.lastEvalAt = null;
 
       if (episode.lastEvalAt === null || elapsed(now, episode.lastEvalAt) >= TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS) {
+        // `endReason` refused a `null` position.
         evaluate(episode, curves, telemetry, playerPct as number, facts, windows, now, emit, logger);
       }
     }

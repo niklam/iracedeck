@@ -100,7 +100,7 @@ import {
   curveReferenceSource,
   elapsed,
   isFiniteNumber,
-  isLapFraction,
+  normalizeLapPosition,
   resolveCarClassId,
   scaledReferenceSource,
   type TimedArrival,
@@ -208,11 +208,18 @@ function failedGate(telemetry: TrafficRejoinTelemetry, playerCarIdx: number): Re
 
   if (!isFiniteNumber(telemetry.Speed)) return "noSpeed";
 
-  const pct = playerCarIdx >= 0 ? telemetry.CarIdxLapDistPct?.[playerCarIdx] : undefined;
-
-  if (!isLapFraction(pct)) return "noPosition";
+  if (playerLapPosition(telemetry, playerCarIdx) === null) return "noPosition";
 
   return null;
+}
+
+/**
+ * The player's lap position in [0, 1), `null` when unknown: on the
+ * start/finish line, read as 1 or a hair past it, it is that hair past 0
+ * (`normalizeLapPosition`), so a car stopped on the line is on the lap.
+ */
+function playerLapPosition(telemetry: TrafficRejoinTelemetry, playerCarIdx: number): number | null {
+  return normalizeLapPosition(playerCarIdx >= 0 ? telemetry.CarIdxLapDistPct?.[playerCarIdx] : undefined);
 }
 
 /** "car 5 at 4.62 s via curve", or what stands in for it when no car was timed. */
@@ -283,7 +290,7 @@ export function diffTrafficRejoin(
 
   // The gate checked both.
   const speed = telemetry.Speed as number;
-  const pct = telemetry.CarIdxLapDistPct?.[playerCarIdx] as number;
+  const pct = playerLapPosition(telemetry, playerCarIdx) as number;
 
   if (!episode.active) {
     if (speed >= TRAFFIC_CRAWL_MPS) {

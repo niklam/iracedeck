@@ -384,6 +384,57 @@ describe("diffTrafficPitExit", () => {
       ]);
     });
 
+    describe("a pit exit across the start/finish line, read as 1.0000126 on the line", () => {
+      /** Pit road ends at 0.98 (490 s), the blend at 0.02 (10 s), on a 2,000 m track. */
+      const ACROSS: TrafficPitExitLandmarks = {
+        pitRoadEnd: landmark(0.98, { [CLS]: 490 }),
+        blendEnd: landmark(0.02, { [CLS]: 10 }),
+      };
+      /** The player on the line: the sim's reading there, its time already restarted. */
+      const ON_LINE = 1.0000126;
+
+      it("runs on through the tick on the line and speaks the flip after it", () => {
+        const h = harness({ landmarks: ACROSS, trackLengthMeters: 2000 });
+
+        // As above: the ETA 20.5 s, the car arriving with the player.
+        h.depart(tel({ pct: 0.975, cars: [{ idx: 5, pct: 0.979, est: 489.5 }] }));
+        // On the line: about 10 s to the blend (10 − 0.0063 on the curve); the
+        // car 20 s out (10 − 490 + 500) is +10 s, outside the window.
+        h.after(
+          TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS,
+          tel({ pct: ON_LINE, est: 0.0063, OnPitRoad: false, cars: [{ idx: 5, pct: 0.98, est: 490 }] }),
+        );
+
+        expect(h.episode.active).toBe(true);
+        expect(lines(h.debug).filter((line) => line.includes("ended"))).toEqual([]);
+
+        // Past the line, the flip held for its second evaluation: 13 − 6 = +7 s.
+        h.after(
+          TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS,
+          tel({ pct: 0.008, OnPitRoad: false, cars: [{ idx: 5, pct: 0.995, est: 497 }] }),
+        );
+
+        expect(h.episode.active).toBe(true);
+        expect(h.events).toEqual([
+          { verdict: "traffic", seconds: 0 },
+          { verdict: "clear", seconds: 7 },
+        ]);
+      });
+
+      it("makes the call at a departure from a stall on the line", () => {
+        const h = harness({ landmarks: ACROSS, trackLengthMeters: 2000 });
+
+        // Past pitRoadEnd by position: about 10 s to the blend on the curve. A
+        // car 0.02 of the lap short of the line arrives in 10 − 490 + 500 = 20 s:
+        // about +10 s, clear.
+        h.depart(tel({ pct: ON_LINE, est: 0.0063, cars: [{ idx: 5, pct: 0.98, est: 490 }] }));
+
+        expect(h.episode.active).toBe(true);
+        expect(h.events).toEqual([{ verdict: "clear", seconds: 10 }]);
+        expect(lines(h.debug).at(-1)).toContain("on blend");
+      });
+    });
+
     describe("from a stall more than half a lap before blendEnd (a pit road along both straights)", () => {
       // Pit road ends at 0.75 (375 s), the blend at 0.80 (400 s); the stall at 0.20.
       const FAR: TrafficPitExitLandmarks = {

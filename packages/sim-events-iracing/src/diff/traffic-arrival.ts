@@ -195,12 +195,14 @@ export type TrafficReferenceSource = {
 
 /**
  * Why a candidate car has no arrival time: the target position is not a lap
- * position (`noTarget`), no class for the car (`noClass`), no valid
+ * position (`noTarget`), the car's own `CarIdxLapDistPct` is not one either
+ * though not negative — past 1 by more than {@link TRAFFIC_LINE_OVERSHOOT_PCT},
+ * or infinite (`noPosition`), no class for the car (`noClass`), no valid
  * `CarIdxEstTime` (`noEstTime`), no source answered for its class
  * (`noReference`), or it is ahead of P on the lap and its class's lap is
  * unknown, so its next visit cannot be timed (`noClassLap`).
  */
-export type TrafficUntimedReason = "noTarget" | "noClass" | "noEstTime" | "noReference" | "noClassLap";
+export type TrafficUntimedReason = "noTarget" | "noPosition" | "noClass" | "noEstTime" | "noReference" | "noClassLap";
 
 /** One candidate car's arrival at P: in `seconds`, timed by `source`, or untimed for `reason`. */
 export type TrafficArrival =
@@ -235,6 +237,30 @@ export function isFiniteNumber(value: unknown): value is number {
 /** A lap position: a number in [0, 1), so neither `NaN`, the sim's −1 for a car not in world, nor 1. Shared by the traffic modules. */
 export function isLapFraction(value: unknown): value is number {
   return typeof value === "number" && value >= 0 && value < 1;
+}
+
+/**
+ * How far past 1 (lap fraction) a `CarIdxLapDistPct` reading still counts as
+ * the start/finish line itself: a thousandth of the lap, a few metres. The sim
+ * reads a car on the line as 1 or a hair past it, its `CarIdxEstTime` already
+ * restarted (1.00001 and 1.0000126 measured; module header), so such a reading
+ * is that hair past 0. Anything farther past 1 is no lap position.
+ */
+export const TRAFFIC_LINE_OVERSHOOT_PCT = 0.001;
+
+/**
+ * A `CarIdxLapDistPct` reading as a lap position in [0, 1): itself in [0, 1);
+ * 1, or at most {@link TRAFFIC_LINE_OVERSHOOT_PCT} past it, as that much past 0
+ * (the line, module header); `null` for anything else — the sim's −1 for a car
+ * not in world, any negative, `NaN`, an infinity, a value clearly past 1, a
+ * non-number. The one rule every traffic module reads the line by.
+ */
+export function normalizeLapPosition(value: unknown): number | null {
+  if (typeof value !== "number" || !(value >= 0)) return null;
+
+  if (value < 1) return value;
+
+  return value - 1 <= TRAFFIC_LINE_OVERSHOOT_PCT ? value - 1 : null;
 }
 
 /** How long since `since` (ms); a clock that stepped back counts as just now. Shared by the traffic detectors. */
@@ -563,7 +589,9 @@ export function resolveClassLapTime(
  * Whether a car at lap position `carPct` must cross the start/finish line
  * before it reaches P (`targetPct`, in [0, 1)): exactly when it is ahead of P
  * on the lap. A position the sim reads as 1 or just past it (on the line, its
- * time already restarted) counts as 0. The wrap is decided here, by position,
+ * time already restarted) counts as that hair past 0
+ * ({@link normalizeLapPosition}); a reading that is no lap position at all is
+ * `false`, so a caller screens those out first. The wrap is decided here, by position,
  * never by the sign of `T(P) − estTime`: each car's estTime carries an offset
  * of its own (±0.2 s typically, about 1 s at worst; module header), so a car
  * just behind P can read a reference time past P's and one just past P a time
@@ -571,9 +599,9 @@ export function resolveClassLapTime(
  * — and the second arriving now.
  */
 export function crossesLineBefore(carPct: number, targetPct: number): boolean {
-  const pct = carPct >= 1 ? carPct - 1 : carPct;
+  const pct = normalizeLapPosition(carPct);
 
-  return pct > targetPct;
+  return pct !== null && pct > targetPct;
 }
 
 /**
@@ -696,6 +724,13 @@ export function computeTrafficArrivals(
 
     if (!isLapFraction(targetPct)) {
       arrivals.push({ carIdx, classId, timed: false, reason: "noTarget" });
+      continue;
+    }
+
+    // A racing-surface car whose position is no lap position cannot be placed
+    // against P: untimed, never left out, so it can never be a clear.
+    if (normalizeLapPosition(pct) === null) {
+      arrivals.push({ carIdx, classId, timed: false, reason: "noPosition" });
       continue;
     }
 
