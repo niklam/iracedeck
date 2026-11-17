@@ -35,11 +35,11 @@
  * to share one body.
  *
  * **Composed lines (maintainer, 2026-11-11).** A first call in the close band
- * is three whole sentences picked at random from three pools — an intro
- * ("Car coming."), the middle naming the seconds ("About five seconds."),
- * an outro ("Watch out.") — and a later count is an update intro and the
- * middle ("Closer now. About five seconds."). The joins fall at sentence
- * ends, where a pause is natural, so variety costs no seam inside a sentence.
+ * is one flowing sentence of three clips picked at random from three pools —
+ * a lead-in with no period ("Car coming in"), the middle naming the seconds
+ * ("about five seconds."), an outro ("Watch out.") — and a later count is an
+ * update intro ending in a comma and the middle ("Getting closer, about
+ * five seconds."). Both voices use the same texts for these pieces.
  * The middle is the {@link REJOIN_SECONDS_VAR} var: the event's `seconds`
  * resolved to the `traffic/rejoin-mid-<N>` pool, whose takes are the voice's
  * different wordings of the same figure. The fixed lines are pools of four.
@@ -232,7 +232,7 @@ export function registerTrafficVocabulary(
 
       return base === null ? null : poolRef(TRAFFIC_GROUP, base);
     },
-    "The nearest car's arrival in whole seconds, 2 to 9, as a whole sentence drawn from the traffic group's rejoin-mid pool for that number (traffic/rejoin-mid-5 is \"About five seconds.\"), each take a different wording. Nothing outside the close band.",
+    "The nearest car's arrival in whole seconds, 2 to 9, as a whole sentence drawn from the traffic group's rejoin-mid pool for that number (traffic/rejoin-mid-5 is \"about five seconds.\"), each take a different wording. Nothing outside the close band.",
   );
 
   engine.defineCond(

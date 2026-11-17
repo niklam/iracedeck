@@ -695,14 +695,14 @@ Some of the lines in iRaceDeck's two voices:
 | When | Default, for example | Default (Short callouts), for example |
 | --- | --- | --- |
 | Stopped, a car under 2 seconds away | *"Car right behind you. Watch out."* | *"Right behind you. Watch out."* |
-| Stopped, a car 2 to 10 seconds away | *"Car coming. About six seconds. Watch out."* | *"Heads up. Six seconds out. Mirrors."* |
-| Stopped, that car closing in | *"Getting closer. About three seconds."* | *"Closing. About three seconds."* |
+| Stopped, a car 2 to 10 seconds away | *"Car coming in about six seconds. Watch out."* | *"Car coming in about six seconds. Watch out."* |
+| Stopped, that car closing in | *"Getting closer, about three seconds."* | *"Getting closer, about three seconds."* |
 | Stopped, the next car 10 to 15 seconds away | *"Next car is more than ten seconds away. Be careful."* | *"Next car over ten seconds. Careful."* |
 | Stopped, nothing within 15 seconds | *"Clear to rejoin."* | *"Clear behind."* |
 | Leaving the pits, traffic expected | *"We're estimating traffic at the pit exit. Watch out."* | *"Traffic likely at pit exit. Watch out."* |
 | Leaving the pits, no traffic expected | *"Looks like the pit exit will be clear."* | *"Pit exit looks clear."* |
 
-Every line has several wordings, picked at random each time, so a long stop does not sound like a recording on repeat: a car-coming call is put together from eight openings, two ways of giving the seconds and eight closings, the closing-in update from six openings, and every other line has four variants of its own.
+Every line has several wordings, picked at random each time, so a long stop does not sound like a recording on repeat: a car-coming call is one sentence put together from eight openings, two ways of giving the seconds and eight closings, the closing-in update from six openings, and every other line has four variants of its own.
 
 The calls you hear while stopped play without the radio beeps, like the spotter's: they can come every few seconds while you sit there, and a beep either side of each would drown the words. The two pit exit calls keep the radio frame.
 
