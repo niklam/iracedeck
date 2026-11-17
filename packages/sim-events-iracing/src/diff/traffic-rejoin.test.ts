@@ -755,6 +755,33 @@ describe("diffTrafficRejoin", () => {
 
       expect(h.events).toEqual([OVER_TEN]);
     });
+
+    it("keeps a close car seen going by gone past a held-back line and missing arrays, until a line is said", () => {
+      const h = shortLap();
+
+      // Car 5 announced at 3.5; by at the next evaluation (12.5 now), whose
+      // over ten the untimed car holds back.
+      h.stop(tel({ cars: [coming(5, 3.5), unknown] }));
+      h.step([coming(5, 12.5), unknown]);
+      expect(h.events).toEqual([near(3, true)]);
+      expect(h.episode.closeCarPassed).toBe(true);
+
+      // No arrival times while car 5 comes round, so nothing is compared.
+      for (let s = 11.5; s > 5; s--) {
+        h.after(TRAFFIC_REJOIN_EVAL_INTERVAL_MS, tel({ cars: [coming(5, s), unknown], CarIdxEstTime: undefined }));
+      }
+
+      expect(h.events).toEqual([near(3, true)]);
+      expect(h.episode.closeCarPassed).toBe(true);
+
+      // Back at 4.5, only a second above the 3.5 it was announced at: still the
+      // car gone by, so its new approach is a new car coming. Spoken, the
+      // latch is consumed, and the count runs as usual from there.
+      for (let s = 4.5; s > 1; s--) h.step([coming(5, s), unknown]);
+
+      expect(h.events).toEqual([near(3, true), near(4, true), RIGHT_BEHIND]);
+      expect(h.episode.closeCarPassed).toBe(false);
+    });
   });
 
   describe("the close car's arrival rising", () => {

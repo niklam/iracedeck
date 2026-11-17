@@ -689,10 +689,18 @@ export type TrafficRejoinState = {
    * was still coming, `null` with no close car: an approaching car's arrival
    * only falls, so one that rose by more than `TRAFFIC_REJOIN_PASSED_RISE_S`
    * from it has wrapped round the lap past the player. Not moved once the car
-   * has gone by, so it stays gone on its way round again until the next line
-   * is spoken.
+   * has gone by.
    */
   closeCarSeconds: number | null;
+  /**
+   * The close car has been seen going by (its arrival rose past the margin or
+   * reached the clear band), so the next line is the one after a close car.
+   * Latched until a line is spoken or the episode resets: neither a line held
+   * back by untimed cars nor an evaluation without the per-car arrays clears
+   * it, so the car stays gone on its way round again, however near it reads
+   * by the time the line can be said.
+   */
+  closeCarPassed: boolean;
   /** The once-per-episode debug line for a reassuring line withheld by untimed cars has been written. */
   untimedLogged: boolean;
   /** The once-per-episode debug line for an evaluation without the per-car arrays has been written. */
@@ -711,6 +719,7 @@ export function createTrafficRejoinState(): TrafficRejoinState {
     spokenSeconds: null,
     closeCarIdx: null,
     closeCarSeconds: null,
+    closeCarPassed: false,
     untimedLogged: false,
     arraysMissingLogged: false,
   };

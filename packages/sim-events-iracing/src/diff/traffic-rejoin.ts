@@ -63,7 +63,8 @@
  *   {@link TRAFFIC_REJOIN_PASSED_RISE_S} since the last evaluation that timed
  *   it, or reached the clear band, went by. A car seen going by stays gone
  *   until the next line is spoken, however near it reads on its way round
- *   again. A close car that stops is therefore followed by the next car's
+ *   again: a line held back by untimed cars, or an evaluation without the
+ *   per-car arrays, does not end that. A close car that stops is therefore followed by the next car's
  *   band, and is a new car coming, with a closer band of its own, once it
  *   moves again.
  * - **Otherwise** a band moving away is not re-announced: a car whose arrival
@@ -357,14 +358,18 @@ function bandOf(seconds: number | null): Band {
 /**
  * Whether the car the last close call was about has gone by (module header);
  * `false` with no such call. Follows that car's arrival in
- * `episode.closeCarSeconds` while it is still coming, and leaves it once the
- * car has gone by, so the car stays gone on its way round again. A car
- * untimed or no longer a candidate (left the track, standing still) is gone
- * while it stays so, and is compared with its last timed arrival when it is
- * timed again.
+ * `episode.closeCarSeconds` while it is still coming. Once it is seen going
+ * by, `episode.closeCarPassed` latches until the next line is spoken, so the
+ * car stays gone on its way round again whatever its arrival reads by then —
+ * past a line held back by untimed cars and evaluations without the per-car
+ * arrays, which compare nothing. A car untimed or no longer a candidate (left
+ * the track, standing still) is gone while it stays so, and is compared with
+ * its last timed arrival when it is timed again.
  */
 function closeCarGone(episode: TrafficRejoinState, arrivals: readonly TrafficArrival[]): boolean {
   if (episode.closeCarIdx === null) return false;
+
+  if (episode.closeCarPassed) return true;
 
   const car = arrivals.find((arrival) => arrival.carIdx === episode.closeCarIdx);
 
@@ -373,6 +378,8 @@ function closeCarGone(episode: TrafficRejoinState, arrivals: readonly TrafficArr
   const last = episode.closeCarSeconds;
 
   if ((last !== null && car.seconds - last > TRAFFIC_REJOIN_PASSED_RISE_S) || car.seconds >= TRAFFIC_REJOIN_CLEAR_S) {
+    episode.closeCarPassed = true;
+
     return true;
   }
 
@@ -500,4 +507,5 @@ function evaluate(
 
   episode.closeCarIdx = close?.carIdx ?? null;
   episode.closeCarSeconds = close?.seconds ?? null;
+  episode.closeCarPassed = false;
 }
