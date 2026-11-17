@@ -89,9 +89,12 @@
  * — take {@link TRAFFIC_MAX_QUEUE_WAIT_MS}, since "about five seconds" heard
  * four seconds late describes a car that has already passed; the reassuring
  * lines — "more than ten", "Clear to rejoin" and the pit-exit clear — take the
- * engine default, since each stays true for as long as it waits: anything that
- * would make it false is a closer band or a flipped verdict, which the
- * detector publishes and which replaces it in the queue.
+ * engine default, since what would make one false is a closer band or a
+ * flipped verdict, which the detector publishes and which replaces it in the
+ * queue. The one gap is a picture the detector cannot judge — an untimed car
+ * turning up on rejoin, or the per-car arrays missing — where it publishes
+ * nothing, so nothing replaces the waiting line; practically unreachable, since
+ * iRacing always fills `CarClassEstLapTime` and the arrays.
  *
  * **Weights (spec decision 6, amended 2026-11-17).** The warnings — right
  * behind, both `near` calls and the pit-exit traffic warning — fire at
@@ -204,9 +207,9 @@ type LineSpec = {
   /**
    * How long the line may wait for the bus (module header): {@link TRAFFIC_MAX_QUEUE_WAIT_MS}
    * for a line whose words decay while it waits, the engine default for a
-   * reassuring line, which stays true as long as it waits because whatever
-   * would make it false is a newer verdict of its trigger, which replaces it in
-   * the queue (`supersedeGroup`).
+   * reassuring line, since what would make it false is a newer verdict of its
+   * trigger, which replaces it in the queue (`supersedeGroup`), short of the
+   * one gap the module header names.
    */
   maxQueueWaitMs: number;
   /** One sentence for a pack author, in the sim's terms (#1066). */
@@ -368,8 +371,8 @@ const REJOIN_LINES: Record<RejoinLine, RejoinLineSpec> = {
   "rejoin-over-ten": {
     weight: WEIGHT.SAFETY,
     interrupt: false,
-    // The default: it stays true while it waits, since a car closing into a
-    // closer band is a newer rejoin verdict, which replaces it in the queue.
+    // The default: a car closing into a closer band is a newer rejoin verdict,
+    // which replaces it in the queue (the one gap: module header).
     maxQueueWaitMs: DEFAULT_MAX_QUEUE_WAIT_MS,
     description:
       "You are stopped or crawling on track and the nearest car is ten to fifteen seconds away, said on stopping, as it closes, or once a close car has gone by.",
@@ -383,8 +386,8 @@ const REJOIN_LINES: Record<RejoinLine, RejoinLineSpec> = {
   "rejoin-clear": {
     weight: WEIGHT.SAFETY,
     interrupt: false,
-    // The default: it stays true while it waits, since any car coming within
-    // fifteen seconds is a closer band, a newer rejoin verdict that replaces it.
+    // The default: any car coming within fifteen seconds is a closer band, a
+    // newer rejoin verdict that replaces it (the one gap: module header).
     maxQueueWaitMs: DEFAULT_MAX_QUEUE_WAIT_MS,
     description:
       "You are stopped or crawling on track and no car is within fifteen seconds of you, said on stopping or once a close car has gone by.",
@@ -413,8 +416,8 @@ const PIT_EXIT_LINES: Record<PitExitLine, LineSpec & { verdict: TrafficPitExitVe
     // the exit readback and the tire-wear report (module header).
     weight: WEIGHT.SAFETY,
     interrupt: true,
-    // The default: it stays true while it waits, since traffic turning up is a
-    // flipped verdict, which replaces it in the queue.
+    // The default: traffic turning up is a flipped verdict, which replaces it
+    // in the queue once it has held (the one gap: module header).
     maxQueueWaitMs: DEFAULT_MAX_QUEUE_WAIT_MS,
     verdict: "clear",
     description:
