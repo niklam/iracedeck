@@ -3820,12 +3820,18 @@
       "speakGate": "The driver has not completed another lap since, no full-course caution is out and no other sector call has been made for this lap; speaking it records what was said.",
       "endsOn": null,
       "base": "voice/{voice}",
-      "comment": "The car ahead by number, the sector where it is slower than us, and that it is our chance, at the line after the lap time. Skipped until its clips are approved.",
+      "comment": "The car ahead by number, the sector where it is slower than us, and that it is our chance, at the line after the lap time.",
       "test": "Harness → Sectors → Chance on the car ahead. In-sim: an offline AI race; close to within three seconds of a car that is slow through one sector and cross the line on a clean lap.",
-      "skip": true,
+      "skip": false,
       "references": {
-        "pools": [],
-        "vars": [],
+        "pools": [
+          "sector-comparison/ahead-slower",
+          "sector-comparison/chance"
+        ],
+        "vars": [
+          "sectorComparison.carNumber",
+          "sectorComparison.gainSector"
+        ],
         "conds": [],
         "cases": [],
         "includes": [],
@@ -3845,12 +3851,17 @@
       "speakGate": "The driver has not completed another lap since, no full-course caution is out and no other sector call has been made for this lap; speaking it records what was said.",
       "endsOn": null,
       "base": "voice/{voice}",
-      "comment": "The car behind by number and the sector where it is quicker than us, at the line after the lap time. Skipped until its clips are approved.",
+      "comment": "The car behind by number and the sector where it is quicker than us, at the line after the lap time.",
       "test": "Harness → Sectors → Car behind quicker. In-sim: an offline AI race; let a car that is quick through one sector close to within three seconds and cross the line on a clean lap.",
-      "skip": true,
+      "skip": false,
       "references": {
-        "pools": [],
-        "vars": [],
+        "pools": [
+          "sector-comparison/behind-quicker"
+        ],
+        "vars": [
+          "sectorComparison.carNumber",
+          "sectorComparison.lossSector"
+        ],
         "conds": [],
         "cases": [],
         "includes": [],
@@ -3870,14 +3881,43 @@
       "speakGate": "The driver has not completed another lap since, no full-course caution is out and no other sector call has been made for this lap; speaking it records what was said.",
       "endsOn": null,
       "base": "voice/{voice}",
-      "comment": "Pace check against the class leader at the line, after the lap time: how much quicker the leader is over a lap and where most of it is lost (or that we're slower in every sector), with the sector where we're quicker; or that we're quicker than the leader, with the sector where they're quicker. Skipped until its clips are approved.",
+      "comment": "Pace check against the class leader at the line, after the lap time: how much quicker the leader is over a lap and where most of it is lost (or that we're slower in every sector), with the sector where we're quicker; or that we're quicker than the leader, with the sector where they're quicker.",
       "test": "Harness → Sectors → Leader pace, most of it with a gain (Leader pace, the most; Leader pace, every sector; Quicker than the leader). In-sim: an offline AI race at a track with three or more sectors; run three clean laps and cross the line from lap 4 on.",
-      "skip": true,
+      "skip": false,
       "references": {
-        "pools": [],
-        "vars": [],
+        "pools": [
+          "sector-comparison/gain",
+          "sector-comparison/leader-gain",
+          "sector-comparison/leader-quicker",
+          "sector-comparison/leader-slower",
+          "sector-comparison/loss-every",
+          "sector-comparison/loss-largest",
+          "sector-comparison/loss-most"
+        ],
+        "vars": [
+          "sectorComparison.gainSector",
+          "sectorComparison.lossSector",
+          "sectorComparison.paceDecimal",
+          "sectorComparison.paceSeconds"
+        ],
         "conds": [],
-        "cases": [],
+        "cases": [
+          {
+            "name": "sectorComparison.lossShape",
+            "keys": [
+              "every",
+              "largest",
+              "most"
+            ]
+          },
+          {
+            "name": "sectorComparison.paceShape",
+            "keys": [
+              "quicker",
+              "slower"
+            ]
+          }
+        ],
         "includes": [],
         "frames": []
       }
@@ -5658,27 +5698,40 @@
       {
         "name": "sectorComparison.carNumber",
         "description": "The number of the car the call is about, as the session spells it, from the car-number clip group; nothing when the sim gave the car no number, which skips a line that needs it.",
-        "usedBy": []
+        "usedBy": [
+          "pit-crew.sector-comparison-ahead",
+          "pit-crew.sector-comparison-behind"
+        ]
       },
       {
         "name": "sectorComparison.gainSector",
-        "description": "The sector where the driver gains the most on the car the call is about (on the leader, or where the car ahead is slower), from the sector-number clip group; a sector with no clip skips the call.",
-        "usedBy": []
+        "description": "The sector where the driver gains the most on the car the call is about (on the leader, or where the car ahead is slower), from the sector-comparison-sector clip group; a sector with no clip skips the call.",
+        "usedBy": [
+          "pit-crew.sector-comparison-ahead",
+          "pit-crew.sector-comparison-leader"
+        ]
       },
       {
         "name": "sectorComparison.lossSector",
-        "description": "The sector where the driver loses the most to the car the call is about (the leader's quicker sector, or the sector where the car behind is quicker), from the sector-number clip group; a sector with no clip skips the call.",
-        "usedBy": []
+        "description": "The sector where the driver loses the most to the car the call is about (the leader's quicker sector, or the sector where the car behind is quicker), from the sector-comparison-sector clip group; a sector with no clip skips the call.",
+        "usedBy": [
+          "pit-crew.sector-comparison-behind",
+          "pit-crew.sector-comparison-leader"
+        ]
       },
       {
         "name": "sectorComparison.paceDecimal",
         "description": "The tenths of the pace gap to the class leader (\"point five seconds.\"), from the lap-time-decimal clip group; nothing for a call about the car ahead or behind.",
-        "usedBy": []
+        "usedBy": [
+          "pit-crew.sector-comparison-leader"
+        ]
       },
       {
         "name": "sectorComparison.paceSeconds",
         "description": "The whole seconds of the pace gap to the class leader over a lap, rounded to the tenth, from the lap-time-second clip group; nothing for a call about the car ahead or behind.",
-        "usedBy": []
+        "usedBy": [
+          "pit-crew.sector-comparison-leader"
+        ]
       },
       {
         "name": "sectorStart.number",
@@ -6185,7 +6238,9 @@
           "largest": "The time lost is spread, and one sector loses the most of it.",
           "every": "The driver is slower than the leader in every sector of a track with three or more."
         },
-        "usedBy": []
+        "usedBy": [
+          "pit-crew.sector-comparison-leader"
+        ]
       },
       {
         "name": "sectorComparison.paceShape",
@@ -6194,7 +6249,9 @@
           "slower": "The class leader is quicker than the driver over a lap.",
           "quicker": "The driver is quicker than the class leader over a lap."
         },
-        "usedBy": []
+        "usedBy": [
+          "pit-crew.sector-comparison-leader"
+        ]
       },
       {
         "name": "session.type",
@@ -69750,7 +69807,132 @@
       ]
     },
     {
-      "group": "sector-number",
+      "group": "sector-comparison",
+      "lines": [
+        {
+          "base": "ahead-slower",
+          "texts": [
+            "ahead is slower than us in"
+          ],
+          "takes": 1,
+          "usedBy": [
+            "pit-crew.sector-comparison-ahead"
+          ],
+          "viaVar": [],
+          "playedBy": null
+        },
+        {
+          "base": "behind-quicker",
+          "texts": [
+            "behind is quicker than us in"
+          ],
+          "takes": 1,
+          "usedBy": [
+            "pit-crew.sector-comparison-behind"
+          ],
+          "viaVar": [],
+          "playedBy": null
+        },
+        {
+          "base": "chance",
+          "texts": [
+            "That's our chance."
+          ],
+          "takes": 1,
+          "usedBy": [
+            "pit-crew.sector-comparison-ahead"
+          ],
+          "viaVar": [],
+          "playedBy": null
+        },
+        {
+          "base": "gain",
+          "texts": [
+            "We're quicker in"
+          ],
+          "takes": 1,
+          "usedBy": [
+            "pit-crew.sector-comparison-leader"
+          ],
+          "viaVar": [],
+          "playedBy": null
+        },
+        {
+          "base": "leader-gain",
+          "texts": [
+            "They're quicker in"
+          ],
+          "takes": 1,
+          "usedBy": [
+            "pit-crew.sector-comparison-leader"
+          ],
+          "viaVar": [],
+          "playedBy": null
+        },
+        {
+          "base": "leader-quicker",
+          "texts": [
+            "Pace check. We're quicker than the leader by"
+          ],
+          "takes": 1,
+          "usedBy": [
+            "pit-crew.sector-comparison-leader"
+          ],
+          "viaVar": [],
+          "playedBy": null
+        },
+        {
+          "base": "leader-slower",
+          "texts": [
+            "Pace check. The leader is quicker by"
+          ],
+          "takes": 1,
+          "usedBy": [
+            "pit-crew.sector-comparison-leader"
+          ],
+          "viaVar": [],
+          "playedBy": null
+        },
+        {
+          "base": "loss-every",
+          "texts": [
+            "We're slower in every sector."
+          ],
+          "takes": 1,
+          "usedBy": [
+            "pit-crew.sector-comparison-leader"
+          ],
+          "viaVar": [],
+          "playedBy": null
+        },
+        {
+          "base": "loss-largest",
+          "texts": [
+            "We lose the most in"
+          ],
+          "takes": 1,
+          "usedBy": [
+            "pit-crew.sector-comparison-leader"
+          ],
+          "viaVar": [],
+          "playedBy": null
+        },
+        {
+          "base": "loss-most",
+          "texts": [
+            "Most of it is in"
+          ],
+          "takes": 1,
+          "usedBy": [
+            "pit-crew.sector-comparison-leader"
+          ],
+          "viaVar": [],
+          "playedBy": null
+        }
+      ]
+    },
+    {
+      "group": "sector-comparison-sector",
       "lines": [
         {
           "base": "1",
@@ -69761,8 +69943,7 @@
           "usedBy": [],
           "viaVar": [
             "sectorComparison.gainSector",
-            "sectorComparison.lossSector",
-            "sectorStart.number"
+            "sectorComparison.lossSector"
           ],
           "playedBy": null
         },
@@ -69775,8 +69956,7 @@
           "usedBy": [],
           "viaVar": [
             "sectorComparison.gainSector",
-            "sectorComparison.lossSector",
-            "sectorStart.number"
+            "sectorComparison.lossSector"
           ],
           "playedBy": null
         },
@@ -69789,8 +69969,7 @@
           "usedBy": [],
           "viaVar": [
             "sectorComparison.gainSector",
-            "sectorComparison.lossSector",
-            "sectorStart.number"
+            "sectorComparison.lossSector"
           ],
           "playedBy": null
         },
@@ -69803,8 +69982,7 @@
           "usedBy": [],
           "viaVar": [
             "sectorComparison.gainSector",
-            "sectorComparison.lossSector",
-            "sectorStart.number"
+            "sectorComparison.lossSector"
           ],
           "playedBy": null
         },
@@ -69817,8 +69995,7 @@
           "usedBy": [],
           "viaVar": [
             "sectorComparison.gainSector",
-            "sectorComparison.lossSector",
-            "sectorStart.number"
+            "sectorComparison.lossSector"
           ],
           "playedBy": null
         },
@@ -69831,8 +70008,7 @@
           "usedBy": [],
           "viaVar": [
             "sectorComparison.gainSector",
-            "sectorComparison.lossSector",
-            "sectorStart.number"
+            "sectorComparison.lossSector"
           ],
           "playedBy": null
         },
@@ -69845,8 +70021,7 @@
           "usedBy": [],
           "viaVar": [
             "sectorComparison.gainSector",
-            "sectorComparison.lossSector",
-            "sectorStart.number"
+            "sectorComparison.lossSector"
           ],
           "playedBy": null
         },
@@ -69859,8 +70034,7 @@
           "usedBy": [],
           "viaVar": [
             "sectorComparison.gainSector",
-            "sectorComparison.lossSector",
-            "sectorStart.number"
+            "sectorComparison.lossSector"
           ],
           "playedBy": null
         },
@@ -69873,8 +70047,7 @@
           "usedBy": [],
           "viaVar": [
             "sectorComparison.gainSector",
-            "sectorComparison.lossSector",
-            "sectorStart.number"
+            "sectorComparison.lossSector"
           ],
           "playedBy": null
         },
@@ -69887,7 +70060,131 @@
           "usedBy": [],
           "viaVar": [
             "sectorComparison.gainSector",
-            "sectorComparison.lossSector",
+            "sectorComparison.lossSector"
+          ],
+          "playedBy": null
+        }
+      ]
+    },
+    {
+      "group": "sector-number",
+      "lines": [
+        {
+          "base": "1",
+          "texts": [
+            "Sector one."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "sectorStart.number"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "10",
+          "texts": [
+            "Sector ten."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "sectorStart.number"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "2",
+          "texts": [
+            "Sector two."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "sectorStart.number"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "3",
+          "texts": [
+            "Sector three."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "sectorStart.number"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "4",
+          "texts": [
+            "Sector four."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "sectorStart.number"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "5",
+          "texts": [
+            "Sector five."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "sectorStart.number"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "6",
+          "texts": [
+            "Sector six."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "sectorStart.number"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "7",
+          "texts": [
+            "Sector seven."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "sectorStart.number"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "8",
+          "texts": [
+            "Sector eight."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "sectorStart.number"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "9",
+          "texts": [
+            "Sector nine."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
             "sectorStart.number"
           ],
           "playedBy": null
