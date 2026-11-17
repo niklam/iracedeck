@@ -19,15 +19,11 @@ The folder is shared by all three iRaceDeck plugins. If you use a Stream Deck an
 
 iRaceDeck publishes two voice packs. Both are the same engineer, making the same callouts at the same moments; what differs is how many words he uses.
 
-<span id="default"></span>
-
-### Shawn
+### Shawn<span id="default"></span>
 
 The voice every install gets. iRaceDeck downloads it the first time the plugin starts and keeps it up to date from then on — see [Choosing a Voice](#choosing-a-voice) below. Shawn speaks in full sentences, and the lines quoted throughout the [Pit Crew](/docs/actions/audio-voice/pit-crew/) page are Shawn's.
 
-<span id="default-short-callouts"></span>
-
-### Shawn (Short callouts)
+### Shawn (Short callouts)<span id="default-short-callouts"></span>
 
 Shawn in radio shorthand. Once a session is running his calls are shorter: most come down to the fact itself, with far less of Shawn's usual explanation of what a flag or a state means, while a few — a pass made, a place lost — still carry a word from him:
 
