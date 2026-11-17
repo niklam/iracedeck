@@ -481,7 +481,7 @@ For when you can't glance at the deck — in VR, say. **Speak value on press** i
 - **Track Temperature** — *"Track temperature is forty one degrees."*
 - **Air Temperature** — *"Air temperature is twenty three degrees."*
 
-The lines are the Default voice's; another voice pack may word them its own way.
+The lines are Shawn's, iRaceDeck's own voice; another voice pack may word them its own way.
 
 Fuel is spoken to a tenth, in liters or gallons as your iRacing display units are set, and only clean laps count — the same laps the key shows: a lap with a pit stop, an out-lap or in-lap, a tow, or a lap run under a full-course caution doesn't count. Before your first clean lap a fuel key says *"No clean lap on the books yet."* — and early in a stint the average names the laps it actually covers, so a five-lap key after three clean laps says *"over the last three laps"*. Temperatures are spoken as whole degrees, in Celsius or Fahrenheit the same way; the engineer doesn't say the unit, though a voice pack can add it. With no temperature reading the key shows `--` and a press says nothing.
 

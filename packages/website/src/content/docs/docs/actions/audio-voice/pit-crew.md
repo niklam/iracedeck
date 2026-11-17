@@ -106,7 +106,7 @@ With [Press Sounds](/docs/features/press-sounds/) set to **Long-press** or **Bot
 
 These apply to every Pit Crew button at once, so they live in the [Settings window](/docs/getting-started/settings/#race-engineer) on the **Race Engineer** tab rather than in one button's Property Inspector. Open it with the **iRaceDeck Settings** button directly under any iRaceDeck key's own settings.
 
-- **Race Engineer Voice** — which voice the engineer speaks with. iRaceDeck's own voices come first: **iRaceDeck: Default**, which every install has, and **iRaceDeck: Default (Short callouts)**, the same engineer in radio shorthand, once you [install it](/docs/features/race-engineer-voices/#default-short-callouts) from the **Voice Packs** card. Any other voice pack you have installed follows. A change takes effect on the next callout. If the voice you chose is no longer installed, the engineer speaks with Default until it is back.
+- **Race Engineer Voice** — which voice the engineer speaks with. iRaceDeck's own voices come first: **iRaceDeck: Shawn**, which every install has, and **iRaceDeck: Shawn (Short callouts)**, the same engineer in radio shorthand, once you [install it](/docs/features/race-engineer-voices/#shawn-short-callouts) from the **Voice Packs** card. Any other voice pack you have installed follows. A change takes effect on the next callout. If the voice you chose is no longer installed, the engineer speaks with Shawn until it is back.
 - **Your Name** — name the engineer addresses you by; resolves a clip from `voice/<voice>/names/`. A spelling said like another name in the list — Dominik, Geoff, Kris — plays that name's clips (Dominic, Jeff, Chris) in a voice that has none of its own for it; your pick is stored as you made it.
 - **Race Engineer Volume** (0–100, default 50) — slider + Test button for the engineer voice (`AudioBus.Voice`). Pressed while the engineer is talking, the test cuts in the same way as the [Corner Names](#corner-names) confirmation does. Sliding to 0 silences voice scenarios without disabling the Race Engineer feature.
 - **Background Volume** (0–100, default 25) — slider + Test button for the pit ambience and walkie-talkie SFX (`AudioBus.Background`, which carries both the ambient loop and the radio open/close SFX). The Test button plays the selected voice's own radio frame around a short silence — minus whichever half you have switched off under **Radio Frame** (the **Radio beeps** and **Pit ambience** checkboxes on the same tab), so what you hear is what a real callout's frame will carry. A voice that defines no radio frame previews the built-in tick-open + ambient + tick-close instead. The test gives way to the engineer: pressed while he is talking it does nothing, and a callout arriving mid-test cuts it short. Defaults to 25 so it sits under the engineer voice cleanly out of the box; turn it up if you want a louder pit-lane atmosphere. Only takes effect while Race Engineer is enabled — when the engineer is off, Background is muted regardless of this value.
@@ -115,7 +115,7 @@ These apply to every Pit Crew button at once, so they live in the [Settings wind
 
 ## Race Engineer voice coverage
 
-The lines quoted on this page are the **Default** voice's. **Default (Short callouts)** makes the same calls at the same moments in fewer words — *"Blue flag."*, *"Too far left."*, *"Leader's pitting."* — see [Race Engineer Voices](/docs/features/race-engineer-voices/#default-short-callouts).
+The lines quoted on this page are **Shawn**'s. **Shawn (Short callouts)** makes the same calls at the same moments in fewer words — *"Blue flag."*, *"Too far left."*, *"Leader's pitting."* — see [Race Engineer Voices](/docs/features/race-engineer-voices/#shawn-short-callouts).
 
 When the engineer is enabled, the Pit Crew catalog calls out every flag transition the iRacing translator publishes:
 
@@ -385,7 +385,7 @@ The first one that applies speaks for the lap and the others stay quiet. When th
 
 None of them speaks on the final lap of a race, where the race-end result takes the floor, or while a [full-course caution](#full-course-caution) is out. Lap times of 11 minutes or longer stay silent too — the engineer never speaks a partial readout. A lap iRacing doesn't count, such as a track-limits cut, stays silent as well: iRacing gives it no time, so there is nothing to read.
 
-**Default (Short callouts)** makes all three calls in fewer words — *"Last lap. One forty-five point two three seven."*, *"Fastest lap for you. One twenty-three point four five six."*, *"Fastest lap for car five. One twenty-three point four five six."*
+**Shawn (Short callouts)** makes all three calls in fewer words — *"Last lap. One forty-five point two three seven."*, *"Fastest lap for you. One twenty-three point four five six."*, *"Fastest lap for car five. One twenty-three point four five six."*
 
 ### Best lap
 

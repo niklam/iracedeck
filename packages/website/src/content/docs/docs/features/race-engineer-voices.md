@@ -3,7 +3,7 @@ title: Race Engineer Voices
 description: How Race Engineer voice packs work, where they are stored, how to download or install one, and why they survive plugin updates.
 ---
 
-The Race Engineer speaks with a **voice pack** — a folder of recorded lines that iRaceDeck plays during a session, plus a **callout script** for each voice that says how those lines are put together. iRaceDeck publishes two voices of its own — **Default**, which it downloads the first time the plugin starts, and **Default (Short callouts)**, the same engineer in radio shorthand, which you install when you want it — and you can add more, downloaded from iRaceDeck itself or installed by hand.
+The Race Engineer speaks with a **voice pack** — a folder of recorded lines that iRaceDeck plays during a session, plus a **callout script** for each voice that says how those lines are put together. iRaceDeck publishes two voices of its own — **Shawn**, which it downloads the first time the plugin starts, and **Shawn (Short callouts)**, the same engineer in radio shorthand, which you install when you want it — and you can add more, downloaded from iRaceDeck itself or installed by hand.
 
 Voice packs live **outside the plugin folder**, in your own AppData directory:
 
@@ -19,15 +19,19 @@ The folder is shared by all three iRaceDeck plugins. If you use a Stream Deck an
 
 iRaceDeck publishes two voice packs. Both are the same engineer, making the same callouts at the same moments; what differs is how many words he uses.
 
-### Default
+<span id="default"></span>
 
-The voice every install gets. iRaceDeck downloads it the first time the plugin starts and keeps it up to date from then on — see [Choosing a Voice](#choosing-a-voice) below. Default speaks in full sentences, and its lines are the ones quoted throughout the [Pit Crew](/docs/actions/audio-voice/pit-crew/) page.
+### Shawn
 
-### Default (Short callouts)
+The voice every install gets. iRaceDeck downloads it the first time the plugin starts and keeps it up to date from then on — see [Choosing a Voice](#choosing-a-voice) below. Shawn speaks in full sentences, and the lines quoted throughout the [Pit Crew](/docs/actions/audio-voice/pit-crew/) page are Shawn's.
 
-The Default engineer in radio shorthand. Once a session is running his calls are shorter: most come down to the fact itself, with far less of Default's explanation of what a flag or a state means, while a few — a pass made, a place lost — still carry a word from him:
+<span id="default-short-callouts"></span>
 
-| Default | Default (Short callouts) |
+### Shawn (Short callouts)
+
+Shawn in radio shorthand. Once a session is running his calls are shorter: most come down to the fact itself, with far less of Shawn's usual explanation of what a flag or a state means, while a few — a pass made, a place lost — still carry a word from him:
+
+| Shawn | Shawn (Short callouts) |
 | --- | --- |
 | *"Blue flag. Faster car approaching."* | *"Blue flag."* |
 | *"Car's too far left, line it up."* | *"Too far left."* |
@@ -36,15 +40,15 @@ The Default engineer in radio shorthand. Once a session is running his calls are
 | *"That hit broke something on the car. The spotter likely has more information."* | *"We've got damage."* |
 | *"We're still leading our class. Keep it up."* | *"Still class leader."* |
 
-Outside the racing itself he keeps a friendlier tone: the welcome, the greetings by name at the start of a session, at the start of a race and at its end, and the session-start briefing read much as they do in Default. It makes every callout Default makes, so switching to it never costs you a call — only words.
+Outside the racing itself he keeps a friendlier tone: the welcome, the greetings by name at the start of a session, at the start of a race and at its end, and the session-start briefing read much as they do in Shawn. It makes every callout Shawn makes, so switching to it never costs you a call — only words.
 
-**Default (Short callouts) is not installed automatically** — Default stays the one voice every install gets. To add it, open **iRaceDeck Settings**, go to the **Race Engineer** tab, and press **Install** beside **Default (Short callouts)** under **Available to Download** in the **Voice Packs** card (see [Downloading a Voice Pack](#downloading-a-voice-pack)). Then pick **iRaceDeck: Default (Short callouts)** from the **Race Engineer Voice** dropdown. Once installed it keeps itself up to date: whenever a newer version is published, iRaceDeck updates it at the next plugin start, the same way it updates Default. You can remove it again from the same card; if it was your selected voice, the engineer speaks with Default until you install it again, and your choice comes back with it.
+**Shawn (Short callouts) is not installed automatically** — Shawn stays the one voice every install gets. To add it, open **iRaceDeck Settings**, go to the **Race Engineer** tab, and press **Install** beside **Shawn (Short callouts)** under **Available to Download** in the **Voice Packs** card (see [Downloading a Voice Pack](#downloading-a-voice-pack)). Then pick **iRaceDeck: Shawn (Short callouts)** from the **Race Engineer Voice** dropdown. Once installed it keeps itself up to date: whenever a newer version is published, iRaceDeck updates it at the next plugin start, the same way it updates Shawn. You can remove it again from the same card; if it was your selected voice, the engineer speaks with Shawn until you install it again, and your choice comes back with it.
 
 ## Choosing a Voice
 
 Open **iRaceDeck Settings** from any action's Property Inspector, go to the **Race Engineer** section, and pick from the **Race Engineer Voice** dropdown. Every installed voice appears there. The change takes effect on the next callout — there is no need to restart anything.
 
-**iRaceDeck's own voices are listed first**, as **iRaceDeck: Default** and — once you have installed it — **iRaceDeck: Default (Short callouts)**, above every other voice, whatever the others are called. The rest follow in alphabetical order, each under the name its pack gave it. A voice counts as iRaceDeck's when iRaceDeck itself installed it — downloaded from its catalog, or placed there by an earlier version of the plugin. A copy of one of iRaceDeck's packs other than Default that you put into the folder by hand is listed like any other pack, under its own name among the rest, and iRaceDeck does not keep it up to date. A folder you put in Default's place is a different case: iRaceDeck replaces it with its own copy of Default at the next start (see below).
+**iRaceDeck's own voices are listed first**, as **iRaceDeck: Shawn** and — once you have installed it — **iRaceDeck: Shawn (Short callouts)**, above every other voice, whatever the others are called. The rest follow in alphabetical order, each under the name its pack gave it. A voice counts as iRaceDeck's when iRaceDeck itself installed it — downloaded from its catalog, or placed there by an earlier version of the plugin. A copy of one of iRaceDeck's packs other than Shawn's that you put into the folder by hand is listed like any other pack, under its own name among the rest, and iRaceDeck does not keep it up to date. A folder you put in Shawn's place — the `default` folder — is a different case: iRaceDeck replaces it with its own copy of Shawn at the next start (see below).
 
 Among the other packs, some voices are listed with their pack's name in front, as **Pack: Voice**. That happens when the voice's name alone could be ambiguous — a pack providing more than one voice, or a pack whose own name differs from its voice's. A pack that provides a single voice with a matching name is listed by that name alone. The rule depends only on the pack itself, so installing another pack never renames a voice you have already chosen.
 
@@ -52,7 +56,7 @@ Two packs may each include a voice of the same name. Both are listed, and each p
 
 **Installed Voices**, in the **Voice Packs** card on the Race Engineer tab, lists every pack iRaceDeck has loaded, with its version and where it came from — **Downloaded** for one from iRaceDeck's own catalog, **Installed by iRaceDeck** for one an earlier version of the plugin placed there, and **Installed by hand** for one you placed in the folder yourself. Each row also names the voices the pack provides, so two packs with the same name that provide different voices are easy to tell apart. Anything in the folder that iRaceDeck could not load is listed underneath, with the reason — so a pack that is present but silent tells you why without you going looking for it.
 
-**The Default voice is managed by iRaceDeck.** The plugin no longer ships a voice inside its own folder: at every start it checks iRaceDeck's catalog, downloads **Default** (about 15 MB, from GitHub) if it is missing, and updates it — and any other voice you installed from the catalog — when a newer version is published. If the download fails, it is retried quietly in the background, more often while the Race Engineer is switched on. The row for Default reads *Kept up to date by iRaceDeck* in place of a Remove button. Because iRaceDeck keeps this folder matching the catalog, **anything you change inside it is eventually replaced** — the next published version of Default swaps the whole folder rather than merging into it, and a folder iRaceDeck cannot recognise as its own copy is replaced at the next start. A Default folder whose recordings have gone missing is downloaded again at the next start, too. To customise the Default voice, copy the folder to a new name first and edit the copy; a pack under its own name is never touched.
+**Shawn, the voice every install has, is managed by iRaceDeck.** The plugin no longer ships a voice inside its own folder: at every start it checks iRaceDeck's catalog, downloads **Shawn** (about 15 MB, from GitHub) if it is missing, and updates it — and any other voice you installed from the catalog — when a newer version is published. If the download fails, it is retried quietly in the background, more often while the Race Engineer is switched on. The row for Shawn reads *Kept up to date by iRaceDeck* in place of a Remove button. Because iRaceDeck keeps this folder matching the catalog, **anything you change inside it is eventually replaced** — the next published version of Shawn swaps the whole folder rather than merging into it, and a folder iRaceDeck cannot recognise as its own copy is replaced at the next start. If the recordings in Shawn's folder go missing, Shawn is downloaded again at the next start, too. To customise Shawn, copy the `default` folder to a new name first and edit the copy; a pack under its own name is never touched.
 
 ## What a Voice Pack Decides
 
@@ -64,7 +68,7 @@ What a pack can never change is **when** a callout fires and **what it may inter
 
 A pack that ships a voice **without** a script — one built before scripts existed, or one whose script file went missing — still loads. The voice is listed under **Installed Voices** and you can select it, but every callout is skipped in it — the script is where every callout comes from — so the engineer goes quiet. While a scriptless voice is the one selected, a banner at the top of the Settings window and of every key's Property Inspector names it and says what to do: reinstall the pack, or pick another voice. The banner clears by itself as soon as the selected voice has a script.
 
-If you build packs, the script is an ordinary JSON file that references iRaceDeck's own vocabulary of callouts, conditions and spoken values by name. The [Voice Packs](/docs/voice-packs/) section is written for you: what a pack can and cannot change, [the format](/docs/voice-packs/format/) of the script, a [tutorial](/docs/voice-packs/first-pack/) that ends with your own voice playing three callouts, and reference pages — generated from iRaceDeck's code and its own Default pack — listing [every callout](/docs/voice-packs/reference/callouts/), [everything a script may name](/docs/voice-packs/reference/vocabulary/), and [every line a full pack records](/docs/voice-packs/reference/recording-script/).
+If you build packs, the script is an ordinary JSON file that references iRaceDeck's own vocabulary of callouts, conditions and spoken values by name. The [Voice Packs](/docs/voice-packs/) section is written for you: what a pack can and cannot change, [the format](/docs/voice-packs/format/) of the script, a [tutorial](/docs/voice-packs/first-pack/) that ends with your own voice playing three callouts, and reference pages — generated from iRaceDeck's code and its own voice, Shawn — listing [every callout](/docs/voice-packs/reference/callouts/), [everything a script may name](/docs/voice-packs/reference/vocabulary/), and [every line a full pack records](/docs/voice-packs/reference/recording-script/).
 
 ## Downloading a Voice Pack
 
@@ -76,7 +80,7 @@ The download can happen **while iRacing is running**, including mid-race — iRa
 
 If iRaceDeck can't reach the catalog — no connection, or a bad one — nothing already installed is affected. Every voice you have keeps working exactly as before; iRaceDeck just has nothing new to offer until it can check again.
 
-A downloaded pack is verified against a checksum before it replaces anything, so a corrupted or incomplete download is discarded rather than installed. A pack you no longer want can be removed from the same Voice Packs card — every pack except Default, which iRaceDeck keeps current.
+A downloaded pack is verified against a checksum before it replaces anything, so a corrupted or incomplete download is discarded rather than installed. A pack you no longer want can be removed from the same Voice Packs card — every pack except Shawn's, which iRaceDeck keeps current.
 
 The **Available to Download** list shows only what you can act on. A pack you do not have is listed with **Install**; once it is installed and up to date it moves to **Installed Voices** and leaves that list. A pack you have that has a newer version published stays in both places — under **Installed Voices** as the version you have, and under **Available to Download** with **Update**. When you have every voice iRaceDeck publishes, all up to date, the section says so rather than sitting empty.
 
@@ -102,7 +106,7 @@ If you rescan and the voice does not appear, iRaceDeck ignored the pack — and 
 - **No audio in the pack** — the pack declares a voice but ships no clips for it.
 - **Clips iRaceDeck cannot play** — the pack has audio under the voice, but not where iRaceDeck looks for it. Clips must sit at `voice/<voice>/<group>/<name>.mp3` — one folder per group inside the voice folder — and the extension must be lowercase `.mp3`. A pack whose files are one level too shallow, or exported as `.MP3`, is refused with this reason rather than installing and then saying nothing.
 - **A voice's callout script is broken** — `voice/<voice>/callouts.json` is there but is not valid JSON, is not a script iRaceDeck can read, or could not be opened. That one voice is left out and the reason names the file and the place in it that failed; the pack's other voices still load. A voice with *no* script file at all is not an error — it loads, and simply skips the callouts its script would have given it, as described under [What a Voice Pack Decides](#what-a-voice-pack-decides).
-- **The pack claims the id `default`** — that name belongs to the pack iRaceDeck keeps current, so this one is not listed with a reason: the pack loads, and then a folder with that name is replaced with the catalog's copy at the next start. Use a different id.
+- **The pack claims the id `default`** — that id belongs to Shawn's pack, which iRaceDeck keeps current, so this one is not listed with a reason: the pack loads, and then a folder with that name is replaced with the catalog's copy at the next start. Use a different id.
 
 ## Third-Party Voice Packs
 
