@@ -27,7 +27,7 @@ import { TRAFFIC_REJOIN_NEAR_MAX_SECONDS, TRAFFIC_REJOIN_NEAR_MIN_SECONDS } from
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ScenarioContext, ScenarioContract } from "../../dsl.js";
-import { NO_FRAME, poolRef, WEIGHT } from "../../dsl.js";
+import { DEFAULT_MAX_QUEUE_WAIT_MS, NO_FRAME, poolRef, WEIGHT } from "../../dsl.js";
 import type { AudioAssetsManifest, IScenarioEngine } from "../../interpreter.js";
 import { _resetAudioScenarios, initializeAudioScenarios } from "../../interpreter.js";
 import { PIT_READBACK_CONTRACTS } from "./readback.js";
@@ -54,6 +54,21 @@ const REJOIN_IDS = [
 ] as const;
 const PIT_EXIT_IDS = ["pit-crew.traffic-pit-exit-traffic", "pit-crew.traffic-pit-exit-clear"] as const;
 const PIT_EXIT_VERDICTS: readonly TrafficPitExitVerdict[] = ["traffic", "clear"];
+
+/** The lines whose words decay while they wait: the close calls and the pit-exit traffic warning. */
+const DECAYING_IDS = [
+  "pit-crew.traffic-rejoin-right-behind",
+  "pit-crew.traffic-rejoin-near-first",
+  "pit-crew.traffic-rejoin-near-update",
+  "pit-crew.traffic-pit-exit-traffic",
+] as const;
+
+/** The reassuring lines, true for as long as they wait. */
+const REASSURING_IDS = [
+  "pit-crew.traffic-rejoin-over-ten",
+  "pit-crew.traffic-rejoin-clear",
+  "pit-crew.traffic-pit-exit-clear",
+] as const;
 
 /** One payload per rejoin line, keyed by the contract that must take it. */
 const REJOIN_PAYLOADS: Record<(typeof REJOIN_IDS)[number], TrafficRejoin> = {
@@ -151,6 +166,34 @@ const CRITICAL_CONTRACT: ScenarioContract = {
   when: { event: "pitStall.departed" },
 };
 
+/** A queueable line at NORMAL weight, as the incident lines are: what a spin's entry "Clear to rejoin" arrives behind. */
+const INCIDENT_LIKE_ID = "test.incident-like";
+const INCIDENT_LIKE_CLIP = `voice/${VOICE}/test/incident-like-01.mp3`;
+const INCIDENT_LIKE_CONTRACT: ScenarioContract = {
+  id: INCIDENT_LIKE_ID,
+  channel: AudioChannel.Voice,
+  bus: AudioBus.Voice,
+  base: "voice/{voice}",
+  weight: WEIGHT.NORMAL,
+  queueable: true,
+  frame: NO_FRAME,
+  when: { event: "pitLane.exited" },
+};
+
+/** An equal-weight line of another family: a SAFETY call no traffic line may cut. */
+const SAFETY_ID = "test.safety";
+const SAFETY_CLIP = `voice/${VOICE}/test/safety-01.mp3`;
+const SAFETY_CONTRACT: ScenarioContract = {
+  id: SAFETY_ID,
+  channel: AudioChannel.Voice,
+  bus: AudioBus.Voice,
+  base: "voice/{voice}",
+  weight: WEIGHT.SAFETY,
+  queueable: false,
+  frame: NO_FRAME,
+  when: { event: "pitLane.entered" },
+};
+
 /**
  * The two lines a pit stop's exit publishes that the pit-exit call must
  * trump: the real exit readback and tire-wear contracts — their weight,
@@ -188,6 +231,8 @@ const manifest: AudioAssetsManifest = {
     clip("rejoin-mid-9"),
     CHATTER_CLIP,
     CRITICAL_CLIP,
+    INCIDENT_LIKE_CLIP,
+    SAFETY_CLIP,
     READBACK_CLIP,
     TIRE_WEAR_CLIP,
   ],
@@ -216,6 +261,8 @@ const SCRIPT: CalloutScript = {
     "pit-crew.traffic-pit-exit-clear": { ...ENTRY, sequence: ["pool:traffic/pit-exit-clear"] },
     [CHATTER_ID]: { ...ENTRY, sequence: ["pool:test/chatter"] },
     [CRITICAL_ID]: { ...ENTRY, sequence: ["pool:test/critical"] },
+    [INCIDENT_LIKE_ID]: { ...ENTRY, sequence: ["pool:test/incident-like"] },
+    [SAFETY_ID]: { ...ENTRY, sequence: ["pool:test/safety"] },
     [READBACK_EXIT.id]: { ...ENTRY, sequence: ["pool:test/readback"] },
     [TIRE_WEAR_REPORT.id]: { ...ENTRY, sequence: ["pool:test/tire-wear"] },
   },
@@ -272,7 +319,15 @@ beforeEach(() => {
   // The production order (`registerPitCrew`): vocabulary, contracts, script.
   registerTrafficVocabulary(engine);
 
-  for (const c of [...TRAFFIC_CONTRACTS, CHATTER_CONTRACT, CRITICAL_CONTRACT, READBACK_EXIT, TIRE_WEAR_REPORT]) {
+  for (const c of [
+    ...TRAFFIC_CONTRACTS,
+    CHATTER_CONTRACT,
+    CRITICAL_CONTRACT,
+    INCIDENT_LIKE_CONTRACT,
+    SAFETY_CONTRACT,
+    READBACK_EXIT,
+    TIRE_WEAR_REPORT,
+  ]) {
     engine.defineContract(c);
   }
 
@@ -294,17 +349,25 @@ describe("TRAFFIC_CONTRACTS", () => {
     for (const c of TRAFFIC_CONTRACTS) expect("sequence" in c).toBe(false);
   });
 
-  it("shares one family, on the voice bus, at SAFETY weight, never queueable, with a short maximum wait", () => {
+  it("shares one family, on the voice bus, at SAFETY weight, every line queueable", () => {
     for (const c of TRAFFIC_CONTRACTS) {
       expect(c.family, c.id).toBe("traffic");
       expect(c.channel).toBe(AudioChannel.Voice);
       expect(c.bus).toBe(AudioBus.Voice);
       expect(c.base).toBe("voice/{voice}");
       expect(c.weight, c.id).toBe(WEIGHT.SAFETY);
-      expect(c.queueable, c.id).toBe(false);
-      expect(c.maxQueueWaitMs, c.id).toBe(TRAFFIC_MAX_QUEUE_WAIT_MS);
-      expect(c.maxQueueWaitMs!).toBeLessThan(8000);
+      expect(c.queueable, c.id).toBe(true);
     }
+  });
+
+  it("waits briefly for the bus on the lines whose words decay, and the engine default on the reassuring ones", () => {
+    expect([...DECAYING_IDS, ...REASSURING_IDS].sort()).toEqual([...TRAFFIC_SCENARIO_IDS].sort());
+
+    for (const id of DECAYING_IDS) expect(contract(id).maxQueueWaitMs, id).toBe(TRAFFIC_MAX_QUEUE_WAIT_MS);
+
+    for (const id of REASSURING_IDS) expect(contract(id).maxQueueWaitMs, id).toBe(DEFAULT_MAX_QUEUE_WAIT_MS);
+
+    expect(TRAFFIC_MAX_QUEUE_WAIT_MS).toBeLessThan(DEFAULT_MAX_QUEUE_WAIT_MS);
   });
 
   it("the close calls and both pit-exit lines interrupt; more than ten and clear do not", () => {
@@ -665,13 +728,58 @@ describe("scheduling against other lines", () => {
     expect(voicePaths()).not.toContain(clip("rejoin-outro"));
   });
 
-  it("a close call cannot cut a heavier line, and is dropped rather than queued behind it", () => {
+  it("a close call cannot cut a heavier line: it waits behind it and plays once it has finished", () => {
     bus.publishEvent("pitStall.departed", {});
     bus.publishEvent("traffic.rejoin", { verdict: "rightBehind" });
+
+    expect(audio._stopped).not.toContain(AudioChannel.Voice);
+
     flush(audio);
 
-    expect(voicePaths()).toEqual([CRITICAL_CLIP]);
+    expect(voicePaths()).toEqual([CRITICAL_CLIP, clip("rejoin-right-behind")]);
   });
+
+  it("the entry clear arriving while a queueable NORMAL line plays waits for it, and is not lost", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+
+    // The incident line after a spin takes the bus; the entry clear, heavier
+    // but no interrupt, waits for it.
+    bus.publishEvent("pitLane.exited", {});
+    bus.publishEvent("traffic.rejoin", { verdict: "clear" });
+    expect(voicePaths()).toEqual([INCIDENT_LIKE_CLIP]);
+
+    // The line in flight runs on past the counting lines' short wait.
+    vi.setSystemTime(TRAFFIC_MAX_QUEUE_WAIT_MS + 1_000);
+    flush(audio);
+
+    expect(voicePaths()).toEqual([INCIDENT_LIKE_CLIP, clip("rejoin-clear")]);
+  });
+
+  it.each([...REJOIN_IDS, ...PIT_EXIT_IDS])(
+    "%s waits for an equal-weight line of another family instead of being dropped",
+    (id) => {
+      bus.publishEvent("pitLane.entered", {});
+
+      if (id.includes("pit-exit")) {
+        bus.publishEvent("traffic.pitExit", { verdict: id.endsWith("traffic") ? "traffic" : "clear", seconds: 1 });
+      } else {
+        bus.publishEvent("traffic.rejoin", REJOIN_PAYLOADS[id as (typeof REJOIN_IDS)[number]]);
+      }
+
+      expect(voicePaths()).toEqual([SAFETY_CLIP]);
+
+      flush(audio);
+
+      // Then the traffic line, all of its clips (a near call is composed of several).
+      const [first, ...after] = voicePaths();
+
+      expect(first).toBe(SAFETY_CLIP);
+      expect(after.length).toBeGreaterThan(0);
+
+      for (const path of after) expect(path).toMatch(/\/traffic\/(rejoin|pit-exit)-/);
+    },
+  );
 
   it("a newer verdict removes a waiting older one, so the stale band is never heard after it", () => {
     bus.publishEvent("pitStall.entered", {});
@@ -684,17 +792,43 @@ describe("scheduling against other lines", () => {
     expect(voicePaths()).toEqual([CHATTER_CLIP, clip("rejoin-clear")]);
   });
 
-  it("a line parked longer than its maximum wait is dropped, not spoken late", () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(0);
+  describe("a line parked longer than its maximum wait is dropped, not spoken late", () => {
+    /** Parks `publish` behind the CRITICAL line, then lets the bus go `waitedMs` later. */
+    function parkedFor(waitedMs: number, publish: () => void): string[] {
+      vi.useFakeTimers();
+      vi.setSystemTime(0);
+      bus.publishEvent("pitStall.departed", {});
+      publish();
+      vi.setSystemTime(waitedMs);
+      flush(audio);
 
-    bus.publishEvent("pitStall.entered", {});
-    bus.publishEvent("traffic.rejoin", { verdict: "overTen" });
+      return voicePaths();
+    }
 
-    vi.setSystemTime(TRAFFIC_MAX_QUEUE_WAIT_MS + 1);
-    flush(audio);
+    it.each([
+      ["a close call", () => bus.publishEvent("traffic.rejoin", near(5, true))],
+      ["the pit-exit traffic warning", () => bus.publishEvent("traffic.pitExit", { verdict: "traffic", seconds: 1 })],
+    ] as const)("%s, after TRAFFIC_MAX_QUEUE_WAIT_MS", (_, publish) => {
+      expect(parkedFor(TRAFFIC_MAX_QUEUE_WAIT_MS + 1, publish)).toEqual([CRITICAL_CLIP]);
+    });
 
-    expect(voicePaths()).toEqual([CHATTER_CLIP]);
+    const reassuring = [
+      ["more than ten", () => bus.publishEvent("traffic.rejoin", { verdict: "overTen" }), clip("rejoin-over-ten")],
+      ["clear to rejoin", () => bus.publishEvent("traffic.rejoin", { verdict: "clear" }), clip("rejoin-clear")],
+      [
+        "the pit-exit clear",
+        () => bus.publishEvent("traffic.pitExit", { verdict: "clear", seconds: 6 }),
+        clip("pit-exit-clear"),
+      ],
+    ] as const;
+
+    it.each(reassuring)("%s still plays past the short wait: it stays true while it waits", (_, publish, line) => {
+      expect(parkedFor(TRAFFIC_MAX_QUEUE_WAIT_MS + 1, publish)).toEqual([CRITICAL_CLIP, line]);
+    });
+
+    it.each(reassuring)("%s, after the engine default", (_, publish) => {
+      expect(parkedFor(DEFAULT_MAX_QUEUE_WAIT_MS + 1, publish)).toEqual([CRITICAL_CLIP]);
+    });
   });
 });
 

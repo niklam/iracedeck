@@ -48,17 +48,21 @@
  * fresh line replaces a stale one in flight wholesale, whatever the weights —
  * a closer count arriving while the previous one still plays cuts it.
  *
- * **Never queued, never stale.** `queueable: false` on every contract: a line
- * that cannot take the bus is dropped rather than replayed late, because the
- * detector speaks again on the next band change or the next count, so the
- * newer fire is the one worth hearing. Two more fields hold that promise for
- * the fires the engine parks anyway — a heavier fire without `interrupt`
- * waits for the line in flight, queueable or not: each trigger's contracts
+ * **Queued, never stale.** `queueable: true` on every contract: the detector
+ * records a line as said when it publishes it and does not say it again
+ * unless the picture changes, so a line dropped because the bus was busy is
+ * lost — the entry "Clear to rejoin" after a spin, behind the incident line,
+ * was the case. Two fields keep a waiting line true. Each trigger's contracts
  * share one `supersedeGroup`, so a newer verdict removes a waiting older one
- * instead of letting it play after it, and `maxQueueWaitMs` is cut to
- * {@link TRAFFIC_MAX_QUEUE_WAIT_MS}, because the number counts down while a
- * line waits — "about five seconds" heard four seconds late describes a car
- * that has already passed.
+ * instead of letting it play after it. And `maxQueueWaitMs` is per line
+ * (`LineSpec.maxQueueWaitMs`): the lines whose words decay while they wait —
+ * the close calls, whose seconds count down, and the pit-exit traffic warning
+ * — take {@link TRAFFIC_MAX_QUEUE_WAIT_MS}, since "about five seconds" heard
+ * four seconds late describes a car that has already passed; the reassuring
+ * lines — "more than ten", "Clear to rejoin" and the pit-exit clear — take the
+ * engine default, since each stays true for as long as it waits: anything that
+ * would make it false is a closer band or a flipped verdict, which the
+ * detector publishes and which replaces it in the queue.
  *
  * **Weights (spec decision 6, as amended).** Every line sits at
  * `WEIGHT.SAFETY`. The close calls and both pit-exit lines interrupt: a car
@@ -92,18 +96,20 @@ import {
 } from "@iracedeck/event-bus";
 
 import type { ScenarioContext, ScenarioContract } from "../../dsl.js";
-import { NO_FRAME, poolRef, WEIGHT } from "../../dsl.js";
+import { DEFAULT_MAX_QUEUE_WAIT_MS, NO_FRAME, poolRef, WEIGHT } from "../../dsl.js";
 import type { IScenarioEngine } from "../../interpreter.js";
 
 /** The clip group every traffic line lives in, the fixed lines and the middles alike. */
 export const TRAFFIC_GROUP = "traffic";
 
 /**
- * How long a traffic fire the engine parked may wait for the bus before it is
- * dropped. Short, because every rejoin number counts down while it waits and
- * the pit-exit verdict is about an arrival a few seconds out; the detector
- * speaks again on the next change, so a dropped verdict is replaced, not
- * lost.
+ * How long a traffic line whose words decay while it waits may wait for the
+ * bus before it is dropped: the close calls (right behind, and both `near`
+ * calls), whose seconds count down, and the pit-exit traffic warning, about a
+ * car reaching the merge within seconds of the player. Short, because heard
+ * late each describes a car that has already gone by; the detector speaks
+ * again on the next closer band or count, so a dropped one is replaced. The
+ * reassuring lines wait the engine default instead (module header).
  */
 export const TRAFFIC_MAX_QUEUE_WAIT_MS = 3000;
 
@@ -135,6 +141,14 @@ type PitExitLine = Extract<TrafficLine, `pit-exit-${string}`>;
 type LineSpec = {
   /** Whether the line cuts a lower-weight line in flight. */
   interrupt: boolean;
+  /**
+   * How long the line may wait for the bus (module header): {@link TRAFFIC_MAX_QUEUE_WAIT_MS}
+   * for a line whose words decay while it waits, the engine default for a
+   * reassuring line, which stays true as long as it waits because whatever
+   * would make it false is a newer verdict of its trigger, which replaces it in
+   * the queue (`supersedeGroup`).
+   */
+  maxQueueWaitMs: number;
   /** One sentence for a pack author, in the sim's terms (#1066). */
   description: string;
 };
@@ -142,29 +156,41 @@ type LineSpec = {
 const REJOIN_LINES: Record<RejoinLine, LineSpec & { matches: (d: TrafficRejoin) => boolean }> = {
   "rejoin-right-behind": {
     interrupt: true,
+    // Short: a car under two seconds away has arrived by the time a late line plays.
+    maxQueueWaitMs: TRAFFIC_MAX_QUEUE_WAIT_MS,
     description: "You are stopped or crawling on track and the nearest car will reach you in under two seconds.",
     matches: (d) => d.verdict === "rightBehind",
   },
   "rejoin-near-first": {
     interrupt: true,
+    // Short: its seconds count down while it waits.
+    maxQueueWaitMs: TRAFFIC_MAX_QUEUE_WAIT_MS,
     description:
       "You are stopped or crawling on track and a car comes within ten seconds of reaching you: the first call about it, naming its arrival in whole seconds.",
     matches: (d) => d.verdict === "near" && d.first === true,
   },
   "rejoin-near-update": {
     interrupt: true,
+    // Short: its seconds count down while it waits.
+    maxQueueWaitMs: TRAFFIC_MAX_QUEUE_WAIT_MS,
     description:
       "You are still stopped and the car within ten seconds keeps closing: called again each time its arrival has dropped by three seconds or more.",
     matches: (d) => d.verdict === "near" && d.first === false,
   },
   "rejoin-over-ten": {
     interrupt: false,
+    // The default: it stays true while it waits, since a car closing into a
+    // closer band is a newer rejoin verdict, which replaces it in the queue.
+    maxQueueWaitMs: DEFAULT_MAX_QUEUE_WAIT_MS,
     description:
       "You are stopped or crawling on track and the nearest car is ten to fifteen seconds away, said on stopping, as it closes, or once a close car has gone by.",
     matches: (d) => d.verdict === "overTen",
   },
   "rejoin-clear": {
     interrupt: false,
+    // The default: it stays true while it waits, since any car coming within
+    // fifteen seconds is a closer band, a newer rejoin verdict that replaces it.
+    maxQueueWaitMs: DEFAULT_MAX_QUEUE_WAIT_MS,
     description:
       "You are stopped or crawling on track and no car is within fifteen seconds of you, said on stopping or once a close car has gone by.",
     matches: (d) => d.verdict === "clear",
@@ -174,12 +200,18 @@ const REJOIN_LINES: Record<RejoinLine, LineSpec & { matches: (d: TrafficRejoin) 
 const PIT_EXIT_LINES: Record<PitExitLine, LineSpec & { verdict: TrafficPitExitVerdict }> = {
   "pit-exit-traffic": {
     interrupt: true,
+    // Short: a warning about a car at the merge within seconds of the player
+    // is no use once the player is merging.
+    maxQueueWaitMs: TRAFFIC_MAX_QUEUE_WAIT_MS,
     verdict: "traffic",
     description:
       "As you leave your pit box, a car on track is predicted to reach the end of the pit exit blend line around the same time as you.",
   },
   "pit-exit-clear": {
     interrupt: true,
+    // The default: it stays true while it waits, since traffic turning up is a
+    // flipped verdict, which replaces it in the queue.
+    maxQueueWaitMs: DEFAULT_MAX_QUEUE_WAIT_MS,
     verdict: "clear",
     description:
       "As you leave your pit box, no car on track is predicted to reach the end of the pit exit blend line around the same time as you.",
@@ -297,8 +329,10 @@ function trafficContract(line: TrafficLine, spec: LineSpec): ScenarioContract {
     family: "traffic",
     weight: WEIGHT.SAFETY,
     interrupt: spec.interrupt,
-    queueable: false,
-    maxQueueWaitMs: TRAFFIC_MAX_QUEUE_WAIT_MS,
+    // Queued: the detector says a line once and not again until the picture
+    // changes, so a dropped one is lost (module header).
+    queueable: true,
+    maxQueueWaitMs: spec.maxQueueWaitMs,
     description: spec.description,
   };
 }
