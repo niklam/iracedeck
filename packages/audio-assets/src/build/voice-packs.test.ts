@@ -2,6 +2,16 @@ import { describe, expect, it } from "vitest";
 
 import { BUNDLED_VOICE_IDS, VOICE_PACKS } from "./voice-packs.mjs";
 
+describe("voice-packs.mjs — the first-party labels (#1716)", () => {
+  it("labels the two first-party voices Shawn while every id stays put", () => {
+    const summary = VOICE_PACKS.map((pack) => ({ id: pack.id, label: pack.label, voices: [...pack.voices] }));
+    expect(summary).toEqual([
+      { id: "default", label: "Shawn", voices: ["default"] },
+      { id: "iracedeck-terse", label: "Shawn (Short callouts)", voices: ["shawn"] },
+    ]);
+  });
+});
+
 describe("voice-packs.mjs — the Terse pack (#999)", () => {
   it("registers the Terse pack as a second first-party pack, on demand (#999)", () => {
     // The version is deliberately not pinned here: a pin only added an edit to
@@ -9,7 +19,7 @@ describe("voice-packs.mjs — the Terse pack (#999)", () => {
     // is the pack record's job (`pack-record.test.ts`, #1667).
     const terse = VOICE_PACKS.find((pack) => pack.id === "iracedeck-terse");
     expect(terse).toMatchObject({
-      label: "Default (Short callouts)",
+      label: "Shawn (Short callouts)",
       author: "iRaceDeck",
       voices: ["shawn"],
       bundled: false,

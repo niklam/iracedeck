@@ -72,7 +72,7 @@
 export const VOICE_PACKS = Object.freeze([
   Object.freeze({
     id: "default",
-    label: "Default",
+    label: "Shawn",
     version: "2.0.0",
     description: "The Race Engineer voice iRaceDeck ships with.",
     author: "iRaceDeck",
@@ -82,9 +82,9 @@ export const VOICE_PACKS = Object.freeze([
   }),
   Object.freeze({
     id: "iracedeck-terse",
-    label: "Default (Short callouts)",
+    label: "Shawn (Short callouts)",
     version: "2.0.0",
-    description: "The Default engineer in radio shorthand: shorter race-time calls, most of them the fact itself.",
+    description: "Shawn in radio shorthand: shorter race-time calls, most of them the fact itself.",
     author: "iRaceDeck",
     voices: Object.freeze(["shawn"]),
     minPluginVersion: "3.9.0",
