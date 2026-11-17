@@ -199,6 +199,22 @@ describe("the reference (decision 5)", () => {
     expect(sectorReference(inside, 2)).toEqual([30, 60]);
   });
 
+  it("ignores a lap numbered above the completed-lap count: the lap counter stepped back since it was recorded", () => {
+    // Laps 20 to 22 from before the counter stepped back to 4; the new run has two clean laps.
+    const stale: [number, number, boolean][] = [
+      [20, 40, true],
+      [21, 40, true],
+      [22, 40, true],
+      [2, 30, true],
+      [3, 30, false],
+      [4, 30, true],
+    ];
+
+    expect(sectorReference(laps(stale, 4), 2)).toBeNull();
+    // The positive control: once the count reaches the old laps they are the car's last ones again.
+    expect(sectorReference(laps(stale, 22), 2)).toEqual([40, 80]);
+  });
+
   it("does not use a clean lap with a sector unmeasured, nor one recorded for another sector count", () => {
     const base: SectorLapInput[] = [
       { lap: 2, sectorTimes: [30, 60], clean: true },

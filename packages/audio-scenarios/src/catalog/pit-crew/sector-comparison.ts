@@ -174,7 +174,9 @@ function median(values: readonly number[]): number {
  * back from `lapsCompleted`, measured or not: the timer leaves out a lap it
  * could not measure, so the last five recorded laps can reach back a whole
  * stint. A car the sim reports no lap count for (`lapsCompleted` null) is
- * not running and has no reference, so no call compares with it.
+ * not running and has no reference, so no call compares with it. A recorded
+ * lap numbered above the count is not one of them either: the counter has
+ * stepped back since it was recorded, and the lap belongs to an earlier run.
  *
  * A usable lap is a clean lap with a time for every one of `sectorCount`
  * sectors. A clean lap with a sector unmeasured, or recorded against a
@@ -187,9 +189,10 @@ function median(values: readonly number[]): number {
 export function sectorReference(car: SectorCarInput, sectorCount: number): number[] | null {
   if (car.lapsCompleted === null) return null;
 
-  const oldestOutside = car.lapsCompleted - SECTOR_RECENT_LAPS;
+  const newest = car.lapsCompleted;
+  const oldestOutside = newest - SECTOR_RECENT_LAPS;
   const usable = car.recentLaps
-    .filter((lap) => lap.lap > oldestOutside)
+    .filter((lap) => lap.lap > oldestOutside && lap.lap <= newest)
     .filter((lap) => lap.clean && lap.sectorTimes.length === sectorCount && lap.sectorTimes.every(isSectorTime))
     .slice(-SECTOR_REFERENCE_LAPS);
 
