@@ -122,7 +122,7 @@ The bands are fixed because the wording names them. This supersedes decision 4's
 
 **Settings (decisions 4 and 7).** The two pit-exit window sliders and the two opt-ins. No rejoin windows and no look-ahead.
 
-**Weights (decision 6).** The rejoin lines under 10 s, "right behind", and both pit-exit lines fire at `WEIGHT.SAFETY` with `interrupt: true`. "More than ten" and "Clear to rejoin." use `WEIGHT.SAFETY` without interrupt.
+**Weights (decision 6).** The rejoin lines under 10 s, "right behind", and both pit-exit lines fire at `WEIGHT.SAFETY` with `interrupt: true`. "More than ten" and "Clear to rejoin." use `WEIGHT.SAFETY` without interrupt. **Amended 2026-11-17 (second read):** the interrupting lines ("right behind", the "about N" lines and their updates, and pit-exit traffic) fire at a weight of their own, 85, strictly between `WEIGHT.SAFETY` (70) and `WEIGHT.CRITICAL` (100), still with `interrupt: true`. At `SAFETY` they could not cut an equal-weight caution or flag line, and a stop is often exactly when a caution is called: a first "Car coming in about five seconds" then waited behind "Caution is out…" and was dropped after its 3 s wait, while the detector believed it had been said, so the next line updated a car the driver never heard about. At 85 they cut a caution or flag line, which is queueable and replays after; the meatball, the start lights and fuel critical (`CRITICAL`) and the spotter (`PROXIMITY`) still win. "More than ten", "Clear to rejoin." and the pit-exit clear call stay at `SAFETY` without interrupt.
 
 **Events (decision 8).**
 `traffic.rejoin` is one of:
