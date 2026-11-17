@@ -174,6 +174,10 @@ describe("runLintPack", () => {
       "toggle/resuming",
       "toggle/corner-names-on",
       "toggle/corner-names-off",
+      "toggle/sector-starts-on",
+      "toggle/sector-starts-off",
+      "toggle/track-calls-on",
+      "toggle/track-calls-off",
       "welcome/greeting",
       `names/${ANY_BASE}`,
     ]);

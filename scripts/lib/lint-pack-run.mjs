@@ -114,6 +114,34 @@ export const PLUGIN_PLAYED_CLIPS = Object.freeze([
       "Played by the plugin itself, outside the script: the acknowledgment when corner-name callouts are switched off, as toggle/corner-names-off-01.",
   },
   {
+    group: "toggle",
+    base: "sector-starts-on",
+    // audio-toggles.ts (`toggleTrackCallouts` → `playTrackCallsAck`, #1699), the sectors target.
+    playedBy:
+      "Played by the plugin itself, outside the script: the acknowledgment when sector-start callouts are switched on from the Pit Crew Corner Names key, as toggle/sector-starts-on-01.",
+  },
+  {
+    group: "toggle",
+    base: "sector-starts-off",
+    // audio-toggles.ts (`toggleTrackCallouts` → `playTrackCallsAck`), the sectors target's `off` side.
+    playedBy:
+      "Played by the plugin itself, outside the script: the acknowledgment when sector-start callouts are switched off from the Pit Crew Corner Names key, as toggle/sector-starts-off-01.",
+  },
+  {
+    group: "toggle",
+    base: "track-calls-on",
+    // audio-toggles.ts (`toggleTrackCallouts` → `playTrackCallsAck`, #1699), the both target.
+    playedBy:
+      "Played by the plugin itself, outside the script: the acknowledgment when corner-name and sector-start callouts are switched on together from the Pit Crew Corner Names key, as toggle/track-calls-on-01.",
+  },
+  {
+    group: "toggle",
+    base: "track-calls-off",
+    // audio-toggles.ts (`toggleTrackCallouts` → `playTrackCallsAck`), the both target's `off` side.
+    playedBy:
+      "Played by the plugin itself, outside the script: the acknowledgment when corner-name and sector-start callouts are switched off together from the Pit Crew Corner Names key, as toggle/track-calls-off-01.",
+  },
+  {
     group: "welcome",
     base: "greeting",
     // packages/iracing-actions/src/audio/voice-test.ts (`playRaceEngineerVoiceTest`):
