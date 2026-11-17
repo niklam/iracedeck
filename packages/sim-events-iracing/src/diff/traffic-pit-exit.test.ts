@@ -617,6 +617,37 @@ describe("diffTrafficPitExit", () => {
     });
   });
 
+  describe("an ETA longer than the car's class lap (every crossing in the window)", () => {
+    /** Class 2 laps in 20 s and has no curve, so its class lap is its session lap time. */
+    const SHORT_LAP = 2;
+    /** Pit road 5 s at the limit plus 75.3 − 50 on to the blend: the player's ETA is 30.3 s. */
+    const LONG_ETA: TrafficPitExitLandmarks = {
+      pitRoadEnd: landmark(0.125, { [CLS]: 50 }),
+      blendEnd: landmark(0.1875, { [CLS]: 75.3, [SHORT_LAP]: 40 }),
+    };
+    const classes: TrafficClassInfo = { lapTimeByClass: { [CLS]: 500, [SHORT_LAP]: 20 }, classByCarIdx: [] };
+    /** A class-2 car whose next crossing of the blend is `next` s away: it crosses again every 20 s. */
+    const shortLapCar = (next: number): Car => ({ idx: 5, pct: 0.05, est: 40 - next, cls: SHORT_LAP });
+
+    it("is traffic for a car crossing at 10, 30 and 50 s with the player at 30.3 s: the crossing at −0.3 s", () => {
+      const h = harness({ landmarks: LONG_ETA, classes });
+
+      h.depart(tel({ cars: [shortLapCar(10)] }));
+
+      expect(h.events).toEqual([{ verdict: "traffic", seconds: -0.3 }]);
+      expect(lines(h.debug).at(-1)).toContain("eta 30.30 s on pitRoad");
+    });
+
+    it("is clear when no crossing lands in the window, reporting the nearest of them", () => {
+      const h = harness({ landmarks: LONG_ETA, classes });
+
+      // Crossings at 3, 23, 43 s: −7.3 and +12.7 around the player, both outside.
+      h.depart(tel({ cars: [shortLapCar(3)] }));
+
+      expect(h.events).toEqual([{ verdict: "clear", seconds: -7.3 }]);
+    });
+  });
+
   describe("a car standing still", () => {
     it("is left out: a car stopped short of the blend is not coming, however close its reference time", () => {
       const curves = learnedCurves();

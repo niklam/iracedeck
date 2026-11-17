@@ -68,14 +68,20 @@
  * (`computeTrafficArrivals` answers `null`): no call, one debug line per
  * episode, and the next evaluation tries again.
  *
- * **The before side looks back.** The arrival model answers only the NEXT
- * arrival, in [0, lap): a car that crossed `blendEnd` half a second ago reads
- * a lap away. Once the player's ETA is under `before`, part of the before
- * window lies in the past, and that car is practically alongside. So each
- * timed car's previous crossing is tested too, at `seconds − classLap − eta`
- * with the car's own class lap (`resolveClassLapTime`); a car whose class lap
- * is unknown has only its next crossing tested. A car is in the window when
- * either crossing is, and the reported nearest considers both.
+ * **Every crossing in the window.** The arrival model answers only the NEXT
+ * arrival, in [0, lap), while a car crosses `blendEnd` once every class lap.
+ * So each timed car's crossings are tested at `seconds + k × classLap − eta`
+ * with the car's own class lap (`resolveClassLapTime`), from `k = −1` up to
+ * the first crossing past `+after`, which covers every crossing in
+ * `[eta − before, eta + after]`. The one before the next (`k = −1`) is the
+ * before side looking back: once the player's ETA is under `before`, part of
+ * the before window lies in the past, and a car that crossed half a second
+ * ago, reading a lap away, is practically alongside. The later ones matter
+ * when the ETA is longer than a class lap (a long pit lane, a short lap):
+ * there a car's next crossing can come well before the player while its
+ * crossing a lap later lands in the window. A car whose class lap is unknown
+ * has only its next crossing tested. A car is in the window when any crossing
+ * is, and the reported nearest is the nearest crossing tested.
  *
  * **When it speaks** (amended 2026-11-11: the call is made at the stall). At
  * the episode's first evaluation, which is the departure tick itself whenever
@@ -408,6 +414,40 @@ function playerEta(
   return blend === null ? { reason: "noClassLap" } : { seconds: blend, phase: "blend" };
 }
 
+/**
+ * The most crossings of one car {@link crossingsToTest} lists: far more than
+ * any real ETA spans (a minute and a half of pit lane over a ten-second oval
+ * lap is about ten), so it never cuts a real list short; it bounds the walk
+ * for a class lap that is no real lap time, or a window side that is not a
+ * number, so an evaluation always ends.
+ */
+const MAX_CROSSINGS = 64;
+
+/**
+ * A timed car's crossings of `blendEnd` relative to the player's ETA (s,
+ * negative before; module header): with its class lap known, one a lap apart
+ * from the one before its next (`k = −1`) up to and including the first past
+ * `after`; without one, its next crossing alone. A class lap that is no
+ * positive finite time counts as unknown.
+ */
+function crossingsToTest(seconds: number, eta: number, after: number, classLap: number | null): number[] {
+  const next = seconds - eta;
+
+  if (classLap === null || !(classLap > 0) || !Number.isFinite(classLap)) return [next];
+
+  const crossings: number[] = [];
+
+  for (let k = -1; crossings.length < MAX_CROSSINGS; k++) {
+    const relative = next + k * classLap;
+
+    crossings.push(relative);
+
+    if (relative > after) break;
+  }
+
+  return crossings;
+}
+
 /** One evaluation: the landmarks, the ETA, then the verdict and whether to speak it (module header). */
 function evaluate(
   episode: TrafficPitExitState,
@@ -497,14 +537,12 @@ function evaluate(
   for (const arrival of arrivals) {
     if (!arrival.timed) continue;
 
-    // Its next crossing, and the one before it (module header): the before
-    // window reaches into the past once the player is that close.
-    const classLap = resolveClassLapTime(curves, facts.classes, arrival.classId);
-    const crossings = [arrival.seconds - eta.seconds];
-
-    if (classLap !== null) crossings.push(arrival.seconds - classLap - eta.seconds);
-
-    for (const relative of crossings) {
+    for (const relative of crossingsToTest(
+      arrival.seconds,
+      eta.seconds,
+      after,
+      resolveClassLapTime(curves, facts.classes, arrival.classId),
+    )) {
       if (nearest === null || Math.abs(relative) < Math.abs(nearest.relative)) nearest = { car: arrival, relative };
 
       if (relative >= -before && relative <= after) inWindow = true;
