@@ -1,16 +1,16 @@
 {
   "id": "default",
   "version": "2.0.0",
-  "sha256": "9544af5733bde5d8909aba1509e749662c98e45bf7053604356da50c50f3b164",
+  "sha256": "5f85d9cfbcf67f526c314d113b67801371021524a7227c7c204951180feee283",
   "inputs": {
     "pipeline": "07ed37b8d7bc4aad9397ad201cfe00b15ab93746cab67e206e5babbc7f13f3fa",
     "archiveFormat": "dff24c496d1c311953f8cd6b9a8aeee12dc6eaca81e3bc3ad645794093cc71ca",
     "manifest": "6c07820159eb63d6ffd4f43a3050b74e062ae7bfad21a1f3f2350c96fc0378e0",
     "voices": {
       "default": {
-        "clips": 4809,
-        "clipsSha256": "d12752225b5d9cd1e809742d4166acb2f3cd16fb8f4e19ecef44470dcbc2ab54",
-        "script": "039f4810a7ba732c20136f58173ffd48ead4a574479389378637babea227e056"
+        "clips": 4829,
+        "clipsSha256": "f219baa611207003adfa0d1a6687a4cf847207f15d813a9286865c6c7395b1dc",
+        "script": "d78716355411297824d26a793fa3b29172be250a29a112401ff97f248a5cf71b"
       }
     }
   },
