@@ -373,6 +373,14 @@ describe("readCarProgress — the start/finish correction", () => {
     // A counter rewound by several laps at the line: the nearest lap is still more than a sample's step away.
     expect(readCarProgress(6.9, 2, 0.99)).toBe(2.99);
   });
+
+  it("corrects only a one-lap disagreement: a counter rewound several laps across the line stays a rewind", () => {
+    // Within a tick's travel of 6.999, but the counter says 3: four laps off, not one.
+    expect(readCarProgress(6.999, 3, 0.001)).toBe(3.001);
+    expect(readCarProgress(6.999, 10, 0.001)).toBe(10.001);
+    // The positive control: the same reading one lap off is the line disagreement, corrected.
+    expect(readCarProgress(6.999, 6, 0.001)).toBeCloseTo(7.001, 10);
+  });
 });
 
 /** A tick from each car's raw `[CarIdxLapCompleted, CarIdxLapDistPct]`, the player first. */

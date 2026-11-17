@@ -101,13 +101,14 @@ const CAR_PROGRESS_CONTINUOUS_LAPS = 0.5;
  * So when the sum is more than half a lap from the last progress, the lap
  * count is taken from the last progress instead: the fraction plus the whole
  * number of laps that puts it nearest the last progress. That candidate is
- * used only when it is within {@link CAR_PROGRESS_LINE_MAX_TICK_STEP} of the
- * last progress (the car could have driven there in a tick) AND the fraction
- * is within
+ * used only when its lap count is exactly one off the counter's (the arrays
+ * disagree by one step of the counter, never more), it is within
+ * {@link CAR_PROGRESS_LINE_MAX_TICK_STEP} of the last progress (the car could
+ * have driven there in a tick) AND the fraction is within
  * {@link CAR_PROGRESS_LINE_GUARD_PCT} of the line (the only place the arrays
  * disagree). Anything else — a tow, a teleport to the pits, a hop across the
- * line, a counter rewound mid-lap — is returned as the plain sum and stays
- * the discontinuity it is.
+ * line, a counter rewound mid-lap or by several laps at the line — is returned
+ * as the plain sum and stays the discontinuity it is.
  *
  * `previous` must be a confirmed progress, never merely the last one. A car's
  * first reading can itself be taken on a disagreeing tick (the player's is at
@@ -123,7 +124,12 @@ export function readCarProgress(previous: number | undefined, lapCompleted: numb
 
   if (!isNearLine(lapDistPct)) return raw;
 
-  const candidate = lapDistPct + Math.round(previous - lapDistPct);
+  const laps = Math.round(previous - lapDistPct);
+
+  // The arrays disagree by one lap, never more: a counter several laps off is rewound.
+  if (Math.abs(laps - lapCompleted) !== 1) return raw;
+
+  const candidate = lapDistPct + laps;
 
   return Math.abs(candidate - previous) <= CAR_PROGRESS_LINE_MAX_TICK_STEP ? candidate : raw;
 }
