@@ -84,6 +84,7 @@ import { _resetRadarEngine } from "./radar-engine.js";
 import { _resetSpotterEngine } from "./spotter-engine.js";
 import { TELEMETRY_READOUT_CLIP_SOURCES } from "./telemetry-readout.js";
 import { TIRE_WEAR_CLIP_SOURCES } from "./tire-wear.js";
+import { _resetTrafficState } from "./traffic.js";
 
 const mockSessionType = vi.fn(() => "Race");
 // Live-telemetry feed. Most of this file leaves it at `null` — the pre-#1051
@@ -632,6 +633,7 @@ afterEach(() => {
   _resetPitSpeedingEngine();
   _resetPitExitCueEngine();
   _resetLimiterCueEngine();
+  _resetTrafficState();
   _setFurledRaisedSpoken(false);
   _resetLastIncidentPoints();
   vi.clearAllMocks();
@@ -1902,6 +1904,14 @@ describe("traffic family registration (issue #1113)", () => {
   ] satisfies ReadonlyArray<{ data: SimEventMap["traffic.rejoin"]["data"]; clips: string[] }>)(
     "a rejoin $data.verdict plays its line when the opt-in is on",
     ({ data, clips }) => {
+      // An update is spoken only once a first call introduced the car (#1113,
+      // amended 2026-11-17): play one, then listen to the line under test.
+      if (data.verdict === "near" && !data.first) {
+        bus.publishEvent("traffic.rejoin", { verdict: "near", seconds: 4, first: true });
+        flush(audio);
+        audio._reset();
+      }
+
       bus.publishEvent("traffic.rejoin", data);
       flush(audio);
 

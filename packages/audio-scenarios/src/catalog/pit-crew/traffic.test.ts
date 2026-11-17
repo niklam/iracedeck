@@ -11,6 +11,11 @@
  * about the contracts and the vocabulary, not the wording), and a hand-built
  * manifest whose clip set decides what is speakable. What the first-party
  * voices script and ship is `traffic-voices.test.ts`.
+ *
+ * Amended 2026-11-17: the warnings weigh {@link TRAFFIC_WARNING_WEIGHT}, so
+ * they cut a caution or flag line and still yield to a CRITICAL line and the
+ * spotter; and a count is an update only once the first call about the car
+ * took the bus — the family's one module state, reset after every test.
  */
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import { createFakeAudio, type FakeAudio } from "@iracedeck/audio-service/testing";
@@ -33,6 +38,9 @@ import { _resetAudioScenarios, initializeAudioScenarios } from "../../interprete
 import { PIT_READBACK_CONTRACTS } from "./readback.js";
 import { TIRE_WEAR_CONTRACTS } from "./tire-wear.js";
 import {
+  _resetTrafficState,
+  readTrafficDebugState,
+  registerTrafficApproachTracking,
   registerTrafficVocabulary,
   REJOIN_SECONDS_VAR,
   rejoinMidBase,
@@ -43,6 +51,7 @@ import {
   TRAFFIC_PIT_EXIT_SUPERSEDE_GROUP,
   TRAFFIC_REJOIN_SUPERSEDE_GROUP,
   TRAFFIC_SCENARIO_IDS,
+  TRAFFIC_WARNING_WEIGHT,
 } from "./traffic.js";
 
 const REJOIN_IDS = [
@@ -62,6 +71,9 @@ const DECAYING_IDS = [
   "pit-crew.traffic-rejoin-near-update",
   "pit-crew.traffic-pit-exit-traffic",
 ] as const;
+
+/** The warnings: the lines at TRAFFIC_WARNING_WEIGHT, which cut a caution line. */
+const WARNING_IDS = DECAYING_IDS;
 
 /** The reassuring lines, true for as long as they wait. */
 const REASSURING_IDS = [
@@ -195,6 +207,45 @@ const SAFETY_CONTRACT: ScenarioContract = {
 };
 
 /**
+ * A caution or flag line as the caution calls are: `WEIGHT.SAFETY`, queueable
+ * with their 20 s wait, so a warning that cuts it leaves it to replay after.
+ * Triggered off the debris flag, which no traffic contract hears.
+ */
+const CAUTION_LIKE_ID = "test.caution-like";
+const CAUTION_LIKE_CLIP = `voice/${VOICE}/test/caution-like-01.mp3`;
+const CAUTION_LIKE_CONTRACT: ScenarioContract = {
+  id: CAUTION_LIKE_ID,
+  channel: AudioChannel.Voice,
+  bus: AudioBus.Voice,
+  base: "voice/{voice}",
+  family: "flag",
+  weight: WEIGHT.SAFETY,
+  queueable: true,
+  maxQueueWaitMs: 20_000,
+  frame: NO_FRAME,
+  when: { event: "flag.debris.raised" },
+};
+
+/**
+ * The spotter's transition call as the spotter engine fires it: `PROXIMITY`,
+ * `interrupt`, never queued. Triggered off the white flag, which no traffic
+ * contract hears.
+ */
+const PROXIMITY_LIKE_ID = "test.proximity-like";
+const PROXIMITY_LIKE_CLIP = `voice/${VOICE}/test/proximity-like-01.mp3`;
+const PROXIMITY_LIKE_CONTRACT: ScenarioContract = {
+  id: PROXIMITY_LIKE_ID,
+  channel: AudioChannel.Voice,
+  bus: AudioBus.Voice,
+  base: "voice/{voice}",
+  weight: WEIGHT.PROXIMITY,
+  interrupt: true,
+  queueable: false,
+  frame: NO_FRAME,
+  when: { event: "flag.white.raised" },
+};
+
+/**
  * The two lines a pit stop's exit publishes that the pit-exit call must
  * trump: the real exit readback and tire-wear contracts — their weight,
  * queueing and `queueBehind` are what is under test — under a fixture body of
@@ -233,6 +284,8 @@ const manifest: AudioAssetsManifest = {
     CRITICAL_CLIP,
     INCIDENT_LIKE_CLIP,
     SAFETY_CLIP,
+    CAUTION_LIKE_CLIP,
+    PROXIMITY_LIKE_CLIP,
     READBACK_CLIP,
     TIRE_WEAR_CLIP,
   ],
@@ -263,6 +316,8 @@ const SCRIPT: CalloutScript = {
     [CRITICAL_ID]: { ...ENTRY, sequence: ["pool:test/critical"] },
     [INCIDENT_LIKE_ID]: { ...ENTRY, sequence: ["pool:test/incident-like"] },
     [SAFETY_ID]: { ...ENTRY, sequence: ["pool:test/safety"] },
+    [CAUTION_LIKE_ID]: { ...ENTRY, sequence: ["pool:test/caution-like"] },
+    [PROXIMITY_LIKE_ID]: { ...ENTRY, sequence: ["pool:test/proximity-like"] },
     [READBACK_EXIT.id]: { ...ENTRY, sequence: ["pool:test/readback"] },
     [TIRE_WEAR_REPORT.id]: { ...ENTRY, sequence: ["pool:test/tire-wear"] },
   },
@@ -304,6 +359,42 @@ function ctxOf(event: SimEventOf<SimEventName> | null): ScenarioContext {
   return { event, telemetry: event?.telemetry, data: event?.data, now: 0 } as ScenarioContext;
 }
 
+/** The clips of a first call ("Car coming in", the seconds, "Watch out.") and of an update ("Getting closer,", the seconds). */
+const firstCall = (seconds: number): string[] => [
+  clip("rejoin-intro"),
+  clip(`rejoin-mid-${seconds}`),
+  clip("rejoin-outro"),
+];
+const update = (seconds: number): string[] => [clip("rejoin-update"), clip(`rejoin-mid-${seconds}`)];
+
+/** Play a first call to the end, so the car is introduced, and forget what was played. */
+function introduce(seconds = 9): void {
+  bus.publishEvent("traffic.rejoin", near(seconds, true));
+  flush(audio);
+  expect(readTrafficDebugState().introduced).toBe(true);
+  audio._reset();
+}
+
+/** The first clip each line plays on the voice channel (a near call's lead-in; the rest follow). */
+const LINE_CLIP: Record<string, string> = {
+  "pit-crew.traffic-rejoin-right-behind": clip("rejoin-right-behind"),
+  "pit-crew.traffic-rejoin-near-first": clip("rejoin-intro"),
+  "pit-crew.traffic-rejoin-near-update": clip("rejoin-update"),
+  "pit-crew.traffic-rejoin-over-ten": clip("rejoin-over-ten"),
+  "pit-crew.traffic-rejoin-clear": clip("rejoin-clear"),
+  "pit-crew.traffic-pit-exit-traffic": clip("pit-exit-traffic"),
+  "pit-crew.traffic-pit-exit-clear": clip("pit-exit-clear"),
+};
+
+/** Publish the event `id`'s line answers (an update speaks only once {@link introduce} has run). */
+function publishLine(id: string): void {
+  if (id.startsWith("pit-crew.traffic-pit-exit-")) {
+    bus.publishEvent("traffic.pitExit", { verdict: id.endsWith("traffic") ? "traffic" : "clear", seconds: 1 });
+  } else {
+    bus.publishEvent("traffic.rejoin", REJOIN_PAYLOADS[id as (typeof REJOIN_IDS)[number]]);
+  }
+}
+
 function voicePaths(): string[] {
   return audio._played.filter((p) => p.channel === AudioChannel.Voice).map((p) => p.path);
 }
@@ -316,8 +407,9 @@ beforeEach(() => {
   bus = createMockBus();
   audio = createFakeAudio();
   engine = initializeAudioScenarios(bus, audio, manifest, mockLogger as never, () => VOICE);
-  // The production order (`registerPitCrew`): vocabulary, contracts, script.
+  // The production order (`registerPitCrew`): vocabulary, approach tracking, contracts, script.
   registerTrafficVocabulary(engine);
+  registerTrafficApproachTracking(bus);
 
   for (const c of [
     ...TRAFFIC_CONTRACTS,
@@ -325,6 +417,8 @@ beforeEach(() => {
     CRITICAL_CONTRACT,
     INCIDENT_LIKE_CONTRACT,
     SAFETY_CONTRACT,
+    CAUTION_LIKE_CONTRACT,
+    PROXIMITY_LIKE_CONTRACT,
     READBACK_EXIT,
     TIRE_WEAR_REPORT,
   ]) {
@@ -336,6 +430,7 @@ beforeEach(() => {
 
 afterEach(() => {
   _resetAudioScenarios();
+  _resetTrafficState();
   vi.clearAllMocks();
   vi.useRealTimers();
 });
@@ -349,14 +444,40 @@ describe("TRAFFIC_CONTRACTS", () => {
     for (const c of TRAFFIC_CONTRACTS) expect("sequence" in c).toBe(false);
   });
 
-  it("shares one family, on the voice bus, at SAFETY weight, every line queueable", () => {
+  it("shares one family, on the voice bus, every line queueable", () => {
     for (const c of TRAFFIC_CONTRACTS) {
       expect(c.family, c.id).toBe("traffic");
       expect(c.channel).toBe(AudioChannel.Voice);
       expect(c.bus).toBe(AudioBus.Voice);
       expect(c.base).toBe("voice/{voice}");
-      expect(c.weight, c.id).toBe(WEIGHT.SAFETY);
       expect(c.queueable, c.id).toBe(true);
+    }
+  });
+
+  it("the warnings weigh TRAFFIC_WARNING_WEIGHT, strictly between SAFETY and CRITICAL; the reassuring lines SAFETY", () => {
+    expect(TRAFFIC_WARNING_WEIGHT).toBe(85);
+    expect(TRAFFIC_WARNING_WEIGHT).toBeGreaterThan(WEIGHT.SAFETY);
+    expect(TRAFFIC_WARNING_WEIGHT).toBeLessThan(WEIGHT.CRITICAL);
+
+    for (const id of WARNING_IDS) expect(contract(id).weight, id).toBe(TRAFFIC_WARNING_WEIGHT);
+
+    for (const id of REASSURING_IDS) expect(contract(id).weight, id).toBe(WEIGHT.SAFETY);
+  });
+
+  it("only the first call and the reassuring rejoin lines carry a speak-time gate, the marking", () => {
+    const gated = TRAFFIC_CONTRACTS.filter((c) => c.speakGate !== undefined).map((c) => c.id);
+
+    expect(gated).toEqual([
+      "pit-crew.traffic-rejoin-near-first",
+      "pit-crew.traffic-rejoin-over-ten",
+      "pit-crew.traffic-rejoin-clear",
+    ]);
+
+    for (const id of gated) {
+      const text = contract(id).speakGate!.description;
+
+      expect(text.endsWith("."), id).toBe(true);
+      expect(text.length, id).toBeLessThanOrEqual(200);
     }
   });
 
@@ -398,13 +519,46 @@ describe("TRAFFIC_CONTRACTS", () => {
     expect(TRAFFIC_REJOIN_SUPERSEDE_GROUP).not.toBe(TRAFFIC_PIT_EXIT_SUPERSEDE_GROUP);
   });
 
-  it("each rejoin payload is taken by exactly one contract, the one for its line", () => {
+  /** The rejoin contracts whose `where:` takes `data` right now. */
+  const takers = (data: TrafficRejoin): string[] =>
+    REJOIN_IDS.filter((id) => contract(id).when?.where?.(rejoinEvent(data)) === true);
+
+  it("once the car is introduced, each rejoin payload is taken by exactly one contract, the one for its line", () => {
     for (const id of REJOIN_IDS) expect(contract(id).when?.event).toBe("traffic.rejoin");
 
-    for (const [owner, data] of Object.entries(REJOIN_PAYLOADS)) {
-      const takers = REJOIN_IDS.filter((id) => contract(id).when?.where?.(rejoinEvent(data)) === true);
+    introduce();
 
-      expect(takers, owner).toEqual([owner]);
+    for (const [owner, data] of Object.entries(REJOIN_PAYLOADS)) expect(takers(data), owner).toEqual([owner]);
+  });
+
+  it("before the car is introduced, a count is taken by the first call alone, and every other payload by its own line", () => {
+    expect(readTrafficDebugState().introduced).toBe(false);
+
+    for (const [owner, data] of Object.entries(REJOIN_PAYLOADS)) {
+      const expected = owner === "pit-crew.traffic-rejoin-near-update" ? "pit-crew.traffic-rejoin-near-first" : owner;
+
+      expect(takers(data), owner).toEqual([expected]);
+    }
+  });
+
+  it("the where: checks are pure: asked twice they answer the same and the state does not move", () => {
+    for (const introduced of [false, true]) {
+      if (introduced) introduce();
+
+      const before = readTrafficDebugState();
+
+      for (const id of REJOIN_IDS) {
+        for (const data of Object.values(REJOIN_PAYLOADS)) {
+          const where = contract(id).when!.where!;
+          const event = rejoinEvent(data);
+          const once = where(event);
+
+          expect(where(event), `${id} on ${JSON.stringify(data)}`).toBe(once);
+        }
+      }
+
+      expect(readTrafficDebugState()).toEqual(before);
+      expect(readTrafficDebugState().introduced).toBe(introduced);
     }
   });
 
@@ -511,14 +665,30 @@ describe("registerTrafficVocabulary", () => {
     expect(seconds(ctxOf(null))).toBeNull();
   });
 
-  it("the first-call condition is true only on a near verdict's first call", () => {
+  it("the first-call condition is true on the call that introduces the car, and never on another line", () => {
     const first = stubEngine().conds.get("traffic.rejoinFirst")!;
 
-    expect(first(ctxOf(rejoinEvent(near(6, true))))).toBe(true);
+    for (const introduced of [false, true]) {
+      if (introduced) introduce();
+
+      expect(first(ctxOf(rejoinEvent(near(6, true))))).toBe(true);
+      expect(first(ctxOf(rejoinEvent({ verdict: "rightBehind" })))).toBe(false);
+      expect(first(ctxOf(rejoinEvent({ verdict: "clear" })))).toBe(false);
+      expect(first(ctxOf(pitExitEvent("clear")))).toBe(false);
+      expect(first(ctxOf(null))).toBe(false);
+    }
+  });
+
+  it("the first-call condition is true on a count while no first call was heard, and false on one after it", () => {
+    const first = stubEngine().conds.get("traffic.rejoinFirst")!;
+
+    expect(first(ctxOf(rejoinEvent(near(6, false))))).toBe(true);
+
+    introduce();
+
     expect(first(ctxOf(rejoinEvent(near(6, false))))).toBe(false);
-    expect(first(ctxOf(rejoinEvent({ verdict: "rightBehind" })))).toBe(false);
-    expect(first(ctxOf(pitExitEvent("clear")))).toBe(false);
-    expect(first(ctxOf(null))).toBe(false);
+    // Pure: asking changed nothing.
+    expect(readTrafficDebugState().introduced).toBe(true);
   });
 
   it("the band and pit-exit verdict cases declare every verdict and read the fire's own event", () => {
@@ -560,16 +730,19 @@ describe("the traffic lines through the engine", () => {
     expect(allPaths()).not.toContain(TICK_OPEN);
   });
 
-  it("a count is the update intro and the seconds, unframed", () => {
+  it("a count after the first call is the update intro and the seconds, unframed", () => {
+    introduce();
     bus.publishEvent("traffic.rejoin", near(2, false));
     flush(audio);
 
-    expect(voicePaths()).toEqual([clip("rejoin-update"), clip("rejoin-mid-2")]);
+    expect(voicePaths()).toEqual(update(2));
     expect(allPaths()).not.toContain(TICK_OPEN);
   });
 
   it("the middle draws from its number's takes, the voice's different wordings", () => {
     const heard = new Set<string>();
+
+    introduce();
 
     for (let i = 0; i < 6; i++) {
       audio._reset();
@@ -606,17 +779,19 @@ describe("the traffic lines through the engine", () => {
     expect(allPaths()).toContain(TICK_CLOSE);
   });
 
-  it("a count the voice has no middle for skips the line whole (#835), and the next speakable one still plays", () => {
+  it("a count the voice has no middle for skips the line whole (#835), and the next speakable one is the first call", () => {
     bus.publishEvent("traffic.rejoin", near(4, true));
     bus.publishEvent("traffic.rejoin", near(7, false));
     flush(audio);
 
     expect(voicePaths()).toEqual([]);
+    // A skipped first call never took the bus, so it introduced nothing.
+    expect(readTrafficDebugState().introduced).toBe(false);
 
     bus.publishEvent("traffic.rejoin", near(9, false));
     flush(audio);
 
-    expect(voicePaths()).toEqual([clip("rejoin-update"), clip("rejoin-mid-9")]);
+    expect(voicePaths()).toEqual(firstCall(9));
   });
 
   it("a count outside the close band says nothing, never a figure the band does not hold", () => {
@@ -634,6 +809,9 @@ describe("scheduling against other lines", () => {
     "pit-crew.traffic-rejoin-near-first",
     "pit-crew.traffic-rejoin-near-update",
   ] as const)("%s cuts an ordinary line mid-sentence", (id) => {
+    // An update is spoken only about a car the driver has heard of.
+    if (id === "pit-crew.traffic-rejoin-near-update") introduce();
+
     bus.publishEvent("pitStall.entered", {});
 
     expect(voicePaths()).toEqual([CHATTER_CLIP]);
@@ -641,8 +819,7 @@ describe("scheduling against other lines", () => {
     bus.publishEvent("traffic.rejoin", REJOIN_PAYLOADS[id]);
 
     expect(audio._stopped).toContain(AudioChannel.Voice);
-    expect(voicePaths()).toHaveLength(2);
-    expect(voicePaths()[1]).toMatch(/\/traffic\/rejoin-/);
+    expect(voicePaths()).toEqual([CHATTER_CLIP, LINE_CLIP[id]]);
   });
 
   it.each(["pit-crew.traffic-rejoin-over-ten", "pit-crew.traffic-rejoin-clear"] as const)(
@@ -759,30 +936,17 @@ describe("scheduling against other lines", () => {
     expect(voicePaths()).toEqual([INCIDENT_LIKE_CLIP, clip("rejoin-clear")]);
   });
 
-  it.each([...REJOIN_IDS, ...PIT_EXIT_IDS])(
-    "%s waits for an equal-weight line of another family instead of being dropped",
-    (id) => {
-      bus.publishEvent("pitLane.entered", {});
+  it.each(REASSURING_IDS)("%s waits for an equal-weight line of another family instead of being dropped", (id) => {
+    bus.publishEvent("pitLane.entered", {});
+    publishLine(id);
 
-      if (id.includes("pit-exit")) {
-        bus.publishEvent("traffic.pitExit", { verdict: id.endsWith("traffic") ? "traffic" : "clear", seconds: 1 });
-      } else {
-        bus.publishEvent("traffic.rejoin", REJOIN_PAYLOADS[id as (typeof REJOIN_IDS)[number]]);
-      }
+    expect(voicePaths()).toEqual([SAFETY_CLIP]);
+    expect(audio._stopped).not.toContain(AudioChannel.Voice);
 
-      expect(voicePaths()).toEqual([SAFETY_CLIP]);
+    flush(audio);
 
-      flush(audio);
-
-      // Then the traffic line, all of its clips (a near call is composed of several).
-      const [first, ...after] = voicePaths();
-
-      expect(first).toBe(SAFETY_CLIP);
-      expect(after.length).toBeGreaterThan(0);
-
-      for (const path of after) expect(path).toMatch(/\/traffic\/(rejoin|pit-exit)-/);
-    },
-  );
+    expect(voicePaths()).toEqual([SAFETY_CLIP, LINE_CLIP[id]]);
+  });
 
   it("a newer verdict removes a waiting older one, so the stale band is never heard after it", () => {
     bus.publishEvent("pitStall.entered", {});
@@ -832,6 +996,284 @@ describe("scheduling against other lines", () => {
     it.each(reassuring)("%s, after the engine default", (_, publish) => {
       expect(parkedFor(DEFAULT_MAX_QUEUE_WAIT_MS + 1, publish)).toEqual([CRITICAL_CLIP]);
     });
+  });
+});
+
+describe("the warnings outrank a caution or flag line, not a CRITICAL line or the spotter (amended 2026-11-17)", () => {
+  /** Publish `id`'s line, introducing the car first when the line is an update. */
+  function publishWarning(id: string): void {
+    if (id === "pit-crew.traffic-rejoin-near-update") introduce();
+
+    publishLine(id);
+  }
+
+  it.each(WARNING_IDS)("%s cuts a caution line, which replays after it", (id) => {
+    if (id === "pit-crew.traffic-rejoin-near-update") introduce();
+
+    bus.publishEvent("flag.debris.raised", {});
+
+    expect(voicePaths()).toEqual([CAUTION_LIKE_CLIP]);
+
+    publishLine(id);
+
+    expect(audio._stopped).toContain(AudioChannel.Voice);
+
+    flush(audio);
+
+    const heard = voicePaths();
+
+    expect(heard[0]).toBe(CAUTION_LIKE_CLIP);
+    expect(heard[1]).toBe(LINE_CLIP[id]);
+    expect(heard.at(-1)).toBe(CAUTION_LIKE_CLIP);
+
+    for (const path of heard.slice(1, -1)) expect(path).toMatch(/\/traffic\//);
+  });
+
+  it.each(REASSURING_IDS)("%s does not cut a caution line: it plays after it", (id) => {
+    bus.publishEvent("flag.debris.raised", {});
+    publishLine(id);
+
+    expect(audio._stopped).not.toContain(AudioChannel.Voice);
+
+    flush(audio);
+
+    expect(voicePaths()).toEqual([CAUTION_LIKE_CLIP, LINE_CLIP[id]]);
+  });
+
+  it.each(WARNING_IDS)("%s does not cut a CRITICAL line: it waits behind it and plays once it has finished", (id) => {
+    if (id === "pit-crew.traffic-rejoin-near-update") introduce();
+
+    bus.publishEvent("pitStall.departed", {});
+    publishLine(id);
+
+    expect(audio._stopped).not.toContain(AudioChannel.Voice);
+
+    flush(audio);
+
+    expect(voicePaths().slice(0, 2)).toEqual([CRITICAL_CLIP, LINE_CLIP[id]]);
+  });
+
+  it.each(WARNING_IDS)("%s waiting behind a CRITICAL line past its short wait is dropped", (id) => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+
+    if (id === "pit-crew.traffic-rejoin-near-update") introduce();
+
+    bus.publishEvent("pitStall.departed", {});
+    publishLine(id);
+    vi.setSystemTime(TRAFFIC_MAX_QUEUE_WAIT_MS + 1);
+    flush(audio);
+
+    expect(voicePaths()).toEqual([CRITICAL_CLIP]);
+  });
+
+  it.each(WARNING_IDS)("a spotter call cuts %s, which replays after it within its short wait", (id) => {
+    publishWarning(id);
+
+    // The pit-exit warning opens with the radio frame's tick; let its words start.
+    if (id.includes("pit-exit")) audio._triggerChannelEnd(AudioChannel.SFX);
+
+    expect(voicePaths().at(-1)).toBe(LINE_CLIP[id]);
+
+    const stoppedBefore = audio._stopped.length;
+
+    bus.publishEvent("flag.white.raised", {});
+
+    expect(audio._stopped.slice(stoppedBefore)).toContain(AudioChannel.Voice);
+    expect(voicePaths().at(-1)).toBe(PROXIMITY_LIKE_CLIP);
+
+    flush(audio);
+
+    const afterSpotter = voicePaths().slice(voicePaths().indexOf(PROXIMITY_LIKE_CLIP) + 1);
+
+    expect(afterSpotter[0]).toBe(LINE_CLIP[id]);
+  });
+});
+
+describe("a count is an update only once the first call about the car was heard (amended 2026-11-17)", () => {
+  it("a first call dropped behind a CRITICAL line introduces nothing, so the next count is spoken as the first call", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    bus.publishEvent("pitStall.departed", {});
+    bus.publishEvent("traffic.rejoin", near(5, true));
+    vi.setSystemTime(TRAFFIC_MAX_QUEUE_WAIT_MS + 1);
+    flush(audio);
+
+    expect(voicePaths()).toEqual([CRITICAL_CLIP]);
+    expect(readTrafficDebugState().introduced).toBe(false);
+
+    audio._reset();
+    bus.publishEvent("traffic.rejoin", near(2, false));
+    flush(audio);
+
+    expect(voicePaths()).toEqual(firstCall(2));
+    expect(readTrafficDebugState().introduced).toBe(true);
+  });
+
+  it("a first call replaced in the queue by the next count leaves that count to be spoken as the first call", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    bus.publishEvent("pitStall.departed", {});
+    bus.publishEvent("traffic.rejoin", near(9, true));
+    vi.setSystemTime(2_000);
+    bus.publishEvent("traffic.rejoin", near(2, false));
+    flush(audio);
+
+    expect(voicePaths()).toEqual([CRITICAL_CLIP, ...firstCall(2)]);
+  });
+
+  it("a count that introduces the car on an idle bus is spoken once, as the first call, not again as the update", () => {
+    // The first call's admit introduces the car before the update contract's
+    // `where:` is asked about the same event.
+    bus.publishEvent("traffic.rejoin", near(2, false));
+    flush(audio);
+
+    expect(voicePaths()).toEqual(firstCall(2));
+    expect(audio._stopped).not.toContain(AudioChannel.Voice);
+  });
+
+  it("a count after a first call that was heard is the update", () => {
+    bus.publishEvent("traffic.rejoin", near(9, true));
+    flush(audio);
+    bus.publishEvent("traffic.rejoin", near(5, false));
+    flush(audio);
+    bus.publishEvent("traffic.rejoin", near(2, false));
+    flush(audio);
+
+    expect(voicePaths().slice(0, 3)).toEqual(firstCall(9));
+    expect(voicePaths()[3]).toBe(clip("rejoin-update"));
+    expect(voicePaths().slice(5)).toEqual(update(2));
+  });
+
+  it.each([
+    ["more than ten", { verdict: "overTen" }],
+    ["clear to rejoin", { verdict: "clear" }],
+  ] as const)("%s ends the approach: the next car's count is spoken as a first call", (_, data) => {
+    introduce();
+    bus.publishEvent("traffic.rejoin", data);
+    flush(audio);
+
+    expect(readTrafficDebugState().introduced).toBe(false);
+
+    audio._reset();
+    bus.publishEvent("traffic.rejoin", near(2, false));
+    flush(audio);
+
+    expect(voicePaths()).toEqual(firstCall(2));
+  });
+
+  it("a reassuring line that never took the bus ends nothing", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    introduce();
+    bus.publishEvent("pitStall.departed", {});
+    bus.publishEvent("traffic.rejoin", { verdict: "clear" });
+    vi.setSystemTime(DEFAULT_MAX_QUEUE_WAIT_MS + 1);
+    flush(audio);
+
+    expect(voicePaths()).toEqual([CRITICAL_CLIP]);
+    expect(readTrafficDebugState().introduced).toBe(true);
+  });
+
+  it("right behind needs no introduction and leaves the introduction alone", () => {
+    bus.publishEvent("traffic.rejoin", { verdict: "rightBehind" });
+    flush(audio);
+
+    expect(voicePaths()).toEqual([clip("rejoin-right-behind")]);
+    expect(readTrafficDebugState().introduced).toBe(false);
+
+    introduce();
+    bus.publishEvent("traffic.rejoin", { verdict: "rightBehind" });
+    flush(audio);
+
+    expect(readTrafficDebugState().introduced).toBe(true);
+  });
+
+  it("a new approach starts unintroduced: its first call dropped, the next count is a first call", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    // The last stop's car was introduced, and the episode ended silently as
+    // the driver drove off: no reassuring line.
+    introduce();
+    bus.publishEvent("pitStall.departed", {});
+    bus.publishEvent("traffic.rejoin", near(5, true));
+
+    expect(readTrafficDebugState().introduced).toBe(false);
+
+    vi.setSystemTime(TRAFFIC_MAX_QUEUE_WAIT_MS + 1);
+    flush(audio);
+    audio._reset();
+    bus.publishEvent("traffic.rejoin", near(2, false));
+    flush(audio);
+
+    expect(voicePaths()).toEqual(firstCall(2));
+  });
+
+  it.each([
+    ["the tracking hears the event first", false],
+    ["the engine hears the event first", true],
+  ] as const)("a first call that takes the bus at once stays introduced when %s", (_, trackAfterContracts) => {
+    if (trackAfterContracts) {
+      // Subscribe again, behind the contracts' own handlers.
+      _resetTrafficState();
+      registerTrafficApproachTracking(bus);
+    }
+
+    introduce();
+    bus.publishEvent("traffic.rejoin", near(9, true));
+
+    expect(readTrafficDebugState().introduced).toBe(true);
+
+    flush(audio);
+    audio._reset();
+    bus.publishEvent("traffic.rejoin", near(2, false));
+    flush(audio);
+
+    expect(voicePaths()).toEqual(update(2));
+  });
+
+  it("a session change forgets the introduction", () => {
+    introduce();
+    bus.publishEvent("session.changed", { from: 0, to: 1 });
+
+    expect(readTrafficDebugState().introduced).toBe(false);
+
+    bus.publishEvent("traffic.rejoin", near(2, false));
+    flush(audio);
+
+    expect(voicePaths()).toEqual(firstCall(2));
+  });
+
+  it("the snapshot reader reports the tracking and the introduction, and a reset clears both", () => {
+    expect(readTrafficDebugState()).toEqual({ registered: true, introduced: false });
+
+    introduce();
+
+    expect(readTrafficDebugState()).toEqual({ registered: true, introduced: true });
+
+    _resetTrafficState();
+
+    expect(readTrafficDebugState()).toEqual({ registered: false, introduced: false });
+  });
+
+  it("tracking on another bus starts from no introduction and stops listening on the old one", () => {
+    introduce();
+
+    const other = createMockBus();
+
+    registerTrafficApproachTracking(other);
+
+    expect(readTrafficDebugState().introduced).toBe(false);
+
+    // The engine still speaks on the first bus; its session change is no longer heard.
+    introduce();
+    bus.publishEvent("session.changed", { from: 0, to: 1 });
+
+    expect(readTrafficDebugState().introduced).toBe(true);
+
+    other.publishEvent("session.changed", { from: 0, to: 1 });
+
+    expect(readTrafficDebugState().introduced).toBe(false);
   });
 });
 

@@ -248,7 +248,12 @@ import { registerTelemetryReadoutVocabulary, TELEMETRY_READOUT_CONTRACTS } from 
 import { registerTireWearVocabulary, TIRE_WEAR_CONTRACTS } from "./tire-wear.js";
 import { AUTO_FUEL_CONTRACTS, TOGGLE_CONFIRMATION_CONTRACTS } from "./toggle-confirmations.js";
 import { TRACK_CONDITIONS_CONTRACTS } from "./track-conditions.js";
-import { registerTrafficVocabulary, SCENARIO_ID_TO_TRAFFIC_ID, TRAFFIC_CONTRACTS } from "./traffic.js";
+import {
+  registerTrafficApproachTracking,
+  registerTrafficVocabulary,
+  SCENARIO_ID_TO_TRAFFIC_ID,
+  TRAFFIC_CONTRACTS,
+} from "./traffic.js";
 
 /**
  * Stop any in-flight Race Engineer callout (and its looping ambient bed) and
@@ -301,11 +306,13 @@ export { LIMITER_ON_CLIP, readLimiterCueDebugState } from "./limiter-cue-engine.
 export { PIT_EXIT_CLIP, readPitExitCueDebugState } from "./pit-exit-cue-engine.js";
 export { type PitLimiterCalloutId, PIT_LIMITER_SCENARIO_IDS } from "./pit-limiter.js";
 export {
+  readTrafficDebugState,
   registerTrafficVocabulary,
   SCENARIO_ID_TO_TRAFFIC_ID,
   TRAFFIC_CLIP_SOURCES,
   TRAFFIC_CONTRACTS,
   TRAFFIC_SCENARIO_IDS,
+  TRAFFIC_WARNING_WEIGHT,
   type TrafficCalloutId,
 } from "./traffic.js";
 export {
@@ -1561,8 +1568,11 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
   // saying again, and the seven contracts only map the event to a line. Two
   // subjects gate them via `SCENARIO_ID_TO_TRAFFIC_ID`. One `family:
   // "traffic"` so a fresh line replaces a stale one in flight (see the module
-  // header).
+  // header). The approach tracking forgets a car's introduction when the
+  // detector starts a new approach or the session changes, so a count whose
+  // first call was never heard is spoken as a first call (amended 2026-11-17).
   registerTrafficVocabulary(engine);
+  registerTrafficApproachTracking(bus);
 
   for (const c of TRAFFIC_CONTRACTS) {
     engine.defineContract(

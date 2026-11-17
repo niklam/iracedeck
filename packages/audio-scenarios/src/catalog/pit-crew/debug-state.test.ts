@@ -47,6 +47,12 @@ import { _resetRadarEngine, readRadarDebugState, setRadarEnabled, subscribeRadar
 import { buildRollingStartContracts, readRollingStartDebugState } from "./rolling-start.js";
 import { buildSectorComparison, readSectorComparisonDebugState, resetSectorComparison } from "./sector-comparison.js";
 import { _resetSpotterEngine, readSpotterDebugState } from "./spotter-engine.js";
+import {
+  _resetTrafficState,
+  readTrafficDebugState,
+  registerTrafficApproachTracking,
+  TRAFFIC_CONTRACTS,
+} from "./traffic.js";
 
 const fakeAudio = await vi.hoisted(async () => {
   const { createFakeAudio } = await import("@iracedeck/audio-service/testing");
@@ -121,6 +127,7 @@ const FAMILY_KEYS = [
   "rollingStart",
   "sectorComparison",
   "spotter",
+  "traffic",
 ];
 
 /** What every family reads as before anything has happened — and before anything was registered. */
@@ -157,6 +164,7 @@ const UNTOUCHED_FAMILIES = {
     clearPick: { lastIndex: -1 },
     stillTherePick: { lastIndex: -1 },
   },
+  traffic: { registered: false, introduced: false },
 };
 
 let bus: TestBus;
@@ -197,6 +205,7 @@ afterEach(() => {
   _resetPitSpeedingEngine();
   _resetPitExitCueEngine();
   _resetLimiterCueEngine();
+  _resetTrafficState();
   _resetBackgroundTest();
   _setFurledRaisedSpoken(false);
   _resetGapCalloutCooldown();
@@ -250,6 +259,7 @@ describe("readRaceEngineerState", () => {
       pitSpeeding: { ...UNTOUCHED_FAMILIES.pitSpeeding, registered: true },
       radar: { ...UNTOUCHED_FAMILIES.radar, registered: true },
       spotter: { ...UNTOUCHED_FAMILIES.spotter, registered: true },
+      traffic: { ...UNTOUCHED_FAMILIES.traffic, registered: true },
     });
     expect(read(state.engine).activeVoice).toBe("luca");
     expect(read(state.engine).contracts.length).toBeGreaterThan(50);
@@ -417,7 +427,7 @@ describe("a part that cannot be read fails alone", () => {
     expect(JSON.parse(JSON.stringify(state))).toEqual(state);
   });
 
-  it("an engine that cannot describe itself leaves all fourteen families intact", () => {
+  it("an engine that cannot describe itself leaves all fifteen families intact", () => {
     const engine = startEngine();
 
     registerPitCrew(bus, SIM_READS);
@@ -436,6 +446,7 @@ describe("a part that cannot be read fails alone", () => {
       pitSpeeding: { ...UNTOUCHED_FAMILIES.pitSpeeding, registered: true },
       radar: { ...UNTOUCHED_FAMILIES.radar, registered: true },
       spotter: { ...UNTOUCHED_FAMILIES.spotter, registered: true },
+      traffic: { ...UNTOUCHED_FAMILIES.traffic, registered: true },
     });
     expect(state).not.toHaveProperty("error");
   });
@@ -584,6 +595,22 @@ describe("the family readers", () => {
     _setFurledRaisedSpoken(true);
 
     expect(readFlagAlertsDebugState()).toEqual({ furledRaisedSpoken: true });
+  });
+
+  it("traffic: whether the approach tracking listens, and whether the car was introduced", () => {
+    const gate = (id: string) => TRAFFIC_CONTRACTS.find((c) => c.id === id)?.speakGate;
+    const ctx = { event: null } as unknown as ScenarioContext;
+
+    expect(readTrafficDebugState()).toEqual({ registered: false, introduced: false });
+
+    registerTrafficApproachTracking(bus);
+    gate("pit-crew.traffic-rejoin-near-first")?.admit(ctx);
+
+    expect(readTrafficDebugState()).toEqual({ registered: true, introduced: true });
+
+    gate("pit-crew.traffic-rejoin-clear")?.admit(ctx);
+
+    expect(readTrafficDebugState()).toEqual({ registered: true, introduced: false });
   });
 
   it("gaps: the shared cooldown's last claim", () => {
