@@ -1268,7 +1268,7 @@ describe("at the line, after the lap-time calls (decision 8)", () => {
 
     const played = line();
 
-    expect(played.slice(0, 3)).toEqual(["fastest-lap/yours", "lap-time-clock/1m23", "lap-time-tenths/4"]);
+    expect(played.slice(0, 3)).toEqual(["fastest-lap/yours", "lap-time-clock/1m23", "lap-time-thousandths/400"]);
     expect(played.slice(3)).toEqual([
       "car-number/12",
       "sector-comparison/ahead-slower",
