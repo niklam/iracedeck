@@ -249,10 +249,10 @@ import { registerTireWearVocabulary, TIRE_WEAR_CONTRACTS } from "./tire-wear.js"
 import { AUTO_FUEL_CONTRACTS, TOGGLE_CONFIRMATION_CONTRACTS } from "./toggle-confirmations.js";
 import { TRACK_CONDITIONS_CONTRACTS } from "./track-conditions.js";
 import {
+  buildTrafficContracts,
   registerTrafficApproachTracking,
   registerTrafficVocabulary,
   SCENARIO_ID_TO_TRAFFIC_ID,
-  TRAFFIC_CONTRACTS,
 } from "./traffic.js";
 
 /**
@@ -1565,7 +1565,9 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
   // the close band's composed lines speak, the band case, the first-call
   // condition, the pit-exit cases) registers before the contracts; the
   // translator's detectors decide each band, its number and when it is worth
-  // saying again, and the seven contracts only map the event to a line. Two
+  // saying again, and the eight contracts only map the event to a line, the
+  // pit-exit lines' speak-time gate reading the live telemetry to drop a line
+  // still waiting once the player has merged. Two
   // subjects gate them via `SCENARIO_ID_TO_TRAFFIC_ID`. One `family:
   // "traffic"` so a fresh line replaces a stale one in flight (see the module
   // header). The approach tracking forgets a car's introduction when the
@@ -1574,7 +1576,7 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
   registerTrafficVocabulary(engine);
   registerTrafficApproachTracking(bus);
 
-  for (const c of TRAFFIC_CONTRACTS) {
+  for (const c of buildTrafficContracts({ getLatestTelemetry: d.getLatestTelemetry })) {
     engine.defineContract(
       wrapWithMaster(
         wrapCalloutScenario(c, SCENARIO_ID_TO_TRAFFIC_ID, getTrafficCalloutEnabled, "traffic callout", logger),

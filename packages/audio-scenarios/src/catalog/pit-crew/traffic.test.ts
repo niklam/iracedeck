@@ -29,6 +29,8 @@ import type {
   TrafficRejoin,
 } from "@iracedeck/event-bus";
 import { TRAFFIC_REJOIN_NEAR_MAX_SECONDS, TRAFFIC_REJOIN_NEAR_MIN_SECONDS } from "@iracedeck/event-bus";
+import { TrkLoc } from "@iracedeck/iracing-sdk";
+import type { TelemetryData } from "@iracedeck/sim-events-iracing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ScenarioContext, ScenarioContract } from "../../dsl.js";
@@ -39,6 +41,7 @@ import { PIT_READBACK_CONTRACTS } from "./readback.js";
 import { TIRE_WEAR_CONTRACTS } from "./tire-wear.js";
 import {
   _resetTrafficState,
+  buildTrafficContracts,
   readTrafficDebugState,
   registerTrafficApproachTracking,
   registerTrafficVocabulary,
@@ -408,7 +411,8 @@ function allPaths(): string[] {
   return audio._played.map((p) => p.path);
 }
 
-beforeEach(() => {
+/** A fresh engine with `traffic` as the family's contracts, in the production order. */
+function wire(traffic: readonly ScenarioContract[] = TRAFFIC_CONTRACTS): void {
   bus = createMockBus();
   audio = createFakeAudio();
   engine = initializeAudioScenarios(bus, audio, manifest, mockLogger as never, () => VOICE);
@@ -417,7 +421,7 @@ beforeEach(() => {
   registerTrafficApproachTracking(bus);
 
   for (const c of [
-    ...TRAFFIC_CONTRACTS,
+    ...traffic,
     CHATTER_CONTRACT,
     CRITICAL_CONTRACT,
     INCIDENT_LIKE_CONTRACT,
@@ -431,6 +435,10 @@ beforeEach(() => {
   }
 
   engine.setScripts(new Map([[VOICE, SCRIPT]]));
+}
+
+beforeEach(() => {
+  wire();
 });
 
 afterEach(() => {
@@ -469,15 +477,10 @@ describe("TRAFFIC_CONTRACTS", () => {
     for (const id of REASSURING_IDS) expect(contract(id).weight, id).toBe(WEIGHT.SAFETY);
   });
 
-  it("only the first call, the reassuring rejoin lines and the pack line carry a speak-time gate, the marking", () => {
+  it("every line carries a speak-time gate: the close calls' timing, the introduction's marking, the merge", () => {
     const gated = TRAFFIC_CONTRACTS.filter((c) => c.speakGate !== undefined).map((c) => c.id);
 
-    expect(gated).toEqual([
-      "pit-crew.traffic-rejoin-near-first",
-      "pit-crew.traffic-rejoin-over-ten",
-      "pit-crew.traffic-rejoin-clear",
-      "pit-crew.traffic-rejoin-pack",
-    ]);
+    expect(gated).toEqual([...TRAFFIC_SCENARIO_IDS]);
 
     for (const id of gated) {
       const text = contract(id).speakGate!.description;
@@ -1003,6 +1006,139 @@ describe("scheduling against other lines", () => {
     it.each(reassuring)("%s, after the engine default", (_, publish) => {
       expect(parkedFor(DEFAULT_MAX_QUEUE_WAIT_MS + 1, publish)).toEqual([CRITICAL_CLIP]);
     });
+  });
+});
+
+describe("a line is never heard after the moment it warns about", () => {
+  /** The fire's context for `data` published at 0 and reaching the radio `ageMs` later. */
+  const aged = (data: TrafficRejoin, ageMs: number): ScenarioContext => ({ ...ctxOf(rejoinEvent(data)), now: ageMs });
+  const admit = (id: string, ctx: ScenarioContext): boolean => contract(id).speakGate!.admit(ctx);
+
+  describe("a close call is dropped once it has waited as long as its prediction", () => {
+    it.each([
+      ["right behind, at two seconds", "pit-crew.traffic-rejoin-right-behind", { verdict: "rightBehind" }, 2_000],
+      ["a first call, under its seconds", "pit-crew.traffic-rejoin-near-first", near(5, true), 4_999],
+      ["an update, under its seconds", "pit-crew.traffic-rejoin-near-update", near(5, false), 4_999],
+    ] satisfies Array<[string, string, TrafficRejoin, number]>)("admits %s", (_, id, data, lastMs) => {
+      expect(admit(id, aged(data, 0))).toBe(true);
+      expect(admit(id, aged(data, lastMs))).toBe(true);
+    });
+
+    it.each([
+      ["right behind, past two seconds", "pit-crew.traffic-rejoin-right-behind", { verdict: "rightBehind" }, 2_001],
+      ["a first call, at its seconds", "pit-crew.traffic-rejoin-near-first", near(5, true), 5_000],
+      ["an update, at its seconds", "pit-crew.traffic-rejoin-near-update", near(5, false), 5_000],
+      ["a first call at two seconds, past them", "pit-crew.traffic-rejoin-near-first", near(2, true), 2_500],
+    ] satisfies Array<[string, string, TrafficRejoin, number]>)("refuses %s", (_, id, data, ageMs) => {
+      expect(admit(id, aged(data, ageMs))).toBe(false);
+    });
+
+    it("admits an imperative fire, an event with no usable timestamp and a clock that stepped back", () => {
+      for (const id of ["pit-crew.traffic-rejoin-right-behind", "pit-crew.traffic-rejoin-near-update"]) {
+        expect(admit(id, { ...ctxOf(null), now: 60_000 }), id).toBe(true);
+        expect(
+          admit(id, { ...ctxOf({ ...rejoinEvent(near(5, false)), timestamp: Number.NaN }), now: 60_000 }),
+          id,
+        ).toBe(true);
+        expect(admit(id, { ...aged(near(5, false), 0), now: -60_000 }), id).toBe(true);
+      }
+    });
+
+    it("a first call refused as late introduces nothing: the claim comes after the check", () => {
+      expect(admit("pit-crew.traffic-rejoin-near-first", aged(near(5, true), 5_000))).toBe(false);
+      expect(readTrafficDebugState().introduced).toBe(false);
+
+      expect(admit("pit-crew.traffic-rejoin-near-first", aged(near(5, true), 0))).toBe(true);
+      expect(readTrafficDebugState().introduced).toBe(true);
+    });
+
+    /** Parks `data`'s line behind the CRITICAL line at 0, then lets the bus go `waitedMs` later. */
+    function parkedFor(waitedMs: number, data: TrafficRejoin): string[] {
+      vi.useFakeTimers();
+      vi.setSystemTime(0);
+      bus.publishEvent("pitStall.departed", {});
+      bus.publishEvent("traffic.rejoin", data);
+      vi.setSystemTime(waitedMs);
+      flush(audio);
+
+      return voicePaths();
+    }
+
+    it("right behind waiting behind a CRITICAL line is dropped once the car has arrived, inside its short wait", () => {
+      expect(parkedFor(2_500, { verdict: "rightBehind" })).toEqual([CRITICAL_CLIP]);
+    });
+
+    it("right behind waiting less than two seconds still plays", () => {
+      expect(parkedFor(1_500, { verdict: "rightBehind" })).toEqual([CRITICAL_CLIP, clip("rejoin-right-behind")]);
+    });
+
+    it("a first call about a car two seconds away is dropped after waiting 2.5 s, and introduces nothing", () => {
+      expect(parkedFor(2_500, near(2, true))).toEqual([CRITICAL_CLIP]);
+      expect(readTrafficDebugState().introduced).toBe(false);
+    });
+
+    it("a first call about a car five seconds away still plays after the same wait", () => {
+      expect(parkedFor(2_500, near(5, true))).toEqual([CRITICAL_CLIP, ...firstCall(5)]);
+    });
+  });
+
+  describe("a pit-exit line is dropped once the player is back on the racing surface", () => {
+    let telemetry: Partial<TelemetryData> | null;
+    const live = buildTrafficContracts({ getLatestTelemetry: () => telemetry as TelemetryData | null });
+    const liveAdmit = (id: string): boolean =>
+      live.find((c) => c.id === id)!.speakGate!.admit({ ...ctxOf(pitExitEvent("traffic", 1)), now: 0 });
+
+    beforeEach(() => {
+      telemetry = null;
+    });
+
+    it.each(PIT_EXIT_IDS)("%s: refused on track or beside it, admitted in the exit lane or the stall", (id) => {
+      for (const [surface, admitted] of [
+        [TrkLoc.OnTrack, false],
+        [TrkLoc.OffTrack, false],
+        [TrkLoc.AproachingPits, true],
+        [TrkLoc.InPitStall, true],
+      ] as const) {
+        telemetry = { PlayerTrackSurface: surface };
+        expect(liveAdmit(id), `${id} on ${surface}`).toBe(admitted);
+      }
+    });
+
+    it.each(PIT_EXIT_IDS)("%s: admitted with no telemetry or no surface read (the harness)", (id) => {
+      telemetry = null;
+      expect(liveAdmit(id)).toBe(true);
+
+      telemetry = {};
+      expect(liveAdmit(id)).toBe(true);
+    });
+
+    it.each(PIT_EXIT_VERDICTS)("%s waiting behind a CRITICAL line is dropped once the player has merged", (verdict) => {
+      _resetAudioScenarios();
+      _resetTrafficState();
+      wire(live);
+      telemetry = { PlayerTrackSurface: TrkLoc.AproachingPits };
+      bus.publishEvent("pitStall.departed", {});
+      bus.publishEvent("traffic.pitExit", { verdict, seconds: 1 });
+      telemetry = { PlayerTrackSurface: TrkLoc.OnTrack };
+      flush(audio);
+
+      expect(voicePaths()).toEqual([CRITICAL_CLIP]);
+    });
+
+    it.each(PIT_EXIT_VERDICTS)(
+      "%s waiting behind a CRITICAL line still plays while the player is in the exit lane",
+      (verdict) => {
+        _resetAudioScenarios();
+        _resetTrafficState();
+        wire(live);
+        telemetry = { PlayerTrackSurface: TrkLoc.AproachingPits };
+        bus.publishEvent("pitStall.departed", {});
+        bus.publishEvent("traffic.pitExit", { verdict, seconds: 1 });
+        flush(audio);
+
+        expect(voicePaths()).toEqual([CRITICAL_CLIP, clip(`pit-exit-${verdict}`)]);
+      },
+    );
   });
 });
 

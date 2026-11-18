@@ -106,6 +106,22 @@
  * nothing, so nothing replaces the waiting line; practically unreachable, since
  * iRacing always fills `CarClassEstLapTime` and the arrays.
  *
+ * **Never heard after the moment it warns about.** A warning waits up to
+ * {@link TRAFFIC_MAX_QUEUE_WAIT_MS} behind a `CRITICAL` line, and the short
+ * wait alone does not keep it true: a car under two seconds away has arrived
+ * well inside it. So a speak-time gate checks each line once it reaches the
+ * radio, and drops it once the moment it predicts has passed:
+ * - **The close calls** ("right behind" and both `near` calls) are dropped
+ *   once the fire has waited, since its event, as long as the prediction it
+ *   names: {@link TRAFFIC_REJOIN_RIGHT_BEHIND_S} for right behind, and the
+ *   event's whole `seconds` for a `near` call, whose car arrives in `seconds`
+ *   to `seconds + 1`. A line that plays at once is never refused.
+ * - **Both pit-exit lines** are dropped once the live telemetry has the player
+ *   back on the racing surface (`PlayerTrackSurface` `OnTrack` / `OffTrack`),
+ *   the detector's own end of the exit: the merge they are about is over. With
+ *   no telemetry (the scenario harness) or no surface read they play.
+ * A line cut mid-sentence and replayed is not asked again (`SpeakGate`).
+ *
  * **Weights (spec decision 6, amended 2026-11-17).** The warnings — right
  * behind, both `near` calls, the pack line and the pit-exit traffic warning —
  * fire at
@@ -136,7 +152,8 @@
  * Session gating (live in the car, on track, off pit road, past the green)
  * lives in the translator's detectors, NOT here, so the contracts stay
  * harness-firable. The one module state is the introduction above; every
- * resolver otherwise reads the fire's own event.
+ * resolver otherwise reads the fire's own event, and the pit-exit gate the
+ * live telemetry, which admits when there is none.
  */
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import { type CalloutIdOf, TRAFFIC_CALLOUTS } from "@iracedeck/callout-settings";
@@ -145,10 +162,13 @@ import {
   type SimEventOf,
   TRAFFIC_REJOIN_NEAR_MAX_SECONDS,
   TRAFFIC_REJOIN_NEAR_MIN_SECONDS,
+  TRAFFIC_REJOIN_RIGHT_BEHIND_S,
   type TrafficPitExit,
   type TrafficPitExitVerdict,
   type TrafficRejoin,
 } from "@iracedeck/event-bus";
+import { TrkLoc } from "@iracedeck/iracing-sdk";
+import type { TelemetryData } from "@iracedeck/sim-events-iracing";
 
 import type { ScenarioContext, ScenarioContract, SpeakGate } from "../../dsl.js";
 import { DEFAULT_MAX_QUEUE_WAIT_MS, NO_FRAME, poolRef, WEIGHT } from "../../dsl.js";
@@ -345,7 +365,7 @@ export function readTrafficDebugState(): { registered: boolean; introduced: bool
 type RejoinLineSpec = LineSpec & {
   /** The `where:` check: pure, reading the event and at most the introduction. */
   matches: (d: TrafficRejoin) => boolean;
-  /** What taking the bus does to the introduction, when anything. */
+  /** The speak-time gate: whether the line is still true as it reaches the radio, and what taking the bus does to the introduction. */
   speakGate?: SpeakGate;
 };
 
@@ -358,6 +378,11 @@ const REJOIN_LINES: Record<RejoinLine, RejoinLineSpec> = {
     description: "You are stopped or crawling on track and the nearest car will reach you in under two seconds.",
     // Needs no introduction, and leaves the introduction alone.
     matches: (d) => d.verdict === "rightBehind",
+    speakGate: {
+      description:
+        "Dropped if it waited for the radio for more than two seconds, since the car has reached you by then.",
+      admit: closeCarStillComing,
+    },
   },
   "rejoin-near-first": {
     weight: TRAFFIC_WARNING_WEIGHT,
@@ -369,8 +394,9 @@ const REJOIN_LINES: Record<RejoinLine, RejoinLineSpec> = {
     matches: speaksAsFirstCall,
     speakGate: {
       description:
-        "Always spoken once it reaches the radio; speaking it marks the car as introduced, so later counts of it are spoken as updates.",
-      admit: (ctx) => markIntroduced(rejoinOf(ctx)),
+        "Dropped if it waited for the radio as long as the seconds it names, as the car has reached you by then; speaking it marks the car as introduced, so later counts are updates.",
+      // The check first, the claim last: a refused call introduces nothing.
+      admit: (ctx) => closeCarStillComing(ctx) && markIntroduced(rejoinOf(ctx)),
     },
   },
   "rejoin-near-update": {
@@ -381,6 +407,11 @@ const REJOIN_LINES: Record<RejoinLine, RejoinLineSpec> = {
     description:
       "You are still stopped and the car within ten seconds keeps closing: called again each time its arrival has dropped by three seconds or more, once the first call was heard.",
     matches: speaksAsUpdate,
+    speakGate: {
+      description:
+        "Dropped if it waited for the radio as long as the seconds it names, as the car has reached you by then.",
+      admit: closeCarStillComing,
+    },
   },
   "rejoin-over-ten": {
     weight: WEIGHT.SAFETY,
@@ -428,7 +459,13 @@ const REJOIN_LINES: Record<RejoinLine, RejoinLineSpec> = {
   },
 };
 
-const PIT_EXIT_LINES: Record<PitExitLine, LineSpec & { verdict: TrafficPitExitVerdict }> = {
+type PitExitLineSpec = LineSpec & {
+  verdict: TrafficPitExitVerdict;
+  /** The speak-time gate's sentence for the pack reference: dropped once the player is back on the racing surface. */
+  gateDescription: string;
+};
+
+const PIT_EXIT_LINES: Record<PitExitLine, PitExitLineSpec> = {
   "pit-exit-traffic": {
     weight: TRAFFIC_WARNING_WEIGHT,
     interrupt: true,
@@ -438,6 +475,7 @@ const PIT_EXIT_LINES: Record<PitExitLine, LineSpec & { verdict: TrafficPitExitVe
     verdict: "traffic",
     description:
       "As you leave your pit box, a car on track is predicted to reach the end of the pit exit blend line around the same time as you.",
+    gateDescription: "Dropped once you are back on the racing surface, since the merge it warns about is over.",
   },
   "pit-exit-clear": {
     // Not a warning: SAFETY, so it does not cut a caution line; it still cuts
@@ -450,12 +488,39 @@ const PIT_EXIT_LINES: Record<PitExitLine, LineSpec & { verdict: TrafficPitExitVe
     verdict: "clear",
     description:
       "As you leave your pit box, no car on track is predicted to reach the end of the pit exit blend line around the same time as you.",
+    gateDescription: "Dropped once you are back on the racing surface, since the merge it is about is over.",
   },
 };
 
 /** The rejoin payload of the fire's own event, or null for any other event (or an imperative fire). */
 function rejoinOf(ctx: Pick<ScenarioContext, "event">): TrafficRejoin | null {
   return ctx.event?.event === "traffic.rejoin" ? (ctx.event as SimEventOf<"traffic.rejoin">).data : null;
+}
+
+/**
+ * Whether the car a close call is about is still to reach the player as the
+ * line is about to be heard (module header): the fire's age, from its event's
+ * timestamp to the gate's `now`, is at most {@link TRAFFIC_REJOIN_RIGHT_BEHIND_S}
+ * for right behind, and under the event's `seconds` for a `near` call. Admits
+ * an imperative fire, any other verdict, an event without a usable timestamp
+ * and a clock that stepped back, so a line that plays at once always does. A
+ * pure read of the fire.
+ */
+function closeCarStillComing(ctx: Pick<ScenarioContext, "event" | "now">): boolean {
+  const data = rejoinOf(ctx);
+  const timestamp = ctx.event?.timestamp;
+
+  if (data === null || typeof timestamp !== "number" || !Number.isFinite(timestamp)) return true;
+
+  const ageMs = ctx.now - timestamp;
+
+  if (!(ageMs > 0)) return true;
+
+  if (data.verdict === "rightBehind") return ageMs <= TRAFFIC_REJOIN_RIGHT_BEHIND_S * 1000;
+
+  if (data.verdict !== "near" || typeof data.seconds !== "number" || !Number.isFinite(data.seconds)) return true;
+
+  return ageMs < data.seconds * 1000;
 }
 
 /** The pit-exit payload of the fire's own event, or null for any other event (or an imperative fire). */
@@ -595,11 +660,29 @@ function rejoinContract(line: RejoinLine): ScenarioContract {
   };
 }
 
-function pitExitContract(line: PitExitLine): ScenarioContract {
+/** What the pit-exit lines' speak-time gate reads: the live telemetry (#1378's reader). */
+export type TrafficContractDeps = {
+  /** The latest telemetry tick as the sim reported it; `null` with none (no sim, or the scenario harness). */
+  getLatestTelemetry: () => TelemetryData | null;
+};
+
+/**
+ * Whether the player is still short of the merge as a pit-exit line is about
+ * to be heard (module header): not back on the racing surface, the pit-exit
+ * detector's own end of the exit. No telemetry, or no surface read, admits.
+ */
+function stillLeavingThePits(deps: TrafficContractDeps): boolean {
+  const surface = deps.getLatestTelemetry()?.PlayerTrackSurface;
+
+  return surface !== TrkLoc.OnTrack && surface !== TrkLoc.OffTrack;
+}
+
+function pitExitContract(line: PitExitLine, deps: TrafficContractDeps): ScenarioContract {
   const spec = PIT_EXIT_LINES[line];
 
   return {
     ...trafficContract(line, spec),
+    speakGate: { description: spec.gateDescription, admit: () => stillLeavingThePits(deps) },
     supersedeGroup: TRAFFIC_PIT_EXIT_SUPERSEDE_GROUP,
     when: {
       event: "traffic.pitExit",
@@ -608,16 +691,30 @@ function pitExitContract(line: PitExitLine): ScenarioContract {
   };
 }
 
-export const TRAFFIC_CONTRACTS: readonly ScenarioContract[] = [
-  rejoinContract("rejoin-right-behind"),
-  rejoinContract("rejoin-near-first"),
-  rejoinContract("rejoin-near-update"),
-  rejoinContract("rejoin-over-ten"),
-  rejoinContract("rejoin-clear"),
-  rejoinContract("rejoin-pack"),
-  pitExitContract("pit-exit-traffic"),
-  pitExitContract("pit-exit-clear"),
-];
+/**
+ * The eight contracts, rejoin first in band order, the pit-exit gates closing
+ * over `deps`' telemetry read. `registerPitCrew` builds them with the live
+ * reader.
+ */
+export function buildTrafficContracts(deps: TrafficContractDeps): readonly ScenarioContract[] {
+  return [
+    rejoinContract("rejoin-right-behind"),
+    rejoinContract("rejoin-near-first"),
+    rejoinContract("rejoin-near-update"),
+    rejoinContract("rejoin-over-ten"),
+    rejoinContract("rejoin-clear"),
+    rejoinContract("rejoin-pack"),
+    pitExitContract("pit-exit-traffic", deps),
+    pitExitContract("pit-exit-clear", deps),
+  ];
+}
+
+/**
+ * A build with no sim wired, for the id lists and the tests: a read cannot
+ * change an id, and with no telemetry the pit-exit gates admit, as they do in
+ * the scenario harness.
+ */
+export const TRAFFIC_CONTRACTS: readonly ScenarioContract[] = buildTrafficContracts({ getLatestTelemetry: () => null });
 
 /** The traffic family's opt-in ids: `rejoin` and `pit-exit` (`@iracedeck/callout-settings`). */
 export type TrafficCalloutId = CalloutIdOf<typeof TRAFFIC_CALLOUTS>;
