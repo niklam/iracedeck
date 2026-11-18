@@ -569,7 +569,7 @@ function sectorCall(
     id: `sector-comparison-${id}`,
     category: "Sectors",
     label,
-    description,
+    description: `${description} Apply the race session preset first: the sector calls speak in a race only.`,
     event: "lap.completed",
     data: {
       lap,
