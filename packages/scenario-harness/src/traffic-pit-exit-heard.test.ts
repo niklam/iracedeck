@@ -21,6 +21,9 @@ import { AT_RACING_SPEED } from "./scenario-shortcuts.js";
 const CLIP_MS: ClipDurations = [
   [/\/traffic\/pit-exit-traffic/, 3300],
   [/\/traffic\/pit-exit-clear/, 2200],
+  // A stand-in for a long critical line holding the bus: far longer than the
+  // real take, so the clear line waits past the traffic line's queue window.
+  [/\/flags\/meatball/, 6000],
 ];
 
 describe("what the pit-exit traffic buttons are heard to say (issue #1113)", () => {
@@ -38,6 +41,25 @@ describe("what the pit-exit traffic buttons are heard to say (issue #1113)", () 
     press(id);
 
     expect(heard()).toEqual([clip]);
+  });
+
+  it("traffic-pit-exit-clear is still heard after waiting six seconds behind a critical line", () => {
+    const shortcut = shortcutOf("traffic-pit-exit-clear");
+
+    boot("race");
+    apply([AT_RACING_SPEED]);
+    heardAndCleared();
+
+    // The button's own steps, with a meatball call taking the bus just before
+    // its publish: the clear line (SAFETY) queues behind it, inside its own
+    // queue window, and must still find the car on the pit lane when it plays.
+    apply(shortcut.telemetrySequence);
+    publish("flag.meatball.raised");
+    publish(shortcut.event as "traffic.pitExit", shortcut.data);
+    apply(shortcut.teardownSequence);
+    apply([{ patch: {}, holdMs: 10_000 }]);
+
+    expect(heard()).toEqual(["flags/meatball", "traffic/pit-exit-clear"]);
   });
 
   it.each(["traffic-pit-exit-traffic", "traffic-pit-exit-clear"])(

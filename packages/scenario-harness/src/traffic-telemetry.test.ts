@@ -4,6 +4,7 @@
  * and the four pit-exit cases as clear, traffic, traffic, clear. Every event in the catalog is recorded, so a line the run lets slip
  * from another family cannot hide.
  */
+import { TRAFFIC_CONTRACTS } from "@iracedeck/audio-scenarios/pit-crew";
 import { _resetEventBus, getEventBus, initializeEventBus } from "@iracedeck/event-bus";
 import { type SDKController, type SessionInfo, TrkLoc } from "@iracedeck/iracing-sdk";
 import { silentLogger } from "@iracedeck/logger";
@@ -274,9 +275,15 @@ describe("the pit-exit bus-event buttons (issue #1113)", () => {
     },
   );
 
-  it("listens past the traffic lines' queue wait before handing the car back", () => {
-    for (const id of ["traffic-pit-exit-traffic", "traffic-pit-exit-clear"]) {
-      expect(shortcutOf(id).teardownSequence?.[0]).toEqual({ patch: {}, holdMs: 4000 });
-    }
+  it.each([
+    // The traffic warning's 3 s queue wait, and the clear line's engine default of 8 s.
+    { id: "traffic-pit-exit-traffic", contract: "pit-crew.traffic-pit-exit-traffic", holdMs: 4000 },
+    { id: "traffic-pit-exit-clear", contract: "pit-crew.traffic-pit-exit-clear", holdMs: 9000 },
+  ])("$id listens past its own line's queue wait before handing the car back", ({ id, contract, holdMs }) => {
+    const queueWait = TRAFFIC_CONTRACTS.find((c) => c.id === contract)?.maxQueueWaitMs;
+
+    expect(shortcutOf(id).teardownSequence?.[0]).toEqual({ patch: {}, holdMs });
+    expect(queueWait).toBeDefined();
+    expect(holdMs).toBeGreaterThan(queueWait ?? Number.POSITIVE_INFINITY);
   });
 });

@@ -11,11 +11,13 @@
  * stable `category` string and add at least one entry under it. Order in
  * the array drives display order in the UI.
  */
+import { DEFAULT_MAX_QUEUE_WAIT_MS } from "@iracedeck/audio-scenarios";
 import {
   CAUTION_LINEUP_CHANGE_DELAY_MS,
   type QualifyingInvalidationSnapshot,
   ROLLING_START_LINEUP_CHANGE_DELAY_MS,
   type SectorComparisonInput,
+  TRAFFIC_CONTRACTS,
 } from "@iracedeck/audio-scenarios/pit-crew";
 import {
   OpponentPenaltyFlag,
@@ -1096,33 +1098,50 @@ export const LEAVING_THE_PITS: readonly TelemetryStep[] = [
   SEEDED_TICK,
 ];
 
-/**
- * How long a pit-exit button listens before handing the car back to the
- * circuit: past the traffic lines' 3 s queue wait (`TRAFFIC_MAX_QUEUE_WAIT_MS`
- * in the traffic catalog), so the speak gate has admitted or dropped the line
- * by then, and a line it admitted plays on to its end whatever the surface
- * does after.
- */
-const PIT_EXIT_LINE_LISTEN_MS = 4000;
+/** The two pit-exit lines, by the name their contract ids end in (`pit-crew.traffic-<line>`). */
+type PitExitLine = "pit-exit-traffic" | "pit-exit-clear";
+
+/** How far past its line's queue wait a pit-exit button listens: a few of the speak gate's checks. */
+const PIT_EXIT_LISTEN_MARGIN_MS = 1000;
 
 /**
- * The pit-exit buttons' teardown (issue #1113): once the line has been
- * admitted, the car back on the circuit and off pit road inside a replay-mode
- * bracket, so the pit exit is seeded rather than announced and the next
- * button starts from the presets' premise rather than on pit road, where the
- * overtake gate would refuse it.
+ * How long a pit-exit button listens before handing the car back to the
+ * circuit: past its own line's queue wait, read from the line's contract
+ * (`maxQueueWaitMs`, 3 s for the traffic warning and the engine default, 8 s,
+ * for the clear line), so the speak gate has admitted or dropped the line by
+ * then, and a line it admitted plays on to its end whatever the surface does
+ * after. A clear line waiting behind a long critical call would otherwise be
+ * dropped by its gate while still inside its queue window.
  *
  * @internal Exported for testing
  */
-export const BACK_FROM_THE_PITS: readonly TelemetryStep[] = [
-  { patch: {}, holdMs: PIT_EXIT_LINE_LISTEN_MS },
-  {
-    patch: { IsReplayPlaying: true, OnPitRoad: false, PlayerTrackSurface: TrkLoc.OnTrack },
-    holdMs: AUTO_FUEL_SEED_MS,
-    tick: true,
-  },
-  { patch: { IsReplayPlaying: false }, holdMs: REPLAY_EXIT_SETTLE_MS, tick: true },
-];
+export function pitExitListenMs(line: PitExitLine): number {
+  const id = `pit-crew.traffic-${line}`;
+  const contract = TRAFFIC_CONTRACTS.find((c) => c.id === id);
+
+  if (contract === undefined) throw new Error(`No traffic contract ${id} in the catalog`);
+
+  return (contract.maxQueueWaitMs ?? DEFAULT_MAX_QUEUE_WAIT_MS) + PIT_EXIT_LISTEN_MARGIN_MS;
+}
+
+/**
+ * A pit-exit button's teardown (issue #1113): once its line has been
+ * admitted ({@link pitExitListenMs}), the car back on the circuit and off pit
+ * road inside a replay-mode bracket, so the pit exit is seeded rather than
+ * announced and the next button starts from the presets' premise rather than
+ * on pit road, where the overtake gate would refuse it.
+ */
+function backFromThePits(line: PitExitLine): readonly TelemetryStep[] {
+  return [
+    { patch: {}, holdMs: pitExitListenMs(line) },
+    {
+      patch: { IsReplayPlaying: true, OnPitRoad: false, PlayerTrackSurface: TrkLoc.OnTrack },
+      holdMs: AUTO_FUEL_SEED_MS,
+      tick: true,
+    },
+    { patch: { IsReplayPlaying: false }, holdMs: REPLAY_EXIT_SETTLE_MS, tick: true },
+  ];
+}
 
 /**
  * How long the approach is held on its own before the takeover lands. The
@@ -3584,7 +3603,7 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
   // an outro), so a repeated press picks other takes. The pit-exit lines
   // speak no number (the payload's seconds are for logs), and are dropped on
   // the racing surface, so their buttons put the car on the pit lane first
-  // (`LEAVING_THE_PITS`) and hand it back after (`BACK_FROM_THE_PITS`).
+  // (`LEAVING_THE_PITS`) and hand it back after (`backFromThePits`).
   {
     id: "traffic-rejoin-right-behind",
     category: "Traffic",
@@ -3648,18 +3667,18 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
     event: "traffic.pitExit",
     data: { verdict: "traffic", seconds: 1.5 },
     telemetrySequence: LEAVING_THE_PITS,
-    teardownSequence: BACK_FROM_THE_PITS,
+    teardownSequence: backFromThePits("pit-exit-traffic"),
   },
   {
     id: "traffic-pit-exit-clear",
     category: "Traffic",
     label: "Pit exit clear",
     description:
-      'Leaving the pit box, the nearest car is predicted at the end of the exit blend 7 s after you — "Looks like the pit exit will be clear." or another of its four lines. Cuts any lower-weight line in flight, the exit readback and tire-wear report included. Puts the car on the pit lane first, since the line is dropped once you are back on the racing surface, and hands it back to the circuit about four seconds later, both seeded rather than announced.',
+      'Leaving the pit box, the nearest car is predicted at the end of the exit blend 7 s after you — "Looks like the pit exit will be clear." or another of its four lines. Cuts any lower-weight line in flight, the exit readback and tire-wear report included. Puts the car on the pit lane first, since the line is dropped once you are back on the racing surface, and hands it back to the circuit about nine seconds later, once its queue wait is over, both seeded rather than announced.',
     event: "traffic.pitExit",
     data: { verdict: "clear", seconds: 7 },
     telemetrySequence: LEAVING_THE_PITS,
-    teardownSequence: BACK_FROM_THE_PITS,
+    teardownSequence: backFromThePits("pit-exit-clear"),
   },
   // The rejoin detector itself (issue #1113): a field of three cars in two
   // classes driven through the translator, so the verdicts, the numbers and
