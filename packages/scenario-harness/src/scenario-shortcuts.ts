@@ -81,9 +81,11 @@ type ScenarioShortcutBase = {
    * needs declares none, which is all of them but the caution four (a
    * session preset, and for the catch-up one a track length in it and a
    * connected mock SDK too), the
-   * overtake and gap ones (a connected mock SDK) and the rolling-start four
+   * overtake and gap ones (a connected mock SDK), the rolling-start four
    * (both: a race session the formation grid reads in, on an oval for the
-   * whole-formation run, and a connected mock SDK).
+   * whole-formation run, and a connected mock SDK) and the rejoin train (a
+   * session naming the player's car at the index its field writes it into,
+   * and a connected mock SDK).
    */
   requires?: readonly ShortcutPrecondition[];
 };
@@ -3689,7 +3691,7 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
     id: "traffic-rejoin-train",
     category: "Traffic",
     label: "Rejoin → three cars coming",
-    requires: ["player-car-index", "sdk-connected"],
+    requires: ["traffic-player-car", "sdk-connected"],
     description:
       'Drives the TRANSLATOR: you spin to a stop on the circuit while a car closes from 25 to 12, 8, 5 and 1.5 seconds away and goes by, with two more behind it, in two classes. About seventeen seconds. Apply the race session preset first (it names your car); no telemetry preset is needed, the button puts the field on track itself. Expect seven lines, each drawn from its pools so the wording varies: a clear line on stopping ("Clear to rejoin."), a more-than-ten line as the lead car closes to 12 s ("Next car is more than ten seconds away. Be careful."), the first call at 8 s ("Car coming in about eight seconds. Watch out."), the count at 5 s ("Getting closer, about five seconds."), the right-behind line at 1.5 s ("Car right behind you. Watch out."), and once it has gone by, the next car\'s band once ("Next car is more than ten seconds away. Be careful.") and its own first call at 6 s ("Car coming in about six seconds. Watch out."). Nothing as you drive away. Refused while the mock SDK is disconnected: a disconnected translator sees no ticks.',
     telemetrySequence: TRAFFIC_REJOIN_SEQUENCE,
