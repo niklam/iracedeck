@@ -62,7 +62,8 @@
  * past the end of pit road between them. A tick that does not send
  * `OnPitRoad` keeps the episode's last reading of it (`true` from the
  * departure, which requires it), so a missing bit never switches the phase;
- * a `false` the sim sent is the blend phase.
+ * a `false` the sim sent is the blend phase. The reading is kept before the
+ * evaluation runs, so one that threw is retried on the bit its tick sent.
  *
  * **Where the player is, along the lap.** Every distance is the forward one,
  * in driving direction, never the shorter way round: a stall may lie more than
@@ -351,6 +352,12 @@ export function diffTrafficPitExit(
   }
 
   if (episode.active) {
+    // The road bit the sim sent is recorded before the evaluation that can
+    // throw: it is a reading kept to fill a tick that omits it, not a
+    // baseline an edge is read against, so the retry after a throw must see
+    // it rather than the reading before it.
+    if (typeof telemetry.OnPitRoad === "boolean") episode.lastOnPitRoad = telemetry.OnPitRoad;
+
     const reason = endReason(telemetry, inStall, position);
 
     if (reason !== null) {
@@ -365,10 +372,17 @@ export function diffTrafficPitExit(
       if (episode.lastEvalAt === null || elapsed(now, episode.lastEvalAt) >= TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS) {
         // A tick that does not send `OnPitRoad` keeps the episode's last
         // reading of it, so a missing bit never switches the ETA's phase.
-        const onPitRoad =
-          typeof telemetry.OnPitRoad === "boolean" ? telemetry.OnPitRoad : episode.lastOnPitRoad === true;
-
-        evaluate(episode, curves, telemetry, position.pct, onPitRoad, facts, windows, emit, logger);
+        evaluate(
+          episode,
+          curves,
+          telemetry,
+          position.pct,
+          episode.lastOnPitRoad === true,
+          facts,
+          windows,
+          emit,
+          logger,
+        );
 
         // Written once the evaluation has returned, its silent returns
         // included (the package's step rule): one that threw, in the landmark
@@ -379,8 +393,8 @@ export function diffTrafficPitExit(
     }
   }
 
-  if (episode.active && typeof telemetry.OnPitRoad === "boolean") episode.lastOnPitRoad = telemetry.OnPitRoad;
-
+  // The stall baseline is the departure edge's, so it is written last (the
+  // package's step rule): a step that threw re-reads the edge on the next tick.
   episode.lastInPitStall = inStall;
 }
 

@@ -622,6 +622,21 @@ describe("diffTrafficPitExit", () => {
         expect(h.events).toEqual([{ verdict: "clear", seconds: -12.7 }]);
         expect(lines(h.debug).at(-1)).toContain("eta 28.75 s on blend");
       });
+
+      it("keeps the blend formula after an explicit false read on a tick whose evaluation threw", () => {
+        const h = harness();
+
+        h.depart(tel({ cars: [arriving(5, 1)], CarIdxLapDistPct: undefined }));
+        h.readLandmarks.mockImplementationOnce(() => {
+          throw new Error("read failed");
+        });
+        expect(() => h.after(100, tel({ cars: [arriving(5, 1)], OnPitRoad: false }))).toThrow("read failed");
+        // The retry, on the next tick, which does not send the bit.
+        h.after(100, tel({ cars: [arriving(5, 1)], OnPitRoad: undefined }));
+
+        expect(h.events).toEqual([{ verdict: "clear", seconds: -12.7 }]);
+        expect(lines(h.debug).at(-1)).toContain("eta 28.75 s on blend");
+      });
     });
 
     it("past pitRoadEnd by position with OnPitRoad still true (a landmark learned late): still the blend formula", () => {
