@@ -780,6 +780,12 @@ export type TrafficPitExitState = {
   lastInPitStall: boolean | null;
   /** Whether an episode is running. */
   active: boolean;
+  /**
+   * In an episode: the last `OnPitRoad` a tick sent, which picks the ETA's
+   * phase on a tick that does not send it; `true` from the departure (which
+   * requires it), `null` with no episode.
+   */
+  lastOnPitRoad: boolean | null;
   /** When the episode last evaluated; `null` before its first evaluation. */
   lastEvalAt: number | null;
   /**
@@ -815,6 +821,7 @@ export function createTrafficPitExitState(): TrafficPitExitState {
   return {
     lastInPitStall: null,
     active: false,
+    lastOnPitRoad: null,
     lastEvalAt: null,
     positionUnavailableSince: null,
     spokenVerdict: null,

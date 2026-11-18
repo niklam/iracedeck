@@ -586,6 +586,32 @@ describe("diffTrafficPitExit", () => {
       expect(lines(h.debug).at(-1)).toMatch(/eta 15\.6\d s on blend/);
     });
 
+    describe("a tick that does not send OnPitRoad", () => {
+      it("keeps the pit-road formula the departure was on", () => {
+        const h = harness();
+
+        // No position on the departure tick, so the first evaluation comes on
+        // the next one, which sends no OnPitRoad: still 15 s on pit road.
+        h.depart(tel({ cars: [arriving(5, 1)], CarIdxLapDistPct: undefined }));
+        h.after(100, tel({ cars: [arriving(5, 1)], OnPitRoad: undefined }));
+
+        expect(h.events).toEqual([{ verdict: "traffic", seconds: 1 }]);
+        expect(lines(h.debug).at(-1)).toContain("eta 15.00 s on pitRoad");
+      });
+
+      it("keeps the blend formula after an explicit false, read on a tick that made no evaluation", () => {
+        const h = harness();
+
+        h.depart(tel({ cars: [arriving(5, 1)], CarIdxLapDistPct: undefined }));
+        h.after(100, tel({ cars: [arriving(5, 1)], OnPitRoad: false, CarIdxLapDistPct: undefined }));
+        h.after(100, tel({ cars: [arriving(5, 1)], OnPitRoad: undefined }));
+
+        // 60 − 31.25 = 28.75 s from the curve: the car at 16 s is 12.75 s before.
+        expect(h.events).toEqual([{ verdict: "clear", seconds: -12.7 }]);
+        expect(lines(h.debug).at(-1)).toContain("eta 28.75 s on blend");
+      });
+    });
+
     it("past pitRoadEnd by position with OnPitRoad still true (a landmark learned late): still the blend formula", () => {
       const h = harness({
         landmarks: { pitRoadEnd: landmark(0.125, {}), blendEnd: landmark(0.1875, {}) },

@@ -56,7 +56,10 @@
  * `pitRoadEnd`, so the player-level `OnPitRoad` (which reads correctly; the
  * per-car `CarIdxOnPitRoad` is the one #1112 measured stuck true) and a
  * landmark learned a little late cannot keep the pit-road formula running
- * past the end of pit road between them.
+ * past the end of pit road between them. A tick that does not send
+ * `OnPitRoad` keeps the episode's last reading of it (`true` from the
+ * departure, which requires it), so a missing bit never switches the phase;
+ * a `false` the sim sent is the blend phase.
  *
  * **Where the player is, along the lap.** Every distance is the forward one,
  * in driving direction, never the shorter way round: a stall may lie more than
@@ -325,7 +328,7 @@ export function diffTrafficPitExit(
   if (departed) {
     if (episode.active) logger.debug("PitExit: episode ended (left the stall again)");
 
-    Object.assign(episode, createTrafficPitExitState(), { active: true });
+    Object.assign(episode, createTrafficPitExitState(), { active: true, lastOnPitRoad: true });
     logger.debug(
       `PitExit: episode started (left the stall at pct=${isFiniteNumber(rawPlayerPct) ? rawPlayerPct.toFixed(4) : "?"})`,
     );
@@ -344,7 +347,12 @@ export function diffTrafficPitExit(
       if (episode.lastEvalAt !== null && episode.lastEvalAt > now) episode.lastEvalAt = null;
 
       if (episode.lastEvalAt === null || elapsed(now, episode.lastEvalAt) >= TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS) {
-        evaluate(episode, curves, telemetry, position.pct, facts, windows, emit, logger);
+        // A tick that does not send `OnPitRoad` keeps the episode's last
+        // reading of it, so a missing bit never switches the ETA's phase.
+        const onPitRoad =
+          typeof telemetry.OnPitRoad === "boolean" ? telemetry.OnPitRoad : episode.lastOnPitRoad === true;
+
+        evaluate(episode, curves, telemetry, position.pct, onPitRoad, facts, windows, emit, logger);
 
         // Written once the evaluation has returned, its silent returns
         // included (the package's step rule): one that threw, in the landmark
@@ -354,6 +362,8 @@ export function diffTrafficPitExit(
       }
     }
   }
+
+  if (episode.active && typeof telemetry.OnPitRoad === "boolean") episode.lastOnPitRoad = telemetry.OnPitRoad;
 
   episode.lastInPitStall = typeof inStall === "boolean" ? inStall : null;
 }
@@ -483,6 +493,7 @@ function playerEta(
   curves: Readonly<TrafficArrivalState>,
   telemetry: TrafficPitExitTelemetry,
   playerPct: number,
+  onPitRoad: boolean,
   playerClass: number | null,
   facts: TrafficPitExitFacts,
   pitRoadEnd: PitLaneResolvedLandmark,
@@ -497,7 +508,7 @@ function playerEta(
 
   // Past `pitRoadEnd` is `OnPitRoad` turning false; the position check is the
   // guard against a landmark learned a little late (module header).
-  if (telemetry.OnPitRoad === true && position.toBlendEnd > position.pitRoadEndToBlendEnd) {
+  if (onPitRoad && position.toBlendEnd > position.pitRoadEndToBlendEnd) {
     if (facts.trackLengthMeters === null || !(facts.trackLengthMeters > 0)) return { reason: "noTrackLength" };
 
     if (!(facts.pitSpeedLimitMps > 0)) return { reason: "noPitSpeedLimit" };
@@ -584,6 +595,7 @@ function evaluate(
   curves: Readonly<TrafficArrivalState>,
   telemetry: TrafficPitExitTelemetry,
   playerPct: number,
+  onPitRoad: boolean,
   facts: TrafficPitExitFacts,
   windows: TrafficPitExitWindows,
   emit: EmitFn<(typeof TRAFFIC_PIT_EXIT_EVENTS)[number]>,
@@ -630,7 +642,7 @@ function evaluate(
   }
 
   const playerClass = resolveCarClassId(telemetry, facts.classes, facts.playerCarIdx);
-  const eta = playerEta(curves, telemetry, playerPct, playerClass, facts, pitRoadEnd, blendEnd, position);
+  const eta = playerEta(curves, telemetry, playerPct, onPitRoad, playerClass, facts, pitRoadEnd, blendEnd, position);
 
   if ("reason" in eta) {
     noVerdict(episode);
