@@ -78190,6 +78190,22 @@
       "textPreview": "Exit looks clean.",
       "generatedAt": "2026-11-17T17:14:50.348Z",
       "requestId": "GoScGTs6axwp5KRXAibB"
+    },
+    "voice/default/traffic/rejoin-pack-01.mp3": {
+      "hash": "d122ae03f1b04ece",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "A group of cars coming. Join carefully.",
+      "generatedAt": "2026-11-18T19:32:19.101Z",
+      "requestId": "fGZ40b20miBUgX7MMawM"
+    },
+    "voice/shawn/traffic/rejoin-pack-01.mp3": {
+      "hash": "d122ae03f1b04ece",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "A group of cars coming. Join carefully.",
+      "generatedAt": "2026-11-18T19:32:19.170Z",
+      "requestId": "fGZ40b20miBUgX7MMawM"
     }
   }
 }

@@ -416,6 +416,7 @@ const TRAFFIC_CLIP_PATHS = [
     "rejoin-right-behind",
     "rejoin-over-ten",
     "rejoin-clear",
+    "rejoin-pack",
     "pit-exit-traffic",
     "pit-exit-clear",
     "rejoin-mid-4",
@@ -1901,6 +1902,7 @@ describe("traffic family registration (issue #1113)", () => {
     { data: { verdict: "near", seconds: 4, first: false }, clips: ["rejoin-update", "rejoin-mid-4"] },
     { data: { verdict: "overTen" }, clips: ["rejoin-over-ten"] },
     { data: { verdict: "clear" }, clips: ["rejoin-clear"] },
+    { data: { verdict: "pack" }, clips: ["rejoin-pack"] },
   ] satisfies ReadonlyArray<{ data: SimEventMap["traffic.rejoin"]["data"]; clips: string[] }>)(
     "a rejoin $data.verdict plays its line when the opt-in is on",
     ({ data, clips }) => {
@@ -1935,6 +1937,7 @@ describe("traffic family registration (issue #1113)", () => {
     bus.publishEvent("traffic.rejoin", { verdict: "rightBehind" });
     bus.publishEvent("traffic.rejoin", { verdict: "near", seconds: 4, first: true });
     bus.publishEvent("traffic.rejoin", { verdict: "clear" });
+    bus.publishEvent("traffic.rejoin", { verdict: "pack" });
     flush(audio);
     expect(voiceClipsPlayed()).toEqual([]);
 
