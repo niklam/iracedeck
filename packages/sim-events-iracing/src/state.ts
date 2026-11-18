@@ -2212,8 +2212,9 @@ export type TranslatorState = {
   // ── Approaching traffic (issue #1113) ──────────────────────────────────
   /**
    * The per-class reference curves the arrival model reads, one slice
-   * ({@link TrafficArrivalState}). Reset per session and at a disconnect;
-   * kept whole at a replay glance.
+   * ({@link TrafficArrivalState}), and each car's measured progress. Reset
+   * per session and at a disconnect; kept in part at a replay glance: the
+   * curves survive and `motion` starts empty ({@link resetTrafficArrivalMotion}).
    */
   trafficArrival: TrafficArrivalState;
   /**
