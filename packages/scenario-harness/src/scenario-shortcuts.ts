@@ -227,7 +227,10 @@ export type BusEventShortcut = ScenarioShortcutBase & {
    * The UI runs it whenever the run wrote any telemetry, not only after a
    * publish that went through: a refused publish, or a setup step that failed
    * part-way, leaves the setup's state behind just the same. After a failure
-   * it applies the patches without their holds. So a teardown has to put the
+   * it applies {@link failedRunTeardown}'s copy: the patches without their
+   * listening holds, but with the hold of any step that turns `IsReplayPlaying`
+   * off, which waits out the translator's replay-exit grace so the next
+   * button's first live edge is not swallowed. So a teardown has to put the
    * harness right from ANY prefix of its setup, a bracket left open included.
    */
   teardownSequence?: readonly TelemetryStep[];
@@ -275,6 +278,36 @@ export type TelemetrySequenceShortcut = ScenarioShortcutBase & {
 };
 
 export type ScenarioShortcut = BusEventShortcut | TelemetrySequenceShortcut;
+
+/**
+ * The teardown the UI applies after a FAILED run (issues #1167, #1113): the
+ * same steps, with only the holds that still matter. A listening hold is time
+ * for a line to play, and after a failure nothing is playing, so it goes. A
+ * step that turns `IsReplayPlaying` off keeps its hold: it waits out the
+ * translator's replay-exit grace (`REPLAY_EXIT_GRACE_MS`), inside which every
+ * edge is absorbed, so without it a button pressed within the second after
+ * the failure alert loses its first live edge.
+ */
+export function failedRunTeardown(steps: readonly TelemetryStep[]): TelemetryStep[] {
+  return steps.map(({ holdMs, ...step }) =>
+    holdMs !== undefined && step.patch.IsReplayPlaying === false ? { ...step, holdMs } : step,
+  );
+}
+
+/**
+ * A shortcut as `/api/state` serves it to the UI: a bus-event shortcut with a
+ * teardown also carries {@link failedRunTeardown}'s copy, which the UI applies
+ * in place of `teardownSequence` after a failed run, so the decision of which
+ * holds survive is made here rather than in the untested page script.
+ */
+export type ServedShortcut = ScenarioShortcut & { failedRunTeardownSequence?: readonly TelemetryStep[] };
+
+/** `shortcut` as `/api/state` serves it (see {@link ServedShortcut}). */
+export function servedShortcut(shortcut: ScenarioShortcut): ServedShortcut {
+  if (shortcut.teardownSequence === undefined) return shortcut;
+
+  return { ...shortcut, failedRunTeardownSequence: failedRunTeardown(shortcut.teardownSequence) };
+}
 
 const ALL_FOUR_TIRES = ["LF", "RF", "LR", "RR"] as const;
 
@@ -2292,10 +2325,13 @@ const ROLLING_START_LINEUP_CHANGED_SHORTCUT: TelemetrySequenceShortcut = {
  * `IsReplayPlaying` off too. After a run that went through that is no change. It is its own step
  * rather than a key on {@link FORMATION_STAND_DOWN}: the two sequence buttons
  * end on that one live, and a step that leaves replay mode has to be held for
- * the exit grace before anything else is live.
+ * the exit grace before anything else is live — which is why it holds
+ * {@link REPLAY_EXIT_SETTLE_MS}, the one hold the UI keeps after a failed run
+ * ({@link failedRunTeardown}).
  */
 const ONE_LAP_TO_GREEN_STAND_DOWN: TelemetryStep = {
   patch: { IsReplayPlaying: false, ...FORMATION_STAND_DOWN.patch },
+  holdMs: REPLAY_EXIT_SETTLE_MS,
   tick: true,
 };
 

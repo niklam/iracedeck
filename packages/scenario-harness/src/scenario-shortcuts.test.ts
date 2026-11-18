@@ -37,7 +37,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ALL_EVENT_NAMES } from "./event-names.js";
 import { MockSDKController, type TelemetryPatch } from "./mock-sdk-controller.js";
-import { SCENARIO_SHORTCUTS, type TelemetryStep } from "./scenario-shortcuts.js";
+import { failedRunTeardown, SCENARIO_SHORTCUTS, servedShortcut, type TelemetryStep } from "./scenario-shortcuts.js";
 
 type Published = { event: string; data: unknown };
 
@@ -1661,5 +1661,74 @@ describe('the "Crash into a full-course caution" shortcut (issue #1185)', () => 
     runSequence(controller, shortcut?.telemetrySequence ?? []);
 
     expect(events.map((e) => e.event)).toEqual([...EXPECTED_ORDER, ...EXPECTED_ORDER]);
+  });
+});
+
+describe("the teardown after a failed run (issues #1167, #1113)", () => {
+  const withTeardown = SCENARIO_SHORTCUTS.filter((s) => s.teardownSequence !== undefined);
+  const leavesReplay = (step: TelemetryStep): boolean => step.patch.IsReplayPlaying === false;
+
+  it("drops the listening holds and keeps the hold of a step that turns IsReplayPlaying off", () => {
+    expect(
+      failedRunTeardown([
+        { patch: {}, holdMs: 4000 },
+        { patch: { IsReplayPlaying: true, OnPitRoad: false }, holdMs: 300, tick: true },
+        { patch: { IsReplayPlaying: false }, holdMs: 1200, tick: true },
+        { patch: { Speed: 0 } },
+      ]),
+    ).toEqual([
+      { patch: {} },
+      { patch: { IsReplayPlaying: true, OnPitRoad: false }, tick: true },
+      { patch: { IsReplayPlaying: false }, holdMs: 1200, tick: true },
+      { patch: { Speed: 0 } },
+    ]);
+  });
+
+  it("covers the buttons that carry a teardown", () => {
+    expect(withTeardown.map((s) => s.id).sort()).toEqual([
+      "flag-one-lap-to-green",
+      "traffic-pit-exit-clear",
+      "traffic-pit-exit-traffic",
+    ]);
+  });
+
+  it.each(withTeardown.map((s) => [s.id, s.teardownSequence ?? []] as const))(
+    "%s keeps every patch and tick, and holds after a failure only where it leaves replay mode",
+    (_, teardown) => {
+      const failed = failedRunTeardown(teardown);
+
+      expect(failed.map(({ patch, tick }) => ({ patch, tick }))).toEqual(
+        teardown.map(({ patch, tick }) => ({ patch, tick })),
+      );
+      expect(failed.map((step) => step.holdMs)).toEqual(
+        teardown.map((step) => (leavesReplay(step) ? step.holdMs : undefined)),
+      );
+    },
+  );
+
+  it.each(withTeardown.map((s) => [s.id, s.teardownSequence ?? []] as const))(
+    "%s holds past the replay exit grace on every step that leaves replay mode, a failed run included",
+    (_, teardown) => {
+      const exits = failedRunTeardown(teardown).filter(leavesReplay);
+
+      expect(exits.length).toBeGreaterThan(0);
+
+      for (const step of exits) expect(step.holdMs ?? 0).toBeGreaterThan(REPLAY_EXIT_GRACE_MS);
+    },
+  );
+
+  it("is served with each shortcut that has a teardown, and with no other", () => {
+    for (const shortcut of SCENARIO_SHORTCUTS) {
+      const served = servedShortcut(shortcut);
+
+      if (shortcut.teardownSequence === undefined) {
+        expect(served).toBe(shortcut);
+      } else {
+        expect(served).toEqual({
+          ...shortcut,
+          failedRunTeardownSequence: failedRunTeardown(shortcut.teardownSequence),
+        });
+      }
+    }
   });
 });
