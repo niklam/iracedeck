@@ -229,6 +229,17 @@ describe("diffTrafficPitExit", () => {
           "the array not an array",
           (r) => tel({ cars: [arriving(5, r)], CarIdxLapDistPct: 0.1 as unknown as number[] }),
         ],
+        [
+          // Indexable, so the player's entry reads, while the arrival model
+          // refuses the container: without its own array check the detector
+          // would evaluate, find no per-car arrays and reset a held flip.
+          "the array an array-like object",
+          (r) => {
+            const t = tel({ cars: [arriving(5, r)] });
+
+            return { ...t, CarIdxLapDistPct: { ...(t.CarIdxLapDistPct as number[]) } as unknown as number[] };
+          },
+        ],
         ["the player's entry missing", (r) => tel({ cars: [arriving(5, r)], CarIdxLapDistPct: [] })],
         ["the entry not a number", (r) => tel({ cars: [arriving(5, r)], pct: "0.1" as unknown as number })],
         ["the entry NaN", (r) => tel({ cars: [arriving(5, r)], pct: Number.NaN })],
@@ -285,9 +296,9 @@ describe("diffTrafficPitExit", () => {
         expect(h.episode.lastEvalAt).not.toBeNull();
       });
 
-      it("ends the episode silently once it has lasted the grace", () => {
+      it.each(dropouts)("ends the episode silently once it (%s) has lasted the grace", (_, dropout) => {
         const h = harness();
-        const gap = tel({ cars: [arriving(5, 10)], CarIdxLapDistPct: undefined });
+        const gap = dropout(10);
 
         h.depart(tel({ cars: [arriving(5, 1)] }));
         h.after(100, gap);

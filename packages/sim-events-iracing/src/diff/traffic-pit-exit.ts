@@ -301,7 +301,13 @@ export function diffTrafficPitExit(
   logger: ILogger,
 ): void {
   const inStall = telemetry.PlayerCarInPitStall;
-  const rawPlayerPct: unknown = facts.playerCarIdx >= 0 ? telemetry.CarIdxLapDistPct?.[facts.playerCarIdx] : undefined;
+  // A container that is not an array is no position at all, as the arrival
+  // model reads it (`computeTrafficArrivals`): indexing an array-like object
+  // would evaluate on a tick whose per-car read then fails, resetting a held
+  // flip instead of holding the episode for the position grace.
+  const lapDistPcts: unknown = telemetry.CarIdxLapDistPct;
+  const rawPlayerPct: unknown =
+    facts.playerCarIdx >= 0 && Array.isArray(lapDistPcts) ? lapDistPcts[facts.playerCarIdx] : undefined;
   const position = readPlayerPosition(telemetry, rawPlayerPct);
   const departed = episode.lastInPitStall === true && inStall === false && telemetry.OnPitRoad === true;
 
