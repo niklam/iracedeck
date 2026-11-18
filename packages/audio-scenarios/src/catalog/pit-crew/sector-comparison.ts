@@ -9,7 +9,7 @@
  *                                      in sector two. We're quicker in sector
  *                                      three."
  *   pit-crew.sector-comparison-ahead   "Car twelve ahead is slower than us in
- *                                      sector two. That's our chance."
+ *                                      sector two."
  *   pit-crew.sector-comparison-behind  "Car seven behind is quicker than us in
  *                                      sector three."
  *
@@ -826,9 +826,10 @@ export const SCENARIO_ID_TO_SECTOR_COMPARISON_ID: Record<
  * sector (`loss-most`, `loss-largest`) or end the line (`loss-every`), the
  * gain clauses that lead into a sector (`gain` when the driver is slower,
  * `leader-gain` when quicker), the tails after a car number that lead into a
- * sector (`ahead-slower`, `behind-quicker`) and the attack call's closing
- * `chance`. The numbers, the sectors and the car numbers are vars', drawing
- * from their own groups.
+ * sector (`ahead-slower`, `behind-quicker`). The numbers, the sectors and
+ * the car numbers are vars', drawing from their own groups. The attack call
+ * ends at the sector: its closing "That's our chance." was dropped after a
+ * race with it, where it grew tiresome fast.
  */
 export const SECTOR_COMPARISON_CLIP_SOURCES: readonly { group: "sector-comparison"; base: string }[] = [
   { group: SECTOR_COMPARISON_GROUP, base: "leader-slower" },
@@ -839,6 +840,5 @@ export const SECTOR_COMPARISON_CLIP_SOURCES: readonly { group: "sector-compariso
   { group: SECTOR_COMPARISON_GROUP, base: "gain" },
   { group: SECTOR_COMPARISON_GROUP, base: "leader-gain" },
   { group: SECTOR_COMPARISON_GROUP, base: "ahead-slower" },
-  { group: SECTOR_COMPARISON_GROUP, base: "chance" },
   { group: SECTOR_COMPARISON_GROUP, base: "behind-quicker" },
 ];

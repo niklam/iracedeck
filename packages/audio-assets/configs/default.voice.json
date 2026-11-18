@@ -7293,13 +7293,6 @@
         ]
       },
       {
-        "name": "chance-01",
-        "text": "That's our chance.",
-        "previous_request_ids": [
-          "sector-comparison-sector/2-01"
-        ]
-      },
-      {
         "name": "behind-quicker-01",
         "text": "behind is quicker than us in",
         "previous_request_ids": [
@@ -31995,13 +31988,12 @@
       ]
     },
     "pit-crew.sector-comparison-ahead": {
-      "comment": "The car ahead by number, the sector where it is slower than us, and that it is our chance, at the line after the lap time.",
+      "comment": "The car ahead by number and the sector where it is slower than us, at the line after the lap time.",
       "test": "Harness → Sectors → Chance on the car ahead. In-sim: an offline AI race; close to within three seconds of a car that is slow through one sector and cross the line on a clean lap.",
       "sequence": [
         "{{sectorComparison.carNumber}}",
         "pool:sector-comparison/ahead-slower",
-        "{{sectorComparison.gainSector}}",
-        "pool:sector-comparison/chance"
+        "{{sectorComparison.gainSector}}"
       ]
     },
     "pit-crew.sector-comparison-behind": {

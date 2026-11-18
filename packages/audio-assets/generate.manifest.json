@@ -76456,19 +76456,6 @@
         ]
       }
     },
-    "voice/default/sector-comparison/chance-01.mp3": {
-      "hash": "81f830bed85b0d6b",
-      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
-      "model": "eleven_v4",
-      "textPreview": "That's our chance.",
-      "generatedAt": "2026-11-17T06:21:11.847Z",
-      "requestId": "2MZGO31ZDoHfrwVnPCtP",
-      "conditionedOn": {
-        "previous": [
-          "QLCAeCFmchnUHmAQqtfW"
-        ]
-      }
-    },
     "voice/default/sector-comparison-sector/3-01.mp3": {
       "hash": "3d9111843045de8d",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",

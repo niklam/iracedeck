@@ -688,7 +688,6 @@ const AHEAD_ENTRY: CalloutScriptEntry = {
     "{{sectorComparison.carNumber}}",
     "pool:sector-comparison/ahead-slower",
     "{{sectorComparison.gainSector}}",
-    "pool:sector-comparison/chance",
   ],
 };
 
@@ -923,14 +922,13 @@ describe("the lines (decision 9, the Default shape)", () => {
     ]);
   });
 
-  it("ahead: the car, the sector it is slower in, and the chance", () => {
+  it("ahead: the car and the sector it is slower in, and nothing after the sector", () => {
     lapDone(5, { ahead: AHEAD_SLOW_S2 });
 
     expect(line()).toEqual([
       "car-number/12",
       "sector-comparison/ahead-slower",
       "sector-comparison-sector/2",
-      "sector-comparison/chance",
     ]);
   });
 
@@ -960,7 +958,6 @@ describe("the lines (decision 9, the Default shape)", () => {
       "car-number/12",
       "sector-comparison/ahead-slower",
       "sector-comparison-sector/10",
-      "sector-comparison/chance",
     ]);
   });
 
@@ -1082,7 +1079,6 @@ describe("the cadence (decision 7)", () => {
       "car-number/12",
       "sector-comparison/ahead-slower",
       "sector-comparison-sector/2",
-      "sector-comparison/chance",
     ]);
 
     audio._played.length = 0;
@@ -1114,7 +1110,6 @@ describe("the cadence (decision 7)", () => {
       "car-number/20",
       "sector-comparison/ahead-slower",
       "sector-comparison-sector/2",
-      "sector-comparison/chance",
     ]);
   });
 
@@ -1296,7 +1291,6 @@ describe("at the line, after the lap-time calls (decision 8)", () => {
       "car-number/12",
       "sector-comparison/ahead-slower",
       "sector-comparison-sector/2",
-      "sector-comparison/chance",
     ]);
   });
 
@@ -1314,7 +1308,7 @@ describe("at the line, after the lap-time calls (decision 8)", () => {
 
     expect(line()[0]).toBe("car-number/12");
     expect(line()).toContain("fastest-lap/yours");
-    expect(line().indexOf("fastest-lap/yours")).toBeGreaterThan(line().indexOf("sector-comparison/chance"));
+    expect(line().indexOf("fastest-lap/yours")).toBeGreaterThan(line().indexOf("sector-comparison-sector/2"));
   });
 
   it("uses the delay and the order the spec sets", () => {
