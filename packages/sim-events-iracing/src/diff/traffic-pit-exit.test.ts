@@ -382,6 +382,19 @@ describe("diffTrafficPitExit", () => {
       },
     );
 
+    it("retries a landmark read that threw on the next tick, so the first call is not lost", () => {
+      const h = harness();
+
+      h.readLandmarks.mockImplementationOnce(() => {
+        throw new Error("read failed");
+      });
+      expect(() => h.depart(tel({ cars: [arriving(5, 1)] }))).toThrow("read failed");
+      h.after(100, tel({ cars: [arriving(5, 1)] }));
+
+      expect(h.events).toEqual([{ verdict: "traffic", seconds: 1 }]);
+      expect(h.readLandmarks).toHaveBeenCalledTimes(2);
+    });
+
     it("reads the landmarks only at an evaluation, not on every tick", () => {
       const h = harness();
 

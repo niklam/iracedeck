@@ -327,7 +327,13 @@ export function diffTrafficPitExit(
       if (episode.lastEvalAt !== null && episode.lastEvalAt > now) episode.lastEvalAt = null;
 
       if (episode.lastEvalAt === null || elapsed(now, episode.lastEvalAt) >= TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS) {
-        evaluate(episode, curves, telemetry, position.pct, facts, windows, now, emit, logger);
+        evaluate(episode, curves, telemetry, position.pct, facts, windows, emit, logger);
+
+        // Written once the evaluation has returned, its silent returns
+        // included (the package's step rule): one that threw, in the landmark
+        // read or the timing, is retried on the next tick rather than a second
+        // later. An evaluation that ended the episode leaves it ended.
+        if (episode.active) episode.lastEvalAt = now;
       }
     }
   }
@@ -539,12 +545,9 @@ function evaluate(
   playerPct: number,
   facts: TrafficPitExitFacts,
   windows: TrafficPitExitWindows,
-  now: number,
   emit: EmitFn<(typeof TRAFFIC_PIT_EXIT_EVENTS)[number]>,
   logger: ILogger,
 ): void {
-  episode.lastEvalAt = now;
-
   const landmarks = facts.readLandmarks();
   const pitRoadEnd = landmarks?.pitRoadEnd ?? null;
   const blendEnd = landmarks?.blendEnd ?? null;
