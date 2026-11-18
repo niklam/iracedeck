@@ -27,7 +27,9 @@
  *   - the empty-stop release (#1180): its own contract on
  *     `pitService.stopEmpty`, outside `PIT_STATUS_CONTRACTS`, scripted onto
  *     the Complete clips and riding the Complete opt-in; queueable behind a
- *     busy radio, and dropped at speak time once the car has left its box
+ *     busy radio, dropped at speak time once the car has left its box, and
+ *     dropped, never replayed, once an interrupt has cut it (#1113 amendment
+ *     2026-11-18, `dropWhenCut`)
  *   - the in-progress hold (#1180): the in-progress line waits
  *     `PIT_STATUS_IN_PROGRESS_HOLD_MS` and is dropped if the live status has
  *     left InProgress by then — the only transition line with a gate
@@ -43,7 +45,7 @@ import { PitSvStatus, type TelemetryData, TrkLoc } from "@iracedeck/iracing-sdk"
 import { classifySession } from "@iracedeck/sim-events-iracing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { NO_FRAME, WEIGHT } from "../../dsl.js";
+import { NO_FRAME, type ScenarioContract, WEIGHT } from "../../dsl.js";
 import type { AudioAssetsManifest, IScenarioEngine } from "../../interpreter.js";
 import { _resetAudioScenarios, initializeAudioScenarios, poolMemberPattern } from "../../interpreter.js";
 import { familyGate } from "./callout-gate.test-util.js";
@@ -64,6 +66,7 @@ import {
 } from "./pit-status.js";
 import { _resetRadarEngine } from "./radar-engine.js";
 import { _resetSpotterEngine } from "./spotter-engine.js";
+import { TRAFFIC_WARNING_WEIGHT } from "./traffic.js";
 
 // `latestTelemetry` backs the speak-time gates: the repeat nags', the
 // in-progress line's and the empty-stop release's. `null` (the default, and
@@ -365,6 +368,18 @@ describe("PIT_STATUS_NOTHING_TO_DO_CONTRACT structure (#1180)", () => {
     expect(c.speakGate?.description).toBeTruthy();
   });
 
+  it("is dropped, never replayed, once cut: dropWhenCut (#1113 amendment 2026-11-18, #1681)", () => {
+    expect(c.dropWhenCut).toBe(true);
+    expect(c.resumable).toBeUndefined();
+  });
+
+  it("the Complete line it shares its clips with is not queueable, so it carries no dropWhenCut", () => {
+    const complete = PIT_STATUS_CONTRACTS.find((x) => x.id === "pit-crew.pit-status-complete")!;
+
+    expect(complete.queueable).toBeUndefined();
+    expect(complete.dropWhenCut).toBeUndefined();
+  });
+
   it("carries no sequence and takes the engine's default frame", () => {
     expect("sequence" in c).toBe(false);
     expect(c.frame).toBeUndefined();
@@ -495,6 +510,77 @@ describe("PIT_STATUS_NOTHING_TO_DO_CONTRACT trigger (engine-level, #1180)", () =
     flush(audio);
 
     expect(audio._played).toEqual([]);
+  });
+});
+
+// #1113 spec amendment 2026-11-18: at a pit exit the traffic call cut the
+// "go" of an empty stop, and the release replayed about three seconds later
+// with the car already moving. A cut release is dropped (`dropWhenCut`,
+// #1681); the same flow without the flag replays it, the positive control.
+describe("a cut release is dropped, never replayed (#1113 amendment 2026-11-18)", () => {
+  /** A line at the traffic warnings' weight that cuts in, as the pit-exit traffic call does. */
+  const INTERRUPTER_ID = "test.interrupter";
+  const RELEASE_CLIP = `voice/${VOICE}/pit-status/complete-01.mp3`;
+  const IN_THE_BOX = { PlayerCarPitSvStatus: PitSvStatus.None, PlayerTrackSurface: TrkLoc.InPitStall, Speed: 0 };
+
+  afterEach(() => {
+    _resetAudioScenarios();
+    simMocks.latestTelemetry = null;
+    vi.clearAllMocks();
+  });
+
+  /** Register `line` alone with the interrupter, start it with `start`, cut it once its words play, and play out. */
+  function cut(line: ScenarioContract, start: () => void): string[] {
+    bus = createMockBus();
+    audio = createFakeAudio();
+    engine = initializeAudioScenarios(bus, audio, manifest, mockLogger as never, () => VOICE);
+    engine.defineContract(line);
+    engine.defineScenario({
+      id: INTERRUPTER_ID,
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      base: "voice/{voice}",
+      weight: TRAFFIC_WARNING_WEIGHT,
+      interrupt: true,
+      frame: NO_FRAME,
+      sequence: [OCCUPIER_CLIP_STEP],
+    });
+    engine.setScripts(
+      new Map([[VOICE, { ...PIT_STATUS_SCRIPT, scenarios: { [line.id]: SCRIPT.scenarios[line.id] } }]]),
+    );
+    simMocks.latestTelemetry = IN_THE_BOX;
+
+    start();
+    audio._triggerChannelEnd(AudioChannel.SFX); // the frame's open tick → the line's words
+    expect(voiceClipsPlayed(audio)).toEqual([RELEASE_CLIP]);
+
+    engine.fire(INTERRUPTER_ID);
+    flush(audio);
+
+    return voiceClipsPlayed(audio);
+  }
+
+  const stopEmpty = (): void => bus.publishEvent("pitService.stopEmpty", {});
+
+  it("the release cut mid-line is dropped at the cut and never heard again", () => {
+    expect(cut(PIT_STATUS_NOTHING_TO_DO_CONTRACT, stopEmpty)).toEqual([RELEASE_CLIP, OCCUPIER_CLIP]);
+    expect(mockLogger.debug).toHaveBeenCalledWith(`Scenario "${PIT_STATUS_NOTHING_TO_DO_SCENARIO_ID}" dropped — cut`);
+  });
+
+  it("without the flag the same cut replays it (positive control)", () => {
+    const replaying = { ...PIT_STATUS_NOTHING_TO_DO_CONTRACT, dropWhenCut: undefined };
+
+    expect(cut(replaying, stopEmpty)).toEqual([RELEASE_CLIP, OCCUPIER_CLIP, RELEASE_CLIP]);
+  });
+
+  it("the Complete line cut the same way is not replayed either: it is not queueable", () => {
+    const complete = PIT_STATUS_CONTRACTS.find((x) => x.id === "pit-crew.pit-status-complete")!;
+
+    expect(
+      cut(complete, () =>
+        bus.publishEvent("pitService.statusChanged", { from: PitSvStatus.InProgress, to: PitSvStatus.Complete }),
+      ),
+    ).toEqual([RELEASE_CLIP, OCCUPIER_CLIP]);
   });
 });
 
