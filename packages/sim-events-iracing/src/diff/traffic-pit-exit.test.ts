@@ -307,6 +307,47 @@ describe("diffTrafficPitExit", () => {
         expect(h.events).toEqual([{ verdict: "traffic", seconds: 1 }]);
       });
 
+      it("ends it on the position coming back after the grace with no tick in between, keeping the stall baseline", () => {
+        const h = harness();
+
+        h.depart(tel({ cars: [arriving(5, 1)] }));
+        h.after(100, tel({ cars: [arriving(5, 10)], CarIdxLapDistPct: undefined }));
+        // The sim sent nothing for 1.1 s; the next tick reads the position again.
+        h.after(TRAFFIC_PIT_EXIT_POSITION_GRACE_MS + 100, tel({ cars: [arriving(5, 10)] }));
+
+        expect(h.episode.active).toBe(false);
+        expect(lines(h.debug).at(-1)).toBe(
+          `PitExit: episode ended (player position unavailable for ${TRAFFIC_PIT_EXIT_POSITION_GRACE_MS + 100} ms)`,
+        );
+        expect(h.episode.lastInPitStall).toBe(false);
+
+        // Nothing more this exit: a flip to clear is never spoken.
+        h.after(TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS, tel({ cars: [arriving(5, 10)] }));
+        h.after(TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS, tel({ cars: [arriving(5, 10)] }));
+        expect(h.events).toEqual([{ verdict: "traffic", seconds: 1 }]);
+
+        // The baseline still sees the next stop's departure edge.
+        h.depart(tel({ cars: [arriving(5, 10)] }));
+        expect(h.episode.active).toBe(true);
+        expect(h.events).toEqual([
+          { verdict: "traffic", seconds: 1 },
+          { verdict: "clear", seconds: 10 },
+        ]);
+      });
+
+      it("keeps it on the position coming back just inside the grace with no tick in between", () => {
+        const h = harness();
+
+        h.depart(tel({ cars: [arriving(5, 1)] }));
+        h.after(100, tel({ cars: [arriving(5, 1)], CarIdxLapDistPct: undefined }));
+        h.after(TRAFFIC_PIT_EXIT_POSITION_GRACE_MS - 1, tel({ cars: [arriving(5, 1)] }));
+
+        expect(h.episode.active).toBe(true);
+        expect(lines(h.debug)).toContain(
+          `PitExit: player position back after ${TRAFFIC_PIT_EXIT_POSITION_GRACE_MS - 1} ms, episode kept`,
+        );
+      });
+
       it("measures each gap from its own start", () => {
         const h = harness();
         const gap = tel({ cars: [arriving(5, 1)], CarIdxLapDistPct: undefined });

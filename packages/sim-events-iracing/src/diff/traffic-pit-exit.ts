@@ -18,7 +18,9 @@
  * finite, or clearly past the line. Such a tick holds the episode: no
  * evaluation, nothing said, and the next readable tick evaluates as soon as
  * the interval allows. Only a gap that lasts
- * {@link TRAFFIC_PIT_EXIT_POSITION_GRACE_MS} ends it: ending on one tick would
+ * {@link TRAFFIC_PIT_EXIT_POSITION_GRACE_MS} ends it — on the tick that
+ * reaches the grace, or on the first readable tick after it when the sim sent
+ * none in between, never kept for the position coming back late: ending on one tick would
  * lose the call for the rest of that exit, since with the player already out
  * of the stall no departure edge can start another. A definite not-in-world
  * reading is the player leaving and ends it at once: `PlayerTrackSurface`
@@ -314,14 +316,7 @@ export function diffTrafficPitExit(
       end(episode, reason, logger);
     } else if (position.kind === "unavailable") {
       holdWithoutPosition(episode, now, logger);
-    } else if (position.kind === "onLap") {
-      if (episode.positionUnavailableSince !== null) {
-        logger.debug(
-          `PitExit: player position back after ${elapsed(now, episode.positionUnavailableSince)} ms, episode kept`,
-        );
-        episode.positionUnavailableSince = null;
-      }
-
+    } else if (position.kind === "onLap" && !positionGapExpired(episode, now, logger)) {
       // A wall clock that stepped back evaluates now: waiting the interval out
       // from a time still ahead would stop every evaluation for as long as the step.
       if (episode.lastEvalAt !== null && episode.lastEvalAt > now) episode.lastEvalAt = null;
@@ -357,6 +352,30 @@ function holdWithoutPosition(episode: TrafficPitExitState, now: number, logger: 
   const gap = elapsed(now, episode.positionUnavailableSince);
 
   if (gap >= TRAFFIC_PIT_EXIT_POSITION_GRACE_MS) end(episode, `player position unavailable for ${gap} ms`, logger);
+}
+
+/**
+ * The first readable tick after a gap in the player's position (module
+ * header): a gap shorter than {@link TRAFFIC_PIT_EXIT_POSITION_GRACE_MS} is
+ * over and the episode kept (`false`); one that lasted the grace, with no tick
+ * in between to end it (the sim sent none), ends the episode here, as an
+ * unreadable tick at the grace limit would have (`true`). No gap is `false`.
+ */
+function positionGapExpired(episode: TrafficPitExitState, now: number, logger: ILogger): boolean {
+  if (episode.positionUnavailableSince === null) return false;
+
+  const gap = elapsed(now, episode.positionUnavailableSince);
+
+  if (gap >= TRAFFIC_PIT_EXIT_POSITION_GRACE_MS) {
+    end(episode, `player position unavailable for ${gap} ms`, logger);
+
+    return true;
+  }
+
+  logger.debug(`PitExit: player position back after ${gap} ms, episode kept`);
+  episode.positionUnavailableSince = null;
+
+  return false;
 }
 
 /** Ends the episode silently, keeping the stall baseline (written after). */
