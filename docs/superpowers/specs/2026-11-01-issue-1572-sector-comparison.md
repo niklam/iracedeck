@@ -129,7 +129,7 @@ Each line is built so that every spliced clip is a whole phrase and the sector c
 
 **Leader, the player quicker** (Default): "Pace check. We're quicker than the leader by" + "zero" + "point four seconds." then, optional: "They're quicker in" + "Sector two."
 
-**Ahead, attack** (Default): "car twelve" + "ahead is slower than us in" + "Sector two." + "That's our chance."
+**Ahead, attack** (Default): "car twelve" + "ahead is slower than us in" + "Sector two." + "That's our chance." **Amended 2026-11-18:** "That's our chance." is dropped, so the line ends at the sector, as Short callouts' already does. Niklas, after hearing it in a race: it "gets very annoying very fast".
 
 **Behind, defence** (Default): "car seven" + "behind is quicker than us in" + "Sector three."
 

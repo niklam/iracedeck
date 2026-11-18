@@ -135,6 +135,14 @@ The bands are fixed because the wording names them. This supersedes decision 4's
 
 **Lines are composed from pools (maintainer, 2026-11-11).** A first call under 10 s is an intro, a middle naming the seconds, and an outro, each a whole sentence picked at random from its pool: eight intros, two middle wordings per number, eight outros. A "now" update is an update intro and a middle. The fixed lines (right behind, more than ten, clear to rejoin, and the two pit-exit lines) have four variants each. The joins fall at sentence ends, where a pause is natural, so variety costs no seam inside a sentence. The exact texts are in the voice configs.
 
+## Amendment, 2026-11-18: one call for a pack, and a cut "go" is dropped
+
+Niklas's in-game test (2026-11-18, Tsukuba AI race): stopped with a pack coming, the engineer said "Car right behind you" once a second for each car of it, nine times in a row (18:56:02–18:56:13), because every car that went by re-armed the after-a-close-car line for the next. His decision: "A group of cars coming. Join carefully." These calls need to be short, to the point.
+
+- **A pack is one call.** When the nearest car is under 10 s and at least one more car arrives within `PACK_GAP_S` = 2 s behind it, the engineer says **"A group of cars coming. Join carefully."** once, in place of the first car's band line, and nothing else while the pack goes by: no count updates, no "right behind" for each car, no after-a-close-car line between them. A car joins the pack while it arrives within `PACK_GAP_S` of the car before it. When the last car of the pack has passed, the after-a-close-car line speaks once for the next car, as today ("Clear to rejoin.", "more than ten", or a new first call if a lone car is close). A single car keeps its own lines unchanged.
+- **Weight and voice.** The pack line has the close-car warnings' weight (85) and interrupt, and plays without radio beeps like the other rejoin lines. One entry per voice, the same text in both; texts approved by Niklas.
+- **A cut "go" is dropped.** At pit exit the pit-exit traffic call cut the pit-status "go" line, which then replayed about three seconds later while the car was already moving. Niklas: "If I'm already moving, shouting Go a couple of seconds later makes zero sense." The pit-status complete line ("go") is `dropWhenCut` (#1681): once cut, it is gone, never replayed.
+
 ## Alternatives rejected
 
 **Extending the gap engine.** It is built to suppress exactly these states and keyed to class standings; adding a stopped mode to it would fight its own gates.
