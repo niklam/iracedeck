@@ -1014,6 +1014,43 @@ describe("diffTrafficPitExit", () => {
         ]);
       });
 
+      it.each<[string, { landmarks?: null; telemetry?: Partial<TrafficPitExitTelemetry> }]>([
+        ["the landmarks unlearned", { landmarks: null }],
+        ["no ETA (no player class)", { telemetry: { CarIdxClass: undefined } }],
+        ["the per-car arrays missing", { telemetry: { CarIdxEstTime: undefined } }],
+      ])("an evaluation with no verdict (%s) breaks the row, so the flip needs two fresh evaluations", (_, gap) => {
+        const h = harness();
+
+        h.depart(tel({ cars: [arriving(5, 3)] }));
+        step(h, 5); // clear, 1 of 2
+
+        if (gap.landmarks === null) h.readLandmarks.mockReturnValueOnce(null);
+
+        h.after(TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS, tel({ cars: [arriving(5, 5.5)], ...gap.telemetry }));
+        step(h, 6); // clear, 1 of 2 again
+        expect(h.events).toEqual([{ verdict: "traffic", seconds: 3 }]);
+
+        step(h, 6.5); // clear, 2 of 2: spoken
+        expect(h.events).toEqual([
+          { verdict: "traffic", seconds: 3 },
+          { verdict: "clear", seconds: 6.5 },
+        ]);
+      });
+
+      it("a tick without the player's position makes no evaluation and leaves the row as it was", () => {
+        const h = harness();
+
+        h.depart(tel({ cars: [arriving(5, 3)] }));
+        step(h, 5); // clear, 1 of 2
+        h.after(TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS, tel({ cars: [arriving(5, 5.5)], CarIdxLapDistPct: undefined }));
+        h.after(100, tel({ cars: [arriving(5, 5.5)] })); // clear, 2 of 2: spoken
+
+        expect(h.events).toEqual([
+          { verdict: "traffic", seconds: 3 },
+          { verdict: "clear", seconds: 5.5 },
+        ]);
+      });
+
       it("logs a held flip at debug, naming the verdict that still stands", () => {
         const h = harness();
 

@@ -106,9 +106,11 @@
  * `blendEnd` and the flip holds for {@link TRAFFIC_PIT_EXIT_FLIP_CONFIRM_EVALUATIONS}
  * evaluations in a row: both lines cut in, so a car wobbling across an edge
  * of the window would otherwise have "traffic" and "clear" cut each other in
- * turn. The lines speak no number; `seconds` (the nearest timed car's
- * arrival relative to the player's, to a tenth, negative before) is for logs
- * and the harness.
+ * turn. An evaluation with no verdict (no landmarks, no ETA, no per-car
+ * arrays) breaks the row, so the count starts again after it; a tick without
+ * the player's position makes no evaluation and leaves the row as it was. The
+ * lines speak no number; `seconds` (the nearest timed car's arrival relative
+ * to the player's, to a tenth, negative before) is for logs and the harness.
  */
 import type { SimEventName } from "@iracedeck/event-bus";
 import { type TelemetryData, TrkLoc } from "@iracedeck/iracing-sdk";
@@ -518,6 +520,17 @@ function crossingsToTest(seconds: number, eta: number, after: number, classLap: 
   return crossings;
 }
 
+/**
+ * An evaluation with no verdict (module header): the landmarks unlearned, no
+ * ETA, or no per-car arrays. A flip held back for confirmation needs that many
+ * evaluations IN A ROW, and this one did not reach it, so the count starts
+ * again; the spoken verdict stands.
+ */
+function noVerdict(episode: TrafficPitExitState): void {
+  episode.flipVerdict = null;
+  episode.flipEvaluations = 0;
+}
+
 /** One evaluation: the landmarks, the ETA, then the verdict and whether to speak it (module header). */
 function evaluate(
   episode: TrafficPitExitState,
@@ -537,6 +550,8 @@ function evaluate(
   const blendEnd = landmarks?.blendEnd ?? null;
 
   if (pitRoadEnd === null || blendEnd === null) {
+    noVerdict(episode);
+
     if (!episode.landmarksMissingLogged) {
       episode.landmarksMissingLogged = true;
       logger.debug(
@@ -559,6 +574,8 @@ function evaluate(
   const eta = playerEta(curves, telemetry, playerPct, playerClass, facts, pitRoadEnd, blendEnd, position);
 
   if ("reason" in eta) {
+    noVerdict(episode);
+
     if (!episode.noEtaLogged) {
       episode.noEtaLogged = true;
       logger.debug(`PitExit: silent, no ETA to blendEnd (${eta.reason})`);
@@ -592,6 +609,8 @@ function evaluate(
   // No per-car arrays is no picture at all, never an empty track: no call,
   // and the next evaluation tries again.
   if (arrivals === null) {
+    noVerdict(episode);
+
     if (!episode.arraysMissingLogged) {
       episode.arraysMissingLogged = true;
       logger.debug("PitExit: silent, the per-car arrays are missing");
