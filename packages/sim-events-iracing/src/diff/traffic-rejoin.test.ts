@@ -655,7 +655,7 @@ describe("diffTrafficRejoin", () => {
   });
 
   describe("a closer car taking over while near", () => {
-    it("is counted by the same drop-by-3 rule", () => {
+    it("is said by the same drop-by-3 rule, as a first call about the new car", () => {
       const h = harness();
 
       h.stop(tel({ cars: [behind(5, 9.5)] }));
@@ -664,16 +664,32 @@ describe("diffTrafficRejoin", () => {
       h.step([behind(5, 9.5), behind(6, 7.3)]);
       h.step([behind(5, 9.5), behind(6, 6.3)]);
 
-      expect(h.events).toEqual([near(9, true), near(6, false)]);
+      expect(h.events).toEqual([near(9, true), near(6, true)]);
     });
 
-    it("gets a count at once when it is 3 or more closer", () => {
+    it("introduces a newly timed car 3 or more closer at once, never as a count of the first car", () => {
+      const h = harness();
+
+      // Car 5 is announced at nine; car 6 is first timed at five while car 5
+      // is still eight away, 3 s apart, so not a pack.
+      h.stop(tel({ cars: [behind(5, 9.5)] }));
+      h.step([behind(5, 8.5), behind(6, 5.5)]);
+
+      expect(h.events).toEqual([near(9, true), near(5, true)]);
+      expect(h.debug.mock.calls.map(([line]) => line)).toContain(
+        "Rejoin: emit near 5 s (first) (nearest car 6 at 5.50 s via curve; a nearer car)",
+      );
+    });
+
+    it("counts the new car as an update once it has been introduced", () => {
       const h = harness();
 
       h.stop(tel({ cars: [behind(5, 9.5)] }));
       h.step([behind(5, 8.5), behind(6, 5.5)]);
+      h.step([behind(5, 7.5), behind(6, 4.5)]);
+      h.step([behind(5, 6.5), behind(6, 2.5)]);
 
-      expect(h.events).toEqual([near(9, true), near(5, false)]);
+      expect(h.events).toEqual([near(9, true), near(5, true), near(2, false)]);
     });
 
     it("hands the count back to the first car once the closer one has gone by, as a new car coming", () => {
@@ -683,7 +699,7 @@ describe("diffTrafficRejoin", () => {
       h.step([behind(5, 8.5), behind(6, 5.5)]);
       h.step([behind(5, 7.5), passed(6)]);
 
-      expect(h.events).toEqual([near(9, true), near(5, false), near(7, true)]);
+      expect(h.events).toEqual([near(9, true), near(5, true), near(7, true)]);
     });
   });
 

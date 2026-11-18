@@ -55,8 +55,11 @@
  * - **Near counting down:** the first call into `near` is `first: true` ("Car
  *   coming, about N seconds"); while still `near`, a `first: false` call ("Now
  *   N seconds") each time N has dropped by {@link TRAFFIC_REJOIN_COUNT_STEP_S}
- *   or more since the last spoken N. A different, closer car becoming the
- *   nearest is counted by the same rule.
+ *   or more since the last spoken N, while the nearest car is still the one
+ *   the last call was about. A different, closer car becoming the nearest is
+ *   said by the same drop-by-3 rule, but as a first call (`first: true`): the
+ *   driver has not heard of it, so a count would describe a car he never
+ *   heard of as "getting closer". Its later counts are updates about it.
  * - **After a close car:** once the car the last close call (`near` or
  *   `rightBehind`) was about has gone by, the next car's band is said once:
  *   `overTen` or `clear` in the usual case, and the next car's own close call
@@ -268,7 +271,7 @@ type Band = TrafficRejoinVerdict;
 const BAND_RANK: Record<Band, number> = { pack: 0, rightBehind: 1, near: 2, overTen: 3, clear: 4 };
 
 /** Why an evaluation speaks, named in its debug line. */
-type SpeakReason = "entry" | "closer band" | "count" | "after a close car";
+type SpeakReason = "entry" | "closer band" | "count" | "a nearer car" | "after a close car";
 
 /**
  * Whether a failed gate ends a running episode at once rather than after
@@ -632,11 +635,20 @@ function packGone(episode: TrafficRejoinState, timed: readonly TimedArrival[], c
   return false;
 }
 
-/** Why this evaluation speaks, by the rules in the module header; `null` when it stays quiet. */
+/**
+ * Why this evaluation speaks, by the rules in the module header; `null` when
+ * it stays quiet. A drop of {@link TRAFFIC_REJOIN_COUNT_STEP_S} in `near` is a
+ * `count` only while the nearest car is still the one the last call was about
+ * (`episode.closeCar`); about a different car it is `a nearer car`, a first
+ * call, since the driver has not heard of it.
+ *
+ * @param nearestCarIdx The nearest timed car's index, `null` with no timed car.
+ */
 function speakReason(
   episode: TrafficRejoinState,
   band: Band,
   wholeSeconds: number | null,
+  nearestCarIdx: number | null,
   closeGone: boolean,
 ): SpeakReason | null {
   if (episode.spokenBand === null) return "entry";
@@ -652,7 +664,7 @@ function speakReason(
     episode.spokenSeconds !== null &&
     episode.spokenSeconds - wholeSeconds >= TRAFFIC_REJOIN_COUNT_STEP_S
   ) {
-    return "count";
+    return episode.closeCar !== null && episode.closeCar.carIdx === nearestCarIdx ? "count" : "a nearer car";
   }
 
   return null;
@@ -727,7 +739,7 @@ function evaluate(
   // car's) is followed from one to the next, and a pack going by grows.
   const ctx: FollowContext = { arrivals, telemetry, playerPct: pct, logger };
   const closeGone = closeCarGone(episode, timed, ctx);
-  const reason = speakReason(episode, band, wholeSeconds, closeGone);
+  const reason = speakReason(episode, band, wholeSeconds, nearest?.carIdx ?? null, closeGone);
 
   if (reason === null) return;
 
@@ -742,7 +754,8 @@ function evaluate(
     return;
   }
 
-  // `wholeSeconds` is set exactly when the band is `near`.
+  // `wholeSeconds` is set exactly when the band is `near`. Only a count of the
+  // same car is an update; every other `near` call introduces its car.
   const payload: TrafficRejoin =
     band === "near" ? { verdict: band, seconds: wholeSeconds as number, first: reason !== "count" } : { verdict: band };
 
