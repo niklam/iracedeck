@@ -97,6 +97,10 @@ function createMockController(): MockController {
     for (const cb of [...subscribers.values()]) cb(telemetry, true);
   };
   controller.__disconnect = () => {
+    // As the real controller does: the replay state is reset before the
+    // subscribers hear of the disconnect.
+    replayState.reset();
+
     for (const cb of [...subscribers.values()]) cb(null, false);
   };
 
