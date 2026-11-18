@@ -698,15 +698,21 @@ function evaluate(
 
   const flip = episode.spokenVerdict !== null;
 
-  // A flip is spoken only once it has held (module header); the first call never waits.
+  // A flip is spoken only once it has held (module header); the first call
+  // never waits. The count is committed after the work that can throw, the
+  // debug line here and the emit and its line below (the package's step
+  // rule): a throw leaves `lastEvalAt` where it was, so the next tick
+  // evaluates again at once, and a count already committed would confirm the
+  // flip on that tick, a tick rather than an interval later.
   if (flip) {
-    episode.flipEvaluations = episode.flipVerdict === verdict ? episode.flipEvaluations + 1 : 1;
-    episode.flipVerdict = verdict;
+    const evaluations = episode.flipVerdict === verdict ? episode.flipEvaluations + 1 : 1;
 
-    if (episode.flipEvaluations < TRAFFIC_PIT_EXIT_FLIP_CONFIRM_EVALUATIONS) {
+    if (evaluations < TRAFFIC_PIT_EXIT_FLIP_CONFIRM_EVALUATIONS) {
       logger.debug(
-        `PitExit: ${verdict} at ${episode.flipEvaluations} of ${TRAFFIC_PIT_EXIT_FLIP_CONFIRM_EVALUATIONS} evaluations, ${episode.spokenVerdict} still stands`,
+        `PitExit: ${verdict} at ${evaluations} of ${TRAFFIC_PIT_EXIT_FLIP_CONFIRM_EVALUATIONS} evaluations, ${episode.spokenVerdict} still stands`,
       );
+      episode.flipVerdict = verdict;
+      episode.flipEvaluations = evaluations;
 
       return;
     }
@@ -714,6 +720,9 @@ function evaluate(
 
   const relative = nearest === null ? null : Math.round(nearest.relative * 10) / 10;
 
+  // Emitted and logged before the spoken verdict is written: a throw in
+  // either drops the event with the step (the tick's `steps.live` truncates
+  // it), so the call is retried on the next tick rather than lost.
   emit({ event: "traffic.pitExit", data: relative === null ? { verdict } : { verdict, seconds: relative } });
   logger.debug(
     `PitExit: emit ${verdict} (${flip ? "flipped" : "first call"}; eta ${eta.seconds.toFixed(2)} s on ${eta.phase}, window -${before}/+${after} s; ` +

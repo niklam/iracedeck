@@ -1178,6 +1178,61 @@ describe("diffTrafficPitExit", () => {
         expect(lines(h.debug).at(-1)).toBe("PitExit: clear at 1 of 2 evaluations, traffic still stands");
       });
 
+      it("a held flip whose debug line threw is not counted, so the next tick cannot confirm it early", () => {
+        const h = harness();
+        let thrown = false;
+
+        h.depart(tel({ cars: [arriving(5, 3)] }));
+        h.debug.mockImplementation((line) => {
+          if (!thrown && line.includes("still stands")) {
+            thrown = true;
+            throw new Error("debug sink failed");
+          }
+        });
+
+        // clear, 1 of 2: the hold's line throws, so the step fails.
+        expect(() => step(h, 5)).toThrow("debug sink failed");
+        // A tick later the evaluation runs again, `lastEvalAt` not having
+        // moved: still 1 of 2, never the second.
+        h.after(16, tel({ cars: [arriving(5, 5)] }));
+        expect(h.events).toEqual([{ verdict: "traffic", seconds: 3 }]);
+        expect(lines(h.debug).at(-1)).toBe("PitExit: clear at 1 of 2 evaluations, traffic still stands");
+
+        step(h, 5.5); // clear, 2 of 2: spoken
+        expect(h.events).toEqual([
+          { verdict: "traffic", seconds: 3 },
+          { verdict: "clear", seconds: 5.5 },
+        ]);
+      });
+
+      it("a confirmed flip whose emit threw keeps the spoken verdict, so the next tick speaks it", () => {
+        const h = harness();
+        let thrown = false;
+
+        h.depart(tel({ cars: [arriving(5, 3)] }));
+        step(h, 5); // clear, 1 of 2
+        h.debug.mockImplementation((line) => {
+          if (!thrown && line.startsWith("PitExit: emit")) {
+            thrown = true;
+            throw new Error("debug sink failed");
+          }
+        });
+
+        // clear, 2 of 2: the emit's line throws, and the tick's step boundary
+        // drops the step's event with it, as the splice here stands in for.
+        expect(() => step(h, 5.5)).toThrow("debug sink failed");
+        h.events.splice(1);
+        expect(h.episode.spokenVerdict).toBe("traffic");
+
+        // Retried on the next tick: the flip is still confirmed and spoken.
+        h.after(16, tel({ cars: [arriving(5, 5.5)] }));
+        expect(h.events).toEqual([
+          { verdict: "traffic", seconds: 3 },
+          { verdict: "clear", seconds: 5.5 },
+        ]);
+        expect(h.episode.spokenVerdict).toBe("clear");
+      });
+
       it("starts the count afresh in the next episode", () => {
         const h = harness();
 
