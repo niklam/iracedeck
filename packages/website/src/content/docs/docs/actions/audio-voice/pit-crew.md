@@ -315,7 +315,7 @@ Once the car is in the box, iRacing's status display tells you whether the crew 
 
 - **In progress** — the crew is working on the car (*"Pit stop in progress."*).
 - **Complete** — service finished, ready to leave the box (*"Done. Go."*).
-- **Nothing to do** — you stopped in the box with no service queued, so iRacing never reports the stop complete; the engineer releases you with the same *"Done. Go."* If the radio is busy at that moment, the release waits its turn, and it is dropped if you have already driven out of the box. It follows the **Complete** checkbox.
+- **Nothing to do** — you stopped in the box with no service queued, so iRacing never reports the stop complete; the engineer releases you with the same *"Done. Go."* If the radio is busy at that moment, the release waits its turn, and it is dropped if you have already driven out of the box. If a more urgent call cuts it off, such as the pit exit traffic call, it is not repeated afterwards: by then you are already on your way. It follows the **Complete** checkbox.
 - **Too far left / right / forward / back** — positioning correction; line the car up so the crew can reach the wheels (*"Car's too far forward, back it up."*).
 - **Bad angle** — the car is parked at an angle the crew can't reach properly.
 - **Can't fix that** — iRacing has decided the queued damage repair won't actually be performed this stop. This is the only iRacing-exposed signal that fast-repair / damage repair will fail, and it has no other audio surface.
@@ -699,10 +699,11 @@ Some of the lines in iRaceDeck's two voices:
 | Stopped, that car closing in | *"Getting closer, about three seconds."* | *"Getting closer, about three seconds."* |
 | Stopped, the next car 10 to 15 seconds away | *"Next car is more than ten seconds away. Be careful."* | *"Next car over ten seconds. Careful."* |
 | Stopped, nothing within 15 seconds | *"Clear to rejoin."* | *"Clear behind."* |
+| Stopped, a group of cars coming | *"A group of cars coming. Join carefully."* | *"A group of cars coming. Join carefully."* |
 | Leaving the pits, traffic expected | *"We're estimating traffic at the pit exit. Watch out."* | *"Traffic likely at pit exit. Watch out."* |
 | Leaving the pits, no traffic expected | *"Looks like the pit exit will be clear."* | *"Pit exit looks clear."* |
 
-Every line has several wordings, picked at random each time, so a long stop does not sound like a recording on repeat: a car-coming call is one sentence put together from eight openings, two ways of giving the seconds and eight closings, the closing-in update from six openings, and every other line has four variants of its own.
+Every line has several wordings, picked at random each time, so a long stop does not sound like a recording on repeat: a car-coming call is one sentence put together from eight openings, two ways of giving the seconds and eight closings, the closing-in update from six openings, and every other line has four variants of its own, except the group call, which is one line.
 
 The calls you hear while stopped play without the radio beeps, like the spotter's: they can come every few seconds while you sit there, and a beep either side of each would drown the words. The two pit exit calls keep the radio frame.
 
@@ -717,13 +718,15 @@ What he says depends on when the nearest car coming up will reach you:
 - **10 to 15 seconds** — the next car is more than ten seconds away.
 - **15 seconds or more, or no car at all** — clear to rejoin.
 
+When the nearest car is under ten seconds away and more cars are coming close behind it, each within two seconds of the car before, he calls them once as a group instead: *"A group of cars coming. Join carefully."* He says nothing more while the group goes by — no count, no "right behind" for each car — and once the last car of it has passed, he tells you about the next one, once, as after any car he warned you about.
+
 He always says something the moment the stop is recognised: after a spin, silence cannot be told apart from an engineer who did not notice. While you stay stopped he checks again every second, but speaks again only when it adds something:
 
-- when the nearest car moves into a closer band;
-- while a car is under ten seconds away, each time its seconds have dropped by three or more since he last gave them (*"Getting closer. About three seconds."*), so a car closing steadily is not counted down second by second;
-- once a car he warned you about has gone by, to tell you about the next one, once: more than ten seconds away, clear to rejoin, or its own warning if it is close too.
+- when the nearest car moves into a closer band, or a group of cars forms behind it;
+- while a car is under ten seconds away, each time its seconds have dropped by three or more since he last gave them (*"Getting closer, about three seconds."*), so a car closing steadily is not counted down second by second;
+- once a car or a group he warned you about has gone by, to tell you about the next one, once: more than ten seconds away, clear to rejoin, or its own warning if it is close too.
 
-A car that falls back into a further band is not announced again: it is still the same car coming. The warnings about a car under ten seconds away cut in over whatever the engineer was saying, a caution or flag call included, which he repeats afterwards; only the meatball, the start lights, a fuel-critical warning and the spotter keep the radio, and the warning waits a few seconds for them. If his first warning about a car could not be heard, the next count introduces the car instead of updating it. "More than ten seconds" and "clear to rejoin" wait their turn. The calls end, without a word, once you have been moving above about 29 km/h for two seconds, or when you reach pit road or leave the car; creeping through a gravel trap at walking pace keeps them going.
+A car that falls back into a further band is not announced again: it is still the same car coming. The warnings about a car under ten seconds away, and the group call, cut in over whatever the engineer was saying, a caution or flag call included, which he repeats afterwards; only the meatball, the start lights, a fuel-critical warning and the spotter keep the radio, and the warning waits a few seconds for them. If his first warning about a car could not be heard, the next count introduces the car instead of updating it. "More than ten seconds" and "clear to rejoin" wait their turn. The calls end, without a word, once you have been moving above about 29 km/h for two seconds, or when you reach pit road or leave the car; creeping through a gravel trap at walking pace keeps them going.
 
 ### Leaving the pits
 
@@ -915,7 +918,7 @@ Under **Spotter**, two callouts are toggleable, both enabled by default (see [Sp
 
 Under **Traffic**, two callouts are toggleable, both enabled by default, with two pit exit sliders below them (see [Approaching traffic](#approaching-traffic-rejoining-and-pit-exit) above for the full behavior). The calls while you are stopped have no sliders: the bands they name (under 2, 2 to 10, 10 to 15 and 15 seconds or more) are fixed, because the words say them. The sliders are read live, so a change applies to the next call:
 
-- **Traffic when rejoining** (`calloutEnabledTrafficRejoin`) — the calls while you are stopped or crawling on the track: a car right behind you, a car coming with its seconds and how it closes, the next car more than ten seconds away, and clear to rejoin.
+- **Traffic when rejoining** (`calloutEnabledTrafficRejoin`) — the calls while you are stopped or crawling on the track: a car right behind you, a car coming with its seconds and how it closes, a group of cars coming, the next car more than ten seconds away, and clear to rejoin.
 - **Traffic at pit exit** (`calloutEnabledTrafficPitExit`) — the traffic or clear call as you leave your pit box.
 - **Pit exit window before you (s)** (`trafficPitExitBeforeSeconds`, 0–10, default 2) — a car reaching the point where the pit exit joins the track up to this long before you counts as traffic; 0 ignores cars that get there first.
 - **Pit exit window after you (s)** (`trafficPitExitAfterSeconds`, 0–15, default 4) — a car reaching the point where the pit exit joins the track up to this long after you counts as traffic; 0 ignores cars that get there after you.
