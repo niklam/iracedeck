@@ -694,8 +694,10 @@ export function scaledReferenceSource(
  * answers for its class, or untimed with the reason. Whether a car wraps is
  * decided by its position against P ({@link crossesLineBefore}); the wrap
  * adds {@link resolveClassLapTime}. A car standing still
- * ({@link isTrafficCarStationary}) is no candidate: it is left out, and its
- * index added to `stationary` when the caller hands one in, for its log line.
+ * ({@link isTrafficCarStationary}) with a lap position this tick is no
+ * candidate: it is left out, and its index added to `stationary` when the
+ * caller hands one in, for its log line. One measured standing that reads no
+ * lap position now is untimed (`noPosition`), never left out.
  * A `targetPct` outside [0, 1) times no car (`noTarget`), every candidate
  * still reported. Pure but for `stationary`; reads the slice.
  *
@@ -731,7 +733,12 @@ export function computeTrafficArrivals(
     // below, rather than left out, so it can never let a call read clear.
     if (!isRacingSurface(surfaces[carIdx])) continue;
 
-    if (isTrafficCarStationary(slice, carIdx, sessionTime, trackLengthMeters)) {
+    const position = normalizeLapPosition(pct);
+
+    // Only a car with a lap position NOW is left out as standing still: its
+    // rate was measured on readings it no longer gives, so one that reads no
+    // position this tick is `noPosition` below, never silently not coming.
+    if (position !== null && isTrafficCarStationary(slice, carIdx, sessionTime, trackLengthMeters)) {
       stationary?.push(carIdx);
       continue;
     }
@@ -745,8 +752,6 @@ export function computeTrafficArrivals(
 
     // A racing-surface car whose position is no lap position cannot be placed
     // against P: untimed, never left out, so it can never be a clear.
-    const position = normalizeLapPosition(pct);
-
     if (position === null) {
       arrivals.push({ carIdx, classId, timed: false, reason: "noPosition" });
       continue;

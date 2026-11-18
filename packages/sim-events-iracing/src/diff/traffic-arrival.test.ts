@@ -935,6 +935,32 @@ describe("computeTrafficArrivals", () => {
       expect(stationary).toEqual([1]);
     });
 
+    it("is untimed (noPosition), never left out, once it reads on track at no lap position", () => {
+      const { slice, at } = field();
+
+      updateTrafficReferenceCurves(slice, at(100), null, TRACK_M);
+      updateTrafficReferenceCurves(slice, at(100.5), null, TRACK_M);
+      expect(isTrafficCarStationary(slice, 1, 100.5, TRACK_M)).toBe(true);
+
+      // Car 1, measured standing, now OnTrack at −1: its rate is still fresh,
+      // but it was measured on positions it no longer gives.
+      const now = at(100.5);
+      const pcts = [...(now.CarIdxLapDistPct as number[])];
+
+      pcts[1] = -1;
+
+      const stationary: number[] = [];
+      const arrivals = arrivalsAt(slice, 0.5, curve, { ...now, CarIdxLapDistPct: pcts }, 0, null, TRACK_M, stationary);
+
+      expect(stationary).toEqual([]);
+      expect(arrivals.find((arrival) => arrival.carIdx === 1)).toEqual({
+        carIdx: 1,
+        classId: 1,
+        timed: false,
+        reason: "noPosition",
+      });
+    });
+
     it("counts as coming, and is timed, once towed or reset inside a window not yet complete", () => {
       const slice = createTrafficArrivalState();
       // Car 1 standing far back at 0.3, measured so at 100, then reset at 100.1
