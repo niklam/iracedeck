@@ -776,7 +776,12 @@ export function createTrafficRejoinState(): TrafficRejoinState {
  * the driver never heard of.
  */
 export type TrafficPitExitState = {
-  /** `PlayerCarInPitStall` on the previous tick; `null` until a tick has seeded it. */
+  /**
+   * Whether the player was in the stall on the previous tick:
+   * `PlayerCarInPitStall`, or with the flag unsent, `true` for a
+   * `PlayerTrackSurface` of `InPitStall`; `null` until a tick has seeded it,
+   * and after a tick with neither reading.
+   */
   lastInPitStall: boolean | null;
   /** Whether an episode is running. */
   active: boolean;

@@ -13,7 +13,10 @@
  * `PlayerCarInPitStall` true, or, on a tick that does not send the flag,
  * `PlayerTrackSurface` `InPitStall`; with the flag sent false the surface is
  * not read, since it can still say `InPitStall` for a tick after the car
- * has driven out.
+ * has driven out. The stall baseline is read the same way, so a tick that
+ * drops the flag while the surface still reads the stall keeps the player in
+ * it and the departure after it still starts the episode; any other surface
+ * with the flag unsent is no reading, and starts nothing.
  *
  * **A position the sim did not send is not the player leaving.** The player's
  * lap position is unavailable on a tick whose `CarIdxLapDistPct` is missing or
@@ -272,21 +275,34 @@ function readPlayerPosition(telemetry: TrafficPitExitTelemetry, raw: unknown): P
 }
 
 /**
+ * Whether the player is in the stall this tick (module header), read the same
+ * way for the episode's end and for the stall baseline the departure edge is
+ * read against. The stall flag decides when the sim sent it: `false` with the
+ * surface still `InPitStall` is a departure whose surface lags a tick. Unsent,
+ * the surface `InPitStall` is the player in the stall; any other surface is
+ * no reading (`null`), since the flag is what the departure is read from.
+ */
+function readInStall(telemetry: TrafficPitExitTelemetry): boolean | null {
+  const flag = telemetry.PlayerCarInPitStall;
+
+  if (typeof flag === "boolean") return flag;
+
+  return telemetry.PlayerTrackSurface === TrkLoc.InPitStall ? true : null;
+}
+
+/**
  * Why a running episode ends at once on this tick, read before the
  * landmarks; `null` while it runs on, or is held for a position the sim did
  * not send (module header).
  */
-function endReason(telemetry: TrafficPitExitTelemetry, position: PlayerPosition): string | null {
+function endReason(
+  telemetry: TrafficPitExitTelemetry,
+  inStall: boolean | null,
+  position: PlayerPosition,
+): string | null {
   if (telemetry.IsOnTrack !== true) return "left the car";
 
-  // The stall flag decides when the sim sent it: false with the surface still
-  // `InPitStall` is a departure whose surface lags a tick. Unsent, the surface
-  // is the only reading of a reset into the stall (module header).
-  const inStall = telemetry.PlayerCarInPitStall;
-
   if (inStall === true) return "back in the stall";
-
-  if (typeof inStall !== "boolean" && telemetry.PlayerTrackSurface === TrkLoc.InPitStall) return "back in the stall";
 
   if (isRacingSurface(telemetry.PlayerTrackSurface)) return "on the racing surface";
 
@@ -314,7 +330,7 @@ export function diffTrafficPitExit(
   emit: EmitFn<(typeof TRAFFIC_PIT_EXIT_EVENTS)[number]>,
   logger: ILogger,
 ): void {
-  const inStall = telemetry.PlayerCarInPitStall;
+  const inStall = readInStall(telemetry);
   // A container that is not an array is no position at all, as the arrival
   // model reads it (`computeTrafficArrivals`): indexing an array-like object
   // would evaluate on a tick whose per-car read then fails, resetting a held
@@ -335,7 +351,7 @@ export function diffTrafficPitExit(
   }
 
   if (episode.active) {
-    const reason = endReason(telemetry, position);
+    const reason = endReason(telemetry, inStall, position);
 
     if (reason !== null) {
       end(episode, reason, logger);
@@ -365,7 +381,7 @@ export function diffTrafficPitExit(
 
   if (episode.active && typeof telemetry.OnPitRoad === "boolean") episode.lastOnPitRoad = telemetry.OnPitRoad;
 
-  episode.lastInPitStall = typeof inStall === "boolean" ? inStall : null;
+  episode.lastInPitStall = inStall;
 }
 
 /**

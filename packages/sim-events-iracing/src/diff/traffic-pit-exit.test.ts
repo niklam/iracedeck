@@ -240,6 +240,18 @@ describe("diffTrafficPitExit", () => {
         expect(lines(h.debug).at(-1)).toBe("PitExit: episode ended (back in the stall)");
       });
 
+      it("with the stall flag unread, keeps the player in the stall: the departure after it starts the episode", () => {
+        const h = harness();
+
+        h.tick(IN_STALL);
+        // The stall flag not sent for a tick, the surface still in the stall.
+        h.after(100, tel({ PlayerCarInPitStall: undefined, PlayerTrackSurface: TrkLoc.InPitStall }));
+        h.after(100, tel({ cars: [arriving(5, 1)] }));
+
+        expect(h.episode.active).toBe(true);
+        expect(h.events).toEqual([{ verdict: "traffic", seconds: 1 }]);
+      });
+
       it("with the stall flag false, is a departure whose surface lags: the call is made and the episode runs on", () => {
         const h = harness();
 
