@@ -229,10 +229,22 @@ function rejoinLearningTick(across: 0 | 1): Record<string, unknown> {
 }
 
 /**
- * How long the stop is held before the first snapshot changes: past the
- * detector's 1.5 s entry dwell, so the episode has started and spoken.
+ * How long the stop is held before a second tick on the same snapshot: past
+ * the detector's 1.5 s entry dwell (`TRAFFIC_REJOIN_ENTRY_DWELL_MS`).
  */
-const REJOIN_ENTRY_HOLD_MS = 2500;
+const REJOIN_STOP_HOLD_MS = 1700;
+
+/**
+ * How long that second tick, on which the episode has started and spoken, is
+ * held before the first snapshot changes: past the detector's one-second
+ * evaluation interval, so the next snapshot is evaluated.
+ *
+ * The stop is two ticked steps, not one long hold, for a harness whose tick
+ * loop is paused: a step's hold then adds no tick, so with one step the dwell
+ * would end on the next snapshot's tick and the entry verdict would be read
+ * off snapshot 1 (`overTen`), never the `clear` of snapshot 0.
+ */
+const REJOIN_ENTRY_HOLD_MS = 1300;
 
 /** How long each later snapshot is held: past the detector's one-second evaluation interval. */
 const REJOIN_SNAPSHOT_HOLD_MS = 1500;
@@ -296,8 +308,11 @@ function rejoinSequence(learn: boolean): TelemetryStep[] {
           { patch: rejoinLearningTick(1), holdMs: 100, tick: true },
         ]
       : []),
-    // The spin: stopped at P, the train 25.5 / 34.5 / 45.5 s away.
-    { patch: { Speed: 0, ...rejoinSnapshot(0) }, holdMs: REJOIN_ENTRY_HOLD_MS, tick: true },
+    // The spin: stopped at P, the train 25.5 / 34.5 / 45.5 s away; then a
+    // tick past the entry dwell, still on that snapshot, which the episode
+    // starts on.
+    { patch: { Speed: 0, ...rejoinSnapshot(0) }, holdMs: REJOIN_STOP_HOLD_MS, tick: true },
+    { patch: {}, holdMs: REJOIN_ENTRY_HOLD_MS, tick: true },
     ...[1, 2, 3, 4, 5, 6].map((n) => ({ patch: rejoinSnapshot(n), holdMs: REJOIN_SNAPSHOT_HOLD_MS, tick: true })),
     // Away again: the episode ends once the car has been moving for two seconds.
     { patch: { Speed: RACING_SPEED_MPS }, holdMs: REJOIN_DRIVE_AWAY_MS, tick: true },

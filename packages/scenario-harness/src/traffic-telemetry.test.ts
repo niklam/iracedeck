@@ -95,6 +95,21 @@ function runSequence(controller: MockSDKController, steps: readonly TelemetrySte
   }
 }
 
+/**
+ * The steps as the UI runs them with the mock's tick loop paused: the route
+ * applies the patch and ticks once for a step marked `tick`, and nothing ticks
+ * through the hold, which only lets the wall clock run.
+ */
+function runSequencePaused(controller: MockSDKController, steps: readonly TelemetryStep[]): void {
+  for (const step of steps) {
+    controller.mutateTelemetry(step.patch as TelemetryPatch);
+
+    if (step.tick === true) controller.tickOnce();
+
+    vi.advanceTimersByTime(step.holdMs ?? 0);
+  }
+}
+
 beforeEach(() => {
   vi.useFakeTimers();
   initializeEventBus(silentLogger);
@@ -121,6 +136,14 @@ describe("the rejoin train (issue #1113)", () => {
     const { controller, events } = startTranslator(preset);
 
     runSequence(controller, TRAFFIC_REJOIN_SEQUENCE);
+
+    expect(events).toEqual(BANDS);
+  });
+
+  it.each(["race", "race-oval"])("is heard as every band in turn with the tick loop paused (%s)", (preset) => {
+    const { controller, events } = startTranslator(preset);
+
+    runSequencePaused(controller, TRAFFIC_REJOIN_SEQUENCE);
 
     expect(events).toEqual(BANDS);
   });
@@ -187,6 +210,20 @@ describe("the pit-exit cases (issue #1113)", () => {
       const { controller, events } = startTranslator("race", { loadPitLaneLandmarks: LANDMARKS });
 
       runSequence(controller, trafficPitExitSequence(relative));
+
+      expect(events).toEqual([
+        { event: "pitStall.departed", data: {} },
+        { event: "traffic.pitExit", data: { verdict, seconds: relative } },
+      ]);
+    },
+  );
+
+  it.each(EXPECTED)(
+    "calls $verdict for a car at the blend $relative s with the tick loop paused",
+    ({ relative, verdict }) => {
+      const { controller, events } = startTranslator("race", { loadPitLaneLandmarks: LANDMARKS });
+
+      runSequencePaused(controller, trafficPitExitSequence(relative));
 
       expect(events).toEqual([
         { event: "pitStall.departed", data: {} },
