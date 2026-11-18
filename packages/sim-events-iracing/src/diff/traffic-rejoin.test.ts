@@ -209,6 +209,7 @@ describe("diffTrafficRejoin", () => {
       ["on the formation lap", { SessionState: SessionState.ParadeLaps }],
       ["session state invalid", { SessionState: SessionState.Invalid }],
       ["session state unread", { SessionState: undefined }],
+      ["session state not a number", { SessionState: Number.NaN }],
       ["speed unread", { Speed: undefined }],
       ["speed not finite", { Speed: Number.NaN }],
       ["player not on the lap", { pct: -1 }],
@@ -386,6 +387,16 @@ describe("diffTrafficRejoin", () => {
       h.after(100, tel(gate));
 
       expect(h.episode.active).toBe(false);
+    });
+
+    it("holds it on a session state that is not a number, as a pre-green gate failure", () => {
+      const h = harness();
+
+      h.stop();
+      h.after(100, tel({ SessionState: Number.NaN }));
+
+      expect(h.events).toEqual([CLEAR]);
+      expect(h.debug).toHaveBeenCalledWith("Rejoin: gate failed (preGreen), episode held");
     });
 
     it("says nothing while a gate fails, and evaluates on the first tick the gates hold again", () => {

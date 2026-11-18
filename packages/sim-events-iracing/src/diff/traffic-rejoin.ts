@@ -263,7 +263,8 @@ function failedGate(telemetry: TrafficRejoinTelemetry, playerCarIdx: number): Re
 
   if (telemetry.OnPitRoad === true) return "pitRoad";
 
-  if (typeof telemetry.SessionState !== "number" || isPreGreen(telemetry)) return "preGreen";
+  // A finite number only: `NaN` is a number and `isPreGreen` reads it as past the green.
+  if (!isFiniteNumber(telemetry.SessionState) || isPreGreen(telemetry)) return "preGreen";
 
   if (!isFiniteNumber(telemetry.Speed)) return "noSpeed";
 
