@@ -658,8 +658,13 @@ export type PitLaneLandmarkLearned = {
  * 2 s to under 10 s, `overTen` from 10 s to under 15 s, `clear` at 15 s or
  * more or with no car at all. The engineer alerts, never instructs: no verdict
  * tells a stopped driver to hold or go.
+ *
+ * `pack` (amended 2026-11-18) names no band: it is said once, in place of the
+ * first car's band, when the nearest car is under 10 s and at least one more
+ * arrives close behind it, a group the engineer calls once rather than car by
+ * car.
  */
-export type TrafficRejoinVerdict = "rightBehind" | "near" | "overTen" | "clear";
+export type TrafficRejoinVerdict = "rightBehind" | "near" | "overTen" | "clear" | "pack";
 
 /*
  * The rejoin bands' edges (issue #1113, amended 2026-11-11), in seconds of the
@@ -716,8 +721,17 @@ export type TrafficRejoinOverTen = { verdict: "overTen" };
 /** `traffic.rejoin` with no car within 15 s (issue #1113). Carries no number. */
 export type TrafficRejoinClear = { verdict: "clear" };
 
+/**
+ * `traffic.rejoin` with a group of cars coming (issue #1113, amended
+ * 2026-11-18): the nearest car under 10 s away and at least one more close
+ * behind it. Said once for the whole group, which then goes by without another
+ * line. Carries no number.
+ */
+export type TrafficRejoinPack = { verdict: "pack" };
+
 /** Payload of `traffic.rejoin` (issue #1113): one member per verdict; only `near` carries a number. */
-export type TrafficRejoin = TrafficRejoinRightBehind | TrafficRejoinNear | TrafficRejoinOverTen | TrafficRejoinClear;
+export type TrafficRejoin =
+  TrafficRejoinRightBehind | TrafficRejoinNear | TrafficRejoinOverTen | TrafficRejoinClear | TrafficRejoinPack;
 
 /**
  * The Race Engineer's verdict on the pit exit (issue #1113): `traffic` when a

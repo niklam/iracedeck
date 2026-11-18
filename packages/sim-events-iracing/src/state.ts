@@ -674,14 +674,14 @@ export type TrafficRejoinState = {
   gateFailedSince: number | null;
   /** When the episode last evaluated the arrivals; `null` before its first evaluation. */
   lastEvalAt: number | null;
-  /** The band last spoken this episode; `null` until the entry call is spoken. */
-  spokenBand: "rightBehind" | "near" | "overTen" | "clear" | null;
+  /** The band last spoken this episode, or `pack` for the group call (amended 2026-11-18); `null` until the entry call is spoken. */
+  spokenBand: "rightBehind" | "near" | "overTen" | "clear" | "pack" | null;
   /** The whole seconds of the last `near` call, the base of the drop-by-3 count; `null` when the last call was another band. */
   spokenSeconds: number | null;
   /**
    * The car the last close call (`near` or `rightBehind`) was about, whose
    * passing earns the next car's band one call; `null` when the last call was
-   * `overTen` or `clear`.
+   * `overTen`, `clear` or `pack` (whose cars are {@link packCars}).
    */
   closeCarIdx: number | null;
   /**
@@ -694,17 +694,40 @@ export type TrafficRejoinState = {
   closeCarSeconds: number | null;
   /**
    * The close car has been seen going by (its arrival rose past the margin or
-   * reached the clear band), so the next line is the one after a close car.
+   * reached the clear band), or every car of the pack has, so the next line is
+   * the one after a close car.
    * Latched until a line is spoken or the episode resets: neither a line held
    * back by untimed cars nor an evaluation without the per-car arrays clears
    * it, so the car stays gone on its way round again, however near it reads
    * by the time the line can be said.
    */
   closeCarPassed: boolean;
+  /**
+   * The cars of the group the last line, `pack`, was about (amended
+   * 2026-11-18), in arrival order when it was said, and every car that has
+   * joined it since; empty when the last line was anything else. The group
+   * has gone by once every one of them has, and until then nothing is said.
+   */
+  packCars: TrafficRejoinPackCar[];
   /** The once-per-episode debug line for a reassuring line withheld by untimed cars has been written. */
   untimedLogged: boolean;
   /** The once-per-episode debug line for an evaluation without the per-car arrays has been written. */
   arraysMissingLogged: boolean;
+};
+
+/**
+ * One car of the group a `pack` call was about (issue #1113, amended
+ * 2026-11-18), followed with the close car's rule: its arrival only falls
+ * while it is coming, so one that rose past `TRAFFIC_REJOIN_PASSED_RISE_S`, or
+ * reached the clear band, has gone by, and stays gone (`passed`) on its way
+ * round again.
+ */
+export type TrafficRejoinPackCar = {
+  carIdx: number;
+  /** Its arrival (s) at the last evaluation that timed it while it was still coming; not moved once it has gone by. */
+  seconds: number;
+  /** It has been seen going by. */
+  passed: boolean;
 };
 
 /** No episode, no dwell running (issue #1113): the initial state. */
@@ -720,6 +743,7 @@ export function createTrafficRejoinState(): TrafficRejoinState {
     closeCarIdx: null,
     closeCarSeconds: null,
     closeCarPassed: false,
+    packCars: [],
     untimedLogged: false,
     arraysMissingLogged: false,
   };

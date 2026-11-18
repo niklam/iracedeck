@@ -28,6 +28,7 @@ import {
   TRAFFIC_REJOIN_EVAL_INTERVAL_MS,
   TRAFFIC_REJOIN_GATE_GRACE_MS,
   TRAFFIC_REJOIN_MOVING_MPS,
+  TRAFFIC_REJOIN_PACK_GAP_S,
   TRAFFIC_REJOIN_PASSED_RISE_S,
   type TrafficRejoinTelemetry,
 } from "./traffic-rejoin.js";
@@ -43,6 +44,7 @@ const SLOW = 2;
 const CLEAR: Rejoin = { verdict: "clear" };
 const OVER_TEN: Rejoin = { verdict: "overTen" };
 const RIGHT_BEHIND: Rejoin = { verdict: "rightBehind" };
+const PACK: Rejoin = { verdict: "pack" };
 const near = (seconds: number, first: boolean): Rejoin => ({ verdict: "near", seconds, first });
 
 /** A curve whose every bin holds one sample at the bin's start, `secondsPerBin` per bin: exact arithmetic. */
@@ -185,6 +187,10 @@ describe("diffTrafficRejoin", () => {
     it("are the maintainer's fixed edges, the event-bus contract's, and count step (2026-11-11)", () => {
       expect([TRAFFIC_REJOIN_RIGHT_BEHIND_S, TRAFFIC_REJOIN_OVER_TEN_S, TRAFFIC_REJOIN_CLEAR_S]).toEqual([2, 10, 15]);
       expect(TRAFFIC_REJOIN_COUNT_STEP_S).toBe(3);
+    });
+
+    it("the pack gap is the maintainer's 2 s (amended 2026-11-18)", () => {
+      expect(TRAFFIC_REJOIN_PACK_GAP_S).toBe(2);
     });
   });
 
@@ -601,9 +607,10 @@ describe("diffTrafficRejoin", () => {
       const h = harness();
 
       h.stop(tel({ cars: [behind(5, 9.5)] }));
-      // Car 6 comes out ahead of car 5 in arrival: 7 is a drop of 2, 6 of 3.
-      h.step([behind(5, 8.5), behind(6, 7.5)]);
-      h.step([behind(5, 7.5), behind(6, 6.5)]);
+      // Car 6 comes out ahead of car 5 in arrival, more than the pack gap
+      // ahead of it, so the two are not a pack: 7 is a drop of 2, 6 of 3.
+      h.step([behind(5, 9.5), behind(6, 7.3)]);
+      h.step([behind(5, 9.5), behind(6, 6.3)]);
 
       expect(h.events).toEqual([near(9, true), near(6, false)]);
     });
@@ -669,7 +676,8 @@ describe("diffTrafficRejoin", () => {
 
       nearNext.stop(tel({ cars: [behind(5, 3), behind(6, 8)] }));
       nearNext.step([passed(5), behind(6, 7)]);
-      rightBehindNext.stop(tel({ cars: [behind(5, 1), behind(6, 2.5)] }));
+      // Car 6 more than the pack gap behind car 5, so the two are not a pack.
+      rightBehindNext.stop(tel({ cars: [behind(5, 1), behind(6, 3.5)] }));
       rightBehindNext.step([passed(5), behind(6, 1.5)]);
 
       expect(nearNext.events).toEqual([near(3, true), near(7, true)]);
@@ -795,6 +803,262 @@ describe("diffTrafficRejoin", () => {
       h.step([behind(5, 5.5 + rise)]);
 
       expect(h.events).toEqual(expected);
+    });
+  });
+
+  /**
+   * A pack is one call (amended 2026-11-18): Niklas, stopped at Tsukuba with
+   * nine AI cars coming a second apart, heard "Car right behind you" nine
+   * times, each car re-arming the after-a-close-car line for the next.
+   */
+  describe("a pack of cars", () => {
+    /** Cars `idx0`, `idx0 + 1`, … `gap` s apart from `first` s away, `t` evaluations on; each by once it reaches the player. */
+    const stream = (idx0: number, count: number, first: number, gap: number, t: number): Car[] =>
+      Array.from({ length: count }, (_, k) => {
+        const seconds = first + k * gap - t;
+
+        return seconds > 0 ? behind(idx0 + k, seconds) : passed(idx0 + k);
+      });
+
+    it("is said once for nine cars a second apart, then once after the last of them (Tsukuba)", () => {
+      const h = harness();
+      const spokenAt: number[] = [];
+
+      h.stop(tel({ cars: stream(1, 9, 9.2, 1, 0) }));
+
+      for (let t = 1; t <= 20; t++) {
+        const before = h.events.length;
+
+        h.step(stream(1, 9, 9.2, 1, t));
+
+        if (h.events.length > before) spokenAt.push(t);
+      }
+
+      // The ninth car, 17.2 s away on entry, goes by at the eighteenth evaluation.
+      expect(h.events).toEqual([PACK, CLEAR]);
+      expect(spokenAt).toEqual([18]);
+      expect(h.debug.mock.calls.map(([line]) => String(line)).filter((l) => l.includes("emit"))).toEqual([
+        "Rejoin: emit pack (9 cars, first at 9.20 s, last at 17.20 s; entry)",
+        "Rejoin: emit clear (nearest car 1 at 499.00 s via curve; after a close car)",
+      ]);
+    });
+
+    it("is two cars within the gap of each other, and not two cars further apart", () => {
+      const pack = harness();
+      const apart = harness();
+
+      pack.stop(tel({ cars: [behind(5, 5), behind(6, 6.5)] }));
+      pack.step([behind(5, 4), behind(6, 5.5)]);
+      pack.step([behind(5, 1), behind(6, 2.5)]);
+      pack.step([passed(5), behind(6, 1.5)]);
+      pack.step([passed(5), passed(6)]);
+      apart.stop(tel({ cars: [behind(5, 5), behind(6, 7.5)] }));
+      apart.step([behind(5, 1.5), behind(6, 4)]);
+      apart.step([passed(5), behind(6, 2.5)]);
+
+      expect(pack.events).toEqual([PACK, CLEAR]);
+      // Single-car lines: car 6 is the next car after car 5, a new car coming.
+      expect(apart.events).toEqual([near(5, true), RIGHT_BEHIND, near(2, true)]);
+    });
+
+    it.each([
+      ["at the gap is a pack", TRAFFIC_REJOIN_PACK_GAP_S, [PACK]],
+      ["past it is not", TRAFFIC_REJOIN_PACK_GAP_S + 0.1, [near(4, true)]],
+    ] satisfies Array<[string, number, Rejoin[]]>)("the second car %s", (_, gap, expected) => {
+      const h = harness();
+
+      h.stop(tel({ cars: [behind(5, 4.5), behind(6, 4.5 + gap)] }));
+
+      expect(h.events).toEqual(expected);
+    });
+
+    it("chains: a car within the gap of the car before it joins, however far it is from the first", () => {
+      const h = harness();
+
+      // 3, 4.5, 6, 7.5: each 1.5 s behind the one before, 4.5 s from first to last.
+      h.stop(tel({ cars: [behind(5, 3), behind(6, 4.5), behind(7, 6), behind(8, 7.5), behind(9, 12)] }));
+
+      expect(h.events).toEqual([PACK]);
+      expect(h.episode.packCars.map((car) => car.carIdx)).toEqual([5, 6, 7, 8]);
+    });
+
+    it("says nothing while it goes by: no count, no right behind, nothing for a car outside it", () => {
+      const h = harness();
+
+      h.stop(tel({ cars: [behind(5, 9.5), behind(6, 11)] }));
+      h.step([behind(5, 6.5), behind(6, 8)]); // a drop of 3: a count for a lone car
+      h.step([behind(5, 1.5), behind(6, 3)]); // right behind for a lone car
+      // Car 7 out of the pits, closer than the pack, and car 5 by.
+      h.step([passed(5), behind(6, 1.9), behind(7, 1)]);
+
+      expect(h.events).toEqual([PACK]);
+    });
+
+    it.each([
+      ["near", 8, 7, near(8, true)],
+      ["right behind", 1.8, 1.5, RIGHT_BEHIND],
+    ] satisfies Array<[string, number, number, Rejoin]>)(
+      "forming behind a car already said as %s is said once, as a closer band",
+      (_, entry, next, first) => {
+        const h = harness();
+
+        h.stop(tel({ cars: [behind(5, entry)] }));
+        // Car 6 turns up 1.5 s behind car 5: a pack, though car 5's band has not moved.
+        h.step([behind(5, next), behind(6, next + 1.5)]);
+        h.step([passed(5), behind(6, 1)]);
+        h.step([passed(5), passed(6)]);
+
+        expect(h.events).toEqual([first, PACK, CLEAR]);
+        expect(h.debug.mock.calls.map(([line]) => String(line)).filter((l) => l.includes("emit pack"))).toEqual([
+          expect.stringContaining("; closer band)"),
+        ]);
+      },
+    );
+
+    it("grows while cars keep joining it, so it is not over while it is still streaming by", () => {
+      const h = harness();
+
+      h.stop(tel({ cars: [behind(5, 3), behind(6, 4.5)] }));
+      // Car 7 turns up 1.5 s behind car 6, the last of the pack.
+      h.step([behind(5, 2), behind(6, 3.5), behind(7, 5)]);
+      h.step([passed(5), behind(6, 2), behind(7, 3.5)]);
+      h.step([passed(5), passed(6), behind(7, 2.5)]); // the pack's first two by, car 7 still coming
+      h.step([passed(5), passed(6), behind(7, 1)]);
+      h.step([passed(5), passed(6), passed(7)]);
+
+      expect(h.events).toEqual([PACK, CLEAR]);
+      expect(h.episode.packCars).toEqual([]);
+      expect(h.debug).toHaveBeenCalledWith("Rejoin: pack grows to 3 cars (car 7 at 5.00 s)");
+    });
+
+    it("is over when its cars have gone by or left the track, a car of it pitting included", () => {
+      const h = harness();
+
+      h.stop(tel({ cars: [behind(5, 3), behind(6, 4.5)] }));
+      // Car 6, the last of the pack, turns into the pits; car 5 still coming.
+      h.step([behind(5, 2), { ...behind(6, 3.5), surface: TrkLoc.InPitStall }]);
+      h.step([passed(5), { ...behind(6, 3.5), surface: TrkLoc.InPitStall }]);
+
+      expect(h.events).toEqual([PACK, CLEAR]);
+    });
+
+    it("is followed by the next car's own first call when a lone car comes after a gap", () => {
+      const h = harness();
+
+      // Cars 5 and 6 a pack, car 7 5 s behind car 6.
+      h.stop(tel({ cars: [behind(5, 3), behind(6, 4), behind(7, 9)] }));
+
+      for (let t = 1; t <= 4; t++) h.step([...stream(5, 2, 3, 1, t), behind(7, 9 - t)]);
+
+      expect(h.events).toEqual([PACK, near(5, true)]);
+    });
+
+    it("is followed by a pack line again for the next group", () => {
+      const h = harness();
+
+      h.stop(tel({ cars: [...stream(5, 2, 3, 1, 0), ...stream(7, 3, 9, 1, 0)] }));
+
+      for (let t = 1; t <= 4; t++) h.step([...stream(5, 2, 3, 1, t), ...stream(7, 3, 9, 1, t)]);
+
+      expect(h.events).toEqual([PACK, PACK]);
+    });
+
+    it("is never made by an untimed car, and is said beside one: it is a warning", () => {
+      const lone = harness();
+      const withUntimed = harness();
+
+      lone.stop(tel({ cars: [behind(5, 4), unknown] }));
+      withUntimed.stop(tel({ cars: [behind(5, 4), behind(6, 5), unknown] }));
+
+      expect(lone.events).toEqual([near(4, true)]);
+      expect(withUntimed.events).toEqual([PACK]);
+    });
+
+    it("leaves the reassuring line after it to the untimed rule", () => {
+      const h = harness();
+
+      h.stop(tel({ cars: [behind(5, 2.5), behind(6, 3.5), unknown] }));
+      h.step([passed(5), behind(6, 1), unknown]);
+      h.step([passed(5), passed(6), unknown]); // clear, withheld
+      h.step([passed(5), passed(6), unknown]);
+
+      expect(h.events).toEqual([PACK]);
+      expect(withheldLines(h.debug)).toHaveLength(1);
+
+      h.step([passed(5), passed(6)]); // the untimed car gone
+
+      expect(h.events).toEqual([PACK, CLEAR]);
+    });
+
+    /**
+     * A 13 s lap (a short dirt oval): the first cars of a five-car pack re-time
+     * as the lap less a second once by, and come round again under ten
+     * seconds while the last of the pack is still coming.
+     */
+    it("on a lap shorter than it takes to go by, is not opened or said again by its own cars coming round", () => {
+      const LAP_S = 13;
+      const h = harness({
+        curves: learnedCurves({ [FAST]: LAP_S / TRAFFIC_CURVE_BINS }),
+        classes: { lapTimeByClass: { [FAST]: LAP_S }, classByCarIdx: [] },
+      });
+      /** Car `idx` `seconds` from the player at 0.5, wrapping round the lap once it has gone by. */
+      const coming = (idx: number, seconds: number): Car => {
+        const est = (LAP_S / 2 - seconds + LAP_S * 2) % LAP_S;
+
+        return { idx, pct: est / LAP_S, est };
+      };
+      const pack = (t: number): Car[] =>
+        Array.from({ length: 5 }, (_, k) => coming(5 + k, (((3.5 + k - t) % LAP_S) + LAP_S) % LAP_S));
+      const spokenAt: number[] = [];
+
+      h.stop(tel({ cars: pack(0) }));
+
+      for (let t = 1; t <= 12; t++) {
+        const before = h.events.length;
+
+        h.step(pack(t));
+
+        if (h.events.length > before) spokenAt.push(t);
+      }
+
+      // Car 5 by at t = 4 and back under ten seconds at t = 7, while car 9,
+      // the last, goes by only at t = 8: nothing until then. From t = 8 the
+      // five cars are coming round again together, the next group.
+      expect(h.events).toEqual([PACK, PACK]);
+      expect(spokenAt).toEqual([8]);
+    });
+
+    it("on a short lap a stream filling the lap is said once a lap: a car of it gone by never joins it again", () => {
+      const LAP_S = 13;
+      const h = harness({
+        curves: learnedCurves({ [FAST]: LAP_S / TRAFFIC_CURVE_BINS }),
+        classes: { lapTimeByClass: { [FAST]: LAP_S }, classByCarIdx: [] },
+      });
+      const coming = (idx: number, seconds: number): Car => {
+        const est = (LAP_S / 2 - seconds + LAP_S * 2) % LAP_S;
+
+        return { idx, pct: est / LAP_S, est };
+      };
+      // Twelve cars a second apart from 1.5 s: once the first is by, it
+      // re-times at 12.5 s, within the gap behind the last, still coming at 10.5.
+      const stream = (t: number): Car[] =>
+        Array.from({ length: 12 }, (_, k) => coming(1 + k, (((1.5 + k - t) % LAP_S) + LAP_S) % LAP_S));
+      const spokenAt: number[] = [];
+
+      h.stop(tel({ cars: stream(0) }));
+
+      for (let t = 1; t <= 14; t++) {
+        const before = h.events.length;
+
+        h.step(stream(t));
+
+        if (h.events.length > before) spokenAt.push(t);
+      }
+
+      // The twelfth car, 12.5 s away on entry, goes by at t = 13: the pack is
+      // over, and the stream coming round is the next group.
+      expect(h.events).toEqual([PACK, PACK]);
+      expect(spokenAt).toEqual([13]);
     });
   });
 

@@ -24,6 +24,7 @@ import type {
   TrafficRejoinClear,
   TrafficRejoinNear,
   TrafficRejoinOverTen,
+  TrafficRejoinPack,
   TrafficRejoinRightBehind,
   TrafficRejoinVerdict,
 } from "./index.js";
@@ -107,13 +108,14 @@ describe("traffic.rejoin and traffic.pitExit", () => {
       | { verdict: "near"; seconds: number; first: boolean }
       | { verdict: "overTen" }
       | { verdict: "clear" }
+      | { verdict: "pack" }
     >();
     expectTypeOf<SimEventMap["traffic.rejoin"]["data"]>().toEqualTypeOf<TrafficRejoin>();
     expectTypeOf<TrafficRejoin>().toEqualTypeOf<
-      TrafficRejoinRightBehind | TrafficRejoinNear | TrafficRejoinOverTen | TrafficRejoinClear
+      TrafficRejoinRightBehind | TrafficRejoinNear | TrafficRejoinOverTen | TrafficRejoinClear | TrafficRejoinPack
     >();
     expectTypeOf<TrafficRejoin["verdict"]>().toEqualTypeOf<TrafficRejoinVerdict>();
-    expectTypeOf<TrafficRejoinVerdict>().toEqualTypeOf<"rightBehind" | "near" | "overTen" | "clear">();
+    expectTypeOf<TrafficRejoinVerdict>().toEqualTypeOf<"rightBehind" | "near" | "overTen" | "clear" | "pack">();
   });
 
   it("refuses a rejoin payload whose fields do not match its verdict", () => {
@@ -125,6 +127,8 @@ describe("traffic.rejoin and traffic.pitExit", () => {
     const rightBehindWithSeconds: TrafficRejoin = { verdict: "rightBehind", seconds: 1 };
     // @ts-expect-error over ten speaks no number
     const overTenWithSeconds: TrafficRejoin = { verdict: "overTen", seconds: 12 };
+    // @ts-expect-error a pack speaks no number: it is one call for the whole group
+    const packWithSeconds: TrafficRejoin = { verdict: "pack", seconds: 3 };
     // @ts-expect-error clear speaks no window any more
     const clearWithWindow: TrafficRejoin = { verdict: "clear", windowSeconds: 20 };
     // @ts-expect-error the old instructions are gone: the engineer never says hold
@@ -137,6 +141,7 @@ describe("traffic.rejoin and traffic.pitExit", () => {
       nearWithoutFirst,
       rightBehindWithSeconds,
       overTenWithSeconds,
+      packWithSeconds,
       clearWithWindow,
       hold,
       go,

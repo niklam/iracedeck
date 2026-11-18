@@ -70,6 +70,39 @@
  * - **Otherwise** a band moving away is not re-announced: a car whose arrival
  *   drifts from 9.8 s to 10.2 s is still the same car coming.
  *
+ * **A pack is one call** (amended 2026-11-18, after a pack of nine cars going
+ * by a stopped player at Tsukuba drew "Car right behind you" nine times, once
+ * a second, each car re-arming the after-a-close-car line for the next).
+ * Whenever the nearest timed car is under {@link TRAFFIC_REJOIN_OVER_TEN_S}
+ * and at least one more timed car arrives within
+ * {@link TRAFFIC_REJOIN_PACK_GAP_S} behind it, the call is `pack` in place of
+ * the nearest car's band. The pack is a chain over the timed arrivals in
+ * order: a car belongs to it while it arrives within the gap of the car before
+ * it, so a car 1.5 s behind the last of it joins and one 2.5 s behind does
+ * not. Untimed cars never make a pack (the chain is timed cars only), and do
+ * not withhold the pack line, which is a warning, not one of the two
+ * reassuring lines.
+ * - **When:** wherever a band would be said: on entry, after a close car, and
+ *   as a closer band. The pack ranks closer than `rightBehind`, so a pack
+ *   forming behind a car already announced as `near` or `rightBehind` is said
+ *   once too, rather than left unsaid because its nearest car was.
+ * - **While it goes by, nothing:** no count, no `rightBehind` for each car, no
+ *   after-a-close-car line between them, and no line about a car outside it.
+ * - **Its cars** are followed one by one with the close car's rule (an arrival
+ *   rising past {@link TRAFFIC_REJOIN_PASSED_RISE_S}, or reaching the clear
+ *   band from inside it, has gone by and stays gone; one untimed or no longer
+ *   a candidate is gone while it stays so). The last cars of a long pack may
+ *   be beyond the clear band when it is said, and are still coming. A car that comes within the gap behind the last
+ *   of its cars still coming joins it, so a pack still streaming by is not
+ *   over; a car of it already gone by never joins again, so on a lap shorter
+ *   than the pack takes to go by, its first cars coming round again neither
+ *   hold it open nor start it again.
+ * - **After it:** once every car of it has gone by, the line after a close car
+ *   is said once for the next car, exactly as for a lone car: `clear`,
+ *   `overTen`, a new first call, or a new `pack` for the next group. A pack
+ *   that comes round again on a short lap is that next group, as a lone car
+ *   coming round again is a new car coming.
+ *
  * **A lap shorter than the clear band** (a short oval, a dirt track: about
  * 15 s or less). Every timed car is then under 15 s away, so `clear` is said
  * only with no timed car on track, and a car that has gone by re-times as the
@@ -102,7 +135,12 @@ import {
 import { isPreGreen, type TelemetryData } from "@iracedeck/iracing-sdk";
 import type { ILogger } from "@iracedeck/logger";
 
-import { createTrafficRejoinState, type TrafficArrivalState, type TrafficRejoinState } from "../state.js";
+import {
+  createTrafficRejoinState,
+  type TrafficArrivalState,
+  type TrafficRejoinPackCar,
+  type TrafficRejoinState,
+} from "../state.js";
 import { isRacingSurface } from "./track-surface.js";
 import {
   computeTrafficArrivals,
@@ -120,6 +158,14 @@ import {
   type UntimedArrival,
 } from "./traffic-arrival.js";
 import type { EmitFn } from "./types.js";
+
+/**
+ * How close behind the car before it (s of predicted arrival) a car must
+ * arrive to be one of a pack with it (module header; spec amendment
+ * 2026-11-18): the maintainer's 2 s. Two cars 1.5 s apart are a pack, two
+ * 2.5 s apart a car and then the next.
+ */
+export const TRAFFIC_REJOIN_PACK_GAP_S = 2;
 
 /** The events {@link diffTrafficRejoin} emits (issue #1499): its emitter's type, and its row in `TICK_ORDER`. */
 export const TRAFFIC_REJOIN_EVENTS = ["traffic.rejoin"] as const satisfies readonly SimEventName[];
@@ -188,8 +234,12 @@ type RejoinGate = "notInCar" | "inGarage" | "surface" | "pitRoad" | "preGreen" |
 
 type Band = TrafficRejoinVerdict;
 
-/** Each band's closeness: a lower rank is a closer car. */
-const BAND_RANK: Record<Band, number> = { rightBehind: 0, near: 1, overTen: 2, clear: 3 };
+/**
+ * Each band's closeness: a lower rank is a closer car. A pack ranks closest of
+ * all, so it is said as a closer band over a lone car already announced, and
+ * nothing outranks it while it goes by (module header).
+ */
+const BAND_RANK: Record<Band, number> = { pack: 0, rightBehind: 1, near: 2, overTen: 3, clear: 4 };
 
 /** Why an evaluation speaks, named in its debug line. */
 type SpeakReason = "entry" | "closer band" | "count" | "after a close car";
@@ -346,6 +396,30 @@ export function diffTrafficRejoin(
   evaluate(episode, curves, telemetry, pct, playerCarIdx, classes, trackLengthMeters, now, emit, logger);
 }
 
+/**
+ * The pack the timed arrivals make (module header): the nearest car and every
+ * car chained behind it within {@link TRAFFIC_REJOIN_PACK_GAP_S} of the one
+ * before, when the nearest is under {@link TRAFFIC_REJOIN_OVER_TEN_S} and at
+ * least one more is chained; `null` otherwise.
+ *
+ * @param timed The timed arrivals in arrival order, nearest first.
+ */
+function packOf(timed: readonly TimedArrival[]): TimedArrival[] | null {
+  const first = timed[0];
+
+  if (first === undefined || first.seconds >= TRAFFIC_REJOIN_OVER_TEN_S) return null;
+
+  const chain = [first];
+
+  for (const car of timed.slice(1)) {
+    if (car.seconds - chain[chain.length - 1].seconds > TRAFFIC_REJOIN_PACK_GAP_S) break;
+
+    chain.push(car);
+  }
+
+  return chain.length > 1 ? chain : null;
+}
+
 /** The band of the nearest timed arrival (module header); `clear` with no timed car. */
 function bandOf(seconds: number | null): Band {
   if (seconds === null || seconds >= TRAFFIC_REJOIN_CLEAR_S) return "clear";
@@ -366,7 +440,14 @@ function bandOf(seconds: number | null): Band {
  * the track, standing still) is gone while it stays so, and is compared with
  * its last timed arrival when it is timed again.
  */
-function closeCarGone(episode: TrafficRejoinState, arrivals: readonly TrafficArrival[]): boolean {
+function closeCarGone(
+  episode: TrafficRejoinState,
+  arrivals: readonly TrafficArrival[],
+  timed: readonly TimedArrival[],
+  logger: ILogger,
+): boolean {
+  if (episode.packCars.length > 0) return packGone(episode, arrivals, timed, logger);
+
   if (episode.closeCarIdx === null) return false;
 
   if (episode.closeCarPassed) return true;
@@ -384,6 +465,73 @@ function closeCarGone(episode: TrafficRejoinState, arrivals: readonly TrafficArr
   }
 
   episode.closeCarSeconds = car.seconds;
+
+  return false;
+}
+
+/**
+ * Whether every car of the pack the last line was about has gone by (module
+ * header), each followed by the close car's rule ({@link closeCarGone}). While
+ * one is still coming, a car arriving within {@link TRAFFIC_REJOIN_PACK_GAP_S}
+ * behind the last of them still coming joins the pack, and the next behind it
+ * in turn; a car of the pack gone by never joins again. Once every car has
+ * been seen going by, `episode.closeCarPassed` latches as for a lone car.
+ *
+ * @param timed The timed arrivals in arrival order, nearest first.
+ */
+function packGone(
+  episode: TrafficRejoinState,
+  arrivals: readonly TrafficArrival[],
+  timed: readonly TimedArrival[],
+  logger: ILogger,
+): boolean {
+  if (episode.closeCarPassed) return true;
+
+  let tail: TrafficRejoinPackCar | null = null;
+
+  for (const member of episode.packCars) {
+    if (member.passed) continue;
+
+    const car = arrivals.find((arrival) => arrival.carIdx === member.carIdx);
+
+    // Untimed or no longer a candidate: gone while it stays so.
+    if (car === undefined || !car.timed) continue;
+
+    // The close car's rule, but a car of the pack may still be beyond the
+    // clear band when it is said or joins: only reaching that band from inside
+    // it is going by.
+    const reachedClear = car.seconds >= TRAFFIC_REJOIN_CLEAR_S && member.seconds < TRAFFIC_REJOIN_CLEAR_S;
+
+    if (car.seconds - member.seconds > TRAFFIC_REJOIN_PASSED_RISE_S || reachedClear) {
+      member.passed = true;
+      continue;
+    }
+
+    member.seconds = car.seconds;
+
+    if (tail === null || member.seconds >= tail.seconds) tail = member;
+  }
+
+  if (tail === null) {
+    if (episode.packCars.every((member) => member.passed)) episode.closeCarPassed = true;
+
+    return true;
+  }
+
+  const members = new Set(episode.packCars.map((member) => member.carIdx));
+
+  for (const car of timed) {
+    if (members.has(car.carIdx) || car.seconds < tail.seconds) continue;
+
+    if (car.seconds - tail.seconds > TRAFFIC_REJOIN_PACK_GAP_S) break;
+
+    tail = { carIdx: car.carIdx, seconds: car.seconds, passed: false };
+    episode.packCars.push(tail);
+    members.add(car.carIdx);
+    logger.debug(
+      `Rejoin: pack grows to ${episode.packCars.length} cars (car ${car.carIdx} at ${car.seconds.toFixed(2)} s)`,
+    );
+  }
 
   return false;
 }
@@ -419,6 +567,14 @@ function describePayload(payload: TrafficRejoin): string {
   return payload.verdict === "near"
     ? `near ${payload.seconds} s (${payload.first ? "first" : "count"})`
     : payload.verdict;
+}
+
+/** "9 cars, first at 1.20 s, last at 9.20 s": a pack as its debug line names it. */
+function describePack(pack: readonly TimedArrival[]): string {
+  const first = pack[0].seconds.toFixed(2);
+  const last = pack[pack.length - 1].seconds.toFixed(2);
+
+  return `${pack.length} cars, first at ${first} s, last at ${last} s`;
 }
 
 /** One evaluation: time the cars to P, take the band, and speak by the rules (module header). */
@@ -467,17 +623,16 @@ function evaluate(
   }
 
   const untimed = arrivals.filter((a): a is UntimedArrival => !a.timed);
-  let nearest: TimedArrival | null = null;
-
-  for (const arrival of arrivals) {
-    if (arrival.timed && (nearest === null || arrival.seconds < nearest.seconds)) nearest = arrival;
-  }
-
-  const band = bandOf(nearest?.seconds ?? null);
+  // Nearest first; the sort is stable, so a tie keeps the arrivals' own order.
+  const timed = arrivals.filter((a): a is TimedArrival => a.timed).sort((a, b) => a.seconds - b.seconds);
+  const nearest = timed[0] ?? null;
+  const pack = packOf(timed);
+  const band: Band = pack !== null ? "pack" : bandOf(nearest?.seconds ?? null);
   // Only `near` has a nearest car in [2, 10), so its whole seconds are 2 to 9.
   const wholeSeconds = band === "near" && nearest !== null ? Math.floor(nearest.seconds) : null;
-  // Every evaluation, spoken or not, so the close car's arrival is followed from one to the next.
-  const closeGone = closeCarGone(episode, arrivals);
+  // Every evaluation, spoken or not, so the close car's arrival (or each pack
+  // car's) is followed from one to the next, and a pack going by grows.
+  const closeGone = closeCarGone(episode, arrivals, timed, logger);
   const reason = speakReason(episode, band, wholeSeconds, closeGone);
 
   if (reason === null) return;
@@ -499,7 +654,7 @@ function evaluate(
 
   emit({ event: "traffic.rejoin", data: payload });
   logger.debug(
-    `Rejoin: emit ${describePayload(payload)} (${describeNearest(nearest)}; ${reason}${describeStationary(stationary)})`,
+    `Rejoin: emit ${describePayload(payload)} (${pack !== null ? describePack(pack) : describeNearest(nearest)}; ${reason}${describeStationary(stationary)})`,
   );
   episode.spokenBand = band;
   episode.spokenSeconds = wholeSeconds;
@@ -508,4 +663,5 @@ function evaluate(
   episode.closeCarIdx = close?.carIdx ?? null;
   episode.closeCarSeconds = close?.seconds ?? null;
   episode.closeCarPassed = false;
+  episode.packCars = (pack ?? []).map((car) => ({ carIdx: car.carIdx, seconds: car.seconds, passed: false }));
 }

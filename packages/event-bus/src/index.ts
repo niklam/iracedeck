@@ -60,6 +60,7 @@ export type {
   TrafficRejoinClear,
   TrafficRejoinNear,
   TrafficRejoinOverTen,
+  TrafficRejoinPack,
   TrafficRejoinRightBehind,
   TrafficRejoinVerdict,
 } from "./event-catalog.js";
