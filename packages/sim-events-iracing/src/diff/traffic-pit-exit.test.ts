@@ -201,6 +201,10 @@ describe("diffTrafficPitExit", () => {
       ["out of the car (a tow or leaving)", { IsOnTrack: false }],
       ["not in world (a reset)", { PlayerTrackSurface: TrkLoc.NotInWorld, pct: -1 }],
       ["back in the stall", { PlayerCarInPitStall: true, PlayerTrackSurface: TrkLoc.InPitStall }],
+      [
+        "back in the stall, the stall flag unread",
+        { PlayerCarInPitStall: undefined, PlayerTrackSurface: TrkLoc.InPitStall },
+      ],
       ["on the racing surface", { PlayerTrackSurface: TrkLoc.OnTrack }],
       ["beside the racing surface", { PlayerTrackSurface: TrkLoc.OffTrack }],
     ] satisfies Array<[string, TickOptions]>)("ends silently %s", (_, overrides) => {
@@ -215,6 +219,36 @@ describe("diffTrafficPitExit", () => {
 
       expect(h.episode.active).toBe(false);
       expect(h.events).toEqual([{ verdict: "traffic", seconds: 1 }]);
+    });
+
+    describe("the stall surface", () => {
+      it("with the stall flag unread, ends the episode before a first call is made", () => {
+        const h = harness();
+
+        // No position on the departure tick: the episode runs, no call yet.
+        h.depart(tel({ cars: [arriving(5, 1)], CarIdxLapDistPct: undefined }));
+        expect(h.episode.active).toBe(true);
+
+        // A reset into the stall on a tick whose stall flag the sim did not send.
+        h.after(
+          100,
+          tel({ cars: [arriving(5, 1)], PlayerCarInPitStall: undefined, PlayerTrackSurface: TrkLoc.InPitStall }),
+        );
+
+        expect(h.episode.active).toBe(false);
+        expect(h.events).toEqual([]);
+        expect(lines(h.debug).at(-1)).toBe("PitExit: episode ended (back in the stall)");
+      });
+
+      it("with the stall flag false, is a departure whose surface lags: the call is made and the episode runs on", () => {
+        const h = harness();
+
+        h.depart(tel({ cars: [arriving(5, 1)], PlayerTrackSurface: TrkLoc.InPitStall }));
+        h.after(100, tel({ cars: [arriving(5, 1)], PlayerTrackSurface: TrkLoc.InPitStall }));
+
+        expect(h.episode.active).toBe(true);
+        expect(h.events).toEqual([{ verdict: "traffic", seconds: 1 }]);
+      });
     });
 
     describe("a player position the sim did not send", () => {

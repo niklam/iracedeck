@@ -9,7 +9,11 @@
  * baseline of this module's own, never off the bus — until the player is past
  * the learned `blendEnd`, or back on the racing surface. Leaving the car
  * (`IsOnTrack` not true), a tow or a reset (`NotInWorld`, or back in the
- * stall) ends it too. Every end is silent.
+ * stall) ends it too. Every end is silent. Back in the stall is
+ * `PlayerCarInPitStall` true, or, on a tick that does not send the flag,
+ * `PlayerTrackSurface` `InPitStall`; with the flag sent false the surface is
+ * not read, since it can still say `InPitStall` for a tick after the car
+ * has driven out.
  *
  * **A position the sim did not send is not the player leaving.** The player's
  * lap position is unavailable on a tick whose `CarIdxLapDistPct` is missing or
@@ -272,7 +276,14 @@ function readPlayerPosition(telemetry: TrafficPitExitTelemetry, raw: unknown): P
 function endReason(telemetry: TrafficPitExitTelemetry, position: PlayerPosition): string | null {
   if (telemetry.IsOnTrack !== true) return "left the car";
 
-  if (telemetry.PlayerCarInPitStall === true) return "back in the stall";
+  // The stall flag decides when the sim sent it: false with the surface still
+  // `InPitStall` is a departure whose surface lags a tick. Unsent, the surface
+  // is the only reading of a reset into the stall (module header).
+  const inStall = telemetry.PlayerCarInPitStall;
+
+  if (inStall === true) return "back in the stall";
+
+  if (typeof inStall !== "boolean" && telemetry.PlayerTrackSurface === TrkLoc.InPitStall) return "back in the stall";
 
   if (isRacingSurface(telemetry.PlayerTrackSurface)) return "on the racing surface";
 
