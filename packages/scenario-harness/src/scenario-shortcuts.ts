@@ -3533,6 +3533,15 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
     data: { verdict: "clear" },
   },
   {
+    id: "traffic-rejoin-pack",
+    category: "Traffic",
+    label: "Rejoin pack",
+    description:
+      'Stopped on track, a group of cars coming, the nearest under 10 s away with more close behind it — "A group of cars coming. Join carefully." Said once for the whole group. Cuts any lower-weight line in flight. Unframed.',
+    event: "traffic.rejoin",
+    data: { verdict: "pack" },
+  },
+  {
     id: "traffic-pit-exit-traffic",
     category: "Traffic",
     label: "Pit exit traffic",
