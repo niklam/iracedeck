@@ -72,7 +72,7 @@ describe.each(SETTINGS)("the $name window sanitizer (#1113)", ({ sanitize, min, 
   });
 
   it("falls back to the default for anything unparseable", () => {
-    for (const value of ["junk", undefined, Number.NaN, Number.POSITIVE_INFINITY, true, {}, []]) {
+    for (const value of ["junk", undefined, Number.NaN, Number.POSITIVE_INFINITY, true, false, {}, [], [3]]) {
       expect(sanitize(value), String(value)).toBe(fallback);
     }
   });
@@ -82,6 +82,15 @@ describe.each(SETTINGS)("the $name window sanitizer (#1113)", ({ sanitize, min, 
     // that is in range and would silently close that side of the window.
     expect(sanitize("")).toBe(fallback);
     expect(sanitize(null)).toBe(fallback);
+  });
+
+  it("treats a whitespace-only field as missing, never as zero", () => {
+    // `Number(" ")` is a finite 0 too.
+    for (const value of [" ", "   ", "\t", "\n "]) expect(sanitize(value), JSON.stringify(value)).toBe(fallback);
+  });
+
+  it("keeps a numeric string with spaces round it", () => {
+    expect(sanitize(" 1 ")).toBe(1);
   });
 });
 

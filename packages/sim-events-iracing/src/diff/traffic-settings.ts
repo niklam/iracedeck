@@ -23,9 +23,16 @@ export const TRAFFIC_DEFAULT_PIT_EXIT_AFTER_SECONDS = 4;
 export const TRAFFIC_PIT_EXIT_AFTER_MIN_SECONDS = 0;
 export const TRAFFIC_PIT_EXIT_AFTER_MAX_SECONDS = 15;
 
-/** Clamp a raw setting to `[min, max]`; a missing or unparseable one (a cleared field included) is `fallback`. */
+/**
+ * Clamp a raw setting to `[min, max]`; a missing or unparseable one is
+ * `fallback`: a cleared field, a whitespace-only one, a boolean, an array or
+ * an object included. A blank string is screened here because
+ * `coerceSettingNumber` reads whitespace as 0 (`Number(" ")`), which is in
+ * range and would close that side of the window, like the schema's own
+ * screen (`GlobalSettingsSchema`).
+ */
 function sanitizeWindow(value: unknown, min: number, max: number, fallback: number): number {
-  const n = coerceSettingNumber(value);
+  const n = typeof value === "string" && value.trim() === "" ? null : coerceSettingNumber(value);
 
   if (n === null) return fallback;
 
