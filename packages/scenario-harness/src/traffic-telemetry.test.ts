@@ -216,6 +216,9 @@ describe("the pit-exit cases (issue #1113)", () => {
   });
 });
 
+// The telemetry these buttons leave behind; that each line is then HEARD,
+// through the registered contracts and their speak gate, is
+// `traffic-pit-exit-heard.test.ts`.
 describe("the pit-exit bus-event buttons (issue #1113)", () => {
   /**
    * The pit-exit lines' speak-time gate, as `traffic.ts` in the catalog reads
