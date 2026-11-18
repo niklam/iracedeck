@@ -725,8 +725,14 @@ describe("diffTrafficPitExit", () => {
       // Then it has crossed, 1 s before the player's 0.5 s: its next crossing
       // is a lap away, and without the look back this would flip to clear.
       h.after(TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS, nearBlend([crossed(1)]));
+      // A second evaluation after the crossing, the player 0.45 s out and the
+      // car's previous crossing −1.65 s, still inside the before window: two
+      // wrong clears in a row would be a confirmed flip, so this is the one
+      // that proves the look back rather than the flip confirmation.
+      h.after(TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS, tel({ pct: 0.1866, cars: [crossed(1.2)] }));
 
       expect(h.events).toEqual([{ verdict: "traffic", seconds: -0.5 }]);
+      expect(lines(h.debug).filter((line) => line.includes("clear at"))).toEqual([]);
     });
 
     it.each([1, 3])(
