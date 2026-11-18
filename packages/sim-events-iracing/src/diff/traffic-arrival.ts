@@ -36,7 +36,8 @@
  * - `CarIdxEstTime` restarts with `CarIdxLapDistPct` at the line: the first
  *   bins extrapolate to 0 at 0, and the two samples in that capture read on the
  *   line itself had a position of 1.00001 with the time already restarted —
- *   which the [0, 1) position check drops.
+ *   so every traffic reader, the curve and the motion measurement included,
+ *   reads such a position as that hair past 0 ({@link normalizeLapPosition}).
  *
  * **What a curve is.** {@link TRAFFIC_CURVE_BINS} fixed bins over [0, 1), each
  * a running mean of the samples that fell into it (`TrafficCurveBin` in
@@ -418,10 +419,11 @@ function nextMotion(
 
 /**
  * The live-tick update: every car on the racing surface (`OnTrack` or
- * `OffTrack`) with a class, a position in [0, 1) and a finite non-negative
- * `CarIdxEstTime` is a sample of its class's curve, the player's car and the
- * pace car included. Never a pit-lane car. A class gets its curve with its
- * first sample. Every car on the racing surface at a position in [0, 1) is
+ * `OffTrack`) with a class, a lap position ({@link normalizeLapPosition}, so
+ * a car read on the line a hair past 1 is that hair past 0) and a finite
+ * non-negative `CarIdxEstTime` is a sample of its class's curve, the player's
+ * car and the pace car included. Never a pit-lane car. A class gets its curve
+ * with its first sample. Every car on the racing surface at a lap position is
  * also a reading of its progress (module header), on `SessionTime`; a tick
  * without one measures nothing. Writes the slice in place. The cars are
  * independent, so each is one unit of `runUnit` (#1559): a car whose unit
@@ -450,9 +452,15 @@ export function updateTrafficReferenceCurves(
   // than one per car. It emits nothing.
   let carIdx = 0;
   const unit = (): void => {
-    const pct = pcts[carIdx];
+    if (!isRacingSurface(surfaces[carIdx])) return;
 
-    if (!isRacingSurface(surfaces[carIdx]) || !isLapFraction(pct)) return;
+    // Read as the arrivals read it (`computeTrafficArrivals`): a car on the
+    // line, read a hair past 1, is that hair past 0. Gated on `[0, 1)` alone,
+    // a car parked there would never be measured standing while the arrivals
+    // time it as traffic, and one reset to the line would keep its old rate.
+    const pct = normalizeLapPosition(pcts[carIdx]);
+
+    if (pct === null) return;
 
     const estTime = estTimes[carIdx];
     const classId = isReferenceTime(estTime) ? resolveCarClassId(telemetry, classes, carIdx) : null;

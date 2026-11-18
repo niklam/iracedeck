@@ -257,7 +257,7 @@ describe("updateTrafficReferenceCurves", () => {
     ["approaching the pits", { surface: TrkLoc.AproachingPits }],
     ["not in world", { surface: TrkLoc.NotInWorld }],
     ["at a negative lap position", { pct: -1 }],
-    ["at lap position 1 (read on the line, est already restarted)", { pct: 1.0000126, est: 0.0019 }],
+    ["at a position clearly past 1", { pct: 1 + TRAFFIC_LINE_OVERSHOOT_PCT * 2 }],
     ["with a negative estTime", { est: -1 }],
     ["with a NaN estTime", { est: Number.NaN }],
     ["with no class", { cls: -1 }],
@@ -272,6 +272,15 @@ describe("updateTrafficReferenceCurves", () => {
     updateTrafficReferenceCurves(slice, tel([{ idx: 0, pct: 0.3, est: 30 }]), null, null);
 
     expect(Object.keys(slice.curves)).toEqual(["1"]);
+  });
+
+  it("learns a car on the start/finish line, read as 1.0000126, as that hair past 0 (normalizeLapPosition)", () => {
+    const slice = createTrafficArrivalState();
+
+    updateTrafficReferenceCurves(slice, tel([{ idx: 0, pct: 1.0000126, est: 0.0019 }]), null, null);
+
+    expect(slice.curves["1"].bins[0]).toEqual({ pct: expect.closeTo(0.0000126, 12), estTime: 0.0019, samples: 1 });
+    expect(slice.curves["1"].bins.filter((bin) => bin !== null)).toHaveLength(1);
   });
 
   it("learns a car with OnPitRoad true while its surface reads OnTrack (#1112 amendment 11)", () => {
@@ -449,6 +458,27 @@ describe("the motion measurement", () => {
     expect(0.02 * TRACK_M).toBeGreaterThan(TRAFFIC_MOTION_MAX_PLAUSIBLE_MPS * 0.1);
     read(slice, 100.1, 0.22);
     expect(slice.motion[1]).toEqual({ fromPct: 0.22, fromTime: 100.1, rate: null, rateAt: null });
+  });
+
+  it("starts again with no rate after a jump to the start/finish line, read as 1.00001 as it is read as 0.00001", () => {
+    // 0.01 of 25 km in a tenth of a second is 2.5 km/s: a reset to the line.
+    expect(0.01 * TRACK_M).toBeGreaterThan(TRAFFIC_MOTION_MAX_PLAUSIBLE_MPS * 0.1);
+
+    for (const linePct of [0.00001, 1.00001]) {
+      const slice = createTrafficArrivalState();
+
+      read(slice, 99.5, 0.99);
+      read(slice, 100, 0.99);
+      expect(slice.motion[1]).toEqual({ fromPct: 0.99, fromTime: 100, rate: 0, rateAt: 100 });
+
+      read(slice, 100.1, linePct);
+      expect(slice.motion[1]).toEqual({
+        fromPct: expect.closeTo(0.00001, 12),
+        fromTime: 100.1,
+        rate: null,
+        rateAt: null,
+      });
+    }
   });
 
   it("starts again with no rate after the car went unread for longer than TRAFFIC_MOTION_MAX_AGE_S", () => {
@@ -1011,6 +1041,34 @@ describe("computeTrafficArrivals", () => {
       const arrivals = arrivalsAt(slice, 0.5, curve, at(100.5), 0, null, TRACK_M, stationary);
 
       expect(arrivals.map((arrival) => arrival.carIdx)).toEqual([2]);
+      expect(stationary).toEqual([1]);
+    });
+
+    it("is measured standing, and left out, on the start/finish line read as 1.0000126", () => {
+      const slice = createTrafficArrivalState();
+      // Car 1 parked on the line: the sim reads it a hair past 1, its estTime
+      // already restarted (module header), on every tick of the window.
+      const at = (sessionTime: number): TelemetryData => ({
+        ...tel([
+          { idx: 0, pct: 0.5, est: 50 },
+          { idx: 1, pct: 1.0000126, est: 0.0019 },
+        ]),
+        SessionTime: sessionTime,
+      });
+
+      updateTrafficReferenceCurves(slice, at(100), null, TRACK_M);
+
+      // Positive control: before its window completes it counts as coming, and
+      // is timed as at the line.
+      expect(arrivalsAt(slice, 0.5, curve, at(100), 0, null, TRACK_M).map((a) => a.carIdx)).toEqual([1]);
+
+      updateTrafficReferenceCurves(slice, at(100 + TRAFFIC_MOTION_WINDOW_S), null, TRACK_M);
+      expect(isTrafficCarStationary(slice, 1, 100 + TRAFFIC_MOTION_WINDOW_S, TRACK_M)).toBe(true);
+
+      const stationary: number[] = [];
+      const arrivals = arrivalsAt(slice, 0.5, curve, at(100 + TRAFFIC_MOTION_WINDOW_S), 0, null, TRACK_M, stationary);
+
+      expect(arrivals).toEqual([]);
       expect(stationary).toEqual([1]);
     });
 
