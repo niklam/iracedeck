@@ -18,6 +18,7 @@ import { type GapTrendDirection, type ProgressTrace, TrkLoc } from "@iracedeck/i
 import type { CornerMarker } from "@iracedeck/track-data";
 
 import { createPitLapLatch, type PitLapFacts, type PitLapLatch } from "./diff/pit-lap.js";
+import type { TrafficReferenceSourceName } from "./diff/traffic-arrival.js";
 
 /**
  * How far the current full-course caution has got (issue #1127): thrown and
@@ -679,23 +680,17 @@ export type TrafficRejoinState = {
   /** The whole seconds of the last `near` call, the base of the drop-by-3 count; `null` when the last call was another band. */
   spokenSeconds: number | null;
   /**
-   * The car the last close call (`near` or `rightBehind`) was about, whose
-   * passing earns the next car's band one call; `null` when the last call was
-   * `overTen`, `clear` or `pack` (whose cars are {@link packCars}).
+   * The car the last close call (`near` or `rightBehind`) was about, followed
+   * while it is still coming, whose passing earns the next car's band one
+   * call; `null` when the last call was `overTen`, `clear` or `pack` (whose
+   * cars are {@link packCars}).
    */
-  closeCarIdx: number | null;
+  closeCar: TrafficRejoinFollowedCar | null;
   /**
-   * The close car's arrival (s) at the last evaluation that timed it while it
-   * was still coming, `null` with no close car: an approaching car's arrival
-   * only falls, so one that rose by more than `TRAFFIC_REJOIN_PASSED_RISE_S`
-   * from it has wrapped round the lap past the player. Not moved once the car
-   * has gone by.
-   */
-  closeCarSeconds: number | null;
-  /**
-   * The close car has been seen going by (its arrival rose past the margin or
-   * reached the clear band), or every car of the pack has, so the next line is
-   * the one after a close car.
+   * The close car has been seen going by (its arrival rose past the margin,
+   * reached the clear band from inside it, or its position wrapped past the
+   * player as its tier changed), or every car of the pack has, so the next
+   * line is the one after a close car.
    * Latched until a line is spoken or the episode resets: neither a line held
    * back by untimed cars nor an evaluation without the per-car arrays clears
    * it, so the car stays gone on its way round again, however near it reads
@@ -708,7 +703,7 @@ export type TrafficRejoinState = {
    * joined it since; empty when the last line was anything else. The group
    * has gone by once every one of them has, and until then nothing is said.
    */
-  packCars: TrafficRejoinPackCar[];
+  packCars: TrafficRejoinFollowedCar[];
   /** The once-per-episode debug line for a reassuring line withheld by untimed cars has been written. */
   untimedLogged: boolean;
   /** The once-per-episode debug line for an evaluation without the per-car arrays has been written. */
@@ -716,16 +711,30 @@ export type TrafficRejoinState = {
 };
 
 /**
- * One car of the group a `pack` call was about (issue #1113, amended
- * 2026-11-18), followed with the close car's rule: its arrival only falls
- * while it is coming, so one that rose past `TRAFFIC_REJOIN_PASSED_RISE_S`, or
- * reached the clear band, has gone by, and stays gone (`passed`) on its way
- * round again.
+ * A car the rejoin detector follows until it has gone by (issue #1113): the
+ * close car, or one car of the group a `pack` call was about (amended
+ * 2026-11-18). Its arrival only falls while it is coming, so one that rose
+ * past `TRAFFIC_REJOIN_PASSED_RISE_S`, or reached the clear band from inside
+ * it once it had been close, has gone by, and stays gone (`passed`) on its way
+ * round again. Arrivals are compared only within one reference tier: a car
+ * re-timed by another tier is a new baseline, and only its position wrapping
+ * past the player says it went by on that evaluation (`diff/traffic-rejoin.ts`).
  */
-export type TrafficRejoinPackCar = {
+export type TrafficRejoinFollowedCar = {
   carIdx: number;
   /** Its arrival (s) at the last evaluation that timed it while it was still coming; not moved once it has gone by. */
   seconds: number;
+  /** The tier that timed {@link seconds}: an arrival from another tier is a new baseline, never a rise. */
+  source: TrafficReferenceSourceName;
+  /** The forward lap distance from it to the player at that evaluation, in [0, 1); `null` when its lap position was unreadable. */
+  toPlayerPct: number | null;
+  /**
+   * It has read under `TRAFFIC_REJOIN_OVER_TEN_S` since its tier last
+   * changed: only such a car is gone by on reaching the clear band, so a car
+   * of a pack that joined at the band's edge is not retired by a hundredth of
+   * noise across it.
+   */
+  beenClose: boolean;
   /** It has been seen going by. */
   passed: boolean;
 };
@@ -740,8 +749,7 @@ export function createTrafficRejoinState(): TrafficRejoinState {
     lastEvalAt: null,
     spokenBand: null,
     spokenSeconds: null,
-    closeCarIdx: null,
-    closeCarSeconds: null,
+    closeCar: null,
     closeCarPassed: false,
     packCars: [],
     untimedLogged: false,

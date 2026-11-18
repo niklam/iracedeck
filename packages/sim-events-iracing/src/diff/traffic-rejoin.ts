@@ -61,7 +61,13 @@
  *   still), or it has wrapped round the lap past the player: an approaching
  *   car's arrival only falls, so one that rose by more than
  *   {@link TRAFFIC_REJOIN_PASSED_RISE_S} since the last evaluation that timed
- *   it, or reached the clear band, went by. A car seen going by stays gone
+ *   it, or reached the clear band from inside it once it had been under
+ *   {@link TRAFFIC_REJOIN_OVER_TEN_S}, went by. Arrivals are compared within
+ *   one reference tier only: a car re-timed by another tier (the scaled
+ *   reference giving way to its class's own curve, which can move it seconds
+ *   at once) is a new baseline, never a pass, and on that evaluation it has
+ *   gone by only when its position wrapped past the player
+ *   ({@link TRAFFIC_REJOIN_PASSED_WRAP_PCT}). A car seen going by stays gone
  *   until the next line is spoken, however near it reads on its way round
  *   again: a line held back by untimed cars, or an evaluation without the
  *   per-car arrays, does not end that. A close car that stops is therefore followed by the next car's
@@ -90,9 +96,12 @@
  *   after-a-close-car line between them, and no line about a car outside it.
  * - **Its cars** are followed one by one with the close car's rule (an arrival
  *   rising past {@link TRAFFIC_REJOIN_PASSED_RISE_S}, or reaching the clear
- *   band from inside it, has gone by and stays gone; one untimed or no longer
- *   a candidate is gone while it stays so). The last cars of a long pack may
- *   be beyond the clear band when it is said, and are still coming. A car that comes within the gap behind the last
+ *   band from inside it once it has been under {@link TRAFFIC_REJOIN_OVER_TEN_S},
+ *   has gone by and stays gone; a change of tier is a new baseline; one
+ *   untimed or no longer a candidate is gone while it stays so). The last cars
+ *   of a long pack may be beyond the clear band when it is said, and are still
+ *   coming, and one that joined at the band's edge is not retired by noise
+ *   across it. A car that comes within the gap behind the last
  *   of its cars still coming joins it, so a pack still streaming by is not
  *   over; a car of it already gone by never joins again, so on a lap shorter
  *   than the pack takes to go by, its first cars coming round again neither
@@ -134,11 +143,12 @@ import {
 } from "@iracedeck/event-bus";
 import { isPreGreen, type TelemetryData } from "@iracedeck/iracing-sdk";
 import type { ILogger } from "@iracedeck/logger";
+import { normalizePitLanePct } from "@iracedeck/track-data";
 
 import {
   createTrafficRejoinState,
   type TrafficArrivalState,
-  type TrafficRejoinPackCar,
+  type TrafficRejoinFollowedCar,
   type TrafficRejoinState,
 } from "../state.js";
 import { isRacingSurface } from "./track-surface.js";
@@ -224,6 +234,18 @@ export const TRAFFIC_REJOIN_COUNT_STEP_S = 3;
  * than 4 s shows it, the shortest dirt oval included.
  */
 export const TRAFFIC_REJOIN_PASSED_RISE_S = 2;
+
+/**
+ * How far a followed car's forward lap distance to the player must rise (lap
+ * fraction) from one evaluation to the next for the car to count as gone by
+ * when its arrival cannot be compared, because a different reference tier
+ * timed it (module header): half a lap. A car coming from behind closes on
+ * the player, so that distance only falls; going by turns it from a sliver
+ * into a hair under a lap, a rise of the lap less the ground the car covers in
+ * a second, more than half a lap on any lap longer than two seconds. Noise in
+ * a lap position is metres.
+ */
+export const TRAFFIC_REJOIN_PASSED_WRAP_PCT = 0.5;
 
 /** The telemetry the rejoin detector reads: the gates, the speed and the arrival model's arrays. */
 export type TrafficRejoinTelemetry = TrafficTelemetry &
@@ -435,49 +457,125 @@ function bandOf(seconds: number | null): Band {
   return seconds < TRAFFIC_REJOIN_OVER_TEN_S ? "near" : "overTen";
 }
 
+/** Where the cars stand this evaluation: what a followed car is measured against. */
+type FollowContext = {
+  readonly arrivals: readonly TrafficArrival[];
+  readonly telemetry: TrafficRejoinTelemetry;
+  /** The player's lap position, in [0, 1). */
+  readonly playerPct: number;
+  readonly logger: ILogger;
+};
+
+/**
+ * The forward lap distance from car `carIdx` to the player, in driving
+ * direction, in [0, 1); `null` when the car's lap position is unreadable.
+ * Small for a car just behind the player, a hair under a whole lap for one
+ * just past it.
+ */
+function distanceToPlayer(ctx: FollowContext, carIdx: number): number | null {
+  const position = normalizeLapPosition(ctx.telemetry.CarIdxLapDistPct?.[carIdx]);
+
+  return position === null ? null : normalizePitLanePct(ctx.playerPct - position);
+}
+
+/** A car to follow from a timed arrival: its arrival, tier and position now, still coming. */
+function followed(car: TimedArrival, ctx: FollowContext): TrafficRejoinFollowedCar {
+  return {
+    carIdx: car.carIdx,
+    seconds: car.seconds,
+    source: car.source,
+    toPlayerPct: distanceToPlayer(ctx, car.carIdx),
+    beenClose: car.seconds < TRAFFIC_REJOIN_OVER_TEN_S,
+    passed: false,
+  };
+}
+
+/**
+ * One evaluation of a followed car (module header): `passed` when it has just
+ * been seen going by (and `member.passed` is set), `away` when it is untimed
+ * or no longer a candidate (left the track, standing still: gone while it
+ * stays so, compared with its last timed arrival when it is timed again), and
+ * `coming` otherwise, with its arrival, position and closeness moved on.
+ *
+ * Going by is read from the arrival, compared only within one reference tier:
+ * a rise past {@link TRAFFIC_REJOIN_PASSED_RISE_S}, or reaching the clear band
+ * from inside it once it has been under {@link TRAFFIC_REJOIN_OVER_TEN_S}. An
+ * arrival from another tier (the scaled reference giving way to the class's
+ * own curve once a car of the class has driven past the player) is not
+ * comparable, so it is a new baseline rather than a rise; on that evaluation
+ * only the car's position can say it went by: its forward distance to the
+ * player rising past {@link TRAFFIC_REJOIN_PASSED_WRAP_PCT}.
+ */
+function followCar(member: TrafficRejoinFollowedCar, ctx: FollowContext): "passed" | "away" | "coming" {
+  const car = ctx.arrivals.find((arrival) => arrival.carIdx === member.carIdx);
+
+  if (car === undefined || !car.timed) return "away";
+
+  const toPlayer = distanceToPlayer(ctx, car.carIdx);
+
+  if (car.source !== member.source) {
+    const wrapped =
+      toPlayer !== null &&
+      member.toPlayerPct !== null &&
+      toPlayer - member.toPlayerPct > TRAFFIC_REJOIN_PASSED_WRAP_PCT;
+
+    if (wrapped) {
+      member.passed = true;
+
+      return "passed";
+    }
+
+    ctx.logger.debug(
+      `Rejoin: car ${car.carIdx} re-timed at ${car.seconds.toFixed(2)} s via ${car.source} (was ${member.seconds.toFixed(2)} s via ${member.source}), a new baseline`,
+    );
+    Object.assign(member, followed(car, ctx));
+
+    return "coming";
+  }
+
+  const rose = car.seconds - member.seconds > TRAFFIC_REJOIN_PASSED_RISE_S;
+  const reachedClear =
+    member.beenClose && member.seconds < TRAFFIC_REJOIN_CLEAR_S && car.seconds >= TRAFFIC_REJOIN_CLEAR_S;
+
+  if (rose || reachedClear) {
+    member.passed = true;
+
+    return "passed";
+  }
+
+  member.seconds = car.seconds;
+  member.toPlayerPct = toPlayer;
+  member.beenClose ||= car.seconds < TRAFFIC_REJOIN_OVER_TEN_S;
+
+  return "coming";
+}
+
 /**
  * Whether the car the last close call was about has gone by (module header);
- * `false` with no such call. Follows that car's arrival in
- * `episode.closeCarSeconds` while it is still coming. Once it is seen going
- * by, `episode.closeCarPassed` latches until the next line is spoken, so the
- * car stays gone on its way round again whatever its arrival reads by then —
- * past a line held back by untimed cars and evaluations without the per-car
- * arrays, which compare nothing. A car untimed or no longer a candidate (left
- * the track, standing still) is gone while it stays so, and is compared with
- * its last timed arrival when it is timed again.
+ * `false` with no such call. Follows that car ({@link followCar}) while it is
+ * still coming. Once it is seen going by, `episode.closeCarPassed` latches
+ * until the next line is spoken, so the car stays gone on its way round again
+ * whatever its arrival reads by then — past a line held back by untimed cars
+ * and evaluations without the per-car arrays, which compare nothing. A car
+ * untimed or no longer a candidate is gone while it stays so.
  */
-function closeCarGone(
-  episode: TrafficRejoinState,
-  arrivals: readonly TrafficArrival[],
-  timed: readonly TimedArrival[],
-  logger: ILogger,
-): boolean {
-  if (episode.packCars.length > 0) return packGone(episode, arrivals, timed, logger);
+function closeCarGone(episode: TrafficRejoinState, timed: readonly TimedArrival[], ctx: FollowContext): boolean {
+  if (episode.packCars.length > 0) return packGone(episode, timed, ctx);
 
-  if (episode.closeCarIdx === null) return false;
+  if (episode.closeCar === null) return false;
 
   if (episode.closeCarPassed) return true;
 
-  const car = arrivals.find((arrival) => arrival.carIdx === episode.closeCarIdx);
+  const result = followCar(episode.closeCar, ctx);
 
-  if (car === undefined || !car.timed) return true;
+  if (result === "passed") episode.closeCarPassed = true;
 
-  const last = episode.closeCarSeconds;
-
-  if ((last !== null && car.seconds - last > TRAFFIC_REJOIN_PASSED_RISE_S) || car.seconds >= TRAFFIC_REJOIN_CLEAR_S) {
-    episode.closeCarPassed = true;
-
-    return true;
-  }
-
-  episode.closeCarSeconds = car.seconds;
-
-  return false;
+  return result !== "coming";
 }
 
 /**
  * Whether every car of the pack the last line was about has gone by (module
- * header), each followed by the close car's rule ({@link closeCarGone}). While
+ * header), each followed by the close car's rule ({@link followCar}). While
  * one is still coming, a car arriving within {@link TRAFFIC_REJOIN_PACK_GAP_S}
  * behind the last of them still coming joins the pack, and the next behind it
  * in turn; a car of the pack gone by never joins again. Once every car has
@@ -485,35 +583,13 @@ function closeCarGone(
  *
  * @param timed The timed arrivals in arrival order, nearest first.
  */
-function packGone(
-  episode: TrafficRejoinState,
-  arrivals: readonly TrafficArrival[],
-  timed: readonly TimedArrival[],
-  logger: ILogger,
-): boolean {
+function packGone(episode: TrafficRejoinState, timed: readonly TimedArrival[], ctx: FollowContext): boolean {
   if (episode.closeCarPassed) return true;
 
-  let tail: TrafficRejoinPackCar | null = null;
+  let tail: TrafficRejoinFollowedCar | null = null;
 
   for (const member of episode.packCars) {
-    if (member.passed) continue;
-
-    const car = arrivals.find((arrival) => arrival.carIdx === member.carIdx);
-
-    // Untimed or no longer a candidate: gone while it stays so.
-    if (car === undefined || !car.timed) continue;
-
-    // The close car's rule, but a car of the pack may still be beyond the
-    // clear band when it is said or joins: only reaching that band from inside
-    // it is going by.
-    const reachedClear = car.seconds >= TRAFFIC_REJOIN_CLEAR_S && member.seconds < TRAFFIC_REJOIN_CLEAR_S;
-
-    if (car.seconds - member.seconds > TRAFFIC_REJOIN_PASSED_RISE_S || reachedClear) {
-      member.passed = true;
-      continue;
-    }
-
-    member.seconds = car.seconds;
+    if (member.passed || followCar(member, ctx) !== "coming") continue;
 
     if (tail === null || member.seconds >= tail.seconds) tail = member;
   }
@@ -531,10 +607,10 @@ function packGone(
 
     if (car.seconds - tail.seconds > TRAFFIC_REJOIN_PACK_GAP_S) break;
 
-    tail = { carIdx: car.carIdx, seconds: car.seconds, passed: false };
+    tail = followed(car, ctx);
     episode.packCars.push(tail);
     members.add(car.carIdx);
-    logger.debug(
+    ctx.logger.debug(
       `Rejoin: pack grows to ${episode.packCars.length} cars (car ${car.carIdx} at ${car.seconds.toFixed(2)} s)`,
     );
   }
@@ -635,7 +711,8 @@ function evaluate(
   const wholeSeconds = band === "near" && nearest !== null ? Math.floor(nearest.seconds) : null;
   // Every evaluation, spoken or not, so the close car's arrival (or each pack
   // car's) is followed from one to the next, and a pack going by grows.
-  const closeGone = closeCarGone(episode, arrivals, timed, logger);
+  const ctx: FollowContext = { arrivals, telemetry, playerPct: pct, logger };
+  const closeGone = closeCarGone(episode, timed, ctx);
   const reason = speakReason(episode, band, wholeSeconds, closeGone);
 
   if (reason === null) return;
@@ -663,8 +740,7 @@ function evaluate(
   episode.spokenSeconds = wholeSeconds;
   const close = (band === "near" || band === "rightBehind") && nearest !== null ? nearest : null;
 
-  episode.closeCarIdx = close?.carIdx ?? null;
-  episode.closeCarSeconds = close?.seconds ?? null;
+  episode.closeCar = close === null ? null : followed(close, ctx);
   episode.closeCarPassed = false;
-  episode.packCars = (pack ?? []).map((car) => ({ carIdx: car.carIdx, seconds: car.seconds, passed: false }));
+  episode.packCars = (pack ?? []).map((car) => followed(car, ctx));
 }

@@ -818,6 +818,91 @@ describe("diffTrafficRejoin", () => {
   });
 
   /**
+   * A car first timed by the player's reference scaled to its class (no curve
+   * of its class at P yet) is re-timed by its class's own curve once a car of
+   * the class has driven past P, which can move its arrival by seconds at once.
+   */
+  describe("a change of reference tier", () => {
+    /** The slow class's curve read 4 s later than the scaled reference at every point: a car at 5 s re-times at 9 s. */
+    const offsetSlowCurve = (): { bins: (TrafficCurveBin | null)[] } => {
+      const offset = curve(2);
+
+      for (const bin of offset.bins) if (bin) bin.estTime += 4;
+
+      return offset;
+    };
+
+    it("is a new baseline for the close car, never a pass and a new first call", () => {
+      const curves = learnedCurves();
+      const h = harness({ curves });
+
+      h.stop(tel({ cars: [behind(5, 5, SLOW)] }));
+      curves.curves[SLOW] = offsetSlowCurve();
+      h.step([behind(5, 4, SLOW)]); // 8 s via curve, up from 5 s via scaled
+      h.step([behind(5, 2, SLOW)]); // 6 s
+      h.step([{ idx: 5, pct: 0.502, est: 502, cls: SLOW }]); // by
+
+      expect(h.events).toEqual([near(5, true), CLEAR]);
+      expect(h.debug).toHaveBeenCalledWith(
+        "Rejoin: car 5 re-timed at 8.00 s via curve (was 5.00 s via scaled), a new baseline",
+      );
+    });
+
+    it("is a new baseline for a pack's cars, so the pack is not said again", () => {
+      const curves = learnedCurves();
+      const h = harness({ curves });
+
+      h.stop(tel({ cars: [behind(5, 5, SLOW), behind(6, 6.5, SLOW)] }));
+      curves.curves[SLOW] = offsetSlowCurve();
+      h.step([behind(5, 4, SLOW), behind(6, 5.5, SLOW)]); // 8 s and 9.5 s via curve
+
+      expect(h.events).toEqual([PACK]);
+      expect(h.episode.packCars.map((car) => [car.carIdx, car.source, car.passed])).toEqual([
+        [5, "curve", false],
+        [6, "curve", false],
+      ]);
+    });
+
+    it("still sees the close car go by on the evaluation its tier changes, from its position wrapping past the player", () => {
+      const curves = learnedCurves();
+      const h = harness({ curves });
+
+      h.stop(tel({ cars: [behind(5, 3, SLOW)] }));
+      // The car's own drive past P is what gives its class a curve there.
+      curves.curves[SLOW] = curve(2);
+      h.step([{ idx: 5, pct: 0.502, est: 502, cls: SLOW }]);
+
+      expect(h.events).toEqual([near(3, true), CLEAR]);
+    });
+
+    it("still sees the close car go by on a short lap when its tier changes as it does", () => {
+      const LAP_S = 13;
+      const curves = learnedCurves({ [FAST]: LAP_S / TRAFFIC_CURVE_BINS });
+      const h = harness({ curves, classes: { lapTimeByClass: { [FAST]: LAP_S, [SLOW]: LAP_S }, classByCarIdx: [] } });
+      /** A slow-class car `seconds` from the player at 0.5 on the same 13 s lap. */
+      const coming = (seconds: number): Car => {
+        const est = (LAP_S / 2 - seconds + LAP_S * 2) % LAP_S;
+
+        return { idx: 5, pct: est / LAP_S, est, cls: SLOW };
+      };
+
+      /** The player's own reference time on this lap, which the scaled tier reads. */
+      const onShortLap = (car: Car): TrafficRejoinTelemetry => {
+        const t = tel({ cars: [car] });
+
+        return { ...t, CarIdxEstTime: (t.CarIdxEstTime ?? []).map((est, idx) => (idx === PLAYER ? LAP_S / 2 : est)) };
+      };
+
+      h.stop(onShortLap(coming(3.5)));
+      curves.curves[SLOW] = curve(LAP_S / TRAFFIC_CURVE_BINS);
+      // By, and re-timed by its class's curve: 12.5 s round the lap, under the clear band.
+      h.after(TRAFFIC_REJOIN_EVAL_INTERVAL_MS, onShortLap(coming(12.5)));
+
+      expect(h.events).toEqual([near(3, true), OVER_TEN]);
+    });
+  });
+
+  /**
    * A pack is one call (amended 2026-11-18): Niklas, stopped at Tsukuba with
    * nine AI cars coming a second apart, heard "Car right behind you" nine
    * times, each car re-arming the after-a-close-car line for the next.
@@ -940,6 +1025,21 @@ describe("diffTrafficRejoin", () => {
       expect(h.events).toEqual([PACK, CLEAR]);
       expect(h.episode.packCars).toEqual([]);
       expect(h.debug).toHaveBeenCalledWith("Rejoin: pack grows to 3 cars (car 7 at 5.00 s)");
+    });
+
+    it("keeps a car of it that joined at the clear band's edge when noise lifts it across", () => {
+      const h = harness();
+
+      h.stop(tel({ cars: [behind(5, 9), behind(6, 10.5), behind(7, 12), behind(8, 13.5), behind(9, 14.99)] }));
+      h.step([behind(5, 8), behind(6, 9.5), behind(7, 11), behind(8, 12.5), behind(9, 15.01)]);
+
+      expect(h.episode.packCars.find((car) => car.carIdx === 9)?.passed).toBe(false);
+
+      // The first four by, car 9 still coming: the pack is not over.
+      h.step([passed(5), passed(6), passed(7), passed(8), behind(9, 5)]);
+      h.step([passed(5), passed(6), passed(7), passed(8), passed(9)]);
+
+      expect(h.events).toEqual([PACK, CLEAR]);
     });
 
     it("is over when its cars have gone by or left the track, a car of it pitting included", () => {
