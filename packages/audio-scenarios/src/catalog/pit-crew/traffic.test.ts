@@ -1077,8 +1077,9 @@ describe("a line is never heard after the moment it warns about", () => {
       expect(readTrafficDebugState().introduced).toBe(false);
     });
 
-    it("a first call about a car five seconds away still plays after the same wait", () => {
-      expect(parkedFor(2_500, near(5, true))).toEqual([CRITICAL_CLIP, ...firstCall(5)]);
+    it("a first call about a car nine seconds away still plays after the same wait", () => {
+      // Nine: the fixture ships one take of that middle, so the clips are fixed.
+      expect(parkedFor(2_500, near(9, true))).toEqual([CRITICAL_CLIP, ...firstCall(9)]);
     });
   });
 
