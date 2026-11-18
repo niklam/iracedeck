@@ -119,6 +119,23 @@ function calloutEnabledFields(): { [K in CalloutSettingKey]: ReturnType<typeof c
 }
 
 /**
+ * The raw value of a pit-exit traffic window side (`trafficPitExit*Seconds`)
+ * that may reach `z.coerce.number()`: a finite number, or a non-blank string
+ * that reads as one, passed through unchanged; anything else — `null`, a
+ * blank string, a boolean, an array, an object, a non-finite number — is
+ * `undefined`, so the field falls to its default rather than to the `0` (or
+ * `1`) the coercion would make of it. Never throws, so the field stays
+ * throw-proof (#896).
+ */
+function pitExitWindowInput(val: unknown): unknown {
+  if (typeof val === "number") return Number.isFinite(val) ? val : undefined;
+
+  if (typeof val === "string" && val.trim() !== "" && Number.isFinite(Number(val))) return val;
+
+  return undefined;
+}
+
+/**
  * Schema for global plugin settings.
  * Uses passthrough to allow dynamic key binding properties (e.g., blackBoxLapTiming, blackBoxFuel).
  */
@@ -447,21 +464,18 @@ export const GlobalSettingsSchema = z
      * because its lines name them, and the pit-exit call is made at the stall
      * departure, so there is no look-ahead either.
      *
-     * The `fuelCalloutMarginLaps` preprocess shape rather than the bare
-     * `gapAlertThresholdSeconds` one: `z.coerce.number()` turns `null`, `""`
-     * and whitespace into `0`, which is inside both pit-exit ranges and would
-     * silently close that side of the window, so empty-ish values fall back to
-     * the default instead. `.catch` per #896 keeps any other malformed value
-     * from aborting the whole settings parse.
+     * Only a finite number or a non-blank numeric string reaches the
+     * coercion ({@link pitExitWindowInput}); anything else reads as absent and
+     * falls back to the default. The bare `gapAlertThresholdSeconds` shape
+     * would not do: `z.coerce.number()` turns `null`, `""`, whitespace,
+     * `false` and `[]` into `0` (and `true` into `1`), and `0` is inside both
+     * pit-exit ranges, so it would silently close that side of the window.
+     * An explicit `0` or `"0"` is kept: it closes that side on purpose.
+     * `.catch` per #896 keeps any other malformed value from aborting the
+     * whole settings parse.
      */
-    trafficPitExitBeforeSeconds: z.preprocess(
-      (val) => (val == null || (typeof val === "string" && val.trim() === "") ? undefined : val),
-      z.coerce.number().min(0).max(10).default(2).catch(2),
-    ),
-    trafficPitExitAfterSeconds: z.preprocess(
-      (val) => (val == null || (typeof val === "string" && val.trim() === "") ? undefined : val),
-      z.coerce.number().min(0).max(15).default(4).catch(4),
-    ),
+    trafficPitExitBeforeSeconds: z.preprocess(pitExitWindowInput, z.coerce.number().min(0).max(10).default(2).catch(2)),
+    trafficPitExitAfterSeconds: z.preprocess(pitExitWindowInput, z.coerce.number().min(0).max(15).default(4).catch(4)),
     /**
      * Safety margin in laps subtracted from the raw laps-of-fuel-left
      * estimate before the Race Engineer derives the spoken count (issue

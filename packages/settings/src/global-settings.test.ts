@@ -631,6 +631,25 @@ describe("approaching-traffic settings (issue #1113)", () => {
     expect((result.data as Record<string, unknown>)[key]).toBe(fallback);
     expect(result.data?.spotterStillThereSeconds).toBe(5);
   });
+
+  // `z.coerce.number()` reads `false` and `[]` as 0 and `true` as 1, all in
+  // range: only a finite number or a non-blank numeric string may reach it.
+  it.each(
+    FIELDS.flatMap((field) =>
+      [false, true, [], {}, [3], " ", "", Number.NaN, Number.POSITIVE_INFINITY, "Infinity"].map((value) => ({
+        ...field,
+        value,
+      })),
+    ),
+  )("$key falls back to its default on a value that is no number: $value", ({ key, fallback, value }) => {
+    expect(read(key, value)).toBe(fallback);
+  });
+
+  it.each(FIELDS)("$key keeps an explicit 0, as a number or a string, which closes that side", ({ key }) => {
+    expect(read(key, 0)).toBe(0);
+    expect(read(key, "0")).toBe(0);
+    expect(read(key, " 3 ")).toBe(3);
+  });
 });
 
 describe("resolveActiveRaceEngineerVoice", () => {
