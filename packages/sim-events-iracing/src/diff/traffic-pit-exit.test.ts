@@ -61,7 +61,7 @@ const LANDMARKS: TrafficPitExitLandmarks = {
 };
 const STALL_PCT = 0.0625;
 
-const CLASSES: TrafficClassInfo = { lapTimeByClass: { [CLS]: 500 }, classByCarIdx: [] };
+const CLASSES: TrafficClassInfo = { lapTimeByClass: { [CLS]: 500 }, classByCarIdx: {} };
 
 type Car = { idx: number; pct: number; est: number; cls?: number; surface?: number };
 
@@ -710,7 +710,7 @@ describe("diffTrafficPitExit", () => {
 
       curves.curves[String(CLS)]!.bins.fill(null, 480);
 
-      return { curves, classes: { lapTimeByClass: {}, classByCarIdx: [] } };
+      return { curves, classes: { lapTimeByClass: {}, classByCarIdx: {} } };
     }
 
     it("is traffic for a car that crossed 1 s ago with the player 0.5 s out: it is alongside", () => {
@@ -778,7 +778,7 @@ describe("diffTrafficPitExit", () => {
       pitRoadEnd: landmark(0.125, { [CLS]: 50 }),
       blendEnd: landmark(0.1875, { [CLS]: 75.3, [SHORT_LAP]: 40 }),
     };
-    const classes: TrafficClassInfo = { lapTimeByClass: { [CLS]: 500, [SHORT_LAP]: 20 }, classByCarIdx: [] };
+    const classes: TrafficClassInfo = { lapTimeByClass: { [CLS]: 500, [SHORT_LAP]: 20 }, classByCarIdx: {} };
     /** A class-2 car whose next crossing of the blend is `next` s away: it crosses again every 20 s. */
     const shortLapCar = (next: number): Car => ({ idx: 5, pct: 0.05, est: 40 - next, cls: SHORT_LAP });
 

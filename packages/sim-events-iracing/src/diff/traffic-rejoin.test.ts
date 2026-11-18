@@ -66,7 +66,7 @@ function learnedCurves(classes: Record<number, number> = { [FAST]: 1 }): Traffic
   return slice;
 }
 
-const CLASSES: TrafficClassInfo = { lapTimeByClass: { [FAST]: 500, [SLOW]: 1000 }, classByCarIdx: [] };
+const CLASSES: TrafficClassInfo = { lapTimeByClass: { [FAST]: 500, [SLOW]: 1000 }, classByCarIdx: {} };
 
 /** 25 km: the fast class's 500 s reference lap at 50 m/s, so a car at its reference pace covers 0.002 of the lap a second. */
 const TRACK_M = 25_000;
@@ -715,7 +715,7 @@ describe("diffTrafficRejoin", () => {
     const shortLap = (): ReturnType<typeof harness> =>
       harness({
         curves: learnedCurves({ [FAST]: LAP_S / TRAFFIC_CURVE_BINS }),
-        classes: { lapTimeByClass: { [FAST]: LAP_S }, classByCarIdx: [] },
+        classes: { lapTimeByClass: { [FAST]: LAP_S }, classByCarIdx: {} },
       });
 
     /** A car `seconds` from the player at 0.5 (6.5 s into the lap): behind it under 6.5 s, ahead of it round the line from there. */
@@ -878,7 +878,7 @@ describe("diffTrafficRejoin", () => {
     it("still sees the close car go by on a short lap when its tier changes as it does", () => {
       const LAP_S = 13;
       const curves = learnedCurves({ [FAST]: LAP_S / TRAFFIC_CURVE_BINS });
-      const h = harness({ curves, classes: { lapTimeByClass: { [FAST]: LAP_S, [SLOW]: LAP_S }, classByCarIdx: [] } });
+      const h = harness({ curves, classes: { lapTimeByClass: { [FAST]: LAP_S, [SLOW]: LAP_S }, classByCarIdx: {} } });
       /** A slow-class car `seconds` from the player at 0.5 on the same 13 s lap. */
       const coming = (seconds: number): Car => {
         const est = (LAP_S / 2 - seconds + LAP_S * 2) % LAP_S;
@@ -1110,7 +1110,7 @@ describe("diffTrafficRejoin", () => {
       const LAP_S = 13;
       const h = harness({
         curves: learnedCurves({ [FAST]: LAP_S / TRAFFIC_CURVE_BINS }),
-        classes: { lapTimeByClass: { [FAST]: LAP_S }, classByCarIdx: [] },
+        classes: { lapTimeByClass: { [FAST]: LAP_S }, classByCarIdx: {} },
       });
       /** Car `idx` `seconds` from the player at 0.5, wrapping round the lap once it has gone by. */
       const coming = (idx: number, seconds: number): Car => {
@@ -1143,7 +1143,7 @@ describe("diffTrafficRejoin", () => {
       const LAP_S = 13;
       const h = harness({
         curves: learnedCurves({ [FAST]: LAP_S / TRAFFIC_CURVE_BINS }),
-        classes: { lapTimeByClass: { [FAST]: LAP_S }, classByCarIdx: [] },
+        classes: { lapTimeByClass: { [FAST]: LAP_S }, classByCarIdx: {} },
       });
       const coming = (idx: number, seconds: number): Car => {
         const est = (LAP_S / 2 - seconds + LAP_S * 2) % LAP_S;

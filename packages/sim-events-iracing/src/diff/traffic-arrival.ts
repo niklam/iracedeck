@@ -172,13 +172,15 @@ export type TrafficTelemetry = Pick<
 /**
  * What the arrival model needs from the session info (`DriverInfo.Drivers[]`):
  * each class's `CarClassEstLapTime`, keyed by `CarClassID` as a string (as the
- * landmarks' `estTimeByClass` is), and each car's `CarClassID` by `CarIdx`
- * (`-1` for a slot with no driver), the class of a car the telemetry gives
- * none — the pace car, which reads `CarIdxClass` -1 (Monza, 2026-07-28).
+ * landmarks' `estTimeByClass` is), and each car's `CarClassID` keyed by its
+ * `CarIdx` (no entry for a slot with no driver), the class of a car the
+ * telemetry gives none — the pace car, which reads `CarIdxClass` -1 (Monza,
+ * 2026-07-28). Keyed rather than an array indexed by `CarIdx`, so a malformed
+ * huge index costs one entry, not that many slots.
  */
 export type TrafficClassInfo = {
   readonly lapTimeByClass: Readonly<Record<string, number>>;
-  readonly classByCarIdx: readonly number[];
+  readonly classByCarIdx: Readonly<Record<number, number>>;
 };
 
 /** Which tier timed a car: the landmark's own time, the class curve, or the scaled player-class reference. */
@@ -295,7 +297,7 @@ export function resolveTrafficClassInfo(sessionInfo: Record<string, unknown> | n
   if (!Array.isArray(drivers)) return null;
 
   const lapTimeByClass: Record<string, number> = {};
-  const classByCarIdx: number[] = [];
+  const classByCarIdx: Record<number, number> = {};
 
   for (const driver of drivers as unknown[]) {
     if (typeof driver !== "object" || driver === null) continue;
@@ -308,11 +310,7 @@ export function resolveTrafficClassInfo(sessionInfo: Record<string, unknown> | n
       lapTimeByClass[classId] = lapTime;
     }
 
-    if (isClassId(carIdx)) {
-      while (classByCarIdx.length <= carIdx) classByCarIdx.push(-1);
-
-      classByCarIdx[carIdx] = classId;
-    }
+    if (isClassId(carIdx)) classByCarIdx[carIdx] = classId;
   }
 
   return { lapTimeByClass, classByCarIdx };
@@ -352,6 +350,16 @@ function foldCurveSample(curve: TrafficReferenceCurve, pct: number, estTime: num
   bin.pct += (pct - bin.pct) / samples;
   bin.estTime += (estTime - bin.estTime) / samples;
   bin.samples = samples;
+}
+
+/**
+ * How many car slots the per-car arrays describe: the longest of them. Each
+ * is read up to there, a missing entry reading as `undefined`, so a car
+ * whose surface is sent while its trailing position is not still reaches the
+ * candidate test (and is `noPosition` there) rather than going unvisited.
+ */
+function carSlotCount(...arrays: readonly (readonly unknown[])[]): number {
+  return Math.max(0, ...arrays.map((array) => array.length));
 }
 
 /** The outer emit a unit runner is handed by a step that publishes nothing. */
@@ -464,7 +472,9 @@ export function updateTrafficReferenceCurves(
       slice.motion[carIdx] = nextMotion(slice.motion[carIdx], pct, sessionTime, trackLengthMeters);
   };
 
-  for (carIdx = 0; carIdx < pcts.length; carIdx++) runUnit(ignoreEvent, unit);
+  const slots = carSlotCount(pcts, estTimes, surfaces);
+
+  for (carIdx = 0; carIdx < slots; carIdx++) runUnit(ignoreEvent, unit);
 }
 
 /**
@@ -499,11 +509,15 @@ export function isTrafficCarStationary(
  * it when the two are at most {@link TRAFFIC_CURVE_MAX_SPAN_PCT} apart. The
  * line (estTime 0 at 0) stands in for a missing sample before the first bin's;
  * nothing stands in after the last bin's, and no lookup crosses the line,
- * since the time restarts there. `null` for no curve, a position outside
- * [0, 1), or no pair of samples close enough.
+ * since the time restarts there. At exactly 0 the answer is the line's own 0,
+ * needing no sample. `null` for no curve, a position outside [0, 1), or no
+ * pair of samples close enough.
  */
 export function referenceTimeAt(curve: TrafficReferenceCurve | undefined, pct: number): number | null {
   if (curve === undefined || !isLapFraction(pct)) return null;
+
+  // The line itself is the one point known without a sample (module header).
+  if (pct === 0) return LINE.estTime;
 
   const start = binIndex(pct);
   let lower: TrafficCurveBin | null = null;
@@ -541,10 +555,32 @@ export function referenceTimeAt(curve: TrafficReferenceCurve | undefined, pct: n
 }
 
 /**
+ * The least distance (lap fraction) between the two samples
+ * {@link curveLapEnd} extrapolates through: one bin width,
+ * half a bin width, `0.5 / TRAFFIC_CURVE_BINS`. A bin's sample is a running
+ * mean, so two adjacent bins' means can sit a hair apart across their shared
+ * edge when their samples bunch there, and a slope over a hair turns their few
+ * hundredths of a second of noise into a lap end tens of seconds off. Adjacent
+ * bins' means usually sit about a bin width apart (Spa's last two, 0.00198;
+ * the curveLapEnd test), so a whole bin width would refuse measured pairs;
+ * half of one refuses only the bunched ones. Over it the noise is magnified at
+ * most twelve times on its way to the line ({@link TRAFFIC_CURVE_MAX_SPAN_PCT}
+ * plus a bin, over half a bin), and about twice for a last sample in the
+ * final bin, a few tenths at worst: as close as `CarClassEstLapTime` itself
+ * comes (0.9 s off at Spa; module header). Two bins apart always reach it, so
+ * a curve whose last bins are filled always has such a pair.
+ */
+export const TRAFFIC_CURVE_LAP_END_MIN_BASELINE_PCT = 0.5 / TRAFFIC_CURVE_BINS;
+
+/**
  * Where a class curve's reference time reaches the line, extrapolated along
- * the line through its last two samples when both lie within
- * {@link TRAFFIC_CURVE_MAX_SPAN_PCT} of the line and of each other: the
- * reference lap's length, the constant a car past P wraps by. `null` otherwise.
+ * the line through its last sample and the nearest earlier one at least
+ * {@link TRAFFIC_CURVE_LAP_END_MIN_BASELINE_PCT} before it, when both lie
+ * within {@link TRAFFIC_CURVE_MAX_SPAN_PCT} of the line and of each other: the
+ * reference lap's length, the constant a car past P wraps by. A sample closer
+ * than that to the last one is passed over, never extrapolated through.
+ * `null` otherwise, and `resolveClassLapTime` falls back to the class's
+ * `CarClassEstLapTime`.
  */
 export function curveLapEnd(curve: TrafficReferenceCurve | undefined): number | null {
   if (curve === undefined) return null;
@@ -561,9 +597,14 @@ export function curveLapEnd(curve: TrafficReferenceCurve | undefined): number | 
       continue;
     }
 
-    if (last.pct - bin.pct > TRAFFIC_CURVE_MAX_SPAN_PCT) return null;
+    const baseline = last.pct - bin.pct;
 
-    const slope = (last.estTime - bin.estTime) / (last.pct - bin.pct);
+    if (baseline > TRAFFIC_CURVE_MAX_SPAN_PCT) return null;
+
+    // Too close to the last sample to give a slope: try the bin before it.
+    if (baseline < TRAFFIC_CURVE_LAP_END_MIN_BASELINE_PCT) continue;
+
+    const slope = (last.estTime - bin.estTime) / baseline;
 
     if (!(slope > 0)) return null;
 
@@ -722,8 +763,11 @@ export function computeTrafficArrivals(
 
   const sessionTime = isFiniteNumber(telemetry.SessionTime) ? telemetry.SessionTime : null;
   const arrivals: TrafficArrival[] = [];
+  // Every slot any of the arrays describes, so a racing-surface car whose
+  // trailing position is missing is `noPosition` below, never unvisited.
+  const slots = carSlotCount(pcts, estTimes, surfaces);
 
-  for (let carIdx = 0; carIdx < pcts.length; carIdx++) {
+  for (let carIdx = 0; carIdx < slots; carIdx++) {
     if (carIdx === playerCarIdx) continue;
 
     const pct = pcts[carIdx];

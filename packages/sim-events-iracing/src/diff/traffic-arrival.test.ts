@@ -22,6 +22,7 @@ import {
   scaledReferenceSource,
   TRAFFIC_CRAWL_MPS,
   TRAFFIC_CURVE_BINS,
+  TRAFFIC_CURVE_LAP_END_MIN_BASELINE_PCT,
   TRAFFIC_CURVE_MAX_SPAN_PCT,
   TRAFFIC_CURVE_SAMPLE_CAP,
   TRAFFIC_LINE_OVERSHOOT_PCT,
@@ -74,7 +75,10 @@ function learn(slice: TrafficArrivalState, samples: Array<[pct: number, est: num
   for (const [pct, est] of samples) updateTrafficReferenceCurves(slice, tel([{ idx: 0, pct, est, cls }]), null, null);
 }
 
-function classInfo(lapTimeByClass: Record<string, number>, classByCarIdx: number[] = []): TrafficClassInfo {
+function classInfo(
+  lapTimeByClass: Record<string, number>,
+  classByCarIdx: Readonly<Record<number, number>> = {},
+): TrafficClassInfo {
   return { lapTimeByClass, classByCarIdx };
 }
 
@@ -155,7 +159,7 @@ describe("resolveTrafficClassInfo", () => {
 
     expect(info).toEqual({
       lapTimeByClass: { "11": 110.0344, "4029": 91.6077, "4011": 105.5726 },
-      classByCarIdx: [11, 4029, -1, 4011, 4011],
+      classByCarIdx: { 0: 11, 1: 4029, 3: 4011, 4: 4011 },
     });
   });
 
@@ -178,7 +182,26 @@ describe("resolveTrafficClassInfo", () => {
     });
 
     // Class 3's lap time is the class's, whoever carries it; car -1 is no car.
-    expect(info).toEqual({ lapTimeByClass: { "3": 90, "5": 95 }, classByCarIdx: [1, 2, -1, 5] });
+    expect(info).toEqual({ lapTimeByClass: { "3": 90, "5": 95 }, classByCarIdx: { 0: 1, 1: 2, 3: 5 } });
+  });
+
+  it("keys each car's class by its index, so a huge index is one entry and an index past 63 still resolves", () => {
+    const info = resolveTrafficClassInfo({
+      DriverInfo: {
+        Drivers: [
+          { CarIdx: 1, CarClassID: 4029, CarClassEstLapTime: 91.6 },
+          // The pace car at Monza 2026-07-28 was car 64.
+          { CarIdx: 64, CarClassID: 11, CarClassEstLapTime: 110 },
+          // A malformed index: one entry, not 100,001 slots.
+          { CarIdx: 100_000, CarClassID: 4029, CarClassEstLapTime: 91.6 },
+        ],
+      },
+    });
+
+    expect(Object.keys(info?.classByCarIdx ?? {})).toEqual(["1", "64", "100000"]);
+    expect(resolveCarClassId({} as TelemetryData, info, 64)).toBe(11);
+    expect(resolveCarClassId({} as TelemetryData, info, 100_000)).toBe(4029);
+    expect(resolveCarClassId({} as TelemetryData, info, 2)).toBeNull();
   });
 });
 
@@ -559,6 +582,19 @@ describe("referenceTimeAt", () => {
     expect(referenceTimeAt(slice.curves["1"], 0.002)).toBeCloseTo(0.265, 10);
   });
 
+  it("answers 0 at the line itself with no sample near it, and keeps the two-sample rule just after it", () => {
+    const slice = createTrafficArrivalState();
+
+    // The class has driven only mid-lap: nothing within the span of the line.
+    learn(slice, [[0.5, 66]]);
+
+    expect(referenceTimeAt(slice.curves["1"], 0)).toBe(0);
+    // A hair after the line the line is the lower sample, but no upper one is near.
+    expect(referenceTimeAt(slice.curves["1"], 0.001)).toBeNull();
+    // No curve at all is still no answer, at the line too.
+    expect(referenceTimeAt(undefined, 0)).toBeNull();
+  });
+
   it("answers null for no curve and for a position outside [0, 1)", () => {
     const slice = createTrafficArrivalState();
 
@@ -602,6 +638,33 @@ describe("curveLapEnd", () => {
     learn(slice, [[0.995, 132.5]]);
 
     expect(curveLapEnd(slice.curves["1"])).toBeCloseTo(133.125, 10);
+  });
+
+  it("extrapolates over at least half a bin width", () => {
+    expect(TRAFFIC_CURVE_LAP_END_MIN_BASELINE_PCT).toBe(0.5 / TRAFFIC_CURVE_BINS);
+  });
+
+  it("never extrapolates through two bin means almost touching across a bin boundary", () => {
+    const slice = createTrafficArrivalState();
+    // Bin 498 ends, and bin 499 starts, at 0.998: the two means 0.00002 apart.
+    const edge = 499 / TRAFFIC_CURVE_BINS;
+
+    learn(slice, [
+      [edge - 0.00001, 133.4],
+      [edge + 0.00001, 133.45],
+    ]);
+
+    // Through them the slope is 2,500 s a lap and the lap end about 183 s.
+    expect(curveLapEnd(slice.curves["1"])).toBeNull();
+    // So the class lap falls back to CarClassEstLapTime.
+    expect(resolveClassLapTime(slice, classInfo({ "1": 132.7726 }), 1)).toBe(132.7726);
+
+    // A sample in the bin before them (497) gives the slope, through the last
+    // sample: the almost-touching one between is passed over.
+    learn(slice, [[edge - 0.003, 133.0]]);
+
+    // 133.45 + (133.45 − 133.0) / 0.00301 × (1 − 0.99801).
+    expect(curveLapEnd(slice.curves["1"])).toBeCloseTo(133.45 + (0.45 / 0.00301) * (1 - (edge + 0.00001)), 6);
   });
 });
 
@@ -792,6 +855,22 @@ describe("computeTrafficArrivals", () => {
     expect(arrivals[0]).toEqual({ carIdx: 4, classId: 1, timed: false, reason: "noPosition" });
     expect(arrivals.slice(1).every((arrival) => arrival.timed)).toBe(true);
     expect(arrivals[3]).toMatchObject({ classId: 11, seconds: 20 });
+  });
+
+  it("visits every slot of the longest array: a racing-surface car whose trailing position is missing is noPosition", () => {
+    const slice = createTrafficArrivalState();
+    const full = tel([
+      { idx: 0, pct: 0.5, est: 50 },
+      { idx: 1, pct: 0.1, est: 10 },
+      { idx: 6, pct: 0.2, est: 20 },
+    ]);
+    // The position array stops at car 3; the surface still names car 6 on track.
+    const telemetry = { ...full, CarIdxLapDistPct: full.CarIdxLapDistPct?.slice(0, 4) } as TelemetryData;
+
+    const arrivals = arrivalsAt(slice, 0.5, [always("curve", 30)], telemetry, 0, null, null);
+
+    expect(arrivals.map((arrival) => arrival.carIdx)).toEqual([1, 6]);
+    expect(arrivals[1]).toEqual({ carIdx: 6, classId: 1, timed: false, reason: "noPosition" });
   });
 
   describe("decides the wrap by position, not by the sign of the difference", () => {
