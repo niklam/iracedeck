@@ -19,7 +19,10 @@
  * (2 s to under 10 s), more than ten (10 s to under 15 s), clear (15 s or
  * more, or no car) — and never tell a stopped driver to hold or go. Only the
  * close band speaks a number; the bands are fixed because the words name
- * them.
+ * them. A group of cars coming is one line, "A group of cars coming. Join
+ * carefully." (`pack`, amended 2026-11-18), said once in place of the first
+ * car's band; the detector says nothing more while the group goes by, then
+ * the next car's band once.
  *
  * **One contract per line, not one contract with a `case`.** Whether a line
  * may cut the one in flight, and how heavy it is, are contract fields, and the
@@ -53,6 +56,12 @@
  * - **Cleared** by the reassuring lines' gates ("more than ten", "Clear to
  *   rejoin"), when they take the bus: the approach is over, so the next car
  *   within ten seconds is introduced again.
+ * - **Cleared** by the pack line's gate, when it takes the bus: the group
+ *   replaces the lone car's approach, and it names no seconds a count could
+ *   update, so whatever car comes after it is introduced with a first call.
+ *   The detector follows a pack with a first call anyway (a count needs a
+ *   `near` call before it); clearing keeps an earlier car's introduction from
+ *   outliving the group, so no count can ever follow the group as an update.
  * - **Cleared** when the detector starts a new approach (a `near` event with
  *   `first: true`), unless that very event is the one whose first call
  *   already took the bus — the engine can admit it synchronously before this
@@ -73,7 +82,7 @@
  * resolved to the `traffic/rejoin-mid-<N>` pool, whose takes are the voice's
  * different wordings of the same figure. The fixed lines are pools of four.
  *
- * **One family.** All seven share `family: "traffic"` (spec decision 6): a
+ * **One family.** All eight share `family: "traffic"` (spec decision 6): a
  * fresh line replaces a stale one in flight wholesale, whatever the weights —
  * a closer count arriving while the previous one still plays cuts it.
  *
@@ -85,8 +94,9 @@
  * share one `supersedeGroup`, so a newer verdict removes a waiting older one
  * instead of letting it play after it. And `maxQueueWaitMs` is per line
  * (`LineSpec.maxQueueWaitMs`): the lines whose words decay while they wait —
- * the close calls, whose seconds count down, and the pit-exit traffic warning
- * — take {@link TRAFFIC_MAX_QUEUE_WAIT_MS}, since "about five seconds" heard
+ * the close calls, whose seconds count down, the pack line, about cars going
+ * by within seconds, and the pit-exit traffic warning — take
+ * {@link TRAFFIC_MAX_QUEUE_WAIT_MS}, since "about five seconds" heard
  * four seconds late describes a car that has already passed; the reassuring
  * lines — "more than ten", "Clear to rejoin" and the pit-exit clear — take the
  * engine default, since what would make one false is a closer band or a
@@ -97,7 +107,8 @@
  * iRacing always fills `CarClassEstLapTime` and the arrays.
  *
  * **Weights (spec decision 6, amended 2026-11-17).** The warnings — right
- * behind, both `near` calls and the pit-exit traffic warning — fire at
+ * behind, both `near` calls, the pack line and the pit-exit traffic warning —
+ * fire at
  * {@link TRAFFIC_WARNING_WEIGHT}, 85, strictly between `WEIGHT.SAFETY` and
  * `WEIGHT.CRITICAL`, with `interrupt`: a car arriving within seconds cuts
  * routine chatter and a caution or flag line mid-sentence, and a cut caution
@@ -147,8 +158,8 @@ import type { IScenarioEngine } from "../../interpreter.js";
 export const TRAFFIC_GROUP = "traffic";
 
 /**
- * The weight of the traffic warnings — right behind, both `near` calls and the
- * pit-exit traffic warning — strictly between `WEIGHT.SAFETY` (70) and
+ * The weight of the traffic warnings — right behind, both `near` calls, the
+ * pack line and the pit-exit traffic warning — strictly between `WEIGHT.SAFETY` (70) and
  * `WEIGHT.CRITICAL` (100), with `interrupt` (spec decision 6, amended
  * 2026-11-17). A car arriving within seconds at a stopped car, or at the
  * merge beside the player, outranks a caution or flag line at `SAFETY`, which
@@ -162,8 +173,9 @@ export const TRAFFIC_WARNING_WEIGHT = 85;
 /**
  * How long a traffic line whose words decay while it waits may wait for the
  * bus before it is dropped: the close calls (right behind, and both `near`
- * calls), whose seconds count down, and the pit-exit traffic warning, about a
- * car reaching the merge within seconds of the player. Short, because heard
+ * calls), whose seconds count down, the pack line, about cars going by within
+ * seconds, and the pit-exit traffic warning, about a car reaching the merge
+ * within seconds of the player. Short, because heard
  * late each describes a car that has already gone by; the detector speaks
  * again on the next closer band or count, so a dropped one is replaced. The
  * reassuring lines wait the engine default instead (module header).
@@ -184,8 +196,9 @@ export const TRAFFIC_PIT_EXIT_SUPERSEDE_GROUP = "traffic-pit-exit";
 export const REJOIN_SECONDS_VAR = "traffic.rejoinSeconds";
 
 /**
- * The seven lines, rejoin first in band order, then the pit exit. Each key is
- * the contract id's suffix, `pit-crew.traffic-<key>`.
+ * The eight lines, rejoin first in band order and the group call after them,
+ * then the pit exit. Each key is the contract id's suffix,
+ * `pit-crew.traffic-<key>`.
  */
 export type TrafficLine =
   | "rejoin-right-behind"
@@ -193,6 +206,7 @@ export type TrafficLine =
   | "rejoin-near-update"
   | "rejoin-over-ten"
   | "rejoin-clear"
+  | "rejoin-pack"
   | "pit-exit-traffic"
   | "pit-exit-clear";
 
@@ -247,7 +261,7 @@ function clearIntroduction(): void {
   introducedBy = null;
 }
 
-/** The reassuring lines' gate: the approach is over. Always admits. */
+/** The reassuring lines' gate, and the pack line's: the approach is over. Always admits. */
 function endApproach(): boolean {
   clearIntroduction();
 
@@ -398,6 +412,20 @@ const REJOIN_LINES: Record<RejoinLine, RejoinLineSpec> = {
       admit: endApproach,
     },
   },
+  "rejoin-pack": {
+    weight: TRAFFIC_WARNING_WEIGHT,
+    interrupt: true,
+    // Short: the group is going by within seconds, and heard late it is past.
+    maxQueueWaitMs: TRAFFIC_MAX_QUEUE_WAIT_MS,
+    description:
+      "You are stopped or crawling on track and a group of cars is coming, the nearest within ten seconds: said once for the group in place of the per-car calls.",
+    matches: (d) => d.verdict === "pack",
+    speakGate: {
+      description:
+        "Always spoken once it reaches the radio; speaking it ends a single car's approach, so the next car within ten seconds after the group gets a first call.",
+      admit: endApproach,
+    },
+  },
 };
 
 const PIT_EXIT_LINES: Record<PitExitLine, LineSpec & { verdict: TrafficPitExitVerdict }> = {
@@ -498,6 +526,7 @@ export function registerTrafficVocabulary(
       near: "The nearest car will reach you in two to nine seconds.",
       overTen: "The nearest car is ten to fifteen seconds away.",
       clear: "No car is within fifteen seconds of you.",
+      pack: "A group of cars is coming: the nearest under ten seconds away and more close behind it.",
     },
     "The band the nearest car's predicted arrival falls in while you are stopped on track, read from the event that fired the line.",
   );
@@ -585,6 +614,7 @@ export const TRAFFIC_CONTRACTS: readonly ScenarioContract[] = [
   rejoinContract("rejoin-near-update"),
   rejoinContract("rejoin-over-ten"),
   rejoinContract("rejoin-clear"),
+  rejoinContract("rejoin-pack"),
   pitExitContract("pit-exit-traffic"),
   pitExitContract("pit-exit-clear"),
 ];
@@ -599,6 +629,7 @@ export const SCENARIO_ID_TO_TRAFFIC_ID: Record<string, TrafficCalloutId> = {
   "pit-crew.traffic-rejoin-near-update": "rejoin",
   "pit-crew.traffic-rejoin-over-ten": "rejoin",
   "pit-crew.traffic-rejoin-clear": "rejoin",
+  "pit-crew.traffic-rejoin-pack": "rejoin",
   "pit-crew.traffic-pit-exit-traffic": "pit-exit",
   "pit-crew.traffic-pit-exit-clear": "pit-exit",
 };
@@ -620,6 +651,7 @@ export const TRAFFIC_CLIP_SOURCES: readonly { group: typeof TRAFFIC_GROUP; base:
   { group: TRAFFIC_GROUP, base: "rejoin-right-behind" },
   { group: TRAFFIC_GROUP, base: "rejoin-over-ten" },
   { group: TRAFFIC_GROUP, base: "rejoin-clear" },
+  { group: TRAFFIC_GROUP, base: "rejoin-pack" },
   { group: TRAFFIC_GROUP, base: "pit-exit-traffic" },
   { group: TRAFFIC_GROUP, base: "pit-exit-clear" },
 ];

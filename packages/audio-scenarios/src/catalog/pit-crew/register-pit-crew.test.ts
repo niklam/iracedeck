@@ -980,7 +980,7 @@ describe("radio frame comes from the engine, not the catalog (issue #1064)", () 
         "pit-crew.spotter-call",
         "pit-crew.spotter-info",
         // Rejoin traffic lines: repeated while the car stays stopped (#1113).
-        ...["right-behind", "near-first", "near-update", "over-ten", "clear"].map(
+        ...["right-behind", "near-first", "near-update", "over-ten", "clear", "pack"].map(
           (line) => `pit-crew.traffic-rejoin-${line}`,
         ),
       ].sort(),
@@ -1889,7 +1889,7 @@ describe("opponent-pit family registration (issue #622)", () => {
 
 // Issue #1113: the approaching-traffic family is registered by
 // `registerPitCrew` and wrapped by the master gate and two opt-ins — `rejoin`
-// over the five rejoin lines, `pit-exit` over the two pit-exit ones — and
+// over the six rejoin lines, `pit-exit` over the two pit-exit ones — and
 // spoken through the bundled script. The line mapping, the vocabulary and the
 // scheduling are covered in `traffic.test.ts`; these confirm the wiring.
 describe("traffic family registration (issue #1113)", () => {

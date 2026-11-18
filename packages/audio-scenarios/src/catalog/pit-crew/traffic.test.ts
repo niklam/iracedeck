@@ -1,9 +1,9 @@
 /**
  * Approaching-traffic tests (issue #1113, amended 2026-11-11).
  *
- * Seven contracts, one per line: five off `traffic.rejoin` (right behind, the
- * close band's first call and its count, more than ten, clear) and two off
- * `traffic.pitExit`. The close band's lines are composed: an intro or update
+ * Eight contracts, one per line: six off `traffic.rejoin` (right behind, the
+ * close band's first call and its count, more than ten, clear, and the group
+ * call of amendment 2026-11-18) and two off `traffic.pitExit`. The close band's lines are composed: an intro or update
  * intro, the middle naming the seconds through the `traffic.rejoinSeconds`
  * var, and (on the first call) an outro. The fire-through cases run the
  * family through the real engine against a script fixture shaped like the
@@ -60,15 +60,17 @@ const REJOIN_IDS = [
   "pit-crew.traffic-rejoin-near-update",
   "pit-crew.traffic-rejoin-over-ten",
   "pit-crew.traffic-rejoin-clear",
+  "pit-crew.traffic-rejoin-pack",
 ] as const;
 const PIT_EXIT_IDS = ["pit-crew.traffic-pit-exit-traffic", "pit-crew.traffic-pit-exit-clear"] as const;
 const PIT_EXIT_VERDICTS: readonly TrafficPitExitVerdict[] = ["traffic", "clear"];
 
-/** The lines whose words decay while they wait: the close calls and the pit-exit traffic warning. */
+/** The lines whose words decay while they wait: the close calls, the pack line and the pit-exit traffic warning. */
 const DECAYING_IDS = [
   "pit-crew.traffic-rejoin-right-behind",
   "pit-crew.traffic-rejoin-near-first",
   "pit-crew.traffic-rejoin-near-update",
+  "pit-crew.traffic-rejoin-pack",
   "pit-crew.traffic-pit-exit-traffic",
 ] as const;
 
@@ -89,6 +91,7 @@ const REJOIN_PAYLOADS: Record<(typeof REJOIN_IDS)[number], TrafficRejoin> = {
   "pit-crew.traffic-rejoin-near-update": { verdict: "near", seconds: 5, first: false },
   "pit-crew.traffic-rejoin-over-ten": { verdict: "overTen" },
   "pit-crew.traffic-rejoin-clear": { verdict: "clear" },
+  "pit-crew.traffic-rejoin-pack": { verdict: "pack" },
 };
 
 const mockLogger = {
@@ -310,6 +313,7 @@ const SCRIPT: CalloutScript = {
     },
     "pit-crew.traffic-rejoin-over-ten": { ...ENTRY, sequence: ["pool:traffic/rejoin-over-ten"] },
     "pit-crew.traffic-rejoin-clear": { ...ENTRY, sequence: ["pool:traffic/rejoin-clear"] },
+    "pit-crew.traffic-rejoin-pack": { ...ENTRY, sequence: ["pool:traffic/rejoin-pack"] },
     "pit-crew.traffic-pit-exit-traffic": { ...ENTRY, sequence: ["pool:traffic/pit-exit-traffic"] },
     "pit-crew.traffic-pit-exit-clear": { ...ENTRY, sequence: ["pool:traffic/pit-exit-clear"] },
     [CHATTER_ID]: { ...ENTRY, sequence: ["pool:test/chatter"] },
@@ -382,6 +386,7 @@ const LINE_CLIP: Record<string, string> = {
   "pit-crew.traffic-rejoin-near-update": clip("rejoin-update"),
   "pit-crew.traffic-rejoin-over-ten": clip("rejoin-over-ten"),
   "pit-crew.traffic-rejoin-clear": clip("rejoin-clear"),
+  "pit-crew.traffic-rejoin-pack": clip("rejoin-pack"),
   "pit-crew.traffic-pit-exit-traffic": clip("pit-exit-traffic"),
   "pit-crew.traffic-pit-exit-clear": clip("pit-exit-clear"),
 };
@@ -464,13 +469,14 @@ describe("TRAFFIC_CONTRACTS", () => {
     for (const id of REASSURING_IDS) expect(contract(id).weight, id).toBe(WEIGHT.SAFETY);
   });
 
-  it("only the first call and the reassuring rejoin lines carry a speak-time gate, the marking", () => {
+  it("only the first call, the reassuring rejoin lines and the pack line carry a speak-time gate, the marking", () => {
     const gated = TRAFFIC_CONTRACTS.filter((c) => c.speakGate !== undefined).map((c) => c.id);
 
     expect(gated).toEqual([
       "pit-crew.traffic-rejoin-near-first",
       "pit-crew.traffic-rejoin-over-ten",
       "pit-crew.traffic-rejoin-clear",
+      "pit-crew.traffic-rejoin-pack",
     ]);
 
     for (const id of gated) {
@@ -491,13 +497,14 @@ describe("TRAFFIC_CONTRACTS", () => {
     expect(TRAFFIC_MAX_QUEUE_WAIT_MS).toBeLessThan(DEFAULT_MAX_QUEUE_WAIT_MS);
   });
 
-  it("the close calls and both pit-exit lines interrupt; more than ten and clear do not", () => {
+  it("the close calls, the pack line and both pit-exit lines interrupt; more than ten and clear do not", () => {
     const interrupting = TRAFFIC_CONTRACTS.filter((c) => c.interrupt === true).map((c) => c.id);
 
     expect(interrupting).toEqual([
       "pit-crew.traffic-rejoin-right-behind",
       "pit-crew.traffic-rejoin-near-first",
       "pit-crew.traffic-rejoin-near-update",
+      "pit-crew.traffic-rejoin-pack",
       "pit-crew.traffic-pit-exit-traffic",
       "pit-crew.traffic-pit-exit-clear",
     ]);
@@ -697,7 +704,7 @@ describe("registerTrafficVocabulary", () => {
     const pitExit = cases.get("traffic.pitExitVerdict")!;
     const payloads = Object.values(REJOIN_PAYLOADS);
 
-    expect(Object.keys(band.keys).sort()).toEqual(["clear", "near", "overTen", "rightBehind"]);
+    expect(Object.keys(band.keys).sort()).toEqual(["clear", "near", "overTen", "pack", "rightBehind"]);
     expect(Object.keys(pitExit.keys).sort()).toEqual([...PIT_EXIT_VERDICTS].sort());
 
     for (const data of payloads) expect(band.resolve(ctxOf(rejoinEvent(data)))).toBe(data.verdict);
@@ -1175,6 +1182,59 @@ describe("a count is an update only once the first call about the car was heard 
     expect(readTrafficDebugState().introduced).toBe(true);
   });
 
+  describe("the pack line (amended 2026-11-18)", () => {
+    it("ends the approach once heard: a count after it names no car the driver was told the seconds of", () => {
+      introduce();
+      bus.publishEvent("traffic.rejoin", { verdict: "pack" });
+      flush(audio);
+
+      expect(voicePaths()).toEqual([clip("rejoin-pack")]);
+      expect(readTrafficDebugState().introduced).toBe(false);
+
+      audio._reset();
+      bus.publishEvent("traffic.rejoin", near(2, false));
+      flush(audio);
+
+      expect(voicePaths()).toEqual(firstCall(2));
+    });
+
+    it("leaves a lone car after the group its first call", () => {
+      bus.publishEvent("traffic.rejoin", { verdict: "pack" });
+      flush(audio);
+      audio._reset();
+      bus.publishEvent("traffic.rejoin", near(9, true));
+      flush(audio);
+      bus.publishEvent("traffic.rejoin", near(2, false));
+      flush(audio);
+
+      expect(voicePaths()).toEqual([...firstCall(9), ...update(2)]);
+    });
+
+    it("ends nothing when it never took the bus", () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(0);
+      introduce();
+      bus.publishEvent("pitStall.departed", {});
+      bus.publishEvent("traffic.rejoin", { verdict: "pack" });
+      vi.setSystemTime(TRAFFIC_MAX_QUEUE_WAIT_MS + 1);
+      flush(audio);
+
+      expect(voicePaths()).toEqual([CRITICAL_CLIP]);
+      expect(readTrafficDebugState().introduced).toBe(true);
+    });
+
+    it("cuts a first call still playing, as a newer line of the family", () => {
+      bus.publishEvent("traffic.rejoin", near(9, true));
+      bus.publishEvent("traffic.rejoin", { verdict: "pack" });
+
+      expect(audio._stopped).toContain(AudioChannel.Voice);
+
+      flush(audio);
+
+      expect(voicePaths()).toEqual([clip("rejoin-intro"), clip("rejoin-pack")]);
+    });
+  });
+
   it("right behind needs no introduction and leaves the introduction alone", () => {
     bus.publishEvent("traffic.rejoin", { verdict: "rightBehind" });
     flush(audio);
@@ -1294,6 +1354,7 @@ describe("family wiring", () => {
       "traffic/rejoin-right-behind",
       "traffic/rejoin-over-ten",
       "traffic/rejoin-clear",
+      "traffic/rejoin-pack",
       "traffic/pit-exit-traffic",
       "traffic/pit-exit-clear",
     ]);
