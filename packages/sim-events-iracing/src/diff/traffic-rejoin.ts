@@ -25,8 +25,12 @@
  * {@link TRAFFIC_REJOIN_GATE_GRACE_MS}: a tick or two the sim did not send or
  * misread (a `Speed` dropout, a surface flicker at the edge of the run-off) is
  * not the end of the stop, and ending on it would start a new episode after the
- * entry dwell and repeat the entry line about the same cars. While a gate
- * fails, nothing is evaluated or said.
+ * entry dwell and repeat the entry line about the same cars. A failure that
+ * outlasted the grace ends the episode whether the next tick fails or not: the
+ * first tick with every gate holding again after the grace, with no tick in
+ * between (the sim sent none), ends it as a failing tick at the grace limit
+ * would have, and starts a fresh entry dwell. While a gate fails, nothing is
+ * evaluated or said.
  *
  * **The band.** On entry and then every {@link TRAFFIC_REJOIN_EVAL_INTERVAL_MS},
  * every car on the racing surface is timed to the player's lap position P
@@ -371,8 +375,18 @@ export function diffTrafficRejoin(
   }
 
   if (episode.gateFailedSince !== null) {
-    logger.debug(`Rejoin: gates hold again after ${elapsed(now, episode.gateFailedSince)} ms, episode kept`);
-    episode.gateFailedSince = null;
+    const failedFor = elapsed(now, episode.gateFailedSince);
+
+    if (failedFor < TRAFFIC_REJOIN_GATE_GRACE_MS) {
+      logger.debug(`Rejoin: gates hold again after ${failedFor} ms, episode kept`);
+      episode.gateFailedSince = null;
+    } else {
+      // The failure outlasted the grace with no tick in between to end it (the
+      // sim sent nothing): it ends here, as a failing tick at the grace limit
+      // would have, and this tick starts a fresh entry dwell below.
+      logger.debug(`Rejoin: episode ended (gate failed for ${failedFor} ms)`);
+      Object.assign(episode, createTrafficRejoinState());
+    }
   }
 
   // The gate checked both.

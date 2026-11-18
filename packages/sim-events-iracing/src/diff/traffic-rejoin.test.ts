@@ -354,6 +354,47 @@ describe("diffTrafficRejoin", () => {
       expect(h.events).toEqual([OVER_TEN, OVER_TEN]);
     });
 
+    it("ends it when the gates hold again only after the grace, with no tick in between, and a fresh dwell starts there", () => {
+      const h = harness();
+      const cars = [behind(5, 12.5)];
+
+      h.stop(tel({ cars }));
+      h.after(100, tel({ cars, Speed: undefined }));
+      // The sim sent nothing for 1.1 s; the next tick reads every gate holding.
+      h.after(TRAFFIC_REJOIN_GATE_GRACE_MS + 100, tel({ cars }));
+
+      expect(h.episode.active).toBe(false);
+      expect(h.events).toEqual([OVER_TEN]);
+      expect(h.debug).toHaveBeenCalledWith(
+        `Rejoin: episode ended (gate failed for ${TRAFFIC_REJOIN_GATE_GRACE_MS + 100} ms)`,
+      );
+
+      // The recovery tick began the entry dwell: a whole dwell after it, a new episode.
+      h.after(TRAFFIC_REJOIN_ENTRY_DWELL_MS - 1, tel({ cars }));
+      expect(h.events).toEqual([OVER_TEN]);
+
+      h.after(1, tel({ cars }));
+      expect(h.events).toEqual([OVER_TEN, OVER_TEN]);
+      expect(h.episode.active).toBe(true);
+    });
+
+    it("keeps it when the gates hold again just inside the grace, with no tick in between", () => {
+      const h = harness();
+      const cars = [behind(5, 12.5)];
+
+      h.stop(tel({ cars }));
+      h.after(100, tel({ cars, Speed: undefined }));
+      h.after(TRAFFIC_REJOIN_GATE_GRACE_MS - 1, tel({ cars }));
+
+      expect(h.episode.active).toBe(true);
+      expect(h.debug).toHaveBeenCalledWith(
+        `Rejoin: gates hold again after ${TRAFFIC_REJOIN_GATE_GRACE_MS - 1} ms, episode kept`,
+      );
+
+      h.run(5_000, tel({ cars }));
+      expect(h.events).toEqual([OVER_TEN]);
+    });
+
     it("counts the grace from the first failing tick, whichever gate fails after it", () => {
       const h = harness();
 
