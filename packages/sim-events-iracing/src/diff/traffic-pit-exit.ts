@@ -29,7 +29,12 @@
  * **The landmarks.** It needs both `pitRoadEnd` and `blendEnd` from #1112's
  * learner; with either unlearned it stays silent and logs once per episode at
  * debug. Never a position from a default pit-lane fraction (#1112's no-guess
- * rule).
+ * rule). Nor from a landmark kept from before a track rebuild (`source:
+ * "previous"`, `resolvePublishedLandmark`): it was learned on the old
+ * geometry, so neither {@link TRAFFIC_PIT_EXIT_LANDMARK_SLACK_M} nor the ETA's
+ * precision holds on it. Either landmark `previous` is treated as unlearned:
+ * no verdict, the flip count started again, one debug line per episode, until
+ * the learner has republished both on the current geometry.
  *
  * **The player's arrival at `blendEnd` (ETA),** with `T(x)` the player's
  * class's reference time at `x` — a landmark's own `estTimeByClass` for that
@@ -108,8 +113,8 @@
  * `blendEnd` and the flip holds for {@link TRAFFIC_PIT_EXIT_FLIP_CONFIRM_EVALUATIONS}
  * evaluations in a row: both lines cut in, so a car wobbling across an edge
  * of the window would otherwise have "traffic" and "clear" cut each other in
- * turn. An evaluation with no verdict (no landmarks, no ETA, no per-car
- * arrays) breaks the row, so the count starts again after it; a tick without
+ * turn. An evaluation with no verdict (no landmarks, a landmark of a rebuilt
+ * track's old geometry, no ETA, no per-car arrays) breaks the row, so the count starts again after it; a tick without
  * the player's position makes no evaluation and leaves the row as it was. The
  * lines speak no number; `seconds` (the nearest timed car's arrival relative
  * to the player's, to a tenth, negative before) is for logs and the harness.
@@ -578,6 +583,21 @@ function evaluate(
       episode.landmarksMissingLogged = true;
       logger.debug(
         `PitExit: silent, landmarks not learned (pitRoadEnd ${pitRoadEnd ? "learned" : "missing"}, blendEnd ${blendEnd ? "learned" : "missing"})`,
+      );
+    }
+
+    return;
+  }
+
+  // A landmark kept from before a track rebuild was learned on the old
+  // geometry: neither the slack nor the ETA holds on it (module header).
+  if (pitRoadEnd.source === "previous" || blendEnd.source === "previous") {
+    noVerdict(episode);
+
+    if (!episode.landmarksRelearningLogged) {
+      episode.landmarksRelearningLogged = true;
+      logger.debug(
+        `PitExit: silent, landmarks relearning after a track rebuild (pitRoadEnd ${pitRoadEnd.source}, blendEnd ${blendEnd.source})`,
       );
     }
 

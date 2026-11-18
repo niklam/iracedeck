@@ -802,6 +802,8 @@ export type TrafficPitExitState = {
   flipEvaluations: number;
   /** The once-per-episode debug line for unlearned landmarks has been written. */
   landmarksMissingLogged: boolean;
+  /** The once-per-episode debug line for landmarks still relearning after a track rebuild (`source: "previous"`) has been written. */
+  landmarksRelearningLogged: boolean;
   /** The once-per-episode debug line for an ETA that cannot be computed has been written. */
   noEtaLogged: boolean;
   /** The once-per-episode debug line for an evaluation without the per-car arrays has been written. */
@@ -819,6 +821,7 @@ export function createTrafficPitExitState(): TrafficPitExitState {
     flipVerdict: null,
     flipEvaluations: 0,
     landmarksMissingLogged: false,
+    landmarksRelearningLogged: false,
     noEtaLogged: false,
     arraysMissingLogged: false,
   };

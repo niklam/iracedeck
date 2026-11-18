@@ -423,6 +423,53 @@ describe("diffTrafficPitExit", () => {
       },
     );
 
+    it.each([
+      [
+        "pitRoadEnd",
+        { ...LANDMARKS, pitRoadEnd: { ...LANDMARKS.pitRoadEnd!, source: "previous" } },
+        "previous",
+        "current",
+      ],
+      ["blendEnd", { ...LANDMARKS, blendEnd: { ...LANDMARKS.blendEnd!, source: "previous" } }, "current", "previous"],
+    ] satisfies Array<[string, TrafficPitExitLandmarks, string, string]>)(
+      "stay silent with a %s kept from before a track rebuild, logging once per episode",
+      (_, landmarks, pitRoadEnd, blendEnd) => {
+        const h = harness({ landmarks });
+
+        h.depart(tel({ cars: [arriving(5, 1)] }));
+        h.after(TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS, tel({ cars: [arriving(5, 1)] }));
+        h.after(TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS, tel({ cars: [arriving(5, 1)] }));
+
+        expect(h.events).toEqual([]);
+        expect(lines(h.debug).filter((line) => line.includes("landmarks"))).toEqual([
+          `PitExit: silent, landmarks relearning after a track rebuild (pitRoadEnd ${pitRoadEnd}, blendEnd ${blendEnd})`,
+        ]);
+      },
+    );
+
+    it("starts a held flip's count again after an evaluation on a landmark of the old geometry", () => {
+      const h = harness();
+      const relearning: TrafficPitExitLandmarks = {
+        ...LANDMARKS,
+        blendEnd: { ...LANDMARKS.blendEnd!, source: "previous" },
+      };
+
+      h.depart(tel({ cars: [arriving(5, 1)] }));
+      // The flip to clear, first of two.
+      h.after(TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS, tel({ cars: [arriving(5, 10)] }));
+      h.readLandmarks.mockReturnValueOnce(relearning);
+      h.after(TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS, tel({ cars: [arriving(5, 10)] }));
+      // Back on current landmarks: first of two again, not spoken.
+      h.after(TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS, tel({ cars: [arriving(5, 10)] }));
+      expect(h.events).toEqual([{ verdict: "traffic", seconds: 1 }]);
+
+      h.after(TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS, tel({ cars: [arriving(5, 10)] }));
+      expect(h.events).toEqual([
+        { verdict: "traffic", seconds: 1 },
+        { verdict: "clear", seconds: 10 },
+      ]);
+    });
+
     it("retries a landmark read that threw on the next tick, so the first call is not lost", () => {
       const h = harness();
 
