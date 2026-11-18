@@ -81,11 +81,19 @@
  * a hair under a whole lap is a player just past the line, not a lap short of
  * it. Further beyond it with the surface not yet flipped (a merge lane the
  * player holds past a landmark most cars taught earlier), the episode's own
- * progress says so: the forward distance from its first readable position
- * has reached the forward distance from there to `blendEnd`. Of the lap
- * beyond `blendEnd` the nearer half counts as past it and the farther half as
- * a car rolled back behind where the episode started, still short of it, so
- * a stall more than half a lap before `blendEnd` still reads as short of it.
+ * progress says so: the forward distance from where it started has reached
+ * the forward distance from there to `blendEnd`. Of the lap beyond `blendEnd`
+ * the nearer half counts as past it and the farther half as a car rolled back
+ * behind where the episode started, still short of it, so a stall more than
+ * half a lap before `blendEnd` still reads as short of it. The start is the
+ * departure tick's position, the stall, which is never past `blendEnd`. When
+ * that tick sent none, a later position could be past it already and would
+ * read as no progress, a lap short; so the start is then the player's
+ * position at the first evaluation that reads the landmarks, taken only in
+ * the half lap before `blendEnd` — in the half lap after it the player is
+ * already past it, by the same nearer-half rule, and the episode ends
+ * silently. The cost: a stall more than half a lap before `blendEnd` whose
+ * departure tick sent no position gets no call for that exit.
  * A `pitRoadEnd` learned within that slack after `blendEnd` (a pit lane
  * ending straight onto the track makes both on one tick) is the same point,
  * with no time between them. So no ETA ever carries a lap the player is not
@@ -353,6 +361,12 @@ export function diffTrafficPitExit(
     if (episode.active) logger.debug("PitExit: episode ended (left the stall again)");
 
     Object.assign(episode, createTrafficPitExitState(), { active: true, lastOnPitRoad: true });
+
+    // Where the episode's forward progress is measured from (module header):
+    // the stall the player just left, never past `blendEnd`. Without it the
+    // first evaluation that reads the landmarks takes the start.
+    if (position.kind === "onLap") episode.startPct = position.pct;
+
     logger.debug(
       `PitExit: episode started (left the stall at pct=${isFiniteNumber(rawPlayerPct) ? rawPlayerPct.toFixed(4) : "?"})`,
     );
@@ -372,10 +386,6 @@ export function diffTrafficPitExit(
     } else if (position.kind === "unavailable") {
       holdWithoutPosition(episode, now, logger);
     } else if (position.kind === "onLap" && !positionGapExpired(episode, now, logger)) {
-      // Where the episode's forward progress is measured from (module
-      // header): a reading, kept before the evaluation like the road bit.
-      if (episode.startPct === null) episode.startPct = position.pct;
-
       // A wall clock that stepped back evaluates now: waiting the interval out
       // from a time still ahead would stop every evaluation for as long as the step.
       if (episode.lastEvalAt !== null && episode.lastEvalAt > now) episode.lastEvalAt = null;
@@ -691,9 +701,21 @@ function evaluate(
     return;
   }
 
+  // The departure tick sent no position, so the start is taken here, where
+  // `blendEnd` is known (module header): a position in the half lap after it
+  // is the player already past it, never a start a lap short.
+  if (episode.startPct === null) {
+    if (forwardPct(playerPct, blendEnd.pct) > 0.5) {
+      end(episode, "past blendEnd, with no departure position", logger);
+
+      return;
+    }
+
+    episode.startPct = playerPct;
+  }
+
   const position = exitPosition(
-    // Recorded before every evaluation; the player's own position is no progress at all.
-    episode.startPct ?? playerPct,
+    episode.startPct,
     playerPct,
     pitRoadEnd,
     blendEnd,

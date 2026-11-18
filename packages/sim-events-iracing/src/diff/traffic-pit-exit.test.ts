@@ -840,7 +840,7 @@ describe("diffTrafficPitExit", () => {
         expect(lines(h.debug).at(-1)).toBe("PitExit: episode ended (past blendEnd)");
       });
 
-      it("is measured from the episode's first readable position when the departure tick had none", () => {
+      it("ends when the departure tick had none and the position read as the landmarks arrive is past it", () => {
         const h = harness({ landmarks: null });
 
         h.depart(tel({ CarIdxLapDistPct: undefined }));
@@ -851,6 +851,58 @@ describe("diffTrafficPitExit", () => {
 
         expect(h.events).toEqual([]);
         expect(h.episode.active).toBe(false);
+      });
+
+      describe("with no position on the departure tick", () => {
+        it("takes no start past blendEnd: no verdict a lap short when the first position read is past it", () => {
+          const h = harness();
+
+          h.depart(tel({ CarIdxLapDistPct: undefined }));
+          // The first position read is 20 m past the blend line, more than the
+          // slack: as a start it would read no progress, and the empty track
+          // would be called clear a lap out.
+          h.after(100, tel({ OnPitRoad: false, pct: 0.2 }));
+          h.after(TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS, tel({ OnPitRoad: false, pct: 0.2 }));
+
+          expect(h.events).toEqual([]);
+          expect(h.episode.active).toBe(false);
+          expect(lines(h.debug)).toContain("PitExit: episode ended (past blendEnd, with no departure position)");
+        });
+
+        it("takes no start past blendEnd when the landmarks arrive only after the first position", () => {
+          const h = harness({ landmarks: null });
+
+          h.depart(tel({ CarIdxLapDistPct: undefined }));
+          h.after(100, tel({ OnPitRoad: false, pct: 0.2 }));
+          h.readLandmarks.mockReturnValue(LANDMARKS);
+          h.after(TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS, tel({ OnPitRoad: false, pct: 0.2 }));
+
+          expect(h.events).toEqual([]);
+          expect(h.episode.active).toBe(false);
+        });
+
+        it("starts from the first position read short of blendEnd, and calls the exit from there", () => {
+          const h = harness();
+
+          h.depart(tel({ CarIdxLapDistPct: undefined }));
+          h.after(100, tel({ cars: [arriving(5, 1)] }));
+
+          expect(h.episode.startPct).toBe(STALL_PCT);
+          expect(h.events).toEqual([{ verdict: "traffic", seconds: 1 }]);
+        });
+
+        it("starts from a position read once the landmarks arrive, short of blendEnd, and runs on", () => {
+          const h = harness({ landmarks: null });
+
+          h.depart(tel({ CarIdxLapDistPct: undefined }));
+          h.after(100, tel());
+          h.readLandmarks.mockReturnValue(LANDMARKS);
+          h.after(TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS, tel({ pct: 0.1, cars: [arriving(5, 20)] }));
+
+          expect(h.episode.active).toBe(true);
+          expect(h.episode.startPct).toBe(0.1);
+          expect(h.events).toHaveLength(1);
+        });
       });
 
       it("is not a car rolled back behind where the episode started, which runs on", () => {

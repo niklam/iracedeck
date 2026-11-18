@@ -792,10 +792,13 @@ export type TrafficPitExitState = {
    */
   lastOnPitRoad: boolean | null;
   /**
-   * In an episode: the player's first readable lap position, from which its
-   * forward progress is measured, so a player further past `blendEnd` than
-   * the landmark slack, still off the racing surface, is past it rather than
-   * a lap short; `null` until a tick reads it, and with no episode.
+   * In an episode: where the player's forward progress is measured from, so
+   * a player further past `blendEnd` than the landmark slack, still off the
+   * racing surface, is past it rather than a lap short. The departure tick's
+   * lap position; when that tick sent none, the player's position at the
+   * first evaluation that reads the landmarks, taken only in the half lap
+   * before `blendEnd` (`diff/traffic-pit-exit.ts`). `null` until then, and
+   * with no episode.
    */
   startPct: number | null;
   /** When the episode last evaluated; `null` before its first evaluation. */
