@@ -370,7 +370,10 @@ export function diffTrafficRejoin(
 
     Object.assign(episode, createTrafficRejoinState(), { active: true });
     logger.debug(`Rejoin: episode started (pct=${pct.toFixed(4)}, speed=${speed.toFixed(1)} m/s)`);
-    evaluate(episode, curves, telemetry, pct, playerCarIdx, classes, trackLengthMeters, now, emit, logger);
+    evaluate(episode, curves, telemetry, pct, playerCarIdx, classes, trackLengthMeters, emit, logger);
+    // Written last (the package's step rule): an evaluation that threw is
+    // retried on the next tick rather than a second later.
+    episode.lastEvalAt = now;
 
     return;
   }
@@ -394,7 +397,9 @@ export function diffTrafficRejoin(
 
   if (episode.lastEvalAt !== null && elapsed(now, episode.lastEvalAt) < TRAFFIC_REJOIN_EVAL_INTERVAL_MS) return;
 
-  evaluate(episode, curves, telemetry, pct, playerCarIdx, classes, trackLengthMeters, now, emit, logger);
+  evaluate(episode, curves, telemetry, pct, playerCarIdx, classes, trackLengthMeters, emit, logger);
+  // Written last, as on entry: a throw is retried on the next tick.
+  episode.lastEvalAt = now;
 }
 
 /**
@@ -587,12 +592,9 @@ function evaluate(
   playerCarIdx: number,
   classes: TrafficClassInfo | null,
   trackLengthMeters: number | null,
-  now: number,
   emit: EmitFn<(typeof TRAFFIC_REJOIN_EVENTS)[number]>,
   logger: ILogger,
 ): void {
-  episode.lastEvalAt = now;
-
   const playerClass = resolveCarClassId(telemetry, classes, playerCarIdx);
   const playerEstTime = telemetry.CarIdxEstTime?.[playerCarIdx];
   const sources = [

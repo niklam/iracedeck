@@ -1073,6 +1073,39 @@ describe("diffTrafficRejoin", () => {
     });
   });
 
+  describe("an evaluation that throws", () => {
+    /** The tick's telemetry with a per-car array whose read throws: the first read of the evaluation. */
+    const throwing = (t: TrafficRejoinTelemetry): TrafficRejoinTelemetry =>
+      Object.defineProperty({ ...t }, "CarIdxEstTime", {
+        get(): never {
+          throw new Error("read failed");
+        },
+      });
+
+    it("on entry is retried on the next tick, so the entry call is not lost", () => {
+      const h = harness();
+      const t = tel({ cars: [behind(5, 4.5)] });
+
+      h.tick(t);
+      expect(() => h.after(TRAFFIC_REJOIN_ENTRY_DWELL_MS, throwing(t))).toThrow("read failed");
+      h.after(100, t);
+
+      expect(h.events).toEqual([near(4, true)]);
+    });
+
+    it("mid-episode is retried on the next tick rather than a second later", () => {
+      const h = harness();
+
+      h.stop(tel({ cars: [behind(5, 6.5)] }));
+      expect(() => h.after(TRAFFIC_REJOIN_EVAL_INTERVAL_MS, throwing(tel({ cars: [behind(5, 5.5)] })))).toThrow(
+        "read failed",
+      );
+      h.after(100, tel({ cars: [behind(5, 1.5)] }));
+
+      expect(h.events).toEqual([near(6, true), RIGHT_BEHIND]);
+    });
+  });
+
   describe("a band moving away", () => {
     it("is not re-announced while the same close car is still coming", () => {
       const h = harness();
