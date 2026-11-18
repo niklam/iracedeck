@@ -79,7 +79,14 @@
  * {@link TRAFFIC_PIT_EXIT_LANDMARK_SLACK_M} beyond it with the surface not yet
  * flipped, which is a landmark learned a few metres early: a forward distance
  * a hair under a whole lap is a player just past the line, not a lap short of
- * it. A `pitRoadEnd` learned within that slack after `blendEnd` (a pit lane
+ * it. Further beyond it with the surface not yet flipped (a merge lane the
+ * player holds past a landmark most cars taught earlier), the episode's own
+ * progress says so: the forward distance from its first readable position
+ * has reached the forward distance from there to `blendEnd`. Of the lap
+ * beyond `blendEnd` the nearer half counts as past it and the farther half as
+ * a car rolled back behind where the episode started, still short of it, so
+ * a stall more than half a lap before `blendEnd` still reads as short of it.
+ * A `pitRoadEnd` learned within that slack after `blendEnd` (a pit lane
  * ending straight onto the track makes both on one tick) is the same point,
  * with no time between them. So no ETA ever carries a lap the player is not
  * going to drive.
@@ -365,6 +372,10 @@ export function diffTrafficPitExit(
     } else if (position.kind === "unavailable") {
       holdWithoutPosition(episode, now, logger);
     } else if (position.kind === "onLap" && !positionGapExpired(episode, now, logger)) {
+      // Where the episode's forward progress is measured from (module
+      // header): a reading, kept before the evaluation like the road bit.
+      if (episode.startPct === null) episode.startPct = position.pct;
+
       // A wall clock that stepped back evaluates now: waiting the interval out
       // from a time still ahead would stop every evaluation for as long as the step.
       if (episode.lastEvalAt !== null && episode.lastEvalAt > now) episode.lastEvalAt = null;
@@ -502,8 +513,23 @@ type ExitPosition = {
   readonly pitRoadEndToBlendEnd: number;
 };
 
+/**
+ * Whether the episode's own progress has carried the player past `blendEnd`
+ * (module header): the forward distance from where it started reaches the
+ * forward distance from there to `blendEnd`. Of the lap beyond `blendEnd`,
+ * the nearer half is past it and the farther half is behind the start, a car
+ * rolled back from where the episode began, which is still short of it.
+ */
+function progressedPast(startPct: number, playerPct: number, blendEndPct: number): boolean {
+  const startToBlendEnd = forwardPct(startPct, blendEndPct);
+  const beyond = forwardPct(startPct, playerPct) - startToBlendEnd;
+
+  return beyond >= 0 && beyond < (1 - startToBlendEnd) / 2;
+}
+
 /** Where the player is against the landmarks (module header); `null` once at or past `blendEnd`. */
 function exitPosition(
+  startPct: number,
   playerPct: number,
   pitRoadEnd: PitLaneResolvedLandmark,
   blendEnd: PitLaneResolvedLandmark,
@@ -512,6 +538,8 @@ function exitPosition(
   const toBlendEnd = forwardPct(playerPct, blendEnd.pct);
 
   if (toBlendEnd === 0 || toBlendEnd > 1 - slackPct) return null;
+
+  if (progressedPast(startPct, playerPct, blendEnd.pct)) return null;
 
   const pitRoadEndToBlendEnd = forwardPct(pitRoadEnd.pct, blendEnd.pct);
 
@@ -663,7 +691,14 @@ function evaluate(
     return;
   }
 
-  const position = exitPosition(playerPct, pitRoadEnd, blendEnd, landmarkSlackPct(facts.trackLengthMeters));
+  const position = exitPosition(
+    // Recorded before every evaluation; the player's own position is no progress at all.
+    episode.startPct ?? playerPct,
+    playerPct,
+    pitRoadEnd,
+    blendEnd,
+    landmarkSlackPct(facts.trackLengthMeters),
+  );
 
   if (position === null) {
     end(episode, "past blendEnd", logger);

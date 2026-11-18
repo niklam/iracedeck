@@ -823,6 +823,49 @@ describe("diffTrafficPitExit", () => {
       expect(h.events).toEqual([{ verdict: "clear", seconds: 10 }]);
     });
 
+    describe("a player further past blendEnd than the slack, still off the racing surface", () => {
+      it("is past it by the episode's own progress: no first call a lap short on landmarks learned meanwhile", () => {
+        const h = harness({ landmarks: null });
+
+        h.depart(tel());
+        h.after(TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS, tel({ OnPitRoad: false, pct: 0.15 }));
+        // 20 m past the blend line on the 1,600 m track, in a merge lane the
+        // surface still reads as the pit approach, as the landmarks arrive.
+        // A lap short, the empty track would be called clear 460 s out.
+        h.readLandmarks.mockReturnValue(LANDMARKS);
+        h.after(TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS, tel({ OnPitRoad: false, pct: 0.2 }));
+
+        expect(h.events).toEqual([]);
+        expect(h.episode.active).toBe(false);
+        expect(lines(h.debug).at(-1)).toBe("PitExit: episode ended (past blendEnd)");
+      });
+
+      it("is measured from the episode's first readable position when the departure tick had none", () => {
+        const h = harness({ landmarks: null });
+
+        h.depart(tel({ CarIdxLapDistPct: undefined }));
+        h.after(100, tel({ pct: 0.07 }));
+        h.after(TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS, tel({ OnPitRoad: false, pct: 0.15 }));
+        h.readLandmarks.mockReturnValue(LANDMARKS);
+        h.after(TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS, tel({ OnPitRoad: false, pct: 0.2 }));
+
+        expect(h.events).toEqual([]);
+        expect(h.episode.active).toBe(false);
+      });
+
+      it("is not a car rolled back behind where the episode started, which runs on", () => {
+        const h = harness();
+
+        h.depart(tel({ cars: [arriving(5, 1)] }));
+        // 20 m back from the stall: still 0.1375 of the lap short of the blend.
+        h.after(TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS, tel({ cars: [arriving(5, 1)], pct: 0.05 }));
+
+        expect(h.episode.active).toBe(true);
+        expect(lines(h.debug).filter((line) => line.includes("ended"))).toEqual([]);
+        expect(h.episode.lastEvalAt).not.toBeNull();
+      });
+    });
+
     it("adds no lap for a pitRoadEnd learned a hair after blendEnd (a pit lane ending straight onto the track)", () => {
       // 0.16 m apart, in the wrong order: the same point, no time between them.
       const h = harness({

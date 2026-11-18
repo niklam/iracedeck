@@ -791,6 +791,13 @@ export type TrafficPitExitState = {
    * requires it), `null` with no episode.
    */
   lastOnPitRoad: boolean | null;
+  /**
+   * In an episode: the player's first readable lap position, from which its
+   * forward progress is measured, so a player further past `blendEnd` than
+   * the landmark slack, still off the racing surface, is past it rather than
+   * a lap short; `null` until a tick reads it, and with no episode.
+   */
+  startPct: number | null;
   /** When the episode last evaluated; `null` before its first evaluation. */
   lastEvalAt: number | null;
   /**
@@ -827,6 +834,7 @@ export function createTrafficPitExitState(): TrafficPitExitState {
     lastInPitStall: null,
     active: false,
     lastOnPitRoad: null,
+    startPct: null,
     lastEvalAt: null,
     positionUnavailableSince: null,
     spokenVerdict: null,
