@@ -5,10 +5,11 @@
  * from another family cannot hide.
  */
 import { _resetEventBus, getEventBus, initializeEventBus } from "@iracedeck/event-bus";
-import type { SDKController, SessionInfo } from "@iracedeck/iracing-sdk";
+import { type SDKController, type SessionInfo, TrkLoc } from "@iracedeck/iracing-sdk";
 import { silentLogger } from "@iracedeck/logger";
 import {
   _resetSimEventsIracing,
+  getLatestTelemetry,
   initializeSimEventsIracing,
   type SimEventsIracingOptions,
 } from "@iracedeck/sim-events-iracing";
@@ -19,7 +20,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ALL_EVENT_NAMES } from "./event-names.js";
 import { MockSDKController, type TelemetryPatch } from "./mock-sdk-controller.js";
-import type { TelemetryStep } from "./scenario-shortcuts.js";
+import {
+  AT_RACING_SPEED,
+  SCENARIO_SHORTCUTS,
+  type ScenarioShortcut,
+  type TelemetryStep,
+} from "./scenario-shortcuts.js";
 import {
   TRAFFIC_PIT_EXIT_CASES,
   TRAFFIC_PIT_EXIT_PLAYER_ETA_S,
@@ -207,5 +213,67 @@ describe("the pit-exit cases (issue #1113)", () => {
     runSequence(controller, trafficPitExitSequence(-1));
 
     expect(events).toEqual([{ event: "pitStall.departed", data: {} }]);
+  });
+});
+
+describe("the pit-exit bus-event buttons (issue #1113)", () => {
+  /**
+   * The pit-exit lines' speak-time gate, as `traffic.ts` in the catalog reads
+   * it (`stillLeavingThePits`, not exported): the translator's latest telemetry
+   * not on the racing surface. Restated here because the gate itself is built
+   * only inside `registerPitCrew`.
+   */
+  function pitExitGateAdmits(): boolean {
+    const surface = getLatestTelemetry()?.PlayerTrackSurface;
+
+    return surface !== TrkLoc.OnTrack && surface !== TrkLoc.OffTrack;
+  }
+
+  const shortcutOf = (id: string): ScenarioShortcut => {
+    const shortcut = SCENARIO_SHORTCUTS.find((s) => s.id === id);
+
+    if (shortcut === undefined) throw new Error(`no shortcut ${id}`);
+
+    return shortcut;
+  };
+
+  it.each(["traffic-pit-exit-traffic", "traffic-pit-exit-clear"])(
+    "%s puts the car on the pit lane after a button left it on track, announcing nothing, and hands it back",
+    (id) => {
+      const shortcut = shortcutOf(id);
+      const { controller, events } = startTranslator("race");
+
+      // An overtake or gap button pressed first: on track at racing speed.
+      runSequence(controller, [AT_RACING_SPEED]);
+      // Positive control: a publish now would be dropped by the gate.
+      expect(pitExitGateAdmits()).toBe(false);
+      events.length = 0;
+
+      runSequence(controller, shortcut.telemetrySequence ?? []);
+
+      expect(getLatestTelemetry()).toMatchObject({
+        PlayerTrackSurface: TrkLoc.AproachingPits,
+        OnPitRoad: true,
+        IsReplayPlaying: false,
+      });
+      expect(pitExitGateAdmits()).toBe(true);
+      // Seeded, not announced: no pit entry, no limiter warning over the line.
+      expect(events).toEqual([]);
+
+      runSequence(controller, shortcut.teardownSequence ?? []);
+
+      expect(getLatestTelemetry()).toMatchObject({
+        PlayerTrackSurface: TrkLoc.OnTrack,
+        OnPitRoad: false,
+        IsReplayPlaying: false,
+      });
+      expect(events).toEqual([]);
+    },
+  );
+
+  it("listens past the traffic lines' queue wait before handing the car back", () => {
+    for (const id of ["traffic-pit-exit-traffic", "traffic-pit-exit-clear"]) {
+      expect(shortcutOf(id).teardownSequence?.[0]).toEqual({ patch: {}, holdMs: 4000 });
+    }
   });
 });

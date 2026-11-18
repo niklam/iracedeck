@@ -1032,6 +1032,66 @@ const AUTO_FUEL_PRESS_LISTEN_MS = 5000;
 const AUTO_FUEL_SEED_MS = 200;
 
 /**
+ * The car leaving the pits (issue #1113): on the pit lane (`AproachingPits`)
+ * and on pit road, which the pit-exit lines' speak-time gate reads. Both lines
+ * are dropped once the live telemetry has the player back on the racing
+ * surface, so a pit-exit button pressed after one that left the car on track
+ * (an overtake or gap button, a translator run's teardown) published its event
+ * and played nothing. Put in place inside a replay-mode bracket, so the
+ * translator seeds the pit entry rather than announcing it (a limiter warning
+ * or an entry readback over the line under audition), then a seeding tick, so
+ * the translator's latest telemetry, which the gate reads, is the bracket's.
+ *
+ * @internal Exported for testing
+ */
+export const LEAVING_THE_PITS: readonly TelemetryStep[] = [
+  {
+    patch: {
+      IsReplayPlaying: true,
+      IsOnTrack: true,
+      OnPitRoad: true,
+      PlayerCarInPitStall: false,
+      PlayerTrackSurface: TrkLoc.AproachingPits,
+      // Pulling out of the box, under every preset's pit speed limit: a car
+      // left at an on-track button's racing speed would be speeding.
+      Speed: 5,
+    },
+    holdMs: AUTO_FUEL_SEED_MS,
+    tick: true,
+  },
+  { patch: { IsReplayPlaying: false }, holdMs: REPLAY_EXIT_SETTLE_MS, tick: true },
+  SEEDED_TICK,
+];
+
+/**
+ * How long a pit-exit button listens before handing the car back to the
+ * circuit: past the traffic lines' 3 s queue wait (`TRAFFIC_MAX_QUEUE_WAIT_MS`
+ * in the traffic catalog), so the speak gate has admitted or dropped the line
+ * by then, and a line it admitted plays on to its end whatever the surface
+ * does after.
+ */
+const PIT_EXIT_LINE_LISTEN_MS = 4000;
+
+/**
+ * The pit-exit buttons' teardown (issue #1113): once the line has been
+ * admitted, the car back on the circuit and off pit road inside a replay-mode
+ * bracket, so the pit exit is seeded rather than announced and the next
+ * button starts from the presets' premise rather than on pit road, where the
+ * overtake gate would refuse it.
+ *
+ * @internal Exported for testing
+ */
+export const BACK_FROM_THE_PITS: readonly TelemetryStep[] = [
+  { patch: {}, holdMs: PIT_EXIT_LINE_LISTEN_MS },
+  {
+    patch: { IsReplayPlaying: true, OnPitRoad: false, PlayerTrackSurface: TrkLoc.OnTrack },
+    holdMs: AUTO_FUEL_SEED_MS,
+    tick: true,
+  },
+  { patch: { IsReplayPlaying: false }, holdMs: REPLAY_EXIT_SETTLE_MS, tick: true },
+];
+
+/**
  * How long the approach is held on its own before the takeover lands. The
  * capture had them one sim tick apart (30 ms); this is a little longer so a
  * couple of the mock controller's 14 ms ticks see the approach alone — the
@@ -3486,7 +3546,9 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
   // demand. Only the close band speaks a number: its two calls are composed
   // from pools (an intro or update intro, the seconds, and on the first call
   // an outro), so a repeated press picks other takes. The pit-exit lines
-  // speak no number (the payload's seconds are for logs).
+  // speak no number (the payload's seconds are for logs), and are dropped on
+  // the racing surface, so their buttons put the car on the pit lane first
+  // (`LEAVING_THE_PITS`) and hand it back after (`BACK_FROM_THE_PITS`).
   {
     id: "traffic-rejoin-right-behind",
     category: "Traffic",
@@ -3546,18 +3608,22 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
     category: "Traffic",
     label: "Pit exit traffic",
     description:
-      'Leaving the pit box, a car is predicted at the end of the exit blend 1.5 s after you — "We\'re estimating traffic at the pit exit. Watch out." or another of its four lines. Cuts any lower-weight line in flight, the exit readback and tire-wear report included.',
+      'Leaving the pit box, a car is predicted at the end of the exit blend 1.5 s after you — "We\'re estimating traffic at the pit exit. Watch out." or another of its four lines. Cuts any lower-weight line in flight, the exit readback and tire-wear report included. Puts the car on the pit lane first, since the line is dropped once you are back on the racing surface, and hands it back to the circuit about four seconds later, both seeded rather than announced.',
     event: "traffic.pitExit",
     data: { verdict: "traffic", seconds: 1.5 },
+    telemetrySequence: LEAVING_THE_PITS,
+    teardownSequence: BACK_FROM_THE_PITS,
   },
   {
     id: "traffic-pit-exit-clear",
     category: "Traffic",
     label: "Pit exit clear",
     description:
-      'Leaving the pit box, the nearest car is predicted at the end of the exit blend 7 s after you — "Looks like the pit exit will be clear." or another of its four lines. Cuts any lower-weight line in flight, the exit readback and tire-wear report included.',
+      'Leaving the pit box, the nearest car is predicted at the end of the exit blend 7 s after you — "Looks like the pit exit will be clear." or another of its four lines. Cuts any lower-weight line in flight, the exit readback and tire-wear report included. Puts the car on the pit lane first, since the line is dropped once you are back on the racing surface, and hands it back to the circuit about four seconds later, both seeded rather than announced.',
     event: "traffic.pitExit",
     data: { verdict: "clear", seconds: 7 },
+    telemetrySequence: LEAVING_THE_PITS,
+    teardownSequence: BACK_FROM_THE_PITS,
   },
   // The rejoin detector itself (issue #1113): a field of three cars in two
   // classes driven through the translator, so the verdicts, the numbers and
