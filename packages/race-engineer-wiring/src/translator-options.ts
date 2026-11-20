@@ -19,6 +19,7 @@ import {
   sanitizeOpponentFlagRangeSeconds,
   sanitizeTrafficPitExitAfterSeconds,
   sanitizeTrafficPitExitBeforeSeconds,
+  sanitizeTrafficPitExitMergeWarnSeconds,
   type SimEventsIracingSettingsOptions,
 } from "@iracedeck/sim-events-iracing";
 
@@ -76,5 +77,10 @@ export function createIracingTranslatorOptions(): Required<SimEventsIracingSetti
       sanitizeTrafficPitExitBeforeSeconds(getGlobalSettings().trafficPitExitBeforeSeconds),
     getTrafficPitExitAfterSeconds: () =>
       sanitizeTrafficPitExitAfterSeconds(getGlobalSettings().trafficPitExitAfterSeconds),
+    // The pit-exit merge warning (issue #1113, amended 2026-11-20): in the
+    // exit lane, a timed car reaching the end of the blend within this long
+    // of the player gets "Watch for cars." once. Read live at each evaluation.
+    getTrafficPitExitMergeWarnSeconds: () =>
+      sanitizeTrafficPitExitMergeWarnSeconds(getGlobalSettings().trafficPitExitMergeWarnSeconds),
   };
 }
