@@ -1,5 +1,5 @@
 /**
- * The harness's Race Engineer overrides (#1349 slice 2): exactly the three
+ * The harness's Race Engineer overrides (#1349 slice 2, #1572): exactly the four
  * snapshot stubs, each answering what its harness store holds.
  */
 import type { QualifyingInvalidationSnapshot } from "@iracedeck/audio-scenarios/pit-crew";
@@ -9,6 +9,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { setHarnessQualifyingInvalidationSnapshot } from "./qualifying-invalidation-snapshot.js";
 import { harnessRaceEngineerOverrides } from "./race-engineer-overrides.js";
 import { setHarnessRaceStartSnapshot } from "./race-start-snapshot.js";
+import { composeSectorComparison, setHarnessSectorComparison } from "./sector-comparison-snapshot.js";
 import { setHarnessSessionStartSnapshot } from "./session-start-snapshot.js";
 
 const SESSION_START: SessionStartSnapshot = {
@@ -46,12 +47,14 @@ describe("harnessRaceEngineerOverrides", () => {
     setHarnessSessionStartSnapshot(null);
     setHarnessRaceStartSnapshot(null);
     setHarnessQualifyingInvalidationSnapshot(null);
+    setHarnessSectorComparison(null);
   });
 
-  it("replaces exactly the three snapshot getters and nothing the wiring builds", () => {
+  it("replaces exactly the four snapshot getters and nothing the wiring builds", () => {
     expect(Object.keys(harnessRaceEngineerOverrides()).sort()).toEqual([
       "getQualifyingInvalidationSnapshot",
       "getRaceStartSnapshot",
+      "getSectorComparison",
       "getSessionStartSnapshot",
     ]);
   });
@@ -78,5 +81,14 @@ describe("harnessRaceEngineerOverrides", () => {
     expect(overrides.getQualifyingInvalidationSnapshot?.()).toBeNull();
     setHarnessQualifyingInvalidationSnapshot(QUALIFYING_INVALIDATION);
     expect(overrides.getQualifyingInvalidationSnapshot?.()).toBe(QUALIFYING_INVALIDATION);
+  });
+
+  it("answers the sector comparison the harness store holds", () => {
+    const overrides = harnessRaceEngineerOverrides();
+    const comparison = composeSectorComparison({ lap: 10, sectorCount: 3, player: { carIdx: 5, carNumber: "5" } });
+
+    expect(overrides.getSectorComparison?.()).toBeNull();
+    setHarnessSectorComparison(comparison);
+    expect(overrides.getSectorComparison?.()).toBe(comparison);
   });
 });

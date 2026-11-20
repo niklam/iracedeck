@@ -114,6 +114,7 @@ import {
   RACE_STATUS_CALLOUTS,
   type RegisteredCalloutFamily,
   ROLLING_START_CALLOUTS,
+  SECTOR_COMPARISON_CALLOUTS,
   SECTOR_START_CALLOUTS,
   SESSION_START_CALLOUTS,
   SPOTTER_CALLOUTS,
@@ -223,6 +224,14 @@ import { registerRadarEngine } from "./radar-engine.js";
 import { PIT_READBACK_CONTRACTS, registerReadbackVocabulary, SCENARIO_ID_TO_PIT_READBACK_ID } from "./readback.js";
 import { buildRollingStartContracts, type RollingStartFormationResolver } from "./rolling-start.js";
 import {
+  buildSectorComparison,
+  resetSectorComparison,
+  SCENARIO_ID_TO_SECTOR_COMPARISON_ID,
+  SECTOR_COMPARISON_CONTRACT_IDS,
+  type SectorComparisonResolver,
+  type SectorTargetSelectableResolver,
+} from "./sector-comparison.js";
+import {
   registerSectorStartVocabulary,
   SCENARIO_ID_TO_SECTOR_START_ID,
   SECTOR_START_CONTRACT,
@@ -318,6 +327,54 @@ export {
   type SectorStartCalloutId,
   type SectorStartData,
 } from "./sector-start.js";
+export {
+  buildSectorComparison,
+  leaderPicture,
+  neighbourPicture,
+  PACE_DRIFT_S,
+  PACE_GAP_MAX_S,
+  PACE_LEVEL_S,
+  PACE_REPEAT_LAPS,
+  paceGapOf,
+  paceTenths,
+  pictureDue,
+  readSectorComparisonDebugState,
+  resetSectorComparison,
+  samePicture,
+  SCENARIO_ID_TO_SECTOR_COMPARISON_ID,
+  SECTOR_BATTLE_GAP_S,
+  SECTOR_CALL_MIN_LAPS,
+  SECTOR_CHANCE_MIN_S,
+  SECTOR_COMPARISON_CLIP_SOURCES,
+  SECTOR_COMPARISON_CONTRACT_IDS,
+  SECTOR_COMPARISON_QUEUE_BEHIND,
+  SECTOR_COMPARISON_SCENARIO_IDS,
+  SECTOR_COMPARISON_TRIGGER_DELAY_MS,
+  SECTOR_DELTA_MIN_S,
+  SECTOR_LOSS_SHAPE_KEYS,
+  SECTOR_MOST_SHARE,
+  SECTOR_PACE_SHAPE_KEYS,
+  SECTOR_RECENT_LAPS,
+  SECTOR_REFERENCE_LAPS,
+  SECTOR_TARGETS,
+  sectorDeltas,
+  sectorReference,
+  selectSectorCall,
+  stillTheNamedCar,
+  type SectorCallMemory,
+  type SectorCarInput,
+  type SectorComparisonCalloutId,
+  type SectorComparisonDeps,
+  type SectorComparisonInput,
+  type SectorComparisonResolver,
+  type SectorLapInput,
+  type SectorLossShape,
+  type SectorPaceShape,
+  type SectorPicture,
+  type SectorTarget,
+  type SectorTargetSelectableResolver,
+  type SpokenSectorPicture,
+} from "./sector-comparison.js";
 export {
   buildCautionContracts,
   CAUTION_FOLLOW_DELAY_MS,
@@ -1020,6 +1077,14 @@ export type PitCrewDeps = {
   // radio once the repair has settled as done. Default `() => null`, the
   // translator's own answer before its first damage read.
   getDamageRepairNeeded?: () => boolean | null;
+  // The sector comparison (#1572): the track's sector count and, for the
+  // player and the class leader, the car ahead and the car behind, each car's
+  // recorded laps with their sector times, its number and its live gap.
+  // Read at the player's line by the sector-comparison family, which derives
+  // the reference and the pace gap itself. Default `() => null`, the
+  // translator's own answer outside a race, with no sectors, or before it
+  // was ever initialised.
+  getSectorComparison?: SectorComparisonResolver;
 };
 
 /**
@@ -1069,6 +1134,7 @@ const DEFAULT_DEPS: Readonly<ResolvedPitCrewDeps> = {
   getSessionClass: () => null,
   getStandingStart: () => false,
   getDamageRepairNeeded: () => null,
+  getSectorComparison: () => null,
 };
 
 /** Copy one key from `source` onto `target` when the caller defined it. */
@@ -1153,6 +1219,7 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
   const getFuelCalloutEnabled = enabledIn(FUEL_CALLOUTS);
   const getCornerNameCalloutEnabled = enabledIn(CORNER_NAME_CALLOUTS);
   const getSectorStartCalloutEnabled = enabledIn(SECTOR_START_CALLOUTS);
+  const getSectorComparisonCalloutEnabled = enabledIn(SECTOR_COMPARISON_CALLOUTS);
   const getOpponentPitCalloutEnabled = enabledIn(OPPONENT_PIT_CALLOUTS);
   const getGapCalloutEnabled = enabledIn(GAP_CALLOUTS);
   // The aggregate tail is not per-flag-gated (see its registration below).
@@ -1219,6 +1286,13 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
       bestLap: getLapTimeCalloutEnabled("best-lap") && engine.isScripted("pit-crew.lap-time-best"),
       everyLap: getLapTimeCalloutEnabled("every-lap") && engine.isScripted("pit-crew.lap-time-last"),
     });
+
+  // Which sector-comparison targets may be selected (#1572, decision 7): a
+  // target's opt-in is on AND the active voice scripts its contract, read
+  // live at each `lap.completed`, so a voice that scripts only one of the
+  // three is never starved by the other two. It adds no `PitCrewDeps` key.
+  const sectorTargetSelectable: SectorTargetSelectableResolver = (target) =>
+    getSectorComparisonCalloutEnabled(target) && engine.isScripted(SECTOR_COMPARISON_CONTRACT_IDS[target]);
 
   // The flag family, built once over its sim reads (#1378): the vocabulary and
   // the contracts share one set of gates, so the furled speak-time gates and
@@ -1772,6 +1846,37 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
           SCENARIO_ID_TO_FASTEST_LAP_ID,
           getFastestLapCalloutEnabled,
           "fastest-lap callout",
+          logger,
+        ),
+      ),
+    );
+  }
+
+  // The sector comparison (issue #1572): the `sectorComparison.*` vocabulary
+  // and its three contracts, built over one set of reads and sharing one
+  // selection per lap. Its memory (the spoken pictures, the last call's lap)
+  // is module state, cleared on a session change, since a new session's laps
+  // count from one again and its cars are other cars.
+  const sectorComparison = buildSectorComparison({
+    getSectorComparison: d.getSectorComparison,
+    getSessionClass: d.getSessionClass,
+    getUnderFullCourseCaution: d.getUnderFullCourseCaution,
+    getRaceFinishedFired: d.getRaceFinishedFired,
+    getLapCompletedSnapshot: d.getLapCompletedSnapshot,
+    isSelectable: sectorTargetSelectable,
+  });
+
+  sectorComparison.registerVocabulary(engine);
+  bus.subscribe("session.changed", () => resetSectorComparison());
+
+  for (const c of sectorComparison.contracts) {
+    engine.defineContract(
+      wrapWithMaster(
+        wrapCalloutScenario(
+          c,
+          SCENARIO_ID_TO_SECTOR_COMPARISON_ID,
+          getSectorComparisonCalloutEnabled,
+          "sector-comparison callout",
           logger,
         ),
       ),

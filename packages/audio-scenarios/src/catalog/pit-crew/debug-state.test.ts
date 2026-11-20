@@ -45,6 +45,7 @@ import {
 import * as radarModule from "./radar-engine.js";
 import { _resetRadarEngine, readRadarDebugState, setRadarEnabled, subscribeRadarVisualState } from "./radar-engine.js";
 import { buildRollingStartContracts, readRollingStartDebugState } from "./rolling-start.js";
+import { buildSectorComparison, readSectorComparisonDebugState, resetSectorComparison } from "./sector-comparison.js";
 import { _resetSpotterEngine, readSpotterDebugState } from "./spotter-engine.js";
 
 const fakeAudio = await vi.hoisted(async () => {
@@ -118,6 +119,7 @@ const FAMILY_KEYS = [
   "qualifyingInvalidation",
   "radar",
   "rollingStart",
+  "sectorComparison",
   "spotter",
 ];
 
@@ -144,6 +146,7 @@ const UNTOUCHED_FAMILIES = {
     listenerCount: 0,
   },
   rollingStart: { lastNamed: null },
+  sectorComparison: { spokenPictures: {}, lastCallLap: null, pendingSelections: 0 },
   spotter: {
     registered: false,
     state: "clear",
@@ -199,6 +202,7 @@ afterEach(() => {
   _resetGapCalloutCooldown();
   _resetLastIncidentPoints();
   _resetOpponentPitPending();
+  resetSectorComparison();
   _resetPositionReadoutCooldown();
   resetQualifyingInvalidationLatch();
   vi.useRealTimers();
@@ -687,6 +691,36 @@ describe("the family readers", () => {
     expect(readCautionDebugState()).toEqual({
       lastNamed: { episodeId: 4, followCarIdx: 12 },
       lastCatchUp: { followCarIdx: 12, at: 5000 },
+    });
+  });
+
+  it("sector comparison: the selection a lap stashed, then the picture and lap its gate claimed", () => {
+    const sectors = (times: number[]) => [1, 2, 3].map((lap) => ({ lap, sectorTimes: times, clean: true }));
+    const comparison = {
+      sectorCount: 2,
+      player: { carIdx: 0, carNumber: "1", gapSeconds: null, lapsCompleted: 3, recentLaps: sectors([30, 40]) },
+      leader: null,
+      ahead: { carIdx: 12, carNumber: "12", gapSeconds: 1, lapsCompleted: 3, recentLaps: sectors([30, 40.5]) },
+      behind: null,
+    };
+    const [, ahead] = buildSectorComparison({
+      getSectorComparison: () => comparison,
+      getSessionClass: () => classifySession("Race"),
+      getUnderFullCourseCaution: () => false,
+      getRaceFinishedFired: () => false,
+      getLapCompletedSnapshot: () => null,
+      isSelectable: () => true,
+    }).contracts;
+    const envelope = { event: "lap.completed", timestamp: 1, data: { lap: 3 } } as never;
+
+    expect(readSectorComparisonDebugState()).toEqual({ spokenPictures: {}, lastCallLap: null, pendingSelections: 0 });
+    expect(ahead.when?.where?.(envelope)).toBe(true);
+    expect(readSectorComparisonDebugState()).toEqual({ spokenPictures: {}, lastCallLap: null, pendingSelections: 1 });
+    expect(ahead.speakGate?.admit({ event: envelope, now: 0 } as unknown as ScenarioContext)).toBe(true);
+    expect(readSectorComparisonDebugState()).toMatchObject({
+      spokenPictures: { ahead: { lap: 3, picture: { carIdx: 12, gainSector: 2 } } },
+      lastCallLap: 3,
+      pendingSelections: 1,
     });
   });
 

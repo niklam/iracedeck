@@ -21,6 +21,7 @@ import {
 } from "./pit-status.js";
 import { RACE_START_SCENARIO_IDS } from "./race-start.js";
 import { ROLLING_START_SCENARIO_IDS } from "./rolling-start.js";
+import { buildSectorComparison, SECTOR_COMPARISON_SCENARIO_IDS } from "./sector-comparison.js";
 import { SESSION_START_SCENARIO_IDS } from "./session-start.js";
 import { SPOTTER_SCENARIO_IDS } from "./spotter-engine.js";
 import { START_LIGHT_SCENARIO_IDS } from "./start-lights.js";
@@ -168,5 +169,25 @@ describe("the lap-time scenario ids (issues #1163, #1571)", () => {
 
     expect(FASTEST_LAP_SCENARIO_IDS).toEqual(["pit-crew.fastest-lap-race"]);
     expect(built.contracts.map((c) => c.id)).toEqual([...FASTEST_LAP_SCENARIO_IDS]);
+  });
+});
+
+describe("the sector-comparison scenario ids (issue #1572)", () => {
+  it("SECTOR_COMPARISON_SCENARIO_IDS, which a build with no sim wired registers in that order", () => {
+    const built = buildSectorComparison({
+      getSectorComparison: () => null,
+      getSessionClass: () => null,
+      getUnderFullCourseCaution: () => false,
+      getRaceFinishedFired: () => false,
+      getLapCompletedSnapshot: () => null,
+      isSelectable: () => false,
+    });
+
+    expect(SECTOR_COMPARISON_SCENARIO_IDS).toEqual([
+      "pit-crew.sector-comparison-leader",
+      "pit-crew.sector-comparison-ahead",
+      "pit-crew.sector-comparison-behind",
+    ]);
+    expect(built.contracts.map((c) => c.id)).toEqual([...SECTOR_COMPARISON_SCENARIO_IDS]);
   });
 });

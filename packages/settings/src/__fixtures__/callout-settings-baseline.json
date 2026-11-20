@@ -1078,5 +1078,35 @@
     "\"false\"": false,
     "\"x\"": false,
     "numberRejected": true
+  },
+  "calloutEnabledSectorComparisonLeader": {
+    "owner": "sector-comparison/leader",
+    "default": true,
+    "true": true,
+    "\"true\"": true,
+    "false": false,
+    "\"false\"": false,
+    "\"x\"": false,
+    "numberRejected": true
+  },
+  "calloutEnabledSectorComparisonAhead": {
+    "owner": "sector-comparison/ahead",
+    "default": true,
+    "true": true,
+    "\"true\"": true,
+    "false": false,
+    "\"false\"": false,
+    "\"x\"": false,
+    "numberRejected": true
+  },
+  "calloutEnabledSectorComparisonBehind": {
+    "owner": "sector-comparison/behind",
+    "default": true,
+    "true": true,
+    "\"true\"": true,
+    "false": false,
+    "\"false\"": false,
+    "\"x\"": false,
+    "numberRejected": true
   }
 }

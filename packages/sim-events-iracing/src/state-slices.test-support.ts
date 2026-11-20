@@ -42,7 +42,7 @@
  *   literal is a container whose properties have types of their own, so
  *   `ctx.state.fastestLap` on `ctx: { state: TranslatorState }` is a read
  *   while `ctx.fastestLap` is not; an indexed access selects a container's
- *   property and is never the state (`TranslatorState["gapTraces"]` is a
+ *   property and is never the state (`TranslatorState["gapLiveAhead"]` is a
  *   field of it). A value has a type when it is a parameter or variable
  *   annotated with it, a variable initialised from such a value, or a
  *   property of a container value. The reads are property and element
@@ -756,7 +756,7 @@ function scanModule(
    * intersections, `Readonly` / `Pick` / `Omit` / `Partial` / `Required` /
    * `NonNullable` and module-local aliases and interfaces; a type literal is a
    * container; an indexed access is the property it selects of a container,
-   * and never the state (`TranslatorState["gapTraces"]` is a field of it).
+   * and never the state (`TranslatorState["gapLiveAhead"]` is a field of it).
    */
   function shapeOf(type: ts.TypeNode, depth = 0): Shape {
     if (depth > MAX_SHAPE_DEPTH) return null;

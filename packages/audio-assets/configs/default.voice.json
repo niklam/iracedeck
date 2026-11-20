@@ -7233,6 +7233,167 @@
         "text": "Hold your line."
       }
     ],
+    "sector-comparison": [
+      {
+        "name": "leader-slower-01",
+        "text": "Pace check. The leader is quicker by",
+        "previous_request_ids": [
+          "lap-time-decimal/5"
+        ]
+      },
+      {
+        "name": "leader-quicker-01",
+        "text": "Pace check. We're quicker than the leader by",
+        "previous_request_ids": [
+          "lap-time-decimal/5"
+        ]
+      },
+      {
+        "name": "loss-most-01",
+        "text": "Most of it is in",
+        "previous_request_ids": [
+          "lap-time-decimal/5"
+        ]
+      },
+      {
+        "name": "loss-largest-01",
+        "text": "We lose the most in",
+        "previous_request_ids": [
+          "lap-time-decimal/5"
+        ]
+      },
+      {
+        "name": "loss-every-01",
+        "text": "We're slower in every sector.",
+        "previous_request_ids": [
+          "lap-time-decimal/5"
+        ]
+      },
+      {
+        "name": "gain-01",
+        "text": "We're quicker in",
+        "previous_request_ids": [
+          "sector-comparison-sector/2-01"
+        ]
+      },
+      {
+        "name": "leader-gain-01",
+        "text": "They're quicker in",
+        "previous_request_ids": [
+          "lap-time-decimal/4"
+        ]
+      },
+      {
+        "name": "ahead-slower-01",
+        "text": "ahead is slower than us in",
+        "previous_request_ids": [
+          "car-number/12",
+          "car-number/7",
+          "car-number/42"
+        ]
+      },
+      {
+        "name": "behind-quicker-01",
+        "text": "behind is quicker than us in",
+        "previous_request_ids": [
+          "car-number/12",
+          "car-number/7",
+          "car-number/42"
+        ]
+      }
+    ],
+    "sector-comparison-sector": [
+      {
+        "name": "1-01",
+        "text": "Sector one.",
+        "previous_request_ids": [
+          "sector-comparison/loss-most-01",
+          "sector-comparison/ahead-slower-01",
+          "sector-comparison/behind-quicker-01"
+        ]
+      },
+      {
+        "name": "2-01",
+        "text": "Sector two.",
+        "previous_request_ids": [
+          "sector-comparison/loss-most-01",
+          "sector-comparison/ahead-slower-01",
+          "sector-comparison/behind-quicker-01"
+        ]
+      },
+      {
+        "name": "3-01",
+        "text": "Sector three.",
+        "previous_request_ids": [
+          "sector-comparison/loss-most-01",
+          "sector-comparison/ahead-slower-01",
+          "sector-comparison/behind-quicker-01"
+        ]
+      },
+      {
+        "name": "4-01",
+        "text": "Sector four.",
+        "previous_request_ids": [
+          "sector-comparison/loss-most-01",
+          "sector-comparison/ahead-slower-01",
+          "sector-comparison/behind-quicker-01"
+        ]
+      },
+      {
+        "name": "5-01",
+        "text": "Sector five.",
+        "previous_request_ids": [
+          "sector-comparison/loss-most-01",
+          "sector-comparison/ahead-slower-01",
+          "sector-comparison/behind-quicker-01"
+        ]
+      },
+      {
+        "name": "6-01",
+        "text": "Sector six.",
+        "previous_request_ids": [
+          "sector-comparison/loss-most-01",
+          "sector-comparison/ahead-slower-01",
+          "sector-comparison/behind-quicker-01"
+        ]
+      },
+      {
+        "name": "7-01",
+        "text": "Sector seven.",
+        "previous_request_ids": [
+          "sector-comparison/loss-most-01",
+          "sector-comparison/ahead-slower-01",
+          "sector-comparison/behind-quicker-01"
+        ]
+      },
+      {
+        "name": "8-01",
+        "text": "Sector eight.",
+        "previous_request_ids": [
+          "sector-comparison/loss-most-01",
+          "sector-comparison/ahead-slower-01",
+          "sector-comparison/behind-quicker-01"
+        ]
+      },
+      {
+        "name": "9-01",
+        "text": "Sector nine.",
+        "previous_request_ids": [
+          "sector-comparison/loss-most-01",
+          "sector-comparison/ahead-slower-01",
+          "sector-comparison/behind-quicker-01"
+        ]
+      },
+      {
+        "name": "10-01",
+        "text": "Sector ten.",
+        "previous_request_ids": [
+          "sector-comparison/loss-most-01",
+          "sector-comparison/ahead-slower-01",
+          "sector-comparison/behind-quicker-01"
+        ]
+      }
+    ],
     "sector-number": [
       {
         "name": "1-01",
@@ -31775,6 +31936,73 @@
             "{{fastestLap.gapDecimal}}"
           ]
         }
+      ]
+    },
+    "pit-crew.sector-comparison-leader": {
+      "comment": "Pace check against the class leader at the line, after the lap time: how much quicker the leader is over a lap and where most of it is lost (or that we're slower in every sector), with the sector where we're quicker; or that we're quicker than the leader, with the sector where they're quicker.",
+      "test": "Harness → Sectors → Leader pace, most of it with a gain (Leader pace, the most; Leader pace, every sector; Quicker than the leader). In-sim: an offline AI race at a track with three or more sectors; run three clean laps and cross the line from lap 4 on.",
+      "sequence": [
+        {
+          "case": "sectorComparison.paceShape",
+          "of": {
+            "slower": [
+              "pool:sector-comparison/leader-slower",
+              "{{sectorComparison.paceSeconds}}",
+              "{{sectorComparison.paceDecimal}}",
+              {
+                "case": "sectorComparison.lossShape",
+                "of": {
+                  "most": [
+                    "pool:sector-comparison/loss-most",
+                    "{{sectorComparison.lossSector}}"
+                  ],
+                  "largest": [
+                    "pool:sector-comparison/loss-largest",
+                    "{{sectorComparison.lossSector}}"
+                  ],
+                  "every": [
+                    "pool:sector-comparison/loss-every"
+                  ]
+                }
+              },
+              {
+                "optional": [
+                  "pool:sector-comparison/gain",
+                  "{{sectorComparison.gainSector}}"
+                ]
+              }
+            ],
+            "quicker": [
+              "pool:sector-comparison/leader-quicker",
+              "{{sectorComparison.paceSeconds}}",
+              "{{sectorComparison.paceDecimal}}",
+              {
+                "optional": [
+                  "pool:sector-comparison/leader-gain",
+                  "{{sectorComparison.lossSector}}"
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "pit-crew.sector-comparison-ahead": {
+      "comment": "The car ahead by number and the sector where it is slower than us, at the line after the lap time.",
+      "test": "Harness → Sectors → Chance on the car ahead. In-sim: an offline AI race; close to within three seconds of a car that is slow through one sector and cross the line on a clean lap.",
+      "sequence": [
+        "{{sectorComparison.carNumber}}",
+        "pool:sector-comparison/ahead-slower",
+        "{{sectorComparison.gainSector}}"
+      ]
+    },
+    "pit-crew.sector-comparison-behind": {
+      "comment": "The car behind by number and the sector where it is quicker than us, at the line after the lap time.",
+      "test": "Harness → Sectors → Car behind quicker. In-sim: an offline AI race; let a car that is quick through one sector close to within three seconds and cross the line on a clean lap.",
+      "sequence": [
+        "{{sectorComparison.carNumber}}",
+        "pool:sector-comparison/behind-quicker",
+        "{{sectorComparison.lossSector}}"
       ]
     },
     "pit-crew.lap-time-last": {

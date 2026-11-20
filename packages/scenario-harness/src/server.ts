@@ -28,6 +28,7 @@ import {
 } from "./qualifying-invalidation-snapshot.js";
 import { setHarnessRaceStartSnapshot, validateRaceStartSnapshot } from "./race-start-snapshot.js";
 import { SCENARIO_SHORTCUTS } from "./scenario-shortcuts.js";
+import { setHarnessSectorComparison, validateSectorComparison } from "./sector-comparison-snapshot.js";
 import { setHarnessSessionStartSnapshot, validateSessionStartSnapshot } from "./session-start-snapshot.js";
 import { checkShortcutPreconditions } from "./shortcut-preconditions.js";
 
@@ -486,6 +487,19 @@ export async function createServer(ctx: HarnessContext): Promise<FastifyInstance
     if (typeof snapshot === "string") return reply.code(400).send({ error: snapshot });
 
     setHarnessRaceStartSnapshot(snapshot);
+
+    return reply.code(204).send();
+  });
+
+  // Sector-comparison composer (issue #1572). The comparison the translator
+  // would build from a lap timer is composed whole by the shortcut and pushed
+  // here before its `lap.completed` is published; `null` clears it.
+  app.post("/api/sector-comparison/snapshot", async (req, reply) => {
+    const input = validateSectorComparison(req.body);
+
+    if (typeof input === "string") return reply.code(400).send({ error: input });
+
+    setHarnessSectorComparison(input);
 
     return reply.code(204).send();
   });

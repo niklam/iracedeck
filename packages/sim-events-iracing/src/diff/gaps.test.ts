@@ -13,12 +13,13 @@
  *   - readPairGap: the one pair reading (crossing time, or the chaser's ETA
  *     behind a crawling leader) shared with the opponent-flag race gap
  */
-import type { TelemetryData } from "@iracedeck/iracing-sdk";
+import type { ProgressTrace, StandingsNeighbors, TelemetryData } from "@iracedeck/iracing-sdk";
 import { describe, expect, it } from "vitest";
 
 import { createInitialState, type TranslatorState } from "../state.js";
+import { stepCarProgress } from "./car-progress.js";
 import {
-  diffGaps,
+  diffGaps as diffGapsStep,
   GAP_DEFAULT_ALERT_THRESHOLD_S,
   GAP_DEFAULT_MIN_CHANGE_S,
   GAP_ETA_LEADER_CRAWL_MPS,
@@ -31,6 +32,34 @@ import type { PendingEvent } from "./types.js";
 const PLAYER = 0;
 const AHEAD = 1;
 const BEHIND = 2;
+
+/**
+ * One tick as `handleTick` runs it since issue #1572: the car-progress step
+ * (the gate, the traces), then the gap diff on its result. It keeps the call
+ * shape these tests were written against, so they pin that moving the gate
+ * and the traces out of `diffGaps` changed nothing it decides.
+ */
+function diffGaps(
+  state: TranslatorState,
+  telemetry: TelemetryData,
+  isRaceSession: boolean,
+  playerCarIdx: number,
+  paceCarIdx: number | null,
+  frozenPositions: readonly number[] | null,
+  ...rest: Parameters<typeof diffGapsStep> extends [unknown, unknown, unknown, unknown, unknown, unknown, ...infer R]
+    ? R
+    : never
+): StandingsNeighbors | null {
+  return diffGapsStep(
+    state,
+    telemetry,
+    stepCarProgress(state.carProgress, telemetry, isRaceSession, playerCarIdx, frozenPositions),
+    playerCarIdx,
+    paceCarIdx,
+    frozenPositions,
+    ...rest,
+  );
+}
 
 /**
  * Three-car single-class field. Progress in laps; SessionTime in seconds.
@@ -318,7 +347,7 @@ describe("diffGaps — live gaps", () => {
 
     run(state, emit, { fromLap: 2.01, toLap: 3, aheadGapS: 2, behindGapS: 3 });
 
-    expect(state.gapTraces[AHEAD]!.every((s) => Number.isFinite(s.progress))).toBe(true);
+    expect(state.carProgress.traces[AHEAD]!.every((s) => Number.isFinite(s.progress))).toBe(true);
     expect(state.gapLiveAhead?.gapSeconds).toBeCloseTo(2.0, 1);
   });
 
@@ -399,7 +428,7 @@ describe("diffGaps — live gaps", () => {
         emit,
       );
 
-      for (const trace of state.gapTraces) {
+      for (const trace of state.carProgress.traces) {
         if (trace) expect(trace.every((s) => Number.isFinite(s.time))).toBe(true);
       }
     }
@@ -1589,7 +1618,7 @@ describe("diffGaps — full-course caution (issue #1171)", () => {
     expect(paced.gapLiveBehind?.trend).toBe("opening");
 
     for (const key of [
-      "gapTraces",
+      "carProgress",
       "gapLiveAhead",
       "gapLiveBehind",
       "gapLastCheckpointAhead",
@@ -1848,9 +1877,9 @@ describe("readPairGap (issues #1285, #1274)", () => {
   }
 
   /** The chaser at 40 m/s (0.01 lap/s) at progress 5.39; the leader `aheadM` metres up the road at `leaderMps`. */
-  function pair(leaderMps: number, aheadM: number): { traces: TranslatorState["gapTraces"]; leaderAt: number } {
+  function pair(leaderMps: number, aheadM: number): { traces: (ProgressTrace | undefined)[]; leaderAt: number } {
     const leaderAt = 5.39 + aheadM / TRACK_M;
-    const traces: TranslatorState["gapTraces"] = [];
+    const traces: (ProgressTrace | undefined)[] = [];
 
     traces[CHASER] = trace(0.01, 5.39, 90, 110);
     traces[LEADER] = trace(leaderMps / TRACK_M, leaderAt, 90, 110);
@@ -1895,7 +1924,7 @@ describe("readPairGap (issues #1285, #1274)", () => {
   });
 
   it("is null when the leader's trace does not cover the chaser and the regime does not engage", () => {
-    const traces: TranslatorState["gapTraces"] = [];
+    const traces: (ProgressTrace | undefined)[] = [];
 
     traces[CHASER] = trace(0.01, 5.39, 90, 110);
 
@@ -1903,5 +1932,175 @@ describe("readPairGap (issues #1285, #1274)", () => {
       gapSeconds: null,
       etaReading: false,
     });
+  });
+});
+
+describe("diffGaps — a lap counter and a lap fraction that disagree at the line (issue #1572)", () => {
+  // iRacing does not always move `CarIdxLapCompleted` and wrap
+  // `CarIdxLapDistPct` on the same tick. Read as a plain sum, the car is a
+  // whole lap away for that tick: its trace was reset twice and its pair read
+  // a lap apart, so the gap went blank until the trace covered the chaser
+  // again. The progress step now reads through it.
+  const lapTime = 90;
+  const stepLaps = 0.005;
+
+  /**
+   * Drive the three cars (AHEAD 2 s up the road, BEHIND 3 s back) across the
+   * line with `car`'s arrays disagreeing for the one tick at its crossing,
+   * and return both gaps on every tick from that one on.
+   */
+  function crossWithDesync(car: number, kind: "counterLeads" | "fractionLeads"): { ahead: unknown; behind: unknown }[] {
+    const state = createInitialState();
+    const { emit } = collect();
+    const readings: { ahead: unknown; behind: unknown }[] = [];
+    let desynced = false;
+
+    for (let i = 0; ; i++) {
+      const p = 2.5 + i * stepLaps;
+
+      if (p > 3.2) break;
+
+      const progress = [p, p + 2 / lapTime, p - 3 / lapTime];
+      const telemetry = tick(p * lapTime, progress);
+      const laps = telemetry.CarIdxLapCompleted as number[];
+      const here = Math.floor(progress[car]!);
+
+      if (!desynced && kind === "counterLeads" && Math.floor(progress[car]! + stepLaps) > here) {
+        // The last tick before the line: the counter has already moved.
+        laps[car] = here + 1;
+        desynced = true;
+      } else if (!desynced && kind === "fractionLeads" && Math.floor(progress[car]! - stepLaps) < here && here === 3) {
+        // The first tick past the line: the counter has not moved yet.
+        laps[car] = here - 1;
+        desynced = true;
+      }
+
+      diffGaps(state, telemetry, true, PLAYER, null, [2, 1, 3], () => GAP_DEFAULT_ALERT_THRESHOLD_S, emit);
+
+      if (desynced) readings.push({ ahead: state.gapLiveAhead, behind: state.gapLiveBehind });
+    }
+
+    expect(desynced).toBe(true);
+
+    return readings;
+  }
+
+  it.each([
+    ["the car ahead's counter leads its fraction", AHEAD, "counterLeads"],
+    ["the car ahead's fraction leads its counter", AHEAD, "fractionLeads"],
+    ["the player's counter leads its fraction", PLAYER, "counterLeads"],
+    ["the player's fraction leads its counter", PLAYER, "fractionLeads"],
+    ["the car behind's counter leads its fraction", BEHIND, "counterLeads"],
+    ["the car behind's fraction leads its counter", BEHIND, "fractionLeads"],
+  ] as const)("keeps both gaps readable on every tick when %s", (_name, car, kind) => {
+    const readings = crossWithDesync(car, kind);
+
+    expect(readings.length).toBeGreaterThan(20);
+
+    for (const { ahead, behind } of readings) {
+      expect(ahead).toMatchObject({ carIdx: AHEAD, lapDelta: 0, gapSeconds: expect.closeTo(2, 1) });
+      expect(behind).toMatchObject({ carIdx: BEHIND, lapDelta: 0, gapSeconds: expect.closeTo(3, 1) });
+    }
+  });
+});
+
+describe("diffGaps — the class neighbours it returns (issue #1572)", () => {
+  const args = [PLAYER, null, [2, 1, 3], () => GAP_DEFAULT_ALERT_THRESHOLD_S] as const;
+
+  it("returns the neighbours and the class leader it resolved from the canonical order", () => {
+    const state = createInitialState();
+    const { emit } = collect();
+
+    expect(diffGaps(state, tick(180, [2, 2.02, 1.97]), true, ...args, emit)).toEqual({
+      aheadIdx: AHEAD,
+      behindIdx: BEHIND,
+      leaderIdx: AHEAD,
+    });
+    // The same resolution the diff keeps for its own sides.
+    expect(state.gapAheadIdx).toBe(AHEAD);
+    expect(state.gapBehindIdx).toBe(BEHIND);
+  });
+
+  it("resolves them in the player's class, the pace car excluded", () => {
+    const state = createInitialState();
+    const { emit } = collect();
+    // Car 3 leads overall in another class, car 4 is the pace car ahead of
+    // everyone; in the player's class car 1 leads and car 2 follows.
+    const telemetry = tick(180, [2, 2.02, 1.97, 2.5, 2.6], { CarIdxClass: [10, 10, 10, 20, 10] });
+
+    expect(
+      diffGaps(state, telemetry, true, PLAYER, 4, [4, 3, 5, 2, 1], () => GAP_DEFAULT_ALERT_THRESHOLD_S, emit),
+    ).toEqual({ aheadIdx: AHEAD, behindIdx: BEHIND, leaderIdx: AHEAD });
+  });
+
+  it("names the player as the leader when the player leads the class", () => {
+    const state = createInitialState();
+    const { emit } = collect();
+
+    expect(
+      diffGaps(
+        state,
+        tick(180, [2, 1.98, 1.97]),
+        true,
+        PLAYER,
+        null,
+        [1, 2, 3],
+        () => GAP_DEFAULT_ALERT_THRESHOLD_S,
+        emit,
+      ),
+    ).toEqual({ aheadIdx: -1, behindIdx: AHEAD, leaderIdx: PLAYER });
+  });
+
+  it("still returns them under a full-course caution, where it emits nothing", () => {
+    const state = createInitialState();
+    const { events, emit } = collect();
+
+    expect(
+      diffGaps(
+        state,
+        tick(180, [2, 2.02, 1.97]),
+        true,
+        ...args,
+        emit,
+        null,
+        () => GAP_DEFAULT_MIN_CHANGE_S,
+        null,
+        true,
+      ),
+    ).toEqual({ aheadIdx: AHEAD, behindIdx: BEHIND, leaderIdx: AHEAD });
+    expect(events).toEqual([]);
+  });
+
+  it("returns null on a tick the progress gate refuses, and blanks the live snapshots", () => {
+    const state = createInitialState();
+    const { emit } = collect();
+
+    run(state, emit, { fromLap: 2, toLap: 2.5, aheadGapS: 2, behindGapS: 3 });
+    expect(state.gapLiveAhead).not.toBeNull();
+
+    expect(diffGaps(state, tick(230, [2.51, 2.53, 2.48]), false, ...args, emit)).toBeNull();
+    expect(state.gapLiveAhead).toBeNull();
+    expect(state.gapLiveBehind).toBeNull();
+  });
+
+  it("returns null when it is handed no progress tick (the step threw)", () => {
+    const state = createInitialState();
+    const { emit } = collect();
+
+    expect(diffGapsStep(state, tick(180, [2, 2.02, 1.97]), null, ...args, emit)).toBeNull();
+    expect(state.gapLiveAhead).toBeNull();
+  });
+
+  it("returns null when the player has no valid reading this tick", () => {
+    const state = createInitialState();
+    const { emit } = collect();
+    // The gate passes (`LapCompleted` is not negative), but the player's own
+    // `CarIdx` reading is: no progress for the player, so nothing is resolved.
+    const telemetry = tick(180, [2, 2.02, 1.97], { CarIdxLapCompleted: [-1, 2, 1] });
+
+    expect(stepCarProgress(state.carProgress, telemetry, true, PLAYER, [2, 1, 3])).not.toBeNull();
+    expect(diffGaps(state, telemetry, true, ...args, emit)).toBeNull();
+    expect(state.gapLiveAhead).toBeNull();
+    expect(state.gapLiveBehind).toBeNull();
   });
 });

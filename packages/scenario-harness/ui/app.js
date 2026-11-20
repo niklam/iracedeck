@@ -420,6 +420,23 @@ function renderShortcuts() {
           if (s.raceStartSnapshot) {
             await post("/api/race-start/snapshot", s.raceStartSnapshot);
           }
+          // Issue #1572 — the sector-comparison shortcuts carry the composed
+          // comparison the lap timer would have built; same push-before-fire
+          // ordering as the snapshots above. Any other shortcut that publishes
+          // a `lap.completed` clears it first: a stored comparison would
+          // otherwise answer that lap (a lap-time button, say) and add a stray
+          // sector call to it. Only those clear it: the sector contracts read
+          // the comparison 500 ms after their own publish, so a clear from an
+          // unrelated button pressed in between would silence the call
+          // (#1572 second read).
+          const publishesLapCompleted =
+            s.event === "lap.completed" || (s.precedingEvents ?? []).some((e) => e.event === "lap.completed");
+
+          if (s.sectorComparisonSnapshot) {
+            await post("/api/sector-comparison/snapshot", s.sectorComparisonSnapshot);
+          } else if (publishesLapCompleted) {
+            await post("/api/sector-comparison/snapshot", null);
+          }
           // Issue #1051 — the two pit-limiter families are gated on whether
           // `dcPitSpeedLimiterToggle` EXISTS and both subscribe to the same
           // events, so a shortcut sets up its own equipment first. Without

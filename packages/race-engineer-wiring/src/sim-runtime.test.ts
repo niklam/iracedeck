@@ -24,6 +24,7 @@ const IMPLEMENTED_BY: { readonly [K in keyof SimRuntime]: keyof typeof translato
   getRaceStartConditions: "getRaceStartConditions",
   getReadbackSnapshot: "getReadbackSnapshot",
   getRollingStartFormation: "getRollingStartFormation",
+  getSectorComparison: "getSectorComparison",
   getSessionClass: "getSessionClass",
   getSessionStartConditions: "getSessionStartConditions",
   getTrackDirection: "getTrackDirection",
@@ -44,7 +45,7 @@ describe("createIracingSimRuntime", () => {
       expect(sim[name as keyof SimRuntime], name).toBe(translator[implementedBy]);
     }
 
-    expect(Object.keys(sim)).toHaveLength(23);
+    expect(Object.keys(sim)).toHaveLength(24);
   });
 
   it("pins each iRacing getter to the declared signature of the member it implements (type test)", () => {
@@ -68,6 +69,7 @@ describe("createIracingSimRuntime", () => {
     expectTypeOf(translator.getRaceStartConditions).toEqualTypeOf<SimRuntime["getRaceStartConditions"]>();
     expectTypeOf(translator.getReadbackSnapshot).toEqualTypeOf<SimRuntime["getReadbackSnapshot"]>();
     expectTypeOf(translator.getRollingStartFormation).toEqualTypeOf<SimRuntime["getRollingStartFormation"]>();
+    expectTypeOf(translator.getSectorComparison).toEqualTypeOf<SimRuntime["getSectorComparison"]>();
     expectTypeOf(translator.getSessionStartConditions).toEqualTypeOf<SimRuntime["getSessionStartConditions"]>();
     expectTypeOf(translator.getSessionClass).toEqualTypeOf<SimRuntime["getSessionClass"]>();
     expectTypeOf(translator.getTrackDirection).toEqualTypeOf<SimRuntime["getTrackDirection"]>();

@@ -18,6 +18,9 @@ export type ProgressSample = { progress: number; time: number };
 /** Rolling per-car trace, ascending by progress. Owned by translator state. */
 export type ProgressTrace = ProgressSample[];
 
+/** A {@link ProgressTrace} as a reader takes it: neither the trace nor a sample may be written. */
+export type ReadonlyProgressTrace = readonly Readonly<ProgressSample>[];
+
 /** How much history each trace keeps, in laps. Covers same-lap gaps plus margin. */
 export const GAP_TRACE_SPAN_LAPS = 1.15;
 
@@ -38,6 +41,19 @@ export const GAP_TRACE_MIN_STEP = 0.002;
 export const GAP_TRACE_MAX_STEP = 0.05;
 
 /**
+ * What {@link appendProgressSample} did with a reading (issue #1572):
+ * `"appended"` — recorded after the last sample, or as the first of an empty
+ * trace; `"skipped"` — within {@link GAP_TRACE_MIN_STEP} of the last sample,
+ * so not recorded; `"reset"` — a discontinuity emptied the trace and the
+ * reading started it again. `"reset"` proves the car's motion was not
+ * continuous since its last sample, the one definition of absence the gaps
+ * use too. Its absence proves nothing about a tick the reading was never
+ * taken on: a caller that needs continuity from one tick to the next must
+ * also know that no tick was missed in between.
+ */
+export type ProgressSampleVerdict = "appended" | "skipped" | "reset";
+
+/**
  * Append a progress sample to a trace, keeping it ascending and pruned to
  * {@link GAP_TRACE_SPAN_LAPS}. A DISCONTINUITY in either direction — a
  * backwards jump (tow, teleport, session reset) or a forward jump past
@@ -46,17 +62,21 @@ export const GAP_TRACE_MAX_STEP = 0.05;
  * discontinuity would lie about crossing times: `crossingTimeAt` interpolates
  * linearly between adjacent samples, so a lookup landing inside an undriven
  * span would return a time off by the whole absence.
+ *
+ * @returns what was done with the reading ({@link ProgressSampleVerdict})
  */
-export function appendProgressSample(trace: ProgressTrace, progress: number, time: number): void {
+export function appendProgressSample(trace: ProgressTrace, progress: number, time: number): ProgressSampleVerdict {
   const last = trace.length > 0 ? trace[trace.length - 1] : undefined;
+  let verdict: ProgressSampleVerdict = "appended";
 
   if (last !== undefined) {
     const step = progress - last.progress;
 
     if (step < -GAP_TRACE_MIN_STEP || step > GAP_TRACE_MAX_STEP) {
       trace.length = 0;
+      verdict = "reset";
     } else if (step < GAP_TRACE_MIN_STEP) {
-      return;
+      return "skipped";
     }
   }
 
@@ -68,6 +88,8 @@ export function appendProgressSample(trace: ProgressTrace, progress: number, tim
   while (drop < trace.length - 1 && trace[drop]!.progress < minProgress) drop++;
 
   if (drop > 0) trace.splice(0, drop);
+
+  return verdict;
 }
 
 /**
@@ -75,7 +97,7 @@ export function appendProgressSample(trace: ProgressTrace, progress: number, tim
  * interpolated between the bracketing samples. `null` when the trace doesn't
  * cover the point — callers fall back (cold start) rather than extrapolate.
  */
-export function crossingTimeAt(trace: ProgressTrace, progress: number): number | null {
+export function crossingTimeAt(trace: ReadonlyProgressTrace, progress: number): number | null {
   if (trace.length === 0) return null;
 
   if (progress < trace[0]!.progress || progress > trace[trace.length - 1]!.progress) return null;
@@ -184,7 +206,7 @@ export function resolveClassNeighbors(
  * trace doesn't reach back far enough to measure.
  */
 export function recentProgressRate(
-  trace: ProgressTrace | undefined,
+  trace: ReadonlyProgressTrace | undefined,
   currentProgress: number,
   now: number,
   windowSeconds: number,
@@ -192,7 +214,7 @@ export function recentProgressRate(
   if (!trace || trace.length === 0) return null;
 
   const cutoff = now - windowSeconds;
-  let ref: ProgressSample | null = null;
+  let ref: Readonly<ProgressSample> | null = null;
 
   for (let i = trace.length - 1; i >= 0; i--) {
     if (trace[i]!.time <= cutoff) {

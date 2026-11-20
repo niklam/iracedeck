@@ -15,6 +15,7 @@ import {
   CAUTION_LINEUP_CHANGE_DELAY_MS,
   type QualifyingInvalidationSnapshot,
   ROLLING_START_LINEUP_CHANGE_DELAY_MS,
+  type SectorComparisonInput,
 } from "@iracedeck/audio-scenarios/pit-crew";
 import {
   OpponentPenaltyFlag,
@@ -60,6 +61,7 @@ import {
   FORMATION_SESSION_STATE,
   FORMATION_TRACK_SURFACE,
 } from "./rolling-start-grid.js";
+import { type ComposedTarget, composeSectorComparison } from "./sector-comparison-snapshot.js";
 import type { ShortcutPrecondition } from "./shortcut-preconditions.js";
 
 /** Fields every shortcut carries, whatever it drives. */
@@ -176,6 +178,15 @@ export type BusEventShortcut = ScenarioShortcutBase & {
    */
   raceStartSnapshot?: RaceStartSnapshot;
   /**
+   * Optional sector comparison for the sector-comparison callouts (issue
+   * #1572): the lap timer's composed input (the track's sectors, and the
+   * player's, the leader's and the neighbours' recent laps), which the
+   * harness cannot build from the mock's telemetry. Same mechanism as the
+   * snapshots above: the UI POSTs `/api/sector-comparison/snapshot` BEFORE
+   * publishing `event`, and `getSectorComparison` answers it at fire time.
+   */
+  sectorComparisonSnapshot?: SectorComparisonInput;
+  /**
    * Optional telemetry patch applied BEFORE publishing `event` (issue #1051),
    * same push-before-fire ordering as the two snapshots above: the UI POSTs
    * `/api/telemetry` with `{ patch }` and awaits it.
@@ -259,6 +270,7 @@ export type TelemetrySequenceShortcut = ScenarioShortcutBase & {
    */
   qualifyingInvalidationSnapshot?: QualifyingInvalidationSnapshot;
   raceStartSnapshot?: never;
+  sectorComparisonSnapshot?: never;
 };
 
 export type ScenarioShortcut = BusEventShortcut | TelemetrySequenceShortcut;
@@ -511,6 +523,72 @@ function raceStart(
       ...conditions,
       playerCarPosition,
     },
+  };
+}
+
+/**
+ * The sector comparison callouts (issue #1572). One button composes the
+ * comparison a lap timer would have built, posts it, and publishes a counted
+ * race `lap.completed` for the player's newest lap, so the family's own
+ * selection picks the target the picture is built for. The family keeps
+ * memory between presses (the picture last spoken per target and the lap of
+ * the last call, with no call within two laps of it), and the harness has no
+ * per-press lap, so each button owns its lap (3 apart, ascending in the
+ * list) and its cars: each button speaks on its first press, a button pressed
+ * again straight after itself is silent (its picture is unchanged and its lap
+ * is the one just called), and a `session.changed` (any Race Start button)
+ * clears the memory so it speaks again. Going back to an earlier button after
+ * a later one can speak it again: its lap is below the last call's, which the
+ * spacing does not cover, and its target's memory may hold the later picture.
+ */
+const SECTOR_CALL_FIRST_LAP = 10;
+const SECTOR_CALL_LAP_STEP = 3;
+const SECTOR_PLAYER = { carIdx: 5, carNumber: "5" };
+
+/** A neighbour's live gap to the player, inside the family's 3 s battle range. */
+const NEIGHBOUR_GAP_S = 1.8;
+
+/** The player's lap time in a composed picture, by its sector count (the sector times' sum). */
+const PLAYER_LAP_TIME: Readonly<Record<number, number>> = { 3: 95, 4: 115 };
+
+function sectorCall(
+  index: number,
+  id: string,
+  label: string,
+  description: string,
+  targets: { sectorCount?: number; leader?: readonly number[]; ahead?: readonly number[]; behind?: readonly number[] },
+): BusEventShortcut {
+  const lap = SECTOR_CALL_FIRST_LAP + index * SECTOR_CALL_LAP_STEP;
+  const carIdx = 20 + index;
+  const target = (deltas: readonly number[] | undefined, gapSeconds: number | null): ComposedTarget | undefined =>
+    deltas === undefined ? undefined : { carIdx, carNumber: String(carIdx), gapSeconds, deltas };
+  const sectorCount = targets.sectorCount ?? 3;
+  const lapTime = PLAYER_LAP_TIME[sectorCount];
+
+  return {
+    id: `sector-comparison-${id}`,
+    category: "Sectors",
+    label,
+    description: `${description} Apply the race session preset first: the sector calls speak in a race only.`,
+    event: "lap.completed",
+    data: {
+      lap,
+      lapTime,
+      isBest: false,
+      isFirstValid: false,
+      lapIsValid: true,
+      bestLapTime: lapTime - 0.8,
+      previousBestLapTime: lapTime - 0.5,
+      sessionType: "race",
+    },
+    sectorComparisonSnapshot: composeSectorComparison({
+      lap,
+      sectorCount,
+      player: SECTOR_PLAYER,
+      leader: target(targets.leader, null),
+      ahead: target(targets.ahead, -NEIGHBOUR_GAP_S),
+      behind: target(targets.behind, NEIGHBOUR_GAP_S),
+    }),
   };
 }
 
@@ -4453,7 +4531,8 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
     id: "sector-start-eleven",
     category: "Corner Names",
     label: "Sector eleven",
-    description: "Sector eleven of eleven: silent, since the voice records sector-number clips one to ten only.",
+    description:
+      "Sector eleven of eleven: silent, since the voice records sector-comparison-sector clips one to ten only.",
     event: "sectorStart.approaching",
     data: { sector: 11, sectorCount: 11 },
   },
@@ -4546,4 +4625,57 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
     event: "fuel.lapsLeft.raceCovered",
     data: {},
   },
+
+  // ── Sectors (issue #1572) ──
+  // Deltas are the player's sector time minus the target's: a positive delta
+  // is a sector the target is quicker in.
+  sectorCall(
+    0,
+    "leader-gain",
+    "Leader pace, most of it with a gain",
+    "A three-sector race where the class leader is 0.3 s a lap quicker (sector 1 is 0.6 s slower for you, sector 2 level, sector 3 0.3 s quicker for you), no neighbours: the leader's pace gap, most of it in sector 1, and a sector where you gain.",
+    { leader: [0.6, 0, -0.3] },
+  ),
+  sectorCall(
+    1,
+    "leader-largest",
+    "Leader pace, the most",
+    "A four-sector race where the leader is 1.0 s a lap quicker with the loss spread (sectors 1 to 3 slower for you by 0.4, 0.3 and 0.3 s, sector 4 level), no neighbours: the leader's pace gap, the largest loss in sector 1 but under half of the time lost. Four sectors because on three a spread loss is every sector.",
+    { sectorCount: 4, leader: [0.4, 0.3, 0.3, 0] },
+  ),
+  sectorCall(
+    2,
+    "leader-every",
+    "Leader pace, every sector",
+    "A three-sector race where the leader is quicker in all three sectors (by 0.2, 0.3 and 0.25 s), no neighbours: the leader's pace gap, slower in every sector, no sector named.",
+    { leader: [0.2, 0.3, 0.25] },
+  ),
+  sectorCall(
+    3,
+    "leader-quicker",
+    "Quicker than the leader",
+    "A three-sector race where you are 0.6 s a lap quicker than the leader (sectors 1 and 2 by 0.5 and 0.3 s quicker for you, sector 3 0.2 s slower), no neighbours: the leader's pace gap the other way round, naming the sector where the leader is quicker.",
+    { leader: [-0.5, -0.3, 0.2] },
+  ),
+  sectorCall(
+    4,
+    "ahead-chance",
+    "Chance on the car ahead",
+    "A three-sector race with a car 1.8 s ahead that is 0.4 s slower than you through sector 1 and level elsewhere, no leader: the attack call naming sector 1.",
+    { ahead: [-0.4, 0, 0] },
+  ),
+  sectorCall(
+    5,
+    "behind-quicker",
+    "Car behind quicker",
+    "A three-sector race with a car 1.8 s behind that is 0.35 s quicker than you through sector 2 and level elsewhere, no leader: the defence call naming sector 2.",
+    { behind: [0, 0.35, 0] },
+  ),
+  sectorCall(
+    6,
+    "same-picture-twice",
+    "Same picture twice",
+    "A three-sector race with a car 1.8 s ahead that is 0.5 s slower than you through sector 3, no leader: the attack call naming sector 3. Press it twice in a row: the second press is silent, its picture unchanged and its lap inside the two-lap spacing after the call. Any Race Start button clears that and lets it speak again.",
+    { ahead: [0, 0, -0.5] },
+  ),
 ];

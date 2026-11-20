@@ -525,6 +525,22 @@ The engineer keeps quiet when there's nothing worth saying: a shared **cooldown*
 
 Both callouts are individually toggleable under **Race Engineer Callouts → Gaps**, enabled by default, with the threshold and cooldown sliders right below them.
 
+## Sector comparison (races)
+
+The gap callouts tell you how far away a rival is; the sector comparison tells you where on the lap the time goes. In race sessions, as you cross the start/finish line, the Race Engineer compares your recent laps with three cars in your **class** standings, sector by sector, using the track's own sectors from iRacing however many it has:
+
+- **The class leader**, as pace — *"Pace check. The leader is quicker by zero point five seconds. Most of it is in sector two. We're quicker in sector three."* The figure is your lap pace against theirs, read to the tenth. The line then names the one sector where you lose the most, when one stands out: *"Most of it is in sector two."* when that sector carries at least half of what you lose, *"We lose the most in sector two."* when the loss is spread out, and *"We're slower in every sector."* when you're slower in each sector of a track that has three or more. It then adds the sector where you gain the most, when there is one. When you're the quicker one, it says so: *"Pace check. We're quicker than the leader by zero point four seconds. They're quicker in sector two."*
+- **The car ahead**, as attack — *"Car twelve ahead is slower than us in sector two."* — naming the sector where you're quicker than that car by the most.
+- **The car behind**, as defence — *"Car seven behind is quicker than us in sector three."* — naming the sector where that car is quicker than you by the most.
+
+"Ahead" and "behind" mean your neighbours in the class standings, as in the [gap callouts](#gap-callouts-car-ahead--car-behind), not the cars nearest to you on track, and "the leader" is your class leader. A sector counts as quicker or slower only by a tenth of a second or more, and the car ahead and the car behind are only called on a difference of at least 0.15 seconds in a sector, and only while they are within 3 seconds of you: a car further up the road is not a sector fight. The leader comparison stays quiet when your pace is level with the leader's (under 0.2 seconds a lap apart) or more than 5 seconds a lap apart, when you lead your class, and when the class leader is the car directly ahead of you, whom the attack call already covers.
+
+**Clean laps only.** Each car's sector times are the middle value of its last three clean laps among the last five laps it completed, so one lap in traffic doesn't skew the picture and a stint from long ago never counts. A car that has left the track for good, in the garage or retired, is not compared with. A clean lap is one driven entirely on the racing surface with no full-course caution out: a lap with an off-track, a lap you start from or end in the pits, a lap under or ending a caution and the race's opening lap never count, for you and for every other car alike. So the first comparison can come at the end of lap 4. The engineer also compares only on a clean lap of your own: the lap you pit on, an off-track lap, a caution lap or a lap iRacing doesn't count gets no sector call.
+
+**When he speaks.** At most one sector call every other lap, and only when the picture has changed: a different sector named, a different car, or the leader going from quicker to slower than you or back. The leader comparison is also repeated after 8 laps with nothing changed, or once the pace gap has moved by 0.3 seconds a lap since he last said it; the car-ahead and car-behind calls never repeat themselves about the same car and sector. When more than one is due on the same lap, the car ahead goes first, then the car behind, then the leader, and the others wait for a later lap. The sector call comes just after the lap time, never instead of it, and is one of the least urgent lines on the radio: if it has to wait until you complete another lap, or a caution comes out, it's dropped. Nothing is said once you've taken the checkered flag. A call naming a sector or a car number the voice has no recording for is skipped; the bundled voices record sectors one to ten.
+
+Three opt-ins live under **Race Engineer Callouts → Gaps**, below the gap callouts and all enabled by default — see [the opt-in list below](#race-engineer-callouts-per-subject-opt-inout).
+
 ## Pit-box count-in
 
 As you drive down pit road toward your box, the Race Engineer counts the remaining distance down so you know exactly when to stop without overshooting the stall: *"Five… four… three… two… one… pit now."* The marks are spoken by distance to the box — five at 120 m, four at 100 m, three at 80 m, two at 60 m, one at 40 m, and "pit now" at 20 m remaining — so the count tracks your approach regardless of pit-lane speed.
@@ -778,10 +794,16 @@ Under **Overtakes**, two callouts are toggleable, both enabled by default:
 
 Each direction is independent — drivers who want the congratulations but not the chastisement (or vice versa) get per-direction control.
 
-Under **Gaps**, two callouts are toggleable, both enabled by default (see [Gap callouts](#gap-callouts-car-ahead--car-behind) above for the full behavior):
+Under **Gaps**, five callouts are toggleable, all enabled by default (see [Gap callouts](#gap-callouts-car-ahead--car-behind) and [Sector comparison](#sector-comparison-races) above for the full behavior):
 
 - **Gap trend (gaining/losing)** (`calloutEnabledGapTrend`) — the closing-in projections and breakaway announcements against the class-standings neighbors.
 - **Gap under threshold** (`calloutEnabledGapThreshold`) — the once-per-episode alert when a gap first drops under the configurable threshold.
+- **Sector pace against the class leader** (`calloutEnabledSectorComparisonLeader`) — the *"Pace check."* comparison with your class leader: the pace gap, the sector where you lose the most and the one where you gain.
+- **Where we're quicker than the car ahead** (`calloutEnabledSectorComparisonAhead`) — the attack call naming the sector where the car ahead is slower than you.
+- **Where the car behind is quicker** (`calloutEnabledSectorComparisonBehind`) — the defence call naming the sector where the car behind is quicker than you.
+
+The three sliders below apply to the two gap callouts only; the sector calls keep their own spacing.
+
 - **Gap alert threshold (s)** (`gapAlertThresholdSeconds`, 0.5–3, default 1.0) — the crossing point for the threshold alert. Read live.
 - **Gap callout cooldown (s)** (`gapCalloutCooldownSeconds`, 1–360, default 30) — minimum quiet time between any two gap callouts. Read live.
 - **Gap change to re-announce (s)** (`gapCalloutMinChangeSeconds`, 0–10, default 1.5) — a new call about the same car requires the gap to have moved at least this much in the announced direction, measured from its best/worst point since the previous call. 0 disables. Read live.

@@ -124,7 +124,9 @@ vi.mock("./diff/fastest-lap.js", async (io) => harness.spy(await io(), { diffFas
 vi.mock("./diff/opponent-flags.js", async (io) => harness.spy(await io(), { diffOpponentFlags: 12 }));
 vi.mock("./diff/leader-white.js", async (io) => harness.spy(await io(), { diffLeaderWhite: 7 }));
 vi.mock("./diff/overtakes.js", async (io) => harness.spy(await io(), { diffOvertakes: 7 }));
+vi.mock("./diff/car-progress.js", async (io) => harness.spy(await io(), { stepCarProgress: null }));
 vi.mock("./diff/gaps.js", async (io) => harness.spy(await io(), { diffGaps: 7 }));
+vi.mock("./diff/sector-times.js", async (io) => harness.spy(await io(), { diffSectorTimes: null }));
 vi.mock("./diff/track-gaps.js", async (io) => harness.spy(await io(), { diffTrackGaps: null }));
 vi.mock("./diff/pit-box-countdown.js", async (io) => harness.spy(await io(), { diffPitBoxCountdown: 4 }));
 vi.mock("./diff/pit-lane-landmarks.js", async (io) =>
@@ -159,6 +161,7 @@ const ORDER_CONSUMERS = [
   "diffLeaderWhite",
   "diffOvertakes",
   "diffGaps",
+  "diffSectorTimes",
 ];
 
 /** The subscriber a stage runs in. */
@@ -654,6 +657,82 @@ describe("decision 3: a value that throws takes its last value this session", ()
 
     expect(reported()).toContain("translator:resolvePlayerResultsSnapshot");
     expect(argsOf("diffLaps")?.[4]).toBeNull();
+  });
+
+  it("hands diffGaps no progress tick when stepCarProgress throws, never the last tick's (#1572)", () => {
+    // A tick the progress gate reads: a session time and both progress arrays.
+    const racing = (sessionTime: number, pct: number): TelemetryData =>
+      telemetry({
+        SessionTime: sessionTime,
+        LapCompleted: 3,
+        CarIdxLapCompleted: [3, 3],
+        CarIdxLapDistPct: [pct, pct - 0.1],
+      } as Partial<TelemetryData>);
+
+    start();
+    runTick(racing(100, 0.5));
+    // The step ran before the gap diff and handed it the tick it read.
+    expect(harness.calls.map((c) => c.stage).filter((s) => s === "stepCarProgress" || s === "diffGaps")).toEqual([
+      "stepCarProgress",
+      "diffGaps",
+    ]);
+    expect(argsOf("diffGaps")?.[2]).toMatchObject({ sessionTime: 100, progress: [3.5, 3.4] });
+
+    harness.control.throwing.set("stepCarProgress", TRANSLATOR_ID);
+    runTick(racing(101, 0.51));
+
+    expect(reported()).toEqual(["translator:stepCarProgress"]);
+    expect(argsOf("diffGaps")?.[2]).toBeNull();
+  });
+
+  it("hands diffSectorTimes what the two steps before it returned, and nothing of a step that threw (#1572)", () => {
+    const racing = (sessionTime: number, pct: number): TelemetryData =>
+      telemetry({
+        SessionTime: sessionTime,
+        LapCompleted: 3,
+        CarIdxLapCompleted: [3, 3],
+        CarIdxLapDistPct: [pct, pct - 0.1],
+      } as Partial<TelemetryData>);
+    const neighbours = { leaderIdx: 1, aheadIdx: 1, behindIdx: -1 };
+
+    start();
+    harness.control.overrides.set("diffGaps", () => neighbours);
+    runTick(racing(100, 0.5));
+
+    // Right after the gap diff, with the progress tick and the neighbours it returned.
+    expect(
+      harness.calls.map((c) => c.stage).filter((s) => ["stepCarProgress", "diffGaps", "diffSectorTimes"].includes(s)),
+    ).toEqual(["stepCarProgress", "diffGaps", "diffSectorTimes"]);
+    expect(argsOf("diffSectorTimes")?.[1]).toMatchObject({ sessionTime: 100, progress: [3.5, 3.4] });
+    expect(argsOf("diffSectorTimes")?.[5]).toBe(neighbours);
+
+    // The gap diff throws: no neighbours, never those of the tick before.
+    harness.control.throwing.set("diffGaps", TRANSLATOR_ID);
+    runTick(racing(100.1, 0.51));
+
+    expect(reported()).toEqual(["translator:diffGaps"]);
+    expect(argsOf("diffSectorTimes")?.[1]).toMatchObject({ sessionTime: 100.1 });
+    expect(argsOf("diffSectorTimes")?.[5]).toBeNull();
+
+    // The progress step throws: no tick.
+    harness.control.throwing.clear();
+    harness.control.throwing.set("stepCarProgress", TRANSLATOR_ID);
+    runTick(racing(100.2, 0.52));
+
+    expect(argsOf("diffSectorTimes")?.[1]).toBeNull();
+  });
+
+  it("reports a throw in diffSectorTimes under its own id and runs it again on the next tick (#1572)", () => {
+    start();
+    runTick();
+    harness.control.throwing.set("diffSectorTimes", TRANSLATOR_ID);
+    runTick();
+
+    expect(reported()).toEqual(["translator:diffSectorTimes"]);
+
+    harness.control.throwing.clear();
+
+    expect(runTick().called).toContain("diffSectorTimes");
   });
 
   it("hands diffFlags false when resolvePlayerIsLeader throws", () => {

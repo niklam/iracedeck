@@ -245,8 +245,8 @@ export type TrackGapSideState = {
  * The track-order gaps outside a race (issue #1515, `diff/track-gaps.ts`):
  * the gaps to the cars physically ahead and behind on the road in practice,
  * warmup, testing and open qualifying. A store of its own, never shared with
- * the race's `gapTraces`: the two diffs' session gates are disjoint, so only
- * one of them ever grows in a session.
+ * the race's `carProgress.traces`: the two session gates are disjoint, so
+ * only one of them ever grows in a session.
  *
  * Traces are keyed on a per-car odometer — the lap distance driven since the
  * car was last seen arriving on the road, folded across the start/finish
@@ -287,6 +287,201 @@ export function createTrackGapsState(): TrackGapsState {
     ahead: { carIdx: -1, trend: { lastCheckpoint: null, ema: null, samples: 0 }, live: null },
     behind: { carIdx: -1, trend: { lastCheckpoint: null, ema: null, samples: 0 }, live: null },
   };
+}
+
+/**
+ * Every car's race progress (issue #1572, `diff/car-progress.ts`): the
+ * crossing-time traces the gap model reads (issue #933), written by
+ * `stepCarProgress` alone, once per live tick, in a race past the green while
+ * the player is racing. `diffGaps` and the sector timer take that step's
+ * returned tick; the translator's pair reading (`getLiveGapBetween`, the
+ * opponent-flag range) reads the traces here. All math on a trace lives in
+ * `@iracedeck/iracing-sdk` `gap-utils.ts`.
+ *
+ * Recreated with the state at a session change and a disconnect, and wiped
+ * whole at the replay wipe: a replay-timeline reading must never sit in a
+ * trace a live crossing time is interpolated on, so every car's trace starts
+ * again on the first live tick back.
+ */
+export type CarProgressState = {
+  /**
+   * Per car, by carIdx: the progress the step last read for it, after the
+   * start/finish correction (`readCarProgress`). `undefined` = no reading on
+   * the last tick: dropped on any tick the car has no valid reading, and for
+   * every car on a tick the step's gate refuses, so a correction never
+   * bridges a tick that was not read. The next tick's reading is corrected
+   * against it only once it is confirmed ({@link lastProgressConfirmed});
+   * read it through `confirmedLastProgress`, never directly, to correct a
+   * reading.
+   */
+  lastProgress: (number | undefined)[];
+  /**
+   * Per car, by carIdx: whether {@link lastProgress} may be corrected
+   * against. True once a reading continued the one before it (within half a
+   * lap) and either that one was confirmed or this one was read clear of the
+   * line guard band; it then holds while each reading continues the last.
+   * False (a hole reads as false) for a car's first reading after none, for a
+   * reading that did not continue the last, and for a run of readings that
+   * began inside the band and has not left it: such a reading may have been
+   * taken while the car's lap counter and lap fraction disagree at the line,
+   * a whole lap off (two of them agree with each other when the disagreement
+   * lasts two ticks), and correcting the next reading against it would carry
+   * that lap on. Cleared wherever the last progress is.
+   */
+  lastProgressConfirmed: boolean[];
+  /**
+   * `SessionTime` of the last tick the step read every car on, or null: the
+   * step clears it on entry and writes it only once its per-car loop has
+   * completed, so it is null after a tick the gate refused, after a tick the
+   * step threw on, and before the first. Handed on as the next tick's
+   * `previousSessionTime`, which is how a consumer knows the tick it last
+   * took is the one the step read before this one. Nothing clears it on a
+   * tick the step is not called on at all (the canonical order threw): that
+   * tick is bridged like a telemetry tick that never arrived, a wider tick
+   * pair the consumer bounds for itself.
+   */
+  lastReadSessionTime: number | null;
+  /**
+   * Per-car crossing-time traces: a rolling ~1.15-lap history of
+   * progress (`CarIdxLapCompleted + CarIdxLapDistPct`, corrected at the
+   * line) against `SessionTime`, sparse-indexed by carIdx; undefined = no
+   * valid reading yet.
+   */
+  traces: (ProgressTrace | undefined)[];
+};
+
+/** No car traced (issue #1572): the initial state. */
+export function createCarProgressState(): CarProgressState {
+  return { lastProgress: [], lastProgressConfirmed: [], lastReadSessionTime: null, traces: [] };
+}
+
+/**
+ * One lap a car completed, as the sector timer measured it (issue #1572):
+ * recorded once, at the start/finish crossing that closed it, and never
+ * changed afterwards.
+ */
+export type SectorLap = {
+  /**
+   * The car's completed-lap count once this lap was done: the lap that ran
+   * from progress `lap - 1` to `lap`, the number `lap.completed` carries for
+   * the player. The race's opening lap is 1.
+   */
+  lap: number;
+  /**
+   * The lap's sector times in seconds, by sector (index 0 is the sector that
+   * starts at the line): the differences of consecutive interpolated crossing
+   * times, the last ending at the closing line crossing. One entry per sector
+   * of the track. The timer records a lap only when every crossing of it was
+   * measured, so it writes no `null`; the type keeps one for a sector a future
+   * writer could not measure.
+   */
+  sectorTimes: readonly (number | null)[];
+  /**
+   * Whether the lap counts for a comparison (the #1572 spec's decision 4),
+   * implementing the contract the catalog documents on
+   * `SectorLapInput.clean`: false when any tick of it read the car's
+   * `CarIdxTrackSurface` as anything but `OnTrack` (off track, approaching
+   * the pits, in the stall, not in the world) or a full-course caution out,
+   * when it is the race's opening lap, or when a sector time is not positive.
+   */
+  clean: boolean;
+};
+
+/** The lap a car is on, while the sector timer is measuring it (issue #1572). */
+export type SectorLapInProgress = {
+  /** The number the lap will carry once completed ({@link SectorLap.lap}). */
+  lap: number;
+  /**
+   * The interpolated `SessionTime` of each sector start crossed so far, by
+   * sector: index 0 is the start/finish crossing that opened the lap.
+   */
+  crossings: number[];
+  /** False once any tick of the lap was unclean; see {@link SectorLap.clean}. */
+  clean: boolean;
+};
+
+/**
+ * The cars the player's sector times are compared with (issue #1572), by
+ * carIdx; `-1` = none. The class neighbours and class leader as `diffGaps`
+ * resolved them from the canonical order, unfiltered: `leaderIdx` is the
+ * player's own index when the player leads the class, and may equal
+ * `aheadIdx`. The reader (`getSectorComparison`) drops only the player's own
+ * index; what a call may name is the catalog's decision.
+ */
+export type SectorTargets = { leaderIdx: number; aheadIdx: number; behindIdx: number };
+
+/**
+ * The sector timer (issue #1572, `diff/sector-times.ts`): every car's sector
+ * times, measured by interpolating its crossing of each sector start between
+ * two consecutive progress ticks. Written by `diffSectorTimes` alone, once per
+ * live tick, from the tick `stepCarProgress` returned; read by the translator's
+ * `getCarSectorTimes` and `getSectorComparison`. It holds facts only: nothing
+ * here averages, picks or compares.
+ *
+ * Recreated with the state at a session change and a disconnect. At the
+ * replay wipe {@link resetSectorTimesForReplay} keeps the completed laps and
+ * returns the rest fresh.
+ */
+export type SectorTimesState = {
+  /**
+   * Per car, by carIdx: the progress the timer read on the last tick it
+   * consumed, which this tick's crossings are bracketed against; `null` = no
+   * reading. Bridged only under the tick's continuity rule (`CarProgressTick`):
+   * the tick must name {@link lastSessionTime} as the one read before it.
+   */
+  lastProgress: (number | null)[];
+  /**
+   * Per car, by carIdx: the lap being measured, `null` when none is. A lap
+   * opens only at a measured start/finish crossing and is dropped, unrecorded,
+   * by any break in the car's continuity.
+   */
+  lapInProgress: (SectorLapInProgress | null)[];
+  /**
+   * Per car, by carIdx: its last `SECTOR_HISTORY_LAPS` completed laps, newest
+   * last; an index with no lap yet is `undefined`. A storage bound, not a
+   * policy. Kept across a replay glance: they are facts about laps already run.
+   */
+  completedLaps: (SectorLap[] | undefined)[];
+  /**
+   * `SessionTime` of the last tick the timer consumed whole, or `null`: before
+   * the first, after a tick with no progress reading or no sectors, and after
+   * a tick it threw on (cleared on entry, written last).
+   */
+  lastSessionTime: number | null;
+  /**
+   * How many sectors the timer measured with on the last tick it consumed:
+   * the length of the sector starts it was handed, so a reader reports the
+   * count the recorded laps were measured against. `null` on a tick it
+   * recorded nothing (no progress reading, no sectors), and before the first.
+   */
+  sectorCount: number | null;
+  /** See {@link SectorTargets}. Cleared on a tick with no progress reading. */
+  targets: SectorTargets;
+};
+
+/** No lap measured and no target (issue #1572): the initial state. */
+export function createSectorTimesState(): SectorTimesState {
+  return {
+    lastProgress: [],
+    lapInProgress: [],
+    completedLaps: [],
+    lastSessionTime: null,
+    sectorCount: null,
+    targets: { leaderIdx: -1, aheadIdx: -1, behindIdx: -1 },
+  };
+}
+
+/**
+ * The part of a {@link SectorTimesState} a replay glance keeps (issue #1572,
+ * decision 4): the completed laps, by reference, because they are facts about
+ * laps already run. Everything else is returned fresh. The laps in progress
+ * and the previous readings go because the wipe resets the traces their
+ * continuity was judged on, and a replay-timeline reading must never bracket
+ * a live crossing; the targets go because the first live tick back resolves
+ * them again.
+ */
+export function resetSectorTimesForReplay(slice: SectorTimesState): SectorTimesState {
+  return { ...createSectorTimesState(), completedLaps: slice.completedLaps };
 }
 
 /**
@@ -1567,14 +1762,18 @@ export type TranslatorState = {
   /** Cache key (`${TrackID}|${SessionNum}`) for invalidating `trackLengthMeters`. */
   trackLengthKey: string;
 
-  // ── Gaps (issue #933) ───────────────────────────────────────────────────
+  // ── Car progress (issue #1572) ──────────────────────────────────────────
+  /** See {@link CarProgressState}. Wiped with the rest of the state on a replay glance. */
+  carProgress: CarProgressState;
+
+  // ── Sector times (issue #1572) ──────────────────────────────────────────
   /**
-   * Per-car crossing-time traces: rolling ~1.15-lap history of
-   * `lapCompleted + lapDistPct` progress against `SessionTime`, sparse-indexed
-   * by carIdx. Owned here; all math on them lives in
-   * `@iracedeck/iracing-sdk` `gap-utils.ts`.
+   * See {@link SectorTimesState}. A replay glance keeps its completed laps
+   * ({@link resetSectorTimesForReplay}).
    */
-  gapTraces: (ProgressTrace | undefined)[];
+  sectorTimes: SectorTimesState;
+
+  // ── Gaps (issue #933) ───────────────────────────────────────────────────
   /** Cached class-neighbor car indices from the last tick (−1 = none). */
   gapAheadIdx: number;
   gapBehindIdx: number;
@@ -2315,7 +2514,10 @@ export function createInitialState(): TranslatorState {
     trackLengthMeters: null,
     trackLengthKey: "",
 
-    gapTraces: [],
+    carProgress: createCarProgressState(),
+
+    sectorTimes: createSectorTimesState(),
+
     gapAheadIdx: -1,
     gapBehindIdx: -1,
     gapLiveAhead: null,

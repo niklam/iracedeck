@@ -42,6 +42,7 @@ import { readPositionReadoutDebugState } from "./position-readout.js";
 import { readQualifyingInvalidationDebugState } from "./qualifying-invalidation.js";
 import { readRadarDebugState } from "./radar-engine.js";
 import { readRollingStartDebugState } from "./rolling-start.js";
+import { readSectorComparisonDebugState } from "./sector-comparison.js";
 import { readSpotterDebugState } from "./spotter-engine.js";
 
 /**
@@ -64,6 +65,7 @@ function readFamilies() {
     qualifyingInvalidation: readStatePart(() => readQualifyingInvalidationDebugState()),
     radar: readStatePart(() => readRadarDebugState()),
     rollingStart: readStatePart(() => readRollingStartDebugState()),
+    sectorComparison: readStatePart(() => readSectorComparisonDebugState()),
     spotter: readStatePart(() => readSpotterDebugState()),
   };
 }

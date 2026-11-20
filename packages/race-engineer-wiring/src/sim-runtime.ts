@@ -39,6 +39,7 @@ import {
   getRaceStartConditions,
   getReadbackSnapshot,
   getRollingStartFormation,
+  getSectorComparison,
   getSessionClass,
   getSessionStartConditions,
   getStandingStart,
@@ -52,6 +53,7 @@ import {
   type OvertakeTelemetryGate,
   type PaceLineup,
   type RollingStartFormation,
+  type SectorComparisonSnapshot,
   type TelemetryData,
   type TrackDirection,
 } from "@iracedeck/sim-events-iracing";
@@ -93,6 +95,8 @@ export interface SimRuntime {
   getReadbackSnapshot(): PitReadbackSnapshot | null;
   /** WHICH rolling-start formation is running (#1167); `null` while none is. */
   getRollingStartFormation(): RollingStartFormation | null;
+  /** The sector comparison (#1572): the track's sector count and, for the player, the class leader and the two class neighbours, each car's recent laps' sector times with a clean flag, its car number and its live gap to the player; `null` outside a race, with no sectors or before the translator runs. Facts only: the reference and every threshold are the catalog's. */
+  getSectorComparison(): SectorComparisonSnapshot | null;
   /** The session classified by the translator's one classifier (#1587): practice / qualifying / race and whether it is a solo qualifying run; `null` when unavailable. */
   getSessionClass(): SessionClass | null;
   /** The session-start brief's conditions (#542); `null` when they cannot be read. */
@@ -134,6 +138,7 @@ export function createIracingSimRuntime(): SimRuntime {
     getRaceStartConditions,
     getReadbackSnapshot,
     getRollingStartFormation,
+    getSectorComparison,
     getSessionClass,
     getSessionStartConditions,
     getTrackDirection,

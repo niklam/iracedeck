@@ -28,6 +28,8 @@ import {
  *
  * Not here: "Track-order gaps outside a race (issue #1515)" (`trackGaps`),
  * "Pit-lane landmarks (issue #1112)" (`pitLaneLandmarks`),
+ * "Car progress (issue #1572)" (`carProgress`),
+ * "Sector times (issue #1572)" (`sectorTimes`),
  * "Fastest lap of the race (issue #1571)" (`fastestLap`),
  * "Laps-of-fuel-left callouts (issue #838)" (`fuelCallout`) and "Track
  * sectors (issue #1573)" (`trackSectors`, `sectorStart`), whose only members are slices, the
@@ -219,11 +221,11 @@ const LEGACY_FLAT_MEMBERS: FlatMemberPin = {
     "trackLengthMeters",
     "trackLengthKey",
   ],
-  // Partial replay keep (`gapRestartMark`); the translator's pair reading for
-  // `diffOpponentFlags` reads its traces, which the slice must still serve.
-  // About 22 signature lines in `diff/gaps.ts` take the whole state.
+  // Partial replay keep (`gapRestartMark`). The traces are no longer here:
+  // they are the `carProgress` slice (#1572), which the translator's pair
+  // reading for `diffOpponentFlags` reads. About 22 signature lines in
+  // `diff/gaps.ts` take the whole state.
   "Gaps (issue #933)": [
-    "gapTraces",
     "gapAheadIdx",
     "gapBehindIdx",
     "gapLiveAhead",
@@ -339,6 +341,8 @@ const SLICE_KEYS = [
   "cornerName",
   "sectorStart",
   "limiterToggle",
+  "carProgress",
+  "sectorTimes",
 ];
 
 const violationNames = (scan: SliceScan): string[] => scan.violations.map((v) => `${v.rule}:${v.name}`);
