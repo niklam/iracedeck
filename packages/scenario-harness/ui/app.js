@@ -188,6 +188,12 @@ function renderSettings() {
       label: "Limiter On Beep",
       type: "checkbox",
     },
+    // Experimental and off by default for users (#1113), seeded on by bootstrap-settings.ts.
+    {
+      key: "calloutEnabledTrafficRejoin",
+      label: "Traffic when rejoining (experimental)",
+      type: "checkbox",
+    },
     {
       key: "radarVolume",
       label: "Radar Volume",
