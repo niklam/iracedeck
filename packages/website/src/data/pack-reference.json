@@ -5353,33 +5353,6 @@
       }
     },
     {
-      "id": "pit-crew.traffic-rejoin-clear",
-      "family": "traffic",
-      "event": "traffic.rejoin",
-      "description": "You are stopped or crawling on track and no car is within fifteen seconds of you, said on stopping or once a close car has gone by.",
-      "frame": "none",
-      "weight": 70,
-      "weightBand": "SAFETY",
-      "queueable": true,
-      "interrupt": false,
-      "speakGate": "Dropped if you are driving again by the time it reaches the radio (above about 29 km/h); speaking it ends the approach, so the next car within ten seconds gets a first call.",
-      "endsOn": null,
-      "base": "voice/{voice}",
-      "comment": "Stopped or crawling on track with no car within fifteen seconds: a whole line from a pool of four, such as \"Clear to rejoin.\" or \"Nothing close. Clear to rejoin.\" No radio frame.",
-      "test": "Harness → Traffic → Rejoin clear. In-sim: stop on track in practice with no car close behind.",
-      "skip": false,
-      "references": {
-        "pools": [
-          "traffic/rejoin-clear"
-        ],
-        "vars": [],
-        "conds": [],
-        "cases": [],
-        "includes": [],
-        "frames": []
-      }
-    },
-    {
       "id": "pit-crew.traffic-rejoin-near-first",
       "family": "traffic",
       "event": "traffic.rejoin",
@@ -5390,7 +5363,7 @@
       "queueable": true,
       "interrupt": true,
       "speakGate": "Dropped if it waited for the radio as long as the seconds it names, as the car has reached you by then; speaking it marks the car as introduced, so later counts are updates.",
-      "endsOn": null,
+      "endsOn": "Your car is taken off the track while you are stopped: towed or reset to the pits, or you leave the car. A line playing stops at once and a waiting one is dropped.",
       "base": "voice/{voice}",
       "comment": "The first call about a car two to nine seconds away, one sentence in three pieces each picked from its pool: an intro that leads into the seconds, the seconds, and an outro, such as \"Car coming in about five seconds. Watch out.\" It cuts a lower-weight line in flight, a caution or flag call included; the meatball, the start lights, the restart green, a fuel-critical warning and the spotter's car-alongside calls keep the radio. No radio frame.",
       "test": "Harness → Traffic → Rejoin near, first call. In-sim: stop on track as a car is a few seconds away.",
@@ -5420,7 +5393,7 @@
       "queueable": true,
       "interrupt": true,
       "speakGate": "Dropped if it waited for the radio as long as the seconds it names, as the car has reached you by then.",
-      "endsOn": null,
+      "endsOn": "Your car is taken off the track while you are stopped: towed or reset to the pits, or you leave the car. A line playing stops at once and a waiting one is dropped.",
       "base": "voice/{voice}",
       "comment": "A later count of the same approach, each time its arrival has dropped by three seconds or more: an update intro that leads into the seconds, and the seconds, such as \"Getting closer, about five seconds.\" It cuts a lower-weight line in flight, a caution or flag call included; the meatball, the start lights, the restart green, a fuel-critical warning and the spotter's car-alongside calls keep the radio. No radio frame.",
       "test": "Harness → Traffic → Rejoin near, count. In-sim: stay stopped on track while a car closes from about nine seconds away.",
@@ -5439,33 +5412,6 @@
       }
     },
     {
-      "id": "pit-crew.traffic-rejoin-over-ten",
-      "family": "traffic",
-      "event": "traffic.rejoin",
-      "description": "You are stopped or crawling on track and the nearest car is ten to fifteen seconds away, said on stopping, as it closes, or once a close car has gone by.",
-      "frame": "none",
-      "weight": 70,
-      "weightBand": "SAFETY",
-      "queueable": true,
-      "interrupt": false,
-      "speakGate": "Dropped if you are driving again by the time it reaches the radio (above about 29 km/h); speaking it ends the approach, so the next car within ten seconds gets a first call.",
-      "endsOn": null,
-      "base": "voice/{voice}",
-      "comment": "Stopped or crawling on track with the nearest car ten to fifteen seconds away: a whole line from a pool of four, such as \"Next car is more than ten seconds away. Be careful.\" or \"Next car is over ten seconds back.\" No radio frame.",
-      "test": "Harness → Traffic → Rejoin over ten. In-sim: stop on track with the nearest car a little over ten seconds away.",
-      "skip": false,
-      "references": {
-        "pools": [
-          "traffic/rejoin-over-ten"
-        ],
-        "vars": [],
-        "conds": [],
-        "cases": [],
-        "includes": [],
-        "frames": []
-      }
-    },
-    {
       "id": "pit-crew.traffic-rejoin-pack",
       "family": "traffic",
       "event": "traffic.rejoin",
@@ -5476,7 +5422,7 @@
       "queueable": true,
       "interrupt": true,
       "speakGate": "Always spoken once it reaches the radio; speaking it ends a single car's approach, so the next car within ten seconds after the group gets a first call.",
-      "endsOn": null,
+      "endsOn": "Your car is taken off the track while you are stopped: towed or reset to the pits, or you leave the car. A line playing stops at once and a waiting one is dropped.",
       "base": "voice/{voice}",
       "comment": "Stopped or crawling on track with a group of cars coming, the nearest under ten seconds away and more close behind it: one line for the whole group, \"A group of cars coming. Join carefully.\", said once in place of the per-car calls, and nothing more until the last car of the group has gone by. It cuts a lower-weight line in flight, a caution or flag call included; the meatball, the start lights, the restart green, a fuel-critical warning and the spotter's car-alongside calls keep the radio. No radio frame.",
       "test": "Harness → Traffic → Rejoin pack. In-sim: stop on track as a group of cars a second or so apart comes up behind you, as at a race start or behind a pack of AI cars.",
@@ -5503,7 +5449,7 @@
       "queueable": true,
       "interrupt": true,
       "speakGate": "Dropped if it waited for the radio for more than two seconds, since the car has reached you by then.",
-      "endsOn": null,
+      "endsOn": "Your car is taken off the track while you are stopped: towed or reset to the pits, or you leave the car. A line playing stops at once and a waiting one is dropped.",
       "base": "voice/{voice}",
       "comment": "Stopped or crawling on track with the nearest car under two seconds away: a whole line from a pool of four, such as \"Car right behind you. Watch out.\" or \"Right on top of you. Careful.\" It cuts a lower-weight line in flight, a caution or flag call included; the meatball, the start lights, the restart green, a fuel-critical warning and the spotter's car-alongside calls keep the radio. No radio frame: the rejoin lines repeat while you stay stopped.",
       "test": "Harness → Traffic → Rejoin right behind. In-sim: stop on track in practice just as a car is about to reach you.",
@@ -6593,8 +6539,6 @@
         "keys": {
           "rightBehind": "The nearest car will reach you in under two seconds.",
           "near": "The nearest car will reach you in two to nine seconds.",
-          "overTen": "The nearest car is ten to fifteen seconds away.",
-          "clear": "No car is within fifteen seconds of you.",
           "pack": "A group of cars is coming: the nearest under ten seconds away and more close behind it."
         },
         "usedBy": []
@@ -73640,23 +73584,6 @@
           "playedBy": null
         },
         {
-          "base": "rejoin-clear",
-          "texts": [
-            "Clear to rejoin.",
-            "Nothing close. Clear to rejoin.",
-            "Track's clear behind you.",
-            "Clear behind, you can rejoin."
-          ],
-          "takes": 4,
-          "usedBy": [
-            "pit-crew.traffic-rejoin-clear"
-          ],
-          "viaVar": [
-            "traffic.rejoinSeconds"
-          ],
-          "playedBy": null
-        },
-        {
           "base": "rejoin-intro",
           "texts": [
             "Car coming in",
@@ -73796,23 +73723,6 @@
           "takes": 8,
           "usedBy": [
             "pit-crew.traffic-rejoin-near-first"
-          ],
-          "viaVar": [
-            "traffic.rejoinSeconds"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "rejoin-over-ten",
-          "texts": [
-            "Next car is more than ten seconds away. Be careful.",
-            "Next car is over ten seconds back.",
-            "More than ten seconds to the next car.",
-            "Next car is a good ten seconds off."
-          ],
-          "takes": 4,
-          "usedBy": [
-            "pit-crew.traffic-rejoin-over-ten"
           ],
           "viaVar": [
             "traffic.rejoinSeconds"

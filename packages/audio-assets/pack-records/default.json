@@ -1,16 +1,16 @@
 {
   "id": "default",
   "version": "2.0.0",
-  "sha256": "0b449d59effc2a6716d3f0833508765c9c0bd407f70055162f1f03c298723f6c",
+  "sha256": "c127b1801058f1bc2cbfb78c069933332f8ba38f625b1e18be63d7001ba70321",
   "inputs": {
     "pipeline": "07ed37b8d7bc4aad9397ad201cfe00b15ab93746cab67e206e5babbc7f13f3fa",
     "archiveFormat": "dff24c496d1c311953f8cd6b9a8aeee12dc6eaca81e3bc3ad645794093cc71ca",
     "manifest": "6c07820159eb63d6ffd4f43a3050b74e062ae7bfad21a1f3f2350c96fc0378e0",
     "voices": {
       "default": {
-        "clips": 4888,
-        "clipsSha256": "df959837ad9cfbc9123bd0504be1ab5a397d7dd6ed6536d553468e69f6b70eaf",
-        "script": "0bb32c1fc3a043ba7530f72e23e0d8363cc5299f62a344762a2c81d3c3fcff82"
+        "clips": 4880,
+        "clipsSha256": "06f49c346680a436ac184592543fa681a2e2a99cf361febc7b13d455a9530825",
+        "script": "75fc86b6e842424e5156bbf87bd23c44b51f9376d4d53eb01392d6995e1a00c1"
       }
     }
   },
