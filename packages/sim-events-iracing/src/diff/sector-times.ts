@@ -225,6 +225,15 @@ function stepCar(
       const crossedAt = t0 + ((boundary - p0) / (p1 - p0)) * (t1 - t0);
 
       if (sector === 0) {
+        // The line crossed again into a lap already open (rolled back over it
+        // and across once more): a break, like a sector start crossed twice.
+        // Reopening it would drop what the roll back marked; timing resumes
+        // at the next line.
+        if (lap !== null && lap.lap === wholeLaps + 1) {
+          lap = null;
+          continue;
+        }
+
         // The line: close the lap that ran up to it, when it was measured
         // whole, and open the next at the same time.
         if (lap !== null && lap.lap === wholeLaps && lap.crossings.length === sectorCount) {

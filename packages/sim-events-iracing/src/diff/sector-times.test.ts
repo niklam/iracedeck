@@ -371,6 +371,19 @@ describe("diffSectorTimes: breaks in continuity", () => {
     expect(laps(slice).map((lap) => lap.lap)).toEqual([4]);
   });
 
+  it("drops the lap of a car that rolls back over the line off track and crosses it again", () => {
+    const slice = createSectorTimesState();
+    const feed = feeder(slice);
+    let t = drive(feed, 1.99, 2.0002, 500);
+
+    // Back over the line off track, then across it again on track.
+    feed((t += DT), [1.9995], { surface: [TrkLoc.OffTrack] });
+    drive(feed, 2.0003, 4.01, t + DT);
+
+    // Lap 3 is not reopened clean at the second crossing: it is dropped, and lap 4 is the next one recorded.
+    expect(laps(slice).map((lap) => lap.lap)).toEqual([4]);
+  });
+
   it("keeps the lap of a car that rolls back without crossing anything: a slow lap, not a break", () => {
     const slice = createSectorTimesState();
     const feed = feeder(slice);
