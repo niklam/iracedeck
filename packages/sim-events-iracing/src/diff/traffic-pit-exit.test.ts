@@ -121,13 +121,21 @@ function harness({
 } = {}) {
   const episode = createTrafficPitExitState();
   const events: PitExit[] = [];
+  /**
+   * Each verdict the episode settled on, as it would be spoken: the first, and
+   * every flip that held. Silent short of `pitRoadEnd` (amended 2026-11-20),
+   * so the verdict model is tested here and the speaking in its own block.
+   */
+  const settled: PitExit[] = [];
   const debug = vi.fn<(line: string) => void>();
   const logger: ILogger = { ...silentLogger, debug };
   const readLandmarks = vi.fn(() => landmarks);
   const windows = { before: 2, after: 4 };
   let now = 1_000_000;
 
-  const tick = (t: TrafficPitExitTelemetry): void =>
+  const tick = (t: TrafficPitExitTelemetry): void => {
+    const before = episode.settledVerdict;
+
     diffTrafficPitExit(
       episode,
       curves,
@@ -142,9 +150,17 @@ function harness({
       logger,
     );
 
+    const verdict = episode.settledVerdict;
+
+    if (verdict !== null && verdict !== before) {
+      settled.push(episode.settledSeconds === null ? { verdict } : { verdict, seconds: episode.settledSeconds });
+    }
+  };
+
   return {
     episode,
     events,
+    settled,
     debug,
     readLandmarks,
     windows,
@@ -163,17 +179,45 @@ function harness({
   };
 }
 
+/**
+ * Landmarks with no per-class time, so the ETA reads the curve on both
+ * phases (`T(pct) = 500 × pct`): pit road ends at 0.125 (62.5 s), the
+ * blend at 0.1875 (93.75 s).
+ */
+const CURVE_LANDMARKS: TrafficPitExitLandmarks = {
+  pitRoadEnd: landmark(0.125, {}),
+  blendEnd: landmark(0.1875, {}),
+};
+
+/**
+ * The player at `pct` with car 5 reaching the blend `relative` s after
+ * them. Short of pit road's end on pit road: the distance to 0.125 at the
+ * 20 m/s limit (80 s a lap) plus 93.75 − 62.5. At or past it, or off pit
+ * road: 93.75 − 500 × pct, the blend lane on the curve.
+ */
+const at = (pct: number, relative: number, overrides: TickOptions = {}): TrafficPitExitTelemetry => {
+  const onPitRoad = overrides.OnPitRoad ?? pct < 0.125;
+  const eta = onPitRoad && pct < 0.125 ? (0.125 - pct) * 80 + 31.25 : 93.75 - 500 * pct;
+
+  return tel({
+    pct,
+    OnPitRoad: onPitRoad,
+    cars: [{ idx: 5, pct: 0.05, est: 93.75 - (eta + relative) }],
+    ...overrides,
+  });
+};
+
 const lines = (debug: ReturnType<typeof vi.fn>): string[] => debug.mock.calls.map(([line]) => String(line));
 
 describe("diffTrafficPitExit", () => {
   describe("the episode", () => {
-    it("starts on driving out of the stall and speaks on the departure tick", () => {
+    it("starts on driving out of the stall and settles a verdict on the departure tick, unspoken", () => {
       const h = harness();
 
       h.depart(tel({ cars: [arriving(5, 1)] }));
 
       expect(h.episode.active).toBe(true);
-      expect(h.events).toEqual([{ verdict: "traffic", seconds: 1 }]);
+      expect(h.settled).toEqual([{ verdict: "traffic", seconds: 1 }]);
     });
 
     it("needs the stall edge on pit road: a first tick out of the stall seeds, a teleport out starts nothing", () => {
@@ -194,7 +238,7 @@ describe("diffTrafficPitExit", () => {
       h.tick(tel({ PlayerCarInPitStall: undefined }));
       h.after(100, tel({ cars: [arriving(5, 1)] }));
 
-      expect(h.events).toEqual([]);
+      expect(h.settled).toEqual([]);
     });
 
     it.each([
@@ -218,11 +262,11 @@ describe("diffTrafficPitExit", () => {
       h.after(TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS, tel({ cars: [arriving(5, 10)], ...overrides }));
 
       expect(h.episode.active).toBe(false);
-      expect(h.events).toEqual([{ verdict: "traffic", seconds: 1 }]);
+      expect(h.settled).toEqual([{ verdict: "traffic", seconds: 1 }]);
     });
 
     describe("the stall surface", () => {
-      it("with the stall flag unread, ends the episode before a first call is made", () => {
+      it("with the stall flag unread, ends the episode before a first verdict is settled", () => {
         const h = harness();
 
         // No position on the departure tick: the episode runs, no call yet.
@@ -236,7 +280,7 @@ describe("diffTrafficPitExit", () => {
         );
 
         expect(h.episode.active).toBe(false);
-        expect(h.events).toEqual([]);
+        expect(h.settled).toEqual([]);
         expect(lines(h.debug).at(-1)).toBe("PitExit: episode ended (back in the stall)");
       });
 
@@ -249,17 +293,17 @@ describe("diffTrafficPitExit", () => {
         h.after(100, tel({ cars: [arriving(5, 1)] }));
 
         expect(h.episode.active).toBe(true);
-        expect(h.events).toEqual([{ verdict: "traffic", seconds: 1 }]);
+        expect(h.settled).toEqual([{ verdict: "traffic", seconds: 1 }]);
       });
 
-      it("with the stall flag false, is a departure whose surface lags: the call is made and the episode runs on", () => {
+      it("with the stall flag false, is a departure whose surface lags: the verdict settles and the episode runs on", () => {
         const h = harness();
 
         h.depart(tel({ cars: [arriving(5, 1)], PlayerTrackSurface: TrkLoc.InPitStall }));
         h.after(100, tel({ cars: [arriving(5, 1)], PlayerTrackSurface: TrkLoc.InPitStall }));
 
         expect(h.episode.active).toBe(true);
-        expect(h.events).toEqual([{ verdict: "traffic", seconds: 1 }]);
+        expect(h.settled).toEqual([{ verdict: "traffic", seconds: 1 }]);
       });
     });
 
@@ -307,7 +351,7 @@ describe("diffTrafficPitExit", () => {
           // The position back, an interval after the last evaluation: the flip's second.
           h.after(TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS - 100, tel({ cars: [arriving(5, 5.5)] }));
 
-          expect(h.events).toEqual([
+          expect(h.settled).toEqual([
             { verdict: "traffic", seconds: 3 },
             { verdict: "clear", seconds: 5.5 },
           ]);
@@ -323,11 +367,11 @@ describe("diffTrafficPitExit", () => {
 
           h.depart(gap(1));
           expect(h.episode.active).toBe(true);
-          expect(h.events).toEqual([]);
+          expect(h.settled).toEqual([]);
 
           h.after(TRAFFIC_PIT_EXIT_POSITION_GRACE_MS / 2, tel({ cars: [arriving(5, 1)] }));
 
-          expect(h.events).toEqual([{ verdict: "traffic", seconds: 1 }]);
+          expect(h.settled).toEqual([{ verdict: "traffic", seconds: 1 }]);
         },
       );
 
@@ -361,7 +405,7 @@ describe("diffTrafficPitExit", () => {
         h.after(TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS, tel({ cars: [arriving(5, 10)] }));
 
         expect(h.episode.active).toBe(false);
-        expect(h.events).toEqual([{ verdict: "traffic", seconds: 1 }]);
+        expect(h.settled).toEqual([{ verdict: "traffic", seconds: 1 }]);
       });
 
       it("ends it on the position coming back after the grace with no tick in between, keeping the stall baseline", () => {
@@ -381,12 +425,12 @@ describe("diffTrafficPitExit", () => {
         // Nothing more this exit: a flip to clear is never spoken.
         h.after(TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS, tel({ cars: [arriving(5, 10)] }));
         h.after(TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS, tel({ cars: [arriving(5, 10)] }));
-        expect(h.events).toEqual([{ verdict: "traffic", seconds: 1 }]);
+        expect(h.settled).toEqual([{ verdict: "traffic", seconds: 1 }]);
 
         // The baseline still sees the next stop's departure edge.
         h.depart(tel({ cars: [arriving(5, 10)] }));
         expect(h.episode.active).toBe(true);
-        expect(h.events).toEqual([
+        expect(h.settled).toEqual([
           { verdict: "traffic", seconds: 1 },
           { verdict: "clear", seconds: 10 },
         ]);
@@ -455,7 +499,7 @@ describe("diffTrafficPitExit", () => {
       h.after(TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS, tel({ cars: [arriving(5, 0)], OnPitRoad: false, pct: 0.19 }));
 
       expect(h.episode.active).toBe(false);
-      expect(h.events).toEqual([{ verdict: "clear", seconds: 10 }]);
+      expect(h.settled).toEqual([{ verdict: "clear", seconds: 10 }]);
     });
   });
 
@@ -473,7 +517,7 @@ describe("diffTrafficPitExit", () => {
         h.after(TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS, tel({ cars: [arriving(5, 1)] }));
         h.after(TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS, tel({ cars: [arriving(5, 1)] }));
 
-        expect(h.events).toEqual([]);
+        expect(h.settled).toEqual([]);
         expect(lines(h.debug).filter((line) => line.includes("landmarks"))).toEqual([
           `PitExit: silent, landmarks not learned (pitRoadEnd ${pitRoadEnd}, blendEnd ${blendEnd})`,
         ]);
@@ -497,7 +541,7 @@ describe("diffTrafficPitExit", () => {
         h.after(TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS, tel({ cars: [arriving(5, 1)] }));
         h.after(TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS, tel({ cars: [arriving(5, 1)] }));
 
-        expect(h.events).toEqual([]);
+        expect(h.settled).toEqual([]);
         expect(lines(h.debug).filter((line) => line.includes("landmarks"))).toEqual([
           `PitExit: silent, landmarks relearning after a track rebuild (pitRoadEnd ${pitRoadEnd}, blendEnd ${blendEnd})`,
         ]);
@@ -518,16 +562,16 @@ describe("diffTrafficPitExit", () => {
       h.after(TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS, tel({ cars: [arriving(5, 10)] }));
       // Back on current landmarks: first of two again, not spoken.
       h.after(TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS, tel({ cars: [arriving(5, 10)] }));
-      expect(h.events).toEqual([{ verdict: "traffic", seconds: 1 }]);
+      expect(h.settled).toEqual([{ verdict: "traffic", seconds: 1 }]);
 
       h.after(TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS, tel({ cars: [arriving(5, 10)] }));
-      expect(h.events).toEqual([
+      expect(h.settled).toEqual([
         { verdict: "traffic", seconds: 1 },
         { verdict: "clear", seconds: 10 },
       ]);
     });
 
-    it("retries a landmark read that threw on the next tick, so the first call is not lost", () => {
+    it("retries a landmark read that threw on the next tick, so the first verdict is not lost", () => {
       const h = harness();
 
       h.readLandmarks.mockImplementationOnce(() => {
@@ -536,7 +580,7 @@ describe("diffTrafficPitExit", () => {
       expect(() => h.depart(tel({ cars: [arriving(5, 1)] }))).toThrow("read failed");
       h.after(100, tel({ cars: [arriving(5, 1)] }));
 
-      expect(h.events).toEqual([{ verdict: "traffic", seconds: 1 }]);
+      expect(h.settled).toEqual([{ verdict: "traffic", seconds: 1 }]);
       expect(h.readLandmarks).toHaveBeenCalledTimes(2);
     });
 
@@ -558,7 +602,7 @@ describe("diffTrafficPitExit", () => {
 
       h.depart(tel({ cars: [{ idx: 5, pct: 0.05, est: 60 - 16 }] }));
 
-      expect(h.events).toEqual([{ verdict: "traffic", seconds: 1 }]);
+      expect(h.settled).toEqual([{ verdict: "traffic", seconds: 1 }]);
       expect(lines(h.debug).at(-1)).toContain("eta 15.00 s on pitRoad");
     });
 
@@ -568,7 +612,7 @@ describe("diffTrafficPitExit", () => {
       h.depart(tel({ cars: [{ idx: 5, pct: 0.05, est: 60 - 16 }] }));
 
       // 100 m at 25 m/s = 4 s, ETA 14: the car is +2.
-      expect(h.events).toEqual([{ verdict: "traffic", seconds: 2 }]);
+      expect(h.settled).toEqual([{ verdict: "traffic", seconds: 2 }]);
     });
 
     it("past pitRoadEnd: the reference time from the player's position to blendEnd", () => {
@@ -584,14 +628,14 @@ describe("diffTrafficPitExit", () => {
       // arriving with the player then: traffic, spoken at the departure.
       h.windows.after = 0.5;
       h.depart(tel({ pct: 0.1, cars: [{ idx: 5, pct: 0.05, est: 93.75 - 33.25 }] }));
-      expect(h.events).toEqual([{ verdict: "traffic", seconds: 0 }]);
+      expect(h.settled).toEqual([{ verdict: "traffic", seconds: 0 }]);
 
       // Held for a second evaluation, as every flip is.
       h.after(TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS, tel({ pct: 0.15625, OnPitRoad: false, cars: [car] }));
       h.after(TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS, tel({ pct: 0.15625, OnPitRoad: false, cars: [car] }));
 
       // +1 s with the after side at 0.5 s: only a 15.625 s ETA flips it to clear at +1.
-      expect(h.events).toEqual([
+      expect(h.settled).toEqual([
         { verdict: "traffic", seconds: 0 },
         { verdict: "clear", seconds: 1 },
       ]);
@@ -607,7 +651,7 @@ describe("diffTrafficPitExit", () => {
         h.depart(tel({ cars: [arriving(5, 1)], CarIdxLapDistPct: undefined }));
         h.after(100, tel({ cars: [arriving(5, 1)], OnPitRoad: undefined }));
 
-        expect(h.events).toEqual([{ verdict: "traffic", seconds: 1 }]);
+        expect(h.settled).toEqual([{ verdict: "traffic", seconds: 1 }]);
         expect(lines(h.debug).at(-1)).toContain("eta 15.00 s on pitRoad");
       });
 
@@ -619,7 +663,7 @@ describe("diffTrafficPitExit", () => {
         h.after(100, tel({ cars: [arriving(5, 1)], OnPitRoad: undefined }));
 
         // 60 − 31.25 = 28.75 s from the curve: the car at 16 s is 12.75 s before.
-        expect(h.events).toEqual([{ verdict: "clear", seconds: -12.7 }]);
+        expect(h.settled).toEqual([{ verdict: "clear", seconds: -12.7 }]);
         expect(lines(h.debug).at(-1)).toContain("eta 28.75 s on blend");
       });
 
@@ -634,7 +678,7 @@ describe("diffTrafficPitExit", () => {
         // The retry, on the next tick, which does not send the bit.
         h.after(100, tel({ cars: [arriving(5, 1)], OnPitRoad: undefined }));
 
-        expect(h.events).toEqual([{ verdict: "clear", seconds: -12.7 }]);
+        expect(h.settled).toEqual([{ verdict: "clear", seconds: -12.7 }]);
         expect(lines(h.debug).at(-1)).toContain("eta 28.75 s on blend");
       });
     });
@@ -646,7 +690,7 @@ describe("diffTrafficPitExit", () => {
 
       h.depart(tel({ pct: 0.15625, cars: [{ idx: 5, pct: 0.05, est: 93.75 - 15.625 - 1 }] }));
 
-      expect(h.events).toEqual([{ verdict: "traffic", seconds: 1 }]);
+      expect(h.settled).toEqual([{ verdict: "traffic", seconds: 1 }]);
       expect(lines(h.debug).at(-1)).toContain("on blend");
     });
 
@@ -660,7 +704,7 @@ describe("diffTrafficPitExit", () => {
       // Blend 60 (landmark) − own estTime 45 = 15 s.
       h.depart(tel({ pct: 0.15625, est: 45, cars: [arriving(5, 1)] }));
 
-      expect(h.events).toEqual([{ verdict: "traffic", seconds: 1 }]);
+      expect(h.settled).toEqual([{ verdict: "traffic", seconds: 1 }]);
     });
 
     it.each([
@@ -682,7 +726,7 @@ describe("diffTrafficPitExit", () => {
         h.depart(tel({ cars: [arriving(5, 1)] }));
         h.after(TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS, tel({ cars: [arriving(5, 1)] }));
 
-        expect(h.events).toEqual([]);
+        expect(h.settled).toEqual([]);
         expect(lines(h.debug).filter((line) => line.includes("no ETA"))).toEqual([
           `PitExit: silent, no ETA to blendEnd (${reason})`,
         ]);
@@ -699,7 +743,7 @@ describe("diffTrafficPitExit", () => {
       // 0.005 of 2,000 m = 10 m at 20 m/s = 0.5 s: ETA 20.5. A car short of the
       // line arrives with the player: 10 − 489.5 + 500 = 20.5 s.
       h.depart(tel({ pct: 0.975, cars: [{ idx: 5, pct: 0.979, est: 489.5 }] }));
-      expect(h.events).toEqual([{ verdict: "traffic", seconds: 0 }]);
+      expect(h.settled).toEqual([{ verdict: "traffic", seconds: 0 }]);
 
       // Past the line with the player: 10 − 4 (0.008 of the lap) = 6 s. Twice,
       // as every flip is held for a second evaluation.
@@ -711,7 +755,7 @@ describe("diffTrafficPitExit", () => {
       }
 
       // The car crosses the line too: 10 − 497 + 500 = 13 s, 7 s after the player.
-      expect(h.events).toEqual([
+      expect(h.settled).toEqual([
         { verdict: "traffic", seconds: 0 },
         { verdict: "clear", seconds: 7 },
       ]);
@@ -726,7 +770,7 @@ describe("diffTrafficPitExit", () => {
       /** The player on the line: the sim's reading there, its time already restarted. */
       const ON_LINE = 1.0000126;
 
-      it("runs on through the tick on the line and speaks the flip after it", () => {
+      it("runs on through the tick on the line and settles the flip after it", () => {
         const h = harness({ landmarks: ACROSS, trackLengthMeters: 2000 });
 
         // As above: the ETA 20.5 s, the car arriving with the player.
@@ -748,13 +792,13 @@ describe("diffTrafficPitExit", () => {
         );
 
         expect(h.episode.active).toBe(true);
-        expect(h.events).toEqual([
+        expect(h.settled).toEqual([
           { verdict: "traffic", seconds: 0 },
           { verdict: "clear", seconds: 7 },
         ]);
       });
 
-      it("makes the call at a departure from a stall on the line", () => {
+      it("settles the verdict at a departure from a stall on the line", () => {
         const h = harness({ landmarks: ACROSS, trackLengthMeters: 2000 });
 
         // Past pitRoadEnd by position: about 10 s to the blend on the curve. A
@@ -763,7 +807,7 @@ describe("diffTrafficPitExit", () => {
         h.depart(tel({ pct: ON_LINE, est: 0.0063, cars: [{ idx: 5, pct: 0.98, est: 490 }] }));
 
         expect(h.episode.active).toBe(true);
-        expect(h.events).toEqual([{ verdict: "clear", seconds: 10 }]);
+        expect(h.settled).toEqual([{ verdict: "clear", seconds: 10 }]);
         expect(lines(h.debug).at(-1)).toContain("on blend");
       });
     });
@@ -775,7 +819,7 @@ describe("diffTrafficPitExit", () => {
         blendEnd: landmark(0.8, { [CLS]: 400 }),
       };
 
-      it("makes the call at the departure, on the pit-road formula over the whole pit road", () => {
+      it("settles the verdict at the departure, on the pit-road formula over the whole pit road", () => {
         const h = harness({ landmarks: FAR });
 
         // 0.55 of 1,600 m = 880 m at 20 m/s = 44 s, + 400 − 375 = 69 s. A car
@@ -783,7 +827,7 @@ describe("diffTrafficPitExit", () => {
         h.depart(tel({ pct: 0.2, cars: [{ idx: 5, pct: 0.66, est: 330 }] }));
 
         expect(h.episode.active).toBe(true);
-        expect(h.events).toEqual([{ verdict: "traffic", seconds: 1 }]);
+        expect(h.settled).toEqual([{ verdict: "traffic", seconds: 1 }]);
         expect(lines(h.debug).at(-1)).toContain("eta 69.00 s on pitRoad");
       });
 
@@ -804,7 +848,7 @@ describe("diffTrafficPitExit", () => {
 
         expect(h.episode.active).toBe(false);
         expect(lines(h.debug).at(-1)).toBe("PitExit: episode ended (past blendEnd)");
-        expect(h.events).toEqual([{ verdict: "traffic", seconds: 1 }]);
+        expect(h.settled).toEqual([{ verdict: "traffic", seconds: 1 }]);
       });
     });
 
@@ -820,11 +864,11 @@ describe("diffTrafficPitExit", () => {
 
       expect(h.episode.active).toBe(false);
       expect(lines(h.debug)).toContain("PitExit: episode ended (past blendEnd)");
-      expect(h.events).toEqual([{ verdict: "clear", seconds: 10 }]);
+      expect(h.settled).toEqual([{ verdict: "clear", seconds: 10 }]);
     });
 
     describe("a player further past blendEnd than the slack, still off the racing surface", () => {
-      it("is past it by the episode's own progress: no first call a lap short on landmarks learned meanwhile", () => {
+      it("is past it by the episode's own progress: no first verdict a lap short on landmarks learned meanwhile", () => {
         const h = harness({ landmarks: null });
 
         h.depart(tel());
@@ -835,7 +879,7 @@ describe("diffTrafficPitExit", () => {
         h.readLandmarks.mockReturnValue(LANDMARKS);
         h.after(TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS, tel({ OnPitRoad: false, pct: 0.2 }));
 
-        expect(h.events).toEqual([]);
+        expect(h.settled).toEqual([]);
         expect(h.episode.active).toBe(false);
         expect(lines(h.debug).at(-1)).toBe("PitExit: episode ended (past blendEnd)");
       });
@@ -849,7 +893,7 @@ describe("diffTrafficPitExit", () => {
         h.readLandmarks.mockReturnValue(LANDMARKS);
         h.after(TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS, tel({ OnPitRoad: false, pct: 0.2 }));
 
-        expect(h.events).toEqual([]);
+        expect(h.settled).toEqual([]);
         expect(h.episode.active).toBe(false);
       });
 
@@ -864,7 +908,7 @@ describe("diffTrafficPitExit", () => {
           h.after(100, tel({ OnPitRoad: false, pct: 0.2 }));
           h.after(TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS, tel({ OnPitRoad: false, pct: 0.2 }));
 
-          expect(h.events).toEqual([]);
+          expect(h.settled).toEqual([]);
           expect(h.episode.active).toBe(false);
           expect(lines(h.debug)).toContain("PitExit: episode ended (past blendEnd, with no departure position)");
         });
@@ -877,18 +921,18 @@ describe("diffTrafficPitExit", () => {
           h.readLandmarks.mockReturnValue(LANDMARKS);
           h.after(TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS, tel({ OnPitRoad: false, pct: 0.2 }));
 
-          expect(h.events).toEqual([]);
+          expect(h.settled).toEqual([]);
           expect(h.episode.active).toBe(false);
         });
 
-        it("starts from the first position read short of blendEnd, and calls the exit from there", () => {
+        it("starts from the first position read short of blendEnd, and judges the exit from there", () => {
           const h = harness();
 
           h.depart(tel({ CarIdxLapDistPct: undefined }));
           h.after(100, tel({ cars: [arriving(5, 1)] }));
 
           expect(h.episode.startPct).toBe(STALL_PCT);
-          expect(h.events).toEqual([{ verdict: "traffic", seconds: 1 }]);
+          expect(h.settled).toEqual([{ verdict: "traffic", seconds: 1 }]);
         });
 
         it("starts from a position read once the landmarks arrive, short of blendEnd, and runs on", () => {
@@ -901,7 +945,7 @@ describe("diffTrafficPitExit", () => {
 
           expect(h.episode.active).toBe(true);
           expect(h.episode.startPct).toBe(0.1);
-          expect(h.events).toHaveLength(1);
+          expect(h.settled).toHaveLength(1);
         });
       });
 
@@ -927,7 +971,7 @@ describe("diffTrafficPitExit", () => {
       // 0.125 of 1,600 m = 200 m at 20 m/s = 10 s; a car reaching the blend at 11 s is +1.
       h.depart(tel({ cars: [{ idx: 5, pct: 0.05, est: 49 }] }));
 
-      expect(h.events).toEqual([{ verdict: "traffic", seconds: 1 }]);
+      expect(h.settled).toEqual([{ verdict: "traffic", seconds: 1 }]);
       expect(lines(h.debug).at(-1)).toContain("eta 10.00 s on pitRoad");
     });
   });
@@ -948,7 +992,7 @@ describe("diffTrafficPitExit", () => {
 
       h.depart(tel({ cars: [arriving(5, rel)] }));
 
-      expect(h.events).toEqual([{ verdict, seconds: rel }]);
+      expect(h.settled).toEqual([{ verdict, seconds: rel }]);
     });
 
     it("is traffic when any car is inside it, and reports the nearest", () => {
@@ -956,7 +1000,7 @@ describe("diffTrafficPitExit", () => {
 
       h.depart(tel({ cars: [arriving(5, -8), arriving(6, 3.5), arriving(7, 12)] }));
 
-      expect(h.events).toEqual([{ verdict: "traffic", seconds: 3.5 }]);
+      expect(h.settled).toEqual([{ verdict: "traffic", seconds: 3.5 }]);
     });
 
     it("reads the windows live, an explicit 0 closing a side", () => {
@@ -965,7 +1009,7 @@ describe("diffTrafficPitExit", () => {
       h.windows.before = 0;
       h.depart(tel({ cars: [arriving(5, -1)] }));
 
-      expect(h.events).toEqual([{ verdict: "clear", seconds: -1 }]);
+      expect(h.settled).toEqual([{ verdict: "clear", seconds: -1 }]);
     });
 
     it("says clear with no seconds when nobody is on track", () => {
@@ -973,7 +1017,7 @@ describe("diffTrafficPitExit", () => {
 
       h.depart(tel());
 
-      expect(h.events).toEqual([{ verdict: "clear" }]);
+      expect(h.settled).toEqual([{ verdict: "clear" }]);
     });
   });
 
@@ -1000,7 +1044,7 @@ describe("diffTrafficPitExit", () => {
       h.depart(nearBlend([crossed(1)]));
 
       // Next crossing ≈ 498.5 s after the player; the previous one −1.5 s.
-      expect(h.events).toEqual([{ verdict: "traffic", seconds: -1.5 }]);
+      expect(h.settled).toEqual([{ verdict: "traffic", seconds: -1.5 }]);
     });
 
     it("is clear for a car that crossed 3 s ago at the default 2 s before", () => {
@@ -1008,7 +1052,7 @@ describe("diffTrafficPitExit", () => {
 
       h.depart(nearBlend([crossed(3)]));
 
-      expect(h.events).toEqual([{ verdict: "clear", seconds: -3.5 }]);
+      expect(h.settled).toEqual([{ verdict: "clear", seconds: -3.5 }]);
     });
 
     it("never flips to clear as the car crosses the blend just ahead of the player", () => {
@@ -1025,7 +1069,7 @@ describe("diffTrafficPitExit", () => {
       // that proves the look back rather than the flip confirmation.
       h.after(TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS, tel({ pct: 0.1866, cars: [crossed(1.2)] }));
 
-      expect(h.events).toEqual([{ verdict: "traffic", seconds: -0.5 }]);
+      expect(h.settled).toEqual([{ verdict: "traffic", seconds: -0.5 }]);
       expect(lines(h.debug).filter((line) => line.includes("clear at"))).toEqual([]);
     });
 
@@ -1036,7 +1080,7 @@ describe("diffTrafficPitExit", () => {
 
         h.depart(nearBlend([crossed(ago)]));
 
-        expect(h.events).toEqual([{ verdict: "traffic" }]);
+        expect(h.settled).toEqual([{ verdict: "traffic" }]);
         expect(lines(h.debug).at(-1)).toContain("untimed: car 5 (noClassLap)");
       },
     );
@@ -1047,7 +1091,7 @@ describe("diffTrafficPitExit", () => {
       // 10 s from the blend: +9.5 s, outside the window; no past crossing to test.
       h.depart(nearBlend([{ idx: 5, pct: 0.1675, est: 83.75 }]));
 
-      expect(h.events).toEqual([{ verdict: "clear", seconds: 9.5 }]);
+      expect(h.settled).toEqual([{ verdict: "clear", seconds: 9.5 }]);
     });
   });
 
@@ -1068,7 +1112,7 @@ describe("diffTrafficPitExit", () => {
 
       h.depart(tel({ cars: [shortLapCar(10)] }));
 
-      expect(h.events).toEqual([{ verdict: "traffic", seconds: -0.3 }]);
+      expect(h.settled).toEqual([{ verdict: "traffic", seconds: -0.3 }]);
       expect(lines(h.debug).at(-1)).toContain("eta 30.30 s on pitRoad");
     });
 
@@ -1078,7 +1122,7 @@ describe("diffTrafficPitExit", () => {
       // Crossings at 3, 23, 43 s: −7.3 and +12.7 around the player, both outside.
       h.depart(tel({ cars: [shortLapCar(3)] }));
 
-      expect(h.events).toEqual([{ verdict: "clear", seconds: -7.3 }]);
+      expect(h.settled).toEqual([{ verdict: "clear", seconds: -7.3 }]);
     });
   });
 
@@ -1093,7 +1137,7 @@ describe("diffTrafficPitExit", () => {
 
       h.depart(tel({ cars: [arriving(5, 1)], SessionTime: 100 }));
 
-      expect(h.events).toEqual([{ verdict: "clear" }]);
+      expect(h.settled).toEqual([{ verdict: "clear" }]);
       expect(lines(h.debug).at(-1)).toContain("untimed: none; standing still: car 5)");
     });
 
@@ -1102,7 +1146,7 @@ describe("diffTrafficPitExit", () => {
 
       h.depart(tel({ cars: [arriving(5, 1)], SessionTime: 100 }));
 
-      expect(h.events).toEqual([{ verdict: "traffic", seconds: 1 }]);
+      expect(h.settled).toEqual([{ verdict: "traffic", seconds: 1 }]);
     });
   });
 
@@ -1113,7 +1157,7 @@ describe("diffTrafficPitExit", () => {
 
       h.depart(tel({ cars: [unknown, arriving(5, 10)] }));
 
-      expect(h.events).toEqual([{ verdict: "traffic", seconds: 10 }]);
+      expect(h.settled).toEqual([{ verdict: "traffic", seconds: 10 }]);
       expect(lines(h.debug).at(-1)).toContain("untimed: car 9 (noClass)");
     });
 
@@ -1122,13 +1166,13 @@ describe("diffTrafficPitExit", () => {
 
       h.depart(tel({ cars: [{ idx: 9, pct: 0.05, est: 40, cls: -1 }] }));
 
-      expect(h.events).toEqual([{ verdict: "traffic" }]);
+      expect(h.settled).toEqual([{ verdict: "traffic" }]);
     });
   });
 
   describe("missing per-car arrays", () => {
     it.each(["CarIdxEstTime", "CarIdxTrackSurface"] as const)(
-      "without %s make no call, never a clear, log once, and keep evaluating",
+      "without %s make no verdict, never a clear, log once, and keep evaluating",
       (field) => {
         const h = harness();
         const missing = tel({ [field]: undefined });
@@ -1136,32 +1180,32 @@ describe("diffTrafficPitExit", () => {
         h.depart(missing);
         h.after(TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS, missing);
 
-        expect(h.events).toEqual([]);
+        expect(h.settled).toEqual([]);
         expect(h.episode.active).toBe(true);
         expect(lines(h.debug).filter((line) => line.includes("per-car arrays are missing"))).toHaveLength(1);
 
         // The arrays back with nobody on track: the first call, a clear.
         h.after(TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS, tel());
 
-        expect(h.events).toEqual([{ verdict: "clear" }]);
+        expect(h.settled).toEqual([{ verdict: "clear" }]);
       },
     );
 
-    it("without CarIdxLapDistPct make no call, never a clear, log once, hold the episode and evaluate once it is back", () => {
+    it("without CarIdxLapDistPct make no verdict, never a clear, log once, hold the episode and evaluate once it is back", () => {
       const h = harness();
       const missing = tel({ CarIdxLapDistPct: undefined });
 
       h.depart(missing);
       h.after(TRAFFIC_PIT_EXIT_POSITION_GRACE_MS / 2, missing);
 
-      expect(h.events).toEqual([]);
+      expect(h.settled).toEqual([]);
       expect(h.episode.active).toBe(true);
       expect(lines(h.debug).filter((line) => line.includes("player position unavailable"))).toHaveLength(1);
 
       // The array back with nobody on track: the first call, a clear.
       h.after(TRAFFIC_PIT_EXIT_POSITION_GRACE_MS / 4, tel());
 
-      expect(h.events).toEqual([{ verdict: "clear" }]);
+      expect(h.settled).toEqual([{ verdict: "clear" }]);
     });
 
     it("say clear with complete arrays and no car on track", () => {
@@ -1169,11 +1213,11 @@ describe("diffTrafficPitExit", () => {
 
       h.depart(tel());
 
-      expect(h.events).toEqual([{ verdict: "clear" }]);
+      expect(h.settled).toEqual([{ verdict: "clear" }]);
     });
   });
 
-  describe("when it speaks", () => {
+  describe("when the verdict settles (spoken past pitRoadEnd: below)", () => {
     /**
      * The player rolling down pit road at the limit from pct 0, where the ETA
      * is 20 s, covering 0.0125 of the lap a second; with them a car arriving
@@ -1185,58 +1229,61 @@ describe("diffTrafficPitExit", () => {
         cars: relative === undefined ? [] : [{ idx: 5, pct: 0.05, est: 60 - (20 - second + relative) }],
       });
 
-    it("speaks once, on the departure tick, then not again while the verdict holds", () => {
+    it("settles once, on the departure tick, then not again while the verdict holds", () => {
       const h = harness();
 
       h.depart(rolling(0, 1));
-      expect(h.events).toEqual([{ verdict: "traffic", seconds: 1 }]);
+      expect(h.settled).toEqual([{ verdict: "traffic", seconds: 1 }]);
 
       for (let s = 1; s <= 4; s++) h.after(TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS, rolling(s, 1));
 
-      expect(h.events).toEqual([{ verdict: "traffic", seconds: 1 }]);
+      expect(h.settled).toEqual([{ verdict: "traffic", seconds: 1 }]);
     });
 
-    it("makes the call at the departure even with the merge 40 s away (amended 2026-11-11)", () => {
+    it("settles the verdict at the departure with the merge 40 s away, and says nothing there (amended 2026-11-20)", () => {
       // 4,800 m: the 0.125 of the lap to pit road's end is 600 m, 30 s at the
       // limit, plus 60 − 50 on to the blend.
       const h = harness({ trackLengthMeters: 4800 });
 
       h.depart(tel({ pct: 0, cars: [{ idx: 5, pct: 0.05, est: 60 - 41 }] }));
 
-      expect(h.events).toEqual([{ verdict: "traffic", seconds: 1 }]);
-      expect(lines(h.debug).at(-1)).toContain("first call; eta 40.00 s on pitRoad");
+      expect(h.settled).toEqual([{ verdict: "traffic", seconds: 1 }]);
+      expect(h.events).toEqual([]);
+      expect(lines(h.debug).at(-1)).toContain(
+        "PitExit: traffic settled short of pitRoadEnd, not spoken yet (first verdict; eta 40.00 s on pitRoad",
+      );
     });
 
-    it("makes the first call at the first evaluation that can time the player, when the departure tick cannot", () => {
+    it("settles the first verdict at the first evaluation that can time the player, when the departure tick cannot", () => {
       let landmarks: TrafficPitExitLandmarks | null = null;
       const h = harness();
 
       h.readLandmarks.mockImplementation(() => landmarks);
       h.depart(tel({ cars: [arriving(5, 1)] }));
-      expect(h.events).toEqual([]);
+      expect(h.settled).toEqual([]);
 
       landmarks = LANDMARKS;
       h.after(TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS, tel({ cars: [arriving(5, 1)] }));
 
-      expect(h.events).toEqual([{ verdict: "traffic", seconds: 1 }]);
+      expect(h.settled).toEqual([{ verdict: "traffic", seconds: 1 }]);
     });
 
     it("evaluates once a second, not on every tick", () => {
       const h = harness();
 
       h.depart(rolling(0));
-      expect(h.events).toEqual([{ verdict: "clear" }]);
+      expect(h.settled).toEqual([{ verdict: "clear" }]);
 
       // Traffic at one evaluation: held.
       h.after(TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS, rolling(1, 0));
-      expect(h.events).toEqual([{ verdict: "clear" }]);
+      expect(h.settled).toEqual([{ verdict: "clear" }]);
 
       // Not an evaluation, or it would be the second and spoken.
       h.after(TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS - 1, rolling(2, 0));
-      expect(h.events).toEqual([{ verdict: "clear" }]);
+      expect(h.settled).toEqual([{ verdict: "clear" }]);
 
       h.after(1, rolling(2, 0));
-      expect(h.events).toEqual([{ verdict: "clear" }, { verdict: "traffic", seconds: 0 }]);
+      expect(h.settled).toEqual([{ verdict: "clear" }, { verdict: "traffic", seconds: 0 }]);
     });
 
     it("evaluates on the first tick after the wall clock steps back, then once a second from there", () => {
@@ -1249,13 +1296,13 @@ describe("diffTrafficPitExit", () => {
       expect(lines(h.debug).at(-1)).toContain("traffic at 1 of 2 evaluations");
 
       h.after(TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS - 1, rolling(2, 0));
-      expect(h.events).toEqual([{ verdict: "clear" }]);
+      expect(h.settled).toEqual([{ verdict: "clear" }]);
 
       h.after(1, rolling(2, 0));
-      expect(h.events).toEqual([{ verdict: "clear" }, { verdict: "traffic", seconds: 0 }]);
+      expect(h.settled).toEqual([{ verdict: "clear" }, { verdict: "traffic", seconds: 0 }]);
     });
 
-    it("speaks again on a flip of the verdict that holds, and only then", () => {
+    it("settles again on a flip of the verdict that holds, and only then", () => {
       const h = harness();
       const step = (cars: Car[]): void => h.after(TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS, tel({ cars }));
 
@@ -1266,7 +1313,7 @@ describe("diffTrafficPitExit", () => {
       step([arriving(5, -1)]);
       step([arriving(5, -1.5)]);
 
-      expect(h.events).toEqual([
+      expect(h.settled).toEqual([
         { verdict: "traffic", seconds: 3 },
         { verdict: "clear", seconds: 6 },
         { verdict: "traffic", seconds: -1.5 },
@@ -1285,7 +1332,7 @@ describe("diffTrafficPitExit", () => {
         ["traffic", [3.9, 4.1, 3.9, 4.1, 3.9, 4.1]],
         ["clear", [4.1, 3.9, 4.1, 3.9, 4.1, 3.9]],
       ] as const)(
-        "a car wobbling across the after edge (+4 s) is not re-spoken: the first call, %s, stands",
+        "a car wobbling across the after edge (+4 s) never flips it: the first verdict, %s, stands",
         (first, wobble) => {
           const h = harness();
 
@@ -1293,22 +1340,22 @@ describe("diffTrafficPitExit", () => {
 
           for (const relative of wobble.slice(1)) step(h, relative);
 
-          expect(h.events).toEqual([{ verdict: first, seconds: wobble[0] }]);
+          expect(h.settled).toEqual([{ verdict: first, seconds: wobble[0] }]);
         },
       );
 
-      it("a sustained flip is spoken once, at its second evaluation", () => {
+      it("a sustained flip settles once, at its second evaluation", () => {
         const h = harness();
 
         h.depart(tel({ cars: [arriving(5, 3)] }));
         step(h, 5);
-        expect(h.events).toEqual([{ verdict: "traffic", seconds: 3 }]);
+        expect(h.settled).toEqual([{ verdict: "traffic", seconds: 3 }]);
 
         step(h, 5.5);
         step(h, 6);
         step(h, 7);
 
-        expect(h.events).toEqual([
+        expect(h.settled).toEqual([
           { verdict: "traffic", seconds: 3 },
           { verdict: "clear", seconds: 5.5 },
         ]);
@@ -1328,10 +1375,10 @@ describe("diffTrafficPitExit", () => {
 
         h.after(TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS, tel({ cars: [arriving(5, 5.5)], ...gap.telemetry }));
         step(h, 6); // clear, 1 of 2 again
-        expect(h.events).toEqual([{ verdict: "traffic", seconds: 3 }]);
+        expect(h.settled).toEqual([{ verdict: "traffic", seconds: 3 }]);
 
         step(h, 6.5); // clear, 2 of 2: spoken
-        expect(h.events).toEqual([
+        expect(h.settled).toEqual([
           { verdict: "traffic", seconds: 3 },
           { verdict: "clear", seconds: 6.5 },
         ]);
@@ -1345,7 +1392,7 @@ describe("diffTrafficPitExit", () => {
         h.after(TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS, tel({ cars: [arriving(5, 5.5)], CarIdxLapDistPct: undefined }));
         h.after(100, tel({ cars: [arriving(5, 5.5)] })); // clear, 2 of 2: spoken
 
-        expect(h.events).toEqual([
+        expect(h.settled).toEqual([
           { verdict: "traffic", seconds: 3 },
           { verdict: "clear", seconds: 5.5 },
         ]);
@@ -1377,42 +1424,14 @@ describe("diffTrafficPitExit", () => {
         // A tick later the evaluation runs again, `lastEvalAt` not having
         // moved: still 1 of 2, never the second.
         h.after(16, tel({ cars: [arriving(5, 5)] }));
-        expect(h.events).toEqual([{ verdict: "traffic", seconds: 3 }]);
+        expect(h.settled).toEqual([{ verdict: "traffic", seconds: 3 }]);
         expect(lines(h.debug).at(-1)).toBe("PitExit: clear at 1 of 2 evaluations, traffic still stands");
 
         step(h, 5.5); // clear, 2 of 2: spoken
-        expect(h.events).toEqual([
+        expect(h.settled).toEqual([
           { verdict: "traffic", seconds: 3 },
           { verdict: "clear", seconds: 5.5 },
         ]);
-      });
-
-      it("a confirmed flip whose emit threw keeps the spoken verdict, so the next tick speaks it", () => {
-        const h = harness();
-        let thrown = false;
-
-        h.depart(tel({ cars: [arriving(5, 3)] }));
-        step(h, 5); // clear, 1 of 2
-        h.debug.mockImplementation((line) => {
-          if (!thrown && line.startsWith("PitExit: emit")) {
-            thrown = true;
-            throw new Error("debug sink failed");
-          }
-        });
-
-        // clear, 2 of 2: the emit's line throws, and the tick's step boundary
-        // drops the step's event with it, as the splice here stands in for.
-        expect(() => step(h, 5.5)).toThrow("debug sink failed");
-        h.events.splice(1);
-        expect(h.episode.spokenVerdict).toBe("traffic");
-
-        // Retried on the next tick: the flip is still confirmed and spoken.
-        h.after(16, tel({ cars: [arriving(5, 5.5)] }));
-        expect(h.events).toEqual([
-          { verdict: "traffic", seconds: 3 },
-          { verdict: "clear", seconds: 5.5 },
-        ]);
-        expect(h.episode.spokenVerdict).toBe("clear");
       });
 
       it("starts the count afresh in the next episode", () => {
@@ -1425,14 +1444,14 @@ describe("diffTrafficPitExit", () => {
         h.after(100, tel({ cars: [arriving(5, 1)] }));
         step(h, 5);
 
-        expect(h.events).toEqual([
+        expect(h.settled).toEqual([
           { verdict: "traffic", seconds: 3 },
           { verdict: "traffic", seconds: 1 },
         ]);
       });
     });
 
-    it("speaks again in the next episode", () => {
+    it("settles again in the next episode", () => {
       const h = harness();
 
       h.depart(tel({ cars: [arriving(5, 1)] }));
@@ -1440,23 +1459,268 @@ describe("diffTrafficPitExit", () => {
       h.after(100, IN_STALL);
       h.after(100, tel({ cars: [arriving(5, 1)] }));
 
-      expect(h.events).toEqual([
+      expect(h.settled).toEqual([
         { verdict: "traffic", seconds: 1 },
         { verdict: "traffic", seconds: 1 },
       ]);
     });
   });
 
-  describe("the debug lines", () => {
-    it("name the episode's start, each emit with the ETA, the nearest car and its source, and the end", () => {
+  describe("speaking at the end of pit road (amended 2026-11-20)", () => {
+    const step = (h: ReturnType<typeof harness>, t: TrafficPitExitTelemetry): void =>
+      h.after(TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS, t);
+
+    it("is silent from the stall to pitRoadEnd, even with a verdict settled at every evaluation", () => {
+      const h = harness({ landmarks: CURVE_LANDMARKS });
+
+      h.depart(at(STALL_PCT, 1));
+
+      for (const pct of [0.075, 0.1, 0.12, 0.124]) step(h, at(pct, 1));
+
+      expect(h.episode.active).toBe(true);
+      expect(h.events).toEqual([]);
+    });
+
+    it("speaks the verdict on crossing pitRoadEnd into the blend lane", () => {
+      const h = harness({ landmarks: CURVE_LANDMARKS });
+
+      h.depart(at(STALL_PCT, 1));
+      step(h, at(0.1, 1));
+      step(h, at(0.13, 1));
+
+      expect(h.events).toEqual([{ verdict: "traffic", seconds: 1 }]);
+      expect(lines(h.debug).at(-1)).toContain("emit traffic (first call; eta 28.75 s on blend");
+    });
+
+    it("speaks a clear at the crossing too", () => {
+      const h = harness({ landmarks: CURVE_LANDMARKS });
+
+      h.depart(at(STALL_PCT, 8));
+      step(h, at(0.13, 8));
+
+      expect(h.events).toEqual([{ verdict: "clear", seconds: 8 }]);
+    });
+
+    it("speaks at the crossing by position while OnPitRoad still reads true (a landmark learned a little early)", () => {
+      const h = harness({ landmarks: CURVE_LANDMARKS });
+
+      h.depart(at(STALL_PCT, 1));
+      step(h, at(0.13, 1, { OnPitRoad: true }));
+
+      expect(h.events).toEqual([{ verdict: "traffic", seconds: 1 }]);
+    });
+
+    it("speaks at the crossing by the road bit while the position still reads short of pitRoadEnd", () => {
+      const h = harness({ landmarks: CURVE_LANDMARKS });
+
+      h.depart(at(STALL_PCT, 1));
+      step(h, at(0.12, 1));
+      expect(h.events).toEqual([]);
+
+      // Off pit road 8 m short of the learned line: the blend lane begins here.
+      step(h, at(0.12, 1, { OnPitRoad: false }));
+
+      expect(h.events).toEqual([{ verdict: "traffic", seconds: 1 }]);
+      expect(lines(h.debug).at(-1)).toContain("on blend");
+    });
+
+    it("re-speaks a flip after the crossing once it holds", () => {
+      const h = harness({ landmarks: CURVE_LANDMARKS });
+
+      h.depart(at(STALL_PCT, 1));
+      step(h, at(0.13, 1));
+      step(h, at(0.14, 6));
+      expect(h.events).toEqual([{ verdict: "traffic", seconds: 1 }]);
+
+      step(h, at(0.15, 6));
+
+      expect(h.events).toEqual([
+        { verdict: "traffic", seconds: 1 },
+        { verdict: "clear", seconds: 6 },
+      ]);
+    });
+
+    it("never speaks a flip before the crossing on its own: the crossing says the newer verdict, once", () => {
+      const h = harness({ landmarks: CURVE_LANDMARKS });
+
+      h.depart(at(STALL_PCT, 1));
+      // Clear for two evaluations: the flip holds, unspoken.
+      step(h, at(0.08, 6));
+      step(h, at(0.1, 6));
+      expect(h.events).toEqual([]);
+
+      step(h, at(0.13, 6));
+
+      expect(h.events).toEqual([{ verdict: "clear", seconds: 6 }]);
+    });
+
+    it("a flip first seen at the last evaluation before the crossing and holding at it is the verdict spoken", () => {
+      const h = harness({ landmarks: CURVE_LANDMARKS });
+
+      h.depart(at(STALL_PCT, 1));
+      step(h, at(0.1, 1));
+      step(h, at(0.12, 6)); // clear, 1 of 2
+
+      step(h, at(0.13, 6)); // clear, 2 of 2, at the crossing
+
+      expect(h.events).toEqual([{ verdict: "clear", seconds: 6 }]);
+    });
+
+    it("a flip first seen at the crossing is held like any flip: the settled verdict is spoken, the flip once it holds", () => {
+      const h = harness({ landmarks: CURVE_LANDMARKS });
+
+      h.depart(at(STALL_PCT, 1));
+      step(h, at(0.1, 1.5));
+      step(h, at(0.13, 6)); // clear, 1 of 2: traffic still stands
+
+      expect(h.events).toEqual([{ verdict: "traffic", seconds: 1.5 }]);
+
+      step(h, at(0.14, 6)); // clear, 2 of 2
+
+      expect(h.events).toEqual([
+        { verdict: "traffic", seconds: 1.5 },
+        { verdict: "clear", seconds: 6 },
+      ]);
+    });
+
+    it("a flip first seen at the crossing that does not hold is never heard", () => {
+      const h = harness({ landmarks: CURVE_LANDMARKS });
+
+      h.depart(at(STALL_PCT, 1));
+      step(h, at(0.13, 6)); // clear, 1 of 2
+      step(h, at(0.14, 1)); // traffic again
+
+      expect(h.events).toEqual([{ verdict: "traffic", seconds: 1 }]);
+    });
+
+    it("makes the first call at the crossing when the first verdict comes only there", () => {
+      let landmarks: TrafficPitExitLandmarks | null = null;
       const h = harness();
 
-      h.depart(tel({ cars: [arriving(5, 1.25)] }));
+      h.readLandmarks.mockImplementation(() => landmarks);
+      h.depart(at(STALL_PCT, 1));
+      step(h, at(0.1, 1));
+      expect(h.events).toEqual([]);
+
+      landmarks = CURVE_LANDMARKS;
+      step(h, at(0.13, 1));
+
+      expect(h.events).toEqual([{ verdict: "traffic", seconds: 1 }]);
+    });
+
+    it.each([
+      ["unlearned", null],
+      [
+        "with a pitRoadEnd kept from before a track rebuild",
+        { ...CURVE_LANDMARKS, pitRoadEnd: { ...CURVE_LANDMARKS.pitRoadEnd!, source: "previous" } },
+      ],
+      [
+        "with a blendEnd kept from before a track rebuild",
+        { ...CURVE_LANDMARKS, blendEnd: { ...CURVE_LANDMARKS.blendEnd!, source: "previous" } },
+      ],
+    ] satisfies Array<[string, TrafficPitExitLandmarks | null]>)(
+      "makes no call across pitRoadEnd on a track %s",
+      (_, landmarks) => {
+        const h = harness({ landmarks });
+
+        h.depart(at(STALL_PCT, 1));
+
+        for (const pct of [0.1, 0.13, 0.15, 0.17]) step(h, at(pct, 1));
+
+        expect(h.episode.active).toBe(true);
+        expect(h.events).toEqual([]);
+      },
+    );
+
+    it.each([
+      ["the first call, at the crossing", 3, 1],
+      ["a flip after it", 1, 2],
+    ] as const)("%s whose emit threw keeps the spoken verdict, so the next tick speaks it", (_, flipAt, expected) => {
+      const h = harness({ landmarks: CURVE_LANDMARKS });
+      let thrown = false;
+
+      h.depart(at(STALL_PCT, 3));
+
+      if (flipAt === 1) {
+        step(h, at(0.13, 3)); // the first call
+        step(h, at(0.14, 5)); // clear, 1 of 2
+      }
+
+      h.debug.mockImplementation((line) => {
+        if (!thrown && line.startsWith("PitExit: emit")) {
+          thrown = true;
+          throw new Error("debug sink failed");
+        }
+      });
+
+      // The emit's line throws, and the tick's step boundary drops the step's
+      // event with it, as the splice here stands in for.
+      const spokenBefore = h.episode.spokenVerdict;
+
+      expect(() => step(h, flipAt === 1 ? at(0.15, 5.5) : at(0.13, 3))).toThrow("debug sink failed");
+      h.events.splice(expected - 1);
+      expect(h.episode.spokenVerdict).toBe(spokenBefore);
+
+      // Retried on the next tick: still due, and spoken.
+      h.after(16, flipAt === 1 ? at(0.15, 5.5) : at(0.13, 3));
+
+      expect(h.events).toEqual(
+        flipAt === 1
+          ? [
+              { verdict: "traffic", seconds: 3 },
+              { verdict: "clear", seconds: 5.5 },
+            ]
+          : [{ verdict: "traffic", seconds: 3 }],
+      );
+      expect(h.episode.spokenVerdict).toBe(flipAt === 1 ? "clear" : "traffic");
+    });
+
+    it("speaks once through a position wobble at pitRoadEnd", () => {
+      const h = harness({ landmarks: CURVE_LANDMARKS });
+
+      h.depart(at(STALL_PCT, 1));
+      step(h, at(0.126, 1, { OnPitRoad: true }));
+      // Back a hair behind the line, then over it again, the road bit with it.
+      step(h, at(0.1245, 1, { OnPitRoad: true }));
+      step(h, at(0.126, 1, { OnPitRoad: true }));
+      step(h, at(0.1255, 1, { OnPitRoad: false }));
+
+      expect(h.events).toEqual([{ verdict: "traffic", seconds: 1 }]);
+    });
+
+    it("speaks once for a car rolled back behind pitRoadEnd after the call, and still re-speaks a flip that holds", () => {
+      const h = harness({ landmarks: CURVE_LANDMARKS });
+
+      h.depart(at(STALL_PCT, 1));
+      step(h, at(0.13, 1));
+      // Rolled back 16 m onto pit road, then out over the line again.
+      step(h, at(0.12, 1, { OnPitRoad: true }));
+      step(h, at(0.13, 1));
+      expect(h.events).toEqual([{ verdict: "traffic", seconds: 1 }]);
+
+      // Behind the line again, where the flip to clear holds: still the blend lane's call.
+      step(h, at(0.12, 6, { OnPitRoad: true }));
+      step(h, at(0.12, 6, { OnPitRoad: true }));
+
+      expect(h.events).toEqual([
+        { verdict: "traffic", seconds: 1 },
+        { verdict: "clear", seconds: 6 },
+      ]);
+    });
+  });
+
+  describe("the debug lines", () => {
+    it("name the episode's start, the verdict settled short of pitRoadEnd, each emit with the ETA, the nearest car and its source, and the end", () => {
+      const h = harness({ landmarks: CURVE_LANDMARKS });
+
+      h.depart(at(STALL_PCT, 1.5));
+      h.after(TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS, at(0.13, 1.5));
       h.after(100, tel({ PlayerTrackSurface: TrkLoc.OnTrack }));
 
       expect(lines(h.debug)).toEqual([
         "PitExit: episode started (left the stall at pct=0.0625)",
-        "PitExit: emit traffic (first call; eta 15.00 s on pitRoad, window -2/+4 s; nearest car 5 at 1.25 s via landmark; untimed: none)",
+        "PitExit: traffic settled short of pitRoadEnd, not spoken yet (first verdict; eta 36.25 s on pitRoad, window -2/+4 s; nearest car 5 at 1.50 s via curve; untimed: none)",
+        "PitExit: emit traffic (first call; eta 28.75 s on blend, window -2/+4 s; nearest car 5 at 1.50 s via curve; untimed: none)",
         "PitExit: episode ended (on the racing surface)",
       ]);
     });

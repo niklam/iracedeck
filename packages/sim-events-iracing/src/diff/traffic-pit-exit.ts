@@ -129,21 +129,41 @@
  * has only its next crossing tested. A car is in the window when any crossing
  * is, and the reported nearest is the nearest crossing tested.
  *
- * **When it speaks** (amended 2026-11-11: the call is made at the stall). At
- * the episode's first evaluation, which is the departure tick itself whenever
- * the landmarks and the ETA resolve there, however far off the merge is: the
- * call is made the moment the player leaves the pit box, early enough to act
- * on and ahead of the readback and tire lines it trumps. An evaluation that
- * cannot resolve them stays silent and the first one that can makes the call.
- * After that, again only when the verdict flips before the player reaches
- * `blendEnd` and the flip holds for {@link TRAFFIC_PIT_EXIT_FLIP_CONFIRM_EVALUATIONS}
+ * **The verdict settles** from the stall on, silently. The episode's first
+ * evaluation with a verdict settles it at once; a different verdict settles
+ * only once it holds for {@link TRAFFIC_PIT_EXIT_FLIP_CONFIRM_EVALUATIONS}
  * evaluations in a row: both lines cut in, so a car wobbling across an edge
  * of the window would otherwise have "traffic" and "clear" cut each other in
  * turn. An evaluation with no verdict (no landmarks, a landmark of a rebuilt
- * track's old geometry, no ETA, no per-car arrays) breaks the row, so the count starts again after it; a tick without
- * the player's position makes no evaluation and leaves the row as it was. The
- * lines speak no number; `seconds` (the nearest timed car's arrival relative
- * to the player's, to a tenth, negative before) is for logs and the harness.
+ * track's old geometry, no ETA, no per-car arrays) breaks the row, so the
+ * count starts again after it; a tick without the player's position makes no
+ * evaluation and leaves the row as it was.
+ *
+ * **When it speaks** (amended 2026-11-20, superseding 2026-11-11's call at
+ * the stall): at the episode's first evaluation past `pitRoadEnd`, into the
+ * blend lane, it says the verdict settled by then — the end of pit road or
+ * the merging road, where the driver asked to hear it, and where the ETA is
+ * the blend lane's sharper one. Past `pitRoadEnd` is the ETA's own blend-phase
+ * test: `OnPitRoad` false, or the position at or past `pitRoadEnd` (forward
+ * distance to `blendEnd` no more than `pitRoadEnd`'s). The road bit covers a
+ * `pitRoadEnd` learned a little late and the landmarks arriving mid-exit; the
+ * position, a bit that lags the landmark. It is a latch: a car rolled back
+ * behind the line, or a position wobbling across it, neither speaks again
+ * nor silences the blend lane. Nothing is said before it, whatever has
+ * settled. After the first call, again only when a flip settles before the
+ * player reaches `blendEnd`. A flip pending at the crossing is held like any
+ * other: one that began before the crossing and holds at its evaluation is
+ * settled there, so the crossing says the newer verdict; one first seen AT the
+ * crossing has one evaluation behind it, so the crossing says the settled
+ * verdict, and the flip follows a second later if it holds. Waiting for it
+ * instead could lose the call to the end of a short blend lane, and no single
+ * evaluation decides what is heard anywhere else. An evaluation that cannot
+ * settle a verdict stays silent and the first one past `pitRoadEnd` that can
+ * makes the call; a track without both landmarks learned on its current
+ * geometry never gets one. The lines speak no number; `seconds` (the nearest
+ * timed car's arrival relative to the player's, to a tenth, negative before,
+ * from the latest evaluation that reached the verdict spoken) is for logs and
+ * the harness.
  */
 import type { SimEventName } from "@iracedeck/event-bus";
 import { type TelemetryData, TrkLoc } from "@iracedeck/iracing-sdk";
@@ -195,8 +215,9 @@ export const TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS = 1_000;
  * player's ETA changes formula at the end of pit road — and both lines cut in,
  * so speaking every wobble would alternate the two over each other. A verdict
  * that holds at two evaluations is a change in the picture; one second is
- * little of a pit exit that is called from the box. The first call is never
- * held: it is made at the departure.
+ * little of a pit exit, settled from the stall on. The first verdict is never
+ * held: it settles at the episode's first evaluation, and is spoken at
+ * `pitRoadEnd` (module header).
  */
 export const TRAFFIC_PIT_EXIT_FLIP_CONFIRM_EVALUATIONS = 2;
 
@@ -650,7 +671,7 @@ function crossingsToTest(seconds: number, eta: number, after: number, classLap: 
  * An evaluation with no verdict (module header): the landmarks unlearned, no
  * ETA, or no per-car arrays. A flip held back for confirmation needs that many
  * evaluations IN A ROW, and this one did not reach it, so the count starts
- * again; the spoken verdict stands.
+ * again; the settled verdict stands, and so does the spoken one.
  */
 function noVerdict(episode: TrafficPitExitState): void {
   episode.flipVerdict = null;
@@ -728,6 +749,12 @@ function evaluate(
     return;
   }
 
+  // Into the blend lane (module header): the same test that puts the ETA on
+  // its blend phase, latched, so a car rolled back behind the line or a
+  // position wobbling across it neither silences the blend lane nor speaks
+  // twice. A fact the tick read, so it is kept even when no verdict follows.
+  if (!onPitRoad || position.toBlendEnd <= position.pitRoadEndToBlendEnd) episode.pastPitRoadEnd = true;
+
   const playerClass = resolveCarClassId(telemetry, facts.classes, facts.playerCarIdx);
   const eta = playerEta(curves, telemetry, playerPct, onPitRoad, playerClass, facts, pitRoadEnd, blendEnd, position);
 
@@ -796,51 +823,65 @@ function evaluate(
     }
   }
 
-  const verdict = inWindow || untimed.length > 0 ? "traffic" : "clear";
+  const verdict: "clear" | "traffic" = inWindow || untimed.length > 0 ? "traffic" : "clear";
+  const seconds = nearest === null ? null : Math.round(nearest.relative * 10) / 10;
+  const settled = episode.settledVerdict;
+  let nextSettled = verdict;
+  let flipVerdict: "clear" | "traffic" | null = null;
+  let flipEvaluations = 0;
 
-  if (verdict === episode.spokenVerdict) {
-    // The spoken verdict holds: a flip seen before it was a wobble.
-    episode.flipVerdict = null;
-    episode.flipEvaluations = 0;
-
-    return;
-  }
-
-  const flip = episode.spokenVerdict !== null;
-
-  // A flip is spoken only once it has held (module header); the first call
-  // never waits. The count is committed after the work that can throw, the
-  // debug line here and the emit and its line below (the package's step
-  // rule): a throw leaves `lastEvalAt` where it was, so the next tick
+  // A flip of the settled verdict settles only once it has held (module
+  // header); the first verdict never waits. Nothing is committed before the
+  // work that can throw, the debug lines and the emit below (the package's
+  // step rule): a throw leaves `lastEvalAt` where it was, so the next tick
   // evaluates again at once, and a count already committed would confirm the
   // flip on that tick, a tick rather than an interval later.
-  if (flip) {
+  if (settled !== null && verdict !== settled) {
     const evaluations = episode.flipVerdict === verdict ? episode.flipEvaluations + 1 : 1;
 
     if (evaluations < TRAFFIC_PIT_EXIT_FLIP_CONFIRM_EVALUATIONS) {
       logger.debug(
-        `PitExit: ${verdict} at ${evaluations} of ${TRAFFIC_PIT_EXIT_FLIP_CONFIRM_EVALUATIONS} evaluations, ${episode.spokenVerdict} still stands`,
+        `PitExit: ${verdict} at ${evaluations} of ${TRAFFIC_PIT_EXIT_FLIP_CONFIRM_EVALUATIONS} evaluations, ${settled} still stands`,
       );
-      episode.flipVerdict = verdict;
-      episode.flipEvaluations = evaluations;
-
-      return;
+      nextSettled = settled;
+      flipVerdict = verdict;
+      flipEvaluations = evaluations;
     }
   }
 
-  const relative = nearest === null ? null : Math.round(nearest.relative * 10) / 10;
+  // The seconds of the latest evaluation that reached the settled verdict:
+  // this one's, unless it only began a flip.
+  const nextSeconds = nextSettled === verdict ? seconds : episode.settledSeconds;
+  const details =
+    `eta ${eta.seconds.toFixed(2)} s on ${eta.phase}, window -${before}/+${after} s; ` +
+    `${nearest === null ? "no timed car" : `nearest car ${nearest.car.carIdx} at ${nearest.relative.toFixed(2)} s via ${nearest.car.source}`}; ` +
+    `untimed: ${untimed.length === 0 ? "none" : untimed.map((car) => `car ${car.carIdx} (${car.reason})`).join(", ")}` +
+    `${stationary.length === 0 ? "" : `; standing still: ${stationary.map((carIdx) => `car ${carIdx}`).join(", ")}`}`;
 
-  // Emitted and logged before the spoken verdict is written: a throw in
-  // either drops the event with the step (the tick's `steps.live` truncates
-  // it), so the call is retried on the next tick rather than lost.
-  emit({ event: "traffic.pitExit", data: relative === null ? { verdict } : { verdict, seconds: relative } });
-  logger.debug(
-    `PitExit: emit ${verdict} (${flip ? "flipped" : "first call"}; eta ${eta.seconds.toFixed(2)} s on ${eta.phase}, window -${before}/+${after} s; ` +
-      `${nearest === null ? "no timed car" : `nearest car ${nearest.car.carIdx} at ${nearest.relative.toFixed(2)} s via ${nearest.car.source}`}; ` +
-      `untimed: ${untimed.length === 0 ? "none" : untimed.map((car) => `car ${car.carIdx} (${car.reason})`).join(", ")}` +
-      `${stationary.length === 0 ? "" : `; standing still: ${stationary.map((carIdx) => `car ${carIdx}`).join(", ")}`})`,
-  );
-  episode.spokenVerdict = verdict;
-  episode.flipVerdict = null;
-  episode.flipEvaluations = 0;
+  if (nextSettled !== settled && !episode.pastPitRoadEnd) {
+    logger.debug(
+      `PitExit: ${nextSettled} settled short of pitRoadEnd, not spoken yet (${settled === null ? "first verdict" : "flipped"}; ${details})`,
+    );
+  }
+
+  // Spoken only past `pitRoadEnd` (module header): at the crossing whatever
+  // has settled by then, and after it each settled flip.
+  if (episode.pastPitRoadEnd && nextSettled !== episode.spokenVerdict) {
+    const first = episode.spokenVerdict === null;
+
+    // Emitted and logged before the spoken verdict is written: a throw in
+    // either drops the event with the step (the tick's `steps.live` truncates
+    // it), so the call is retried on the next tick rather than lost.
+    emit({
+      event: "traffic.pitExit",
+      data: nextSeconds === null ? { verdict: nextSettled } : { verdict: nextSettled, seconds: nextSeconds },
+    });
+    logger.debug(`PitExit: emit ${nextSettled} (${first ? "first call" : "flipped"}; ${details})`);
+    episode.spokenVerdict = nextSettled;
+  }
+
+  episode.settledVerdict = nextSettled;
+  episode.settledSeconds = nextSeconds;
+  episode.flipVerdict = flipVerdict;
+  episode.flipEvaluations = flipEvaluations;
 }

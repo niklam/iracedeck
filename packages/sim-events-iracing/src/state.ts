@@ -811,12 +811,32 @@ export type TrafficPitExitState = {
    * once and never sets it.
    */
   positionUnavailableSince: number | null;
+  /**
+   * In an episode: whether the player has crossed `pitRoadEnd` into the blend
+   * lane, by position or by `OnPitRoad` turning false, at an evaluation that
+   * read the landmarks. A latch: a car rolled back behind the line, or a
+   * position wobbling across it, keeps it set (`diff/traffic-pit-exit.ts`).
+   */
+  pastPitRoadEnd: boolean;
+  /**
+   * The verdict the evaluations have settled on: the first one at once, a
+   * different one once it has held for `TRAFFIC_PIT_EXIT_FLIP_CONFIRM_EVALUATIONS`.
+   * Settled silently from the stall on, spoken once the player is past
+   * `pitRoadEnd`; `null` until the first evaluation with a verdict.
+   */
+  settledVerdict: "clear" | "traffic" | null;
+  /**
+   * The nearest timed car's arrival relative to the player's (s, to a tenth)
+   * at the latest evaluation that reached {@link TrafficPitExitState.settledVerdict};
+   * `null` with no timed car then, or no settled verdict.
+   */
+  settledSeconds: number | null;
   /** The verdict last spoken this episode; `null` until the first is. */
   spokenVerdict: "clear" | "traffic" | null;
   /**
-   * The verdict other than the spoken one that the latest evaluations reached,
+   * The verdict other than the settled one that the latest evaluations reached,
    * held back until it has held for `TRAFFIC_PIT_EXIT_FLIP_CONFIRM_EVALUATIONS`;
-   * `null` while they agree with the spoken one.
+   * `null` while they agree with the settled one.
    */
   flipVerdict: "clear" | "traffic" | null;
   /** How many evaluations in a row have reached {@link TrafficPitExitState.flipVerdict}; 0 with none. */
@@ -840,6 +860,9 @@ export function createTrafficPitExitState(): TrafficPitExitState {
     startPct: null,
     lastEvalAt: null,
     positionUnavailableSince: null,
+    pastPitRoadEnd: false,
+    settledVerdict: null,
+    settledSeconds: null,
     spokenVerdict: null,
     flipVerdict: null,
     flipEvaluations: 0,

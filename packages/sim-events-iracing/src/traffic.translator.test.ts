@@ -2,7 +2,7 @@
  * The approaching-traffic detectors through the real tick (issue #1113): a
  * stopped player hears `traffic.rejoin` from the curves the same ticks learn,
  * a player driving out of the stall hears `traffic.pitExit` against the
- * landmarks #1112's learner loaded, the pit-exit window comes from the
+ * landmarks #1112's learner loaded, once past the end of pit road, the pit-exit window comes from the
  * options, and a replay glance wipes an episode, which the first ticks back
  * start afresh.
  */
@@ -26,6 +26,7 @@ import {
 } from "@iracedeck/track-data";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS } from "./diff/traffic-pit-exit.js";
 import { TRAFFIC_REJOIN_ENTRY_DWELL_MS, TRAFFIC_REJOIN_EVAL_INTERVAL_MS } from "./diff/traffic-rejoin.js";
 import {
   _resetSimEventsIracing,
@@ -291,33 +292,56 @@ describe("the approaching-traffic detectors through handleTick (issue #1113)", (
     });
     const inStall: Player = { pct: 0.08, surface: TrkLoc.InPitStall, onPitRoad: true, inStall: true };
     const leaving: Player = { pct: 0.0805, surface: TrkLoc.AproachingPits, onPitRoad: true };
+    const onPitRoad: Player = { pct: 0.09, surface: TrkLoc.AproachingPits, onPitRoad: true };
+    const blendLane: Player = { pct: 0.11, surface: TrkLoc.AproachingPits, onPitRoad: false };
 
-    it("calls traffic for a car reaching the blend just after the player, after pitStall.departed", () => {
-      init({ loadPitLaneLandmarks: section });
-
-      // The player: 78 m to pit road's end at 20 m/s (3.9 s) plus 10.8 − 9 =
-      // 5.7 s. Car 1 at 0.05: 10.8 − 4.5 = 6.3 s, 0.6 s after the player.
+    /**
+     * Out of the stall, down pit road and over its end into the blend lane, an
+     * evaluation apart. Leaving: 78 m to pit road's end at 20 m/s (3.9 s) plus
+     * 10.8 − 9 = 5.7 s, car 1 at 0.05 reaching the blend at 10.8 − 4.5 = 6.3 s,
+     * 0.6 s after the player. In the blend lane at 0.11: 10.8 − 9.9 = 0.9 s,
+     * car 1 at 0.10 at 1.8 s, 0.9 s after.
+     */
+    function driveOut(): void {
       controller.__tick(tick(inStall, 0.05));
       controller.__tick(tick(leaving, 0.05));
+      vi.advanceTimersByTime(TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS);
+      controller.__tick(tick(onPitRoad, 0.07));
+      expect(pitExit).toEqual([]);
+      vi.advanceTimersByTime(TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS);
+      controller.__tick(tick(blendLane, 0.1));
+    }
 
-      expect(pitExit).toEqual([{ verdict: "traffic", seconds: 0.6 }]);
+    it("calls traffic for a car reaching the blend just after the player, at the end of pit road", () => {
+      init({ loadPitLaneLandmarks: section });
+
+      driveOut();
+
+      expect(pitExit).toEqual([{ verdict: "traffic", seconds: 0.9 }]);
       expect(order).toEqual(["pitStall.departed", "traffic.pitExit"]);
     });
 
     it("calls clear for a car well behind, with the window from the options", () => {
       init({ loadPitLaneLandmarks: section, getTrafficPitExitAfterSeconds: () => 0.5 });
 
+      driveOut();
+
+      expect(pitExit).toEqual([{ verdict: "clear", seconds: 0.9 }]);
+    });
+
+    it("says nothing on leaving the stall: the verdict waits for the end of pit road", () => {
+      init({ loadPitLaneLandmarks: section });
+
       controller.__tick(tick(inStall, 0.05));
       controller.__tick(tick(leaving, 0.05));
 
-      expect(pitExit).toEqual([{ verdict: "clear", seconds: 0.6 }]);
+      expect(order).toEqual(["pitStall.departed"]);
     });
 
     it("stays silent on a track whose landmarks are not learned", () => {
       init({ loadPitLaneLandmarks: () => null });
 
-      controller.__tick(tick(inStall, 0.05));
-      controller.__tick(tick(leaving, 0.05));
+      driveOut();
 
       expect(order).toEqual(["pitStall.departed"]);
     });
