@@ -138,8 +138,11 @@
  * `SAFETY` without `interrupt` and wait their turn. The pit-exit clear call
  * sits at `SAFETY` and keeps `interrupt`: made as the player crosses the
  * end of pit road, it trumps the exit readback and the tire-wear report (spec, "Pit
- * exit": both pit-exit lines cut in), which are queueable and play afterwards,
- * but it is not a warning and does not cut a caution line. `PROXIMITY` itself
+ * exit": both pit-exit lines cut in): either, cut in flight, is queueable and
+ * picks up again after it, while one already finished is not replayed. Both
+ * come `PIT_READBACK_EXIT_DELAY_MS` (4.5 s) after the player leaves pit road,
+ * so in practice they follow the call. It is not a warning and does not cut a
+ * caution line. `PROXIMITY` itself
  * is not used — it is the spotter's, for cars alongside, and these are about
  * cars that are not yet alongside.
  *
@@ -479,7 +482,7 @@ const PIT_EXIT_LINES: Record<PitExitLine, PitExitLineSpec> = {
   },
   "pit-exit-clear": {
     // Not a warning: SAFETY, so it does not cut a caution line; it still cuts
-    // the exit readback and the tire-wear report (module header).
+    // an exit readback or a tire-wear report in flight (module header).
     weight: WEIGHT.SAFETY,
     interrupt: true,
     // The default: traffic turning up is a flipped verdict, which replaces it
