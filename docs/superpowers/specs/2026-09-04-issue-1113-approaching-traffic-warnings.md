@@ -143,6 +143,8 @@ Niklas's in-game test (2026-11-18, Tsukuba AI race): stopped with a pack coming,
 - **Weight and voice.** The pack line has the close-car warnings' weight (85) and interrupt, and plays without radio beeps like the other rejoin lines. One entry per voice, the same text in both; texts approved by Niklas.
 - **A cut "go" is dropped.** At pit exit the pit-exit traffic call cut the pit-status "go" line, which then replayed about three seconds later while the car was already moving. Niklas: "If I'm already moving, shouting Go a couple of seconds later makes zero sense." The pit-status complete line ("go") is `dropWhenCut` (#1681): once cut, it is gone, never replayed.
 
+**A rebuilt track's old landmarks are not used (2026-11-20).** After a track rebuild, #1112 keeps the pre-rebuild landmarks as `previous` until the new geometry is learned. The pit-exit call treats a `previous` `pitRoadEnd` or `blendEnd` as not learned and stays silent, with one debug line, because its window of a second or two needs landmarks measured on the current geometry. #1112 decision 6 only allows a consumer to fall back; this consumer does not. A judge overruled the lead's decline of the CodeRabbit finding that raised it.
+
 ## Alternatives rejected
 
 **Extending the gap engine.** It is built to suppress exactly these states and keyed to class standings; adding a stopped mode to it would fight its own gates.
