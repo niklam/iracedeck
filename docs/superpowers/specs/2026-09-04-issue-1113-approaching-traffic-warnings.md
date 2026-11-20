@@ -145,6 +145,8 @@ Niklas's in-game test (2026-11-18, Tsukuba AI race): stopped with a pack coming,
 
 **A rebuilt track's old landmarks are not used (2026-11-20).** After a track rebuild, #1112 keeps the pre-rebuild landmarks as `previous` until the new geometry is learned. The pit-exit call treats a `previous` `pitRoadEnd` or `blendEnd` as not learned and stays silent, with one debug line, because its window of a second or two needs landmarks measured on the current geometry. #1112 decision 6 only allows a consumer to fall back; this consumer does not. A judge overruled the lead's decline of the CodeRabbit finding that raised it.
 
+**The rejoin warnings ship as experimental, off by default (2026-11-20).** After his in-game test Niklas decided: "Let's mark the traffic part experimental, and off by default. Pit exit stuff should be fine." The **Traffic when rejoining** opt-in (`calloutEnabled…` for the rejoin family) defaults to `false` and its label says it is experimental. **Traffic at pit exit** stays on by default. This is a deliberate exception to the rule that new Race Engineer callouts default on. The settings key is new, so no migration is needed: an install that never stored it reads the new default.
+
 ## Alternatives rejected
 
 **Extending the gap engine.** It is built to suppress exactly these states and keyed to class standings; adding a stopped mode to it would fight its own gates.
