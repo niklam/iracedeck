@@ -22,9 +22,8 @@ import { AT_RACING_SPEED } from "./scenario-shortcuts.js";
 const CLIP_MS: ClipDurations = [
   [/\/traffic\/pit-exit-traffic/, 3300],
   [/\/traffic\/pit-exit-clear/, 2200],
-  // Not generated yet (amended 2026-11-20): "Watch for cars." is short; measure
-  // the take once it is committed and round up.
-  [/\/traffic\/pit-exit-merge/, 1500],
+  // "Watch for cars.", measured at 1.31 s on 2026-11-20 and rounded up.
+  [/\/traffic\/pit-exit-merge/, 1400],
   // A stand-in for a long critical line holding the bus: far longer than the
   // real take, so the clear line waits past the traffic line's queue window.
   [/\/flags\/meatball/, 6000],

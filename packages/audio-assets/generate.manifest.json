@@ -78206,6 +78206,22 @@
       "textPreview": "No traffic expected at the exit.",
       "generatedAt": "2026-11-20T15:43:30.029Z",
       "requestId": "03mfpJwJ0iCnqh9K13kg"
+    },
+    "voice/default/traffic/pit-exit-merge-01.mp3": {
+      "hash": "3d0cb346c2321c88",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Watch for cars.",
+      "generatedAt": "2026-11-20T18:50:13.488Z",
+      "requestId": "xBxjey69GtAke8VtVuCr"
+    },
+    "voice/shawn/traffic/pit-exit-merge-01.mp3": {
+      "hash": "3d0cb346c2321c88",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "Watch for cars.",
+      "generatedAt": "2026-11-20T18:50:13.556Z",
+      "requestId": "xBxjey69GtAke8VtVuCr"
     }
   }
 }
