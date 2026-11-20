@@ -581,6 +581,56 @@ describe("diffTrafficPitExit", () => {
       },
     );
 
+    describe("out of driving order", () => {
+      /**
+       * `pitRoadEnd` 40 m past `blendEnd` on the 1,600 m lap: beyond the 15 m
+       * slack, so not the same point, and read forward the road-to-blend
+       * distance is 0.975 of a lap. Taken at face value, the player leaving
+       * the stall at 0.0625 would be past `pitRoadEnd` already, and the call
+       * and the merge check would run at the departure.
+       */
+      const INVERTED: TrafficPitExitLandmarks = {
+        pitRoadEnd: landmark(0.2125, { [CLS]: 85 }),
+        blendEnd: landmark(0.1875, { [CLS]: 60 }),
+      };
+
+      it("stay silent with pitRoadEnd learned beyond the slack after blendEnd, logging once per episode", () => {
+        const h = harness({ landmarks: INVERTED });
+
+        h.depart(tel({ cars: [arriving(5, 1)] }));
+        h.after(TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS, tel({ cars: [arriving(5, 1)], pct: 0.1 }));
+        h.after(TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS, tel({ cars: [arriving(5, 1)], pct: 0.15, OnPitRoad: false }));
+
+        expect(h.settled).toEqual([]);
+        expect(h.events).toEqual([]);
+        expect(h.merges).toEqual([]);
+        expect(lines(h.debug).filter((line) => line.includes("landmarks"))).toEqual([
+          "silent, landmarks out of driving order (pitRoadEnd 0.2125 is past blendEnd 0.1875)",
+        ]);
+      });
+
+      it.each([
+        ["in order", LANDMARKS],
+        ["at one point", { pitRoadEnd: landmark(0.1875, { [CLS]: 60 }), blendEnd: landmark(0.1875, { [CLS]: 60 }) }],
+        [
+          "within the slack after blendEnd (the same point)",
+          { pitRoadEnd: landmark(0.193, { [CLS]: 60.5 }), blendEnd: landmark(0.1875, { [CLS]: 60 }) },
+        ],
+      ] satisfies Array<[string, TrafficPitExitLandmarks]>)(
+        "still make the call with the landmarks %s",
+        (_, landmarks) => {
+          const h = harness({ landmarks });
+
+          h.depart(tel({ cars: [arriving(5, 1)] }));
+          // At the end of pit road by position: the call point whatever the pair.
+          h.after(TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS, tel({ cars: [arriving(5, 1)], pct: 0.186 }));
+
+          expect(h.events).toHaveLength(1);
+          expect(lines(h.debug).filter((line) => line.includes("out of driving order"))).toEqual([]);
+        },
+      );
+    });
+
     it("starts a held flip's count again after an evaluation on a landmark of the old geometry", () => {
       const h = harness();
       const relearning: TrafficPitExitLandmarks = {

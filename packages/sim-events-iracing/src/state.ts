@@ -861,6 +861,8 @@ export type TrafficPitExitState = {
   landmarksMissingLogged: boolean;
   /** The once-per-episode debug line for landmarks still relearning after a track rebuild (`source: "previous"`) has been written. */
   landmarksRelearningLogged: boolean;
+  /** The once-per-episode debug line for a `pitRoadEnd` learned past `blendEnd`, beyond the slack that makes them one point, has been written. */
+  landmarksOutOfOrderLogged: boolean;
   /** The once-per-episode debug line for an ETA that cannot be computed has been written. */
   noEtaLogged: boolean;
   /** The once-per-episode debug line for an evaluation without the per-car arrays has been written. */
@@ -886,6 +888,7 @@ export function createTrafficPitExitState(): TrafficPitExitState {
     mergeWarned: false,
     landmarksMissingLogged: false,
     landmarksRelearningLogged: false,
+    landmarksOutOfOrderLogged: false,
     noEtaLogged: false,
     arraysMissingLogged: false,
   };

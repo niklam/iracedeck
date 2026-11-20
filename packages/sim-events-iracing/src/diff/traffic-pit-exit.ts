@@ -41,7 +41,16 @@
  * geometry, so neither {@link TRAFFIC_PIT_EXIT_LANDMARK_SLACK_M} nor the ETA's
  * precision holds on it. Either landmark `previous` is treated as unlearned:
  * no verdict, the flip count started again, one debug line per episode, until
- * the learner has republished both on the current geometry.
+ * the learner has republished both on the current geometry. Nor from a pair
+ * out of driving order: `pitRoadEnd` must come before `blendEnd`, and read
+ * forward from `pitRoadEnd` a `blendEnd` more than half a lap on is one that
+ * lies behind it, a mislearned pair. Within
+ * {@link TRAFFIC_PIT_EXIT_LANDMARK_SLACK_M} after `blendEnd` it is the same
+ * point (below) and is kept; beyond that the forward distance from
+ * `pitRoadEnd` to `blendEnd` would read most of a lap, every position short of
+ * the blend would count as past `pitRoadEnd`, and the call and the merge check
+ * would run at the departure. Such a pair is unusable like an unlearned one:
+ * no verdict, the flip count started again, one debug line per episode.
  *
  * **The player's arrival at `blendEnd` (ETA),** with `T(x)` the player's
  * class's reference time at `x` — a landmark's own `estTimeByClass` for that
@@ -718,9 +727,31 @@ function reachedCallPoint(onPitRoad: boolean, position: ExitPosition, facts: Tra
   return lead !== null && lead <= TRAFFIC_PIT_EXIT_CALL_LEAD_S;
 }
 
-/** Both landmarks, when learned on the track's current geometry (module header); `null` otherwise. */
+/**
+ * Whether `pitRoadEnd` lies after `blendEnd` in driving order, beyond the
+ * slack that makes the two one point (module header): read forward from
+ * `pitRoadEnd`, `blendEnd` is more than half a lap on, which is behind it,
+ * and not within `slackPct` of a whole lap, which {@link exitPosition} reads
+ * as the same point. The half lap is the rule the episode's own progress
+ * reads the lap beyond `blendEnd` by: the nearer half is past it.
+ */
+function landmarksOutOfOrder(
+  pitRoadEnd: PitLaneResolvedLandmark,
+  blendEnd: PitLaneResolvedLandmark,
+  slackPct: number,
+): boolean {
+  const pitRoadEndToBlendEnd = forwardPct(pitRoadEnd.pct, blendEnd.pct);
+
+  return pitRoadEndToBlendEnd > 0.5 && pitRoadEndToBlendEnd <= 1 - slackPct;
+}
+
+/**
+ * Both landmarks, when learned on the track's current geometry and in driving
+ * order (module header); `null` otherwise.
+ */
 function usableLandmarks(
   landmarks: TrafficPitExitLandmarks | null,
+  slackPct: number,
 ): { pitRoadEnd: PitLaneResolvedLandmark; blendEnd: PitLaneResolvedLandmark } | null {
   const pitRoadEnd = landmarks?.pitRoadEnd ?? null;
   const blendEnd = landmarks?.blendEnd ?? null;
@@ -728,6 +759,8 @@ function usableLandmarks(
   if (pitRoadEnd === null || blendEnd === null) return null;
 
   if (pitRoadEnd.source === "previous" || blendEnd.source === "previous") return null;
+
+  if (landmarksOutOfOrder(pitRoadEnd, blendEnd, slackPct)) return null;
 
   return { pitRoadEnd, blendEnd };
 }
@@ -749,17 +782,12 @@ function offScheduleDue(
   landmarks: TrafficPitExitLandmarks | null,
   facts: TrafficPitExitFacts,
 ): boolean {
-  const usable = usableLandmarks(landmarks);
+  const slackPct = landmarkSlackPct(facts.trackLengthMeters);
+  const usable = usableLandmarks(landmarks, slackPct);
 
   if (usable === null) return false;
 
-  const position = exitPosition(
-    episode.startPct ?? playerPct,
-    playerPct,
-    usable.pitRoadEnd,
-    usable.blendEnd,
-    landmarkSlackPct(facts.trackLengthMeters),
-  );
+  const position = exitPosition(episode.startPct ?? playerPct, playerPct, usable.pitRoadEnd, usable.blendEnd, slackPct);
 
   if (position === null) return false;
 
@@ -930,6 +958,23 @@ function evaluate(
     return;
   }
 
+  const slackPct = landmarkSlackPct(facts.trackLengthMeters);
+
+  // A pair out of driving order was mislearned: read as it stands, every
+  // position short of the blend is past `pitRoadEnd` (module header).
+  if (landmarksOutOfOrder(pitRoadEnd, blendEnd, slackPct)) {
+    noVerdict(episode, kind);
+
+    if (!episode.landmarksOutOfOrderLogged) {
+      episode.landmarksOutOfOrderLogged = true;
+      logger.debug(
+        `silent, landmarks out of driving order (pitRoadEnd ${pitRoadEnd.pct.toFixed(4)} is past blendEnd ${blendEnd.pct.toFixed(4)})`,
+      );
+    }
+
+    return;
+  }
+
   // The departure tick sent no position, so the start is taken here, where
   // `blendEnd` is known (module header): a position in the half lap after it
   // is the player already past it, never a start a lap short.
@@ -943,13 +988,7 @@ function evaluate(
     episode.startPct = playerPct;
   }
 
-  const position = exitPosition(
-    episode.startPct,
-    playerPct,
-    pitRoadEnd,
-    blendEnd,
-    landmarkSlackPct(facts.trackLengthMeters),
-  );
+  const position = exitPosition(episode.startPct, playerPct, pitRoadEnd, blendEnd, slackPct);
 
   if (position === null) {
     end(episode, "past blendEnd", logger);
