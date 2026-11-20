@@ -499,6 +499,24 @@ describe("diffTrafficRejoin", () => {
       expect(h.events).toEqual([near(9, true)]);
     });
 
+    it("publishes nothing on a fresh episode's first tick, so no traffic.rejoin follows the translator's teardown end (#1499)", () => {
+      // `publishActiveStateTeardown` resets a running episode and publishes
+      // the end before the live diffs run; this is the call that follows it on
+      // that tick, with a car right behind on every reading it could take.
+      for (const t of [
+        tel({ cars: [behind(5, 0.5)] }),
+        tel({ cars: [behind(5, 0.5), behind(6, 1)] }),
+        tel({ cars: [behind(5, 4)], Speed: 0 }),
+      ]) {
+        const h = harness();
+
+        h.tick(t);
+
+        expect(h.emitted).toEqual([]);
+        expect(h.episode.active).toBe(false);
+      }
+    });
+
     it("publishes it once for a tow: out of the world, then in the stall", () => {
       const h = harness();
 

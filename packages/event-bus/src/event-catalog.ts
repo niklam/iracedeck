@@ -811,8 +811,10 @@ export type SimEventMap = {
    * rejoin lines end on it (`endsOn`): one playing stops at once and one
    * waiting is dropped. Published once, on the tick the stop ends, and only
    * for a stop that was running; a stop that ends by driving off publishes
-   * nothing. Never on the same tick as a `traffic.rejoin`. From live, in-car
-   * telemetry only.
+   * nothing. Also published for a running stop that a session change, a
+   * disconnect or the entry into a replay view (the garage, where the driver
+   * goes on leaving the car) ends, before its state is wiped. Never on the
+   * same tick as a `traffic.rejoin`. From live, in-car telemetry only.
    */
   "traffic.rejoinTowed": SimEvent<"traffic.rejoinTowed", EmptySimEventPayload>;
   /**

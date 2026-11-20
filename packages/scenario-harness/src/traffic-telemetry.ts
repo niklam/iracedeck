@@ -323,8 +323,13 @@ function rejoinSequence(learn: boolean): TelemetryStep[] {
     { patch: { Speed: 0, ...rejoinSnapshot(0) }, holdMs: REJOIN_STOP_HOLD_MS, tick: true },
     { patch: {}, holdMs: REJOIN_ENTRY_HOLD_MS, tick: true },
     ...[1, 2, 3, 4, 5, 6].map((n) => ({ patch: rejoinSnapshot(n), holdMs: REJOIN_SNAPSHOT_HOLD_MS, tick: true })),
-    // Away again: the episode ends once the car has been moving for two seconds.
+    // Away again: the episode ends once the car has been moving for two
+    // seconds, on a tick after that dwell. That tick is a step of its own, so
+    // the episode also ends with the tick loop paused (one tick per step): an
+    // episode still running at the teardown bracket would be wiped there, with
+    // `traffic.rejoinTowed`, which cuts a rejoin line in flight.
     { patch: { Speed: RACING_SPEED_MPS }, holdMs: REJOIN_DRIVE_AWAY_MS, tick: true },
+    { patch: {}, holdMs: 0, tick: true },
     ...TRAFFIC_TEARDOWN,
   ];
 }

@@ -650,7 +650,9 @@ export function resetTrafficArrivalMotion(slice: TrafficArrivalState): TrafficAr
  * tick's wall clock (`now`, ms).
  *
  * Recreated at a session change and a disconnect with the rest of the state,
- * and **wiped whole at the replay wipe** (not in `preservedAcrossReplay`). An
+ * and **wiped whole at the replay wipe** (not in `preservedAcrossReplay`); an
+ * active episode first gets its end, `traffic.rejoinTowed`, from
+ * `publishActiveStateTeardown`, so a rejoin line in flight stops with it. An
  * episode is a run of live facts — a dwell timer, what was last said about
  * the cars around the player — and a garage visit or a replay glance breaks
  * that run: the car may come back towed, reset or somewhere else, and the

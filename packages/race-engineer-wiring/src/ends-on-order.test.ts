@@ -6,7 +6,12 @@ import {
 } from "@iracedeck/audio-scenarios";
 import { _resetEventBus, initializeEventBus, type SimEventName } from "@iracedeck/event-bus";
 import { silentLogger } from "@iracedeck/logger";
-import { CONTROLLER_TICK_ORDER, findEndsOnOrderViolations, type TickStage } from "@iracedeck/sim-events-iracing";
+import {
+  CONTROLLER_TICK_ORDER,
+  type EndsOnOrderViolation,
+  findEndsOnOrderViolations,
+  type TickStage,
+} from "@iracedeck/sim-events-iracing";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { createIracingSimRuntime } from "./sim-runtime.js";
@@ -26,8 +31,11 @@ import { wireRaceEngineer } from "./wire-race-engineer.js";
 //
 // A `same-stage` violation fails closed, and its message says what proof
 // would justify an exemption: a test in the publishing module showing one call
-// never emits the trigger after the end. Each exemption below names its pair,
-// its stage and that test, and excuses nothing else — no other kind of
+// never emits the trigger after the end. A `trigger-after-end` violation is
+// excused the same way, only where tests prove the end's stage leaves the
+// trigger's nothing to publish on that tick (it resets the trigger's state, or
+// the tick returns after it). Each exemption below names its pair, its stage
+// or stages and those tests, and excuses nothing else — no other kind of
 // violation, no other stage.
 
 /** What the check reads of one contract. */
@@ -55,26 +63,91 @@ const SAME_STAGE_EXEMPTIONS: readonly SameStageExemption[] = [
   },
 ];
 
-/** Whether `exemptions` excuse a `same-stage` violation of `trigger` before `end` in `stage`. */
+/**
+ * A trigger whose stage comes after its end's in the table, where the end's
+ * stage leaves the trigger's nothing to publish on that tick (it resets the
+ * trigger's state, or the tick returns after it), proved by the tests named.
+ */
+type TriggerAfterEndExemption = {
+  readonly trigger: SimEventName;
+  readonly end: SimEventName;
+  readonly triggerStage: string;
+  readonly endStage: string;
+  /** The tests that prove `triggerStage` never publishes `trigger` after `endStage`'s `end` on one tick. */
+  readonly proof: string;
+};
+
+const TRIGGER_AFTER_END_EXEMPTIONS: readonly TriggerAfterEndExemption[] = [
+  {
+    // #1113: a session change wipes a running stop. The teardown resets the
+    // episode before it publishes the end, `resetPerSessionState` recreates
+    // the state, and a fresh episode publishes nothing on its first tick.
+    trigger: "traffic.rejoin",
+    end: "traffic.rejoinTowed",
+    triggerStage: "diffTrafficRejoin",
+    endStage: "publishActiveStateTeardown (session change)",
+    proof:
+      '@iracedeck/sim-events-iracing diff/traffic-rejoin.test.ts: "publishes nothing on a fresh episode\'s first tick, so no traffic.rejoin follows the translator\'s teardown end (#1499)"; traffic.translator.test.ts: "on a session change, before session.changed, with no traffic.rejoin on that tick"',
+  },
+  {
+    // #1113: entering a replay view (the garage, on leaving the car) wipes a
+    // running stop. The replay guard returns right after the teardown, so no
+    // live diff runs on that tick, and the replay recorder publishes no
+    // `traffic.rejoin`.
+    trigger: "traffic.rejoin",
+    end: "traffic.rejoinTowed",
+    triggerStage: "diffTrafficRejoin",
+    endStage: "publishActiveStateTeardown (replay entry)",
+    proof:
+      '@iracedeck/sim-events-iracing traffic.translator.test.ts: "on leaving the car for the garage, whose ticks the replay guard swallows: once, and nothing after it"; tick-order.test.ts: "places the replay-entry teardown directly before the live diffs"',
+  },
+];
+
+/** The exemptions a check applies, one list per kind of violation they may excuse. */
+type OrderExemptions = {
+  readonly sameStage: readonly SameStageExemption[];
+  readonly triggerAfterEnd: readonly TriggerAfterEndExemption[];
+};
+
+const ORDER_EXEMPTIONS: OrderExemptions = {
+  sameStage: SAME_STAGE_EXEMPTIONS,
+  triggerAfterEnd: TRIGGER_AFTER_END_EXEMPTIONS,
+};
+
+/** Whether `exemptions` excuse `violation` of `trigger` before `end`: of its own kind, pair and stages only. */
 function exempt(
-  exemptions: readonly SameStageExemption[],
+  exemptions: OrderExemptions,
   trigger: SimEventName,
   end: SimEventName,
-  stage: string,
+  violation: EndsOnOrderViolation,
 ): boolean {
-  return exemptions.some((e) => e.trigger === trigger && e.end === end && e.stage === stage);
+  if (violation.kind === "same-stage") {
+    return exemptions.sameStage.some((e) => e.trigger === trigger && e.end === end && e.stage === violation.stage);
+  }
+
+  if (violation.kind === "trigger-after-end") {
+    return exemptions.triggerAfterEnd.some(
+      (e) =>
+        e.trigger === trigger &&
+        e.end === end &&
+        e.triggerStage === violation.triggerStage &&
+        e.endStage === violation.endStage,
+    );
+  }
+
+  return false;
 }
 
 /**
  * One failure message per `endsOn` contract in `contracts` that the
  * translator could publish in the wrong order (or that cannot be checked);
  * empty when every pairing holds. Contracts without `endsOn` are skipped, and
- * a `same-stage` violation `exemptions` name is excused.
+ * a violation `exemptions` name, kind and stages alike, is excused.
  */
 function endsOnOrderFailures(
   contracts: readonly EndsOnPair[],
   order: readonly TickStage[],
-  exemptions: readonly SameStageExemption[] = SAME_STAGE_EXEMPTIONS,
+  exemptions: OrderExemptions = ORDER_EXEMPTIONS,
 ): string[] {
   const failures: string[] = [];
 
@@ -89,7 +162,7 @@ function endsOnOrderFailures(
     }
 
     const violations = findEndsOnOrderViolations(order, event, endsOnEvent).filter(
-      (v) => !(v.kind === "same-stage" && exempt(exemptions, event, endsOnEvent, v.stage)),
+      (v) => !exempt(exemptions, event, endsOnEvent, v),
     );
 
     if (violations.length > 0) {
@@ -145,7 +218,7 @@ describe("endsOn trigger/end order against one controller tick (#1407, #1499, #1
   });
 
   it("uses every exemption: each names a pair a registered contract has, so none outlives its contract", () => {
-    for (const e of SAME_STAGE_EXEMPTIONS) {
+    for (const e of [...SAME_STAGE_EXEMPTIONS, ...TRIGGER_AFTER_END_EXEMPTIONS]) {
       expect(
         endsOnContracts.some((c) => c.event === e.trigger && c.endsOnEvent === e.end),
         `${e.trigger} → ${e.end}`,
@@ -212,10 +285,27 @@ describe("endsOnOrderFailures (positive controls)", () => {
 
     expect(endsOnOrderFailures(rejoin, CONTROLLER_TICK_ORDER)).toEqual([]);
 
-    const [failure] = endsOnOrderFailures(rejoin, CONTROLLER_TICK_ORDER, []);
+    const [failure] = endsOnOrderFailures(rejoin, CONTROLLER_TICK_ORDER, { ...ORDER_EXEMPTIONS, sameStage: [] });
 
     expect(failure).toContain("[same-stage]");
     expect(failure).toContain("`diffTrafficRejoin`");
+    expect(failure).not.toContain("[trigger-after-end]");
+  });
+
+  it("excuses the translator's teardown end before the rejoin detector only through each row's own exemption", () => {
+    const rejoin = [{ id: "test.rejoin", event: "traffic.rejoin", endsOnEvent: "traffic.rejoinTowed" }] as const;
+
+    for (const row of ["publishActiveStateTeardown (session change)", "publishActiveStateTeardown (replay entry)"]) {
+      const [failure, ...rest] = endsOnOrderFailures(rejoin, CONTROLLER_TICK_ORDER, {
+        ...ORDER_EXEMPTIONS,
+        triggerAfterEnd: TRIGGER_AFTER_END_EXEMPTIONS.filter((e) => e.endStage !== row),
+      });
+
+      expect(rest).toEqual([]);
+      expect(failure).toContain("[trigger-after-end]");
+      expect(failure).toContain(`\`${row}\``);
+      expect(failure).not.toContain("[same-stage]");
+    }
   });
 
   it("never lets an exemption excuse its pair from another stage, or another kind of violation", () => {
@@ -226,10 +316,26 @@ describe("endsOnOrderFailures (positive controls)", () => {
       { stage: "diffEnd", source: "diff/end.ts", via: "pending", events: ["traffic.rejoinTowed"] },
       { stage: "diffTrafficRejoin", source: "diff/traffic-rejoin.ts", via: "pending", events: ["traffic.rejoin"] },
     ];
+    // An exempted teardown row's name on another pair: excuses nothing there.
+    const otherPair: readonly TickStage[] = [
+      {
+        stage: "publishActiveStateTeardown (session change)",
+        source: "translator.ts",
+        via: "direct",
+        events: ["pitLane.exited"],
+      },
+      { stage: "diffTrafficRejoin", source: "diff/traffic-rejoin.ts", via: "pending", events: ["limiter.dropped"] },
+    ];
     const rejoin = [{ id: "test.rejoin", event: "traffic.rejoin", endsOnEvent: "traffic.rejoinTowed" }] as const;
 
     expect(endsOnOrderFailures(rejoin, otherStage)[0]).toContain("[same-stage]");
     expect(endsOnOrderFailures(rejoin, reversed)[0]).toContain("[trigger-after-end]");
+    expect(
+      endsOnOrderFailures(
+        [{ id: "test.other", event: "limiter.dropped", endsOnEvent: "pitLane.exited" }],
+        otherPair,
+      )[0],
+    ).toContain("[trigger-after-end]");
   });
 
   it("reports an endsOn contract with no trigger event, which cannot be checked", () => {

@@ -95,8 +95,17 @@ export type TickStage = {
   readonly reordersWith?: string;
 };
 
-/** The publish sites in `translator.ts` that end active-state loops (`publishActiveStateTeardown`). */
-const TEARDOWN_EVENTS = ["radar.changed", "pitSpeeding.ended"] as const satisfies readonly SimEventName[];
+/**
+ * The publish sites in `translator.ts` that end active-state loops and lines (`publishActiveStateTeardown`).
+ * `traffic.rejoinTowed` here ends a rejoin line whose stop a wipe took away; the stage `diffTrafficRejoin`
+ * publishes `traffic.rejoin` after both teardown rows, which `race-engineer-wiring`'s `ends-on-order.test.ts`
+ * excuses for these two rows alone, on the proofs it names.
+ */
+const TEARDOWN_EVENTS = [
+  "radar.changed",
+  "pitSpeeding.ended",
+  "traffic.rejoinTowed",
+] as const satisfies readonly SimEventName[];
 
 /**
  * Every stage that can publish during one `handleTick` call — the translator's
@@ -284,7 +293,7 @@ export function findEndsOnOrderViolations(
           message:
             `${pair}: \`${triggerStage}\` publishes both, and the order table cannot see the order inside one stage, so this fails closed. ` +
             `Prove in that module's own tests that one call never emits \`${trigger}\` after \`${end}\` (drive a single call that would emit both and assert the emit order, ` +
-            `or show the two are gated apart), then add an exemption for this pair to the check that applies this one (\`race-engineer-wiring\`'s \`ends-on-order.test.ts\`, which has no exemption list until one is needed), citing that test.`,
+            `or show the two are gated apart), then add an exemption for this pair to the check that applies this one (\`race-engineer-wiring\`'s \`ends-on-order.test.ts\`, its \`SAME_STAGE_EXEMPTIONS\`), citing that test.`,
         });
       } else if (i < j && order[j]!.reordersWith === triggerStage) {
         violations.push({

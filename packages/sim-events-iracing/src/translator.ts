@@ -176,6 +176,7 @@ import {
   type CautionPhase,
   type CornerNameState,
   createInitialState,
+  createTrafficRejoinState,
   type GapNeighborState,
   type LastStopTireTemps,
   type RaceFinishResult,
@@ -2801,6 +2802,17 @@ function publishActiveStateTeardown(self: TranslatorInstance, telemetry: Telemet
     self.state.pitSpeedingActive = false;
     self.state.pitSpeedingUnderLimitSince = 0;
     publish(self, { event: "pitSpeeding.ended", data: {} }, telemetry, now);
+  }
+
+  // The rejoin lines end on `traffic.rejoinTowed` (issue #1113): a stop wiped
+  // here — the driver leaving the car for the garage, which the replay guard
+  // swallows before the rejoin detector could see it, a session change, the
+  // sim going away — is a stop taken off the track, and a line in flight about
+  // it would otherwise play on. The episode is reset first, as the speeding
+  // cue's flag is, so nothing after this on the tick can publish about it.
+  if (self.state.trafficRejoin.active) {
+    Object.assign(self.state.trafficRejoin, createTrafficRejoinState());
+    publish(self, { event: "traffic.rejoinTowed", data: {} }, telemetry, now);
   }
 }
 

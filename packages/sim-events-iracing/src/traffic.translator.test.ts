@@ -321,6 +321,59 @@ describe("the approaching-traffic detectors through handleTick (issue #1113)", (
       expect(rejoin).toEqual([]);
     });
 
+    describe("a stop the translator wipes publishes traffic.rejoinTowed first, so a rejoin line in flight stops", () => {
+      /** A running stop with its first call said: car 1 at 0.45, 4.5 s away. */
+      function runningStop(): void {
+        controller.__tick(tick({ pct: 0.5 }, 0.45));
+        vi.advanceTimersByTime(TRAFFIC_REJOIN_ENTRY_DWELL_MS);
+        controller.__tick(tick({ pct: 0.5 }, 0.45));
+        expect(order).toEqual(["traffic.rejoin"]);
+      }
+
+      it("on leaving the car for the garage, whose ticks the replay guard swallows: once, and nothing after it", () => {
+        init();
+        runningStop();
+
+        // Out of the car into the garage: a replay-mode tick, which returns
+        // before the rejoin detector could see the car go.
+        vi.advanceTimersByTime(100);
+        controller.__tick(tick({ pct: 0.5, replay: true }, 0.45));
+        vi.advanceTimersByTime(TRAFFIC_REJOIN_EVAL_INTERVAL_MS);
+        controller.__tick(tick({ pct: 0.5, replay: true }, 0.46));
+
+        expect(order).toEqual(["traffic.rejoin", "traffic.rejoinTowed"]);
+
+        const state = readSimState();
+
+        if (!state.initialized) throw new Error("translator not initialised");
+
+        expect(state.raw.state.trafficRejoin.active).toBe(false);
+      });
+
+      it("on a session change, before session.changed, with no traffic.rejoin on that tick", () => {
+        init();
+        getEventBus().subscribe("session.changed", (ev) => {
+          order.push(ev.event);
+        });
+        runningStop();
+
+        vi.advanceTimersByTime(TRAFFIC_REJOIN_EVAL_INTERVAL_MS);
+        controller.__tick({ ...tick({ pct: 0.5 }, 0.45), SessionNum: 1 });
+
+        expect(order).toEqual(["traffic.rejoin", "traffic.rejoinTowed", "session.changed"]);
+      });
+
+      it("only for a stop that was running: driving into the garage publishes nothing", () => {
+        init();
+
+        controller.__tick(tick({ pct: 0.5, speed: 50 }, 0.45));
+        vi.advanceTimersByTime(100);
+        controller.__tick(tick({ pct: 0.5, replay: true }, 0.45));
+
+        expect(order).toEqual([]);
+      });
+    });
+
     it("loses its episode to a replay glance, and the first stopped ticks back start a fresh one", () => {
       init();
 

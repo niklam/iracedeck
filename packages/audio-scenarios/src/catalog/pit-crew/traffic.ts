@@ -109,7 +109,9 @@
  * rejoin contract declares `endsOn` `traffic.rejoinTowed`, which the detector
  * publishes when the player's car is taken off the track mid-stop — out of the
  * world or in the pit stall (a tow or a reset), out of the car, the garage —
- * and never on a tick that publishes `traffic.rejoin`. The engine's line ends
+ * and the translator when it wipes a running stop (entering the garage view on
+ * leaving the car, a session change, a disconnect), never on a tick that
+ * publishes `traffic.rejoin`. The engine's line ends
  * (#1407) then stop a rejoin line playing at once (unframed, so silently; a
  * line already heard in full finishes) and drop one waiting, of any rejoin
  * contract. A stop that ends by driving off publishes nothing, so a line in

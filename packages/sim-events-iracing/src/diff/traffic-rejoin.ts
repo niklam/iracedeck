@@ -48,7 +48,12 @@
  * leaves a line in flight to finish. Nothing else is published on that tick
  * (the path returns before any evaluation), so the trigger never follows its
  * end within one tick, which `race-engineer-wiring`'s `ends-on-order.test.ts`
- * relies on.
+ * relies on. A stop the translator wipes without a live tick to see it go —
+ * the driver leaving the car for the garage, whose ticks the replay guard
+ * swallows, a session change, the sim going away — gets the same end from
+ * `publishActiveStateTeardown` in `translator.ts`, which resets the episode
+ * first; a fresh episode publishes nothing on its first tick (the entry
+ * dwell), so no `traffic.rejoin` follows that end either.
  *
  * **The band.** On entry and then every {@link TRAFFIC_REJOIN_EVAL_INTERVAL_MS},
  * every car on the racing surface is timed to the player's lap position P

@@ -792,7 +792,7 @@ describe("TICK_ORDER", () => {
       const sites = classifyPublishSites(source);
       const direct = new Set(TICK_ORDER.filter((s) => s.source === "translator.ts").flatMap((s) => s.events));
 
-      // Five literal sites today: the two teardown publishes, driver.firstOnTrack
+      // Six literal sites today: the three teardown publishes, driver.firstOnTrack
       // (emitted by its direct step) and the two session.changed paths. Zero
       // would mean the scan is broken.
       expect(sites.literals.length).toBeGreaterThan(0);
