@@ -1,15 +1,16 @@
 /**
- * The pit-exit traffic window (issue #1113, spec decisions 4 and 5): its two
- * sides' defaults, slider bounds and sanitizers, in one place for the
- * translator and every plugin. They mirror `trafficPitExitBeforeSeconds` and
- * `trafficPitExitAfterSeconds` in `GlobalSettingsSchema`; the plugins wire each
- * live-read closure through its sanitizer (the
- * `sanitizeGapAlertThresholdSeconds` precedent), so a malformed persisted
- * value can never reach the detector. Each side is clamped on its own.
+ * The pit-exit traffic sliders (issue #1113, spec decisions 4 and 5, amended
+ * 2026-11-20): the window's two sides and the merge warning's threshold, their
+ * defaults, slider bounds and sanitizers, in one place for the translator and
+ * every plugin. They mirror `trafficPitExitBeforeSeconds`,
+ * `trafficPitExitAfterSeconds` and `trafficPitExitMergeWarnSeconds` in
+ * `GlobalSettingsSchema`; the plugins wire each live-read closure through its
+ * sanitizer (the `sanitizeGapAlertThresholdSeconds` precedent), so a malformed
+ * persisted value can never reach the detector. Each is clamped on its own.
  *
  * Rejoin has no setting (amended 2026-11-11): its bands are fixed because its
- * lines name them (`diff/traffic-rejoin.ts`), and the pit-exit call is made
- * at the stall departure, so there is no look-ahead either.
+ * lines name them (`diff/traffic-rejoin.ts`). Nor has the pit-exit call's
+ * lead, a constant of the detector (`TRAFFIC_PIT_EXIT_CALL_LEAD_S`).
  */
 import { coerceSettingNumber } from "./setting-number.js";
 
@@ -22,6 +23,15 @@ export const TRAFFIC_PIT_EXIT_BEFORE_MAX_SECONDS = 10;
 export const TRAFFIC_DEFAULT_PIT_EXIT_AFTER_SECONDS = 4;
 export const TRAFFIC_PIT_EXIT_AFTER_MIN_SECONDS = 0;
 export const TRAFFIC_PIT_EXIT_AFTER_MAX_SECONDS = 15;
+
+/**
+ * Pit exit lane: "Watch for cars." when a timed car reaches the end of the
+ * exit blend within this long of the player, either side (s; the spec's
+ * `pitExitMergeWarnS`, amended 2026-11-20).
+ */
+export const TRAFFIC_DEFAULT_PIT_EXIT_MERGE_WARN_SECONDS = 1.5;
+export const TRAFFIC_PIT_EXIT_MERGE_WARN_MIN_SECONDS = 0;
+export const TRAFFIC_PIT_EXIT_MERGE_WARN_MAX_SECONDS = 5;
 
 /**
  * Clamp a raw setting to `[min, max]`; a missing or unparseable one is
@@ -56,5 +66,19 @@ export function sanitizeTrafficPitExitAfterSeconds(value: unknown): number {
     TRAFFIC_PIT_EXIT_AFTER_MIN_SECONDS,
     TRAFFIC_PIT_EXIT_AFTER_MAX_SECONDS,
     TRAFFIC_DEFAULT_PIT_EXIT_AFTER_SECONDS,
+  );
+}
+
+/**
+ * Sanitize the `trafficPitExitMergeWarnSeconds` global setting. An explicit 0
+ * is kept: it leaves only an exact coincidence, so the warning is off in
+ * practice.
+ */
+export function sanitizeTrafficPitExitMergeWarnSeconds(value: unknown): number {
+  return sanitizeWindow(
+    value,
+    TRAFFIC_PIT_EXIT_MERGE_WARN_MIN_SECONDS,
+    TRAFFIC_PIT_EXIT_MERGE_WARN_MAX_SECONDS,
+    TRAFFIC_DEFAULT_PIT_EXIT_MERGE_WARN_SECONDS,
   );
 }

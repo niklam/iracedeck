@@ -4,12 +4,16 @@ import * as trafficSettings from "./traffic-settings.js";
 import {
   sanitizeTrafficPitExitAfterSeconds,
   sanitizeTrafficPitExitBeforeSeconds,
+  sanitizeTrafficPitExitMergeWarnSeconds,
   TRAFFIC_DEFAULT_PIT_EXIT_AFTER_SECONDS,
   TRAFFIC_DEFAULT_PIT_EXIT_BEFORE_SECONDS,
+  TRAFFIC_DEFAULT_PIT_EXIT_MERGE_WARN_SECONDS,
   TRAFFIC_PIT_EXIT_AFTER_MAX_SECONDS,
   TRAFFIC_PIT_EXIT_AFTER_MIN_SECONDS,
   TRAFFIC_PIT_EXIT_BEFORE_MAX_SECONDS,
   TRAFFIC_PIT_EXIT_BEFORE_MIN_SECONDS,
+  TRAFFIC_PIT_EXIT_MERGE_WARN_MAX_SECONDS,
+  TRAFFIC_PIT_EXIT_MERGE_WARN_MIN_SECONDS,
 } from "./traffic-settings.js";
 
 const SETTINGS = [
@@ -27,6 +31,13 @@ const SETTINGS = [
     max: TRAFFIC_PIT_EXIT_AFTER_MAX_SECONDS,
     fallback: TRAFFIC_DEFAULT_PIT_EXIT_AFTER_SECONDS,
   },
+  {
+    name: "pit exit merge warning",
+    sanitize: sanitizeTrafficPitExitMergeWarnSeconds,
+    min: TRAFFIC_PIT_EXIT_MERGE_WARN_MIN_SECONDS,
+    max: TRAFFIC_PIT_EXIT_MERGE_WARN_MAX_SECONDS,
+    fallback: TRAFFIC_DEFAULT_PIT_EXIT_MERGE_WARN_SECONDS,
+  },
 ] as const;
 
 describe("approaching-traffic setting bounds (#1113)", () => {
@@ -41,23 +52,32 @@ describe("approaching-traffic setting bounds (#1113)", () => {
       TRAFFIC_DEFAULT_PIT_EXIT_AFTER_SECONDS,
       TRAFFIC_PIT_EXIT_AFTER_MAX_SECONDS,
     ]).toEqual([0, 4, 15]);
+    expect([
+      TRAFFIC_PIT_EXIT_MERGE_WARN_MIN_SECONDS,
+      TRAFFIC_DEFAULT_PIT_EXIT_MERGE_WARN_SECONDS,
+      TRAFFIC_PIT_EXIT_MERGE_WARN_MAX_SECONDS,
+    ]).toEqual([0, 1.5, 5]);
   });
 
-  it("are the pit-exit window's two sides only: rejoin's bands are fixed and the look-ahead is gone (amended 2026-11-11)", () => {
+  it("are the pit-exit window's two sides and the merge warning only: rejoin's bands and the call lead are fixed (amended 2026-11-11, 2026-11-20)", () => {
     expect(Object.keys(trafficSettings).sort()).toEqual([
       "TRAFFIC_DEFAULT_PIT_EXIT_AFTER_SECONDS",
       "TRAFFIC_DEFAULT_PIT_EXIT_BEFORE_SECONDS",
+      "TRAFFIC_DEFAULT_PIT_EXIT_MERGE_WARN_SECONDS",
       "TRAFFIC_PIT_EXIT_AFTER_MAX_SECONDS",
       "TRAFFIC_PIT_EXIT_AFTER_MIN_SECONDS",
       "TRAFFIC_PIT_EXIT_BEFORE_MAX_SECONDS",
       "TRAFFIC_PIT_EXIT_BEFORE_MIN_SECONDS",
+      "TRAFFIC_PIT_EXIT_MERGE_WARN_MAX_SECONDS",
+      "TRAFFIC_PIT_EXIT_MERGE_WARN_MIN_SECONDS",
       "sanitizeTrafficPitExitAfterSeconds",
       "sanitizeTrafficPitExitBeforeSeconds",
+      "sanitizeTrafficPitExitMergeWarnSeconds",
     ]);
   });
 });
 
-describe.each(SETTINGS)("the $name window sanitizer (#1113)", ({ sanitize, min, max, fallback }) => {
+describe.each(SETTINGS)("the $name sanitizer (#1113)", ({ sanitize, min, max, fallback }) => {
   it("keeps an in-range number and parses a numeric string", () => {
     expect(sanitize(min)).toBe(min);
     expect(sanitize(max)).toBe(max);
@@ -97,4 +117,9 @@ describe.each(SETTINGS)("the $name window sanitizer (#1113)", ({ sanitize, min, 
 it("keeps an explicit 0 on a pit-exit side: it closes that side of the window", () => {
   expect(sanitizeTrafficPitExitBeforeSeconds(0)).toBe(0);
   expect(sanitizeTrafficPitExitAfterSeconds("0")).toBe(0);
+});
+
+it("keeps an explicit 0 on the merge warning: only an exact coincidence warns", () => {
+  expect(sanitizeTrafficPitExitMergeWarnSeconds(0)).toBe(0);
+  expect(sanitizeTrafficPitExitMergeWarnSeconds("0")).toBe(0);
 });

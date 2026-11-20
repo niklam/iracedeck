@@ -144,6 +144,7 @@ import { diffTrafficRejoin } from "./diff/traffic-rejoin.js";
 import {
   TRAFFIC_DEFAULT_PIT_EXIT_AFTER_SECONDS,
   TRAFFIC_DEFAULT_PIT_EXIT_BEFORE_SECONDS,
+  TRAFFIC_DEFAULT_PIT_EXIT_MERGE_WARN_SECONDS,
 } from "./diff/traffic-settings.js";
 import type { EmitFn, PendingEvent } from "./diff/types.js";
 import {
@@ -414,13 +415,22 @@ type TranslatorInstance = {
   /**
    * Live-read pit-exit traffic window (issue #1113): how long before and after
    * the player's own arrival at the end of the exit blend a car counts as
-   * traffic. Plugins wire them to the two `trafficPitExit*Seconds` global
+   * traffic. Plugins wire them to the `trafficPitExit*Seconds` global
    * settings through their `sanitizeTrafficPitExit*` sanitizers; each
    * defaults to its constant when no closure is given. Rejoin reads no
    * setting: its bands are fixed.
    */
   getTrafficPitExitBeforeSeconds: () => number;
   getTrafficPitExitAfterSeconds: () => number;
+  /**
+   * Live-read pit-exit merge warning threshold (issue #1113, amended
+   * 2026-11-20): in the exit lane, a timed car reaching the end of the blend
+   * within this long of the player gets "Watch for cars." once. Plugins wire it
+   * to `trafficPitExitMergeWarnSeconds` through
+   * `sanitizeTrafficPitExitMergeWarnSeconds`; it defaults to its constant when
+   * no closure is given.
+   */
+  getTrafficPitExitMergeWarnSeconds: () => number;
   /**
    * The live-read resolvers `diffOpponentFlags` consumes, bound once at init:
    * the per-flag opt-in (issue #936 — enforced in the diff, not only at the
@@ -516,6 +526,15 @@ export type SimEventsIracingSettingsOptions = {
    * {@link TRAFFIC_DEFAULT_PIT_EXIT_AFTER_SECONDS}.
    */
   getTrafficPitExitAfterSeconds?: () => number;
+  /**
+   * Live-read pit-exit merge warning threshold (seconds, issue #1113, amended
+   * 2026-11-20): a timed car reaching the end of the exit blend within this
+   * long of the player, either side, while the player is in the exit lane.
+   * Plugins compose it from the `trafficPitExitMergeWarnSeconds` global
+   * setting via `sanitizeTrafficPitExitMergeWarnSeconds`. Default: a constant
+   * {@link TRAFFIC_DEFAULT_PIT_EXIT_MERGE_WARN_SECONDS}.
+   */
+  getTrafficPitExitMergeWarnSeconds?: () => number;
 };
 
 /**
@@ -659,6 +678,8 @@ export function initializeSimEventsIracing(
       options.getTrafficPitExitBeforeSeconds ?? (() => TRAFFIC_DEFAULT_PIT_EXIT_BEFORE_SECONDS),
     getTrafficPitExitAfterSeconds:
       options.getTrafficPitExitAfterSeconds ?? (() => TRAFFIC_DEFAULT_PIT_EXIT_AFTER_SECONDS),
+    getTrafficPitExitMergeWarnSeconds:
+      options.getTrafficPitExitMergeWarnSeconds ?? (() => TRAFFIC_DEFAULT_PIT_EXIT_MERGE_WARN_SECONDS),
     opponentFlagResolvers: {
       getCalloutEnabled: options.getOpponentFlagCalloutEnabled ?? (() => true),
       getRaceGap: (aheadCarIdx, behindCarIdx) => liveGapBetween(self, aheadCarIdx, behindCarIdx),
@@ -3867,7 +3888,7 @@ function handleLiveSteps(
   // the curves as a value; each owns its own slice (`trafficRejoin`, `trafficPitExit`).
   // The pit exit reads #1112's learner through a closure, so the landmark
   // view is built only when it reads it (at an evaluation, and between two
-  // only until its call is made), and the track length
+  // only until its call is made and the player is past pit road's end), and the track length
   // and pit speed limit this tick already resolved. Each logs at debug
   // through its own scope of the translator's logger, `Rejoin` / `PitExit`.
   steps.live("diffTrafficRejoin", pending, () =>
@@ -3898,6 +3919,7 @@ function handleLiveSteps(
       {
         getBeforeSeconds: self.getTrafficPitExitBeforeSeconds,
         getAfterSeconds: self.getTrafficPitExitAfterSeconds,
+        getMergeWarnSeconds: self.getTrafficPitExitMergeWarnSeconds,
       },
       now,
       emit,

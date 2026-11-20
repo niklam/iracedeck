@@ -2,9 +2,10 @@
  * The approaching-traffic detectors through the real tick (issue #1113): a
  * stopped player hears `traffic.rejoin` from the curves the same ticks learn,
  * a player driving out of the stall hears `traffic.pitExit` against the
- * landmarks #1112's learner loaded, once past the end of pit road, the pit-exit window comes from the
- * options, and a replay glance wipes an episode, which the first ticks back
- * start afresh.
+ * landmarks #1112's learner loaded, 3 s short of the end of pit road, and
+ * `traffic.pitExitMerge` in the exit lane for a car close to the merge, the
+ * pit-exit window and the merge threshold come from the options, and a replay
+ * glance wipes an episode, which the first ticks back start afresh.
  */
 import { _resetEventBus, getEventBus, initializeEventBus, type SimEventMap } from "@iracedeck/event-bus";
 import {
@@ -177,6 +178,7 @@ describe("the approaching-traffic detectors through handleTick (issue #1113)", (
   let controller: MockController;
   let rejoin: SimEventMap["traffic.rejoin"]["data"][];
   let pitExit: SimEventMap["traffic.pitExit"]["data"][];
+  let merges: SimEventMap["traffic.pitExitMerge"]["data"][];
   let order: string[];
 
   function init(options: SimEventsIracingOptions = {}, logger: ILogger = createMockLogger()): void {
@@ -190,6 +192,10 @@ describe("the approaching-traffic detectors through handleTick (issue #1113)", (
       pitExit.push(ev.data);
       order.push(ev.event);
     });
+    getEventBus().subscribe("traffic.pitExitMerge", (ev) => {
+      merges.push(ev.data);
+      order.push(ev.event);
+    });
     getEventBus().subscribe("pitStall.departed", (ev) => {
       order.push(ev.event);
     });
@@ -200,6 +206,7 @@ describe("the approaching-traffic detectors through handleTick (issue #1113)", (
     initializeEventBus(createMockLogger());
     rejoin = [];
     pitExit = [];
+    merges = [];
     order = [];
   });
 
@@ -335,28 +342,31 @@ describe("the approaching-traffic detectors through handleTick (issue #1113)", (
 
     /**
      * Out of the stall, down pit road and over its end into the blend lane, an
-     * evaluation apart. Leaving: 78 m to pit road's end at 20 m/s (3.9 s) plus
-     * 10.8 − 9 = 5.7 s, car 1 at 0.05 reaching the blend at 10.8 − 4.5 = 6.3 s,
-     * 0.6 s after the player. In the blend lane at 0.11: 10.8 − 9.9 = 0.9 s,
-     * car 1 at 0.10 at 1.8 s, 0.9 s after.
+     * evaluation apart. Leaving: 78 m to pit road's end at 20 m/s (3.9 s, short
+     * of the 3 s call point) plus 10.8 − 9 = 5.7 s, car 1 at 0.05 reaching the
+     * blend at 10.8 − 4.5 = 6.3 s, 0.6 s after the player. On pit road at
+     * 0.09: 40 m (2 s, the call point) plus 1.8 = 3.8 s, car 1 at 0.07 at
+     * 4.5 s, 0.7 s after. In the blend lane at 0.11: 10.8 − 9.9 = 0.9 s, car 1
+     * at 0.10 at 1.8 s, 0.9 s after: inside the 1.5 s merge threshold.
      */
     function driveOut(): void {
       controller.__tick(tick(inStall, 0.05));
       controller.__tick(tick(leaving, 0.05));
+      expect(pitExit).toEqual([]);
       vi.advanceTimersByTime(TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS);
       controller.__tick(tick(onPitRoad, 0.07));
-      expect(pitExit).toEqual([]);
       vi.advanceTimersByTime(TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS);
       controller.__tick(tick(blendLane, 0.1));
     }
 
-    it("calls traffic for a car reaching the blend just after the player, at the end of pit road", () => {
+    it("calls traffic for a car reaching the blend just after the player, 3 s short of the end of pit road, then warns in the exit lane", () => {
       init({ loadPitLaneLandmarks: section });
 
       driveOut();
 
-      expect(pitExit).toEqual([{ verdict: "traffic", seconds: 0.9 }]);
-      expect(order).toEqual(["pitStall.departed", "traffic.pitExit"]);
+      expect(pitExit).toEqual([{ verdict: "traffic", seconds: 0.7 }]);
+      expect(merges).toEqual([{ seconds: 0.9 }]);
+      expect(order).toEqual(["pitStall.departed", "traffic.pitExit", "traffic.pitExitMerge"]);
     });
 
     it("writes its debug lines through a PitExit scope of the translator's logger, with no prefix of their own", () => {
@@ -378,10 +388,19 @@ describe("the approaching-traffic detectors through handleTick (issue #1113)", (
 
       driveOut();
 
-      expect(pitExit).toEqual([{ verdict: "clear", seconds: 0.9 }]);
+      expect(pitExit).toEqual([{ verdict: "clear", seconds: 0.7 }]);
     });
 
-    it("says nothing on leaving the stall: the verdict waits for the end of pit road", () => {
+    it("takes the merge threshold from the options", () => {
+      init({ loadPitLaneLandmarks: section, getTrafficPitExitMergeWarnSeconds: () => 0.5 });
+
+      driveOut();
+
+      expect(pitExit).toEqual([{ verdict: "traffic", seconds: 0.7 }]);
+      expect(merges).toEqual([]);
+    });
+
+    it("says nothing on leaving a stall 3.9 s from the end of pit road: the verdict waits for the call point", () => {
       init({ loadPitLaneLandmarks: section });
 
       controller.__tick(tick(inStall, 0.05));

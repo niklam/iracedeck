@@ -176,18 +176,22 @@ export {
   OPPONENT_FLAG_RANGE_MIN_SECONDS,
   sanitizeOpponentFlagRangeSeconds,
 } from "./diff/opponent-flags.js";
-// The pit-exit traffic window's bounds and sanitizers (issue #1113) — the
-// plugins wire the translator's two traffic settings through them, the
+// The pit-exit traffic sliders' bounds and sanitizers (issue #1113) — the
+// plugins wire the translator's three traffic settings through them, the
 // `sanitizeGapAlertThresholdSeconds` precedent.
 export {
   sanitizeTrafficPitExitAfterSeconds,
   sanitizeTrafficPitExitBeforeSeconds,
+  sanitizeTrafficPitExitMergeWarnSeconds,
   TRAFFIC_DEFAULT_PIT_EXIT_AFTER_SECONDS,
   TRAFFIC_DEFAULT_PIT_EXIT_BEFORE_SECONDS,
+  TRAFFIC_DEFAULT_PIT_EXIT_MERGE_WARN_SECONDS,
   TRAFFIC_PIT_EXIT_AFTER_MAX_SECONDS,
   TRAFFIC_PIT_EXIT_AFTER_MIN_SECONDS,
   TRAFFIC_PIT_EXIT_BEFORE_MAX_SECONDS,
   TRAFFIC_PIT_EXIT_BEFORE_MIN_SECONDS,
+  TRAFFIC_PIT_EXIT_MERGE_WARN_MAX_SECONDS,
+  TRAFFIC_PIT_EXIT_MERGE_WARN_MIN_SECONDS,
 } from "./diff/traffic-settings.js";
 export {
   OPPONENT_PIT_AGGREGATE_THRESHOLD,

@@ -803,7 +803,7 @@ export type TrafficPitExitState = {
   startPct: number | null;
   /**
    * When the episode last made a scheduled evaluation; `null` before its
-   * first. An evaluation at the call point between two of them leaves it
+   * first. An evaluation off the schedule, between two of them, leaves it
    * (`diff/traffic-pit-exit.ts`).
    */
   lastEvalAt: number | null;
@@ -816,17 +816,19 @@ export type TrafficPitExitState = {
    */
   positionUnavailableSince: number | null;
   /**
-   * In an episode: whether the player has crossed `pitRoadEnd` into the blend
-   * lane, by position or by `OnPitRoad` turning false, at an evaluation that
-   * read the landmarks. A latch: a car rolled back behind the line, or a
-   * position wobbling across it, keeps it set (`diff/traffic-pit-exit.ts`).
+   * In an episode: whether the player has reached the call point, at an
+   * evaluation that read the landmarks: `TRAFFIC_PIT_EXIT_CALL_LEAD_S` short
+   * of `pitRoadEnd` at the pit speed limit, or past `pitRoadEnd` by position
+   * or by `OnPitRoad` turning false. A latch: a car rolled back behind the
+   * point, or a position wobbling across it, keeps it set
+   * (`diff/traffic-pit-exit.ts`).
    */
-  pastPitRoadEnd: boolean;
+  callPointReached: boolean;
   /**
    * The verdict the evaluations have settled on: the first one at once, a
    * different one once it has held for `TRAFFIC_PIT_EXIT_FLIP_CONFIRM_EVALUATIONS`.
-   * Settled silently from the stall on, spoken once the player is past
-   * `pitRoadEnd`; `null` until the first evaluation with a verdict.
+   * Settled silently from the stall on, spoken once the player has reached
+   * the call point; `null` until the first evaluation with a verdict.
    */
   settledVerdict: "clear" | "traffic" | null;
   /**
@@ -845,6 +847,16 @@ export type TrafficPitExitState = {
   flipVerdict: "clear" | "traffic" | null;
   /** How many evaluations in a row have reached {@link TrafficPitExitState.flipVerdict}; 0 with none. */
   flipEvaluations: number;
+  /**
+   * In an episode: whether an evaluation past `pitRoadEnd`, in the exit lane,
+   * has timed the cars for the merge warning (amended 2026-11-20). Until it
+   * has, each tick past `pitRoadEnd` between two scheduled evaluations
+   * evaluates at once, so a short exit lane is not crossed unchecked
+   * (`diff/traffic-pit-exit.ts`).
+   */
+  mergeChecked: boolean;
+  /** In an episode: whether the merge warning (`traffic.pitExitMerge`) has been said; once per episode. */
+  mergeWarned: boolean;
   /** The once-per-episode debug line for unlearned landmarks has been written. */
   landmarksMissingLogged: boolean;
   /** The once-per-episode debug line for landmarks still relearning after a track rebuild (`source: "previous"`) has been written. */
@@ -864,12 +876,14 @@ export function createTrafficPitExitState(): TrafficPitExitState {
     startPct: null,
     lastEvalAt: null,
     positionUnavailableSince: null,
-    pastPitRoadEnd: false,
+    callPointReached: false,
     settledVerdict: null,
     settledSeconds: null,
     spokenVerdict: null,
     flipVerdict: null,
     flipEvaluations: 0,
+    mergeChecked: false,
+    mergeWarned: false,
     landmarksMissingLogged: false,
     landmarksRelearningLogged: false,
     noEtaLogged: false,
