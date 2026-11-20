@@ -2237,6 +2237,38 @@ describe("diffTrafficPitExit", () => {
         expect(h.merges).toEqual([{ seconds: 1 }]);
       });
 
+      it("keeps trying while a car is untimed, and warns once its estimate comes back within the threshold", () => {
+        const h = harness({ landmarks: SHORT_BLEND });
+        /** Car 5's own `CarIdxEstTime` entry unusable for this tick: the car untimed (`noEstTime`), the arrays whole. */
+        const untimedCar = (t: TrafficPitExitTelemetry): TrafficPitExitTelemetry => {
+          const ests = [...(t.CarIdxEstTime as number[])];
+
+          ests[5] = Number.NaN;
+
+          return { ...t, CarIdxEstTime: ests };
+        };
+
+        h.depart(shortAt(STALL_PCT, 3));
+        h.after(TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS, shortAt(0.1245, 3)); // the call, on schedule
+        h.after(100, untimedCar(shortAt(0.1255, 0.5))); // the first tick past pitRoadEnd, car 5 untimed
+        expect(h.merges).toEqual([]);
+        const untimedTickLine = lines(h.debug).at(-1);
+        const checkedOnUntimedTick = h.episode.mergeChecked;
+
+        h.after(100, shortAt(0.127, 0.5));
+
+        expect(h.merges).toEqual([{ seconds: 0.5 }]);
+        expect(h.episode.mergeWarned).toBe(true);
+        // The untimed tick neither marked the merge checked nor logged a check
+        // it will repeat on the next tick.
+        expect(checkedOnUntimedTick).toBe(false);
+        expect(untimedTickLine).not.toContain("no merge warning");
+
+        // Said once: it stays latched for the rest of the lane.
+        h.after(100, shortAt(0.13, 0.5));
+        expect(h.merges).toEqual([{ seconds: 0.5 }]);
+      });
+
       it("does not count toward a flip's hold", () => {
         const h = harness({ landmarks: SHORT_BLEND });
 

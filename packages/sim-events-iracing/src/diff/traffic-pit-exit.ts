@@ -183,7 +183,12 @@
  * tick at the call point, or past `pitRoadEnd` with the merge unchecked, on
  * landmarks the evaluation can use and short of `blendEnd`, evaluates there
  * and then, as does each tick after it until the call is made and the merge
- * checked. Such an evaluation settles a first verdict if none has settled
+ * checked. The merge counts as checked only by an evaluation that timed every
+ * car on track, or found none: one per-car `CarIdxEstTime` entry can be
+ * unusable for a tick, unlike a whole array, and a car untimed on the first
+ * tick of a short exit lane that comes back within the threshold on the next
+ * would otherwise wait for the next scheduled evaluation, which the end of the
+ * lane can beat. Such an evaluation settles a first verdict if none has settled
  * and speaks the settled one, but is no part of a flip's row: it neither
  * counts toward {@link TRAFFIC_PIT_EXIT_FLIP_CONFIRM_EVALUATIONS} nor breaks
  * the row, with or without a verdict, so a flip is never confirmed by two
@@ -1134,7 +1139,9 @@ function evaluate(
   const mergeCar =
     mergeWarnSeconds !== null && nearest !== null && Math.abs(nearest.relative) <= mergeWarnSeconds ? nearest : null;
 
-  if (mergeCar === null && mergeWarnSeconds !== null) {
+  // Off the schedule, a check with an untimed car is repeated on the next tick
+  // (below), so only a scheduled one says so, once a second.
+  if (mergeCar === null && mergeWarnSeconds !== null && (scheduled || untimed.length === 0)) {
     logger.debug(`no merge warning within ${mergeWarnSeconds} s (${details})`);
   }
 
@@ -1160,7 +1167,10 @@ function evaluate(
 
   if (mergeCar !== null) episode.mergeWarned = true;
 
-  if (inExitLane) episode.mergeChecked = true;
+  // Checked only on a picture with every car timed, or an empty track (module
+  // header): with a car untimed, each tick off the schedule tries again until
+  // the warning is said or a picture is whole. A warning said stays said.
+  if (inExitLane && untimed.length === 0) episode.mergeChecked = true;
 
   episode.settledVerdict = nextSettled;
   episode.settledSeconds = nextSeconds;

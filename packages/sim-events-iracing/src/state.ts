@@ -841,9 +841,10 @@ export type TrafficPitExitState = {
   flipEvaluations: number;
   /**
    * In an episode: whether an evaluation past `pitRoadEnd`, in the exit lane,
-   * has timed the cars for the merge warning (amended 2026-11-20). Until it
-   * has, each tick past `pitRoadEnd` between two scheduled evaluations
-   * evaluates at once, so a short exit lane is not crossed unchecked
+   * has timed every car on track for the merge warning, or found none
+   * (amended 2026-11-20). Until it has, each tick past `pitRoadEnd` between
+   * two scheduled evaluations evaluates at once, so a short exit lane is not
+   * crossed unchecked, nor on a picture with a car its model could not time
    * (`diff/traffic-pit-exit.ts`).
    */
   mergeChecked: boolean;
