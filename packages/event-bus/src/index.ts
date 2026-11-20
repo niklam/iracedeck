@@ -55,6 +55,7 @@ export type {
   TireWearReport,
   TireZone,
   TrafficPitExit,
+  TrafficPitExitMerge,
   TrafficPitExitVerdict,
   TrafficRejoin,
   TrafficRejoinClear,

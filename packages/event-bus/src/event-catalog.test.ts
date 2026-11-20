@@ -19,6 +19,7 @@ import type {
   SessionStartConditions,
   SimEventMap,
   TrafficPitExit,
+  TrafficPitExitMerge,
   TrafficPitExitVerdict,
   TrafficRejoin,
   TrafficRejoinClear,
@@ -97,10 +98,10 @@ describe("pitLane.landmarkLearned", () => {
  * #1113: the approaching-traffic payloads are sim-neutral verdicts. A rejoin
  * verdict names a fixed band and only `near` carries a number, with whether it
  * is the band's first call; a pit-exit verdict carries the nearest car's
- * relative arrival for logs. Pinned so a change to what the callouts read is a
+ * relative arrival for logs, and the merge warning always carries it. Pinned so a change to what the callouts read is a
  * deliberate edit here too (type test: a mismatch fails `pnpm typecheck`).
  */
-describe("traffic.rejoin and traffic.pitExit", () => {
+describe("traffic.rejoin, traffic.pitExit and traffic.pitExitMerge", () => {
   it("carries a rejoin band, and for near its whole seconds and whether it is the first call", () => {
     expectTypeOf<SimEventMap["traffic.rejoin"]["event"]>().toEqualTypeOf<"traffic.rejoin">();
     expectTypeOf<SimEventMap["traffic.rejoin"]["data"]>().toEqualTypeOf<
@@ -165,5 +166,11 @@ describe("traffic.rejoin and traffic.pitExit", () => {
     }>();
     expectTypeOf<SimEventMap["traffic.pitExit"]["data"]>().toEqualTypeOf<TrafficPitExit>();
     expectTypeOf<TrafficPitExit["verdict"]>().toEqualTypeOf<TrafficPitExitVerdict>();
+  });
+
+  it("carries the merge warning's nearest timed car, always, and nothing else", () => {
+    expectTypeOf<SimEventMap["traffic.pitExitMerge"]["event"]>().toEqualTypeOf<"traffic.pitExitMerge">();
+    expectTypeOf<SimEventMap["traffic.pitExitMerge"]["data"]>().toEqualTypeOf<{ seconds: number }>();
+    expectTypeOf<SimEventMap["traffic.pitExitMerge"]["data"]>().toEqualTypeOf<TrafficPitExitMerge>();
   });
 });

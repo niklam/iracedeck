@@ -753,6 +753,22 @@ export type TrafficPitExit = {
 };
 
 /**
+ * Payload of `traffic.pitExitMerge` (issue #1113, amended 2026-11-20): the
+ * merge warning in the pit exit lane.
+ */
+export type TrafficPitExitMerge = {
+  /**
+   * The nearest timed car's arrival at the end of the exit blend relative to
+   * the player's own, in seconds to a tenth (negative: before the player). Its
+   * magnitude is at most the `trafficPitExitMergeWarnSeconds` threshold read at
+   * the evaluation that published it. For logs and the scenario harness; the
+   * line speaks no number. Always present: the warning is only ever for a car
+   * that could be timed.
+   */
+  seconds: number;
+};
+
+/**
  * Discriminated union of every event the bus knows about, keyed by event
  * name. Each entry binds an event name to its payload type — adding an
  * event means adding an entry here.
@@ -791,12 +807,23 @@ export type SimEventMap = {
   /**
    * The player is driving out of the pits (issue #1113): whether a car on
    * track will reach the end of the exit blend about when they do. Published
-   * once at the stall departure (the first evaluation that can time the
-   * player's arrival), and again only if the verdict flips before they reach
-   * it. Nothing when the track's pit-lane landmarks are not learned. From
-   * live, in-car telemetry only.
+   * once when the player is 3 s, at the pit speed limit, short of the end of
+   * pit road (at once on leaving a stall closer than that), with the verdict
+   * settled since the stall, and again only if the verdict flips before they
+   * reach the end of the blend. Nothing when the track's pit-lane landmarks
+   * are not learned. From live, in-car telemetry only.
    */
   "traffic.pitExit": SimEvent<"traffic.pitExit", TrafficPitExit>;
+  /**
+   * The merge warning (issue #1113, amended 2026-11-20): the player is past
+   * the end of pit road, in the exit lane short of the end of the blend, and a
+   * timed car on track is predicted to reach the end of the blend within the
+   * `trafficPitExitMergeWarnSeconds` threshold of the player, either side.
+   * Published at most once per pit exit, whatever `traffic.pitExit` said.
+   * Never for a car whose arrival cannot be timed, and never on a track
+   * without learned pit-lane landmarks. From live, in-car telemetry only.
+   */
+  "traffic.pitExitMerge": SimEvent<"traffic.pitExitMerge", TrafficPitExitMerge>;
   /**
    * Pit-box count-in (issue #600). Fired once per distance mark as the player
    * drives down pit road toward their own pit box: "five" (120 m remaining),
