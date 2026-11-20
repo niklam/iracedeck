@@ -1,9 +1,10 @@
 /**
  * Approaching-traffic tests (issue #1113, amended 2026-11-11).
  *
- * Eight contracts, one per line: six off `traffic.rejoin` (right behind, the
+ * Nine contracts, one per line: six off `traffic.rejoin` (right behind, the
  * close band's first call and its count, more than ten, clear, and the group
- * call of amendment 2026-11-18) and two off `traffic.pitExit`. The close band's lines are composed: an intro or update
+ * call of amendment 2026-11-18), two off `traffic.pitExit` and the merge
+ * warning off `traffic.pitExitMerge` (amended 2026-11-20). The close band's lines are composed: an intro or update
  * intro, the middle naming the seconds through the `traffic.rejoinSeconds`
  * var, and (on the first call) an outro. The fire-through cases run the
  * family through the real engine against a script fixture shaped like the
@@ -67,14 +68,19 @@ const REJOIN_IDS = [
 ] as const;
 const PIT_EXIT_IDS = ["pit-crew.traffic-pit-exit-traffic", "pit-crew.traffic-pit-exit-clear"] as const;
 const PIT_EXIT_VERDICTS: readonly TrafficPitExitVerdict[] = ["traffic", "clear"];
+/** The merge warning in the exit lane (amended 2026-11-20). */
+const MERGE_ID = "pit-crew.traffic-pit-exit-merge";
+/** Every line gated on the player still leaving the pits: both verdicts and the merge warning. */
+const PIT_EXIT_GATED_IDS = [...PIT_EXIT_IDS, MERGE_ID] as const;
 
-/** The lines whose words decay while they wait: the close calls, the pack line and the pit-exit traffic warning. */
+/** The lines whose words decay while they wait: the close calls, the pack line and the pit-exit warnings. */
 const DECAYING_IDS = [
   "pit-crew.traffic-rejoin-right-behind",
   "pit-crew.traffic-rejoin-near-first",
   "pit-crew.traffic-rejoin-near-update",
   "pit-crew.traffic-rejoin-pack",
   "pit-crew.traffic-pit-exit-traffic",
+  MERGE_ID,
 ] as const;
 
 /** The warnings: the lines at TRAFFIC_WARNING_WEIGHT, which cut a caution line. */
@@ -319,6 +325,7 @@ const SCRIPT: CalloutScript = {
     "pit-crew.traffic-rejoin-pack": { ...ENTRY, sequence: ["pool:traffic/rejoin-pack"] },
     "pit-crew.traffic-pit-exit-traffic": { ...ENTRY, sequence: ["pool:traffic/pit-exit-traffic"] },
     "pit-crew.traffic-pit-exit-clear": { ...ENTRY, sequence: ["pool:traffic/pit-exit-clear"] },
+    [MERGE_ID]: { ...ENTRY, sequence: ["pool:traffic/pit-exit-merge"] },
     [CHATTER_ID]: { ...ENTRY, sequence: ["pool:test/chatter"] },
     [CRITICAL_ID]: { ...ENTRY, sequence: ["pool:test/critical"] },
     [INCIDENT_LIKE_ID]: { ...ENTRY, sequence: ["pool:test/incident-like"] },
@@ -392,11 +399,14 @@ const LINE_CLIP: Record<string, string> = {
   "pit-crew.traffic-rejoin-pack": clip("rejoin-pack"),
   "pit-crew.traffic-pit-exit-traffic": clip("pit-exit-traffic"),
   "pit-crew.traffic-pit-exit-clear": clip("pit-exit-clear"),
+  [MERGE_ID]: clip("pit-exit-merge"),
 };
 
 /** Publish the event `id`'s line answers (an update speaks only once {@link introduce} has run). */
 function publishLine(id: string): void {
-  if (id.startsWith("pit-crew.traffic-pit-exit-")) {
+  if (id === MERGE_ID) {
+    bus.publishEvent("traffic.pitExitMerge", { seconds: 1 });
+  } else if (id.startsWith("pit-crew.traffic-pit-exit-")) {
     bus.publishEvent("traffic.pitExit", { verdict: id.endsWith("traffic") ? "traffic" : "clear", seconds: 1 });
   } else {
     bus.publishEvent("traffic.rejoin", REJOIN_PAYLOADS[id as (typeof REJOIN_IDS)[number]]);
@@ -450,7 +460,7 @@ afterEach(() => {
 
 describe("TRAFFIC_CONTRACTS", () => {
   it("exports one contract per line, rejoin first in band order, in registration order", () => {
-    expect(TRAFFIC_SCENARIO_IDS).toEqual([...REJOIN_IDS, ...PIT_EXIT_IDS]);
+    expect(TRAFFIC_SCENARIO_IDS).toEqual([...REJOIN_IDS, ...PIT_EXIT_IDS, MERGE_ID]);
   });
 
   it("carries no sequence — what each line says is the voice script's", () => {
@@ -500,7 +510,7 @@ describe("TRAFFIC_CONTRACTS", () => {
     expect(TRAFFIC_MAX_QUEUE_WAIT_MS).toBeLessThan(DEFAULT_MAX_QUEUE_WAIT_MS);
   });
 
-  it("the close calls, the pack line and both pit-exit lines interrupt; more than ten and clear do not", () => {
+  it("the close calls, the pack line, both pit-exit lines and the merge warning interrupt; more than ten and clear do not", () => {
     const interrupting = TRAFFIC_CONTRACTS.filter((c) => c.interrupt === true).map((c) => c.id);
 
     expect(interrupting).toEqual([
@@ -510,23 +520,26 @@ describe("TRAFFIC_CONTRACTS", () => {
       "pit-crew.traffic-rejoin-pack",
       "pit-crew.traffic-pit-exit-traffic",
       "pit-crew.traffic-pit-exit-clear",
+      MERGE_ID,
     ]);
     expect(contract("pit-crew.traffic-rejoin-over-ten").interrupt).toBe(false);
     expect(contract("pit-crew.traffic-rejoin-clear").interrupt).toBe(false);
   });
 
-  it("the rejoin lines are unframed; the pit-exit lines keep the default radio frame", () => {
+  it("the rejoin lines are unframed; the pit-exit lines and the merge warning keep the default radio frame", () => {
     for (const id of REJOIN_IDS) expect(contract(id).frame, id).toBe(NO_FRAME);
 
-    for (const id of PIT_EXIT_IDS) expect(contract(id).frame, id).toBeUndefined();
+    for (const id of PIT_EXIT_GATED_IDS) expect(contract(id).frame, id).toBeUndefined();
   });
 
-  it("each trigger's lines share one supersede group, and the two triggers do not", () => {
+  it("each trigger's lines share one supersede group, and the two triggers do not; the merge warning has none", () => {
     for (const id of REJOIN_IDS) expect(contract(id).supersedeGroup, id).toBe(TRAFFIC_REJOIN_SUPERSEDE_GROUP);
 
     for (const id of PIT_EXIT_IDS) expect(contract(id).supersedeGroup, id).toBe(TRAFFIC_PIT_EXIT_SUPERSEDE_GROUP);
 
     expect(TRAFFIC_REJOIN_SUPERSEDE_GROUP).not.toBe(TRAFFIC_PIT_EXIT_SUPERSEDE_GROUP);
+    // Said once, on an event of its own: a waiting call is never dropped for it, nor it for a flip.
+    expect(contract(MERGE_ID).supersedeGroup).toBeUndefined();
   });
 
   /** The rejoin contracts whose `where:` takes `data` right now. */
@@ -582,6 +595,15 @@ describe("TRAFFIC_CONTRACTS", () => {
         expect(when?.where?.(pitExitEvent(verdict, 1)), `${id} on ${verdict}`).toBe(verdict === PIT_EXIT_VERDICTS[i]);
       }
     }
+  });
+
+  it("the merge warning fires on traffic.pitExitMerge, whatever its seconds, and on no pit-exit verdict", () => {
+    const when = contract(MERGE_ID).when;
+
+    expect(when?.event).toBe("traffic.pitExitMerge");
+    expect(when?.where).toBeUndefined();
+
+    for (const id of PIT_EXIT_IDS) expect(contract(id).when?.event, id).toBe("traffic.pitExit");
   });
 
   it("every description is one sentence for a pack author, within the reference's 200 characters", () => {
@@ -905,6 +927,24 @@ describe("scheduling against other lines", () => {
     });
   });
 
+  it.each(PIT_EXIT_VERDICTS)(
+    "the merge warning arriving while the pit exit %s call plays cuts it, the newer line of one family",
+    (verdict) => {
+      bus.publishEvent("traffic.pitExit", { verdict, seconds: 1 });
+      // The radio frame's open tick, then the call's words.
+      audio._triggerChannelEnd(AudioChannel.SFX);
+      expect(voicePaths()).toEqual([clip(`pit-exit-${verdict}`)]);
+
+      bus.publishEvent("traffic.pitExitMerge", { seconds: 1 });
+
+      expect(audio._stopped).toContain(AudioChannel.Voice);
+
+      flush(audio);
+
+      expect(voicePaths()).toEqual([clip(`pit-exit-${verdict}`), clip("pit-exit-merge")]);
+    },
+  );
+
   it("a newer line replaces the one in flight — a count cuts the first call still playing", () => {
     bus.publishEvent("traffic.rejoin", near(9, true));
     bus.publishEvent("traffic.rejoin", near(5, false));
@@ -1093,7 +1133,7 @@ describe("a line is never heard after the moment it warns about", () => {
       telemetry = null;
     });
 
-    it.each(PIT_EXIT_IDS)("%s: refused on track or beside it, admitted in the exit lane or the stall", (id) => {
+    it.each(PIT_EXIT_GATED_IDS)("%s: refused on track or beside it, admitted in the exit lane or the stall", (id) => {
       for (const [surface, admitted] of [
         [TrkLoc.OnTrack, false],
         [TrkLoc.OffTrack, false],
@@ -1105,7 +1145,7 @@ describe("a line is never heard after the moment it warns about", () => {
       }
     });
 
-    it.each(PIT_EXIT_IDS)("%s: admitted with no telemetry or no surface read (the harness)", (id) => {
+    it.each(PIT_EXIT_GATED_IDS)("%s: admitted with no telemetry or no surface read (the harness)", (id) => {
       telemetry = null;
       expect(liveAdmit(id)).toBe(true);
 
@@ -1140,6 +1180,26 @@ describe("a line is never heard after the moment it warns about", () => {
         expect(voicePaths()).toEqual([CRITICAL_CLIP, clip(`pit-exit-${verdict}`)]);
       },
     );
+
+    it.each([
+      ["dropped once the player has merged", TrkLoc.OnTrack, [CRITICAL_CLIP]],
+      [
+        "still played while the player is in the exit lane",
+        TrkLoc.AproachingPits,
+        [CRITICAL_CLIP, clip("pit-exit-merge")],
+      ],
+    ] as const)("the merge warning waiting behind a CRITICAL line is %s", (_, surface, heard) => {
+      _resetAudioScenarios();
+      _resetTrafficState();
+      wire(live);
+      telemetry = { PlayerTrackSurface: TrkLoc.AproachingPits };
+      bus.publishEvent("pitStall.departed", {});
+      bus.publishEvent("traffic.pitExitMerge", { seconds: 1 });
+      telemetry = { PlayerTrackSurface: surface };
+      flush(audio);
+
+      expect(voicePaths()).toEqual(heard);
+    });
   });
 });
 
@@ -1475,12 +1535,12 @@ describe("a count is an update only once the first call about the car was heard 
 });
 
 describe("family wiring", () => {
-  it("maps every rejoin line to the rejoin opt-in and both pit-exit lines to the pit-exit one", () => {
+  it("maps every rejoin line to the rejoin opt-in, and both pit-exit lines and the merge warning to the pit-exit one", () => {
     expect(Object.keys(SCENARIO_ID_TO_TRAFFIC_ID).sort()).toEqual([...TRAFFIC_SCENARIO_IDS].sort());
 
     for (const id of REJOIN_IDS) expect(SCENARIO_ID_TO_TRAFFIC_ID[id], id).toBe("rejoin");
 
-    for (const id of PIT_EXIT_IDS) expect(SCENARIO_ID_TO_TRAFFIC_ID[id], id).toBe("pit-exit");
+    for (const id of PIT_EXIT_GATED_IDS) expect(SCENARIO_ID_TO_TRAFFIC_ID[id], id).toBe("pit-exit");
   });
 
   it("the clip sources are the pools the script addresses directly, the middles left to the var", () => {
@@ -1494,6 +1554,7 @@ describe("family wiring", () => {
       "traffic/rejoin-pack",
       "traffic/pit-exit-traffic",
       "traffic/pit-exit-clear",
+      "traffic/pit-exit-merge",
     ]);
   });
 

@@ -42,6 +42,8 @@ const TAKES: Record<string, number> = {
   "rejoin-pack": 1,
   "pit-exit-traffic": 4,
   "pit-exit-clear": 4,
+  // One approved line, "Watch for cars.", the same in both voices (amended 2026-11-20).
+  "pit-exit-merge": 1,
 };
 
 /** Two wordings of every number in the close band. */
@@ -61,6 +63,7 @@ const SEQUENCES: Record<string, readonly string[]> = {
   "pit-crew.traffic-rejoin-pack": ["pool:traffic/rejoin-pack"],
   "pit-crew.traffic-pit-exit-traffic": ["pool:traffic/pit-exit-traffic"],
   "pit-crew.traffic-pit-exit-clear": ["pool:traffic/pit-exit-clear"],
+  "pit-crew.traffic-pit-exit-merge": ["pool:traffic/pit-exit-merge"],
 };
 
 function takes(voice: string, base: string): number {

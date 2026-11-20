@@ -2,7 +2,9 @@
  * Approaching-traffic family (issue #1113, amended 2026-11-11) — the Race
  * Engineer's answer to "is anything coming?" at two moments: stopped or
  * crawling on track after a spin or a stall (`traffic.rejoin`), and leaving
- * the pit box (`traffic.pitExit`). The translator's detectors
+ * the pits (`traffic.pitExit`, 3 s short of the end of pit road, and the merge
+ * warning `traffic.pitExitMerge` in the exit lane, amended 2026-11-20). The
+ * translator's detectors
  * (`diff/traffic-rejoin.ts`, `diff/traffic-pit-exit.ts` in
  * `@iracedeck/sim-events-iracing`) decide the band, the number and every
  * timing rule — when a line is first said, when it is counted down, when the
@@ -82,7 +84,7 @@
  * resolved to the `traffic/rejoin-mid-<N>` pool, whose takes are the voice's
  * different wordings of the same figure. The fixed lines are pools of four.
  *
- * **One family.** All eight share `family: "traffic"` (spec decision 6): a
+ * **One family.** All nine share `family: "traffic"` (spec decision 6): a
  * fresh line replaces a stale one in flight wholesale, whatever the weights —
  * a closer count arriving while the previous one still plays cuts it.
  *
@@ -95,7 +97,7 @@
  * instead of letting it play after it. And `maxQueueWaitMs` is per line
  * (`LineSpec.maxQueueWaitMs`): the lines whose words decay while they wait —
  * the close calls, whose seconds count down, the pack line, about cars going
- * by within seconds, and the pit-exit traffic warning — take
+ * by within seconds, and the pit-exit traffic warning and merge warning — take
  * {@link TRAFFIC_MAX_QUEUE_WAIT_MS}, since "about five seconds" heard
  * four seconds late describes a car that has already passed; the reassuring
  * lines — "more than ten", "Clear to rejoin" and the pit-exit clear — take the
@@ -116,15 +118,15 @@
  *   names: {@link TRAFFIC_REJOIN_RIGHT_BEHIND_S} for right behind, and the
  *   event's whole `seconds` for a `near` call, whose car arrives in `seconds`
  *   to `seconds + 1`. A line that plays at once is never refused.
- * - **Both pit-exit lines** are dropped once the live telemetry has the player
- *   back on the racing surface (`PlayerTrackSurface` `OnTrack` / `OffTrack`),
+ * - **The pit-exit lines and the merge warning** are dropped once the live
+ *   telemetry has the player back on the racing surface (`PlayerTrackSurface` `OnTrack` / `OffTrack`),
  *   the detector's own end of the exit: the merge they are about is over. With
  *   no telemetry (the scenario harness) or no surface read they play.
  * A line cut mid-sentence and replayed is not asked again (`SpeakGate`).
  *
  * **Weights (spec decision 6, amended 2026-11-17).** The warnings — right
- * behind, both `near` calls, the pack line and the pit-exit traffic warning —
- * fire at
+ * behind, both `near` calls, the pack line, the pit-exit traffic warning and
+ * the merge warning — fire at
  * {@link TRAFFIC_WARNING_WEIGHT}, 85, strictly between `WEIGHT.SAFETY` and
  * `WEIGHT.CRITICAL`, with `interrupt`: a car arriving within seconds cuts
  * routine chatter and a caution or flag line mid-sentence, and a cut caution
@@ -136,8 +138,8 @@
  * win: a warning waits behind a `CRITICAL` line within its short wait, and a
  * spotter call cuts a warning. "More than ten" and "clear to rejoin" sit at
  * `SAFETY` without `interrupt` and wait their turn. The pit-exit clear call
- * sits at `SAFETY` and keeps `interrupt`: made as the player crosses the
- * end of pit road, it trumps the exit readback and the tire-wear report (spec, "Pit
+ * sits at `SAFETY` and keeps `interrupt`: made 3 s short of the end of pit
+ * road (amended 2026-11-20), it trumps the exit readback and the tire-wear report (spec, "Pit
  * exit": both pit-exit lines cut in): either, cut in flight, is queueable and
  * picks up again after it, while one already finished is not replayed. Both
  * come `PIT_READBACK_EXIT_DELAY_MS` (4.5 s) after the player leaves pit road,
@@ -149,8 +151,16 @@
  * **Frames.** The rejoin lines are unframed (`NO_FRAME`): they repeat while
  * the car stays stopped, at the detector's cadence, and the open and close
  * ticks around every one would drown the words — the spotter precedent. The
- * pit-exit lines are spoken once per exit (again only if the verdict flips)
- * and keep the default radio frame.
+ * pit-exit lines are spoken once per exit (again only if the verdict flips),
+ * the merge warning at most once, and they keep the default radio frame.
+ *
+ * **The merge warning (amended 2026-11-20).** "Watch for cars.", Niklas's
+ * words, said in the exit lane when a timed car will reach the end of the
+ * blend within the `trafficPitExitMergeWarnSeconds` slider of the player,
+ * whatever the first call said. A contract of its own, on its own event: it
+ * answers a different question from the verdict, so it takes no part in the
+ * pit-exit lines' `supersedeGroup` — a waiting call is never dropped for it,
+ * nor it for a flip. It rides the `pit-exit` opt-in with them.
  *
  * Session gating (live in the car, on track, off pit road, past the green)
  * lives in the translator's detectors, NOT here, so the contracts stay
@@ -182,7 +192,8 @@ export const TRAFFIC_GROUP = "traffic";
 
 /**
  * The weight of the traffic warnings — right behind, both `near` calls, the
- * pack line and the pit-exit traffic warning — strictly between `WEIGHT.SAFETY` (70) and
+ * pack line, the pit-exit traffic warning and the merge warning — strictly
+ * between `WEIGHT.SAFETY` (70) and
  * `WEIGHT.CRITICAL` (100), with `interrupt` (spec decision 6, amended
  * 2026-11-17). A car arriving within seconds at a stopped car, or at the
  * merge beside the player, outranks a caution or flag line at `SAFETY`, which
@@ -197,8 +208,8 @@ export const TRAFFIC_WARNING_WEIGHT = 85;
  * How long a traffic line whose words decay while it waits may wait for the
  * bus before it is dropped: the close calls (right behind, and both `near`
  * calls), whose seconds count down, the pack line, about cars going by within
- * seconds, and the pit-exit traffic warning, about a car reaching the merge
- * within seconds of the player. Short, because heard
+ * seconds, and the pit-exit traffic warning and merge warning, about a car
+ * reaching the merge within seconds of the player. Short, because heard
  * late each describes a car that has already gone by; the detector speaks
  * again on the next closer band or count, so a dropped one is replaced. The
  * reassuring lines wait the engine default instead (module header).
@@ -219,9 +230,9 @@ export const TRAFFIC_PIT_EXIT_SUPERSEDE_GROUP = "traffic-pit-exit";
 export const REJOIN_SECONDS_VAR = "traffic.rejoinSeconds";
 
 /**
- * The eight lines, rejoin first in band order and the group call after them,
- * then the pit exit. Each key is the contract id's suffix,
- * `pit-crew.traffic-<key>`.
+ * The nine lines, rejoin first in band order and the group call after them,
+ * then the pit exit's verdicts and its merge warning. Each key is the
+ * contract id's suffix, `pit-crew.traffic-<key>`.
  */
 export type TrafficLine =
   | "rejoin-right-behind"
@@ -231,10 +242,12 @@ export type TrafficLine =
   | "rejoin-clear"
   | "rejoin-pack"
   | "pit-exit-traffic"
-  | "pit-exit-clear";
+  | "pit-exit-clear"
+  | "pit-exit-merge";
 
 type RejoinLine = Extract<TrafficLine, `rejoin-${string}`>;
-type PitExitLine = Extract<TrafficLine, `pit-exit-${string}`>;
+/** The two verdict lines of `traffic.pitExit`; the merge warning has an event of its own. */
+type PitExitLine = Exclude<Extract<TrafficLine, `pit-exit-${string}`>, "pit-exit-merge">;
 
 type LineSpec = {
   /** {@link TRAFFIC_WARNING_WEIGHT} for a warning, `WEIGHT.SAFETY` otherwise (module header). */
@@ -477,7 +490,7 @@ const PIT_EXIT_LINES: Record<PitExitLine, PitExitLineSpec> = {
     maxQueueWaitMs: TRAFFIC_MAX_QUEUE_WAIT_MS,
     verdict: "traffic",
     description:
-      "As you reach the end of pit road, a car on track is predicted to reach the end of the pit exit blend line around the same time as you.",
+      "About three seconds before the end of pit road, a car on track is predicted to reach the end of the pit exit blend line around the same time as you.",
     gateDescription: "Dropped once you are back on the racing surface, since the merge it warns about is over.",
   },
   "pit-exit-clear": {
@@ -490,7 +503,7 @@ const PIT_EXIT_LINES: Record<PitExitLine, PitExitLineSpec> = {
     maxQueueWaitMs: DEFAULT_MAX_QUEUE_WAIT_MS,
     verdict: "clear",
     description:
-      "As you reach the end of pit road, no car on track is predicted to reach the end of the pit exit blend line around the same time as you.",
+      "About three seconds before the end of pit road, no car on track is predicted to reach the end of the pit exit blend line around the same time as you.",
     gateDescription: "Dropped once you are back on the racing surface, since the merge it is about is over.",
   },
 };
@@ -530,6 +543,21 @@ function closeCarStillComing(ctx: Pick<ScenarioContext, "event" | "now">): boole
 function pitExitOf(ctx: Pick<ScenarioContext, "event">): TrafficPitExit | null {
   return ctx.event?.event === "traffic.pitExit" ? (ctx.event as SimEventOf<"traffic.pitExit">).data : null;
 }
+
+/**
+ * The merge warning (module header): a warning, like the pit-exit traffic
+ * line, with its weight, interrupt, short wait and speak-time gate.
+ */
+const PIT_EXIT_MERGE_LINE: LineSpec & { gateDescription: string } = {
+  weight: TRAFFIC_WARNING_WEIGHT,
+  interrupt: true,
+  // Short: a car at the merge within a second or two of the player is there
+  // by the time a late line plays.
+  maxQueueWaitMs: TRAFFIC_MAX_QUEUE_WAIT_MS,
+  description:
+    "In the pit exit lane, past the end of pit road, a car on track is predicted to reach the end of the pit exit blend line within the Pit exit merge warning seconds of you: said once per pit exit.",
+  gateDescription: "Dropped once you are back on the racing surface, since the merge it warns about is over.",
+};
 
 /**
  * The middle's clip base for a rejoin payload, `rejoin-mid-<N>`, or null when
@@ -694,8 +722,17 @@ function pitExitContract(line: PitExitLine, deps: TrafficContractDeps): Scenario
   };
 }
 
+/** The merge warning's contract (module header): on `traffic.pitExitMerge`, gated like the pit-exit lines. */
+function pitExitMergeContract(deps: TrafficContractDeps): ScenarioContract {
+  return {
+    ...trafficContract("pit-exit-merge", PIT_EXIT_MERGE_LINE),
+    speakGate: { description: PIT_EXIT_MERGE_LINE.gateDescription, admit: () => stillLeavingThePits(deps) },
+    when: { event: "traffic.pitExitMerge" },
+  };
+}
+
 /**
- * The eight contracts, rejoin first in band order, the pit-exit gates closing
+ * The nine contracts, rejoin first in band order, the pit-exit gates closing
  * over `deps`' telemetry read. `registerPitCrew` builds them with the live
  * reader.
  */
@@ -709,6 +746,7 @@ export function buildTrafficContracts(deps: TrafficContractDeps): readonly Scena
     rejoinContract("rejoin-pack"),
     pitExitContract("pit-exit-traffic", deps),
     pitExitContract("pit-exit-clear", deps),
+    pitExitMergeContract(deps),
   ];
 }
 
@@ -722,7 +760,7 @@ export const TRAFFIC_CONTRACTS: readonly ScenarioContract[] = buildTrafficContra
 /** The traffic family's opt-in ids: `rejoin` and `pit-exit` (`@iracedeck/callout-settings`). */
 export type TrafficCalloutId = CalloutIdOf<typeof TRAFFIC_CALLOUTS>;
 
-/** Every rejoin line rides the `rejoin` opt-in, both pit-exit lines the `pit-exit` one. */
+/** Every rejoin line rides the `rejoin` opt-in, both pit-exit lines and the merge warning the `pit-exit` one. */
 export const SCENARIO_ID_TO_TRAFFIC_ID: Record<string, TrafficCalloutId> = {
   "pit-crew.traffic-rejoin-right-behind": "rejoin",
   "pit-crew.traffic-rejoin-near-first": "rejoin",
@@ -732,6 +770,7 @@ export const SCENARIO_ID_TO_TRAFFIC_ID: Record<string, TrafficCalloutId> = {
   "pit-crew.traffic-rejoin-pack": "rejoin",
   "pit-crew.traffic-pit-exit-traffic": "pit-exit",
   "pit-crew.traffic-pit-exit-clear": "pit-exit",
+  "pit-crew.traffic-pit-exit-merge": "pit-exit",
 };
 
 export const TRAFFIC_SCENARIO_IDS: readonly string[] = TRAFFIC_CONTRACTS.map((c) => c.id);
@@ -754,4 +793,5 @@ export const TRAFFIC_CLIP_SOURCES: readonly { group: typeof TRAFFIC_GROUP; base:
   { group: TRAFFIC_GROUP, base: "rejoin-pack" },
   { group: TRAFFIC_GROUP, base: "pit-exit-traffic" },
   { group: TRAFFIC_GROUP, base: "pit-exit-clear" },
+  { group: TRAFFIC_GROUP, base: "pit-exit-merge" },
 ];

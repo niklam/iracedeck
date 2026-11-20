@@ -419,6 +419,7 @@ const TRAFFIC_CLIP_PATHS = [
     "rejoin-pack",
     "pit-exit-traffic",
     "pit-exit-clear",
+    "pit-exit-merge",
     "rejoin-mid-4",
   ].map((base) => `voice/${VOICE}/traffic/${base}-01.mp3`),
 ] as const;
@@ -1946,11 +1947,19 @@ describe("traffic family registration (issue #1113)", () => {
     expect(voiceClipsPlayed()).toEqual([clip("pit-exit-traffic")]);
   });
 
-  it("the pit-exit opt-in off silences both pit-exit lines but not the rejoin", () => {
+  it("the merge warning plays its line when the pit-exit opt-in is on", () => {
+    bus.publishEvent("traffic.pitExitMerge", { seconds: 1 });
+    flush(audio);
+
+    expect(voiceClipsPlayed()).toEqual([clip("pit-exit-merge")]);
+  });
+
+  it("the pit-exit opt-in off silences both pit-exit lines and the merge warning but not the rejoin", () => {
     trafficEnabled.set("pit-exit", false);
 
     bus.publishEvent("traffic.pitExit", { verdict: "traffic", seconds: 1 });
     bus.publishEvent("traffic.pitExit", { verdict: "clear" });
+    bus.publishEvent("traffic.pitExitMerge", { seconds: 1 });
     flush(audio);
     expect(voiceClipsPlayed()).toEqual([]);
 
