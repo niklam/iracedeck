@@ -1111,7 +1111,7 @@
   },
   "calloutEnabledTrafficRejoin": {
     "owner": "traffic/rejoin",
-    "default": true,
+    "default": false,
     "true": true,
     "\"true\"": true,
     "false": false,

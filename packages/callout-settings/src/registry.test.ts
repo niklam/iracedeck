@@ -112,7 +112,7 @@ describe("Traffic group (#1113)", () => {
     expect(ids.indexOf("traffic")).toBe(ids.indexOf("spotter") + 1);
     expect(group?.title).toBe("Traffic");
     expect(rows?.map((e) => [e.key, e.label])).toEqual([
-      ["calloutEnabledTrafficRejoin", "Traffic when rejoining"],
+      ["calloutEnabledTrafficRejoin", "Traffic when rejoining (experimental)"],
       ["calloutEnabledTrafficPitExit", "Traffic at pit exit"],
     ]);
   });
@@ -124,8 +124,8 @@ describe("Traffic group (#1113)", () => {
     expect(keys).not.toContain("calloutEnabledTrafficPitExit");
   });
 
-  it("ships both opt-ins on", () => {
-    expect(calloutDefault("calloutEnabledTrafficRejoin")).toBe(true);
+  it("ships the rejoin opt-in off, as experimental, and the pit-exit one on (amended 2026-11-20)", () => {
+    expect(calloutDefault("calloutEnabledTrafficRejoin")).toBe(false);
     expect(calloutDefault("calloutEnabledTrafficPitExit")).toBe(true);
   });
 

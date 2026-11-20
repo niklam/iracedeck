@@ -597,10 +597,10 @@ describe("approaching-traffic settings (issue #1113)", () => {
   const read = (key: string, value: unknown): unknown =>
     (GlobalSettingsSchema.parse({ [key]: value }) as Record<string, unknown>)[key];
 
-  it("defaults the opt-ins on and the pit-exit window to 2 s before and 4 s after", () => {
+  it("defaults the rejoin opt-in off (experimental, amended 2026-11-20), the pit-exit one on and its window to 2 s before and 4 s after", () => {
     const parsed = GlobalSettingsSchema.parse({});
 
-    expect(parsed.calloutEnabledTrafficRejoin).toBe(true);
+    expect(parsed.calloutEnabledTrafficRejoin).toBe(false);
     expect(parsed.calloutEnabledTrafficPitExit).toBe(true);
     expect(parsed.trafficPitExitBeforeSeconds).toBe(2);
     expect(parsed.trafficPitExitAfterSeconds).toBe(4);

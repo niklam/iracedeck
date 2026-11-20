@@ -13,7 +13,7 @@ The Race Engineer callout opt-in registry (#1350). It is the only place a `callo
 
 ## The entry and its default
 
-`default` is optional and can only be `false`: absent means on. New Race Engineer functionality ships on, so an off default is a visible, deliberate exception rather than a value every entry repeats. Today eight entries carry it: the fuel countdown counts 10, 9, 8, 7, 6 and 4, and the two pit-lane beeps, `calloutEnabledPitExitCue` (#1161) and `calloutEnabledLimiterEngagedCue` (#1272), which the maintainer decided on 2026-11-09 a driver opts into. `calloutDefault(key)` turns it into the schema default.
+`default` is optional and can only be `false`: absent means on. New Race Engineer functionality ships on, so an off default is a visible, deliberate exception rather than a value every entry repeats. Today nine entries carry it: the fuel countdown counts 10, 9, 8, 7, 6 and 4, the two pit-lane beeps, `calloutEnabledPitExitCue` (#1161) and `calloutEnabledLimiterEngagedCue` (#1272), which the maintainer decided on 2026-11-09 a driver opts into, and the rejoin traffic warnings, `calloutEnabledTrafficRejoin` (#1113), which he decided on 2026-11-20 ship experimental and off, the label saying "(experimental)". `calloutDefault(key)` turns it into the schema default.
 
 A `key` is a persisted settings key and a published contract: never rename or drop one without a migration, and never change a default casually. `@iracedeck/settings`' append-only baseline (`src/__fixtures__/callout-settings-baseline.json`, #1376) fails on either. A key retired on purpose keeps its baseline row, marked `"retiredBy": "#<issue>"` and listed in the test's `RETIRED_KEYS` by the change that adds its migration, and is never reused.
 

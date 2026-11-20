@@ -1,4 +1,5 @@
 import * as registry from "@iracedeck/callout-settings";
+import ejs from "ejs";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
@@ -19,6 +20,31 @@ describe("buildCalloutPiGroups (#1350)", () => {
       { setting: "calloutEnabledFuelLapsLeft9", label: "9 laps of fuel left", on: false },
     ]);
     expect(groups.flatMap((g) => g.rows.map((r) => r.setting))).toEqual([...registry.CALLOUT_SETTING_KEYS]);
+  });
+});
+
+describe("the Traffic checkboxes as the settings window renders them (#1113)", () => {
+  // The settings window's Callouts card is the one surface that renders the
+  // callout checkboxes (the partial below, included by `iracing-actions`'
+  // `settings-window.ejs` on every platform); its rows come from the built
+  // registry, so this renders what the plugins ship. The rejoin warnings are
+  // experimental and off by default (Niklas, 2026-11-20): the label says so,
+  // and an OFF default omits `default` entirely, since `default="false"`
+  // renders checked.
+  it("labels the rejoin opt-in experimental and leaves it unticked; the pit-exit opt-in stays ticked", () => {
+    const partialsDir = path.resolve(import.meta.dirname, "../../partials");
+    const html = ejs.render(
+      "<%- include('race-engineer-callouts') %>",
+      { calloutPiGroups: loaded.groups },
+      { views: [partialsDir], filename: path.join(partialsDir, "_test.ejs") },
+    );
+
+    expect(html).toContain(
+      '<sdpi-checkbox setting="calloutEnabledTrafficRejoin" label="Traffic when rejoining (experimental)" global></sdpi-checkbox>',
+    );
+    expect(html).toContain(
+      '<sdpi-checkbox setting="calloutEnabledTrafficPitExit" label="Traffic at pit exit" global default="true"></sdpi-checkbox>',
+    );
   });
 });
 
