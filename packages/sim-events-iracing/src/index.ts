@@ -176,6 +176,9 @@ export {
   OPPONENT_FLAG_RANGE_MIN_SECONDS,
   sanitizeOpponentFlagRangeSeconds,
 } from "./diff/opponent-flags.js";
+// The pit-exit call's lead short of the end of pit road (issue #1113, amended
+// 2026-11-20): the scenario harness holds its pit-exit run's call point inside it.
+export { TRAFFIC_PIT_EXIT_CALL_LEAD_S } from "./diff/traffic-pit-exit.js";
 // The pit-exit traffic sliders' bounds and sanitizers (issue #1113) — the
 // plugins wire the translator's three traffic settings through them, the
 // `sanitizeGapAlertThresholdSeconds` precedent.
