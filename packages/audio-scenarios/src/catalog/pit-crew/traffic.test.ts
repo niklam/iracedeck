@@ -11,7 +11,9 @@
  * bundled one (a contract is silent without a script, and these tests are
  * about the contracts and the vocabulary, not the wording), and a hand-built
  * manifest whose clip set decides what is speakable. What the first-party
- * voices script and ship is `traffic-voices.test.ts`.
+ * voices script and ship is `traffic-voices.test.ts`, and each traffic contract is
+ * fired through the real artifact after `registerPitCrew` in
+ * `register-pit-crew.test.ts`, which is why this file keeps a fixture.
  *
  * Amended 2026-11-17: the warnings weigh {@link TRAFFIC_WARNING_WEIGHT}, so
  * they cut a caution or flag line and still yield to a CRITICAL line and the
