@@ -226,9 +226,15 @@
  * call has said). The threshold is read live at each such evaluation; 0
  * leaves only an exact coincidence, so it is off in practice. The crossings
  * tested run up to the larger of the window's `after` and the threshold, so
- * a crossing inside the threshold is never left out. A track with no exit
- * lane (`pitRoadEnd` at `blendEnd`) has nothing past `pitRoadEnd` short of
- * `blendEnd`, so it gets no merge warning. Gated, with the pit-exit call, by
+ * a crossing inside the threshold is never left out. "In the exit lane"
+ * needs an exit lane: a track without one gets no merge warning, however the
+ * road bit reads. Without one is `pitRoadEnd` at `blendEnd`, within
+ * {@link TRAFFIC_PIT_EXIT_LANDMARK_SLACK_M} after it (the same point, above)
+ * or within the learner's own agreement tolerance (`PIT_LANE_TOLERANCE_M`,
+ * 5 m) before it, closer than the learner can tell two points apart. There
+ * `OnPitRoad` can turn false a tick or two short of the learned point, which
+ * moves the ETA to its blend phase and is the call point's fallback, as
+ * anywhere, but admits the player to no exit lane. Gated, with the pit-exit call, by
  * the `calloutEnabledTrafficPitExit` opt-in on the audio side.
  */
 import type { SimEventName } from "@iracedeck/event-bus";
@@ -692,13 +698,25 @@ function exitPosition(
 }
 
 /**
- * Whether the player is past `pitRoadEnd`, in the exit lane (module header):
- * `OnPitRoad` false, or the position at or past `pitRoadEnd`. The ETA's blend
- * phase (`playerEta`), the call point's fallback, and where the merge warning
- * is checked.
+ * Whether the player is past `pitRoadEnd` (module header): `OnPitRoad` false,
+ * or the position at or past `pitRoadEnd`. The ETA's blend phase
+ * (`playerEta`) and the call point's fallback; the merge warning also needs an
+ * exit lane ({@link inExitLane}).
  */
 function pastPitRoadEnd(onPitRoad: boolean, position: ExitPosition): boolean {
   return !onPitRoad || position.toBlendEnd <= position.pitRoadEndToBlendEnd;
+}
+
+/**
+ * Whether the player is in the exit lane, where the merge warning is checked
+ * (module header): past `pitRoadEnd` ({@link pastPitRoadEnd}) on a track that
+ * has an exit lane, its `pitRoadEnd` more than the learner's agreement
+ * tolerance (`PIT_LANE_TOLERANCE_M`) before `blendEnd`. Landmarks closer than
+ * that are one point, where the road bit turning false a little short of it
+ * is no lane to be in.
+ */
+function inExitLane(onPitRoad: boolean, position: ExitPosition, trackLengthMeters: number | null): boolean {
+  return position.pitRoadEndToBlendEnd > pitLaneTolerancePct(trackLengthMeters) && pastPitRoadEnd(onPitRoad, position);
 }
 
 /**
@@ -774,7 +792,7 @@ function usableLandmarks(
  * Between two scheduled evaluations, whether this tick evaluates at once
  * (module header): with the call not yet made, at the call point (the latch
  * already set, or {@link reachedCallPoint}); or with the merge warning not
- * yet checked or said, past `pitRoadEnd`. Both on landmarks the evaluation can
+ * yet checked or said, in the exit lane ({@link inExitLane}). Both on landmarks the evaluation can
  * use. With either landmark unusable, or the player at or past `blendEnd`,
  * `false`: such an evaluation could do neither, and the next scheduled one
  * handles it. A start the departure did not take is read as the player's
@@ -798,7 +816,8 @@ function offScheduleDue(
 
   const callDue =
     episode.spokenVerdict === null && (episode.callPointReached || reachedCallPoint(onPitRoad, position, facts));
-  const mergeDue = !episode.mergeChecked && !episode.mergeWarned && pastPitRoadEnd(onPitRoad, position);
+  const mergeDue =
+    !episode.mergeChecked && !episode.mergeWarned && inExitLane(onPitRoad, position, facts.trackLengthMeters);
 
   return callDue || mergeDue;
 }
@@ -1007,8 +1026,9 @@ function evaluate(
   if (reachedCallPoint(onPitRoad, position, facts)) episode.callPointReached = true;
 
   // In the exit lane, where the merge warning is checked: read at each
-  // evaluation, not latched, so a car rolled back onto pit road is not in it.
-  const inExitLane = pastPitRoadEnd(onPitRoad, position);
+  // evaluation, not latched, so a car rolled back onto pit road is not in it,
+  // and never on a track without one (module header).
+  const exitLane = inExitLane(onPitRoad, position, facts.trackLengthMeters);
 
   const playerClass = resolveCarClassId(telemetry, facts.classes, facts.playerCarIdx);
   const eta = playerEta(curves, telemetry, playerPct, onPitRoad, playerClass, facts, pitRoadEnd, blendEnd, position);
@@ -1027,7 +1047,7 @@ function evaluate(
   const before = windows.getBeforeSeconds();
   const after = windows.getAfterSeconds();
   // The merge threshold, read live while the warning is still to be said.
-  const mergeWarnSeconds = inExitLane && !episode.mergeWarned ? windows.getMergeWarnSeconds() : null;
+  const mergeWarnSeconds = exitLane && !episode.mergeWarned ? windows.getMergeWarnSeconds() : null;
   // Every crossing within the threshold is tested too (module header).
   const crossingsUpTo = mergeWarnSeconds === null ? after : Math.max(after, mergeWarnSeconds);
   // `playerEta` returned a time, so the player has a class.
@@ -1170,7 +1190,7 @@ function evaluate(
   // Checked only on a picture with every car timed, or an empty track (module
   // header): with a car untimed, each tick off the schedule tries again until
   // the warning is said or a picture is whole. A warning said stays said.
-  if (inExitLane && untimed.length === 0) episode.mergeChecked = true;
+  if (exitLane && untimed.length === 0) episode.mergeChecked = true;
 
   episode.settledVerdict = nextSettled;
   episode.settledSeconds = nextSeconds;

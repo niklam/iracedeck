@@ -2050,6 +2050,51 @@ describe("diffTrafficPitExit", () => {
       expect(h.events).toEqual([{ verdict: "traffic", seconds: 1 }]);
     });
 
+    describe("never on a track without an exit lane, however the road bit reads", () => {
+      /** 3 m of the 1,600 m lap: inside the learner's 5 m agreement tolerance. */
+      const THREE_M = 3 / TRACK_M;
+
+      /**
+       * The player at `pct` on pit road, short of a `pitRoadEnd` at
+       * `pitRoadEndPct` (curve times only): the distance to it at the 20 m/s
+       * limit plus the curve from it to the blend at 0.1875, car 5 `relative` s after.
+       */
+      const onPitRoadAt = (pct: number, relative: number, pitRoadEndPct: number): TrafficPitExitTelemetry => {
+        const eta = (pitRoadEndPct - pct) * 80 + 500 * (0.1875 - pitRoadEndPct);
+
+        return tel({ pct, OnPitRoad: true, cars: [{ idx: 5, pct: 0.05, est: 93.75 - (eta + relative) }] });
+      };
+
+      it.each([
+        ["at one point", 0.1875],
+        ["with pitRoadEnd learned 3 m before blendEnd", 0.1875 - THREE_M],
+      ])("%s: OnPitRoad turning false short of the blend admits the player to no exit lane", (_name, pitRoadEndPct) => {
+        const h = harness({ landmarks: { pitRoadEnd: landmark(pitRoadEndPct, {}), blendEnd: landmark(0.1875, {}) } });
+
+        h.depart(onPitRoadAt(0.15, 0.5, pitRoadEndPct));
+        // Off the schedule, then on it: the road bit false a metre short of
+        // the blend, past the learned pitRoadEnd too when it lies before.
+        h.after(100, at(0.1869, 0.5, { OnPitRoad: false }));
+        step(h, at(0.18695, 0.5, { OnPitRoad: false }));
+
+        expect(h.merges).toEqual([]);
+        expect(lines(h.debug).some((line) => line.includes("merge warning"))).toBe(false);
+        // The call itself is made: the road bit is still the call point's fallback.
+        expect(h.events).toEqual([{ verdict: "traffic", seconds: 0.5 }]);
+      });
+
+      it("while an exit lane just past the tolerance still gets one", () => {
+        const h = harness({
+          landmarks: { pitRoadEnd: landmark(0.1875 - 6 / TRACK_M, {}), blendEnd: landmark(0.1875, {}) },
+        });
+
+        h.depart(onPitRoadAt(0.15, 0.5, 0.1875 - 6 / TRACK_M));
+        h.after(100, at(0.1869, 0.5, { OnPitRoad: false }));
+
+        expect(h.merges).toEqual([{ seconds: 0.5 }]);
+      });
+    });
+
     it("is said whatever the first call said: after a clear, with the flip to traffic still pending", () => {
       const h = harness({ landmarks: CURVE_LANDMARKS });
 
