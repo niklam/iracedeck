@@ -115,8 +115,14 @@ export const EVENT_TEMPLATES = [
   {
     name: "traffic.pitExit",
     description:
-      "Leaving the pits, whether a car reaches the exit blend when you do (issue #1113) — verdict: clear / traffic; seconds: the nearest car's arrival relative to yours (negative before), not spoken",
+      "Leaving the pits, 3 s short of the end of pit road, whether a car reaches the exit blend when you do (issue #1113) — verdict: clear / traffic; seconds: the nearest car's arrival relative to yours (negative before), not spoken",
     data: { verdict: "traffic", seconds: 1.5 } satisfies SimEventMap["traffic.pitExit"]["data"],
+  },
+  {
+    name: "traffic.pitExitMerge",
+    description:
+      "In the pit exit lane, a timed car reaches the exit blend within the merge threshold of you (issue #1113, amended 2026-11-20) — once per exit; seconds: that car's arrival relative to yours (negative before), not spoken",
+    data: { seconds: 0.8 } satisfies SimEventMap["traffic.pitExitMerge"]["data"],
   },
   {
     name: "pitBox.countdown",

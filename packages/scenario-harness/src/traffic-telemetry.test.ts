@@ -1,7 +1,9 @@
 /**
  * The approaching-traffic telemetry (issue #1113) through the real translator
  * on the mock SDK: the rejoin train is heard as every band in turn,
- * and the four pit-exit cases as clear, traffic, traffic, clear. Every event in the catalog is recorded, so a line the run lets slip
+ * and the four pit-exit cases as clear, traffic, traffic, clear at the call
+ * point 3 s short of the end of pit road, the −1 s case with the merge warning
+ * in the exit lane after it. Every event in the catalog is recorded, so a line the run lets slip
  * from another family cannot hide.
  */
 import { TRAFFIC_CONTRACTS } from "@iracedeck/audio-scenarios/pit-crew";
@@ -10,6 +12,7 @@ import { type SDKController, type SessionInfo, TrkLoc } from "@iracedeck/iracing
 import { silentLogger } from "@iracedeck/logger";
 import {
   _resetSimEventsIracing,
+  TRAFFIC_PIT_EXIT_CALL_LEAD_S as DETECTOR_CALL_LEAD_S,
   getLatestTelemetry,
   initializeSimEventsIracing,
   type SimEventsIracingOptions,
@@ -28,7 +31,9 @@ import {
   type TelemetryStep,
 } from "./scenario-shortcuts.js";
 import {
+  TRAFFIC_PIT_EXIT_CALL_LEAD_S,
   TRAFFIC_PIT_EXIT_CASES,
+  TRAFFIC_PIT_EXIT_MERGE_ETA_S,
   TRAFFIC_PIT_EXIT_PLAYER_ETA_S,
   TRAFFIC_REJOIN_SEQUENCE,
   TRAFFIC_REJOIN_SEQUENCE_UNLEARNED,
@@ -188,28 +193,38 @@ describe("the rejoin train (issue #1113)", () => {
 });
 
 describe("the pit-exit cases (issue #1113)", () => {
-  it("puts the player at the blend 3.6 s after crossing the end of pit road, where the call is made", () => {
-    expect(TRAFFIC_PIT_EXIT_PLAYER_ETA_S).toBeCloseTo(3.6, 6);
+  it("makes the call 2.46 s short of the end of pit road, inside the 3 s lead, with the player at the blend 6.46 s later", () => {
+    expect(TRAFFIC_PIT_EXIT_CALL_LEAD_S).toBeCloseTo(2.46, 6);
+    expect(TRAFFIC_PIT_EXIT_CALL_LEAD_S).toBeLessThanOrEqual(DETECTOR_CALL_LEAD_S);
+    expect(TRAFFIC_PIT_EXIT_PLAYER_ETA_S).toBeCloseTo(6.46, 6);
   });
 
-  /**
-   * What the run publishes besides the call: the departure, then, over the end
-   * of pit road, the pit-lane exit and the limiter switched off, the edge the
-   * call follows (amended 2026-11-20: spoken at the end of pit road, not at the
-   * stall).
-   */
-  const AROUND_THE_CALL = [
+  it("checks the merge 10 m into the exit lane, with the player at the blend 3.6 s later", () => {
+    expect(TRAFFIC_PIT_EXIT_MERGE_ETA_S).toBeCloseTo(3.6, 6);
+  });
+
+  /** The departure, then the call at the call point, still on pit road (amended 2026-11-20, second). */
+  const callOf = (verdict: string, relative: number): Published[] => [
     { event: "pitStall.departed", data: {} },
+    { event: "traffic.pitExit", data: { verdict, seconds: relative } },
+  ];
+
+  /**
+   * Over the end of pit road, the pit-lane exit and the limiter switched off,
+   * and the merge warning when the car is within the default 1.5 s threshold.
+   */
+  const intoTheExitLane = (merge: number | null): Published[] => [
     { event: "pitLane.exited", data: {} },
     { event: "carControl.limiterToggled", data: { on: false } },
-  ] as const;
+    ...(merge === null ? [] : [{ event: "traffic.pitExitMerge", data: { seconds: merge } }]),
+  ];
 
-  // The window is 2 s before to 4 s after the player's arrival; the call is made over the end of pit road.
+  // The window is 2 s before to 4 s after the player's arrival; the merge threshold 1.5 s either side.
   const EXPECTED = [
-    { relative: -3, verdict: "clear" },
-    { relative: -1, verdict: "traffic" },
-    { relative: 3, verdict: "traffic" },
-    { relative: 5, verdict: "clear" },
+    { relative: -3, verdict: "clear", merge: null },
+    { relative: -1, verdict: "traffic", merge: -1 },
+    { relative: 3, verdict: "traffic", merge: null },
+    { relative: 5, verdict: "clear", merge: null },
   ] as const;
 
   it("covers the spec's four cases", () => {
@@ -217,41 +232,52 @@ describe("the pit-exit cases (issue #1113)", () => {
   });
 
   it.each(EXPECTED)(
-    "calls $verdict for a car at the blend $relative s after the player, once over the end of pit road",
-    ({ relative, verdict }) => {
+    "calls $verdict for a car at the blend $relative s after the player at the call point, and warns at the merge: $merge",
+    ({ relative, verdict, merge }) => {
       const { controller, events } = startTranslator("race", { loadPitLaneLandmarks: LANDMARKS });
 
       runSequence(controller, trafficPitExitSequence(relative));
 
-      expect(events).toEqual([...AROUND_THE_CALL, { event: "traffic.pitExit", data: { verdict, seconds: relative } }]);
+      expect(events).toEqual([...callOf(verdict, relative), ...intoTheExitLane(merge)]);
     },
   );
 
   it.each(EXPECTED)(
-    "calls $verdict for a car at the blend $relative s with the tick loop paused",
-    ({ relative, verdict }) => {
+    "calls $verdict for a car at the blend $relative s with the tick loop paused, and warns at the merge: $merge",
+    ({ relative, verdict, merge }) => {
       const { controller, events } = startTranslator("race", { loadPitLaneLandmarks: LANDMARKS });
 
       runSequencePaused(controller, trafficPitExitSequence(relative));
 
-      expect(events).toEqual([...AROUND_THE_CALL, { event: "traffic.pitExit", data: { verdict, seconds: relative } }]);
+      expect(events).toEqual([...callOf(verdict, relative), ...intoTheExitLane(merge)]);
     },
   );
 
   it.each(EXPECTED)(
-    "says nothing for the $relative s case until the player is over the end of pit road",
+    "says nothing for the $relative s case on leaving the stall, 6.15 s short of pit road's end",
     ({ relative }) => {
       const { controller, events } = startTranslator("race", { loadPitLaneLandmarks: LANDMARKS });
       const steps = trafficPitExitSequence(relative);
-      const crossing = steps.findIndex((step) => step.patch.OnPitRoad === false);
+      const departure = steps.findIndex((step) => step.patch.PlayerCarInPitStall === false);
 
       // Up to and through the whole hold on pit road, past an evaluation.
-      runSequence(controller, steps.slice(0, crossing));
+      runSequence(controller, steps.slice(0, departure + 1));
 
-      expect(crossing).toBeGreaterThan(0);
+      expect(departure).toBeGreaterThan(0);
       expect(events).toEqual([{ event: "pitStall.departed", data: {} }]);
     },
   );
+
+  it("gives no merge warning for the -1 s case with the threshold set under it, read from the translator option", () => {
+    const { controller, events } = startTranslator("race", {
+      loadPitLaneLandmarks: LANDMARKS,
+      getTrafficPitExitMergeWarnSeconds: () => 0.5,
+    });
+
+    runSequence(controller, trafficPitExitSequence(-1));
+
+    expect(events).toEqual([...callOf("traffic", -1), ...intoTheExitLane(null)]);
+  });
 
   it("plays the four cases one after another, each on its own", () => {
     const { controller, events } = startTranslator("race", { loadPitLaneLandmarks: LANDMARKS });
@@ -261,6 +287,7 @@ describe("the pit-exit cases (issue #1113)", () => {
     expect(events.filter((e) => e.event === "traffic.pitExit").map((e) => e.data)).toEqual(
       EXPECTED.map(({ relative, verdict }) => ({ verdict, seconds: relative })),
     );
+    expect(events.filter((e) => e.event === "traffic.pitExitMerge").map((e) => e.data)).toEqual([{ seconds: -1 }]);
   });
 
   it("is silent without the landmarks: the translator's learner has none for the track", () => {
@@ -271,7 +298,7 @@ describe("the pit-exit cases (issue #1113)", () => {
 
     runSequence(controller, trafficPitExitSequence(-1));
 
-    expect(events).toEqual([...AROUND_THE_CALL]);
+    expect(events).toEqual([{ event: "pitStall.departed", data: {} }, ...intoTheExitLane(null)]);
   });
 });
 
@@ -299,7 +326,7 @@ describe("the pit-exit bus-event buttons (issue #1113)", () => {
     return shortcut;
   };
 
-  it.each(["traffic-pit-exit-traffic", "traffic-pit-exit-clear"])(
+  it.each(["traffic-pit-exit-traffic", "traffic-pit-exit-clear", "traffic-pit-exit-merge"])(
     "%s puts the car on the pit lane after a button left it on track, announcing nothing, and hands it back",
     (id) => {
       const shortcut = shortcutOf(id);
@@ -334,9 +361,10 @@ describe("the pit-exit bus-event buttons (issue #1113)", () => {
   );
 
   it.each([
-    // The traffic warning's 3 s queue wait, and the clear line's engine default of 8 s.
+    // The traffic and merge warnings' 3 s queue wait, and the clear line's engine default of 8 s.
     { id: "traffic-pit-exit-traffic", contract: "pit-crew.traffic-pit-exit-traffic", holdMs: 4000 },
     { id: "traffic-pit-exit-clear", contract: "pit-crew.traffic-pit-exit-clear", holdMs: 9000 },
+    { id: "traffic-pit-exit-merge", contract: "pit-crew.traffic-pit-exit-merge", holdMs: 4000 },
   ])("$id listens past its own line's queue wait before handing the car back", ({ id, contract, holdMs }) => {
     const queueWait = TRAFFIC_CONTRACTS.find((c) => c.id === contract)?.maxQueueWaitMs;
 

@@ -1688,6 +1688,7 @@ describe("the teardown after a failed run (issues #1167, #1113)", () => {
     expect(withTeardown.map((s) => s.id).sort()).toEqual([
       "flag-one-lap-to-green",
       "traffic-pit-exit-clear",
+      "traffic-pit-exit-merge",
       "traffic-pit-exit-traffic",
     ]);
   });

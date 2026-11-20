@@ -1,5 +1,6 @@
 /**
- * What the pit-exit traffic buttons (issue #1113) are HEARD to say.
+ * What the pit-exit traffic buttons (issue #1113), the merge warning's
+ * included (amended 2026-11-20), are HEARD to say.
  *
  * `traffic-telemetry.test.ts` drives the same buttons' telemetry through the
  * translator and checks the speak gate's input by restating it, which stops
@@ -21,6 +22,9 @@ import { AT_RACING_SPEED } from "./scenario-shortcuts.js";
 const CLIP_MS: ClipDurations = [
   [/\/traffic\/pit-exit-traffic/, 3300],
   [/\/traffic\/pit-exit-clear/, 2200],
+  // Not generated yet (amended 2026-11-20): "Watch for cars." is short; measure
+  // the take once it is committed and round up.
+  [/\/traffic\/pit-exit-merge/, 1500],
   // A stand-in for a long critical line holding the bus: far longer than the
   // real take, so the clear line waits past the traffic line's queue window.
   [/\/flags\/meatball/, 6000],
@@ -32,6 +36,7 @@ describe("what the pit-exit traffic buttons are heard to say (issue #1113)", () 
   it.each([
     { id: "traffic-pit-exit-traffic", clip: "traffic/pit-exit-traffic" },
     { id: "traffic-pit-exit-clear", clip: "traffic/pit-exit-clear" },
+    { id: "traffic-pit-exit-merge", clip: "traffic/pit-exit-merge" },
   ])("$id speaks its line after an on-track button left the car at racing speed", ({ id, clip }) => {
     boot("race");
     // An overtake or gap button pressed first: on track at racing speed.
@@ -62,7 +67,7 @@ describe("what the pit-exit traffic buttons are heard to say (issue #1113)", () 
     expect(heard()).toEqual(["flags/meatball", "traffic/pit-exit-clear"]);
   });
 
-  it.each(["traffic-pit-exit-traffic", "traffic-pit-exit-clear"])(
+  it.each(["traffic-pit-exit-traffic", "traffic-pit-exit-clear", "traffic-pit-exit-merge"])(
     "%s is heard again on a second press, the car handed back to the circuit in between",
     (id) => {
       boot("race");
@@ -78,7 +83,7 @@ describe("what the pit-exit traffic buttons are heard to say (issue #1113)", () 
     },
   );
 
-  it.each(["traffic-pit-exit-traffic", "traffic-pit-exit-clear"])(
+  it.each(["traffic-pit-exit-traffic", "traffic-pit-exit-clear", "traffic-pit-exit-merge"])(
     "control: %s's event published on track at racing speed, without the button's pit-lane steps, is silent",
     (id) => {
       const shortcut = shortcutOf(id);

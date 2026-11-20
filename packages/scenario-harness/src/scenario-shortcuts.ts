@@ -1100,8 +1100,8 @@ export const LEAVING_THE_PITS: readonly TelemetryStep[] = [
   SEEDED_TICK,
 ];
 
-/** The two pit-exit lines, by the name their contract ids end in (`pit-crew.traffic-<line>`). */
-type PitExitLine = "pit-exit-traffic" | "pit-exit-clear";
+/** The pit-exit lines and the merge warning, by the name their contract ids end in (`pit-crew.traffic-<line>`). */
+type PitExitLine = "pit-exit-traffic" | "pit-exit-clear" | "pit-exit-merge";
 
 /** How far past its line's queue wait a pit-exit button listens: a few of the speak gate's checks. */
 const PIT_EXIT_LISTEN_MARGIN_MS = 1000;
@@ -1109,8 +1109,8 @@ const PIT_EXIT_LISTEN_MARGIN_MS = 1000;
 /**
  * How long a pit-exit button listens before handing the car back to the
  * circuit: past its own line's queue wait, read from the line's contract
- * (`maxQueueWaitMs`, 3 s for the traffic warning and the engine default, 8 s,
- * for the clear line), so the speak gate has admitted or dropped the line by
+ * (`maxQueueWaitMs`, 3 s for the traffic warning and the merge warning, and
+ * the engine default, 8 s, for the clear line), so the speak gate has admitted or dropped the line by
  * then, and a line it admitted plays on to its end whatever the surface does
  * after. A clear line waiting behind a long critical call would otherwise be
  * dropped by its gate while still inside its queue window.
@@ -3598,14 +3598,15 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
   radar("Two Right", "right", "two-right"),
 
   // ── Traffic (issue #1113) ──
-  // `traffic.rejoin` / `traffic.pitExit` directly — bypasses the detectors'
-  // stopped-on-track and pit-exit gating, so each line is auditionable on
-  // demand. Only the close band speaks a number: its two calls are composed
-  // from pools (an intro or update intro, the seconds, and on the first call
-  // an outro), so a repeated press picks other takes. The pit-exit lines
-  // speak no number (the payload's seconds are for logs), and are dropped on
-  // the racing surface, so their buttons put the car on the pit lane first
-  // (`LEAVING_THE_PITS`) and hand it back after (`backFromThePits`).
+  // `traffic.rejoin` / `traffic.pitExit` / `traffic.pitExitMerge` directly —
+  // bypasses the detectors' stopped-on-track and pit-exit gating, so each line
+  // is auditionable on demand. Only the close band speaks a number: its two
+  // calls are composed from pools (an intro or update intro, the seconds, and
+  // on the first call an outro), so a repeated press picks other takes. The
+  // pit-exit lines and the merge warning speak no number (the payload's
+  // seconds are for logs), and are dropped on the racing surface, so their
+  // buttons put the car on the pit lane first (`LEAVING_THE_PITS`) and hand it
+  // back after (`backFromThePits`).
   {
     id: "traffic-rejoin-right-behind",
     category: "Traffic",
@@ -3665,7 +3666,7 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
     category: "Traffic",
     label: "Pit exit traffic",
     description:
-      'Over the end of pit road, a car is predicted at the end of the exit blend 1.5 s after you — "We\'re estimating traffic at the pit exit. Watch out." or another of its four lines. Cuts any lower-weight line in flight, the exit readback and tire-wear report included. Puts the car on the pit lane first, since the line is dropped once you are back on the racing surface, and hands it back to the circuit about four seconds later, both seeded rather than announced.',
+      'About 3 s before the end of pit road, a car is predicted at the end of the exit blend 1.5 s after you — "We\'re estimating traffic at the pit exit. Watch out." or another of its four lines. Cuts any lower-weight line in flight, the exit readback and tire-wear report included. Puts the car on the pit lane first, since the line is dropped once you are back on the racing surface, and hands it back to the circuit about four seconds later, both seeded rather than announced.',
     event: "traffic.pitExit",
     data: { verdict: "traffic", seconds: 1.5 },
     telemetrySequence: LEAVING_THE_PITS,
@@ -3676,11 +3677,22 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
     category: "Traffic",
     label: "Pit exit clear",
     description:
-      'Over the end of pit road, the nearest car is predicted at the end of the exit blend 7 s after you — "Looks like the pit exit will be clear." or another of its four lines. Cuts any lower-weight line in flight, the exit readback and tire-wear report included. Puts the car on the pit lane first, since the line is dropped once you are back on the racing surface, and hands it back to the circuit about nine seconds later, once its queue wait is over, both seeded rather than announced.',
+      'About 3 s before the end of pit road, the nearest car is predicted at the end of the exit blend 7 s after you — "Looks like the pit exit will be clear." or another of its four lines. Cuts any lower-weight line in flight, the exit readback and tire-wear report included. Puts the car on the pit lane first, since the line is dropped once you are back on the racing surface, and hands it back to the circuit about nine seconds later, once its queue wait is over, both seeded rather than announced.',
     event: "traffic.pitExit",
     data: { verdict: "clear", seconds: 7 },
     telemetrySequence: LEAVING_THE_PITS,
     teardownSequence: backFromThePits("pit-exit-clear"),
+  },
+  {
+    id: "traffic-pit-exit-merge",
+    category: "Traffic",
+    label: "Pit exit merge warning",
+    description:
+      'In the pit exit lane, past the end of pit road, a car is predicted at the end of the exit blend 0.8 s after you, inside the Pit exit merge warning threshold — "Watch for cars." Said once per pit exit, whatever the pit exit call said. Cuts any lower-weight line in flight, a pit exit call still playing included. Puts the car on the pit lane first, since the line is dropped once you are back on the racing surface, and hands it back to the circuit about four seconds later, both seeded rather than announced.',
+    event: "traffic.pitExitMerge",
+    data: { seconds: 0.8 },
+    telemetrySequence: LEAVING_THE_PITS,
+    teardownSequence: backFromThePits("pit-exit-merge"),
   },
   // The rejoin detector itself (issue #1113): a field of three cars in two
   // classes driven through the translator, so the verdicts, the numbers and
