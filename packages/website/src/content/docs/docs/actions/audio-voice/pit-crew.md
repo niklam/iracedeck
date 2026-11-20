@@ -709,6 +709,8 @@ The calls you hear while stopped play without the radio beeps, like the spotter'
 
 ### Rejoining after a stop
 
+**Experimental, and off by default.** The calls while you are stopped are new and still being tuned, so they stay silent until you turn them on: tick **Traffic when rejoining (experimental)** under **Race Engineer Callouts → Traffic** in the [Settings window](/docs/getting-started/settings/). The [pit exit call](#leaving-the-pits) is on by default.
+
 The calls start once your car has been stopped or crawling, under about 11 km/h, for a second and a half, while you are in the car, on the track or beside it (grass, gravel, run-off), off pit road, and with the session running — never on the grid, in the warmup or on the parade laps before a start. No incident is needed: a spin, a stall, a stop to avoid a crash and a spin iRacing never scored all get the same answer. Which way your car is facing makes no difference, since the traffic comes along the track either way, and a yellow flag does not stop the calls, since the cars still arrive.
 
 What he says depends on when the nearest car coming up will reach you:
@@ -720,7 +722,7 @@ What he says depends on when the nearest car coming up will reach you:
 
 When the nearest car is under ten seconds away and more cars are coming close behind it, each within two seconds of the car before, he calls them once as a group instead: *"A group of cars coming. Join carefully."* He says nothing more while the group goes by — no count, no "right behind" for each car — and once the last car of it has passed, he tells you about the next one, once, as after any car he warned you about.
 
-He always says something the moment the stop is recognised: after a spin, silence cannot be told apart from an engineer who did not notice. While you stay stopped he checks again every second, but speaks again only when it adds something:
+He says something the moment the stop is recognised — after a spin, silence cannot be told apart from an engineer who did not notice — unless the only car around is one he cannot time (see [Multiclass races](#multiclass-races)). While you stay stopped he checks again every second, but speaks again only when it adds something:
 
 - when the nearest car moves into a closer band, or a group of cars forms behind it;
 - while a car is under ten seconds away, each time its seconds have dropped by three or more since he last gave them (*"Getting closer, about three seconds."*), so a car closing steadily is not counted down second by second;
@@ -734,7 +736,7 @@ The moment you leave your pit box, the engineer works out when you will reach th
 
 He makes the call right there, as you pull away, so you hear it with the whole pit lane still ahead of you, and again only if the answer changes, and stays changed for about a second, before you reach the end of the exit lane. Both lines are worded as the estimate they are — a lot can happen between the box and the merge — and carry no number: at the pit exit the window is the information, and you cannot sit and wait the way a stopped car can. Both cut in over the engineer's routine calls: the *"To confirm: …"* [exit readback](#pit-service-readback) and the [tire wear report](#tire-wear-report) are held back and play after it. The traffic warning also cuts a caution or flag call; neither line cuts the meatball, the start lights, a fuel-critical warning or the spotter. Nothing more is said once you are back on the track, and a tow, a reset or leaving the car ends it too. A drive-through, which never stops in your box, gets no call.
 
-The call needs to know where the track's pit road ends and where the exit lane joins the track, which iRaceDeck [learns while you drive](/docs/getting-started/settings/#what-iracedeck-learns-about-tracks). On a track where it has not learned both yet, there is no pit exit call at all rather than a guess. Online, that usually takes two of your own pit stops at the track, because iRacing does not report other drivers' pit road reliably there; what it learns is kept, so from then on the call is there on every visit.
+The call needs to know where the track's pit road ends and where the exit lane joins the track, which iRaceDeck [learns while you drive](/docs/getting-started/settings/#what-iracedeck-learns-about-tracks). On a track where it has not learned both yet, there is no pit exit call at all rather than a guess. Online, that usually takes two of your own pit stops at the track, because iRacing does not report other drivers' pit road reliably there; what it learns is kept, so from then on the call is there on every visit — until iRacing changes the track's layout, when the call stays silent again until iRaceDeck has relearned both points.
 
 ### Multiclass races
 
@@ -744,7 +746,7 @@ A car that cannot be timed at all — which should practically never happen — 
 
 ### When the radio is busy
 
-A newer traffic call replaces an older one, whether it is still waiting or already playing. The warnings about a close car and the pit exit traffic call wait at most three seconds for the radio and are dropped after that rather than played late: the seconds count down while a line waits, and "about three seconds" heard four seconds late is about a car that has already gone by. "More than ten seconds", "clear to rejoin" and the pit exit clear call wait their turn like other callouts, since a change in the traffic replaces them with a newer call. The engineer speaks again at the next change.
+A newer traffic call replaces an older one, whether it is still waiting or already playing. The warnings about a close car and the pit exit traffic call wait at most three seconds for the radio and are dropped after that rather than played late: the seconds count down while a line waits, and "about three seconds" heard four seconds late is about a car that has already gone by. "More than ten seconds", "clear to rejoin" and the pit exit clear call wait their turn like other callouts, since a change in the traffic replaces them with a newer call. The engineer speaks again at the next change. A warning about a close car is also dropped once the car it names should have reached you, after two seconds for 'right behind' and after the seconds it names for a count, and neither pit exit call plays once you are back on the track.
 
 Two opt-ins, both on by default, and the two pit exit sliders above live under **Race Engineer Callouts → Traffic** in the Settings window — see [the opt-in list below](#race-engineer-callouts-per-subject-opt-inout). With the Race Engineer master off, both calls are silent.
 
@@ -916,9 +918,9 @@ Under **Spotter**, two callouts are toggleable, both enabled by default (see [Sp
 - **Repeat reminder while alongside** (`calloutEnabledSpotterStillThere`) — the "Still there." reminder loop. Disabling stops the loop without affecting the transition calls.
 - **Reminder interval (s)** (`spotterStillThereSeconds`, 1–10, default 3) — how often the "still there" reminder repeats while a car is alongside. Read live.
 
-Under **Traffic**, two callouts are toggleable, both enabled by default, with two pit exit sliders below them (see [Approaching traffic](#approaching-traffic-rejoining-and-pit-exit) above for the full behavior). The calls while you are stopped have no sliders: the bands they name (under 2, 2 to 10, 10 to 15 and 15 seconds or more) are fixed, because the words say them. The sliders are read live, so a change applies to the next call:
+Under **Traffic**, two callouts are toggleable — **Traffic at pit exit** enabled by default, **Traffic when rejoining (experimental)** off by default — with two pit exit sliders below them (see [Approaching traffic](#approaching-traffic-rejoining-and-pit-exit) above for the full behavior). The calls while you are stopped have no sliders: the bands they name (under 2, 2 to 10, 10 to 15 and 15 seconds or more) are fixed, because the words say them. The sliders are read live, so a change applies to the next call:
 
-- **Traffic when rejoining** (`calloutEnabledTrafficRejoin`) — the calls while you are stopped or crawling on the track: a car right behind you, a car coming with its seconds and how it closes, a group of cars coming, the next car more than ten seconds away, and clear to rejoin.
+- **Traffic when rejoining (experimental)** (`calloutEnabledTrafficRejoin`, off by default) — the calls while you are stopped or crawling on the track: a car right behind you, a car coming with its seconds and how it closes, a group of cars coming, the next car more than ten seconds away, and clear to rejoin.
 - **Traffic at pit exit** (`calloutEnabledTrafficPitExit`) — the traffic or clear call as you leave your pit box.
 - **Pit exit window before you (s)** (`trafficPitExitBeforeSeconds`, 0–10, default 2) — a car reaching the point where the pit exit joins the track up to this long before you counts as traffic; 0 ignores cars that get there first.
 - **Pit exit window after you (s)** (`trafficPitExitAfterSeconds`, 0–15, default 4) — a car reaching the point where the pit exit joins the track up to this long after you counts as traffic; 0 ignores cars that get there after you.
