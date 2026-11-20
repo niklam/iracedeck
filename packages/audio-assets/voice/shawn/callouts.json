@@ -1996,15 +1996,15 @@
       ]
     },
     "pit-crew.traffic-pit-exit-traffic": {
-      "comment": "As you leave your pit box, a car on track is predicted at the end of the exit blend line around the same time as you: a line from a pool of four, such as \"Traffic likely at pit exit. Watch out.\" or \"Car likely at the exit. Careful.\" It cuts a lower-weight line in flight, a caution or flag call included, so the exit readback and the tire-wear report play after it; the meatball, the start lights, the restart green, a fuel-critical warning and the spotter's car-alongside calls keep the radio.",
-      "test": "Harness → Traffic → Pit exit traffic. In-sim: leave your pit box with a car on track about to pass the pit exit.",
+      "comment": "As you reach the end of pit road, a car on track is predicted at the end of the exit blend line around the same time as you: a line from a pool of four, such as \"Traffic likely at pit exit. Watch out.\" or \"Car likely at the exit. Careful.\" It cuts a lower-weight line in flight, a caution or flag call included, so the exit readback and the tire-wear report play after it; the meatball, the start lights, the restart green, a fuel-critical warning and the spotter's car-alongside calls keep the radio.",
+      "test": "Harness → Traffic → Pit exit traffic. In-sim: leave your pit box and drive to the end of pit road with a car on track about to pass the pit exit.",
       "sequence": [
         "pool:traffic/pit-exit-traffic"
       ]
     },
     "pit-crew.traffic-pit-exit-clear": {
-      "comment": "As you leave your pit box with no car predicted at the end of the exit blend line around the same time as you: a line from a pool of four, such as \"Pit exit looks clear.\" or \"Exit should be clear.\" It cuts a lower-weight line in flight, so the exit readback and the tire-wear report play after it; a caution or flag call, the meatball, the start lights, a fuel-critical warning and the spotter keep the radio.",
-      "test": "Harness → Traffic → Pit exit clear. In-sim: leave your pit box with no car near the pit exit.",
+      "comment": "As you reach the end of pit road with no car predicted at the end of the exit blend line around the same time as you: a line from a pool of four, such as \"Pit exit looks clear.\" or \"Exit should be clear.\" It cuts a lower-weight line in flight, so the exit readback and the tire-wear report play after it; a caution or flag call, the meatball, the start lights, a fuel-critical warning and the spotter keep the radio.",
+      "test": "Harness → Traffic → Pit exit clear. In-sim: leave your pit box and drive to the end of pit road with no car near the pit exit.",
       "sequence": [
         "pool:traffic/pit-exit-clear"
       ]

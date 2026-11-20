@@ -136,8 +136,8 @@
  * win: a warning waits behind a `CRITICAL` line within its short wait, and a
  * spotter call cuts a warning. "More than ten" and "clear to rejoin" sit at
  * `SAFETY` without `interrupt` and wait their turn. The pit-exit clear call
- * sits at `SAFETY` and keeps `interrupt`: made the moment the player leaves
- * the box, it trumps the exit readback and the tire-wear report (spec, "Pit
+ * sits at `SAFETY` and keeps `interrupt`: made as the player crosses the
+ * end of pit road, it trumps the exit readback and the tire-wear report (spec, "Pit
  * exit": both pit-exit lines cut in), which are queueable and play afterwards,
  * but it is not a warning and does not cut a caution line. `PROXIMITY` itself
  * is not used — it is the spotter's, for cars alongside, and these are about
@@ -474,7 +474,7 @@ const PIT_EXIT_LINES: Record<PitExitLine, PitExitLineSpec> = {
     maxQueueWaitMs: TRAFFIC_MAX_QUEUE_WAIT_MS,
     verdict: "traffic",
     description:
-      "As you leave your pit box, a car on track is predicted to reach the end of the pit exit blend line around the same time as you.",
+      "As you reach the end of pit road, a car on track is predicted to reach the end of the pit exit blend line around the same time as you.",
     gateDescription: "Dropped once you are back on the racing surface, since the merge it warns about is over.",
   },
   "pit-exit-clear": {
@@ -487,7 +487,7 @@ const PIT_EXIT_LINES: Record<PitExitLine, PitExitLineSpec> = {
     maxQueueWaitMs: DEFAULT_MAX_QUEUE_WAIT_MS,
     verdict: "clear",
     description:
-      "As you leave your pit box, no car on track is predicted to reach the end of the pit exit blend line around the same time as you.",
+      "As you reach the end of pit road, no car on track is predicted to reach the end of the pit exit blend line around the same time as you.",
     gateDescription: "Dropped once you are back on the racing surface, since the merge it is about is over.",
   },
 };
