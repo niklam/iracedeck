@@ -498,16 +498,39 @@ describe("the motion measurement", () => {
     expect(slice.motion[1]).toEqual({ fromPct: 0.3, fromTime: 101.75, rate: null, rateAt: null });
   });
 
-  it("measures nothing on a tick whose SessionTime repeated, and starts again when it went backwards", () => {
+  it("keeps the record on a tick whose SessionTime and position both repeated, and starts again when the clock went backwards", () => {
     const slice = createTrafficArrivalState();
 
     read(slice, 100, 0.2);
     read(slice, 100.5, 0.201);
-    read(slice, 100.5, 0.2011);
-    expect(slice.motion[1]).toMatchObject({ fromPct: 0.201, fromTime: 100.5 });
+    const measured = slice.motion[1];
+
+    read(slice, 100.5, 0.201);
+    expect(slice.motion[1]).toBe(measured);
+    expect(slice.motion[1]).toEqual({
+      fromPct: 0.201,
+      fromTime: 100.5,
+      rate: expect.closeTo(0.002, 12),
+      rateAt: 100.5,
+    });
 
     read(slice, 99, 0.202);
     expect(slice.motion[1]).toEqual({ fromPct: 0.202, fromTime: 99, rate: null, rateAt: null });
+  });
+
+  it("starts again with no rate on a tick whose SessionTime repeated but whose position moved: no time to read a speed over", () => {
+    const slice = createTrafficArrivalState();
+
+    read(slice, 100, 0.2);
+    read(slice, 100.5, 0.2);
+    expect(slice.motion[1]).toEqual({ fromPct: 0.2, fromTime: 100.5, rate: 0, rateAt: 100.5 });
+
+    read(slice, 100.5, 0.2011);
+    expect(slice.motion[1]).toEqual({ fromPct: 0.2011, fromTime: 100.5, rate: null, rateAt: null });
+
+    // The window runs from there, and measures when it completes.
+    read(slice, 101, 0.2021);
+    expect(slice.motion[1]?.rate).toBeCloseTo(0.002, 12);
   });
 
   it("reads no progress without a SessionTime, and measures no rate without a track length", () => {
@@ -1135,6 +1158,32 @@ describe("computeTrafficArrivals", () => {
         rate: expect.closeTo(10 / TRACK_M / 0.5, 12),
         rateAt: 101,
       });
+    });
+
+    it("counts as coming once it reads moved on a SessionTime that repeated", () => {
+      const slice = createTrafficArrivalState();
+      // Car 1 measured standing at 0.48 over the window ending at 100.5, then
+      // read at 0.49 on a tick whose SessionTime repeated 100.5.
+      const at = (sessionTime: number, pct = 0.48): TelemetryData => ({
+        ...tel([
+          { idx: 0, pct: 0.5, est: 50 },
+          { idx: 1, pct, est: 50 - 0.2 },
+        ]),
+        SessionTime: sessionTime,
+      });
+
+      updateTrafficReferenceCurves(slice, at(100), null, TRACK_M);
+      updateTrafficReferenceCurves(slice, at(100.5), null, TRACK_M);
+      expect(isTrafficCarStationary(slice, 1, 100.5, TRACK_M)).toBe(true);
+
+      updateTrafficReferenceCurves(slice, at(100.5, 0.49), null, TRACK_M);
+
+      const stationary: number[] = [];
+      const arrivals = arrivalsAt(slice, 0.5, curve, at(100.5, 0.49), 0, null, TRACK_M, stationary);
+
+      expect(isTrafficCarStationary(slice, 1, 100.5, TRACK_M)).toBe(false);
+      expect(stationary).toEqual([]);
+      expect(arrivals.map((arrival) => arrival.carIdx)).toEqual([1]);
     });
 
     it.each([

@@ -82,7 +82,9 @@
  * first readings, after a gap in them longer than
  * {@link TRAFFIC_MOTION_MAX_AGE_S}, after a jump faster than
  * {@link TRAFFIC_MOTION_MAX_PLAUSIBLE_MPS} (a tow, a reset; judged on every
- * reading, a window not yet complete included), with a rate older
+ * reading, a window not yet complete included), after a position that moved
+ * on a `SessionTime` that repeated the window's start (no time to read a speed
+ * over; a repeat with the position unchanged keeps the record), with a rate older
  * than {@link TRAFFIC_MOTION_MAX_AGE_S}, and without a track length or a
  * `SessionTime`. A close car that stops is therefore gone, as one that drove
  * by is, and comes back as a new car coming when it moves again.
@@ -397,8 +399,12 @@ function nextMotion(
   const span = sessionTime - prev.fromTime;
 
   // `SessionTime` repeats a value for a tick now and then (#1112's capture
-  // review): no time passed, so nothing was measured.
-  if (span === 0) return prev;
+  // review). The same position too: nothing happened, and the record stands.
+  // A position that moved with no time passed contradicts the window's
+  // start and its rate (a car measured standing that pulled away, a tow),
+  // and no speed can be read from it: start again here, with no rate, so the
+  // car counts as moving, the cautious direction.
+  if (span === 0) return pct === prev.fromPct ? prev : seedMotion(pct, sessionTime);
 
   // A clock that went backwards, or a car unread for longer than a window
   // can span: start again here, with no rate.
