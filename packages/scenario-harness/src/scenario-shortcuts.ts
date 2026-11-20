@@ -3665,7 +3665,7 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
     category: "Traffic",
     label: "Pit exit traffic",
     description:
-      'Leaving the pit box, a car is predicted at the end of the exit blend 1.5 s after you — "We\'re estimating traffic at the pit exit. Watch out." or another of its four lines. Cuts any lower-weight line in flight, the exit readback and tire-wear report included. Puts the car on the pit lane first, since the line is dropped once you are back on the racing surface, and hands it back to the circuit about four seconds later, both seeded rather than announced.',
+      'Over the end of pit road, a car is predicted at the end of the exit blend 1.5 s after you — "We\'re estimating traffic at the pit exit. Watch out." or another of its four lines. Cuts any lower-weight line in flight, the exit readback and tire-wear report included. Puts the car on the pit lane first, since the line is dropped once you are back on the racing surface, and hands it back to the circuit about four seconds later, both seeded rather than announced.',
     event: "traffic.pitExit",
     data: { verdict: "traffic", seconds: 1.5 },
     telemetrySequence: LEAVING_THE_PITS,
@@ -3676,7 +3676,7 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
     category: "Traffic",
     label: "Pit exit clear",
     description:
-      'Leaving the pit box, the nearest car is predicted at the end of the exit blend 7 s after you — "Looks like the pit exit will be clear." or another of its four lines. Cuts any lower-weight line in flight, the exit readback and tire-wear report included. Puts the car on the pit lane first, since the line is dropped once you are back on the racing surface, and hands it back to the circuit about nine seconds later, once its queue wait is over, both seeded rather than announced.',
+      'Over the end of pit road, the nearest car is predicted at the end of the exit blend 7 s after you — "Looks like the pit exit will be clear." or another of its four lines. Cuts any lower-weight line in flight, the exit readback and tire-wear report included. Puts the car on the pit lane first, since the line is dropped once you are back on the racing surface, and hands it back to the circuit about nine seconds later, once its queue wait is over, both seeded rather than announced.',
     event: "traffic.pitExit",
     data: { verdict: "clear", seconds: 7 },
     telemetrySequence: LEAVING_THE_PITS,

@@ -188,11 +188,23 @@ describe("the rejoin train (issue #1113)", () => {
 });
 
 describe("the pit-exit cases (issue #1113)", () => {
-  it("puts the player at the blend 4.86 s after leaving the stall", () => {
-    expect(TRAFFIC_PIT_EXIT_PLAYER_ETA_S).toBeCloseTo(4.86, 6);
+  it("puts the player at the blend 3.6 s after crossing the end of pit road, where the call is made", () => {
+    expect(TRAFFIC_PIT_EXIT_PLAYER_ETA_S).toBeCloseTo(3.6, 6);
   });
 
-  // The window is 2 s before to 4 s after the player's arrival; the call is made on the departure tick.
+  /**
+   * What the run publishes besides the call: the departure, then, over the end
+   * of pit road, the pit-lane exit and the limiter switched off, the edge the
+   * call follows (amended 2026-11-20: spoken at the end of pit road, not at the
+   * stall).
+   */
+  const AROUND_THE_CALL = [
+    { event: "pitStall.departed", data: {} },
+    { event: "pitLane.exited", data: {} },
+    { event: "carControl.limiterToggled", data: { on: false } },
+  ] as const;
+
+  // The window is 2 s before to 4 s after the player's arrival; the call is made over the end of pit road.
   const EXPECTED = [
     { relative: -3, verdict: "clear" },
     { relative: -1, verdict: "traffic" },
@@ -205,16 +217,13 @@ describe("the pit-exit cases (issue #1113)", () => {
   });
 
   it.each(EXPECTED)(
-    "calls $verdict for a car at the blend $relative s after the player, behind pitStall.departed",
+    "calls $verdict for a car at the blend $relative s after the player, once over the end of pit road",
     ({ relative, verdict }) => {
       const { controller, events } = startTranslator("race", { loadPitLaneLandmarks: LANDMARKS });
 
       runSequence(controller, trafficPitExitSequence(relative));
 
-      expect(events).toEqual([
-        { event: "pitStall.departed", data: {} },
-        { event: "traffic.pitExit", data: { verdict, seconds: relative } },
-      ]);
+      expect(events).toEqual([...AROUND_THE_CALL, { event: "traffic.pitExit", data: { verdict, seconds: relative } }]);
     },
   );
 
@@ -225,10 +234,22 @@ describe("the pit-exit cases (issue #1113)", () => {
 
       runSequencePaused(controller, trafficPitExitSequence(relative));
 
-      expect(events).toEqual([
-        { event: "pitStall.departed", data: {} },
-        { event: "traffic.pitExit", data: { verdict, seconds: relative } },
-      ]);
+      expect(events).toEqual([...AROUND_THE_CALL, { event: "traffic.pitExit", data: { verdict, seconds: relative } }]);
+    },
+  );
+
+  it.each(EXPECTED)(
+    "says nothing for the $relative s case until the player is over the end of pit road",
+    ({ relative }) => {
+      const { controller, events } = startTranslator("race", { loadPitLaneLandmarks: LANDMARKS });
+      const steps = trafficPitExitSequence(relative);
+      const crossing = steps.findIndex((step) => step.patch.OnPitRoad === false);
+
+      // Up to and through the whole hold on pit road, past an evaluation.
+      runSequence(controller, steps.slice(0, crossing));
+
+      expect(crossing).toBeGreaterThan(0);
+      expect(events).toEqual([{ event: "pitStall.departed", data: {} }]);
     },
   );
 
@@ -250,7 +271,7 @@ describe("the pit-exit cases (issue #1113)", () => {
 
     runSequence(controller, trafficPitExitSequence(-1));
 
-    expect(events).toEqual([{ event: "pitStall.departed", data: {} }]);
+    expect(events).toEqual([...AROUND_THE_CALL]);
   });
 });
 

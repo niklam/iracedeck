@@ -325,12 +325,19 @@ function rejoinSequence(learn: boolean): TelemetryStep[] {
 /** Where the learned pit lane ends: `pitRoadEnd` at 0.10 of the lap. */
 export const TRAFFIC_PIT_ROAD_END_PCT = 0.1;
 
-/** Where the exit blend ends: `blendEnd` at 0.13 of the lap. */
-export const TRAFFIC_BLEND_END_PCT = 0.13;
+/**
+ * Where the exit blend ends: `blendEnd` at 0.15 of the lap, a blend lane of
+ * about 100 m, long enough that the car the run places 3 s before the player
+ * is still short of the blend when the call is made.
+ */
+export const TRAFFIC_BLEND_END_PCT = 0.15;
 
 /** The player's stall, and where the player is on the tick after leaving it. */
 const PIT_EXIT_STALL_PCT = 0.0795;
 const PIT_EXIT_LEAVING_PCT = 0.08;
+
+/** Where the player is once over the end of pit road, in the blend lane: 10 m past `pitRoadEnd`. */
+const PIT_EXIT_BLEND_LANE_PCT = 0.105;
 
 /** The class-A car on track whose arrival at the blend each pit-exit run places. */
 export const TRAFFIC_PIT_EXIT_CAR_IDX = 3;
@@ -344,7 +351,7 @@ function landmarkSample(pct: number, key: string): Record<string, unknown> {
  * The pit-lane section a store would hand the translator's learner for the
  * presets' track (`loadPitLaneLandmarks`, issue #1112): `pitRoadEnd` and
  * `blendEnd`, each published by two agreeing samples of class A, whose
- * reference time there (8 s, 10.4 s) the store derives from the window. The
+ * reference time there (8 s, 12 s) the store derives from the window. The
  * `trackLength` is the presets' own, so the learner reads no rebuild.
  */
 export function trafficPitExitLandmarkSection(): Record<string, unknown> {
@@ -372,18 +379,27 @@ export function trafficPitExitLandmarkSection(): Record<string, unknown> {
  * The player's arrival at `blendEnd` on the tick after leaving the stall, as
  * the detector computes it on pit road: 0.02 of a 2.05 km lap to
  * `pitRoadEnd` at the presets' 60 km/h limit (2.46 s), plus class A's
- * reference time from `pitRoadEnd` to `blendEnd` (2.4 s).
+ * reference time from `pitRoadEnd` to `blendEnd` (4 s). The verdict settles
+ * on this, unspoken.
  */
-export const TRAFFIC_PIT_EXIT_PLAYER_ETA_S =
+const PIT_EXIT_LEAVING_ETA_S =
   ((TRAFFIC_PIT_ROAD_END_PCT - PIT_EXIT_LEAVING_PCT) * 2050) / (60 / 3.6) +
   (estTimeAt(TRAFFIC_CLASS_A, TRAFFIC_BLEND_END_PCT) - estTimeAt(TRAFFIC_CLASS_A, TRAFFIC_PIT_ROAD_END_PCT));
+
+/**
+ * The player's arrival at `blendEnd` once over the end of pit road, where the
+ * call is made: class A's reference time from the blend lane to `blendEnd`
+ * (12 − 8.4 = 3.6 s). The seconds the call carries are relative to this.
+ */
+export const TRAFFIC_PIT_EXIT_PLAYER_ETA_S =
+  estTimeAt(TRAFFIC_CLASS_A, TRAFFIC_BLEND_END_PCT) - estTimeAt(TRAFFIC_CLASS_A, PIT_EXIT_BLEND_LANE_PCT);
 
 /** The four cases of the spec's test plan: a car reaching the blend this many seconds after the player (negative: before). */
 export const TRAFFIC_PIT_EXIT_CASES = [-3, -1, 3, 5] as const;
 
-/** The class-A car on track that reaches `blendEnd` `relativeSeconds` after the player does. */
-function pitExitCar(relativeSeconds: number): FieldCar {
-  const arrival = TRAFFIC_PIT_EXIT_PLAYER_ETA_S + relativeSeconds;
+/** The class-A car on track that reaches `blendEnd` `relativeSeconds` after a player arriving in `playerEtaS`. */
+function pitExitCar(relativeSeconds: number, playerEtaS: number): FieldCar {
+  const arrival = playerEtaS + relativeSeconds;
   const estTime = estTimeAt(TRAFFIC_CLASS_A, TRAFFIC_BLEND_END_PCT) - arrival;
 
   return {
@@ -394,13 +410,21 @@ function pitExitCar(relativeSeconds: number): FieldCar {
   };
 }
 
-/** How long the run listens after the player leaves the stall: the verdict is spoken on that tick. */
+/**
+ * How long the run spends on pit road after leaving the stall: past one
+ * evaluation interval, so the paused runner's next tick is an evaluation too.
+ * The verdict settles at the departure and nothing is said.
+ */
+const PIT_EXIT_PIT_ROAD_MS = 1500;
+
+/** How long the run listens once over the end of pit road: the call comes at the first evaluation there and plays. */
 const PIT_EXIT_LISTEN_MS = 4000;
 
 /**
- * Leaving the stall with one car on track reaching the end of the exit blend
- * `relativeSeconds` after the player (issue #1113, spec "Verification"),
- * through the real pit-exit detector, against the landmarks of
+ * Leaving the stall and driving over the end of pit road into the blend lane
+ * with one car on track reaching the end of the exit blend `relativeSeconds`
+ * after the player (issue #1113, spec "Verification"), through the real
+ * pit-exit detector, against the landmarks of
  * {@link trafficPitExitLandmarkSection} — which must already be in the
  * translator's learner: the detector stays silent on a track whose landmarks
  * are not learned. At the fixed window (2 s before, 4 s after) the four
@@ -408,11 +432,15 @@ const PIT_EXIT_LISTEN_MS = 4000;
  *
  * Opens inside a replay-mode bracket that puts the player in the stall (the
  * limiter on, so the limiter family stays quiet) and the car on track, then a
- * seeding tick, so the detector's stall baseline is live; then the departure
- * (the call is made on that tick, at the stall), held while the line plays; then the teardown bracket.
+ * seeding tick, so the detector's stall baseline is live; then the departure,
+ * where the verdict settles unspoken, held on pit road; then over the end of
+ * pit road (`OnPitRoad` false, the limiter off), where the call is made at the
+ * first evaluation, held while the line plays; then the teardown bracket. The
+ * car is placed against the player's ETA at each, so both see the same picture.
  */
 export function trafficPitExitSequence(relativeSeconds: number): readonly TelemetryStep[] {
-  const car = pitExitCar(relativeSeconds);
+  const leavingCar = pitExitCar(relativeSeconds, PIT_EXIT_LEAVING_ETA_S);
+  const blendLaneCar = pitExitCar(relativeSeconds, TRAFFIC_PIT_EXIT_PLAYER_ETA_S);
   const player = (pct: number, surface: TrkLoc): FieldCar => ({
     carIdx: TRAFFIC_PLAYER_CAR_IDX,
     classId: TRAFFIC_CLASS_A,
@@ -433,28 +461,35 @@ export function trafficPitExitSequence(relativeSeconds: number): readonly Teleme
         SessionState: SessionState.Racing,
         SessionFlags: RACING_NO_FLAG,
         EngineWarnings: { setBits: EngineWarnings.PitSpeedLimiter },
-        ...field([player(PIT_EXIT_STALL_PCT, TrkLoc.InPitStall), car]),
+        ...field([player(PIT_EXIT_STALL_PCT, TrkLoc.InPitStall), leavingCar]),
       },
       holdMs: BRACKET_SEED_MS,
       tick: true,
     },
     { patch: { IsReplayPlaying: false }, holdMs: REPLAY_EXIT_SETTLE_MS, tick: true },
     SEEDED_TICK,
-    // Out of the stall: the detector's episode starts and speaks on this tick.
+    // Out of the stall: the detector's episode starts and settles its verdict, unspoken.
     {
       patch: {
         PlayerCarInPitStall: false,
         PlayerTrackSurface: TrkLoc.AproachingPits,
         Speed: 5,
-        ...field([player(PIT_EXIT_LEAVING_PCT, TrkLoc.AproachingPits), car]),
+        ...field([player(PIT_EXIT_LEAVING_PCT, TrkLoc.AproachingPits), leavingCar]),
+      },
+      holdMs: PIT_EXIT_PIT_ROAD_MS,
+      tick: true,
+    },
+    // Over the end of pit road into the blend lane, the limiter off: the call.
+    {
+      patch: {
+        OnPitRoad: false,
+        Speed: 20,
+        EngineWarnings: { clearBits: EngineWarnings.PitSpeedLimiter },
+        ...field([player(PIT_EXIT_BLEND_LANE_PCT, TrkLoc.AproachingPits), blendLaneCar]),
       },
       holdMs: PIT_EXIT_LISTEN_MS,
       tick: true,
     },
-    ...TRAFFIC_TEARDOWN.map((step, i) =>
-      i === 0
-        ? { ...step, patch: { ...step.patch, EngineWarnings: { clearBits: EngineWarnings.PitSpeedLimiter } } }
-        : step,
-    ),
+    ...TRAFFIC_TEARDOWN,
   ];
 }
