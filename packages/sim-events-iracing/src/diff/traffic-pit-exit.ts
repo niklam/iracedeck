@@ -101,7 +101,8 @@
  * No player-class reference anywhere, no pit speed limit or no track length
  * means no ETA: no callout, one debug line per episode. Never a guess.
  *
- * **The verdict,** evaluated every {@link TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS}:
+ * **The verdict,** evaluated every {@link TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS}
+ * (and at the call point, below):
  * every car on the racing surface is timed to `blendEnd` through
  * `computeTrafficArrivals` — the landmark's time for its class, the class
  * curve at `blendEnd`, the player-class time at `blendEnd` scaled to its
@@ -149,18 +150,37 @@
  * `pitRoadEnd` learned a little late and the landmarks arriving mid-exit; the
  * position, a bit that lags the landmark. It is a latch: a car rolled back
  * behind the line, or a position wobbling across it, neither speaks again
- * nor silences the blend lane. Nothing is said before it, whatever has
- * settled. After the first call, again only when a flip settles before the
+ * nor silences the blend lane. That test is the call point, written once
+ * (`reachedCallPoint`). Nothing is said before it, whatever has settled.
+ *
+ * **The call point is evaluated at once, off the schedule.** A blend lane can
+ * be shorter than an evaluation interval covers (0.008 of a 1,600 m lap is
+ * 13 m, under a second at 60 km/h), so waiting for the next scheduled
+ * evaluation could find the player already past `blendEnd` and end the
+ * episode silent. So until the call is made, every tick between two scheduled
+ * evaluations reads the landmarks, and the first one at the call point, on
+ * landmarks the evaluation can use and short of `blendEnd`, evaluates there
+ * and then — as does each tick after it until one can speak. Such an
+ * evaluation settles a first verdict if none has settled and speaks the
+ * settled one, but is no part of a flip's row: it neither counts toward
+ * {@link TRAFFIC_PIT_EXIT_FLIP_CONFIRM_EVALUATIONS} nor breaks the row, with
+ * or without a verdict, so a flip is never confirmed by two evaluations a
+ * tick apart. Nor does it move `lastEvalAt`: the scheduled evaluations run on
+ * a second apart as before. Once the call is made, nothing between them reads
+ * the landmarks.
+ *
+ * After the first call, again only when a flip settles before the
  * player reaches `blendEnd`. A flip pending at the crossing is held like any
- * other: one that began before the crossing and holds at its evaluation is
- * settled there, so the crossing says the newer verdict; one first seen AT the
- * crossing has one evaluation behind it, so the crossing says the settled
- * verdict, and the flip follows a second later if it holds. Waiting for it
- * instead could lose the call to the end of a short blend lane, and no single
- * evaluation decides what is heard anywhere else. An evaluation that cannot
- * settle a verdict stays silent and the first one past `pitRoadEnd` that can
- * makes the call; a track without both landmarks learned on its current
- * geometry never gets one. The lines speak no number; `seconds` (the nearest
+ * other: one that began before the crossing and holds at a scheduled
+ * evaluation that is the crossing's is settled there, so the crossing says
+ * the newer verdict; at a crossing between two scheduled evaluations, or one
+ * first seen AT the crossing, the crossing says the settled verdict, and the
+ * flip follows at the next scheduled evaluation if it holds there. Waiting
+ * for it instead could lose the call to the end of a short blend lane, and no
+ * single evaluation decides what is heard anywhere else. An evaluation that
+ * cannot settle a verdict stays silent and the first one at the call point
+ * that can makes the call; a track without both landmarks learned on its
+ * current geometry never gets one. The lines speak no number; `seconds` (the nearest
  * timed car's arrival relative to the player's, to a tenth, negative before,
  * from the latest evaluation that reached the verdict spoken) is for logs and
  * the harness.
@@ -271,7 +291,8 @@ export type TrafficPitExitFacts = {
   /**
    * The learned landmarks (`resolvePitLaneLandmarks` over the instance's
    * learner, #1112), `null` until a track is loaded. A function so the
-   * landmark view is built only at an evaluation, not on every tick.
+   * landmark view is built only when read: at an evaluation, and on the ticks
+   * between two of them only until the call is made (module header).
    */
   readonly readLandmarks: () => TrafficPitExitLandmarks | null;
 };
@@ -411,15 +432,19 @@ export function diffTrafficPitExit(
       // from a time still ahead would stop every evaluation for as long as the step.
       if (episode.lastEvalAt !== null && episode.lastEvalAt > now) episode.lastEvalAt = null;
 
+      // A tick that does not send `OnPitRoad` keeps the episode's last
+      // reading of it, so a missing bit never switches the ETA's phase.
+      const onPitRoad = episode.lastOnPitRoad === true;
+
       if (episode.lastEvalAt === null || elapsed(now, episode.lastEvalAt) >= TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS) {
-        // A tick that does not send `OnPitRoad` keeps the episode's last
-        // reading of it, so a missing bit never switches the ETA's phase.
         evaluate(
           episode,
           curves,
           telemetry,
           position.pct,
-          episode.lastOnPitRoad === true,
+          onPitRoad,
+          facts.readLandmarks(),
+          "scheduled",
           facts,
           windows,
           emit,
@@ -431,6 +456,28 @@ export function diffTrafficPitExit(
         // read or the timing, is retried on the next tick rather than a second
         // later. An evaluation that ended the episode leaves it ended.
         if (episode.active) episode.lastEvalAt = now;
+      } else if (episode.spokenVerdict === null) {
+        // Between two scheduled evaluations, until the call is made: the
+        // first tick at the call point evaluates at once (module header),
+        // and so does each tick after it until one can speak. It leaves
+        // `lastEvalAt` alone, so the schedule runs on as it was.
+        const landmarks = facts.readLandmarks();
+
+        if (atCallPoint(episode, position.pct, onPitRoad, landmarks, facts.trackLengthMeters)) {
+          evaluate(
+            episode,
+            curves,
+            telemetry,
+            position.pct,
+            onPitRoad,
+            landmarks,
+            "callPoint",
+            facts,
+            windows,
+            emit,
+            logger,
+          );
+        }
       }
     }
   }
@@ -577,6 +624,63 @@ function exitPosition(
   return { toBlendEnd, pitRoadEndToBlendEnd: pitRoadEndToBlendEnd > 1 - slackPct ? 0 : pitRoadEndToBlendEnd };
 }
 
+/**
+ * Whether the player has reached the call point (module header): past
+ * `pitRoadEnd`, into the blend lane — `OnPitRoad` false, or the position at
+ * or past `pitRoadEnd`. The one definition of where the call is made, read by
+ * every evaluation (to latch `pastPitRoadEnd`) and between them (to evaluate
+ * at once on reaching it). Today it is the same test as the ETA's blend phase
+ * (`playerEta`), written apart so the call point can move without the ETA.
+ */
+function reachedCallPoint(onPitRoad: boolean, position: ExitPosition): boolean {
+  return !onPitRoad || position.toBlendEnd <= position.pitRoadEndToBlendEnd;
+}
+
+/** Both landmarks, when learned on the track's current geometry (module header); `null` otherwise. */
+function usableLandmarks(
+  landmarks: TrafficPitExitLandmarks | null,
+): { pitRoadEnd: PitLaneResolvedLandmark; blendEnd: PitLaneResolvedLandmark } | null {
+  const pitRoadEnd = landmarks?.pitRoadEnd ?? null;
+  const blendEnd = landmarks?.blendEnd ?? null;
+
+  if (pitRoadEnd === null || blendEnd === null) return null;
+
+  if (pitRoadEnd.source === "previous" || blendEnd.source === "previous") return null;
+
+  return { pitRoadEnd, blendEnd };
+}
+
+/**
+ * Between two scheduled evaluations, whether this tick is at the call point
+ * with the call not yet made, so an evaluation runs at once (module header):
+ * the latch already set, or {@link reachedCallPoint}, on landmarks the
+ * evaluation can use. With either landmark unusable, or the player at or past
+ * `blendEnd`, `false`: such an evaluation could not speak, and the next
+ * scheduled one handles it. A start the departure did not take is read as
+ * the player's position, as the evaluation would take it.
+ */
+function atCallPoint(
+  episode: TrafficPitExitState,
+  playerPct: number,
+  onPitRoad: boolean,
+  landmarks: TrafficPitExitLandmarks | null,
+  trackLengthMeters: number | null,
+): boolean {
+  const usable = usableLandmarks(landmarks);
+
+  if (usable === null) return false;
+
+  const position = exitPosition(
+    episode.startPct ?? playerPct,
+    playerPct,
+    usable.pitRoadEnd,
+    usable.blendEnd,
+    landmarkSlackPct(trackLengthMeters),
+  );
+
+  return position !== null && (episode.pastPitRoadEnd || reachedCallPoint(onPitRoad, position));
+}
+
 /** The player's arrival at `blendEnd` (module header), or why it cannot be known. */
 function playerEta(
   curves: Readonly<TrafficArrivalState>,
@@ -671,12 +775,24 @@ function crossingsToTest(seconds: number, eta: number, after: number, classLap: 
  * An evaluation with no verdict (module header): the landmarks unlearned, no
  * ETA, or no per-car arrays. A flip held back for confirmation needs that many
  * evaluations IN A ROW, and this one did not reach it, so the count starts
- * again; the settled verdict stands, and so does the spoken one.
+ * again; the settled verdict stands, and so does the spoken one. An
+ * evaluation at the call point between two scheduled ones is no part of the
+ * row, so it leaves it as it was.
  */
-function noVerdict(episode: TrafficPitExitState): void {
+function noVerdict(episode: TrafficPitExitState, kind: EvaluationKind): void {
+  if (kind !== "scheduled") return;
+
   episode.flipVerdict = null;
   episode.flipEvaluations = 0;
 }
+
+/**
+ * Which evaluation this is (module header): one of the once-a-second
+ * schedule, or one run at the call point between two of them, which settles a
+ * first verdict and speaks the settled one but neither advances nor breaks a
+ * flip's row.
+ */
+type EvaluationKind = "scheduled" | "callPoint";
 
 /** One evaluation: the landmarks, the ETA, then the verdict and whether to speak it (module header). */
 function evaluate(
@@ -685,17 +801,18 @@ function evaluate(
   telemetry: TrafficPitExitTelemetry,
   playerPct: number,
   onPitRoad: boolean,
+  landmarks: TrafficPitExitLandmarks | null,
+  kind: EvaluationKind,
   facts: TrafficPitExitFacts,
   windows: TrafficPitExitWindows,
   emit: EmitFn<(typeof TRAFFIC_PIT_EXIT_EVENTS)[number]>,
   logger: ILogger,
 ): void {
-  const landmarks = facts.readLandmarks();
   const pitRoadEnd = landmarks?.pitRoadEnd ?? null;
   const blendEnd = landmarks?.blendEnd ?? null;
 
   if (pitRoadEnd === null || blendEnd === null) {
-    noVerdict(episode);
+    noVerdict(episode, kind);
 
     if (!episode.landmarksMissingLogged) {
       episode.landmarksMissingLogged = true;
@@ -710,7 +827,7 @@ function evaluate(
   // A landmark kept from before a track rebuild was learned on the old
   // geometry: neither the slack nor the ETA holds on it (module header).
   if (pitRoadEnd.source === "previous" || blendEnd.source === "previous") {
-    noVerdict(episode);
+    noVerdict(episode, kind);
 
     if (!episode.landmarksRelearningLogged) {
       episode.landmarksRelearningLogged = true;
@@ -749,17 +866,17 @@ function evaluate(
     return;
   }
 
-  // Into the blend lane (module header): the same test that puts the ETA on
-  // its blend phase, latched, so a car rolled back behind the line or a
-  // position wobbling across it neither silences the blend lane nor speaks
-  // twice. A fact the tick read, so it is kept even when no verdict follows.
-  if (!onPitRoad || position.toBlendEnd <= position.pitRoadEndToBlendEnd) episode.pastPitRoadEnd = true;
+  // At the call point (module header), latched, so a car rolled back behind
+  // the line or a position wobbling across it neither silences the blend lane
+  // nor speaks twice. A fact the tick read, so it is kept even when no
+  // verdict follows.
+  if (reachedCallPoint(onPitRoad, position)) episode.pastPitRoadEnd = true;
 
   const playerClass = resolveCarClassId(telemetry, facts.classes, facts.playerCarIdx);
   const eta = playerEta(curves, telemetry, playerPct, onPitRoad, playerClass, facts, pitRoadEnd, blendEnd, position);
 
   if ("reason" in eta) {
-    noVerdict(episode);
+    noVerdict(episode, kind);
 
     if (!episode.noEtaLogged) {
       episode.noEtaLogged = true;
@@ -794,7 +911,7 @@ function evaluate(
   // No per-car arrays is no picture at all, never an empty track: no call,
   // and the next evaluation tries again.
   if (arrivals === null) {
-    noVerdict(episode);
+    noVerdict(episode, kind);
 
     if (!episode.arraysMissingLogged) {
       episode.arraysMissingLogged = true;
@@ -826,9 +943,12 @@ function evaluate(
   const verdict: "clear" | "traffic" = inWindow || untimed.length > 0 ? "traffic" : "clear";
   const seconds = nearest === null ? null : Math.round(nearest.relative * 10) / 10;
   const settled = episode.settledVerdict;
+  const scheduled = kind === "scheduled";
   let nextSettled = verdict;
-  let flipVerdict: "clear" | "traffic" | null = null;
-  let flipEvaluations = 0;
+  // An evaluation at the call point between two scheduled ones keeps the
+  // flip's row as it was (module header); a scheduled one rewrites it below.
+  let flipVerdict: "clear" | "traffic" | null = scheduled ? null : episode.flipVerdict;
+  let flipEvaluations = scheduled ? 0 : episode.flipEvaluations;
 
   // A flip of the settled verdict settles only once it has held (module
   // header); the first verdict never waits. Nothing is committed before the
@@ -836,7 +956,12 @@ function evaluate(
   // step rule): a throw leaves `lastEvalAt` where it was, so the next tick
   // evaluates again at once, and a count already committed would confirm the
   // flip on that tick, a tick rather than an interval later.
-  if (settled !== null && verdict !== settled) {
+  if (settled !== null && verdict !== settled && !scheduled) {
+    // Off the schedule, a tick or two after a scheduled evaluation: counting
+    // it would confirm a flip that has held for a few milliseconds.
+    logger.debug(`PitExit: ${verdict} at the call point between evaluations, not counted, ${settled} still stands`);
+    nextSettled = settled;
+  } else if (settled !== null && verdict !== settled) {
     const evaluations = episode.flipVerdict === verdict ? episode.flipEvaluations + 1 : 1;
 
     if (evaluations < TRAFFIC_PIT_EXIT_FLIP_CONFIRM_EVALUATIONS) {

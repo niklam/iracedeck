@@ -3860,7 +3860,8 @@ function handleLiveSteps(
   // the cars against curves that include this tick's samples, and both read
   // the curves as a value; each owns its own slice (`trafficRejoin`, `trafficPitExit`).
   // The pit exit reads #1112's learner through a closure, so the landmark
-  // view is built only at its once-a-second evaluation, and the track length
+  // view is built only when it reads it (at an evaluation, and between two
+  // only until its call is made), and the track length
   // and pit speed limit this tick already resolved. Both log to the
   // translator's own logger at debug, each line led by `Rejoin:` / `PitExit:`.
   steps.live("diffTrafficRejoin", pending, () =>

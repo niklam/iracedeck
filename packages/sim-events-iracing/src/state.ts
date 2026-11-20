@@ -801,7 +801,11 @@ export type TrafficPitExitState = {
    * with no episode.
    */
   startPct: number | null;
-  /** When the episode last evaluated; `null` before its first evaluation. */
+  /**
+   * When the episode last made a scheduled evaluation; `null` before its
+   * first. An evaluation at the call point between two of them leaves it
+   * (`diff/traffic-pit-exit.ts`).
+   */
   lastEvalAt: number | null;
   /**
    * In an episode: when the current run of ticks without a readable player

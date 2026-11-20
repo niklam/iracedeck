@@ -584,14 +584,29 @@ describe("diffTrafficPitExit", () => {
       expect(h.readLandmarks).toHaveBeenCalledTimes(2);
     });
 
-    it("reads the landmarks only at an evaluation, not on every tick", () => {
+    it("between evaluations, reads the landmarks to find the call point but evaluates nothing short of it", () => {
       const h = harness();
 
       h.depart(tel({ pct: 0 }));
 
-      for (let i = 0; i < 5; i++) h.after(100, tel({ pct: 0 }));
+      for (let i = 0; i < 5; i++) h.after(100, tel({ pct: 0, cars: [arriving(5, 1)] }));
 
-      expect(h.readLandmarks).toHaveBeenCalledTimes(1);
+      // The departure's evaluation, then one read a tick looking for the call point.
+      expect(h.readLandmarks).toHaveBeenCalledTimes(6);
+      expect(h.settled).toEqual([{ verdict: "clear" }]);
+    });
+
+    it("between evaluations, reads no landmarks once the call is made", () => {
+      const h = harness();
+
+      // Out of a stall past the learned pitRoadEnd: the call is made at the departure.
+      h.depart(tel({ pct: 0.13 }));
+      expect(h.events).toHaveLength(1);
+      h.readLandmarks.mockClear();
+
+      for (let i = 0; i < 5; i++) h.after(100, tel({ pct: 0.13 }));
+
+      expect(h.readLandmarks).not.toHaveBeenCalled();
     });
   });
 
@@ -1706,6 +1721,179 @@ describe("diffTrafficPitExit", () => {
         { verdict: "traffic", seconds: 1 },
         { verdict: "clear", seconds: 6 },
       ]);
+    });
+  });
+
+  describe("a crossing between two scheduled evaluations", () => {
+    /**
+     * A blend lane of 0.008 of the 1,600 m lap, about 13 m: pit road ends at
+     * 0.125 and the blend at 0.133, both on the curve (`T(pct) = 500 × pct`,
+     * 66.5 s at the blend). At 60 km/h the player is through it in 0.8 s,
+     * inside one evaluation interval.
+     */
+    const SHORT_BLEND: TrafficPitExitLandmarks = {
+      pitRoadEnd: landmark(0.125, {}),
+      blendEnd: landmark(0.133, {}),
+    };
+
+    /** The player at `pct` on the short blend lane's track, with car 5 arriving `relative` s after them. */
+    const shortAt = (pct: number, relative: number, overrides: TickOptions = {}): TrafficPitExitTelemetry => {
+      const onPitRoad = overrides.OnPitRoad ?? pct < 0.125;
+      const eta = onPitRoad && pct < 0.125 ? (0.125 - pct) * 80 + 4 : 66.5 - 500 * pct;
+
+      return tel({
+        pct,
+        OnPitRoad: onPitRoad,
+        cars: [{ idx: 5, pct: 0.05, est: 66.5 - (eta + relative) }],
+        ...overrides,
+      });
+    };
+
+    /** Departs, then evaluates on schedule a hair short of pit road's end. */
+    const toTheLine = (h: ReturnType<typeof harness>, relative: number): void => {
+      h.depart(shortAt(STALL_PCT, relative));
+      h.after(TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS, shortAt(0.1245, relative));
+    };
+
+    it("still speaks: the first tick past pitRoadEnd evaluates, whatever the interval", () => {
+      const h = harness({ landmarks: SHORT_BLEND });
+
+      toTheLine(h, 1);
+      h.after(100, shortAt(0.1248, 1));
+      expect(h.events).toEqual([]);
+
+      h.after(100, shortAt(0.1255, 1));
+      expect(h.events).toEqual([{ verdict: "traffic", seconds: 1 }]);
+
+      // Through the blend lane and onto the racing surface before the next
+      // scheduled evaluation: nothing more.
+      h.after(300, shortAt(0.13, 1));
+      h.after(300, shortAt(0.1334, 1));
+      h.after(100, shortAt(0.134, 1, { PlayerTrackSurface: TrkLoc.OnTrack }));
+
+      expect(h.events).toEqual([{ verdict: "traffic", seconds: 1 }]);
+      expect(h.episode.active).toBe(false);
+    });
+
+    it("still speaks when the crossing is the road bit alone", () => {
+      const h = harness({ landmarks: SHORT_BLEND });
+
+      toTheLine(h, 8);
+      h.after(16, shortAt(0.1246, 8, { OnPitRoad: false }));
+
+      expect(h.events).toEqual([{ verdict: "clear", seconds: 8 }]);
+    });
+
+    it("keeps the interval for the scheduled evaluations after it", () => {
+      const h = harness({ landmarks: SHORT_BLEND });
+
+      toTheLine(h, 1);
+      h.after(200, shortAt(0.1255, 1));
+      h.readLandmarks.mockClear();
+
+      // The call is made: the ticks up to the next scheduled evaluation read nothing.
+      h.after(400, shortAt(0.127, 6));
+      h.after(399, shortAt(0.128, 6));
+      expect(h.readLandmarks).not.toHaveBeenCalled();
+
+      // Due a second after the last scheduled one, not after the crossing.
+      h.after(1, shortAt(0.129, 6)); // clear, 1 of 2
+      expect(h.readLandmarks).toHaveBeenCalledTimes(1);
+      expect(lines(h.debug).at(-1)).toBe("PitExit: clear at 1 of 2 evaluations, traffic still stands");
+    });
+
+    it("does not count toward a flip's hold: a flip one tick before it still needs a second scheduled evaluation", () => {
+      const h = harness({ landmarks: SHORT_BLEND });
+
+      h.depart(shortAt(STALL_PCT, 1));
+      h.after(TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS, shortAt(0.1245, 6)); // clear, 1 of 2
+      // The crossing 16 ms later still reads clear: not the second evaluation.
+      h.after(16, shortAt(0.1255, 6));
+
+      expect(h.events).toEqual([{ verdict: "traffic", seconds: 1 }]);
+      expect(h.episode.flipVerdict).toBe("clear");
+      expect(h.episode.flipEvaluations).toBe(1);
+
+      h.after(TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS - 16, shortAt(0.127, 6)); // clear, 2 of 2
+
+      expect(h.events).toEqual([
+        { verdict: "traffic", seconds: 1 },
+        { verdict: "clear", seconds: 6 },
+      ]);
+    });
+
+    it("neither breaks a flip's row: one back on the settled verdict leaves the flip pending", () => {
+      const h = harness({ landmarks: SHORT_BLEND });
+
+      h.depart(shortAt(STALL_PCT, 1));
+      h.after(TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS, shortAt(0.1245, 6)); // clear, 1 of 2
+      h.after(16, shortAt(0.1255, 1)); // traffic, off schedule
+
+      expect(h.events).toEqual([{ verdict: "traffic", seconds: 1 }]);
+      expect(h.episode.flipVerdict).toBe("clear");
+      expect(h.episode.flipEvaluations).toBe(1);
+    });
+
+    it("nor does one with no verdict, and the next tick that can still speaks", () => {
+      const h = harness({ landmarks: SHORT_BLEND });
+
+      h.depart(shortAt(STALL_PCT, 1));
+      h.after(TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS, shortAt(0.1245, 6)); // clear, 1 of 2
+      h.after(16, shortAt(0.1255, 6, { CarIdxEstTime: undefined })); // no per-car arrays
+
+      expect(h.events).toEqual([]);
+      expect(h.episode.flipVerdict).toBe("clear");
+      expect(h.episode.flipEvaluations).toBe(1);
+
+      // Still the settled verdict, the flip still pending.
+      h.after(16, shortAt(0.1256, 6));
+      expect(h.events).toEqual([{ verdict: "traffic", seconds: 1 }]);
+      expect(h.episode.flipEvaluations).toBe(1);
+    });
+
+    it("settles and speaks the first verdict when there is none yet", () => {
+      let landmarks: TrafficPitExitLandmarks | null = null;
+      const h = harness();
+
+      h.readLandmarks.mockImplementation(() => landmarks);
+      toTheLine(h, 1);
+      landmarks = SHORT_BLEND;
+      h.after(100, shortAt(0.1255, 1));
+
+      expect(h.events).toEqual([{ verdict: "traffic", seconds: 1 }]);
+    });
+
+    it("whose emit threw is retried on the next tick, not at the next scheduled evaluation", () => {
+      const h = harness({ landmarks: SHORT_BLEND });
+      let thrown = false;
+
+      toTheLine(h, 1);
+      h.debug.mockImplementation((line) => {
+        if (!thrown && line.startsWith("PitExit: emit")) {
+          thrown = true;
+          throw new Error("debug sink failed");
+        }
+      });
+
+      expect(() => h.after(100, shortAt(0.1255, 1))).toThrow("debug sink failed");
+      h.events.splice(0);
+      h.after(16, shortAt(0.1258, 1));
+
+      expect(h.events).toEqual([{ verdict: "traffic", seconds: 1 }]);
+    });
+
+    it("makes no evaluation on a track without both landmarks on its current geometry", () => {
+      const h = harness({
+        landmarks: { ...SHORT_BLEND, pitRoadEnd: { ...SHORT_BLEND.pitRoadEnd!, source: "previous" } },
+      });
+
+      toTheLine(h, 1);
+      h.debug.mockClear();
+      h.after(100, shortAt(0.1255, 1));
+      h.after(100, shortAt(0.13, 1));
+
+      expect(h.events).toEqual([]);
+      expect(h.debug).not.toHaveBeenCalled();
     });
   });
 
