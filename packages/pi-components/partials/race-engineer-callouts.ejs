@@ -86,6 +86,10 @@ function calloutGroupItem(id) {
   	'<ird-range-input setting="trafficPitExitAfterSeconds" min="0" max="15" step="1" default="4" global showlabels></ird-range-input>' +
   '</sdpi-item>' +
   '<div class="ird-supporting-text">A car reaching the point where the pit exit joins the track up to this long after you counts as traffic; 0 ignores cars that get there after you.</div>' +
+  '<sdpi-item label="Pit exit merge warning (s)">' +
+  	'<ird-range-input setting="trafficPitExitMergeWarnSeconds" min="0" max="5" step="0.1" default="1.5" global showlabels></ird-range-input>' +
+  '</sdpi-item>' +
+  '<div class="ird-supporting-text">In the pit exit lane, the engineer says "Watch for cars." once when a car will reach the point where the pit exit joins the track within this long of you; 0 turns it off.</div>' +
   calloutGroupItem('pit-box') +
   calloutGroupItem('pit-speeding') +
   calloutGroupItem('fuel') +

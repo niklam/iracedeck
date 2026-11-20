@@ -32,6 +32,7 @@ const TRANSLATOR_CLAMPED = [
   "opponentFlagRangeSeconds",
   "trafficPitExitBeforeSeconds",
   "trafficPitExitAfterSeconds",
+  "trafficPitExitMergeWarnSeconds",
 ] as const;
 
 /**
