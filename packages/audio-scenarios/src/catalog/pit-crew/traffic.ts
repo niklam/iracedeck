@@ -98,7 +98,8 @@
  * line, about cars going by within seconds) and the pit-exit traffic warning
  * and merge warning — take {@link TRAFFIC_MAX_QUEUE_WAIT_MS}, since "about
  * five seconds" heard four seconds late describes a car that has already
- * passed; the pit-exit clear takes the engine default, since what would make
+ * passed, and right behind the shorter
+ * {@link TRAFFIC_REJOIN_RIGHT_BEHIND_MAX_QUEUE_WAIT_MS} (below); the pit-exit clear takes the engine default, since what would make
  * it false is a flipped verdict, which the detector publishes and which
  * replaces it in the queue. The one gap is a picture the detector cannot
  * judge — the per-car arrays missing — where it publishes nothing, so nothing
@@ -135,7 +136,16 @@
  * - **The pack line** has no time gate: it waits at most
  *   {@link TRAFFIC_MAX_QUEUE_WAIT_MS}, and a group coming is still worth
  *   hearing as the driver pulls out in front of it.
- * A line cut mid-sentence and replayed is not asked again (`SpeakGate`).
+ * A line cut mid-sentence and replayed is not asked again (`SpeakGate`): the
+ * engine replays the fire it admitted, since a gate may claim state. What
+ * bounds that replay is the wait, which counts from when the line was first
+ * due and keeps counting across the cut (#1681). So right behind waits at
+ * most {@link TRAFFIC_REJOIN_RIGHT_BEHIND_MAX_QUEUE_WAIT_MS}, its gate's own
+ * two seconds: one the spotter cuts as the car arrives alongside is not
+ * replayed once the car is there. A `near` call's bound is its own seconds,
+ * per event, which a contract's wait cannot carry: one about a car two
+ * seconds away, cut and replayed between two and three seconds after it was
+ * due, is heard about a car already there.
  *
  * **Weights (spec decision 6, amended 2026-11-17).** The warnings — right
  * behind, both `near` calls, the pack line, the pit-exit traffic warning and
@@ -228,6 +238,17 @@ export const TRAFFIC_WARNING_WEIGHT = 85;
  */
 export const TRAFFIC_MAX_QUEUE_WAIT_MS = 3000;
 
+/**
+ * How long the right-behind line may wait for the bus, from when it was first
+ * due: {@link TRAFFIC_REJOIN_RIGHT_BEHIND_S}, the bound its speak-time gate
+ * drops it at (module header, "Never heard after the moment it warns about").
+ * The same bound for a line only deferred, which the gate would refuse at
+ * replay anyway, and the only one for a line an interrupt cut out of
+ * playback, which the engine replays without asking its gate again: the wait
+ * keeps counting across a cut (#1681).
+ */
+export const TRAFFIC_REJOIN_RIGHT_BEHIND_MAX_QUEUE_WAIT_MS = TRAFFIC_REJOIN_RIGHT_BEHIND_S * 1000;
+
 /** The supersede group of the rejoin lines: a newer one makes a waiting older one wrong. */
 export const TRAFFIC_REJOIN_SUPERSEDE_GROUP = "traffic-rejoin";
 
@@ -277,7 +298,8 @@ type LineSpec = {
   interrupt: boolean;
   /**
    * How long the line may wait for the bus (module header): {@link TRAFFIC_MAX_QUEUE_WAIT_MS}
-   * for a line whose words decay while it waits, the engine default for the
+   * for a line whose words decay while it waits ({@link TRAFFIC_REJOIN_RIGHT_BEHIND_MAX_QUEUE_WAIT_MS}
+   * for right behind), the engine default for the
    * pit-exit clear call, since what would make it false is a newer verdict of
    * its trigger, which replaces it in the queue (`supersedeGroup`), short of
    * the one gap the module header names.
@@ -410,8 +432,9 @@ const REJOIN_LINES: Record<RejoinLine, RejoinLineSpec> = {
   "rejoin-right-behind": {
     weight: TRAFFIC_WARNING_WEIGHT,
     interrupt: true,
-    // Short: a car under two seconds away has arrived by the time a late line plays.
-    maxQueueWaitMs: TRAFFIC_MAX_QUEUE_WAIT_MS,
+    // A car under two seconds away has arrived two seconds after the line was
+    // due: the gate's bound, which also bounds a replay after a cut.
+    maxQueueWaitMs: TRAFFIC_REJOIN_RIGHT_BEHIND_MAX_QUEUE_WAIT_MS,
     description: "You are stopped or crawling on track and the nearest car will reach you in under two seconds.",
     // Needs no introduction, and leaves the introduction alone.
     matches: (d) => d.verdict === "rightBehind",

@@ -34,7 +34,11 @@ import type {
   TrafficPitExitVerdict,
   TrafficRejoin,
 } from "@iracedeck/event-bus";
-import { TRAFFIC_REJOIN_NEAR_MAX_SECONDS, TRAFFIC_REJOIN_NEAR_MIN_SECONDS } from "@iracedeck/event-bus";
+import {
+  TRAFFIC_REJOIN_NEAR_MAX_SECONDS,
+  TRAFFIC_REJOIN_NEAR_MIN_SECONDS,
+  TRAFFIC_REJOIN_RIGHT_BEHIND_S,
+} from "@iracedeck/event-bus";
 import { TrkLoc } from "@iracedeck/iracing-sdk";
 import type { TelemetryData } from "@iracedeck/sim-events-iracing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -59,6 +63,7 @@ import {
   TRAFFIC_MAX_QUEUE_WAIT_MS,
   TRAFFIC_PIT_EXIT_SUPERSEDE_GROUP,
   TRAFFIC_REJOIN_ENDS_ON,
+  TRAFFIC_REJOIN_RIGHT_BEHIND_MAX_QUEUE_WAIT_MS,
   TRAFFIC_REJOIN_SUPERSEDE_GROUP,
   TRAFFIC_SCENARIO_IDS,
   TRAFFIC_WARNING_WEIGHT,
@@ -497,7 +502,15 @@ describe("TRAFFIC_CONTRACTS", () => {
   it("waits briefly for the bus on the lines whose words decay, and the engine default on the pit-exit clear", () => {
     expect([...DECAYING_IDS, ...REASSURING_IDS].sort()).toEqual([...TRAFFIC_SCENARIO_IDS].sort());
 
-    for (const id of DECAYING_IDS) expect(contract(id).maxQueueWaitMs, id).toBe(TRAFFIC_MAX_QUEUE_WAIT_MS);
+    for (const id of DECAYING_IDS.filter((id) => id !== "pit-crew.traffic-rejoin-right-behind")) {
+      expect(contract(id).maxQueueWaitMs, id).toBe(TRAFFIC_MAX_QUEUE_WAIT_MS);
+    }
+
+    // Right behind: its gate's own bound, which also bounds a replay after a cut.
+    expect(contract("pit-crew.traffic-rejoin-right-behind").maxQueueWaitMs).toBe(
+      TRAFFIC_REJOIN_RIGHT_BEHIND_MAX_QUEUE_WAIT_MS,
+    );
+    expect(TRAFFIC_REJOIN_RIGHT_BEHIND_MAX_QUEUE_WAIT_MS).toBe(TRAFFIC_REJOIN_RIGHT_BEHIND_S * 1000);
 
     for (const id of REASSURING_IDS) expect(contract(id).maxQueueWaitMs, id).toBe(DEFAULT_MAX_QUEUE_WAIT_MS);
 
@@ -1090,6 +1103,36 @@ describe("a line is never heard after the moment it warns about", () => {
 
     it("right behind waiting less than two seconds still plays", () => {
       expect(parkedFor(1_500, { verdict: "rightBehind" })).toEqual([CRITICAL_CLIP, clip("rejoin-right-behind")]);
+    });
+
+    /**
+     * Right behind playing at 0, cut by a spotter call at `cutMs`, the bus
+     * idle again at `idleMs`: the cut line is replayed without its gate being
+     * asked again, so only its wait, from when it was due, can drop it.
+     */
+    function cutBySpotter(cutMs: number, idleMs: number): string[] {
+      vi.useFakeTimers();
+      vi.setSystemTime(0);
+      bus.publishEvent("traffic.rejoin", { verdict: "rightBehind" });
+      expect(voicePaths()).toEqual([clip("rejoin-right-behind")]);
+      vi.setSystemTime(cutMs);
+      bus.publishEvent("flag.white.raised", {});
+      vi.setSystemTime(idleMs);
+      flush(audio);
+
+      return voicePaths();
+    }
+
+    it("right behind cut by the spotter is not replayed once two seconds have passed since it was due", () => {
+      expect(cutBySpotter(1_500, 2_500)).toEqual([clip("rejoin-right-behind"), PROXIMITY_LIKE_CLIP]);
+    });
+
+    it("right behind cut by the spotter is replayed when the bus is free again inside two seconds", () => {
+      expect(cutBySpotter(500, 1_500)).toEqual([
+        clip("rejoin-right-behind"),
+        PROXIMITY_LIKE_CLIP,
+        clip("rejoin-right-behind"),
+      ]);
     });
 
     it("a first call about a car two seconds away is dropped after waiting 2.5 s, and introduces nothing", () => {
