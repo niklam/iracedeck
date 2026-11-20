@@ -503,8 +503,9 @@ const PIT_EXIT_LINES: Record<PitExitLine, PitExitLineSpec> = {
     // is no use once the player is merging.
     maxQueueWaitMs: TRAFFIC_MAX_QUEUE_WAIT_MS,
     verdict: "traffic",
+    // The call point, the held flip and the untimed car: `traffic-pit-exit.ts`'s module header.
     description:
-      "About three seconds before the end of pit road, a car on track is predicted to reach the end of the pit exit blend line around the same time as you.",
+      "About 3 s before pit road ends (on leaving a nearer stall, past it if landmarks or pit limit come late), again on a held flip before the merge: a car on track meets you at the blend end or is untimed.",
     gateDescription: "Dropped once you are back on the racing surface, since the merge it warns about is over.",
   },
   "pit-exit-clear": {
@@ -517,7 +518,7 @@ const PIT_EXIT_LINES: Record<PitExitLine, PitExitLineSpec> = {
     maxQueueWaitMs: DEFAULT_MAX_QUEUE_WAIT_MS,
     verdict: "clear",
     description:
-      "About three seconds before the end of pit road, no car on track is predicted to reach the end of the pit exit blend line around the same time as you.",
+      "About 3 s before pit road ends (on leaving a nearer stall, past it if landmarks or pit limit come late), again on a held flip before the merge: no car on track meets you at the blend end.",
     gateDescription: "Dropped once you are back on the racing surface, since the merge it is about is over.",
   },
 };
