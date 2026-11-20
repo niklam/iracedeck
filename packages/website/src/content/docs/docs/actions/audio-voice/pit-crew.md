@@ -748,7 +748,7 @@ A car that cannot be timed at all — which should practically never happen — 
 
 A newer traffic call replaces an older one, whether it is still waiting or already playing. The warnings about a close car and the pit exit traffic call wait at most three seconds for the radio and are dropped after that rather than played late: the seconds count down while a line waits, and "about three seconds" heard four seconds late is about a car that has already gone by. "More than ten seconds", "clear to rejoin" and the pit exit clear call wait their turn like other callouts, since a change in the traffic replaces them with a newer call. The engineer speaks again at the next change. A warning about a close car is also dropped once the car it names should have reached you, after two seconds for 'right behind' and after the seconds it names for a count, and neither pit exit call plays once you are back on the track.
 
-Two opt-ins, both on by default, and the two pit exit sliders above live under **Race Engineer Callouts → Traffic** in the Settings window — see [the opt-in list below](#race-engineer-callouts-per-subject-opt-inout). With the Race Engineer master off, both calls are silent.
+Two opt-ins — **Traffic at pit exit**, on by default, and **Traffic when rejoining (experimental)**, off by default — and the two pit exit sliders above live under **Race Engineer Callouts → Traffic** in the Settings window — see [the opt-in list below](#race-engineer-callouts-per-subject-opt-inout). With the Race Engineer master off, both calls are silent.
 
 ## Readouts on request (Session Info)
 
