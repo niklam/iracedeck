@@ -3,8 +3,8 @@
  * thresholds, the pictures, the selection — is pinned function by function,
  * each threshold on both sides of its value; then the three contracts are
  * driven through the real scenario engine and the real `registerPitCrew`,
- * over hand-built entries in the shape the spec's decision 9 gives (the
- * bundled entries are `skip: true` until the clips are approved) and a
+ * over hand-built entries in the shape the spec's decision 9 gives (a test
+ * at the end holds the bundled Default entries to them, with no `skip`) and a
  * manifest of exactly the clips those lines need. The gates, the claim in
  * the gate, the cadence and the order at the line against the lap-time calls
  * each have their positive control beside the refusal.
@@ -140,6 +140,23 @@ describe("the reference (decision 5)", () => {
     gapSeconds: 1,
     lapsCompleted: lapsCompleted === undefined ? (spec.at(-1)?.[0] ?? 0) : lapsCompleted,
     recentLaps: spec.map(([lap, t, clean]) => ({ lap, sectorTimes: [t, 2 * t], clean })),
+  });
+
+  it("takes the median sector by sector, not the sectors of the median lap", () => {
+    // Totals 95, 91 and 94: the median lap is lap 3's [32, 62]; the per-sector medians are [31, 62].
+    const c: SectorCarInput = {
+      carIdx: 3,
+      carNumber: "3",
+      gapSeconds: 1,
+      lapsCompleted: 3,
+      recentLaps: [
+        { lap: 1, sectorTimes: [30, 65], clean: true },
+        { lap: 2, sectorTimes: [31, 60], clean: true },
+        { lap: 3, sectorTimes: [32, 62], clean: true },
+      ],
+    };
+
+    expect(sectorReference(c, 2)).toEqual([31, 62]);
   });
 
   it("is the per-sector median of the last three clean laps among the last five", () => {
@@ -648,7 +665,7 @@ function createMockBus(): IEventBus & { publishEvent: (name: SimEventName, data:
   };
 }
 
-/** The Default voice's entries as the spec's decision 9 draws them (the bundled ones wait for the clips). */
+/** The Default voice's entries as the spec's decision 9 draws them; the bundled ones must equal them (the last test). */
 const LEADER_ENTRY: CalloutScriptEntry = {
   comment: "Pace check against the class leader.",
   test: "Harness → Sectors → Leader pace, most of it with a gain.",
@@ -782,6 +799,15 @@ function flush(iterations = 60): void {
     audio._triggerChannelEnd(AudioChannel.SFX);
     vi.advanceTimersByTime(1000);
   }
+}
+
+/** That both clips played, `first` before `second`: an order check that a missing clip cannot pass. */
+function expectPlayedInOrder(first: string, second: string): void {
+  const played = line();
+
+  expect(played).toContain(first);
+  expect(played).toContain(second);
+  expect(played.indexOf(first)).toBeLessThan(played.indexOf(second));
 }
 
 /** The voice clips played, as `<group>/<base>` with a take suffix dropped. */
@@ -1308,7 +1334,7 @@ describe("at the line, after the lap-time calls (decision 8)", () => {
 
     expect(line()[0]).toBe("car-number/12");
     expect(line()).toContain("fastest-lap/yours");
-    expect(line().indexOf("fastest-lap/yours")).toBeGreaterThan(line().indexOf("sector-comparison-sector/2"));
+    expectPlayedInOrder("sector-comparison-sector/2", "fastest-lap/yours");
   });
 
   it("uses the delay and the order the spec sets", () => {
@@ -1336,7 +1362,7 @@ describe("at the line, after the lap-time calls (decision 8)", () => {
         { id: "pit-crew.sector-comparison-ahead", after: "pit-crew.fastest-lap-race" },
       ]);
       flush();
-      expect(line().indexOf("fastest-lap/yours")).toBeLessThan(line().indexOf("car-number/12"));
+      expectPlayedInOrder("fastest-lap/yours", "car-number/12");
     });
 
     it("the best lap", () => {
@@ -1351,7 +1377,7 @@ describe("at the line, after the lap-time calls (decision 8)", () => {
         { id: "pit-crew.sector-comparison-ahead", after: "pit-crew.lap-time-best" },
       ]);
       flush();
-      expect(line().indexOf("lap-time-intro/best-lap-yet")).toBeLessThan(line().indexOf("car-number/12"));
+      expectPlayedInOrder("lap-time-intro/best-lap-yet", "car-number/12");
     });
 
     it("every lap", () => {
@@ -1368,7 +1394,7 @@ describe("at the line, after the lap-time calls (decision 8)", () => {
         { id: "pit-crew.sector-comparison-ahead", after: "pit-crew.lap-time-last" },
       ]);
       flush();
-      expect(line().indexOf("lap-time-last/intro")).toBeLessThan(line().indexOf("car-number/12"));
+      expectPlayedInOrder("lap-time-last/intro", "car-number/12");
     });
   });
 });
