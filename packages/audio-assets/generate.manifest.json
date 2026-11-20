@@ -78175,14 +78175,6 @@
       "generatedAt": "2026-11-17T17:14:48.829Z",
       "requestId": "gFs7M8pw4OO7yL8Xev4t"
     },
-    "voice/shawn/traffic/pit-exit-clear-03.mp3": {
-      "hash": "4106ed73da68b630",
-      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
-      "model": "eleven_v4",
-      "textPreview": "Nothing at the exit.",
-      "generatedAt": "2026-11-17T17:14:49.553Z",
-      "requestId": "BGjKfyleSgovzNRmf3of"
-    },
     "voice/shawn/traffic/pit-exit-clear-04.mp3": {
       "hash": "9fc386d53468b7f8",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
@@ -78206,6 +78198,14 @@
       "textPreview": "A group of cars coming. Join carefully.",
       "generatedAt": "2026-11-18T19:32:19.170Z",
       "requestId": "fGZ40b20miBUgX7MMawM"
+    },
+    "voice/shawn/traffic/pit-exit-clear-03.mp3": {
+      "hash": "d0fe3d5ac08f48bc",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_v4",
+      "textPreview": "No traffic expected at the exit.",
+      "generatedAt": "2026-11-20T15:43:30.029Z",
+      "requestId": "03mfpJwJ0iCnqh9K13kg"
     }
   }
 }
