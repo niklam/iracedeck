@@ -355,7 +355,7 @@ export function diffTrafficRejoin(
   if (gate !== null) {
     if (episode.active && !endsAtOnce(gate)) {
       if (episode.gateFailedSince === null || episode.gateFailedSince > now) {
-        if (episode.gateFailedSince === null) logger.debug(`Rejoin: gate failed (${gate}), episode held`);
+        if (episode.gateFailedSince === null) logger.debug(`gate failed (${gate}), episode held`);
 
         episode.gateFailedSince = now;
       }
@@ -370,7 +370,7 @@ export function diffTrafficRejoin(
 
     // Outside an episode any failure restarts the entry dwell; inside one, the
     // failure ends it at once (the car left, the garage) or has outlasted the grace.
-    if (episode.active) logger.debug(`Rejoin: episode ended (${gate})`);
+    if (episode.active) logger.debug(`episode ended (${gate})`);
 
     Object.assign(episode, createTrafficRejoinState());
 
@@ -381,13 +381,13 @@ export function diffTrafficRejoin(
     const failedFor = elapsed(now, episode.gateFailedSince);
 
     if (failedFor < TRAFFIC_REJOIN_GATE_GRACE_MS) {
-      logger.debug(`Rejoin: gates hold again after ${failedFor} ms, episode kept`);
+      logger.debug(`gates hold again after ${failedFor} ms, episode kept`);
       episode.gateFailedSince = null;
     } else {
       // The failure outlasted the grace with no tick in between to end it (the
       // sim sent nothing): it ends here, as a failing tick at the grace limit
       // would have, and this tick starts a fresh entry dwell below.
-      logger.debug(`Rejoin: episode ended (gate failed for ${failedFor} ms)`);
+      logger.debug(`episode ended (gate failed for ${failedFor} ms)`);
       Object.assign(episode, createTrafficRejoinState());
     }
   }
@@ -408,7 +408,7 @@ export function diffTrafficRejoin(
     if (elapsed(now, episode.slowSince) < TRAFFIC_REJOIN_ENTRY_DWELL_MS) return;
 
     Object.assign(episode, createTrafficRejoinState(), { active: true });
-    logger.debug(`Rejoin: episode started (pct=${pct.toFixed(4)}, speed=${speed.toFixed(1)} m/s)`);
+    logger.debug(`episode started (pct=${pct.toFixed(4)}, speed=${speed.toFixed(1)} m/s)`);
     evaluate(episode, curves, telemetry, pct, playerCarIdx, classes, trackLengthMeters, emit, logger);
     // Written last (the package's step rule): an evaluation that threw is
     // retried on the next tick rather than a second later.
@@ -421,7 +421,7 @@ export function diffTrafficRejoin(
     if (episode.movingSince === null || episode.movingSince > now) episode.movingSince = now;
 
     if (elapsed(now, episode.movingSince) >= TRAFFIC_REJOIN_END_DWELL_MS) {
-      logger.debug(`Rejoin: episode ended (moving at ${speed.toFixed(1)} m/s)`);
+      logger.debug(`episode ended (moving at ${speed.toFixed(1)} m/s)`);
       Object.assign(episode, createTrafficRejoinState());
 
       return;
@@ -543,7 +543,7 @@ function followCar(member: TrafficRejoinFollowedCar, ctx: FollowContext): "passe
     }
 
     ctx.logger.debug(
-      `Rejoin: car ${car.carIdx} re-timed at ${car.seconds.toFixed(2)} s via ${car.source} (was ${member.seconds.toFixed(2)} s via ${member.source}), a new baseline`,
+      `car ${car.carIdx} re-timed at ${car.seconds.toFixed(2)} s via ${car.source} (was ${member.seconds.toFixed(2)} s via ${member.source}), a new baseline`,
     );
     Object.assign(member, followed(car, ctx));
 
@@ -628,7 +628,7 @@ function packGone(episode: TrafficRejoinState, timed: readonly TimedArrival[], c
     episode.packCars.push(tail);
     members.add(car.carIdx);
     ctx.logger.debug(
-      `Rejoin: pack grows to ${episode.packCars.length} cars (car ${car.carIdx} at ${car.seconds.toFixed(2)} s)`,
+      `pack grows to ${episode.packCars.length} cars (car ${car.carIdx} at ${car.seconds.toFixed(2)} s)`,
     );
   }
 
@@ -721,7 +721,7 @@ function evaluate(
   if (arrivals === null) {
     if (!episode.arraysMissingLogged) {
       episode.arraysMissingLogged = true;
-      logger.debug("Rejoin: silent, the per-car arrays are missing");
+      logger.debug("silent, the per-car arrays are missing");
     }
 
     return;
@@ -747,7 +747,7 @@ function evaluate(
     if (!episode.untimedLogged) {
       episode.untimedLogged = true;
       logger.debug(
-        `Rejoin: ${band} withheld by untimed cars: ${describeUntimed(untimed)} (${describeNearest(nearest)}; ${reason}${describeStationary(stationary)})`,
+        `${band} withheld by untimed cars: ${describeUntimed(untimed)} (${describeNearest(nearest)}; ${reason}${describeStationary(stationary)})`,
       );
     }
 
@@ -761,7 +761,7 @@ function evaluate(
 
   emit({ event: "traffic.rejoin", data: payload });
   logger.debug(
-    `Rejoin: emit ${describePayload(payload)} (${pack !== null ? describePack(pack) : describeNearest(nearest)}; ${reason}${describeStationary(stationary)})`,
+    `emit ${describePayload(payload)} (${pack !== null ? describePack(pack) : describeNearest(nearest)}; ${reason}${describeStationary(stationary)})`,
   );
   episode.spokenBand = band;
   episode.spokenSeconds = wholeSeconds;

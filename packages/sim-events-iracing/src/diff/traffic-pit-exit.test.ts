@@ -281,7 +281,7 @@ describe("diffTrafficPitExit", () => {
 
         expect(h.episode.active).toBe(false);
         expect(h.settled).toEqual([]);
-        expect(lines(h.debug).at(-1)).toBe("PitExit: episode ended (back in the stall)");
+        expect(lines(h.debug).at(-1)).toBe("episode ended (back in the stall)");
       });
 
       it("with the stall flag unread, keeps the player in the stall: the departure after it starts the episode", () => {
@@ -355,8 +355,8 @@ describe("diffTrafficPitExit", () => {
             { verdict: "traffic", seconds: 3 },
             { verdict: "clear", seconds: 5.5 },
           ]);
-          expect(lines(h.debug)).toContain("PitExit: player position unavailable, episode held");
-          expect(lines(h.debug)).toContain("PitExit: player position back after 900 ms, episode kept");
+          expect(lines(h.debug)).toContain("player position unavailable, episode held");
+          expect(lines(h.debug)).toContain("player position back after 900 ms, episode kept");
         },
       );
 
@@ -397,7 +397,7 @@ describe("diffTrafficPitExit", () => {
 
         h.after(1, gap);
         expect(h.episode.active).toBe(false);
-        expect(lines(h.debug).at(-1)).toBe("PitExit: episode ended (player position unavailable for 1000 ms)");
+        expect(lines(h.debug).at(-1)).toBe("episode ended (player position unavailable for 1000 ms)");
 
         // The position back, with no departure edge: nothing more this exit.
         h.after(100, tel({ cars: [arriving(5, 10)] }));
@@ -418,7 +418,7 @@ describe("diffTrafficPitExit", () => {
 
         expect(h.episode.active).toBe(false);
         expect(lines(h.debug).at(-1)).toBe(
-          `PitExit: episode ended (player position unavailable for ${TRAFFIC_PIT_EXIT_POSITION_GRACE_MS + 100} ms)`,
+          `episode ended (player position unavailable for ${TRAFFIC_PIT_EXIT_POSITION_GRACE_MS + 100} ms)`,
         );
         expect(h.episode.lastInPitStall).toBe(false);
 
@@ -445,7 +445,7 @@ describe("diffTrafficPitExit", () => {
 
         expect(h.episode.active).toBe(true);
         expect(lines(h.debug)).toContain(
-          `PitExit: player position back after ${TRAFFIC_PIT_EXIT_POSITION_GRACE_MS - 1} ms, episode kept`,
+          `player position back after ${TRAFFIC_PIT_EXIT_POSITION_GRACE_MS - 1} ms, episode kept`,
         );
       });
 
@@ -488,7 +488,7 @@ describe("diffTrafficPitExit", () => {
         h.after(100, tel({ cars: [arriving(5, 1)], ...overrides }));
 
         expect(h.episode.active).toBe(false);
-        expect(lines(h.debug).at(-1)).toBe("PitExit: episode ended (not in world)");
+        expect(lines(h.debug).at(-1)).toBe("episode ended (not in world)");
       });
     });
 
@@ -519,7 +519,7 @@ describe("diffTrafficPitExit", () => {
 
         expect(h.settled).toEqual([]);
         expect(lines(h.debug).filter((line) => line.includes("landmarks"))).toEqual([
-          `PitExit: silent, landmarks not learned (pitRoadEnd ${pitRoadEnd}, blendEnd ${blendEnd})`,
+          `silent, landmarks not learned (pitRoadEnd ${pitRoadEnd}, blendEnd ${blendEnd})`,
         ]);
       },
     );
@@ -543,7 +543,7 @@ describe("diffTrafficPitExit", () => {
 
         expect(h.settled).toEqual([]);
         expect(lines(h.debug).filter((line) => line.includes("landmarks"))).toEqual([
-          `PitExit: silent, landmarks relearning after a track rebuild (pitRoadEnd ${pitRoadEnd}, blendEnd ${blendEnd})`,
+          `silent, landmarks relearning after a track rebuild (pitRoadEnd ${pitRoadEnd}, blendEnd ${blendEnd})`,
         ]);
       },
     );
@@ -743,7 +743,7 @@ describe("diffTrafficPitExit", () => {
 
         expect(h.settled).toEqual([]);
         expect(lines(h.debug).filter((line) => line.includes("no ETA"))).toEqual([
-          `PitExit: silent, no ETA to blendEnd (${reason})`,
+          `silent, no ETA to blendEnd (${reason})`,
         ]);
       },
     );
@@ -862,7 +862,7 @@ describe("diffTrafficPitExit", () => {
         h.after(TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS, tel({ pct: 0.805, OnPitRoad: false }));
 
         expect(h.episode.active).toBe(false);
-        expect(lines(h.debug).at(-1)).toBe("PitExit: episode ended (past blendEnd)");
+        expect(lines(h.debug).at(-1)).toBe("episode ended (past blendEnd)");
         expect(h.settled).toEqual([{ verdict: "traffic", seconds: 1 }]);
       });
     });
@@ -878,7 +878,7 @@ describe("diffTrafficPitExit", () => {
       h.after(TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS, tel({ cars: [arriving(5, 0)], OnPitRoad: false, pct: 0.1925 }));
 
       expect(h.episode.active).toBe(false);
-      expect(lines(h.debug)).toContain("PitExit: episode ended (past blendEnd)");
+      expect(lines(h.debug)).toContain("episode ended (past blendEnd)");
       expect(h.settled).toEqual([{ verdict: "clear", seconds: 10 }]);
     });
 
@@ -896,7 +896,7 @@ describe("diffTrafficPitExit", () => {
 
         expect(h.settled).toEqual([]);
         expect(h.episode.active).toBe(false);
-        expect(lines(h.debug).at(-1)).toBe("PitExit: episode ended (past blendEnd)");
+        expect(lines(h.debug).at(-1)).toBe("episode ended (past blendEnd)");
       });
 
       it("ends when the departure tick had none and the position read as the landmarks arrive is past it", () => {
@@ -925,7 +925,7 @@ describe("diffTrafficPitExit", () => {
 
           expect(h.settled).toEqual([]);
           expect(h.episode.active).toBe(false);
-          expect(lines(h.debug)).toContain("PitExit: episode ended (past blendEnd, with no departure position)");
+          expect(lines(h.debug)).toContain("episode ended (past blendEnd, with no departure position)");
         });
 
         it("takes no start past blendEnd when the landmarks arrive only after the first position", () => {
@@ -1265,7 +1265,7 @@ describe("diffTrafficPitExit", () => {
       expect(h.settled).toEqual([{ verdict: "traffic", seconds: 1 }]);
       expect(h.events).toEqual([]);
       expect(lines(h.debug).at(-1)).toContain(
-        "PitExit: traffic settled short of pitRoadEnd, not spoken yet (first verdict; eta 40.00 s on pitRoad",
+        "traffic settled short of pitRoadEnd, not spoken yet (first verdict; eta 40.00 s on pitRoad",
       );
     });
 
@@ -1419,7 +1419,7 @@ describe("diffTrafficPitExit", () => {
         h.depart(tel({ cars: [arriving(5, 3)] }));
         step(h, 5);
 
-        expect(lines(h.debug).at(-1)).toBe("PitExit: clear at 1 of 2 evaluations, traffic still stands");
+        expect(lines(h.debug).at(-1)).toBe("clear at 1 of 2 evaluations, traffic still stands");
       });
 
       it("a held flip whose debug line threw is not counted, so the next tick cannot confirm it early", () => {
@@ -1440,7 +1440,7 @@ describe("diffTrafficPitExit", () => {
         // moved: still 1 of 2, never the second.
         h.after(16, tel({ cars: [arriving(5, 5)] }));
         expect(h.settled).toEqual([{ verdict: "traffic", seconds: 3 }]);
-        expect(lines(h.debug).at(-1)).toBe("PitExit: clear at 1 of 2 evaluations, traffic still stands");
+        expect(lines(h.debug).at(-1)).toBe("clear at 1 of 2 evaluations, traffic still stands");
 
         step(h, 5.5); // clear, 2 of 2: spoken
         expect(h.settled).toEqual([
@@ -1662,7 +1662,7 @@ describe("diffTrafficPitExit", () => {
       }
 
       h.debug.mockImplementation((line) => {
-        if (!thrown && line.startsWith("PitExit: emit")) {
+        if (!thrown && line.startsWith("emit")) {
           thrown = true;
           throw new Error("debug sink failed");
         }
@@ -1799,7 +1799,7 @@ describe("diffTrafficPitExit", () => {
       // Due a second after the last scheduled one, not after the crossing.
       h.after(1, shortAt(0.129, 6)); // clear, 1 of 2
       expect(h.readLandmarks).toHaveBeenCalledTimes(1);
-      expect(lines(h.debug).at(-1)).toBe("PitExit: clear at 1 of 2 evaluations, traffic still stands");
+      expect(lines(h.debug).at(-1)).toBe("clear at 1 of 2 evaluations, traffic still stands");
     });
 
     it("does not count toward a flip's hold: a flip one tick before it still needs a second scheduled evaluation", () => {
@@ -1869,7 +1869,7 @@ describe("diffTrafficPitExit", () => {
 
       toTheLine(h, 1);
       h.debug.mockImplementation((line) => {
-        if (!thrown && line.startsWith("PitExit: emit")) {
+        if (!thrown && line.startsWith("emit")) {
           thrown = true;
           throw new Error("debug sink failed");
         }
@@ -1906,10 +1906,10 @@ describe("diffTrafficPitExit", () => {
       h.after(100, tel({ PlayerTrackSurface: TrkLoc.OnTrack }));
 
       expect(lines(h.debug)).toEqual([
-        "PitExit: episode started (left the stall at pct=0.0625)",
-        "PitExit: traffic settled short of pitRoadEnd, not spoken yet (first verdict; eta 36.25 s on pitRoad, window -2/+4 s; nearest car 5 at 1.50 s via curve; untimed: none)",
-        "PitExit: emit traffic (first call; eta 28.75 s on blend, window -2/+4 s; nearest car 5 at 1.50 s via curve; untimed: none)",
-        "PitExit: episode ended (on the racing surface)",
+        "episode started (left the stall at pct=0.0625)",
+        "traffic settled short of pitRoadEnd, not spoken yet (first verdict; eta 36.25 s on pitRoad, window -2/+4 s; nearest car 5 at 1.50 s via curve; untimed: none)",
+        "emit traffic (first call; eta 28.75 s on blend, window -2/+4 s; nearest car 5 at 1.50 s via curve; untimed: none)",
+        "episode ended (on the racing surface)",
       ]);
     });
   });

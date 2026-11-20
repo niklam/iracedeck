@@ -383,6 +383,10 @@ type TranslatorInstance = {
   loadPitLaneLandmarks: PitLaneLandmarksLoader | null;
   /** Scoped logger for the pit-lane landmark edge diagnostics (issue #1112), all at debug. */
   pitLaneLandmarkLogger: ILogger;
+  /** Scoped logger for the rejoin detector's debug lines (issue #1113). */
+  trafficRejoinLogger: ILogger;
+  /** Scoped logger for the pit-exit detector's debug lines (issue #1113). */
+  trafficPitExitLogger: ILogger;
   /**
    * Live-read safety margin (laps) for the laps-of-fuel-left callouts
    * (issue #838). Plugins wire it to the `fuelCalloutMarginLaps` global
@@ -645,6 +649,8 @@ export function initializeSimEventsIracing(
     trafficClassMemo: null,
     loadPitLaneLandmarks: options.loadPitLaneLandmarks ?? null,
     pitLaneLandmarkLogger: logger.createScope("PitLaneLandmarks"),
+    trafficRejoinLogger: logger.createScope("Rejoin"),
+    trafficPitExitLogger: logger.createScope("PitExit"),
     getFuelLapsLeftMarginLaps: options.getFuelLapsLeftMarginLaps ?? (() => FUEL_CALLOUT_DEFAULT_MARGIN_LAPS),
     getCornerCalloutLeadSeconds: options.getCornerCalloutLeadSeconds ?? (() => CORNER_CALLOUT_DEFAULT_LEAD_SECONDS),
     getGapAlertThresholdSeconds: options.getGapAlertThresholdSeconds ?? (() => GAP_DEFAULT_ALERT_THRESHOLD_S),
@@ -3862,8 +3868,8 @@ function handleLiveSteps(
   // The pit exit reads #1112's learner through a closure, so the landmark
   // view is built only when it reads it (at an evaluation, and between two
   // only until its call is made), and the track length
-  // and pit speed limit this tick already resolved. Both log to the
-  // translator's own logger at debug, each line led by `Rejoin:` / `PitExit:`.
+  // and pit speed limit this tick already resolved. Each logs at debug
+  // through its own scope of the translator's logger, `Rejoin` / `PitExit`.
   steps.live("diffTrafficRejoin", pending, () =>
     diffTrafficRejoin(
       self.state.trafficRejoin,
@@ -3874,7 +3880,7 @@ function handleLiveSteps(
       trackLengthMeters,
       now,
       emit,
-      self.logger,
+      self.trafficRejoinLogger,
     ),
   );
   steps.live("diffTrafficPitExit", pending, () =>
@@ -3895,7 +3901,7 @@ function handleLiveSteps(
       },
       now,
       emit,
-      self.logger,
+      self.trafficPitExitLogger,
     ),
   );
   // The corner-name markers (issue #888), resolved from the bundled

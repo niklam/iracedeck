@@ -179,9 +179,9 @@ describe("the approaching-traffic detectors through handleTick (issue #1113)", (
   let pitExit: SimEventMap["traffic.pitExit"]["data"][];
   let order: string[];
 
-  function init(options: SimEventsIracingOptions = {}): void {
+  function init(options: SimEventsIracingOptions = {}, logger: ILogger = createMockLogger()): void {
     controller = createMockController();
-    initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow", ...options });
+    initializeSimEventsIracing(getEventBus(), controller, logger, { onStepError: "rethrow", ...options });
     getEventBus().subscribe("traffic.rejoin", (ev) => {
       rejoin.push(ev.data);
       order.push(ev.event);
@@ -209,6 +209,28 @@ describe("the approaching-traffic detectors through handleTick (issue #1113)", (
     vi.useRealTimers();
   });
 
+  /**
+   * The translator's logger, whose every `createScope` gives a logger of its
+   * own, kept by its scope name, so a test can read which scope a line went to.
+   */
+  function scopedLoggers(): { root: ILogger; scopes: Map<string, ILogger> } {
+    const root = createMockLogger();
+    const scopes = new Map<string, ILogger>();
+
+    vi.mocked(root.createScope).mockImplementation((scope: string) => {
+      const scoped = createMockLogger();
+
+      scopes.set(scope, scoped);
+
+      return scoped;
+    });
+
+    return { root, scopes };
+  }
+
+  const debugLines = (logger: ILogger | undefined): string[] =>
+    logger === undefined ? [] : vi.mocked(logger.debug).mock.calls.map(([line]) => String(line));
+
   describe("traffic.rejoin", () => {
     it("says a car the curve times 4.5 s away is near, and clear once it is by", () => {
       init();
@@ -225,6 +247,22 @@ describe("the approaching-traffic detectors through handleTick (issue #1113)", (
       controller.__tick(tick({ pct: 0.5 }, 0.52));
 
       expect(rejoin).toEqual([{ verdict: "near", seconds: 4, first: true }, { verdict: "clear" }]);
+    });
+
+    it("writes its debug lines through a Rejoin scope of the translator's logger, with no prefix of their own", () => {
+      const { root, scopes } = scopedLoggers();
+
+      init({}, root);
+      controller.__tick(tick({ pct: 0.5 }, 0.45));
+      vi.advanceTimersByTime(TRAFFIC_REJOIN_ENTRY_DWELL_MS);
+      controller.__tick(tick({ pct: 0.5 }, 0.45));
+
+      const lines = debugLines(scopes.get("Rejoin"));
+
+      expect(lines.some((line) => line.startsWith("episode started (pct=0.5000"))).toBe(true);
+      expect(lines.some((line) => line.startsWith("emit near 4 s (first)"))).toBe(true);
+      expect(lines.filter((line) => line.startsWith("Rejoin:"))).toEqual([]);
+      expect(debugLines(root).filter((line) => /episode|emit/.test(line))).toEqual([]);
     });
 
     it("leaves out a car standing still right behind, so the car really coming gets its call (the multi-car incident)", () => {
@@ -319,6 +357,20 @@ describe("the approaching-traffic detectors through handleTick (issue #1113)", (
 
       expect(pitExit).toEqual([{ verdict: "traffic", seconds: 0.9 }]);
       expect(order).toEqual(["pitStall.departed", "traffic.pitExit"]);
+    });
+
+    it("writes its debug lines through a PitExit scope of the translator's logger, with no prefix of their own", () => {
+      const { root, scopes } = scopedLoggers();
+
+      init({ loadPitLaneLandmarks: section }, root);
+      driveOut();
+
+      const lines = debugLines(scopes.get("PitExit"));
+
+      expect(lines[0]).toBe("episode started (left the stall at pct=0.0805)");
+      expect(lines.some((line) => line.startsWith("emit traffic (first call; eta "))).toBe(true);
+      expect(lines.filter((line) => line.startsWith("PitExit:"))).toEqual([]);
+      expect(debugLines(root).filter((line) => /episode|emit/.test(line))).toEqual([]);
     });
 
     it("calls clear for a car well behind, with the window from the options", () => {

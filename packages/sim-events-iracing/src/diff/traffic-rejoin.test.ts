@@ -365,9 +365,7 @@ describe("diffTrafficRejoin", () => {
 
       expect(h.episode.active).toBe(false);
       expect(h.events).toEqual([OVER_TEN]);
-      expect(h.debug).toHaveBeenCalledWith(
-        `Rejoin: episode ended (gate failed for ${TRAFFIC_REJOIN_GATE_GRACE_MS + 100} ms)`,
-      );
+      expect(h.debug).toHaveBeenCalledWith(`episode ended (gate failed for ${TRAFFIC_REJOIN_GATE_GRACE_MS + 100} ms)`);
 
       // The recovery tick began the entry dwell: a whole dwell after it, a new episode.
       h.after(TRAFFIC_REJOIN_ENTRY_DWELL_MS - 1, tel({ cars }));
@@ -388,7 +386,7 @@ describe("diffTrafficRejoin", () => {
 
       expect(h.episode.active).toBe(true);
       expect(h.debug).toHaveBeenCalledWith(
-        `Rejoin: gates hold again after ${TRAFFIC_REJOIN_GATE_GRACE_MS - 1} ms, episode kept`,
+        `gates hold again after ${TRAFFIC_REJOIN_GATE_GRACE_MS - 1} ms, episode kept`,
       );
 
       h.run(5_000, tel({ cars }));
@@ -437,7 +435,7 @@ describe("diffTrafficRejoin", () => {
       h.after(100, tel({ SessionState: Number.NaN }));
 
       expect(h.events).toEqual([CLEAR]);
-      expect(h.debug).toHaveBeenCalledWith("Rejoin: gate failed (preGreen), episode held");
+      expect(h.debug).toHaveBeenCalledWith("gate failed (preGreen), episode held");
     });
 
     it("says nothing while a gate fails, and evaluates on the first tick the gates hold again", () => {
@@ -677,7 +675,7 @@ describe("diffTrafficRejoin", () => {
 
       expect(h.events).toEqual([near(9, true), near(5, true)]);
       expect(h.debug.mock.calls.map(([line]) => line)).toContain(
-        "Rejoin: emit near 5 s (first) (nearest car 6 at 5.50 s via curve; a nearer car)",
+        "emit near 5 s (first) (nearest car 6 at 5.50 s via curve; a nearer car)",
       );
     });
 
@@ -901,7 +899,7 @@ describe("diffTrafficRejoin", () => {
 
       expect(h.events).toEqual([near(5, true), CLEAR]);
       expect(h.debug).toHaveBeenCalledWith(
-        "Rejoin: car 5 re-timed at 8.00 s via curve (was 5.00 s via scaled), a new baseline",
+        "car 5 re-timed at 8.00 s via curve (was 5.00 s via scaled), a new baseline",
       );
     });
 
@@ -991,8 +989,8 @@ describe("diffTrafficRejoin", () => {
       expect(h.events).toEqual([PACK, CLEAR]);
       expect(spokenAt).toEqual([18]);
       expect(h.debug.mock.calls.map(([line]) => String(line)).filter((l) => l.includes("emit"))).toEqual([
-        "Rejoin: emit pack (9 cars, first at 9.20 s, last at 17.20 s; entry)",
-        "Rejoin: emit clear (nearest car 1 at 499.00 s via curve; after a close car)",
+        "emit pack (9 cars, first at 9.20 s, last at 17.20 s; entry)",
+        "emit clear (nearest car 1 at 499.00 s via curve; after a close car)",
       ]);
     });
 
@@ -1081,7 +1079,7 @@ describe("diffTrafficRejoin", () => {
 
       expect(h.events).toEqual([PACK, CLEAR]);
       expect(h.episode.packCars).toEqual([]);
-      expect(h.debug).toHaveBeenCalledWith("Rejoin: pack grows to 3 cars (car 7 at 5.00 s)");
+      expect(h.debug).toHaveBeenCalledWith("pack grows to 3 cars (car 7 at 5.00 s)");
     });
 
     it("keeps a car of it that joined at the clear band's edge when noise lifts it across", () => {
@@ -1330,7 +1328,7 @@ describe("diffTrafficRejoin", () => {
 
       expect(h.events).toEqual([]);
       expect(withheldLines(h.debug)).toEqual([
-        "Rejoin: clear withheld by untimed cars: car 9 (noClass) (no timed car; entry)",
+        "clear withheld by untimed cars: car 9 (noClass) (no timed car; entry)",
       ]);
     });
 
@@ -1474,7 +1472,7 @@ describe("diffTrafficRejoin", () => {
 
       expect(m.h.events).toEqual([near(5, true)]);
       expect(m.h.debug.mock.calls.flat().at(-1)).toBe(
-        "Rejoin: emit near 5 s (first) (nearest car 5 at 5.75 s via curve; entry; standing still: car 4)",
+        "emit near 5 s (first) (nearest car 5 at 5.75 s via curve; entry; standing still: car 4)",
       );
     });
 
@@ -1542,11 +1540,11 @@ describe("diffTrafficRejoin", () => {
       h.after(TRAFFIC_REJOIN_END_DWELL_MS, moving);
 
       expect(h.debug.mock.calls.flat()).toEqual([
-        "Rejoin: episode started (pct=0.5000, speed=0.0 m/s)",
-        "Rejoin: emit near 4 s (first) (nearest car 5 at 4.25 s via curve; entry)",
-        "Rejoin: emit rightBehind (nearest car 5 at 0.50 s via curve; closer band)",
-        "Rejoin: emit clear (nearest car 5 at 499.00 s via curve; after a close car)",
-        "Rejoin: episode ended (moving at 20.0 m/s)",
+        "episode started (pct=0.5000, speed=0.0 m/s)",
+        "emit near 4 s (first) (nearest car 5 at 4.25 s via curve; entry)",
+        "emit rightBehind (nearest car 5 at 0.50 s via curve; closer band)",
+        "emit clear (nearest car 5 at 499.00 s via curve; after a close car)",
+        "episode ended (moving at 20.0 m/s)",
       ]);
     });
 
@@ -1556,9 +1554,7 @@ describe("diffTrafficRejoin", () => {
       h.stop(tel({ cars: [behind(5, 9)] }));
       h.step([behind(5, 6)]);
 
-      expect(h.debug.mock.calls.flat().at(-1)).toBe(
-        "Rejoin: emit near 6 s (count) (nearest car 5 at 6.00 s via curve; count)",
-      );
+      expect(h.debug.mock.calls.flat().at(-1)).toBe("emit near 6 s (count) (nearest car 5 at 6.00 s via curve; count)");
     });
 
     it("name the failed gate that ended an episode, and a blip the episode was held through", () => {
@@ -1571,10 +1567,10 @@ describe("diffTrafficRejoin", () => {
       h.after(TRAFFIC_REJOIN_GATE_GRACE_MS, tel({ OnPitRoad: true }));
 
       expect(h.debug.mock.calls.flat().slice(-4)).toEqual([
-        "Rejoin: gate failed (noSpeed), episode held",
-        "Rejoin: gates hold again after 100 ms, episode kept",
-        "Rejoin: gate failed (pitRoad), episode held",
-        "Rejoin: episode ended (pitRoad)",
+        "gate failed (noSpeed), episode held",
+        "gates hold again after 100 ms, episode kept",
+        "gate failed (pitRoad), episode held",
+        "episode ended (pitRoad)",
       ]);
     });
   });

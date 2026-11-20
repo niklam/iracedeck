@@ -400,7 +400,7 @@ export function diffTrafficPitExit(
   const departed = episode.lastInPitStall === true && inStall === false && telemetry.OnPitRoad === true;
 
   if (departed) {
-    if (episode.active) logger.debug("PitExit: episode ended (left the stall again)");
+    if (episode.active) logger.debug("episode ended (left the stall again)");
 
     Object.assign(episode, createTrafficPitExitState(), { active: true, lastOnPitRoad: true });
 
@@ -410,7 +410,7 @@ export function diffTrafficPitExit(
     if (position.kind === "onLap") episode.startPct = position.pct;
 
     logger.debug(
-      `PitExit: episode started (left the stall at pct=${isFiniteNumber(rawPlayerPct) ? rawPlayerPct.toFixed(4) : "?"})`,
+      `episode started (left the stall at pct=${isFiniteNumber(rawPlayerPct) ? rawPlayerPct.toFixed(4) : "?"})`,
     );
   }
 
@@ -495,7 +495,7 @@ export function diffTrafficPitExit(
  */
 function holdWithoutPosition(episode: TrafficPitExitState, now: number, logger: ILogger): void {
   if (episode.positionUnavailableSince === null || episode.positionUnavailableSince > now) {
-    if (episode.positionUnavailableSince === null) logger.debug("PitExit: player position unavailable, episode held");
+    if (episode.positionUnavailableSince === null) logger.debug("player position unavailable, episode held");
 
     episode.positionUnavailableSince = now;
   }
@@ -523,7 +523,7 @@ function positionGapExpired(episode: TrafficPitExitState, now: number, logger: I
     return true;
   }
 
-  logger.debug(`PitExit: player position back after ${gap} ms, episode kept`);
+  logger.debug(`player position back after ${gap} ms, episode kept`);
   episode.positionUnavailableSince = null;
 
   return false;
@@ -531,7 +531,7 @@ function positionGapExpired(episode: TrafficPitExitState, now: number, logger: I
 
 /** Ends the episode silently, keeping the stall baseline (written after). */
 function end(episode: TrafficPitExitState, reason: string, logger: ILogger): void {
-  logger.debug(`PitExit: episode ended (${reason})`);
+  logger.debug(`episode ended (${reason})`);
   Object.assign(episode, createTrafficPitExitState(), { lastInPitStall: episode.lastInPitStall });
 }
 
@@ -817,7 +817,7 @@ function evaluate(
     if (!episode.landmarksMissingLogged) {
       episode.landmarksMissingLogged = true;
       logger.debug(
-        `PitExit: silent, landmarks not learned (pitRoadEnd ${pitRoadEnd ? "learned" : "missing"}, blendEnd ${blendEnd ? "learned" : "missing"})`,
+        `silent, landmarks not learned (pitRoadEnd ${pitRoadEnd ? "learned" : "missing"}, blendEnd ${blendEnd ? "learned" : "missing"})`,
       );
     }
 
@@ -832,7 +832,7 @@ function evaluate(
     if (!episode.landmarksRelearningLogged) {
       episode.landmarksRelearningLogged = true;
       logger.debug(
-        `PitExit: silent, landmarks relearning after a track rebuild (pitRoadEnd ${pitRoadEnd.source}, blendEnd ${blendEnd.source})`,
+        `silent, landmarks relearning after a track rebuild (pitRoadEnd ${pitRoadEnd.source}, blendEnd ${blendEnd.source})`,
       );
     }
 
@@ -880,7 +880,7 @@ function evaluate(
 
     if (!episode.noEtaLogged) {
       episode.noEtaLogged = true;
-      logger.debug(`PitExit: silent, no ETA to blendEnd (${eta.reason})`);
+      logger.debug(`silent, no ETA to blendEnd (${eta.reason})`);
     }
 
     return;
@@ -915,7 +915,7 @@ function evaluate(
 
     if (!episode.arraysMissingLogged) {
       episode.arraysMissingLogged = true;
-      logger.debug("PitExit: silent, the per-car arrays are missing");
+      logger.debug("silent, the per-car arrays are missing");
     }
 
     return;
@@ -959,14 +959,14 @@ function evaluate(
   if (settled !== null && verdict !== settled && !scheduled) {
     // Off the schedule, a tick or two after a scheduled evaluation: counting
     // it would confirm a flip that has held for a few milliseconds.
-    logger.debug(`PitExit: ${verdict} at the call point between evaluations, not counted, ${settled} still stands`);
+    logger.debug(`${verdict} at the call point between evaluations, not counted, ${settled} still stands`);
     nextSettled = settled;
   } else if (settled !== null && verdict !== settled) {
     const evaluations = episode.flipVerdict === verdict ? episode.flipEvaluations + 1 : 1;
 
     if (evaluations < TRAFFIC_PIT_EXIT_FLIP_CONFIRM_EVALUATIONS) {
       logger.debug(
-        `PitExit: ${verdict} at ${evaluations} of ${TRAFFIC_PIT_EXIT_FLIP_CONFIRM_EVALUATIONS} evaluations, ${settled} still stands`,
+        `${verdict} at ${evaluations} of ${TRAFFIC_PIT_EXIT_FLIP_CONFIRM_EVALUATIONS} evaluations, ${settled} still stands`,
       );
       nextSettled = settled;
       flipVerdict = verdict;
@@ -985,7 +985,7 @@ function evaluate(
 
   if (nextSettled !== settled && !episode.pastPitRoadEnd) {
     logger.debug(
-      `PitExit: ${nextSettled} settled short of pitRoadEnd, not spoken yet (${settled === null ? "first verdict" : "flipped"}; ${details})`,
+      `${nextSettled} settled short of pitRoadEnd, not spoken yet (${settled === null ? "first verdict" : "flipped"}; ${details})`,
     );
   }
 
@@ -1001,7 +1001,7 @@ function evaluate(
       event: "traffic.pitExit",
       data: nextSeconds === null ? { verdict: nextSettled } : { verdict: nextSettled, seconds: nextSeconds },
     });
-    logger.debug(`PitExit: emit ${nextSettled} (${first ? "first call" : "flipped"}; ${details})`);
+    logger.debug(`emit ${nextSettled} (${first ? "first call" : "flipped"}; ${details})`);
     episode.spokenVerdict = nextSettled;
   }
 
