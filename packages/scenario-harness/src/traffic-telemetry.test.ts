@@ -127,17 +127,15 @@ afterEach(() => {
 });
 
 describe("the rejoin train (issue #1113)", () => {
+  /** Warnings only (amended 2026-11-20): nothing for a car 10 s or more away, on entry or after the lead car. */
   const BANDS = [
-    { verdict: "clear" },
-    { verdict: "overTen" },
     { verdict: "near", seconds: 8, first: true },
     { verdict: "near", seconds: 5, first: false },
     { verdict: "rightBehind" },
-    { verdict: "overTen" },
     { verdict: "near", seconds: 6, first: true },
   ].map((data) => ({ event: "traffic.rejoin", data }));
 
-  it.each(["race", "race-oval"])("is heard as every band in turn, and nothing else (%s)", (preset) => {
+  it.each(["race", "race-oval"])("is heard only for its bands under ten seconds, and nothing else (%s)", (preset) => {
     const { controller, events } = startTranslator(preset);
 
     runSequence(controller, TRAFFIC_REJOIN_SEQUENCE);
@@ -145,13 +143,16 @@ describe("the rejoin train (issue #1113)", () => {
     expect(events).toEqual(BANDS);
   });
 
-  it.each(["race", "race-oval"])("is heard as every band in turn with the tick loop paused (%s)", (preset) => {
-    const { controller, events } = startTranslator(preset);
+  it.each(["race", "race-oval"])(
+    "is heard only for its bands under ten seconds with the tick loop paused (%s)",
+    (preset) => {
+      const { controller, events } = startTranslator(preset);
 
-    runSequencePaused(controller, TRAFFIC_REJOIN_SEQUENCE);
+      runSequencePaused(controller, TRAFFIC_REJOIN_SEQUENCE);
 
-    expect(events).toEqual(BANDS);
-  });
+      expect(events).toEqual(BANDS);
+    },
+  );
 
   it("plays the same on a second press", () => {
     const { controller, events } = startTranslator("race");
@@ -166,9 +167,9 @@ describe("the rejoin train (issue #1113)", () => {
   it("times the class-B cars by class B's own curve: without the learning lap only the class-A car's close call is heard", () => {
     // Control: the lead and tail cars are class B, and the presets carry no
     // class lap times to scale the player's class by, so with no class-B
-    // samples at P both are untimed. They withhold overTen and clear, not a
-    // close call: the timed class-A car is heard once it is under ten seconds.
-    // The lead car's own near and rightBehind are not heard, being untimed.
+    // samples at P both are untimed, and left out: the timed class-A car is
+    // heard once it is under ten seconds. The lead car's own near and
+    // rightBehind are not heard, being untimed.
     const { controller, events } = startTranslator("race");
 
     runSequence(controller, TRAFFIC_REJOIN_SEQUENCE_UNLEARNED);

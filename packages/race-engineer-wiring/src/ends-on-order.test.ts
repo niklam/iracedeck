@@ -24,18 +24,58 @@ import { wireRaceEngineer } from "./wire-race-engineer.js";
 // registration (`wireRaceEngineer`) makes, read back through
 // `engine.contracts()`, never a hand-picked list.
 //
-// No exemption list: a `same-stage` violation fails closed, and its message
-// says what proof would justify one. None is needed today.
+// A `same-stage` violation fails closed, and its message says what proof
+// would justify an exemption: a test in the publishing module showing one call
+// never emits the trigger after the end. Each exemption below names its pair,
+// its stage and that test, and excuses nothing else — no other kind of
+// violation, no other stage.
 
 /** What the check reads of one contract. */
 type EndsOnPair = Pick<ContractReport, "id" | "event" | "endsOnEvent">;
 
+/** A trigger and end one stage publishes both of, proved in order by that module's own test. */
+type SameStageExemption = {
+  readonly trigger: SimEventName;
+  readonly end: SimEventName;
+  readonly stage: string;
+  /** The test that proves the stage never publishes `trigger` after `end` in one call. */
+  readonly proof: string;
+};
+
+const SAME_STAGE_EXEMPTIONS: readonly SameStageExemption[] = [
+  {
+    // #1113, amended 2026-11-20: a tow or a reset cuts a rejoin line. The
+    // detector publishes the end on the tick a stop is taken off the track
+    // and returns before any evaluation, so no `traffic.rejoin` follows it.
+    trigger: "traffic.rejoin",
+    end: "traffic.rejoinTowed",
+    stage: "diffTrafficRejoin",
+    proof:
+      '@iracedeck/sim-events-iracing diff/traffic-rejoin.test.ts: "publishes the end alone on its tick, never a traffic.rejoin after it (the endsOn order, #1499)"',
+  },
+];
+
+/** Whether `exemptions` excuse a `same-stage` violation of `trigger` before `end` in `stage`. */
+function exempt(
+  exemptions: readonly SameStageExemption[],
+  trigger: SimEventName,
+  end: SimEventName,
+  stage: string,
+): boolean {
+  return exemptions.some((e) => e.trigger === trigger && e.end === end && e.stage === stage);
+}
+
 /**
  * One failure message per `endsOn` contract in `contracts` that the
  * translator could publish in the wrong order (or that cannot be checked);
- * empty when every pairing holds. Contracts without `endsOn` are skipped.
+ * empty when every pairing holds. Contracts without `endsOn` are skipped, and
+ * a `same-stage` violation `exemptions` name is excused.
  */
-function endsOnOrderFailures(contracts: readonly EndsOnPair[], order: readonly TickStage[]): string[] {
+function endsOnOrderFailures(
+  contracts: readonly EndsOnPair[],
+  order: readonly TickStage[],
+  exemptions: readonly SameStageExemption[] = SAME_STAGE_EXEMPTIONS,
+): string[] {
   const failures: string[] = [];
 
   for (const { id, event, endsOnEvent } of contracts) {
@@ -48,7 +88,9 @@ function endsOnOrderFailures(contracts: readonly EndsOnPair[], order: readonly T
       continue;
     }
 
-    const violations = findEndsOnOrderViolations(order, event, endsOnEvent);
+    const violations = findEndsOnOrderViolations(order, event, endsOnEvent).filter(
+      (v) => !(v.kind === "same-stage" && exempt(exemptions, event, endsOnEvent, v.stage)),
+    );
 
     if (violations.length > 0) {
       failures.push(
@@ -89,13 +131,27 @@ describe("endsOn trigger/end order against one controller tick (#1407, #1499, #1
   });
 
   it("finds the endsOn contracts the production registration makes, so the check cannot pass on none", () => {
-    // Today that is pit-crew.limiter-dropped alone (ended by pitLane.exited).
+    // Today that is pit-crew.limiter-dropped (ended by pitLane.exited) and the
+    // four rejoin lines (ended by traffic.rejoinTowed, #1113).
     expect(engine.contracts().length).toBeGreaterThan(0);
-    expect(endsOnContracts.length, "endsOn contracts registered by wireRaceEngineer").toBeGreaterThanOrEqual(1);
+    expect(endsOnContracts.length, "endsOn contracts registered by wireRaceEngineer").toBeGreaterThanOrEqual(5);
+    expect(endsOnContracts.map((c) => c.id)).toEqual(
+      expect.arrayContaining(["pit-crew.limiter-dropped", "pit-crew.traffic-rejoin-near-first"]),
+    );
   });
 
   it("never lets one controller tick publish a contract's trigger after its endsOn event", () => {
     expect(endsOnOrderFailures(endsOnContracts, CONTROLLER_TICK_ORDER)).toEqual([]);
+  });
+
+  it("uses every exemption: each names a pair a registered contract has, so none outlives its contract", () => {
+    for (const e of SAME_STAGE_EXEMPTIONS) {
+      expect(
+        endsOnContracts.some((c) => c.event === e.trigger && c.endsOnEvent === e.end),
+        `${e.trigger} → ${e.end}`,
+      ).toBe(true);
+      expect(e.proof).toMatch(/\.test\.ts: /);
+    }
   });
 });
 
@@ -149,6 +205,31 @@ describe("endsOnOrderFailures (positive controls)", () => {
 
     expect(failure).toContain("test.same");
     expect(failure).toContain("[same-stage]");
+  });
+
+  it("excuses the rejoin lines' same-stage pair only through its exemption", () => {
+    const rejoin = [{ id: "test.rejoin", event: "traffic.rejoin", endsOnEvent: "traffic.rejoinTowed" }] as const;
+
+    expect(endsOnOrderFailures(rejoin, CONTROLLER_TICK_ORDER)).toEqual([]);
+
+    const [failure] = endsOnOrderFailures(rejoin, CONTROLLER_TICK_ORDER, []);
+
+    expect(failure).toContain("[same-stage]");
+    expect(failure).toContain("`diffTrafficRejoin`");
+  });
+
+  it("never lets an exemption excuse its pair from another stage, or another kind of violation", () => {
+    const otherStage: readonly TickStage[] = [
+      { stage: "diffBoth", source: "diff/both.ts", via: "pending", events: ["traffic.rejoin", "traffic.rejoinTowed"] },
+    ];
+    const reversed: readonly TickStage[] = [
+      { stage: "diffEnd", source: "diff/end.ts", via: "pending", events: ["traffic.rejoinTowed"] },
+      { stage: "diffTrafficRejoin", source: "diff/traffic-rejoin.ts", via: "pending", events: ["traffic.rejoin"] },
+    ];
+    const rejoin = [{ id: "test.rejoin", event: "traffic.rejoin", endsOnEvent: "traffic.rejoinTowed" }] as const;
+
+    expect(endsOnOrderFailures(rejoin, otherStage)[0]).toContain("[same-stage]");
+    expect(endsOnOrderFailures(rejoin, reversed)[0]).toContain("[trigger-after-end]");
   });
 
   it("reports an endsOn contract with no trigger event, which cannot be checked", () => {

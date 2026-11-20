@@ -118,7 +118,7 @@ function skippedIds(script: CalloutScript): string[] {
  * callouts migrated in #1065, the nine caution contracts of #1127 and the
  * tire-wear report of #1108 made 159, and the callouts added since brought it
  * to 168 (measured by #1376), the every-lap call (#1163) and the fastest lap
- * of the race (#1571) to 170, the sector-start call (#1573) to 171, and the three sector-comparison calls (#1572) to 174, and the seven approaching-traffic lines (#1113) to 181, and the pack line (#1113, amended 2026-11-18) to 182, and the merge warning (#1113, amended 2026-11-20) to 183. Raise the literal to the new count in the same
+ * of the race (#1571) to 170, the sector-start call (#1573) to 171, and the three sector-comparison calls (#1572) to 174, and the seven approaching-traffic lines (#1113) to 181, and the pack line (#1113, amended 2026-11-18) to 182, and the merge warning (#1113, amended 2026-11-20) to 183; the two reassuring rejoin lines, "more than ten" and "Clear to rejoin.", were removed (#1113, amended 2026-11-20), so 181. Raise the literal to the new count in the same
  * change that adds a contract — it is only the vacuity floor for the
  * enumeration, so one left behind lets that many contracts drop out unseen;
  * the completeness checks below are what actually guard the catalog.
@@ -129,7 +129,7 @@ function skippedIds(script: CalloutScript): string[] {
  * dropped from the registration and from every script together — which an
  * up-to-date floor catches as well.
  */
-const CATALOG_FLOOR = 183;
+const CATALOG_FLOOR = 181;
 
 /**
  * How many distinct clip sources each voice's script addresses — `pool:<group>/<base>`

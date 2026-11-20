@@ -658,8 +658,8 @@ export function resetTrafficArrivalMotion(slice: TrafficArrivalState): TrafficAr
  * starts a fresh episode after the entry dwell and says where the traffic is
  * now, which is what a driver back from a replay glance needs. Keeping half
  * of the episode would be worse than re-seeding: a band or a close car carried
- * into a new picture would speak an after-a-close-car line, or keep quiet,
- * about cars the driver never heard of.
+ * into a new picture would speak a count, or keep quiet, about cars the
+ * driver never heard of.
  */
 export type TrafficRejoinState = {
   /** Whether an episode is running. */
@@ -677,28 +677,22 @@ export type TrafficRejoinState = {
   gateFailedSince: number | null;
   /** When the episode last evaluated the arrivals; `null` before its first evaluation. */
   lastEvalAt: number | null;
-  /** The band last spoken this episode, or `pack` for the group call (amended 2026-11-18); `null` until the entry call is spoken. */
-  spokenBand: "rightBehind" | "near" | "overTen" | "clear" | "pack" | null;
+  /**
+   * The warning last spoken, or `pack` for the group call (amended
+   * 2026-11-18); `null` until one is spoken, and again once the car or the
+   * group it was about has gone by (amended 2026-11-20: the next car under
+   * 10 s is then a new first call, and nothing is said until one comes).
+   */
+  spokenBand: "rightBehind" | "near" | "pack" | null;
   /** The whole seconds of the last `near` call, the base of the drop-by-3 count; `null` when the last call was another band. */
   spokenSeconds: number | null;
   /**
    * The car the last close call (`near` or `rightBehind`) was about, followed
-   * while it is still coming, whose passing earns the next car's band one
-   * call; `null` when the last call was `overTen`, `clear` or `pack` (whose
-   * cars are {@link packCars}).
+   * while it is still coming; `null` with no close call standing, or when the
+   * last call was `pack` (whose cars are {@link packCars}). Once it has gone
+   * by, the call is forgotten.
    */
   closeCar: TrafficRejoinFollowedCar | null;
-  /**
-   * The close car has been seen going by (its arrival rose past the margin,
-   * reached the clear band from inside it, or its position wrapped past the
-   * player as its tier changed), or every car of the pack has, so the next
-   * line is the one after a close car.
-   * Latched until a line is spoken or the episode resets: neither a line held
-   * back by untimed cars nor an evaluation without the per-car arrays clears
-   * it, so the car stays gone on its way round again, however near it reads
-   * by the time the line can be said.
-   */
-  closeCarPassed: boolean;
   /**
    * The cars of the group the last line, `pack`, was about (amended
    * 2026-11-18), in arrival order when it was said, and every car that has
@@ -706,8 +700,6 @@ export type TrafficRejoinState = {
    * has gone by once every one of them has, and until then nothing is said.
    */
   packCars: TrafficRejoinFollowedCar[];
-  /** The once-per-episode debug line for a reassuring line withheld by untimed cars has been written. */
-  untimedLogged: boolean;
   /** The once-per-episode debug line for an evaluation without the per-car arrays has been written. */
   arraysMissingLogged: boolean;
 };
@@ -716,8 +708,8 @@ export type TrafficRejoinState = {
  * A car the rejoin detector follows until it has gone by (issue #1113): the
  * close car, or one car of the group a `pack` call was about (amended
  * 2026-11-18). Its arrival only falls while it is coming, so one that rose
- * past `TRAFFIC_REJOIN_PASSED_RISE_S`, or reached the clear band from inside
- * it once it had been close, has gone by, and stays gone (`passed`) on its way
+ * past `TRAFFIC_REJOIN_PASSED_RISE_S`, or reached `TRAFFIC_REJOIN_GONE_S`
+ * once it had been close, has gone by, and stays gone (`passed`) on its way
  * round again. Arrivals are compared only within one reference tier: a car
  * re-timed by another tier is a new baseline, and only its position wrapping
  * past the player says it went by on that evaluation (`diff/traffic-rejoin.ts`).
@@ -732,7 +724,7 @@ export type TrafficRejoinFollowedCar = {
   toPlayerPct: number | null;
   /**
    * It has read under `TRAFFIC_REJOIN_OVER_TEN_S` since its tier last
-   * changed: only such a car is gone by on reaching the clear band, so a car
+   * changed: only such a car is gone by on reaching `TRAFFIC_REJOIN_GONE_S`, so a car
    * of a pack that joined at the band's edge is not retired by a hundredth of
    * noise across it.
    */
@@ -752,9 +744,7 @@ export function createTrafficRejoinState(): TrafficRejoinState {
     spokenBand: null,
     spokenSeconds: null,
     closeCar: null,
-    closeCarPassed: false,
     packCars: [],
-    untimedLogged: false,
     arraysMissingLogged: false,
   };
 }

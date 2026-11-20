@@ -58,9 +58,7 @@ export type {
   TrafficPitExitMerge,
   TrafficPitExitVerdict,
   TrafficRejoin,
-  TrafficRejoinClear,
   TrafficRejoinNear,
-  TrafficRejoinOverTen,
   TrafficRejoinPack,
   TrafficRejoinRightBehind,
   TrafficRejoinVerdict,
@@ -68,8 +66,6 @@ export type {
 export {
   OpponentPenaltyFlag,
   TrackWetness,
-  TRAFFIC_REJOIN_CLEAR_S,
-  TRAFFIC_REJOIN_MOVING_MPS,
   TRAFFIC_REJOIN_NEAR_MAX_SECONDS,
   TRAFFIC_REJOIN_NEAR_MIN_SECONDS,
   TRAFFIC_REJOIN_OVER_TEN_S,

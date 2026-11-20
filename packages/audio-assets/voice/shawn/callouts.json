@@ -1974,20 +1974,6 @@
         "{{traffic.rejoinSeconds}}"
       ]
     },
-    "pit-crew.traffic-rejoin-over-ten": {
-      "comment": "Stopped or crawling on track with the nearest car ten to fifteen seconds away: a whole line from a pool of four, such as \"Next car over ten seconds. Careful.\" or \"Over ten back.\" No radio frame.",
-      "test": "Harness → Traffic → Rejoin over ten. In-sim: stop on track with the nearest car a little over ten seconds away.",
-      "sequence": [
-        "pool:traffic/rejoin-over-ten"
-      ]
-    },
-    "pit-crew.traffic-rejoin-clear": {
-      "comment": "Stopped or crawling on track with no car within fifteen seconds: a whole line from a pool of four, such as \"Clear to rejoin.\" or \"Clear behind.\" No radio frame.",
-      "test": "Harness → Traffic → Rejoin clear. In-sim: stop on track in practice with no car close behind.",
-      "sequence": [
-        "pool:traffic/rejoin-clear"
-      ]
-    },
     "pit-crew.traffic-rejoin-pack": {
       "comment": "Stopped or crawling on track with a group of cars coming, the nearest under ten seconds away and more close behind it: one line for the whole group, \"A group of cars coming. Join carefully.\", said once in place of the per-car calls, and nothing more until the last car of the group has gone by. It cuts a lower-weight line in flight, a caution or flag call included; the meatball, the start lights, the restart green, a fuel-critical warning and the spotter's car-alongside calls keep the radio. No radio frame.",
       "test": "Harness → Traffic → Rejoin pack. In-sim: stop on track as a group of cars a second or so apart comes up behind you, as at a race start or behind a pack of AI cars.",

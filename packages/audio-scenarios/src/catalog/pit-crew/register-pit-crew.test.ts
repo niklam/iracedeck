@@ -414,8 +414,6 @@ const TRAFFIC_CLIP_PATHS = [
     "rejoin-outro",
     "rejoin-update",
     "rejoin-right-behind",
-    "rejoin-over-ten",
-    "rejoin-clear",
     "rejoin-pack",
     "pit-exit-traffic",
     "pit-exit-clear",
@@ -982,9 +980,7 @@ describe("radio frame comes from the engine, not the catalog (issue #1064)", () 
         "pit-crew.spotter-call",
         "pit-crew.spotter-info",
         // Rejoin traffic lines: repeated while the car stays stopped (#1113).
-        ...["right-behind", "near-first", "near-update", "over-ten", "clear", "pack"].map(
-          (line) => `pit-crew.traffic-rejoin-${line}`,
-        ),
+        ...["right-behind", "near-first", "near-update", "pack"].map((line) => `pit-crew.traffic-rejoin-${line}`),
       ].sort(),
     );
   });
@@ -1891,7 +1887,8 @@ describe("opponent-pit family registration (issue #622)", () => {
 
 // Issue #1113: the approaching-traffic family is registered by
 // `registerPitCrew` and wrapped by the master gate and two opt-ins — `rejoin`
-// over the six rejoin lines, `pit-exit` over the two pit-exit ones — and
+// over the four rejoin lines, `pit-exit` over the two pit-exit ones and the
+// merge warning — and
 // spoken through the bundled script. The line mapping, the vocabulary and the
 // scheduling are covered in `traffic.test.ts`; these confirm the wiring.
 describe("traffic family registration (issue #1113)", () => {
@@ -1901,8 +1898,6 @@ describe("traffic family registration (issue #1113)", () => {
     { data: { verdict: "rightBehind" }, clips: ["rejoin-right-behind"] },
     { data: { verdict: "near", seconds: 4, first: true }, clips: ["rejoin-intro", "rejoin-mid-4", "rejoin-outro"] },
     { data: { verdict: "near", seconds: 4, first: false }, clips: ["rejoin-update", "rejoin-mid-4"] },
-    { data: { verdict: "overTen" }, clips: ["rejoin-over-ten"] },
-    { data: { verdict: "clear" }, clips: ["rejoin-clear"] },
     { data: { verdict: "pack" }, clips: ["rejoin-pack"] },
   ] satisfies ReadonlyArray<{ data: SimEventMap["traffic.rejoin"]["data"]; clips: string[] }>)(
     "a rejoin $data.verdict plays its line when the opt-in is on",
@@ -1937,7 +1932,6 @@ describe("traffic family registration (issue #1113)", () => {
 
     bus.publishEvent("traffic.rejoin", { verdict: "rightBehind" });
     bus.publishEvent("traffic.rejoin", { verdict: "near", seconds: 4, first: true });
-    bus.publishEvent("traffic.rejoin", { verdict: "clear" });
     bus.publishEvent("traffic.rejoin", { verdict: "pack" });
     flush(audio);
     expect(voiceClipsPlayed()).toEqual([]);
@@ -1963,9 +1957,19 @@ describe("traffic family registration (issue #1113)", () => {
     flush(audio);
     expect(voiceClipsPlayed()).toEqual([]);
 
-    bus.publishEvent("traffic.rejoin", { verdict: "overTen" });
+    bus.publishEvent("traffic.rejoin", { verdict: "pack" });
     flush(audio);
-    expect(voiceClipsPlayed()).toEqual([clip("rejoin-over-ten")]);
+    expect(voiceClipsPlayed()).toEqual([clip("rejoin-pack")]);
+  });
+
+  it("a tow or a reset cuts a rejoin line through the registration's wrappers (amended 2026-11-20)", () => {
+    bus.publishEvent("traffic.rejoin", { verdict: "near", seconds: 4, first: true });
+    expect(voiceClipsPlayed()).toEqual([clip("rejoin-intro")]);
+
+    bus.publishEvent("traffic.rejoinTowed", {});
+    flush(audio);
+
+    expect(voiceClipsPlayed()).toEqual([clip("rejoin-intro")]);
   });
 
   it("is suppressed when the master gate is off", () => {

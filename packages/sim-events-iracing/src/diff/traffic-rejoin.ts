@@ -1,9 +1,12 @@
 /**
  * Rejoining from a stop (issue #1113, spec decisions 2 and 3 as amended on
- * 2026-11-11): while the player is stopped or crawling on the circuit, which
- * fixed band the nearest coming car is in. Publishes `traffic.rejoin`. The
- * engineer alerts, never instructs: no line tells a stopped driver to hold or
- * to go.
+ * 2026-11-11 and 2026-11-20): while the player is stopped or crawling on the
+ * circuit, whether a car is coming within ten seconds, and how close.
+ * Publishes `traffic.rejoin`, and `traffic.rejoinTowed` when the car is taken
+ * off the track mid-stop. The engineer alerts, never instructs: no line tells
+ * a stopped driver to hold or to go, and none reassures him (amended
+ * 2026-11-20): he speaks only to warn, so on rejoin silence means no car is
+ * under ten seconds away.
  *
  * **The episode.** It starts once every entry gate has held, with the car
  * below {@link TRAFFIC_CRAWL_MPS}, for {@link TRAFFIC_REJOIN_ENTRY_DWELL_MS}.
@@ -20,17 +23,32 @@
  * tick at or below the speed does. The gap between the two speeds is the
  * hysteresis, so a car creeping through
  * a gravel trap does not flicker in and out of an episode. It ends silently
- * at once when the player leaves the car or is in the garage, and on any
- * other gate failing only once that failure has held for
- * {@link TRAFFIC_REJOIN_GATE_GRACE_MS}: a tick or two the sim did not send or
- * misread (a `Speed` dropout, a surface flicker at the edge of the run-off) is
- * not the end of the stop, and ending on it would start a new episode after the
- * entry dwell and repeat the entry line about the same cars. A failure that
- * outlasted the grace ends the episode whether the next tick fails or not: the
- * first tick with every gate holding again after the grace, with no tick in
- * between (the sim sent none), ends it as a failing tick at the grace limit
- * would have, and starts a fresh entry dwell. While a gate fails, nothing is
- * evaluated or said.
+ * on any gate failing other than the car being taken off the track (below)
+ * only once that failure has held for {@link TRAFFIC_REJOIN_GATE_GRACE_MS}: a
+ * tick or two the sim did not send or misread (a `Speed` dropout, a surface
+ * flicker at the edge of the run-off or the pit entry) is not the end of the
+ * stop, and ending on it would start a new episode after the entry dwell and
+ * repeat the first call about the same cars. A failure that outlasted the
+ * grace ends the episode whether the next tick fails or not: the first tick
+ * with every gate holding again after the grace, with no tick in between (the
+ * sim sent none), ends it as a failing tick at the grace limit would have, and
+ * starts a fresh entry dwell. While a gate fails, nothing is evaluated or
+ * said.
+ *
+ * **A tow or a reset ends it at once and cuts the line** (amended
+ * 2026-11-20). The car taken off the track without being driven off — out of
+ * the world (`PlayerTrackSurface` `NotInWorld`, the tick a tow or a reset
+ * passes on its way to the stall), in its pit stall (`InPitStall`), the
+ * player out of the car (`IsOnTrack` not true) or in the garage — ends the
+ * episode on that tick, with no grace, and publishes `traffic.rejoinTowed`,
+ * which the Race Engineer's rejoin lines end on (`endsOn`): a line playing
+ * stops, and one waiting is dropped. These are definite readings, never a
+ * blip: `traffic-pit-exit.ts` ends its own episode on the same ones. Every
+ * other end — driving off, a gate failing past its grace — is silent and
+ * leaves a line in flight to finish. Nothing else is published on that tick
+ * (the path returns before any evaluation), so the trigger never follows its
+ * end within one tick, which `race-engineer-wiring`'s `ends-on-order.test.ts`
+ * relies on.
  *
  * **The band.** On entry and then every {@link TRAFFIC_REJOIN_EVAL_INTERVAL_MS},
  * every car on the racing surface is timed to the player's lap position P
@@ -40,17 +58,19 @@
  * is not coming, and `computeTrafficArrivals` leaves it out (its module
  * header): timed at reference pace it would read as arriving now for as long
  * as it stood there, pin the band at `rightBehind` and hide every car really
- * coming. The nearest timed arrival `s` names the band: `rightBehind` under
- * {@link TRAFFIC_REJOIN_RIGHT_BEHIND_S}, `near` under
+ * coming. A car no source can time is left out too, never given a number
+ * (spec decision 5). The nearest timed arrival `s` names the band:
+ * `rightBehind` under {@link TRAFFIC_REJOIN_RIGHT_BEHIND_S}, `near` under
  * {@link TRAFFIC_REJOIN_OVER_TEN_S} with N the whole seconds rounded down (2
- * to 9, the cautious direction: a car at 4.9 s is "about four seconds"),
- * `overTen` under {@link TRAFFIC_REJOIN_CLEAR_S}, and `clear` from there on or
- * with no timed car. The edges are fixed, not settings, because the lines name
- * them, and they are `@iracedeck/event-bus`'s, beside the payload: the Race
- * Engineer's lines read the same constants, so the two sides cannot drift.
+ * to 9, the cautious direction: a car at 4.9 s is "about four seconds"), and
+ * no band from there on or with no timed car. The edges are fixed, not
+ * settings, because the lines name them, and they are
+ * `@iracedeck/event-bus`'s, beside the payload: the Race Engineer's lines read
+ * the same constants, so the two sides cannot drift.
  *
- * **When it speaks**, never on every evaluation:
- * - **Entry:** the episode's first band, always, so silence never means clear.
+ * **When it speaks**, never on every evaluation, and never with no band:
+ * - **A first call:** the first band since the episode started, or since the
+ *   car or the group the last call was about went by.
  * - **A closer band:** whenever the nearest car moves into one.
  * - **Near counting down:** the first call into `near` is `first: true` ("Car
  *   coming, about N seconds"); while still `near`, a `first: false` call ("Now
@@ -61,78 +81,68 @@
  *   driver has not heard of it, so a count would describe a car he never
  *   heard of as "getting closer". Its later counts are updates about it.
  * - **After a close car:** once the car the last close call (`near` or
- *   `rightBehind`) was about has gone by, the next car's band is said once:
- *   `overTen` or `clear` in the usual case, and the next car's own close call
- *   (a `near` with `first: true`) when it is close too. The car has gone by
- *   when no source times it any more, it has stopped (left out as standing
- *   still), or it has wrapped round the lap past the player: an approaching
- *   car's arrival only falls, so one that rose by more than
+ *   `rightBehind`) was about has gone by, the call is forgotten, and the next
+ *   car is said only when it has a band, as a new first call (a `near` with
+ *   `first: true`, `rightBehind` or `pack`): at once when it already has one,
+ *   otherwise whenever it comes under ten seconds. The car has gone by when no
+ *   source times it any more, it has stopped (left out as standing still), or
+ *   it has wrapped round the lap past the player: an approaching car's arrival
+ *   only falls, so one that rose by more than
  *   {@link TRAFFIC_REJOIN_PASSED_RISE_S} since the last evaluation that timed
- *   it, or reached the clear band from inside it once it had been under
+ *   it, or reached {@link TRAFFIC_REJOIN_GONE_S} once it had been under
  *   {@link TRAFFIC_REJOIN_OVER_TEN_S}, went by. Arrivals are compared within
  *   one reference tier only: a car re-timed by another tier (the scaled
  *   reference giving way to its class's own curve, which can move it seconds
  *   at once) is a new baseline, never a pass, and on that evaluation it has
  *   gone by only when its position wrapped past the player
- *   ({@link TRAFFIC_REJOIN_PASSED_WRAP_PCT}). A car seen going by stays gone
- *   until the next line is spoken, however near it reads on its way round
- *   again: a line held back by untimed cars, or an evaluation without the
- *   per-car arrays, does not end that. A close car that stops is therefore followed by the next car's
- *   band, and is a new car coming, with a closer band of its own, once it
- *   moves again.
+ *   ({@link TRAFFIC_REJOIN_PASSED_WRAP_PCT}). A close car that stops is
+ *   therefore gone, and a new car coming, with a first call of its own, once
+ *   it moves again under ten seconds away.
  * - **Otherwise** a band moving away is not re-announced: a car whose arrival
- *   drifts from 9.8 s to 10.2 s is still the same car coming.
+ *   drifts from 9.8 s to 10.2 s is still the same car coming, and is not
+ *   introduced again when it drifts back.
  *
  * **A pack is one call** (amended 2026-11-18, after a pack of nine cars going
  * by a stopped player at Tsukuba drew "Car right behind you" nine times, once
- * a second, each car re-arming the after-a-close-car line for the next).
+ * a second, each car re-arming the line after a close car for the next).
  * Whenever the nearest timed car is under {@link TRAFFIC_REJOIN_OVER_TEN_S}
  * and at least one more timed car arrives within
  * {@link TRAFFIC_REJOIN_PACK_GAP_S} behind it, the call is `pack` in place of
  * the nearest car's band. The pack is a chain over the timed arrivals in
  * order: a car belongs to it while it arrives within the gap of the car before
  * it, so a car 1.5 s behind the last of it joins and one 2.5 s behind does
- * not. Untimed cars never make a pack (the chain is timed cars only), and do
- * not withhold the pack line, which is a warning, not one of the two
- * reassuring lines.
- * - **When:** wherever a band would be said: on entry, after a close car, and
- *   as a closer band. The pack ranks closer than `rightBehind`, so a pack
- *   forming behind a car already announced as `near` or `rightBehind` is said
- *   once too, rather than left unsaid because its nearest car was.
+ * not. Untimed cars never make a pack (the chain is timed cars only).
+ * - **When:** wherever a band would be said: as a first call, the one after a
+ *   close car included, and as a closer band. The pack ranks closer than
+ *   `rightBehind`, so a pack forming behind a car already announced as `near`
+ *   or `rightBehind` is said once too, rather than left unsaid because its
+ *   nearest car was.
  * - **While it goes by, nothing:** no count, no `rightBehind` for each car, no
- *   after-a-close-car line between them, and no line about a car outside it.
+ *   first call between them, and no line about a car outside it.
  * - **Its cars** are followed one by one with the close car's rule (an arrival
- *   rising past {@link TRAFFIC_REJOIN_PASSED_RISE_S}, or reaching the clear
- *   band from inside it once it has been under {@link TRAFFIC_REJOIN_OVER_TEN_S},
- *   has gone by and stays gone; a change of tier is a new baseline; one
- *   untimed or no longer a candidate is gone while it stays so). The last cars
- *   of a long pack may be beyond the clear band when it is said, and are still
- *   coming, and one that joined at the band's edge is not retired by noise
- *   across it. A car that comes within the gap behind the last
- *   of its cars still coming joins it, so a pack still streaming by is not
- *   over; a car of it already gone by never joins again, so on a lap shorter
- *   than the pack takes to go by, its first cars coming round again neither
- *   hold it open nor start it again.
- * - **After it:** once every car of it has gone by, the line after a close car
- *   is said once for the next car, exactly as for a lone car: `clear`,
- *   `overTen`, a new first call, or a new `pack` for the next group. A pack
- *   that comes round again on a short lap is that next group, as a lone car
- *   coming round again is a new car coming.
+ *   rising past {@link TRAFFIC_REJOIN_PASSED_RISE_S}, or reaching
+ *   {@link TRAFFIC_REJOIN_GONE_S} once it has been under
+ *   {@link TRAFFIC_REJOIN_OVER_TEN_S}, has gone by and stays gone; a change of
+ *   tier is a new baseline; one untimed or no longer a candidate is gone while
+ *   it stays so). The last cars of a long pack may be beyond
+ *   {@link TRAFFIC_REJOIN_GONE_S} when it is said, and are still coming, and
+ *   one that joined at that edge is not retired by noise across it. A car that
+ *   comes within the gap behind the last of its cars still coming joins it, so
+ *   a pack still streaming by is not over; a car of it already gone by never
+ *   joins again, so on a lap shorter than the pack takes to go by, its first
+ *   cars coming round again neither hold it open nor start it again.
+ * - **After it:** once every car of it has gone by, the call is forgotten, as
+ *   for a lone car: the next car under ten seconds is a new first call, or a
+ *   new `pack` for the next group. A pack that comes round again on a short
+ *   lap is that next group, as a lone car coming round again is a new car
+ *   coming.
  *
- * **A lap shorter than the clear band** (a short oval, a dirt track: about
- * 15 s or less). Every timed car is then under 15 s away, so `clear` is said
- * only with no timed car on track, and a car that has gone by re-times as the
- * lap less a second or so, under the clear band: it is known to have gone by
- * from its arrival rising, never from reaching 15 s. Nothing else here
- * assumes a lap of any length; the rise is caught on any lap longer than about
- * twice {@link TRAFFIC_REJOIN_PASSED_RISE_S}.
- *
- * **Untimed cars.** A car no source can time withholds the two reassuring
- * lines, `overTen` and `clear`, and nothing else: timed cars still get their
- * `near` and `rightBehind`. A withheld line is not marked as spoken, so it is
- * said at the first evaluation that can say it. It is logged once per episode
- * at debug with each untimed car's reason, which is all an untimed car alone
- * ever produces (spec decision 5: never invent a number).
+ * **A short lap** (a short oval, a dirt track: about 15 s or less). A car
+ * that has gone by re-times as the lap less a second or so, which can be under
+ * {@link TRAFFIC_REJOIN_GONE_S}: it is known to have gone by from its arrival
+ * rising, never from reaching that edge. Nothing else here assumes a lap of
+ * any length; the rise is caught on any lap longer than about twice
+ * {@link TRAFFIC_REJOIN_PASSED_RISE_S}.
  *
  * **No per-car arrays.** Telemetry without an array the arrival model reads
  * (`computeTrafficArrivals` answers `null`) is no picture at all, never an
@@ -142,14 +152,12 @@
  */
 import {
   type SimEventName,
-  TRAFFIC_REJOIN_CLEAR_S,
-  TRAFFIC_REJOIN_MOVING_MPS,
   TRAFFIC_REJOIN_OVER_TEN_S,
   TRAFFIC_REJOIN_RIGHT_BEHIND_S,
   type TrafficRejoin,
   type TrafficRejoinVerdict,
 } from "@iracedeck/event-bus";
-import { isPreGreen, type TelemetryData } from "@iracedeck/iracing-sdk";
+import { isPreGreen, type TelemetryData, TrkLoc } from "@iracedeck/iracing-sdk";
 import type { ILogger } from "@iracedeck/logger";
 import { normalizePitLanePct } from "@iracedeck/track-data";
 
@@ -173,7 +181,6 @@ import {
   type TrafficArrival,
   type TrafficClassInfo,
   type TrafficTelemetry,
-  type UntimedArrival,
 } from "./traffic-arrival.js";
 import type { EmitFn } from "./types.js";
 
@@ -185,8 +192,15 @@ import type { EmitFn } from "./types.js";
  */
 export const TRAFFIC_REJOIN_PACK_GAP_S = 2;
 
-/** The events {@link diffTrafficRejoin} emits (issue #1499): its emitter's type, and its row in `TICK_ORDER`. */
-export const TRAFFIC_REJOIN_EVENTS = ["traffic.rejoin"] as const satisfies readonly SimEventName[];
+/**
+ * The events {@link diffTrafficRejoin} emits (issue #1499): its emitter's type, and its row in `TICK_ORDER`.
+ * `traffic.rejoinTowed` is the end the rejoin lines' `endsOn` names, never published on a tick that publishes
+ * `traffic.rejoin` (module header).
+ */
+export const TRAFFIC_REJOIN_EVENTS = [
+  "traffic.rejoin",
+  "traffic.rejoinTowed",
+] as const satisfies readonly SimEventName[];
 
 /**
  * How long the car must stay under the crawl speed, every gate holding, before
@@ -198,19 +212,17 @@ export const TRAFFIC_REJOIN_ENTRY_DWELL_MS = 1_500;
 /**
  * Above this speed (m/s, about 29 km/h) the car counts as moving again. Well
  * above the crawl speed ({@link TRAFFIC_CRAWL_MPS}), so the band between them is the hysteresis: a car
- * creeping through gravel at walking pace stays in its episode. Defined in
- * `@iracedeck/event-bus` beside the band edges, since the Race Engineer drops
- * a waiting reassuring line above it, so both sides read one value; re-exported
- * here under the name the detector's tests use.
+ * creeping through gravel at walking pace stays in its episode.
  */
-export { TRAFFIC_REJOIN_MOVING_MPS };
+export const TRAFFIC_REJOIN_MOVING_MPS = 8;
 
 /** How long the car must stay above the moving speed before the episode ends (ms): rejoined, not a lurch. */
 export const TRAFFIC_REJOIN_END_DWELL_MS = 2_000;
 
 /**
- * How long an entry gate other than leaving the car or the garage must keep
- * failing before a running episode ends (ms). Many times a blip at 60 Hz (a
+ * How long an entry gate other than the car being taken off the track (a tow,
+ * a reset, leaving the car, the garage) must keep failing before a running
+ * episode ends (ms). Many times a blip at 60 Hz (a
  * tick or two of a field the sim did not send or misread), so a blip keeps the
  * episode and its record of what was said; short enough that a real change,
  * such as rolling onto pit road, ends it within a second, with nothing spoken
@@ -258,13 +270,27 @@ export const TRAFFIC_REJOIN_PASSED_RISE_S = 2;
  */
 export const TRAFFIC_REJOIN_PASSED_WRAP_PCT = 0.5;
 
+/**
+ * How far a followed car's arrival must read (s), once it has been under
+ * {@link TRAFFIC_REJOIN_OVER_TEN_S}, for it to count as gone by without a
+ * rise past {@link TRAFFIC_REJOIN_PASSED_RISE_S} (module header): a car that
+ * crept away a little at a time, or one re-timed a lap away. The old clear
+ * band's edge (spec, 2026-11-11), kept as the detector's own once the clear
+ * line went (amended 2026-11-20): a car of a pack that joined at the 10 s
+ * edge is not retired by noise across it, and one 15 s away is no longer the
+ * car the last call was about.
+ */
+export const TRAFFIC_REJOIN_GONE_S = 15;
+
 /** The telemetry the rejoin detector reads: the gates, the speed and the arrival model's arrays. */
 export type TrafficRejoinTelemetry = TrafficTelemetry &
   Pick<TelemetryData, "IsOnTrack" | "IsInGarage" | "OnPitRoad" | "PlayerTrackSurface" | "SessionState" | "Speed">;
 
 /** Which entry gate refused a tick, named in the episode-end debug line. */
-type RejoinGate = "notInCar" | "inGarage" | "surface" | "pitRoad" | "preGreen" | "noSpeed" | "noPosition";
+type RejoinGate =
+  "notInCar" | "inGarage" | "notInWorld" | "inPitStall" | "surface" | "pitRoad" | "preGreen" | "noSpeed" | "noPosition";
 
+/** The verdicts the detector speaks; an evaluation with no car under ten seconds has no band and says nothing. */
 type Band = TrafficRejoinVerdict;
 
 /**
@@ -272,18 +298,21 @@ type Band = TrafficRejoinVerdict;
  * all, so it is said as a closer band over a lone car already announced, and
  * nothing outranks it while it goes by (module header).
  */
-const BAND_RANK: Record<Band, number> = { pack: 0, rightBehind: 1, near: 2, overTen: 3, clear: 4 };
+const BAND_RANK: Record<Band, number> = { pack: 0, rightBehind: 1, near: 2 };
 
 /** Why an evaluation speaks, named in its debug line. */
-type SpeakReason = "entry" | "closer band" | "count" | "a nearer car" | "after a close car";
+type SpeakReason = "entry" | "first call" | "closer band" | "count" | "a nearer car" | "after a close car";
 
 /**
- * Whether a failed gate ends a running episode at once rather than after
- * {@link TRAFFIC_REJOIN_GATE_GRACE_MS} (module header): leaving the car and the
- * garage are what the player did, not a reading that blipped.
+ * Whether a failed gate is the car taken off the track (module header): a tow
+ * or a reset (out of the world, or in the pit stall), leaving the car, or the
+ * garage. It ends a running episode at once rather than after
+ * {@link TRAFFIC_REJOIN_GATE_GRACE_MS} — each is a definite reading, not one
+ * that blipped — and publishes `traffic.rejoinTowed`, which cuts a rejoin line
+ * in flight.
  */
-function endsAtOnce(gate: RejoinGate): boolean {
-  return gate === "notInCar" || gate === "inGarage";
+function takenOffTrack(gate: RejoinGate): boolean {
+  return gate === "notInCar" || gate === "inGarage" || gate === "notInWorld" || gate === "inPitStall";
 }
 
 /** The first entry gate the tick fails, or `null` when every one holds (module header). */
@@ -291,6 +320,10 @@ function failedGate(telemetry: TrafficRejoinTelemetry, playerCarIdx: number): Re
   if (telemetry.IsOnTrack !== true) return "notInCar";
 
   if (telemetry.IsInGarage === true) return "inGarage";
+
+  if (telemetry.PlayerTrackSurface === TrkLoc.NotInWorld) return "notInWorld";
+
+  if (telemetry.PlayerTrackSurface === TrkLoc.InPitStall) return "inPitStall";
 
   if (!isRacingSurface(telemetry.PlayerTrackSurface)) return "surface";
 
@@ -327,15 +360,10 @@ function describeStationary(stationary: readonly number[]): string {
   return stationary.length === 0 ? "" : `; standing still: ${stationary.map((carIdx) => `car ${carIdx}`).join(", ")}`;
 }
 
-/** "car 3 (noReference), car 7 (noClass)". */
-function describeUntimed(untimed: readonly UntimedArrival[]): string {
-  return untimed.map((car) => `car ${car.carIdx} (${car.reason})`).join(", ");
-}
-
 /**
  * The rejoin detector's per-tick step: runs the entry dwell, the episode and
- * its evaluations, and emits `traffic.rejoin` by the rules in the module
- * header. Owns `episode` (`state.trafficRejoin`) and writes nothing else.
+ * its evaluations, and emits `traffic.rejoin` and `traffic.rejoinTowed` by
+ * the rules in the module header. Owns `episode` (`state.trafficRejoin`) and writes nothing else.
  *
  * @param episode The rejoin episode, mutated in place.
  * @param curves The per-class reference curves (`state.trafficArrival`, written by `updateTrafficReferenceCurves` earlier in the tick), read only.
@@ -357,7 +385,9 @@ export function diffTrafficRejoin(
   const gate = failedGate(telemetry, playerCarIdx);
 
   if (gate !== null) {
-    if (episode.active && !endsAtOnce(gate)) {
+    const towed = takenOffTrack(gate);
+
+    if (episode.active && !towed) {
       if (episode.gateFailedSince === null || episode.gateFailedSince > now) {
         if (episode.gateFailedSince === null) logger.debug(`gate failed (${gate}), episode held`);
 
@@ -373,9 +403,18 @@ export function diffTrafficRejoin(
     }
 
     // Outside an episode any failure restarts the entry dwell; inside one, the
-    // failure ends it at once (the car left, the garage) or has outlasted the grace.
-    if (episode.active) logger.debug(`episode ended (${gate})`);
+    // failure ends it at once (the car taken off the track) or has outlasted
+    // the grace. Only the first cuts a rejoin line in flight (module header);
+    // nothing else is emitted on this tick.
+    if (episode.active && towed) {
+      emit({ event: "traffic.rejoinTowed", data: {} });
+      logger.debug(`episode ended (${gate}), the car taken off the track: rejoin lines cut`);
+    } else if (episode.active) {
+      logger.debug(`episode ended (${gate})`);
+    }
 
+    // Written last (the package's step rule): an emit that threw is retried
+    // on the next tick, which still fails the gate.
     Object.assign(episode, createTrafficRejoinState());
 
     return;
@@ -469,13 +508,11 @@ function packOf(timed: readonly TimedArrival[]): TimedArrival[] | null {
   return chain.length > 1 ? chain : null;
 }
 
-/** The band of the nearest timed arrival (module header); `clear` with no timed car. */
-function bandOf(seconds: number | null): Band {
-  if (seconds === null || seconds >= TRAFFIC_REJOIN_CLEAR_S) return "clear";
+/** The band of the nearest timed arrival (module header); `null`, nothing to say, at ten seconds or more or with no timed car. */
+function bandOf(seconds: number | null): Band | null {
+  if (seconds === null || seconds >= TRAFFIC_REJOIN_OVER_TEN_S) return null;
 
-  if (seconds < TRAFFIC_REJOIN_RIGHT_BEHIND_S) return "rightBehind";
-
-  return seconds < TRAFFIC_REJOIN_OVER_TEN_S ? "near" : "overTen";
+  return seconds < TRAFFIC_REJOIN_RIGHT_BEHIND_S ? "rightBehind" : "near";
 }
 
 /** Where the cars stand this evaluation: what a followed car is measured against. */
@@ -519,8 +556,8 @@ function followed(car: TimedArrival, ctx: FollowContext): TrafficRejoinFollowedC
  * `coming` otherwise, with its arrival, position and closeness moved on.
  *
  * Going by is read from the arrival, compared only within one reference tier:
- * a rise past {@link TRAFFIC_REJOIN_PASSED_RISE_S}, or reaching the clear band
- * from inside it once it has been under {@link TRAFFIC_REJOIN_OVER_TEN_S}. An
+ * a rise past {@link TRAFFIC_REJOIN_PASSED_RISE_S}, or reaching
+ * {@link TRAFFIC_REJOIN_GONE_S} once it has been under {@link TRAFFIC_REJOIN_OVER_TEN_S}. An
  * arrival from another tier (the scaled reference giving way to the class's
  * own curve once a car of the class has driven past the player) is not
  * comparable, so it is a new baseline rather than a rise; on that evaluation
@@ -555,10 +592,10 @@ function followCar(member: TrafficRejoinFollowedCar, ctx: FollowContext): "passe
   }
 
   const rose = car.seconds - member.seconds > TRAFFIC_REJOIN_PASSED_RISE_S;
-  const reachedClear =
-    member.beenClose && member.seconds < TRAFFIC_REJOIN_CLEAR_S && car.seconds >= TRAFFIC_REJOIN_CLEAR_S;
+  const reachedGone =
+    member.beenClose && member.seconds < TRAFFIC_REJOIN_GONE_S && car.seconds >= TRAFFIC_REJOIN_GONE_S;
 
-  if (rose || reachedClear) {
+  if (rose || reachedGone) {
     member.passed = true;
 
     return "passed";
@@ -572,26 +609,19 @@ function followCar(member: TrafficRejoinFollowedCar, ctx: FollowContext): "passe
 }
 
 /**
- * Whether the car the last close call was about has gone by (module header);
- * `false` with no such call. Follows that car ({@link followCar}) while it is
- * still coming. Once it is seen going by, `episode.closeCarPassed` latches
- * until the next line is spoken, so the car stays gone on its way round again
- * whatever its arrival reads by then — past a line held back by untimed cars
- * and evaluations without the per-car arrays, which compare nothing. A car
- * untimed or no longer a candidate is gone while it stays so.
+ * Whether the car the last close call was about, or every car of the group
+ * the last `pack` call was about, has gone by (module header); `false` with no
+ * such call standing. Follows that car ({@link followCar}) while it is still
+ * coming; one untimed or no longer a candidate is gone. The caller forgets the
+ * call once this says so, so a car seen going by is never followed again: on
+ * its way round it is a new car coming.
  */
 function closeCarGone(episode: TrafficRejoinState, timed: readonly TimedArrival[], ctx: FollowContext): boolean {
   if (episode.packCars.length > 0) return packGone(episode, timed, ctx);
 
   if (episode.closeCar === null) return false;
 
-  if (episode.closeCarPassed) return true;
-
-  const result = followCar(episode.closeCar, ctx);
-
-  if (result === "passed") episode.closeCarPassed = true;
-
-  return result !== "coming";
+  return followCar(episode.closeCar, ctx) !== "coming";
 }
 
 /**
@@ -599,14 +629,12 @@ function closeCarGone(episode: TrafficRejoinState, timed: readonly TimedArrival[
  * header), each followed by the close car's rule ({@link followCar}). While
  * one is still coming, a car arriving within {@link TRAFFIC_REJOIN_PACK_GAP_S}
  * behind the last of them still coming joins the pack, and the next behind it
- * in turn; a car of the pack gone by never joins again. Once every car has
- * been seen going by, `episode.closeCarPassed` latches as for a lone car.
+ * in turn; a car of the pack gone by never joins again. The group is gone once
+ * none of its cars is still coming.
  *
  * @param timed The timed arrivals in arrival order, nearest first.
  */
 function packGone(episode: TrafficRejoinState, timed: readonly TimedArrival[], ctx: FollowContext): boolean {
-  if (episode.closeCarPassed) return true;
-
   let tail: TrafficRejoinFollowedCar | null = null;
 
   for (const member of episode.packCars) {
@@ -615,11 +643,7 @@ function packGone(episode: TrafficRejoinState, timed: readonly TimedArrival[], c
     if (tail === null || member.seconds >= tail.seconds) tail = member;
   }
 
-  if (tail === null) {
-    if (episode.packCars.every((member) => member.passed)) episode.closeCarPassed = true;
-
-    return true;
-  }
+  if (tail === null) return true;
 
   const members = new Set(episode.packCars.map((member) => member.carIdx));
 
@@ -640,8 +664,11 @@ function packGone(episode: TrafficRejoinState, timed: readonly TimedArrival[], c
 }
 
 /**
- * Why this evaluation speaks, by the rules in the module header; `null` when
- * it stays quiet. A drop of {@link TRAFFIC_REJOIN_COUNT_STEP_S} in `near` is a
+ * Why this evaluation speaks a band, by the rules in the module header; `null`
+ * when it stays quiet. With no call standing (`spokenBand` `null`) any band is
+ * a first call: on the episode's first evaluation, after a close car or a
+ * group has gone by on this one, or whenever a car comes under ten seconds
+ * later. A drop of {@link TRAFFIC_REJOIN_COUNT_STEP_S} in `near` is a
  * `count` only while the nearest car is still the one the last call was about
  * (`episode.closeCar`); about a different car it is `a nearer car`, a first
  * call, since the driver has not heard of it.
@@ -655,9 +682,11 @@ function speakReason(
   nearestCarIdx: number | null,
   closeGone: boolean,
 ): SpeakReason | null {
-  if (episode.spokenBand === null) return "entry";
+  if (episode.spokenBand === null) {
+    if (closeGone) return "after a close car";
 
-  if (closeGone) return "after a close car";
+    return episode.lastEvalAt === null ? "entry" : "first call";
+  }
 
   if (BAND_RANK[band] < BAND_RANK[episode.spokenBand]) return "closer band";
 
@@ -731,32 +760,37 @@ function evaluate(
     return;
   }
 
-  const untimed = arrivals.filter((a): a is UntimedArrival => !a.timed);
   // Nearest first; the sort is stable, so a tie keeps the arrivals' own order.
   const timed = arrivals.filter((a): a is TimedArrival => a.timed).sort((a, b) => a.seconds - b.seconds);
   const nearest = timed[0] ?? null;
   const pack = packOf(timed);
-  const band: Band = pack !== null ? "pack" : bandOf(nearest?.seconds ?? null);
+  const band: Band | null = pack !== null ? "pack" : bandOf(nearest?.seconds ?? null);
   // Only `near` has a nearest car in [2, 10), so its whole seconds are 2 to 9.
   const wholeSeconds = band === "near" && nearest !== null ? Math.floor(nearest.seconds) : null;
   // Every evaluation, spoken or not, so the close car's arrival (or each pack
   // car's) is followed from one to the next, and a pack going by grows.
   const ctx: FollowContext = { arrivals, telemetry, playerPct: pct, logger };
   const closeGone = closeCarGone(episode, timed, ctx);
+
+  // The car or the group the last call was about has gone by: the call is
+  // forgotten, so the next band is a first call, now or whenever one comes
+  // (module header).
+  if (closeGone) {
+    logger.debug(
+      `${episode.packCars.length > 0 ? "the group" : `car ${episode.closeCar?.carIdx}`} has gone by (${describeNearest(nearest)}${describeStationary(stationary)})`,
+    );
+    episode.spokenBand = null;
+    episode.spokenSeconds = null;
+    episode.closeCar = null;
+    episode.packCars = [];
+  }
+
+  // No car under ten seconds: nothing to warn about, and silence says so.
+  if (band === null) return;
+
   const reason = speakReason(episode, band, wholeSeconds, nearest?.carIdx ?? null, closeGone);
 
   if (reason === null) return;
-
-  if ((band === "overTen" || band === "clear") && untimed.length > 0) {
-    if (!episode.untimedLogged) {
-      episode.untimedLogged = true;
-      logger.debug(
-        `${band} withheld by untimed cars: ${describeUntimed(untimed)} (${describeNearest(nearest)}; ${reason}${describeStationary(stationary)})`,
-      );
-    }
-
-    return;
-  }
 
   // `wholeSeconds` is set exactly when the band is `near`. Only a count of the
   // same car is an update; every other `near` call introduces its car.
@@ -772,6 +806,5 @@ function evaluate(
   const close = (band === "near" || band === "rightBehind") && nearest !== null ? nearest : null;
 
   episode.closeCar = close === null ? null : followed(close, ctx);
-  episode.closeCarPassed = false;
   episode.packCars = (pack ?? []).map((car) => followed(car, ctx));
 }

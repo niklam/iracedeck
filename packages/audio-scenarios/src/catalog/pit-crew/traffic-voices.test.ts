@@ -36,8 +36,6 @@ const TAKES: Record<string, number> = {
   "rejoin-outro": 8,
   "rejoin-update": 6,
   "rejoin-right-behind": 4,
-  "rejoin-over-ten": 4,
-  "rejoin-clear": 4,
   // One approved line, the same in both voices (amended 2026-11-18).
   "rejoin-pack": 1,
   "pit-exit-traffic": 4,
@@ -58,8 +56,6 @@ const SEQUENCES: Record<string, readonly string[]> = {
     "pool:traffic/rejoin-outro",
   ],
   "pit-crew.traffic-rejoin-near-update": ["pool:traffic/rejoin-update", `{{${REJOIN_SECONDS_VAR}}}`],
-  "pit-crew.traffic-rejoin-over-ten": ["pool:traffic/rejoin-over-ten"],
-  "pit-crew.traffic-rejoin-clear": ["pool:traffic/rejoin-clear"],
   "pit-crew.traffic-rejoin-pack": ["pool:traffic/rejoin-pack"],
   "pit-crew.traffic-pit-exit-traffic": ["pool:traffic/pit-exit-traffic"],
   "pit-crew.traffic-pit-exit-clear": ["pool:traffic/pit-exit-clear"],

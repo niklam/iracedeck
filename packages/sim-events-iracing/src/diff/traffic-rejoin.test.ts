@@ -1,9 +1,4 @@
-import {
-  type SimEventMap,
-  TRAFFIC_REJOIN_CLEAR_S,
-  TRAFFIC_REJOIN_OVER_TEN_S,
-  TRAFFIC_REJOIN_RIGHT_BEHIND_S,
-} from "@iracedeck/event-bus";
+import { type SimEventMap, TRAFFIC_REJOIN_OVER_TEN_S, TRAFFIC_REJOIN_RIGHT_BEHIND_S } from "@iracedeck/event-bus";
 import { SessionState, TrkLoc } from "@iracedeck/iracing-sdk";
 import { type ILogger, silentLogger } from "@iracedeck/logger";
 import { describe, expect, it, vi } from "vitest";
@@ -27,6 +22,7 @@ import {
   TRAFFIC_REJOIN_ENTRY_DWELL_MS,
   TRAFFIC_REJOIN_EVAL_INTERVAL_MS,
   TRAFFIC_REJOIN_GATE_GRACE_MS,
+  TRAFFIC_REJOIN_GONE_S,
   TRAFFIC_REJOIN_MOVING_MPS,
   TRAFFIC_REJOIN_PACK_GAP_S,
   TRAFFIC_REJOIN_PASSED_RISE_S,
@@ -41,8 +37,6 @@ const FAST = 1;
 /** Class 2: twice as slow, a 1,000 s lap, bin `i` reads `2i` seconds. */
 const SLOW = 2;
 
-const CLEAR: Rejoin = { verdict: "clear" };
-const OVER_TEN: Rejoin = { verdict: "overTen" };
 const RIGHT_BEHIND: Rejoin = { verdict: "rightBehind" };
 const PACK: Rejoin = { verdict: "pack" };
 const near = (seconds: number, first: boolean): Rejoin => ({ verdict: "near", seconds, first });
@@ -129,7 +123,10 @@ function harness({
   trackLengthMeters = TRACK_M as number | null,
 }: { curves?: TrafficArrivalState; classes?: TrafficClassInfo | null; trackLengthMeters?: number | null } = {}) {
   const episode = createTrafficRejoinState();
+  /** Every `traffic.rejoin` payload, in order. */
   const events: Rejoin[] = [];
+  /** Every event name emitted, `traffic.rejoinTowed` included, in order. */
+  const emitted: string[] = [];
   const debug = vi.fn<(line: string) => void>();
   const logger: ILogger = { ...silentLogger, debug };
   let now = 1_000_000;
@@ -143,13 +140,20 @@ function harness({
       classes,
       trackLengthMeters,
       now,
-      (ev) => events.push(ev.data),
+      (ev) => {
+        emitted.push(ev.event);
+
+        if (ev.event === "traffic.rejoin") events.push(ev.data as Rejoin);
+      },
       logger,
     );
 
   return {
     episode,
     events,
+    emitted,
+    /** How many times a tow or a reset cut the rejoin lines (`traffic.rejoinTowed`). */
+    towed: (): number => emitted.filter((name) => name === "traffic.rejoinTowed").length,
     debug,
     tick,
     /** Ticks every 100 ms for `ms` (the first tick at the current time), leaving the clock after the last. */
@@ -179,14 +183,15 @@ function harness({
   };
 }
 
-const withheldLines = (debug: ReturnType<typeof vi.fn>): string[] =>
-  debug.mock.calls.map(([line]) => String(line)).filter((line) => line.includes("withheld"));
-
 describe("diffTrafficRejoin", () => {
   describe("the band constants", () => {
     it("are the maintainer's fixed edges, the event-bus contract's, and count step (2026-11-11)", () => {
-      expect([TRAFFIC_REJOIN_RIGHT_BEHIND_S, TRAFFIC_REJOIN_OVER_TEN_S, TRAFFIC_REJOIN_CLEAR_S]).toEqual([2, 10, 15]);
+      expect([TRAFFIC_REJOIN_RIGHT_BEHIND_S, TRAFFIC_REJOIN_OVER_TEN_S]).toEqual([2, 10]);
       expect(TRAFFIC_REJOIN_COUNT_STEP_S).toBe(3);
+    });
+
+    it("keep the old clear band's edge as the detector's own gone-by edge (amended 2026-11-20)", () => {
+      expect(TRAFFIC_REJOIN_GONE_S).toBe(15);
     });
 
     it("the pack gap is the maintainer's 2 s (amended 2026-11-18)", () => {
@@ -228,11 +233,11 @@ describe("diffTrafficRejoin", () => {
       const off = harness();
       const unread = harness();
 
-      off.stop(tel({ PlayerTrackSurface: TrkLoc.OffTrack }));
-      unread.stop(tel({ OnPitRoad: undefined }));
+      off.stop(tel({ cars: [behind(5, 4)], PlayerTrackSurface: TrkLoc.OffTrack }));
+      unread.stop(tel({ cars: [behind(5, 4)], OnPitRoad: undefined }));
 
-      expect(off.events).toEqual([CLEAR]);
-      expect(unread.events).toEqual([CLEAR]);
+      expect(off.events).toEqual([near(4, true)]);
+      expect(unread.events).toEqual([near(4, true)]);
     });
 
     it("starts on the start/finish line read as 1.0000126, timing the cars to the line", () => {
@@ -255,20 +260,20 @@ describe("diffTrafficRejoin", () => {
       for (const state of [SessionState.Checkered, SessionState.CoolDown]) {
         const h = harness();
 
-        h.stop(tel({ SessionState: state }));
+        h.stop(tel({ cars: [behind(5, 4)], SessionState: state }));
 
-        expect(h.events, String(state)).toEqual([CLEAR]);
+        expect(h.events, String(state)).toEqual([near(4, true)]);
       }
     });
 
-    it("ends the episode silently the moment a gate fails, and needs a fresh dwell after", () => {
+    it("ends the episode the moment the player leaves the car, and needs a fresh dwell after", () => {
       const h = harness();
 
-      h.stop(tel({ cars: [behind(5, 12)] }));
+      h.stop(tel({ cars: [behind(5, 6.5)] }));
       h.after(500, tel({ cars: [behind(5, 4)], IsOnTrack: false }));
 
       expect(h.episode.active).toBe(false);
-      expect(h.events).toEqual([OVER_TEN]);
+      expect(h.events).toEqual([near(6, true)]);
 
       h.after(500, tel({ cars: [behind(5, 4)] }));
       h.after(TRAFFIC_REJOIN_ENTRY_DWELL_MS - 1, tel({ cars: [behind(5, 4)] }));
@@ -282,33 +287,35 @@ describe("diffTrafficRejoin", () => {
   describe("the entry dwell", () => {
     it("starts only once the car has crawled for the whole dwell, and speaks on the start", () => {
       const h = harness();
+      const cars = [behind(5, 4)];
 
-      h.tick(tel({ Speed: TRAFFIC_CRAWL_MPS - 0.01 }));
-      h.after(TRAFFIC_REJOIN_ENTRY_DWELL_MS - 1, tel({ Speed: 1 }));
+      h.tick(tel({ cars, Speed: TRAFFIC_CRAWL_MPS - 0.01 }));
+      h.after(TRAFFIC_REJOIN_ENTRY_DWELL_MS - 1, tel({ cars, Speed: 1 }));
       expect(h.events).toEqual([]);
 
-      h.after(1, tel({ Speed: 1 }));
-      expect(h.events).toEqual([CLEAR]);
+      h.after(1, tel({ cars, Speed: 1 }));
+      expect(h.events).toEqual([near(4, true)]);
       expect(h.episode.active).toBe(true);
     });
 
     it("restarts the dwell on a tick at the crawl speed or above", () => {
       const h = harness();
+      const cars = [behind(5, 4)];
 
-      h.tick(tel());
-      h.after(1_000, tel({ Speed: TRAFFIC_CRAWL_MPS }));
-      h.after(100, tel());
-      h.after(TRAFFIC_REJOIN_ENTRY_DWELL_MS - 1, tel());
+      h.tick(tel({ cars }));
+      h.after(1_000, tel({ cars, Speed: TRAFFIC_CRAWL_MPS }));
+      h.after(100, tel({ cars }));
+      h.after(TRAFFIC_REJOIN_ENTRY_DWELL_MS - 1, tel({ cars }));
       expect(h.events).toEqual([]);
 
-      h.after(1, tel());
+      h.after(1, tel({ cars }));
       expect(h.events).toHaveLength(1);
     });
 
     it("never starts for a car driving through, however slowly it corners", () => {
       const h = harness();
 
-      h.run(30_000, tel({ Speed: TRAFFIC_CRAWL_MPS + 1 }));
+      h.run(30_000, tel({ cars: [behind(5, 4)], Speed: TRAFFIC_CRAWL_MPS + 1 }));
 
       expect(h.events).toEqual([]);
     });
@@ -318,7 +325,8 @@ describe("diffTrafficRejoin", () => {
     const blips: Array<[string, TickOptions]> = [
       ["a Speed dropout", { Speed: undefined }],
       ["a Speed read as NaN", { Speed: Number.NaN }],
-      ["a surface flicker", { PlayerTrackSurface: TrkLoc.NotInWorld }],
+      ["a pit-surface flicker at the pit entry", { PlayerTrackSurface: TrkLoc.AproachingPits }],
+      ["a surface unread", { PlayerTrackSurface: undefined }],
       ["a lost lap position", { pct: -1 }],
       ["an OnPitRoad flicker", { OnPitRoad: true }],
       ["an unread SessionState", { SessionState: undefined }],
@@ -326,19 +334,20 @@ describe("diffTrafficRejoin", () => {
 
     it.each(blips)("keeps the episode through one tick of %s: no new episode, no repeated entry line", (_, blip) => {
       const h = harness();
-      const cars = [behind(5, 12.5)];
+      const cars = [behind(5, 6.5)];
 
       h.stop(tel({ cars }));
       h.after(100, tel({ cars, ...blip }));
       h.run(5_000, tel({ cars }));
 
-      expect(h.events).toEqual([OVER_TEN]);
+      expect(h.events).toEqual([near(6, true)]);
+      expect(h.towed()).toBe(0);
       expect(h.episode.active).toBe(true);
     });
 
     it("ends it once the failure has held for the grace, silently, and a fresh dwell starts the next", () => {
       const h = harness();
-      const cars = [behind(5, 12.5)];
+      const cars = [behind(5, 6.5)];
       const failing = tel({ cars, Speed: undefined });
 
       h.stop(tel({ cars }));
@@ -348,15 +357,16 @@ describe("diffTrafficRejoin", () => {
 
       h.after(1, failing);
       expect(h.episode.active).toBe(false);
-      expect(h.events).toEqual([OVER_TEN]);
+      expect(h.events).toEqual([near(6, true)]);
+      expect(h.towed()).toBe(0);
 
       h.stop(tel({ cars }));
-      expect(h.events).toEqual([OVER_TEN, OVER_TEN]);
+      expect(h.events).toEqual([near(6, true), near(6, true)]);
     });
 
     it("ends it when the gates hold again only after the grace, with no tick in between, and a fresh dwell starts there", () => {
       const h = harness();
-      const cars = [behind(5, 12.5)];
+      const cars = [behind(5, 6.5)];
 
       h.stop(tel({ cars }));
       h.after(100, tel({ cars, Speed: undefined }));
@@ -364,21 +374,21 @@ describe("diffTrafficRejoin", () => {
       h.after(TRAFFIC_REJOIN_GATE_GRACE_MS + 100, tel({ cars }));
 
       expect(h.episode.active).toBe(false);
-      expect(h.events).toEqual([OVER_TEN]);
+      expect(h.events).toEqual([near(6, true)]);
       expect(h.debug).toHaveBeenCalledWith(`episode ended (gate failed for ${TRAFFIC_REJOIN_GATE_GRACE_MS + 100} ms)`);
 
       // The recovery tick began the entry dwell: a whole dwell after it, a new episode.
       h.after(TRAFFIC_REJOIN_ENTRY_DWELL_MS - 1, tel({ cars }));
-      expect(h.events).toEqual([OVER_TEN]);
+      expect(h.events).toEqual([near(6, true)]);
 
       h.after(1, tel({ cars }));
-      expect(h.events).toEqual([OVER_TEN, OVER_TEN]);
+      expect(h.events).toEqual([near(6, true), near(6, true)]);
       expect(h.episode.active).toBe(true);
     });
 
     it("keeps it when the gates hold again just inside the grace, with no tick in between", () => {
       const h = harness();
-      const cars = [behind(5, 12.5)];
+      const cars = [behind(5, 6.5)];
 
       h.stop(tel({ cars }));
       h.after(100, tel({ cars, Speed: undefined }));
@@ -390,7 +400,7 @@ describe("diffTrafficRejoin", () => {
       );
 
       h.run(5_000, tel({ cars }));
-      expect(h.events).toEqual([OVER_TEN]);
+      expect(h.events).toEqual([near(6, true)]);
     });
 
     it("counts the grace from the first failing tick, whichever gate fails after it", () => {
@@ -399,9 +409,10 @@ describe("diffTrafficRejoin", () => {
       h.stop();
       h.after(100, tel({ Speed: undefined }));
       h.after(TRAFFIC_REJOIN_GATE_GRACE_MS / 2, tel({ OnPitRoad: true }));
-      h.after(TRAFFIC_REJOIN_GATE_GRACE_MS / 2, tel({ PlayerTrackSurface: TrkLoc.NotInWorld }));
+      h.after(TRAFFIC_REJOIN_GATE_GRACE_MS / 2, tel({ PlayerTrackSurface: TrkLoc.AproachingPits }));
 
       expect(h.episode.active).toBe(false);
+      expect(h.towed()).toBe(0);
     });
 
     it("restarts the grace once every gate holds again", () => {
@@ -416,25 +427,13 @@ describe("diffTrafficRejoin", () => {
       expect(h.episode.active).toBe(true);
     });
 
-    it.each([
-      ["leaving the car", { IsOnTrack: false }],
-      ["the garage", { IsInGarage: true }],
-    ] satisfies Array<[string, TickOptions]>)("ends it at once on %s, with no grace", (_, gate) => {
-      const h = harness();
-
-      h.stop();
-      h.after(100, tel(gate));
-
-      expect(h.episode.active).toBe(false);
-    });
-
     it("holds it on a session state that is not a number, as a pre-green gate failure", () => {
       const h = harness();
 
-      h.stop();
-      h.after(100, tel({ SessionState: Number.NaN }));
+      h.stop(tel({ cars: [behind(5, 4)] }));
+      h.after(100, tel({ cars: [behind(5, 4)], SessionState: Number.NaN }));
 
-      expect(h.events).toEqual([CLEAR]);
+      expect(h.events).toEqual([near(4, true)]);
       expect(h.debug).toHaveBeenCalledWith("gate failed (preGreen), episode held");
     });
 
@@ -444,11 +443,118 @@ describe("diffTrafficRejoin", () => {
       h.stop(tel({ cars: [behind(5, 12.5)] }));
       // The car closes into near while the speed is unread: no evaluation.
       h.after(TRAFFIC_REJOIN_EVAL_INTERVAL_MS, tel({ cars: [behind(5, 6.5)], Speed: undefined }));
-      expect(h.events).toEqual([OVER_TEN]);
+      expect(h.events).toEqual([]);
 
       h.after(100, tel({ cars: [behind(5, 6.4)] }));
-      expect(h.events).toEqual([OVER_TEN, near(6, true)]);
+      expect(h.events).toEqual([near(6, true)]);
     });
+  });
+
+  /**
+   * A tow or a reset cuts the line (amended 2026-11-20): "if car jumps to pits
+   * (reset/tow), stop the line spoken". The detector publishes
+   * `traffic.rejoinTowed`, the end the Race Engineer's rejoin lines name.
+   */
+  describe("the car taken off the track (a tow, a reset)", () => {
+    const takenOff: Array<[string, TickOptions, string]> = [
+      [
+        "out of the world, a tow or a reset on its way to the stall",
+        { PlayerTrackSurface: TrkLoc.NotInWorld },
+        "notInWorld",
+      ],
+      [
+        "in the pit stall, a reset landing there",
+        { PlayerTrackSurface: TrkLoc.InPitStall, OnPitRoad: true },
+        "inPitStall",
+      ],
+      ["out of the car", { IsOnTrack: false }, "notInCar"],
+      ["in the garage", { IsInGarage: true }, "inGarage"],
+    ];
+
+    it.each(takenOff)("%s ends the episode at once, with no grace, and publishes the end once", (_, gate, name) => {
+      const h = harness();
+
+      h.stop(tel({ cars: [behind(5, 6.5)] }));
+      h.after(100, tel({ cars: [behind(5, 6.5)], ...gate }));
+
+      expect(h.episode.active).toBe(false);
+      expect(h.emitted).toEqual(["traffic.rejoin", "traffic.rejoinTowed"]);
+      expect(h.debug).toHaveBeenCalledWith(`episode ended (${name}), the car taken off the track: rejoin lines cut`);
+
+      // Still off the track: no second end, and nothing more said.
+      h.run(5_000, tel({ cars: [behind(5, 3)], ...gate }));
+      expect(h.towed()).toBe(1);
+      expect(h.events).toEqual([near(6, true)]);
+    });
+
+    it("publishes the end alone on its tick, never a traffic.rejoin after it (the endsOn order, #1499)", () => {
+      const h = harness();
+
+      h.stop(tel({ cars: [behind(5, 9.5)] }));
+      // A car right behind on the tow tick, which on a gated tick a whole
+      // interval on would be said as a closer band.
+      h.after(TRAFFIC_REJOIN_EVAL_INTERVAL_MS, tel({ cars: [behind(5, 1)], PlayerTrackSurface: TrkLoc.NotInWorld }));
+
+      expect(h.emitted).toEqual(["traffic.rejoin", "traffic.rejoinTowed"]);
+      expect(h.events).toEqual([near(9, true)]);
+    });
+
+    it("publishes it once for a tow: out of the world, then in the stall", () => {
+      const h = harness();
+
+      h.stop(tel({ cars: [behind(5, 4)] }));
+      h.after(100, tel({ cars: [behind(5, 4)], PlayerTrackSurface: TrkLoc.NotInWorld }));
+      h.run(3_000, tel({ cars: [behind(5, 4)], PlayerTrackSurface: TrkLoc.InPitStall, OnPitRoad: true }));
+
+      expect(h.towed()).toBe(1);
+    });
+
+    it("publishes it during a blip the episode is held through", () => {
+      const h = harness();
+
+      h.stop(tel({ cars: [behind(5, 4)] }));
+      h.after(100, tel({ cars: [behind(5, 4)], Speed: undefined }));
+      h.after(100, tel({ cars: [behind(5, 4)], PlayerTrackSurface: TrkLoc.NotInWorld }));
+
+      expect(h.episode.active).toBe(false);
+      expect(h.towed()).toBe(1);
+    });
+
+    it("publishes nothing when the episode was already over or never began", () => {
+      const dwell = harness();
+      const ended = harness();
+      const moving = tel({ Speed: TRAFFIC_REJOIN_MOVING_MPS + 1 });
+
+      // Stopped, but towed inside the entry dwell: no episode, no line to cut.
+      dwell.tick(tel({ cars: [behind(5, 4)] }));
+      dwell.after(TRAFFIC_REJOIN_ENTRY_DWELL_MS - 1, tel({ PlayerTrackSurface: TrkLoc.NotInWorld }));
+      // Driven off, then reset to the pits later.
+      ended.stop(tel({ cars: [behind(5, 4)] }));
+      ended.after(100, moving);
+      ended.after(TRAFFIC_REJOIN_END_DWELL_MS, moving);
+      ended.after(100, tel({ PlayerTrackSurface: TrkLoc.NotInWorld }));
+
+      expect(dwell.emitted).toEqual([]);
+      expect(ended.emitted).toEqual(["traffic.rejoin"]);
+    });
+
+    it.each([
+      ["driving off", [tel({ Speed: TRAFFIC_REJOIN_MOVING_MPS + 1 })]],
+      ["rolling onto pit road, past the grace", [tel({ OnPitRoad: true })]],
+      ["a pit-surface reading past the grace", [tel({ PlayerTrackSurface: TrkLoc.AproachingPits })]],
+    ] satisfies Array<[string, TrafficRejoinTelemetry[]]>)(
+      "never ends with it on %s: the line in flight finishes",
+      (_, [t]) => {
+        const h = harness();
+
+        h.stop(tel({ cars: [behind(5, 4)] }));
+        h.after(100, t);
+        h.after(TRAFFIC_REJOIN_END_DWELL_MS, t);
+
+        expect(h.episode.active).toBe(false);
+        expect(h.emitted).toEqual(["traffic.rejoin"]);
+      },
+    );
   });
 
   describe("the end, with hysteresis", () => {
@@ -514,17 +620,17 @@ describe("diffTrafficRejoin", () => {
       const h = harness();
       const moving = tel({ Speed: 30 });
 
-      h.stop();
+      h.stop(tel({ cars: [behind(5, 4)] }));
       h.after(100, moving);
       h.after(TRAFFIC_REJOIN_END_DWELL_MS, moving);
-      h.stop();
+      h.stop(tel({ cars: [behind(5, 4)] }));
 
-      expect(h.events).toEqual([CLEAR, CLEAR]);
+      expect(h.events).toEqual([near(4, true), near(4, true)]);
     });
   });
 
   describe("the bands, spoken on entry", () => {
-    const cases: Array<[seconds: number, verdict: Rejoin]> = [
+    const cases: Array<[seconds: number, verdict: Rejoin | null]> = [
       [0, RIGHT_BEHIND],
       [0.4, RIGHT_BEHIND],
       [1.99, RIGHT_BEHIND],
@@ -532,10 +638,11 @@ describe("diffTrafficRejoin", () => {
       [4.9, near(4, true)],
       [6.5, near(6, true)],
       [9.99, near(9, true)],
-      [10, OVER_TEN],
-      [14.99, OVER_TEN],
-      [15, CLEAR],
-      [45, CLEAR],
+      // Nothing reassures (amended 2026-11-20): from ten seconds on, nothing is said.
+      [10, null],
+      [14.99, null],
+      [15, null],
+      [45, null],
     ];
 
     it.each(cases)("a car %s s away is %j (each band includes its lower edge)", (seconds, expected) => {
@@ -543,15 +650,18 @@ describe("diffTrafficRejoin", () => {
 
       h.stop(tel({ cars: [behind(5, seconds)] }));
 
-      expect(h.events).toEqual([expected]);
+      expect(h.events).toEqual(expected === null ? [] : [expected]);
+      expect(h.episode.active).toBe(true);
     });
 
-    it("says clear when nobody is on track: silence never means clear", () => {
+    it("says nothing when nobody is on track: silence means no car under ten seconds", () => {
       const h = harness();
 
       h.stop(tel({ cars: [] }));
+      h.run(5_000, tel({ cars: [] }));
 
-      expect(h.events).toEqual([CLEAR]);
+      expect(h.events).toEqual([]);
+      expect(h.episode.active).toBe(true);
     });
 
     it("goes by the nearest car, whatever the order", () => {
@@ -569,7 +679,7 @@ describe("diffTrafficRejoin", () => {
 
       h.stop(tel({ cars: [inPits, ahead] }));
 
-      expect(h.events).toEqual([CLEAR]);
+      expect(h.events).toEqual([]);
     });
 
     it("evaluates once a second, not on every tick", () => {
@@ -577,10 +687,10 @@ describe("diffTrafficRejoin", () => {
 
       h.stop(tel({ cars: [behind(5, 12)] }));
       h.after(TRAFFIC_REJOIN_EVAL_INTERVAL_MS - 1, tel({ cars: [behind(5, 8)] }));
-      expect(h.events).toEqual([OVER_TEN]);
+      expect(h.events).toEqual([]);
 
       h.after(1, tel({ cars: [behind(5, 8)] }));
-      expect(h.events).toEqual([OVER_TEN, near(8, true)]);
+      expect(h.events).toEqual([near(8, true)]);
     });
 
     it("evaluates on the first tick after the wall clock steps back, then once a second from there", () => {
@@ -588,10 +698,10 @@ describe("diffTrafficRejoin", () => {
 
       h.stop(tel({ cars: [behind(5, 12)] }));
       h.after(-30_000, tel({ cars: [behind(5, 8)] }));
-      expect(h.events).toEqual([OVER_TEN, near(8, true)]);
+      expect(h.events).toEqual([near(8, true)]);
 
       h.after(TRAFFIC_REJOIN_EVAL_INTERVAL_MS - 1, tel({ cars: [behind(5, 5)] }));
-      expect(h.events).toHaveLength(2);
+      expect(h.events).toHaveLength(1);
 
       h.after(1, tel({ cars: [behind(5, 5)] }));
       expect(h.events.at(-1)).toEqual(near(5, false));
@@ -599,7 +709,7 @@ describe("diffTrafficRejoin", () => {
   });
 
   describe("a car closing in", () => {
-    it("is said on every closer band, and counted down in near by drops of 3", () => {
+    it("is said from under ten seconds on every closer band, and counted down in near by drops of 3", () => {
       const h = harness();
 
       // One second closer per evaluation, from 16.5 s to 0.5 s.
@@ -608,9 +718,8 @@ describe("diffTrafficRejoin", () => {
       for (let s = 15.5; s >= 0.5; s--) h.step([behind(5, s)]);
 
       expect(h.events).toEqual([
-        CLEAR, // 16.5, entry
-        OVER_TEN, // 14.5
-        near(9, true), // 9.5: into near
+        // Nothing at 16.5 on entry, nor at 14.5 to 10.5.
+        near(9, true), // 9.5: into near, the first call
         near(6, false), // 6.5: down 3 from 9; nothing at 8 or 7
         near(3, false), // 3.5: down 3 from 6
         RIGHT_BEHIND, // 1.5: a closer band; 2.5 was a drop of 1
@@ -629,26 +738,29 @@ describe("diffTrafficRejoin", () => {
     });
 
     it("says right behind from any farther band, and only once while it stays there", () => {
-      const fromClear = harness();
+      const fromFar = harness();
       const fromNear = harness();
 
-      fromClear.stop(tel({ cars: [behind(5, 30)] }));
-      fromClear.step([behind(5, 1.5)]);
-      fromClear.step([behind(5, 0.5)]);
+      fromFar.stop(tel({ cars: [behind(5, 30)] }));
+      fromFar.step([behind(5, 1.5)]);
+      fromFar.step([behind(5, 0.5)]);
       fromNear.stop(tel({ cars: [behind(5, 8)] }));
       fromNear.step([behind(5, 1.9)]);
 
-      expect(fromClear.events).toEqual([CLEAR, RIGHT_BEHIND]);
+      expect(fromFar.events).toEqual([RIGHT_BEHIND]);
       expect(fromNear.events).toEqual([near(8, true), RIGHT_BEHIND]);
     });
 
-    it("says near as a first call when it comes from over ten or clear", () => {
+    it("says near as a first call when it comes from ten seconds or more", () => {
       const h = harness();
 
       h.stop(tel({ cars: [behind(5, 20)] }));
       h.step([behind(5, 5)]);
 
-      expect(h.events).toEqual([CLEAR, near(5, true)]);
+      expect(h.events).toEqual([near(5, true)]);
+      expect(h.debug.mock.calls.flat().at(-1)).toBe(
+        "emit near 5 s (first) (nearest car 5 at 5.00 s via curve; first call)",
+      );
     });
   });
 
@@ -701,8 +813,13 @@ describe("diffTrafficRejoin", () => {
     });
   });
 
+  /**
+   * Amended 2026-11-20: once a close car has gone by, nothing reassures. The
+   * call is forgotten, and the next car is said only once it is under ten
+   * seconds away, as a new first call.
+   */
   describe("after a close car", () => {
-    it("says clear once the near car is by, then nothing while it stays clear", () => {
+    it("says nothing once the near car is by while no other car is under ten seconds", () => {
       const h = harness();
 
       h.stop(tel({ cars: [behind(5, 3)] }));
@@ -711,10 +828,12 @@ describe("diffTrafficRejoin", () => {
       h.step([passed(5)]);
       h.step([]);
 
-      expect(h.events).toEqual([near(3, true), RIGHT_BEHIND, CLEAR]);
+      expect(h.events).toEqual([near(3, true), RIGHT_BEHIND]);
+      expect(h.episode.spokenBand).toBeNull();
+      expect(h.episode.closeCar).toBeNull();
     });
 
-    it("says over ten once for the next car, then nothing until it closes into near", () => {
+    it("says nothing for the next car while it is ten or more seconds away, then a first call when it comes under ten", () => {
       const h = harness();
 
       h.stop(tel({ cars: [behind(5, 4), behind(6, 14)] }));
@@ -723,17 +842,21 @@ describe("diffTrafficRejoin", () => {
       h.step([passed(5), behind(6, 10)]);
       h.step([passed(5), behind(6, 9)]);
 
-      expect(h.events).toEqual([near(4, true), OVER_TEN, near(9, true)]);
+      expect(h.events).toEqual([near(4, true), near(9, true)]);
+      expect(h.debug.mock.calls.flat().at(-1)).toBe(
+        "emit near 9 s (first) (nearest car 6 at 9.00 s via curve; first call)",
+      );
     });
 
-    it("says it once after right behind too", () => {
+    it("does the same after right behind", () => {
       const h = harness();
 
       h.stop(tel({ cars: [behind(5, 1)] }));
       h.step([passed(5), behind(6, 11)]);
       h.step([passed(5), behind(6, 10.5)]);
+      h.step([passed(5), behind(6, 8.5)]);
 
-      expect(h.events).toEqual([RIGHT_BEHIND, OVER_TEN]);
+      expect(h.events).toEqual([RIGHT_BEHIND, near(8, true)]);
     });
 
     it("says the next car's own close call when it is close too: a new car coming", () => {
@@ -750,22 +873,26 @@ describe("diffTrafficRejoin", () => {
       expect(rightBehindNext.events).toEqual([RIGHT_BEHIND, RIGHT_BEHIND]);
     });
 
-    it("counts a close car that leaves the track as gone by", () => {
+    it("counts a close car that leaves the track as gone by, so the next car is a first call", () => {
       const h = harness();
 
       h.stop(tel({ cars: [behind(5, 6)] }));
       h.step([{ ...behind(5, 5), surface: TrkLoc.InPitStall }]);
+      expect(h.events).toEqual([near(6, true)]);
+      expect(h.episode.closeCar).toBeNull();
 
-      expect(h.events).toEqual([near(6, true), CLEAR]);
+      // Car 6 at five: no drop of three from the six said, yet a first call.
+      h.step([{ ...behind(5, 5), surface: TrkLoc.InPitStall }, behind(6, 5.5)]);
+      expect(h.events).toEqual([near(6, true), near(5, true)]);
     });
   });
 
   /**
-   * A 13 s lap, shorter than the 15 s clear band (a short dirt oval): a car
+   * A 13 s lap, shorter than the 15 s gone-by edge (a short dirt oval): a car
    * that has gone by re-times as the lap less a second or so, never 15 s, so
    * it is known to have gone by only from its arrival rising.
    */
-  describe("a lap shorter than the clear band", () => {
+  describe("a lap shorter than the gone-by edge", () => {
     const LAP_S = 13;
     const shortLap = (): ReturnType<typeof harness> =>
       harness({
@@ -813,48 +940,35 @@ describe("diffTrafficRejoin", () => {
       expect(h.events).toEqual([
         near(3, true), // 3.5
         RIGHT_BEHIND, // 1.5
-        OVER_TEN, // 12.5: by, so its band is said once, as for the next car
-        near(9, true), // 9.5: a closer band
+        // 12.5: by, so the call is forgotten; nothing at 12.5 to 10.5.
+        near(9, true), // 9.5: under ten again, a first call about a car coming
         near(6, false), // 6.5
         near(3, false), // 3.5
         RIGHT_BEHIND, // 1.5
       ]);
     });
 
-    it("never says clear while a timed car is on the lap: every car is under 15 s away", () => {
+    it("forgets a close car seen going by, so its approach round again is a new car coming, past missing arrays", () => {
       const h = shortLap();
 
-      h.stop(tel({ cars: [coming(5, 12.5)] }));
-      h.step([coming(5, 11.5)]);
-
-      expect(h.events).toEqual([OVER_TEN]);
-    });
-
-    it("keeps a close car seen going by gone past a held-back line and missing arrays, until a line is said", () => {
-      const h = shortLap();
-
-      // Car 5 announced at 3.5; by at the next evaluation (12.5 now), whose
-      // over ten the untimed car holds back.
-      h.stop(tel({ cars: [coming(5, 3.5), unknown] }));
-      h.step([coming(5, 12.5), unknown]);
+      // Car 5 announced at 3.5; by at the next evaluation (12.5 now).
+      h.stop(tel({ cars: [coming(5, 3.5)] }));
+      h.step([coming(5, 12.5)]);
       expect(h.events).toEqual([near(3, true)]);
-      expect(h.episode.closeCarPassed).toBe(true);
+      expect(h.episode.closeCar).toBeNull();
 
       // No arrival times while car 5 comes round, so nothing is compared.
       for (let s = 11.5; s > 5; s--) {
-        h.after(TRAFFIC_REJOIN_EVAL_INTERVAL_MS, tel({ cars: [coming(5, s), unknown], CarIdxEstTime: undefined }));
+        h.after(TRAFFIC_REJOIN_EVAL_INTERVAL_MS, tel({ cars: [coming(5, s)], CarIdxEstTime: undefined }));
       }
 
       expect(h.events).toEqual([near(3, true)]);
-      expect(h.episode.closeCarPassed).toBe(true);
 
-      // Back at 4.5, only a second above the 3.5 it was announced at: still the
-      // car gone by, so its new approach is a new car coming. Spoken, the
-      // latch is consumed, and the count runs as usual from there.
-      for (let s = 4.5; s > 1; s--) h.step([coming(5, s), unknown]);
+      // Back at 4.5, only a second above the 3.5 it was announced at: a new
+      // car coming, so a first call, and the count runs as usual from there.
+      for (let s = 4.5; s > 1; s--) h.step([coming(5, s)]);
 
       expect(h.events).toEqual([near(3, true), near(4, true), RIGHT_BEHIND]);
-      expect(h.episode.closeCarPassed).toBe(false);
     });
   });
 
@@ -895,9 +1009,11 @@ describe("diffTrafficRejoin", () => {
       curves.curves[SLOW] = offsetSlowCurve();
       h.step([behind(5, 4, SLOW)]); // 8 s via curve, up from 5 s via scaled
       h.step([behind(5, 2, SLOW)]); // 6 s
+      expect(h.episode.closeCar?.carIdx).toBe(5);
       h.step([{ idx: 5, pct: 0.502, est: 502, cls: SLOW }]); // by
 
-      expect(h.events).toEqual([near(5, true), CLEAR]);
+      expect(h.events).toEqual([near(5, true)]);
+      expect(h.episode.closeCar).toBeNull();
       expect(h.debug).toHaveBeenCalledWith(
         "car 5 re-timed at 8.00 s via curve (was 5.00 s via scaled), a new baseline",
       );
@@ -922,12 +1038,14 @@ describe("diffTrafficRejoin", () => {
       const curves = learnedCurves();
       const h = harness({ curves });
 
-      h.stop(tel({ cars: [behind(5, 3, SLOW)] }));
+      h.stop(tel({ cars: [behind(5, 3, SLOW), behind(6, 9.5)] }));
       // The car's own drive past P is what gives its class a curve there.
       curves.curves[SLOW] = curve(2);
-      h.step([{ idx: 5, pct: 0.502, est: 502, cls: SLOW }]);
+      h.step([{ idx: 5, pct: 0.502, est: 502, cls: SLOW }, behind(6, 8.5)]);
 
-      expect(h.events).toEqual([near(3, true), CLEAR]);
+      // Seen going by, so car 6 is a first call; followed on as a new
+      // baseline, car 6 at eight would be no count of the three said.
+      expect(h.events).toEqual([near(3, true), near(8, true)]);
     });
 
     it("still sees the close car go by on a short lap when its tier changes as it does", () => {
@@ -950,17 +1068,19 @@ describe("diffTrafficRejoin", () => {
 
       h.stop(onShortLap(coming(3.5)));
       curves.curves[SLOW] = curve(LAP_S / TRAFFIC_CURVE_BINS);
-      // By, and re-timed by its class's curve: 12.5 s round the lap, under the clear band.
+      expect(h.episode.closeCar?.carIdx).toBe(5);
+      // By, and re-timed by its class's curve: 12.5 s round the lap, under the gone-by edge.
       h.after(TRAFFIC_REJOIN_EVAL_INTERVAL_MS, onShortLap(coming(12.5)));
 
-      expect(h.events).toEqual([near(3, true), OVER_TEN]);
+      expect(h.events).toEqual([near(3, true)]);
+      expect(h.episode.closeCar).toBeNull();
     });
   });
 
   /**
    * A pack is one call (amended 2026-11-18): Niklas, stopped at Tsukuba with
    * nine AI cars coming a second apart, heard "Car right behind you" nine
-   * times, each car re-arming the after-a-close-car line for the next.
+   * times, each car re-arming the line after a close car for the next.
    */
   describe("a pack of cars", () => {
     /** Cars `idx0`, `idx0 + 1`, … `gap` s apart from `first` s away, `t` evaluations on; each by once it reaches the player. */
@@ -971,7 +1091,7 @@ describe("diffTrafficRejoin", () => {
         return seconds > 0 ? behind(idx0 + k, seconds) : passed(idx0 + k);
       });
 
-    it("is said once for nine cars a second apart, then once after the last of them (Tsukuba)", () => {
+    it("is said once for nine cars a second apart, then nothing once the last of them is by (Tsukuba)", () => {
       const h = harness();
       const spokenAt: number[] = [];
 
@@ -985,13 +1105,15 @@ describe("diffTrafficRejoin", () => {
         if (h.events.length > before) spokenAt.push(t);
       }
 
-      // The ninth car, 17.2 s away on entry, goes by at the eighteenth evaluation.
-      expect(h.events).toEqual([PACK, CLEAR]);
-      expect(spokenAt).toEqual([18]);
+      // The ninth car, 17.2 s away on entry, goes by at the eighteenth
+      // evaluation, and nothing is under ten seconds after it.
+      expect(h.events).toEqual([PACK]);
+      expect(spokenAt).toEqual([]);
+      expect(h.episode.packCars).toEqual([]);
       expect(h.debug.mock.calls.map(([line]) => String(line)).filter((l) => l.includes("emit"))).toEqual([
         "emit pack (9 cars, first at 9.20 s, last at 17.20 s; entry)",
-        "emit clear (nearest car 1 at 499.00 s via curve; after a close car)",
       ]);
+      expect(h.debug).toHaveBeenCalledWith("the group has gone by (nearest car 1 at 499.00 s via curve)");
     });
 
     it("is two cars within the gap of each other, and not two cars further apart", () => {
@@ -1007,7 +1129,7 @@ describe("diffTrafficRejoin", () => {
       apart.step([behind(5, 1.5), behind(6, 4)]);
       apart.step([passed(5), behind(6, 2.5)]);
 
-      expect(pack.events).toEqual([PACK, CLEAR]);
+      expect(pack.events).toEqual([PACK]);
       // Single-car lines: car 6 is the next car after car 5, a new car coming.
       expect(apart.events).toEqual([near(5, true), RIGHT_BEHIND, near(2, true)]);
     });
@@ -1059,7 +1181,7 @@ describe("diffTrafficRejoin", () => {
         h.step([passed(5), behind(6, 1)]);
         h.step([passed(5), passed(6)]);
 
-        expect(h.events).toEqual([first, PACK, CLEAR]);
+        expect(h.events).toEqual([first, PACK]);
         expect(h.debug.mock.calls.map(([line]) => String(line)).filter((l) => l.includes("emit pack"))).toEqual([
           expect.stringContaining("; closer band)"),
         ]);
@@ -1077,12 +1199,12 @@ describe("diffTrafficRejoin", () => {
       h.step([passed(5), passed(6), behind(7, 1)]);
       h.step([passed(5), passed(6), passed(7)]);
 
-      expect(h.events).toEqual([PACK, CLEAR]);
+      expect(h.events).toEqual([PACK]);
       expect(h.episode.packCars).toEqual([]);
       expect(h.debug).toHaveBeenCalledWith("pack grows to 3 cars (car 7 at 5.00 s)");
     });
 
-    it("keeps a car of it that joined at the clear band's edge when noise lifts it across", () => {
+    it("keeps a car of it that joined at the gone-by edge when noise lifts it across", () => {
       const h = harness();
 
       h.stop(tel({ cars: [behind(5, 9), behind(6, 10.5), behind(7, 12), behind(8, 13.5), behind(9, 14.99)] }));
@@ -1090,11 +1212,16 @@ describe("diffTrafficRejoin", () => {
 
       expect(h.episode.packCars.find((car) => car.carIdx === 9)?.passed).toBe(false);
 
-      // The first four by, car 9 still coming: the pack is not over.
+      // The first four by, car 9 still coming: the pack is not over, so car 9
+      // at five is no first call.
       h.step([passed(5), passed(6), passed(7), passed(8), behind(9, 5)]);
+      expect(h.events).toEqual([PACK]);
+      expect(h.episode.packCars).toHaveLength(5);
+
       h.step([passed(5), passed(6), passed(7), passed(8), passed(9)]);
 
-      expect(h.events).toEqual([PACK, CLEAR]);
+      expect(h.events).toEqual([PACK]);
+      expect(h.episode.packCars).toEqual([]);
     });
 
     it("is over when its cars have gone by or left the track, a car of it pitting included", () => {
@@ -1103,9 +1230,12 @@ describe("diffTrafficRejoin", () => {
       h.stop(tel({ cars: [behind(5, 3), behind(6, 4.5)] }));
       // Car 6, the last of the pack, turns into the pits; car 5 still coming.
       h.step([behind(5, 2), { ...behind(6, 3.5), surface: TrkLoc.InPitStall }]);
+      expect(h.episode.packCars).toHaveLength(2);
       h.step([passed(5), { ...behind(6, 3.5), surface: TrkLoc.InPitStall }]);
 
-      expect(h.events).toEqual([PACK, CLEAR]);
+      expect(h.events).toEqual([PACK]);
+      expect(h.episode.packCars).toEqual([]);
+      expect(h.episode.spokenBand).toBeNull();
     });
 
     it("is followed by the next car's own first call when a lone car comes after a gap", () => {
@@ -1138,22 +1268,6 @@ describe("diffTrafficRejoin", () => {
 
       expect(lone.events).toEqual([near(4, true)]);
       expect(withUntimed.events).toEqual([PACK]);
-    });
-
-    it("leaves the reassuring line after it to the untimed rule", () => {
-      const h = harness();
-
-      h.stop(tel({ cars: [behind(5, 2.5), behind(6, 3.5), unknown] }));
-      h.step([passed(5), behind(6, 1), unknown]);
-      h.step([passed(5), passed(6), unknown]); // clear, withheld
-      h.step([passed(5), passed(6), unknown]);
-
-      expect(h.events).toEqual([PACK]);
-      expect(withheldLines(h.debug)).toHaveLength(1);
-
-      h.step([passed(5), passed(6)]); // the untimed car gone
-
-      expect(h.events).toEqual([PACK, CLEAR]);
     });
 
     /**
@@ -1262,7 +1376,7 @@ describe("diffTrafficRejoin", () => {
   });
 
   describe("a band moving away", () => {
-    it("is not re-announced while the same close car is still coming", () => {
+    it("is not re-announced, nor introduced again when it drifts back, while the same close car is still coming", () => {
       const h = harness();
 
       h.stop(tel({ cars: [behind(5, 9.5)] }));
@@ -1272,17 +1386,6 @@ describe("diffTrafficRejoin", () => {
       h.step([behind(5, 9.6)]);
 
       expect(h.events).toEqual([near(9, true)]);
-    });
-
-    it("is not re-announced when no close call came before it", () => {
-      const h = harness();
-
-      h.stop(tel({ cars: [behind(5, 12)] }));
-      h.step([{ ...behind(5, 11), surface: TrkLoc.InPitStall }]);
-      h.step([behind(6, 40)]);
-      h.step([]);
-
-      expect(h.events).toEqual([OVER_TEN]);
     });
   });
 
@@ -1301,10 +1404,10 @@ describe("diffTrafficRejoin", () => {
       const h = harness({ curves: learnedCurves({ [FAST]: 1 }) });
 
       // Scaled: 250 s × 1,000 / 500 = 500 s at P for the slow class.
-      h.stop(tel({ cars: [behind(7, 12, SLOW)] }));
+      h.stop(tel({ cars: [behind(7, 8, SLOW)] }));
 
-      expect(h.events).toEqual([OVER_TEN]);
-      expect(h.debug.mock.calls.flat().join("\n")).toContain("nearest car 7 at 12.00 s via scaled");
+      expect(h.events).toEqual([near(8, true)]);
+      expect(h.debug.mock.calls.flat().join("\n")).toContain("nearest car 7 at 8.00 s via scaled");
     });
 
     it("goes by the nearest arrival across classes, not the nearest position", () => {
@@ -1318,27 +1421,14 @@ describe("diffTrafficRejoin", () => {
     });
   });
 
+  /** Amended 2026-11-20: with no reassuring line left, an untimed car has nothing to hold back. */
   describe("untimed cars", () => {
-    it("emit nothing when they are the only cars, logging once per episode with each reason", () => {
+    it("emit nothing when they are the only cars", () => {
       const h = harness();
 
       h.stop(tel({ cars: [unknown] }));
       h.step([unknown]);
       h.step([unknown]);
-
-      expect(h.events).toEqual([]);
-      expect(withheldLines(h.debug)).toEqual([
-        "clear withheld by untimed cars: car 9 (noClass) (no timed car; entry)",
-      ]);
-    });
-
-    it.each([
-      ["over ten", 12],
-      ["clear", 40],
-    ])("withhold %s for the timed cars", (_, seconds) => {
-      const h = harness();
-
-      h.stop(tel({ cars: [unknown, behind(5, seconds)] }));
 
       expect(h.events).toEqual([]);
     });
@@ -1354,36 +1444,13 @@ describe("diffTrafficRejoin", () => {
       expect(rightBehind.events).toEqual([RIGHT_BEHIND]);
     });
 
-    it("hold back the line after a close car until they are timed or gone", () => {
+    it("never hold back the first call about the next car after a close one", () => {
       const h = harness();
 
       h.stop(tel({ cars: [behind(5, 2)] }));
-      h.step([passed(5), unknown]);
-      h.step([passed(5), unknown]);
-      expect(h.events).toEqual([near(2, true)]);
+      h.step([passed(5), unknown, behind(6, 6.5)]);
 
-      h.step([passed(5)]);
-      expect(h.events).toEqual([near(2, true), CLEAR]);
-    });
-
-    it("hold back the entry call until it can be said, and a timed car's near is said as the entry", () => {
-      const h = harness();
-
-      h.stop(tel({ cars: [unknown] }));
-      h.step([unknown, behind(5, 12)]);
-      h.step([unknown, behind(5, 8)]);
-
-      expect(h.events).toEqual([near(8, true)]);
-    });
-
-    it("log again in the next episode", () => {
-      const h = harness();
-
-      h.stop(tel({ cars: [unknown] }));
-      h.after(100, tel({ cars: [unknown], IsOnTrack: false }));
-      h.stop(tel({ cars: [unknown] }));
-
-      expect(withheldLines(h.debug)).toHaveLength(2);
+      expect(h.events).toEqual([near(2, true), near(6, true)]);
     });
   });
 
@@ -1392,10 +1459,10 @@ describe("diffTrafficRejoin", () => {
       debug.mock.calls.map(([line]) => String(line)).filter((line) => line.includes("per-car arrays are missing"));
 
     it.each(["CarIdxEstTime", "CarIdxTrackSurface"] as const)(
-      "without %s say nothing, never clear, mark nothing spoken and log once per episode",
+      "without %s say nothing, mark nothing spoken and log once per episode",
       (field) => {
         const h = harness();
-        const missing = tel({ [field]: undefined });
+        const missing = tel({ cars: [behind(5, 4)], [field]: undefined });
 
         h.stop(missing);
         h.run(3_000, missing);
@@ -1410,18 +1477,13 @@ describe("diffTrafficRejoin", () => {
     it("hold the entry call until the arrays are back, then say it", () => {
       const h = harness();
 
-      h.stop(tel({ CarIdxEstTime: undefined }));
-      h.step([behind(5, 12)]);
+      h.stop(tel({ cars: [behind(5, 8.5)], CarIdxEstTime: undefined }));
+      h.step([behind(5, 8)]);
 
-      expect(h.events).toEqual([OVER_TEN]);
-    });
-
-    it("say clear with complete arrays and no car on track", () => {
-      const h = harness();
-
-      h.stop(tel());
-
-      expect(h.events).toEqual([CLEAR]);
+      expect(h.events).toEqual([near(8, true)]);
+      expect(h.debug.mock.calls.flat().at(-1)).toBe(
+        "emit near 8 s (first) (nearest car 5 at 8.00 s via curve; first call)",
+      );
     });
   });
 
@@ -1493,7 +1555,7 @@ describe("diffTrafficRejoin", () => {
       expect(m.h.events).toEqual([
         near(6, true), // 1.5: 6.75 s, the entry
         near(3, false), // 4.5: braking, 3.81 s, down 3
-        CLEAR, // 6.5: stopped 3.25 s away, so gone by: the next car's band
+        // 6.5: stopped 3.25 s away, so gone by: forgotten, and nothing else coming
         near(2, true), // 9.5: moving again, 2.75 s away, a new car coming
         RIGHT_BEHIND, // 10.5: 1.75 s
       ]);
@@ -1507,8 +1569,10 @@ describe("diffTrafficRejoin", () => {
 
       expect(m.h.events).toEqual([
         RIGHT_BEHIND, // 1.5: read once, no rate yet
-        CLEAR, // 2.5: measured standing still, so gone by
+        // 2.5: measured standing still, so gone by, and nothing said
       ]);
+      expect(m.h.episode.closeCar).toBeNull();
+      expect(m.h.debug).toHaveBeenCalledWith("car 4 has gone by (no timed car; standing still: car 4)");
     });
 
     it("leaves no car out without a track length to judge its speed by", () => {
@@ -1543,7 +1607,7 @@ describe("diffTrafficRejoin", () => {
         "episode started (pct=0.5000, speed=0.0 m/s)",
         "emit near 4 s (first) (nearest car 5 at 4.25 s via curve; entry)",
         "emit rightBehind (nearest car 5 at 0.50 s via curve; closer band)",
-        "emit clear (nearest car 5 at 499.00 s via curve; after a close car)",
+        "car 5 has gone by (nearest car 5 at 499.00 s via curve)",
         "episode ended (moving at 20.0 m/s)",
       ]);
     });

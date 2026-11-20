@@ -109,8 +109,14 @@ export const EVENT_TEMPLATES = [
   {
     name: "traffic.rejoin",
     description:
-      "Stopped on track, which band the nearest coming car is in (issue #1113) — verdict: rightBehind (under 2 s) / near (2–9 s, with seconds, and first: true for the car-coming line, false for a later count) / overTen (10–14 s) / clear (15 s or more, or no car)",
+      "Stopped on track, which band the nearest coming car is in, only while one is under 10 s away (issue #1113, warnings only since 2026-11-20) — verdict: rightBehind (under 2 s) / near (2–9 s, with seconds, and first: true for the car-coming line, false for a later count) / pack (a group, the nearest under 10 s)",
     data: { verdict: "near", seconds: 6, first: true } satisfies SimEventMap["traffic.rejoin"]["data"],
+  },
+  {
+    name: "traffic.rejoinTowed",
+    description:
+      "Towed or reset to the pits (or out of the car) during a stop on track (issue #1113, amended 2026-11-20) — cuts a rejoin line playing and drops one waiting; empty payload",
+    data: {} satisfies SimEventMap["traffic.rejoinTowed"]["data"],
   },
   {
     name: "traffic.pitExit",

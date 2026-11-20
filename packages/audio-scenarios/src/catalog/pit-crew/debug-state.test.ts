@@ -608,7 +608,7 @@ describe("the family readers", () => {
 
     expect(readTrafficDebugState()).toEqual({ registered: true, introduced: true });
 
-    gate("pit-crew.traffic-rejoin-clear")?.admit(ctx);
+    gate("pit-crew.traffic-rejoin-pack")?.admit(ctx);
 
     expect(readTrafficDebugState()).toEqual({ registered: true, introduced: false });
   });

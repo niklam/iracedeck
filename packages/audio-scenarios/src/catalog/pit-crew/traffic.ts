@@ -7,24 +7,25 @@
  * translator's detectors
  * (`diff/traffic-rejoin.ts`, `diff/traffic-pit-exit.ts` in
  * `@iracedeck/sim-events-iracing`) decide the band, the number and every
- * timing rule — when a line is first said, when it is counted down, when the
- * next car's band follows a close one; the contracts here only map the event
- * to a line and schedule it.
+ * timing rule — when a line is first said, when it is counted down, when a
+ * close car has gone by; the contracts here only map the event to a line and
+ * schedule it.
  *
  * The code below decides WHETHER and WHEN each line fires and how it is
  * scheduled; WHAT is said lives in the active voice's `callouts.json` under
  * the same ids (`scenarios["pit-crew.traffic-rejoin-near-first"]`, …), paired
  * at `setScripts` time.
  *
- * **The engineer alerts, never instructs.** The rejoin lines name a fixed
- * band of the nearest predicted arrival — right behind (under 2 s), a number
- * (2 s to under 10 s), more than ten (10 s to under 15 s), clear (15 s or
- * more, or no car) — and never tell a stopped driver to hold or go. Only the
- * close band speaks a number; the bands are fixed because the words name
- * them. A group of cars coming is one line, "A group of cars coming. Join
- * carefully." (`pack`, amended 2026-11-18), said once in place of the first
- * car's band; the detector says nothing more while the group goes by, then
- * the next car's band once.
+ * **The engineer alerts, never instructs, and speaks only to warn.** The
+ * rejoin lines name a fixed band of the nearest predicted arrival — right
+ * behind (under 2 s), a number (2 s to under 10 s) — and never tell a stopped
+ * driver to hold or go. Nothing reassures him (amended 2026-11-20): the "more
+ * than ten" and "Clear to rejoin." lines were removed, so on rejoin silence
+ * means no car is under ten seconds away. The bands are fixed because the
+ * words name them. A group of cars coming is one line, "A group of cars
+ * coming. Join carefully." (`pack`, amended 2026-11-18), said once in place
+ * of the first car's band; the detector says nothing more while the group goes
+ * by, and the next car under ten seconds after it is a new first call.
  *
  * **One contract per line, not one contract with a `case`.** Whether a line
  * may cut the one in flight, and how heavy it is, are contract fields, and the
@@ -55,9 +56,6 @@
  * line that takes the bus moves the state, through its contract's
  * `speakGate.admit` — the `where:` checks read it and never write it:
  * - **Set** by the first call's gate, as its claim, when it takes the bus.
- * - **Cleared** by the reassuring lines' gates ("more than ten", "Clear to
- *   rejoin"), when they take the bus: the approach is over, so the next car
- *   within ten seconds is introduced again.
  * - **Cleared** by the pack line's gate, when it takes the bus: the group
  *   replaces the lone car's approach, and it names no seconds a count could
  *   update, so whatever car comes after it is introduced with a first call.
@@ -84,29 +82,39 @@
  * resolved to the `traffic/rejoin-mid-<N>` pool, whose takes are the voice's
  * different wordings of the same figure. The fixed lines are pools of four.
  *
- * **One family.** All nine share `family: "traffic"` (spec decision 6): a
+ * **One family.** All seven share `family: "traffic"` (spec decision 6): a
  * fresh line replaces a stale one in flight wholesale, whatever the weights —
  * a closer count arriving while the previous one still plays cuts it.
  *
  * **Queued, never stale.** `queueable: true` on every contract: the detector
  * records a line as said when it publishes it and does not say it again
  * unless the picture changes, so a line dropped because the bus was busy is
- * lost — the entry "Clear to rejoin" after a spin, behind the incident line,
- * was the case. Two fields keep a waiting line true. Each trigger's contracts
- * share one `supersedeGroup`, so a newer verdict removes a waiting older one
- * instead of letting it play after it. And `maxQueueWaitMs` is per line
+ * lost — the entry call after a spin, behind the incident line, was the case.
+ * Two fields keep a waiting line true. Each trigger's contracts share one
+ * `supersedeGroup`, so a newer verdict removes a waiting older one instead of
+ * letting it play after it. And `maxQueueWaitMs` is per line
  * (`LineSpec.maxQueueWaitMs`): the lines whose words decay while they wait —
- * the close calls, whose seconds count down, the pack line, about cars going
- * by within seconds, and the pit-exit traffic warning and merge warning — take
- * {@link TRAFFIC_MAX_QUEUE_WAIT_MS}, since "about five seconds" heard
- * four seconds late describes a car that has already passed; the reassuring
- * lines — "more than ten", "Clear to rejoin" and the pit-exit clear — take the
- * engine default, since what would make one false is a closer band or a
- * flipped verdict, which the detector publishes and which replaces it in the
- * queue. The one gap is a picture the detector cannot judge — an untimed car
- * turning up on rejoin, or the per-car arrays missing — where it publishes
- * nothing, so nothing replaces the waiting line; practically unreachable, since
- * iRacing always fills `CarClassEstLapTime` and the arrays.
+ * every rejoin line (the close calls, whose seconds count down, and the pack
+ * line, about cars going by within seconds) and the pit-exit traffic warning
+ * and merge warning — take {@link TRAFFIC_MAX_QUEUE_WAIT_MS}, since "about
+ * five seconds" heard four seconds late describes a car that has already
+ * passed; the pit-exit clear takes the engine default, since what would make
+ * it false is a flipped verdict, which the detector publishes and which
+ * replaces it in the queue. The one gap is a picture the detector cannot
+ * judge — the per-car arrays missing — where it publishes nothing, so nothing
+ * replaces the waiting line; practically unreachable, since iRacing always
+ * fills the arrays.
+ *
+ * **A tow or a reset cuts the rejoin lines (amended 2026-11-20).** Every
+ * rejoin contract declares `endsOn` `traffic.rejoinTowed`, which the detector
+ * publishes when the player's car is taken off the track mid-stop — out of the
+ * world or in the pit stall (a tow or a reset), out of the car, the garage —
+ * and never on a tick that publishes `traffic.rejoin`. The engine's line ends
+ * (#1407) then stop a rejoin line playing at once (unframed, so silently; a
+ * line already heard in full finishes) and drop one waiting, of any rejoin
+ * contract. A stop that ends by driving off publishes nothing, so a line in
+ * flight then finishes. The pit-exit lines and the merge warning do not end
+ * on it.
  *
  * **Never heard after the moment it warns about.** A warning waits up to
  * {@link TRAFFIC_MAX_QUEUE_WAIT_MS} behind a `CRITICAL` line, and the short
@@ -122,16 +130,8 @@
  *   telemetry has the player back on the racing surface (`PlayerTrackSurface` `OnTrack` / `OffTrack`),
  *   the detector's own end of the exit: the merge they are about is over. With
  *   no telemetry (the scenario harness) or no surface read they play.
- * - **The reassuring rejoin lines** ("more than ten", "Clear to rejoin") wait
- *   the engine default, and nothing replaces one once the driver pulls away:
- *   the detector ends the stop silently. So they are dropped once the live
- *   `Speed` is above `TRAFFIC_REJOIN_MOVING_MPS`, the speed the detector ends
- *   the stop above (shared through `@iracedeck/event-bus`, so a car creeping
- *   through gravel, still in its stop, keeps its line). With no telemetry or
- *   no speed read they play. A dropped one leaves the introduction as it was:
- *   the check comes before the claim. The warnings keep their time gates
- *   only: a close call or the pack line waits at most
- *   {@link TRAFFIC_MAX_QUEUE_WAIT_MS}, and a car coming is still worth
+ * - **The pack line** has no time gate: it waits at most
+ *   {@link TRAFFIC_MAX_QUEUE_WAIT_MS}, and a group coming is still worth
  *   hearing as the driver pulls out in front of it.
  * A line cut mid-sentence and replayed is not asked again (`SpeakGate`).
  *
@@ -147,9 +147,8 @@
  * dropped after its short wait. The meatball, the start lights and fuel
  * critical (`CRITICAL`) and the spotter's transition calls (`PROXIMITY`) still
  * win: a warning waits behind a `CRITICAL` line within its short wait, and a
- * spotter call cuts a warning. "More than ten" and "clear to rejoin" sit at
- * `SAFETY` without `interrupt` and wait their turn. The pit-exit clear call
- * sits at `SAFETY` and keeps `interrupt`: made 3 s short of the end of pit
+ * spotter call cuts a warning. The pit-exit clear call sits at `SAFETY` and
+ * keeps `interrupt`: made 3 s short of the end of pit
  * road (amended 2026-11-20), it trumps the exit readback and the tire-wear report (spec, "Pit
  * exit": both pit-exit lines cut in): either, cut in flight, is queueable and
  * picks up again after it, while one already finished is not replayed. Both
@@ -176,16 +175,14 @@
  * Session gating (live in the car, on track, off pit road, past the green)
  * lives in the translator's detectors, NOT here, so the contracts stay
  * harness-firable. The one module state is the introduction above; every
- * resolver otherwise reads the fire's own event, and the pit-exit gate and the
- * reassuring rejoin lines' gate the live telemetry, which admit when there is
- * none.
+ * resolver otherwise reads the fire's own event, and the pit-exit gate the
+ * live telemetry, which admits when there is none.
  */
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import { type CalloutIdOf, TRAFFIC_CALLOUTS } from "@iracedeck/callout-settings";
 import {
   type IEventBus,
   type SimEventOf,
-  TRAFFIC_REJOIN_MOVING_MPS,
   TRAFFIC_REJOIN_NEAR_MAX_SECONDS,
   TRAFFIC_REJOIN_NEAR_MIN_SECONDS,
   TRAFFIC_REJOIN_RIGHT_BEHIND_S,
@@ -196,7 +193,7 @@ import {
 import { TrkLoc } from "@iracedeck/iracing-sdk";
 import type { TelemetryData } from "@iracedeck/sim-events-iracing";
 
-import type { ScenarioContext, ScenarioContract, SpeakGate } from "../../dsl.js";
+import type { EndsOn, ScenarioContext, ScenarioContract, SpeakGate } from "../../dsl.js";
 import { DEFAULT_MAX_QUEUE_WAIT_MS, NO_FRAME, poolRef, WEIGHT } from "../../dsl.js";
 import type { IScenarioEngine } from "../../interpreter.js";
 
@@ -225,12 +222,23 @@ export const TRAFFIC_WARNING_WEIGHT = 85;
  * reaching the merge within seconds of the player. Short, because heard
  * late each describes a car that has already gone by; the detector speaks
  * again on the next closer band or count, so a dropped one is replaced. The
- * reassuring lines wait the engine default instead (module header).
+ * pit-exit clear call waits the engine default instead (module header).
  */
 export const TRAFFIC_MAX_QUEUE_WAIT_MS = 3000;
 
 /** The supersede group of the rejoin lines: a newer one makes a waiting older one wrong. */
 export const TRAFFIC_REJOIN_SUPERSEDE_GROUP = "traffic-rejoin";
+
+/**
+ * What ends every rejoin line (module header, amended 2026-11-20): the
+ * player's car taken off the track mid-stop, a tow or a reset above all. A
+ * line playing stops at once, and one waiting is dropped.
+ */
+export const TRAFFIC_REJOIN_ENDS_ON: EndsOn = {
+  event: "traffic.rejoinTowed",
+  description:
+    "Your car is taken off the track while you are stopped: towed or reset to the pits, or you leave the car. A line playing stops at once and a waiting one is dropped.",
+};
 
 /** The supersede group of the two pit-exit lines. */
 export const TRAFFIC_PIT_EXIT_SUPERSEDE_GROUP = "traffic-pit-exit";
@@ -243,7 +251,7 @@ export const TRAFFIC_PIT_EXIT_SUPERSEDE_GROUP = "traffic-pit-exit";
 export const REJOIN_SECONDS_VAR = "traffic.rejoinSeconds";
 
 /**
- * The nine lines, rejoin first in band order and the group call after them,
+ * The seven lines, rejoin first in band order and the group call after them,
  * then the pit exit's verdicts and its merge warning. Each key is the
  * contract id's suffix, `pit-crew.traffic-<key>`.
  */
@@ -251,8 +259,6 @@ export type TrafficLine =
   | "rejoin-right-behind"
   | "rejoin-near-first"
   | "rejoin-near-update"
-  | "rejoin-over-ten"
-  | "rejoin-clear"
   | "rejoin-pack"
   | "pit-exit-traffic"
   | "pit-exit-clear"
@@ -269,10 +275,10 @@ type LineSpec = {
   interrupt: boolean;
   /**
    * How long the line may wait for the bus (module header): {@link TRAFFIC_MAX_QUEUE_WAIT_MS}
-   * for a line whose words decay while it waits, the engine default for a
-   * reassuring line, since what would make it false is a newer verdict of its
-   * trigger, which replaces it in the queue (`supersedeGroup`), short of the
-   * one gap the module header names.
+   * for a line whose words decay while it waits, the engine default for the
+   * pit-exit clear call, since what would make it false is a newer verdict of
+   * its trigger, which replaces it in the queue (`supersedeGroup`), short of
+   * the one gap the module header names.
    */
   maxQueueWaitMs: number;
   /** One sentence for a pack author, in the sim's terms (#1066). */
@@ -310,7 +316,7 @@ function clearIntroduction(): void {
   introducedBy = null;
 }
 
-/** The reassuring lines' gate, and the pack line's: the approach is over. Always admits. */
+/** The pack line's gate: the group replaces the lone car's approach. Always admits. */
 function endApproach(): boolean {
   clearIntroduction();
 
@@ -396,14 +402,6 @@ type RejoinLineSpec = LineSpec & {
   matches: (d: TrafficRejoin) => boolean;
   /** The speak-time gate: whether the line is still true as it reaches the radio, and what taking the bus does to the introduction. */
   speakGate?: SpeakGate;
-  /**
-   * Whether the gate first drops the line once the live telemetry has the
-   * player moving again ({@link playerStillStopped}, module header): the
-   * reassuring lines, which wait long and which nothing replaces once the
-   * driver pulls away. Checked before `speakGate.admit`, so a dropped line
-   * claims nothing.
-   */
-  dropOnceMoving?: true;
 };
 
 const REJOIN_LINES: Record<RejoinLine, RejoinLineSpec> = {
@@ -449,38 +447,6 @@ const REJOIN_LINES: Record<RejoinLine, RejoinLineSpec> = {
         "Dropped if it waited for the radio as long as the seconds it names, as the car has reached you by then.",
       admit: closeCarStillComing,
     },
-  },
-  "rejoin-over-ten": {
-    weight: WEIGHT.SAFETY,
-    interrupt: false,
-    // The default: a car closing into a closer band is a newer rejoin verdict,
-    // which replaces it in the queue (the one gap: module header).
-    maxQueueWaitMs: DEFAULT_MAX_QUEUE_WAIT_MS,
-    description:
-      "You are stopped or crawling on track and the nearest car is ten to fifteen seconds away, said on stopping, as it closes, or once a close car has gone by.",
-    matches: (d) => d.verdict === "overTen",
-    speakGate: {
-      description:
-        "Dropped if you are driving again by the time it reaches the radio (above about 29 km/h); speaking it ends the approach, so the next car within ten seconds gets a first call.",
-      admit: endApproach,
-    },
-    dropOnceMoving: true,
-  },
-  "rejoin-clear": {
-    weight: WEIGHT.SAFETY,
-    interrupt: false,
-    // The default: any car coming within fifteen seconds is a closer band, a
-    // newer rejoin verdict that replaces it (the one gap: module header).
-    maxQueueWaitMs: DEFAULT_MAX_QUEUE_WAIT_MS,
-    description:
-      "You are stopped or crawling on track and no car is within fifteen seconds of you, said on stopping or once a close car has gone by.",
-    matches: (d) => d.verdict === "clear",
-    speakGate: {
-      description:
-        "Dropped if you are driving again by the time it reaches the radio (above about 29 km/h); speaking it ends the approach, so the next car within ten seconds gets a first call.",
-      admit: endApproach,
-    },
-    dropOnceMoving: true,
   },
   "rejoin-pack": {
     weight: TRAFFIC_WARNING_WEIGHT,
@@ -643,8 +609,6 @@ export function registerTrafficVocabulary(
     {
       rightBehind: "The nearest car will reach you in under two seconds.",
       near: "The nearest car will reach you in two to nine seconds.",
-      overTen: "The nearest car is ten to fifteen seconds away.",
-      clear: "No car is within fifteen seconds of you.",
       pack: "A group of cars is coming: the nearest under ten seconds away and more close behind it.",
     },
     "The band the nearest car's predicted arrival falls in while you are stopped on track, read from the event that fired the line.",
@@ -696,26 +660,14 @@ function trafficContract(line: TrafficLine, spec: LineSpec): ScenarioContract {
   };
 }
 
-/**
- * The speak-time gate of a rejoin line: its own, with the moving check first
- * for a line that drops once the player is driving again (the check before
- * the claim, so a dropped line ends no approach).
- */
-function rejoinGate(spec: RejoinLineSpec, deps: TrafficContractDeps): SpeakGate | undefined {
-  const gate = spec.speakGate;
-
-  if (gate === undefined || spec.dropOnceMoving !== true) return gate;
-
-  return { description: gate.description, admit: (ctx) => playerStillStopped(deps) && gate.admit(ctx) };
-}
-
-function rejoinContract(line: RejoinLine, deps: TrafficContractDeps): ScenarioContract {
+function rejoinContract(line: RejoinLine): ScenarioContract {
   const spec = REJOIN_LINES[line];
-  const speakGate = rejoinGate(spec, deps);
 
   return {
     ...trafficContract(line, spec),
-    ...(speakGate ? { speakGate } : {}),
+    ...(spec.speakGate ? { speakGate: spec.speakGate } : {}),
+    // A tow or a reset cuts it, playing or waiting (module header).
+    endsOn: TRAFFIC_REJOIN_ENDS_ON,
     supersedeGroup: TRAFFIC_REJOIN_SUPERSEDE_GROUP,
     // Unframed: the rejoin lines repeat while the car stays stopped, and the
     // radio ticks around every one would drown the words (the spotter's
@@ -728,7 +680,7 @@ function rejoinContract(line: RejoinLine, deps: TrafficContractDeps): ScenarioCo
   };
 }
 
-/** What the pit-exit lines' and the reassuring rejoin lines' speak-time gates read: the live telemetry (#1378's reader). */
+/** What the pit-exit lines' speak-time gates read: the live telemetry (#1378's reader). */
 export type TrafficContractDeps = {
   /** The latest telemetry tick as the sim reported it; `null` with none (no sim, or the scenario harness). */
   getLatestTelemetry: () => TelemetryData | null;
@@ -743,18 +695,6 @@ function stillLeavingThePits(deps: TrafficContractDeps): boolean {
   const surface = deps.getLatestTelemetry()?.PlayerTrackSurface;
 
   return surface !== TrkLoc.OnTrack && surface !== TrkLoc.OffTrack;
-}
-
-/**
- * Whether the player is still stopped or crawling as a reassuring rejoin line
- * is about to be heard (module header): the live `Speed` at or under
- * `TRAFFIC_REJOIN_MOVING_MPS`, the speed the rejoin detector ends a stop
- * above. No telemetry, or no finite speed read, admits.
- */
-function playerStillStopped(deps: TrafficContractDeps): boolean {
-  const speed = deps.getLatestTelemetry()?.Speed;
-
-  return typeof speed !== "number" || !Number.isFinite(speed) || speed <= TRAFFIC_REJOIN_MOVING_MPS;
 }
 
 function pitExitContract(line: PitExitLine, deps: TrafficContractDeps): ScenarioContract {
@@ -781,18 +721,16 @@ function pitExitMergeContract(deps: TrafficContractDeps): ScenarioContract {
 }
 
 /**
- * The nine contracts, rejoin first in band order, the pit-exit gates and the
- * reassuring rejoin lines' gates closing over `deps`' telemetry read.
- * `registerPitCrew` builds them with the live reader.
+ * The seven contracts, rejoin first in band order, the pit-exit gates closing
+ * over `deps`' telemetry read. `registerPitCrew` builds them with the live
+ * reader.
  */
 export function buildTrafficContracts(deps: TrafficContractDeps): readonly ScenarioContract[] {
   return [
-    rejoinContract("rejoin-right-behind", deps),
-    rejoinContract("rejoin-near-first", deps),
-    rejoinContract("rejoin-near-update", deps),
-    rejoinContract("rejoin-over-ten", deps),
-    rejoinContract("rejoin-clear", deps),
-    rejoinContract("rejoin-pack", deps),
+    rejoinContract("rejoin-right-behind"),
+    rejoinContract("rejoin-near-first"),
+    rejoinContract("rejoin-near-update"),
+    rejoinContract("rejoin-pack"),
     pitExitContract("pit-exit-traffic", deps),
     pitExitContract("pit-exit-clear", deps),
     pitExitMergeContract(deps),
@@ -814,8 +752,6 @@ export const SCENARIO_ID_TO_TRAFFIC_ID: Record<string, TrafficCalloutId> = {
   "pit-crew.traffic-rejoin-right-behind": "rejoin",
   "pit-crew.traffic-rejoin-near-first": "rejoin",
   "pit-crew.traffic-rejoin-near-update": "rejoin",
-  "pit-crew.traffic-rejoin-over-ten": "rejoin",
-  "pit-crew.traffic-rejoin-clear": "rejoin",
   "pit-crew.traffic-rejoin-pack": "rejoin",
   "pit-crew.traffic-pit-exit-traffic": "pit-exit",
   "pit-crew.traffic-pit-exit-clear": "pit-exit",
@@ -837,8 +773,6 @@ export const TRAFFIC_CLIP_SOURCES: readonly { group: typeof TRAFFIC_GROUP; base:
   { group: TRAFFIC_GROUP, base: "rejoin-outro" },
   { group: TRAFFIC_GROUP, base: "rejoin-update" },
   { group: TRAFFIC_GROUP, base: "rejoin-right-behind" },
-  { group: TRAFFIC_GROUP, base: "rejoin-over-ten" },
-  { group: TRAFFIC_GROUP, base: "rejoin-clear" },
   { group: TRAFFIC_GROUP, base: "rejoin-pack" },
   { group: TRAFFIC_GROUP, base: "pit-exit-traffic" },
   { group: TRAFFIC_GROUP, base: "pit-exit-clear" },

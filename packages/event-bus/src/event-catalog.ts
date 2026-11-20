@@ -652,38 +652,43 @@ export type PitLaneLandmarkLearned = {
 };
 
 /**
- * The Race Engineer's verdict on rejoining the track from a stop (issue
- * #1113, amended 2026-11-11): the fixed band the nearest predicted arrival
- * at the player's position falls in. `rightBehind` under 2 s, `near` from
- * 2 s to under 10 s, `overTen` from 10 s to under 15 s, `clear` at 15 s or
- * more or with no car at all. The engineer alerts, never instructs: no verdict
- * tells a stopped driver to hold or go.
+ * The Race Engineer's warning on rejoining the track from a stop (issue
+ * #1113, amended 2026-11-11 and 2026-11-20): the fixed band the nearest
+ * predicted arrival at the player's position falls in, `rightBehind` under
+ * 2 s and `near` from 2 s to under 10 s. The engineer alerts, never
+ * instructs: no verdict tells a stopped driver to hold or go. Nor does any
+ * reassure him: the `overTen` (10 s to under 15 s) and `clear` (15 s or more,
+ * or no car) verdicts were removed on 2026-11-20, so nothing is published
+ * while no car is under 10 s away, and a subscriber reads that silence as
+ * nothing to warn about.
  *
  * `pack` (amended 2026-11-18) names no band: it is said once, in place of the
  * first car's band, when the nearest car is under 10 s and at least one more
  * arrives close behind it, a group the engineer calls once rather than car by
  * car.
  */
-export type TrafficRejoinVerdict = "rightBehind" | "near" | "overTen" | "clear" | "pack";
+export type TrafficRejoinVerdict = "rightBehind" | "near" | "pack";
 
 /*
  * The rejoin bands' edges (issue #1113, amended 2026-11-11), in seconds of the
  * nearest predicted arrival. They are part of the `traffic.rejoin` contract,
  * not a detail of either side: the translator's detector decides the band by
- * them, and the Race Engineer's lines name them ("more than ten seconds") and
- * accept only the `near` seconds they allow, so a publisher and a subscriber
- * that disagreed would leave a `near` call silent. Both import them from here.
- * Fixed, never settings, because the words name them.
+ * them, and the Race Engineer's lines name them ("about N seconds", a number
+ * only under ten) and accept only the `near` seconds they allow, so a
+ * publisher and a subscriber that disagreed would leave a `near` call silent.
+ * Both import them from here. Fixed, never settings, because the words name
+ * them.
  */
 
 /** Under this arrival (s) the nearest car is `rightBehind`, and from it `near`: no number below 2, when a count is no use. */
 export const TRAFFIC_REJOIN_RIGHT_BEHIND_S = 2;
 
-/** Under this arrival (s) the nearest car is `near`, and from it `overTen`: a number only for a car under ten seconds away. */
+/**
+ * Under this arrival (s) the nearest car is `near`, and from it nothing is
+ * published (amended 2026-11-20): a warning, and a number, only for a car
+ * under ten seconds away.
+ */
 export const TRAFFIC_REJOIN_OVER_TEN_S = 10;
-
-/** Under this arrival (s) the nearest car is `overTen`, and from it, or with no car, `clear`. */
-export const TRAFFIC_REJOIN_CLEAR_S = 15;
 
 /** The smallest `seconds` a `near` verdict carries: the band's lower edge, {@link TRAFFIC_REJOIN_RIGHT_BEHIND_S}. */
 export const TRAFFIC_REJOIN_NEAR_MIN_SECONDS = TRAFFIC_REJOIN_RIGHT_BEHIND_S;
@@ -693,19 +698,6 @@ export const TRAFFIC_REJOIN_NEAR_MIN_SECONDS = TRAFFIC_REJOIN_RIGHT_BEHIND_S;
  * {@link TRAFFIC_REJOIN_OVER_TEN_S}, since the arrival is rounded down.
  */
 export const TRAFFIC_REJOIN_NEAR_MAX_SECONDS = TRAFFIC_REJOIN_OVER_TEN_S - 1;
-
-/**
- * Above this speed (m/s, about 29 km/h) the player is no longer stopped or
- * crawling: the translator's detector ends the stop once the car has stayed
- * above it for two seconds, and every `traffic.rejoin` belongs to a stop. Part
- * of the contract like the band edges, since the Race Engineer drops a
- * waiting "more than ten" or "clear to rejoin" line once the live speed is
- * above it, so the two sides must agree on what moving means: a lower speed
- * on the listening side would drop a line about a car creeping through gravel
- * that the detector still counts as stopped. Well above the crawl speed the
- * detector starts a stop under, which is the hysteresis.
- */
-export const TRAFFIC_REJOIN_MOVING_MPS = 8;
 
 /** `traffic.rejoin` with the nearest car under 2 s away (issue #1113). Carries no number. */
 export type TrafficRejoinRightBehind = { verdict: "rightBehind" };
@@ -728,12 +720,6 @@ export type TrafficRejoinNear = {
   first: boolean;
 };
 
-/** `traffic.rejoin` with the nearest car from 10 s to under 15 s away (issue #1113). Carries no number. */
-export type TrafficRejoinOverTen = { verdict: "overTen" };
-
-/** `traffic.rejoin` with no car within 15 s (issue #1113). Carries no number. */
-export type TrafficRejoinClear = { verdict: "clear" };
-
 /**
  * `traffic.rejoin` with a group of cars coming (issue #1113, amended
  * 2026-11-18): the nearest car under 10 s away and at least one more close
@@ -743,8 +729,7 @@ export type TrafficRejoinClear = { verdict: "clear" };
 export type TrafficRejoinPack = { verdict: "pack" };
 
 /** Payload of `traffic.rejoin` (issue #1113): one member per verdict; only `near` carries a number. */
-export type TrafficRejoin =
-  TrafficRejoinRightBehind | TrafficRejoinNear | TrafficRejoinOverTen | TrafficRejoinClear | TrafficRejoinPack;
+export type TrafficRejoin = TrafficRejoinRightBehind | TrafficRejoinNear | TrafficRejoinPack;
 
 /**
  * The Race Engineer's verdict on the pit exit (issue #1113): `traffic` when a
@@ -810,13 +795,26 @@ export type SimEventMap = {
   /**
    * The player is stopped or crawling on the racing surface (or beside it),
    * out of the pits, past the green (issue #1113): which band the nearest
-   * coming car is in. Published on the stop's first verdict, whenever the
-   * nearest car moves into a closer band, on a `near` count each time its
-   * whole seconds have dropped by 3 or more, and once for the next car after
-   * a close one has gone by. Never on every evaluation. From live, in-car
-   * telemetry only.
+   * coming car is in, published only while a car is under 10 s away (amended
+   * 2026-11-20: never a reassuring verdict). Published on the stop's first
+   * band, whenever the nearest car moves into a closer band, and on a `near`
+   * count each time its whole seconds have dropped by 3 or more; once a close
+   * car or a group has gone by, the next car under 10 s gets a new first
+   * call. Never on every evaluation. From live, in-car telemetry only.
    */
   "traffic.rejoin": SimEvent<"traffic.rejoin", TrafficRejoin>;
+  /**
+   * The player's car was taken off the track during a stop that
+   * `traffic.rejoin` speaks about (issue #1113, amended 2026-11-20): a tow or
+   * a reset to the pits, or the player leaving the car or going to the garage,
+   * rather than driving off. The stop ends here, and the Race Engineer's
+   * rejoin lines end on it (`endsOn`): one playing stops at once and one
+   * waiting is dropped. Published once, on the tick the stop ends, and only
+   * for a stop that was running; a stop that ends by driving off publishes
+   * nothing. Never on the same tick as a `traffic.rejoin`. From live, in-car
+   * telemetry only.
+   */
+  "traffic.rejoinTowed": SimEvent<"traffic.rejoinTowed", EmptySimEventPayload>;
   /**
    * The player is driving out of the pits (issue #1113): whether a car on
    * track will reach the end of the exit blend about when they do. Published

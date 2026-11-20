@@ -1565,9 +1565,11 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
   // the close band's composed lines speak, the band case, the first-call
   // condition, the pit-exit cases) registers before the contracts; the
   // translator's detectors decide each band, its number and when it is worth
-  // saying again, and the nine contracts only map the event to a line, the
+  // saying again, and the seven contracts only map the event to a line, the
   // pit-exit lines' and the merge warning's speak-time gate reading the live
-  // telemetry to drop a line still waiting once the player has merged. Two
+  // telemetry to drop a line still waiting once the player has merged, and the
+  // rejoin lines ending on `traffic.rejoinTowed` (`endsOn`), so a tow or a
+  // reset cuts one playing or waiting (amended 2026-11-20). Two
   // subjects gate them via `SCENARIO_ID_TO_TRAFFIC_ID`. One `family:
   // "traffic"` so a fresh line replaces a stale one in flight (see the module
   // header). The approach tracking forgets a car's introduction when the

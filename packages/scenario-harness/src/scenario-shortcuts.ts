@@ -3605,7 +3605,9 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
   // ── Traffic (issue #1113) ──
   // `traffic.rejoin` / `traffic.pitExit` / `traffic.pitExitMerge` directly —
   // bypasses the detectors' stopped-on-track and pit-exit gating, so each line
-  // is auditionable on demand. Only the close band speaks a number: its two
+  // is auditionable on demand. The rejoin lines are warnings only (amended
+  // 2026-11-20: nothing reassures), and `traffic.rejoinTowed` cuts one in
+  // flight, as a tow or a reset does. Only the close band speaks a number: its two
   // calls are composed from pools (an intro or update intro, the seconds, and
   // on the first call an outro), so a repeated press picks other takes. The
   // pit-exit lines and the merge warning speak no number (the payload's
@@ -3640,24 +3642,6 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
     data: { verdict: "near", seconds: 2, first: false },
   },
   {
-    id: "traffic-rejoin-over-ten",
-    category: "Traffic",
-    label: "Rejoin over ten",
-    description:
-      'Stopped on track, the nearest car 10 to 15 s away — "Next car is more than ten seconds away. Be careful." or another of its four lines. Waits for a line in flight. Unframed.',
-    event: "traffic.rejoin",
-    data: { verdict: "overTen" },
-  },
-  {
-    id: "traffic-rejoin-clear",
-    category: "Traffic",
-    label: "Rejoin clear",
-    description:
-      'Stopped on track, no car within 15 s — "Clear to rejoin." or another of its four lines. Waits for a line in flight. Unframed.',
-    event: "traffic.rejoin",
-    data: { verdict: "clear" },
-  },
-  {
     id: "traffic-rejoin-pack",
     category: "Traffic",
     label: "Rejoin pack",
@@ -3665,6 +3649,15 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
       'Stopped on track, a group of cars coming, the nearest under 10 s away with more close behind it — "A group of cars coming. Join carefully." Said once for the whole group. Cuts any lower-weight line in flight. Unframed.',
     event: "traffic.rejoin",
     data: { verdict: "pack" },
+  },
+  {
+    id: "traffic-rejoin-towed",
+    category: "Traffic",
+    label: "Rejoin → towed",
+    description:
+      "Your car is towed or reset to the pits while you are stopped on track: any rejoin line playing stops at once and a waiting one is dropped. Says nothing itself. Press it while a rejoin line plays to hear it cut. The pit exit lines are left alone.",
+    event: "traffic.rejoinTowed",
+    data: {},
   },
   {
     id: "traffic-pit-exit-traffic",
@@ -3710,7 +3703,7 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
     label: "Rejoin → three cars coming",
     requires: ["traffic-player-car", "sdk-connected"],
     description:
-      'Drives the TRANSLATOR: you spin to a stop on the circuit while a car closes from 25 to 12, 8, 5 and 1.5 seconds away and goes by, with two more behind it, in two classes. About seventeen seconds. Apply the race session preset first (it names your car); no telemetry preset is needed, the button puts the field on track itself. Expect seven lines, each drawn from its pools so the wording varies: a clear line on stopping ("Clear to rejoin."), a more-than-ten line as the lead car closes to 12 s ("Next car is more than ten seconds away. Be careful."), the first call at 8 s ("Car coming in about eight seconds. Watch out."), the count at 5 s ("Getting closer, about five seconds."), the right-behind line at 1.5 s ("Car right behind you. Watch out."), and once it has gone by, the next car\'s band once ("Next car is more than ten seconds away. Be careful.") and its own first call at 6 s ("Car coming in about six seconds. Watch out."). Nothing as you drive away. Refused while the mock SDK is disconnected: a disconnected translator sees no ticks.',
+      'Drives the TRANSLATOR: you spin to a stop on the circuit while a car closes from 25 to 12, 8, 5 and 1.5 seconds away and goes by, with two more behind it, in two classes. About seventeen seconds. Apply the race session preset first (it names your car); no telemetry preset is needed, the button puts the field on track itself. Expect four lines, only for a car under ten seconds away, each drawn from its pools so the wording varies: nothing on stopping or as the lead car closes to 12 s, the first call at 8 s ("Car coming in about eight seconds. Watch out."), the count at 5 s ("Getting closer, about five seconds."), the right-behind line at 1.5 s ("Car right behind you. Watch out."), nothing once it has gone by while the next car is still 10 s or more away, and that car\'s own first call at 6 s ("Car coming in about six seconds. Watch out."). Nothing as you drive away. Refused while the mock SDK is disconnected: a disconnected translator sees no ticks.',
     telemetrySequence: TRAFFIC_REJOIN_SEQUENCE,
   },
 

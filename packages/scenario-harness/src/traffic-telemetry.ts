@@ -161,10 +161,11 @@ export const TRAFFIC_REJOIN_TAIL_CAR_IDX = 9;
 
 /**
  * Each car's arrival at P (seconds) in the seven snapshots, `null` once it is
- * past P. The lead car walks every band in turn (clear, over ten, near, near
- * three seconds closer, right behind); the class-A car behind it is the next
- * car's band once the lead has gone by (over ten, then close on its own); the
- * tail keeps the train a train.
+ * past P. The lead car closes from far away (25.5 and 12.5 s, both silent
+ * since the engineer speaks only to warn, amended 2026-11-20) into near, near
+ * three seconds closer and right behind; the class-A car behind it is still
+ * 10 s or more away once the lead has gone by (silent), then close on its own
+ * (a new first call); the tail keeps the train a train.
  */
 const REJOIN_ARRIVALS: Record<number, readonly (number | null)[]> = {
   [TRAFFIC_REJOIN_LEAD_CAR_IDX]: [25.5, 12.5, 8.5, 5.5, 1.5, null, null],
@@ -246,8 +247,10 @@ const REJOIN_STOP_HOLD_MS = 1700;
  *
  * The stop is two ticked steps, not one long hold, for a harness whose tick
  * loop is paused: a step's hold then adds no tick, so with one step the dwell
- * would end on the next snapshot's tick and the entry verdict would be read
- * off snapshot 1 (`overTen`), never the `clear` of snapshot 0.
+ * would end on the next snapshot's tick and the entry would be judged off
+ * snapshot 1, never snapshot 0. Both are silent now (no car under 10 s), but
+ * the run keeps each snapshot's evaluation where it was, so the bands under
+ * 10 s land on the same steps with the loop ticking or paused.
  */
 const REJOIN_ENTRY_HOLD_MS = 1300;
 
@@ -261,10 +264,11 @@ const REJOIN_DRIVE_AWAY_MS = 2500;
  * Stopped on the circuit with a train of three cars coming (issue #1113, spec
  * "Verification"): the player spins to a stop at P while a class-B car closes
  * from 25 s to 12, 8, 5 and 1.5 s away and goes by, with a class-A car and a
- * class-B car behind it. Through the real rejoin detector: `clear` on entry,
- * `overTen`, `near` 8 (first), `near` 5 (the count, three seconds closer),
- * `rightBehind`, then once the lead car is past the next car's band once
- * (`overTen`), and its own close call when it closes (`near` 6, first).
+ * class-B car behind it. Through the real rejoin detector, warnings only
+ * (amended 2026-11-20): nothing on entry or at 12.5 s, then `near` 8 (first),
+ * `near` 5 (the count, three seconds closer), `rightBehind`, nothing once the
+ * lead car is past while the next car is still 10 s or more away, and that
+ * car's own close call when it closes (`near` 6, first).
  *
  * Opens inside a replay-mode bracket that puts the player on the circuit at
  * racing speed, off pit road and racing under green, then a seeding tick; then
@@ -279,8 +283,8 @@ export const TRAFFIC_REJOIN_SEQUENCE: readonly TelemetryStep[] = rejoinSequence(
 
 /**
  * The same run without the learning lap, for the test's control: class B has
- * no curve at P, so its two cars are untimed and withhold `overTen` and
- * `clear` only; the class-A car is timed, so its `near` is still heard.
+ * no curve at P, so its two cars are untimed and left out; the class-A car is
+ * timed, so its `near` is still heard.
  *
  * @internal Exported for testing
  */

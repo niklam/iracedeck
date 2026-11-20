@@ -1,10 +1,13 @@
 /**
  * Approaching-traffic tests (issue #1113, amended 2026-11-11).
  *
- * Nine contracts, one per line: six off `traffic.rejoin` (right behind, the
- * close band's first call and its count, more than ten, clear, and the group
- * call of amendment 2026-11-18), two off `traffic.pitExit` and the merge
- * warning off `traffic.pitExitMerge` (amended 2026-11-20). The close band's lines are composed: an intro or update
+ * Seven contracts, one per line: four off `traffic.rejoin` (right behind, the
+ * close band's first call and its count, and the group call of amendment
+ * 2026-11-18; the reassuring "more than ten" and "Clear to rejoin." were
+ * removed on 2026-11-20), two off `traffic.pitExit` and the merge
+ * warning off `traffic.pitExitMerge` (amended 2026-11-20). Every rejoin line
+ * ends on `traffic.rejoinTowed` (`endsOn`, amended 2026-11-20): a tow or a
+ * reset cuts it, playing or waiting. The close band's lines are composed: an intro or update
  * intro, the middle naming the seconds through the `traffic.rejoinSeconds`
  * var, and (on the first call) an outro. The fire-through cases run the
  * family through the real engine against a script fixture shaped like the
@@ -31,11 +34,7 @@ import type {
   TrafficPitExitVerdict,
   TrafficRejoin,
 } from "@iracedeck/event-bus";
-import {
-  TRAFFIC_REJOIN_MOVING_MPS,
-  TRAFFIC_REJOIN_NEAR_MAX_SECONDS,
-  TRAFFIC_REJOIN_NEAR_MIN_SECONDS,
-} from "@iracedeck/event-bus";
+import { TRAFFIC_REJOIN_NEAR_MAX_SECONDS, TRAFFIC_REJOIN_NEAR_MIN_SECONDS } from "@iracedeck/event-bus";
 import { TrkLoc } from "@iracedeck/iracing-sdk";
 import type { TelemetryData } from "@iracedeck/sim-events-iracing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -59,6 +58,7 @@ import {
   TRAFFIC_CONTRACTS,
   TRAFFIC_MAX_QUEUE_WAIT_MS,
   TRAFFIC_PIT_EXIT_SUPERSEDE_GROUP,
+  TRAFFIC_REJOIN_ENDS_ON,
   TRAFFIC_REJOIN_SUPERSEDE_GROUP,
   TRAFFIC_SCENARIO_IDS,
   TRAFFIC_WARNING_WEIGHT,
@@ -68,8 +68,6 @@ const REJOIN_IDS = [
   "pit-crew.traffic-rejoin-right-behind",
   "pit-crew.traffic-rejoin-near-first",
   "pit-crew.traffic-rejoin-near-update",
-  "pit-crew.traffic-rejoin-over-ten",
-  "pit-crew.traffic-rejoin-clear",
   "pit-crew.traffic-rejoin-pack",
 ] as const;
 const PIT_EXIT_IDS = ["pit-crew.traffic-pit-exit-traffic", "pit-crew.traffic-pit-exit-clear"] as const;
@@ -92,20 +90,14 @@ const DECAYING_IDS = [
 /** The warnings: the lines at TRAFFIC_WARNING_WEIGHT, which cut a caution line. */
 const WARNING_IDS = DECAYING_IDS;
 
-/** The reassuring lines, true for as long as they wait. */
-const REASSURING_IDS = [
-  "pit-crew.traffic-rejoin-over-ten",
-  "pit-crew.traffic-rejoin-clear",
-  "pit-crew.traffic-pit-exit-clear",
-] as const;
+/** The one reassuring line left, the pit-exit clear call, true for as long as it waits. */
+const REASSURING_IDS = ["pit-crew.traffic-pit-exit-clear"] as const;
 
 /** One payload per rejoin line, keyed by the contract that must take it. */
 const REJOIN_PAYLOADS: Record<(typeof REJOIN_IDS)[number], TrafficRejoin> = {
   "pit-crew.traffic-rejoin-right-behind": { verdict: "rightBehind" },
   "pit-crew.traffic-rejoin-near-first": { verdict: "near", seconds: 5, first: true },
   "pit-crew.traffic-rejoin-near-update": { verdict: "near", seconds: 5, first: false },
-  "pit-crew.traffic-rejoin-over-ten": { verdict: "overTen" },
-  "pit-crew.traffic-rejoin-clear": { verdict: "clear" },
   "pit-crew.traffic-rejoin-pack": { verdict: "pack" },
 };
 
@@ -196,7 +188,7 @@ const CRITICAL_CONTRACT: ScenarioContract = {
   when: { event: "pitStall.departed" },
 };
 
-/** A queueable line at NORMAL weight, as the incident lines are: what a spin's entry "Clear to rejoin" arrives behind. */
+/** A queueable line at NORMAL weight, as the incident lines are: what a spin's first call arrives behind. */
 const INCIDENT_LIKE_ID = "test.incident-like";
 const INCIDENT_LIKE_CLIP = `voice/${VOICE}/test/incident-like-01.mp3`;
 const INCIDENT_LIKE_CONTRACT: ScenarioContract = {
@@ -326,8 +318,6 @@ const SCRIPT: CalloutScript = {
       ...ENTRY,
       sequence: ["pool:traffic/rejoin-update", `{{${REJOIN_SECONDS_VAR}}}`],
     },
-    "pit-crew.traffic-rejoin-over-ten": { ...ENTRY, sequence: ["pool:traffic/rejoin-over-ten"] },
-    "pit-crew.traffic-rejoin-clear": { ...ENTRY, sequence: ["pool:traffic/rejoin-clear"] },
     "pit-crew.traffic-rejoin-pack": { ...ENTRY, sequence: ["pool:traffic/rejoin-pack"] },
     "pit-crew.traffic-pit-exit-traffic": { ...ENTRY, sequence: ["pool:traffic/pit-exit-traffic"] },
     "pit-crew.traffic-pit-exit-clear": { ...ENTRY, sequence: ["pool:traffic/pit-exit-clear"] },
@@ -400,8 +390,6 @@ const LINE_CLIP: Record<string, string> = {
   "pit-crew.traffic-rejoin-right-behind": clip("rejoin-right-behind"),
   "pit-crew.traffic-rejoin-near-first": clip("rejoin-intro"),
   "pit-crew.traffic-rejoin-near-update": clip("rejoin-update"),
-  "pit-crew.traffic-rejoin-over-ten": clip("rejoin-over-ten"),
-  "pit-crew.traffic-rejoin-clear": clip("rejoin-clear"),
   "pit-crew.traffic-rejoin-pack": clip("rejoin-pack"),
   "pit-crew.traffic-pit-exit-traffic": clip("pit-exit-traffic"),
   "pit-crew.traffic-pit-exit-clear": clip("pit-exit-clear"),
@@ -483,7 +471,7 @@ describe("TRAFFIC_CONTRACTS", () => {
     }
   });
 
-  it("the warnings weigh TRAFFIC_WARNING_WEIGHT, strictly between SAFETY and CRITICAL; the reassuring lines SAFETY", () => {
+  it("the warnings weigh TRAFFIC_WARNING_WEIGHT, strictly between SAFETY and CRITICAL; the pit-exit clear SAFETY", () => {
     expect(TRAFFIC_WARNING_WEIGHT).toBe(85);
     expect(TRAFFIC_WARNING_WEIGHT).toBeGreaterThan(WEIGHT.SAFETY);
     expect(TRAFFIC_WARNING_WEIGHT).toBeLessThan(WEIGHT.CRITICAL);
@@ -506,7 +494,7 @@ describe("TRAFFIC_CONTRACTS", () => {
     }
   });
 
-  it("waits briefly for the bus on the lines whose words decay, and the engine default on the reassuring ones", () => {
+  it("waits briefly for the bus on the lines whose words decay, and the engine default on the pit-exit clear", () => {
     expect([...DECAYING_IDS, ...REASSURING_IDS].sort()).toEqual([...TRAFFIC_SCENARIO_IDS].sort());
 
     for (const id of DECAYING_IDS) expect(contract(id).maxQueueWaitMs, id).toBe(TRAFFIC_MAX_QUEUE_WAIT_MS);
@@ -516,7 +504,7 @@ describe("TRAFFIC_CONTRACTS", () => {
     expect(TRAFFIC_MAX_QUEUE_WAIT_MS).toBeLessThan(DEFAULT_MAX_QUEUE_WAIT_MS);
   });
 
-  it("the close calls, the pack line, both pit-exit lines and the merge warning interrupt; more than ten and clear do not", () => {
+  it("every line interrupts: the close calls, the pack line, both pit-exit lines and the merge warning", () => {
     const interrupting = TRAFFIC_CONTRACTS.filter((c) => c.interrupt === true).map((c) => c.id);
 
     expect(interrupting).toEqual([
@@ -528,8 +516,17 @@ describe("TRAFFIC_CONTRACTS", () => {
       "pit-crew.traffic-pit-exit-clear",
       MERGE_ID,
     ]);
-    expect(contract("pit-crew.traffic-rejoin-over-ten").interrupt).toBe(false);
-    expect(contract("pit-crew.traffic-rejoin-clear").interrupt).toBe(false);
+    expect(interrupting).toEqual([...TRAFFIC_SCENARIO_IDS]);
+  });
+
+  it("every rejoin line ends on a tow or a reset, and no pit-exit line does (amended 2026-11-20)", () => {
+    expect(TRAFFIC_REJOIN_ENDS_ON.event).toBe("traffic.rejoinTowed");
+    expect(TRAFFIC_REJOIN_ENDS_ON.description.endsWith(".")).toBe(true);
+    expect(TRAFFIC_REJOIN_ENDS_ON.description.length).toBeLessThanOrEqual(200);
+
+    for (const id of REJOIN_IDS) expect(contract(id).endsOn, id).toBe(TRAFFIC_REJOIN_ENDS_ON);
+
+    for (const id of PIT_EXIT_GATED_IDS) expect(contract(id).endsOn, id).toBeUndefined();
   });
 
   it("the rejoin lines are unframed; the pit-exit lines and the merge warning keep the default radio frame", () => {
@@ -639,7 +636,7 @@ describe("rejoinMidBase", () => {
 
     expect(rejoinMidBase({ verdict: "near", first: true } as unknown as TrafficRejoin)).toBeNull();
     expect(rejoinMidBase({ verdict: "rightBehind" })).toBeNull();
-    expect(rejoinMidBase({ verdict: "clear", seconds: 5 } as unknown as TrafficRejoin)).toBeNull();
+    expect(rejoinMidBase({ verdict: "pack", seconds: 5 } as unknown as TrafficRejoin)).toBeNull();
     expect(rejoinMidBase(null)).toBeNull();
     expect(rejoinMidBase(undefined)).toBeNull();
   });
@@ -697,7 +694,7 @@ describe("registerTrafficVocabulary", () => {
     expect(seconds(ctxOf(rejoinEvent(near(5, true))))).toEqual(poolRef("traffic", "rejoin-mid-5"));
     expect(seconds(ctxOf(rejoinEvent(near(2, false))))).toEqual(poolRef("traffic", "rejoin-mid-2"));
     expect(seconds(ctxOf(rejoinEvent(near(10, true))))).toBeNull();
-    expect(seconds(ctxOf(rejoinEvent({ verdict: "overTen" })))).toBeNull();
+    expect(seconds(ctxOf(rejoinEvent({ verdict: "pack" })))).toBeNull();
     expect(seconds(ctxOf(pitExitEvent("traffic", 3)))).toBeNull();
     // An imperative fire carries no event.
     expect(seconds(ctxOf(null))).toBeNull();
@@ -711,7 +708,7 @@ describe("registerTrafficVocabulary", () => {
 
       expect(first(ctxOf(rejoinEvent(near(6, true))))).toBe(true);
       expect(first(ctxOf(rejoinEvent({ verdict: "rightBehind" })))).toBe(false);
-      expect(first(ctxOf(rejoinEvent({ verdict: "clear" })))).toBe(false);
+      expect(first(ctxOf(rejoinEvent({ verdict: "pack" })))).toBe(false);
       expect(first(ctxOf(pitExitEvent("clear")))).toBe(false);
       expect(first(ctxOf(null))).toBe(false);
     }
@@ -735,7 +732,7 @@ describe("registerTrafficVocabulary", () => {
     const pitExit = cases.get("traffic.pitExitVerdict")!;
     const payloads = Object.values(REJOIN_PAYLOADS);
 
-    expect(Object.keys(band.keys).sort()).toEqual(["clear", "near", "overTen", "pack", "rightBehind"]);
+    expect(Object.keys(band.keys).sort()).toEqual(["near", "pack", "rightBehind"]);
     expect(Object.keys(pitExit.keys).sort()).toEqual([...PIT_EXIT_VERDICTS].sort());
 
     for (const data of payloads) expect(band.resolve(ctxOf(rejoinEvent(data)))).toBe(data.verdict);
@@ -743,7 +740,7 @@ describe("registerTrafficVocabulary", () => {
     for (const verdict of PIT_EXIT_VERDICTS) expect(pitExit.resolve(ctxOf(pitExitEvent(verdict)))).toBe(verdict);
 
     expect(band.resolve(ctxOf(pitExitEvent("clear")))).toBeNull();
-    expect(pitExit.resolve(ctxOf(rejoinEvent({ verdict: "clear" })))).toBeNull();
+    expect(pitExit.resolve(ctxOf(rejoinEvent({ verdict: "pack" })))).toBeNull();
     expect(band.resolve(ctxOf(null))).toBeNull();
   });
 
@@ -795,8 +792,7 @@ describe("the traffic lines through the engine", () => {
 
   it.each([
     ["rightBehind", "rejoin-right-behind"],
-    ["overTen", "rejoin-over-ten"],
-    ["clear", "rejoin-clear"],
+    ["pack", "rejoin-pack"],
   ] as const)("a %s verdict plays its fixed pool, unframed", (verdict, base) => {
     bus.publishEvent("traffic.rejoin", { verdict });
     flush(audio);
@@ -859,22 +855,6 @@ describe("scheduling against other lines", () => {
     expect(audio._stopped).toContain(AudioChannel.Voice);
     expect(voicePaths()).toEqual([CHATTER_CLIP, LINE_CLIP[id]]);
   });
-
-  it.each(["pit-crew.traffic-rejoin-over-ten", "pit-crew.traffic-rejoin-clear"] as const)(
-    "%s lets the ordinary line finish, then plays",
-    (id) => {
-      bus.publishEvent("pitStall.entered", {});
-      bus.publishEvent("traffic.rejoin", REJOIN_PAYLOADS[id]);
-
-      expect(voicePaths()).toEqual([CHATTER_CLIP]);
-      expect(audio._stopped).not.toContain(AudioChannel.Voice);
-
-      flush(audio);
-
-      expect(voicePaths()).toHaveLength(2);
-      expect(voicePaths()[1]).toMatch(/\/traffic\/rejoin-/);
-    },
-  );
 
   it.each(PIT_EXIT_VERDICTS)("pit exit %s cuts an ordinary line", (verdict) => {
     bus.publishEvent("pitStall.entered", {});
@@ -975,23 +955,6 @@ describe("scheduling against other lines", () => {
     expect(voicePaths()).toEqual([CRITICAL_CLIP, clip("rejoin-right-behind")]);
   });
 
-  it("the entry clear arriving while a queueable NORMAL line plays waits for it, and is not lost", () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(0);
-
-    // The incident line after a spin takes the bus; the entry clear, heavier
-    // but no interrupt, waits for it.
-    bus.publishEvent("pitLane.exited", {});
-    bus.publishEvent("traffic.rejoin", { verdict: "clear" });
-    expect(voicePaths()).toEqual([INCIDENT_LIKE_CLIP]);
-
-    // The line in flight runs on past the counting lines' short wait.
-    vi.setSystemTime(TRAFFIC_MAX_QUEUE_WAIT_MS + 1_000);
-    flush(audio);
-
-    expect(voicePaths()).toEqual([INCIDENT_LIKE_CLIP, clip("rejoin-clear")]);
-  });
-
   it.each(REASSURING_IDS)("%s waits for an equal-weight line of another family instead of being dropped", (id) => {
     bus.publishEvent("pitLane.entered", {});
     publishLine(id);
@@ -1004,15 +967,28 @@ describe("scheduling against other lines", () => {
     expect(voicePaths()).toEqual([SAFETY_CLIP, LINE_CLIP[id]]);
   });
 
-  it("a newer verdict removes a waiting older one, so the stale band is never heard after it", () => {
-    bus.publishEvent("pitStall.entered", {});
-    // Both wait for the ordinary line (heavier, no interrupt): "more than
-    // ten" first, then the clear that replaced it.
-    bus.publishEvent("traffic.rejoin", { verdict: "overTen" });
-    bus.publishEvent("traffic.rejoin", { verdict: "clear" });
+  it("a first call cuts the incident line after a spin, which replays after it", () => {
+    bus.publishEvent("pitLane.exited", {});
+    expect(voicePaths()).toEqual([INCIDENT_LIKE_CLIP]);
+
+    bus.publishEvent("traffic.rejoin", near(9, true));
+
+    expect(audio._stopped).toContain(AudioChannel.Voice);
+
     flush(audio);
 
-    expect(voicePaths()).toEqual([CHATTER_CLIP, clip("rejoin-clear")]);
+    expect(voicePaths()).toEqual([INCIDENT_LIKE_CLIP, ...firstCall(9), INCIDENT_LIKE_CLIP]);
+  });
+
+  it("a newer verdict removes a waiting older one, so the stale band is never heard after it", () => {
+    bus.publishEvent("pitStall.departed", {});
+    // Both wait for the CRITICAL line: right behind first, then the group
+    // call that replaced it.
+    bus.publishEvent("traffic.rejoin", { verdict: "rightBehind" });
+    bus.publishEvent("traffic.rejoin", { verdict: "pack" });
+    flush(audio);
+
+    expect(voicePaths()).toEqual([CRITICAL_CLIP, clip("rejoin-pack")]);
   });
 
   describe("a line parked longer than its maximum wait is dropped, not spoken late", () => {
@@ -1036,8 +1012,6 @@ describe("scheduling against other lines", () => {
     });
 
     const reassuring = [
-      ["more than ten", () => bus.publishEvent("traffic.rejoin", { verdict: "overTen" }), clip("rejoin-over-ten")],
-      ["clear to rejoin", () => bus.publishEvent("traffic.rejoin", { verdict: "clear" }), clip("rejoin-clear")],
       [
         "the pit-exit clear",
         () => bus.publishEvent("traffic.pitExit", { verdict: "clear", seconds: 6 }),
@@ -1208,82 +1182,101 @@ describe("a line is never heard after the moment it warns about", () => {
     });
   });
 
-  describe("a reassuring rejoin line is dropped once the player is driving again", () => {
-    let telemetry: Partial<TelemetryData> | null;
-    const live = buildTrafficContracts({ getLatestTelemetry: () => telemetry as TelemetryData | null });
-    const liveAdmit = (id: string, data: TrafficRejoin): boolean =>
-      live.find((c) => c.id === id)!.speakGate!.admit({ ...ctxOf(rejoinEvent(data)), now: 0 });
-    const REASSURING = [
-      ["pit-crew.traffic-rejoin-over-ten", { verdict: "overTen" }],
-      ["pit-crew.traffic-rejoin-clear", { verdict: "clear" }],
-    ] satisfies Array<[string, TrafficRejoin]>;
+  it("no rejoin line reads the live telemetry: the harness and the sim gate them alike", () => {
+    const reads = vi.fn((): TelemetryData | null => ({ Speed: 40 }) as TelemetryData);
+    const live = buildTrafficContracts({ getLatestTelemetry: reads });
 
-    beforeEach(() => {
-      telemetry = null;
-    });
+    for (const id of REJOIN_IDS) {
+      live.find((c) => c.id === id)!.speakGate!.admit({ ...ctxOf(rejoinEvent(REJOIN_PAYLOADS[id])), now: 0 });
+    }
 
-    it.each(REASSURING)("%s: refused above the speed that ends a stop, admitted at or under it", (id, data) => {
-      for (const [speed, admitted] of [
-        [0, true],
-        // Creeping through gravel: the detector still counts the stop.
-        [TRAFFIC_REJOIN_MOVING_MPS / 2, true],
-        [TRAFFIC_REJOIN_MOVING_MPS, true],
-        [TRAFFIC_REJOIN_MOVING_MPS + 0.1, false],
-        [40, false],
-      ] as const) {
-        telemetry = { Speed: speed };
-        expect(liveAdmit(id, data), `${id} at ${speed} m/s`).toBe(admitted);
-      }
-    });
+    expect(reads).not.toHaveBeenCalled();
+  });
+});
 
-    it.each(REASSURING)("%s: admitted with no telemetry or no speed read (the harness)", (id, data) => {
-      telemetry = null;
-      expect(liveAdmit(id, data)).toBe(true);
+/**
+ * A tow or a reset cuts the line (amended 2026-11-20): "if car jumps to pits
+ * (reset/tow), stop the line spoken". The detector publishes
+ * `traffic.rejoinTowed`, which every rejoin contract names in `endsOn`.
+ */
+describe("a tow or a reset cuts the rejoin lines (amended 2026-11-20)", () => {
+  it("stops a rejoin line playing at once, silently: nothing more of it is heard", () => {
+    bus.publishEvent("traffic.rejoin", near(9, true));
+    expect(voicePaths()).toEqual([clip("rejoin-intro")]);
 
-      telemetry = {};
-      expect(liveAdmit(id, data)).toBe(true);
+    bus.publishEvent("traffic.rejoinTowed", {});
 
-      telemetry = { Speed: Number.NaN };
-      expect(liveAdmit(id, data)).toBe(true);
-    });
+    expect(audio._stopped).toContain(AudioChannel.Voice);
 
-    it.each(REASSURING)("%s: a line dropped as the player drives away does not end the approach", (id, data) => {
-      introduce();
-      expect(readTrafficDebugState().introduced).toBe(true);
+    flush(audio);
 
-      telemetry = { Speed: 40 };
-      expect(liveAdmit(id, data)).toBe(false);
-      expect(readTrafficDebugState().introduced).toBe(true);
+    // Unframed, so no cut tail: the rest of the sentence is never played.
+    expect(allPaths()).toEqual([clip("rejoin-intro")]);
+    expect(mockLogger.debug).toHaveBeenCalledWith(
+      'Scenario "pit-crew.traffic-rejoin-near-first" ended by traffic.rejoinTowed (playing → silent)',
+    );
+  });
 
-      telemetry = { Speed: 0 };
-      expect(liveAdmit(id, data)).toBe(true);
-      expect(readTrafficDebugState().introduced).toBe(false);
-    });
+  it.each(REJOIN_IDS)("stops %s playing", (id) => {
+    if (id === "pit-crew.traffic-rejoin-near-update") introduce();
 
-    it.each(REASSURING)("%s waiting behind a CRITICAL line is dropped once the player has driven away", (id, data) => {
-      _resetAudioScenarios();
-      _resetTrafficState();
-      wire(live);
-      telemetry = { Speed: 0 };
-      bus.publishEvent("pitStall.departed", {});
-      bus.publishEvent("traffic.rejoin", data);
-      telemetry = { Speed: 40 };
-      flush(audio);
+    publishLine(id);
+    expect(voicePaths()).toEqual([LINE_CLIP[id]]);
 
-      expect(voicePaths(), id).toEqual([CRITICAL_CLIP]);
-    });
+    bus.publishEvent("traffic.rejoinTowed", {});
 
-    it.each(REASSURING)("%s waiting behind a CRITICAL line still plays while the player is stopped", (id, data) => {
-      _resetAudioScenarios();
-      _resetTrafficState();
-      wire(live);
-      telemetry = { Speed: 0 };
-      bus.publishEvent("pitStall.departed", {});
-      bus.publishEvent("traffic.rejoin", data);
-      flush(audio);
+    expect(audio._stopped).toContain(AudioChannel.Voice);
+  });
 
-      expect(voicePaths()).toEqual([CRITICAL_CLIP, clip(id.replace("pit-crew.traffic-", ""))]);
-    });
+  it.each(REJOIN_IDS)("drops %s waiting behind another line, so it is never heard", (id) => {
+    if (id === "pit-crew.traffic-rejoin-near-update") introduce();
+
+    bus.publishEvent("pitStall.departed", {});
+    publishLine(id);
+    bus.publishEvent("traffic.rejoinTowed", {});
+    flush(audio);
+
+    expect(voicePaths()).toEqual([CRITICAL_CLIP]);
+    expect(mockLogger.debug).toHaveBeenCalledWith(`Scenario "${id}" dropped — ended`);
+  });
+
+  it("leaves the line that was playing to whatever waits behind it: the bus drains", () => {
+    // The first call cuts the caution line, which waits to replay; the tow
+    // stops the call, and the caution line plays again.
+    bus.publishEvent("flag.debris.raised", {});
+    bus.publishEvent("traffic.rejoin", near(9, true));
+    bus.publishEvent("traffic.rejoinTowed", {});
+    flush(audio);
+
+    expect(voicePaths()).toEqual([CAUTION_LIKE_CLIP, clip("rejoin-intro"), CAUTION_LIKE_CLIP]);
+  });
+
+  it.each(PIT_EXIT_GATED_IDS)("leaves %s alone, playing or waiting", (id) => {
+    publishLine(id);
+    // The radio frame's open tick, then the line's words.
+    audio._triggerChannelEnd(AudioChannel.SFX);
+    expect(voicePaths()).toEqual([LINE_CLIP[id]]);
+
+    bus.publishEvent("traffic.rejoinTowed", {});
+
+    expect(audio._stopped).not.toContain(AudioChannel.Voice);
+
+    flush(audio);
+    audio._reset();
+    bus.publishEvent("pitStall.departed", {});
+    publishLine(id);
+    bus.publishEvent("traffic.rejoinTowed", {});
+    flush(audio);
+
+    expect(voicePaths()).toEqual([CRITICAL_CLIP, LINE_CLIP[id]]);
+  });
+
+  it("a rejoin line with no tow plays to the end: a stop that ends by driving off publishes nothing", () => {
+    bus.publishEvent("traffic.rejoin", near(9, true));
+    flush(audio);
+
+    expect(voicePaths()).toEqual(firstCall(9));
+    expect(audio._stopped).not.toContain(AudioChannel.Voice);
   });
 });
 
@@ -1433,36 +1426,6 @@ describe("a count is an update only once the first call about the car was heard 
     expect(voicePaths().slice(5)).toEqual(update(2));
   });
 
-  it.each([
-    ["more than ten", { verdict: "overTen" }],
-    ["clear to rejoin", { verdict: "clear" }],
-  ] as const)("%s ends the approach: the next car's count is spoken as a first call", (_, data) => {
-    introduce();
-    bus.publishEvent("traffic.rejoin", data);
-    flush(audio);
-
-    expect(readTrafficDebugState().introduced).toBe(false);
-
-    audio._reset();
-    bus.publishEvent("traffic.rejoin", near(2, false));
-    flush(audio);
-
-    expect(voicePaths()).toEqual(firstCall(2));
-  });
-
-  it("a reassuring line that never took the bus ends nothing", () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(0);
-    introduce();
-    bus.publishEvent("pitStall.departed", {});
-    bus.publishEvent("traffic.rejoin", { verdict: "clear" });
-    vi.setSystemTime(DEFAULT_MAX_QUEUE_WAIT_MS + 1);
-    flush(audio);
-
-    expect(voicePaths()).toEqual([CRITICAL_CLIP]);
-    expect(readTrafficDebugState().introduced).toBe(true);
-  });
-
   describe("the pack line (amended 2026-11-18)", () => {
     it("ends the approach once heard: a count after it names no car the driver was told the seconds of", () => {
       introduce();
@@ -1534,7 +1497,7 @@ describe("a count is an update only once the first call about the car was heard 
     vi.useFakeTimers();
     vi.setSystemTime(0);
     // The last stop's car was introduced, and the episode ended silently as
-    // the driver drove off: no reassuring line.
+    // the driver drove off.
     introduce();
     bus.publishEvent("pitStall.departed", {});
     bus.publishEvent("traffic.rejoin", near(5, true));
@@ -1633,8 +1596,6 @@ describe("family wiring", () => {
       "traffic/rejoin-outro",
       "traffic/rejoin-update",
       "traffic/rejoin-right-behind",
-      "traffic/rejoin-over-ten",
-      "traffic/rejoin-clear",
       "traffic/rejoin-pack",
       "traffic/pit-exit-traffic",
       "traffic/pit-exit-clear",

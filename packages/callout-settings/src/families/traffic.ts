@@ -6,7 +6,8 @@ export const TRAFFIC_CALLOUTS = defineCalloutFamily({
     /**
      * Approaching-traffic warnings (issue #1113). `rejoin` gates the calls while
      * the player is stopped or crawling on track — right behind, near with its
-     * seconds, more than ten and clear to rejoin — and `pit-exit` the verdict
+     * seconds and the group call, warnings only (amended 2026-11-20: nothing
+     * reassures) — and `pit-exit` the verdict
      * spoken about three seconds before the end of pit road, traffic or clear at
      * the end of the exit blend, and the merge warning in the exit lane (amended
      * 2026-11-20). The pit-exit window and the merge threshold are the three

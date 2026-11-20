@@ -1,6 +1,7 @@
 /**
  * The approaching-traffic detectors through the real tick (issue #1113): a
  * stopped player hears `traffic.rejoin` from the curves the same ticks learn,
+ * and `traffic.rejoinTowed` when a tow takes the car off the track mid-stop,
  * a player driving out of the stall hears `traffic.pitExit` against the
  * landmarks #1112's learner loaded, 3 s short of the end of pit road, and
  * `traffic.pitExitMerge` in the exit lane for a car close to the merge, the
@@ -188,6 +189,9 @@ describe("the approaching-traffic detectors through handleTick (issue #1113)", (
       rejoin.push(ev.data);
       order.push(ev.event);
     });
+    getEventBus().subscribe("traffic.rejoinTowed", (ev) => {
+      order.push(ev.event);
+    });
     getEventBus().subscribe("traffic.pitExit", (ev) => {
       pitExit.push(ev.data);
       order.push(ev.event);
@@ -239,7 +243,7 @@ describe("the approaching-traffic detectors through handleTick (issue #1113)", (
     logger === undefined ? [] : vi.mocked(logger.debug).mock.calls.map(([line]) => String(line));
 
   describe("traffic.rejoin", () => {
-    it("says a car the curve times 4.5 s away is near, and clear once it is by", () => {
+    it("says a car the curve times 4.5 s away is near, and nothing once it is by", () => {
       init();
 
       // The player's own sample at 0.5 is the class curve there (45 s); car 1
@@ -253,7 +257,23 @@ describe("the approaching-traffic detectors through handleTick (issue #1113)", (
       vi.advanceTimersByTime(TRAFFIC_REJOIN_EVAL_INTERVAL_MS);
       controller.__tick(tick({ pct: 0.5 }, 0.52));
 
-      expect(rejoin).toEqual([{ verdict: "near", seconds: 4, first: true }, { verdict: "clear" }]);
+      expect(rejoin).toEqual([{ verdict: "near", seconds: 4, first: true }]);
+      expect(readSimState()).toMatchObject({ raw: { state: { trafficRejoin: { active: true, closeCar: null } } } });
+    });
+
+    it("publishes traffic.rejoinTowed alone when a tow takes the car off the track mid-stop", () => {
+      init();
+
+      controller.__tick(tick({ pct: 0.5 }, 0.45));
+      vi.advanceTimersByTime(TRAFFIC_REJOIN_ENTRY_DWELL_MS);
+      controller.__tick(tick({ pct: 0.5 }, 0.45));
+      // The tow passes one tick out of the world, then lands in the stall.
+      vi.advanceTimersByTime(TRAFFIC_REJOIN_EVAL_INTERVAL_MS);
+      controller.__tick(tick({ pct: 0.5, surface: TrkLoc.NotInWorld }, 0.48));
+      vi.advanceTimersByTime(100);
+      controller.__tick(tick({ pct: 0.1, surface: TrkLoc.InPitStall, onPitRoad: true, inStall: true }, 0.48));
+
+      expect(order).toEqual(["traffic.rejoin", "traffic.rejoinTowed"]);
     });
 
     it("writes its debug lines through a Rejoin scope of the translator's logger, with no prefix of their own", () => {
@@ -304,17 +324,17 @@ describe("the approaching-traffic detectors through handleTick (issue #1113)", (
     it("loses its episode to a replay glance, and the first stopped ticks back start a fresh one", () => {
       init();
 
-      controller.__tick(tick({ pct: 0.5 }, 0.2));
+      // Car 1 at 0.45 reads 40.5 s: 4.5 s away.
+      controller.__tick(tick({ pct: 0.5 }, 0.45));
       vi.advanceTimersByTime(TRAFFIC_REJOIN_ENTRY_DWELL_MS);
-      controller.__tick(tick({ pct: 0.5 }, 0.2));
-      expect(rejoin).toEqual([{ verdict: "clear" }]);
+      controller.__tick(tick({ pct: 0.5 }, 0.45));
+      expect(rejoin).toEqual([{ verdict: "near", seconds: 4, first: true }]);
 
-      // Car 1 at 0.2 reads 18 s: 27 s away, clear.
-      controller.__tick(tick({ pct: 0.5, replay: true }, 0.2));
+      controller.__tick(tick({ pct: 0.5, replay: true }, 0.45));
 
       // Back to live, past the replay state's exit grace (#1324).
       vi.advanceTimersByTime(REPLAY_EXIT_GRACE_MS + 1);
-      controller.__tick(tick({ pct: 0.5 }, 0.2));
+      controller.__tick(tick({ pct: 0.5 }, 0.45));
 
       const back = readSimState();
 
@@ -323,9 +343,12 @@ describe("the approaching-traffic detectors through handleTick (issue #1113)", (
       expect(back.raw.state.trafficRejoin.active).toBe(false);
 
       vi.advanceTimersByTime(TRAFFIC_REJOIN_ENTRY_DWELL_MS);
-      controller.__tick(tick({ pct: 0.5 }, 0.2));
+      controller.__tick(tick({ pct: 0.5 }, 0.45));
 
-      expect(rejoin).toEqual([{ verdict: "clear" }, { verdict: "clear" }]);
+      expect(rejoin).toEqual([
+        { verdict: "near", seconds: 4, first: true },
+        { verdict: "near", seconds: 4, first: true },
+      ]);
     });
   });
 
