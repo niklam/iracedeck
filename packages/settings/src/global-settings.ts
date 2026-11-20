@@ -119,7 +119,7 @@ function calloutEnabledFields(): { [K in CalloutSettingKey]: ReturnType<typeof c
 }
 
 /**
- * The raw value of a pit-exit traffic window side (`trafficPitExit*Seconds`)
+ * The raw value of a pit-exit traffic slider (`trafficPitExit*Seconds`)
  * that may reach `z.coerce.number()`: a finite number, or a non-blank string
  * that reads as one, passed through unchanged; anything else — `null`, a
  * blank string, a boolean, an array, an object, a non-finite number — is
@@ -459,10 +459,15 @@ export const GlobalSettingsSchema = z
      *   `trafficPitExitAfterSeconds` (0–15, default 4): a car arriving at the
      *   end of the pit-exit blend from this long before the player to this long
      *   after counts as traffic. Lopsided on purpose (decision 5).
+     * - `trafficPitExitMergeWarnSeconds` (0–5, default 1.5; amended
+     *   2026-11-20, the spec's `pitExitMergeWarnS`): in the pit exit lane, a
+     *   timed car reaching the end of the blend within this long of the
+     *   player, either side, gets "Watch for cars." once. An explicit 0 leaves
+     *   only an exact coincidence, so it is off in practice.
      *
      * The rejoin call has no setting (amended 2026-11-11): its bands are fixed
-     * because its lines name them, and the pit-exit call is made at the stall
-     * departure, so there is no look-ahead either.
+     * because its lines name them. The pit-exit call's lead (3 s short of the
+     * end of pit road, amended 2026-11-20) is a fixed constant too.
      *
      * Only a finite number or a non-blank numeric string reaches the
      * coercion ({@link pitExitWindowInput}); anything else reads as absent and
@@ -476,6 +481,10 @@ export const GlobalSettingsSchema = z
      */
     trafficPitExitBeforeSeconds: z.preprocess(pitExitWindowInput, z.coerce.number().min(0).max(10).default(2).catch(2)),
     trafficPitExitAfterSeconds: z.preprocess(pitExitWindowInput, z.coerce.number().min(0).max(15).default(4).catch(4)),
+    trafficPitExitMergeWarnSeconds: z.preprocess(
+      pitExitWindowInput,
+      z.coerce.number().min(0).max(5).default(1.5).catch(1.5),
+    ),
     /**
      * Safety margin in laps subtracted from the raw laps-of-fuel-left
      * estimate before the Race Engineer derives the spoken count (issue
