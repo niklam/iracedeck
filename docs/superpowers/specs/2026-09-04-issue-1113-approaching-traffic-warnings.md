@@ -156,6 +156,12 @@ Niklas's in-game test (2026-11-18, Tsukuba AI race): stopped with a pack coming,
 - **A third slider.** `pitExitMergeWarnS` (0–5 s, default 1.5) sits beside the two pit exit window sliders under **Race Engineer Callouts → Traffic**, read live. Niklas chose time over a distance: the detector predicts arrivals in seconds, and a time gap is what a driver reacts to.
 - **Clip.** One entry per voice, the same text, "Watch for cars." (Niklas's words), cut with the Default speaker; Short callouts copies it.
 
+**Rejoin speaks only to warn, and a tow or reset stops it (2026-11-20, third amendment).** Niklas: "Let's drop the 'clear to join' messages that are on track (the experimental stuff), and only talk on when there's something to warn about. Also, if car jumps to pits (reset/tow), stop the line spoken." Asked about the 10–15 s line, he chose to drop it too.
+
+- **No reassuring lines.** "Clear to rejoin." and "Next car is more than ten seconds away. Be careful." are removed, with their clips and their `traffic.rejoin` verdicts (`clear`, `overTen`). The engineer speaks on rejoin only for a car under 10 s: "right behind", the "about N" lines and their "now N" updates, and the pack call. This supersedes "On entry: always, so silence never means clear": on rejoin, silence now means no car is under 10 s. The after-a-close-car line goes with them; once a close car or a pack has passed, the engineer speaks again only if another car comes under 10 s, as a new first call. The untimed-car rule has nothing left to withhold and goes too.
+- **A tow or reset cuts the line.** When the player's car jumps to the pits (a tow or a reset) while a rejoin line is playing or queued, the line is stopped at once and anything queued from the rejoin family is dropped. The episode ends there, as it does when the player drives off.
+- **Pit exit is unchanged.** Its clear call stays: Niklas's change names the on-track lines only.
+
 ## Alternatives rejected
 
 **Extending the gap engine.** It is built to suppress exactly these states and keyed to class standings; adding a stopped mode to it would fight its own gates.
