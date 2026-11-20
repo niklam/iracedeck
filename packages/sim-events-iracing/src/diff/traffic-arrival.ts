@@ -54,8 +54,12 @@
  *
  * **Candidates** are every car but the player whose `CarIdxTrackSurface` is
  * the racing surface (`OnTrack` or `OffTrack`): that leaves out exactly the
- * cars not in world (also any with a negative `CarIdxLapDistPct`) and the cars
- * in the pits (`InPitStall`, `AproachingPits`). `CarIdxOnPitRoad` is never
+ * cars not in world and the cars in the pits (`InPitStall`,
+ * `AproachingPits`). Only the surface decides: a racing-surface car whose
+ * `CarIdxLapDistPct` is no lap position (missing, `NaN`, negative such as the
+ * sim's −1, or clearly past 1) stays a candidate, untimed as `noPosition`, so
+ * an unreadable position never makes a car vanish from the picture and a call
+ * read clear. `CarIdxOnPitRoad` is never
  * read: it reads true for remote cars on the racing surface (#1112, amendment
  * 11). The pace car is a candidate: it does arrive.
  *
@@ -201,8 +205,10 @@ export type TrafficReferenceSource = {
 /**
  * Why a candidate car has no arrival time: the target position is not a lap
  * position (`noTarget`), the car's own `CarIdxLapDistPct` is not one either
- * though not negative — past 1 by more than {@link TRAFFIC_LINE_OVERSHOOT_PCT},
- * or infinite (`noPosition`), no class for the car (`noClass`), no valid
+ * ({@link normalizeLapPosition} reads none: missing, `NaN`, negative — the
+ * sim's −1 included, on a car whose surface still reads racing — infinite, or
+ * past 1 by more than {@link TRAFFIC_LINE_OVERSHOOT_PCT}; `noPosition`), no
+ * class for the car (`noClass`), no valid
  * `CarIdxEstTime` (`noEstTime`), no source answered for its class
  * (`noReference`), or it is ahead of P on the lap and its class's lap is
  * unknown, so its next visit cannot be timed (`noClassLap`).
