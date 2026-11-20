@@ -1932,9 +1932,16 @@ export function getCarSectorTimes(carIdx: number): CarSectorTimes | null {
   return { recentLaps: recentSectorLaps(instance, carIdx) };
 }
 
-/** A copy of a car's recorded laps, so a caller never holds the list the timer appends to. */
+/**
+ * A copy of a car's recorded laps, each record and its sector times copied
+ * too, so a caller never holds the list the timer appends to nor a record a
+ * later comparison reads.
+ */
 function recentSectorLaps(self: TranslatorInstance, carIdx: number): readonly SectorLapTimes[] {
-  return [...(self.state.sectorTimes.completedLaps[carIdx] ?? [])];
+  return (self.state.sectorTimes.completedLaps[carIdx] ?? []).map((lap) => ({
+    ...lap,
+    sectorTimes: [...lap.sectorTimes],
+  }));
 }
 
 /** One car of a {@link SectorComparisonSnapshot} (issue #1572). */

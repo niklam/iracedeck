@@ -450,6 +450,21 @@ describe("the recorded laps through the tick (#1572)", () => {
     expect(snapshot.behind?.recentLaps.map((lap) => lap.lap)).toEqual([7]);
   });
 
+  it("hands out copies: a caller that changes a lap record changes nothing the next reader sees", () => {
+    start(sessionInfo());
+    drive(MID_FIELD, 100, 65);
+
+    // A caller casting the readonly types away, as the finding this test pins supposes.
+    const handed = getCarSectorTimes(PLAYER)?.recentLaps as unknown as { clean: boolean; sectorTimes: number[] }[];
+
+    handed[0]!.clean = false;
+    handed[0]!.sectorTimes[0] = 99;
+
+    expect(getCarSectorTimes(PLAYER)?.recentLaps[0]).toMatchObject({ clean: true });
+    expect(getCarSectorTimes(PLAYER)?.recentLaps[0]?.sectorTimes[0]).toBeCloseTo(1.25, 6);
+    expect(comparison().player.recentLaps[0]).toMatchObject({ clean: true });
+  });
+
   it("answers null for no car index and an empty list for a car with no lap yet", () => {
     expect(getCarSectorTimes(0)).toBeNull();
 
