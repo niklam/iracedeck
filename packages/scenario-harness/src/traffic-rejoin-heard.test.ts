@@ -11,10 +11,15 @@
  * with the opt-in as the harness seeds it, then with it at the schema's
  * default, which is what a user who never ticked it has.
  */
+import { getEventBus } from "@iracedeck/event-bus";
+import { Flags } from "@iracedeck/iracing-sdk";
 import { GlobalSettingsSchema, isCalloutEnabled, setCalloutEnabled } from "@iracedeck/settings";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { useHeardRig } from "./heard-rig.test-util.js";
+
+/** Racing under green with no flag shown, the caution shortcuts' resting `SessionFlags`. */
+const RACING_NO_FLAG = Flags.Servicible | Flags.StartHidden;
 
 const KEY = "calloutEnabledTrafficRejoin";
 
@@ -32,7 +37,7 @@ const BUTTONS = [
 ] as const;
 
 describe("what the rejoin traffic buttons are heard to say (issue #1113)", () => {
-  const { boot, press, heard } = useHeardRig([]);
+  const { boot, apply, press, heard } = useHeardRig([]);
 
   let seeded: boolean;
 
@@ -67,6 +72,26 @@ describe("what the rejoin traffic buttons are heard to say (issue #1113)", () =>
     expect(clips).toContain("traffic/rejoin-clear");
     expect(clips).toContain("traffic/rejoin-right-behind");
     expect(clips.every((clip) => clip.startsWith("traffic/rejoin-"))).toBe(true);
+  });
+
+  it("the rejoin train hands the next button a live translator with the tick loop paused: that button's first edge is announced", () => {
+    boot("race", { ticking: false });
+    press("traffic-rejoin-train");
+
+    const published: string[] = [];
+    const unsubscribe = getEventBus().subscribe("flag.caution-waving.raised", (ev) => published.push(ev.event));
+
+    try {
+      // The next button's first step, ticked as a paused loop ticks it: a
+      // caution thrown. Were the tick after the teardown's replay exit grace
+      // still to come, it would re-seed on this patch and take the flag for
+      // its baseline.
+      apply([{ patch: { SessionFlags: RACING_NO_FLAG | Flags.CautionWaving }, tick: true, holdMs: 100 }]);
+    } finally {
+      unsubscribe();
+    }
+
+    expect(published).toEqual(["flag.caution-waving.raised"]);
   });
 
   it.each(BUTTONS)("$id is silent with the opt-in at its default, as a user has it", ({ id }) => {

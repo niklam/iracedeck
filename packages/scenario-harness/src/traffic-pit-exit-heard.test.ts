@@ -10,10 +10,15 @@
  * stack (`heard-rig.test-util.ts`), after an on-track button has left the car
  * at racing speed, and asserts the clips the engine hands the Voice channel.
  */
+import { getEventBus } from "@iracedeck/event-bus";
+import { Flags } from "@iracedeck/iracing-sdk";
 import { describe, expect, it } from "vitest";
 
 import { type ClipDurations, shortcutOf, useHeardRig } from "./heard-rig.test-util.js";
 import { AT_RACING_SPEED } from "./scenario-shortcuts.js";
+
+/** Racing under green with no flag shown, the caution shortcuts' resting `SessionFlags`. */
+const RACING_NO_FLAG = Flags.Servicible | Flags.StartHidden;
 
 /**
  * The longest take of each pool these buttons draw on in the reference voice,
@@ -79,6 +84,30 @@ describe("what the pit-exit traffic buttons are heard to say (issue #1113)", () 
 
       expect(heard()).toEqual(first);
       expect(first).toHaveLength(1);
+    },
+  );
+
+  it.each(["traffic-pit-exit-traffic", "traffic-pit-exit-clear", "traffic-pit-exit-merge"])(
+    "%s hands the next button a live translator with the tick loop paused: that button's first edge is announced",
+    (id) => {
+      boot("race", { ticking: false });
+      apply([{ patch: { SessionFlags: RACING_NO_FLAG }, tick: true }, AT_RACING_SPEED]);
+      press(id);
+
+      const published: string[] = [];
+      const unsubscribe = getEventBus().subscribe("flag.caution-waving.raised", (ev) => published.push(ev.event));
+
+      try {
+        // The next button's first step, ticked as a paused loop ticks it: a
+        // caution thrown. Were the tick after the replay exit grace still to
+        // come, it would re-seed on this patch and take the flag for its
+        // baseline.
+        apply([{ patch: { SessionFlags: RACING_NO_FLAG | Flags.CautionWaving }, tick: true, holdMs: 100 }]);
+      } finally {
+        unsubscribe();
+      }
+
+      expect(published).toEqual(["flag.caution-waving.raised"]);
     },
   );
 

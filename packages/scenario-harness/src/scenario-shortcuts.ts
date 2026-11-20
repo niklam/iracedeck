@@ -1131,7 +1131,11 @@ export function pitExitListenMs(line: PitExitLine): number {
  * admitted ({@link pitExitListenMs}), the car back on the circuit and off pit
  * road inside a replay-mode bracket, so the pit exit is seeded rather than
  * announced and the next button starts from the presets' premise rather than
- * on pit road, where the overtake gate would refuse it.
+ * on pit road, where the overtake gate would refuse it. It ends on
+ * {@link SEEDED_TICK}, so the translator re-seeds on the car the bracket
+ * handed back now rather than on the next button's first live tick: with the
+ * tick loop paused or slowed past the bracket's margin, that tick would take
+ * the next button's first patch for its baseline and swallow its edge.
  */
 function backFromThePits(line: PitExitLine): readonly TelemetryStep[] {
   return [
@@ -1142,6 +1146,7 @@ function backFromThePits(line: PitExitLine): readonly TelemetryStep[] {
       tick: true,
     },
     { patch: { IsReplayPlaying: false }, holdMs: REPLAY_EXIT_SETTLE_MS, tick: true },
+    SEEDED_TICK,
   ];
 }
 

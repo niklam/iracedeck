@@ -121,7 +121,11 @@ const FIELD_DELETED: Record<string, null> = {
  * the circuit at racing speed, off pit road, and deletes the per-car arrays,
  * so the next button starts from the presets' premise (the caution extra-lap
  * button counts on no per-car lap progress) and nothing the run arranged is
- * announced on the way out. Replay mode also wipes the traffic episodes.
+ * announced on the way out. Replay mode also wipes the traffic episodes. It
+ * ends on {@link SEEDED_TICK}, so the translator re-seeds on what the bracket
+ * handed back now rather than on the next button's first live tick, which
+ * with the tick loop paused or slowed would take that button's first patch
+ * for its baseline and swallow its edge.
  */
 const TRAFFIC_TEARDOWN: readonly TelemetryStep[] = [
   {
@@ -138,6 +142,7 @@ const TRAFFIC_TEARDOWN: readonly TelemetryStep[] = [
     tick: true,
   },
   { patch: { IsReplayPlaying: false }, holdMs: REPLAY_EXIT_SETTLE_MS, tick: true },
+  SEEDED_TICK,
 ];
 
 // ── Rejoin ────────────────────────────────────────────────────────────────
