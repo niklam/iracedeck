@@ -1,16 +1,16 @@
 {
   "id": "iracedeck-terse",
   "version": "2.0.0",
-  "sha256": "1380e158ec63b321dda59a9316b3995bb3eb2ca9c15d837c8fb95d918d7b629f",
+  "sha256": "c3a688989800ea314d23b60373ae39d8e110b6c3986c910a4f612621a1915f7b",
   "inputs": {
     "pipeline": "07ed37b8d7bc4aad9397ad201cfe00b15ab93746cab67e206e5babbc7f13f3fa",
     "archiveFormat": "dff24c496d1c311953f8cd6b9a8aeee12dc6eaca81e3bc3ad645794093cc71ca",
     "manifest": "eb51414188fe9a8494a502a1a7770db9a7700310c4e0aaf9c3e27e48bdad0b8f",
     "voices": {
       "shawn": {
-        "clips": 4735,
-        "clipsSha256": "2f0a2e35cf6d8b82ea805a4c647710f94a2fd871c25fed777f48e5f04090f969",
-        "script": "27a23d828d72b7437ec692a0523574aa6e522866e3506e8a5540a8ae242f23ef"
+        "clips": 4795,
+        "clipsSha256": "712e82a1ae4c77b7d130958d458130cc416b0c45a8ae2385561959f366a3664f",
+        "script": "4d1015fa954e6d9a05bbdf1c96aaff644931ce33f94c081585443db351dc6a4f"
       }
     }
   },
