@@ -448,9 +448,11 @@ describe("the motion measurement", () => {
     read(slice, 100, 0.2);
     expect(slice.motion[1]).toEqual({ fromPct: 0.2, fromTime: 100, rate: 0, rateAt: 100 });
 
-    // Positive control: 0.0002 of 25 km in a tenth of a second is 50 m/s, a
-    // move a car drives, so the window runs on unmeasured.
-    read(slice, 100.1, 0.2002);
+    // Positive control: 0.0000004 of 25 km in a tenth of a second is 1 cm, a
+    // creep under the crawl speed, so the window runs on unmeasured with the
+    // standing rate kept. (Faster than the crawl the rate goes at once: the
+    // pull-away case in `computeTrafficArrivals`' "a car standing still".)
+    read(slice, 100.1, 0.2000004);
     expect(slice.motion[1]).toEqual({ fromPct: 0.2, fromTime: 100, rate: 0, rateAt: 100 });
 
     // 0.02 of 25 km in a tenth of a second is 5 km/s: a tow or a reset, so the
@@ -1096,6 +1098,68 @@ describe("computeTrafficArrivals", () => {
         timed: false,
         reason: "noPosition",
       });
+    });
+
+    it("counts as coming on the next evaluation once it pulls away inside a window not yet complete", () => {
+      const slice = createTrafficArrivalState();
+      // Car 1 standing 50 m behind P, measured so over the window ending at
+      // 100.5; then it pulls away at `metres` from where it stood by 100.6,
+      // a tenth of a second into the next window.
+      const at = (sessionTime: number, metres = 0): TelemetryData => ({
+        ...tel([
+          { idx: 0, pct: 0.5, est: 50 },
+          { idx: 1, pct: 0.5 - (50 - metres) / TRACK_M, est: 50 - 0.2 },
+        ]),
+        SessionTime: sessionTime,
+      });
+
+      updateTrafficReferenceCurves(slice, at(100), null, TRACK_M);
+      updateTrafficReferenceCurves(slice, at(100.5), null, TRACK_M);
+      expect(isTrafficCarStationary(slice, 1, 100.5, TRACK_M)).toBe(true);
+
+      // 2 m in a tenth of a second, 20 m/s: moving, whatever the window says.
+      updateTrafficReferenceCurves(slice, at(100.6, 2), null, TRACK_M);
+
+      const stationary: number[] = [];
+      const arrivals = arrivalsAt(slice, 0.5, curve, at(100.6, 2), 0, null, TRACK_M, stationary);
+
+      expect(isTrafficCarStationary(slice, 1, 100.6, TRACK_M)).toBe(false);
+      expect(stationary).toEqual([]);
+      expect(arrivals.map((arrival) => arrival.carIdx)).toEqual([1]);
+
+      // The window runs on from where it began, and measures the car's rate when it completes.
+      updateTrafficReferenceCurves(slice, at(101, 10), null, TRACK_M);
+      expect(slice.motion[1]).toEqual({
+        fromPct: expect.closeTo(0.5 - 40 / TRACK_M, 12),
+        fromTime: 101,
+        rate: expect.closeTo(10 / TRACK_M / 0.5, 12),
+        rateAt: 101,
+      });
+    });
+
+    it.each([
+      ["still where it stood", 0],
+      ["creeping under the crawl speed", 0.1],
+      ["rolling backwards", -0.5],
+    ])("stays left out inside a window not yet complete when %s", (_, metres) => {
+      const slice = createTrafficArrivalState();
+      const at = (sessionTime: number, moved = 0): TelemetryData => ({
+        ...tel([
+          { idx: 0, pct: 0.5, est: 50 },
+          { idx: 1, pct: 0.5 - (50 - moved) / TRACK_M, est: 50 - 0.2 },
+        ]),
+        SessionTime: sessionTime,
+      });
+
+      updateTrafficReferenceCurves(slice, at(100), null, TRACK_M);
+      updateTrafficReferenceCurves(slice, at(100.5), null, TRACK_M);
+      // `metres` in a tenth of a second: 1 m/s creeping, under TRAFFIC_CRAWL_MPS.
+      updateTrafficReferenceCurves(slice, at(100.6, metres), null, TRACK_M);
+
+      const stationary: number[] = [];
+
+      expect(arrivalsAt(slice, 0.5, curve, at(100.6, metres), 0, null, TRACK_M, stationary)).toEqual([]);
+      expect(stationary).toEqual([1]);
     });
 
     it("counts as coming, and is timed, once towed or reset inside a window not yet complete", () => {

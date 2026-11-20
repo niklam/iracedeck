@@ -586,7 +586,9 @@ export type TrafficCarMotion = {
   /**
    * Laps per second over the last completed window, negative for a car going
    * backwards; `null` until a window completes after the car was first seen,
-   * after a gap in its readings, or after a jump no car could drive.
+   * after a gap in its readings, after a jump no car could drive, or after a
+   * car whose rate read standing has gone forward faster than the crawl speed
+   * inside the window (it pulled away).
    */
   rate: number | null;
   /** `SessionTime` (s) the rate was measured at, the end of its window; `null` with no rate. */

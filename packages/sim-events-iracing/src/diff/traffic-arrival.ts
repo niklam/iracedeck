@@ -73,7 +73,11 @@
  * lap, so crossing the start/finish line is no jump. A car whose last rate,
  * times the track length, is under {@link TRAFFIC_CRAWL_MPS} — standing,
  * crawling, or going backwards — is left out of the arrivals altogether: not
- * untimed, simply not coming. A car with no usable rate counts as moving, the
+ * untimed, simply not coming. A car measured so that pulls away does not wait
+ * for its next window to complete: once it has gone forward since that window
+ * began faster than {@link TRAFFIC_CRAWL_MPS} allows for the time elapsed, its
+ * standing rate is dropped, so it counts as moving at the next evaluation; the
+ * window runs on and measures the new rate. A car with no usable rate counts as moving, the
  * cautious direction, since a car left out can never be a warning: on its
  * first readings, after a gap in them longer than
  * {@link TRAFFIC_MOTION_MAX_AGE_S}, after a jump faster than
@@ -414,8 +418,24 @@ function nextMotion(
     return seedMotion(pct, sessionTime);
   }
 
-  // A plausible move inside the window is left unmeasured until it completes.
-  if (span < TRAFFIC_MOTION_WINDOW_S) return prev;
+  if (span < TRAFFIC_MOTION_WINDOW_S) {
+    // A car whose last rate reads standing that has since gone forward faster
+    // than the crawl speed allows for the time elapsed has pulled away: its
+    // standing rate goes now, so it counts as moving rather than being left
+    // out of the arrivals until the window completes. The window runs on from
+    // where it began, and measures the new rate when it completes.
+    if (
+      hasLength &&
+      prev.rate !== null &&
+      prev.rate * trackLengthMeters < TRAFFIC_CRAWL_MPS &&
+      delta * trackLengthMeters > TRAFFIC_CRAWL_MPS * span
+    ) {
+      return { ...prev, rate: null, rateAt: null };
+    }
+
+    // Any other plausible move inside the window is left unmeasured until it completes.
+    return prev;
+  }
 
   // Without a track length no move can be judged plausible, so none is measured.
   if (!hasLength) return seedMotion(pct, sessionTime);
