@@ -1373,6 +1373,55 @@ describe("diffTrafficRejoin", () => {
 
       expect(h.events).toEqual([near(6, true), RIGHT_BEHIND]);
     });
+
+    describe("after its emit (a debug line that throws once, on the count)", () => {
+      /**
+       * Car 5 called at 9.5 s, then counted at 6 s on an evaluation whose
+       * emit line throws: the translator drops the step's events with its
+       * throw, so the count is dropped here too.
+       */
+      function countThrown(): ReturnType<typeof harness> {
+        const h = harness();
+
+        h.stop(tel({ cars: [behind(5, 9.5)] }));
+        let thrown = false;
+
+        h.debug.mockImplementation((line) => {
+          if (!thrown && line.startsWith("emit near 6")) {
+            thrown = true;
+            throw new Error("log failed");
+          }
+        });
+
+        const before = h.events.length;
+
+        expect(() => h.step([behind(5, 6)])).toThrow("log failed");
+        h.events.splice(before);
+        expect(h.events).toEqual([near(9, true)]);
+
+        return h;
+      }
+
+      it("publishes the count once on the retry", () => {
+        const h = countThrown();
+
+        h.after(100, tel({ cars: [behind(5, 6)] }));
+
+        expect(h.events).toEqual([near(9, true), near(6, false)]);
+      });
+
+      it("keeps the car's last baseline, so a retry 2.5 s above the thrown evaluation is no pass", () => {
+        const h = countThrown();
+
+        // 8.5 s is 2.5 s above the 6 s the thrown evaluation read, past
+        // TRAFFIC_REJOIN_PASSED_RISE_S, but 1 s under the 9.5 s baseline the
+        // episode kept: the same car still coming, not a new one.
+        h.after(100, tel({ cars: [behind(5, 8.5)] }));
+
+        expect(h.events).toEqual([near(9, true)]);
+        expect(h.episode.closeCar).toMatchObject({ carIdx: 5, seconds: 8.5, passed: false });
+      });
+    });
   });
 
   describe("a band moving away", () => {

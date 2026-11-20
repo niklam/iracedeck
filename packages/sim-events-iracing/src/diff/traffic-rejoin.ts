@@ -515,6 +515,27 @@ function bandOf(seconds: number | null): Band | null {
   return seconds < TRAFFIC_REJOIN_RIGHT_BEHIND_S ? "rightBehind" : "near";
 }
 
+/**
+ * What the episode has said and the cars it follows (module header): the part
+ * of the episode an evaluation moves on. Each evaluation moves on a staged
+ * copy and writes it back only once its emit and its debug lines have returned
+ * (the package's step rule, "a diff writes its baseline last"): a followed
+ * car's arrival moved on before a throw would let the retry read the car as
+ * rising past {@link TRAFFIC_REJOIN_PASSED_RISE_S}, gone by, and announce it
+ * again as a new car.
+ */
+type SpokenState = Pick<TrafficRejoinState, "spokenBand" | "spokenSeconds" | "closeCar" | "packCars">;
+
+/** A copy of the episode's {@link SpokenState} an evaluation can move on without touching the episode. */
+function stageSpoken(episode: TrafficRejoinState): SpokenState {
+  return {
+    spokenBand: episode.spokenBand,
+    spokenSeconds: episode.spokenSeconds,
+    closeCar: episode.closeCar === null ? null : { ...episode.closeCar },
+    packCars: episode.packCars.map((member) => ({ ...member })),
+  };
+}
+
 /** Where the cars stand this evaluation: what a followed car is measured against. */
 type FollowContext = {
   readonly arrivals: readonly TrafficArrival[];
@@ -616,12 +637,12 @@ function followCar(member: TrafficRejoinFollowedCar, ctx: FollowContext): "passe
  * call once this says so, so a car seen going by is never followed again: on
  * its way round it is a new car coming.
  */
-function closeCarGone(episode: TrafficRejoinState, timed: readonly TimedArrival[], ctx: FollowContext): boolean {
-  if (episode.packCars.length > 0) return packGone(episode, timed, ctx);
+function closeCarGone(spoken: SpokenState, timed: readonly TimedArrival[], ctx: FollowContext): boolean {
+  if (spoken.packCars.length > 0) return packGone(spoken, timed, ctx);
 
-  if (episode.closeCar === null) return false;
+  if (spoken.closeCar === null) return false;
 
-  return followCar(episode.closeCar, ctx) !== "coming";
+  return followCar(spoken.closeCar, ctx) !== "coming";
 }
 
 /**
@@ -634,10 +655,10 @@ function closeCarGone(episode: TrafficRejoinState, timed: readonly TimedArrival[
  *
  * @param timed The timed arrivals in arrival order, nearest first.
  */
-function packGone(episode: TrafficRejoinState, timed: readonly TimedArrival[], ctx: FollowContext): boolean {
+function packGone(spoken: SpokenState, timed: readonly TimedArrival[], ctx: FollowContext): boolean {
   let tail: TrafficRejoinFollowedCar | null = null;
 
-  for (const member of episode.packCars) {
+  for (const member of spoken.packCars) {
     if (member.passed || followCar(member, ctx) !== "coming") continue;
 
     if (tail === null || member.seconds >= tail.seconds) tail = member;
@@ -645,7 +666,7 @@ function packGone(episode: TrafficRejoinState, timed: readonly TimedArrival[], c
 
   if (tail === null) return true;
 
-  const members = new Set(episode.packCars.map((member) => member.carIdx));
+  const members = new Set(spoken.packCars.map((member) => member.carIdx));
 
   for (const car of timed) {
     if (members.has(car.carIdx) || car.seconds < tail.seconds) continue;
@@ -653,11 +674,9 @@ function packGone(episode: TrafficRejoinState, timed: readonly TimedArrival[], c
     if (car.seconds - tail.seconds > TRAFFIC_REJOIN_PACK_GAP_S) break;
 
     tail = followed(car, ctx);
-    episode.packCars.push(tail);
+    spoken.packCars.push(tail);
     members.add(car.carIdx);
-    ctx.logger.debug(
-      `pack grows to ${episode.packCars.length} cars (car ${car.carIdx} at ${car.seconds.toFixed(2)} s)`,
-    );
+    ctx.logger.debug(`pack grows to ${spoken.packCars.length} cars (car ${car.carIdx} at ${car.seconds.toFixed(2)} s)`);
   }
 
   return false;
@@ -670,34 +689,37 @@ function packGone(episode: TrafficRejoinState, timed: readonly TimedArrival[], c
  * group has gone by on this one, or whenever a car comes under ten seconds
  * later. A drop of {@link TRAFFIC_REJOIN_COUNT_STEP_S} in `near` is a
  * `count` only while the nearest car is still the one the last call was about
- * (`episode.closeCar`); about a different car it is `a nearer car`, a first
+ * (`spoken.closeCar`); about a different car it is `a nearer car`, a first
  * call, since the driver has not heard of it.
  *
+ * @param spoken What has been said, as this evaluation has staged it ({@link SpokenState}).
+ * @param firstEvaluation Whether this is the episode's first evaluation.
  * @param nearestCarIdx The nearest timed car's index, `null` with no timed car.
  */
 function speakReason(
-  episode: TrafficRejoinState,
+  spoken: SpokenState,
+  firstEvaluation: boolean,
   band: Band,
   wholeSeconds: number | null,
   nearestCarIdx: number | null,
   closeGone: boolean,
 ): SpeakReason | null {
-  if (episode.spokenBand === null) {
+  if (spoken.spokenBand === null) {
     if (closeGone) return "after a close car";
 
-    return episode.lastEvalAt === null ? "entry" : "first call";
+    return firstEvaluation ? "entry" : "first call";
   }
 
-  if (BAND_RANK[band] < BAND_RANK[episode.spokenBand]) return "closer band";
+  if (BAND_RANK[band] < BAND_RANK[spoken.spokenBand]) return "closer band";
 
   if (
     band === "near" &&
-    episode.spokenBand === "near" &&
+    spoken.spokenBand === "near" &&
     wholeSeconds !== null &&
-    episode.spokenSeconds !== null &&
-    episode.spokenSeconds - wholeSeconds >= TRAFFIC_REJOIN_COUNT_STEP_S
+    spoken.spokenSeconds !== null &&
+    spoken.spokenSeconds - wholeSeconds >= TRAFFIC_REJOIN_COUNT_STEP_S
   ) {
-    return episode.closeCar !== null && episode.closeCar.carIdx === nearestCarIdx ? "count" : "a nearer car";
+    return spoken.closeCar !== null && spoken.closeCar.carIdx === nearestCarIdx ? "count" : "a nearer car";
   }
 
   return null;
@@ -753,8 +775,8 @@ function evaluate(
   // evaluation with the arrays judges afresh (module header).
   if (arrivals === null) {
     if (!episode.arraysMissingLogged) {
-      episode.arraysMissingLogged = true;
       logger.debug("silent, the per-car arrays are missing");
+      episode.arraysMissingLogged = true;
     }
 
     return;
@@ -768,29 +790,34 @@ function evaluate(
   // Only `near` has a nearest car in [2, 10), so its whole seconds are 2 to 9.
   const wholeSeconds = band === "near" && nearest !== null ? Math.floor(nearest.seconds) : null;
   // Every evaluation, spoken or not, so the close car's arrival (or each pack
-  // car's) is followed from one to the next, and a pack going by grows.
+  // car's) is followed from one to the next, and a pack going by grows. It is
+  // done on a staged copy, written back last ({@link SpokenState}).
   const ctx: FollowContext = { arrivals, telemetry, playerPct: pct, logger };
-  const closeGone = closeCarGone(episode, timed, ctx);
+  const spoken = stageSpoken(episode);
+  const closeGone = closeCarGone(spoken, timed, ctx);
 
   // The car or the group the last call was about has gone by: the call is
   // forgotten, so the next band is a first call, now or whenever one comes
   // (module header).
   if (closeGone) {
     logger.debug(
-      `${episode.packCars.length > 0 ? "the group" : `car ${episode.closeCar?.carIdx}`} has gone by (${describeNearest(nearest)}${describeStationary(stationary)})`,
+      `${spoken.packCars.length > 0 ? "the group" : `car ${spoken.closeCar?.carIdx}`} has gone by (${describeNearest(nearest)}${describeStationary(stationary)})`,
     );
-    episode.spokenBand = null;
-    episode.spokenSeconds = null;
-    episode.closeCar = null;
-    episode.packCars = [];
+    Object.assign(spoken, { spokenBand: null, spokenSeconds: null, closeCar: null, packCars: [] });
   }
 
-  // No car under ten seconds: nothing to warn about, and silence says so.
-  if (band === null) return;
+  const reason =
+    band === null
+      ? null
+      : speakReason(spoken, episode.lastEvalAt === null, band, wholeSeconds, nearest?.carIdx ?? null, closeGone);
 
-  const reason = speakReason(episode, band, wholeSeconds, nearest?.carIdx ?? null, closeGone);
+  // No car under ten seconds (nothing to warn about, and silence says so), or
+  // nothing new to say: the cars followed are moved on, and nothing is said.
+  if (band === null || reason === null) {
+    Object.assign(episode, spoken);
 
-  if (reason === null) return;
+    return;
+  }
 
   // `wholeSeconds` is set exactly when the band is `near`. Only a count of the
   // same car is an update; every other `near` call introduces its car.
@@ -801,10 +828,14 @@ function evaluate(
   logger.debug(
     `emit ${describePayload(payload)} (${pack !== null ? describePack(pack) : describeNearest(nearest)}; ${reason}${describeStationary(stationary)})`,
   );
-  episode.spokenBand = band;
-  episode.spokenSeconds = wholeSeconds;
   const close = (band === "near" || band === "rightBehind") && nearest !== null ? nearest : null;
 
-  episode.closeCar = close === null ? null : followed(close, ctx);
-  episode.packCars = (pack ?? []).map((car) => followed(car, ctx));
+  // Written last and together, once the emit and its line have returned: the
+  // call, and the cars it is about ({@link SpokenState}).
+  Object.assign(episode, {
+    spokenBand: band,
+    spokenSeconds: wholeSeconds,
+    closeCar: close === null ? null : followed(close, ctx),
+    packCars: (pack ?? []).map((car) => followed(car, ctx)),
+  } satisfies SpokenState);
 }
