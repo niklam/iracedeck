@@ -694,6 +694,19 @@ export const TRAFFIC_REJOIN_NEAR_MIN_SECONDS = TRAFFIC_REJOIN_RIGHT_BEHIND_S;
  */
 export const TRAFFIC_REJOIN_NEAR_MAX_SECONDS = TRAFFIC_REJOIN_OVER_TEN_S - 1;
 
+/**
+ * Above this speed (m/s, about 29 km/h) the player is no longer stopped or
+ * crawling: the translator's detector ends the stop once the car has stayed
+ * above it for two seconds, and every `traffic.rejoin` belongs to a stop. Part
+ * of the contract like the band edges, since the Race Engineer drops a
+ * waiting "more than ten" or "clear to rejoin" line once the live speed is
+ * above it, so the two sides must agree on what moving means: a lower speed
+ * on the listening side would drop a line about a car creeping through gravel
+ * that the detector still counts as stopped. Well above the crawl speed the
+ * detector starts a stop under, which is the hysteresis.
+ */
+export const TRAFFIC_REJOIN_MOVING_MPS = 8;
+
 /** `traffic.rejoin` with the nearest car under 2 s away (issue #1113). Carries no number. */
 export type TrafficRejoinRightBehind = { verdict: "rightBehind" };
 

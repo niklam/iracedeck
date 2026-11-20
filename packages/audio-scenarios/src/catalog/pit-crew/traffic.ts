@@ -122,6 +122,17 @@
  *   telemetry has the player back on the racing surface (`PlayerTrackSurface` `OnTrack` / `OffTrack`),
  *   the detector's own end of the exit: the merge they are about is over. With
  *   no telemetry (the scenario harness) or no surface read they play.
+ * - **The reassuring rejoin lines** ("more than ten", "Clear to rejoin") wait
+ *   the engine default, and nothing replaces one once the driver pulls away:
+ *   the detector ends the stop silently. So they are dropped once the live
+ *   `Speed` is above `TRAFFIC_REJOIN_MOVING_MPS`, the speed the detector ends
+ *   the stop above (shared through `@iracedeck/event-bus`, so a car creeping
+ *   through gravel, still in its stop, keeps its line). With no telemetry or
+ *   no speed read they play. A dropped one leaves the introduction as it was:
+ *   the check comes before the claim. The warnings keep their time gates
+ *   only: a close call or the pack line waits at most
+ *   {@link TRAFFIC_MAX_QUEUE_WAIT_MS}, and a car coming is still worth
+ *   hearing as the driver pulls out in front of it.
  * A line cut mid-sentence and replayed is not asked again (`SpeakGate`).
  *
  * **Weights (spec decision 6, amended 2026-11-17).** The warnings — right
@@ -165,14 +176,16 @@
  * Session gating (live in the car, on track, off pit road, past the green)
  * lives in the translator's detectors, NOT here, so the contracts stay
  * harness-firable. The one module state is the introduction above; every
- * resolver otherwise reads the fire's own event, and the pit-exit gate the
- * live telemetry, which admits when there is none.
+ * resolver otherwise reads the fire's own event, and the pit-exit gate and the
+ * reassuring rejoin lines' gate the live telemetry, which admit when there is
+ * none.
  */
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import { type CalloutIdOf, TRAFFIC_CALLOUTS } from "@iracedeck/callout-settings";
 import {
   type IEventBus,
   type SimEventOf,
+  TRAFFIC_REJOIN_MOVING_MPS,
   TRAFFIC_REJOIN_NEAR_MAX_SECONDS,
   TRAFFIC_REJOIN_NEAR_MIN_SECONDS,
   TRAFFIC_REJOIN_RIGHT_BEHIND_S,
@@ -383,6 +396,14 @@ type RejoinLineSpec = LineSpec & {
   matches: (d: TrafficRejoin) => boolean;
   /** The speak-time gate: whether the line is still true as it reaches the radio, and what taking the bus does to the introduction. */
   speakGate?: SpeakGate;
+  /**
+   * Whether the gate first drops the line once the live telemetry has the
+   * player moving again ({@link playerStillStopped}, module header): the
+   * reassuring lines, which wait long and which nothing replaces once the
+   * driver pulls away. Checked before `speakGate.admit`, so a dropped line
+   * claims nothing.
+   */
+  dropOnceMoving?: true;
 };
 
 const REJOIN_LINES: Record<RejoinLine, RejoinLineSpec> = {
@@ -440,9 +461,10 @@ const REJOIN_LINES: Record<RejoinLine, RejoinLineSpec> = {
     matches: (d) => d.verdict === "overTen",
     speakGate: {
       description:
-        "Always spoken once it reaches the radio; speaking it ends the approach, so the next car within ten seconds gets a first call.",
+        "Dropped if you are driving again by the time it reaches the radio (above about 29 km/h); speaking it ends the approach, so the next car within ten seconds gets a first call.",
       admit: endApproach,
     },
+    dropOnceMoving: true,
   },
   "rejoin-clear": {
     weight: WEIGHT.SAFETY,
@@ -455,9 +477,10 @@ const REJOIN_LINES: Record<RejoinLine, RejoinLineSpec> = {
     matches: (d) => d.verdict === "clear",
     speakGate: {
       description:
-        "Always spoken once it reaches the radio; speaking it ends the approach, so the next car within ten seconds gets a first call.",
+        "Dropped if you are driving again by the time it reaches the radio (above about 29 km/h); speaking it ends the approach, so the next car within ten seconds gets a first call.",
       admit: endApproach,
     },
+    dropOnceMoving: true,
   },
   "rejoin-pack": {
     weight: TRAFFIC_WARNING_WEIGHT,
@@ -673,12 +696,26 @@ function trafficContract(line: TrafficLine, spec: LineSpec): ScenarioContract {
   };
 }
 
-function rejoinContract(line: RejoinLine): ScenarioContract {
+/**
+ * The speak-time gate of a rejoin line: its own, with the moving check first
+ * for a line that drops once the player is driving again (the check before
+ * the claim, so a dropped line ends no approach).
+ */
+function rejoinGate(spec: RejoinLineSpec, deps: TrafficContractDeps): SpeakGate | undefined {
+  const gate = spec.speakGate;
+
+  if (gate === undefined || spec.dropOnceMoving !== true) return gate;
+
+  return { description: gate.description, admit: (ctx) => playerStillStopped(deps) && gate.admit(ctx) };
+}
+
+function rejoinContract(line: RejoinLine, deps: TrafficContractDeps): ScenarioContract {
   const spec = REJOIN_LINES[line];
+  const speakGate = rejoinGate(spec, deps);
 
   return {
     ...trafficContract(line, spec),
-    ...(spec.speakGate ? { speakGate: spec.speakGate } : {}),
+    ...(speakGate ? { speakGate } : {}),
     supersedeGroup: TRAFFIC_REJOIN_SUPERSEDE_GROUP,
     // Unframed: the rejoin lines repeat while the car stays stopped, and the
     // radio ticks around every one would drown the words (the spotter's
@@ -691,7 +728,7 @@ function rejoinContract(line: RejoinLine): ScenarioContract {
   };
 }
 
-/** What the pit-exit lines' speak-time gate reads: the live telemetry (#1378's reader). */
+/** What the pit-exit lines' and the reassuring rejoin lines' speak-time gates read: the live telemetry (#1378's reader). */
 export type TrafficContractDeps = {
   /** The latest telemetry tick as the sim reported it; `null` with none (no sim, or the scenario harness). */
   getLatestTelemetry: () => TelemetryData | null;
@@ -706,6 +743,18 @@ function stillLeavingThePits(deps: TrafficContractDeps): boolean {
   const surface = deps.getLatestTelemetry()?.PlayerTrackSurface;
 
   return surface !== TrkLoc.OnTrack && surface !== TrkLoc.OffTrack;
+}
+
+/**
+ * Whether the player is still stopped or crawling as a reassuring rejoin line
+ * is about to be heard (module header): the live `Speed` at or under
+ * `TRAFFIC_REJOIN_MOVING_MPS`, the speed the rejoin detector ends a stop
+ * above. No telemetry, or no finite speed read, admits.
+ */
+function playerStillStopped(deps: TrafficContractDeps): boolean {
+  const speed = deps.getLatestTelemetry()?.Speed;
+
+  return typeof speed !== "number" || !Number.isFinite(speed) || speed <= TRAFFIC_REJOIN_MOVING_MPS;
 }
 
 function pitExitContract(line: PitExitLine, deps: TrafficContractDeps): ScenarioContract {
@@ -732,18 +781,18 @@ function pitExitMergeContract(deps: TrafficContractDeps): ScenarioContract {
 }
 
 /**
- * The nine contracts, rejoin first in band order, the pit-exit gates closing
- * over `deps`' telemetry read. `registerPitCrew` builds them with the live
- * reader.
+ * The nine contracts, rejoin first in band order, the pit-exit gates and the
+ * reassuring rejoin lines' gates closing over `deps`' telemetry read.
+ * `registerPitCrew` builds them with the live reader.
  */
 export function buildTrafficContracts(deps: TrafficContractDeps): readonly ScenarioContract[] {
   return [
-    rejoinContract("rejoin-right-behind"),
-    rejoinContract("rejoin-near-first"),
-    rejoinContract("rejoin-near-update"),
-    rejoinContract("rejoin-over-ten"),
-    rejoinContract("rejoin-clear"),
-    rejoinContract("rejoin-pack"),
+    rejoinContract("rejoin-right-behind", deps),
+    rejoinContract("rejoin-near-first", deps),
+    rejoinContract("rejoin-near-update", deps),
+    rejoinContract("rejoin-over-ten", deps),
+    rejoinContract("rejoin-clear", deps),
+    rejoinContract("rejoin-pack", deps),
     pitExitContract("pit-exit-traffic", deps),
     pitExitContract("pit-exit-clear", deps),
     pitExitMergeContract(deps),
@@ -752,8 +801,8 @@ export function buildTrafficContracts(deps: TrafficContractDeps): readonly Scena
 
 /**
  * A build with no sim wired, for the id lists and the tests: a read cannot
- * change an id, and with no telemetry the pit-exit gates admit, as they do in
- * the scenario harness.
+ * change an id, and with no telemetry the telemetry-reading gates admit, as
+ * they do in the scenario harness.
  */
 export const TRAFFIC_CONTRACTS: readonly ScenarioContract[] = buildTrafficContracts({ getLatestTelemetry: () => null });
 

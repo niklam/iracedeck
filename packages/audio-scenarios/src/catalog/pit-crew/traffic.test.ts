@@ -29,7 +29,11 @@ import type {
   TrafficPitExitVerdict,
   TrafficRejoin,
 } from "@iracedeck/event-bus";
-import { TRAFFIC_REJOIN_NEAR_MAX_SECONDS, TRAFFIC_REJOIN_NEAR_MIN_SECONDS } from "@iracedeck/event-bus";
+import {
+  TRAFFIC_REJOIN_MOVING_MPS,
+  TRAFFIC_REJOIN_NEAR_MAX_SECONDS,
+  TRAFFIC_REJOIN_NEAR_MIN_SECONDS,
+} from "@iracedeck/event-bus";
 import { TrkLoc } from "@iracedeck/iracing-sdk";
 import type { TelemetryData } from "@iracedeck/sim-events-iracing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -1199,6 +1203,84 @@ describe("a line is never heard after the moment it warns about", () => {
       flush(audio);
 
       expect(voicePaths()).toEqual(heard);
+    });
+  });
+
+  describe("a reassuring rejoin line is dropped once the player is driving again", () => {
+    let telemetry: Partial<TelemetryData> | null;
+    const live = buildTrafficContracts({ getLatestTelemetry: () => telemetry as TelemetryData | null });
+    const liveAdmit = (id: string, data: TrafficRejoin): boolean =>
+      live.find((c) => c.id === id)!.speakGate!.admit({ ...ctxOf(rejoinEvent(data)), now: 0 });
+    const REASSURING = [
+      ["pit-crew.traffic-rejoin-over-ten", { verdict: "overTen" }],
+      ["pit-crew.traffic-rejoin-clear", { verdict: "clear" }],
+    ] satisfies Array<[string, TrafficRejoin]>;
+
+    beforeEach(() => {
+      telemetry = null;
+    });
+
+    it.each(REASSURING)("%s: refused above the speed that ends a stop, admitted at or under it", (id, data) => {
+      for (const [speed, admitted] of [
+        [0, true],
+        // Creeping through gravel: the detector still counts the stop.
+        [TRAFFIC_REJOIN_MOVING_MPS / 2, true],
+        [TRAFFIC_REJOIN_MOVING_MPS, true],
+        [TRAFFIC_REJOIN_MOVING_MPS + 0.1, false],
+        [40, false],
+      ] as const) {
+        telemetry = { Speed: speed };
+        expect(liveAdmit(id, data), `${id} at ${speed} m/s`).toBe(admitted);
+      }
+    });
+
+    it.each(REASSURING)("%s: admitted with no telemetry or no speed read (the harness)", (id, data) => {
+      telemetry = null;
+      expect(liveAdmit(id, data)).toBe(true);
+
+      telemetry = {};
+      expect(liveAdmit(id, data)).toBe(true);
+
+      telemetry = { Speed: Number.NaN };
+      expect(liveAdmit(id, data)).toBe(true);
+    });
+
+    it.each(REASSURING)("%s: a line dropped as the player drives away does not end the approach", (id, data) => {
+      introduce();
+      expect(readTrafficDebugState().introduced).toBe(true);
+
+      telemetry = { Speed: 40 };
+      expect(liveAdmit(id, data)).toBe(false);
+      expect(readTrafficDebugState().introduced).toBe(true);
+
+      telemetry = { Speed: 0 };
+      expect(liveAdmit(id, data)).toBe(true);
+      expect(readTrafficDebugState().introduced).toBe(false);
+    });
+
+    it.each(REASSURING)("%s waiting behind a CRITICAL line is dropped once the player has driven away", (id, data) => {
+      _resetAudioScenarios();
+      _resetTrafficState();
+      wire(live);
+      telemetry = { Speed: 0 };
+      bus.publishEvent("pitStall.departed", {});
+      bus.publishEvent("traffic.rejoin", data);
+      telemetry = { Speed: 40 };
+      flush(audio);
+
+      expect(voicePaths(), id).toEqual([CRITICAL_CLIP]);
+    });
+
+    it.each(REASSURING)("%s waiting behind a CRITICAL line still plays while the player is stopped", (id, data) => {
+      _resetAudioScenarios();
+      _resetTrafficState();
+      wire(live);
+      telemetry = { Speed: 0 };
+      bus.publishEvent("pitStall.departed", {});
+      bus.publishEvent("traffic.rejoin", data);
+      flush(audio);
+
+      expect(voicePaths()).toEqual([CRITICAL_CLIP, clip(id.replace("pit-crew.traffic-", ""))]);
     });
   });
 });

@@ -2,6 +2,7 @@ import { describe, expect, expectTypeOf, it } from "vitest";
 
 import {
   TRAFFIC_REJOIN_CLEAR_S,
+  TRAFFIC_REJOIN_MOVING_MPS,
   TRAFFIC_REJOIN_NEAR_MAX_SECONDS,
   TRAFFIC_REJOIN_NEAR_MIN_SECONDS,
   TRAFFIC_REJOIN_OVER_TEN_S,
@@ -156,6 +157,10 @@ describe("traffic.rejoin, traffic.pitExit and traffic.pitExitMerge", () => {
     expect([TRAFFIC_REJOIN_NEAR_MIN_SECONDS, TRAFFIC_REJOIN_NEAR_MAX_SECONDS]).toEqual([2, 9]);
     expect(TRAFFIC_REJOIN_NEAR_MIN_SECONDS).toBe(TRAFFIC_REJOIN_RIGHT_BEHIND_S);
     expect(TRAFFIC_REJOIN_NEAR_MAX_SECONDS).toBe(TRAFFIC_REJOIN_OVER_TEN_S - 1);
+  });
+
+  it("publishes the speed above which the player is moving again, which ends a stop on both sides", () => {
+    expect(TRAFFIC_REJOIN_MOVING_MPS).toBe(8);
   });
 
   it("carries a pit-exit verdict and the nearest car's relative arrival", () => {

@@ -143,6 +143,7 @@
 import {
   type SimEventName,
   TRAFFIC_REJOIN_CLEAR_S,
+  TRAFFIC_REJOIN_MOVING_MPS,
   TRAFFIC_REJOIN_OVER_TEN_S,
   TRAFFIC_REJOIN_RIGHT_BEHIND_S,
   type TrafficRejoin,
@@ -197,9 +198,12 @@ export const TRAFFIC_REJOIN_ENTRY_DWELL_MS = 1_500;
 /**
  * Above this speed (m/s, about 29 km/h) the car counts as moving again. Well
  * above the crawl speed ({@link TRAFFIC_CRAWL_MPS}), so the band between them is the hysteresis: a car
- * creeping through gravel at walking pace stays in its episode.
+ * creeping through gravel at walking pace stays in its episode. Defined in
+ * `@iracedeck/event-bus` beside the band edges, since the Race Engineer drops
+ * a waiting reassuring line above it, so both sides read one value; re-exported
+ * here under the name the detector's tests use.
  */
-export const TRAFFIC_REJOIN_MOVING_MPS = 8;
+export { TRAFFIC_REJOIN_MOVING_MPS };
 
 /** How long the car must stay above the moving speed before the episode ends (ms): rejoined, not a lurch. */
 export const TRAFFIC_REJOIN_END_DWELL_MS = 2_000;
