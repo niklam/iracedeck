@@ -145,9 +145,29 @@ export type PlayClipsResult = "playing" | "bus-busy";
  * Sorted by name, so two engines registering the same catalog report equal.
  */
 export type VocabularyReport = {
-  vars: readonly { name: string; description: string }[];
+  /** `draws` is present only on a var registered with it (#1718), so a report of the others is unchanged. */
+  vars: readonly { name: string; description: string; draws?: readonly VarDraw[] }[];
   conds: readonly { name: string; description: string }[];
   cases: readonly { name: string; description: string; keys: Readonly<Record<string, string>> }[];
+};
+
+/**
+ * One clip pool a var's resolver can return (#1718): the `pool:<group>/<base>`
+ * reference `poolRef` (`dsl.ts`) builds, as its two halves.
+ */
+export type VarDraw = { readonly group: string; readonly base: string };
+
+/** What `defineVar` may declare beside the resolver (#1718). */
+export type DefineVarOptions = {
+  /**
+   * The closed set of pools the resolver can ever return, for the tooling:
+   * `vocabulary()` reports it, and the pack linter and the first-party
+   * completeness test read it as the clips a script naming the var draws
+   * on. Declared only by a var whose values are a fixed set; an open-ended
+   * var (a number, a name) leaves it out. Not enforced at fire time — the
+   * declaring family's test pins the agreement.
+   */
+  draws?: readonly VarDraw[];
 };
 
 /**
@@ -355,9 +375,15 @@ export interface IScenarioEngine {
    * `pool:<group>/<base>` reference, or `null` for "nothing to say". The
    * description feeds the generated reference (#1066). The resolver receives
    * the `ScenarioContext` of the fire (issue #1065); `event` is `null` for an
-   * imperative fire.
+   * imperative fire. `options.draws` declares the closed set of pools the
+   * resolver can return (#1718, {@link DefineVarOptions}).
    */
-  defineVar(name: string, resolver: VocabularyResolver<string | null>, description?: string): void;
+  defineVar(
+    name: string,
+    resolver: VocabularyResolver<string | null>,
+    description?: string,
+    options?: DefineVarOptions,
+  ): void;
   /**
    * Register a condition a script's `if` names (issue #1064). Scripts can
    * only reference conditions, never compose them — a script needing
@@ -755,8 +781,13 @@ class ScenarioEngine implements IScenarioEngine {
     return this.poolStore.recordedBases(group);
   }
 
-  defineVar(name: string, resolver: VocabularyResolver<string | null>, description = ""): void {
-    this.vocab.defineVar(name, resolver, description);
+  defineVar(
+    name: string,
+    resolver: VocabularyResolver<string | null>,
+    description = "",
+    options: DefineVarOptions = {},
+  ): void {
+    this.vocab.defineVar(name, resolver, description, options);
     this.scripts.markDirty();
   }
 

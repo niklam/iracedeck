@@ -6595,6 +6595,33 @@ describe("pack-owned scripts (issue #1064)", () => {
     });
   });
 
+  it("(j) vocabulary() reports the pools a var declared it draws, and no `draws` key on a var that declared none (#1718)", () => {
+    engine.defineVar("spotterLike", () => poolRef("spotter", "clear"), "a closed set", {
+      draws: [
+        { group: "spotter", base: "clear" },
+        { group: "spotter", base: "three-wide" },
+      ],
+    });
+    engine.defineVar("open", () => null, "an open-ended var");
+
+    const vars = engine.vocabulary().vars;
+
+    expect(vars.find((v) => v.name === "spotterLike")).toEqual({
+      name: "spotterLike",
+      description: "a closed set",
+      draws: [
+        { group: "spotter", base: "clear" },
+        { group: "spotter", base: "three-wide" },
+      ],
+    });
+    // Absent, not `undefined`: the report is serialised into the generated
+    // reference, which must stay byte-identical for every other var.
+    expect(Object.keys(vars.find((v) => v.name === "open") ?? {})).toEqual(["name", "description"]);
+    expect(JSON.stringify(vars.find((v) => v.name === "open"))).toBe(
+      '{"name":"open","description":"an open-ended var"}',
+    );
+  });
+
   it("(j) vocabulary() sorts by code point, not by locale — the same names order the same on every machine", () => {
     // `localeCompare` puts "alpha" before "Zulu" and an underscore before a dot;
     // a generated reference must not depend on the ICU of whichever machine
