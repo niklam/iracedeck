@@ -518,7 +518,7 @@ const REJOIN_LINES: Record<RejoinLine, RejoinLineSpec> = {
 
 type PitExitLineSpec = LineSpec & {
   verdict: TrafficPitExitVerdict;
-  /** The speak-time gate's sentence for the pack reference: dropped once the player is back on the racing surface or out of the world. */
+  /** The speak-time gate's sentence for the pack reference: a line not yet started is refused once the player is back on the racing surface or out of the world; one already playing is not stopped. */
   gateDescription: string;
 };
 
@@ -534,7 +534,7 @@ const PIT_EXIT_LINES: Record<PitExitLine, PitExitLineSpec> = {
     description:
       "About 3 s before pit road ends (on leaving a nearer stall, past it if landmarks or pit limit come late), again on a held flip before the merge: a car on track meets you at the blend end or is untimed.",
     gateDescription:
-      "Dropped once you are back on the racing surface or reset to the garage, since the merge it warns about is over.",
+      "Refused before it starts if, when it comes to speak, you have already merged onto the racing surface or been reset to the garage: the merge it warns about is over.",
   },
   "pit-exit-clear": {
     // Not a warning: SAFETY, so it does not cut a caution line; it still cuts
@@ -548,7 +548,7 @@ const PIT_EXIT_LINES: Record<PitExitLine, PitExitLineSpec> = {
     description:
       "About 3 s before pit road ends (on leaving a nearer stall, past it if landmarks or pit limit come late), again on a held flip before the merge: no car on track meets you at the blend end.",
     gateDescription:
-      "Dropped once you are back on the racing surface or reset to the garage, since the merge it is about is over.",
+      "Refused before it starts if, when it comes to speak, you have already merged onto the racing surface or been reset to the garage: the merge it is about is over.",
   },
 };
 
@@ -601,7 +601,7 @@ const PIT_EXIT_MERGE_LINE: LineSpec & { gateDescription: string } = {
   description:
     "In the pit exit lane, past the end of pit road, a car on track is predicted to reach the end of the pit exit blend line within the Pit exit merge warning seconds of you: said once per pit exit.",
   gateDescription:
-    "Dropped once you are back on the racing surface or reset to the garage, since the merge it warns about is over.",
+    "Refused before it starts if, when it comes to speak, you have already merged onto the racing surface or been reset to the garage: the merge it warns about is over.",
 };
 
 /**
