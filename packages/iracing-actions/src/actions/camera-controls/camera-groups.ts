@@ -130,18 +130,98 @@ export function normalizeSessionGroups(sessionGroups: CameraGroup[]): CameraGrou
   return sessionGroups.map((g) => ({ ...g, groupName: normalizeGroupName(g.groupName) }));
 }
 
+/** The legacy spellings keyed and valued in lower case, for the case-insensitive pass. */
+const LEGACY_NAMES_FOLDED = new Map(
+  Object.entries(LEGACY_NAMES).map(([variant, canonical]) => [variant.toLowerCase(), canonical.toLowerCase()]),
+);
+
+/** A name folded for the case-insensitive pass: lower case, legacy spellings mapped in any case. */
+function foldGroupName(name: string): string {
+  const lower = name.toLowerCase();
+
+  return LEGACY_NAMES_FOLDED.get(lower) ?? lower;
+}
+
+/**
+ * What looking a camera group name up in the session found (#1653, spec
+ * decision 6): the one group it names, no group at all, or several groups that
+ * differ from it only in case — which the lookup refuses to choose between.
+ */
+export type SessionGroupMatch =
+  { kind: "found"; group: CameraGroup } | { kind: "absent" } | { kind: "ambiguous"; candidates: CameraGroup[] };
+
 /**
  * @internal Exported for testing
  *
- * The session's camera group carrying `name` (in any spelling). Undefined when
- * the session has no such group — the caller must then NOT fall back to a
- * plugin-side number, since the sim numbers its groups per content and ours
- * would pick an unrelated camera (#958). Expects `normalizeSessionGroups` output.
+ * The session's camera group a stored or typed name names. Matched after
+ * `normalizeGroupName`, exactly first, then case-insensitively: a typed
+ * `dynamictv` finds `DynamicTV` rather than being a dead press. When two groups
+ * of one file differ only in case, the exact match decides; a case-insensitive
+ * pass that finds more than one is `ambiguous`, and the caller skips it.
+ *
+ * The caller must never fall back to a plugin-side number on `absent` or
+ * `ambiguous`: the sim numbers its groups per content, so ours would pick an
+ * unrelated camera (#958). Expects `normalizeSessionGroups` output.
+ */
+export function matchSessionGroup(sessionGroups: CameraGroup[], name: string): SessionGroupMatch {
+  const target = normalizeGroupName(name);
+  const exact = sessionGroups.find((g) => g.groupName === target);
+
+  if (exact) return { kind: "found", group: exact };
+
+  const folded = foldGroupName(target);
+  const candidates = sessionGroups.filter((g) => foldGroupName(g.groupName) === folded);
+
+  if (candidates.length === 1) return { kind: "found", group: candidates[0] };
+
+  return candidates.length === 0 ? { kind: "absent" } : { kind: "ambiguous", candidates };
+}
+
+/**
+ * @internal Exported for testing
+ *
+ * The session's camera group carrying `name`, through {@link matchSessionGroup}:
+ * undefined when the session has none, or more than one differing only in case.
  */
 export function findSessionGroupByName(sessionGroups: CameraGroup[], name: string): CameraGroup | undefined {
-  const target = normalizeGroupName(name);
+  const match = matchSessionGroup(sessionGroups, name);
 
-  return sessionGroups.find((g) => g.groupName === target);
+  return match.kind === "found" ? match.group : undefined;
+}
+
+/** The enabled subset resolved against the session: the groups it names, and the names it could not resolve. */
+export interface ResolvedGroupSubset {
+  /** The session groups the enabled names resolve to, each once, in the session's order. */
+  groups: CameraGroup[];
+  /** Enabled names that matched several groups differing only in case, skipped. */
+  ambiguous: string[];
+}
+
+/**
+ * @internal Exported for testing
+ *
+ * Cycle Camera's subset intersection (#1653): every enabled name looked up in
+ * the session with the same {@link matchSessionGroup} Change Camera uses, so a
+ * name ticked in another case still cycles. A name the session lacks is left
+ * out silently — a subset routinely names groups one track has and another
+ * does not — while an ambiguous one is reported so a press can log it. Two
+ * names resolving to one group yield it once.
+ */
+export function resolveEnabledSessionGroups(
+  enabledGroupNames: string[],
+  sessionGroups: CameraGroup[],
+): ResolvedGroupSubset {
+  const byNum = new Map<number, CameraGroup>();
+  const ambiguous: string[] = [];
+
+  for (const name of enabledGroupNames) {
+    const match = matchSessionGroup(sessionGroups, name);
+
+    if (match.kind === "found") byNum.set(match.group.groupNum, match.group);
+    else if (match.kind === "ambiguous") ambiguous.push(name);
+  }
+
+  return { groups: sessionGroups.filter((g) => byNum.get(g.groupNum) === g), ambiguous };
 }
 
 /**
@@ -216,9 +296,9 @@ export function getNextSelectedGroupEntry(
   sessionGroups: CameraGroup[],
   direction: 1 | -1,
 ): CameraGroup | null {
-  const enabled = sessionGroups
-    .filter((g) => enabledGroupNames.includes(g.groupName))
-    .sort((a, b) => a.groupNum - b.groupNum);
+  const enabled = resolveEnabledSessionGroups(enabledGroupNames, sessionGroups).groups.sort(
+    (a, b) => a.groupNum - b.groupNum,
+  );
 
   if (enabled.length === 0) return null;
 
