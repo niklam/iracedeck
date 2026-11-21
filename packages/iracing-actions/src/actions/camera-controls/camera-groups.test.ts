@@ -272,6 +272,16 @@ describe("matchSessionGroup (#1653)", () => {
     expect(matchSessionGroup(CUSTOM_SESSION, "PIT LANE 2")).toMatchObject({ kind: "found", group: { groupNum: 6 } });
   });
 
+  it("treats a custom name that is also an object property name as an ordinary name", () => {
+    const session = [{ groupNum: 3, groupName: "constructor" }];
+
+    expect(normalizeGroupName("constructor")).toBe("constructor");
+    expect(normalizeGroupName("toString")).toBe("toString");
+    expect(normalizeSessionGroups(session)).toEqual(session);
+    expect(matchSessionGroup(session, "Constructor")).toMatchObject({ kind: "found", group: { groupNum: 3 } });
+    expect(matchSessionGroup(session, "toString")).toEqual({ kind: "absent" });
+  });
+
   it("never finds an ambiguous name through findSessionGroupByName", () => {
     const session = [
       { groupNum: 7, groupName: "Static" },

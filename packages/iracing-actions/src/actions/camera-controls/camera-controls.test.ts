@@ -3164,6 +3164,16 @@ describe("Change Camera's stored group name (#1653)", () => {
     expect(overridden).not.toContain("DYNAMICTV");
   });
 
+  it("draws a group named like an object property as an ordinary custom group", () => {
+    for (const name of ["constructor", "toString", "__proto__"]) {
+      const decoded = decodeURIComponent(generateCameraControlsSvg({ target: "change-camera", cameraGroupName: name }));
+
+      expect(decoded).toContain(`CAMERA\n${name.toUpperCase()}`);
+    }
+
+    expect(decodeURIComponent(generateCameraSelectSvg("toString", {}))).toContain("CYCLE CAM");
+  });
+
   it("draws the unavailable look only when asked to", () => {
     generateCameraControlsSvg({ target: "change-camera", cameraGroupName: "DynamicTV" }, false, true);
     expect(lastIconOptions().dimmed).toBe(true);

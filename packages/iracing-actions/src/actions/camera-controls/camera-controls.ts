@@ -286,9 +286,15 @@ const CAMERA_SELECT_ICONS: Record<string, string> = {
   Spectator: spectatorSvg,
 };
 
-/** The camera-select icon for a group name in any spelling the sim uses. */
+/**
+ * The camera-select icon for a group name in any spelling the sim uses. An own
+ * key only: a camera file may name a group `constructor` or `toString` (#1653),
+ * which the map would otherwise answer from its prototype.
+ */
 function cameraSelectIcon(groupName: string): string | undefined {
-  return CAMERA_SELECT_ICONS[normalizeGroupName(groupName)];
+  const name = normalizeGroupName(groupName);
+
+  return Object.hasOwn(CAMERA_SELECT_ICONS, name) ? CAMERA_SELECT_ICONS[name] : undefined;
 }
 
 /**

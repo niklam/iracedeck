@@ -105,8 +105,11 @@ export const CHANGE_CAMERA_GROUPS: Readonly<Record<number, string>> = {
  * Name variants the sim (or an older saved subset) spells differently from the
  * canonical names above. One capture reports `Pit Lane2` where every other one
  * says `Pit Lane 2` (#958). The PI keeps a copy for the subsets it saves.
+ *
+ * A Map, not an object literal: a camera file may name a group `constructor`
+ * or `toString` (#1653), which an object would answer from its prototype.
  */
-const LEGACY_NAMES: Record<string, string> = { "Pit Lane2": "Pit Lane 2" };
+const LEGACY_NAMES = new Map<string, string>([["Pit Lane2", "Pit Lane 2"]]);
 
 /**
  * @internal Exported for testing
@@ -116,7 +119,7 @@ const LEGACY_NAMES: Record<string, string> = { "Pit Lane2": "Pit Lane 2" };
  * read (`normalizeSessionGroups`), and to a name looked up by a caller.
  */
 export function normalizeGroupName(name: string): string {
-  return LEGACY_NAMES[name] ?? name;
+  return LEGACY_NAMES.get(name) ?? name;
 }
 
 /**
@@ -132,7 +135,7 @@ export function normalizeSessionGroups(sessionGroups: CameraGroup[]): CameraGrou
 
 /** The legacy spellings keyed and valued in lower case, for the case-insensitive pass. */
 const LEGACY_NAMES_FOLDED = new Map(
-  Object.entries(LEGACY_NAMES).map(([variant, canonical]) => [variant.toLowerCase(), canonical.toLowerCase()]),
+  [...LEGACY_NAMES].map(([variant, canonical]) => [variant.toLowerCase(), canonical.toLowerCase()]),
 );
 
 /** A name folded for the case-insensitive pass: lower case, legacy spellings mapped in any case. */
