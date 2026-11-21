@@ -1010,11 +1010,11 @@ describe("diffTrafficRejoin", () => {
    * the class has driven past P, which can move its arrival by seconds at once.
    */
   describe("a change of reference tier", () => {
-    /** The slow class's curve read 4 s later than the scaled reference at every point: a car at 5 s re-times at 9 s. */
-    const offsetSlowCurve = (): { bins: (TrafficCurveBin | null)[] } => {
+    /** The slow class's curve read `by` s (4 by default) later than the scaled reference at every point: a car at 5 s re-times at 9 s. */
+    const offsetSlowCurve = (by = 4): { bins: (TrafficCurveBin | null)[] } => {
       const offset = curve(2);
 
-      for (const bin of offset.bins) if (bin) bin.estTime += 4;
+      for (const bin of offset.bins) if (bin) bin.estTime += by;
 
       return offset;
     };
@@ -1055,6 +1055,37 @@ describe("diffTrafficRejoin", () => {
 
       expect(h.events).toEqual([near(9, true), near(8, true)]);
       expect(h.episode.closeCar?.carIdx).toBe(6);
+    });
+
+    it("retires a close car re-timed straight past the gone-by edge on the next evaluation in its new tier", () => {
+      const curves = learnedCurves();
+      const h = harness({ curves });
+
+      h.stop(tel({ cars: [behind(5, 3, SLOW)] })); // announced at three, via scaled
+      curves.curves[SLOW] = offsetSlowCurve(14);
+      h.step([behind(5, 3, SLOW)]); // re-timed at 17 s via curve, with no wrap: a new baseline
+      expect(h.episode.closeCar).toMatchObject({ carIdx: 5, seconds: 17, source: "curve", beenClose: true });
+
+      // 16 s in the same tier, a different car at eight: car 5 is gone, so car 6 is a first call.
+      h.step([behind(5, 2, SLOW), behind(6, 8)]);
+
+      expect(h.debug).toHaveBeenCalledWith(expect.stringMatching(/^car 5 has gone by/));
+      expect(h.events).toEqual([near(3, true), near(8, true)]);
+      expect(h.episode.closeCar?.carIdx).toBe(6);
+    });
+
+    it("retires a close car re-timed from nine to sixteen seconds on the next comparable evaluation", () => {
+      const curves = learnedCurves();
+      const h = harness({ curves });
+
+      h.stop(tel({ cars: [behind(5, 9, SLOW)] }));
+      curves.curves[SLOW] = offsetSlowCurve(7);
+      h.step([behind(5, 9, SLOW)]); // 16 s via curve: a new baseline, not yet a pass
+      expect(h.episode.closeCar).toMatchObject({ carIdx: 5, seconds: 16, source: "curve", beenClose: true });
+      h.step([behind(5, 8.5, SLOW)]); // 15.5 s in the same tier
+
+      expect(h.episode.closeCar).toBeNull();
+      expect(h.debug).toHaveBeenCalledWith(expect.stringMatching(/^car 5 has gone by/));
     });
 
     it("is a new baseline for a pack's cars, so the pack is not said again", () => {

@@ -96,7 +96,7 @@
  *   it has wrapped round the lap past the player: an approaching car's arrival
  *   only falls, so one that rose by more than
  *   {@link TRAFFIC_REJOIN_PASSED_RISE_S} since the last evaluation that timed
- *   it, or reached {@link TRAFFIC_REJOIN_GONE_S} once it had been under
+ *   it, or reads {@link TRAFFIC_REJOIN_GONE_S} or more once it has been under
  *   {@link TRAFFIC_REJOIN_OVER_TEN_S}, went by. Arrivals are compared within
  *   one reference tier only: a car re-timed by another tier (the scaled
  *   reference giving way to its class's own curve, which can move it seconds
@@ -104,7 +104,9 @@
  *   gone by only when its position wrapped past the player
  *   ({@link TRAFFIC_REJOIN_PASSED_WRAP_PCT}). The baseline is its arrival's
  *   alone: a car that had been under ten seconds still has, so one re-timed
- *   past ten goes by on reaching the gone-by edge. A close car that stops is
+ *   past ten goes by at the first evaluation in its new tier that reads it at
+ *   or past the gone-by edge, one re-timed straight past that edge included
+ *   (3 s to 17 s), which never crossed it within a tier. A close car that stops is
  *   therefore gone, and a new car coming, with a first call of its own, once
  *   it moves again under ten seconds away.
  * - **Otherwise** a band moving away is not re-announced: a car whose arrival
@@ -129,8 +131,8 @@
  * - **While it goes by, nothing:** no count, no `rightBehind` for each car, no
  *   first call between them, and no line about a car outside it.
  * - **Its cars** are followed one by one with the close car's rule (an arrival
- *   rising past {@link TRAFFIC_REJOIN_PASSED_RISE_S}, or reaching
- *   {@link TRAFFIC_REJOIN_GONE_S} once it has been under
+ *   rising past {@link TRAFFIC_REJOIN_PASSED_RISE_S}, or reading
+ *   {@link TRAFFIC_REJOIN_GONE_S} or more once it has been under
  *   {@link TRAFFIC_REJOIN_OVER_TEN_S}, has gone by and stays gone; a change of
  *   tier is a new baseline; one untimed or no longer a candidate is gone while
  *   it stays so). The last cars of a long pack may be beyond
@@ -586,15 +588,16 @@ function followed(car: TimedArrival, ctx: FollowContext): TrafficRejoinFollowedC
  * `coming` otherwise, with its arrival, position and closeness moved on.
  *
  * Going by is read from the arrival, compared only within one reference tier:
- * a rise past {@link TRAFFIC_REJOIN_PASSED_RISE_S}, or reaching
- * {@link TRAFFIC_REJOIN_GONE_S} once it has been under {@link TRAFFIC_REJOIN_OVER_TEN_S}. An
+ * a rise past {@link TRAFFIC_REJOIN_PASSED_RISE_S}, or reading
+ * {@link TRAFFIC_REJOIN_GONE_S} or more once it has been under {@link TRAFFIC_REJOIN_OVER_TEN_S}. An
  * arrival from another tier (the scaled reference giving way to the class's
  * own curve once a car of the class has driven past the player) is not
  * comparable, so it is a new baseline rather than a rise; on that evaluation
  * only the car's position can say it went by: its forward distance to the
  * player rising past {@link TRAFFIC_REJOIN_PASSED_WRAP_PCT}. The baseline is
  * the arrival's alone: a car that had been under ten seconds keeps having
- * been, so after the switch it still goes by on reaching the gone-by edge.
+ * been, so after the switch it goes by at the next comparable evaluation that
+ * reads it at or past the gone-by edge, even one re-timed straight past it.
  */
 function followCar(member: TrafficRejoinFollowedCar, ctx: FollowContext): "passed" | "away" | "coming" {
   const car = ctx.arrivals.find((arrival) => arrival.carIdx === member.carIdx);
@@ -631,8 +634,11 @@ function followCar(member: TrafficRejoinFollowedCar, ctx: FollowContext): "passe
   }
 
   const rose = car.seconds - member.seconds > TRAFFIC_REJOIN_PASSED_RISE_S;
-  const reachedGone =
-    member.beenClose && member.seconds < TRAFFIC_REJOIN_GONE_S && car.seconds >= TRAFFIC_REJOIN_GONE_S;
+  // At or past the edge, whatever the arrival before it read: a car re-timed
+  // straight past it by a tier change never crossed it in one tier. A car
+  // never under ten seconds (a pack's last, joined at the edge) is never
+  // retired by it, so noise across the edge stays harmless.
+  const reachedGone = member.beenClose && car.seconds >= TRAFFIC_REJOIN_GONE_S;
 
   if (rose || reachedGone) {
     member.passed = true;
