@@ -6,6 +6,7 @@ import {
   CALLOUT_PI_GROUPS,
   CALLOUT_SETTING_KEYS,
   calloutDefault,
+  calloutEntry,
   type CalloutFamily,
   type CalloutIdOf,
   calloutKey,
@@ -60,7 +61,7 @@ describe("callout settings registry", () => {
 
   it("gives every entry only the known fields, so a misspelt one fails", () => {
     for (const e of entries) {
-      for (const field of Object.keys(e)) expect(["key", "label", "default"]).toContain(field);
+      for (const field of Object.keys(e)) expect(["key", "label", "default", "requiresFeature"]).toContain(field);
     }
   });
 
@@ -127,6 +128,17 @@ describe("Traffic group (#1113)", () => {
   it("ships the rejoin opt-in off, as experimental, and the pit-exit one on (amended 2026-11-20)", () => {
     expect(calloutDefault("calloutEnabledTrafficRejoin")).toBe(false);
     expect(calloutDefault("calloutEnabledTrafficPitExit")).toBe(true);
+  });
+
+  it("puts the rejoin checkbox behind the trafficRejoin development flag, and the pit-exit one behind none (fourth amendment)", () => {
+    expect(calloutEntry("calloutEnabledTrafficRejoin").requiresFeature).toBe("trafficRejoin");
+    expect(calloutEntry("calloutEnabledTrafficPitExit").requiresFeature).toBeUndefined();
+  });
+
+  it("names a development flag on no other entry", () => {
+    const flagged = CALLOUT_SETTING_KEYS.filter((key) => calloutEntry(key).requiresFeature !== undefined);
+
+    expect(flagged).toEqual(["calloutEnabledTrafficRejoin"]);
   });
 
   it("maps the traffic family's ids to their keys", () => {

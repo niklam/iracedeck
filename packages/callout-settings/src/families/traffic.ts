@@ -15,12 +15,20 @@ export const TRAFFIC_CALLOUTS = defineCalloutFamily({
      * window; rejoin has none. Grouped under their own heading after Spotter rather than
      * under Pit Speeding, where the pit exit beep (#1161) lives: the beep is a
      * pit-lane tone, this is a warning about cars on track. `pit-exit` defaults
-     * on, as new Race Engineer functionality does; `rejoin` ships experimental
-     * and off, its label saying so — the maintainer's call after his in-game
-     * test (2026-11-20, the #1113 spec's amendment of that date), a deliberate
-     * exception to that rule. Canonical id↔key mapping in this family.
+     * on, as new Race Engineer functionality does; `rejoin` is off, its label
+     * saying it is experimental — the maintainer's call after his in-game test
+     * (2026-11-20, the #1113 spec's amendment of that date), a deliberate
+     * exception to that rule. And it does not ship at all (2026-11-21, the
+     * spec's fourth amendment): its checkbox renders only in a build with the
+     * `trafficRejoin` development flag on, which every release build has off.
+     * The key stays in the schema. Canonical id↔key mapping in this family.
      */
-    rejoin: { key: "calloutEnabledTrafficRejoin", label: "Traffic when rejoining (experimental)", default: false },
+    rejoin: {
+      key: "calloutEnabledTrafficRejoin",
+      label: "Traffic when rejoining (experimental)",
+      default: false,
+      requiresFeature: "trafficRejoin",
+    },
     "pit-exit": { key: "calloutEnabledTrafficPitExit", label: "Traffic at pit exit" },
   },
 });
