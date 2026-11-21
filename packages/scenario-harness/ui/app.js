@@ -218,14 +218,23 @@ function renderSettings() {
     },
   ];
 
+  // Each label names its control (`for` = the control's id), so a screen
+  // reader announces the setting on the control and a click on the label
+  // reaches it; the id goes on the form control itself, never a wrapper.
   for (const line of lines) {
     const labelEl = document.createElement("label");
     labelEl.textContent = line.label;
+    labelEl.htmlFor = settingControlId(line.key);
     grid.appendChild(labelEl);
 
     const inputEl = makeSettingInput(line);
     grid.appendChild(inputEl);
   }
+}
+
+/** The id of a Global Settings row's form control, from its setting key (unique per row). */
+function settingControlId(key) {
+  return `setting-${key}`;
 }
 
 function parseJsonList(raw) {
@@ -251,6 +260,7 @@ function makeSettingInput(line) {
   if (line.type === "checkbox") {
     const wrap = document.createElement("div");
     const input = document.createElement("input");
+    input.id = settingControlId(line.key);
     input.type = "checkbox";
     input.checked = value === true || value === "true";
     input.addEventListener("change", () => apply(input.checked).catch((e) => alert(e.message)));
@@ -265,6 +275,7 @@ function makeSettingInput(line) {
     wrap.style.alignItems = "center";
 
     const input = document.createElement("input");
+    input.id = settingControlId(line.key);
     input.type = "range";
     input.min = String(line.min);
     input.max = String(line.max);
@@ -291,6 +302,7 @@ function makeSettingInput(line) {
 
   if (line.type === "select") {
     const select = document.createElement("select");
+    select.id = settingControlId(line.key);
     for (const opt of line.options) {
       const o = document.createElement("option");
       o.value = opt.value;
@@ -304,6 +316,7 @@ function makeSettingInput(line) {
 
   // Fallback for unknown types
   const input = document.createElement("input");
+  input.id = settingControlId(line.key);
   input.type = "text";
   input.value = String(value ?? "");
   input.addEventListener("change", () => apply(input.value).catch((e) => alert(e.message)));
