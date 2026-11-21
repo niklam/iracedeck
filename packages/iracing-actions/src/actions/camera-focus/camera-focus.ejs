@@ -21,6 +21,17 @@
 				padding: 2px 0;
 			}
 
+			/* A remembered custom group (#1653) whose name may be long: wrap it rather than widen the grid. */
+			.camera-groups-grid label {
+				overflow-wrap: anywhere;
+				min-width: 0;
+			}
+
+			/* A remembered group the current track's camera file does not have (#1653). */
+			.camera-groups-grid label.dimmed {
+				color: #808080;
+			}
+
 			.camera-groups-grid input[type="checkbox"] {
 				accent-color: #007bff;
 				cursor: pointer;
@@ -154,48 +165,16 @@
 		</div>
 		<% } %>
 
+		<%# Change Camera's group (#1653): any group the loaded camera file defines or an
+		    earlier session showed, or a typed name. The picker writes cameraGroupName, plus
+		    the plugin's own cameraGroup number (CHANGE_CAMERA_GROUPS) for the 25 standard
+		    groups, so an older build still presses a standard choice; a key that stores only
+		    the number shows the group it names. default is CameraGroupField's: Cockpit. %>
 		<sdpi-item label="Camera Group" id="camera-group-item" class="hidden">
-			<sdpi-select setting="cameraGroup" default="9">
-				<optgroup label="Car">
-					<option value="1">Nose</option>
-					<option value="2">Gearbox</option>
-					<option value="9">Cockpit</option>
-					<option value="3">Roll Bar</option>
-					<option value="6">Gyro</option>
-					<option value="4">Suspension - Left Front</option>
-					<option value="7">Suspension - Right Front</option>
-					<option value="5">Suspension - Left Rear</option>
-					<option value="8">Suspension - Right Rear</option>
-				</optgroup>
-				<optgroup label="Chase">
-					<option value="12">Chase</option>
-					<option value="13">Far Chase</option>
-					<option value="14">Rear Chase</option>
-				</optgroup>
-				<%# Values are the plugin's own list (CAMERA_GROUP_MAP), resolved by
-				    NAME against the session at press time — new groups are appended
-				    (21-25, #958) so no saved value ever changes meaning. %>
-				<optgroup label="Track">
-					<option value="17">TV1</option>
-					<option value="18">TV2</option>
-					<option value="19">TV3</option>
-					<option value="23">TV4</option>
-					<option value="21">TV Static</option>
-					<option value="22">TV Mixed</option>
-					<option value="20">Scenic</option>
-					<option value="24">Spotter</option>
-					<option value="25">Spectator</option>
-					<option value="15">Pit Lane</option>
-					<option value="16">Pit Lane 2</option>
-				</optgroup>
-				<optgroup label="Aerial">
-					<option value="11">Chopper</option>
-					<option value="10">Blimp</option>
-				</optgroup>
-			</sdpi-select>
+			<ird-camera-group-select setting="cameraGroupName" number-setting="cameraGroup" catalog="_cameraCatalog" default="9"></ird-camera-group-select>
 		</sdpi-item>
 		<div class="ird-supporting-text hidden" id="camera-group-note">
-			Not every track has every camera group — TV4, Spotter and Spectator in particular exist only on some. On a track without the chosen group, the key does nothing.
+			On this track lists the groups of the camera file iRacing has loaded. The others are remembered from earlier sessions; on a track without the chosen group, the key does nothing. Choose Other… to type a group name.
 		</div>
 		</div>
 		<%# end #keypad-settings %>
@@ -340,6 +319,14 @@
 				// cycles into it, and no checkbox could clear it.
 				var LEGACY_NAMES = { "Pit Lane2": "Pit Lane 2" };
 				var SETTING_KEY = "cameraGroupSubset";
+				// The camera catalog view the plugin publishes (#1653, CAMERA_CATALOG_KEY).
+				// Its rules — which custom groups the Remembered section lists, in what
+				// order, dimmed or not, and what Select All / Clear do to them — live in
+				// pi-components' camera-groups-view.ts as window.irdCameraGroups, where
+				// they are unit-tested; this script only draws what they return.
+				var CATALOG_KEY = "_cameraCatalog";
+				var REMEMBERED_HEADING = "Remembered groups";
+				var catalog = null;
 				var CYCLE_TARGETS = ["cycle-camera", "cycle-sub-camera", "cycle-car", "cycle-track-order", "cycle-driving"];
 
 				// Per-mode wording for the shared Direction dropdown. Cycle by Track
@@ -364,8 +351,22 @@
 					return CYCLE_TARGETS.indexOf(target) !== -1;
 				}
 
+				// OWN KEYS ONLY (#1653). A camera file may name a group `constructor`,
+				// `toString` or `__proto__`, so every name-keyed read checks for an own
+				// key, and every name-keyed map here has a null prototype: on a plain
+				// object `constructor` reads as Object's function and assigning
+				// `__proto__` replaces the prototype instead of adding the group. A
+				// null-prototype map still serialises as the same plain JSON object.
+				function own(map, name) {
+					return Object.prototype.hasOwnProperty.call(map, name);
+				}
+
+				function emptyGroupMap() {
+					return Object.create(null);
+				}
+
 				function isGroupEnabled(state, name) {
-					if (name in state) {
+					if (own(state, name)) {
 						return state[name] === true;
 					}
 					return DEFAULT_ENABLED.indexOf(name) !== -1;
@@ -375,12 +376,12 @@
 				// action's own reading), then drops out, so the next save stores only
 				// the canonical name.
 				function foldLegacyNames(state) {
-					var folded = {};
+					var folded = emptyGroupMap();
 					var names = Object.keys(state);
 					for (var i = 0; i < names.length; i++) {
 						var name = names[i];
-						var canonical = LEGACY_NAMES[name] || name;
-						folded[canonical] = folded[canonical] === true || state[name] === true;
+						var canonical = own(LEGACY_NAMES, name) ? LEGACY_NAMES[name] : name;
+						folded[canonical] = (own(folded, canonical) && folded[canonical] === true) || state[name] === true;
 					}
 					return folded;
 				}
@@ -389,7 +390,7 @@
 				// doesn't lose groups that weren't explicitly toggled.
 				function ensureAllGroupsTracked(state) {
 					for (var i = 0; i < ALL_GROUPS.length; i++) {
-						if (!(ALL_GROUPS[i] in state)) {
+						if (!own(state, ALL_GROUPS[i])) {
 							state[ALL_GROUPS[i]] = DEFAULT_ENABLED.indexOf(ALL_GROUPS[i]) !== -1;
 						}
 					}
@@ -421,9 +422,38 @@
 								onToggle(ev.target.dataset.group, ev.target.checked);
 							});
 							label.appendChild(checkbox);
-							label.appendChild(document.createTextNode(DISPLAY_NAMES[name] || name));
+							label.appendChild(document.createTextNode(own(DISPLAY_NAMES, name) ? DISPLAY_NAMES[name] : name));
 							grid.appendChild(label);
 						}
+					}
+
+					// Remembered groups (#1653): the custom groups the catalog knows plus any
+					// the stored subset ticks — this track's first, the rest dimmed. Never
+					// ticked by default: isGroupEnabled reads a name absent from the map as
+					// off unless it is in DEFAULT_ENABLED, which holds only standard groups.
+					var remembered = window.irdCameraGroups ? window.irdCameraGroups.rememberedGroups(catalog, state) : [];
+					if (remembered.length === 0) return;
+
+					var rememberedHeading = document.createElement("div");
+					rememberedHeading.className = "group-heading";
+					rememberedHeading.textContent = REMEMBERED_HEADING;
+					grid.appendChild(rememberedHeading);
+
+					for (var r = 0; r < remembered.length; r++) {
+						var entry = remembered[r];
+						var entryLabel = document.createElement("label");
+						if (entry.dimmed) entryLabel.className = "dimmed";
+						entryLabel.title = entry.title;
+						var entryBox = document.createElement("input");
+						entryBox.type = "checkbox";
+						entryBox.checked = isGroupEnabled(state, entry.name);
+						entryBox.dataset.group = entry.name;
+						entryBox.addEventListener("change", function (ev) {
+							onToggle(ev.target.dataset.group, ev.target.checked);
+						});
+						entryLabel.appendChild(entryBox);
+						entryLabel.appendChild(document.createTextNode(entry.name));
+						grid.appendChild(entryLabel);
 					}
 				}
 
@@ -432,7 +462,7 @@
 				// GLOBAL cameraGroupSubset directly — the same set the dial rotation
 				// honors via getEnabledGroupNames(undefined) (#803).
 				function createGroupSelector(gridId, selectAllId, clearId) {
-					var state = {};
+					var state = emptyGroupMap();
 					var save = null;
 
 					function persist() {
@@ -441,7 +471,13 @@
 					function render() {
 						renderGroupCheckboxes(gridId, state, function (name, checked) {
 							ensureAllGroupsTracked(state);
-							state[name] = checked;
+							// A custom group is in the map only while ticked (#1653), so
+							// unticking one drops it rather than storing false.
+							if (checked || ALL_GROUPS.indexOf(name) !== -1) {
+								state[name] = checked;
+							} else {
+								delete state[name];
+							}
 							persist();
 						});
 					}
@@ -449,6 +485,13 @@
 						ensureAllGroupsTracked(state);
 						for (var i = 0; i < ALL_GROUPS.length; i++) {
 							state[ALL_GROUPS[i]] = value;
+						}
+						// Remembered groups (#1653): Select All ticks this track's custom
+						// groups and leaves the rest as they are; Clear unticks them all.
+						if (window.irdCameraGroups) {
+							state = value
+								? window.irdCameraGroups.selectAllRemembered(state, catalog)
+								: window.irdCameraGroups.clearRemembered(state);
 						}
 						render();
 						persist();
@@ -530,6 +573,20 @@
 					await customElements.whenDefined("sdpi-select");
 
 					if (window.SDPIComponents) {
+						// The camera catalog (#1653): both grids redraw their Remembered
+						// section when it changes. Read on the push only, never in response
+						// to a click; sdpi re-delivers every key on every push, so an
+						// unchanged value is skipped.
+						var lastCatalog;
+						window.SDPIComponents.useGlobalSettings(CATALOG_KEY, function (value) {
+							var raw = typeof value === "string" ? value : JSON.stringify(value === undefined ? null : value);
+							if (raw === lastCatalog) return;
+							lastCatalog = raw;
+							catalog = window.irdCameraGroups ? window.irdCameraGroups.parseCatalog(value) : null;
+							keypadSelector.render();
+							dialSelector.render();
+						});
+
 						// Keypad selector: per-action setting with a legacy global fallback.
 						var legacyGroups = null;
 						window.SDPIComponents.useGlobalSettings(SETTING_KEY, function (value) {
