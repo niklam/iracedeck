@@ -353,7 +353,7 @@ describe("RepeatController", () => {
       controller.onKeyUp("btn");
     });
 
-    it("holds the first repeat until a stalled first press settles, then follows it by intervalMs", async () => {
+    it("holds the first repeat until a stalled first press settles, then runs it", async () => {
       const execute = vi.fn().mockResolvedValue(true);
       const first = deferred<boolean>();
 
@@ -366,15 +366,30 @@ describe("RepeatController", () => {
 
       first.resolve(true);
       await expect(result).resolves.toBe(true);
-
-      await vi.advanceTimersByTimeAsync(99);
-      expect(execute).not.toHaveBeenCalled();
-      await vi.advanceTimersByTimeAsync(1);
+      await vi.advanceTimersByTimeAsync(0);
       expect(execute).toHaveBeenCalledTimes(1);
 
       // The loop runs on its own spacing from there.
       await vi.advanceTimersByTimeAsync(100);
       expect(execute).toHaveBeenCalledTimes(2);
+      controller.onKeyUp("btn");
+    });
+
+    it("keeps the first repeat on time when a slow first press settles before it is due", async () => {
+      const execute = vi.fn().mockResolvedValue(true);
+      const first = deferred<boolean>();
+
+      controller.onKeyDown("btn", { ...DEFAULTS, execute });
+      void controller.runFirstPress("btn", () => first.promise);
+
+      // Past holdMs (400) but before the first repeat is due (500).
+      await vi.advanceTimersByTimeAsync(450);
+      first.resolve(true);
+
+      await vi.advanceTimersByTimeAsync(49);
+      expect(execute).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1);
+      expect(execute).toHaveBeenCalledTimes(1);
       controller.onKeyUp("btn");
     });
 
@@ -416,7 +431,7 @@ describe("RepeatController", () => {
       first.reject(new Error("tap failed"));
       expect(await caught).toEqual(new Error("tap failed"));
 
-      await vi.advanceTimersByTimeAsync(100);
+      await vi.advanceTimersByTimeAsync(0);
       expect(execute).toHaveBeenCalledTimes(1);
       controller.onKeyUp("btn");
     });
@@ -473,7 +488,7 @@ describe("RepeatController", () => {
       expect(execute).not.toHaveBeenCalled();
 
       slow.resolve();
-      await vi.advanceTimersByTimeAsync(100);
+      await vi.advanceTimersByTimeAsync(0);
       expect(execute).toHaveBeenCalledTimes(1);
       controller.onKeyUp("btn");
     });

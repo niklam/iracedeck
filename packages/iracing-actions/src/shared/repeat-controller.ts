@@ -91,24 +91,6 @@ export class RepeatController {
       }
 
       entry.hold = undefined;
-
-      // The first press is still in flight (a stalled SimHub tap): the first
-      // repeat waits for it, then follows it `intervalMs` later, the spacing the
-      // loop keeps between its own ticks. Once it has settled, as it has on the
-      // normal fast path, the tick is scheduled at once, as before.
-      if (entry.firstPressPending && entry.firstPress) {
-        this.logger.debug("First repeat waits for the first press to finish");
-        void entry.firstPress.then(() => {
-          // A new onKeyDown, a release or the safety timeout may have replaced
-          // or cleared the entry while the first press was in flight.
-          if (this.timers.get(buttonId) !== entry) return;
-
-          this.scheduleRepeatTick(buttonId);
-        });
-
-        return;
-      }
-
       this.scheduleRepeatTick(buttonId);
     }, options.holdMs);
 
@@ -122,10 +104,11 @@ export class RepeatController {
    * first execute, and a black box shown ahead of it.
    *
    * `press` starts synchronously, and the result is its own, so a caller awaits
-   * it and reads it as before. When the hold timer fires while the press is
-   * still in flight, the first repeat is scheduled once it settles, whether it
-   * resolved or threw. With no hold armed for the button (a key that does not
-   * repeat) it only runs `press`.
+   * it and reads it as before. A first repeat that comes due while the press is
+   * still in flight runs once the press settles, whether it resolved or threw;
+   * one that comes due after it runs on time, so a key's feel is unchanged
+   * wherever the two did not overlap. With no hold armed for the button (a key
+   * that does not repeat) it only runs `press`.
    */
   runFirstPress<T>(buttonId: string, press: () => Promise<T> | T): Promise<T> {
     const entry = this.timers.get(buttonId);
@@ -212,6 +195,25 @@ export class RepeatController {
         this.clearTimers(buttonId);
 
         return;
+      }
+
+      // The press the hold started with is still in flight (a stalled SimHub
+      // tap, #1693): the first repeat waits for it and runs as soon as it has
+      // settled. Only the first tick can find it pending, and on the normal
+      // path, where it settled long before, the tick runs on time as before.
+      if (entry.firstPressPending && entry.firstPress) {
+        this.logger.debug("Repeat waits for the first press to finish");
+        await entry.firstPress;
+
+        // A new onKeyDown, a release or the safety timeout may have replaced
+        // or cleared the entry while the first press was in flight.
+        if (this.timers.get(buttonId) !== entry) return;
+
+        if (!this.heldButtons.has(buttonId)) {
+          this.clearTimers(buttonId);
+
+          return;
+        }
       }
 
       // Intentional: on exception keepGoing stays true so a transient failure
