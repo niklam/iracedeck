@@ -21,7 +21,7 @@ describe("camera-groups partial (#1653)", () => {
   it("says what removing a name does and does not do", () => {
     const html = renderPartial("camera-groups", { settingsWindow: true });
 
-    expect(html).toContain("comes back the next time");
+    expect(html).toContain("returns within moments");
     expect(html).toContain("never changes a key");
   });
 
