@@ -170,6 +170,12 @@ Niklas's in-game test (2026-11-18, Tsukuba AI race): stopped with a pack coming,
 - **Pit exit ships unchanged**: the call 3 s before the pit exit line, the merge warning, both on by default.
 - **The rework is a separate issue**: shorter calls in the style of "keep left" / "keep right", no conversational parts such as "Join carefully.", far less repetition when parked beside the track, and whether the car points along the track, learned from the player's own heading against lap distance.
 
+**The merge warning ends the pit-exit calls, and a cut pit-exit line is dropped (2026-11-21, from CodeRabbit round 23 on the #1113 branch).** Two cases spoke after the moment had passed. In one, a "clear" played after "Watch for cars." in the same exit. In the other, a pit-exit line cut by the spotter or a critical line was replayed after the player had merged.
+
+- **"Watch for cars." is the last word on that exit.** Once it is said, the detector publishes no more pit-exit verdicts for that exit episode, and the merge warning also replaces a pit-exit call still waiting. This refines "whatever the first call said" in the second amendment: the merge warning still plays whatever the first call said, and nothing follows it.
+- **A cut pit-exit line is dropped, not replayed.** The traffic call, the clear call and the merge warning are `dropWhenCut` (#1681), like the cut "go" of the 2026-11-18 amendment.
+- **A reset to the garage drops a waiting pit-exit line**, as a return to the track already does.
+
 ## Alternatives rejected
 
 **Extending the gap engine.** It is built to suppress exactly these states and keyed to class standings; adding a stopped mode to it would fight its own gates.
