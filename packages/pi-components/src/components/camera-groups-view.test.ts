@@ -270,6 +270,15 @@ describe("buildCameraGroupPicker", () => {
       expect(section(model, PICKER_HEADINGS.stored)).toBeUndefined();
     });
 
+    it("selects this track's group over a standard one that differs only in case (#1653 review)", () => {
+      // The file names its group `tv1`; the key stores the standard `TV1`, which
+      // the press resolves case-insensitively to the session's `tv1`.
+      const lowerTv1 = { ...view, current: { trackId: view.current!.trackId, groups: ["tv1", "Nose"] } };
+      const model = buildCameraGroupPicker(lowerTv1, "TV1");
+
+      expect(model.selected).toBe("tv1");
+    });
+
     it("lists every name once across the whole picker", () => {
       const values = buildCameraGroupPicker(view, "Ghost").sections.flatMap((s) => s.options.map((o) => o.value));
 

@@ -371,7 +371,11 @@ export function buildCameraGroupPicker(catalog: CameraCatalogView | null, stored
   }
 
   const stored = storedName.trim().length > 0 ? normalizeCameraGroupName(storedName.trim()) : "";
-  let selected = stored.length > 0 ? matchCameraGroupName(stored, listed) : undefined;
+  // This track's groups first, as the press resolves a name (decision 6): a
+  // stored `TV1` on a file whose group is `tv1` selects that group, which the
+  // press reaches, rather than the standard entry marked not on this track.
+  const fromSession = stored.length > 0 && session !== null ? matchCameraGroupName(stored, session.groups) : undefined;
+  let selected = fromSession ?? (stored.length > 0 ? matchCameraGroupName(stored, listed) : undefined);
 
   if (stored.length > 0 && selected === undefined) {
     sections.push({
