@@ -1,16 +1,16 @@
 {
   "id": "iracedeck-terse",
-  "label": "Default (Short callouts)",
+  "label": "Shawn (Short callouts)",
   "version": "2.0.0",
-  "description": "The Default engineer in radio shorthand: shorter race-time calls, most of them the fact itself.",
+  "description": "Shawn in radio shorthand: shorter race-time calls, most of them the fact itself.",
   "voices": [
     {
       "id": "shawn",
-      "label": "Default (Short callouts)"
+      "label": "Shawn (Short callouts)"
     }
   ],
-  "bytes": 27388284,
-  "sha256": "0945f848679d0f12c4848454ea5b2ea4066fa8a7e92e6a2f2e5415060d9c78f5",
+  "bytes": 27388281,
+  "sha256": "0a85912dbe9414a2408d50828e4358d5ff658c311baeb44152a3c9cd03cd0170",
   "url": "https://github.com/niklam/iracedeck/releases/download/voices-iracedeck-terse-2.0.0/iracedeck-terse-2.0.0.zip",
   "minPluginVersion": "3.9.0"
 }
