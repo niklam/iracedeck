@@ -16,8 +16,10 @@
  * pack may ship the bare `<base>.mp3`, `-NN` takes, or both, and a take is
  * consumed only when the fire is accepted. A pack rephrases around the call
  * (a lead-in, a beat) rather than re-recording the twenty-four terms, and the
- * var declares those twenty-four pools (`draws`, {@link SPOTTER_CLIP_BASES})
- * so the pack linter and the first-party completeness test know them.
+ * var declares those twenty-four pools (`draws`, {@link SPOTTER_CLIP_DRAWS}),
+ * each scoped to the contract that fires it, so the pack linter and the
+ * first-party completeness test know them — and know a pack that scripts
+ * only the call does not need the info lines.
  * `engine.fire(id)` resolves a contract through the same registration path
  * as a bus-triggered one: a voice whose script has no entry is silent for
  * it, a scripted one plays.
@@ -55,7 +57,7 @@ import type { TelemetryData } from "@iracedeck/sim-events-iracing";
 
 import type { ScenarioContract } from "../../dsl.js";
 import { NO_FRAME, poolRef, WEIGHT } from "../../dsl.js";
-import { getScenarioEngine } from "../../interpreter.js";
+import { getScenarioEngine, type VarDraw } from "../../interpreter.js";
 
 export const SPOTTER_FOCUS_OWNER = "spotter";
 export const SPOTTER_CALL_SCENARIO_ID = "pit-crew.spotter-call";
@@ -335,19 +337,20 @@ function combinedClip(
 const SIDES: readonly Side[] = ["left", "right"];
 const DIRECTIONS: readonly SpotterTrackDirection[] = ["neutral", "left", "right"];
 
+const byCodePoint = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
+
 /**
- * Every base the engine can name (issue #1718), DERIVED by running the naming
- * functions over every input they can receive — each side and count through
- * {@link levelClip} with and without the de-escalation flag, each
+ * Every base the engine fires through the CALL contract
+ * (`pit-crew.spotter-call`, {@link fireCallClip}), DERIVED by running the
+ * naming functions over every input they can receive — each side and count
+ * through {@link levelClip} with and without the de-escalation flag, each
  * cleared/remaining pair (always opposite sides) and remaining count through
- * {@link combinedClip}, for every {@link SpotterTrackDirection} — plus the
- * three-wide, clear and both still-there lines. Deduped and sorted by code
- * point. Derived rather than written out so it cannot drift from what a
- * transition says; the `spotterClip` var declares it as its `draws`, which is
- * what the pack linter and the first-party completeness test read.
+ * {@link combinedClip}, for every {@link SpotterTrackDirection} — plus
+ * three-wide. Deduped and sorted by code point. Derived rather than written
+ * out so it cannot drift from what a transition says.
  */
-export const SPOTTER_CLIP_BASES: readonly string[] = (() => {
-  const bases = new Set<string>();
+export const SPOTTER_CALL_BASES: readonly string[] = (() => {
+  const bases = new Set<string>([THREE_WIDE]);
 
   for (const dir of DIRECTIONS) {
     for (const side of SIDES) {
@@ -361,10 +364,33 @@ export const SPOTTER_CLIP_BASES: readonly string[] = (() => {
     }
   }
 
-  for (const base of [THREE_WIDE, CLEAR, ...STILL_THERE_BASES]) bases.add(base);
-
-  return [...bases].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+  return [...bases].sort(byCodePoint);
 })();
+
+/**
+ * Every base the engine fires through the INFO contract
+ * (`pit-crew.spotter-info`, {@link fireInfoClip}): the clear and both
+ * still-there lines, sorted by code point. Read from the same constants the
+ * fires use.
+ */
+export const SPOTTER_INFO_BASES: readonly string[] = [CLEAR, ...STILL_THERE_BASES].sort(byCodePoint);
+
+/**
+ * Every base the engine can name (issue #1718): the call and info bases
+ * together, sorted by code point — the twenty-four lines the default voice
+ * ships. The `spotterClip` var declares them as its `draws`, each scoped to
+ * the contract that fires it, which is what the pack linter and the
+ * first-party completeness test read: a pack that scripts only the call is
+ * not asked for "Clear.".
+ */
+export const SPOTTER_CLIP_BASES: readonly string[] = [...SPOTTER_CALL_BASES, ...SPOTTER_INFO_BASES].sort(byCodePoint);
+
+/** The `draws` the `spotterClip` var declares: every base, scoped to the contract that fires it (#1718). */
+export const SPOTTER_CLIP_DRAWS: readonly VarDraw[] = SPOTTER_CLIP_BASES.map((base) => ({
+  group: SPOTTER_GROUP,
+  base,
+  contracts: [SPOTTER_INFO_BASES.includes(base) ? SPOTTER_INFO_SCENARIO_ID : SPOTTER_CALL_SCENARIO_ID],
+}));
 
 // ─── Engine-owned no-repeat line pick ────────────────────────────────────────
 //
@@ -686,12 +712,13 @@ export function registerSpotterEngine(bus: IEventBus, nextDeps: SpotterDeps): vo
   // The vocabulary before the contracts, so the first `setScripts` compile
   // sees it (issue #1065). The engine stashes the pool reference for the
   // transition it is about to fire; the var hands it to whichever contract
-  // fires, unchanged. `draws` declares every pool it can name (#1718).
+  // fires, unchanged. `draws` declares every pool it can name, each for the
+  // contract that fires it (#1718).
   engine.defineVar(
     "spotterClip",
     () => pendingSpotterClip,
     'The spotter call for the car-presence change that just happened, drawn from the spotter group: "Car left", "Two cars right", "Three wide", the combined swaps ("Clear right, car left"), the 2-to-1 de-escalation, "Clear", and the still-there reminders — inside/outside terms on an oval. Chosen by the spotter engine per transition and read when it fires, so it is the whole call.',
-    { draws: SPOTTER_CLIP_BASES.map((base) => ({ group: SPOTTER_GROUP, base })) },
+    { draws: SPOTTER_CLIP_DRAWS },
   );
 
   for (const contract of SPOTTER_CONTRACTS) engine.defineContract(contract);

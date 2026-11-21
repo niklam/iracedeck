@@ -16,13 +16,16 @@ import {
   _resetSpotterEngine,
   readSpotterDebugState,
   registerSpotterEngine,
+  SPOTTER_CALL_BASES,
   SPOTTER_CALL_SCENARIO_ID,
   SPOTTER_CLEAR_BUFFER_METERS,
   SPOTTER_CLEAR_FALLBACK_MS,
   SPOTTER_CLEAR_POLL_MS,
   SPOTTER_CLIP_BASES,
+  SPOTTER_CLIP_DRAWS,
   SPOTTER_CONTRACTS,
   SPOTTER_FOCUS_OWNER,
+  SPOTTER_INFO_BASES,
   SPOTTER_INFO_SCENARIO_ID,
   SPOTTER_SCENARIO_IDS,
   SPOTTER_STILL_THERE_DEFAULT_MS,
@@ -1180,9 +1183,9 @@ describe("pool references (issue #1718)", () => {
     // Read the reference each fire is made with, not what the scheduler does
     // with it: an info fire arriving during a call clip drops (#867), which
     // would hide its reference from the played list.
-    const fired: string[] = [];
-    vi.spyOn(getScenarioEngine(), "fire").mockImplementation(() => {
-      fired.push(readSpotterDebugState().pendingSpotterClip);
+    const fired: { id: string; ref: string }[] = [];
+    vi.spyOn(getScenarioEngine(), "fire").mockImplementation((id: string) => {
+      fired.push({ id, ref: readSpotterDebugState().pendingSpotterClip });
     });
 
     for (const dir of DIRECTIONS) {
@@ -1205,12 +1208,27 @@ describe("pool references (issue #1718)", () => {
       vi.advanceTimersByTime(SPOTTER_STILL_THERE_DEFAULT_MS * 2);
     }
 
-    const bases = fired.map(spotterBase);
+    const bases = fired.map(({ ref }) => spotterBase(ref));
+    const firedThrough = (id: string) =>
+      [...new Set(fired.filter((fire) => fire.id === id).map(({ ref }) => spotterBase(ref)))].sort();
 
     // Both directions: every reference is a declared base, and every declared
     // base is reachable from some transition — the declaration is exact.
     expect(bases.filter((base) => !SPOTTER_CLIP_BASES.includes(base))).toEqual([]);
     expect([...new Set(bases)].sort()).toEqual([...SPOTTER_CLIP_BASES]);
+    // And per contract: what the call contract fires is exactly the call set,
+    // what the info contract fires exactly the info set — the scopes the
+    // `draws` declare (#1718). No fire uses any other contract.
+    expect(firedThrough(SPOTTER_CALL_SCENARIO_ID)).toEqual([...SPOTTER_CALL_BASES]);
+    expect(firedThrough(SPOTTER_INFO_SCENARIO_ID)).toEqual([...SPOTTER_INFO_BASES]);
+    expect(fired.filter(({ id }) => id !== SPOTTER_CALL_SCENARIO_ID && id !== SPOTTER_INFO_SCENARIO_ID)).toEqual([]);
+  });
+
+  it("the call and info bases are disjoint and together are SPOTTER_CLIP_BASES", () => {
+    expect(SPOTTER_CALL_BASES.filter((base) => SPOTTER_INFO_BASES.includes(base))).toEqual([]);
+    expect([...SPOTTER_CALL_BASES, ...SPOTTER_INFO_BASES].sort()).toEqual([...SPOTTER_CLIP_BASES]);
+    expect([...SPOTTER_INFO_BASES]).toEqual(["clear", "hold-your-line", "still-there"]);
+    expect(SPOTTER_CALL_BASES).toHaveLength(21);
   });
 
   it("SPOTTER_CLIP_BASES is exactly the 24 spotter lines the bundled default voice ships", () => {
@@ -1227,14 +1245,23 @@ describe("pool references (issue #1718)", () => {
     expect([...SPOTTER_CLIP_BASES]).toEqual([...SPOTTER_CLIP_NAMES].sort());
   });
 
-  it("registers spotterClip with `draws` declaring every spotter base", () => {
+  it("registers spotterClip with `draws` declaring every spotter base, each scoped to the contract that fires it", () => {
     registerSpotterEngine(bus, deps);
 
     const clip = getScenarioEngine()
       .vocabulary()
       .vars.find((v) => v.name === "spotterClip");
 
-    expect(clip?.draws).toEqual(SPOTTER_CLIP_BASES.map((base) => ({ group: "spotter", base })));
+    expect(clip?.draws).toEqual([...SPOTTER_CLIP_DRAWS]);
+    expect(clip?.draws).toEqual(
+      SPOTTER_CLIP_BASES.map((base) => ({
+        group: "spotter",
+        base,
+        contracts: [SPOTTER_INFO_BASES.includes(base) ? SPOTTER_INFO_SCENARIO_ID : SPOTTER_CALL_SCENARIO_ID],
+      })),
+    );
+    expect(clip?.draws?.find((draw) => draw.base === "clear")?.contracts).toEqual([SPOTTER_INFO_SCENARIO_ID]);
+    expect(clip?.draws?.find((draw) => draw.base === "car-left")?.contracts).toEqual([SPOTTER_CALL_SCENARIO_ID]);
   });
 
   it("a voice that recorded the spotter as takes only plays them — car-left-01 and car-left-02 for the left arrival", () => {
