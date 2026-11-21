@@ -556,6 +556,29 @@ describe("getCameraGroupsFromSessionInfo", () => {
     expect(getCameraGroupsFromSessionInfo({ CameraInfo: { Groups: null } })).toEqual([]);
   });
 
+  it("skips a group with no finite number, which nothing could switch to (#1653 review)", () => {
+    const sessionInfo = {
+      CameraInfo: {
+        Groups: [
+          { GroupName: "Drone" },
+          { GroupNum: "4", GroupName: "Text" },
+          { GroupNum: Number.NaN, GroupName: "NaN" },
+          { GroupNum: Number.POSITIVE_INFINITY, GroupName: "Inf" },
+          { GroupNum: null, GroupName: "Null" },
+          { GroupNum: 0, GroupName: "Zero" },
+          { GroupNum: 2, GroupName: "TV1" },
+        ],
+      },
+    };
+
+    expect(getCameraGroupsFromSessionInfo(sessionInfo)).toEqual([
+      { groupNum: 0, groupName: "Zero" },
+      { groupNum: 2, groupName: "TV1" },
+    ]);
+    // The catalog's reader still records every name, the numberless ones last.
+    expect(readCameraGroupNames(sessionInfo)).toEqual(["Zero", "TV1", "Drone", "Text", "NaN", "Inf", "Null"]);
+  });
+
   it("skips entries that are not objects and keeps the rest in order (#1653)", () => {
     const sessionInfo = {
       CameraInfo: {

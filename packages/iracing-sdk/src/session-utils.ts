@@ -288,9 +288,12 @@ export interface CameraGroup {
  *
  * Extracts the list of available camera groups from CameraInfo.Groups[].
  * The session info is parsed YAML, so its shape is not guaranteed: a `Groups`
- * that is not a list reads as no groups, and an entry that is not an object is
- * skipped. Change Camera reads this on its first render and before every press
- * (#1653), so a malformed session info must not throw here.
+ * that is not a list reads as no groups, and an entry that is not an object, or
+ * has no finite `GroupNum`, is skipped: a group with no number cannot be
+ * switched to, so a name lookup must not find it. (`readCameraGroupNames`, the
+ * camera catalog's reader, keeps such a name.) Change Camera reads this on its
+ * first render and before every press (#1653), so a malformed session info
+ * must not throw here.
  *
  * @param sessionInfo - The iRacing session info object
  * @returns Array of camera groups with group number and name
@@ -306,7 +309,9 @@ export function getCameraGroupsFromSessionInfo(sessionInfo: unknown): CameraGrou
   for (const entry of groups as unknown[]) {
     if (entry === null || typeof entry !== "object" || Array.isArray(entry)) continue;
 
-    const group = entry as { GroupNum: number; GroupName: unknown };
+    const group = entry as { GroupNum: unknown; GroupName: unknown };
+
+    if (typeof group.GroupNum !== "number" || !Number.isFinite(group.GroupNum)) continue;
 
     // A group name YAML reads as something other than text — `GroupName: 360`
     // is the number 360 — is read as its text, as `readCameraGroupNames` reads it,
