@@ -135,12 +135,23 @@
  *   names: {@link TRAFFIC_REJOIN_RIGHT_BEHIND_S} for right behind, and the
  *   event's whole `seconds` for a `near` call, whose car arrives in `seconds`
  *   to `seconds + 1`. A line that plays at once is never refused.
- * - **The pit-exit lines and the merge warning** are dropped once the live
- *   telemetry has the player back on the racing surface (`PlayerTrackSurface` `OnTrack` / `OffTrack`),
- *   the detector's own end of the exit: the merge they are about is over. So
- *   are they once it has the player out of the world (`NotInWorld`, a reset
- *   or a tow to the garage). The exit lane and the stall admit. With no
- *   telemetry (the scenario harness) or no surface read they play.
+ * - **The pit-exit lines and the merge warning** are dropped once the exit
+ *   they are about has ended: the detector publishes `traffic.pitExitEnded`
+ *   at every end of an exit (past the end of the blend, on the racing
+ *   surface, back in the stall after a reset, out of the world or the car),
+ *   and this family's tracking ({@link registerTrafficApproachTracking})
+ *   marks every line published about that exit as ended, so its gate refuses
+ *   it. That covers the two ends the surface cannot show: a reset straight
+ *   back into the stall, and the end of the blend crossed while the surface
+ *   still reads the pit approach. A line already playing is not stopped (no
+ *   `endsOn`): at the normal end, the merge, a warning in flight is the one
+ *   most worth finishing, and an `endsOn` would cut it there as it would
+ *   after a reset. Independently of that, they are dropped once the live
+ *   telemetry has the player back on the racing surface (`PlayerTrackSurface`
+ *   `OnTrack` / `OffTrack`) or out of the world (`NotInWorld`, a reset or a
+ *   tow to the garage). The exit lane and the stall surface admit. With no
+ *   telemetry (the scenario harness) or no surface read the surface check
+ *   passes, and with the tracking not registered so does the exit's.
  * - **The pack line** has no time gate: it waits at most
  *   {@link TRAFFIC_MAX_QUEUE_WAIT_MS}, and a group coming is still worth
  *   hearing as the driver pulls out in front of it.
@@ -206,9 +217,10 @@
  *
  * Session gating (live in the car, on track, off pit road, past the green)
  * lives in the translator's detectors, NOT here, so the contracts stay
- * harness-firable. The one module state is the introduction above; every
- * resolver otherwise reads the fire's own event, and the pit-exit gate the
- * live telemetry, which admits when there is none.
+ * harness-firable. The module state is the introduction above and which pit
+ * exit's lines have ended; every resolver otherwise reads the fire's own
+ * event, and the pit-exit gate the live telemetry, which admits when there is
+ * none.
  */
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import { type CalloutIdOf, TRAFFIC_CALLOUTS } from "@iracedeck/callout-settings";
@@ -353,6 +365,18 @@ let introducedBy: TrafficRejoin | null = null;
 let trackedBus: IEventBus | null = null;
 let stopTracking: (() => void) | null = null;
 
+// ─── The pit exit's end (module header: never heard after the moment it warns about) ───
+
+/**
+ * The payloads of the pit-exit lines and merge warnings published since the
+ * last exit ended: the running exit's. Moved to {@link endedExitLines} when
+ * it ends.
+ */
+const runningExitLines = new Set<object>();
+
+/** The payloads of lines whose exit has ended: their gates refuse them. Weak, so a dropped fire's payload goes with it. */
+let endedExitLines = new WeakSet<object>();
+
 /** The first call's gate: its claim, the last (and only) thing it does. Always admits. */
 function markIntroduced(data: TrafficRejoin | null): boolean {
   introduced = true;
@@ -399,6 +423,32 @@ function speaksAsUpdate(d: TrafficRejoin): boolean {
   return d.verdict === "near" && d.first === false && introduced && introducedBy !== d;
 }
 
+/** This family's subscriber on `traffic.pitExit` and `traffic.pitExitMerge`: the line belongs to the running exit. */
+function trackExitLine(event: SimEventOf<"traffic.pitExit"> | SimEventOf<"traffic.pitExitMerge">): void {
+  runningExitLines.add(event.data);
+}
+
+/** The running exit is over (`traffic.pitExitEnded`, or `session.changed`): every line about it is refused from now on. */
+function endExit(): void {
+  for (const data of runningExitLines) endedExitLines.add(data);
+
+  runningExitLines.clear();
+}
+
+/**
+ * Whether the exit a pit-exit line or merge warning is about is still
+ * running as the line reaches the radio (module header): its payload is not
+ * one an ended exit's. Admits an imperative fire, a fire of any other event,
+ * and any line while the tracking is not registered. A pure read.
+ */
+function exitStillRunning(ctx: Pick<ScenarioContext, "event">): boolean {
+  const event = ctx.event;
+
+  if (event?.event !== "traffic.pitExit" && event?.event !== "traffic.pitExitMerge") return true;
+
+  return !endedExitLines.has(event.data as object);
+}
+
 /** This family's subscriber on `traffic.rejoin`: a new approach starts unintroduced (module header). */
 function handleRejoin(event: SimEventOf<"traffic.rejoin">): void {
   // The engine may already have admitted this very event's first call (its
@@ -406,35 +456,55 @@ function handleRejoin(event: SimEventOf<"traffic.rejoin">): void {
   if (startsApproach(event.data) && event.data !== introducedBy) clearIntroduction();
 }
 
+/** Forget every exit: none running, none ended. */
+function forgetExits(): void {
+  runningExitLines.clear();
+  endedExitLines = new WeakSet<object>();
+}
+
+/** This family's subscriber on `session.changed`: a session ends the introduction and the running exit. */
+function endSession(): void {
+  clearIntroduction();
+  endExit();
+}
+
 /**
- * Listen on `bus` for what ends an introduction outside a line taking the bus
- * (module header): a new approach's first call, and `session.changed`.
- * Registering again on the same bus does nothing; a different bus — a fresh
- * engine — moves the listening there and starts from no introduction, rather
- * than throwing, since every caller of `registerPitCrew` reaches this.
+ * Listen on `bus` for what this family tracks outside a line taking the bus
+ * (module header): what ends an introduction — a new approach's first call,
+ * and `session.changed` — and the pit exit's lines and its end
+ * (`traffic.pitExitEnded`), which `session.changed` ends too. Registering
+ * again on the same bus does nothing; a different bus — a fresh engine —
+ * moves the listening there and starts from no introduction and no exit,
+ * rather than throwing, since every caller of `registerPitCrew` reaches this.
  */
 export function registerTrafficApproachTracking(bus: IEventBus): void {
   if (trackedBus === bus) return;
 
   stopTracking?.();
   clearIntroduction();
+  forgetExits();
 
-  const unsubscribeRejoin = bus.subscribe("traffic.rejoin", handleRejoin);
-  const unsubscribeSession = bus.subscribe("session.changed", clearIntroduction);
+  const unsubscribers = [
+    bus.subscribe("traffic.rejoin", handleRejoin),
+    bus.subscribe("traffic.pitExit", trackExitLine),
+    bus.subscribe("traffic.pitExitMerge", trackExitLine),
+    bus.subscribe("traffic.pitExitEnded", endExit),
+    bus.subscribe("session.changed", endSession),
+  ];
 
   trackedBus = bus;
   stopTracking = () => {
-    unsubscribeRejoin();
-    unsubscribeSession();
+    for (const unsubscribe of unsubscribers) unsubscribe();
   };
 }
 
-/** @internal Exported for test isolation only: stops listening and forgets the introduction. */
+/** @internal Exported for test isolation only: stops listening and forgets the introduction and the exits. */
 export function _resetTrafficState(): void {
   stopTracking?.();
   stopTracking = null;
   trackedBus = null;
   clearIntroduction();
+  forgetExits();
 }
 
 /**
@@ -518,7 +588,7 @@ const REJOIN_LINES: Record<RejoinLine, RejoinLineSpec> = {
 
 type PitExitLineSpec = LineSpec & {
   verdict: TrafficPitExitVerdict;
-  /** The speak-time gate's sentence for the pack reference: a line not yet started is refused once the player is back on the racing surface or out of the world; one already playing is not stopped. */
+  /** The speak-time gate's sentence for the pack reference: a line not yet started is refused once its exit has ended or the player is back on the racing surface or out of the world; one already playing is not stopped. */
   gateDescription: string;
 };
 
@@ -534,7 +604,7 @@ const PIT_EXIT_LINES: Record<PitExitLine, PitExitLineSpec> = {
     description:
       "About 3 s before pit road ends (on leaving a nearer stall, past it if landmarks or pit limit come late), again on a held flip before the merge: a car on track meets you at the blend end or is untimed.",
     gateDescription:
-      "Refused before it starts if, when it comes to speak, you have already merged onto the racing surface or been reset to the garage: the merge it warns about is over.",
+      "Refused before it starts if, when it comes to speak, its pit exit is over: you passed the end of the blend line, merged onto the racing surface, or were reset to the pits or the garage.",
   },
   "pit-exit-clear": {
     // Not a warning: SAFETY, so it does not cut a caution line; it still cuts
@@ -548,7 +618,7 @@ const PIT_EXIT_LINES: Record<PitExitLine, PitExitLineSpec> = {
     description:
       "About 3 s before pit road ends (on leaving a nearer stall, past it if landmarks or pit limit come late), again on a held flip before the merge: no car on track meets you at the blend end.",
     gateDescription:
-      "Refused before it starts if, when it comes to speak, you have already merged onto the racing surface or been reset to the garage: the merge it is about is over.",
+      "Refused before it starts if, when it comes to speak, its pit exit is over: you passed the end of the blend line, merged onto the racing surface, or were reset to the pits or the garage.",
   },
 };
 
@@ -601,7 +671,7 @@ const PIT_EXIT_MERGE_LINE: LineSpec & { gateDescription: string } = {
   description:
     "In the pit exit lane, past the end of pit road, a car on track is predicted to reach the end of the pit exit blend line within the Pit exit merge warning seconds of you: said once per pit exit.",
   gateDescription:
-    "Refused before it starts if, when it comes to speak, you have already merged onto the racing surface or been reset to the garage: the merge it warns about is over.",
+    "Refused before it starts if, when it comes to speak, its pit exit is over: you passed the end of the blend line, merged onto the racing surface, or were reset to the pits or the garage.",
 };
 
 /**
@@ -745,14 +815,19 @@ export type TrafficContractDeps = {
 
 /**
  * Whether the player is still short of the merge as a pit-exit line is about
- * to be heard (module header): not back on the racing surface, the pit-exit
- * detector's own end of the exit, and not out of the world (`NotInWorld`: a
- * reset or a tow to the garage, which ends the detector's episode too). The
- * exit lane and the stall admit: the surface can still read the stall for a
- * tick after the car has driven out, the tick a near stall's call is made
- * on. No telemetry, or no surface read, admits.
+ * to be heard (module header): the exit the line is about has not ended
+ * (`traffic.pitExitEnded`, {@link exitStillRunning}), the player is not back
+ * on the racing surface, the pit-exit detector's own end of the exit, and not
+ * out of the world (`NotInWorld`: a reset or a tow to the garage, which ends
+ * the detector's episode too). The exit lane and the stall surface admit: the
+ * surface can still read the stall for a tick after the car has driven out,
+ * the tick a near stall's call is made on, while a reset back into the stall
+ * is the detector's to end. No telemetry, or no surface read, passes the
+ * surface check.
  */
-function stillLeavingThePits(deps: TrafficContractDeps): boolean {
+function stillLeavingThePits(deps: TrafficContractDeps, ctx: Pick<ScenarioContext, "event">): boolean {
+  if (!exitStillRunning(ctx)) return false;
+
   const surface = deps.getLatestTelemetry()?.PlayerTrackSurface;
 
   return surface !== TrkLoc.OnTrack && surface !== TrkLoc.OffTrack && surface !== TrkLoc.NotInWorld;
@@ -763,7 +838,7 @@ function pitExitContract(line: PitExitLine, deps: TrafficContractDeps): Scenario
 
   return {
     ...trafficContract(line, spec),
-    speakGate: { description: spec.gateDescription, admit: () => stillLeavingThePits(deps) },
+    speakGate: { description: spec.gateDescription, admit: (ctx) => stillLeavingThePits(deps, ctx) },
     // A cut call is gone, never replayed (module header): its gate is not
     // asked again on a replay, and what cut it is the more current line.
     dropWhenCut: true,
@@ -779,7 +854,7 @@ function pitExitContract(line: PitExitLine, deps: TrafficContractDeps): Scenario
 function pitExitMergeContract(deps: TrafficContractDeps): ScenarioContract {
   return {
     ...trafficContract("pit-exit-merge", PIT_EXIT_MERGE_LINE),
-    speakGate: { description: PIT_EXIT_MERGE_LINE.gateDescription, admit: () => stillLeavingThePits(deps) },
+    speakGate: { description: PIT_EXIT_MERGE_LINE.gateDescription, admit: (ctx) => stillLeavingThePits(deps, ctx) },
     // Like the calls: a cut merge warning is gone, never replayed (module header).
     dropWhenCut: true,
     // The last word on the exit (module header): a call still waiting is

@@ -1296,6 +1296,94 @@ describe("a line is never heard after the moment it warns about", () => {
     });
   });
 
+  describe("a pit-exit line is dropped once its exit has ended (traffic.pitExitEnded)", () => {
+    let telemetry: Partial<TelemetryData> | null;
+    const live = buildTrafficContracts({ getLatestTelemetry: () => telemetry as TelemetryData | null });
+
+    beforeEach(() => {
+      _resetAudioScenarios();
+      _resetTrafficState();
+      wire(live);
+      telemetry = { PlayerTrackSurface: TrkLoc.AproachingPits };
+    });
+
+    it.each(PIT_EXIT_GATED_IDS)(
+      "%s waiting behind a CRITICAL line is dropped after a reset straight back to the stall, which the surface admits",
+      (id) => {
+        bus.publishEvent("pitStall.departed", {});
+        publishLine(id);
+        telemetry = { PlayerTrackSurface: TrkLoc.InPitStall };
+        bus.publishEvent("traffic.pitExitEnded", {});
+        flush(audio);
+
+        expect(voicePaths()).toEqual([CRITICAL_CLIP]);
+      },
+    );
+
+    it.each(PIT_EXIT_GATED_IDS)(
+      "%s waiting behind a CRITICAL line is dropped once the exit ended at the end of the blend, the surface still on the pit approach",
+      (id) => {
+        bus.publishEvent("pitStall.departed", {});
+        publishLine(id);
+        bus.publishEvent("traffic.pitExitEnded", {});
+        flush(audio);
+
+        expect(voicePaths()).toEqual([CRITICAL_CLIP]);
+      },
+    );
+
+    it.each(PIT_EXIT_GATED_IDS)("%s waiting behind a CRITICAL line is dropped on a session change", (id) => {
+      bus.publishEvent("pitStall.departed", {});
+      publishLine(id);
+      bus.publishEvent("session.changed", { from: 0, to: 1 });
+      flush(audio);
+
+      expect(voicePaths()).not.toContain(LINE_CLIP[id]);
+    });
+
+    it.each(PIT_EXIT_GATED_IDS)("%s already playing when its exit ends is not stopped", (id) => {
+      publishLine(id);
+      // The radio frame's open tick, then the line's words.
+      audio._triggerChannelEnd(AudioChannel.SFX);
+      expect(voicePaths()).toEqual([LINE_CLIP[id]]);
+
+      bus.publishEvent("traffic.pitExitEnded", {});
+
+      expect(audio._stopped).not.toContain(AudioChannel.Voice);
+    });
+
+    it.each(PIT_EXIT_GATED_IDS)(
+      "%s about the next exit, published after the last one ended, still plays behind a CRITICAL line",
+      (id) => {
+        bus.publishEvent("traffic.pitExitEnded", {});
+        bus.publishEvent("pitStall.departed", {});
+        publishLine(id);
+        flush(audio);
+
+        expect(voicePaths()).toEqual([CRITICAL_CLIP, LINE_CLIP[id]]);
+      },
+    );
+
+    it("admits on the departure tick a near stall's call is made on: the surface still in the stall, no end published", () => {
+      telemetry = { PlayerTrackSurface: TrkLoc.InPitStall };
+      bus.publishEvent("pitStall.departed", {});
+      bus.publishEvent("traffic.pitExit", { verdict: "clear", seconds: 4 });
+      flush(audio);
+
+      expect(voicePaths()).toEqual([CRITICAL_CLIP, clip("pit-exit-clear")]);
+    });
+
+    it("admits every line while the tracking is not registered", () => {
+      _resetTrafficState();
+
+      for (const id of PIT_EXIT_GATED_IDS) {
+        expect(live.find((c) => c.id === id)!.speakGate!.admit({ ...ctxOf(pitExitEvent("traffic", 1)), now: 0 })).toBe(
+          true,
+        );
+      }
+    });
+  });
+
   it("no rejoin line reads the live telemetry: the harness and the sim gate them alike", () => {
     const reads = vi.fn((): TelemetryData | null => ({ Speed: 40 }) as TelemetryData);
     const live = buildTrafficContracts({ getLatestTelemetry: reads });
