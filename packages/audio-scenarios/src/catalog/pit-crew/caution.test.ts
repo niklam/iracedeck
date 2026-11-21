@@ -31,7 +31,14 @@ import { createFakeAudio } from "@iracedeck/audio-service/testing";
 import { type CalloutScript } from "@iracedeck/callout-script";
 import { CAUTION_CALLOUTS } from "@iracedeck/callout-settings";
 import type { IEventBus, SimEventName, SimEventOf } from "@iracedeck/event-bus";
-import { calculateRacePositions, Flags, hasFlag, SessionState, type TelemetryData } from "@iracedeck/iracing-sdk";
+import {
+  calculateRacePositions,
+  Flags,
+  hasFlag,
+  SessionState,
+  type TelemetryData,
+  TrkLoc,
+} from "@iracedeck/iracing-sdk";
 import {
   CATCH_UP_DWELL_MS,
   CATCH_UP_REMINDER_MS,
@@ -1000,6 +1007,93 @@ describe("the position call beside the one-to-go line", () => {
 
     expect(greenHeld?.weight ?? 0).toBeGreaterThan(contract("position").weight ?? 0);
     expect(contract("one-to-go").weight ?? 0).toBeGreaterThan(contract("position").weight ?? 0);
+  });
+
+  describe("off pit road, like every position readout (#1722)", () => {
+    /** The player's own car, out on track: the latest tick the call's two checks read. */
+    const ON_TRACK = { ...IN_CAR, OnPitRoad: false, PlayerTrackSurface: TrkLoc.OnTrack };
+
+    /** Each state in which no position call starts, named for the test titles. */
+    const PIT_ROAD_STATES = [
+      ["OnPitRoad", { ...ON_TRACK, OnPitRoad: true }],
+      ["the pit-stall surface", { ...ON_TRACK, PlayerTrackSurface: TrkLoc.InPitStall }],
+      ["the pit-lane surface (AproachingPits)", { ...ON_TRACK, PlayerTrackSurface: TrkLoc.AproachingPits }],
+      ["out of the car (IsOnTrack: false)", { ...ON_TRACK, IsOnTrack: false }],
+    ] as const;
+
+    beforeEach(() => {
+      mockLatestTelemetry.mockReturnValue(ON_TRACK);
+    });
+
+    afterEach(() => {
+      mockLatestTelemetry.mockReset();
+      mockLatestTelemetry.mockReturnValue(null);
+    });
+
+    it("fires at the checkpoint on track, and its gate admits there — the positive control", () => {
+      expect(fires("position")).toBe(true);
+
+      cautionPhase = "one-to-go";
+      expect(contract("position").speakGate?.admit({} as never)).toBe(true);
+    });
+
+    it.each(PIT_ROAD_STATES)("is refused at the checkpoint on %s", (_name, state) => {
+      mockLatestTelemetry.mockReturnValue(state);
+
+      expect(fires("position")).toBe(false);
+    });
+
+    it.each(PIT_ROAD_STATES)("is refused at speak time on %s, the caution still out", (_name, state) => {
+      mockLatestTelemetry.mockReturnValue(state);
+      cautionPhase = "one-to-go";
+
+      expect(contract("position").speakGate?.admit({} as never)).toBe(false);
+    });
+
+    it("still asks the family's own question at speak time: on track, a caution that is over refuses", () => {
+      cautionPhase = "none";
+
+      expect(contract("position").speakGate?.admit({} as never)).toBe(false);
+    });
+
+    it("leaves every other caution call to its own gates — none of them says the position", () => {
+      for (const id of IDS.filter((other) => other !== "position")) {
+        expect(contract(id).speakGate?.description ?? "", id).not.toMatch(/pit road/);
+      }
+    });
+
+    it("a call queued behind the one-to-go line and still waiting when the car reaches pit road is dropped", () => {
+      const { played, flush } = run();
+
+      expect(played()).toEqual([ONE_TO_GO_CLIP]);
+
+      // The driver turns into the pit lane while the one-to-go line plays.
+      mockLatestTelemetry.mockReturnValue({ ...ON_TRACK, OnPitRoad: true, PlayerTrackSurface: TrkLoc.AproachingPits });
+      flush();
+
+      expect(played()).toEqual([ONE_TO_GO_CLIP]);
+
+      // Back on track, nothing replays: dropped, not held.
+      mockLatestTelemetry.mockReturnValue(ON_TRACK);
+      flush();
+
+      expect(played()).toEqual([ONE_TO_GO_CLIP]);
+    });
+
+    it("the same queued call speaks when the car stays on track — the positive control", () => {
+      const { played, flush } = run();
+
+      flush();
+
+      expect(played()).toEqual([ONE_TO_GO_CLIP, POSITION_CLIP]);
+    });
+
+    it("states both rules in its one published gate sentence", () => {
+      expect(contract("position").speakGate?.description).toBe(
+        "Re-checked at speak time: the driver is in the car and off pit road and the full-course caution is still out.",
+      );
+      expect(contract("position").description).toContain("off pit road");
+    });
   });
 });
 

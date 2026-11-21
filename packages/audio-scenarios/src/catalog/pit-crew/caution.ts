@@ -260,7 +260,13 @@ import { poolRef, WEIGHT } from "../../dsl.js";
 import type { IScenarioEngine } from "../../interpreter.js";
 import { CAUTION_MAX_QUEUE_WAIT_MS, createLiveRaceCar, WAVING_FLAG_COOLDOWN_MS } from "./flag-alerts.js";
 import { createNamedCarMemory, type LastNamedCar } from "./named-car.js";
-import { type LivePositionResolver, selectLivePosition } from "./position-readout.js";
+import {
+  type LivePositionResolver,
+  lowerFirst,
+  playerOnPitRoadOrOutOfCar,
+  POSITION_READOUT_PIT_ROAD_CLAUSE,
+  selectLivePosition,
+} from "./position-readout.js";
 
 /** iRacing's GreenHeld bit in the event's own telemetry — false when there is none to read. */
 const greenHeld = (telemetry: TelemetryData | null): boolean =>
@@ -428,10 +434,13 @@ const LINEUP_CHANGE_QUEUE_BEHIND: readonly string[] = (
   ["follow", "pace-car-out", "field-caught", "extra-lap", "one-to-go", "position", "pace-car-off"] as const
 ).map(cautionScenarioId);
 
+/** The family's speak-time rule, as a clause: one string for every gate sentence that states it. */
+const STILL_OUT_CLAUSE = "the full-course caution is still out";
+
 /** The family's speak-time gate: the full-course caution is still out. */
 function stillOutGate(getCautionPhase: CautionPhaseResolver): SpeakGate {
   return {
-    description: "Re-checked at speak time: the full-course caution is still out.",
+    description: `Re-checked at speak time: ${STILL_OUT_CLAUSE}.`,
     admit: () => getCautionPhase() !== "none",
   };
 }
@@ -763,9 +772,20 @@ export function buildCautionContracts({
       // either when the queue is full. Do not "tidy" either back.
       family: undefined,
       weight: WEIGHT.SAFETY - 1,
+      // It says the race position, so it is silent on pit road and out of the
+      // car like every position readout (#1722, spec 2026-11-18): asked at the
+      // checkpoint, and first at speak time for a call that queued behind the
+      // one-to-go line while the driver turned into the pit lane.
+      speakGate: {
+        description: `Re-checked at speak time: ${lowerFirst(POSITION_READOUT_PIT_ROAD_CLAUSE)} and ${STILL_OUT_CLAUSE}.`,
+        admit: (ctx) => !playerOnPitRoadOrOutOfCar(getLatestTelemetry()) && stillOut.admit(ctx),
+      },
       description:
-        "About a third of the way into the last caution lap — the one-to-go flag is up and your lap distance passes 35% — your race position from the live running order, the number your display shows.",
-      when: { event: "caution.lastLapCheckpoint", where: liveRaceCar },
+        "About a third of the way into the last caution lap, off pit road — the one-to-go flag is up and your lap distance passes 35% — your race position from the live order, the number your display shows.",
+      when: {
+        event: "caution.lastLapCheckpoint",
+        where: (e) => liveRaceCar(e) && !playerOnPitRoadOrOutOfCar(getLatestTelemetry()),
+      },
     },
     {
       ...cautionContract("pace-car-off", getCautionPhase),
