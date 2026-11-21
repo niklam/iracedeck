@@ -10,17 +10,32 @@ The raise is already spoken once (`pit-crew.flag-black`, queueable since #923): 
 
 ## Decisions
 
-### 1. The sim's rule, as the maintainer states it
+### 1. The sim's rule, from a race
 
-A black flag raised now lets the car pass the pit entry twice; on the third arrival at the pit entry it must come in, or the driver risks disqualification (Niklas, 2026-11-21). So the count is of **pit-entry passes**, not of start/finish crossings or of time. This is his ruling, given with a hedge ("I think"), and it is the model built here. The capture that confirms it is named in *Testing*; if it shows a different counter, the translator's counting changes and nothing downstream does, because the event below carries the result, not the rule.
+The count is of **pit-entry passes**: three are allowed, and the fourth crossing of the pit-road line without entering disqualifies. Measured on 2026-11-21 in an offline AI race at Tsukuba (snapshot `local/telemetry-snapshot-20261121-150651-890.json` and the plugin log of that day), where the maintainer cut the track, was black-flagged a little late for it and drove on without serving:
 
-### 2. A pass is crossing the pit-lane split on the racing surface
+| Time (UTC) | What happened |
+| --- | --- |
+| 13:02:31.4 | `Black` rises, about 2.3 s before the start/finish line: past the pit-lane split (≈2.7 s before the line) and before the pit-road line (≈1.9 s before it) |
+| ≈13:02:31.8 | the first crossing of the pit-road line after the raise, 0.4 s later |
+| ≈13:03:22, 13:04:14, 13:05:04 | three more crossings, one per lap |
+| 13:05:53.3 | `Disqualify` rises, about 1.7 s before the line, at the pit-road line (the learned `pitRoadStart` sits 1.73 s of reference time before it) |
 
-A pass is the player's car crossing the learned `approachStart` landmark (#1112, where the pit lane leaves the racing line) while its surface is `OnTrack` or `OffTrack`, never `AproachingPits`. `approachStart` rather than `pitRoadStart`: it is where the driver decides, and every car on the server teaches it, while `pitRoadStart` needs a sound `CarIdxOnPitRoad`, which the #1112 captures show often is not. A crossing is the wrap-aware edge of `LapDistPct` past the landmark between two ticks, found with the existing primitives — `diff/lead-point-sweep.ts`, which corner names and sector starts share, over `@iracedeck/track-data`'s `normalizePitLanePct` / `pitLaneSignedDeltaPct` — never a new copy of the wrap math (`sim-events-iracing/CLAUDE.md`).
+So the sim checks at the **pit-road line**, and the disqualification came on the fifth crossing after the raise. The maintainer's first reading (two passes, must pit on the third, given with a hedge) is one short of that. One question is left open by this race: whether the crossing 0.4 s after the raise counted. If it did not (a grace for a flag raised at the entry), three passes are allowed and the fourth disqualifies; if it did, four are allowed.
 
-**Without a learned `approachStart`**, the start/finish crossing (`lap.started`) stands in for a pass. Pit lanes sit beside the line on nearly every track, so the two counts agree except when the flag is raised between the two points: raised between the split and the line, the fallback counts one pass the sim does not and warns a lap early; raised between the line and a split that lies after it, it misses one and warns a lap late. The second is the only unsafe case, it needs an unusual track layout and an unlucky moment, and it ends the first time any car's pit visit teaches the split, usually in the first laps of a race. The fallback is logged at debug once per flag.
+**The model built here: three passes allowed, the fourth disqualifies, and every crossing after the raise counts.** It is the earlier of the two readings in every case, so the countdown is never late: for a flag raised right at the entry, as at Tsukuba, it warns a lap early; for a flag raised elsewhere it is exact if three passes are the allowance and a lap early if four are. A warning a lap early costs the driver a lap of choice; one a lap late costs the race. The existing raise line, _"We have three laps to serve the penalty"_, agrees with it. The capture that settles the open question is named in *Testing*; its answer changes the translator's counting and nothing downstream, because the events below carry the result, not the rule.
 
-A `previous` landmark kept across a track rebuild counts as not learned, as in #1113: a pass point a few metres off is harmless here, but a rebuilt pit lane can move the split far enough to change which side of the line it is on.
+### 2. A pass is crossing the pit-road line on the racing surface
+
+A pass is the player's car crossing the learned `pitRoadStart` landmark (#1112, where pit road and its speed limit begin) while the player's `OnPitRoad` is false. That is the line the sim checked at Tsukuba (decision 1). The player's own `OnPitRoad` is sound in every capture #1112 cites, so the player's side of the check is reliable even where remote cars' `CarIdxOnPitRoad` is not; only the landmark's learning depends on the remote cars, and the player teaches it too on their own first pit visit. A crossing is the wrap-aware edge of `LapDistPct` past the landmark between two ticks, found with the existing primitives — `diff/lead-point-sweep.ts`, which corner names and sector starts share, over `@iracedeck/track-data`'s `normalizePitLanePct` / `pitLaneSignedDeltaPct` — never a new copy of the wrap math (`sim-events-iracing/CLAUDE.md`).
+
+**Fallbacks, in order.** Without a learned `pitRoadStart`, the learned `approachStart` (the pit-lane split, a little before it, taught by every car on the server) stands in; without either, the start/finish crossing (`lap.started`) does. Each fallback counts the same passes as the pit-road line except when the flag is raised between the two points:
+
+- between the split and the pit-road line, as at Tsukuba: the split misses that crossing, one later than decision 1's model, which is still what the sim did there;
+- between the pit-road line and a start/finish line after it: the start/finish line counts one early, which is safe;
+- between a start/finish line and a pit entry after it: the start/finish line misses one, a lap late. That needs an unusual layout and an unlucky moment, and it ends the first time any car's pit visit teaches a landmark, usually in the first laps of a race.
+
+The fallback in use is logged at debug once per flag. A `previous` landmark kept across a track rebuild counts as not learned, as in #1113: a rebuilt pit lane can move the line far enough to change which side of the start/finish line it is on.
 
 ### 3. The count, and when it stops
 
@@ -30,7 +45,7 @@ The translator holds one counter per black-flag episode in a slice of its own. T
 
 While the player is on pit road (`OnPitRoad`) nothing is counted and nothing is said: they are serving. If the flag is still out when they rejoin, the episode continues with the count it had.
 
-A flag raised while the car is already past the split but before the line counts on the next crossing only; the conservative reading (assuming the sim counted it) is not taken, because the raise line has already promised three laps and the first reminder would contradict it.
+A flag raised just before the pit-road line counts the crossing that follows it, however soon (decision 1).
 
 ### 4. Two sim-neutral events
 
@@ -41,12 +56,12 @@ Two distinct moments, two events, in the catalog's `flag.<name>.<moment>` shape 
 "flag.black.lastEntryApproaching": SimEvent<"flag.black.lastEntryApproaching", EmptySimEventPayload>;
 ```
 
-- `entryPassed` fires on each counted pass that leaves at least one entry. `entriesLeft` is how many arrivals at the pit entry remain, counting the next one, before the sim disqualifies: 2 after the first pass, 1 after the second. A pass that reaches 0 emits nothing; the sim takes it from there. A second sim whose rule counts laps fills `entriesLeft` with one chance per lap, so the field is neutral.
-- `lastEntryApproaching` fires once per episode, only with one entry left and a learned split, when the player's seconds to `approachStart` drop under `BLACK_FLAG_LAST_ENTRY_LEAD_S` (8 s, a named translator constant): late enough that the call is about this entry, early enough to lift and turn in.
+- `entryPassed` fires on each counted pass that leaves at least one entry. `entriesLeft` is how many arrivals at the pit entry remain, counting the next one, before the sim disqualifies: 3 after the first pass, 2 after the second, 1 after the third. A pass that reaches 0 emits nothing; the sim takes it from there. A second sim whose rule counts laps fills `entriesLeft` with one chance per lap, so the field is neutral.
+- `lastEntryApproaching` fires once per episode, only with one entry left and a learned split, when the player's seconds to `approachStart`, the split where the driver turns in, drop under `BLACK_FLAG_LAST_ENTRY_LEAD_S` (8 s, a named translator constant): late enough that the call is about this entry, early enough to lift and turn in.
 
 The rule (how many passes, what counts as one) lives in the iRacing translator as a diff module; the catalog carries only the outcome, so a second sim with a different rule fills the same events. No new package edge: the diff reads #1112's learner on the translator instance, the #1113 precedent, so `SimRuntime` gains no member.
 
-**The seconds to the split come from #1113, which merges first.** `handleTick` computes one value, the player's seconds to `approachStart` or `null`, through #1113's tiered reference-time resolver (the landmark's per-class `estTime`, then the live class curve, then scaling by `CarClassEstLapTime`), and passes it to this diff as a value. The diff never reads #1113's traffic slice (rule C in `state-slices.test.ts`: a fact from another family arrives as a value `handleTick` reads). `null` means no box call that pass; the reminders on each pass need no timing and do not wait on it.
+**The seconds to the split come from #1113, which merges first.** `handleTick` computes one value, the player's seconds to `approachStart` or `null`, through #1113's tiered reference-time resolver (the landmark's per-class `estTime`, then the live class curve, then scaling by `CarClassEstLapTime`), and passes it to this diff as a value. The diff never reads #1113's traffic slice (rule C in `state-slices.test.ts`: a fact from another family arrives as a value `handleTick` reads). `null`, or no learned split, means no box call that pass; the reminders on each pass need no timing and do not wait on it.
 
 ### 5. What the engineer says
 
@@ -54,7 +69,8 @@ Two contracts in the pit-crew flag family, one script entry each, every voice; t
 
 | Contract | Fires on | Proposed line |
 | --- | --- | --- |
-| `pit-crew.flag-black-serve-reminder` | `flag.black.entryPassed`, `entriesLeft` 2 | _"Black flag still out. Two laps left to serve it."_ |
+| `pit-crew.flag-black-serve-reminder` | `flag.black.entryPassed`, `entriesLeft` 3 | _"Black flag still out. Three laps left to serve it."_ |
+| `pit-crew.flag-black-serve-reminder` | `flag.black.entryPassed`, `entriesLeft` 2 | _"Two laps left to serve the black flag."_ |
 | `pit-crew.flag-black-serve-reminder` | `flag.black.entryPassed`, `entriesLeft` 1 | _"Last lap to serve the black flag. Box this time by, or we're disqualified."_ |
 | `pit-crew.flag-black-serve-now` | `flag.black.lastEntryApproaching` | _"Box, box. Serve the penalty."_ |
 
@@ -71,8 +87,10 @@ Both contracts fire only in a race session (`isRaceSession`). Disqualification i
 
 ## Rejected
 
-- **Counting start/finish crossings everywhere.** Simpler, and matches the raise line's "three laps", but it is not the rule as stated, and on a track where the split comes after the line it is wrong by a whole lap every time, not only for an unlucky raise.
-- **Counting `pitRoadStart` crossings.** Closer to where serving begins, but it is learned only from cars whose `CarIdxOnPitRoad` is sound, so the fallback would run far more often.
+- **Counting start/finish crossings everywhere.** Simpler, and matches the raise line's "three laps", but the sim checks at the pit-road line (decision 1), and on a track where the split comes after the line it is wrong by a whole lap every time, not only for an unlucky raise.
+- **Counting `approachStart` crossings first** (this spec's first draft). Every car teaches the split, but it is not where the sim checks: at Tsukuba the flag rose between the two, so the split would have counted a different first pass.
+- **Allowing two passes** (the first reading of the rule). One short of what the Tsukuba race showed, so the last-chance call would come a lap before the real last chance, and a driver who learns that stops trusting it.
+- **A grace for a flag raised right at the entry**, matching Tsukuba exactly. It may be how the sim works, but one race cannot tell a grace from a four-pass allowance, and a wrong grace makes the warnings a lap late.
 - **A reminder on every lap.completed.** It speaks at the line, which on most tracks is just after the split, so the last-chance call would come a lap too late for the entry it is about.
 - **A repeating beep until served** (the #912 speeding-cue shape). A penalty is a decision, not a correction; one clear line per pass, and one box call, is enough, and a loop would mask the spotter.
 - **Putting the pass count in the `flag.black.raised` payload.** The raise is one edge; the count changes after it.
@@ -89,8 +107,8 @@ Both contracts fire only in a race session (`isRaceSession`). Disqualification i
 
 ## Testing
 
-- **Unit, translator diff:** a raise, two passes and an approach on a seeded `approachStart`, with both events and `entriesLeft` asserted; a pass while on pit road (not counted); a rejoin with the flag still out (count kept); a fall and a fresh raise (count reset); a DQ mid-episode (closed); the start/finish fallback with no landmark, and with a `previous` one; a raise between the split and the line; the wrap at `LapDistPct` 1 → 0; a replay glance mid-episode (count kept, the episode not reopened at 0); a `null` seconds-to-split (no box call, reminders unchanged).
+- **Unit, translator diff:** the Tsukuba sequence as a fixture (a raise 0.4 s before a seeded `pitRoadStart`, four crossings giving `entriesLeft` 3, 2 and 1, and no event on the fourth); a raise mid-lap, three passes and an approach on a seeded `approachStart`, with both events and `entriesLeft` asserted; a pass while on pit road (not counted); a rejoin with the flag still out (count kept); a fall and a fresh raise (count reset); a DQ mid-episode (closed); the `approachStart` fallback with no `pitRoadStart`, the start/finish fallback with neither, and with a `previous` one; a raise between the split and the pit-road line under each; the wrap at `LapDistPct` 1 → 0; a replay glance mid-episode (count kept, the episode not reopened at 0); a `null` seconds-to-split (no box call, reminders unchanged).
 - **Unit, contracts:** race-only gating, the speak-time gate on the reminder, the DQ supersede, serve-now not queueing, the opt-in.
 - **Scenario harness:** entries for both events in `event-names.ts` and shortcut buttons for each of the three lines.
-- **The rule capture (confirms decision 1):** a hosted race with an admin `!black` on the player, driving past the pit entry without serving, with the telemetry watcher running, noting the pass on which `Disqualify` rises. If it rises on the third arrival at the split, decision 1 stands; if on a start/finish count or a timer, the counting in decision 2 changes and this spec is amended.
+- **The rule captures.** The first is done (decision 1: Tsukuba, a flag raised at the entry). The second, which the maintainer will drive: a race on another track with the flag raised mid-lap, far from the pit entry (a big cut on the far side of the track), driving on without serving, with a snapshot or the telemetry watcher around the disqualification. If `Disqualify` rises on the fourth crossing of the pit-road line, three passes are allowed and Tsukuba's first crossing fell in a grace: the model stands, and a grace may be specified from the two races. If it rises on the fifth, four are allowed: the allowance becomes four and every reminder moves by one. A track whose start/finish line lies before its pit entry is the better choice, since it also tells the pit-road line from the start/finish line.
 - **Manual:** the same session, listening for the two reminders and the box call, and a second run that serves on the last lap and hears nothing after pit entry.
