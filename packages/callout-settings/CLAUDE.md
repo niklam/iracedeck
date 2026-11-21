@@ -6,7 +6,7 @@ The Race Engineer callout opt-in registry (#1350). It is the only place a `callo
 
 ## Modules (`src/`)
 
-- `define.ts` — the shapes and typed helpers. `CalloutEntry` (`key`, `label`, optional `default`), `CalloutFamily` (`id`, `callouts`), `defineCalloutFamily` (identity at runtime; its `const` type parameter keeps every id and key a literal type), `CalloutIdOf<F>` and `CalloutKeyOf<F>` (distributes over a union of families), `calloutKey(family, id)` (typed as exactly that id's key; an unknown id, which only an unchecked value can reach, throws naming the family and the id) and `calloutIdForKey(family, key)`.
+- `define.ts` — the shapes and typed helpers. `CalloutEntry` (`key`, `label`, optional `default`, optional `requiresFeature`), `CalloutFamily` (`id`, `callouts`), `defineCalloutFamily` (identity at runtime; its `const` type parameter keeps every id and key a literal type), `CalloutIdOf<F>` and `CalloutKeyOf<F>` (distributes over a union of families), `calloutKey(family, id)` (typed as exactly that id's key; an unknown id, which only an unchecked value can reach, throws naming the family and the id) and `calloutIdForKey(family, key)`.
 - `families/*.ts` — one file per family, 39 in all, each exporting `<PREFIX>_CALLOUTS`. A family is named for the `audio-scenarios` family it serves, and its object keys are that family's callout ids. Five small families (`pit-service-requests`, `setup-warning`, `race-engineer-toggle`, `corner-names-toggle`, `telemetry-connect`) hold the keys no scenario family reads; they are named for what reads them. Entries are in PI order, and the rationale that used to sit on each schema field sits on its entry.
 - `pi-groups.ts` — `CALLOUT_PI_GROUPS`: the 30 headings of the PI and the settings window's Callouts card, in render order, each an ordered list of families.
 - `index.ts` — the public surface: everything above (each family re-exported by name), plus `CALLOUT_FAMILIES` (every family, in PI order, derived from `CALLOUT_PI_GROUPS` rather than listed), `CalloutSettingKey` (the union of every key, derived), `RegisteredCalloutFamily` (any family placed in a group: a generic helper that must yield a `CalloutSettingKey` constrains on it, since `CalloutKeyOf` of a bare `CalloutFamily` is only `` `calloutEnabled${string}` ``), `CALLOUT_SETTING_KEYS`, `calloutEntry(key)` and `calloutDefault(key)`.
@@ -14,6 +14,8 @@ The Race Engineer callout opt-in registry (#1350). It is the only place a `callo
 ## The entry and its default
 
 `default` is optional and can only be `false`: absent means on. New Race Engineer functionality ships on, so an off default is a visible, deliberate exception rather than a value every entry repeats. Today nine entries carry it: the fuel countdown counts 10, 9, 8, 7, 6 and 4, the two pit-lane beeps, `calloutEnabledPitExitCue` (#1161) and `calloutEnabledLimiterEngagedCue` (#1272), which the maintainer decided on 2026-11-09 a driver opts into, and the rejoin traffic warnings, `calloutEnabledTrafficRejoin` (#1113), which he decided on 2026-11-20 ship experimental and off, the label saying "(experimental)". `calloutDefault(key)` turns it into the schema default.
+
+`requiresFeature` names the platform feature flag (`PlatformFeatureFlags`, `platform-features.json`) an entry's checkbox needs: the settings window renders the row only in a build whose flags have it `true`. It is for a callout built but not shipped; the key stays in the schema with its default either way, so nothing a user stored is lost. One entry carries it: `calloutEnabledTrafficRejoin`, `trafficRejoin` (the #1113 spec's fourth amendment, 2026-11-21: the rejoin warnings do not ship, so no release build shows the checkbox). The registry stays dependency-free, so the flag is a plain string; `registry.test.ts` pins which entries carry one, and `audio-scenarios`' traffic test that the catalog's development feature names the same flag.
 
 A `key` is a persisted settings key and a published contract: never rename or drop one without a migration, and never change a default casually. `@iracedeck/settings`' append-only baseline (`src/__fixtures__/callout-settings-baseline.json`, #1376) fails on either. A key retired on purpose keeps its baseline row, marked `"retiredBy": "#<issue>"` and listed in the test's `RETIRED_KEYS` by the change that adds its migration, and is never reused.
 
@@ -27,7 +29,7 @@ A family is the unit of ownership: the ids are family-scoped (`ack` is an id of 
 
 - `@iracedeck/settings` builds a `GlobalSettingsSchema` field for every `CalloutSettingKey` with `.default(calloutDefault(key))`, and exports the typed lookup `isCalloutEnabled(key)` and write `setCalloutEnabled(key, enabled)`.
 - `audio-scenarios` derives each family's callout id type with `CalloutIdOf<typeof X_CALLOUTS>` and gates through `isCalloutEnabled(calloutKey(X_CALLOUTS, id))`.
-- `pi-components` renders the Callouts rows from `CALLOUT_PI_GROUPS`, with `default="true"` exactly where `calloutDefault(key)` is true.
+- `pi-components` renders the Callouts rows from `CALLOUT_PI_GROUPS`, with `default="true"` exactly where `calloutDefault(key)` is true, leaving out a row whose `requiresFeature` flag the build does not have on.
 
 ## Adding a callout
 
