@@ -783,6 +783,122 @@ describe("buildPackReference withholding a development feature (issue #1113)", (
     );
   });
 
+  // The frame plays around the line, so what it draws from is the callout's
+  // too: walked as the engine expands it — the effective frame (the entry's
+  // override, else the contract's), its fragments, all three sides, with no
+  // base — though it never enters `usedBy` or the published references.
+  describe("the effective frame", () => {
+    /** The spotter call alone plays `openers/alright` and `units/km`; withholding it leaves only the frames. */
+    const SPOTTER = { ...NOTHING, contracts: ["pit-crew.spotter-call"] };
+    const withFrames = (
+      frames: CalloutScript["frames"],
+      fragments: CalloutScript["fragments"] = {},
+    ): CalloutScript => ({
+      ...SCRIPT,
+      frames,
+      fragments: { ...SCRIPT.fragments, ...fragments },
+    });
+
+    it("keeps a line a published callout's frame plays, by pool or through a fragment, while a withheld callout names it", () => {
+      const script = withFrames(
+        {
+          radio: { open: [{ clip: "sfx/IRD-tick-open.mp3" }, "@radio-bed"], close: [], cut: ["pool:openers/alright"] },
+          terse: { open: [], close: [] },
+        },
+        { "radio-bed": { sequence: ["voice/{voice}/units/km.mp3"] } },
+      );
+      const ref = buildPackReference(input({ script, withheld: SPOTTER }));
+
+      // Kept for the radio-framed callouts, which still play them — but not named as users.
+      expect(lineOf(ref, "openers", "alright").usedBy).toEqual([]);
+      expect(lineOf(ref, "units", "km").usedBy).toEqual([]);
+      // The published references stay the entry's own.
+      expect(ref.callouts.find((c) => c.id === "pit-crew.flag-green")?.references.pools).toEqual(["flags/green"]);
+      // The spotter's own line, which no frame plays, still goes.
+      expect(ref.recordingScript.map((g) => g.group)).not.toContain("spotter");
+    });
+
+    it("drops the line when only a withheld callout's frame plays it", () => {
+      // Only the spotter call's `terse` frame plays it; the radio frame does not.
+      const script = withFrames({
+        radio: { open: [{ clip: "sfx/IRD-tick-open.mp3" }], close: [] },
+        terse: { open: [], close: [], cut: ["pool:openers/alright"] },
+      });
+
+      expect(
+        buildPackReference(input({ script, withheld: SPOTTER })).recordingScript.map((g) => g.group),
+      ).not.toContain("openers");
+    });
+
+    it("reads a frame's bare literal at the audio root, as the engine plays it, never as the voice's line", () => {
+      const script = withFrames({
+        radio: { open: [], close: [], cut: ["openers/alright.mp3"] },
+        terse: { open: [], close: [] },
+      });
+
+      expect(
+        buildPackReference(input({ script, withheld: SPOTTER })).recordingScript.map((g) => g.group),
+      ).not.toContain("openers");
+    });
+
+    it("refuses a published callout whose effective frame names withheld vocabulary, naming the frame", () => {
+      const script = withFrames(
+        { radio: { open: [], close: [] }, terse: { open: ["@terse-tail"], close: [] } },
+        { "terse-tail": { sequence: [{ optional: ["{{zz.unused}}"] }] } },
+      );
+
+      // The spotter call overrides its contract's `radio` with `terse`.
+      expect(() => buildPackReference(input({ script, withheld: { ...NOTHING, vars: ["zz.unused"] } }))).toThrow(
+        /"pit-crew\.spotter-call" is published but its frame "terse" names the withheld var "zz\.unused"/,
+      );
+      // Withheld with the callout whose frame it is, or unframed by the entry, it is not named.
+      expect(() => buildPackReference(input({ script, withheld: { ...SPOTTER, vars: ["zz.unused"] } }))).not.toThrow();
+
+      const unframed: CalloutScript = {
+        ...script,
+        scenarios: {
+          ...script.scenarios,
+          "pit-crew.spotter-call": { ...script.scenarios["pit-crew.spotter-call"], frame: "none" },
+        },
+      };
+
+      expect(() =>
+        buildPackReference(input({ script: unframed, withheld: { ...NOTHING, vars: ["zz.unused"] } })),
+      ).not.toThrow();
+    });
+
+    it("refuses a frame's withheld condition and case the same way", () => {
+      const script = withFrames({
+        radio: {
+          open: [],
+          close: [],
+          cut: [{ case: "readback.tirePattern", of: { all: [{ if: "!session.isRace", then: [] }], default: [] } }],
+        },
+        terse: { open: [], close: [] },
+      });
+
+      expect(() =>
+        buildPackReference(
+          input({
+            script,
+            withheld: {
+              ...NOTHING,
+              contracts: ["pit-crew.flag-green", "pit-crew.readback-entry"],
+              cases: ["readback.tirePattern"],
+            },
+          }),
+        ),
+      ).toThrow(
+        /"pit-crew\.incident" is published but its frame "radio" names the withheld case "readback\.tirePattern"/,
+      );
+      expect(() =>
+        buildPackReference(
+          input({ script, withheld: { ...NOTHING, contracts: ["pit-crew.flag-green"], conds: ["session.isRace"] } }),
+        ),
+      ).toThrow(/"pit-crew\.incident" is published but its frame "radio" names the withheld cond "session\.isRace"/);
+    });
+  });
+
   it("refuses a withheld name the catalog does not register, so a rename cannot publish the feature again", () => {
     expect(() =>
       buildPackReference(

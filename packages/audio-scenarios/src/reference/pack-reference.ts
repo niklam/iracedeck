@@ -38,9 +38,10 @@
  * author must not be shown it. The caller names its contracts and vocabulary
  * in `withheld` (the generator picks them from the release flags); the builder
  * drops those, and every recording line only they draw from, so no orphan is
- * left behind: a line some published callout, published var or plugin code
- * still reaches stays, minus the withheld names in its columns, and a line
- * nothing reached before stays as it was. A published callout naming a
+ * left behind: a line some published callout (by its entry or its effective
+ * frame), published var or plugin code still reaches stays, minus the
+ * withheld names in its columns, and a line nothing reached before stays as
+ * it was. A published callout whose entry or effective frame names a
  * withheld var, condition or case is refused, as is a withheld name the
  * catalog does not register (a rename would otherwise publish the feature
  * again without a word).
@@ -298,7 +299,7 @@ export function buildPackReference(input: PackReferenceInput): PackReference {
   const allWalks = new Map<string, EntryWalk>(
     input.contracts.map((contract) => [
       contract.id,
-      walkEntry(script, script.scenarios[contract.id], contract.base),
+      walkEntry(script, script.scenarios[contract.id], contract.base, contract.frame),
     ]),
   );
   const walks = new Map<string, EntryWalk>();
@@ -310,6 +311,7 @@ export function buildPackReference(input: PackReferenceInput): PackReference {
       const walk = allWalks.get(contract.id) as EntryWalk;
       walks.set(contract.id, walk);
       refuseWithheldReferences(contract.id, walk.references, withheld);
+      refuseWithheldFrameReferences(contract.id, walk.frame, withheld);
 
       return {
         id: contract.id,
@@ -430,6 +432,28 @@ function refuseWithheldReferences(id: string, references: CalloutReferences, wit
   }
 }
 
+/**
+ * Refuse a published callout whose effective frame names withheld vocabulary:
+ * the frame plays around the line, so the reference would publish a callout
+ * that speaks what it hides just as surely as through its entry.
+ */
+function refuseWithheldFrameReferences(id: string, frame: FrameWalk | null, withheld: WithheldSets): void {
+  if (frame === null) return;
+
+  const named = [
+    ...frame.vars.filter((name) => withheld.vars.has(name)).map((name) => `var "${name}"`),
+    ...frame.conds.filter((name) => withheld.conds.has(name)).map((name) => `cond "${name}"`),
+    ...frame.cases.filter((name) => withheld.cases.has(name)).map((name) => `case "${name}"`),
+  ];
+
+  if (named.length > 0) {
+    throw new Error(
+      `"${id}" is published but its frame "${frame.name}" names the withheld ${named.join(", ")} — ` +
+        "withhold the callout too, or stop withholding what the frame uses.",
+    );
+  }
+}
+
 /** Serialise the artifact exactly as it is committed — 2-space JSON, trailing newline — so the freshness test can compare text. */
 export function serializePackReference(reference: PackReference): string {
   return `${JSON.stringify(reference, null, 2)}\n`;
@@ -478,6 +502,28 @@ type EntryWalk = {
    * `green-01.mp3` each reach the right line.
    */
   clipBases: ReadonlySet<string>;
+  /**
+   * What the entry's EFFECTIVE frame plays around it — the entry's `frame`
+   * override, else the contract's — walked with its fragments; `null` when
+   * the line is unframed (`"none"`), skipped, or names a frame the script
+   * does not define (the engine plays it unframed). Kept apart from
+   * `references` and `clipBases`: the published references and a recording
+   * line's `usedBy` stay the entry's own, since one frame wraps nearly every
+   * callout. It counts where the frame matters for withholding (#1113): a
+   * published callout's frame naming withheld vocabulary is refused, and a
+   * line the frame plays stays while a published callout's frame plays it.
+   */
+  frame: FrameWalk | null;
+};
+
+/** What a frame's `open`, `close` and `cut` reference, their included fragments walked. */
+type FrameWalk = {
+  name: string;
+  vars: readonly string[];
+  conds: readonly string[];
+  cases: readonly string[];
+  /** The `group/base` keys the frame draws from: its pools, resolved, and its voice clips by literal path. */
+  lines: ReadonlySet<string>;
 };
 
 const NO_REFERENCES: CalloutReferences = { pools: [], vars: [], conds: [], cases: [], includes: [], frames: [] };
@@ -489,40 +535,99 @@ const NO_REFERENCES: CalloutReferences = { pools: [], vars: [], conds: [], cases
  * walked once however many paths reach it; an include of a name the script
  * does not define is still listed (it is what the entry names) and followed
  * nowhere. `base` is the contract's: a fragment's literals resolve against
- * the including entry's base, as the engine expands them.
+ * the including entry's base, as the engine expands them. `contractFrame` is
+ * the contract's default frame, which the entry's `frame` overrides; the
+ * effective one is walked as well (`EntryWalk.frame`).
  */
-function walkEntry(script: CalloutScript, entry: CalloutScriptEntry, base: string | null): EntryWalk {
-  if (entry.skip === true) return { references: NO_REFERENCES, clipBases: new Set() };
+function walkEntry(
+  script: CalloutScript,
+  entry: CalloutScriptEntry,
+  base: string | null,
+  contractFrame: string,
+): EntryWalk {
+  if (entry.skip === true) return { references: NO_REFERENCES, clipBases: new Set(), frame: null };
 
+  const body = walkSteps(script, [entry.sequence ?? []], base);
+
+  return {
+    references: {
+      pools: sorted(body.pools),
+      vars: sorted(body.vars),
+      conds: sorted(body.conds),
+      cases: sorted(body.cases.keys()).map((name) => ({ name, keys: sorted(body.cases.get(name) ?? []) })),
+      includes: sorted(body.includes),
+      frames: entry.frame !== undefined && entry.frame !== NO_FRAME ? [entry.frame] : [],
+    },
+    clipBases: body.clipBases,
+    frame: walkFrame(script, entry.frame ?? contractFrame),
+  };
+}
+
+/**
+ * The effective frame's walk, or `null` when there is none to play: `"none"`,
+ * or a name the script does not define. A frame expands with no base (the
+ * engine's `expandFrame`), so its literals — and its fragments' — count as
+ * written: only a `voice/<voice>/…` path is a voice line. All three sides
+ * are walked, `cut` included, since an ended line speaks it.
+ */
+function walkFrame(script: CalloutScript, name: string): FrameWalk | null {
+  // `hasOwn`, not a lookup: `frame: "constructor"` is a well-formed name.
+  if (name === NO_FRAME || !Object.hasOwn(script.frames, name)) return null;
+
+  const { open, close, cut } = script.frames[name];
+  const walk = walkSteps(script, [open, close, cut ?? []], null);
+
+  return {
+    name,
+    vars: sorted(walk.vars),
+    conds: sorted(walk.conds),
+    cases: sorted(walk.cases.keys()),
+    lines: new Set([...walk.pools, ...walk.clipBases]),
+  };
+}
+
+/** What a set of step lists references, every fragment they include walked once. */
+type StepsWalk = {
+  pools: Set<string>;
+  vars: Set<string>;
+  conds: Set<string>;
+  cases: Map<string, Set<string>>;
+  includes: Set<string>;
+  clipBases: Set<string>;
+};
+
+function walkSteps(script: CalloutScript, roots: readonly (readonly ScriptStep[])[], base: string | null): StepsWalk {
   const fragments = script.fragments ?? {};
-  const pools = new Set<string>();
-  const vars = new Set<string>();
-  const conds = new Set<string>();
-  const cases = new Map<string, Set<string>>();
-  const includes = new Set<string>();
-  const clipBases = new Set<string>();
+  const walk: StepsWalk = {
+    pools: new Set(),
+    vars: new Set(),
+    conds: new Set(),
+    cases: new Map(),
+    includes: new Set(),
+    clipBases: new Set(),
+  };
   const walked = new Set<string>();
-  const pending: (readonly ScriptStep[])[] = [entry.sequence ?? []];
+  const pending: (readonly ScriptStep[])[] = [...roots];
 
   while (pending.length > 0) {
     const steps = pending.pop() as readonly ScriptStep[];
     const refs = collectStepReferences(steps);
 
-    for (const name of refs.pools) pools.add(resolvePool(script, name));
+    for (const name of refs.pools) walk.pools.add(resolvePool(script, name));
 
-    for (const name of refs.vars) vars.add(name);
+    for (const name of refs.vars) walk.vars.add(name);
 
-    for (const name of refs.conds) conds.add(name);
+    for (const name of refs.conds) walk.conds.add(name);
 
     for (const { name, keys } of refs.cases) {
-      const merged = cases.get(name) ?? new Set<string>();
-      cases.set(name, merged);
+      const merged = walk.cases.get(name) ?? new Set<string>();
+      walk.cases.set(name, merged);
 
       for (const key of keys) merged.add(key);
     }
 
     for (const name of refs.includes) {
-      includes.add(name);
+      walk.includes.add(name);
 
       if (!walked.has(name) && Object.hasOwn(fragments, name)) {
         walked.add(name);
@@ -536,21 +641,11 @@ function walkEntry(script: CalloutScript, entry: CalloutScriptEntry, base: strin
       // under `voice/{voice}` is the voice's line too (see `clipBases`).
       const match = VOICE_CLIP_PATH.exec(clip) ?? VOICE_CLIP_PATH.exec(applyBase(base ?? undefined, clip));
 
-      if (match) clipBases.add(`${match[1]}/${match[2]}`);
+      if (match) walk.clipBases.add(`${match[1]}/${match[2]}`);
     }
   }
 
-  return {
-    references: {
-      pools: sorted(pools),
-      vars: sorted(vars),
-      conds: sorted(conds),
-      cases: sorted(cases.keys()).map((name) => ({ name, keys: sorted(cases.get(name) ?? []) })),
-      includes: sorted(includes),
-      frames: entry.frame !== undefined && entry.frame !== NO_FRAME ? [entry.frame] : [],
-    },
-    clipBases,
-  };
+  return walk;
 }
 
 /** A slashed name is already a source; a `pools` alias resolves to its source; an alias the script does not define is kept as written. */
@@ -689,18 +784,24 @@ function buildRecordingScript(
   for (const [group, bases] of takesByGroup) for (const base of bases.keys()) lineKeys.add(`${group}/${base}`);
 
   const directUsers = new Map<string, Set<string>>();
+  // The callouts whose effective frame plays a line: they keep it from being
+  // withheld, but are not its `usedBy` (see `EntryWalk.frame`).
+  const frameUsers = new Map<string, Set<string>>();
+  const credit = (users: Map<string, Set<string>>, key: string, id: string): void => {
+    let ids = users.get(key);
 
-  for (const [id, { references, clipBases }] of walks) {
-    for (const key of [...references.pools, ...clipBases].map((ref) => lineKeyOf(ref, lineKeys))) {
-      let ids = directUsers.get(key);
-
-      if (!ids) {
-        ids = new Set();
-        directUsers.set(key, ids);
-      }
-
-      ids.add(id);
+    if (!ids) {
+      ids = new Set();
+      users.set(key, ids);
     }
+
+    ids.add(id);
+  };
+
+  for (const [id, { references, clipBases, frame }] of walks) {
+    for (const ref of [...references.pools, ...clipBases]) credit(directUsers, lineKeyOf(ref, lineKeys), id);
+
+    for (const ref of frame?.lines ?? []) credit(frameUsers, lineKeyOf(ref, lineKeys), id);
   }
 
   return sorted(takesByGroup.keys()).flatMap((group): RecordingGroup[] => {
@@ -716,10 +817,12 @@ function buildRecordingScript(
       const allUsedBy = sorted(directUsers.get(`${group}/${base}`) ?? []);
       const usedBy = allUsedBy.filter((id) => !withheld.contracts.has(id));
       const playedBy = pluginPlayedEntry(pluginPlayed, group, base)?.playedBy ?? null;
-      const drawnFrom = allUsedBy.length > 0 || allViaVar.length > 0;
+      const allFramedBy = [...(frameUsers.get(`${group}/${base}`) ?? [])];
+      const framed = allFramedBy.some((id) => !withheld.contracts.has(id));
+      const drawnFrom = allUsedBy.length > 0 || allViaVar.length > 0 || allFramedBy.length > 0;
 
       // Only withheld names drew from it: withheld with them (#1113).
-      if (drawnFrom && usedBy.length === 0 && viaVar.length === 0 && playedBy === null) return [];
+      if (drawnFrom && usedBy.length === 0 && viaVar.length === 0 && !framed && playedBy === null) return [];
 
       return [
         {
