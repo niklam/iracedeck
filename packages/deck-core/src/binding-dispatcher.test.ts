@@ -468,6 +468,45 @@ describe("BindingDispatcher", () => {
         expect(calls).toEqual(["start R", "stop R", "start R", "stop R"]);
       });
 
+      it("sends a released hold's stop before a tap of the role queued while it started", async () => {
+        mockGetGlobalSettings.mockReturnValue({ a: JSON.stringify({ type: "simhub", role: "R" }) });
+        const calls = recordCalls();
+        const stalledStart = deferred();
+        mockStartRole.mockImplementationOnce(async (role: string) => {
+          calls.push(`start ${role}`);
+
+          return stalledStart.promise;
+        });
+
+        const hold = getBindingDispatcher().hold("ctx", "a");
+        await getBindingDispatcher().release("ctx");
+        const tap = getBindingDispatcher().tap("a");
+
+        stalledStart.resolve(true);
+        await Promise.all([hold, tap]);
+
+        expect(calls).toEqual(["start R", "stop R", "start R", "stop R"]);
+        await getBindingDispatcher().release("ctx");
+        expect(calls).toEqual(["start R", "stop R", "start R", "stop R"]);
+      });
+
+      it("keeps a released hold held, and retries its stop, when the owed stop fails", async () => {
+        mockGetGlobalSettings.mockReturnValue({ a: JSON.stringify({ type: "simhub", role: "R" }) });
+        const stalledStart = deferred();
+        mockStartRole.mockImplementationOnce(() => stalledStart.promise);
+        mockStopRole.mockResolvedValueOnce(false);
+
+        const hold = getBindingDispatcher().hold("ctx", "a");
+        await getBindingDispatcher().release("ctx");
+        stalledStart.resolve(true);
+        await hold;
+
+        // The owed stop failed, and the hold retried it at once.
+        expect(mockStopRole).toHaveBeenCalledTimes(2);
+        await getBindingDispatcher().release("ctx");
+        expect(mockStopRole).toHaveBeenCalledTimes(2);
+      });
+
       it("runs three quick presses in order, each released", async () => {
         mockGetGlobalSettings.mockReturnValue({ a: JSON.stringify({ type: "simhub", role: "R" }) });
         const calls = recordCalls();

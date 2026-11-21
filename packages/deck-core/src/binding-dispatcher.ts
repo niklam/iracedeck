@@ -227,7 +227,7 @@ class BindingDispatcher implements IBindingDispatcher {
       // the old one must not stay held (would cause a stuck key/role).
       await this.releaseHeld(actionId);
 
-      await this.pressHold(actionId, settingKey);
+      await this.pressHold(actionId, settingKey, pending);
 
       if (pending.released) {
         this.logger.debug("Hold was released while it was pressing; releasing it now");
@@ -241,7 +241,7 @@ class BindingDispatcher implements IBindingDispatcher {
   }
 
   /** Press a hold's binding and record it as held when the press went out. */
-  private async pressHold(actionId: string, settingKey: string): Promise<void> {
+  private async pressHold(actionId: string, settingKey: string, pending: PendingHold): Promise<void> {
     const binding = this.resolveGlobalBinding(settingKey);
 
     if (!binding) return;
@@ -257,12 +257,25 @@ class BindingDispatcher implements IBindingDispatcher {
       }
 
       const role = binding.role;
-      const started = await this.inRoleOrder(role, () => getSimHub().startRole(role));
+      // A key released while the start was in flight owes a stop: it goes out
+      // in the same unit of the role's queue, so no tap of the role queued
+      // meanwhile lands between the start and the stop and merges into them.
+      const { started, stopped } = await this.inRoleOrder(role, async () => {
+        const roleStarted = await getSimHub().startRole(role);
 
-      if (started) {
-        this.heldBindings.set(actionId, { type: "simhub", role });
-      } else {
+        if (!roleStarted || !pending.released) return { started: roleStarted, stopped: false };
+
+        return { started: true, stopped: await getSimHub().stopRole(role) };
+      });
+
+      if (!started) {
         this.logger.warn("Failed to start SimHub role");
+      } else if (stopped) {
+        this.logger.info("SimHub role released");
+      } else {
+        // Held: released by its key-up, or, when the owed stop above failed, by
+        // the hold's own retry and onWillDisappear like any held role.
+        this.heldBindings.set(actionId, { type: "simhub", role });
       }
 
       return;
