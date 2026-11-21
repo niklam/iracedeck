@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  CAMERA_CATALOG_KEY,
   CHANGELOG_NOTIFICATION_POLICIES,
   DEFAULT_CHANGELOG_NOTIFICATION_POLICY,
   DEFAULT_FOCUS_IRACING_MODE,
@@ -49,6 +50,7 @@ describe("app-constants persisted and run-scoped values (spec #1351)", () => {
     expect(VOICE_LABELS_KEY).toBe("_voiceLabels");
     expect(VOICE_PACK_STATUS_KEY).toBe("_voicePackStatus");
     expect(VOICE_PACK_DEV_BASE_URL_KEY).toBe("_devBaseUrl");
+    expect(CAMERA_CATALOG_KEY).toBe("_cameraCatalog");
   });
 
   it("keeps the managed voice pack's id", () => {

@@ -30,6 +30,18 @@ export {
   parseDefaultKeyBinding,
 } from "./key-binding-defaults.js";
 
+// The camera catalog's published view and the standard camera groups (issue #1653)
+export {
+  CAMERA_CATALOG_KEY,
+  type CameraCatalogView,
+  type CameraCatalogViewCurrent,
+  type CameraCatalogViewGroup,
+  type CameraCatalogViewTrack,
+  STANDARD_CAMERA_GROUP_OPTIONS,
+  type StandardCameraGroupOption,
+  type StandardCameraGroupSection,
+} from "./camera-catalog.js";
+
 // Where a host's own plugin log lives, for the adapter contract and the watchdog (issues #1349, #1367)
 export type { LogLocation } from "./log-location.js";
 
