@@ -103,6 +103,7 @@ A development flag keeps a feature that is built but not ready for users out of 
 - **The settings window.** A `@iracedeck/callout-settings` entry names its flag in `requiresFeature`; `race-engineer-callouts.ejs` renders that row only when `locals.platform.features[flag] === true` — not the platform flags' `!== false`, so a render with no `platform` leaves it out. The settings key stays in the schema.
 - **The pack-author reference.** The pit-crew catalog lists the feature in `DEVELOPMENT_FEATURES` (`{ flag, withheld }`), and `pnpm generate:pack-reference` withholds every one whose flag no committed `platform-features.json` has on (`scripts/lib/release-flags.mjs`, never the local override): its contracts, vocabulary and the recording lines only they draw from.
 - **The scenario harness** is development tooling and runs every development flag on (`packages/scenario-harness/src/development-flags.ts`), so its buttons and heard tests exercise the feature.
+- **Packing.** `pack:plugin`'s first step, `scripts/assert-release-build.mjs`, refuses a built `bin/config.json` whose merged `featureFlags.features` turns on (`=== true`) a flag no committed `platform-features.json` ships on (`readReleaseFlags`), naming each and `feature-flags.local.json`. The value is checked, never the key: every build carries `trafficRejoin`, `false` from the committed files. A development flag needs no list of its own there: the committed files are the list.
 
 Shipping the feature takes three steps in one change, because the suite pins the flag off until then:
 

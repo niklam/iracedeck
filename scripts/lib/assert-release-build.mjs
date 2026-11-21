@@ -24,6 +24,13 @@
  * carries a `Debug` key under `Nodejs` — what the inspector switch
  * `pnpm debug:plugin on` writes on a developer's machine.
  *
+ * Since #1113 it refuses a config that turns on a DEVELOPMENT flag: one no
+ * plugin's committed `platform-features.json` ships on (`readReleaseFlags`),
+ * such as `trafficRejoin`, which a developer turns on in
+ * `feature-flags.local.json` and the build merges into `featureFlags`. Here
+ * the VALUE is the property, as the plugin reads it (`=== true`): every build
+ * carries the key, `false` from the committed files.
+ *
  * Everything impure is injected and an exit code is RETURNED rather than
  * `process.exit` called — the shape every `scripts/lib` helper uses, and what
  * makes the failure paths testable without a built plugin.
@@ -32,6 +39,7 @@ import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 
 import { DEBUG_VALUE, manifestDebug } from "./debug-plugin.mjs";
+import { readReleaseFlags as readCommittedReleaseFlags } from "./release-flags.mjs";
 
 /** The key a development build carries. Mirrors `PluginConfig.devVoicePacksRoot`. */
 export const DEV_VOICE_PACKS_ROOT_KEY = "devVoicePacksRoot";
@@ -44,10 +52,14 @@ export const EXIT_USAGE = 2;
 
 /**
  * @param {string | undefined} configPath Path to a plugin's built `bin/config.json`.
- * @param {{ fs?: { existsSync: (p: string) => boolean, readFileSync: (p: string, enc: string) => string }, log?: { log: Function, error: Function } }} [options]
+ * @param {{ fs?: { existsSync: (p: string) => boolean, readFileSync: (p: string, enc: string) => string }, log?: { log: Function, error: Function }, readReleaseFlags?: () => ReadonlyMap<string, boolean> }} [options]
+ *   `readReleaseFlags` answers which flags a release build ships on; the committed files by default.
  * @returns {number} 0 clean, 1 the artifact must not be packed, 2 bad arguments.
  */
-export function assertReleaseBuild(configPath, { fs = { existsSync, readFileSync }, log = console } = {}) {
+export function assertReleaseBuild(
+  configPath,
+  { fs = { existsSync, readFileSync }, log = console, readReleaseFlags = readCommittedReleaseFlags } = {},
+) {
   if (typeof configPath !== "string" || configPath.trim() === "") {
     log.error(USAGE);
 
@@ -95,7 +107,58 @@ export function assertReleaseBuild(configPath, { fs = { existsSync, readFileSync
     return EXIT_PROBLEM;
   }
 
+  let releaseFlags;
+
+  try {
+    releaseFlags = readReleaseFlags();
+  } catch (error) {
+    log.error(
+      `Error: the committed platform-features.json files could not be read (${error.message}), so the ` +
+        `development flags in ${configPath} cannot be checked. Refusing to pack.`,
+    );
+
+    return EXIT_PROBLEM;
+  }
+
+  const developmentOn = developmentFlagsOn(parsed, releaseFlags);
+
+  if (developmentOn.length > 0) {
+    log.error(
+      `Error: ${configPath} turns on ${developmentOn.map((flag) => `"${flag}"`).join(", ")}, which no plugin's ` +
+        "committed platform-features.json ships on — this is a DEVELOPMENT build and must not be packed or " +
+        "published. The flag came from feature-flags.local.json at the repository root: set it false there (or " +
+        "delete the file), rebuild the plugins, then pack again.",
+    );
+
+    return EXIT_PROBLEM;
+  }
+
   return assertNoDebugKey(configPath, { fs, log });
+}
+
+/**
+ * The flags the built config's merged `featureFlags.features` turns on (`=== true`,
+ * as the plugin reads a runtime flag) that no committed file ships on — a flag
+ * the committed files do not declare included — sorted. A config with no
+ * features object turns nothing on.
+ *
+ * @param {Record<string, unknown>} config
+ * @param {ReadonlyMap<string, boolean>} releaseFlags
+ * @returns {string[]}
+ */
+function developmentFlagsOn(config, releaseFlags) {
+  const featureFlags = config.featureFlags;
+  const features =
+    featureFlags !== null && typeof featureFlags === "object" && !Array.isArray(featureFlags)
+      ? /** @type {Record<string, unknown>} */ (featureFlags).features
+      : undefined;
+
+  if (features === null || typeof features !== "object" || Array.isArray(features)) return [];
+
+  return Object.entries(features)
+    .filter(([flag, value]) => value === true && releaseFlags.get(flag) !== true)
+    .map(([flag]) => flag)
+    .sort();
 }
 
 /**

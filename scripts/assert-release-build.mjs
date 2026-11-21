@@ -4,10 +4,11 @@
  *
  *   node scripts/assert-release-build.mjs <path to bin/config.json>
  *
- * Exit 0 when the built plugin folder carries no `devVoicePacksRoot` and its
- * `manifest.json` no `Nodejs.Debug` (#1338), 1 when it does — or when the
- * config is missing, unreadable or not an object, or the manifest cannot be
- * read — and 2 with no path. Wired as the first step of every plugin's `pack:plugin`
+ * Exit 0 when the built plugin folder carries no `devVoicePacksRoot`, turns on
+ * no development flag (one no committed `platform-features.json` ships on,
+ * #1113) and its `manifest.json` carries no `Nodejs.Debug` (#1338), 1 when it
+ * does — or when the config is missing, unreadable or not an object, the
+ * committed flags or the manifest cannot be read — and 2 with no path. Wired as the first step of every plugin's `pack:plugin`
  * script, chained with `&&`, so only a clean artifact is ever packed.
  *
  * The sibling guard `dev-voice-root-guard.test.mjs` proves the SOURCE cannot
