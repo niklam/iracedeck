@@ -406,6 +406,15 @@ describe("diffTrafficPitExit", () => {
         ["the entry clearly past the line", (r) => tel({ cars: [arriving(5, r)], pct: 1.5 })],
       ];
 
+      /**
+       * The player at the call point: 0.037 of the lap short of `pitRoadEnd`,
+       * 59.2 m, 2.96 s at the limit — 40 m on from the stall, two seconds out
+       * of it at the limit — with car 5 reaching the blend `relative` s after
+       * the player's ETA there (2.96 + 60 − 50 s).
+       */
+      const atCallPoint = (relative: number): TrafficPitExitTelemetry =>
+        tel({ pct: 0.088, cars: [{ idx: 5, pct: 0.05, est: 60 - ((0.125 - 0.088) * 80 + 10 + relative) }] });
+
       it.each(dropouts)(
         "a one-tick dropout (%s) mid-exit keeps the episode, and the flip is spoken after it",
         (_, gap) => {
@@ -417,13 +426,15 @@ describe("diffTrafficPitExit", () => {
           h.after(100, gap(5));
           expect(h.episode.active).toBe(true);
 
-          // The position back, an interval after the last evaluation: the flip's second.
-          h.after(TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS - 100, tel({ cars: [arriving(5, 5.5)] }));
+          // The position back, an interval after the last evaluation and at
+          // the call point: the flip's second, spoken there.
+          h.after(TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS - 100, atCallPoint(5.5));
 
           expect(h.settled).toEqual([
             { verdict: "traffic", seconds: 3 },
             { verdict: "clear", seconds: 5.5 },
           ]);
+          expect(h.events).toEqual([{ verdict: "clear", seconds: 5.5 }]);
           expect(lines(h.debug)).toContain("player position unavailable, episode held");
           expect(lines(h.debug)).toContain("player position back after 900 ms, episode kept");
         },
@@ -441,6 +452,12 @@ describe("diffTrafficPitExit", () => {
           h.after(TRAFFIC_PIT_EXIT_POSITION_GRACE_MS / 2, tel({ cars: [arriving(5, 1)] }));
 
           expect(h.settled).toEqual([{ verdict: "traffic", seconds: 1 }]);
+          // Settled 5 s short of pitRoadEnd, and said only at the call point.
+          expect(h.events).toEqual([]);
+
+          h.after(TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS + TRAFFIC_PIT_EXIT_POSITION_GRACE_MS / 2, atCallPoint(1));
+
+          expect(h.events).toEqual([{ verdict: "traffic", seconds: 1 }]);
         },
       );
 
