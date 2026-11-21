@@ -88,6 +88,7 @@ vi.mock("@iracedeck/icons/camera-select/blimp.svg", () => ({ default: mockCamera
 vi.mock("@iracedeck/icons/camera-select/chase.svg", () => ({ default: mockCameraSelectSvg("chase") }));
 vi.mock("@iracedeck/icons/camera-select/chopper.svg", () => ({ default: mockCameraSelectSvg("chopper") }));
 vi.mock("@iracedeck/icons/camera-select/cockpit.svg", () => ({ default: mockCameraSelectSvg("cockpit") }));
+vi.mock("@iracedeck/icons/camera-select/custom.svg", () => ({ default: mockCameraSelectSvg("custom") }));
 vi.mock("@iracedeck/icons/camera-select/far-chase.svg", () => ({ default: mockCameraSelectSvg("far-chase") }));
 vi.mock("@iracedeck/icons/camera-select/gearbox.svg", () => ({ default: mockCameraSelectSvg("gearbox") }));
 vi.mock("@iracedeck/icons/camera-select/gyro.svg", () => ({ default: mockCameraSelectSvg("gyro") }));
@@ -975,14 +976,20 @@ describe("CameraControls", () => {
       expect(decoded).not.toContain("blimp-artwork");
     });
 
-    it("should fall back to static cycle icon when no groups have icons", () => {
-      const result = generateCycleCameraGridSvg(["NonExistent"], "next");
-      const decoded = decodeURIComponent(result);
-      expect(decoded).toContain("data:image/svg+xml");
-      expect(decoded).toContain("NEXT");
-      expect(decoded).toContain("CAMERA");
-      // Should NOT contain grid thumbnails
-      expect(decoded).not.toContain("-artwork");
+    it("draws a custom group's thumbnail with the generic icon rather than dropping it (#1653)", () => {
+      const decoded = decodeURIComponent(generateCycleCameraGridSvg(["DynamicTV"], "next"));
+
+      expect(decoded).toContain("custom-artwork");
+      expect(decoded).toContain("CYCLE CAM");
+      expect(decoded).not.toContain("NEXT");
+    });
+
+    it("draws custom and standard groups side by side, in the subset's order (#1653)", () => {
+      const decoded = decodeURIComponent(generateCycleCameraGridSvg(["DynamicTV", "TV1", "Grid_Pole"], "next"));
+
+      expect(decoded.match(/custom-artwork/g)).toHaveLength(2);
+      expect(decoded).toContain("tv1-artwork");
+      expect(decoded.indexOf("custom-artwork")).toBeLessThan(decoded.indexOf("tv1-artwork"));
     });
 
     it("should fall back to static cycle icon for empty group list", () => {
@@ -1015,10 +1022,8 @@ describe("CameraControls", () => {
       expect(decoded).not.toContain("CYCLE CAM");
     });
 
-    it("should apply titleOverrides on the static fallback icon (no groups with icons)", () => {
-      const decoded = decodeURIComponent(
-        generateCycleCameraGridSvg(["NonExistent"], "next", undefined, { titleText: "FALLBACK" }),
-      );
+    it("should apply titleOverrides on the static fallback icon (no group enabled)", () => {
+      const decoded = decodeURIComponent(generateCycleCameraGridSvg([], "next", undefined, { titleText: "FALLBACK" }));
       expect(decoded).toContain("FALLBACK");
     });
   });
@@ -2433,9 +2438,31 @@ describe("generateCameraSelectSvg (#959)", () => {
     expect(decoded).toContain("MY CAM");
   });
 
-  it("falls back to the key's grid, honouring its title override, for a group without an icon", () => {
+  it("draws a group without an icon of its own with the generic icon and its name (#1653)", () => {
     const decoded = decodeURIComponent(
       generateCameraSelectSvg("Something New", {
+        direction: "previous",
+        cameraGroupSubset: JSON.stringify({ groups: { TV4: true } }),
+      }),
+    );
+
+    expect(decoded).toContain("custom-artwork");
+    expect(decoded).toContain("CAMERA\nSOMETHING NEW");
+    expect(decoded).not.toContain("tv4-artwork");
+  });
+
+  it("honours the key's title override on a custom group's icon", () => {
+    const decoded = decodeURIComponent(
+      generateCameraSelectSvg("Something New", { titleOverrides: { titleText: "MY CAM" } }),
+    );
+
+    expect(decoded).toContain("custom-artwork");
+    expect(decoded).toContain("MY CAM");
+  });
+
+  it("falls back to the key's grid, honouring its title override, only for an empty name", () => {
+    const decoded = decodeURIComponent(
+      generateCameraSelectSvg("", {
         direction: "previous",
         cameraGroupSubset: JSON.stringify({ groups: { TV4: true } }),
         titleOverrides: { titleText: "MY CAM" },
@@ -3149,6 +3176,7 @@ describe("Change Camera's stored group name (#1653)", () => {
       generateCameraControlsSvg({ target: "change-camera", cameraGroup: 9, cameraGroupName: "DynamicTV" }),
     );
 
+    expect(decoded).toContain("custom-artwork");
     expect(decoded).toContain("CAMERA\nDYNAMICTV");
     expect(decoded).not.toContain("cockpit-artwork");
 
@@ -3171,7 +3199,7 @@ describe("Change Camera's stored group name (#1653)", () => {
       expect(decoded).toContain(`CAMERA\n${name.toUpperCase()}`);
     }
 
-    expect(decodeURIComponent(generateCameraSelectSvg("toString", {}))).toContain("CYCLE CAM");
+    expect(decodeURIComponent(generateCameraSelectSvg("toString", {}))).toContain("custom-artwork");
   });
 
   it("draws the unavailable look only when asked to", () => {
@@ -3571,5 +3599,134 @@ describe("Camera Controls keys on a group the session lacks (#1653)", () => {
       );
       expect(mockCamera.switchNum).toHaveBeenCalledWith(42, 3, 0);
     });
+  });
+});
+
+describe("one generic icon for every custom camera group (#1653)", () => {
+  let subscriber: (() => void) | undefined;
+
+  function keyContext() {
+    return {
+      id: "key-1",
+      deviceId: "dev-1",
+      deviceType: 0,
+      isKey: () => true,
+      isDial: () => false,
+      setTitle: vi.fn(async () => {}),
+      setSettings: vi.fn(async () => {}),
+      setImage: vi.fn(async () => {}),
+    };
+  }
+
+  async function appearCycle(settings: Record<string, unknown>, camGroup: number): Promise<CameraControls> {
+    const action = new CameraControls();
+    sdkOf(action).getCurrentTelemetry.mockReturnValue({ CamCarIdx: 4, CamGroupNumber: camGroup });
+    sdkOf(action).getSessionInfo.mockReturnValue({});
+    sdkOf(action).subscribe.mockImplementation((_id: string, cb: () => void) => {
+      subscriber = cb;
+    });
+    vi.mocked(getCameraGroupsFromSessionInfo).mockReturnValue(CUSTOM_FILE_GROUPS);
+
+    await action.onWillAppear({
+      action: keyContext(),
+      payload: { settings: { target: "cycle-camera", direction: "next", ...settings } },
+    } as never);
+
+    return action;
+  }
+
+  function shownIcons(action: CameraControls): string[] {
+    return vi.mocked(action["updateKeyImage"]).mock.calls.map((call) => decodeURIComponent(String(call[1])));
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    subscriber = undefined;
+  });
+
+  afterEach(() => {
+    vi.mocked(getCameraGroupsFromSessionInfo).mockReturnValue([]);
+  });
+
+  it("draws a Change Camera key on a custom group with the generic icon and the upper-cased name", () => {
+    const decoded = decodeURIComponent(
+      generateCameraControlsSvg({ target: "change-camera", cameraGroupName: "Grid_Pole" }),
+    );
+
+    expect(decoded).toContain("custom-artwork");
+    expect(decoded).toContain("CAMERA\nGRID_POLE");
+  });
+
+  it("keeps a standard group's own icon", () => {
+    const decoded = decodeURIComponent(generateCameraControlsSvg({ target: "change-camera", cameraGroupName: "tv1" }));
+
+    expect(decoded).toContain("tv1-artwork");
+    expect(decoded).not.toContain("custom-artwork");
+  });
+
+  it("keeps a standard group's own icon for a name typed in another case or spelling", () => {
+    for (const [name, artwork] of [
+      ["pit lane2", "pit-lane-2-artwork"],
+      ["TV STATIC", "tv-static-artwork"],
+      ["far chase", "far-chase-artwork"],
+    ]) {
+      const decoded = decodeURIComponent(generateCameraControlsSvg({ target: "change-camera", cameraGroupName: name }));
+
+      expect(decoded).toContain(artwork);
+      expect(decoded).not.toContain("custom-artwork");
+    }
+  });
+
+  it("greys the generic icon on a key whose custom group the session lacks", () => {
+    const decoded = decodeURIComponent(
+      generateCameraControlsSvg({ target: "change-camera", cameraGroupName: "Drone" }, false, true),
+    );
+
+    expect(decoded).toContain("custom-artwork");
+    expect(lastIconOptions().dimmed).toBe(true);
+  });
+
+  it("shows the generic icon in the Cycle Camera grid preview for a ticked custom group", () => {
+    const decoded = decodeURIComponent(
+      generateCameraControlsSvg({
+        target: "cycle-camera",
+        direction: "next",
+        cameraGroupSubset: JSON.stringify({ groups: { DynamicTV: true, TV1: true } }),
+      }),
+    );
+
+    expect(decoded).toContain("custom-artwork");
+    expect(decoded).toContain("tv1-artwork");
+  });
+
+  it("shows a custom current group with the generic icon and its name in Current camera mode", async () => {
+    const action = await appearCycle({ cycleIconMode: "current" }, 3); // DynamicTV
+
+    const icons = shownIcons(action);
+    expect(icons).toHaveLength(1);
+    expect(icons[0]).toContain("custom-artwork");
+    expect(icons[0]).toContain("CAMERA\nDYNAMICTV");
+    expect(icons[0]).not.toContain("CYCLE CAM");
+  });
+
+  it("shows the custom group the next press selects with the generic icon", async () => {
+    const action = await appearCycle({ cameraGroupSubset: JSON.stringify({ groups: { grid_pole: true } }) }, 1);
+
+    const icons = shownIcons(action);
+    expect(icons).toHaveLength(1);
+    expect(icons[0]).toContain("custom-artwork");
+    expect(icons[0]).toContain("CAMERA\nGRID_POLE");
+    subscriber?.();
+    expect(shownIcons(action)).toHaveLength(1);
+  });
+
+  it("draws the generic glyph for a custom group on the dial carousel", async () => {
+    const action = new CameraControls();
+    const host = (action as unknown as { dialSurface: { host: { getGroupGlyph(name: string): unknown } } }).dialSurface
+      .host;
+
+    expect(JSON.stringify(host.getGroupGlyph("DynamicTV"))).toContain("custom-artwork");
+    expect(JSON.stringify(host.getGroupGlyph("TV1"))).toContain("tv1-artwork");
+    expect(host.getGroupGlyph("")).toBeNull();
   });
 });

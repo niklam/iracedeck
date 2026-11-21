@@ -138,8 +138,14 @@ const LEGACY_NAMES_FOLDED = new Map(
   [...LEGACY_NAMES].map(([variant, canonical]) => [variant.toLowerCase(), canonical.toLowerCase()]),
 );
 
-/** A name folded for the case-insensitive pass: lower case, legacy spellings mapped in any case. */
-function foldGroupName(name: string): string {
+/**
+ * @internal Exported for testing
+ *
+ * A name folded for the case-insensitive pass: lower case, legacy spellings
+ * mapped in any case. Two names that fold alike name the same group unless the
+ * session holds both, when only an exact match tells them apart.
+ */
+export function foldGroupName(name: string): string {
   const lower = name.toLowerCase();
 
   return LEGACY_NAMES_FOLDED.get(lower) ?? lower;

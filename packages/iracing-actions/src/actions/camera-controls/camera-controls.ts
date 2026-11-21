@@ -52,6 +52,7 @@ import blimpSvg from "@iracedeck/icons/camera-select/blimp.svg";
 import chaseSvg from "@iracedeck/icons/camera-select/chase.svg";
 import chopperSvg from "@iracedeck/icons/camera-select/chopper.svg";
 import cockpitSvg from "@iracedeck/icons/camera-select/cockpit.svg";
+import customGroupSvg from "@iracedeck/icons/camera-select/custom.svg";
 import farChaseSvg from "@iracedeck/icons/camera-select/far-chase.svg";
 import gearboxSvg from "@iracedeck/icons/camera-select/gearbox.svg";
 import gyroSvg from "@iracedeck/icons/camera-select/gyro.svg";
@@ -96,6 +97,7 @@ import {
   CHANGE_CAMERA_GROUPS,
   DEFAULT_ENABLED_GROUPS,
   findSessionGroupByNum,
+  foldGroupName,
   getNextSelectedGroupEntry,
   matchSessionGroup,
   normalizeGroupName,
@@ -286,6 +288,11 @@ const CAMERA_SELECT_ICONS: Record<string, string> = {
   Spectator: spectatorSvg,
 };
 
+/** {@link CAMERA_SELECT_ICONS} keyed by folded name, for a name typed in another case. */
+const CAMERA_SELECT_ICONS_FOLDED = new Map(
+  Object.entries(CAMERA_SELECT_ICONS).map(([name, svg]) => [foldGroupName(name), svg]),
+);
+
 /**
  * The camera-select icon for a group name in any spelling the sim uses. An own
  * key only: a camera file may name a group `constructor` or `toString` (#1653),
@@ -294,7 +301,21 @@ const CAMERA_SELECT_ICONS: Record<string, string> = {
 function cameraSelectIcon(groupName: string): string | undefined {
   const name = normalizeGroupName(groupName);
 
-  return Object.hasOwn(CAMERA_SELECT_ICONS, name) ? CAMERA_SELECT_ICONS[name] : undefined;
+  if (Object.hasOwn(CAMERA_SELECT_ICONS, name)) return CAMERA_SELECT_ICONS[name];
+
+  // A standard group typed in another case (#1653) is still that group: the
+  // press finds it case-insensitively, so its key shows its own artwork.
+  return CAMERA_SELECT_ICONS_FOLDED.get(foldGroupName(name));
+}
+
+/**
+ * The artwork for any named camera group (#1653, spec decision 9): its own
+ * camera-select icon, or the one generic custom-group icon for a name without
+ * artwork of its own — a group a camera file defines beyond the 25 standard
+ * ones. The group's name is the key's title, so one icon serves them all.
+ */
+function groupIcon(groupName: string): string {
+  return cameraSelectIcon(groupName) ?? customGroupSvg;
 }
 
 /**
@@ -562,7 +583,7 @@ export function generateCameraControlsSvg(
     defaultTitle = CYCLE_TITLES[target]?.[direction] || CYCLE_TITLES["cycle-camera"]["next"];
   } else if (target === "change-camera") {
     const groupName = changeCameraGroupName(settings);
-    iconSvg = changeCameraIcon(groupName);
+    iconSvg = groupIcon(groupName);
     defaultTitle = `CAMERA\n${groupName.toUpperCase()}`;
   } else {
     iconSvg = FOCUS_ICONS[target] || FOCUS_ICONS["focus-your-car"];
@@ -588,14 +609,6 @@ export function generateCameraControlsSvg(
 }
 
 /**
- * The artwork a Change Camera key draws for its group: the group's own, or —
- * for a name without artwork of its own — the Cycle Camera icon.
- */
-function changeCameraIcon(groupName: string): string {
-  return cameraSelectIcon(groupName) ?? CYCLE_ICONS["cycle-camera"].next;
-}
-
-/**
  * @internal Exported for testing
  *
  * The settings a Cycle Camera key's telemetry-driven icon is drawn from.
@@ -611,9 +624,12 @@ export type CycleCameraKeySettings = {
  * Generate an SVG data URI for a specific camera group icon — the group a Cycle
  * Camera key's next press selects, or the group the sim is on now (#959).
  *
- * A group without an icon of its own falls back to the key's own grid icon,
- * drawn from the KEY's subset, direction and appearance overrides: it is a
- * placeholder, and it must look like the key the user configured.
+ * A group without an icon of its own (a custom group, #1653) draws the generic
+ * custom-group icon with its name, since that is what is on screen. Only an
+ * empty name — the sim reports a group its session does not list — falls back
+ * to the key's own grid icon, drawn from the KEY's subset, direction and
+ * appearance overrides: it is a placeholder, and it must look like the key the
+ * user configured.
  *
  * `unavailable` (#1653) draws the group's icon greyed, for a key whose press
  * would cycle nowhere in this session. The grid placeholder is drawn by hand,
@@ -624,10 +640,9 @@ export function generateCameraSelectSvg(
   settings: CycleCameraKeySettings,
   unavailable = false,
 ): string {
-  const iconSvg = cameraSelectIcon(groupName);
+  if (groupName === "") return generateCameraControlsSvg({ ...settings, target: "cycle-camera" });
 
-  if (!iconSvg) return generateCameraControlsSvg({ ...settings, target: "cycle-camera" });
-
+  const iconSvg = groupIcon(groupName);
   const colors = resolveIconColors(iconSvg, getGlobalColors(), settings.colorOverrides);
   const title = resolveTitleSettings(
     iconSvg,
@@ -795,10 +810,11 @@ export function generateCycleCameraGridSvg(
   borderOverrides?: Partial<CommonSettings>["borderOverrides"],
   graphicOverrides?: Partial<CommonSettings>["graphicOverrides"],
 ): string {
-  // Resolve which groups have icons
-  const groupsWithIcons = enabledGroupNames.filter((name) => cameraSelectIcon(name) !== undefined);
+  // Every named group gets a thumbnail: its own artwork, or the generic
+  // custom-group icon (#1653) — a custom group was dropped from the grid before.
+  const groupsWithIcons = enabledGroupNames.filter((name) => name !== "");
 
-  // Fall back to static cycle icon if no groups have icons (direct render, no recursion)
+  // Fall back to static cycle icon if no group is enabled (direct render, no recursion)
   if (groupsWithIcons.length === 0) {
     const iconSvg = CYCLE_ICONS["cycle-camera"][direction];
     const titleText = CYCLE_TITLES["cycle-camera"][direction];
@@ -839,7 +855,7 @@ export function generateCycleCameraGridSvg(
 
   for (let i = 0; i < displayGroups.length; i++) {
     const groupName = displayGroups[i];
-    const iconSvg = cameraSelectIcon(groupName) as string;
+    const iconSvg = groupIcon(groupName);
     const artColors = resolveIconColors(iconSvg, getGlobalColors(), colorOverrides);
     const rawGraphic = extractGraphicContent(iconSvg);
     const artwork = renderIconTemplate(rawGraphic, artColors);
@@ -892,14 +908,15 @@ export function getEnabledGroupNames(raw: string | Record<string, unknown> | und
 
 /**
  * Resolve a camera-group name to its dial-carousel glyph — the colour-resolved
- * inner artwork of the group's camera-select icon plus its source dimensions.
- * Returns null for an unmapped group name so the carousel can render name-only.
- * Shared with the keypad cycle-camera preview via `cameraSelectIcon`.
+ * inner artwork of the group's camera-select icon, or the generic custom-group
+ * icon for a group without one (#1653), plus its source dimensions. Returns
+ * null only for an empty name, which the carousel renders name-only. Shared
+ * with the keypad cycle-camera preview via `groupIcon`.
  */
 function resolveGroupGlyph(groupName: string): CarouselGlyph | null {
-  const iconSvg = cameraSelectIcon(groupName);
+  if (groupName === "") return null;
 
-  if (!iconSvg) return null;
+  const iconSvg = groupIcon(groupName);
 
   const colors = resolveIconColors(iconSvg, {}, undefined);
   const artwork = renderIconTemplate(extractGraphicContent(iconSvg), colors);
