@@ -659,8 +659,12 @@ export type PitLaneLandmarkLearned = {
  * instructs: no verdict tells a stopped driver to hold or go. Nor does any
  * reassure him: the `overTen` (10 s to under 15 s) and `clear` (15 s or more,
  * or no car) verdicts were removed on 2026-11-20, so nothing is published
- * while no car is under 10 s away, and a subscriber reads that silence as
- * nothing to warn about.
+ * while no car is under 10 s away. That silence means only that no new
+ * warning was published, never that there is nothing to warn about, and a
+ * subscriber must not read it as an all-clear: a car the arrival model cannot
+ * time is in no band, so it gets no verdict at all, and a car already warned
+ * about keeps coming without another one until its band or its count changes
+ * (`traffic.rejoin`'s cadence).
  *
  * `pack` (amended 2026-11-18) names no band: it is said once, in place of the
  * first car's band, when the nearest car is under 10 s and at least one more
