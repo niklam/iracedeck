@@ -20,8 +20,10 @@
  * rejoin lines name a fixed band of the nearest predicted arrival — right
  * behind (under 2 s), a number (2 s to under 10 s) — and never tell a stopped
  * driver to hold or go. Nothing reassures him (amended 2026-11-20): the "more
- * than ten" and "Clear to rejoin." lines were removed, so on rejoin silence
- * means no car is under ten seconds away. The bands are fixed because the
+ * than ten" and "Clear to rejoin." lines were removed, so the rejoin feature
+ * never gives an all-clear, and silence does not mean that no car is close:
+ * a warning may be switched off, waiting behind a higher-priority line, or
+ * dropped as stale (below). The bands are fixed because the
  * words name them. A group of cars coming is one line, "A group of cars
  * coming. Join carefully." (`pack`, amended 2026-11-18), said once in place
  * of the first car's band; the detector says nothing more while the group goes

@@ -5,8 +5,10 @@
  * Publishes `traffic.rejoin`, and `traffic.rejoinTowed` when the car is taken
  * off the track mid-stop. The engineer alerts, never instructs: no line tells
  * a stopped driver to hold or to go, and none reassures him (amended
- * 2026-11-20): he speaks only to warn, so on rejoin silence means no car is
- * under ten seconds away.
+ * 2026-11-20): he speaks only to warn and never gives an all-clear. Silence
+ * is no promise that no car is close: the detector publishes a car once and
+ * again only when its picture changes, and the audio side may have the line
+ * switched off, waiting behind a higher-priority line, or dropped as stale.
  *
  * **The episode.** It starts once every entry gate has held, with the car
  * below {@link TRAFFIC_CRAWL_MPS}, for {@link TRAFFIC_REJOIN_ENTRY_DWELL_MS}.
