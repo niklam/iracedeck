@@ -664,14 +664,17 @@ function positionGapExpired(episode: TrafficPitExitState, now: number, emit: Pit
  * Ends the episode, keeping the stall baseline (written after): nothing is
  * said, and `traffic.pitExitEnded` tells the Race Engineer the exit is over,
  * so a line about it still waiting for the radio is dropped (module header).
+ * The reset follows the emit and precedes the debug line: an episode whose end
+ * was published is over, even when the line throws, so the next tick neither
+ * ends it again nor evaluates an exit already over.
  */
 function end(episode: TrafficPitExitState, reason: string, emit: PitExitEmit, logger: ILogger): void {
   emit({ event: "traffic.pitExitEnded", data: {} });
-  logger.debug(`episode ended (${reason})`);
   Object.assign(episode, createTrafficPitExitState(), {
     lastInPitStall: episode.lastInPitStall,
     lastStallPct: episode.lastStallPct,
   });
+  logger.debug(`episode ended (${reason})`);
 }
 
 /** The player's class's reference time at a landmark: its own per-class time, else the class curve there. */

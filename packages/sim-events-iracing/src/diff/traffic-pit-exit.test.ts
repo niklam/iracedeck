@@ -609,6 +609,27 @@ describe("diffTrafficPitExit", () => {
         expect(h.ended()).toBe(1);
       });
 
+      it("once, with the episode ended, when the end's debug line throws", () => {
+        const h = harness();
+
+        h.depart(tel({ cars: [arriving(5, 1)] }));
+        h.debug.mockImplementation((line) => {
+          if (line.startsWith("episode ended")) throw new Error("debug sink failed");
+        });
+
+        expect(() => h.after(100, tel({ PlayerTrackSurface: TrkLoc.OnTrack }))).toThrow("debug sink failed");
+        // The end was published and the episode reset before the line: the
+        // next tick finds nothing running, so it neither ends it again nor
+        // evaluates an exit already over.
+        expect(h.episode.active).toBe(false);
+        expect(h.ended()).toBe(1);
+
+        h.debug.mockReset();
+        h.after(100, tel({ PlayerTrackSurface: TrkLoc.OnTrack }));
+
+        expect(h.ended()).toBe(1);
+      });
+
       it("before the next exit's first call on a departure tick that finds an episode still running", () => {
         const h = harness();
 
