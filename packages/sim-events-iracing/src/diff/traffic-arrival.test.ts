@@ -396,6 +396,13 @@ describe("updateTrafficReferenceCurves", () => {
 
       it("reads a standing car that pulled away as moving on a tick whose estTime throws", () => {
         const slice = standing();
+        // The failed sample at 0.301 falls in the standing car's bin at 0.3,
+        // so only the bin's contents can tell it was lost.
+        const binIdx = Math.floor(0.3 * TRAFFIC_CURVE_BINS);
+
+        expect(Math.floor((0.3 + 5 / TRACK) * TRAFFIC_CURVE_BINS)).toBe(binIdx);
+
+        const before = structuredClone(slice.curves["1"].bins[binIdx]);
 
         // 5 m in 0.1 s, 50 m/s: the car has pulled away, and its sample fails.
         updateTrafficReferenceCurves(slice, car1(100.6, 5, "estTime"), null, TRACK, catching);
@@ -403,6 +410,7 @@ describe("updateTrafficReferenceCurves", () => {
         expect(isTrafficCarStationary(slice, 1, 100.6, TRACK)).toBe(false);
         // Positive control: the sample itself was lost, the curve unchanged.
         expect(slice.curves["1"].bins.filter((bin) => bin !== null)).toHaveLength(1);
+        expect(slice.curves["1"].bins[binIdx]).toEqual(before);
       });
 
       it("keeps a car standing that still stands on a tick whose estTime throws: a valid reading still excludes it", () => {
