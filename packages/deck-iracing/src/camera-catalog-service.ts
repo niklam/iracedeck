@@ -143,6 +143,8 @@ export function createCameraCatalogService(options: CameraCatalogServiceOptions)
     createFileSettingsStore({
       path,
       logger,
+      // Its own wording for the one line that would otherwise claim the deck-host migration.
+      rejectedFallback: "starting an empty camera list",
       ...(options.debounceMs === undefined ? {} : { debounceMs: options.debounceMs }),
       ...(options.onRejected === undefined ? {} : { onRejected: options.onRejected }),
     });

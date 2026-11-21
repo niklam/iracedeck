@@ -196,6 +196,23 @@ describe("createFileSettingsStore", () => {
       );
     });
 
+    it("says what a store serving another file does instead of the host migration (#1653)", async () => {
+      mkdirSync(join(dir, "sub"), { recursive: true });
+      writeFileSync(store.path, '{\n  "a": 1,\n}\n', "utf-8");
+      const logger = { ...silentLogger, error: vi.fn() };
+
+      await createFileSettingsStore({
+        path: store.path,
+        logger,
+        debounceMs: 10,
+        rejectedFallback: "starting an empty camera list",
+      }).load();
+
+      expect(logger.error).toHaveBeenCalledWith(
+        "Settings file could not be parsed at line 3, column 1; moving it aside and starting an empty camera list",
+      );
+    });
+
     it("locates a mistake V8 gives no position for at all", async () => {
       mkdirSync(join(dir, "sub"), { recursive: true });
       writeFileSync(store.path, '{\n  "debugLogging": True\n}\n', "utf-8");

@@ -101,6 +101,13 @@ export interface FileSettingsStoreOptions {
    * read, which would retry and then refuse to save.
    */
   onRejected?: (rejection: SettingsFileRejection) => void;
+  /**
+   * What happens after a rejected file, for the error line `load()` logs: the
+   * global settings store migrates from the deck host (the default); another
+   * file this store serves says what it does instead (#1653: the camera
+   * catalog starts empty). Wording only — it changes no behaviour.
+   */
+  rejectedFallback?: string;
 }
 
 /** What `load()` knew when it rejected the settings file (issue #1036). */
@@ -330,7 +337,7 @@ export function createFileSettingsStore(opts: FileSettingsStoreOptions): Setting
         // this runs before the settings (and so `debugLogging`) have loaded,
         // so the debug detail never reaches a support log (#1036).
         logger.error(
-          `Settings file could not be parsed${location === undefined ? "" : ` at line ${location.line}, column ${location.column}`}; moving it aside and migrating from the deck host`,
+          `Settings file could not be parsed${location === undefined ? "" : ` at line ${location.line}, column ${location.column}`}; moving it aside and ${opts.rejectedFallback ?? "migrating from the deck host"}`,
         );
         logger.debug(`Corrupt settings file ${path} → ${aside}: ${String(error)}`);
 
