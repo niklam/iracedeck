@@ -31,16 +31,21 @@ const KEY = "calloutEnabledTrafficRejoin";
 /** The opt-in as a user who never ticked it has it: the schema's default. */
 const USER_DEFAULT = GlobalSettingsSchema.parse({})[KEY];
 
-/** The bus-event buttons, each with the pool its line opens on. */
-const BUTTONS = [
+/**
+ * The bus-event buttons, each with the pool its line opens on, and the button
+ * a tester presses first when the line follows another: the count is said of
+ * a car a first call already introduced, and the first-call contract speaks a
+ * `first: false` call of a car it never introduced as a first call.
+ */
+const BUTTONS: readonly { id: string; opens: string; after?: string }[] = [
   { id: "traffic-rejoin-right-behind", opens: "traffic/rejoin-right-behind" },
   { id: "traffic-rejoin-near-first", opens: "traffic/rejoin-intro" },
-  { id: "traffic-rejoin-near-update", opens: "traffic/rejoin-update" },
+  { id: "traffic-rejoin-near-update", opens: "traffic/rejoin-update", after: "traffic-rejoin-near-first" },
   { id: "traffic-rejoin-pack", opens: "traffic/rejoin-pack" },
-] as const;
+];
 
 describe("what the rejoin traffic buttons are heard to say (issue #1113)", () => {
-  const { boot, apply, publish, press, heard } = useHeardRig([]);
+  const { boot, apply, publish, press, heard, heardAndCleared } = useHeardRig([]);
 
   let seeded: boolean;
 
@@ -59,8 +64,15 @@ describe("what the rejoin traffic buttons are heard to say (issue #1113)", () =>
     expect(isCalloutEnabled(KEY)).toBe(true);
   });
 
-  it.each(BUTTONS)("$id speaks its line with the opt-in as the harness seeds it", ({ id, opens }) => {
+  it.each(BUTTONS)("$id speaks its line with the opt-in as the harness seeds it", ({ id, opens, after }) => {
     boot("race");
+
+    // The line it follows, played out and forgotten: each row stands alone.
+    if (after !== undefined) {
+      press(after);
+      heardAndCleared();
+    }
+
     press(id);
 
     expect(heard()[0]).toBe(opens);
