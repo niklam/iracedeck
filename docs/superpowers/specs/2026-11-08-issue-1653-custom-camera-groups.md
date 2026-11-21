@@ -67,6 +67,7 @@ Rejected: aliases that merge names into one entry a key points at. A key would t
 - **Write discipline:** atomic temp-and-rename, a debounced save, retried failed writes, the synchronous exit flush, and a byte-order mark tolerated on read.
 - **An unparseable file** is moved aside as `cameras.corrupt-<iso>.json` (the store derives the name from the path). It raises a `camera-catalog-rejected` warning banner through `onRejected`, and the catalog starts empty.
 - **An unreadable file** (any error but a missing file, after the store's retries) leaves the catalog **in memory only** for the run and never saves: writing over a file we failed to read would destroy it. That's the settings store's fail-closed rule.
+- **A `version` this build does not know** (a newer build wrote it, so this is a downgrade) is treated like an unreadable file: in memory only for the run, the file left as it is. Moving it aside would orphan the newer build's whole catalog, so after a re-upgrade it would start from the downgrade's partial list and the user would have to rename the aside by hand. Left in place, the newer build finds it intact.
 
 The catalog has no host migration, so none of `global-settings.ts`'s load machinery applies. A missing file means an empty catalog.
 
@@ -180,7 +181,7 @@ Unit:
   - an unparseable file moved aside with the banner raised;
   - an unreadable file never saved over;
   - a missing file read as an empty catalog;
-  - a `version` this build does not know treated as unparseable, and so preserved.
+  - a `version` this build does not know left in place and never saved over.
 - **`_cameraCatalog`:**
   - published at each trigger in decision 4 and nowhere else;
   - stripped at every run-scoped boundary (`run-scoped-settings.test.ts`);
