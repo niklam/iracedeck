@@ -228,17 +228,26 @@ describe("createCameraCatalogPublisher (#1653)", () => {
     expect(h.publishes[0].current).toEqual({ trackId: 13, groups: ["Nose"] });
   });
 
-  it("keeps a publish whose write threw pending, and sends it at the next trigger", async () => {
+  it("keeps a publish whose write threw pending, and sends the same view at the next tick", async () => {
     h.publish.mockImplementationOnce(() => {
       throw new Error("write failed");
     });
     h.setSessionInfo(session(13, ["Nose"]));
+    // The session is seen before the load, so the failing publish already carries it.
+    h.tick();
     await h.finishLoad();
+    expect(h.publish).toHaveBeenCalledOnce();
     expect(h.publishes).toEqual([]);
 
+    // The same session info: nothing new to publish but the write that failed.
     h.tick();
+    expect(h.publish).toHaveBeenCalledTimes(2);
+    expect(h.publish.mock.calls[1][0]).toEqual(h.publish.mock.calls[0][0]);
     expect(h.publishes).toHaveLength(1);
     expect(h.publishes[0].current).toEqual({ trackId: 13, groups: ["Nose"] });
+
+    h.tick();
+    expect(h.publish).toHaveBeenCalledTimes(2);
   });
 
   it("never lets a throw escape a tick", async () => {
