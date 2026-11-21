@@ -63,7 +63,6 @@ import {
   type ScriptStep,
   stripTakeSuffix,
   TAKE_SUFFIX,
-  VOICE_CLIP_PATH,
 } from "@iracedeck/callout-script";
 
 import { applyBase, WEIGHT } from "../dsl.js";
@@ -493,25 +492,29 @@ export function descriptionNamesGroup(description: string, group: string): boole
 type EntryWalk = {
   references: CalloutReferences;
   /**
-   * `group/name` of every literal step that plays a voice clip, judged where
-   * the engine plays it — against the contract's `base` (`applyBase`) — and
-   * never as written: `openers/alright.mp3` under `voice/{voice}` is
-   * `openers/alright`, while `voice/{voice}/openers/alright.mp3` there needs
-   * its leading-slash escape to be (unescaped it plays from the base twice). A
-   * published callout playing a line that way keeps it from being withheld
-   * with a feature that names it by pool (#1113). Names are kept AS
-   * WRITTEN — the line it lands on is the line of the one shipped file it
-   * plays (`buildRecordingScript`), so `laps-left-10-01.mp3` reaches
-   * `laps-left-10` and `green-01.mp3` reaches `green`.
+   * The path every literal step plays, judged where the engine plays it —
+   * against the contract's `base` (`applyBase`) — and never as written:
+   * `openers/alright.mp3` under `voice/{voice}` plays
+   * `voice/{voice}/openers/alright.mp3`, while
+   * `voice/{voice}/openers/alright.mp3` there needs its leading-slash escape
+   * to (unescaped it plays from the base twice). `{voice}` is left in, for the
+   * recording script to resolve to the voice it is read for; a literal naming
+   * a voice keeps that voice, so `voice/other/flags/green-01.mp3` is the
+   * `other` voice's file and no line of another voice's. A published callout
+   * playing one of the voice's files that way keeps its line from being
+   * withheld with a feature that names it by pool (#1113). The line it lands
+   * on is the line of the one shipped file it plays (`buildRecordingScript`),
+   * so `laps-left-10-01.mp3` reaches `laps-left-10` and `green-01.mp3` reaches
+   * `green`.
    */
-  clipBases: ReadonlySet<string>;
+  clipPaths: ReadonlySet<string>;
   /**
    * What the entry's EFFECTIVE frame plays around it — the entry's `frame`
    * override, else the contract's — walked with its fragments; `null` when
    * the line is unframed (`"none"`), skipped, or names a frame the script
    * does not define (the engine plays it unframed). Its `cut` counts only
    * for a contract carrying `endsOn`, the only kind whose end plays it. Kept apart from
-   * `references` and `clipBases`: the published references and a recording
+   * `references` and `clipPaths`: the published references and a recording
    * line's `usedBy` stay the entry's own, since one frame wraps nearly every
    * callout. It counts where the frame matters for withholding (#1113): a
    * published callout's frame naming withheld vocabulary is refused, and a
@@ -528,7 +531,7 @@ type FrameWalk = {
   cases: readonly string[];
   /** The pools the frame draws from, resolved to `group/base` as an entry's `references.pools` are. */
   pools: ReadonlySet<string>;
-  /** The voice clips the frame plays by literal path, `group/name` as an entry's `clipBases` keeps them. */
+  /** The paths the frame plays by literal step, kept as an entry's `clipPaths` keeps them. */
   clips: ReadonlySet<string>;
 };
 
@@ -555,7 +558,7 @@ function walkEntry(
   contractFrame: string,
   endable: boolean,
 ): EntryWalk {
-  if (entry.skip === true) return { references: NO_REFERENCES, clipBases: new Set(), frame: null };
+  if (entry.skip === true) return { references: NO_REFERENCES, clipPaths: new Set(), frame: null };
 
   const body = walkSteps(script, [entry.sequence ?? []], base);
 
@@ -568,7 +571,7 @@ function walkEntry(
       includes: sorted(body.includes),
       frames: entry.frame !== undefined && entry.frame !== NO_FRAME ? [entry.frame] : [],
     },
-    clipBases: body.clipBases,
+    clipPaths: body.clipPaths,
     frame: canPlayClip(script, entry.sequence ?? []) ? walkFrame(script, entry.frame ?? contractFrame, endable) : null,
   };
 }
@@ -629,7 +632,7 @@ function canPlayClip(
  * The effective frame's walk, or `null` when there is none to play: `"none"`,
  * or a name the script does not define. A frame expands with no base (the
  * engine's `expandFrame`), so its literals — and its fragments' — count as
- * written: only a `voice/<voice>/…` path is a voice line. `open` and
+ * written: only a path into the voice's folder is one of its lines. `open` and
  * `close` are always walked; `cut` only when `endable`, a contract carrying
  * `endsOn`, since the engine expands the tail for no other (`Expansion`'s
  * `cutChannel`, #1407) and an ended line is the only one that speaks it. A
@@ -648,7 +651,7 @@ function walkFrame(script: CalloutScript, name: string, endable: boolean): Frame
     conds: sorted(walk.conds),
     cases: sorted(walk.cases.keys()),
     pools: walk.pools,
-    clips: walk.clipBases,
+    clips: walk.clipPaths,
   };
 }
 
@@ -659,7 +662,7 @@ type StepsWalk = {
   conds: Set<string>;
   cases: Map<string, Set<string>>;
   includes: Set<string>;
-  clipBases: Set<string>;
+  clipPaths: Set<string>;
 };
 
 function walkSteps(script: CalloutScript, roots: readonly (readonly ScriptStep[])[], base: string | null): StepsWalk {
@@ -670,7 +673,7 @@ function walkSteps(script: CalloutScript, roots: readonly (readonly ScriptStep[]
     conds: new Set(),
     cases: new Map(),
     includes: new Set(),
-    clipBases: new Set(),
+    clipPaths: new Set(),
   };
   const walked = new Set<string>();
   const pending: (readonly ScriptStep[])[] = [...roots];
@@ -705,10 +708,8 @@ function walkSteps(script: CalloutScript, roots: readonly (readonly ScriptStep[]
       // Only as the engine plays it, against the contract's base: a bare
       // `openers/alright.mp3` under `voice/{voice}` is the voice's line, while
       // an unescaped `voice/{voice}/openers/alright.mp3` there plays from
-      // `voice/{voice}/voice/{voice}/…`, no line of the voice's (see `clipBases`).
-      const match = VOICE_CLIP_PATH.exec(applyBase(base ?? undefined, clip));
-
-      if (match) walk.clipBases.add(`${match[1]}/${match[2]}`);
+      // `voice/{voice}/voice/{voice}/…`, no line of the voice's (see `clipPaths`).
+      walk.clipPaths.add(applyBase(base ?? undefined, clip));
     }
   }
 
@@ -812,9 +813,11 @@ function buildRecordingScript(
   const prefix = `voice/${voice}/`;
   const takesByGroup = new Map<string, Map<string, string[]>>();
   // Which lines a reference plays from, as the engine resolves it against the
-  // same files. A literal plays the one file it names: `group/name` → its
-  // line. A pool draws every `<base>.mp3` and `<base>-NN.mp3`
-  // (`poolMemberPattern`), so a file is a member of the pool its full name
+  // same files. A literal plays the one file its path names, `{voice}` being
+  // the voice read here: the voice's `voice/<voice>/group/name.mp3` → its
+  // line, and a path into any other voice's folder → no line of this one's
+  // (the runtime plays that voice's file). A pool draws every `<base>.mp3`
+  // and `<base>-NN.mp3` (`poolMemberPattern`), so a file is a member of the pool its full name
   // names and, when it carries a take suffix, of its base's: `green-01.mp3`
   // belongs to the pools `green-01` and `green`. Where a take's name is also a
   // line's base (`green-01.mp3` beside `green-01-01.mp3`), the pool
@@ -850,7 +853,7 @@ function buildRecordingScript(
 
     const line = `${group}/${base}`;
 
-    lineOfClip.set(`${group}/${name}`, line);
+    lineOfClip.set(clip, line);
     addTo(linesOfPool, `${group}/${name}`, line);
 
     if (base !== name) addTo(linesOfPool, line, line);
@@ -863,7 +866,7 @@ function buildRecordingScript(
     for (const pool of pools) for (const line of linesOfPool.get(pool) ?? []) lines.add(line);
 
     for (const clip of clips) {
-      const line = lineOfClip.get(clip);
+      const line = lineOfClip.get(clip.replace(/\{voice\}/g, voice));
 
       if (line !== undefined) lines.add(line);
     }
@@ -877,8 +880,8 @@ function buildRecordingScript(
   // withheld, but are not its `usedBy` (see `EntryWalk.frame`).
   const frameUsers = new Map<string, Set<string>>();
 
-  for (const [id, { references, clipBases, frame }] of walks) {
-    for (const line of linesOf(references.pools, clipBases)) addTo(directUsers, line, id);
+  for (const [id, { references, clipPaths, frame }] of walks) {
+    for (const line of linesOf(references.pools, clipPaths)) addTo(directUsers, line, id);
 
     for (const line of linesOf(frame?.pools ?? [], frame?.clips ?? [])) addTo(frameUsers, line, id);
   }

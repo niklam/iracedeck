@@ -802,6 +802,41 @@ describe("buildPackReference withholding a development feature (issue #1113)", (
     ).not.toContain("alright");
   });
 
+  it("credits a literal naming a voice only when it names the reference voice, never another voice's take", () => {
+    // The withheld flag-green call alone names the `green` line, by pool. A
+    // published call playing another voice's `green-01.mp3` plays that
+    // voice's file, not the reference voice's, so it keeps nothing.
+    const playing = (clip: string): CalloutScript => ({
+      ...SCRIPT,
+      scenarios: {
+        ...SCRIPT.scenarios,
+        "pit-crew.spotter-call": { ...SCRIPT.scenarios["pit-crew.spotter-call"], sequence: ["pool:spot", clip] },
+      },
+    });
+    const withheld = { ...NOTHING, contracts: ["pit-crew.flag-green"] };
+    const flagBases = (script: CalloutScript): string[] =>
+      buildPackReference(input({ script, withheld }))
+        .recordingScript.find((g) => g.group === "flags")
+        ?.lines.map((l) => l.base) ?? [];
+
+    expect(flagBases(playing("/voice/other/flags/green-01.mp3"))).toEqual(["blue"]);
+    // An explicit path into the reference voice still counts, as does `{voice}` resolved to it.
+    expect(flagBases(playing("/voice/default/flags/green-01.mp3"))).toEqual(["blue", "green"]);
+    expect(flagBases(playing("/voice/{voice}/flags/green-01.mp3"))).toEqual(["blue", "green"]);
+    expect(
+      lineOf(buildPackReference(input({ script: playing("/voice/default/flags/green-01.mp3") })), "flags", "green")
+        .usedBy,
+    ).toEqual(["pit-crew.flag-green", "pit-crew.spotter-call"]);
+    // Read for another voice, the explicit default path is not that voice's line.
+    expect(
+      lineOf(
+        buildPackReference(input({ voice: "other", script: playing("/voice/default/flags/green-01.mp3") })),
+        "flags",
+        "green",
+      ).usedBy,
+    ).toEqual(["pit-crew.flag-green"]);
+  });
+
   it("credits a bare literal only through a base that puts it in the voice's folder", () => {
     // The flag-green contract has no base: its bare literal plays from the
     // audio root, never the voice's `openers` line.
@@ -985,6 +1020,19 @@ describe("buildPackReference withholding a development feature (issue #1113)", (
           input({ script, contracts: ending("pit-crew.flag-green"), withheld: SPOTTER }),
         ).recordingScript.map((g) => g.group),
       ).not.toContain("openers");
+    });
+
+    it("credits a frame's literal naming a voice only when it names the reference voice", () => {
+      // The withheld flag-green call alone names the `green` line, by pool.
+      const radioOpens = (clip: string): CalloutScript =>
+        withFrames({ radio: { open: [clip], close: [] }, terse: { open: [], close: [] } });
+      const flagBases = (script: CalloutScript): string[] =>
+        buildPackReference(input({ script, withheld: { ...NOTHING, contracts: ["pit-crew.flag-green"] } }))
+          .recordingScript.find((g) => g.group === "flags")
+          ?.lines.map((l) => l.base) ?? [];
+
+      expect(flagBases(radioOpens("voice/other/flags/green-01.mp3"))).toEqual(["blue"]);
+      expect(flagBases(radioOpens("voice/default/flags/green-01.mp3"))).toEqual(["blue", "green"]);
     });
 
     it("refuses a published callout whose effective frame names withheld vocabulary, naming the frame", () => {
