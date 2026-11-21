@@ -113,7 +113,8 @@
  * progress, a lap short; so the start is then the player's position at the
  * first evaluation that reads the landmarks, taken only in the half lap
  * before `blendEnd` — in the half lap after it the player is already past
- * it, by the same nearer-half rule, and the episode ends silently. The cost,
+ * it, by the same nearer-half rule, and the episode ends silently, as it does
+ * on a tick between two evaluations that reads the landmarks there. The cost,
  * now only for a stall that never sent a position: one more than half a lap
  * before `blendEnd` gets no call for that exit.
  * A `pitRoadEnd` learned within that slack after `blendEnd` (a pit lane
@@ -868,7 +869,9 @@ function usableLandmarks(
  * before the next one is not a fresh exit to warn about. `"wait"` otherwise,
  * with either landmark unusable among them: no evaluation could do anything
  * there, and the next scheduled one handles it. A start the departure did
- * not take is read as the player's position, as the evaluation would take it.
+ * not take is read as the evaluation would take it: a position in the half
+ * lap after `blendEnd` is past it (`"pastBlendEnd"`), never a start a lap
+ * short, and any other is the start.
  */
 function offScheduleStep(
   episode: TrafficPitExitState,
@@ -881,6 +884,11 @@ function offScheduleStep(
   const usable = usableLandmarks(landmarks, slackPct);
 
   if (usable === null) return "wait";
+
+  // The start the evaluation would take (`evaluate`): with none yet, a
+  // position in the half lap after `blendEnd` is the player past it, which a
+  // start of its own would read as a lap short of it.
+  if (episode.startPct === null && forwardPct(playerPct, usable.blendEnd.pct) > 0.5) return "pastBlendEnd";
 
   const position = exitPosition(episode.startPct ?? playerPct, playerPct, usable.pitRoadEnd, usable.blendEnd, slackPct);
 

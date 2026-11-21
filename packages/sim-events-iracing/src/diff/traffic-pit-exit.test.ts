@@ -1217,6 +1217,51 @@ describe("diffTrafficPitExit", () => {
           expect(h.episode.startPct).toBe(0.1);
           expect(h.settled).toHaveLength(1);
         });
+
+        describe("between two scheduled evaluations, with the landmarks arriving after the first", () => {
+          /** Out of the stall with no position anywhere, then a scheduled evaluation on no landmarks: the start is still untaken. */
+          const departWithoutStart = (): ReturnType<typeof harness> => {
+            const h = harness({ landmarks: null });
+
+            h.depart(tel({ CarIdxLapDistPct: undefined }), IN_STALL_NO_POSITION);
+            h.after(100, at(0.1, 3));
+            expect(h.episode.startPct).toBeNull();
+            expect(h.episode.lastEvalAt).not.toBeNull();
+            h.readLandmarks.mockReturnValue(CURVE_LANDMARKS);
+
+            return h;
+          };
+
+          it("ends a player more than the slack past blendEnd, so a roll back before the next evaluation is no first call", () => {
+            const h = departWithoutStart();
+
+            // 20 m past the blend line, more than the slack, on a tick that
+            // does not send the road bit (the episode keeps it on pit road):
+            // as a start of its own this position reads short of the blend.
+            h.after(100, at(0.2, 3, { OnPitRoad: undefined }));
+
+            expect(h.episode.active).toBe(false);
+            expect(lines(h.debug)).toContain("episode ended (past blendEnd, between evaluations)");
+
+            // Rolled back short of the line, still before the next scheduled
+            // evaluation: the exit is over, not a fresh one to warn about.
+            h.after(100, at(0.17, 3));
+
+            expect(h.settled).toEqual([]);
+            expect(h.events).toEqual([]);
+            expect(h.ended()).toBe(1);
+          });
+
+          it("still takes a first position short of blendEnd, and evaluates at once in the exit lane", () => {
+            const h = departWithoutStart();
+
+            h.after(100, at(0.17, 3));
+
+            expect(h.episode.active).toBe(true);
+            expect(h.episode.startPct).toBe(0.17);
+            expect(h.settled).toEqual([{ verdict: "traffic", seconds: 3 }]);
+          });
+        });
       });
 
       it("is not a car rolled back behind where the episode started, which runs on", () => {
