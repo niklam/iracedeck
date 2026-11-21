@@ -172,7 +172,28 @@ describe("deckFindings", () => {
         [`deep${n}`]: "pnpm relink:ulanzi",
       });
     expect(deckFindings("pnpm deep0", ROOT, chain(7), BASH)).toHaveLength(1);
+    // An ordinary name past the bound is judged by its name alone, and finds nothing, as before #1737.
     expect(deckFindings("pnpm deep0", ROOT, chain(8), BASH)).toEqual([]);
+  });
+
+  // #1737 CodeRabbit round: a restart's name no longer ends the judgement, so
+  // a restart whose body the depth bound leaves unread may hide a relink. That
+  // asks; one whose body is read within the bound is the restart it names.
+  it("asks for a restart whose body lies past the depth bound", () => {
+    const restarts = (n) =>
+      ctx({
+        ...Object.fromEntries(Array.from({ length: n }, (_, i) => [`restart:d${i}`, `pnpm restart:d${i + 1}`])),
+        [`restart:d${n}`]: "pnpm build",
+      });
+    expect(deckFindings("pnpm restart:d0", ROOT, restarts(7), BASH).map((f) => f.kind)).toEqual(["restart"]);
+    const deep = deckFindings("pnpm restart:d0", ROOT, restarts(8), BASH);
+    expect(deep.map((f) => f.kind)).toEqual(["restart", "relink"]);
+    expect(deep[1].text).toMatch(/→ `pnpm restart:d8` runs scripts too deep to read, which may relink$/);
+    // A restart past the bound with no body to read (no such script) is just its name.
+    const bare = ctx(
+      Object.fromEntries(Array.from({ length: 8 }, (_, i) => [`restart:d${i}`, `pnpm restart:d${i + 1}`])),
+    );
+    expect(deckFindings("pnpm restart:d0", ROOT, bare, BASH).map((f) => f.kind)).toEqual(["restart"]);
   });
 });
 

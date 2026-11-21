@@ -85,8 +85,9 @@
  * `git push`, and the `integration` branch has no upstream. Fetching, merging,
  * installing and building need no go; stopping and starting a host does, and
  * that go is Niklas's word in the conversation: since #1737 the Bash hook asks
- * no prompt for a run with `--restart`, though it still names the restart in
- * the prompt of a chain that also relinks.
+ * no prompt for a standalone run with `--restart`. A run repeated by `watch`
+ * or a loop still asks, and so does a chain that also relinks, whose prompt
+ * names the restart.
  */
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";

@@ -3388,6 +3388,39 @@ describe("a restart run over and over asks (#1737 review)", () => {
     restarts(`echo "while true"; sh -c 'pnpm build'; pnpm restart:stream-deck`);
     restarts(`sh -c 'echo while true; do'; pnpm restart:stream-deck`);
   });
+
+  // #1737 CodeRabbit round: `time -p` starts a command too, and a `select`
+  // runs its body once for every line it reads.
+  it.each([
+    "time -p while true; do pnpm restart:stream-deck; done",
+    "time while true; do pnpm restart:stream-deck; done",
+    "select x in a b; do pnpm restart:stream-deck; done",
+  ])("asks for a restart in a loop after time -p, or in a select: %s", (c) =>
+    expect(asks(c)).toMatch(/deck host, again on every pass of its loop\. /),
+  );
+  it("passes a for over a list after time -p", () =>
+    restarts("time -p for h in a b; do pnpm restart:stream-deck; done"));
+
+  // #1737 CodeRabbit round: a chain of restart names deeper than the reader
+  // follows may end in a relink it never reads, so it asks.
+  it("asks for a chain of restart scripts deeper than the reader follows", () => {
+    const root = path.join(MASTER);
+    const chain = (n) =>
+      ctx({
+        scriptsAt: () => ({
+          dir: root,
+          scripts: {
+            ...Object.fromEntries(Array.from({ length: n }, (_, i) => [`restart:d${i}`, `pnpm restart:d${i + 1}`])),
+            [`restart:d${n}`]: "pnpm relink:mirabox",
+          },
+        }),
+      });
+    expect(asks("pnpm restart:d0", chain(12))).toMatch(
+      /`pnpm restart:d8` runs scripts too deep to read, which may relink/,
+    );
+    // Positive control: within the bound the chain is read to the relink it ends in.
+    expect(asks("pnpm restart:d0", chain(3))).toMatch(/`pnpm restart:d3` → `pnpm relink:mirabox` links/);
+  });
 });
 
 // Second read (#1520): a script name is a list that is always one behind, so
@@ -3775,7 +3808,7 @@ describe("a script is judged by what it runs", () => {
     passes("pnpm loop-a", linked);
     expect(asks("pnpm loop-c", elsewhere)).toMatch(/relink:ulanzi/);
   });
-  it("stops at its depth bound, where the name is all it judges", () => passes("pnpm deep", elsewhere));
+  it("stops at its depth bound, where the name is all it judges", () => findsNothing("pnpm deep", elsewhere));
 
   it("falls back to the name when the script cannot be read", () => {
     passes("pnpm no-such-script", linked);
@@ -3797,13 +3830,18 @@ describe("a script is judged by what it runs", () => {
     "asks for every script a selector matches, judged as each: %s",
     (c) => expect(asks(c, elsewhere)).toMatch(/Niklas/),
   );
-  // #1737: a selector that reaches only restarts finds each, and passes.
+  // #1737: a selector that reaches only restarts finds each, and passes. Each
+  // case names every script its pattern reaches, so one found alone fails.
   it.each([
-    `pnpm run "/^hostkill$/"`,
-    `pnpm "/kill/"`,
-    `pnpm exec pnpm run '/^host/'`,
-    `pnpm -C packages/iracing-plugin-stream-deck run "/^rel/"`,
-  ])("finds every restart a selector matches, and passes: %s", (c) => restarts(c, elsewhere));
+    [`pnpm run "/^hostkill$/"`, ["hostkill"]],
+    [`pnpm "/kill/"`, ["hostkill"]],
+    [`pnpm exec pnpm run '/^host/'`, ["hostkill", "hoststart"]],
+    [`pnpm -C packages/iracing-plugin-stream-deck run "/^rel/"`, ["reload"]],
+  ])("finds every restart a selector matches, and passes: %s", (c, names) => {
+    const found = restarts(c, elsewhere);
+    const reached = [...found.matchAll(/`pnpm ([\w:-]+) \(\//g)].map((m) => m[1]);
+    expect([...new Set(reached)].sort()).toEqual(names);
+  });
   it("names the script a selector reached", () => {
     expect(asks(`pnpm run "/^swap$/"`, elsewhere)).toMatch(/`pnpm swap \(\/\^swap\$\/\)` → `pnpm relink:mirabox`/);
     expect(restarts(`pnpm run "/^hostkill$/"`, elsewhere)).toMatch(/`pnpm hostkill \(\/\^hostkill\$\/\)`/);

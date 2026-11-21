@@ -181,7 +181,11 @@ const STREAMDECK_CLI = cmd(
 const HOST_CONTROL = cmd(new RegExp(String.raw`(?:taskkill|start|start-process|saps|stop-process|spps)${BIN}`, "i"));
 /** The deck host apps (`scripts/lib/deck-hosts.mjs`, and Elgato's own). */
 const HOST_APP = /\b(?:StreamDeck|StreamDock|UlanziDeck|Ulanzi ?Studio|VSD ?Craft)(?:\.exe)?\b/i;
-/** How deep a script's expansion follows the scripts it runs; past it the name is all that is judged. */
+/**
+ * How deep a script's expansion follows the scripts it runs; past it the name
+ * is all that is judged, except that a restart with a body left unread there
+ * asks, since that body may relink (#1737).
+ */
 const MAX_SCRIPT_DEPTH = 8;
 
 /** pnpm options whose value is the next word; `-C` / `--dir` move the directory and `--filter` picks packages, read on their own. */
@@ -878,7 +882,15 @@ export function deckFindings(c, cwd, ctx, shell, trail = []) {
           continue;
         }
       }
-      if (trail.length >= MAX_SCRIPT_DEPTH) continue;
+      if (trail.length >= MAX_SCRIPT_DEPTH) {
+        // A restart's name no longer asks (#1737), so a restart whose body the
+        // bound leaves unread may hide a relink: that asks, as its name did
+        // before. Any other name past the bound is judged by its name alone.
+        const unread = run.lines?.length || (run.expand && scriptLines(run, ctx).length);
+        if (kind === "restart" && unread)
+          finding(`\`${run.label}\` runs scripts too deep to read, which may relink`, "relink", run.repeats);
+        continue;
+      }
       // A hook's or a shell's command line is no script: it has no key a
       // cycle could repeat, so its empty one only counts towards the depth.
       const lines = run.lines?.map((line) => ({ dir: run.dir, line, key: "", as: run.as })) ?? [];
@@ -921,19 +933,20 @@ function repeatsAt(c, shell) {
  * The loop words of bash at command position, read from the lexer's trusted
  * mask so an inert quoted mention is no loop: after the start, a newline, an
  * operator, a brace or a paren, `!`, or a keyword that starts a command (`do`,
- * `then`, `else`, `elif`, `time`).
+ * `then`, `else`, `elif`, `time`, `time -p`).
  */
 const BASH_LOOP_WORD =
-  /(?<=(?:^|[\n;&|(){}!]|(?<![^\s;&|(){}])(?:do|then|else|elif|time))[ \t]*)(?:while|until|for|select|done)(?=[\s;&|()<>]|$)/g;
+  /(?<=(?:^|[\n;&|(){}!]|(?<![^\s;&|(){}])(?:do|then|else|elif|time(?:[ \t]+-p)?))[ \t]*)(?:while|until|for|select|done)(?=[\s;&|()<>]|$)/g;
 /** PowerShell's `while`, `do` and `for` at command position, past an optional `:label`; `foreach` is no match. */
 const PS_LOOP_WORD = /(?<=(?:^|[\n;&|(){}])[ \t]*(?::\w+[ \t]+)?)(?:while|do|for)(?=[\s({]|$)/gi;
 
 /**
  * The spans of `c` a loop runs over and over (#1737 review), `[start, end)`.
- * In bash, a `while`, an `until` or a C-style `for ((…))` from its word to
- * its `done` — the condition included, which runs on every pass — pairing
- * every `for … in` and `select` with its `done` too, so one nested in a
- * `while` does not end it; one left open runs to the end. In PowerShell, a
+ * In bash, a `while`, an `until`, a C-style `for ((…))` or a `select` (whose
+ * body runs once for every line it reads) from its word to its `done` — the
+ * condition included, which runs on every pass — pairing every `for … in`
+ * with its `done` too, so one nested in a `while` does not end it; one left
+ * open runs to the end. In PowerShell, a
  * `while (…) { … }`, a `for (…) { … }` and a `do { … } while|until (…)`, each
  * perhaps labelled (`:l while`); a `while` with no block after its condition
  * is a `do` loop's tail. A bash `for … in` and a PowerShell `foreach` run
@@ -983,7 +996,10 @@ function loopSpans(c, shell) {
   for (const m of mask.matchAll(BASH_LOOP_WORD)) {
     if (!live(m.index)) continue;
     const unbounded =
-      m[0] === "while" || m[0] === "until" || (m[0] === "for" && /^\s*\(\(/.test(mask.slice(m.index + 3)));
+      m[0] === "while" ||
+      m[0] === "until" ||
+      m[0] === "select" ||
+      (m[0] === "for" && /^\s*\(\(/.test(mask.slice(m.index + 3)));
     if (m[0] !== "done") open.push({ at: m.index, repeats: unbounded });
     else {
       const loop = open.pop();
