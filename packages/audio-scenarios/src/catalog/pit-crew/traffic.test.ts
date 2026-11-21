@@ -558,14 +558,16 @@ describe("TRAFFIC_CONTRACTS", () => {
     for (const id of PIT_EXIT_GATED_IDS) expect(contract(id).frame, id).toBeUndefined();
   });
 
-  it("each trigger's lines share one supersede group, and the two triggers do not; the merge warning has none", () => {
+  it("each trigger's lines share one supersede group, and the two triggers do not; the merge warning joins the pit exit's", () => {
     for (const id of REJOIN_IDS) expect(contract(id).supersedeGroup, id).toBe(TRAFFIC_REJOIN_SUPERSEDE_GROUP);
 
-    for (const id of PIT_EXIT_IDS) expect(contract(id).supersedeGroup, id).toBe(TRAFFIC_PIT_EXIT_SUPERSEDE_GROUP);
+    // The merge warning is the last word on the exit: a call still waiting is
+    // dropped for it, and the detector publishes no call after it.
+    for (const id of PIT_EXIT_GATED_IDS) {
+      expect(contract(id).supersedeGroup, id).toBe(TRAFFIC_PIT_EXIT_SUPERSEDE_GROUP);
+    }
 
     expect(TRAFFIC_REJOIN_SUPERSEDE_GROUP).not.toBe(TRAFFIC_PIT_EXIT_SUPERSEDE_GROUP);
-    // Said once, on an event of its own: a waiting call is never dropped for it, nor it for a flip.
-    expect(contract(MERGE_ID).supersedeGroup).toBeUndefined();
   });
 
   it("a cut pit-exit line or merge warning is dropped, never replayed; a cut rejoin line is replayed", () => {
@@ -964,6 +966,30 @@ describe("scheduling against other lines", () => {
       expect(voicePaths()).toEqual([clip(`pit-exit-${verdict}`), clip("pit-exit-merge")]);
     },
   );
+
+  describe("no pit-exit call is heard after the merge warning", () => {
+    it.each(PIT_EXIT_VERDICTS)("a %s call waiting with it behind a CRITICAL line is dropped for it", (verdict) => {
+      bus.publishEvent("pitStall.departed", {});
+      bus.publishEvent("traffic.pitExit", { verdict, seconds: 1 });
+      bus.publishEvent("traffic.pitExitMerge", { seconds: 1 });
+      flush(audio);
+
+      expect(voicePaths()).toEqual([CRITICAL_CLIP, clip("pit-exit-merge")]);
+    });
+
+    it("a clear call waiting behind an equal-weight line is dropped when the merge warning takes the bus", () => {
+      // The clear call waits behind the SAFETY line; the merge warning cuts that line.
+      bus.publishEvent("pitLane.entered", {});
+      bus.publishEvent("traffic.pitExit", { verdict: "clear", seconds: 6 });
+      bus.publishEvent("traffic.pitExitMerge", { seconds: 1 });
+
+      expect(audio._stopped).toContain(AudioChannel.Voice);
+
+      flush(audio);
+
+      expect(voicePaths()).toEqual([SAFETY_CLIP, clip("pit-exit-merge")]);
+    });
+  });
 
   it("a newer line replaces the one in flight — a count cuts the first call still playing", () => {
     bus.publishEvent("traffic.rejoin", near(9, true));

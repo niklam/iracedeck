@@ -93,7 +93,8 @@
  * unless the picture changes, so a line dropped because the bus was busy is
  * lost — the entry call after a spin, behind the incident line, was the case.
  * Two fields keep a waiting line true. Each trigger's contracts share one
- * `supersedeGroup`, so a newer verdict removes a waiting older one instead of
+ * `supersedeGroup` (the merge warning joins the pit exit's, below), so a
+ * newer verdict removes a waiting older one instead of
  * letting it play after it. And `maxQueueWaitMs` is per line
  * (`LineSpec.maxQueueWaitMs`): the lines whose words decay while they wait —
  * every rejoin line (the close calls, whose seconds count down, and the pack
@@ -191,10 +192,17 @@
  * **The merge warning (amended 2026-11-20).** "Watch for cars.", Niklas's
  * words, said in the exit lane when a timed car will reach the end of the
  * blend within the `trafficPitExitMergeWarnSeconds` slider of the player,
- * whatever the first call said. A contract of its own, on its own event: it
- * answers a different question from the verdict, so it takes no part in the
- * pit-exit lines' `supersedeGroup` — a waiting call is never dropped for it,
- * nor it for a flip. It rides the `pit-exit` opt-in with them.
+ * whatever the first call said. A contract of its own, on its own event, and
+ * the last word on the exit: nothing of the verdict may be heard after it
+ * that exit (a clear call after "Watch for cars." would contradict it).
+ * Three things hold that. The detector publishes no `traffic.pitExit`
+ * once it has published the merge warning (`diff/traffic-pit-exit.ts`). The
+ * warning shares the pit-exit lines' `supersedeGroup`, so a call still
+ * waiting when it arrives, or when it takes the bus, is dropped for it; the
+ * reverse, a later call dropping a waiting warning, cannot happen in the same
+ * exit for want of a later call. And neither replays after a cut
+ * (`dropWhenCut`, above), while a call still playing when it comes is the
+ * family's to cut. It rides the `pit-exit` opt-in with them.
  *
  * Session gating (live in the car, on track, off pit road, past the green)
  * lives in the translator's detectors, NOT here, so the contracts stay
@@ -276,7 +284,7 @@ export const TRAFFIC_REJOIN_ENDS_ON: EndsOn = {
     "Your car is taken off the track while you are stopped: towed or reset to the pits, or you leave the car. A line playing stops at once and a waiting one is dropped.",
 };
 
-/** The supersede group of the two pit-exit lines. */
+/** The supersede group of the two pit-exit lines and the merge warning, which ends them (module header). */
 export const TRAFFIC_PIT_EXIT_SUPERSEDE_GROUP = "traffic-pit-exit";
 
 /**
@@ -774,6 +782,9 @@ function pitExitMergeContract(deps: TrafficContractDeps): ScenarioContract {
     speakGate: { description: PIT_EXIT_MERGE_LINE.gateDescription, admit: () => stillLeavingThePits(deps) },
     // Like the calls: a cut merge warning is gone, never replayed (module header).
     dropWhenCut: true,
+    // The last word on the exit (module header): a call still waiting is
+    // dropped for it, and the detector publishes none after it.
+    supersedeGroup: TRAFFIC_PIT_EXIT_SUPERSEDE_GROUP,
     when: { event: "traffic.pitExitMerge" },
   };
 }
