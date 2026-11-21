@@ -692,7 +692,7 @@ He warns you; he never tells you what to do: the engineer tells you what traffic
 
 Some of the lines in iRaceDeck's two voices:
 
-| When | Default, for example | Default (Short callouts), for example |
+| When | Shawn, for example | Shawn (Short callouts), for example |
 | --- | --- | --- |
 | Leaving the pits, traffic expected | *"We're estimating traffic at the pit exit. Watch out."* | *"Traffic likely at pit exit. Watch out."* |
 | Leaving the pits, no traffic expected | *"Looks like the pit exit will be clear."* | *"Pit exit looks clear."* |
