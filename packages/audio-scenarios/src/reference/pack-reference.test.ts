@@ -716,6 +716,46 @@ describe("buildPackReference withholding a development feature (issue #1113)", (
     expect(ref.recordingScript.map((g) => g.group)).not.toContain("units");
   });
 
+  it("keeps a line a published callout plays by a literal relative to its base, while a withheld one names its pool", () => {
+    // The withheld incident line names `pool:openers/alright`; the published
+    // spotter call (base `voice/{voice}`) plays the same clip as the bare
+    // `openers/alright.mp3`, which the engine resolves against that base.
+    const script: CalloutScript = {
+      ...SCRIPT,
+      scenarios: {
+        ...SCRIPT.scenarios,
+        "pit-crew.incident": {
+          ...SCRIPT.scenarios["pit-crew.incident"],
+          sequence: ["pool:incidents/type-contact", "pool:openers/alright"],
+        },
+        "pit-crew.spotter-call": {
+          ...SCRIPT.scenarios["pit-crew.spotter-call"],
+          sequence: ["pool:spot", "openers/alright.mp3"],
+        },
+      },
+    };
+    const ref = buildPackReference(input({ script, withheld: INCIDENT }));
+
+    expect(lineOf(ref, "openers", "alright").usedBy).toEqual(["pit-crew.spotter-call"]);
+    // Published, it names both.
+    expect(lineOf(buildPackReference(input({ script })), "openers", "alright").usedBy).toEqual([
+      "pit-crew.incident",
+      "pit-crew.spotter-call",
+    ]);
+  });
+
+  it("credits a bare literal only through a base that puts it in the voice's folder", () => {
+    // The flag-green contract has no base: its bare literal plays from the
+    // audio root, never the voice's `openers` line.
+    const script: CalloutScript = {
+      ...SCRIPT,
+      scenarios: { ...SCRIPT.scenarios, "pit-crew.flag-green": { sequence: ["openers/alright.mp3"] } },
+    };
+    const ref = buildPackReference(input({ script }));
+
+    expect(lineOf(ref, "openers", "alright").usedBy).toEqual(["pit-crew.spotter-call"]);
+  });
+
   it("takes a withheld var out of the viaVar column of a line a published callout still addresses", () => {
     const withType = input({
       manifestClips: [...MANIFEST_CLIPS, "voice/default/incidents/type-contact-01.mp3"],

@@ -63,7 +63,7 @@ import {
   VOICE_CLIP_PATH,
 } from "@iracedeck/callout-script";
 
-import { WEIGHT } from "../dsl.js";
+import { applyBase, WEIGHT } from "../dsl.js";
 import type { ContractReport, VocabularyReport } from "../interpreter.js";
 
 // ─── The artifact ────────────────────────────────────────────────────────────
@@ -296,7 +296,10 @@ export function buildPackReference(input: PackReferenceInput): PackReference {
   // Every contract's walk, the withheld included: a recording line is withheld
   // only when what draws from it is (`buildRecordingScript`).
   const allWalks = new Map<string, EntryWalk>(
-    input.contracts.map((contract) => [contract.id, walkEntry(script, script.scenarios[contract.id])]),
+    input.contracts.map((contract) => [
+      contract.id,
+      walkEntry(script, script.scenarios[contract.id], contract.base),
+    ]),
   );
   const walks = new Map<string, EntryWalk>();
   const callouts = [...input.contracts]
@@ -464,7 +467,12 @@ export function descriptionNamesGroup(description: string, group: string): boole
 type EntryWalk = {
   references: CalloutReferences;
   /**
-   * `group/name` of every literal `voice/<voice>/<group>/<name>.mp3` step, AS
+   * `group/name` of every literal step that plays a voice clip: one spelled
+   * `voice/<voice>/<group>/<name>.mp3`, AS WRITTEN, or a bare one the
+   * contract's `base` puts there, as the engine resolves it (`applyBase`), so
+   * `openers/alright.mp3` under `voice/{voice}` is `openers/alright`. A
+   * published callout playing a line that way keeps it from being withheld
+   * with a feature that names it by pool (#1113). Names are kept AS
    * WRITTEN — the line it lands on is resolved with `lineKeyOf` against the
    * recording lines, exact name first, so `laps-left-10.mp3` and
    * `green-01.mp3` each reach the right line.
@@ -480,9 +488,10 @@ const NO_REFERENCES: CalloutReferences = { pools: [], vars: [], conds: [], cases
  * the skip, the same rule `collectScriptReferences` applies. A fragment is
  * walked once however many paths reach it; an include of a name the script
  * does not define is still listed (it is what the entry names) and followed
- * nowhere.
+ * nowhere. `base` is the contract's: a fragment's literals resolve against
+ * the including entry's base, as the engine expands them.
  */
-function walkEntry(script: CalloutScript, entry: CalloutScriptEntry): EntryWalk {
+function walkEntry(script: CalloutScript, entry: CalloutScriptEntry, base: string | null): EntryWalk {
   if (entry.skip === true) return { references: NO_REFERENCES, clipBases: new Set() };
 
   const fragments = script.fragments ?? {};
@@ -522,7 +531,10 @@ function walkEntry(script: CalloutScript, entry: CalloutScriptEntry): EntryWalk 
     }
 
     for (const clip of collectLiteralClips(steps)) {
-      const match = VOICE_CLIP_PATH.exec(clip);
+      // As written first (the spelling `lint:pack` checks), then as the engine
+      // plays it, against the contract's base: a bare `openers/alright.mp3`
+      // under `voice/{voice}` is the voice's line too (see `clipBases`).
+      const match = VOICE_CLIP_PATH.exec(clip) ?? VOICE_CLIP_PATH.exec(applyBase(base ?? undefined, clip));
 
       if (match) clipBases.add(`${match[1]}/${match[2]}`);
     }
