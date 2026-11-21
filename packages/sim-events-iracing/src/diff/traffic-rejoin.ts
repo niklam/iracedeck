@@ -178,6 +178,7 @@ import {
   type TrafficRejoinFollowedCar,
   type TrafficRejoinState,
 } from "../state.js";
+import { runUnitsDirectly, type UnitRunner } from "../tick-steps.js";
 import { isRacingSurface } from "./track-surface.js";
 import {
   computeTrafficArrivals,
@@ -381,6 +382,7 @@ function describeStationary(stationary: readonly number[]): string {
  * @param playerCarIdx The player's car index (`resolvePlayerCarIdx`), `-1` when unknown, which fails the position gate.
  * @param classes The class lap times and each car's class (`resolveTrafficClassInfo`), `null` without session info.
  * @param trackLengthMeters `WeekendInfo.TrackLength` in metres (`resolveTrackLengthMeters`), `null` while unknown: what turns a car's measured progress into a speed, without which no car is left out as standing still.
+ * @param runUnit Runs each car of an evaluation as a unit (`computeTrafficArrivals`): the translator's step runner, so one car's throw leaves that car untimed and the rest timed. Defaults to {@link runUnitsDirectly}, which catches nothing.
  */
 export function diffTrafficRejoin(
   episode: TrafficRejoinState,
@@ -392,6 +394,7 @@ export function diffTrafficRejoin(
   now: number,
   emit: EmitFn<(typeof TRAFFIC_REJOIN_EVENTS)[number]>,
   logger: ILogger,
+  runUnit: UnitRunner = runUnitsDirectly,
 ): void {
   const gate = failedGate(telemetry, playerCarIdx);
 
@@ -463,7 +466,7 @@ export function diffTrafficRejoin(
 
     Object.assign(episode, createTrafficRejoinState(), { active: true });
     logger.debug(`episode started (pct=${pct.toFixed(4)}, speed=${speed.toFixed(1)} m/s)`);
-    evaluate(episode, curves, telemetry, pct, playerCarIdx, classes, trackLengthMeters, emit, logger);
+    evaluate(episode, curves, telemetry, pct, playerCarIdx, classes, trackLengthMeters, emit, logger, runUnit);
     // Written last (the package's step rule): an evaluation that threw is
     // retried on the next tick rather than a second later.
     episode.lastEvalAt = now;
@@ -490,7 +493,7 @@ export function diffTrafficRejoin(
 
   if (episode.lastEvalAt !== null && elapsed(now, episode.lastEvalAt) < TRAFFIC_REJOIN_EVAL_INTERVAL_MS) return;
 
-  evaluate(episode, curves, telemetry, pct, playerCarIdx, classes, trackLengthMeters, emit, logger);
+  evaluate(episode, curves, telemetry, pct, playerCarIdx, classes, trackLengthMeters, emit, logger, runUnit);
   // Written last, as on entry: a throw is retried on the next tick.
   episode.lastEvalAt = now;
 }
@@ -775,6 +778,7 @@ function evaluate(
   trackLengthMeters: number | null,
   emit: EmitFn<(typeof TRAFFIC_REJOIN_EVENTS)[number]>,
   logger: ILogger,
+  runUnit: UnitRunner,
 ): void {
   const playerClass = resolveCarClassId(telemetry, classes, playerCarIdx);
   const playerEstTime = telemetry.CarIdxEstTime?.[playerCarIdx];
@@ -792,6 +796,7 @@ function evaluate(
     classes,
     trackLengthMeters,
     stationary,
+    runUnit,
   );
 
   // No per-car arrays is no picture at all, never an empty track: nothing is

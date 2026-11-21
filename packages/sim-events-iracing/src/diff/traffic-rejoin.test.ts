@@ -9,6 +9,7 @@ import {
   type TrafficArrivalState,
   type TrafficCurveBin,
 } from "../state.js";
+import type { UnitRunner } from "../tick-steps.js";
 import {
   TRAFFIC_CRAWL_MPS,
   TRAFFIC_CURVE_BINS,
@@ -121,7 +122,14 @@ function harness({
   curves = learnedCurves(),
   classes = CLASSES as TrafficClassInfo | null,
   trackLengthMeters = TRACK_M as number | null,
-}: { curves?: TrafficArrivalState; classes?: TrafficClassInfo | null; trackLengthMeters?: number | null } = {}) {
+  runUnit,
+}: {
+  curves?: TrafficArrivalState;
+  classes?: TrafficClassInfo | null;
+  trackLengthMeters?: number | null;
+  /** The per-car unit runner handed to the detector; its default when omitted. */
+  runUnit?: UnitRunner;
+} = {}) {
   const episode = createTrafficRejoinState();
   /** Every `traffic.rejoin` payload, in order. */
   const events: Rejoin[] = [];
@@ -146,6 +154,7 @@ function harness({
         if (ev.event === "traffic.rejoin") events.push(ev.data as Rejoin);
       },
       logger,
+      runUnit,
     );
 
   return {
@@ -1569,6 +1578,44 @@ describe("diffTrafficRejoin", () => {
       h.step([passed(5), unknown, behind(6, 6.5)]);
 
       expect(h.events).toEqual([near(2, true), near(6, true)]);
+    });
+  });
+
+  describe("a car whose reading throws (each car is a unit, #1559)", () => {
+    /** Car 5 coming 7 s away, car 6 right behind; car 6's lap position throws when read. */
+    function withFaultyCar6(): TrafficRejoinTelemetry {
+      const t = tel({ cars: [behind(5, 7), behind(6, 1)] });
+
+      Object.defineProperty(t.CarIdxLapDistPct, 6, {
+        get: () => {
+          throw new Error("car 6 broke");
+        },
+      });
+
+      return t;
+    }
+
+    it("is untimed through the runner it is handed, and the cars after it are still timed", () => {
+      const h = harness({
+        runUnit: (emit, unit) => {
+          try {
+            unit(emit);
+
+            return true;
+          } catch {
+            return false;
+          }
+        },
+      });
+
+      h.stop(withFaultyCar6());
+
+      // Car 6 is untimed, never a clear; car 5 is the nearest timed car.
+      expect(h.events).toEqual([near(7, true)]);
+    });
+
+    it("lets the throw out with the default runner", () => {
+      expect(() => harness().stop(withFaultyCar6())).toThrow("car 6 broke");
     });
   });
 

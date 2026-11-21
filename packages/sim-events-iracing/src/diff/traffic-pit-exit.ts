@@ -260,6 +260,7 @@ import {
 } from "@iracedeck/track-data";
 
 import { createTrafficPitExitState, type TrafficArrivalState, type TrafficPitExitState } from "../state.js";
+import { runUnitsDirectly, type UnitRunner } from "../tick-steps.js";
 import { isRacingSurface } from "./track-surface.js";
 import {
   computeTrafficArrivals,
@@ -461,6 +462,7 @@ function endReason(
  *
  * @param episode The pit-exit episode, mutated in place.
  * @param curves The per-class reference curves (`state.trafficArrival`, written by `updateTrafficReferenceCurves` earlier in the tick), read only.
+ * @param runUnit Runs each car of an evaluation as a unit (`computeTrafficArrivals`): the translator's step runner, so one car's throw leaves that car untimed and the rest timed. Defaults to {@link runUnitsDirectly}, which catches nothing.
  */
 export function diffTrafficPitExit(
   episode: TrafficPitExitState,
@@ -471,6 +473,7 @@ export function diffTrafficPitExit(
   now: number,
   emit: EmitFn<(typeof TRAFFIC_PIT_EXIT_EVENTS)[number]>,
   logger: ILogger,
+  runUnit: UnitRunner = runUnitsDirectly,
 ): void {
   const inStall = readInStall(telemetry);
   // A container that is not an array is no position at all, as the arrival
@@ -533,6 +536,7 @@ export function diffTrafficPitExit(
           windows,
           emit,
           logger,
+          runUnit,
         );
 
         // Written once the evaluation has returned, its silent returns
@@ -565,6 +569,7 @@ export function diffTrafficPitExit(
             windows,
             emit,
             logger,
+            runUnit,
           );
         }
       }
@@ -969,6 +974,7 @@ function evaluate(
   windows: TrafficPitExitWindows,
   emit: EmitFn<(typeof TRAFFIC_PIT_EXIT_EVENTS)[number]>,
   logger: ILogger,
+  runUnit: UnitRunner,
 ): void {
   const pitRoadEnd = landmarks?.pitRoadEnd ?? null;
   const blendEnd = landmarks?.blendEnd ?? null;
@@ -1087,6 +1093,7 @@ function evaluate(
     facts.classes,
     facts.trackLengthMeters,
     stationary,
+    runUnit,
   );
 
   // No per-car arrays is no picture at all, never an empty track: no call,

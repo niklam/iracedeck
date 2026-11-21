@@ -10,6 +10,7 @@ import {
   type TrafficArrivalState,
   type TrafficCurveBin,
 } from "../state.js";
+import type { UnitRunner } from "../tick-steps.js";
 import { TRAFFIC_CURVE_BINS, type TrafficClassInfo } from "./traffic-arrival.js";
 import {
   diffTrafficPitExit,
@@ -114,12 +115,15 @@ function harness({
   pitSpeedLimitMps = PIT_LIMIT_MPS,
   curves = learnedCurves(),
   classes = CLASSES as TrafficClassInfo | null,
+  runUnit,
 }: {
   landmarks?: TrafficPitExitLandmarks | null;
   trackLengthMeters?: number | null;
   pitSpeedLimitMps?: number;
   curves?: TrafficArrivalState;
   classes?: TrafficClassInfo | null;
+  /** The per-car unit runner handed to the detector; its default when omitted. */
+  runUnit?: UnitRunner;
 } = {}) {
   const episode = createTrafficPitExitState();
   const events: PitExit[] = [];
@@ -160,6 +164,7 @@ function harness({
         else events.push(ev.data);
       },
       logger,
+      runUnit,
     );
 
     const verdict = episode.settledVerdict;
@@ -1283,6 +1288,44 @@ describe("diffTrafficPitExit", () => {
       h.depart(tel({ cars: [{ idx: 9, pct: 0.05, est: 40, cls: -1 }] }));
 
       expect(h.settled).toEqual([{ verdict: "traffic" }]);
+    });
+  });
+
+  describe("a car whose reading throws (each car is a unit, #1559)", () => {
+    /** Car 5 clear of the window; car 6's lap position throws when read. */
+    function withFaultyCar6(): TrafficPitExitTelemetry {
+      const t = tel({ cars: [arriving(5, 20), arriving(6, 20)] });
+
+      Object.defineProperty(t.CarIdxLapDistPct, 6, {
+        get: () => {
+          throw new Error("car 6 broke");
+        },
+      });
+
+      return t;
+    }
+
+    it("is untimed through the runner it is handed, so the verdict is traffic, never a clear", () => {
+      const h = harness({
+        runUnit: (emit, unit) => {
+          try {
+            unit(emit);
+
+            return true;
+          } catch {
+            return false;
+          }
+        },
+      });
+
+      h.depart(withFaultyCar6());
+
+      expect(h.settled).toEqual([{ verdict: "traffic", seconds: 20 }]);
+      expect(lines(h.debug).at(-1)).toContain("untimed: car 6 (noPosition)");
+    });
+
+    it("lets the throw out with the default runner", () => {
+      expect(() => harness().depart(withFaultyCar6())).toThrow("car 6 broke");
     });
   });
 

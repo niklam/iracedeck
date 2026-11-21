@@ -835,8 +835,16 @@ export function scaledReferenceSource(
  * A `targetPct` outside [0, 1) times no car (`noTarget`), every candidate
  * still reported. Pure but for `stationary`; reads the slice.
  *
+ * The cars are independent, so each is one unit of `runUnit` (#1559), as in
+ * {@link updateTrafficReferenceCurves}: a car whose unit throws after its
+ * surface read as racing (its position, its class, a source) is untimed
+ * (`noPosition`), never left out, and every other car is timed as usual; one
+ * whose surface itself throws is no known candidate and is skipped, as a car
+ * off the racing surface is.
+ *
  * @param trackLengthMeters - `WeekendInfo.TrackLength` in metres, `null` while unknown, which leaves no car out: a car's rate means nothing without it.
  * @param stationary - Where the cars left out as standing still are listed, in index order; optional.
+ * @param runUnit - Runs each car as a unit: the translator's step runner, so one car's throw costs that car only. Defaults to {@link runUnitsDirectly}, which catches nothing
  */
 export function computeTrafficArrivals(
   slice: Readonly<TrafficArrivalState>,
@@ -847,6 +855,7 @@ export function computeTrafficArrivals(
   classes: TrafficClassInfo | null,
   trackLengthMeters: number | null,
   stationary?: number[],
+  runUnit: UnitRunner = runUnitsDirectly,
 ): TrafficArrival[] | null {
   const pcts = telemetry.CarIdxLapDistPct;
   const estTimes = telemetry.CarIdxEstTime;
@@ -859,44 +868,77 @@ export function computeTrafficArrivals(
   // Every slot any of the arrays describes, so a racing-surface car whose
   // trailing position is missing is `noPosition` below, never unvisited.
   const slots = carSlotCount(pcts, estTimes, surfaces);
-
-  for (let carIdx = 0; carIdx < slots; carIdx++) {
-    if (carIdx === playerCarIdx) continue;
-
-    const pct = pcts[carIdx];
+  // The car the unit below reads and what it found, set and read by the loop:
+  // one closure per call rather than one per car. It emits nothing, and writes
+  // nothing the loop does not commit: a unit that throws leaves no half-made
+  // arrival behind it.
+  let carIdx = 0;
+  const found = { onRacingSurface: false, standing: false, arrival: null as TrafficArrival | null };
+  const unit = (): void => {
+    found.onRacingSurface = false;
+    found.standing = false;
+    found.arrival = null;
 
     // Only the surface decides who is a candidate: a racing-surface car with
     // an unusable position (missing, NaN, negative) is kept, as `noPosition`
     // below, rather than left out, so it can never let a call read clear.
-    if (!isRacingSurface(surfaces[carIdx])) continue;
+    if (!isRacingSurface(surfaces[carIdx])) return;
 
-    const position = normalizeLapPosition(pct);
+    found.onRacingSurface = true;
+
+    const position = normalizeLapPosition(pcts[carIdx]);
 
     // Only a car with a lap position NOW is left out as standing still: its
     // rate was measured on readings it no longer gives, so one that reads no
     // position this tick is `noPosition` below, never silently not coming.
     if (position !== null && isTrafficCarStationary(slice, carIdx, sessionTime, trackLengthMeters)) {
-      stationary?.push(carIdx);
-      continue;
+      found.standing = true;
+
+      return;
     }
 
     const classId = resolveCarClassId(telemetry, classes, carIdx);
 
     if (!isLapFraction(targetPct)) {
-      arrivals.push({ carIdx, classId, timed: false, reason: "noTarget" });
-      continue;
+      found.arrival = { carIdx, classId, timed: false, reason: "noTarget" };
+
+      return;
     }
 
     // A racing-surface car whose position is no lap position cannot be placed
     // against P: untimed, never left out, so it can never be a clear.
     if (position === null) {
-      arrivals.push({ carIdx, classId, timed: false, reason: "noPosition" });
-      continue;
+      found.arrival = { carIdx, classId, timed: false, reason: "noPosition" };
+
+      return;
     }
 
-    arrivals.push(
-      timeCar(slice, sources, estTimes[carIdx], crossesLineBefore(position, targetPct), classId, carIdx, classes),
+    found.arrival = timeCar(
+      slice,
+      sources,
+      estTimes[carIdx],
+      crossesLineBefore(position, targetPct),
+      classId,
+      carIdx,
+      classes,
     );
+  };
+
+  for (carIdx = 0; carIdx < slots; carIdx++) {
+    if (carIdx === playerCarIdx) continue;
+
+    if (runUnit(ignoreEvent, unit)) {
+      if (found.standing) stationary?.push(carIdx);
+      else if (found.arrival !== null) arrivals.push(found.arrival);
+    } else if (found.onRacingSurface) {
+      // A unit that threw past the surface test (its position, its class, its
+      // timing): a car in the picture whose reading failed is untimed, as one
+      // reading no lap position is, never left out, so it can never let a call
+      // read clear; the other cars are timed as usual. One whose surface
+      // itself threw is no known candidate, and is skipped as a car off the
+      // racing surface is. Either way the runner has reported the throw.
+      arrivals.push({ carIdx, classId: null, timed: false, reason: "noPosition" });
+    }
   }
 
   return arrivals;

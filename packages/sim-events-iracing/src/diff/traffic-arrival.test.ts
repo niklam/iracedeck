@@ -971,6 +971,94 @@ describe("computeTrafficArrivals", () => {
     expect(arrivals.get(3)).toEqual({ carIdx: 3, classId: 3, timed: true, seconds: 40, source: "scaled" });
   });
 
+  describe("each car is a unit (#1559)", () => {
+    /** Cars 1, 2 and 3 coming; car `faulty`'s `array` entry throws when read. */
+    function withFaultyRead(faulty: number, array: "CarIdxLapDistPct" | "CarIdxTrackSurface"): TelemetryData {
+      const t = tel([
+        { idx: 0, pct: 0.5, est: 50 },
+        { idx: 1, pct: 0.1, est: 10 },
+        { idx: 2, pct: 0.2, est: 20 },
+        { idx: 3, pct: 0.3, est: 30 },
+      ]);
+
+      Object.defineProperty(t[array]!, faulty, {
+        get: () => {
+          throw new Error(`car ${faulty} broke`);
+        },
+      });
+
+      return t;
+    }
+
+    const failed: number[] = [];
+    /** The translator's step runner, in miniature: a unit that throws is caught and noted. */
+    const catching: UnitRunner = (emit, unit) => {
+      try {
+        unit(emit);
+
+        return true;
+      } catch {
+        failed.push(failed.length);
+
+        return false;
+      }
+    };
+    const sources = [always("curve", 40)];
+
+    it("keeps a racing-surface car whose position throws, untimed (noPosition), and times the cars after it", () => {
+      failed.length = 0;
+
+      const arrivals = arrivalsAt(
+        createTrafficArrivalState(),
+        0.5,
+        sources,
+        withFaultyRead(2, "CarIdxLapDistPct"),
+        0,
+        null,
+        null,
+        undefined,
+        catching,
+      );
+
+      expect(failed).toHaveLength(1);
+      expect(arrivals).toEqual([
+        { carIdx: 1, classId: 1, timed: true, seconds: 30, source: "curve" },
+        { carIdx: 2, classId: null, timed: false, reason: "noPosition" },
+        { carIdx: 3, classId: 1, timed: true, seconds: 10, source: "curve" },
+      ]);
+    });
+
+    it("skips a car whose surface throws, as no known candidate, and times the rest", () => {
+      const arrivals = arrivalsAt(
+        createTrafficArrivalState(),
+        0.5,
+        sources,
+        withFaultyRead(2, "CarIdxTrackSurface"),
+        0,
+        null,
+        null,
+        undefined,
+        catching,
+      );
+
+      expect(arrivals.map((arrival) => arrival.carIdx)).toEqual([1, 3]);
+    });
+
+    it("lets the throw out with the default runner, so the diff's own tests stay loud", () => {
+      expect(() =>
+        computeTrafficArrivals(
+          createTrafficArrivalState(),
+          0.5,
+          sources,
+          withFaultyRead(2, "CarIdxLapDistPct"),
+          0,
+          null,
+          null,
+        ),
+      ).toThrow("car 2 broke");
+    });
+  });
+
   it("reports a car no source can time, and one past P with no class lap, as untimed with the reason", () => {
     const slice = createTrafficArrivalState();
     const telemetry = tel([

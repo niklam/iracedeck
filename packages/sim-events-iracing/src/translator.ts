@@ -3923,7 +3923,8 @@ function handleLiveSteps(
   // only until its call is made and the player is past pit road's end), and the track length
   // and pit speed limit this tick already resolved. Each logs at debug
   // through its own scope of the translator's logger, `Rejoin` / `PitExit`.
-  // The rejoin detector runs only behind the `trafficRejoin` development flag
+  // Each car an evaluation times is a unit of the step (#1559), so one car's
+  // throw leaves that car untimed and the rest timed. The rejoin detector runs only behind the `trafficRejoin` development flag
   // (the spec's fourth amendment): off, its step is skipped whole, so its
   // episode never opens and nothing it would publish, the tow's end included,
   // can reach the bus.
@@ -3939,6 +3940,7 @@ function handleLiveSteps(
         now,
         emit,
         self.trafficRejoinLogger,
+        steps.runUnit,
       ),
     );
   }
@@ -3963,6 +3965,7 @@ function handleLiveSteps(
       now,
       emit,
       self.trafficPitExitLogger,
+      steps.runUnit,
     ),
   );
   // The corner-name markers (issue #888), resolved from the bundled
