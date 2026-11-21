@@ -2461,6 +2461,60 @@ describe("Cycle Camera key icon: next or current group (#959)", () => {
     expect(shownIcons(action)).toHaveLength(3);
   });
 
+  describe("a key that disappears and comes back under the same context (#1653 review)", () => {
+    const settings = { target: "cycle-camera", direction: "next", cycleIconMode: "current" };
+
+    /**
+     * Places a key whose first icon write is held, takes it off the deck and
+     * places it again on another group, then settles the held write.
+     */
+    async function reappearWhileFirstWriteHeld(
+      settle: (finish: { resolve: (written: boolean) => void; reject: (err: Error) => void }) => void,
+    ): Promise<CameraControls> {
+      const action = new CameraControls();
+      let held: { resolve: (written: boolean) => void; reject: (err: Error) => void } | undefined;
+      vi.mocked(action["updateKeyImage"]).mockImplementationOnce(
+        () => new Promise<boolean>((resolve, reject) => (held = { resolve, reject })),
+      );
+      sdkOf(action).getCurrentTelemetry.mockReturnValue({ CamGroupNumber: 11 }); // Spotter
+      sdkOf(action).getSessionInfo.mockReturnValue({});
+      sdkOf(action).subscribe.mockImplementation((_id: string, cb: () => void) => {
+        subscriber = cb;
+      });
+      vi.mocked(getCameraGroupsFromSessionInfo).mockReturnValue(LAKELAND_GROUPS);
+
+      await action.onWillAppear({ action: keyContext(), payload: { settings } } as never);
+      await action.onWillDisappear({ action: keyContext(), payload: { settings } } as never);
+
+      sdkOf(action).getCurrentTelemetry.mockReturnValue({ CamGroupNumber: 17 }); // TV Mixed
+      await action.onWillAppear({ action: keyContext(), payload: { settings } } as never);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      settle(held!);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      return action;
+    }
+
+    it("never registers the earlier placement's late icon over the new one", async () => {
+      const action = await reappearWhileFirstWriteHeld(({ resolve }) => resolve(true));
+
+      const registrations = vi.mocked(action["setRegenerateCallback"]).mock.calls;
+      const latest = registrations[registrations.length - 1][1] as () => string;
+      expect(decodeURIComponent(latest())).toContain("tv-mixed-artwork");
+    });
+
+    it("never lets the earlier placement's failed write clear the new one's record", async () => {
+      const action = await reappearWhileFirstWriteHeld(({ reject }) => reject(new Error("socket closed")));
+      const pushed = shownIcons(action).length;
+
+      subscriber?.();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(shownIcons(action)).toHaveLength(pushed);
+    });
+  });
+
   it("puts the grid back on the next tick when its restore after telemetry loss fails (#1653 review)", async () => {
     const action = await appear({ cycleIconMode: "current" }, { CamGroupNumber: 11 });
     vi.mocked(action["updateKeyImage"]).mockRejectedValueOnce(new Error("socket closed"));

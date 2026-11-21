@@ -982,6 +982,15 @@ export class CameraControls extends SimIRacingAction<CameraControlsSettings> {
   private cycleIconGeneration = new Map<string, number>();
 
   /**
+   * Cycle-icon renders started on this instance, the source of every
+   * generation above. One count for all keys, never reset: a key that
+   * disappears and comes back under the same context id gets generations its
+   * earlier placement never had, so a write still in flight from before can
+   * never pass for the newest render (#1653 review).
+   */
+  private cycleIconRenders = 0;
+
+  /**
    * Per Change Camera key, whether the icon on it was drawn unavailable
    * (#1653) — so a telemetry tick redraws the key only when that flips.
    */
@@ -2090,7 +2099,7 @@ export class CameraControls extends SimIRacingAction<CameraControlsSettings> {
    * that render's.
    */
   private async showCycleIcon(contextId: string, render: () => string): Promise<CycleIconWrite> {
-    const generation = (this.cycleIconGeneration.get(contextId) ?? 0) + 1;
+    const generation = ++this.cycleIconRenders;
     this.cycleIconGeneration.set(contextId, generation);
     const svg = render();
     let written: boolean;
