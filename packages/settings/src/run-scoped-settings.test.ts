@@ -136,7 +136,7 @@ describe("the camera catalog view is run-scoped (issue #1653)", () => {
     for (const saved of store.saved) expect(saved).not.toHaveProperty(CAMERA_CATALOG_KEY);
   });
 
-  it("lives in the cache and the once-per-start mirror for the run, never in a save", async () => {
+  it("lives in the cache for the run, never in a save or the host mirror", async () => {
     const store = createMemorySettingsStore({ driverName: "nick" });
 
     initGlobalSettings(host, silentLogger, store);
@@ -147,7 +147,8 @@ describe("the camera catalog view is run-scoped (issue #1653)", () => {
     updateGlobalSettings({ [CAMERA_CATALOG_KEY]: view });
 
     expect((getGlobalSettings() as Record<string, unknown>)[CAMERA_CATALOG_KEY]).toBe(view);
-    expect(hostMirrorPayload({ port: 1, token: "t".repeat(48) })?.[CAMERA_CATALOG_KEY]).toBe(view);
+    // Durable in cameras.json and large: left out of the host mirror (HOST_MIRROR_EXCLUDED_KEYS).
+    expect(hostMirrorPayload({ port: 1, token: "t".repeat(48) })).not.toHaveProperty(CAMERA_CATALOG_KEY);
     // A catalog-only write is not saved at all…
     expect(store.saved.length).toBe(savesBefore);
 

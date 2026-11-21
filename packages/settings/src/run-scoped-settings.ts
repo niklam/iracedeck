@@ -82,6 +82,22 @@ export const RUN_SCOPED_SETTING_KEYS: readonly string[] = [
 ];
 
 /**
+ * Run-scoped keys left out of the once-per-start deck-host mirror
+ * (`hostMirrorPayload`), on top of riding everywhere else an enrolled key does.
+ *
+ * The mirror replaces the host's whole stored copy, which the host keeps in
+ * its own settings file, so whatever it carries is written to disk there. The
+ * camera catalog (#1653) is the one enrolled key that must not be: it is
+ * durable in `cameras.json` already, and at the scale its requester reported
+ * (300+ camera files, 40-50 groups a track) it runs to a couple of hundred
+ * kilobytes, which would ride every host settings write. Left out, a Property
+ * Inspector on the no-loopback fallback path sees no catalog: its picker still
+ * offers the standard groups, the key's stored name and Other..., so it
+ * degrades rather than breaks.
+ */
+export const HOST_MIRROR_EXCLUDED_KEYS: readonly string[] = [CAMERA_CATALOG_KEY];
+
+/**
  * A copy of `settings` with every enrolled key removed.
  *
  * Always a copy, never the input: callers on the write path hand the result
