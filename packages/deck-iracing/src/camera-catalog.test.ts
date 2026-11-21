@@ -376,7 +376,8 @@ describe("toCameraCatalogView (#1653)", () => {
    *
    * The published JSON rides every settings push to every open Property
    * Inspector and the settings window (the loopback channel pushes the whole
-   * cache) and the once-per-start deck-host mirror, so its size is a cost paid
+   * cache; the once-per-start deck-host mirror leaves it out,
+   * `HOST_MIRROR_EXCLUDED_KEYS`), so its size is a cost paid
    * on every setting change. Measured at 232,493 bytes (about 227 KiB), of
    * which the per-group `lastSeen` is the largest single part (about 45 %).
    * The bound, 300 KiB, is about 1.3 times that: tight enough to fail on a
