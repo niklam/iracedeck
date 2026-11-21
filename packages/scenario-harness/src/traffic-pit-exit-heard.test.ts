@@ -12,7 +12,7 @@
  */
 import { getEventBus } from "@iracedeck/event-bus";
 import { Flags } from "@iracedeck/iracing-sdk";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { type ClipDurations, shortcutOf, useHeardRig } from "./heard-rig.test-util.js";
 import { AT_RACING_SPEED } from "./scenario-shortcuts.js";
@@ -24,6 +24,9 @@ const RACING_NO_FLAG = Flags.Servicible | Flags.StartHidden;
  * The longest take of each pool these buttons draw on in the reference voice,
  * measured from the committed clips on 2026-11-18 and rounded up.
  */
+/** The meatball stand-in's length (below), in ms. */
+const MEATBALL_MS = 6000;
+
 const CLIP_MS: ClipDurations = [
   [/\/traffic\/pit-exit-traffic/, 3300],
   [/\/traffic\/pit-exit-clear/, 2200],
@@ -31,8 +34,11 @@ const CLIP_MS: ClipDurations = [
   [/\/traffic\/pit-exit-merge/, 1400],
   // A stand-in for a long critical line holding the bus: far longer than the
   // real take, so the clear line waits past the traffic line's queue window.
-  [/\/flags\/meatball/, 6000],
+  [/\/flags\/meatball/, MEATBALL_MS],
 ];
+
+/** How finely the meatball test listens for the first clip to start, in ms. */
+const STEP_MS = 10;
 
 describe("what the pit-exit traffic buttons are heard to say (issue #1113)", () => {
   const { boot, apply, publish, press, heard, heardAndCleared } = useHeardRig(CLIP_MS);
@@ -65,7 +71,37 @@ describe("what the pit-exit traffic buttons are heard to say (issue #1113)", () 
     apply(shortcut.telemetrySequence);
     publish("flag.meatball.raised");
     publish(shortcut.event as "traffic.pitExit", shortcut.data);
-    apply(shortcut.teardownSequence);
+
+    // The teardown opens on a hold with the car still on the pit lane. Listen
+    // through it in steps: `heard()` records clip STARTS, so a clear line that
+    // cut the meatball would still be heard second. It must not start until
+    // the meatball clip has played to its end.
+    const [listen, ...handBack] = shortcut.teardownSequence ?? [];
+
+    if (listen === undefined) throw new Error("traffic-pit-exit-clear has no teardown");
+
+    expect(listen.patch).toEqual({});
+
+    const listenMs = listen.holdMs ?? 0;
+
+    let elapsed = 0;
+
+    while (heard().length === 0 && elapsed < listenMs) {
+      vi.advanceTimersByTime(STEP_MS);
+      elapsed += STEP_MS;
+    }
+
+    // The meatball clip started within the last step, so it ends no sooner
+    // than a step short of its length from here.
+    const beforeItEnds = MEATBALL_MS - STEP_MS - 1;
+
+    vi.advanceTimersByTime(beforeItEnds);
+    elapsed += beforeItEnds;
+
+    expect(heard()).toEqual(["flags/meatball"]);
+    expect(elapsed).toBeLessThan(listenMs);
+
+    apply([{ ...listen, holdMs: listenMs - elapsed }, ...handBack]);
     apply([{ patch: {}, holdMs: 10_000 }]);
 
     expect(heard()).toEqual(["flags/meatball", "traffic/pit-exit-clear"]);
