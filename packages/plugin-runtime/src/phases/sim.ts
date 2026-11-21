@@ -1,13 +1,21 @@
 /**
  * Phase 3 (#1349; 2 until #1112): the sim translator, the live race order it feeds the
- * template context, and the two read surfaces it hands on — the query-side
- * runtime the Race Engineer reads (#1378) and the host extension's sim
- * (#1500), so a plugin shell reads the session kind and the tick without
- * importing a sim package.
+ * template context, the camera catalog (#1653), and the read surfaces it hands
+ * on — the query-side runtime the Race Engineer reads (#1378), the host
+ * extension's sim (#1500), so a plugin shell reads the session kind and the
+ * tick without importing a sim package, and the camera catalog the settings
+ * window and the services phase use.
  */
 import type { ProfileSwitchSessionKind } from "@iracedeck/app-constants";
-import { onIRacingTerminated } from "@iracedeck/deck-iracing";
+import { getPluginPlatform } from "@iracedeck/deck-core";
+import {
+  createCameraCatalogRejectionReporter,
+  createCameraCatalogService,
+  onIRacingTerminated,
+  resolveCameraCatalogPath,
+} from "@iracedeck/deck-iracing";
 import { createIracingSimRuntime, createIracingTranslatorOptions } from "@iracedeck/race-engineer-wiring";
+import { resolveSettingsStorePath } from "@iracedeck/settings";
 import {
   getLiveRacePositions,
   getSessionKind,
@@ -77,7 +85,24 @@ export function initSim(core: Core, trackData: TrackData): Sim {
     onSimTerminated: (listener) => onIRacingTerminated(listener),
   };
 
+  // The camera catalog (#1653): every camera group name a session has shown,
+  // and each track's latest list, in `cameras.json` beside the settings file
+  // (so `IRACEDECK_SETTINGS_PATH` moves it too). iRacing-shaped, so it is the
+  // sim's, built here; the settings window removes from it and the services
+  // phase records into it and publishes `_cameraCatalog` once global settings
+  // exist. An unparseable file is set aside with a banner. The load starts now
+  // and finishes in the background; observations made meanwhile are kept, and
+  // the exit flush lands the last debounced save, like the other stores'.
+  const cameraCatalog = createCameraCatalogService({
+    path: resolveCameraCatalogPath(resolveSettingsStorePath({ platform: getPluginPlatform(), env: process.env })),
+    logger: core.adapter.createLogger("CameraCatalog"),
+    onRejected: createCameraCatalogRejectionReporter(),
+  });
+
+  process.on("exit", () => cameraCatalog.flushSync());
+  void cameraCatalog.start();
+
   // The one place a sim translator is chosen and constructed (#1349); a second
   // one slots in here (#1351).
-  return { runtime: createIracingSimRuntime(), host };
+  return { runtime: createIracingSimRuntime(), host, cameraCatalog };
 }

@@ -2,7 +2,7 @@ import { VERSION_CHECK_STARTUP_GRACE_MS } from "@iracedeck/app-updates";
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { cleanupTempBinDirs, createFakeExtension, createHost } from "../test-support/fake-host.js";
-import { callLog, implement, resetRecorder } from "../test-support/recorder.js";
+import { callLog, implement, resetRecorder, stub } from "../test-support/recorder.js";
 import type { PluginExtension } from "../types.js";
 import { initAudio } from "./audio.js";
 import { initCore } from "./core.js";
@@ -49,7 +49,13 @@ function boot(extension?: PluginExtension) {
   const audio = initAudio(core);
   const voicePacks = initVoicePacks(core, audio);
   implement("onGlobalSettingsChange", (listener) => listeners.push(listener as never));
-  const settings = initSettings(core, audio, voicePacks, { directory: TRACK_DATA_DIR });
+  const settings = initSettings(
+    core,
+    audio,
+    voicePacks,
+    { directory: TRACK_DATA_DIR },
+    { cameraCatalog: stub("cameraCatalog") },
+  );
 
   return { host, handlerDeps, listeners, settings, voicePacks, audio };
 }

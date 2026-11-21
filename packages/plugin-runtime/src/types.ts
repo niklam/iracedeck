@@ -8,7 +8,7 @@ import type { LogLocation, ProfileSwitchSessionKind } from "@iracedeck/app-const
 import type { AudioAssetsManifest } from "@iracedeck/audio-scenarios";
 import type { CalloutScript } from "@iracedeck/callout-script";
 import type { IDeckActionHandler, IDeckPlatformAdapter, PlatformFeatureFlags } from "@iracedeck/deck-core";
-import type { getController } from "@iracedeck/deck-iracing";
+import type { CameraCatalogService, getController } from "@iracedeck/deck-iracing";
 import type { IEventBus } from "@iracedeck/event-bus";
 import type { IRacingNative } from "@iracedeck/iracing-native";
 import type { ILogger } from "@iracedeck/logger";
@@ -127,11 +127,14 @@ export interface TrackData {
 
 /**
  * Phase 3's handoff (#1378, #1500): the running sim, read through two
- * interfaces — the Race Engineer's `runtime` and the host extension's `host`.
+ * interfaces — the Race Engineer's `runtime` and the host extension's `host` —
+ * and the camera catalog (#1653), which the settings window removes from and
+ * the services phase records into and publishes.
  */
 export interface Sim {
   readonly runtime: SimRuntime;
   readonly host: HostSim;
+  readonly cameraCatalog: CameraCatalogService;
 }
 
 /** Phase 4's handoff: the native input layer, used again by window focus (phase 10) and the elevation check (phase 11). */
