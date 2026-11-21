@@ -136,8 +136,10 @@
  *   to `seconds + 1`. A line that plays at once is never refused.
  * - **The pit-exit lines and the merge warning** are dropped once the live
  *   telemetry has the player back on the racing surface (`PlayerTrackSurface` `OnTrack` / `OffTrack`),
- *   the detector's own end of the exit: the merge they are about is over. With
- *   no telemetry (the scenario harness) or no surface read they play.
+ *   the detector's own end of the exit: the merge they are about is over. So
+ *   are they once it has the player out of the world (`NotInWorld`, a reset
+ *   or a tow to the garage). The exit lane and the stall admit. With no
+ *   telemetry (the scenario harness) or no surface read they play.
  * - **The pack line** has no time gate: it waits at most
  *   {@link TRAFFIC_MAX_QUEUE_WAIT_MS}, and a group coming is still worth
  *   hearing as the driver pulls out in front of it.
@@ -503,7 +505,7 @@ const REJOIN_LINES: Record<RejoinLine, RejoinLineSpec> = {
 
 type PitExitLineSpec = LineSpec & {
   verdict: TrafficPitExitVerdict;
-  /** The speak-time gate's sentence for the pack reference: dropped once the player is back on the racing surface. */
+  /** The speak-time gate's sentence for the pack reference: dropped once the player is back on the racing surface or out of the world. */
   gateDescription: string;
 };
 
@@ -518,7 +520,8 @@ const PIT_EXIT_LINES: Record<PitExitLine, PitExitLineSpec> = {
     // The call point, the held flip and the untimed car: `traffic-pit-exit.ts`'s module header.
     description:
       "About 3 s before pit road ends (on leaving a nearer stall, past it if landmarks or pit limit come late), again on a held flip before the merge: a car on track meets you at the blend end or is untimed.",
-    gateDescription: "Dropped once you are back on the racing surface, since the merge it warns about is over.",
+    gateDescription:
+      "Dropped once you are back on the racing surface or reset to the garage, since the merge it warns about is over.",
   },
   "pit-exit-clear": {
     // Not a warning: SAFETY, so it does not cut a caution line; it still cuts
@@ -531,7 +534,8 @@ const PIT_EXIT_LINES: Record<PitExitLine, PitExitLineSpec> = {
     verdict: "clear",
     description:
       "About 3 s before pit road ends (on leaving a nearer stall, past it if landmarks or pit limit come late), again on a held flip before the merge: no car on track meets you at the blend end.",
-    gateDescription: "Dropped once you are back on the racing surface, since the merge it is about is over.",
+    gateDescription:
+      "Dropped once you are back on the racing surface or reset to the garage, since the merge it is about is over.",
   },
 };
 
@@ -583,7 +587,8 @@ const PIT_EXIT_MERGE_LINE: LineSpec & { gateDescription: string } = {
   maxQueueWaitMs: TRAFFIC_MAX_QUEUE_WAIT_MS,
   description:
     "In the pit exit lane, past the end of pit road, a car on track is predicted to reach the end of the pit exit blend line within the Pit exit merge warning seconds of you: said once per pit exit.",
-  gateDescription: "Dropped once you are back on the racing surface, since the merge it warns about is over.",
+  gateDescription:
+    "Dropped once you are back on the racing surface or reset to the garage, since the merge it warns about is over.",
 };
 
 /**
@@ -728,12 +733,16 @@ export type TrafficContractDeps = {
 /**
  * Whether the player is still short of the merge as a pit-exit line is about
  * to be heard (module header): not back on the racing surface, the pit-exit
- * detector's own end of the exit. No telemetry, or no surface read, admits.
+ * detector's own end of the exit, and not out of the world (`NotInWorld`: a
+ * reset or a tow to the garage, which ends the detector's episode too). The
+ * exit lane and the stall admit: the surface can still read the stall for a
+ * tick after the car has driven out, the tick a near stall's call is made
+ * on. No telemetry, or no surface read, admits.
  */
 function stillLeavingThePits(deps: TrafficContractDeps): boolean {
   const surface = deps.getLatestTelemetry()?.PlayerTrackSurface;
 
-  return surface !== TrkLoc.OnTrack && surface !== TrkLoc.OffTrack;
+  return surface !== TrkLoc.OnTrack && surface !== TrkLoc.OffTrack && surface !== TrkLoc.NotInWorld;
 }
 
 function pitExitContract(line: PitExitLine, deps: TrafficContractDeps): ScenarioContract {

@@ -1171,17 +1171,24 @@ describe("a line is never heard after the moment it warns about", () => {
       telemetry = null;
     });
 
-    it.each(PIT_EXIT_GATED_IDS)("%s: refused on track or beside it, admitted in the exit lane or the stall", (id) => {
-      for (const [surface, admitted] of [
-        [TrkLoc.OnTrack, false],
-        [TrkLoc.OffTrack, false],
-        [TrkLoc.AproachingPits, true],
-        [TrkLoc.InPitStall, true],
-      ] as const) {
-        telemetry = { PlayerTrackSurface: surface };
-        expect(liveAdmit(id), `${id} on ${surface}`).toBe(admitted);
-      }
-    });
+    it.each(PIT_EXIT_GATED_IDS)(
+      "%s: refused on track, beside it or out of the world, admitted in the exit lane or the stall",
+      (id) => {
+        for (const [surface, admitted] of [
+          [TrkLoc.OnTrack, false],
+          [TrkLoc.OffTrack, false],
+          // A reset or a tow to the garage: the exit it is about is over.
+          [TrkLoc.NotInWorld, false],
+          [TrkLoc.AproachingPits, true],
+          // The stall stays admitted: the surface can read it for a tick
+          // after the car has driven out, the tick a near stall's call is made on.
+          [TrkLoc.InPitStall, true],
+        ] as const) {
+          telemetry = { PlayerTrackSurface: surface };
+          expect(liveAdmit(id), `${id} on ${surface}`).toBe(admitted);
+        }
+      },
+    );
 
     it.each(PIT_EXIT_GATED_IDS)("%s: admitted with no telemetry or no surface read (the harness)", (id) => {
       telemetry = null;
@@ -1219,8 +1226,25 @@ describe("a line is never heard after the moment it warns about", () => {
       },
     );
 
+    it.each(PIT_EXIT_VERDICTS)(
+      "%s waiting behind a CRITICAL line is dropped once the player is reset to the garage",
+      (verdict) => {
+        _resetAudioScenarios();
+        _resetTrafficState();
+        wire(live);
+        telemetry = { PlayerTrackSurface: TrkLoc.AproachingPits };
+        bus.publishEvent("pitStall.departed", {});
+        bus.publishEvent("traffic.pitExit", { verdict, seconds: 1 });
+        telemetry = { PlayerTrackSurface: TrkLoc.NotInWorld };
+        flush(audio);
+
+        expect(voicePaths()).toEqual([CRITICAL_CLIP]);
+      },
+    );
+
     it.each([
       ["dropped once the player has merged", TrkLoc.OnTrack, [CRITICAL_CLIP]],
+      ["dropped once the player is reset to the garage", TrkLoc.NotInWorld, [CRITICAL_CLIP]],
       [
         "still played while the player is in the exit lane",
         TrkLoc.AproachingPits,
