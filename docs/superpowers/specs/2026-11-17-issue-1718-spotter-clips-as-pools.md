@@ -27,7 +27,7 @@ The take pick and its no-repeat now belong to the pool store, so a take is consu
 
 ### 2. `defineVar` may declare the clips a var can produce
 
-`defineVar(name, resolver, description, options?)` gains an optional `options.draws: readonly { group: string; base: string }[]`, the closed set of `(group, base)` pools the resolver can ever return. The spotter registers `spotterClip` with `draws` built from `SPOTTER_CLIP_BASES`. The engine does not enforce it at fire time; it is a declaration for the tooling, and the spotter's test pins the agreement (every transition's reference is in the set, and every base in the set is reachable).
+`defineVar(name, resolver, description, options?)` gains an optional `options.draws: readonly { group: string; base: string; contracts?: readonly string[] }[]`, the closed set of `(group, base)` pools the resolver can ever return. `contracts` scopes a draw to the contract ids the resolver can return that pool for; absent means any contract. The spotter registers `spotterClip` with `draws` built from `SPOTTER_CLIP_BASES`, scoped: the 21 call bases (`car-*`, `two-cars-*`, `one-car-*`, `clear-*-*`, `three-wide`) to `pit-crew.spotter-call`, and `clear`, `still-there` and `hold-your-line` to `pit-crew.spotter-info`. The scope is derived from the engine's own fire paths like the base list, and the spotter's test pins that every base each fire path can produce lands in its scope. The engine does not enforce it at fire time; it is a declaration for the tooling, and the spotter's test pins the agreement (every transition's reference is in the set, and every base in the set is reachable).
 
 `vocabulary()` reports `draws` on a var that declared it and omits the key on one that did not. Only vars with a closed set declare it. Most vars are open-ended (a position number, a temperature, a driver name), and for those the description heuristic stays.
 
@@ -36,7 +36,10 @@ The take pick and its no-repeat now belong to the pool store, so a take is consu
 For a var that declares `draws`:
 
 - its description is not read by `descriptionNamesGroup`, so it no longer exempts the whole group;
-- when the voice's live script names the var (`collectScriptReferences(...).vars`), each declared `group/base` counts as a reference the script makes.
+- an unscoped draw counts as a reference the script makes when the voice's live script names the var anywhere (`collectScriptReferences(...).vars`);
+- a scoped draw counts only when a live entry for one of its contracts names the var (in the entry itself, a fragment it includes, or its frame). `spotterClip` is named by two contracts that draw disjoint lines, so without the scope a pack that scripts only `pit-crew.spotter-call` would have `clear`, `still-there` and `hold-your-line` reported as dangling, a lint failure for lines nothing could ever ask for; the mirror pack would get 21 false errors, and a call-only pack shipping `clear.mp3` would get no orphan.
+
+The same scoping applies to the first-party check in section 4. The reference JSON and the pack format are unchanged.
 
 `@iracedeck/callout-script`'s `CoverageInput` gains `varReferences?: readonly string[]` (`group/base` keys) that `coverageOf` adds to `referenced`. The existing orphan and dangling rules then report both directions without new rules: a declared base the voice does not ship is dangling (`spotter/car-left`, the pack that recorded only some lines), and a spotter file that matches no declared base is an orphan (`car-left-1.mp3`, a take with one digit, which the engine never plays). The coverage module stays vocabulary-free: the linter computes the keys from the vocabulary and the script, and hands them over.
 
@@ -70,7 +73,7 @@ Unit, in the suites beside the code:
 - `spotter-engine.test.ts`: every transition fires a `pool:spotter/<base>` reference; a manifest with only `car-left-01.mp3` / `car-left-02.mp3` plays the left arrival, and one with both the bare file and takes draws from all of them; still-there alternates between the two bases, and each base's takes are drawn from; `SPOTTER_CLIP_BASES` equals the 24 bases the default voice ships, and every reference a transition can produce is in it.
 - `vocabulary` / interpreter: `vocabulary()` reports `draws` for `spotterClip` and omits the key for a var registered without it.
 - `coverage.test.ts` (`callout-script`): `varReferences` count as referenced for both rules.
-- `lint-pack.test.ts`: a takes-only spotter pack is clean; a pack missing `spotter/car-left` reports it as dangling; `car-left-1.mp3` is an orphan; a voice whose script omits the spotter entries reports its spotter files as orphans; a var with no `draws` still exempts its group as before.
+- `lint-pack.test.ts`: a takes-only spotter pack is clean; a pack missing `spotter/car-left` reports it as dangling; `car-left-1.mp3` is an orphan; a voice whose script omits the spotter entries reports its spotter files as orphans; a pack scripting only `pit-crew.spotter-call` is clean without the info lines (and reports a shipped `clear.mp3` as an orphan), and a pack scripting only `pit-crew.spotter-info` is clean without the call lines; a var with no `draws` still exempts its group as before.
 - `bundled-scripts.test.ts`: the new declared-draws check passes for both first-party voices and fails when a declared base is removed from a test manifest.
 - The generated pack reference is unchanged byte for byte (`scripts/generate-pack-reference.test.mjs`).
 
