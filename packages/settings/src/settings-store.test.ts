@@ -195,6 +195,32 @@ describe("createFileSettingsStore", () => {
       expect(readFileSync(onRejected.mock.calls[0][0].preservedAt, "utf-8")).toBe("{}");
     });
 
+    it("sets aside a refused deeply nested file, with no location (#1653 CodeRabbit)", async () => {
+      mkdirSync(join(dir, "sub"), { recursive: true });
+      // Valid JSON nested deeper than the locator's recursion can follow.
+      const deep = '{"a":' + "[".repeat(50_000) + "]".repeat(50_000) + "}";
+
+      writeFileSync(store.path, deep, "utf-8");
+      const onRejected = vi.fn<(rejection: SettingsFileRejection) => void>();
+
+      expect(await validating(() => "refused", onRejected).load()).toBeUndefined();
+
+      expect(existsSync(store.path)).toBe(false);
+      expect(onRejected).toHaveBeenCalledTimes(1);
+      expect(onRejected.mock.calls[0][0].location).toBeUndefined();
+    });
+
+    it("still preserves a deeply nested file that fails to parse when the locator overflows", async () => {
+      mkdirSync(join(dir, "sub"), { recursive: true });
+      writeFileSync(store.path, "[".repeat(50_000) + "x", "utf-8");
+      const onRejected = vi.fn<(rejection: SettingsFileRejection) => void>();
+
+      expect(await validating(() => undefined, onRejected).load()).toBeUndefined();
+
+      expect(existsSync(store.path)).toBe(false);
+      expect(onRejected).toHaveBeenCalledTimes(1);
+    });
+
     it("treats a validator that throws as a refusal, never as a failed read", async () => {
       mkdirSync(join(dir, "sub"), { recursive: true });
       writeFileSync(store.path, "{}", "utf-8");

@@ -210,6 +210,15 @@ async function findIdenticalAside(path: string): Promise<string | undefined> {
   return undefined;
 }
 
+/** {@link locateJsonError}, or undefined when the locator itself fails (a stack overflow on deep nesting). */
+function locateJsonErrorSafely(text: string): JsonErrorLocation | undefined {
+  try {
+    return locateJsonError(text);
+  } catch {
+    return undefined;
+  }
+}
+
 export function createFileSettingsStore(opts: FileSettingsStoreOptions): SettingsStore {
   const { path, logger } = opts;
   const debounceMs = opts.debounceMs ?? DEFAULT_DEBOUNCE_MS;
@@ -346,7 +355,11 @@ export function createFileSettingsStore(opts: FileSettingsStoreOptions): Setting
       } catch (error: unknown) {
         const aside = path.replace(/\.json$/, "") + `.corrupt-${new Date().toISOString().replace(/[:.]/g, "-")}.json`;
         let preservedAt = aside;
-        const location = locateJsonError(text);
+        // A position exists only for a JSON.parse failure: a refused object or
+        // a validator's reason is valid JSON (#1653). And the locator must never
+        // stop the file being preserved — it recurses per nesting level, so a
+        // deeply nested text can overflow the stack.
+        const location = error instanceof SyntaxError ? locateJsonErrorSafely(text) : undefined;
 
         // The location goes in the ERROR line itself, not only the debug one:
         // this runs before the settings (and so `debugLogging`) have loaded,
