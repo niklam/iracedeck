@@ -22,6 +22,18 @@ import {
   sanitizeGapAlertThresholdSeconds,
   sanitizeGapMinChangeSeconds,
   sanitizeOpponentFlagRangeSeconds,
+  sanitizeTrafficPitExitAfterSeconds,
+  sanitizeTrafficPitExitBeforeSeconds,
+  sanitizeTrafficPitExitMergeWarnSeconds,
+  TRAFFIC_DEFAULT_PIT_EXIT_AFTER_SECONDS,
+  TRAFFIC_DEFAULT_PIT_EXIT_BEFORE_SECONDS,
+  TRAFFIC_DEFAULT_PIT_EXIT_MERGE_WARN_SECONDS,
+  TRAFFIC_PIT_EXIT_AFTER_MAX_SECONDS,
+  TRAFFIC_PIT_EXIT_AFTER_MIN_SECONDS,
+  TRAFFIC_PIT_EXIT_BEFORE_MAX_SECONDS,
+  TRAFFIC_PIT_EXIT_BEFORE_MIN_SECONDS,
+  TRAFFIC_PIT_EXIT_MERGE_WARN_MAX_SECONDS,
+  TRAFFIC_PIT_EXIT_MERGE_WARN_MIN_SECONDS,
 } from "@iracedeck/sim-events-iracing";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -123,6 +135,30 @@ const NUMERIC_OPTIONS: readonly NumericOptionRow[] = [
     fallback: OPPONENT_FLAG_DEFAULT_RANGE_SECONDS,
     min: OPPONENT_FLAG_RANGE_MIN_SECONDS,
     max: OPPONENT_FLAG_RANGE_MAX_SECONDS,
+  },
+  {
+    option: "getTrafficPitExitBeforeSeconds",
+    key: "trafficPitExitBeforeSeconds",
+    sanitize: sanitizeTrafficPitExitBeforeSeconds,
+    fallback: TRAFFIC_DEFAULT_PIT_EXIT_BEFORE_SECONDS,
+    min: TRAFFIC_PIT_EXIT_BEFORE_MIN_SECONDS,
+    max: TRAFFIC_PIT_EXIT_BEFORE_MAX_SECONDS,
+  },
+  {
+    option: "getTrafficPitExitAfterSeconds",
+    key: "trafficPitExitAfterSeconds",
+    sanitize: sanitizeTrafficPitExitAfterSeconds,
+    fallback: TRAFFIC_DEFAULT_PIT_EXIT_AFTER_SECONDS,
+    min: TRAFFIC_PIT_EXIT_AFTER_MIN_SECONDS,
+    max: TRAFFIC_PIT_EXIT_AFTER_MAX_SECONDS,
+  },
+  {
+    option: "getTrafficPitExitMergeWarnSeconds",
+    key: "trafficPitExitMergeWarnSeconds",
+    sanitize: sanitizeTrafficPitExitMergeWarnSeconds,
+    fallback: TRAFFIC_DEFAULT_PIT_EXIT_MERGE_WARN_SECONDS,
+    min: TRAFFIC_PIT_EXIT_MERGE_WARN_MIN_SECONDS,
+    max: TRAFFIC_PIT_EXIT_MERGE_WARN_MAX_SECONDS,
   },
 ];
 

@@ -11,11 +11,13 @@
  * stable `category` string and add at least one entry under it. Order in
  * the array drives display order in the UI.
  */
+import { DEFAULT_MAX_QUEUE_WAIT_MS } from "@iracedeck/audio-scenarios";
 import {
   CAUTION_LINEUP_CHANGE_DELAY_MS,
   type QualifyingInvalidationSnapshot,
   ROLLING_START_LINEUP_CHANGE_DELAY_MS,
   type SectorComparisonInput,
+  TRAFFIC_CONTRACTS,
 } from "@iracedeck/audio-scenarios/pit-crew";
 import {
   OpponentPenaltyFlag,
@@ -63,6 +65,7 @@ import {
 } from "./rolling-start-grid.js";
 import { type ComposedTarget, composeSectorComparison } from "./sector-comparison-snapshot.js";
 import type { ShortcutPrecondition } from "./shortcut-preconditions.js";
+import { TRAFFIC_REJOIN_SEQUENCE, TRAFFIC_REJOIN_TEARDOWN } from "./traffic-telemetry.js";
 
 /** Fields every shortcut carries, whatever it drives. */
 type ScenarioShortcutBase = {
@@ -78,9 +81,11 @@ type ScenarioShortcutBase = {
    * needs declares none, which is all of them but the caution four (a
    * session preset, and for the catch-up one a track length in it and a
    * connected mock SDK too), the
-   * overtake and gap ones (a connected mock SDK) and the rolling-start four
+   * overtake and gap ones (a connected mock SDK), the rolling-start four
    * (both: a race session the formation grid reads in, on an oval for the
-   * whole-formation run, and a connected mock SDK).
+   * whole-formation run, and a connected mock SDK) and the rejoin train (a
+   * session naming the player's car at the index its field writes it into,
+   * and a connected mock SDK).
    */
   requires?: readonly ShortcutPrecondition[];
 };
@@ -226,7 +231,10 @@ export type BusEventShortcut = ScenarioShortcutBase & {
    * The UI runs it whenever the run wrote any telemetry, not only after a
    * publish that went through: a refused publish, or a setup step that failed
    * part-way, leaves the setup's state behind just the same. After a failure
-   * it applies the patches without their holds. So a teardown has to put the
+   * it applies {@link failedRunTeardown}'s copy: the patches without their
+   * listening holds, but with the hold of any step that turns `IsReplayPlaying`
+   * off, which waits out the translator's replay-exit grace so the next
+   * button's first live edge is not swallowed. So a teardown has to put the
    * harness right from ANY prefix of its setup, a bracket left open included.
    */
   teardownSequence?: readonly TelemetryStep[];
@@ -257,7 +265,17 @@ export type TelemetrySequenceShortcut = ScenarioShortcutBase & {
   data?: never;
   precedingEvents?: never;
   telemetryPatch?: never;
-  teardownSequence?: never;
+  /**
+   * Optional steps applied AFTER the sequence (issue #1113), as a bus-event
+   * shortcut's {@link BusEventShortcut.teardownSequence} is applied after its
+   * publish, and on the same terms: the UI runs it whenever the run wrote any
+   * telemetry, its failed-run copy ({@link failedRunTeardown}) after a step
+   * failed. A sequence that opens a replay-mode bracket or leaves state behind
+   * puts the harness right here rather than in its own last steps, which a
+   * POST failing part-way never reaches: the rejoin train, whose first step
+   * opens replay mode and whose run leaves the player stopped among a field.
+   */
+  teardownSequence?: readonly TelemetryStep[];
   /**
    * Optional qualifying lap-invalidation snapshot, posted BEFORE the first
    * step (issue #1211) — the push the bus-event shortcuts make, which the UI
@@ -274,6 +292,36 @@ export type TelemetrySequenceShortcut = ScenarioShortcutBase & {
 };
 
 export type ScenarioShortcut = BusEventShortcut | TelemetrySequenceShortcut;
+
+/**
+ * The teardown the UI applies after a FAILED run (issues #1167, #1113): the
+ * same steps, with only the holds that still matter. A listening hold is time
+ * for a line to play, and after a failure nothing is playing, so it goes. A
+ * step that turns `IsReplayPlaying` off keeps its hold: it waits out the
+ * translator's replay-exit grace (`REPLAY_EXIT_GRACE_MS`), inside which every
+ * edge is absorbed, so without it a button pressed within the second after
+ * the failure alert loses its first live edge.
+ */
+export function failedRunTeardown(steps: readonly TelemetryStep[]): TelemetryStep[] {
+  return steps.map(({ holdMs, ...step }) =>
+    holdMs !== undefined && step.patch.IsReplayPlaying === false ? { ...step, holdMs } : step,
+  );
+}
+
+/**
+ * A shortcut as `/api/state` serves it to the UI: a bus-event shortcut with a
+ * teardown also carries {@link failedRunTeardown}'s copy, which the UI applies
+ * in place of `teardownSequence` after a failed run, so the decision of which
+ * holds survive is made here rather than in the untested page script.
+ */
+export type ServedShortcut = ScenarioShortcut & { failedRunTeardownSequence?: readonly TelemetryStep[] };
+
+/** `shortcut` as `/api/state` serves it (see {@link ServedShortcut}). */
+export function servedShortcut(shortcut: ScenarioShortcut): ServedShortcut {
+  if (shortcut.teardownSequence === undefined) return shortcut;
+
+  return { ...shortcut, failedRunTeardownSequence: failedRunTeardown(shortcut.teardownSequence) };
+}
 
 const ALL_FOUR_TIRES = ["LF", "RF", "LR", "RR"] as const;
 
@@ -1029,6 +1077,88 @@ const AUTO_FUEL_PRESS_LISTEN_MS = 5000;
  * {@link REPLAY_EXIT_SETTLE_MS}: the re-seed waits for the exit grace.
  */
 const AUTO_FUEL_SEED_MS = 200;
+
+/**
+ * The car leaving the pits (issue #1113): on the pit lane (`AproachingPits`)
+ * and on pit road, which the pit-exit lines' speak-time gate reads. Both lines
+ * are dropped once the live telemetry has the player back on the racing
+ * surface, so a pit-exit button pressed after one that left the car on track
+ * (an overtake or gap button, a translator run's teardown) published its event
+ * and played nothing. Put in place inside a replay-mode bracket, so the
+ * translator seeds the pit entry rather than announcing it (a limiter warning
+ * or an entry readback over the line under audition), then a seeding tick, so
+ * the translator's latest telemetry, which the gate reads, is the bracket's.
+ *
+ * @internal Exported for testing
+ */
+export const LEAVING_THE_PITS: readonly TelemetryStep[] = [
+  {
+    patch: {
+      IsReplayPlaying: true,
+      IsOnTrack: true,
+      OnPitRoad: true,
+      PlayerCarInPitStall: false,
+      PlayerTrackSurface: TrkLoc.AproachingPits,
+      // Pulling out of the box, under every preset's pit speed limit: a car
+      // left at an on-track button's racing speed would be speeding.
+      Speed: 5,
+    },
+    holdMs: AUTO_FUEL_SEED_MS,
+    tick: true,
+  },
+  { patch: { IsReplayPlaying: false }, holdMs: REPLAY_EXIT_SETTLE_MS, tick: true },
+  SEEDED_TICK,
+];
+
+/** The pit-exit lines and the merge warning, by the name their contract ids end in (`pit-crew.traffic-<line>`). */
+type PitExitLine = "pit-exit-traffic" | "pit-exit-clear" | "pit-exit-merge";
+
+/** How far past its line's queue wait a pit-exit button listens: a few of the speak gate's checks. */
+const PIT_EXIT_LISTEN_MARGIN_MS = 1000;
+
+/**
+ * How long a pit-exit button listens before handing the car back to the
+ * circuit: past its own line's queue wait, read from the line's contract
+ * (`maxQueueWaitMs`, 3 s for the traffic warning and the merge warning, and
+ * the engine default, 8 s, for the clear line), so the speak gate has admitted or dropped the line by
+ * then, and a line it admitted plays on to its end whatever the surface does
+ * after. A clear line waiting behind a long critical call would otherwise be
+ * dropped by its gate while still inside its queue window.
+ *
+ * @internal Exported for testing
+ */
+export function pitExitListenMs(line: PitExitLine): number {
+  const id = `pit-crew.traffic-${line}`;
+  const contract = TRAFFIC_CONTRACTS.find((c) => c.id === id);
+
+  if (contract === undefined) throw new Error(`No traffic contract ${id} in the catalog`);
+
+  return (contract.maxQueueWaitMs ?? DEFAULT_MAX_QUEUE_WAIT_MS) + PIT_EXIT_LISTEN_MARGIN_MS;
+}
+
+/**
+ * A pit-exit button's teardown (issue #1113): once its line has been
+ * admitted ({@link pitExitListenMs}), the car back on the circuit and off pit
+ * road inside a replay-mode bracket, so the pit exit is seeded rather than
+ * announced and the next button starts from the presets' premise rather than
+ * on pit road, where the overtake gate would refuse it. It ends on
+ * {@link SEEDED_TICK}, so the translator re-seeds on the car the bracket
+ * handed back now rather than on the next button's first live tick: with the
+ * tick loop paused or slowed past the bracket's margin, that tick would take
+ * the next button's first patch for its baseline and swallow its edge.
+ */
+function backFromThePits(line: PitExitLine): readonly TelemetryStep[] {
+  return [
+    { patch: {}, holdMs: pitExitListenMs(line) },
+    {
+      patch: { IsReplayPlaying: true, OnPitRoad: false, PlayerTrackSurface: TrkLoc.OnTrack },
+      holdMs: AUTO_FUEL_SEED_MS,
+      tick: true,
+    },
+    { patch: { IsReplayPlaying: false }, holdMs: REPLAY_EXIT_SETTLE_MS, tick: true },
+    SEEDED_TICK,
+  ];
+}
 
 /**
  * How long the approach is held on its own before the takeover lands. The
@@ -2231,10 +2361,17 @@ const ROLLING_START_LINEUP_CHANGED_SHORTCUT: TelemetrySequenceShortcut = {
  * `IsReplayPlaying` off too. After a run that went through that is no change. It is its own step
  * rather than a key on {@link FORMATION_STAND_DOWN}: the two sequence buttons
  * end on that one live, and a step that leaves replay mode has to be held for
- * the exit grace before anything else is live.
+ * the exit grace before anything else is live — which is why it holds
+ * {@link REPLAY_EXIT_SETTLE_MS}, the one hold the UI keeps after a failed run
+ * ({@link failedRunTeardown}). Its own tick lands inside that grace, so the
+ * teardown ends on {@link SEEDED_TICK}, as a pit-exit button's does: with the
+ * tick loop paused or slowed, the translator re-seeds on the stood-down race
+ * there rather than on the next button's first patch, whose edge it would
+ * otherwise take for its baseline.
  */
 const ONE_LAP_TO_GREEN_STAND_DOWN: TelemetryStep = {
   patch: { IsReplayPlaying: false, ...FORMATION_STAND_DOWN.patch },
+  holdMs: REPLAY_EXIT_SETTLE_MS,
   tick: true,
 };
 
@@ -2247,7 +2384,11 @@ const ONE_LAP_TO_GREEN_SHORTCUT: BusEventShortcut = {
   telemetrySequence: FORMATION_ADOPTED,
   event: "flag.one-pace-lap-to-go.raised",
   data: {},
-  teardownSequence: [{ patch: {}, holdMs: FORMATION_ONE_LAP_TO_GREEN_CALL_MS }, ONE_LAP_TO_GREEN_STAND_DOWN],
+  teardownSequence: [
+    { patch: {}, holdMs: FORMATION_ONE_LAP_TO_GREEN_CALL_MS },
+    ONE_LAP_TO_GREEN_STAND_DOWN,
+    SEEDED_TICK,
+  ],
 };
 
 /** The session presets' player, car "42" — row 7 of the single-file caution lineup, behind car "11". */
@@ -2385,6 +2526,11 @@ const CAUTION_CATCH_UP_SHORTCUT: TelemetrySequenceShortcut = {
         OnPitRoad: false,
         PlayerCarInPitStall: false,
         PlayerTrackSurface: TrkLoc.OnTrack,
+        // Rolling with the pack at caution pace (#1113): pinned, so the car is
+        // never read as stopped on the circuit, which the rejoin detector would
+        // answer with a traffic line of its own whatever speed the previous
+        // button left the car at (#1349).
+        Speed: FORMATION_PACE_SPEED,
         SessionState: SessionState.Racing,
         SessionFlags: RACING_NO_FLAG,
         CarIdxPaceLine: NOBODY_LINED_UP,
@@ -3473,6 +3619,112 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
   radar("Both Sides", "clear", "both"),
   radar("Two Left", "left", "two-left"),
   radar("Two Right", "right", "two-right"),
+
+  // ── Traffic (issue #1113) ──
+  // `traffic.rejoin` / `traffic.pitExit` / `traffic.pitExitMerge` directly —
+  // bypasses the detectors' stopped-on-track and pit-exit gating, so each line
+  // is auditionable on demand. The rejoin lines are warnings only (amended
+  // 2026-11-20: nothing reassures), and `traffic.rejoinTowed` cuts one in
+  // flight, as a tow or a reset does. Only the close band speaks a number: its two
+  // calls are composed from pools (an intro or update intro, the seconds, and
+  // on the first call an outro), so a repeated press picks other takes. The
+  // pit-exit lines and the merge warning speak no number (the payload's
+  // seconds are for logs), and are dropped on the racing surface, so their
+  // buttons put the car on the pit lane first (`LEAVING_THE_PITS`) and hand it
+  // back after (`backFromThePits`).
+  {
+    id: "traffic-rejoin-right-behind",
+    category: "Traffic",
+    label: "Rejoin right behind",
+    description:
+      'Stopped on track, the nearest car under 2 s away — "Car right behind you. Watch out." or another of its four lines. Cuts any lower-weight line in flight. Unframed.',
+    event: "traffic.rejoin",
+    data: { verdict: "rightBehind" },
+  },
+  {
+    id: "traffic-rejoin-near-first",
+    category: "Traffic",
+    label: "Rejoin near, first call",
+    description:
+      'Stopped on track, a car comes within 10 s: the first call, 5 s — an intro leading into the seconds, then an outro, e.g. "Car coming in about five seconds. Watch out." Cuts any lower-weight line in flight. Unframed.',
+    event: "traffic.rejoin",
+    data: { verdict: "near", seconds: 5, first: true },
+  },
+  {
+    id: "traffic-rejoin-near-update",
+    category: "Traffic",
+    label: "Rejoin near, count",
+    description:
+      'Still stopped, the same car now 2 s away: the count — an update intro leading into the seconds, e.g. "Getting closer, about two seconds." Press it while the first call still plays to hear the newer line replace it. Unframed.',
+    event: "traffic.rejoin",
+    data: { verdict: "near", seconds: 2, first: false },
+  },
+  {
+    id: "traffic-rejoin-pack",
+    category: "Traffic",
+    label: "Rejoin pack",
+    description:
+      'Stopped on track, a group of cars coming, the nearest under 10 s away with more close behind it — "A group of cars coming. Join carefully." Said once for the whole group. Cuts any lower-weight line in flight. Unframed.',
+    event: "traffic.rejoin",
+    data: { verdict: "pack" },
+  },
+  {
+    id: "traffic-rejoin-towed",
+    category: "Traffic",
+    label: "Rejoin → towed",
+    description:
+      "Your car is towed or reset to the pits while you are stopped on track: any rejoin line playing stops at once and a waiting one is dropped. Says nothing itself. Press it while a rejoin line plays to hear it cut. The pit exit lines are left alone.",
+    event: "traffic.rejoinTowed",
+    data: {},
+  },
+  {
+    id: "traffic-pit-exit-traffic",
+    category: "Traffic",
+    label: "Pit exit traffic",
+    description:
+      'About 3 s before the end of pit road, a car is predicted at the end of the exit blend 1.5 s after you — "We\'re estimating traffic at the pit exit. Watch out." or another of its four lines. Cuts any lower-weight line in flight, the exit readback and tire-wear report included. Puts the car on the pit lane first, since the line is dropped once you are back on the racing surface, and hands it back to the circuit about four seconds later, both seeded rather than announced.',
+    event: "traffic.pitExit",
+    data: { verdict: "traffic", seconds: 1.5 },
+    telemetrySequence: LEAVING_THE_PITS,
+    teardownSequence: backFromThePits("pit-exit-traffic"),
+  },
+  {
+    id: "traffic-pit-exit-clear",
+    category: "Traffic",
+    label: "Pit exit clear",
+    description:
+      'About 3 s before the end of pit road, the nearest car is predicted at the end of the exit blend 7 s after you — "Looks like the pit exit will be clear." or another of its four lines. Cuts any lower-weight line in flight, the exit readback and tire-wear report included. Puts the car on the pit lane first, since the line is dropped once you are back on the racing surface, and hands it back to the circuit about nine seconds later, once its queue wait is over, both seeded rather than announced.',
+    event: "traffic.pitExit",
+    data: { verdict: "clear", seconds: 7 },
+    telemetrySequence: LEAVING_THE_PITS,
+    teardownSequence: backFromThePits("pit-exit-clear"),
+  },
+  {
+    id: "traffic-pit-exit-merge",
+    category: "Traffic",
+    label: "Pit exit merge warning",
+    description:
+      'In the pit exit lane, past the end of pit road, a car is predicted at the end of the exit blend 0.8 s after you, inside the Pit exit merge warning threshold — "Watch for cars." Said once per pit exit, whatever the pit exit call said. Cuts any lower-weight line in flight, a pit exit call still playing included. Puts the car on the pit lane first, since the line is dropped once you are back on the racing surface, and hands it back to the circuit about four seconds later, both seeded rather than announced.',
+    event: "traffic.pitExitMerge",
+    data: { seconds: 0.8 },
+    telemetrySequence: LEAVING_THE_PITS,
+    teardownSequence: backFromThePits("pit-exit-merge"),
+  },
+  // The rejoin detector itself (issue #1113): a field of three cars in two
+  // classes driven through the translator, so the verdicts, the numbers and
+  // when each is said are the detector's decisions, not a payload. The pit
+  // exit has no such button yet: the running harness's translator has no
+  // learned landmarks to judge it against (`traffic-telemetry.ts`).
+  {
+    id: "traffic-rejoin-train",
+    category: "Traffic",
+    label: "Rejoin → three cars coming",
+    requires: ["traffic-player-car", "sdk-connected"],
+    description:
+      'Drives the TRANSLATOR: you spin to a stop on the circuit while a car closes from 25 to 12, 8, 5 and 1.5 seconds away and goes by, with two more behind it, in two classes. About seventeen seconds. Apply the race session preset first (it names your car); no telemetry preset is needed, the button puts the field on track itself. Expect four lines, only for a car under ten seconds away, each drawn from its pools so the wording varies: nothing on stopping or as the lead car closes to 12 s, the first call at 8 s ("Car coming in about eight seconds. Watch out."), the count at 5 s ("Getting closer, about five seconds."), the right-behind line at 1.5 s ("Car right behind you. Watch out."), nothing once it has gone by while the next car is still 10 s or more away, and that car\'s own first call at 6 s ("Car coming in about six seconds. Watch out."). Nothing as you drive away. Refused while the mock SDK is disconnected: a disconnected translator sees no ticks.',
+    telemetrySequence: TRAFFIC_REJOIN_SEQUENCE,
+    teardownSequence: TRAFFIC_REJOIN_TEARDOWN,
+  },
 
   // ── Track Conditions — Worsening ──
   // `track.wetness.changed` transitions where `to > from`. Bypasses the sim

@@ -43,6 +43,7 @@ import { fileURLToPath } from "node:url";
 import { afterAll, afterEach, beforeAll, vi } from "vitest";
 
 import { getAudioAssetsManifest, seedGlobalSettings } from "./bootstrap-settings.js";
+import { HARNESS_DEVELOPMENT_FLAGS } from "./development-flags.js";
 import { MockPlatformAdapter } from "./mock-platform-adapter.js";
 import { MockSDKController, type TelemetryPatch } from "./mock-sdk-controller.js";
 import { wireHarnessRaceEngineer } from "./race-engineer-wiring.js";
@@ -244,7 +245,10 @@ export function useHeardRig(clipMs: ClipDurations): HeardRig {
         JSON.parse(readFileSync(join(PRESETS_DIR, "session", `${sessionPreset}.json`), "utf8")) as SessionInfo,
       );
       controller.setConnected(true);
-      initializeSimEventsIracing(bus, controller as unknown as SDKController, silentLogger, { onStepError: "rethrow" });
+      initializeSimEventsIracing(bus, controller as unknown as SDKController, silentLogger, {
+        onStepError: "rethrow",
+        trafficRejoin: HARNESS_DEVELOPMENT_FLAGS.trafficRejoin,
+      });
 
       if (ticking) controller.start();
       else controller.tickOnce();

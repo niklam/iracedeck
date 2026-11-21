@@ -32,6 +32,21 @@
  * builder writes each onto its recording line as `playedBy`, so the website
  * renders the artifact's words and mirrors no list of its own.
  *
+ * **What is withheld (#1113).** A feature a release build does not carry —
+ * one behind a development platform flag, such as the rejoin traffic warnings
+ * — keeps its contracts, vocabulary, script entries and clips, but a pack
+ * author must not be shown it. The caller names its contracts and vocabulary
+ * in `withheld` (the generator picks them from the release flags); the builder
+ * drops those, and every recording line only they draw from, so no orphan is
+ * left behind: a line some published callout (by its entry or its effective
+ * frame: its `open` and `close`, and its `cut` for a callout an event can end,
+ * the only kind whose end plays it), published var or plugin code still reaches stays, minus the
+ * withheld names in its columns, and a line nothing reached before stays as
+ * it was. A published callout whose entry or effective frame names a
+ * withheld var, condition or case is refused, as is a withheld name the
+ * catalog does not register (a rename would otherwise publish the feature
+ * again without a word).
+ *
  * The builder refuses a contract the script has no entry for. Since #1065 the
  * catalog is contracts-only and the bundled script covers all of it, so an
  * id with no entry is either a legacy `Scenario` speaking from code — which
@@ -44,13 +59,13 @@ import {
   collectLiteralClips,
   collectStepReferences,
   NO_FRAME,
+  parseStringStep,
   type ScriptStep,
   stripTakeSuffix,
   TAKE_SUFFIX,
-  VOICE_CLIP_PATH,
 } from "@iracedeck/callout-script";
 
-import { WEIGHT } from "../dsl.js";
+import { applyBase, WEIGHT } from "../dsl.js";
 import type { ContractReport, VocabularyReport } from "../interpreter.js";
 
 // ─── The artifact ────────────────────────────────────────────────────────────
@@ -228,6 +243,35 @@ export type PackReferenceInput = {
   pluginPlayed: readonly PluginPlayedClip[];
   /** Which voice's clips make the recording script. Defaults to the bundled voice, `default`. */
   voice?: string;
+  /** What the reference must not publish (#1113, see the module header). Default: nothing. */
+  withheld?: PackReferenceWithheld;
+};
+
+/**
+ * The contracts and vocabulary of a feature a release build does not carry
+ * (#1113): the reference publishes none of them, nor any recording line only
+ * they draw from. Names as the engine reports them.
+ */
+export type PackReferenceWithheld = {
+  contracts: readonly string[];
+  vars: readonly string[];
+  conds: readonly string[];
+  cases: readonly string[];
+};
+
+const NOTHING_WITHHELD: PackReferenceWithheld = { contracts: [], vars: [], conds: [], cases: [] };
+
+/**
+ * A catalog feature a release build does not carry (#1113): the platform
+ * feature flag that turns it on (`platform-features.json`) and what the
+ * reference withholds while no release build has that flag on. The pit-crew
+ * catalog lists them as `DEVELOPMENT_FEATURES`; the root generator reads the
+ * committed flags and passes the withheld names of each one no plugin ships.
+ */
+export type DevelopmentFeature = {
+  /** The `PlatformFeatureFlags` key (`@iracedeck/deck-core`) that turns the feature on. */
+  flag: string;
+  withheld: PackReferenceWithheld;
 };
 
 /** The bundled voice, whose clips the recording script is built from unless told otherwise. */
@@ -250,13 +294,25 @@ export function buildPackReference(input: PackReferenceInput): PackReference {
     );
   }
 
+  const withheld = checkWithheld(input.withheld ?? NOTHING_WITHHELD, input.contracts, input.vocabulary);
+  // Every contract's walk, the withheld included: a recording line is withheld
+  // only when what draws from it is (`buildRecordingScript`).
+  const allWalks = new Map<string, EntryWalk>(
+    input.contracts.map((contract) => [
+      contract.id,
+      walkEntry(script, script.scenarios[contract.id], contract.base, contract.frame, contract.endsOnEvent !== null),
+    ]),
+  );
   const walks = new Map<string, EntryWalk>();
   const callouts = [...input.contracts]
+    .filter((contract) => !withheld.contracts.has(contract.id))
     .sort((a, b) => compare(a.id, b.id))
     .map((contract): Callout => {
       const entry = script.scenarios[contract.id];
-      const walk = walkEntry(script, entry);
+      const walk = allWalks.get(contract.id) as EntryWalk;
       walks.set(contract.id, walk);
+      refuseWithheldReferences(contract.id, walk.references, withheld);
+      refuseWithheldFrameReferences(contract.id, walk.frame, withheld);
 
       return {
         id: contract.id,
@@ -278,17 +334,125 @@ export function buildPackReference(input: PackReferenceInput): PackReference {
       };
     });
 
-  const vocabulary = buildVocabulary(input.vocabulary, walks);
+  const vocabulary = buildVocabulary(
+    {
+      vars: input.vocabulary.vars.filter((v) => !withheld.vars.has(v.name)),
+      conds: input.vocabulary.conds.filter((c) => !withheld.conds.has(c.name)),
+      cases: input.vocabulary.cases.filter((c) => !withheld.cases.has(c.name)),
+    },
+    walks,
+  );
   const recordingScript = buildRecordingScript(
     input.groups,
     input.manifestClips,
     voice,
-    walks,
-    vocabulary.vars,
+    allWalks,
+    [...input.vocabulary.vars].sort((a, b) => compare(a.name, b.name)),
     input.pluginPlayed,
+    withheld,
   );
 
   return { _meta: { generatedFrom: [...input.generatedFrom] }, callouts, vocabulary, recordingScript };
+}
+
+/** {@link PackReferenceWithheld} as sets, each name checked against what the catalog registers. */
+type WithheldSets = {
+  contracts: ReadonlySet<string>;
+  vars: ReadonlySet<string>;
+  conds: ReadonlySet<string>;
+  cases: ReadonlySet<string>;
+};
+
+/**
+ * Refuse a withheld name the catalog does not register: a feature whose
+ * contract or var was renamed would otherwise reach the reference again with
+ * nothing red (module header).
+ */
+function checkWithheld(
+  withheld: PackReferenceWithheld,
+  contracts: readonly ContractReport[],
+  vocabulary: VocabularyReport,
+): WithheldSets {
+  const unknown = [
+    ...unregistered(
+      "contract",
+      withheld.contracts,
+      contracts.map((c) => c.id),
+    ),
+    ...unregistered(
+      "var",
+      withheld.vars,
+      vocabulary.vars.map((v) => v.name),
+    ),
+    ...unregistered(
+      "cond",
+      withheld.conds,
+      vocabulary.conds.map((c) => c.name),
+    ),
+    ...unregistered(
+      "case",
+      withheld.cases,
+      vocabulary.cases.map((c) => c.name),
+    ),
+  ];
+
+  if (unknown.length > 0) {
+    throw new Error(
+      `The reference is told to withhold ${unknown.join(", ")}, which the catalog does not register — ` +
+        "renamed or removed? Update the feature's withheld names to what the catalog registers.",
+    );
+  }
+
+  return {
+    contracts: new Set(withheld.contracts),
+    vars: new Set(withheld.vars),
+    conds: new Set(withheld.conds),
+    cases: new Set(withheld.cases),
+  };
+}
+
+function unregistered(kind: string, names: readonly string[], registered: readonly string[]): string[] {
+  const known = new Set(registered);
+
+  return names.filter((name) => !known.has(name)).map((name) => `${kind} "${name}"`);
+}
+
+/** Refuse a published callout whose entry names withheld vocabulary: the reference would point at what it hides. */
+function refuseWithheldReferences(id: string, references: CalloutReferences, withheld: WithheldSets): void {
+  const named = [
+    ...references.vars.filter((name) => withheld.vars.has(name)).map((name) => `var "${name}"`),
+    ...references.conds.filter((name) => withheld.conds.has(name)).map((name) => `cond "${name}"`),
+    ...references.cases.filter(({ name }) => withheld.cases.has(name)).map(({ name }) => `case "${name}"`),
+  ];
+
+  if (named.length > 0) {
+    throw new Error(
+      `"${id}" is published but its entry names the withheld ${named.join(", ")} — ` +
+        "withhold the callout too, or stop withholding what it uses.",
+    );
+  }
+}
+
+/**
+ * Refuse a published callout whose effective frame names withheld vocabulary:
+ * the frame plays around the line, so the reference would publish a callout
+ * that speaks what it hides just as surely as through its entry.
+ */
+function refuseWithheldFrameReferences(id: string, frame: FrameWalk | null, withheld: WithheldSets): void {
+  if (frame === null) return;
+
+  const named = [
+    ...frame.vars.filter((name) => withheld.vars.has(name)).map((name) => `var "${name}"`),
+    ...frame.conds.filter((name) => withheld.conds.has(name)).map((name) => `cond "${name}"`),
+    ...frame.cases.filter((name) => withheld.cases.has(name)).map((name) => `case "${name}"`),
+  ];
+
+  if (named.length > 0) {
+    throw new Error(
+      `"${id}" is published but its frame "${frame.name}" names the withheld ${named.join(", ")} — ` +
+        "withhold the callout too, or stop withholding what the frame uses.",
+    );
+  }
 }
 
 /** Serialise the artifact exactly as it is committed — 2-space JSON, trailing newline — so the freshness test can compare text. */
@@ -328,12 +492,47 @@ export function descriptionNamesGroup(description: string, group: string): boole
 type EntryWalk = {
   references: CalloutReferences;
   /**
-   * `group/name` of every literal `voice/<voice>/<group>/<name>.mp3` step, AS
-   * WRITTEN — the line it lands on is resolved with `lineKeyOf` against the
-   * recording lines, exact name first, so `laps-left-10.mp3` and
-   * `green-01.mp3` each reach the right line.
+   * The path every literal step plays, judged where the engine plays it —
+   * against the contract's `base` (`applyBase`) — and never as written:
+   * `openers/alright.mp3` under `voice/{voice}` plays
+   * `voice/{voice}/openers/alright.mp3`, while
+   * `voice/{voice}/openers/alright.mp3` there needs its leading-slash escape
+   * to (unescaped it plays from the base twice). `{voice}` is left in, for the
+   * recording script to resolve to the voice it is read for; a literal naming
+   * a voice keeps that voice, so `voice/other/flags/green-01.mp3` is the
+   * `other` voice's file and no line of another voice's. A published callout
+   * playing one of the voice's files that way keeps its line from being
+   * withheld with a feature that names it by pool (#1113). The line it lands
+   * on is the line of the one shipped file it plays (`buildRecordingScript`),
+   * so `laps-left-10-01.mp3` reaches `laps-left-10` and `green-01.mp3` reaches
+   * `green`.
    */
-  clipBases: ReadonlySet<string>;
+  clipPaths: ReadonlySet<string>;
+  /**
+   * What the entry's EFFECTIVE frame plays around it — the entry's `frame`
+   * override, else the contract's — walked with its fragments; `null` when
+   * the line is unframed (`"none"`), skipped, or names a frame the script
+   * does not define (the engine plays it unframed). Its `cut` counts only
+   * for a contract carrying `endsOn`, the only kind whose end plays it. Kept apart from
+   * `references` and `clipPaths`: the published references and a recording
+   * line's `usedBy` stay the entry's own, since one frame wraps nearly every
+   * callout. It counts where the frame matters for withholding (#1113): a
+   * published callout's frame naming withheld vocabulary is refused, and a
+   * line the frame plays stays while a published callout's frame plays it.
+   */
+  frame: FrameWalk | null;
+};
+
+/** What a frame's `open` and `close` reference, and its `cut` where it can play, their included fragments walked. */
+type FrameWalk = {
+  name: string;
+  vars: readonly string[];
+  conds: readonly string[];
+  cases: readonly string[];
+  /** The pools the frame draws from, resolved to `group/base` as an entry's `references.pools` are. */
+  pools: ReadonlySet<string>;
+  /** The paths the frame plays by literal step, kept as an entry's `clipPaths` keeps them. */
+  clips: ReadonlySet<string>;
 };
 
 const NO_REFERENCES: CalloutReferences = { pools: [], vars: [], conds: [], cases: [], includes: [], frames: [] };
@@ -344,40 +543,160 @@ const NO_REFERENCES: CalloutReferences = { pools: [], vars: [], conds: [], cases
  * the skip, the same rule `collectScriptReferences` applies. A fragment is
  * walked once however many paths reach it; an include of a name the script
  * does not define is still listed (it is what the entry names) and followed
- * nowhere.
+ * nowhere. `base` is the contract's: a fragment's literals resolve against
+ * the including entry's base, as the engine expands them. `contractFrame` is
+ * the contract's default frame, which the entry's `frame` overrides; the
+ * effective one is walked as well (`EntryWalk.frame`), its `cut` only when
+ * `endable`: the contract carries `endsOn`. A body that can never play a
+ * clip (`canPlayClip`) gets no frame walked, as the engine expands none
+ * around it.
  */
-function walkEntry(script: CalloutScript, entry: CalloutScriptEntry): EntryWalk {
-  if (entry.skip === true) return { references: NO_REFERENCES, clipBases: new Set() };
+function walkEntry(
+  script: CalloutScript,
+  entry: CalloutScriptEntry,
+  base: string | null,
+  contractFrame: string,
+  endable: boolean,
+): EntryWalk {
+  if (entry.skip === true) return { references: NO_REFERENCES, clipPaths: new Set(), frame: null };
 
+  const body = walkSteps(script, [entry.sequence ?? []], base);
+
+  return {
+    references: {
+      pools: sorted(body.pools),
+      vars: sorted(body.vars),
+      conds: sorted(body.conds),
+      cases: sorted(body.cases.keys()).map((name) => ({ name, keys: sorted(body.cases.get(name) ?? []) })),
+      includes: sorted(body.includes),
+      frames: entry.frame !== undefined && entry.frame !== NO_FRAME ? [entry.frame] : [],
+    },
+    clipPaths: body.clipPaths,
+    frame: canPlayClip(script, entry.sequence ?? []) ? walkFrame(script, entry.frame ?? contractFrame, endable) : null,
+  };
+}
+
+/**
+ * Whether a body could play a clip at all — the script-side twin of the
+ * engine's `canProducePlay` (`expansion.ts`), which expands no frame around
+ * a body that cannot, so its frame neither aborts it nor plays (issue #1064).
+ * The engine reads the compiled body, whose includes the compiler has
+ * inlined (#1065), so an include is followed into its fragment here; one the
+ * script does not define fails to compile, and is answered `true` — the
+ * conservative side, which keeps the frame's withheld-vocabulary check. A
+ * `clip`, `var`, `pool` or `connector` can play; a `pause` or `ambient`
+ * never can; `optional`, `if` and `case` can iff a branch can.
+ */
+function canPlayClip(
+  script: CalloutScript,
+  steps: readonly ScriptStep[],
+  entered: ReadonlySet<string> = new Set(),
+): boolean {
   const fragments = script.fragments ?? {};
-  const pools = new Set<string>();
-  const vars = new Set<string>();
-  const conds = new Set<string>();
-  const cases = new Map<string, Set<string>>();
-  const includes = new Set<string>();
-  const clipBases = new Set<string>();
+  const fragmentCanPlay = (name: string): boolean => {
+    if (!Object.hasOwn(fragments, name)) return true;
+
+    // A cycle fails to compile; the first visit answers for the fragment.
+    if (entered.has(name)) return false;
+
+    return canPlayClip(script, fragments[name].sequence, new Set([...entered, name]));
+  };
+
+  return steps.some((step) => {
+    if (typeof step === "string") {
+      const form = parseStringStep(step);
+
+      if (form.kind === "include") return fragmentCanPlay(form.id);
+
+      return form.kind !== "pause";
+    }
+
+    if ("include" in step) return fragmentCanPlay(step.include);
+
+    if ("pause" in step || "ambient" in step) return false;
+
+    if ("optional" in step) return canPlayClip(script, step.optional, entered);
+
+    if ("if" in step) {
+      return canPlayClip(script, step.then, entered) || canPlayClip(script, step.else ?? [], entered);
+    }
+
+    if ("case" in step) return Object.values(step.of).some((branch) => canPlayClip(script, branch, entered));
+
+    // clip, var, pool, connector.
+    return true;
+  });
+}
+
+/**
+ * The effective frame's walk, or `null` when there is none to play: `"none"`,
+ * or a name the script does not define. A frame expands with no base (the
+ * engine's `expandFrame`), so its literals — and its fragments' — count as
+ * written: only a path into the voice's folder is one of its lines. `open` and
+ * `close` are always walked; `cut` only when `endable`, a contract carrying
+ * `endsOn`, since the engine expands the tail for no other (`Expansion`'s
+ * `cutChannel`, #1407) and an ended line is the only one that speaks it. A
+ * frame with no `cut` plays its `close` there, which is walked anyway.
+ */
+function walkFrame(script: CalloutScript, name: string, endable: boolean): FrameWalk | null {
+  // `hasOwn`, not a lookup: `frame: "constructor"` is a well-formed name.
+  if (name === NO_FRAME || !Object.hasOwn(script.frames, name)) return null;
+
+  const { open, close, cut } = script.frames[name];
+  const walk = walkSteps(script, [open, close, endable ? (cut ?? []) : []], null);
+
+  return {
+    name,
+    vars: sorted(walk.vars),
+    conds: sorted(walk.conds),
+    cases: sorted(walk.cases.keys()),
+    pools: walk.pools,
+    clips: walk.clipPaths,
+  };
+}
+
+/** What a set of step lists references, every fragment they include walked once. */
+type StepsWalk = {
+  pools: Set<string>;
+  vars: Set<string>;
+  conds: Set<string>;
+  cases: Map<string, Set<string>>;
+  includes: Set<string>;
+  clipPaths: Set<string>;
+};
+
+function walkSteps(script: CalloutScript, roots: readonly (readonly ScriptStep[])[], base: string | null): StepsWalk {
+  const fragments = script.fragments ?? {};
+  const walk: StepsWalk = {
+    pools: new Set(),
+    vars: new Set(),
+    conds: new Set(),
+    cases: new Map(),
+    includes: new Set(),
+    clipPaths: new Set(),
+  };
   const walked = new Set<string>();
-  const pending: (readonly ScriptStep[])[] = [entry.sequence ?? []];
+  const pending: (readonly ScriptStep[])[] = [...roots];
 
   while (pending.length > 0) {
     const steps = pending.pop() as readonly ScriptStep[];
     const refs = collectStepReferences(steps);
 
-    for (const name of refs.pools) pools.add(resolvePool(script, name));
+    for (const name of refs.pools) walk.pools.add(resolvePool(script, name));
 
-    for (const name of refs.vars) vars.add(name);
+    for (const name of refs.vars) walk.vars.add(name);
 
-    for (const name of refs.conds) conds.add(name);
+    for (const name of refs.conds) walk.conds.add(name);
 
     for (const { name, keys } of refs.cases) {
-      const merged = cases.get(name) ?? new Set<string>();
-      cases.set(name, merged);
+      const merged = walk.cases.get(name) ?? new Set<string>();
+      walk.cases.set(name, merged);
 
       for (const key of keys) merged.add(key);
     }
 
     for (const name of refs.includes) {
-      includes.add(name);
+      walk.includes.add(name);
 
       if (!walked.has(name) && Object.hasOwn(fragments, name)) {
         walked.add(name);
@@ -386,23 +705,15 @@ function walkEntry(script: CalloutScript, entry: CalloutScriptEntry): EntryWalk 
     }
 
     for (const clip of collectLiteralClips(steps)) {
-      const match = VOICE_CLIP_PATH.exec(clip);
-
-      if (match) clipBases.add(`${match[1]}/${match[2]}`);
+      // Only as the engine plays it, against the contract's base: a bare
+      // `openers/alright.mp3` under `voice/{voice}` is the voice's line, while
+      // an unescaped `voice/{voice}/openers/alright.mp3` there plays from
+      // `voice/{voice}/voice/{voice}/…`, no line of the voice's (see `clipPaths`).
+      walk.clipPaths.add(applyBase(base ?? undefined, clip));
     }
   }
 
-  return {
-    references: {
-      pools: sorted(pools),
-      vars: sorted(vars),
-      conds: sorted(conds),
-      cases: sorted(cases.keys()).map((name) => ({ name, keys: sorted(cases.get(name) ?? []) })),
-      includes: sorted(includes),
-      frames: entry.frame !== undefined && entry.frame !== NO_FRAME ? [entry.frame] : [],
-    },
-    clipBases,
-  };
+  return walk;
 }
 
 /** A slashed name is already a source; a `pools` alias resolves to its source; an alias the script does not define is kept as written. */
@@ -470,38 +781,52 @@ function takeOrder(name: string): number {
   return match ? Number(match[1]) : 0;
 }
 
-/**
- * A pool reference as a recording-line key. A reference is normally a base
- * (`fuel/laps-left-10`, `start-lights/countdown-90`) and keys that line as
- * written — a trailing `-NN` is part of the NAME whenever a line carries it.
- * Only a reference that keys no line and strips to one (`flags/green-01`, a
- * legal step naming one take) lands on the line of its base, the way a
- * literal clip's take does in `walkEntry`. Stripping first would send
- * `laps-left-10` to a `laps-left` line that does not exist and lose the
- * consumer. An alias the script never defined has no slash and is left as
- * written; it keys no line.
- */
-function lineKeyOf(pool: string, lineKeys: ReadonlySet<string>): string {
-  const slash = pool.indexOf("/");
+/** Add `value` to the set `map` keeps under `key`, creating it on first use. */
+function addTo(map: Map<string, Set<string>>, key: string, value: string): void {
+  let values = map.get(key);
 
-  if (slash < 0 || lineKeys.has(pool)) return pool;
+  if (!values) {
+    values = new Set();
+    map.set(key, values);
+  }
 
-  const stripped = `${pool.slice(0, slash + 1)}${stripTakeSuffix(pool.slice(slash + 1))}`;
-
-  return lineKeys.has(stripped) ? stripped : pool;
+  values.add(value);
 }
 
+/**
+ * The recording script off the voice's manifest clips. `walks` and `vars` are
+ * EVERY contract's and var's, the withheld included (`vars` sorted by name):
+ * a line's columns name only the published ones, and a line something drew
+ * from that only withheld names drew from is left out, its group with it when
+ * it was the last (module header).
+ */
 function buildRecordingScript(
   groups: PackReferenceInput["groups"],
   manifestClips: readonly string[],
   voice: string,
   walks: ReadonlyMap<string, EntryWalk>,
-  vars: readonly VocabularyItem[],
+  vars: readonly { name: string; description: string }[],
   pluginPlayed: readonly PluginPlayedClip[],
+  withheld: WithheldSets,
 ): RecordingGroup[] {
   // The shipped take names per base, per group, off the voice's manifest clips.
   const prefix = `voice/${voice}/`;
   const takesByGroup = new Map<string, Map<string, string[]>>();
+  // Which lines a reference plays from, as the engine resolves it against the
+  // same files. A literal plays the one file its path names, `{voice}` being
+  // the voice read here: the voice's `voice/<voice>/group/name.mp3` → its
+  // line, and a path into any other voice's folder → no line of this one's
+  // (the runtime plays that voice's file). A pool draws every `<base>.mp3`
+  // and `<base>-NN.mp3` (`poolMemberPattern`), so a file is a member of the pool its full name
+  // names and, when it carries a take suffix, of its base's: `green-01.mp3`
+  // belongs to the pools `green-01` and `green`. Where a take's name is also a
+  // line's base (`green-01.mp3` beside `green-01-01.mp3`), the pool
+  // `flags/green-01` therefore spans both lines and the literal
+  // `flags/green-01.mp3` only the `green` line. A reference no shipped file
+  // answers — an alias the script never defined, a take not recorded — plays
+  // nothing and credits no line.
+  const lineOfClip = new Map<string, string>();
+  const linesOfPool = new Map<string, Set<string>>();
 
   for (const clip of manifestClips) {
     if (!clip.startsWith(prefix) || !clip.endsWith(".mp3")) continue;
@@ -525,42 +850,64 @@ function buildRecordingScript(
 
     if (names) names.push(name);
     else bases.set(base, [name]);
+
+    const line = `${group}/${base}`;
+
+    lineOfClip.set(clip, line);
+    addTo(linesOfPool, `${group}/${name}`, line);
+
+    if (base !== name) addTo(linesOfPool, line, line);
   }
 
-  // Direct consumers: the callouts whose entries draw from a base by pool or by literal clip.
-  const lineKeys = new Set<string>();
+  // The lines a set of pools and literal clips plays from.
+  const linesOf = (pools: Iterable<string>, clips: Iterable<string>): Set<string> => {
+    const lines = new Set<string>();
 
-  for (const [group, bases] of takesByGroup) for (const base of bases.keys()) lineKeys.add(`${group}/${base}`);
+    for (const pool of pools) for (const line of linesOfPool.get(pool) ?? []) lines.add(line);
 
-  const directUsers = new Map<string, Set<string>>();
+    for (const clip of clips) {
+      const line = lineOfClip.get(clip.replace(/\{voice\}/g, voice));
 
-  for (const [id, { references, clipBases }] of walks) {
-    for (const key of [...references.pools, ...clipBases].map((ref) => lineKeyOf(ref, lineKeys))) {
-      let ids = directUsers.get(key);
-
-      if (!ids) {
-        ids = new Set();
-        directUsers.set(key, ids);
-      }
-
-      ids.add(id);
+      if (line !== undefined) lines.add(line);
     }
+
+    return lines;
+  };
+
+  // Direct consumers: the callouts whose entries draw from a line by pool or by literal clip.
+  const directUsers = new Map<string, Set<string>>();
+  // The callouts whose effective frame plays a line: they keep it from being
+  // withheld, but are not its `usedBy` (see `EntryWalk.frame`).
+  const frameUsers = new Map<string, Set<string>>();
+
+  for (const [id, { references, clipPaths, frame }] of walks) {
+    for (const line of linesOf(references.pools, clipPaths)) addTo(directUsers, line, id);
+
+    for (const line of linesOf(frame?.pools ?? [], frame?.clips ?? [])) addTo(frameUsers, line, id);
   }
 
-  return sorted(takesByGroup.keys()).map((group) => {
+  return sorted(takesByGroup.keys()).flatMap((group): RecordingGroup[] => {
     // The vars whose description names the group — noted on every line of
     // it, since which line a resolver picks is a runtime decision. Their
     // callouts are deliberately NOT folded into `usedBy` (see the type).
-    const viaVar = vars.filter((v) => descriptionNamesGroup(v.description, group)).map((v) => v.name);
+    const allViaVar = vars.filter((v) => descriptionNamesGroup(v.description, group)).map((v) => v.name);
+    const viaVar = allViaVar.filter((name) => !withheld.vars.has(name));
     const authored = new Map((Object.hasOwn(groups, group) ? groups[group] : []).map((l) => [l.name, l.text]));
     const bases = takesByGroup.get(group) ?? new Map<string, string[]>();
+    const lines = sorted(bases.keys()).flatMap((base): RecordingLine[] => {
+      const names = [...(bases.get(base) ?? [])].sort((a, b) => takeOrder(a) - takeOrder(b));
+      const allUsedBy = sorted(directUsers.get(`${group}/${base}`) ?? []);
+      const usedBy = allUsedBy.filter((id) => !withheld.contracts.has(id));
+      const playedBy = pluginPlayedEntry(pluginPlayed, group, base)?.playedBy ?? null;
+      const allFramedBy = [...(frameUsers.get(`${group}/${base}`) ?? [])];
+      const framed = allFramedBy.some((id) => !withheld.contracts.has(id));
+      const drawnFrom = allUsedBy.length > 0 || allViaVar.length > 0 || allFramedBy.length > 0;
 
-    return {
-      group,
-      lines: sorted(bases.keys()).map((base) => {
-        const names = [...(bases.get(base) ?? [])].sort((a, b) => takeOrder(a) - takeOrder(b));
+      // Only withheld names drew from it: withheld with them (#1113).
+      if (drawnFrom && usedBy.length === 0 && viaVar.length === 0 && !framed && playedBy === null) return [];
 
-        return {
+      return [
+        {
           base,
           texts: names.flatMap((name) => {
             const text = authored.get(name);
@@ -568,12 +915,14 @@ function buildRecordingScript(
             return text === undefined ? [] : [text];
           }),
           takes: names.length,
-          usedBy: sorted(directUsers.get(`${group}/${base}`) ?? []),
+          usedBy,
           viaVar: [...viaVar],
-          playedBy: pluginPlayedEntry(pluginPlayed, group, base)?.playedBy ?? null,
-        };
-      }),
-    };
+          playedBy,
+        },
+      ];
+    });
+
+    return lines.length === 0 ? [] : [{ group, lines }];
   });
 }
 

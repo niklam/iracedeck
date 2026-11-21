@@ -47,8 +47,15 @@ export function initRaceEngineer(core: Core, sim: SimRuntime, audio: Audio, voic
   // the caches are subscribed before registerPitCrew inside the wiring.
   // `voice` is the voice-pack state object itself, so a rescan's new driver-name
   // list reaches the wiring without re-wiring. The wiring's loggers are scopes
-  // of this one: `[RaceEngineer:LapCompleted]` and so on.
-  wireRaceEngineer(core.bus, { logger: core.adapter.createLogger("RaceEngineer"), sim, voice: voicePacks.state });
+  // of this one: `[RaceEngineer:LapCompleted]` and so on. The rejoin warnings'
+  // development flag (#1113) is the build's, as the sim phase hands it the
+  // translator: off in every release build, which keeps the rejoin lines silent.
+  wireRaceEngineer(core.bus, {
+    logger: core.adapter.createLogger("RaceEngineer"),
+    sim,
+    voice: voicePacks.state,
+    trafficRejoin: core.features.trafficRejoin === true,
+  });
 
   // Hand the engine every voice's callout script (#1064) — AFTER `registerPitCrew`,
   // never before: `setScripts` compiles eagerly against the contracts registered

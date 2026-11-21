@@ -30,6 +30,7 @@ import {
  * "Pit-lane landmarks (issue #1112)" (`pitLaneLandmarks`),
  * "Car progress (issue #1572)" (`carProgress`),
  * "Sector times (issue #1572)" (`sectorTimes`),
+ * "Approaching traffic (issue #1113)" (`trafficArrival`),
  * "Fastest lap of the race (issue #1571)" (`fastestLap`),
  * "Laps-of-fuel-left callouts (issue #838)" (`fuelCallout`) and "Track
  * sectors (issue #1573)" (`trackSectors`, `sectorStart`), whose only members are slices, the
@@ -334,6 +335,9 @@ const SLICE_READS_ALLOWED: SliceReadAllowList = {
 const SLICE_KEYS = [
   "trackGaps",
   "pitLaneLandmarks",
+  "trafficArrival",
+  "trafficRejoin",
+  "trafficPitExit",
   "fastestLap",
   "fuelCallout",
   "lapCrossing",

@@ -42,6 +42,7 @@ export { START_LIGHT_CALLOUTS } from "./families/start-light.js";
 export { TELEMETRY_CONNECT_CALLOUTS } from "./families/telemetry-connect.js";
 export { TIRE_WEAR_CALLOUTS } from "./families/tire-wear.js";
 export { TRACK_CONDITIONS_CALLOUTS } from "./families/track-conditions.js";
+export { TRAFFIC_CALLOUTS } from "./families/traffic.js";
 export { CALLOUT_PI_GROUPS, type CalloutPiGroup } from "./pi-groups.js";
 
 /** Any family in the registry: one placed in a `CALLOUT_PI_GROUPS` heading. A generic helper that must yield a `CalloutSettingKey` constrains on this, not on `CalloutFamily`. */

@@ -92,6 +92,17 @@ export function importAudioScenarios() {
   return importDist("index.js");
 }
 
+/**
+ * The built pit-crew catalog module — for a caller that needs one of its pure
+ * exports (the development features the pack reference withholds, #1113)
+ * without registering it.
+ *
+ * @returns {Promise<typeof import("@iracedeck/audio-scenarios/pit-crew")>}
+ */
+export function importPitCrewCatalog() {
+  return importDist("catalog/pit-crew/index.js");
+}
+
 function createLogger() {
   const noop = () => {};
   const logger = {

@@ -218,3 +218,94 @@ describe("assertReleaseBuild — the manifest carries no Debug key (#1338)", () 
     expect(assertReleaseBuild(CONFIG, { fs: filesFs({ [CONFIG]: RELEASE_CONFIG }), log })).toBe(EXIT_CLEAN);
   });
 });
+
+describe("assertReleaseBuild — no development flag turned on (#1113)", () => {
+  /** A built config whose merged flags are `features`. */
+  const configWith = (features) =>
+    JSON.stringify({ version: "3.9.0", platform: "stream-deck", featureFlags: { features } });
+  /** Committed flags: `profiles` ships on (one plugin is enough), `trafficRejoin` on none. */
+  const RELEASE_FLAGS = new Map([
+    ["profiles", true],
+    ["trafficRejoin", false],
+  ]);
+
+  it("passes a build carrying a development flag off — the value is the property, not the key", () => {
+    const log = fakeLog();
+    const fs = fakeFs(CONFIG, configWith({ profiles: true, trafficRejoin: false }));
+
+    expect(assertReleaseBuild(CONFIG, { fs, log, readReleaseFlags: () => RELEASE_FLAGS })).toBe(EXIT_CLEAN);
+    expect(log.error).not.toHaveBeenCalled();
+  });
+
+  it("fails a build with trafficRejoin turned on, naming the flag, the file and the override", () => {
+    const log = fakeLog();
+    const fs = fakeFs(CONFIG, configWith({ profiles: true, trafficRejoin: true }));
+
+    expect(assertReleaseBuild(CONFIG, { fs, log, readReleaseFlags: () => RELEASE_FLAGS })).toBe(EXIT_PROBLEM);
+    expect(output(log)).toContain('"trafficRejoin"');
+    expect(output(log)).toContain(CONFIG);
+    expect(output(log)).toContain("feature-flags.local.json");
+  });
+
+  it("fails any flag no committed platform-features.json ships on, the undeclared included, and names each", () => {
+    const log = fakeLog();
+    const fs = fakeFs(CONFIG, configWith({ profiles: true, trafficRejoin: true, somethingNew: true }));
+
+    expect(assertReleaseBuild(CONFIG, { fs, log, readReleaseFlags: () => RELEASE_FLAGS })).toBe(EXIT_PROBLEM);
+    expect(output(log)).toContain('"somethingNew", "trafficRejoin"');
+  });
+
+  it("passes a flag that some plugin ships on, whatever this build sets it to", () => {
+    for (const profiles of [true, false]) {
+      const log = fakeLog();
+
+      expect(
+        assertReleaseBuild(CONFIG, {
+          fs: fakeFs(CONFIG, configWith({ profiles })),
+          log,
+          readReleaseFlags: () => RELEASE_FLAGS,
+        }),
+      ).toBe(EXIT_CLEAN);
+    }
+  });
+
+  it("only true is on: a truthy string is not, as the plugin reads it (`=== true`)", () => {
+    const log = fakeLog();
+    const fs = fakeFs(CONFIG, configWith({ trafficRejoin: "true" }));
+
+    expect(assertReleaseBuild(CONFIG, { fs, log, readReleaseFlags: () => RELEASE_FLAGS })).toBe(EXIT_CLEAN);
+  });
+
+  it("passes a config with no flags at all", () => {
+    for (const config of [{ version: "3.9.0" }, { featureFlags: null }, { featureFlags: { features: [] } }]) {
+      const log = fakeLog();
+
+      expect(
+        assertReleaseBuild(CONFIG, {
+          fs: fakeFs(CONFIG, JSON.stringify(config)),
+          log,
+          readReleaseFlags: () => RELEASE_FLAGS,
+        }),
+      ).toBe(EXIT_CLEAN);
+    }
+  });
+
+  it("fails when the committed flags cannot be read", () => {
+    const log = fakeLog();
+    const fs = fakeFs(CONFIG, configWith({ trafficRejoin: false }));
+    const releaseFlags = () => {
+      throw Object.assign(new Error("ENOENT platform-features.json"), { code: "ENOENT" });
+    };
+
+    expect(assertReleaseBuild(CONFIG, { fs, log, readReleaseFlags: releaseFlags })).toBe(EXIT_PROBLEM);
+    expect(output(log)).toContain("ENOENT platform-features.json");
+  });
+
+  it("reads the committed files by default, where trafficRejoin ships on no plugin", () => {
+    const log = fakeLog();
+    const fs = fakeFs(CONFIG, configWith({ trafficRejoin: true }));
+
+    expect(assertReleaseBuild(CONFIG, { fs, log })).toBe(EXIT_PROBLEM);
+    expect(output(log)).toContain('"trafficRejoin"');
+  });
+});

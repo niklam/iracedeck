@@ -54,5 +54,20 @@ export type {
   TireCornerWear,
   TireWearReport,
   TireZone,
+  TrafficPitExit,
+  TrafficPitExitMerge,
+  TrafficPitExitVerdict,
+  TrafficRejoin,
+  TrafficRejoinNear,
+  TrafficRejoinPack,
+  TrafficRejoinRightBehind,
+  TrafficRejoinVerdict,
 } from "./event-catalog.js";
-export { OpponentPenaltyFlag, TrackWetness } from "./event-catalog.js";
+export {
+  OpponentPenaltyFlag,
+  TrackWetness,
+  TRAFFIC_REJOIN_NEAR_MAX_SECONDS,
+  TRAFFIC_REJOIN_NEAR_MIN_SECONDS,
+  TRAFFIC_REJOIN_OVER_TEN_S,
+  TRAFFIC_REJOIN_RIGHT_BEHIND_S,
+} from "./event-catalog.js";

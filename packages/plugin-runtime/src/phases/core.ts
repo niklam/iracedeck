@@ -115,6 +115,7 @@ export function initCore(host: PluginHost): Core {
     bus,
     controller: getController(),
     nativeAddons,
+    features: pluginConfig.featureFlags?.features ?? {},
   };
 
   // Name the plugin-state sections Take Snapshot collects (#1387). Last in this

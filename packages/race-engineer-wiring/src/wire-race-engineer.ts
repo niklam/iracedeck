@@ -26,6 +26,15 @@ export interface RaceEngineerWiringDeps {
   readonly sim: SimRuntime;
   readonly voice: RaceEngineerVoiceState;
   /**
+   * Whether this build carries the rejoin traffic warnings (#1113, the spec's
+   * fourth amendment): the `trafficRejoin` development flag. Required, so every
+   * composition root decides: the plugins read their build's flag, which every
+   * release build has off, and the scenario harness, which is development
+   * tooling, passes `true`. The translator takes the same flag, so with it off
+   * nothing publishes a rejoin event and the lines are silent besides.
+   */
+  readonly trafficRejoin: boolean;
+  /**
    * Wins over what the wiring builds. A key whose value is `undefined` is
    * dropped rather than spread: spreading it would erase the built dependency,
    * and `registerPitCrew` would then fall back to its default without a word.

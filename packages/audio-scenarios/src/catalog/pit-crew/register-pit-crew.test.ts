@@ -38,6 +38,7 @@ import {
   PIT_WINDOW_CALLOUTS,
   ROLLING_START_CALLOUTS,
   TIRE_WEAR_CALLOUTS,
+  TRAFFIC_CALLOUTS,
 } from "@iracedeck/callout-settings";
 import type { IEventBus, SessionClass, SimEventMap, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import { OpponentPenaltyFlag } from "@iracedeck/event-bus";
@@ -72,6 +73,7 @@ import {
   type RollingStartCalloutId,
   stopRaceEngineerScenarios,
   type TireWearCalloutId,
+  type TrafficCalloutId,
 } from "./index.js";
 import { _resetLimiterCueEngine } from "./limiter-cue-engine.js";
 import { NO_LIMITER_CLIP_SOURCES } from "./no-limiter.js";
@@ -82,6 +84,7 @@ import { _resetRadarEngine } from "./radar-engine.js";
 import { _resetSpotterEngine } from "./spotter-engine.js";
 import { TELEMETRY_READOUT_CLIP_SOURCES } from "./telemetry-readout.js";
 import { TIRE_WEAR_CLIP_SOURCES } from "./tire-wear.js";
+import { _resetTrafficState, readTrafficDebugState } from "./traffic.js";
 
 const mockSessionType = vi.fn(() => "Race");
 // Live-telemetry feed. Most of this file leaves it at `null` — the pre-#1051
@@ -403,6 +406,22 @@ const TELEMETRY_READOUT_CLIP_PATHS = [
   `voice/${VOICE}/numbers-degrees/41.mp3`,
 ] as const;
 
+// Approaching-traffic clips (issue #1113): one take of every pool the bundled
+// script addresses, and the four-second middle the composed lines speak.
+const TRAFFIC_CLIP_PATHS = [
+  ...[
+    "rejoin-intro",
+    "rejoin-outro",
+    "rejoin-update",
+    "rejoin-right-behind",
+    "rejoin-pack",
+    "pit-exit-traffic",
+    "pit-exit-clear",
+    "pit-exit-merge",
+    "rejoin-mid-4",
+  ].map((base) => `voice/${VOICE}/traffic/${base}-01.mp3`),
+] as const;
+
 const manifest: AudioAssetsManifest = {
   clips: [
     "sfx/IRD-tick-open.mp3",
@@ -424,6 +443,7 @@ const manifest: AudioAssetsManifest = {
     ...PIT_LIMITER_CLIP_PATHS,
     ...TIRE_WEAR_CLIP_PATHS,
     ...TELEMETRY_READOUT_CLIP_PATHS,
+    ...TRAFFIC_CLIP_PATHS,
   ],
   ambientLoop: "sfx/IRD-ambient-pit.mp3",
   ticks: { open: "sfx/IRD-tick-open.mp3", close: "sfx/IRD-tick-close.mp3" },
@@ -511,6 +531,9 @@ let pitBoxEnabled: boolean;
 let pitWindowEnabled: Map<PitWindowCalloutId, boolean>;
 let tireWearEnabled: Map<TireWearCalloutId, boolean>;
 let opponentPitEnabled: Map<OpponentPitCalloutId, boolean>;
+let trafficEnabled: Map<TrafficCalloutId, boolean>;
+/** The `trafficRejoin` development flag as `registerPitCrew` reads it (#1113): on here, as in a development build. */
+let trafficRejoinAvailable: boolean;
 /** The shared `getLiveCarPosition` dep's answer for every car (#1577): opponent pit, opponent flags and fastest lap all read it. */
 let liveCarPosition: number | null;
 let rollingStartEnabled: Map<RollingStartCalloutId, boolean>;
@@ -543,6 +566,11 @@ beforeEach(() => {
     ["leader", true],
     ["nearby", true],
   ]);
+  trafficEnabled = new Map<TrafficCalloutId, boolean>([
+    ["rejoin", true],
+    ["pit-exit", true],
+  ]);
+  trafficRejoinAvailable = true;
   liveCarPosition = 4;
   _resetOpponentPitPending();
   rollingStartEnabled = new Map<RollingStartCalloutId, boolean>([["pace-car", true]]);
@@ -573,6 +601,7 @@ beforeEach(() => {
     familyGate(ROLLING_START_CALLOUTS, (id) => rollingStartEnabled.get(id) ?? true),
     familyGate(FUEL_CALLOUTS, (id) => fuelEnabled.get(id) ?? true),
     familyGate(OPPONENT_PIT_CALLOUTS, (id) => opponentPitEnabled.get(id) ?? true),
+    familyGate(TRAFFIC_CALLOUTS, (id) => trafficEnabled.get(id) ?? true),
     familyGate(PIT_LIMITER_CALLOUTS, getPitLimiterEnabled),
     familyGate(NO_LIMITER_CALLOUTS, getNoLimiterEnabled),
   ];
@@ -594,6 +623,7 @@ beforeEach(() => {
     getStandingStart: () => false,
     getLatestTelemetry: () => mockLatestTelemetry() as TelemetryData | null,
     getDamageRepairNeeded: () => null,
+    getTrafficRejoinAvailable: () => trafficRejoinAvailable,
   });
   // After the registration, as the plugins do (issue #1064): the engine
   // wraps every framed callout in the voice's `radio` frame at fire time.
@@ -607,6 +637,7 @@ afterEach(() => {
   _resetPitSpeedingEngine();
   _resetPitExitCueEngine();
   _resetLimiterCueEngine();
+  _resetTrafficState();
   _setFurledRaisedSpoken(false);
   _resetLastIncidentPoints();
   vi.clearAllMocks();
@@ -930,7 +961,7 @@ describe("radio frame comes from the engine, not the catalog (issue #1064)", () 
     }
   });
 
-  it("only the five terse families opt out of the frame, and only via `frame: NO_FRAME`", () => {
+  it("only the six terse families opt out of the frame, and only via `frame: NO_FRAME`", () => {
     const explicit = registered().filter((s) => s.frame !== undefined);
 
     // Nothing names a frame other than the opt-out: the default (`radio`)
@@ -952,6 +983,8 @@ describe("radio frame comes from the engine, not the catalog (issue #1064)", () 
         // Spotter calls (decision D1) and their informational sibling.
         "pit-crew.spotter-call",
         "pit-crew.spotter-info",
+        // Rejoin traffic lines: repeated while the car stays stopped (#1113).
+        ...["right-behind", "near-first", "near-update", "pack"].map((line) => `pit-crew.traffic-rejoin-${line}`),
       ].sort(),
     );
   });
@@ -1850,6 +1883,155 @@ describe("opponent-pit family registration (issue #622)", () => {
   it("is suppressed when the master gate is off", () => {
     voiceMasterEnabled = false;
     bus.publishEvent("opponentPit.entered", { relation: "leader", carIdx: 2, position: 1 } as never);
+    flush(audio);
+
+    expect(voiceClipsPlayed()).toEqual([]);
+  });
+});
+
+// Issue #1113: the approaching-traffic family is registered by
+// `registerPitCrew` and wrapped by the master gate and two opt-ins — `rejoin`
+// over the four rejoin lines, `pit-exit` over the two pit-exit ones and the
+// merge warning — and
+// spoken through the bundled script. The line mapping, the vocabulary and the
+// scheduling are covered in `traffic.test.ts`; these confirm the wiring.
+describe("traffic family registration (issue #1113)", () => {
+  const clip = (base: string): string => `voice/${VOICE}/traffic/${base}-01.mp3`;
+
+  it.each([
+    { data: { verdict: "rightBehind" }, clips: ["rejoin-right-behind"] },
+    { data: { verdict: "near", seconds: 4, first: true }, clips: ["rejoin-intro", "rejoin-mid-4", "rejoin-outro"] },
+    { data: { verdict: "near", seconds: 4, first: false }, clips: ["rejoin-update", "rejoin-mid-4"] },
+    { data: { verdict: "pack" }, clips: ["rejoin-pack"] },
+  ] satisfies ReadonlyArray<{ data: SimEventMap["traffic.rejoin"]["data"]; clips: string[] }>)(
+    "a rejoin $data.verdict plays its line when the opt-in is on",
+    ({ data, clips }) => {
+      // An update is spoken only once a first call introduced the car (#1113,
+      // amended 2026-11-17): play one, then listen to the line under test.
+      if (data.verdict === "near" && !data.first) {
+        bus.publishEvent("traffic.rejoin", { verdict: "near", seconds: 4, first: true });
+        flush(audio);
+        audio._reset();
+      }
+
+      bus.publishEvent("traffic.rejoin", data);
+      flush(audio);
+
+      expect(voiceClipsPlayed()).toEqual(clips.map(clip));
+    },
+  );
+
+  it.each([
+    { verdict: "traffic", base: "pit-exit-traffic" },
+    { verdict: "clear", base: "pit-exit-clear" },
+  ] as const)("a pit exit $verdict plays its line when the opt-in is on", ({ verdict, base }) => {
+    bus.publishEvent("traffic.pitExit", { verdict, seconds: 1 });
+    flush(audio);
+
+    expect(voiceClipsPlayed()).toEqual([clip(base)]);
+  });
+
+  it("the rejoin opt-in off silences every rejoin line but not the pit exit", () => {
+    trafficEnabled.set("rejoin", false);
+
+    bus.publishEvent("traffic.rejoin", { verdict: "rightBehind" });
+    bus.publishEvent("traffic.rejoin", { verdict: "near", seconds: 4, first: true });
+    bus.publishEvent("traffic.rejoin", { verdict: "pack" });
+    flush(audio);
+    expect(voiceClipsPlayed()).toEqual([]);
+
+    bus.publishEvent("traffic.pitExit", { verdict: "traffic", seconds: 1 });
+    flush(audio);
+    expect(voiceClipsPlayed()).toEqual([clip("pit-exit-traffic")]);
+  });
+
+  it("the merge warning plays its line when the pit-exit opt-in is on", () => {
+    bus.publishEvent("traffic.pitExitMerge", { seconds: 1 });
+    flush(audio);
+
+    expect(voiceClipsPlayed()).toEqual([clip("pit-exit-merge")]);
+  });
+
+  it("the pit-exit opt-in off silences both pit-exit lines and the merge warning but not the rejoin", () => {
+    trafficEnabled.set("pit-exit", false);
+
+    bus.publishEvent("traffic.pitExit", { verdict: "traffic", seconds: 1 });
+    bus.publishEvent("traffic.pitExit", { verdict: "clear" });
+    bus.publishEvent("traffic.pitExitMerge", { seconds: 1 });
+    flush(audio);
+    expect(voiceClipsPlayed()).toEqual([]);
+
+    bus.publishEvent("traffic.rejoin", { verdict: "pack" });
+    flush(audio);
+    expect(voiceClipsPlayed()).toEqual([clip("rejoin-pack")]);
+  });
+
+  it("the trafficRejoin flag off silences every rejoin line with its opt-in on, and the pit exit still speaks (fourth amendment)", () => {
+    trafficRejoinAvailable = false;
+
+    bus.publishEvent("traffic.rejoin", { verdict: "rightBehind" });
+    bus.publishEvent("traffic.rejoin", { verdict: "near", seconds: 4, first: true });
+    bus.publishEvent("traffic.rejoin", { verdict: "near", seconds: 3, first: false });
+    bus.publishEvent("traffic.rejoin", { verdict: "pack" });
+    flush(audio);
+    expect(voiceClipsPlayed()).toEqual([]);
+
+    bus.publishEvent("traffic.pitExit", { verdict: "traffic", seconds: 1 });
+    flush(audio);
+    expect(voiceClipsPlayed()).toEqual([clip("pit-exit-traffic")]);
+
+    bus.publishEvent("traffic.pitExitMerge", { seconds: 1 });
+    flush(audio);
+    expect(voiceClipsPlayed()).toEqual([clip("pit-exit-traffic"), clip("pit-exit-merge")]);
+  });
+
+  // With either gate off from the start, no first call is ever heard, so a
+  // `first: false` count is the first call's to take (#1113, amended
+  // 2026-11-17) and the case above never reaches the update line. Here the
+  // car is introduced with both gates on, so the count is the update's, and
+  // only the gate under test can silence it.
+  it.each([
+    {
+      gate: "the trafficRejoin flag",
+      set: (on: boolean) => {
+        trafficRejoinAvailable = on;
+      },
+    },
+    { gate: "the rejoin opt-in", set: (on: boolean) => void trafficEnabled.set("rejoin", on) },
+  ])("$gate off silences the update about a car introduced while it was on", ({ set }) => {
+    bus.publishEvent("traffic.rejoin", { verdict: "near", seconds: 4, first: true });
+    flush(audio);
+    expect(voiceClipsPlayed()).toEqual(["rejoin-intro", "rejoin-mid-4", "rejoin-outro"].map(clip));
+    expect(readTrafficDebugState().introduced).toBe(true);
+    audio._reset();
+
+    set(false);
+    bus.publishEvent("traffic.rejoin", { verdict: "near", seconds: 4, first: false });
+    flush(audio);
+    expect(voiceClipsPlayed()).toEqual([]);
+
+    // The same count with the gate back on is the update: the case above
+    // reached the update line, not the first call.
+    set(true);
+    bus.publishEvent("traffic.rejoin", { verdict: "near", seconds: 4, first: false });
+    flush(audio);
+    expect(voiceClipsPlayed()).toEqual(["rejoin-update", "rejoin-mid-4"].map(clip));
+  });
+
+  it("a tow or a reset cuts a rejoin line through the registration's wrappers (amended 2026-11-20)", () => {
+    bus.publishEvent("traffic.rejoin", { verdict: "near", seconds: 4, first: true });
+    expect(voiceClipsPlayed()).toEqual([clip("rejoin-intro")]);
+
+    bus.publishEvent("traffic.rejoinTowed", {});
+    flush(audio);
+
+    expect(voiceClipsPlayed()).toEqual([clip("rejoin-intro")]);
+  });
+
+  it("is suppressed when the master gate is off", () => {
+    voiceMasterEnabled = false;
+    bus.publishEvent("traffic.rejoin", { verdict: "rightBehind" });
+    bus.publishEvent("traffic.pitExit", { verdict: "traffic", seconds: 1 });
     flush(audio);
 
     expect(voiceClipsPlayed()).toEqual([]);
@@ -2844,6 +3026,8 @@ describe("resolvePitCrewDeps (issue #1378)", () => {
     expect(resolved.getStandingStart()).toBe(false);
     expect(resolved.getDamageRepairNeeded()).toBeNull();
     expect(resolved.getSpotterTrackDirection()).toBe("neutral");
+    // The rejoin warnings are a development flag (#1113): off unless wired on.
+    expect(resolved.getTrafficRejoinAvailable()).toBe(false);
 
     for (const value of Object.values(resolved)) expect(typeof value).toBe("function");
   });

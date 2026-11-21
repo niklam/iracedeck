@@ -54,9 +54,11 @@ export type { StatePartError } from "./state-part.js";
 export type {
   Callout,
   CalloutReferences,
+  DevelopmentFeature,
   PackReference,
   PackReferenceInput,
   PackReferenceVocabulary,
+  PackReferenceWithheld,
   PluginPlayedClip,
   RecordingGroup,
   RecordingLine,

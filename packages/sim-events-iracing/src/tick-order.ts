@@ -65,6 +65,8 @@ import { START_COUNTDOWN_EVENTS, START_LIGHTS_EVENTS } from "./diff/start-lights
 import { TIRE_WEAR_EVENTS } from "./diff/tire-wear.js";
 import { TOGGLES_EVENTS } from "./diff/toggles.js";
 import { TRACK_WETNESS_EVENTS } from "./diff/track-wetness.js";
+import { TRAFFIC_PIT_EXIT_EVENTS } from "./diff/traffic-pit-exit.js";
+import { TRAFFIC_REJOIN_EVENTS } from "./diff/traffic-rejoin.js";
 
 /**
  * One stage of a tick that can publish.
@@ -93,8 +95,19 @@ export type TickStage = {
   readonly reordersWith?: string;
 };
 
-/** The publish sites in `translator.ts` that end active-state loops (`publishActiveStateTeardown`). */
-const TEARDOWN_EVENTS = ["radar.changed", "pitSpeeding.ended"] as const satisfies readonly SimEventName[];
+/**
+ * The publish sites in `translator.ts` that end active-state loops and lines (`publishActiveStateTeardown`).
+ * `traffic.rejoinTowed` here ends a rejoin line whose stop a wipe took away, and `traffic.pitExitEnded` drops a
+ * waiting pit-exit line whose exit a wipe ended (no `endsOn`: the audio family's gate reads it); the stage `diffTrafficRejoin`
+ * publishes `traffic.rejoin` after both teardown rows, which `race-engineer-wiring`'s `ends-on-order.test.ts`
+ * excuses for these two rows alone, on the proofs it names.
+ */
+const TEARDOWN_EVENTS = [
+  "radar.changed",
+  "pitSpeeding.ended",
+  "traffic.rejoinTowed",
+  "traffic.pitExitEnded",
+] as const satisfies readonly SimEventName[];
 
 /**
  * Every stage that can publish during one `handleTick` call — the translator's
@@ -160,6 +173,13 @@ export const TICK_ORDER: readonly TickStage[] = [
     source: "diff/pit-lane-landmarks.ts",
     via: "pending",
     events: PIT_LANE_LANDMARKS_EVENTS,
+  },
+  { stage: "diffTrafficRejoin", source: "diff/traffic-rejoin.ts", via: "pending", events: TRAFFIC_REJOIN_EVENTS },
+  {
+    stage: "diffTrafficPitExit",
+    source: "diff/traffic-pit-exit.ts",
+    via: "pending",
+    events: TRAFFIC_PIT_EXIT_EVENTS,
   },
   // Sector start before the corner name (#1676). The two calls one tick sweeps
   // are published in the order their markers were crossed, a tie (a corner at
@@ -275,7 +295,7 @@ export function findEndsOnOrderViolations(
           message:
             `${pair}: \`${triggerStage}\` publishes both, and the order table cannot see the order inside one stage, so this fails closed. ` +
             `Prove in that module's own tests that one call never emits \`${trigger}\` after \`${end}\` (drive a single call that would emit both and assert the emit order, ` +
-            `or show the two are gated apart), then add an exemption for this pair to the check that applies this one (\`race-engineer-wiring\`'s \`ends-on-order.test.ts\`, which has no exemption list until one is needed), citing that test.`,
+            `or show the two are gated apart), then add an exemption for this pair to the check that applies this one (\`race-engineer-wiring\`'s \`ends-on-order.test.ts\`, its \`SAME_STAGE_EXEMPTIONS\`), citing that test.`,
         });
       } else if (i < j && order[j]!.reordersWith === triggerStage) {
         violations.push({

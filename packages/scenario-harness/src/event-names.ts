@@ -107,6 +107,36 @@ export const EVENT_TEMPLATES = [
   { name: "pitStall.entered", description: "Stopped in your pit stall", data: {} },
   { name: "pitStall.departed", description: "Left pit stall", data: {} },
   {
+    name: "traffic.rejoin",
+    description:
+      "Stopped on track, which band the nearest coming car is in, only while one is under 10 s away (issue #1113, warnings only since 2026-11-20) — verdict: rightBehind (under 2 s) / near (2–9 s, with seconds, and first: true for the car-coming line, false for a later count) / pack (a group, the nearest under 10 s)",
+    data: { verdict: "near", seconds: 6, first: true } satisfies SimEventMap["traffic.rejoin"]["data"],
+  },
+  {
+    name: "traffic.rejoinTowed",
+    description:
+      "Towed or reset to the pits (or out of the car) during a stop on track (issue #1113, amended 2026-11-20) — cuts a rejoin line playing and drops one waiting; empty payload",
+    data: {} satisfies SimEventMap["traffic.rejoinTowed"]["data"],
+  },
+  {
+    name: "traffic.pitExit",
+    description:
+      'Leaving the pits, whether a car reaches the exit blend when you do (issue #1113) — first 3 s short of the end of pit road, or as you leave a stall nearer the end than that (or past it already when the landmarks arrive late); again only when a different verdict holds for two evaluations in a row before the end of the blend, and never after the merge warning ("Watch for cars.", traffic.pitExitMerge) — verdict: clear / traffic; seconds: the nearest car\'s arrival relative to yours (negative before), not spoken',
+    data: { verdict: "traffic", seconds: 1.5 } satisfies SimEventMap["traffic.pitExit"]["data"],
+  },
+  {
+    name: "traffic.pitExitMerge",
+    description:
+      "In the pit exit lane, a timed car reaches the exit blend within the merge threshold of you (issue #1113, amended 2026-11-20) — once per exit; seconds: that car's arrival relative to yours (negative before), not spoken",
+    data: { seconds: 0.8 } satisfies SimEventMap["traffic.pitExitMerge"]["data"],
+  },
+  {
+    name: "traffic.pitExitEnded",
+    description:
+      "The pit exit is over (issue #1113): past the end of the blend or on the racing surface, back in the stall, out of the world or the car, or your lap position missing for 1 s (the position grace); or the translator's teardown wiping the exit — a replay view (the garage too), a session change, a disconnect — drops a pit-exit line or merge warning still waiting for the radio, lets one playing finish; empty payload",
+    data: {} satisfies SimEventMap["traffic.pitExitEnded"]["data"],
+  },
+  {
     name: "pitBox.countdown",
     description: "Pit-box count-in mark (issue #600) — five 120 m → pit-now 20 m to the box",
     data: { mark: "three" },

@@ -142,6 +142,8 @@ vi.mock("./diff/gaps.js", async (io) => harness.spy(await io(), { diffGaps: 7 })
 vi.mock("./diff/pit-box-countdown.js", async (io) => harness.spy(await io(), { diffPitBoxCountdown: 4 }));
 vi.mock("./diff/pit-lane-landmarks.js", async (io) => harness.spy(await io(), { diffPitLaneLandmarks: 6 }));
 vi.mock("./diff/sector-start.js", async (io) => harness.spy(await io(), { diffSectorStart: 6 }));
+vi.mock("./diff/traffic-rejoin.js", async (io) => harness.spy(await io(), { diffTrafficRejoin: 7 }));
+vi.mock("./diff/traffic-pit-exit.js", async (io) => harness.spy(await io(), { diffTrafficPitExit: 6 }));
 vi.mock("./diff/corner-name.js", async (io) => harness.spy(await io(), { diffCornerName: 6 }));
 vi.mock("./diff/fuel-laps-left.js", async (io) => harness.spy(await io(), { diffFuelLapsLeft: 7 }));
 vi.mock("./diff/radar.js", async (io) => harness.spy(await io(), { diffRadar: 2 }));
@@ -578,7 +580,11 @@ describe("TICK_ORDER", () => {
     harness.probe.active = false;
     harness.probe.events = new Map(CONTROLLER_TICK_ORDER.filter(isModuleStage).map((s) => [s.stage, s.events[0]!]));
     controller = createController();
-    initializeSimEventsIracing(createRecordingBus(), controller, silentLogger, { onStepError: "rethrow" });
+    // The rejoin detector's development flag on (#1113), so every stage runs.
+    initializeSimEventsIracing(createRecordingBus(), controller, silentLogger, {
+      onStepError: "rethrow",
+      trafficRejoin: true,
+    });
   });
 
   afterEach(() => {
@@ -602,6 +608,19 @@ describe("TICK_ORDER", () => {
           .map((s) => s.stage)
           .sort(),
       );
+    });
+
+    it("skips only diffTrafficRejoin with the trafficRejoin flag off, every other stage in order (#1113)", () => {
+      _resetSimEventsIracing();
+      initializeSimEventsIracing(createRecordingBus(), controller, silentLogger, { onStepError: "rethrow" });
+      controller.tick(telemetry());
+      harness.probe.active = true;
+      const log = tickLog(controller, telemetry());
+      const withoutRejoin = CONTROLLER_TICK_ORDER.filter((s) => s.stage !== "diffTrafficRejoin");
+
+      expect(callsOf(log)).not.toContain("diffTrafficRejoin");
+      expect(callOrderMismatch(callsOf(log), withoutRejoin)).toBeNull();
+      expect(checkControllerTickLog(log).problems).toEqual([]);
     });
 
     // The replay recorder's turn on its own (#1468): its four stages in its
@@ -629,7 +648,10 @@ describe("TICK_ORDER", () => {
       _resetSimEventsIracing();
       const subscribe = vi.spyOn(controller, "subscribe");
 
-      initializeSimEventsIracing(createRecordingBus(), controller, silentLogger, { onStepError: "rethrow" });
+      initializeSimEventsIracing(createRecordingBus(), controller, silentLogger, {
+        onStepError: "rethrow",
+        trafficRejoin: true,
+      });
 
       expect(subscribe.mock.calls.map(([id]) => id)).toEqual(SUBSCRIBERS.map((s) => s.id));
       expect(CONTROLLER_TICK_ORDER).toEqual([...TICK_ORDER, ...REPLAY_RECORDER_ORDER]);
@@ -790,7 +812,7 @@ describe("TICK_ORDER", () => {
       const sites = classifyPublishSites(source);
       const direct = new Set(TICK_ORDER.filter((s) => s.source === "translator.ts").flatMap((s) => s.events));
 
-      // Five literal sites today: the two teardown publishes, driver.firstOnTrack
+      // Six literal sites today: the three teardown publishes, driver.firstOnTrack
       // (emitted by its direct step) and the two session.changed paths. Zero
       // would mean the scan is broken.
       expect(sites.literals.length).toBeGreaterThan(0);

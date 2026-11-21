@@ -44,6 +44,7 @@ import { readRadarDebugState } from "./radar-engine.js";
 import { readRollingStartDebugState } from "./rolling-start.js";
 import { readSectorComparisonDebugState } from "./sector-comparison.js";
 import { readSpotterDebugState } from "./spotter-engine.js";
+import { readTrafficDebugState } from "./traffic.js";
 
 /**
  * One key per pit-crew file that keeps state, holding what that file's reader
@@ -67,6 +68,7 @@ function readFamilies() {
     rollingStart: readStatePart(() => readRollingStartDebugState()),
     sectorComparison: readStatePart(() => readSectorComparisonDebugState()),
     spotter: readStatePart(() => readSpotterDebugState()),
+    traffic: readStatePart(() => readTrafficDebugState()),
   };
 }
 

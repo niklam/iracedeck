@@ -4,7 +4,7 @@
  * same decision from opposite sides: the runtime is what the Race Engineer
  * reads of the translator, the options are what the translator reads of the
  * Race Engineer's settings. The plugins' sim phase and the scenario harness
- * both call it, so the six settings apply in the harness as they do in the
+ * both call it, so the ten settings apply in the harness as they do in the
  * plugin.
  */
 import { OPPONENT_PENALTY_FLAG_TO_CALLOUT_ID, type OpponentFlagCalloutId } from "@iracedeck/audio-scenarios/pit-crew";
@@ -17,6 +17,9 @@ import {
   sanitizeGapAlertThresholdSeconds,
   sanitizeGapMinChangeSeconds,
   sanitizeOpponentFlagRangeSeconds,
+  sanitizeTrafficPitExitAfterSeconds,
+  sanitizeTrafficPitExitBeforeSeconds,
+  sanitizeTrafficPitExitMergeWarnSeconds,
   type SimEventsIracingSettingsOptions,
 } from "@iracedeck/sim-events-iracing";
 
@@ -67,5 +70,17 @@ export function createIracingTranslatorOptions(): Required<SimEventsIracingSetti
     // race gap, ahead or behind, is announced. Read live per announce so a
     // settings change applies to the next one; clamp mirrors the schema.
     getOpponentFlagRangeSeconds: () => sanitizeOpponentFlagRangeSeconds(getGlobalSettings().opponentFlagRangeSeconds),
+    // The pit-exit traffic window (issue #1113): how long before and after the
+    // player's arrival at the end of the blend a car counts as traffic. Read
+    // live at each evaluation. Rejoin has no setting: its bands are fixed.
+    getTrafficPitExitBeforeSeconds: () =>
+      sanitizeTrafficPitExitBeforeSeconds(getGlobalSettings().trafficPitExitBeforeSeconds),
+    getTrafficPitExitAfterSeconds: () =>
+      sanitizeTrafficPitExitAfterSeconds(getGlobalSettings().trafficPitExitAfterSeconds),
+    // The pit-exit merge warning (issue #1113, amended 2026-11-20): in the
+    // exit lane, a timed car reaching the end of the blend within this long
+    // of the player gets "Watch for cars." once. Read live at each evaluation.
+    getTrafficPitExitMergeWarnSeconds: () =>
+      sanitizeTrafficPitExitMergeWarnSeconds(getGlobalSettings().trafficPitExitMergeWarnSeconds),
   };
 }

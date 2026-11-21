@@ -53,6 +53,9 @@ const CAUTION_SHORTCUT_IDS = [
 /** The caution button that also refuses to run while the mock SDK is disconnected (issue #1168). */
 const CATCH_UP_SHORTCUT_ID = "flag-caution-catch-up";
 
+/** The rejoin train, which writes the player into the field at index 7 (issue #1113). */
+const TRAFFIC_TRAIN_SHORTCUT_ID = "traffic-rejoin-train";
+
 /** The whole-formation run, which needs its grid read on an OVAL (issue #1167). */
 const FORMATION_SHORTCUT_ID = "rolling-start-formation";
 
@@ -298,6 +301,48 @@ describe("the track-length precondition (issue #1168)", () => {
 
     vi.mocked(parseTrackLengthMeters).mockReturnValueOnce(2000);
     expect(checkShortcutPreconditions(["track-length"], connectedWith({}))).toBeNull();
+  });
+});
+
+describe("the traffic-player-car precondition (issue #1113)", () => {
+  /** The player's car a preset names, read off the file, so the table below is not typed in. */
+  const playerCarOf = (preset: string): unknown =>
+    (readSessionPreset(preset).DriverInfo as Record<string, unknown> | undefined)?.DriverCarIdx;
+
+  it.each(SESSION_PRESETS)("lets the rejoin train run exactly when the session names car 7 as yours (%s)", (preset) => {
+    // The train writes the player into the field at index 7; on a session
+    // naming another car the detector reads an empty slot as the player and
+    // the whole run is silent.
+    const refusal = checkShortcutPreconditions(
+      requiresOf(TRAFFIC_TRAIN_SHORTCUT_ID),
+      connectedWith(readSessionPreset(preset)),
+    );
+
+    expect(refusal === null, `on ${preset}: ${refusal}`).toBe(playerCarOf(preset) === 7);
+  });
+
+  it("holds on both race presets and on none of the others, so neither answer is a constant", () => {
+    expect(SESSION_PRESETS.filter((preset) => playerCarOf(preset) === 7).sort()).toEqual(["race", "race-oval"]);
+    expect(SESSION_PRESETS.filter((preset) => playerCarOf(preset) !== 7).length).toBeGreaterThan(0);
+  });
+
+  it("refuses a session naming another car, and one naming none, saying which car the run puts you in", () => {
+    for (const sessionInfo of [{ DriverInfo: { DriverCarIdx: 0 } }, null]) {
+      const refusal = checkShortcutPreconditions(["traffic-player-car"], connectedWith(sessionInfo));
+
+      expect(refusal).toEqual(expect.stringContaining("index 7"));
+    }
+  });
+
+  it("asks the translator's resolver which car is the player's — never a restated rule", () => {
+    const sessionInfo = { DriverInfo: { DriverCarIdx: 7 } };
+
+    vi.mocked(resolvePlayerCarIdx).mockClear();
+    expect(checkShortcutPreconditions(["traffic-player-car"], connectedWith(sessionInfo))).toBeNull();
+    expect(resolvePlayerCarIdx).toHaveBeenCalledWith(sessionInfo);
+
+    vi.mocked(resolvePlayerCarIdx).mockReturnValueOnce(3);
+    expect(checkShortcutPreconditions(["traffic-player-car"], connectedWith(sessionInfo))).not.toBeNull();
   });
 });
 
@@ -600,5 +645,25 @@ describe("POST /api/shortcut/start", () => {
 
     expect(res.statusCode).toBe(400);
     expect(res.error).toContain("no-such-shortcut");
+  });
+
+  it("refuses the rejoin train on a connected session naming another car than 7, before any telemetry is written (#1113)", async () => {
+    controller.setSessionInfo(readSessionPreset("practice") as unknown as SessionInfo);
+    controller.setConnected(true);
+
+    // The refusal is the whole answer: the route writes nothing, so a refused
+    // shortcut leaves the mock's telemetry exactly as the tester set it.
+    const before = structuredClone(controller.getState().telemetry);
+    const writes = vi.spyOn(controller, "mutateTelemetry");
+    const refused = await start(TRAFFIC_TRAIN_SHORTCUT_ID);
+
+    expect(refused.statusCode).toBe(409);
+    expect(refused.error).toEqual(expect.stringContaining("index 7"));
+    expect(writes).not.toHaveBeenCalled();
+    expect(controller.getState().telemetry).toEqual(before);
+
+    controller.setSessionInfo(readSessionPreset("race") as unknown as SessionInfo);
+
+    expect((await start(TRAFFIC_TRAIN_SHORTCUT_ID)).statusCode).toBe(204);
   });
 });

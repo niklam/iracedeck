@@ -30,6 +30,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { getAudioAssetsManifest, seedGlobalSettings } from "./bootstrap-settings.js";
+import { HARNESS_DEVELOPMENT_FLAGS } from "./development-flags.js";
 import { MockPlatformAdapter } from "./mock-platform-adapter.js";
 import { MockSDKController } from "./mock-sdk-controller.js";
 import { applyMergedManifest, type HarnessVoiceState, wireHarnessRaceEngineer } from "./race-engineer-wiring.js";
@@ -64,14 +65,13 @@ async function main(): Promise<void> {
   // ── Event bus + sim-events translator ────────────────────────────────────
   const eventBus = initializeEventBus(logger.createScope("EventBus"));
   const controller = new MockSDKController({ logger: logger.createScope("MockSDK") });
-  // The same six settings-backed options the plugins hand the translator
-  // (#1378), so the harness's seeded settings apply as they do in the plugin.
-  initializeSimEventsIracing(
-    eventBus,
-    controller as unknown as SDKController,
-    logger.createScope("SimEventsIracing"),
-    createIracingTranslatorOptions(),
-  );
+  // The same settings-backed options the plugins hand the translator
+  // (#1378), so the harness's seeded settings apply as they do in the plugin,
+  // and the harness's development flags: the rejoin detector runs here (#1113).
+  initializeSimEventsIracing(eventBus, controller as unknown as SDKController, logger.createScope("SimEventsIracing"), {
+    ...createIracingTranslatorOptions(),
+    trafficRejoin: HARNESS_DEVELOPMENT_FLAGS.trafficRejoin,
+  });
 
   // ── Audio engine ────────────────────────────────────────────────────────
   // Process audio-assets through the same radio-engineer ffmpeg filter

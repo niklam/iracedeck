@@ -44,7 +44,12 @@ import {
   FORMATION_NEXT_FOLLOW_CAR_IDX,
   FORMATION_PACE_CAR_IDX,
 } from "./rolling-start-grid.js";
-import { SCENARIO_SHORTCUTS, type ScenarioShortcut, type TelemetryStep } from "./scenario-shortcuts.js";
+import {
+  failedRunTeardown,
+  SCENARIO_SHORTCUTS,
+  type ScenarioShortcut,
+  type TelemetryStep,
+} from "./scenario-shortcuts.js";
 import { checkShortcutPreconditions } from "./shortcut-preconditions.js";
 
 const PRESETS_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "presets");
@@ -767,18 +772,15 @@ describe("the formation's calls on their own", () => {
       // formation left running trips the next caution button (the control
       // after this one), and a setup cut off inside its bracket has the mock
       // in replay mode, where the translator publishes nothing for anyone.
-      // After a failure the UI applies the teardown's patches without their
-      // holds, as here.
+      // After a failure the UI applies `failedRunTeardown`'s copy, as here:
+      // the listening hold dropped, and the stand-down's own hold kept, which
+      // is what carries the harness past the replay exit grace when the setup
+      // stopped inside the bracket.
       const shortcut = shortcutOf(ONE_LAP);
       const rig = startRig();
 
       drive(rig, stepsOf(ONE_LAP).slice(0, stepsRun));
-      drive(
-        rig,
-        (shortcut.teardownSequence ?? []).map(({ patch, tick }) => ({ patch, tick })),
-      );
-      // Past the replay exit grace, in case the setup stopped inside the bracket.
-      drive(rig, [{ patch: {}, holdMs: REPLAY_EXIT_GRACE_MS + 500 }]);
+      drive(rig, failedRunTeardown(shortcut.teardownSequence ?? []));
 
       const left = rig.controller.getState().telemetry as Record<string, unknown>;
 
@@ -795,6 +797,40 @@ describe("the formation's calls on their own", () => {
 
       expect(getRollingStartFormation()).toMatchObject({ firstFollowCarIdx: FORMATION_FOLLOW_CAR_IDX });
       expect(rig.events).toEqual([]);
+    },
+  );
+
+  it.each([
+    ...stepsOf(ONE_LAP).map((_step, index) => ({ run: `a setup that stopped at step ${index + 1}`, steps: index + 1 })),
+    { run: "a whole run", steps: null },
+  ])(
+    '"One Lap to Green" hands the next button a live translator with the tick loop paused, after $run',
+    ({ steps }) => {
+      // Only the ticks the steps ask for, as `/api/telemetry` gives them with
+      // the loop paused. The stand-down turns `IsReplayPlaying` off and ticks
+      // inside the exit grace; were no tick to follow its hold, the next
+      // button's first tick would re-seed on that button's own patch and take
+      // its edge — here a caution thrown — for the baseline.
+      const shortcut = shortcutOf(ONE_LAP);
+      const teardown = shortcut.teardownSequence ?? [];
+      const rig = startRig("race");
+      const drivePaused = (sequence: readonly TelemetryStep[]): void => {
+        for (const step of sequence) {
+          rig.controller.mutateTelemetry(step.patch as TelemetryPatch);
+
+          if (step.tick === true) rig.controller.tickOnce();
+
+          vi.advanceTimersByTime(step.holdMs ?? 0);
+        }
+      };
+
+      if (steps === null) drivePaused([...stepsOf(ONE_LAP), ...teardown]);
+      else drivePaused([...stepsOf(ONE_LAP).slice(0, steps), ...failedRunTeardown(teardown)]);
+
+      rig.events.length = 0;
+      drivePaused([{ patch: { SessionFlags: RACING_NO_FLAG | Flags.CautionWaving }, tick: true, holdMs: 100 }]);
+
+      expect(rig.events).toEqual(["flag.caution-waving.raised"]);
     },
   );
 

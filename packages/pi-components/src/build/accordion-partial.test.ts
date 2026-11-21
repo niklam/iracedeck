@@ -321,14 +321,35 @@ describe("race-engineer partials", () => {
     expect(html.indexOf(range)).toBe(flagsEnd + "</sdpi-item>".length);
   });
 
-  it("race-engineer-callouts renders every registry key exactly once (#1350)", () => {
-    const html = render("<%- include('race-engineer-callouts') %>", { ...withRequire, calloutPiGroups });
+  it("race-engineer-callouts renders every registry key exactly once with every row's flag on (#1350)", () => {
+    // Every platform flag a row names on, as in a development build with all of them (#1113).
+    const features = Object.fromEntries(
+      calloutPiGroups.flatMap((g) => g.rows.flatMap((r) => (r.feature === null ? [] : [[r.feature, true]]))),
+    );
+    const html = render("<%- include('race-engineer-callouts') %>", {
+      ...withRequire,
+      calloutPiGroups,
+      platform: { features },
+    });
 
     for (const key of CALLOUT_SETTING_KEYS) {
       expect(html.split(`setting="${key}"`).length - 1, key).toBe(1);
     }
 
     expect((html.match(/setting="calloutEnabled/g) ?? []).length).toBe(CALLOUT_SETTING_KEYS.length);
+  });
+
+  it("race-engineer-callouts renders every key but a flagged row's once without the flags, as a release build (#1113)", () => {
+    const html = render("<%- include('race-engineer-callouts') %>", { ...withRequire, calloutPiGroups });
+    const flagged = new Set(
+      calloutPiGroups.flatMap((g) => g.rows.filter((r) => r.feature !== null).map((r) => r.setting)),
+    );
+
+    expect([...flagged]).toEqual(["calloutEnabledTrafficRejoin"]);
+
+    for (const key of CALLOUT_SETTING_KEYS) {
+      expect(html.split(`setting="${key}"`).length - 1, key).toBe(flagged.has(key) ? 0 : 1);
+    }
   });
 
   // The truthy-attribute sdpi-checkbox trap: `default="false"` renders CHECKED,

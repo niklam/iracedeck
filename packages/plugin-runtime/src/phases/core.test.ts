@@ -1,5 +1,5 @@
 import { LogLevel } from "@iracedeck/logger";
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -87,6 +87,18 @@ describe("initCore", () => {
     initCore(host);
 
     expect(configs).toEqual([JSON.parse(readFileSync(join(host.binDir, "config.json"), "utf-8"))]);
+  });
+
+  it("carries config.json's feature flags as Core.features, and none as {} (#1113)", () => {
+    const flagged = createHost();
+    const features = { dialExtendedGestures: true, profiles: true, pngRasterization: true, trafficRejoin: true };
+    writeFileSync(
+      join(flagged.binDir, "config.json"),
+      JSON.stringify({ version: "0.0.0-test", platform: "stream-deck", featureFlags: { features } }),
+    );
+
+    expect(initCore(flagged).features).toEqual(features);
+    expect(initCore(createHost()).features).toEqual({});
   });
 
   it("maps debugLogging to the adapter's level, live (#609)", () => {

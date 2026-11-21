@@ -78,10 +78,31 @@ describe("initRaceEngineer", () => {
     expect(createLogger).toHaveBeenCalledWith("RaceEngineer");
     expect(seen).toHaveLength(1);
     expect(seen[0].bus).toBe(core.bus);
-    expect(Object.keys(seen[0].deps).sort(), "no overrides key at all").toEqual(["logger", "sim", "voice"]);
+    expect(Object.keys(seen[0].deps).sort(), "no overrides key at all").toEqual([
+      "logger",
+      "sim",
+      "trafficRejoin",
+      "voice",
+    ]);
+    // A config.json carrying no flags keeps the rejoin lines silent (#1113).
+    expect(seen[0].deps.trafficRejoin).toBe(false);
     expect(seen[0].deps.logger).toBe(raceEngineerLogger);
     expect(seen[0].deps.sim).toBe(sim);
     expect(seen[0].deps.voice, "the live state object, not a copy of its list").toBe(voicePacks.state);
+  });
+
+  it.each([
+    [{ trafficRejoin: true }, true],
+    [{ trafficRejoin: false }, false],
+    [{}, false],
+  ])("hands the wiring the build's trafficRejoin flag: %o carries the rejoin lines = %s (#1113)", (features, on) => {
+    const seen: Record<string, unknown>[] = [];
+    implement("wireRaceEngineer", (_bus, deps) => seen.push(deps as Record<string, unknown>));
+    const { core, sim, audio, voicePacks } = phases();
+
+    initRaceEngineer({ ...core, features }, sim, audio, voicePacks);
+
+    expect(seen[0].trafficRejoin).toBe(on);
   });
 
   it("builds the AudioScenarios and RaceEngineer loggers, in that order", () => {

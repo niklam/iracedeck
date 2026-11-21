@@ -11,6 +11,17 @@ export interface CalloutEntry {
    * functionality defaults on, so an off default is the visible exception.
    */
   readonly default?: false;
+  /**
+   * Present only on the opt-in of a callout a release build does not carry:
+   * the name of the platform feature flag (`platform-features.json`,
+   * `PlatformFeatureFlags` in `@iracedeck/deck-core`) that must be on for its
+   * checkbox to render. The settings window shows the row only in a build
+   * whose flags have it `true` — a development build, through
+   * `feature-flags.local.json` — and never in one that lacks the flag. The key
+   * stays in the schema either way, so a stored value is kept. Today only the
+   * rejoin traffic warnings carry it (`trafficRejoin`, #1113).
+   */
+  readonly requiresFeature?: string;
 }
 
 export interface CalloutFamily {

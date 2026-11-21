@@ -50,7 +50,7 @@ export function buildPitCrewDeps(
   deps: Omit<RaceEngineerWiringDeps, "overrides">,
   caches: RaceEngineerCaches,
 ): Required<PitCrewDeps> {
-  const { logger, sim, voice } = deps;
+  const { logger, sim, voice, trafficRejoin } = deps;
 
   // Compose the overtake gate from live telemetry + the tracked incident time.
   // Returns null when telemetry is unavailable (the scenario suppresses).
@@ -171,5 +171,7 @@ export function buildPitCrewDeps(
     getSessionClass: () => sim.getSessionClass(),
     getStandingStart: () => sim.isStandingStart(),
     getDamageRepairNeeded: () => sim.isDamageRepairNeeded(),
+    // The rejoin warnings' development flag (#1113), fixed for the run.
+    getTrafficRejoinAvailable: () => trafficRejoin,
   };
 }

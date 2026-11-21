@@ -52,10 +52,13 @@ export function initSim(core: Core, trackData: TrackData): Sim {
   // runs the same ones. Beside them, the pit-lane landmark learner's reader
   // (#1112): the translator does no file IO, so it seeds each track's learned
   // landmarks from the track store the previous phase built, at the first live
-  // tick of a track and again after a session change or a disconnect.
+  // tick of a track and again after a session change or a disconnect. And the
+  // rejoin detector's development flag (#1113): off in every release build, so
+  // it never runs there.
   initializeSimEventsIracing(core.bus, core.controller, core.adapter.createLogger("SimEventsIracing"), {
     ...createIracingTranslatorOptions(),
     loadPitLaneLandmarks: (track) => trackData.store.load(track),
+    trafficRejoin: core.features.trafficRejoin === true,
   });
 
   // Feed the translator's live per-car race order into the template-context builder

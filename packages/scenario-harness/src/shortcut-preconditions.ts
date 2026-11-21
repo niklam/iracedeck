@@ -37,6 +37,7 @@ import {
   FORMATION_SESSION_STATE,
   FORMATION_TRACK_SURFACE,
 } from "./rolling-start-grid.js";
+import { TRAFFIC_PLAYER_CAR_IDX } from "./traffic-telemetry.js";
 
 /**
  * What a shortcut can require of the harness before it will run.
@@ -68,9 +69,20 @@ import {
  * read (#1168). The catch-up button's gap is a lap fraction times it; without
  * one the translator measures no gap on any tick, so the caution plays and
  * neither catch-up call ever does.
+ *
+ * `traffic-player-car` — session info names car {@link TRAFFIC_PLAYER_CAR_IDX}
+ * as the player's (#1113): the slot the rejoin train writes the player into
+ * (`traffic-telemetry.ts`). On a session naming another car the translator
+ * reads that car's slot, which the train leaves out of the world, so the
+ * detector never sees the player stop and the whole run is silent.
  */
 export type ShortcutPrecondition =
-  "player-car-index" | "sdk-connected" | "rolling-start-grid" | "rolling-start-oval-grid" | "track-length";
+  | "player-car-index"
+  | "sdk-connected"
+  | "rolling-start-grid"
+  | "rolling-start-oval-grid"
+  | "track-length"
+  | "traffic-player-car";
 
 /** The live harness state a precondition is checked against, read by the route on every start. */
 export type HarnessPreconditionState = {
@@ -183,6 +195,16 @@ const PRECONDITION_RULES: Record<ShortcutPrecondition, PreconditionRule> = {
       'would write (for example "2.38 km"). This run opens your gap to the car ahead by moving lap distances, and the ' +
       "translator turns a lap fraction into a gap by multiplying it by the track length: without one it measures no " +
       "gap at all, so the caution would play for a minute with neither catch-up call in it.",
+  },
+  "traffic-player-car": {
+    // The translator's own resolver, as for `player-car-index`: asked, not
+    // restated, so "your car" means here exactly what it means to the detector.
+    satisfied: (state) => resolvePlayerCarIdx(state.sessionInfo) === TRAFFIC_PLAYER_CAR_IDX,
+    reason:
+      'Apply the "race" or "race-oval" session preset first. This run puts a field of cars on track indexed for that ' +
+      `roster, your car at index ${TRAFFIC_PLAYER_CAR_IDX}, and the translator reads which car is yours from the driver ` +
+      "list (DriverInfo.DriverCarIdx). On a session naming another car, or none, the detector would read an empty " +
+      "slot as yours and the whole run would be silent.",
   },
 };
 

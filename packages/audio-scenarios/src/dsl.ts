@@ -228,9 +228,11 @@ export type SpeakGate = {
  * that calls them, and in its table. It fails closed when one
  * stage can publish both, since the table cannot see inside a stage: prove the
  * order in that module's own tests, then add an exemption for the pair to
- * the wiring test, citing that test (it has no exemption list until one is
- * needed). And it fails when either event has no stage that publishes it,
- * which is a misspelt or dropped name. The check is conservative: it judges the
+ * the wiring test's `SAME_STAGE_EXEMPTIONS`, citing that test (a teardown row
+ * whose end's stage comes before the trigger's stage, proved to leave the
+ * trigger's stage nothing to publish on that tick, goes in its
+ * `TRIGGER_AFTER_END_EXEMPTIONS` the same way). And it fails when either
+ * event has no stage that publishes it, which is a misspelt or dropped name. The check is conservative: it judges the
  * order the code allows, not whether the sim can produce both on one tick.
  *
  * Code-owned like `speakGate`: what makes a line stop being true is pacing,

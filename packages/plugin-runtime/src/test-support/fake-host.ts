@@ -161,6 +161,7 @@ export function createFakeCore(extension?: PluginExtension): { core: Core; adapt
     bus: stub("bus"),
     controller: stub("controller"),
     nativeAddons: { iracing: { kind: "native" }, audio: { kind: "native" } },
+    features: {},
   };
 
   return { core, adapter: host.adapter };

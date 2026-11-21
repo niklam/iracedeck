@@ -391,7 +391,11 @@ const pitStatusContracts = (deps: PitStatusDeps): readonly ScenarioContract[] =>
  * the stop (the count-in, a limiter or opponent-pit line), and a release
  * dropped behind one of those would be the original silence again. The gate
  * drops it once the car has left the box, so a late "go" is never heard on
- * the way out.
+ * the way out. Waiting its turn is all the queue is for: a release an
+ * interrupt cut is dropped, never replayed (`dropWhenCut`, below).
+ *
+ * The Complete line it shares its clips with needs no such flag: it is not
+ * queueable, so a cut ends it already, and `dropWhenCut` requires `queueable`.
  */
 export const PIT_STATUS_NOTHING_TO_DO_SCENARIO_ID = "pit-crew.pit-status-nothing-to-do";
 
@@ -404,6 +408,12 @@ const nothingToDoContract = (deps: PitStatusDeps): ScenarioContract => ({
   family: "pit-status",
   when: { event: "pitService.stopEmpty" },
   queueable: true,
+  // A cut "go" is dropped, never replayed (#1113 spec amendment 2026-11-18,
+  // `dropWhenCut` from #1681): by the time the line that cut it is over, the
+  // car is already moving, and "Done. Go." a few seconds later makes no sense.
+  // At a pit exit the traffic call cut it and it replayed about three seconds
+  // on, still on the stall surface, which the speak gate lets through.
+  dropWhenCut: true,
   speakGate: {
     description: "The car is still in its pit box with no service under way, or telemetry is unavailable.",
     admit: () => stillInBoxIdle(deps),

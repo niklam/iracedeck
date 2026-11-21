@@ -7,7 +7,7 @@
 import type { LogLocation, ProfileSwitchSessionKind } from "@iracedeck/app-constants";
 import type { AudioAssetsManifest } from "@iracedeck/audio-scenarios";
 import type { CalloutScript } from "@iracedeck/callout-script";
-import type { IDeckActionHandler, IDeckPlatformAdapter } from "@iracedeck/deck-core";
+import type { IDeckActionHandler, IDeckPlatformAdapter, PlatformFeatureFlags } from "@iracedeck/deck-core";
 import type { getController } from "@iracedeck/deck-iracing";
 import type { IEventBus } from "@iracedeck/event-bus";
 import type { IRacingNative } from "@iracedeck/iracing-native";
@@ -102,6 +102,15 @@ export interface Core {
   readonly controller: ReturnType<typeof getController>;
   /** How each native addon loaded (#1373), read once at startup; fixed for the run. */
   readonly nativeAddons: NativeAddonStatuses;
+  /**
+   * This build's platform feature flags (`platform-features.json` merged with
+   * any `feature-flags.local.json`), as `bin/config.json` carries them; `{}`
+   * when it carries none. Read once at startup, fixed for the run. A phase
+   * reads a runtime-only flag here, never through deck-core's `getFeatureFlag`,
+   * so the flag is a data dependency like the rest of `Core`: the sim and Race
+   * Engineer phases read `trafficRejoin` (#1113).
+   */
+  readonly features: Readonly<Partial<PlatformFeatureFlags>>;
 }
 
 /**
