@@ -162,6 +162,7 @@ const nameKind = (name) => Object.keys(DECK_ALWAYS).find((kind) => DECK_ALWAYS[k
 const ON_REBUILD = "on every rebuild";
 const UNDER_WATCH = "again every time `watch` reruns it";
 const IN_LOOP = "again on every pass of its loop";
+const RUNS_ITSELF = "again every time it runs itself";
 /**
  * A finding as it stands when what made it runs over and over (`again`, one
  * of the reasons above): a `watch`, whatever it was once, since Niklas's go for
@@ -776,14 +777,27 @@ const UNREAD = "$(…)";
  * `trail` holds the `<package dir>\0<script>` keys being expanded, which is
  * both the depth ({@link MAX_SCRIPT_DEPTH}) and the cycle guard;
  * `underRestart` says a restart-kind run above this line is being read, so a
- * body the bound leaves unread anywhere beneath it asks, and so does a cycle
- * cut beneath it. A script the
+ * body the bound leaves unread anywhere beneath it asks. A script the
  * hook cannot read — no `ctx.scriptsAt`, no package.json, no such script — is
  * judged by its name alone; a selector it cannot resolve reads every package
  * instead ({@link runManifests}).
  */
 export function deckFindings(c, cwd, ctx, shell, trail = [], underRestart = false) {
+  return deckReach(c, cwd, ctx, shell, trail, underRestart).found;
+}
+
+/**
+ * {@link deckFindings}'s recursion: the findings, and `cycles`, the keys of
+ * the scripts above whose bodies this line runs again — the cycle guard cut
+ * there (#1737, CodeRabbit CLI). The level that expanded such a script makes
+ * everything its body found a `watch` ({@link RUNS_ITSELF}): a script that
+ * runs itself again does it all again on every pass, whatever it is called.
+ * A restart folded into a restart name on the way up loses nothing: that
+ * name's own finding is still among them, and is escalated with the rest.
+ */
+function deckReach(c, cwd, ctx, shell, trail, underRestart) {
   const found = [];
+  const cycles = new Set();
   const finding = (text, kind, again) => found.push(repeated(text, kind, again));
   const links = ctx.linkTargets().filter((l) => l.target);
   // Every command this reader judges, each with `at`, where its program word
@@ -903,25 +917,26 @@ export function deckFindings(c, cwd, ctx, shell, trail = [], underRestart = fals
       if (run.expand) lines.push(...bodyLines(run, ctx));
       for (const { dir, line, key, as, step } of lines) {
         if (key && trail.includes(key)) {
-          // The cycle guard stays, but a restart that runs itself again — or a
-          // cycle beneath a restart — restarts the host until someone stops
-          // it, so it asks as a watch does (#1737, CodeRabbit CLI).
-          if (kind === "restart" || underRestart)
-            finding(`\`${run.label}\` runs itself again, restarting the host on every pass`, "watch", run.repeats);
+          // The cycle guard stays; the level that expanded this script hears of it.
+          cycles.add(key);
           continue;
         }
         const [text, lineShell] = lineAs(line, as);
         // A lifecycle script is named in the path ({@link bodyLines}).
         const via = step ? `\`${run.label}\` → \`${step}\`` : `\`${run.label}\``;
-        for (const f of deckFindings(text, dir, ctx, lineShell, [...trail, key], underRestart || kind === "restart")) {
+        const inner = deckReach(text, dir, ctx, lineShell, [...trail, key], underRestart || kind === "restart");
+        const itself = key && inner.cycles.delete(key);
+        for (const k of inner.cycles) cycles.add(k);
+        for (const f of inner.found) {
+          const g = itself ? repeated(f.text, f.kind, RUNS_ITSELF) : f;
           // Under a restart's own name, the restarts it runs are that restart,
           // named once already; what else it reaches is reported.
-          if (kind === "restart" && f.kind === "restart") continue;
-          finding(`${via} → ${f.text}`, f.kind, run.repeats);
+          if (kind === "restart" && g.kind === "restart") continue;
+          finding(`${via} → ${g.text}`, g.kind, run.repeats);
         }
       }
     }
-  return found;
+  return { found, cycles };
 }
 
 /**

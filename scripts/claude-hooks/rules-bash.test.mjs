@@ -2678,11 +2678,19 @@ describe("nothing relinks a deck host without Niklas's go", () => {
     "pnpm build && pnpm restart:stream-deck",
     "npm run restart:stream-deck",
     "npm run build:with-restart",
-    "pnpm restart:stream-deck && pnpm stop:mirabox && pnpm start:ulanzi",
   ])("passes a restart, stop or start, linked or not, and still finds it: %s", (c) => {
     restarts(c, linked);
     restarts(c, elsewhere);
     restarts(c, ctx());
+  });
+  // A chain of three host actions passes with all three found, not just one.
+  it("passes a chain of a restart, a stop and a start, finding each", () => {
+    for (const c of [linked, elsewhere, ctx()])
+      expect(restarts("pnpm restart:stream-deck && pnpm stop:mirabox && pnpm start:ulanzi", c).split("; ")).toEqual([
+        "`pnpm restart:stream-deck` restarts, stops or starts a deck host",
+        "`pnpm stop:mirabox` restarts, stops or starts a deck host",
+        "`pnpm start:ulanzi` restarts, stops or starts a deck host",
+      ]);
   });
 
   it("says what still needs a go and what does not", () =>
@@ -3495,18 +3503,32 @@ describe("a restart run over and over asks (#1737 review)", () => {
 
   // CodeRabbit CLI at 53821a933: the cycle guard cut the repeat of a restart
   // that runs itself, which restarts the host forever.
-  describe("a restart that runs itself", () => {
+  // CodeRabbit CLI at 4429d6492: whatever a script that runs itself again
+  // finds, it finds again on every pass, whatever the script is called.
+  describe("a script that runs itself", () => {
     const withScripts = (scripts) => ctx({ scriptsAt: () => ({ dir: MASTER, scripts }) });
     it.each([
+      ["pnpm loop-a", { "loop-a": "streamdeck restart x && pnpm loop-a" }],
+      ["pnpm loop-a", { "loop-a": "pnpm loop-b", "loop-b": "streamdeck restart x && pnpm loop-a" }],
+      ["npm run loop-a", { "loop-a": "taskkill /im StreamDeck.exe && npm run loop-a" }],
       ["pnpm restart:x", { "restart:x": "streamdeck restart x && pnpm restart:x" }],
       ["npm run restart:x", { "restart:x": "streamdeck restart x && npm run restart:x" }],
       ["pnpm restart:x", { "restart:x": "pnpm restart:y", "restart:y": "streamdeck restart y && pnpm restart:x" }],
     ])("asks for %s whose script runs itself again", (c, scripts) =>
-      expect(asks(c, withScripts(scripts))).toMatch(/runs itself again, restarting the host on every pass\. /),
+      expect(asks(c, withScripts(scripts))).toMatch(/deck host(?: app)?, again every time it runs itself[.;]/),
     );
-    // Control: a cycle with no restart in or above it still finds nothing, as on master.
-    it("finds nothing in a cycle that restarts nothing", () =>
-      findsNothing("pnpm loop-a", withScripts({ "loop-a": "pnpm build && pnpm loop-b", "loop-b": "pnpm loop-a" })));
+    it("names the restart a neutral script repeats", () =>
+      expect(asks("pnpm loop-a", withScripts({ "loop-a": "streamdeck restart x && pnpm loop-a" }))).toMatch(
+        /^`pnpm loop-a` → `streamdeck restart` restarts, stops or starts a deck host, again every time it runs itself\. /,
+      ));
+    // Controls: a cycle that only builds finds nothing, as on master, and a
+    // one-shot restart script with no recursion passes as one restart.
+    it("finds nothing in a cycle that restarts nothing, and passes a one-shot restart", () => {
+      findsNothing("pnpm loop-a", withScripts({ "loop-a": "pnpm build && pnpm loop-b", "loop-b": "pnpm loop-a" }));
+      expect(restarts("pnpm refresh", withScripts({ refresh: "pnpm build && streamdeck restart x" }))).toMatch(
+        /^`pnpm refresh` → `streamdeck restart` restarts, stops or starts a deck host$/,
+      );
+    });
   });
 
   // CodeRabbit CLI at 53821a933: a script name PowerShell escapes is looked
