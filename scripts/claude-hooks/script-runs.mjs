@@ -890,7 +890,7 @@ export function deckFindings(c, cwd, ctx, shell, trail = [], underRestart = fals
         // reaches through neutral names — may hide a relink: that asks, as the
         // restart's name did before. With no restart above, a name past the
         // bound is judged by its name alone.
-        const unread = run.lines?.length || (run.expand && bodyLines(run, kind, ctx).length);
+        const unread = run.lines?.length || (run.expand && bodyLines(run, kind, ctx, underRestart).length);
         if ((kind === "restart" || underRestart) && unread)
           finding(`\`${run.label}\` runs scripts too deep to read, which may relink`, "relink", run.repeats);
         continue;
@@ -898,7 +898,7 @@ export function deckFindings(c, cwd, ctx, shell, trail = [], underRestart = fals
       // A hook's or a shell's command line is no script: it has no key a
       // cycle could repeat, so its empty one only counts towards the depth.
       const lines = run.lines?.map((line) => ({ dir: run.dir, line, key: "", as: run.as })) ?? [];
-      if (run.expand) lines.push(...bodyLines(run, kind, ctx));
+      if (run.expand) lines.push(...bodyLines(run, kind, ctx, underRestart));
       for (const { dir, line, key, as, step } of lines) {
         if (key && trail.includes(key)) continue;
         const [text, lineShell] = lineAs(line, as);
@@ -1129,11 +1129,14 @@ function scriptLines(run, ctx) {
  * whatever pnpm's setting: reading a script pnpm would not run can only make
  * the rule ask where it need not, never pass a relink, so the simpler reading
  * fails safe. They take none of the forwarded arguments, as npm hands them
- * none. Any other script's are not read, as before #1737: its name never asked.
+ * none. So are a script's beneath a restart (`underRestart`, #1737 PR review
+ * round 2): `restart:x` running `npm run prepare-host` runs `preprepare-host`
+ * too. Any other script's are not read, as before #1737: no restart above it
+ * passes where its name once asked.
  */
-function bodyLines(run, kind, ctx) {
+function bodyLines(run, kind, ctx, underRestart = false) {
   const lines = scriptLines(run, ctx);
-  if (kind !== "restart") return lines;
+  if (kind !== "restart" && !underRestart) return lines;
   const name = unescaped(run.script ?? "");
   for (const step of [`pre${name}`, `post${name}`])
     lines.push(...scriptLines({ ...run, script: step, args: [] }, ctx).map((l) => ({ ...l, step })));

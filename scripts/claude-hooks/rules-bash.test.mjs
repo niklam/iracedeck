@@ -3444,6 +3444,21 @@ describe("a restart run over and over asks (#1737 review)", () => {
       for (const c of ["npm run restart:x", "pnpm restart:x"])
         expect(restarts(c, quiet).split("; "), c).toHaveLength(1);
     });
+    // PR review round 2: a neutral script beneath a restart runs its own
+    // lifecycle scripts too, and npm runs a relink in one.
+    const nested = withScripts({
+      "restart:x": "npm run prepare-host",
+      "prepare-host": "echo ready",
+      "preprepare-host": "pnpm relink:mirabox",
+    });
+    it.each(["npm run restart:x", "pnpm restart:x"])(
+      "asks for %s when a script beneath it has a relinking pre script",
+      (c) => expect(asks(c, nested)).toMatch(/`preprepare-host` → `pnpm relink:mirabox` links, unlinks or relinks/),
+    );
+    // Control: with no restart above it, a neutral script's lifecycle scripts
+    // stay unread, as on master.
+    it("does not read a neutral script's pre script with no restart above it", () =>
+      expect(deckFound("npm run prepare-host", nested)).toEqual([]));
   });
 
   // #1737 CodeRabbit round: a chain of restart names deeper than the reader
