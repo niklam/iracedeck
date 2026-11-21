@@ -89,10 +89,10 @@ Both contracts fire only in a race session (`isRaceSession`). Disqualification i
 
 ## Rejected
 
-- **Counting start/finish crossings everywhere.** Simpler, and matches the raise line's "three laps", but the sim checks at the pit-road line (decision 1), and on a track where the split comes after the line it is wrong by a whole lap every time, not only for an unlucky raise.
+- **Counting start/finish crossings everywhere.** Simpler, and matches the raise line's "three laps", but the sim checks at the pit-road line (at or after the pit-road line, decision 1), and on a track where the split comes after the line it is wrong by a whole lap every time, not only for an unlucky raise.
 - **Counting `approachStart` crossings first** (this spec's first draft). Every car teaches the split, but it is not where the sim checks: at Tsukuba the flag rose between the two, so the split would have counted a different first pass.
-- **Allowing two passes** (the first reading of the rule). One short of what the Tsukuba race showed, so the last-chance call would come a lap before the real last chance, and a driver who learns that stops trusting it.
-- **A grace for a flag raised right at the entry**, matching Tsukuba exactly. It may be how the sim works, but one race cannot tell a grace from a four-pass allowance, and a wrong grace makes the warnings a lap late.
+- **Allowing two passes** (the first reading of the rule). One short of what both races showed, so the last-chance call would come a lap before the real last chance, and a driver who learns that stops trusting it.
+- **A grace for a flag raised close to the entry**, or **four passes allowed**: either matches both races exactly. They differ for a flag raised away from the entry, which neither race tested, and building the wrong one makes the warnings a lap late.
 - **A reminder on every lap.completed.** It speaks at the line, which on most tracks is just after the split, so the last-chance call would come a lap too late for the entry it is about.
 - **A repeating beep until served** (the #912 speeding-cue shape). A penalty is a decision, not a correction; one clear line per pass, and one box call, is enough, and a loop would mask the spotter.
 - **Putting the pass count in the `flag.black.raised` payload.** The raise is one edge; the count changes after it.
