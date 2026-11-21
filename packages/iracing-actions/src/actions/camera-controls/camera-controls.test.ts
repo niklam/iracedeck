@@ -29,7 +29,9 @@ import {
   CameraControls,
   CameraControlsSettingsFields,
   CameraGroupField,
+  CameraGroupNameField,
   CarNumberField,
+  changeCameraGroupName,
   computeGridPositions,
   CycleIconModeField,
   DEFAULT_CAMERA_GROUPS,
@@ -40,6 +42,8 @@ import {
   generateCycleCameraGridSvg,
   getEnabledGroupNames,
   getNextSelectedGroup,
+  isChangeCameraUnavailable,
+  isCycleCameraUnavailable,
   MAX_CAMERA_GROUP,
   normalizeCarNumber,
   parseGroupSubset,
@@ -3039,4 +3043,523 @@ describe("camera switches wait for a replay jump to land (#1428 / #1435)", () =>
 
 describe("CameraControls press shape", () => {
   describePressShapeRouting(() => new CameraControls(), { dial: { pressAction: "focus-my-car" } });
+});
+
+// A broadcaster-style camera file (#1653): custom names beside standard ones,
+// in the sim's own numbering, with the Pit Lane2 spelling one capture has.
+const CUSTOM_FILE_GROUPS = [
+  { groupNum: 1, groupName: "Nose" },
+  { groupNum: 2, groupName: "Cockpit" },
+  { groupNum: 3, groupName: "DynamicTV" },
+  { groupNum: 4, groupName: "Grid_Pole" },
+  { groupNum: 5, groupName: "TV1" },
+  { groupNum: 6, groupName: "Pit Lane2" },
+];
+
+// Two groups of one file that differ only in case (#1653, decision 6).
+const CASE_TWIN_GROUPS = [
+  { groupNum: 1, groupName: "Static" },
+  { groupNum: 2, groupName: "STATIC" },
+  { groupNum: 3, groupName: "Chase" },
+];
+
+/** The options of the last `assembleIcon` call. */
+function lastIconOptions(): { dimmed?: boolean; border?: { borderColor: string } } {
+  return vi.mocked(deckCore.assembleIcon).mock.calls.at(-1)?.[0] as unknown as {
+    dimmed?: boolean;
+    border?: { borderColor: string };
+  };
+}
+
+/** Whether any `assembleIcon` call so far drew the unavailable look. */
+function anyIconDimmed(): boolean {
+  return vi.mocked(deckCore.assembleIcon).mock.calls.some(([options]) => (options as { dimmed?: boolean }).dimmed);
+}
+
+describe("Change Camera's stored group name (#1653)", () => {
+  // Through the action's REAL fields — the file's CommonSettings mock parses by identity.
+  const ActionFields = z.object(CameraControlsSettingsFields);
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("parses a missing or empty name to empty, and trims a typed one", () => {
+    expect(CameraGroupNameField.parse(undefined)).toBe("");
+    expect(CameraGroupNameField.parse("")).toBe("");
+    expect(CameraGroupNameField.parse("   ")).toBe("");
+    expect(CameraGroupNameField.parse("  DynamicTV  ")).toBe("DynamicTV");
+  });
+
+  it("degrades a junk name to empty without resetting the key", () => {
+    for (const junk of [7, null, {}, ["TV1"], true]) {
+      expect(CameraGroupNameField.parse(junk)).toBe("");
+    }
+
+    expect(ActionFields.parse({ target: "change-camera", cameraGroup: 17, cameraGroupName: 42 })).toMatchObject({
+      target: "change-camera",
+      cameraGroup: 17,
+      cameraGroupName: "",
+    });
+  });
+
+  it("resolves a key saved with only a number exactly as before", () => {
+    for (const [num, group] of Object.entries(CAMERA_GROUP_MAP)) {
+      const parsed = ActionFields.parse({ target: "change-camera", cameraGroup: Number(num) });
+
+      expect(parsed.cameraGroupName).toBe("");
+      expect(changeCameraGroupName(parsed)).toBe(group.name);
+    }
+
+    expect(changeCameraGroupName(ActionFields.parse({ target: "change-camera" }))).toBe("Cockpit");
+  });
+
+  it("lets a stored name win over the number, and reads a blank one as no name", () => {
+    expect(changeCameraGroupName({ cameraGroup: 9, cameraGroupName: "TV1" })).toBe("TV1");
+    expect(changeCameraGroupName({ cameraGroup: 9, cameraGroupName: "DynamicTV" })).toBe("DynamicTV");
+    expect(changeCameraGroupName({ cameraGroup: 17, cameraGroupName: "   " })).toBe("TV1");
+    expect(changeCameraGroupName({ cameraGroup: 17 })).toBe("TV1");
+  });
+
+  it("canonicalises a stored Pit Lane2", () => {
+    expect(changeCameraGroupName({ cameraGroup: 9, cameraGroupName: "Pit Lane2" })).toBe("Pit Lane 2");
+  });
+
+  it("draws the named group's icon and upper-cased title, not the number's", () => {
+    const decoded = decodeURIComponent(
+      generateCameraControlsSvg({ target: "change-camera", cameraGroup: 9, cameraGroupName: "TV1" }),
+    );
+
+    expect(decoded).toContain("tv1-artwork");
+    expect(decoded).toContain("CAMERA\nTV1");
+    expect(decoded).not.toContain("cockpit-artwork");
+  });
+
+  it("draws a stored Pit Lane2 as Pit Lane 2", () => {
+    const decoded = decodeURIComponent(
+      generateCameraControlsSvg({ target: "change-camera", cameraGroupName: "Pit Lane2" }),
+    );
+
+    expect(decoded).toContain("pit-lane-2-artwork");
+    expect(decoded).toContain("CAMERA\nPIT LANE 2");
+  });
+
+  it("titles a custom group with its upper-cased name, and honours a title override", () => {
+    const decoded = decodeURIComponent(
+      generateCameraControlsSvg({ target: "change-camera", cameraGroup: 9, cameraGroupName: "DynamicTV" }),
+    );
+
+    expect(decoded).toContain("CAMERA\nDYNAMICTV");
+    expect(decoded).not.toContain("cockpit-artwork");
+
+    const overridden = decodeURIComponent(
+      generateCameraControlsSvg({
+        target: "change-camera",
+        cameraGroupName: "DynamicTV",
+        titleOverrides: { titleText: "DRONE" },
+      }),
+    );
+
+    expect(overridden).toContain("DRONE");
+    expect(overridden).not.toContain("DYNAMICTV");
+  });
+
+  it("draws the unavailable look only when asked to", () => {
+    generateCameraControlsSvg({ target: "change-camera", cameraGroupName: "DynamicTV" }, false, true);
+    expect(lastIconOptions().dimmed).toBe(true);
+    expect(lastIconOptions().border?.borderColor).not.toBe("#00aaff");
+
+    generateCameraControlsSvg({ target: "change-camera", cameraGroupName: "DynamicTV" });
+    expect(lastIconOptions().dimmed).toBeUndefined();
+    expect(lastIconOptions().border?.borderColor).toBe("#00aaff");
+  });
+});
+
+describe("isChangeCameraUnavailable / isCycleCameraUnavailable (#1653)", () => {
+  const session = CUSTOM_FILE_GROUPS.map((g) => ({ ...g, groupName: g.groupName.replace("Pit Lane2", "Pit Lane 2") }));
+
+  it("is unavailable only for a loaded session that lacks the group", () => {
+    expect(isChangeCameraUnavailable("Drone", session)).toBe(true);
+    expect(isChangeCameraUnavailable("DynamicTV", session)).toBe(false);
+    expect(isChangeCameraUnavailable("dynamictv", session)).toBe(false);
+    expect(isChangeCameraUnavailable("Pit Lane 2", session)).toBe(false);
+    expect(isChangeCameraUnavailable("Drone", [])).toBe(false);
+  });
+
+  it("is unavailable for a name that matches several groups only in case", () => {
+    expect(isChangeCameraUnavailable("static", CASE_TWIN_GROUPS)).toBe(true);
+    expect(isChangeCameraUnavailable("STATIC", CASE_TWIN_GROUPS)).toBe(false);
+  });
+
+  it("is unavailable for a Cycle Camera subset with no group in the loaded session", () => {
+    expect(isCycleCameraUnavailable(["Drone", "Spotter"], session)).toBe(true);
+    expect(isCycleCameraUnavailable(["Drone", "grid_pole"], session)).toBe(false);
+    expect(isCycleCameraUnavailable(["Drone"], [])).toBe(false);
+    // An empty subset has no name to check.
+    expect(isCycleCameraUnavailable([], session)).toBe(false);
+  });
+});
+
+describe("Change Camera presses a group by name (#1653)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    vi.mocked(getCameraGroupsFromSessionInfo).mockReturnValue([]);
+    vi.mocked(getCarNumberRawFromSessionInfo).mockReturnValue(null);
+    mockCamera.switchNum.mockImplementation(() => true);
+  });
+
+  async function press(action: CameraControls, settings: Record<string, unknown>): Promise<void> {
+    await action.onKeyDown({
+      action: { id: "k1" },
+      payload: { settings: { target: "change-camera", ...settings } },
+    } as never);
+  }
+
+  function setup(groups: { groupNum: number; groupName: string }[]): CameraControls {
+    const action = new CameraControls();
+    sdkOf(action).getCurrentTelemetry.mockReturnValue({ CamCarIdx: 4, CamGroupNumber: 1 });
+    sdkOf(action).getSessionInfo.mockReturnValue({});
+    vi.mocked(getCameraGroupsFromSessionInfo).mockReturnValue(groups);
+    vi.mocked(getCarNumberRawFromSessionInfo).mockReturnValue(42);
+
+    return action;
+  }
+
+  it("presses the stored name rather than the stored number", async () => {
+    const action = setup(LAKELAND_GROUPS);
+
+    await press(action, { cameraGroup: 24, cameraGroupName: "TV1" }); // Spotter's number, TV1's name
+
+    expect(mockCamera.switchNum).toHaveBeenCalledWith(42, 12, 0);
+  });
+
+  it("presses a custom group by the sim's own number for it", async () => {
+    const action = setup(CUSTOM_FILE_GROUPS);
+
+    await press(action, { cameraGroup: 9, cameraGroupName: "DynamicTV" });
+
+    expect(mockCamera.switchNum).toHaveBeenCalledWith(42, 3, 0);
+  });
+
+  it("presses a typed name in another case", async () => {
+    const action = setup(CUSTOM_FILE_GROUPS);
+
+    await press(action, { cameraGroupName: "grid_pole" });
+
+    expect(mockCamera.switchNum).toHaveBeenCalledWith(42, 4, 0);
+  });
+
+  it.each(["Pit Lane 2", "Pit Lane2"])("presses a stored %s against a session's Pit Lane2", async (name) => {
+    const action = setup(CUSTOM_FILE_GROUPS);
+
+    await press(action, { cameraGroupName: name });
+
+    expect(mockCamera.switchNum).toHaveBeenCalledWith(42, 6, 0);
+  });
+
+  it("lets the exact match decide between groups that differ only in case", async () => {
+    const action = setup(CASE_TWIN_GROUPS);
+
+    await press(action, { cameraGroupName: "STATIC" });
+
+    expect(mockCamera.switchNum).toHaveBeenCalledWith(42, 2, 0);
+  });
+
+  it("does nothing, and says so, for a name that matches several groups only in case", async () => {
+    const action = setup(CASE_TWIN_GROUPS);
+
+    await press(action, { cameraGroupName: "static" });
+
+    expect(mockCamera.switchNum).not.toHaveBeenCalled();
+    expect(action["logger"].info).toHaveBeenCalledWith(
+      "Camera change skipped: group name matches more than one group in this session",
+    );
+  });
+
+  it("does nothing, and says so, for a custom group this session's camera file lacks", async () => {
+    const action = setup(LAKELAND_GROUPS);
+
+    await press(action, { cameraGroup: 9, cameraGroupName: "DynamicTV" });
+
+    expect(mockCamera.switchNum).not.toHaveBeenCalled();
+    expect(action["logger"].info).toHaveBeenCalledWith("Camera change skipped: group not in this session");
+  });
+
+  it("never falls back to the number for a stored name when the session's groups cannot be read", async () => {
+    const action = setup([]);
+
+    await press(action, { cameraGroup: 9, cameraGroupName: "DynamicTV" });
+
+    expect(mockCamera.switchNum).not.toHaveBeenCalled();
+    expect(action["logger"].info).toHaveBeenCalledWith(
+      "Camera change skipped: the session's camera groups cannot be read",
+    );
+  });
+
+  it("keeps the raw number for a key with no stored name when the groups cannot be read", async () => {
+    const action = setup([]);
+
+    await press(action, { cameraGroup: 24, cameraGroupName: "" });
+
+    expect(mockCamera.switchNum).toHaveBeenCalledWith(42, 24, 0);
+  });
+
+  it("names the switch by the group as the session spells it", async () => {
+    const action = setup(CUSTOM_FILE_GROUPS);
+    mockCamera.switchNum.mockImplementation(() => {
+      throw new Error("boom");
+    });
+
+    await press(action, { cameraGroupName: "dynamictv" });
+
+    await vi.waitFor(() =>
+      expect(action["logger"].warn).toHaveBeenCalledWith("Camera controls: the DynamicTV camera switch failed: boom"),
+    );
+  });
+});
+
+describe("Camera Controls keys on a group the session lacks (#1653)", () => {
+  let subscriber: (() => void) | undefined;
+
+  function keyContext() {
+    return {
+      id: "key-1",
+      deviceId: "dev-1",
+      deviceType: 0,
+      isKey: () => true,
+      isDial: () => false,
+      setTitle: vi.fn(async () => {}),
+      setSettings: vi.fn(async () => {}),
+      setImage: vi.fn(async () => {}),
+    };
+  }
+
+  async function appear(
+    settings: Record<string, unknown>,
+    groups: { groupNum: number; groupName: string }[],
+    sessionInfo: object | null = {},
+    telemetry: Record<string, unknown> = { CamCarIdx: 4, CamGroupNumber: 5 },
+  ): Promise<CameraControls> {
+    const action = new CameraControls();
+    sdkOf(action).getCurrentTelemetry.mockReturnValue(telemetry);
+    sdkOf(action).getSessionInfo.mockReturnValue(sessionInfo);
+    sdkOf(action).subscribe.mockImplementation((_id: string, cb: () => void) => {
+      subscriber = cb;
+    });
+    vi.mocked(getCameraGroupsFromSessionInfo).mockReturnValue(groups);
+
+    await action.onWillAppear({ action: keyContext(), payload: { settings } } as never);
+
+    return action;
+  }
+
+  /** Moves the mocked session on to a new update carrying `groups` (or to none), then ticks. */
+  function sessionUpdate(action: CameraControls, groups: { groupNum: number; groupName: string }[] | null): void {
+    sdkOf(action).getSessionInfo.mockReturnValue(groups === null ? null : {});
+    vi.mocked(getCameraGroupsFromSessionInfo).mockReturnValue(groups ?? []);
+    subscriber?.();
+  }
+
+  function pushedImages(action: CameraControls): number {
+    return vi.mocked(action["updateKeyImage"]).mock.calls.length;
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    subscriber = undefined;
+  });
+
+  afterEach(() => {
+    vi.mocked(getCameraGroupsFromSessionInfo).mockReturnValue([]);
+    vi.mocked(getCarNumberRawFromSessionInfo).mockReturnValue(null);
+  });
+
+  describe("Change Camera", () => {
+    it("is drawn unavailable when the session lacks its custom group", async () => {
+      await appear({ target: "change-camera", cameraGroupName: "DynamicTV" }, LAKELAND_GROUPS);
+
+      expect(lastIconOptions().dimmed).toBe(true);
+    });
+
+    it("is drawn normally when the session has the group, in any case", async () => {
+      await appear({ target: "change-camera", cameraGroupName: "dynamictv" }, CUSTOM_FILE_GROUPS);
+
+      expect(lastIconOptions().dimmed).toBeUndefined();
+    });
+
+    it("draws a standard key, saved with only a number, unavailable on content without its group", async () => {
+      await appear({ target: "change-camera", cameraGroup: 23 }, ROAD_GROUPS); // TV4
+
+      expect(lastIconOptions().dimmed).toBe(true);
+    });
+
+    it("is drawn unavailable for a name that matches several groups only in case", async () => {
+      await appear({ target: "change-camera", cameraGroupName: "static" }, CASE_TWIN_GROUPS);
+
+      expect(lastIconOptions().dimmed).toBe(true);
+    });
+
+    it("is drawn normally with no session", async () => {
+      await appear({ target: "change-camera", cameraGroupName: "DynamicTV" }, LAKELAND_GROUPS, null);
+
+      expect(lastIconOptions().dimmed).toBeUndefined();
+    });
+
+    it("is drawn normally when the session's groups cannot be read", async () => {
+      await appear({ target: "change-camera", cameraGroupName: "DynamicTV" }, []);
+
+      expect(lastIconOptions().dimmed).toBeUndefined();
+    });
+
+    it("redraws only when its availability flips, never per tick", async () => {
+      const action = await appear({ target: "change-camera", cameraGroupName: "DynamicTV" }, CUSTOM_FILE_GROUPS);
+
+      subscriber?.();
+      subscriber?.();
+      expect(pushedImages(action)).toBe(0);
+
+      // Another track's camera file: the group is gone.
+      sessionUpdate(action, LAKELAND_GROUPS);
+      expect(pushedImages(action)).toBe(1);
+      expect(lastIconOptions().dimmed).toBe(true);
+
+      subscriber?.();
+      // A new session update whose list still lacks it changes nothing on the key.
+      sessionUpdate(action, ROAD_GROUPS);
+      expect(pushedImages(action)).toBe(1);
+
+      sessionUpdate(action, CUSTOM_FILE_GROUPS);
+      expect(pushedImages(action)).toBe(2);
+      expect(lastIconOptions().dimmed).toBeUndefined();
+    });
+
+    it("reads the group list once per session update, not per tick", async () => {
+      await appear({ target: "change-camera", cameraGroupName: "DynamicTV" }, CUSTOM_FILE_GROUPS);
+      const reads = vi.mocked(getCameraGroupsFromSessionInfo).mock.calls.length;
+
+      subscriber?.();
+      subscriber?.();
+      subscriber?.();
+
+      expect(vi.mocked(getCameraGroupsFromSessionInfo).mock.calls.length).toBe(reads);
+    });
+
+    it("returns to the normal look when the session goes away", async () => {
+      const action = await appear({ target: "change-camera", cameraGroupName: "DynamicTV" }, LAKELAND_GROUPS);
+
+      sessionUpdate(action, null);
+
+      expect(pushedImages(action)).toBe(1);
+      expect(lastIconOptions().dimmed).toBeUndefined();
+    });
+
+    it("re-reads availability when its icon is regenerated", async () => {
+      const action = await appear({ target: "change-camera", cameraGroupName: "DynamicTV" }, CUSTOM_FILE_GROUPS);
+      const regenerate = vi.mocked(action["setRegenerateCallback"]).mock.calls.at(-1)?.[1] as () => string;
+
+      sdkOf(action).getSessionInfo.mockReturnValue({});
+      vi.mocked(getCameraGroupsFromSessionInfo).mockReturnValue(LAKELAND_GROUPS);
+      regenerate();
+
+      expect(lastIconOptions().dimmed).toBe(true);
+    });
+
+    it("does nothing on a press, and says so", async () => {
+      const action = await appear({ target: "change-camera", cameraGroupName: "DynamicTV" }, LAKELAND_GROUPS);
+      vi.mocked(getCarNumberRawFromSessionInfo).mockReturnValue(42);
+
+      await action.onKeyDown({
+        action: { id: "key-1" },
+        payload: { settings: { target: "change-camera", cameraGroupName: "DynamicTV" } },
+      } as never);
+
+      expect(mockCamera.switchNum).not.toHaveBeenCalled();
+      expect(action["logger"].info).toHaveBeenCalledWith("Camera change skipped: group not in this session");
+    });
+  });
+
+  describe("Cycle Camera with Icon Shows = Current camera", () => {
+    const current = (subset: Record<string, boolean>) => ({
+      target: "cycle-camera",
+      direction: "next",
+      cycleIconMode: "current",
+      cameraGroupSubset: JSON.stringify({ groups: subset }),
+    });
+
+    it("shows the current group greyed when no enabled group is in the session", async () => {
+      const action = await appear(current({ Drone: true, Spotter: true }), CUSTOM_FILE_GROUPS);
+
+      expect(decodeURIComponent(String(vi.mocked(action["updateKeyImage"]).mock.calls[0][1]))).toContain("tv1-artwork");
+      expect(lastIconOptions().dimmed).toBe(true);
+    });
+
+    it("shows the current group normally when an enabled name is in the session, in any case", async () => {
+      await appear(current({ Drone: true, dynamictv: true }), CUSTOM_FILE_GROUPS);
+
+      expect(lastIconOptions().dimmed).toBeUndefined();
+    });
+
+    it("shows the current group normally for an empty subset, which has no name to check", async () => {
+      await appear(current({}), CUSTOM_FILE_GROUPS);
+
+      expect(lastIconOptions().dimmed).toBeUndefined();
+    });
+
+    it("redraws when availability flips while the camera stays on the same group", async () => {
+      const action = await appear(current({ Drone: true }), CUSTOM_FILE_GROUPS);
+      expect(lastIconOptions().dimmed).toBe(true);
+
+      subscriber?.();
+      expect(pushedImages(action)).toBe(1);
+
+      sessionUpdate(action, [...CUSTOM_FILE_GROUPS, { groupNum: 7, groupName: "Drone" }]);
+
+      expect(pushedImages(action)).toBe(2);
+      expect(lastIconOptions().dimmed).toBeUndefined();
+    });
+
+    it("is never greyed in the default next-group mode", async () => {
+      await appear({ ...current({ Drone: true }), cycleIconMode: "next" }, CUSTOM_FILE_GROUPS);
+
+      expect(anyIconDimmed()).toBe(false);
+    });
+
+    it("sends nothing on a press, and says so", async () => {
+      const action = await appear(current({ Drone: true }), CUSTOM_FILE_GROUPS);
+      vi.mocked(getCarNumberRawFromSessionInfo).mockReturnValue(42);
+
+      await action.onKeyDown({ action: { id: "key-1" }, payload: { settings: current({ Drone: true }) } } as never);
+
+      expect(mockCamera.switchNum).not.toHaveBeenCalled();
+      expect(mockCamera.cycleCamera).not.toHaveBeenCalled();
+      expect(action["logger"].info).toHaveBeenCalledWith(
+        "Camera cycle skipped: no enabled camera group in this session",
+      );
+    });
+
+    it("cycles a ticked custom group, typed in another case", async () => {
+      const action = await appear(current({ grid_pole: true }), CUSTOM_FILE_GROUPS);
+      vi.mocked(getCarNumberRawFromSessionInfo).mockReturnValue(42);
+
+      await action.onKeyDown({ action: { id: "key-1" }, payload: { settings: current({ grid_pole: true }) } } as never);
+
+      expect(mockCamera.switchNum).toHaveBeenCalledWith(42, 4, 0);
+    });
+
+    it("logs an enabled name that matches several groups only in case, and cycles the rest", async () => {
+      const subset = { static: true, Chase: true };
+      const action = await appear(current(subset), CASE_TWIN_GROUPS, {}, { CamGroupNumber: 1 });
+      vi.mocked(getCarNumberRawFromSessionInfo).mockReturnValue(42);
+
+      await action.onKeyDown({ action: { id: "key-1" }, payload: { settings: current(subset) } } as never);
+
+      expect(action["logger"].info).toHaveBeenCalledWith(
+        "Camera cycle skipped group names that match more than one group in this session",
+      );
+      expect(mockCamera.switchNum).toHaveBeenCalledWith(42, 3, 0);
+    });
+  });
 });
