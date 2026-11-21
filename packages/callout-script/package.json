@@ -1,6 +1,6 @@
 {
   "name": "@iracedeck/callout-script",
-  "version": "3.9.0",
+  "version": "3.10.0-dev.0",
   "description": "The shared contract of a Race Engineer voice pack: the callout-script grammar (types, Zod schema, parser, reference collector) the voice-pack.json manifest schema with the pack format's rules, and the driver-name rules (the spoken groups, the alias map and its resolver).",
   "type": "module",
   "main": "dist/index.js",
