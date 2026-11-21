@@ -54,6 +54,13 @@
  *     on, run behind the pace car all the same. The cadence itself is
  *     untouched: a caution lap still counts toward the every-three, and a
  *     hit that lands on one is simply not spoken.
+ *   - **Not on pit road, and in the car** (spec 2026-11-18, issue #1722) —
+ *     on pit road the order is in flux, places lost to the stop mostly won
+ *     back after it, so the position family is silent there. Asked again at
+ *     speak time, first in the shared position-readout gate, so an update
+ *     queued on track and still waiting when the car reaches pit road is
+ *     dropped, never held; the next cadence hit after the stop states the
+ *     position as it then is.
  *   - **Cadence hit** — `lapsSincePositionChange > 0 && % 3 === 0`. The diff
  *     omits `lapsSincePositionChange` entirely when no baseline anchors exist
  *     (e.g. position not yet resolvable); the predicate then returns false.
@@ -98,15 +105,17 @@ import type { ScenarioContract, SpeakGate } from "../../dsl.js";
 import type { IScenarioEngine } from "../../interpreter.js";
 import type { UnderCautionResolver } from "./caution.js";
 import {
+  buildPositionReadoutSpeakGate,
   canAnnouncePosition,
+  type LatestTelemetryResolver,
   liveCurrentlyAnnounceable,
   type LivePositionResolver,
   lowerFirst,
+  playerOnPitRoadOrOutOfCar,
+  POSITION_READOUT_PIT_ROAD_CLAUSE,
   POSITION_READOUT_SPEAK_GATE_DESCRIPTION,
   POSITION_READOUT_SUPERSEDE_GROUP,
-  positionReadoutSpeakGate,
   selectLivePosition,
-  takeIntroDecision,
 } from "./position-readout.js";
 
 /** Shared snapshot resolver type (same shape as lap-time / position). */
@@ -188,36 +197,26 @@ export function registerRaceStatusVocabulary(
 }
 
 /**
- * The race status's own speak-time gate (issue #1171): the shared position
- * cooldown claim, reached only once no full-course caution is out. The
- * shared gate itself is untouched — the two overtake readouts use it too,
- * and they are not silenced here.
- *
- * The caution is asked first, so a refusal claims nothing. It still TAKES
- * the fire's intro decision before it refuses, which is the shared gate's
- * own rule (issue #1138): a refused fire leaves nothing behind. The bundled
+ * The race status's own speak-time gate: the shared position-readout gate
+ * ({@link buildPositionReadoutSpeakGate}) with the full-course caution as
+ * its extra refusal (issue #1171). The shared gate asks pit road first
+ * (issue #1722), then the caution, and claims the shared cooldown only
+ * after both — so neither refusal burns the window. It takes the fire's
+ * intro decision before anything can refuse (issue #1138): the bundled
  * status script stashes none, but a pack may name `positionReadout.intro`
- * here, and returning before the shared gate ran would leave that decision
- * pending, with this fire's context, until the next position gate cleared
- * it. Under a caution that can be minutes away, and the Telemetry Snapshot
- * would show a decision that will never be committed.
+ * here, and a refusal that left the decision pending would hold it, with
+ * this fire's context, until the next position gate cleared it.
  */
-function raceStatusSpeakGate(getUnderFullCourseCaution: UnderCautionResolver): SpeakGate {
-  return {
-    // The shared sentence, qualified — as `position.ts` qualifies it for the
-    // race branch — so the two readouts cannot describe one window two ways.
-    description: `No full-course caution is out and ${lowerFirst(POSITION_READOUT_SPEAK_GATE_DESCRIPTION)}`,
-    admit: (ctx) => {
-      if (getUnderFullCourseCaution()) {
-        // Taken and dropped: nothing was said, so nothing is committed.
-        takeIntroDecision(ctx);
-
-        return false;
-      }
-
-      return positionReadoutSpeakGate.admit(ctx);
-    },
-  };
+function raceStatusSpeakGate(
+  getUnderFullCourseCaution: UnderCautionResolver,
+  getLatestTelemetry: LatestTelemetryResolver,
+): SpeakGate {
+  return buildPositionReadoutSpeakGate(getLatestTelemetry, {
+    // The shared clauses, qualified — as `position.ts` qualifies them for its
+    // race branch — so the readouts cannot describe one rule two ways.
+    description: `${POSITION_READOUT_PIT_ROAD_CLAUSE}, no full-course caution is out and ${lowerFirst(POSITION_READOUT_SPEAK_GATE_DESCRIPTION)}`,
+    refuses: () => getUnderFullCourseCaution(),
+  });
 }
 
 /**
@@ -233,11 +232,18 @@ function raceStatusSpeakGate(getUnderFullCourseCaution: UnderCautionResolver): S
  * caution is out (issue #1171), in the `where:` and again in the
  * `speakGate` — see the header for why both. Default `() => false` preserves
  * the behavior of a test that supplies no closure.
+ *
+ * `getLatestTelemetry` silences it on pit road and out of the car (spec
+ * 2026-11-18, issue #1722), the same two places and for the same reason: an
+ * update queued on track and still waiting when the car reaches pit road is
+ * dropped, never held for the exit. Default `() => null`, which never
+ * refuses; `registerPitCrew` passes `PitCrewDeps.getLatestTelemetry`.
  */
 export function buildRaceStatusContract(
   getRaceFinishedFired: () => boolean,
   getLivePosition: LivePositionResolver = () => null,
   getUnderFullCourseCaution: UnderCautionResolver = () => false,
+  getLatestTelemetry: LatestTelemetryResolver = () => null,
 ): ScenarioContract {
   return {
     id: "pit-crew.race-status",
@@ -265,6 +271,11 @@ export function buildRaceStatusContract(
         // pace car all the same.
         if (data.wasCaution === true) return false;
 
+        // On pit road or out of the car (issue #1722): the order is in flux
+        // there. Refused here so the fire never enters the queue; the gate
+        // asks again for an update queued on track.
+        if (playerOnPitRoadOrOutOfCar(getLatestTelemetry())) return false;
+
         // Cadence DECISION uses the frozen snapshot (laps-since-position-change).
         if (!raceStatusCadenceHits(data)) return false;
 
@@ -278,7 +289,7 @@ export function buildRaceStatusContract(
         return canAnnouncePosition();
       },
     },
-    speakGate: raceStatusSpeakGate(getUnderFullCourseCaution),
+    speakGate: raceStatusSpeakGate(getUnderFullCourseCaution, getLatestTelemetry),
     channel: AudioChannel.Voice,
     bus: AudioBus.Voice,
     base: "voice/{voice}",
@@ -291,7 +302,7 @@ export function buildRaceStatusContract(
     family: "race-status",
     supersedeGroup: POSITION_READOUT_SUPERSEDE_GROUP,
     description:
-      "You hold position for three race laps, and every three laps after that — never on the final lap, under a caution or on the lap that ends one, or within twenty seconds of another position readout.",
+      "You hold position for three race laps, and every three laps after that — never on the final lap, on pit road, under a caution or on the lap ending one, or inside 20 s of another position readout.",
   };
 }
 

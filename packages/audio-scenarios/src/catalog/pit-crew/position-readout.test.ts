@@ -12,9 +12,10 @@ import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import { createFakeAudio, type FakeAudio } from "@iracedeck/audio-service/testing";
 import { type CalloutScript } from "@iracedeck/callout-script";
 import type { IEventBus, SimEventMap, SimEventName, SimEventOf } from "@iracedeck/event-bus";
+import { type TelemetryData, TrkLoc } from "@iracedeck/iracing-sdk";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { NO_FRAME, WEIGHT } from "../../dsl.js";
+import { NO_FRAME, type ScenarioContext, WEIGHT } from "../../dsl.js";
 import type { AudioAssetsManifest, IScenarioEngine } from "../../interpreter.js";
 import { _resetAudioScenarios, initializeAudioScenarios, poolMemberPattern } from "../../interpreter.js";
 import { familyReferences } from "./family-references.test-util.js";
@@ -24,15 +25,19 @@ import {
   _setReactionRandom,
   buildOvertakeGainedPositionContract,
   buildOvertakeLostPositionContract,
+  buildPositionReadoutSpeakGate,
   canAnnouncePosition,
   commitIntroDecision,
   INTRO_COOLDOWN_MS,
   type LivePosition,
   lowerFirst,
   OVERTAKE_POSITION_SCENARIO_IDS,
+  playerOnPitRoadOrOutOfCar,
   POSITION_READOUT_COOLDOWN_MS,
+  POSITION_READOUT_PIT_ROAD_CLAUSE,
   POSITION_READOUT_SPEAK_GATE_DESCRIPTION,
   REACTION_CHANCE,
+  readPositionReadoutDebugState,
   registerPositionReadoutVocabulary,
   shouldReactToOvertake,
   shouldSpeakIntro,
@@ -76,8 +81,116 @@ describe("lowerFirst — composing the shared gate sentence onto a qualifier", (
 
   it("turns the shared gate sentence into a clause a qualified gate can end on", () => {
     expect(`In a race, ${lowerFirst(POSITION_READOUT_SPEAK_GATE_DESCRIPTION)}`).toBe(
-      "In a race, no other position readout has spoken in the last twenty seconds when this one comes to speak; speaking it starts that window.",
+      "In a race, no other position readout has spoken in the last twenty seconds; speaking this one starts that window.",
     );
+  });
+});
+
+/** A tick of the player's car, out on track and driving (issue #1722). */
+const ON_TRACK = { IsOnTrack: true, OnPitRoad: false, PlayerTrackSurface: TrkLoc.OnTrack } as TelemetryData;
+
+/** Each state in which no position readout starts (issue #1722), named for the test titles. */
+const PIT_ROAD_STATES: ReadonlyArray<readonly [string, TelemetryData]> = [
+  ["OnPitRoad", { ...ON_TRACK, OnPitRoad: true }],
+  ["the pit-stall surface", { ...ON_TRACK, PlayerTrackSurface: TrkLoc.InPitStall }],
+  ["the pit-lane surface (AproachingPits)", { ...ON_TRACK, PlayerTrackSurface: TrkLoc.AproachingPits }],
+  ["out of the car (IsOnTrack: false)", { ...ON_TRACK, IsOnTrack: false }],
+];
+
+describe("playerOnPitRoadOrOutOfCar — the state no position readout starts in (issue #1722)", () => {
+  it("is false with no telemetry — missing data never silences a readout", () => {
+    expect(playerOnPitRoadOrOutOfCar(null)).toBe(false);
+  });
+
+  it("is false for a tick that carries none of the fields it reads", () => {
+    expect(playerOnPitRoadOrOutOfCar({} as TelemetryData)).toBe(false);
+  });
+
+  it("is false out on track, and off the racing surface", () => {
+    expect(playerOnPitRoadOrOutOfCar(ON_TRACK)).toBe(false);
+    expect(playerOnPitRoadOrOutOfCar({ ...ON_TRACK, PlayerTrackSurface: TrkLoc.OffTrack })).toBe(false);
+  });
+
+  it.each(PIT_ROAD_STATES)("is true on %s", (_name, telemetry) => {
+    expect(playerOnPitRoadOrOutOfCar(telemetry)).toBe(true);
+  });
+
+  it("reads each field on its own — any one refusing state is enough, the others missing", () => {
+    expect(playerOnPitRoadOrOutOfCar({ OnPitRoad: true } as TelemetryData)).toBe(true);
+    expect(playerOnPitRoadOrOutOfCar({ IsOnTrack: false } as TelemetryData)).toBe(true);
+    expect(playerOnPitRoadOrOutOfCar({ PlayerTrackSurface: TrkLoc.InPitStall } as TelemetryData)).toBe(true);
+    expect(playerOnPitRoadOrOutOfCar({ PlayerTrackSurface: TrkLoc.AproachingPits } as TelemetryData)).toBe(true);
+  });
+});
+
+describe("buildPositionReadoutSpeakGate — the one gate every position readout is built on (issue #1722)", () => {
+  let telemetry: TelemetryData | null;
+
+  /** A fire context for the gate; it reads nothing of it but the intro stash's identity. */
+  function ctx(): ScenarioContext {
+    return { event: null, telemetry: null, data: null, now: Date.now(), vars: {} };
+  }
+
+  beforeEach(() => {
+    _resetPositionReadoutCooldown();
+    telemetry = ON_TRACK;
+  });
+
+  afterEach(() => _resetPositionReadoutCooldown());
+
+  it("admits on track and claims the shared window", () => {
+    const gate = buildPositionReadoutSpeakGate(() => telemetry);
+
+    expect(gate.admit(ctx())).toBe(true);
+    expect(canAnnouncePosition()).toBe(false);
+  });
+
+  it.each(PIT_ROAD_STATES)("refuses on %s WITHOUT claiming the shared window", (_name, state) => {
+    const gate = buildPositionReadoutSpeakGate(() => telemetry);
+
+    telemetry = state;
+    expect(gate.admit(ctx())).toBe(false);
+    expect(canAnnouncePosition()).toBe(true);
+  });
+
+  it("admits with no telemetry — the default resolver's answer", () => {
+    telemetry = null;
+
+    expect(buildPositionReadoutSpeakGate(() => telemetry).admit(ctx())).toBe(true);
+  });
+
+  it("asks pit road before the contract's own refusal, and that refusal before the claim", () => {
+    const refuses = vi.fn(() => true);
+    const gate = buildPositionReadoutSpeakGate(() => telemetry, { refuses });
+
+    telemetry = { ...ON_TRACK, OnPitRoad: true };
+    expect(gate.admit(ctx())).toBe(false);
+    expect(refuses).not.toHaveBeenCalled();
+
+    telemetry = ON_TRACK;
+    expect(gate.admit(ctx())).toBe(false);
+    expect(refuses).toHaveBeenCalledTimes(1);
+    expect(canAnnouncePosition()).toBe(true);
+  });
+
+  it("claims nothing for a fire the contract says does not claim the window, and still refuses it on pit road", () => {
+    const gate = buildPositionReadoutSpeakGate(() => telemetry, { claimsWindow: () => false });
+
+    expect(gate.admit(ctx())).toBe(true);
+    expect(canAnnouncePosition()).toBe(true);
+
+    telemetry = { ...ON_TRACK, PlayerTrackSurface: TrkLoc.InPitStall };
+    expect(gate.admit(ctx())).toBe(false);
+  });
+
+  it("publishes the pit-road clause and the shared window as one sentence by default", () => {
+    const { description } = buildPositionReadoutSpeakGate(() => null);
+
+    expect(description).toBe(
+      "The driver is in the car and off pit road, and no other position readout has spoken in the last twenty seconds; speaking this one starts that window.",
+    );
+    expect(description.startsWith(POSITION_READOUT_PIT_ROAD_CLAUSE)).toBe(true);
+    expect(description).toContain(lowerFirst(POSITION_READOUT_SPEAK_GATE_DESCRIPTION));
   });
 });
 
@@ -227,6 +340,8 @@ describe("the overtake position readouts through the real script (issue #1065)",
   let audio: FakeAudio;
   let engine: IScenarioEngine;
   let live: LivePosition | null;
+  /** The player's live tick the readouts' pit-road check reads (issue #1722). */
+  let telemetry: TelemetryData | null;
 
   function voicePaths(): string[] {
     return audio._played.filter((p) => p.channel === AudioChannel.Voice).map((p) => p.path);
@@ -299,6 +414,7 @@ describe("the overtake position readouts through the real script (issue #1065)",
     vi.setSystemTime(1_000_000);
     _resetPositionReadoutCooldown();
     live = { position: 5, classPosition: 5, isMultiClass: false };
+    telemetry = ON_TRACK;
     bus = createMockBus();
     audio = createFakeAudio();
     engine = initializeAudioScenarios(bus, audio, manifest, mockLogger as never, () => VOICE);
@@ -309,6 +425,7 @@ describe("the overtake position readouts through the real script (issue #1065)",
         () => live,
         () => false,
         () => PERMISSIVE_OVERTAKE_GATE,
+        () => telemetry,
       ),
     );
     engine.defineContract(
@@ -316,6 +433,7 @@ describe("the overtake position readouts through the real script (issue #1065)",
         () => live,
         () => false,
         () => PERMISSIVE_OVERTAKE_GATE,
+        () => telemetry,
       ),
     );
     engine.setScripts(new Map([[VOICE, READOUT_SCRIPT]]));
@@ -592,5 +710,66 @@ describe("the overtake position readouts through the real script (issue #1065)",
   it("compiles for the test voice with nothing skipped", () => {
     expect(mockLogger.warn).not.toHaveBeenCalled();
     expect(mockLogger.error).not.toHaveBeenCalled();
+  });
+
+  describe("silent on pit road and out of the car (issue #1722)", () => {
+    const READOUT_P5 = [
+      `voice/${VOICE}/position-intro-worse/currently-01.mp3`,
+      `voice/${VOICE}/position-number/5.mp3`,
+    ];
+
+    it("both readouts play on track — the positive control", () => {
+      fireGained(5);
+      expect(voicePaths()).toEqual(READOUT_P5);
+
+      // Past the intro window too, so the second readout keeps its lead-in.
+      audio._played.length = 0;
+      vi.advanceTimersByTime(INTRO_COOLDOWN_MS);
+      fireLost(5);
+      expect(voicePaths()).toEqual(READOUT_P5);
+    });
+
+    it.each(PIT_ROAD_STATES)("neither readout fires on %s, and neither claims the shared window", (_name, state) => {
+      telemetry = state;
+      fireGained(5);
+      fireLost(5);
+
+      expect(voicePaths()).toEqual([]);
+      expect(canAnnouncePosition()).toBe(true);
+    });
+
+    it("a refusal does not burn the window — the next readout on track, inside twenty seconds, speaks", () => {
+      telemetry = { ...ON_TRACK, OnPitRoad: true };
+      fireGained(5);
+      expect(voicePaths()).toEqual([]);
+
+      vi.advanceTimersByTime(1000);
+      telemetry = ON_TRACK;
+      fireLost(5);
+
+      expect(voicePaths()).toEqual(READOUT_P5);
+    });
+
+    it("a readout queued on track and still waiting when the car reaches pit road is dropped, and never plays after the stop", () => {
+      startBlocker();
+      publishGained(5);
+
+      // The car turns into the pit lane while the readout waits behind the
+      // busier line: the gate drops it when the bus idles.
+      telemetry = { ...ON_TRACK, OnPitRoad: true, PlayerTrackSurface: TrkLoc.AproachingPits };
+      flush(audio);
+
+      expect(voicePaths()).toEqual(["test/blocker.mp3"]);
+      expect(canAnnouncePosition()).toBe(true);
+      // Taken and dropped: the refused readout leaves no intro decision.
+      expect(readPositionReadoutDebugState().pendingIntro).toBeNull();
+      expect(readPositionReadoutDebugState().lastSpokenPosition).toBe(0);
+
+      // Back on track after the stop: nothing replays — dropped, not held.
+      telemetry = ON_TRACK;
+      flush(audio);
+
+      expect(voicePaths()).toEqual(["test/blocker.mp3"]);
+    });
   });
 });

@@ -42,11 +42,11 @@ import {
 } from "@iracedeck/callout-settings";
 import type { IEventBus, SessionClass, SimEventMap, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import { OpponentPenaltyFlag } from "@iracedeck/event-bus";
-import { EngineWarnings, PitSvStatus, type TelemetryData } from "@iracedeck/iracing-sdk";
+import { EngineWarnings, PitSvStatus, type TelemetryData, TrkLoc } from "@iracedeck/iracing-sdk";
 import { classifySession } from "@iracedeck/sim-events-iracing";
 import { afterEach, beforeEach, describe, expect, it, type MockInstance, vi } from "vitest";
 
-import type { Scenario, ScenarioContract } from "../../dsl.js";
+import type { Scenario, ScenarioContext, ScenarioContract } from "../../dsl.js";
 import { NO_FRAME, WEIGHT } from "../../dsl.js";
 import type { AudioAssetsManifest } from "../../interpreter.js";
 import { _resetAudioScenarios, getScenarioEngine, initializeAudioScenarios } from "../../interpreter.js";
@@ -56,7 +56,9 @@ import { _resetGapCalloutCooldown } from "./gaps.js";
 import { _resetLastIncidentPoints } from "./incidents.js";
 import {
   _resetOpponentPitPending,
+  _resetPositionReadoutCooldown,
   type AutoFuelCalloutId,
+  canAnnouncePosition,
   type DamageCalloutId,
   type FlagCalloutId,
   type FuelCalloutId,
@@ -2980,6 +2982,62 @@ describe("gap callouts fire end-to-end (issue #933)", () => {
 
     expect(voiceClipsPlayed().some((p) => p.includes("gap/"))).toBe(false);
   });
+});
+
+// Issue #1722: every position readout is silent on pit road and out of the
+// car, reading the live tick through `registerPitCrew`'s `getLatestTelemetry`.
+// The builders default the reader to `() => null`, which never refuses, so a
+// call site that forgot to pass it would still compile and every family test
+// that builds the contract itself would still pass. This is the check that
+// reads the contracts the real registration made.
+describe("the position readouts read the registration's live telemetry (issue #1722)", () => {
+  const POSITION_READOUT_IDS = [
+    "pit-crew.position-change",
+    "pit-crew.race-status",
+    "pit-crew.overtake-gained-position",
+    "pit-crew.overtake-lost-position",
+  ] as const;
+
+  const ON_TRACK = { IsOnTrack: true, OnPitRoad: false, PlayerTrackSurface: TrkLoc.OnTrack };
+  const IN_PIT_LANE = { IsOnTrack: true, OnPitRoad: true, PlayerTrackSurface: TrkLoc.AproachingPits };
+
+  /** The contract as the registration handed it to the engine, wrappers and all. */
+  function registered(id: string): ScenarioContract {
+    const contract = defineContractSpy.mock.calls.map(([c]) => c).find((c) => c.id === id);
+
+    expect(contract, `${id} is not registered`).toBeDefined();
+
+    return contract!;
+  }
+
+  /** A race lap's fire context — the position call claims the window in a race only. */
+  function raceLapCtx(): ScenarioContext {
+    const data = { lap: 6, lapTime: 90.5, isBest: false, sessionType: "race", position: 4, previousPosition: 5 };
+    const event = { event: "lap.completed", timestamp: 0, telemetry: {}, data } as SimEventOf<"lap.completed">;
+
+    return { event, telemetry: event.telemetry, data: event.data, now: Date.now(), vars: {} };
+  }
+
+  beforeEach(() => _resetPositionReadoutCooldown());
+
+  afterEach(() => _resetPositionReadoutCooldown());
+
+  it.each(POSITION_READOUT_IDS)(
+    "%s is refused at speak time while the live tick reads pit road, and admitted on track",
+    (id) => {
+      const gate = registered(id).speakGate;
+
+      expect(gate, `${id} has no speak-time gate`).toBeDefined();
+
+      mockLatestTelemetry.mockReturnValue(IN_PIT_LANE);
+      expect(gate!.admit(raceLapCtx())).toBe(false);
+      expect(canAnnouncePosition()).toBe(true);
+
+      mockLatestTelemetry.mockReturnValue(ON_TRACK);
+      expect(gate!.admit(raceLapCtx())).toBe(true);
+      expect(canAnnouncePosition()).toBe(false);
+    },
+  );
 });
 
 // Issue #466: the telemetry readouts are gated by the Race Engineer master and

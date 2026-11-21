@@ -2012,8 +2012,15 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
         // (issue #1127) — the frozen order catching up to official positions
         // is not a position change, and the caution sequence's own position
         // call, a third of the way into the last caution lap, reads the race
-        // position out.
-        buildPositionContract(d.getRaceFinishedFired, d.getLivePosition, d.getUnderFullCourseCaution),
+        // position out. The latest telemetry keeps it silent on pit road and
+        // out of the car (issue #1722), at event and at speak time: the order
+        // is in flux there, and a readout queued before pit entry is dropped.
+        buildPositionContract(
+          d.getRaceFinishedFired,
+          d.getLivePosition,
+          d.getUnderFullCourseCaution,
+          d.getLatestTelemetry,
+        ),
         SCENARIO_ID_TO_POSITION_ID,
         getPositionCalloutEnabled,
         "position callout",
@@ -2033,8 +2040,15 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
       wrapCalloutScenario(
         // The caution resolver silences the update while a full-course
         // caution is out (issue #1171), at event time and again at speak
-        // time: the order is frozen behind the pace car.
-        buildRaceStatusContract(d.getRaceFinishedFired, d.getLivePosition, d.getUnderFullCourseCaution),
+        // time: the order is frozen behind the pace car. The latest
+        // telemetry silences it on pit road and out of the car (issue #1722),
+        // in the same two places.
+        buildRaceStatusContract(
+          d.getRaceFinishedFired,
+          d.getLivePosition,
+          d.getUnderFullCourseCaution,
+          d.getLatestTelemetry,
+        ),
         SCENARIO_ID_TO_RACE_STATUS_ID,
         getRaceStatusCalloutEnabled,
         "race-status callout",
@@ -2135,8 +2149,21 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
   }
 
   for (const c of [
-    buildOvertakeGainedPositionContract(d.getLivePosition, d.getRaceFinishedFired, d.getOvertakeGate),
-    buildOvertakeLostPositionContract(d.getLivePosition, d.getRaceFinishedFired, d.getOvertakeGate),
+    // The latest telemetry keeps both readouts silent on pit road and out of
+    // the car at speak time too (issue #1722), so one queued behind its
+    // reaction is dropped if the car reaches pit road while it waits.
+    buildOvertakeGainedPositionContract(
+      d.getLivePosition,
+      d.getRaceFinishedFired,
+      d.getOvertakeGate,
+      d.getLatestTelemetry,
+    ),
+    buildOvertakeLostPositionContract(
+      d.getLivePosition,
+      d.getRaceFinishedFired,
+      d.getOvertakeGate,
+      d.getLatestTelemetry,
+    ),
   ]) {
     engine.defineContract(
       wrapWithMaster(

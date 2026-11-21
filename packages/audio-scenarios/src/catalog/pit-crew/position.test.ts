@@ -17,6 +17,8 @@
  *   - Session-type gating: qualifying only fires; race / practice / test stay silent
  *   - Per-callout opt-in suppresses fires when off
  *   - The three readout shapes (invalid lap / pole / standard) and their precedence
+ *   - Silent on pit road and out of the car, a readout queued before pit entry
+ *     dropped rather than held (issue #1722)
  */
 import manifestJson from "@iracedeck/audio-assets/manifest.json" with { type: "json" };
 import defaultScript from "@iracedeck/audio-assets/voice/default/callouts.json" with { type: "json" };
@@ -31,6 +33,7 @@ import type {
   SimEventName,
   SimEventOf,
 } from "@iracedeck/event-bus";
+import { type TelemetryData, TrkLoc } from "@iracedeck/iracing-sdk";
 import { classifySession } from "@iracedeck/sim-events-iracing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -180,6 +183,11 @@ let engine: IScenarioEngine;
 let lastSnapshot: LapPayload | null;
 let raceFinished: boolean;
 let underCaution: boolean;
+/** The player's live tick the pit-road check reads (issue #1722); on track unless a test moves it. */
+let telemetry: TelemetryData | null;
+
+/** A tick of the player's car, out on track and driving. */
+const ON_TRACK = { IsOnTrack: true, OnPitRoad: false, PlayerTrackSurface: TrkLoc.OnTrack } as TelemetryData;
 
 function fire(data: LapPayload | null): void {
   lastSnapshot = data;
@@ -218,6 +226,7 @@ beforeEach(() => {
   lastSnapshot = null;
   raceFinished = false;
   underCaution = false;
+  telemetry = ON_TRACK;
   _resetPositionReadoutCooldown();
   bus = createMockBus();
   audio = createFakeAudio();
@@ -231,6 +240,7 @@ beforeEach(() => {
       () => raceFinished,
       liveFromSnapshot,
       () => underCaution,
+      () => telemetry,
     ),
   );
   engine.setScripts(new Map([[VOICE, POSITION_SCRIPT]]));
@@ -708,8 +718,202 @@ describe("position-change contract — the caution at speak time (issue #1171)",
 
   it("says in the published gate sentence that a caution refuses a race readout, and keeps the shared window's wording", () => {
     expect(build().speakGate?.description).toBe(
-      "In a race, no full-course caution is out and no other position readout has spoken in the last twenty seconds when this one comes to speak; speaking it starts that window.",
+      "The driver is in the car and off pit road; in a race, no full-course caution is out and no other position readout has spoken in the last twenty seconds; speaking this one starts that window.",
     );
+  });
+});
+
+describe("position-change contract — silent on pit road and out of the car (issue #1722)", () => {
+  const BLOCKER = "test/blocker.mp3";
+  const CURRENTLY = `voice/${VOICE}/position-intro-worse/currently-01.mp3`;
+  const P3 = `voice/${VOICE}/position-number/3.mp3`;
+  const raceLap = (): LapPayload => snap({ position: 3, previousPosition: 5, sessionType: "race" });
+
+  /** Each state in which no position readout starts, named for the test titles. */
+  const PIT_ROAD_STATES: ReadonlyArray<readonly [string, TelemetryData]> = [
+    ["OnPitRoad", { ...ON_TRACK, OnPitRoad: true }],
+    ["the pit-stall surface", { ...ON_TRACK, PlayerTrackSurface: TrkLoc.InPitStall }],
+    ["the pit-lane surface (AproachingPits)", { ...ON_TRACK, PlayerTrackSurface: TrkLoc.AproachingPits }],
+    ["out of the car (IsOnTrack: false)", { ...ON_TRACK, IsOnTrack: false }],
+  ];
+
+  /** Publish a lap without letting the audio run — for a test that needs the fire to wait. */
+  function publish(data: LapPayload): void {
+    lastSnapshot = data;
+    bus.publishEvent("lap.completed", data as unknown as Record<string, unknown>);
+  }
+
+  /** A NORMAL line that holds the Voice bus, so a readout has to wait in the queue. */
+  function holdBus(): void {
+    engine.defineScenario({
+      id: "test.blocker",
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      weight: WEIGHT.NORMAL,
+      frame: NO_FRAME,
+      sequence: [BLOCKER],
+    });
+    engine.fire("test.blocker");
+  }
+
+  function lapEvent(data: LapPayload): SimEventOf<"lap.completed"> {
+    return { event: "lap.completed", timestamp: 0, telemetry: {}, data } as SimEventOf<"lap.completed">;
+  }
+
+  /** The fire context the engine hands a speak-time gate; `null` data is an imperative fire. */
+  function gateCtx(data: LapPayload | null): ScenarioContext {
+    const event = data === null ? null : lapEvent(data);
+
+    return { event, telemetry: event?.telemetry ?? null, data, now: Date.now(), vars: {} };
+  }
+
+  function build(): ReturnType<typeof buildPositionContract> {
+    return buildPositionContract(
+      () => false,
+      liveFromSnapshot,
+      () => false,
+      () => telemetry,
+    );
+  }
+
+  it("plays a race readout on track — the positive control", () => {
+    fire(raceLap());
+
+    expect(voicePaths()).toEqual([CURRENTLY, P3]);
+  });
+
+  it.each(PIT_ROAD_STATES)("a race lap completed on %s is silent and claims nothing", (_name, state) => {
+    telemetry = state;
+    fire(raceLap());
+
+    expect(voicePaths()).toEqual([]);
+    expect(canAnnouncePosition()).toBe(true);
+  });
+
+  it.each(PIT_ROAD_STATES)(
+    "a qualifying lap completed on %s is silent too, a refused one included — the rule holds in every session",
+    (_name, state) => {
+      telemetry = state;
+      fire(snap({ position: 3, previousPosition: 5 }));
+      fire(refused({ position: 3, previousPosition: 3 }));
+
+      expect(voicePaths()).toEqual([]);
+    },
+  );
+
+  it("a refusal does not burn the window — the next lap on track, inside twenty seconds, speaks", () => {
+    telemetry = { ...ON_TRACK, OnPitRoad: true };
+    fire(raceLap());
+    expect(voicePaths()).toEqual([]);
+
+    telemetry = ON_TRACK;
+    fire(raceLap());
+
+    expect(voicePaths()).toEqual([CURRENTLY, P3]);
+  });
+
+  it("where: refuses on pit road in every session, and takes the lap again on track", () => {
+    const where = build().when!.where! as (ev: SimEventOf<"lap.completed">) => boolean;
+    // The live position the race branch reads is the lap's own here.
+    lastSnapshot = raceLap();
+
+    for (const [, state] of PIT_ROAD_STATES) {
+      telemetry = state;
+      expect(where(lapEvent(raceLap()))).toBe(false);
+      expect(where(lapEvent(snap({ position: 3, previousPosition: 5 })))).toBe(false);
+    }
+
+    telemetry = ON_TRACK;
+    expect(where(lapEvent(raceLap()))).toBe(true);
+    expect(where(lapEvent(snap({ position: 3, previousPosition: 5 })))).toBe(true);
+  });
+
+  it("the gate refuses on pit road in every session and for an imperative fire, WITHOUT claiming the window", () => {
+    const { admit } = build().speakGate!;
+
+    for (const [, state] of PIT_ROAD_STATES) {
+      telemetry = state;
+      expect(admit(gateCtx(raceLap()))).toBe(false);
+      expect(admit(gateCtx(snap({ position: 3, previousPosition: 5 })))).toBe(false);
+      expect(admit(gateCtx(null))).toBe(false);
+    }
+
+    expect(canAnnouncePosition()).toBe(true);
+
+    telemetry = ON_TRACK;
+    expect(admit(gateCtx(null))).toBe(true);
+    expect(admit(gateCtx(raceLap()))).toBe(true);
+    expect(canAnnouncePosition()).toBe(false);
+  });
+
+  it("a readout queued on track and still waiting when the car reaches pit road is dropped, and never plays after the stop", () => {
+    holdBus();
+    publish(raceLap());
+
+    // Into the pit lane while the readout waits: dropped when the bus idles.
+    telemetry = { ...ON_TRACK, OnPitRoad: true, PlayerTrackSurface: TrkLoc.AproachingPits };
+    flush(audio);
+
+    expect(voicePaths()).toEqual([BLOCKER]);
+    expect(canAnnouncePosition()).toBe(true);
+
+    // Out of the box and back on track: nothing replays — dropped, not held.
+    telemetry = ON_TRACK;
+    flush(audio);
+
+    expect(voicePaths()).toEqual([BLOCKER]);
+  });
+
+  it("the first lap completed on track after the stop announces the position normally — no catch-up line before it", () => {
+    holdBus();
+    publish(raceLap());
+    telemetry = { ...ON_TRACK, OnPitRoad: true };
+    flush(audio);
+
+    // The lap that ends in the pit lane, places lost to the stop: silent.
+    fire(snap({ position: 8, previousPosition: 3, sessionType: "race" }));
+    expect(voicePaths()).toEqual([BLOCKER]);
+
+    // The next lap, completed on track with a change: one ordinary readout.
+    telemetry = ON_TRACK;
+    fire(snap({ position: 9, previousPosition: 8, sessionType: "race" }));
+
+    expect(voicePaths()).toEqual([BLOCKER, CURRENTLY, `voice/${VOICE}/position-number/9.mp3`]);
+  });
+
+  it("a queued readout the gate drops on pit road leaves no intro decision pending", () => {
+    registerPositionReadoutVocabulary(engine, liveFromSnapshot);
+    engine.setScripts(
+      new Map([
+        [
+          VOICE,
+          {
+            ...POSITION_SCRIPT,
+            scenarios: {
+              "pit-crew.position-change": {
+                sequence: [{ optional: ["{{positionReadout.intro}}"] }, "{{positionReadout.number}}"],
+              },
+            },
+          },
+        ],
+      ]),
+    );
+    holdBus();
+    publish(raceLap());
+
+    telemetry = { ...ON_TRACK, PlayerTrackSurface: TrkLoc.InPitStall };
+    flush(audio);
+
+    expect(voicePaths()).toEqual([BLOCKER]);
+    expect(readPositionReadoutDebugState().pendingIntro).toBeNull();
+    expect(readPositionReadoutDebugState().lastSpokenPosition).toBe(0);
+  });
+
+  it("says the pit-road rule in both published sentences", () => {
+    const c = build();
+
+    expect(c.description).toContain("pit road");
+    expect(c.speakGate?.description).toMatch(/^The driver is in the car and off pit road; /);
   });
 });
 
@@ -733,6 +937,7 @@ describe("position-change contract — the catalog's opt-in wrapper", () => {
       getRaceFinishedFired: () => raceFinished,
       getLivePosition: liveFromSnapshot,
       getUnderFullCourseCaution: () => underCaution,
+      getLatestTelemetry: () => telemetry,
     });
     engine.setScripts(new Map([[VOICE, SCRIPT]]));
   });
@@ -756,6 +961,18 @@ describe("position-change contract — the catalog's opt-in wrapper", () => {
     fire(snap({ position: 3, previousPosition: 5 }));
 
     expect(voicePaths()).toEqual([]);
+  });
+
+  it("reads the registration's live telemetry: a lap that ends on pit road is silent (issue #1722)", () => {
+    telemetry = { ...ON_TRACK, OnPitRoad: true };
+    fire(snap({ position: 3, previousPosition: 5 }));
+
+    expect(voicePaths()).toEqual([]);
+
+    telemetry = ON_TRACK;
+    fire(snap({ position: 3, previousPosition: 5 }));
+
+    expect(hasClip("/position-number/3.mp3")).toBe(true);
   });
 });
 
