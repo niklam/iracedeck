@@ -26,6 +26,8 @@
       "Bash(git pull:*)",
       "Bash(grep:*)",
       "Bash(pnpm build:*)",
+      "Bash(pnpm build:with-restart)",
+      "Bash(pnpm build:stream-deck)",
       "Bash(pnpm restart:stream-deck)",
       "Bash(pnpm start:stream-deck)",
       "Bash(pnpm stop:stream-deck)",
