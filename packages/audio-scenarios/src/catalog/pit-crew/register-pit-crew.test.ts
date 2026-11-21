@@ -84,7 +84,7 @@ import { _resetRadarEngine } from "./radar-engine.js";
 import { _resetSpotterEngine } from "./spotter-engine.js";
 import { TELEMETRY_READOUT_CLIP_SOURCES } from "./telemetry-readout.js";
 import { TIRE_WEAR_CLIP_SOURCES } from "./tire-wear.js";
-import { _resetTrafficState } from "./traffic.js";
+import { _resetTrafficState, readTrafficDebugState } from "./traffic.js";
 
 const mockSessionType = vi.fn(() => "Race");
 // Live-telemetry feed. Most of this file leaves it at `null` — the pre-#1051
@@ -1983,6 +1983,39 @@ describe("traffic family registration (issue #1113)", () => {
     bus.publishEvent("traffic.pitExitMerge", { seconds: 1 });
     flush(audio);
     expect(voiceClipsPlayed()).toEqual([clip("pit-exit-traffic"), clip("pit-exit-merge")]);
+  });
+
+  // With either gate off from the start, no first call is ever heard, so a
+  // `first: false` count is the first call's to take (#1113, amended
+  // 2026-11-17) and the case above never reaches the update line. Here the
+  // car is introduced with both gates on, so the count is the update's, and
+  // only the gate under test can silence it.
+  it.each([
+    {
+      gate: "the trafficRejoin flag",
+      set: (on: boolean) => {
+        trafficRejoinAvailable = on;
+      },
+    },
+    { gate: "the rejoin opt-in", set: (on: boolean) => void trafficEnabled.set("rejoin", on) },
+  ])("$gate off silences the update about a car introduced while it was on", ({ set }) => {
+    bus.publishEvent("traffic.rejoin", { verdict: "near", seconds: 4, first: true });
+    flush(audio);
+    expect(voiceClipsPlayed()).toEqual(["rejoin-intro", "rejoin-mid-4", "rejoin-outro"].map(clip));
+    expect(readTrafficDebugState().introduced).toBe(true);
+    audio._reset();
+
+    set(false);
+    bus.publishEvent("traffic.rejoin", { verdict: "near", seconds: 4, first: false });
+    flush(audio);
+    expect(voiceClipsPlayed()).toEqual([]);
+
+    // The same count with the gate back on is the update: the case above
+    // reached the update line, not the first call.
+    set(true);
+    bus.publishEvent("traffic.rejoin", { verdict: "near", seconds: 4, first: false });
+    flush(audio);
+    expect(voiceClipsPlayed()).toEqual(["rejoin-update", "rejoin-mid-4"].map(clip));
   });
 
   it("a tow or a reset cuts a rejoin line through the registration's wrappers (amended 2026-11-20)", () => {
