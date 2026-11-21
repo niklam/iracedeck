@@ -662,6 +662,98 @@ describe("buildPackReference", () => {
   });
 });
 
+// A feature a release build does not carry (#1113): its contracts and
+// vocabulary are withheld, and every recording line only they drew from.
+describe("buildPackReference withholding a development feature (issue #1113)", () => {
+  const NOTHING = { contracts: [], vars: [], conds: [], cases: [] };
+  /** The incident line and the var only it speaks. */
+  const INCIDENT = { ...NOTHING, contracts: ["pit-crew.incident"], vars: ["incident.points"] };
+
+  it("withholds nothing by default: an empty list builds what no list builds", () => {
+    expect(buildPackReference(input({ withheld: NOTHING }))).toEqual(buildPackReference(input()));
+  });
+
+  it("drops the withheld callout and vocabulary, the lines only they drew from, and a group left empty", () => {
+    const ref = buildPackReference(input({ withheld: INCIDENT }));
+
+    expect(ref.callouts.map((c) => c.id)).not.toContain("pit-crew.incident");
+    expect(ref.callouts).toHaveLength(CONTRACTS.length - 1);
+    expect(ref.vocabulary.vars.map((v) => v.name)).toEqual(["readback.fuel", "zz.unused"]);
+    // `incidents/points-N` were drawn only through the withheld var: the group is gone.
+    expect(ref.recordingScript.map((g) => g.group)).not.toContain("incidents");
+    // Nothing else moved.
+    expect(ref.recordingScript.filter((g) => g.group !== "incidents")).toEqual(
+      buildPackReference(input()).recordingScript.filter((g) => g.group !== "incidents"),
+    );
+  });
+
+  it("keeps a line nothing drew from before, as it was: withholding hides the feature, not the orphans", () => {
+    const ref = buildPackReference(input({ withheld: INCIDENT }));
+
+    expect(lineOf(ref, "orphan-group", "lonely")).toEqual(
+      lineOf(buildPackReference(input()), "orphan-group", "lonely"),
+    );
+    expect(lineOf(ref, "toggle", "stray").usedBy).toEqual([]);
+  });
+
+  it("keeps a line a published callout also draws from, naming only the published one", () => {
+    // The incident line also plays the `openers/alright` clip the spotter call plays.
+    const script: CalloutScript = {
+      ...SCRIPT,
+      scenarios: {
+        ...SCRIPT.scenarios,
+        "pit-crew.incident": {
+          ...SCRIPT.scenarios["pit-crew.incident"],
+          sequence: ["pool:incidents/type-contact", "voice/{voice}/openers/alright.mp3"],
+        },
+      },
+    };
+    const ref = buildPackReference(input({ script, withheld: { ...NOTHING, contracts: ["pit-crew.spotter-call"] } }));
+
+    expect(lineOf(ref, "openers", "alright").usedBy).toEqual(["pit-crew.incident"]);
+    // The spotter call alone drew from these two: gone, with their groups.
+    expect(ref.recordingScript.map((g) => g.group)).not.toContain("spotter");
+    expect(ref.recordingScript.map((g) => g.group)).not.toContain("units");
+  });
+
+  it("takes a withheld var out of the viaVar column of a line a published callout still addresses", () => {
+    const withType = input({
+      manifestClips: [...MANIFEST_CLIPS, "voice/default/incidents/type-contact-01.mp3"],
+      groups: { ...GROUPS, incidents: [...GROUPS.incidents, { name: "type-contact-01", text: "Contact." }] },
+    });
+    // The incident entry addresses `incidents/type-contact` itself, and stops speaking the var.
+    const script: CalloutScript = {
+      ...SCRIPT,
+      scenarios: {
+        ...SCRIPT.scenarios,
+        "pit-crew.incident": { ...SCRIPT.scenarios["pit-crew.incident"], sequence: ["pool:incidents/type-contact"] },
+      },
+    };
+    const ref = buildPackReference({ ...withType, script, withheld: { ...NOTHING, vars: ["incident.points"] } });
+
+    expect(lineOf(ref, "incidents", "type-contact")).toMatchObject({ usedBy: ["pit-crew.incident"], viaVar: [] });
+    expect(ref.recordingScript.find((g) => g.group === "incidents")?.lines.map((l) => l.base)).toEqual([
+      "type-contact",
+    ]);
+  });
+
+  it("refuses a published callout whose entry names withheld vocabulary, naming both", () => {
+    expect(() => buildPackReference(input({ withheld: { ...NOTHING, conds: ["session.isRace"] } }))).toThrow(
+      /"pit-crew\.flag-green" is published but its entry names the withheld cond "session\.isRace"/,
+    );
+  });
+
+  it("refuses a withheld name the catalog does not register, so a rename cannot publish the feature again", () => {
+    expect(() =>
+      buildPackReference(
+        input({ withheld: { contracts: ["pit-crew.renamed"], vars: ["no.such"], conds: [], cases: ["gone"] } }),
+      ),
+    ).toThrow(
+      /withhold contract "pit-crew\.renamed", var "no\.such", case "gone", which the catalog does not register/,
+    );
+  });
+});
+
 describe("descriptionNamesGroup", () => {
   it("matches the group as a slashed example or as the head of '<group> group' / '<group> clip group'", () => {
     expect(descriptionNamesGroup("spoken from the incidents group (incidents/points-2 is …)", "incidents")).toBe(true);

@@ -32,6 +32,19 @@
  * builder writes each onto its recording line as `playedBy`, so the website
  * renders the artifact's words and mirrors no list of its own.
  *
+ * **What is withheld (#1113).** A feature a release build does not carry —
+ * one behind a development platform flag, such as the rejoin traffic warnings
+ * — keeps its contracts, vocabulary, script entries and clips, but a pack
+ * author must not be shown it. The caller names its contracts and vocabulary
+ * in `withheld` (the generator picks them from the release flags); the builder
+ * drops those, and every recording line only they draw from, so no orphan is
+ * left behind: a line some published callout, published var or plugin code
+ * still reaches stays, minus the withheld names in its columns, and a line
+ * nothing reached before stays as it was. A published callout naming a
+ * withheld var, condition or case is refused, as is a withheld name the
+ * catalog does not register (a rename would otherwise publish the feature
+ * again without a word).
+ *
  * The builder refuses a contract the script has no entry for. Since #1065 the
  * catalog is contracts-only and the bundled script covers all of it, so an
  * id with no entry is either a legacy `Scenario` speaking from code — which
@@ -228,6 +241,35 @@ export type PackReferenceInput = {
   pluginPlayed: readonly PluginPlayedClip[];
   /** Which voice's clips make the recording script. Defaults to the bundled voice, `default`. */
   voice?: string;
+  /** What the reference must not publish (#1113, see the module header). Default: nothing. */
+  withheld?: PackReferenceWithheld;
+};
+
+/**
+ * The contracts and vocabulary of a feature a release build does not carry
+ * (#1113): the reference publishes none of them, nor any recording line only
+ * they draw from. Names as the engine reports them.
+ */
+export type PackReferenceWithheld = {
+  contracts: readonly string[];
+  vars: readonly string[];
+  conds: readonly string[];
+  cases: readonly string[];
+};
+
+const NOTHING_WITHHELD: PackReferenceWithheld = { contracts: [], vars: [], conds: [], cases: [] };
+
+/**
+ * A catalog feature a release build does not carry (#1113): the platform
+ * feature flag that turns it on (`platform-features.json`) and what the
+ * reference withholds while no release build has that flag on. The pit-crew
+ * catalog lists them as `DEVELOPMENT_FEATURES`; the root generator reads the
+ * committed flags and passes the withheld names of each one no plugin ships.
+ */
+export type DevelopmentFeature = {
+  /** The `PlatformFeatureFlags` key (`@iracedeck/deck-core`) that turns the feature on. */
+  flag: string;
+  withheld: PackReferenceWithheld;
 };
 
 /** The bundled voice, whose clips the recording script is built from unless told otherwise. */
@@ -250,13 +292,21 @@ export function buildPackReference(input: PackReferenceInput): PackReference {
     );
   }
 
+  const withheld = checkWithheld(input.withheld ?? NOTHING_WITHHELD, input.contracts, input.vocabulary);
+  // Every contract's walk, the withheld included: a recording line is withheld
+  // only when what draws from it is (`buildRecordingScript`).
+  const allWalks = new Map<string, EntryWalk>(
+    input.contracts.map((contract) => [contract.id, walkEntry(script, script.scenarios[contract.id])]),
+  );
   const walks = new Map<string, EntryWalk>();
   const callouts = [...input.contracts]
+    .filter((contract) => !withheld.contracts.has(contract.id))
     .sort((a, b) => compare(a.id, b.id))
     .map((contract): Callout => {
       const entry = script.scenarios[contract.id];
-      const walk = walkEntry(script, entry);
+      const walk = allWalks.get(contract.id) as EntryWalk;
       walks.set(contract.id, walk);
+      refuseWithheldReferences(contract.id, walk.references, withheld);
 
       return {
         id: contract.id,
@@ -278,17 +328,103 @@ export function buildPackReference(input: PackReferenceInput): PackReference {
       };
     });
 
-  const vocabulary = buildVocabulary(input.vocabulary, walks);
+  const vocabulary = buildVocabulary(
+    {
+      vars: input.vocabulary.vars.filter((v) => !withheld.vars.has(v.name)),
+      conds: input.vocabulary.conds.filter((c) => !withheld.conds.has(c.name)),
+      cases: input.vocabulary.cases.filter((c) => !withheld.cases.has(c.name)),
+    },
+    walks,
+  );
   const recordingScript = buildRecordingScript(
     input.groups,
     input.manifestClips,
     voice,
-    walks,
-    vocabulary.vars,
+    allWalks,
+    [...input.vocabulary.vars].sort((a, b) => compare(a.name, b.name)),
     input.pluginPlayed,
+    withheld,
   );
 
   return { _meta: { generatedFrom: [...input.generatedFrom] }, callouts, vocabulary, recordingScript };
+}
+
+/** {@link PackReferenceWithheld} as sets, each name checked against what the catalog registers. */
+type WithheldSets = {
+  contracts: ReadonlySet<string>;
+  vars: ReadonlySet<string>;
+  conds: ReadonlySet<string>;
+  cases: ReadonlySet<string>;
+};
+
+/**
+ * Refuse a withheld name the catalog does not register: a feature whose
+ * contract or var was renamed would otherwise reach the reference again with
+ * nothing red (module header).
+ */
+function checkWithheld(
+  withheld: PackReferenceWithheld,
+  contracts: readonly ContractReport[],
+  vocabulary: VocabularyReport,
+): WithheldSets {
+  const unknown = [
+    ...unregistered(
+      "contract",
+      withheld.contracts,
+      contracts.map((c) => c.id),
+    ),
+    ...unregistered(
+      "var",
+      withheld.vars,
+      vocabulary.vars.map((v) => v.name),
+    ),
+    ...unregistered(
+      "cond",
+      withheld.conds,
+      vocabulary.conds.map((c) => c.name),
+    ),
+    ...unregistered(
+      "case",
+      withheld.cases,
+      vocabulary.cases.map((c) => c.name),
+    ),
+  ];
+
+  if (unknown.length > 0) {
+    throw new Error(
+      `The reference is told to withhold ${unknown.join(", ")}, which the catalog does not register — ` +
+        "renamed or removed? Update the feature's withheld names to what the catalog registers.",
+    );
+  }
+
+  return {
+    contracts: new Set(withheld.contracts),
+    vars: new Set(withheld.vars),
+    conds: new Set(withheld.conds),
+    cases: new Set(withheld.cases),
+  };
+}
+
+function unregistered(kind: string, names: readonly string[], registered: readonly string[]): string[] {
+  const known = new Set(registered);
+
+  return names.filter((name) => !known.has(name)).map((name) => `${kind} "${name}"`);
+}
+
+/** Refuse a published callout whose entry names withheld vocabulary: the reference would point at what it hides. */
+function refuseWithheldReferences(id: string, references: CalloutReferences, withheld: WithheldSets): void {
+  const named = [
+    ...references.vars.filter((name) => withheld.vars.has(name)).map((name) => `var "${name}"`),
+    ...references.conds.filter((name) => withheld.conds.has(name)).map((name) => `cond "${name}"`),
+    ...references.cases.filter(({ name }) => withheld.cases.has(name)).map(({ name }) => `case "${name}"`),
+  ];
+
+  if (named.length > 0) {
+    throw new Error(
+      `"${id}" is published but its entry names the withheld ${named.join(", ")} — ` +
+        "withhold the callout too, or stop withholding what it uses.",
+    );
+  }
 }
 
 /** Serialise the artifact exactly as it is committed — 2-space JSON, trailing newline — so the freshness test can compare text. */
@@ -491,13 +627,21 @@ function lineKeyOf(pool: string, lineKeys: ReadonlySet<string>): string {
   return lineKeys.has(stripped) ? stripped : pool;
 }
 
+/**
+ * The recording script off the voice's manifest clips. `walks` and `vars` are
+ * EVERY contract's and var's, the withheld included (`vars` sorted by name):
+ * a line's columns name only the published ones, and a line something drew
+ * from that only withheld names drew from is left out, its group with it when
+ * it was the last (module header).
+ */
 function buildRecordingScript(
   groups: PackReferenceInput["groups"],
   manifestClips: readonly string[],
   voice: string,
   walks: ReadonlyMap<string, EntryWalk>,
-  vars: readonly VocabularyItem[],
+  vars: readonly { name: string; description: string }[],
   pluginPlayed: readonly PluginPlayedClip[],
+  withheld: WithheldSets,
 ): RecordingGroup[] {
   // The shipped take names per base, per group, off the voice's manifest clips.
   const prefix = `voice/${voice}/`;
@@ -547,20 +691,26 @@ function buildRecordingScript(
     }
   }
 
-  return sorted(takesByGroup.keys()).map((group) => {
+  return sorted(takesByGroup.keys()).flatMap((group): RecordingGroup[] => {
     // The vars whose description names the group — noted on every line of
     // it, since which line a resolver picks is a runtime decision. Their
     // callouts are deliberately NOT folded into `usedBy` (see the type).
-    const viaVar = vars.filter((v) => descriptionNamesGroup(v.description, group)).map((v) => v.name);
+    const allViaVar = vars.filter((v) => descriptionNamesGroup(v.description, group)).map((v) => v.name);
+    const viaVar = allViaVar.filter((name) => !withheld.vars.has(name));
     const authored = new Map((Object.hasOwn(groups, group) ? groups[group] : []).map((l) => [l.name, l.text]));
     const bases = takesByGroup.get(group) ?? new Map<string, string[]>();
+    const lines = sorted(bases.keys()).flatMap((base): RecordingLine[] => {
+      const names = [...(bases.get(base) ?? [])].sort((a, b) => takeOrder(a) - takeOrder(b));
+      const allUsedBy = sorted(directUsers.get(`${group}/${base}`) ?? []);
+      const usedBy = allUsedBy.filter((id) => !withheld.contracts.has(id));
+      const playedBy = pluginPlayedEntry(pluginPlayed, group, base)?.playedBy ?? null;
+      const drawnFrom = allUsedBy.length > 0 || allViaVar.length > 0;
 
-    return {
-      group,
-      lines: sorted(bases.keys()).map((base) => {
-        const names = [...(bases.get(base) ?? [])].sort((a, b) => takeOrder(a) - takeOrder(b));
+      // Only withheld names drew from it: withheld with them (#1113).
+      if (drawnFrom && usedBy.length === 0 && viaVar.length === 0 && playedBy === null) return [];
 
-        return {
+      return [
+        {
           base,
           texts: names.flatMap((name) => {
             const text = authored.get(name);
@@ -568,12 +718,14 @@ function buildRecordingScript(
             return text === undefined ? [] : [text];
           }),
           takes: names.length,
-          usedBy: sorted(directUsers.get(`${group}/${base}`) ?? []),
+          usedBy,
           viaVar: [...viaVar],
-          playedBy: pluginPlayedEntry(pluginPlayed, group, base)?.playedBy ?? null,
-        };
-      }),
-    };
+          playedBy,
+        },
+      ];
+    });
+
+    return lines.length === 0 ? [] : [{ group, lines }];
   });
 }
 
