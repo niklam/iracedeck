@@ -320,6 +320,8 @@ function start(options: SimEventsIracingOptions = {}, sessionInfo = raceSessionI
   controller.setSessionInfo(sessionInfo);
   initializeSimEventsIracing(createRecordingBus(published), controller, createLogger(lines), {
     errorClock: () => 0,
+    // The rejoin detector's development flag on (#1113), so every step runs.
+    trafficRejoin: true,
     ...options,
   });
 }

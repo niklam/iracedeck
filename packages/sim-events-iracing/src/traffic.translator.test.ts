@@ -182,9 +182,14 @@ describe("the approaching-traffic detectors through handleTick (issue #1113)", (
   let merges: SimEventMap["traffic.pitExitMerge"]["data"][];
   let order: string[];
 
+  /** The rejoin detector runs here unless a test turns its development flag off (the spec's fourth amendment). */
   function init(options: SimEventsIracingOptions = {}, logger: ILogger = createMockLogger()): void {
     controller = createMockController();
-    initializeSimEventsIracing(getEventBus(), controller, logger, { onStepError: "rethrow", ...options });
+    initializeSimEventsIracing(getEventBus(), controller, logger, {
+      onStepError: "rethrow",
+      trafficRejoin: true,
+      ...options,
+    });
     getEventBus().subscribe("traffic.rejoin", (ev) => {
       rejoin.push(ev.data);
       order.push(ev.event);
@@ -405,6 +410,68 @@ describe("the approaching-traffic detectors through handleTick (issue #1113)", (
     });
   });
 
+  describe("with the trafficRejoin development flag off, as every release build has it (the spec's fourth amendment)", () => {
+    /** A stop with car 1 at 0.45, 4.5 s away: the flag on, it says "near". */
+    function stopWithACarComing(): void {
+      controller.__tick(tick({ pct: 0.5 }, 0.45));
+      vi.advanceTimersByTime(TRAFFIC_REJOIN_ENTRY_DWELL_MS);
+      controller.__tick(tick({ pct: 0.5 }, 0.45));
+      vi.advanceTimersByTime(TRAFFIC_REJOIN_EVAL_INTERVAL_MS);
+      controller.__tick(tick({ pct: 0.5 }, 0.46));
+    }
+
+    function rejoinActive(): boolean {
+      const state = readSimState();
+
+      if (!state.initialized) throw new Error("translator not initialised");
+
+      return state.raw.state.trafficRejoin.active;
+    }
+
+    it("never runs the rejoin detector: no traffic.rejoin, no episode and no Rejoin line for a car coming", () => {
+      const { root, scopes } = scopedLoggers();
+
+      init({ trafficRejoin: false }, root);
+      stopWithACarComing();
+
+      expect(rejoin).toEqual([]);
+      expect(order).toEqual([]);
+      expect(rejoinActive()).toBe(false);
+      expect(debugLines(scopes.get("Rejoin"))).toEqual([]);
+    });
+
+    it("is off when the option is left out: a caller that does not opt in gets no rejoin traffic", () => {
+      // The other options are passed, so only the flag's absence decides.
+      initializeSimEventsIracing(getEventBus(), (controller = createMockController()), createMockLogger(), {
+        onStepError: "rethrow",
+      });
+      getEventBus().subscribe("traffic.rejoin", (ev) => rejoin.push(ev.data));
+
+      stopWithACarComing();
+
+      expect(rejoin).toEqual([]);
+      expect(rejoinActive()).toBe(false);
+    });
+
+    it("never publishes traffic.rejoinTowed: not on a tow, nor on a session change", () => {
+      init({ trafficRejoin: false });
+      getEventBus().subscribe("session.changed", (ev) => {
+        order.push(ev.event);
+      });
+      stopWithACarComing();
+
+      // The tow: one tick out of the world, then the stall.
+      vi.advanceTimersByTime(TRAFFIC_REJOIN_EVAL_INTERVAL_MS);
+      controller.__tick(tick({ pct: 0.5, surface: TrkLoc.NotInWorld }, 0.48));
+      vi.advanceTimersByTime(100);
+      controller.__tick(tick({ pct: 0.1, surface: TrkLoc.InPitStall, onPitRoad: true, inStall: true }, 0.48));
+      vi.advanceTimersByTime(TRAFFIC_REJOIN_EVAL_INTERVAL_MS);
+      controller.__tick({ ...tick({ pct: 0.5 }, 0.45), SessionNum: 1 });
+
+      expect(order).toEqual(["session.changed"]);
+    });
+  });
+
   describe("traffic.pitExit", () => {
     const section = (): PitLaneSection => ({
       version: PIT_LANE_SECTION_VERSION,
@@ -437,6 +504,16 @@ describe("the approaching-traffic detectors through handleTick (issue #1113)", (
 
     it("calls traffic for a car reaching the blend just after the player, 3 s short of the end of pit road, then warns in the exit lane", () => {
       init({ loadPitLaneLandmarks: section });
+
+      driveOut();
+
+      expect(pitExit).toEqual([{ verdict: "traffic", seconds: 0.7 }]);
+      expect(merges).toEqual([{ seconds: 0.9 }]);
+      expect(order).toEqual(["pitStall.departed", "traffic.pitExit", "traffic.pitExitMerge"]);
+    });
+
+    it("calls and warns the same with the trafficRejoin flag off: the flag gates the rejoin detector only", () => {
+      init({ loadPitLaneLandmarks: section, trafficRejoin: false });
 
       driveOut();
 

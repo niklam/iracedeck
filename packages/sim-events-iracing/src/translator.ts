@@ -385,6 +385,13 @@ type TranslatorInstance = {
   loadPitLaneLandmarks: PitLaneLandmarksLoader | null;
   /** Scoped logger for the pit-lane landmark edge diagnostics (issue #1112), all at debug. */
   pitLaneLandmarkLogger: ILogger;
+  /**
+   * Whether the rejoin detector runs (issue #1113, the spec's fourth
+   * amendment): the `trafficRejoin` development flag, fixed for the run. Off,
+   * `diffTrafficRejoin` is never called, so its episode never opens and
+   * neither `traffic.rejoin` nor `traffic.rejoinTowed` is ever published.
+   */
+  trafficRejoin: boolean;
   /** Scoped logger for the rejoin detector's debug lines (issue #1113). */
   trafficRejoinLogger: ILogger;
   /** Scoped logger for the pit-exit detector's debug lines (issue #1113). */
@@ -567,6 +574,17 @@ export type SimEventsIracingOptions = SimEventsIracingSettingsOptions & {
    * loader, so every session learns from nothing.
    */
   loadPitLaneLandmarks?: PitLaneLandmarksLoader;
+  /**
+   * Run the rejoin detector (issue #1113): the `trafficRejoin` platform flag,
+   * which no setting backs. The rejoin warnings do not ship (the spec's fourth
+   * amendment, 2026-11-21): every plugin's committed `platform-features.json`
+   * has the flag off, a developer turns it on through
+   * `feature-flags.local.json`, and the scenario harness always runs with it.
+   * Off, the detector never runs, so no `traffic.rejoin` or
+   * `traffic.rejoinTowed` is ever published and no tick spends time on it.
+   * Default: `false` — a caller that does not opt in gets no rejoin traffic.
+   */
+  trafficRejoin?: boolean;
 };
 
 let instance: TranslatorInstance | null = null;
@@ -669,6 +687,7 @@ export function initializeSimEventsIracing(
     trafficClassMemo: null,
     loadPitLaneLandmarks: options.loadPitLaneLandmarks ?? null,
     pitLaneLandmarkLogger: logger.createScope("PitLaneLandmarks"),
+    trafficRejoin: options.trafficRejoin === true,
     trafficRejoinLogger: logger.createScope("Rejoin"),
     trafficPitExitLogger: logger.createScope("PitExit"),
     getFuelLapsLeftMarginLaps: options.getFuelLapsLeftMarginLaps ?? (() => FUEL_CALLOUT_DEFAULT_MARGIN_LAPS),
@@ -3894,6 +3913,7 @@ function handleLiveSteps(
       steps.runUnit,
     ),
   );
+
   // The approaching-traffic detectors (issue #1113): stopped on the circuit,
   // and driving out of the pits. Both after the curve update, so they time
   // the cars against curves that include this tick's samples, and both read
@@ -3903,19 +3923,26 @@ function handleLiveSteps(
   // only until its call is made and the player is past pit road's end), and the track length
   // and pit speed limit this tick already resolved. Each logs at debug
   // through its own scope of the translator's logger, `Rejoin` / `PitExit`.
-  steps.live("diffTrafficRejoin", pending, () =>
-    diffTrafficRejoin(
-      self.state.trafficRejoin,
-      self.state.trafficArrival,
-      telemetry,
-      playerCarIdx,
-      trafficClasses,
-      trackLengthMeters,
-      now,
-      emit,
-      self.trafficRejoinLogger,
-    ),
-  );
+  // The rejoin detector runs only behind the `trafficRejoin` development flag
+  // (the spec's fourth amendment): off, its step is skipped whole, so its
+  // episode never opens and nothing it would publish, the tow's end included,
+  // can reach the bus.
+  if (self.trafficRejoin) {
+    steps.live("diffTrafficRejoin", pending, () =>
+      diffTrafficRejoin(
+        self.state.trafficRejoin,
+        self.state.trafficArrival,
+        telemetry,
+        playerCarIdx,
+        trafficClasses,
+        trackLengthMeters,
+        now,
+        emit,
+        self.trafficRejoinLogger,
+      ),
+    );
+  }
+
   steps.live("diffTrafficPitExit", pending, () =>
     diffTrafficPitExit(
       self.state.trafficPitExit,

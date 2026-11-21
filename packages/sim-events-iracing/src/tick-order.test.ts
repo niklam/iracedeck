@@ -580,7 +580,11 @@ describe("TICK_ORDER", () => {
     harness.probe.active = false;
     harness.probe.events = new Map(CONTROLLER_TICK_ORDER.filter(isModuleStage).map((s) => [s.stage, s.events[0]!]));
     controller = createController();
-    initializeSimEventsIracing(createRecordingBus(), controller, silentLogger, { onStepError: "rethrow" });
+    // The rejoin detector's development flag on (#1113), so every stage runs.
+    initializeSimEventsIracing(createRecordingBus(), controller, silentLogger, {
+      onStepError: "rethrow",
+      trafficRejoin: true,
+    });
   });
 
   afterEach(() => {
@@ -604,6 +608,19 @@ describe("TICK_ORDER", () => {
           .map((s) => s.stage)
           .sort(),
       );
+    });
+
+    it("skips only diffTrafficRejoin with the trafficRejoin flag off, every other stage in order (#1113)", () => {
+      _resetSimEventsIracing();
+      initializeSimEventsIracing(createRecordingBus(), controller, silentLogger, { onStepError: "rethrow" });
+      controller.tick(telemetry());
+      harness.probe.active = true;
+      const log = tickLog(controller, telemetry());
+      const withoutRejoin = CONTROLLER_TICK_ORDER.filter((s) => s.stage !== "diffTrafficRejoin");
+
+      expect(callsOf(log)).not.toContain("diffTrafficRejoin");
+      expect(callOrderMismatch(callsOf(log), withoutRejoin)).toBeNull();
+      expect(checkControllerTickLog(log).problems).toEqual([]);
     });
 
     // The replay recorder's turn on its own (#1468): its four stages in its
@@ -631,7 +648,10 @@ describe("TICK_ORDER", () => {
       _resetSimEventsIracing();
       const subscribe = vi.spyOn(controller, "subscribe");
 
-      initializeSimEventsIracing(createRecordingBus(), controller, silentLogger, { onStepError: "rethrow" });
+      initializeSimEventsIracing(createRecordingBus(), controller, silentLogger, {
+        onStepError: "rethrow",
+        trafficRejoin: true,
+      });
 
       expect(subscribe.mock.calls.map(([id]) => id)).toEqual(SUBSCRIBERS.map((s) => s.id));
       expect(CONTROLLER_TICK_ORDER).toEqual([...TICK_ORDER, ...REPLAY_RECORDER_ORDER]);
