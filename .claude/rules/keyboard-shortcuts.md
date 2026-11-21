@@ -75,6 +75,8 @@ await this.holdBinding(ev.action.id, "lookDirectionLeft");
 await this.releaseBinding(ev.action.id);
 ```
 
+A SimHub tap is two HTTP requests (start, then stop), so the dispatcher runs every start and stop of one role in order (#1693): a tap's pair is one unit, a hold's start and a release's stop join the same queue, and a second press of the role waits for the first to finish rather than landing between its requests, which Control Mapper would merge into one long press. Other roles and keyboard bindings are never held by it.
+
 ### When to use hold vs tap
 - **Tap** (`tapBinding`): one-shot actions (toggle, cycle, select)
 - **Hold** (`holdBinding` + `releaseBinding`): continuous actions (look direction, push-to-talk)
