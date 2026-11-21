@@ -131,6 +131,8 @@ function harness({
   const settled: PitExit[] = [];
   /** Each merge warning (`traffic.pitExitMerge`), apart from the pit-exit calls in `events`. */
   const merges: PitExitMerge[] = [];
+  /** Every event name the detector emitted, both kinds, in emit order. */
+  const emitted: string[] = [];
   const debug = vi.fn<(line: string) => void>();
   const logger: ILogger = { ...silentLogger, debug };
   const readLandmarks = vi.fn(() => landmarks);
@@ -152,6 +154,8 @@ function harness({
       },
       now,
       (ev) => {
+        emitted.push(ev.event);
+
         if (ev.event === "traffic.pitExitMerge") merges.push(ev.data);
         else events.push(ev.data);
       },
@@ -169,6 +173,7 @@ function harness({
     episode,
     events,
     merges,
+    emitted,
     settled,
     debug,
     readLandmarks,
@@ -2147,17 +2152,14 @@ describe("diffTrafficPitExit", () => {
 
     it("is said with the first call when the first evaluation is past pitRoadEnd, the call first", () => {
       const h = harness({ landmarks: CURVE_LANDMARKS });
-      const order: string[] = [];
 
       h.depart(at(STALL_PCT, 1));
-      h.debug.mockImplementation((line) => {
-        if (line.startsWith("emit")) order.push(line.slice(0, 18));
-      });
       step(h, at(0.13, 1));
 
       expect(h.events).toEqual([{ verdict: "traffic", seconds: 1 }]);
       expect(h.merges).toEqual([{ seconds: 1 }]);
-      expect(order).toEqual(["emit traffic (firs", "emit merge warning"]);
+      // The emitter's own order, both kinds in one list.
+      expect(h.emitted).toEqual(["traffic.pitExit", "traffic.pitExitMerge"]);
     });
 
     it("is said for a car reaching the blend just before the player too: the threshold is either side", () => {
