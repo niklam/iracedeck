@@ -495,6 +495,28 @@ describe("getAllCarNumbers", () => {
 });
 
 describe("getCameraGroupsFromSessionInfo", () => {
+  it("reads a group name YAML parsed as a number or boolean as its text (#1653 second read)", () => {
+    const yaml = [
+      "CameraInfo:",
+      " Groups:",
+      " - GroupNum: 1",
+      "   GroupName: 360",
+      " - GroupNum: 2",
+      "   GroupName: true",
+      " - GroupNum: 3",
+      "   GroupName: Nose",
+      "",
+    ].join("\n");
+    const { info } = parseSessionInfoYaml(yaml);
+
+    expect(getCameraGroupsFromSessionInfo(info)).toEqual([
+      { groupNum: 1, groupName: "360" },
+      { groupNum: 2, groupName: "true" },
+      { groupNum: 3, groupName: "Nose" },
+    ]);
+    expect(readCameraGroupNames(info)).toEqual(["360", "true", "Nose"]);
+  });
+
   it("should extract camera groups from valid session info", () => {
     const sessionInfo = {
       CameraInfo: {

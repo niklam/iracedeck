@@ -297,7 +297,18 @@ export function getCameraGroupsFromSessionInfo(sessionInfo: unknown): CameraGrou
 
   if (!groups) return [];
 
-  return groups.map((g) => ({ groupNum: g.GroupNum, groupName: g.GroupName }));
+  // A group name YAML reads as something other than text — `GroupName: 360`
+  // is the number 360 — is read as its text, as `readCameraGroupNames` reads it,
+  // so every consumer can treat a name as a string (#1653: the case-insensitive
+  // lookup calls `toLowerCase` on it).
+  return groups.map((g) => ({ groupNum: g.GroupNum, groupName: cameraGroupNameText(g.GroupName) }));
+}
+
+/** A `GroupName` scalar as text: a string as is, a number in decimal, anything else empty. */
+function cameraGroupNameText(value: unknown): string {
+  if (typeof value === "string") return value;
+
+  return typeof value === "number" || typeof value === "boolean" ? String(value) : "";
 }
 
 /**
@@ -367,7 +378,7 @@ export function readCameraGroupNames(sessionInfo: unknown): string[] {
     if (group === null || typeof group !== "object") return;
 
     const { GroupNum, GroupName } = group as Record<string, unknown>;
-    const name = typeof GroupName === "string" ? GroupName : typeof GroupName === "number" ? String(GroupName) : "";
+    const name = cameraGroupNameText(GroupName);
 
     if (name.trim() === "") return;
 
