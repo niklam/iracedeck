@@ -811,10 +811,12 @@ export type SimEventMap = {
    * rejoin lines end on it (`endsOn`): one playing stops at once and one
    * waiting is dropped. Published once, on the tick the stop ends, and only
    * for a stop that was running; a stop that ends by driving off publishes
-   * nothing. Also published for a running stop that a session change, a
-   * disconnect or the entry into a replay view (the garage, where the driver
-   * goes on leaving the car) ends, before its state is wiped. Never on the
-   * same tick as a `traffic.rejoin`. From live, in-car telemetry only.
+   * nothing. The rejoin detector publishes it from live, in-car telemetry
+   * only. The translator's teardown also publishes it, for a running stop
+   * that one of three things ends before its state is wiped: the entry into a
+   * replay view (the garage, where the driver goes on leaving the car,
+   * included), a session change or a disconnect. Never on the same tick as a
+   * `traffic.rejoin`.
    */
   "traffic.rejoinTowed": SimEvent<"traffic.rejoinTowed", EmptySimEventPayload>;
   /**
