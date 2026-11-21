@@ -161,6 +161,53 @@ describe("createFileSettingsStore", () => {
     expect(existsSync(store.path)).toBe(false);
   });
 
+  describe("validate (#1653)", () => {
+    const validating = (
+      validate: (parsed: Record<string, unknown>) => string | undefined,
+      onRejected?: (rejection: SettingsFileRejection) => void,
+    ) =>
+      createFileSettingsStore({
+        path: store.path,
+        logger: silentLogger,
+        debounceMs: 10,
+        validate,
+        ...(onRejected ? { onRejected } : {}),
+      });
+
+    it("returns a file it accepts", async () => {
+      mkdirSync(join(dir, "sub"), { recursive: true });
+      writeFileSync(store.path, '{"version":1}', "utf-8");
+
+      expect(await validating(() => undefined).load()).toEqual({ version: 1 });
+    });
+
+    it("sets a file it refuses aside and reports the reason, as an unparseable one", async () => {
+      mkdirSync(join(dir, "sub"), { recursive: true });
+      writeFileSync(store.path, "{}", "utf-8");
+      const onRejected = vi.fn<(rejection: SettingsFileRejection) => void>();
+
+      expect(await validating(() => "no version", onRejected).load()).toBeUndefined();
+
+      expect(existsSync(store.path)).toBe(false);
+      expect(onRejected).toHaveBeenCalledTimes(1);
+      expect(onRejected.mock.calls[0][0].reason).toBe("no version");
+      expect(onRejected.mock.calls[0][0].location).toBeUndefined();
+      expect(readFileSync(onRejected.mock.calls[0][0].preservedAt, "utf-8")).toBe("{}");
+    });
+
+    it("treats a validator that throws as a refusal, never as a failed read", async () => {
+      mkdirSync(join(dir, "sub"), { recursive: true });
+      writeFileSync(store.path, "{}", "utf-8");
+
+      const load = validating(() => {
+        throw new Error("boom");
+      }).load();
+
+      await expect(load).resolves.toBeUndefined();
+      expect(existsSync(store.path)).toBe(false);
+    });
+  });
+
   describe("onRejected (issue #1036)", () => {
     const rejectingStore = (onRejected: (rejection: SettingsFileRejection) => void) =>
       createFileSettingsStore({ path: store.path, logger: silentLogger, debounceMs: 10, onRejected });

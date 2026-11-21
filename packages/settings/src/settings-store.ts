@@ -108,6 +108,15 @@ export interface FileSettingsStoreOptions {
    * catalog starts empty). Wording only — it changes no behaviour.
    */
   rejectedFallback?: string;
+  /**
+   * A further check of a file that parsed as a JSON object: return a reason to
+   * reject it exactly as an unparseable file is rejected — moved aside,
+   * reported through `onRejected`, `load()` answering "no file" — or
+   * `undefined` to accept it. For a file whose valid JSON can still hold no
+   * usable document (#1653: a `cameras.json` without a known shape). A throw
+   * from it is treated as that reason. The global settings store passes none.
+   */
+  validate?: (parsed: Record<string, unknown>) => string | undefined;
 }
 
 /** What `load()` knew when it rejected the settings file (issue #1036). */
@@ -326,6 +335,12 @@ export function createFileSettingsStore(opts: FileSettingsStoreOptions): Setting
         if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
           throw new Error("It is valid JSON but does not hold a settings object");
         }
+
+        // Inside this try on purpose: a reason (or a throw) takes the same
+        // move-aside path as a parse error, never the fail-closed read error.
+        const invalid = opts.validate?.(parsed as Record<string, unknown>);
+
+        if (invalid !== undefined) throw new Error(invalid);
 
         return parsed as Record<string, unknown>;
       } catch (error: unknown) {
