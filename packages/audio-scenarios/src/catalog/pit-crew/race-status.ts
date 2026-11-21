@@ -60,7 +60,8 @@
  *     speak time, first in the shared position-readout gate, so an update
  *     queued on track and still waiting when the car reaches pit road is
  *     dropped, never held; the next cadence hit after the stop states the
- *     position as it then is.
+ *     position as it then is. An in lap is refused too, even one published
+ *     after the car merged (`lapEnteredPitRoad` in `position-readout.ts`).
  *   - **Cadence hit** — `lapsSincePositionChange > 0 && % 3 === 0`. The diff
  *     omits `lapsSincePositionChange` entirely when no baseline anchors exist
  *     (e.g. position not yet resolvable); the predicate then returns false.
@@ -107,6 +108,7 @@ import type { UnderCautionResolver } from "./caution.js";
 import {
   buildPositionReadoutSpeakGate,
   canAnnouncePosition,
+  lapEnteredPitRoad,
   type LatestTelemetryResolver,
   liveCurrentlyAnnounceable,
   type LivePositionResolver,
@@ -276,6 +278,10 @@ export function buildRaceStatusContract(
         // asks again for an update queued on track.
         if (playerOnPitRoadOrOutOfCar(getLatestTelemetry())) return false;
 
+        // …and an in lap, even one published after the car merged
+        // (`lapEnteredPitRoad`): the cadence hit that lands on it is not said.
+        if (lapEnteredPitRoad(data)) return false;
+
         // Cadence DECISION uses the frozen snapshot (laps-since-position-change).
         if (!raceStatusCadenceHits(data)) return false;
 
@@ -302,7 +308,7 @@ export function buildRaceStatusContract(
     family: "race-status",
     supersedeGroup: POSITION_READOUT_SUPERSEDE_GROUP,
     description:
-      "You hold position for three race laps, and every three laps after that — never on the final lap, on pit road, under a caution or on the lap ending one, or inside 20 s of another position readout.",
+      "You hold position for three race laps, then every three laps — never on the final lap or an in lap, on pit road, under a caution or on the lap ending one, or inside 20 s of another position readout.",
   };
 }
 

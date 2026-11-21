@@ -250,12 +250,17 @@ export type LatestTelemetryResolver = () => TelemetryData | null;
 
 /**
  * Whether the player is on pit road or out of the car — the state in which
- * no position readout starts (spec 2026-11-18, issue #1722): the car is not
- * in the world as a driven car (`IsOnTrack: false` — in the garage, the
- * menus, a tow), `OnPitRoad` reads true, or the player's track surface reads
- * the pit stall or the pit lane (`AproachingPits`, iRacing's spelling). The
- * surface is asked beside `OnPitRoad`, so either read of the pit lane is
- * enough on its own.
+ * no position readout starts (spec 2026-11-18, issue #1722): the player is
+ * not in the car (`IsOnTrack: false` — the garage, the menus), the car is out
+ * of the world (`PlayerTrackSurface` `NotInWorld`), `OnPitRoad` reads true,
+ * or the surface reads the pit stall or the pit lane (`AproachingPits`,
+ * iRacing's spelling). The surface is asked beside `OnPitRoad`, so either
+ * read of the pit lane is enough on its own.
+ *
+ * `NotInWorld` is asked on its own because `IsOnTrack` does not cover a tow
+ * or a reset: both keep it true and pass a tick out of the world, with
+ * `OnPitRoad` false, before the car lands in its stall (the captures cited in
+ * `sim-events-iracing`'s `diff/limiter-toggle.ts`).
  *
  * Missing telemetry, or a missing field, never refuses: a read the sim did
  * not give is no evidence the car is in the pits, and refusing on it would
@@ -272,7 +277,29 @@ export function playerOnPitRoadOrOutOfCar(telemetry: TelemetryData | null): bool
 
   const surface = telemetry.PlayerTrackSurface;
 
-  return surface === TrkLoc.InPitStall || surface === TrkLoc.AproachingPits;
+  return surface === TrkLoc.NotInWorld || surface === TrkLoc.InPitStall || surface === TrkLoc.AproachingPits;
+}
+
+/**
+ * Whether a completed lap is an in lap — the car entered pit road during it
+ * (`isInLap`, the translator's pit-lap latch, which counts the crossing tick
+ * itself) — so the two readouts that fire on `lap.completed` stay silent for
+ * it (issue #1722). The live check above is not enough on its own:
+ * `lap.completed` is published up to a few seconds after the line, once the
+ * lap's time has settled, and a lap that crossed on pit road (a stall just
+ * before the line, a drive-through) can be published after the car has
+ * merged, where the latest tick reads on track. A fact about the completed
+ * lap, settled when the event was emitted, so it is a `where:` check only,
+ * like `wasCaution`; the every-lap time call already stays silent on an in
+ * lap for its own reason.
+ *
+ * Accepted consequence: on a track whose pit lane ends before the line, a lap
+ * with the whole stop inside it is an in lap too, and stays silent; the next
+ * lap or the next status states the position. An out lap (`isOutLap`) that
+ * ends on track still announces — the spec's first lap after the stop.
+ */
+export function lapEnteredPitRoad(lap: SimEventOf<"lap.completed">["data"]): boolean {
+  return lap.isInLap === true;
 }
 
 /**

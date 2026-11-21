@@ -735,6 +735,10 @@ describe("position-change contract — silent on pit road and out of the car (is
     ["the pit-stall surface", { ...ON_TRACK, PlayerTrackSurface: TrkLoc.InPitStall }],
     ["the pit-lane surface (AproachingPits)", { ...ON_TRACK, PlayerTrackSurface: TrkLoc.AproachingPits }],
     ["out of the car (IsOnTrack: false)", { ...ON_TRACK, IsOnTrack: false }],
+    [
+      "the tow or reset tick (NotInWorld, IsOnTrack still true)",
+      { ...ON_TRACK, PlayerTrackSurface: TrkLoc.NotInWorld },
+    ],
   ];
 
   /** Publish a lap without letting the audio run — for a test that needs the fire to wait. */
@@ -907,6 +911,33 @@ describe("position-change contract — silent on pit road and out of the car (is
     expect(voicePaths()).toEqual([BLOCKER]);
     expect(readPositionReadoutDebugState().pendingIntro).toBeNull();
     expect(readPositionReadoutDebugState().lastSpokenPosition).toBe(0);
+  });
+
+  it("an in lap is silent even when it is published after the car merged — the live tick on track", () => {
+    // The lap crossed the line on pit road (a stall just before it, a
+    // drive-through) and `lap.completed` came seconds later, once the car was
+    // back on track: the live check admits, the lap's own latch refuses.
+    fire(snap({ position: 20, previousPosition: 5, sessionType: "race", isInLap: true }));
+    fire(snap({ position: 20, previousPosition: 5, isInLap: true }));
+    fire(refused({ position: 5, previousPosition: 5, isInLap: true }));
+
+    expect(voicePaths()).toEqual([]);
+    expect(canAnnouncePosition()).toBe(true);
+  });
+
+  it("where: refuses an in lap in every session, on track", () => {
+    const where = build().when!.where! as (ev: SimEventOf<"lap.completed">) => boolean;
+    lastSnapshot = raceLap();
+
+    expect(where(lapEvent({ ...raceLap(), isInLap: true }))).toBe(false);
+    expect(where(lapEvent(snap({ position: 3, previousPosition: 5, isInLap: true })))).toBe(false);
+    expect(where(lapEvent(raceLap()))).toBe(true);
+  });
+
+  it("an out lap that ends on track with a change announces — the first lap on track after the stop (spec decision 3)", () => {
+    fire(snap({ position: 9, previousPosition: 8, sessionType: "race", isOutLap: true }));
+
+    expect(voicePaths()).toEqual([CURRENTLY, `voice/${VOICE}/position-number/9.mp3`]);
   });
 
   it("says the pit-road rule in both published sentences", () => {

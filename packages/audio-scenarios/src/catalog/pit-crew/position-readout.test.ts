@@ -29,6 +29,7 @@ import {
   canAnnouncePosition,
   commitIntroDecision,
   INTRO_COOLDOWN_MS,
+  lapEnteredPitRoad,
   type LivePosition,
   lowerFirst,
   OVERTAKE_POSITION_SCENARIO_IDS,
@@ -95,6 +96,7 @@ const PIT_ROAD_STATES: ReadonlyArray<readonly [string, TelemetryData]> = [
   ["the pit-stall surface", { ...ON_TRACK, PlayerTrackSurface: TrkLoc.InPitStall }],
   ["the pit-lane surface (AproachingPits)", { ...ON_TRACK, PlayerTrackSurface: TrkLoc.AproachingPits }],
   ["out of the car (IsOnTrack: false)", { ...ON_TRACK, IsOnTrack: false }],
+  ["the tow or reset tick (NotInWorld, IsOnTrack still true)", { ...ON_TRACK, PlayerTrackSurface: TrkLoc.NotInWorld }],
 ];
 
 describe("playerOnPitRoadOrOutOfCar — the state no position readout starts in (issue #1722)", () => {
@@ -120,6 +122,32 @@ describe("playerOnPitRoadOrOutOfCar — the state no position readout starts in 
     expect(playerOnPitRoadOrOutOfCar({ IsOnTrack: false } as TelemetryData)).toBe(true);
     expect(playerOnPitRoadOrOutOfCar({ PlayerTrackSurface: TrkLoc.InPitStall } as TelemetryData)).toBe(true);
     expect(playerOnPitRoadOrOutOfCar({ PlayerTrackSurface: TrkLoc.AproachingPits } as TelemetryData)).toBe(true);
+    expect(playerOnPitRoadOrOutOfCar({ PlayerTrackSurface: TrkLoc.NotInWorld } as TelemetryData)).toBe(true);
+  });
+
+  it("refuses the tow or reset tick, which keeps IsOnTrack true — but a surface it was not given still admits", () => {
+    expect(
+      playerOnPitRoadOrOutOfCar({
+        IsOnTrack: true,
+        OnPitRoad: false,
+        PlayerTrackSurface: TrkLoc.NotInWorld,
+      } as TelemetryData),
+    ).toBe(true);
+    expect(playerOnPitRoadOrOutOfCar({ IsOnTrack: true, OnPitRoad: false } as TelemetryData)).toBe(false);
+  });
+});
+
+describe("lapEnteredPitRoad — the in lap no lap-completed readout speaks for (issue #1722)", () => {
+  type Lap = Parameters<typeof lapEnteredPitRoad>[0];
+
+  it("is true for an in lap, an out lap that came back in included", () => {
+    expect(lapEnteredPitRoad({ lap: 5, isBest: false, isInLap: true } as Lap)).toBe(true);
+    expect(lapEnteredPitRoad({ lap: 5, isBest: false, isOutLap: true, isInLap: true } as Lap)).toBe(true);
+  });
+
+  it("is false for an out lap that ended on track, and for a lap that never touched pit road", () => {
+    expect(lapEnteredPitRoad({ lap: 5, isBest: false, isOutLap: true } as Lap)).toBe(false);
+    expect(lapEnteredPitRoad({ lap: 5, isBest: false } as Lap)).toBe(false);
   });
 });
 

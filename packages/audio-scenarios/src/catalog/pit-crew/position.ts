@@ -91,7 +91,8 @@
  *   - Not on pit road, and in the car (spec 2026-11-18, issue #1722), in
  *     every session — and again, first, at speak time, so a readout queued
  *     on track and still waiting when the car reaches pit road is dropped,
- *     never held. See `buildPositionContract`.
+ *     never held — and not an in lap, which may be published after the car
+ *     has merged (`lapEnteredPitRoad`). See `buildPositionContract`.
  *
  * Sentinel: when neither overall nor class position is populated (e.g.
  * `PlayerCarPosition === 0` on a session reset), the contract does NOT
@@ -113,6 +114,7 @@ import type { UnderCautionResolver } from "./caution.js";
 import {
   buildPositionReadoutSpeakGate,
   canAnnouncePosition,
+  lapEnteredPitRoad,
   type LatestTelemetryResolver,
   liveCurrentlyAnnounceable,
   type LivePositionResolver,
@@ -455,12 +457,15 @@ function isRaceFire(ctx: ScenarioContext): boolean {
  * car (spec 2026-11-18, issue #1722) — in qualifying too, and for an
  * imperative fire. On pit road the order is in flux: places lost to a stop
  * are mostly won back after it, and the driver is busy with the limiter, the
- * box and the exit. It is asked in the `where:`, so a lap that ends in the
- * pit lane never enters the queue, and first in the speak-time gate, so a
- * readout queued on track and still waiting when the car reaches pit road is
- * dropped — never held for the exit, where it would read out a position
- * still settling. Nothing catches up after the stop: the next lap completed
- * on track with a change states the position as it then is. Default
+ * box and the exit. It is asked in the `where:`, so a fire on pit road
+ * never enters the queue, and first in the speak-time gate, so a readout
+ * queued on track and still waiting when the car reaches pit road is dropped
+ * — never held for the exit, where it would read out a position still
+ * settling. The `where:` also refuses an in lap (`lapEnteredPitRoad`), since
+ * a lap that crossed the line on pit road can be published after the car has
+ * merged. Nothing catches up after the stop: the next lap completed on track
+ * with a change, the out lap included, states the position as it then is.
+ * Default
  * `() => null`, which never refuses; `registerPitCrew` passes
  * `PitCrewDeps.getLatestTelemetry`.
  */
@@ -473,7 +478,7 @@ export function buildPositionContract(
   return {
     id: "pit-crew.position-change",
     description:
-      "You finish a qualifying or race lap in a new position, a non-best qualifying lap, your first timed lap or an uncounted qualifying lap — not on pit road or under a caution, once per 20 s in a race.",
+      "You finish a qualifying or race lap in a new position, a non-best qualifying lap, your first timed lap or an uncounted qualifying lap — off pit road, no in lap or caution, once per 20 s in a race.",
     when: {
       event: "lap.completed",
       where: (ev) => {
@@ -486,12 +491,16 @@ export function buildPositionContract(
         if (getUnderFullCourseCaution()) return false;
 
         // On pit road or out of the car (issue #1722), in every session: the
-        // order is in flux there, and a lap that ends in the pit lane says
-        // nothing. Refused here so the fire never enters the queue; the gate
-        // asks again for a readout queued on track.
+        // order is in flux there. Refused here so the fire never enters the
+        // queue; the gate asks again for a readout queued on track.
         if (playerOnPitRoadOrOutOfCar(getLatestTelemetry())) return false;
 
         const data = ev.data as SimEventOf<"lap.completed">["data"];
+
+        // …and an in lap says nothing either, even one published after the
+        // car merged (issue #1722, `lapEnteredPitRoad`): a lap that ends in
+        // the pit lane, a refused qualifying lap included, is silent.
+        if (lapEnteredPitRoad(data)) return false;
 
         // …nor is the lap that ENDS one, completed seconds after the green
         // with the gate above already open (second review, R16): the order is

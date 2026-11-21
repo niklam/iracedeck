@@ -1019,6 +1019,10 @@ describe("the position call beside the one-to-go line", () => {
       ["the pit-stall surface", { ...ON_TRACK, PlayerTrackSurface: TrkLoc.InPitStall }],
       ["the pit-lane surface (AproachingPits)", { ...ON_TRACK, PlayerTrackSurface: TrkLoc.AproachingPits }],
       ["out of the car (IsOnTrack: false)", { ...ON_TRACK, IsOnTrack: false }],
+      [
+        "the tow or reset tick (NotInWorld, IsOnTrack still true)",
+        { ...ON_TRACK, PlayerTrackSurface: TrkLoc.NotInWorld },
+      ],
     ] as const;
 
     beforeEach(() => {

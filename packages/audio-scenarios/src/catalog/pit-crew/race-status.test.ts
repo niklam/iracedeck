@@ -612,6 +612,10 @@ describe("race-status on pit road and out of the car (issue #1722)", () => {
     ["the pit-stall surface", { ...ON_TRACK, PlayerTrackSurface: TrkLoc.InPitStall }],
     ["the pit-lane surface (AproachingPits)", { ...ON_TRACK, PlayerTrackSurface: TrkLoc.AproachingPits }],
     ["out of the car (IsOnTrack: false)", { ...ON_TRACK, IsOnTrack: false }],
+    [
+      "the tow or reset tick (NotInWorld, IsOnTrack still true)",
+      { ...ON_TRACK, PlayerTrackSurface: TrkLoc.NotInWorld },
+    ],
   ];
 
   /** A NORMAL line that holds the Voice bus, so a status update has to wait in the queue. */
@@ -725,6 +729,24 @@ describe("race-status on pit road and out of the car (issue #1722)", () => {
     telemetry = ON_TRACK;
     expect(admit(gateCtx(cadenceLap))).toBe(true);
     expect(canAnnouncePosition()).toBe(false);
+  });
+
+  it("is silent on an in lap even when it is published after the car merged — the live tick on track", () => {
+    fireStatus({ isInLap: true });
+
+    expect(voicePaths()).toEqual([]);
+    expect(canAnnouncePosition()).toBe(true);
+
+    const where = build().when!.where! as (ev: SimEventOf<"lap.completed">) => boolean;
+
+    expect(where(lapEvent({ ...cadenceLap, isInLap: true }))).toBe(false);
+    expect(where(lapEvent(cadenceLap))).toBe(true);
+  });
+
+  it("speaks on an out lap that ends on track — the first cadence hit after the stop", () => {
+    fireStatus({ isOutLap: true });
+
+    expect(voicePaths()).toEqual([STILL_LEADING]);
   });
 
   it("says the pit-road rule in both published sentences", () => {
