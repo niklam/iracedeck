@@ -2390,6 +2390,41 @@ describe("diffTrafficPitExit", () => {
         expect(h.events).toEqual([{ verdict: "traffic", seconds: 1 }]);
         expect(h.episode.flipEvaluations).toBe(1);
       });
+
+      it("ends the episode at a blendEnd crossing seen off the schedule: no merge warning after a roll back short of it", () => {
+        const h = harness({ landmarks: SHORT_BLEND });
+
+        h.depart(shortAt(STALL_PCT, 3));
+        h.after(TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS, shortAt(0.1245, 3)); // the call, on schedule, still on pit road
+        expect(h.events).toEqual([{ verdict: "traffic", seconds: 3 }]);
+        expect(h.episode.mergeChecked).toBe(false);
+
+        // 1.6 m past the blend line, inside the slack, the surface still the
+        // pit approach: the crossing is seen between two scheduled evaluations.
+        h.after(100, shortAt(0.134, 3, { OnPitRoad: false }));
+
+        expect(h.episode.active).toBe(false);
+        expect(lines(h.debug)).toContain("episode ended (past blendEnd, between evaluations)");
+
+        // Rolled back into the exit lane with a car now 1 s out, before the
+        // next scheduled evaluation: the ended episode warns of nothing.
+        h.after(100, shortAt(0.13, 1));
+        h.after(TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS, shortAt(0.13, 1));
+
+        expect(h.merges).toEqual([]);
+        expect(h.events).toEqual([{ verdict: "traffic", seconds: 3 }]);
+      });
+
+      it("keeps waiting between evaluations while the landmarks cannot be used, rather than ending the episode", () => {
+        const h = harness({ landmarks: SHORT_BLEND });
+
+        h.depart(shortAt(STALL_PCT, 3));
+        h.after(TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS, shortAt(0.1245, 3));
+        h.readLandmarks.mockReturnValue(null);
+        h.after(100, shortAt(0.134, 3, { OnPitRoad: false }));
+
+        expect(h.episode.active).toBe(true);
+      });
     });
   });
 

@@ -193,8 +193,12 @@
  * counts toward {@link TRAFFIC_PIT_EXIT_FLIP_CONFIRM_EVALUATIONS} nor breaks
  * the row, with or without a verdict, so a flip is never confirmed by two
  * evaluations a tick apart. Nor does it move `lastEvalAt`: the scheduled
- * evaluations run on a second apart as before. Once both are done, nothing
- * between them reads the landmarks.
+ * evaluations run on a second apart as before. A tick that reads the
+ * landmarks this way and finds the player at or past `blendEnd` ends the
+ * episode there, as a scheduled evaluation would, so a car rolled back short
+ * of the line before the next one is no fresh exit for the merge warning; one
+ * whose landmarks cannot be used waits for the next scheduled evaluation.
+ * Once both are done, nothing between them reads the landmarks.
  *
  * After the first call, again only when a flip settles before the
  * player reaches `blendEnd` and before the merge warning (below) is said. A flip pending at the call point is held like any
@@ -541,10 +545,14 @@ export function diffTrafficPitExit(
         // merge checked: the first tick at the call point, or past
         // `pitRoadEnd` with the merge unchecked, evaluates at once (module
         // header), and so does each tick after it until that is done. It
-        // leaves `lastEvalAt` alone, so the schedule runs on as it was.
+        // leaves `lastEvalAt` alone, so the schedule runs on as it was. A
+        // tick that finds the player at or past `blendEnd` ends the episode.
         const landmarks = facts.readLandmarks();
+        const step = offScheduleStep(episode, position.pct, onPitRoad, landmarks, facts);
 
-        if (offScheduleDue(episode, position.pct, onPitRoad, landmarks, facts)) {
+        if (step === "pastBlendEnd") {
+          end(episode, "past blendEnd, between evaluations", logger);
+        } else if (step === "evaluate") {
           evaluate(
             episode,
             curves,
@@ -797,37 +805,40 @@ function usableLandmarks(
 }
 
 /**
- * Between two scheduled evaluations, whether this tick evaluates at once
- * (module header): with the call not yet made, at the call point (the latch
- * already set, or {@link reachedCallPoint}); or with the merge warning not
- * yet checked or said, in the exit lane ({@link inExitLane}). Both on landmarks the evaluation can
- * use. With either landmark unusable, or the player at or past `blendEnd`,
- * `false`: such an evaluation could do neither, and the next scheduled one
- * handles it. A start the departure did not take is read as the player's
- * position, as the evaluation would take it.
+ * What a tick between two scheduled evaluations does (module header):
+ * `"evaluate"` at once, with the call not yet made, at the call point (the
+ * latch already set, or {@link reachedCallPoint}); or with the merge warning
+ * not yet checked or said, in the exit lane ({@link inExitLane}). Both on
+ * landmarks the evaluation can use. `"pastBlendEnd"` with the player at or
+ * past `blendEnd` on usable landmarks: a crossing seen here ends the episode
+ * as a scheduled evaluation's would, so a car rolled back short of the line
+ * before the next one is not a fresh exit to warn about. `"wait"` otherwise,
+ * with either landmark unusable among them: no evaluation could do anything
+ * there, and the next scheduled one handles it. A start the departure did
+ * not take is read as the player's position, as the evaluation would take it.
  */
-function offScheduleDue(
+function offScheduleStep(
   episode: TrafficPitExitState,
   playerPct: number,
   onPitRoad: boolean,
   landmarks: TrafficPitExitLandmarks | null,
   facts: TrafficPitExitFacts,
-): boolean {
+): "evaluate" | "pastBlendEnd" | "wait" {
   const slackPct = landmarkSlackPct(facts.trackLengthMeters);
   const usable = usableLandmarks(landmarks, slackPct);
 
-  if (usable === null) return false;
+  if (usable === null) return "wait";
 
   const position = exitPosition(episode.startPct ?? playerPct, playerPct, usable.pitRoadEnd, usable.blendEnd, slackPct);
 
-  if (position === null) return false;
+  if (position === null) return "pastBlendEnd";
 
   const callDue =
     episode.spokenVerdict === null && (episode.callPointReached || reachedCallPoint(onPitRoad, position, facts));
   const mergeDue =
     !episode.mergeChecked && !episode.mergeWarned && inExitLane(onPitRoad, position, facts.trackLengthMeters);
 
-  return callDue || mergeDue;
+  return callDue || mergeDue ? "evaluate" : "wait";
 }
 
 /** The player's arrival at `blendEnd` (module header), or why it cannot be known. */
