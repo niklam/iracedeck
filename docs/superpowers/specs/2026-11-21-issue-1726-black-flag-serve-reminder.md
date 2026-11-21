@@ -10,20 +10,22 @@ The raise is already spoken once (`pit-crew.flag-black`, queueable since #923): 
 
 ## Decisions
 
-### 1. The sim's rule, from three races
+### 1. The sim's rule, from four races
 
-The count is of **pit-entry passes**: four are allowed, and the fifth crossing of the pit-road line without entering disqualifies. Every crossing after the raise counts, however soon after it, and there is no grace. Measured on 2026-11-21 in three offline AI races (the plugin log of that day, and the snapshot `local/telemetry-snapshot-20261121-150651-890.json` for the first), where the maintainer cut the track, was black-flagged a little late for it and drove on without serving. Times are UTC; "before the line" is before the start/finish line.
+The count is of **pit-entry passes**: four are allowed, and the fifth crossing of the pit-road line without entering disqualifies. Every crossing after the raise counts, however soon after it, and there is no grace. Measured on 2026-11-21 in four offline AI races, three road courses and an oval (the plugin log of that day, and the snapshot `local/telemetry-snapshot-20261121-150651-890.json` for the first), where the maintainer cut the track, was black-flagged a little late for it and drove on without serving. Times are UTC; "before the line" is before the start/finish line.
 
-| | Tsukuba (lap ≈ 50 s) | Zolder (lap ≈ 85 s) | Spa (lap ≈ 132 s) |
-| --- | --- | --- | --- |
-| `Black` rises | 13:02:31.4, ≈2.3 s before the line | 13:19:03.6, ≈8.9 s before the line | 13:32:39.1, ≈72 s before the line, mid-lap |
-| First pass of the pit-road line after it | ≈0.4 s later | ≈4 s later | ≈70 s later |
-| Start/finish crossings after it | 13:02:33.7, 13:03:24.3, 13:04:15.7, 13:05:05.7 | 13:19:12.5, 13:20:37.4, 13:22:02.7, 13:23:27.5 | 13:33:51.2, 13:36:03.2, 13:38:18.4, 13:40:31.2 |
-| `Disqualify` rises | 13:05:53.3, ≈1.7 s before the fifth crossing of the line | 13:24:50.2, ≈1.9 s before it | 13:42:41.2, ≈1.9 s before it |
+| | Tsukuba (lap ≈ 50 s) | Zolder (lap ≈ 85 s) | Spa (lap ≈ 132 s) | Charlotte oval (lap ≈ 30 s) |
+| --- | --- | --- | --- | --- |
+| `Black` rises | 13:02:31.4, ≈2.3 s before the line | 13:19:03.6, ≈8.9 s before the line | 13:32:39.1, ≈72 s before the line, mid-lap | 14:04:02.6, ≈17.5 s before the line, mid-lap |
+| First pass of the pit-road line after it | ≈0.4 s later | ≈4 s later | ≈70 s later | ≈15 s later |
+| Start/finish crossings after it | 13:02:33.7, 13:03:24.3, 13:04:15.7, 13:05:05.7 | 13:19:12.5, 13:20:37.4, 13:22:02.7, 13:23:27.5 | 13:33:51.2, 13:36:03.2, 13:38:18.4, 13:40:31.2 | 14:04:20.1, 14:04:50.5, 14:05:20.5, 14:05:52.1 |
+| `Disqualify` rises | 13:05:53.3, ≈1.7 s before the fifth crossing of the line | 13:24:50.2, ≈1.9 s before it | 13:42:41.2, ≈1.9 s before it | 14:06:19.6, ≈2.4 s before it |
 
-All three disqualifications came on the **fifth pass of the pit entry after the raise**. The first two left open whether a pass seconds after the flag counted; Spa, with the first pass more than a minute after the flag and the same result, settles that it does and that four are allowed. The maintainer's first reading (two passes, must pit on the third, given with a hedge) and the raise line's "three laps" are both short of it.
+All four disqualifications came on the **fifth pass of the pit entry after the raise**. The first two left open whether a pass seconds after the flag counted; Spa, with the first pass more than a minute after the flag and the same result, settles that it does and that four are allowed, and Charlotte shows an oval counts the same way. The maintainer's first reading (two passes, must pit on the third, given with a hedge) and the raise line's "three laps" are both short of it.
 
 **Where the sim checks.** At Tsukuba the disqualification fell at the learned `pitRoadStart` (1.73 s of reference time before the line), and at Spa at its `pitRoadStart` too (85 m before the line, about 1.9 s at that speed). At Zolder it fell about 3 s after the learned line, by an estimate from a single-sample landmark learned on 2026-11-10 with no position in the log. So the sim checks at, or within a few seconds after, the pit-road line, always before the start/finish line. Counting at the pit-road line is therefore never later than the sim.
+
+Charlotte had only the pit-lane split learned (`approachStart`, two samples from remote cars; the player never pitted, so `pitRoadStart` was not taught), so it is also the one race that would have run on decision 2's first fallback. With a flag raised mid-lap, the split counts the same passes as the pit-road line would, and the count matches.
 
 The rule lives in one place, the translator's counting; the events below carry its result, so a correction later changes nothing downstream.
 
@@ -109,12 +111,12 @@ Both new contracts fire only in a race session (`isRaceSession`). Disqualificati
 - Opponents' black flags (#936 announces them; nobody counts their passes).
 - Telling the driver which penalty it is (stop-and-go, drive-through, time) or why it was given — iRacing's own display says so, and the telemetry the translator reads does not.
 - Practice and qualifying (decision 6).
-- Measuring online races. All three captures are offline AI races; whether an online race counts the same is not measured, and a disagreement found there is a translator fix.
+- Measuring online races. All four captures are offline AI races; whether an online race counts the same is not measured, and a disagreement found there is a translator fix.
 
 ## Testing
 
 - **Unit, translator diff:** the three races as fixtures — a raise 0.4 s and 4 s before a seeded `pitRoadStart`, and one mid-lap, each followed by five crossings giving `entriesLeft` 4, 3, 2, 1 and no event on the fifth; an approach on a seeded `approachStart` firing `lastEntryApproaching` once with one entry left; a pass while on pit road (not counted); a rejoin with the flag still out (count kept); a fall and a fresh raise (count reset); a DQ mid-episode (closed); the `approachStart` fallback with no `pitRoadStart`, including a raise between the split and the next start/finish crossing (counted at once); the start/finish fallback with neither, and with a `previous` landmark; the wrap at `LapDistPct` 1 → 0; a replay glance mid-episode (count kept, the episode not reopened at 0); a `null` seconds-to-split (no box call, reminders unchanged).
 - **Unit, contracts:** race-only gating, the speak-time gate on the reminder, the DQ supersede, serve-now not queueing, the opt-in.
 - **Scenario harness:** entries for both events in `event-names.ts` and shortcut buttons for each new line.
-- **The rule captures** are done (decision 1). A capture that disagrees later — an online race, another car — goes to the translator's counting and an amendment here.
+- **The rule captures** are done (decision 1: three road courses and an oval). A capture that disagrees later — an online race, another car — goes to the translator's counting and an amendment here.
 - **Manual:** an offline race with a deliberate cut, listening for the corrected raise line, the four reminders and the box call before the fifth entry; and a second run that serves on the last lap and hears nothing after pit entry.
