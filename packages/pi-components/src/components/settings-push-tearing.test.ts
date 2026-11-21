@@ -1,6 +1,8 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import "./camera-catalog-list.js";
+import "./camera-group-select.js";
 import "./key-binding-input.js";
 import "./voice-pack-catalog.js";
 import "./voice-pack-list.js";
@@ -60,6 +62,16 @@ const BASE: Settings = {
     problems: [],
   }),
   _voicePackStatus: JSON.stringify({ catalog: { state: "unknown" }, installs: {} }),
+  // #1653: the Camera Controls picker reads two per-key settings and the catalog
+  // global; the settings window's card reads the catalog.
+  cameraGroupName: "Drone",
+  cameraGroup: "9",
+  _cameraCatalog: JSON.stringify({
+    version: 1,
+    tracks: [{ id: 1, name: "Spa", config: "" }],
+    groups: [{ name: "Drone", tracks: [0], lastSeen: "2026-11-08T12:00:00.000Z" }],
+    current: { trackId: 1, groups: ["TV1", "Drone"] },
+  }),
 };
 
 /** Only the download-progress key moves, exactly as it does once a second. */
@@ -92,7 +104,14 @@ describe("an unrelated settings push does not tear the settings window (#1100)",
       host.appendChild(binding);
     }
 
-    for (const tag of ["ird-warnings", "ird-voice-select", "ird-voice-pack-list", "ird-voice-pack-catalog"]) {
+    for (const tag of [
+      "ird-warnings",
+      "ird-voice-select",
+      "ird-voice-pack-list",
+      "ird-voice-pack-catalog",
+      "ird-camera-group-select",
+      "ird-camera-catalog-list",
+    ]) {
       host.appendChild(document.createElement(tag));
     }
 
@@ -118,7 +137,9 @@ describe("an unrelated settings push does not tear the settings window (#1100)",
         const node = m.target.nodeType === Node.TEXT_NODE ? m.target.parentElement : (m.target as Element);
 
         return node
-          ?.closest("ird-key-binding, ird-warnings, ird-voice-select, ird-voice-pack-list, ird-voice-pack-catalog")
+          ?.closest(
+            "ird-key-binding, ird-warnings, ird-voice-select, ird-voice-pack-list, ird-voice-pack-catalog, ird-camera-group-select, ird-camera-catalog-list",
+          )
           ?.tagName.toLowerCase();
       }),
     );

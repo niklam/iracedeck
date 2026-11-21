@@ -16,6 +16,19 @@ import url from "node:url";
 
 export { findThirdPartyReferences, type ThirdPartyReference } from "./third-party-references.js";
 
+/**
+ * What the components bundle installs as `window.irdCameraGroups` (#1653), so
+ * `camera-focus-pi.test.ts` can run the Camera Controls PI's inline script
+ * against the real helpers it calls. DOM-free, so it pulls nothing browser-only
+ * into a Node test's program.
+ */
+export {
+  CAMERA_GROUP_HELPERS,
+  CAMERA_GROUP_NAME_MAX_LENGTH,
+  type CameraGroupHelpers,
+  LEGACY_CAMERA_GROUP_NAMES,
+} from "../components/camera-groups-view.js";
+
 const partialsDir = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), "../../partials");
 
 /**

@@ -1,0 +1,315 @@
+// @vitest-environment jsdom
+import { CAMERA_CATALOG_KEY, type CameraCatalogView } from "@iracedeck/app-constants";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+// Importing the module also registers the custom element.
+import { OTHER_OPTION_LABEL } from "./camera-group-select.js";
+import { PICKER_HEADINGS } from "./camera-groups-view.js";
+
+type SettingsCallback = (value: unknown) => void;
+
+interface MockSDPI {
+  perKey: Map<string, SettingsCallback>;
+  global: Map<string, SettingsCallback>;
+  saves: Map<string, ReturnType<typeof vi.fn>>;
+  globalReads: number;
+}
+
+function installMockSDPI(): MockSDPI {
+  const state: MockSDPI = { perKey: new Map(), global: new Map(), saves: new Map(), globalReads: 0 };
+
+  const hook =
+    (into: Map<string, SettingsCallback>) =>
+    (key: string, callback: SettingsCallback): [() => Promise<string>, unknown] => {
+      into.set(key, callback);
+
+      const save = vi.fn();
+      state.saves.set(key, save);
+
+      return [
+        async () => {
+          state.globalReads++;
+
+          return "";
+        },
+        save,
+      ];
+    };
+
+  (window as unknown as Record<string, unknown>).SDPIComponents = {
+    useSettings: hook(state.perKey),
+    useGlobalSettings: hook(state.global),
+  };
+
+  return state;
+}
+
+const CATALOG: CameraCatalogView = {
+  version: 1,
+  tracks: [
+    { id: 1, name: "Spa", config: "" },
+    { id: 2, name: "Monza", config: "" },
+  ],
+  groups: [
+    { name: "Drone", tracks: [0], lastSeen: "2026-11-08T12:00:00.000Z" },
+    { name: "DynamicTV", tracks: [1], lastSeen: "2026-11-08T12:00:00.000Z" },
+  ],
+  current: { trackId: 2, groups: ["TV1", "DynamicTV", "Nose"] },
+};
+
+describe("ird-camera-group-select", () => {
+  let el: HTMLElement;
+  let mock: MockSDPI;
+
+  beforeEach(() => {
+    document.body.replaceChildren();
+    mock = installMockSDPI();
+    el = document.createElement("ird-camera-group-select");
+    document.body.appendChild(el);
+  });
+
+  const select = (): HTMLSelectElement => el.querySelector("select") as HTMLSelectElement;
+  const field = (): HTMLElement & { value?: unknown } => el.querySelector("sdpi-textfield") as HTMLElement;
+  const fieldShown = (): boolean => !(el.querySelector(".ird-cgs-other") as HTMLElement).hidden;
+  const pushName = (v: unknown): void => mock.perKey.get("cameraGroupName")?.(v);
+  const pushNumber = (v: unknown): void => mock.perKey.get("cameraGroup")?.(v);
+  const pushCatalog = (v: unknown): void =>
+    mock.global.get(CAMERA_CATALOG_KEY)?.(typeof v === "string" ? v : JSON.stringify(v));
+  const saveName = (): ReturnType<typeof vi.fn> => mock.saves.get("cameraGroupName")!;
+  const saveNumber = (): ReturnType<typeof vi.fn> => mock.saves.get("cameraGroup")!;
+  const groupLabels = (): string[] => Array.from(select().querySelectorAll("optgroup")).map((g) => g.label);
+  const selectedText = (): string => select().selectedOptions[0]?.textContent ?? "";
+
+  function choose(predicate: (option: HTMLOptionElement) => boolean): void {
+    const option = Array.from(select().options).find(predicate);
+
+    if (!option) throw new Error("no such option");
+
+    option.selected = true;
+    select().dispatchEvent(new Event("change", { bubbles: true }));
+  }
+
+  const chooseName = (name: string): void => choose((o) => o.value === name && o.dataset.other === undefined);
+  const chooseOther = (): void => choose((o) => o.dataset.other !== undefined);
+
+  function type(value: string): void {
+    field().value = value;
+    field().dispatchEvent(new Event("valuechange"));
+  }
+
+  it("binds the two per-key settings and the catalog global", () => {
+    expect([...mock.perKey.keys()]).toEqual(["cameraGroupName", "cameraGroup"]);
+    expect([...mock.global.keys()]).toEqual([CAMERA_CATALOG_KEY]);
+  });
+
+  describe("on load and on pushes it writes nothing", () => {
+    it("shows an old key's group from its number, without writing the name", () => {
+      pushName(undefined);
+      pushNumber(17);
+      pushCatalog(CATALOG);
+
+      expect(select().value).toBe("TV1");
+      expect(saveName()).not.toHaveBeenCalled();
+      expect(saveNumber()).not.toHaveBeenCalled();
+    });
+
+    it("shows Cockpit for a key that stores nothing, and still writes nothing", () => {
+      pushName("");
+      pushNumber(undefined);
+
+      expect(select().value).toBe("Cockpit");
+      expect(saveName()).not.toHaveBeenCalled();
+      expect(saveNumber()).not.toHaveBeenCalled();
+    });
+
+    it("re-renders on every catalog push without writing", () => {
+      pushName("Drone");
+      pushCatalog(CATALOG);
+      pushCatalog({ ...CATALOG, current: null });
+      pushCatalog("not json");
+
+      expect(select().value).toBe("Drone");
+      expect(saveName()).not.toHaveBeenCalled();
+      expect(saveNumber()).not.toHaveBeenCalled();
+    });
+
+    it("reads nothing itself: settings arrive only through the hooks' pushes", () => {
+      pushCatalog(CATALOG);
+      chooseName("Drone");
+      chooseOther();
+      type("Foo");
+
+      expect(mock.globalReads).toBe(0);
+    });
+  });
+
+  describe("the option groups", () => {
+    it("with no session: the four standard sections, then Other…", () => {
+      pushName("");
+      pushNumber(9);
+
+      expect(groupLabels()).toEqual(["Car", "Chase", "Track", "Aerial"]);
+      expect(select().options[select().options.length - 1].textContent).toBe(OTHER_OPTION_LABEL);
+    });
+
+    it("with a session: this track, the standard sections, remembered, the stored name, then Other…", () => {
+      pushName("Ghost");
+      pushCatalog(CATALOG);
+
+      expect(groupLabels()).toEqual([
+        PICKER_HEADINGS.onTrackCustom,
+        "Car",
+        "Chase",
+        "Track",
+        "Aerial",
+        PICKER_HEADINGS.remembered,
+        PICKER_HEADINGS.stored,
+      ]);
+      expect(select().options[select().options.length - 1].textContent).toBe(OTHER_OPTION_LABEL);
+    });
+
+    it("labels remembered groups with their tracks and standard ones not on this track", () => {
+      pushName("");
+      pushNumber(9);
+      pushCatalog(CATALOG);
+
+      const texts = Array.from(select().options).map((o) => o.textContent);
+
+      expect(texts).toContain("Drone (not on this track: Spa)");
+      expect(texts).toContain("Cockpit (not on this track)");
+      expect(selectedText()).toBe("Cockpit (not on this track)");
+    });
+
+    it("shows and keeps a stored name the catalog does not have", () => {
+      pushName("Ghost");
+      pushCatalog(CATALOG);
+
+      expect(select().value).toBe("Ghost");
+      expect(selectedText()).toBe("Ghost (not on this track)");
+      expect(saveName()).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("the user's choice", () => {
+    beforeEach(() => {
+      pushName("");
+      pushNumber(9);
+      pushCatalog(CATALOG);
+    });
+
+    it("writes both the name and the number for a standard group", () => {
+      chooseName("TV1");
+
+      expect(saveName()).toHaveBeenCalledWith("TV1");
+      expect(saveNumber()).toHaveBeenCalledWith("17");
+    });
+
+    it("writes only the name for a custom group, leaving the number as it was", () => {
+      chooseName("DynamicTV");
+
+      expect(saveName()).toHaveBeenCalledWith("DynamicTV");
+      expect(saveNumber()).not.toHaveBeenCalled();
+    });
+
+    it("keeps showing its own write, which the host does not echo back", () => {
+      chooseName("Drone");
+      pushCatalog({ ...CATALOG, groups: [...CATALOG.groups, { name: "New", tracks: [], lastSeen: "" }] });
+
+      expect(select().value).toBe("Drone");
+    });
+
+    it("Other… reveals the text field and writes nothing by itself", () => {
+      expect(fieldShown()).toBe(false);
+
+      chooseOther();
+
+      expect(fieldShown()).toBe(true);
+      expect(saveName()).not.toHaveBeenCalled();
+      expect(saveNumber()).not.toHaveBeenCalled();
+    });
+
+    it("Other… writes the typed name, trimmed", () => {
+      chooseOther();
+      type("  My Chicane ");
+
+      expect(saveName()).toHaveBeenLastCalledWith("My Chicane");
+      expect(saveNumber()).not.toHaveBeenCalled();
+    });
+
+    it("Other… writes a standard name typed in any case as the standard name and its number", () => {
+      chooseOther();
+      type("tv2");
+
+      expect(saveName()).toHaveBeenLastCalledWith("TV2");
+      expect(saveNumber()).toHaveBeenLastCalledWith("18");
+    });
+
+    it("Other… writes nothing for a blank entry", () => {
+      chooseOther();
+      type("   ");
+
+      expect(saveName()).not.toHaveBeenCalled();
+    });
+
+    it("Other… stays open across a catalog push while the user types", () => {
+      chooseOther();
+      type("Dro");
+      pushCatalog({ ...CATALOG, current: null });
+
+      expect(fieldShown()).toBe(true);
+      expect(select().selectedOptions[0].dataset.other).toBeDefined();
+    });
+
+    it("choosing a listed group after Other… closes the field", () => {
+      chooseOther();
+      chooseName("Nose");
+
+      expect(fieldShown()).toBe(false);
+      expect(saveName()).toHaveBeenLastCalledWith("Nose");
+    });
+
+    it("offers, shows and writes groups named like Object.prototype members", () => {
+      pushCatalog({
+        ...CATALOG,
+        groups: [...CATALOG.groups, { name: "toString", tracks: [0], lastSeen: "" }],
+        current: { trackId: 2, groups: ["TV1", "constructor", "__proto__"] },
+      });
+
+      const values = Array.from(select().options).map((o) => o.value);
+
+      expect(values).toEqual(expect.arrayContaining(["constructor", "__proto__", "toString"]));
+
+      chooseName("__proto__");
+      expect(saveName()).toHaveBeenLastCalledWith("__proto__");
+      expect(select().value).toBe("__proto__");
+
+      pushName("constructor");
+      expect(select().value).toBe("constructor");
+      expect(selectedText()).toBe("constructor");
+    });
+
+    it("Other… writes no name the plugin would not record", () => {
+      chooseOther();
+      type("x".repeat(257));
+      type(`Tab${String.fromCharCode(9)}here`);
+
+      expect(saveName()).not.toHaveBeenCalled();
+    });
+
+    it("a typed name shows as the stored entry once the PI reopens", () => {
+      chooseOther();
+      type("My Chicane");
+
+      const reopened = document.createElement("ird-camera-group-select");
+
+      document.body.appendChild(reopened);
+      mock.perKey.get("cameraGroupName")?.("My Chicane");
+      mock.global.get(CAMERA_CATALOG_KEY)?.(JSON.stringify(CATALOG));
+
+      const reopenedSelect = reopened.querySelector("select") as HTMLSelectElement;
+
+      expect(reopenedSelect.value).toBe("My Chicane");
+      expect(reopenedSelect.selectedOptions[0].textContent).toBe("My Chicane (not on this track)");
+    });
+  });
+});
