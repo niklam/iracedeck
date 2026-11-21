@@ -548,6 +548,26 @@ describe("getCameraGroupsFromSessionInfo", () => {
   it("should return empty array when Groups is empty", () => {
     expect(getCameraGroupsFromSessionInfo({ CameraInfo: { Groups: [] } })).toEqual([]);
   });
+
+  it("reads a Groups that is not a list as no groups, without throwing (#1653)", () => {
+    expect(getCameraGroupsFromSessionInfo({ CameraInfo: { Groups: { GroupNum: 1, GroupName: "Nose" } } })).toEqual([]);
+    expect(getCameraGroupsFromSessionInfo({ CameraInfo: { Groups: "Nose" } })).toEqual([]);
+    expect(getCameraGroupsFromSessionInfo({ CameraInfo: { Groups: 3 } })).toEqual([]);
+    expect(getCameraGroupsFromSessionInfo({ CameraInfo: { Groups: null } })).toEqual([]);
+  });
+
+  it("skips entries that are not objects and keeps the rest in order (#1653)", () => {
+    const sessionInfo = {
+      CameraInfo: {
+        Groups: [null, "Nose", { GroupNum: 1, GroupName: "Nose" }, 7, [1, 2], { GroupNum: 2, GroupName: "TV1" }],
+      },
+    };
+
+    expect(getCameraGroupsFromSessionInfo(sessionInfo)).toEqual([
+      { groupNum: 1, groupName: "Nose" },
+      { groupNum: 2, groupName: "TV1" },
+    ]);
+  });
 });
 
 describe("getCamerasInGroup", () => {

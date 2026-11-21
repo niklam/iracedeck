@@ -287,21 +287,35 @@ export interface CameraGroup {
  * Get camera groups from iRacing session info.
  *
  * Extracts the list of available camera groups from CameraInfo.Groups[].
+ * The session info is parsed YAML, so its shape is not guaranteed: a `Groups`
+ * that is not a list reads as no groups, and an entry that is not an object is
+ * skipped. Change Camera reads this on its first render and before every press
+ * (#1653), so a malformed session info must not throw here.
  *
  * @param sessionInfo - The iRacing session info object
  * @returns Array of camera groups with group number and name
  */
 export function getCameraGroupsFromSessionInfo(sessionInfo: unknown): CameraGroup[] {
   const cameraInfo = (sessionInfo as Record<string, unknown>)?.CameraInfo as Record<string, unknown> | undefined;
-  const groups = cameraInfo?.Groups as Array<{ GroupNum: number; GroupName: string }> | undefined;
+  const groups: unknown = cameraInfo?.Groups;
 
-  if (!groups) return [];
+  if (!Array.isArray(groups)) return [];
 
-  // A group name YAML reads as something other than text — `GroupName: 360`
-  // is the number 360 — is read as its text, as `readCameraGroupNames` reads it,
-  // so every consumer can treat a name as a string (#1653: the case-insensitive
-  // lookup calls `toLowerCase` on it).
-  return groups.map((g) => ({ groupNum: g.GroupNum, groupName: cameraGroupNameText(g.GroupName) }));
+  const result: CameraGroup[] = [];
+
+  for (const entry of groups as unknown[]) {
+    if (entry === null || typeof entry !== "object" || Array.isArray(entry)) continue;
+
+    const group = entry as { GroupNum: number; GroupName: unknown };
+
+    // A group name YAML reads as something other than text — `GroupName: 360`
+    // is the number 360 — is read as its text, as `readCameraGroupNames` reads it,
+    // so every consumer can treat a name as a string (#1653: the case-insensitive
+    // lookup calls `toLowerCase` on it).
+    result.push({ groupNum: group.GroupNum, groupName: cameraGroupNameText(group.GroupName) });
+  }
+
+  return result;
 }
 
 /** A `GroupName` scalar as text: a string as is, a number in decimal, anything else empty. */
