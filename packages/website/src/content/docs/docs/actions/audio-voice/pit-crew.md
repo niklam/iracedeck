@@ -684,7 +684,7 @@ Two callout opt-ins live under **Race Engineer Callouts → Spotter** in the Set
 
 ## Traffic at the pit exit
 
-When you leave your pit box after a stop, the Race Engineer works out whether a car on the track will reach the end of the pit exit lane at about the same time as you. He looks at every car on the track or just off it, whatever its class and the pace car included, and works out when each one will get there from iRacing's own reference lap times, so the track's fast and slow sections are already in the number. Cars in the pits and cars not on the track are left out, and a car that has stopped on the track is not counted as approaching.
+When you leave your pit box after a stop, the Race Engineer works out whether a car on the track will reach the end of the pit exit lane at about the same time as you. He looks at every car on the track or just off it, whatever its class and the pace car included, and works out when each one will get there from iRacing's own reference lap times, so the track's fast and slow sections are already in the number. Cars in the pits and cars that are not on the circuit at all — being towed, in the garage or not in the car — are left out, and a car that has stopped on the track is not counted as approaching.
 
 He warns you; he never tells you what to do: the engineer tells you what traffic to expect, and how you merge is your call, made with your own mirrors.
 
