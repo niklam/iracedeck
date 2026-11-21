@@ -13,7 +13,7 @@ Your session's cwd is the shared `master` checkout. Work only in `<repo parent>/
 
 Never, in the `master` checkout: edit, commit, stage, switch branch or pull. A spec amendment goes to the PO. `git worktree add` and `gh` from there are fine.
 
-Never: restart or relink a deck host; run `pnpm build:with-restart`, `restart:*`, `watch:*`, `link:*`, `relink:*`, `unlink:*` or `node scripts/integration-build.mjs` (the PO's); message another issue lead; ask Niklas anything yourself (no AskUserQuestion); offer a cheaper, worse option. Build the thorough fix and report what it cost.
+Never: restart, stop, start or relink a deck host; run `pnpm build:with-restart`, `build:stream-deck`, `restart:*`, `start:*`, `stop:*`, `watch:*`, `link:*`, `relink:*`, `unlink:*` or `node scripts/integration-build.mjs` (the PO's). Since #1737 no hook asks on a restart, stop or start, so nothing but this line stops one; message another issue lead; ask Niklas anything yourself (no AskUserQuestion); offer a cheaper, worse option. Build the thorough fix and report what it cost.
 
 ## Reporting to the PO
 
