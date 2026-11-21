@@ -1,5 +1,6 @@
 {
   "features": {
-    "pngRasterization": true
+    "pngRasterization": true,
+    "trafficRejoin": true
   }
 }

@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
@@ -9,16 +11,67 @@ import {
   getPluginVersion,
   initPluginConfig,
   isPluginConfigInitialized,
+  type PlatformFeatureFlags,
   type PlatformFeatures,
 } from "./plugin-config.js";
 
 const ALL_TRUE_FEATURES: PlatformFeatures = {
-  features: { dialExtendedGestures: true, profiles: true, pngRasterization: true },
+  features: { dialExtendedGestures: true, profiles: true, pngRasterization: true, trafficRejoin: true },
 };
 
 const ALL_FALSE_FEATURES: PlatformFeatures = {
-  features: { dialExtendedGestures: false, profiles: false, pngRasterization: false },
+  features: { dialExtendedGestures: false, profiles: false, pngRasterization: false, trafficRejoin: false },
 };
+
+/**
+ * Every `PlatformFeatureFlags` key, as a value the files below are held to:
+ * `satisfies` fails `pnpm typecheck` on a key the interface lacks or a key it
+ * has and this list does not, so the list and the type cannot drift apart.
+ */
+const FLAG_NAMES = Object.keys({
+  dialExtendedGestures: true,
+  profiles: true,
+  pngRasterization: true,
+  trafficRejoin: true,
+} satisfies Record<keyof PlatformFeatureFlags, true>).sort();
+
+const repoRoot = path.resolve(import.meta.dirname, "../../..");
+
+/** The committed per-plugin flag files the shared Rollup factory reads (`platform-feature-flags.md`). */
+const PLUGIN_FLAG_FILES = ["iracing-plugin-stream-deck", "iracing-plugin-mirabox", "iracing-plugin-ulanzi"].map(
+  (pkg) => `packages/${pkg}/platform-features.json`,
+);
+
+function readFeatures(relative: string): Record<string, unknown> {
+  return (JSON.parse(readFileSync(path.join(repoRoot, relative), "utf-8")) as { features: Record<string, unknown> })
+    .features;
+}
+
+describe("the committed platform-features.json files", () => {
+  it.each(PLUGIN_FLAG_FILES)("%s declares exactly the PlatformFeatureFlags keys, each a boolean", (file) => {
+    const features = readFeatures(file);
+
+    expect(Object.keys(features).sort()).toEqual(FLAG_NAMES);
+
+    for (const [name, value] of Object.entries(features)) expect(typeof value, name).toBe("boolean");
+  });
+
+  it.each(PLUGIN_FLAG_FILES)(
+    "%s keeps the trafficRejoin development flag off, so no release build carries the rejoin warnings (#1113)",
+    (file) => {
+      expect(readFeatures(file).trafficRejoin).toBe(false);
+    },
+  );
+
+  it("names in feature-flags.local.json.example only flags every plugin sets alike, since the local file merges over all three", () => {
+    const example = readFeatures("feature-flags.local.json.example");
+
+    for (const name of Object.keys(example)) {
+      expect(FLAG_NAMES, name).toContain(name);
+      expect(new Set(PLUGIN_FLAG_FILES.map((file) => readFeatures(file)[name])).size, name).toBe(1);
+    }
+  });
+});
 
 describe("plugin-config", () => {
   afterEach(() => {

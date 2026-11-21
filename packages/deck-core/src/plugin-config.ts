@@ -19,6 +19,13 @@ export interface PlatformFeatureFlags {
   profiles: boolean;
   /** Rasterize device-bound SVG icons to PNG in-plugin (#642). Temporary kill-switch. */
   pngRasterization: boolean;
+  /**
+   * The Race Engineer's rejoin traffic warnings (#1113): the translator's rejoin
+   * detector, the four rejoin lines and the **Traffic when rejoining** checkbox.
+   * A development flag: off on every plugin, so no release build carries the
+   * feature; a developer turns it on through `feature-flags.local.json`.
+   */
+  trafficRejoin: boolean;
 }
 
 export interface PlatformFeatures {
