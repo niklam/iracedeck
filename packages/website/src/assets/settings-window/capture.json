@@ -1,16 +1,16 @@
 {
-  "version": "3.8.1",
+  "version": "3.9.0",
   "files": {
-    "appearance.png": "5e23aab28a06d36416c789925ab3d2472915d1a7e6e9eaf88b8dd38ce39af4c1",
-    "delays.png": "52b8162a9e4fd4860f662a21ad1b3c0d1d6737f9f745234266424e55eb4514ee",
-    "diagnostics.png": "996a89c49d44a9a06b4dd2b9e479eb9f8ad7cb47f95dd45320a65f1e14302bbd",
-    "general.png": "608b1afb2b3ecb1eeb3c003503cabe47ed7e06f2400b607456e0372ab1f8c4d1",
-    "getting-started.png": "c0b57ae6e92d6aa6e15f9eb936f1ad2757253649958ea635c93167fe3d37a828",
-    "key-bindings.png": "6d69e001cedcf0256a66e63a05b4bde8565648ca41a9ccceba740a2d5a15cb96",
-    "profiles.png": "bfc5c38b302da8ab8c3bcc0df63b031ab4c9eced63ad1b832c126ef075d5779d",
-    "race-engineer.png": "fb9c6503523a2b9be10ec5f20744c8e5bcc7c15d9cde3ba8efa41f60ffeeda1f",
-    "simhub.png": "62c762fb4d146f0a53109ac03bc7aeaa54af1786d492b848a20a350c5ec334bd",
-    "support.png": "80a27205755b2a726465b9a1ef67bd53bd7186e3baec078ffe4661ac779991b2",
-    "whats-new.png": "1402b05841419f58b45f62c407f052ca5d6fe95e3e644ace5ccfdc18a02dc42d"
+    "appearance.png": "5ae7619a39a265b0031b12c2f0658409e8c7766e63bdc7bf1e230a81ed5e4b50",
+    "delays.png": "36f3db676a40f498c76a4d522d5726a0355c4f43f2659b0e13a740ec9030c05a",
+    "diagnostics.png": "ed86c9823abf09caff6e72cabaa88ee6b3ca10fba1b3aeec44a6ac981da5e12d",
+    "general.png": "bb4576296bfa0ee5145605a4adb0d7eb4ab2518247bcc671d1e8295d90a8e9d1",
+    "getting-started.png": "ff0eb188581be88f88b97bb0b7df773d96e63b617ab5ea6f350b4f89a06ffadb",
+    "key-bindings.png": "b68038ee55186df5acd4884f73bbdd8673d1a6cd33e21165223bf5bd7360f56d",
+    "profiles.png": "1e2e61aacb5a33ff18cdf1dd7215929e6e9ac47cf0b1832cf49702dbb57a1c52",
+    "race-engineer.png": "4308929a28bac4fd99fed9bde55947197b478681dcec34560326c7e8f2f3b22a",
+    "simhub.png": "696f083cddf92af198e9325f79adf1b56dd104e3102e37508c2ebb92b8383739",
+    "support.png": "7fcd8f3506c124f6d3f0b0cce0660571b233a2a91291ce25647a36230ae2bf75",
+    "whats-new.png": "dadbaad83dee7d3565ecc36e4157fe4bb8795e1c98e5a9bca44f6a10dad775a0"
   }
 }
