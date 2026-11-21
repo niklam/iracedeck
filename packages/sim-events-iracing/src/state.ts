@@ -614,7 +614,8 @@ export type TrafficArrivalState = {
   curves: Record<string, TrafficReferenceCurve>;
   /**
    * Per car, by `CarIdx`: its progress; absent until the car is first read on
-   * the racing surface. A record rather than an array, so a car index with no
+   * the racing surface at a lap position, and again from a tick that finds it
+   * off the racing surface or at none. A record rather than an array, so a car index with no
    * reading leaves no hole the Telemetry Snapshot's JSON would turn into `null`.
    */
   motion: Partial<Record<number, TrafficCarMotion>>;

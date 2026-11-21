@@ -572,12 +572,70 @@ describe("the motion measurement", () => {
     read(slice, 100.5, 0.2);
     expect(slice.motion[1]?.rate).toBe(0);
 
-    // In the pits for a while: its record is left as it was.
-    read(slice, 101, 0.2, TrkLoc.InPitStall);
+    // On track but unread for a while, its ticks carrying no SessionTime: its
+    // record is left as it was. (Off the racing surface it would be forgotten
+    // outright, below.)
+    updateTrafficReferenceCurves(slice, tel([{ idx: 1, pct: 0.25, est: 25 }]), null, TRACK_M);
     expect(slice.motion[1]).toMatchObject({ fromTime: 100.5, rate: 0 });
 
     read(slice, 100.5 + TRAFFIC_MOTION_MAX_AGE_S + 0.25, 0.3);
     expect(slice.motion[1]).toEqual({ fromPct: 0.3, fromTime: 101.75, rate: null, rateAt: null });
+  });
+
+  describe("forgets the car's record on a tick that finds it off the racing surface or at no lap position", () => {
+    /** 0.5 m of the 25 km lap. */
+    const HALF_METRE = 0.5 / TRACK_M;
+
+    /** Car 1 measured standing at 100.5, then read at `gap` on 100.6, back where it stood on 100.7, and 0.5 m on by 100.8. */
+    function throughGap(gap: (slice: TrafficArrivalState) => void): TrafficArrivalState {
+      const slice = createTrafficArrivalState();
+
+      read(slice, 100, 0.2);
+      read(slice, 100.5, 0.2);
+      expect(isTrafficCarStationary(slice, 1, 100.5, TRACK_M)).toBe(true);
+
+      gap(slice);
+      read(slice, 100.7, 0.2);
+      read(slice, 100.8, 0.2 + HALF_METRE);
+
+      return slice;
+    }
+
+    it("so a car back from out of the world or the pits is measured afresh, counting as moving until it has a rate", () => {
+      for (const surface of [TrkLoc.NotInWorld, TrkLoc.InPitStall, TrkLoc.AproachingPits]) {
+        const slice = throughGap((s) => read(s, 100.6, 0.2, surface));
+
+        // 0.5 m in the 0.1 s since it came back is 5 m/s: no rate yet, so moving.
+        expect(isTrafficCarStationary(slice, 1, 100.8, TRACK_M)).toBe(false);
+        expect(slice.motion[1]).toEqual({ fromPct: 0.2, fromTime: 100.7, rate: null, rateAt: null });
+      }
+    });
+
+    it("so a car read on track at no lap position, the sim's -1 included, is measured afresh too", () => {
+      for (const pct of [-1, Number.NaN, 1.5]) {
+        const slice = throughGap((s) => read(s, 100.6, pct));
+
+        expect(isTrafficCarStationary(slice, 1, 100.8, TRACK_M)).toBe(false);
+        expect(slice.motion[1]).toEqual({ fromPct: 0.2, fromTime: 100.7, rate: null, rateAt: null });
+      }
+    });
+
+    it("while a car read standing on every tick keeps its standing rate through the same moves", () => {
+      // Positive control: 0.5 m over the 0.3 s since its window began is
+      // under the crawl speed, so a car observed throughout stays standing.
+      const slice = throughGap((s) => read(s, 100.6, 0.2));
+
+      expect(isTrafficCarStationary(slice, 1, 100.8, TRACK_M)).toBe(true);
+      expect(slice.motion[1]).toEqual({ fromPct: 0.2, fromTime: 100.5, rate: 0, rateAt: 100.5 });
+    });
+
+    it("and a tick without a SessionTime, which reads no progress, forgets nothing", () => {
+      const slice = throughGap((s) =>
+        updateTrafficReferenceCurves(s, tel([{ idx: 1, pct: 0.2, est: 20 }]), null, TRACK_M),
+      );
+
+      expect(isTrafficCarStationary(slice, 1, 100.8, TRACK_M)).toBe(true);
+    });
   });
 
   it("keeps the record on a tick whose SessionTime and position both repeated, and starts again when the clock went backwards", () => {

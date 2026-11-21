@@ -79,7 +79,9 @@
  * standing rate is dropped, so it counts as moving at the next evaluation; the
  * window runs on and measures the new rate. A car with no usable rate counts as moving, the
  * cautious direction, since a car left out can never be a warning: on its
- * first readings, after a gap in them longer than
+ * first readings, after a tick that found it off the racing surface or at no
+ * lap position (a known gap: its record is forgotten, so its first position
+ * back starts a fresh window), after a gap in its readings longer than
  * {@link TRAFFIC_MOTION_MAX_AGE_S}, after a jump faster than
  * {@link TRAFFIC_MOTION_MAX_PLAUSIBLE_MPS} (a tow, a reset; judged on every
  * reading, a window not yet complete included), after a position that moved
@@ -157,7 +159,7 @@ export const TRAFFIC_MOTION_WINDOW_S = 0.5;
 /**
  * The oldest reading (s of `SessionTime`) the motion measurement trusts: a
  * window that began longer ago restarts with no rate, since the car went
- * unread in between (in the pits, out of the world, a unit that threw), and a
+ * unread in between (ticks with no `SessionTime`, a unit that threw), and a
  * rate measured longer ago is not used, counting the car as moving. Twice the
  * window, so a car read on every tick always has a rate younger than this,
  * while one whose readings stopped counts as moving again within a second.
@@ -458,7 +460,9 @@ function nextMotion(
  * car and the pace car included. Never a pit-lane car. A class gets its curve
  * with its first sample. Every car on the racing surface at a lap position is
  * also a reading of its progress (module header), on `SessionTime`; a tick
- * without one measures nothing. Writes the slice in place. The cars are
+ * without one measures nothing. A car found off the racing surface or at no
+ * lap position has its record forgotten, whatever the clock: its first
+ * position back starts a fresh window. Writes the slice in place. The cars are
  * independent, so each is one unit of `runUnit` (#1559): a car whose unit
  * throws loses that car's sample this tick and no other car's. Its progress
  * is read first, from its surface and position alone, so a throw in the
@@ -491,7 +495,13 @@ export function updateTrafficReferenceCurves(
   let carIdx = 0;
   let motionRead = false;
   const unit = (): void => {
+    // A car off the racing surface (out of the world, in the pits) or at no
+    // lap position is a known gap in its readings: its record goes, so its
+    // first position back starts a fresh window. Kept, a car measured standing
+    // that came back and drove off would be measured against where it stood
+    // before the gap, keep its standing rate, and be left out of the arrivals.
     if (!isRacingSurface(surfaces[carIdx])) {
+      forgetMotion(slice, carIdx);
       motionRead = true;
 
       return;
@@ -504,6 +514,7 @@ export function updateTrafficReferenceCurves(
     const pct = normalizeLapPosition(pcts[carIdx]);
 
     if (pct === null) {
+      forgetMotion(slice, carIdx);
       motionRead = true;
 
       return;
@@ -545,6 +556,11 @@ export function updateTrafficReferenceCurves(
     // arrivals. The window stays, and measures again once the car reads.
     if (!runUnit(ignoreEvent, unit) && !motionRead) forgetMotionRate(slice, carIdx);
   }
+}
+
+/** Drops a car's whole record: its next reading starts a fresh window, with no rate, so it counts as moving until that window measures. */
+function forgetMotion(slice: TrafficArrivalState, carIdx: number): void {
+  if (slice.motion[carIdx] !== undefined) delete slice.motion[carIdx];
 }
 
 /** Drops a car's measured rate, keeping its window: the car counts as moving until the window measures again. */
