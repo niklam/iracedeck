@@ -1,4 +1,4 @@
-import type { CalloutScript } from "@iracedeck/callout-script";
+import type { CalloutScript, ScriptStep } from "@iracedeck/callout-script";
 import { describe, expect, it } from "vitest";
 
 import { WEIGHT } from "../dsl.js";
@@ -618,6 +618,36 @@ describe("buildPackReference", () => {
     expect(lineOf(ref, "fuel", "laps-left-10").usedBy).toEqual(["pit-crew.flag-blue"]);
   });
 
+  // A voice shipping both `green-01.mp3` (a take of `green`) and
+  // `green-01-01.mp3` (a take of `green-01`) has two lines a name like
+  // `green-01` could mean. The engine settles it: a literal plays the one
+  // file it names, and a pool draws every `<base>` and `<base>-NN` file.
+  describe("when a take's name is also a line's base", () => {
+    const COLLIDING = {
+      manifestClips: [...MANIFEST_CLIPS, "voice/default/flags/green-01-01.mp3"],
+      groups: { ...GROUPS, flags: [...GROUPS.flags, { name: "green-01-01", text: "Green, take one." }] },
+    };
+    const greenWith = (sequence: ScriptStep[]): PackReferenceInput =>
+      input({
+        ...COLLIDING,
+        script: { ...SCRIPT, scenarios: { ...SCRIPT.scenarios, "pit-crew.flag-green": { sequence } } },
+      });
+
+    it("credits a literal to the line of the file it plays", () => {
+      const ref = buildPackReference(greenWith([{ clip: "voice/{voice}/flags/green-01.mp3" }]));
+
+      expect(lineOf(ref, "flags", "green").usedBy).toEqual(["pit-crew.flag-green"]);
+      expect(lineOf(ref, "flags", "green-01").usedBy).toEqual([]);
+    });
+
+    it("credits a pool to every line it draws a file from", () => {
+      const ref = buildPackReference(greenWith(["pool:flags/green-01"]));
+
+      expect(lineOf(ref, "flags", "green").usedBy).toEqual(["pit-crew.flag-green"]);
+      expect(lineOf(ref, "flags", "green-01").usedBy).toEqual(["pit-crew.flag-green"]);
+    });
+  });
+
   // The plugin plays a few clips by path outside any script (the radio check,
   // the driver's name); the artifact says so per LINE, from the runner's list,
   // so the website has nothing to mirror. Exact base first, then a group's
@@ -904,6 +934,26 @@ describe("buildPackReference withholding a development feature (issue #1113)", (
       // Published, the frame alone keeps it; withheld with the spotter call, it goes.
       expect(lineOf(buildPackReference(input({ script, contracts })), "openers", "alright").usedBy).toEqual([]);
       expect(groupsOf(buildPackReference(input({ script, contracts, withheld: SPOTTER })))).not.toContain("openers");
+    });
+
+    it("credits a frame's literal to the line of the file it plays, and its pool to every line it draws from", () => {
+      // `green-01.mp3` is a take of `green`; `green-01-01.mp3` makes a
+      // `green-01` line too. The withheld flag-green call is the only entry
+      // naming `green`, so only the published radio frame can keep it.
+      const colliding = {
+        manifestClips: [...MANIFEST_CLIPS, "voice/default/flags/green-01-01.mp3"],
+        groups: { ...GROUPS, flags: [...GROUPS.flags, { name: "green-01-01", text: "Green, take one." }] },
+        withheld: { ...NOTHING, contracts: ["pit-crew.flag-green"] },
+      };
+      const radioOpens = (open: ScriptStep[]): CalloutScript =>
+        withFrames({ radio: { open, close: [] }, terse: { open: [], close: [] } });
+      const greenBases = (script: CalloutScript): string[] =>
+        buildPackReference(input({ ...colliding, script }))
+          .recordingScript.find((g) => g.group === "flags")
+          ?.lines.map((l) => l.base) ?? [];
+
+      expect(greenBases(radioOpens([{ clip: "voice/{voice}/flags/green-01.mp3" }]))).toContain("green");
+      expect(greenBases(radioOpens(["pool:flags/green-01"]))).toEqual(expect.arrayContaining(["green", "green-01"]));
     });
 
     it("reads a frame's bare literal at the audio root, as the engine plays it, never as the voice's line", () => {

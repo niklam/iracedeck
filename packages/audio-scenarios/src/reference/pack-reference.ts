@@ -499,9 +499,9 @@ type EntryWalk = {
    * its leading-slash escape to be (unescaped it plays from the base twice). A
    * published callout playing a line that way keeps it from being withheld
    * with a feature that names it by pool (#1113). Names are kept AS
-   * WRITTEN — the line it lands on is resolved with `lineKeyOf` against the
-   * recording lines, exact name first, so `laps-left-10.mp3` and
-   * `green-01.mp3` each reach the right line.
+   * WRITTEN — the line it lands on is the line of the one shipped file it
+   * plays (`buildRecordingScript`), so `laps-left-10-01.mp3` reaches
+   * `laps-left-10` and `green-01.mp3` reaches `green`.
    */
   clipBases: ReadonlySet<string>;
   /**
@@ -525,8 +525,10 @@ type FrameWalk = {
   vars: readonly string[];
   conds: readonly string[];
   cases: readonly string[];
-  /** The `group/base` keys the frame draws from: its pools, resolved, and its voice clips by literal path. */
-  lines: ReadonlySet<string>;
+  /** The pools the frame draws from, resolved to `group/base` as an entry's `references.pools` are. */
+  pools: ReadonlySet<string>;
+  /** The voice clips the frame plays by literal path, `group/name` as an entry's `clipBases` keeps them. */
+  clips: ReadonlySet<string>;
 };
 
 const NO_REFERENCES: CalloutReferences = { pools: [], vars: [], conds: [], cases: [], includes: [], frames: [] };
@@ -590,7 +592,8 @@ function walkFrame(script: CalloutScript, name: string, endable: boolean): Frame
     vars: sorted(walk.vars),
     conds: sorted(walk.conds),
     cases: sorted(walk.cases.keys()),
-    lines: new Set([...walk.pools, ...walk.clipBases]),
+    pools: walk.pools,
+    clips: walk.clipBases,
   };
 }
 
@@ -722,25 +725,16 @@ function takeOrder(name: string): number {
   return match ? Number(match[1]) : 0;
 }
 
-/**
- * A pool reference as a recording-line key. A reference is normally a base
- * (`fuel/laps-left-10`, `start-lights/countdown-90`) and keys that line as
- * written — a trailing `-NN` is part of the NAME whenever a line carries it.
- * Only a reference that keys no line and strips to one (`flags/green-01`, a
- * legal step naming one take) lands on the line of its base, the way a
- * literal clip's take does in `walkEntry`. Stripping first would send
- * `laps-left-10` to a `laps-left` line that does not exist and lose the
- * consumer. An alias the script never defined has no slash and is left as
- * written; it keys no line.
- */
-function lineKeyOf(pool: string, lineKeys: ReadonlySet<string>): string {
-  const slash = pool.indexOf("/");
+/** Add `value` to the set `map` keeps under `key`, creating it on first use. */
+function addTo(map: Map<string, Set<string>>, key: string, value: string): void {
+  let values = map.get(key);
 
-  if (slash < 0 || lineKeys.has(pool)) return pool;
+  if (!values) {
+    values = new Set();
+    map.set(key, values);
+  }
 
-  const stripped = `${pool.slice(0, slash + 1)}${stripTakeSuffix(pool.slice(slash + 1))}`;
-
-  return lineKeys.has(stripped) ? stripped : pool;
+  values.add(value);
 }
 
 /**
@@ -762,6 +756,19 @@ function buildRecordingScript(
   // The shipped take names per base, per group, off the voice's manifest clips.
   const prefix = `voice/${voice}/`;
   const takesByGroup = new Map<string, Map<string, string[]>>();
+  // Which lines a reference plays from, as the engine resolves it against the
+  // same files. A literal plays the one file it names: `group/name` → its
+  // line. A pool draws every `<base>.mp3` and `<base>-NN.mp3`
+  // (`poolMemberPattern`), so a file is a member of the pool its full name
+  // names and, when it carries a take suffix, of its base's: `green-01.mp3`
+  // belongs to the pools `green-01` and `green`. Where a take's name is also a
+  // line's base (`green-01.mp3` beside `green-01-01.mp3`), the pool
+  // `flags/green-01` therefore spans both lines and the literal
+  // `flags/green-01.mp3` only the `green` line. A reference no shipped file
+  // answers — an alias the script never defined, a take not recorded — plays
+  // nothing and credits no line.
+  const lineOfClip = new Map<string, string>();
+  const linesOfPool = new Map<string, Set<string>>();
 
   for (const clip of manifestClips) {
     if (!clip.startsWith(prefix) || !clip.endsWith(".mp3")) continue;
@@ -785,32 +792,40 @@ function buildRecordingScript(
 
     if (names) names.push(name);
     else bases.set(base, [name]);
+
+    const line = `${group}/${base}`;
+
+    lineOfClip.set(`${group}/${name}`, line);
+    addTo(linesOfPool, `${group}/${name}`, line);
+
+    if (base !== name) addTo(linesOfPool, line, line);
   }
 
-  // Direct consumers: the callouts whose entries draw from a base by pool or by literal clip.
-  const lineKeys = new Set<string>();
+  // The lines a set of pools and literal clips plays from.
+  const linesOf = (pools: Iterable<string>, clips: Iterable<string>): Set<string> => {
+    const lines = new Set<string>();
 
-  for (const [group, bases] of takesByGroup) for (const base of bases.keys()) lineKeys.add(`${group}/${base}`);
+    for (const pool of pools) for (const line of linesOfPool.get(pool) ?? []) lines.add(line);
 
+    for (const clip of clips) {
+      const line = lineOfClip.get(clip);
+
+      if (line !== undefined) lines.add(line);
+    }
+
+    return lines;
+  };
+
+  // Direct consumers: the callouts whose entries draw from a line by pool or by literal clip.
   const directUsers = new Map<string, Set<string>>();
   // The callouts whose effective frame plays a line: they keep it from being
   // withheld, but are not its `usedBy` (see `EntryWalk.frame`).
   const frameUsers = new Map<string, Set<string>>();
-  const credit = (users: Map<string, Set<string>>, key: string, id: string): void => {
-    let ids = users.get(key);
-
-    if (!ids) {
-      ids = new Set();
-      users.set(key, ids);
-    }
-
-    ids.add(id);
-  };
 
   for (const [id, { references, clipBases, frame }] of walks) {
-    for (const ref of [...references.pools, ...clipBases]) credit(directUsers, lineKeyOf(ref, lineKeys), id);
+    for (const line of linesOf(references.pools, clipBases)) addTo(directUsers, line, id);
 
-    for (const ref of frame?.lines ?? []) credit(frameUsers, lineKeyOf(ref, lineKeys), id);
+    for (const line of linesOf(frame?.pools ?? [], frame?.clips ?? [])) addTo(frameUsers, line, id);
   }
 
   return sorted(takesByGroup.keys()).flatMap((group): RecordingGroup[] => {
