@@ -442,6 +442,74 @@ describe("BindingDispatcher", () => {
         await getBindingDispatcher().release("ctx");
         expect(calls).toEqual(["start R", "stop R", "start R", "stop R"]);
       });
+
+      it("credits a second press's release to the second hold while it waits behind the first", async () => {
+        mockGetGlobalSettings.mockReturnValue({ a: JSON.stringify({ type: "simhub", role: "R" }) });
+        const calls = recordCalls();
+        const stalledStart = deferred();
+        mockStartRole.mockImplementationOnce(async (role: string) => {
+          calls.push(`start ${role}`);
+
+          return stalledStart.promise;
+        });
+
+        // Two whole presses of the key while the first start is in flight.
+        const first = getBindingDispatcher().hold("ctx", "a");
+        await getBindingDispatcher().release("ctx");
+        const second = getBindingDispatcher().hold("ctx", "a");
+        await getBindingDispatcher().release("ctx");
+
+        stalledStart.resolve(true);
+        await Promise.all([first, second]);
+
+        // Both presses went out and both were released: nothing stays held.
+        expect(calls).toEqual(["start R", "stop R", "start R", "stop R"]);
+        await getBindingDispatcher().release("ctx");
+        expect(calls).toEqual(["start R", "stop R", "start R", "stop R"]);
+      });
+
+      it("runs three quick presses in order, each released", async () => {
+        mockGetGlobalSettings.mockReturnValue({ a: JSON.stringify({ type: "simhub", role: "R" }) });
+        const calls = recordCalls();
+        const stalledStart = deferred();
+        mockStartRole.mockImplementationOnce(async (role: string) => {
+          calls.push(`start ${role}`);
+
+          return stalledStart.promise;
+        });
+
+        const holds: Promise<void>[] = [];
+
+        for (let i = 0; i < 3; i += 1) {
+          holds.push(getBindingDispatcher().hold("ctx", "a"));
+          await getBindingDispatcher().release("ctx");
+        }
+
+        stalledStart.resolve(true);
+        await Promise.all(holds);
+
+        expect(calls).toEqual(["start R", "stop R", "start R", "stop R", "start R", "stop R"]);
+      });
+    });
+
+    // #1693: a keyboard hold can wait on the window focus before it presses.
+    describe("a keyboard hold released before it has pressed", () => {
+      it("releases the key once the press has gone out", async () => {
+        mockGetGlobalSettings.mockReturnValue({ a: JSON.stringify({ key: "a", modifiers: [], code: "KeyA" }) });
+        let pressed!: (sent: boolean) => void;
+        mockPressKeyCombination.mockImplementationOnce(() => new Promise<boolean>((resolve) => (pressed = resolve)));
+
+        const hold = getBindingDispatcher().hold("ctx", "a");
+        await new Promise((r) => setTimeout(r, 0));
+        await getBindingDispatcher().release("ctx");
+
+        expect(mockReleaseKeyCombination).not.toHaveBeenCalled();
+
+        pressed(true);
+        await hold;
+
+        expect(mockReleaseKeyCombination).toHaveBeenCalledTimes(1);
+      });
     });
 
     describe("missing bindings", () => {

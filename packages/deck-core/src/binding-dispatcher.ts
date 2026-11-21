@@ -39,12 +39,14 @@ import { getSimHub, isSimHubInitialized, isSimHubReachable } from "./simhub-serv
 type HeldBinding = { type: "keyboard"; combination: KeyCombination } | { type: "simhub"; role: string };
 
 /**
- * A SimHub hold whose start has not returned yet (#1693). A release that
- * arrives meanwhile finds nothing held, so it sets `released` and the hold
- * releases the role once its start has gone through; `done` settles when the
- * hold, that release included, has finished.
+ * A hold that has not pressed yet (#1693): its press may wait behind an earlier
+ * hold of the context, then behind the SimHub role's queue and SimHub itself,
+ * or on the keyboard's window focus. A release that arrives meanwhile finds
+ * nothing held, so it sets `released`, and the hold releases what it pressed
+ * once the press has gone through; `done` settles when the hold, that release
+ * included, has finished.
  */
-type PendingSimHubHold = { released: boolean; done: Promise<void> };
+type PendingHold = { released: boolean; done: Promise<void> };
 
 /**
  * Interface for the binding dispatcher service.
@@ -80,7 +82,10 @@ export interface IBindingDispatcher {
   /** Press and hold a binding from global settings. */
   hold(actionId: string, settingKey: string): Promise<void>;
 
-  /** Release a previously held binding. Safe to call if nothing is held. */
+  /**
+   * Release a previously held binding. Safe to call if nothing is held. A hold
+   * that has not pressed yet (a slow SimHub start) is released once it has.
+   */
   release(actionId: string): Promise<void>;
 
   /** Check if a binding at the given setting key is ready to execute. */
@@ -135,8 +140,8 @@ class BindingDispatcher implements IBindingDispatcher {
    * interleave. Removed once the role's last request has settled.
    */
   private simHubRoleQueues = new Map<string, Promise<void>>();
-  /** SimHub holds whose start is still in flight, by action context (#1693). */
-  private pendingSimHubHolds = new Map<string, PendingSimHubHold>();
+  /** Holds that have not pressed yet, by action context (#1693). */
+  private pendingHolds = new Map<string, PendingHold>();
 
   constructor(logger: ILogger) {
     this.logger = logger;
@@ -205,15 +210,38 @@ class BindingDispatcher implements IBindingDispatcher {
    * @param settingKey - The global settings key
    */
   async hold(actionId: string, settingKey: string): Promise<void> {
-    // A SimHub hold of this context whose start is still in flight finishes
-    // first, the release it may owe included, so its stop is never queued
-    // behind this hold's start (#1693).
-    await this.pendingSimHubHolds.get(actionId)?.done;
+    // Registered before the first await, so the release this press's key-up
+    // sends always finds this hold, never an earlier one (#1693).
+    const previous = this.pendingHolds.get(actionId);
+    let finish!: () => void;
+    const pending: PendingHold = { released: false, done: new Promise<void>((resolve) => (finish = resolve)) };
+    this.pendingHolds.set(actionId, pending);
 
-    // Release before resolve — even if the new binding turns out to be invalid,
-    // the old one must not stay held (would cause a stuck key/role).
-    await this.release(actionId);
+    try {
+      // An earlier hold of this context that has not pressed yet finishes
+      // first, the release it may owe included, so its release is never queued
+      // behind this hold's press.
+      await previous?.done;
 
+      // Release before resolve — even if the new binding turns out to be invalid,
+      // the old one must not stay held (would cause a stuck key/role).
+      await this.releaseHeld(actionId);
+
+      await this.pressHold(actionId, settingKey);
+
+      if (pending.released) {
+        this.logger.debug("Hold was released while it was pressing; releasing it now");
+        await this.releaseHeld(actionId);
+      }
+    } finally {
+      if (this.pendingHolds.get(actionId) === pending) this.pendingHolds.delete(actionId);
+
+      finish();
+    }
+  }
+
+  /** Press a hold's binding and record it as held when the press went out. */
+  private async pressHold(actionId: string, settingKey: string): Promise<void> {
     const binding = this.resolveGlobalBinding(settingKey);
 
     if (!binding) return;
@@ -229,29 +257,12 @@ class BindingDispatcher implements IBindingDispatcher {
       }
 
       const role = binding.role;
-      let finish!: () => void;
-      const pending: PendingSimHubHold = { released: false, done: new Promise<void>((resolve) => (finish = resolve)) };
-      this.pendingSimHubHolds.set(actionId, pending);
+      const started = await this.inRoleOrder(role, () => getSimHub().startRole(role));
 
-      try {
-        // The start may wait behind earlier requests of the role, then on SimHub
-        // itself; a key released meanwhile has its release carried out here.
-        const started = await this.inRoleOrder(role, () => getSimHub().startRole(role));
-
-        if (started) {
-          this.heldBindings.set(actionId, { type: "simhub", role });
-
-          if (pending.released) {
-            this.logger.debug("SimHub role was released while it was starting; releasing it now");
-            await this.release(actionId);
-          }
-        } else {
-          this.logger.warn("Failed to start SimHub role");
-        }
-      } finally {
-        if (this.pendingSimHubHolds.get(actionId) === pending) this.pendingSimHubHolds.delete(actionId);
-
-        finish();
+      if (started) {
+        this.heldBindings.set(actionId, { type: "simhub", role });
+      } else {
+        this.logger.warn("Failed to start SimHub role");
       }
 
       return;
@@ -272,17 +283,21 @@ class BindingDispatcher implements IBindingDispatcher {
 
   /**
    * Release a previously held binding for the given action context.
-   * Safe to call even if nothing is held (no-op).
+   * Safe to call even if nothing is held (no-op). A hold of the context that
+   * has not pressed yet is released once its press has gone through (#1693).
    *
    * @param actionId - The action context ID (ev.action.id)
    */
   async release(actionId: string): Promise<void> {
-    // A SimHub hold still starting is released by the hold once its start has
-    // gone through (#1693).
-    const pending = this.pendingSimHubHolds.get(actionId);
+    const pending = this.pendingHolds.get(actionId);
 
     if (pending) pending.released = true;
 
+    await this.releaseHeld(actionId);
+  }
+
+  /** Release what the context holds now, leaving any pending hold alone. */
+  private async releaseHeld(actionId: string): Promise<void> {
     const held = this.heldBindings.get(actionId);
 
     if (!held) return;
