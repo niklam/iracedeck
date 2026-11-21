@@ -59,6 +59,7 @@ import {
   collectLiteralClips,
   collectStepReferences,
   NO_FRAME,
+  parseStringStep,
   type ScriptStep,
   stripTakeSuffix,
   TAKE_SUFFIX,
@@ -543,7 +544,9 @@ const NO_REFERENCES: CalloutReferences = { pools: [], vars: [], conds: [], cases
  * the including entry's base, as the engine expands them. `contractFrame` is
  * the contract's default frame, which the entry's `frame` overrides; the
  * effective one is walked as well (`EntryWalk.frame`), its `cut` only when
- * `endable`: the contract carries `endsOn`.
+ * `endable`: the contract carries `endsOn`. A body that can never play a
+ * clip (`canPlayClip`) gets no frame walked, as the engine expands none
+ * around it.
  */
 function walkEntry(
   script: CalloutScript,
@@ -566,8 +569,60 @@ function walkEntry(
       frames: entry.frame !== undefined && entry.frame !== NO_FRAME ? [entry.frame] : [],
     },
     clipBases: body.clipBases,
-    frame: walkFrame(script, entry.frame ?? contractFrame, endable),
+    frame: canPlayClip(script, entry.sequence ?? []) ? walkFrame(script, entry.frame ?? contractFrame, endable) : null,
   };
+}
+
+/**
+ * Whether a body could play a clip at all — the script-side twin of the
+ * engine's `canProducePlay` (`expansion.ts`), which expands no frame around
+ * a body that cannot, so its frame neither aborts it nor plays (issue #1064).
+ * The engine reads the compiled body, whose includes the compiler has
+ * inlined (#1065), so an include is followed into its fragment here; one the
+ * script does not define fails to compile, and is answered `true` — the
+ * conservative side, which keeps the frame's withheld-vocabulary check. A
+ * `clip`, `var`, `pool` or `connector` can play; a `pause` or `ambient`
+ * never can; `optional`, `if` and `case` can iff a branch can.
+ */
+function canPlayClip(
+  script: CalloutScript,
+  steps: readonly ScriptStep[],
+  entered: ReadonlySet<string> = new Set(),
+): boolean {
+  const fragments = script.fragments ?? {};
+  const fragmentCanPlay = (name: string): boolean => {
+    if (!Object.hasOwn(fragments, name)) return true;
+
+    // A cycle fails to compile; the first visit answers for the fragment.
+    if (entered.has(name)) return false;
+
+    return canPlayClip(script, fragments[name].sequence, new Set([...entered, name]));
+  };
+
+  return steps.some((step) => {
+    if (typeof step === "string") {
+      const form = parseStringStep(step);
+
+      if (form.kind === "include") return fragmentCanPlay(form.id);
+
+      return form.kind !== "pause";
+    }
+
+    if ("include" in step) return fragmentCanPlay(step.include);
+
+    if ("pause" in step || "ambient" in step) return false;
+
+    if ("optional" in step) return canPlayClip(script, step.optional, entered);
+
+    if ("if" in step) {
+      return canPlayClip(script, step.then, entered) || canPlayClip(script, step.else ?? [], entered);
+    }
+
+    if ("case" in step) return Object.values(step.of).some((branch) => canPlayClip(script, branch, entered));
+
+    // clip, var, pool, connector.
+    return true;
+  });
 }
 
 /**

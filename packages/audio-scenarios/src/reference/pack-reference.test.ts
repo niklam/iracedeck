@@ -995,6 +995,39 @@ describe("buildPackReference withholding a development feature (issue #1113)", (
       ).not.toThrow();
     });
 
+    // The engine expands no frame around a body that can never play a clip
+    // (`canProducePlay` in `expansion.ts`), so such a body's frame names nothing.
+    it("walks no frame for a body that can never play a clip, and the frame of every body that can", () => {
+      const script = withFrames(
+        { radio: { open: [], close: [] }, terse: { open: [{ optional: ["{{zz.unused}}"] }], close: [] } },
+        { quiet: { sequence: ["pause:50", { ambient: "start" }] }, loud: { sequence: ["@quiet", "pool:spot"] } },
+      );
+      const spotterSays = (sequence: ScriptStep[]) => (): unknown =>
+        buildPackReference(
+          input({
+            script: {
+              ...script,
+              scenarios: {
+                ...script.scenarios,
+                "pit-crew.spotter-call": { ...script.scenarios["pit-crew.spotter-call"], sequence },
+              },
+            },
+            withheld: { ...NOTHING, vars: ["zz.unused"] },
+          }),
+        );
+      const REFUSED = /"pit-crew\.spotter-call" is published but its frame "terse" names the withheld var "zz\.unused"/;
+
+      expect(spotterSays([{ pause: 100 }])).not.toThrow();
+      expect(spotterSays([])).not.toThrow();
+      expect(spotterSays(["@quiet", { optional: ["pause:5"] }])).not.toThrow();
+      expect(spotterSays([{ if: "session.isRace", then: [], else: [{ ambient: "stop" }] }])).not.toThrow();
+      // A clip anywhere it could play — a fragment, a branch, a connector — is a body the frame wraps.
+      expect(spotterSays([{ pause: 100 }, "@loud"])).toThrow(REFUSED);
+      expect(spotterSays([{ case: "readback.tirePattern", of: { all: [], default: ["pool:spot"] } }])).toThrow(REFUSED);
+      expect(spotterSays([{ if: "session.isRace", then: [], else: ["{{readback.fuel}}"] }])).toThrow(REFUSED);
+      expect(spotterSays([{ connector: true }])).toThrow(REFUSED);
+    });
+
     it("refuses a frame's withheld condition and case the same way", () => {
       const script = withFrames({
         radio: {
