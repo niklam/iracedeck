@@ -726,6 +726,141 @@ describe("lintPack", () => {
   });
 });
 
+// ─── Vars that declare what they draw (#1718) ────────────────────────────────
+//
+// The spotter's shape in miniature: one contract whose whole line is a var,
+// the var declaring the closed set of `spotter/<base>` pools it can return.
+// Its description names the spotter group on purpose — the heuristic would
+// exempt the whole group, and a declared var must not be read that way.
+
+const SPOTTER_ENTRY = "pit-crew.spotter-call";
+const SPOTTER_BASES = ["car-left", "car-right", "clear"] as const;
+
+const DRAWS_CONTRACTS: readonly ContractReport[] = [...CONTRACTS, contract(SPOTTER_ENTRY, { frame: "none" })];
+
+const DRAWS_VOCABULARY: VocabularyReport = {
+  ...VOCABULARY,
+  vars: [
+    ...VOCABULARY.vars,
+    {
+      name: "spotterClip",
+      description: "The spotter call, drawn from the spotter group (spotter/car-left is “Car left”).",
+      draws: SPOTTER_BASES.map((base) => ({ group: "spotter", base })),
+    },
+  ],
+};
+
+const DRAWS_DEPS: CompileDeps = {
+  ...DEPS,
+  contracts: new Map(DRAWS_CONTRACTS.map((c) => [c.id, { frame: c.frame }])),
+  vars: new Set(DRAWS_VOCABULARY.vars.map((v) => v.name)),
+};
+
+const DRAWS_SCRIPT = {
+  ...SCRIPT,
+  scenarios: {
+    ...SCRIPT.scenarios,
+    [SPOTTER_ENTRY]: { comment: "The spotter.", test: "Radar → Car left.", sequence: ["{{spotterClip}}"] },
+  },
+};
+
+/** Every declared base as takes only — the shape the engine resolved as a pool only since #1718. */
+const SPOTTER_TAKES = SPOTTER_BASES.flatMap((base) => [
+  `voice/${VOICE}/spotter/${base}-01.mp3`,
+  `voice/${VOICE}/spotter/${base}-02.mp3`,
+]);
+
+function lintDraws(script: unknown, clips: readonly string[]) {
+  return lint(packFiles({ script, clips: [...CLIPS, ...clips] }), {
+    contracts: DRAWS_CONTRACTS,
+    vocabulary: DRAWS_VOCABULARY,
+    compile: (parsed) => compileVoiceScript(parsed, DRAWS_DEPS),
+  });
+}
+
+const spotterOrphan = (base: string) =>
+  `${VOICE} orphan: "spotter/${base}" is shipped as voice/${VOICE}/spotter/${base}*.mp3 but nothing in the script references it — it never plays`;
+
+describe("lintPack — a var that declares its draws (issue #1718)", () => {
+  it("passes a pack that records every declared pool as takes only, and one that mixes bare files and takes", () => {
+    const report = lintDraws(DRAWS_SCRIPT, SPOTTER_TAKES);
+
+    expect(report.problems).toEqual([]);
+    expect(report.voices[0]).toMatchObject({ status: "linted", scripted: 4, skipped: ["pit-crew.position-gained"] });
+
+    const mixed = [`voice/${VOICE}/spotter/car-left.mp3`, ...SPOTTER_TAKES];
+    expect(lintDraws(DRAWS_SCRIPT, mixed).problems).toEqual([]);
+  });
+
+  it("names a declared pool the pack does not ship as dangling, in the var's words", () => {
+    const report = lintDraws(
+      DRAWS_SCRIPT,
+      SPOTTER_TAKES.filter((clip) => !clip.includes("/spotter/car-left-")),
+    );
+
+    expect(messages(report.problems)).toEqual([
+      `${VOICE} dangling: "spotter/car-left" is drawn by {{spotterClip}}, which the script names, but the pack ships no voice/${VOICE}/spotter/car-left*.mp3 — when the var picks it, the callout resolves to nothing and is aborted at fire time`,
+    ]);
+    expect(report.ok).toBe(false);
+  });
+
+  it("names a file in the group that answers no declared pool as an orphan — a one-digit take the engine never plays", () => {
+    const report = lintDraws(DRAWS_SCRIPT, [...SPOTTER_TAKES, `voice/${VOICE}/spotter/car-left-1.mp3`]);
+
+    // The var's description names the spotter group; it is not read, so the
+    // group is no longer exempt as a whole.
+    expect(messages(report.problems)).toEqual([spotterOrphan("car-left-1")]);
+  });
+
+  it("gives a voice whose script does not name the var no references from it — every file the var would draw is an orphan", () => {
+    const withoutEntry = { ...DRAWS_SCRIPT, scenarios: { ...SCRIPT.scenarios } };
+    const skipped = {
+      ...DRAWS_SCRIPT,
+      scenarios: { ...SCRIPT.scenarios, [SPOTTER_ENTRY]: { skip: true, comment: "No spotter in this voice." } },
+    };
+    const expected = SPOTTER_BASES.map(spotterOrphan);
+
+    // No entry at all, and a `skip: true` entry: both deliberate, so the only
+    // problems are the files nothing plays.
+    expect(messages(lintDraws(withoutEntry, SPOTTER_TAKES).problems)).toEqual(expected);
+    expect(messages(lintDraws(skipped, SPOTTER_TAKES).problems)).toEqual(expected);
+  });
+
+  it("counts the var named through a fragment a live entry includes, and not through one nothing includes", () => {
+    const included = {
+      ...DRAWS_SCRIPT,
+      scenarios: { ...DRAWS_SCRIPT.scenarios, [SPOTTER_ENTRY]: { sequence: ["@spotter-line"] } },
+      fragments: { "spotter-line": { sequence: ["{{spotterClip}}"] } },
+    };
+
+    expect(lintDraws(included, SPOTTER_TAKES).problems).toEqual([]);
+
+    const unincluded = {
+      ...DRAWS_SCRIPT,
+      scenarios: { ...SCRIPT.scenarios },
+      fragments: { "spotter-line": { sequence: ["{{spotterClip}}"] } },
+    };
+
+    expect(messages(lintDraws(unincluded, SPOTTER_TAKES).problems)).toEqual([
+      `${VOICE} fragment: "spotter-line" is defined but nothing includes it — a fragment nothing includes is checked by nobody`,
+      ...SPOTTER_BASES.map(spotterOrphan),
+    ]);
+  });
+
+  it("still exempts every base of a group a var with no declared draws names in its description — named by the script or not", () => {
+    // `position.number` declares no draws: its group is exempt as before, a
+    // misspelled base included, while the declared var's group is held per base.
+    const report = lintDraws(DRAWS_SCRIPT, [
+      ...SPOTTER_TAKES,
+      `voice/${VOICE}/position-number/4.mp3`,
+      `voice/${VOICE}/position-number/fuor.mp3`,
+      `voice/${VOICE}/spotter/car-lfet-01.mp3`,
+    ]);
+
+    expect(messages(report.problems)).toEqual([spotterOrphan("car-lfet")]);
+  });
+});
+
 describe("formatLintReport", () => {
   it("groups the problems by voice, pack-level first, then one summary line per voice", () => {
     const script = structuredClone(SCRIPT);

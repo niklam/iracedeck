@@ -70,18 +70,39 @@
  * name no built-in the plugin ships (`sharedClips`, the bundled manifest's
  * non-voice clips), `pools` aliases nothing names, and bases the pack ships
  * that nothing references. A base is referenced when an entry, frame or
- * fragment addresses it directly, or when a var whose description names its
- * group exists ({@link descriptionNamesGroup}) — the same heuristic the
- * reference's recording script uses, so the two never disagree about which
- * lines a var accounts for; and a base plugin code plays by path with the
- * active voice is never an orphan (`pluginPlayedBases`, handed in by the
- * runner: `group/base` keys, `group/*` for a group the plugin plays every
- * base of). There is no per-pack allowlist.
+ * fragment addresses it directly, or when a var accounts for it — read the
+ * way the reference's recording script reads it (`pack-reference.ts`), so
+ * the two never disagree about which lines a var accounts for — and a base
+ * plugin code plays by path with the active voice is never an orphan
+ * (`pluginPlayedBases`, handed in by the runner: `group/base` keys, `group/*`
+ * for a group the plugin plays every base of). There is no per-pack
+ * allowlist.
  *
- * One limitation of the var reading, stated for whoever meets it: the
- * exemption is per GROUP, so a misspelled clip in a group a var also draws
- * from is never reported as an orphan — the linter cannot tell which bases
- * a resolver produces. Declared sources on `defineVar` would close it.
+ * A var accounts for a base in one of two ways (#1718):
+ *
+ * - **Declared draws.** A var registered with `defineVar`'s `draws` names the
+ *   closed set of `group/base` pools its resolver can return (the spotter's
+ *   `spotterClip`, every spotter line). When the voice's LIVE script names
+ *   the var — an entry that is not `skip: true`, a frame, or a fragment
+ *   something live includes, as the coverage module reads the script — each
+ *   declared pool is handed to `checkCoverage` as a var reference, so the
+ *   usual two rules answer per base: a declared pool the voice does not ship
+ *   is dangling (the spotter line the pack never recorded, which the engine
+ *   would abort at fire time), and a shipped file in the group that answers
+ *   no declared pool is an orphan (`car-left-1.mp3`, a one-digit take the
+ *   engine never plays). A voice whose script does not name the var gets no
+ *   references from it, so its files in that group are orphans: nothing
+ *   plays them. Its description is never read.
+ * - **The description**, for a var that declared none
+ *   (`varDrawsWholeGroup`): a var whose description names a group
+ *   (`descriptionNamesGroup`) exempts every base of the group from the
+ *   orphan rule, whether or not the script names the var. That reading has
+ *   the limitation it always had, stated for whoever meets it: the exemption
+ *   is per GROUP, so a misspelled clip in a group such a var draws from is
+ *   never reported, and a base the resolver asks for that the pack lacks is
+ *   never dangling — the linter cannot tell which bases a closure produces.
+ *   Declaring `draws` on the var closes it; an open-ended var (a number, a
+ *   name) cannot.
  *
  * Two coverage findings are left to the compiler on purpose: a named pool
  * nothing defines and an include of a fragment nothing defines are both
@@ -93,6 +114,7 @@ import {
   type CalloutScript,
   calloutScriptPath,
   checkCoverage,
+  collectScriptReferences,
   dedupeDeclaredVoices,
   packId,
   packIdMatchesFolder,
@@ -104,9 +126,9 @@ import {
   VOICE_SCRIPT_MAX_BYTES,
 } from "@iracedeck/callout-script";
 
-import type { ContractReport, VocabularyReport } from "../interpreter.js";
+import type { ContractReport, VarDraw, VocabularyReport } from "../interpreter.js";
 import type { CompiledVoiceScript } from "../script-compiler.js";
-import { descriptionNamesGroup, pluginPlayedEntry } from "./pack-reference.js";
+import { pluginPlayedEntry, varDrawsWholeGroup } from "./pack-reference.js";
 
 // ─── The port ────────────────────────────────────────────────────────────────
 
@@ -291,8 +313,16 @@ export function lintPack({
     compile,
     sharedClips,
     contractIds: contracts.map((c) => c.id).sort(),
-    // A group is nobody's typo to report when a var's description names it — a resolver draws from it.
-    varDriven: (group) => vocabulary.vars.some((v) => descriptionNamesGroup(v.description, group)),
+    // A group is nobody's typo to report when a var that declared no draws
+    // names it in its description — a resolver draws from it, which base
+    // unknown. A var that declared its draws exempts no group (#1718).
+    varDriven: (group) => vocabulary.vars.some((v) => varDrawsWholeGroup(v, group)),
+    // The vars that declared what they draw, by name (#1718).
+    declaredDraws: new Map(
+      vocabulary.vars.flatMap((v): [string, readonly VarDraw[]][] =>
+        v.draws === undefined ? [] : [[v.name, v.draws]],
+      ),
+    ),
     // A clip plugin code plays by path is heard without any script naming it.
     pluginPlayed: (base) => {
       const slash = base.indexOf("/");
@@ -408,7 +438,10 @@ type VoiceContext = {
   sharedClips: readonly string[];
   /** Every contract id, sorted — what a scriptless voice skips. */
   contractIds: readonly string[];
+  /** Groups a var that declared no draws names in its description — every base exempt from the orphan rule. */
   varDriven: VarDrivenGroup;
+  /** The pools each var that declared them draws, by var name (#1718). */
+  declaredDraws: ReadonlyMap<string, readonly VarDraw[]>;
   /** Whether plugin code plays a `group/base` by path — never an orphan. */
   pluginPlayed: (base: string) => boolean;
   problems: LintProblem[];
@@ -520,10 +553,14 @@ function reportCoverage(
   script: CalloutScript,
   authored: readonly string[],
   prefix: string,
-  ctx: Pick<VoiceContext, "sharedClips" | "varDriven" | "pluginPlayed">,
+  ctx: Pick<VoiceContext, "sharedClips" | "varDriven" | "declaredDraws" | "pluginPlayed">,
   problem: (kind: LintProblemKind, message: string) => void,
 ): void {
-  const coverage = checkCoverage({ script, authored, sharedClips: ctx.sharedClips }, ctx.varDriven);
+  const drawnBy = declaredVarReferences(script, ctx.declaredDraws);
+  const coverage = checkCoverage(
+    { script, authored, sharedClips: ctx.sharedClips, varReferences: [...drawnBy.keys()] },
+    ctx.varDriven,
+  );
 
   for (const name of coverage.unincludedFragments) {
     problem(
@@ -533,9 +570,16 @@ function reportCoverage(
   }
 
   for (const base of coverage.dangling) {
+    const vars = drawnBy.get(base);
+
+    // A pool only a var's declaration names is said as the var's: no step in
+    // the script spells it, so "is referenced" alone would send the author
+    // looking for a line that is not there.
     problem(
       "dangling",
-      `"${base}" is referenced but the pack ships no ${prefix}${base}*${MP3} — a required step that resolves to nothing aborts the whole callout at fire time`,
+      vars === undefined
+        ? `"${base}" is referenced but the pack ships no ${prefix}${base}*${MP3} — a required step that resolves to nothing aborts the whole callout at fire time`
+        : `"${base}" is drawn by ${vars.map((name) => `{{${name}}}`).join(", ")}, which the script names, but the pack ships no ${prefix}${base}*${MP3} — when the var picks it, the callout resolves to nothing and is aborted at fire time`,
     );
   }
 
@@ -566,6 +610,44 @@ function reportCoverage(
   for (const name of coverage.unusedAliases) {
     problem("orphan", `pool alias "${name}" is defined but nothing uses it — a name that decides nothing`);
   }
+}
+
+/**
+ * The pools the voice's script reaches through vars that declared their
+ * draws (#1718): `group/base` → the names of the vars that draw it, sorted.
+ * A var counts only when the LIVE script names it — the coverage module's
+ * reading: an entry that is not `skip: true` (`collectScriptReferences`
+ * already leaves those out), a frame, or a fragment something live includes;
+ * a fragment nothing live includes is reported on its own and what it names
+ * plays nowhere.
+ */
+function declaredVarReferences(
+  script: CalloutScript,
+  declaredDraws: ReadonlyMap<string, readonly VarDraw[]>,
+): Map<string, string[]> {
+  const drawnBy = new Map<string, string[]>();
+
+  if (declaredDraws.size === 0) return drawnBy;
+
+  const { unincludedFragments } = collectScriptReferences(script);
+  const live: CalloutScript = {
+    ...script,
+    fragments: Object.fromEntries(
+      Object.entries(script.fragments ?? {}).filter(([name]) => !unincludedFragments.includes(name)),
+    ),
+  };
+
+  for (const name of collectScriptReferences(live).vars) {
+    for (const { group, base } of declaredDraws.get(name) ?? []) {
+      const key = `${group}/${base}`;
+      const vars = drawnBy.get(key);
+
+      if (vars === undefined) drawnBy.set(key, [name]);
+      else if (!vars.includes(name)) vars.push(name);
+    }
+  }
+
+  return drawnBy;
 }
 
 // ─── Printing ────────────────────────────────────────────────────────────────
