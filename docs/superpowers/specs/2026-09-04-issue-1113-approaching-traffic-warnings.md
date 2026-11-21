@@ -162,6 +162,14 @@ Niklas's in-game test (2026-11-18, Tsukuba AI race): stopped with a pack coming,
 - **A tow or reset cuts the line.** When the player's car jumps to the pits (a tow or a reset) while a rejoin line is playing or queued, the line is stopped at once and anything queued from the rejoin family is dropped. The episode ends there, as it does when the player drives off.
 - **Pit exit is unchanged.** Its clear call stays: Niklas's change names the on-track lines only.
 
+**The rejoin warnings do not ship; they stay behind a development flag (2026-11-21, fourth amendment).** This supersedes "ship as experimental, off by default". After his test of the warnings-only build Niklas decided: "maybe we should just disable this feature from production, remove the checkbox, and not even add it as experimental. Right now, the repetition that we have is too much. If you're parked next to the road, it keeps saying and warning all the time". Asked whether to remove the code or hide it, he chose to hide it.
+
+- **A build-time flag.** A new platform feature flag (`platform-features.json`, the mechanism in `platform-feature-flags.md`), off in all three plugins, gates the rejoin detector and its opt-in. A release build has no **Traffic when rejoining** checkbox and never emits `traffic.rejoin`. A developer turns it on through `feature-flags.local.json`. The code, clips, contracts, tests and harness entries stay, so the rework issue starts from them.
+- **No user-facing rejoin text.** The Pit Crew page, the changelog fragment and the voice-pack reference describe only the pit-exit calls; the rejoin text comes back with the rework.
+- **The late number is not fixed here.** His choice for it (subtract the speech time before the number in the detector, 2026-11-21: the first call's number was heard about 1.4–2.8 s after the reading) moves to the rework issue with the rest of the rejoin wording.
+- **Pit exit ships unchanged**: the call 3 s before the pit exit line, the merge warning, both on by default.
+- **The rework is a separate issue**: shorter calls in the style of "keep left" / "keep right", no conversational parts such as "Join carefully.", far less repetition when parked beside the track, and whether the car points along the track, learned from the player's own heading against lap distance.
+
 ## Alternatives rejected
 
 **Extending the gap engine.** It is built to suppress exactly these states and keyed to class standings; adding a stopped mode to it would fight its own gates.
