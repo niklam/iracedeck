@@ -1,15 +1,20 @@
 /**
  * What the rejoin traffic buttons (issue #1113) are HEARD to say, and why.
  *
- * The rejoin warnings ship experimental and off by default (Niklas,
- * 2026-11-20; the #1113 spec's amendment of that date), so a user hears none
- * of them until they tick **Traffic when rejoining (experimental)**. The
- * harness seeds the opt-in on (`bootstrap-settings.ts`), as it does the two
- * pit-lane beeps, so its rejoin buttons are heard on a freshly booted
- * harness; the Global Settings panel's checkbox turns them off. This file
- * presses each button on the harness's whole stack (`heard-rig.test-util.ts`)
- * with the opt-in as the harness seeds it, then with it at the schema's
- * default, which is what a user who never ticked it has.
+ * The rejoin warnings do not ship (the #1113 spec's fourth amendment): every
+ * release build has the `trafficRejoin` development flag off, so its
+ * translator detects no rejoin, its Race Engineer keeps the lines silent and
+ * its settings window hides the **Traffic when rejoining (experimental)**
+ * checkbox. That checkbox matters only in a build with the flag on, such as
+ * the harness (`development-flags.ts`), where it mutes or enables the lines;
+ * its setting defaults off (Niklas, 2026-11-20; the spec's amendment of that
+ * date). The harness also seeds the setting on (`bootstrap-settings.ts`), as
+ * it does the two pit-lane beeps, so its rejoin buttons are heard on a freshly
+ * booted harness, and its Global Settings panel's checkbox turns them off.
+ * This file presses each button on the harness's whole stack
+ * (`heard-rig.test-util.ts`) with the setting as the harness seeds it, then
+ * with it at the schema's default, which is what a flag-on build has before
+ * anyone ticks it.
  */
 import { getEventBus } from "@iracedeck/event-bus";
 import { Flags } from "@iracedeck/iracing-sdk";
