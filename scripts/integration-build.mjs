@@ -83,8 +83,10 @@
  *
  * It never pushes, and never links or relinks a host: no command it runs is a
  * `git push`, and the `integration` branch has no upstream. Fetching, merging,
- * installing and building need no go; stopping and starting a host does, so
- * the Bash hook asks for a run with `--restart` and lets one without it pass.
+ * installing and building need no go; stopping and starting a host does, and
+ * that go is Niklas's word in the conversation: since #1737 the Bash hook asks
+ * no prompt for a run with `--restart`, though it still names the restart in
+ * the prompt of a chain that also relinks.
  */
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";

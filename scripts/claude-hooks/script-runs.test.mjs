@@ -1,7 +1,7 @@
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { deckFindings, shellQuote } from "./script-runs.mjs";
+import { deckFindings, FINDING_KINDS, shellQuote } from "./script-runs.mjs";
 import { BASH, maskInert, POWERSHELL, powershellAsBash, shellWords } from "./shell-lexer.mjs";
 
 // Built through `path`, not written as Windows literals: CI runs on Linux, where
@@ -25,16 +25,84 @@ function ctx(scripts, overrides = {}) {
   };
 }
 
+const RESTART = FINDING_KINDS.restart;
+const RELINK = FINDING_KINDS.relink;
+
 describe("deckFindings", () => {
-  it("names a restart script at command position", () => {
+  it("names a restart script at command position, as a restart", () => {
     expect(deckFindings("pnpm restart:stream-deck", ROOT, ctx({}), BASH)).toEqual([
-      "`pnpm restart:stream-deck` restarts or relinks a deck host",
+      { text: `\`pnpm restart:stream-deck\` ${RESTART}`, kind: "restart" },
     ]);
   });
 
-  it("follows a script to the restart it runs, and labels the path", () => {
+  it("follows a script to the relink it runs, and labels the path", () => {
     const found = deckFindings("pnpm swap", ROOT, ctx({ swap: "pnpm build && pnpm relink:mirabox" }), BASH);
-    expect(found).toEqual(["`pnpm swap` → `pnpm relink:mirabox` restarts or relinks a deck host"]);
+    expect(found).toEqual([{ text: `\`pnpm swap\` → \`pnpm relink:mirabox\` ${RELINK}`, kind: "relink" }]);
+  });
+
+  // #1737: every finding carries the kind the rule decides by.
+  it.each([
+    ["pnpm restart:stream-deck", "restart"],
+    ["pnpm stop:mirabox", "restart"],
+    ["pnpm start:ulanzi", "restart"],
+    ["pnpm build:with-restart", "restart"],
+    ["pnpm build:stream-deck", "restart"],
+    ["node scripts/build-with-restart.mjs", "restart"],
+    ["node scripts/integration-build.mjs --restart fix/1-a", "restart"],
+    ["node scripts/integration-build.mjs $R fix/1-a", "restart"],
+    ["node scripts/host-app.mjs stop stream-deck", "restart"],
+    ["streamdeck restart com.iracedeck.sd.core", "restart"],
+    ["streamdeck stop com.iracedeck.sd.core", "restart"],
+    ["npx streamdeck restart com.iracedeck.sd.core", "restart"],
+    ["taskkill /im StreamDeck.exe", "restart"],
+    ["pnpm relink:stream-deck", "relink"],
+    ["pnpm link:mirabox", "relink"],
+    ["pnpm unlink:ulanzi", "relink"],
+    ["pnpm switch-test-env", "relink"],
+    ["pnpm switch-test-env:mirabox", "relink"],
+    ["streamdeck link x", "relink"],
+    ["streamdeck unlink -d x", "relink"],
+    ["npx streamdeck link x", "relink"],
+    ["node scripts/link-mirabox.mjs", "relink"],
+    ["node scripts/unlink-ulanzi.mjs", "relink"],
+    [`pnpm run "/[/"`, "relink"],
+    ["pnpm watch:stream-deck", "watch"],
+    [`rollup -c -w --watch.onEnd="streamdeck restart x"`, "watch"],
+    [`rollup -c -w --watch.onEnd="pnpm relink:mirabox"`, "watch"],
+  ])("gives %s the kind %s", (command, kind) => {
+    expect(deckFindings(command, ROOT, ctx({}), BASH).map((f) => f.kind)).toEqual([kind]);
+  });
+
+  it("gives dev:voices in a linked tree the kind relink", () => {
+    const linked = { linkTargets: () => [{ host: "Stream Deck", target: path.join(ROOT, "plugin") }] };
+    expect(deckFindings("pnpm dev:voices", ROOT, ctx({}, linked), BASH).map((f) => f.kind)).toEqual(["relink"]);
+  });
+
+  // #1737: a restart's name no longer ends the judgement, so what it runs is
+  // read; its own restarts are not named twice, and anything else it reaches is.
+  it("reads what a restart's name runs, naming a relink behind it and no restart twice", () => {
+    const c = ctx({
+      "restart:x": "pnpm build && pnpm relink:mirabox",
+      "restart:stream-deck": "streamdeck restart com.iracedeck.sd.core",
+      "build:stream-deck": "pnpm build:ts && pnpm restart:stream-deck",
+      "stop:y": `rollup -c -w --watch.onEnd="streamdeck restart x"`,
+    });
+    expect(deckFindings("pnpm restart:x", ROOT, c, BASH)).toEqual([
+      { text: `\`pnpm restart:x\` ${RESTART}`, kind: "restart" },
+      { text: `\`pnpm restart:x\` → \`pnpm relink:mirabox\` ${RELINK}`, kind: "relink" },
+    ]);
+    expect(deckFindings("pnpm build:stream-deck", ROOT, c, BASH)).toEqual([
+      { text: `\`pnpm build:stream-deck\` ${RESTART}`, kind: "restart" },
+    ]);
+    expect(deckFindings("pnpm stop:y", ROOT, c, BASH).map((f) => f.kind)).toEqual(["restart", "watch"]);
+  });
+
+  // A relink's name ends the judgement there, as before #1737: it asks already.
+  it("does not read what a relink's name runs", () => {
+    const c = ctx({ "relink:x": "pnpm relink:mirabox && pnpm restart:stream-deck" });
+    expect(deckFindings("pnpm relink:x", ROOT, c, BASH)).toEqual([
+      { text: `\`pnpm relink:x\` ${RELINK}`, kind: "relink" },
+    ]);
   });
 
   it("finds nothing in a build, under either shell", () => {
@@ -46,6 +114,7 @@ describe("deckFindings", () => {
   it("judges a script by its name alone when the context cannot read scripts", () => {
     const c = ctx({ swap: "pnpm relink:mirabox" }, { scriptsAt: undefined });
     expect(deckFindings("pnpm swap", ROOT, c, BASH)).toEqual([]);
+    expect(deckFindings("pnpm restart:x", ROOT, c, BASH)).toHaveLength(1);
     expect(deckFindings("pnpm relink:mirabox", ROOT, c, BASH)).toHaveLength(1);
   });
 
@@ -53,7 +122,10 @@ describe("deckFindings", () => {
     const linked = { linkTargets: () => [{ host: "Stream Deck", target: path.join(ROOT, "packages", "plugin") }] };
     expect(deckFindings("pnpm dev:voices", ROOT, ctx({}), BASH)).toEqual([]);
     expect(deckFindings("pnpm dev:voices", ROOT, ctx({}, linked), BASH)).toEqual([
-      `Stream Deck plugin link points into ${ROOT}: \`pnpm dev:voices\` there relinks the running plugin`,
+      {
+        text: `Stream Deck plugin link points into ${ROOT}: \`pnpm dev:voices\` there relinks the running plugin`,
+        kind: "relink",
+      },
     ]);
   });
 
@@ -83,7 +155,7 @@ const SHELLS = [
  * command first goes through `powershellAsBash`, as it does in the hook.
  */
 const judge = (command, c, shell) =>
-  deckFindings(shell === POWERSHELL ? powershellAsBash(command) : command, ROOT, c, shell);
+  deckFindings(shell === POWERSHELL ? powershellAsBash(command) : command, ROOT, c, shell).map((f) => f.text);
 /** The Stream Deck plugin's real `watch`: the restart sits in a quoted rollup option. */
 const SD_WATCH = 'rollup -c -w --watch.onEnd="streamdeck restart com.iracedeck.sd.core"';
 const LINKED = { linkTargets: () => [{ host: "Stream Deck", target: path.join(ROOT, "plugin") }] };
@@ -103,11 +175,9 @@ describe("a script read from the package.json it runs from, under either shell (
 
   it.each(SHELLS)("%s: labels each step from the script to the restart, linked or not", (_, shell) => {
     for (const o of [{}, LINKED]) {
-      expect(judge("pnpm hop", at(o), shell)).toEqual([
-        "`pnpm hop` → `pnpm relink:anything` restarts or relinks a deck host",
-      ]);
+      expect(judge("pnpm hop", at(o), shell)).toEqual([`\`pnpm hop\` → \`pnpm relink:anything\` ${RELINK}`]);
       expect(judge("pnpm watch", at(o), shell)).toEqual([
-        "`pnpm watch` → `rollup --watch.onEnd` → `streamdeck restart` restarts or relinks a deck host",
+        `\`pnpm watch\` → \`rollup --watch.onEnd\` → \`streamdeck restart\` ${RESTART}`,
       ]);
     }
   });
@@ -144,8 +214,8 @@ describe("every package an unresolved selector may pick, a wrapper's string and 
   const c = ctx({}, { scriptsAt, workspaceDirs: () => [SD] });
   // Each shape with the exact finding it must give, so one that asks for the
   // wrong reason (a selector that stopped resolving, say) fails.
-  const SD_RESTART = "`rollup --watch.onEnd` → `streamdeck restart` restarts or relinks a deck host";
-  const WRAPPED = "`pnpm restart:stream-deck` restarts or relinks a deck host";
+  const SD_RESTART = `\`rollup --watch.onEnd\` → \`streamdeck restart\` ${RESTART}`;
+  const WRAPPED = `\`pnpm restart:stream-deck\` ${RESTART}`;
   const restarting = [
     ["pnpm -r watch", `\`pnpm watch\` → ${SD_RESTART}`],
     ["pnpm --filter sd watch", `\`pnpm watch\` → ${SD_RESTART}`],
@@ -155,6 +225,7 @@ describe("every package an unresolved selector may pick, a wrapper's string and 
     [`cmd /c "pnpm restart:stream-deck"`, `\`cmd /c\` → ${WRAPPED}`],
     [`pwsh -c "pnpm restart:stream-deck"`, `\`pwsh -Command\` → ${WRAPPED}`],
     ["npx node scripts/host-app.mjs stop mirabox", "`node scripts/host-app.mjs stop` stops or starts a deck host app"],
+    [`bash -c "pnpm relink:stream-deck"`, `\`bash -c\` → \`pnpm relink:stream-deck\` ${RELINK}`],
     [
       "node scripts/integration-build.mjs $(echo --restart) fix/1-a",
       "`node scripts/integration-build.mjs $(…)` may stop and start the deck hosts linked to its tree: its flags could not be read",
@@ -203,13 +274,16 @@ describe("a shell wrapper's string is judged whole, with its own cds (#1634)", (
     "sh -c $'cd ../ir-5\\npnpm dev:voices'",
     "sh -c 'cd ../ir-5 && pnpm dev:voices | tee log'",
   ])("names the tree the inner cd reaches once, from the session cwd: %s", (c) => {
-    expect(deckFindings(c, MASTER, trees, BASH)).toEqual([inner]);
+    expect(deckFindings(c, MASTER, trees, BASH)).toEqual([{ text: inner, kind: "relink" }]);
   });
 
   it("finds nothing where the inner cd reaches an unlinked tree, and reads a stdin script at the cwd", () => {
     expect(deckFindings("pnpm exec sh -c 'cd ../ir-7 && pnpm dev:voices'", MASTER, trees, BASH)).toEqual([]);
     expect(deckFindings("echo 'pnpm dev:voices' | bash", ROOT, trees, BASH)).toEqual([
-      `Stream Deck plugin link points into ${ROOT}: \`pnpm dev:voices\` there relinks the running plugin`,
+      {
+        text: `Stream Deck plugin link points into ${ROOT}: \`pnpm dev:voices\` there relinks the running plugin`,
+        kind: "relink",
+      },
     ]);
   });
 });

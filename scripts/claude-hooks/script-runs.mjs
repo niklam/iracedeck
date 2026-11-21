@@ -5,14 +5,15 @@
  * and `node --run`, rollup's watch hooks — and the shells a command string is
  * handed to (bash and its kin, cmd.exe, PowerShell, `eval`), recursively to
  * {@link MAX_SCRIPT_DEPTH}. {@link deckFindings} is the entry point: every
- * reason the commands need Niklas's go, which the rule in `rules-bash.mjs`
- * turns into its ask.
+ * way the commands touch a deck host, each a finding of one kind
+ * ({@link FINDING_KINDS}, #1737) — a restart, a relink or a watch — which the
+ * rule in `rules-bash.mjs` turns into its ask when any is not a restart.
  *
  * The deck vocabulary lives here rather than with the rule
  * ({@link DECK_ALWAYS}, {@link DECK_IF_LINKED}, {@link STREAMDECK_CLI},
  * {@link HOST_APP}, {@link NODE_ALWAYS}), because the readers already judge
  * while they read: a Stream Deck CLI verb reached through a runner comes back
- * `always` with its `why`, `node` on `integration-build.mjs` is a run only
+ * `always` with its kind, `node` on `integration-build.mjs` is a run only
  * with `--restart` or a flag it cannot read, `host-app.mjs` only for `start`
  * or `stop`, and `dev-voices.mjs` becomes the `dev:voices` it wraps. A
  * generic walker with an injected judge would leave half of that judgement in
@@ -66,7 +67,8 @@ import {
 } from "./shell-lexer.mjs";
 
 /**
- * The deck-host ask (#1520, narrowed to restarts and relinks by #1526). A
+ * The deck-host ask (#1520, narrowed to restarts and relinks by #1526, and
+ * to relinks and watches by #1737). A
  * restart, a relink, a stop or a start is reached through a runner — pnpm,
  * npm, npx, a bare turbo, `node` on a root script or `node --run`, the
  * `rollup` whose watch hooks run a command, and a shell handed a command
@@ -74,16 +76,22 @@ import {
  * command position and read by its own `read(tokens, base, shell)` into the
  * runs it makes: `{ label, script, dir }`, a script or turbo task and the
  * directory it runs in. `DECK_ALWAYS` are the scripts that restart, relink,
- * stop, start or watch-and-restart whatever tree they run in;
- * `DECK_IF_LINKED` is `dev:voices`, which relinks only the hosts already
- * linked to its tree, so it matters only where a host's link points. A build,
+ * stop, start or watch-and-restart whatever tree they run in, by the kind of
+ * finding each makes; `DECK_IF_LINKED` is `dev:voices`, which relinks only
+ * the hosts already linked to its tree, so it matters only where a host's
+ * link points. A build,
  * an install or a clean is on neither list: a host keeps the plugin it loaded
  * until it restarts. The Stream Deck CLI the `restart:` / `link:` scripts wrap
  * is caught too, and so is a `taskkill`, `start` or `Start-Process` /
  * `Stop-Process` naming a host app. A runner's name may carry the `.cmd` /
  * `.exe` / `.ps1` PowerShell resolves it to.
  *
- * The names are only the floor. A run marked `expand` — a pnpm or npm script,
+ * The names are only the floor. A restart's name makes its finding and is
+ * still read for what it runs (#1737): a restart asks no prompt, so a
+ * `restart:x` whose body relinks must be judged by that body. A relink's or a
+ * watch's name asks already, and ends the judgement there.
+ *
+ * A run marked `expand` — a pnpm or npm script,
  * `node --run`, a turbo task — is also judged by the command line it runs,
  * read from the package.json of every package it may run in with the
  * arguments it forwards appended ({@link deckFindings}, {@link
@@ -114,14 +122,39 @@ const isCmdExe = (t) => new RegExp(`^${CMD_NAME}$`, "i").test(t);
 const isPowerShell = (t) => new RegExp(`^${PS_NAME}$`, "i").test(t);
 const isEval = (t) => new RegExp(`^(?:${EVAL_NAME})$`, "i").test(t);
 const isWrapper = (t) => isSh(t) || isCmdExe(t) || isPowerShell(t) || isEval(t);
-const DECK_ALWAYS =
-  /^(?:build:with-restart|build:stream-deck|(?:re|un)?link:.+|restart:.+|watch:.+|start:.+|stop:.+|switch-test-env(?::.+)?)$/;
+/**
+ * The script names that touch a deck host wherever they run, by the kind of
+ * finding they make ({@link FINDING_KINDS}, #1737): a restart, stop or start;
+ * a link, unlink or relink, which `switch-test-env` makes too; and a watch,
+ * which restarts the host on every rebuild.
+ */
+const DECK_ALWAYS = {
+  restart: /^(?:build:with-restart|build:stream-deck|restart:.+|start:.+|stop:.+)$/,
+  relink: /^(?:(?:re|un)?link:.+|switch-test-env(?::.+)?)$/,
+  watch: /^watch:.+$/,
+};
 const DECK_IF_LINKED = /^dev:voices$/;
+/** The Stream Deck CLI's verbs that touch the host, each with the kind of finding it makes. */
+const STREAMDECK_KIND = { restart: "restart", stop: "restart", link: "relink", unlink: "relink" };
 const STREAMDECK_VERBS = /^(?:restart|stop|link|unlink)$/;
+/**
+ * The kinds of finding (#1737), each with what its finding says when the run
+ * names no reason of its own. A `restart` — a restart, stop or start — asks no
+ * prompt: Niklas's go in the conversation is the approval, and the rule that
+ * nothing restarts a host without it is prose the agent keeps. A `relink` and
+ * a `watch` ask.
+ */
+export const FINDING_KINDS = {
+  restart: "restarts, stops or starts a deck host",
+  relink: "links, unlinks or relinks a deck host",
+  watch: "restarts a deck host on every rebuild",
+};
+/** The kind of finding a script name makes wherever it runs, or `undefined` for none. */
+const nameKind = (name) => Object.keys(DECK_ALWAYS).find((kind) => DECK_ALWAYS[kind].test(name));
 const STREAMDECK_CLI = cmd(
   new RegExp(String.raw`(?:\S*[\\/])?streamdeck(?:\.(?:cmd|exe|ps1))?\s+(?:restart|stop|link|unlink)\b`),
 );
-/** What stops or starts a process; it asks when its arguments name a host app ({@link HOST_APP}). */
+/** What stops or starts a process; a restart finding when its arguments name a host app ({@link HOST_APP}). */
 const HOST_CONTROL = cmd(new RegExp(String.raw`(?:taskkill|start|start-process|saps|stop-process|spps)${BIN}`, "i"));
 /** The deck host apps (`scripts/lib/deck-hosts.mjs`, and Elgato's own). */
 const HOST_APP = /\b(?:StreamDeck|StreamDock|UlanziDeck|Ulanzi ?Studio|VSD ?Craft)(?:\.exe)?\b/i;
@@ -394,7 +427,7 @@ function shellModeLine(label, words, dir) {
 function streamdeckRuns(tokens, dir) {
   const verb = tokens.find((t) => !t.startsWith("-"));
   return verb && STREAMDECK_VERBS.test(verb)
-    ? [{ label: `streamdeck ${verb}`, script: verb, dir, always: true, why: "restarts or relinks a deck host" }]
+    ? [{ label: `streamdeck ${verb}`, script: verb, dir, always: true, kind: STREAMDECK_KIND[verb] }]
     : [];
 }
 
@@ -402,7 +435,8 @@ function streamdeckRuns(tokens, dir) {
  * rollup's watch hooks (#1526), each a command line rollup runs at that point
  * of a watch — the Stream Deck plugin's `watch` restarts the host on every
  * rebuild through `--watch.onEnd="streamdeck restart …"`. The value is
- * attached with `=` or the next word, and is judged as a command run in `dir`.
+ * attached with `=` or the next word, and is judged as a command run in `dir`;
+ * what it finds is a `watch` (#1737), since it runs again on every rebuild.
  * Matched in any case and with rollup's kebab spelling too, so a spelling
  * rollup may accept is read rather than missed.
  */
@@ -414,7 +448,7 @@ function rollupRuns(tokens, dir) {
     const m = tokens[i].match(ROLLUP_HOOK);
     if (!m) continue;
     const line = m[2] ?? tokens[++i];
-    if (line) runs.push({ label: `rollup ${m[1]}`, dir, lines: [line] });
+    if (line) runs.push({ label: `rollup ${m[1]}`, dir, lines: [line], watchHook: true });
   }
   return runs;
 }
@@ -466,19 +500,20 @@ function turboRuns(tokens, dir, shell) {
 
 /**
  * The root scripts a pnpm script wraps, run through `node` (#1520): the ones
- * that restart, relink, stop or start a host always ask, as their pnpm scripts
- * do. `integration-build` asks only with `--restart` ahead of any `--` (#1526):
- * without it the build leaves every host running the plugin it loaded, and
- * with it the hosts linked to its tree are stopped and started; it is a strict
- * `parseArgs` boolean, so `--restart` is the one spelling — and so a word
- * ahead of the `--` that the shell computes (`$R`, `$(…)`, a backtick,
- * cmd.exe's `%R%`) may be it, and asks too (#1526 review). So does one the
- * shell rewrites (#1526 second read): a word that is `--restart` once its
+ * that restart, relink, stop or start a host are findings, of their pnpm
+ * scripts' kinds (#1737: `build-with-restart` a restart, `(un)link-*` a
+ * relink). `integration-build` is a restart only with `--restart` ahead of
+ * any `--` (#1526): without it the build leaves every host running the
+ * plugin it loaded, and with it the hosts linked to its tree are stopped and
+ * started; it is a strict `parseArgs` boolean, so `--restart` is the one
+ * spelling — and so a word ahead of the `--` that the shell computes (`$R`,
+ * `$(…)`, a backtick, cmd.exe's `%R%`) may be it, and is a restart finding
+ * too (#1526 review). So is one the shell rewrites (#1526 second read): a word that is `--restart` once its
  * escapes are gone ({@link unescaped}: a `\` left inside double quotes, which
  * a PowerShell backtick escape arrives as, or cmd.exe's `^`), a bash brace
  * expansion or glob, and a PowerShell splat (`@a`, `@(…)`). None of these
  * characters can be in a branch name (`git check-ref-format`), so a branch
- * that merely holds the word `restart` still passes. `dev-voices`
+ * that merely holds the word `restart` still makes none. `dev-voices`
  * rebuilds and relinks the hosts already linked to its own tree, so it asks
  * where linked, and both the cwd and the script's own tree are judged.
  * `node --run <script>` runs a package.json script, judged as `pnpm <script>` is.
@@ -518,7 +553,10 @@ function nodeRuns(tokens, base, shell) {
   if (!m) return [];
   const label = `node ${file}`;
   const args = tokens.slice(at + 1);
-  if (NODE_ALWAYS.test(m[2])) return [{ label, script: m[2], dir: base, always: true }];
+  if (NODE_ALWAYS.test(m[2]))
+    return [
+      { label, script: m[2], dir: base, always: true, kind: m[2] === "build-with-restart" ? "restart" : "relink" },
+    ];
   if (m[2] === "integration-build") {
     const end = args.indexOf("--");
     const own = end < 0 ? args : args.slice(0, end);
@@ -530,6 +568,7 @@ function nodeRuns(tokens, base, shell) {
           script: m[2],
           dir: base,
           always: true,
+          kind: "restart",
           why: "stops and starts the deck hosts linked to its tree",
         },
       ];
@@ -540,6 +579,7 @@ function nodeRuns(tokens, base, shell) {
             script: m[2],
             dir: base,
             always: true,
+            kind: "restart",
             why: "may stop and start the deck hosts linked to its tree: its flags could not be read",
           },
         ]
@@ -548,7 +588,16 @@ function nodeRuns(tokens, base, shell) {
   if (m[2] === "host-app") {
     const action = args.find((t) => !t.startsWith("-"));
     return /^(?:start|stop)$/.test(action ?? "")
-      ? [{ label: `${label} ${action}`, script: m[2], dir: base, always: true, why: "stops or starts a deck host app" }]
+      ? [
+          {
+            label: `${label} ${action}`,
+            script: m[2],
+            dir: base,
+            always: true,
+            kind: "restart",
+            why: "stops or starts a deck host app",
+          },
+        ]
       : [];
   }
   if (m[2] !== "dev-voices") return [];
@@ -674,9 +723,12 @@ const RUNNERS = [
 const UNREAD = "$(…)";
 
 /**
- * Every reason the commands of `c`, run from `cwd`, need Niklas's go (#1520,
+ * Every way the commands of `c`, run from `cwd`, touch a deck host (#1520,
  * #1526): the deck-host rule's whole judgement, recursive so a script — or a
  * rollup watch hook, or a shell's command string — is judged by what it runs.
+ * Each finding is `{ text, kind }`, its kind one of {@link FINDING_KINDS}: a
+ * nested finding keeps the inner kind, except under a rollup watch hook, where
+ * it is a `watch`, and a restart under a restart's own name is not repeated.
  * `trail` holds the `<package dir>\0<script>` keys being expanded, which is
  * both the depth ({@link MAX_SCRIPT_DEPTH}) and the cycle guard. A script the
  * hook cannot read — no `ctx.scriptsAt`, no package.json, no such script — is
@@ -685,11 +737,18 @@ const UNREAD = "$(…)";
  */
 export function deckFindings(c, cwd, ctx, shell, trail = []) {
   const found = [];
+  const finding = (text, kind) => found.push({ text, kind });
   const links = ctx.linkTargets().filter((l) => l.target);
-  for (const m of matchesAt(c, STREAMDECK_CLI)) found.push(`\`${m[0].trim()}\` restarts or relinks a deck host`);
+  for (const m of matchesAt(c, STREAMDECK_CLI)) {
+    // The match starts at the operator ahead of the command (`&& streamdeck link`).
+    const cli = m[0].replace(/^[\s|;&()`]+/, "").trim();
+    const kind = STREAMDECK_KIND[cli.split(/\s+/).pop()];
+    finding(`\`${cli}\` ${FINDING_KINDS[kind]}`, kind);
+  }
   for (const { head, args } of chainCommands(c, cwd, HOST_CONTROL, shell)) {
     const app = args.match(HOST_APP);
-    if (app) found.push(`\`${head.replace(/^[\s|;&()`]+/, "").trim()} … ${app[0]}\` stops or starts a deck host app`);
+    if (app)
+      finding(`\`${head.replace(/^[\s|;&()`]+/, "").trim()} … ${app[0]}\` stops or starts a deck host app`, "restart");
   }
   // Every runner's commands, in {@link RUNNERS} order for the findings, read in
   // order of position: a command is read before the lexer's matches inside the
@@ -746,16 +805,19 @@ export function deckFindings(c, cwd, ctx, shell, trail = []) {
       // A name is judged with its leftover escapes gone ({@link unescaped}):
       // `pnpm "re\`start:stream-deck"` in PowerShell runs the script.
       const name = unescaped(run.script ?? "");
-      if (run.always || DECK_ALWAYS.test(name)) {
-        found.push(`\`${run.label}\` ${run.why ?? "restarts or relinks a deck host"}`);
-        continue;
-      }
-      if (DECK_IF_LINKED.test(name)) {
+      const kind = run.always ? run.kind : nameKind(name);
+      if (kind) {
+        finding(`\`${run.label}\` ${run.why ?? FINDING_KINDS[kind]}`, kind);
+        // A restart's name is only the floor too (#1737): it no longer asks,
+        // so what it runs is still read, and a `restart:x` that relinks asks.
+        if (kind !== "restart") continue;
+      } else if (DECK_IF_LINKED.test(name)) {
         const root = ctx.toplevel?.(run.dir) ?? run.dir;
         const held = links.filter((l) => ctx.isInside(l.target, root));
         if (held.length) {
-          found.push(
+          finding(
             `${held.map((l) => l.host).join(" and ")} plugin link points into ${root}: \`${run.label}\` there relinks the running plugin`,
+            "relink",
           );
           continue;
         }
@@ -768,7 +830,13 @@ export function deckFindings(c, cwd, ctx, shell, trail = []) {
       for (const { dir, line, key, as } of lines) {
         if (key && trail.includes(key)) continue;
         const [text, lineShell] = lineAs(line, as);
-        for (const f of deckFindings(text, dir, ctx, lineShell, [...trail, key])) found.push(`\`${run.label}\` → ${f}`);
+        for (const f of deckFindings(text, dir, ctx, lineShell, [...trail, key])) {
+          // Under a restart's own name, the restarts it runs are that restart,
+          // named once already; what else it reaches is reported.
+          if (kind === "restart" && f.kind === "restart") continue;
+          // What a rollup watch hook runs, it runs on every rebuild.
+          finding(`\`${run.label}\` → ${f.text}`, run.watchHook ? "watch" : f.kind);
+        }
       }
     }
   return found;
@@ -784,8 +852,8 @@ const SCRIPT_SELECTOR = /^\/(.+)\/$/;
  * matches in the run's manifests ({@link runManifests}) becomes a run of its
  * own, judged by name and by what it runs. A pattern the hook cannot read — not
  * a valid regex, or no manifest to match it against — is a finding in itself,
- * pushed onto `found`, since it may select a restart. The selector is also
- * judged as the literal script name it spells, whichever pnpm would prefer
+ * pushed onto `found` as a `relink`, since it may select one (#1737). The
+ * selector is also judged as the literal script name it spells, whichever pnpm would prefer
  * when a manifest defines one, so a script named `/^build$/` cannot hide
  * behind the harmless `build` it matches. Any other run is itself.
  */
@@ -800,7 +868,10 @@ function selectedRuns(run, ctx, found) {
   }
   const manifests = re && ctx.scriptsAt ? runManifests(run, ctx).filter(Boolean) : [];
   if (!manifests.length) {
-    found.push(`\`${run.label}\` runs every script its pattern matches, which could not be read`);
+    found.push({
+      text: `\`${run.label}\` runs every script its pattern matches, which could not be read`,
+      kind: "relink",
+    });
     return [literal];
   }
   const names = [...new Set(manifests.flatMap((m) => Object.keys(m.scripts ?? {})))].filter((n) => re.test(n));
