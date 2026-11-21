@@ -89,6 +89,29 @@ describe("Vocabulary", () => {
       expect(vocab.vocabulary().vars[0].draws).toEqual([{ group: "spotter", base: "clear" }]);
     });
 
+    it("reports a draw's `contracts` when declared, copied, and leaves the key off a draw declared without it", () => {
+      const contracts = ["pit-crew.spotter-call"];
+      vocab.defineVar("scoped", () => null, "", {
+        draws: [
+          { group: "spotter", base: "car-left", contracts },
+          { group: "spotter", base: "clear" },
+        ],
+      });
+      contracts.push("added-later");
+
+      const draws = vocab.vocabulary().vars[0].draws ?? [];
+
+      expect(draws).toEqual([
+        { group: "spotter", base: "car-left", contracts: ["pit-crew.spotter-call"] },
+        { group: "spotter", base: "clear" },
+      ]);
+      expect(Object.hasOwn(draws[1], "contracts")).toBe(false);
+
+      (draws[0].contracts as string[]).push("pushed-into-report");
+
+      expect(vocab.vocabulary().vars[0].draws?.[0].contracts).toEqual(["pit-crew.spotter-call"]);
+    });
+
     it("a re-registration replaces the declaration whole — one without draws drops the earlier set", () => {
       vocab.defineVar("closed", () => null, "", { draws: [{ group: "spotter", base: "clear" }] });
       vocab.defineVar("closed", () => null, "now open");

@@ -24,6 +24,15 @@ export type CaseEntry = {
   description: string;
 };
 
+/**
+ * A declared draw copied, so a caller mutating what it passed or got back
+ * changes nothing here. `contracts` is copied when present and left out when
+ * absent, like `draws` on the report: an unscoped draw reads as one.
+ */
+function copyDraw({ group, base, contracts }: VarDraw): VarDraw {
+  return contracts === undefined ? { group, base } : { group, base, contracts: [...contracts] };
+}
+
 export class Vocabulary {
   private readonly varMap = new Map<string, VocabularyResolver<string | null>>();
   /** Parallel to `vars`: the description each var was registered with (`""` when none). */
@@ -61,11 +70,7 @@ export class Vocabulary {
 
     // A re-registration replaces the declaration whole, so one without
     // `draws` drops what an earlier one declared.
-    if (options.draws)
-      this.varDraws.set(
-        name,
-        options.draws.map(({ group, base }) => ({ group, base })),
-      );
+    if (options.draws) this.varDraws.set(name, options.draws.map(copyDraw));
     else this.varDraws.delete(name);
   }
 
@@ -95,9 +100,7 @@ export class Vocabulary {
           // The key is left out, not set to `undefined`, for a var that
           // declared no draws: the report is serialised into the generated
           // reference, which must not change for it.
-          return draws
-            ? { name, description, draws: draws.map(({ group, base }) => ({ group, base })) }
-            : { name, description };
+          return draws ? { name, description, draws: draws.map(copyDraw) } : { name, description };
         }),
       ),
       conds: byName([...this.condMap].map(([name, { description }]) => ({ name, description }))),

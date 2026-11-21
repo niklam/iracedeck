@@ -6595,11 +6595,11 @@ describe("pack-owned scripts (issue #1064)", () => {
     });
   });
 
-  it("(j) vocabulary() reports the pools a var declared it draws, and no `draws` key on a var that declared none (#1718)", () => {
+  it("(j) vocabulary() reports the pools a var declared it draws, with their contracts, and no `draws` key on a var that declared none (#1718)", () => {
     engine.defineVar("spotterLike", () => poolRef("spotter", "clear"), "a closed set", {
       draws: [
         { group: "spotter", base: "clear" },
-        { group: "spotter", base: "three-wide" },
+        { group: "spotter", base: "three-wide", contracts: ["pit-crew.spotter-call"] },
       ],
     });
     engine.defineVar("open", () => null, "an open-ended var");
@@ -6611,7 +6611,7 @@ describe("pack-owned scripts (issue #1064)", () => {
       description: "a closed set",
       draws: [
         { group: "spotter", base: "clear" },
-        { group: "spotter", base: "three-wide" },
+        { group: "spotter", base: "three-wide", contracts: ["pit-crew.spotter-call"] },
       ],
     });
     // Absent, not `undefined`: the report is serialised into the generated

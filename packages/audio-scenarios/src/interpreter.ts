@@ -153,9 +153,25 @@ export type VocabularyReport = {
 
 /**
  * One clip pool a var's resolver can return (#1718): the `pool:<group>/<base>`
- * reference `poolRef` (`dsl.ts`) builds, as its two halves.
+ * reference `poolRef` (`dsl.ts`) builds, as its two halves, and optionally
+ * the callouts it can return it for.
  */
-export type VarDraw = { readonly group: string; readonly base: string };
+export type VarDraw = {
+  readonly group: string;
+  readonly base: string;
+  /**
+   * The contract ids the resolver can return this pool for, when that is
+   * not every callout naming the var: the spotter's `spotterClip` hands the
+   * call lines only to `pit-crew.spotter-call` and the info lines only to
+   * `pit-crew.spotter-info`. The tooling then counts the pool only for a
+   * script whose LIVE entry for one of these contracts names the var — in
+   * its own steps, a fragment it includes, or its frame — so a pack that
+   * scripts one of the callouts is not asked for the other's lines. Absent:
+   * any callout naming the var may draw it. Like the draw itself, never
+   * enforced at fire time.
+   */
+  readonly contracts?: readonly string[];
+};
 
 /** What `defineVar` may declare beside the resolver (#1718). */
 export type DefineVarOptions = {
