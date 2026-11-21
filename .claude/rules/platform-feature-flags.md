@@ -104,7 +104,13 @@ A development flag keeps a feature that is built but not ready for users out of 
 - **The pack-author reference.** The pit-crew catalog lists the feature in `DEVELOPMENT_FEATURES` (`{ flag, withheld }`), and `pnpm generate:pack-reference` withholds every one whose flag no committed `platform-features.json` has on (`scripts/lib/release-flags.mjs`, never the local override): its contracts, vocabulary and the recording lines only they draw from.
 - **The scenario harness** is development tooling and runs every development flag on (`packages/scenario-harness/src/development-flags.ts`), so its buttons and heard tests exercise the feature.
 
-Shipping the feature is one edit: set the flag `true` in the plugins that ship it, then regenerate the pack reference; retiring the flag afterwards removes it from all of the above.
+Shipping the feature takes three steps in one change, because the suite pins the flag off until then:
+
+1. Set the flag `true` in the `platform-features.json` of each plugin that ships it. Shipping on only some of the three also takes the flag out of `feature-flags.local.json.example`, whose flags must be alike on every plugin.
+2. Update the assertions that hold it off. For `trafficRejoin` they are the case "keeps the trafficRejoin development flag off" in `packages/deck-core/src/plugin-config.test.ts`, which reads each committed file, and the case "has the rejoin warnings unreleased today" in `scripts/lib/release-flags.test.mjs`, which reads `readReleaseFlags().get("trafficRejoin")`.
+3. Run `pnpm generate:pack-reference` and commit the result: the feature's contracts, vocabulary and recording lines stop being withheld, and the reference's freshness test fails until it is regenerated.
+
+Retiring the flag afterwards removes it from all of the above.
 
 ## Runtime access (rare)
 
