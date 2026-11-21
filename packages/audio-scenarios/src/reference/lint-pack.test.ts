@@ -804,6 +804,27 @@ describe("lintPack — a var that declares its draws (issue #1718)", () => {
     expect(report.ok).toBe(false);
   });
 
+  it("keeps the step's words for a missing pool a step names directly, even when a declaring var also draws it", () => {
+    const stepAndVar = {
+      ...DRAWS_SCRIPT,
+      scenarios: {
+        ...DRAWS_SCRIPT.scenarios,
+        [SPOTTER_ENTRY]: {
+          ...DRAWS_SCRIPT.scenarios[SPOTTER_ENTRY],
+          sequence: ["pool:spotter/car-left", "{{spotterClip}}"],
+        },
+      },
+    };
+    const report = lintDraws(
+      stepAndVar,
+      SPOTTER_TAKES.filter((clip) => !clip.includes("/spotter/car-left-")),
+    );
+
+    expect(messages(report.problems)).toEqual([
+      `${VOICE} dangling: "spotter/car-left" is referenced but the pack ships no voice/${VOICE}/spotter/car-left*.mp3 — a required step that resolves to nothing aborts the whole callout at fire time`,
+    ]);
+  });
+
   it("names a file in the group that answers no declared pool as an orphan — a one-digit take the engine never plays", () => {
     const report = lintDraws(DRAWS_SCRIPT, [...SPOTTER_TAKES, `voice/${VOICE}/spotter/car-left-1.mp3`]);
 

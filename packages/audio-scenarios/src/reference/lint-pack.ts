@@ -569,8 +569,16 @@ function reportCoverage(
     );
   }
 
+  // The bases a step names directly, without the vars' draws: one of these
+  // keeps the step wording even when a var also draws it, since the step is
+  // the line the author can find and fix.
+  const stepDangling =
+    drawnBy.size === 0
+      ? new Set(coverage.dangling)
+      : new Set(checkCoverage({ script, authored, sharedClips: ctx.sharedClips }, ctx.varDriven).dangling);
+
   for (const base of coverage.dangling) {
-    const vars = drawnBy.get(base);
+    const vars = stepDangling.has(base) ? undefined : drawnBy.get(base);
 
     // A pool only a var's declaration names is said as the var's: no step in
     // the script spells it, so "is referenced" alone would send the author
