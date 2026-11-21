@@ -644,7 +644,8 @@ export function registerTrafficVocabulary(
     "traffic.pitExitVerdict",
     (ctx) => pitExitOf(ctx)?.verdict ?? null,
     {
-      traffic: "A car on track will reach the end of the pit exit blend line around the same time as you.",
+      traffic:
+        "A car on track will reach the end of the pit exit blend line around the same time as you, or a car on track could not be timed.",
       clear: "No car on track will reach the end of the pit exit blend line around the same time as you.",
     },
     "The verdict on leaving the pits, read from the event that fired the line.",
