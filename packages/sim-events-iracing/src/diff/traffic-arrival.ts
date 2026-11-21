@@ -85,8 +85,9 @@
  * reading, a window not yet complete included), after a position that moved
  * on a `SessionTime` that repeated the window's start (no time to read a speed
  * over; a repeat with the position unchanged keeps the record), with a rate older
- * than {@link TRAFFIC_MOTION_MAX_AGE_S}, and without a track length or a
- * `SessionTime`. A close car that stops is therefore gone, as one that drove
+ * than {@link TRAFFIC_MOTION_MAX_AGE_S}, without a track length or a
+ * `SessionTime`, and after a tick whose read of its surface or position threw.
+ * Its progress is read before its curve sample and never waits on it. A close car that stops is therefore gone, as one that drove
  * by is, and comes back as a new car coming when it moves again.
  */
 import type { TelemetryData } from "@iracedeck/iracing-sdk";
@@ -459,8 +460,12 @@ function nextMotion(
  * also a reading of its progress (module header), on `SessionTime`; a tick
  * without one measures nothing. Writes the slice in place. The cars are
  * independent, so each is one unit of `runUnit` (#1559): a car whose unit
- * throws loses that car's sample and reading this tick and no other car's,
- * and its progress record, written last, is left as it was.
+ * throws loses that car's sample this tick and no other car's. Its progress
+ * is read first, from its surface and position alone, so a throw in the
+ * sample after it (its `CarIdxEstTime`, its class) leaves the reading taken;
+ * a throw before it (the surface or the position itself) drops the car's
+ * measured rate, keeping its window, so the car counts as moving rather than
+ * being hidden by a standing rate it can no longer be checked against.
  *
  * @param trackLengthMeters - `WeekendInfo.TrackLength` in metres (`resolveTrackLengthMeters`), `null` while unknown, which measures no rate: no move can be judged plausible without it.
  * @param runUnit - Runs each car as a unit: the translator's step runner, so one car's throw costs that car only. Defaults to {@link runUnitsDirectly}, which catches nothing
@@ -481,10 +486,16 @@ export function updateTrafficReferenceCurves(
   const sessionTime = isFiniteNumber(telemetry.SessionTime) ? telemetry.SessionTime : null;
 
   // The car the unit below reads, set by the loop: one closure per tick rather
-  // than one per car. It emits nothing.
+  // than one per car. It emits nothing. `motionRead` says whether the unit got
+  // as far as the car's progress: read, or found nothing to read.
   let carIdx = 0;
+  let motionRead = false;
   const unit = (): void => {
-    if (!isRacingSurface(surfaces[carIdx])) return;
+    if (!isRacingSurface(surfaces[carIdx])) {
+      motionRead = true;
+
+      return;
+    }
 
     // Read as the arrivals read it (`computeTrafficArrivals`): a car on the
     // line, read a hair past 1, is that hair past 0. Gated on `[0, 1)` alone,
@@ -492,7 +503,22 @@ export function updateTrafficReferenceCurves(
     // time it as traffic, and one reset to the line would keep its old rate.
     const pct = normalizeLapPosition(pcts[carIdx]);
 
-    if (pct === null) return;
+    if (pct === null) {
+      motionRead = true;
+
+      return;
+    }
+
+    // The car's progress first, from its position alone, so it never hangs on
+    // the curve sample below: an estTime or a class that throws costs the
+    // sample only. Read after it, a throw there kept the old record, and a car
+    // measured standing that had since pulled away stayed left out of the
+    // arrivals, its new position read and its stale standing rate kept.
+    // `nextMotion` is pure, so the record is written whole or not at all.
+    if (sessionTime !== null)
+      slice.motion[carIdx] = nextMotion(slice.motion[carIdx], pct, sessionTime, trackLengthMeters);
+
+    motionRead = true;
 
     const estTime = estTimes[carIdx];
     const classId = isReferenceTime(estTime) ? resolveCarClassId(telemetry, classes, carIdx) : null;
@@ -505,16 +531,27 @@ export function updateTrafficReferenceCurves(
 
       foldCurveSample(curve, pct, estTime as number);
     }
-
-    // The car's progress record last (#1559's rule), so a throw above leaves
-    // its window as it was and the car is read again on the next tick.
-    if (sessionTime !== null)
-      slice.motion[carIdx] = nextMotion(slice.motion[carIdx], pct, sessionTime, trackLengthMeters);
   };
 
   const slots = carSlotCount(pcts, estTimes, surfaces);
 
-  for (carIdx = 0; carIdx < slots; carIdx++) runUnit(ignoreEvent, unit);
+  for (carIdx = 0; carIdx < slots; carIdx++) {
+    motionRead = false;
+
+    // A unit that threw before the car's progress was read (its surface or
+    // position unreadable) leaves its motion unknown: its rate goes, so the
+    // car counts as moving, the cautious direction, rather than a standing
+    // rate measured on readings it no longer gives hiding it from the
+    // arrivals. The window stays, and measures again once the car reads.
+    if (!runUnit(ignoreEvent, unit) && !motionRead) forgetMotionRate(slice, carIdx);
+  }
+}
+
+/** Drops a car's measured rate, keeping its window: the car counts as moving until the window measures again. */
+function forgetMotionRate(slice: TrafficArrivalState, carIdx: number): void {
+  const motion = slice.motion[carIdx];
+
+  if (motion !== undefined && motion.rate !== null) slice.motion[carIdx] = { ...motion, rate: null, rateAt: null };
 }
 
 /**

@@ -354,6 +354,80 @@ describe("updateTrafficReferenceCurves", () => {
         "car 1 broke",
       );
     });
+
+    describe("a car's progress never hangs on its curve sample", () => {
+      const TRACK = 5000;
+      /** A runner that catches, as the translator's does. */
+      const catching: UnitRunner = (emit, unit) => {
+        try {
+          unit(emit);
+
+          return true;
+        } catch {
+          return false;
+        }
+      };
+      /** Car 1 at `metres` along a 5,000 m lap at `sessionTime`; its estTime or position throws when asked to. */
+      const car1 = (sessionTime: number, metres: number, throws?: "estTime" | "position"): TelemetryData => {
+        const t = { ...tel([{ idx: 1, pct: 0.3 + metres / TRACK, est: 30 }]), SessionTime: sessionTime };
+        const array = throws === "estTime" ? t.CarIdxEstTime : throws === "position" ? t.CarIdxLapDistPct : null;
+
+        if (array) {
+          Object.defineProperty(array, 1, {
+            get: () => {
+              throw new Error(`car 1's ${throws} broke`);
+            },
+          });
+        }
+
+        return t;
+      };
+
+      /** Car 1 measured standing over one window. */
+      function standing(): TrafficArrivalState {
+        const slice = createTrafficArrivalState();
+
+        updateTrafficReferenceCurves(slice, car1(100, 0), null, TRACK, catching);
+        updateTrafficReferenceCurves(slice, car1(100.5, 0), null, TRACK, catching);
+        expect(isTrafficCarStationary(slice, 1, 100.5, TRACK)).toBe(true);
+
+        return slice;
+      }
+
+      it("reads a standing car that pulled away as moving on a tick whose estTime throws", () => {
+        const slice = standing();
+
+        // 5 m in 0.1 s, 50 m/s: the car has pulled away, and its sample fails.
+        updateTrafficReferenceCurves(slice, car1(100.6, 5, "estTime"), null, TRACK, catching);
+
+        expect(isTrafficCarStationary(slice, 1, 100.6, TRACK)).toBe(false);
+        // Positive control: the sample itself was lost, the curve unchanged.
+        expect(slice.curves["1"].bins.filter((bin) => bin !== null)).toHaveLength(1);
+      });
+
+      it("keeps a car standing that still stands on a tick whose estTime throws: a valid reading still excludes it", () => {
+        const slice = standing();
+
+        updateTrafficReferenceCurves(slice, car1(100.6, 0, "estTime"), null, TRACK, catching);
+
+        expect(isTrafficCarStationary(slice, 1, 100.6, TRACK)).toBe(true);
+      });
+
+      it("drops the standing rate of a car whose position throws, keeping its window: it counts as moving", () => {
+        const slice = standing();
+        const before = slice.motion[1];
+
+        updateTrafficReferenceCurves(slice, car1(100.6, 5, "position"), null, TRACK, catching);
+
+        expect(isTrafficCarStationary(slice, 1, 100.6, TRACK)).toBe(false);
+        expect(slice.motion[1]).toEqual({
+          fromPct: before?.fromPct,
+          fromTime: before?.fromTime,
+          rate: null,
+          rateAt: null,
+        });
+      });
+    });
   });
 
   it("keeps a running mean per bin, so one car's offset fades as others pass", () => {
