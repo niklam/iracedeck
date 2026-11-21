@@ -583,7 +583,8 @@ function nodeRuns(tokens, base, shell) {
     const script = attached ? attached[1] : t === "--run" ? tokens[i + 1] : undefined;
     if (script) {
       const args = forwarded(tokens.slice(attached ? i + 1 : i + 2));
-      return [{ label: `node --run ${script}`, script, dir: base, expand: true, args }];
+      // Node runs no `pre` or `post` script around it ({@link bodyLines}).
+      return [{ label: `node --run ${script}`, script, dir: base, expand: true, args, lifecycle: false }];
     }
     if (t === "--run" || !t.startsWith("-")) break;
   }
@@ -900,7 +901,14 @@ export function deckFindings(c, cwd, ctx, shell, trail = [], underRestart = fals
       const lines = run.lines?.map((line) => ({ dir: run.dir, line, key: "", as: run.as })) ?? [];
       if (run.expand) lines.push(...bodyLines(run, kind, ctx, underRestart));
       for (const { dir, line, key, as, step } of lines) {
-        if (key && trail.includes(key)) continue;
+        if (key && trail.includes(key)) {
+          // The cycle guard stays, but a restart that runs itself again — or a
+          // cycle beneath a restart — restarts the host until someone stops
+          // it, so it asks as a watch does (#1737, CodeRabbit CLI).
+          if (kind === "restart" || underRestart)
+            finding(`\`${run.label}\` runs itself again, restarting the host on every pass`, "watch", run.repeats);
+          continue;
+        }
         const [text, lineShell] = lineAs(line, as);
         // A lifecycle script is named in the path ({@link bodyLines}).
         const via = step ? `\`${run.label}\` → \`${step}\`` : `\`${run.label}\``;
@@ -1115,9 +1123,14 @@ export const shellQuote = (w) => (/^[\w@%+=:,./-]+$/.test(w) ? w : `'${w.replace
 function scriptLines(run, ctx) {
   if (!ctx.scriptsAt) return [];
   const tail = run.args?.length ? ` ${run.args.map(shellQuote).join(" ")}` : "";
-  return runManifests(run, ctx)
-    .filter((m) => m && typeof m.scripts?.[run.script] === "string")
-    .map((m) => ({ dir: m.dir, line: m.scripts[run.script] + tail, key: `${m.dir}\0${run.script}` }));
+  // The name as written, else with its leftover escapes gone ({@link
+  // unescaped}), as its kind is judged: `pnpm "re\`start:x"` in PowerShell
+  // runs `restart:x`, while a script may be named `/^build$/` outright.
+  const names = [...new Set([run.script ?? "", unescaped(run.script ?? "")])];
+  return runManifests(run, ctx).flatMap((m) => {
+    const script = names.find((n) => typeof m?.scripts?.[n] === "string");
+    return script === undefined ? [] : [{ dir: m.dir, line: m.scripts[script] + tail, key: `${m.dir}\0${script}` }];
+  });
 }
 
 /**
@@ -1132,11 +1145,12 @@ function scriptLines(run, ctx) {
  * none. So are a script's beneath a restart (`underRestart`, #1737 PR review
  * round 2): `restart:x` running `npm run prepare-host` runs `preprepare-host`
  * too. Any other script's are not read, as before #1737: no restart above it
- * passes where its name once asked.
+ * passes where its name once asked. `node --run` runs none (`lifecycle:
+ * false`), so none are read for it.
  */
 function bodyLines(run, kind, ctx, underRestart = false) {
   const lines = scriptLines(run, ctx);
-  if (kind !== "restart" && !underRestart) return lines;
+  if ((kind !== "restart" && !underRestart) || run.lifecycle === false) return lines;
   const name = unescaped(run.script ?? "");
   for (const step of [`pre${name}`, `post${name}`])
     lines.push(...scriptLines({ ...run, script: step, args: [] }, ctx).map((l) => ({ ...l, step })));

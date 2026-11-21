@@ -3459,6 +3459,42 @@ describe("a restart run over and over asks (#1737 review)", () => {
     // stay unread, as on master.
     it("does not read a neutral script's pre script with no restart above it", () =>
       expect(deckFound("npm run prepare-host", nested)).toEqual([]));
+
+    // CodeRabbit CLI at 53821a933: `node --run` runs no pre or post scripts,
+    // unlike `npm run` and pnpm under `enablePrePostScripts`.
+    it("does not read a restart's pre script for node --run, which runs none", () => {
+      const pre = withScripts({ "restart:x": "streamdeck restart x", "prerestart:x": "pnpm relink:mirabox" });
+      expect(restarts("node --run restart:x", pre).split("; ")).toHaveLength(1);
+      expect(asks("npm run restart:x", pre)).toMatch(/`prerestart:x` → `pnpm relink:mirabox`/);
+      expect(asks("pnpm restart:x", pre)).toMatch(/`prerestart:x` → `pnpm relink:mirabox`/);
+    });
+  });
+
+  // CodeRabbit CLI at 53821a933: the cycle guard cut the repeat of a restart
+  // that runs itself, which restarts the host forever.
+  describe("a restart that runs itself", () => {
+    const withScripts = (scripts) => ctx({ scriptsAt: () => ({ dir: MASTER, scripts }) });
+    it.each([
+      ["pnpm restart:x", { "restart:x": "streamdeck restart x && pnpm restart:x" }],
+      ["npm run restart:x", { "restart:x": "streamdeck restart x && npm run restart:x" }],
+      ["pnpm restart:x", { "restart:x": "pnpm restart:y", "restart:y": "streamdeck restart y && pnpm restart:x" }],
+    ])("asks for %s whose script runs itself again", (c, scripts) =>
+      expect(asks(c, withScripts(scripts))).toMatch(/runs itself again, restarting the host on every pass\. /),
+    );
+    // Control: a cycle with no restart in or above it still finds nothing, as on master.
+    it("finds nothing in a cycle that restarts nothing", () =>
+      findsNothing("pnpm loop-a", withScripts({ "loop-a": "pnpm build && pnpm loop-b", "loop-b": "pnpm loop-a" })));
+  });
+
+  // CodeRabbit CLI at 53821a933: a script name PowerShell escapes is looked
+  // up as it runs, so its body is read.
+  it("reads the body of a restart script whose name PowerShell escapes", () => {
+    const ps = ctx({
+      shell: POWERSHELL,
+      scriptsAt: () => ({ dir: MASTER, scripts: { "restart:x": "pnpm relink:mirabox" } }),
+    });
+    expect(asks('pnpm "re`start:x"', ps)).toMatch(/→ `pnpm relink:mirabox` links, unlinks or relinks/);
+    expect(asks("pnpm re`start:x", ps)).toMatch(/→ `pnpm relink:mirabox` links, unlinks or relinks/);
   });
 
   // #1737 CodeRabbit round: a chain of restart names deeper than the reader
