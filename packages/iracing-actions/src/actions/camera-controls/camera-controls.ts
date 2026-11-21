@@ -959,7 +959,12 @@ export class CameraControls extends SimIRacingAction<CameraControlsSettings> {
    * hands back the same session-info object until iRacing publishes a new one,
    * so its identity says when the group list may have changed.
    */
-  private sessionGroupsCache: { sessionInfo: unknown; groups: CameraGroup[] } | null = null;
+  private sessionGroupsCache: {
+    sessionInfo: unknown;
+    groups: CameraGroup[];
+    /** Per group name, whether it is unavailable in this session; filled on first ask (#1653 review). */
+    unavailable: Map<string, boolean>;
+  } | null = null;
 
   /**
    * The dial half of the action (#803); all IDeck dial events route here.
@@ -1837,10 +1842,35 @@ export class CameraControls extends SimIRacingAction<CameraControlsSettings> {
       this.sessionGroupsCache = {
         sessionInfo,
         groups: normalizeSessionGroups(getCameraGroupsFromSessionInfo(sessionInfo)),
+        unavailable: new Map(),
       };
     }
 
     return this.sessionGroupsCache.groups;
+  }
+
+  /**
+   * Whether a Change Camera key's group is missing from the session, computed
+   * once per name per session-info update: the per-tick check of every key
+   * would otherwise re-run the name lookup, case-folding every group of a
+   * 40-50 group file, on each tick for an answer that changes only with the
+   * session info.
+   */
+  private isChangeCameraUnavailableCached(groupName: string): boolean {
+    const groups = this.readSessionGroupsCached();
+    const cache = this.sessionGroupsCache;
+
+    // No session: never unavailable, and nothing to cache against.
+    if (cache === null || groups.length === 0) return false;
+
+    let unavailable = cache.unavailable.get(groupName);
+
+    if (unavailable === undefined) {
+      unavailable = isChangeCameraUnavailable(groupName, groups);
+      cache.unavailable.set(groupName, unavailable);
+    }
+
+    return unavailable;
   }
 
   /** A key's telemetry tick: the Cycle Camera icon, or a Change Camera key's availability (#1653). */
@@ -1862,7 +1892,7 @@ export class CameraControls extends SimIRacingAction<CameraControlsSettings> {
    * tick. A disconnect reads as no session, which draws the normal look.
    */
   private refreshChangeCameraLook(contextId: string, settings: CameraControlsSettings): void {
-    const unavailable = isChangeCameraUnavailable(changeCameraGroupName(settings), this.readSessionGroupsCached());
+    const unavailable = this.isChangeCameraUnavailableCached(changeCameraGroupName(settings));
 
     if (this.shownUnavailable.get(contextId) === unavailable) return;
 
@@ -1886,7 +1916,7 @@ export class CameraControls extends SimIRacingAction<CameraControlsSettings> {
       return generateCameraControlsSvg(settings, bindingMissing);
     }
 
-    const unavailable = isChangeCameraUnavailable(changeCameraGroupName(settings), this.readSessionGroupsCached());
+    const unavailable = this.isChangeCameraUnavailableCached(changeCameraGroupName(settings));
     this.shownUnavailable.set(contextId, unavailable);
 
     return generateCameraControlsSvg(settings, bindingMissing, unavailable);
