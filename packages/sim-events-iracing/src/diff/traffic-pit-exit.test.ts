@@ -279,6 +279,7 @@ describe("diffTrafficPitExit", () => {
       teleport.depart(tel({ cars: [arriving(5, 1)], OnPitRoad: false }));
 
       expect(seeded.events).toEqual([]);
+      expect(seeded.episode.active).toBe(false);
       expect(teleport.events).toEqual([]);
       expect(teleport.episode.active).toBe(false);
     });
