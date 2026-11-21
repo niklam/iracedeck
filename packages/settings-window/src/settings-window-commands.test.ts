@@ -2,6 +2,8 @@ import { FEATURE_STARTUP_GATES } from "@iracedeck/settings";
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  CAMERA_GROUP_NAME_MAX_LENGTH,
+  CameraGroupNameSchema,
   createSettingsWindowCommandHandler,
   enableFeatureWrites,
   parseSettingsWindowBounds,
@@ -303,6 +305,67 @@ describe("createSettingsWindowCommandHandler", () => {
     handle({ event: "openTrackDataFolder", path: "C:/Windows/evil" });
 
     expect(openDirectory).not.toHaveBeenCalled();
+  });
+
+  describe("cameraCatalogRemove (#1653)", () => {
+    it("routes the named group to the injected remover, exactly as sent", () => {
+      const removeCameraGroup = vi.fn();
+      const handle = createSettingsWindowCommandHandler({ writeSettings: vi.fn(), removeCameraGroup });
+
+      handle({ event: "cameraCatalogRemove", name: "DynamicTV" });
+      handle({ event: "cameraCatalogRemove", name: " Pit Lane 2 " });
+      handle({ event: "cameraCatalogRemove", name: "x".repeat(CAMERA_GROUP_NAME_MAX_LENGTH) });
+
+      expect(removeCameraGroup.mock.calls).toEqual([
+        ["DynamicTV"],
+        [" Pit Lane 2 "],
+        ["x".repeat(CAMERA_GROUP_NAME_MAX_LENGTH)],
+      ]);
+    });
+
+    it("takes only the name, never anything else the page sends", () => {
+      const removeCameraGroup = vi.fn();
+      const writeSettings = vi.fn();
+      const handle = createSettingsWindowCommandHandler({ writeSettings, removeCameraGroup });
+
+      handle({ event: "cameraCatalogRemove", name: "Drone", path: "C:/Windows", file: "cameras.json" });
+
+      expect(removeCameraGroup).toHaveBeenCalledExactlyOnceWith("Drone");
+      expect(writeSettings).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ["an empty string", ""],
+      ["a blank string", "   "],
+      ["an over-long name", "x".repeat(CAMERA_GROUP_NAME_MAX_LENGTH + 1)],
+      ["a name with a NUL", `Drone${String.fromCharCode(0)}`],
+      ["a name with a newline", `Drone${String.fromCharCode(10)}TV1`],
+      ["a name with DEL", `Drone${String.fromCharCode(127)}`],
+      ["a number", 42],
+      ["an array", ["Drone"]],
+      ["an object", { name: "Drone" }],
+      ["null", null],
+      ["a missing name", undefined],
+    ])("refuses a name that is %s", (_label, name) => {
+      const removeCameraGroup = vi.fn();
+      const handle = createSettingsWindowCommandHandler({ writeSettings: vi.fn(), removeCameraGroup });
+
+      handle({ event: "cameraCatalogRemove", name });
+
+      expect(removeCameraGroup).not.toHaveBeenCalled();
+    });
+
+    it("does nothing when no remover is injected", () => {
+      const handle = createSettingsWindowCommandHandler({ writeSettings: vi.fn() });
+
+      expect(() => handle({ event: "cameraCatalogRemove", name: "Drone" })).not.toThrow();
+    });
+
+    it("accepts printable names in any script and refuses a tab", () => {
+      expect(CameraGroupNameSchema.safeParse("Grid_Pole").success).toBe(true);
+      expect(CameraGroupNameSchema.safeParse("Ünïcödé 名前").success).toBe(true);
+      expect(CameraGroupNameSchema.safeParse(`Tab${String.fromCharCode(9)}here`).success).toBe(false);
+    });
   });
 
   it("ignores openTrackDataFolder when no directory opener is injected", () => {
