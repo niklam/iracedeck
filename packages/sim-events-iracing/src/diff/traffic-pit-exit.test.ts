@@ -288,14 +288,26 @@ describe("diffTrafficPitExit", () => {
       const h = harness();
 
       h.depart(tel({ cars: [arriving(5, 1)] }));
+
+      // What the episode published before it ended: the end adds nothing to it.
+      const eventsBefore = [...h.events];
+      const mergesBefore = [...h.merges];
+
       // A car now well clear of the window: a running episode would speak the
       // flip at its second evaluation.
       h.after(100, tel({ cars: [arriving(5, 10)], ...overrides }));
+
+      expect(h.episode.active).toBe(false);
+      expect(h.events).toEqual(eventsBefore);
+      expect(h.merges).toEqual(mergesBefore);
+
       h.after(TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS, tel({ cars: [arriving(5, 10)], ...overrides }));
       h.after(TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS, tel({ cars: [arriving(5, 10)], ...overrides }));
 
       expect(h.episode.active).toBe(false);
       expect(h.settled).toEqual([{ verdict: "traffic", seconds: 1 }]);
+      expect(h.events).toEqual(eventsBefore);
+      expect(h.merges).toEqual(mergesBefore);
     });
 
     describe("the stall surface", () => {
