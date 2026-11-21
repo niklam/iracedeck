@@ -938,22 +938,40 @@ describe("buildPackReference withholding a development feature (issue #1113)", (
 
     it("credits a frame's literal to the line of the file it plays, and its pool to every line it draws from", () => {
       // `green-01.mp3` is a take of `green`; `green-01-01.mp3` makes a
-      // `green-01` line too. The withheld flag-green call is the only entry
-      // naming `green`, so only the published radio frame can keep it.
+      // `green-01` line too. The withheld flag-green call plays one file of
+      // each line by literal path, so it alone draws from both, and only the
+      // published radio frame can keep either; `blue`, which nothing draws
+      // from, stays regardless.
       const colliding = {
         manifestClips: [...MANIFEST_CLIPS, "voice/default/flags/green-01-01.mp3"],
         groups: { ...GROUPS, flags: [...GROUPS.flags, { name: "green-01-01", text: "Green, take one." }] },
         withheld: { ...NOTHING, contracts: ["pit-crew.flag-green"] },
       };
-      const radioOpens = (open: ScriptStep[]): CalloutScript =>
-        withFrames({ radio: { open, close: [] }, terse: { open: [], close: [] } });
+      const radioOpens = (open: ScriptStep[]): CalloutScript => {
+        const framed = withFrames({ radio: { open, close: [] }, terse: { open: [], close: [] } });
+
+        return {
+          ...framed,
+          scenarios: {
+            ...framed.scenarios,
+            "pit-crew.flag-green": {
+              ...framed.scenarios["pit-crew.flag-green"],
+              sequence: ["voice/{voice}/flags/green-01.mp3", "voice/{voice}/flags/green-01-01.mp3"],
+            },
+          },
+        };
+      };
       const greenBases = (script: CalloutScript): string[] =>
         buildPackReference(input({ ...colliding, script }))
           .recordingScript.find((g) => g.group === "flags")
           ?.lines.map((l) => l.base) ?? [];
 
-      expect(greenBases(radioOpens([{ clip: "voice/{voice}/flags/green-01.mp3" }]))).toContain("green");
-      expect(greenBases(radioOpens(["pool:flags/green-01"]))).toEqual(expect.arrayContaining(["green", "green-01"]));
+      // Positive control: with no frame playing either, both lines go with the withheld call.
+      expect(greenBases(radioOpens([]))).toEqual(["blue"]);
+      // The literal plays `green-01.mp3`, the `green` line's file, and no file of the `green-01` line.
+      expect(greenBases(radioOpens([{ clip: "voice/{voice}/flags/green-01.mp3" }]))).toEqual(["blue", "green"]);
+      // The pool draws `green-01.mp3` and `green-01-01.mp3`, so both lines.
+      expect(greenBases(radioOpens(["pool:flags/green-01"]))).toEqual(["blue", "green", "green-01"]);
     });
 
     it("reads a frame's bare literal at the audio root, as the engine plays it, never as the voice's line", () => {
