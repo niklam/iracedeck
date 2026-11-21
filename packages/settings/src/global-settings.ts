@@ -119,6 +119,23 @@ function calloutEnabledFields(): { [K in CalloutSettingKey]: ReturnType<typeof c
 }
 
 /**
+ * The raw value of a pit-exit traffic slider (`trafficPitExit*Seconds`)
+ * that may reach `z.coerce.number()`: a finite number, or a non-blank string
+ * that reads as one, passed through unchanged; anything else — `null`, a
+ * blank string, a boolean, an array, an object, a non-finite number — is
+ * `undefined`, so the field falls to its default rather than to the `0` (or
+ * `1`) the coercion would make of it. Never throws, so the field stays
+ * throw-proof (#896).
+ */
+function pitExitWindowInput(val: unknown): unknown {
+  if (typeof val === "number") return Number.isFinite(val) ? val : undefined;
+
+  if (typeof val === "string" && val.trim() !== "" && Number.isFinite(Number(val))) return val;
+
+  return undefined;
+}
+
+/**
  * Schema for global plugin settings.
  * Uses passthrough to allow dynamic key binding properties (e.g., blackBoxLapTiming, blackBoxFuel).
  */
@@ -427,6 +444,47 @@ export const GlobalSettingsSchema = z
      * the gate. Read live by the translator's gap diff.
      */
     gapCalloutMinChangeSeconds: z.coerce.number().min(0).max(10).default(1.5).catch(1.5),
+    /**
+     * The pit-exit traffic window (issue #1113, spec decisions 4 and 5). The
+     * defaults and ranges are the translator's `TRAFFIC_*` constants in
+     * `@iracedeck/sim-events-iracing` (`diff/traffic-settings.ts`), and the
+     * settings window's sliders a third copy; race-engineer-wiring's
+     * `translator-options.test.ts` holds the first two together once the
+     * translator option reads them, and pi-components'
+     * `race-engineer-callouts-sliders.test.ts` the sliders (#1376).
+     * Read live by the translator, so a slider change applies to the next
+     * verdict. No migration: an absent key reads as the default.
+     *
+     * - `trafficPitExitBeforeSeconds` (0–10, default 2) and
+     *   `trafficPitExitAfterSeconds` (0–15, default 4): a car arriving at the
+     *   end of the pit-exit blend from this long before the player to this long
+     *   after counts as traffic. Lopsided on purpose (decision 5).
+     * - `trafficPitExitMergeWarnSeconds` (0–5, default 1.5; amended
+     *   2026-11-20, the spec's `pitExitMergeWarnS`): in the pit exit lane, a
+     *   timed car reaching the end of the blend within this long of the
+     *   player, either side, gets "Watch for cars." once. An explicit 0 leaves
+     *   only an exact coincidence, so it is off in practice.
+     *
+     * The rejoin call has no setting (amended 2026-11-11): its bands are fixed
+     * because its lines name them. The pit-exit call's lead (3 s short of the
+     * end of pit road, amended 2026-11-20) is a fixed constant too.
+     *
+     * Only a finite number or a non-blank numeric string reaches the
+     * coercion ({@link pitExitWindowInput}); anything else reads as absent and
+     * falls back to the default. The bare `gapAlertThresholdSeconds` shape
+     * would not do: `z.coerce.number()` turns `null`, `""`, whitespace,
+     * `false` and `[]` into `0` (and `true` into `1`), and `0` is inside both
+     * pit-exit ranges, so it would silently close that side of the window.
+     * An explicit `0` or `"0"` is kept: it closes that side on purpose.
+     * `.catch` per #896 keeps any other malformed value from aborting the
+     * whole settings parse.
+     */
+    trafficPitExitBeforeSeconds: z.preprocess(pitExitWindowInput, z.coerce.number().min(0).max(10).default(2).catch(2)),
+    trafficPitExitAfterSeconds: z.preprocess(pitExitWindowInput, z.coerce.number().min(0).max(15).default(4).catch(4)),
+    trafficPitExitMergeWarnSeconds: z.preprocess(
+      pitExitWindowInput,
+      z.coerce.number().min(0).max(5).default(1.5).catch(1.5),
+    ),
     /**
      * Safety margin in laps subtracted from the raw laps-of-fuel-left
      * estimate before the Race Engineer derives the spoken count (issue

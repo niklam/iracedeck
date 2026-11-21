@@ -134,6 +134,18 @@ import { diffTireWear } from "./diff/tire-wear.js";
 import { diffToggles } from "./diff/toggles.js";
 import { diffTrackGaps } from "./diff/track-gaps.js";
 import { diffTrackWetness, resolveReportedTrackWetness } from "./diff/track-wetness.js";
+import {
+  resolveTrafficClassInfo,
+  type TrafficClassInfo,
+  updateTrafficReferenceCurves,
+} from "./diff/traffic-arrival.js";
+import { diffTrafficPitExit } from "./diff/traffic-pit-exit.js";
+import { diffTrafficRejoin } from "./diff/traffic-rejoin.js";
+import {
+  TRAFFIC_DEFAULT_PIT_EXIT_AFTER_SECONDS,
+  TRAFFIC_DEFAULT_PIT_EXIT_BEFORE_SECONDS,
+  TRAFFIC_DEFAULT_PIT_EXIT_MERGE_WARN_SECONDS,
+} from "./diff/traffic-settings.js";
 import type { EmitFn, PendingEvent } from "./diff/types.js";
 import {
   isClockExpiryConfirmed,
@@ -164,12 +176,14 @@ import {
   type CautionPhase,
   type CornerNameState,
   createInitialState,
+  createTrafficRejoinState,
   type GapNeighborState,
   type LastStopTireTemps,
   type RaceFinishResult,
   resetFastestLapBaselines,
   resetFuelCalloutBaselines,
   resetSectorTimesForReplay,
+  resetTrafficArrivalMotion,
   type RollingStartFormation,
   type SectorLap,
   type TrackSectorsState,
@@ -197,7 +211,7 @@ const SUBSCRIPTION_ID = "__sim-events-iracing__";
  * one step's first error. `tick-steps.source.test.ts` counts the ids in both
  * `handleTick`s and fails until this number matches; a new step changes it.
  */
-export const TRANSLATOR_REPORTER_MAX_KEYS = 64 * TICK_STEP_KEYS_PER_ID;
+export const TRANSLATOR_REPORTER_MAX_KEYS = 68 * TICK_STEP_KEYS_PER_ID;
 
 /** The step name every {@link onTranslatorTick} listener is called under: one id, `translator:onTranslatorTick`. */
 const TICK_LISTENER_STEP = "onTranslatorTick";
@@ -355,10 +369,33 @@ type TranslatorInstance = {
     sessionInfo: Record<string, unknown> | null;
     track: PitLaneTrackIdentity | null;
   } | null;
+  /**
+   * The class lap times and each car's class `resolveTrafficClassInfo` last
+   * read (issue #1113), keyed on the session-info object it read, as
+   * {@link TranslatorInstance.pitLaneTrackMemo} is: the SDK hands back the
+   * same parsed object until the YAML changes, so the driver list is walked
+   * once per change rather than on every tick. Needs no reset: a new object
+   * re-reads it. `null` until first resolved.
+   */
+  trafficClassMemo: {
+    sessionInfo: Record<string, unknown> | null;
+    classes: TrafficClassInfo | null;
+  } | null;
   /** The store's loader the learner is seeded from (issue #1112); `null` when none was given (learn from empty). */
   loadPitLaneLandmarks: PitLaneLandmarksLoader | null;
   /** Scoped logger for the pit-lane landmark edge diagnostics (issue #1112), all at debug. */
   pitLaneLandmarkLogger: ILogger;
+  /**
+   * Whether the rejoin detector runs (issue #1113, the spec's fourth
+   * amendment): the `trafficRejoin` development flag, fixed for the run. Off,
+   * `diffTrafficRejoin` is never called, so its episode never opens and
+   * neither `traffic.rejoin` nor `traffic.rejoinTowed` is ever published.
+   */
+  trafficRejoin: boolean;
+  /** Scoped logger for the rejoin detector's debug lines (issue #1113). */
+  trafficRejoinLogger: ILogger;
+  /** Scoped logger for the pit-exit detector's debug lines (issue #1113). */
+  trafficPitExitLogger: ILogger;
   /**
    * Live-read safety margin (laps) for the laps-of-fuel-left callouts
    * (issue #838). Plugins wire it to the `fuelCalloutMarginLaps` global
@@ -383,6 +420,25 @@ type TranslatorInstance = {
    * wire it to the `gapCalloutMinChangeSeconds` global setting.
    */
   getGapMinChangeSeconds: () => number;
+  /**
+   * Live-read pit-exit traffic window (issue #1113): how long before and after
+   * the player's own arrival at the end of the exit blend a car counts as
+   * traffic. Plugins wire them to the `trafficPitExit*Seconds` global
+   * settings through their `sanitizeTrafficPitExit*` sanitizers; each
+   * defaults to its constant when no closure is given. Rejoin reads no
+   * setting: its bands are fixed.
+   */
+  getTrafficPitExitBeforeSeconds: () => number;
+  getTrafficPitExitAfterSeconds: () => number;
+  /**
+   * Live-read pit-exit merge warning threshold (issue #1113, amended
+   * 2026-11-20): in the exit lane, a timed car reaching the end of the blend
+   * within this long of the player gets "Watch for cars." once. Plugins wire it
+   * to `trafficPitExitMergeWarnSeconds` through
+   * `sanitizeTrafficPitExitMergeWarnSeconds`; it defaults to its constant when
+   * no closure is given.
+   */
+  getTrafficPitExitMergeWarnSeconds: () => number;
   /**
    * The live-read resolvers `diffOpponentFlags` consumes, bound once at init:
    * the per-flag opt-in (issue #936 — enforced in the diff, not only at the
@@ -462,6 +518,31 @@ export type SimEventsIracingSettingsOptions = {
    * {@link OPPONENT_FLAG_DEFAULT_RANGE_SECONDS}.
    */
   getOpponentFlagRangeSeconds?: () => number;
+  /**
+   * Live-read pit-exit window (seconds) before the player's own arrival at the
+   * end of the exit blend (issue #1113). Plugins compose it from the
+   * `trafficPitExitBeforeSeconds` global setting via
+   * `sanitizeTrafficPitExitBeforeSeconds`. Default: a constant
+   * {@link TRAFFIC_DEFAULT_PIT_EXIT_BEFORE_SECONDS}.
+   */
+  getTrafficPitExitBeforeSeconds?: () => number;
+  /**
+   * Live-read pit-exit window (seconds) after the player's own arrival at the
+   * end of the exit blend (issue #1113). Plugins compose it from the
+   * `trafficPitExitAfterSeconds` global setting via
+   * `sanitizeTrafficPitExitAfterSeconds`. Default: a constant
+   * {@link TRAFFIC_DEFAULT_PIT_EXIT_AFTER_SECONDS}.
+   */
+  getTrafficPitExitAfterSeconds?: () => number;
+  /**
+   * Live-read pit-exit merge warning threshold (seconds, issue #1113, amended
+   * 2026-11-20): a timed car reaching the end of the exit blend within this
+   * long of the player, either side, while the player is in the exit lane.
+   * Plugins compose it from the `trafficPitExitMergeWarnSeconds` global
+   * setting via `sanitizeTrafficPitExitMergeWarnSeconds`. Default: a constant
+   * {@link TRAFFIC_DEFAULT_PIT_EXIT_MERGE_WARN_SECONDS}.
+   */
+  getTrafficPitExitMergeWarnSeconds?: () => number;
 };
 
 /**
@@ -493,6 +574,17 @@ export type SimEventsIracingOptions = SimEventsIracingSettingsOptions & {
    * loader, so every session learns from nothing.
    */
   loadPitLaneLandmarks?: PitLaneLandmarksLoader;
+  /**
+   * Run the rejoin detector (issue #1113): the `trafficRejoin` platform flag,
+   * which no setting backs. The rejoin warnings do not ship (the spec's fourth
+   * amendment, 2026-11-21): every plugin's committed `platform-features.json`
+   * has the flag off, a developer turns it on through
+   * `feature-flags.local.json`, and the scenario harness always runs with it.
+   * Off, the detector never runs, so no `traffic.rejoin` or
+   * `traffic.rejoinTowed` is ever published and no tick spends time on it.
+   * Default: `false` — a caller that does not opt in gets no rejoin traffic.
+   */
+  trafficRejoin?: boolean;
 };
 
 let instance: TranslatorInstance | null = null;
@@ -592,12 +684,22 @@ export function initializeSimEventsIracing(
     fuelLaps: createFuelLapTracker(),
     pitLaneLearner: createPitLaneLandmarkLearner(),
     pitLaneTrackMemo: null,
+    trafficClassMemo: null,
     loadPitLaneLandmarks: options.loadPitLaneLandmarks ?? null,
     pitLaneLandmarkLogger: logger.createScope("PitLaneLandmarks"),
+    trafficRejoin: options.trafficRejoin === true,
+    trafficRejoinLogger: logger.createScope("Rejoin"),
+    trafficPitExitLogger: logger.createScope("PitExit"),
     getFuelLapsLeftMarginLaps: options.getFuelLapsLeftMarginLaps ?? (() => FUEL_CALLOUT_DEFAULT_MARGIN_LAPS),
     getCornerCalloutLeadSeconds: options.getCornerCalloutLeadSeconds ?? (() => CORNER_CALLOUT_DEFAULT_LEAD_SECONDS),
     getGapAlertThresholdSeconds: options.getGapAlertThresholdSeconds ?? (() => GAP_DEFAULT_ALERT_THRESHOLD_S),
     getGapMinChangeSeconds: options.getGapMinChangeSeconds ?? (() => GAP_DEFAULT_MIN_CHANGE_S),
+    getTrafficPitExitBeforeSeconds:
+      options.getTrafficPitExitBeforeSeconds ?? (() => TRAFFIC_DEFAULT_PIT_EXIT_BEFORE_SECONDS),
+    getTrafficPitExitAfterSeconds:
+      options.getTrafficPitExitAfterSeconds ?? (() => TRAFFIC_DEFAULT_PIT_EXIT_AFTER_SECONDS),
+    getTrafficPitExitMergeWarnSeconds:
+      options.getTrafficPitExitMergeWarnSeconds ?? (() => TRAFFIC_DEFAULT_PIT_EXIT_MERGE_WARN_SECONDS),
     opponentFlagResolvers: {
       getCalloutEnabled: options.getOpponentFlagCalloutEnabled ?? (() => true),
       getRaceGap: (aheadCarIdx, behindCarIdx) => liveGapBetween(self, aheadCarIdx, behindCarIdx),
@@ -784,6 +886,25 @@ export function getLastStopTireTemps(): LastStopTireTemps | null {
  */
 export function getPitLaneLandmarks(): Record<PitLaneLandmarkName, PitLaneResolvedLandmark | null> | null {
   return instance ? resolvePitLaneLandmarks(instance.pitLaneLearner) : null;
+}
+
+/**
+ * `resolveTrafficClassInfo` once per session-info object (issue #1113). See
+ * `trafficClassMemo`.
+ */
+function resolveTrafficClassInfoMemoised(
+  self: TranslatorInstance,
+  sessionInfo: Record<string, unknown> | null,
+): TrafficClassInfo | null {
+  const memo = self.trafficClassMemo;
+
+  if (memo !== null && memo.sessionInfo === sessionInfo) return memo.classes;
+
+  const classes = resolveTrafficClassInfo(sessionInfo);
+
+  self.trafficClassMemo = { sessionInfo, classes };
+
+  return classes;
 }
 
 /**
@@ -2701,6 +2822,17 @@ function publishActiveStateTeardown(self: TranslatorInstance, telemetry: Telemet
     self.state.pitSpeedingUnderLimitSince = 0;
     publish(self, { event: "pitSpeeding.ended", data: {} }, telemetry, now);
   }
+
+  // The rejoin lines end on `traffic.rejoinTowed` (issue #1113): a stop wiped
+  // here — the driver leaving the car for the garage, which the replay guard
+  // swallows before the rejoin detector could see it, a session change, the
+  // sim going away — is a stop taken off the track, and a line in flight about
+  // it would otherwise play on. The episode is reset first, as the speeding
+  // cue's flag is, so nothing after this on the tick can publish about it.
+  if (self.state.trafficRejoin.active) {
+    Object.assign(self.state.trafficRejoin, createTrafficRejoinState());
+    publish(self, { event: "traffic.rejoinTowed", data: {} }, telemetry, now);
+  }
 }
 
 function handleDisconnect(self: TranslatorInstance): void {
@@ -2946,6 +3078,15 @@ function wipeStateForReplay(self: TranslatorInstance): void {
     // the one replay that must not keep it; the guard in `handleTick` clears
     // it there.
     lastStopTireTemps: self.state.lastStopTireTemps,
+    // The approaching-traffic arrival model (issue #1113): its reference
+    // curves are kept, each car's measured progress is not. Which part, and
+    // why, is `resetTrafficArrivalMotion`'s. A session change and a disconnect
+    // still recreate it whole.
+    trafficArrival: resetTrafficArrivalMotion(self.state.trafficArrival),
+    // The detectors' slices (`trafficRejoin`, `trafficPitExit`) are
+    // deliberately not here: each episode is wiped whole and re-seeds from the
+    // first tick back, for the reasons on `TrafficRejoinState` and
+    // `TrafficPitExitState` in `state.ts`.
   };
 
   self.state = createInitialState();
@@ -3747,6 +3888,81 @@ function handleLiveSteps(
       emit,
       steps.runUnit,
       self.pitLaneLandmarkLogger,
+    ),
+  );
+  // Approaching-traffic reference curves (issue #1113): every car on the
+  // racing surface is a sample of its class's reference time at its lap
+  // position, in every session type, so a class's curve is learned by the time
+  // a rejoin or a pit exit asks for it. Each car's progress is measured on the
+  // same walk, over the track length, so a car standing still is left out of
+  // the arrivals. The class info (lap times, the pace
+  // car's class) is read once per session-info object and falls back to its
+  // last good answer this session, else to `null`, the answer for absent
+  // session info, which still learns every car the telemetry gives a class.
+  // Each car is a unit of the step (#1559), so one car's throw drops that
+  // car's sample only. Publishes no event.
+  const trafficClasses = steps.value("resolveTrafficClassInfo", values, null, () =>
+    resolveTrafficClassInfoMemoised(self, sessionInfo),
+  );
+  steps.run("updateTrafficReferenceCurves", () =>
+    updateTrafficReferenceCurves(
+      self.state.trafficArrival,
+      telemetry,
+      trafficClasses,
+      trackLengthMeters,
+      steps.runUnit,
+    ),
+  );
+
+  // The approaching-traffic detectors (issue #1113): stopped on the circuit,
+  // and driving out of the pits. Both after the curve update, so they time
+  // the cars against curves that include this tick's samples, and both read
+  // the curves as a value; each owns its own slice (`trafficRejoin`, `trafficPitExit`).
+  // The pit exit reads #1112's learner through a closure, so the landmark
+  // view is built only when it reads it (at an evaluation, and between two
+  // only until its call is made and the player is past pit road's end), and the track length
+  // and pit speed limit this tick already resolved. Each logs at debug
+  // through its own scope of the translator's logger, `Rejoin` / `PitExit`.
+  // The rejoin detector runs only behind the `trafficRejoin` development flag
+  // (the spec's fourth amendment): off, its step is skipped whole, so its
+  // episode never opens and nothing it would publish, the tow's end included,
+  // can reach the bus.
+  if (self.trafficRejoin) {
+    steps.live("diffTrafficRejoin", pending, () =>
+      diffTrafficRejoin(
+        self.state.trafficRejoin,
+        self.state.trafficArrival,
+        telemetry,
+        playerCarIdx,
+        trafficClasses,
+        trackLengthMeters,
+        now,
+        emit,
+        self.trafficRejoinLogger,
+      ),
+    );
+  }
+
+  steps.live("diffTrafficPitExit", pending, () =>
+    diffTrafficPitExit(
+      self.state.trafficPitExit,
+      self.state.trafficArrival,
+      telemetry,
+      {
+        playerCarIdx,
+        classes: trafficClasses,
+        trackLengthMeters,
+        pitSpeedLimitMps,
+        readLandmarks: () => resolvePitLaneLandmarks(self.pitLaneLearner),
+      },
+      {
+        getBeforeSeconds: self.getTrafficPitExitBeforeSeconds,
+        getAfterSeconds: self.getTrafficPitExitAfterSeconds,
+        getMergeWarnSeconds: self.getTrafficPitExitMergeWarnSeconds,
+      },
+      now,
+      emit,
+      self.trafficPitExitLogger,
     ),
   );
   // The corner-name markers (issue #888), resolved from the bundled

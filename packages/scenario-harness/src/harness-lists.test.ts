@@ -300,8 +300,11 @@ describe("every callout can be auditioned from the harness (#1376)", () => {
   });
 
   it("gives every bus-event shortcut an event something in the Race Engineer fires on", () => {
+    // A contract's `endsOn` event is read too: it stops the contract's line
+    // (`traffic.rejoinTowed`, the rejoin lines' tow cut, #1113).
     const heard = new Set<SimEventName>([
       ...contracts.flatMap((c) => (c.event === null ? [] : [c.event])),
+      ...contracts.flatMap((c) => (c.endsOnEvent === null ? [] : [c.endsOnEvent])),
       ...ENGINE_EVENTS,
     ]);
     const unheard = SCENARIO_SHORTCUTS.filter((s) => s.event !== undefined)

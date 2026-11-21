@@ -14,6 +14,7 @@ import {
   BUNDLED_SCRIPT_PATH,
   PACK_REFERENCE_GENERATE_COMMAND,
   PACK_REFERENCE_PATH,
+  packReferenceWithheld,
   serializePackReferenceData,
 } from "./lib/pack-reference-data.mjs";
 
@@ -55,15 +56,40 @@ describe("pack-reference.json", () => {
     // this one test name, and the timeout nearly bought the stale one a pass.
   }, 60_000);
 
-  it("publishes exactly the callouts the bundled script scripts", () => {
+  it("publishes exactly the callouts the bundled script scripts, but those a release build does not carry (#1113)", async () => {
     const committed = JSON.parse(readFileSync(path.join(repoRoot, PACK_REFERENCE_PATH), "utf-8"));
     const script = JSON.parse(readFileSync(path.join(repoRoot, BUNDLED_SCRIPT_PATH), "utf-8"));
+    const withheld = new Set((await packReferenceWithheld()).contracts);
     const scripted = Object.keys(script.scenarios).filter((id) => id.startsWith(CALLOUT_ID_PREFIX));
+    const published = scripted.filter((id) => !withheld.has(id));
 
-    expect(scripted.length).toBeGreaterThan(0);
-    expect(committed.callouts).toHaveLength(scripted.length);
-    expect(committed.callouts.map((c) => c.id).sort()).toEqual(scripted.sort());
-  });
+    // The withheld callouts keep their script entries (the spec keeps them): every one is scripted.
+    expect(scripted).toEqual(expect.arrayContaining([...withheld]));
+    expect(published.length).toBeGreaterThan(0);
+    expect(committed.callouts).toHaveLength(published.length);
+    expect(committed.callouts.map((c) => c.id).sort()).toEqual(published.sort());
+  }, 60_000);
+
+  // The rejoin traffic warnings do not ship (#1113, the spec's fourth
+  // amendment): every plugin has `trafficRejoin` off, so a pack author sees the
+  // pit-exit calls only — no rejoin callout, var, condition, case or line.
+  it("describes no rejoin traffic warning while every plugin ships trafficRejoin off", async () => {
+    const withheld = await packReferenceWithheld();
+    const committed = JSON.parse(readFileSync(path.join(repoRoot, PACK_REFERENCE_PATH), "utf-8"));
+    const vocabulary = [...committed.vocabulary.vars, ...committed.vocabulary.conds, ...committed.vocabulary.cases];
+    const traffic = committed.recordingScript.find((g) => g.group === "traffic");
+
+    expect(withheld.contracts).toEqual(expect.arrayContaining(["pit-crew.traffic-rejoin-near-first"]));
+    expect(committed.callouts.filter((c) => c.id.startsWith("pit-crew.traffic-")).map((c) => c.id)).toEqual([
+      "pit-crew.traffic-pit-exit-clear",
+      "pit-crew.traffic-pit-exit-merge",
+      "pit-crew.traffic-pit-exit-traffic",
+    ]);
+    expect(vocabulary.filter((v) => /rejoin/i.test(v.name)).map((v) => v.name)).toEqual([]);
+    expect(traffic.lines.map((l) => l.base)).toEqual(["pit-exit-clear", "pit-exit-merge", "pit-exit-traffic"]);
+    expect(traffic.lines.flatMap((l) => [...l.usedBy, ...l.viaVar]).filter((name) => /rejoin/i.test(name))).toEqual([]);
+    expect(JSON.stringify(committed.callouts)).not.toMatch(/rejoin/i);
+  }, 60_000);
 
   it("gives every callout the one sentence on when it fires", () => {
     const committed = JSON.parse(readFileSync(path.join(repoRoot, PACK_REFERENCE_PATH), "utf-8"));

@@ -39,6 +39,7 @@ import { START_LIGHT_CALLOUTS } from "./families/start-light.js";
 import { TELEMETRY_CONNECT_CALLOUTS } from "./families/telemetry-connect.js";
 import { TIRE_WEAR_CALLOUTS } from "./families/tire-wear.js";
 import { TRACK_CONDITIONS_CALLOUTS } from "./families/track-conditions.js";
+import { TRAFFIC_CALLOUTS } from "./families/traffic.js";
 
 export interface CalloutPiGroup {
   readonly id: string;
@@ -77,6 +78,7 @@ export const CALLOUT_PI_GROUPS = [
   { id: "overtakes", title: "Overtakes", families: [OVERTAKE_CALLOUTS] },
   { id: "gaps", title: "Gaps", families: [GAP_CALLOUTS, SECTOR_COMPARISON_CALLOUTS] },
   { id: "spotter", title: "Spotter", families: [SPOTTER_CALLOUTS] },
+  { id: "traffic", title: "Traffic", families: [TRAFFIC_CALLOUTS] },
   { id: "pit-box", title: "Pit Box", families: [PIT_BOX_CALLOUTS] },
   { id: "pit-speeding", title: "Pit Speeding", families: [PIT_SPEEDING_CALLOUTS, PIT_EXIT_CALLOUTS] },
   { id: "fuel", title: "Fuel", families: [FUEL_CALLOUTS] },

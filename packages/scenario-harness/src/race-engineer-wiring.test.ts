@@ -75,6 +75,10 @@ describe("the harness's Race Engineer wiring", () => {
     _resetEventBus();
   });
 
+  it("carries the rejoin warnings, which a release build keeps behind the trafficRejoin flag (#1113)", () => {
+    expect(passed.getTrafficRejoinAvailable?.()).toBe(true);
+  });
+
   it("opens both master gates from the seeded settings", () => {
     expect(passed.getRaceEngineerMasterEnabled?.()).toBe(true);
     expect(passed.getRadarMasterEnabled?.()).toBe(true);

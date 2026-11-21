@@ -18,14 +18,16 @@ import url from "node:url";
 const THIS_FILE = url.fileURLToPath(import.meta.url);
 
 /**
- * @typedef {{ setting: string, label: string, on: boolean }} CalloutPiRow
+ * @typedef {{ setting: string, label: string, on: boolean, feature: string | null }} CalloutPiRow
  * @typedef {{ id: string, title: string, rows: CalloutPiRow[] }} CalloutPiGroupData
  */
 
 /**
  * Flatten a registry module into the partial's render data: one entry per PI
  * heading, its rows its families' entries in registry order, `on` the
- * schema default.
+ * schema default, `feature` the platform flag the row needs (the entry's
+ * `requiresFeature`, #1113) or `null`. The partial drops a row whose flag is
+ * not on in the build's `platform`.
  *
  * @param {Pick<typeof import("@iracedeck/callout-settings"), "CALLOUT_PI_GROUPS" | "calloutDefault">} registry
  * @returns {CalloutPiGroupData[]}
@@ -39,6 +41,7 @@ export function buildCalloutPiGroups({ CALLOUT_PI_GROUPS, calloutDefault }) {
         setting: entry.key,
         label: entry.label,
         on: calloutDefault(entry.key),
+        feature: entry.requiresFeature ?? null,
       })),
     ),
   }));

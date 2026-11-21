@@ -127,6 +127,22 @@ describe("initSim", () => {
     });
   });
 
+  it.each([
+    [{ trafficRejoin: true }, true],
+    [{ trafficRejoin: false }, false],
+    [{}, false],
+  ])(
+    "hands the translator the build's trafficRejoin flag: %o runs the rejoin detector = %s (#1113)",
+    (features, on) => {
+      const seen: unknown[][] = [];
+      implement("initializeSimEventsIracing", (...args) => seen.push(args));
+
+      initSim({ ...initCore(createHost()), features }, trackData());
+
+      expect((seen[0][3] as Record<string, unknown>).trafficRejoin).toBe(on);
+    },
+  );
+
   it("hands the translator the options the Race Engineer's wiring built, untouched (#1378), beside the track store's reader (#1112)", () => {
     const fuelMargin = (): number => 0.5;
     const options = { getFuelLapsLeftMarginLaps: fuelMargin };
@@ -143,9 +159,11 @@ describe("initSim", () => {
     expect(seen[0][0]).toBe(core.bus);
     expect(seen[0][1]).toBe(core.controller);
     const passed = seen[0][3] as Record<string, unknown>;
-    // Every option the wiring built, the same function, and only the loader added.
-    expect(Object.keys(passed).sort()).toEqual(["getFuelLapsLeftMarginLaps", "loadPitLaneLandmarks"]);
+    // Every option the wiring built, the same function, and only the loader and the rejoin flag added.
+    expect(Object.keys(passed).sort()).toEqual(["getFuelLapsLeftMarginLaps", "loadPitLaneLandmarks", "trafficRejoin"]);
     expect(passed.getFuelLapsLeftMarginLaps).toBe(fuelMargin);
+    // A config.json carrying no flags runs no rejoin detector (#1113).
+    expect(passed.trafficRejoin).toBe(false);
     // The wiring's own object is not written to: the scenario harness builds the same options.
     expect(Object.keys(options)).toEqual(["getFuelLapsLeftMarginLaps"]);
 

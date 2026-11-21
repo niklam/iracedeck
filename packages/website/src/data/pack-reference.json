@@ -5,7 +5,10 @@
       "packages/audio-assets/voice/default/callouts.json",
       "packages/audio-assets/configs/default.voice.json",
       "packages/audio-assets/manifest.json",
-      "packages/callout-script/src/driver-name-aliases.ts"
+      "packages/callout-script/src/driver-name-aliases.ts",
+      "packages/iracing-plugin-stream-deck/platform-features.json",
+      "packages/iracing-plugin-mirabox/platform-features.json",
+      "packages/iracing-plugin-ulanzi/platform-features.json"
     ]
   },
   "callouts": [
@@ -5270,6 +5273,87 @@
         "includes": [],
         "frames": []
       }
+    },
+    {
+      "id": "pit-crew.traffic-pit-exit-clear",
+      "family": "traffic",
+      "event": "traffic.pitExit",
+      "description": "About 3 s before pit road ends (on leaving a nearer stall, past it if landmarks or pit limit come late), again on a held flip before the merge: no car on track meets you at the blend end.",
+      "frame": "radio",
+      "weight": 70,
+      "weightBand": "SAFETY",
+      "queueable": true,
+      "interrupt": true,
+      "speakGate": "Refused before it starts if, when it comes to speak, you have already merged onto the racing surface or been reset to the garage: the merge it is about is over.",
+      "endsOn": null,
+      "base": "voice/{voice}",
+      "comment": "About three seconds before the end of pit road, with no car predicted at the end of the exit blend line around the same time as you: a line from a pool of four, such as \"Looks like the pit exit will be clear.\" or \"Pit exit should be clear.\" It cuts a lower-weight line in flight. The exit readback or the tire-wear report it cuts picks up again after it, and one that had already finished is not replayed; both come 4.5 s after you leave pit road, so they normally play after it anyway. A caution or flag call, the meatball, the start lights, a fuel-critical warning and the spotter keep the radio.",
+      "test": "Harness → Traffic → Pit exit clear. In-sim, on a track whose pit lane iRaceDeck has learned (its pitRoadEnd and blendEnd landmarks): leave your pit box and drive down pit road with no car near the pit exit; the call comes about three seconds before the end of pit road.",
+      "skip": false,
+      "references": {
+        "pools": [
+          "traffic/pit-exit-clear"
+        ],
+        "vars": [],
+        "conds": [],
+        "cases": [],
+        "includes": [],
+        "frames": []
+      }
+    },
+    {
+      "id": "pit-crew.traffic-pit-exit-merge",
+      "family": "traffic",
+      "event": "traffic.pitExitMerge",
+      "description": "In the pit exit lane, past the end of pit road, a car on track is predicted to reach the end of the pit exit blend line within the Pit exit merge warning seconds of you: said once per pit exit.",
+      "frame": "radio",
+      "weight": 85,
+      "weightBand": null,
+      "queueable": true,
+      "interrupt": true,
+      "speakGate": "Refused before it starts if, when it comes to speak, you have already merged onto the racing surface or been reset to the garage: the merge it warns about is over.",
+      "endsOn": null,
+      "base": "voice/{voice}",
+      "comment": "In the pit exit lane, past the end of pit road, when a car on track is predicted at the end of the exit blend line within the Pit exit merge warning seconds of you (1.5 s by default), before or after you: one line, \"Watch for cars.\", said at most once per pit exit, whatever the pit-exit call said. It cuts a lower-weight line in flight, a caution or flag call included; the meatball, the start lights, the restart green, a fuel-critical warning and the spotter's car-alongside calls keep the radio. Dropped once you are back on the racing surface.",
+      "test": "Harness → Traffic → Pit exit merge warning. In-sim, on a track whose pit lane iRaceDeck has learned (its pitRoadEnd and blendEnd landmarks): drive out of the pits into the exit lane as a car on track reaches the pit exit at about the same moment as you.",
+      "skip": false,
+      "references": {
+        "pools": [
+          "traffic/pit-exit-merge"
+        ],
+        "vars": [],
+        "conds": [],
+        "cases": [],
+        "includes": [],
+        "frames": []
+      }
+    },
+    {
+      "id": "pit-crew.traffic-pit-exit-traffic",
+      "family": "traffic",
+      "event": "traffic.pitExit",
+      "description": "About 3 s before pit road ends (on leaving a nearer stall, past it if landmarks or pit limit come late), again on a held flip before the merge: a car on track meets you at the blend end or is untimed.",
+      "frame": "radio",
+      "weight": 85,
+      "weightBand": null,
+      "queueable": true,
+      "interrupt": true,
+      "speakGate": "Refused before it starts if, when it comes to speak, you have already merged onto the racing surface or been reset to the garage: the merge it warns about is over.",
+      "endsOn": null,
+      "base": "voice/{voice}",
+      "comment": "About three seconds before the end of pit road, a car on track is predicted at the end of the exit blend line around the same time as you, or a car on track cannot be timed: a line from a pool of four, such as \"We're estimating traffic at the pit exit. Watch out.\" or \"Looks like traffic at the pit exit. Careful.\" It cuts a lower-weight line in flight. A caution or flag call, the exit readback or the tire-wear report it cuts picks up again after it, and one that had already finished is not replayed; the readback and the report come 4.5 s after you leave pit road, so they normally play after it anyway. The meatball, the start lights, the restart green, a fuel-critical warning and the spotter's car-alongside calls keep the radio.",
+      "test": "Harness → Traffic → Pit exit traffic. In-sim, on a track whose pit lane iRaceDeck has learned (its pitRoadEnd and blendEnd landmarks): leave your pit box and drive down pit road with a car on track about to pass the pit exit; the call comes about three seconds before the end of pit road.",
+      "skip": false,
+      "references": {
+        "pools": [
+          "traffic/pit-exit-traffic"
+        ],
+        "vars": [],
+        "conds": [],
+        "cases": [],
+        "includes": [],
+        "frames": []
+      }
     }
   ],
   "vocabulary": {
@@ -6305,6 +6389,24 @@
           "inside": "The inside shoulder — the edge of the tread nearer the car's centerline.",
           "middle": "The middle of the tread.",
           "outside": "The outside shoulder — the edge of the tread farther from the car's centerline."
+        },
+        "usedBy": []
+      },
+      {
+        "name": "traffic.pitExitNearestSide",
+        "description": "Which side of your own arrival at the end of the pit exit blend line the nearest timed car arrives on; nothing when no car on track could be timed.",
+        "keys": {
+          "before": "The nearest car reaches the end of the pit exit blend line before you do: it will be beside or ahead of you.",
+          "after": "The nearest car reaches the end of the pit exit blend line when you do or after you: it will be beside or behind you."
+        },
+        "usedBy": []
+      },
+      {
+        "name": "traffic.pitExitVerdict",
+        "description": "The verdict on leaving the pits, read from the event that fired the line.",
+        "keys": {
+          "traffic": "A car on track will reach the end of the pit exit blend line around the same time as you, or a car on track could not be timed.",
+          "clear": "No car on track will reach the end of the pit exit blend line around the same time as you."
         },
         "usedBy": []
       }
@@ -73291,6 +73393,53 @@
           "takes": 1,
           "usedBy": [
             "pit-crew.track-conditions-worsening-very-wet"
+          ],
+          "viaVar": [],
+          "playedBy": null
+        }
+      ]
+    },
+    {
+      "group": "traffic",
+      "lines": [
+        {
+          "base": "pit-exit-clear",
+          "texts": [
+            "Looks like the pit exit will be clear.",
+            "Pit exit should be clear.",
+            "Nothing expected at the pit exit.",
+            "Pit exit looks clear from here."
+          ],
+          "takes": 4,
+          "usedBy": [
+            "pit-crew.traffic-pit-exit-clear"
+          ],
+          "viaVar": [],
+          "playedBy": null
+        },
+        {
+          "base": "pit-exit-merge",
+          "texts": [
+            "Watch for cars."
+          ],
+          "takes": 1,
+          "usedBy": [
+            "pit-crew.traffic-pit-exit-merge"
+          ],
+          "viaVar": [],
+          "playedBy": null
+        },
+        {
+          "base": "pit-exit-traffic",
+          "texts": [
+            "We're estimating traffic at the pit exit. Watch out.",
+            "Looks like traffic at the pit exit. Careful.",
+            "Expect a car at the pit exit. Watch out.",
+            "Traffic likely as you exit. Keep your eyes open."
+          ],
+          "takes": 4,
+          "usedBy": [
+            "pit-crew.traffic-pit-exit-traffic"
           ],
           "viaVar": [],
           "playedBy": null

@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { MockPlatformAdapter } from "./mock-platform-adapter.js";
 import { MockSDKController } from "./mock-sdk-controller.js";
+import { failedRunTeardown, SCENARIO_SHORTCUTS } from "./scenario-shortcuts.js";
 import {
   composeSectorComparison,
   getHarnessSectorComparison,
@@ -234,5 +235,44 @@ describe("POST /api/sector-comparison/snapshot", () => {
     expect(res.statusCode).toBe(400);
     expect(res.json()).toEqual({ error: "sectorCount must be a non-negative integer" });
     expect(getHarnessSectorComparison()).toBeNull();
+  });
+});
+
+describe("GET /api/state", () => {
+  let app: FastifyInstance;
+
+  beforeEach(async () => {
+    initializeEventBus(silentLogger);
+    app = await createServer({
+      controller: new MockSDKController(),
+      adapter: {} as unknown as MockPlatformAdapter,
+      bus: getEventBus(),
+      audio: createFakeAudio(),
+      packageRoot: PACKAGE_ROOT,
+      logger: silentLogger,
+      refreshAudioAssets: async () => {},
+      wipeAudioCache: async () => {},
+    });
+  });
+
+  afterEach(async () => {
+    await app.close();
+    _resetEventBus();
+  });
+
+  it("serves each shortcut with a teardown with the copy the UI applies after a failed run (#1113)", async () => {
+    const res = await app.inject({ method: "GET", url: "/api/state" });
+    const served = (res.json() as { shortcuts: Array<{ id: string; failedRunTeardownSequence?: unknown }> }).shortcuts;
+
+    expect(res.statusCode).toBe(200);
+    expect(served.map((s) => s.id)).toEqual(SCENARIO_SHORTCUTS.map((s) => s.id));
+
+    for (const shortcut of SCENARIO_SHORTCUTS) {
+      const failedRun = served.find((s) => s.id === shortcut.id)?.failedRunTeardownSequence;
+
+      expect(failedRun, shortcut.id).toEqual(
+        shortcut.teardownSequence === undefined ? undefined : failedRunTeardown(shortcut.teardownSequence),
+      );
+    }
   });
 });

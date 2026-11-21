@@ -93,8 +93,9 @@ vi.mock("./diff/race-finish.js", async (importOriginal) => {
   return { ...actual, updatePositionTracking: vi.fn(actual.updatePositionTracking) };
 });
 
+/** A logger whose scopes are itself, so a step writing through a scope (the traffic detectors') has one to write to. */
 function createMockLogger(): ILogger {
-  return {
+  const logger = {
     trace: vi.fn(),
     debug: vi.fn(),
     info: vi.fn(),
@@ -103,6 +104,10 @@ function createMockLogger(): ILogger {
     withLevel: vi.fn(),
     createScope: vi.fn(),
   } as unknown as ILogger;
+
+  vi.mocked(logger.createScope).mockReturnValue(logger);
+
+  return logger;
 }
 
 type MockController = SDKController & {

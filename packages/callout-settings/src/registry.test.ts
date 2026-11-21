@@ -6,12 +6,14 @@ import {
   CALLOUT_PI_GROUPS,
   CALLOUT_SETTING_KEYS,
   calloutDefault,
+  calloutEntry,
   type CalloutFamily,
   type CalloutIdOf,
   calloutKey,
   type CalloutSettingKey,
   FLAG_CALLOUTS,
   type RegisteredCalloutFamily,
+  TRAFFIC_CALLOUTS,
 } from "./index.js";
 
 const entries = CALLOUT_FAMILIES.flatMap((f) => Object.values(f.callouts));
@@ -59,7 +61,7 @@ describe("callout settings registry", () => {
 
   it("gives every entry only the known fields, so a misspelt one fails", () => {
     for (const e of entries) {
-      for (const field of Object.keys(e)) expect(["key", "label", "default"]).toContain(field);
+      for (const field of Object.keys(e)) expect(["key", "label", "default", "requiresFeature"]).toContain(field);
     }
   });
 
@@ -99,5 +101,48 @@ describe("Lap Time group (#1163, #1571)", () => {
   it("ships both new opt-ins on", () => {
     expect(calloutDefault("calloutEnabledLapTimeEveryLap")).toBe(true);
     expect(calloutDefault("calloutEnabledFastestLap")).toBe(true);
+  });
+});
+
+describe("Traffic group (#1113)", () => {
+  it("renders the rejoin and pit-exit opt-ins under its own heading, right after Spotter", () => {
+    const ids = CALLOUT_PI_GROUPS.map((g) => g.id);
+    const group = CALLOUT_PI_GROUPS.find((g) => g.id === "traffic");
+    const rows = group?.families.flatMap((f: CalloutFamily) => Object.values(f.callouts));
+
+    expect(ids.indexOf("traffic")).toBe(ids.indexOf("spotter") + 1);
+    expect(group?.title).toBe("Traffic");
+    expect(rows?.map((e) => [e.key, e.label])).toEqual([
+      ["calloutEnabledTrafficRejoin", "Traffic when rejoining (experimental)"],
+      ["calloutEnabledTrafficPitExit", "Traffic at pit exit"],
+    ]);
+  });
+
+  it("keeps the pit-exit traffic opt-in out of the Pit Speeding group, where the pit exit beep lives", () => {
+    const pitSpeeding = CALLOUT_PI_GROUPS.find((g) => g.id === "pit-speeding");
+    const keys = pitSpeeding?.families.flatMap((f: CalloutFamily) => Object.values(f.callouts).map((e) => e.key));
+
+    expect(keys).not.toContain("calloutEnabledTrafficPitExit");
+  });
+
+  it("ships the rejoin opt-in off, as experimental, and the pit-exit one on (amended 2026-11-20)", () => {
+    expect(calloutDefault("calloutEnabledTrafficRejoin")).toBe(false);
+    expect(calloutDefault("calloutEnabledTrafficPitExit")).toBe(true);
+  });
+
+  it("puts the rejoin checkbox behind the trafficRejoin development flag, and the pit-exit one behind none (fourth amendment)", () => {
+    expect(calloutEntry("calloutEnabledTrafficRejoin").requiresFeature).toBe("trafficRejoin");
+    expect(calloutEntry("calloutEnabledTrafficPitExit").requiresFeature).toBeUndefined();
+  });
+
+  it("names a development flag on no other entry", () => {
+    const flagged = CALLOUT_SETTING_KEYS.filter((key) => calloutEntry(key).requiresFeature !== undefined);
+
+    expect(flagged).toEqual(["calloutEnabledTrafficRejoin"]);
+  });
+
+  it("maps the traffic family's ids to their keys", () => {
+    expect(calloutKey(TRAFFIC_CALLOUTS, "rejoin")).toBe("calloutEnabledTrafficRejoin");
+    expect(calloutKey(TRAFFIC_CALLOUTS, "pit-exit")).toBe("calloutEnabledTrafficPitExit");
   });
 });

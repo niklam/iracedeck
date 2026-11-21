@@ -188,6 +188,12 @@ function renderSettings() {
       label: "Limiter On Beep",
       type: "checkbox",
     },
+    // Experimental and off by default for users (#1113), seeded on by bootstrap-settings.ts.
+    {
+      key: "calloutEnabledTrafficRejoin",
+      label: "Traffic when rejoining (experimental)",
+      type: "checkbox",
+    },
     {
       key: "radarVolume",
       label: "Radar Volume",
@@ -495,18 +501,21 @@ function renderShortcuts() {
             // grid before its green with a formation open, which the next
             // caution button reads as formation lineup changes, or a mock
             // still in replay mode, where the translator publishes nothing
-            // for any button. After a failure it skips its holds: they are
-            // listening time, and nothing is playing.
+            // for any button. After a failure it applies the server's
+            // `failedRunTeardownSequence` (`failedRunTeardown` in
+            // `scenario-shortcuts.ts`): the listening holds dropped, since
+            // nothing is playing, and the replay-exit holds kept, so the next
+            // button is not pressed inside the translator's exit grace.
             let teardownFailure = null;
 
             if (wroteTelemetry && s.teardownSequence) {
               try {
-                for (const step of s.teardownSequence) {
+                const teardown = failure === null ? s.teardownSequence : s.failedRunTeardownSequence;
+
+                for (const step of teardown) {
                   await post("/api/telemetry", step);
 
-                  if (step.holdMs && failure === null) {
-                    await new Promise((resolve) => setTimeout(resolve, step.holdMs));
-                  }
+                  if (step.holdMs) await new Promise((resolve) => setTimeout(resolve, step.holdMs));
                 }
               } catch (e) {
                 teardownFailure = e;

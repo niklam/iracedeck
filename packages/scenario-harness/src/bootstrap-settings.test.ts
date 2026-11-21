@@ -5,6 +5,7 @@ import {
   createMemorySettingsStore,
   DEFAULT_RACE_ENGINEER_VOICE,
   getGlobalSettings,
+  GlobalSettingsSchema,
   initGlobalSettings,
   resolveActiveRaceEngineerVoice,
   updateGlobalSettings,
@@ -43,6 +44,22 @@ describe("seedGlobalSettings", () => {
     expect(settings.audioOutputDevice).toBe("");
     expect(settings.raceEngineerRadioBeeps).toBe(true);
     expect(settings.raceEngineerPitAmbience).toBe(true);
+  });
+
+  it("seeds on the opt-ins users get off, so their buttons are heard on a fresh harness", () => {
+    const adapter = new MockPlatformAdapter(silentLogger);
+    seedGlobalSettings(adapter);
+    const settings = adapter.readSettings();
+    const userDefaults = GlobalSettingsSchema.parse({});
+
+    for (const key of [
+      "calloutEnabledPitExitCue",
+      "calloutEnabledLimiterEngagedCue",
+      "calloutEnabledTrafficRejoin",
+    ] as const) {
+      expect(userDefaults[key], `${key} ships off for users`).toBe(false);
+      expect(settings[key], `${key} is seeded on`).toBe(true);
+    }
   });
 
   it("offers every user-facing key it seeds on the UI's settings grid", () => {

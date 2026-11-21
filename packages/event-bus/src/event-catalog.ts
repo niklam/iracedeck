@@ -652,6 +652,124 @@ export type PitLaneLandmarkLearned = {
 };
 
 /**
+ * The Race Engineer's warning on rejoining the track from a stop (issue
+ * #1113, amended 2026-11-11 and 2026-11-20): the fixed band the nearest
+ * predicted arrival at the player's position falls in, `rightBehind` under
+ * 2 s and `near` from 2 s to under 10 s. The engineer alerts, never
+ * instructs: no verdict tells a stopped driver to hold or go. Nor does any
+ * reassure him: the `overTen` (10 s to under 15 s) and `clear` (15 s or more,
+ * or no car) verdicts were removed on 2026-11-20, so nothing is published
+ * while no car is under 10 s away, and a subscriber reads that silence as
+ * nothing to warn about.
+ *
+ * `pack` (amended 2026-11-18) names no band: it is said once, in place of the
+ * first car's band, when the nearest car is under 10 s and at least one more
+ * arrives close behind it, a group the engineer calls once rather than car by
+ * car.
+ */
+export type TrafficRejoinVerdict = "rightBehind" | "near" | "pack";
+
+/*
+ * The rejoin bands' edges (issue #1113, amended 2026-11-11), in seconds of the
+ * nearest predicted arrival. They are part of the `traffic.rejoin` contract,
+ * not a detail of either side: the translator's detector decides the band by
+ * them, and the Race Engineer's lines name them ("about N seconds", a number
+ * only under ten) and accept only the `near` seconds they allow, so a
+ * publisher and a subscriber that disagreed would leave a `near` call silent.
+ * Both import them from here. Fixed, never settings, because the words name
+ * them.
+ */
+
+/** Under this arrival (s) the nearest car is `rightBehind`, and from it `near`: no number below 2, when a count is no use. */
+export const TRAFFIC_REJOIN_RIGHT_BEHIND_S = 2;
+
+/**
+ * Under this arrival (s) the nearest car is `near`, and from it nothing is
+ * published (amended 2026-11-20): a warning, and a number, only for a car
+ * under ten seconds away.
+ */
+export const TRAFFIC_REJOIN_OVER_TEN_S = 10;
+
+/** The smallest `seconds` a `near` verdict carries: the band's lower edge, {@link TRAFFIC_REJOIN_RIGHT_BEHIND_S}. */
+export const TRAFFIC_REJOIN_NEAR_MIN_SECONDS = TRAFFIC_REJOIN_RIGHT_BEHIND_S;
+
+/**
+ * The largest `seconds` a `near` verdict carries: the whole second below
+ * {@link TRAFFIC_REJOIN_OVER_TEN_S}, since the arrival is rounded down.
+ */
+export const TRAFFIC_REJOIN_NEAR_MAX_SECONDS = TRAFFIC_REJOIN_OVER_TEN_S - 1;
+
+/** `traffic.rejoin` with the nearest car under 2 s away (issue #1113). Carries no number. */
+export type TrafficRejoinRightBehind = { verdict: "rightBehind" };
+
+/** `traffic.rejoin` with the nearest car from 2 s to under 10 s away (issue #1113). */
+export type TrafficRejoinNear = {
+  verdict: "near";
+  /**
+   * The nearest timed car's arrival at the player's position, in whole
+   * seconds rounded down (the cautious direction):
+   * {@link TRAFFIC_REJOIN_NEAR_MIN_SECONDS} to
+   * {@link TRAFFIC_REJOIN_NEAR_MAX_SECONDS}, 2 to 9.
+   */
+  seconds: number;
+  /**
+   * `true` on the call that brings a car into the band ("Car coming, about N
+   * seconds"), `false` on a later count of the same approach ("Now N
+   * seconds").
+   */
+  first: boolean;
+};
+
+/**
+ * `traffic.rejoin` with a group of cars coming (issue #1113, amended
+ * 2026-11-18): the nearest car under 10 s away and at least one more close
+ * behind it. Said once for the whole group, which then goes by without another
+ * line. Carries no number.
+ */
+export type TrafficRejoinPack = { verdict: "pack" };
+
+/** Payload of `traffic.rejoin` (issue #1113): one member per verdict; only `near` carries a number. */
+export type TrafficRejoin = TrafficRejoinRightBehind | TrafficRejoinNear | TrafficRejoinPack;
+
+/**
+ * The Race Engineer's verdict on the pit exit (issue #1113): `traffic` when a
+ * car reaches the end of the exit blend close to the player's own arrival
+ * there (or a car's arrival cannot be timed), `clear` otherwise.
+ */
+export type TrafficPitExitVerdict = "clear" | "traffic";
+
+/** Payload of `traffic.pitExit` (issue #1113). */
+export type TrafficPitExit = {
+  verdict: TrafficPitExitVerdict;
+  /**
+   * The nearest timed car's arrival at the end of the exit blend relative to
+   * the player's own, in seconds (negative: before the player). For logs and
+   * the scenario harness; the lines speak no number. Absent when no car on
+   * track could be timed.
+   */
+  seconds?: number;
+};
+
+/**
+ * Payload of `traffic.pitExitMerge` (issue #1113, amended 2026-11-20): the
+ * merge warning in the pit exit lane.
+ */
+export type TrafficPitExitMerge = {
+  /**
+   * The nearest timed car's arrival at the end of the exit blend relative to
+   * the player's own, in seconds to a tenth (negative: before the player). The
+   * warning is decided on the unrounded arrival, which is within the
+   * `trafficPitExitMergeWarnSeconds` threshold read at the evaluation that
+   * published it, so this magnitude is at most that threshold rounded to a
+   * tenth: the threshold itself at a whole tenth (the slider's step), and up
+   * to 0.05 s past one that is not (−1.56 s under 1.57 s publishes −1.6). For
+   * logs and the scenario harness; the line speaks no number. Always present:
+   * the warning is only ever for a car that could be timed.
+   */
+  seconds: number;
+};
+
+/**
  * Discriminated union of every event the bus knows about, keyed by event
  * name. Each entry binds an event name to its payload type — adding an
  * event means adding an entry here.
@@ -677,6 +795,53 @@ export type SimEventMap = {
   "pitLane.landmarkLearned": SimEvent<"pitLane.landmarkLearned", PitLaneLandmarkLearned>;
   "pitStall.entered": SimEvent<"pitStall.entered", EmptySimEventPayload>;
   "pitStall.departed": SimEvent<"pitStall.departed", EmptySimEventPayload>;
+  /**
+   * The player is stopped or crawling on the racing surface (or beside it),
+   * out of the pits, past the green (issue #1113): which band the nearest
+   * coming car is in, published only while a car is under 10 s away (amended
+   * 2026-11-20: never a reassuring verdict). Published on the stop's first
+   * band, whenever the nearest car moves into a closer band, and on a `near`
+   * count each time its whole seconds have dropped by 3 or more; once a close
+   * car or a group has gone by, the next car under 10 s gets a new first
+   * call. Never on every evaluation. From live, in-car telemetry only.
+   */
+  "traffic.rejoin": SimEvent<"traffic.rejoin", TrafficRejoin>;
+  /**
+   * The player's car was taken off the track during a stop that
+   * `traffic.rejoin` speaks about (issue #1113, amended 2026-11-20): a tow or
+   * a reset to the pits, or the player leaving the car or going to the garage,
+   * rather than driving off. The stop ends here, and the Race Engineer's
+   * rejoin lines end on it (`endsOn`): one playing stops at once and one
+   * waiting is dropped. Published once, on the tick the stop ends, and only
+   * for a stop that was running; a stop that ends by driving off publishes
+   * nothing. The rejoin detector publishes it from live, in-car telemetry
+   * only. The translator's teardown also publishes it, for a running stop
+   * that one of three things ends before its state is wiped: the entry into a
+   * replay view (the garage, where the driver goes on leaving the car,
+   * included), a session change or a disconnect. Never on the same tick as a
+   * `traffic.rejoin`.
+   */
+  "traffic.rejoinTowed": SimEvent<"traffic.rejoinTowed", EmptySimEventPayload>;
+  /**
+   * The player is driving out of the pits (issue #1113): whether a car on
+   * track will reach the end of the exit blend about when they do. Published
+   * once when the player is 3 s, at the pit speed limit, short of the end of
+   * pit road (at once on leaving a stall closer than that), with the verdict
+   * settled since the stall, and again only if the verdict flips before they
+   * reach the end of the blend. Nothing when the track's pit-lane landmarks
+   * are not learned. From live, in-car telemetry only.
+   */
+  "traffic.pitExit": SimEvent<"traffic.pitExit", TrafficPitExit>;
+  /**
+   * The merge warning (issue #1113, amended 2026-11-20): the player is past
+   * the end of pit road, in the exit lane short of the end of the blend, and a
+   * timed car on track is predicted to reach the end of the blend within the
+   * `trafficPitExitMergeWarnSeconds` threshold of the player, either side.
+   * Published at most once per pit exit, whatever `traffic.pitExit` said.
+   * Never for a car whose arrival cannot be timed, and never on a track
+   * without learned pit-lane landmarks. From live, in-car telemetry only.
+   */
+  "traffic.pitExitMerge": SimEvent<"traffic.pitExitMerge", TrafficPitExitMerge>;
   /**
    * Pit-box count-in (issue #600). Fired once per distance mark as the player
    * drives down pit road toward their own pit box: "five" (120 m remaining),

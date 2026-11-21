@@ -18,6 +18,7 @@ import { type GapTrendDirection, type ProgressTrace, TrkLoc } from "@iracedeck/i
 import type { CornerMarker } from "@iracedeck/track-data";
 
 import { createPitLapLatch, type PitLapFacts, type PitLapLatch } from "./diff/pit-lap.js";
+import type { TrafficReferenceSourceName } from "./diff/traffic-arrival.js";
 
 /**
  * How far the current full-course caution has got (issue #1127): thrown and
@@ -543,6 +544,350 @@ export type PitLaneLandmarksState = {
 /** No car seeded (issue #1112): the initial state. */
 export function createPitLaneLandmarksState(): PitLaneLandmarksState {
   return { cars: [] };
+}
+
+/**
+ * One bin of a class's reference curve (issue #1113, `diff/traffic-arrival.ts`):
+ * the running mean of the `(CarIdxLapDistPct, CarIdxEstTime)` samples that
+ * fell into the bin. The mean of points on the curve is a point on it (to
+ * within the curve's bend across one bin), so the pair is used as one sample.
+ */
+export type TrafficCurveBin = {
+  /** Mean `CarIdxLapDistPct` of the samples folded in, in the bin's range. */
+  pct: number;
+  /** Mean `CarIdxEstTime` of the same samples, seconds. */
+  estTime: number;
+  /**
+   * The running mean's weight: samples folded in, capped at
+   * `TRAFFIC_CURVE_SAMPLE_CAP`, so a later sample still counts for at least
+   * `1 / cap` and one car's offset fades as other cars pass.
+   */
+  samples: number;
+};
+
+/** One car class's reference curve (issue #1113): fixed bins over [0, 1), `null` while a bin has no sample. */
+export type TrafficReferenceCurve = {
+  /** `TRAFFIC_CURVE_BINS` entries; bin `i` holds the samples with `pct` in `[i / bins, (i + 1) / bins)`. */
+  bins: (TrafficCurveBin | null)[];
+};
+
+/**
+ * One car's progress along the lap (issue #1113, `diff/traffic-arrival.ts`):
+ * where the window its rate is measured over began, and what the last
+ * completed window measured. A car standing still behind the player is timed
+ * at reference pace as arriving now, so the arrival model leaves out a car
+ * whose measured progress is under the crawl speed; this is that measurement.
+ */
+export type TrafficCarMotion = {
+  /** `CarIdxLapDistPct` where the current window began. */
+  fromPct: number;
+  /** `SessionTime` (s) where the current window began. */
+  fromTime: number;
+  /**
+   * Laps per second over the last completed window, negative for a car going
+   * backwards; `null` until a window completes after the car was first seen,
+   * after a gap in its readings, after a jump no car could drive, or after a
+   * car whose rate read standing has gone forward faster than the crawl speed
+   * inside the window (it pulled away).
+   */
+  rate: number | null;
+  /** `SessionTime` (s) the rate was measured at, the end of its window; `null` with no rate. */
+  rateAt: number | null;
+};
+
+/**
+ * The approaching-traffic arrival model's learned state (issue #1113, spec
+ * decision 5, "Settled (amended 2026-11-10)"): per car class, the class's
+ * reference-lap time (`CarIdxEstTime`) by lap position, and per car, its
+ * measured progress. Fed every live tick by `updateTrafficReferenceCurves`
+ * from every car on the racing surface, and read by the arrival primitive
+ * (`diff/traffic-arrival.ts`). Plain records and arrays, so the Telemetry
+ * Snapshot's `raw.state` dump carries it.
+ *
+ * Recreated with the state at a session change and a disconnect: a new
+ * session can be another track, and one lap of any car of a class re-learns
+ * its curve. Kept in part at the replay wipe, by
+ * {@link resetTrafficArrivalMotion}.
+ */
+export type TrafficArrivalState = {
+  /** By `CarClassID` as a string (the key `estTimeByClass` uses); a class appears with its first sample. */
+  curves: Record<string, TrafficReferenceCurve>;
+  /**
+   * Per car, by `CarIdx`: its progress; absent until the car is first read on
+   * the racing surface. A record rather than an array, so a car index with no
+   * reading leaves no hole the Telemetry Snapshot's JSON would turn into `null`.
+   */
+  motion: Partial<Record<number, TrafficCarMotion>>;
+};
+
+/** No class learned and no car measured yet (issue #1113): the initial state. */
+export function createTrafficArrivalState(): TrafficArrivalState {
+  return { curves: {}, motion: {} };
+}
+
+/**
+ * The part of the arrival model's state a replay glance or a garage visit
+ * keeps (issue #1113): the curves, by reference, and none of the cars'
+ * progress. A curve is a function of the track and the class, which a glance
+ * does not change, and only live ticks feed it, so no replay reading can have
+ * reached it; wiping it would only cost the arrivals their exact tier until
+ * every class had driven another lap. A car's progress is a run of live
+ * readings that the glance broke, so every car is measured afresh on the first
+ * ticks back, counting as moving until it has a rate again — the cautious
+ * direction.
+ */
+export function resetTrafficArrivalMotion(slice: TrafficArrivalState): TrafficArrivalState {
+  return { curves: slice.curves, motion: {} };
+}
+
+/**
+ * The rejoin detector's state (issue #1113, spec decisions 2 and 3,
+ * `diff/traffic-rejoin.ts`): one episode — the player stopped or crawling on
+ * the circuit, from the end of the entry dwell to the car moving again (or a
+ * gate failing) — and the entry dwell's timer while no episode runs. Written
+ * by `diffTrafficRejoin` alone; the curves it reads are their own slice
+ * ({@link TrafficArrivalState}), handed to it as a value. Times are the
+ * tick's wall clock (`now`, ms).
+ *
+ * Recreated at a session change and a disconnect with the rest of the state,
+ * and **wiped whole at the replay wipe** (not in `preservedAcrossReplay`); an
+ * active episode first gets its end, `traffic.rejoinTowed`, from
+ * `publishActiveStateTeardown`, so a rejoin line in flight stops with it. An
+ * episode is a run of live facts — a dwell timer, what was last said about
+ * the cars around the player — and a garage visit or a replay glance breaks
+ * that run: the car may come back towed, reset or somewhere else, and the
+ * traffic picture has moved on. A car still stopped on the first tick back
+ * starts a fresh episode after the entry dwell and says where the traffic is
+ * now, which is what a driver back from a replay glance needs. Keeping half
+ * of the episode would be worse than re-seeding: a band or a close car carried
+ * into a new picture would speak a count, or keep quiet, about cars the
+ * driver never heard of.
+ */
+export type TrafficRejoinState = {
+  /** Whether an episode is running. */
+  active: boolean;
+  /** Before an episode: when the current run of gated crawl-speed ticks began; `null` outside one. */
+  slowSince: number | null;
+  /** In an episode: when the current run of ticks above the end speed began; `null` outside one. */
+  movingSince: number | null;
+  /**
+   * In an episode: when the current run of ticks failing an entry gate began,
+   * `null` while every gate holds. The episode ends only once the failure has
+   * held for `TRAFFIC_REJOIN_GATE_GRACE_MS`, so a one-tick blip is not a new
+   * stop; leaving the car and the garage end it at once and never set it.
+   */
+  gateFailedSince: number | null;
+  /** When the episode last evaluated the arrivals; `null` before its first evaluation. */
+  lastEvalAt: number | null;
+  /**
+   * The warning last spoken, or `pack` for the group call (amended
+   * 2026-11-18); `null` until one is spoken, and again once the car or the
+   * group it was about has gone by (amended 2026-11-20: the next car under
+   * 10 s is then a new first call, and nothing is said until one comes).
+   */
+  spokenBand: "rightBehind" | "near" | "pack" | null;
+  /** The whole seconds of the last `near` call, the base of the drop-by-3 count; `null` when the last call was another band. */
+  spokenSeconds: number | null;
+  /**
+   * The car the last close call (`near` or `rightBehind`) was about, followed
+   * while it is still coming; `null` with no close call standing, or when the
+   * last call was `pack` (whose cars are {@link packCars}). Once it has gone
+   * by, the call is forgotten.
+   */
+  closeCar: TrafficRejoinFollowedCar | null;
+  /**
+   * The cars of the group the last line, `pack`, was about (amended
+   * 2026-11-18), in arrival order when it was said, and every car that has
+   * joined it since; empty when the last line was anything else. The group
+   * has gone by once every one of them has, and until then nothing is said.
+   */
+  packCars: TrafficRejoinFollowedCar[];
+  /** The once-per-episode debug line for an evaluation without the per-car arrays has been written. */
+  arraysMissingLogged: boolean;
+};
+
+/**
+ * A car the rejoin detector follows until it has gone by (issue #1113): the
+ * close car, or one car of the group a `pack` call was about (amended
+ * 2026-11-18). Its arrival only falls while it is coming, so one that rose
+ * past `TRAFFIC_REJOIN_PASSED_RISE_S`, or reached `TRAFFIC_REJOIN_GONE_S`
+ * once it had been close, has gone by, and stays gone (`passed`) on its way
+ * round again. Arrivals are compared only within one reference tier: a car
+ * re-timed by another tier is a new baseline, and only its position wrapping
+ * past the player says it went by on that evaluation (`diff/traffic-rejoin.ts`).
+ */
+export type TrafficRejoinFollowedCar = {
+  carIdx: number;
+  /** Its arrival (s) at the last evaluation that timed it while it was still coming; not moved once it has gone by. */
+  seconds: number;
+  /** The tier that timed {@link seconds}: an arrival from another tier is a new baseline, never a rise. */
+  source: TrafficReferenceSourceName;
+  /** The forward lap distance from it to the player at that evaluation, in [0, 1); `null` when its lap position was unreadable. */
+  toPlayerPct: number | null;
+  /**
+   * It has read under `TRAFFIC_REJOIN_OVER_TEN_S` since it was first
+   * followed, by any tier: a change of tier is a new baseline for its arrival,
+   * not for this. Only such a car is gone by on reaching `TRAFFIC_REJOIN_GONE_S`, so a car
+   * of a pack that joined at the band's edge is not retired by a hundredth of
+   * noise across it.
+   */
+  beenClose: boolean;
+  /** It has been seen going by. */
+  passed: boolean;
+};
+
+/** No episode, no dwell running (issue #1113): the initial state. */
+export function createTrafficRejoinState(): TrafficRejoinState {
+  return {
+    active: false,
+    slowSince: null,
+    movingSince: null,
+    gateFailedSince: null,
+    lastEvalAt: null,
+    spokenBand: null,
+    spokenSeconds: null,
+    closeCar: null,
+    packCars: [],
+    arraysMissingLogged: false,
+  };
+}
+
+/**
+ * The pit-exit detector's state (issue #1113, spec decision 5,
+ * `diff/traffic-pit-exit.ts`): one episode — from the player driving out of
+ * the stall to passing the end of the exit blend (or back on the racing
+ * surface, or a tow, a reset or leaving the car) — and the stall baseline its
+ * start is read from. Written by `diffTrafficPitExit` alone; the curves it
+ * reads are their own slice ({@link TrafficArrivalState}), handed to it as a
+ * value. Times are the tick's wall clock (`now`, ms).
+ *
+ * Recreated at a session change and a disconnect with the rest of the state,
+ * and **wiped whole at the replay wipe** (not in `preservedAcrossReplay`). The
+ * stall baseline must never be a replay-timeline reading, and a pit exit
+ * glanced away from part-way has lost the run its verdict rests on: with the
+ * baseline gone no departure is seen on the way back, so that exit gets no
+ * call, and silence is better than a verdict made from half an episode. A
+ * spoken verdict carried into a new picture would speak a flip about cars
+ * the driver never heard of.
+ */
+export type TrafficPitExitState = {
+  /**
+   * Whether the player was in the stall on the previous tick:
+   * `PlayerCarInPitStall`, or with the flag unsent, `true` for a
+   * `PlayerTrackSurface` of `InPitStall`; `null` until a tick has seeded it,
+   * and after a tick with neither reading.
+   */
+  lastInPitStall: boolean | null;
+  /** Whether an episode is running. */
+  active: boolean;
+  /**
+   * In an episode: the last `OnPitRoad` a tick sent, which picks the ETA's
+   * phase on a tick that does not send it; `true` from the departure (which
+   * requires it), `null` with no episode.
+   */
+  lastOnPitRoad: boolean | null;
+  /**
+   * In an episode: where the player's forward progress is measured from, so
+   * a player further past `blendEnd` than the landmark slack, still off the
+   * racing surface, is past it rather than a lap short. The departure tick's
+   * lap position; when that tick sent none, the player's position at the
+   * first evaluation that reads the landmarks, taken only in the half lap
+   * before `blendEnd` (`diff/traffic-pit-exit.ts`). `null` until then, and
+   * with no episode.
+   */
+  startPct: number | null;
+  /**
+   * When the episode last made a scheduled evaluation; `null` before its
+   * first. An evaluation off the schedule, between two of them, leaves it
+   * (`diff/traffic-pit-exit.ts`).
+   */
+  lastEvalAt: number | null;
+  /**
+   * In an episode: when the current run of ticks without a readable player
+   * lap position began, `null` while it reads. The episode is held, with no
+   * evaluation, and ends only once the gap has lasted
+   * `TRAFFIC_PIT_EXIT_POSITION_GRACE_MS`; a not-in-world reading ends it at
+   * once and never sets it.
+   */
+  positionUnavailableSince: number | null;
+  /**
+   * In an episode: whether the player has reached the call point, at an
+   * evaluation that read the landmarks: `TRAFFIC_PIT_EXIT_CALL_LEAD_S` short
+   * of `pitRoadEnd` at the pit speed limit, or past `pitRoadEnd` by position
+   * or by `OnPitRoad` turning false. A latch: a car rolled back behind the
+   * point, or a position wobbling across it, keeps it set
+   * (`diff/traffic-pit-exit.ts`).
+   */
+  callPointReached: boolean;
+  /**
+   * The verdict the evaluations have settled on: the first one at once, a
+   * different one once it has held for `TRAFFIC_PIT_EXIT_FLIP_CONFIRM_EVALUATIONS`.
+   * Settled silently from the stall on, spoken once the player has reached
+   * the call point; `null` until the first evaluation with a verdict.
+   */
+  settledVerdict: "clear" | "traffic" | null;
+  /**
+   * The nearest timed car's arrival relative to the player's (s, to a tenth)
+   * at the latest evaluation that reached {@link TrafficPitExitState.settledVerdict};
+   * `null` with no timed car then, or no settled verdict.
+   */
+  settledSeconds: number | null;
+  /** The verdict last spoken this episode; `null` until the first is. */
+  spokenVerdict: "clear" | "traffic" | null;
+  /**
+   * The verdict other than the settled one that the latest evaluations reached,
+   * held back until it has held for `TRAFFIC_PIT_EXIT_FLIP_CONFIRM_EVALUATIONS`;
+   * `null` while they agree with the settled one.
+   */
+  flipVerdict: "clear" | "traffic" | null;
+  /** How many evaluations in a row have reached {@link TrafficPitExitState.flipVerdict}; 0 with none. */
+  flipEvaluations: number;
+  /**
+   * In an episode: whether an evaluation past `pitRoadEnd`, in the exit lane,
+   * has timed every car on track for the merge warning, or found none
+   * (amended 2026-11-20). Until it has, each tick past `pitRoadEnd` between
+   * two scheduled evaluations evaluates at once, so a short exit lane is not
+   * crossed unchecked, nor on a picture with a car its model could not time
+   * (`diff/traffic-pit-exit.ts`).
+   */
+  mergeChecked: boolean;
+  /** In an episode: whether the merge warning (`traffic.pitExitMerge`) has been said; once per episode. */
+  mergeWarned: boolean;
+  /** The once-per-episode debug line for unlearned landmarks has been written. */
+  landmarksMissingLogged: boolean;
+  /** The once-per-episode debug line for landmarks still relearning after a track rebuild (`source: "previous"`) has been written. */
+  landmarksRelearningLogged: boolean;
+  /** The once-per-episode debug line for a `pitRoadEnd` learned past `blendEnd`, beyond the slack that makes them one point, has been written. */
+  landmarksOutOfOrderLogged: boolean;
+  /** The once-per-episode debug line for an ETA that cannot be computed has been written. */
+  noEtaLogged: boolean;
+  /** The once-per-episode debug line for an evaluation without the per-car arrays has been written. */
+  arraysMissingLogged: boolean;
+};
+
+/** No episode, no stall baseline (issue #1113): the initial state. */
+export function createTrafficPitExitState(): TrafficPitExitState {
+  return {
+    lastInPitStall: null,
+    active: false,
+    lastOnPitRoad: null,
+    startPct: null,
+    lastEvalAt: null,
+    positionUnavailableSince: null,
+    callPointReached: false,
+    settledVerdict: null,
+    settledSeconds: null,
+    spokenVerdict: null,
+    flipVerdict: null,
+    flipEvaluations: 0,
+    mergeChecked: false,
+    mergeWarned: false,
+    landmarksMissingLogged: false,
+    landmarksRelearningLogged: false,
+    landmarksOutOfOrderLogged: false,
+    noEtaLogged: false,
+    arraysMissingLogged: false,
+  };
 }
 
 /**
@@ -1920,6 +2265,25 @@ export type TranslatorState = {
   /** See {@link PitLaneLandmarksState}. Wiped with the rest of the state on a replay glance. */
   pitLaneLandmarks: PitLaneLandmarksState;
 
+  // ── Approaching traffic (issue #1113) ──────────────────────────────────
+  /**
+   * The per-class reference curves the arrival model reads, one slice
+   * ({@link TrafficArrivalState}), and each car's measured progress. Reset
+   * per session and at a disconnect; kept in part at a replay glance: the
+   * curves survive and `motion` starts empty ({@link resetTrafficArrivalMotion}).
+   */
+  trafficArrival: TrafficArrivalState;
+  /**
+   * The rejoin detector's episode ({@link TrafficRejoinState}). Reset per
+   * session and at a disconnect; wiped whole at a replay glance.
+   */
+  trafficRejoin: TrafficRejoinState;
+  /**
+   * The pit-exit detector's episode and stall baseline ({@link TrafficPitExitState}).
+   * Reset per session and at a disconnect; wiped whole at a replay glance.
+   */
+  trafficPitExit: TrafficPitExitState;
+
   // ── Self-managed running order (issue #603) ─────────────────────────────
   /**
    * Per-car last-known good score (`CarIdxLapCompleted + CarIdxLapDistPct`) from
@@ -2554,6 +2918,9 @@ export function createInitialState(): TranslatorState {
     trackGaps: createTrackGapsState(),
 
     pitLaneLandmarks: createPitLaneLandmarksState(),
+    trafficArrival: createTrafficArrivalState(),
+    trafficRejoin: createTrafficRejoinState(),
+    trafficPitExit: createTrafficPitExitState(),
 
     positionLastKnownScores: [],
     positionFrozen: new Set(),

@@ -2,6 +2,7 @@
   "features": {
     "dialExtendedGestures": true,
     "profiles": true,
-    "pngRasterization": true
+    "pngRasterization": true,
+    "trafficRejoin": false
   }
 }

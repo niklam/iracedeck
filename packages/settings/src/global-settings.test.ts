@@ -588,6 +588,76 @@ describe("gap callout settings (issue #933)", () => {
   });
 });
 
+describe("approaching-traffic settings (issue #1113)", () => {
+  const FIELDS = [
+    { key: "trafficPitExitBeforeSeconds", min: 0, max: 10, fallback: 2 },
+    { key: "trafficPitExitAfterSeconds", min: 0, max: 15, fallback: 4 },
+    { key: "trafficPitExitMergeWarnSeconds", min: 0, max: 5, fallback: 1.5 },
+  ] as const;
+
+  const read = (key: string, value: unknown): unknown =>
+    (GlobalSettingsSchema.parse({ [key]: value }) as Record<string, unknown>)[key];
+
+  it("defaults the rejoin opt-in off (experimental, amended 2026-11-20), the pit-exit one on, its window to 2 s before and 4 s after and its merge warning to 1.5 s", () => {
+    const parsed = GlobalSettingsSchema.parse({});
+
+    expect(parsed.calloutEnabledTrafficRejoin).toBe(false);
+    expect(parsed.calloutEnabledTrafficPitExit).toBe(true);
+    expect(parsed.trafficPitExitBeforeSeconds).toBe(2);
+    expect(parsed.trafficPitExitAfterSeconds).toBe(4);
+    expect(parsed.trafficPitExitMergeWarnSeconds).toBe(1.5);
+  });
+
+  it("has no rejoin windows and no call lead: the bands are fixed and the lead is a constant (amended 2026-11-11, 2026-11-20)", () => {
+    const keys = Object.keys(GlobalSettingsSchema.shape).filter((key) => key.startsWith("traffic"));
+
+    expect(keys.sort()).toEqual([
+      "trafficPitExitAfterSeconds",
+      "trafficPitExitBeforeSeconds",
+      "trafficPitExitMergeWarnSeconds",
+    ]);
+  });
+
+  it.each(FIELDS)("$key keeps both ends of its range and coerces a numeric string", ({ key, min, max }) => {
+    expect(read(key, min)).toBe(min);
+    expect(read(key, max)).toBe(max);
+    expect(read(key, String(max - 1))).toBe(max - 1);
+  });
+
+  // An empty-ish value must not coerce to 0: for every pit-exit slider 0 is
+  // in range and would silently close that side of the window or the warning.
+  it.each(
+    FIELDS.flatMap((field) =>
+      [field.min - 1, field.max + 1, "junk", "", "  ", null, {}].map((value) => ({ ...field, value })),
+    ),
+  )("$key falls back to its default on $value without stalling the rest of the parse", ({ key, fallback, value }) => {
+    const result = GlobalSettingsSchema.safeParse({ [key]: value, spotterStillThereSeconds: 5 });
+
+    expect(result.success).toBe(true);
+    expect((result.data as Record<string, unknown>)[key]).toBe(fallback);
+    expect(result.data?.spotterStillThereSeconds).toBe(5);
+  });
+
+  // `z.coerce.number()` reads `false` and `[]` as 0 and `true` as 1, all in
+  // range: only a finite number or a non-blank numeric string may reach it.
+  it.each(
+    FIELDS.flatMap((field) =>
+      [false, true, [], {}, [3], " ", "", Number.NaN, Number.POSITIVE_INFINITY, "Infinity"].map((value) => ({
+        ...field,
+        value,
+      })),
+    ),
+  )("$key falls back to its default on a value that is no number: $value", ({ key, fallback, value }) => {
+    expect(read(key, value)).toBe(fallback);
+  });
+
+  it.each(FIELDS)("$key keeps an explicit 0, as a number or a string, which closes that side", ({ key }) => {
+    expect(read(key, 0)).toBe(0);
+    expect(read(key, "0")).toBe(0);
+    expect(read(key, " 3 ")).toBe(3);
+  });
+});
+
 describe("resolveActiveRaceEngineerVoice", () => {
   beforeEach(() => {
     _resetGlobalSettings();

@@ -27,7 +27,7 @@ import {
   validateQualifyingInvalidationSnapshot,
 } from "./qualifying-invalidation-snapshot.js";
 import { setHarnessRaceStartSnapshot, validateRaceStartSnapshot } from "./race-start-snapshot.js";
-import { SCENARIO_SHORTCUTS } from "./scenario-shortcuts.js";
+import { SCENARIO_SHORTCUTS, servedShortcut } from "./scenario-shortcuts.js";
 import { setHarnessSectorComparison, validateSectorComparison } from "./sector-comparison-snapshot.js";
 import { setHarnessSessionStartSnapshot, validateSessionStartSnapshot } from "./session-start-snapshot.js";
 import { checkShortcutPreconditions } from "./shortcut-preconditions.js";
@@ -237,7 +237,7 @@ export async function createServer(ctx: HarnessContext): Promise<FastifyInstance
         busVolumes: audioBusVolumeMap(ctx.audio),
       },
       eventTemplates: EVENT_TEMPLATES,
-      shortcuts: SCENARIO_SHORTCUTS,
+      shortcuts: SCENARIO_SHORTCUTS.map(servedShortcut),
       presets: {
         telemetry: telemetryPresets.map((p) => p.name),
         session: sessionPresets.map((p) => p.name),

@@ -44,7 +44,12 @@ import {
   FORMATION_NEXT_FOLLOW_CAR_IDX,
   FORMATION_PACE_CAR_IDX,
 } from "./rolling-start-grid.js";
-import { SCENARIO_SHORTCUTS, type ScenarioShortcut, type TelemetryStep } from "./scenario-shortcuts.js";
+import {
+  failedRunTeardown,
+  SCENARIO_SHORTCUTS,
+  type ScenarioShortcut,
+  type TelemetryStep,
+} from "./scenario-shortcuts.js";
 import { checkShortcutPreconditions } from "./shortcut-preconditions.js";
 
 const PRESETS_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "presets");
@@ -767,18 +772,15 @@ describe("the formation's calls on their own", () => {
       // formation left running trips the next caution button (the control
       // after this one), and a setup cut off inside its bracket has the mock
       // in replay mode, where the translator publishes nothing for anyone.
-      // After a failure the UI applies the teardown's patches without their
-      // holds, as here.
+      // After a failure the UI applies `failedRunTeardown`'s copy, as here:
+      // the listening hold dropped, and the stand-down's own hold kept, which
+      // is what carries the harness past the replay exit grace when the setup
+      // stopped inside the bracket.
       const shortcut = shortcutOf(ONE_LAP);
       const rig = startRig();
 
       drive(rig, stepsOf(ONE_LAP).slice(0, stepsRun));
-      drive(
-        rig,
-        (shortcut.teardownSequence ?? []).map(({ patch, tick }) => ({ patch, tick })),
-      );
-      // Past the replay exit grace, in case the setup stopped inside the bracket.
-      drive(rig, [{ patch: {}, holdMs: REPLAY_EXIT_GRACE_MS + 500 }]);
+      drive(rig, failedRunTeardown(shortcut.teardownSequence ?? []));
 
       const left = rig.controller.getState().telemetry as Record<string, unknown>;
 

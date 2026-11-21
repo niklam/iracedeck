@@ -1,5 +1,11 @@
-import { describe, expectTypeOf, it } from "vitest";
+import { describe, expect, expectTypeOf, it } from "vitest";
 
+import {
+  TRAFFIC_REJOIN_NEAR_MAX_SECONDS,
+  TRAFFIC_REJOIN_NEAR_MIN_SECONDS,
+  TRAFFIC_REJOIN_OVER_TEN_S,
+  TRAFFIC_REJOIN_RIGHT_BEHIND_S,
+} from "./index.js";
 import type {
   PitLaneLandmarkLearned,
   PitLaneLandmarkName,
@@ -11,6 +17,14 @@ import type {
   SessionClass,
   SessionStartConditions,
   SimEventMap,
+  TrafficPitExit,
+  TrafficPitExitMerge,
+  TrafficPitExitVerdict,
+  TrafficRejoin,
+  TrafficRejoinNear,
+  TrafficRejoinPack,
+  TrafficRejoinRightBehind,
+  TrafficRejoinVerdict,
 } from "./index.js";
 
 /**
@@ -74,5 +88,86 @@ describe("pitLane.landmarkLearned", () => {
     expectTypeOf<Data["landmark"]>().toEqualTypeOf<PitLaneLandmarkName>();
     expectTypeOf<Data["sample"]>().toEqualTypeOf<PitLaneLandmarkSample>();
     expectTypeOf<Data["summary"]>().toEqualTypeOf<PitLaneLandmarkSummary>();
+  });
+});
+
+/**
+ * #1113: the approaching-traffic payloads are sim-neutral verdicts. A rejoin
+ * verdict names a fixed band and only `near` carries a number, with whether it
+ * is the band's first call; no verdict reassures (amended 2026-11-20), and a
+ * tow or a reset that ends the stop is an empty event of its own; a pit-exit verdict carries the nearest car's
+ * relative arrival for logs, and the merge warning always carries it. Pinned so a change to what the callouts read is a
+ * deliberate edit here too (type test: a mismatch fails `pnpm typecheck`).
+ */
+describe("traffic.rejoin, traffic.rejoinTowed, traffic.pitExit and traffic.pitExitMerge", () => {
+  it("carries a rejoin band, and for near its whole seconds and whether it is the first call", () => {
+    expectTypeOf<SimEventMap["traffic.rejoin"]["event"]>().toEqualTypeOf<"traffic.rejoin">();
+    expectTypeOf<SimEventMap["traffic.rejoin"]["data"]>().toEqualTypeOf<
+      { verdict: "rightBehind" } | { verdict: "near"; seconds: number; first: boolean } | { verdict: "pack" }
+    >();
+    expectTypeOf<SimEventMap["traffic.rejoin"]["data"]>().toEqualTypeOf<TrafficRejoin>();
+    expectTypeOf<TrafficRejoin>().toEqualTypeOf<TrafficRejoinRightBehind | TrafficRejoinNear | TrafficRejoinPack>();
+    expectTypeOf<TrafficRejoin["verdict"]>().toEqualTypeOf<TrafficRejoinVerdict>();
+    expectTypeOf<TrafficRejoinVerdict>().toEqualTypeOf<"rightBehind" | "near" | "pack">();
+  });
+
+  it("ends a stop taken off the track with an empty event of its own (amended 2026-11-20)", () => {
+    expectTypeOf<SimEventMap["traffic.rejoinTowed"]["event"]>().toEqualTypeOf<"traffic.rejoinTowed">();
+    expectTypeOf<SimEventMap["traffic.rejoinTowed"]["data"]>().toEqualTypeOf<Record<string, never>>();
+  });
+
+  it("refuses a rejoin payload whose fields do not match its verdict", () => {
+    // @ts-expect-error a near call always carries its seconds
+    const nearWithoutSeconds: TrafficRejoin = { verdict: "near", first: true };
+    // @ts-expect-error a near call always says whether it is the first
+    const nearWithoutFirst: TrafficRejoin = { verdict: "near", seconds: 5 };
+    // @ts-expect-error right behind speaks no number
+    const rightBehindWithSeconds: TrafficRejoin = { verdict: "rightBehind", seconds: 1 };
+    // @ts-expect-error the reassuring lines are gone (amended 2026-11-20): no over ten
+    const overTen: TrafficRejoin = { verdict: "overTen" };
+    // @ts-expect-error a pack speaks no number: it is one call for the whole group
+    const packWithSeconds: TrafficRejoin = { verdict: "pack", seconds: 3 };
+    // @ts-expect-error nor clear
+    const clear: TrafficRejoin = { verdict: "clear" };
+    // @ts-expect-error the old instructions are gone: the engineer never says hold
+    const hold: TrafficRejoin = { verdict: "hold", seconds: 4 };
+    // @ts-expect-error nor go
+    const go: TrafficRejoin = { verdict: "go" };
+
+    expectTypeOf([
+      nearWithoutSeconds,
+      nearWithoutFirst,
+      rightBehindWithSeconds,
+      overTen,
+      packWithSeconds,
+      clear,
+      hold,
+      go,
+    ]).toBeArray();
+  });
+
+  it("publishes the rejoin band edges as values, the near seconds derived from them", () => {
+    // The maintainer's fixed edges (2026-11-11): both the translator and the
+    // Race Engineer import these, so a change here is a change to the contract.
+    expect([TRAFFIC_REJOIN_RIGHT_BEHIND_S, TRAFFIC_REJOIN_OVER_TEN_S]).toEqual([2, 10]);
+    expect([TRAFFIC_REJOIN_NEAR_MIN_SECONDS, TRAFFIC_REJOIN_NEAR_MAX_SECONDS]).toEqual([2, 9]);
+    expect(TRAFFIC_REJOIN_NEAR_MIN_SECONDS).toBe(TRAFFIC_REJOIN_RIGHT_BEHIND_S);
+    expect(TRAFFIC_REJOIN_NEAR_MAX_SECONDS).toBe(TRAFFIC_REJOIN_OVER_TEN_S - 1);
+  });
+
+  it("carries a pit-exit verdict and the nearest car's relative arrival", () => {
+    expectTypeOf<SimEventMap["traffic.pitExit"]["event"]>().toEqualTypeOf<"traffic.pitExit">();
+    expectTypeOf<SimEventMap["traffic.pitExit"]["data"]>().toEqualTypeOf<{
+      verdict: "clear" | "traffic";
+      seconds?: number;
+    }>();
+    expectTypeOf<SimEventMap["traffic.pitExit"]["data"]>().toEqualTypeOf<TrafficPitExit>();
+    expectTypeOf<TrafficPitExit["verdict"]>().toEqualTypeOf<TrafficPitExitVerdict>();
+  });
+
+  it("carries the merge warning's nearest timed car, always, and nothing else", () => {
+    expectTypeOf<SimEventMap["traffic.pitExitMerge"]["event"]>().toEqualTypeOf<"traffic.pitExitMerge">();
+    expectTypeOf<SimEventMap["traffic.pitExitMerge"]["data"]>().toEqualTypeOf<{ seconds: number }>();
+    expectTypeOf<SimEventMap["traffic.pitExitMerge"]["data"]>().toEqualTypeOf<TrafficPitExitMerge>();
   });
 });

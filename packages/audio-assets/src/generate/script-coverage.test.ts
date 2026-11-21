@@ -61,9 +61,10 @@ const SHARED_CLIPS: readonly string[] = (
 /**
  * How many clip groups the bundled voice's script addresses directly — the
  * vacuity floor for rule (a): a walk that touched fewer went blind rather than
- * finding the script clean. Bump it when a new family brings a new group.
+ * finding the script clean. Bump it when a new family brings a new group
+ * (29, measured when the traffic group joined in #1113).
  */
-const SCRIPTED_GROUPS_FLOOR = 20;
+const SCRIPTED_GROUPS_FLOOR = 29;
 
 /**
  * Bases a var resolver in the catalog produces (`poolRef(group, base)`) inside
@@ -79,6 +80,7 @@ const VAR_DRIVEN_BASES: readonly { pattern: RegExp; resolver: string }[] = [
   { pattern: /^session-start\/session-(practice|qualifying|race)$/, resolver: "sessionStart.sessionLine" },
   { pattern: /^session-start\/speed-unit-(kmh|mph)$/, resolver: "sessionStart.speedUnit" },
   { pattern: /^session-start\/wetness-[a-z-]+$/, resolver: "sessionStart.wetness, raceStart.wetness" },
+  { pattern: /^traffic\/rejoin-mid-\d+$/, resolver: "traffic.rejoinSeconds" },
 ];
 
 /**

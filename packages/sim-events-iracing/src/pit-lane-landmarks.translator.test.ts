@@ -40,8 +40,9 @@ const TRACK: PitLaneTrackIdentity = {
 };
 const SUBSESSION = 555;
 
+/** A logger whose scopes are itself, so a step writing through a scope (the traffic detectors') has one to write to. */
 function createMockLogger(): ILogger {
-  return {
+  const logger = {
     trace: vi.fn(),
     debug: vi.fn(),
     info: vi.fn(),
@@ -50,6 +51,10 @@ function createMockLogger(): ILogger {
     withLevel: vi.fn(),
     createScope: vi.fn(),
   } as unknown as ILogger;
+
+  vi.mocked(logger.createScope).mockReturnValue(logger);
+
+  return logger;
 }
 
 type MockController = SDKController & {
@@ -97,6 +102,10 @@ function createMockController(): MockController {
     for (const cb of [...subscribers.values()]) cb(telemetry, true);
   };
   controller.__disconnect = () => {
+    // As the real controller does: the replay state is reset before the
+    // subscribers hear of the disconnect.
+    replayState.reset();
+
     for (const cb of [...subscribers.values()]) cb(null, false);
   };
 

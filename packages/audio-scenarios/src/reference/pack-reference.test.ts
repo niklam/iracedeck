@@ -662,6 +662,310 @@ describe("buildPackReference", () => {
   });
 });
 
+// A feature a release build does not carry (#1113): its contracts and
+// vocabulary are withheld, and every recording line only they drew from.
+describe("buildPackReference withholding a development feature (issue #1113)", () => {
+  const NOTHING = { contracts: [], vars: [], conds: [], cases: [] };
+  /** The incident line and the var only it speaks. */
+  const INCIDENT = { ...NOTHING, contracts: ["pit-crew.incident"], vars: ["incident.points"] };
+
+  it("withholds nothing by default: an empty list builds what no list builds", () => {
+    expect(buildPackReference(input({ withheld: NOTHING }))).toEqual(buildPackReference(input()));
+  });
+
+  it("drops the withheld callout and vocabulary, the lines only they drew from, and a group left empty", () => {
+    const ref = buildPackReference(input({ withheld: INCIDENT }));
+
+    expect(ref.callouts.map((c) => c.id)).not.toContain("pit-crew.incident");
+    expect(ref.callouts).toHaveLength(CONTRACTS.length - 1);
+    expect(ref.vocabulary.vars.map((v) => v.name)).toEqual(["readback.fuel", "zz.unused"]);
+    // `incidents/points-N` were drawn only through the withheld var: the group is gone.
+    expect(ref.recordingScript.map((g) => g.group)).not.toContain("incidents");
+    // Nothing else moved.
+    expect(ref.recordingScript.filter((g) => g.group !== "incidents")).toEqual(
+      buildPackReference(input()).recordingScript.filter((g) => g.group !== "incidents"),
+    );
+  });
+
+  it("keeps a line nothing drew from before, as it was: withholding hides the feature, not the orphans", () => {
+    const ref = buildPackReference(input({ withheld: INCIDENT }));
+
+    expect(lineOf(ref, "orphan-group", "lonely")).toEqual(
+      lineOf(buildPackReference(input()), "orphan-group", "lonely"),
+    );
+    expect(lineOf(ref, "toggle", "stray").usedBy).toEqual([]);
+  });
+
+  it("keeps a line a published callout also draws from, naming only the published one", () => {
+    // The incident line also plays the `openers/alright` clip the spotter call plays.
+    const script: CalloutScript = {
+      ...SCRIPT,
+      scenarios: {
+        ...SCRIPT.scenarios,
+        "pit-crew.incident": {
+          ...SCRIPT.scenarios["pit-crew.incident"],
+          sequence: ["pool:incidents/type-contact", "voice/{voice}/openers/alright.mp3"],
+        },
+      },
+    };
+    const ref = buildPackReference(input({ script, withheld: { ...NOTHING, contracts: ["pit-crew.spotter-call"] } }));
+
+    expect(lineOf(ref, "openers", "alright").usedBy).toEqual(["pit-crew.incident"]);
+    // The spotter call alone drew from these two: gone, with their groups.
+    expect(ref.recordingScript.map((g) => g.group)).not.toContain("spotter");
+    expect(ref.recordingScript.map((g) => g.group)).not.toContain("units");
+  });
+
+  it("keeps a line a published callout plays by a literal relative to its base, while a withheld one names its pool", () => {
+    // The withheld incident line names `pool:openers/alright`; the published
+    // spotter call (base `voice/{voice}`) plays the same clip as the bare
+    // `openers/alright.mp3`, which the engine resolves against that base.
+    const script: CalloutScript = {
+      ...SCRIPT,
+      scenarios: {
+        ...SCRIPT.scenarios,
+        "pit-crew.incident": {
+          ...SCRIPT.scenarios["pit-crew.incident"],
+          sequence: ["pool:incidents/type-contact", "pool:openers/alright"],
+        },
+        "pit-crew.spotter-call": {
+          ...SCRIPT.scenarios["pit-crew.spotter-call"],
+          sequence: ["pool:spot", "openers/alright.mp3"],
+        },
+      },
+    };
+    const ref = buildPackReference(input({ script, withheld: INCIDENT }));
+
+    expect(lineOf(ref, "openers", "alright").usedBy).toEqual(["pit-crew.spotter-call"]);
+    // Published, it names both.
+    expect(lineOf(buildPackReference(input({ script })), "openers", "alright").usedBy).toEqual([
+      "pit-crew.incident",
+      "pit-crew.spotter-call",
+    ]);
+  });
+
+  it("credits a bare literal only through a base that puts it in the voice's folder", () => {
+    // The flag-green contract has no base: its bare literal plays from the
+    // audio root, never the voice's `openers` line.
+    const script: CalloutScript = {
+      ...SCRIPT,
+      scenarios: { ...SCRIPT.scenarios, "pit-crew.flag-green": { sequence: ["openers/alright.mp3"] } },
+    };
+    const ref = buildPackReference(input({ script }));
+
+    expect(lineOf(ref, "openers", "alright").usedBy).toEqual(["pit-crew.spotter-call"]);
+  });
+
+  it("takes a withheld var out of the viaVar column of a line a published callout still addresses", () => {
+    const withType = input({
+      manifestClips: [...MANIFEST_CLIPS, "voice/default/incidents/type-contact-01.mp3"],
+      groups: { ...GROUPS, incidents: [...GROUPS.incidents, { name: "type-contact-01", text: "Contact." }] },
+    });
+    // The incident entry addresses `incidents/type-contact` itself, and stops speaking the var.
+    const script: CalloutScript = {
+      ...SCRIPT,
+      scenarios: {
+        ...SCRIPT.scenarios,
+        "pit-crew.incident": { ...SCRIPT.scenarios["pit-crew.incident"], sequence: ["pool:incidents/type-contact"] },
+      },
+    };
+    const ref = buildPackReference({ ...withType, script, withheld: { ...NOTHING, vars: ["incident.points"] } });
+
+    expect(lineOf(ref, "incidents", "type-contact")).toMatchObject({ usedBy: ["pit-crew.incident"], viaVar: [] });
+    expect(ref.recordingScript.find((g) => g.group === "incidents")?.lines.map((l) => l.base)).toEqual([
+      "type-contact",
+    ]);
+  });
+
+  it("refuses a published callout whose entry names withheld vocabulary, naming both", () => {
+    expect(() => buildPackReference(input({ withheld: { ...NOTHING, conds: ["session.isRace"] } }))).toThrow(
+      /"pit-crew\.flag-green" is published but its entry names the withheld cond "session\.isRace"/,
+    );
+  });
+
+  // The frame plays around the line, so what it draws from is the callout's
+  // too: walked as the engine expands it — the effective frame (the entry's
+  // override, else the contract's), its fragments, with no base: `open` and
+  // `close` always, `cut` only for a contract an event can end (`endsOn`),
+  // the only one that ever plays it — though it never enters `usedBy` or the
+  // published references.
+  describe("the effective frame", () => {
+    /** The spotter call alone plays `openers/alright` and `units/km`; withholding it leaves only the frames. */
+    const SPOTTER = { ...NOTHING, contracts: ["pit-crew.spotter-call"] };
+    /** The fixture's contracts, those named given an `endsOn` event, so their frame's `cut` can play. */
+    const ending = (...ids: string[]): readonly ContractReport[] =>
+      CONTRACTS.map((c) =>
+        ids.includes(c.id) ? { ...c, endsOn: "You leave pit road.", endsOnEvent: "pitLane.exited" } : c,
+      );
+    const withFrames = (
+      frames: CalloutScript["frames"],
+      fragments: CalloutScript["fragments"] = {},
+    ): CalloutScript => ({
+      ...SCRIPT,
+      frames,
+      fragments: { ...SCRIPT.fragments, ...fragments },
+    });
+
+    it("keeps a line a published callout's frame plays, by pool or through a fragment, while a withheld callout names it", () => {
+      const script = withFrames(
+        {
+          radio: { open: [{ clip: "sfx/IRD-tick-open.mp3" }, "@radio-bed"], close: [], cut: ["pool:openers/alright"] },
+          terse: { open: [], close: [] },
+        },
+        { "radio-bed": { sequence: ["voice/{voice}/units/km.mp3"] } },
+      );
+      const ref = buildPackReference(input({ script, contracts: ending("pit-crew.flag-green"), withheld: SPOTTER }));
+
+      // Kept for the radio-framed callouts, which still play them — but not named as users.
+      expect(lineOf(ref, "openers", "alright").usedBy).toEqual([]);
+      expect(lineOf(ref, "units", "km").usedBy).toEqual([]);
+      // The published references stay the entry's own.
+      expect(ref.callouts.find((c) => c.id === "pit-crew.flag-green")?.references.pools).toEqual(["flags/green"]);
+      // The spotter's own line, which no frame plays, still goes.
+      expect(ref.recordingScript.map((g) => g.group)).not.toContain("spotter");
+    });
+
+    it("counts a frame's cut only for a published callout an event can end, the only kind that plays it", () => {
+      const script = withFrames(
+        {
+          radio: { open: [{ clip: "sfx/IRD-tick-open.mp3" }, "@radio-bed"], close: [], cut: ["pool:openers/alright"] },
+          terse: { open: [], close: [] },
+        },
+        { "radio-bed": { sequence: ["voice/{voice}/units/km.mp3"] } },
+      );
+      // No radio-framed callout carries `endsOn`: its cut never plays, so the
+      // line only the withheld spotter call plays goes, while the open's stays.
+      const ref = buildPackReference(input({ script, withheld: SPOTTER }));
+
+      expect(ref.recordingScript.map((g) => g.group)).not.toContain("openers");
+      expect(lineOf(ref, "units", "km").usedBy).toEqual([]);
+      // An ending callout that is itself withheld keeps nothing either.
+      expect(
+        buildPackReference(
+          input({
+            script,
+            contracts: ending("pit-crew.spotter-call"),
+            withheld: { ...NOTHING, contracts: ["pit-crew.spotter-call", "pit-crew.flag-green"] },
+          }),
+        ).recordingScript.map((g) => g.group),
+      ).not.toContain("openers");
+    });
+
+    it("drops the line when only a withheld callout's frame plays it", () => {
+      // Only the spotter call's `terse` frame plays it; the radio frame does not.
+      const script = withFrames({
+        radio: { open: [{ clip: "sfx/IRD-tick-open.mp3" }], close: [] },
+        terse: { open: [], close: [], cut: ["pool:openers/alright"] },
+      });
+
+      expect(
+        buildPackReference(
+          input({ script, contracts: ending("pit-crew.spotter-call"), withheld: SPOTTER }),
+        ).recordingScript.map((g) => g.group),
+      ).not.toContain("openers");
+    });
+
+    it("reads a frame's bare literal at the audio root, as the engine plays it, never as the voice's line", () => {
+      const script = withFrames({
+        radio: { open: [], close: [], cut: ["openers/alright.mp3"] },
+        terse: { open: [], close: [] },
+      });
+
+      expect(
+        buildPackReference(
+          input({ script, contracts: ending("pit-crew.flag-green"), withheld: SPOTTER }),
+        ).recordingScript.map((g) => g.group),
+      ).not.toContain("openers");
+    });
+
+    it("refuses a published callout whose effective frame names withheld vocabulary, naming the frame", () => {
+      const script = withFrames(
+        { radio: { open: [], close: [] }, terse: { open: ["@terse-tail"], close: [] } },
+        { "terse-tail": { sequence: [{ optional: ["{{zz.unused}}"] }] } },
+      );
+
+      // The spotter call overrides its contract's `radio` with `terse`.
+      expect(() => buildPackReference(input({ script, withheld: { ...NOTHING, vars: ["zz.unused"] } }))).toThrow(
+        /"pit-crew\.spotter-call" is published but its frame "terse" names the withheld var "zz\.unused"/,
+      );
+      // Withheld with the callout whose frame it is, or unframed by the entry, it is not named.
+      expect(() => buildPackReference(input({ script, withheld: { ...SPOTTER, vars: ["zz.unused"] } }))).not.toThrow();
+
+      const unframed: CalloutScript = {
+        ...script,
+        scenarios: {
+          ...script.scenarios,
+          "pit-crew.spotter-call": { ...script.scenarios["pit-crew.spotter-call"], frame: "none" },
+        },
+      };
+
+      expect(() =>
+        buildPackReference(input({ script: unframed, withheld: { ...NOTHING, vars: ["zz.unused"] } })),
+      ).not.toThrow();
+    });
+
+    it("refuses a frame's withheld condition and case the same way", () => {
+      const script = withFrames({
+        radio: {
+          open: [],
+          close: [],
+          cut: [{ case: "readback.tirePattern", of: { all: [{ if: "!session.isRace", then: [] }], default: [] } }],
+        },
+        terse: { open: [], close: [] },
+      });
+      const contracts = ending("pit-crew.incident");
+
+      expect(() =>
+        buildPackReference(
+          input({
+            script,
+            contracts,
+            withheld: {
+              ...NOTHING,
+              contracts: ["pit-crew.flag-green", "pit-crew.readback-entry"],
+              cases: ["readback.tirePattern"],
+            },
+          }),
+        ),
+      ).toThrow(
+        /"pit-crew\.incident" is published but its frame "radio" names the withheld case "readback\.tirePattern"/,
+      );
+      expect(() =>
+        buildPackReference(
+          input({
+            script,
+            contracts,
+            withheld: { ...NOTHING, contracts: ["pit-crew.flag-green"], conds: ["session.isRace"] },
+          }),
+        ),
+      ).toThrow(/"pit-crew\.incident" is published but its frame "radio" names the withheld cond "session\.isRace"/);
+      // A cut no published callout can play names nothing: no event ends the incident line.
+      expect(() =>
+        buildPackReference(
+          input({
+            script,
+            withheld: {
+              ...NOTHING,
+              contracts: ["pit-crew.flag-green", "pit-crew.readback-entry"],
+              cases: ["readback.tirePattern"],
+            },
+          }),
+        ),
+      ).not.toThrow();
+    });
+  });
+
+  it("refuses a withheld name the catalog does not register, so a rename cannot publish the feature again", () => {
+    expect(() =>
+      buildPackReference(
+        input({ withheld: { contracts: ["pit-crew.renamed"], vars: ["no.such"], conds: [], cases: ["gone"] } }),
+      ),
+    ).toThrow(
+      /withhold contract "pit-crew\.renamed", var "no\.such", case "gone", which the catalog does not register/,
+    );
+  });
+});
+
 describe("descriptionNamesGroup", () => {
   it("matches the group as a slashed example or as the head of '<group> group' / '<group> clip group'", () => {
     expect(descriptionNamesGroup("spoken from the incidents group (incidents/points-2 is …)", "incidents")).toBe(true);

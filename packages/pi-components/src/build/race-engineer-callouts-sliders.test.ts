@@ -30,6 +30,9 @@ const TRANSLATOR_CLAMPED = [
   "gapAlertThresholdSeconds",
   "gapCalloutMinChangeSeconds",
   "opponentFlagRangeSeconds",
+  "trafficPitExitBeforeSeconds",
+  "trafficPitExitAfterSeconds",
+  "trafficPitExitMergeWarnSeconds",
 ] as const;
 
 /**

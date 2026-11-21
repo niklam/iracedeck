@@ -82,6 +82,10 @@ export function seedGlobalSettings(adapter: MockPlatformAdapter): BootstrapDefau
     // shortcut is heard on a freshly booted harness; the Global Settings
     // panel's checkbox turns it off.
     calloutEnabledLimiterEngagedCue: true,
+    // Experimental and off by default for users (#1113, 2026-11-20), on here
+    // so the Traffic rejoin shortcuts are heard on a freshly booted harness;
+    // the Global Settings panel's checkbox turns them off.
+    calloutEnabledTrafficRejoin: true,
   });
 
   return { raceEngineerVoices, driverNames };

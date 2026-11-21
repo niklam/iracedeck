@@ -121,6 +121,7 @@ import {
   START_LIGHT_CALLOUTS,
   TIRE_WEAR_CALLOUTS,
   TRACK_CONDITIONS_CALLOUTS,
+  TRAFFIC_CALLOUTS,
 } from "@iracedeck/callout-settings";
 import type { IEventBus, PitReadbackSnapshot, SessionClass, SessionStartSnapshot } from "@iracedeck/event-bus";
 import type { ILogger } from "@iracedeck/logger";
@@ -128,6 +129,7 @@ import type { TelemetryData } from "@iracedeck/sim-events-iracing";
 
 import type { ScenarioContract } from "../../dsl.js";
 import { getScenarioEngine, isAudioScenariosInitialized } from "../../interpreter.js";
+import type { DevelopmentFeature } from "../../reference/pack-reference.js";
 import {
   buildCautionContracts,
   type CautionEpisodeResolver,
@@ -247,6 +249,14 @@ import { registerTelemetryReadoutVocabulary, TELEMETRY_READOUT_CONTRACTS } from 
 import { registerTireWearVocabulary, TIRE_WEAR_CONTRACTS } from "./tire-wear.js";
 import { AUTO_FUEL_CONTRACTS, TOGGLE_CONFIRMATION_CONTRACTS } from "./toggle-confirmations.js";
 import { TRACK_CONDITIONS_CONTRACTS } from "./track-conditions.js";
+import {
+  buildTrafficContracts,
+  registerTrafficApproachTracking,
+  registerTrafficVocabulary,
+  SCENARIO_ID_TO_TRAFFIC_ID,
+  TRAFFIC_REJOIN_DEVELOPMENT_FEATURE,
+  type TrafficCalloutId,
+} from "./traffic.js";
 
 /**
  * Stop any in-flight Race Engineer callout (and its looping ambient bed) and
@@ -298,6 +308,17 @@ export {
 export { LIMITER_ON_CLIP, readLimiterCueDebugState } from "./limiter-cue-engine.js";
 export { PIT_EXIT_CLIP, readPitExitCueDebugState } from "./pit-exit-cue-engine.js";
 export { type PitLimiterCalloutId, PIT_LIMITER_SCENARIO_IDS } from "./pit-limiter.js";
+export {
+  readTrafficDebugState,
+  registerTrafficVocabulary,
+  SCENARIO_ID_TO_TRAFFIC_ID,
+  TRAFFIC_CLIP_SOURCES,
+  TRAFFIC_CONTRACTS,
+  TRAFFIC_REJOIN_DEVELOPMENT_FEATURE,
+  TRAFFIC_SCENARIO_IDS,
+  TRAFFIC_WARNING_WEIGHT,
+  type TrafficCalloutId,
+} from "./traffic.js";
 export {
   registerTireWearVocabulary,
   TIRE_WEAR_CLIP_SOURCES,
@@ -825,6 +846,15 @@ export const SPOTTER_STILL_THERE_SECONDS_KEY = "spotterStillThereSeconds";
  */
 export type { SetupWarningResolver } from "./race-start.js";
 /**
+ * Every catalog feature a release build does not carry (#1113): each names the
+ * platform feature flag that turns it on and what the pack-author reference
+ * withholds while every plugin ships that flag off. Today the rejoin traffic
+ * warnings alone. The root generator (`scripts/lib/pack-reference-data.mjs`)
+ * reads it beside the committed `platform-features.json` files.
+ */
+export const DEVELOPMENT_FEATURES: readonly DevelopmentFeature[] = [TRAFFIC_REJOIN_DEVELOPMENT_FEATURE];
+
+/**
  * Everything `registerPitCrew` needs beyond the bus. Every key is optional;
  * an omitted or `undefined` key takes its entry from {@link DEFAULT_DEPS}.
  *
@@ -1085,6 +1115,15 @@ export type PitCrewDeps = {
   // translator's own answer outside a race, with no sectors, or before it
   // was ever initialised.
   getSectorComparison?: SectorComparisonResolver;
+  // Whether this build carries the rejoin traffic warnings at all (#1113, the
+  // spec's fourth amendment): the `trafficRejoin` development flag, which
+  // every release build has off. Off, the four rejoin lines stay silent
+  // whatever the `rejoin` opt-in says; the pit-exit lines are untouched. The
+  // contracts are still registered, so every voice's rejoin entries compile
+  // as they do in a development build and no pack is warned about an entry
+  // with no contract. Default `() => false`: a caller that does not opt in
+  // hears no rejoin line.
+  getTrafficRejoinAvailable?: () => boolean;
 };
 
 /**
@@ -1135,6 +1174,7 @@ const DEFAULT_DEPS: Readonly<ResolvedPitCrewDeps> = {
   getStandingStart: () => false,
   getDamageRepairNeeded: () => null,
   getSectorComparison: () => null,
+  getTrafficRejoinAvailable: () => false,
 };
 
 /** Copy one key from `source` onto `target` when the caller defined it. */
@@ -1234,6 +1274,12 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
   const getLimiterCueCalloutEnabled = enabledIn(LIMITER_CUE_CALLOUTS);
   const getPitLimiterCalloutEnabled = enabledIn(PIT_LIMITER_CALLOUTS);
   const getNoLimiterCalloutEnabled = enabledIn(NO_LIMITER_CALLOUTS);
+  // `rejoin` gates the four rejoin lines, `pit-exit` the two pit-exit ones and
+  // the merge warning (issue #1113). A build without the `trafficRejoin`
+  // development flag keeps every rejoin line silent, its opt-in unread.
+  const getTrafficOptIn = enabledIn(TRAFFIC_CALLOUTS);
+  const getTrafficCalloutEnabled = (id: TrafficCalloutId): boolean =>
+    (id !== "rejoin" || d.getTrafficRejoinAvailable()) && getTrafficOptIn(id);
 
   registerRadarEngine(bus, {
     getMasterEnabled: d.getRadarMasterEnabled,
@@ -1538,6 +1584,31 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
           "opponent-pit callout",
           logger,
         ),
+      ),
+    );
+  }
+
+  // Approaching-traffic family (issue #1113). The vocabulary (the seconds var
+  // the close band's composed lines speak, the band case, the first-call
+  // condition, the pit-exit cases) registers before the contracts; the
+  // translator's detectors decide each band, its number and when it is worth
+  // saying again, and the seven contracts only map the event to a line, the
+  // pit-exit lines' and the merge warning's speak-time gate reading the live
+  // telemetry to drop a line still waiting once the player has merged, and the
+  // rejoin lines ending on `traffic.rejoinTowed` (`endsOn`), so a tow or a
+  // reset cuts one playing or waiting (amended 2026-11-20). Two
+  // subjects gate them via `SCENARIO_ID_TO_TRAFFIC_ID`. One `family:
+  // "traffic"` so a fresh line replaces a stale one in flight (see the module
+  // header). The approach tracking forgets a car's introduction when the
+  // detector starts a new approach or the session changes, so a count whose
+  // first call was never heard is spoken as a first call (amended 2026-11-17).
+  registerTrafficVocabulary(engine);
+  registerTrafficApproachTracking(bus);
+
+  for (const c of buildTrafficContracts({ getLatestTelemetry: d.getLatestTelemetry })) {
+    engine.defineContract(
+      wrapWithMaster(
+        wrapCalloutScenario(c, SCENARIO_ID_TO_TRAFFIC_ID, getTrafficCalloutEnabled, "traffic callout", logger),
       ),
     );
   }
