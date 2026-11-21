@@ -120,6 +120,7 @@ import {
   type LivePositionResolver,
   lowerFirst,
   playerOnPitRoadOrOutOfCar,
+  POSITION_READOUT_ENDS_ON,
   POSITION_READOUT_PIT_ROAD_CLAUSE,
   POSITION_READOUT_SPEAK_GATE_DESCRIPTION,
   POSITION_READOUT_SUPERSEDE_GROUP,
@@ -448,7 +449,11 @@ function isRaceFire(ctx: ScenarioContext): boolean {
  * `where:`-only check: it is a fact about the completed lap, settled when the
  * event was emitted. The residual `race-status.ts` states applies here too:
  * a readout already admitted and then cut by an interrupting call replays
- * whole without being asked again, whenever the caution came out.
+ * whole without being asked again, whenever the caution came out. Pit road
+ * has no such residual for the most part: the contract is ended at pit entry
+ * (`POSITION_READOUT_ENDS_ON`, issue #1722), which drops such a stash. What
+ * is left is a replay landing while the surface already reads the pit lane
+ * and `OnPitRoad`, whose edge the end fires on, has not yet turned true.
  *
  * Default `() => false` preserves legacy behavior for tests / the harness
  * that don't supply a closure.
@@ -568,6 +573,8 @@ export function buildPositionContract(
       refuses: (ctx) => isRaceFire(ctx) && getUnderFullCourseCaution(),
       claimsWindow: isRaceFire,
     }),
+    // Ended at pit entry (issue #1722): see `POSITION_READOUT_ENDS_ON`.
+    endsOn: POSITION_READOUT_ENDS_ON,
     channel: AudioChannel.Voice,
     bus: AudioBus.Voice,
     base: "voice/{voice}",

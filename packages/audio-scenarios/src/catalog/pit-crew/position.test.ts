@@ -940,6 +940,75 @@ describe("position-change contract — silent on pit road and out of the car (is
     expect(voicePaths()).toEqual([CURRENTLY, `voice/${VOICE}/position-number/9.mp3`]);
   });
 
+  describe("ended at pit entry (POSITION_READOUT_ENDS_ON, #1722)", () => {
+    const INTERRUPTER = "test/blocker.mp3";
+
+    /** A CRITICAL line that cuts whatever is speaking — the readout is stashed with its gate already passed. */
+    function interrupt(): void {
+      engine.defineScenario({
+        id: "test.interrupter",
+        channel: AudioChannel.Voice,
+        bus: AudioBus.Voice,
+        weight: WEIGHT.CRITICAL,
+        interrupt: true,
+        frame: NO_FRAME,
+        sequence: [INTERRUPTER],
+      });
+      engine.fire("test.interrupter");
+    }
+
+    /** Start a race readout and let it reach its first spoken clip, the open tick done. */
+    function startSpeaking(): void {
+      publish(raceLap());
+      audio._triggerChannelEnd(AudioChannel.SFX);
+    }
+
+    function voiceStopped(): boolean {
+      return audio.stopChannel.mock.calls.some(([channel]) => channel === AudioChannel.Voice);
+    }
+
+    it("carries the shared end: pit entry", () => {
+      expect(build().endsOn).toEqual({
+        event: "pitLane.entered",
+        description: "You enter pit road while the position call is waiting or still being spoken.",
+      });
+    });
+
+    it("a readout cut and stashed on track is dropped at pit entry, and never plays on pit road", () => {
+      startSpeaking();
+      expect(voicePaths()).toEqual([CURRENTLY]);
+
+      interrupt();
+      // Into the pit lane while the cut readout waits for its replay: the
+      // gate, which admitted it already, is never asked again; the end is.
+      telemetry = { ...ON_TRACK, OnPitRoad: true };
+      bus.publishEvent("pitLane.entered", {});
+      flush(audio);
+
+      expect(voicePaths()).toEqual([CURRENTLY, INTERRUPTER]);
+    });
+
+    it("the same cut on track with no pit entry replays — the positive control", () => {
+      startSpeaking();
+      interrupt();
+      flush(audio);
+
+      expect(voicePaths()).toEqual([CURRENTLY, INTERRUPTER, CURRENTLY, P3]);
+    });
+
+    it("a readout still being spoken at pit entry is cut, its number never said", () => {
+      startSpeaking();
+      expect(voicePaths()).toEqual([CURRENTLY]);
+
+      telemetry = { ...ON_TRACK, OnPitRoad: true };
+      bus.publishEvent("pitLane.entered", {});
+      flush(audio);
+
+      expect(voiceStopped()).toBe(true);
+      expect(voicePaths()).not.toContain(P3);
+    });
+  });
+
   it("says the pit-road rule in both published sentences", () => {
     const c = build();
 

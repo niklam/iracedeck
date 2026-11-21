@@ -2065,6 +2065,27 @@ describe("sim-events-iracing translator", () => {
       expect(ev.timestamp).toBeTypeOf("number");
     });
 
+    it("publishes pitLane.entered with that tick already the latest telemetry, so a later stage's publish on it reads OnPitRoad true (the endsOn order, #1722)", () => {
+      // The caution position call is ended by pitLane.entered, and the
+      // caution diff runs after the pit-lane diff, so its checkpoint can be
+      // published after the end on one tick. What keeps that fire from
+      // starting is its where:, which reads getLatestTelemetry(): this pins
+      // that every publish of the tick reads the tick itself.
+      const controller = createMockController();
+      const bus = getEventBus();
+      const seen: (TelemetryData | null)[] = [];
+      bus.subscribe("pitLane.entered", () => seen.push(getLatestTelemetry()));
+      initializeSimEventsIracing(bus, controller, createMockLogger(), { onStepError: "rethrow" });
+
+      const entering = telemetry({ OnPitRoad: true });
+      controller.__tick(telemetry({ OnPitRoad: false }));
+      controller.__tick(entering);
+
+      expect(seen).toHaveLength(1);
+      expect(seen[0]).toBe(entering);
+      expect(seen[0]?.OnPitRoad).toBe(true);
+    });
+
     it("emits pitLane.exited on on→off transition", () => {
       const controller = createMockController();
       const bus = getEventBus();

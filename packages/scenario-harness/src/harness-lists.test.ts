@@ -110,7 +110,7 @@ const ENGINE_EVENTS: readonly SimEventName[] = [
  * until its shortcut is taken off this list.
  */
 const UNHEARD_SHORTCUTS: readonly string[] = [
-  "pit-entered",
+  // "pit-entered" left the list with #1722: pitLane.entered ends the position calls.
   "stall-entered",
   "stall-departed",
   "off-track-started",

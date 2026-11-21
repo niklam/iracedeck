@@ -82,6 +82,7 @@ import { NO_LIMITER_CLIP_SOURCES } from "./no-limiter.js";
 import { _resetPitExitCueEngine } from "./pit-exit-cue-engine.js";
 import { LIMITER_MISSING_DELAY_MS, LIMITER_ON_TRACK_DELAY_MS, PIT_LIMITER_CLIP_SOURCES } from "./pit-limiter.js";
 import { _resetPitSpeedingEngine } from "./pit-speeding-engine.js";
+import { POSITION_READOUT_ENDS_ON } from "./position-readout.js";
 import { _resetRadarEngine } from "./radar-engine.js";
 import { _resetSpotterEngine } from "./spotter-engine.js";
 import { TELEMETRY_READOUT_CLIP_SOURCES } from "./telemetry-readout.js";
@@ -3021,6 +3022,13 @@ describe("the position readouts read the registration's live telemetry (issue #1
   beforeEach(() => _resetPositionReadoutCooldown());
 
   afterEach(() => _resetPositionReadoutCooldown());
+
+  it.each([...POSITION_READOUT_IDS, "pit-crew.caution-position"])(
+    "%s is ended at pit entry as registered, with the one shared end (issue #1722)",
+    (id) => {
+      expect(registered(id).endsOn).toBe(POSITION_READOUT_ENDS_ON);
+    },
+  );
 
   it.each(POSITION_READOUT_IDS)(
     "%s is refused at speak time while the live tick reads pit road, and admitted on track",

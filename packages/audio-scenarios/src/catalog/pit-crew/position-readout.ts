@@ -32,16 +32,26 @@
  *   3. **Silent on pit road** (spec 2026-11-18, issue #1722). On pit road the
  *      race order is in flux — places lost to a stop are mostly won back after
  *      it — and the driver is busy with the limiter, the box and the exit. So
- *      no position readout STARTS while the player is on pit road or out of
- *      the car ({@link playerOnPitRoadOrOutOfCar}). Every readout asks it
- *      twice, the #1171 caution pattern: in its `where:`, so a fire on pit
+ *      no position call is heard between pit entry and the end of the exit
+ *      lane. No position readout STARTS while the player is on pit road or
+ *      out of the car ({@link playerOnPitRoadOrOutOfCar}). Every readout asks
+ *      it twice, the #1171 caution pattern: in its `where:`, so a fire on pit
  *      road never enters the bus's queue, and first in its `speakGate`
  *      ({@link buildPositionReadoutSpeakGate}), so a readout queued on track
  *      and still waiting when the car reaches pit road is DROPPED there —
  *      never held for the exit, where it would announce a position that is
- *      still settling. Nothing catches up after the stop: the next ordinary
- *      readout states the position as it then is. A refusal is asked before
- *      the cooldown claim, so it never burns the shared window.
+ *      still settling. And every readout is ENDED at pit entry
+ *      ({@link POSITION_READOUT_ENDS_ON}, `pitLane.entered`): one an
+ *      interrupt cut and stashed after its gate admitted it — whose replay
+ *      the gate is never asked again — is dropped, and one still being
+ *      spoken is cut with the frame's tail. Nothing catches up after the
+ *      stop: the next ordinary readout states the position as it then is. A
+ *      refusal is asked before the cooldown claim, so it never burns the
+ *      shared window.
+ *
+ *      One residual: the end fires on `OnPitRoad`'s edge, and the surface can
+ *      read the pit lane (`AproachingPits`) a little before it. A readout cut
+ *      and stashed on track whose replay lands in that gap still plays.
  *
  * The two overtake readout contracts live here (the reaction lines stay in
  * overtake.ts); the race position-change and race-status contracts import the
@@ -86,7 +96,7 @@ import { TrkLoc } from "@iracedeck/iracing-sdk";
 import type { TelemetryData } from "@iracedeck/sim-events-iracing";
 
 import { poolRef, WEIGHT } from "../../dsl.js";
-import type { ScenarioContext, ScenarioContract, SpeakGate } from "../../dsl.js";
+import type { EndsOn, ScenarioContext, ScenarioContract, SpeakGate } from "../../dsl.js";
 import type { IScenarioEngine } from "../../interpreter.js";
 import { overtakeContextAllows, type OvertakeGateResolver } from "./overtake-gate.js";
 
@@ -244,6 +254,20 @@ export const POSITION_READOUT_PIT_ROAD_CLAUSE = "The driver is in the car and of
 export function lowerFirst(sentence: string): string {
   return sentence.charAt(0).toLowerCase() + sentence.slice(1);
 }
+
+/**
+ * The end every position readout carries (issue #1722): pit entry. A readout
+ * waiting for the bus — one an interrupt cut and stashed after its gate
+ * admitted it included, which is never asked again — is dropped, and one
+ * still being spoken is cut with the frame's tail, so no position call is
+ * heard on pit road. `pitLane.entered` fires on `OnPitRoad`'s off→on edge.
+ * One object, so the five contracts that say the position (the four here and
+ * the caution sequence's position call) cannot describe it five ways.
+ */
+export const POSITION_READOUT_ENDS_ON: EndsOn = {
+  event: "pitLane.entered",
+  description: "You enter pit road while the position call is waiting or still being spoken.",
+};
 
 /** The plugin's latest telemetry tick (`PitCrewDeps.getLatestTelemetry`); `null` with none. */
 export type LatestTelemetryResolver = () => TelemetryData | null;
@@ -657,6 +681,7 @@ export function buildOvertakeGainedPositionContract(
       },
     },
     speakGate: buildPositionReadoutSpeakGate(getLatestTelemetry),
+    endsOn: POSITION_READOUT_ENDS_ON,
     channel: AudioChannel.Voice,
     bus: AudioBus.Voice,
     base: "voice/{voice}",
@@ -707,6 +732,7 @@ export function buildOvertakeLostPositionContract(
       },
     },
     speakGate: buildPositionReadoutSpeakGate(getLatestTelemetry),
+    endsOn: POSITION_READOUT_ENDS_ON,
     channel: AudioChannel.Voice,
     bus: AudioBus.Voice,
     base: "voice/{voice}",

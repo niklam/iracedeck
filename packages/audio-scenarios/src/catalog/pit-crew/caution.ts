@@ -264,6 +264,7 @@ import {
   type LivePositionResolver,
   lowerFirst,
   playerOnPitRoadOrOutOfCar,
+  POSITION_READOUT_ENDS_ON,
   POSITION_READOUT_PIT_ROAD_CLAUSE,
   selectLivePosition,
 } from "./position-readout.js";
@@ -780,6 +781,9 @@ export function buildCautionContracts({
         description: `Re-checked at speak time: ${lowerFirst(POSITION_READOUT_PIT_ROAD_CLAUSE)} and ${STILL_OUT_CLAUSE}.`,
         admit: (ctx) => !playerOnPitRoadOrOutOfCar(getLatestTelemetry()) && stillOut.admit(ctx),
       },
+      // …and ended at pit entry like them, so a call cut and stashed on track
+      // is dropped rather than replayed in the pit lane (#1722).
+      endsOn: POSITION_READOUT_ENDS_ON,
       description:
         "About a third of the way into the last caution lap, off pit road — the one-to-go flag is up and your lap distance passes 35% — your race position from the live order, the number your display shows.",
       when: {

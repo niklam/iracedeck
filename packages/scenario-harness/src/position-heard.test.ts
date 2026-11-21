@@ -13,9 +13,9 @@
  * reads it first; that call does not read pit road, which is what makes it
  * the control for the position line after it.
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
-import { type ClipDurations, useHeardRig } from "./heard-rig.test-util.js";
+import { type ClipDurations, shortcutOf, useHeardRig } from "./heard-rig.test-util.js";
 
 /** Each readout clip is held long enough that the next one never cuts it. */
 const CLIP_MS: ClipDurations = [[/\/(position|race-status|lap-time)[a-z-]*\//, 2000]];
@@ -24,7 +24,7 @@ const CLIP_MS: ClipDurations = [[/\/(position|race-status|lap-time)[a-z-]*\//, 2
 const LAP_TIME = ["lap-time-last/intro", "lap-time-clock/1m24", "lap-time-thousandths/200"];
 
 describe("what the position buttons are heard to do on track (issue #1722)", () => {
-  const { boot, apply, press, heard } = useHeardRig(CLIP_MS);
+  const { boot, apply, publish, press, heard } = useHeardRig(CLIP_MS);
 
   it("a qualifying position change is read out after the lap time", () => {
     boot("qualifying");
@@ -46,6 +46,28 @@ describe("what the position buttons are heard to do on track (issue #1722)", () 
     press("position-improved");
 
     expect(heard()).toEqual(LAP_TIME);
+  });
+
+  it("a position line still being spoken when the car turns onto pit road is cut there — its number never said", () => {
+    // The real path: the translator sees OnPitRoad turn true and publishes
+    // pitLane.entered, which ends the readout mid-line (#1722).
+    boot("qualifying");
+
+    const shortcut = shortcutOf("position-improved");
+
+    apply(shortcut.telemetrySequence);
+    publish("lap.completed", shortcut.data);
+
+    for (let ms = 0; ms < 20_000 && !heard().includes("position-intro-better/that-puts-us-to"); ms += 100) {
+      vi.advanceTimersByTime(100);
+    }
+
+    expect(heard()).toEqual([...LAP_TIME, "position-intro-better/that-puts-us-to"]);
+
+    apply([{ patch: { OnPitRoad: true }, tick: true }]);
+    vi.advanceTimersByTime(10_000);
+
+    expect(heard()).not.toContain("position-number/3");
   });
 
   it("a race status update stays mute, as its script says: the harness has no live position to read out", () => {

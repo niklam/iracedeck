@@ -96,6 +96,12 @@
  * the cut or while the stashed update waited. Only `queueable: false`
  * would stop that, and this contract is queueable so that it can wait
  * behind the lap-time readout of its own lap.
+ *
+ * Pit road has no such residual for the most part (issue #1722): the
+ * contract is ended at pit entry (`POSITION_READOUT_ENDS_ON`), which drops a
+ * stashed update and cuts one being spoken. What is left is a replay landing
+ * while the surface already reads the pit lane (`AproachingPits`) and
+ * `OnPitRoad`, whose edge the end fires on, has not yet turned true.
  */
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import { type CalloutIdOf, RACE_STATUS_CALLOUTS } from "@iracedeck/callout-settings";
@@ -114,6 +120,7 @@ import {
   type LivePositionResolver,
   lowerFirst,
   playerOnPitRoadOrOutOfCar,
+  POSITION_READOUT_ENDS_ON,
   POSITION_READOUT_PIT_ROAD_CLAUSE,
   POSITION_READOUT_SPEAK_GATE_DESCRIPTION,
   POSITION_READOUT_SUPERSEDE_GROUP,
@@ -296,6 +303,8 @@ export function buildRaceStatusContract(
       },
     },
     speakGate: raceStatusSpeakGate(getUnderFullCourseCaution, getLatestTelemetry),
+    // Ended at pit entry (issue #1722): see `POSITION_READOUT_ENDS_ON`.
+    endsOn: POSITION_READOUT_ENDS_ON,
     channel: AudioChannel.Voice,
     bus: AudioBus.Voice,
     base: "voice/{voice}",

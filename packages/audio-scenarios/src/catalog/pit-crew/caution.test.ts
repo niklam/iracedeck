@@ -1054,6 +1054,17 @@ describe("the position call beside the one-to-go line", () => {
       expect(contract("position").speakGate?.admit({} as never)).toBe(false);
     });
 
+    it("refuses a checkpoint published on the pitLane.entered tick, whose latest tick reads OnPitRoad true (the endsOn order, #1722)", () => {
+      // The caution diff runs after the pit-lane diff, so the checkpoint can
+      // follow the end on one tick. The end fires on OnPitRoad's off→on edge,
+      // and every publish of the tick reads that tick (the translator's own
+      // test), so this where: refuses it and no fire starts for the end to miss.
+      mockLatestTelemetry.mockReturnValue({ ...ON_TRACK, OnPitRoad: true, PlayerTrackSurface: TrkLoc.AproachingPits });
+
+      expect(fires("position")).toBe(false);
+      expect(contract("position").endsOn?.event).toBe("pitLane.entered");
+    });
+
     it("still asks the family's own question at speak time: on track, a caution that is over refuses", () => {
       cautionPhase = "none";
 

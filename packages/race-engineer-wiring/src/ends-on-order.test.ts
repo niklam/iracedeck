@@ -32,11 +32,14 @@ import { wireRaceEngineer } from "./wire-race-engineer.js";
 // A `same-stage` violation fails closed, and its message says what proof
 // would justify an exemption: a test in the publishing module showing one call
 // never emits the trigger after the end. A `trigger-after-end` violation is
-// excused the same way, only where tests prove the end's stage leaves the
-// trigger's nothing to publish on that tick (it resets the trigger's state, or
-// the tick returns after it). Each exemption below names its pair, its stage
-// or stages and those tests, and excuses nothing else — no other kind of
-// violation, no other stage.
+// excused the same way, only where tests prove no fire can start from the
+// trigger after the end on that tick: the end's stage leaves the trigger's
+// nothing to publish (it resets the trigger's state, or the tick returns after
+// it), the trigger's stage publishes nothing on the very tick fact the end is
+// published on, or — where the sim can publish the trigger there — every
+// contract pairing the two refuses it in its `where:`, which reads that tick
+// (#1722). Each exemption below names its pair, its stage or stages and those
+// tests, and excuses nothing else — no other kind of violation, no other stage.
 
 /** What the check reads of one contract. */
 type EndsOnPair = Pick<ContractReport, "id" | "event" | "endsOnEvent">;
@@ -64,16 +67,19 @@ const SAME_STAGE_EXEMPTIONS: readonly SameStageExemption[] = [
 ];
 
 /**
- * A trigger whose stage comes after its end's in the table, where the end's
- * stage leaves the trigger's nothing to publish on that tick (it resets the
- * trigger's state, or the tick returns after it), proved by the tests named.
+ * A trigger whose stage comes after its end's in the table, where no fire can
+ * start from the trigger after the end on that tick — the end's stage leaves
+ * the trigger's nothing to publish (it resets the trigger's state, or the tick
+ * returns after it), the trigger's stage publishes nothing on the tick fact
+ * the end is published on, or every contract pairing the two refuses the
+ * trigger in `where:` reading that tick — proved by the tests named.
  */
 type TriggerAfterEndExemption = {
   readonly trigger: SimEventName;
   readonly end: SimEventName;
   readonly triggerStage: string;
   readonly endStage: string;
-  /** The tests that prove `triggerStage` never publishes `trigger` after `endStage`'s `end` on one tick. */
+  /** The tests that prove no fire starts from `triggerStage`'s `trigger` after `endStage`'s `end` on one tick. */
   readonly proof: string;
 };
 
@@ -100,6 +106,30 @@ const TRIGGER_AFTER_END_EXEMPTIONS: readonly TriggerAfterEndExemption[] = [
     endStage: "publishActiveStateTeardown (replay entry)",
     proof:
       '@iracedeck/sim-events-iracing traffic.translator.test.ts: "on leaving the car for the garage, whose ticks the replay guard swallows: once, and nothing after it"; tick-order.test.ts: "places the replay-entry teardown directly before the live diffs"',
+  },
+  // #1722: the two overtake position readouts end at pit entry. The end is
+  // published on the tick `OnPitRoad` turns true, and `diffOvertakes` reads
+  // the same `OnPitRoad` and returns, so it publishes no overtake on it.
+  ...(["overtake.completed", "overtake.lost"] as const).map((trigger) => ({
+    trigger,
+    end: "pitLane.entered" as const,
+    triggerStage: "diffOvertakes",
+    endStage: "diffPitLane",
+    proof:
+      '@iracedeck/sim-events-iracing diff/overtakes.test.ts: "publishes no overtake on the tick OnPitRoad turns true, even for $direction whose hold completes there"; translator.test.ts: "emits pitLane.entered on off→on transition"',
+  })),
+  {
+    // #1722: the caution sequence's position call ends at pit entry, and the
+    // checkpoint diff reads no pit road, so it can publish after the end on
+    // one tick. The call's `where:` refuses on pit road, reading the latest
+    // tick, which on that tick is the one the end fired on (OnPitRoad true),
+    // so no fire starts for the end to miss.
+    trigger: "caution.lastLapCheckpoint",
+    end: "pitLane.entered",
+    triggerStage: "diffCaution",
+    endStage: "diffPitLane",
+    proof:
+      '@iracedeck/sim-events-iracing translator.test.ts: "publishes pitLane.entered with that tick already the latest telemetry, so a later stage\'s publish on it reads OnPitRoad true (the endsOn order, #1722)"; @iracedeck/audio-scenarios catalog/pit-crew/caution.test.ts: "refuses a checkpoint published on the pitLane.entered tick, whose latest tick reads OnPitRoad true (the endsOn order, #1722)"',
   },
 ];
 
@@ -210,12 +240,18 @@ describe("endsOn trigger/end order against one controller tick (#1407, #1499, #1
   });
 
   it("finds the endsOn contracts the production registration makes, so the check cannot pass on none", () => {
-    // Today that is pit-crew.limiter-dropped (ended by pitLane.exited) and the
-    // four rejoin lines (ended by traffic.rejoinTowed, #1113).
+    // Today that is pit-crew.limiter-dropped (ended by pitLane.exited), the
+    // four rejoin lines (ended by traffic.rejoinTowed, #1113) and the five
+    // position calls (ended by pitLane.entered, #1722).
     expect(engine.contracts().length).toBeGreaterThan(0);
     expect(endsOnContracts.length, "endsOn contracts registered by wireRaceEngineer").toBeGreaterThanOrEqual(5);
     expect(endsOnContracts.map((c) => c.id)).toEqual(
-      expect.arrayContaining(["pit-crew.limiter-dropped", "pit-crew.traffic-rejoin-near-first"]),
+      expect.arrayContaining([
+        "pit-crew.limiter-dropped",
+        "pit-crew.traffic-rejoin-near-first",
+        "pit-crew.position-change",
+        "pit-crew.caution-position",
+      ]),
     );
   });
 

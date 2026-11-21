@@ -520,6 +520,44 @@ describe("diffOvertakes — suppression rules", () => {
   });
 });
 
+describe("diffOvertakes — the pit-entry tick (the endsOn order, #1722)", () => {
+  // The two overtake position readouts are ended by `pitLane.entered`, which
+  // `diffPitLane` publishes on the tick `OnPitRoad` turns true, and `diffOvertakes`
+  // runs after it. So the order holds only because this stage publishes nothing
+  // on that tick: it reads the same `OnPitRoad` and returns. Each case completes
+  // a pending swap on that tick, beside the same tick off pit road as its control.
+
+  it.each([
+    { direction: "a gain", from: 5, to: 4, gap: { carBehindPct: 0.45 }, event: "overtake.completed" },
+    { direction: "a loss", from: 4, to: 5, gap: { carAheadPct: 0.55 }, event: "overtake.lost" },
+  ] as const)(
+    "publishes no overtake on the tick OnPitRoad turns true, even for $direction whose hold completes there",
+    ({ from, to, gap, event }) => {
+      for (const onPitRoad of [false, true]) {
+        const { state } = seedAt(from);
+        const { events, emit } = collect();
+
+        diffOvertakes(state, tick({ playerPosition: to }), PLAYER_IDX, true, null, TRACK_LENGTH_M, 100, emit);
+        diffOvertakes(
+          state,
+          tick({ playerPosition: to, ...gap, onPitRoad }),
+          PLAYER_IDX,
+          true,
+          null,
+          TRACK_LENGTH_M,
+          100 + OVERTAKE_HOLD_MS,
+          emit,
+        );
+
+        expect(
+          overtakeEvents(events).map((e) => e.event),
+          onPitRoad ? "on the pit-entry tick" : "the control, off pit road",
+        ).toEqual(onPitRoad ? [] : [event]);
+      }
+    },
+  );
+});
+
 describe("diffOvertakes — pre-green gate (#647)", () => {
   it("suppresses a would-be gain during the parade lap and rolls the baseline silently", () => {
     const { state } = seedAt(5);
