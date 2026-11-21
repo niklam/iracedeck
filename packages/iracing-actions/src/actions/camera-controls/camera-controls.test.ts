@@ -2408,6 +2408,59 @@ describe("Cycle Camera key icon: next or current group (#959)", () => {
     expect(decodeURIComponent(latest())).toContain("tv-mixed-artwork");
   });
 
+  it("draws the group again on the next tick when the redraw is refused (#1653 review)", async () => {
+    const action = await appear({ cycleIconMode: "current" }, { CamGroupNumber: 11 });
+    vi.mocked(action["updateKeyImage"]).mockRejectedValueOnce(new Error("socket closed"));
+    const registered = vi.mocked(action["setRegenerateCallback"]).mock.calls.length;
+
+    sdkOf(action).getCurrentTelemetry.mockReturnValue({ CamGroupNumber: 17 }); // TV Mixed
+    subscriber?.();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(shownIcons(action)).toHaveLength(2);
+    expect(vi.mocked(action["setRegenerateCallback"]).mock.calls.length).toBe(registered);
+    expect(action["logger"].debug).toHaveBeenCalledWith("Failed to redraw a Cycle Camera key: socket closed");
+
+    subscriber?.();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(shownIcons(action)).toHaveLength(3);
+    expect(shownIcons(action)[2]).toContain("tv-mixed-artwork");
+
+    // Once it went out, ticks leave it alone again.
+    subscriber?.();
+    expect(shownIcons(action)).toHaveLength(3);
+  });
+
+  it("draws the group again on the next tick when the redraw found no key (#1653 review)", async () => {
+    const action = await appear({ cycleIconMode: "current" }, { CamGroupNumber: 11 });
+    vi.mocked(action["updateKeyImage"]).mockResolvedValueOnce(false);
+
+    sdkOf(action).getCurrentTelemetry.mockReturnValue({ CamGroupNumber: 17 });
+    subscriber?.();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    subscriber?.();
+
+    expect(shownIcons(action)).toHaveLength(3);
+  });
+
+  it("keeps a newer render's record when an older redraw fails after it", async () => {
+    const action = await appear({ cycleIconMode: "current" }, { CamGroupNumber: 11 });
+    let failFirst: () => void = () => {};
+    vi.mocked(action["updateKeyImage"]).mockImplementationOnce(
+      () => new Promise((_resolve, reject) => (failFirst = () => reject(new Error("late")))),
+    );
+
+    sdkOf(action).getCurrentTelemetry.mockReturnValue({ CamGroupNumber: 12 }); // TV1, refused late
+    subscriber?.();
+    sdkOf(action).getCurrentTelemetry.mockReturnValue({ CamGroupNumber: 17 }); // TV Mixed, lands
+    subscriber?.();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    failFirst();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    subscriber?.();
+    expect(shownIcons(action)).toHaveLength(3);
+  });
+
   it("shows only the grid while there is no telemetry", async () => {
     const action = await appear({ cycleIconMode: "current" }, undefined);
 

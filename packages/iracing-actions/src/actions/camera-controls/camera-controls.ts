@@ -2050,13 +2050,34 @@ export class CameraControls extends SimIRacingAction<CameraControlsSettings> {
    * registration, so a late, older registration would put its older image back
    * on the key while the dedupe records the newer group, and the key would stay
    * wrong until the group next changed.
+   *
+   * A write that rejects, or finds the key gone, never put the icon on the
+   * device: it drops the displayed-group record, so the next tick draws the
+   * key again, and registers nothing (#1653 review). A newer render's record,
+   * made while this write was in flight, belongs to that render and is left
+   * alone.
    */
   private async showCycleIcon(contextId: string, render: () => string): Promise<void> {
     const generation = (this.cycleIconGeneration.get(contextId) ?? 0) + 1;
     this.cycleIconGeneration.set(contextId, generation);
-    await this.updateKeyImage(contextId, render());
+    const svg = render();
+    let written: boolean;
+
+    try {
+      written = await this.updateKeyImage(contextId, svg);
+    } catch (err) {
+      // Debug, not warn: a host that keeps refusing would log this every tick.
+      this.logger.debug(`Failed to redraw a Cycle Camera key: ${err instanceof Error ? err.message : err}`);
+      written = false;
+    }
 
     if (this.cycleIconGeneration.get(contextId) !== generation) return;
+
+    if (written === false) {
+      this.lastDisplayedGroup.delete(contextId);
+
+      return;
+    }
 
     this.setRegenerateCallback(contextId, render);
   }
