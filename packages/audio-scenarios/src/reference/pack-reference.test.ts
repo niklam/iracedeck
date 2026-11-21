@@ -107,7 +107,7 @@ const SCRIPT: CalloutScript = {
       frame: "terse",
       sequence: [
         "pool:spot",
-        "voice/{voice}/openers/alright.mp3",
+        "/voice/{voice}/openers/alright.mp3",
         "/voice/default/units/km.mp3",
         "pool:undefined-alias",
       ],
@@ -742,6 +742,34 @@ describe("buildPackReference withholding a development feature (issue #1113)", (
       "pit-crew.incident",
       "pit-crew.spotter-call",
     ]);
+  });
+
+  it("credits a literal by where the engine plays it, never as written when the base moves it", () => {
+    // Under the spotter call's base `voice/{voice}`, the unescaped
+    // `voice/{voice}/openers/alright.mp3` plays from
+    // `voice/{voice}/voice/{voice}/openers/alright.mp3` — not the voice's
+    // `openers/alright` line — so it keeps nothing a withheld callout names.
+    const script: CalloutScript = {
+      ...SCRIPT,
+      scenarios: {
+        ...SCRIPT.scenarios,
+        "pit-crew.incident": {
+          ...SCRIPT.scenarios["pit-crew.incident"],
+          sequence: ["pool:incidents/type-contact", "pool:openers/alright"],
+        },
+        "pit-crew.spotter-call": {
+          ...SCRIPT.scenarios["pit-crew.spotter-call"],
+          sequence: ["pool:spot", "voice/{voice}/openers/alright.mp3"],
+        },
+      },
+    };
+
+    expect(lineOf(buildPackReference(input({ script })), "openers", "alright").usedBy).toEqual(["pit-crew.incident"]);
+    expect(
+      buildPackReference(input({ script, withheld: INCIDENT }))
+        .recordingScript.find((g) => g.group === "openers")
+        ?.lines.map((l) => l.base) ?? [],
+    ).not.toContain("alright");
   });
 
   it("credits a bare literal only through a base that puts it in the voice's folder", () => {

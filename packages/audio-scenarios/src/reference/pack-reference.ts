@@ -492,10 +492,11 @@ export function descriptionNamesGroup(description: string, group: string): boole
 type EntryWalk = {
   references: CalloutReferences;
   /**
-   * `group/name` of every literal step that plays a voice clip: one spelled
-   * `voice/<voice>/<group>/<name>.mp3`, AS WRITTEN, or a bare one the
-   * contract's `base` puts there, as the engine resolves it (`applyBase`), so
-   * `openers/alright.mp3` under `voice/{voice}` is `openers/alright`. A
+   * `group/name` of every literal step that plays a voice clip, judged where
+   * the engine plays it — against the contract's `base` (`applyBase`) — and
+   * never as written: `openers/alright.mp3` under `voice/{voice}` is
+   * `openers/alright`, while `voice/{voice}/openers/alright.mp3` there needs
+   * its leading-slash escape to be (unescaped it plays from the base twice). A
    * published callout playing a line that way keeps it from being withheld
    * with a feature that names it by pool (#1113). Names are kept AS
    * WRITTEN — the line it lands on is resolved with `lineKeyOf` against the
@@ -643,10 +644,11 @@ function walkSteps(script: CalloutScript, roots: readonly (readonly ScriptStep[]
     }
 
     for (const clip of collectLiteralClips(steps)) {
-      // As written first (the spelling `lint:pack` checks), then as the engine
-      // plays it, against the contract's base: a bare `openers/alright.mp3`
-      // under `voice/{voice}` is the voice's line too (see `clipBases`).
-      const match = VOICE_CLIP_PATH.exec(clip) ?? VOICE_CLIP_PATH.exec(applyBase(base ?? undefined, clip));
+      // Only as the engine plays it, against the contract's base: a bare
+      // `openers/alright.mp3` under `voice/{voice}` is the voice's line, while
+      // an unescaped `voice/{voice}/openers/alright.mp3` there plays from
+      // `voice/{voice}/voice/{voice}/…`, no line of the voice's (see `clipBases`).
+      const match = VOICE_CLIP_PATH.exec(applyBase(base ?? undefined, clip));
 
       if (match) walk.clipBases.add(`${match[1]}/${match[2]}`);
     }
