@@ -146,9 +146,14 @@ describe("recordCameraGroups (#1653)", () => {
     expect(Object.keys(update.catalog.groups)).toEqual(["Pit Lane 2", "TV1"]);
   });
 
-  it("skips blank and over-long names", () => {
+  it("skips blank, over-long and control-character names, the ones the remove command would refuse", () => {
     const long = "x".repeat(CAMERA_GROUP_NAME_MAX_LENGTH + 1);
-    const update = recordCameraGroups(emptyCameraCatalog(), { ...spa, groups: ["", "  ", long, "TV1"] }, T0);
+    const control = [0, 9, 10, 31, 127].map((code) => `Cam${String.fromCharCode(code)}`);
+    const update = recordCameraGroups(
+      emptyCameraCatalog(),
+      { ...spa, groups: ["", "  ", long, ...control, "TV1"] },
+      T0,
+    );
 
     expect(update.catalog.tracks["13"].groups).toEqual(["TV1"]);
   });

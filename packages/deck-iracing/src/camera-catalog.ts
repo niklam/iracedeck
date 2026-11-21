@@ -23,9 +23,11 @@ import { normalizeCameraGroupName } from "@iracedeck/iracing-sdk";
 export const CAMERA_CATALOG_VERSION = 1;
 
 /**
- * The longest group name the catalog records. Longer names are skipped: the
- * settings window's remove command refuses longer names, so one recorded
- * could never be removed. A camera file's group names are short in practice.
+ * The longest group name the catalog records. Longer names, and names with a
+ * control character, are skipped: the settings window's remove command
+ * (`CameraGroupNameSchema` in `@iracedeck/settings-window`, which restates
+ * this number) refuses them, so one recorded could never be removed. A camera
+ * file's group names are short in practice.
  */
 export const CAMERA_GROUP_NAME_MAX_LENGTH = 256;
 
@@ -105,9 +107,29 @@ export function emptyCameraCatalog(): CameraCatalog {
   return { version: CAMERA_CATALOG_VERSION, tracks: dict(), groups: dict() };
 }
 
-/** Whether `name` is one the catalog records: a non-blank string no longer than the limit. */
+/** Whether `name` holds a C0 control character or DEL. */
+function hasControlCharacter(name: string): boolean {
+  for (let i = 0; i < name.length; i++) {
+    const code = name.charCodeAt(i);
+
+    if (code < 0x20 || code === 0x7f) return true;
+  }
+
+  return false;
+}
+
+/**
+ * Whether `name` is one the catalog records: a non-blank string no longer than
+ * the limit, with no control character. The same rule as the settings window's
+ * `CameraGroupNameSchema`, so every recorded name can be removed there.
+ */
 function isRecordableName(name: unknown): name is string {
-  return typeof name === "string" && name.trim() !== "" && name.length <= CAMERA_GROUP_NAME_MAX_LENGTH;
+  return (
+    typeof name === "string" &&
+    name.trim() !== "" &&
+    name.length <= CAMERA_GROUP_NAME_MAX_LENGTH &&
+    !hasControlCharacter(name)
+  );
 }
 
 /** The names in order, canonical, each once, unrecordable ones skipped. */
