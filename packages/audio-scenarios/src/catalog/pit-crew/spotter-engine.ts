@@ -17,9 +17,10 @@
  * consumed only when the fire is accepted. A pack rephrases around the call
  * (a lead-in, a beat) rather than re-recording the twenty-four terms, and the
  * var declares those twenty-four pools (`draws`, {@link SPOTTER_CLIP_BASES})
- * so the pack linter and the first-party completeness test know them. `engine.fire(id)` resolves a contract through the same
- * registration path as a bus-triggered one: a voice whose script has no
- * entry is silent for it, a scripted one plays.
+ * so the pack linter and the first-party completeness test know them.
+ * `engine.fire(id)` resolves a contract through the same registration path
+ * as a bus-triggered one: a voice whose script has no entry is silent for
+ * it, a scripted one plays.
  *
  * Scheduling splits into two contracts (issue #867): every car-presence
  * transition call ("Car left", "Two cars right", "Three wide", the combined
