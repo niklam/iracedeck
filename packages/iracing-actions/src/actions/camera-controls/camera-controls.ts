@@ -1922,7 +1922,31 @@ export class CameraControls extends SimIRacingAction<CameraControlsSettings> {
 
     if (this.shownUnavailable.get(contextId) === unavailable) return;
 
-    void this.updateKeyImage(contextId, this.keySvg(contextId, settings));
+    void this.writeChangeCameraLook(contextId, this.keySvg(contextId, settings));
+  }
+
+  /**
+   * Push a Change Camera key's redrawn look. `keySvg` recorded that look before
+   * the write; a write that rejects, or finds the key gone, never put it on the
+   * device, so the record is dropped and the next tick draws it again (#1653
+   * review). A newer redraw's record, made while this write was in flight,
+   * belongs to that write and is left alone.
+   */
+  private async writeChangeCameraLook(contextId: string, svg: string): Promise<void> {
+    const recorded = this.shownUnavailable.get(contextId);
+    let written: boolean;
+
+    try {
+      written = await this.updateKeyImage(contextId, svg);
+    } catch (err) {
+      // Debug, not warn: a host that keeps refusing would log this every tick.
+      this.logger.debug(`Failed to redraw a Change Camera key: ${err instanceof Error ? err.message : err}`);
+      written = false;
+    }
+
+    if (written === false && this.shownUnavailable.get(contextId) === recorded) {
+      this.shownUnavailable.delete(contextId);
+    }
   }
 
   /**

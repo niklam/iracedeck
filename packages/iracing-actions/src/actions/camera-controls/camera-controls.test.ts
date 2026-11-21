@@ -3517,6 +3517,35 @@ describe("Camera Controls keys on a group the session lacks (#1653)", () => {
       expect(lastIconOptions().dimmed).toBeUndefined();
     });
 
+    it("draws the look again on the next tick when the redraw is refused (#1653 review)", async () => {
+      const action = await appear({ target: "change-camera", cameraGroupName: "DynamicTV" }, CUSTOM_FILE_GROUPS);
+      vi.mocked(action["updateKeyImage"]).mockRejectedValueOnce(new Error("socket closed"));
+
+      sessionUpdate(action, LAKELAND_GROUPS);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(pushedImages(action)).toBe(1);
+
+      subscriber?.();
+      expect(pushedImages(action)).toBe(2);
+      expect(lastIconOptions().dimmed).toBe(true);
+
+      // Once it went out, ticks leave it alone again.
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      subscriber?.();
+      expect(pushedImages(action)).toBe(2);
+    });
+
+    it("draws the look again on the next tick when the redraw found no key (#1653 review)", async () => {
+      const action = await appear({ target: "change-camera", cameraGroupName: "DynamicTV" }, CUSTOM_FILE_GROUPS);
+      vi.mocked(action["updateKeyImage"]).mockResolvedValueOnce(false);
+
+      sessionUpdate(action, LAKELAND_GROUPS);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      subscriber?.();
+
+      expect(pushedImages(action)).toBe(2);
+    });
+
     it("reads the group list once per session update, not per tick", async () => {
       await appear({ target: "change-camera", cameraGroupName: "DynamicTV" }, CUSTOM_FILE_GROUPS);
       const reads = vi.mocked(getCameraGroupsFromSessionInfo).mock.calls.length;
