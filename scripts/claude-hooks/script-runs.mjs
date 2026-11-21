@@ -63,6 +63,7 @@ import {
   stringBounds,
   stringEnd,
   trustedMask,
+  view,
   wordText,
 } from "./shell-lexer.mjs";
 
@@ -785,7 +786,7 @@ export function deckFindings(c, cwd, ctx, shell, trail = []) {
   const matches = RUNNERS.flatMap(({ re, read, whole }) =>
     [...chainCommands(c, cwd, re, shell)].map((m) => ({ ...m, read, whole })),
   );
-  const again = repeatsAt(c, shell, [...cli, ...hosts, ...matches]);
+  const again = repeatsAt(c, shell);
   for (const { m, at, via } of cli) {
     // The match starts at the operator ahead of the command (`&& streamdeck link`).
     const text = m[0].replace(/^[\s|;&()`]+/, "").trim();
@@ -900,57 +901,79 @@ export function deckFindings(c, cwd, ctx, shell, trail = []) {
  * Where in `c` a command runs over and over (#1737 review): a function of a
  * command's `at` — where its program word ends — and the lexer's `via`, giving
  * the reason ({@link repeated}) or `undefined`. A command `watch` runs is one,
- * and so is every command in the string `watch` is handed (`watch 'pnpm build
- * && pnpm restart:stream-deck'`), where the lexer marks only the first; one
- * chained after an unquoted `watch` runs once, after it. So is a command in a
- * loop ({@link loopSpans}).
+ * and so is every command in the string `watch` is handed (`watch -n 60 'git
+ * pull && pnpm restart:stream-deck'`): the lexer marks only the string's first
+ * word, which may be no program this reader judges, so the string is found by
+ * the lexer's own record of the quote it fed to `watch` (#1737 second read).
+ * One chained after an unquoted `watch` runs once, after it. So is a command
+ * in a loop ({@link loopSpans}).
  */
-function repeatsAt(c, shell, commands) {
-  const spans = loopSpans(c, shell).map(([a, b]) => [a, b, IN_LOOP]);
-  for (const { at, via } of commands) {
-    if (via !== "watch") continue;
-    const string = stringBounds(c, at - 1);
-    if (string) spans.push([string[0], string[1] + 1, UNDER_WATCH]);
-  }
+function repeatsAt(c, shell) {
+  const { quotes, quoteKinds } = view(c);
+  const spans = quotes
+    .filter(([open]) => quoteKinds.get(open)?.via === "watch")
+    .map(([open, close]) => [open, close + 1, UNDER_WATCH]);
+  spans.push(...loopSpans(c, shell).map(([a, b]) => [a, b, IN_LOOP]));
   return (at, via) => (via === "watch" ? UNDER_WATCH : spans.find(([a, b]) => at - 1 >= a && at - 1 < b)?.[2]);
 }
 
 /**
  * The loop words of bash at command position, read from the lexer's trusted
- * mask so a quoted mention is no loop: after the start, a newline, an
- * operator, a brace or a paren, the quote of a string a shell is fed, `!`, or
- * a keyword that starts a command (`do`, `then`, `else`, `elif`, `time`).
+ * mask so an inert quoted mention is no loop: after the start, a newline, an
+ * operator, a brace or a paren, `!`, or a keyword that starts a command (`do`,
+ * `then`, `else`, `elif`, `time`).
  */
 const BASH_LOOP_WORD =
-  /(?<=(?:^|[\n;&|(){}'"!]|(?<![^\s;&|(){}])(?:do|then|else|elif|time))[ \t]*)(?:while|until|for|select|done)(?=[\s;&|()<>]|$)/g;
-/** PowerShell's `while` and `do`, at command position. */
-const PS_LOOP_WORD = /(?<=(?:^|[\n;&|(){}])[ \t]*)(?:while|do)(?=[\s({]|$)/gi;
+  /(?<=(?:^|[\n;&|(){}!]|(?<![^\s;&|(){}])(?:do|then|else|elif|time))[ \t]*)(?:while|until|for|select|done)(?=[\s;&|()<>]|$)/g;
+/** PowerShell's `while`, `do` and `for` at command position, past an optional `:label`; `foreach` is no match. */
+const PS_LOOP_WORD = /(?<=(?:^|[\n;&|(){}])[ \t]*(?::\w+[ \t]+)?)(?:while|do|for)(?=[\s({]|$)/gi;
 
 /**
  * The spans of `c` a loop runs over and over (#1737 review), `[start, end)`.
- * In bash, a `while` or `until` from its word to its `done` — the condition
- * included, which runs on every pass — pairing every `for` and `select` with
- * its `done` too, so a `for` nested in a `while` does not end it; one left
- * open runs to the end. In PowerShell, a `while (…) { … }` and a `do { … }
- * while|until (…)`; a `while` with no block after its condition is a `do`
- * loop's tail. A `for` or `foreach` is left alone, as bounded.
+ * In bash, a `while`, an `until` or a C-style `for ((…))` from its word to
+ * its `done` — the condition included, which runs on every pass — pairing
+ * every `for … in` and `select` with its `done` too, so one nested in a
+ * `while` does not end it; one left open runs to the end. In PowerShell, a
+ * `while (…) { … }`, a `for (…) { … }` and a `do { … } while|until (…)`, each
+ * perhaps labelled (`:l while`); a `while` with no block after its condition
+ * is a `do` loop's tail. A bash `for … in` and a PowerShell `foreach` run
+ * over a list, bounded, and are left alone.
+ *
+ * Where a shell is fed, the lexer sets its mask aside and the raw text shows
+ * the strings (#1737 second read): a loop word or a bracket inside one is a
+ * character of that string, never the loop's (`sh -c 'echo "done"'`, `cmd /c
+ * "echo }"`). A string read by a shell on stdin, or one a non-reader (`watch`,
+ * `trap`, `su`) runs, is judged here, so the loops in its text count, read
+ * from that text; a wrapper's string is read through its own line ({@link
+ * wrapperRuns}).
  */
 function loopSpans(c, shell) {
   const mask = trustedMask(c);
+  const { quotes, quoteKinds } = view(c);
+  const quoted = new Uint8Array(mask.length);
+  for (const [open, close] of quotes) quoted.fill(1, open, close + 1);
+  const live = (p) => !quoted[p];
   const spans = [];
+  // The loops inside a string whose commands are judged here, at its offset.
+  for (const [open, close] of quotes) {
+    const kind = quoteKinds.get(open);
+    if (!kind || (!kind.stdin && isWrapper(kind.via ?? ""))) continue;
+    for (const [a, b] of loopSpans(c.slice(open + 1, close), shell)) spans.push([open + 1 + a, open + 1 + b]);
+  }
   if (shell === POWERSHELL) {
     for (const m of mask.matchAll(PS_LOOP_WORD)) {
+      if (!live(m.index)) continue;
       const word = m[0].toLowerCase();
       let p = skipBlanks(mask, m.index + m[0].length);
-      if (word === "while") {
+      if (word !== "do") {
         if (mask[p] !== "(") continue;
-        p = skipBlanks(mask, closeOf(mask, p) + 1);
-        if (mask[p] !== "{") continue;
-      } else if (mask[p] !== "{") continue;
-      let end = closeOf(mask, p) + 1;
+        p = skipBlanks(mask, closeOf(mask, p, live) + 1);
+      }
+      if (mask[p] !== "{") continue;
+      let end = closeOf(mask, p, live) + 1;
       if (word === "do") {
         const tail = /^\s*(?:while|until)\s*\(/i.exec(mask.slice(end));
-        if (tail) end = closeOf(mask, end + tail[0].length - 1) + 1;
+        if (tail) end = closeOf(mask, end + tail[0].length - 1, live) + 1;
       }
       spans.push([m.index, end]);
     }
@@ -958,7 +981,10 @@ function loopSpans(c, shell) {
   }
   const open = [];
   for (const m of mask.matchAll(BASH_LOOP_WORD)) {
-    if (m[0] !== "done") open.push({ at: m.index, repeats: m[0] === "while" || m[0] === "until" });
+    if (!live(m.index)) continue;
+    const unbounded =
+      m[0] === "while" || m[0] === "until" || (m[0] === "for" && /^\s*\(\(/.test(mask.slice(m.index + 3)));
+    if (m[0] !== "done") open.push({ at: m.index, repeats: unbounded });
     else {
       const loop = open.pop();
       if (loop?.repeats) spans.push([loop.at, m.index + m[0].length]);
@@ -972,13 +998,15 @@ function loopSpans(c, shell) {
 const skipBlanks = (text, p) => p + /^\s*/.exec(text.slice(p))[0].length;
 
 /**
- * The position of the bracket that closes the one at `open` (`(` or `{`), or
- * the text's last position when it is never closed — a loop left open runs to
- * the end, erring to ask.
+ * The position of the bracket that closes the one at `open` (`(` or `{`),
+ * counting only the brackets at a position `live` accepts — none inside a
+ * string — or the text's last position when it is never closed: a loop left
+ * open runs to the end, erring to ask.
  */
-function closeOf(text, open) {
+function closeOf(text, open, live) {
   const [o, x] = text[open] === "(" ? ["(", ")"] : ["{", "}"];
   for (let depth = 0, p = open; p < text.length; p++) {
+    if (!live(p)) continue;
     if (text[p] === o) depth++;
     else if (text[p] === x && --depth === 0) return p;
   }

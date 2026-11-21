@@ -3339,6 +3339,55 @@ describe("a restart run over and over asks (#1737 review)", () => {
     restarts("while ($true) { Start-Sleep 1 }; pnpm restart:stream-deck", ps);
     restarts("Write-Output 'while (1) { x }'; pnpm restart:stream-deck", ps);
   });
+
+  // #1737 second read: the lexer marks only the first word of the string
+  // `watch` is handed, and that word may be no program this reader judges.
+  it.each(["watch -n 60 'git pull && pnpm restart:stream-deck'", "watch -n5 'sleep 1; pnpm restart:stream-deck'"])(
+    "asks for a restart anywhere in the string watch reruns: %s",
+    (c) => expect(asks(c)).toMatch(/deck host, again every time `watch` reruns it\. /),
+  );
+  it("passes a restart chained after an unquoted watch, which runs once", () =>
+    restarts("watch -n 5 git pull && pnpm restart:stream-deck"));
+
+  // #1737 second read: loops with no bound of their own.
+  it.each([
+    "for ((;;)); do pnpm restart:stream-deck; done",
+    "for (( i=0; ; i++ )); do pnpm restart:stream-deck; sleep 5; done",
+    "for ((;;))\ndo\n  pnpm restart:stream-deck\ndone",
+  ])("asks for a restart in a C-style for loop: %s", (c) =>
+    expect(asks(c)).toMatch(/deck host, again on every pass of its loop\. /),
+  );
+  it.each([
+    "for (;;) { pnpm restart:stream-deck }",
+    "for ($i = 0; ; $i++) { pnpm restart:stream-deck; Start-Sleep 5 }",
+    ":l while ($true) { pnpm restart:stream-deck }",
+    ":outer for (;;) { pnpm restart:stream-deck }",
+    // Not `:l do { … }`: the lexer reads `:l` as bash's `:` builtin and the block
+    // as its arguments, so it finds no command there at all, a relink included.
+  ])("asks for a restart in a PowerShell for loop or a labelled loop: %s", (c) =>
+    expect(asks(c, ps)).toMatch(/deck host, again on every pass of its loop\. /),
+  );
+  it("passes a labelled PowerShell foreach over a list", () =>
+    restarts(":l foreach ($h in 'a','b') { pnpm restart:stream-deck }", ps));
+
+  // #1737 second read: where a shell is fed, the mask is set aside and the raw
+  // text holds quoted loop words and braces, which must not close a loop.
+  it("asks for a loop whose quoted done or brace would have closed it early", () => {
+    expect(asks(`while true; do sh -c 'echo "done restarting"'; pnpm restart:stream-deck; sleep 300; done`)).toMatch(
+      /deck host, again on every pass of its loop\. /,
+    );
+    expect(asks(`while ($true) { cmd /c "echo }"; pnpm restart:stream-deck }`, ps)).toMatch(
+      /deck host, again on every pass of its loop\. /,
+    );
+    // A loop in a script a shell reads on stdin is judged here, so it still counts.
+    expect(asks("echo 'while true; do pnpm restart:stream-deck; done' | bash")).toMatch(
+      /again on every pass of its loop/,
+    );
+  });
+  it("passes a quoted while beside a fed shell, which opens no loop", () => {
+    restarts(`echo "while true"; sh -c 'pnpm build'; pnpm restart:stream-deck`);
+    restarts(`sh -c 'echo while true; do'; pnpm restart:stream-deck`);
+  });
 });
 
 // Second read (#1520): a script name is a list that is always one behind, so
