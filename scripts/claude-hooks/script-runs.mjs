@@ -775,15 +775,25 @@ const UNREAD = "$(…)";
  * repeated}, {@link repeatsAt}); and a restart under a restart's own name is
  * not repeated.
  * `trail` holds the `<package dir>\0<script>` keys being expanded, which is
- * both the depth ({@link MAX_SCRIPT_DEPTH}) and the cycle guard;
- * `underRestart` says a restart-kind run above this line is being read, so a
- * body the bound leaves unread anywhere beneath it asks. A script the
+ * both the depth ({@link MAX_SCRIPT_DEPTH}) and the cycle guard. A script the
  * hook cannot read — no `ctx.scriptsAt`, no package.json, no such script — is
  * judged by its name alone; a selector it cannot resolve reads every package
  * instead ({@link runManifests}).
+ *
+ * Past the bound a body is left unread, and it may relink, or run a restart
+ * the command holds again around a ring longer than the bound (#1737,
+ * CodeRabbit CLI). A restart no longer asks, so a command that restarts and
+ * was cut there asks, naming where; one with no deck finding stays
+ * prompt-free past the bound, as before #1737.
  */
-export function deckFindings(c, cwd, ctx, shell, trail = [], underRestart = false) {
-  return deckReach(c, cwd, ctx, shell, trail, underRestart).found;
+export function deckFindings(c, cwd, ctx, shell, trail = []) {
+  const { found, cut } = deckReach(c, cwd, ctx, shell, trail);
+  if (cut && found.some((f) => f.kind === "restart"))
+    found.push({
+      text: `${cut} runs scripts too deep to read, which may repeat a restart or relink a host`,
+      kind: "watch",
+    });
+  return found;
 }
 
 /**
@@ -794,10 +804,14 @@ export function deckFindings(c, cwd, ctx, shell, trail = [], underRestart = fals
  * runs itself again does it all again on every pass, whatever it is called.
  * A restart folded into a restart name on the way up loses nothing: that
  * name's own finding is still among them, and is escalated with the rest.
+ * `cut` is the path to the first run whose body the depth bound left unread
+ * (a line that closes a known cycle is no unread body), for {@link
+ * deckFindings} to judge.
  */
-function deckReach(c, cwd, ctx, shell, trail, underRestart) {
+function deckReach(c, cwd, ctx, shell, trail) {
   const found = [];
   const cycles = new Set();
+  let cut;
   const finding = (text, kind, again) => found.push(repeated(text, kind, again));
   const links = ctx.linkTargets().filter((l) => l.target);
   // Every command this reader judges, each with `at`, where its program word
@@ -906,14 +920,8 @@ function deckReach(c, cwd, ctx, shell, trail, underRestart) {
         const body = run.expand ? bodyLines(run, ctx) : [];
         const closes = (l) => l.key && trail.includes(l.key);
         for (const l of body) if (closes(l)) cycles.add(l.key);
-        // A restart's name no longer asks (#1737), so a body the bound leaves
-        // unread beneath a restart — the run's own, or one a restart above it
-        // reaches through neutral names — may hide a relink: that asks, as the
-        // restart's name did before. With no restart above, a name past the
-        // bound is judged by its name alone.
-        const unread = run.lines?.length || body.some((l) => !closes(l));
-        if ((kind === "restart" || underRestart) && unread)
-          finding(`\`${run.label}\` runs scripts too deep to read, which may relink`, "relink", run.repeats);
+        // Any other body here is left unread ({@link deckFindings}).
+        if (run.lines?.length || body.some((l) => !closes(l))) cut ??= `\`${run.label}\``;
         continue;
       }
       // A hook's or a shell's command line is no script: it has no key a
@@ -929,9 +937,10 @@ function deckReach(c, cwd, ctx, shell, trail, underRestart) {
         const [text, lineShell] = lineAs(line, as);
         // A lifecycle script is named in the path ({@link bodyLines}).
         const via = step ? `\`${run.label}\` → \`${step}\`` : `\`${run.label}\``;
-        const inner = deckReach(text, dir, ctx, lineShell, [...trail, key], underRestart || kind === "restart");
+        const inner = deckReach(text, dir, ctx, lineShell, [...trail, key]);
         const itself = key && inner.cycles.delete(key);
         for (const k of inner.cycles) cycles.add(k);
+        if (inner.cut) cut ??= `${via} → ${inner.cut}`;
         for (const f of inner.found) {
           const g = itself ? repeated(f.text, f.kind, RUNS_ITSELF) : f;
           // Under a restart's own name, the restarts it runs are that restart,
@@ -941,7 +950,7 @@ function deckReach(c, cwd, ctx, shell, trail, underRestart) {
         }
       }
     }
-  return { found, cycles };
+  return { found, cycles, cut };
 }
 
 /**

@@ -187,8 +187,10 @@ describe("deckFindings", () => {
       });
     expect(deckFindings("pnpm restart:d0", ROOT, restarts(7), BASH).map((f) => f.kind)).toEqual(["restart"]);
     const deep = deckFindings("pnpm restart:d0", ROOT, restarts(8), BASH);
-    expect(deep.map((f) => f.kind)).toEqual(["restart", "relink"]);
-    expect(deep[1].text).toMatch(/→ `pnpm restart:d8` runs scripts too deep to read, which may relink$/);
+    expect(deep.map((f) => f.kind)).toEqual(["restart", "watch"]);
+    expect(deep[1].text).toMatch(
+      /→ `pnpm restart:d8` runs scripts too deep to read, which may repeat a restart or relink a host$/,
+    );
     // A restart past the bound with no body to read (no such script) is just its name.
     const bare = ctx(
       Object.fromEntries(Array.from({ length: 8 }, (_, i) => [`restart:d${i}`, `pnpm restart:d${i + 1}`])),
@@ -209,8 +211,10 @@ describe("deckFindings", () => {
         hop8: last,
       });
     const deep = deckFindings("pnpm restart:x", ROOT, chain("pnpm relink:mirabox"), BASH);
-    expect(deep.map((f) => f.kind)).toEqual(["restart", "relink"]);
-    expect(deep[1].text).toMatch(/→ `pnpm hop8` runs scripts too deep to read, which may relink$/);
+    expect(deep.map((f) => f.kind)).toEqual(["restart", "watch"]);
+    expect(deep[1].text).toMatch(
+      /→ `pnpm hop8` runs scripts too deep to read, which may repeat a restart or relink a host$/,
+    );
     // Control: the same chain readable to the end and ending in a build is the one restart.
     const shallow = ctx({
       "restart:x": "pnpm hop1",

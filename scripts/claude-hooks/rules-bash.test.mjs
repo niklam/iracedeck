@@ -3531,6 +3531,32 @@ describe("a restart run over and over asks (#1737 review)", () => {
         /^`pnpm hop0` → `streamdeck restart` restarts, stops or starts a deck host, again every time it runs itself\. /,
       );
     });
+    // CodeRabbit CLI at 89d3d8a16: a ring longer than the bound never closes
+    // inside it, so the restart it holds may repeat unseen; past the bound, a
+    // command that restarts asks.
+    it("asks for a ring longer than the depth bound that holds a restart", () => {
+      const ring = withScripts({
+        r0: "streamdeck restart x && pnpm r1",
+        ...Object.fromEntries(Array.from({ length: 7 }, (_, i) => [`r${i + 1}`, `pnpm r${i + 2}`])),
+        r8: "pnpm r0",
+      });
+      expect(asks("pnpm r0", ring)).toMatch(/→ `pnpm r8` runs scripts too deep to read, which may repeat a restart/);
+    });
+    // Controls: the same ring with no restart finds nothing past the bound, and
+    // a one-shot restart whose short body is read whole passes.
+    it("finds nothing in a ring past the bound that restarts nothing, and passes a fully read restart", () => {
+      findsNothing(
+        "pnpm r0",
+        withScripts({
+          r0: "pnpm build && pnpm r1",
+          ...Object.fromEntries(Array.from({ length: 7 }, (_, i) => [`r${i + 1}`, `pnpm r${i + 2}`])),
+          r8: "pnpm r0",
+        }),
+      );
+      expect(restarts("pnpm restart:x", withScripts({ "restart:x": "pnpm build && streamdeck restart x" }))).toBe(
+        "`pnpm restart:x` restarts, stops or starts a deck host",
+      );
+    });
     it("names the restart a neutral script repeats", () =>
       expect(asks("pnpm loop-a", withScripts({ "loop-a": "streamdeck restart x && pnpm loop-a" }))).toMatch(
         /^`pnpm loop-a` → `streamdeck restart` restarts, stops or starts a deck host, again every time it runs itself\. /,
@@ -3585,7 +3611,7 @@ describe("a restart run over and over asks (#1737 review)", () => {
         }),
       });
     expect(asks("pnpm restart:d0", chain(12))).toMatch(
-      /`pnpm restart:d8` runs scripts too deep to read, which may relink/,
+      /`pnpm restart:d8` runs scripts too deep to read, which may repeat a restart or relink a host/,
     );
     // Positive control: within the bound the chain is read to the relink it ends in.
     expect(asks("pnpm restart:d0", chain(3))).toMatch(/`pnpm restart:d3` → `pnpm relink:mirabox` links/);
