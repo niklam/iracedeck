@@ -640,24 +640,39 @@ export function referenceTimeAt(curve: TrafficReferenceCurve | undefined, pct: n
  * hundredths of a second of noise into a lap end tens of seconds off. Adjacent
  * bins' means usually sit about a bin width apart (Spa's last two, 0.00198;
  * the curveLapEnd test), so a whole bin width would refuse measured pairs;
- * half of one refuses only the bunched ones. Over it the noise is magnified at
- * most twelve times on its way to the line ({@link TRAFFIC_CURVE_MAX_SPAN_PCT}
- * plus a bin, over half a bin), and about twice for a last sample in the
- * final bin, a few tenths at worst: as close as `CarClassEstLapTime` itself
- * comes (0.9 s off at Spa; module header). Two bins apart always reach it, so
- * a curve whose last bins are filled always has such a pair.
+ * half of one refuses only the bunched ones. It is the floor only: the
+ * baseline must also reach as far as the extrapolation does
+ * ({@link curveLapEnd}), which bounds the magnification of the noise itself.
+ * Two bins apart always reach it, so a curve whose last bins are filled always
+ * has such a pair.
  */
 export const TRAFFIC_CURVE_LAP_END_MIN_BASELINE_PCT = 0.5 / TRAFFIC_CURVE_BINS;
 
 /**
  * Where a class curve's reference time reaches the line, extrapolated along
- * the line through its last sample and the nearest earlier one at least
- * {@link TRAFFIC_CURVE_LAP_END_MIN_BASELINE_PCT} before it, when both lie
- * within {@link TRAFFIC_CURVE_MAX_SPAN_PCT} of the line and of each other: the
- * reference lap's length, the constant a car past P wraps by. A sample closer
- * than that to the last one is passed over, never extrapolated through.
- * `null` otherwise, and `resolveClassLapTime` falls back to the class's
- * `CarClassEstLapTime`.
+ * the line through its last sample and the nearest earlier one far enough
+ * before it, when both lie within {@link TRAFFIC_CURVE_MAX_SPAN_PCT} of the
+ * line and of each other: the reference lap's length, the constant a car past
+ * P wraps by. `null` otherwise, and `resolveClassLapTime` falls back to the
+ * class's `CarClassEstLapTime`.
+ *
+ * **Far enough** is a baseline of at least
+ * {@link TRAFFIC_CURVE_LAP_END_MIN_BASELINE_PCT} AND at least the distance
+ * from the last sample to the line: the extrapolation never reaches farther
+ * past its last sample than the two samples are apart. Each bin's mean
+ * carries noise of its own (a tenth or two typically; module header), and an
+ * extrapolation over a distance `d` from a baseline `b` adds the two samples'
+ * difference in noise times `d / b` to the lap end. With `b ≥ d` that is at
+ * most the difference itself, so the lap end is off by no more than the last
+ * sample's noise plus that difference, a few tenths at worst, under the 0.9 s
+ * `CarClassEstLapTime` is off by at Spa. Without it, a pair 0.0011 apart and
+ * 0.005 from the line magnifies a ±0.2 s difference 4.5 times: two samples of
+ * a 100 s lap reading 99.19 s at 0.9939 and 99.70 s at 0.9950, each a
+ * fifth of a second off, put the line at 102.02 s, which moves every
+ * wrapped arrival two seconds, the size of the pit-exit window. A sample
+ * closer than that to the last one is passed over for the one before it,
+ * never extrapolated through; a curve with no such sample within the span is
+ * not trusted for its lap end.
  */
 export function curveLapEnd(curve: TrafficReferenceCurve | undefined): number | null {
   if (curve === undefined) return null;
@@ -678,8 +693,9 @@ export function curveLapEnd(curve: TrafficReferenceCurve | undefined): number | 
 
     if (baseline > TRAFFIC_CURVE_MAX_SPAN_PCT) return null;
 
-    // Too close to the last sample to give a slope: try the bin before it.
-    if (baseline < TRAFFIC_CURVE_LAP_END_MIN_BASELINE_PCT) continue;
+    // Too close to the last sample to carry the slope to the line: try the
+    // bin before it (above).
+    if (baseline < Math.max(TRAFFIC_CURVE_LAP_END_MIN_BASELINE_PCT, 1 - last.pct)) continue;
 
     const slope = (last.estTime - bin.estTime) / baseline;
 

@@ -769,6 +769,40 @@ describe("curveLapEnd", () => {
     expect(curveLapEnd(slice.curves["1"])).toBeCloseTo(133.125, 10);
   });
 
+  describe("never extrapolates farther past its last sample than the baseline it is measured over", () => {
+    // A 100 s reference lap, locally linear near the line: 99.49 s at 0.9949,
+    // 99.60 s at 0.9960. Each sample a fifth of a second off, in opposite
+    // directions: the per-car spread the module header measured.
+    const noisyPair: Array<[number, number]> = [
+      [0.9949, 99.49 - 0.2],
+      [0.996, 99.6 + 0.2],
+    ];
+
+    it("refuses a pair 0.0011 apart and 0.004 from the line, which would put the line 1.65 s late", () => {
+      const slice = createTrafficArrivalState();
+
+      learn(slice, noisyPair);
+
+      // Through the pair: 99.80 + (0.51 / 0.0011) × 0.004 = 101.65 s.
+      expect(curveLapEnd(slice.curves["1"])).toBeNull();
+      // So the class lap falls back to CarClassEstLapTime.
+      expect(resolveClassLapTime(slice, classInfo({ "1": 100.1 }), 1)).toBe(100.1);
+    });
+
+    it("carries the slope to the line from an earlier sample at least as far before the last one as the line is after it", () => {
+      const slice = createTrafficArrivalState();
+
+      learn(slice, [[0.9915, 99.15], ...noisyPair]);
+
+      // Baseline 0.0045 over 0.004 to the line: 99.80 + (0.65 / 0.0045) × 0.004.
+      const lapEnd = curveLapEnd(slice.curves["1"]);
+
+      expect(lapEnd).toBeCloseTo(99.8 + (0.65 / 0.0045) * 0.004, 6);
+      // Within half a second of the true 100 s, where the pair alone was 1.65 s out.
+      expect(Math.abs((lapEnd as number) - 100)).toBeLessThan(0.5);
+    });
+  });
+
   it("extrapolates over at least half a bin width", () => {
     expect(TRAFFIC_CURVE_LAP_END_MIN_BASELINE_PCT).toBe(0.5 / TRAFFIC_CURVE_BINS);
   });
