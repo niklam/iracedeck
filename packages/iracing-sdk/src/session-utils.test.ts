@@ -8,6 +8,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   classifyCarNumberTarget,
+  foldCameraGroupName,
   getAllCarNumbers,
   getCameraGroupsFromSessionInfo,
   getCamerasInGroup,
@@ -643,6 +644,19 @@ describe("normalizeCameraGroupName (#1653)", () => {
     for (const name of ["Pit Lane 2", "DynamicTV", "dynamictv", " TV1 ", "constructor", "__proto__", "toString"]) {
       expect(normalizeCameraGroupName(name)).toBe(name);
     }
+  });
+});
+
+describe("foldCameraGroupName (#1653)", () => {
+  it("lower-cases a name and maps the legacy spelling in any case", () => {
+    expect(foldCameraGroupName("DynamicTV")).toBe("dynamictv");
+    expect(foldCameraGroupName("pit lane2")).toBe("pit lane 2");
+    expect(foldCameraGroupName("PIT LANE 2")).toBe("pit lane 2");
+  });
+
+  it("answers own entries only, never a prototype member", () => {
+    for (const name of ["constructor", "__proto__", "toString"])
+      expect(foldCameraGroupName(name)).toBe(name.toLowerCase());
   });
 });
 

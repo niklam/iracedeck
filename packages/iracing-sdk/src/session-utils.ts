@@ -321,6 +321,23 @@ export function normalizeCameraGroupName(name: string): string {
   return LEGACY_CAMERA_GROUP_NAMES.get(name) ?? name;
 }
 
+/** The legacy spellings keyed and valued in lower case, for {@link foldCameraGroupName}. */
+const LEGACY_CAMERA_GROUP_NAMES_FOLDED: ReadonlyMap<string, string> = new Map(
+  [...LEGACY_CAMERA_GROUP_NAMES].map(([variant, canonical]) => [variant.toLowerCase(), canonical.toLowerCase()]),
+);
+
+/**
+ * A camera group name folded for a case-insensitive comparison: lower case,
+ * with the legacy spellings of {@link normalizeCameraGroupName} mapped in any
+ * case. Two names that fold alike name the same group unless a session holds
+ * both, when only an exact match tells them apart (#1653).
+ */
+export function foldCameraGroupName(name: string): string {
+  const lower = name.toLowerCase();
+
+  return LEGACY_CAMERA_GROUP_NAMES_FOLDED.get(lower) ?? lower;
+}
+
 /**
  * The session's camera group names (`CameraInfo.Groups[].GroupName`),
  * canonical ({@link normalizeCameraGroupName}), in the sim's order (`GroupNum`

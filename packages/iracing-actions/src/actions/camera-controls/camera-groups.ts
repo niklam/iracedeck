@@ -13,7 +13,12 @@
  * icon→artwork resolution stay in `camera-controls.ts`; only the pure subset
  * math lives here.
  */
-import type { CameraGroup, CameraInGroup } from "@iracedeck/iracing-sdk";
+import {
+  type CameraGroup,
+  type CameraInGroup,
+  foldCameraGroupName,
+  normalizeCameraGroupName,
+} from "@iracedeck/iracing-sdk";
 
 /**
  * @internal Exported for testing
@@ -102,16 +107,6 @@ export const CHANGE_CAMERA_GROUPS: Readonly<Record<number, string>> = {
 };
 
 /**
- * Name variants the sim (or an older saved subset) spells differently from the
- * canonical names above. One capture reports `Pit Lane2` where every other one
- * says `Pit Lane 2` (#958). The PI keeps a copy for the subsets it saves.
- *
- * A Map, not an object literal: a camera file may name a group `constructor`
- * or `toString` (#1653), which an object would answer from its prototype.
- */
-const LEGACY_NAMES = new Map<string, string>([["Pit Lane2", "Pit Lane 2"]]);
-
-/**
  * @internal Exported for testing
  *
  * Canonical spelling of a camera group name — the ONE normalisation, applied to
@@ -119,7 +114,7 @@ const LEGACY_NAMES = new Map<string, string>([["Pit Lane2", "Pit Lane 2"]]);
  * read (`normalizeSessionGroups`), and to a name looked up by a caller.
  */
 export function normalizeGroupName(name: string): string {
-  return LEGACY_NAMES.get(name) ?? name;
+  return normalizeCameraGroupName(name);
 }
 
 /**
@@ -133,11 +128,6 @@ export function normalizeSessionGroups(sessionGroups: CameraGroup[]): CameraGrou
   return sessionGroups.map((g) => ({ ...g, groupName: normalizeGroupName(g.groupName) }));
 }
 
-/** The legacy spellings keyed and valued in lower case, for the case-insensitive pass. */
-const LEGACY_NAMES_FOLDED = new Map(
-  [...LEGACY_NAMES].map(([variant, canonical]) => [variant.toLowerCase(), canonical.toLowerCase()]),
-);
-
 /**
  * @internal Exported for testing
  *
@@ -146,9 +136,7 @@ const LEGACY_NAMES_FOLDED = new Map(
  * session holds both, when only an exact match tells them apart.
  */
 export function foldGroupName(name: string): string {
-  const lower = name.toLowerCase();
-
-  return LEGACY_NAMES_FOLDED.get(lower) ?? lower;
+  return foldCameraGroupName(name);
 }
 
 /**

@@ -83,6 +83,9 @@ vi.mock("@iracedeck/iracing-sdk", async (importOriginal) => {
 
   return {
     TrkLoc: actual.TrkLoc,
+    // The camera-group name rules are pure and shared (#1653): the real ones.
+    foldCameraGroupName: actual.foldCameraGroupName,
+    normalizeCameraGroupName: actual.normalizeCameraGroupName,
     getCameraGroupsFromSessionInfo: vi.fn(() => mockGroups.value),
     getCamerasInGroup: vi.fn(() => mockCameras.value),
     getCarNumberFromSessionInfo: vi.fn((_s: unknown, carIdx: number) =>

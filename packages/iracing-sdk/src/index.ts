@@ -252,6 +252,7 @@ export {
   getPlayerCarNumberFromSessionInfo,
   getAllCarNumbers,
   isReplayOnlySession,
+  foldCameraGroupName,
   normalizeCameraGroupName,
   readCameraGroupNames,
   readSubSessionId,
