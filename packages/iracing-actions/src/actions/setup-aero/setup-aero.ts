@@ -328,7 +328,9 @@ export class SetupAero extends SimIRacingAction<SetupAeroSettings> {
       });
     }
 
-    await this.executeSetting(settings.setting, settings.direction);
+    // The first press goes through the repeat controller, so the first repeat
+    // waits for it however slow it is (#1693).
+    await this.repeat.runFirstPress(ev.action.id, () => this.executeSetting(settings.setting, settings.direction));
   }
 
   override async onKeyUp(ev: IDeckKeyUpEvent<SetupAeroSettings>): Promise<void> {

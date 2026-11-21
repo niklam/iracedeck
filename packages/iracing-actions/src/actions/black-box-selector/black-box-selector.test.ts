@@ -641,6 +641,27 @@ describe("BlackBoxSelector", () => {
         expect(mockTapBinding).toHaveBeenCalledTimes(4);
       });
 
+      it("holds the first repeat until a stalled first tap has settled (#1693)", async () => {
+        let settle: (sent: boolean) => void = () => undefined;
+        mockTapBinding.mockImplementationOnce(() => new Promise<boolean>((resolve) => (settle = resolve)));
+
+        const pressed = press("k10", "increment");
+
+        // Well past the first repeat's 650 ms: the first tap is still in flight.
+        await vi.advanceTimersByTimeAsync(2000);
+        expect(mockTapBinding).toHaveBeenCalledTimes(1);
+
+        settle(true);
+        await pressed;
+        await vi.advanceTimersByTimeAsync(0);
+        expect(mockTapBinding).toHaveBeenCalledTimes(2);
+
+        await vi.advanceTimersByTimeAsync(150);
+        expect(mockTapBinding).toHaveBeenCalledTimes(3);
+
+        await release("k10", "increment");
+      });
+
       it("declares no keyPressShape, so a repeating key has the default tap shape (#269)", () => {
         // A hold-to-repeat key's steps are its own feedback: the press sounds
         // click once on key down and never bleep at the threshold.

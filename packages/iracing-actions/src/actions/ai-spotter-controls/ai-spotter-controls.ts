@@ -216,7 +216,9 @@ export class AiSpotterControls extends ConnectionStateAwareAction<AiSpotterContr
       // Hold-to-repeat in every paired style (#1453): armed SYNCHRONOUSLY,
       // before the first step's await, so a racing keyUp always finds the
       // timers to clear. Every step, the first and each repeat, goes through
-      // performVolumeStep; a tap that did not send ends the repeat.
+      // performVolumeStep; a tap that did not send ends the repeat. The first
+      // goes through the repeat controller, so the first repeat waits for it
+      // however slow it is (#1693).
       if (volumeKeyRepeats(settings.keyStyle)) {
         this.repeat.onKeyDown(ev.action.id, {
           holdMs: getDualPressThresholdMs(),
@@ -226,7 +228,7 @@ export class AiSpotterControls extends ConnectionStateAwareAction<AiSpotterContr
         });
       }
 
-      await this.performVolumeStep(control);
+      await this.repeat.runFirstPress(ev.action.id, () => this.performVolumeStep(control));
 
       return;
     }

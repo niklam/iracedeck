@@ -530,12 +530,16 @@ export class SetupChassis extends SimIRacingAction<SetupChassisSettings> {
     // Show the box the value lives in BEFORE it changes, so the driver watches
     // it tick. In onKeyDown rather than executeSetting so the hold-to-repeat
     // loop never re-shows it, and after repeat.onKeyDown so the timers are
-    // armed before the first await (the Fuel Service #818 position).
-    if (settings.showBlackBox) {
-      await this.showValueBlackBox(settings.setting);
-    }
+    // armed before the first await (the Fuel Service #818 position). The show
+    // and the first execute are the first press, so the first repeat waits for
+    // both however slow they are (#1693).
+    await this.repeat.runFirstPress(ev.action.id, async () => {
+      if (settings.showBlackBox) {
+        await this.showValueBlackBox(settings.setting);
+      }
 
-    await this.executeSetting(settings.setting, settings.direction);
+      await this.executeSetting(settings.setting, settings.direction);
+    });
   }
 
   override async onKeyUp(ev: IDeckKeyUpEvent<SetupChassisSettings>): Promise<void> {
