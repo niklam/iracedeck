@@ -1,3 +1,9 @@
+import {
+  MOCK_CUSTOM_CAMERA_GROUP_NAMES,
+  MOCK_CUSTOM_CAMERAS_TRACK_ID,
+  MOCK_SESSION_INFO_YAML,
+  MOCK_SESSION_INFO_YAML_CUSTOM_CAMERAS,
+} from "@iracedeck/iracing-native";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -17,6 +23,7 @@ import {
   readTrackDisplayName,
   readTrackId,
 } from "./session-utils.js";
+import { parseSessionInfoYaml } from "./session-yaml.js";
 
 describe("readSubSessionId (#1591)", () => {
   const withId = (id: unknown) => ({ WeekendInfo: { SubSessionID: id } });
@@ -696,5 +703,27 @@ describe("readCameraGroupNames (#1653)", () => {
     expect(readCameraGroupNames({ CameraInfo: {} })).toEqual([]);
     expect(readCameraGroupNames(withGroups({ GroupNum: 1, GroupName: "Nose" }))).toEqual([]);
     expect(readCameraGroupNames(withGroups([]))).toEqual([]);
+  });
+});
+
+describe("the mock sessions, through the real YAML parser (#1653)", () => {
+  it("reads the default mock: Spa and the 25 standard groups", () => {
+    const { info } = parseSessionInfoYaml(MOCK_SESSION_INFO_YAML);
+
+    expect(readTrackId(info)).toBe(13);
+    expect(readTrackDisplayName(info)).toBe("Circuit de Spa-Francorchamps");
+    expect(readTrackConfigName(info)).toBe("Grand Prix");
+    expect(readCameraGroupNames(info)).toHaveLength(25);
+  });
+
+  it("reads the broadcaster-shaped variant: another track, custom groups, Pit Lane2 normalised", () => {
+    const { info } = parseSessionInfoYaml(MOCK_SESSION_INFO_YAML_CUSTOM_CAMERAS);
+
+    expect(readTrackId(info)).toBe(MOCK_CUSTOM_CAMERAS_TRACK_ID);
+    expect(readTrackDisplayName(info)).toBe("Mock Broadcast Circuit");
+    expect(readTrackConfigName(info)).toBe("Full Course");
+    expect(readCameraGroupNames(info)).toEqual(MOCK_CUSTOM_CAMERA_GROUP_NAMES.map(normalizeCameraGroupName));
+    expect(readCameraGroupNames(info)).toEqual(expect.arrayContaining(["DynamicTV", "Grid_Pole", "Pit Lane 2"]));
+    expect(getCamerasInGroup(info, 9)).toHaveLength(3);
   });
 });
