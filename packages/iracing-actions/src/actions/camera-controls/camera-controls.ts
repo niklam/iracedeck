@@ -958,10 +958,18 @@ function resolveGroupGlyph(groupName: string): CarouselGlyph | null {
  */
 export const CAMERA_FOCUS_UUID = "com.iracedeck.sd.core.camera-focus" as const;
 
+export const CAMERA_CONTROLS_UUID = CAMERA_FOCUS_UUID;
+
 /** How a Cycle Camera key's displayed-group record starts: the look it was drawn in (#1653). */
 const UNAVAILABLE_MARK = "unavailable:";
 const AVAILABLE_MARK = "available:";
-export const CAMERA_CONTROLS_UUID = CAMERA_FOCUS_UUID;
+/** A Cycle Camera key's record while the write putting its grid back is in flight (#1653 review). */
+const RESTORING_MARK = "restoring";
+/** A Cycle Camera key's record once that write failed: the next tick tries it again. */
+const RESTORE_PENDING_MARK = "restore-pending";
+
+/** How a Cycle Camera icon write ended: on the key, not on it, or overtaken by a newer render. */
+type CycleIconWrite = "written" | "failed" | "superseded";
 
 export class CameraControls extends SimIRacingAction<CameraControlsSettings> {
   /** Settings per action context for telemetry-driven icon updates */
@@ -1986,11 +1994,11 @@ export class CameraControls extends SimIRacingAction<CameraControlsSettings> {
     const telemetry = this.sdkController.getCurrentTelemetry();
 
     if (!telemetry) {
-      // Connection lost — restore grid icon if we were showing a telemetry-driven icon
-      if (this.lastDisplayedGroup.has(contextId)) {
-        this.lastDisplayedGroup.delete(contextId);
-        await this.showCycleIcon(contextId, () => generateCameraControlsSvg(settings));
-      }
+      // Connection lost — restore the grid if the key shows a telemetry-driven
+      // icon, or a restore of it has yet to land; one in flight is left to land.
+      const record = this.lastDisplayedGroup.get(contextId);
+
+      if (record !== undefined && record !== RESTORING_MARK) await this.restoreCycleGrid(contextId, settings);
 
       return;
     }
@@ -2000,11 +2008,13 @@ export class CameraControls extends SimIRacingAction<CameraControlsSettings> {
     if (sessionGroups.length === 0) {
       // No readable group list, so nothing to judge availability by (#1653
       // review): a key the last list left greyed goes back to its configured
-      // placeholder and forgets what it showed, so the next readable list draws
-      // it afresh. Any other look stays until there is a list to judge it by.
-      if (this.lastDisplayedGroup.get(contextId)?.startsWith(UNAVAILABLE_MARK)) {
-        this.lastDisplayedGroup.delete(contextId);
-        await this.showCycleIcon(contextId, () => generateCameraControlsSvg(settings));
+      // placeholder, so the next readable list draws it afresh — and so does
+      // one whose restore failed. Any other look stays until there is a list to
+      // judge it by.
+      const record = this.lastDisplayedGroup.get(contextId);
+
+      if (record?.startsWith(UNAVAILABLE_MARK) || record === RESTORE_PENDING_MARK) {
+        await this.restoreCycleGrid(contextId, settings);
       }
 
       return;
@@ -2040,7 +2050,29 @@ export class CameraControls extends SimIRacingAction<CameraControlsSettings> {
     if (this.lastDisplayedGroup.get(contextId) === shown) return;
 
     this.lastDisplayedGroup.set(contextId, shown);
-    await this.showCycleIcon(contextId, () => generateCameraSelectSvg(shownGroupName, settings, unavailable));
+
+    const write = await this.showCycleIcon(contextId, () =>
+      generateCameraSelectSvg(shownGroupName, settings, unavailable),
+    );
+
+    // Never on the key: forget it, so the next tick draws it again.
+    if (write === "failed") this.lastDisplayedGroup.delete(contextId);
+  }
+
+  /**
+   * Put a Cycle Camera key's configured grid back (#1653 review). The record
+   * says a restore is in flight while the write is, so ticks meanwhile send
+   * nothing; it is cleared once the grid is on the key, so later ticks do not
+   * resend it, and marked pending when the write failed, so the next tick tries
+   * again. A newer render owns the record and is left alone.
+   */
+  private async restoreCycleGrid(contextId: string, settings: CameraControlsSettings): Promise<void> {
+    this.lastDisplayedGroup.set(contextId, RESTORING_MARK);
+
+    const write = await this.showCycleIcon(contextId, () => generateCameraControlsSvg(settings));
+
+    if (write === "written") this.lastDisplayedGroup.delete(contextId);
+    else if (write === "failed") this.lastDisplayedGroup.set(contextId, RESTORE_PENDING_MARK);
   }
 
   /**
@@ -2052,12 +2084,12 @@ export class CameraControls extends SimIRacingAction<CameraControlsSettings> {
    * wrong until the group next changed.
    *
    * A write that rejects, or finds the key gone, never put the icon on the
-   * device: it drops the displayed-group record, so the next tick draws the
-   * key again, and registers nothing (#1653 review). A newer render's record,
-   * made while this write was in flight, belongs to that render and is left
-   * alone.
+   * device: it registers nothing and reports `failed`, for the caller to update
+   * its displayed-group record so the next tick draws the key again (#1653
+   * review). One a newer render overtook reports `superseded`: the record is
+   * that render's.
    */
-  private async showCycleIcon(contextId: string, render: () => string): Promise<void> {
+  private async showCycleIcon(contextId: string, render: () => string): Promise<CycleIconWrite> {
     const generation = (this.cycleIconGeneration.get(contextId) ?? 0) + 1;
     this.cycleIconGeneration.set(contextId, generation);
     const svg = render();
@@ -2071,15 +2103,13 @@ export class CameraControls extends SimIRacingAction<CameraControlsSettings> {
       written = false;
     }
 
-    if (this.cycleIconGeneration.get(contextId) !== generation) return;
+    if (this.cycleIconGeneration.get(contextId) !== generation) return "superseded";
 
-    if (written === false) {
-      this.lastDisplayedGroup.delete(contextId);
-
-      return;
-    }
+    if (written === false) return "failed";
 
     this.setRegenerateCallback(contextId, render);
+
+    return "written";
   }
 
   private async updateDisplay(
