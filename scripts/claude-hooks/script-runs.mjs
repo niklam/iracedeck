@@ -890,7 +890,7 @@ export function deckFindings(c, cwd, ctx, shell, trail = [], underRestart = fals
         // reaches through neutral names — may hide a relink: that asks, as the
         // restart's name did before. With no restart above, a name past the
         // bound is judged by its name alone.
-        const unread = run.lines?.length || (run.expand && scriptLines(run, ctx).length);
+        const unread = run.lines?.length || (run.expand && bodyLines(run, kind, ctx).length);
         if ((kind === "restart" || underRestart) && unread)
           finding(`\`${run.label}\` runs scripts too deep to read, which may relink`, "relink", run.repeats);
         continue;
@@ -898,15 +898,17 @@ export function deckFindings(c, cwd, ctx, shell, trail = [], underRestart = fals
       // A hook's or a shell's command line is no script: it has no key a
       // cycle could repeat, so its empty one only counts towards the depth.
       const lines = run.lines?.map((line) => ({ dir: run.dir, line, key: "", as: run.as })) ?? [];
-      if (run.expand) lines.push(...scriptLines(run, ctx));
-      for (const { dir, line, key, as } of lines) {
+      if (run.expand) lines.push(...bodyLines(run, kind, ctx));
+      for (const { dir, line, key, as, step } of lines) {
         if (key && trail.includes(key)) continue;
         const [text, lineShell] = lineAs(line, as);
+        // A lifecycle script is named in the path ({@link bodyLines}).
+        const via = step ? `\`${run.label}\` → \`${step}\`` : `\`${run.label}\``;
         for (const f of deckFindings(text, dir, ctx, lineShell, [...trail, key], underRestart || kind === "restart")) {
           // Under a restart's own name, the restarts it runs are that restart,
           // named once already; what else it reaches is reported.
           if (kind === "restart" && f.kind === "restart") continue;
-          finding(`\`${run.label}\` → ${f.text}`, f.kind, run.repeats);
+          finding(`${via} → ${f.text}`, f.kind, run.repeats);
         }
       }
     }
@@ -1116,6 +1118,26 @@ function scriptLines(run, ctx) {
   return runManifests(run, ctx)
     .filter((m) => m && typeof m.scripts?.[run.script] === "string")
     .map((m) => ({ dir: m.dir, line: m.scripts[run.script] + tail, key: `${m.dir}\0${run.script}` }));
+}
+
+/**
+ * The command lines an expandable run executes ({@link scriptLines}), and for
+ * a restart-kind run its `pre<name>` and `post<name>` scripts too, each with
+ * its name as `step` (#1737 PR review). npm runs them around the script, and
+ * pnpm does under `enablePrePostScripts`; a restart's name no longer asks, so
+ * a relink in one of them must be read. They are read for every runner,
+ * whatever pnpm's setting: reading a script pnpm would not run can only make
+ * the rule ask where it need not, never pass a relink, so the simpler reading
+ * fails safe. They take none of the forwarded arguments, as npm hands them
+ * none. Any other script's are not read, as before #1737: its name never asked.
+ */
+function bodyLines(run, kind, ctx) {
+  const lines = scriptLines(run, ctx);
+  if (kind !== "restart") return lines;
+  const name = unescaped(run.script ?? "");
+  for (const step of [`pre${name}`, `post${name}`])
+    lines.push(...scriptLines({ ...run, script: step, args: [] }, ctx).map((l) => ({ ...l, step })));
+  return lines;
 }
 
 /**

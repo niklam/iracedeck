@@ -3419,6 +3419,33 @@ describe("a restart run over and over asks (#1737 review)", () => {
       expect(restarts(c).split("; "), c).toEqual(["`pnpm restart:stream-deck` restarts, stops or starts a deck host"]);
   });
 
+  // #1737 PR review: npm, and pnpm with `enablePrePostScripts`, run a
+  // script's `pre` and `post` scripts around it, so a restart's are read too.
+  describe("a restart's pre and post scripts", () => {
+    const withScripts = (scripts) => ctx({ scriptsAt: () => ({ dir: MASTER, scripts }) });
+    it.each([
+      ["npm run restart:x", "prerestart:x"],
+      ["npm run restart:x", "postrestart:x"],
+      ["pnpm restart:x", "prerestart:x"],
+      ["pnpm restart:x", "postrestart:x"],
+      ["pnpm run restart:x", "postrestart:x"],
+    ])("asks for %s when %s relinks", (c, lifecycle) =>
+      expect(asks(c, withScripts({ "restart:x": "streamdeck restart x", [lifecycle]: "pnpm relink:mirabox" }))).toMatch(
+        new RegExp(`\`${lifecycle}\` → \`pnpm relink:mirabox\` links, unlinks or relinks a deck host`),
+      ),
+    );
+    // Control: lifecycle scripts that build or restart keep the one restart.
+    it("passes a restart whose pre and post scripts only build or restart, as one restart", () => {
+      const quiet = withScripts({
+        "restart:x": "streamdeck restart x",
+        "prerestart:x": "pnpm build",
+        "postrestart:x": "pnpm restart:stream-deck",
+      });
+      for (const c of ["npm run restart:x", "pnpm restart:x"])
+        expect(restarts(c, quiet).split("; "), c).toHaveLength(1);
+    });
+  });
+
   // #1737 CodeRabbit round: a chain of restart names deeper than the reader
   // follows may end in a relink it never reads, so it asks.
   it("asks for a chain of restart scripts deeper than the reader follows", () => {
