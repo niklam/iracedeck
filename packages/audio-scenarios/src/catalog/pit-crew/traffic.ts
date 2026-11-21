@@ -152,7 +152,12 @@
  * replayed once the car is there. A `near` call's bound is its own seconds,
  * per event, which a contract's wait cannot carry: one about a car two
  * seconds away, cut and replayed between two and three seconds after it was
- * due, is heard about a car already there.
+ * due, is heard about a car already there. That replay is the rejoin lines'
+ * only: the pit-exit lines and the merge warning declare `dropWhenCut`
+ * (#1681), so one an interrupt cuts is gone. Replayed, it would skip its
+ * gate, and the clear call could then be heard on the racing surface within
+ * its long wait; the line that cut it, the spotter's above all, is the more
+ * current word on the cars around the player.
  *
  * **Weights (spec decision 6, amended 2026-11-17).** The warnings — right
  * behind, both `near` calls, the pack line, the pit-exit traffic warning and
@@ -751,6 +756,9 @@ function pitExitContract(line: PitExitLine, deps: TrafficContractDeps): Scenario
   return {
     ...trafficContract(line, spec),
     speakGate: { description: spec.gateDescription, admit: () => stillLeavingThePits(deps) },
+    // A cut call is gone, never replayed (module header): its gate is not
+    // asked again on a replay, and what cut it is the more current line.
+    dropWhenCut: true,
     supersedeGroup: TRAFFIC_PIT_EXIT_SUPERSEDE_GROUP,
     when: {
       event: "traffic.pitExit",
@@ -764,6 +772,8 @@ function pitExitMergeContract(deps: TrafficContractDeps): ScenarioContract {
   return {
     ...trafficContract("pit-exit-merge", PIT_EXIT_MERGE_LINE),
     speakGate: { description: PIT_EXIT_MERGE_LINE.gateDescription, admit: () => stillLeavingThePits(deps) },
+    // Like the calls: a cut merge warning is gone, never replayed (module header).
+    dropWhenCut: true,
     when: { event: "traffic.pitExitMerge" },
   };
 }

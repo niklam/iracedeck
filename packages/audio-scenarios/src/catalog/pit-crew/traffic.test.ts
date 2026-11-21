@@ -568,6 +568,12 @@ describe("TRAFFIC_CONTRACTS", () => {
     expect(contract(MERGE_ID).supersedeGroup).toBeUndefined();
   });
 
+  it("a cut pit-exit line or merge warning is dropped, never replayed; a cut rejoin line is replayed", () => {
+    for (const id of PIT_EXIT_GATED_IDS) expect(contract(id).dropWhenCut, id).toBe(true);
+
+    for (const id of REJOIN_IDS) expect(contract(id).dropWhenCut, id).toBeUndefined();
+  });
+
   /** The rejoin contracts whose `where:` takes `data` right now. */
   const takers = (data: TrafficRejoin): string[] =>
     REJOIN_IDS.filter((id) => contract(id).when?.where?.(rejoinEvent(data)) === true);
@@ -1430,11 +1436,8 @@ describe("the warnings outrank a caution or flag line, not a CRITICAL line or th
     expect(voicePaths()).toEqual([CRITICAL_CLIP]);
   });
 
-  it.each(WARNING_IDS)("a spotter call cuts %s, which replays after it within its short wait", (id) => {
+  it.each(REJOIN_IDS)("a spotter call cuts %s, which replays after it within its short wait", (id) => {
     publishWarning(id);
-
-    // The pit-exit warning opens with the radio frame's tick; let its words start.
-    if (id.includes("pit-exit")) audio._triggerChannelEnd(AudioChannel.SFX);
 
     expect(voicePaths().at(-1)).toBe(LINE_CLIP[id]);
 
@@ -1450,6 +1453,24 @@ describe("the warnings outrank a caution or flag line, not a CRITICAL line or th
     const afterSpotter = voicePaths().slice(voicePaths().indexOf(PROXIMITY_LIKE_CLIP) + 1);
 
     expect(afterSpotter[0]).toBe(LINE_CLIP[id]);
+  });
+
+  // A cut pit-exit line is gone (`dropWhenCut`): replayed, it would skip its
+  // speak-time gate, so a call could be heard once the player has merged.
+  it.each(PIT_EXIT_GATED_IDS)("a spotter call cuts %s, which is dropped, never replayed", (id) => {
+    publishLine(id);
+    // The radio frame's open tick, then the words.
+    audio._triggerChannelEnd(AudioChannel.SFX);
+
+    expect(voicePaths()).toEqual([LINE_CLIP[id]]);
+
+    bus.publishEvent("flag.white.raised", {});
+
+    expect(audio._stopped).toContain(AudioChannel.Voice);
+
+    flush(audio);
+
+    expect(voicePaths()).toEqual([LINE_CLIP[id], PROXIMITY_LIKE_CLIP]);
   });
 });
 
