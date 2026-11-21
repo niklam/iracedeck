@@ -102,7 +102,9 @@
  *   reference giving way to its class's own curve, which can move it seconds
  *   at once) is a new baseline, never a pass, and on that evaluation it has
  *   gone by only when its position wrapped past the player
- *   ({@link TRAFFIC_REJOIN_PASSED_WRAP_PCT}). A close car that stops is
+ *   ({@link TRAFFIC_REJOIN_PASSED_WRAP_PCT}). The baseline is its arrival's
+ *   alone: a car that had been under ten seconds still has, so one re-timed
+ *   past ten goes by on reaching the gone-by edge. A close car that stops is
  *   therefore gone, and a new car coming, with a first call of its own, once
  *   it moves again under ten seconds away.
  * - **Otherwise** a band moving away is not re-announced: a car whose arrival
@@ -590,7 +592,9 @@ function followed(car: TimedArrival, ctx: FollowContext): TrafficRejoinFollowedC
  * own curve once a car of the class has driven past the player) is not
  * comparable, so it is a new baseline rather than a rise; on that evaluation
  * only the car's position can say it went by: its forward distance to the
- * player rising past {@link TRAFFIC_REJOIN_PASSED_WRAP_PCT}.
+ * player rising past {@link TRAFFIC_REJOIN_PASSED_WRAP_PCT}. The baseline is
+ * the arrival's alone: a car that had been under ten seconds keeps having
+ * been, so after the switch it still goes by on reaching the gone-by edge.
  */
 function followCar(member: TrafficRejoinFollowedCar, ctx: FollowContext): "passed" | "away" | "coming" {
   const car = ctx.arrivals.find((arrival) => arrival.carIdx === member.carIdx);
@@ -614,7 +618,14 @@ function followCar(member: TrafficRejoinFollowedCar, ctx: FollowContext): "passe
     ctx.logger.debug(
       `car ${car.carIdx} re-timed at ${car.seconds.toFixed(2)} s via ${car.source} (was ${member.seconds.toFixed(2)} s via ${member.source}), a new baseline`,
     );
+    // A new baseline for the arrival, never for having been close: a car
+    // announced under ten seconds and re-timed past it is still the car of
+    // that call, and must still go by on reaching the gone-by edge, or it
+    // would stand as the close car and keep the next one from a first call.
+    const beenClose = member.beenClose;
+
     Object.assign(member, followed(car, ctx));
+    member.beenClose ||= beenClose;
 
     return "coming";
   }

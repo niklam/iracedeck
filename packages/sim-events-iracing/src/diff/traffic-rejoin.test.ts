@@ -1037,6 +1037,26 @@ describe("diffTrafficRejoin", () => {
       );
     });
 
+    it("keeps the close car's having been under ten seconds, so one re-timed past it still goes by at the gone-by edge", () => {
+      const curves = learnedCurves();
+      const h = harness({ curves });
+
+      h.stop(tel({ cars: [behind(5, 9, SLOW)] })); // announced at nine, via scaled
+      curves.curves[SLOW] = offsetSlowCurve();
+      h.step([behind(5, 10, SLOW)]); // re-timed at 14 s via curve, still short of the player
+      expect(h.episode.closeCar).toMatchObject({ carIdx: 5, seconds: 14, source: "curve", beenClose: true });
+      h.step([behind(5, 11.1, SLOW)]); // 15.1 s in the same tier: no rise past the margin, but past the edge
+
+      expect(h.episode.closeCar).toBeNull();
+      expect(h.debug).toHaveBeenCalledWith(expect.stringMatching(/^car 5 has gone by/));
+
+      // A different car then comes at eight: a first call, not a count of the nine still standing.
+      h.step([behind(5, 11.3, SLOW), behind(6, 8)]);
+
+      expect(h.events).toEqual([near(9, true), near(8, true)]);
+      expect(h.episode.closeCar?.carIdx).toBe(6);
+    });
+
     it("is a new baseline for a pack's cars, so the pack is not said again", () => {
       const curves = learnedCurves();
       const h = harness({ curves });

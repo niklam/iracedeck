@@ -725,8 +725,9 @@ export type TrafficRejoinFollowedCar = {
   /** The forward lap distance from it to the player at that evaluation, in [0, 1); `null` when its lap position was unreadable. */
   toPlayerPct: number | null;
   /**
-   * It has read under `TRAFFIC_REJOIN_OVER_TEN_S` since its tier last
-   * changed: only such a car is gone by on reaching `TRAFFIC_REJOIN_GONE_S`, so a car
+   * It has read under `TRAFFIC_REJOIN_OVER_TEN_S` since it was first
+   * followed, by any tier: a change of tier is a new baseline for its arrival,
+   * not for this. Only such a car is gone by on reaching `TRAFFIC_REJOIN_GONE_S`, so a car
    * of a pack that joined at the band's edge is not retired by a hundredth of
    * noise across it.
    */
