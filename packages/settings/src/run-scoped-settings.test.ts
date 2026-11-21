@@ -1,7 +1,22 @@
-import { PI_WARNINGS_KEY, PROFILE_CAPTURE_STATUS_KEY, VOICE_PACKS_KEY } from "@iracedeck/app-constants";
-import { describe, expect, it } from "vitest";
+import {
+  CAMERA_CATALOG_KEY,
+  PI_WARNINGS_KEY,
+  PROFILE_CAPTURE_STATUS_KEY,
+  VOICE_PACKS_KEY,
+} from "@iracedeck/app-constants";
+import { silentLogger } from "@iracedeck/logger";
+import { afterEach, describe, expect, it } from "vitest";
 
+import {
+  _resetGlobalSettings,
+  getGlobalSettings,
+  hostMirrorPayload,
+  initGlobalSettings,
+  updateGlobalSettings,
+} from "./global-settings.js";
 import { hasOnlyRunScopedKeys, RUN_SCOPED_SETTING_KEYS, stripRunScopedKeys } from "./run-scoped-settings.js";
+import type { SettingsHost } from "./settings-host.js";
+import { createMemorySettingsStore } from "./settings-store.js";
 
 describe("run-scoped settings keys (issue #1014)", () => {
   it("enrols the PI warnings key", () => {
@@ -80,5 +95,65 @@ describe("voice packs are run-scoped (issue #1034)", () => {
 
   it("treats a voice-pack-only write as touching nothing on disk", () => {
     expect(hasOnlyRunScopedKeys([VOICE_PACKS_KEY])).toBe(true);
+  });
+});
+
+describe("the camera catalog view is run-scoped (issue #1653)", () => {
+  const view = JSON.stringify({
+    version: 1,
+    tracks: [{ id: 13, name: "Spa", config: "Grand Prix" }],
+    groups: [{ name: "DynamicTV", tracks: [0], lastSeen: "2026-11-08T12:00:00.000Z" }],
+    current: { trackId: 13, groups: ["DynamicTV"] },
+  });
+  const host: SettingsHost = {
+    onDidReceiveGlobalSettings: () => {},
+    getGlobalSettings: () => {},
+    setGlobalSettings: () => {},
+  };
+  const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+  afterEach(() => _resetGlobalSettings());
+
+  it("is enrolled", () => {
+    expect(RUN_SCOPED_SETTING_KEYS).toContain(CAMERA_CATALOG_KEY);
+  });
+
+  it("is stripped before the file, and a catalog-only write touches nothing on disk", () => {
+    expect(stripRunScopedKeys({ [CAMERA_CATALOG_KEY]: view, driverName: "nick" })).toEqual({ driverName: "nick" });
+    expect(hasOnlyRunScopedKeys([CAMERA_CATALOG_KEY])).toBe(true);
+    expect(hasOnlyRunScopedKeys([CAMERA_CATALOG_KEY, PI_WARNINGS_KEY])).toBe(true);
+  });
+
+  it("never enters the cache from a stored file, and the load-time re-save cleans it out", async () => {
+    const store = createMemorySettingsStore({ [CAMERA_CATALOG_KEY]: view, driverName: "nick" });
+
+    initGlobalSettings(host, silentLogger, store);
+    await tick();
+
+    expect((getGlobalSettings() as Record<string, unknown>)[CAMERA_CATALOG_KEY]).toBeUndefined();
+    expect(getGlobalSettings().driverName).toBe("nick");
+
+    for (const saved of store.saved) expect(saved).not.toHaveProperty(CAMERA_CATALOG_KEY);
+  });
+
+  it("lives in the cache and the once-per-start mirror for the run, never in a save", async () => {
+    const store = createMemorySettingsStore({ driverName: "nick" });
+
+    initGlobalSettings(host, silentLogger, store);
+    await tick();
+
+    const savesBefore = store.saved.length;
+
+    updateGlobalSettings({ [CAMERA_CATALOG_KEY]: view });
+
+    expect((getGlobalSettings() as Record<string, unknown>)[CAMERA_CATALOG_KEY]).toBe(view);
+    expect(hostMirrorPayload({ port: 1, token: "t".repeat(48) })?.[CAMERA_CATALOG_KEY]).toBe(view);
+    // A catalog-only write is not saved at all…
+    expect(store.saved.length).toBe(savesBefore);
+
+    // …and a durable write beside it saves without it.
+    updateGlobalSettings({ driverName: "nicky" });
+    expect(store.saved.at(-1)).toMatchObject({ driverName: "nicky" });
+    expect(store.saved.at(-1)).not.toHaveProperty(CAMERA_CATALOG_KEY);
   });
 });

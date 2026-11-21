@@ -53,6 +53,7 @@
  * `_lastChangelogOpenedAt`), and getting that wrong silently loses user state.
  */
 import {
+  CAMERA_CATALOG_KEY,
   PI_WARNINGS_KEY,
   PROFILE_CAPTURE_STATUS_KEY,
   VOICE_PACK_STATUS_KEY,
@@ -64,15 +65,20 @@ import {
  * choice: the PI warning banners, the list of voice packs currently on disk
  * (issue #1034 — persisting it would let a deleted pack reappear after a
  * restart, with nothing in any UI able to clear it), the voice-pack install
- * status, and the CPU profile capture's state (#1338 — a "capturing" state
+ * status, the CPU profile capture's state (#1338 — a "capturing" state
  * read back after a restart would show a countdown for a capture that died
- * with the previous process).
+ * with the previous process), and the camera catalog as the Property
+ * Inspectors see it (#1653 — the catalog's durable copy is its own file,
+ * `cameras.json`, and the key also carries which groups THIS run's session
+ * has; persisting it would put hundreds of remembered names in every settings
+ * save and show a stale current session after a restart).
  */
 export const RUN_SCOPED_SETTING_KEYS: readonly string[] = [
   PI_WARNINGS_KEY,
   VOICE_PACKS_KEY,
   VOICE_PACK_STATUS_KEY,
   PROFILE_CAPTURE_STATUS_KEY,
+  CAMERA_CATALOG_KEY,
 ];
 
 /**
