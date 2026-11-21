@@ -1233,10 +1233,20 @@ describe("pool references (issue #1718)", () => {
 
   it("SPOTTER_CLIP_BASES is exactly the 24 spotter lines the bundled default voice ships", () => {
     const prefix = "voice/default/spotter/";
-    const shipped = MANIFEST.clips
-      .filter((clip) => clip.startsWith(prefix))
-      .map((clip) => clip.slice(prefix.length).replace(/\.mp3$/, ""))
-      .sort();
+    // Lines, not files: a numbered take (`car-left-02.mp3`) is a take of its
+    // base's line, so the default voice may gain takes without failing this.
+    const shipped = [
+      ...new Set(
+        MANIFEST.clips
+          .filter((clip) => clip.startsWith(prefix))
+          .map((clip) =>
+            clip
+              .slice(prefix.length)
+              .replace(/\.mp3$/, "")
+              .replace(/-\d{2}$/, ""),
+          ),
+      ),
+    ].sort();
 
     expect(SPOTTER_CLIP_BASES).toHaveLength(24);
     expect(new Set(SPOTTER_CLIP_BASES).size).toBe(SPOTTER_CLIP_BASES.length);
