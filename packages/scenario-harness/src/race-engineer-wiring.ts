@@ -9,6 +9,7 @@ import type { IEventBus } from "@iracedeck/event-bus";
 import type { ILogger } from "@iracedeck/logger";
 import { createIracingSimRuntime, wireRaceEngineer } from "@iracedeck/race-engineer-wiring";
 
+import { HARNESS_DEVELOPMENT_FLAGS } from "./development-flags.js";
 import { harnessRaceEngineerOverrides } from "./race-engineer-overrides.js";
 
 /**
@@ -35,8 +36,8 @@ export function applyMergedManifest(voices: HarnessVoiceState, merged: AudioAsse
 /**
  * The plugins' `wireRaceEngineer` with the harness's arguments: a
  * `RaceEngineer` scope of the harness logger, the iRacing sim runtime over the
- * running translator, the live voice state, and the three snapshot stubs as
- * the only overrides. Returns the dependencies it registered.
+ * running translator, the live voice state, the harness's development flags
+ * and the three snapshot stubs as the only overrides. Returns the dependencies it registered.
  */
 export function wireHarnessRaceEngineer(
   bus: IEventBus,
@@ -47,6 +48,7 @@ export function wireHarnessRaceEngineer(
     logger: logger.createScope("RaceEngineer"),
     sim: createIracingSimRuntime(),
     voice: voices,
+    trafficRejoin: HARNESS_DEVELOPMENT_FLAGS.trafficRejoin,
     overrides: harnessRaceEngineerOverrides(),
   });
 }

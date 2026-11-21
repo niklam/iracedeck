@@ -22,6 +22,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { HARNESS_DEVELOPMENT_FLAGS } from "./development-flags.js";
 import { ALL_EVENT_NAMES } from "./event-names.js";
 import { MockSDKController, type TelemetryPatch } from "./mock-sdk-controller.js";
 import {
@@ -70,6 +71,7 @@ function startTranslator(
   controller.setConnected(true);
   initializeSimEventsIracing(getEventBus(), controller as unknown as SDKController, silentLogger, {
     onStepError: "rethrow",
+    trafficRejoin: HARNESS_DEVELOPMENT_FLAGS.trafficRejoin,
     ...options,
   });
   controller.tickOnce();
@@ -184,6 +186,7 @@ describe("the rejoin train (issue #1113)", () => {
     controller.setConnected(true);
     initializeSimEventsIracing(getEventBus(), controller as unknown as SDKController, silentLogger, {
       onStepError: "rethrow",
+      trafficRejoin: HARNESS_DEVELOPMENT_FLAGS.trafficRejoin,
     });
     getEventBus().subscribe("traffic.rejoin", (ev) => events.push({ event: ev.event, data: ev.data }));
 

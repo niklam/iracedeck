@@ -129,6 +129,7 @@ import type { TelemetryData } from "@iracedeck/sim-events-iracing";
 
 import type { ScenarioContract } from "../../dsl.js";
 import { getScenarioEngine, isAudioScenariosInitialized } from "../../interpreter.js";
+import type { DevelopmentFeature } from "../../reference/pack-reference.js";
 import {
   buildCautionContracts,
   type CautionEpisodeResolver,
@@ -253,6 +254,8 @@ import {
   registerTrafficApproachTracking,
   registerTrafficVocabulary,
   SCENARIO_ID_TO_TRAFFIC_ID,
+  TRAFFIC_REJOIN_DEVELOPMENT_FEATURE,
+  type TrafficCalloutId,
 } from "./traffic.js";
 
 /**
@@ -311,6 +314,7 @@ export {
   SCENARIO_ID_TO_TRAFFIC_ID,
   TRAFFIC_CLIP_SOURCES,
   TRAFFIC_CONTRACTS,
+  TRAFFIC_REJOIN_DEVELOPMENT_FEATURE,
   TRAFFIC_SCENARIO_IDS,
   TRAFFIC_WARNING_WEIGHT,
   type TrafficCalloutId,
@@ -842,6 +846,15 @@ export const SPOTTER_STILL_THERE_SECONDS_KEY = "spotterStillThereSeconds";
  */
 export type { SetupWarningResolver } from "./race-start.js";
 /**
+ * Every catalog feature a release build does not carry (#1113): each names the
+ * platform feature flag that turns it on and what the pack-author reference
+ * withholds while every plugin ships that flag off. Today the rejoin traffic
+ * warnings alone. The root generator (`scripts/lib/pack-reference-data.mjs`)
+ * reads it beside the committed `platform-features.json` files.
+ */
+export const DEVELOPMENT_FEATURES: readonly DevelopmentFeature[] = [TRAFFIC_REJOIN_DEVELOPMENT_FEATURE];
+
+/**
  * Everything `registerPitCrew` needs beyond the bus. Every key is optional;
  * an omitted or `undefined` key takes its entry from {@link DEFAULT_DEPS}.
  *
@@ -1102,6 +1115,15 @@ export type PitCrewDeps = {
   // translator's own answer outside a race, with no sectors, or before it
   // was ever initialised.
   getSectorComparison?: SectorComparisonResolver;
+  // Whether this build carries the rejoin traffic warnings at all (#1113, the
+  // spec's fourth amendment): the `trafficRejoin` development flag, which
+  // every release build has off. Off, the four rejoin lines stay silent
+  // whatever the `rejoin` opt-in says; the pit-exit lines are untouched. The
+  // contracts are still registered, so every voice's rejoin entries compile
+  // as they do in a development build and no pack is warned about an entry
+  // with no contract. Default `() => false`: a caller that does not opt in
+  // hears no rejoin line.
+  getTrafficRejoinAvailable?: () => boolean;
 };
 
 /**
@@ -1152,6 +1174,7 @@ const DEFAULT_DEPS: Readonly<ResolvedPitCrewDeps> = {
   getStandingStart: () => false,
   getDamageRepairNeeded: () => null,
   getSectorComparison: () => null,
+  getTrafficRejoinAvailable: () => false,
 };
 
 /** Copy one key from `source` onto `target` when the caller defined it. */
@@ -1251,8 +1274,12 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
   const getLimiterCueCalloutEnabled = enabledIn(LIMITER_CUE_CALLOUTS);
   const getPitLimiterCalloutEnabled = enabledIn(PIT_LIMITER_CALLOUTS);
   const getNoLimiterCalloutEnabled = enabledIn(NO_LIMITER_CALLOUTS);
-  // `rejoin` gates the five rejoin lines, `pit-exit` the two pit-exit ones (issue #1113).
-  const getTrafficCalloutEnabled = enabledIn(TRAFFIC_CALLOUTS);
+  // `rejoin` gates the four rejoin lines, `pit-exit` the two pit-exit ones and
+  // the merge warning (issue #1113). A build without the `trafficRejoin`
+  // development flag keeps every rejoin line silent, its opt-in unread.
+  const getTrafficOptIn = enabledIn(TRAFFIC_CALLOUTS);
+  const getTrafficCalloutEnabled = (id: TrafficCalloutId): boolean =>
+    (id !== "rejoin" || d.getTrafficRejoinAvailable()) && getTrafficOptIn(id);
 
   registerRadarEngine(bus, {
     getMasterEnabled: d.getRadarMasterEnabled,

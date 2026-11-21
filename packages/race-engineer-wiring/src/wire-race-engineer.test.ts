@@ -18,7 +18,13 @@ const bus = { subscribe: vi.fn((event: string) => order.push(`subscribe:${event}
 // The settings package is real here: getGlobalSettings() answers the schema defaults, which
 // is all these routing tests need. pit-crew-deps.test.ts swaps the settings.
 function deps(extra: Partial<RaceEngineerWiringDeps> = {}): RaceEngineerWiringDeps {
-  return { logger: silentLogger, sim: createIracingSimRuntime(), voice: { driverNames: [] }, ...extra };
+  return {
+    logger: silentLogger,
+    sim: createIracingSimRuntime(),
+    voice: { driverNames: [] },
+    trafficRejoin: false,
+    ...extra,
+  };
 }
 
 describe("wireRaceEngineer", () => {
@@ -50,7 +56,7 @@ describe("wireRaceEngineer", () => {
 
     expect(vi.mocked(registerPitCrew)).toHaveBeenCalledExactlyOnceWith(bus, passed);
     expect(passed.getQualifyingInvalidationSnapshot).toBe(getQualifyingInvalidationSnapshot);
-    expect(Object.keys(passed)).toHaveLength(34);
+    expect(Object.keys(passed)).toHaveLength(35);
   });
 
   it("drops an override whose value is undefined rather than erasing the built dependency", () => {

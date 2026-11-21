@@ -31,7 +31,7 @@ function fakeSim(overrides: Partial<Record<keyof SimRuntime, unknown>> = {}): Si
 type BuildDeps = Omit<RaceEngineerWiringDeps, "overrides">;
 
 function fakeDeps(extra: Partial<BuildDeps> = {}): BuildDeps {
-  return { logger: silentLogger, sim: fakeSim(), voice: { driverNames: ["adam"] }, ...extra };
+  return { logger: silentLogger, sim: fakeSim(), voice: { driverNames: ["adam"] }, trafficRejoin: false, ...extra };
 }
 
 const noCaches: RaceEngineerCaches = {
@@ -50,12 +50,16 @@ describe("buildPitCrewDeps", () => {
   });
   afterEach(() => vi.restoreAllMocks());
 
-  it("builds all 34 dependencies, so none falls back to DEFAULT_DEPS", () => {
+  it("builds all 35 dependencies, so none falls back to DEFAULT_DEPS", () => {
     const built = buildPitCrewDeps(fakeDeps(), noCaches);
 
-    expect(Object.keys(built)).toHaveLength(34);
+    expect(Object.keys(built)).toHaveLength(35);
 
     for (const [key, value] of Object.entries(built)) expect(value, key).toBeDefined();
+  });
+
+  it.each([true, false])("hands the catalog the trafficRejoin development flag as given: %s (#1113)", (flag) => {
+    expect(buildPitCrewDeps(fakeDeps({ trafficRejoin: flag }), noCaches).getTrafficRejoinAvailable()).toBe(flag);
   });
 
   it("hands the callouts the translator's rolling-start formation, read live (#1167)", () => {

@@ -527,9 +527,15 @@ describe("startPlugin (#1349)", () => {
 
     startPlugin(createHost());
 
-    // The translator gets the wiring's options and the store's reader, which reads through to the store.
+    // The translator gets the wiring's options, the store's reader, which reads
+    // through to the store, and the build's rejoin flag (#1113), off here.
     expect(translatorOptions).toHaveLength(1);
-    expect(Object.keys(translatorOptions[0]).sort()).toEqual(["getFuelLapsLeftMarginLaps", "loadPitLaneLandmarks"]);
+    expect(Object.keys(translatorOptions[0]).sort()).toEqual([
+      "getFuelLapsLeftMarginLaps",
+      "loadPitLaneLandmarks",
+      "trafficRejoin",
+    ]);
+    expect(translatorOptions[0].trafficRejoin).toBe(false);
     const track = { trackId: 1 };
     expect((translatorOptions[0].loadPitLaneLandmarks as (track: unknown) => unknown)(track)).toBe(loaded);
     expect(loads).toEqual([track]);

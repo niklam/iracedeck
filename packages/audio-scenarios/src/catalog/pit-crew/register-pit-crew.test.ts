@@ -532,6 +532,8 @@ let pitWindowEnabled: Map<PitWindowCalloutId, boolean>;
 let tireWearEnabled: Map<TireWearCalloutId, boolean>;
 let opponentPitEnabled: Map<OpponentPitCalloutId, boolean>;
 let trafficEnabled: Map<TrafficCalloutId, boolean>;
+/** The `trafficRejoin` development flag as `registerPitCrew` reads it (#1113): on here, as in a development build. */
+let trafficRejoinAvailable: boolean;
 /** The shared `getLiveCarPosition` dep's answer for every car (#1577): opponent pit, opponent flags and fastest lap all read it. */
 let liveCarPosition: number | null;
 let rollingStartEnabled: Map<RollingStartCalloutId, boolean>;
@@ -568,6 +570,7 @@ beforeEach(() => {
     ["rejoin", true],
     ["pit-exit", true],
   ]);
+  trafficRejoinAvailable = true;
   liveCarPosition = 4;
   _resetOpponentPitPending();
   rollingStartEnabled = new Map<RollingStartCalloutId, boolean>([["pace-car", true]]);
@@ -620,6 +623,7 @@ beforeEach(() => {
     getStandingStart: () => false,
     getLatestTelemetry: () => mockLatestTelemetry() as TelemetryData | null,
     getDamageRepairNeeded: () => null,
+    getTrafficRejoinAvailable: () => trafficRejoinAvailable,
   });
   // After the registration, as the plugins do (issue #1064): the engine
   // wraps every framed callout in the voice's `radio` frame at fire time.
@@ -1962,6 +1966,25 @@ describe("traffic family registration (issue #1113)", () => {
     expect(voiceClipsPlayed()).toEqual([clip("rejoin-pack")]);
   });
 
+  it("the trafficRejoin flag off silences every rejoin line with its opt-in on, and the pit exit still speaks (fourth amendment)", () => {
+    trafficRejoinAvailable = false;
+
+    bus.publishEvent("traffic.rejoin", { verdict: "rightBehind" });
+    bus.publishEvent("traffic.rejoin", { verdict: "near", seconds: 4, first: true });
+    bus.publishEvent("traffic.rejoin", { verdict: "near", seconds: 3, first: false });
+    bus.publishEvent("traffic.rejoin", { verdict: "pack" });
+    flush(audio);
+    expect(voiceClipsPlayed()).toEqual([]);
+
+    bus.publishEvent("traffic.pitExit", { verdict: "traffic", seconds: 1 });
+    flush(audio);
+    expect(voiceClipsPlayed()).toEqual([clip("pit-exit-traffic")]);
+
+    bus.publishEvent("traffic.pitExitMerge", { seconds: 1 });
+    flush(audio);
+    expect(voiceClipsPlayed()).toEqual([clip("pit-exit-traffic"), clip("pit-exit-merge")]);
+  });
+
   it("a tow or a reset cuts a rejoin line through the registration's wrappers (amended 2026-11-20)", () => {
     bus.publishEvent("traffic.rejoin", { verdict: "near", seconds: 4, first: true });
     expect(voiceClipsPlayed()).toEqual([clip("rejoin-intro")]);
@@ -2970,6 +2993,8 @@ describe("resolvePitCrewDeps (issue #1378)", () => {
     expect(resolved.getStandingStart()).toBe(false);
     expect(resolved.getDamageRepairNeeded()).toBeNull();
     expect(resolved.getSpotterTrackDirection()).toBe("neutral");
+    // The rejoin warnings are a development flag (#1113): off unless wired on.
+    expect(resolved.getTrafficRejoinAvailable()).toBe(false);
 
     for (const value of Object.values(resolved)) expect(typeof value).toBe("function");
   });

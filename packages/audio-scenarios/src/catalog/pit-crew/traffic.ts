@@ -211,6 +211,7 @@ import type { TelemetryData } from "@iracedeck/sim-events-iracing";
 import type { EndsOn, ScenarioContext, ScenarioContract, SpeakGate } from "../../dsl.js";
 import { DEFAULT_MAX_QUEUE_WAIT_MS, NO_FRAME, poolRef, WEIGHT } from "../../dsl.js";
 import type { IScenarioEngine } from "../../interpreter.js";
+import type { DevelopmentFeature } from "../../reference/pack-reference.js";
 
 /** The clip group every traffic line lives in, the fixed lines and the middles alike. */
 export const TRAFFIC_GROUP = "traffic";
@@ -275,6 +276,12 @@ export const TRAFFIC_PIT_EXIT_SUPERSEDE_GROUP = "traffic-pit-exit";
  * closer,", then "about five seconds."), never a sentence of its own.
  */
 export const REJOIN_SECONDS_VAR = "traffic.rejoinSeconds";
+
+/** The condition true on the call that introduces a car (module header). */
+export const REJOIN_FIRST_COND = "traffic.rejoinFirst";
+
+/** The case naming the band of the nearest car's arrival while stopped. */
+export const REJOIN_BAND_CASE = "traffic.rejoinBand";
 
 /**
  * The seven lines, rejoin first in band order and the group call after them,
@@ -619,7 +626,7 @@ export function registerTrafficVocabulary(
   );
 
   engine.defineCond(
-    "traffic.rejoinFirst",
+    REJOIN_FIRST_COND,
     (ctx) => {
       const data = rejoinOf(ctx);
 
@@ -633,7 +640,7 @@ export function registerTrafficVocabulary(
   );
 
   engine.defineCase(
-    "traffic.rejoinBand",
+    REJOIN_BAND_CASE,
     (ctx) => rejoinOf(ctx)?.verdict ?? null,
     {
       rightBehind: "The nearest car will reach you in under two seconds.",
@@ -789,6 +796,31 @@ export const SCENARIO_ID_TO_TRAFFIC_ID: Record<string, TrafficCalloutId> = {
 };
 
 export const TRAFFIC_SCENARIO_IDS: readonly string[] = TRAFFIC_CONTRACTS.map((c) => c.id);
+
+/**
+ * The rejoin warnings as a development feature (#1113, the spec's fourth
+ * amendment): they do not ship. The `trafficRejoin` platform flag, off in
+ * every plugin's committed `platform-features.json`, keeps the translator's
+ * detector from running and the rejoin lines silent (`getTrafficRejoinAvailable`
+ * on `PitCrewDeps`), and its checkbox out of the settings window (the
+ * `rejoin` entry's `requiresFeature` in `@iracedeck/callout-settings`, which
+ * names the same flag). Their contracts, vocabulary, script entries and clips
+ * stay, so a development build and the scenario harness run them as before;
+ * what this names is what the pack-author reference withholds while no release
+ * build carries the flag: the four rejoin contracts, the seconds var, the
+ * first-call condition and the band case.
+ */
+export const TRAFFIC_REJOIN_DEVELOPMENT_FEATURE: DevelopmentFeature = {
+  flag: "trafficRejoin",
+  withheld: {
+    contracts: Object.entries(SCENARIO_ID_TO_TRAFFIC_ID)
+      .filter(([, id]) => id === "rejoin")
+      .map(([scenarioId]) => scenarioId),
+    vars: [REJOIN_SECONDS_VAR],
+    conds: [REJOIN_FIRST_COND],
+    cases: [REJOIN_BAND_CASE],
+  },
+};
 
 /**
  * The clip sources the traffic script addresses directly — every

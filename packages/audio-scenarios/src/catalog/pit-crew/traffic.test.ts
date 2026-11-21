@@ -26,6 +26,7 @@
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import { createFakeAudio, type FakeAudio } from "@iracedeck/audio-service/testing";
 import { type CalloutScript } from "@iracedeck/callout-script";
+import { TRAFFIC_CALLOUTS } from "@iracedeck/callout-settings";
 import type {
   IEventBus,
   SimEventMap,
@@ -47,6 +48,7 @@ import type { ScenarioContext, ScenarioContract } from "../../dsl.js";
 import { DEFAULT_MAX_QUEUE_WAIT_MS, NO_FRAME, poolRef, WEIGHT } from "../../dsl.js";
 import type { AudioAssetsManifest, IScenarioEngine } from "../../interpreter.js";
 import { _resetAudioScenarios, initializeAudioScenarios } from "../../interpreter.js";
+import { DEVELOPMENT_FEATURES } from "./index.js";
 import { PIT_READBACK_CONTRACTS } from "./readback.js";
 import { TIRE_WEAR_CONTRACTS } from "./tire-wear.js";
 import {
@@ -62,6 +64,7 @@ import {
   TRAFFIC_CONTRACTS,
   TRAFFIC_MAX_QUEUE_WAIT_MS,
   TRAFFIC_PIT_EXIT_SUPERSEDE_GROUP,
+  TRAFFIC_REJOIN_DEVELOPMENT_FEATURE,
   TRAFFIC_REJOIN_ENDS_ON,
   TRAFFIC_REJOIN_RIGHT_BEHIND_MAX_QUEUE_WAIT_MS,
   TRAFFIC_REJOIN_SUPERSEDE_GROUP,
@@ -1654,5 +1657,48 @@ describe("family wiring", () => {
   it("the fixture compiles with nothing skipped", () => {
     expect(mockLogger.warn).not.toHaveBeenCalled();
     expect(mockLogger.error).not.toHaveBeenCalled();
+  });
+});
+
+// The rejoin warnings do not ship (#1113, the spec's fourth amendment): what
+// the pack-author reference withholds while no plugin ships `trafficRejoin`.
+describe("TRAFFIC_REJOIN_DEVELOPMENT_FEATURE", () => {
+  /** Every vocabulary name the traffic family registers, by kind. */
+  function registeredVocabulary(): { vars: string[]; conds: string[]; cases: string[] } {
+    const names = { vars: [] as string[], conds: [] as string[], cases: [] as string[] };
+
+    registerTrafficVocabulary({
+      defineVar: (name: string) => void names.vars.push(name),
+      defineCond: (name: string) => void names.conds.push(name),
+      defineCase: (name: string) => void names.cases.push(name),
+    } as unknown as Pick<IScenarioEngine, "defineVar" | "defineCond" | "defineCase">);
+
+    return names;
+  }
+
+  it("is behind the flag the rejoin checkbox names, and the catalog lists it", () => {
+    expect(TRAFFIC_REJOIN_DEVELOPMENT_FEATURE.flag).toBe("trafficRejoin");
+    expect(TRAFFIC_CALLOUTS.callouts.rejoin.requiresFeature).toBe(TRAFFIC_REJOIN_DEVELOPMENT_FEATURE.flag);
+    expect(DEVELOPMENT_FEATURES).toContain(TRAFFIC_REJOIN_DEVELOPMENT_FEATURE);
+  });
+
+  it("withholds exactly the four rejoin contracts, and no pit-exit one", () => {
+    expect([...TRAFFIC_REJOIN_DEVELOPMENT_FEATURE.withheld.contracts].sort()).toEqual([...REJOIN_IDS].sort());
+    expect(TRAFFIC_SCENARIO_IDS.filter((id) => !REJOIN_IDS.includes(id as never))).toEqual([
+      "pit-crew.traffic-pit-exit-traffic",
+      "pit-crew.traffic-pit-exit-clear",
+      "pit-crew.traffic-pit-exit-merge",
+    ]);
+  });
+
+  it("withholds every rejoin name the family registers, and only those", () => {
+    const registered = registeredVocabulary();
+    const rejoin = (names: string[]): string[] => names.filter((name) => /rejoin/i.test(name));
+    const { vars, conds, cases } = TRAFFIC_REJOIN_DEVELOPMENT_FEATURE.withheld;
+
+    expect(vars).toEqual(rejoin(registered.vars));
+    expect(conds).toEqual(rejoin(registered.conds));
+    expect(cases).toEqual(rejoin(registered.cases));
+    expect([...vars, ...conds, ...cases]).toHaveLength(3);
   });
 });

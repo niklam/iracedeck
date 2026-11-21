@@ -194,7 +194,13 @@ describe("endsOn trigger/end order against one controller tick (#1407, #1499, #1
     // bus, the engine, then the wiring, which runs `registerPitCrew`.
     const bus = initializeEventBus(silentLogger);
     engine = initializeAudioScenarios(bus, silentAudio, EMPTY_MANIFEST, silentLogger);
-    wireRaceEngineer(bus, { logger: silentLogger, sim: createIracingSimRuntime(), voice: { driverNames: [] } });
+    // The rejoin lines' development flag on (#1113): their endsOn order is checked like any other.
+    wireRaceEngineer(bus, {
+      logger: silentLogger,
+      sim: createIracingSimRuntime(),
+      voice: { driverNames: [] },
+      trafficRejoin: true,
+    });
     endsOnContracts = engine.contracts().filter((c) => c.endsOnEvent !== null);
   });
 
