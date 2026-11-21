@@ -651,10 +651,16 @@ describe("POST /api/shortcut/start", () => {
     controller.setSessionInfo(readSessionPreset("practice") as unknown as SessionInfo);
     controller.setConnected(true);
 
+    // The refusal is the whole answer: the route writes nothing, so a refused
+    // shortcut leaves the mock's telemetry exactly as the tester set it.
+    const before = structuredClone(controller.getState().telemetry);
+    const writes = vi.spyOn(controller, "mutateTelemetry");
     const refused = await start(TRAFFIC_TRAIN_SHORTCUT_ID);
 
     expect(refused.statusCode).toBe(409);
     expect(refused.error).toEqual(expect.stringContaining("index 7"));
+    expect(writes).not.toHaveBeenCalled();
+    expect(controller.getState().telemetry).toEqual(before);
 
     controller.setSessionInfo(readSessionPreset("race") as unknown as SessionInfo);
 
