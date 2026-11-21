@@ -720,7 +720,7 @@ A car that cannot be timed at all — which should practically never happen — 
 
 ### When the radio is busy
 
-A newer pit exit call replaces an older one, whether it is still waiting or already playing. The traffic warning and the merge warning wait at most three seconds for the radio and are dropped after that rather than played late, since by then the car they are about has gone by. The clear call waits its turn like other callouts, since a change in the traffic replaces it with a newer call. Neither pit exit call plays once you are back on the track.
+A newer pit exit call replaces an older one, whether it is still waiting or already playing, and once *"Watch for cars."* has been said, nothing more is said about that exit. The traffic warning and the merge warning wait at most three seconds for the radio and are dropped after that rather than played late, since by then the car they are about has gone by. The clear call waits its turn like other callouts, since a change in the traffic replaces it with a newer call. A pit exit call that a more urgent call cuts off is not repeated afterwards, and one that has not started by the time you are back on the track, or after a reset to the garage, is dropped; a call already playing finishes.
 
 The **Traffic at pit exit** opt-in, on by default, and the three pit exit sliders above live under **Race Engineer Callouts → Traffic** in the Settings window — see [the opt-in list below](#race-engineer-callouts-per-subject-opt-inout). With the Race Engineer master off, the calls are silent.
 
