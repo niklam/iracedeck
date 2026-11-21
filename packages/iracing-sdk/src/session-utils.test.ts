@@ -10,7 +10,12 @@ import {
   getCarNumberRawFromSessionInfo,
   getPlayerCarNumberFromSessionInfo,
   isReplayOnlySession,
+  normalizeCameraGroupName,
+  readCameraGroupNames,
   readSubSessionId,
+  readTrackConfigName,
+  readTrackDisplayName,
+  readTrackId,
 } from "./session-utils.js";
 
 describe("readSubSessionId (#1591)", () => {
@@ -562,5 +567,134 @@ describe("getCamerasInGroup", () => {
     expect(getCamerasInGroup(null, 1)).toEqual([]);
     expect(getCamerasInGroup(undefined, 1)).toEqual([]);
     expect(getCamerasInGroup({ CameraInfo: {} }, 1)).toEqual([]);
+  });
+});
+
+describe("readTrackId (#1653)", () => {
+  const withId = (id: unknown) => ({ WeekendInfo: { TrackID: id } });
+
+  it("reads a positive whole number", () => {
+    expect(readTrackId(withId(13))).toBe(13);
+    expect(readTrackId(withId(531))).toBe(531);
+  });
+
+  it("reads a quoted id of decimal digits", () => {
+    expect(readTrackId(withId("13"))).toBe(13);
+    expect(readTrackId(withId(" 42 "))).toBe(42);
+  });
+
+  it("is null for zero, a negative, a fraction, a non-decimal string or an unsafe integer", () => {
+    for (const id of [0, -1, 1.5, NaN, Infinity, "", "  ", "0x10", "1e3", "-3", "12a", 2 ** 53, true, {}, []]) {
+      expect(readTrackId(withId(id)), String(id)).toBeNull();
+    }
+  });
+
+  it("is null when the session info or its WeekendInfo is not an object, or the id is absent", () => {
+    expect(readTrackId(null)).toBeNull();
+    expect(readTrackId(undefined)).toBeNull();
+    expect(readTrackId("x")).toBeNull();
+    expect(readTrackId({})).toBeNull();
+    expect(readTrackId({ WeekendInfo: null })).toBeNull();
+    expect(readTrackId({ WeekendInfo: "x" })).toBeNull();
+    expect(readTrackId({ WeekendInfo: {} })).toBeNull();
+  });
+});
+
+describe("readTrackDisplayName / readTrackConfigName (#1653)", () => {
+  it("reads the display name and the configuration, trimmed", () => {
+    const info = { WeekendInfo: { TrackDisplayName: " Spa ", TrackName: "spa", TrackConfigName: " Grand Prix " } };
+
+    expect(readTrackDisplayName(info)).toBe("Spa");
+    expect(readTrackConfigName(info)).toBe("Grand Prix");
+  });
+
+  it("falls back to TrackName when the display name is blank or absent", () => {
+    expect(readTrackDisplayName({ WeekendInfo: { TrackDisplayName: "  ", TrackName: "lakeland" } })).toBe("lakeland");
+    expect(readTrackDisplayName({ WeekendInfo: { TrackName: "lakeland" } })).toBe("lakeland");
+  });
+
+  it("reads an unquoted numeric scalar as its text", () => {
+    expect(readTrackConfigName({ WeekendInfo: { TrackConfigName: 2008 } })).toBe("2008");
+  });
+
+  it("is empty for a blank configuration and for anything unreadable", () => {
+    expect(readTrackConfigName({ WeekendInfo: { TrackConfigName: null } })).toBe("");
+    expect(readTrackConfigName({ WeekendInfo: {} })).toBe("");
+    expect(readTrackConfigName(null)).toBe("");
+    expect(readTrackDisplayName({ WeekendInfo: { TrackDisplayName: {} } })).toBe("");
+    expect(readTrackDisplayName({ WeekendInfo: "x" })).toBe("");
+    expect(readTrackDisplayName(undefined)).toBe("");
+  });
+});
+
+describe("normalizeCameraGroupName (#1653)", () => {
+  it("maps the legacy Pit Lane2 spelling to Pit Lane 2", () => {
+    expect(normalizeCameraGroupName("Pit Lane2")).toBe("Pit Lane 2");
+  });
+
+  it("returns every other name as it is, without trimming or case changes", () => {
+    for (const name of ["Pit Lane 2", "DynamicTV", "dynamictv", " TV1 ", "constructor", "__proto__", "toString"]) {
+      expect(normalizeCameraGroupName(name)).toBe(name);
+    }
+  });
+});
+
+describe("readCameraGroupNames (#1653)", () => {
+  const withGroups = (groups: unknown) => ({ CameraInfo: { Groups: groups } });
+
+  it("reads the names in GroupNum order, canonical", () => {
+    const info = withGroups([
+      { GroupNum: 3, GroupName: "DynamicTV" },
+      { GroupNum: 1, GroupName: "Nose" },
+      { GroupNum: 2, GroupName: "Pit Lane2" },
+    ]);
+
+    expect(readCameraGroupNames(info)).toEqual(["Nose", "Pit Lane 2", "DynamicTV"]);
+  });
+
+  it("keeps each name once, at its first position, after normalising", () => {
+    const info = withGroups([
+      { GroupNum: 1, GroupName: "Pit Lane 2" },
+      { GroupNum: 2, GroupName: "TV1" },
+      { GroupNum: 3, GroupName: "Pit Lane2" },
+      { GroupNum: 4, GroupName: "TV1" },
+    ]);
+
+    expect(readCameraGroupNames(info)).toEqual(["Pit Lane 2", "TV1"]);
+  });
+
+  it("sorts entries without a usable GroupNum last, in list order", () => {
+    const info = withGroups([
+      { GroupName: "B" },
+      { GroupNum: 2, GroupName: "Two" },
+      { GroupNum: "x", GroupName: "C" },
+      { GroupNum: 1, GroupName: "One" },
+    ]);
+
+    expect(readCameraGroupNames(info)).toEqual(["One", "Two", "B", "C"]);
+  });
+
+  it("skips entries that are not objects and names that are not non-empty text", () => {
+    const info = withGroups([
+      null,
+      "Nose",
+      { GroupNum: 1, GroupName: "" },
+      { GroupNum: 2, GroupName: "   " },
+      { GroupNum: 3, GroupName: {} },
+      { GroupNum: 4 },
+      { GroupNum: 5, GroupName: 360 },
+      { GroupNum: 6, GroupName: "Drone" },
+    ]);
+
+    expect(readCameraGroupNames(info)).toEqual(["360", "Drone"]);
+  });
+
+  it("is empty when there is no list to read", () => {
+    expect(readCameraGroupNames(null)).toEqual([]);
+    expect(readCameraGroupNames({})).toEqual([]);
+    expect(readCameraGroupNames({ CameraInfo: null })).toEqual([]);
+    expect(readCameraGroupNames({ CameraInfo: {} })).toEqual([]);
+    expect(readCameraGroupNames(withGroups({ GroupNum: 1, GroupName: "Nose" }))).toEqual([]);
+    expect(readCameraGroupNames(withGroups([]))).toEqual([]);
   });
 });

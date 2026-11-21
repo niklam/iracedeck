@@ -73,6 +73,59 @@ export function readSubSessionId(sessionInfo: unknown): number | null {
   return Number.isSafeInteger(value) && value >= 0 ? value : null;
 }
 
+/** `sessionInfo.WeekendInfo` as a record, or null when either is not an object. */
+function readWeekendInfo(sessionInfo: unknown): Record<string, unknown> | null {
+  if (sessionInfo === null || typeof sessionInfo !== "object") return null;
+
+  const weekend = (sessionInfo as Record<string, unknown>).WeekendInfo;
+
+  return weekend !== null && typeof weekend === "object" ? (weekend as Record<string, unknown>) : null;
+}
+
+/** A YAML scalar as trimmed text: a string trimmed, a finite number in decimal, anything else empty. */
+function scalarText(value: unknown): string {
+  if (typeof value === "string") return value.trim();
+
+  return typeof value === "number" && Number.isFinite(value) ? String(value) : "";
+}
+
+/**
+ * `WeekendInfo.TrackID`, the sim's id of one track LAYOUT (each configuration
+ * has its own), or `null` when it is not readable: the session info or its
+ * `WeekendInfo` is not an object, or the id is absent or is not a whole number
+ * of one or more. A numeric string of decimal digits is read like a number, as
+ * {@link readSubSessionId} does. Zero is not a track, so it reads as absent.
+ *
+ * The camera catalog keys each track's group list by it (#1653).
+ */
+export function readTrackId(sessionInfo: unknown): number | null {
+  const raw = readWeekendInfo(sessionInfo)?.TrackID;
+  const value = typeof raw === "number" ? raw : typeof raw === "string" && DECIMAL_ID.test(raw) ? Number(raw) : NaN;
+
+  return Number.isSafeInteger(value) && value > 0 ? value : null;
+}
+
+/**
+ * `WeekendInfo.TrackDisplayName`, falling back to `TrackName` when the display
+ * name is blank or absent; trimmed. Empty when neither is readable. A number
+ * (an unquoted YAML scalar) reads as its decimal text.
+ */
+export function readTrackDisplayName(sessionInfo: unknown): string {
+  const weekend = readWeekendInfo(sessionInfo);
+
+  if (weekend === null) return "";
+
+  return scalarText(weekend.TrackDisplayName) || scalarText(weekend.TrackName);
+}
+
+/**
+ * `WeekendInfo.TrackConfigName`, trimmed; empty for a track with no
+ * configurations (the YAML leaves it blank) or when it is not readable.
+ */
+export function readTrackConfigName(sessionInfo: unknown): string {
+  return scalarText(readWeekendInfo(sessionInfo)?.TrackConfigName);
+}
+
 /**
  * What a car-number target refers to in the current session:
  * - `"user"` — a car with a human driver (a connected iRacing user)
@@ -245,6 +298,80 @@ export function getCameraGroupsFromSessionInfo(sessionInfo: unknown): CameraGrou
   if (!groups) return [];
 
   return groups.map((g) => ({ groupNum: g.GroupNum, groupName: g.GroupName }));
+}
+
+/**
+ * Camera group names the sim (or an older saved subset) spells differently
+ * from their canonical name. One capture reports `Pit Lane2` where every other
+ * one says `Pit Lane 2` (#958).
+ */
+const LEGACY_CAMERA_GROUP_NAMES: ReadonlyMap<string, string> = new Map([["Pit Lane2", "Pit Lane 2"]]);
+
+/**
+ * The canonical spelling of a camera group name: `Pit Lane2` becomes
+ * `Pit Lane 2`, and every other name is returned as it is (no trimming, no
+ * case change: a camera file's names are the user's).
+ *
+ * The one normalisation every reader of a group name shares — the camera
+ * catalog that records names (#1653), and Camera Controls, which matches a
+ * stored name against the session's list. A `Map`, not an object literal, so
+ * a name such as `constructor` is never looked up on a prototype.
+ */
+export function normalizeCameraGroupName(name: string): string {
+  return LEGACY_CAMERA_GROUP_NAMES.get(name) ?? name;
+}
+
+/**
+ * The session's camera group names (`CameraInfo.Groups[].GroupName`),
+ * canonical ({@link normalizeCameraGroupName}), in the sim's order (`GroupNum`
+ * ascending; an entry without a finite `GroupNum` sorts after those with one,
+ * in its list order), each name once (its first occurrence kept).
+ *
+ * Defensive where {@link getCameraGroupsFromSessionInfo} is not: an absent or
+ * non-list `Groups`, an entry that is not an object, and a name that is not a
+ * non-empty string are skipped rather than thrown on, so a reader that runs on
+ * every session-info update cannot be stopped by one odd YAML. Empty when
+ * there is nothing to read.
+ */
+export function readCameraGroupNames(sessionInfo: unknown): string[] {
+  if (sessionInfo === null || typeof sessionInfo !== "object") return [];
+
+  const cameraInfo = (sessionInfo as Record<string, unknown>).CameraInfo;
+
+  if (cameraInfo === null || typeof cameraInfo !== "object") return [];
+
+  const groups = (cameraInfo as Record<string, unknown>).Groups;
+
+  if (!Array.isArray(groups)) return [];
+
+  const entries: Array<{ num: number; index: number; name: string }> = [];
+
+  groups.forEach((group: unknown, index) => {
+    if (group === null || typeof group !== "object") return;
+
+    const { GroupNum, GroupName } = group as Record<string, unknown>;
+    const name = typeof GroupName === "string" ? GroupName : typeof GroupName === "number" ? String(GroupName) : "";
+
+    if (name.trim() === "") return;
+
+    const num = typeof GroupNum === "number" && Number.isFinite(GroupNum) ? GroupNum : Number.POSITIVE_INFINITY;
+
+    entries.push({ num, index, name: normalizeCameraGroupName(name) });
+  });
+
+  entries.sort((a, b) => (a.num === b.num ? a.index - b.index : a.num < b.num ? -1 : 1));
+
+  const seen = new Set<string>();
+  const names: string[] = [];
+
+  for (const entry of entries) {
+    if (seen.has(entry.name)) continue;
+
+    seen.add(entry.name);
+    names.push(entry.name);
+  }
+
+  return names;
 }
 
 export interface CameraInGroup {
