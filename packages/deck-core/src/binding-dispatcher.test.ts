@@ -235,6 +235,146 @@ describe("BindingDispatcher", () => {
       });
     });
 
+    // #1693: a SimHub tap is two HTTP requests; a second press of the same role
+    // must never land between them, however slow SimHub is.
+    describe("SimHub requests of one role run in order", () => {
+      function deferred(): { promise: Promise<boolean>; resolve: (value: boolean) => void } {
+        let resolve!: (value: boolean) => void;
+        const promise = new Promise<boolean>((r) => {
+          resolve = r;
+        });
+
+        return { promise, resolve };
+      }
+
+      function recordCalls(): string[] {
+        const calls: string[] = [];
+        mockStartRole.mockImplementation(async (role: string) => {
+          calls.push(`start ${role}`);
+
+          return true;
+        });
+        mockStopRole.mockImplementation(async (role: string) => {
+          calls.push(`stop ${role}`);
+
+          return true;
+        });
+
+        return calls;
+      }
+
+      it("starts an uncontended tap at once, synchronously", () => {
+        mockGetGlobalSettings.mockReturnValue({ a: JSON.stringify({ type: "simhub", role: "R" }) });
+
+        void getBindingDispatcher().tap("a");
+
+        expect(mockStartRole).toHaveBeenCalledWith("R");
+      });
+
+      it("holds a second tap of the role until the stalled first one has stopped", async () => {
+        mockGetGlobalSettings.mockReturnValue({ a: JSON.stringify({ type: "simhub", role: "R" }) });
+        const calls = recordCalls();
+        const stalledStart = deferred();
+        mockStartRole.mockImplementationOnce(async (role: string) => {
+          calls.push(`start ${role}`);
+
+          return stalledStart.promise;
+        });
+
+        const first = getBindingDispatcher().tap("a");
+        const second = getBindingDispatcher().tap("a");
+        await new Promise((r) => setTimeout(r, 0));
+
+        // The second start waits behind the stalled first start.
+        expect(calls).toEqual(["start R"]);
+
+        stalledStart.resolve(true);
+        await expect(Promise.all([first, second])).resolves.toEqual([true, true]);
+
+        expect(calls).toEqual(["start R", "stop R", "start R", "stop R"]);
+      });
+
+      it("holds a second tap behind a first one whose stop stalls", async () => {
+        mockGetGlobalSettings.mockReturnValue({ a: JSON.stringify({ type: "simhub", role: "R" }) });
+        const calls = recordCalls();
+        const stalledStop = deferred();
+        mockStopRole.mockImplementationOnce(async (role: string) => {
+          calls.push(`stop ${role}`);
+
+          return stalledStop.promise;
+        });
+
+        const first = getBindingDispatcher().tap("a");
+        const second = getBindingDispatcher().tap("a");
+        await new Promise((r) => setTimeout(r, 0));
+
+        expect(calls).toEqual(["start R", "stop R"]);
+
+        stalledStop.resolve(true);
+        await Promise.all([first, second]);
+
+        expect(calls).toEqual(["start R", "stop R", "start R", "stop R"]);
+      });
+
+      it("does not hold a tap of a different role", async () => {
+        mockGetGlobalSettings.mockReturnValue({
+          a: JSON.stringify({ type: "simhub", role: "R" }),
+          b: JSON.stringify({ type: "simhub", role: "Other" }),
+        });
+        const calls = recordCalls();
+        const stalledStart = deferred();
+        mockStartRole.mockImplementationOnce(async (role: string) => {
+          calls.push(`start ${role}`);
+
+          return stalledStart.promise;
+        });
+
+        const first = getBindingDispatcher().tap("a");
+        const other = getBindingDispatcher().tap("b");
+        await other;
+
+        expect(calls).toEqual(["start R", "start Other", "stop Other"]);
+
+        stalledStart.resolve(true);
+        await first;
+      });
+
+      it("runs the next request after one that rejected", async () => {
+        mockGetGlobalSettings.mockReturnValue({ a: JSON.stringify({ type: "simhub", role: "R" }) });
+        mockStartRole.mockRejectedValueOnce(new Error("boom"));
+
+        const first = getBindingDispatcher().tap("a");
+        const second = getBindingDispatcher().tap("a");
+
+        await expect(first).rejects.toThrow("boom");
+        await expect(second).resolves.toBe(true);
+        expect(mockStartRole).toHaveBeenCalledTimes(2);
+      });
+
+      it("orders a hold's start and a release's stop behind a tap of the same role", async () => {
+        mockGetGlobalSettings.mockReturnValue({ a: JSON.stringify({ type: "simhub", role: "R" }) });
+        const calls = recordCalls();
+        const stalledStart = deferred();
+        mockStartRole.mockImplementationOnce(async (role: string) => {
+          calls.push(`start ${role}`);
+
+          return stalledStart.promise;
+        });
+
+        const tap = getBindingDispatcher().tap("a");
+        const hold = getBindingDispatcher().hold("ctx", "a");
+        await new Promise((r) => setTimeout(r, 0));
+
+        expect(calls).toEqual(["start R"]);
+
+        stalledStart.resolve(true);
+        await Promise.all([tap, hold]);
+        await getBindingDispatcher().release("ctx");
+
+        expect(calls).toEqual(["start R", "stop R", "start R", "stop R"]);
+      });
+    });
+
     describe("missing bindings", () => {
       it("should warn when setting key is not in global settings", async () => {
         mockGetGlobalSettings.mockReturnValue({});

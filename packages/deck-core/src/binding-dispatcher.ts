@@ -121,6 +121,12 @@ function cannotSendByScanCode(binding: BindingValue): boolean {
 class BindingDispatcher implements IBindingDispatcher {
   private logger: ILogger;
   private heldBindings = new Map<string, HeldBinding>();
+  /**
+   * The tail of each SimHub role's request queue (#1693): every start and stop
+   * of a role waits for the one before it, so two presses of one role never
+   * interleave. Removed once the role's last request has settled.
+   */
+  private simHubRoleQueues = new Map<string, Promise<void>>();
 
   constructor(logger: ILogger) {
     this.logger = logger;
@@ -207,7 +213,8 @@ class BindingDispatcher implements IBindingDispatcher {
         return;
       }
 
-      const started = await getSimHub().startRole(binding.role);
+      const role = binding.role;
+      const started = await this.inRoleOrder(role, () => getSimHub().startRole(role));
 
       if (started) {
         this.heldBindings.set(actionId, { type: "simhub", role: binding.role });
@@ -247,7 +254,8 @@ class BindingDispatcher implements IBindingDispatcher {
     switch (held.type) {
       case "simhub": {
         if (isSimHubInitialized()) {
-          const stopped = await getSimHub().stopRole(held.role);
+          const role = held.role;
+          const stopped = await this.inRoleOrder(role, () => getSimHub().stopRole(role));
 
           if (stopped) {
             this.heldBindings.delete(actionId);
@@ -384,8 +392,38 @@ class BindingDispatcher implements IBindingDispatcher {
     return binding;
   }
 
+  /**
+   * Run one SimHub request, or a tap's start-and-stop pair, for a role once
+   * every earlier one for that role has settled (#1693). A tap is two HTTP
+   * requests, each with a 2 s timeout, and Control Mapper merges a second start
+   * that lands before the first stop into the first press: a held key's first
+   * repeat, a second key bound to the same role, or a quick second press of a
+   * stalled SimHub would otherwise be lost. With nothing queued for the role,
+   * `request` starts at once, synchronously.
+   */
+  private inRoleOrder<T>(role: string, request: () => Promise<T>): Promise<T> {
+    const previous = this.simHubRoleQueues.get(role);
+    // An async wrapper, so a request that throws synchronously still settles
+    // the queue's tail rather than escaping before the tail is set.
+    const run = async (): Promise<T> => request();
+    const result = previous ? previous.then(run) : run();
+    const tail = result.then(
+      () => undefined,
+      () => undefined,
+    );
+
+    this.simHubRoleQueues.set(role, tail);
+    void tail.then(() => {
+      if (this.simHubRoleQueues.get(role) === tail) this.simHubRoleQueues.delete(role);
+    });
+
+    return result;
+  }
+
   // SimHub tap = activate then immediately deactivate (momentary press).
-  // SimHub Control Mapper handles the duration internally.
+  // SimHub Control Mapper handles the duration internally. The pair is one unit
+  // of its role's request queue, so no other start or stop of the role lands
+  // between them (#1693).
   // Returns true once the role has started: the press went out even when the
   // stop then fails (that failure is logged, and the role may stay active).
   private async tapSimHub(role: string): Promise<boolean> {
@@ -398,6 +436,10 @@ class BindingDispatcher implements IBindingDispatcher {
       return false;
     }
 
+    return this.inRoleOrder(role, () => this.startAndStopRole(role));
+  }
+
+  private async startAndStopRole(role: string): Promise<boolean> {
     const simHub = getSimHub();
     const started = await simHub.startRole(role);
 
