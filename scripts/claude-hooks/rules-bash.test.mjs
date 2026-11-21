@@ -3395,11 +3395,29 @@ describe("a restart run over and over asks (#1737 review)", () => {
     "time -p while true; do pnpm restart:stream-deck; done",
     "time while true; do pnpm restart:stream-deck; done",
     "select x in a b; do pnpm restart:stream-deck; done",
+    // A loop as another compound's condition (#1737, second CodeRabbit CLI run).
+    "if while true; do pnpm restart:stream-deck; done; then :; fi",
+    "while until false; do pnpm restart:stream-deck; done; do :; done",
+    // A loop word that is an argument (`echo done`, `echo then done`) closes nothing.
+    "while true; do echo then done; pnpm restart:stream-deck; done",
+    "while true; do echo do done; pnpm restart:stream-deck; done",
+    "while true; do echo time done; pnpm restart:stream-deck; done",
+    "while sleep 60; do echo done; pnpm restart:stream-deck; done",
+    "while true; do if true; then pnpm restart:stream-deck; fi; done",
   ])("asks for a restart in a loop after time -p, or in a select: %s", (c) =>
     expect(asks(c)).toMatch(/deck host, again on every pass of its loop\. /),
   );
   it("passes a for over a list after time -p", () =>
     restarts("time -p for h in a b; do pnpm restart:stream-deck; done"));
+  // A lead word that is an argument starts no loop: the restart after it runs once.
+  it("passes a restart after a loop word that an echo prints", () => {
+    for (const c of [
+      "echo then while; pnpm restart:stream-deck",
+      "echo if until; pnpm restart:stream-deck",
+      "echo time -p while; pnpm restart:stream-deck",
+    ])
+      expect(restarts(c).split("; "), c).toEqual(["`pnpm restart:stream-deck` restarts, stops or starts a deck host"]);
+  });
 
   // #1737 CodeRabbit round: a chain of restart names deeper than the reader
   // follows may end in a relink it never reads, so it asks.

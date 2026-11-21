@@ -195,6 +195,32 @@ describe("deckFindings", () => {
     );
     expect(deckFindings("pnpm restart:d0", ROOT, bare, BASH).map((f) => f.kind)).toEqual(["restart"]);
   });
+
+  // #1737, second CodeRabbit CLI run: what the bound leaves unread anywhere
+  // beneath a restart may relink, whatever the name at the bound is called.
+  it("asks for a restart whose chain reaches a neutral alias at the depth bound", () => {
+    // `restart:x` at depth 0, `hop1`…`hop7`, then `hop8` at the bound, whose body would relink.
+    const chain = (last) =>
+      ctx({
+        "restart:x": "pnpm hop1",
+        // A neutral name at the restart's depth, for the control below.
+        top: "pnpm hop1",
+        ...Object.fromEntries(Array.from({ length: 7 }, (_, i) => [`hop${i + 1}`, `pnpm hop${i + 2}`])),
+        hop8: last,
+      });
+    const deep = deckFindings("pnpm restart:x", ROOT, chain("pnpm relink:mirabox"), BASH);
+    expect(deep.map((f) => f.kind)).toEqual(["restart", "relink"]);
+    expect(deep[1].text).toMatch(/→ `pnpm hop8` runs scripts too deep to read, which may relink$/);
+    // Control: the same chain readable to the end and ending in a build is the one restart.
+    const shallow = ctx({
+      "restart:x": "pnpm hop1",
+      ...Object.fromEntries(Array.from({ length: 6 }, (_, i) => [`hop${i + 1}`, `pnpm hop${i + 2}`])),
+      hop7: "pnpm build",
+    });
+    expect(deckFindings("pnpm restart:x", ROOT, shallow, BASH).map((f) => f.kind)).toEqual(["restart"]);
+    // With no restart above it, a neutral chain past the bound finds nothing, as before #1737.
+    expect(deckFindings("pnpm top", ROOT, chain("pnpm relink:mirabox"), BASH)).toEqual([]);
+  });
 });
 
 // #1542: shapes `pre-bash.test.mjs` once spawned the hook for, two tools each.

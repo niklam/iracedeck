@@ -773,12 +773,14 @@ const UNREAD = "$(…)";
  * repeated}, {@link repeatsAt}); and a restart under a restart's own name is
  * not repeated.
  * `trail` holds the `<package dir>\0<script>` keys being expanded, which is
- * both the depth ({@link MAX_SCRIPT_DEPTH}) and the cycle guard. A script the
+ * both the depth ({@link MAX_SCRIPT_DEPTH}) and the cycle guard;
+ * `underRestart` says a restart-kind run above this line is being read, so a
+ * body the bound leaves unread anywhere beneath it asks. A script the
  * hook cannot read — no `ctx.scriptsAt`, no package.json, no such script — is
  * judged by its name alone; a selector it cannot resolve reads every package
  * instead ({@link runManifests}).
  */
-export function deckFindings(c, cwd, ctx, shell, trail = []) {
+export function deckFindings(c, cwd, ctx, shell, trail = [], underRestart = false) {
   const found = [];
   const finding = (text, kind, again) => found.push(repeated(text, kind, again));
   const links = ctx.linkTargets().filter((l) => l.target);
@@ -883,11 +885,13 @@ export function deckFindings(c, cwd, ctx, shell, trail = []) {
         }
       }
       if (trail.length >= MAX_SCRIPT_DEPTH) {
-        // A restart's name no longer asks (#1737), so a restart whose body the
-        // bound leaves unread may hide a relink: that asks, as its name did
-        // before. Any other name past the bound is judged by its name alone.
+        // A restart's name no longer asks (#1737), so a body the bound leaves
+        // unread beneath a restart — the run's own, or one a restart above it
+        // reaches through neutral names — may hide a relink: that asks, as the
+        // restart's name did before. With no restart above, a name past the
+        // bound is judged by its name alone.
         const unread = run.lines?.length || (run.expand && scriptLines(run, ctx).length);
-        if (kind === "restart" && unread)
+        if ((kind === "restart" || underRestart) && unread)
           finding(`\`${run.label}\` runs scripts too deep to read, which may relink`, "relink", run.repeats);
         continue;
       }
@@ -898,7 +902,7 @@ export function deckFindings(c, cwd, ctx, shell, trail = []) {
       for (const { dir, line, key, as } of lines) {
         if (key && trail.includes(key)) continue;
         const [text, lineShell] = lineAs(line, as);
-        for (const f of deckFindings(text, dir, ctx, lineShell, [...trail, key])) {
+        for (const f of deckFindings(text, dir, ctx, lineShell, [...trail, key], underRestart || kind === "restart")) {
           // Under a restart's own name, the restarts it runs are that restart,
           // named once already; what else it reaches is reported.
           if (kind === "restart" && f.kind === "restart") continue;
@@ -932,11 +936,15 @@ function repeatsAt(c, shell) {
 /**
  * The loop words of bash at command position, read from the lexer's trusted
  * mask so an inert quoted mention is no loop: after the start, a newline, an
- * operator, a brace or a paren, `!`, or a keyword that starts a command (`do`,
- * `then`, `else`, `elif`, `time`, `time -p`).
+ * operator, a brace or a paren, or `!`, then any run of keywords that start a
+ * command ({@link BASH_LEAD}), each at command position itself — so a word an
+ * `echo` prints (`echo then done`) neither closes a loop nor opens one.
  */
-const BASH_LOOP_WORD =
-  /(?<=(?:^|[\n;&|(){}!]|(?<![^\s;&|(){}])(?:do|then|else|elif|time(?:[ \t]+-p)?))[ \t]*)(?:while|until|for|select|done)(?=[\s;&|()<>]|$)/g;
+const BASH_LEAD = String.raw`(?:do|then|else|elif|if|while|until|time(?:[ \t]+-p)?)`;
+const BASH_LOOP_WORD = new RegExp(
+  String.raw`(?<=(?:^|[\n;&|(){}!])(?:[ \t]*${BASH_LEAD}(?=[ \t]))*[ \t]*)(?:while|until|for|select|done)(?=[\s;&|()<>]|$)`,
+  "g",
+);
 /** PowerShell's `while`, `do` and `for` at command position, past an optional `:label`; `foreach` is no match. */
 const PS_LOOP_WORD = /(?<=(?:^|[\n;&|(){}])[ \t]*(?::\w+[ \t]+)?)(?:while|do|for)(?=[\s({]|$)/gi;
 
