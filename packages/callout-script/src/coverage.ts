@@ -20,6 +20,12 @@
  * the ambience bed) as its manifest lists them, which a frame plays by
  * literal path and nobody but the plugin ships.
  *
+ * Optionally the VAR REFERENCES (#1718): `<group>/<base>` keys a var draws
+ * from at fire time, which no step names. The caller computes them off the
+ * vocabulary (a var's declared draws); this module stays vocabulary-free and
+ * simply counts them as referenced, so the orphan rule spares a clip a var
+ * plays and the dangling rule reports one the voice does not ship.
+ *
  * (a) ORPHANS — a shipped base nothing references is a clip that never plays:
  *     a misspelling, or a line that lost its consumer. Whether a group is
  *     var-driven — a resolver picks its bases at fire time, so no step names
@@ -70,6 +76,14 @@ export type CoverageInput = {
    * a caller with the bundled manifest hands its non-voice clips over.
    */
   sharedClips: readonly string[];
+  /**
+   * `<group>/<base>` keys a var resolver draws from at fire time (#1718), which
+   * no step names — the caller's knowledge, computed off its vocabulary. Each
+   * counts as referenced, so a shipped clip matching one (its `-NN` takes
+   * included) is no orphan and one nothing ships is dangling. Omitted or empty
+   * changes nothing.
+   */
+  varReferences?: readonly string[];
 };
 
 /** What a script covers of the clips its voice ships — the raw sets the rules below read. */
@@ -166,7 +180,12 @@ function stepLists(script: CalloutScript): readonly (readonly ScriptStep[])[] {
  * dead fragment names is resolved by no entry the engine compiles; the
  * fragment itself is reported instead.
  */
-export function coverageOf({ script, authored: authoredList, sharedClips }: CoverageInput): Coverage {
+export function coverageOf({
+  script,
+  authored: authoredList,
+  sharedClips,
+  varReferences = [],
+}: CoverageInput): Coverage {
   const all = collectScriptReferences(script);
   const unincludedFragments = [...all.unincludedFragments];
   const unknownIncludes = all.includes.filter((name) => !all.fragments.includes(name));
@@ -188,6 +207,8 @@ export function coverageOf({ script, authored: authoredList, sharedClips }: Cove
     authored.add(`${group}${stripTakeSuffix(key.slice(group.length))}`);
     authoredNames.add(key);
   }
+
+  for (const key of varReferences) referenced.add(key);
 
   for (const name of refs.pools) {
     const slash = name.indexOf("/");

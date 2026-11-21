@@ -193,3 +193,31 @@ describe("checkCoverage — the one-call report", () => {
     ]);
   });
 });
+
+describe("varReferences (#1718) — keys a var draws from count as referenced", () => {
+  const base = { script: script({}), sharedClips: [] };
+
+  it("spares a shipped clip a var references, its -NN takes included, from the orphan rule", () => {
+    const authored = ["spotter/clear-01", "spotter/clear-02"];
+    const withVar = checkCoverage({ ...base, authored, varReferences: ["spotter/clear"] }, () => false);
+    const without = checkCoverage({ ...base, authored }, () => false);
+
+    expect(withVar.orphans).toEqual([]);
+    expect(without.orphans).toEqual(["spotter/clear"]);
+  });
+
+  it("reports a var reference nothing ships as dangling", () => {
+    const report = checkCoverage({ ...base, authored: [], varReferences: ["spotter/gone"] }, () => false);
+
+    expect(report.dangling).toEqual(["spotter/gone"]);
+  });
+
+  it("leaves results unchanged when omitted or empty", () => {
+    const input = { ...base, authored: ["spotter/clear-01"] };
+    const omitted = checkCoverage(input, () => false);
+
+    expect(checkCoverage({ ...input, varReferences: [] }, () => false)).toEqual(omitted);
+    expect(omitted.orphans).toEqual(["spotter/clear"]);
+    expect(omitted.dangling).toEqual([]);
+  });
+});
