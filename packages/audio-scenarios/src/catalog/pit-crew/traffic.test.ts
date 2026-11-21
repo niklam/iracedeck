@@ -788,7 +788,8 @@ describe("the traffic lines through the engine", () => {
   });
 
   it("the middle draws from its number's takes, the voice's different wordings", () => {
-    const heard = new Set<string>();
+    // In the order heard: a set would let `01, 01, 02` through.
+    const heard: string[] = [];
 
     introduce();
 
@@ -796,11 +797,15 @@ describe("the traffic lines through the engine", () => {
       audio._reset();
       bus.publishEvent("traffic.rejoin", near(5, false));
       flush(audio);
-      heard.add(voicePaths()[1]);
+      heard.push(voicePaths()[1]);
     }
 
-    // No immediate repeat in a pool of two: the takes alternate.
-    expect([...heard].sort()).toEqual([clip("rejoin-mid-5"), clip("rejoin-mid-5", "02")]);
+    expect([...new Set(heard)].sort()).toEqual([clip("rejoin-mid-5"), clip("rejoin-mid-5", "02")]);
+
+    // No immediate repeat in a pool of two: each take differs from the one before, so they alternate.
+    for (let i = 1; i < heard.length; i++) {
+      expect(heard[i], `pick ${i + 1} repeats pick ${i}: ${heard.join(", ")}`).not.toBe(heard[i - 1]);
+    }
   });
 
   it.each([
