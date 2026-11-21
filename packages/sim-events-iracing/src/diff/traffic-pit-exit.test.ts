@@ -108,6 +108,12 @@ function tel({ cars = [], pct = STALL_PCT, est = 31.25, ...overrides }: TickOpti
 }
 
 const IN_STALL = tel({ PlayerCarInPitStall: true, PlayerTrackSurface: TrkLoc.InPitStall });
+/** In the stall on a tick that sends no lap position. */
+const IN_STALL_NO_POSITION = tel({
+  PlayerCarInPitStall: true,
+  PlayerTrackSurface: TrkLoc.InPitStall,
+  CarIdxLapDistPct: undefined,
+});
 
 function harness({
   landmarks = LANDMARKS as TrafficPitExitLandmarks | null,
@@ -189,9 +195,9 @@ function harness({
       now += ms;
       tick(t);
     },
-    /** In the stall, then out of it on the next tick: the departure edge, with `t` the first tick out. */
-    depart(t: TrafficPitExitTelemetry = tel()): void {
-      tick(IN_STALL);
+    /** In the stall (`stall`), then out of it on the next tick: the departure edge, with `t` the first tick out. */
+    depart(t: TrafficPitExitTelemetry = tel(), stall: TrafficPitExitTelemetry = IN_STALL): void {
+      tick(stall);
       now += 100;
       tick(t);
     },
@@ -1025,11 +1031,66 @@ describe("diffTrafficPitExit", () => {
         expect(h.episode.active).toBe(false);
       });
 
-      describe("with no position on the departure tick", () => {
+      describe("with no position on the departure tick, the stall's is the start", () => {
+        // Pit road ends at 0.75 (375 s), the blend at 0.80 (400 s); the stall at 0.20.
+        const FAR: TrafficPitExitLandmarks = {
+          pitRoadEnd: landmark(0.75, { [CLS]: 375 }),
+          blendEnd: landmark(0.8, { [CLS]: 400 }),
+        };
+        const farStall = tel({ pct: 0.2, PlayerCarInPitStall: true, PlayerTrackSurface: TrkLoc.InPitStall });
+
+        it("runs on from a stall more than half a lap before blendEnd, where a first position would read past it", () => {
+          const h = harness({ landmarks: FAR });
+
+          h.depart(tel({ CarIdxLapDistPct: undefined }), farStall);
+          // 0.201 is 0.599 short of the blend: as a start of its own it would
+          // read as past it, and the exit would lose both warnings.
+          h.after(100, tel({ pct: 0.201, cars: [{ idx: 5, pct: 0.66, est: 330 }] }));
+
+          expect(h.episode.active).toBe(true);
+          expect(h.episode.startPct).toBe(0.2);
+          expect(h.settled).toHaveLength(1);
+          expect(lines(h.debug).filter((line) => line.includes("ended"))).toEqual([]);
+        });
+
+        it("keeps the stall's position through a tick in the stall that sent none", () => {
+          const h = harness({ landmarks: FAR });
+
+          h.tick(farStall);
+          h.depart(tel({ CarIdxLapDistPct: undefined }), IN_STALL_NO_POSITION);
+          h.after(100, tel({ pct: 0.201 }));
+
+          expect(h.episode.startPct).toBe(0.2);
+          expect(h.episode.active).toBe(true);
+        });
+
+        it("still ends a player the evidence puts past blendEnd", () => {
+          const h = harness({ landmarks: FAR });
+
+          h.depart(tel({ CarIdxLapDistPct: undefined }), farStall);
+          // Past the blend by the episode's own progress from the stall, still
+          // off the racing surface: the same exit, over.
+          h.after(100, tel({ pct: 0.81, OnPitRoad: false }));
+
+          expect(h.episode.active).toBe(false);
+          expect(lines(h.debug).at(-1)).toBe("episode ended (past blendEnd)");
+        });
+
+        it("forgets a stall position once out of the stall", () => {
+          const h = harness({ landmarks: FAR });
+
+          h.tick(farStall);
+          expect(h.episode.lastStallPct).toBe(0.2);
+          h.tick(tel({ pct: 0.3, OnPitRoad: false, PlayerTrackSurface: TrkLoc.OnTrack }));
+          expect(h.episode.lastStallPct).toBeNull();
+        });
+      });
+
+      describe("with no position on the departure tick nor in the stall", () => {
         it("takes no start past blendEnd: no verdict a lap short when the first position read is past it", () => {
           const h = harness();
 
-          h.depart(tel({ CarIdxLapDistPct: undefined }));
+          h.depart(tel({ CarIdxLapDistPct: undefined }), IN_STALL_NO_POSITION);
           // The first position read is 20 m past the blend line, more than the
           // slack: as a start it would read no progress, and the empty track
           // would be called clear a lap out.
@@ -1044,7 +1105,7 @@ describe("diffTrafficPitExit", () => {
         it("takes no start past blendEnd when the landmarks arrive only after the first position", () => {
           const h = harness({ landmarks: null });
 
-          h.depart(tel({ CarIdxLapDistPct: undefined }));
+          h.depart(tel({ CarIdxLapDistPct: undefined }), IN_STALL_NO_POSITION);
           h.after(100, tel({ OnPitRoad: false, pct: 0.2 }));
           h.readLandmarks.mockReturnValue(LANDMARKS);
           h.after(TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS, tel({ OnPitRoad: false, pct: 0.2 }));
@@ -1056,7 +1117,7 @@ describe("diffTrafficPitExit", () => {
         it("starts from the first position read short of blendEnd, and judges the exit from there", () => {
           const h = harness();
 
-          h.depart(tel({ CarIdxLapDistPct: undefined }));
+          h.depart(tel({ CarIdxLapDistPct: undefined }), IN_STALL_NO_POSITION);
           h.after(100, tel({ cars: [arriving(5, 1)] }));
 
           expect(h.episode.startPct).toBe(STALL_PCT);
@@ -1066,7 +1127,7 @@ describe("diffTrafficPitExit", () => {
         it("starts from a position read once the landmarks arrive, short of blendEnd, and runs on", () => {
           const h = harness({ landmarks: null });
 
-          h.depart(tel({ CarIdxLapDistPct: undefined }));
+          h.depart(tel({ CarIdxLapDistPct: undefined }), IN_STALL_NO_POSITION);
           h.after(100, tel());
           h.readLandmarks.mockReturnValue(LANDMARKS);
           h.after(TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS, tel({ pct: 0.1, cars: [arriving(5, 20)] }));

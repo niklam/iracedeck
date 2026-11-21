@@ -778,6 +778,14 @@ export type TrafficPitExitState = {
    * and after a tick with neither reading.
    */
   lastInPitStall: boolean | null;
+  /**
+   * The player's lap position on the latest tick of the current run in the
+   * stall that sent one: the stall itself, the episode's start when the
+   * departure tick sends no position (`diff/traffic-pit-exit.ts`). `null`
+   * outside the stall, and while no tick of the run has sent one. A baseline,
+   * written last with {@link TrafficPitExitState.lastInPitStall}.
+   */
+  lastStallPct: number | null;
   /** Whether an episode is running. */
   active: boolean;
   /**
@@ -790,10 +798,11 @@ export type TrafficPitExitState = {
    * In an episode: where the player's forward progress is measured from, so
    * a player further past `blendEnd` than the landmark slack, still off the
    * racing surface, is past it rather than a lap short. The departure tick's
-   * lap position; when that tick sent none, the player's position at the
-   * first evaluation that reads the landmarks, taken only in the half lap
-   * before `blendEnd` (`diff/traffic-pit-exit.ts`). `null` until then, and
-   * with no episode.
+   * lap position; when that tick sent none, the stall's
+   * ({@link TrafficPitExitState.lastStallPct}); with neither, the player's
+   * position at the first evaluation that reads the landmarks, taken only in
+   * the half lap before `blendEnd` (`diff/traffic-pit-exit.ts`). `null` until
+   * then, and with no episode.
    */
   startPct: number | null;
   /**
@@ -869,6 +878,7 @@ export type TrafficPitExitState = {
 export function createTrafficPitExitState(): TrafficPitExitState {
   return {
     lastInPitStall: null,
+    lastStallPct: null,
     active: false,
     lastOnPitRoad: null,
     startPct: null,
