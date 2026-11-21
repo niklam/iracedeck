@@ -133,7 +133,7 @@ export const EVENT_TEMPLATES = [
   {
     name: "traffic.pitExitEnded",
     description:
-      "The pit exit is over (issue #1113): past the end of the blend or on the racing surface, back in the stall, out of the world or the car — drops a pit-exit line or merge warning still waiting for the radio, lets one playing finish; empty payload",
+      "The pit exit is over (issue #1113): past the end of the blend or on the racing surface, back in the stall, out of the world or the car, or your lap position missing for 1 s (the position grace); or the translator's teardown wiping the exit — a replay view (the garage too), a session change, a disconnect — drops a pit-exit line or merge warning still waiting for the radio, lets one playing finish; empty payload",
     data: {} satisfies SimEventMap["traffic.pitExitEnded"]["data"],
   },
   {
