@@ -117,6 +117,28 @@ function runSequencePaused(controller: MockSDKController, steps: readonly Teleme
   }
 }
 
+/** A tick loop slowed to 2.5 s (the API takes up to 5 s), past the rejoin detector's one-second evaluation interval. */
+const SLOW_TICK_MS = 2500;
+
+/**
+ * The steps as the UI runs them with the mock's tick loop slowed to
+ * {@link SLOW_TICK_MS}: the route applies the patch and ticks once for a step
+ * marked `tick`, and the loop ticks on its own through the holds, its first
+ * tick `phaseMs` into the run.
+ */
+function runSequenceSlowLoop(controller: MockSDKController, steps: readonly TelemetryStep[], phaseMs: number): void {
+  controller.start(SLOW_TICK_MS);
+
+  try {
+    // Started now, the loop first ticks a whole interval later: run that much
+    // short of it.
+    vi.advanceTimersByTime(SLOW_TICK_MS - phaseMs);
+    runSequencePaused(controller, steps);
+  } finally {
+    controller.stop();
+  }
+}
+
 beforeEach(() => {
   vi.useFakeTimers();
   initializeEventBus(silentLogger);
@@ -151,6 +173,21 @@ describe("the rejoin train (issue #1113)", () => {
       const { controller, events } = startTranslator(preset);
 
       runSequencePaused(controller, TRAFFIC_REJOIN_SEQUENCE);
+
+      expect(events).toEqual(BANDS);
+    },
+  );
+
+  // At some phases of a slowed loop a background tick evaluates a snapshot
+  // just before the next one lands, throttling that one's own tick; were the
+  // run to replace it before the loop ticks again, its band would go unheard.
+  // Every phase against the run, in 100 ms steps.
+  it.each(Array.from({ length: SLOW_TICK_MS / 100 }, (_, n) => n * 100))(
+    "is heard only for its bands under ten seconds with the tick loop slowed to 2.5 s, first ticking %i ms into the run",
+    (phaseMs) => {
+      const { controller, events } = startTranslator("race");
+
+      runSequenceSlowLoop(controller, TRAFFIC_REJOIN_SEQUENCE, phaseMs);
 
       expect(events).toEqual(BANDS);
     },

@@ -257,6 +257,33 @@ const REJOIN_ENTRY_HOLD_MS = 1300;
 /** How long each later snapshot is held: past the detector's one-second evaluation interval. */
 const REJOIN_SNAPSHOT_HOLD_MS = 1500;
 
+/**
+ * The detector's evaluation interval (`TRAFFIC_REJOIN_EVAL_INTERVAL_MS`, not
+ * exported): a tick sooner than this after the last evaluation is not
+ * evaluated.
+ */
+const REJOIN_EVAL_INTERVAL_MS = 1000;
+
+/**
+ * One later snapshot, held {@link REJOIN_SNAPSHOT_HOLD_MS}: ticked as it lands,
+ * then ticked again one evaluation interval in, before the next replaces it.
+ *
+ * The second tick is what makes every snapshot heard at every tick rate. The
+ * first is not evaluated when an evaluation fell within the last second — the
+ * paused loop's second tick on the previous snapshot, or a slowed loop's own
+ * tick (the API takes intervals up to 5 s) late in the previous hold — and
+ * with no tick of its own after the throttle has passed, a snapshot the loop
+ * skips over would be replaced unevaluated, its band never said. Whatever was
+ * last evaluated, the second tick comes a whole interval after the first, so
+ * the snapshot is evaluated on it or on a tick between.
+ */
+function rejoinSnapshotSteps(n: number): TelemetryStep[] {
+  return [
+    { patch: rejoinSnapshot(n), holdMs: REJOIN_EVAL_INTERVAL_MS, tick: true },
+    { patch: {}, holdMs: REJOIN_SNAPSHOT_HOLD_MS - REJOIN_EVAL_INTERVAL_MS, tick: true },
+  ];
+}
+
 /** How long the player drives away before the teardown: past the detector's 2 s end dwell. */
 const REJOIN_DRIVE_AWAY_MS = 2500;
 
@@ -273,7 +300,8 @@ const REJOIN_DRIVE_AWAY_MS = 2500;
  * Opens inside a replay-mode bracket that puts the player on the circuit at
  * racing speed, off pit road and racing under green, then a seeding tick; then
  * the two-tick learning lap ({@link rejoinLearningTick}); then the stop and
- * the snapshots, each held past the detector's evaluation interval; then the
+ * the snapshots, each held past the detector's evaluation interval and ticked
+ * again one interval in ({@link rejoinSnapshotSteps}); then the
  * player drives away (the episode ends silently) and the teardown bracket.
  * The snapshots jump the cars seconds at a time: the detector re-times the
  * field once a second and speaks on a verdict change, so a compressed picture
@@ -322,7 +350,7 @@ function rejoinSequence(learn: boolean): TelemetryStep[] {
     // starts on.
     { patch: { Speed: 0, ...rejoinSnapshot(0) }, holdMs: REJOIN_STOP_HOLD_MS, tick: true },
     { patch: {}, holdMs: REJOIN_ENTRY_HOLD_MS, tick: true },
-    ...[1, 2, 3, 4, 5, 6].map((n) => ({ patch: rejoinSnapshot(n), holdMs: REJOIN_SNAPSHOT_HOLD_MS, tick: true })),
+    ...[1, 2, 3, 4, 5, 6].flatMap(rejoinSnapshotSteps),
     // Away again: the episode ends once the car has been moving for two
     // seconds, on a tick after that dwell. That tick is a step of its own, so
     // the episode also ends with the tick loop paused (one tick per step): an
