@@ -178,8 +178,9 @@
  * second at 60 km/h), so waiting for the next scheduled evaluation could make
  * the call late, or find the player already past `blendEnd` and end the
  * episode silent. So on every tick between two scheduled evaluations the
- * landmarks are read while either is still due: the call not yet made, or
- * the merge warning's check (below) not yet run past `pitRoadEnd`. The first
+ * landmarks are read, for as long as the episode runs. While either is still
+ * due — the call not yet made, or the merge warning's check (below) not yet
+ * run past `pitRoadEnd` — such a tick may evaluate. The first
  * tick at the call point, or past `pitRoadEnd` with the merge unchecked, on
  * landmarks the evaluation can use and short of `blendEnd`, evaluates there
  * and then, as does each tick after it until the call is made and the merge
@@ -198,7 +199,12 @@
  * episode there, as a scheduled evaluation would, so a car rolled back short
  * of the line before the next one is no fresh exit for the merge warning; one
  * whose landmarks cannot be used waits for the next scheduled evaluation.
- * Once both are done, nothing between them reads the landmarks.
+ * Once both are done, no tick between them evaluates, but each still reads the
+ * landmarks for that crossing alone, until the episode ends: a crossing seen
+ * only at the next scheduled evaluation could be missed by a roll back short
+ * of the line in between, and a flip settling there would then be spoken
+ * after the exit had ended. A landmark read is cheap, and an exit lasts
+ * seconds.
  *
  * After the first call, again only when a flip settles before the
  * player reaches `blendEnd` and before the merge warning (below) is said. A flip pending at the call point is held like any
@@ -369,9 +375,9 @@ export type TrafficPitExitFacts = {
   /**
    * The learned landmarks (`resolvePitLaneLandmarks` over the instance's
    * learner, #1112), `null` until a track is loaded. A function so the
-   * landmark view is built only when read: at an evaluation, and on the ticks
-   * between two of them only until the call is made and the merge warning
-   * checked past `pitRoadEnd` (module header).
+   * landmark view is built only when read: in a running episode, at an
+   * evaluation and on each tick between two of them (module header), never
+   * outside one.
    */
   readonly readLandmarks: () => TrafficPitExitLandmarks | null;
 };
@@ -544,13 +550,16 @@ export function diffTrafficPitExit(
         // read or the timing, is retried on the next tick rather than a second
         // later. An evaluation that ended the episode leaves it ended.
         if (episode.active) episode.lastEvalAt = now;
-      } else if (episode.spokenVerdict === null || (!episode.mergeChecked && !episode.mergeWarned)) {
-        // Between two scheduled evaluations, until the call is made and the
-        // merge checked: the first tick at the call point, or past
+      } else {
+        // Between two scheduled evaluations: until the call is made and the
+        // merge checked, the first tick at the call point, or past
         // `pitRoadEnd` with the merge unchecked, evaluates at once (module
         // header), and so does each tick after it until that is done. It
-        // leaves `lastEvalAt` alone, so the schedule runs on as it was. A
-        // tick that finds the player at or past `blendEnd` ends the episode.
+        // leaves `lastEvalAt` alone, so the schedule runs on as it was. On
+        // every such tick until the episode ends, both done or not, one that
+        // finds the player at or past `blendEnd` ends the episode, so a
+        // crossing and a roll back between two scheduled evaluations is never
+        // missed and the next one cannot speak about an exit already over.
         const landmarks = facts.readLandmarks();
         const step = offScheduleStep(episode, position.pct, onPitRoad, landmarks, facts);
 

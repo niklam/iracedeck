@@ -3919,8 +3919,8 @@ function handleLiveSteps(
   // the cars against curves that include this tick's samples, and both read
   // the curves as a value; each owns its own slice (`trafficRejoin`, `trafficPitExit`).
   // The pit exit reads #1112's learner through a closure, so the landmark
-  // view is built only when it reads it (at an evaluation, and between two
-  // only until its call is made and the player is past pit road's end), and the track length
+  // view is built only when it reads it (in a running exit, at an evaluation
+  // and on each tick between two), and the track length
   // and pit speed limit this tick already resolved. Each logs at debug
   // through its own scope of the translator's logger, `Rejoin` / `PitExit`.
   // Each car an evaluation times is a unit of the step (#1559), so one car's

@@ -701,7 +701,7 @@ describe("diffTrafficPitExit", () => {
       expect(h.settled).toEqual([{ verdict: "clear" }]);
     });
 
-    it("between evaluations, reads no landmarks once the call is made and the merge checked", () => {
+    it("between evaluations, once the call is made and the merge checked, reads the landmarks for the blendEnd crossing alone", () => {
       const h = harness();
 
       // Out of a stall past the learned pitRoadEnd: the call is made, and the
@@ -710,9 +710,16 @@ describe("diffTrafficPitExit", () => {
       expect(h.events).toHaveLength(1);
       h.readLandmarks.mockClear();
 
-      for (let i = 0; i < 5; i++) h.after(100, tel({ pct: 0.13 }));
+      const debugLines = lines(h.debug).length;
 
-      expect(h.readLandmarks).not.toHaveBeenCalled();
+      // A car now arriving with the player: an evaluation would log it.
+      for (let i = 0; i < 5; i++) h.after(100, tel({ pct: 0.13, cars: [arriving(5, 0)] }));
+
+      // One read a tick, so a crossing between two evaluations ends the episode;
+      // no evaluation, so nothing is re-timed or logged.
+      expect(h.readLandmarks).toHaveBeenCalledTimes(5);
+      expect(lines(h.debug)).toHaveLength(debugLines);
+      expect(h.events).toHaveLength(1);
     });
   });
 
@@ -2352,13 +2359,12 @@ describe("diffTrafficPitExit", () => {
         h.after(100, shortAt(0.1255, 1));
         expect(h.merges).toEqual([{ seconds: 1 }]);
 
-        // Checked and said: the ticks after it read nothing, and the episode
-        // ends on the racing surface before the next scheduled evaluation.
-        h.readLandmarks.mockClear();
+        // Checked and said: the ticks after it evaluate nothing (they read the
+        // landmarks for a blendEnd crossing alone), and the episode ends on the
+        // racing surface before the next scheduled evaluation.
         h.after(300, shortAt(0.13, 1));
         h.after(100, shortAt(0.134, 1, { PlayerTrackSurface: TrkLoc.OnTrack }));
 
-        expect(h.readLandmarks).not.toHaveBeenCalled();
         expect(h.merges).toEqual([{ seconds: 1 }]);
         expect(h.events).toEqual([{ verdict: "traffic", seconds: 1 }]);
         expect(h.episode.active).toBe(false);
@@ -2370,12 +2376,38 @@ describe("diffTrafficPitExit", () => {
         h.depart(shortAt(STALL_PCT, 3));
         h.after(TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS, shortAt(0.1245, 3));
         h.after(100, shortAt(0.1255, 3)); // checked: 3 s out
-        h.readLandmarks.mockClear();
         h.after(100, shortAt(0.128, 1));
 
-        expect(h.readLandmarks).not.toHaveBeenCalled();
+        // Read for a blendEnd crossing alone: the car now 1 s out is not re-timed.
         expect(h.merges).toEqual([]);
         expect(h.episode.mergeChecked).toBe(true);
+        expect(h.episode.active).toBe(true);
+      });
+
+      it("still ends the episode at a blendEnd crossing between evaluations once the call is made and the merge checked", () => {
+        const h = harness({ landmarks: SHORT_BLEND });
+
+        h.depart(shortAt(STALL_PCT, 3));
+        h.after(TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS, shortAt(0.1245, 3)); // the call, on schedule
+        h.after(100, shortAt(0.1255, 3)); // checked: 3 s out, no warning
+        expect(h.events).toEqual([{ verdict: "traffic", seconds: 3 }]);
+        expect(h.episode.mergeChecked).toBe(true);
+
+        // 1.6 m past the blend line, the surface still the pit approach.
+        h.after(100, shortAt(0.134, 6, { OnPitRoad: false }));
+
+        expect(h.episode.active).toBe(false);
+        expect(lines(h.debug)).toContain("episode ended (past blendEnd, between evaluations)");
+
+        // Rolled back short of the line, the car now clear of the window: the
+        // two scheduled evaluations that would settle the flip say nothing
+        // about an exit already over.
+        h.after(100, shortAt(0.13, 6));
+        h.after(700, shortAt(0.13, 6));
+        h.after(TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS, shortAt(0.13, 6));
+
+        expect(h.events).toEqual([{ verdict: "traffic", seconds: 3 }]);
+        expect(h.merges).toEqual([]);
       });
 
       it("keeps trying on the ticks after a first one past pitRoadEnd that could time no car", () => {
