@@ -5,7 +5,10 @@
       "packages/audio-assets/voice/default/callouts.json",
       "packages/audio-assets/configs/default.voice.json",
       "packages/audio-assets/manifest.json",
-      "packages/callout-script/src/driver-name-aliases.ts"
+      "packages/callout-script/src/driver-name-aliases.ts",
+      "packages/iracing-plugin-stream-deck/platform-features.json",
+      "packages/iracing-plugin-mirabox/platform-features.json",
+      "packages/iracing-plugin-ulanzi/platform-features.json"
     ]
   },
   "callouts": [
@@ -5351,119 +5354,6 @@
         "includes": [],
         "frames": []
       }
-    },
-    {
-      "id": "pit-crew.traffic-rejoin-near-first",
-      "family": "traffic",
-      "event": "traffic.rejoin",
-      "description": "You are stopped or crawling on track and a car comes within ten seconds of reaching you: the first call about it you hear, naming its arrival in whole seconds.",
-      "frame": "none",
-      "weight": 85,
-      "weightBand": null,
-      "queueable": true,
-      "interrupt": true,
-      "speakGate": "Dropped if it waited for the radio as long as the seconds it names, as the car has reached you by then; speaking it marks the car as introduced, so later counts are updates.",
-      "endsOn": "Your car is taken off the track while you are stopped: towed or reset to the pits, or you leave the car. A line playing stops at once and a waiting one is dropped.",
-      "base": "voice/{voice}",
-      "comment": "The first call about a car two to nine seconds away, one sentence in three pieces each picked from its pool: an intro that leads into the seconds, the seconds, and an outro, such as \"Car coming in about five seconds. Watch out.\" It cuts a lower-weight line in flight, a caution or flag call included; the meatball, the start lights, the restart green, a fuel-critical warning and the spotter's car-alongside calls keep the radio. No radio frame.",
-      "test": "Harness → Traffic → Rejoin near, first call. In-sim: tick Traffic when rejoining (experimental) in the Settings window first, then stop on track as a car is a few seconds away.",
-      "skip": false,
-      "references": {
-        "pools": [
-          "traffic/rejoin-intro",
-          "traffic/rejoin-outro"
-        ],
-        "vars": [
-          "traffic.rejoinSeconds"
-        ],
-        "conds": [],
-        "cases": [],
-        "includes": [],
-        "frames": []
-      }
-    },
-    {
-      "id": "pit-crew.traffic-rejoin-near-update",
-      "family": "traffic",
-      "event": "traffic.rejoin",
-      "description": "You are still stopped and the car within ten seconds keeps closing: called again each time its arrival has dropped by three seconds or more, once the first call was heard.",
-      "frame": "none",
-      "weight": 85,
-      "weightBand": null,
-      "queueable": true,
-      "interrupt": true,
-      "speakGate": "Dropped if it waited for the radio as long as the seconds it names, as the car has reached you by then.",
-      "endsOn": "Your car is taken off the track while you are stopped: towed or reset to the pits, or you leave the car. A line playing stops at once and a waiting one is dropped.",
-      "base": "voice/{voice}",
-      "comment": "A later count of the same approach, each time its arrival has dropped by three seconds or more: an update intro that leads into the seconds, and the seconds, such as \"Getting closer, about five seconds.\" It cuts a lower-weight line in flight, a caution or flag call included; the meatball, the start lights, the restart green, a fuel-critical warning and the spotter's car-alongside calls keep the radio. No radio frame.",
-      "test": "Harness → Traffic → Rejoin near, count. In-sim: tick Traffic when rejoining (experimental) in the Settings window first, then stay stopped on track while a car closes from about nine seconds away.",
-      "skip": false,
-      "references": {
-        "pools": [
-          "traffic/rejoin-update"
-        ],
-        "vars": [
-          "traffic.rejoinSeconds"
-        ],
-        "conds": [],
-        "cases": [],
-        "includes": [],
-        "frames": []
-      }
-    },
-    {
-      "id": "pit-crew.traffic-rejoin-pack",
-      "family": "traffic",
-      "event": "traffic.rejoin",
-      "description": "You are stopped or crawling on track and a group of cars is coming, the nearest within ten seconds: said once for the group in place of the per-car calls.",
-      "frame": "none",
-      "weight": 85,
-      "weightBand": null,
-      "queueable": true,
-      "interrupt": true,
-      "speakGate": "Always spoken once it reaches the radio; speaking it ends a single car's approach, so the next car within ten seconds after the group gets a first call.",
-      "endsOn": "Your car is taken off the track while you are stopped: towed or reset to the pits, or you leave the car. A line playing stops at once and a waiting one is dropped.",
-      "base": "voice/{voice}",
-      "comment": "Stopped or crawling on track with a group of cars coming, the nearest under ten seconds away and more close behind it: one line for the whole group, \"A group of cars coming. Join carefully.\", said once in place of the per-car calls, and nothing more until the last car of the group has gone by. It cuts a lower-weight line in flight, a caution or flag call included; the meatball, the start lights, the restart green, a fuel-critical warning and the spotter's car-alongside calls keep the radio. No radio frame.",
-      "test": "Harness → Traffic → Rejoin pack. In-sim: tick Traffic when rejoining (experimental) in the Settings window first, then stop on track as a group of cars a second or so apart comes up behind you, as at a race start or behind a pack of AI cars.",
-      "skip": false,
-      "references": {
-        "pools": [
-          "traffic/rejoin-pack"
-        ],
-        "vars": [],
-        "conds": [],
-        "cases": [],
-        "includes": [],
-        "frames": []
-      }
-    },
-    {
-      "id": "pit-crew.traffic-rejoin-right-behind",
-      "family": "traffic",
-      "event": "traffic.rejoin",
-      "description": "You are stopped or crawling on track and the nearest car will reach you in under two seconds.",
-      "frame": "none",
-      "weight": 85,
-      "weightBand": null,
-      "queueable": true,
-      "interrupt": true,
-      "speakGate": "Dropped if it waited for the radio for more than two seconds, since the car has reached you by then.",
-      "endsOn": "Your car is taken off the track while you are stopped: towed or reset to the pits, or you leave the car. A line playing stops at once and a waiting one is dropped.",
-      "base": "voice/{voice}",
-      "comment": "Stopped or crawling on track with the nearest car under two seconds away: a whole line from a pool of four, such as \"Car right behind you. Watch out.\" or \"Right on top of you. Careful.\" It cuts a lower-weight line in flight, a caution or flag call included; the meatball, the start lights, the restart green, a fuel-critical warning and the spotter's car-alongside calls keep the radio. No radio frame: the rejoin lines repeat while you stay stopped.",
-      "test": "Harness → Traffic → Rejoin right behind. In-sim: tick Traffic when rejoining (experimental) in the Settings window first, then stop on track in practice just as a car is about to reach you.",
-      "skip": false,
-      "references": {
-        "pools": [
-          "traffic/rejoin-right-behind"
-        ],
-        "vars": [],
-        "conds": [],
-        "cases": [],
-        "includes": [],
-        "frames": []
-      }
     }
   ],
   "vocabulary": {
@@ -6027,14 +5917,6 @@
         "usedBy": [
           "pit-crew.tire-wear-report"
         ]
-      },
-      {
-        "name": "traffic.rejoinSeconds",
-        "description": "The nearest car's arrival in whole seconds, 2 to 9, as the clause that closes the near line after its lead-in (\"Car coming in\" or \"Getting closer,\", then traffic/rejoin-mid-5, \"about five seconds.\"), drawn from the traffic group's rejoin-mid pool for that number, each take a different wording. Nothing outside the close band.",
-        "usedBy": [
-          "pit-crew.traffic-rejoin-near-first",
-          "pit-crew.traffic-rejoin-near-update"
-        ]
       }
     ],
     "conds": [
@@ -6291,11 +6173,6 @@
         "usedBy": [
           "pit-crew.tire-wear-report"
         ]
-      },
-      {
-        "name": "traffic.rejoinFirst",
-        "description": "True on the call that introduces a car coming within ten seconds of reaching you (a later count too when the first call about it was never heard), false on a count after it and on every other rejoin line.",
-        "usedBy": []
       }
     ],
     "cases": [
@@ -6530,16 +6407,6 @@
         "keys": {
           "traffic": "A car on track will reach the end of the pit exit blend line around the same time as you, or a car on track could not be timed.",
           "clear": "No car on track will reach the end of the pit exit blend line around the same time as you."
-        },
-        "usedBy": []
-      },
-      {
-        "name": "traffic.rejoinBand",
-        "description": "The band the nearest car's predicted arrival falls in while you are stopped on track, read from the event that fired the line.",
-        "keys": {
-          "rightBehind": "The nearest car will reach you in under two seconds.",
-          "near": "The nearest car will reach you in two to nine seconds.",
-          "pack": "A group of cars is coming: the nearest under ten seconds away and more close behind it."
         },
         "usedBy": []
       }
@@ -73547,9 +73414,7 @@
           "usedBy": [
             "pit-crew.traffic-pit-exit-clear"
           ],
-          "viaVar": [
-            "traffic.rejoinSeconds"
-          ],
+          "viaVar": [],
           "playedBy": null
         },
         {
@@ -73561,9 +73426,7 @@
           "usedBy": [
             "pit-crew.traffic-pit-exit-merge"
           ],
-          "viaVar": [
-            "traffic.rejoinSeconds"
-          ],
+          "viaVar": [],
           "playedBy": null
         },
         {
@@ -73578,205 +73441,7 @@
           "usedBy": [
             "pit-crew.traffic-pit-exit-traffic"
           ],
-          "viaVar": [
-            "traffic.rejoinSeconds"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "rejoin-intro",
-          "texts": [
-            "Car coming in",
-            "Traffic approaching in",
-            "Heads up, car on its way in",
-            "Car arriving in",
-            "Car behind you, arriving in",
-            "There's a car coming in",
-            "Traffic on the way, arriving in",
-            "Incoming car, here in"
-          ],
-          "takes": 8,
-          "usedBy": [
-            "pit-crew.traffic-rejoin-near-first"
-          ],
-          "viaVar": [
-            "traffic.rejoinSeconds"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "rejoin-mid-2",
-          "texts": [
-            "about two seconds.",
-            "roughly two seconds."
-          ],
-          "takes": 2,
-          "usedBy": [],
-          "viaVar": [
-            "traffic.rejoinSeconds"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "rejoin-mid-3",
-          "texts": [
-            "about three seconds.",
-            "roughly three seconds."
-          ],
-          "takes": 2,
-          "usedBy": [],
-          "viaVar": [
-            "traffic.rejoinSeconds"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "rejoin-mid-4",
-          "texts": [
-            "about four seconds.",
-            "roughly four seconds."
-          ],
-          "takes": 2,
-          "usedBy": [],
-          "viaVar": [
-            "traffic.rejoinSeconds"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "rejoin-mid-5",
-          "texts": [
-            "about five seconds.",
-            "roughly five seconds."
-          ],
-          "takes": 2,
-          "usedBy": [],
-          "viaVar": [
-            "traffic.rejoinSeconds"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "rejoin-mid-6",
-          "texts": [
-            "about six seconds.",
-            "roughly six seconds."
-          ],
-          "takes": 2,
-          "usedBy": [],
-          "viaVar": [
-            "traffic.rejoinSeconds"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "rejoin-mid-7",
-          "texts": [
-            "about seven seconds.",
-            "roughly seven seconds."
-          ],
-          "takes": 2,
-          "usedBy": [],
-          "viaVar": [
-            "traffic.rejoinSeconds"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "rejoin-mid-8",
-          "texts": [
-            "about eight seconds.",
-            "roughly eight seconds."
-          ],
-          "takes": 2,
-          "usedBy": [],
-          "viaVar": [
-            "traffic.rejoinSeconds"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "rejoin-mid-9",
-          "texts": [
-            "about nine seconds.",
-            "roughly nine seconds."
-          ],
-          "takes": 2,
-          "usedBy": [],
-          "viaVar": [
-            "traffic.rejoinSeconds"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "rejoin-outro",
-          "texts": [
-            "Watch out.",
-            "Careful.",
-            "Stay alert.",
-            "Eyes on your mirrors.",
-            "Heads up.",
-            "Look out.",
-            "Mind the traffic.",
-            "Check your mirrors."
-          ],
-          "takes": 8,
-          "usedBy": [
-            "pit-crew.traffic-rejoin-near-first"
-          ],
-          "viaVar": [
-            "traffic.rejoinSeconds"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "rejoin-pack",
-          "texts": [
-            "A group of cars coming. Join carefully."
-          ],
-          "takes": 1,
-          "usedBy": [
-            "pit-crew.traffic-rejoin-pack"
-          ],
-          "viaVar": [
-            "traffic.rejoinSeconds"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "rejoin-right-behind",
-          "texts": [
-            "Car right behind you. Watch out.",
-            "Right on top of you. Careful.",
-            "Car's right there. Watch out.",
-            "Car on you any moment. Careful."
-          ],
-          "takes": 4,
-          "usedBy": [
-            "pit-crew.traffic-rejoin-right-behind"
-          ],
-          "viaVar": [
-            "traffic.rejoinSeconds"
-          ],
-          "playedBy": null
-        },
-        {
-          "base": "rejoin-update",
-          "texts": [
-            "Getting closer,",
-            "Closer now,",
-            "Still coming,",
-            "Closing in,",
-            "Nearly on you,",
-            "Coming up,"
-          ],
-          "takes": 6,
-          "usedBy": [
-            "pit-crew.traffic-rejoin-near-update"
-          ],
-          "viaVar": [
-            "traffic.rejoinSeconds"
-          ],
+          "viaVar": [],
           "playedBy": null
         }
       ]

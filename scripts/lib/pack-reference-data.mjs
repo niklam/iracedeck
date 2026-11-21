@@ -7,8 +7,11 @@
 // registered engine and the manifest off the built dist, `buildPackReference`
 // (the package's pure builder) owns the shape and the sorting, and this module
 // reads the two source files the engine does not (the bundled script and the
-// voice config — `PACK_REFERENCE_SOURCES` names all five), adds the plugin's
-// list of clips it plays by path, and hands everything over. The generator
+// voice config — `PACK_REFERENCE_SOURCES` names them all), adds the plugin's
+// list of clips it plays by path and what a release build does not carry
+// (#1113: the catalog's development features whose flag every plugin's
+// committed `platform-features.json` has off, which the builder withholds),
+// and hands everything over. The generator
 // script is left with file I/O and a summary; the freshness test rebuilds
 // through the same function and compares text.
 import { readFileSync } from "node:fs";
@@ -20,9 +23,11 @@ import {
   BUNDLED_VOICE,
   importAudioScenarios,
   importCalloutScript,
+  importPitCrewCatalog,
   registerCatalogEngine,
 } from "./catalog-engine.mjs";
 import { pluginPlayedClips } from "./lint-pack-run.mjs";
+import { PLUGIN_FLAG_FILES, readReleaseFlags, withheldDevelopmentFeatures } from "./release-flags.mjs";
 
 const repoRoot = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), "../..");
 
@@ -57,10 +62,24 @@ export const PACK_REFERENCE_SOURCES = Object.freeze([
   BUNDLED_VOICE_CONFIG_PATH,
   AUDIO_MANIFEST_PATH,
   DRIVER_NAME_ALIASES_SOURCE_PATH,
+  ...PLUGIN_FLAG_FILES,
 ]);
 
 function readJson(relative) {
   return JSON.parse(readFileSync(path.join(repoRoot, relative), "utf-8"));
+}
+
+/**
+ * What the reference withholds (#1113): the contracts and vocabulary of every
+ * development feature of the pit-crew catalog whose platform flag no plugin's
+ * committed `platform-features.json` ships on. Needs the built dist.
+ *
+ * @returns {Promise<import("@iracedeck/audio-scenarios").PackReferenceWithheld>}
+ */
+export async function packReferenceWithheld() {
+  const { DEVELOPMENT_FEATURES } = await importPitCrewCatalog();
+
+  return withheldDevelopmentFeatures(DEVELOPMENT_FEATURES, readReleaseFlags());
 }
 
 /**
@@ -76,6 +95,7 @@ export async function buildPackReferenceData() {
   const { DRIVER_NAME_ALIASES } = await importCalloutScript();
   const script = readJson(BUNDLED_SCRIPT_PATH);
   const { groups } = readJson(BUNDLED_VOICE_CONFIG_PATH);
+  const withheld = await packReferenceWithheld();
 
   return audioScenarios.buildPackReference({
     generatedFrom: PACK_REFERENCE_SOURCES,
@@ -91,6 +111,9 @@ export async function buildPackReferenceData() {
     // they name exactly the map the plugin resolves by (#1580).
     pluginPlayed: pluginPlayedClips(DRIVER_NAME_ALIASES),
     voice: BUNDLED_VOICE,
+    // A feature no release build carries is not shown to a pack author: its
+    // callouts, its vocabulary and the lines only they draw from (#1113).
+    withheld,
   });
 }
 
