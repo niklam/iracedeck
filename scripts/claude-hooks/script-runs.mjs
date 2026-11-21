@@ -976,13 +976,15 @@ function repeatsAt(c, shell) {
 /**
  * The loop words of bash at command position, read from the lexer's trusted
  * mask so an inert quoted mention is no loop: after the start, a newline, an
- * operator, a brace or a paren, or `!`, then any run of keywords that start a
- * command ({@link BASH_LEAD}), each at command position itself — so a word an
- * `echo` prints (`echo then done`) neither closes a loop nor opens one.
+ * operator, a brace or a paren, then any run of keywords that start a command
+ * ({@link BASH_LEAD}), each at command position itself — so a word an `echo`
+ * prints (`echo then done`) neither closes a loop nor opens one. A `!` at
+ * command position counts as such a keyword before an opener, never before a
+ * `done`, so `! while …` opens a loop and `echo ! while` does not.
  */
 const BASH_LEAD = String.raw`(?:do|then|else|elif|if|while|until|time(?:[ \t]+-p)?)`;
 const BASH_LOOP_WORD = new RegExp(
-  String.raw`(?<=(?:^|[\n;&|(){}!])(?:[ \t]*${BASH_LEAD}(?=[ \t]))*[ \t]*)(?:while|until|for|select)(?=[\s;&|()<>]|$)|(?<=(?:^|[\n;&|(){}])(?:[ \t]*${BASH_LEAD}(?=[ \t]))*[ \t]*)done(?=[\s;&|()<>]|$)`,
+  String.raw`(?<=(?:^|[\n;&|(){}])(?:[ \t]*(?:${BASH_LEAD}|!)(?=[ \t]))*[ \t]*)(?:while|until|for|select)(?=[\s;&|()<>]|$)|(?<=(?:^|[\n;&|(){}])(?:[ \t]*${BASH_LEAD}(?=[ \t]))*[ \t]*)done(?=[\s;&|()<>]|$)`,
   "g",
 );
 /** PowerShell's `while`, `do` and `for` at command position, past an optional `:label`; `foreach` is no match. */

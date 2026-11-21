@@ -3415,6 +3415,7 @@ describe("a restart run over and over asks (#1737 review)", () => {
     // CodeRabbit CLI at 7111a8c41: a `done` after `!` is an argument, while `!` before a loop is the shell's.
     "while true; do echo ! done; pnpm restart:stream-deck; done",
     "! while true; do pnpm restart:stream-deck; done",
+    "while true; do ! until false; do pnpm restart:stream-deck; done; done",
   ])("asks for a restart in a loop after time -p, or in a select: %s", (c) =>
     expect(asks(c)).toMatch(/deck host, again on every pass of its loop\. /),
   );
@@ -3426,6 +3427,8 @@ describe("a restart run over and over asks (#1737 review)", () => {
       "echo then while; pnpm restart:stream-deck",
       "echo if until; pnpm restart:stream-deck",
       "echo time -p while; pnpm restart:stream-deck",
+      // CodeRabbit CLI at d5d0b6dee: a `!` an echo prints is no negation.
+      "echo ! while; pnpm restart:stream-deck",
     ])
       expect(restarts(c).split("; "), c).toEqual(["`pnpm restart:stream-deck` restarts, stops or starts a deck host"]);
   });
