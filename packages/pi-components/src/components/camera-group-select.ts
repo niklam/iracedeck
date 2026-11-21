@@ -79,6 +79,14 @@ export class CameraGroupSelect extends HTMLElement {
    * catalog push must not snatch the field away mid-word.
    */
   private otherMode = false;
+  /**
+   * The `cameraGroup` number the key held when Other… was chosen. A typed name
+   * is written as the user types, so its prefix can be a standard name (`Chase`
+   * on the way to `Chase Cam`) and write that group's number; once the text is
+   * a custom name again this number is put back, so a custom name leaves the
+   * number at the key's last value, as a choice from the list does (decision 5).
+   */
+  private numberBeforeOther: unknown = undefined;
   private saveName: ((value: string) => void) | null = null;
   private saveNumber: ((value: string) => void) | null = null;
 
@@ -147,6 +155,8 @@ export class CameraGroupSelect extends HTMLElement {
       const option = this.select.selectedOptions[0];
 
       if (option?.dataset.other !== undefined) {
+        if (!this.otherMode) this.numberBeforeOther = this.storedNumber;
+
         this.otherMode = true;
         this.showOther(true);
 
@@ -169,6 +179,7 @@ export class CameraGroupSelect extends HTMLElement {
       if (name === null) return;
 
       this.commit(name);
+      this.restoreNumberForCustomName(name);
       this.dispatchEvent(new Event("change", { bubbles: true }));
     });
   }
@@ -199,6 +210,27 @@ export class CameraGroupSelect extends HTMLElement {
       this.storedNumber = write.number;
       this.saveNumber?.(write.number);
     }
+  }
+
+  /**
+   * After a typed custom name, put back the number the key had before Other…,
+   * should a standard-name prefix typed on the way have replaced it.
+   */
+  private restoreNumberForCustomName(name: string): void {
+    if (cameraGroupWrite(name).number !== undefined) return;
+
+    const before =
+      this.numberBeforeOther === undefined || this.numberBeforeOther === null || this.numberBeforeOther === ""
+        ? String(this.fallbackNumber())
+        : String(this.numberBeforeOther);
+
+    if (String(this.storedNumber) === before) return;
+
+    // Only a number this component wrote during the typing differs from it.
+    if (this.storedNumber === this.numberBeforeOther) return;
+
+    this.storedNumber = before;
+    this.saveNumber?.(before);
   }
 
   private hookSettings(): void {

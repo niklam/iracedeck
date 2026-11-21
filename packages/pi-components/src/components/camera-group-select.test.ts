@@ -244,6 +244,34 @@ describe("ird-camera-group-select", () => {
       expect(saveNumber()).toHaveBeenLastCalledWith("18");
     });
 
+    it("Other… puts the number back when a standard prefix gives way to a custom name (#1653 review)", () => {
+      chooseOther();
+      type("Chase");
+      type("Chase Cam");
+
+      expect(saveName()).toHaveBeenLastCalledWith("Chase Cam");
+      // `Chase` wrote 12 on the way; the custom name restores the key's own 9.
+      expect(saveNumber()).toHaveBeenNthCalledWith(1, "12");
+      expect(saveNumber()).toHaveBeenLastCalledWith("9");
+    });
+
+    it("Other… restores the default number for a key that never stored one", () => {
+      pushNumber(undefined);
+      chooseOther();
+      type("TV1");
+      type("TV1_Low");
+
+      expect(saveNumber()).toHaveBeenLastCalledWith("9");
+    });
+
+    it("Other… leaves the number alone when no standard prefix was typed", () => {
+      chooseOther();
+      type("Drone");
+      type("Drone 2");
+
+      expect(saveNumber()).not.toHaveBeenCalled();
+    });
+
     it("Other… writes nothing for a blank entry", () => {
       chooseOther();
       type("   ");
