@@ -9,17 +9,19 @@
  * byte-order mark. Around it this service adds what is the catalog's own:
  *
  * - **Missing file** — an empty catalog, saved on its first change.
- * - **Unparseable file** — the store moves it aside as
- *   `cameras.corrupt-<iso>.json` and calls `onRejected` (the
- *   `camera-catalog-rejected` banner); the catalog starts empty and is saved.
+ * - **Unparseable file**, or valid JSON that is no camera catalog (no
+ *   `version`, a version that is not a whole number above 1, a version-1 file
+ *   of the wrong shape; the store's `validate`, `cameraCatalogFileProblem`) —
+ *   the store moves it aside as `cameras.corrupt-<iso>.json` and calls
+ *   `onRejected` (the `camera-catalog-rejected` banner); the catalog starts
+ *   empty and is saved.
  * - **Unreadable file** (any read error but a missing file) — retried on the
  *   settings load's back-off (`LOAD_ATTEMPTS` reads, the first retry after
  *   `LOAD_RETRY_DELAY_MS`, doubling), then the catalog runs **in memory only**
  *   for the run and is never saved: writing over a file we failed to read
  *   would destroy it (the settings store's fail-closed rule).
- * - **A file this build does not understand** (another `version`, or a
- *   top-level shape that is not version 1's) — memory only as well, and the
- *   file is kept as it is. This deliberately differs from the spec's "treated
+ * - **A newer build's file** (a whole-number `version` above 1) — memory only
+ *   as well, and the file is kept as it is. This deliberately differs from the spec's "treated
  *   as unparseable": moving it aside would leave a newer build, after a
  *   downgrade and an upgrade back, with an empty catalog and its own file
  *   renamed; keeping it means the newer build finds it again.
@@ -40,6 +42,7 @@ import { dirname, join } from "node:path";
 
 import {
   type CameraCatalog,
+  cameraCatalogFileProblem,
   type CameraGroupObservation,
   emptyCameraCatalog,
   parseCameraCatalog,
@@ -145,6 +148,9 @@ export function createCameraCatalogService(options: CameraCatalogServiceOptions)
       logger,
       // Its own wording for the one line that would otherwise claim the deck-host migration.
       rejectedFallback: "starting an empty camera list",
+      // Valid JSON that is no camera catalog (and not a newer build's) is set
+      // aside like unparseable text, rather than read as a downgrade.
+      validate: cameraCatalogFileProblem,
       ...(options.debounceMs === undefined ? {} : { debounceMs: options.debounceMs }),
       ...(options.onRejected === undefined ? {} : { onRejected: options.onRejected }),
     });

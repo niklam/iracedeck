@@ -358,6 +358,39 @@ export function parseCameraCatalog(raw: unknown): CameraCatalogParseResult {
 }
 
 /**
+ * Whether `raw` is a catalog a NEWER build wrote: its `version` is a whole
+ * number above this build's. Such a file is kept as it is and the catalog runs
+ * in memory only (spec decision 2), so the newer build finds it again after a
+ * downgrade and an upgrade back.
+ */
+export function isNewerCameraCatalogFile(raw: Record<string, unknown>): boolean {
+  return typeof raw.version === "number" && Number.isSafeInteger(raw.version) && raw.version > CAMERA_CATALOG_VERSION;
+}
+
+/**
+ * The file store's `validate` for `cameras.json`: a reason to set the file
+ * aside, exactly as an unparseable one is (moved to `cameras.corrupt-<iso>.json`,
+ * the `camera-catalog-rejected` banner, the catalog starting empty and saving
+ * again), or `undefined` to read it.
+ *
+ * Read: a usable version-1 catalog, and a newer build's file (see
+ * {@link isNewerCameraCatalogFile}; the service then keeps it in place and runs
+ * in memory only). Set aside: everything else that parses as an object — no
+ * `version`, a version that is not a whole number above 1 (`"1"`, `0`, `1.5`),
+ * or a version-1 file whose `tracks` / `groups` are not objects. No build
+ * writes such a file, so it is a hand edit or damage, not a downgrade; kept in
+ * place it would switch the catalog's saving off on every start with nothing
+ * to say why (#1653 second read).
+ */
+export function cameraCatalogFileProblem(raw: Record<string, unknown>): string | undefined {
+  if (isNewerCameraCatalogFile(raw)) return undefined;
+
+  const parsed = parseCameraCatalog(raw);
+
+  return parsed.kind === "unusable" ? `It is not a camera catalog: ${parsed.reason}` : undefined;
+}
+
+/**
  * Name order for the view: case-insensitive, then by code unit, so the order
  * is the same on every machine (no locale).
  */

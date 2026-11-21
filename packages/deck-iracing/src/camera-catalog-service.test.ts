@@ -247,6 +247,35 @@ describe("createCameraCatalogService over a temp dir (#1653)", () => {
     expect(saved).toEqual([]);
   });
 
+  it.each([
+    ["no version", { tracks: {}, groups: {} }],
+    ["an emptied file", {}],
+    ["a version written as text", { version: "1", tracks: {}, groups: {} }],
+    ["a version that is no whole number above 1", { version: 1.5, tracks: {}, groups: {} }],
+    ["a version-1 file whose tracks are a list", { version: 1, tracks: [], groups: {} }],
+  ])(
+    "sets aside valid JSON that is no camera catalog (%s) with the banner, and saves again (#1653 second read)",
+    async (_label, content) => {
+      const text = JSON.stringify(content);
+
+      await writeFile(path, text);
+
+      const rejections: SettingsFileRejection[] = [];
+      const service = fileService({ onRejected: (rejection) => rejections.push(rejection) });
+
+      await service.start();
+
+      expect(service.persistence()).toBe("file");
+      expect(rejections).toHaveLength(1);
+      expect(rejections[0].reason).toMatch(/^It is not a camera catalog: /);
+      expect(await readFile(rejections[0].preservedAt, "utf-8")).toBe(text);
+
+      service.observe(spa);
+      await service.flush();
+      expect(await readJson(path)).toEqual(storedFile);
+    },
+  );
+
   it("keeps a file of an unknown version as it is and never writes it, running in memory only", async () => {
     const newer = JSON.stringify({ version: 2, cameras: { anything: true } }, null, 2);
 
