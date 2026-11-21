@@ -211,6 +211,8 @@ vi.mock("@iracedeck/deck-core", async () => ({
     parse: (data: Record<string, unknown>) => ({ ...data }),
     safeParse: (data: Record<string, unknown>) => ({ success: true, data: { ...data } }),
   },
+  // The real value: a hand-assembled grid fades its content by it (#1653).
+  DIMMED_OPACITY: 0.35,
   ConnectionStateAwareAction: class MockConnectionStateAwareAction {
     logger = { trace: vi.fn(), debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
     sdkController = { subscribe: vi.fn(), unsubscribe: vi.fn(), getCurrentTelemetry: vi.fn(), getSessionInfo: vi.fn() };
@@ -2472,6 +2474,47 @@ describe("generateCameraSelectSvg (#959)", () => {
     expect(decoded).toContain("tv4-artwork");
     expect(decoded).toContain("MY CAM");
   });
+
+  describe("the grid placeholder in the unavailable look (#1653 review)", () => {
+    const COLORS = { backgroundColor: "#123456", textColor: "#ff0000", graphic1Color: "#00cc00" };
+
+    beforeEach(() => {
+      vi.clearAllMocks();
+      vi.mocked(deckCore.resolveIconColors).mockReturnValue(COLORS);
+    });
+
+    afterEach(() => {
+      vi.mocked(deckCore.resolveIconColors).mockImplementation(() => ({}));
+    });
+
+    const subset = { cameraGroupSubset: JSON.stringify({ groups: { TV4: true, Drone: true } }) };
+
+    it("greys and fades the grid, keeping its background, when unavailable", () => {
+      const decoded = decodeURIComponent(generateCameraSelectSvg("", subset, true));
+
+      expect(decoded).toContain("tv4-artwork");
+      expect(decoded).toContain('fill="#123456"');
+      expect(decoded).not.toContain("#00cc00");
+      expect(decoded).toContain('<g opacity="0.35">');
+    });
+
+    it("draws the normal grid otherwise", () => {
+      const decoded = decodeURIComponent(generateCameraSelectSvg("", subset));
+
+      expect(decoded).toContain("#00cc00");
+      expect(decoded).not.toContain("opacity=");
+    });
+
+    it("draws the static cycle icon, the grid's own fallback, in the unavailable look too", () => {
+      const empty = { cameraGroupSubset: JSON.stringify({ groups: {} }) };
+
+      generateCameraSelectSvg("", empty, true);
+      expect(lastIconOptions().dimmed).toBe(true);
+
+      generateCameraSelectSvg("", empty);
+      expect(lastIconOptions().dimmed).toBeUndefined();
+    });
+  });
 });
 
 // Raw numbers follow irsdk_padCarNum: a number with leading zeros is its total
@@ -3557,6 +3600,42 @@ describe("Camera Controls keys on a group the session lacks (#1653)", () => {
 
       expect(pushedImages(action)).toBe(2);
       expect(lastIconOptions().dimmed).toBeUndefined();
+    });
+
+    it("greys the key's grid when the current group is not in the session list (#1653 review)", async () => {
+      const action = await appear(current({ Drone: true }), CUSTOM_FILE_GROUPS, {}, { CamGroupNumber: 99 });
+
+      const shown = decodeURIComponent(String(vi.mocked(action["updateKeyImage"]).mock.calls[0][1]));
+      expect(shown).toContain("CYCLE CAM");
+      expect(shown).toContain('<g opacity="0.35">');
+    });
+
+    it("goes back to its placeholder when the group list becomes unreadable, and greys again after (#1653 review)", async () => {
+      const action = await appear(current({ Drone: true }), CUSTOM_FILE_GROUPS);
+      expect(lastIconOptions().dimmed).toBe(true);
+
+      sessionUpdate(action, []);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(pushedImages(action)).toBe(2);
+      const restored = decodeURIComponent(String(vi.mocked(action["updateKeyImage"]).mock.calls[1][1]));
+      expect(restored).toContain("CYCLE CAM");
+      expect(restored).not.toContain("opacity=");
+
+      sessionUpdate(action, CUSTOM_FILE_GROUPS);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(pushedImages(action)).toBe(3);
+      expect(lastIconOptions().dimmed).toBe(true);
+    });
+
+    it("keeps a normal look while the group list is unreadable", async () => {
+      const action = await appear(current({ dynamictv: true }), CUSTOM_FILE_GROUPS);
+
+      sessionUpdate(action, []);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(pushedImages(action)).toBe(1);
     });
 
     it("is never greyed in the default next-group mode", async () => {

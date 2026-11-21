@@ -2,6 +2,7 @@ import {
   assembleIcon,
   CAR_SELECTOR_PROFILE,
   CommonSettings,
+  DIMMED_OPACITY,
   extractGraphicContent,
   generateTitleText,
   getGlobalBorderSettings,
@@ -576,6 +577,7 @@ export function generateCameraControlsSvg(
         settings.titleOverrides,
         settings.borderOverrides,
         settings.graphicOverrides,
+        unavailable,
       );
     }
 
@@ -631,16 +633,16 @@ export type CycleCameraKeySettings = {
  * appearance overrides: it is a placeholder, and it must look like the key the
  * user configured.
  *
- * `unavailable` (#1653) draws the group's icon greyed, for a key whose press
- * would cycle nowhere in this session. The grid placeholder is drawn by hand,
- * not through `assembleIcon`, and keeps its own look.
+ * `unavailable` (#1653) draws the icon greyed, for a key whose press would
+ * cycle nowhere in this session — the group's icon, or the grid placeholder
+ * when there is no name to show.
  */
 export function generateCameraSelectSvg(
   groupName: string,
   settings: CycleCameraKeySettings,
   unavailable = false,
 ): string {
-  if (groupName === "") return generateCameraControlsSvg({ ...settings, target: "cycle-camera" });
+  if (groupName === "") return generateCameraControlsSvg({ ...settings, target: "cycle-camera" }, false, unavailable);
 
   const iconSvg = groupIcon(groupName);
   const colors = resolveIconColors(iconSvg, getGlobalColors(), settings.colorOverrides);
@@ -801,6 +803,11 @@ export function computeGridPositions(count: number): ThumbnailPosition[] {
  *
  * Generate an SVG data URI showing a grid of miniaturized camera-select icons
  * for the selected camera groups. Used as the default icon for cycle-camera actions.
+ *
+ * `unavailable` (#1653) draws it in the shared unavailable look: every colour
+ * but the background grey, and the thumbnails and label faded as
+ * `assembleIcon`'s `dimmed` fades a key — the grid is assembled by hand, so it
+ * applies the look itself.
  */
 export function generateCycleCameraGridSvg(
   enabledGroupNames: string[],
@@ -809,6 +816,7 @@ export function generateCycleCameraGridSvg(
   titleOverrides?: Partial<CommonSettings>["titleOverrides"],
   borderOverrides?: Partial<CommonSettings>["borderOverrides"],
   graphicOverrides?: Partial<CommonSettings>["graphicOverrides"],
+  unavailable = false,
 ): string {
   // Every named group gets a thumbnail: its own artwork, or the generic
   // custom-group icon (#1653) — a custom group was dropped from the grid before.
@@ -823,7 +831,12 @@ export function generateCycleCameraGridSvg(
     const border = resolveBorderSettings(iconSvg, getGlobalBorderSettings(), borderOverrides);
     const graphic = resolveGraphicSettings(getGlobalGraphicSettings(), graphicOverrides);
 
-    return assembleIcon({ graphicSvg: iconSvg, colors, title, border, graphic });
+    return assembleIcon({
+      graphicSvg: iconSvg,
+      title,
+      graphic,
+      ...(unavailable ? unavailableLook(colors, border) : { colors, border }),
+    });
   }
 
   const displayGroups = groupsWithIcons.slice(0, 6);
@@ -831,7 +844,7 @@ export function generateCycleCameraGridSvg(
 
   // Resolve colors from the cycle-camera base icon
   const baseSvg = CYCLE_ICONS["cycle-camera"][direction];
-  const colors = resolveIconColors(baseSvg, getGlobalColors(), colorOverrides);
+  const colors = gridColors(resolveIconColors(baseSvg, getGlobalColors(), colorOverrides), unavailable);
   const bgColor = colors.backgroundColor || "#2a3a4a";
   const textColor = colors.textColor || "#ffffff";
 
@@ -856,7 +869,7 @@ export function generateCycleCameraGridSvg(
   for (let i = 0; i < displayGroups.length; i++) {
     const groupName = displayGroups[i];
     const iconSvg = groupIcon(groupName);
-    const artColors = resolveIconColors(iconSvg, getGlobalColors(), colorOverrides);
+    const artColors = gridColors(resolveIconColors(iconSvg, getGlobalColors(), colorOverrides), unavailable);
     const rawGraphic = extractGraphicContent(iconSvg);
     const artwork = renderIconTemplate(rawGraphic, artColors);
     const pos = positions[i];
@@ -876,9 +889,18 @@ export function generateCycleCameraGridSvg(
     thumbnails += `<g transform="translate(${pos.x + offsetX}, ${pos.y + offsetY}) scale(${scale})">${artwork}</g>`;
   }
 
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144"><g><rect x="0" y="0" width="144" height="144" fill="${bgColor}"/>${thumbnails}${label}</g></svg>`;
+  const content = unavailable ? `<g opacity="${DIMMED_OPACITY}">${thumbnails}${label}</g>` : `${thumbnails}${label}`;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144"><g><rect x="0" y="0" width="144" height="144" fill="${bgColor}"/>${content}</g></svg>`;
 
   return svgToDataUri(svg);
+}
+
+/**
+ * A grid's colour slots, in the unavailable look when asked (#1653). The grid
+ * draws no border, so only the look's colours are taken.
+ */
+function gridColors(colors: Record<string, string>, unavailable: boolean): Record<string, string> {
+  return unavailable ? unavailableLook(colors, { borderColor: "" }).colors : colors;
 }
 
 // --- Camera group subset helpers ---
@@ -935,6 +957,10 @@ function resolveGroupGlyph(groupName: string): CarouselGlyph | null {
  * via iRacing SDK commands.
  */
 export const CAMERA_FOCUS_UUID = "com.iracedeck.sd.core.camera-focus" as const;
+
+/** How a Cycle Camera key's displayed-group record starts: the look it was drawn in (#1653). */
+const UNAVAILABLE_MARK = "unavailable:";
+const AVAILABLE_MARK = "available:";
 export const CAMERA_CONTROLS_UUID = CAMERA_FOCUS_UUID;
 
 export class CameraControls extends SimIRacingAction<CameraControlsSettings> {
@@ -1947,7 +1973,18 @@ export class CameraControls extends SimIRacingAction<CameraControlsSettings> {
 
     const sessionGroups = this.readSessionGroupsFresh();
 
-    if (sessionGroups.length === 0) return;
+    if (sessionGroups.length === 0) {
+      // No readable group list, so nothing to judge availability by (#1653
+      // review): a key the last list left greyed goes back to its configured
+      // placeholder and forgets what it showed, so the next readable list draws
+      // it afresh. Any other look stays until there is a list to judge it by.
+      if (this.lastDisplayedGroup.get(contextId)?.startsWith(UNAVAILABLE_MARK)) {
+        this.lastDisplayedGroup.delete(contextId);
+        await this.showCycleIcon(contextId, () => generateCameraControlsSvg(settings));
+      }
+
+      return;
+    }
 
     let shownGroupName: string;
     // Current camera mode only (#1653, spec decision 8): with no enabled group
@@ -1974,7 +2011,7 @@ export class CameraControls extends SimIRacingAction<CameraControlsSettings> {
     }
 
     // Skip re-render if neither the shown group nor its availability changed
-    const shown = `${unavailable ? "unavailable" : "available"}:${shownGroupName}`;
+    const shown = `${unavailable ? UNAVAILABLE_MARK : AVAILABLE_MARK}${shownGroupName}`;
 
     if (this.lastDisplayedGroup.get(contextId) === shown) return;
 
