@@ -3412,6 +3412,9 @@ describe("a restart run over and over asks (#1737 review)", () => {
     "while true; do echo time done; pnpm restart:stream-deck; done",
     "while sleep 60; do echo done; pnpm restart:stream-deck; done",
     "while true; do if true; then pnpm restart:stream-deck; fi; done",
+    // CodeRabbit CLI at 7111a8c41: a `done` after `!` is an argument, while `!` before a loop is the shell's.
+    "while true; do echo ! done; pnpm restart:stream-deck; done",
+    "! while true; do pnpm restart:stream-deck; done",
   ])("asks for a restart in a loop after time -p, or in a select: %s", (c) =>
     expect(asks(c)).toMatch(/deck host, again on every pass of its loop\. /),
   );
@@ -3517,6 +3520,17 @@ describe("a restart run over and over asks (#1737 review)", () => {
     ])("asks for %s whose script runs itself again", (c, scripts) =>
       expect(asks(c, withScripts(scripts))).toMatch(/deck host(?: app)?, again every time it runs itself[.;]/),
     );
+    // CodeRabbit CLI at 7111a8c41: a cycle whose return edge reaches the depth bound is still a cycle.
+    it("asks for a cycle that closes at the depth bound", () => {
+      const ring = withScripts({
+        hop0: "streamdeck restart x && pnpm hop1",
+        ...Object.fromEntries(Array.from({ length: 6 }, (_, i) => [`hop${i + 1}`, `pnpm hop${i + 2}`])),
+        hop7: "pnpm hop0",
+      });
+      expect(asks("pnpm hop0", ring)).toMatch(
+        /^`pnpm hop0` → `streamdeck restart` restarts, stops or starts a deck host, again every time it runs itself\. /,
+      );
+    });
     it("names the restart a neutral script repeats", () =>
       expect(asks("pnpm loop-a", withScripts({ "loop-a": "streamdeck restart x && pnpm loop-a" }))).toMatch(
         /^`pnpm loop-a` → `streamdeck restart` restarts, stops or starts a deck host, again every time it runs itself\. /,
@@ -3541,6 +3555,20 @@ describe("a restart run over and over asks (#1737 review)", () => {
     expect(asks('pnpm "re`start:x"', ps)).toMatch(/→ `pnpm relink:mirabox` links, unlinks or relinks/);
     expect(asks("pnpm re`start:x", ps)).toMatch(/→ `pnpm relink:mirabox` links, unlinks or relinks/);
   });
+  // CodeRabbit CLI at 7111a8c41: npm finds a script's hooks under the name it
+  // found the script by, so a script written with a `^` has its hooks read.
+  it("reads the pre script of a script whose written name holds an escape character", () =>
+    expect(
+      asks(
+        "npm run restart^x",
+        ctx({
+          scriptsAt: () => ({
+            dir: MASTER,
+            scripts: { "restart^x": "streamdeck restart x", "prerestart^x": "pnpm relink:mirabox" },
+          }),
+        }),
+      ),
+    ).toMatch(/`prerestart\^x` → `pnpm relink:mirabox` links, unlinks or relinks/));
 
   // #1737 CodeRabbit round: a chain of restart names deeper than the reader
   // follows may end in a relink it never reads, so it asks.

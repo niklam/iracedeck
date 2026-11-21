@@ -901,12 +901,17 @@ function deckReach(c, cwd, ctx, shell, trail, underRestart) {
         }
       }
       if (trail.length >= MAX_SCRIPT_DEPTH) {
+        // A line that closes a cycle is a cycle, at the bound as anywhere: the
+        // level that expanded its script hears of it (#1737, CodeRabbit CLI).
+        const body = run.expand ? bodyLines(run, ctx) : [];
+        const closes = (l) => l.key && trail.includes(l.key);
+        for (const l of body) if (closes(l)) cycles.add(l.key);
         // A restart's name no longer asks (#1737), so a body the bound leaves
         // unread beneath a restart — the run's own, or one a restart above it
         // reaches through neutral names — may hide a relink: that asks, as the
         // restart's name did before. With no restart above, a name past the
         // bound is judged by its name alone.
-        const unread = run.lines?.length || (run.expand && bodyLines(run, ctx).length);
+        const unread = run.lines?.length || body.some((l) => !closes(l));
         if ((kind === "restart" || underRestart) && unread)
           finding(`\`${run.label}\` runs scripts too deep to read, which may relink`, "relink", run.repeats);
         continue;
@@ -968,7 +973,7 @@ function repeatsAt(c, shell) {
  */
 const BASH_LEAD = String.raw`(?:do|then|else|elif|if|while|until|time(?:[ \t]+-p)?)`;
 const BASH_LOOP_WORD = new RegExp(
-  String.raw`(?<=(?:^|[\n;&|(){}!])(?:[ \t]*${BASH_LEAD}(?=[ \t]))*[ \t]*)(?:while|until|for|select|done)(?=[\s;&|()<>]|$)`,
+  String.raw`(?<=(?:^|[\n;&|(){}!])(?:[ \t]*${BASH_LEAD}(?=[ \t]))*[ \t]*)(?:while|until|for|select)(?=[\s;&|()<>]|$)|(?<=(?:^|[\n;&|(){}])(?:[ \t]*${BASH_LEAD}(?=[ \t]))*[ \t]*)done(?=[\s;&|()<>]|$)`,
   "g",
 );
 /** PowerShell's `while`, `do` and `for` at command position, past an optional `:label`; `foreach` is no match. */
@@ -1159,14 +1164,27 @@ function scriptLines(run, ctx) {
  * the script is called: reading a script pnpm would not run can only make the
  * rule ask where it need not, never pass a relink, so the simpler reading
  * fails safe. They take none of the forwarded arguments, as npm hands them
- * none. `node --run` runs none (`lifecycle: false`), so none are read for it.
+ * none, and are looked up under the name the script was found by in each
+ * manifest, as written or unescaped ({@link scriptLines}). `node --run` runs
+ * none (`lifecycle: false`), so none are read for it.
  */
 function bodyLines(run, ctx) {
   const lines = scriptLines(run, ctx);
-  if (run.lifecycle === false) return lines;
-  const name = unescaped(run.script ?? "");
-  for (const step of [`pre${name}`, `post${name}`])
-    lines.push(...scriptLines({ ...run, script: step, args: [] }, ctx).map((l) => ({ ...l, step })));
+  if (run.lifecycle === false || !ctx.scriptsAt) return lines;
+  // npm finds a script's hooks under the name it found the script by, so each
+  // manifest's are looked up under that name first, the other spelling after.
+  const written = run.script ?? "";
+  const plain = unescaped(written);
+  for (const m of runManifests(run, ctx)) {
+    if (!m) continue;
+    const found = typeof m.scripts?.[written] === "string" || typeof m.scripts?.[plain] !== "string" ? written : plain;
+    for (const when of ["pre", "post"]) {
+      const step = [...new Set([found, written, plain])]
+        .map((n) => `${when}${n}`)
+        .find((n) => typeof m.scripts?.[n] === "string");
+      if (step) lines.push({ dir: m.dir, line: m.scripts[step], key: `${m.dir}\0${step}`, step });
+    }
+  }
   return lines;
 }
 
