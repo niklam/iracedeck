@@ -34,7 +34,7 @@ A **deny** refuses the call and tells the model why. An **ask** forces the permi
 | `git commit` that would record the Elgato `manifest.json` with a `Debug` key in its `Nodejs` block | deny, naming `pnpm debug:plugin off` | the local inspector switch never ships (#1338) |
 | `git worktree add` anywhere but a sibling of the main checkout (inside it, or nested in another worktree), not named `ir-<issue>` or `ir-integration`, or from a stale `origin/master` | deny | sibling worktrees; verify the base commit |
 | `git worktree remove` while a deck host's plugin link points into that tree | deny | never relink on your own — leave the link and the tree, and tell the maintainer |
-| a link, unlink or relink, a watch that restarts the host on every rebuild (`watch:*`, a rollup watch hook), `switch-test-env`; `dev:voices` in a deck-linked tree (it relinks); a script by what it runs | ask | nothing relinks a deck host without Niklas's go (#1520); a restart, stop or start asks nothing (#1737) and a build, install or clean passes in any tree, a linked one included (#1526) |
+| a link, unlink or relink, `switch-test-env`, a watch that restarts the host each rebuild; `dev:voices` in a linked tree; a script by what it runs | ask | nothing relinks a deck host without Niklas's go (#1520); a restart, stop or start waits for his go in chat, not a prompt (#1737) |
 | `gh issue create --milestone/--assignee` | deny | both are set when implementation starts |
 | `updateProjectV2Field` | deny | rewriting the Status options wipes every card's lane |
 | `gh project item-edit`; a `gh api` in a command that carries an item field-value, field-clear or position mutation anywhere; a REST write to a Projects v2 item | deny, naming the `lib.mjs` helpers | a lane or position moves only through `setBoardStatus` / `moveBoardItemAfter`, which never go backwards; a move back is Niklas's, in the board UI (#1574) |
@@ -55,5 +55,4 @@ A **deny** refuses the call and tells the model why. An **ask** forces the permi
 
 - Editing files in another worktree. The coordinator's cwd is `master` while it edits the issue's tree, so a path-based guard would fire on every legitimate edit.
 - The post-review "every worktree is clean" check. The Skill tool returns before a review finishes, so there is no event to hang it on; the SessionStart report shows dirty trees, and the rule in `code-review.md` stands.
-- A deck host's restart, stop or start (#1737). The rule stands — no session restarts, stops or starts a host without Niklas's go in that conversation, and an issue lead never does — but the hook cannot see the conversation, so its ask made him click again after saying go. The scripts are allowed in `.claude/settings.json`, and the go is the agent's to keep.
 - Formatting at commit (`scripts/format-staged.mjs`, #1402), its gaps (`.ejs`, which neither ESLint nor Prettier reads) and the commit trailer: those belong to husky, where they apply to every committer.
