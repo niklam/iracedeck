@@ -39,6 +39,14 @@ import { getSimHub, isSimHubInitialized, isSimHubReachable } from "./simhub-serv
 type HeldBinding = { type: "keyboard"; combination: KeyCombination } | { type: "simhub"; role: string };
 
 /**
+ * A SimHub hold whose start has not returned yet (#1693). A release that
+ * arrives meanwhile finds nothing held, so it sets `released` and the hold
+ * releases the role once its start has gone through; `done` settles when the
+ * hold, that release included, has finished.
+ */
+type PendingSimHubHold = { released: boolean; done: Promise<void> };
+
+/**
  * Interface for the binding dispatcher service.
  */
 export interface IBindingDispatcher {
@@ -127,6 +135,8 @@ class BindingDispatcher implements IBindingDispatcher {
    * interleave. Removed once the role's last request has settled.
    */
   private simHubRoleQueues = new Map<string, Promise<void>>();
+  /** SimHub holds whose start is still in flight, by action context (#1693). */
+  private pendingSimHubHolds = new Map<string, PendingSimHubHold>();
 
   constructor(logger: ILogger) {
     this.logger = logger;
@@ -195,6 +205,11 @@ class BindingDispatcher implements IBindingDispatcher {
    * @param settingKey - The global settings key
    */
   async hold(actionId: string, settingKey: string): Promise<void> {
+    // A SimHub hold of this context whose start is still in flight finishes
+    // first, the release it may owe included, so its stop is never queued
+    // behind this hold's start (#1693).
+    await this.pendingSimHubHolds.get(actionId)?.done;
+
     // Release before resolve — even if the new binding turns out to be invalid,
     // the old one must not stay held (would cause a stuck key/role).
     await this.release(actionId);
@@ -214,12 +229,29 @@ class BindingDispatcher implements IBindingDispatcher {
       }
 
       const role = binding.role;
-      const started = await this.inRoleOrder(role, () => getSimHub().startRole(role));
+      let finish!: () => void;
+      const pending: PendingSimHubHold = { released: false, done: new Promise<void>((resolve) => (finish = resolve)) };
+      this.pendingSimHubHolds.set(actionId, pending);
 
-      if (started) {
-        this.heldBindings.set(actionId, { type: "simhub", role: binding.role });
-      } else {
-        this.logger.warn("Failed to start SimHub role");
+      try {
+        // The start may wait behind earlier requests of the role, then on SimHub
+        // itself; a key released meanwhile has its release carried out here.
+        const started = await this.inRoleOrder(role, () => getSimHub().startRole(role));
+
+        if (started) {
+          this.heldBindings.set(actionId, { type: "simhub", role });
+
+          if (pending.released) {
+            this.logger.debug("SimHub role was released while it was starting; releasing it now");
+            await this.release(actionId);
+          }
+        } else {
+          this.logger.warn("Failed to start SimHub role");
+        }
+      } finally {
+        if (this.pendingSimHubHolds.get(actionId) === pending) this.pendingSimHubHolds.delete(actionId);
+
+        finish();
       }
 
       return;
@@ -245,6 +277,12 @@ class BindingDispatcher implements IBindingDispatcher {
    * @param actionId - The action context ID (ev.action.id)
    */
   async release(actionId: string): Promise<void> {
+    // A SimHub hold still starting is released by the hold once its start has
+    // gone through (#1693).
+    const pending = this.pendingSimHubHolds.get(actionId);
+
+    if (pending) pending.released = true;
+
     const held = this.heldBindings.get(actionId);
 
     if (!held) return;
