@@ -272,6 +272,35 @@ describe("ird-camera-group-select", () => {
       expect(saveNumber()).not.toHaveBeenCalled();
     });
 
+    it("Other… keeps a number pushed while it is open when a custom name is typed (#1653 review)", () => {
+      chooseOther();
+      pushNumber(17);
+      type("Drone");
+
+      expect(saveName()).toHaveBeenLastCalledWith("Drone");
+      expect(saveNumber()).not.toHaveBeenCalled();
+    });
+
+    it("Other… does not undo a typed prefix's number once a push has replaced it", () => {
+      chooseOther();
+      type("Chase");
+      pushNumber(17);
+      type("Chase Cam");
+
+      expect(saveNumber()).toHaveBeenCalledTimes(1);
+      expect(saveNumber()).toHaveBeenLastCalledWith("12");
+    });
+
+    it("Other… puts back the pushed number, not the one it opened at, after a typed prefix", () => {
+      chooseOther();
+      pushNumber(17);
+      type("Chase");
+      type("Chase Cam");
+
+      expect(saveNumber()).toHaveBeenNthCalledWith(1, "12");
+      expect(saveNumber()).toHaveBeenLastCalledWith("17");
+    });
+
     it("Other… writes nothing for a blank entry", () => {
       chooseOther();
       type("   ");

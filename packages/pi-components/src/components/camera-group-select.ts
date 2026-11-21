@@ -80,13 +80,20 @@ export class CameraGroupSelect extends HTMLElement {
    */
   private otherMode = false;
   /**
-   * The `cameraGroup` number the key held when Other… was chosen. A typed name
-   * is written as the user types, so its prefix can be a standard name (`Chase`
-   * on the way to `Chase Cam`) and write that group's number; once the text is
-   * a custom name again this number is put back, so a custom name leaves the
-   * number at the key's last value, as a choice from the list does (decision 5).
+   * The `cameraGroup` number the key held when Other… was chosen, or the one a
+   * settings push brought while it is open. A typed name is written as the user
+   * types, so its prefix can be a standard name (`Chase` on the way to
+   * `Chase Cam`) and write that group's number; once the text is a custom name
+   * again this number is put back, so a custom name leaves the number at the
+   * key's last value, as a choice from the list does (decision 5).
    */
   private numberBeforeOther: unknown = undefined;
+  /**
+   * Whether typing in the open Other… field wrote a number since
+   * {@link numberBeforeOther} was taken. Only such a number is put back: one a
+   * push brought is the key's state, not a typing artefact (#1653 review).
+   */
+  private numberWrittenWhileTyping = false;
   private saveName: ((value: string) => void) | null = null;
   private saveNumber: ((value: string) => void) | null = null;
 
@@ -155,7 +162,10 @@ export class CameraGroupSelect extends HTMLElement {
       const option = this.select.selectedOptions[0];
 
       if (option?.dataset.other !== undefined) {
-        if (!this.otherMode) this.numberBeforeOther = this.storedNumber;
+        if (!this.otherMode) {
+          this.numberBeforeOther = this.storedNumber;
+          this.numberWrittenWhileTyping = false;
+        }
 
         this.otherMode = true;
         this.showOther(true);
@@ -178,7 +188,8 @@ export class CameraGroupSelect extends HTMLElement {
 
       if (name === null) return;
 
-      this.commit(name);
+      if (this.commit(name)) this.numberWrittenWhileTyping = true;
+
       this.restoreNumberForCustomName(name);
       this.dispatchEvent(new Event("change", { bubbles: true }));
     });
@@ -195,29 +206,37 @@ export class CameraGroupSelect extends HTMLElement {
     }
   }
 
-  /** Write `name` (and its number when it is standard) and remember both locally. */
-  private commit(name: string): void {
+  /**
+   * Write `name` (and its number when it is standard) and remember both locally.
+   * Returns whether a number was written.
+   */
+  private commit(name: string): boolean {
     const write = cameraGroupWrite(name);
 
     if (write.name === this.storedName && (write.number === undefined || write.number === String(this.storedNumber))) {
-      return;
+      return false;
     }
 
     this.storedName = write.name;
     this.saveName?.(write.name);
 
-    if (write.number !== undefined) {
-      this.storedNumber = write.number;
-      this.saveNumber?.(write.number);
-    }
+    if (write.number === undefined) return false;
+
+    this.storedNumber = write.number;
+    this.saveNumber?.(write.number);
+
+    return true;
   }
 
   /**
-   * After a typed custom name, put back the number the key had before Other…,
-   * should a standard-name prefix typed on the way have replaced it.
+   * After a typed custom name, put back the number the key had before Other…
+   * (or the last one pushed while it was open), should a standard-name prefix
+   * typed on the way have replaced it. A number nobody typed is left alone.
    */
   private restoreNumberForCustomName(name: string): void {
-    if (cameraGroupWrite(name).number !== undefined) return;
+    if (!this.numberWrittenWhileTyping || cameraGroupWrite(name).number !== undefined) return;
+
+    this.numberWrittenWhileTyping = false;
 
     const before =
       this.numberBeforeOther === undefined || this.numberBeforeOther === null || this.numberBeforeOther === ""
@@ -225,9 +244,6 @@ export class CameraGroupSelect extends HTMLElement {
         : String(this.numberBeforeOther);
 
     if (String(this.storedNumber) === before) return;
-
-    // Only a number this component wrote during the typing differs from it.
-    if (this.storedNumber === this.numberBeforeOther) return;
 
     this.storedNumber = before;
     this.saveNumber?.(before);
@@ -253,6 +269,14 @@ export class CameraGroupSelect extends HTMLElement {
       numberKey,
       skipUnchanged((value: unknown) => {
         this.storedNumber = value;
+
+        // A push while Other… is open is the key's number now: the one a custom
+        // name typed next leaves in place, not a typed prefix's to undo.
+        if (this.otherMode) {
+          this.numberBeforeOther = value;
+          this.numberWrittenWhileTyping = false;
+        }
+
         this.render();
       }),
     );
