@@ -98,7 +98,10 @@
  * line, about cars going by within seconds) and the pit-exit traffic warning
  * and merge warning — take {@link TRAFFIC_MAX_QUEUE_WAIT_MS}, since "about
  * five seconds" heard four seconds late describes a car that has already
- * passed, and right behind the shorter
+ * passed (a queued count still says the event's number, so it can be up to
+ * that long out of date; the detector's next count, about a second later,
+ * replaces it, and working the number out again at speak time was judged
+ * not worth a clock-dependent resolver), and right behind the shorter
  * {@link TRAFFIC_REJOIN_RIGHT_BEHIND_MAX_QUEUE_WAIT_MS} (below); the pit-exit clear takes the engine default, since what would make
  * it false is a flipped verdict, which the detector publishes and which
  * replaces it in the queue. The one gap is a picture the detector cannot
