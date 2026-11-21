@@ -221,10 +221,15 @@
  * the spec names no side. The first that does publishes `traffic.pitExitMerge`
  * with that car's relative arrival, to a tenth, whatever the first call said
  * and whether or not a flip is pending; it is said once per episode, never
- * again. A car nobody can time never triggers it: "truly close" is a number,
- * and an untimed car has none (it makes the verdict traffic, which the first
- * call has said). The threshold is read live at each such evaluation; 0
- * leaves only an exact coincidence, so it is off in practice. The crossings
+ * again. The test reads the unrounded arrival, so under a threshold that is
+ * not a whole tenth the published tenth can lie up to 0.05 s past it, as the
+ * event catalog states; testing the tenth instead would make a threshold of
+ * 0, which is meant to be off, warn for any car within 0.05 s, and would
+ * widen a whole-tenth threshold by up to 0.05 s. A car nobody can time never
+ * triggers it: "truly close" is a number, and an untimed car has none (it
+ * makes the verdict traffic, which the first call has said). The threshold
+ * is read live at each such evaluation; 0 leaves only an exact coincidence,
+ * so it is off in practice. The crossings
  * tested run up to the larger of the window's `after` and the threshold, so
  * a crossing inside the threshold is never left out. "In the exit lane"
  * needs an exit lane: a track without one gets no merge warning, however the

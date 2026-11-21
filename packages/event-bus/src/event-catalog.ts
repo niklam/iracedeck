@@ -757,11 +757,14 @@ export type TrafficPitExit = {
 export type TrafficPitExitMerge = {
   /**
    * The nearest timed car's arrival at the end of the exit blend relative to
-   * the player's own, in seconds to a tenth (negative: before the player). Its
-   * magnitude is at most the `trafficPitExitMergeWarnSeconds` threshold read at
-   * the evaluation that published it. For logs and the scenario harness; the
-   * line speaks no number. Always present: the warning is only ever for a car
-   * that could be timed.
+   * the player's own, in seconds to a tenth (negative: before the player). The
+   * warning is decided on the unrounded arrival, which is within the
+   * `trafficPitExitMergeWarnSeconds` threshold read at the evaluation that
+   * published it, so this magnitude is at most that threshold rounded to a
+   * tenth: the threshold itself at a whole tenth (the slider's step), and up
+   * to 0.05 s past one that is not (−1.56 s under 1.57 s publishes −1.6). For
+   * logs and the scenario harness; the line speaks no number. Always present:
+   * the warning is only ever for a car that could be timed.
    */
   seconds: number;
 };

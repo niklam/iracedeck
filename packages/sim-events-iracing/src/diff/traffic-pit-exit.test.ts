@@ -2181,6 +2181,31 @@ describe("diffTrafficPitExit", () => {
       expect(h.merges).toEqual([{ seconds: 1 }]);
     });
 
+    describe("decides on the unrounded arrival and publishes its tenth (the bound in the event catalog)", () => {
+      it("is said for a car at -1.56 s under a 1.57 s threshold, as -1.6 s: within the threshold to a tenth, 1.6", () => {
+        const h = harness({ landmarks: CURVE_LANDMARKS });
+
+        h.windows.mergeWarn = 1.57;
+        h.depart(at(STALL_PCT, -1.56));
+        step(h, at(0.13, -1.56));
+
+        expect(h.merges).toEqual([{ seconds: -1.6 }]);
+        expect(lines(h.debug).at(-1)).toContain("emit merge warning (car 5 at -1.56 s, within 1.57 s;");
+      });
+
+      it("is not said for a car at 1.54 s under a 1.5 s threshold, though its tenth is 1.5", () => {
+        const h = harness({ landmarks: CURVE_LANDMARKS });
+
+        h.depart(at(STALL_PCT, 1.54));
+
+        for (const pct of [0.13, 0.14, 0.15]) step(h, at(pct, 1.54));
+
+        expect(h.events).toEqual([{ verdict: "traffic", seconds: 1.5 }]);
+        expect(h.merges).toEqual([]);
+        expect(lines(h.debug).at(-1)).toContain("no merge warning within 1.5 s");
+      });
+    });
+
     it("at a threshold of 0 is said only for an exact coincidence, so in practice never", () => {
       const h = harness({ landmarks: CURVE_LANDMARKS });
 
