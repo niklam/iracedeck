@@ -3455,10 +3455,33 @@ describe("a restart run over and over asks (#1737 review)", () => {
       "asks for %s when a script beneath it has a relinking pre script",
       (c) => expect(asks(c, nested)).toMatch(/`preprepare-host` → `pnpm relink:mirabox` links, unlinks or relinks/),
     );
-    // Control: with no restart above it, a neutral script's lifecycle scripts
-    // stay unread, as on master.
-    it("does not read a neutral script's pre script with no restart above it", () =>
-      expect(deckFound("npm run prepare-host", nested)).toEqual([]));
+    // CodeRabbit CLI at 6f961204a: every npm or pnpm script's lifecycle
+    // scripts are read, a neutral one's with no restart above it included —
+    // a neutral wrapper of a restart whose pre script relinks passed.
+    it("asks for a neutral wrapper of a restart whose pre script relinks", () => {
+      const wrapper = withScripts({
+        "refresh-host": "pnpm restart:stream-deck",
+        "prerefresh-host": "pnpm relink:mirabox",
+      });
+      expect(asks("npm run refresh-host", wrapper)).toMatch(
+        /`npm run refresh-host` → `prerefresh-host` → `pnpm relink:mirabox` links, unlinks or relinks/,
+      );
+    });
+    it("asks for a neutral script whose pre script relinks, with no restart in it or above it", () => {
+      expect(asks("npm run prepare-host", nested)).toMatch(/`preprepare-host` → `pnpm relink:mirabox` links/);
+      expect(asks("npm run build", withScripts({ build: "tsc", prebuild: "pnpm relink:mirabox" }))).toMatch(
+        /`npm run build` → `prebuild` → `pnpm relink:mirabox`/,
+      );
+    });
+    // Control: the plugins' real `postbuild` reaches no deck host, so a build passes with nothing found.
+    it("finds nothing in a build whose postbuild installs the runtime dependencies", () => {
+      const plugin = withScripts({
+        build: "rollup -c && pnpm run postbuild",
+        postbuild: "node ../../scripts/install-runtime-deps.mjs x",
+      });
+      findsNothing("pnpm build", plugin);
+      findsNothing("npm run build", plugin);
+    });
 
     // CodeRabbit CLI at 53821a933: `node --run` runs no pre or post scripts,
     // unlike `npm run` and pnpm under `enablePrePostScripts`.

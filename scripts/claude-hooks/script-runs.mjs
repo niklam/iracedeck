@@ -776,7 +776,8 @@ const UNREAD = "$(…)";
  * `trail` holds the `<package dir>\0<script>` keys being expanded, which is
  * both the depth ({@link MAX_SCRIPT_DEPTH}) and the cycle guard;
  * `underRestart` says a restart-kind run above this line is being read, so a
- * body the bound leaves unread anywhere beneath it asks. A script the
+ * body the bound leaves unread anywhere beneath it asks, and so does a cycle
+ * cut beneath it. A script the
  * hook cannot read — no `ctx.scriptsAt`, no package.json, no such script — is
  * judged by its name alone; a selector it cannot resolve reads every package
  * instead ({@link runManifests}).
@@ -891,7 +892,7 @@ export function deckFindings(c, cwd, ctx, shell, trail = [], underRestart = fals
         // reaches through neutral names — may hide a relink: that asks, as the
         // restart's name did before. With no restart above, a name past the
         // bound is judged by its name alone.
-        const unread = run.lines?.length || (run.expand && bodyLines(run, kind, ctx, underRestart).length);
+        const unread = run.lines?.length || (run.expand && bodyLines(run, ctx).length);
         if ((kind === "restart" || underRestart) && unread)
           finding(`\`${run.label}\` runs scripts too deep to read, which may relink`, "relink", run.repeats);
         continue;
@@ -899,7 +900,7 @@ export function deckFindings(c, cwd, ctx, shell, trail = [], underRestart = fals
       // A hook's or a shell's command line is no script: it has no key a
       // cycle could repeat, so its empty one only counts towards the depth.
       const lines = run.lines?.map((line) => ({ dir: run.dir, line, key: "", as: run.as })) ?? [];
-      if (run.expand) lines.push(...bodyLines(run, kind, ctx, underRestart));
+      if (run.expand) lines.push(...bodyLines(run, ctx));
       for (const { dir, line, key, as, step } of lines) {
         if (key && trail.includes(key)) {
           // The cycle guard stays, but a restart that runs itself again — or a
@@ -1134,23 +1135,20 @@ function scriptLines(run, ctx) {
 }
 
 /**
- * The command lines an expandable run executes ({@link scriptLines}), and for
- * a restart-kind run its `pre<name>` and `post<name>` scripts too, each with
- * its name as `step` (#1737 PR review). npm runs them around the script, and
- * pnpm does under `enablePrePostScripts`; a restart's name no longer asks, so
- * a relink in one of them must be read. They are read for every runner,
- * whatever pnpm's setting: reading a script pnpm would not run can only make
- * the rule ask where it need not, never pass a relink, so the simpler reading
+ * The command lines an expandable run executes ({@link scriptLines}), with its
+ * `pre<name>` and `post<name>` scripts, each named as its `step` (#1737). npm
+ * runs them around every script, and pnpm does under `enablePrePostScripts`;
+ * since a restart no longer asks, a relink in one is what makes a command ask
+ * (`npm run refresh-host`, whose body only restarts and whose pre script
+ * relinks). They are read for every run, whatever pnpm's setting and whatever
+ * the script is called: reading a script pnpm would not run can only make the
+ * rule ask where it need not, never pass a relink, so the simpler reading
  * fails safe. They take none of the forwarded arguments, as npm hands them
- * none. So are a script's beneath a restart (`underRestart`, #1737 PR review
- * round 2): `restart:x` running `npm run prepare-host` runs `preprepare-host`
- * too. Any other script's are not read, as before #1737: no restart above it
- * passes where its name once asked. `node --run` runs none (`lifecycle:
- * false`), so none are read for it.
+ * none. `node --run` runs none (`lifecycle: false`), so none are read for it.
  */
-function bodyLines(run, kind, ctx, underRestart = false) {
+function bodyLines(run, ctx) {
   const lines = scriptLines(run, ctx);
-  if ((kind !== "restart" && !underRestart) || run.lifecycle === false) return lines;
+  if (run.lifecycle === false) return lines;
   const name = unescaped(run.script ?? "");
   for (const step of [`pre${name}`, `post${name}`])
     lines.push(...scriptLines({ ...run, script: step, args: [] }, ctx).map((l) => ({ ...l, step })));
