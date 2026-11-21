@@ -49,7 +49,7 @@ export function buildSeedSettings() {
     // place of the capitalised id. Seeded because a real install always has it:
     // the plugin writes it in the same call as the list above, and since stage 3
     // `default` arrives in a pack like any other, so it carries a label too.
-    _voiceLabels: JSON.stringify({ "default::default": "Default", "luca::luca": "Luca" }),
+    _voiceLabels: JSON.stringify({ "default::default": "Shawn", "luca::luca": "Luca" }),
     // Both voices above, as the packs that provide them, plus one pack that was
     // ignored — the Installed Voices list shows both halves of a scan (#1034),
     // and a shot of the empty state would document neither. Kept to two rows
@@ -65,11 +65,11 @@ export function buildSeedSettings() {
         // is the whole point of listing it.
         {
           id: "default",
-          label: "Default",
+          label: "Shawn",
           version: "1.0.0",
           // A real voice now, downloaded like any other pack. Nothing bundled
-          // provides it, so the pack is what puts "Default" in the dropdown.
-          voices: [{ id: "default::default", label: "Default" }],
+          // provides it, so the pack is what puts "Shawn" in the dropdown.
+          voices: [{ id: "default::default", label: "Shawn" }],
           provenance: "catalog",
           managed: true,
         },

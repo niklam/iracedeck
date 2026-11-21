@@ -41,7 +41,7 @@ export function isFirstPartyVoicePack(pack: Pick<InstalledVoicePack, "provenance
  * name can mean two things — a pack shipping several voices, or a pack whose
  * name and its voice's name are different things a user might need to tell
  * apart — so those get their pack's name in front: `Duo: Ay`, `iRaceDeck:
- * Default`.
+ * Shawn`.
  *
  * **First-party packs are a branch of their own, decided by install
  * provenance rather than by the collision rule below** ({@link
@@ -49,7 +49,7 @@ export function isFirstPartyVoicePack(pack: Pick<InstalledVoicePack, "provenance
  * the managed `default` pack, or a second pack like the Terse one — is
  * labelled `iRaceDeck: <pack label>`; one shipping SEVERAL voices labels each
  * `iRaceDeck: <pack label>: <voice label>`, so its voices never render as
- * identical entries. The pack's own manifest labels ("Default", "Default
+ * identical entries. The pack's own manifest labels ("Shawn", "Shawn
  * (Short callouts)") stay untouched and only the plugin adds the prefix. The accepted
  * limit is the same one the provenance badge already
  * lives with: a hand-written `.install.json` that names this pack's id is
@@ -78,7 +78,7 @@ export function isFirstPartyVoicePack(pack: Pick<InstalledVoicePack, "provenance
  * Keys are the voices' composite ids, `<pack id>::<voice id>` (#1144) — what
  * the dropdown's options carry and `_voiceLabels` is read by. Two packs each
  * shipping a `matt` are therefore two entries. #999 narrows the #1034 rule
- * above to non-first-party packs, now that "iRaceDeck: Default" needs the
+ * above to non-first-party packs, now that "iRaceDeck: Shawn" needs the
  * prefix reserved for our own voices — the rule ITSELF is unchanged for a
  * third-party pack: still prefixed only when it ships several voices or
  * labels one differently from itself. Replacing that with `<pack label>:

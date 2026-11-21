@@ -746,6 +746,17 @@ describe("resolveActiveRaceEngineerVoice", () => {
     it("anchors on default::default, the managed pack's own voice", () => {
       expect(DEFAULT_RACE_ENGINEER_VOICE).toBe("default::default");
     });
+
+    // #1716: the first-party voices were relabelled "Shawn", label only. Resolution
+    // is by composite id, so a stored choice keeps meaning the same voice.
+    it.each(["default::default", "iracedeck-terse::shawn"])(
+      "a stored %s still resolves to itself (#1716)",
+      async (id) => {
+        await initWithStore({ raceEngineerVoice: id });
+
+        expect(resolveActiveRaceEngineerVoice(["default::default", "iracedeck-terse::shawn"])).toBe(id);
+      },
+    );
   });
 
   describe("a stored bare id is qualified at read time (#1144)", () => {
