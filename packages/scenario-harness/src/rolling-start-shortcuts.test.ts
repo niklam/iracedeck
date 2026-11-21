@@ -800,6 +800,40 @@ describe("the formation's calls on their own", () => {
     },
   );
 
+  it.each([
+    ...stepsOf(ONE_LAP).map((_step, index) => ({ run: `a setup that stopped at step ${index + 1}`, steps: index + 1 })),
+    { run: "a whole run", steps: null },
+  ])(
+    '"One Lap to Green" hands the next button a live translator with the tick loop paused, after $run',
+    ({ steps }) => {
+      // Only the ticks the steps ask for, as `/api/telemetry` gives them with
+      // the loop paused. The stand-down turns `IsReplayPlaying` off and ticks
+      // inside the exit grace; were no tick to follow its hold, the next
+      // button's first tick would re-seed on that button's own patch and take
+      // its edge — here a caution thrown — for the baseline.
+      const shortcut = shortcutOf(ONE_LAP);
+      const teardown = shortcut.teardownSequence ?? [];
+      const rig = startRig("race");
+      const drivePaused = (sequence: readonly TelemetryStep[]): void => {
+        for (const step of sequence) {
+          rig.controller.mutateTelemetry(step.patch as TelemetryPatch);
+
+          if (step.tick === true) rig.controller.tickOnce();
+
+          vi.advanceTimersByTime(step.holdMs ?? 0);
+        }
+      };
+
+      if (steps === null) drivePaused([...stepsOf(ONE_LAP), ...teardown]);
+      else drivePaused([...stepsOf(ONE_LAP).slice(0, steps), ...failedRunTeardown(teardown)]);
+
+      rig.events.length = 0;
+      drivePaused([{ patch: { SessionFlags: RACING_NO_FLAG | Flags.CautionWaving }, tick: true, holdMs: 100 }]);
+
+      expect(rig.events).toEqual(["flag.caution-waving.raised"]);
+    },
+  );
+
   it("control: without the teardown, a setup that stopped inside its bracket leaves the mock in replay mode and one that finished leaves the formation running", () => {
     const steps = stepsOf(ONE_LAP);
     const insideBracket = startRig();

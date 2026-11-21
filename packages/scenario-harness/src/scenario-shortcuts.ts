@@ -2363,7 +2363,11 @@ const ROLLING_START_LINEUP_CHANGED_SHORTCUT: TelemetrySequenceShortcut = {
  * end on that one live, and a step that leaves replay mode has to be held for
  * the exit grace before anything else is live — which is why it holds
  * {@link REPLAY_EXIT_SETTLE_MS}, the one hold the UI keeps after a failed run
- * ({@link failedRunTeardown}).
+ * ({@link failedRunTeardown}). Its own tick lands inside that grace, so the
+ * teardown ends on {@link SEEDED_TICK}, as a pit-exit button's does: with the
+ * tick loop paused or slowed, the translator re-seeds on the stood-down race
+ * there rather than on the next button's first patch, whose edge it would
+ * otherwise take for its baseline.
  */
 const ONE_LAP_TO_GREEN_STAND_DOWN: TelemetryStep = {
   patch: { IsReplayPlaying: false, ...FORMATION_STAND_DOWN.patch },
@@ -2380,7 +2384,11 @@ const ONE_LAP_TO_GREEN_SHORTCUT: BusEventShortcut = {
   telemetrySequence: FORMATION_ADOPTED,
   event: "flag.one-pace-lap-to-go.raised",
   data: {},
-  teardownSequence: [{ patch: {}, holdMs: FORMATION_ONE_LAP_TO_GREEN_CALL_MS }, ONE_LAP_TO_GREEN_STAND_DOWN],
+  teardownSequence: [
+    { patch: {}, holdMs: FORMATION_ONE_LAP_TO_GREEN_CALL_MS },
+    ONE_LAP_TO_GREEN_STAND_DOWN,
+    SEEDED_TICK,
+  ],
 };
 
 /** The session presets' player, car "42" — row 7 of the single-file caution lineup, behind car "11". */
