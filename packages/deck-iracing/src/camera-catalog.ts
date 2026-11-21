@@ -298,9 +298,12 @@ function earlier(a: string, b: string): string {
  *   are normalised, and two that normalise to one are merged (earliest
  *   `firstSeen`, latest `lastSeen`).
  * - Anything else — another `version`, or `tracks` / `groups` that are not
- *   objects — is `unusable`. The caller then runs from memory and never saves
- *   over the file: a later build's catalog survives a downgrade, and a file
- *   this build does not understand is never replaced with one it does.
+ *   objects — is `unusable`. What happens to such a file is decided before
+ *   this runs, by the file store's `validate` ({@link cameraCatalogFileProblem}):
+ *   a newer build's file (a whole-number `version` above 1) is read, comes back
+ *   `unusable` here, and the service runs in memory only and never saves over
+ *   it, so a later build's catalog survives a downgrade; every other unusable
+ *   file is set aside as `cameras.corrupt-<iso>.json` and never reaches this.
  */
 export function parseCameraCatalog(raw: unknown): CameraCatalogParseResult {
   if (!isPlainObject(raw)) return { kind: "unusable", reason: "the file does not hold an object" };
