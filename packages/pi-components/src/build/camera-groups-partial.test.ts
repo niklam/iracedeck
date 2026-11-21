@@ -21,7 +21,10 @@ describe("camera-groups partial (#1653)", () => {
   it("says what removing a name does and does not do", () => {
     const html = renderPartial("camera-groups", { settingsWindow: true });
 
-    expect(html).toContain("returns within moments");
+    expect(html).toContain("for the track you are on, at the session's next update");
+    expect(html).toContain("for another track, when that track is loaded");
+    // No timing promise: the name returns only with the next session update.
+    expect(html).not.toContain("within moments");
     expect(html).toContain("never changes a key");
   });
 
