@@ -880,17 +880,30 @@ describe("buildPackReference withholding a development feature (issue #1113)", (
     });
 
     it("drops the line when only a withheld callout's frame plays it", () => {
-      // Only the spotter call's `terse` frame plays it; the radio frame does not.
-      const script = withFrames({
+      // Only the spotter call's `terse` frame plays it: the radio frame does
+      // not, and the spotter's own body no longer addresses it, so nothing but
+      // the frame can tell the builder the line was drawn from.
+      const framed = withFrames({
         radio: { open: [{ clip: "sfx/IRD-tick-open.mp3" }], close: [] },
         terse: { open: [], close: [], cut: ["pool:openers/alright"] },
       });
+      const script: CalloutScript = {
+        ...framed,
+        scenarios: {
+          ...framed.scenarios,
+          "pit-crew.spotter-call": {
+            ...framed.scenarios["pit-crew.spotter-call"],
+            sequence: ["pool:spot", "/voice/default/units/km.mp3", "pool:undefined-alias"],
+          },
+        },
+      };
+      const contracts = ending("pit-crew.spotter-call");
+      const groupsOf = (ref: ReturnType<typeof buildPackReference>): string[] =>
+        ref.recordingScript.map((g) => g.group);
 
-      expect(
-        buildPackReference(
-          input({ script, contracts: ending("pit-crew.spotter-call"), withheld: SPOTTER }),
-        ).recordingScript.map((g) => g.group),
-      ).not.toContain("openers");
+      // Published, the frame alone keeps it; withheld with the spotter call, it goes.
+      expect(lineOf(buildPackReference(input({ script, contracts })), "openers", "alright").usedBy).toEqual([]);
+      expect(groupsOf(buildPackReference(input({ script, contracts, withheld: SPOTTER })))).not.toContain("openers");
     });
 
     it("reads a frame's bare literal at the audio root, as the engine plays it, never as the voice's line", () => {
