@@ -785,11 +785,18 @@ describe("buildPackReference withholding a development feature (issue #1113)", (
 
   // The frame plays around the line, so what it draws from is the callout's
   // too: walked as the engine expands it — the effective frame (the entry's
-  // override, else the contract's), its fragments, all three sides, with no
-  // base — though it never enters `usedBy` or the published references.
+  // override, else the contract's), its fragments, with no base: `open` and
+  // `close` always, `cut` only for a contract an event can end (`endsOn`),
+  // the only one that ever plays it — though it never enters `usedBy` or the
+  // published references.
   describe("the effective frame", () => {
     /** The spotter call alone plays `openers/alright` and `units/km`; withholding it leaves only the frames. */
     const SPOTTER = { ...NOTHING, contracts: ["pit-crew.spotter-call"] };
+    /** The fixture's contracts, those named given an `endsOn` event, so their frame's `cut` can play. */
+    const ending = (...ids: string[]): readonly ContractReport[] =>
+      CONTRACTS.map((c) =>
+        ids.includes(c.id) ? { ...c, endsOn: "You leave pit road.", endsOnEvent: "pitLane.exited" } : c,
+      );
     const withFrames = (
       frames: CalloutScript["frames"],
       fragments: CalloutScript["fragments"] = {},
@@ -807,7 +814,7 @@ describe("buildPackReference withholding a development feature (issue #1113)", (
         },
         { "radio-bed": { sequence: ["voice/{voice}/units/km.mp3"] } },
       );
-      const ref = buildPackReference(input({ script, withheld: SPOTTER }));
+      const ref = buildPackReference(input({ script, contracts: ending("pit-crew.flag-green"), withheld: SPOTTER }));
 
       // Kept for the radio-framed callouts, which still play them — but not named as users.
       expect(lineOf(ref, "openers", "alright").usedBy).toEqual([]);
@@ -818,6 +825,32 @@ describe("buildPackReference withholding a development feature (issue #1113)", (
       expect(ref.recordingScript.map((g) => g.group)).not.toContain("spotter");
     });
 
+    it("counts a frame's cut only for a published callout an event can end, the only kind that plays it", () => {
+      const script = withFrames(
+        {
+          radio: { open: [{ clip: "sfx/IRD-tick-open.mp3" }, "@radio-bed"], close: [], cut: ["pool:openers/alright"] },
+          terse: { open: [], close: [] },
+        },
+        { "radio-bed": { sequence: ["voice/{voice}/units/km.mp3"] } },
+      );
+      // No radio-framed callout carries `endsOn`: its cut never plays, so the
+      // line only the withheld spotter call plays goes, while the open's stays.
+      const ref = buildPackReference(input({ script, withheld: SPOTTER }));
+
+      expect(ref.recordingScript.map((g) => g.group)).not.toContain("openers");
+      expect(lineOf(ref, "units", "km").usedBy).toEqual([]);
+      // An ending callout that is itself withheld keeps nothing either.
+      expect(
+        buildPackReference(
+          input({
+            script,
+            contracts: ending("pit-crew.spotter-call"),
+            withheld: { ...NOTHING, contracts: ["pit-crew.spotter-call", "pit-crew.flag-green"] },
+          }),
+        ).recordingScript.map((g) => g.group),
+      ).not.toContain("openers");
+    });
+
     it("drops the line when only a withheld callout's frame plays it", () => {
       // Only the spotter call's `terse` frame plays it; the radio frame does not.
       const script = withFrames({
@@ -826,7 +859,9 @@ describe("buildPackReference withholding a development feature (issue #1113)", (
       });
 
       expect(
-        buildPackReference(input({ script, withheld: SPOTTER })).recordingScript.map((g) => g.group),
+        buildPackReference(
+          input({ script, contracts: ending("pit-crew.spotter-call"), withheld: SPOTTER }),
+        ).recordingScript.map((g) => g.group),
       ).not.toContain("openers");
     });
 
@@ -837,7 +872,9 @@ describe("buildPackReference withholding a development feature (issue #1113)", (
       });
 
       expect(
-        buildPackReference(input({ script, withheld: SPOTTER })).recordingScript.map((g) => g.group),
+        buildPackReference(
+          input({ script, contracts: ending("pit-crew.flag-green"), withheld: SPOTTER }),
+        ).recordingScript.map((g) => g.group),
       ).not.toContain("openers");
     });
 
@@ -876,11 +913,13 @@ describe("buildPackReference withholding a development feature (issue #1113)", (
         },
         terse: { open: [], close: [] },
       });
+      const contracts = ending("pit-crew.incident");
 
       expect(() =>
         buildPackReference(
           input({
             script,
+            contracts,
             withheld: {
               ...NOTHING,
               contracts: ["pit-crew.flag-green", "pit-crew.readback-entry"],
@@ -893,9 +932,26 @@ describe("buildPackReference withholding a development feature (issue #1113)", (
       );
       expect(() =>
         buildPackReference(
-          input({ script, withheld: { ...NOTHING, contracts: ["pit-crew.flag-green"], conds: ["session.isRace"] } }),
+          input({
+            script,
+            contracts,
+            withheld: { ...NOTHING, contracts: ["pit-crew.flag-green"], conds: ["session.isRace"] },
+          }),
         ),
       ).toThrow(/"pit-crew\.incident" is published but its frame "radio" names the withheld cond "session\.isRace"/);
+      // A cut no published callout can play names nothing: no event ends the incident line.
+      expect(() =>
+        buildPackReference(
+          input({
+            script,
+            withheld: {
+              ...NOTHING,
+              contracts: ["pit-crew.flag-green", "pit-crew.readback-entry"],
+              cases: ["readback.tirePattern"],
+            },
+          }),
+        ),
+      ).not.toThrow();
     });
   });
 

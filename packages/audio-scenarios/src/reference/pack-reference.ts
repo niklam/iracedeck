@@ -39,7 +39,8 @@
  * in `withheld` (the generator picks them from the release flags); the builder
  * drops those, and every recording line only they draw from, so no orphan is
  * left behind: a line some published callout (by its entry or its effective
- * frame), published var or plugin code still reaches stays, minus the
+ * frame: its `open` and `close`, and its `cut` for a callout an event can end,
+ * the only kind whose end plays it), published var or plugin code still reaches stays, minus the
  * withheld names in its columns, and a line nothing reached before stays as
  * it was. A published callout whose entry or effective frame names a
  * withheld var, condition or case is refused, as is a withheld name the
@@ -299,7 +300,7 @@ export function buildPackReference(input: PackReferenceInput): PackReference {
   const allWalks = new Map<string, EntryWalk>(
     input.contracts.map((contract) => [
       contract.id,
-      walkEntry(script, script.scenarios[contract.id], contract.base, contract.frame),
+      walkEntry(script, script.scenarios[contract.id], contract.base, contract.frame, contract.endsOnEvent !== null),
     ]),
   );
   const walks = new Map<string, EntryWalk>();
@@ -506,7 +507,8 @@ type EntryWalk = {
    * What the entry's EFFECTIVE frame plays around it — the entry's `frame`
    * override, else the contract's — walked with its fragments; `null` when
    * the line is unframed (`"none"`), skipped, or names a frame the script
-   * does not define (the engine plays it unframed). Kept apart from
+   * does not define (the engine plays it unframed). Its `cut` counts only
+   * for a contract carrying `endsOn`, the only kind whose end plays it. Kept apart from
    * `references` and `clipBases`: the published references and a recording
    * line's `usedBy` stay the entry's own, since one frame wraps nearly every
    * callout. It counts where the frame matters for withholding (#1113): a
@@ -516,7 +518,7 @@ type EntryWalk = {
   frame: FrameWalk | null;
 };
 
-/** What a frame's `open`, `close` and `cut` reference, their included fragments walked. */
+/** What a frame's `open` and `close` reference, and its `cut` where it can play, their included fragments walked. */
 type FrameWalk = {
   name: string;
   vars: readonly string[];
@@ -537,13 +539,15 @@ const NO_REFERENCES: CalloutReferences = { pools: [], vars: [], conds: [], cases
  * nowhere. `base` is the contract's: a fragment's literals resolve against
  * the including entry's base, as the engine expands them. `contractFrame` is
  * the contract's default frame, which the entry's `frame` overrides; the
- * effective one is walked as well (`EntryWalk.frame`).
+ * effective one is walked as well (`EntryWalk.frame`), its `cut` only when
+ * `endable`: the contract carries `endsOn`.
  */
 function walkEntry(
   script: CalloutScript,
   entry: CalloutScriptEntry,
   base: string | null,
   contractFrame: string,
+  endable: boolean,
 ): EntryWalk {
   if (entry.skip === true) return { references: NO_REFERENCES, clipBases: new Set(), frame: null };
 
@@ -559,7 +563,7 @@ function walkEntry(
       frames: entry.frame !== undefined && entry.frame !== NO_FRAME ? [entry.frame] : [],
     },
     clipBases: body.clipBases,
-    frame: walkFrame(script, entry.frame ?? contractFrame),
+    frame: walkFrame(script, entry.frame ?? contractFrame, endable),
   };
 }
 
@@ -567,15 +571,18 @@ function walkEntry(
  * The effective frame's walk, or `null` when there is none to play: `"none"`,
  * or a name the script does not define. A frame expands with no base (the
  * engine's `expandFrame`), so its literals — and its fragments' — count as
- * written: only a `voice/<voice>/…` path is a voice line. All three sides
- * are walked, `cut` included, since an ended line speaks it.
+ * written: only a `voice/<voice>/…` path is a voice line. `open` and
+ * `close` are always walked; `cut` only when `endable`, a contract carrying
+ * `endsOn`, since the engine expands the tail for no other (`Expansion`'s
+ * `cutChannel`, #1407) and an ended line is the only one that speaks it. A
+ * frame with no `cut` plays its `close` there, which is walked anyway.
  */
-function walkFrame(script: CalloutScript, name: string): FrameWalk | null {
+function walkFrame(script: CalloutScript, name: string, endable: boolean): FrameWalk | null {
   // `hasOwn`, not a lookup: `frame: "constructor"` is a well-formed name.
   if (name === NO_FRAME || !Object.hasOwn(script.frames, name)) return null;
 
   const { open, close, cut } = script.frames[name];
-  const walk = walkSteps(script, [open, close, cut ?? []], null);
+  const walk = walkSteps(script, [open, close, endable ? (cut ?? []) : []], null);
 
   return {
     name,
