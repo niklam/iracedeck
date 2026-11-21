@@ -197,7 +197,7 @@
  * between them reads the landmarks.
  *
  * After the first call, again only when a flip settles before the
- * player reaches `blendEnd`. A flip pending at the call point is held like any
+ * player reaches `blendEnd` and before the merge warning (below) is said. A flip pending at the call point is held like any
  * other: one that began before it and holds at a scheduled evaluation that is
  * the call point's is settled there, so the call says the newer verdict; at a
  * call point between two scheduled evaluations, or one first seen AT the call
@@ -221,7 +221,10 @@
  * the spec names no side. The first that does publishes `traffic.pitExitMerge`
  * with that car's relative arrival, to a tenth, whatever the first call said
  * and whether or not a flip is pending; it is said once per episode, never
- * again. The test reads the unrounded arrival, so under a threshold that is
+ * again. It is the last word on the exit: from then on no `traffic.pitExit` is
+ * published that episode, so a flip settling after it ("clear" after "Watch
+ * for cars.") is logged at debug and not said. In an evaluation that makes
+ * both, the call is emitted first. The test reads the unrounded arrival, so under a threshold that is
  * not a whole tenth the published tenth can lie up to 0.05 s past it, as the
  * event catalog states; testing the tenth instead would make a threshold of
  * 0, which is meant to be off, warn for any car within 0.05 s, and would
@@ -1157,8 +1160,14 @@ function evaluate(
   }
 
   // Spoken only from the call point on (module header): there whatever has
-  // settled by then, and after it each settled flip.
-  const speakCall = episode.callPointReached && nextSettled !== episode.spokenVerdict;
+  // settled by then, and after it each settled flip, until the merge warning
+  // has been said. After it nothing of the verdict is said again that exit.
+  const speakCall = episode.callPointReached && !episode.mergeWarned && nextSettled !== episode.spokenVerdict;
+
+  if (episode.mergeWarned && nextSettled !== settled) {
+    logger.debug(`${nextSettled} settled after the merge warning, not spoken (${details})`);
+  }
+
   // The merge warning (module header): the nearest crossing of a timed car
   // within the threshold, either side. An untimed car is never one.
   const mergeCar =

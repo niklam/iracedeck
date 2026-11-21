@@ -1683,6 +1683,8 @@ describe("diffTrafficPitExit", () => {
     it("re-speaks a flip after the call once it holds, on pit road and past it", () => {
       const h = harness({ landmarks: CURVE_LANDMARKS });
 
+      // No merge warning, which would end the verdicts for the exit (below).
+      h.windows.mergeWarn = 0;
       h.depart(at(STALL_PCT, 1));
       step(h, at(0.088, 1));
       step(h, at(0.1, 6));
@@ -1863,6 +1865,8 @@ describe("diffTrafficPitExit", () => {
     it("speaks once for a car rolled back behind pitRoadEnd after the call, and still re-speaks a flip that holds", () => {
       const h = harness({ landmarks: CURVE_LANDMARKS });
 
+      // No merge warning, which would end the verdicts for the exit.
+      h.windows.mergeWarn = 0;
       h.depart(at(STALL_PCT, 1));
       step(h, at(0.13, 1));
       // Rolled back 16 m onto pit road, then out over the line again.
@@ -2104,6 +2108,29 @@ describe("diffTrafficPitExit", () => {
 
       expect(h.events).toEqual([{ verdict: "clear", seconds: 8 }]);
       expect(h.merges).toEqual([{ seconds: 1.2 }]);
+    });
+
+    it.each([
+      ["a clear call by traffic", 8, 1.2, { verdict: "clear", seconds: 8 }],
+      ["a traffic call by clear", 1, 7, { verdict: "traffic", seconds: 1 }],
+    ] as const)("ends the verdicts for the exit: %s settling after it is not said", (_name, call, flip, said) => {
+      const h = harness({ landmarks: CURVE_LANDMARKS });
+
+      h.depart(at(STALL_PCT, call));
+      step(h, at(0.088, call)); // the call
+      // In the exit lane: the merge warning, with the car at `call` (a clear
+      // call's car 8 s out is not one, so it closes in to 1.2 s first).
+      step(h, at(0.13, call === 8 ? 1.2 : call));
+      expect(h.merges).toHaveLength(1);
+
+      // The flip holds for two evaluations: settled, and not said.
+      step(h, at(0.14, flip));
+      step(h, at(0.15, flip));
+      step(h, at(0.16, flip));
+
+      expect(h.events).toEqual([said]);
+      expect(h.episode.settledVerdict).toBe(said.verdict === "clear" ? "traffic" : "clear");
+      expect(lines(h.debug)).toContainEqual(expect.stringContaining("settled after the merge warning, not spoken"));
     });
 
     it("is said with the first call when the first evaluation is past pitRoadEnd, the call first", () => {
