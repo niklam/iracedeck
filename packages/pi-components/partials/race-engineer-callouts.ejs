@@ -19,11 +19,20 @@ if (typeof calloutPiGroups === "undefined") {
 // exactly two columns however the family grows.
 // An OFF default must OMIT the `default` attribute entirely — `default="false"`
 // renders CHECKED (the truthy-attribute sdpi-checkbox trap).
+// A row whose entry names a platform feature flag (`requiresFeature`, #1113)
+// renders only when this build's flags have it on: `=== true`, so a build or
+// a render that passes no `platform` leaves it out. A development flag fails
+// closed, unlike the platform capability flags' `!== false`.
+function rowShown(r) {
+	return !r.feature || (locals.platform && locals.platform.features && locals.platform.features[r.feature] === true);
+}
 function calloutGroupItem(id) {
 	var group = calloutPiGroups.find(function (g) { return g.id === id; });
 	if (!group) throw new Error("race-engineer-callouts.ejs: unknown callout group " + id);
-	var rowCount = Math.ceil(group.rows.length / 2);
-	var boxes = group.rows.map(function (r) {
+	var rows = group.rows.filter(rowShown);
+	if (rows.length === 0) return '';
+	var rowCount = Math.ceil(rows.length / 2);
+	var boxes = rows.map(function (r) {
 		return '<sdpi-checkbox setting="' + r.setting + '" label="' + r.label + '" global' + (r.on ? ' default="true"' : '') + '></sdpi-checkbox>';
 	}).join('');
 	return '<sdpi-item label="' + group.title + '">' +
