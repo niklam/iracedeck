@@ -20,11 +20,14 @@
  *   transitively (`walkEntry`): a pool used only inside the readback body is
  *   still a pool the readback callout draws from, and the vocabulary's
  *   `usedBy` and the recording lines' `usedBy` are that attribution inverted.
- * - A var draws from a clip group the reference can only know by reading the
- *   var's DESCRIPTION (`descriptionNamesGroup`) — a heuristic by design, since
- *   a resolver is a closure. It fills a recording line's `viaVar` and nothing
- *   else: `usedBy` stays the DIRECT consumers, so a reader can tell "this
- *   entry names the line" from "some var in this group might".
+ * - Which lines a var draws is known exactly when the var DECLARED them
+ *   (`defineVar`'s `draws`, #1718: the closed set of pools its resolver can
+ *   return), and otherwise only by reading its DESCRIPTION
+ *   (`descriptionNamesGroup`) — a heuristic by design, since a resolver is a
+ *   closure, and per group rather than per line (`varDrawsLine`). It fills a
+ *   recording line's `viaVar` and nothing else: `usedBy` stays the DIRECT
+ *   consumers, so a reader can tell "this entry names the line" from "a var
+ *   draws it".
  *
  * A third attribution is not the builder's to know: the few clips PLUGIN CODE
  * plays by path outside any script (the connect radio check, the driver's
@@ -66,7 +69,7 @@ import {
 } from "@iracedeck/callout-script";
 
 import { applyBase, WEIGHT } from "../dsl.js";
-import type { ContractReport, VocabularyReport } from "../interpreter.js";
+import type { ContractReport, VarDraw, VocabularyReport } from "../interpreter.js";
 
 // ─── The artifact ────────────────────────────────────────────────────────────
 
@@ -150,11 +153,15 @@ export type RecordingLine = {
   /**
    * Callout ids whose entries — or the fragments they include — address the
    * base DIRECTLY: a `pool:<group>/<base>` step, a `pools` alias resolving to
-   * it, or a literal clip. A var that draws from the group is `viaVar`; its
+   * it, or a literal clip. A var that draws the line is `viaVar`; its
    * callouts are on the vocabulary page, not repeated here.
    */
   usedBy: readonly string[];
-  /** Var names whose description names the line's group — see {@link descriptionNamesGroup}. */
+  /**
+   * Var names that draw the line: by its declared `draws` when the var has
+   * them, else by its description naming the line's group — see
+   * {@link varDrawsLine}.
+   */
   viaVar: readonly string[];
   /**
    * What plugin code plays this line for, outside any script, in the
@@ -466,11 +473,12 @@ function weightBandOf(weight: number): string | null {
 }
 
 /**
- * Whether a var's description names a clip group — the ONLY link the
- * reference has between a var and the clips its resolver draws, since a
- * resolver is a closure the builder cannot read. A heuristic by design,
- * shared with `lint:pack` so the two never disagree about which lines a var
- * accounts for.
+ * Whether a var's description names a clip group — the only link the
+ * reference has between a var that declared no `draws` and the clips its
+ * resolver draws, since a resolver is a closure the builder cannot read. A
+ * heuristic by design, read through {@link varDrawsLine} and
+ * {@link varDrawsWholeGroup}, which `lint:pack` shares so the two never
+ * disagree about which lines a var accounts for.
  *
  * The group counts as named when it appears as a whole kebab-case token —
  * not inside a longer name such as `lap-time` in `lap-time-decimal` — and is
@@ -484,6 +492,34 @@ export function descriptionNamesGroup(description: string, group: string): boole
   const token = group.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
   return new RegExp(`(?<![a-z0-9-])${token}(?:/|\\s+(?:clip\\s+)?group\\b)`).test(description);
+}
+
+/** A var as the vocabulary report lists it — `draws` present only on one that declared them (#1718). */
+export type VarAttribution = { readonly description: string; readonly draws?: readonly VarDraw[] };
+
+/**
+ * Whether a var that declared no `draws` accounts for EVERY base of `group`,
+ * as far as tooling can tell: its description names the group
+ * ({@link descriptionNamesGroup}). A var that declared its draws is never
+ * read this way — its description is prose, and its declaration says exactly
+ * which bases it plays (#1718) — so it exempts no whole group. `lint:pack`'s
+ * orphan rule reads this per group.
+ */
+export function varDrawsWholeGroup(v: VarAttribution, group: string): boolean {
+  return v.draws === undefined && descriptionNamesGroup(v.description, group);
+}
+
+/**
+ * Whether a var draws the line `group/base`: the line is one of its declared
+ * `draws` when it declared them (#1718), else its description names the
+ * group ({@link varDrawsWholeGroup} — per group, since which base an
+ * undeclared resolver picks is a runtime decision). The recording script's
+ * `viaVar` column.
+ */
+export function varDrawsLine(v: VarAttribution, group: string, base: string): boolean {
+  if (v.draws !== undefined) return v.draws.some((draw) => draw.group === group && draw.base === base);
+
+  return varDrawsWholeGroup(v, group);
 }
 
 // ─── Walking an entry ────────────────────────────────────────────────────────
@@ -805,7 +841,7 @@ function buildRecordingScript(
   manifestClips: readonly string[],
   voice: string,
   walks: ReadonlyMap<string, EntryWalk>,
-  vars: readonly { name: string; description: string }[],
+  vars: readonly (VarAttribution & { name: string })[],
   pluginPlayed: readonly PluginPlayedClip[],
   withheld: WithheldSets,
 ): RecordingGroup[] {
@@ -887,14 +923,16 @@ function buildRecordingScript(
   }
 
   return sorted(takesByGroup.keys()).flatMap((group): RecordingGroup[] => {
-    // The vars whose description names the group — noted on every line of
-    // it, since which line a resolver picks is a runtime decision. Their
-    // callouts are deliberately NOT folded into `usedBy` (see the type).
-    const allViaVar = vars.filter((v) => descriptionNamesGroup(v.description, group)).map((v) => v.name);
-    const viaVar = allViaVar.filter((name) => !withheld.vars.has(name));
     const authored = new Map((Object.hasOwn(groups, group) ? groups[group] : []).map((l) => [l.name, l.text]));
     const bases = takesByGroup.get(group) ?? new Map<string, string[]>();
     const lines = sorted(bases.keys()).flatMap((base): RecordingLine[] => {
+      // The vars that draw the line — by their declared draws, or, for one
+      // that declared none, by its description naming the group, which notes
+      // it on every line of the group since which line such a resolver picks
+      // is a runtime decision (`varDrawsLine`). Their callouts are
+      // deliberately NOT folded into `usedBy` (see the type).
+      const allViaVar = vars.filter((v) => varDrawsLine(v, group, base)).map((v) => v.name);
+      const viaVar = allViaVar.filter((name) => !withheld.vars.has(name));
       const names = [...(bases.get(base) ?? [])].sort((a, b) => takeOrder(a) - takeOrder(b));
       const allUsedBy = sorted(directUsers.get(`${group}/${base}`) ?? []);
       const usedBy = allUsedBy.filter((id) => !withheld.contracts.has(id));
@@ -916,7 +954,7 @@ function buildRecordingScript(
           }),
           takes: names.length,
           usedBy,
-          viaVar: [...viaVar],
+          viaVar,
           playedBy,
         },
       ];

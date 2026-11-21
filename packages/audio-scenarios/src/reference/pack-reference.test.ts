@@ -10,6 +10,8 @@ import {
   PLUGIN_PLAYED_ANY_BASE,
   type PluginPlayedClip,
   serializePackReference,
+  varDrawsLine,
+  varDrawsWholeGroup,
 } from "./pack-reference.js";
 
 // ─── Fixture ─────────────────────────────────────────────────────────────────
@@ -485,6 +487,70 @@ describe("buildPackReference", () => {
       usedBy: ["pit-crew.incident"],
       viaVar: ["incident.points"],
       playedBy: null,
+    });
+  });
+
+  describe("a var that declares its draws (issue #1718)", () => {
+    // Its description names the spotter group, which the heuristic would read
+    // as every spotter line; the declaration names two, and wins.
+    const DECLARED: PackReferenceInput["vocabulary"] = {
+      ...VOCABULARY,
+      vars: [
+        ...VOCABULARY.vars,
+        {
+          name: "spotter.clip",
+          description: "The spotter call, drawn from the spotter group (spotter/car-left is “Car left”).",
+          draws: [
+            { group: "spotter", base: "car-left" },
+            { group: "spotter", base: "three-wide" },
+          ],
+        },
+      ],
+    };
+    const declaredInput = (overrides: Partial<PackReferenceInput> = {}) =>
+      input({
+        vocabulary: DECLARED,
+        manifestClips: [
+          ...MANIFEST_CLIPS,
+          "voice/default/spotter/car-right-01.mp3",
+          "voice/default/spotter/three-wide.mp3",
+        ],
+        ...overrides,
+      });
+
+    it("lists the var on exactly the lines it declared, never on the rest of the group", () => {
+      const ref = buildPackReference(declaredInput());
+
+      expect(lineOf(ref, "spotter", "car-left")).toMatchObject({
+        usedBy: ["pit-crew.spotter-call"],
+        viaVar: ["spotter.clip"],
+      });
+      expect(lineOf(ref, "spotter", "three-wide")).toMatchObject({ usedBy: [], viaVar: ["spotter.clip"] });
+      expect(lineOf(ref, "spotter", "car-right")).toMatchObject({ usedBy: [], viaVar: [] });
+      // A var with no declaration keeps the per-group reading.
+      expect(lineOf(ref, "incidents", "points-1").viaVar).toEqual(["incident.points"]);
+    });
+
+    it("keeps the declaration out of the published vocabulary — the artifact's shape is unchanged", () => {
+      const ref = buildPackReference(declaredInput());
+
+      expect(Object.keys(ref.vocabulary.vars.find((v) => v.name === "spotter.clip") ?? {})).toEqual([
+        "name",
+        "description",
+        "usedBy",
+      ]);
+    });
+
+    it("withholds a line only the withheld var declared, and keeps the lines something published still reaches", () => {
+      const ref = buildPackReference(
+        declaredInput({ withheld: { contracts: [], vars: ["spotter.clip"], conds: [], cases: [] } }),
+      );
+
+      expect(ref.recordingScript.find((g) => g.group === "spotter")?.lines.map((l) => l.base)).toEqual([
+        "car-left",
+        "car-right",
+      ]);
+      expect(lineOf(ref, "spotter", "car-left")).toMatchObject({ usedBy: ["pit-crew.spotter-call"], viaVar: [] });
     });
   });
 
@@ -1170,6 +1236,28 @@ describe("descriptionNamesGroup", () => {
     expect(descriptionNamesGroup("drawn from the lap-time-decimal group", "decimal")).toBe(false);
     expect(descriptionNamesGroup("Draws from the session-start-greeting clip group.", "session-start")).toBe(false);
     expect(descriptionNamesGroup("a gap/ahead-closing line", "ahead-closing")).toBe(false);
+  });
+});
+
+describe("varDrawsLine and varDrawsWholeGroup (issue #1718)", () => {
+  const undeclared = { description: "drawn from the spotter group" };
+  const declared = { description: "drawn from the spotter group", draws: [{ group: "spotter", base: "car-left" }] };
+
+  it("reads a var that declared no draws by its description, per group", () => {
+    expect(varDrawsWholeGroup(undeclared, "spotter")).toBe(true);
+    expect(varDrawsWholeGroup(undeclared, "flags")).toBe(false);
+    expect(varDrawsLine(undeclared, "spotter", "anything")).toBe(true);
+    expect(varDrawsLine(undeclared, "flags", "green")).toBe(false);
+  });
+
+  it("reads a var that declared its draws by the declaration alone, per line — never by its description", () => {
+    expect(varDrawsWholeGroup(declared, "spotter")).toBe(false);
+    expect(varDrawsLine(declared, "spotter", "car-left")).toBe(true);
+    expect(varDrawsLine(declared, "spotter", "car-right")).toBe(false);
+    expect(varDrawsLine(declared, "other", "car-left")).toBe(false);
+    // An empty declaration is a closed set that draws nothing.
+    expect(varDrawsLine({ ...declared, draws: [] }, "spotter", "car-left")).toBe(false);
+    expect(varDrawsWholeGroup({ ...declared, draws: [] }, "spotter")).toBe(false);
   });
 });
 
