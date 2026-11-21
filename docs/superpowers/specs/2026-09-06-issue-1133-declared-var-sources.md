@@ -4,6 +4,13 @@
 
 # A var declares the clips it draws from
 
+> **Amended 2026-11-21: #1718 ships a first instance of this declaration, in a different shape.** Build on what shipped rather than the shape below ([#1718's spec](2026-11-17-issue-1718-spotter-clips-as-pools.md)):
+>
+> - The field is `options.draws: readonly { group, base, contracts? }[]`, one entry per `(group, base)` pool, not one `{ group, bases? }` object per var. `vocabulary()` reports it only when declared. `spotterClip` is the only var that declares it.
+> - "Any base of a group" (open-ended vars such as corner or driver names) has no form yet. This issue adds one (for example an entry without `base`) and decides how `lint:pack` treats it; until then such vars stay on `descriptionNamesGroup`.
+> - The per-draw `contracts` scope exists, and `lint:pack` already reads the live script per contract for a scoped draw (`declaredVarReferences`), as do the recording script (`varDrawsLine`, `varDrawsWholeGroup` in `pack-reference.ts`) and `bundled-scripts.test.ts`. The per-contract section below builds on that.
+> - `descriptionNamesGroup` and `VAR_DRIVEN_BASES` still exist after #1718; retiring them stays with this issue.
+
 ## Prose is the only link, and two tools stand on it
 
 A vocabulary var's resolver returns a clip path or a `poolRef(group, base)` at fire time; nothing static says which group that is. #1066 needed the answer twice — the recording script's "which callouts draw from this line, via which var" and `lint:pack`'s "is this shipped clip an orphan" — and got it by regex over the var's `description` (`descriptionNamesGroup`: the text names `<group>/` or `<group> [clip] group`). Every description in the catalog was written to fit the regex, which is the tell: the descriptions are doing a job data should do. The consequences are known and accepted for the MVP: `lint:pack`'s exemption is per group, so a misspelled clip in a group any var names is never reported; a description that merely mentions another group disables orphan checking for that group in every pack; nothing can test that a description matches its resolver.
