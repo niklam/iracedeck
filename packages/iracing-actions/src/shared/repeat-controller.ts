@@ -23,7 +23,16 @@ export interface RepeatEntry {
   next?: ReturnType<typeof setTimeout>;
   safety: ReturnType<typeof setTimeout>;
   options: RepeatOptions;
+  /**
+   * Settles once every first press handed to {@link RepeatController.runFirstPress}
+   * for this hold has settled, whether it resolved or threw (#1693).
+   */
+  firstPress?: Promise<void>;
+  /** Whether {@link firstPress} is still pending. */
+  firstPressPending?: boolean;
 }
+
+const noop = (): void => {};
 
 /**
  * Shared long-press repeat state machine.
@@ -33,6 +42,11 @@ export interface RepeatEntry {
  * time. Releasing the button (onKeyUp/clear/clearAll) stops the loop promptly
  * even when an execute is in flight, and a safety timeout guarantees the loop
  * cannot outlive `options.safetyMs` if the keyUp is ever lost.
+ *
+ * The press a hold starts with goes through {@link runFirstPress}, so the
+ * first repeat waits for it too (#1693): a SimHub tap is two HTTP requests, and
+ * a repeat that started while a stalled first tap was still between them merged
+ * into it, so the driver got one long press instead of a press and a repeat.
  */
 export class RepeatController {
   /** @internal Exposed for action classes and test compat. */
@@ -77,10 +91,58 @@ export class RepeatController {
       }
 
       entry.hold = undefined;
+
+      // The first press is still in flight (a stalled SimHub tap): the first
+      // repeat waits for it, then follows it `intervalMs` later, the spacing the
+      // loop keeps between its own ticks. Once it has settled, as it has on the
+      // normal fast path, the tick is scheduled at once, as before.
+      if (entry.firstPressPending && entry.firstPress) {
+        this.logger.debug("First repeat waits for the first press to finish");
+        void entry.firstPress.then(() => {
+          // A new onKeyDown, a release or the safety timeout may have replaced
+          // or cleared the entry while the first press was in flight.
+          if (this.timers.get(buttonId) !== entry) return;
+
+          this.scheduleRepeatTick(buttonId);
+        });
+
+        return;
+      }
+
       this.scheduleRepeatTick(buttonId);
     }, options.holdMs);
 
     this.timers.set(buttonId, { hold, safety, options });
+  }
+
+  /**
+   * Run the press a hold starts with, and make the hold's repeat loop wait for
+   * it (#1693). Call it right after {@link onKeyDown}, with nothing awaited in
+   * between, for everything the key does before its first repeat may start: the
+   * first execute, and a black box shown ahead of it.
+   *
+   * `press` starts synchronously, and the result is its own, so a caller awaits
+   * it and reads it as before. When the hold timer fires while the press is
+   * still in flight, the first repeat is scheduled once it settles, whether it
+   * resolved or threw. With no hold armed for the button (a key that does not
+   * repeat) it only runs `press`.
+   */
+  runFirstPress<T>(buttonId: string, press: () => Promise<T> | T): Promise<T> {
+    const entry = this.timers.get(buttonId);
+    const result = (async () => press())();
+
+    if (entry) {
+      const settled = result.then(noop, noop);
+      const all = entry.firstPress ? Promise.all([entry.firstPress, settled]).then(noop) : settled;
+
+      entry.firstPress = all;
+      entry.firstPressPending = true;
+      void all.then(() => {
+        if (entry.firstPress === all) entry.firstPressPending = false;
+      });
+    }
+
+    return result;
   }
 
   /** Mark the button released and clear all of its timers. */
