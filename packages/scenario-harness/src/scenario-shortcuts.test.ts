@@ -37,7 +37,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ALL_EVENT_NAMES } from "./event-names.js";
 import { MockSDKController, type TelemetryPatch } from "./mock-sdk-controller.js";
-import { failedRunTeardown, SCENARIO_SHORTCUTS, servedShortcut, type TelemetryStep } from "./scenario-shortcuts.js";
+import {
+  failedRunTeardown,
+  SCENARIO_SHORTCUTS,
+  type ScenarioShortcut,
+  servedShortcut,
+  type TelemetryStep,
+} from "./scenario-shortcuts.js";
 
 type Published = { event: string; data: unknown };
 
@@ -1690,6 +1696,7 @@ describe("the teardown after a failed run (issues #1167, #1113)", () => {
       "traffic-pit-exit-clear",
       "traffic-pit-exit-merge",
       "traffic-pit-exit-traffic",
+      "traffic-rejoin-train",
     ]);
   });
 
@@ -1731,5 +1738,48 @@ describe("the teardown after a failed run (issues #1167, #1113)", () => {
         });
       }
     }
+  });
+});
+
+describe("the rejoin train's teardown (issue #1113)", () => {
+  beforeEach(() => {
+    initializeEventBus(silentLogger);
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    _resetSimEventsIracing();
+    _resetEventBus();
+  });
+
+  it("hands the next button a live translator after a run that failed with replay mode open", () => {
+    // The train's first step opens a replay-mode bracket and its second closes
+    // it. A POST failing between them leaves the mock in replay, where the
+    // translator publishes nothing for any button, unless the UI's failure
+    // path has a teardown to apply — the served copy, as the page reads it.
+    const train = servedShortcut(SCENARIO_SHORTCUTS.find((s) => s.id === "traffic-rejoin-train") as ScenarioShortcut);
+    const { controller, events } = startTranslator();
+    // As the route applies a step with the tick loop paused: one tick if it asks, then only the clock.
+    const post = (steps: readonly TelemetryStep[]): void => {
+      for (const step of steps) {
+        controller.mutateTelemetry(step.patch as TelemetryPatch);
+
+        if (step.tick === true) controller.tickOnce();
+
+        vi.advanceTimersByTime(step.holdMs ?? 0);
+      }
+    };
+
+    post(train.telemetrySequence?.slice(0, 1) ?? []);
+
+    expect(controller.getState().telemetry.IsReplayPlaying).toBe(true);
+
+    post(train.failedRunTeardownSequence ?? []);
+    events.length = 0;
+    // The next button's first step: a caution thrown.
+    post([{ patch: { SessionFlags: Flags.Servicible | Flags.StartHidden | Flags.CautionWaving }, tick: true }]);
+
+    expect(events.map((e) => e.event)).toContain("flag.caution-waving.raised");
   });
 });

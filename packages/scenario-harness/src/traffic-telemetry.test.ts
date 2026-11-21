@@ -38,6 +38,7 @@ import {
   TRAFFIC_PIT_EXIT_PLAYER_ETA_S,
   TRAFFIC_REJOIN_SEQUENCE,
   TRAFFIC_REJOIN_SEQUENCE_UNLEARNED,
+  TRAFFIC_REJOIN_TEARDOWN,
   trafficPitExitLandmarkSection,
   trafficPitExitSequence,
 } from "./traffic-telemetry.js";
@@ -196,7 +197,8 @@ describe("the rejoin train (issue #1113)", () => {
   it("plays the same on a second press", () => {
     const { controller, events } = startTranslator("race");
 
-    runSequence(controller, TRAFFIC_REJOIN_SEQUENCE);
+    // The press as the UI makes it: the run, then the shortcut's teardown.
+    runSequence(controller, [...TRAFFIC_REJOIN_SEQUENCE, ...TRAFFIC_REJOIN_TEARDOWN]);
     events.length = 0;
     runSequence(controller, TRAFFIC_REJOIN_SEQUENCE);
 

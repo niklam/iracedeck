@@ -117,7 +117,7 @@ const FIELD_DELETED: Record<string, null> = {
 };
 
 /**
- * The run's last two steps: a replay-mode bracket that puts the player back on
+ * A run's last steps: a replay-mode bracket that puts the player back on
  * the circuit at racing speed, off pit road, and deletes the per-car arrays,
  * so the next button starts from the presets' premise (the caution extra-lap
  * button counts on no per-car lap progress) and nothing the run arranged is
@@ -302,7 +302,9 @@ const REJOIN_DRIVE_AWAY_MS = 2500;
  * the two-tick learning lap ({@link rejoinLearningTick}); then the stop and
  * the snapshots, each held past the detector's evaluation interval and ticked
  * again one interval in ({@link rejoinSnapshotSteps}); then the
- * player drives away (the episode ends silently) and the teardown bracket.
+ * player drives away (the episode ends silently). The teardown bracket is
+ * not part of it: it is the shortcut's {@link TRAFFIC_REJOIN_TEARDOWN}, which
+ * the UI also applies after a run that failed part-way.
  * The snapshots jump the cars seconds at a time: the detector re-times the
  * field once a second and speaks on a verdict change, so a compressed picture
  * is heard exactly as a continuous one would be.
@@ -317,6 +319,16 @@ export const TRAFFIC_REJOIN_SEQUENCE: readonly TelemetryStep[] = rejoinSequence(
  * @internal Exported for testing
  */
 export const TRAFFIC_REJOIN_SEQUENCE_UNLEARNED: readonly TelemetryStep[] = rejoinSequence(false);
+
+/**
+ * The rejoin train's teardown (`ScenarioShortcut.teardownSequence`): the
+ * replay-mode bracket that hands the circuit back with the field deleted. A
+ * teardown rather than the run's last steps, so the UI applies it after a
+ * failed POST too — one between the run's opening bracket steps would
+ * otherwise leave the mock in replay, where the translator publishes nothing
+ * for any button — and it puts the harness right from any prefix of the run.
+ */
+export const TRAFFIC_REJOIN_TEARDOWN: readonly TelemetryStep[] = TRAFFIC_TEARDOWN;
 
 function rejoinSequence(learn: boolean): TelemetryStep[] {
   return [
@@ -358,7 +370,6 @@ function rejoinSequence(learn: boolean): TelemetryStep[] {
     // `traffic.rejoinTowed`, which cuts a rejoin line in flight.
     { patch: { Speed: RACING_SPEED_MPS }, holdMs: REJOIN_DRIVE_AWAY_MS, tick: true },
     { patch: {}, holdMs: 0, tick: true },
-    ...TRAFFIC_TEARDOWN,
   ];
 }
 

@@ -65,7 +65,7 @@ import {
 } from "./rolling-start-grid.js";
 import { type ComposedTarget, composeSectorComparison } from "./sector-comparison-snapshot.js";
 import type { ShortcutPrecondition } from "./shortcut-preconditions.js";
-import { TRAFFIC_REJOIN_SEQUENCE } from "./traffic-telemetry.js";
+import { TRAFFIC_REJOIN_SEQUENCE, TRAFFIC_REJOIN_TEARDOWN } from "./traffic-telemetry.js";
 
 /** Fields every shortcut carries, whatever it drives. */
 type ScenarioShortcutBase = {
@@ -265,7 +265,17 @@ export type TelemetrySequenceShortcut = ScenarioShortcutBase & {
   data?: never;
   precedingEvents?: never;
   telemetryPatch?: never;
-  teardownSequence?: never;
+  /**
+   * Optional steps applied AFTER the sequence (issue #1113), as a bus-event
+   * shortcut's {@link BusEventShortcut.teardownSequence} is applied after its
+   * publish, and on the same terms: the UI runs it whenever the run wrote any
+   * telemetry, its failed-run copy ({@link failedRunTeardown}) after a step
+   * failed. A sequence that opens a replay-mode bracket or leaves state behind
+   * puts the harness right here rather than in its own last steps, which a
+   * POST failing part-way never reaches: the rejoin train, whose first step
+   * opens replay mode and whose run leaves the player stopped among a field.
+   */
+  teardownSequence?: readonly TelemetryStep[];
   /**
    * Optional qualifying lap-invalidation snapshot, posted BEFORE the first
    * step (issue #1211) — the push the bus-event shortcuts make, which the UI
@@ -3705,6 +3715,7 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
     description:
       'Drives the TRANSLATOR: you spin to a stop on the circuit while a car closes from 25 to 12, 8, 5 and 1.5 seconds away and goes by, with two more behind it, in two classes. About seventeen seconds. Apply the race session preset first (it names your car); no telemetry preset is needed, the button puts the field on track itself. Expect four lines, only for a car under ten seconds away, each drawn from its pools so the wording varies: nothing on stopping or as the lead car closes to 12 s, the first call at 8 s ("Car coming in about eight seconds. Watch out."), the count at 5 s ("Getting closer, about five seconds."), the right-behind line at 1.5 s ("Car right behind you. Watch out."), nothing once it has gone by while the next car is still 10 s or more away, and that car\'s own first call at 6 s ("Car coming in about six seconds. Watch out."). Nothing as you drive away. Refused while the mock SDK is disconnected: a disconnected translator sees no ticks.',
     telemetrySequence: TRAFFIC_REJOIN_SEQUENCE,
+    teardownSequence: TRAFFIC_REJOIN_TEARDOWN,
   },
 
   // ── Track Conditions — Worsening ──

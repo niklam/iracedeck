@@ -491,7 +491,9 @@ function renderShortcuts() {
             // put a translator STATE in front of the publish (a rolling-start
             // formation, for "One Lap to Green") takes it away again
             // afterwards: the same steps as a `telemetrySequence`, run after
-            // the publish. The page-wide lock holds through them, so the
+            // the publish. Since #1113 a sequence shortcut may carry one too,
+            // run after its sequence: the rejoin train, whose first step opens
+            // replay mode. The page-wide lock holds through them, so the
             // listening time in the first step is covered too.
             //
             // In `finally`, and whenever the run wrote any telemetry, NOT
