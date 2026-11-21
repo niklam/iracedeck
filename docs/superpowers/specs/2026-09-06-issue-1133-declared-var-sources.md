@@ -8,7 +8,7 @@
 >
 > - The field is `options.draws: readonly { group, base, contracts? }[]`, one entry per `(group, base)` pool, not one `{ group, bases? }` object per var. `vocabulary()` reports it only when declared. `spotterClip` is the only var that declares it.
 > - "Any base of a group" (open-ended vars such as corner or driver names) has no form yet. This issue adds one (for example an entry without `base`) and decides how `lint:pack` treats it; until then such vars stay on `descriptionNamesGroup`.
-> - The per-draw `contracts` scope exists, and `lint:pack` already reads the live script per contract for a scoped draw (`declaredVarReferences`), as do the recording script (`varDrawsLine`, `varDrawsWholeGroup` in `pack-reference.ts`) and `bundled-scripts.test.ts`. The per-contract section below builds on that.
+> - The per-draw `contracts` scope exists, and `lint:pack` and `bundled-scripts.test.ts` already read the live script per contract for a scoped draw, through `declaredDrawReferences` in `audio-scenarios/src/reference/declared-draws.ts`; the recording script resolves declared draws to lines through the voice's pool-to-lines map (`varDrawsLine(v, group, base, linesOfPool)`, with `varDrawsWholeGroup` for the description heuristic, in `pack-reference.ts`). The per-contract section below builds on that.
 > - `descriptionNamesGroup` and `VAR_DRIVEN_BASES` still exist after #1718; retiring them stays with this issue.
 
 ## Prose is the only link, and two tools stand on it
