@@ -7,7 +7,7 @@ sidebar:
     variant: tip
 ---
 
-Camera Controls combines camera group selection, camera cycling, and focus targeting into one action. Most modes are driven by the iRacing SDK camera commands and need no configuration. Two use iRacing's own key bindings instead: **Cycle Sub-Camera** triggers Next / Previous Sub Camera, because the sim's camera commands cannot step a sub-camera (see [that mode](#cycle-sub-camera)), and **Cycle by Track Order** triggers Next / Previous Car, so iRacing itself picks the car ahead or behind, live and in a replay (see [that mode](#cycle-by-track-order)). Both come preconfigured with iRacing's default keys, so they work out of the box. Placed on a Stream Deck+ dial the action becomes a camera dial — turn to flip through cameras or cars with the live focus on the touch strip ([On a dial](#on-a-dial)).
+Camera Controls combines camera group selection, camera cycling, and focus targeting into one action. Most modes are driven by the iRacing SDK camera commands and need no configuration. Two use iRacing's own key bindings instead: **Cycle Sub-Camera** triggers Next / Previous Sub Camera, because the sim's camera commands cannot step a sub-camera (see [that mode](#cycle-sub-camera)), and **Cycle by Track Order** triggers Next / Previous Car, so iRacing itself picks the car ahead or behind, live and in a replay (see [that mode](#cycle-by-track-order)). Both come preconfigured with iRacing's default keys, so they work out of the box. Change Camera and Cycle Camera reach any camera group a custom camera file defines, not only iRacing's standard ones, and remember them for setting up keys away from the track ([Custom camera files](#custom-camera-files)). Placed on a Stream Deck+ dial the action becomes a camera dial — turn to flip through cameras or cars with the live focus on the touch strip ([On a dial](#on-a-dial)).
 
 In a replay, a camera switch made while the replay is jumping — a Replay Markers jump, a Replay Control Jump to Fastest Lap landing, a fast Frame Jog spin — goes out once the jump has landed, because iRacing ignores a camera change during a jump; a further camera press meanwhile, here or on Replay Control, key or dial, replaces it, so the camera moves once. A mode that changes the car, a car key on the [Car Selector](#focus-car-pick-from-grid) grid included, stops a Replay Control [Jump to Fastest Lap](/docs/actions/view-camera/replay-control/#jump-to-fastest-lap) or [Jump to Race Start](/docs/actions/view-camera/replay-control/#jump-to-race-start) search instead: the replay goes back to where it was when that search began, and then the camera switches. Cycle Camera, Cycle Driving Camera, Change Camera and Cycle Sub-Camera change only the angle, so they wait for a jump but leave a search running. Set Camera State always acts at once.
 
@@ -17,27 +17,46 @@ Select the mode from the **Mode** dropdown in the Property Inspector.
 
 ### Change Camera
 
-Switch to one specific camera group — Nose, Cockpit, TV1, TV Mixed and so on. Useful when you want a single button to always jump to the same camera.
+Switch to one specific camera group — Nose, Cockpit, TV1, TV Mixed and so on, or any group a custom camera file defines (see [Custom camera files](#custom-camera-files)). Useful when you want a single button to always jump to the same camera.
 
 #### Details
 
 - **Method:** iRacing API — no key binding needed
 - **Dial:** No rotation support
 - **Default binding:** No keyboard binding
-- **Telemetry-aware icon:** No
+- **Telemetry-aware icon:** Yes — the button is drawn greyed while the session you are in has no camera group of its name
 
 #### Setting: Camera Group
 
-The camera group to switch to, picked by name from a dropdown that lists all 25 groups iRaceDeck knows, sorted into four sections. Defaults to **Cockpit**.
+The camera group to switch to. Defaults to **Cockpit**. The dropdown lists, in this order:
 
-- **Car** — Nose, Gearbox, Cockpit, Roll Bar, Gyro, and the four suspension cameras
-- **Chase** — Chase, Far Chase, Rear Chase
-- **Track** — TV1, TV2, TV3, Scenic, Pit Lane, Pit Lane 2, TV Static, TV Mixed, TV4, Spotter, Spectator
-- **Aerial** — Chopper, Blimp
+- **On this track** — every camera group of the session you are in, in iRacing's order, standard and custom alike. When at least one of them is not one of the 25 standard groups, the heading reads **On this track (custom camera file)**, so you can see at a glance that your own camera file is the one loaded. Not shown while iRacing isn't running.
+- **Car**, **Chase**, **Track** and **Aerial** — the 25 standard groups, less any already listed under On this track, each marked *(not on this track)* while a session is loaded:
+  - **Car** — Nose, Gearbox, Cockpit, Roll Bar, Gyro, and the four suspension cameras
+  - **Chase** — Chase, Far Chase, Rear Chase
+  - **Track** — TV1, TV2, TV3, Scenic, Pit Lane, Pit Lane 2, TV Static, TV Mixed, TV4, Spotter, Spectator
+  - **Aerial** — Chopper, Blimp
+- **Other remembered groups** — every other group iRaceDeck remembers, alphabetically, with up to three tracks whose camera file has it: `Drone (not on this track: Spa, Monza +2)` while a session is loaded, `Drone (on Spa, Monza +2)` while none is, or *(seen before)* when no track's camera file has it any more.
+- **Saved on this key** — the button's own group, when none of the lists above has it, so a button never looks unset.
+- **Other…** — opens a text field where you type a group name yourself.
 
-The button finds the group by its **name** in the session you are in, so it reaches the same camera on every car and track even though iRacing numbers its camera groups differently from one track to the next.
+The button finds the group by its **name** in the session you are in, so it reaches the same camera on every car and track even though iRacing numbers its camera groups differently from one track to the next. A name is matched exactly first, then ignoring upper and lower case, so a typed `dynamictv` reaches `DynamicTV`. If a camera file has two groups whose names differ only in case, only the exact spelling reaches either of them.
 
-Not every track has every group. TV Static and TV Mixed exist on most content, while TV4, Spotter and Spectator are only on some — so far they have turned up on oval and dirt tracks. If the session you are in has no group of that name, pressing the button does nothing (the plugin log notes it) rather than switching to an unrelated camera.
+Not every track has every group. TV Static and TV Mixed exist on most content, while TV4, Spotter and Spectator are only on some — so far they have turned up on oval and dirt tracks — and a custom group exists only where a camera file defines it. If the session you are in has no group of that name, the button is drawn greyed and pressing it does nothing (the plugin log notes it) rather than switching to an unrelated camera. It looks normal again as soon as a session that has the group is loaded.
+
+Each standard group has an icon of its own. A custom group shows one shared camera-group icon with the group's name as its title, upper-cased like the standard ones — `CAMERA` over `DYNAMICTV` — and **Title Text** replaces it as on any other key.
+
+#### Custom camera files
+
+iRacing's standard cameras come in the 25 groups above, but a camera file — loaded through iRacing's Camera Tool, or loaded automatically for a track — can define any groups under any names. Broadcast camera packages often ship 20 or 30, such as `DynamicTV`, `Grid_Pole` or `SpeedCam`. Change Camera and [Cycle Camera](#cycle-camera) can use every one of them.
+
+Whenever iRacing reports a session's camera groups, live or in a replay, iRaceDeck remembers them: every group name it has seen, and for each track the groups its camera file had the last time that track was loaded. The list is kept in `cameras.json`, next to your [settings file](/docs/getting-started/settings/#where-your-settings-are-stored), so it survives restarts and updates, and you can set up a deck with iRacing closed or at another track. A track's list is replaced each time the track is loaded, so a group dropped from its camera file stops showing as on that track; the name itself stays remembered until you remove it on the Settings window's [General](/docs/getting-started/settings/#general) tab. If you load a camera file after joining a session, its groups appear in the dropdown and the Cycle Camera grids once iRacing reports the new groups to iRaceDeck.
+
+Each name is its own group. `Drone` on one track and `Dynamic TV` on another are two groups, even when you use them for the same kind of shot, and a button set to `Drone` does nothing on a track whose camera file has only `Dynamic TV`. Give the group the same name in both camera files, or put the two on two buttons.
+
+If `cameras.json` is damaged and cannot be read, iRaceDeck keeps it next to the original as `cameras.corrupt-<date>.json`, shows a banner saying so, and starts a fresh list from the next session. Your buttons keep their camera groups either way.
+
+If you go back to an older iRaceDeck version, a button set to a standard group keeps pressing that group. A button set to a custom group presses the standard group it was set to before, or Cockpit if it never had one, since an older version knows no custom groups.
 
 ---
 
@@ -61,7 +80,9 @@ Cycle through camera groups. The **Direction** setting picks whether pressing th
 
 A checkbox grid in the Property Inspector lets you pick exactly which groups should participate in the cycle. By default Nose, Cockpit, Chase, TV1, TV2, and TV3 are enabled; every other group starts unchecked, including TV Static, TV Mixed, TV4, Spotter, and Spectator. Use **Select All** / **Clear Selection** to manage the list quickly.
 
-Not every track has every group — TV4, Spotter and Spectator in particular are only on some content, such as oval and dirt tracks. The cycle simply skips any enabled group the session you are in doesn't have, so enabling one costs nothing on a track without it.
+After the four standard sections, a **Remembered groups** section lists every custom camera group iRaceDeck remembers (see [Custom camera files](#custom-camera-files)). The custom groups of the track you are in come first, in iRacing's order; the rest follow alphabetically and dimmed, and hovering one shows the tracks it was seen on. A custom group always starts unchecked. **Select All** checks the standard groups and this track's custom groups and leaves the other remembered groups as they are; **Clear Selection** unchecks every group. A custom group you have checked stays in the list even after you remove it from the remembered groups, so you can still uncheck it.
+
+Not every track has every group — TV4, Spotter and Spectator in particular are only on some content, such as oval and dirt tracks, and a custom group exists only where a camera file defines it. The cycle simply skips any enabled group the session you are in doesn't have, so enabling one costs nothing on a track without it. If none of the enabled groups is in the session, pressing the button does nothing (the plugin log notes it).
 
 Each button stores its own subset, so different buttons can cycle different sets. A button that has never saved a selection follows the plugin-global camera set — the one the dial's Cycle Camera mode uses — until you change its grid, which then takes precedence for that button.
 
@@ -72,7 +93,9 @@ What the button's icon shows while iRacing is running. Defaults to **Next camera
 - **Next camera** (default) — the camera group the next press will switch to, following the **Direction** setting
 - **Current camera** — the camera group iRacing is on right now, the way a pit-service key shows its current value. It follows the camera however it was changed — this button, another key, a dial, or iRacing itself — and shows the group even when it isn't one of the groups this button cycles through
 
-While iRacing isn't connected the button shows a grid of its enabled groups, whichever option you pick; **Current camera** shows that same grid while iRacing is on a group iRaceDeck has no icon for. Each button has its own setting, so one key can show where the next press goes while another shows the live camera. The setting is for keys only — on a dial the touch strip already shows the current group in the centre with its neighbours at the sides.
+A custom group is shown with the shared camera-group icon and its name, as on a [Change Camera](#change-camera) button. With **Current camera**, the button is drawn greyed while none of its enabled groups is in the session you are in, since a press would do nothing.
+
+While iRacing isn't connected the button shows a grid of its enabled groups, whichever option you pick. Each button has its own setting, so one key can show where the next press goes while another shows the live camera. The setting is for keys only — on a dial the touch strip already shows the current group in the centre with its neighbours at the sides.
 
 ---
 
@@ -362,7 +385,7 @@ Flips the turn direction of the selected mode. Off by default, which gives the s
 
 #### Setting: Camera Groups (Cycle Camera)
 
-When the dial mode is **Cycle Camera**, a checkbox grid lets you pick which camera groups the dial cycles through and previews on the carousel. This is the **plugin-global camera set** — every dial shares it, and keypad Cycle Camera buttons follow it too until a button saves its own per-button selection. Use **Select All** / **Clear Selection** to manage it quickly. It lists the same groups as the keypad grid: TV Static, TV Mixed, TV4, Spotter, and Spectator start unchecked, and an enabled group the session doesn't have is skipped, both when turning and in the carousel.
+When the dial mode is **Cycle Camera**, a checkbox grid lets you pick which camera groups the dial cycles through and previews on the carousel. This is the **plugin-global camera set** — every dial shares it, and keypad Cycle Camera buttons follow it too until a button saves its own per-button selection. Use **Select All** / **Clear Selection** to manage it quickly. It lists the same groups as the keypad grid, its **Remembered groups** section of custom camera groups included (see [Custom camera files](#custom-camera-files)): TV Static, TV Mixed, TV4, Spotter, Spectator and every custom group start unchecked, and an enabled group the session doesn't have is skipped, both when turning and in the carousel. A custom group shows on the carousel with the shared camera-group icon and its name.
 
 #### Setting: Press Action / Long Press
 
