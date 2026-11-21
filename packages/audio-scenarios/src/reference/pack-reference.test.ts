@@ -1242,22 +1242,43 @@ describe("descriptionNamesGroup", () => {
 describe("varDrawsLine and varDrawsWholeGroup (issue #1718)", () => {
   const undeclared = { description: "drawn from the spotter group" };
   const declared = { description: "drawn from the spotter group", draws: [{ group: "spotter", base: "car-left" }] };
+  // Pool → the lines whose files answer it, as `buildRecordingScript` builds it.
+  const linesOfPool = new Map<string, ReadonlySet<string>>([
+    ["spotter/car-left", new Set(["spotter/car-left"])],
+    ["spotter/car-right", new Set(["spotter/car-right"])],
+    ["other/car-left", new Set(["other/car-left"])],
+  ]);
 
   it("reads a var that declared no draws by its description, per group", () => {
     expect(varDrawsWholeGroup(undeclared, "spotter")).toBe(true);
     expect(varDrawsWholeGroup(undeclared, "flags")).toBe(false);
-    expect(varDrawsLine(undeclared, "spotter", "anything")).toBe(true);
-    expect(varDrawsLine(undeclared, "flags", "green")).toBe(false);
+    expect(varDrawsLine(undeclared, "spotter", "anything", linesOfPool)).toBe(true);
+    expect(varDrawsLine(undeclared, "flags", "green", linesOfPool)).toBe(false);
   });
 
   it("reads a var that declared its draws by the declaration alone, per line — never by its description", () => {
     expect(varDrawsWholeGroup(declared, "spotter")).toBe(false);
-    expect(varDrawsLine(declared, "spotter", "car-left")).toBe(true);
-    expect(varDrawsLine(declared, "spotter", "car-right")).toBe(false);
-    expect(varDrawsLine(declared, "other", "car-left")).toBe(false);
+    expect(varDrawsLine(declared, "spotter", "car-left", linesOfPool)).toBe(true);
+    expect(varDrawsLine(declared, "spotter", "car-right", linesOfPool)).toBe(false);
+    expect(varDrawsLine(declared, "other", "car-left", linesOfPool)).toBe(false);
     // An empty declaration is a closed set that draws nothing.
-    expect(varDrawsLine({ ...declared, draws: [] }, "spotter", "car-left")).toBe(false);
+    expect(varDrawsLine({ ...declared, draws: [] }, "spotter", "car-left", linesOfPool)).toBe(false);
     expect(varDrawsWholeGroup({ ...declared, draws: [] }, "spotter")).toBe(false);
+  });
+
+  it("resolves a declared draw to the lines its pool plays, as a pool step is — a base with a take suffix included", () => {
+    // `green-01.mp3` beside `green-01-01.mp3`: the pool `flags/green-01`
+    // plays both files, filed under the lines `green` and `green-01`.
+    const takeNamed = new Map<string, ReadonlySet<string>>([
+      ["flags/green", new Set(["flags/green"])],
+      ["flags/green-01", new Set(["flags/green", "flags/green-01"])],
+    ]);
+    const drawsTake = { description: "", draws: [{ group: "flags", base: "green-01" }] };
+
+    expect(varDrawsLine(drawsTake, "flags", "green", takeNamed)).toBe(true);
+    expect(varDrawsLine(drawsTake, "flags", "green-01", takeNamed)).toBe(true);
+    // A draw no shipped file answers credits no line.
+    expect(varDrawsLine(declared, "spotter", "car-left", new Map())).toBe(false);
   });
 });
 

@@ -510,14 +510,31 @@ export function varDrawsWholeGroup(v: VarAttribution, group: string): boolean {
 }
 
 /**
- * Whether a var draws the line `group/base`: the line is one of its declared
- * `draws` when it declared them (#1718), else its description names the
- * group ({@link varDrawsWholeGroup} — per group, since which base an
- * undeclared resolver picks is a runtime decision). The recording script's
- * `viaVar` column.
+ * Whether a var draws the line `group/base`: one of its declared `draws`
+ * plays from that line when it declared them (#1718), else its description
+ * names the group ({@link varDrawsWholeGroup} — per group, since which base
+ * an undeclared resolver picks is a runtime decision). The recording
+ * script's `viaVar` column.
+ *
+ * A declared draw is a pool, so it is resolved to its lines the way a
+ * script's own `pool:` step is: through `linesOfPool` (`group/base` pool →
+ * the `group/base` lines whose files answer it, as the engine resolves it
+ * against the voice's files). A draw is not compared with the line by name,
+ * which would credit the wrong line for a base that itself ends in a take
+ * suffix (`flags/green-01` draws `green-01.mp3`, filed under line `green`),
+ * and credits no line when no shipped file answers it.
  */
-export function varDrawsLine(v: VarAttribution, group: string, base: string): boolean {
-  if (v.draws !== undefined) return v.draws.some((draw) => draw.group === group && draw.base === base);
+export function varDrawsLine(
+  v: VarAttribution,
+  group: string,
+  base: string,
+  linesOfPool: ReadonlyMap<string, ReadonlySet<string>>,
+): boolean {
+  if (v.draws !== undefined) {
+    const line = `${group}/${base}`;
+
+    return v.draws.some((draw) => linesOfPool.get(`${draw.group}/${draw.base}`)?.has(line) === true);
+  }
 
   return varDrawsWholeGroup(v, group);
 }
@@ -931,7 +948,7 @@ function buildRecordingScript(
       // it on every line of the group since which line such a resolver picks
       // is a runtime decision (`varDrawsLine`). Their callouts are
       // deliberately NOT folded into `usedBy` (see the type).
-      const allViaVar = vars.filter((v) => varDrawsLine(v, group, base)).map((v) => v.name);
+      const allViaVar = vars.filter((v) => varDrawsLine(v, group, base, linesOfPool)).map((v) => v.name);
       const viaVar = allViaVar.filter((name) => !withheld.vars.has(name));
       const names = [...(bases.get(base) ?? [])].sort((a, b) => takeOrder(a) - takeOrder(b));
       const allUsedBy = sorted(directUsers.get(`${group}/${base}`) ?? []);
