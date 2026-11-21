@@ -19,7 +19,14 @@ import { IRacingNativeMock } from "./mock-impl.js";
 
 // Re-export all types and enums from defines
 export * from "./defines.js";
-export { IRacingNativeMock } from "./mock-impl.js";
+export { IRacingNativeMock, type IRacingNativeMockOptions } from "./mock-impl.js";
+// The mock's two session info YAMLs, for tests that select one (#1653)
+export { MOCK_SESSION_INFO_YAML } from "./mock-data/session-info.js";
+export {
+  MOCK_CUSTOM_CAMERA_GROUP_NAMES,
+  MOCK_CUSTOM_CAMERAS_TRACK_ID,
+  MOCK_SESSION_INFO_YAML_CUSTOM_CAMERAS,
+} from "./mock-data/session-info-custom-cameras.js";
 
 /**
  * How this package's native addon was loaded (#1373). Read once, at module load.

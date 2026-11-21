@@ -13,15 +13,37 @@ import { buildTelemetryBuffer, getBufferSize, MOCK_VAR_HEADERS, MOCK_VAR_INDEX_M
 /** Default interval between snapshot rotations in milliseconds */
 const DEFAULT_ROTATION_INTERVAL_MS = 5000;
 
+/** What a test may choose about the mock (#1653). */
+export interface IRacingNativeMockOptions {
+  /**
+   * The session info YAML the mock serves; default {@link MOCK_SESSION_INFO_YAML}
+   * (Spa, the 25 standard camera groups). `MOCK_SESSION_INFO_YAML_CUSTOM_CAMERAS`
+   * is the broadcaster-shaped variant.
+   */
+  sessionInfoYaml?: string;
+}
+
 export class IRacingNativeMock {
   private connected = false;
   private currentSnapshotIndex = 0;
   private lastRotationTime = 0;
   private rotationIntervalMs: number;
   private sessionInfoUpdate = 0;
+  private sessionInfoYaml: string;
 
-  constructor(rotationIntervalMs = DEFAULT_ROTATION_INTERVAL_MS) {
+  constructor(rotationIntervalMs = DEFAULT_ROTATION_INTERVAL_MS, options: IRacingNativeMockOptions = {}) {
     this.rotationIntervalMs = rotationIntervalMs;
+    this.sessionInfoYaml = options.sessionInfoYaml ?? MOCK_SESSION_INFO_YAML;
+  }
+
+  /**
+   * Serve another session info YAML from now on, and advance the header's
+   * `sessionInfoUpdate` as iRacing does when it publishes a new one — which is
+   * what loading a camera file mid-session looks like to the SDK (#1653).
+   */
+  setSessionInfoYaml(yaml: string): void {
+    this.sessionInfoYaml = yaml;
+    this.sessionInfoUpdate++;
   }
 
   startup(): boolean {
@@ -48,7 +70,7 @@ export class IRacingNativeMock {
       status: 1,
       tickRate: 60,
       sessionInfoUpdate: this.sessionInfoUpdate,
-      sessionInfoLen: MOCK_SESSION_INFO_YAML.length,
+      sessionInfoLen: this.sessionInfoYaml.length,
       sessionInfoOffset: 0,
       numVars: MOCK_VAR_HEADERS.length,
       varHeaderOffset: 0,
@@ -74,7 +96,7 @@ export class IRacingNativeMock {
   getSessionInfoStr(): string | null {
     if (!this.connected) return null;
 
-    return MOCK_SESSION_INFO_YAML;
+    return this.sessionInfoYaml;
   }
 
   getVarHeaderEntry(index: number): VarHeader | null {
