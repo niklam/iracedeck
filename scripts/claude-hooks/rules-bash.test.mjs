@@ -2687,7 +2687,7 @@ describe("nothing relinks a deck host without Niklas's go", () => {
 
   it("says what still needs a go and what does not", () =>
     expect(asks("pnpm relink:stream-deck", linked)).toMatch(
-      /No deck host is relinked, linked or unlinked, nor watched with a restart on every rebuild, without Niklas's go \(#1520, #1737\).*A restart, stop or start asks no prompt: it waits for his go in the conversation\. Builds and installs need none/,
+      /No deck host is relinked, linked or unlinked, nor restarted over and over by a watch or a loop, without Niklas's go \(#1520, #1737\).*A restart, stop or start asks no prompt: it waits for his go in the conversation\. Builds and installs need none/,
     ));
 
   // #1737: confirming the prompt runs the whole chain, so the restart it holds
@@ -3243,6 +3243,104 @@ describe("nothing relinks a deck host without Niklas's go", () => {
   });
 });
 
+// #1737 review: a restart asks no prompt because Niklas's go covers the one
+// restart he asked for. A restart run over and over — under `watch`, by
+// `turbo watch`, in a `while` or `until` loop — restarts the host under him
+// until someone stops it, so it asks, as a rollup watch hook's does, and its
+// finding says why.
+describe("a restart run over and over asks (#1737 review)", () => {
+  it.each([
+    "watch -n 5 pnpm restart:stream-deck",
+    "watch -n 5 'pnpm restart:stream-deck'",
+    "watch --interval=5 pnpm restart:stream-deck",
+    "watch pnpm build:with-restart",
+    "sudo watch pnpm restart:stream-deck",
+    "watch -n 5 'taskkill /im StreamDeck.exe'",
+    "watch streamdeck restart x",
+    "watch node scripts/host-app.mjs stop stream-deck",
+    "watch -n5 'pnpm build; pnpm restart:stream-deck'",
+    "watch 'pnpm build && pnpm restart:stream-deck'",
+    "watch -x bash -c 'pnpm restart:stream-deck'",
+    `bash -c "watch -n 5 pnpm restart:stream-deck"`,
+  ])("asks for a restart run under watch: %s", (c) => {
+    const ask = asks(c);
+    expect(ask).toMatch(/deck host(?: app)?, again every time `watch` reruns it[.;]/);
+    expect(deckFound(c, ctx()).map((f) => f.kind)).toEqual(["watch"]);
+  });
+  it("asks for a relink run under watch, saying so once", () =>
+    expect(asks("watch pnpm relink:stream-deck")).toMatch(
+      /^`pnpm relink:stream-deck` links, unlinks or relinks a deck host, again every time `watch` reruns it\. /,
+    ));
+  // Positive control: what watch reruns restarts nothing, and a restart chained
+  // after an unquoted watch runs once, after it.
+  it("passes what watch reruns when it restarts nothing, and a restart outside it", () => {
+    findsNothing("watch -n 5 pnpm build");
+    findsNothing("watch -n 5 'git status'");
+    restarts("pnpm restart:stream-deck && watch -n 5 pnpm build");
+    restarts("watch -n 5 pnpm build && pnpm restart:stream-deck");
+  });
+
+  it.each([
+    "turbo watch restart:stream-deck",
+    "pnpm turbo watch restart:stream-deck",
+    "npx turbo watch restart:stream-deck",
+    "pnpm exec turbo watch restart:stream-deck",
+    "node_modules/.bin/turbo watch build restart:stream-deck",
+  ])("asks for a restart task turbo watch reruns on every rebuild: %s", (c) =>
+    expect(asks(c)).toMatch(
+      /`turbo watch restart:stream-deck` restarts, stops or starts a deck host, on every rebuild\./,
+    ),
+  );
+  // Positive control: `turbo run` runs the task once.
+  it("passes turbo run of the same task, and a turbo watch that restarts nothing", () => {
+    expect(restarts("turbo run restart:stream-deck")).toMatch(/^`turbo run restart:stream-deck` restarts/);
+    findsNothing("turbo watch build");
+    findsNothing("pnpm turbo watch build typecheck");
+  });
+
+  it.each([
+    "while true; do pnpm restart:stream-deck; sleep 2; done",
+    "until false; do pnpm restart:stream-deck; done",
+    "while :; do streamdeck restart x; done",
+    "while pnpm restart:stream-deck; do sleep 1; done",
+    "while true\ndo\n  pnpm restart:stream-deck\n  sleep 2\ndone",
+    "while true; do for h in a b; do echo $h; done; pnpm restart:stream-deck; done",
+    "for h in a b; do while true; do pnpm restart:stream-deck; done; done",
+    "if true; then while true; do taskkill /im StreamDeck.exe; done; fi",
+    "git status && while true; do node scripts/host-app.mjs stop stream-deck; done",
+    `bash -c "while true; do pnpm restart:stream-deck; done"`,
+  ])("asks for a restart in a while or until loop: %s", (c) => {
+    expect(asks(c)).toMatch(/deck host(?: app)?, again on every pass of its loop[.;]/);
+    expect(deckFound(c, ctx()).map((f) => f.kind)).toEqual(["watch"]);
+  });
+  // Positive control: a `for` over a fixed list is bounded, so its restarts are
+  // restarts; a loop that restarts nothing, a restart after the loop ends and
+  // the words in a mention or a quoted message do not loop.
+  it("passes a for loop over a list, a loop that restarts nothing, and a restart after a loop", () => {
+    expect(restarts("for h in a b; do pnpm restart:stream-deck; done").split("; ")).toHaveLength(1);
+    restarts("for h in stream-deck; do pnpm restart:stream-deck; done && pnpm stop:mirabox");
+    findsNothing("while true; do pnpm build; sleep 2; done");
+    restarts("while true; do sleep 1; done; pnpm restart:stream-deck");
+    restarts("echo while true; pnpm restart:stream-deck");
+    restarts(`git commit -q -m "while true; do x; done" -- a.md && pnpm restart:stream-deck`);
+  });
+
+  const ps = ctx({ shell: POWERSHELL });
+  it.each([
+    "while ($true) { pnpm restart:stream-deck; Start-Sleep 2 }",
+    "while (1) {\n  Stop-Process -Name StreamDeck\n}",
+    "do { pnpm restart:stream-deck } while ($true)",
+    "do { pnpm restart:stream-deck; Start-Sleep 2 } until ($false)",
+  ])("asks for a restart in a PowerShell while or do loop: %s", (c) =>
+    expect(asks(c, ps)).toMatch(/deck host(?: app)?, again on every pass of its loop/),
+  );
+  it("passes a PowerShell foreach over a list, and a restart after a loop", () => {
+    restarts("foreach ($h in 'a','b') { pnpm restart:stream-deck }", ps);
+    restarts("while ($true) { Start-Sleep 1 }; pnpm restart:stream-deck", ps);
+    restarts("Write-Output 'while (1) { x }'; pnpm restart:stream-deck", ps);
+  });
+});
+
 // Second read (#1520): a script name is a list that is always one behind, so
 // a pnpm, npm or `node --run` script is judged by the command line it runs,
 // read from the package.json of the directory it runs in.
@@ -3280,6 +3378,7 @@ describe("a script is judged by what it runs", () => {
     "start:mirabox": "node scripts/host-app.mjs start mirabox",
     "restart:sneaky": "pnpm build && pnpm relink:mirabox",
     "stop:sneaky": "streamdeck unlink -d com.iracedeck.sd.core",
+    spin: "while true; do pnpm restart:stream-deck; sleep 5; done",
   };
   // The plugins' real `build` and `watch` lines: Stream Deck's `watch` restarts the host after every rebuild.
   const PLUGIN_BUILD = {
@@ -3392,6 +3491,32 @@ describe("a script is judged by what it runs", () => {
       /`pnpm restart:stream-deck` restarts.*`pnpm stop:sneaky` → `streamdeck unlink`/,
     );
   });
+
+  // #1737 review: a script `watch` reruns, a package task `turbo watch` reruns
+  // and a script that loops are judged by what they run, and their restarts ask.
+  it("asks for a script whose restart runs over and over, saying why", () => {
+    expect(asks("watch -n 5 pnpm build:stream-deck", elsewhere)).toMatch(
+      /^`pnpm build:stream-deck` restarts, stops or starts a deck host, again every time `watch` reruns it\. /,
+    );
+    expect(asks("watch 'pnpm hostkill'", linked)).toMatch(
+      /`pnpm hostkill` → `taskkill … StreamDeck\.exe` stops or starts a deck host app, again every time `watch` reruns it/,
+    );
+    expect(asks("turbo watch reload", elsewhere)).toMatch(
+      /`turbo watch reload` → `streamdeck restart` restarts, stops or starts a deck host, on every rebuild/,
+    );
+    expect(asks("pnpm spin", elsewhere)).toMatch(
+      /`pnpm spin` → `pnpm restart:stream-deck` restarts, stops or starts a deck host, again on every pass of its loop/,
+    );
+    // Positive control: the same scripts run once.
+    restarts("pnpm build:stream-deck", elsewhere);
+    restarts("pnpm hostkill", elsewhere);
+    restarts("turbo run reload", elsewhere);
+  });
+  // The rollup hook's restart says why it asks, so the prompt does not read as a plain restart.
+  it("says the Stream Deck plugin's watch restarts the host on every rebuild", () =>
+    expect(asks("pnpm --filter @iracedeck/iracing-plugin-stream-deck watch", elsewhere)).toMatch(
+      /^`pnpm watch` → `rollup --watch\.onEnd` → `streamdeck restart` restarts, stops or starts a deck host, on every rebuild\. /,
+    ));
 
   // #1526: the Stream Deck plugin's `watch` restarts the host after every
   // rebuild through its rollup hook. It used to be caught only by the

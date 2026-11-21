@@ -1369,8 +1369,11 @@ export const rules = [
     // until it restarts. #1737 took restarts, stops and starts out of the
     // ask: the hook never sees the conversation, so a prompt after Niklas had
     // said "restart Stream Deck" only asked him twice. That rule is now prose
-    // the agent keeps. What links, unlinks or relinks a host, and a watch that
-    // restarts it on every rebuild, still ask; `dev:voices`, which relinks the
+    // the agent keeps. What links, unlinks or relinks a host still asks, and
+    // so does a restart run over and over — by a rollup watch hook, `turbo
+    // watch`, `watch` or a `while` / `until` loop (#1737 review), since his go
+    // for one restart is no go for a host restarted under him until someone
+    // stops it; `dev:voices`, which relinks the
     // hosts already linked to its tree, asks only there — judged per command
     // of the chain in the tree it runs in, and a script by what it runs
     // (`deckFindings` in `script-runs.mjs`, whose findings carry their kind).
@@ -1381,7 +1384,7 @@ export const rules = [
       const found = deckFindings(c, ctx.cwd, ctx, ctx.shell);
       if (found.every((f) => f.kind === "restart")) return null;
       return {
-        ask: `${[...new Set(found.map((f) => f.text))].join("; ")}. No deck host is relinked, linked or unlinked, nor watched with a restart on every rebuild, without Niklas's go (#1520, #1737): confirm only once he has said go. A restart, stop or start asks no prompt: it waits for his go in the conversation. Builds and installs need none.`,
+        ask: `${[...new Set(found.map((f) => f.text))].join("; ")}. No deck host is relinked, linked or unlinked, nor restarted over and over by a watch or a loop, without Niklas's go (#1520, #1737): confirm only once he has said go. A restart, stop or start asks no prompt: it waits for his go in the conversation. Builds and installs need none.`,
       };
     },
   },

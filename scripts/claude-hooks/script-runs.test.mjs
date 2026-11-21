@@ -1,7 +1,7 @@
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { deckFindings, FINDING_KINDS, shellQuote } from "./script-runs.mjs";
+import { deckFindings, FINDING_KINDS, repeated, shellQuote } from "./script-runs.mjs";
 import { BASH, maskInert, POWERSHELL, powershellAsBash, shellWords } from "./shell-lexer.mjs";
 
 // Built through `path`, not written as Windows literals: CI runs on Linux, where
@@ -69,8 +69,42 @@ describe("deckFindings", () => {
     ["pnpm watch:stream-deck", "watch"],
     [`rollup -c -w --watch.onEnd="streamdeck restart x"`, "watch"],
     [`rollup -c -w --watch.onEnd="pnpm relink:mirabox"`, "watch"],
+    // #1737 review: what runs over and over is a watch, however it is repeated.
+    ["watch -n 5 pnpm restart:stream-deck", "watch"],
+    ["watch 'pnpm build && pnpm restart:stream-deck'", "watch"],
+    ["watch pnpm relink:stream-deck", "watch"],
+    ["turbo watch restart:x", "watch"],
+    ["turbo run restart:x", "restart"],
+    ["while true; do pnpm restart:stream-deck; done", "watch"],
+    ["until false; do streamdeck stop x; done", "watch"],
+    ["for h in a b; do pnpm restart:stream-deck; done", "restart"],
+    ["while true; do sleep 1; done; pnpm restart:stream-deck", "restart"],
   ])("gives %s the kind %s", (command, kind) => {
     expect(deckFindings(command, ROOT, ctx({}), BASH).map((f) => f.kind)).toEqual([kind]);
+  });
+
+  it("gives a PowerShell while or do loop's restart the kind watch, and a foreach's restart", () => {
+    const ps = (command) => deckFindings(powershellAsBash(command), ROOT, ctx({}), POWERSHELL).map((f) => f.kind);
+    expect(ps("while ($true) { pnpm restart:stream-deck }")).toEqual(["watch"]);
+    expect(ps("do { pnpm restart:stream-deck } until ($false)")).toEqual(["watch"]);
+    expect(ps("foreach ($h in 'a','b') { pnpm restart:stream-deck }")).toEqual(["restart"]);
+  });
+
+  // #1737 review: an escalated finding says why it asks, once.
+  it("says why a finding repeated over and over asks, once", () => {
+    expect(repeated("`x` restarts", "restart", undefined)).toEqual({ text: "`x` restarts", kind: "restart" });
+    expect(repeated("`x` restarts", "restart", "on every rebuild")).toEqual({
+      text: "`x` restarts, on every rebuild",
+      kind: "watch",
+    });
+    expect(repeated("`x` relinks", "relink", "again on every pass of its loop")).toEqual({
+      text: "`x` relinks, again on every pass of its loop",
+      kind: "watch",
+    });
+    expect(repeated("`x` restarts, on every rebuild", "watch", "again every time `watch` reruns it")).toEqual({
+      text: "`x` restarts, on every rebuild",
+      kind: "watch",
+    });
   });
 
   it("gives dev:voices in a linked tree the kind relink", () => {
@@ -177,7 +211,7 @@ describe("a script read from the package.json it runs from, under either shell (
     for (const o of [{}, LINKED]) {
       expect(judge("pnpm hop", at(o), shell)).toEqual([`\`pnpm hop\` → \`pnpm relink:anything\` ${RELINK}`]);
       expect(judge("pnpm watch", at(o), shell)).toEqual([
-        `\`pnpm watch\` → \`rollup --watch.onEnd\` → \`streamdeck restart\` ${RESTART}`,
+        `\`pnpm watch\` → \`rollup --watch.onEnd\` → \`streamdeck restart\` ${RESTART}, on every rebuild`,
       ]);
     }
   });
@@ -214,7 +248,7 @@ describe("every package an unresolved selector may pick, a wrapper's string and 
   const c = ctx({}, { scriptsAt, workspaceDirs: () => [SD] });
   // Each shape with the exact finding it must give, so one that asks for the
   // wrong reason (a selector that stopped resolving, say) fails.
-  const SD_RESTART = `\`rollup --watch.onEnd\` → \`streamdeck restart\` ${RESTART}`;
+  const SD_RESTART = `\`rollup --watch.onEnd\` → \`streamdeck restart\` ${RESTART}, on every rebuild`;
   const WRAPPED = `\`pnpm restart:stream-deck\` ${RESTART}`;
   const restarting = [
     ["pnpm -r watch", `\`pnpm watch\` → ${SD_RESTART}`],
