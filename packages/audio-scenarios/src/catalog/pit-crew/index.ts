@@ -546,6 +546,7 @@ export {
   type LiveCarPositionResolver,
   type LivePosition,
   type LivePositionResolver,
+  playerOnPitRoadOrOutOfCar,
   POSITION_READOUT_COOLDOWN_MS,
   REACTION_CHANCE,
   shouldReactToOvertake,

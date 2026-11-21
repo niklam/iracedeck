@@ -14,7 +14,9 @@
  * - That the setup step works the way the UI runs it — posted to
  *   `/api/telemetry` with the mock's tick loop paused — rather than through a
  *   test helper that ticks after every patch.
- * - That the car left on track at racing speed changes no other shortcut.
+ * - That the car left on track at racing speed changes no other shortcut —
+ *   nor the car the position buttons leave on track (`inCarOnTrack`, #1722),
+ *   whose step is pinned in `position-pit-road-shortcuts.test.ts`.
  */
 import { _resetAudioScenarios, initializeAudioScenarios } from "@iracedeck/audio-scenarios";
 import { overtakeContextAllows, type OvertakeGateResolver, registerPitCrew } from "@iracedeck/audio-scenarios/pit-crew";
@@ -37,6 +39,7 @@ import { MockSDKController, type TelemetryPatch } from "./mock-sdk-controller.js
 import {
   AT_RACING_SPEED,
   atRacingSpeed,
+  IN_CAR_ON_TRACK,
   SCENARIO_SHORTCUTS,
   type ScenarioShortcut,
   type TelemetryStep,
@@ -233,7 +236,7 @@ describe("the racing-speed step, run the way the UI runs it", () => {
   });
 });
 
-describe("the car an overtake or gap shortcut leaves on track changes no other shortcut", () => {
+describe("the car an overtake, gap or position shortcut leaves on track changes no other shortcut", () => {
   /** How long a run is listened to after its publish: the limiter's 2.5 s re-check and a speeding episode fit. */
   const LISTEN_MS = 6000;
 
@@ -324,38 +327,55 @@ describe("the car an overtake or gap shortcut leaves on track changes no other s
     return events;
   }
 
-  // Every wrapped shortcut leaves the same state behind (they share one step),
-  // so one of them stands for all.
+  // Every shortcut one wrapper wrapped leaves the same state behind (they
+  // share one step), so one of them stands for all of that wrapper's. The two
+  // wrappers leave different states — the position buttons' leaves the speed
+  // alone — so each is pressed first in turn.
   const overtake = WRAPPED[0];
+  const position = SCENARIO_SHORTCUTS.find((s) => s.telemetrySequence?.[0] === IN_CAR_ON_TRACK);
+  const LEFT_BY = [
+    { by: "an overtake button", before: overtake },
+    { by: "a position button", before: position },
+  ] as const;
 
-  it('leaves "Limiter off on pit road" announcing only its own line, as on its own', () => {
-    // The race preset carries a pit speed limit, so a car entering pit road at
-    // racing speed would also start a speeding episode here.
-    const limiterMissing = SCENARIO_SHORTCUTS.find((s) => s.id === "limiter-missing");
-
-    expect(limiterMissing).toBeDefined();
-
-    if (limiterMissing === undefined) return;
-
-    const alone = eventsOf("race", null, limiterMissing);
-
-    expect(alone).toEqual(["limiter.missing {}", "pitLane.entered {}"]);
-    expect(eventsOf("race", overtake, limiterMissing)).toEqual(alone);
+  it("has a shortcut of each wrapper to press first", () => {
+    expect(overtake).toBeDefined();
+    expect(position).toBeDefined();
   });
+
+  it.each(LEFT_BY)(
+    'leaves "Limiter off on pit road" announcing only its own line after $by, as on its own',
+    ({ before }) => {
+      // The race preset carries a pit speed limit, so a car entering pit road at
+      // racing speed would also start a speeding episode here.
+      const limiterMissing = SCENARIO_SHORTCUTS.find((s) => s.id === "limiter-missing");
+
+      expect(limiterMissing).toBeDefined();
+
+      if (limiterMissing === undefined) return;
+
+      const alone = eventsOf("race", null, limiterMissing);
+
+      expect(alone).toEqual(["limiter.missing {}", "pitLane.entered {}"]);
+      expect(eventsOf("race", before ?? null, limiterMissing)).toEqual(alone);
+    },
+  );
 
   // One case per shortcut and session preset, so each stays a few
   // milliseconds of work under full-suite load and a failure names the
   // shortcut whose events changed.
-  const CASES = (["none", "race"] as const).flatMap((preset) =>
-    SCENARIO_SHORTCUTS.map((shortcut) => ({ preset, id: shortcut.id, shortcut })),
+  const CASES = LEFT_BY.flatMap(({ by, before }) =>
+    (["none", "race"] as const).flatMap((preset) =>
+      SCENARIO_SHORTCUTS.map((shortcut) => ({ by, before, preset, id: shortcut.id, shortcut })),
+    ),
   );
 
   it.each(CASES)(
-    "leaves $id publishing what it publishes on its own (session preset: $preset)",
-    ({ preset, shortcut }) => {
+    "leaves $id publishing what it publishes on its own after $by (session preset: $preset)",
+    ({ before, preset, shortcut }) => {
       const sessionPreset = preset === "none" ? null : preset;
 
-      expect(eventsOf(sessionPreset, overtake, shortcut)).toEqual(eventsOf(sessionPreset, null, shortcut));
+      expect(eventsOf(sessionPreset, before ?? null, shortcut)).toEqual(eventsOf(sessionPreset, null, shortcut));
     },
   );
 });
