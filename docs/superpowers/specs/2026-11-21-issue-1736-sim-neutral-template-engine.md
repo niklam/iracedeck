@@ -327,7 +327,7 @@ The #1730 spec is rewritten on top of this before it is committed. Its `SDKContr
   - a throwing lookup, in a sim namespace or a registered one, leaves the template's other variables resolved;
   - a namespace that throws on every lookup for many resolutions is reported through the boundary once under `templateNamespace:<name>`, not per lookup;
   - `templateContext()` is not called for a template that reads no sim namespace.
-- **`resolveDisplayTemplate`'s `hasSource`:** sim context present; absent with only a deck-core lookup; absent with neither.
+- **`resolveDisplayTemplate`'s `hasSource`:** true with the sim context present; true with the sim context absent when a lookup reached a deck-core namespace; false with the sim context absent and no deck-core lookup.
 - **`subscribeTemplateRefresh`:**
   - one sim subscription for any number of listeners, dropped with the last;
   - queued before initialisation;
