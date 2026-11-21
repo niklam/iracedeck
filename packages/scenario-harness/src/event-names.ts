@@ -121,7 +121,7 @@ export const EVENT_TEMPLATES = [
   {
     name: "traffic.pitExit",
     description:
-      "Leaving the pits, 3 s short of the end of pit road, whether a car reaches the exit blend when you do (issue #1113) — verdict: clear / traffic; seconds: the nearest car's arrival relative to yours (negative before), not spoken",
+      'Leaving the pits, whether a car reaches the exit blend when you do (issue #1113) — first 3 s short of the end of pit road, or as you leave a stall nearer the end than that (or past it already when the landmarks arrive late); again only when a different verdict holds for two evaluations in a row before the end of the blend, and never after the merge warning ("Watch for cars.", traffic.pitExitMerge) — verdict: clear / traffic; seconds: the nearest car\'s arrival relative to yours (negative before), not spoken',
     data: { verdict: "traffic", seconds: 1.5 } satisfies SimEventMap["traffic.pitExit"]["data"],
   },
   {
