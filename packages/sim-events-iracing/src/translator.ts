@@ -176,6 +176,7 @@ import {
   type CautionPhase,
   type CornerNameState,
   createInitialState,
+  createTrafficPitExitState,
   createTrafficRejoinState,
   type GapNeighborState,
   type LastStopTireTemps,
@@ -2832,6 +2833,14 @@ function publishActiveStateTeardown(self: TranslatorInstance, telemetry: Telemet
   if (self.state.trafficRejoin.active) {
     Object.assign(self.state.trafficRejoin, createTrafficRejoinState());
     publish(self, { event: "traffic.rejoinTowed", data: {} }, telemetry, now);
+  }
+
+  // A pit exit wiped here ends as one the detector ends does (issue #1113):
+  // `traffic.pitExitEnded` drops a line about it still waiting for the radio.
+  // Reset first, for the same reason as the stop above.
+  if (self.state.trafficPitExit.active) {
+    Object.assign(self.state.trafficPitExit, createTrafficPitExitState());
+    publish(self, { event: "traffic.pitExitEnded", data: {} }, telemetry, now);
   }
 }
 

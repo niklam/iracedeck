@@ -167,7 +167,7 @@ function harness({
         emitted.push(ev.event);
 
         if (ev.event === "traffic.pitExitMerge") merges.push(ev.data);
-        else events.push(ev.data);
+        else if (ev.event === "traffic.pitExit") events.push(ev.data);
       },
       logger,
       runUnit,
@@ -190,6 +190,8 @@ function harness({
     readLandmarks,
     windows,
     tick,
+    /** How many times an episode's end was published (`traffic.pitExitEnded`). */
+    ended: (): number => emitted.filter((name) => name === "traffic.pitExitEnded").length,
     /** Advances the clock `ms` and ticks once. */
     after(ms: number, t: TrafficPitExitTelemetry): void {
       now += ms;
@@ -311,11 +313,16 @@ describe("diffTrafficPitExit", () => {
 
       // A car now well clear of the window: a running episode would speak the
       // flip at its second evaluation.
+      expect(h.ended()).toBe(0);
       h.after(100, tel({ cars: [arriving(5, 10)], ...overrides }));
 
       expect(h.episode.active).toBe(false);
       expect(h.events).toEqual(eventsBefore);
       expect(h.merges).toEqual(mergesBefore);
+      // The end itself is published, once, so a line about the exit still
+      // waiting for the radio is dropped.
+      expect(h.emitted.at(-1)).toBe("traffic.pitExitEnded");
+      expect(h.ended()).toBe(1);
 
       h.after(TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS, tel({ cars: [arriving(5, 10)], ...overrides }));
       h.after(TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS, tel({ cars: [arriving(5, 10)], ...overrides }));
@@ -561,6 +568,59 @@ describe("diffTrafficPitExit", () => {
 
       expect(h.episode.active).toBe(false);
       expect(h.settled).toEqual([{ verdict: "clear", seconds: 10 }]);
+      // Past the blend with the surface still the pit approach: the end is
+      // published all the same.
+      expect(h.ended()).toBe(1);
+    });
+
+    describe("publishes traffic.pitExitEnded once per exit that ran, on the tick it ends", () => {
+      it("at a blendEnd crossing seen between two evaluations", () => {
+        const h = harness({ landmarks: SHORT_BLEND });
+
+        h.depart(shortAt(STALL_PCT, 3));
+        h.after(TRAFFIC_PIT_EXIT_EVAL_INTERVAL_MS, shortAt(0.1245, 3));
+        h.after(100, shortAt(0.134, 3, { OnPitRoad: false }));
+
+        expect(h.emitted).toEqual(["traffic.pitExit", "traffic.pitExitEnded"]);
+      });
+
+      it("when the position has been gone for the grace", () => {
+        const h = harness();
+
+        h.depart(tel({ cars: [arriving(5, 1)] }));
+        h.after(100, tel({ CarIdxLapDistPct: undefined }));
+        h.after(TRAFFIC_PIT_EXIT_POSITION_GRACE_MS, tel({ CarIdxLapDistPct: undefined }));
+
+        expect(h.episode.active).toBe(false);
+        expect(h.ended()).toBe(1);
+      });
+
+      it("never for an episode that never ran, nor twice for one that ended", () => {
+        const h = harness();
+
+        h.tick(IN_STALL);
+        h.after(100, IN_STALL);
+        expect(h.ended()).toBe(0);
+
+        h.depart(tel({ cars: [arriving(5, 1)] }));
+        h.after(100, tel({ PlayerTrackSurface: TrkLoc.OnTrack }));
+        h.after(100, tel({ PlayerTrackSurface: TrkLoc.OnTrack }));
+
+        expect(h.ended()).toBe(1);
+      });
+
+      it("before the next exit's first call on a departure tick that finds an episode still running", () => {
+        const h = harness();
+
+        h.depart(tel({ cars: [arriving(5, 1)], pct: 0.13 }));
+        expect(h.events).toHaveLength(1);
+        // The stall flag back on without the episode seeing it (a step that
+        // threw, say), then out again: the old exit ends before the new one speaks.
+        h.episode.lastInPitStall = true;
+        h.after(100, tel({ cars: [arriving(5, 1)], pct: 0.13 }));
+
+        expect(h.emitted).toEqual(["traffic.pitExit", "traffic.pitExitEnded", "traffic.pitExit"]);
+      });
     });
   });
 

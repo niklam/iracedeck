@@ -1,7 +1,8 @@
 /**
  * Leaving the pits (issue #1113, spec decision 5): whether a car on track will
  * reach the end of the exit blend about when the player does. Publishes
- * `traffic.pitExit`, and the merge warning `traffic.pitExitMerge`.
+ * `traffic.pitExit`, the merge warning `traffic.pitExitMerge`, and
+ * `traffic.pitExitEnded` when an exit's episode ends.
  *
  * **The episode.** From the player driving out of the stall — the edge
  * `diffPitLane`'s `pitStall.departed` is read from, `PlayerCarInPitStall` true
@@ -9,7 +10,16 @@
  * baseline of this module's own, never off the bus — until the player is past
  * the learned `blendEnd`, or back on the racing surface. Leaving the car
  * (`IsOnTrack` not true), a tow or a reset (`NotInWorld`, or back in the
- * stall) ends it too. Every end is silent. Back in the stall is
+ * stall) ends it too. Every end is silent to the driver and publishes
+ * `traffic.pitExitEnded`, once, on the tick it ends, so the Race Engineer
+ * drops a line about that exit still waiting for the radio: one queued behind
+ * a heavier line must not play once the player is back in the stall, or past
+ * the end of the blend while the surface still reads the pit approach (the
+ * family's speak-time gate, `catalog/pit-crew/traffic.ts` in
+ * `@iracedeck/audio-scenarios`). It is published before anything about the
+ * next exit, and never after a line about the exit it ends on the same tick.
+ * The translator's teardown publishes it too for an episode a wipe ends (a
+ * replay view, a session change, a disconnect). Back in the stall is
  * `PlayerCarInPitStall` true, or, on a tick that does not send the flag,
  * `PlayerTrackSurface` `InPitStall`; with the flag sent false the surface is
  * not read, since it can still say `InPitStall` for a tick after the car
@@ -293,7 +303,11 @@ import type { EmitFn } from "./types.js";
 export const TRAFFIC_PIT_EXIT_EVENTS = [
   "traffic.pitExit",
   "traffic.pitExitMerge",
+  "traffic.pitExitEnded",
 ] as const satisfies readonly SimEventName[];
+
+/** The detector's emitter. */
+type PitExitEmit = EmitFn<(typeof TRAFFIC_PIT_EXIT_EVENTS)[number]>;
 
 /**
  * How long before the player reaches `pitRoadEnd`, the pit exit line, the
@@ -496,7 +510,9 @@ export function diffTrafficPitExit(
   const departed = episode.lastInPitStall === true && inStall === false && telemetry.OnPitRoad === true;
 
   if (departed) {
-    if (episode.active) logger.debug("episode ended (left the stall again)");
+    // An episode still running here missed its end in the stall (a tick
+    // that threw): it is over all the same, and is ended as any other is.
+    if (episode.active) end(episode, "left the stall again", emit, logger);
 
     // Read before the reset below, which clears it with the rest.
     const stallPct = episode.lastStallPct;
@@ -525,10 +541,10 @@ export function diffTrafficPitExit(
     const reason = endReason(telemetry, inStall, position);
 
     if (reason !== null) {
-      end(episode, reason, logger);
+      end(episode, reason, emit, logger);
     } else if (position.kind === "unavailable") {
-      holdWithoutPosition(episode, now, logger);
-    } else if (position.kind === "onLap" && !positionGapExpired(episode, now, logger)) {
+      holdWithoutPosition(episode, now, emit, logger);
+    } else if (position.kind === "onLap" && !positionGapExpired(episode, now, emit, logger)) {
       // A wall clock that stepped back evaluates now: waiting the interval out
       // from a time still ahead would stop every evaluation for as long as the step.
       if (episode.lastEvalAt !== null && episode.lastEvalAt > now) episode.lastEvalAt = null;
@@ -572,7 +588,7 @@ export function diffTrafficPitExit(
         const step = offScheduleStep(episode, position.pct, onPitRoad, landmarks, facts);
 
         if (step === "pastBlendEnd") {
-          end(episode, "past blendEnd, between evaluations", logger);
+          end(episode, "past blendEnd, between evaluations", emit, logger);
         } else if (step === "evaluate") {
           evaluate(
             episode,
@@ -607,7 +623,7 @@ export function diffTrafficPitExit(
  * {@link TRAFFIC_PIT_EXIT_POSITION_GRACE_MS}. A wall clock that stepped back
  * restarts the gap from now, so the step neither ends it early nor holds it on.
  */
-function holdWithoutPosition(episode: TrafficPitExitState, now: number, logger: ILogger): void {
+function holdWithoutPosition(episode: TrafficPitExitState, now: number, emit: PitExitEmit, logger: ILogger): void {
   if (episode.positionUnavailableSince === null || episode.positionUnavailableSince > now) {
     if (episode.positionUnavailableSince === null) logger.debug("player position unavailable, episode held");
 
@@ -616,7 +632,8 @@ function holdWithoutPosition(episode: TrafficPitExitState, now: number, logger: 
 
   const gap = elapsed(now, episode.positionUnavailableSince);
 
-  if (gap >= TRAFFIC_PIT_EXIT_POSITION_GRACE_MS) end(episode, `player position unavailable for ${gap} ms`, logger);
+  if (gap >= TRAFFIC_PIT_EXIT_POSITION_GRACE_MS)
+    end(episode, `player position unavailable for ${gap} ms`, emit, logger);
 }
 
 /**
@@ -626,13 +643,13 @@ function holdWithoutPosition(episode: TrafficPitExitState, now: number, logger: 
  * in between to end it (the sim sent none), ends the episode here, as an
  * unreadable tick at the grace limit would have (`true`). No gap is `false`.
  */
-function positionGapExpired(episode: TrafficPitExitState, now: number, logger: ILogger): boolean {
+function positionGapExpired(episode: TrafficPitExitState, now: number, emit: PitExitEmit, logger: ILogger): boolean {
   if (episode.positionUnavailableSince === null) return false;
 
   const gap = elapsed(now, episode.positionUnavailableSince);
 
   if (gap >= TRAFFIC_PIT_EXIT_POSITION_GRACE_MS) {
-    end(episode, `player position unavailable for ${gap} ms`, logger);
+    end(episode, `player position unavailable for ${gap} ms`, emit, logger);
 
     return true;
   }
@@ -643,8 +660,13 @@ function positionGapExpired(episode: TrafficPitExitState, now: number, logger: I
   return false;
 }
 
-/** Ends the episode silently, keeping the stall baseline (written after). */
-function end(episode: TrafficPitExitState, reason: string, logger: ILogger): void {
+/**
+ * Ends the episode, keeping the stall baseline (written after): nothing is
+ * said, and `traffic.pitExitEnded` tells the Race Engineer the exit is over,
+ * so a line about it still waiting for the radio is dropped (module header).
+ */
+function end(episode: TrafficPitExitState, reason: string, emit: PitExitEmit, logger: ILogger): void {
+  emit({ event: "traffic.pitExitEnded", data: {} });
   logger.debug(`episode ended (${reason})`);
   Object.assign(episode, createTrafficPitExitState(), {
     lastInPitStall: episode.lastInPitStall,
@@ -1052,7 +1074,7 @@ function evaluate(
   // is the player already past it, never a start a lap short.
   if (episode.startPct === null) {
     if (forwardPct(playerPct, blendEnd.pct) > 0.5) {
-      end(episode, "past blendEnd, with no departure position", logger);
+      end(episode, "past blendEnd, with no departure position", emit, logger);
 
       return;
     }
@@ -1063,7 +1085,7 @@ function evaluate(
   const position = exitPosition(episode.startPct, playerPct, pitRoadEnd, blendEnd, slackPct);
 
   if (position === null) {
-    end(episode, "past blendEnd", logger);
+    end(episode, "past blendEnd", emit, logger);
 
     return;
   }

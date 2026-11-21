@@ -254,12 +254,15 @@ describe("the pit-exit cases (issue #1113)", () => {
 
   /**
    * Over the end of pit road, the pit-lane exit and the limiter switched off,
-   * and the merge warning when the car is within the default 1.5 s threshold.
+   * the merge warning when the car is within the default 1.5 s threshold, and
+   * the exit's end once the player is on the racing surface
+   * (`traffic.pitExitEnded`), published with or without landmarks.
    */
   const intoTheExitLane = (merge: number | null): Published[] => [
     { event: "pitLane.exited", data: {} },
     { event: "carControl.limiterToggled", data: { on: false } },
     ...(merge === null ? [] : [{ event: "traffic.pitExitMerge", data: { seconds: merge } }]),
+    { event: "traffic.pitExitEnded", data: {} },
   ];
 
   // The window is 2 s before to 4 s after the player's arrival; the merge threshold 1.5 s either side.

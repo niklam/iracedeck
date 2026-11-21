@@ -97,7 +97,8 @@ export type TickStage = {
 
 /**
  * The publish sites in `translator.ts` that end active-state loops and lines (`publishActiveStateTeardown`).
- * `traffic.rejoinTowed` here ends a rejoin line whose stop a wipe took away; the stage `diffTrafficRejoin`
+ * `traffic.rejoinTowed` here ends a rejoin line whose stop a wipe took away, and `traffic.pitExitEnded` drops a
+ * waiting pit-exit line whose exit a wipe ended (no `endsOn`: the audio family's gate reads it); the stage `diffTrafficRejoin`
  * publishes `traffic.rejoin` after both teardown rows, which `race-engineer-wiring`'s `ends-on-order.test.ts`
  * excuses for these two rows alone, on the proofs it names.
  */
@@ -105,6 +106,7 @@ const TEARDOWN_EVENTS = [
   "radar.changed",
   "pitSpeeding.ended",
   "traffic.rejoinTowed",
+  "traffic.pitExitEnded",
 ] as const satisfies readonly SimEventName[];
 
 /**

@@ -99,7 +99,7 @@ describe("pitLane.landmarkLearned", () => {
  * relative arrival for logs, and the merge warning always carries it. Pinned so a change to what the callouts read is a
  * deliberate edit here too (type test: a mismatch fails `pnpm typecheck`).
  */
-describe("traffic.rejoin, traffic.rejoinTowed, traffic.pitExit and traffic.pitExitMerge", () => {
+describe("traffic.rejoin, traffic.rejoinTowed, traffic.pitExit, traffic.pitExitMerge and traffic.pitExitEnded", () => {
   it("carries a rejoin band, and for near its whole seconds and whether it is the first call", () => {
     expectTypeOf<SimEventMap["traffic.rejoin"]["event"]>().toEqualTypeOf<"traffic.rejoin">();
     expectTypeOf<SimEventMap["traffic.rejoin"]["data"]>().toEqualTypeOf<
@@ -169,5 +169,10 @@ describe("traffic.rejoin, traffic.rejoinTowed, traffic.pitExit and traffic.pitEx
     expectTypeOf<SimEventMap["traffic.pitExitMerge"]["event"]>().toEqualTypeOf<"traffic.pitExitMerge">();
     expectTypeOf<SimEventMap["traffic.pitExitMerge"]["data"]>().toEqualTypeOf<{ seconds: number }>();
     expectTypeOf<SimEventMap["traffic.pitExitMerge"]["data"]>().toEqualTypeOf<TrafficPitExitMerge>();
+  });
+
+  it("ends a pit exit with an empty event of its own", () => {
+    expectTypeOf<SimEventMap["traffic.pitExitEnded"]["event"]>().toEqualTypeOf<"traffic.pitExitEnded">();
+    expectTypeOf<SimEventMap["traffic.pitExitEnded"]["data"]>().toEqualTypeOf<Record<string, never>>();
   });
 });

@@ -512,6 +512,64 @@ describe("the approaching-traffic detectors through handleTick (issue #1113)", (
       expect(order).toEqual(["pitStall.departed", "traffic.pitExit", "traffic.pitExitMerge"]);
     });
 
+    describe("traffic.pitExitEnded, so a pit-exit line still waiting is dropped", () => {
+      it("is published once the exit ends back in the stall (a reset), after the lines about it", () => {
+        init({ loadPitLaneLandmarks: section });
+        getEventBus().subscribe("traffic.pitExitEnded", (ev) => {
+          order.push(ev.event);
+        });
+
+        driveOut();
+        vi.advanceTimersByTime(100);
+        controller.__tick(tick(inStall, 0.1));
+        vi.advanceTimersByTime(100);
+        controller.__tick(tick(inStall, 0.1));
+
+        expect(order).toEqual(["pitStall.departed", "traffic.pitExit", "traffic.pitExitMerge", "traffic.pitExitEnded"]);
+      });
+
+      it("is published by the teardown for an exit a session change wipes, before session.changed", () => {
+        init({ loadPitLaneLandmarks: section });
+        getEventBus().subscribe("traffic.pitExitEnded", (ev) => {
+          order.push(ev.event);
+        });
+        getEventBus().subscribe("session.changed", (ev) => {
+          order.push(ev.event);
+        });
+
+        driveOut();
+        vi.advanceTimersByTime(100);
+        controller.__tick({ ...tick(blendLane, 0.1), SessionNum: 1 });
+
+        expect(order).toEqual([
+          "pitStall.departed",
+          "traffic.pitExit",
+          "traffic.pitExitMerge",
+          "traffic.pitExitEnded",
+          "session.changed",
+        ]);
+
+        const state = readSimState();
+
+        if (!state.initialized) throw new Error("translator not initialised");
+
+        expect(state.raw.state.trafficPitExit.active).toBe(false);
+      });
+
+      it("is not published by the teardown with no exit running", () => {
+        init({ loadPitLaneLandmarks: section });
+        getEventBus().subscribe("traffic.pitExitEnded", (ev) => {
+          order.push(ev.event);
+        });
+
+        controller.__tick(tick({ pct: 0.5, speed: 50 }, 0.45));
+        vi.advanceTimersByTime(100);
+        controller.__tick({ ...tick({ pct: 0.5, speed: 50 }, 0.45), SessionNum: 1 });
+
+        expect(order).toEqual([]);
+      });
+    });
+
     it("calls and warns the same with the trafficRejoin flag off: the flag gates the rejoin detector only", () => {
       init({ loadPitLaneLandmarks: section, trafficRejoin: false });
 

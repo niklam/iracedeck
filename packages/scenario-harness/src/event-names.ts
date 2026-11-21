@@ -131,6 +131,12 @@ export const EVENT_TEMPLATES = [
     data: { seconds: 0.8 } satisfies SimEventMap["traffic.pitExitMerge"]["data"],
   },
   {
+    name: "traffic.pitExitEnded",
+    description:
+      "The pit exit is over (issue #1113): past the end of the blend or on the racing surface, back in the stall, out of the world or the car — drops a pit-exit line or merge warning still waiting for the radio, lets one playing finish; empty payload",
+    data: {} satisfies SimEventMap["traffic.pitExitEnded"]["data"],
+  },
+  {
     name: "pitBox.countdown",
     description: "Pit-box count-in mark (issue #600) — five 120 m → pit-now 20 m to the box",
     data: { mark: "three" },

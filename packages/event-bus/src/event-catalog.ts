@@ -847,6 +847,23 @@ export type SimEventMap = {
    */
   "traffic.pitExitMerge": SimEvent<"traffic.pitExitMerge", TrafficPitExitMerge>;
   /**
+   * The pit exit that `traffic.pitExit` and `traffic.pitExitMerge` speak
+   * about is over (issue #1113): the player is past the end of the exit blend
+   * or back on the racing surface, back in the stall (a reset or a tow to the
+   * pits), out of the world or out of the car, or their lap position has been
+   * unavailable for a second. Published once, on the tick the exit ends, and
+   * only for one that was running: from the player driving out of the stall
+   * until one of those. Never after a `traffic.pitExit` or
+   * `traffic.pitExitMerge` about the same exit on the same tick; a call about
+   * the next exit may follow it on the same tick. The Race Engineer drops a
+   * pit-exit line still waiting for the radio when its exit ends, and lets one
+   * already playing finish. The pit-exit detector publishes it from live,
+   * in-car telemetry; the translator's teardown also publishes it for a
+   * running exit that the entry into a replay view, a session change or a
+   * disconnect wipes. Carries nothing.
+   */
+  "traffic.pitExitEnded": SimEvent<"traffic.pitExitEnded", EmptySimEventPayload>;
+  /**
    * Pit-box count-in (issue #600). Fired once per distance mark as the player
    * drives down pit road toward their own pit box: "five" (120 m remaining),
    * "four" (100 m), "three" (80 m), "two" (60 m), "one" (40 m), and "pit-now"
