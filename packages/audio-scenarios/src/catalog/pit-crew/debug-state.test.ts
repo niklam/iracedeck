@@ -161,7 +161,6 @@ const UNTOUCHED_FAMILIES = {
     clearPolling: false,
     pendingClear: null,
     pendingSpotterClip: "",
-    clearPick: { lastIndex: -1 },
     stillTherePick: { lastIndex: -1 },
   },
   traffic: { registered: false, introduced: false },
@@ -287,7 +286,7 @@ describe("readRaceEngineerState", () => {
     expect(state.families.spotter).toMatchObject({
       state: "left",
       looping: true,
-      pendingSpotterClip: "voice/{voice}/spotter/car-left.mp3",
+      pendingSpotterClip: "pool:spotter/car-left",
     });
     expect(state.families.pitSpeeding).toMatchObject({ episodeActive: true, ticking: true });
     expect(JSON.parse(JSON.stringify(state))).toEqual(state);

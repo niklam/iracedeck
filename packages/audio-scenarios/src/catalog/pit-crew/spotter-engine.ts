@@ -10,11 +10,14 @@
  * the active voice's `callouts.json` under the same ids
  * (`scenarios["pit-crew.spotter-call"]`, `…-info`), paired at `setScripts`
  * time, and the bundled script is the one step `{{spotterClip}}`. The var's
- * value is a path this engine computes per transition from the `spotter/`
- * clip group, so clip selection stays entirely engine-driven — no interpreter
- * pools, no dependency on the audio manifest at load time — and a pack
- * rephrases around the call (a lead-in, a beat) rather than re-recording the
- * twenty-four terms. `engine.fire(id)` resolves a contract through the same
+ * value is a `pool:spotter/<base>` reference this engine chooses per
+ * transition (issue #1718), so WHICH line is said stays engine-driven while
+ * the clip that says it is the pool store's pick, like every other line: a
+ * pack may ship the bare `<base>.mp3`, `-NN` takes, or both, and a take is
+ * consumed only when the fire is accepted. A pack rephrases around the call
+ * (a lead-in, a beat) rather than re-recording the twenty-four terms, and the
+ * var declares those twenty-four pools (`draws`, {@link SPOTTER_CLIP_BASES})
+ * so the pack linter and the first-party completeness test know them. `engine.fire(id)` resolves a contract through the same
  * registration path as a bus-triggered one: a voice whose script has no
  * entry is silent for it, a scripted one plays.
  *
@@ -50,7 +53,7 @@ import type { ILogger } from "@iracedeck/logger";
 import type { TelemetryData } from "@iracedeck/sim-events-iracing";
 
 import type { ScenarioContract } from "../../dsl.js";
-import { NO_FRAME, WEIGHT } from "../../dsl.js";
+import { NO_FRAME, poolRef, WEIGHT } from "../../dsl.js";
 import { getScenarioEngine } from "../../interpreter.js";
 
 export const SPOTTER_FOCUS_OWNER = "spotter";
@@ -140,7 +143,7 @@ export type SpotterDeps = {
 
 /**
  * The transition-call contract — every car-presence transition fires through
- * it. The voice script's `{{spotterClip}}` step plays whatever path the
+ * it. The voice script's `{{spotterClip}}` step plays the pool reference the
  * engine stashed in `pendingSpotterClip` for this transition;
  * `focusOwner: "spotter"` lets the engine's own fires bypass the SAFETY floor
  * it holds while a car is alongside. Unframed (decision D1): no radio
@@ -206,24 +209,38 @@ export const SPOTTER_CONTRACTS: readonly ScenarioContract[] = [SPOTTER_CALL_CONT
 
 export const SPOTTER_SCENARIO_IDS: readonly string[] = SPOTTER_CONTRACTS.map((c) => c.id);
 
-// ─── Clip catalog (paths carry `{voice}`; the interpreter substitutes it) ────
+// ─── Clip catalog: bases of the `spotter` group (issue #1718) ────────────────
+//
+// The engine names a LINE (a base); the pool store picks the clip for it from
+// the active voice's manifest — the bare `<base>.mp3` and every `<base>-NN.mp3`
+// take — at fire time, consuming the take only when the fire is accepted.
 
-const BASE = "voice/{voice}/spotter/";
+/** The voice clip group every spotter line lives in. */
+const SPOTTER_GROUP = "spotter";
 
 /** Spoken side term per physical side, given the track rotation direction. */
 type SpokenTerm = "left" | "right" | "inside" | "outside";
 
-const THREE_WIDE = `${BASE}three-wide.mp3`;
+const THREE_WIDE = "three-wide";
 
-/** Clear-pool variants ("Clear." / "Clear! Clear!") with engine-owned no-repeat. */
-const CLEAR_POOL: readonly string[] = [`${BASE}clear.mp3`];
+/** "Clear." — one line; variety comes from takes of `spotter/clear`. */
+const CLEAR = "clear";
 
-/** Still-there-pool variants ("Still there." / "Hold your line.") with no-repeat. */
-const STILL_THERE_POOL: readonly string[] = [`${BASE}still-there.mp3`, `${BASE}hold-your-line.mp3`];
+/**
+ * The still-there reminder's two LINES ("Still there." / "Hold your line."),
+ * which a pack may record separately. The engine alternates between the
+ * bases with no repeat; the take within a base is the pool store's pick.
+ */
+const STILL_THERE_BASES: readonly string[] = ["still-there", "hold-your-line"];
+
+/** The pool reference the `spotterClip` var hands the script for a base. */
+function spotterRef(base: string): string {
+  return poolRef(SPOTTER_GROUP, base);
+}
 
 // ─── Module state ────────────────────────────────────────────────────────────
 
-type PoolPick = { readonly clips: readonly string[]; lastIndex: number };
+type BasePick = { readonly bases: readonly string[]; lastIndex: number };
 
 let state: RadarState = "clear";
 let loopTimer: ReturnType<typeof setTimeout> | null = null;
@@ -231,9 +248,9 @@ let clearPollTimer: ReturnType<typeof setTimeout> | null = null;
 /** In-flight → clear confirmation: the gap baseline + elapsed poll time. */
 let pendingClear: { baselineGap: number; elapsedMs: number } | null = null;
 let registeredBus: IEventBus | null = null;
+/** The `pool:spotter/<base>` reference the next fire's `{{spotterClip}}` resolves to. */
 let pendingSpotterClip = "";
-const clearPick: PoolPick = { clips: CLEAR_POOL, lastIndex: -1 };
-const stillTherePick: PoolPick = { clips: STILL_THERE_POOL, lastIndex: -1 };
+const stillTherePick: BasePick = { bases: STILL_THERE_BASES, lastIndex: -1 };
 
 /** Permissive defaults until a plugin wires real accessors via registerSpotterEngine. */
 const DEFAULT_DEPS: SpotterDeps = {
@@ -283,22 +300,23 @@ function termFor(side: Side, dir: SpotterTrackDirection): SpokenTerm {
 }
 
 /**
- * Level clip for one side: `car-<term>` (1 car), `two-cars-<term>` (2 cars),
+ * Level line for one side: `car-<term>` (1 car), `two-cars-<term>` (2 cars),
  * or `one-car-<term>` (de-escalation 2→1). `<term> = termFor(side, dir)`.
+ * Returns the base; the fire wraps it in its pool reference.
  */
 function levelClip(side: Side, count: number, dir: SpotterTrackDirection, oneCar = false): string {
   const term = termFor(side, dir);
 
-  if (oneCar) return `${BASE}one-car-${term}.mp3`;
+  if (oneCar) return `one-car-${term}`;
 
-  if (count === 2) return `${BASE}two-cars-${term}.mp3`;
+  if (count === 2) return `two-cars-${term}`;
 
-  return `${BASE}car-${term}.mp3`;
+  return `car-${term}`;
 }
 
 /**
- * Combined de-escalation/swap clip carrying both cues in one clip:
- * `clear-<termCleared>-{car|two-cars}-<termRemaining>`.
+ * Combined de-escalation/swap line carrying both cues in one clip:
+ * `clear-<termCleared>-{car|two-cars}-<termRemaining>`. Returns the base.
  */
 function combinedClip(
   clearedSide: Side,
@@ -310,32 +328,69 @@ function combinedClip(
   const termRemaining = termFor(remainingSide, dir);
   const word = remainingCount === 2 ? "two-cars" : "car";
 
-  return `${BASE}clear-${termCleared}-${word}-${termRemaining}.mp3`;
+  return `clear-${termCleared}-${word}-${termRemaining}`;
 }
 
-// ─── Engine-owned no-repeat pool pick (mirrors the interpreter's pickFromPool) ─
+const SIDES: readonly Side[] = ["left", "right"];
+const DIRECTIONS: readonly SpotterTrackDirection[] = ["neutral", "left", "right"];
 
-function pickNoRepeat(pool: PoolPick): string {
-  let idx = Math.floor(Math.random() * pool.clips.length);
+/**
+ * Every base the engine can name (issue #1718), DERIVED by running the naming
+ * functions over every input they can receive — each side and count through
+ * {@link levelClip} with and without the de-escalation flag, each
+ * cleared/remaining pair (always opposite sides) and remaining count through
+ * {@link combinedClip}, for every {@link SpotterTrackDirection} — plus the
+ * three-wide, clear and both still-there lines. Deduped and sorted by code
+ * point. Derived rather than written out so it cannot drift from what a
+ * transition says; the `spotterClip` var declares it as its `draws`, which is
+ * what the pack linter and the first-party completeness test read.
+ */
+export const SPOTTER_CLIP_BASES: readonly string[] = (() => {
+  const bases = new Set<string>();
 
-  if (idx === pool.lastIndex && pool.clips.length > 1) idx = (idx + 1) % pool.clips.length;
+  for (const dir of DIRECTIONS) {
+    for (const side of SIDES) {
+      const other: Side = side === "left" ? "right" : "left";
 
-  pool.lastIndex = idx;
+      for (const count of [1, 2]) {
+        bases.add(levelClip(side, count, dir));
+        bases.add(levelClip(side, count, dir, true));
+        bases.add(combinedClip(other, side, count, dir));
+      }
+    }
+  }
 
-  return pool.clips[idx];
+  for (const base of [THREE_WIDE, CLEAR, ...STILL_THERE_BASES]) bases.add(base);
+
+  return [...bases].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+})();
+
+// ─── Engine-owned no-repeat line pick ────────────────────────────────────────
+//
+// Only the still-there reminder has a choice of LINE; the take within a line is
+// the pool store's no-repeat pick at fire time.
+
+function pickNoRepeat(pick: BasePick): string {
+  let idx = Math.floor(Math.random() * pick.bases.length);
+
+  if (idx === pick.lastIndex && pick.bases.length > 1) idx = (idx + 1) % pick.bases.length;
+
+  pick.lastIndex = idx;
+
+  return pick.bases[idx];
 }
 
 // ─── Firing + focus + loop ───────────────────────────────────────────────────
 
 /** Fire a car-presence transition call at PROXIMITY — always heard, cuts anything (#867). */
-function fireCallClip(path: string): void {
-  pendingSpotterClip = path;
+function fireCallClip(base: string): void {
+  pendingSpotterClip = spotterRef(base);
   getScenarioEngine().fire(SPOTTER_CALL_SCENARIO_ID);
 }
 
 /** Fire an informational line ("Clear.", still-there) at SAFETY — never cuts a CRITICAL line. */
-function fireInfoClip(path: string): void {
-  pendingSpotterClip = path;
+function fireInfoClip(base: string): void {
+  pendingSpotterClip = spotterRef(base);
   getScenarioEngine().fire(SPOTTER_INFO_SCENARIO_ID);
 }
 
@@ -500,7 +555,7 @@ function handleTransition(oldState: RadarState, newState: RadarState, dir: Spott
   const carsEnabled = deps.getCarsEnabled();
 
   if (newState === "clear") {
-    if (carsEnabled) fireInfoClip(pickNoRepeat(clearPick));
+    if (carsEnabled) fireInfoClip(CLEAR);
 
     releaseFocus();
 
@@ -628,12 +683,14 @@ export function registerSpotterEngine(bus: IEventBus, nextDeps: SpotterDeps): vo
   deps = nextDeps;
   const engine = getScenarioEngine();
   // The vocabulary before the contracts, so the first `setScripts` compile
-  // sees it (issue #1065). The engine stashes the clip for the transition it
-  // is about to fire; the var hands it to whichever contract fires.
+  // sees it (issue #1065). The engine stashes the pool reference for the
+  // transition it is about to fire; the var hands it to whichever contract
+  // fires, unchanged. `draws` declares every pool it can name (#1718).
   engine.defineVar(
     "spotterClip",
     () => pendingSpotterClip,
     'The spotter call for the car-presence change that just happened, drawn from the spotter group: "Car left", "Two cars right", "Three wide", the combined swaps ("Clear right, car left"), the 2-to-1 de-escalation, "Clear", and the still-there reminders — inside/outside terms on an oval. Chosen by the spotter engine per transition and read when it fires, so it is the whole call.',
+    { draws: SPOTTER_CLIP_BASES.map((base) => ({ group: SPOTTER_GROUP, base })) },
   );
 
   for (const contract of SPOTTER_CONTRACTS) engine.defineContract(contract);
@@ -649,7 +706,6 @@ export function _resetSpotterEngine(): void {
   state = "clear";
   registeredBus = null;
   pendingSpotterClip = "";
-  clearPick.lastIndex = -1;
   stillTherePick.lastIndex = -1;
   deps = DEFAULT_DEPS;
 }
@@ -658,9 +714,11 @@ export function _resetSpotterEngine(): void {
  * This file's module state, for the Telemetry Snapshot (issue #1387). A pure
  * read, and safe before `registerSpotterEngine`. The two timers are reported
  * as `looping` (the still-there reminder) and `clearPolling` (the → clear
- * confirmation), the bus as `registered`, and each no-repeat pick by its last
- * index alone; `deps` is closures and is left out. The focus floor the
- * spotter holds is the engine's to report (`describeState`).
+ * confirmation), the bus as `registered`, the next fire's
+ * `pool:spotter/<base>` reference as `pendingSpotterClip`, and the still-there
+ * line pick by its last index alone (the take within a line is the pool
+ * store's); `deps` is closures and is left out. The focus floor the spotter
+ * holds is the engine's to report (`describeState`).
  */
 export function readSpotterDebugState(): {
   registered: boolean;
@@ -669,7 +727,6 @@ export function readSpotterDebugState(): {
   clearPolling: boolean;
   pendingClear: { baselineGap: number; elapsedMs: number } | null;
   pendingSpotterClip: string;
-  clearPick: { lastIndex: number };
   stillTherePick: { lastIndex: number };
 } {
   return {
@@ -679,7 +736,6 @@ export function readSpotterDebugState(): {
     clearPolling: clearPollTimer !== null,
     pendingClear,
     pendingSpotterClip,
-    clearPick: { lastIndex: clearPick.lastIndex },
     stillTherePick: { lastIndex: stillTherePick.lastIndex },
   };
 }

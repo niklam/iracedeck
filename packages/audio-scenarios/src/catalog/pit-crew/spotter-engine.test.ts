@@ -14,11 +14,13 @@ import { _resetAudioScenarios, getScenarioEngine, initializeAudioScenarios } fro
 import { familyReferences } from "./family-references.test-util.js";
 import {
   _resetSpotterEngine,
+  readSpotterDebugState,
   registerSpotterEngine,
   SPOTTER_CALL_SCENARIO_ID,
   SPOTTER_CLEAR_BUFFER_METERS,
   SPOTTER_CLEAR_FALLBACK_MS,
   SPOTTER_CLEAR_POLL_MS,
+  SPOTTER_CLIP_BASES,
   SPOTTER_CONTRACTS,
   SPOTTER_FOCUS_OWNER,
   SPOTTER_INFO_SCENARIO_ID,
@@ -41,9 +43,10 @@ const sim = {
 
 // ─── Fake audio service (records plays, drives channel-complete manually) ───
 
-// The spotter's clip catalog is code-enumerated, but fire-time expansion
-// checks every clip against the manifest for the active voice (issue #835) —
-// so the fixture carries the full production spotter clip set per test voice.
+// The spotter names a line per transition and the pool store picks its clip
+// from the manifest for the active voice at fire time (issue #1718); a line
+// with no clip aborts the fire (issue #835) — so the fixture carries the full
+// production spotter clip set per test voice, as bare files.
 const SPOTTER_CLIP_NAMES = [
   "car-inside",
   "car-left",
@@ -1128,5 +1131,197 @@ describe("clear confirmation buffer", () => {
     nearestGap = 2 + SPOTTER_CLEAR_BUFFER_METERS;
     vi.advanceTimersByTime(SPOTTER_CLEAR_POLL_MS);
     expect(lastVoicePath()).toBe(`${BASE}clear.mp3`);
+  });
+});
+
+// ─── Pool references (issue #1718) ───────────────────────────────────────────
+//
+// The engine names a LINE — `pool:spotter/<base>` — and the pool store picks
+// the clip: the bare `<base>.mp3` and every `<base>-NN.mp3` take of the active
+// voice, with no immediate repeat, committed only when the fire is accepted.
+
+/** Every radar state the translator reports. */
+const RADAR_STATES: readonly RadarState[] = ["clear", "left", "right", "both", "two-left", "two-right"];
+const DIRECTIONS: readonly SpotterTrackDirection[] = ["neutral", "left", "right"];
+
+/** Re-initialise the engine against a manifest of `clips` (voice "luca"), with the spotter registered. */
+function useManifestClips(clips: readonly string[]): void {
+  _resetSpotterEngine();
+  _resetAudioScenarios();
+  bus = createMockBus();
+  audio = createFakeAudio();
+  initializeAudioScenarios(
+    bus,
+    audio,
+    { clips: [...clips], ambientLoop: "", ticks: { open: "", close: "" } } as never,
+    mockLogger as never,
+    () => "luca",
+  );
+  getScenarioEngine().setScripts(new Map(SCRIPT_VOICES.map((v) => [v, SPOTTER_SCRIPT])));
+  registerSpotterEngine(bus, deps);
+  // The scripts compiled before the contracts existed warned "no contract";
+  // that is setup, not what the test fires.
+  mockLogger.warn.mockClear();
+  mockLogger.error.mockClear();
+}
+
+/** `pool:spotter/<base>` → `<base>`; fails the test on any other shape. */
+function spotterBase(ref: string): string {
+  const match = /^pool:spotter\/([^/]+)$/.exec(ref);
+
+  expect(match, `"${ref}" is not a pool:spotter/<base> reference`).not.toBeNull();
+
+  return (match as RegExpExecArray)[1];
+}
+
+describe("pool references (issue #1718)", () => {
+  it("every fire hands the script a pool:spotter/<base> reference, and every transition's base is in SPOTTER_CLIP_BASES", () => {
+    registerSpotterEngine(bus, deps);
+    // Read the reference each fire is made with, not what the scheduler does
+    // with it: an info fire arriving during a call clip drops (#867), which
+    // would hide its reference from the played list.
+    const fired: string[] = [];
+    vi.spyOn(getScenarioEngine(), "fire").mockImplementation(() => {
+      fired.push(readSpotterDebugState().pendingSpotterClip);
+    });
+
+    for (const dir of DIRECTIONS) {
+      trackDirection = dir;
+
+      for (const from of RADAR_STATES) {
+        for (const to of RADAR_STATES) {
+          if (to === from) continue;
+
+          // Back to clear first (no gap data, so the clear is immediate), then
+          // `from`, then the transition under test.
+          bus.publishRadar("clear");
+          bus.publishRadar(from);
+          bus.publishRadar(to, from);
+        }
+      }
+
+      // The still-there reminder: two ticks cover both lines (no repeat).
+      bus.publishRadar("left");
+      vi.advanceTimersByTime(SPOTTER_STILL_THERE_DEFAULT_MS * 2);
+    }
+
+    const bases = fired.map(spotterBase);
+
+    // Both directions: every reference is a declared base, and every declared
+    // base is reachable from some transition — the declaration is exact.
+    expect(bases.filter((base) => !SPOTTER_CLIP_BASES.includes(base))).toEqual([]);
+    expect([...new Set(bases)].sort()).toEqual([...SPOTTER_CLIP_BASES]);
+  });
+
+  it("SPOTTER_CLIP_BASES is exactly the 24 spotter lines the bundled default voice ships", () => {
+    const prefix = "voice/default/spotter/";
+    const shipped = MANIFEST.clips
+      .filter((clip) => clip.startsWith(prefix))
+      .map((clip) => clip.slice(prefix.length).replace(/\.mp3$/, ""))
+      .sort();
+
+    expect(SPOTTER_CLIP_BASES).toHaveLength(24);
+    expect(new Set(SPOTTER_CLIP_BASES).size).toBe(SPOTTER_CLIP_BASES.length);
+    expect([...SPOTTER_CLIP_BASES]).toEqual(shipped);
+    // The test fixture's bare clip set names the same lines.
+    expect([...SPOTTER_CLIP_BASES]).toEqual([...SPOTTER_CLIP_NAMES].sort());
+  });
+
+  it("registers spotterClip with `draws` declaring every spotter base", () => {
+    registerSpotterEngine(bus, deps);
+
+    const clip = getScenarioEngine()
+      .vocabulary()
+      .vars.find((v) => v.name === "spotterClip");
+
+    expect(clip?.draws).toEqual(SPOTTER_CLIP_BASES.map((base) => ({ group: "spotter", base })));
+  });
+
+  it("a voice that recorded the spotter as takes only plays them — car-left-01 and car-left-02 for the left arrival", () => {
+    useManifestClips(["voice/luca/spotter/car-left-01.mp3", "voice/luca/spotter/car-left-02.mp3"]);
+
+    bus.publishRadar("left");
+    audio._triggerChannelEnd(VOICE);
+    // No clear clip in this pack: "Clear." aborts silently (#835), the episode still ends.
+    bus.publishRadar("clear", "left");
+    bus.publishRadar("left");
+
+    // Two arrivals, two different takes: the pool store's no-repeat.
+    expect([...voicePaths()].sort()).toEqual([
+      "voice/luca/spotter/car-left-01.mp3",
+      "voice/luca/spotter/car-left-02.mp3",
+    ]);
+    expect(mockLogger.error).not.toHaveBeenCalled();
+    expect(mockLogger.warn).not.toHaveBeenCalled();
+  });
+
+  it("a voice with both the bare file and takes draws from all of them", () => {
+    useManifestClips([
+      "voice/luca/spotter/car-left.mp3",
+      "voice/luca/spotter/car-left-01.mp3",
+      "voice/luca/spotter/car-left-02.mp3",
+    ]);
+    // The pool's members sort as -01, -02, bare; one draw lands on each.
+    const randomSpy = vi.spyOn(Math, "random");
+    randomSpy.mockReturnValueOnce(0).mockReturnValueOnce(0.4).mockReturnValueOnce(0.9);
+
+    for (let i = 0; i < 3; i++) {
+      bus.publishRadar("left");
+      audio._triggerChannelEnd(VOICE);
+      bus.publishRadar("clear", "left");
+    }
+
+    expect(voicePaths()).toEqual([
+      "voice/luca/spotter/car-left-01.mp3",
+      "voice/luca/spotter/car-left-02.mp3",
+      "voice/luca/spotter/car-left.mp3",
+    ]);
+    randomSpy.mockRestore();
+  });
+
+  it("still-there alternates between its two lines, and each line's takes are drawn from", () => {
+    useManifestClips([
+      "voice/luca/spotter/car-left.mp3",
+      "voice/luca/spotter/still-there-01.mp3",
+      "voice/luca/spotter/still-there-02.mp3",
+      "voice/luca/spotter/hold-your-line-01.mp3",
+      "voice/luca/spotter/hold-your-line-02.mp3",
+    ]);
+    const refs: string[] = [];
+
+    bus.publishRadar("left");
+
+    for (let i = 0; i < 4; i++) {
+      // Finish whatever is playing — an info fire never cuts a playing call (#867).
+      audio._triggerChannelEnd(VOICE);
+      vi.advanceTimersByTime(SPOTTER_STILL_THERE_DEFAULT_MS);
+      refs.push(readSpotterDebugState().pendingSpotterClip);
+    }
+
+    const reminders = voicePaths().slice(1);
+    const bases = refs.map(spotterBase);
+
+    // The engine's line pick never repeats, so four ticks alternate.
+    expect(bases[0]).not.toBe(bases[1]);
+    expect(bases[2]).toBe(bases[0]);
+    expect(bases[3]).toBe(bases[1]);
+    expect([...new Set(bases)].sort()).toEqual(["hold-your-line", "still-there"]);
+    // Each line was picked twice, and the pool store's no-repeat gave each a
+    // different take: all four clips played.
+    expect([...reminders].sort()).toEqual([
+      "voice/luca/spotter/hold-your-line-01.mp3",
+      "voice/luca/spotter/hold-your-line-02.mp3",
+      "voice/luca/spotter/still-there-01.mp3",
+      "voice/luca/spotter/still-there-02.mp3",
+    ]);
+  });
+
+  it("the var hands the script the engine's reference unchanged — the played clip is that pool's pick", () => {
+    registerSpotterEngine(bus, deps);
+
+    bus.publishRadar("two-right");
+
+    expect(readSpotterDebugState().pendingSpotterClip).toBe("pool:spotter/two-cars-right");
+    expect(lastVoicePath()).toBe(`${BASE}two-cars-right.mp3`);
   });
 });
