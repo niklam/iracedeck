@@ -14,7 +14,9 @@
  *   of the wrong shape; the store's `validate`, `cameraCatalogFileProblem`) —
  *   the store moves it aside as `cameras.corrupt-<iso>.json` and calls
  *   `onRejected` (the `camera-catalog-rejected` banner); the catalog starts
- *   empty and is saved.
+ *   empty and saving stays on, as for a missing file: the empty catalog is
+ *   written only when an observation (or a removal) changes it, so
+ *   `cameras.json` stays absent until a session has run.
  * - **Unreadable file** (any read error but a missing file) — retried on the
  *   settings load's back-off (`LOAD_ATTEMPTS` reads, the first retry after
  *   `LOAD_RETRY_DELAY_MS`, doubling), then the catalog runs **in memory only**
@@ -26,9 +28,15 @@
  *   downgrade and an upgrade back, with an empty catalog and its own file
  *   renamed; keeping it means the newer build finds it again.
  *
- * Observations that arrive before the load finishes are kept (the latest per
- * track) and recorded once it has, so a session that was running at startup
- * is not lost.
+ * Observations that arrive before the load finishes are kept, every one in
+ * capture order with its own time (at most `CAMERA_CATALOG_QUEUE_LIMIT`), and
+ * replayed once it has, with one save and one notification, so a session that
+ * was running at startup is not lost and the result is what the same sequence
+ * after the load would have recorded.
+ *
+ * The file sits beside the settings file; see `resolveCameraCatalogPath` for
+ * the one case it takes another name. Success of the load is logged at info,
+ * its path and counts at debug.
  */
 import type { ILogger } from "@iracedeck/logger";
 import {
@@ -38,7 +46,7 @@ import {
   type SettingsFileRejection,
   type SettingsStore,
 } from "@iracedeck/settings";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 
 import {
   type CameraCatalog,
@@ -54,12 +62,38 @@ import {
 export const CAMERA_CATALOG_FILE_NAME = "cameras.json";
 
 /**
+ * The catalog's file name when the settings file itself is called
+ * `cameras.json` (an `IRACEDECK_SETTINGS_PATH` override can name it so).
+ */
+export const CAMERA_CATALOG_COLLISION_FILE_NAME = "cameras.catalog.json";
+
+/**
+ * At most this many observations wait for the load; past it the oldest is
+ * dropped. One arrives only with a new session-info object, and the load lasts
+ * at most the settings back-off (about half a minute when every read fails), so
+ * a real queue holds a handful. The bound is only against an unforeseen flood;
+ * the oldest goes because a later observation of the same track carries the
+ * files as they are now.
+ */
+export const CAMERA_CATALOG_QUEUE_LIMIT = 64;
+
+/**
  * `cameras.json` in the folder of the settings file at `settingsPath` — the
  * path `resolveSettingsStorePath()` gives, so the per-ecosystem folder and the
  * `IRACEDECK_SETTINGS_PATH` override move it too (same folder, fixed name).
+ *
+ * When that would be the settings file itself (an override naming a file
+ * `cameras.json`), the catalog is `cameras.catalog.json` instead: sharing the
+ * path, the catalog store's `validate` would reject the settings file and move
+ * it aside. The paths compare resolved and case-insensitively, as Windows
+ * compares them.
  */
 export function resolveCameraCatalogPath(settingsPath: string): string {
-  return join(dirname(settingsPath), CAMERA_CATALOG_FILE_NAME);
+  const folder = dirname(settingsPath);
+  const catalogPath = join(folder, CAMERA_CATALOG_FILE_NAME);
+  const collides = resolve(catalogPath).toLowerCase() === resolve(settingsPath).toLowerCase();
+
+  return collides ? join(folder, CAMERA_CATALOG_COLLISION_FILE_NAME) : catalogPath;
 }
 
 /**
@@ -87,7 +121,7 @@ export interface CameraCatalogService {
   getCatalog(): CameraCatalog;
   /**
    * Record one observation (see `recordCameraGroups`). Before the load has
-   * finished it is queued, the latest per track, and false is returned.
+   * finished it is queued, in capture order, and false is returned.
    * Returns whether the catalog changed; a change is saved (unless memory
    * only) and notified.
    */
@@ -113,7 +147,7 @@ export interface CameraCatalogService {
 }
 
 export interface CameraCatalogServiceOptions {
-  /** `cameras.json`; see {@link resolveCameraCatalogPath}. */
+  /** The catalog file, normally `cameras.json`; see {@link resolveCameraCatalogPath}. */
   path: string;
   logger: ILogger;
   /** Raised when the store sets an unparseable file aside; the plugin passes the banner reporter. */
@@ -155,8 +189,14 @@ export function createCameraCatalogService(options: CameraCatalogServiceOptions)
       ...(options.onRejected === undefined ? {} : { onRejected: options.onRejected }),
     });
   const listeners = new Set<() => void>();
-  /** Observations made before the load finished: the latest per track key, with the time it was made. */
-  const queued = new Map<number, { observation: CameraGroupObservation; at: Date }>();
+  /**
+   * Observations made before the load finished, every one in capture order with
+   * the time it was made, so the replay records exactly what the same sequence
+   * would have recorded after the load: a superseded list's group names still
+   * reach `groups`, and first/last seen times stay in order.
+   */
+  const queued: Array<{ observation: CameraGroupObservation; at: Date }> = [];
+  let droppedFromQueue = 0;
   let catalog = emptyCameraCatalog();
   let state: CameraCatalogPersistence = "loading";
   let loading: Promise<void> | undefined;
@@ -174,11 +214,27 @@ export function createCameraCatalogService(options: CameraCatalogServiceOptions)
     }
   };
 
+  /**
+   * Hand the catalog to the store unless memory only. A store whose `save`
+   * throws (the file store does not: it debounces and retries its writes) is
+   * logged and leaves the change in memory, so a caller still finishes and
+   * notifies; the next change saves the whole catalog again.
+   */
+  const save = (): void => {
+    if (state !== "file") return;
+
+    try {
+      store.save(catalog as unknown as Record<string, unknown>);
+    } catch (error: unknown) {
+      logger.error("The camera catalog could not be saved");
+      logger.debug(`Camera catalog save to ${path} failed: ${describeError(error)}`);
+    }
+  };
+
   /** Replace the catalog and save it unless memory only. */
   const commit = (next: CameraCatalog): void => {
     catalog = next;
-
-    if (state === "file") store.save(next as unknown as Record<string, unknown>);
+    save();
   };
 
   async function readWithRetries(): Promise<Record<string, unknown> | undefined | typeof UNREADABLE> {
@@ -201,7 +257,7 @@ export function createCameraCatalogService(options: CameraCatalogServiceOptions)
         logger.debug(
           `Read attempt ${attempt}/${attempts} of ${path} failed: ${describeError(error)}; next try in ${delayMs} ms`,
         );
-        await new Promise((resolve) => setTimeout(resolve, delayMs));
+        await new Promise((wake) => setTimeout(wake, delayMs));
       }
     }
   }
@@ -248,9 +304,12 @@ export function createCameraCatalogService(options: CameraCatalogServiceOptions)
     state = persistence;
     catalog = loaded;
 
+    if (persistence === "file") logger.info("Camera catalog loaded");
+
     let changed = false;
 
-    for (const { observation, at } of queued.values()) {
+    // In capture order, each at its own time; one save and one notification for them all.
+    for (const { observation, at } of queued) {
       const update = recordCameraGroups(catalog, observation, at);
 
       if (update.changed) {
@@ -259,9 +318,16 @@ export function createCameraCatalogService(options: CameraCatalogServiceOptions)
       }
     }
 
-    queued.clear();
+    if (droppedFromQueue > 0) {
+      logger.debug(
+        `${droppedFromQueue} camera group observations made during the load were dropped (limit ${CAMERA_CATALOG_QUEUE_LIMIT})`,
+      );
+    }
 
-    if (changed && state === "file") store.save(catalog as unknown as Record<string, unknown>);
+    queued.length = 0;
+    droppedFromQueue = 0;
+
+    if (changed) save();
 
     notify();
   }
@@ -283,7 +349,12 @@ export function createCameraCatalogService(options: CameraCatalogServiceOptions)
 
     observe(observation) {
       if (state === "loading") {
-        queued.set(observation.trackId, { observation, at: now() });
+        if (queued.length >= CAMERA_CATALOG_QUEUE_LIMIT) {
+          queued.shift();
+          droppedFromQueue++;
+        }
+
+        queued.push({ observation, at: now() });
 
         return false;
       }

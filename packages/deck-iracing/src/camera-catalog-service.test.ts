@@ -1,4 +1,4 @@
-import { silentLogger } from "@iracedeck/logger";
+import { type ILogger, silentLogger } from "@iracedeck/logger";
 import { createMemorySettingsStore, type SettingsFileRejection, type SettingsStore } from "@iracedeck/settings";
 import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
@@ -7,12 +7,36 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  CAMERA_CATALOG_COLLISION_FILE_NAME,
   CAMERA_CATALOG_FILE_NAME,
+  CAMERA_CATALOG_QUEUE_LIMIT,
   createCameraCatalogService,
   resolveCameraCatalogPath,
 } from "./camera-catalog-service.js";
 import { CAMERA_CATALOG_REJECTED_WARNING_ID, createCameraCatalogRejectionReporter } from "./camera-catalog-warning.js";
 import { type CameraGroupObservation } from "./camera-catalog.js";
+
+/** A logger whose `info` and `error` are spies and whose other levels are silent. */
+function spyLogger() {
+  return {
+    ...silentLogger,
+    info: vi.fn<(message: string) => void>(),
+    error: vi.fn<(message: string) => void>(),
+  } satisfies ILogger;
+}
+
+/** A memory store whose load the test releases with the returned `finish`. */
+function deferredStore(overrides: Partial<SettingsStore> = {}) {
+  let finish: (value: Record<string, unknown> | undefined) => void = () => undefined;
+  const memory = createMemorySettingsStore();
+  const store: SettingsStore = {
+    ...memory,
+    load: () => new Promise((resolve) => (finish = resolve)),
+    ...overrides,
+  };
+
+  return { memory, store, finish: (value?: Record<string, unknown>) => finish(value) };
+}
 
 const NOW = new Date("2026-11-08T12:00:00.000Z");
 const now = (): Date => NOW;
@@ -69,6 +93,20 @@ describe("resolveCameraCatalogPath (#1653)", () => {
     );
     // The IRACEDECK_SETTINGS_PATH override names a file anywhere; the catalog follows it.
     expect(resolveCameraCatalogPath(join(dir, "dev-settings.json"))).toBe(join(dir, "cameras.json"));
+  });
+
+  it("never gives the settings file's own path: a settings file called cameras.json moves the catalog aside", () => {
+    // The catalog store's validate would reject the settings file and move it aside.
+    expect(resolveCameraCatalogPath(join(dir, "cameras.json"))).toBe(join(dir, CAMERA_CATALOG_COLLISION_FILE_NAME));
+    // Windows paths compare case-insensitively.
+    expect(resolveCameraCatalogPath(join(dir, "Cameras.JSON"))).toBe(join(dir, CAMERA_CATALOG_COLLISION_FILE_NAME));
+    // The same file through a path that is not normalised.
+    expect(resolveCameraCatalogPath(join(dir, "sub", "..", "cameras.json"))).toBe(
+      join(dir, CAMERA_CATALOG_COLLISION_FILE_NAME),
+    );
+    expect(CAMERA_CATALOG_COLLISION_FILE_NAME).not.toBe(CAMERA_CATALOG_FILE_NAME);
+    // A name that only resembles it keeps the normal one.
+    expect(resolveCameraCatalogPath(join(dir, "cameras.json.bak"))).toBe(join(dir, CAMERA_CATALOG_FILE_NAME));
   });
 });
 
@@ -308,7 +346,7 @@ describe("createCameraCatalogService over a temp dir (#1653)", () => {
 
     const loading = service.start();
 
-    // Queued, the latest per track: the first Spa list is superseded by the second.
+    // Queued, every one in order: the second Spa list replaces the first as the track's list.
     expect(service.observe({ ...spa, groups: ["Nose"] })).toBe(false);
     expect(service.observe(spa)).toBe(false);
     expect(service.observe({ trackId: 7, trackName: "Lakeland", trackConfig: "", groups: ["Blimp"] })).toBe(false);
@@ -322,6 +360,152 @@ describe("createCameraCatalogService over a temp dir (#1653)", () => {
     // One save and one notification for the load and the queue together.
     expect(store.saved).toHaveLength(1);
     expect(listener).toHaveBeenCalledOnce();
+  });
+
+  it("keeps a queued observation's groups when a later one for the same track no longer shows them", async () => {
+    const { store, finish } = deferredStore();
+    const service = fileService({ store });
+    const loading = service.start();
+
+    service.observe({ ...spa, groups: ["Drone"] });
+    service.observe({ ...spa, groups: ["Nose"] });
+    finish(undefined);
+    await loading;
+
+    // The same sequence after the load: `groups` only grows, the track keeps its latest list.
+    const reference = fileService({ store: createMemorySettingsStore() });
+
+    await reference.start();
+    reference.observe({ ...spa, groups: ["Drone"] });
+    reference.observe({ ...spa, groups: ["Nose"] });
+
+    expect(Object.keys(service.getCatalog().groups)).toEqual(["Drone", "Nose"]);
+    expect(service.getCatalog().tracks["13"].groups).toEqual(["Nose"]);
+    expect(service.getCatalog()).toEqual(reference.getCatalog());
+  });
+
+  it("replays queued observations in capture order, each with its own time", async () => {
+    const times = ["2026-11-08T12:00:00.000Z", "2026-11-08T12:00:05.000Z", "2026-11-08T12:00:10.000Z"];
+    const clock = (): (() => Date) => {
+      let i = 0;
+
+      return () => new Date(times[Math.min(i++, times.length - 1)]);
+    };
+    const sequence: CameraGroupObservation[] = [
+      { ...spa, groups: ["Nose"] },
+      { trackId: 7, trackName: "Lakeland", trackConfig: "", groups: ["Blimp"] },
+      { ...spa, groups: ["Blimp"] },
+    ];
+    const { store, finish } = deferredStore();
+    const service = fileService({ store, now: clock() });
+    const loading = service.start();
+
+    for (const observation of sequence) service.observe(observation);
+
+    finish(undefined);
+    await loading;
+
+    const reference = fileService({ store: createMemorySettingsStore(), now: clock() });
+
+    await reference.start();
+
+    for (const observation of sequence) reference.observe(observation);
+
+    const { groups, tracks } = service.getCatalog();
+
+    // Blimp first seen on Lakeland at :05, last on Spa at :10 — never the other way round.
+    expect(groups.Blimp).toEqual({ firstSeen: times[1], lastSeen: times[2] });
+    expect(tracks["7"].lastSeen).toBe(times[1]);
+    expect(tracks["13"].lastSeen).toBe(times[2]);
+    expect(service.getCatalog()).toEqual(reference.getCatalog());
+  });
+
+  it(`keeps at most ${CAMERA_CATALOG_QUEUE_LIMIT} queued observations, dropping the oldest`, async () => {
+    const { store, finish } = deferredStore();
+    const service = fileService({ store });
+    const loading = service.start();
+    const extra = 3;
+
+    for (let i = 1; i <= CAMERA_CATALOG_QUEUE_LIMIT + extra; i++) {
+      service.observe({ trackId: i, trackName: `Track ${i}`, trackConfig: "", groups: [`Group ${i}`] });
+    }
+
+    finish(undefined);
+    await loading;
+
+    const keys = Object.keys(service.getCatalog().tracks).map(Number);
+
+    expect(keys).toHaveLength(CAMERA_CATALOG_QUEUE_LIMIT);
+    expect(Math.min(...keys)).toBe(extra + 1);
+    expect(Math.max(...keys)).toBe(CAMERA_CATALOG_QUEUE_LIMIT + extra);
+  });
+
+  it("finishes the load and notifies once when saving the replayed queue throws, keeping the catalog in memory", async () => {
+    const logger = spyLogger();
+    const { store, finish } = deferredStore({
+      save: () => {
+        throw new Error("disk full");
+      },
+    });
+    const service = fileService({ store, logger });
+    const listener = vi.fn();
+
+    service.subscribe(listener);
+
+    const loading = service.start();
+
+    service.observe(spa);
+    finish(undefined);
+
+    await expect(loading).resolves.toBeUndefined();
+    await expect(service.start()).resolves.toBeUndefined();
+    expect(service.isLoaded()).toBe(true);
+    expect(service.persistence()).toBe("file");
+    expect(service.getCatalog().tracks["13"].groups).toEqual(["Nose", "TV1", "DynamicTV"]);
+    expect(listener).toHaveBeenCalledOnce();
+    expect(logger.error).toHaveBeenCalledWith("The camera catalog could not be saved");
+  });
+
+  it("records and notifies an observation whose save throws, and does not throw itself", async () => {
+    const logger = spyLogger();
+    const store: SettingsStore = {
+      ...createMemorySettingsStore(),
+      save: () => {
+        throw new Error("disk full");
+      },
+    };
+    const service = fileService({ store, logger });
+    const listener = vi.fn();
+
+    await service.start();
+    service.subscribe(listener);
+
+    expect(service.observe(spa)).toBe(true);
+    expect(listener).toHaveBeenCalledOnce();
+    expect(service.remove("TV1")).toBe(true);
+    expect(listener).toHaveBeenCalledTimes(2);
+    expect(logger.error).toHaveBeenCalledTimes(2);
+  });
+
+  it("logs a finished load at info, once, for a saved file and for a missing one; not for memory only", async () => {
+    await writeFile(path, JSON.stringify(storedFile));
+
+    const loaded = spyLogger();
+
+    await fileService({ logger: loaded }).start();
+    expect(loaded.info).toHaveBeenCalledExactlyOnceWith("Camera catalog loaded");
+
+    const missing = spyLogger();
+
+    await fileService({ logger: missing, store: createMemorySettingsStore() }).start();
+    expect(missing.info).toHaveBeenCalledExactlyOnceWith("Camera catalog loaded");
+
+    await writeFile(path, JSON.stringify({ version: 2 }));
+
+    const newer = spyLogger();
+
+    await fileService({ logger: newer }).start();
+    expect(newer.info).not.toHaveBeenCalled();
   });
 
   it("loads once however often it is started", async () => {
