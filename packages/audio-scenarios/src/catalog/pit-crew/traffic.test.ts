@@ -450,6 +450,13 @@ function wire(traffic: readonly ScenarioContract[] = TRAFFIC_CONTRACTS): void {
 }
 
 beforeEach(() => {
+  // The clock stands still unless a case moves it: the queue's maximum waits
+  // (2 s for right behind) and the close calls' speak-time gates read
+  // `Date.now()`, so on a real clock a runner paused between a publish and
+  // the drain would drop a line an ordering case expects to hear. Only `Date`
+  // is faked; the expiry cases set the time themselves.
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(0);
   wire();
 });
 
