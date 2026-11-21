@@ -236,12 +236,17 @@ interface DomElement {
   querySelector(selector: string): DomElement | null;
   dispatchEvent(event: unknown): boolean;
   click(): void;
+  focus(): void;
 }
 
 /** The jsdom globals these tests use, typed here: the package compiles without the DOM lib. */
 const dom = globalThis as unknown as {
   window: Record<string, unknown>;
-  document: { body: { innerHTML: string }; getElementById(id: string): DomElement | null };
+  document: {
+    body: { innerHTML: string };
+    activeElement: DomElement | null;
+    getElementById(id: string): DomElement | null;
+  };
   customElements: { get(name: string): unknown; define(name: string, constructor: unknown): void };
   HTMLElement: new () => object;
   Event: new (type: string) => unknown;
@@ -360,10 +365,17 @@ describe("camera-focus PI Cycle Camera grids: the Remembered groups section (#16
     return read(id).entries.filter((e) => !STANDARD.includes(e.name));
   }
 
+  /** The checkbox of `name` in a grid, or null. */
+  function checkbox(id: string, name: string): DomElement | null {
+    return (
+      Array.from(grid(id).children)
+        .map((c) => c.querySelector("input"))
+        .find((b) => b?.dataset.group === name) ?? null
+    );
+  }
+
   function toggle(id: string, name: string): void {
-    const box = Array.from(grid(id).children)
-      .map((c) => c.querySelector("input"))
-      .find((b) => b?.dataset.group === name);
+    const box = checkbox(id, name);
 
     if (!box) throw new Error(`${name} not in #${id}`);
 
@@ -512,6 +524,51 @@ describe("camera-focus PI Cycle Camera grids: the Remembered groups section (#16
 
     grid("btn-clear").click();
     expect(keypadSave.mock.calls.at(-1)?.[0]).not.toMatch(/__proto__|constructor/);
+  });
+
+  describe("keyboard focus across a catalog push (#1653 review)", () => {
+    it.each(["camera-groups-grid", "dial-camera-groups-grid"])(
+      "gives focus back to the same group's new checkbox in #%s",
+      (id) => {
+        pushKeypadSubset({});
+        pushGlobal("cameraGroupSubset", JSON.stringify({ groups: {} }));
+        pushCatalog(CATALOG);
+
+        for (const name of ["SpeedCam", "Gearbox"]) {
+          const before = checkbox(id, name);
+          before?.focus();
+          expect(dom.document.activeElement).toBe(before);
+
+          pushCatalog({ ...CATALOG, groups: [...CATALOG.groups, { name: `New ${name}`, tracks: [], lastSeen: "" }] });
+
+          const after = checkbox(id, name);
+          expect(after).not.toBe(before);
+          expect(dom.document.activeElement).toBe(after);
+        }
+      },
+    );
+
+    it("leaves focus alone when the focused group is gone after the push", () => {
+      pushKeypadSubset({});
+      pushCatalog(CATALOG);
+      checkbox("camera-groups-grid", "Zulu")?.focus();
+
+      pushCatalog({ ...CATALOG, groups: CATALOG.groups.filter((g) => g.name !== "Zulu") });
+
+      expect(checkbox("camera-groups-grid", "Zulu")).toBeNull();
+      expect(dom.document.activeElement?.dataset?.group).toBeUndefined();
+    });
+
+    it("moves no focus into a grid that did not hold it", () => {
+      pushKeypadSubset({});
+      pushCatalog(CATALOG);
+      const button = grid("btn-clear");
+      button.focus();
+
+      pushCatalog({ ...CATALOG, current: null });
+
+      expect(dom.document.activeElement).toBe(button);
+    });
   });
 
   it("subscribes to the catalog under the key the plugin publishes", () => {

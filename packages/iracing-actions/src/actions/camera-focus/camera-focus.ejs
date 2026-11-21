@@ -402,7 +402,27 @@
 					var grid = document.getElementById(gridId);
 					if (!grid) return;
 
+					// A re-render (a catalog push, #1653) replaces every checkbox; the
+					// one holding keyboard focus gets it back by its group name.
+					var active = document.activeElement;
+					var focusedGroup = active && active !== grid && grid.contains(active) && active.dataset ? active.dataset.group : undefined;
+
 					grid.innerHTML = "";
+					drawGroupCheckboxes(grid, state, onToggle);
+
+					if (focusedGroup === undefined) return;
+
+					var boxes = grid.querySelectorAll("input[type=\"checkbox\"]");
+					for (var b = 0; b < boxes.length; b++) {
+						// By dataset, not a selector: a group may be named anything.
+						if (boxes[b].dataset.group === focusedGroup) {
+							boxes[b].focus();
+							return;
+						}
+					}
+				}
+
+				function drawGroupCheckboxes(grid, state, onToggle) {
 
 					for (var s = 0; s < GROUP_SECTIONS.length; s++) {
 						var section = GROUP_SECTIONS[s];
