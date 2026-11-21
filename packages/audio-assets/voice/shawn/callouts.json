@@ -1952,14 +1952,14 @@
     },
     "pit-crew.traffic-rejoin-right-behind": {
       "comment": "Stopped or crawling on track with the nearest car under two seconds away: a whole line from a pool of four, such as \"Right behind you. Watch out.\" or \"On you now. Careful.\" It cuts a lower-weight line in flight, a caution or flag call included; the meatball, the start lights, the restart green, a fuel-critical warning and the spotter's car-alongside calls keep the radio. No radio frame: the rejoin lines repeat while you stay stopped.",
-      "test": "Harness → Traffic → Rejoin right behind. In-sim: stop on track in practice just as a car is about to reach you.",
+      "test": "Harness → Traffic → Rejoin right behind. In-sim: tick Traffic when rejoining (experimental) in the Settings window first, then stop on track in practice just as a car is about to reach you.",
       "sequence": [
         "pool:traffic/rejoin-right-behind"
       ]
     },
     "pit-crew.traffic-rejoin-near-first": {
       "comment": "The first call about a car two to nine seconds away, one sentence in three pieces each picked from its pool: an intro that leads into the seconds, the seconds, and an outro, such as \"Car coming in about five seconds. Watch out.\" It cuts a lower-weight line in flight, a caution or flag call included; the meatball, the start lights, the restart green, a fuel-critical warning and the spotter's car-alongside calls keep the radio. No radio frame.",
-      "test": "Harness → Traffic → Rejoin near, first call. In-sim: stop on track as a car is a few seconds away.",
+      "test": "Harness → Traffic → Rejoin near, first call. In-sim: tick Traffic when rejoining (experimental) in the Settings window first, then stop on track as a car is a few seconds away.",
       "sequence": [
         "pool:traffic/rejoin-intro",
         "{{traffic.rejoinSeconds}}",
@@ -1968,7 +1968,7 @@
     },
     "pit-crew.traffic-rejoin-near-update": {
       "comment": "A later count of the same approach, each time its arrival has dropped by three seconds or more: an update intro that leads into the seconds, and the seconds, such as \"Getting closer, about five seconds.\" It cuts a lower-weight line in flight, a caution or flag call included; the meatball, the start lights, the restart green, a fuel-critical warning and the spotter's car-alongside calls keep the radio. No radio frame.",
-      "test": "Harness → Traffic → Rejoin near, count. In-sim: stay stopped on track while a car closes from about nine seconds away.",
+      "test": "Harness → Traffic → Rejoin near, count. In-sim: tick Traffic when rejoining (experimental) in the Settings window first, then stay stopped on track while a car closes from about nine seconds away.",
       "sequence": [
         "pool:traffic/rejoin-update",
         "{{traffic.rejoinSeconds}}"
@@ -1976,13 +1976,13 @@
     },
     "pit-crew.traffic-rejoin-pack": {
       "comment": "Stopped or crawling on track with a group of cars coming, the nearest under ten seconds away and more close behind it: one line for the whole group, \"A group of cars coming. Join carefully.\", said once in place of the per-car calls, and nothing more until the last car of the group has gone by. It cuts a lower-weight line in flight, a caution or flag call included; the meatball, the start lights, the restart green, a fuel-critical warning and the spotter's car-alongside calls keep the radio. No radio frame.",
-      "test": "Harness → Traffic → Rejoin pack. In-sim: stop on track as a group of cars a second or so apart comes up behind you, as at a race start or behind a pack of AI cars.",
+      "test": "Harness → Traffic → Rejoin pack. In-sim: tick Traffic when rejoining (experimental) in the Settings window first, then stop on track as a group of cars a second or so apart comes up behind you, as at a race start or behind a pack of AI cars.",
       "sequence": [
         "pool:traffic/rejoin-pack"
       ]
     },
     "pit-crew.traffic-pit-exit-traffic": {
-      "comment": "About three seconds before the end of pit road, a car on track is predicted at the end of the exit blend line around the same time as you: a line from a pool of four, such as \"Traffic likely at pit exit. Watch out.\" or \"Car likely at the exit. Careful.\" It cuts a lower-weight line in flight. A caution or flag call, the exit readback or the tire-wear report it cuts picks up again after it, and one that had already finished is not replayed; the readback and the report come 4.5 s after you leave pit road, so they normally play after it anyway. The meatball, the start lights, the restart green, a fuel-critical warning and the spotter's car-alongside calls keep the radio.",
+      "comment": "About three seconds before the end of pit road, a car on track is predicted at the end of the exit blend line around the same time as you, or a car on track cannot be timed: a line from a pool of four, such as \"Traffic likely at pit exit. Watch out.\" or \"Car likely at the exit. Careful.\" It cuts a lower-weight line in flight. A caution or flag call, the exit readback or the tire-wear report it cuts picks up again after it, and one that had already finished is not replayed; the readback and the report come 4.5 s after you leave pit road, so they normally play after it anyway. The meatball, the start lights, the restart green, a fuel-critical warning and the spotter's car-alongside calls keep the radio.",
       "test": "Harness → Traffic → Pit exit traffic. In-sim, on a track whose pit lane iRaceDeck has learned (its pitRoadEnd and blendEnd landmarks): leave your pit box and drive down pit road with a car on track about to pass the pit exit; the call comes about three seconds before the end of pit road.",
       "sequence": [
         "pool:traffic/pit-exit-traffic"
