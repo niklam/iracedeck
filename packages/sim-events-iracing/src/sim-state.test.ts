@@ -594,12 +594,35 @@ describe("readSimState — the laps-of-fuel-left figure", () => {
     expect(new Map(simStateHeadline(state)).get("Laps of fuel left")).toBe("no estimate (last announced: none)");
   });
 
-  it("keeps the estimate and compares it with no race distance outside a race session", () => {
+  it("explains a suppressed Lone Qualify warning by the session's own lap counter (issue #1702)", () => {
+    const { controller } = start({
+      SessionInfo: { Sessions: [{ SessionNum: 0, SessionType: "Lone Qualify" }] },
+      DriverInfo: { DriverCarIdx: 0 },
+    });
+    // A lap counter and a running clock: only the counter is compared.
+    const limits = { SessionLapsRemainEx: 3, SessionTimeRemain: 400 };
+
+    driveTwoValidLaps(controller, limits);
+    controller.__tick(telemetry({ Lap: 4, LapDistPct: 0.55, SessionTime: 210, FuelLevel: 20, ...limits }));
+
+    // Count 9 is inside the spoken band, but 20 / 1.95 = 10.3 laps cover the
+    // 0.45 + 2 left: the diff speaks nothing, and the snapshot says why.
+    expect(read().fuel.lapsLeft.now).toMatchObject({
+      count: 9,
+      lapsNeededAfterCurrent: 2,
+      timedLapsAfterCurrent: null,
+      remainingLaps: 2,
+      covered: true,
+      coverageSkipped: null,
+    });
+  });
+
+  it("compares the estimate with nothing in a practice session with no lap limit (issue #1702)", () => {
     const { controller } = start({
       SessionInfo: { Sessions: [{ SessionNum: 0, SessionType: "Practice" }] },
       DriverInfo: { DriverCarIdx: 0 },
     });
-    const limits = { SessionLapsRemainEx: 3, SessionTimeRemain: 400 };
+    const limits = { SessionLapsRemainEx: IRSDK_UNLIMITED_LAPS, SessionTimeRemain: 400 };
 
     driveTwoValidLaps(controller, limits);
     controller.__tick(telemetry({ Lap: 4, LapDistPct: 0.55, SessionTime: 210, FuelLevel: 20, ...limits }));
@@ -610,7 +633,7 @@ describe("readSimState — the laps-of-fuel-left figure", () => {
       timedLapsAfterCurrent: null,
       remainingLaps: null,
       covered: null,
-      coverageSkipped: "not-a-race-session",
+      coverageSkipped: "no-lap-limit",
     });
   });
 
@@ -1422,22 +1445,79 @@ describe("buildSimState", () => {
       }
     });
 
-    it("is not worked out outside a race session, whatever else holds", () => {
-      const translatorState = createInitialState();
+    describe("outside a race (issue #1702)", () => {
+      /** A non-race reading of `telemetry`, with the sticky race marker set to show it is not read. */
+      function buildOutside(over: Partial<TelemetryData>, getLeaderFinish = vi.fn(() => UNKNOWN_LEADER_FINISH)) {
+        const translatorState = createInitialState();
 
-      translatorState.playerFinalLapStarted = true;
+        translatorState.playerFinalLapStarted = true;
 
-      const state = build({
-        telemetry: telemetry({ FuelLevel: 10, LapDistPct: 0.5, SessionLapsRemainEx: 3 }),
-        fuel: fuelParts({ isRaceSession: false }),
-        state: translatorState,
+        const state = build({
+          telemetry: telemetry({ FuelLevel: 10, LapDistPct: 0.5, ...over }),
+          fuel: fuelParts({ isRaceSession: false, stats: timedStats, getLeaderFinish }),
+          state: translatorState,
+        });
+
+        return { now: state.fuel.lapsLeft.now, getLeaderFinish };
+      }
+
+      it("compares the count with the lap counter alone, ignoring the race's sticky marker and the clock", () => {
+        const { now, getLeaderFinish } = buildOutside({ SessionLapsRemainEx: 3, SessionTimeRemain: 30 });
+
+        // 10 / 2 = 5 laps against (0.5 + 2) × 1.05: covered.
+        expect(now).toMatchObject({
+          count: 4,
+          lapsNeededAfterCurrent: 2,
+          timedLapsAfterCurrent: null,
+          remainingLaps: 2,
+          covered: true,
+          coverageSkipped: null,
+        });
+        expect(getLeaderFinish).not.toHaveBeenCalled();
       });
 
-      expect(state.fuel.lapsLeft.now).toMatchObject({
-        count: 4,
-        remainingLaps: null,
-        covered: null,
-        coverageSkipped: "not-a-race-session",
+      it("reports a tank short of the counted laps as not covered", () => {
+        // 5 laps against (0.5 + 5) × 1.05 = 5.78.
+        expect(buildOutside({ SessionLapsRemainEx: 6 }).now).toMatchObject({
+          remainingLaps: 5,
+          covered: false,
+          coverageSkipped: null,
+        });
+      });
+
+      it("does not apply the race's white-flag clamp to the counter", () => {
+        expect(buildOutside({ SessionLapsRemainEx: 1 }).now).toMatchObject({ remainingLaps: 0, covered: true });
+      });
+
+      it("skips it on the player's own final lap, by the White bit on the tick", () => {
+        expect(buildOutside({ SessionLapsRemainEx: 3, SessionFlags: Flags.White }).now).toMatchObject({
+          count: 4,
+          remainingLaps: null,
+          covered: null,
+          coverageSkipped: "final-lap",
+        });
+      });
+
+      it("skips it after the session's chequered flag", () => {
+        for (const sessionState of [SessionState.Checkered, SessionState.CoolDown]) {
+          expect(buildOutside({ SessionLapsRemainEx: 3, SessionState: sessionState }).now).toMatchObject({
+            covered: null,
+            coverageSkipped: "race-over",
+          });
+        }
+      });
+
+      it("skips it with no lap limit: the sentinel, a missing counter or an invalid one", () => {
+        for (const SessionLapsRemainEx of [IRSDK_UNLIMITED_LAPS, undefined, -1]) {
+          expect(buildOutside({ SessionLapsRemainEx, SessionTimeRemain: 30 }).now).toMatchObject({
+            count: 4,
+            lapsNeededAfterCurrent: null,
+            timedLapsAfterCurrent: null,
+            remainingLaps: null,
+            covered: null,
+            coverageSkipped: "no-lap-limit",
+          });
+        }
       });
     });
   });

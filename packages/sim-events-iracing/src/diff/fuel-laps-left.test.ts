@@ -53,7 +53,9 @@ import {
   FUEL_COVERAGE_ERROR,
   FUEL_LAPS_LEFT_MAX_COUNT,
   isFuelRaceCovered,
+  resolveFuelFinalLapStarted,
   resolveFuelRaceCoverage,
+  resolveFuelSessionCoverage,
   resolveFuelSessionLapsAfterCurrent,
   sanitizeFuelCalloutMarginLaps,
 } from "./fuel-laps-left.js";
@@ -490,6 +492,37 @@ describe("resolveFuelSessionLapsAfterCurrent (issue #1702)", () => {
 
   it("does not clamp under the white flag, unlike the race distance", () => {
     expect(resolveFuelSessionLapsAfterCurrent(tick({ SessionLapsRemainEx: 1, SessionFlags: Flags.White }))).toBe(0);
+  });
+});
+
+describe("resolveFuelSessionCoverage (issue #1702)", () => {
+  it("is the lap counter as both the counter side and the binding distance, with no timed side", () => {
+    expect(resolveFuelSessionCoverage(tick({ SessionLapsRemainEx: 4, SessionTimeRemain: 30 }))).toEqual({
+      lapsNeededAfterCurrent: 3,
+      timedLapsAfterCurrent: null,
+      remainingLaps: 3,
+    });
+  });
+
+  it("is null with no lap limit", () => {
+    expect(resolveFuelSessionCoverage(tick({ SessionLapsRemainEx: IRSDK_UNLIMITED_LAPS }))).toBeNull();
+  });
+});
+
+describe("resolveFuelFinalLapStarted (issue #1702)", () => {
+  const white = tick({ SessionFlags: Flags.White });
+  const none = tick({ SessionFlags: 0 });
+
+  it("in a race is the sticky marker, whatever the White bit says", () => {
+    expect(resolveFuelFinalLapStarted(true, true, none)).toBe(true);
+    expect(resolveFuelFinalLapStarted(true, false, white)).toBe(false);
+  });
+
+  it("outside a race is the White bit on the tick, whatever the sticky marker says", () => {
+    expect(resolveFuelFinalLapStarted(false, false, white)).toBe(true);
+    expect(resolveFuelFinalLapStarted(false, true, none)).toBe(false);
+    expect(resolveFuelFinalLapStarted(false, false, tick({ SessionFlags: Flags.White | Flags.Yellow }))).toBe(true);
+    expect(resolveFuelFinalLapStarted(false, false, tick({ SessionFlags: undefined }))).toBe(false);
   });
 });
 

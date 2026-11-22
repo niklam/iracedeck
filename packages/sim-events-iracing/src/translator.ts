@@ -42,9 +42,7 @@ import {
   classPositionOrOfficial,
   extractQualifyResults,
   extractSectorStarts,
-  Flags,
   getCarNumberFromSessionInfo,
-  hasFlag,
   IRSDK_UNLIMITED_LAPS,
   isPostRace,
   isPreGreen,
@@ -87,6 +85,7 @@ import {
   diffFuelLapsLeft,
   FUEL_CALLOUT_DEFAULT_MARGIN_LAPS,
   FUEL_LAPS_LEFT_WINDOW_LAPS,
+  resolveFuelFinalLapStarted,
 } from "./diff/fuel-laps-left.js";
 import {
   computeFuelStats,
@@ -2640,26 +2639,6 @@ function fuelLapsLeftStats(self: TranslatorInstance): FuelStats {
 }
 
 /**
- * Whether the player has started their own final lap, as `diffFuelLapsLeft`
- * reads it (issue #1702). In a race: the flags' STICKY marker
- * (`playerFinalLapStarted`, issue #880) as `diffFlags` left it earlier in the
- * tick — set at the player's crossing under the white, so the leader's white
- * a lap earlier does not silence the countdown, and kept through a caution
- * replacing the white. That marker is set in races only; in any other session
- * iRacing shows the White when the player starts their own last lap
- * (`diff/flags.ts`, the two-stage white), so the bit on this tick is the
- * signal. Computed here and handed over as a value (the slice convention), so
- * the diff reads no flag state of its own.
- */
-function fuelFinalLapStarted(
-  isRaceSession: boolean,
-  playerFinalLapStarted: boolean,
-  telemetry: TelemetryData,
-): boolean {
-  return isRaceSession ? playerFinalLapStarted : hasFlag(telemetry.SessionFlags, Flags.White);
-}
-
-/**
  * The race leader as the laps-of-fuel-left race coverage reads them (issues
  * #880, #1405): their recent lap time ({@link resolveLeaderLapTimeS}), the
  * predicted chequered flag in seconds and in crossings, and the player's
@@ -4123,7 +4102,9 @@ function handleLiveSteps(
       self.state.fuelCallout,
       telemetry,
       isRaceSession,
-      fuelFinalLapStarted(isRaceSession, self.state.playerFinalLapStarted, telemetry),
+      // The sticky marker as `diffFlags` left it above in a race, the White
+      // bit elsewhere (#1702).
+      resolveFuelFinalLapStarted(isRaceSession, self.state.playerFinalLapStarted, telemetry),
       () => fuelLapsLeftStats(self),
       self.getFuelLapsLeftMarginLaps,
       (playerLapS) =>

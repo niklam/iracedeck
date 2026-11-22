@@ -96,7 +96,7 @@
  *   - In any other session: the final-lap signal is the White bit on this
  *     tick, which iRacing shows there when the player starts their own last
  *     lap (`diff/flags.ts`, the two-stage white); the coverage distance is the
- *     lap counter alone ({@link resolveFuelSessionLapsAfterCurrent}) — a
+ *     lap counter alone ({@link resolveFuelSessionCoverage}) — a
  *     Lone Qualify fuelled for its laps hears no warning, a session with no
  *     lap limit gets no coverage check — and `fuel.lapsLeft.raceCovered` is
  *     never emitted, its line being about finishing the race.
@@ -105,6 +105,7 @@ import type { SimEventName } from "@iracedeck/event-bus";
 import {
   bindingLapsToGo,
   Flags,
+  hasFlag,
   isLiveOnTrack,
   isPostRace,
   resolveLapsRemaining,
@@ -229,9 +230,10 @@ export function estimateFuelLapsLeft(
 
 /**
  * The remaining race distance the laps-of-fuel-left count is compared with,
- * as {@link resolveFuelRaceCoverage} determines it (issue #1387). Both sides
- * are in the count's own unit: full laps the player still runs AFTER the
- * current one.
+ * as {@link resolveFuelRaceCoverage} determines it (issue #1387) — or, outside
+ * a race, {@link resolveFuelSessionCoverage}'s lap-counter distance, with no
+ * timed side (issue #1702). Both sides are in the count's own unit: full laps
+ * the player still runs AFTER the current one.
  */
 export type FuelRaceCoverage = {
   /** By the lap counter, or `null` when it is unknown or unlimited. */
@@ -591,9 +593,9 @@ export function diffFuelLapsLeft(
     // the floor likewise NOT advanced. No timed side, no leader and no
     // reassurance: there is no race to finish behind anyone, and an unknown
     // or unlimited counter leaves the tank alone to speak.
-    const lapsAfterCurrent = resolveFuelSessionLapsAfterCurrent(telemetry);
+    const coverage = resolveFuelSessionCoverage(telemetry);
 
-    if (lapsAfterCurrent !== null && isFuelRaceCovered(estimate, lapsAfterCurrent)) return;
+    if (coverage !== null && isFuelRaceCovered(estimate, coverage.remainingLaps)) return;
   } else if (coverRace(slice, telemetry, stats, estimate, getLeaderFinish, emit)) {
     return;
   }
@@ -696,6 +698,49 @@ export function resolveFuelSessionLapsAfterCurrent(telemetry: TelemetryData): nu
   const rawLapsRemain = resolveLapsRemaining(telemetry);
 
   return rawLapsRemain === null ? null : Math.max(0, rawLapsRemain - 1);
+}
+
+/**
+ * The distance outside a race, in the {@link FuelRaceCoverage} shape (issue
+ * #1702): {@link resolveFuelSessionLapsAfterCurrent} as both the lap-counter
+ * side and the binding distance, with no timed side. `null` with no lap
+ * limit, where nothing is compared. One definition for the diff and the
+ * Telemetry Snapshot's state reader, so the snapshot explains a suppressed
+ * warning by the same distance the diff suppressed it on.
+ *
+ * @param telemetry - the tick's telemetry
+ */
+export function resolveFuelSessionCoverage(telemetry: TelemetryData): FuelRaceCoverage | null {
+  const lapsAfterCurrent = resolveFuelSessionLapsAfterCurrent(telemetry);
+
+  if (lapsAfterCurrent === null) return null;
+
+  return { lapsNeededAfterCurrent: lapsAfterCurrent, timedLapsAfterCurrent: null, remainingLaps: lapsAfterCurrent };
+}
+
+/**
+ * Whether the player has started their own final lap, as `handleTick` hands
+ * it to {@link diffFuelLapsLeft} (`finalLapStarted`) and the Telemetry
+ * Snapshot's state reader reads it (issue #1702). In a race: the flags'
+ * STICKY marker (`TranslatorState.playerFinalLapStarted`, issue #880) as
+ * `diffFlags` left it — set at the player's crossing under the white, so the
+ * leader's white a lap earlier does not silence the countdown, and kept
+ * through a caution replacing the white. That marker is set in races only; in
+ * any other session iRacing shows the White when the player starts their own
+ * last lap (`diff/flags.ts`, the two-stage white), so the bit on the tick is
+ * the signal. A pure rule over values its callers read: the diff itself is
+ * handed the answer and reads no flag state of its own.
+ *
+ * @param isRaceSession - the exact `"Race"` match `handleTick` makes
+ * @param playerFinalLapStarted - the flags' sticky final-lap marker
+ * @param telemetry - the tick's telemetry, for its `SessionFlags`
+ */
+export function resolveFuelFinalLapStarted(
+  isRaceSession: boolean,
+  playerFinalLapStarted: boolean,
+  telemetry: TelemetryData,
+): boolean {
+  return isRaceSession ? playerFinalLapStarted : hasFlag(telemetry.SessionFlags, Flags.White);
 }
 
 /**
