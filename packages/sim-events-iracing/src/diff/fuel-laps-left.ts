@@ -600,11 +600,31 @@ export function diffFuelLapsLeft(
 
   const lastDistPct = slice.lastDistPct;
   const resuming = slice.resumeAfterSessionGap;
-  slice.lastDistPct = distPct;
-  slice.resumeAfterSessionGap = false;
+
+  // The tick's position becomes the next edge's baseline, and the resume mark
+  // is cleared, on every path below but one: a sample attempt whose fallible
+  // work throws — `getStats`, `getMarginLaps` and `getLeaderFinish` are
+  // closures over the plugin and the translator — commits nothing of the
+  // attempt (issue #1702), so the next tick finds the same crossing and tries
+  // again, where a committed attempt would have lost that lap's warning to the
+  // step boundary (#1559). Every write of the attempt runs after the last of
+  // those calls has returned.
+  const commitPosition = (): void => {
+    slice.lastDistPct = distPct;
+    slice.resumeAfterSessionGap = false;
+  };
+  // The attempt itself: at most one per lap once committed.
+  const commitAttempt = (): void => {
+    commitPosition();
+    slice.lastSampledLap = lap;
+  };
 
   // Seed silently on the first valid tick — no edge to compare yet.
-  if (lastDistPct === null) return;
+  if (lastDistPct === null) {
+    commitPosition();
+
+    return;
+  }
 
   // Rising mid-lap crossing, at most one sample attempt per lap. On the first
   // readable tick after an unreadable session (issue #1702) the crossing may
@@ -616,13 +636,17 @@ export function diffFuelLapsLeft(
   const crossed = lastDistPct < FUEL_LAPS_LEFT_SAMPLE_PCT && distPct >= FUEL_LAPS_LEFT_SAMPLE_PCT;
   const crossedInGap = resuming && distPct >= FUEL_LAPS_LEFT_SAMPLE_PCT && lap > slice.lastSampledLap;
 
-  if (!crossed && !crossedInGap) return;
+  if ((!crossed && !crossedInGap) || lap === slice.lastSampledLap) {
+    commitPosition();
 
-  if (lap === slice.lastSampledLap) return;
+    return;
+  }
 
-  slice.lastSampledLap = lap;
+  if (!isLiveOnTrack(telemetry)) {
+    commitAttempt();
 
-  if (!isLiveOnTrack(telemetry)) return;
+    return;
+  }
 
   // Race-coverage suppression, part 1 (issue #866): a pit suggestion that
   // can't be acted on usefully is noise. Silent from the leader's checkered
@@ -642,16 +666,32 @@ export function diffFuelLapsLeft(
   // qualifying chequered flag ends the running as surely as a race's, and
   // `finalLapStarted` is then the White bit on this tick, which practice and
   // qualifying show when the player starts their own last lap.
-  if (isPostRace(telemetry) || finalLapStarted) return;
+  if (isPostRace(telemetry) || finalLapStarted) {
+    commitAttempt();
+
+    return;
+  }
 
   const stats = getStats();
 
-  if (stats.avg === null || stats.avg <= 0) return;
+  if (stats.avg === null || stats.avg <= 0) {
+    commitAttempt();
+
+    return;
+  }
 
   const estimate = estimateFuelLapsLeft(fuelLevel, distPct, stats.avg, getMarginLaps());
   const { effective, count } = estimate;
 
-  if (session === "non-race") {
+  if (session === "race") {
+    // The race distance: `resolveFuelRaceCoverage` calls `getLeaderFinish`,
+    // the last fallible call, so the attempt is committed once it returns.
+    const { remainingLaps } = resolveFuelRaceCoverage(telemetry, stats, estimate.lapFractionRemaining, getLeaderFinish);
+
+    commitAttempt();
+
+    if (coverRace(slice, estimate, remainingLaps, emit)) return;
+  } else {
     // Lap-counter coverage outside a race (issue #1702): a lap-limited
     // session (Lone Qualify always is) counts the player's own laps, so a
     // tank that covers them speaks no warning — the same verdict as a race,
@@ -660,9 +700,9 @@ export function diffFuelLapsLeft(
     // or unlimited counter leaves the tank alone to speak.
     const coverage = resolveFuelLapCounterCoverage(telemetry);
 
+    commitAttempt();
+
     if (coverage !== null && isFuelCovered(estimate, coverage.remainingLaps)) return;
-  } else if (coverRace(slice, telemetry, stats, estimate, getLeaderFinish, emit)) {
-    return;
   }
 
   if (count > FUEL_LAPS_LEFT_MAX_COUNT) return;
@@ -679,16 +719,15 @@ export function diffFuelLapsLeft(
 
 /**
  * The race branch of {@link diffFuelLapsLeft}'s coverage: the verdict over
- * {@link resolveFuelRaceCoverage}'s distance, and the enough-fuel reassurance.
- * Returns whether the tank covers the race, in which case no warning is
- * spoken.
+ * {@link resolveFuelRaceCoverage}'s distance, which the diff resolves before
+ * committing its sample attempt, and the enough-fuel reassurance. Returns
+ * whether the tank covers the race, in which case no warning is spoken.
+ * Calls nothing that can throw.
  */
 function coverRace(
   slice: FuelCalloutState,
-  telemetry: TelemetryData,
-  stats: FuelStats,
   estimate: FuelLapsLeftEstimate,
-  getLeaderFinish: (playerLapS: number) => LeaderFinish,
+  remainingLaps: number,
   emit: EmitFn<(typeof FUEL_LAPS_LEFT_EVENTS)[number]>,
 ): boolean {
   const { unclampedCount } = estimate;
@@ -700,8 +739,6 @@ function coverRace(
   // verdict is `isFuelCovered`'s, on the raw tank with no lap margin,
   // and silent whatever the tank when no lap is left after this one (the
   // #866 trade-off, for a player whose own final-lap latch has not fired).
-  const { remainingLaps } = resolveFuelRaceCoverage(telemetry, stats, estimate.lapFractionRemaining, getLeaderFinish);
-
   if (isFuelCovered(estimate, remainingLaps)) {
     // Enough-fuel reassurance (issue #880): a positive coverage
     // determination in the race ENDGAME becomes ONE "we have enough fuel to

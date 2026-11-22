@@ -103,6 +103,8 @@ type RunOptions = {
   finalLap?: boolean;
   /** The branch, in place of `race` (issue #1702): how an unreadable session is handed over. */
   session?: FuelSessionBranch;
+  /** Which of the diff's fallible closures throws on this call (issue #1702). */
+  throwIn?: "stats" | "margin" | "leader";
 };
 
 function makeRunner(events: PendingEvent[], slice: FuelCalloutState = createFuelCalloutState()) {
@@ -120,6 +122,7 @@ function makeRunner(events: PendingEvent[], slice: FuelCalloutState = createFuel
         finish,
         finalLap = false,
         session,
+        throwIn,
       }: RunOptions = {},
     ) {
       const stats: FuelStats =
@@ -131,13 +134,21 @@ function makeRunner(events: PendingEvent[], slice: FuelCalloutState = createFuel
         t,
         session ?? (race ? "race" : "non-race"),
         finalLap,
-        () => stats,
-        () => margin,
-        (): LeaderFinish => finish ?? { ...UNKNOWN_LEADER_FINISH, lapTimeS: leaderLap, chequeredInS },
+        () => (throwIn === "stats" ? fail("stats") : stats),
+        () => (throwIn === "margin" ? fail("margin") : margin),
+        (): LeaderFinish =>
+          throwIn === "leader"
+            ? fail("leader")
+            : (finish ?? { ...UNKNOWN_LEADER_FINISH, lapTimeS: leaderLap, chequeredInS }),
         (e) => events.push(e),
       );
     },
   };
+}
+
+/** What a throwing closure does: the step boundary (#1559) catches it in the translator. */
+function fail(what: string): never {
+  throw new Error(`${what} unavailable`);
 }
 
 function counts(events: PendingEvent[]): number[] {
@@ -614,6 +625,82 @@ describe("diffFuelLapsLeft — an unreadable session (issue #1702)", () => {
     runner.run(tick({ SessionTimeRemain: -1 }), unknown);
 
     expect(runner.slice.clockExpiredTicks).toBe(2);
+  });
+});
+
+describe("diffFuelLapsLeft — a sample attempt that throws (issue #1702)", () => {
+  it.each([
+    ["the stats", "race", "stats"],
+    ["the margin", "race", "margin"],
+    ["the stats", "non-race", "stats"],
+    ["the margin", "non-race", "margin"],
+  ] as const)("commits nothing when %s throw in a %s, so the next tick samples the lap", (_what, session, throwIn) => {
+    const events: PendingEvent[] = [];
+    const runner = makeRunner(events);
+
+    runner.run(tick({ Lap: 5, LapDistPct: 0.45, FuelLevel: 6.12 }), { session });
+    const before = { ...runner.slice };
+
+    expect(() => runner.run(tick({ Lap: 5, LapDistPct: 0.55, FuelLevel: 6.1 }), { session, throwIn })).toThrow(
+      "unavailable",
+    );
+    // Only the refuel tracker moved; the crossing is still pending.
+    expect(runner.slice).toEqual({ ...before, lastFuelLevel: 6.1 });
+
+    // floor(6.08 / 2 − 0.3 − 0.4) = 2.
+    runner.run(tick({ Lap: 5, LapDistPct: 0.6, FuelLevel: 6.08 }), { session });
+    expect(counts(events)).toEqual([2]);
+  });
+
+  it("commits nothing when the leader throws in a race, so the next tick samples the lap", () => {
+    const events: PendingEvent[] = [];
+    const { run } = makeRunner(events);
+    // A timed race with a long way to go: the timed side asks for the leader.
+    const timed = { SessionLapsRemainEx: IRSDK_UNLIMITED_LAPS, SessionTimeRemain: 3000 };
+    const options: RunOptions = { avgLapTime: 100 };
+
+    run(tick({ Lap: 5, LapDistPct: 0.45, FuelLevel: 6.12, ...timed }), options);
+    expect(() =>
+      run(tick({ Lap: 5, LapDistPct: 0.55, FuelLevel: 6.1, ...timed }), { ...options, throwIn: "leader" }),
+    ).toThrow("leader unavailable");
+    expect(events).toEqual([]);
+
+    run(tick({ Lap: 5, LapDistPct: 0.6, FuelLevel: 6.08, ...timed }), options);
+    expect(counts(events)).toEqual([2]);
+  });
+
+  it("keeps the resume mark when the first readable tick after a gap throws", () => {
+    const events: PendingEvent[] = [];
+    const runner = makeRunner(events);
+
+    runner.run(tick({ Lap: 5, LapDistPct: 0.45, FuelLevel: 8.12 }));
+    runner.run(tick({ Lap: 5, LapDistPct: 0.55, FuelLevel: 8.1 })); // count 3
+    runner.run(tick({ Lap: 6, LapDistPct: 0.6, FuelLevel: 6.2 }), { session: "unknown" });
+
+    expect(() => runner.run(tick({ Lap: 6, LapDistPct: 0.7, FuelLevel: 6.0 }), { throwIn: "stats" })).toThrow();
+    expect(runner.slice).toMatchObject({ lastDistPct: 0.55, lastSampledLap: 5, resumeAfterSessionGap: true });
+
+    // floor(5.98 / 2 − 0.3 − 0.25) = 2.
+    runner.run(tick({ Lap: 6, LapDistPct: 0.75, FuelLevel: 5.98 }));
+    expect(counts(events)).toEqual([3, 2]);
+  });
+
+  it("samples once per lap on the ordinary path, a recovered attempt included", () => {
+    const events: PendingEvent[] = [];
+    const runner = makeRunner(events);
+
+    runner.run(tick({ Lap: 5, LapDistPct: 0.45, FuelLevel: 6.12 }));
+    expect(() => runner.run(tick({ Lap: 5, LapDistPct: 0.55, FuelLevel: 6.1 }), { throwIn: "stats" })).toThrow();
+    runner.run(tick({ Lap: 5, LapDistPct: 0.6, FuelLevel: 6.08 })); // count 2
+    // Later in the lap, lower counts to say: the lap is spent.
+    runner.run(tick({ Lap: 5, LapDistPct: 0.7, FuelLevel: 4.1 }));
+    runner.run(tick({ Lap: 5, LapDistPct: 0.9, FuelLevel: 4.0 }));
+    expect(counts(events)).toEqual([2]);
+    expect(runner.slice.lastSampledLap).toBe(5);
+
+    // The next lap's crossing samples as ever: floor(3.9 / 2 − 0.75) = 1.
+    lapSample(runner.run, 6, 3.9);
+    expect(counts(events)).toEqual([2, 1]);
   });
 });
 
