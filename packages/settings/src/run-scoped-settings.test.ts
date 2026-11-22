@@ -130,7 +130,7 @@ describe("the camera catalog view is run-scoped (issue #1653)", () => {
     initGlobalSettings(host, silentLogger, store);
     await tick();
 
-    expect((getGlobalSettings() as Record<string, unknown>)[CAMERA_CATALOG_KEY]).toBeUndefined();
+    expect(getGlobalSettings()[CAMERA_CATALOG_KEY]).toBeUndefined();
     expect(getGlobalSettings().driverName).toBe("nick");
 
     for (const saved of store.saved) expect(saved).not.toHaveProperty(CAMERA_CATALOG_KEY);
@@ -146,7 +146,7 @@ describe("the camera catalog view is run-scoped (issue #1653)", () => {
 
     updateGlobalSettings({ [CAMERA_CATALOG_KEY]: view });
 
-    expect((getGlobalSettings() as Record<string, unknown>)[CAMERA_CATALOG_KEY]).toBe(view);
+    expect(getGlobalSettings()[CAMERA_CATALOG_KEY]).toBe(view);
     // Durable in cameras.json and large: left out of the host mirror (HOST_MIRROR_EXCLUDED_KEYS).
     expect(hostMirrorPayload({ port: 1, token: "t".repeat(48) })).not.toHaveProperty(CAMERA_CATALOG_KEY);
     // A catalog-only write is not saved at all…

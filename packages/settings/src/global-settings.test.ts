@@ -1725,7 +1725,7 @@ describe("single-writer store (issue #993)", () => {
     updateGlobalSettings({ [CAMERA_CATALOG_KEY]: '{"version":1}', [PI_WARNINGS_KEY]: "[]" });
 
     expect(isSettingsStoreReady()).toBe(true); // a file load: the mirror is allowed
-    expect((getGlobalSettings() as unknown as Record<string, unknown>)[CAMERA_CATALOG_KEY]).toBe('{"version":1}');
+    expect(getGlobalSettings()[CAMERA_CATALOG_KEY]).toBe('{"version":1}');
 
     const mirror = hostMirrorPayload({ port: 1, token: "t" });
 
