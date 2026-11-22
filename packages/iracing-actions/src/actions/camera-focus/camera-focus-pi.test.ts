@@ -700,6 +700,47 @@ describe("camera-focus PI Cycle Camera grids: the Remembered groups section (#16
       expect(lastSaved(keypadSave)).toMatchObject({ Nose: true, SpeedCam: true, DynamicTV: true });
     });
 
+    it("keeps the dial's newer edit when the echo of an earlier save arrives", () => {
+      toggle("dial-camera-groups-grid", "SpeedCam");
+      const firstSave = dialSave.mock.calls.at(-1)?.[0] as string;
+      toggle("dial-camera-groups-grid", "DynamicTV");
+      // The plugin's push carrying the first save, while the second is unsaved.
+      pushGlobal(SUBSET_KEY, firstSave);
+
+      expect(checkbox("dial-camera-groups-grid", "DynamicTV")?.checked).toBe(true);
+      toggle("dial-camera-groups-grid", "Alpha");
+      expect(lastSaved(dialSave)).toMatchObject({ Nose: true, SpeedCam: true, DynamicTV: true, Alpha: true });
+    });
+
+    it("keeps the keypad's newer edit when the echo of an earlier save arrives", () => {
+      toggle("camera-groups-grid", "SpeedCam");
+      const firstSave = keypadSave.mock.calls.at(-1)?.[0] as string;
+      toggle("camera-groups-grid", "DynamicTV");
+      perKey.get(SUBSET_KEY)?.(firstSave);
+
+      expect(checkbox("camera-groups-grid", "DynamicTV")?.checked).toBe(true);
+      toggle("camera-groups-grid", "Alpha");
+      expect(lastSaved(keypadSave)).toMatchObject({ Nose: true, SpeedCam: true, DynamicTV: true, Alpha: true });
+    });
+
+    it("takes a change made elsewhere while an edit is unsaved, and later ones once in sync", () => {
+      toggle("dial-camera-groups-grid", "SpeedCam");
+      const save = dialSave.mock.calls.at(-1)?.[0] as string;
+      pushGlobal(SUBSET_KEY, subset({ Zulu: true })); // another PI changed it
+
+      expect(checkbox("dial-camera-groups-grid", "Zulu")?.checked).toBe(true);
+      expect(checkbox("dial-camera-groups-grid", "SpeedCam")?.checked).toBe(false);
+
+      toggle("camera-groups-grid", "SpeedCam");
+      const keypad = keypadSave.mock.calls.at(-1)?.[0] as string;
+      perKey.get(SUBSET_KEY)?.(keypad); // the echo of its latest save: in sync
+      pushKeypadSubset({ Alpha: true }); // then a change made elsewhere
+
+      expect(checkbox("camera-groups-grid", "Alpha")?.checked).toBe(true);
+      expect(checkbox("camera-groups-grid", "SpeedCam")?.checked).toBe(false);
+      expect(save).toContain("SpeedCam");
+    });
+
     it("still applies a real change and an explicit clear", () => {
       toggle("dial-camera-groups-grid", "SpeedCam");
       pushGlobal(SUBSET_KEY, subset({ Zulu: true }));

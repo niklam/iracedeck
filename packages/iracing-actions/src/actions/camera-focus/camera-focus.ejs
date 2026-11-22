@@ -522,9 +522,20 @@
 					// choice made from it would save that state over the stored one, so
 					// the grid takes no choice.
 					var ready = false;
+					// The subsets this grid saved that no delivery has confirmed yet, oldest
+					// first, and the last delivery it took (#1653 review). sdpi hands every
+					// hook its key's value on every push — a catalog-only push included —
+					// and a push can carry a value from before an edit, or the echo of an
+					// earlier save while a later edit is still unsaved. Taking either would
+					// replace the newer edit, and the next save would drop it.
+					var unconfirmed = [];
+					var lastDelivered;
 
 					function persist() {
-						if (save) save(JSON.stringify({ groups: state }));
+						if (!save) return;
+						var raw = JSON.stringify({ groups: state });
+						unconfirmed.push(raw);
+						save(raw);
 					}
 					function applyReady() {
 						var grid = document.getElementById(gridId);
@@ -607,6 +618,27 @@
 						},
 						markReady: function () {
 							this.setReady(true);
+						},
+						// Whether a delivery (its raw value) is a change to take. While this
+						// grid has unsaved edits, the echo of its latest save means it is in
+						// sync again (nothing to take), and the echo of an earlier save or a
+						// repeat of the value from before the edits is ignored; anything else
+						// is a change made elsewhere, and is taken. With no edits pending,
+						// every delivery but a repeat is taken, an explicit clear included.
+						accept: function (raw) {
+							if (unconfirmed.length > 0) {
+								if (raw === unconfirmed[unconfirmed.length - 1]) {
+									unconfirmed = [];
+									lastDelivered = raw;
+									return false;
+								}
+								if (unconfirmed.indexOf(raw) !== -1 || raw === lastDelivered) return false;
+								unconfirmed = [];
+							} else if (raw === lastDelivered) {
+								return false;
+							}
+							lastDelivered = raw;
+							return true;
 						},
 						setSave: function (fn) { save = fn; },
 						render: render,
@@ -719,15 +751,9 @@
 						var legacyGroups = null;
 						var legacyKnown = false;
 						var dialKnown = false;
-						// The subset each hook last delivered (#1653 review). sdpi hands every
-						// hook its key's value on every push — a catalog-only push included — and
-						// the snapshot it carries still holds the value from before an edit whose
-						// debounced save has not gone out yet. Applying that repeat would replace
-						// the edit, and the next save would drop it; only a delivery that differs
-						// from the last one, an explicit clear included, is a change.
-						var lastKeypadRaw;
-						var lastDialRaw;
-
+						// A delivery is taken only when it is a change for the grid it feeds
+						// (the selector's `accept`, #1653 review): an echo of the grid's own
+						// saves and a repeat of an older value never replace an unsaved edit.
 						function rawOf(value) {
 							return typeof value === "string" ? value : JSON.stringify(value === undefined ? null : value);
 						}
@@ -744,9 +770,7 @@
 							settleKeypad();
 						}
 						function takeKeypad(value, held) {
-							var raw = rawOf(value);
-							if (keypadResolved && raw === lastKeypadRaw) return;
-							lastKeypadRaw = raw;
+							if (!keypadSelector.accept(rawOf(value))) return;
 							keypadResolved = true;
 							var groups = readGroups(value);
 							if (groups) {
@@ -763,9 +787,7 @@
 							keypadSelector.setReady(legacyKnown);
 						}
 						function takeDial(value, held) {
-							var raw = rawOf(value);
-							if (dialKnown && raw === lastDialRaw) return;
-							lastDialRaw = raw;
+							if (!dialSelector.accept(rawOf(value))) return;
 							dialKnown = true;
 							var groups = readGroups(value);
 							if (groups) {
