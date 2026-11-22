@@ -16,16 +16,17 @@ This builds on #1653: groups are stored and matched by name, the picker and grid
 - **While it's on,** each time the camera moves to another car, the camera switches that car to the next group from the key's list.
 - **The list** is a group grid like Cycle Camera's (`autoGroupSubset`, a name → boolean map), with **Pick** set to **In order** or **Random**.
 - **The key** shows on or off, and it is never on after a plugin start.
+- **A dial gesture, Auto Group on/off,** does the same from a Camera Controls dial or Mirabox knob, with the dial's own list and pick order (decision 9, added 2026-11-22 on Niklas's word: "Dial must be part of 1656").
 
 ## Decisions
 
 ### 1. A key, not a global setting
 
-A streamer turns this on and off during a stream: before the start, off for a battle they want to direct by hand, back on afterwards. That's a key's job. A settings-window toggle would put it behind a window they don't have open while live. The list and the pick order belong to the key too, so two keys can hold two styles (say, a TV set and an onboard set) and a press chooses between them.
+A streamer turns this on and off during a stream: before the start, off for a battle they want to direct by hand, back on afterwards. That's a deck control's job, a key's or a dial's (decision 9). A settings-window toggle would put it behind a window they don't have open while live. The list and the pick order belong to the key too, so two keys can hold two styles (say, a TV set and an onboard set) and a press chooses between them.
 
 ### 2. One automation at a time, owned by a plugin-wide module
 
-`camera-controls/auto-group.ts` holds the one running automation: the list and pick order it was started with, the key context that started it, and where it is in the list.
+`camera-controls/auto-group.ts` holds the one running automation: the list and pick order it was started with, the context that started it (a key or a dial), and where it is in the list. Keys and dials are the same kind of owner: everything below about keys holds for a dial too.
 - **A press on a key that isn't the active one** starts the automation with that key's list, replacing any other.
 - **A press on the active key** stops it.
 - **Every Auto Group key** shows on only while it is the active one. A second key reads off, so the deck never shows two lit keys for one automation.
@@ -70,9 +71,21 @@ The mode gets an on/off icon pair in the Camera Controls style. Niklas approves 
 
 The mode sends SDK camera broadcasts only, so it is an `api` entry in the comms catalog and needs no binding.
 
+### 9. The dial: an Auto Group on/off gesture
+
+A Camera Controls dial is where a broadcaster spins through the field, which is exactly the car change this automation follows, so the dial gets it too. It is a **gesture choice, Auto Group on/off** (`auto-group`), offered on every press slot the dial has: Press, Long Press, Tap Display and Long Touch on a Stream Deck+, and Push on a Mirabox knob (the same dial view since #1013). Like every gesture slot it defaults to None. Rotation keeps its Mode, so one dial can cycle cars and turn the automation on with a press.
+
+- **The list belongs to the dial:** `dial.autoGroupSubset` and `dial.autoGroupPick`, the same shapes, defaults (TV1, TV2, TV3; In order) and `.catch` as the key's fields, so two dials, or a dial and a key, can hold different styles. Its grid and Pick select show in the dial's Property Inspector while any gesture slot is Auto Group on/off.
+- **Ownership is decision 2's:** the dial's context is the owner when its gesture started the automation; a press of the same gesture on the active dial stops it, and a key or another dial takes over as a key would.
+- **The dial shows the state** on its strip (the screen above the knob on Mirabox): while it is the active owner, an on marker in the strip's Camera Controls style, drawn the same on both hosts. The marker's look is approved by Niklas on a review page with the key icons.
+- **Comms:** the dial's comms map gains the same `api` entry; no binding.
+
+Rejected:
+- **A dial Mode, Auto Group,** that the rotation would drive. Turning has nothing to do with on/off, and the Mode is what makes the dial useful for picking the car the automation then follows.
+- **The dial using the key's or a global list.** #1769 removes the dial's one shared list for that reason; a dial keeps its own, like a key. #1656 adds its own dial fields and does not wait for #1769.
+
 ## Out of scope
 
-- **A dial surface for the mode.**
 - **Switching on other events** (an incident, an overtake, a lap). Car change is what was asked for.
 - **Choosing the car** (iRacing's director, or Focus on Most Exciting, does that). This only follows the car the camera is on.
 - **Per-car or per-class group lists.**
@@ -97,7 +110,8 @@ Unit, with a fake telemetry feed and a fake `requestCameraSwitch`:
   - only the active key draws on;
   - leaving the screen does not stop it;
   - a plugin start has it off.
-- **Settings:** the default list is TV1, TV2 and TV3, the default pick is In order, and junk values in either field leave the key's mode intact.
+- **Settings:** the default list is TV1, TV2 and TV3, the default pick is In order, and junk values in either field leave the key's mode intact; the same for the dial's two fields, which leave the dial's Mode and gestures intact.
+- **Dial:** the Auto Group gesture starts and stops the automation with the dial's own list; a dial and a key replace each other as owners; the strip draws the on marker only while that dial is the active owner; the gesture is offered on every press slot and on a Mirabox Push.
 - **Comms catalog:** the new `api` entry, regenerated.
 
 Manual, on a track with a custom camera file loaded:
@@ -109,3 +123,4 @@ Manual, on a track with a custom camera file loaded:
 - **A track without some ticked groups** uses the rest. With none left, the key is drawn unavailable.
 - **A replay:** car changes there switch groups too.
 - **A plugin restart** finds it off.
+- **A dial (Stream Deck+, and a Mirabox knob):** set Press to Auto Group on/off with its own list, press it, spin through the field, and each landing car gets one group from the dial's list; the strip shows it on. Press a key's Auto Group: the key takes over and the dial's marker goes away.
