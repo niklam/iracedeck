@@ -2098,6 +2098,12 @@ export class CameraControls extends SimIRacingAction<CameraControlsSettings> {
 
     try {
       await write.ev.action.setTitle("");
+
+      // The key left while the title was out, and may be back under the same
+      // context with a writer of its own (#1653 review): this write's settings
+      // are no longer the key's, so its image never goes out.
+      if (this.keyRenders.get(contextId) !== render) return true;
+
       await this.setKeyImage(write.ev, look.render());
     } catch (err) {
       write.started = false;

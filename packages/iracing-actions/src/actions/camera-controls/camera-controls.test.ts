@@ -2660,6 +2660,38 @@ describe("Cycle Camera key icon: next or current group (#959)", () => {
       expect(shownIcons(action)[0]).toContain("tv1-artwork");
     });
 
+    it("sends no image for a placement that left while its title was out (#1653 review)", async () => {
+      const action = new CameraControls();
+      vi.mocked(action["sdkController"].getCurrentTelemetry).mockReturnValue(null);
+      vi.mocked(action["sdkController"].getSessionInfo).mockReturnValue({});
+      captureTick(action, (tick) => (subscriber = tick));
+      vi.mocked(getCameraGroupsFromSessionInfo).mockReturnValue(LAKELAND_GROUPS);
+      const earlier = keyContext();
+      let releaseTitle: () => void = () => {};
+      earlier.setTitle.mockImplementationOnce(() => new Promise<void>((resolve) => (releaseTitle = resolve)));
+
+      const firstPlacement = action.onWillAppear({
+        action: earlier,
+        payload: { settings: { target: "cycle-camera", direction: "next", titleOverrides: { titleText: "OLD" } } },
+      } as never);
+      await flush();
+      await action.onWillDisappear({ action: keyContext(), payload: { settings: {} } } as never);
+      await action.onWillAppear({
+        action: keyContext(),
+        payload: { settings: { target: "change-camera", cameraGroupName: "Nose" } },
+      } as never);
+      const settingsWrites = vi.mocked(action["setKeyImage"]).mock.calls.length;
+      const registrations = vi.mocked(action["setRegenerateCallback"]).mock.calls.length;
+
+      releaseTitle();
+      await firstPlacement;
+      await flush();
+
+      expect(vi.mocked(action["setKeyImage"]).mock.calls).toHaveLength(settingsWrites);
+      expect(vi.mocked(action["setRegenerateCallback"]).mock.calls).toHaveLength(registrations);
+      expect(lastSetImage(action)).not.toContain("OLD");
+    });
+
     it("releases a settings handler whose write is still out when the key leaves (#1653 review)", async () => {
       const action = await appear({ cycleIconMode: "current" }, null);
       const older = keyContext();
