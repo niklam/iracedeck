@@ -212,6 +212,37 @@ describe("ird-camera-catalog-list", () => {
     expect(button("drone").textContent).toBe("Remove");
   });
 
+  describe("a held Enter on Remove (#1653 review)", () => {
+    const enter = (repeat: boolean): KeyboardEvent => {
+      const event = new KeyboardEvent("keydown", { key: "Enter", repeat, bubbles: true, cancelable: true });
+      button("drone").dispatchEvent(event);
+
+      return event;
+    };
+
+    it("cancels the repeats, so confirming takes a second press", () => {
+      publish(CATALOG);
+
+      expect(enter(false).defaultPrevented).toBe(false);
+      button("drone").click(); // what the first Enter does
+      expect(enter(true).defaultPrevented).toBe(true);
+      expect(send).not.toHaveBeenCalled();
+
+      // A separate second press still confirms.
+      expect(enter(false).defaultPrevented).toBe(false);
+      button("drone").click();
+      expect(send).toHaveBeenCalledTimes(1);
+    });
+
+    it("leaves other keys alone", () => {
+      publish(CATALOG);
+      const event = new KeyboardEvent("keydown", { key: " ", repeat: true, bubbles: true, cancelable: true });
+      button("drone").dispatchEvent(event);
+
+      expect(event.defaultPrevented).toBe(false);
+    });
+  });
+
   describe("keyboard focus across a push (#1653 review)", () => {
     it("moves to the same group's new Remove button, which still confirms", () => {
       publish(CATALOG);

@@ -221,6 +221,14 @@ export class CameraCatalogList extends HTMLElement {
       this.arm(name, button);
     });
 
+    // A held Enter repeats its keydown, and each repeat clicks the button: the
+    // first would arm it and a repeat confirm the removal before the key is
+    // released (#1653 review). Repeats are cancelled, so confirming takes a
+    // second, separate press; a pointer click is untouched.
+    button.addEventListener("keydown", (event: KeyboardEvent) => {
+      if (event.key === "Enter" && event.repeat) event.preventDefault();
+    });
+
     return button;
   }
 
