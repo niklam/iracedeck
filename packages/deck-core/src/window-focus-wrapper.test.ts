@@ -725,21 +725,28 @@ describe("withWindowFocus (issue #1654)", () => {
 
           return done.promise;
         },
-        "a setInterval, every tick": (send) => {
-          const done = deferred();
-          let ticks = 0;
-          const interval = setInterval(() => {
-            ticks++;
-            void send().then(() => {
-              if (ticks === 3) {
-                clearInterval(interval);
-                done.resolve();
-              }
-            });
-          }, 2);
+        // Exactly three sends: the third tick stops the interval before it
+        // sends, and a send that rejects stops it too and fails the test.
+        "a setInterval, every tick": (send) =>
+          new Promise<void>((resolve, reject) => {
+            let ticks = 0;
+            const interval = setInterval(() => {
+              ticks++;
+              const last = ticks === 3;
 
-          return done.promise;
-        },
+              if (last) clearInterval(interval);
+
+              send().then(
+                () => {
+                  if (last) resolve();
+                },
+                (error: unknown) => {
+                  clearInterval(interval);
+                  reject(error);
+                },
+              );
+            }, 2);
+          }),
       };
 
       const starts = Object.keys(STARTS);
