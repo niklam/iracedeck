@@ -1,15 +1,9 @@
-import { CALLOUT_SETTING_KEYS } from "@iracedeck/callout-settings";
 import ejs from "ejs";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import url from "node:url";
 import { describe, expect, it } from "vitest";
-
-import { loadCalloutPiGroups } from "./callout-pi-groups.mjs";
-
-/** The rows exactly as the build reads them: from the built registry, in a fresh process. */
-const calloutPiGroups = loadCalloutPiGroups().groups;
 
 /**
  * Renders the REAL `partials/accordion.ejs` (not a fixture) — it wraps a
@@ -233,7 +227,8 @@ describe("global-common-diagnostics.ejs storage row (#993)", () => {
  * inline in pit-crew.ejs. They are now three partials (#992) so the settings
  * window can show them on a Race Engineer tab while pit-crew.ejs keeps its
  * three accordions. Pin representative keys per partial so neither surface
- * can silently lose a control.
+ * can silently lose a control. The Callouts card, `race-engineer-callouts.ejs`,
+ * is tested on its own in `race-engineer-callouts-partial.test.ts` (#1700).
  */
 describe("race-engineer partials", () => {
   it("race-engineer-settings emits the live toggles, startup policies, voice, name, device, volumes and radio frame", () => {
@@ -289,85 +284,6 @@ describe("race-engineer partials", () => {
     expect(afterFrame).toMatch(
       /<div class="ird-supporting-text">\s*Background Volume sets the level of both\.\s*<\/div>/,
     );
-  });
-
-  it("race-engineer-callouts emits the per-callout opt-ins", () => {
-    const html = render("<%- include('race-engineer-callouts') %>", { ...withRequire, calloutPiGroups });
-
-    expect(html).toContain('setting="calloutEnabledFlag');
-    // The tire wear report (issue #1108) sits with the pit-service readbacks it follows.
-    expect(html).toContain('setting="calloutEnabledTireWearReport" label="Tire wear report"');
-    expect((html.match(/setting="calloutEnabled/g) ?? []).length).toBeGreaterThan(40);
-    expect(html).not.toContain("<details");
-  });
-
-  it("race-engineer-callouts puts the opponent-flag range directly under the Opponent Flags opt-ins (issue #1274)", () => {
-    const html = render("<%- include('race-engineer-callouts') %>", { ...withRequire, calloutPiGroups });
-
-    // The Furled opt-in names what the engineer now says; its key is unchanged.
-    expect(html).toContain('setting="calloutEnabledOpponentFlagFurled" label="Slowdown (furled black flag)"');
-    expect(html).not.toContain("Furled black flag (warning)");
-
-    const range =
-      '<sdpi-item label="Opponent flag range (s)">' +
-      '<ird-range-input setting="opponentFlagRangeSeconds" min="1" max="10" step="1" default="3" global showlabels></ird-range-input>' +
-      "</sdpi-item>" +
-      '<div class="ird-supporting-text">Only cars in your class this close ahead or behind in the race are announced.</div>';
-    expect(html).toContain(range);
-
-    // Directly under the group: the Opponent Flags item closes, and the range follows.
-    expect(html).toContain('<sdpi-item label="Opponent Flags">');
-    const flagsEnd = html.indexOf("</sdpi-item>", html.indexOf('setting="calloutEnabledOpponentFlagDisqualify"'));
-    expect(html.indexOf(range)).toBe(flagsEnd + "</sdpi-item>".length);
-  });
-
-  it("race-engineer-callouts renders every registry key exactly once with every row's flag on (#1350)", () => {
-    // Every platform flag a row names on, as in a development build with all of them (#1113).
-    const features = Object.fromEntries(
-      calloutPiGroups.flatMap((g) => g.rows.flatMap((r) => (r.feature === null ? [] : [[r.feature, true]]))),
-    );
-    const html = render("<%- include('race-engineer-callouts') %>", {
-      ...withRequire,
-      calloutPiGroups,
-      platform: { features },
-    });
-
-    for (const key of CALLOUT_SETTING_KEYS) {
-      expect(html.split(`setting="${key}"`).length - 1, key).toBe(1);
-    }
-
-    expect((html.match(/setting="calloutEnabled/g) ?? []).length).toBe(CALLOUT_SETTING_KEYS.length);
-  });
-
-  it("race-engineer-callouts renders every key but a flagged row's once without the flags, as a release build (#1113)", () => {
-    const html = render("<%- include('race-engineer-callouts') %>", { ...withRequire, calloutPiGroups });
-    const flagged = new Set(
-      calloutPiGroups.flatMap((g) => g.rows.filter((r) => r.feature !== null).map((r) => r.setting)),
-    );
-
-    expect([...flagged]).toEqual(["calloutEnabledTrafficRejoin"]);
-
-    for (const key of CALLOUT_SETTING_KEYS) {
-      expect(html.split(`setting="${key}"`).length - 1, key).toBe(flagged.has(key) ? 0 : 1);
-    }
-  });
-
-  // The truthy-attribute sdpi-checkbox trap: `default="false"` renders CHECKED,
-  // so an off default must carry no `default` attribute at all.
-  it('an off-default callout has no default attribute, an on one has default="true" (#1350)', () => {
-    const html = render("<%- include('race-engineer-callouts') %>", { ...withRequire, calloutPiGroups });
-
-    expect(html).toContain(
-      '<sdpi-checkbox setting="calloutEnabledFuelLapsLeft10" label="10 laps of fuel left" global></sdpi-checkbox>',
-    );
-    expect(html).toContain(
-      '<sdpi-checkbox setting="calloutEnabledFuelLapsLeft5" label="5 laps of fuel left" global default="true"></sdpi-checkbox>',
-    );
-    expect(html).not.toContain('default="false"');
-  });
-
-  it("race-engineer-callouts fails loudly without calloutPiGroups (#1350)", () => {
-    expect(() => render("<%- include('race-engineer-callouts') %>", withRequire)).toThrow(/calloutPiGroups/);
   });
 
   it("setup-warning-patterns emits the two pattern fields", () => {

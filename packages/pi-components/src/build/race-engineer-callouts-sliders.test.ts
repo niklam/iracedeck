@@ -4,7 +4,7 @@ import path from "node:path";
 import url from "node:url";
 import { describe, expect, it } from "vitest";
 
-import { loadCalloutPiGroups } from "./callout-pi-groups.mjs";
+import { loadCalloutPiSections } from "./callout-pi-groups.mjs";
 
 /**
  * The settings window's Callouts card writes the Race Engineer's numeric
@@ -45,11 +45,11 @@ const OUTSIDE = 0.001;
 type Slider = { setting: string; attributes: ReadonlyMap<string, string | true> };
 
 function renderCard(): string {
-  const calloutPiGroups = loadCalloutPiGroups().groups;
+  const calloutPiSections = loadCalloutPiSections().sections;
 
   return ejs.render(
     "<%- include('race-engineer-callouts') %>",
-    { calloutPiGroups },
+    { calloutPiSections },
     { views: [partialsDir], filename: path.join(partialsDir, "_test.ejs") },
   );
 }
