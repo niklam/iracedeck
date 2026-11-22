@@ -5,6 +5,7 @@ import {
   getAllCarNumbers,
   getCameraGroupsFromSessionInfo,
   getCarNumberRawFromSessionInfo,
+  type SessionInfo,
   type TelemetryData,
 } from "@iracedeck/iracing-sdk";
 import { beginReplayJump, pressReplayCommand, runReplayJump } from "@iracedeck/replay-engine";
@@ -2103,16 +2104,14 @@ const ROAD_GROUPS = LAKELAND_GROUPS.filter(
   (g) => !["Spotter", "TV4", "TV Static", "TV Mixed", "Spectator"].includes(g.groupName),
 ).map((g, i) => ({ groupNum: i + 1, groupName: g.groupName }));
 
-function sdkOf(action: CameraControls) {
-  return (
-    action as unknown as {
-      sdkController: {
-        subscribe: ReturnType<typeof vi.fn>;
-        getCurrentTelemetry: ReturnType<typeof vi.fn>;
-        getSessionInfo: ReturnType<typeof vi.fn>;
-      };
-    }
-  ).sdkController;
+/**
+ * Hands `onTick` the key's telemetry subscription as a no-argument tick. A key
+ * reads telemetry from the controller, not from the tick's arguments.
+ */
+function captureTick(action: CameraControls, onTick: (tick: () => void) => void): void {
+  vi.mocked(action["sdkController"].subscribe).mockImplementation((_id, callback) => {
+    onTick(() => callback(null, true));
+  });
 }
 
 describe("camera-group settings fields (#958, #959)", () => {
@@ -2190,8 +2189,8 @@ describe("Change Camera resolves the group by name in the session (#958)", () =>
 
   function setup(groups: { groupNum: number; groupName: string }[]): CameraControls {
     const action = new CameraControls();
-    sdkOf(action).getCurrentTelemetry.mockReturnValue({ CamCarIdx: 4, CamGroupNumber: 9 });
-    sdkOf(action).getSessionInfo.mockReturnValue({});
+    vi.mocked(action["sdkController"].getCurrentTelemetry).mockReturnValue({ CamCarIdx: 4, CamGroupNumber: 9 });
+    vi.mocked(action["sdkController"].getSessionInfo).mockReturnValue({});
     vi.mocked(getCameraGroupsFromSessionInfo).mockReturnValue(groups);
     vi.mocked(getCarNumberRawFromSessionInfo).mockReturnValue(42);
 
@@ -2258,15 +2257,13 @@ describe("Cycle Camera key icon: next or current group (#959)", () => {
 
   async function appear(
     settings: Record<string, unknown>,
-    telemetry: Record<string, unknown> | undefined,
+    telemetry: TelemetryData | null,
     groups = LAKELAND_GROUPS,
   ): Promise<CameraControls> {
     const action = new CameraControls();
-    sdkOf(action).getCurrentTelemetry.mockReturnValue(telemetry);
-    sdkOf(action).getSessionInfo.mockReturnValue({});
-    sdkOf(action).subscribe.mockImplementation((_id: string, cb: () => void) => {
-      subscriber = cb;
-    });
+    vi.mocked(action["sdkController"].getCurrentTelemetry).mockReturnValue(telemetry);
+    vi.mocked(action["sdkController"].getSessionInfo).mockReturnValue({});
+    captureTick(action, (tick) => (subscriber = tick));
     vi.mocked(getCameraGroupsFromSessionInfo).mockReturnValue(groups);
 
     await action.onWillAppear({
@@ -2337,7 +2334,7 @@ describe("Cycle Camera key icon: next or current group (#959)", () => {
     subscriber?.();
     expect(shownIcons(action)).toHaveLength(1);
 
-    sdkOf(action).getCurrentTelemetry.mockReturnValue({ CamGroupNumber: 17 }); // TV Mixed
+    vi.mocked(action["sdkController"].getCurrentTelemetry).mockReturnValue({ CamGroupNumber: 17 }); // TV Mixed
     subscriber?.();
 
     const icons = shownIcons(action);
@@ -2348,7 +2345,7 @@ describe("Cycle Camera key icon: next or current group (#959)", () => {
   it("restores the grid when telemetry goes away", async () => {
     const action = await appear({ cycleIconMode: "current" }, { CamGroupNumber: 11 });
 
-    sdkOf(action).getCurrentTelemetry.mockReturnValue(undefined);
+    vi.mocked(action["sdkController"].getCurrentTelemetry).mockReturnValue(null);
     subscriber?.();
 
     const icons = shownIcons(action);
@@ -2395,9 +2392,9 @@ describe("Cycle Camera key icon: next or current group (#959)", () => {
       .mockImplementationOnce(() => new Promise((resolve) => (finishFirst = () => resolve(true))))
       .mockImplementationOnce(() => new Promise((resolve) => (finishSecond = () => resolve(true))));
 
-    sdkOf(action).getCurrentTelemetry.mockReturnValue({ CamGroupNumber: 12 }); // TV1
+    vi.mocked(action["sdkController"].getCurrentTelemetry).mockReturnValue({ CamGroupNumber: 12 }); // TV1
     subscriber?.();
-    sdkOf(action).getCurrentTelemetry.mockReturnValue({ CamGroupNumber: 17 }); // TV Mixed
+    vi.mocked(action["sdkController"].getCurrentTelemetry).mockReturnValue({ CamGroupNumber: 17 }); // TV Mixed
     subscriber?.();
 
     finishSecond();
@@ -2415,7 +2412,7 @@ describe("Cycle Camera key icon: next or current group (#959)", () => {
     vi.mocked(action["updateKeyImage"]).mockRejectedValueOnce(new Error("socket closed"));
     const registered = vi.mocked(action["setRegenerateCallback"]).mock.calls.length;
 
-    sdkOf(action).getCurrentTelemetry.mockReturnValue({ CamGroupNumber: 17 }); // TV Mixed
+    vi.mocked(action["sdkController"].getCurrentTelemetry).mockReturnValue({ CamGroupNumber: 17 }); // TV Mixed
     subscriber?.();
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(shownIcons(action)).toHaveLength(2);
@@ -2436,7 +2433,7 @@ describe("Cycle Camera key icon: next or current group (#959)", () => {
     const action = await appear({ cycleIconMode: "current" }, { CamGroupNumber: 11 });
     vi.mocked(action["updateKeyImage"]).mockResolvedValueOnce(false);
 
-    sdkOf(action).getCurrentTelemetry.mockReturnValue({ CamGroupNumber: 17 });
+    vi.mocked(action["sdkController"].getCurrentTelemetry).mockReturnValue({ CamGroupNumber: 17 });
     subscriber?.();
     await new Promise((resolve) => setTimeout(resolve, 0));
     subscriber?.();
@@ -2451,9 +2448,9 @@ describe("Cycle Camera key icon: next or current group (#959)", () => {
       () => new Promise((_resolve, reject) => (failFirst = () => reject(new Error("late")))),
     );
 
-    sdkOf(action).getCurrentTelemetry.mockReturnValue({ CamGroupNumber: 12 }); // TV1, refused late
+    vi.mocked(action["sdkController"].getCurrentTelemetry).mockReturnValue({ CamGroupNumber: 12 }); // TV1, refused late
     subscriber?.();
-    sdkOf(action).getCurrentTelemetry.mockReturnValue({ CamGroupNumber: 17 }); // TV Mixed, lands
+    vi.mocked(action["sdkController"].getCurrentTelemetry).mockReturnValue({ CamGroupNumber: 17 }); // TV Mixed, lands
     subscriber?.();
     await new Promise((resolve) => setTimeout(resolve, 0));
     failFirst();
@@ -2478,17 +2475,15 @@ describe("Cycle Camera key icon: next or current group (#959)", () => {
       vi.mocked(action["updateKeyImage"]).mockImplementationOnce(
         () => new Promise<boolean>((resolve, reject) => (held = { resolve, reject })),
       );
-      sdkOf(action).getCurrentTelemetry.mockReturnValue({ CamGroupNumber: 11 }); // Spotter
-      sdkOf(action).getSessionInfo.mockReturnValue({});
-      sdkOf(action).subscribe.mockImplementation((_id: string, cb: () => void) => {
-        subscriber = cb;
-      });
+      vi.mocked(action["sdkController"].getCurrentTelemetry).mockReturnValue({ CamGroupNumber: 11 }); // Spotter
+      vi.mocked(action["sdkController"].getSessionInfo).mockReturnValue({});
+      captureTick(action, (tick) => (subscriber = tick));
       vi.mocked(getCameraGroupsFromSessionInfo).mockReturnValue(LAKELAND_GROUPS);
 
       await action.onWillAppear({ action: keyContext(), payload: { settings } } as never);
       await action.onWillDisappear({ action: keyContext(), payload: { settings } } as never);
 
-      sdkOf(action).getCurrentTelemetry.mockReturnValue({ CamGroupNumber: 17 }); // TV Mixed
+      vi.mocked(action["sdkController"].getCurrentTelemetry).mockReturnValue({ CamGroupNumber: 17 }); // TV Mixed
       await action.onWillAppear({ action: keyContext(), payload: { settings } } as never);
       await new Promise((resolve) => setTimeout(resolve, 0));
 
@@ -2521,7 +2516,7 @@ describe("Cycle Camera key icon: next or current group (#959)", () => {
     const action = await appear({ cycleIconMode: "current" }, { CamGroupNumber: 11 });
     vi.mocked(action["updateKeyImage"]).mockRejectedValueOnce(new Error("socket closed"));
 
-    sdkOf(action).getCurrentTelemetry.mockReturnValue(undefined);
+    vi.mocked(action["sdkController"].getCurrentTelemetry).mockReturnValue(null);
     subscriber?.();
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(shownIcons(action)).toHaveLength(2);
@@ -2543,7 +2538,7 @@ describe("Cycle Camera key icon: next or current group (#959)", () => {
      * sees. Returns the action and a function that lands the held write.
      */
     async function applyWithHeldTick(
-      after: Record<string, unknown> | undefined,
+      after: TelemetryData | null,
     ): Promise<{ action: CameraControls; land: () => Promise<void> }> {
       const action = await appear({ cycleIconMode: "current" }, { CamGroupNumber: 11 });
       let finish: (() => void) | undefined;
@@ -2553,9 +2548,9 @@ describe("Cycle Camera key icon: next or current group (#959)", () => {
       const pushedBefore = shownIcons(action).length;
       const context = keyContext();
       context.setTitle.mockImplementation(async () => {
-        sdkOf(action).getCurrentTelemetry.mockReturnValue({ CamGroupNumber: 12 }); // TV1
+        vi.mocked(action["sdkController"].getCurrentTelemetry).mockReturnValue({ CamGroupNumber: 12 }); // TV1
         subscriber?.();
-        sdkOf(action).getCurrentTelemetry.mockReturnValue(after);
+        vi.mocked(action["sdkController"].getCurrentTelemetry).mockReturnValue(after);
       });
 
       await action.onDidReceiveSettings({
@@ -2577,7 +2572,7 @@ describe("Cycle Camera key icon: next or current group (#959)", () => {
     }
 
     it("registers nothing when it lands after the grid, with no telemetry left to redraw", async () => {
-      const { action, land } = await applyWithHeldTick(undefined);
+      const { action, land } = await applyWithHeldTick(null);
       const registered = vi.mocked(action["setRegenerateCallback"]).mock.calls.length;
 
       await land();
@@ -2607,7 +2602,7 @@ describe("Cycle Camera key icon: next or current group (#959)", () => {
         () => new Promise((resolve) => (finish = () => resolve(true))),
       );
       const pushedBefore = shownIcons(action).length;
-      sdkOf(action).getCurrentTelemetry.mockReturnValue(undefined);
+      vi.mocked(action["sdkController"].getCurrentTelemetry).mockReturnValue(null);
       subscriber?.();
 
       // The tick did start the held write putting the grid back.
@@ -2654,7 +2649,7 @@ describe("Cycle Camera key icon: next or current group (#959)", () => {
   });
 
   it("shows only the grid while there is no telemetry", async () => {
-    const action = await appear({ cycleIconMode: "current" }, undefined);
+    const action = await appear({ cycleIconMode: "current" }, null);
 
     expect(shownIcons(action)).toHaveLength(0);
     expect(action["setKeyImage"]).toHaveBeenCalledTimes(1);
@@ -2915,10 +2910,14 @@ describe("Switch by Car Number press (#1353)", () => {
     vi.clearAllMocks();
   });
 
-  function setup(sessionInfo: unknown): CameraControls {
+  function setup(sessionInfo: SessionInfo | null): CameraControls {
     const action = new CameraControls();
-    sdkOf(action).getCurrentTelemetry.mockReturnValue({ CamCarIdx: 4, CamGroupNumber: 9, CamCameraNumber: 2 });
-    sdkOf(action).getSessionInfo.mockReturnValue(sessionInfo);
+    vi.mocked(action["sdkController"].getCurrentTelemetry).mockReturnValue({
+      CamCarIdx: 4,
+      CamGroupNumber: 9,
+      CamCameraNumber: 2,
+    });
+    vi.mocked(action["sdkController"].getSessionInfo).mockReturnValue(sessionInfo);
 
     return action;
   }
@@ -2983,7 +2982,7 @@ describe("Switch by Car Number press (#1353)", () => {
 
   it("does nothing without telemetry", async () => {
     const action = setup(LEADING_ZERO_ROSTER);
-    sdkOf(action).getCurrentTelemetry.mockReturnValue(undefined);
+    vi.mocked(action["sdkController"].getCurrentTelemetry).mockReturnValue(null);
 
     await press(action, "07");
 
@@ -3546,8 +3545,8 @@ describe("Change Camera presses a group by name (#1653)", () => {
 
   function setup(groups: { groupNum: number; groupName: string }[]): CameraControls {
     const action = new CameraControls();
-    sdkOf(action).getCurrentTelemetry.mockReturnValue({ CamCarIdx: 4, CamGroupNumber: 1 });
-    sdkOf(action).getSessionInfo.mockReturnValue({});
+    vi.mocked(action["sdkController"].getCurrentTelemetry).mockReturnValue({ CamCarIdx: 4, CamGroupNumber: 1 });
+    vi.mocked(action["sdkController"].getSessionInfo).mockReturnValue({});
     vi.mocked(getCameraGroupsFromSessionInfo).mockReturnValue(groups);
     vi.mocked(getCarNumberRawFromSessionInfo).mockReturnValue(42);
 
@@ -3666,15 +3665,13 @@ describe("Camera Controls keys on a group the session lacks (#1653)", () => {
   async function appear(
     settings: Record<string, unknown>,
     groups: { groupNum: number; groupName: string }[],
-    sessionInfo: object | null = {},
-    telemetry: Record<string, unknown> = { CamCarIdx: 4, CamGroupNumber: 5 },
+    sessionInfo: SessionInfo | null = {},
+    telemetry: TelemetryData = { CamCarIdx: 4, CamGroupNumber: 5 },
   ): Promise<CameraControls> {
     const action = new CameraControls();
-    sdkOf(action).getCurrentTelemetry.mockReturnValue(telemetry);
-    sdkOf(action).getSessionInfo.mockReturnValue(sessionInfo);
-    sdkOf(action).subscribe.mockImplementation((_id: string, cb: () => void) => {
-      subscriber = cb;
-    });
+    vi.mocked(action["sdkController"].getCurrentTelemetry).mockReturnValue(telemetry);
+    vi.mocked(action["sdkController"].getSessionInfo).mockReturnValue(sessionInfo);
+    captureTick(action, (tick) => (subscriber = tick));
     vi.mocked(getCameraGroupsFromSessionInfo).mockReturnValue(groups);
 
     await action.onWillAppear({ action: keyContext(), payload: { settings } } as never);
@@ -3684,7 +3681,7 @@ describe("Camera Controls keys on a group the session lacks (#1653)", () => {
 
   /** Moves the mocked session on to a new update carrying `groups` (or to none), then ticks. */
   function sessionUpdate(action: CameraControls, groups: { groupNum: number; groupName: string }[] | null): void {
-    sdkOf(action).getSessionInfo.mockReturnValue(groups === null ? null : {});
+    vi.mocked(action["sdkController"].getSessionInfo).mockReturnValue(groups === null ? null : {});
     vi.mocked(getCameraGroupsFromSessionInfo).mockReturnValue(groups ?? []);
     subscriber?.();
   }
@@ -3815,7 +3812,7 @@ describe("Camera Controls keys on a group the session lacks (#1653)", () => {
       const action = await appear({ target: "change-camera", cameraGroupName: "DynamicTV" }, CUSTOM_FILE_GROUPS);
       const regenerate = vi.mocked(action["setRegenerateCallback"]).mock.calls.at(-1)?.[1] as () => string;
 
-      sdkOf(action).getSessionInfo.mockReturnValue({});
+      vi.mocked(action["sdkController"].getSessionInfo).mockReturnValue({});
       vi.mocked(getCameraGroupsFromSessionInfo).mockReturnValue(LAKELAND_GROUPS);
       regenerate();
 
@@ -3973,7 +3970,7 @@ describe("Camera Controls keys on a group the session lacks (#1653)", () => {
       it("puts the placeholder back when telemetry then goes away", async () => {
         const action = await failUngrey();
 
-        sdkOf(action).getCurrentTelemetry.mockReturnValue(undefined);
+        vi.mocked(action["sdkController"].getCurrentTelemetry).mockReturnValue(null);
         subscriber?.();
         await new Promise((resolve) => setTimeout(resolve, 0));
 
@@ -4106,11 +4103,9 @@ describe("one generic icon for every custom camera group (#1653)", () => {
 
   async function appearCycle(settings: Record<string, unknown>, camGroup: number): Promise<CameraControls> {
     const action = new CameraControls();
-    sdkOf(action).getCurrentTelemetry.mockReturnValue({ CamCarIdx: 4, CamGroupNumber: camGroup });
-    sdkOf(action).getSessionInfo.mockReturnValue({});
-    sdkOf(action).subscribe.mockImplementation((_id: string, cb: () => void) => {
-      subscriber = cb;
-    });
+    vi.mocked(action["sdkController"].getCurrentTelemetry).mockReturnValue({ CamCarIdx: 4, CamGroupNumber: camGroup });
+    vi.mocked(action["sdkController"].getSessionInfo).mockReturnValue({});
+    captureTick(action, (tick) => (subscriber = tick));
     vi.mocked(getCameraGroupsFromSessionInfo).mockReturnValue(CUSTOM_FILE_GROUPS);
 
     await action.onWillAppear({
