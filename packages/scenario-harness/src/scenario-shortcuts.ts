@@ -2699,11 +2699,20 @@ const FUEL_COUNTDOWN_REQUIRES: readonly ShortcutPrecondition[] = [
   "translator-session-current",
 ];
 
+/**
+ * What a button that PUBLISHES a fuel count needs on top (issue #1702): the
+ * player not yet on their final lap, where the fuel contracts' speak gate
+ * refuses every line. The countdown run does not declare it: it drives the
+ * car onto a racing lap itself, and the translator decides its counts.
+ */
+const FUEL_COUNT_REQUIRES: readonly ShortcutPrecondition[] = [...FUEL_COUNTDOWN_REQUIRES, "before-final-lap"];
+
 /** The same for "Enough fuel to finish", which is heard in a race only (issue #1702). */
 const FUEL_RACE_COVERED_REQUIRES: readonly ShortcutPrecondition[] = [
   "race-session",
   "sdk-connected",
   "translator-session-current",
+  "before-final-lap",
 ];
 
 /** The sentences every per-count Fuel button's description ends on (issue #1702). */
@@ -5115,7 +5124,7 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
     description: `Estimated ${count} full lap${count === 1 ? "" : "s"} of fuel after completing the current lap. ${FUEL_SESSION_NOTE}`,
     event: "fuel.lapsLeft.crossed",
     data: { count, lapsLeft: count + 0.4 },
-    requires: FUEL_COUNTDOWN_REQUIRES,
+    requires: FUEL_COUNT_REQUIRES,
   })),
   {
     id: "fuel-laps-left-box",
@@ -5124,7 +5133,7 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
     description: `The tank won't cover another full lap — box this lap for fuel (count 0). ${FUEL_SESSION_NOTE}`,
     event: "fuel.lapsLeft.crossed",
     data: { count: 0, lapsLeft: 0.4 },
-    requires: FUEL_COUNTDOWN_REQUIRES,
+    requires: FUEL_COUNT_REQUIRES,
   },
   {
     id: "fuel-race-covered",

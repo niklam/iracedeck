@@ -101,6 +101,14 @@ import { TRAFFIC_PLAYER_CAR_IDX } from "./traffic-telemetry.js";
  * judged against the session before. Connecting and applying a session
  * preset open no such window (the mock delivers a tick on connect, and session
  * info is read live by both).
+ *
+ * `before-final-lap` — the player is not on their final lap and the
+ * session's chequered flag is not out (#1702), as the translator's
+ * `isPlayerFinalLapStarted()` answers it: the fuel contracts' speak gate
+ * asks the same reader and refuses a line there, so a fuel event published
+ * past the translator would be accepted and play nothing. Only the buttons
+ * that publish a fuel event declare it; the countdown run puts the car on a
+ * racing lap itself.
  */
 export type ShortcutPrecondition =
   | "player-car-index"
@@ -111,7 +119,8 @@ export type ShortcutPrecondition =
   | "traffic-player-car"
   | "session-classified"
   | "race-session"
-  | "translator-session-current";
+  | "translator-session-current"
+  | "before-final-lap";
 
 /** The live harness state a precondition is checked against, read by the route on every start. */
 export type HarnessPreconditionState = {
@@ -130,6 +139,14 @@ export type HarnessPreconditionState = {
    * tick.
    */
   translatorTelemetry: TelemetryData | null;
+  /**
+   * The translator's `isPlayerFinalLapStarted()`: true from the player's own
+   * last lap or with the chequered flag out, `null` when it cannot tell (no
+   * tick, a session it cannot read). Not derivable from the telemetry alone:
+   * in a race it is a marker the translator keeps until a green flag says the
+   * race went on.
+   */
+  playerFinalLapStarted: boolean | null;
 };
 
 type PreconditionRule = {
@@ -286,6 +303,16 @@ const PRECONDITION_RULES: Record<ShortcutPrecondition, PreconditionRule> = {
       'Apply the "race" or "race-oval" session preset first. "Enough fuel to finish" is the race countdown’s ' +
       "closing line, retracting the warnings before it, so the Race Engineer speaks it in a race only, and only " +
       'with "Fuel countdown: speak in Race" checked. In any other session it is silent.',
+  },
+  "before-final-lap": {
+    // The fuel speak gate's own test, `!== true`: an unknown answer speaks.
+    satisfied: (state) => state.playerFinalLapStarted !== true,
+    reason:
+      "You are on your final lap, or the session's chequered flag is out, and the Race Engineer speaks no fuel count " +
+      "there: the line would be refused as it reached the radio. To get back before the final lap, apply the " +
+      '"hot-lap" telemetry preset (racing, no flag shown); in a race also show a green flag for one tick ' +
+      "(SessionFlags with the Green bit, 4), since a race keeps its last lap marked until a green says it went on. " +
+      "Tick once and press again.",
   },
   "translator-session-current": {
     satisfied: translatorSeesMockSession,

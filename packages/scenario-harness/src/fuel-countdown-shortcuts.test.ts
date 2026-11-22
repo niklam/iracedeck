@@ -20,8 +20,10 @@ import {
   _resetSimEventsIracing,
   classifySession,
   FUEL_LAPS_LEFT_MAX_COUNT,
+  getLatestTelemetry,
   getSessionClass,
   initializeSimEventsIracing,
+  isPlayerFinalLapStarted,
 } from "@iracedeck/sim-events-iracing";
 import type { FastifyInstance } from "fastify";
 import { readdirSync, readFileSync } from "node:fs";
@@ -79,13 +81,18 @@ const COUNT_IDS = [...[10, 9, 8, 7, 6, 5, 4, 3, 2, 1].map((n) => `fuel-laps-left
 /** The mock SDK's boot telemetry: session 0. */
 const BOOT_TELEMETRY = new MockSDKController().getState().telemetry;
 
-function requiresOf(id: string): readonly string[] | undefined {
+function requiresOf(id: string): ScenarioShortcut["requires"] {
   return SCENARIO_SHORTCUTS.find((s) => s.id === id)?.requires;
 }
 
 function stateWith(
   sessionInfo: Record<string, unknown> | null,
-  options: { isConnected?: boolean; sessionNum?: number; translatorSessionNum?: number | null } = {},
+  options: {
+    isConnected?: boolean;
+    sessionNum?: number;
+    translatorSessionNum?: number | null;
+    playerFinalLapStarted?: boolean | null;
+  } = {},
 ): HarnessPreconditionState {
   const isConnected = options.isConnected ?? true;
   const sessionNum = options.sessionNum ?? 0;
@@ -101,6 +108,7 @@ function stateWith(
       !isConnected || translatorSessionNum === null
         ? null
         : ({ ...BOOT_TELEMETRY, SessionNum: translatorSessionNum } as TelemetryData),
+    playerFinalLapStarted: options.playerFinalLapStarted ?? (isConnected ? false : null),
   };
 }
 
@@ -190,10 +198,47 @@ describe("the Fuel buttons' preconditions (issue #1702)", () => {
 
     expect(fuel.sort()).toEqual([...COUNT_IDS, RACE_COVERED_ID, RUN_ID].sort());
 
-    for (const id of [...COUNT_IDS, RUN_ID])
-      expect(requiresOf(id), id).toEqual(["session-classified", "sdk-connected", "translator-session-current"]);
+    for (const id of COUNT_IDS) {
+      expect(requiresOf(id), id).toEqual([
+        "session-classified",
+        "sdk-connected",
+        "translator-session-current",
+        "before-final-lap",
+      ]);
+    }
 
-    expect(requiresOf(RACE_COVERED_ID)).toEqual(["race-session", "sdk-connected", "translator-session-current"]);
+    // The run drives the car onto a racing lap itself: no final-lap rule.
+    expect(requiresOf(RUN_ID)).toEqual(["session-classified", "sdk-connected", "translator-session-current"]);
+    expect(requiresOf(RACE_COVERED_ID)).toEqual([
+      "race-session",
+      "sdk-connected",
+      "translator-session-current",
+      "before-final-lap",
+    ]);
+  });
+
+  it("refuses the buttons that publish a fuel line on the final lap, and not the run", () => {
+    const onFinalLap = stateWith(readPreset("session", "race"), { playerFinalLapStarted: true });
+
+    for (const id of [...COUNT_IDS, RACE_COVERED_ID]) {
+      const refusal = checkShortcutPreconditions(requiresOf(id), onFinalLap);
+
+      expect(refusal, id).toEqual(expect.stringContaining("final lap"));
+      expect(refusal).toContain("hot-lap");
+    }
+
+    expect(checkShortcutPreconditions(requiresOf(RUN_ID), onFinalLap)).toBeNull();
+
+    // The speak gate's own test: only a definite "on the final lap" refuses.
+    for (const answer of [false, null]) {
+      expect(
+        checkShortcutPreconditions(
+          ["before-final-lap"],
+          stateWith(readPreset("session", "race"), { playerFinalLapStarted: answer }),
+        ),
+        String(answer),
+      ).toBeNull();
+    }
   });
 
   it("refuses them while the translator's latest tick is in another session than the mock, asking for a tick", () => {
@@ -377,6 +422,75 @@ describe("the testing session preset (issue #1702)", () => {
 
     expect(typeof trackIdOf("testing")).toBe("number");
     expect(others).not.toContain(trackIdOf("testing"));
+  });
+});
+
+describe("the final-lap precondition against the running translator (issue #1702)", () => {
+  /** What `/api/shortcut/start` hands the rules: the mock's state and the translator's answers. */
+  function routeState(controller: MockSDKController): HarnessPreconditionState {
+    const { sessionInfo, isConnected, telemetry } = controller.getState();
+
+    return {
+      sessionInfo: sessionInfo as Record<string, unknown> | null,
+      isConnected,
+      telemetry,
+      translatorTelemetry: getLatestTelemetry(),
+      playerFinalLapStarted: isPlayerFinalLapStarted(),
+    };
+  }
+
+  function tick(controller: MockSDKController, patch: TelemetryPatch): void {
+    controller.mutateTelemetry(patch);
+    controller.tickOnce();
+  }
+
+  it("refuses the per-count buttons under a chequered flag, and runs them on a racing lap again", () => {
+    const { controller } = startTranslator("practice", "hot-lap");
+
+    tick(controller, { SessionState: SessionState.Checkered });
+
+    expect(isPlayerFinalLapStarted()).toBe(true);
+    expect(checkShortcutPreconditions(requiresOf("fuel-laps-left-3"), routeState(controller))).toContain("final lap");
+
+    tick(controller, readPreset("telemetry", "hot-lap") as TelemetryPatch);
+
+    expect(isPlayerFinalLapStarted()).toBe(false);
+    expect(checkShortcutPreconditions(requiresOf("fuel-laps-left-3"), routeState(controller))).toBeNull();
+  });
+
+  it("in a race keeps refusing once the last lap is marked, until a green flag, as its reason says", () => {
+    const { controller } = startTranslator("race", "hot-lap");
+
+    // The white shown, then the player's own crossing past the heads-up gap:
+    // the translator marks the race's last lap.
+    tick(controller, { LapCompleted: 4 });
+    tick(controller, { SessionFlags: Flags.White });
+    vi.advanceTimersByTime(10_000);
+    tick(controller, { LapCompleted: 5 });
+
+    expect(isPlayerFinalLapStarted()).toBe(true);
+
+    tick(controller, readPreset("telemetry", "hot-lap") as TelemetryPatch);
+
+    expect(isPlayerFinalLapStarted()).toBe(true);
+    expect(checkShortcutPreconditions(requiresOf(RACE_COVERED_ID), routeState(controller))).toContain("final lap");
+
+    tick(controller, { SessionFlags: Flags.Green });
+
+    expect(isPlayerFinalLapStarted()).toBe(false);
+    expect(checkShortcutPreconditions(requiresOf(RACE_COVERED_ID), routeState(controller))).toBeNull();
+  });
+
+  it("leaves the countdown run alone: accepted under a chequered flag, and it counts the same", () => {
+    const { controller, events } = startTranslator("practice");
+
+    tick(controller, { SessionState: SessionState.Checkered });
+
+    expect(checkShortcutPreconditions(requiresOf(RUN_ID), routeState(controller))).toBeNull();
+
+    runSequence(controller, runSteps());
+
+    expect(countsOf(events)).toEqual(EXPECTED_COUNTS);
   });
 });
 
@@ -657,6 +771,27 @@ describe("POST /api/shortcut/start for the Fuel buttons (issue #1702)", () => {
     expect(getSessionClass()).toEqual({ category: "practice", soloQualifying: false, testing: true });
 
     for (const id of [...COUNT_IDS, RUN_ID]) expect((await start(id)).statusCode, id).toBe(204);
+  });
+
+  it("refuses the buttons that publish a fuel line under a chequered flag, runs the countdown, and all once racing", async () => {
+    controller.setSessionInfo(readPreset("session", "race") as unknown as SessionInfo);
+    controller.setConnected(true);
+    controller.mutateTelemetry({ SessionState: SessionState.Checkered });
+    controller.tickOnce();
+
+    for (const id of [...COUNT_IDS, RACE_COVERED_ID]) {
+      const res = await start(id);
+
+      expect(res.statusCode, id).toBe(409);
+      expect(res.error).toContain("final lap");
+    }
+
+    expect((await start(RUN_ID)).statusCode).toBe(204);
+
+    controller.mutateTelemetry(readPreset("telemetry", "hot-lap") as TelemetryPatch);
+    controller.tickOnce();
+
+    for (const id of [...COUNT_IDS, RACE_COVERED_ID, RUN_ID]) expect((await start(id)).statusCode, id).toBe(204);
   });
 
   it("control: right after connecting with a preset applied, the translator already reads the session", async () => {

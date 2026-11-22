@@ -85,7 +85,13 @@ const GATED_SHORTCUT_IDS = SCENARIO_SHORTCUTS.filter((s) => s.telemetrySequence?
 
 /** A connected harness holding `sessionInfo` — isolates the session-preset rule from the connection one. */
 function connectedWith(sessionInfo: Record<string, unknown> | null): HarnessPreconditionState {
-  return { sessionInfo, isConnected: true, telemetry: BOOT_TELEMETRY, translatorTelemetry: BOOT_TELEMETRY };
+  return {
+    sessionInfo,
+    isConnected: true,
+    telemetry: BOOT_TELEMETRY,
+    translatorTelemetry: BOOT_TELEMETRY,
+    playerFinalLapStarted: false,
+  };
 }
 
 /** The harness as it boots: no session preset, mock SDK disconnected. */
@@ -94,6 +100,7 @@ const AT_BOOT: HarnessPreconditionState = {
   isConnected: false,
   telemetry: BOOT_TELEMETRY,
   translatorTelemetry: null,
+  playerFinalLapStarted: null,
 };
 
 function readSessionPreset(name: string): Record<string, unknown> {
@@ -191,6 +198,7 @@ describe("checkShortcutPreconditions", () => {
         isConnected: false,
         telemetry: BOOT_TELEMETRY,
         translatorTelemetry: null,
+        playerFinalLapStarted: null,
       });
 
       expect(refusal, `"${id}" ran disconnected`).toEqual(expect.stringContaining("Connect the mock SDK"));
@@ -220,6 +228,7 @@ describe("checkShortcutPreconditions", () => {
         isConnected: false,
         telemetry: BOOT_TELEMETRY,
         translatorTelemetry: null,
+        playerFinalLapStarted: null,
       });
 
       expect(refusal, `ran disconnected on ${preset}`).toEqual(expect.stringContaining("Connect the mock SDK"));
@@ -399,6 +408,7 @@ describe("the rolling-start preconditions (issue #1167)", () => {
         isConnected: false,
         telemetry: BOOT_TELEMETRY,
         translatorTelemetry: null,
+        playerFinalLapStarted: null,
       });
 
       expect(refusal, `"${id}" ran disconnected`).toEqual(expect.stringContaining("Connect the mock SDK"));
@@ -471,6 +481,7 @@ describe("the rolling-start preconditions (issue #1167)", () => {
       isConnected: true,
       telemetry: { ...BOOT_TELEMETRY, SessionNum } as TelemetryData,
       translatorTelemetry: { ...BOOT_TELEMETRY, SessionNum } as TelemetryData,
+      playerFinalLapStarted: false,
     });
 
     expect(checkShortcutPreconditions(["rolling-start-oval-grid"], inSession(0))).not.toBeNull();

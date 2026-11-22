@@ -280,6 +280,7 @@ describe("the rolling-start shortcuts (issue #1167)", () => {
         isConnected: true,
         telemetry: rig.controller.getState().telemetry,
         translatorTelemetry: rig.controller.getState().telemetry,
+        playerFinalLapStarted: false,
       };
       const foresawGrid = checkShortcutPreconditions(["rolling-start-grid"], state) === null;
       const foresawLane = checkShortcutPreconditions(["rolling-start-oval-grid"], state) === null;
