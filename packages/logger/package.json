@@ -25,6 +25,6 @@
   "devDependencies": {
     "@types/node": "26.6.6",
     "rimraf": "6.1.4",
-    "typescript": "5.9.3"
+    "typescript": "6.0.3"
   }
 }
