@@ -2201,12 +2201,22 @@ export class CameraControls extends SimIRacingAction<CameraControlsSettings> {
 
     if (sessionGroups.length === 0) {
       // No readable group list, so nothing to judge availability by (#1653
-      // review): a group icon drawn available stays until there is a list to
-      // judge it by; anything else — a greyed icon, or a look the key may not
-      // show after a refused write — goes back to the configured grid.
+      // review). In Current camera mode, a group icon drawn available stays
+      // until there is a list to judge it by: it still says what is on screen.
+      // A next-group preview does not — the next press takes the sim's own
+      // cycle, not the previewed group — and anything else, a greyed icon or
+      // a look the key may not show after a refused write, goes back to the
+      // configured grid.
       const shown = render.written;
 
-      if (shown?.kind === "group" && !shown.unavailable && shown.version === version) return null;
+      if (
+        settings.cycleIconMode === "current" &&
+        shown?.kind === "group" &&
+        !shown.unavailable &&
+        shown.version === version
+      ) {
+        return null;
+      }
 
       return this.restingLook(settings, version);
     }

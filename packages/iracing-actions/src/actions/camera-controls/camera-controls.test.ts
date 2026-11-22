@@ -3932,6 +3932,14 @@ describe("Camera Controls keys on a group the session lacks (#1653)", () => {
     return vi.mocked(action["updateKeyImage"]).mock.calls.length;
   }
 
+  /** Every image the key was sent, settings writes and ticks alike, decoded. */
+  function sentSvgs(action: CameraControls): string[] {
+    return [
+      ...vi.mocked(action["setKeyImage"]).mock.calls.map((call) => call[1]),
+      ...vi.mocked(action["updateKeyImage"]).mock.calls.map((call) => call[1]),
+    ].map((svg) => decodeURIComponent(String(svg)));
+  }
+
   beforeEach(() => {
     vi.clearAllMocks();
     subscriber = undefined;
@@ -4380,20 +4388,43 @@ describe("Camera Controls keys on a group the session lacks (#1653)", () => {
       });
 
       it("shows the normal grid in the next-group mode", async () => {
-        await appear({ ...current({ Drone: true }), cycleIconMode: "next" }, CUSTOM_FILE_GROUPS, {}, null);
+        const action = await appear(
+          { ...current({ Drone: true }), cycleIconMode: "next" },
+          CUSTOM_FILE_GROUPS,
+          {},
+          null,
+        );
 
         expect(anyIconDimmed()).toBe(false);
+        expect(sentSvgs(action).some((svg) => svg.includes("opacity="))).toBe(false);
       });
     });
 
     it("is never greyed in the default next-group mode", async () => {
-      await appear({ ...current({ Drone: true }), cycleIconMode: "next" }, CUSTOM_FILE_GROUPS);
+      const action = await appear({ ...current({ Drone: true }), cycleIconMode: "next" }, CUSTOM_FILE_GROUPS);
 
       expect(anyIconDimmed()).toBe(false);
+      // The grid writes its greying straight into the SVG, not through assembleIcon (#1653 review).
+      expect(sentSvgs(action).some((svg) => svg.includes("opacity="))).toBe(false);
     });
 
     describe("in the default next-group mode, when a new camera file drops the previewed group (#1653 review)", () => {
       const next = { ...current({ DynamicTV: true }), cycleIconMode: "next" };
+
+      it("puts the placeholder back when the group list becomes unreadable, though telemetry stays", async () => {
+        const action = await appear(next, CUSTOM_FILE_GROUPS);
+        expect(decodeURIComponent(String(vi.mocked(action["updateKeyImage"]).mock.calls[0][1]))).toContain(
+          "CAMERA\nDYNAMICTV",
+        );
+
+        sessionUpdate(action, []);
+        await new Promise((resolve) => setTimeout(resolve, 0));
+
+        expect(pushedImages(action)).toBe(2);
+        const restored = decodeURIComponent(String(vi.mocked(action["updateKeyImage"]).mock.calls[1][1]));
+        expect(restored).toContain("CYCLE CAM");
+        expect(restored).not.toContain("opacity=");
+      });
 
       it("puts the placeholder back", async () => {
         const action = await appear(next, CUSTOM_FILE_GROUPS);
