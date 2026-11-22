@@ -91,6 +91,7 @@ import {
   FASTEST_LAP_CALLOUTS,
   FLAG_CALLOUTS,
   FUEL_CALLOUTS,
+  FUEL_COUNTDOWN_SESSION_CALLOUTS,
   GAP_CALLOUTS,
   INCIDENT_CALLOUTS,
   LAP_TIME_CALLOUTS,
@@ -127,7 +128,6 @@ import type { IEventBus, PitReadbackSnapshot, SessionClass, SessionStartSnapshot
 import type { ILogger } from "@iracedeck/logger";
 import type { TelemetryData } from "@iracedeck/sim-events-iracing";
 
-import type { ScenarioContract } from "../../dsl.js";
 import { getScenarioEngine, isAudioScenariosInitialized } from "../../interpreter.js";
 import type { DevelopmentFeature } from "../../reference/pack-reference.js";
 import {
@@ -149,7 +149,11 @@ import {
 import { buildDamageContracts } from "./damage-alerts.js";
 import { buildFastestLap, SCENARIO_ID_TO_FASTEST_LAP_ID } from "./fastest-lap.js";
 import { buildFlagAlerts } from "./flag-alerts.js";
-import { FUEL_LAPS_LEFT_CONTRACTS } from "./fuel-laps-left.js";
+import {
+  buildFuelLapsLeftContracts,
+  FUEL_RACE_COVERED_SCENARIO_ID,
+  fuelCountdownSessionKind,
+} from "./fuel-laps-left.js";
 import {
   buildGapThresholdContract,
   buildGapTrendContract,
@@ -257,6 +261,14 @@ import {
   TRAFFIC_REJOIN_DEVELOPMENT_FEATURE,
   type TrafficCalloutId,
 } from "./traffic.js";
+import {
+  type Gated,
+  gatedSettle,
+  wrapFuelCountdownSessionScenario,
+  wrapPitActionScenario,
+  wrapPitServiceRequestsScenario,
+  wrapRaceEngineerMasterGate,
+} from "./where-gate.js";
 
 /**
  * Stop any in-flight Race Engineer callout (and its looping ambient bed) and
@@ -1108,6 +1120,14 @@ export type PitCrewDeps = {
   // radio once the repair has settled as done. Default `() => null`, the
   // translator's own answer before its first damage read.
   getDamageRepairNeeded?: () => boolean | null;
+  // Whether the player has started their own last lap of the session (#1702):
+  // true from that lap's start (which the session's chequered flag being out
+  // also implies) until the session changes. The fuel contracts' speak-time
+  // gate drops a count still waiting for the radio once it holds. Default
+  // `() => null`, the translator's own answer before its first tick, with no
+  // translator, or while the session cannot be read and its chequered flag is
+  // not out; the gate admits on it.
+  getPlayerFinalLapStarted?: () => boolean | null;
   // The sector comparison (#1572): the track's sector count and, for the
   // player and the class leader, the car ahead and the car behind, each car's
   // recorded laps with their sector times, its number and its live gap.
@@ -1174,6 +1194,7 @@ const DEFAULT_DEPS: Readonly<ResolvedPitCrewDeps> = {
   getSessionClass: () => null,
   getStandingStart: () => false,
   getDamageRepairNeeded: () => null,
+  getPlayerFinalLapStarted: () => null,
   getSectorComparison: () => null,
   getTrafficRejoinAvailable: () => false,
 };
@@ -1258,6 +1279,19 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
   const getRollingStartCalloutEnabled = enabledIn(ROLLING_START_CALLOUTS);
   const getStartLightCalloutEnabled = enabledIn(START_LIGHT_CALLOUTS);
   const getFuelCalloutEnabled = enabledIn(FUEL_CALLOUTS);
+  // The fuel countdown's session-kind opt-ins (issue #1702): which kinds of
+  // session the player hears the countdown in, read with the session as the
+  // Race Engineer's one classifier names it. An unclassified session speaks
+  // nothing, and the enough-fuel confirmation is heard in the race kind only.
+  const getFuelCountdownSessionEnabled = (scenarioId: string): boolean => {
+    const kind = fuelCountdownSessionKind(d.getSessionClass());
+
+    if (kind === null) return false;
+
+    if (scenarioId === FUEL_RACE_COVERED_SCENARIO_ID && kind !== "race") return false;
+
+    return d.isCalloutEnabled(calloutKey(FUEL_COUNTDOWN_SESSION_CALLOUTS, kind));
+  };
   const getCornerNameCalloutEnabled = enabledIn(CORNER_NAME_CALLOUTS);
   const getSectorStartCalloutEnabled = enabledIn(SECTOR_START_CALLOUTS);
   const getSectorComparisonCalloutEnabled = enabledIn(SECTOR_COMPARISON_CALLOUTS);
@@ -1780,9 +1814,25 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
   // `pool:fuel/<base>`). No registration-order concern —
   // `fuel.lapsLeft.crossed` and `fuel.lapsLeft.raceCovered` have no other
   // subscribers.
-  for (const c of FUEL_LAPS_LEFT_CONTRACTS) {
+  //
+  // Three gates, outermost first: the master, the family-wide session-kind
+  // opt-in (issue #1702; the translator emits the countdown in every live
+  // session, the player picks where it is heard), then the per-count opt-in.
+  // The session gate sits outside the count's own, so a count switched on
+  // stays silent in a session kind switched off, and the reverse. Each
+  // contract also carries a speak-time gate on the player's final lap: a fire
+  // still queued when the player's own last lap starts (or the checkered flag
+  // comes out) is dropped, since a replay never asks `where:` again and the
+  // translator would not have emitted it then.
+  for (const c of buildFuelLapsLeftContracts({ getPlayerFinalLapStarted: d.getPlayerFinalLapStarted })) {
     engine.defineContract(
-      wrapWithMaster(wrapCalloutScenario(c, SCENARIO_ID_TO_FUEL_ID, getFuelCalloutEnabled, "fuel callout", logger)),
+      wrapWithMaster(
+        wrapFuelCountdownSessionScenario(
+          wrapCalloutScenario(c, SCENARIO_ID_TO_FUEL_ID, getFuelCalloutEnabled, "fuel callout", logger),
+          () => getFuelCountdownSessionEnabled(c.id),
+          logger,
+        ),
+      ),
     );
   }
 
@@ -2178,129 +2228,6 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
       ),
     );
   }
-}
-
-/**
- * What the gate wrappers below need of their input: an id (for the log line)
- * and an optional trigger whose `where:` they narrow. Both a legacy
- * `Scenario` and a `ScenarioContract` (issue #1064) satisfy it, and each
- * wrapper is generic over it so what goes in comes out with the same type —
- * a contract never grows a sequence by being gated.
- */
-type Gated = { id: string; when?: ScenarioContract["when"]; settle?: ScenarioContract["settle"] };
-
-/**
- * The `settle` of a gated callout, answered as ready while the gate is closed
- * (issue #1284). The settle wait runs before `where:`, so without this a
- * callout switched off would still wait out its window and log `proceeding
- * without …` at info for a fire its gate then refuses — a line that reads as
- * a callout that went ahead. Absent when the scenario declares no settle.
- */
-function gatedSettle<T extends Gated>(s: T, isOpen: () => boolean): Pick<Gated, "settle"> {
-  const settle = s.settle;
-
-  if (!settle) return {};
-
-  return { settle: { ...settle, pending: (ctx) => (isOpen() ? settle.pending(ctx) : null) } };
-}
-
-/**
- * Wrap a Race Engineer voice scenario with the plugin-wide master gate
- * (issue #515). Plugins compose the closure from
- * `pitCrewRaceEngineerEnabled === true`. Read live on every event
- * arrival and short-circuits before `attemptFire` so a clip already in
- * flight is NOT cut — only future events are suppressed. Applied as the
- * outermost wrapper inside `registerPitCrew` so a `false` master is the
- * cheapest possible early-out, ahead of per-callout opt-ins and
- * pit-action cooldowns.
- *
- * Returns the scenario unchanged when it has no `when:` block — a fragment
- * only ever reached through an `@` include (the radio frame was one until
- * issue #1064 moved it into the engine) runs inside a parent scenario whose
- * master-gate check has already passed.
- */
-function wrapRaceEngineerMasterGate<T extends Gated>(s: T, getEnabled: () => boolean, logger: ILogger | undefined): T {
-  if (!s.when) return s;
-
-  const baseWhere = s.when.where;
-
-  return {
-    ...s,
-    ...gatedSettle(s, getEnabled),
-    when: {
-      event: s.when.event,
-      where: (ev) => {
-        if (!getEnabled()) {
-          logger?.debug(`race engineer master gate suppressed: ${s.id}`);
-
-          return false;
-        }
-
-        return baseWhere ? baseWhere(ev) : true;
-      },
-    },
-  };
-}
-
-/**
- * Wrap a per-toggle pit-action scenario so the cooldown set by
- * `pitLane.exited` / pre-start grid entry suppresses fires during the
- * cooldown window. Same gate-at-event-arrival shape as
- * `wrapCalloutScenario`, but global rather than per-id.
- */
-function wrapPitActionScenario<T extends Gated>(s: T, getAllowed: () => boolean, logger: ILogger | undefined): T {
-  if (!s.when) return s;
-
-  const baseWhere = s.when.where;
-
-  return {
-    ...s,
-    when: {
-      event: s.when.event,
-      where: (ev) => {
-        if (!getAllowed()) {
-          logger?.debug(`pit-action suppressed (cooldown active): ${s.id}`);
-
-          return false;
-        }
-
-        return baseWhere ? baseWhere(ev) : true;
-      },
-    },
-  };
-}
-
-/**
- * Wrap a per-toggle pit-service-request scenario with the user opt-in
- * gate (`calloutEnabledPitServiceRequests`, issue #468). Read live so a
- * toggle off mid-session takes effect on the next event arrival without
- * cutting an in-flight clip — same gate-at-event-arrival shape as the
- * other wrappers.
- */
-function wrapPitServiceRequestsScenario<T extends Gated>(
-  s: T,
-  getEnabled: () => boolean,
-  logger: ILogger | undefined,
-): T {
-  if (!s.when) return s;
-
-  const baseWhere = s.when.where;
-
-  return {
-    ...s,
-    when: {
-      event: s.when.event,
-      where: (ev) => {
-        if (!getEnabled()) {
-          logger?.debug(`pit service request suppressed: ${s.id}`);
-
-          return false;
-        }
-
-        return baseWhere ? baseWhere(ev) : true;
-      },
-    },
-  };
 }
 
 /**

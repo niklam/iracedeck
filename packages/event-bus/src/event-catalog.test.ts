@@ -45,10 +45,11 @@ describe("SessionCategory", () => {
     >();
   });
 
-  it("is what a classified session carries, beside the solo-qualifying flag", () => {
+  it("is what a classified session carries, beside the solo-qualifying and testing flags", () => {
     expectTypeOf<SessionClass>().toEqualTypeOf<{
       readonly category: "practice" | "qualifying" | "race";
       readonly soloQualifying: boolean;
+      readonly testing: boolean;
     }>();
   });
 });

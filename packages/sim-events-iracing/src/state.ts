@@ -992,6 +992,12 @@ export type FuelCalloutState = {
    */
   lastDistPct: number | null;
   /**
+   * The `Lap` of {@link lastDistPct}, `null` with it (issue #1702). A later
+   * lap at or past the mark counts as a crossing, which only a gap the diff
+   * did not see can produce (an unreadable session); an earlier one re-seeds.
+   */
+  lastDistLap: number | null;
+  /**
    * `Lap` value of the last mid-lap sample, so a car rolling backwards and
    * forwards across the 0.5 mark can't sample the same lap twice. `-1` = none.
    */
@@ -1045,6 +1051,7 @@ export type FuelCalloutState = {
 export function createFuelCalloutState(): FuelCalloutState {
   return {
     lastDistPct: null,
+    lastDistLap: null,
     lastSampledLap: -1,
     lastFuelLevel: null,
     lastAnnouncedCount: null,
@@ -1062,8 +1069,9 @@ export function createFuelCalloutState(): FuelCalloutState {
  * the reassurance, and the previous-fuel-level tracker must survive the
  * garage visit so the refuel that happened there (replay-mode ticks) lands as
  * one positive delta on the first live tick back and re-arms the stint. The
- * sampling baselines (`lastDistPct`, `lastSampledLap`) re-seed, because the
- * position jump made their edges meaningless, and the expired-clock count
+ * sampling baselines (`lastDistPct`, `lastDistLap`, `lastSampledLap`)
+ * re-seed, because the position jump made their edges meaningless, and the
+ * expired-clock count
  * starts again (issue #1405), because a stale count must not confirm an
  * expiry on the first live tick back.
  */

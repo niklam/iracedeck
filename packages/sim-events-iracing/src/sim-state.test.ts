@@ -24,7 +24,7 @@ import type { ILogger } from "@iracedeck/logger";
 import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { FUEL_LAPS_LEFT_WINDOW_LAPS, isFuelRaceCovered } from "./diff/fuel-laps-left.js";
+import { FUEL_LAPS_LEFT_WINDOW_LAPS, isFuelCovered } from "./diff/fuel-laps-left.js";
 import { createFuelLapTracker, type FuelLap } from "./diff/fuel-laps.js";
 import {
   CLOCK_EXPIRY_CONFIRM_TICKS,
@@ -188,7 +188,7 @@ function build(overrides: Partial<SimStateParts> = {}): FullSimState {
 function fuelParts(overrides: Partial<SimStateParts["fuel"]> = {}): SimStateParts["fuel"] {
   return {
     windowLaps: FUEL_LAPS_LEFT_WINDOW_LAPS,
-    isRaceSession: true,
+    session: "race",
     stats: { lastLap: 2, avg: 2, avgLapTime: null, samples: 2 },
     tracker: createFuelLapTracker(),
     getMarginLaps: () => 0.3,
@@ -505,7 +505,7 @@ describe("readSimState — the laps-of-fuel-left figure", () => {
     expect(announced.lastSampledLap).toBe(4);
     expect(spoken).toEqual([]);
     expect(now).toMatchObject({ count: 0, remainingLaps: 1, covered: true, coverageSkipped: null });
-    expect(now!.covered).toBe(isFuelRaceCovered(now!, 1));
+    expect(now!.covered).toBe(isFuelCovered(now!, 1));
   });
 
   it("reads the leader's post-expiry crossing for the chequered prediction, as the diff does", () => {
@@ -594,12 +594,35 @@ describe("readSimState — the laps-of-fuel-left figure", () => {
     expect(new Map(simStateHeadline(state)).get("Laps of fuel left")).toBe("no estimate (last announced: none)");
   });
 
-  it("keeps the estimate and compares it with no race distance outside a race session", () => {
+  it("explains a suppressed Lone Qualify warning by the session's own lap counter (issue #1702)", () => {
+    const { controller } = start({
+      SessionInfo: { Sessions: [{ SessionNum: 0, SessionType: "Lone Qualify" }] },
+      DriverInfo: { DriverCarIdx: 0 },
+    });
+    // A lap counter and a running clock: only the counter is compared.
+    const limits = { SessionLapsRemainEx: 3, SessionTimeRemain: 400 };
+
+    driveTwoValidLaps(controller, limits);
+    controller.__tick(telemetry({ Lap: 4, LapDistPct: 0.55, SessionTime: 210, FuelLevel: 20, ...limits }));
+
+    // Count 9 is inside the spoken band, but 20 / 1.95 = 10.3 laps cover the
+    // 0.45 + 2 left: the diff speaks nothing, and the snapshot says why.
+    expect(read().fuel.lapsLeft.now).toMatchObject({
+      count: 9,
+      lapsNeededAfterCurrent: 2,
+      timedLapsAfterCurrent: null,
+      remainingLaps: 2,
+      covered: true,
+      coverageSkipped: null,
+    });
+  });
+
+  it("compares the estimate with nothing in a practice session with no lap limit (issue #1702)", () => {
     const { controller } = start({
       SessionInfo: { Sessions: [{ SessionNum: 0, SessionType: "Practice" }] },
       DriverInfo: { DriverCarIdx: 0 },
     });
-    const limits = { SessionLapsRemainEx: 3, SessionTimeRemain: 400 };
+    const limits = { SessionLapsRemainEx: IRSDK_UNLIMITED_LAPS, SessionTimeRemain: 400 };
 
     driveTwoValidLaps(controller, limits);
     controller.__tick(telemetry({ Lap: 4, LapDistPct: 0.55, SessionTime: 210, FuelLevel: 20, ...limits }));
@@ -610,7 +633,7 @@ describe("readSimState — the laps-of-fuel-left figure", () => {
       timedLapsAfterCurrent: null,
       remainingLaps: null,
       covered: null,
-      coverageSkipped: "not-a-race-session",
+      coverageSkipped: "no-lap-limit",
     });
   });
 
@@ -873,6 +896,35 @@ describe("readSimState — the -1 clock before the race starts (issue #1405)", (
 });
 
 describe("readSimState — a curated half that cannot be built", () => {
+  /**
+   * A margin closure that answers 0 until `breakNow()`, then throws `thrown`.
+   * The fuel callout's own diff calls it at its mid-lap samples in every
+   * readable session (issue #1702), so a closure meant to break only the
+   * reader breaks once the laps are driven, whatever session the test runs;
+   * after that the reader is what reaches it.
+   */
+  function breaksAfterDriving(thrown: unknown): {
+    closure: () => number;
+    breakNow: () => void;
+    brokenCalls: () => number;
+  } {
+    let broken = false;
+    let calls = 0;
+
+    return {
+      closure: (): number => {
+        if (!broken) return 0;
+
+        calls += 1;
+        throw thrown;
+      },
+      breakNow: () => {
+        broken = true;
+      },
+      brokenCalls: () => calls,
+    };
+  }
+
   /** Session info whose `DriverInfo` cannot be read — what `getLivePosition()` asks for first. */
   function poisonedSessionInfo(): Record<string, unknown> {
     return Object.defineProperty({ ...RACE_SESSION }, "DriverInfo", {
@@ -915,19 +967,18 @@ describe("readSimState — a curated half that cannot be built", () => {
   });
 
   it("still carries the raw state when the margin closure throws under the estimate", () => {
-    const getFuelLapsLeftMarginLaps = vi.fn((): number => {
-      throw new Error("settings not loaded");
-    });
-    const { controller } = start(null, { getFuelLapsLeftMarginLaps });
+    const margin = breaksAfterDriving(new Error("settings not loaded"));
+    const { controller } = start(null, { getFuelLapsLeftMarginLaps: margin.closure });
 
-    // No session info, so the fuel callout's own diff — race-only — never
-    // reaches the closure; only the reader does, once there is an average.
     driveTwoValidLaps(controller);
+    margin.breakNow();
 
     const state = readDegraded();
 
-    expect(getFuelLapsLeftMarginLaps).toHaveBeenCalledTimes(1);
+    // The reader is the one call that reached the broken closure.
+    expect(margin.brokenCalls()).toBe(1);
     expect(state.curatedError).toBe("settings not loaded");
+    // No session info: the diff consumed nothing (issue #1702).
     expect(state.raw.state.fuelCallout.lastSampledLap).toBe(-1);
     expect(state.raw.instance.firstOnTrackSeeded).toBe(true);
   });
@@ -960,25 +1011,21 @@ describe("readSimState — a curated half that cannot be built", () => {
         throw new Error("toString");
       },
     };
-    const { controller } = start(null, {
-      getFuelLapsLeftMarginLaps: () => {
-        throw hostile;
-      },
-    });
+    const margin = breaksAfterDriving(hostile);
+    const { controller } = start(null, { getFuelLapsLeftMarginLaps: margin.closure });
 
     driveTwoValidLaps(controller);
+    margin.breakNow();
 
     expect(readDegraded().curatedError).toBe("unknown error");
   });
 
   it("bounds the reason it records", () => {
-    const { controller } = start(null, {
-      getFuelLapsLeftMarginLaps: () => {
-        throw new Error("x".repeat(5000));
-      },
-    });
+    const margin = breaksAfterDriving(new Error("x".repeat(5000)));
+    const { controller } = start(null, { getFuelLapsLeftMarginLaps: margin.closure });
 
     driveTwoValidLaps(controller);
+    margin.breakNow();
 
     expect(readDegraded().curatedError.length).toBeLessThanOrEqual(300);
   });
@@ -1400,22 +1447,97 @@ describe("buildSimState", () => {
       }
     });
 
-    it("is not worked out outside a race session, whatever else holds", () => {
-      const translatorState = createInitialState();
-
-      translatorState.playerFinalLapStarted = true;
-
+    it("is not worked out while the session type cannot be read (issue #1702)", () => {
+      const getLeaderFinish = vi.fn(() => UNKNOWN_LEADER_FINISH);
       const state = build({
-        telemetry: telemetry({ FuelLevel: 10, LapDistPct: 0.5, SessionLapsRemainEx: 3 }),
-        fuel: fuelParts({ isRaceSession: false }),
-        state: translatorState,
+        telemetry: telemetry({ FuelLevel: 10, LapDistPct: 0.5, SessionLapsRemainEx: 3, SessionFlags: Flags.White }),
+        fuel: fuelParts({ session: "unknown", getLeaderFinish }),
       });
 
+      // The count stands; the comparison names the unreadable session first.
       expect(state.fuel.lapsLeft.now).toMatchObject({
         count: 4,
+        lapsNeededAfterCurrent: null,
         remainingLaps: null,
         covered: null,
-        coverageSkipped: "not-a-race-session",
+        coverageSkipped: "session-unknown",
+      });
+      expect(getLeaderFinish).not.toHaveBeenCalled();
+    });
+
+    describe("outside a race (issue #1702)", () => {
+      /** A non-race reading of `telemetry`, with the sticky race marker set to show it is not read. */
+      function buildOutside(over: Partial<TelemetryData>, getLeaderFinish = vi.fn(() => UNKNOWN_LEADER_FINISH)) {
+        const translatorState = createInitialState();
+
+        translatorState.playerFinalLapStarted = true;
+
+        const state = build({
+          telemetry: telemetry({ FuelLevel: 10, LapDistPct: 0.5, ...over }),
+          fuel: fuelParts({ session: "non-race", stats: timedStats, getLeaderFinish }),
+          state: translatorState,
+        });
+
+        return { now: state.fuel.lapsLeft.now, getLeaderFinish };
+      }
+
+      it("compares the count with the lap counter alone, ignoring the race's sticky marker and the clock", () => {
+        const { now, getLeaderFinish } = buildOutside({ SessionLapsRemainEx: 3, SessionTimeRemain: 30 });
+
+        // 10 / 2 = 5 laps against (0.5 + 2) × 1.05: covered.
+        expect(now).toMatchObject({
+          count: 4,
+          lapsNeededAfterCurrent: 2,
+          timedLapsAfterCurrent: null,
+          remainingLaps: 2,
+          covered: true,
+          coverageSkipped: null,
+        });
+        expect(getLeaderFinish).not.toHaveBeenCalled();
+      });
+
+      it("reports a tank short of the counted laps as not covered", () => {
+        // 5 laps against (0.5 + 5) × 1.05 = 5.78.
+        expect(buildOutside({ SessionLapsRemainEx: 6 }).now).toMatchObject({
+          remainingLaps: 5,
+          covered: false,
+          coverageSkipped: null,
+        });
+      });
+
+      it("does not apply the race's white-flag clamp to the counter", () => {
+        expect(buildOutside({ SessionLapsRemainEx: 1 }).now).toMatchObject({ remainingLaps: 0, covered: true });
+      });
+
+      it("skips it on the player's own final lap, by the White bit on the tick", () => {
+        expect(buildOutside({ SessionLapsRemainEx: 3, SessionFlags: Flags.White }).now).toMatchObject({
+          count: 4,
+          remainingLaps: null,
+          covered: null,
+          coverageSkipped: "final-lap",
+        });
+      });
+
+      it("skips it after the session's chequered flag", () => {
+        for (const sessionState of [SessionState.Checkered, SessionState.CoolDown]) {
+          expect(buildOutside({ SessionLapsRemainEx: 3, SessionState: sessionState }).now).toMatchObject({
+            covered: null,
+            coverageSkipped: "race-over",
+          });
+        }
+      });
+
+      it("skips it with no lap limit: the sentinel, a missing counter or an invalid one", () => {
+        for (const SessionLapsRemainEx of [IRSDK_UNLIMITED_LAPS, undefined, -1]) {
+          expect(buildOutside({ SessionLapsRemainEx, SessionTimeRemain: 30 }).now).toMatchObject({
+            count: 4,
+            lapsNeededAfterCurrent: null,
+            timedLapsAfterCurrent: null,
+            remainingLaps: null,
+            covered: null,
+            coverageSkipped: "no-lap-limit",
+          });
+        }
       });
     });
   });

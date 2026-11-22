@@ -3091,6 +3091,7 @@ describe("resolvePitCrewDeps (issue #1378)", () => {
     expect(resolved.getSessionClass()).toBeNull();
     expect(resolved.getStandingStart()).toBe(false);
     expect(resolved.getDamageRepairNeeded()).toBeNull();
+    expect(resolved.getPlayerFinalLapStarted()).toBeNull();
     expect(resolved.getSpotterTrackDirection()).toBe("neutral");
     // The rejoin warnings are a development flag (#1113): off unless wired on.
     expect(resolved.getTrafficRejoinAvailable()).toBe(false);

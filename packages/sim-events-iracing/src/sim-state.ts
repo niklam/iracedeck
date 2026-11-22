@@ -36,9 +36,12 @@ import { isPostRace, type ReplayState, type TelemetryData } from "@iracedeck/ira
 
 import {
   estimateFuelLapsLeft,
+  type FuelCoverage,
   type FuelLapsLeftEstimate,
-  type FuelRaceCoverage,
-  isFuelRaceCovered,
+  type FuelSessionBranch,
+  isFuelCovered,
+  resolveFuelFinalLapStarted,
+  resolveFuelLapCounterCoverage,
   resolveFuelRaceCoverage,
 } from "./diff/fuel-laps-left.js";
 import type { FuelLap, FuelLapTracker, FuelStats } from "./diff/fuel-laps.js";
@@ -56,27 +59,40 @@ import type { TrackDirection } from "./track-type.js";
 import type { CautionGap, GapNeighbor, LiveGaps, LiveOpponentFlags, LivePosition } from "./translator.js";
 
 /**
- * Why the laps-of-fuel-left count is compared with no race distance: the
- * states in which `resolveFuelRaceCoverage` has no meaningful answer, each of
- * which `diffFuelLapsLeft` returns on before it would call it.
+ * Why the laps-of-fuel-left count is compared with no distance: the states in
+ * which `diffFuelLapsLeft` compares nothing, because it has returned before
+ * the comparison or has no distance to compare with. `"race-over"` and
+ * `"final-lap"` hold in every session kind (issue #1702).
  *
- * - `"not-a-race-session"` — there is no race to cover. The lap counter and
- *   the clock mean something else outside a race, and the timed side is a
- *   model of how a race finishes.
- * - `"race-over"` — the chequered flag is out or the field is cooling down.
- * - `"final-lap"` — the player has started their own final lap
- *   (`playerFinalLapStarted`). The coverage arithmetic assumes they have not:
- *   under the white flag it counts at least one more lap for the player to
- *   start, which on the final lap would call a tank that finishes the race
- *   one lap short.
+ * - `"session-unknown"` — the session type cannot be read (the session info
+ *   not yet resolved, or an update that failed to parse, #1461), so there is
+ *   no branch to follow; the diff consumes nothing on such a tick and speaks
+ *   on the first readable one. The count stands, since the arithmetic does
+ *   not depend on the session.
+ * - `"race-over"` — the chequered flag is out or the field is cooling down;
+ *   outside a race, the session's own chequered flag.
+ * - `"final-lap"` — the player has started their own final lap, by the rule
+ *   the translator hands the diff (`resolveFuelFinalLapStarted`): in a race
+ *   the sticky `playerFinalLapStarted` marker, elsewhere the White bit on the
+ *   tick. The diff is silent there whatever the tank says; in a race the
+ *   coverage arithmetic also assumes the player has not started it, since
+ *   under the white it counts at least one more lap for them to start, which
+ *   on the final lap would call a tank that finishes the race one lap short.
+ * - `"no-lap-limit"` — outside a race only: the session's lap counter is
+ *   missing, invalid or unlimited, so there is no distance, and the tank
+ *   alone decides. A race with unknown limits is compared all the same,
+ *   against `remainingLaps: Infinity`.
  */
-export type SimFuelCoverageSkip = "not-a-race-session" | "race-over" | "final-lap";
+export type SimFuelCoverageSkip = "session-unknown" | "race-over" | "final-lap" | "no-lap-limit";
 
 /**
  * What the laps-of-fuel-left callout's formula gives for one tick: every step
- * of the count, then the remaining race distance it is compared with and the
- * verdict — `covered` is the diff's own `isFuelRaceCovered` (issue #1405),
+ * of the count, then the remaining distance it is compared with and the
+ * verdict — `covered` is the diff's own `isFuelCovered` (issue #1405),
  * which is true on the last lap (`remainingLaps` 0) whatever the tank holds.
+ * In a race the distance is `resolveFuelRaceCoverage`'s; in any other session
+ * it is the session's own lap counter (`resolveFuelLapCounterCoverage`, issue
+ * #1702), with `timedLapsAfterCurrent` always `null`.
  *
  * The count stands in any session. The comparison does not: where it has no
  * meaningful answer its four keys are `null` and `coverageSkipped` says why.
@@ -85,7 +101,7 @@ export type SimFuelCoverageSkip = "not-a-race-session" | "race-over" | "final-la
  */
 export type SimFuelLapsLeftNow = FuelLapsLeftEstimate &
   (
-    | (FuelRaceCoverage & { covered: boolean; coverageSkipped: null })
+    | (FuelCoverage & { covered: boolean; coverageSkipped: null })
     | {
         lapsNeededAfterCurrent: null;
         timedLapsAfterCurrent: null;
@@ -258,8 +274,8 @@ export type SimStateParts = {
   replay: ReplayState;
   fuel: {
     windowLaps: number;
-    /** `handleTick`'s own `isRaceSession`, which `diffFuelLapsLeft` returns on first. */
-    isRaceSession: boolean;
+    /** `handleTick`'s own branch, which picks `diffFuelLapsLeft`'s and the reader's (issue #1702). */
+    session: FuelSessionBranch;
     /** The stats the laps-of-fuel-left diff reads, over `windowLaps`. */
     stats: FuelStats;
     tracker: FuelLapTracker;
@@ -282,22 +298,31 @@ export type SimStateParts = {
 };
 
 /**
- * Whether the race-coverage comparison has an answer for this tick, or why
- * not — see {@link SimFuelCoverageSkip}. The order is the diff's own: the
- * session first, then the two it tests together.
+ * The distance the diff compares the count with on this tick, or why it
+ * compares none — see {@link SimFuelCoverageSkip}. The order is the diff's
+ * own: the two silences it tests together, then the session's branch — the
+ * race distance in a race, the lap counter elsewhere (issue #1702). Each
+ * call is the diff's own function, so the reader cannot drift from it.
  */
-function resolveCoverageSkip(
+function resolveCoverage(
   telemetry: TelemetryData,
-  isRaceSession: boolean,
+  fuel: SimStateParts["fuel"],
   state: TranslatorState,
-): SimFuelCoverageSkip | null {
-  if (!isRaceSession) return "not-a-race-session";
+  estimate: FuelLapsLeftEstimate,
+): FuelCoverage | SimFuelCoverageSkip {
+  if (fuel.session === "unknown") return "session-unknown";
 
   if (isPostRace(telemetry)) return "race-over";
 
-  if (state.playerFinalLapStarted) return "final-lap";
+  const isRaceSession = fuel.session === "race";
 
-  return null;
+  if (resolveFuelFinalLapStarted(isRaceSession, state.playerFinalLapStarted, telemetry)) return "final-lap";
+
+  if (isRaceSession) {
+    return resolveFuelRaceCoverage(telemetry, fuel.stats, estimate.lapFractionRemaining, fuel.getLeaderFinish);
+  }
+
+  return resolveFuelLapCounterCoverage(telemetry) ?? "no-lap-limit";
 }
 
 /**
@@ -316,9 +341,10 @@ function resolveCoverageSkip(
  * - `LapDistPct >= 0`. The diff never states it, because its mid-lap sample
  *   only runs at 0.5 and above; read at any tick, the reader has to.
  * - A validated, positive average.
- * - For the COVERAGE half only: a race session, not post-race, and the player
- *   not on their final lap ({@link resolveCoverageSkip}). The count stands
- *   without them, so the figure is kept and the comparison is marked skipped.
+ * - For the COVERAGE half only: not post-race, the player not on their final
+ *   lap, and outside a race a lap limit ({@link resolveCoverage}). The count
+ *   stands without them, so the figure is kept and the comparison is marked
+ *   skipped.
  *
  * **A gate on when the callout speaks** — the arithmetic is as good on either
  * side of it, so the reader ignores it.
@@ -361,25 +387,23 @@ function resolveLapsLeftNow(
   if (stats.avg === null || stats.avg <= 0) return null;
 
   const estimate = estimateFuelLapsLeft(fuelLevel, distPct, stats.avg, fuel.getMarginLaps());
-  const coverageSkipped = resolveCoverageSkip(telemetry, fuel.isRaceSession, state);
+  const coverage = resolveCoverage(telemetry, fuel, state, estimate);
 
-  if (coverageSkipped !== null) {
+  if (typeof coverage === "string") {
     return {
       ...estimate,
       lapsNeededAfterCurrent: null,
       timedLapsAfterCurrent: null,
       remainingLaps: null,
       covered: null,
-      coverageSkipped,
+      coverageSkipped: coverage,
     };
   }
-
-  const coverage = resolveFuelRaceCoverage(telemetry, stats, estimate.lapFractionRemaining, fuel.getLeaderFinish);
 
   return {
     ...estimate,
     ...coverage,
-    covered: isFuelRaceCovered(estimate, coverage.remainingLaps),
+    covered: isFuelCovered(estimate, coverage.remainingLaps),
     coverageSkipped: null,
   };
 }

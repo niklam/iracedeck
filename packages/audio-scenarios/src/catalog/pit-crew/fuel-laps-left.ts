@@ -26,11 +26,37 @@
  * is still accurate when it replays (the YELLOW_CLEARED precedent), and a
  * dropped fire would otherwise never re-announce because the diff has already
  * marked the count spoken.
+ *
+ * **Speak-time gate.** A queued fire replays without its `where:` being asked
+ * again, and on a short track half a lap is shorter than the queue wait, so a
+ * count emitted at the mid-lap sample could otherwise be heard on the
+ * player's final lap or after the checkered flag — where the translator would
+ * not have emitted it. Every contract therefore carries a `speakGate` that
+ * refuses once the player's own last lap has started (the checkered flag
+ * being out implies it), read through `getPlayerFinalLapStarted`, which the
+ * wiring fills from the sim's one final-lap rule, the one the translator
+ * emits under, so speak time applies the emit-time rule. An unknown answer
+ * (`null`: no sim, before the first tick, the scenario harness) admits. The
+ * contracts are built by {@link buildFuelLapsLeftContracts}, which
+ * `registerPitCrew` hands that reader. Two known gaps: a count already
+ * playing when an `interrupt` cuts it is stashed as admitted and replays
+ * within its wait without the gate (`scheduler.ts`, the `admitted` skip in
+ * `prepareOps`; a re-gate-on-replay option is #1774), and
+ * a race's final-lap marker can go unset on a crossing just after the white
+ * heads-up (#1773).
+ *
+ * **Session kinds** (issue #1702). The translator emits the countdown in every
+ * live session; `registerPitCrew` gates the whole family on the session kind
+ * the player chose to hear it in (`fuel-countdown-sessions`), mapped from the
+ * classified session by {@link fuelCountdownSessionKind}. The enough-fuel
+ * confirmation is a race line and speaks only in the race kind
+ * ({@link FUEL_RACE_COVERED_SCENARIO_ID}).
  */
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
-import type { SimEventOf } from "@iracedeck/event-bus";
+import type { CalloutIdOf, FUEL_COUNTDOWN_SESSION_CALLOUTS } from "@iracedeck/callout-settings";
+import type { SessionClass, SimEventOf } from "@iracedeck/event-bus";
 
-import type { ScenarioContract } from "../../dsl.js";
+import type { ScenarioContract, SpeakGate } from "../../dsl.js";
 import { WEIGHT } from "../../dsl.js";
 
 /** Single source for the fuel family's shared defaults (channel, bus, weight
@@ -80,6 +106,39 @@ function fuelLapsLeftContract(
 }
 
 /**
+ * The session kinds the countdown can be heard in, one opt-in each (issue
+ * #1702): the ids of the `fuel-countdown-sessions` callout family.
+ */
+export type FuelCountdownSessionId = CalloutIdOf<typeof FUEL_COUNTDOWN_SESSION_CALLOUTS>;
+
+/**
+ * Which session-kind opt-in a classified session answers to (issue #1702).
+ * The `race` category is Race, heat races and warmups included, since the
+ * Race Engineer reads one classifier; `practice` is Test when `testing` is set
+ * and Practice otherwise; `qualifying` is Qualifying, solo or not. A session
+ * not yet classified (`null`) answers to none, so the countdown stays silent
+ * until it is known. The translator emits nothing while the session cannot
+ * be read and keeps its announcement floor, so it resumes from the estimate
+ * at the next sample once it can; a count the estimate passed in between is
+ * not spoken late.
+ */
+export function fuelCountdownSessionKind(session: SessionClass | null): FuelCountdownSessionId | null {
+  if (session === null) return null;
+
+  switch (session.category) {
+    case "race":
+      return "race";
+    case "qualifying":
+      return "qualifying";
+    case "practice":
+      return session.testing ? "test" : "practice";
+  }
+}
+
+/** The enough-fuel confirmation's id: a race line, heard only in the race kind (issue #1702). */
+export const FUEL_RACE_COVERED_SCENARIO_ID = "pit-crew.fuel-laps-left-race-covered";
+
+/**
  * Enough-fuel confirmation (issue #880) — the diff emits
  * `fuel.lapsLeft.raceCovered` at most once per stint, once the race is
  * inside its last 10 laps (by the binding limit) and the tank covers the
@@ -88,7 +147,7 @@ function fuelLapsLeftContract(
  * anything), `queueable` for the same reason as the warnings: the diff
  * latches on EMIT, so a dropped fire would never replay.
  */
-const FUEL_RACE_COVERED: ScenarioContract = fuelContract(
+const FUEL_RACE_COVERED_BASE: ScenarioContract = fuelContract(
   "race-covered",
   WEIGHT.NORMAL,
   {
@@ -97,77 +156,119 @@ const FUEL_RACE_COVERED: ScenarioContract = fuelContract(
   "Inside the last ten laps of a race, live in the car, the mid-lap fuel estimate shows the tank covering the rest of the race with a full lap in hand — once per stint.",
 );
 
-export const FUEL_LAPS_LEFT_CONTRACTS: readonly ScenarioContract[] = [
+/** The twelve contracts before their speak-time gate is attached ({@link buildFuelLapsLeftContracts}). */
+const FUEL_LAPS_LEFT_BASE: readonly ScenarioContract[] = [
   fuelLapsLeftContract(
     "10",
     10,
     WEIGHT.NORMAL,
-    "Mid-lap in a race, live in the car, your fuel estimate first drops to ten more full laps — once per stint, and never once the tank covers the rest of the race.",
+    "Mid-lap, live in the car, your fuel estimate first drops to ten more full laps — once per stint, and never once the tank covers the rest of the race or of a lap-limited session.",
   ),
   fuelLapsLeftContract(
     "9",
     9,
     WEIGHT.NORMAL,
-    "Mid-lap in a race, live in the car, your fuel estimate first drops to nine more full laps — once per stint, and never once the tank covers the rest of the race.",
+    "Mid-lap, live in the car, your fuel estimate first drops to nine more full laps — once per stint, and never once the tank covers the rest of the race or of a lap-limited session.",
   ),
   fuelLapsLeftContract(
     "8",
     8,
     WEIGHT.NORMAL,
-    "Mid-lap in a race, live in the car, your fuel estimate first drops to eight more full laps — once per stint, and never once the tank covers the rest of the race.",
+    "Mid-lap, live in the car, your fuel estimate first drops to eight more full laps — once per stint, and never once the tank covers the rest of the race or of a lap-limited session.",
   ),
   fuelLapsLeftContract(
     "7",
     7,
     WEIGHT.NORMAL,
-    "Mid-lap in a race, live in the car, your fuel estimate first drops to seven more full laps — once per stint, and never once the tank covers the rest of the race.",
+    "Mid-lap, live in the car, your fuel estimate first drops to seven more full laps — once per stint, and never once the tank covers the rest of the race or of a lap-limited session.",
   ),
   fuelLapsLeftContract(
     "6",
     6,
     WEIGHT.NORMAL,
-    "Mid-lap in a race, live in the car, your fuel estimate first drops to six more full laps — once per stint, and never once the tank covers the rest of the race.",
+    "Mid-lap, live in the car, your fuel estimate first drops to six more full laps — once per stint, and never once the tank covers the rest of the race or of a lap-limited session.",
   ),
   fuelLapsLeftContract(
     "5",
     5,
     WEIGHT.NORMAL,
-    "Mid-lap in a race, live in the car, your fuel estimate first drops to five more full laps — once per stint, and never once the tank covers the rest of the race.",
+    "Mid-lap, live in the car, your fuel estimate first drops to five more full laps — once per stint, and never once the tank covers the rest of the race or of a lap-limited session.",
   ),
   fuelLapsLeftContract(
     "4",
     4,
     WEIGHT.NORMAL,
-    "Mid-lap in a race, live in the car, your fuel estimate first drops to four more full laps — once per stint, and never once the tank covers the rest of the race.",
+    "Mid-lap, live in the car, your fuel estimate first drops to four more full laps — once per stint, and never once the tank covers the rest of the race or of a lap-limited session.",
   ),
   fuelLapsLeftContract(
     "3",
     3,
     WEIGHT.SAFETY,
-    "Mid-lap in a race, live in the car, your fuel estimate first drops to three more full laps — once per stint, and never once the tank covers the rest of the race.",
+    "Mid-lap, live in the car, your fuel estimate first drops to three more full laps — once per stint, and never once the tank covers the rest of the race or of a lap-limited session.",
   ),
   fuelLapsLeftContract(
     "2",
     2,
     WEIGHT.SAFETY,
-    "Mid-lap in a race, live in the car, your fuel estimate first drops to two more full laps — once per stint, and never once the tank covers the rest of the race.",
+    "Mid-lap, live in the car, your fuel estimate first drops to two more full laps — once per stint, and never once the tank covers the rest of the race or of a lap-limited session.",
   ),
   fuelLapsLeftContract(
     "1",
     1,
     WEIGHT.CRITICAL,
-    "Mid-lap in a race, live in the car, your fuel estimate first drops to one more full lap — once per stint, and never once the tank covers the rest of the race.",
+    "Mid-lap, live in the car, your fuel estimate first drops to one more full lap — once per stint, and never once the tank covers the rest of the race or of a lap-limited session.",
     true,
   ),
   fuelLapsLeftContract(
     "box",
     0,
     WEIGHT.CRITICAL,
-    "Mid-lap in a race, live in the car, your fuel estimate first drops below one more full lap — once per stint, and never once the tank covers the rest of the race.",
+    "Mid-lap, live in the car, your fuel estimate first drops below one more full lap — once per stint, and never once the tank covers the rest of the race or of a lap-limited session.",
     true,
   ),
-  FUEL_RACE_COVERED,
+  FUEL_RACE_COVERED_BASE,
 ];
+
+/** What the fuel contracts read beyond their event: the player's final lap, for the speak-time gate. */
+export type FuelLapsLeftContractDeps = {
+  /**
+   * Whether the player has started their own last lap of the session — true
+   * from that lap's start (which the session's checkered flag being out also
+   * implies) until the session changes; `null` while unknown (no sim, before
+   * the first tick, or the scenario harness).
+   */
+  getPlayerFinalLapStarted: () => boolean | null;
+};
+
+/**
+ * The speak-time gate every fuel contract carries (module header): refuse
+ * once the player's own last lap has started, as the sim answers when the
+ * line reaches the radio, and admit while that is unknown.
+ */
+function stillBeforeTheFinalLap(deps: FuelLapsLeftContractDeps): SpeakGate {
+  return {
+    description:
+      "Dropped if your own last lap started, or the session's checkered flag came out, while it waited for the radio.",
+    admit: () => deps.getPlayerFinalLapStarted() !== true,
+  };
+}
+
+/**
+ * The twelve laps-of-fuel-left contracts, each with the speak-time gate that
+ * reads `deps.getPlayerFinalLapStarted` (module header). `registerPitCrew`
+ * builds them with the sim's reader; {@link FUEL_LAPS_LEFT_CONTRACTS} is the
+ * same set with an unknown answer, so its gate always admits.
+ */
+export function buildFuelLapsLeftContracts(deps: FuelLapsLeftContractDeps): readonly ScenarioContract[] {
+  const speakGate = stillBeforeTheFinalLap(deps);
+
+  return FUEL_LAPS_LEFT_BASE.map((c) => ({ ...c, speakGate }));
+}
+
+/** The contracts with no final-lap reader, for the ids, the tests and the reference. */
+export const FUEL_LAPS_LEFT_CONTRACTS: readonly ScenarioContract[] = buildFuelLapsLeftContracts({
+  getPlayerFinalLapStarted: () => null,
+});
 
 /** Contract ids exported for tests so a typo here surfaces as a test failure. */
 export const FUEL_LAPS_LEFT_SCENARIO_IDS: readonly string[] = FUEL_LAPS_LEFT_CONTRACTS.map((c) => c.id);

@@ -72,6 +72,17 @@ export const CATCH_UP_GATE_NOTE =
   "and publishing the event opens none: fired on its own it reaches the bus and plays nothing. Use Flags → Caution " +
   "→ catch-up, which drives the caution and opens the gap through the translator.";
 
+/**
+ * Appended to the injector description of the two fuel events (#1702): their
+ * callouts are heard per kind of session, which the Race Engineer reads from
+ * the translator, so injected with no session preset applied, or with the
+ * mock SDK disconnected, they reach the bus and play nothing. Pinned by
+ * `fuel-countdown-shortcuts.test.ts`; the silence by `fuel-countdown-heard.test.ts`.
+ */
+export const FUEL_SESSION_GATE_NOTE =
+  'Heard only in a session the Race Engineer can classify, with that kind\'s "Fuel countdown: speak in …" toggle ' +
+  "on: apply a session preset and connect the mock SDK first, or it reaches the bus and plays nothing.";
+
 export type EventTemplate = {
   name: SimEventName;
   description: string;
@@ -503,14 +514,12 @@ export const EVENT_TEMPLATES = [
   { name: "radar.changed", description: "Proximity radar state changed", data: { from: "clear", to: "left" } },
   {
     name: "fuel.lapsLeft.crossed",
-    description:
-      "Estimated laps-of-fuel-left crossed down to a new count (issue #838) — count 0 is the box-this-lap call",
+    description: `Estimated laps-of-fuel-left crossed down to a new count (issue #838), in any live session since #1702 — count 0 is the box-this-lap call. ${FUEL_SESSION_GATE_NOTE}`,
     data: { count: 3, lapsLeft: 3.4 },
   },
   {
     name: "fuel.lapsLeft.raceCovered",
-    description:
-      "The tank covers what's left of the race (issue #880) — fires once per stint, inside the race's last 10 laps",
+    description: `The tank covers what's left of the race (issue #880) — fires once per stint, inside the race's last 10 laps. A race line: heard in a race session only. ${FUEL_SESSION_GATE_NOTE}`,
     data: {},
   },
   {

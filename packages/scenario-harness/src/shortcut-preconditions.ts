@@ -21,13 +21,16 @@
  * The reason text lives on the rule rather than on each shortcut, so the three
  * caution buttons cannot drift from each other's wording.
  */
-import type { TelemetryData } from "@iracedeck/iracing-sdk";
+import type { SessionClass } from "@iracedeck/event-bus";
+import { readSubSessionId, type TelemetryData } from "@iracedeck/iracing-sdk";
 import {
+  classifySession,
   isOvalTrack,
   type PaceLineup,
   parseTrackLengthMeters,
   resolvePaceLineup,
   resolvePlayerCarIdx,
+  resolveSessionType,
 } from "@iracedeck/sim-events-iracing";
 
 import {
@@ -54,6 +57,9 @@ import { TRAFFIC_PLAYER_CAR_IDX } from "./traffic-telemetry.js";
  * opens one. So does the caution catch-up button (#1168): its two calls ask
  * whether the gap to the car ahead is open, which a translator that sees no
  * ticks never judges — the button would run for a minute and play nothing.
+ * And the Fuel buttons (#1702): the fuel lines ask the translator which kind
+ * of session it is, and it answers `null` until it has a tick to read the
+ * session number from.
  *
  * `rolling-start-grid` — the translator would read the rolling-start buttons'
  * grid as a GRID in the session the harness holds (#1167): a race session,
@@ -75,6 +81,37 @@ import { TRAFFIC_PLAYER_CAR_IDX } from "./traffic-telemetry.js";
  * (`traffic-telemetry.ts`). On a session naming another car the translator
  * reads that car's slot, which the train leaves out of the world, so the
  * detector never sees the player stop and the whole run is silent.
+ *
+ * `session-classified` — the Race Engineer can tell what kind of session the
+ * mock is in (#1702): practice, test, qualifying or race, as
+ * `classifySession` names it. The fuel countdown is heard per session kind,
+ * through the "Speak in" toggles, and a session it cannot classify (the mock
+ * boots with no session info) speaks no fuel line at all.
+ *
+ * `race-session` — that, and the session is a race (#1702). The enough-fuel
+ * confirmation is the race countdown's closing line and is heard only there.
+ *
+ * `translator-session-current` — the translator's latest tick is in the
+ * session the mock is in (#1702). The two rules above classify the mock's
+ * telemetry, but the fuel gate classifies the translator's (`getSessionClass()`
+ * reads the session number off its latest tick), and a telemetry write does
+ * not reach the translator until the next tick. With the tick loop paused or
+ * slowed, a session number changed by hand is one the precondition would see
+ * and the gate would not: the button would be accepted and every fuel line
+ * judged against the session before, its kind and its final-lap marker. So
+ * the rule compares the session identity the translator keeps, `SessionNum`
+ * and a named `SubSessionID` (whose change it takes, and resets the session
+ * for, on a tick too), not the session type, which two entries of one kind
+ * share. Connecting opens no such window (the mock delivers a tick on
+ * connect).
+ *
+ * `before-final-lap` — the player is not on their final lap and the
+ * session's chequered flag is not out (#1702), as the translator's
+ * `isPlayerFinalLapStarted()` answers it: the fuel contracts' speak gate
+ * asks the same reader and refuses a line there, so a fuel button would be
+ * accepted and play nothing. Every Fuel button declares it, the countdown run
+ * too: it puts the car on a racing lap but shows no green flag, and in a race
+ * the translator keeps the last lap marked until one.
  */
 export type ShortcutPrecondition =
   | "player-car-index"
@@ -82,7 +119,11 @@ export type ShortcutPrecondition =
   | "rolling-start-grid"
   | "rolling-start-oval-grid"
   | "track-length"
-  | "traffic-player-car";
+  | "traffic-player-car"
+  | "session-classified"
+  | "race-session"
+  | "translator-session-current"
+  | "before-final-lap";
 
 /** The live harness state a precondition is checked against, read by the route on every start. */
 export type HarnessPreconditionState = {
@@ -94,6 +135,29 @@ export type HarnessPreconditionState = {
    * of the session list, and the translator answers it against this.
    */
   telemetry: TelemetryData;
+  /**
+   * The translator's latest telemetry (`getLatestTelemetry()`), `null` before
+   * its first tick or once disconnected: what `getSessionClass()` reads the
+   * session number from. It lags {@link telemetry} by a write until the next
+   * tick.
+   */
+  translatorTelemetry: TelemetryData | null;
+  /**
+   * The `WeekendInfo.SubSessionID` the translator last took into its session
+   * identity (`readSimState()`'s `lastObservedSubSessionId`), `null` while it
+   * has none. Session info is read live by both sides, but the translator
+   * takes a new subsession, and resets the session's state for it, only on
+   * its next tick.
+   */
+  translatorSubSessionId: number | null;
+  /**
+   * The translator's `isPlayerFinalLapStarted()`: true from the player's own
+   * last lap or with the chequered flag out, `null` when it cannot tell (no
+   * tick, a session it cannot read). Not derivable from the telemetry alone:
+   * in a race it is a marker the translator keeps until a green flag says the
+   * race went on.
+   */
+  playerFinalLapStarted: boolean | null;
 };
 
 type PreconditionRule = {
@@ -143,6 +207,41 @@ function readFormationGrid(state: HarnessPreconditionState): PaceLineup | null {
   return resolvePaceLineup(telemetry, state.sessionInfo, isOvalTrack(state.sessionInfo));
 }
 
+/**
+ * The session the mock is in, classified as the Race Engineer classifies it
+ * (issue #1702): the translator's own `resolveSessionType` and
+ * `classifySession`, which is what `getSessionClass()` answers once the
+ * translator has a tick. Both are asked, not restated, so "a race" means here
+ * what it means to the fuel countdown's session gate;
+ * `fuel-countdown-shortcuts.test.ts` checks the two agree on every session
+ * preset.
+ */
+function classifyMockSession(state: HarnessPreconditionState): SessionClass | null {
+  return classifySession(resolveSessionType(state.sessionInfo, state.telemetry));
+}
+
+/**
+ * Whether the translator has processed the session the mock is in (issue
+ * #1702), by the translator's own session identity, `(SubSessionID,
+ * SessionNum)` (`session-identity.ts`, #1509): its latest tick carries the
+ * mock's `SessionNum`, and, when the mock's session info names a
+ * subsession, the translator has taken that one. Comparing the session TYPE
+ * alone let a switch between two entries of one type through, with the old
+ * session's state (its final-lap marker) still on the translator; the
+ * identity is also what makes the translator reset that state, on the tick
+ * that sees it change. A session info without a `SubSessionID` (every
+ * preset) leaves that half out, as the translator does.
+ */
+function translatorSeesMockSession(state: HarnessPreconditionState): boolean {
+  if (state.translatorTelemetry === null) return false;
+
+  if (state.translatorTelemetry.SessionNum !== state.telemetry.SessionNum) return false;
+
+  const subSessionId = readSubSessionId(state.sessionInfo);
+
+  return subSessionId === null || subSessionId === state.translatorSubSessionId;
+}
+
 const PRECONDITION_RULES: Record<ShortcutPrecondition, PreconditionRule> = {
   "player-car-index": {
     satisfied: (state) => namesPlayerCar(state.sessionInfo),
@@ -158,8 +257,9 @@ const PRECONDITION_RULES: Record<ShortcutPrecondition, PreconditionRule> = {
     reason:
       'Connect the mock SDK first (the "Connected" toggle in the header). This callout checks a gate that reads what ' +
       "the translator has seen: the overtake gate reads live telemetry (on track, at racing speed, off pit road, " +
-      "nobody alongside), a rolling-start call asks whether a formation is running, and a catch-up call asks whether " +
-      "your gap under caution is open. The button arranges that itself, but a disconnected translator receives no " +
+      "nobody alongside), a rolling-start call asks whether a formation is running, a catch-up call asks whether " +
+      "your gap under caution is open, and a fuel line asks which kind of session you are in, which the translator " +
+      "reads off its latest tick. The button arranges what it can itself, but a disconnected translator receives no " +
       "telemetry, so the gate stays shut and the line is silent for the wrong reason.",
   },
   "rolling-start-grid": {
@@ -205,6 +305,41 @@ const PRECONDITION_RULES: Record<ShortcutPrecondition, PreconditionRule> = {
       `roster, your car at index ${TRAFFIC_PLAYER_CAR_IDX}, and the translator reads which car is yours from the driver ` +
       "list (DriverInfo.DriverCarIdx). On a session naming another car, or none, the detector would read an empty " +
       "slot as yours and the whole run would be silent.",
+  },
+  "session-classified": {
+    satisfied: (state) => classifyMockSession(state) !== null,
+    reason:
+      'Apply a session preset first ("practice", "testing", "qualifying", "lone-qualifying", "race" or "race-oval"). ' +
+      "The fuel countdown is heard per kind of session, through the Speak in toggles (Race, Practice, Qualifying, " +
+      'Test; here the "Fuel countdown: speak in …" checkboxes in Global Settings), so the Race Engineer reads which ' +
+      "kind of session you are in (SessionInfo.Sessions[SessionNum].SessionType). The harness boots with no " +
+      "session info, and in a session it cannot classify no fuel line is spoken at all.",
+  },
+  "race-session": {
+    satisfied: (state) => classifyMockSession(state)?.category === "race",
+    reason:
+      'Apply the "race" or "race-oval" session preset first. "Enough fuel to finish" is the race countdown’s ' +
+      "closing line, retracting the warnings before it, so the Race Engineer speaks it in a race only, and only " +
+      'with "Fuel countdown: speak in Race" checked. In any other session it is silent.',
+  },
+  "before-final-lap": {
+    // The fuel speak gate's own test, `!== true`: an unknown answer speaks.
+    satisfied: (state) => state.playerFinalLapStarted !== true,
+    reason:
+      "You are on your final lap, or the session's chequered flag is out, and the Race Engineer speaks no fuel count " +
+      "there: the line would be refused as it reached the radio. To get back before the final lap, apply the " +
+      '"hot-lap" telemetry preset (racing, no flag shown); in a race also show a green flag for one tick ' +
+      "(SessionFlags with the Green bit, 4), since a race keeps its last lap marked until a green says it went on. " +
+      "Tick once and press again.",
+  },
+  "translator-session-current": {
+    satisfied: translatorSeesMockSession,
+    reason:
+      "The translator has not read the session you are in yet. The Race Engineer reads which session it is from the " +
+      "translator's latest tick (SessionInfo.Sessions[SessionNum], and WeekendInfo.SubSessionID when the session " +
+      "info names one), and the session has changed since that tick, because the tick loop is paused or slowed. Tick " +
+      "once (or resume the loop) and press again: run now, every fuel line would be judged against the session before, " +
+      "its kind and whether its final lap had started.",
   },
 };
 

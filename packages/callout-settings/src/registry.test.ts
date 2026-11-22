@@ -14,6 +14,7 @@ import {
   type CalloutPiGroup,
   type CalloutSettingKey,
   FLAG_CALLOUTS,
+  FUEL_COUNTDOWN_SESSION_CALLOUTS,
   type RegisteredCalloutFamily,
   TRAFFIC_CALLOUTS,
 } from "./index.js";
@@ -143,7 +144,7 @@ describe("Callouts card sections (#1700)", () => {
           "opponent-pits",
         ],
       ],
-      ["car-and-conditions", ["fuel", "damage", "track-conditions"]],
+      ["car-and-conditions", ["fuel-countdown-sessions", "fuel", "damage", "track-conditions"]],
       ["track-guide", ["corner-names"]],
       ["key-acknowledgments", ["race-engineer-toggle"]],
     ]);
@@ -235,5 +236,32 @@ describe("Traffic group (#1113)", () => {
   it("maps the traffic family's ids to their keys", () => {
     expect(calloutKey(TRAFFIC_CALLOUTS, "rejoin")).toBe("calloutEnabledTrafficRejoin");
     expect(calloutKey(TRAFFIC_CALLOUTS, "pit-exit")).toBe("calloutEnabledTrafficPitExit");
+  });
+});
+
+describe("Fuel countdown session kinds (#1702)", () => {
+  const SESSION_ROWS = [
+    ["race", "calloutEnabledFuelCountdownRace", "Race"],
+    ["practice", "calloutEnabledFuelCountdownPractice", "Practice"],
+    ["qualifying", "calloutEnabledFuelCountdownQualifying", "Qualifying"],
+    ["test", "calloutEnabledFuelCountdownTest", "Test"],
+  ] as const;
+
+  it("renders Race, Practice, Qualifying, Test under a Speak in heading, right before Fuel", () => {
+    const ids = CALLOUT_PI_GROUPS.map((g) => g.id);
+    const group = CALLOUT_PI_GROUPS.find((g) => g.id === "fuel-countdown-sessions");
+    const rows = group?.families.flatMap((f: CalloutFamily) => Object.values(f.callouts));
+
+    expect(ids.indexOf("fuel-countdown-sessions")).toBe(ids.indexOf("fuel") - 1);
+    expect(group?.title).toBe("Speak in");
+    expect(group?.description).toBe("The fuel countdown speaks only in the session types you tick here.");
+    expect(group?.families).toEqual([FUEL_COUNTDOWN_SESSION_CALLOUTS]);
+    expect(rows?.map((e) => [e.key, e.label])).toEqual(SESSION_ROWS.map(([, key, label]) => [key, label]));
+  });
+
+  it.each(SESSION_ROWS)("maps %s to %s, on by default", (id, key) => {
+    expect(calloutKey(FUEL_COUNTDOWN_SESSION_CALLOUTS, id)).toBe(key);
+    expect(calloutDefault(key)).toBe(true);
+    expect(CALLOUT_SETTING_KEYS).toContain(key);
   });
 });

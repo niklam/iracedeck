@@ -22,8 +22,13 @@ import defaultScript from "@iracedeck/audio-assets/voice/default/callouts.json" 
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import { createFakeAudio, type FakeAudio } from "@iracedeck/audio-service/testing";
 import { type CalloutScript } from "@iracedeck/callout-script";
-import { FUEL_CALLOUTS } from "@iracedeck/callout-settings";
-import type { IEventBus, SimEventMap, SimEventName, SimEventOf } from "@iracedeck/event-bus";
+import {
+  calloutIdForKey,
+  type CalloutSettingKey,
+  FUEL_CALLOUTS,
+  FUEL_COUNTDOWN_SESSION_CALLOUTS,
+} from "@iracedeck/callout-settings";
+import type { IEventBus, SessionClass, SimEventMap, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import { classifySession } from "@iracedeck/sim-events-iracing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -38,9 +43,13 @@ import {
 import { familyGate } from "./callout-gate.test-util.js";
 import { familyReferences } from "./family-references.test-util.js";
 import {
+  buildFuelLapsLeftContracts,
   FUEL_LAPS_LEFT_CLIP_SOURCES,
   FUEL_LAPS_LEFT_CONTRACTS,
   FUEL_LAPS_LEFT_SCENARIO_IDS,
+  FUEL_RACE_COVERED_SCENARIO_ID,
+  type FuelCountdownSessionId,
+  fuelCountdownSessionKind,
 } from "./fuel-laps-left.js";
 import { type FuelCalloutId, registerPitCrew } from "./index.js";
 import { _resetLimiterCueEngine } from "./limiter-cue-engine.js";
@@ -417,6 +426,353 @@ describe("FUEL_LAPS_LEFT_CONTRACTS opt-in gating (issue #838)", () => {
     flush(audio);
 
     expect(voiceClipsPlayed()).toEqual([]);
+  });
+});
+
+describe("fuelCountdownSessionKind (issue #1702)", () => {
+  const session = (category: SessionClass["category"], soloQualifying = false, testing = false): SessionClass => ({
+    category,
+    soloQualifying,
+    testing,
+  });
+
+  it.each([
+    ["a race", session("race"), "race"],
+    ["practice", session("practice"), "practice"],
+    ["a testing session", session("practice", false, true), "test"],
+    ["qualifying", session("qualifying"), "qualifying"],
+    ["solo qualifying", session("qualifying", true), "qualifying"],
+  ] as const)("maps %s to its opt-in", (_, cls, kind) => {
+    expect(fuelCountdownSessionKind(cls)).toBe(kind);
+  });
+
+  it("maps an unclassified session to none", () => {
+    expect(fuelCountdownSessionKind(null)).toBeNull();
+  });
+
+  it.each([
+    ["Race", "race"],
+    ["Heat Race", "race"],
+    ["Warmup", "race"],
+    ["Practice", "practice"],
+    ["Open Practice", "practice"],
+    ["Offline Testing", "test"],
+    ["Open Qualify", "qualifying"],
+    ["Lone Qualify", "qualifying"],
+  ] as const)("reads iRacing's %s, as the translator classifies it, as %s", (sessionType, kind) => {
+    expect(fuelCountdownSessionKind(classifySession(sessionType))).toBe(kind);
+  });
+
+  it("answers every id of the fuel-countdown-sessions family", () => {
+    const answered = new Set(
+      [session("race"), session("practice"), session("practice", false, true), session("qualifying")].map(
+        fuelCountdownSessionKind,
+      ),
+    );
+
+    expect(answered).toEqual(new Set(Object.keys(FUEL_COUNTDOWN_SESSION_CALLOUTS.callouts)));
+  });
+
+  it("names the enough-fuel confirmation as the race-only contract", () => {
+    expect(findContract(FUEL_RACE_COVERED_SCENARIO_ID).when?.event).toBe("fuel.lapsLeft.raceCovered");
+  });
+});
+
+// The family-wide session-kind gate (issue #1702), wired through
+// `registerPitCrew` the way production does: the session read live from
+// `getSessionClass`, both opt-in families from the one `isCalloutEnabled`.
+describe("FUEL_LAPS_LEFT_CONTRACTS session-kind gating (issue #1702)", () => {
+  let sessionType: string;
+  let fuelEnabled: Map<FuelCalloutId, boolean>;
+  let sessionEnabled: Map<FuelCountdownSessionId, boolean>;
+
+  const isCalloutEnabled = (key: CalloutSettingKey): boolean => {
+    const fuelId = calloutIdForKey(FUEL_CALLOUTS, key);
+
+    if (fuelId !== undefined) return fuelEnabled.get(fuelId) ?? true;
+
+    const sessionId = calloutIdForKey(FUEL_COUNTDOWN_SESSION_CALLOUTS, key);
+
+    if (sessionId !== undefined) return sessionEnabled.get(sessionId) ?? true;
+
+    return true;
+  };
+
+  function raceCovered(): void {
+    bus.publishEvent("fuel.lapsLeft.raceCovered", {} as never);
+    flush(audio);
+  }
+
+  beforeEach(() => {
+    _resetAudioScenarios();
+    bus = createMockBus();
+    audio = createFakeAudio();
+    initializeAudioScenarios(bus, audio, manifest, mockLogger as never, () => VOICE);
+
+    sessionType = "Race";
+    fuelEnabled = new Map<FuelCalloutId, boolean>();
+    sessionEnabled = new Map<FuelCountdownSessionId, boolean>();
+
+    registerPitCrew(bus, {
+      ...SIM_READS,
+      getSessionClass: () => classifySession(sessionType),
+      logger: mockLogger as never,
+      isCalloutEnabled,
+    });
+    getScenarioEngine().setScripts(new Map([[VOICE, FUEL_SCRIPT]]));
+  });
+
+  afterEach(() => {
+    _resetRadarEngine();
+    _resetSpotterEngine();
+    _resetPitSpeedingEngine();
+    _resetPitExitCueEngine();
+    _resetLimiterCueEngine();
+  });
+
+  const SESSIONS = [
+    ["Race", "race"],
+    ["Practice", "practice"],
+    ["Open Qualify", "qualifying"],
+    ["Lone Qualify", "qualifying"],
+    ["Offline Testing", "test"],
+  ] as const;
+
+  it.each(SESSIONS)("speaks the countdown in %s with every opt-in on", (type) => {
+    sessionType = type;
+
+    crossed(5);
+    crossed(0);
+
+    expect(voiceClipsPlayed()).toEqual([
+      `voice/${VOICE}/fuel/laps-left-5-01.mp3`,
+      `voice/${VOICE}/fuel/laps-left-box-01.mp3`,
+    ]);
+  });
+
+  it.each(SESSIONS)(
+    "silences the countdown in %s when its %s toggle is off, the count's own opt-in on",
+    (type, kind) => {
+      sessionType = type;
+      sessionEnabled.set(kind, false);
+      fuelEnabled.set("laps-left-5", true);
+
+      crossed(5);
+      crossed(0);
+
+      expect(voiceClipsPlayed()).toEqual([]);
+    },
+  );
+
+  it.each(SESSIONS)("keeps the countdown in %s when only the other session kinds are off", (type, kind) => {
+    sessionType = type;
+
+    for (const id of Object.keys(FUEL_COUNTDOWN_SESSION_CALLOUTS.callouts) as FuelCountdownSessionId[]) {
+      if (id !== kind) sessionEnabled.set(id, false);
+    }
+
+    crossed(3);
+
+    expect(voiceClipsPlayed()).toEqual([`voice/${VOICE}/fuel/laps-left-3-01.mp3`]);
+  });
+
+  it("keeps a count switched off silent in a session kind switched on", () => {
+    sessionType = "Practice";
+    sessionEnabled.set("practice", true);
+    fuelEnabled.set("laps-left-5", false);
+
+    crossed(5);
+    expect(voiceClipsPlayed()).toEqual([]);
+
+    crossed(4);
+    expect(voiceClipsPlayed()).toEqual([`voice/${VOICE}/fuel/laps-left-4-01.mp3`]);
+  });
+
+  it("speaks nothing while the session is unclassified", () => {
+    sessionType = "";
+
+    crossed(5);
+    crossed(0);
+    raceCovered();
+
+    expect(voiceClipsPlayed()).toEqual([]);
+  });
+
+  it("takes a toggle flipped mid-session on the next event", () => {
+    sessionType = "Offline Testing";
+    sessionEnabled.set("test", false);
+
+    crossed(5);
+    expect(voiceClipsPlayed()).toEqual([]);
+
+    sessionEnabled.set("test", true);
+    crossed(4);
+    expect(voiceClipsPlayed()).toEqual([`voice/${VOICE}/fuel/laps-left-4-01.mp3`]);
+
+    sessionEnabled.set("test", false);
+    crossed(3);
+    expect(voiceClipsPlayed()).toEqual([`voice/${VOICE}/fuel/laps-left-4-01.mp3`]);
+  });
+
+  it("reads the session live, so a new session answers to its own toggle", () => {
+    sessionEnabled.set("practice", false);
+
+    sessionType = "Practice";
+    crossed(5);
+    expect(voiceClipsPlayed()).toEqual([]);
+
+    sessionType = "Race";
+    crossed(5);
+    expect(voiceClipsPlayed()).toEqual([`voice/${VOICE}/fuel/laps-left-5-01.mp3`]);
+  });
+
+  it("speaks Enough fuel to finish in a race with the Race toggle on", () => {
+    raceCovered();
+
+    expect(voiceClipsPlayed()).toEqual([`voice/${VOICE}/fuel/race-covered-01.mp3`]);
+  });
+
+  it("silences Enough fuel to finish with the Race toggle off, its own opt-in on", () => {
+    sessionEnabled.set("race", false);
+    fuelEnabled.set("race-covered", true);
+
+    raceCovered();
+
+    expect(voiceClipsPlayed()).toEqual([]);
+  });
+
+  it.each(SESSIONS.filter(([, kind]) => kind !== "race"))(
+    "never speaks Enough fuel to finish in %s, even with that kind's toggle on",
+    (type) => {
+      sessionType = type;
+
+      raceCovered();
+
+      expect(voiceClipsPlayed()).toEqual([]);
+    },
+  );
+});
+
+// The speak-time gate (CodeRabbit on PR #1772, spec Decision 5 as amended): a
+// queued fire replays without its `where:` being asked again, and on a short
+// track half a lap is shorter than the queue wait, so a count emitted at the
+// mid-lap sample must be dropped if the player's own last lap has started (or
+// the checkered flag is out) by the time it would replay.
+describe("FUEL_LAPS_LEFT_CONTRACTS final-lap speak gate", () => {
+  describe("buildFuelLapsLeftContracts", () => {
+    it("gives every contract the gate, refusing once the final lap has started and admitting otherwise", () => {
+      let finalLapStarted: boolean | null = null;
+      const contracts = buildFuelLapsLeftContracts({ getPlayerFinalLapStarted: () => finalLapStarted });
+      const ctx = {} as never;
+
+      expect(contracts.map((c) => c.id)).toEqual(FUEL_LAPS_LEFT_SCENARIO_IDS);
+
+      for (const c of contracts) {
+        expect(c.speakGate?.description, c.id).toMatch(/last lap/);
+        expect(c.speakGate?.description, c.id).toMatch(/checkered flag/);
+
+        finalLapStarted = null;
+        expect(c.speakGate?.admit(ctx), `${c.id} while unknown`).toBe(true);
+        finalLapStarted = false;
+        expect(c.speakGate?.admit(ctx), `${c.id} before the final lap`).toBe(true);
+        finalLapStarted = true;
+        expect(c.speakGate?.admit(ctx), `${c.id} on the final lap`).toBe(false);
+      }
+    });
+
+    it("leaves FUEL_LAPS_LEFT_CONTRACTS' gate with an unknown answer, so it always admits", () => {
+      for (const c of FUEL_LAPS_LEFT_CONTRACTS) expect(c.speakGate?.admit({} as never), c.id).toBe(true);
+    });
+  });
+
+  // Through `registerPitCrew`, so every wrapper (master, session kind, per
+  // count) is shown to keep the contract's gate, and the dep is shown to be
+  // the one `registerPitCrew` hands the builder.
+  describe("through registerPitCrew", () => {
+    let finalLapStarted: boolean | null;
+
+    beforeEach(() => {
+      _resetAudioScenarios();
+      bus = createMockBus();
+      audio = createFakeAudio();
+      initializeAudioScenarios(bus, audio, manifest, mockLogger as never, () => VOICE);
+
+      finalLapStarted = false;
+
+      registerPitCrew(bus, {
+        ...SIM_READS,
+        getPlayerFinalLapStarted: () => finalLapStarted,
+        logger: mockLogger as never,
+        isCalloutEnabled: () => true,
+      });
+      engine = getScenarioEngine();
+      engine.setScripts(new Map([[VOICE, FUEL_SCRIPT]]));
+      engine.defineScenario({
+        id: "test.blocker",
+        channel: AudioChannel.Voice,
+        bus: AudioBus.Voice,
+        weight: WEIGHT.CRITICAL,
+        sequence: [`voice/${VOICE}/fuel/race-covered-01.mp3`],
+      });
+    });
+
+    afterEach(() => {
+      _resetRadarEngine();
+      _resetSpotterEngine();
+      _resetPitSpeedingEngine();
+      _resetPitExitCueEngine();
+      _resetLimiterCueEngine();
+    });
+
+    /** A count emitted at the mid-lap sample that meets a busy bus and waits in the queue. */
+    function queueBehindBlocker(count: number): void {
+      engine.fire("test.blocker");
+      bus.publishEvent("fuel.lapsLeft.crossed", { count, lapsLeft: count + 0.4 });
+    }
+
+    it("queues the seven-lap count as ordinary commentary (the premise of the cases below)", () => {
+      const seven = FUEL_LAPS_LEFT_CONTRACTS.find((c) => c.id === "pit-crew.fuel-laps-left-7");
+
+      expect(seven?.weight).toBe(WEIGHT.NORMAL);
+      expect(seven?.queueable).toBe(true);
+    });
+
+    it("drops a count queued at the sample when the player's final lap starts before the bus idles", () => {
+      queueBehindBlocker(7);
+      finalLapStarted = true;
+      flush(audio);
+
+      expect(voiceClipsPlayed()).toEqual([`voice/${VOICE}/fuel/race-covered-01.mp3`]);
+    });
+
+    it("plays a count queued and replayed while the player is still short of the final lap", () => {
+      queueBehindBlocker(7);
+      flush(audio);
+
+      expect(voiceClipsPlayed()).toEqual([
+        `voice/${VOICE}/fuel/race-covered-01.mp3`,
+        `voice/${VOICE}/fuel/laps-left-7-01.mp3`,
+      ]);
+    });
+
+    it("admits a queued count when the final lap cannot be read", () => {
+      queueBehindBlocker(7);
+      finalLapStarted = null;
+      flush(audio);
+
+      expect(voiceClipsPlayed()).toEqual([
+        `voice/${VOICE}/fuel/race-covered-01.mp3`,
+        `voice/${VOICE}/fuel/laps-left-7-01.mp3`,
+      ]);
+    });
+
+    it("drops a count that arrives with the final lap already started", () => {
+      finalLapStarted = true;
+
+      crossed(3);
+
+      expect(voiceClipsPlayed()).toEqual([]);
+    });
   });
 });
 

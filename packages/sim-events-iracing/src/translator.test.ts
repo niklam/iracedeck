@@ -72,6 +72,7 @@ import {
   getStartingGridPosition,
   initializeSimEventsIracing,
   isDamageRepairNeeded,
+  isPlayerFinalLapStarted,
   isRaceFinished,
   isRollingStartFormation,
   isSimEventsIracingInitialized,
@@ -1645,6 +1646,105 @@ describe("sim-events-iracing translator", () => {
       controller.__tick(null, false);
 
       expect(getSessionKind()).toBeNull();
+    });
+  });
+
+  describe("isPlayerFinalLapStarted (issue #1702)", () => {
+    function start(sessionType: string): ReturnType<typeof createMockController> {
+      const controller = createMockController();
+      controller.__setSessionInfo({ SessionInfo: { Sessions: [{ SessionNum: 0, SessionType: sessionType }] } });
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
+
+      return controller;
+    }
+
+    /** The translator's live state, held by reference in the snapshot's raw half. */
+    function liveState(): TranslatorState {
+      const snapshot = readSimState();
+
+      if (!snapshot.initialized) throw new Error("expected an initialized translator");
+
+      return snapshot.raw.state;
+    }
+
+    it("is null with no translator and before the first tick", () => {
+      expect(isPlayerFinalLapStarted()).toBeNull();
+
+      start("Race");
+
+      expect(isPlayerFinalLapStarted()).toBeNull();
+    });
+
+    it("is null while the session cannot be read, and again after a disconnect", () => {
+      const controller = start("Practice");
+      controller.__tick(telemetry({ SessionFlags: Flags.White }));
+      expect(isPlayerFinalLapStarted()).toBe(true);
+
+      controller.__setSessionInfo(null);
+      expect(isPlayerFinalLapStarted()).toBeNull();
+
+      controller.__setSessionInfo({ SessionInfo: { Sessions: [{ SessionNum: 0, SessionType: "Practice" }] } });
+      controller.__tick(null, false);
+      expect(isPlayerFinalLapStarted()).toBeNull();
+    });
+
+    it.each([SessionState.Checkered, SessionState.CoolDown])(
+      "is true while the session cannot be read once its chequered flag is out (state %s)",
+      (sessionState) => {
+        const controller = start("Race");
+        controller.__tick(telemetry({ SessionState: SessionState.Racing }));
+        controller.__setSessionInfo(null);
+        controller.__tick(telemetry({ SessionState: SessionState.Racing }));
+        expect(isPlayerFinalLapStarted()).toBeNull();
+
+        controller.__tick(telemetry({ SessionState: sessionState }));
+        expect(isPlayerFinalLapStarted()).toBe(true);
+      },
+    );
+
+    it("reads a SessionType that is not a string as an unreadable session, and the tick does not throw", () => {
+      const controller = createMockController();
+      controller.__setSessionInfo({ SessionInfo: { Sessions: [{ SessionNum: 0, SessionType: 42 }] } });
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
+
+      expect(() => controller.__tick(telemetry({ SessionState: SessionState.Racing }))).not.toThrow();
+      expect(isPlayerFinalLapStarted()).toBeNull();
+    });
+
+    it("in a race reads the sticky final-lap marker, not the white flag on the tick", () => {
+      const controller = start("Race");
+
+      // The leader's white, a lap before the player's own last lap.
+      controller.__tick(telemetry({ SessionFlags: Flags.White, SessionState: SessionState.Racing }));
+      expect(isPlayerFinalLapStarted()).toBe(false);
+
+      // The marker `diffFlags` latches at the player's crossing under the white.
+      liveState().playerFinalLapStarted = true;
+      expect(isPlayerFinalLapStarted()).toBe(true);
+    });
+
+    it.each(["Practice", "Lone Qualify", "Offline Testing"])(
+      "in %s reads the white flag on the tick and ignores the race marker",
+      (sessionType) => {
+        const controller = start(sessionType);
+
+        controller.__tick(telemetry({ SessionState: SessionState.Racing }));
+        liveState().playerFinalLapStarted = true;
+        expect(isPlayerFinalLapStarted()).toBe(false);
+
+        controller.__tick(telemetry({ SessionFlags: Flags.White, SessionState: SessionState.Racing }));
+        expect(isPlayerFinalLapStarted()).toBe(true);
+      },
+    );
+
+    it.each(["Race", "Practice"])("in %s is true once the session's chequered flag is out", (sessionType) => {
+      const controller = start(sessionType);
+
+      controller.__tick(telemetry({ SessionState: SessionState.Racing }));
+      expect(isPlayerFinalLapStarted()).toBe(false);
+
+      controller.__tick(telemetry({ SessionState: SessionState.Checkered }));
+      expect(isPlayerFinalLapStarted()).toBe(true);
     });
   });
 
@@ -3449,15 +3549,20 @@ describe("sim-events-iracing translator", () => {
     /**
      * Two validated laps (~2 L each), then the low-fuel mid-lap sample that
      * says "1 lap of fuel left" — the first test's recipe — with `beforeSample`
-     * run against the live state just before the sample.
+     * run against the live state just before the sample. `sessionType` picks
+     * the session (a race by default) and `sampleFlags` the `SessionFlags` of
+     * the sample tick alone (issue #1702).
      */
-    function sampleLowFuel(beforeSample: (state: TranslatorState) => void): ReturnType<typeof vi.fn> {
+    function sampleLowFuel(
+      beforeSample: (state: TranslatorState) => void,
+      { sessionType = "Race", sampleFlags = 0 }: { sessionType?: string; sampleFlags?: number } = {},
+    ): ReturnType<typeof vi.fn> {
       const controller = createMockController();
       const bus = getEventBus();
       const handler = vi.fn();
       bus.subscribe("fuel.lapsLeft.crossed", handler);
       controller.__setSessionInfo({
-        SessionInfo: { Sessions: [{ SessionType: "Race" }] },
+        SessionInfo: { Sessions: [{ SessionType: sessionType }] },
         DriverInfo: { DriverCarIdx: 0 },
       });
       initializeSimEventsIracing(bus, controller, createMockLogger(), {
@@ -3475,7 +3580,9 @@ describe("sim-events-iracing translator", () => {
       controller.__tick(telemetry({ Lap: 4, LapDistPct: 0.05, SessionTime: 180, FuelLevel: 60 }));
       controller.__tick(telemetry({ Lap: 4, LapDistPct: 0.45, SessionTime: 200, FuelLevel: 5.0 }));
       beforeSample(liveState());
-      controller.__tick(telemetry({ Lap: 4, LapDistPct: 0.55, SessionTime: 210, FuelLevel: 4.9 }));
+      controller.__tick(
+        telemetry({ Lap: 4, LapDistPct: 0.55, SessionTime: 210, FuelLevel: 4.9, SessionFlags: sampleFlags }),
+      );
 
       return handler;
     }
@@ -3493,6 +3600,76 @@ describe("sim-events-iracing translator", () => {
       });
 
       expect(handler).not.toHaveBeenCalled();
+    });
+
+    it("consumes nothing while the session info is unreadable, and speaks the count once it reads again (issue #1702)", () => {
+      const controller = createMockController();
+      const bus = getEventBus();
+      const handler = vi.fn();
+      bus.subscribe("fuel.lapsLeft.crossed", handler);
+      const raceInfo = {
+        SessionInfo: { Sessions: [{ SessionType: "Race" }] },
+        DriverInfo: { DriverCarIdx: 0 },
+      };
+      controller.__setSessionInfo(raceInfo);
+      initializeSimEventsIracing(bus, controller, createMockLogger(), {
+        onStepError: "rethrow",
+        getFuelLapsLeftMarginLaps: recipeMargin,
+      });
+
+      // The recipe's two validated laps.
+      controller.__tick(telemetry({ Lap: 1, LapDistPct: 0.9, SessionTime: 0, FuelLevel: 64 }));
+      controller.__tick(telemetry({ Lap: 2, LapDistPct: 0.05, SessionTime: 5, FuelLevel: 63.9 }));
+      controller.__tick(telemetry({ Lap: 2, LapDistPct: 0.55, SessionTime: 45, FuelLevel: 63 }));
+      controller.__tick(telemetry({ Lap: 2, LapDistPct: 0.9, SessionTime: 80, FuelLevel: 62.2 }));
+      controller.__tick(telemetry({ Lap: 3, LapDistPct: 0.05, SessionTime: 90, FuelLevel: 62 }));
+      controller.__tick(telemetry({ Lap: 3, LapDistPct: 0.55, SessionTime: 135, FuelLevel: 61 }));
+      controller.__tick(telemetry({ Lap: 3, LapDistPct: 0.9, SessionTime: 170, FuelLevel: 60.2 }));
+      controller.__tick(telemetry({ Lap: 4, LapDistPct: 0.05, SessionTime: 180, FuelLevel: 60 }));
+      controller.__tick(telemetry({ Lap: 4, LapDistPct: 0.45, SessionTime: 200, FuelLevel: 5.0 }));
+
+      // The low-fuel crossing lands while a session-info update fails to parse.
+      controller.__setSessionInfo(null);
+      controller.__tick(telemetry({ Lap: 4, LapDistPct: 0.55, SessionTime: 210, FuelLevel: 4.9 }));
+      expect(handler).not.toHaveBeenCalled();
+      expect(liveState().fuelCallout.lastSampledLap).toBe(3);
+
+      // Readable again later in the same lap: the count is spoken there.
+      controller.__setSessionInfo(raceInfo);
+      controller.__tick(telemetry({ Lap: 4, LapDistPct: 0.6, SessionTime: 215, FuelLevel: 4.8 }));
+      expect(handler).toHaveBeenCalledTimes(1);
+      expect((handler.mock.calls[0]![0] as SimEventOf<"fuel.lapsLeft.crossed">).data.count).toBe(1);
+    });
+
+    describe("the final-lap signal per session kind (issue #1702)", () => {
+      it.each(["Practice", "Lone Qualify", "Offline Testing"])(
+        "speaks the low-fuel sample in %s (the control for the tests below)",
+        (sessionType) => {
+          expect(sampleLowFuel(() => {}, { sessionType })).toHaveBeenCalledTimes(1);
+        },
+      );
+
+      it.each(["Practice", "Lone Qualify", "Offline Testing"])(
+        "is silenced in %s by the white flag on the tick, the player's own last lap there",
+        (sessionType) => {
+          expect(sampleLowFuel(() => {}, { sessionType, sampleFlags: Flags.White })).not.toHaveBeenCalled();
+        },
+      );
+
+      it("does not read the sticky race marker outside a race", () => {
+        const handler = sampleLowFuel(
+          (state) => {
+            state.playerFinalLapStarted = true;
+          },
+          { sessionType: "Practice" },
+        );
+
+        expect(handler).toHaveBeenCalledTimes(1);
+      });
+
+      it("in a race the sticky marker governs, not the white flag: the leader's white a lap early still speaks", () => {
+        expect(sampleLowFuel(() => {}, { sampleFlags: Flags.White })).toHaveBeenCalledTimes(1);
+      });
     });
 
     it("re-arms the fuel reassurance when a green re-opens the player's final lap (issue #880 review, #1405)", () => {

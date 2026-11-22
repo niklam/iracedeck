@@ -1,0 +1,14 @@
+{
+  "WeekendInfo": {
+    "TrackID": 101,
+    "TrackDisplayName": "Test Track (testing)",
+    "TrackPitSpeedLimit": "60.000 kph",
+    "EventType": "Test"
+  },
+  "SessionInfo": {
+    "Sessions": [{ "SessionType": "Offline Testing", "SessionNum": 0 }]
+  },
+  "DriverInfo": {
+    "DriverCarIdx": 0
+  }
+}

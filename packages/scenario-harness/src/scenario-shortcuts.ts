@@ -46,6 +46,8 @@ import {
   DAMAGE_DEBOUNCE_MS,
   DAMAGE_INCIDENT_GRACE_MS,
   DAMAGE_REPAIR_MASK,
+  FUEL_CALLOUT_DEFAULT_MARGIN_LAPS,
+  FUEL_LAPS_LEFT_MAX_COUNT,
   PIT_READBACK_EXIT_DELAY_MS,
   YELLOW_CLEARED_HOLD_MS,
 } from "@iracedeck/sim-events-iracing";
@@ -83,9 +85,11 @@ type ScenarioShortcutBase = {
    * connected mock SDK too), the
    * overtake and gap ones (a connected mock SDK), the rolling-start four
    * (both: a race session the formation grid reads in, on an oval for the
-   * whole-formation run, and a connected mock SDK) and the rejoin train (a
+   * whole-formation run, and a connected mock SDK), the rejoin train (a
    * session naming the player's car at the index its field writes it into,
-   * and a connected mock SDK).
+   * and a connected mock SDK) and the Fuel buttons (a session the Race
+   * Engineer can classify, a race for "Enough fuel to finish", and a
+   * connected mock SDK, issue #1702).
    */
   requires?: readonly ShortcutPrecondition[];
 };
@@ -2678,6 +2682,218 @@ function playerFastestLapCompleted(lap: number): PublishedEvent {
   };
 }
 
+/**
+ * What every Fuel button needs before it is heard (issue #1702). The
+ * countdown is heard per kind of session, through the Speak in toggles, and
+ * the Race Engineer reads the kind from the translator's `getSessionClass()`,
+ * which is `null` (no fuel line at all) until a session preset is applied
+ * AND the translator has a tick to read the session number from, which a
+ * disconnected mock SDK never delivers. The session is asked for first, as
+ * the caution catch-up button does, then that the translator's latest tick
+ * is in that session (a session number changed by hand reaches it only on its
+ * next tick, which a paused or slowed loop delays), and last that the player
+ * is not on their final lap, where the fuel contracts' speak gate refuses
+ * every line. The countdown run declares that too: in a race the translator
+ * keeps the last lap marked until a green flag, which the run does not show
+ * (a seeded green would speak a green-flag line nobody pressed for), so it
+ * would play nothing there; the refusal says how to get back.
+ */
+const FUEL_COUNTDOWN_REQUIRES: readonly ShortcutPrecondition[] = [
+  "session-classified",
+  "sdk-connected",
+  "translator-session-current",
+  "before-final-lap",
+];
+
+/** The same for "Enough fuel to finish", which is heard in a race only (issue #1702). */
+const FUEL_RACE_COVERED_REQUIRES: readonly ShortcutPrecondition[] = [
+  "race-session",
+  "sdk-connected",
+  "translator-session-current",
+  "before-final-lap",
+];
+
+/** The sentences every per-count Fuel button's description ends on (issue #1702). */
+const FUEL_SESSION_NOTE =
+  'Heard in every session kind the "Speak in" toggles leave on (Race, Practice, Qualifying and Test, all on by default; here they are the "Fuel countdown: speak in …" checkboxes in Global Settings). Apply a session preset first ("practice", "testing", "qualifying", "lone-qualifying", "race" or "race-oval") and connect the mock SDK: with no session info the Race Engineer cannot tell which kind of session it is and speaks no fuel line.';
+
+/**
+ * Fuel burned per lap in {@link FUEL_COUNTDOWN_RUN}, in liters. Any positive
+ * figure gives the same counts; this one is a plausible GT3 lap.
+ */
+const FUEL_RUN_LAP_FUEL_L = 2.5;
+
+/**
+ * The count the run's first mid-lap sample would announce: one above the
+ * largest the translator announces (`FUEL_LAPS_LEFT_MAX_COUNT`), so that
+ * sample is silent on every press. It has to be. The fuel tracker's lap
+ * history lives on the translator and survives the run's replay-mode bracket,
+ * so on a second press the first sample already has an average to estimate
+ * from, which on the first press it does not. Starting above the ceiling
+ * makes the first press and every later one publish the same counts.
+ */
+const FUEL_RUN_FIRST_COUNT = FUEL_LAPS_LEFT_MAX_COUNT + 1;
+
+/** Laps the run drives: one per count from {@link FUEL_RUN_FIRST_COUNT} down to 0, "box this lap". */
+export const FUEL_RUN_LAPS = FUEL_RUN_FIRST_COUNT + 1;
+
+/**
+ * Laps of fuel in the tank as the run's first clean lap starts. The
+ * translator samples at half distance and announces
+ * `floor(fuel / average - margin - 0.5)`, so on lap `k` (from 1) that is
+ * `floor(FUEL_RUN_START_LAPS - margin - k)`. The default margin is added
+ * back, and the 0.2 keeps every sample clear of a count boundary.
+ */
+const FUEL_RUN_START_LAPS = FUEL_RUN_FIRST_COUNT + 1 + FUEL_CALLOUT_DEFAULT_MARGIN_LAPS + 0.2;
+
+/** `SessionTime` the run's first line crossing is near, and the session time one lap takes (the tracker needs 10 s). */
+const FUEL_RUN_SESSION_TIME_S = 1000;
+const FUEL_RUN_LAP_TIME_S = 90;
+
+/** `Lap` the run's seed sits in; its first clean lap is the next one. */
+const FUEL_RUN_SEED_LAP = 1;
+
+/**
+ * Hold after each mid-lap sample: the listening time for the count spoken
+ * there, longer than any fuel line with its radio frame, so the next count
+ * never waits behind it.
+ */
+const FUEL_RUN_SAMPLE_LISTEN_MS = 3000;
+
+/** Hold after the other steps of a lap, which only move the car round it. */
+const FUEL_RUN_STEP_MS = 50;
+
+/**
+ * Where the car is `distance` laps after the run's first line crossing: its
+ * lap, lap distance, session clock and tank, burning
+ * {@link FUEL_RUN_LAP_FUEL_L} a lap. A step that moves `Lap` on with the lap
+ * distance back under 0.2 is a line crossing to the fuel tracker (the wrap
+ * and the counter on one tick).
+ */
+function fuelRunAt(distance: number): Record<string, unknown> {
+  const lap = Math.floor(distance);
+
+  return {
+    Lap: FUEL_RUN_SEED_LAP + 1 + lap,
+    LapDistPct: distance - lap,
+    SessionTime: FUEL_RUN_SESSION_TIME_S + distance * FUEL_RUN_LAP_TIME_S,
+    FuelLevel: (FUEL_RUN_START_LAPS - distance) * FUEL_RUN_LAP_FUEL_L,
+  };
+}
+
+/**
+ * One lap of {@link FUEL_COUNTDOWN_RUN}, lap `k` counted from 0: the mid-lap
+ * sample, the approach to the line, and the crossing into the next lap. Every
+ * step asks for a tick, so the translator sees each one whatever the mock's
+ * tick rate; a loop ticking in between only re-reads the same position.
+ */
+function fuelRunLap(k: number): TelemetryStep[] {
+  return [
+    { patch: fuelRunAt(k + 0.5), holdMs: FUEL_RUN_SAMPLE_LISTEN_MS, tick: true },
+    { patch: fuelRunAt(k + 0.9), holdMs: FUEL_RUN_STEP_MS, tick: true },
+    { patch: fuelRunAt(k + 1.01), holdMs: FUEL_RUN_STEP_MS, tick: true },
+  ];
+}
+
+/**
+ * The countdown run's teardown (`TelemetrySequenceShortcut.teardownSequence`):
+ * a replay-mode bracket that leaves the session racing under no flag and the
+ * translator live, re-seeded on its own tick ({@link SEEDED_TICK}) so the next
+ * button's first step is an edge rather than a baseline. A teardown rather than the run's own last steps, so the UI
+ * applies it (its failed-run copy, the exit hold kept) after a POST that
+ * failed part-way too: the run's first step opens replay mode and its third
+ * closes it, so a failure between them would otherwise leave the mock in
+ * replay, where the translator publishes nothing for any button, with the
+ * session winding down. Racing is set inside the bracket, where the
+ * translator announces no session-state change. After a run that went
+ * through it changes nothing but the replay wipe the next press makes anyway.
+ */
+const FUEL_RUN_TEARDOWN: readonly TelemetryStep[] = [
+  {
+    patch: { IsReplayPlaying: true, SessionState: SessionState.Racing, SessionFlags: RACING_NO_FLAG },
+    tick: true,
+  },
+  { patch: { IsReplayPlaying: false }, holdMs: REPLAY_EXIT_SETTLE_MS, tick: true },
+  SEEDED_TICK,
+];
+
+/**
+ * "Fuel -> Countdown through the translator" (issue #1702): the laps-of-fuel
+ * left countdown as the TRANSLATOR decides it, which the per-count buttons
+ * step over by publishing `fuel.lapsLeft.crossed` themselves. It is how the
+ * countdown in a practice or test session is auditioned end to end: since
+ * #1702 the translator emits it in every live session, and the Race Engineer
+ * speaks it in the session kinds the Speak in toggles leave on.
+ *
+ * The estimate is the validated fuel tracker's average (`diff/fuel-laps.ts`),
+ * which counts a lap only from one clean line crossing to the next, at least
+ * 10 s of `SessionTime` apart, on track, off pit road, untowed and under no
+ * caution. So the run drives laps, not a falling tank. It opens with the
+ * autofuel button's replay-mode bracket (the translator suppresses every
+ * event through it and re-seeds every diff after it), which puts the car on
+ * track just short of the line with a full tank, racing with no flag shown,
+ * and with neither a lap limit nor a clock the coverage checks could read
+ * (`null` deletes `SessionLapsRemainEx` and `SessionTimeRemain`). No preset
+ * or other shortcut sets either key, so this only matters for a limit the
+ * tester typed into the telemetry by hand: a limit the tank covers would
+ * silence the counts it covers, and the run must publish the same counts
+ * whatever was there. The run pins them as it pins every field it reads
+ * (#1349) and does not put a hand-typed limit back afterwards; the button's
+ * description says so. The tank going UP from wherever the last press left it
+ * is a refuel to the countdown, which re-arms every count. Then
+ * {@link FUEL_RUN_LAPS} laps, each sampled at half distance: the first is the
+ * tracker's first clean lap, and its sample is silent (see
+ * {@link FUEL_RUN_FIRST_COUNT}); every later sample announces one count lower,
+ * 10 down to 0. The run ends on track with the tank nearly dry, and
+ * {@link FUEL_RUN_TEARDOWN} hands the translator back live; the next press
+ * re-seeds.
+ */
+const FUEL_COUNTDOWN_RUN: TelemetrySequenceShortcut = {
+  id: "fuel-countdown-run",
+  category: "Fuel",
+  label: "Countdown through the translator",
+  description: `Drives the TRANSLATOR round ${FUEL_RUN_LAPS} laps, about ${Math.round((FUEL_RUN_LAPS * (FUEL_RUN_SAMPLE_LISTEN_MS + 2 * FUEL_RUN_STEP_MS) + 2 * REPLAY_EXIT_SETTLE_MS) / 1000)} s, burning ${FUEL_RUN_LAP_FUEL_L} L a lap, so the fuel tracker records real laps and every count is the translator's own decision: each lap after the first publishes one count lower, ${FUEL_LAPS_LEFT_MAX_COUNT} down to 0. With the default per-count toggles expect "Five laps of fuel left", then three, two and one, then "Box this lap" (10, 9, 8, 7, 6 and 4 ship off). Apply the "practice" or "testing" session preset first (any session preset runs it) and connect the mock SDK. Uncheck that session kind's "Fuel countdown: speak in …" box in Global Settings and the same run is silent. A margin other than the default shifts every count. The run clears any lap limit or clock you typed into the telemetry by hand (SessionLapsRemainEx, SessionTimeRemain) and does not put it back, because a limit the tank covers would silence the counts it covers; type it in again afterwards if you need it.`,
+  requires: FUEL_COUNTDOWN_REQUIRES,
+  telemetrySequence: [
+    // The bracket's opening tick settles the translator's fresh-connect check
+    // silently (`formationBracket`'s first step says why it is open). In a
+    // practice, test or qualifying session a tick of `Racing` would FIRE it,
+    // the session brief's trigger, on the first press and on no later one; a
+    // session winding down is the state every session kind latches on without
+    // a word.
+    { patch: { IsReplayPlaying: true, SessionState: SessionState.CoolDown }, tick: true },
+    {
+      patch: {
+        IsReplayPlaying: true,
+        IsOnTrack: true,
+        IsInGarage: false,
+        OnPitRoad: false,
+        PlayerCarInPitStall: false,
+        PlayerTrackSurface: TrkLoc.OnTrack,
+        PlayerCarTowTime: 0,
+        // Nobody alongside: a car left beside the player by an earlier button
+        // would hold the spotter's focus floor and defer every ordinary count.
+        CarLeftRight: CarLeftRight.Clear,
+        SessionState: SessionState.Racing,
+        SessionFlags: RACING_NO_FLAG,
+        SessionLapsRemainEx: null,
+        SessionTimeRemain: null,
+        Speed: 50,
+        ...fuelRunAt(-0.1),
+      },
+      holdMs: AUTO_FUEL_SEED_MS,
+      tick: true,
+    },
+    { patch: { IsReplayPlaying: false }, holdMs: REPLAY_EXIT_SETTLE_MS, tick: true },
+    SEEDED_TICK,
+    // The line: the tracker discards the seed's partial lap here and opens the
+    // first clean one.
+    { patch: fuelRunAt(0.01), holdMs: FUEL_RUN_STEP_MS, tick: true },
+    ...Array.from({ length: FUEL_RUN_LAPS }, (_, k) => fuelRunLap(k)).flat(),
+  ],
+  teardownSequence: FUEL_RUN_TEARDOWN,
+};
+
 export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
   // ── Pit Service ──
   {
@@ -4895,32 +5111,39 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
   // Fire each laps-of-fuel-left count directly so you hear the clip without
   // burning down a real tank through `/api/telemetry`. Count 0 is the
   // dedicated box-this-lap call. Same-family preempt: fire two in a row to
-  // confirm the second cancels the first.
-  ...[10, 9, 8, 7, 6, 5, 4, 3, 2, 1].map((count) => ({
+  // confirm the second cancels the first. Since #1702 every fuel line is
+  // gated on the kind of session (the Speak in toggles), which the Race
+  // Engineer reads from the translator, so each button requires a classified
+  // session and a connected mock SDK, and "Enough fuel to finish" a race.
+  ...[10, 9, 8, 7, 6, 5, 4, 3, 2, 1].map((count): BusEventShortcut => ({
     id: `fuel-laps-left-${count}`,
     category: "Fuel",
     label: `${count} lap${count === 1 ? "" : "s"} of fuel left`,
-    description: `Estimated ${count} full lap${count === 1 ? "" : "s"} of fuel after completing the current lap.`,
-    event: "fuel.lapsLeft.crossed" as const,
+    description: `Estimated ${count} full lap${count === 1 ? "" : "s"} of fuel after completing the current lap. ${FUEL_SESSION_NOTE}`,
+    event: "fuel.lapsLeft.crossed",
     data: { count, lapsLeft: count + 0.4 },
+    requires: FUEL_COUNTDOWN_REQUIRES,
   })),
   {
     id: "fuel-laps-left-box",
     category: "Fuel",
     label: "Box this lap",
-    description: "The tank won't cover another full lap — box this lap for fuel (count 0).",
+    description: `The tank won't cover another full lap — box this lap for fuel (count 0). ${FUEL_SESSION_NOTE}`,
     event: "fuel.lapsLeft.crossed",
     data: { count: 0, lapsLeft: 0.4 },
+    requires: FUEL_COUNTDOWN_REQUIRES,
   },
   {
     id: "fuel-race-covered",
     category: "Fuel",
     label: "Enough fuel to finish",
     description:
-      "The tank covers what's left of the race (issue #880) — the one-time confirmation spoken inside the last 10 laps.",
+      'The tank covers what\'s left of the race (issue #880) — the one-time confirmation spoken inside the last 10 laps. A race line: heard in a race session only, and only with "Fuel countdown: speak in Race" checked in Global Settings. Apply the "race" or "race-oval" session preset first and connect the mock SDK; in any other session the line is silent, so the button is refused there.',
     event: "fuel.lapsLeft.raceCovered",
     data: {},
+    requires: FUEL_RACE_COVERED_REQUIRES,
   },
+  FUEL_COUNTDOWN_RUN,
 
   // ── Sectors (issue #1572) ──
   // Deltas are the player's sector time minus the target's: a positive delta

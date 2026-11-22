@@ -171,6 +171,9 @@ export function buildPitCrewDeps(
     getSessionClass: () => sim.getSessionClass(),
     getStandingStart: () => sim.isStandingStart(),
     getDamageRepairNeeded: () => sim.isDamageRepairNeeded(),
+    // Whether the player's own last lap has started (#1702), which the fuel
+    // contracts ask again when a queued count reaches the radio.
+    getPlayerFinalLapStarted: () => sim.isPlayerFinalLapStarted(),
     // The rejoin warnings' development flag (#1113), fixed for the run.
     getTrafficRejoinAvailable: () => trafficRejoin,
   };

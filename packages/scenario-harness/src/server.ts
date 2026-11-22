@@ -14,6 +14,7 @@ import type { IEventBus, PitReadbackSnapshot, SimEventName, SimEventOf } from "@
 import type { SessionInfo, TelemetryData } from "@iracedeck/iracing-sdk";
 import type { ILogger } from "@iracedeck/logger";
 import { getGlobalSettings, onGlobalSettingsChange, updateGlobalSettings } from "@iracedeck/settings";
+import { getLatestTelemetry, isPlayerFinalLapStarted, readSimState } from "@iracedeck/sim-events-iracing";
 import { fastify, type FastifyInstance } from "fastify";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -162,6 +163,19 @@ function audioBusVolumeMap(audio: IAudioService): Record<number, number> {
   }
 
   return out;
+}
+
+/**
+ * The `SubSessionID` the running translator last took into its session
+ * identity, `null` with no translator or none taken (issue #1702). Read from
+ * its state snapshot, the one place the identity baseline is exposed; the
+ * shortcut-start precondition compares it with the session info the mock
+ * holds now.
+ */
+function translatorSubSessionId(): number | null {
+  const sim = readSimState();
+
+  return sim.initialized ? sim.raw.instance.lastObservedSubSessionId : null;
 }
 
 export async function createServer(ctx: HarnessContext): Promise<FastifyInstance> {
@@ -579,6 +593,9 @@ export async function createServer(ctx: HarnessContext): Promise<FastifyInstance
       sessionInfo: sessionInfo as Record<string, unknown> | null,
       isConnected,
       telemetry,
+      translatorTelemetry: getLatestTelemetry(),
+      translatorSubSessionId: translatorSubSessionId(),
+      playerFinalLapStarted: isPlayerFinalLapStarted(),
     });
 
     if (refusal !== null) return reply.code(409).send({ error: refusal });

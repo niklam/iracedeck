@@ -45,8 +45,8 @@ export type BootstrapDefaults = {
  * push-only "lists" the plugin maintains as private settings keys
  * (`_raceEngineerVoices`, `_driverNames`), plus the user-facing defaults
  * for the Race Engineer toggle/volume, Radar toggle/volume, the radio
- * frame's beeps/ambience opt-outs, and the picked voice / driver name (first
- * entry from each list).
+ * frame's beeps/ambience opt-outs, the fuel countdown's Speak in toggles, and
+ * the picked voice / driver name (first entry from each list).
  */
 export function seedGlobalSettings(adapter: MockPlatformAdapter): BootstrapDefaults {
   const manifest = getAudioAssetsManifest();
@@ -86,6 +86,14 @@ export function seedGlobalSettings(adapter: MockPlatformAdapter): BootstrapDefau
     // so the Traffic rejoin shortcuts are heard on a freshly booted harness;
     // the Global Settings panel's checkbox turns them off.
     calloutEnabledTrafficRejoin: true,
+    // The fuel countdown's four Speak in toggles (#1702), on — their schema
+    // default, said explicitly so the seeded snapshot the UI renders carries
+    // them: its checkbox is ticked only by a stored `true`, so left unset
+    // they would show unchecked while the countdown plays.
+    calloutEnabledFuelCountdownRace: true,
+    calloutEnabledFuelCountdownPractice: true,
+    calloutEnabledFuelCountdownQualifying: true,
+    calloutEnabledFuelCountdownTest: true,
   });
 
   return { raceEngineerVoices, driverNames };

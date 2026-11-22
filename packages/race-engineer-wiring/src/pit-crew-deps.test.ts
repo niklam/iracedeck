@@ -50,10 +50,10 @@ describe("buildPitCrewDeps", () => {
   });
   afterEach(() => vi.restoreAllMocks());
 
-  it("builds all 35 dependencies, so none falls back to DEFAULT_DEPS", () => {
+  it("builds all 36 dependencies, so none falls back to DEFAULT_DEPS", () => {
     const built = buildPitCrewDeps(fakeDeps(), noCaches);
 
-    expect(Object.keys(built)).toHaveLength(35);
+    expect(Object.keys(built)).toHaveLength(36);
 
     for (const [key, value] of Object.entries(built)) expect(value, key).toBeDefined();
   });
@@ -167,19 +167,32 @@ describe("buildPitCrewDeps", () => {
   it("routes the four #1378 reads to their SimRuntime members, read live", () => {
     const sim = fakeSim({
       getLatestTelemetry: vi.fn(() => ({ SessionTick: 7 })),
-      getSessionClass: vi.fn(() => ({ category: "qualifying" as const, soloQualifying: true })),
+      getSessionClass: vi.fn(() => ({ category: "qualifying" as const, soloQualifying: true, testing: false })),
       isStandingStart: vi.fn(() => true),
       isDamageRepairNeeded: vi.fn(() => false),
     });
     const built = buildPitCrewDeps(fakeDeps({ sim }), noCaches);
 
     expect(built.getLatestTelemetry()).toEqual({ SessionTick: 7 });
-    expect(built.getSessionClass()).toEqual({ category: "qualifying", soloQualifying: true });
+    expect(built.getSessionClass()).toEqual({ category: "qualifying", soloQualifying: true, testing: false });
     expect(built.getStandingStart()).toBe(true);
     expect(built.getDamageRepairNeeded()).toBe(false);
 
     vi.mocked(sim.isDamageRepairNeeded).mockReturnValue(null);
     expect(built.getDamageRepairNeeded(), "read on every call, not captured").toBeNull();
+  });
+
+  it("routes the player's final-lap read to its SimRuntime member, read live (#1702)", () => {
+    const sim = fakeSim({ isPlayerFinalLapStarted: vi.fn((): boolean | null => false) });
+    const built = buildPitCrewDeps(fakeDeps({ sim }), noCaches);
+
+    expect(built.getPlayerFinalLapStarted()).toBe(false);
+
+    vi.mocked(sim.isPlayerFinalLapStarted).mockReturnValue(true);
+    expect(built.getPlayerFinalLapStarted(), "read on every call, not captured").toBe(true);
+
+    vi.mocked(sim.isPlayerFinalLapStarted).mockReturnValue(null);
+    expect(built.getPlayerFinalLapStarted()).toBeNull();
   });
 
   it("hands the catalog the no-translator values for the four reads when the sim answers them", () => {

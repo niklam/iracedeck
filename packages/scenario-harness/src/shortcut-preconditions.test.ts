@@ -85,11 +85,25 @@ const GATED_SHORTCUT_IDS = SCENARIO_SHORTCUTS.filter((s) => s.telemetrySequence?
 
 /** A connected harness holding `sessionInfo` — isolates the session-preset rule from the connection one. */
 function connectedWith(sessionInfo: Record<string, unknown> | null): HarnessPreconditionState {
-  return { sessionInfo, isConnected: true, telemetry: BOOT_TELEMETRY };
+  return {
+    sessionInfo,
+    isConnected: true,
+    telemetry: BOOT_TELEMETRY,
+    translatorTelemetry: BOOT_TELEMETRY,
+    playerFinalLapStarted: false,
+    translatorSubSessionId: null,
+  };
 }
 
 /** The harness as it boots: no session preset, mock SDK disconnected. */
-const AT_BOOT: HarnessPreconditionState = { sessionInfo: null, isConnected: false, telemetry: BOOT_TELEMETRY };
+const AT_BOOT: HarnessPreconditionState = {
+  sessionInfo: null,
+  isConnected: false,
+  telemetry: BOOT_TELEMETRY,
+  translatorTelemetry: null,
+  playerFinalLapStarted: null,
+  translatorSubSessionId: null,
+};
 
 function readSessionPreset(name: string): Record<string, unknown> {
   return JSON.parse(readFileSync(join(PACKAGE_ROOT, "presets", "session", `${name}.json`), "utf8")) as Record<
@@ -185,6 +199,9 @@ describe("checkShortcutPreconditions", () => {
         sessionInfo: readSessionPreset("race"),
         isConnected: false,
         telemetry: BOOT_TELEMETRY,
+        translatorTelemetry: null,
+        playerFinalLapStarted: null,
+        translatorSubSessionId: null,
       });
 
       expect(refusal, `"${id}" ran disconnected`).toEqual(expect.stringContaining("Connect the mock SDK"));
@@ -213,6 +230,9 @@ describe("checkShortcutPreconditions", () => {
         sessionInfo: readSessionPreset(preset),
         isConnected: false,
         telemetry: BOOT_TELEMETRY,
+        translatorTelemetry: null,
+        playerFinalLapStarted: null,
+        translatorSubSessionId: null,
       });
 
       expect(refusal, `ran disconnected on ${preset}`).toEqual(expect.stringContaining("Connect the mock SDK"));
@@ -391,6 +411,9 @@ describe("the rolling-start preconditions (issue #1167)", () => {
         sessionInfo: readSessionPreset("race-oval"),
         isConnected: false,
         telemetry: BOOT_TELEMETRY,
+        translatorTelemetry: null,
+        playerFinalLapStarted: null,
+        translatorSubSessionId: null,
       });
 
       expect(refusal, `"${id}" ran disconnected`).toEqual(expect.stringContaining("Connect the mock SDK"));
@@ -462,6 +485,9 @@ describe("the rolling-start preconditions (issue #1167)", () => {
       sessionInfo,
       isConnected: true,
       telemetry: { ...BOOT_TELEMETRY, SessionNum } as TelemetryData,
+      translatorTelemetry: { ...BOOT_TELEMETRY, SessionNum } as TelemetryData,
+      playerFinalLapStarted: false,
+      translatorSubSessionId: null,
     });
 
     expect(checkShortcutPreconditions(["rolling-start-oval-grid"], inSession(0))).not.toBeNull();

@@ -49,7 +49,7 @@
  *     player's pace otherwise; when the flag cannot be predicted, a running clock's bound
  *     `SessionTimeRemain + 2 × leaderLap`, and unknown for an expired one).
  *     The verdict is on the TANK, not the post-margin count
- *     ({@link isFuelRaceCovered}, #1405): the raw laps of fuel must
+ *     ({@link isFuelCovered}, #1405): the raw laps of fuel must
  *     cover the rest of this lap and every lap after it with
  *     `FUEL_COVERAGE_ERROR` to spare. The margin protects a pit decision
  *     against estimate error, but with a lap or two left there is no stop
@@ -84,13 +84,38 @@
  *     burn-spike arc speaks warning → reassurance again once coverage
  *     recovers.
  *
- * Race sessions only, live in car, and silent until the tracker has valid
- * samples — no estimate, no callout, never a guess.
+ * Every session kind (issue #1702; race-only before it), live in car, and
+ * silent until the tracker has valid samples — no estimate, no callout, never
+ * a guess. The sampling, the count, the descending floor, the refuel re-arm,
+ * the post-race silence and the final-lap silence run everywhere; what is
+ * race-only (the `"race"` {@link FuelSessionBranch}, the exact `"Race"`
+ * match, so a heat race or a warmup takes the other branch) is the rest of the
+ * list above:
+ *   - In a race: the final-lap signal is the sticky latch, the coverage
+ *     distance is {@link resolveFuelRaceCoverage}'s (lap counter and timed
+ *     side), and the enough-fuel reassurance may speak.
+ *   - In any other session: the final-lap signal is the White bit on this
+ *     tick, which practice and qualifying show when the player starts their
+ *     own last lap (`diff/flags.ts`, the two-stage white; a heat race's or a
+ *     warmup's white is unmeasured, #1767, and a field-wide one would
+ *     silence the countdown up to a lap early); the coverage distance is the
+ *     lap counter alone ({@link resolveFuelLapCounterCoverage}) — a
+ *     Lone Qualify fuelled for its laps hears no warning, a session with no
+ *     lap limit gets no coverage check — and `fuel.lapsLeft.raceCovered` is
+ *     never emitted, its line being about finishing the race.
+ *
+ * While the session type cannot be read (`"unknown"`, issue #1702 — the
+ * session info not yet resolved, or a session-info update that failed to
+ * parse, #1461) the diff consumes nothing: no branch can be picked, and
+ * whatever it sampled would be refused downstream, where the Race Engineer
+ * cannot classify the session either, while the floor it advanced would keep
+ * that count from ever being spoken. See {@link diffFuelLapsLeft}.
  */
 import type { SimEventName } from "@iracedeck/event-bus";
 import {
   bindingLapsToGo,
   Flags,
+  hasFlag,
   isLiveOnTrack,
   isPostRace,
   resolveLapsRemaining,
@@ -102,6 +127,7 @@ import {
   countClockExpiredTicks,
   fuelFinishToleranceLaps,
   isClockExpiredReading,
+  LAP_LINE_GUARD_PCT,
   lapCountCrossings,
   type LeaderFinish,
   staysWithinLapAtChequered,
@@ -136,7 +162,7 @@ export const FUEL_CALLOUT_MARGIN_MIN_LAPS = 0;
 export const FUEL_CALLOUT_MARGIN_MAX_LAPS = 3;
 
 /**
- * The allowance {@link isFuelRaceCovered} keeps for the average being off
+ * The allowance {@link isFuelCovered} keeps for the average being off
  * (issue #1405): 5 % of the distance left, so it grows with the laps to
  * cover the way estimate error does — two laps left need a tenth of a lap in
  * hand, ten laps half a lap. A first value; how much per-lap use varies has
@@ -214,12 +240,14 @@ export function estimateFuelLapsLeft(
 }
 
 /**
- * The remaining race distance the laps-of-fuel-left count is compared with,
- * as {@link resolveFuelRaceCoverage} determines it (issue #1387). Both sides
- * are in the count's own unit: full laps the player still runs AFTER the
- * current one.
+ * The remaining distance the laps-of-fuel-left count is compared with: in a
+ * race the race distance {@link resolveFuelRaceCoverage} determines (issue
+ * #1387), in any other session {@link resolveFuelLapCounterCoverage}'s
+ * lap-counter distance, with no timed side (issue #1702). Both sides are in
+ * the count's own unit: full laps the player still runs AFTER the current
+ * one.
  */
-export type FuelRaceCoverage = {
+export type FuelCoverage = {
   /** By the lap counter, or `null` when it is unknown or unlimited. */
   lapsNeededAfterCurrent: number | null;
   /**
@@ -259,13 +287,14 @@ export function resolveFuelRaceCoverage(
   stats: FuelStats,
   lapFractionRemaining: number,
   getLeaderFinish: (playerLapS: number) => LeaderFinish,
-): FuelRaceCoverage {
+): FuelCoverage {
   const whiteUp = typeof telemetry.SessionFlags === "number" && (telemetry.SessionFlags & Flags.White) !== 0;
 
-  // Lap counter: `count` means full laps completable AFTER the current one,
-  // while the raw counter INCLUDES the current lap — so the −1 bridges them
-  // (clamped at 0: a raw 0 in the leader-finished tick window must not go
-  // vacuously negative). In races the counter reads LEADER-relative
+  // Lap counter, by the step both branches share
+  // (`resolveFuelLapCounterLapsAfterCurrent`: the −1 that bridges a counter
+  // INCLUDING the current lap to full laps AFTER it, clamped at 0 so a raw 0
+  // in the leader-finished tick window does not go vacuously negative). In
+  // races the counter reads LEADER-relative
   // (validated from lapped-race captures, 2026-08; qualifying is
   // player-relative, #776), which IS the player's remaining crossings under
   // equal pace — the race ends at the leader's final crossing, not after
@@ -276,8 +305,7 @@ export function resolveFuelRaceCoverage(
   // has returned before this is reached), the leader is on THEIR final lap
   // (raw 1 → 0 needed) but the player still runs the current lap plus their
   // OWN full white lap — clamp to ≥ 1.
-  const rawLapsRemain = resolveLapsRemaining(telemetry);
-  let lapsNeededAfterCurrent = rawLapsRemain !== null ? Math.max(0, rawLapsRemain - 1) : null;
+  let lapsNeededAfterCurrent = resolveFuelLapCounterLapsAfterCurrent(telemetry);
 
   if (lapsNeededAfterCurrent !== null && whiteUp) {
     lapsNeededAfterCurrent = Math.max(lapsNeededAfterCurrent, 1);
@@ -415,9 +443,10 @@ function isPositiveFinite(value: number | null): value is number {
 }
 
 /**
- * The race-coverage verdict (issue #1405), as one pure function shared by the
- * diff and the Telemetry Snapshot's state reader: the tank covers the race
- * when
+ * The coverage verdict (issue #1405), as one pure function shared by the diff
+ * and the Telemetry Snapshot's state reader, in both of the diff's branches
+ * (issue #1702): the tank covers the distance left — the race's, or outside a
+ * race the session's lap counter — when
  *
  *   rawLapsLeft ≥ (lapFractionRemaining + remainingLaps) × (1 + FUEL_COVERAGE_ERROR)
  *
@@ -432,18 +461,18 @@ function isPositiveFinite(value: number | null): value is number {
  * "covered"**, whatever the tank says: the player is on their last lap, and
  * at the estimator's precision a shortage call there is more often noise
  * than a real splash-and-dash opportunity — the #866 trade-off behind the
- * diff's unconditional final-lap silence. That silence keys on the player's
- * own `playerFinalLapStarted` latch, which a lapped or slower-class player
- * may not have set when the race distance already ends with this lap; this
- * rule covers them, and being part of the verdict, it holds for the
+ * diff's unconditional final-lap silence. In a race that silence keys on the
+ * player's own `playerFinalLapStarted` latch, which a lapped or slower-class
+ * player may not have set when the race distance already ends with this lap;
+ * this rule covers them, and being part of the verdict, it holds for the
  * Telemetry Snapshot's `covered` too. The enough-fuel confirmation keeps its
  * own guard (a full lap in hand by the unclamped count), so a short tank
  * still gets no confirmation here.
  *
  * @param estimate - the tick's {@link estimateFuelLapsLeft} result
- * @param remainingLaps - {@link FuelRaceCoverage}'s binding distance, full laps after the current one
+ * @param remainingLaps - {@link FuelCoverage}'s binding distance, full laps after the current one
  */
-export function isFuelRaceCovered(
+export function isFuelCovered(
   estimate: Pick<FuelLapsLeftEstimate, "rawLapsLeft" | "lapFractionRemaining">,
   remainingLaps: number,
 ): boolean {
@@ -452,6 +481,29 @@ export function isFuelRaceCovered(
   if (remainingLaps === 0) return true;
 
   return estimate.rawLapsLeft >= (estimate.lapFractionRemaining + remainingLaps) * (1 + FUEL_COVERAGE_ERROR);
+}
+
+/**
+ * Which of {@link diffFuelLapsLeft}'s branches a session takes (issue #1702):
+ * `"race"` for the race branch, `"non-race"` for every other readable session
+ * (a heat race and a warmup included), `"unknown"` while the session type
+ * cannot be read, when the diff consumes nothing.
+ */
+export type FuelSessionBranch = "race" | "non-race" | "unknown";
+
+/**
+ * The {@link FuelSessionBranch} for `handleTick`'s resolved session type —
+ * one definition for the translator and the Telemetry Snapshot's state
+ * reader. The race branch is the exact `"Race"` match (the race-coverage
+ * model was validated against `"Race"` captures); an empty type is the
+ * resolver's "unreadable" answer.
+ *
+ * @param sessionType - `resolveSessionType`'s answer, `""` when unreadable
+ */
+export function resolveFuelSessionBranch(sessionType: string): FuelSessionBranch {
+  if (sessionType === "") return "unknown";
+
+  return sessionType === "Race" ? "race" : "non-race";
 }
 
 /** The events {@link diffFuelLapsLeft} emits (issue #1499): its emitter's type, and its row in `TICK_ORDER`. */
@@ -468,32 +520,52 @@ export const FUEL_LAPS_LEFT_EVENTS = [
  * leader's recent pace and predicted chequered flag from the translator
  * (issues #880, #1405 — each `null` when unknown, see
  * {@link resolveFuelRaceCoverage} for the fallbacks). It reads this slice's
- * `clockExpiredTicks` after this call has advanced it.
+ * `clockExpiredTicks` after this call has advanced it. It runs in every
+ * session kind (issue #1702); `getLeaderFinish` is called in a race only.
  *
- * @param playerFinalLapStarted - the flags' STICKY "the player started their
- *   final lap" marker (`TranslatorState.playerFinalLapStarted`, issue #880),
- *   as `diffFlags` left it earlier in the same tick: set with the #772
- *   white-flag crossing, never re-armed by a mid-final-lap flag change, and
- *   cleared by a later green. `handleTick` reads it at the call.
+ * @param session - `handleTick`'s {@link resolveFuelSessionBranch}: the race
+ *   branch (the race-distance coverage and the reassurance), the other one
+ *   (the lap-counter coverage alone, never a reassurance), or `"unknown"`,
+ *   which returns right after the expired-clock count and writes nothing else
+ *   — no sample, no floor and no baseline, so the first tick with a readable
+ *   session continues from where the last one left off
+ * @param finalLapStarted - whether the player has started their own final
+ *   lap, as `handleTick` computes it per session kind (issue #1702). In a
+ *   race, the flags' STICKY marker (`TranslatorState.playerFinalLapStarted`,
+ *   issue #880) as `diffFlags` left it earlier in the same tick: set with the
+ *   #772 white-flag crossing, never re-armed by a mid-final-lap flag change,
+ *   and cleared by a later green. In any other session, whether the White
+ *   bit is shown on this tick, which practice and qualifying show when the
+ *   player starts their own last lap (unmeasured for a heat race or a
+ *   warmup, #1767). The diff never reads flags for this itself.
  */
 export function diffFuelLapsLeft(
   slice: FuelCalloutState,
   telemetry: TelemetryData,
-  isRaceSession: boolean,
-  playerFinalLapStarted: boolean,
+  session: FuelSessionBranch,
+  finalLapStarted: boolean,
   getStats: () => FuelStats,
   getMarginLaps: () => number,
   getLeaderFinish: (playerLapS: number) => LeaderFinish,
   emit: EmitFn<(typeof FUEL_LAPS_LEFT_EVENTS)[number]>,
 ): void {
   // The expired-clock confirmation (issue #1405), counted on EVERY tick this
-  // diff sees, before any early return, so the count is consecutive ticks —
-  // a session type, invalid input or the sampling gates never freeze it. The
-  // leader's chequered prediction (`getLeaderFinish`) reads it later in this
-  // same call; the Telemetry Snapshot reads it after the tick.
+  // diff sees, in every session kind and before any early return, so the
+  // count is consecutive ticks — invalid input or the sampling gates never
+  // freeze it. The leader's chequered prediction (`getLeaderFinish`) reads it
+  // later in this same call; the Telemetry Snapshot reads it after the tick.
   slice.clockExpiredTicks = countClockExpiredTicks(telemetry, slice.clockExpiredTicks);
 
-  if (!isRaceSession) return;
+  // An unreadable session type (issue #1702): no branch to pick, and a sample
+  // here would advance the floor for a count the Race Engineer refuses in a
+  // session it cannot classify, so the count would never be spoken. Nothing
+  // is consumed, the baselines included, so the first readable tick carries
+  // on from the last one: `lastSampledLap` still stops a lap sampled before
+  // the gap from being sampled twice, `lastFuelLevel` lands a refuel made
+  // during the gap as one delta (the replay glance's rule), and the saved
+  // position, with its lap, lets that tick sample a lap whose crossing fell
+  // in the gap (below).
+  if (session === "unknown") return;
 
   const fuelLevel = telemetry.FuelLevel;
   const distPct = telemetry.LapDistPct;
@@ -512,7 +584,7 @@ export function diffFuelLapsLeft(
     return;
   }
 
-  // Refuel re-arm — runs on every validated race tick (a pit-stall fill is a
+  // Refuel re-arm — runs on every validated tick (a pit-stall fill is a
   // live-in-car state, a garage fill lands as one big delta on the first
   // live tick back). A new stint re-arms both the announce floor and the
   // enough-fuel reassurance (issue #880).
@@ -524,24 +596,67 @@ export function diffFuelLapsLeft(
   slice.lastFuelLevel = fuelLevel;
 
   const lastDistPct = slice.lastDistPct;
-  slice.lastDistPct = distPct;
+  const lastDistLap = slice.lastDistLap;
 
-  // Seed silently on the first valid tick — no edge to compare yet.
-  if (lastDistPct === null) return;
+  // The tick's position becomes the next crossing's baseline on every path
+  // below but one: a sample attempt whose fallible
+  // work throws — `getStats`, `getMarginLaps` and `getLeaderFinish` are
+  // closures over the plugin and the translator — commits nothing of the
+  // attempt (issue #1702), so the next tick finds the same crossing and tries
+  // again, where a committed attempt would have lost that lap's warning to the
+  // step boundary (#1559). Every write of the attempt runs after the last of
+  // those calls has returned.
+  const commitPosition = (): void => {
+    slice.lastDistPct = distPct;
+    slice.lastDistLap = lap;
+  };
+  // The attempt itself: at most one per lap once committed.
+  const commitAttempt = (): void => {
+    commitPosition();
+    slice.lastSampledLap = lap;
+  };
 
-  // Rising mid-lap crossing, at most one sample attempt per lap.
-  if (!(lastDistPct < FUEL_LAPS_LEFT_SAMPLE_PCT && distPct >= FUEL_LAPS_LEFT_SAMPLE_PCT)) return;
+  // Seed silently on the first valid tick — no crossing to compare with yet —
+  // and re-seed on a lap counter behind the saved position (a rewind or a
+  // reset): no lap the countdown has missed, so it waits for a real edge.
+  if (lastDistPct === null || lastDistLap === null || lap < lastDistLap) {
+    commitPosition();
 
-  if (lap === slice.lastSampledLap) return;
+    return;
+  }
 
-  slice.lastSampledLap = lap;
+  // Whether this lap's mid-lap mark was crossed since the saved position: a
+  // rising edge on the same lap, or, from an earlier lap, being at or past
+  // the mark now — a real position, where the count is as valid as at the
+  // mark (issue #1702). An ordinary tick never takes the second in one step,
+  // since it starts a new lap at the line; a tick after a gap the diff did
+  // not see does, such as an unreadable session whose span held the
+  // crossing. The line guard keeps it from the moment `Lap` and `LapDistPct`
+  // can disagree around the line (`LAP_LINE_GUARD_PCT`): a new lap read with
+  // the old lap's fraction would look past the mark and be sampled with a
+  // count one lap high.
+  const crossed =
+    lap === lastDistLap
+      ? lastDistPct < FUEL_LAPS_LEFT_SAMPLE_PCT && distPct >= FUEL_LAPS_LEFT_SAMPLE_PCT
+      : distPct >= FUEL_LAPS_LEFT_SAMPLE_PCT && distPct < 1 - LAP_LINE_GUARD_PCT;
 
-  if (!isLiveOnTrack(telemetry)) return;
+  // At most one sample attempt per lap.
+  if (!crossed || lap === slice.lastSampledLap) {
+    commitPosition();
+
+    return;
+  }
+
+  if (!isLiveOnTrack(telemetry)) {
+    commitAttempt();
+
+    return;
+  }
 
   // Race-coverage suppression, part 1 (issue #866): a pit suggestion that
   // can't be acted on usefully is noise. Silent from the leader's checkered
   // onward (a cool-down "box this lap" would be equally wrong, the #657
-  // precedent) and on the player's own final lap — the STICKY
+  // precedent) and on the player's own final lap — in a race the STICKY
   // `playerFinalLapStarted` latch (issue #880), set with the #772 white-flag
   // crossing but never re-armed by a mid-final-lap flag change, so a caution
   // replacing the white can't resurrect the box call. Works in timed races
@@ -551,25 +666,85 @@ export function diffFuelLapsLeft(
   // because at the estimator's ±margin precision a final-lap shortage call
   // is more often noise than a real splash-and-dash opportunity (decided in
   // the #866 review). The reassurance below never fires here either.
-  if (isPostRace(telemetry) || playerFinalLapStarted) return;
+  //
+  // Outside a race (issue #1702) both gates hold as they are: a practice or
+  // qualifying chequered flag ends the running as surely as a race's, and
+  // `finalLapStarted` is then the White bit on this tick, which practice and
+  // qualifying show when the player starts their own last lap.
+  if (isPlayerFinalLapReached(telemetry, finalLapStarted)) {
+    commitAttempt();
+
+    return;
+  }
 
   const stats = getStats();
 
-  if (stats.avg === null || stats.avg <= 0) return;
+  if (stats.avg === null || stats.avg <= 0) {
+    commitAttempt();
+
+    return;
+  }
 
   const estimate = estimateFuelLapsLeft(fuelLevel, distPct, stats.avg, getMarginLaps());
-  const { effective, unclampedCount, count } = estimate;
+  const { effective, count } = estimate;
+
+  if (session === "race") {
+    // The race distance: `resolveFuelRaceCoverage` calls `getLeaderFinish`,
+    // the last fallible call, so the attempt is committed once it returns.
+    const { remainingLaps } = resolveFuelRaceCoverage(telemetry, stats, estimate.lapFractionRemaining, getLeaderFinish);
+
+    commitAttempt();
+
+    if (coverRace(slice, estimate, remainingLaps, emit)) return;
+  } else {
+    // Lap-counter coverage outside a race (issue #1702): a lap-limited
+    // session (Lone Qualify always is) counts the player's own laps, so a
+    // tank that covers them speaks no warning — the same verdict as a race,
+    // the floor likewise NOT advanced. No timed side, no leader and no
+    // reassurance: there is no race to finish behind anyone, and an unknown
+    // or unlimited counter leaves the tank alone to speak.
+    const coverage = resolveFuelLapCounterCoverage(telemetry);
+
+    commitAttempt();
+
+    if (coverage !== null && isFuelCovered(estimate, coverage.remainingLaps)) return;
+  }
+
+  if (count > FUEL_LAPS_LEFT_MAX_COUNT) return;
+
+  // Descending crossings only; a count already announced stays announced.
+  if (slice.lastAnnouncedCount !== null && count >= slice.lastAnnouncedCount) return;
+
+  slice.lastAnnouncedCount = count;
+  // A real warning re-arms the reassurance — if coverage recovers (fuel
+  // save, the race got shorter), the driver must hear the retraction.
+  slice.raceCoveredAnnounced = false;
+  emit({ event: "fuel.lapsLeft.crossed", data: { count, lapsLeft: effective } });
+}
+
+/**
+ * The race branch of {@link diffFuelLapsLeft}'s coverage: the verdict over
+ * {@link resolveFuelRaceCoverage}'s distance, which the diff resolves before
+ * committing its sample attempt, and the enough-fuel reassurance. Returns
+ * whether the tank covers the race, in which case no warning is spoken.
+ * Calls nothing that can throw.
+ */
+function coverRace(
+  slice: FuelCalloutState,
+  estimate: FuelLapsLeftEstimate,
+  remainingLaps: number,
+  emit: EmitFn<(typeof FUEL_LAPS_LEFT_EVENTS)[number]>,
+): boolean {
+  const { unclampedCount } = estimate;
 
   // Race-coverage determination, part 2 (issue #866, extended by #880 and
   // #1405): when the tank covers the remaining race distance there is
   // nothing to refuel for. The distance is `resolveFuelRaceCoverage`'s — the
   // two limits and which of them binds are worked out there — and the
-  // verdict is `isFuelRaceCovered`'s, on the raw tank with no lap margin,
+  // verdict is `isFuelCovered`'s, on the raw tank with no lap margin,
   // and silent whatever the tank when no lap is left after this one (the
   // #866 trade-off, for a player whose own final-lap latch has not fired).
-  const { remainingLaps } = resolveFuelRaceCoverage(telemetry, stats, estimate.lapFractionRemaining, getLeaderFinish);
-
-  if (isFuelRaceCovered(estimate, remainingLaps)) {
+  if (isFuelCovered(estimate, remainingLaps)) {
     // Enough-fuel reassurance (issue #880): a positive coverage
     // determination in the race ENDGAME becomes ONE "we have enough fuel to
     // finish the race" per stint — the driver hears the topic closed
@@ -604,19 +779,96 @@ export function diffFuelLapsLeft(
     // The dedup floor is otherwise deliberately NOT advanced: coverage is
     // re-evaluated every lap, so a burn-rate spike that shrinks the
     // estimate below the race distance still announces on the earlier laps.
-    return;
+    return true;
   }
 
-  if (count > FUEL_LAPS_LEFT_MAX_COUNT) return;
+  return false;
+}
 
-  // Descending crossings only; a count already announced stays announced.
-  if (slice.lastAnnouncedCount !== null && count >= slice.lastAnnouncedCount) return;
+/**
+ * The full laps the lap counter leaves after the current one: the step both
+ * of the diff's branches start from (issue #1702). `SessionLapsRemainEx`
+ * includes the current lap, while the count means full laps AFTER it, hence
+ * the −1, clamped at 0. `null` when the counter is missing, invalid or reads
+ * the `IRSDK_UNLIMITED_LAPS` sentinel: no lap limit.
+ *
+ * Whose laps it counts depends on the session: the leader's in a race (the
+ * 2026-08 capture validation), the player's own in qualifying (#776). The
+ * race's adjustments — its white-flag clamp, the timed side — are
+ * {@link resolveFuelRaceCoverage}'s, applied on top of this; outside a race
+ * {@link resolveFuelLapCounterCoverage} takes it as it is, since the white
+ * there flies when the player starts their own last lap, which the diff's
+ * final-lap silence already covers.
+ *
+ * @param telemetry - the tick's telemetry
+ */
+export function resolveFuelLapCounterLapsAfterCurrent(telemetry: TelemetryData): number | null {
+  const rawLapsRemain = resolveLapsRemaining(telemetry);
 
-  slice.lastAnnouncedCount = count;
-  // A real warning re-arms the reassurance — if coverage recovers (fuel
-  // save, the race got shorter), the driver must hear the retraction.
-  slice.raceCoveredAnnounced = false;
-  emit({ event: "fuel.lapsLeft.crossed", data: { count, lapsLeft: effective } });
+  return rawLapsRemain === null ? null : Math.max(0, rawLapsRemain - 1);
+}
+
+/**
+ * The distance by the lap counter alone, in the {@link FuelCoverage} shape
+ * (issue #1702): {@link resolveFuelLapCounterLapsAfterCurrent} as both the
+ * lap-counter side and the binding distance, with no timed side — what the
+ * diff compares the tank with outside a race. `null` with no lap limit, where
+ * nothing is compared. One definition for the diff and the Telemetry
+ * Snapshot's state reader, so the snapshot explains a suppressed warning by
+ * the same distance the diff suppressed it on.
+ *
+ * @param telemetry - the tick's telemetry
+ */
+export function resolveFuelLapCounterCoverage(telemetry: TelemetryData): FuelCoverage | null {
+  const lapsAfterCurrent = resolveFuelLapCounterLapsAfterCurrent(telemetry);
+
+  if (lapsAfterCurrent === null) return null;
+
+  return { lapsNeededAfterCurrent: lapsAfterCurrent, timedLapsAfterCurrent: null, remainingLaps: lapsAfterCurrent };
+}
+
+/**
+ * Whether the player has started their own final lap, as `handleTick` hands
+ * it to {@link diffFuelLapsLeft} (`finalLapStarted`) and the Telemetry
+ * Snapshot's state reader reads it (issue #1702). In a race: the flags'
+ * STICKY marker (`TranslatorState.playerFinalLapStarted`, issue #880) as
+ * `diffFlags` left it — set at the player's crossing under the white, so the
+ * leader's white a lap earlier does not silence the countdown, and kept
+ * through a caution replacing the white. That marker is set in races only; in
+ * any other session the bit on the tick is the signal, because practice and
+ * qualifying show the White when the player starts their own last lap
+ * (`diff/flags.ts`, the two-stage white). For a heat race or a warmup that is
+ * unmeasured (#1767): a white shown field-wide there would read as the player's last
+ * lap and silence the countdown up to a lap early. A pure rule over values
+ * its callers read: the diff itself is handed the answer and reads no flag
+ * state of its own.
+ *
+ * @param isRaceSession - the exact `"Race"` match `handleTick` makes
+ * @param playerFinalLapStarted - the flags' sticky final-lap marker
+ * @param telemetry - the tick's telemetry, for its `SessionFlags`
+ */
+export function resolveFuelFinalLapStarted(
+  isRaceSession: boolean,
+  playerFinalLapStarted: boolean,
+  telemetry: TelemetryData,
+): boolean {
+  return isRaceSession ? playerFinalLapStarted : hasFlag(telemetry.SessionFlags, Flags.White);
+}
+
+/**
+ * The fuel countdown's final-lap silence (issue #1702): the session's
+ * chequered flag is out ({@link isPostRace}), or the player has started their
+ * own last lap ({@link resolveFuelFinalLapStarted}'s answer). One definition
+ * for the emit-time check in {@link diffFuelLapsLeft} and the translator's
+ * `isPlayerFinalLapStarted` reader, which the Race Engineer's fuel contracts
+ * ask again when a queued count reaches the radio, so speak time applies
+ * exactly the rule the count was emitted under.
+ *
+ * @param telemetry - the tick's telemetry, for its `SessionState`
+ * @param finalLapStarted - {@link resolveFuelFinalLapStarted}'s answer for the same tick
+ */
+export function isPlayerFinalLapReached(telemetry: TelemetryData, finalLapStarted: boolean): boolean {
+  return isPostRace(telemetry) || finalLapStarted;
 }
 
 /**

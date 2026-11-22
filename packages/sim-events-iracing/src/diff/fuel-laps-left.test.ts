@@ -8,17 +8,20 @@
  *   - descending crossings only, once per stint, no stale burst
  *   - the 10-count ceiling and the count-0 box call
  *   - refuel re-arm (debounced) and jitter immunity
- *   - race / live-in-car / missing-stats / invalid-telemetry gates
+ *   - live-in-car / missing-stats / invalid-telemetry gates
  *   - race-coverage suppression (issue #866): the lap-limited remaining-laps
  *     comparison, the sticky final-lap latch, and the post-race gate
  *   - timed-race coverage (issue #880, #1405): the player's laps until the
  *     leader's predicted chequered flag, the fallback bound (expiry + two
  *     leader laps) when it cannot be predicted, and dual time+lap limits
- *   - the coverage verdict on the tank (issue #1405, `isFuelRaceCovered`)
+ *   - the coverage verdict on the tank (issue #1405, `isFuelCovered`)
  *     and the two driver reports it fixes, with a genuine shortage still loud
  *   - the enough-fuel confirmation (issue #880): fires once in the race
  *     endgame (≤ 10 laps to go, covered with a lap in hand), clears the
  *     warning floor, re-arms on refuel and after a real warning
+ *   - every session kind (issue #1702): the countdown outside a race, its
+ *     lap-counter coverage (`resolveFuelLapCounterLapsAfterCurrent`), and no
+ *     reassurance there
  *   - margin sanitization (`sanitizeFuelCalloutMarginLaps`)
  *   - the two pure functions the diff and the Telemetry Snapshot's state
  *     reader share (issue #1387): `estimateFuelLapsLeft` and
@@ -49,8 +52,14 @@ import {
   FUEL_CALLOUT_DEFAULT_MARGIN_LAPS,
   FUEL_COVERAGE_ERROR,
   FUEL_LAPS_LEFT_MAX_COUNT,
-  isFuelRaceCovered,
+  type FuelSessionBranch,
+  isFuelCovered,
+  isPlayerFinalLapReached,
+  resolveFuelFinalLapStarted,
+  resolveFuelLapCounterCoverage,
+  resolveFuelLapCounterLapsAfterCurrent,
   resolveFuelRaceCoverage,
+  resolveFuelSessionBranch,
   sanitizeFuelCalloutMarginLaps,
 } from "./fuel-laps-left.js";
 import type { FuelStats } from "./fuel-laps.js";
@@ -93,6 +102,10 @@ type RunOptions = {
   finish?: LeaderFinish;
   /** The flags' sticky final-lap marker `handleTick` hands the diff (issue #880). */
   finalLap?: boolean;
+  /** The branch, in place of `race` (issue #1702): how an unreadable session is handed over. */
+  session?: FuelSessionBranch;
+  /** Which of the diff's fallible closures throws on this call (issue #1702). */
+  throwIn?: "stats" | "margin" | "leader";
 };
 
 function makeRunner(events: PendingEvent[], slice: FuelCalloutState = createFuelCalloutState()) {
@@ -109,6 +122,8 @@ function makeRunner(events: PendingEvent[], slice: FuelCalloutState = createFuel
         chequeredInS = null,
         finish,
         finalLap = false,
+        session,
+        throwIn,
       }: RunOptions = {},
     ) {
       const stats: FuelStats =
@@ -118,15 +133,23 @@ function makeRunner(events: PendingEvent[], slice: FuelCalloutState = createFuel
       diffFuelLapsLeft(
         slice,
         t,
-        race,
+        session ?? (race ? "race" : "non-race"),
         finalLap,
-        () => stats,
-        () => margin,
-        (): LeaderFinish => finish ?? { ...UNKNOWN_LEADER_FINISH, lapTimeS: leaderLap, chequeredInS },
+        () => (throwIn === "stats" ? fail("stats") : stats),
+        () => (throwIn === "margin" ? fail("margin") : margin),
+        (): LeaderFinish =>
+          throwIn === "leader"
+            ? fail("leader")
+            : (finish ?? { ...UNKNOWN_LEADER_FINISH, lapTimeS: leaderLap, chequeredInS }),
         (e) => events.push(e),
       );
     },
   };
+}
+
+/** What a throwing closure does: the step boundary (#1559) catches it in the translator. */
+function fail(what: string): never {
+  throw new Error(`${what} unavailable`);
 }
 
 function counts(events: PendingEvent[]): number[] {
@@ -294,16 +317,6 @@ describe("diffFuelLapsLeft — announcement rules", () => {
 });
 
 describe("diffFuelLapsLeft — gates", () => {
-  it("is silent outside race sessions", () => {
-    const events: PendingEvent[] = [];
-    const { run } = makeRunner(events);
-
-    run(tick({ LapDistPct: 0.45, FuelLevel: 6.2 }), { race: false });
-    run(tick({ LapDistPct: 0.55, FuelLevel: 6.1 }), { race: false });
-
-    expect(events).toEqual([]);
-  });
-
   it("is silent when the driver is not live in the car", () => {
     const events: PendingEvent[] = [];
     const { run } = makeRunner(events);
@@ -335,6 +348,471 @@ describe("diffFuelLapsLeft — gates", () => {
     run(tick({ Lap: -1, LapDistPct: 0.55, FuelLevel: 6.1 }));
 
     expect(events).toEqual([]);
+  });
+});
+
+/**
+ * The non-race session kinds the countdown runs in (issue #1702). The diff
+ * sees only `race: false` and the telemetry, so each is told apart by the
+ * lap counter its session reads: a practice and an offline test with no lap
+ * limit (the unlimited sentinel), a Lone Qualify with its counted laps.
+ */
+const NON_RACE_SESSIONS: ReadonlyArray<[name: string, extra: Partial<TelemetryData>]> = [
+  ["Practice", { SessionLapsRemainEx: IRSDK_UNLIMITED_LAPS, SessionTimeRemain: 1800 }],
+  ["Lone Qualify", { SessionLapsRemainEx: 20, SessionTimeRemain: IRSDK_UNLIMITED_TIME }],
+  ["Offline Testing", { SessionLapsRemainEx: IRSDK_UNLIMITED_LAPS, SessionTimeRemain: IRSDK_UNLIMITED_TIME }],
+];
+
+describe("diffFuelLapsLeft — every session kind (issue #1702)", () => {
+  const notRace: RunOptions = { race: false };
+
+  it.each(NON_RACE_SESSIONS)("in %s, a falling tank speaks each descending count", (_name, extra) => {
+    const events: PendingEvent[] = [];
+    const { run } = makeRunner(events);
+
+    lapSample(run, 5, 8.1, notRace, extra); // floor(4.05 − 0.75) = 3
+    lapSample(run, 6, 6.1, notRace, extra); // floor(3.05 − 0.75) = 2
+    lapSample(run, 7, 4.1, notRace, extra); // floor(2.05 − 0.75) = 1
+    lapSample(run, 8, 0.6, notRace, extra); // the box call
+
+    expect(counts(events)).toEqual([3, 2, 1, 0]);
+    expect(reassured(events)).toBe(0);
+  });
+
+  it.each(NON_RACE_SESSIONS)("in %s, goes silent after the chequered flag", (_name, extra) => {
+    const events: PendingEvent[] = [];
+    const { run } = makeRunner(events);
+
+    lapSample(run, 5, 0.6, notRace, { ...extra, SessionState: SessionState.Checkered });
+    lapSample(run, 6, 0.5, notRace, { ...extra, SessionState: SessionState.CoolDown });
+
+    expect(events).toEqual([]);
+  });
+
+  it.each(NON_RACE_SESSIONS)("in %s, says nothing on the player's own final lap", (_name, extra) => {
+    const events: PendingEvent[] = [];
+    const { run } = makeRunner(events);
+
+    // `handleTick` hands the White bit on the tick here; the diff sees the value.
+    lapSample(run, 5, 0.6, { ...notRace, finalLap: true }, { ...extra, SessionFlags: Flags.White });
+
+    expect(events).toEqual([]);
+  });
+
+  it("never reads the White bit itself: outside a race only `finalLapStarted` silences it", () => {
+    const events: PendingEvent[] = [];
+    const { run } = makeRunner(events);
+
+    lapSample(run, 5, 0.6, notRace, { SessionLapsRemainEx: IRSDK_UNLIMITED_LAPS, SessionFlags: Flags.White });
+
+    expect(counts(events)).toEqual([0]);
+  });
+
+  it("never speaks the reassurance outside a race, even on a covered tank in the last ten laps", () => {
+    const events: PendingEvent[] = [];
+    const { run } = makeRunner(events);
+
+    // The race case "speaks the reassurance when the tank covers the race
+    // with a lap to spare", outside a race: covered, so no warning either.
+    lapSample(run, 5, 8.1, notRace, { SessionLapsRemainEx: 3 });
+    lapSample(run, 6, 8.0, notRace, { SessionLapsRemainEx: 2 });
+
+    expect(events).toEqual([]);
+  });
+
+  it("a lap-limited qualifying tank that covers the counted laps speaks no warning; one lap short, it does", () => {
+    // 4 laps remain including the current one → 3 after it. raw 8.1 / 2 =
+    // 4.05 ≥ (0.45 + 3) × 1.05 = 3.62: covered, the count 3 unspoken.
+    const covered: PendingEvent[] = [];
+    lapSample(makeRunner(covered).run, 5, 8.1, notRace, { SessionLapsRemainEx: 4 });
+    expect(covered).toEqual([]);
+
+    // One more counted lap, 4 after the current one: raw 4.05 <
+    // (0.45 + 4) × 1.05 = 4.67, so the count 3 speaks.
+    const short: PendingEvent[] = [];
+    lapSample(makeRunner(short).run, 5, 8.1, notRace, { SessionLapsRemainEx: 5 });
+    expect(counts(short)).toEqual([3]);
+  });
+
+  it("a covered suppression leaves the floor where it was", () => {
+    const events: PendingEvent[] = [];
+    const { run } = makeRunner(events);
+
+    lapSample(run, 5, 6.1, notRace, { SessionLapsRemainEx: 3 }); // covered, silent
+    lapSample(run, 6, 5.9, notRace, { SessionLapsRemainEx: IRSDK_UNLIMITED_LAPS }); // count 2
+
+    expect(counts(events)).toEqual([2]);
+  });
+
+  it("an unlimited-laps practice gets no coverage check: the tank alone decides", () => {
+    const events: PendingEvent[] = [];
+    const { run } = makeRunner(events);
+
+    // The same tank is covered with 2 laps after the current one (the case
+    // above); with no lap limit it speaks.
+    lapSample(run, 5, 8.1, notRace, { SessionLapsRemainEx: IRSDK_UNLIMITED_LAPS, SessionTimeRemain: 60 });
+
+    expect(counts(events)).toEqual([3]);
+  });
+
+  it("uses no timed side and never asks for the leader outside a race", () => {
+    const events: PendingEvent[] = [];
+    const getLeaderFinish = vi.fn((): LeaderFinish => ({ ...UNKNOWN_LEADER_FINISH, chequeredInS: 10, lapTimeS: 100 }));
+    const slice = createFuelCalloutState();
+    const stats: FuelStats = { lastLap: 2, avg: 2, avgLapTime: 100, samples: 5 };
+
+    for (const [pct, fuel] of [
+      [0.45, 8.12],
+      [0.55, 8.1],
+    ] as const) {
+      diffFuelLapsLeft(
+        slice,
+        tick({
+          Lap: 5,
+          LapDistPct: pct,
+          FuelLevel: fuel,
+          SessionLapsRemainEx: IRSDK_UNLIMITED_LAPS,
+          SessionTimeRemain: 30,
+        }),
+        "non-race",
+        false,
+        () => stats,
+        () => FIXTURE_MARGIN_LAPS,
+        getLeaderFinish,
+        (e) => events.push(e),
+      );
+    }
+
+    // A race's timed side would call 30 s with a 100 s lap covered; here the
+    // count speaks, and the leader closure is never called.
+    expect(counts(events)).toEqual([3]);
+    expect(getLeaderFinish).not.toHaveBeenCalled();
+  });
+});
+
+describe("resolveFuelLapCounterLapsAfterCurrent (issue #1702)", () => {
+  it("counts the laps after the current one from the lap counter", () => {
+    expect(resolveFuelLapCounterLapsAfterCurrent(tick({ SessionLapsRemainEx: 6 }))).toBe(5);
+    expect(resolveFuelLapCounterLapsAfterCurrent(tick({ SessionLapsRemainEx: 1 }))).toBe(0);
+  });
+
+  it("clamps a raw 0 at 0 rather than going negative", () => {
+    expect(resolveFuelLapCounterLapsAfterCurrent(tick({ SessionLapsRemainEx: 0 }))).toBe(0);
+  });
+
+  it("is null with no lap limit: the sentinel, a missing field or an invalid reading", () => {
+    expect(resolveFuelLapCounterLapsAfterCurrent(tick({ SessionLapsRemainEx: IRSDK_UNLIMITED_LAPS }))).toBeNull();
+    expect(resolveFuelLapCounterLapsAfterCurrent(tick({ SessionLapsRemainEx: undefined }))).toBeNull();
+    expect(resolveFuelLapCounterLapsAfterCurrent(tick({ SessionLapsRemainEx: -1 }))).toBeNull();
+    expect(resolveFuelLapCounterLapsAfterCurrent(tick({ SessionLapsRemainEx: Number.NaN }))).toBeNull();
+  });
+
+  it("does not clamp under the white flag, unlike the race distance", () => {
+    expect(resolveFuelLapCounterLapsAfterCurrent(tick({ SessionLapsRemainEx: 1, SessionFlags: Flags.White }))).toBe(0);
+  });
+});
+
+describe("diffFuelLapsLeft — an unreadable session (issue #1702)", () => {
+  const unknown: RunOptions = { session: "unknown" };
+
+  it("consumes nothing while the session type cannot be read, then speaks the count on the first readable sample", () => {
+    const events: PendingEvent[] = [];
+    const runner = makeRunner(events);
+
+    // Seeded and sampled while the session reads (count 3).
+    lapSample(runner.run, 5, 8.1);
+    expect(counts(events)).toEqual([3]);
+
+    const before = { ...runner.slice };
+
+    // The whole next lap, crossing included, with the session unreadable:
+    // nothing is written.
+    lapSample(runner.run, 6, 6.1, unknown);
+    expect(events).toHaveLength(1);
+    expect(runner.slice).toEqual(before);
+
+    // Readable again: the next crossing speaks the count the gap would have
+    // consumed.
+    lapSample(runner.run, 7, 6.0);
+    expect(counts(events)).toEqual([3, 2]);
+  });
+
+  it("samples a lap whose crossing fell in the gap on its first readable tick past the mark", () => {
+    const events: PendingEvent[] = [];
+    const { run } = makeRunner(events);
+
+    lapSample(run, 5, 8.1); // count 3, leaves the lap-6 baseline below the mark
+    run(tick({ Lap: 6, LapDistPct: 0.55, FuelLevel: 6.1 }), unknown); // the crossing, unreadable
+    run(tick({ Lap: 6, LapDistPct: 0.7, FuelLevel: 6.0 }));
+
+    // floor(3.0 − 0.3 − 0.3) = 2, at the real position.
+    expect(counts(events)).toEqual([3, 2]);
+  });
+
+  it("samples a lap whose crossing fell in the gap when the saved and resumed positions are both past the mark", () => {
+    const events: PendingEvent[] = [];
+    const { run } = makeRunner(events);
+
+    // Lap 5 sampled at 0.55 (count 3); the gap spans lap 6's mid-lap mark.
+    run(tick({ Lap: 5, LapDistPct: 0.45, FuelLevel: 8.12 }));
+    run(tick({ Lap: 5, LapDistPct: 0.55, FuelLevel: 8.1 }));
+    run(tick({ Lap: 6, LapDistPct: 0.3, FuelLevel: 7.0 }), unknown);
+    run(tick({ Lap: 6, LapDistPct: 0.6, FuelLevel: 6.2 }), unknown);
+    // Readable again at 0.7 of lap 6, against a frozen 0.55: no edge, yet
+    // lap 6 was never sampled. floor(3.0 − 0.3 − 0.3) = 2.
+    run(tick({ Lap: 6, LapDistPct: 0.7, FuelLevel: 6.0 }));
+
+    expect(counts(events)).toEqual([3, 2]);
+  });
+
+  it("does not sample the same lap twice when the gap opens and closes after its sample", () => {
+    const events: PendingEvent[] = [];
+    const { run } = makeRunner(events);
+
+    run(tick({ Lap: 5, LapDistPct: 0.45, FuelLevel: 8.12 }));
+    run(tick({ Lap: 5, LapDistPct: 0.55, FuelLevel: 8.1 })); // count 3
+    run(tick({ Lap: 5, LapDistPct: 0.6, FuelLevel: 6.0 }), unknown);
+    // Readable again on lap 5, past the mark, with a lower count to say: the
+    // lap was sampled, so nothing.
+    run(tick({ Lap: 5, LapDistPct: 0.7, FuelLevel: 6.0 }));
+    run(tick({ Lap: 5, LapDistPct: 0.8, FuelLevel: 5.9 }));
+
+    expect(counts(events)).toEqual([3]);
+  });
+
+  it("waits for a real edge when the lap counter went backwards across the gap", () => {
+    const events: PendingEvent[] = [];
+    const { run } = makeRunner(events);
+
+    run(tick({ Lap: 5, LapDistPct: 0.45, FuelLevel: 8.12 }));
+    run(tick({ Lap: 5, LapDistPct: 0.55, FuelLevel: 8.1 })); // count 3
+    run(tick({ Lap: 5, LapDistPct: 0.6, FuelLevel: 6.2 }), unknown);
+    run(tick({ Lap: 3, LapDistPct: 0.7, FuelLevel: 6.0 }));
+    expect(counts(events)).toEqual([3]);
+
+    // The next real crossing samples as ever.
+    run(tick({ Lap: 4, LapDistPct: 0.45, FuelLevel: 5.92 }));
+    run(tick({ Lap: 4, LapDistPct: 0.55, FuelLevel: 5.9 }));
+    expect(counts(events)).toEqual([3, 2]);
+  });
+
+  it("does not take a lap counter that went back across the gap, with a rising fraction, as a crossing", () => {
+    const events: PendingEvent[] = [];
+    const { run } = makeRunner(events);
+
+    lapSample(run, 5, 8.1); // count 3, lap 5 sampled; the run ends on lap 6
+    run(tick({ Lap: 6, LapDistPct: 0.45, FuelLevel: 8.0 }));
+    run(tick({ Lap: 6, LapDistPct: 0.48, FuelLevel: 6.2 }), { session: "unknown" });
+    // Lap 4 at 0.70 against a saved lap 6 at 0.45: a rewind, not a crossing.
+    run(tick({ Lap: 4, LapDistPct: 0.7, FuelLevel: 6.0 }));
+    run(tick({ Lap: 4, LapDistPct: 0.8, FuelLevel: 5.9 }));
+    expect(counts(events)).toEqual([3]);
+  });
+
+  it("does not sample a lap the car was already past the mark of before the gap", () => {
+    const events: PendingEvent[] = [];
+    const { run } = makeRunner(events);
+
+    run(tick({ Lap: 5, LapDistPct: 0.6, FuelLevel: 6.1 })); // the silent seed
+    run(tick({ Lap: 5, LapDistPct: 0.65, FuelLevel: 6.05 }), { session: "unknown" });
+    run(tick({ Lap: 5, LapDistPct: 0.7, FuelLevel: 6.0 }));
+    expect(events).toEqual([]);
+
+    // Lap 6's crossing samples as ever.
+    lapSample(run, 6, 5.9);
+    expect(counts(events)).toEqual([2]);
+  });
+
+  it("does not take a new lap read with the old lap's fraction at the line as a crossing", () => {
+    const events: PendingEvent[] = [];
+    const { run } = makeRunner(events);
+
+    lapSample(run, 5, 8.1); // count 3
+    lapSample(run, 6, 6.1); // count 2; the run ends on lap 7 at 0.05
+    run(tick({ Lap: 7, LapDistPct: 0.45, FuelLevel: 6.0 }));
+    run(tick({ Lap: 7, LapDistPct: 0.55, FuelLevel: 5.9 })); // count 2 again: silent
+    run(tick({ Lap: 7, LapDistPct: 0.98, FuelLevel: 4.2 }));
+    // `Lap` moves a tick before the fraction wraps: lap 8 read at 0.99.
+    run(tick({ Lap: 8, LapDistPct: 0.99, FuelLevel: 4.1 }));
+    run(tick({ Lap: 8, LapDistPct: 0.01, FuelLevel: 4.08 }));
+    expect(counts(events)).toEqual([3, 2]);
+
+    // Lap 8 samples at its own mark: floor(3.98 / 2 − 0.75) = 1.
+    run(tick({ Lap: 8, LapDistPct: 0.45, FuelLevel: 4.0 }));
+    run(tick({ Lap: 8, LapDistPct: 0.55, FuelLevel: 3.98 }));
+    expect(counts(events)).toEqual([3, 2, 1]);
+  });
+
+  it("keeps the silent seed when the gap came before any readable tick", () => {
+    const events: PendingEvent[] = [];
+    const { run } = makeRunner(events);
+
+    run(tick({ Lap: 5, LapDistPct: 0.6, FuelLevel: 6.1 }), unknown);
+    run(tick({ Lap: 5, LapDistPct: 0.7, FuelLevel: 6.0 }));
+    expect(events).toEqual([]);
+
+    lapSample(run, 6, 6.0);
+    expect(counts(events)).toEqual([2]);
+  });
+
+  it("lands a refuel made during the gap as one delta on the first readable tick", () => {
+    const events: PendingEvent[] = [];
+    const { run } = makeRunner(events);
+
+    lapSample(run, 5, 6.1); // count 2
+    run(tick({ Lap: 6, LapDistPct: 0.2, FuelLevel: 16 }), unknown); // the fill, unreadable
+    run(tick({ Lap: 6, LapDistPct: 0.3, FuelLevel: 15.9 })); // readable again, a little burnt
+    lapSample(run, 7, 6.1); // the stint was re-armed: count 2 again
+    expect(counts(events)).toEqual([2, 2]);
+  });
+
+  it("still counts the expired clock while the session is unreadable", () => {
+    const runner = makeRunner([]);
+
+    runner.run(tick({ SessionTimeRemain: -1 }), unknown);
+    runner.run(tick({ SessionTimeRemain: -1 }), unknown);
+
+    expect(runner.slice.clockExpiredTicks).toBe(2);
+  });
+});
+
+describe("diffFuelLapsLeft — a sample attempt that throws (issue #1702)", () => {
+  it.each([
+    ["the stats", "race", "stats"],
+    ["the margin", "race", "margin"],
+    ["the stats", "non-race", "stats"],
+    ["the margin", "non-race", "margin"],
+  ] as const)("commits nothing when %s throw in a %s, so the next tick samples the lap", (_what, session, throwIn) => {
+    const events: PendingEvent[] = [];
+    const runner = makeRunner(events);
+
+    runner.run(tick({ Lap: 5, LapDistPct: 0.45, FuelLevel: 6.12 }), { session });
+    const before = { ...runner.slice };
+
+    expect(() => runner.run(tick({ Lap: 5, LapDistPct: 0.55, FuelLevel: 6.1 }), { session, throwIn })).toThrow(
+      "unavailable",
+    );
+    // Only the refuel tracker moved; the crossing is still pending.
+    expect(runner.slice).toEqual({ ...before, lastFuelLevel: 6.1 });
+
+    // floor(6.08 / 2 − 0.3 − 0.4) = 2.
+    runner.run(tick({ Lap: 5, LapDistPct: 0.6, FuelLevel: 6.08 }), { session });
+    expect(counts(events)).toEqual([2]);
+  });
+
+  it("commits nothing when the leader throws in a race, so the next tick samples the lap", () => {
+    const events: PendingEvent[] = [];
+    const { run } = makeRunner(events);
+    // A timed race with a long way to go: the timed side asks for the leader.
+    const timed = { SessionLapsRemainEx: IRSDK_UNLIMITED_LAPS, SessionTimeRemain: 3000 };
+    const options: RunOptions = { avgLapTime: 100 };
+
+    run(tick({ Lap: 5, LapDistPct: 0.45, FuelLevel: 6.12, ...timed }), options);
+    expect(() =>
+      run(tick({ Lap: 5, LapDistPct: 0.55, FuelLevel: 6.1, ...timed }), { ...options, throwIn: "leader" }),
+    ).toThrow("leader unavailable");
+    expect(events).toEqual([]);
+
+    run(tick({ Lap: 5, LapDistPct: 0.6, FuelLevel: 6.08, ...timed }), options);
+    expect(counts(events)).toEqual([2]);
+  });
+
+  it("keeps the saved position when the first readable tick after a gap throws", () => {
+    const events: PendingEvent[] = [];
+    const runner = makeRunner(events);
+
+    runner.run(tick({ Lap: 5, LapDistPct: 0.45, FuelLevel: 8.12 }));
+    runner.run(tick({ Lap: 5, LapDistPct: 0.55, FuelLevel: 8.1 })); // count 3
+    runner.run(tick({ Lap: 6, LapDistPct: 0.6, FuelLevel: 6.2 }), { session: "unknown" });
+
+    expect(() => runner.run(tick({ Lap: 6, LapDistPct: 0.7, FuelLevel: 6.0 }), { throwIn: "stats" })).toThrow();
+    expect(runner.slice).toMatchObject({ lastDistPct: 0.55, lastDistLap: 5, lastSampledLap: 5 });
+
+    // floor(5.98 / 2 − 0.3 − 0.25) = 2.
+    runner.run(tick({ Lap: 6, LapDistPct: 0.75, FuelLevel: 5.98 }));
+    expect(counts(events)).toEqual([3, 2]);
+  });
+
+  it("samples once per lap on the ordinary path, a recovered attempt included", () => {
+    const events: PendingEvent[] = [];
+    const runner = makeRunner(events);
+
+    runner.run(tick({ Lap: 5, LapDistPct: 0.45, FuelLevel: 6.12 }));
+    expect(() => runner.run(tick({ Lap: 5, LapDistPct: 0.55, FuelLevel: 6.1 }), { throwIn: "stats" })).toThrow();
+    runner.run(tick({ Lap: 5, LapDistPct: 0.6, FuelLevel: 6.08 })); // count 2
+    // Later in the lap, lower counts to say: the lap is spent.
+    runner.run(tick({ Lap: 5, LapDistPct: 0.7, FuelLevel: 4.1 }));
+    runner.run(tick({ Lap: 5, LapDistPct: 0.9, FuelLevel: 4.0 }));
+    expect(counts(events)).toEqual([2]);
+    expect(runner.slice.lastSampledLap).toBe(5);
+
+    // The next lap's crossing samples as ever: floor(3.9 / 2 − 0.75) = 1.
+    lapSample(runner.run, 6, 3.9);
+    expect(counts(events)).toEqual([2, 1]);
+  });
+});
+
+describe("resolveFuelSessionBranch (issue #1702)", () => {
+  it("is the race branch for the exact Race type only", () => {
+    expect(resolveFuelSessionBranch("Race")).toBe("race");
+    expect(resolveFuelSessionBranch("Heat Race")).toBe("non-race");
+    expect(resolveFuelSessionBranch("Lone Qualify")).toBe("non-race");
+    expect(resolveFuelSessionBranch("Offline Testing")).toBe("non-race");
+  });
+
+  it("is unknown for an unreadable type", () => {
+    expect(resolveFuelSessionBranch("")).toBe("unknown");
+  });
+});
+
+describe("resolveFuelLapCounterCoverage (issue #1702)", () => {
+  it("is the lap counter as both the counter side and the binding distance, with no timed side", () => {
+    expect(resolveFuelLapCounterCoverage(tick({ SessionLapsRemainEx: 4, SessionTimeRemain: 30 }))).toEqual({
+      lapsNeededAfterCurrent: 3,
+      timedLapsAfterCurrent: null,
+      remainingLaps: 3,
+    });
+  });
+
+  it("is null with no lap limit", () => {
+    expect(resolveFuelLapCounterCoverage(tick({ SessionLapsRemainEx: IRSDK_UNLIMITED_LAPS }))).toBeNull();
+  });
+});
+
+describe("resolveFuelFinalLapStarted (issue #1702)", () => {
+  const white = tick({ SessionFlags: Flags.White });
+  const none = tick({ SessionFlags: 0 });
+
+  it("in a race is the sticky marker, whatever the White bit says", () => {
+    expect(resolveFuelFinalLapStarted(true, true, none)).toBe(true);
+    expect(resolveFuelFinalLapStarted(true, false, white)).toBe(false);
+  });
+
+  it("outside a race is the White bit on the tick, whatever the sticky marker says", () => {
+    expect(resolveFuelFinalLapStarted(false, false, white)).toBe(true);
+    expect(resolveFuelFinalLapStarted(false, true, none)).toBe(false);
+    expect(resolveFuelFinalLapStarted(false, false, tick({ SessionFlags: Flags.White | Flags.Yellow }))).toBe(true);
+    expect(resolveFuelFinalLapStarted(false, false, tick({ SessionFlags: undefined }))).toBe(false);
+  });
+});
+
+describe("isPlayerFinalLapReached (issue #1702)", () => {
+  const running = tick({ SessionState: SessionState.Racing });
+
+  it("is false while the session runs and the player's last lap has not started", () => {
+    expect(isPlayerFinalLapReached(running, false)).toBe(false);
+  });
+
+  it("is true once the player's own last lap has started", () => {
+    expect(isPlayerFinalLapReached(running, true)).toBe(true);
+  });
+
+  it.each([
+    ["Checkered", SessionState.Checkered],
+    ["CoolDown", SessionState.CoolDown],
+  ])("is true once the session is %s, whatever the final-lap answer", (_, state) => {
+    expect(isPlayerFinalLapReached(tick({ SessionState: state }), false)).toBe(true);
+    expect(isPlayerFinalLapReached(tick({ SessionState: state }), true)).toBe(true);
   });
 });
 
@@ -1006,15 +1484,15 @@ describe("resolveFuelRaceCoverage (issue #1387)", () => {
   });
 });
 
-describe("isFuelRaceCovered (issue #1405)", () => {
+describe("isFuelCovered (issue #1405)", () => {
   // Half of this lap plus one more: 1.5 laps of fuel needed, 1.575 with the allowance.
   const halfLapLeft = (rawLapsLeft: number) => ({ rawLapsLeft, lapFractionRemaining: 0.5 });
 
   it("keeps a 5 % allowance on the distance left", () => {
     expect(FUEL_COVERAGE_ERROR).toBe(0.05);
-    expect(isFuelRaceCovered(halfLapLeft(1.5 * 1.04), 1)).toBe(false);
-    expect(isFuelRaceCovered(halfLapLeft(1.5 * 1.06), 1)).toBe(true);
-    expect(isFuelRaceCovered(halfLapLeft(1.5), 1)).toBe(false);
+    expect(isFuelCovered(halfLapLeft(1.5 * 1.04), 1)).toBe(false);
+    expect(isFuelCovered(halfLapLeft(1.5 * 1.06), 1)).toBe(true);
+    expect(isFuelCovered(halfLapLeft(1.5), 1)).toBe(false);
   });
 
   it("judges the raw tank, so a margin that empties the count does not matter", () => {
@@ -1023,26 +1501,26 @@ describe("isFuelRaceCovered (issue #1405)", () => {
     const estimate = estimateFuelLapsLeft(3.4, 0.5, 2, 1.5);
 
     expect(estimate.count).toBe(0);
-    expect(isFuelRaceCovered(estimate, 1)).toBe(true);
+    expect(isFuelCovered(estimate, 1)).toBe(true);
   });
 
   it("grows with the distance left", () => {
     // Ten laps after this one: 10.5 laps needed, 11.025 with the allowance.
-    expect(isFuelRaceCovered(halfLapLeft(11), 10)).toBe(false);
-    expect(isFuelRaceCovered(halfLapLeft(11.03), 10)).toBe(true);
+    expect(isFuelCovered(halfLapLeft(11), 10)).toBe(false);
+    expect(isFuelCovered(halfLapLeft(11.03), 10)).toBe(true);
   });
 
   it("calls the last lap covered whatever the tank holds — the #866 trade-off", () => {
     // Nothing after the current lap: half a lap to run on 0.1 laps of fuel
     // (or none) is not worth a shortage call at the estimator's precision.
-    expect(isFuelRaceCovered(halfLapLeft(0.1), 0)).toBe(true);
-    expect(isFuelRaceCovered(halfLapLeft(0), 0)).toBe(true);
+    expect(isFuelCovered(halfLapLeft(0.1), 0)).toBe(true);
+    expect(isFuelCovered(halfLapLeft(0), 0)).toBe(true);
     // One lap after it is judged on the tank again.
-    expect(isFuelRaceCovered(halfLapLeft(0.1), 1)).toBe(false);
+    expect(isFuelCovered(halfLapLeft(0.1), 1)).toBe(false);
   });
 
   it("never covers an unknown distance", () => {
-    expect(isFuelRaceCovered(halfLapLeft(1000), Number.POSITIVE_INFINITY)).toBe(false);
+    expect(isFuelCovered(halfLapLeft(1000), Number.POSITIVE_INFINITY)).toBe(false);
   });
 });
 
@@ -1454,6 +1932,7 @@ describe("the fuelCallout slice (issue #1405, under #1588's convention)", () => 
   function busySlice(): FuelCalloutState {
     return {
       lastDistPct: 0.62,
+      lastDistLap: 14,
       lastSampledLap: 14,
       lastFuelLevel: 7.5,
       lastAnnouncedCount: 3,
@@ -1465,6 +1944,7 @@ describe("the fuelCallout slice (issue #1405, under #1588's convention)", () => 
   it("starts with nothing sampled, announced or counted", () => {
     expect(createFuelCalloutState()).toEqual({
       lastDistPct: null,
+      lastDistLap: null,
       lastSampledLap: -1,
       lastFuelLevel: null,
       lastAnnouncedCount: null,
@@ -1481,6 +1961,7 @@ describe("the fuelCallout slice (issue #1405, under #1588's convention)", () => 
 
     expect(kept).toEqual({
       lastDistPct: null,
+      lastDistLap: null,
       lastSampledLap: -1,
       lastFuelLevel: 7.5,
       lastAnnouncedCount: 3,

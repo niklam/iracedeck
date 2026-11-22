@@ -85,6 +85,9 @@ import {
   diffFuelLapsLeft,
   FUEL_CALLOUT_DEFAULT_MARGIN_LAPS,
   FUEL_LAPS_LEFT_WINDOW_LAPS,
+  isPlayerFinalLapReached,
+  resolveFuelFinalLapStarted,
+  resolveFuelSessionBranch,
 } from "./diff/fuel-laps-left.js";
 import {
   computeFuelStats,
@@ -812,6 +815,40 @@ export function getSessionType(): string {
  */
 export function getSessionClass(): SessionClass | null {
   return classifySession(getSessionType());
+}
+
+/**
+ * Whether the player has started their own last lap of the session — true
+ * from that lap's start (which the session's chequered flag being out also
+ * implies) until the session changes; null before the first tick, with no
+ * translator, or while the session cannot be read and its chequered flag is
+ * not out. The chequered flag answers true on its own, whatever the session,
+ * so a count queued before it is not heard after it while the session type
+ * is unreadable.
+ *
+ * The rule `handleTick` hands `diffFuelLapsLeft` for its final-lap silence,
+ * over the latest tick and the state that tick left (issue #1702): the
+ * session branch from {@link getSessionType} through
+ * `resolveFuelSessionBranch`, the final-lap answer from
+ * `resolveFuelFinalLapStarted` (the sticky race marker in a race, the White
+ * bit elsewhere), joined with the chequered flag by `isPlayerFinalLapReached`.
+ * What the Race Engineer's fuel contracts read through `SimRuntime` when a
+ * queued count reaches the radio, so a count emitted mid-lap is not heard on
+ * the final lap.
+ */
+export function isPlayerFinalLapStarted(): boolean | null {
+  const telemetry = instance?.latestTelemetry ?? null;
+
+  if (!instance || !telemetry) return null;
+
+  const branch = resolveFuelSessionBranch(getSessionType());
+
+  if (branch === "unknown") return isPostRace(telemetry) ? true : null;
+
+  return isPlayerFinalLapReached(
+    telemetry,
+    resolveFuelFinalLapStarted(branch === "race", instance.state.playerFinalLapStarted, telemetry),
+  );
 }
 
 /**
@@ -2748,8 +2785,8 @@ export function readSimState(): SimStateSnapshot {
       replay,
       fuel: {
         windowLaps: FUEL_LAPS_LEFT_WINDOW_LAPS,
-        // `handleTick`'s own test, on the session type its accessor resolves.
-        isRaceSession: sessionType === "Race",
+        // `handleTick`'s own branch, on the session type its accessor resolves.
+        session: resolveFuelSessionBranch(sessionType),
         stats: fuelLapsLeftStats(self),
         tracker: self.fuelLaps,
         getMarginLaps: self.getFuelLapsLeftMarginLaps,
@@ -4087,22 +4124,24 @@ function handleLiveSteps(
   steps.run("orderMarkerCalls", () =>
     orderMarkerCalls(pending, markerCallsFrom, markerCallsBehind.sector, markerCallsBehind.corner),
   );
-  // Laps-of-fuel-left callout crossings (issue #838). Reads the SAME
-  // validated estimator as Session Info's Laps to Empty (issue #748), over
-  // the same default window, so the spoken count tracks the display. Runs
-  // after diffFlags so the race-coverage suppression (#866) reads a
-  // same-tick-fresh sticky `playerFinalLapStarted` final-lap marker, and after
-  // diffLeaderWhite so the leader's chequered prediction (#1405) reads a
-  // current post-expiry crossing marker. Without a canonical order this tick
-  // the leader is unknown (#1559).
+  // Laps-of-fuel-left callout crossings (issue #838), in every session kind
+  // since #1702. Reads the SAME validated estimator as Session Info's Laps to
+  // Empty (issue #748), over the same default window, so the spoken count
+  // tracks the display. Runs after diffFlags so the race-coverage suppression
+  // (#866) reads a same-tick-fresh sticky `playerFinalLapStarted` final-lap
+  // marker, and after diffLeaderWhite so the leader's chequered prediction
+  // (#1405) reads a current post-expiry crossing marker. Without a canonical
+  // order this tick the leader is unknown (#1559).
   const leaderPositions = order.ok ? order.value : null;
   steps.live("diffFuelLapsLeft", pending, () =>
     diffFuelLapsLeft(
       self.state.fuelCallout,
       telemetry,
-      isRaceSession,
-      // The flags' sticky final-lap marker, as `diffFlags` left it above.
-      self.state.playerFinalLapStarted,
+      // Race, any other session, or unreadable, when it consumes nothing (#1702).
+      resolveFuelSessionBranch(sessionType),
+      // The sticky marker as `diffFlags` left it above in a race, the White
+      // bit elsewhere (#1702).
+      resolveFuelFinalLapStarted(isRaceSession, self.state.playerFinalLapStarted, telemetry),
       () => fuelLapsLeftStats(self),
       self.getFuelLapsLeftMarginLaps,
       (playerLapS) =>
