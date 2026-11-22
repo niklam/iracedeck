@@ -115,7 +115,9 @@ export {
   findNearestCarOnTrack,
   type FindNearestCarOptions,
   forwardGapMeters,
+  LAP_FRACTION_LINE_TOLERANCE,
   nearestCarGapMeters,
+  readLapFraction,
 } from "./track-utils.js";
 
 // Position utilities
