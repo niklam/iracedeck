@@ -304,7 +304,10 @@ export function createCameraCatalogService(options: CameraCatalogServiceOptions)
     state = persistence;
     catalog = loaded;
 
+    // Initialisation is info (logging.md): one line either way, with no
+    // parameters; the warning or error above already said why it is memory only.
     if (persistence === "file") logger.info("Camera catalog loaded");
+    else logger.info("Camera catalog started in memory only");
 
     let changed = false;
 

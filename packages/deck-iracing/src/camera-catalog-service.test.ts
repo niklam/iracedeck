@@ -502,7 +502,7 @@ describe("createCameraCatalogService over a temp dir (#1653)", () => {
     expect(logger.error).toHaveBeenCalledTimes(2);
   });
 
-  it("logs a finished load at info, once, for a saved file and for a missing one; not for memory only", async () => {
+  it("logs a finished load at info, once, for a saved file, a missing one and memory only (#1653 review)", async () => {
     await writeFile(path, JSON.stringify(storedFile));
 
     const loaded = spyLogger();
@@ -520,7 +520,15 @@ describe("createCameraCatalogService over a temp dir (#1653)", () => {
     const newer = spyLogger();
 
     await fileService({ logger: newer }).start();
-    expect(newer.info).not.toHaveBeenCalled();
+    expect(newer.info).toHaveBeenCalledExactlyOnceWith("Camera catalog started in memory only");
+
+    await rm(path);
+    await mkdir(path); // unreadable: a directory where the file should be
+
+    const unreadable = spyLogger();
+
+    await fileService({ logger: unreadable, loadAttempts: 2 }).start();
+    expect(unreadable.info).toHaveBeenCalledExactlyOnceWith("Camera catalog started in memory only");
   });
 
   it("loads once however often it is started", async () => {
