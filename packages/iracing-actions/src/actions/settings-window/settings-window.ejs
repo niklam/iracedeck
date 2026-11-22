@@ -168,8 +168,8 @@
 			.ird-callout-section-summary:hover .ird-callout-section-title { color: var(--sw-fg); }
 			.ird-callout-section-summary:focus-visible { outline: 1px solid var(--sw-accent); outline-offset: 2px; }
 			.ird-callout-section-title { font-size: 10pt; font-weight: 600; color: var(--sw-fg-dim); }
-			ird-callout-count { color: var(--sw-fg-mute); }
-			.ird-callout-section-headings { display: none; flex-basis: 100%; color: var(--sw-fg-mute); line-height: 1.5; }
+			ird-callout-count { color: var(--sw-fg-dim); }
+			.ird-callout-section-headings { display: none; flex-basis: 100%; color: var(--sw-fg-dim); line-height: 1.5; }
 			.ird-callout-section:not([open]) .ird-callout-section-headings { display: block; }
 			/* A heading: the card's full width, not an sdpi-item, whose 241px control
 			   column has no room for a second line under a label. */
@@ -177,8 +177,9 @@
 			.ird-callout-heading-title { font-weight: 600; color: var(--sw-fg); margin: 0 0 2px; }
 			.ird-callout-heading-description { color: var(--sw-fg-dim); margin: 0 0 6px; line-height: 1.4; }
 			/* Rows read top to bottom, then across: two columns at the window's
-			   minimum width, three on a wide one. */
-			.ird-callout-rows { column-width: 280px; column-gap: 24px; margin: 0 0 4px; }
+			   minimum width (720px leaves the rows about 420px, less a scrollbar),
+			   three on a wider one, never more. */
+			.ird-callout-rows { columns: 180px 3; column-gap: 24px; margin: 0 0 4px; }
 			/* Each row is a 1fr/auto grid; the checkbox and its optional description
 			   fill the first cell, and the second is left free (#1701). */
 			.ird-callout-row { break-inside: avoid; display: grid; grid-template-columns: 1fr auto; column-gap: 8px; padding: 0 0 4px; }
