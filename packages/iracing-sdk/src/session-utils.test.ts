@@ -556,7 +556,7 @@ describe("getCameraGroupsFromSessionInfo", () => {
     expect(getCameraGroupsFromSessionInfo({ CameraInfo: { Groups: null } })).toEqual([]);
   });
 
-  it("skips a group with no finite number, which nothing could switch to (#1653 review)", () => {
+  it("skips a group with no integer number, which nothing could switch to (#1653 review)", () => {
     const sessionInfo = {
       CameraInfo: {
         Groups: [
@@ -565,6 +565,7 @@ describe("getCameraGroupsFromSessionInfo", () => {
           { GroupNum: Number.NaN, GroupName: "NaN" },
           { GroupNum: Number.POSITIVE_INFINITY, GroupName: "Inf" },
           { GroupNum: null, GroupName: "Null" },
+          { GroupNum: 1.5, GroupName: "Half" },
           { GroupNum: 0, GroupName: "Zero" },
           { GroupNum: 2, GroupName: "TV1" },
         ],
@@ -576,7 +577,7 @@ describe("getCameraGroupsFromSessionInfo", () => {
       { groupNum: 2, groupName: "TV1" },
     ]);
     // The catalog's reader still records every name, the numberless ones last.
-    expect(readCameraGroupNames(sessionInfo)).toEqual(["Zero", "TV1", "Drone", "Text", "NaN", "Inf", "Null"]);
+    expect(readCameraGroupNames(sessionInfo)).toEqual(["Zero", "Half", "TV1", "Drone", "Text", "NaN", "Inf", "Null"]);
   });
 
   it("skips a group with no readable name, so a list of only such groups reads as none (#1653 review)", () => {
@@ -668,6 +669,34 @@ describe("getCamerasInGroup", () => {
     expect(getCamerasInGroup(ragged, 9)).toEqual([{ cameraNum: 1, cameraName: "Cockpit" }]);
     expect(getCamerasInGroup(ragged, 4)).toEqual([]);
     expect(getCamerasInGroup({ CameraInfo: { Groups: { GroupNum: 9 } } }, 9)).toEqual([]);
+  });
+
+  it("reads each camera as a group is read: integer number, name as text, unnamed left out (#1653 review)", () => {
+    const sessionInfo = {
+      CameraInfo: {
+        Groups: [
+          {
+            GroupNum: 9,
+            Cameras: [
+              { CameraName: "No number" },
+              { CameraNum: "2", CameraName: "Text number" },
+              { CameraNum: 2.5, CameraName: "Half" },
+              { CameraNum: Number.NaN, CameraName: "NaN" },
+              { CameraNum: 3 },
+              { CameraNum: 4, CameraName: "  " },
+              { CameraNum: 5, CameraName: { nested: true } },
+              { CameraNum: 6, CameraName: 360 },
+              { CameraNum: 7, CameraName: "Gyro" },
+            ],
+          },
+        ],
+      },
+    };
+
+    expect(getCamerasInGroup(sessionInfo, 9)).toEqual([
+      { cameraNum: 6, cameraName: "360" },
+      { cameraNum: 7, cameraName: "Gyro" },
+    ]);
   });
 });
 

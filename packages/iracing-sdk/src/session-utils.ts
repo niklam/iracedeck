@@ -289,8 +289,9 @@ export interface CameraGroup {
  * Extracts the list of available camera groups from CameraInfo.Groups[].
  * The session info is parsed YAML, so its shape is not guaranteed: a `Groups`
  * that is not a list reads as no groups, and an entry that is not an object, or
- * has no finite `GroupNum`, is skipped: a group with no number cannot be
- * switched to, so a name lookup must not find it. (`readCameraGroupNames`, the
+ * has no integer `GroupNum`, is skipped: a group with no number cannot be
+ * switched to, and a fractional one would be truncated to another group's
+ * number when it is sent, so a name lookup must not find it. (`readCameraGroupNames`, the
  * camera catalog's reader, keeps such a name.) Change Camera reads this on its
  * first render and before every press (#1653), so a malformed session info
  * must not throw here.
@@ -311,7 +312,7 @@ export function getCameraGroupsFromSessionInfo(sessionInfo: unknown): CameraGrou
 
     const group = entry as { GroupNum: unknown; GroupName: unknown };
 
-    if (typeof group.GroupNum !== "number" || !Number.isFinite(group.GroupNum)) continue;
+    if (typeof group.GroupNum !== "number" || !Number.isInteger(group.GroupNum)) continue;
 
     // A group name YAML reads as something other than text — `GroupName: 360`
     // is the number 360 — is read as its text, as `readCameraGroupNames` reads it,
@@ -460,11 +461,26 @@ export function getCamerasInGroup(sessionInfo: unknown, groupNum: number): Camer
 
   if (!group || !Array.isArray(group.Cameras)) return [];
 
-  return (group.Cameras as unknown[]).filter(isPlainObject).map((camera) => {
-    const c = camera as { CameraNum: number; CameraName: string };
+  // A camera is read as a group is (#1653 review): an entry with no integer
+  // `CameraNum` cannot be switched to, a `CameraName` YAML reads as a number is
+  // read as its text, and a camera with no readable name is left out.
+  const cameras: CameraInGroup[] = [];
 
-    return { cameraNum: c.CameraNum, cameraName: c.CameraName };
-  });
+  for (const entry of group.Cameras as unknown[]) {
+    if (!isPlainObject(entry)) continue;
+
+    const camera = entry as { CameraNum?: unknown; CameraName?: unknown };
+
+    if (typeof camera.CameraNum !== "number" || !Number.isInteger(camera.CameraNum)) continue;
+
+    const cameraName = cameraGroupNameText(camera.CameraName);
+
+    if (cameraName.trim() === "") continue;
+
+    cameras.push({ cameraNum: camera.CameraNum, cameraName });
+  }
+
+  return cameras;
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
