@@ -195,6 +195,42 @@ describe("ird-camera-group-select", () => {
 
       expect((late.querySelector("select") as HTMLSelectElement).value).toBe("Drone");
     });
+
+    describe("Other… chosen before the key's held number is read (#1653 review)", () => {
+      let release: (value: unknown) => void = () => {};
+
+      beforeEach(() => {
+        mock.stored.set("cameraGroup", new Promise((resolve) => (release = resolve)));
+        document.body.replaceChildren();
+        el = document.createElement("ird-camera-group-select");
+        document.body.appendChild(el);
+        chooseOther();
+      });
+
+      const settle = async (): Promise<void> => {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      };
+
+      it("restores the key's number, not the default, after a typed prefix wrote one first", async () => {
+        type("Chase"); // writes 12 before the key's 17 is known
+        release(17);
+        await settle();
+        expect(saveNumber().mock.calls).toEqual([["12"]]);
+
+        type("Chase Cam");
+
+        expect(saveNumber()).toHaveBeenLastCalledWith("17");
+      });
+
+      it("takes the read as the key's number and baseline when typing has written none", async () => {
+        release(17);
+        await settle();
+        type("Chase");
+        type("Chase Cam");
+
+        expect(saveNumber().mock.calls).toEqual([["12"], ["17"]]);
+      });
+    });
   });
 
   describe("the option groups", () => {

@@ -96,6 +96,18 @@ export class CameraGroupSelect extends HTMLElement {
    * push brought is the key's state, not a typing artefact (#1653 review).
    */
   private numberWrittenWhileTyping = false;
+  /**
+   * Whether a push, the held read or a local write has set the `cameraGroup`
+   * number, so the held read never overwrites a newer value.
+   */
+  private numberKnown = false;
+  /**
+   * Whether {@link numberBeforeOther} was taken before the key's number was
+   * known (#1653 review): Other… chosen before the held read resolved. The read
+   * then supplies the baseline a custom name restores, even when typing has
+   * already written a number and the read may no longer set the key's own.
+   */
+  private baselinePending = false;
   private saveName: ((value: string) => void) | null = null;
   private saveNumber: ((value: string) => void) | null = null;
 
@@ -167,6 +179,7 @@ export class CameraGroupSelect extends HTMLElement {
         if (!this.otherMode) {
           this.numberBeforeOther = this.storedNumber;
           this.numberWrittenWhileTyping = false;
+          this.baselinePending = !this.numberKnown;
         }
 
         this.otherMode = true;
@@ -270,7 +283,6 @@ export class CameraGroupSelect extends HTMLElement {
     // getter read below — the value sdpi held before this element subscribed —
     // never overwrites a newer one.
     let nameKnown = false;
-    let numberKnown = false;
 
     const onName = skipUnchanged((value: unknown) => {
       nameKnown = true;
@@ -285,7 +297,7 @@ export class CameraGroupSelect extends HTMLElement {
     };
 
     const onNumber = skipUnchanged((value: unknown) => {
-      numberKnown = true;
+      this.numberKnown = true;
       this.storedNumber = value;
 
       // A push while Other… is open is the key's number now: the one a custom
@@ -293,6 +305,7 @@ export class CameraGroupSelect extends HTMLElement {
       if (this.otherMode) {
         this.numberBeforeOther = value;
         this.numberWrittenWhileTyping = false;
+        this.baselinePending = false;
       }
 
       this.render();
@@ -300,7 +313,7 @@ export class CameraGroupSelect extends HTMLElement {
     const [readNumber, saveNumber] = window.SDPIComponents.useSettings(numberKey, onNumber);
 
     this.saveNumber = (value: string) => {
-      numberKnown = true;
+      this.numberKnown = true;
       saveNumber(value);
     };
 
@@ -311,7 +324,15 @@ export class CameraGroupSelect extends HTMLElement {
       if (!nameKnown) onName(value);
     });
     void readNumber().then((value) => {
-      if (!numberKnown) onNumber(value);
+      if (!this.numberKnown) {
+        onNumber(value);
+      } else if (this.otherMode && this.baselinePending) {
+        // Typing wrote a number before the key's own was known: that write
+        // stays, and the key's number becomes the one a custom name restores.
+        this.numberBeforeOther = value;
+      }
+
+      this.baselinePending = false;
     });
 
     const onCatalog = skipUnchanged((value: unknown) => {
