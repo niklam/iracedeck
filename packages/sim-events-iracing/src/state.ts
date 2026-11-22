@@ -357,6 +357,69 @@ export function createCarProgressState(): CarProgressState {
 }
 
 /**
+ * Every car's line-progress memory on replay frames (issue #1682,
+ * `diff/replay-progress.ts`): what lets the canonical order rank a replay
+ * frame by each car's progress read through `readCarProgress` instead of the
+ * raw `CarIdxLapCompleted + CarIdxLapDistPct`. Written by `stepReplayProgress`
+ * alone, once per tick the translator's replay guard swallows (an in-session
+ * replay, the seek grace, a saved replay).
+ *
+ * It exists because a replay frame never reaches the live order's freeze
+ * (`updatePositionTracking`): ranked raw, a car whose two arrays disagree for
+ * a tick at the start/finish line ranks a lap ahead or behind for that tick.
+ * The memory corrects that one-tick disagreement and holds nothing else; a
+ * rewinding timeline is read in both directions.
+ *
+ * It holds only per-car memory and the last `SessionTime`: the tick's readings
+ * themselves, paired with the telemetry object they were taken from, live on
+ * the translator instance (`replayReadings`), so no telemetry object lands in
+ * the state a Telemetry Snapshot dumps. Wiped whole at both replay edges (the
+ * replay wipe recreates the state and does not preserve it), and recreated at
+ * a session change and a disconnect, so a run of replay readings never
+ * carries into a live tick and the live car-progress step
+ * (`CarProgressState`) never sees one.
+ */
+export type ReplayProgressState = {
+  /**
+   * Per car, by carIdx: the progress the step last read for it (after the
+   * line correction). `undefined` = no valid reading on the last tick the
+   * step read. Corrected against only while {@link lastProgressConfirmed}.
+   */
+  lastProgress: (number | undefined)[];
+  /**
+   * Per car, by carIdx: whether {@link lastProgress} may be corrected against
+   * (`confirmsCarProgress` in `diff/car-progress.ts`, under the replay
+   * policy). True once a reading continued the one before it (within half a
+   * lap, read within `CAR_PROGRESS_LINE_MAX_SPAN_S` of it either way) AND
+   * that one was confirmed, or this one was read clear of the line guard
+   * band, or it is the third consecutive continuing reading at a distinct
+   * `SessionTime` ({@link continuingRun}). A hole reads as false.
+   */
+  lastProgressConfirmed: boolean[];
+  /**
+   * Per car, by carIdx: how many consecutive readings, each at a `SessionTime`
+   * other than the one before it, have continued the car's chain (0 for a
+   * reading that continued nothing). A paused replay repeats one
+   * `SessionTime` and does not lengthen it, so a pause on a disagreeing frame
+   * cannot confirm that frame.
+   */
+  continuingRun: number[];
+  /**
+   * `SessionTime` of the last tick the step read every car on, or null:
+   * cleared on entry, written once the per-car loop completes, so a throw, a
+   * tick without the progress arrays or a non-finite `SessionTime` leaves the
+   * next tick with no previous one, and nothing is corrected or confirmed
+   * across it.
+   */
+  lastReadSessionTime: number | null;
+};
+
+/** Nothing read on a replay frame yet (issue #1682): the initial state. */
+export function createReplayProgressState(): ReplayProgressState {
+  return { lastProgress: [], lastProgressConfirmed: [], continuingRun: [], lastReadSessionTime: null };
+}
+
+/**
  * One lap a car completed, as the sector timer measured it (issue #1572):
  * recorded once, at the start/finish crossing that closed it, and never
  * changed afterwards.
@@ -2122,6 +2185,13 @@ export type TranslatorState = {
   /** See {@link CarProgressState}. Wiped with the rest of the state on a replay glance. */
   carProgress: CarProgressState;
 
+  // ── Replay progress (issue #1682) ───────────────────────────────────────
+  /**
+   * See {@link ReplayProgressState}. Written on replay frames only, and wiped
+   * with the rest of the state at both replay edges.
+   */
+  replayProgress: ReplayProgressState;
+
   // ── Sector times (issue #1572) ──────────────────────────────────────────
   /**
    * See {@link SectorTimesState}. A replay glance keeps its completed laps
@@ -2890,6 +2960,8 @@ export function createInitialState(): TranslatorState {
     trackLengthKey: "",
 
     carProgress: createCarProgressState(),
+
+    replayProgress: createReplayProgressState(),
 
     sectorTimes: createSectorTimesState(),
 

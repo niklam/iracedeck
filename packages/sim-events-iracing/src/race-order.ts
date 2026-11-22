@@ -1,5 +1,5 @@
 /**
- * Source selection for the CANONICAL race order (issue #974).
+ * Source selection for the CANONICAL race order (issues #974, #1682).
  *
  * `.claude/rules/race-positions.md` names one race order for the whole project.
  * That order is normally the self-managed lap-progress ranking
@@ -12,9 +12,17 @@
  * blank and the Camera Controls dial's Cycle by Race Position did nothing.
  *
  * This module adds the one source that DOES exist there — the qualifying grid
- * from session YAML — and decides when it applies. It composes the two
- * primitives rather than computing anything itself, so there is still exactly
- * one lap-progress ranking and one grid parser in the project.
+ * from session YAML — and decides when it applies. It composes the primitives
+ * rather than computing anything itself, so there is still exactly one
+ * ranking (`rankRaceScores`) and one grid parser in the project.
+ *
+ * **The third source: a replay frame's progress (issue #1682).** A replay
+ * frame never reaches the live freeze, so ranked raw a car whose lap counter
+ * and lap fraction disagree for a tick at the start/finish line ranks a lap
+ * ahead or behind for that tick. The translator's replay step
+ * (`diff/replay-progress.ts`) reads every car through the one line-progress
+ * reading instead, and the translator hands those readings in as a value for
+ * the very telemetry they were taken from; this module only chooses them.
  *
  * **Why not rank by lap distance pre-green.** A parade lap is double-file, so
  * within every row the outside car sits marginally further round the lap.
@@ -22,7 +30,13 @@
  * measured on a real capture, all ten rows of a 20-car field. The grid order
  * has to come from `QualifyResultsInfo`, never from telemetry geometry.
  */
-import { calculateGridPositions, extractQualifyResults, isPreGreen, type TelemetryData } from "@iracedeck/iracing-sdk";
+import {
+  calculateGridPositions,
+  extractQualifyResults,
+  isPreGreen,
+  rankRaceScores,
+  type TelemetryData,
+} from "@iracedeck/iracing-sdk";
 
 import { calculateFrozenRacePositions } from "./diff/race-finish.js";
 import type { TranslatorState } from "./state.js";
@@ -60,6 +74,15 @@ export function isQualifyingGridPhase(telemetry: TelemetryData, isRaceSession: b
  *   on transient session-boundary ticks — where `QualifyResultsInfo` holds the
  *   PREVIOUS session's grid, or a qualifying order that is still being set.
  *
+ * Past the grid, a replay frame the translator's replay step read
+ * (`replayProgress`, its readings for exactly this telemetry, issue #1682) is
+ * ranked by those readings through `rankRaceScores`: each car's lap progress,
+ * corrected for the one tick its counter and fraction disagree at the line.
+ * Any other tick — every live tick, and a replay tick the step did not
+ * complete — gets `null` and the lap-progress order with its tow/finish
+ * freeze (`calculateFrozenRacePositions`), which on a replay frame has no
+ * anchors and ranks raw.
+ *
  * At the green the order rolls to live lap progress. Every car listed on the
  * grid keeps its slot even when it is not in the world yet (a driver still in
  * the garage starts from their qualifying position all the same); a consumer
@@ -74,6 +97,12 @@ export function calculateCanonicalRacePositions(
   telemetry: TelemetryData,
   sessionInfo: Record<string, unknown> | null,
   isRaceSession: boolean,
+  /**
+   * The replay step's per-car progress for THIS telemetry (`null` = none: a
+   * live tick, or a replay tick the step did not complete). The caller pairs
+   * it with its telemetry; this function trusts the pairing.
+   */
+  replayProgress: readonly (number | null)[] | null = null,
 ): number[] {
   if (isQualifyingGridPhase(telemetry, isRaceSession)) {
     const results = extractQualifyResults(sessionInfo);
@@ -81,6 +110,8 @@ export function calculateCanonicalRacePositions(
 
     if (gridOrder) return gridOrder;
   }
+
+  if (replayProgress !== null) return rankRaceScores(replayProgress);
 
   return calculateFrozenRacePositions(state, telemetry);
 }

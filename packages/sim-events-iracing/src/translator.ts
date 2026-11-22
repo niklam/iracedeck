@@ -124,6 +124,7 @@ import { diffPitStatus } from "./diff/pit-status.js";
 import { diffPitsOpen } from "./diff/pits-open.js";
 import { updatePositionTracking } from "./diff/race-finish.js";
 import { diffRadar, resolveRadarState } from "./diff/radar.js";
+import { stepReplayProgress } from "./diff/replay-progress.js";
 import { diffRollingStart } from "./diff/rolling-start.js";
 import { diffSectorStart } from "./diff/sector-start.js";
 import { diffSectorTimes } from "./diff/sector-times.js";
@@ -212,7 +213,7 @@ const SUBSCRIPTION_ID = "__sim-events-iracing__";
  * one step's first error. `tick-steps.source.test.ts` counts the ids in both
  * `handleTick`s and fails until this number matches; a new step changes it.
  */
-export const TRANSLATOR_REPORTER_MAX_KEYS = 68 * TICK_STEP_KEYS_PER_ID;
+export const TRANSLATOR_REPORTER_MAX_KEYS = 69 * TICK_STEP_KEYS_PER_ID;
 
 /** The step name every {@link onTranslatorTick} listener is called under: one id, `translator:onTranslatorTick`. */
 const TICK_LISTENER_STEP = "onTranslatorTick";
@@ -258,15 +259,33 @@ type TranslatorInstance = {
    * and stores. `null` until first resolved and after a disconnect.
    *
    * Invariant: the key catches a replaced state object, never an in-place
-   * write. `positionLastKnownScores` and `positionFrozen` are written in place
+   * write. The order's in-place inputs have two writers, and each leaves the
+   * memo right: `positionLastKnownScores` and `positionFrozen` are written
    * only by `updatePositionTracking`, before the order step writes this memo;
-   * any other writer of the order's inputs must set the memo to `null`.
+   * {@link replayReadings} is written only by the replay guard's
+   * `stepReplayProgress` step (issue #1682), which sets the memo to `null`
+   * right after it. Any other writer of the order's inputs must set the memo
+   * to `null` too.
    */
   canonicalOrderMemo: {
     telemetry: TelemetryData;
     sessionInfo: Record<string, unknown> | null;
     state: TranslatorState;
     positions: readonly number[];
+  } | null;
+  /**
+   * The replay step's per-car progress (issue #1682,
+   * `diff/replay-progress.ts`) paired with the telemetry object it was read
+   * from: the canonical order's source on a replay frame. The order uses it
+   * only for that very telemetry (`replayProgressFor`), so a live tick never
+   * sees a replay reading. Kept here rather than in `TranslatorState` so no
+   * telemetry object lands in the state a Telemetry Snapshot dumps. Cleared
+   * before the step runs and written only once it has returned, so a tick it
+   * threw on has none; also cleared on the replay exit and a disconnect.
+   */
+  replayReadings: {
+    telemetry: TelemetryData;
+    progress: readonly (number | null)[];
   } | null;
   /** Cached pit speed limit (m/s) parsed from session YAML. 0 = not parsed. */
   pitSpeedLimitMps: number;
@@ -673,6 +692,7 @@ export function initializeSimEventsIracing(
     paceLineupMemo: null,
     cautionGapMemo: null,
     canonicalOrderMemo: null,
+    replayReadings: null,
     pitSpeedLimitMps: 0,
     pitSpeedLimitKey: "",
     lastTickInReplay: false,
@@ -1535,11 +1555,16 @@ function carPositionInOrder(
  *
  * Note: during replay, `handleTick` returns at the replay guard before
  * `updatePositionTracking` runs, so the frozen-anchor state isn't maintained and
- * this falls back to the plain lap-progress order (no tow/finish freezing) —
- * or, on a pre-green frame of a race, to the qualifying grid, which needs no
- * anchor state at all. That is by design — a scrubbing/rewinding replay timeline
- * breaks the forward-motion assumption the freezing relies on, so there's no
- * correct order to reconstruct.
+ * there is no tow/finish freezing: a scrubbing/rewinding replay timeline breaks
+ * the forward-motion assumption the freezing relies on, so there's no correct
+ * frozen order to reconstruct. Instead the guard's own step,
+ * `stepReplayProgress` (issue #1682), reads every car's lap progress through
+ * the one line-progress reading, in both directions, and this ranks a replay
+ * frame by those readings, so a car whose lap counter and lap fraction disagree
+ * for a tick at the start/finish line does not blink a lap ahead or behind. On a
+ * pre-green frame of a race it is the qualifying grid, which needs no state at
+ * all; on a replay frame the step did not complete, the plain lap-progress
+ * order.
  */
 export function getLiveRacePositions(): readonly number[] | null {
   if (!instance || !instance.latestTelemetry) return null;
@@ -1569,7 +1594,7 @@ function readCanonicalOrder(
     return memo.positions;
   }
 
-  const positions = resolveCanonicalOrder(self.state, telemetry, sessionInfo);
+  const positions = resolveCanonicalOrder(self, telemetry, sessionInfo);
 
   self.canonicalOrderMemo = { telemetry, sessionInfo, state: self.state, positions };
 
@@ -1592,19 +1617,32 @@ function readCanonicalOrder(
  * throw rather than corrupt the others.
  */
 function resolveCanonicalOrder(
-  state: TranslatorState,
+  self: TranslatorInstance,
   telemetry: TelemetryData,
   sessionInfo: Record<string, unknown> | null,
   isRaceSession?: boolean,
 ): readonly number[] {
   return Object.freeze(
     calculateCanonicalRacePositions(
-      state,
+      self.state,
       telemetry,
       sessionInfo,
       isRaceSession ?? resolveSessionType(sessionInfo, telemetry) === "Race",
+      replayProgressFor(self, telemetry),
     ),
   );
+}
+
+/**
+ * The replay step's readings when they were read from this very telemetry
+ * object (issue #1682), else `null`: the pairing that keeps a replay reading
+ * off every other tick — a live one, and a replay tick the step did not
+ * complete.
+ */
+function replayProgressFor(self: TranslatorInstance, telemetry: TelemetryData): readonly (number | null)[] | null {
+  const readings = self.replayReadings;
+
+  return readings !== null && readings.telemetry === telemetry ? readings.progress : null;
 }
 
 /**
@@ -2197,7 +2235,7 @@ function resolvePlayerIsLeader(
   isRaceSession: boolean,
 ): boolean {
   if (playerCarIdx >= 0) {
-    const positions = resolveCanonicalOrder(self.state, telemetry, sessionInfo, isRaceSession);
+    const positions = resolveCanonicalOrder(self, telemetry, sessionInfo, isRaceSession);
     const position = positions[playerCarIdx] ?? 0;
 
     if (position > 0) return position === 1;
@@ -2854,8 +2892,10 @@ function handleDisconnect(self: TranslatorInstance): void {
   // session change, but not the sim going away.
   self.state = createInitialState();
   self.latestTelemetry = null;
-  // The order belongs to the telemetry just dropped (#711).
+  // The order belongs to the telemetry just dropped (#711), and so do the
+  // replay step's readings (issue #1682).
   self.canonicalOrderMemo = null;
+  self.replayReadings = null;
   self.pitSpeedLimitMps = 0;
   self.pitSpeedLimitKey = "";
   self.sessionIdentity = createSessionIdentityBaseline();
@@ -3505,12 +3545,32 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
       self.state.lastStopTireTemps = null;
     }
 
+    // The replay order's progress (issue #1682): every car read through the
+    // one line-progress reading against its replay memory, on every tick the
+    // guard swallows, whether or not anyone reads the order, so the memory has
+    // no gaps that depend on how often a dial renders. The translator's step,
+    // not the replay recorder's (#1468): it feeds the canonical order, which
+    // the translator owns. The readings are cleared first and paired with
+    // this telemetry only once the step returns, so a throw leaves none.
+    self.replayReadings = null;
+    steps.run("stepReplayProgress", () => {
+      const progress = stepReplayProgress(self.state.replayProgress, telemetry);
+
+      if (progress !== null) self.replayReadings = { telemetry, progress };
+    });
+    // The step wrote the order's inputs: an order a pre-guard reader memoised
+    // from this telemetry is stale (the memo's invariant, #711).
+    self.canonicalOrderMemo = null;
+
     return;
   }
 
   if (self.lastTickInReplay) {
     wipeStateForReplay(self);
     self.lastTickInReplay = false;
+    // The replay's readings end with it (issue #1682); the pairing already
+    // keeps them off this tick, and this keeps them from being held.
+    self.replayReadings = null;
   }
 
   const now = Date.now();
@@ -3809,7 +3869,7 @@ function handleLiveSteps(
   // falls back to the bound on the player's own average, #1405).
   const order = tracked
     ? steps.requiredValue("resolveCanonicalOrder", () =>
-        resolveCanonicalOrder(self.state, telemetry, sessionInfo, isRaceSession),
+        resolveCanonicalOrder(self, telemetry, sessionInfo, isRaceSession),
       )
     : VALUE_UNAVAILABLE;
   // The readers between ticks share this order (#711): written unconditionally

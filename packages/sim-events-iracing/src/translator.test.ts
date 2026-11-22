@@ -778,6 +778,118 @@ describe("sim-events-iracing translator", () => {
     });
   });
 
+  describe("the replay order across the start/finish line (issue #1682)", () => {
+    const RACE: Record<string, unknown> = {
+      WeekendInfo: { TrackID: 42, SimMode: "full" },
+      SessionInfo: { Sessions: [{ SessionNum: 0, SessionType: "Race" }] },
+      DriverInfo: { DriverCarIdx: 1, Drivers: [{ CarIdx: 0 }, { CarIdx: 1 }, { CarIdx: 2 }] },
+    };
+
+    /**
+     * A racing tick: car 0 at `[lapCompleted, lapDistPct]`, car 1 ahead of it
+     * at 7.3 laps, car 2 behind at 6.5 — so car 0 is P2 unless its sum reads a
+     * lap ahead.
+     */
+    function raceTick(sessionTime: number, car0: readonly [number, number], replay: boolean): TelemetryData {
+      return telemetry({
+        SessionTime: sessionTime,
+        SessionState: SessionState.Racing,
+        SessionFlags: Flags.Green,
+        IsReplayPlaying: replay,
+        IsOnTrack: !replay,
+        CarIdxLapCompleted: [car0[0], 7, 6],
+        CarIdxLapDistPct: [car0[1], 0.3, 0.5],
+        CarIdxTrackSurface: [TrkLoc.OnTrack, TrkLoc.OnTrack, TrkLoc.OnTrack],
+      });
+    }
+
+    /** Car 0 approaching the line, then its counter stepping a tick before its fraction wraps. */
+    const APPROACH: readonly (readonly [number, number])[] = [
+      [6, 0.9995],
+      [6, 0.9996],
+      [6, 0.9997],
+      [6, 0.9998],
+      [6, 0.9999],
+    ];
+    const DISAGREEING: readonly [number, number] = [7, 1.0];
+    const AFTER: readonly [number, number] = [7, 0.0001];
+
+    function start() {
+      vi.useFakeTimers();
+      const controller = createMockController();
+      controller.__setSessionInfo(RACE);
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
+
+      let time = 1000;
+      const tick = (car0: readonly [number, number], replay: boolean, dt = 1 / 60): void => {
+        time += dt;
+        vi.advanceTimersByTime(16);
+        controller.__tick(raceTick(time, car0, replay));
+      };
+
+      return { controller, tick };
+    }
+
+    it("keeps car 0 at P2 on a replay frame its counter and fraction disagree on, read between ticks", () => {
+      const { tick } = start();
+      const seen: (readonly number[] | null)[] = [];
+
+      for (const car0 of [...APPROACH, DISAGREEING, AFTER]) {
+        tick(car0, true);
+        seen.push(getLiveRacePositions());
+      }
+
+      for (const order of seen) expect(order).toEqual([2, 1, 3]);
+    });
+
+    it("corrects a rewind across the line the same way", () => {
+      const { tick } = start();
+      const orders: (readonly number[] | null)[] = [];
+
+      for (const car0 of [
+        [7, 0.001],
+        [7, 0.0008],
+        [7, 0.0006],
+        [7, 0.0004],
+        [7, 0.0002],
+        [7, 0.9999],
+        [6, 0.9998],
+      ] as const) {
+        tick(car0, true, -0.2);
+        orders.push(getLiveRacePositions());
+      }
+
+      for (const order of orders) expect(order).toEqual([2, 1, 3]);
+    });
+
+    it("ranks raw on a replay frame without the replay step's history: the positive control", () => {
+      const { tick } = start();
+
+      // A seek straight onto the disagreeing frame: nothing to correct against.
+      tick(DISAGREEING, true);
+
+      expect(getLiveRacePositions()).toEqual([1, 2, 3]);
+    });
+
+    it("ranks a live tick after the replay from the live path, never from a replay reading", () => {
+      const { tick } = start();
+
+      for (const car0 of APPROACH) tick(car0, true);
+
+      tick(DISAGREEING, true);
+      expect(getLiveRacePositions()).toEqual([2, 1, 3]);
+
+      // Back to the car: the grace runs out on replay-flag-false ticks, then
+      // the first live tick wipes the replay state and orders from the live
+      // path, which ranks the same disagreeing reading raw.
+      tick(AFTER, false);
+      elapseReplayGrace();
+      tick(DISAGREEING, false);
+
+      expect(getLiveRacePositions()).toEqual([1, 2, 3]);
+    });
+  });
+
   describe("pre-green grid order (issue #974)", () => {
     /** A race session whose grid puts car2 on pole, then car1, then the player (car0). */
     function raceSessionWithGrid(): Record<string, unknown> {

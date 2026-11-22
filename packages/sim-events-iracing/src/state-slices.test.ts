@@ -29,6 +29,7 @@ import {
  * Not here: "Track-order gaps outside a race (issue #1515)" (`trackGaps`),
  * "Pit-lane landmarks (issue #1112)" (`pitLaneLandmarks`),
  * "Car progress (issue #1572)" (`carProgress`),
+ * "Replay progress (issue #1682)" (`replayProgress`),
  * "Sector times (issue #1572)" (`sectorTimes`),
  * "Approaching traffic (issue #1113)" (`trafficArrival`),
  * "Fastest lap of the race (issue #1571)" (`fastestLap`),
@@ -346,6 +347,7 @@ const SLICE_KEYS = [
   "sectorStart",
   "limiterToggle",
   "carProgress",
+  "replayProgress",
   "sectorTimes",
 ];
 
