@@ -1384,10 +1384,12 @@ export class CameraControls extends SimIRacingAction<CameraControlsSettings> {
           this.logger.info("Camera group switched");
           this.logger.debug(`Result: ${success}, direction: ${direction}, targetGroup: ${nextEntry.groupNum}`);
         } else {
-          // Fallback if car number lookup fails
-          const success = camera.cycleCamera(carIdx, groupNum, dir);
-          this.logger.info("Camera group cycled (car number fallback)");
-          this.logger.debug(`Result: ${success}, direction: ${direction}`);
+          // No number for the focused car (#1653 review). The sim's own cycle
+          // would ignore the enabled groups and take the car index for a race
+          // position, so nothing is sent; the next press, once the car has a
+          // number, switches as usual.
+          this.logger.info("Camera group switch skipped: the focused car has no car number");
+          this.logger.debug(`carIdx: ${carIdx}, targetGroup: ${nextEntry.groupNum}`);
         }
 
         break;

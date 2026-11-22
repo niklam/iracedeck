@@ -4458,6 +4458,24 @@ describe("Camera Controls keys on a group the session lacks (#1653)", () => {
       expect(mockCamera.switchNum).toHaveBeenCalledWith(42, 4, 0);
     });
 
+    it("sends nothing, and says so, when the focused car has no number (#1653 review)", async () => {
+      const action = await appear(
+        current({ DynamicTV: true }),
+        CUSTOM_FILE_GROUPS,
+        {},
+        { CamCarIdx: 4, CamGroupNumber: 1 },
+      );
+      vi.mocked(getCarNumberRawFromSessionInfo).mockReturnValue(null);
+
+      await action.onKeyDown({ action: { id: "key-1" }, payload: { settings: current({ DynamicTV: true }) } } as never);
+
+      expect(mockCamera.switchNum).not.toHaveBeenCalled();
+      expect(mockCamera.cycleCamera).not.toHaveBeenCalled();
+      expect(action["logger"].info).toHaveBeenCalledWith(
+        "Camera group switch skipped: the focused car has no car number",
+      );
+    });
+
     it("logs an enabled name that matches several groups only in case, and cycles the rest", async () => {
       const subset = { static: true, Chase: true };
       const action = await appear(current(subset), CASE_TWIN_GROUPS, {}, { CamGroupNumber: 1 });
