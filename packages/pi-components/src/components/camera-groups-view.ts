@@ -410,10 +410,13 @@ function rememberedSuffix(catalog: CameraCatalogView, group: CameraCatalogViewGr
  * that is the group a press finds first (#1653 review: with `TV1` and `tv1`
  * both in the file, `tv1` means `tv1`). Otherwise legacy-folded: a standard
  * name typed in any case stores the canonical standard spelling (so its number
- * is written too), and any other name resolves against the catalog and the
- * session as the press resolves a name — exactly, then the one name matching
- * ignoring case — so `dynamictv` stores the `DynamicTV` the file actually has;
- * a name neither knows is stored as typed.
+ * is written too), and any other name resolves as the press resolves a name —
+ * exactly, then the one name matching ignoring case — first against the
+ * session, so `dynamictv` stores the `DynamicTV` the file actually has, and
+ * only then against the remembered names: a remembered `drone` from another
+ * track neither makes the session's one `Drone` ambiguous nor breaks a tie
+ * between two of the session's own names (#1653 review). A name none of them
+ * settles is stored as typed.
  */
 export function resolveTypedCameraGroupName(typed: string, catalog: CameraCatalogView | null): string | null {
   const trimmed = typed.trim();
@@ -428,9 +431,17 @@ export function resolveTypedCameraGroupName(typed: string, catalog: CameraCatalo
 
   if (standard !== undefined) return standard.name;
 
-  const known = new Set<string>([...(catalog?.current?.groups ?? []), ...(catalog?.groups.map((g) => g.name) ?? [])]);
+  const session = catalog?.current?.groups ?? [];
+  const inSession = matchCameraGroupName(folded, session);
 
-  return matchCameraGroupName(folded, known) ?? folded;
+  if (inSession !== undefined) return inSession;
+
+  // Several of the session's own names match: a remembered one does not choose.
+  const lower = folded.toLowerCase();
+
+  if (session.some((name) => name.toLowerCase() === lower)) return folded;
+
+  return matchCameraGroupName(folded, catalog?.groups.map((g) => g.name) ?? []) ?? folded;
 }
 
 /**

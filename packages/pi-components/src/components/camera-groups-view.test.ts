@@ -319,6 +319,27 @@ describe("resolveTypedCameraGroupName", () => {
     expect(resolveTypedCameraGroupName(" My Chicane ", view)).toBe("My Chicane");
   });
 
+  describe("a session name and a remembered one that differ only in case (#1653 review)", () => {
+    it("stores the session's one match, not the remembered spelling", () => {
+      const view = catalog([group("drone", [0])], { trackId: 2, groups: ["Drone"] });
+
+      expect(resolveTypedCameraGroupName("dRoNe", view)).toBe("Drone");
+    });
+
+    it("never lets a remembered name break a tie between two of the session's", () => {
+      const view = catalog([group("static", [0])], { trackId: 2, groups: ["Static", "STATIC"] });
+
+      expect(resolveTypedCameraGroupName("sTaTiC", view)).toBe("sTaTiC");
+    });
+
+    it("stores a remembered name's spelling when the session has none", () => {
+      expect(
+        resolveTypedCameraGroupName("DRONE", catalog([group("drone", [0])], { trackId: 2, groups: ["Nose"] })),
+      ).toBe("drone");
+      expect(resolveTypedCameraGroupName("DRONE", catalog([group("drone", [0])], null))).toBe("drone");
+    });
+  });
+
   describe("a session group that differs from a standard one only in case (#1653 review)", () => {
     const twins = catalog([], { trackId: 2, groups: ["TV1", "tv1"] });
 
