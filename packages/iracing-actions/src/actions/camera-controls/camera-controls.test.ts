@@ -3788,6 +3788,51 @@ describe("Camera Controls keys on a group the session lacks (#1653)", () => {
       expect(pushedImages(action)).toBe(2);
     });
 
+    describe("a settings redraw the host refuses (#1653 review)", () => {
+      /** Nose on the key; new settings for DynamicTV, as available, whose setTitle rejects. */
+      async function refuseRedraw(): Promise<CameraControls> {
+        const action = await appear({ target: "change-camera", cameraGroupName: "Nose" }, CUSTOM_FILE_GROUPS);
+        const context = keyContext();
+        context.setTitle.mockRejectedValueOnce(new Error("socket closed"));
+
+        await expect(
+          action.onDidReceiveSettings({
+            action: context,
+            payload: { settings: { target: "change-camera", cameraGroupName: "DynamicTV" } },
+          } as never),
+        ).rejects.toThrow("socket closed");
+
+        return action;
+      }
+
+      const pushed = (action: CameraControls, index: number): string =>
+        decodeURIComponent(String(vi.mocked(action["updateKeyImage"]).mock.calls[index][1]));
+
+      it("draws the new look on the next tick, and registers its regeneration", async () => {
+        const action = await refuseRedraw();
+        expect(pushedImages(action)).toBe(0);
+
+        subscriber?.();
+        await new Promise((resolve) => setTimeout(resolve, 0));
+
+        expect(pushedImages(action)).toBe(1);
+        expect(pushed(action, 0)).toContain("custom-artwork");
+        const regenerate = vi.mocked(action["setRegenerateCallback"]).mock.calls.at(-1)?.[1] as () => string;
+        expect(decodeURIComponent(regenerate())).toContain("custom-artwork");
+      });
+
+      it("dedupes again once that redraw went out", async () => {
+        const action = await refuseRedraw();
+
+        subscriber?.();
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        subscriber?.();
+        subscriber?.();
+
+        expect(pushedImages(action)).toBe(1);
+      });
+    });
+
     it("reads the group list once per session update, not per tick", async () => {
       await appear({ target: "change-camera", cameraGroupName: "DynamicTV" }, CUSTOM_FILE_GROUPS);
       const reads = vi.mocked(getCameraGroupsFromSessionInfo).mock.calls.length;

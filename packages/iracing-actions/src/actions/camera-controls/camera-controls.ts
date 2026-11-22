@@ -1959,54 +1959,65 @@ export class CameraControls extends SimIRacingAction<CameraControlsSettings> {
 
     if (this.shownUnavailable.get(contextId) === unavailable) return;
 
-    void this.writeChangeCameraLook(contextId, this.keySvg(contextId, settings));
+    void this.writeChangeCameraLook(contextId, settings);
   }
 
   /**
-   * Push a Change Camera key's redrawn look. `keySvg` recorded that look before
-   * the write; a write that rejects, or finds the key gone, never put it on the
-   * device, so the record is dropped and the next tick draws it again (#1653
-   * review). A newer redraw's record, made while this write was in flight,
-   * belongs to that write and is left alone.
+   * Push a Change Camera key's redrawn look. Its look is recorded before the
+   * write, so ticks meanwhile do not send it again; a write that rejects, or
+   * finds the key gone, never put it on the device, so the record is dropped
+   * and the next tick draws it again (#1653 review). A newer redraw's record,
+   * made while this write was in flight, belongs to that write and is left
+   * alone. A write that landed registers regeneration for these settings: one
+   * that follows a failed settings redraw is the first to put them on the key.
    */
-  private async writeChangeCameraLook(contextId: string, svg: string): Promise<void> {
+  private async writeChangeCameraLook(contextId: string, settings: CameraControlsSettings): Promise<void> {
+    const icon = this.renderKeyIcon(settings);
+    this.recordShownLook(contextId, icon.unavailable);
+
     const recorded = this.shownUnavailable.get(contextId);
     let written: boolean;
 
     try {
-      written = await this.updateKeyImage(contextId, svg);
+      written = await this.updateKeyImage(contextId, icon.svg);
     } catch (err) {
       // Debug, not warn: a host that keeps refusing would log this every tick.
       this.logger.debug(`Failed to redraw a Change Camera key: ${err instanceof Error ? err.message : err}`);
       written = false;
     }
 
-    if (written === false && this.shownUnavailable.get(contextId) === recorded) {
-      this.shownUnavailable.delete(contextId);
+    if (written === false) {
+      if (this.shownUnavailable.get(contextId) === recorded) this.shownUnavailable.delete(contextId);
+
+      return;
     }
+
+    this.setRegenerateCallback(contextId, () => this.renderKeyIcon(settings).svg);
   }
 
   /**
-   * A key's resting icon, computed fresh. A Change Camera key's is drawn
-   * unavailable while the session lacks its group (#1653), and records which
-   * look went out, so a tick redraws it only on a flip.
+   * A key's resting icon, computed fresh, and — for a Change Camera key — whether
+   * it is drawn unavailable, which it is while the session lacks its group
+   * (#1653). Records nothing: only a write that went out says what the key
+   * shows ({@link recordShownLook}).
    */
-  private keySvg(contextId: string, settings: CameraControlsSettings): string {
+  private renderKeyIcon(settings: CameraControlsSettings): { svg: string; unavailable?: boolean } {
     // Per-BUTTON missing-binding state (#612): computed from this button's own
     // mode, so one unbound Cycle Sub-Camera key never marks the SDK-driven camera
     // keys around it.
     const bindingMissing = this.isBindingMissing(resolveBindingKey(settings.target, settings.direction));
 
-    if (settings.target !== "change-camera") {
-      this.shownUnavailable.delete(contextId);
-
-      return generateCameraControlsSvg(settings, bindingMissing);
-    }
+    if (settings.target !== "change-camera") return { svg: generateCameraControlsSvg(settings, bindingMissing) };
 
     const unavailable = this.isChangeCameraUnavailableCached(changeCameraGroupName(settings));
-    this.shownUnavailable.set(contextId, unavailable);
 
-    return generateCameraControlsSvg(settings, bindingMissing, unavailable);
+    return { svg: generateCameraControlsSvg(settings, bindingMissing, unavailable), unavailable };
+  }
+
+  /** Record the look on the key, so a tick redraws a Change Camera key only on a flip. */
+  private recordShownLook(contextId: string, unavailable: boolean | undefined): void {
+    if (unavailable === undefined) this.shownUnavailable.delete(contextId);
+    else this.shownUnavailable.set(contextId, unavailable);
   }
 
   /**
@@ -2182,10 +2193,22 @@ export class CameraControls extends SimIRacingAction<CameraControlsSettings> {
     // write still in flight from before them must register nothing when it
     // lands, or its callback would put the old mode's icon back on the key.
     this.claimCycleGeneration(contextId);
-    const svgDataUri = this.keySvg(contextId, settings);
-    await ev.action.setTitle("");
-    await this.setKeyImage(ev, svgDataUri);
-    this.setRegenerateCallback(contextId, () => this.keySvg(contextId, settings));
+    const icon = this.renderKeyIcon(settings);
+
+    try {
+      await ev.action.setTitle("");
+      await this.setKeyImage(ev, icon.svg);
+    } catch (err) {
+      // The new look may never have reached the key (#1653 review): with no
+      // record of what it shows, the next tick draws a Change Camera key's
+      // look again, and that write registers regeneration for these settings.
+      this.shownUnavailable.delete(contextId);
+
+      throw err;
+    }
+
+    this.recordShownLook(contextId, icon.unavailable);
+    this.setRegenerateCallback(contextId, () => this.renderKeyIcon(settings).svg);
   }
 }
 
