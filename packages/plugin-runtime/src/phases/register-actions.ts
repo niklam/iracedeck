@@ -1,15 +1,16 @@
 /**
- * Phase 10 (#1349; 8 until #1467, 9 until #1112): window focus and the mouse pointer, the
- * Always-mode focus listeners, the replay busy indicator's logger, the press
- * sound player, then every action — the shared list, then the host's extras —
- * each wrapped for its press sounds.
+ * Phase 10 (#1349; 8 until #1467, 9 until #1112): window focus and the mouse
+ * pointer, the replay busy indicator's logger, the press sound player, then
+ * every action — the shared list, then the host's extras — each wrapped for
+ * its press sounds and, around that, its per-key window focus (#1654), so the
+ * focus comes before the press sounds stamp the press.
  */
 import {
-  focusIRacingIfEnabled,
   initMousePointer,
   initPressSounds,
   initWindowFocus,
   withPressSounds,
+  withWindowFocus,
 } from "@iracedeck/deck-core";
 import { hasElevationMismatch, isIRacingActive } from "@iracedeck/deck-iracing";
 
@@ -34,15 +35,6 @@ export function registerActions(core: Core, input: Input): void {
   // Initialize the mouse pointer service for the Mouse to Sim mode (#926)
   initMousePointer(adapter.createLogger("MousePointer"), (x, y) => native.moveMouseToIRacingWindow(x, y));
 
-  // The Always-mode focus site (#977): before every key press, dial press and dial
-  // rotation. Under When required the focus happens inside the keystroke paths
-  // instead (keyboard service, chat send) — the gate lives in the service, so
-  // these registrations are the same in every mode.
-  // MUST be registered BEFORE actions so the listener fires first in the EventEmitter chain.
-  adapter.onKeyDown(() => focusIRacingIfEnabled());
-  adapter.onDialDown(() => focusIRacingIfEnabled());
-  adapter.onDialRotate(() => focusIRacingIfEnabled());
-
   // The replay busy indicator (#1437) has no registration entry point of its
   // own; its lines (a look started or ended, a spinner stopped at its ceiling)
   // go to a scope set here, once, before the replay actions are constructed (#1467).
@@ -58,10 +50,24 @@ export function registerActions(core: Core, input: Input): void {
   // The shared list, then what only this host has (#1349). Registration order
   // across distinct UUIDs is not observable; each handler is keyed by its UUID.
   // Every handler is registered wrapped, the extras too, so all three plugins
-  // get the press sounds from this one line and no action plays one itself. The
-  // wrapper exposes only `IDeckActionHandler`'s members, which are all an
-  // adapter calls.
+  // get both behaviours from this one line and no action implements either
+  // itself. `withWindowFocus` (#1654) does what the adapter-level focus
+  // listeners did before it, but per key: at a key press, dial press and dial
+  // rotation it focuses iRacing as the key's own `windowFocus` setting says
+  // (the global mode for a key left at "Use global setting"), before the
+  // handler runs, and it runs every press inside that setting's scope, so the
+  // keystrokes the press sends are focused the same way. It sits outside
+  // `withPressSounds`: the focus can block for up to a second on a timeout, and
+  // `withPressSounds` stamps the press's start and arms its long-press timer
+  // before it calls the handler, so a focus inside it would count against the
+  // dial long-press threshold (500 ms) and turn a tap into a long press. Out
+  // here the focus comes first, the press sounds start once it has returned,
+  // and the down sound still plays after the focus. Both wrappers expose only
+  // `IDeckActionHandler`'s members, which are all an adapter calls.
   for (const action of [...SHARED_ACTIONS, ...(core.host.extension?.extraActions ?? [])]) {
-    adapter.registerAction(action.uuid, withPressSounds(action.create(adapter.createLogger(action.scope))));
+    adapter.registerAction(
+      action.uuid,
+      withWindowFocus(withPressSounds(action.create(adapter.createLogger(action.scope)))),
+    );
   }
 }

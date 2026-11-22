@@ -44,6 +44,9 @@ export {
   type ColorOverrides,
   GraphicOverridesSchema,
   TitleOverridesSchema,
+  WINDOW_FOCUS_OVERRIDES,
+  type WindowFocusOverride,
+  WindowFocusOverrideSchema,
 } from "./common-settings.js";
 
 // Settings migration helpers
@@ -199,12 +202,18 @@ export {
   FOCUS_TIMEOUT_COOLDOWN_MS,
   FocusResult,
   focusIRacingBeforeInput,
+  focusIRacingForKey,
+  focusIRacingForPress,
   focusIRacingIfEnabled,
   focusIRacingNow,
+  getWindowFocusScope,
   initWindowFocus,
+  runInWindowFocusScope,
   type SimRunningCheck,
   type WindowFocuser,
 } from "./window-focus-service.js";
+// Per-key window focus (#1654): the wrapper registerActions puts around every action
+export { readWindowFocusOverride, withWindowFocus } from "./window-focus-wrapper.js";
 
 // Clipboard service singleton
 export {

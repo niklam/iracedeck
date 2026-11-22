@@ -152,8 +152,28 @@ export const GraphicOverridesSchema = z
 
 export type GraphicOverrides = z.infer<typeof GraphicOverridesSchema>;
 
+/**
+ * The values of a key's own **Focus iRacing window** choice (#1654): `global`
+ * defers to the plugin-wide Focus iRacing Window mode, `focus` brings iRacing
+ * to the front whatever that mode says, and `no-focus` never does. They are
+ * stored per key, so they are a persisted contract.
+ */
+export const WINDOW_FOCUS_OVERRIDES = ["global", "focus", "no-focus"] as const;
+
+/**
+ * Schema for the per-key `windowFocus` setting (#1654). A missing value is
+ * `global`, and so is anything it cannot read — a value from a newer build, a
+ * hand-edited one — so an unknown value never fails the whole settings parse,
+ * which would reset the key to its defaults. `withWindowFocus` reads a press's
+ * value through this schema from the event's raw settings.
+ */
+export const WindowFocusOverrideSchema = z.enum(WINDOW_FOCUS_OVERRIDES).default("global").catch("global");
+
+export type WindowFocusOverride = z.infer<typeof WindowFocusOverrideSchema>;
+
 export const CommonSettings = z.object({
   addedWithVersion: z.string().default("0.0.0"),
+  windowFocus: WindowFocusOverrideSchema,
   flagsOverlay: z
     .union([z.boolean(), z.string()])
     .transform((val) => val === true || val === "true")

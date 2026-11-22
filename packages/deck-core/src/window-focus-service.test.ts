@@ -5,10 +5,14 @@ import {
   _resetWindowFocus,
   FOCUS_TIMEOUT_COOLDOWN_MS,
   focusIRacingBeforeInput,
+  focusIRacingForKey,
+  focusIRacingForPress,
   focusIRacingIfEnabled,
   focusIRacingNow,
   FocusResult,
+  getWindowFocusScope,
   initWindowFocus,
+  runInWindowFocusScope,
   type WindowFocuser,
 } from "./window-focus-service.js";
 
@@ -626,5 +630,389 @@ describe("focusIRacingNow (issue #926)", () => {
     focusIRacingNow();
 
     expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining("timed out"));
+  });
+});
+
+describe("per-key window focus (issue #1654)", () => {
+  const MODES = ["always", "required", "never"] as const;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    _resetWindowFocus();
+    state.settings = { focusIRacingWindow: "always" };
+    state.storeReady = true;
+    state.iRacingActive = false;
+    state.elevationMismatch = false;
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  describe("focusIRacingForKey", () => {
+    it.each(MODES)("focuses under %s: the key's setting is the decision", (mode) => {
+      state.settings = { focusIRacingWindow: mode };
+      const { focuser } = arrange(FocusResult.Focused);
+
+      focusIRacingForKey();
+
+      expect(focuser).toHaveBeenCalledOnce();
+    });
+
+    it("skips the settings-store-ready gate: a key's stored setting is no startup default", () => {
+      state.storeReady = false;
+      state.settings = { focusIRacingWindow: "never" };
+      const { focuser } = arrange(FocusResult.Focused);
+
+      focusIRacingForKey();
+
+      expect(focuser).toHaveBeenCalledOnce();
+    });
+
+    it("does nothing when the service was never initialized", () => {
+      expect(() => focusIRacingForKey()).not.toThrow();
+    });
+
+    it("keeps the elevation-mismatch gate (#976)", () => {
+      state.elevationMismatch = true;
+      const { focuser, logger } = arrange(FocusResult.Focused);
+
+      focusIRacingForKey();
+
+      expect(focuser).not.toHaveBeenCalled();
+      expect(logger.info).toHaveBeenCalledWith(expect.stringContaining("higher integrity level"));
+    });
+
+    it("keeps the post-timeout cooldown, and asks again once it has passed", () => {
+      const { focuser, logger } = arrange(FocusResult.FocusTimedOut);
+
+      focusIRacingForKey();
+      vi.advanceTimersByTime(FOCUS_TIMEOUT_COOLDOWN_MS - 1);
+      focusIRacingForKey();
+
+      expect(focuser).toHaveBeenCalledOnce();
+      expect(logger.debug).toHaveBeenCalledWith(
+        `iRacing focus skipped: a focus timed out ${FOCUS_TIMEOUT_COOLDOWN_MS - 1} ms ago`,
+      );
+
+      vi.advanceTimersByTime(1);
+      focusIRacingForKey();
+
+      expect(focuser).toHaveBeenCalledTimes(2);
+    });
+
+    it("shares one cooldown with the mode sites: a key's timeout holds back the global ask", () => {
+      const { focuser } = arrange(FocusResult.FocusTimedOut);
+
+      focusIRacingForKey();
+      focusIRacingIfEnabled();
+      focusIRacingBeforeInput();
+
+      expect(focuser).toHaveBeenCalledOnce();
+    });
+  });
+
+  describe("the scope at the keystroke site", () => {
+    it("is unset outside a press and set inside one", () => {
+      expect(getWindowFocusScope()).toBeUndefined();
+      expect(runInWindowFocusScope("no-focus", () => getWindowFocusScope())).toBe("no-focus");
+      expect(getWindowFocusScope()).toBeUndefined();
+    });
+
+    it("returns what the scoped function returns, and lets its throw through", () => {
+      expect(runInWindowFocusScope("focus", () => 42)).toBe(42);
+      expect(() =>
+        runInWindowFocusScope("focus", () => {
+          throw new Error("handler threw");
+        }),
+      ).toThrow("handler threw");
+    });
+
+    it.each([
+      // [scope, global mode, focuser calls]
+      ["global", "always", 1],
+      ["global", "required", 1],
+      ["global", "never", 0],
+      ["focus", "always", 1],
+      ["focus", "required", 1],
+      ["focus", "never", 1],
+      ["no-focus", "always", 0],
+      ["no-focus", "required", 0],
+      ["no-focus", "never", 0],
+    ] as const)("inside a %s press under %s asks %i time(s)", (scope, mode, calls) => {
+      state.settings = { focusIRacingWindow: mode };
+      const { focuser } = arrange(FocusResult.AlreadyFocused);
+
+      runInWindowFocusScope(scope, () => focusIRacingBeforeInput());
+
+      expect(focuser).toHaveBeenCalledTimes(calls);
+    });
+
+    it.each([
+      ["always", 1],
+      ["required", 1],
+      ["never", 0],
+    ] as const)("outside any press follows the global mode (%s)", (mode, calls) => {
+      state.settings = { focusIRacingWindow: mode };
+      const { focuser } = arrange(FocusResult.AlreadyFocused);
+
+      focusIRacingBeforeInput();
+
+      expect(focuser).toHaveBeenCalledTimes(calls);
+    });
+
+    it("keeps the store-ready gate for a global press only", () => {
+      state.storeReady = false;
+      const { focuser } = arrange(FocusResult.AlreadyFocused);
+
+      runInWindowFocusScope("global", () => focusIRacingBeforeInput());
+      expect(focuser).not.toHaveBeenCalled();
+
+      runInWindowFocusScope("focus", () => focusIRacingBeforeInput());
+      expect(focuser).toHaveBeenCalledOnce();
+    });
+
+    it("keeps the elevation gate and the cooldown inside a focus press", () => {
+      state.elevationMismatch = true;
+      const { focuser } = arrange(FocusResult.FocusTimedOut);
+
+      runInWindowFocusScope("focus", () => focusIRacingBeforeInput());
+      expect(focuser).not.toHaveBeenCalled();
+
+      state.elevationMismatch = false;
+      runInWindowFocusScope("focus", () => focusIRacingBeforeInput());
+      runInWindowFocusScope("focus", () => focusIRacingBeforeInput());
+      expect(focuser).toHaveBeenCalledOnce();
+    });
+  });
+
+  describe("focusIRacingForPress", () => {
+    it.each([
+      // [key's setting, global mode, focuser calls at press time]
+      ["global", "always", 1],
+      ["global", "required", 0],
+      ["global", "never", 0],
+      ["focus", "always", 1],
+      ["focus", "required", 1],
+      ["focus", "never", 1],
+      ["no-focus", "always", 0],
+      ["no-focus", "required", 0],
+      ["no-focus", "never", 0],
+    ] as const)("a %s key under %s asks %i time(s) at press time", (override, mode, calls) => {
+      state.settings = { focusIRacingWindow: mode };
+      const { focuser } = arrange(FocusResult.AlreadyFocused);
+
+      focusIRacingForPress(override);
+
+      expect(focuser).toHaveBeenCalledTimes(calls);
+    });
+
+    it("keeps the store-ready gate for a global key only", () => {
+      state.storeReady = false;
+      const { focuser } = arrange(FocusResult.AlreadyFocused);
+
+      focusIRacingForPress("global");
+      focusIRacingForPress("no-focus");
+      expect(focuser).not.toHaveBeenCalled();
+
+      focusIRacingForPress("focus");
+      expect(focuser).toHaveBeenCalledOnce();
+    });
+
+    describe("debug lines", () => {
+      const SKIPPED = "Focus skipped for this key (per-key setting)";
+      const REQUESTED = "Focus requested by this key's setting";
+
+      const debugLines = (logger: ILogger): unknown[] => vi.mocked(logger.debug).mock.calls.map(([line]) => line);
+      const perKeyLines = (logger: ILogger): unknown[] =>
+        debugLines(logger).filter((line) => line === SKIPPED || line === REQUESTED);
+
+      describe("at press time", () => {
+        it.each([
+          ["always", true],
+          ["required", false],
+          ["never", false],
+        ] as const)("for a no-focus key under %s, logs the skip: %s", (mode, logged) => {
+          state.settings = { focusIRacingWindow: mode };
+          const { logger } = arrange(FocusResult.AlreadyFocused);
+
+          focusIRacingForPress("no-focus");
+
+          expect(debugLines(logger)).toEqual(logged ? [SKIPPED] : []);
+          expect(logger.info).not.toHaveBeenCalled();
+        });
+
+        it("logs no skip for a no-focus key before the store is ready: the global mode would not have focused", () => {
+          state.settings = { focusIRacingWindow: "always" };
+          state.storeReady = false;
+          const { logger } = arrange(FocusResult.AlreadyFocused);
+
+          focusIRacingForPress("no-focus");
+
+          expect(debugLines(logger)).toEqual([]);
+        });
+
+        it.each([
+          ["always", false],
+          ["required", true],
+          ["never", true],
+        ] as const)("for a focus key under %s, logs the request: %s", (mode, logged) => {
+          state.settings = { focusIRacingWindow: mode };
+          const { logger } = arrange(FocusResult.AlreadyFocused);
+
+          focusIRacingForPress("focus");
+
+          expect(debugLines(logger).includes(REQUESTED)).toBe(logged);
+        });
+
+        it("logs the request for a focus key before the store is ready: the global ask would not have run", () => {
+          state.storeReady = false;
+          const { logger } = arrange(FocusResult.AlreadyFocused);
+
+          focusIRacingForPress("focus");
+
+          expect(debugLines(logger)).toContain(REQUESTED);
+        });
+
+        it.each(MODES)("logs neither line for a global key under %s", (mode) => {
+          state.settings = { focusIRacingWindow: mode };
+          const { logger } = arrange(FocusResult.AlreadyFocused);
+
+          focusIRacingForPress("global");
+
+          expect(perKeyLines(logger)).toEqual([]);
+        });
+      });
+
+      describe("over a whole press, at most once per handler call", () => {
+        /** One handler call: the press-time ask (unless a touch tap), then `keystrokes` keystroke-time asks. */
+        const pressWith = (override: "focus" | "no-focus", keystrokes: number, touch = false): void =>
+          runInWindowFocusScope(override, () => {
+            if (!touch) focusIRacingForPress(override);
+
+            for (let i = 0; i < keystrokes; i++) focusIRacingBeforeInput();
+          });
+
+        it.each([
+          // [global mode, keystrokes, lines]
+          ["always", 0, [SKIPPED]],
+          ["always", 2, [SKIPPED]],
+          ["required", 0, []],
+          ["required", 1, [SKIPPED]],
+          ["required", 2, [SKIPPED]],
+          ["never", 2, []],
+        ] as const)("a no-focus key under %s sending %i keystroke(s) logs %j", (mode, keystrokes, lines) => {
+          state.settings = { focusIRacingWindow: mode };
+          const { logger } = arrange(FocusResult.AlreadyFocused);
+
+          pressWith("no-focus", keystrokes);
+
+          expect(perKeyLines(logger)).toEqual(lines);
+        });
+
+        it("logs no skip for a no-focus key's keystrokes before the store is ready", () => {
+          state.storeReady = false;
+          const { logger } = arrange(FocusResult.AlreadyFocused);
+
+          pressWith("no-focus", 2);
+
+          expect(perKeyLines(logger)).toEqual([]);
+        });
+
+        it.each([
+          // [global mode, keystrokes, lines]
+          ["always", 2, []],
+          ["required", 0, [REQUESTED]],
+          ["required", 2, [REQUESTED]],
+          ["never", 0, [REQUESTED]],
+          ["never", 2, [REQUESTED]],
+        ] as const)("a focus key under %s sending %i keystroke(s) logs %j", (mode, keystrokes, lines) => {
+          state.settings = { focusIRacingWindow: mode };
+          const { logger } = arrange(FocusResult.AlreadyFocused);
+
+          pressWith("focus", keystrokes);
+
+          expect(perKeyLines(logger)).toEqual(lines);
+        });
+
+        it.each([
+          // [global mode, keystrokes, lines]
+          ["never", 0, []],
+          ["never", 1, [REQUESTED]],
+          ["never", 2, [REQUESTED]],
+          ["required", 2, []],
+          ["always", 2, []],
+        ] as const)("a focus touch tap under %s sending %i keystroke(s) logs %j", (mode, keystrokes, lines) => {
+          state.settings = { focusIRacingWindow: mode };
+          const { logger } = arrange(FocusResult.AlreadyFocused);
+
+          pressWith("focus", keystrokes, true);
+
+          expect(perKeyLines(logger)).toEqual(lines);
+        });
+
+        it.each([
+          ["always", [SKIPPED]],
+          ["required", [SKIPPED]],
+          ["never", []],
+        ] as const)("a no-focus touch tap under %s with a keystroke logs %j", (mode, lines) => {
+          state.settings = { focusIRacingWindow: mode };
+          const { logger } = arrange(FocusResult.AlreadyFocused);
+
+          pressWith("no-focus", 1, true);
+
+          expect(perKeyLines(logger)).toEqual(lines);
+        });
+
+        it("logs the request for a focus key's keystrokes before the store is ready", () => {
+          state.storeReady = false;
+          const { logger } = arrange(FocusResult.AlreadyFocused);
+
+          pressWith("focus", 2, true);
+
+          expect(perKeyLines(logger)).toEqual([REQUESTED]);
+        });
+
+        it("logs again in the next handler call: the flags belong to one call", () => {
+          state.settings = { focusIRacingWindow: "required" };
+          const { logger } = arrange(FocusResult.AlreadyFocused);
+
+          pressWith("no-focus", 1);
+          pressWith("no-focus", 1, true);
+
+          expect(perKeyLines(logger)).toEqual([SKIPPED, SKIPPED]);
+        });
+
+        it("keeps two concurrent presses' flags apart", async () => {
+          vi.useRealTimers();
+          state.settings = { focusIRacingWindow: "required" };
+          const { logger } = arrange(FocusResult.AlreadyFocused);
+          const tick = (): Promise<void> => new Promise((resolve) => setImmediate(resolve));
+          const keystrokes = async (): Promise<void> => {
+            focusIRacingBeforeInput();
+            await tick();
+            focusIRacingBeforeInput();
+          };
+
+          // Interleaved: A's first keystroke, B's first, A's second, B's second.
+          await Promise.all([
+            runInWindowFocusScope("no-focus", keystrokes),
+            runInWindowFocusScope("no-focus", keystrokes),
+          ]);
+
+          expect(perKeyLines(logger)).toEqual([SKIPPED, SKIPPED]);
+        });
+
+        it("logs every time outside any press: a direct call has no scope to remember it", () => {
+          state.settings = { focusIRacingWindow: "always" };
+          const { logger } = arrange(FocusResult.AlreadyFocused);
+
+          focusIRacingForPress("no-focus");
+          focusIRacingForPress("no-focus");
+
+          expect(perKeyLines(logger)).toEqual([SKIPPED, SKIPPED]);
+        });
+      });
+    });
   });
 });

@@ -19,7 +19,7 @@ Focusing is best-effort, not a guarantee — it can't help if iRacing isn't runn
 
 ## The Three Modes
 
-Focus iRacing Window is a **global setting**: one choice that applies to all of iRaceDeck, not per button. You'll find it in the [Settings window](/docs/getting-started/settings/#general), on the **General** tab, as **Focus iRacing**.
+Focus iRacing Window is a **global setting**: one choice that applies to all of iRaceDeck. You'll find it in the [Settings window](/docs/getting-started/settings/#general), on the **General** tab, as **Focus iRacing**. A single key can override it — see [Per-Key Override](#per-key-override) below.
 
 - **Always** (the default) — iRacing is brought forward before every key press, dial press and dial turn, whatever the key does. Pressing a deck key means "I'm going to the sim".
 - **When required** — iRacing is brought forward only before something that actually needs the foreground: a keyboard binding, a chat command (the Chat action, the tire-service `#t` macros), or a touch-strip gesture that taps a binding. Keys that talk to iRacing over its API, bindings routed through a SimHub role, and keys that never touch iRacing at all — Switch Profile, the Race Engineer toggles, the display keys — leave your window alone. What decides it is the individual key's binding rather than the action it belongs to: bound to a keyboard shortcut, it focuses; set to a SimHub role or driven over iRacing's API, it does not. Audio Controls is the mixed case — its push-to-talk, voice chat and master volume keys are keyboard bindings and do focus, while its Race Engineer and radar volumes only turn iRaceDeck's own audio up and down and leave your window where it is. Choose this if you press deck keys while working in another application and only want iRacing pulled over it when a keystroke is about to go there.
@@ -28,6 +28,30 @@ Focus iRacing Window is a **global setting**: one choice that applies to all of 
 Gestures on the Stream Deck+ **touch strip** are covered in both **Always** and **When required**: a tap or long touch that fires a key binding focuses iRacing first.
 
 One key ignores this setting on purpose: the View Adjustment action's **Mouse to Sim** mode focuses iRacing even under **Never**, because pressing that key is an explicit request to go to the sim.
+
+## Per-Key Override
+
+Every key and dial has its own **Focus iRacing window** choice, in the **Common Settings** section of its Property Inspector. It decides, for that key only, whether iRacing is brought forward — both when you press it and before every keystroke the press sends:
+
+- **Use global setting** (the default) — the key follows the global mode above. Every key starts here, so nothing changes until you pick something else.
+- **Bring iRacing to the front** — the key brings iRacing forward on every press, dial press and dial turn, and before its keystrokes, whatever the global mode says — even under **Never**. Use it for a key that should always mean "go to the sim", such as one you press before a hotkey from another program that has to reach iRacing.
+- **Don't bring iRacing to the front** — the key never brings iRacing forward, whatever the global mode says — even under **Always**. Whatever window is in front stays in front.
+
+| Global mode | Use global setting | Bring iRacing to the front | Don't bring iRacing to the front |
+|-------------|--------------------|----------------------------|----------------------------------|
+| **Always** | On every press | On every press | Never |
+| **When required** | Only before a keystroke or a chat prompt | On every press | Never |
+| **Never** | Never | On every press | Never |
+
+The choice covers everything the press does, including the repeats of a key you hold down and the keystrokes a touch-strip tap sends on a dial. It changes from the next press, with no restart. A key set to **Bring iRacing to the front** still stops trying while iRaceDeck and iRacing run at different Windows privilege levels, as described in [Why It Matters](#why-it-matters).
+
+For example, if you stream with OBS in front and keep the global mode on **Always**, set your camera keys to **Don't bring iRacing to the front**. Camera switches talk to iRacing over its API, so the shot changes while OBS keeps focus, and your other keys still bring iRacing forward as before.
+
+:::caution
+A key that works by pressing keys — anything driven by a key binding, a chat message or a pit macro — still sends its keystrokes when set to **Don't bring iRacing to the front**. They go to whatever window is in front: iRacing if it already is, otherwise the program you are using, where they may type text or trigger a shortcut. Choose it only for keys that talk to iRacing over its API, or when you know iRacing will already be in front.
+:::
+
+On a dial, Common Settings shows only this choice: its other setting, **Flags Overlay**, draws on a key's icon and so has no effect on a dial. **Mouse to Sim** ignores this choice as it ignores the global one.
 
 ## Upgrading From an Earlier Version
 

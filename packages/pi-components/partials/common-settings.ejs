@@ -1,8 +1,25 @@
+<%#
+  Common Settings — the per-key behaviour every action shares.
+  - Flags Overlay only draws on a key icon, so it is marked data-keypad-only:
+    dial-controller's irdApplyDialView() hides it on a dial (#1654).
+  - Focus iRacing window (#1654) is per key and applies on both surfaces, so
+    this accordion must sit OUTSIDE #keypad-appearance in a dial-capable PI.
+%>
 <%- include('accordion', {
   title: 'Common Settings',
   open: false,
   content:
-    '<sdpi-item label="Flags Overlay">' +
+    '<sdpi-item label="Flags Overlay" data-keypad-only>' +
       '<sdpi-checkbox setting="flagsOverlay" label="Flash flag colors on button"></sdpi-checkbox>' +
-    '</sdpi-item>'
+    '</sdpi-item>' +
+    '<sdpi-item label="Focus iRacing window">' +
+      '<sdpi-select setting="windowFocus" default="global">' +
+        '<option value="global">Use global setting</option>' +
+        '<option value="focus">Bring iRacing to the front</option>' +
+        '<option value="no-focus">Don\'t bring iRacing to the front</option>' +
+      '</sdpi-select>' +
+    '</sdpi-item>' +
+    '<div class="ird-supporting-text">' +
+      'With &quot;Don\'t bring iRacing to the front&quot;, this key\'s keystrokes go to whatever window is in front.' +
+    '</div>'
 }) %>

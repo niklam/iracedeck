@@ -273,6 +273,7 @@ function defaultSettings(
 ) {
   return {
     addedWithVersion: "0.0.0",
+    windowFocus: "global" as const,
     mode: "incidents" as const,
     positionType: "class" as const,
     positionShowTotal: false,

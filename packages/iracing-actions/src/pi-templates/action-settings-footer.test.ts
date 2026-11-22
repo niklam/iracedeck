@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { actionPropertyInspectors } from "./action-templates.test-support.js";
+import { actionPropertyInspectors, SURFACE_WRAPPERS, wrapperRange } from "./action-templates.test-support.js";
 
 /**
  * `@iracedeck/pi-components`' `action-settings-footer.ejs` (#1024) — the way
@@ -15,34 +15,6 @@ import { actionPropertyInspectors } from "./action-templates.test-support.js";
  * from `title-overrides.ejs`) would silently strip every dial user of the only
  * route to the settings window.
  */
-
-/** Wrappers a Property Inspector shows on one control surface and hides on the other. */
-const SURFACE_WRAPPERS = ["keypad-appearance", "keypad-settings", "dial-settings"];
-
-/**
- * Character range of the `<div>` carrying `id="<id>"`, found by matching the
- * template's own literal `<div>`/`</div>` tags. Included partials are opaque
- * and internally balanced, so only this file's tags matter.
- */
-function wrapperRange(source: string, id: string): { start: number; end: number } | null {
-  const marker = source.indexOf(`id="${id}"`);
-
-  if (marker < 0) return null;
-
-  const start = source.lastIndexOf("<div", marker);
-  const tags = /<div\b|<\/div>/g;
-  let depth = 0;
-
-  tags.lastIndex = start;
-
-  for (let match = tags.exec(source); match !== null; match = tags.exec(source)) {
-    depth += match[0] === "</div>" ? -1 : 1;
-
-    if (depth === 0) return { start, end: match.index + match[0].length };
-  }
-
-  throw new Error(`unbalanced <div> tags around #${id}`);
-}
 
 const TEMPLATES = actionPropertyInspectors();
 

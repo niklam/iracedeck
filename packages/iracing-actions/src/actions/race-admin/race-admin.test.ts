@@ -566,6 +566,7 @@ describe("RaceAdmin", () => {
   describe("generateRaceAdminSvg", () => {
     const defaultSettings = {
       addedWithVersion: "",
+      windowFocus: "global" as const,
       mode: "yellow" as const,
       driverTarget: "viewed-car" as const,
       carNumber: "",

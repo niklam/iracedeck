@@ -115,8 +115,8 @@
 			<%- include('color-overrides', { slots: ['backgroundColor', 'textColor', 'graphic1Color', 'graphic2Color'], defaults: require('./data/icon-defaults.json')['view-adjustment'] }) %>
 			<%- include('border-overrides', { defaults: require('./data/icon-defaults.json')['view-adjustment'] }) %>
 			<%- include('graphic-overrides') %>
-			<%- include('common-settings') %>
 		</div>
+		<%- include('common-settings') %>
 
 		<%- include('key-bindings-section', {
 			keyBindings: require('./data/key-bindings.json').viewAdjustment

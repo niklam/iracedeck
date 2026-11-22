@@ -19,7 +19,7 @@ It is a real window — its own entry in the taskbar, resizable, and it remember
 
 ## The Tabs
 
-The sidebar has one tab per area. Everything here applies to the **whole plugin**; the appearance defaults are the only ones an individual key can override in its own Property Inspector.
+The sidebar has one tab per area. Everything here applies to the **whole plugin**; the appearance defaults and **Focus iRacing** are the only ones an individual key can override in its own Property Inspector.
 
 ### Getting Started
 
@@ -39,7 +39,7 @@ Three of its steps do something rather than only explain it: one press turns on 
 
 Behaviour that affects every key you press.
 
-**Focus iRacing** brings iRacing to the foreground before iRaceDeck sends input, so a press isn't lost to whatever window happened to have focus. **Always** (the default) does it before every press; **When required** does it only before a keyboard binding, a chat command or a touch-strip gesture that taps a binding — a key that talks to iRacing over its own API arrives whatever has focus, and a binding set to a SimHub role is handed to SimHub rather than pressed here, so neither pulls the sim over your window; **Never** turns it off. See [Focus iRacing Window](/docs/features/focus-iracing-window/).
+**Focus iRacing** brings iRacing to the foreground before iRaceDeck sends input, so a press isn't lost to whatever window happened to have focus. **Always** (the default) does it before every press; **When required** does it only before a keyboard binding, a chat command or a touch-strip gesture that taps a binding — a key that talks to iRacing over its own API arrives whatever has focus, and a binding set to a SimHub role is handed to SimHub rather than pressed here, so neither pulls the sim over your window; **Never** turns it off. A single key can override it in its own Common Settings, to always or never bring iRacing forward. See [Focus iRacing Window](/docs/features/focus-iracing-window/).
 
 **Mouse to Sim** decides where the [Mouse to Sim](/docs/actions/view-camera/view-adjustment/#mouse-to-sim) key parks your pointer inside the iRacing window. Pick a **Horizontal** and a **Vertical** anchor — a corner, an edge or the centre — then nudge the pointer away from it with the two **offset** sliders, which are percentages of the window (positive moves right and down), so your target holds its place at any resolution. The default, Center with Top plus 12.5%, lands on iRacing's own on-screen UI band, which is where the key has always put the pointer.
 
@@ -198,7 +198,7 @@ The button is an image served by Buy Me a Coffee, which is why it carries a supp
 
 ## What Stays in the Property Inspector
 
-A key's Property Inspector is now about that key. It has its own settings at the top, then the **iRaceDeck Settings** button, then its per-key overrides — title, colours, border, graphic scale, flags overlay — and one section at the bottom:
+A key's Property Inspector is now about that key. It has its own settings at the top, then the **iRaceDeck Settings** button, then its per-key overrides — title, colours, border, graphic scale, flags overlay, and whether this key brings iRacing to the front ([Focus iRacing Window](/docs/features/focus-iracing-window/#per-key-override)) — and one section at the bottom:
 
 - **iRaceDeck Settings** — the small cog button directly under the action's own settings: the way through to everything on this page.
 - **Key Bindings** — at the bottom: the bindings that particular action uses, and nothing else. They are plugin-wide settings, but they are the ones you actually want in front of you while setting a key up, so they stay. The same bindings appear in full on the window's Key Bindings tab.
