@@ -2,7 +2,8 @@
  * Phase 10 (#1349; 8 until #1467, 9 until #1112): window focus and the mouse
  * pointer, the replay busy indicator's logger, the press sound player, then
  * every action — the shared list, then the host's extras — each wrapped for
- * its per-key window focus (#1654) and, around that, its press sounds.
+ * its press sounds and, around that, its per-key window focus (#1654), so the
+ * focus comes before the press sounds stamp the press.
  */
 import {
   initMousePointer,
@@ -55,14 +56,18 @@ export function registerActions(core: Core, input: Input): void {
   // rotation it focuses iRacing as the key's own `windowFocus` setting says
   // (the global mode for a key left at "Use global setting"), before the
   // handler runs, and it runs every press inside that setting's scope, so the
-  // keystrokes the press sends are focused the same way. It sits inside
-  // `withPressSounds`, so the focus still comes before the down sound. Both
-  // wrappers expose only `IDeckActionHandler`'s members, which are all an
-  // adapter calls.
+  // keystrokes the press sends are focused the same way. It sits outside
+  // `withPressSounds`: the focus can block for up to a second on a timeout, and
+  // `withPressSounds` stamps the press's start and arms its long-press timer
+  // before it calls the handler, so a focus inside it would count against the
+  // dial long-press threshold (500 ms) and turn a tap into a long press. Out
+  // here the focus comes first, the press sounds start once it has returned,
+  // and the down sound still plays after the focus. Both wrappers expose only
+  // `IDeckActionHandler`'s members, which are all an adapter calls.
   for (const action of [...SHARED_ACTIONS, ...(core.host.extension?.extraActions ?? [])]) {
     adapter.registerAction(
       action.uuid,
-      withPressSounds(withWindowFocus(action.create(adapter.createLogger(action.scope)))),
+      withWindowFocus(withPressSounds(action.create(adapter.createLogger(action.scope)))),
     );
   }
 }

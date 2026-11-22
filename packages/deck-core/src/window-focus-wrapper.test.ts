@@ -2,6 +2,7 @@ import type { ILogger } from "@iracedeck/logger";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { _resetBindingDispatcher, getBindingDispatcher, initializeBindingDispatcher } from "./binding-dispatcher.js";
+import { DIAL_LONG_PRESS_THRESHOLD_MS } from "./dial-gesture.js";
 import { createFakeSimConnection } from "./fake-sim-connection.test-support.js";
 import { _resetKeyboard, getKeyboard, initializeKeyboard } from "./keyboard-service.js";
 import { _resetPressSounds, initPressSounds, withPressSounds } from "./press-sounds.js";
@@ -73,12 +74,17 @@ function createLogger(): ILogger {
   return { trace: vi.fn(), debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() } as unknown as ILogger;
 }
 
-/** Wire the real window focus service, keyboard and binding dispatcher to recorders. */
-function arrange(logger: ILogger = createLogger()): ILogger {
+/**
+ * Wire the real window focus service, keyboard and binding dispatcher to
+ * recorders. `whileFocusing` runs inside the injected focuser, after it has
+ * logged, to stand for a native focus that blocks.
+ */
+function arrange(logger: ILogger = createLogger(), whileFocusing?: () => void): ILogger {
   initWindowFocus(
     logger,
     () => {
       log.push("focus");
+      whileFocusing?.();
 
       return state.focusResult as FocusResult;
     },
@@ -717,7 +723,7 @@ describe("withWindowFocus (issue #1654)", () => {
     });
   });
 
-  describe("inside the press-sound wrapper", () => {
+  describe("around the press-sound wrapper", () => {
     beforeEach(() => {
       initPressSounds({ play: (sound) => log.push(`sound:${sound}`) });
       initializeSimConnection(createFakeSimConnection().connection);
@@ -725,18 +731,18 @@ describe("withWindowFocus (issue #1654)", () => {
 
     it("plays the tap at a key down after the focus and the handler's synchronous part", async () => {
       arrange();
-      const composed = withPressSounds(withWindowFocus(recordingHandler()));
+      const composed = withWindowFocus(withPressSounds(recordingHandler()));
 
       await composed.onKeyDown!(ev("focus"));
 
       expect(log).toEqual(["focus", "handler:onKeyDown", "sound:tap"]);
     });
 
-    it("asks the handler's own shape through the focus wrapper", async () => {
+    it("plays the sound the handler's own shape asks for", async () => {
       arrange();
       const handler = recordingHandler();
       handler.keyPressShape = () => ({ kind: "long" });
-      const composed = withPressSounds(withWindowFocus(handler));
+      const composed = withWindowFocus(withPressSounds(handler));
 
       await composed.onKeyDown!(ev("no-focus"));
 
@@ -748,7 +754,7 @@ describe("withWindowFocus (issue #1654)", () => {
       arrange();
       const handler = recordingHandler();
       handler.keyPressShape = () => ({ kind: "hold", thresholdMs: 300 });
-      const composed = withPressSounds(withWindowFocus(handler));
+      const composed = withWindowFocus(withPressSounds(handler));
 
       await composed.onKeyDown!(ev("no-focus"));
       vi.advanceTimersByTime(300);
@@ -759,7 +765,7 @@ describe("withWindowFocus (issue #1654)", () => {
 
     it("classifies a short dial release with the default dial shape", async () => {
       arrange();
-      const composed = withPressSounds(withWindowFocus(recordingHandler()));
+      const composed = withWindowFocus(withPressSounds(recordingHandler()));
 
       await composed.onDialDown!(ev("global"));
       await composed.onDialUp!(ev("global"));
@@ -769,7 +775,7 @@ describe("withWindowFocus (issue #1654)", () => {
 
     it("silences a release after a pressed rotation (push+turn)", async () => {
       arrange();
-      const composed = withPressSounds(withWindowFocus(recordingHandler()));
+      const composed = withWindowFocus(withPressSounds(recordingHandler()));
 
       await composed.onDialDown!(ev("no-focus"));
       await composed.onDialRotate!(rotateEv("no-focus", true));
@@ -780,7 +786,7 @@ describe("withWindowFocus (issue #1654)", () => {
 
     it("plays a touch's tap without a press-time focus", async () => {
       arrange();
-      const composed = withPressSounds(withWindowFocus(recordingHandler()));
+      const composed = withWindowFocus(withPressSounds(recordingHandler()));
 
       await composed.onTouchTap!(touchEv("focus"));
 
@@ -788,11 +794,70 @@ describe("withWindowFocus (issue #1654)", () => {
     });
 
     it("plays nothing for a member the action lacks", () => {
-      const composed = withPressSounds(withWindowFocus<unknown>({}));
+      const composed = withWindowFocus(withPressSounds<unknown>({}));
 
       expect(composed.onKeyDown).toBeUndefined();
       expect(composed.onDialDown).toBeUndefined();
       expect(composed.onTouchTap).toBeUndefined();
+    });
+
+    describe("a focus that blocks", () => {
+      /**
+       * Stands for a native focus that waits out its timeout (up to ~1000 ms):
+       * the clock moves past the dial long-press threshold while it runs.
+       */
+      const blockingFocus = (): void => {
+        vi.advanceTimersByTime(DIAL_LONG_PRESS_THRESHOLD_MS + 100);
+      };
+
+      /** A dial whose release can be short (a tap) or long (the long sound at the threshold). */
+      const longCapableDial = (): IDeckActionHandler<unknown> => {
+        const handler = recordingHandler();
+        const shape: PressShape = {
+          kind: "release",
+          thresholdMs: DIAL_LONG_PRESS_THRESHOLD_MS,
+          short: true,
+          long: true,
+        };
+        handler.dialPressShape = () => shape;
+
+        return handler;
+      };
+
+      it("does not count against a dial's long-press threshold: a quick release is still a tap", async () => {
+        vi.useFakeTimers();
+        arrange(createLogger(), blockingFocus);
+        const composed = withWindowFocus(withPressSounds(recordingHandler()));
+
+        await composed.onDialDown!(ev("focus"));
+        await composed.onDialUp!(ev("focus"));
+
+        expect(log).toEqual(["focus", "handler:onDialDown", "handler:onDialUp", "sound:tap"]);
+      });
+
+      it("does not play the long sound for a press whose release can be long", async () => {
+        vi.useFakeTimers();
+        arrange(createLogger(), blockingFocus);
+        const composed = withWindowFocus(withPressSounds(longCapableDial()));
+
+        await composed.onDialDown!(ev("focus"));
+        await composed.onDialUp!(ev("focus"));
+
+        expect(log).toEqual(["focus", "handler:onDialDown", "handler:onDialUp", "sound:tap"]);
+        expect(log).not.toContain("sound:long");
+      });
+
+      it("still lets a hold past the threshold, counted from after the focus, play the long sound", async () => {
+        vi.useFakeTimers();
+        arrange(createLogger(), blockingFocus);
+        const composed = withWindowFocus(withPressSounds(longCapableDial()));
+
+        await composed.onDialDown!(ev("focus"));
+        vi.advanceTimersByTime(DIAL_LONG_PRESS_THRESHOLD_MS);
+        await composed.onDialUp!(ev("focus"));
+
+        expect(log).toEqual(["focus", "handler:onDialDown", "sound:long", "handler:onDialUp"]);
+      });
     });
   });
 });

@@ -2,12 +2,16 @@
  * Per-key window focus (issue #1654): the wrapper that gives every action its
  * own **Focus iRacing window** choice.
  *
- * {@link withWindowFocus} sits around every registered action handler, inside
- * the press-sound wrapper (`withPressSounds(withWindowFocus(handler))`, applied
+ * {@link withWindowFocus} sits around every registered action handler, outside
+ * the press-sound wrapper (`withWindowFocus(withPressSounds(handler))`, applied
  * once in `plugin-runtime`'s `registerActions`). It replaces the adapter-level
  * focus listeners the plugins used to register, because those could not see
- * which key was pressed. At a press it reads the key's `windowFocus` from the
- * event's settings and does two things:
+ * which key was pressed. It must stay outside: the press-time focus is
+ * synchronous and can block for up to a second on a timeout, and the
+ * press-sound wrapper stamps a press's start and arms its long-press timer
+ * before it calls the handler, so a focus inside it would count against the
+ * dial long-press threshold and turn a tap into a long press. At a press it
+ * reads the key's `windowFocus` from the event's settings and does two things:
  *
  * - **Press time.** Before a key down, dial down or dial rotation reaches the
  *   handler it asks for focus as the key's setting says
@@ -70,8 +74,7 @@ function focusAtPress(override: WindowFocusOverride, kind: FocusPressKind): void
  * setting. Every {@link IDeckActionHandler} member is forwarded to `handler`
  * as a method call (so `this` is the original instance) with the same event
  * and the same result, and a member the handler lacks stays `undefined`, so
- * the press-sound wrapper outside this one sees exactly the members the action
- * has.
+ * this wrapper exposes exactly the members the handler it wraps has.
  *
  * - `onKeyDown`, `onDialDown`, `onDialRotate`: the press-time focus, then the
  *   handler, inside the key's scope.

@@ -329,18 +329,18 @@ describe("startPlugin (#1349)", () => {
     expect(callLog).toEqual(["playPressSound"]);
 
     // Every handler, the shared list's and the host's extras alike, is
-    // registered as the press-sound wrapper around the window-focus wrapper
-    // around the handler its factory created (#1654): the focus inside, so it
-    // still comes before the down sound.
+    // registered as the window-focus wrapper around the press-sound wrapper
+    // around the handler its factory created (#1654): the focus outside, so a
+    // focus that blocks comes before the press sounds stamp the press.
     expect(registered.map((entry) => entry.uuid)).toEqual(["shared.a", "shared.b", "sd.switch-profile"]);
     expect(wrapped).toHaveLength(registered.length);
     expect(focusWrapped).toHaveLength(registered.length);
     registered.forEach((entry, i) => {
-      expect(entry.handler).toBe(wrapped[i]);
-      expect(wrapped[i].wraps).toBe(focusWrapped[i]);
+      expect(entry.handler).toBe(focusWrapped[i]);
+      expect(focusWrapped[i].focusWraps).toBe(wrapped[i]);
     });
     // Each wraps a handler of its own, the one its factory created.
-    expect(new Set(focusWrapped.map((wrapper) => wrapper.focusWraps)).size).toBe(registered.length);
+    expect(new Set(wrapped.map((wrapper) => wrapper.wraps)).size).toBe(registered.length);
   });
 
   it("registers no focus listener on the adapter: the per-action wrapper focuses instead (#1654)", () => {

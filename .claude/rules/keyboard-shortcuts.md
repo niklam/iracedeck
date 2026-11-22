@@ -149,7 +149,7 @@ Keyboard support is wired once for all three plugins by `@iracedeck/plugin-runti
 1. Import `initializeKeyboard`, `initWindowFocus`, `withWindowFocus`, and `initMousePointer` from `@iracedeck/deck-core` (the window focus service moved there in #930 and the mouse pointer service arrived in #926; both delegates are injected, so deck-core never imports `@iracedeck/iracing-native`)
 2. Call `initializeKeyboard()` before registering actions
 3. Call `initWindowFocus()` to set up window focusing — passing `@iracedeck/deck-iracing`'s `isIRacingActive` (the app monitor) as its third argument (#1176) and its `hasElevationMismatch` as its fourth (#1351), see below — and `initMousePointer()` for mouse-pointer placement
-4. Register every action wrapped as `withPressSounds(withWindowFocus(handler))` — the host's extras too. No focus listener goes on the adapter (#1654): it receives no event, so it cannot see the key's own setting
+4. Register every action wrapped as `withWindowFocus(withPressSounds(handler))` — the host's extras too, and in that order: the focus is synchronous and can block for up to a second on a timeout, and `withPressSounds` stamps the press's start and arms its long-press timer before it calls the handler, so a focus inside it would count against the 500 ms dial long-press threshold and turn a tap into a long press. No focus listener goes on the adapter (#1654): it receives no event, so it cannot see the key's own setting
 
 ```typescript
 // plugin-runtime/src/phases/input.ts — initInput(core); `adapter` is core.adapter
@@ -188,11 +188,11 @@ initWindowFocus(
 initMousePointer(adapter.createLogger("MousePointer"), (x, y) => native.moveMouseToIRacingWindow(x, y));
 
 // Every action, wrapped: the press-time focus and the per-key scope (#1654),
-// inside the press sounds
+// outside the press sounds, so a focus that blocks comes before they stamp the press
 for (const action of [...SHARED_ACTIONS, ...(core.host.extension?.extraActions ?? [])]) {
   adapter.registerAction(
     action.uuid,
-    withPressSounds(withWindowFocus(action.create(adapter.createLogger(action.scope)))),
+    withWindowFocus(withPressSounds(action.create(adapter.createLogger(action.scope)))),
   );
 }
 ```
