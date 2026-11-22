@@ -884,6 +884,7 @@ describe("withWindowFocus (issue #1654)", () => {
     });
 
     it("classifies a short dial release with the default dial shape", async () => {
+      vi.useFakeTimers();
       arrange();
       const composed = withWindowFocus(withPressSounds(recordingHandler()));
 
