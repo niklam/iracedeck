@@ -8,6 +8,7 @@
  * the plugins' Race Engineer wiring over the seeded settings, the reference
  * voice's committed script) and asserts the clips handed to the Voice channel.
  */
+import { CarLeftRight } from "@iracedeck/iracing-sdk";
 import { setCalloutEnabled } from "@iracedeck/settings";
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -50,6 +51,14 @@ describe("what the Fuel buttons are heard to do in each kind of session (issue #
     press("fuel-countdown-run");
 
     expect(heard()).toEqual(DEFAULT_COUNTDOWN);
+  });
+
+  it("is heard in full when an earlier button left a car alongside: the run clears the spotter itself", () => {
+    boot("testing");
+    apply([{ patch: { CarLeftRight: CarLeftRight.CarLeft }, holdMs: 500, tick: true }]);
+    press("fuel-countdown-run");
+
+    expect(fuelOnly(heard())).toEqual(DEFAULT_COUNTDOWN);
   });
 
   it("is silent in a test session with Test switched off, and heard again once it is back on", () => {

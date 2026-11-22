@@ -2864,6 +2864,9 @@ const FUEL_COUNTDOWN_RUN: TelemetrySequenceShortcut = {
         PlayerCarInPitStall: false,
         PlayerTrackSurface: TrkLoc.OnTrack,
         PlayerCarTowTime: 0,
+        // Nobody alongside: a car left beside the player by an earlier button
+        // would hold the spotter's focus floor and defer every ordinary count.
+        CarLeftRight: CarLeftRight.Clear,
         SessionState: SessionState.Racing,
         SessionFlags: RACING_NO_FLAG,
         SessionLapsRemainEx: null,
