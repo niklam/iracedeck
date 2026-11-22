@@ -10,7 +10,7 @@ On a replay frame the canonical order is the raw lap-progress ranking (`lc + dp`
 
 Three facts from the capture shape the design:
 
-- **Most of the blinks happen while the replay plays backwards.** The capture rewinds at 12 frames a tick (`SessionTime` −0.2 s a tick) as often as it plays forwards. A correction that reads only forwards (the live step's span rule, `0 <= since <= 0.5`) fixes 1 of the 9.
+- **The capture rewinds and pauses between the crossings.** Eight of the nine blinks are on forward ticks (+1/60 s), but the capture rewinds at 12 frames a tick (`SessionTime` −0.2 s a tick) and sits paused for long stretches. A forward-only span (the live step's rule, `0 <= since <= 0.5`) breaks every car's chain at each rewind tick. When play resumes, the cars about to cross are already inside the line guard band, so the band-exit confirmation never confirms them. With the live policy, 8 of the 9 blinks remain. With both-ways span but no run, 1 remains (car 4). With the full replay policy, none remain.
 - **Car 4's crossing is on pit road at pit speed.** It sits inside the line guard band (0.05 lap) for the whole 400 ticks before it. Under the live step's confirmation rule, a run of readings that began inside the band confirms only once it leaves the band. So car 4 is never confirmed and never corrected.
 - **Car 4 reads a lap fraction of −0.00004 on the frame after its crossing.** iRacing's not-in-world sentinel is −1. The raw order drops the car for two ticks, and the cars behind it move up.
 
