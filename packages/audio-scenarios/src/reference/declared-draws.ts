@@ -19,8 +19,10 @@
  * - A scoped draw counts only when the live entry of one of its contracts
  *   names the var: in its own steps, in a fragment it includes (transitively,
  *   through fragments that include fragments), or in its frame's `open` /
- *   `close` / `cut` — the entry's `frame`, else its contract's default, never
- *   `"none"`. The spotter's call lines are scoped to `pit-crew.spotter-call`
+ *   `close` — the entry's `frame`, else its contract's default, never
+ *   `"none"` — and the frame's `cut` only for a contract carrying `endsOn`,
+ *   the only kind whose end plays it (the reference's own reading,
+ *   `walkEntry` in `pack-reference.ts`). The spotter's call lines are scoped to `pit-crew.spotter-call`
  *   and its info lines to `pit-crew.spotter-info`, since the engine fires
  *   each set through its own contract only, so a pack that scripts only the
  *   call is not asked for "Clear.", and "Clear." shipped by such a pack is an
@@ -38,8 +40,12 @@ import type { ContractReport, VarDraw } from "../interpreter.js";
 /** A var as `vocabulary()` reports it — only the two fields this reading uses. */
 export type DeclaringVar = { readonly name: string; readonly draws?: readonly VarDraw[] };
 
-/** A contract's id and default frame, as `contracts()` reports them — what an entry without its own `frame` plays in. */
-export type ContractFrame = Pick<ContractReport, "id" | "frame">;
+/**
+ * A contract's id, default frame and ending event, as `contracts()` reports
+ * them — what an entry without its own `frame` plays in, and whether its
+ * frame's `cut` can ever play (`endsOnEvent` not `null`).
+ */
+export type ContractFrame = Pick<ContractReport, "id" | "frame" | "endsOnEvent">;
 
 /**
  * The declared pools `script` reaches, as `group/base` → the names of the
@@ -58,7 +64,7 @@ export function declaredDrawReferences(
 
   if (declaring.length === 0) return new Map();
 
-  const defaultFrames = new Map(contracts.map((c) => [c.id, c.frame]));
+  const byId = new Map(contracts.map((c) => [c.id, c]));
   let wholeScript: ReadonlySet<string> | null = null;
   const byEntry = new Map<string, ReadonlySet<string>>();
 
@@ -67,7 +73,7 @@ export function declaredDrawReferences(
     let names = byEntry.get(contractId);
 
     if (names === undefined) {
-      names = entryVarNames(script, contractId, defaultFrames.get(contractId));
+      names = entryVarNames(script, contractId, byId.get(contractId));
       byEntry.set(contractId, names);
     }
 
@@ -109,22 +115,30 @@ function liveVarNames(script: CalloutScript): ReadonlySet<string> {
  * fragments it reaches and its frame's sequences — {@link liveVarNames} over
  * the script with that entry as its only scenario and its frame as its only
  * frame, so every other entry's and frame's includes are out of the live set
- * too. An absent or `skip: true` entry names nothing.
+ * too. An absent or `skip: true` entry names nothing. The frame's `cut` is
+ * kept only for a contract carrying `endsOn`; a contract this reading does
+ * not know has none.
  */
 function entryVarNames(
   script: CalloutScript,
   contractId: string,
-  defaultFrame: string | undefined,
+  contract: ContractFrame | undefined,
 ): ReadonlySet<string> {
   const entry = Object.hasOwn(script.scenarios, contractId) ? script.scenarios[contractId] : undefined;
 
   if (entry === undefined || entry.skip === true) return new Set();
 
-  const frameName = entry.frame ?? defaultFrame;
-  const frames =
-    frameName !== undefined && frameName !== NO_FRAME && Object.hasOwn(script.frames, frameName)
-      ? { [frameName]: script.frames[frameName] }
-      : {};
+  const frameName = entry.frame ?? contract?.frame;
+  let frames: CalloutScript["frames"] = {};
+
+  if (frameName !== undefined && frameName !== NO_FRAME && Object.hasOwn(script.frames, frameName)) {
+    const frame = { ...script.frames[frameName] };
+
+    // A cut plays only when the line is ended early, which only an `endsOn` contract is.
+    if (contract?.endsOnEvent == null) delete frame.cut;
+
+    frames = { [frameName]: frame };
+  }
 
   return liveVarNames({ ...script, scenarios: { [contractId]: entry }, frames });
 }

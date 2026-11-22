@@ -23,9 +23,9 @@ const VARS: readonly DeclaringVar[] = [
 ];
 
 const CONTRACTS: readonly ContractFrame[] = [
-  { id: CALL, frame: "none" },
-  { id: INFO, frame: "none" },
-  { id: "pit-crew.flag-green", frame: "radio" },
+  { id: CALL, frame: "none", endsOnEvent: null },
+  { id: INFO, frame: "none", endsOnEvent: null },
+  { id: "pit-crew.flag-green", frame: "radio", endsOnEvent: null },
 ];
 
 function script(parts: Partial<CalloutScript>): CalloutScript {
@@ -94,22 +94,28 @@ describe("declaredDrawReferences (issue #1718)", () => {
     };
     const fragments = { tail: { sequence: ["{{spotterClip}}"] } };
 
-    // Its own frame, through the frame's cut and a fragment that includes.
-    expect(reach(script({ scenarios: { [CALL]: { frame: "spotter", sequence: [] } }, frames, fragments }))).toEqual({
-      "spotter/car-left": ["spotterClip"],
-    });
+    // Its own frame, through the frame's cut and a fragment that includes — for a contract carrying `endsOn`,
+    // the only kind whose end plays the cut; for any other the cut is never heard, so it names nothing.
+    const endable: readonly ContractFrame[] = [
+      { id: CALL, frame: "none", endsOnEvent: "flag.green" as ContractFrame["endsOnEvent"] },
+    ];
+
+    expect(
+      reach(script({ scenarios: { [CALL]: { frame: "spotter", sequence: [] } }, frames, fragments }), endable),
+    ).toEqual({ "spotter/car-left": ["spotterClip"] });
+    expect(reach(script({ scenarios: { [CALL]: { frame: "spotter", sequence: [] } }, frames, fragments }))).toEqual({});
     // The contract's default frame when the entry names none.
     expect(
       reach(script({ scenarios: { [CALL]: { sequence: [] } }, frames }), [
-        { id: CALL, frame: "radio" },
-        { id: INFO, frame: "none" },
+        { id: CALL, frame: "radio", endsOnEvent: null },
+        { id: INFO, frame: "none", endsOnEvent: null },
       ]),
     ).toEqual({ "spotter/car-left": ["spotterClip"] });
     // Unframed by default, and `frame: "none"` over a framed default.
     expect(reach(script({ scenarios: { [CALL]: { sequence: [] } }, frames }))).toEqual({});
     expect(
       reach(script({ scenarios: { [CALL]: { frame: "none", sequence: [] } }, frames }), [
-        { id: CALL, frame: "radio" },
+        { id: CALL, frame: "radio", endsOnEvent: null },
       ]),
     ).toEqual({});
     // A frame the script does not define names nothing.
