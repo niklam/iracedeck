@@ -154,6 +154,22 @@ describe("ird-camera-catalog-list", () => {
     expect(button("drone").textContent).toBe("Remove — are you sure?");
   });
 
+  it("names the group in the button in both states, and the confirmation once armed (#1653 review)", () => {
+    publish(CATALOG);
+
+    expect(button("drone").getAttribute("aria-label")).toBe("Remove drone");
+
+    button("drone").click();
+    expect(button("drone").getAttribute("aria-label")).toBe("Remove drone — press again to confirm");
+
+    // Across a push that rebuilds the row, and back once the arm lapses.
+    publish({ ...CATALOG, current: null });
+    expect(button("drone").getAttribute("aria-label")).toBe("Remove drone — press again to confirm");
+
+    vi.advanceTimersByTime(CAMERA_CATALOG_REMOVE_ARM_MS);
+    expect(button("drone").getAttribute("aria-label")).toBe("Remove drone");
+  });
+
   it("sends cameraCatalogRemove with the name on the second press", () => {
     publish(CATALOG);
     button("drone").click();

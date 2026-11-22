@@ -157,8 +157,16 @@ export class CameraCatalogList extends HTMLElement {
     void readCatalog().then(onCatalog);
   }
 
+  /**
+   * The button's look and accessible name for its state. The name always
+   * carries the group, and the armed one the confirmation the text shows,
+   * since an aria-label overrides the text (#1653 review).
+   */
   private static dressButton(button: HTMLButtonElement, armed: boolean): void {
+    const name = button.dataset.group ?? "";
+
     button.textContent = armed ? ARMED_REMOVE_LABEL : RESTING_REMOVE_LABEL;
+    button.setAttribute("aria-label", armed ? `Remove ${name} — press again to confirm` : `Remove ${name}`);
     button.classList.toggle("ird-cc-remove-armed", armed);
     button.setAttribute("aria-pressed", armed ? "true" : "false");
   }
@@ -191,7 +199,8 @@ export class CameraCatalogList extends HTMLElement {
     const button = document.createElement("button");
     button.type = "button";
     button.className = "ird-cc-remove";
-    button.setAttribute("aria-label", `Remove ${name}`);
+    // By dataset, not attribute markup: a group may be named anything.
+    button.dataset.group = name;
     CameraCatalogList.dressButton(button, false);
 
     // A push that rebuilt the list mid-confirmation: the armed name's new button
