@@ -993,17 +993,20 @@ export class CameraControls extends SimIRacingAction<CameraControlsSettings> {
   /** Last displayed group name and availability per context, to avoid redundant re-renders */
   private lastDisplayedGroup = new Map<string, string>();
 
-  /** Per context, the newest cycle-icon render started (`showCycleIcon`) */
-  private cycleIconGeneration = new Map<string, number>();
+  /**
+   * Per context, the newest render started on the key: a Cycle Camera icon
+   * (`showCycleIcon`), a Change Camera availability redraw, or new settings.
+   * A write that lands after a newer render started registers nothing.
+   */
+  private renderGeneration = new Map<string, number>();
 
   /**
-   * Cycle-icon renders started on this instance, the source of every
-   * generation above. One count for all keys, never reset: a key that
+   * Renders started on this instance, the source of every generation above. One count for all keys, never reset: a key that
    * disappears and comes back under the same context id gets generations its
    * earlier placement never had, so a write still in flight from before can
    * never pass for the newest render (#1653 review).
    */
-  private cycleIconRenders = 0;
+  private renders = 0;
 
   /**
    * Per Change Camera key, whether the icon on it was drawn unavailable
@@ -1100,7 +1103,7 @@ export class CameraControls extends SimIRacingAction<CameraControlsSettings> {
     this.dialSurface.willDisappear(ev.action.id);
     this.activeContexts.delete(ev.action.id);
     this.lastDisplayedGroup.delete(ev.action.id);
-    this.cycleIconGeneration.delete(ev.action.id);
+    this.renderGeneration.delete(ev.action.id);
     this.shownUnavailable.delete(ev.action.id);
   }
 
@@ -1127,7 +1130,7 @@ export class CameraControls extends SimIRacingAction<CameraControlsSettings> {
     // register its icon over the grid once the record that would restore the
     // grid is gone (#1653 review). The tick below draws afresh when it has a
     // group to show.
-    this.claimCycleGeneration(ev.action.id);
+    this.claimRenderGeneration(ev.action.id);
     this.lastDisplayedGroup.delete(ev.action.id);
     this.onKeyTick(ev.action.id);
   }
@@ -1970,8 +1973,10 @@ export class CameraControls extends SimIRacingAction<CameraControlsSettings> {
    * made while this write was in flight, belongs to that write and is left
    * alone. A write that landed registers regeneration for these settings: one
    * that follows a failed settings redraw is the first to put them on the key.
+   * A write a newer render overtook does neither.
    */
   private async writeChangeCameraLook(contextId: string, settings: CameraControlsSettings): Promise<void> {
+    const generation = this.claimRenderGeneration(contextId);
     const icon = this.renderKeyIcon(settings);
     this.recordShownLook(contextId, icon.unavailable);
 
@@ -1985,6 +1990,11 @@ export class CameraControls extends SimIRacingAction<CameraControlsSettings> {
       this.logger.debug(`Failed to redraw a Change Camera key: ${err instanceof Error ? err.message : err}`);
       written = false;
     }
+
+    // Overtaken by new settings, the key leaving, or a newer redraw (#1653
+    // review): its callback would capture settings the key no longer has, and
+    // the record belongs to whatever overtook it.
+    if (this.renderGeneration.get(contextId) !== generation) return;
 
     if (written === false) {
       if (this.shownUnavailable.get(contextId) === recorded) this.shownUnavailable.delete(contextId);
@@ -2097,7 +2107,7 @@ export class CameraControls extends SimIRacingAction<CameraControlsSettings> {
 
     this.lastDisplayedGroup.set(contextId, shown);
 
-    const write = await this.showCycleIcon(contextId, this.claimCycleGeneration(contextId), () =>
+    const write = await this.showCycleIcon(contextId, this.claimRenderGeneration(contextId), () =>
       generateCameraSelectSvg(shownGroupName, settings, unavailable),
     );
 
@@ -2127,7 +2137,7 @@ export class CameraControls extends SimIRacingAction<CameraControlsSettings> {
    * the settings put the key's configured look on it.
    */
   private async restoreCycleGrid(contextId: string, settings: CameraControlsSettings): Promise<void> {
-    const generation = this.claimCycleGeneration(contextId);
+    const generation = this.claimRenderGeneration(contextId);
     const mark = `${RESTORING_MARK}${generation}`;
     this.lastDisplayedGroup.set(contextId, mark);
 
@@ -2139,12 +2149,12 @@ export class CameraControls extends SimIRacingAction<CameraControlsSettings> {
   }
 
   /**
-   * Start a new render on a key, overtaking any Cycle Camera icon write still
-   * in flight for it: the generation is drawn from the instance-wide count.
+   * Start a new render on a key, overtaking any icon write still in flight for
+   * it: the generation is drawn from the instance-wide count.
    */
-  private claimCycleGeneration(contextId: string): number {
-    const generation = ++this.cycleIconRenders;
-    this.cycleIconGeneration.set(contextId, generation);
+  private claimRenderGeneration(contextId: string): number {
+    const generation = ++this.renders;
+    this.renderGeneration.set(contextId, generation);
 
     return generation;
   }
@@ -2175,7 +2185,7 @@ export class CameraControls extends SimIRacingAction<CameraControlsSettings> {
       written = false;
     }
 
-    if (this.cycleIconGeneration.get(contextId) !== generation) return "superseded";
+    if (this.renderGeneration.get(contextId) !== generation) return "superseded";
 
     if (written === false) return "failed";
 
@@ -2190,9 +2200,10 @@ export class CameraControls extends SimIRacingAction<CameraControlsSettings> {
   ): Promise<void> {
     const contextId = ev.action.id;
     // New settings replace whatever is on the key (#1653 review): a Cycle Camera
-    // write still in flight from before them must register nothing when it
-    // lands, or its callback would put the old mode's icon back on the key.
-    this.claimCycleGeneration(contextId);
+    // or Change Camera write still in flight from before them must register
+    // nothing when it lands, or its callback would put the old mode's icon
+    // back on the key.
+    this.claimRenderGeneration(contextId);
     const icon = this.renderKeyIcon(settings);
 
     try {
@@ -2202,7 +2213,13 @@ export class CameraControls extends SimIRacingAction<CameraControlsSettings> {
       // The new look may never have reached the key (#1653 review): with no
       // record of what it shows, the next tick draws a Change Camera key's
       // look again, and that write registers regeneration for these settings.
+      // A Cycle Camera key gets a retry marker, so the next tick draws its
+      // group with these settings (a title change keeps the same group, which
+      // the dedupe would skip) or puts the grid back when it has none.
       this.shownUnavailable.delete(contextId);
+
+      if (settings.target === "cycle-camera") this.lastDisplayedGroup.set(contextId, DRAW_PENDING_MARK);
+      else this.lastDisplayedGroup.delete(contextId);
 
       throw err;
     }

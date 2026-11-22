@@ -2593,6 +2593,58 @@ describe("Cycle Camera key icon: next or current group (#959)", () => {
     });
   });
 
+  describe("a settings redraw the host refuses (#1653 review)", () => {
+    const retitled = {
+      target: "cycle-camera",
+      direction: "next",
+      cycleIconMode: "current",
+      titleOverrides: { titleText: "MY CAM" },
+    };
+
+    /** TV1 on the key; new settings that change only the title, whose setTitle rejects. */
+    async function refuseRetitle(): Promise<CameraControls> {
+      const action = await appear({ cycleIconMode: "current" }, { CamGroupNumber: 12 });
+      expect(shownIcons(action)).toHaveLength(1);
+      const context = keyContext();
+      context.setTitle.mockRejectedValueOnce(new Error("socket closed"));
+
+      await expect(
+        action.onDidReceiveSettings({ action: context, payload: { settings: retitled } } as never),
+      ).rejects.toThrow("socket closed");
+
+      return action;
+    }
+
+    it("draws the group with the new settings on the next tick", async () => {
+      const action = await refuseRetitle();
+
+      subscriber?.();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(shownIcons(action)).toHaveLength(2);
+      expect(shownIcons(action)[1]).toContain("tv1-artwork");
+      expect(shownIcons(action)[1]).toContain("MY CAM");
+
+      // Once it went out, ticks leave it alone again.
+      subscriber?.();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(shownIcons(action)).toHaveLength(2);
+    });
+
+    it("puts the grid back on the next tick when there is no group to show", async () => {
+      const action = await refuseRetitle();
+
+      vi.mocked(action["sdkController"].getCurrentTelemetry).mockReturnValue(null);
+      subscriber?.();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(shownIcons(action)).toHaveLength(2);
+      // The grid, with the new title: several thumbnails, not TV1 alone.
+      expect(shownIcons(action)[1]).toContain("MY CAM");
+      expect(shownIcons(action)[1]).toContain("nose-artwork");
+    });
+  });
+
   describe("new settings overtake a grid restore in flight (#1653 review)", () => {
     /** Shows Spotter, then holds the write putting the grid back after telemetry goes away. */
     async function holdRestore(): Promise<{ action: CameraControls; land: () => Promise<void> }> {
@@ -3786,6 +3838,32 @@ describe("Camera Controls keys on a group the session lacks (#1653)", () => {
       subscriber?.();
 
       expect(pushedImages(action)).toBe(2);
+    });
+
+    it("registers nothing for an availability redraw that lands after the key became Cycle Camera (#1653 review)", async () => {
+      const action = await appear({ target: "change-camera", cameraGroupName: "DynamicTV" }, CUSTOM_FILE_GROUPS);
+      let finish: ((written: boolean) => void) | undefined;
+      vi.mocked(action["updateKeyImage"]).mockImplementationOnce(
+        () => new Promise<boolean>((resolve) => (finish = resolve)),
+      );
+
+      sessionUpdate(action, LAKELAND_GROUPS); // DynamicTV gone: the greyed redraw is held
+      expect(pushedImages(action)).toBe(1);
+      expect(finish).toBeTypeOf("function");
+
+      vi.mocked(action["sdkController"].getCurrentTelemetry).mockReturnValue(null);
+      await action.onDidReceiveSettings({
+        action: keyContext(),
+        payload: { settings: { target: "cycle-camera", direction: "next" } },
+      } as never);
+      const registered = vi.mocked(action["setRegenerateCallback"]).mock.calls.length;
+
+      finish?.(true);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      const registrations = vi.mocked(action["setRegenerateCallback"]).mock.calls;
+      expect(registrations).toHaveLength(registered);
+      expect(decodeURIComponent((registrations.at(-1)?.[1] as () => string)())).toContain("CYCLE CAM");
     });
 
     describe("a settings redraw the host refuses (#1653 review)", () => {
