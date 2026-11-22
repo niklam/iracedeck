@@ -54,7 +54,7 @@ Whenever iRacing reports a session's camera groups, live or in a replay, iRaceDe
 
 Each name is its own group. `Drone` on one track and `Dynamic TV` on another are two groups, even when you use them for the same kind of shot, and a button set to `Drone` does nothing on a track whose camera file has only `Dynamic TV`. Give the group the same name in both camera files, or put the two on two buttons.
 
-If `cameras.json` is damaged and cannot be read, iRaceDeck keeps it next to the original as `cameras.corrupt-<date>.json`, shows a banner saying so, and starts a fresh list from the next session. Your buttons keep their camera groups either way.
+If the contents of `cameras.json` are damaged, iRaceDeck moves the file aside as `cameras.corrupt-<date>.json` in the same folder, shows a banner saying so, and starts a fresh list from the next session. If the file cannot be opened at all (another program holding it, for example), or a newer iRaceDeck version wrote it, iRaceDeck leaves it untouched and keeps the camera groups it sees in memory until it restarts. Your buttons keep their camera groups either way.
 
 If you go back to an older iRaceDeck version, a button set to a standard group keeps pressing that group. A button set to a custom group presses the standard group it was set to before, or Cockpit if it never had one, since an older version knows no custom groups.
 
