@@ -41,17 +41,25 @@ describe("classifySession", () => {
   // `session-kind.ts`, plus the ones it leaves unmapped), pinned to the bucket
   // the translator and the Race Engineer catalog read today (#1587).
   it.each([
-    ["Practice", "practice", false],
-    ["Lone Practice", "practice", false],
-    ["Offline Testing", "practice", false],
-    ["Open Qualify", "qualifying", false],
-    ["Lone Qualify", "qualifying", true],
-    ["Race", "race", false],
-    ["Heat Race", "race", false],
-    ["Warmup", "race", false],
-    ["Some Future Session", "race", false],
-  ] as const)("classifies %s as %s (solo qualifying: %s)", (sessionType, category, soloQualifying) => {
-    expect(classifySession(sessionType)).toEqual({ category, soloQualifying });
+    ["Practice", "practice", false, false],
+    ["Lone Practice", "practice", false, false],
+    ["Offline Testing", "practice", false, true],
+    ["Open Qualify", "qualifying", false, false],
+    ["Lone Qualify", "qualifying", true, false],
+    ["Race", "race", false, false],
+    ["Heat Race", "race", false, false],
+    ["Warmup", "race", false, false],
+    ["Some Future Session", "race", false, false],
+  ] as const)(
+    "classifies %s as %s (solo qualifying: %s, testing: %s)",
+    (sessionType, category, soloQualifying, testing) => {
+      expect(classifySession(sessionType)).toEqual({ category, soloQualifying, testing });
+    },
+  );
+
+  it("marks only a testing session as testing, and keeps it practice by category (#1702)", () => {
+    expect(classifySession("Offline Testing")).toEqual({ category: "practice", soloQualifying: false, testing: true });
+    expect(classifySession("Offline Testing")).not.toBe(classifySession("Practice"));
   });
 
   it("answers null for a session type nobody could read", () => {

@@ -263,6 +263,15 @@ export type SessionClass = {
    * road (iRacing's "Lone Qualify"): the radar and spotter stay silent in it.
    */
   readonly soloQualifying: boolean;
+  /**
+   * A session the player runs alone to test, with no event around it
+   * (iRacing's "Offline Testing"; a private test day elsewhere). A qualifier
+   * within `practice`, the way `soloQualifying` is within `qualifying`, so a
+   * reader of `category` alone still treats it as practice; the fuel
+   * countdown's Test toggle tells it apart (#1702). `true` with any other
+   * category does not occur, by convention.
+   */
+  readonly testing: boolean;
 };
 
 /**

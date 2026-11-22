@@ -167,14 +167,14 @@ describe("buildPitCrewDeps", () => {
   it("routes the four #1378 reads to their SimRuntime members, read live", () => {
     const sim = fakeSim({
       getLatestTelemetry: vi.fn(() => ({ SessionTick: 7 })),
-      getSessionClass: vi.fn(() => ({ category: "qualifying" as const, soloQualifying: true })),
+      getSessionClass: vi.fn(() => ({ category: "qualifying" as const, soloQualifying: true, testing: false })),
       isStandingStart: vi.fn(() => true),
       isDamageRepairNeeded: vi.fn(() => false),
     });
     const built = buildPitCrewDeps(fakeDeps({ sim }), noCaches);
 
     expect(built.getLatestTelemetry()).toEqual({ SessionTick: 7 });
-    expect(built.getSessionClass()).toEqual({ category: "qualifying", soloQualifying: true });
+    expect(built.getSessionClass()).toEqual({ category: "qualifying", soloQualifying: true, testing: false });
     expect(built.getStandingStart()).toBe(true);
     expect(built.getDamageRepairNeeded()).toBe(false);
 
