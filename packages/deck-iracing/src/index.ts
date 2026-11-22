@@ -33,3 +33,38 @@ export {
   replaySessionHeaderFromSessionInfo,
   type ReplaySessionSubscriberOptions,
 } from "./replay-session-subscriber.js";
+export {
+  CAMERA_CATALOG_LAST_SEEN_REFRESH_MS,
+  CAMERA_CATALOG_VERSION,
+  CAMERA_GROUP_NAME_MAX_LENGTH,
+  type CameraCatalog,
+  type CameraCatalogGroup,
+  type CameraCatalogParseResult,
+  type CameraCatalogTrack,
+  type CameraCatalogUpdate,
+  type CameraGroupObservation,
+  emptyCameraCatalog,
+  parseCameraCatalog,
+  recordCameraGroups,
+  removeCameraGroup,
+  toCameraCatalogView,
+} from "./camera-catalog.js";
+export {
+  CAMERA_CATALOG_FILE_NAME,
+  type CameraCatalogPersistence,
+  type CameraCatalogService,
+  type CameraCatalogServiceOptions,
+  createCameraCatalogService,
+  resolveCameraCatalogPath,
+} from "./camera-catalog-service.js";
+export {
+  type CameraCatalogPublisher,
+  type CameraCatalogPublisherOptions,
+  createCameraCatalogPublisher,
+} from "./camera-catalog-publisher.js";
+export {
+  CAMERA_CATALOG_REJECTED_WARNING_ID,
+  type CameraCatalogRejectionReporterOptions,
+  createCameraCatalogRejectionReporter,
+  evaluateCameraCatalogRejectionWarning,
+} from "./camera-catalog-warning.js";

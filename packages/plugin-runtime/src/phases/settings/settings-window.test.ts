@@ -67,6 +67,7 @@ describe("initSettingsWindow (#1377)", () => {
       store: { path: "C:/settings.json" },
       voicePacks: stub("voicePacks"),
       trackDataPath: TRACK_DATA_PATH,
+      cameraCatalog: stub("cameraCatalog"),
     });
 
     expect(callLog.filter((n) => n.startsWith("create") || n.startsWith("init"))).toEqual([
@@ -84,7 +85,13 @@ describe("initSettingsWindow (#1377)", () => {
     const { core } = createFakeCore();
     const store = countingStore("C:/settings.json");
 
-    initSettingsWindow({ core, store, voicePacks: stub("voicePacks"), trackDataPath: TRACK_DATA_PATH });
+    initSettingsWindow({
+      core,
+      store,
+      voicePacks: stub("voicePacks"),
+      trackDataPath: TRACK_DATA_PATH,
+      cameraCatalog: stub("cameraCatalog"),
+    });
 
     expect(handlerDeps[0].storePath).toBe("C:/settings.json");
     expect(store.reads).toBe(1);
@@ -100,10 +107,28 @@ describe("initSettingsWindow (#1377)", () => {
       store: { path: "C:/settings.json" },
       voicePacks: stub("voicePacks"),
       trackDataPath: TRACK_DATA_PATH,
+      cameraCatalog: stub("cameraCatalog"),
     });
 
     expect(handlerDeps).toHaveLength(1);
     expect(handlerDeps[0].trackDataPath).toBe(TRACK_DATA_PATH);
+  });
+
+  it("routes the Camera groups card's Remove to the sim phase's camera catalog, by name only (#1653)", () => {
+    const { core } = createFakeCore();
+    const removed: unknown[][] = [];
+
+    initSettingsWindow({
+      core,
+      store: { path: "C:/settings.json" },
+      voicePacks: stub("voicePacks"),
+      trackDataPath: TRACK_DATA_PATH,
+      cameraCatalog: { remove: (...args: unknown[]) => removed.push(args) > 0 },
+    });
+
+    expect(handlerDeps).toHaveLength(1);
+    (handlerDeps[0].removeCameraGroup as (name: string) => void)("DynamicTV");
+    expect(removed).toEqual([["DynamicTV"]]);
   });
 
   it("publishes the channel of a server that starts later, through the publisher", () => {
@@ -116,6 +141,7 @@ describe("initSettingsWindow (#1377)", () => {
       store: { path: "C:/settings.json" },
       voicePacks: stub("voicePacks"),
       trackDataPath: TRACK_DATA_PATH,
+      cameraCatalog: stub("cameraCatalog"),
     });
     (controllerOptions[0].onStarted as (channel: unknown) => void)({ port: 2, token: "t" });
 
@@ -135,6 +161,7 @@ describe("initSettingsWindow (#1377)", () => {
       store: { path: "C:/settings.json" },
       voicePacks: stub("voicePacks"),
       trackDataPath: TRACK_DATA_PATH,
+      cameraCatalog: stub("cameraCatalog"),
     });
     callLog.length = 0;
 

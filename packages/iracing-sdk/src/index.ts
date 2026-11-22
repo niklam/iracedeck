@@ -252,7 +252,13 @@ export {
   getPlayerCarNumberFromSessionInfo,
   getAllCarNumbers,
   isReplayOnlySession,
+  foldCameraGroupName,
+  normalizeCameraGroupName,
+  readCameraGroupNames,
   readSubSessionId,
+  readTrackConfigName,
+  readTrackDisplayName,
+  readTrackId,
 } from "./session-utils.js";
 
 // Telemetry snapshot formatting utilities

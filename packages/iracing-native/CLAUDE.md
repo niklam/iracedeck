@@ -32,13 +32,14 @@ The `install` script in `package.json` is a no-op `echo`, so `pnpm install` neve
 `IRacingNativeMock` (in `src/mock-impl.ts`) provides:
 - Simulated connection lifecycle (`startup`/`shutdown`/`isConnected`)
 - Mock telemetry data that rotates through 3 snapshots (mid-straight, braking, pit entry)
-- Mock session info YAML (Spa practice, 3 drivers)
+- Mock session info YAML (Spa practice, 3 drivers), or another one chosen through the constructor's second argument, `IRacingNativeMockOptions.sessionInfoYaml` (#1653); `setSessionInfoYaml(yaml)` swaps it on a running mock and advances the header's `sessionInfoUpdate`, as iRacing does when a camera file is loaded mid-session
 - No-op implementations for broadcast messages, chat, and keyboard input
 
 ### Mock data
 
 Located in `src/mock-data/`:
-- `session-info.ts` — YAML string for a practice session at Spa
+- `session-info.ts` — YAML string for a practice session at Spa (`MOCK_SESSION_INFO_YAML`, exported from the package for tests that select a session)
+- `session-info-custom-cameras.ts` — `MOCK_SESSION_INFO_YAML_CUSTOM_CAMERAS` (#1653): the Spa session at another track (`MOCK_CUSTOM_CAMERAS_TRACK_ID`, 501) with a broadcaster-shaped camera file (`MOCK_CUSTOM_CAMERA_GROUP_NAMES`: custom groups such as `DynamicTV` and `Drone` among standard ones, and the `Pit Lane2` spelling), built from the default YAML by exact replacements that throw at load when one stops matching. The camera catalog and Camera Controls are tested against it; `iracing-sdk`'s tests read both YAMLs through its parser
 - `telemetry.ts` — Variable headers with computed offsets and a `buildTelemetryBuffer()` function
 - `snapshots.ts` — 3 telemetry snapshots with realistic values
 

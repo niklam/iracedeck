@@ -2,6 +2,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { VarType } from "./defines.js";
 import { FocusResult, PointerMoveResult } from "./index.js";
+import {
+  MOCK_CUSTOM_CAMERA_GROUP_NAMES,
+  MOCK_CUSTOM_CAMERAS_TRACK_ID,
+  MOCK_SESSION_INFO_YAML_CUSTOM_CAMERAS,
+} from "./mock-data/session-info-custom-cameras.js";
+import { MOCK_SESSION_INFO_YAML } from "./mock-data/session-info.js";
 import { MOCK_SNAPSHOTS } from "./mock-data/snapshots.js";
 import { MOCK_VAR_HEADERS } from "./mock-data/telemetry.js";
 import { IRacingNativeMock } from "./mock-impl.js";
@@ -159,6 +165,67 @@ describe("IRacingNativeMock", () => {
     it("sendScanKeySequence should accept an explicit holdMs", () => {
       expect(() => mock.sendScanKeySequence([[0x3b], [0x3e]], 16)).not.toThrow();
       expect(console.debug).toHaveBeenCalledWith(expect.stringContaining("16"));
+    });
+  });
+
+  describe("session info variants (#1653)", () => {
+    /** The section of `yaml` from `start` up to the next top-level key. */
+    const section = (yaml: string, start: string): string => {
+      const from = yaml.indexOf(`\n${start}:\n`);
+
+      // A missing section would slice from the start, and two such slices
+      // would compare equal without comparing anything (#1653 review).
+      if (from === -1) throw new Error(`section ${start} is missing from the fixture`);
+
+      const rest = yaml.slice(from + 1);
+      const next = rest.slice(start.length + 2).search(/^[A-Za-z]/m);
+
+      return next === -1 ? rest : rest.slice(0, start.length + 2 + next);
+    };
+
+    it("serves the default Spa session unless told otherwise", () => {
+      mock.startup();
+
+      expect(mock.getSessionInfoStr()).toBe(MOCK_SESSION_INFO_YAML);
+      expect(mock.getHeader()?.sessionInfoLen).toBe(MOCK_SESSION_INFO_YAML.length);
+    });
+
+    it("serves the custom-camera variant when constructed with it", () => {
+      const custom = new IRacingNativeMock(undefined, { sessionInfoYaml: MOCK_SESSION_INFO_YAML_CUSTOM_CAMERAS });
+
+      custom.startup();
+
+      expect(custom.getSessionInfoStr()).toBe(MOCK_SESSION_INFO_YAML_CUSTOM_CAMERAS);
+      expect(custom.getHeader()?.sessionInfoLen).toBe(MOCK_SESSION_INFO_YAML_CUSTOM_CAMERAS.length);
+    });
+
+    it("switches the session info and advances sessionInfoUpdate, as a camera file loaded mid-session does", () => {
+      mock.startup();
+      const before = mock.getHeader()?.sessionInfoUpdate ?? 0;
+
+      mock.setSessionInfoYaml(MOCK_SESSION_INFO_YAML_CUSTOM_CAMERAS);
+
+      expect(mock.getSessionInfoStr()).toBe(MOCK_SESSION_INFO_YAML_CUSTOM_CAMERAS);
+      expect(mock.getHeader()?.sessionInfoUpdate).toBe(before + 1);
+    });
+
+    it("puts the variant at another track with broadcaster-style groups, every other section the default's", () => {
+      const yaml = MOCK_SESSION_INFO_YAML_CUSTOM_CAMERAS;
+
+      expect(yaml).toContain(`\n TrackID: ${MOCK_CUSTOM_CAMERAS_TRACK_ID}\n`);
+      expect(MOCK_CUSTOM_CAMERAS_TRACK_ID).not.toBe(13);
+      expect(MOCK_SESSION_INFO_YAML).toContain("\n TrackID: 13\n");
+
+      const names = [...section(yaml, "CameraInfo").matchAll(/^ {3}GroupName: (.*)$/gm)].map((m) => m[1]);
+
+      expect(names).toEqual(MOCK_CUSTOM_CAMERA_GROUP_NAMES);
+      expect(names).toEqual(
+        expect.arrayContaining(["DynamicTV", "Grid_Pole", "SpeedCam", "Drone", "Pit Lane2", "TV1"]),
+      );
+
+      for (const key of ["SessionInfo", "RadioInfo", "DriverInfo", "SplitTimeInfo"]) {
+        expect(section(yaml, key), key).toBe(section(MOCK_SESSION_INFO_YAML, key));
+      }
     });
   });
 

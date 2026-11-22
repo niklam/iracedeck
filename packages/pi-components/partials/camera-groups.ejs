@@ -1,0 +1,16 @@
+<%#
+  The Camera Groups card (#1653): every camera group name iRaceDeck remembers
+  from the sessions it has seen, with the tracks whose current camera file has
+  it, when it was last seen, and a Remove per name.
+
+  Settings-window only: Remove sends `cameraCatalogRemove`, handled by the
+  settings-window command handler, and a Property Inspector's `sendToPlugin`
+  goes to its own action instead — the same reason voice-packs.ejs is gated.
+  The window passes the flag to THIS include explicitly.
+%>
+<% if (locals.settingsWindow) { %>
+<ird-camera-catalog-list catalog="_cameraCatalog"></ird-camera-catalog-list>
+<div class="ird-supporting-text ird-supporting-text-full">
+  Camera Controls offers these names for Change Camera and Cycle Camera, so a key can be set up away from the track. iRaceDeck records them from each session's camera file. A name you remove comes back the next time iRacing reports a session whose camera file has it: for the track you are on, at the session's next update; for another track, when that track is loaded. Removing a name never changes a key.
+</div>
+<% } %>

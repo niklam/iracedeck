@@ -1,5 +1,5 @@
 import { PROFILE_SWITCH_SESSION_KINDS } from "@iracedeck/app-constants";
-import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { cleanupTempBinDirs, createHost } from "../test-support/fake-host.js";
 import { callLog, implement, resetRecorder } from "../test-support/recorder.js";
@@ -50,10 +50,15 @@ function trackData(section: unknown = null): TrackData & { loads: unknown[] } {
 }
 
 describe("initSim", () => {
-  beforeEach(() => resetRecorder());
+  beforeEach(() => {
+    resetRecorder();
+    // The camera catalog registers an exit flush; keep it off the test worker.
+    vi.spyOn(process, "on").mockReturnValue(process);
+  });
+  afterEach(() => vi.restoreAllMocks());
   afterAll(() => cleanupTempBinDirs());
 
-  it("builds the translator's options, constructs the translator, feeds live positions through core.controller, then hands out the runtime and the host's sim", () => {
+  it("builds the translator's options, constructs the translator, feeds live positions through core.controller, starts the camera catalog, then hands out the runtime and the host's sim", () => {
     const host = createHost();
     const core = initCore(host);
     callLog.length = 0;
@@ -68,9 +73,52 @@ describe("initSim", () => {
       "createIracingTranslatorOptions",
       "initializeSimEventsIracing",
       "getController().setLivePositionsProvider",
+      // The camera catalog (#1653): its path beside the settings file, its banner, its load.
+      "getPluginPlatform",
+      "resolveSettingsStorePath",
+      "resolveCameraCatalogPath",
+      "createCameraCatalogRejectionReporter",
+      "createCameraCatalogService",
+      "createCameraCatalogService().start",
       "createIracingSimRuntime",
     ]);
-    expect(host.adapter.scopes).toEqual(["SimEventsIracing"]);
+    expect(host.adapter.scopes).toEqual(["SimEventsIracing", "CameraCatalog"]);
+  });
+
+  it("builds the camera catalog beside the settings file, with the rejection banner, flushes it on exit and hands it out (#1653)", () => {
+    const catalog = { start: vi.fn(() => Promise.resolve()), flushSync: vi.fn() };
+    const serviceOptions: Record<string, unknown>[] = [];
+    const reporter = (): void => undefined;
+    implement("getPluginPlatform", () => "mirabox");
+    implement("resolveSettingsStorePath", (options) => {
+      expect(options).toEqual({ platform: "mirabox", env: process.env });
+
+      return "C:/data/Settings/Mirabox/global-settings.json";
+    });
+    implement("resolveCameraCatalogPath", (settingsPath) => `${String(settingsPath)} -> cameras.json`);
+    implement("createCameraCatalogRejectionReporter", () => reporter);
+    implement("createCameraCatalogService", (options) => {
+      serviceOptions.push(options as Record<string, unknown>);
+
+      return catalog;
+    });
+
+    const sim = initSim(initCore(createHost()), trackData());
+
+    expect(sim.cameraCatalog).toBe(catalog);
+    expect(serviceOptions).toHaveLength(1);
+    expect(serviceOptions[0].path).toBe("C:/data/Settings/Mirabox/global-settings.json -> cameras.json");
+    expect(serviceOptions[0].onRejected).toBe(reporter);
+    expect(catalog.start).toHaveBeenCalledOnce();
+
+    const exitHandlers = vi
+      .mocked(process.on)
+      .mock.calls.filter(([event]) => event === "exit")
+      .map(([, handler]) => handler as () => void);
+
+    expect(exitHandlers).toHaveLength(1);
+    exitHandlers[0]();
+    expect(catalog.flushSync).toHaveBeenCalledOnce();
   });
 
   it("returns the runtime createIracingSimRuntime built", () => {

@@ -50,7 +50,7 @@ import { gt, valid } from "semver";
 import { z } from "zod";
 
 import { DEFAULT_FEATURE_STARTUP_POLICY, FEATURE_STARTUP_POLICIES } from "./feature-startup-policy.js";
-import { hasOnlyRunScopedKeys, stripRunScopedKeys } from "./run-scoped-settings.js";
+import { hasOnlyRunScopedKeys, HOST_MIRROR_EXCLUDED_KEYS, stripRunScopedKeys } from "./run-scoped-settings.js";
 import type { SettingsHost } from "./settings-host.js";
 import type { SettingsStore } from "./settings-store.js";
 import {
@@ -1852,11 +1852,17 @@ export function getSettingsStoreSource(): SettingsStoreSource | null {
  * spend a bootstrap attempt dialling the previous run's dead port. The skip
  * guards above apply unchanged: a defaults cache must never be broadcast as if
  * it were real settings, banner or no banner.
+ *
+ * `HOST_MIRROR_EXCLUDED_KEYS` (run-scoped-settings.ts) are left out: the
+ * camera catalog is durable in its own file and too large to ride a host write.
  */
 export function hostMirrorPayload(channel?: { port: number; token: string }): Record<string, unknown> | undefined {
   if (!isSettingsStoreHostDerived()) return undefined;
 
   const mirror = { ...(currentSettings as Record<string, unknown>) };
+
+  // Durable elsewhere and large: never written into the host's settings file (#1653).
+  for (const key of HOST_MIRROR_EXCLUDED_KEYS) delete mirror[key];
 
   if (channel === undefined) {
     delete mirror[SETTINGS_CHANNEL_KEY];

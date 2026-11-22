@@ -1,4 +1,5 @@
 import {
+  CAMERA_CATALOG_KEY,
   CHANGELOG_NOTIFICATION_POLICIES,
   PI_WARNINGS_KEY,
   PRESS_SOUND_MODES,
@@ -1713,6 +1714,24 @@ describe("single-writer store (issue #993)", () => {
     expect(settings[MIGRATION_PENDING_KEY]).toBeUndefined();
     expect(store.saved.at(-1)).not.toHaveProperty(MIGRATION_PENDING_KEY);
     expect(hostMirrorPayload({ port: 1, token: "t" })).toMatchObject({ blackBoxLapTiming: binding });
+  });
+
+  it("leaves the camera catalog out of the host mirror (#1653)", async () => {
+    const mock = createMockAdapter();
+    const store = createMemorySettingsStore({ driverName: "file-nick" });
+
+    initGlobalSettings(mock.adapter, createMockLogger(), store);
+    await tick();
+    updateGlobalSettings({ [CAMERA_CATALOG_KEY]: '{"version":1}', [PI_WARNINGS_KEY]: "[]" });
+
+    expect(isSettingsStoreReady()).toBe(true); // a file load: the mirror is allowed
+    expect(getGlobalSettings()[CAMERA_CATALOG_KEY]).toBe('{"version":1}');
+
+    const mirror = hostMirrorPayload({ port: 1, token: "t" });
+
+    expect(mirror).not.toHaveProperty(CAMERA_CATALOG_KEY);
+    expect(mirror).toHaveProperty(PI_WARNINGS_KEY, "[]"); // other run-scoped keys still ride it
+    expect(hostMirrorPayload()).not.toHaveProperty(CAMERA_CATALOG_KEY);
   });
 
   describe("a pending file an older build wrote, holding a former default (#1679)", () => {

@@ -28,11 +28,11 @@ export function startPlugin(host: PluginHost): void {
 
   initRaceEngineer(core, sim.runtime, audio, voicePacks);
 
-  const settings = initSettings(core, audio, voicePacks, trackData);
+  const settings = initSettings(core, audio, voicePacks, trackData, sim);
 
   const replay = initReplay(core);
   registerActions(core, input);
-  startServices(core, input, settings, replay, voicePacks, sim.host);
+  startServices(core, input, settings, replay, voicePacks, sim);
 
   // Always last: every handler is registered before the host can deliver an event.
   core.adapter.connect();

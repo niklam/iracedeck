@@ -44,7 +44,7 @@ import { join } from "node:path";
 
 import { isAudioPreviewKind, runAudioPreview } from "../../actions.js";
 import { profilesDirFor } from "../../log-location.js";
-import type { Core, VoicePacks } from "../../types.js";
+import type { Core, Sim, VoicePacks } from "../../types.js";
 
 export interface SettingsWindowDeps {
   readonly core: Core;
@@ -53,6 +53,8 @@ export interface SettingsWindowDeps {
   readonly voicePacks: VoicePacks;
   /** The track store's folder (#1112), for the Diagnostics card's Open folder button. */
   readonly trackDataPath: string;
+  /** The sim phase's camera catalog (#1653), for the Camera groups card's Remove button. */
+  readonly cameraCatalog: Pick<Sim["cameraCatalog"], "remove">;
 }
 
 export interface SettingsWindowStep {
@@ -63,7 +65,13 @@ export interface SettingsWindowStep {
   openSettingsWindow(options?: SettingsWindowOpenOptions): ReturnType<SettingsWindowController["open"]>;
 }
 
-export function initSettingsWindow({ core, store, voicePacks, trackDataPath }: SettingsWindowDeps): SettingsWindowStep {
+export function initSettingsWindow({
+  core,
+  store,
+  voicePacks,
+  trackDataPath,
+  cameraCatalog,
+}: SettingsWindowDeps): SettingsWindowStep {
   const settingsWindowLogger = core.adapter.createLogger("SettingsWindow");
   // Mirrors the store + the loopback channel to the deck host once per start
   // (#993 phase 2; the channel is never persisted in the store — a stale copy an
@@ -136,6 +144,12 @@ export function initSettingsWindow({ core, store, voicePacks, trackDataPath }: S
       // folder with the voice-pack phase's directory opener above. The folder
       // is the track store's; the page never names one.
       trackDataPath,
+      // The Camera groups card's Remove button (#1653). The page names a group;
+      // the catalog checks it against its own entries and, when it holds it,
+      // removes, saves and republishes `_cameraCatalog`. No path is involved.
+      removeCameraGroup: (name) => {
+        cameraCatalog.remove(name);
+      },
     }),
     // The page can't probe SimHub itself (cross-origin, no CORS) — answer from the plugin's own view.
     simHub: { isReachable: isSimHubReachable, getRoles: () => getSimHub().getRoles() },

@@ -408,6 +408,10 @@
 					<%- include('accordion', { title: 'Dual-Press', content: include('global-common-dual-press'), settingsWindow: true }) %>
 					<%- include('accordion', { title: 'Press Sounds', content: include('global-common-press-sounds'), settingsWindow: true }) %>
 				</div>
+				<%# The camera catalog (#1653): a long list on a broadcaster's machine, so a full-width card of its own. The flag goes to THIS include, which runs in the page's own scope. %>
+				<div class="sw-grid single">
+					<%- include('accordion', { title: 'Camera Groups', content: include('camera-groups', { settingsWindow: true }), settingsWindow: true }) %>
+				</div>
 			</section>
 
 			<%# ---- Key Bindings: one searchable table, every row a real ird-key-binding ---- %>

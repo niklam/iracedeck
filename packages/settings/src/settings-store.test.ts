@@ -161,6 +161,83 @@ describe("createFileSettingsStore", () => {
     expect(existsSync(store.path)).toBe(false);
   });
 
+  describe("validate (#1653)", () => {
+    const validating = (
+      validate: (parsed: Record<string, unknown>) => string | undefined,
+      onRejected?: (rejection: SettingsFileRejection) => void,
+    ) =>
+      createFileSettingsStore({
+        path: store.path,
+        logger: silentLogger,
+        debounceMs: 10,
+        validate,
+        ...(onRejected ? { onRejected } : {}),
+      });
+
+    it("returns a file it accepts", async () => {
+      mkdirSync(join(dir, "sub"), { recursive: true });
+      writeFileSync(store.path, '{"version":1}', "utf-8");
+
+      expect(await validating(() => undefined).load()).toEqual({ version: 1 });
+    });
+
+    it("sets a file it refuses aside and reports the reason, as an unparseable one", async () => {
+      mkdirSync(join(dir, "sub"), { recursive: true });
+      writeFileSync(store.path, "{}", "utf-8");
+      const onRejected = vi.fn<(rejection: SettingsFileRejection) => void>();
+
+      expect(await validating(() => "no version", onRejected).load()).toBeUndefined();
+
+      expect(existsSync(store.path)).toBe(false);
+      expect(onRejected).toHaveBeenCalledTimes(1);
+      expect(onRejected.mock.calls[0][0].reason).toBe("no version");
+      expect(onRejected.mock.calls[0][0].location).toBeUndefined();
+      expect(readFileSync(onRejected.mock.calls[0][0].preservedAt, "utf-8")).toBe("{}");
+    });
+
+    it("sets aside a refused deeply nested file, with no location (#1653 CodeRabbit)", async () => {
+      mkdirSync(join(dir, "sub"), { recursive: true });
+      // Valid JSON nested deeper than the locator's recursion can follow.
+      const deep = '{"a":' + "[".repeat(50_000) + "]".repeat(50_000) + "}";
+
+      writeFileSync(store.path, deep, "utf-8");
+      const onRejected = vi.fn<(rejection: SettingsFileRejection) => void>();
+
+      expect(await validating(() => "refused", onRejected).load()).toBeUndefined();
+
+      expect(existsSync(store.path)).toBe(false);
+      expect(onRejected).toHaveBeenCalledTimes(1);
+      expect(onRejected.mock.calls[0][0].location).toBeUndefined();
+      expect(readFileSync(onRejected.mock.calls[0][0].preservedAt, "utf-8")).toBe(deep);
+    });
+
+    it("still preserves a deeply nested file that fails to parse when the locator overflows", async () => {
+      mkdirSync(join(dir, "sub"), { recursive: true });
+      const broken = "[".repeat(50_000) + "x";
+
+      writeFileSync(store.path, broken, "utf-8");
+      const onRejected = vi.fn<(rejection: SettingsFileRejection) => void>();
+
+      expect(await validating(() => undefined, onRejected).load()).toBeUndefined();
+
+      expect(existsSync(store.path)).toBe(false);
+      expect(onRejected).toHaveBeenCalledTimes(1);
+      expect(readFileSync(onRejected.mock.calls[0][0].preservedAt, "utf-8")).toBe(broken);
+    });
+
+    it("treats a validator that throws as a refusal, never as a failed read", async () => {
+      mkdirSync(join(dir, "sub"), { recursive: true });
+      writeFileSync(store.path, "{}", "utf-8");
+
+      const load = validating(() => {
+        throw new Error("boom");
+      }).load();
+
+      await expect(load).resolves.toBeUndefined();
+      expect(existsSync(store.path)).toBe(false);
+    });
+  });
+
   describe("onRejected (issue #1036)", () => {
     const rejectingStore = (onRejected: (rejection: SettingsFileRejection) => void) =>
       createFileSettingsStore({ path: store.path, logger: silentLogger, debounceMs: 10, onRejected });
@@ -193,6 +270,23 @@ describe("createFileSettingsStore", () => {
 
       expect(logger.error).toHaveBeenCalledWith(
         "Settings file could not be parsed at line 3, column 1; moving it aside and migrating from the deck host",
+      );
+    });
+
+    it("says what a store serving another file does instead of the host migration (#1653)", async () => {
+      mkdirSync(join(dir, "sub"), { recursive: true });
+      writeFileSync(store.path, '{\n  "a": 1,\n}\n', "utf-8");
+      const logger = { ...silentLogger, error: vi.fn() };
+
+      await createFileSettingsStore({
+        path: store.path,
+        logger,
+        debounceMs: 10,
+        rejectedFallback: "starting an empty camera list",
+      }).load();
+
+      expect(logger.error).toHaveBeenCalledWith(
+        "Settings file could not be parsed at line 3, column 1; moving it aside and starting an empty camera list",
       );
     });
 

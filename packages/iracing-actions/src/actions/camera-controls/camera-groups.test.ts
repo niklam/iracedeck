@@ -6,9 +6,12 @@ import {
   findSessionGroupByName,
   findSessionGroupByNum,
   getNextSelectedGroup,
+  getNextSelectedGroupEntry,
+  matchSessionGroup,
   normalizeGroupName,
   normalizeSessionGroups,
   parseGroupSubset,
+  resolveEnabledSessionGroups,
 } from "./camera-groups.js";
 
 const SESSION_GROUPS = [
@@ -208,5 +211,144 @@ describe("camera group name normalisation (#958)", () => {
 
   it("cycles into a session group the sim spells differently from the enabled name", () => {
     expect(getNextSelectedGroup(19, ["Pit Lane 2"], normalizeSessionGroups(PIT_LANE2_SESSION), 1)).toBe(20);
+  });
+});
+
+// A broadcaster-style camera file (#1653): custom names beside standard ones,
+// in the sim's own numbering.
+const CUSTOM_SESSION = normalizeSessionGroups([
+  { groupNum: 1, groupName: "Nose" },
+  { groupNum: 2, groupName: "DynamicTV" },
+  { groupNum: 3, groupName: "Grid_Pole" },
+  { groupNum: 4, groupName: "TV1" },
+  { groupNum: 5, groupName: "SpeedCam" },
+  { groupNum: 6, groupName: "Pit Lane2" },
+]);
+
+describe("matchSessionGroup (#1653)", () => {
+  it("finds a custom group by its exact name", () => {
+    expect(matchSessionGroup(CUSTOM_SESSION, "DynamicTV")).toEqual({
+      kind: "found",
+      group: { groupNum: 2, groupName: "DynamicTV" },
+    });
+  });
+
+  it("finds a typed name in another case when only one group matches it", () => {
+    expect(matchSessionGroup(CUSTOM_SESSION, "dynamictv")).toEqual({
+      kind: "found",
+      group: { groupNum: 2, groupName: "DynamicTV" },
+    });
+    expect(matchSessionGroup(CUSTOM_SESSION, "GRID_POLE")).toMatchObject({ kind: "found", group: { groupNum: 3 } });
+  });
+
+  it("reports a name the session does not have as absent", () => {
+    expect(matchSessionGroup(CUSTOM_SESSION, "Drone")).toEqual({ kind: "absent" });
+    expect(matchSessionGroup([], "Nose")).toEqual({ kind: "absent" });
+  });
+
+  it("lets the exact match decide between groups that differ only in case", () => {
+    const session = [
+      { groupNum: 7, groupName: "Static" },
+      { groupNum: 8, groupName: "STATIC" },
+    ];
+
+    expect(matchSessionGroup(session, "STATIC")).toMatchObject({ kind: "found", group: { groupNum: 8 } });
+    expect(matchSessionGroup(session, "Static")).toMatchObject({ kind: "found", group: { groupNum: 7 } });
+  });
+
+  it("reports a case-insensitive name that matches several groups as ambiguous", () => {
+    const session = [
+      { groupNum: 7, groupName: "Static" },
+      { groupNum: 8, groupName: "STATIC" },
+    ];
+
+    expect(matchSessionGroup(session, "static")).toEqual({ kind: "ambiguous", candidates: session });
+  });
+
+  it("matches Pit Lane2 to Pit Lane 2 in every spelling, and in any case", () => {
+    expect(matchSessionGroup(CUSTOM_SESSION, "Pit Lane 2")).toMatchObject({ kind: "found", group: { groupNum: 6 } });
+    expect(matchSessionGroup(CUSTOM_SESSION, "Pit Lane2")).toMatchObject({ kind: "found", group: { groupNum: 6 } });
+    expect(matchSessionGroup(CUSTOM_SESSION, "pit lane2")).toMatchObject({ kind: "found", group: { groupNum: 6 } });
+    expect(matchSessionGroup(CUSTOM_SESSION, "PIT LANE 2")).toMatchObject({ kind: "found", group: { groupNum: 6 } });
+  });
+
+  it("treats a custom name that is also an object property name as an ordinary name", () => {
+    const session = [{ groupNum: 3, groupName: "constructor" }];
+
+    expect(normalizeGroupName("constructor")).toBe("constructor");
+    expect(normalizeGroupName("toString")).toBe("toString");
+    expect(normalizeSessionGroups(session)).toEqual(session);
+    expect(matchSessionGroup(session, "Constructor")).toMatchObject({ kind: "found", group: { groupNum: 3 } });
+    expect(matchSessionGroup(session, "toString")).toEqual({ kind: "absent" });
+  });
+
+  it("never finds an ambiguous name through findSessionGroupByName", () => {
+    const session = [
+      { groupNum: 7, groupName: "Static" },
+      { groupNum: 8, groupName: "STATIC" },
+    ];
+
+    expect(findSessionGroupByName(session, "static")).toBeUndefined();
+    expect(findSessionGroupByName(CUSTOM_SESSION, "speedcam")?.groupNum).toBe(5);
+  });
+});
+
+describe("resolveEnabledSessionGroups (#1653)", () => {
+  it("resolves enabled names the session has, in any case, in the session's order", () => {
+    expect(resolveEnabledSessionGroups(["SpeedCam", "nose", "Drone", "dynamictv"], CUSTOM_SESSION)).toEqual({
+      groups: [
+        { groupNum: 1, groupName: "Nose" },
+        { groupNum: 2, groupName: "DynamicTV" },
+        { groupNum: 5, groupName: "SpeedCam" },
+      ],
+      ambiguous: [],
+    });
+  });
+
+  it("yields a group once when two enabled names resolve to it", () => {
+    expect(resolveEnabledSessionGroups(["TV1", "tv1"], CUSTOM_SESSION).groups).toEqual([
+      { groupNum: 4, groupName: "TV1" },
+    ]);
+  });
+
+  it("skips an ambiguous name and reports it", () => {
+    const session = [
+      { groupNum: 7, groupName: "Static" },
+      { groupNum: 8, groupName: "STATIC" },
+      { groupNum: 9, groupName: "Chase" },
+    ];
+
+    expect(resolveEnabledSessionGroups(["static", "Chase"], session)).toEqual({
+      groups: [{ groupNum: 9, groupName: "Chase" }],
+      ambiguous: ["static"],
+    });
+  });
+
+  it("resolves a subset's Pit Lane2 against a session's Pit Lane2", () => {
+    expect(resolveEnabledSessionGroups(["Pit Lane2"], CUSTOM_SESSION).groups).toEqual([
+      { groupNum: 6, groupName: "Pit Lane 2" },
+    ]);
+  });
+});
+
+describe("Cycle Camera's walk over custom groups (#1653)", () => {
+  it("cycles through custom groups the subset names, in any case", () => {
+    const enabled = ["DynamicTV", "speedcam"];
+
+    expect(getNextSelectedGroupEntry(1, enabled, CUSTOM_SESSION, 1)?.groupName).toBe("DynamicTV");
+    expect(getNextSelectedGroupEntry(2, enabled, CUSTOM_SESSION, 1)?.groupName).toBe("SpeedCam");
+    expect(getNextSelectedGroupEntry(5, enabled, CUSTOM_SESSION, 1)?.groupName).toBe("DynamicTV");
+  });
+
+  it("finds no group when the subset names only groups another track has", () => {
+    expect(getNextSelectedGroupEntry(1, ["Drone", "Spotter"], CUSTOM_SESSION, 1)).toBeNull();
+  });
+
+  it("previews the dial carousel's neighbours through the same lookup", () => {
+    const carousel = computeCameraCarousel(4, ["dynamictv", "SpeedCam"], CUSTOM_SESSION);
+
+    expect(carousel.current?.groupName).toBe("TV1");
+    expect(carousel.prev?.groupName).toBe("DynamicTV");
+    expect(carousel.next?.groupName).toBe("SpeedCam");
   });
 });

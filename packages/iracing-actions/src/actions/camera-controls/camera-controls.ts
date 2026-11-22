@@ -2,6 +2,7 @@ import {
   assembleIcon,
   CAR_SELECTOR_PROFILE,
   CommonSettings,
+  DIMMED_OPACITY,
   extractGraphicContent,
   generateTitleText,
   getGlobalBorderSettings,
@@ -52,6 +53,7 @@ import blimpSvg from "@iracedeck/icons/camera-select/blimp.svg";
 import chaseSvg from "@iracedeck/icons/camera-select/chase.svg";
 import chopperSvg from "@iracedeck/icons/camera-select/chopper.svg";
 import cockpitSvg from "@iracedeck/icons/camera-select/cockpit.svg";
+import customGroupSvg from "@iracedeck/icons/camera-select/custom.svg";
 import farChaseSvg from "@iracedeck/icons/camera-select/far-chase.svg";
 import gearboxSvg from "@iracedeck/icons/camera-select/gearbox.svg";
 import gyroSvg from "@iracedeck/icons/camera-select/gyro.svg";
@@ -74,6 +76,7 @@ import tv4Svg from "@iracedeck/icons/camera-select/tv4.svg";
 import tvMixedSvg from "@iracedeck/icons/camera-select/tv-mixed.svg";
 import tvStaticSvg from "@iracedeck/icons/camera-select/tv-static.svg";
 import {
+  type CameraGroup,
   getAllCarNumbers,
   getCameraGroupsFromSessionInfo,
   getCarNumberRawByCarNumber,
@@ -88,17 +91,21 @@ import { carCycleBindingKey } from "../../shared/car-cycle-bindings.js";
 import { computeCarNumberTarget } from "../../shared/car-cycling.js";
 import { setSelectIntent } from "../../shared/car-select-intent.js";
 import { availableProfilesForDevice, deviceProfileEntries, profileEntriesEqual } from "../../shared/profile-entries.js";
+import { unavailableLook } from "../../shared/unavailable-look.js";
 import { CameraDialSurface, type CarouselGlyph, DialSettings } from "./camera-dial-surface.js";
 import {
   CAMERA_GROUPS_SETTING_KEY,
   CHANGE_CAMERA_GROUPS,
   DEFAULT_ENABLED_GROUPS,
-  findSessionGroupByName,
   findSessionGroupByNum,
+  foldGroupName,
   getNextSelectedGroupEntry,
+  matchSessionGroup,
   normalizeGroupName,
   normalizeSessionGroups,
   parseGroupSubset,
+  resolveEnabledSessionGroups,
+  type SessionGroupMatch,
 } from "./camera-groups.js";
 import { migrateFocusOnExitingToMostExciting } from "./migrate-focus-on-exiting.js";
 import { subCameraBindingKey } from "./sub-camera-bindings.js";
@@ -282,9 +289,34 @@ const CAMERA_SELECT_ICONS: Record<string, string> = {
   Spectator: spectatorSvg,
 };
 
-/** The camera-select icon for a group name in any spelling the sim uses. */
+/** {@link CAMERA_SELECT_ICONS} keyed by folded name, for a name typed in another case. */
+const CAMERA_SELECT_ICONS_FOLDED = new Map(
+  Object.entries(CAMERA_SELECT_ICONS).map(([name, svg]) => [foldGroupName(name), svg]),
+);
+
+/**
+ * The camera-select icon for a group name in any spelling the sim uses. An own
+ * key only: a camera file may name a group `constructor` or `toString` (#1653),
+ * which the map would otherwise answer from its prototype.
+ */
 function cameraSelectIcon(groupName: string): string | undefined {
-  return CAMERA_SELECT_ICONS[normalizeGroupName(groupName)];
+  const name = normalizeGroupName(groupName);
+
+  if (Object.hasOwn(CAMERA_SELECT_ICONS, name)) return CAMERA_SELECT_ICONS[name];
+
+  // A standard group typed in another case (#1653) is still that group: the
+  // press finds it case-insensitively, so its key shows its own artwork.
+  return CAMERA_SELECT_ICONS_FOLDED.get(foldGroupName(name));
+}
+
+/**
+ * The artwork for any named camera group (#1653, spec decision 9): its own
+ * camera-select icon, or the one generic custom-group icon for a name without
+ * artwork of its own — a group a camera file defines beyond the 25 standard
+ * ones. The group's name is the key's title, so one icon serves them all.
+ */
+function groupIcon(groupName: string): string {
+  return cameraSelectIcon(groupName) ?? customGroupSvg;
 }
 
 /**
@@ -338,6 +370,68 @@ export const MAX_CAMERA_GROUP = Math.max(...Object.keys(CAMERA_GROUP_MAP).map(Nu
  * mode, direction and subset with it — the reason `dial` carries one too.
  */
 export const CameraGroupField = z.coerce.number().int().min(1).max(MAX_CAMERA_GROUP).default(9).catch(9);
+
+/**
+ * @internal Exported for testing
+ *
+ * Change Camera's stored group NAME (#1653, spec decision 5): any camera group
+ * a camera file defines. A non-empty name wins over `cameraGroup`; an empty one
+ * — every key saved before the field existed — means "read `cameraGroup`
+ * through `CHANGE_CAMERA_GROUPS`", exactly as before. `catch`, for the reason
+ * `CameraGroupField` carries one: an odd stored value degrades this field
+ * alone, to the number, rather than resetting the key.
+ */
+export const CameraGroupNameField = z.string().trim().default("").catch("");
+
+/**
+ * @internal Exported for testing
+ *
+ * The group a Change Camera key names, in its canonical spelling: its stored
+ * name when it has one, else its stored number read through
+ * `CHANGE_CAMERA_GROUPS` (Cockpit for a number the map lacks, as the schema
+ * would have it). Trimmed here too, since not every caller has parsed.
+ */
+export function changeCameraGroupName(settings: { cameraGroup?: number; cameraGroupName?: string }): string {
+  const name = settings.cameraGroupName?.trim() ?? "";
+
+  if (name !== "") return normalizeGroupName(name);
+
+  return CHANGE_CAMERA_GROUPS[settings.cameraGroup ?? 9] ?? CHANGE_CAMERA_GROUPS[9];
+}
+
+/** Whether a Change Camera key stores a group name, rather than only the number every older key has. */
+function hasStoredGroupName(settings: { cameraGroupName?: string }): boolean {
+  return (settings.cameraGroupName?.trim() ?? "") !== "";
+}
+
+/**
+ * @internal Exported for testing
+ *
+ * Whether a Change Camera key's group is missing from the loaded session
+ * (#1653, spec decision 8): the session lists its groups and the key's name
+ * resolves to none of them, or to several differing only in case. No session,
+ * or one whose groups cannot be read, is never "unavailable" — there is
+ * nothing to check the name against. Expects `normalizeSessionGroups` output.
+ */
+export function isChangeCameraUnavailable(groupName: string, sessionGroups: CameraGroup[]): boolean {
+  return sessionGroups.length > 0 && matchSessionGroup(sessionGroups, groupName).kind !== "found";
+}
+
+/**
+ * @internal Exported for testing
+ *
+ * Whether a Cycle Camera key's enabled subset names no group of the loaded
+ * session (#1653, spec decision 8), so a press would cycle nowhere. Like
+ * {@link isChangeCameraUnavailable}, never with no session, and never for an
+ * empty subset, which has no name to check.
+ */
+export function isCycleCameraUnavailable(enabledGroupNames: string[], sessionGroups: CameraGroup[]): boolean {
+  return (
+    sessionGroups.length > 0 &&
+    enabledGroupNames.length > 0 &&
+    resolveEnabledSessionGroups(enabledGroupNames, sessionGroups).groups.length === 0
+  );
+}
 
 /**
  * @internal Exported for testing
@@ -420,6 +514,8 @@ export const CameraControlsSettingsFields = {
   cycleIconMode: CycleIconModeField,
   // Change-camera-specific
   cameraGroup: CameraGroupField,
+  // #1653: the group by name, any group a camera file defines; wins when set.
+  cameraGroupName: CameraGroupNameField,
   // focus-select-car (#790): the profile the press switches to. May hold a
   // device-suffixed manifest name, a legacy name, or a name suffixed for
   // another device — resolved at press time.
@@ -459,9 +555,11 @@ export function generateCameraControlsSvg(
     direction?: Direction;
     cameraGroup?: number;
     cameraGroupSubset?: string | Record<string, unknown>;
+    cameraGroupName?: string;
   } & SwitchTargetSettings &
     Partial<CommonSettings>,
   bindingMissing = false,
+  unavailable = false,
 ): string {
   const { target, direction = "next" } = settings;
 
@@ -479,15 +577,16 @@ export function generateCameraControlsSvg(
         settings.titleOverrides,
         settings.borderOverrides,
         settings.graphicOverrides,
+        unavailable,
       );
     }
 
     iconSvg = CYCLE_ICONS[target]?.[direction] || CYCLE_ICONS["cycle-camera"]["next"];
     defaultTitle = CYCLE_TITLES[target]?.[direction] || CYCLE_TITLES["cycle-camera"]["next"];
   } else if (target === "change-camera") {
-    const group = CAMERA_GROUP_MAP[settings.cameraGroup ?? 9] ?? CAMERA_GROUP_MAP[9];
-    iconSvg = group.icon;
-    defaultTitle = `CAMERA\n${group.name.toUpperCase()}`;
+    const groupName = changeCameraGroupName(settings);
+    iconSvg = groupIcon(groupName);
+    defaultTitle = `CAMERA\n${groupName.toUpperCase()}`;
   } else {
     iconSvg = FOCUS_ICONS[target] || FOCUS_ICONS["focus-your-car"];
     defaultTitle = FOCUS_TITLES[target] || FOCUS_TITLES["focus-your-car"];
@@ -500,7 +599,15 @@ export function generateCameraControlsSvg(
   const graphic = resolveGraphicSettings(getGlobalGraphicSettings(), settings.graphicOverrides);
   const templateValues = switchTargetTemplateValues(target, settings);
 
-  return assembleIcon({ graphicSvg: iconSvg, colors, title, border, graphic, templateValues, bindingMissing });
+  return assembleIcon({
+    graphicSvg: iconSvg,
+    title,
+    graphic,
+    templateValues,
+    bindingMissing,
+    // A key whose press would do nothing now (#1653): its own icon, greyed.
+    ...(unavailable ? unavailableLook(colors, border) : { colors, border }),
+  });
 }
 
 /**
@@ -519,15 +626,25 @@ export type CycleCameraKeySettings = {
  * Generate an SVG data URI for a specific camera group icon — the group a Cycle
  * Camera key's next press selects, or the group the sim is on now (#959).
  *
- * A group without an icon of its own falls back to the key's own grid icon,
- * drawn from the KEY's subset, direction and appearance overrides: it is a
- * placeholder, and it must look like the key the user configured.
+ * A group without an icon of its own (a custom group, #1653) draws the generic
+ * custom-group icon with its name, since that is what is on screen. Only an
+ * empty name — the sim reports a group its session does not list — falls back
+ * to the key's own grid icon, drawn from the KEY's subset, direction and
+ * appearance overrides: it is a placeholder, and it must look like the key the
+ * user configured.
+ *
+ * `unavailable` (#1653) draws the icon greyed, for a key whose press would
+ * cycle nowhere in this session — the group's icon, or the grid placeholder
+ * when there is no name to show.
  */
-export function generateCameraSelectSvg(groupName: string, settings: CycleCameraKeySettings): string {
-  const iconSvg = cameraSelectIcon(groupName);
+export function generateCameraSelectSvg(
+  groupName: string,
+  settings: CycleCameraKeySettings,
+  unavailable = false,
+): string {
+  if (groupName === "") return generateCameraControlsSvg({ ...settings, target: "cycle-camera" }, false, unavailable);
 
-  if (!iconSvg) return generateCameraControlsSvg({ ...settings, target: "cycle-camera" });
-
+  const iconSvg = groupIcon(groupName);
   const colors = resolveIconColors(iconSvg, getGlobalColors(), settings.colorOverrides);
   const title = resolveTitleSettings(
     iconSvg,
@@ -538,7 +655,12 @@ export function generateCameraSelectSvg(groupName: string, settings: CycleCamera
   const border = resolveBorderSettings(iconSvg, getGlobalBorderSettings(), settings.borderOverrides);
   const graphic = resolveGraphicSettings(getGlobalGraphicSettings(), settings.graphicOverrides);
 
-  return assembleIcon({ graphicSvg: iconSvg, colors, title, border, graphic });
+  return assembleIcon({
+    graphicSvg: iconSvg,
+    title,
+    graphic,
+    ...(unavailable ? unavailableLook(colors, border) : { colors, border }),
+  });
 }
 
 /**
@@ -681,6 +803,11 @@ export function computeGridPositions(count: number): ThumbnailPosition[] {
  *
  * Generate an SVG data URI showing a grid of miniaturized camera-select icons
  * for the selected camera groups. Used as the default icon for cycle-camera actions.
+ *
+ * `unavailable` (#1653) draws it in the shared unavailable look: every colour
+ * but the background grey, and the thumbnails and label faded as
+ * `assembleIcon`'s `dimmed` fades a key — the grid is assembled by hand, so it
+ * applies the look itself.
  */
 export function generateCycleCameraGridSvg(
   enabledGroupNames: string[],
@@ -689,11 +816,13 @@ export function generateCycleCameraGridSvg(
   titleOverrides?: Partial<CommonSettings>["titleOverrides"],
   borderOverrides?: Partial<CommonSettings>["borderOverrides"],
   graphicOverrides?: Partial<CommonSettings>["graphicOverrides"],
+  unavailable = false,
 ): string {
-  // Resolve which groups have icons
-  const groupsWithIcons = enabledGroupNames.filter((name) => cameraSelectIcon(name) !== undefined);
+  // Every named group gets a thumbnail: its own artwork, or the generic
+  // custom-group icon (#1653) — a custom group was dropped from the grid before.
+  const groupsWithIcons = enabledGroupNames.filter((name) => name !== "");
 
-  // Fall back to static cycle icon if no groups have icons (direct render, no recursion)
+  // Fall back to static cycle icon if no group is enabled (direct render, no recursion)
   if (groupsWithIcons.length === 0) {
     const iconSvg = CYCLE_ICONS["cycle-camera"][direction];
     const titleText = CYCLE_TITLES["cycle-camera"][direction];
@@ -702,7 +831,12 @@ export function generateCycleCameraGridSvg(
     const border = resolveBorderSettings(iconSvg, getGlobalBorderSettings(), borderOverrides);
     const graphic = resolveGraphicSettings(getGlobalGraphicSettings(), graphicOverrides);
 
-    return assembleIcon({ graphicSvg: iconSvg, colors, title, border, graphic });
+    return assembleIcon({
+      graphicSvg: iconSvg,
+      title,
+      graphic,
+      ...(unavailable ? unavailableLook(colors, border) : { colors, border }),
+    });
   }
 
   const displayGroups = groupsWithIcons.slice(0, 6);
@@ -710,7 +844,7 @@ export function generateCycleCameraGridSvg(
 
   // Resolve colors from the cycle-camera base icon
   const baseSvg = CYCLE_ICONS["cycle-camera"][direction];
-  const colors = resolveIconColors(baseSvg, getGlobalColors(), colorOverrides);
+  const colors = gridColors(resolveIconColors(baseSvg, getGlobalColors(), colorOverrides), unavailable);
   const bgColor = colors.backgroundColor || "#2a3a4a";
   const textColor = colors.textColor || "#ffffff";
 
@@ -734,8 +868,8 @@ export function generateCycleCameraGridSvg(
 
   for (let i = 0; i < displayGroups.length; i++) {
     const groupName = displayGroups[i];
-    const iconSvg = cameraSelectIcon(groupName) as string;
-    const artColors = resolveIconColors(iconSvg, getGlobalColors(), colorOverrides);
+    const iconSvg = groupIcon(groupName);
+    const artColors = gridColors(resolveIconColors(iconSvg, getGlobalColors(), colorOverrides), unavailable);
     const rawGraphic = extractGraphicContent(iconSvg);
     const artwork = renderIconTemplate(rawGraphic, artColors);
     const pos = positions[i];
@@ -755,9 +889,18 @@ export function generateCycleCameraGridSvg(
     thumbnails += `<g transform="translate(${pos.x + offsetX}, ${pos.y + offsetY}) scale(${scale})">${artwork}</g>`;
   }
 
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144"><g><rect x="0" y="0" width="144" height="144" fill="${bgColor}"/>${thumbnails}${label}</g></svg>`;
+  const content = unavailable ? `<g opacity="${DIMMED_OPACITY}">${thumbnails}${label}</g>` : `${thumbnails}${label}`;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144"><g><rect x="0" y="0" width="144" height="144" fill="${bgColor}"/>${content}</g></svg>`;
 
   return svgToDataUri(svg);
+}
+
+/**
+ * A grid's colour slots, in the unavailable look when asked (#1653). The grid
+ * draws no border, so only the look's colours are taken.
+ */
+function gridColors(colors: Record<string, string>, unavailable: boolean): Record<string, string> {
+  return unavailable ? unavailableLook(colors, { borderColor: "" }).colors : colors;
 }
 
 // --- Camera group subset helpers ---
@@ -787,14 +930,15 @@ export function getEnabledGroupNames(raw: string | Record<string, unknown> | und
 
 /**
  * Resolve a camera-group name to its dial-carousel glyph — the colour-resolved
- * inner artwork of the group's camera-select icon plus its source dimensions.
- * Returns null for an unmapped group name so the carousel can render name-only.
- * Shared with the keypad cycle-camera preview via `cameraSelectIcon`.
+ * inner artwork of the group's camera-select icon, or the generic custom-group
+ * icon for a group without one (#1653), plus its source dimensions. Returns
+ * null only for an empty name, which the carousel renders name-only. Shared
+ * with the keypad cycle-camera preview via `groupIcon`.
  */
 function resolveGroupGlyph(groupName: string): CarouselGlyph | null {
-  const iconSvg = cameraSelectIcon(groupName);
+  if (groupName === "") return null;
 
-  if (!iconSvg) return null;
+  const iconSvg = groupIcon(groupName);
 
   const colors = resolveIconColors(iconSvg, {}, undefined);
   const artwork = renderIconTemplate(extractGraphicContent(iconSvg), colors);
@@ -813,17 +957,103 @@ function resolveGroupGlyph(groupName: string): CarouselGlyph | null {
  * via iRacing SDK commands.
  */
 export const CAMERA_FOCUS_UUID = "com.iracedeck.sd.core.camera-focus" as const;
+
 export const CAMERA_CONTROLS_UUID = CAMERA_FOCUS_UUID;
+
+/**
+ * A look a key can show (#1653 review): what identifies it, so the writer
+ * knows whether the key shows it already, and the renderer that draws it. The
+ * renderer is registered as the key's regeneration callback once the look is
+ * on the key, so regeneration redraws that same look with fresh colours and
+ * bindings and never another one the writer has not recorded.
+ */
+interface KeyLook {
+  /** The settings version, the kind, the availability and — for a group icon — its name. */
+  id: string;
+  /** The settings version the look was drawn for. */
+  version: number;
+  /** The key's resting icon (its grid, or its group's icon), or a Cycle Camera key's group icon. */
+  kind: "rest" | "group";
+  /** Drawn unavailable, greyed (#1653). */
+  unavailable: boolean;
+  render: () => string;
+}
+
+type KeyEvent = IDeckWillAppearEvent<CameraControlsSettings> | IDeckDidReceiveSettingsEvent<CameraControlsSettings>;
+
+/** Who awaits a settings write: the handler that asked for it. */
+interface SettingsWaiter {
+  resolve: () => void;
+  reject: (err: unknown) => void;
+}
+
+/** New settings waiting to reach the key, through the host event that writes the title and image. */
+interface SettingsWrite {
+  ev: KeyEvent;
+  waiters: SettingsWaiter[];
+  /** The write is under way: newer settings queue behind it rather than replace it. */
+  started: boolean;
+}
+
+/**
+ * One key's image writer (#1653 review). Every write to a key — new settings,
+ * a telemetry tick's icon, the grid put back — goes through it, and at most
+ * one runs at a time, so no two writes for one key ever interleave. A request
+ * made while a write is out only marks the key for another pass; each pass
+ * decides the key's look at the moment it runs, from the current settings,
+ * telemetry and session, and writes it unless the key already shows it.
+ */
+interface KeyRender {
+  /** Raised by every settings update, so a look drawn for older settings is never taken for current. */
+  settingsVersion: number;
+  /** Settings to write before anything else; kept after a refused write, so the next request retries it. */
+  settingsWrite: SettingsWrite | null;
+  /**
+   * The settings write under way, which newer settings no longer point to: the
+   * key leaving releases its waiters too, rather than leave them on a host call
+   * that may never settle (#1653 review).
+   */
+  settingsInFlight: SettingsWrite | null;
+  /** The look the last successful write put on the key; null when a write failed and the key's look is unknown. */
+  written: KeyLook | null;
+  running: boolean;
+  /** Something asked for a pass while a write was out. */
+  requested: boolean;
+  /** Waiters of a settings write that went out, released once the pass that follows it is under way. */
+  settled: SettingsWaiter[];
+}
+
+function newKeyRender(): KeyRender {
+  return {
+    settingsVersion: 0,
+    settingsWrite: null,
+    settingsInFlight: null,
+    written: null,
+    running: false,
+    requested: false,
+    settled: [],
+  };
+}
 
 export class CameraControls extends SimIRacingAction<CameraControlsSettings> {
   /** Settings per action context for telemetry-driven icon updates */
   private activeContexts = new Map<string, CameraControlsSettings>();
 
-  /** Last displayed group name per context to avoid redundant re-renders */
-  private lastDisplayedGroup = new Map<string, string>();
+  /** Per key, its image writer (#1653 review): every write to a key goes through it. */
+  private keyRenders = new Map<string, KeyRender>();
 
-  /** Per context, the newest cycle-icon render started (`showCycleIcon`) */
-  private cycleIconGeneration = new Map<string, number>();
+  /**
+   * The session's normalised camera groups, read once per session-info update
+   * for the Change Camera keys' per-tick availability check (#1653). The SDK
+   * hands back the same session-info object until iRacing publishes a new one,
+   * so its identity says when the group list may have changed.
+   */
+  private sessionGroupsCache: {
+    sessionInfo: unknown;
+    groups: CameraGroup[];
+    /** Per group name, whether it is unavailable in this session; filled on first ask (#1653 review). */
+    unavailable: Map<string, boolean>;
+  } | null = null;
 
   /**
    * The dial half of the action (#803); all IDeck dial events route here.
@@ -885,14 +1115,26 @@ export class CameraControls extends SimIRacingAction<CameraControlsSettings> {
     const settings = this.parseSettings(ev.payload.settings);
     this.activeContexts.set(ev.action.id, settings);
     await this.pushDeviceProfiles(ev, settings);
-    await this.updateDisplay(ev, settings);
+
+    // A fresh writer for this placement; one left from an earlier placement of
+    // the same context stops at its next step.
+    this.dropKeyRender(ev.action.id);
+    this.keyRenders.set(ev.action.id, newKeyRender());
+
+    // The settings are queued first, so the writer's first pass writes them —
+    // the subscription below may tick at once, inside subscribe, and a pass that
+    // tick started would otherwise draw a telemetry look before the key has its
+    // settings (#1653 review). It subscribes before that write is awaited, so a
+    // first write the host refuses is retried by the next tick and the key
+    // recovers. The writer draws the telemetry-driven look right after the
+    // settings' own.
+    const settingsWritten = this.requestSettingsWrite(ev);
 
     this.sdkController.subscribe(ev.action.id, () => {
-      this.updateCycleIcon(ev.action.id);
+      this.requestRender(ev.action.id);
     });
 
-    // Seed cycle icon immediately if telemetry is already available
-    this.updateCycleIcon(ev.action.id);
+    await settingsWritten;
   }
 
   override async onWillDisappear(ev: IDeckWillDisappearEvent<CameraControlsSettings>): Promise<void> {
@@ -900,8 +1142,7 @@ export class CameraControls extends SimIRacingAction<CameraControlsSettings> {
     this.sdkController.unsubscribe(ev.action.id);
     this.dialSurface.willDisappear(ev.action.id);
     this.activeContexts.delete(ev.action.id);
-    this.lastDisplayedGroup.delete(ev.action.id);
-    this.cycleIconGeneration.delete(ev.action.id);
+    this.dropKeyRender(ev.action.id);
   }
 
   override async onDidReceiveSettings(ev: IDeckDidReceiveSettingsEvent<CameraControlsSettings>): Promise<void> {
@@ -918,13 +1159,7 @@ export class CameraControls extends SimIRacingAction<CameraControlsSettings> {
     const settings = this.parseSettings(ev.payload.settings);
     this.activeContexts.set(ev.action.id, settings);
     await this.pushDeviceProfiles(ev, settings);
-    await this.updateDisplay(ev, settings);
-    // Cleared only now: a telemetry tick during the awaits above can render the
-    // new settings' group and record it, and updateDisplay then paints the grid
-    // over it — clearing earlier would leave the dedupe believing the group is
-    // still on the key, and the key stuck on its grid.
-    this.lastDisplayedGroup.delete(ev.action.id);
-    this.updateCycleIcon(ev.action.id);
+    await this.requestSettingsWrite(ev);
   }
 
   override async onKeyDown(ev: IDeckKeyDownEvent<CameraControlsSettings>): Promise<void> {
@@ -942,7 +1177,7 @@ export class CameraControls extends SimIRacingAction<CameraControlsSettings> {
     if (isCycleTarget(settings.target)) {
       this.executeCycle(settings.target, settings.direction, ask, settings.cameraGroupSubset);
     } else if (settings.target === "change-camera") {
-      this.executeChangeCamera(settings.cameraGroup, ask);
+      this.executeChangeCamera(settings, ask);
     } else {
       this.executeFocus(settings, ask);
     }
@@ -1088,6 +1323,10 @@ export class CameraControls extends SimIRacingAction<CameraControlsSettings> {
       return;
     }
 
+    // A Cycle Camera press whose subset names no group of this session has
+    // nothing to send, and never replaces a switch waiting behind a jump.
+    if (target === "cycle-camera" && !this.cycleCameraHasTarget(cameraGroupSubset)) return;
+
     this.requestSwitch(
       ask,
       { by: target, name: `${direction} ${CYCLE_SWITCH_NAMES[target]}`, changesCar: target === "cycle-car" },
@@ -1145,10 +1384,12 @@ export class CameraControls extends SimIRacingAction<CameraControlsSettings> {
           this.logger.info("Camera group switched");
           this.logger.debug(`Result: ${success}, direction: ${direction}, targetGroup: ${nextEntry.groupNum}`);
         } else {
-          // Fallback if car number lookup fails
-          const success = camera.cycleCamera(carIdx, groupNum, dir);
-          this.logger.info("Camera group cycled (car number fallback)");
-          this.logger.debug(`Result: ${success}, direction: ${direction}`);
+          // No number for the focused car (#1653 review). The sim's own cycle
+          // would ignore the enabled groups and take the car index for a race
+          // position, so nothing is sent; the next press, once the car has a
+          // number, switches as usual.
+          this.logger.info("Camera group switch skipped: the focused car has no car number");
+          this.logger.debug(`carIdx: ${carIdx}, targetGroup: ${nextEntry.groupNum}`);
         }
 
         break;
@@ -1548,15 +1789,107 @@ export class CameraControls extends SimIRacingAction<CameraControlsSettings> {
     return { groupNum: telemetry?.CamGroupNumber ?? 1, cameraNum: telemetry?.CamCameraNumber ?? 1 };
   }
 
-  /** Change Camera, through {@link requestSwitch}: a switch of the angle only, so it leaves a lap walk alone. */
-  private executeChangeCamera(cameraGroup: number, ask: CameraSwitchAsk): void {
-    const name = `${CAMERA_GROUP_MAP[cameraGroup]?.name ?? `group ${cameraGroup}`} camera`;
+  /**
+   * Whether a Cycle Camera press has a group to go to (#1653): the session's
+   * groups cannot be read (the raw cycle fallback then runs), or the enabled
+   * subset resolves to at least one of them. Logs, at the press and never per
+   * tick, the names it had to skip as ambiguous and a press it skips.
+   */
+  private cycleCameraHasTarget(cameraGroupSubset?: string | Record<string, unknown>): boolean {
+    const sessionGroups = this.readSessionGroupsFresh();
 
-    this.requestSwitch(ask, { by: "change-camera", name, changesCar: false }, () => this.sendChangeCamera(cameraGroup));
+    if (sessionGroups.length === 0) return true;
+
+    const resolved = resolveEnabledSessionGroups(getEnabledGroupNames(cameraGroupSubset), sessionGroups);
+
+    if (resolved.ambiguous.length > 0) {
+      this.logger.info("Camera cycle skipped group names that match more than one group in this session");
+      this.logger.debug(`Ambiguous camera group names: ${resolved.ambiguous.join(", ")}`);
+    }
+
+    if (resolved.groups.length > 0) return true;
+
+    this.logger.info("Camera cycle skipped: no enabled camera group in this session");
+
+    return false;
+  }
+
+  /**
+   * Change Camera, through {@link requestSwitch}: a switch of the angle only, so
+   * it leaves a lap walk alone. A key whose group the session lacks has nothing
+   * to send (#1653), and never replaces a switch waiting behind a jump; the
+   * group is resolved again when the switch goes out, since a switch that
+   * waited may meet another camera file.
+   */
+  private executeChangeCamera(settings: CameraControlsSettings, ask: CameraSwitchAsk): void {
+    const target = this.resolveChangeCameraTarget(settings);
+
+    if (target === null) return;
+
+    this.requestSwitch(ask, { by: "change-camera", name: `${target.displayName} camera`, changesCar: false }, () =>
+      this.sendChangeCamera(settings),
+    );
+  }
+
+  /**
+   * The group number a Change Camera key sends, and the group's name as the
+   * session spells it, or null — logged — when it sends nothing.
+   *
+   * Resolved by NAME against the session (#958, #1653 decision 6): the sim
+   * numbers its groups per content, so our stored number is only an index into
+   * `CHANGE_CAMERA_GROUPS`. The raw stored number is sent only for a key with no
+   * stored name whose session's groups cannot be read; a stored name has no
+   * number of its own to fall back to.
+   */
+  private resolveChangeCameraTarget(
+    settings: CameraControlsSettings,
+  ): { groupNum: number; displayName: string } | null {
+    const groupName = changeCameraGroupName(settings);
+    const sessionGroups = this.readSessionGroupsFresh();
+
+    if (sessionGroups.length === 0) {
+      if (!hasStoredGroupName(settings)) return { groupNum: settings.cameraGroup, displayName: groupName };
+
+      this.logger.info("Camera change skipped: the session's camera groups cannot be read");
+      this.logger.debug(`Group "${groupName}" is stored by name and has no number to fall back to`);
+
+      return null;
+    }
+
+    const match = matchSessionGroup(sessionGroups, groupName);
+
+    if (match.kind === "found") return { groupNum: match.group.groupNum, displayName: match.group.groupName };
+
+    this.logChangeCameraSkip(groupName, settings.cameraGroup, match);
+
+    return null;
+  }
+
+  /** Logs a Change Camera press that names no group of the session, or more than one. */
+  private logChangeCameraSkip(
+    groupName: string,
+    cameraGroup: number,
+    match: Exclude<SessionGroupMatch, { kind: "found" }>,
+  ): void {
+    // The session lists its groups and this one is not among them (TV4 on road
+    // content, a custom group of another track's camera file). Our own number
+    // would pick an unrelated camera, so the press does nothing rather than
+    // something wrong (#958).
+    if (match.kind === "absent") {
+      this.logger.info("Camera change skipped: group not in this session");
+      this.logger.debug(`Group "${groupName}" (${cameraGroup}) is not in the session's camera groups`);
+
+      return;
+    }
+
+    this.logger.info("Camera change skipped: group name matches more than one group in this session");
+    this.logger.debug(
+      `Group "${groupName}" matches ${match.candidates.map((g) => `"${g.groupName}" (${g.groupNum})`).join(", ")}`,
+    );
   }
 
   /** Change Camera's switch, onto the car the camera is on when it goes out. */
-  private sendChangeCamera(cameraGroup: number): void {
+  private sendChangeCamera(settings: CameraControlsSettings): void {
     const telemetry = this.sdkController.getCurrentTelemetry();
 
     if (!telemetry) {
@@ -1565,130 +1898,388 @@ export class CameraControls extends SimIRacingAction<CameraControlsSettings> {
       return;
     }
 
+    const target = this.resolveChangeCameraTarget(settings);
+
+    if (target === null) return;
+
     const camera = getCommands().camera;
     const carIdx = telemetry.CamCarIdx ?? 0;
     const sessionInfo = this.sdkController.getSessionInfo();
-    const sessionGroups = sessionInfo ? normalizeSessionGroups(getCameraGroupsFromSessionInfo(sessionInfo)) : [];
-
-    // Resolve the group by NAME against the session: the sim numbers its groups
-    // per content, so our stored number is only an index into CAMERA_GROUP_MAP.
-    const targetName = CAMERA_GROUP_MAP[cameraGroup]?.name;
-    let resolvedGroup = cameraGroup;
-
-    if (targetName && sessionGroups.length > 0) {
-      const match = findSessionGroupByName(sessionGroups, targetName);
-
-      // The session lists its groups and this one is not among them (TV4 on
-      // road content, say). Our own number would pick an unrelated camera, so
-      // the press does nothing rather than something wrong (#958). The raw
-      // number below survives only for a session whose groups are unreadable.
-      if (!match) {
-        this.logger.info("Camera change skipped: group not in this session");
-        this.logger.debug(`Group "${targetName}" (${cameraGroup}) is not in the session's camera groups`);
-
-        return;
-      }
-
-      resolvedGroup = match.groupNum;
-    }
-
     const carNumberRaw = sessionInfo ? getCarNumberRawFromSessionInfo(sessionInfo, carIdx) : null;
 
     if (carNumberRaw !== null) {
-      const success = camera.switchNum(carNumberRaw, resolvedGroup, 0);
+      const success = camera.switchNum(carNumberRaw, target.groupNum, 0);
       this.logger.info("Camera changed");
-      this.logger.debug(`Result: ${success}, cameraGroup: ${resolvedGroup} (${targetName ?? cameraGroup})`);
+      this.logger.debug(`Result: ${success}, cameraGroup: ${target.groupNum} (${target.displayName})`);
     } else {
       this.logger.warn("Cannot change camera: car number not found in session info");
     }
   }
 
+  /** The session's normalised camera groups, read now; empty with no session or no readable group list. */
+  private readSessionGroupsFresh(): CameraGroup[] {
+    const sessionInfo = this.sdkController.getSessionInfo();
+
+    return sessionInfo ? normalizeSessionGroups(getCameraGroupsFromSessionInfo(sessionInfo)) : [];
+  }
+
   /**
-   * Update the icon for cycle-camera contexts based on current telemetry: the
-   * group the next press selects, or — with Icon Shows = Current camera (#959)
-   * — the group the sim is on now, even outside the key's enabled subset,
-   * because that is still what is on screen.
+   * The session's normalised camera groups for a per-tick check, re-read only
+   * when the session info is a new object — that is, when iRacing has
+   * published an update.
    */
-  private async updateCycleIcon(contextId: string): Promise<void> {
-    const settings = this.activeContexts.get(contextId);
+  private readSessionGroupsCached(): CameraGroup[] {
+    const sessionInfo = this.sdkController.getSessionInfo();
 
-    if (!settings || settings.target !== "cycle-camera") return;
+    if (!sessionInfo) return [];
 
-    const telemetry = this.sdkController.getCurrentTelemetry();
+    if (this.sessionGroupsCache?.sessionInfo !== sessionInfo) {
+      this.sessionGroupsCache = {
+        sessionInfo,
+        groups: normalizeSessionGroups(getCameraGroupsFromSessionInfo(sessionInfo)),
+        unavailable: new Map(),
+      };
+    }
 
-    if (!telemetry) {
-      // Connection lost — restore grid icon if we were showing a telemetry-driven icon
-      if (this.lastDisplayedGroup.has(contextId)) {
-        this.lastDisplayedGroup.delete(contextId);
-        await this.showCycleIcon(contextId, () => generateCameraControlsSvg(settings));
-      }
+    return this.sessionGroupsCache.groups;
+  }
+
+  /**
+   * Whether a Change Camera key's group is missing from the session, computed
+   * once per name per session-info update: the per-tick check of every key
+   * would otherwise re-run the name lookup, case-folding every group of a
+   * 40-50 group file, on each tick for an answer that changes only with the
+   * session info.
+   */
+  private isChangeCameraUnavailableCached(groupName: string): boolean {
+    const groups = this.readSessionGroupsCached();
+    const cache = this.sessionGroupsCache;
+
+    // No session: never unavailable, and nothing to cache against.
+    if (cache === null || groups.length === 0) return false;
+
+    let unavailable = cache.unavailable.get(groupName);
+
+    if (unavailable === undefined) {
+      unavailable = isChangeCameraUnavailable(groupName, groups);
+      cache.unavailable.set(groupName, unavailable);
+    }
+
+    return unavailable;
+  }
+
+  /**
+   * Write new settings to the key (#1653 review): its title and resting icon,
+   * then — in the same pass — whatever telemetry-driven look the settings call
+   * for. Resolves once the settings reached the key and the pass after them is
+   * under way; rejects when the host refused the write, which the next tick
+   * then retries. Newer settings that arrive before this write starts replace
+   * it and take over its waiters.
+   */
+  private requestSettingsWrite(ev: KeyEvent): Promise<void> {
+    const contextId = ev.action.id;
+    let render = this.keyRenders.get(contextId);
+
+    if (!render) {
+      render = newKeyRender();
+      this.keyRenders.set(contextId, render);
+    }
+
+    const state = render;
+    state.settingsVersion++;
+
+    return new Promise<void>((resolve, reject) => {
+      const queued = state.settingsWrite;
+      const waiters = queued && !queued.started ? queued.waiters : [];
+      waiters.push({ resolve, reject });
+      state.settingsWrite = { ev, waiters, started: false };
+      this.requestRender(contextId);
+    });
+  }
+
+  /** Forget a key's writer, releasing anyone still awaiting its settings. */
+  private dropKeyRender(contextId: string): void {
+    const render = this.keyRenders.get(contextId);
+
+    if (!render) return;
+
+    this.keyRenders.delete(contextId);
+    const waiters = [
+      ...render.settled.splice(0),
+      ...(render.settingsInFlight?.waiters.splice(0) ?? []),
+      ...(render.settingsWrite?.waiters.splice(0) ?? []),
+    ];
+
+    for (const waiter of waiters) waiter.resolve();
+  }
+
+  /**
+   * Ask for a pass of the key's writer: a telemetry tick, or new settings. A
+   * pass already running takes the request as a reason for one more pass.
+   */
+  private requestRender(contextId: string): void {
+    const render = this.keyRenders.get(contextId);
+
+    if (!render) return;
+
+    if (render.running) {
+      render.requested = true;
 
       return;
     }
 
-    const sessionInfo = this.sdkController.getSessionInfo();
-    const sessionGroups = sessionInfo ? normalizeSessionGroups(getCameraGroupsFromSessionInfo(sessionInfo)) : [];
+    void this.runRenders(contextId, render);
+  }
 
-    if (sessionGroups.length === 0) return;
+  /**
+   * The key's single writer. Each pass writes pending settings first, or else
+   * decides the key's look now and writes it unless the key shows it already.
+   * It stops when the key shows its look, when its writer was replaced (the key
+   * left), or after a refused write unless something asked again meanwhile — a
+   * host that keeps refusing gets one write per request, not a busy loop.
+   */
+  private async runRenders(contextId: string, render: KeyRender): Promise<void> {
+    render.running = true;
 
-    let shownGroupName: string;
+    try {
+      for (;;) {
+        render.requested = false;
+
+        const settingsWrite = render.settingsWrite;
+        let write: Promise<boolean>;
+
+        if (settingsWrite) {
+          write = this.writeSettingsLook(contextId, render, settingsWrite);
+        } else {
+          const look = this.computeLook(contextId, render);
+
+          if (look === null || look.id === render.written?.id) return;
+
+          write = this.writeLook(contextId, render, look);
+        }
+
+        // The next write is out: a settings handler awaiting an earlier one may go on.
+        this.releaseSettled(render);
+        const written = await write;
+
+        if (this.keyRenders.get(contextId) !== render) return;
+
+        if (!written && !render.requested) return;
+      }
+    } finally {
+      render.running = false;
+      this.releaseSettled(render);
+    }
+  }
+
+  private releaseSettled(render: KeyRender): void {
+    for (const waiter of render.settled.splice(0)) waiter.resolve();
+  }
+
+  /**
+   * Write pending settings: the title cleared and the resting icon, through
+   * the host event — which also gives the key its context, so no other write
+   * can land before it. A refused write leaves the settings pending for the
+   * next request and the key's look unknown.
+   */
+  private async writeSettingsLook(contextId: string, render: KeyRender, write: SettingsWrite): Promise<boolean> {
+    write.started = true;
+
+    const settings = this.activeContexts.get(contextId);
+
+    if (!settings) {
+      if (render.settingsWrite === write) render.settingsWrite = null;
+
+      render.settled.push(...write.waiters.splice(0));
+
+      return true;
+    }
+
+    const look = this.restingLook(settings, render.settingsVersion);
+    render.settingsInFlight = write;
+
+    try {
+      await write.ev.action.setTitle("");
+
+      // The key left while the title was out, and may be back under the same
+      // context with a writer of its own (#1653 review): this write's settings
+      // are no longer the key's, so its image never goes out.
+      if (this.keyRenders.get(contextId) !== render) return true;
+
+      await this.setKeyImage(write.ev, look.render());
+    } catch (err) {
+      write.started = false;
+      render.written = null;
+
+      for (const waiter of write.waiters.splice(0)) waiter.reject(err);
+
+      return false;
+    } finally {
+      if (render.settingsInFlight === write) render.settingsInFlight = null;
+    }
+
+    if (render.settingsWrite === write) render.settingsWrite = null;
+
+    render.settled.push(...write.waiters.splice(0));
+
+    if (this.keyRenders.get(contextId) !== render) return true;
+
+    render.written = look;
+    this.setRegenerateCallback(contextId, look.render);
+
+    return true;
+  }
+
+  /**
+   * Write a look to the key. Only a write that went out records the look and
+   * registers it for regeneration; a refused one leaves the key's look unknown,
+   * so the next pass draws it again — or the grid, where there is no group to
+   * judge by.
+   */
+  private async writeLook(contextId: string, render: KeyRender, look: KeyLook): Promise<boolean> {
+    let written: boolean;
+
+    try {
+      written = await this.updateKeyImage(contextId, look.render());
+    } catch (err) {
+      // Debug, not warn: a host that keeps refusing would log this every tick.
+      const which = this.activeContexts.get(contextId)?.target === "change-camera" ? "Change Camera" : "Cycle Camera";
+      this.logger.debug(`Failed to redraw a ${which} key: ${err instanceof Error ? err.message : err}`);
+      written = false;
+    }
+
+    if (this.keyRenders.get(contextId) !== render) return false;
+
+    if (written === false) {
+      render.written = null;
+
+      return false;
+    }
+
+    render.written = look;
+    this.setRegenerateCallback(contextId, look.render);
+
+    return true;
+  }
+
+  /**
+   * The look the key should show now, or null to leave it as it is.
+   *
+   * A Change Camera key shows its icon, drawn unavailable while the session
+   * lacks its group (#1653, spec decision 8); any other key but Cycle Camera
+   * its resting icon. A Cycle Camera key shows the group the next press
+   * selects, or — with Icon Shows = Current camera (#959) — the group the sim
+   * is on now, even outside the key's enabled subset, since that is still
+   * what is on screen; and its configured grid with no telemetry, or with no
+   * group to preview.
+   */
+  private computeLook(contextId: string, render: KeyRender): KeyLook | null {
+    const settings = this.activeContexts.get(contextId);
+
+    if (!settings) return null;
+
+    const version = render.settingsVersion;
+
+    if (settings.target !== "cycle-camera") return this.restingLook(settings, version);
+
+    const telemetry = this.sdkController.getCurrentTelemetry();
+
+    // Connection lost: the grid, in place of a telemetry-driven icon — greyed
+    // for a Current camera key whose enabled groups the session still lists
+    // none of, since a press stays unusable (#1653 review). An unreadable list
+    // and the next-group look keep the normal grid.
+    if (!telemetry) {
+      if (settings.cycleIconMode !== "current") return this.restingLook(settings, version);
+
+      const groups = this.readSessionGroupsFresh();
+      const unusable = isCycleCameraUnavailable(getEnabledGroupNames(settings.cameraGroupSubset), groups);
+
+      return unusable ? this.groupLook(settings, version, "", true) : this.restingLook(settings, version);
+    }
+
+    const sessionGroups = this.readSessionGroupsFresh();
+
+    if (sessionGroups.length === 0) {
+      // No readable group list, so nothing to judge availability by (#1653
+      // review). In Current camera mode, a group icon drawn available stays
+      // until there is a list to judge it by: it still says what is on screen.
+      // A next-group preview does not — the next press takes the sim's own
+      // cycle, not the previewed group — and anything else, a greyed icon or
+      // a look the key may not show after a refused write, goes back to the
+      // configured grid.
+      const shown = render.written;
+
+      if (
+        settings.cycleIconMode === "current" &&
+        shown?.kind === "group" &&
+        !shown.unavailable &&
+        shown.version === version
+      ) {
+        return null;
+      }
+
+      return this.restingLook(settings, version);
+    }
 
     if (settings.cycleIconMode === "current") {
       // A group number the telemetry does not report, or the session does not
       // list, has no name to show; the empty name draws the key's placeholder
-      // rather than a guess.
+      // rather than a guess. With no enabled group in this session the key
+      // shows what is on screen greyed, since a press would cycle nowhere.
       const camGroup = telemetry.CamGroupNumber;
-      shownGroupName = camGroup === undefined ? "" : (findSessionGroupByNum(sessionGroups, camGroup)?.groupName ?? "");
-    } else {
-      const groupNum = telemetry.CamGroupNumber ?? 1;
-      const dir = settings.direction === "next" ? 1 : -1;
-      const enabledNames = getEnabledGroupNames(settings.cameraGroupSubset);
-      const nextEntry = getNextSelectedGroupEntry(groupNum, enabledNames, sessionGroups, dir);
+      const name = camGroup === undefined ? "" : (findSessionGroupByNum(sessionGroups, camGroup)?.groupName ?? "");
+      const unavailable = isCycleCameraUnavailable(getEnabledGroupNames(settings.cameraGroupSubset), sessionGroups);
 
-      if (!nextEntry) return;
-
-      shownGroupName = nextEntry.groupName;
+      return this.groupLook(settings, version, name, unavailable);
     }
 
-    // Skip re-render if the shown group hasn't changed
-    if (this.lastDisplayedGroup.get(contextId) === shownGroupName) return;
+    const groupNum = telemetry.CamGroupNumber ?? 1;
+    const dir = settings.direction === "next" ? 1 : -1;
+    const enabledNames = getEnabledGroupNames(settings.cameraGroupSubset);
+    const nextEntry = getNextSelectedGroupEntry(groupNum, enabledNames, sessionGroups, dir);
 
-    this.lastDisplayedGroup.set(contextId, shownGroupName);
-    await this.showCycleIcon(contextId, () => generateCameraSelectSvg(shownGroupName, settings));
+    // No enabled group in this session, so no next group to preview (#1653
+    // review): a press does nothing, and the key shows its configured grid.
+    if (!nextEntry) return this.restingLook(settings, version);
+
+    return this.groupLook(settings, version, nextEntry.groupName, false);
   }
 
   /**
-   * Push a Cycle Camera key's telemetry-driven icon and register it for
-   * regeneration — unless a newer render for the same key started while this
-   * one's image was in flight. `setRegenerateCallback` reconciles on
-   * registration, so a late, older registration would put its older image back
-   * on the key while the dedupe records the newer group, and the key would stay
-   * wrong until the group next changed.
+   * A key's resting icon. A Change Camera key's is drawn unavailable while the
+   * session lacks its group (#1653); the binding state is read when it is drawn.
    */
-  private async showCycleIcon(contextId: string, render: () => string): Promise<void> {
-    const generation = (this.cycleIconGeneration.get(contextId) ?? 0) + 1;
-    this.cycleIconGeneration.set(contextId, generation);
-    await this.updateKeyImage(contextId, render());
+  private restingLook(settings: CameraControlsSettings, version: number): KeyLook {
+    const changeCamera = settings.target === "change-camera";
+    const unavailable = changeCamera && this.isChangeCameraUnavailableCached(changeCameraGroupName(settings));
 
-    if (this.cycleIconGeneration.get(contextId) !== generation) return;
+    return {
+      id: `rest:${version}:${unavailable ? 1 : 0}`,
+      version,
+      kind: "rest",
+      unavailable,
+      render: () => {
+        // Per-BUTTON missing-binding state (#612): computed from this button's
+        // own mode, so one unbound Cycle Sub-Camera key never marks the
+        // SDK-driven camera keys around it.
+        const bindingMissing = this.isBindingMissing(resolveBindingKey(settings.target, settings.direction));
 
-    this.setRegenerateCallback(contextId, render);
+        return changeCamera
+          ? generateCameraControlsSvg(settings, bindingMissing, unavailable)
+          : generateCameraControlsSvg(settings, bindingMissing);
+      },
+    };
   }
 
-  private async updateDisplay(
-    ev: IDeckWillAppearEvent<CameraControlsSettings> | IDeckDidReceiveSettingsEvent<CameraControlsSettings>,
-    settings: CameraControlsSettings,
-  ): Promise<void> {
-    // Per-BUTTON missing-binding state (#612): computed from this button's own
-    // mode, so one unbound Cycle Sub-Camera key never marks the SDK-driven camera
-    // keys around it.
-    const bindingKey = resolveBindingKey(settings.target, settings.direction);
-    const svgDataUri = generateCameraControlsSvg(settings, this.isBindingMissing(bindingKey));
-    await ev.action.setTitle("");
-    await this.setKeyImage(ev, svgDataUri);
-    this.setRegenerateCallback(ev.action.id, () =>
-      generateCameraControlsSvg(settings, this.isBindingMissing(bindingKey)),
-    );
+  /** A Cycle Camera key's group icon. */
+  private groupLook(settings: CameraControlsSettings, version: number, name: string, unavailable: boolean): KeyLook {
+    return {
+      id: `group:${version}:${unavailable ? 1 : 0}:${name}`,
+      version,
+      kind: "group",
+      unavailable,
+      render: () => generateCameraSelectSvg(name, settings, unavailable),
+    };
   }
 }
 

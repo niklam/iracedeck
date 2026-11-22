@@ -3,10 +3,11 @@
  * waits on it — the voice-pack launch step, the two binding migrations, the
  * retired-key cleanup (#1599), the fuel margin default migration (#1679), the
  * host's extension, the settings-window request, SimHub, the binding
- * dispatcher, the app monitor, the audio session hold, and the two SDK
+ * dispatcher, the app monitor, the audio session hold, and the three SDK
  * subscribers. Everything here is registered before `startPlugin` connects
  * the adapter. The extension reads the sim through the sim phase's `HostSim`
- * (#1500).
+ * (#1500); the camera catalog's publisher records into the sim phase's
+ * catalog (#1653).
  */
 import { getAudio } from "@iracedeck/audio-service";
 import {
@@ -16,6 +17,7 @@ import {
   initializeSimHub,
 } from "@iracedeck/deck-core";
 import {
+  createCameraCatalogPublisher,
   createElevationCheckSubscriber,
   createReplaySessionSubscriber,
   initAppMonitor,
@@ -26,10 +28,12 @@ import {
 import {
   cleanupRetiredDisconnectedSetting,
   initGlobalSettings,
+  isGlobalSettingsInitialized,
   migrateFuelMarginDefault,
   migrateGlobalSettingsKeys,
   onGlobalSettingsChange,
   seedBindingDefaultsIfAbsent,
+  updateGlobalSettings,
 } from "@iracedeck/settings";
 
 import {
@@ -39,7 +43,7 @@ import {
   SETUP_CHASSIS_BINDING_KEY_RENAMES,
   startAudioSessionHold,
 } from "../actions.js";
-import type { Core, HostSim, Input, Replay, Settings, VoicePacks } from "../types.js";
+import type { Core, Input, Replay, Settings, Sim, VoicePacks } from "../types.js";
 
 export function startServices(
   core: Core,
@@ -47,7 +51,7 @@ export function startServices(
   settings: Settings,
   replay: Replay,
   voicePacks: VoicePacks,
-  hostSim: HostSim,
+  sim: Pick<Sim, "host" | "cameraCatalog">,
 ): void {
   // Initialize global settings listener BEFORE connect - handlers must be registered first.
   // The settings store comes from the settings phase, which built it above the
@@ -89,7 +93,7 @@ export function startServices(
   // the Switch Profile action and the "Stream Deck Profiles" buttons (#736),
   // and the connected-deck list for the settings window's device picker. The
   // automatic profile switch reads the sim through the context (#1500).
-  core.host.extension?.start({ sim: hostSim });
+  core.host.extension?.start({ sim: sim.host });
 
   core.adapter.onOpenSettingsRequest(() => {
     core.host.extension?.refreshDevices();
@@ -152,4 +156,23 @@ export function startServices(
       logger: core.adapter.createLogger("ReplaySession"),
     }),
   );
+
+  // The camera catalog (#1653): record every new session info's camera groups
+  // under its track — live or in a replay — and publish `_cameraCatalog`, the
+  // run-scoped view the Camera Controls PI and the settings window's Camera
+  // groups card read. AFTER `initGlobalSettings`, beside the replay session
+  // subscriber, so the first publish has the settings cache to land in. It
+  // publishes once the catalog loads (the sim phase started the load), on
+  // every catalog change (an observation, the window's Remove), on a change of
+  // the current session's track or groups, and with no session on disconnect.
+  const cameraCatalogPublisher = createCameraCatalogPublisher({
+    catalog: sim.cameraCatalog,
+    getSessionInfo: () => core.controller.getSessionInfo(),
+    publish: (partial) => updateGlobalSettings(partial),
+    canPublish: isGlobalSettingsInitialized,
+    logger: core.adapter.createLogger("CameraCatalog"),
+  });
+
+  sim.cameraCatalog.subscribe(cameraCatalogPublisher.onCatalogChange);
+  core.controller.subscribe("camera-catalog", cameraCatalogPublisher.onTick);
 }

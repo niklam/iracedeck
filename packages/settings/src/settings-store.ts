@@ -101,6 +101,22 @@ export interface FileSettingsStoreOptions {
    * read, which would retry and then refuse to save.
    */
   onRejected?: (rejection: SettingsFileRejection) => void;
+  /**
+   * What happens after a rejected file, for the error line `load()` logs: the
+   * global settings store migrates from the deck host (the default); another
+   * file this store serves says what it does instead (#1653: the camera
+   * catalog starts empty). Wording only — it changes no behaviour.
+   */
+  rejectedFallback?: string;
+  /**
+   * A further check of a file that parsed as a JSON object: return a reason to
+   * reject it exactly as an unparseable file is rejected — moved aside,
+   * reported through `onRejected`, `load()` answering "no file" — or
+   * `undefined` to accept it. For a file whose valid JSON can still hold no
+   * usable document (#1653: a `cameras.json` without a known shape). A throw
+   * from it is treated as that reason. The global settings store passes none.
+   */
+  validate?: (parsed: Record<string, unknown>) => string | undefined;
 }
 
 /** What `load()` knew when it rejected the settings file (issue #1036). */
@@ -192,6 +208,15 @@ async function findIdenticalAside(path: string): Promise<string | undefined> {
   }
 
   return undefined;
+}
+
+/** {@link locateJsonError}, or undefined when the locator itself fails (a stack overflow on deep nesting). */
+function locateJsonErrorSafely(text: string): JsonErrorLocation | undefined {
+  try {
+    return locateJsonError(text);
+  } catch {
+    return undefined;
+  }
 }
 
 export function createFileSettingsStore(opts: FileSettingsStoreOptions): SettingsStore {
@@ -320,17 +345,27 @@ export function createFileSettingsStore(opts: FileSettingsStoreOptions): Setting
           throw new Error("It is valid JSON but does not hold a settings object");
         }
 
+        // Inside this try on purpose: a reason (or a throw) takes the same
+        // move-aside path as a parse error, never the fail-closed read error.
+        const invalid = opts.validate?.(parsed as Record<string, unknown>);
+
+        if (invalid !== undefined) throw new Error(invalid);
+
         return parsed as Record<string, unknown>;
       } catch (error: unknown) {
         const aside = path.replace(/\.json$/, "") + `.corrupt-${new Date().toISOString().replace(/[:.]/g, "-")}.json`;
         let preservedAt = aside;
-        const location = locateJsonError(text);
+        // A position exists only for a JSON.parse failure: a refused object or
+        // a validator's reason is valid JSON (#1653). And the locator must never
+        // stop the file being preserved — it recurses per nesting level, so a
+        // deeply nested text can overflow the stack.
+        const location = error instanceof SyntaxError ? locateJsonErrorSafely(text) : undefined;
 
         // The location goes in the ERROR line itself, not only the debug one:
         // this runs before the settings (and so `debugLogging`) have loaded,
         // so the debug detail never reaches a support log (#1036).
         logger.error(
-          `Settings file could not be parsed${location === undefined ? "" : ` at line ${location.line}, column ${location.column}`}; moving it aside and migrating from the deck host`,
+          `Settings file could not be parsed${location === undefined ? "" : ` at line ${location.line}, column ${location.column}`}; moving it aside and ${opts.rejectedFallback ?? "migrating from the deck host"}`,
         );
         logger.debug(`Corrupt settings file ${path} → ${aside}: ${String(error)}`);
 

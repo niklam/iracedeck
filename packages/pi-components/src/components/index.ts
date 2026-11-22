@@ -1,3 +1,5 @@
+// Camera group helpers - window.irdCameraGroups for the Cycle Camera grids (issue #1653)
+import { installCameraGroupHelpers } from "./camera-groups-install.js";
 // Digits-only text field - the filter behind window.irdDigitsOnly (issue #1353)
 import { installDigitsOnlyField } from "./digits-only-field.js";
 // External links - reroute external http(s) PI link clicks to the OS default browser
@@ -36,6 +38,12 @@ export { VoiceSelect } from "./voice-select.js";
 
 // Name Select - global Race Engineer driver-name dropdown populated from a names-list global
 export { NameSelect } from "./name-select.js";
+
+// Camera Group Select - Camera Controls' Change Camera picker over the camera catalog (#1653)
+export { CameraGroupSelect } from "./camera-group-select.js";
+
+// Camera Catalog List - the settings window's Camera Groups card with a Remove per name (#1653)
+export { CameraCatalogList } from "./camera-catalog-list.js";
 
 // Color Picker - custom color picker with "not set" state and inline hex display
 export { ColorPicker } from "./color-picker.js";
@@ -131,3 +139,11 @@ export { installKeepOneChecked, isTicked, keepOneChecked } from "./keep-one-chec
 // inline PI scripts put on a checkbox grid that must keep one box ticked
 // (Replay Control's dial Speeds, issue #1316).
 installKeepOneChecked();
+
+// Camera group helpers - the view rules behind camera-focus.ejs' Cycle Camera grids (issue #1653)
+export { installCameraGroupHelpers } from "./camera-groups-install.js";
+
+// Side effect on bundle load: expose window.irdCameraGroups — the catalog view
+// helpers the Camera Controls PI's inline script builds its Remembered groups
+// section from (issue #1653).
+installCameraGroupHelpers();

@@ -71,7 +71,10 @@ vi.mock("./phases/sim.js", async (importOriginal) => {
  * and so is `initPressSounds`, which installs the press sound player before the
  * first action registers (#269). The track store phase (#1112) is newer
  * too: the learned pit-lane landmarks' store, built before the sim phase
- * because the translator takes its reader at construction.
+ * because the translator takes its reader at construction. So is the camera
+ * catalog (#1653): the sim phase builds it and starts its load, and the
+ * services phase subscribes its publisher to it and to the controller, after
+ * the replay session subscriber.
  */
 function expectedOrder(withExtension: boolean): string[] {
   return [
@@ -96,6 +99,8 @@ function expectedOrder(withExtension: boolean): string[] {
     "createIracingTranslatorOptions", // the six settings-backed options, built by the wiring (#1378)
     "initializeSimEventsIracing",
     "getController().setLivePositionsProvider",
+    "createCameraCatalogService", // #1653
+    "createCameraCatalogService().start",
     "createIracingSimRuntime",
     // 4 initInput
     "new IRacingNative",
@@ -164,6 +169,8 @@ function expectedOrder(withExtension: boolean): string[] {
     "startAudioSessionHold", // #1347
     "getController().subscribe", // elevation check
     "getController().subscribe", // replay session
+    "createCameraCatalogService().subscribe", // the catalog publisher (#1653)
+    "getController().subscribe", // camera catalog
     // 12 connect
     "adapter.connect",
   ];
@@ -198,6 +205,8 @@ const PURE_FACTORIES = new Set([
   "createSettingsWindowWarningReporter",
   "createElevationCheckSubscriber",
   "createReplaySessionSubscriber",
+  "createCameraCatalogRejectionReporter",
+  "createCameraCatalogPublisher",
 ]);
 
 /** The effectful recorded calls, with each run of registrations collapsed to one entry. */
@@ -280,6 +289,7 @@ describe("startPlugin (#1349)", () => {
       "AudioSessionHold", // newer than that file (#1347)
       "Elevation",
       "ReplaySession",
+      "CameraCatalog", // newer than that file (#1653)
     ]);
   });
 
@@ -481,6 +491,48 @@ describe("startPlugin (#1349)", () => {
     expect(refresh).toBeGreaterThanOrEqual(0);
     expect(catalog).toBeGreaterThanOrEqual(0);
     expect(refresh).toBeLessThan(catalog);
+  });
+
+  it("hands the one camera catalog the sim phase built to the window's Remove and to the publisher, which records and publishes through the settings (#1653)", () => {
+    const handlerDeps: Record<string, unknown>[] = [];
+    const publisherDeps: Record<string, unknown>[] = [];
+    const subscriptions: [string, unknown][] = [];
+    const catalog = {
+      start: () => Promise.resolve(),
+      subscribe: vi.fn(),
+      remove: vi.fn(() => true),
+    };
+    const publisher = { onTick: (): void => undefined, onCatalogChange: (): void => undefined };
+    implement("createCameraCatalogService", () => catalog);
+    implement("createSettingsWindowCommandHandler", (deps) => handlerDeps.push(deps as Record<string, unknown>));
+    implement("createCameraCatalogPublisher", (deps) => {
+      publisherDeps.push(deps as Record<string, unknown>);
+
+      return publisher;
+    });
+    implement("getController().subscribe", (id, callback) => subscriptions.push([id as string, callback]));
+
+    startPlugin(createHost());
+
+    expect(builtSims).toHaveLength(1);
+    expect(builtSims[0].cameraCatalog).toBe(catalog);
+
+    // The settings window's Remove reaches the catalog by name.
+    (handlerDeps[0].removeCameraGroup as (name: string) => void)("DynamicTV");
+    expect(catalog.remove).toHaveBeenCalledExactlyOnceWith("DynamicTV");
+
+    // The publisher records into the same catalog and is wired to both inputs.
+    expect(publisherDeps).toHaveLength(1);
+    expect(publisherDeps[0].catalog).toBe(catalog);
+    expect(catalog.subscribe).toHaveBeenCalledExactlyOnceWith(publisher.onCatalogChange);
+    expect(subscriptions.find(([id]) => id === "camera-catalog")?.[1]).toBe(publisher.onTick);
+
+    // It reads the controller's session info and writes and gates through the settings package.
+    callLog.length = 0;
+    (publisherDeps[0].getSessionInfo as () => unknown)();
+    (publisherDeps[0].publish as (partial: Record<string, unknown>) => void)({ _cameraCatalog: "{}" });
+    (publisherDeps[0].canPublish as () => unknown)();
+    expect(callLog).toEqual(["getController().getSessionInfo", "updateGlobalSettings", "isGlobalSettingsInitialized"]);
   });
 
   it("hands the extension the host's sim and the Race Engineer the runtime, both from the one Sim the sim phase built (#1500)", () => {

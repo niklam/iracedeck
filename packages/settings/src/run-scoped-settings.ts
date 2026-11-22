@@ -53,6 +53,7 @@
  * `_lastChangelogOpenedAt`), and getting that wrong silently loses user state.
  */
 import {
+  CAMERA_CATALOG_KEY,
   PI_WARNINGS_KEY,
   PROFILE_CAPTURE_STATUS_KEY,
   VOICE_PACK_STATUS_KEY,
@@ -64,16 +65,37 @@ import {
  * choice: the PI warning banners, the list of voice packs currently on disk
  * (issue #1034 — persisting it would let a deleted pack reappear after a
  * restart, with nothing in any UI able to clear it), the voice-pack install
- * status, and the CPU profile capture's state (#1338 — a "capturing" state
+ * status, the CPU profile capture's state (#1338 — a "capturing" state
  * read back after a restart would show a countdown for a capture that died
- * with the previous process).
+ * with the previous process), and the camera catalog as the Property
+ * Inspectors see it (#1653 — the catalog's durable copy is its own file,
+ * `cameras.json`, and the key also carries which groups THIS run's session
+ * has; persisting it would put hundreds of remembered names in every settings
+ * save and show a stale current session after a restart).
  */
 export const RUN_SCOPED_SETTING_KEYS: readonly string[] = [
   PI_WARNINGS_KEY,
   VOICE_PACKS_KEY,
   VOICE_PACK_STATUS_KEY,
   PROFILE_CAPTURE_STATUS_KEY,
+  CAMERA_CATALOG_KEY,
 ];
+
+/**
+ * Run-scoped keys left out of the once-per-start deck-host mirror
+ * (`hostMirrorPayload`), on top of riding everywhere else an enrolled key does.
+ *
+ * The mirror replaces the host's whole stored copy, which the host keeps in
+ * its own settings file, so whatever it carries is written to disk there. The
+ * camera catalog (#1653) is the one enrolled key that must not be: it is
+ * durable in `cameras.json` already, and at the scale its requester reported
+ * (300+ camera files, 40-50 groups a track) it runs to a couple of hundred
+ * kilobytes, which would ride every host settings write. Left out, a Property
+ * Inspector on the no-loopback fallback path sees no catalog: its picker still
+ * offers the standard groups, the key's stored name and Other..., so it
+ * degrades rather than breaks.
+ */
+export const HOST_MIRROR_EXCLUDED_KEYS: readonly string[] = [CAMERA_CATALOG_KEY];
 
 /**
  * A copy of `settings` with every enrolled key removed.

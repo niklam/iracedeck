@@ -126,7 +126,48 @@ export interface SettingsWindowCommandDeps {
    * shared by every deck host); the page never supplies one (#1112).
    */
   trackDataPath?: string;
+  /**
+   * Remove a remembered camera group from the camera catalog (#1653) — the
+   * Camera groups card's Remove button. The page names the group, and that is
+   * all: the plugin checks the name against its own catalog, which lives in a
+   * file whose path is the plugin's and never the page's. A name the catalog
+   * does not hold changes nothing.
+   */
+  removeCameraGroup?: (name: string) => void;
 }
+
+/**
+ * The longest camera group name the remove command accepts; equal to
+ * deck-iracing's `CAMERA_GROUP_NAME_MAX_LENGTH`, the longest name the catalog
+ * records, so every recorded name can be removed and nothing longer reaches
+ * the plugin. Restated rather than imported: this package does not depend on
+ * the iRacing deck layer.
+ */
+export const CAMERA_GROUP_NAME_MAX_LENGTH = 256;
+
+/** Whether `name` holds a C0 control character or DEL; the catalog records no such name (deck-iracing's `isRecordableName`). */
+function hasControlCharacter(name: string): boolean {
+  for (let i = 0; i < name.length; i++) {
+    const code = name.charCodeAt(i);
+
+    if (code < 0x20 || code === 0x7f) return true;
+  }
+
+  return false;
+}
+
+/**
+ * A camera group name as the remove command takes it: text of 1 to
+ * {@link CAMERA_GROUP_NAME_MAX_LENGTH} UTF-16 units, not blank, no control
+ * characters. Kept exactly as sent — no trimming or normalising — because the
+ * plugin matches it against the catalog's own spelling, and a name that
+ * matches nothing is refused there.
+ */
+export const CameraGroupNameSchema = z
+  .string()
+  .min(1)
+  .max(CAMERA_GROUP_NAME_MAX_LENGTH)
+  .refine((name) => name.trim() !== "" && !hasControlCharacter(name));
 
 /** The gate whose two keys the Race Engineer opt-in has to move together (#1061). */
 const RACE_ENGINEER_GATE_KEY = "pitCrewRaceEngineerEnabled";
@@ -295,6 +336,17 @@ export function createSettingsWindowCommandHandler(
         if (deps.openDirectory && deps.trackDataPath) deps.openDirectory(deps.trackDataPath);
 
         break;
+
+      // A camera group name is looked up in the plugin's own catalog and never
+      // becomes a path; it is still held to the same bounds the catalog records
+      // names within, so the page cannot hand the plugin anything else (#1653).
+      case "cameraCatalogRemove": {
+        const name = CameraGroupNameSchema.safeParse(payload.name);
+
+        if (deps.removeCameraGroup && name.success) deps.removeCameraGroup(name.data);
+
+        break;
+      }
 
       default:
         break;
