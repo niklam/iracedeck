@@ -3502,6 +3502,45 @@ describe("sim-events-iracing translator", () => {
       expect(handler).not.toHaveBeenCalled();
     });
 
+    it("consumes nothing while the session info is unreadable, and speaks the count once it reads again (issue #1702)", () => {
+      const controller = createMockController();
+      const bus = getEventBus();
+      const handler = vi.fn();
+      bus.subscribe("fuel.lapsLeft.crossed", handler);
+      const raceInfo = {
+        SessionInfo: { Sessions: [{ SessionType: "Race" }] },
+        DriverInfo: { DriverCarIdx: 0 },
+      };
+      controller.__setSessionInfo(raceInfo);
+      initializeSimEventsIracing(bus, controller, createMockLogger(), {
+        onStepError: "rethrow",
+        getFuelLapsLeftMarginLaps: recipeMargin,
+      });
+
+      // The recipe's two validated laps.
+      controller.__tick(telemetry({ Lap: 1, LapDistPct: 0.9, SessionTime: 0, FuelLevel: 64 }));
+      controller.__tick(telemetry({ Lap: 2, LapDistPct: 0.05, SessionTime: 5, FuelLevel: 63.9 }));
+      controller.__tick(telemetry({ Lap: 2, LapDistPct: 0.55, SessionTime: 45, FuelLevel: 63 }));
+      controller.__tick(telemetry({ Lap: 2, LapDistPct: 0.9, SessionTime: 80, FuelLevel: 62.2 }));
+      controller.__tick(telemetry({ Lap: 3, LapDistPct: 0.05, SessionTime: 90, FuelLevel: 62 }));
+      controller.__tick(telemetry({ Lap: 3, LapDistPct: 0.55, SessionTime: 135, FuelLevel: 61 }));
+      controller.__tick(telemetry({ Lap: 3, LapDistPct: 0.9, SessionTime: 170, FuelLevel: 60.2 }));
+      controller.__tick(telemetry({ Lap: 4, LapDistPct: 0.05, SessionTime: 180, FuelLevel: 60 }));
+      controller.__tick(telemetry({ Lap: 4, LapDistPct: 0.45, SessionTime: 200, FuelLevel: 5.0 }));
+
+      // The low-fuel crossing lands while a session-info update fails to parse.
+      controller.__setSessionInfo(null);
+      controller.__tick(telemetry({ Lap: 4, LapDistPct: 0.55, SessionTime: 210, FuelLevel: 4.9 }));
+      expect(handler).not.toHaveBeenCalled();
+      expect(liveState().fuelCallout.lastSampledLap).toBe(3);
+
+      // Readable again later in the same lap: the count is spoken there.
+      controller.__setSessionInfo(raceInfo);
+      controller.__tick(telemetry({ Lap: 4, LapDistPct: 0.6, SessionTime: 215, FuelLevel: 4.8 }));
+      expect(handler).toHaveBeenCalledTimes(1);
+      expect((handler.mock.calls[0]![0] as SimEventOf<"fuel.lapsLeft.crossed">).data.count).toBe(1);
+    });
+
     describe("the final-lap signal per session kind (issue #1702)", () => {
       it.each(["Practice", "Lone Qualify", "Offline Testing"])(
         "speaks the low-fuel sample in %s (the control for the tests below)",

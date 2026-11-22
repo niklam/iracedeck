@@ -38,6 +38,7 @@ import {
   estimateFuelLapsLeft,
   type FuelCoverage,
   type FuelLapsLeftEstimate,
+  type FuelSessionBranch,
   isFuelCovered,
   resolveFuelFinalLapStarted,
   resolveFuelLapCounterCoverage,
@@ -60,9 +61,14 @@ import type { CautionGap, GapNeighbor, LiveGaps, LiveOpponentFlags, LivePosition
 /**
  * Why the laps-of-fuel-left count is compared with no distance: the states in
  * which `diffFuelLapsLeft` compares nothing, because it has returned before
- * the comparison or has no distance to compare with. The first two hold in
- * every session kind (issue #1702).
+ * the comparison or has no distance to compare with. `"race-over"` and
+ * `"final-lap"` hold in every session kind (issue #1702).
  *
+ * - `"session-unknown"` — the session type cannot be read (the session info
+ *   not yet resolved, or an update that failed to parse, #1461), so there is
+ *   no branch to follow; the diff consumes nothing on such a tick and speaks
+ *   on the first readable one. The count stands, since the arithmetic does
+ *   not depend on the session.
  * - `"race-over"` — the chequered flag is out or the field is cooling down;
  *   outside a race, the session's own chequered flag.
  * - `"final-lap"` — the player has started their own final lap, by the rule
@@ -77,7 +83,7 @@ import type { CautionGap, GapNeighbor, LiveGaps, LiveOpponentFlags, LivePosition
  *   alone decides. A race with unknown limits is compared all the same,
  *   against `remainingLaps: Infinity`.
  */
-export type SimFuelCoverageSkip = "race-over" | "final-lap" | "no-lap-limit";
+export type SimFuelCoverageSkip = "session-unknown" | "race-over" | "final-lap" | "no-lap-limit";
 
 /**
  * What the laps-of-fuel-left callout's formula gives for one tick: every step
@@ -268,8 +274,8 @@ export type SimStateParts = {
   replay: ReplayState;
   fuel: {
     windowLaps: number;
-    /** `handleTick`'s own `isRaceSession`, which picks `diffFuelLapsLeft`'s race branch, and the reader's (issue #1702). */
-    isRaceSession: boolean;
+    /** `handleTick`'s own branch, which picks `diffFuelLapsLeft`'s and the reader's (issue #1702). */
+    session: FuelSessionBranch;
     /** The stats the laps-of-fuel-left diff reads, over `windowLaps`. */
     stats: FuelStats;
     tracker: FuelLapTracker;
@@ -304,11 +310,15 @@ function resolveCoverage(
   state: TranslatorState,
   estimate: FuelLapsLeftEstimate,
 ): FuelCoverage | SimFuelCoverageSkip {
+  if (fuel.session === "unknown") return "session-unknown";
+
   if (isPostRace(telemetry)) return "race-over";
 
-  if (resolveFuelFinalLapStarted(fuel.isRaceSession, state.playerFinalLapStarted, telemetry)) return "final-lap";
+  const isRaceSession = fuel.session === "race";
 
-  if (fuel.isRaceSession) {
+  if (resolveFuelFinalLapStarted(isRaceSession, state.playerFinalLapStarted, telemetry)) return "final-lap";
+
+  if (isRaceSession) {
     return resolveFuelRaceCoverage(telemetry, fuel.stats, estimate.lapFractionRemaining, fuel.getLeaderFinish);
   }
 

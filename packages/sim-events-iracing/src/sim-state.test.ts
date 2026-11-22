@@ -188,7 +188,7 @@ function build(overrides: Partial<SimStateParts> = {}): FullSimState {
 function fuelParts(overrides: Partial<SimStateParts["fuel"]> = {}): SimStateParts["fuel"] {
   return {
     windowLaps: FUEL_LAPS_LEFT_WINDOW_LAPS,
-    isRaceSession: true,
+    session: "race",
     stats: { lastLap: 2, avg: 2, avgLapTime: null, samples: 2 },
     tracker: createFuelLapTracker(),
     getMarginLaps: () => 0.3,
@@ -899,7 +899,8 @@ describe("readSimState — a curated half that cannot be built", () => {
   /**
    * A margin closure that answers 0 until `breakNow()`, then throws `thrown`.
    * The fuel callout's own diff calls it at its mid-lap samples in every
-   * session (issue #1702), so it may break only once the laps are driven;
+   * readable session (issue #1702), so a closure meant to break only the
+   * reader breaks once the laps are driven, whatever session the test runs;
    * after that the reader is what reaches it.
    */
   function breaksAfterDriving(thrown: unknown): {
@@ -977,7 +978,8 @@ describe("readSimState — a curated half that cannot be built", () => {
     // The reader is the one call that reached the broken closure.
     expect(margin.brokenCalls()).toBe(1);
     expect(state.curatedError).toBe("settings not loaded");
-    expect(state.raw.state.fuelCallout.lastSampledLap).toBe(3);
+    // No session info: the diff consumed nothing (issue #1702).
+    expect(state.raw.state.fuelCallout.lastSampledLap).toBe(-1);
     expect(state.raw.instance.firstOnTrackSeeded).toBe(true);
   });
 
@@ -1445,6 +1447,24 @@ describe("buildSimState", () => {
       }
     });
 
+    it("is not worked out while the session type cannot be read (issue #1702)", () => {
+      const getLeaderFinish = vi.fn(() => UNKNOWN_LEADER_FINISH);
+      const state = build({
+        telemetry: telemetry({ FuelLevel: 10, LapDistPct: 0.5, SessionLapsRemainEx: 3, SessionFlags: Flags.White }),
+        fuel: fuelParts({ session: "unknown", getLeaderFinish }),
+      });
+
+      // The count stands; the comparison names the unreadable session first.
+      expect(state.fuel.lapsLeft.now).toMatchObject({
+        count: 4,
+        lapsNeededAfterCurrent: null,
+        remainingLaps: null,
+        covered: null,
+        coverageSkipped: "session-unknown",
+      });
+      expect(getLeaderFinish).not.toHaveBeenCalled();
+    });
+
     describe("outside a race (issue #1702)", () => {
       /** A non-race reading of `telemetry`, with the sticky race marker set to show it is not read. */
       function buildOutside(over: Partial<TelemetryData>, getLeaderFinish = vi.fn(() => UNKNOWN_LEADER_FINISH)) {
@@ -1454,7 +1474,7 @@ describe("buildSimState", () => {
 
         const state = build({
           telemetry: telemetry({ FuelLevel: 10, LapDistPct: 0.5, ...over }),
-          fuel: fuelParts({ isRaceSession: false, stats: timedStats, getLeaderFinish }),
+          fuel: fuelParts({ session: "non-race", stats: timedStats, getLeaderFinish }),
           state: translatorState,
         });
 

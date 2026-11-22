@@ -52,11 +52,13 @@ import {
   FUEL_CALLOUT_DEFAULT_MARGIN_LAPS,
   FUEL_COVERAGE_ERROR,
   FUEL_LAPS_LEFT_MAX_COUNT,
+  type FuelSessionBranch,
   isFuelCovered,
   resolveFuelFinalLapStarted,
   resolveFuelLapCounterCoverage,
   resolveFuelLapCounterLapsAfterCurrent,
   resolveFuelRaceCoverage,
+  resolveFuelSessionBranch,
   sanitizeFuelCalloutMarginLaps,
 } from "./fuel-laps-left.js";
 import type { FuelStats } from "./fuel-laps.js";
@@ -99,6 +101,8 @@ type RunOptions = {
   finish?: LeaderFinish;
   /** The flags' sticky final-lap marker `handleTick` hands the diff (issue #880). */
   finalLap?: boolean;
+  /** The branch, in place of `race` (issue #1702): how an unreadable session is handed over. */
+  session?: FuelSessionBranch;
 };
 
 function makeRunner(events: PendingEvent[], slice: FuelCalloutState = createFuelCalloutState()) {
@@ -115,6 +119,7 @@ function makeRunner(events: PendingEvent[], slice: FuelCalloutState = createFuel
         chequeredInS = null,
         finish,
         finalLap = false,
+        session,
       }: RunOptions = {},
     ) {
       const stats: FuelStats =
@@ -124,7 +129,7 @@ function makeRunner(events: PendingEvent[], slice: FuelCalloutState = createFuel
       diffFuelLapsLeft(
         slice,
         t,
-        race,
+        session ?? (race ? "race" : "non-race"),
         finalLap,
         () => stats,
         () => margin,
@@ -457,7 +462,7 @@ describe("diffFuelLapsLeft — every session kind (issue #1702)", () => {
           SessionLapsRemainEx: IRSDK_UNLIMITED_LAPS,
           SessionTimeRemain: 30,
         }),
-        false,
+        "non-race",
         false,
         () => stats,
         () => FIXTURE_MARGIN_LAPS,
@@ -492,6 +497,76 @@ describe("resolveFuelLapCounterLapsAfterCurrent (issue #1702)", () => {
 
   it("does not clamp under the white flag, unlike the race distance", () => {
     expect(resolveFuelLapCounterLapsAfterCurrent(tick({ SessionLapsRemainEx: 1, SessionFlags: Flags.White }))).toBe(0);
+  });
+});
+
+describe("diffFuelLapsLeft — an unreadable session (issue #1702)", () => {
+  const unknown: RunOptions = { session: "unknown" };
+
+  it("consumes nothing while the session type cannot be read, then speaks the count on the first readable sample", () => {
+    const events: PendingEvent[] = [];
+    const runner = makeRunner(events);
+
+    // Seeded and sampled while the session reads (count 3).
+    lapSample(runner.run, 5, 8.1);
+    expect(counts(events)).toEqual([3]);
+
+    const before = { ...runner.slice };
+
+    // The whole next lap, crossing included, with the session unreadable.
+    lapSample(runner.run, 6, 6.1, unknown);
+    expect(events).toHaveLength(1);
+    expect(runner.slice).toEqual(before);
+
+    // Readable again: the next crossing speaks the count the gap would have
+    // consumed.
+    lapSample(runner.run, 7, 6.0);
+    expect(counts(events)).toEqual([3, 2]);
+  });
+
+  it("samples a lap whose crossing fell in the gap on its first readable tick past the mark", () => {
+    const events: PendingEvent[] = [];
+    const { run } = makeRunner(events);
+
+    lapSample(run, 5, 8.1); // count 3, leaves the lap-6 baseline below the mark
+    run(tick({ Lap: 6, LapDistPct: 0.55, FuelLevel: 6.1 }), unknown); // the crossing, unreadable
+    run(tick({ Lap: 6, LapDistPct: 0.7, FuelLevel: 6.0 }));
+
+    // floor(3.0 − 0.3 − 0.3) = 2, at the real position.
+    expect(counts(events)).toEqual([3, 2]);
+  });
+
+  it("lands a refuel made during the gap as one delta on the first readable tick", () => {
+    const events: PendingEvent[] = [];
+    const { run } = makeRunner(events);
+
+    lapSample(run, 5, 6.1); // count 2
+    run(tick({ Lap: 6, LapDistPct: 0.2, FuelLevel: 16 }), unknown); // the fill, unreadable
+    run(tick({ Lap: 6, LapDistPct: 0.3, FuelLevel: 15.9 })); // readable again, a little burnt
+    lapSample(run, 7, 6.1); // the stint was re-armed: count 2 again
+    expect(counts(events)).toEqual([2, 2]);
+  });
+
+  it("still counts the expired clock while the session is unreadable", () => {
+    const runner = makeRunner([]);
+
+    runner.run(tick({ SessionTimeRemain: -1 }), unknown);
+    runner.run(tick({ SessionTimeRemain: -1 }), unknown);
+
+    expect(runner.slice.clockExpiredTicks).toBe(2);
+  });
+});
+
+describe("resolveFuelSessionBranch (issue #1702)", () => {
+  it("is the race branch for the exact Race type only", () => {
+    expect(resolveFuelSessionBranch("Race")).toBe("race");
+    expect(resolveFuelSessionBranch("Heat Race")).toBe("non-race");
+    expect(resolveFuelSessionBranch("Lone Qualify")).toBe("non-race");
+    expect(resolveFuelSessionBranch("Offline Testing")).toBe("non-race");
+  });
+
+  it("is unknown for an unreadable type", () => {
+    expect(resolveFuelSessionBranch("")).toBe("unknown");
   });
 });
 

@@ -88,8 +88,9 @@
  * silent until the tracker has valid samples — no estimate, no callout, never
  * a guess. The sampling, the count, the descending floor, the refuel re-arm,
  * the post-race silence and the final-lap silence run everywhere; what is
- * race-only (`isRaceSession`, the exact `"Race"` match, so a heat race or a
- * warmup takes the other branch) is the rest of the list above:
+ * race-only (the `"race"` {@link FuelSessionBranch}, the exact `"Race"`
+ * match, so a heat race or a warmup takes the other branch) is the rest of the
+ * list above:
  *   - In a race: the final-lap signal is the sticky latch, the coverage
  *     distance is {@link resolveFuelRaceCoverage}'s (lap counter and timed
  *     side), and the enough-fuel reassurance may speak.
@@ -100,6 +101,13 @@
  *     Lone Qualify fuelled for its laps hears no warning, a session with no
  *     lap limit gets no coverage check — and `fuel.lapsLeft.raceCovered` is
  *     never emitted, its line being about finishing the race.
+ *
+ * While the session type cannot be read (`"unknown"`, issue #1702 — the
+ * session info not yet resolved, or a session-info update that failed to
+ * parse, #1461) the diff consumes nothing: no branch can be picked, and
+ * whatever it sampled would be refused downstream, where the Race Engineer
+ * cannot classify the session either, while the floor it advanced would keep
+ * that count from ever being spoken. See {@link diffFuelLapsLeft}.
  */
 import type { SimEventName } from "@iracedeck/event-bus";
 import {
@@ -472,6 +480,29 @@ export function isFuelCovered(
   return estimate.rawLapsLeft >= (estimate.lapFractionRemaining + remainingLaps) * (1 + FUEL_COVERAGE_ERROR);
 }
 
+/**
+ * Which of {@link diffFuelLapsLeft}'s branches a session takes (issue #1702):
+ * `"race"` for the race branch, `"non-race"` for every other readable session
+ * (a heat race and a warmup included), `"unknown"` while the session type
+ * cannot be read, when the diff consumes nothing.
+ */
+export type FuelSessionBranch = "race" | "non-race" | "unknown";
+
+/**
+ * The {@link FuelSessionBranch} for `handleTick`'s resolved session type —
+ * one definition for the translator and the Telemetry Snapshot's state
+ * reader. The race branch is the exact `"Race"` match (the race-coverage
+ * model was validated against `"Race"` captures); an empty type is the
+ * resolver's "unreadable" answer.
+ *
+ * @param sessionType - `resolveSessionType`'s answer, `""` when unreadable
+ */
+export function resolveFuelSessionBranch(sessionType: string): FuelSessionBranch {
+  if (sessionType === "") return "unknown";
+
+  return sessionType === "Race" ? "race" : "non-race";
+}
+
 /** The events {@link diffFuelLapsLeft} emits (issue #1499): its emitter's type, and its row in `TICK_ORDER`. */
 export const FUEL_LAPS_LEFT_EVENTS = [
   "fuel.lapsLeft.crossed",
@@ -489,9 +520,12 @@ export const FUEL_LAPS_LEFT_EVENTS = [
  * `clockExpiredTicks` after this call has advanced it. It runs in every
  * session kind (issue #1702); `getLeaderFinish` is called in a race only.
  *
- * @param isRaceSession - `handleTick`'s exact `"Race"` match: picks the race
- *   branch (the race-distance coverage and the reassurance) or the other one
- *   (the lap-counter coverage alone, never a reassurance)
+ * @param session - `handleTick`'s {@link resolveFuelSessionBranch}: the race
+ *   branch (the race-distance coverage and the reassurance), the other one
+ *   (the lap-counter coverage alone, never a reassurance), or `"unknown"`,
+ *   which returns right after the expired-clock count and writes nothing else
+ *   — no sample, no floor and no baseline, so the first tick with a readable
+ *   session continues from where the last one left off
  * @param finalLapStarted - whether the player has started their own final
  *   lap, as `handleTick` computes it per session kind (issue #1702). In a
  *   race, the flags' STICKY marker (`TranslatorState.playerFinalLapStarted`,
@@ -504,7 +538,7 @@ export const FUEL_LAPS_LEFT_EVENTS = [
 export function diffFuelLapsLeft(
   slice: FuelCalloutState,
   telemetry: TelemetryData,
-  isRaceSession: boolean,
+  session: FuelSessionBranch,
   finalLapStarted: boolean,
   getStats: () => FuelStats,
   getMarginLaps: () => number,
@@ -517,6 +551,18 @@ export function diffFuelLapsLeft(
   // freeze it. The leader's chequered prediction (`getLeaderFinish`) reads it
   // later in this same call; the Telemetry Snapshot reads it after the tick.
   slice.clockExpiredTicks = countClockExpiredTicks(telemetry, slice.clockExpiredTicks);
+
+  // An unreadable session type (issue #1702): no branch to pick, and a sample
+  // here would advance the floor for a count the Race Engineer refuses in a
+  // session it cannot classify, so the count would never be spoken. Nothing
+  // is consumed, the baselines included, so the first readable tick carries
+  // on from the last one: `lastSampledLap` still stops a lap sampled before
+  // the gap from being sampled twice, `lastFuelLevel` lands a refuel made
+  // during the gap as one delta (the replay glance's rule), and a
+  // `lastDistPct` left below the mid-lap mark lets a lap whose crossing fell
+  // in the gap be sampled on the first readable tick at or past it — a real
+  // position, where the count is as valid as at the mark.
+  if (session === "unknown") return;
 
   const fuelLevel = telemetry.FuelLevel;
   const distPct = telemetry.LapDistPct;
@@ -588,7 +634,7 @@ export function diffFuelLapsLeft(
   const estimate = estimateFuelLapsLeft(fuelLevel, distPct, stats.avg, getMarginLaps());
   const { effective, count } = estimate;
 
-  if (!isRaceSession) {
+  if (session === "non-race") {
     // Lap-counter coverage outside a race (issue #1702): a lap-limited
     // session (Lone Qualify always is) counts the player's own laps, so a
     // tank that covers them speaks no warning — the same verdict as a race,

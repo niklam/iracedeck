@@ -86,6 +86,7 @@ import {
   FUEL_CALLOUT_DEFAULT_MARGIN_LAPS,
   FUEL_LAPS_LEFT_WINDOW_LAPS,
   resolveFuelFinalLapStarted,
+  resolveFuelSessionBranch,
 } from "./diff/fuel-laps-left.js";
 import {
   computeFuelStats,
@@ -2749,8 +2750,8 @@ export function readSimState(): SimStateSnapshot {
       replay,
       fuel: {
         windowLaps: FUEL_LAPS_LEFT_WINDOW_LAPS,
-        // `handleTick`'s own test, on the session type its accessor resolves.
-        isRaceSession: sessionType === "Race",
+        // `handleTick`'s own branch, on the session type its accessor resolves.
+        session: resolveFuelSessionBranch(sessionType),
         stats: fuelLapsLeftStats(self),
         tracker: self.fuelLaps,
         getMarginLaps: self.getFuelLapsLeftMarginLaps,
@@ -4101,7 +4102,8 @@ function handleLiveSteps(
     diffFuelLapsLeft(
       self.state.fuelCallout,
       telemetry,
-      isRaceSession,
+      // Race, any other session, or unreadable, when it consumes nothing (#1702).
+      resolveFuelSessionBranch(sessionType),
       // The sticky marker as `diffFlags` left it above in a race, the White
       // bit elsewhere (#1702).
       resolveFuelFinalLapStarted(isRaceSession, self.state.playerFinalLapStarted, telemetry),
