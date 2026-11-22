@@ -12,6 +12,7 @@ import { describe, expect, it } from "vitest";
 
 import { calculateCanonicalRacePositions } from "../../race-order.js";
 import { createInitialState } from "../../state.js";
+import { runUnitsDirectly } from "../../tick-steps.js";
 import { type CarProgressPolicy, LIVE_CAR_PROGRESS_POLICY } from "../car-progress.js";
 import { REPLAY_CAR_PROGRESS_POLICY, stepReplayProgress } from "../replay-progress.js";
 
@@ -54,7 +55,7 @@ function replayOrders(policy: CarProgressPolicy = REPLAY_CAR_PROGRESS_POLICY): n
   return fixture.windows.map((window) =>
     window.map((tick) => {
       const telemetry = telemetryOf(tick);
-      const progress = stepReplayProgress(state.replayProgress, telemetry, policy);
+      const progress = stepReplayProgress(state.replayProgress, telemetry, runUnitsDirectly, policy);
 
       return calculateCanonicalRacePositions(state, telemetry, null, true, progress);
     }),

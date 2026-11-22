@@ -19,6 +19,7 @@ import type { TelemetryData } from "@iracedeck/iracing-sdk";
 import { describe, expect, it } from "vitest";
 
 import { createReplayProgressState, type ReplayProgressState } from "../state.js";
+import { runUnitsDirectly, type UnitRunner } from "../tick-steps.js";
 import { CAR_PROGRESS_LINE_MAX_SPAN_S } from "./car-progress.js";
 import { REPLAY_CAR_PROGRESS_POLICY, stepReplayProgress } from "./replay-progress.js";
 
@@ -122,7 +123,7 @@ describe("stepReplayProgress — crossings backwards (a rewind)", () => {
     let last: number | null = null;
 
     for (const [lc, dp] of [...LEAVING, [7, 0.9999] as const]) {
-      last = stepReplayProgress(slice, tick(time, [[lc, dp]]), forwardOnly)![0]!;
+      last = stepReplayProgress(slice, tick(time, [[lc, dp]]), runUnitsDirectly, forwardOnly)![0]!;
       time += REWIND_S;
     }
 
@@ -309,6 +310,63 @@ describe("stepReplayProgress — resets", () => {
     const [next] = drive(slice, [[7, 1.0, 100 + (APPROACH.length + 1) * TICK_S]], 100);
 
     expect(next).toBe(8);
+  });
+
+  it("runs each car as a unit: a car whose unit throws has no reading and no memory, the others keep theirs", () => {
+    /** A runner like the translator's `steps.runUnit`: it catches a unit's throw and reports it failed. */
+    const catching: UnitRunner = (emit, unit) => {
+      try {
+        unit(emit);
+
+        return true;
+      } catch {
+        return false;
+      }
+    };
+    const slice = createReplayProgressState();
+    const cars = (k: number): [number, number][] => [
+      [6, 0.9995 + k * 0.0001],
+      [5, 0.5 + k * 0.001],
+    ];
+
+    APPROACH.forEach((_, k) => stepReplayProgress(slice, tick(100 + k * TICK_S, cars(k)), catching));
+    expect(slice.lastProgressConfirmed[0]).toBe(true);
+
+    // Car 1's entry throws on the disagreeing tick of car 0.
+    const t = 100 + APPROACH.length * TICK_S;
+    const broken = tick(t, [
+      [7, 0.9999],
+      [5, 0.51],
+    ]);
+
+    Object.defineProperty(broken.CarIdxLapDistPct as number[], 1, {
+      get() {
+        throw new Error("odd telemetry");
+      },
+    });
+
+    const readings = stepReplayProgress(slice, broken, catching)!;
+
+    // Car 0 is still corrected; car 1 has no reading and no memory.
+    expect(readings[0]).toBeCloseTo(6.9999, 10);
+    expect(readings[1]).toBeNull();
+    expect(slice.lastProgress[1]).toBeUndefined();
+    expect(slice.lastProgressConfirmed[1]).toBe(false);
+    expect(slice.lastReadSessionTime).toBe(t);
+
+    // Next tick car 1 is a first reading again; car 0 carries on corrected.
+    const next = stepReplayProgress(
+      slice,
+      tick(t + TICK_S, [
+        [7, 0.0001],
+        [5, 0.511],
+      ]),
+      catching,
+    )!;
+
+    expect(next[0]).toBeCloseTo(7.0001, 10);
+    expect(next[1]).toBeCloseTo(5.511, 10);
+    expect(slice.continuingRun[1]).toBe(0);
   });
 
   it("missing arrays give no readings and drop every car's memory", () => {

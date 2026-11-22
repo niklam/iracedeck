@@ -26,6 +26,7 @@
 import { readLapFraction, type TelemetryData } from "@iracedeck/iracing-sdk";
 
 import type { ReplayProgressState } from "../state.js";
+import { runUnitsDirectly, type UnitRunner } from "../tick-steps.js";
 import {
   type CarProgressPolicy,
   type CarProgressTickContext,
@@ -58,6 +59,9 @@ export const REPLAY_CAR_PROGRESS_POLICY: CarProgressPolicy = {
   readLapFraction,
 };
 
+/** The unit runner's emit: the step publishes nothing. */
+const noEmit = (): void => {};
+
 /**
  * Read this replay frame's progress for every car, against the slice's
  * memory, and return it.
@@ -76,10 +80,18 @@ export const REPLAY_CAR_PROGRESS_POLICY: CarProgressPolicy = {
  * uncorrected and unconfirmed: it continues nothing, and the run rebuilds from
  * it. `lastReadSessionTime` is cleared on entry and written only once the loop
  * has completed, which is what makes a throw read as "no previous tick".
+ *
+ * Each car runs as a unit (`runUnit`, #1559; the package's per-car rule): its
+ * memory is dropped before the unit and written last inside it, so a car whose
+ * unit throws has no reading this tick (`null`, ranked as absent) and starts
+ * again as a first reading on the next, while every other car keeps its
+ * reading and the order still ranks the frame from the readings.
  */
 export function stepReplayProgress(
   slice: ReplayProgressState,
   telemetry: TelemetryData,
+  /** The translator hands `steps.runUnit`; the default catches nothing, so these tests stay loud. */
+  runUnit: UnitRunner = runUnitsDirectly,
   /**
    * @internal The policy, for the tests that show each of its choices is
    * load-bearing; the translator never passes one.
@@ -111,29 +123,28 @@ export function stepReplayProgress(
   const progress = new Array<number | null>(carCount).fill(null);
 
   for (let i = 0; i < carCount; i++) {
-    const reading = readCarLineProgress(
-      lc[i],
-      pct[i],
-      {
-        progress: slice.lastProgress[i],
-        confirmed: slice.lastProgressConfirmed[i] === true,
-        run: slice.continuingRun[i] ?? 0,
-      },
-      tick,
-      policy,
-    );
+    const last = {
+      progress: slice.lastProgress[i],
+      confirmed: slice.lastProgressConfirmed[i] === true,
+      run: slice.continuingRun[i] ?? 0,
+    };
 
-    if (reading === null) {
-      slice.lastProgress[i] = undefined;
-      slice.lastProgressConfirmed[i] = false;
-      slice.continuingRun[i] = 0;
-      continue;
-    }
+    // Withheld until the unit completes: a car whose unit throws has no
+    // memory on the next tick, so its next reading is a first one.
+    slice.lastProgress[i] = undefined;
+    slice.lastProgressConfirmed[i] = false;
+    slice.continuingRun[i] = 0;
 
-    progress[i] = reading.progress;
-    slice.lastProgress[i] = reading.progress;
-    slice.lastProgressConfirmed[i] = reading.confirmed;
-    slice.continuingRun[i] = reading.run;
+    runUnit<never>(noEmit, () => {
+      const reading = readCarLineProgress(lc[i], pct[i], last, tick, policy);
+
+      if (reading === null) return;
+
+      progress[i] = reading.progress;
+      slice.lastProgress[i] = reading.progress;
+      slice.lastProgressConfirmed[i] = reading.confirmed;
+      slice.continuingRun[i] = reading.run;
+    });
   }
 
   // A car the arrays no longer reach has no reading either.

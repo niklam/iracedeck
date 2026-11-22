@@ -3554,7 +3554,7 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
     // this telemetry only once the step returns, so a throw leaves none.
     self.replayReadings = null;
     steps.run("stepReplayProgress", () => {
-      const progress = stepReplayProgress(self.state.replayProgress, telemetry);
+      const progress = stepReplayProgress(self.state.replayProgress, telemetry, steps.runUnit);
 
       if (progress !== null) self.replayReadings = { telemetry, progress };
     });
