@@ -315,4 +315,187 @@ describe("RepeatController", () => {
       expect(controller.isHeld("btn")).toBe(false);
     });
   });
+
+  // #1693: the first repeat never overlaps the press the hold started with.
+  describe("runFirstPress", () => {
+    function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void; reject: (err: unknown) => void } {
+      let resolve!: (value: T) => void;
+      let reject!: (err: unknown) => void;
+      const promise = new Promise<T>((res, rej) => {
+        resolve = res;
+        reject = rej;
+      });
+
+      return { promise, resolve, reject };
+    }
+
+    it("starts the press synchronously and returns its result", async () => {
+      const press = vi.fn(() => Promise.resolve("sent"));
+
+      controller.onKeyDown("btn", { ...DEFAULTS, execute: vi.fn().mockResolvedValue(true) });
+      const result = controller.runFirstPress("btn", press);
+
+      expect(press).toHaveBeenCalledTimes(1);
+      await expect(result).resolves.toBe("sent");
+      controller.onKeyUp("btn");
+    });
+
+    it("keeps the first repeat at holdMs + intervalMs when the first press settles early", async () => {
+      const execute = vi.fn().mockResolvedValue(true);
+
+      controller.onKeyDown("btn", { ...DEFAULTS, execute });
+      await controller.runFirstPress("btn", async () => true);
+
+      await vi.advanceTimersByTimeAsync(499);
+      expect(execute).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1);
+      expect(execute).toHaveBeenCalledTimes(1);
+      controller.onKeyUp("btn");
+    });
+
+    it("holds the first repeat until a stalled first press settles, then runs it", async () => {
+      const execute = vi.fn().mockResolvedValue(true);
+      const first = deferred<boolean>();
+
+      controller.onKeyDown("btn", { ...DEFAULTS, execute });
+      const result = controller.runFirstPress("btn", () => first.promise);
+
+      // Well past holdMs + intervalMs: the stalled first press is still in flight.
+      await vi.advanceTimersByTimeAsync(3_000);
+      expect(execute).not.toHaveBeenCalled();
+
+      first.resolve(true);
+      await expect(result).resolves.toBe(true);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(execute).toHaveBeenCalledTimes(1);
+
+      // The loop runs on its own spacing from there.
+      await vi.advanceTimersByTimeAsync(100);
+      expect(execute).toHaveBeenCalledTimes(2);
+      controller.onKeyUp("btn");
+    });
+
+    it("keeps the first repeat on time when a slow first press settles before it is due", async () => {
+      const execute = vi.fn().mockResolvedValue(true);
+      const first = deferred<boolean>();
+
+      controller.onKeyDown("btn", { ...DEFAULTS, execute });
+      void controller.runFirstPress("btn", () => first.promise);
+
+      // Past holdMs (400) but before the first repeat is due (500).
+      await vi.advanceTimersByTimeAsync(450);
+      first.resolve(true);
+
+      await vi.advanceTimersByTimeAsync(49);
+      expect(execute).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1);
+      expect(execute).toHaveBeenCalledTimes(1);
+      controller.onKeyUp("btn");
+    });
+
+    it("never runs a repeat while the first press is in flight", async () => {
+      let inFlight = 0;
+      let overlapped = false;
+      const first = deferred<void>();
+      const execute = vi.fn(async () => {
+        if (inFlight > 0) overlapped = true;
+
+        return true;
+      });
+
+      controller.onKeyDown("btn", { ...DEFAULTS, execute });
+      void controller.runFirstPress("btn", async () => {
+        inFlight += 1;
+        await first.promise;
+        inFlight -= 1;
+      });
+
+      await vi.advanceTimersByTimeAsync(2_000);
+      first.resolve();
+      await vi.advanceTimersByTimeAsync(1_000);
+
+      expect(execute).toHaveBeenCalled();
+      expect(overlapped).toBe(false);
+      controller.onKeyUp("btn");
+    });
+
+    it("still repeats after a first press that threw, and hands the caller the error", async () => {
+      const execute = vi.fn().mockResolvedValue(true);
+      const first = deferred<boolean>();
+
+      controller.onKeyDown("btn", { ...DEFAULTS, execute });
+      const result = controller.runFirstPress("btn", () => first.promise);
+      const caught = result.catch((err: unknown) => err);
+
+      await vi.advanceTimersByTimeAsync(1_000);
+      first.reject(new Error("tap failed"));
+      expect(await caught).toEqual(new Error("tap failed"));
+
+      await vi.advanceTimersByTimeAsync(0);
+      expect(execute).toHaveBeenCalledTimes(1);
+      controller.onKeyUp("btn");
+    });
+
+    it("starts no repeat when the key is released while the first press is in flight", async () => {
+      const execute = vi.fn().mockResolvedValue(true);
+      const first = deferred<boolean>();
+
+      controller.onKeyDown("btn", { ...DEFAULTS, execute });
+      void controller.runFirstPress("btn", () => first.promise);
+
+      await vi.advanceTimersByTimeAsync(1_000);
+      controller.onKeyUp("btn");
+      first.resolve(true);
+      await vi.advanceTimersByTimeAsync(5_000);
+
+      expect(execute).not.toHaveBeenCalled();
+      expect(controller.timers.size).toBe(0);
+    });
+
+    it("leaves the loop to a newer press when the key is pressed again while the first press is in flight", async () => {
+      const oldExecute = vi.fn().mockResolvedValue(true);
+      const newExecute = vi.fn().mockResolvedValue(true);
+      const first = deferred<boolean>();
+
+      controller.onKeyDown("btn", { ...DEFAULTS, execute: oldExecute });
+      void controller.runFirstPress("btn", () => first.promise);
+      await vi.advanceTimersByTimeAsync(1_000);
+
+      controller.onKeyDown("btn", { ...DEFAULTS, execute: newExecute });
+      await controller.runFirstPress("btn", async () => true);
+      first.resolve(true);
+
+      await vi.advanceTimersByTimeAsync(500);
+      expect(oldExecute).not.toHaveBeenCalled();
+      expect(newExecute).toHaveBeenCalledTimes(1);
+
+      await vi.advanceTimersByTimeAsync(100);
+      expect(newExecute).toHaveBeenCalledTimes(2);
+      controller.onKeyUp("btn");
+    });
+
+    it("waits for every first press of the hold", async () => {
+      const execute = vi.fn().mockResolvedValue(true);
+      const quick = deferred<void>();
+      const slow = deferred<void>();
+
+      controller.onKeyDown("btn", { ...DEFAULTS, execute });
+      void controller.runFirstPress("btn", () => slow.promise);
+      void controller.runFirstPress("btn", () => quick.promise);
+
+      quick.resolve();
+      await vi.advanceTimersByTimeAsync(2_000);
+      expect(execute).not.toHaveBeenCalled();
+
+      slow.resolve();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(execute).toHaveBeenCalledTimes(1);
+      controller.onKeyUp("btn");
+    });
+
+    it("only runs the press when no hold is armed for the button", async () => {
+      await expect(controller.runFirstPress("btn", () => 42)).resolves.toBe(42);
+      expect(controller.timers.size).toBe(0);
+    });
+  });
 });

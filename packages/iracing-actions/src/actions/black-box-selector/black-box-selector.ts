@@ -323,7 +323,9 @@ export class BlackBoxSelector extends ConnectionStateAwareAction<BlackBoxSelecto
     };
     this.repeat.onKeyDown(ev.action.id, options);
 
-    const sent = await this.tapBinding(settingKey);
+    // The first tap goes through the repeat controller, so the first repeat
+    // waits for it however slow SimHub is (#1693).
+    const sent = await this.repeat.runFirstPress(ev.action.id, () => this.tapBinding(settingKey));
 
     // Only this press's own repeat: while the tap was in flight the key may
     // have been released and pressed again, and that newer press's repeat is

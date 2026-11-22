@@ -376,7 +376,8 @@ export class AudioControls extends ConnectionStateAwareAction<AudioControlsSetti
       // timers to clear (the setup actions' pattern). Every step, the first
       // and each repeat, goes through performVolumeStep; a step that did not
       // happen (a level at its limit, a binding that did not send) ends the
-      // repeat.
+      // repeat. The first goes through the repeat controller, so the first
+      // repeat waits for it however slow it is (#1693).
       if (volumeKeyRepeats(settings.keyStyle)) {
         this.repeat.onKeyDown(ev.action.id, {
           holdMs: getDualPressThresholdMs(),
@@ -386,7 +387,7 @@ export class AudioControls extends ConnectionStateAwareAction<AudioControlsSetti
         });
       }
 
-      await this.performVolumeStep(pair.category, pair.action);
+      await this.repeat.runFirstPress(ev.action.id, () => this.performVolumeStep(pair.category, pair.action));
     } else if (isInternalAudioCategory(settings.category)) {
       // These categories expose only volume-up / volume-down in the Property
       // Inspector, so a mute value here is a STALE persisted setting — a

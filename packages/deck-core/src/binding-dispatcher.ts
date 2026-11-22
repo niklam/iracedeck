@@ -39,6 +39,16 @@ import { getSimHub, isSimHubInitialized, isSimHubReachable } from "./simhub-serv
 type HeldBinding = { type: "keyboard"; combination: KeyCombination } | { type: "simhub"; role: string };
 
 /**
+ * A hold that has not pressed yet (#1693): its press may wait behind an earlier
+ * hold of the context, then behind the SimHub role's queue and SimHub itself,
+ * or on the keyboard's window focus. A release that arrives meanwhile finds
+ * nothing held, so it sets `released`, and the hold releases what it pressed
+ * once the press has gone through; `done` settles when the hold, that release
+ * included, has finished.
+ */
+type PendingHold = { released: boolean; done: Promise<void> };
+
+/**
  * Interface for the binding dispatcher service.
  */
 export interface IBindingDispatcher {
@@ -72,7 +82,10 @@ export interface IBindingDispatcher {
   /** Press and hold a binding from global settings. */
   hold(actionId: string, settingKey: string): Promise<void>;
 
-  /** Release a previously held binding. Safe to call if nothing is held. */
+  /**
+   * Release a previously held binding. Safe to call if nothing is held. A hold
+   * that has not pressed yet (a slow SimHub start) is released once it has.
+   */
   release(actionId: string): Promise<void>;
 
   /** Check if a binding at the given setting key is ready to execute. */
@@ -121,6 +134,14 @@ function cannotSendByScanCode(binding: BindingValue): boolean {
 class BindingDispatcher implements IBindingDispatcher {
   private logger: ILogger;
   private heldBindings = new Map<string, HeldBinding>();
+  /**
+   * The tail of each SimHub role's request queue (#1693): every start and stop
+   * of a role waits for the one before it, so two presses of one role never
+   * interleave. Removed once the role's last request has settled.
+   */
+  private simHubRoleQueues = new Map<string, Promise<void>>();
+  /** Holds that have not pressed yet, by action context (#1693). */
+  private pendingHolds = new Map<string, PendingHold>();
 
   constructor(logger: ILogger) {
     this.logger = logger;
@@ -189,10 +210,38 @@ class BindingDispatcher implements IBindingDispatcher {
    * @param settingKey - The global settings key
    */
   async hold(actionId: string, settingKey: string): Promise<void> {
-    // Release before resolve — even if the new binding turns out to be invalid,
-    // the old one must not stay held (would cause a stuck key/role).
-    await this.release(actionId);
+    // Registered before the first await, so the release this press's key-up
+    // sends always finds this hold, never an earlier one (#1693).
+    const previous = this.pendingHolds.get(actionId);
+    let finish!: () => void;
+    const pending: PendingHold = { released: false, done: new Promise<void>((resolve) => (finish = resolve)) };
+    this.pendingHolds.set(actionId, pending);
 
+    try {
+      // An earlier hold of this context that has not pressed yet finishes
+      // first, the release it may owe included, so its release is never queued
+      // behind this hold's press.
+      await previous?.done;
+
+      // Release before resolve — even if the new binding turns out to be invalid,
+      // the old one must not stay held (would cause a stuck key/role).
+      await this.releaseHeld(actionId);
+
+      await this.pressHold(actionId, settingKey, pending);
+
+      if (pending.released) {
+        this.logger.debug("Hold was released while it was pressing; releasing it now");
+        await this.releaseHeld(actionId);
+      }
+    } finally {
+      if (this.pendingHolds.get(actionId) === pending) this.pendingHolds.delete(actionId);
+
+      finish();
+    }
+  }
+
+  /** Press a hold's binding and record it as held when the press went out. */
+  private async pressHold(actionId: string, settingKey: string, pending: PendingHold): Promise<void> {
     const binding = this.resolveGlobalBinding(settingKey);
 
     if (!binding) return;
@@ -207,12 +256,26 @@ class BindingDispatcher implements IBindingDispatcher {
         return;
       }
 
-      const started = await getSimHub().startRole(binding.role);
+      const role = binding.role;
+      // A key released while the start was in flight owes a stop: it goes out
+      // in the same unit of the role's queue, so no tap of the role queued
+      // meanwhile lands between the start and the stop and merges into them.
+      const { started, stopped } = await this.inRoleOrder(role, async () => {
+        const roleStarted = await getSimHub().startRole(role);
 
-      if (started) {
-        this.heldBindings.set(actionId, { type: "simhub", role: binding.role });
-      } else {
+        if (!roleStarted || !pending.released) return { started: roleStarted, stopped: false };
+
+        return { started: true, stopped: await getSimHub().stopRole(role) };
+      });
+
+      if (!started) {
         this.logger.warn("Failed to start SimHub role");
+      } else if (stopped) {
+        this.logger.info("SimHub role released");
+      } else {
+        // Held: released by its key-up, or, when the owed stop above failed, by
+        // the hold's own retry and onWillDisappear like any held role.
+        this.heldBindings.set(actionId, { type: "simhub", role });
       }
 
       return;
@@ -233,11 +296,21 @@ class BindingDispatcher implements IBindingDispatcher {
 
   /**
    * Release a previously held binding for the given action context.
-   * Safe to call even if nothing is held (no-op).
+   * Safe to call even if nothing is held (no-op). A hold of the context that
+   * has not pressed yet is released once its press has gone through (#1693).
    *
    * @param actionId - The action context ID (ev.action.id)
    */
   async release(actionId: string): Promise<void> {
+    const pending = this.pendingHolds.get(actionId);
+
+    if (pending) pending.released = true;
+
+    await this.releaseHeld(actionId);
+  }
+
+  /** Release what the context holds now, leaving any pending hold alone. */
+  private async releaseHeld(actionId: string): Promise<void> {
     const held = this.heldBindings.get(actionId);
 
     if (!held) return;
@@ -247,7 +320,8 @@ class BindingDispatcher implements IBindingDispatcher {
     switch (held.type) {
       case "simhub": {
         if (isSimHubInitialized()) {
-          const stopped = await getSimHub().stopRole(held.role);
+          const role = held.role;
+          const stopped = await this.inRoleOrder(role, () => getSimHub().stopRole(role));
 
           if (stopped) {
             this.heldBindings.delete(actionId);
@@ -384,8 +458,38 @@ class BindingDispatcher implements IBindingDispatcher {
     return binding;
   }
 
+  /**
+   * Run one SimHub request, or a tap's start-and-stop pair, for a role once
+   * every earlier one for that role has settled (#1693). A tap is two HTTP
+   * requests, each with a 2 s timeout, and Control Mapper merges a second start
+   * that lands before the first stop into the first press: a held key's first
+   * repeat, a second key bound to the same role, or a quick second press of a
+   * stalled SimHub would otherwise be lost. With nothing queued for the role,
+   * `request` starts at once, synchronously.
+   */
+  private inRoleOrder<T>(role: string, request: () => Promise<T>): Promise<T> {
+    const previous = this.simHubRoleQueues.get(role);
+    // An async wrapper, so a request that throws synchronously still settles
+    // the queue's tail rather than escaping before the tail is set.
+    const run = async (): Promise<T> => request();
+    const result = previous ? previous.then(run) : run();
+    const tail = result.then(
+      () => undefined,
+      () => undefined,
+    );
+
+    this.simHubRoleQueues.set(role, tail);
+    void tail.then(() => {
+      if (this.simHubRoleQueues.get(role) === tail) this.simHubRoleQueues.delete(role);
+    });
+
+    return result;
+  }
+
   // SimHub tap = activate then immediately deactivate (momentary press).
-  // SimHub Control Mapper handles the duration internally.
+  // SimHub Control Mapper handles the duration internally. The pair is one unit
+  // of its role's request queue, so no other start or stop of the role lands
+  // between them (#1693).
   // Returns true once the role has started: the press went out even when the
   // stop then fails (that failure is logged, and the role may stay active).
   private async tapSimHub(role: string): Promise<boolean> {
@@ -398,6 +502,10 @@ class BindingDispatcher implements IBindingDispatcher {
       return false;
     }
 
+    return this.inRoleOrder(role, () => this.startAndStopRole(role));
+  }
+
+  private async startAndStopRole(role: string): Promise<boolean> {
     const simHub = getSimHub();
     const started = await simHub.startRole(role);
 

@@ -312,10 +312,11 @@ export class SetupAero extends SimIRacingAction<SetupAeroSettings> {
 
     this.logger.info("Key down received");
 
+    const { setting, direction } = settings;
+
     // Hold-to-repeat for paired-style keys: arm SYNCHRONOUSLY before the first
     // execute so a racing keyUp always finds timers to clear (fuel-service pattern).
-    if (settings.keyStyle !== "legacy" && hasPairedValueSource(settings.setting)) {
-      const { setting, direction } = settings;
+    if (settings.keyStyle !== "legacy" && hasPairedValueSource(setting)) {
       this.repeat.onKeyDown(ev.action.id, {
         holdMs: getDualPressThresholdMs(),
         intervalMs: ADJUST_REPEAT_INTERVAL_MS,
@@ -328,7 +329,9 @@ export class SetupAero extends SimIRacingAction<SetupAeroSettings> {
       });
     }
 
-    await this.executeSetting(settings.setting, settings.direction);
+    // The first press goes through the repeat controller, so the first repeat
+    // waits for it however slow it is (#1693).
+    await this.repeat.runFirstPress(ev.action.id, () => this.executeSetting(setting, direction));
   }
 
   override async onKeyUp(ev: IDeckKeyUpEvent<SetupAeroSettings>): Promise<void> {

@@ -563,18 +563,22 @@ export class FuelService extends SimIRacingAction<FuelServiceSettings> {
     //     executeMode directly. That gives "show once per press, never on a
     //     repeat iteration" for free — nothing can change the shown box between
     //     iterations. (#818)
-    if (settings.showBlackBox) {
-      await showBlackBox(FUEL_BLACK_BOX_ID, {
-        isConfigured: (key) => !this.isBindingMissing(key),
-        isKeyboardBound: (key) => this.isBindingKeyboardBound(key),
-        tapSequence: (keys, holdMs) => this.tapBindingSequence(keys, holdMs),
-        tap: (key) => this.tapBinding(key),
-        isSimHubReachable,
-        logger: this.logger,
-      });
-    }
+    // The show and the first execute are the first press, so the first repeat
+    // waits for both however slow they are (#1693).
+    await this.repeat.runFirstPress(ev.action.id, async () => {
+      if (settings.showBlackBox) {
+        await showBlackBox(FUEL_BLACK_BOX_ID, {
+          isConfigured: (key) => !this.isBindingMissing(key),
+          isKeyboardBound: (key) => this.isBindingKeyboardBound(key),
+          tapSequence: (keys, holdMs) => this.tapBindingSequence(keys, holdMs),
+          tap: (key) => this.tapBinding(key),
+          isSimHubReachable,
+          logger: this.logger,
+        });
+      }
 
-    await this.executeMode(settings.mode, settings);
+      await this.executeMode(settings.mode, settings);
+    });
   }
 
   override async onKeyUp(ev: IDeckKeyUpEvent<FuelServiceSettings>): Promise<void> {

@@ -371,7 +371,9 @@ export class SetupHybrid extends SimIRacingAction<SetupHybridSettings> {
         });
       }
 
-      await this.executeTap(adjustSetting, settings.direction);
+      // The first press goes through the repeat controller, so the first repeat
+      // waits for it however slow it is (#1693).
+      await this.repeat.runFirstPress(ev.action.id, () => this.executeTap(adjustSetting, settings.direction));
     }
   }
 
