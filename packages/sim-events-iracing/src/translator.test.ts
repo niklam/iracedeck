@@ -45,6 +45,7 @@ import { DAMAGE_DEBOUNCE_MS } from "./diff/damage.js";
 import { YELLOW_CLEARED_HOLD_MS } from "./diff/flags.js";
 import { INCIDENT_BURST_QUIET_MS } from "./diff/incidents.js";
 import { updatePositionTracking } from "./diff/race-finish.js";
+import { stepReplayProgress } from "./diff/replay-progress.js";
 import { calculateCanonicalRacePositions } from "./race-order.js";
 import type { TranslatorState } from "./state.js";
 import {
@@ -91,6 +92,13 @@ vi.mock("./diff/race-finish.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./diff/race-finish.js")>();
 
   return { ...actual, updatePositionTracking: vi.fn(actual.updatePositionTracking) };
+});
+// Pass-through spy for the replay order (#1682): one test makes the replay
+// step throw on one tick.
+vi.mock("./diff/replay-progress.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./diff/replay-progress.js")>();
+
+  return { ...actual, stepReplayProgress: vi.fn(actual.stepReplayProgress) };
 });
 
 /** A logger whose scopes are itself, so a step writing through a scope (the traffic detectors') has one to write to. */
@@ -869,6 +877,37 @@ describe("sim-events-iracing translator", () => {
       tick(DISAGREEING, true);
 
       expect(getLiveRacePositions()).toEqual([1, 2, 3]);
+    });
+
+    it("ranks raw on a replay frame the replay step threw on, and corrects again on the next", () => {
+      vi.useFakeTimers();
+      const controller = createMockController();
+      controller.__setSessionInfo(RACE);
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "report" });
+
+      let time = 1000;
+      const tick = (car0: readonly [number, number]): void => {
+        time += 1 / 60;
+        vi.advanceTimersByTime(16);
+        controller.__tick(raceTick(time, car0, true));
+      };
+
+      for (const car0 of APPROACH) tick(car0);
+
+      expect(getLiveRacePositions()).toEqual([2, 1, 3]);
+
+      vi.mocked(stepReplayProgress).mockImplementationOnce(() => {
+        throw new Error("replay step failed");
+      });
+      // The disagreeing frame with no readings for it: the order answers, raw.
+      tick(DISAGREEING);
+
+      expect(getLiveRacePositions()).toEqual([1, 2, 3]);
+
+      // The memory the throw left alone still corrects the frame after it.
+      tick(AFTER);
+
+      expect(getLiveRacePositions()).toEqual([2, 1, 3]);
     });
 
     it("ranks a live tick after the replay from the live path, never from a replay reading", () => {
