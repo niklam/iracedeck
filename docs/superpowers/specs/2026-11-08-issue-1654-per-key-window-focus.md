@@ -41,7 +41,7 @@ Rejected:
 
 ### 3. Press time: a per-action wrapper replaces the adapter listeners
 
-`deck-core` gains `withWindowFocus(handler)`, next to `withPressSounds`. `registerActions` wraps every action with it, inside the press-sound wrapper (`withPressSounds(withWindowFocus(action.create(…)))`), and drops the three adapter listeners. At `onKeyDown`, `onDialDown` and `onDialRotate` the wrapper reads `windowFocus` from `ev.payload.settings` through the field's own schema, then calls the handler. Before calling it:
+`deck-core` gains `withWindowFocus(handler)`, next to `withPressSounds`. `registerActions` wraps every action with it, around the press-sound wrapper (`withWindowFocus(withPressSounds(action.create(…)))`), so the focus, which can block up to 1000 ms, comes before the press sounds stamp the press (a focus inside would let a slow or timed-out focus turn a tap into the long-press bleep while the action itself runs short; the removed adapter listeners also focused first). It drops the three adapter listeners. At `onKeyDown`, `onDialDown` and `onDialRotate` the wrapper reads `windowFocus` from `ev.payload.settings` through the field's own schema, then calls the handler. Before calling it:
 
 - **`global`** calls `focusIRacingIfEnabled()`, exactly as the listener did, so the default path is unchanged.
 - **`focus`** calls a new `focusIRacingForKey()`. It skips the mode check and the settings-store-ready gate, since the key's own setting is the decision. It keeps the elevation-mismatch gate (#976) and the post-timeout cooldown: they stop a focus that cannot succeed from stalling the plugin, which applies to a per-key ask as much as to a global one.
@@ -104,7 +104,7 @@ Unit, in `deck-core`:
   - the scope survives an `await`, a promise chain and a `setTimeout` / `setInterval` started in the handler;
   - a keystroke from outside any press follows the global mode;
   - two keys pressed together keep their own values.
-- **Composition:** `withPressSounds(withWindowFocus(h))` still plays and classifies press sounds exactly as before.
+- **Composition:** `withWindowFocus(withPressSounds(h))` still plays and classifies press sounds exactly as before, and a focus that blocks (up to its 1000 ms timeout) delays the press-sound stamp with it, so a tap is never classified as a long press.
 
 In `plugin-runtime`: `registerActions` wraps every action, the host extras included, and registers no focus listener on the adapter.
 
