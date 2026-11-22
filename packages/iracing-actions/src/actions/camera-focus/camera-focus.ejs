@@ -484,9 +484,12 @@
 				function createGroupSelector(gridId, selectAllId, clearId) {
 					var state = emptyGroupMap();
 					var save = null;
-					// Whether a push or the user has set the state (#1653 review). The
-					// value sdpi held before the subscription is read once, late, and
-					// applies only while neither has: it must never overwrite either.
+					// Whether the state is a real stored value (pushed or held) or the
+					// user's choice (#1653 review). The value sdpi held before the
+					// subscription is read once, late, and applies only while it is not:
+					// it must never overwrite either. A grid showing only a fallback —
+					// defaults, or the keypad's legacy global subset — is not known, so
+					// a stored value or a later fallback can still replace it.
 					var known = false;
 
 					function persist() {
@@ -523,15 +526,29 @@
 						persist();
 					}
 
+					function show(groups) {
+						state = foldLegacyNames(groups || {});
+						render();
+					}
+
 					return {
-						setState: function (groups) { known = true; state = foldLegacyNames(groups || {}); render(); },
+						// A push of a stored value.
+						setState: function (groups) { known = true; show(groups); },
+						// A push that stores no value: the fallback shows, and is not known.
+						setDefault: function (groups) { known = false; show(groups); },
 						// The stored value read through the hook's getter: applied only
-						// while no push or choice has set the state. Writes nothing.
+						// while no stored value or choice has set the state. Writes nothing.
 						seedState: function (groups) {
 							if (known) return;
 							known = true;
-							state = foldLegacyNames(groups || {});
-							render();
+							show(groups);
+						},
+						// A fallback that arrived late (the held value is none, or the
+						// legacy subset came after the keypad's empty value): shown only
+						// while no stored value or choice has set the state.
+						showDefault: function (groups) {
+							if (known) return;
+							show(groups);
 						},
 						setSave: function (fn) { save = fn; },
 						render: render,
@@ -646,7 +663,12 @@
 						var legacyHook = window.SDPIComponents.useGlobalSettings(SETTING_KEY, function (value) {
 							legacyKnown = true;
 							var groups = readGroups(value);
-							if (groups) legacyGroups = groups;
+							if (!groups) return;
+							legacyGroups = groups;
+							// Global settings usually arrive after the keypad's own (empty)
+							// value: a key with none takes the legacy subset now (#1653
+							// review). A key with a stored value or a choice keeps it.
+							keypadSelector.showDefault(legacyGroups);
 						});
 
 						// The per-action value, or — with none yet — the legacy global one.
@@ -655,28 +677,33 @@
 						}
 
 						var keypadHook = window.SDPIComponents.useSettings(SETTING_KEY, function (value) {
-							keypadSelector.setState(keypadGroups(value));
+							if (value) keypadSelector.setState(keypadGroups(value));
+							else keypadSelector.setDefault(keypadGroups(value));
 						});
 						keypadSelector.setSave(keypadHook[1]);
 
 						// Dial selector: the GLOBAL cameraGroupSubset (read + save).
 						var dialHook = window.SDPIComponents.useGlobalSettings(SETTING_KEY, function (value) {
-							dialSelector.setState(readGroups(value) || {});
+							if (value) dialSelector.setState(readGroups(value) || {});
+							else dialSelector.setDefault({});
 						});
 						dialSelector.setSave(dialHook[1]);
 
 						// Like the catalog, the subsets may have arrived before these
 						// subscriptions, and sdpi replays no push to a late one (#1653
 						// review): read what sdpi holds through each hook's getter (a local
-						// read that sends nothing). A push or a choice made meanwhile wins:
-						// seedState applies a held value only while neither has set the
-						// grid, and the legacy fallback only while no push has set it.
+						// read that sends nothing). A stored value pushed or a choice made
+						// meanwhile wins: seedState applies a held value only while neither
+						// has set the grid, showDefault a held absence the same way, and the
+						// held legacy subset is taken only while no push has set it.
 						Promise.all([keypadHook[0](), legacyHook[0]()]).then(function (held) {
 							if (!legacyKnown) legacyGroups = readGroups(held[1]);
-							keypadSelector.seedState(keypadGroups(held[0]));
+							if (held[0]) keypadSelector.seedState(keypadGroups(held[0]));
+							else keypadSelector.showDefault(keypadGroups(held[0]));
 						});
 						dialHook[0]().then(function (value) {
-							dialSelector.seedState(readGroups(value) || {});
+							if (value) dialSelector.seedState(readGroups(value) || {});
+							else dialSelector.showDefault({});
 						});
 					}
 

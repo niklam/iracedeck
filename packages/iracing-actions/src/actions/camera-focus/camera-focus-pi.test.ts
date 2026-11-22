@@ -297,6 +297,10 @@ describe("camera-focus PI Cycle Camera grids: the Remembered groups section (#16
   /** Builds the page and runs the template's script, letting initializePI run to its end. */
   async function load(): Promise<void> {
     dom.document.body.innerHTML = SKELETON;
+    // Pushes reach only this load's subscriptions: an earlier run's selectors
+    // look their grids up by id, so they would draw into this page too.
+    perKey.clear();
+    global.clear();
     new Function(script)();
 
     // initializePI awaits whenDefined("sdpi-select"); let it, and the getter
@@ -576,6 +580,44 @@ describe("camera-focus PI Cycle Camera grids: the Remembered groups section (#16
       expect(checkbox("camera-groups-grid", "SpeedCam")?.checked).toBe(true);
       expect(checkbox("camera-groups-grid", "Zulu")?.checked).toBe(false);
       expect(checkbox("dial-camera-groups-grid", "Zulu")?.checked).toBe(false);
+    });
+  });
+
+  describe("the legacy global subset arriving after the key's own empty value (#1653 review)", () => {
+    const SUBSET_KEY = "cameraGroupSubset";
+    const subset = (groups: Record<string, boolean>): string => JSON.stringify({ groups });
+
+    beforeEach(async () => {
+      storedGlobals.set(CAMERA_CATALOG_KEY, JSON.stringify(CATALOG));
+      await load();
+    });
+
+    it("shows it on a key that stores none, and a toggle then saves it", () => {
+      perKey.get(SUBSET_KEY)?.("");
+      pushGlobal(SUBSET_KEY, subset({ SpeedCam: true }));
+
+      expect(checkbox("camera-groups-grid", "SpeedCam")?.checked).toBe(true);
+      expect(keypadSave).not.toHaveBeenCalled();
+
+      toggle("camera-groups-grid", "DynamicTV");
+      expect(lastSaved(keypadSave)).toMatchObject({ SpeedCam: true, DynamicTV: true });
+    });
+
+    it("leaves a key's own stored subset alone", () => {
+      perKey.get(SUBSET_KEY)?.(subset({ Nose: true }));
+      pushGlobal(SUBSET_KEY, subset({ SpeedCam: true }));
+
+      expect(checkbox("camera-groups-grid", "SpeedCam")?.checked).toBe(false);
+      expect(checkbox("camera-groups-grid", "Nose")?.checked).toBe(true);
+    });
+
+    it("leaves a choice made on a key that stores none alone", () => {
+      perKey.get(SUBSET_KEY)?.("");
+      toggle("camera-groups-grid", "DynamicTV");
+      pushGlobal(SUBSET_KEY, subset({ SpeedCam: true }));
+
+      expect(checkbox("camera-groups-grid", "SpeedCam")?.checked).toBe(false);
+      expect(checkbox("camera-groups-grid", "DynamicTV")?.checked).toBe(true);
     });
   });
 
