@@ -932,7 +932,8 @@ describe("lintPack — a var that declares its draws (issue #1718)", () => {
 
   it("counts a scoped draw through the entry's own frame, and not through a frame only another callout uses", () => {
     const framed = spotterScript(
-      { [CALL_ENTRY]: { frame: "spotter", sequence: [] } },
+      // A body that plays, so the engine frames it.
+      { [CALL_ENTRY]: { frame: "spotter", sequence: [{ clip: "sfx/IRD-tick-open.mp3" }] } },
       {
         frames: {
           radio: { open: [{ clip: "sfx/IRD-tick-open.mp3" }], close: [] },

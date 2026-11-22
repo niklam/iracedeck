@@ -20,10 +20,13 @@
  *   names the var: in its own steps, in a fragment it includes (transitively,
  *   through fragments that include fragments), or in its frame's `open` /
  *   `close` — the entry's `frame`, else its contract's default, never
- *   `"none"` — and the frame's `cut` only for a contract carrying `endsOn`,
- *   the only kind whose end plays it (the reference's own reading,
- *   `walkEntry` in `pack-reference.ts`). The spotter's call lines are scoped to `pit-crew.spotter-call`
- *   and its info lines to `pit-crew.spotter-info`, since the engine fires
+ *   `"none"`, and none at all around a body that can never play a clip
+ *   (`canPlayClip`), since the engine expands no frame there — and the
+ *   frame's `cut` only for a contract carrying `endsOn`, the only kind whose
+ *   end plays it (the reference's own reading, `walkEntry` in
+ *   `pack-reference.ts`). The spotter's call lines are scoped to
+ *   `pit-crew.spotter-call` and its info lines to `pit-crew.spotter-info`,
+ *   since the engine fires
  *   each set through its own contract only, so a pack that scripts only the
  *   call is not asked for "Clear.", and "Clear." shipped by such a pack is an
  *   orphan: nothing it scripts plays it.
@@ -36,6 +39,7 @@
 import { type CalloutScript, collectScriptReferences, NO_FRAME } from "@iracedeck/callout-script";
 
 import type { ContractReport, VarDraw } from "../interpreter.js";
+import { canPlayClip } from "./pack-reference.js";
 
 /** A var as `vocabulary()` reports it — only the two fields this reading uses. */
 export type DeclaringVar = { readonly name: string; readonly draws?: readonly VarDraw[] };
@@ -131,7 +135,14 @@ function entryVarNames(
   const frameName = entry.frame ?? contract?.frame;
   let frames: CalloutScript["frames"] = {};
 
-  if (frameName !== undefined && frameName !== NO_FRAME && Object.hasOwn(script.frames, frameName)) {
+  // No frame is expanded around a body that can never play a clip (the
+  // engine's `canProducePlay`; the reference's `canPlayClip`).
+  if (
+    frameName !== undefined &&
+    frameName !== NO_FRAME &&
+    Object.hasOwn(script.frames, frameName) &&
+    canPlayClip(script, entry.sequence ?? [])
+  ) {
     const frame = { ...script.frames[frameName] };
 
     // A cut plays only when the line is ended early, which only an `endsOn` contract is.

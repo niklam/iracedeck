@@ -640,7 +640,7 @@ function walkEntry(
  * `clip`, `var`, `pool` or `connector` can play; a `pause` or `ambient`
  * never can; `optional`, `if` and `case` can iff a branch can.
  */
-function canPlayClip(
+export function canPlayClip(
   script: CalloutScript,
   steps: readonly ScriptStep[],
   entered: ReadonlySet<string> = new Set(),

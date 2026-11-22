@@ -22,6 +22,9 @@ const VARS: readonly DeclaringVar[] = [
   { name: "position.number" },
 ];
 
+/** A body that plays a clip, so the engine frames it. */
+const BODY = ["pool:spotter/car-right"];
+
 const CONTRACTS: readonly ContractFrame[] = [
   { id: CALL, frame: "none", endsOnEvent: null },
   { id: INFO, frame: "none", endsOnEvent: null },
@@ -101,25 +104,38 @@ describe("declaredDrawReferences (issue #1718)", () => {
     ];
 
     expect(
-      reach(script({ scenarios: { [CALL]: { frame: "spotter", sequence: [] } }, frames, fragments }), endable),
+      reach(script({ scenarios: { [CALL]: { frame: "spotter", sequence: BODY } }, frames, fragments }), endable),
     ).toEqual({ "spotter/car-left": ["spotterClip"] });
-    expect(reach(script({ scenarios: { [CALL]: { frame: "spotter", sequence: [] } }, frames, fragments }))).toEqual({});
+    expect(reach(script({ scenarios: { [CALL]: { frame: "spotter", sequence: BODY } }, frames, fragments }))).toEqual(
+      {},
+    );
     // The contract's default frame when the entry names none.
     expect(
-      reach(script({ scenarios: { [CALL]: { sequence: [] } }, frames }), [
+      reach(script({ scenarios: { [CALL]: { sequence: BODY } }, frames }), [
         { id: CALL, frame: "radio", endsOnEvent: null },
         { id: INFO, frame: "none", endsOnEvent: null },
       ]),
     ).toEqual({ "spotter/car-left": ["spotterClip"] });
     // Unframed by default, and `frame: "none"` over a framed default.
-    expect(reach(script({ scenarios: { [CALL]: { sequence: [] } }, frames }))).toEqual({});
+    expect(reach(script({ scenarios: { [CALL]: { sequence: BODY } }, frames }))).toEqual({});
     expect(
-      reach(script({ scenarios: { [CALL]: { frame: "none", sequence: [] } }, frames }), [
+      reach(script({ scenarios: { [CALL]: { frame: "none", sequence: BODY } }, frames }), [
         { id: CALL, frame: "radio", endsOnEvent: null },
       ]),
     ).toEqual({});
     // A frame the script does not define names nothing.
-    expect(reach(script({ scenarios: { [CALL]: { frame: "missing", sequence: [] } }, frames }))).toEqual({});
+    expect(reach(script({ scenarios: { [CALL]: { frame: "missing", sequence: BODY } }, frames }))).toEqual({});
+  });
+
+  it("reads no frame around a body that can never play a clip, as the engine expands none", () => {
+    const frames = { radio: { open: ["{{spotterClip}}"], close: [] } };
+    const framed: readonly ContractFrame[] = [{ id: CALL, frame: "radio", endsOnEvent: null }];
+
+    expect(reach(script({ scenarios: { [CALL]: { sequence: [] } }, frames }), framed)).toEqual({});
+    expect(reach(script({ scenarios: { [CALL]: { sequence: [{ pause: 300 }] } }, frames }), framed)).toEqual({});
+    expect(reach(script({ scenarios: { [CALL]: { sequence: BODY } }, frames }), framed)).toEqual({
+      "spotter/car-left": ["spotterClip"],
+    });
   });
 
   it("reaches an unscoped pool on any live mention — an entry, a frame or an included fragment — and not a dead one", () => {
