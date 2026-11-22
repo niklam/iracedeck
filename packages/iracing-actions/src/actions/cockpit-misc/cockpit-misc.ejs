@@ -116,8 +116,8 @@
 			<%- include('color-overrides', { slots: ['backgroundColor', 'textColor', 'graphic1Color', 'graphic2Color'], defaults: require('./data/icon-defaults.json')['cockpit-misc'] }) %>
 			<%- include('border-overrides', { defaults: require('./data/icon-defaults.json')['cockpit-misc'] }) %>
 			<%- include('graphic-overrides') %>
-			<%- include('common-settings') %>
 		</div>
+		<%- include('common-settings') %>
 
 		<%# Every cockpit mode on both surfaces is a key binding — always show them. %>
 		<%- include('key-bindings-section', {
