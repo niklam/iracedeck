@@ -1125,7 +1125,8 @@ export type PitCrewDeps = {
   // also implies) until the session changes. The fuel contracts' speak-time
   // gate drops a count still waiting for the radio once it holds. Default
   // `() => null`, the translator's own answer before its first tick, with no
-  // translator, or while the session cannot be read; the gate admits on it.
+  // translator, or while the session cannot be read and its chequered flag is
+  // not out; the gate admits on it.
   getPlayerFinalLapStarted?: () => boolean | null;
   // The sector comparison (#1572): the track's sector count and, for the
   // player and the class leader, the car ahead and the car behind, each car's
