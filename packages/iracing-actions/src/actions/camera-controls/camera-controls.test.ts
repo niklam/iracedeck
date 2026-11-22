@@ -2534,6 +2534,55 @@ describe("Cycle Camera key icon: next or current group (#959)", () => {
     expect(shownIcons(action)).toHaveLength(3);
   });
 
+  describe("new settings overtake a grid restore in flight (#1653 review)", () => {
+    /** Shows Spotter, then holds the write putting the grid back after telemetry goes away. */
+    async function holdRestore(): Promise<{ action: CameraControls; land: () => Promise<void> }> {
+      const action = await appear({ cycleIconMode: "current" }, { CamGroupNumber: 11 });
+      let finish: () => void = () => {};
+      vi.mocked(action["updateKeyImage"]).mockImplementationOnce(
+        () => new Promise((resolve) => (finish = () => resolve(true))),
+      );
+      sdkOf(action).getCurrentTelemetry.mockReturnValue(undefined);
+      subscriber?.();
+
+      return {
+        action,
+        land: async () => {
+          finish();
+          await new Promise((resolve) => setTimeout(resolve, 0));
+        },
+      };
+    }
+
+    it("registers nothing for the restore once the key runs Change Camera", async () => {
+      const { action, land } = await holdRestore();
+
+      await action.onDidReceiveSettings({
+        action: keyContext(),
+        payload: { settings: { target: "change-camera", cameraGroupName: "TV1" } },
+      } as never);
+      const registered = vi.mocked(action["setRegenerateCallback"]).mock.calls.length;
+      await land();
+
+      const registrations = vi.mocked(action["setRegenerateCallback"]).mock.calls;
+      expect(registrations).toHaveLength(registered);
+      expect(decodeURIComponent((registrations.at(-1)?.[1] as () => string)())).not.toContain("CYCLE CAM");
+      expect(action["lastDisplayedGroup"].has("key-1")).toBe(false);
+    });
+
+    it("registers the grid when no settings change overtook it", async () => {
+      const { action, land } = await holdRestore();
+      const registered = vi.mocked(action["setRegenerateCallback"]).mock.calls.length;
+
+      await land();
+
+      const registrations = vi.mocked(action["setRegenerateCallback"]).mock.calls;
+      expect(registrations).toHaveLength(registered + 1);
+      expect(decodeURIComponent((registrations.at(-1)?.[1] as () => string)())).toContain("CYCLE CAM");
+      expect(action["lastDisplayedGroup"].has("key-1")).toBe(false);
+    });
+  });
+
   it("shows only the grid while there is no telemetry", async () => {
     const action = await appear({ cycleIconMode: "current" }, undefined);
 
@@ -3826,6 +3875,53 @@ describe("Camera Controls keys on a group the session lacks (#1653)", () => {
       expect(pushedImages(action)).toBe(2);
     });
 
+    describe("after a failed redraw that may have left the greyed icon (#1653 review)", () => {
+      /** Greyed TV1, then a write of the available TV1 that the host refuses. */
+      async function failUngrey(): Promise<CameraControls> {
+        const action = await appear(current({ Drone: true }), CUSTOM_FILE_GROUPS);
+        vi.mocked(action["updateKeyImage"]).mockRejectedValueOnce(new Error("socket closed"));
+
+        sessionUpdate(action, [...CUSTOM_FILE_GROUPS, { groupNum: 7, groupName: "Drone" }]);
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        expect(pushedImages(action)).toBe(2);
+
+        return action;
+      }
+
+      it("puts the placeholder back when the group list then becomes unreadable", async () => {
+        const action = await failUngrey();
+
+        sessionUpdate(action, []);
+        await new Promise((resolve) => setTimeout(resolve, 0));
+
+        expect(pushedImages(action)).toBe(3);
+        const restored = decodeURIComponent(String(vi.mocked(action["updateKeyImage"]).mock.calls[2][1]));
+        expect(restored).toContain("CYCLE CAM");
+        expect(restored).not.toContain("opacity=");
+      });
+
+      it("puts the placeholder back when telemetry then goes away", async () => {
+        const action = await failUngrey();
+
+        sdkOf(action).getCurrentTelemetry.mockReturnValue(undefined);
+        subscriber?.();
+        await new Promise((resolve) => setTimeout(resolve, 0));
+
+        expect(pushedImages(action)).toBe(3);
+        expect(decodeURIComponent(String(vi.mocked(action["updateKeyImage"]).mock.calls[2][1]))).toContain("CYCLE CAM");
+      });
+
+      it("draws the group again while the list stays readable", async () => {
+        const action = await failUngrey();
+
+        subscriber?.();
+        await new Promise((resolve) => setTimeout(resolve, 0));
+
+        expect(pushedImages(action)).toBe(3);
+        expect(lastIconOptions().dimmed).toBeUndefined();
+      });
+    });
+
     it("keeps a normal look while the group list is unreadable", async () => {
       const action = await appear(current({ dynamictv: true }), CUSTOM_FILE_GROUPS);
 
@@ -3839,6 +3935,50 @@ describe("Camera Controls keys on a group the session lacks (#1653)", () => {
       await appear({ ...current({ Drone: true }), cycleIconMode: "next" }, CUSTOM_FILE_GROUPS);
 
       expect(anyIconDimmed()).toBe(false);
+    });
+
+    describe("in the default next-group mode, when a new camera file drops the previewed group (#1653 review)", () => {
+      const next = { ...current({ DynamicTV: true }), cycleIconMode: "next" };
+
+      it("puts the placeholder back", async () => {
+        const action = await appear(next, CUSTOM_FILE_GROUPS);
+        expect(decodeURIComponent(String(vi.mocked(action["updateKeyImage"]).mock.calls[0][1]))).toContain(
+          "CAMERA\nDYNAMICTV",
+        );
+
+        sessionUpdate(action, ROAD_GROUPS);
+        await new Promise((resolve) => setTimeout(resolve, 0));
+
+        expect(pushedImages(action)).toBe(2);
+        expect(decodeURIComponent(String(vi.mocked(action["updateKeyImage"]).mock.calls[1][1]))).toContain("CYCLE CAM");
+
+        // Once it landed, ticks do not resend it.
+        subscriber?.();
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        expect(pushedImages(action)).toBe(2);
+      });
+
+      it("tries the placeholder again on the next tick when its write is refused", async () => {
+        const action = await appear(next, CUSTOM_FILE_GROUPS);
+        vi.mocked(action["updateKeyImage"]).mockRejectedValueOnce(new Error("socket closed"));
+
+        sessionUpdate(action, ROAD_GROUPS);
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        subscriber?.();
+        await new Promise((resolve) => setTimeout(resolve, 0));
+
+        expect(pushedImages(action)).toBe(3);
+        expect(decodeURIComponent(String(vi.mocked(action["updateKeyImage"]).mock.calls[2][1]))).toContain("CYCLE CAM");
+      });
+
+      it("sends nothing for a key that never showed a group", async () => {
+        const action = await appear(next, ROAD_GROUPS);
+
+        subscriber?.();
+        await new Promise((resolve) => setTimeout(resolve, 0));
+
+        expect(pushedImages(action)).toBe(0);
+      });
     });
 
     it("sends nothing on a press, and says so", async () => {
