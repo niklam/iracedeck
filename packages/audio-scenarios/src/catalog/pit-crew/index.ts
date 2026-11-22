@@ -149,7 +149,11 @@ import {
 import { buildDamageContracts } from "./damage-alerts.js";
 import { buildFastestLap, SCENARIO_ID_TO_FASTEST_LAP_ID } from "./fastest-lap.js";
 import { buildFlagAlerts } from "./flag-alerts.js";
-import { FUEL_LAPS_LEFT_CONTRACTS, FUEL_RACE_COVERED_SCENARIO_ID, fuelCountdownSessionKind } from "./fuel-laps-left.js";
+import {
+  buildFuelLapsLeftContracts,
+  FUEL_RACE_COVERED_SCENARIO_ID,
+  fuelCountdownSessionKind,
+} from "./fuel-laps-left.js";
 import {
   buildGapThresholdContract,
   buildGapTrendContract,
@@ -1806,8 +1810,11 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
   // opt-in (issue #1702; the translator emits the countdown in every live
   // session, the player picks where it is heard), then the per-count opt-in.
   // The session gate sits outside the count's own, so a count switched on
-  // stays silent in a session kind switched off, and the reverse.
-  for (const c of FUEL_LAPS_LEFT_CONTRACTS) {
+  // stays silent in a session kind switched off, and the reverse. Each
+  // contract also carries a speak-time gate on the latest telemetry: a fire
+  // queued before the session's checkered flag is dropped if the flag is out
+  // when it would replay, since a replay never asks `where:` again.
+  for (const c of buildFuelLapsLeftContracts({ getLatestTelemetry: d.getLatestTelemetry })) {
     engine.defineContract(
       wrapWithMaster(
         wrapFuelCountdownSessionScenario(
