@@ -93,7 +93,7 @@ const ROOT = "//";
 // the claims in the header comment, then the dry-run cross-check, whose
 // allowances (TURBO_IMPLICIT_GLOBAL_FILES and the dot-directory strictness)
 // must still be the only differences. Only then does this constant move.
-const MODELLED_TURBO_VERSION = "2.11.11";
+const MODELLED_TURBO_VERSION = "2.11.13";
 
 // The tasks the cross-check asks turbo to plan. Their dependsOn closure reaches
 // every task the checks reason about (`//#generate:changelog-data` through the
