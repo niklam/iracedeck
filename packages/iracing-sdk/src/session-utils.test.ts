@@ -579,6 +579,22 @@ describe("getCameraGroupsFromSessionInfo", () => {
     expect(readCameraGroupNames(sessionInfo)).toEqual(["Zero", "TV1", "Drone", "Text", "NaN", "Inf", "Null"]);
   });
 
+  it("skips a group with no readable name, so a list of only such groups reads as none (#1653 review)", () => {
+    const sessionInfo = {
+      CameraInfo: {
+        Groups: [
+          { GroupNum: 1 },
+          { GroupNum: 2, GroupName: "" },
+          { GroupNum: 3, GroupName: "   " },
+          { GroupNum: 4, GroupName: { nested: true } },
+        ],
+      },
+    };
+
+    expect(getCameraGroupsFromSessionInfo(sessionInfo)).toEqual([]);
+    expect(readCameraGroupNames(sessionInfo)).toEqual([]);
+  });
+
   it("skips entries that are not objects and keeps the rest in order (#1653)", () => {
     const sessionInfo = {
       CameraInfo: {

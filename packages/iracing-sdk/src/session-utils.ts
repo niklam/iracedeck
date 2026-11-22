@@ -316,8 +316,15 @@ export function getCameraGroupsFromSessionInfo(sessionInfo: unknown): CameraGrou
     // A group name YAML reads as something other than text — `GroupName: 360`
     // is the number 360 — is read as its text, as `readCameraGroupNames` reads it,
     // so every consumer can treat a name as a string (#1653: the case-insensitive
-    // lookup calls `toLowerCase` on it).
-    result.push({ groupNum: group.GroupNum, groupName: cameraGroupNameText(group.GroupName) });
+    // lookup calls `toLowerCase` on it). A group with no readable name is left
+    // out, as `readCameraGroupNames` leaves it out: nothing can name it, and a
+    // list holding only such groups must read as unreadable, never as a session
+    // that lacks every key's group.
+    const groupName = cameraGroupNameText(group.GroupName);
+
+    if (groupName.trim() === "") continue;
+
+    result.push({ groupNum: group.GroupNum, groupName });
   }
 
   return result;
