@@ -19,7 +19,7 @@
   "dependencies": {
     "@astrojs/markdown-satteri": "0.4.10",
     "@astrojs/starlight": "0.43.1",
-    "astro": "7.4.12",
+    "astro": "7.4.13",
     "astro-mermaid": "2.2.0",
     "mermaid": "12.3.0",
     "sharp": "0.35.5"
@@ -29,7 +29,7 @@
     "@iracedeck/icon-composer": "workspace:*",
     "@iracedeck/iracing-actions": "workspace:*",
     "@iracedeck/voice-packs": "workspace:*",
-    "firebase-tools": "15.36.0",
+    "firebase-tools": "15.37.0",
     "satteri": "0.11.7",
     "tsx": "4.23.15"
   }

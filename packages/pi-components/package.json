@@ -29,10 +29,10 @@
     "@types/node": "26.6.6",
     "ejs": "7.0.2",
     "rimraf": "6.1.4",
-    "rollup": "4.68.3",
+    "rollup": "4.68.8",
     "tslib": "2.9.1",
     "typescript": "6.0.3",
-    "vitest": "5.1.0"
+    "vitest": "5.1.1"
   },
   "license": "SEE LICENSE IN LICENSE"
 }
