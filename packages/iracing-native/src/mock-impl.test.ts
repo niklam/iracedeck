@@ -172,6 +172,11 @@ describe("IRacingNativeMock", () => {
     /** The section of `yaml` from `start` up to the next top-level key. */
     const section = (yaml: string, start: string): string => {
       const from = yaml.indexOf(`\n${start}:\n`);
+
+      // A missing section would slice from the start, and two such slices
+      // would compare equal without comparing anything (#1653 review).
+      if (from === -1) throw new Error(`section ${start} is missing from the fixture`);
+
       const rest = yaml.slice(from + 1);
       const next = rest.slice(start.length + 2).search(/^[A-Za-z]/m);
 
