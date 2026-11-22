@@ -513,10 +513,11 @@ describe("diffFuelLapsLeft — an unreadable session (issue #1702)", () => {
 
     const before = { ...runner.slice };
 
-    // The whole next lap, crossing included, with the session unreadable.
+    // The whole next lap, crossing included, with the session unreadable:
+    // nothing but the resume mark is written.
     lapSample(runner.run, 6, 6.1, unknown);
     expect(events).toHaveLength(1);
-    expect(runner.slice).toEqual(before);
+    expect(runner.slice).toEqual({ ...before, resumeAfterSessionGap: true });
 
     // Readable again: the next crossing speaks the count the gap would have
     // consumed.
@@ -534,6 +535,65 @@ describe("diffFuelLapsLeft — an unreadable session (issue #1702)", () => {
 
     // floor(3.0 − 0.3 − 0.3) = 2, at the real position.
     expect(counts(events)).toEqual([3, 2]);
+  });
+
+  it("samples a lap whose crossing fell in the gap when the saved and resumed positions are both past the mark", () => {
+    const events: PendingEvent[] = [];
+    const { run } = makeRunner(events);
+
+    // Lap 5 sampled at 0.55 (count 3); the gap spans lap 6's mid-lap mark.
+    run(tick({ Lap: 5, LapDistPct: 0.45, FuelLevel: 8.12 }));
+    run(tick({ Lap: 5, LapDistPct: 0.55, FuelLevel: 8.1 }));
+    run(tick({ Lap: 6, LapDistPct: 0.3, FuelLevel: 7.0 }), unknown);
+    run(tick({ Lap: 6, LapDistPct: 0.6, FuelLevel: 6.2 }), unknown);
+    // Readable again at 0.7 of lap 6, against a frozen 0.55: no edge, yet
+    // lap 6 was never sampled. floor(3.0 − 0.3 − 0.3) = 2.
+    run(tick({ Lap: 6, LapDistPct: 0.7, FuelLevel: 6.0 }));
+
+    expect(counts(events)).toEqual([3, 2]);
+  });
+
+  it("does not sample the same lap twice when the gap opens and closes after its sample", () => {
+    const events: PendingEvent[] = [];
+    const { run } = makeRunner(events);
+
+    run(tick({ Lap: 5, LapDistPct: 0.45, FuelLevel: 8.12 }));
+    run(tick({ Lap: 5, LapDistPct: 0.55, FuelLevel: 8.1 })); // count 3
+    run(tick({ Lap: 5, LapDistPct: 0.6, FuelLevel: 6.0 }), unknown);
+    // Readable again on lap 5, past the mark, with a lower count to say: the
+    // lap was sampled, so nothing.
+    run(tick({ Lap: 5, LapDistPct: 0.7, FuelLevel: 6.0 }));
+    run(tick({ Lap: 5, LapDistPct: 0.8, FuelLevel: 5.9 }));
+
+    expect(counts(events)).toEqual([3]);
+  });
+
+  it("waits for a real edge when the lap counter went backwards across the gap", () => {
+    const events: PendingEvent[] = [];
+    const { run } = makeRunner(events);
+
+    run(tick({ Lap: 5, LapDistPct: 0.45, FuelLevel: 8.12 }));
+    run(tick({ Lap: 5, LapDistPct: 0.55, FuelLevel: 8.1 })); // count 3
+    run(tick({ Lap: 5, LapDistPct: 0.6, FuelLevel: 6.2 }), unknown);
+    run(tick({ Lap: 3, LapDistPct: 0.7, FuelLevel: 6.0 }));
+    expect(counts(events)).toEqual([3]);
+
+    // The next real crossing samples as ever.
+    run(tick({ Lap: 4, LapDistPct: 0.45, FuelLevel: 5.92 }));
+    run(tick({ Lap: 4, LapDistPct: 0.55, FuelLevel: 5.9 }));
+    expect(counts(events)).toEqual([3, 2]);
+  });
+
+  it("keeps the silent seed when the gap came before any readable tick", () => {
+    const events: PendingEvent[] = [];
+    const { run } = makeRunner(events);
+
+    run(tick({ Lap: 5, LapDistPct: 0.6, FuelLevel: 6.1 }), unknown);
+    run(tick({ Lap: 5, LapDistPct: 0.7, FuelLevel: 6.0 }));
+    expect(events).toEqual([]);
+
+    lapSample(run, 6, 6.0);
+    expect(counts(events)).toEqual([2]);
   });
 
   it("lands a refuel made during the gap as one delta on the first readable tick", () => {
@@ -1718,6 +1778,7 @@ describe("the fuelCallout slice (issue #1405, under #1588's convention)", () => 
     return {
       lastDistPct: 0.62,
       lastSampledLap: 14,
+      resumeAfterSessionGap: true,
       lastFuelLevel: 7.5,
       lastAnnouncedCount: 3,
       raceCoveredAnnounced: true,
@@ -1729,6 +1790,7 @@ describe("the fuelCallout slice (issue #1405, under #1588's convention)", () => 
     expect(createFuelCalloutState()).toEqual({
       lastDistPct: null,
       lastSampledLap: -1,
+      resumeAfterSessionGap: false,
       lastFuelLevel: null,
       lastAnnouncedCount: null,
       raceCoveredAnnounced: false,
@@ -1745,6 +1807,7 @@ describe("the fuelCallout slice (issue #1405, under #1588's convention)", () => 
     expect(kept).toEqual({
       lastDistPct: null,
       lastSampledLap: -1,
+      resumeAfterSessionGap: false,
       lastFuelLevel: 7.5,
       lastAnnouncedCount: 3,
       raceCoveredAnnounced: true,

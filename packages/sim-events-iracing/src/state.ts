@@ -997,6 +997,15 @@ export type FuelCalloutState = {
    */
   lastSampledLap: number;
   /**
+   * Set while the session type cannot be read (issue #1702), when the diff
+   * samples nothing; cleared by the next valid readable tick. That tick
+   * takes being at or past the mid-lap mark on a lap AFTER `lastSampledLap`
+   * as the crossing, since the real one may have fallen in the gap, where
+   * the frozen `lastDistPct` cannot show it. Not kept across a replay glance,
+   * which re-seeds the baselines anyway.
+   */
+  resumeAfterSessionGap: boolean;
+  /**
    * Previous-tick `FuelLevel` for refuel detection (a debounced per-tick
    * increase re-arms the announced counts). Kept across a replay glance
    * ({@link resetFuelCalloutBaselines}) so a garage refuel — which happens
@@ -1046,6 +1055,7 @@ export function createFuelCalloutState(): FuelCalloutState {
   return {
     lastDistPct: null,
     lastSampledLap: -1,
+    resumeAfterSessionGap: false,
     lastFuelLevel: null,
     lastAnnouncedCount: null,
     raceCoveredAnnounced: false,
@@ -1062,8 +1072,9 @@ export function createFuelCalloutState(): FuelCalloutState {
  * the reassurance, and the previous-fuel-level tracker must survive the
  * garage visit so the refuel that happened there (replay-mode ticks) lands as
  * one positive delta on the first live tick back and re-arms the stint. The
- * sampling baselines (`lastDistPct`, `lastSampledLap`) re-seed, because the
- * position jump made their edges meaningless, and the expired-clock count
+ * sampling baselines (`lastDistPct`, `lastSampledLap`,
+ * `resumeAfterSessionGap`) re-seed, because the position jump made their
+ * edges meaningless, and the expired-clock count
  * starts again (issue #1405), because a stale count must not confirm an
  * expiry on the first live tick back.
  */

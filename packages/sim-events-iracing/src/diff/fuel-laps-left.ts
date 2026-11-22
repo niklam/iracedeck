@@ -560,12 +560,15 @@ export function diffFuelLapsLeft(
   // session it cannot classify, so the count would never be spoken. Nothing
   // is consumed, the baselines included, so the first readable tick carries
   // on from the last one: `lastSampledLap` still stops a lap sampled before
-  // the gap from being sampled twice, `lastFuelLevel` lands a refuel made
-  // during the gap as one delta (the replay glance's rule), and a
-  // `lastDistPct` left below the mid-lap mark lets a lap whose crossing fell
-  // in the gap be sampled on the first readable tick at or past it — a real
-  // position, where the count is as valid as at the mark.
-  if (session === "unknown") return;
+  // the gap from being sampled twice, and `lastFuelLevel` lands a refuel made
+  // during the gap as one delta (the replay glance's rule). The one write is
+  // the resume mark, which lets that tick sample a lap whose crossing fell in
+  // the gap (below).
+  if (session === "unknown") {
+    slice.resumeAfterSessionGap = true;
+
+    return;
+  }
 
   const fuelLevel = telemetry.FuelLevel;
   const distPct = telemetry.LapDistPct;
@@ -596,13 +599,24 @@ export function diffFuelLapsLeft(
   slice.lastFuelLevel = fuelLevel;
 
   const lastDistPct = slice.lastDistPct;
+  const resuming = slice.resumeAfterSessionGap;
   slice.lastDistPct = distPct;
+  slice.resumeAfterSessionGap = false;
 
   // Seed silently on the first valid tick — no edge to compare yet.
   if (lastDistPct === null) return;
 
-  // Rising mid-lap crossing, at most one sample attempt per lap.
-  if (!(lastDistPct < FUEL_LAPS_LEFT_SAMPLE_PCT && distPct >= FUEL_LAPS_LEFT_SAMPLE_PCT)) return;
+  // Rising mid-lap crossing, at most one sample attempt per lap. On the first
+  // readable tick after an unreadable session (issue #1702) the crossing may
+  // have fallen in the gap, so being at or past the mark on a LATER lap than
+  // the last one sampled counts as it — a real position, where the count is as
+  // valid as at the mark. Later, not merely another: a lap counter that went
+  // backwards across the gap is no lap the countdown has missed, so it waits
+  // for a real edge.
+  const crossed = lastDistPct < FUEL_LAPS_LEFT_SAMPLE_PCT && distPct >= FUEL_LAPS_LEFT_SAMPLE_PCT;
+  const crossedInGap = resuming && distPct >= FUEL_LAPS_LEFT_SAMPLE_PCT && lap > slice.lastSampledLap;
+
+  if (!crossed && !crossedInGap) return;
 
   if (lap === slice.lastSampledLap) return;
 
