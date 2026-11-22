@@ -30,6 +30,7 @@ const IMPLEMENTED_BY: { readonly [K in keyof SimRuntime]: keyof typeof translato
   getTrackDirection: "getTrackDirection",
   isDamageRepairNeeded: "isDamageRepairNeeded",
   isPitActionsAllowed: "isPitActionsAllowed",
+  isPlayerFinalLapStarted: "isPlayerFinalLapStarted",
   isRaceFinished: "isRaceFinished",
   isStandingStart: "getStandingStart",
   isUnderFullCourseCaution: "isUnderFullCourseCaution",
@@ -45,7 +46,7 @@ describe("createIracingSimRuntime", () => {
       expect(sim[name as keyof SimRuntime], name).toBe(translator[implementedBy]);
     }
 
-    expect(Object.keys(sim)).toHaveLength(24);
+    expect(Object.keys(sim)).toHaveLength(25);
   });
 
   it("pins each iRacing getter to the declared signature of the member it implements (type test)", () => {
@@ -75,12 +76,13 @@ describe("createIracingSimRuntime", () => {
     expectTypeOf(translator.getTrackDirection).toEqualTypeOf<SimRuntime["getTrackDirection"]>();
     expectTypeOf(translator.isDamageRepairNeeded).toEqualTypeOf<SimRuntime["isDamageRepairNeeded"]>();
     expectTypeOf(translator.isPitActionsAllowed).toEqualTypeOf<SimRuntime["isPitActionsAllowed"]>();
+    expectTypeOf(translator.isPlayerFinalLapStarted).toEqualTypeOf<SimRuntime["isPlayerFinalLapStarted"]>();
     expectTypeOf(translator.isRaceFinished).toEqualTypeOf<SimRuntime["isRaceFinished"]>();
     expectTypeOf(translator.getStandingStart).toEqualTypeOf<SimRuntime["isStandingStart"]>();
     expectTypeOf(translator.isUnderFullCourseCaution).toEqualTypeOf<SimRuntime["isUnderFullCourseCaution"]>();
   });
 
-  it("answers the no-translator values for the four reads added in #1378 before the translator is initialised", () => {
+  it("answers the no-translator values for the reads added in #1378 and #1702 before the translator is initialised", () => {
     translator._resetSimEventsIracing();
     const sim = createIracingSimRuntime();
 
@@ -88,5 +90,6 @@ describe("createIracingSimRuntime", () => {
     expect(sim.getSessionClass()).toBeNull();
     expect(sim.isStandingStart()).toBe(false);
     expect(sim.isDamageRepairNeeded()).toBeNull();
+    expect(sim.isPlayerFinalLapStarted()).toBeNull();
   });
 });
