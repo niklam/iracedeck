@@ -26,6 +26,7 @@ export const TRAFFIC_CALLOUTS = defineCalloutFamily({
     rejoin: {
       key: "calloutEnabledTrafficRejoin",
       label: "Traffic when rejoining (experimental)",
+      description: "While you are stopped or crawling on track, warns you how soon the nearest car will reach you.",
       default: false,
       requiresFeature: "trafficRejoin",
     },

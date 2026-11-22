@@ -15,6 +15,11 @@ export const AUTO_FUEL_CALLOUTS = defineCalloutFamily({
      * independent in both directions. Default `true` per the callout
      * baseline.
      */
-    changed: { key: "calloutEnabledPitServiceAutoFuel", label: "Autofuel changes" },
+    changed: {
+      key: "calloutEnabledPitServiceAutoFuel",
+      label: "Autofuel changes",
+      description:
+        "When iRacing's autofuel is switched on or off, tells you whether your next stop will still take fuel.",
+    },
   },
 });

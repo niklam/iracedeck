@@ -14,6 +14,11 @@ export const PIT_SERVICE_REQUEST_CALLOUTS = defineCalloutFamily({
      * effect on the next event arrival without cutting an in-flight clip. Default `true` so existing users keep
      * the acks they have today.
      */
-    requests: { key: "calloutEnabledPitServiceRequests", label: "Pit service requests" },
+    requests: {
+      key: "calloutEnabledPitServiceRequests",
+      label: "Pit service requests",
+      description:
+        "Each time you change the fuel, tires, windshield clean or fast repair for your next stop, confirms the change.",
+    },
   },
 });

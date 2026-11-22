@@ -20,6 +20,10 @@ export const PIT_STATUS_CALLOUTS = defineCalloutFamily({
     "too-far-forward": { key: "calloutEnabledPitStatusTooFarForward", label: "Too far forward" },
     "too-far-back": { key: "calloutEnabledPitStatusTooFarBack", label: "Too far back" },
     "bad-angle": { key: "calloutEnabledPitStatusBadAngle", label: "Bad angle" },
-    "cant-fix-that": { key: "calloutEnabledPitStatusCantFixThat", label: "Can't fix that" },
+    "cant-fix-that": {
+      key: "calloutEnabledPitStatusCantFixThat",
+      label: "Can't fix that",
+      description: "When you stop in your box with damage the crew cannot repair, tells you the car cannot be fixed.",
+    },
   },
 });

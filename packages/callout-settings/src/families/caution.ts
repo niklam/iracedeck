@@ -15,7 +15,12 @@ export const CAUTION_CALLOUTS = defineCalloutFamily({
      */
     follow: { key: "calloutEnabledCautionFollow", label: "Who to follow" },
     "pace-car-out": { key: "calloutEnabledCautionPaceCarOut", label: "Pace car out" },
-    "field-caught": { key: "calloutEnabledCautionFieldCaught", label: "Two to green" },
+    "field-caught": {
+      key: "calloutEnabledCautionFieldCaught",
+      label: "Two to green",
+      description:
+        "A lap before the one-to-go flag, tells you the green is two laps away and, if there is one, the car to follow.",
+    },
     "extra-lap": { key: "calloutEnabledCautionExtraLap", label: "Another caution lap" },
     "one-to-go": { key: "calloutEnabledCautionOneToGo", label: "One lap to green" },
     "lineup-changed": { key: "calloutEnabledCautionLineupChanged", label: "Car ahead changed" },
@@ -26,6 +31,10 @@ export const CAUTION_CALLOUTS = defineCalloutFamily({
     "catch-up-reminder": { key: "calloutEnabledCautionCatchUpReminder", label: "Catch-up reminders" },
     "pace-car-off": { key: "calloutEnabledCautionPaceCarOff", label: "Pace car off" },
     restart: { key: "calloutEnabledCautionRestart", label: "Restart" },
-    position: { key: "calloutEnabledCautionPosition", label: "Position on the last lap" },
+    position: {
+      key: "calloutEnabledCautionPosition",
+      label: "Position on the last lap",
+      description: "On the last caution lap, tells you your race position before the restart.",
+    },
   },
 });

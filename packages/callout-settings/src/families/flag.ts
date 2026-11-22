@@ -30,10 +30,26 @@ export const FLAG_CALLOUTS = defineCalloutFamily({
     checkered: { key: "calloutEnabledFlagCheckered", label: "Checkered" },
     debris: { key: "calloutEnabledFlagDebris", label: "Debris" },
     meatball: { key: "calloutEnabledFlagMeatball", label: "Meatball" },
-    "yellow-waving": { key: "calloutEnabledFlagYellowWaving", label: "Yellow waving" },
-    "caution-waving": { key: "calloutEnabledFlagCautionWaving", label: "Caution waving" },
-    crossed: { key: "calloutEnabledFlagCrossed", label: "Crossed flags" },
-    "green-held": { key: "calloutEnabledFlagGreenHeld", label: "Green held" },
+    "yellow-waving": {
+      key: "calloutEnabledFlagYellowWaving",
+      label: "Yellow waving",
+      description: "When you come upon a fresh incident and the yellow is waved at you, warns you of it.",
+    },
+    "caution-waving": {
+      key: "calloutEnabledFlagCautionWaving",
+      label: "Caution waving",
+      description: "When the full-course caution is waved at the field, tells you the caution is out.",
+    },
+    crossed: {
+      key: "calloutEnabledFlagCrossed",
+      label: "Crossed flags",
+      description: "When the crossed flags come out at the halfway point of a race, tells you the race is half done.",
+    },
+    "green-held": {
+      key: "calloutEnabledFlagGreenHeld",
+      label: "Green held",
+      description: "In the last seconds before a rolling start or restart goes green, tells you to get ready to go.",
+    },
     "ten-to-go": { key: "calloutEnabledFlagTenToGo", label: "Ten to go" },
     "five-to-go": { key: "calloutEnabledFlagFiveToGo", label: "Five to go" },
     /**
@@ -51,6 +67,10 @@ export const FLAG_CALLOUTS = defineCalloutFamily({
     furled: { key: "calloutEnabledFlagFurled", label: "Black flag furled" },
     // Furled-warning withdrawn callout opt-in (issue #669).
     "furled-cleared": { key: "calloutEnabledFlagFurledCleared", label: "Furled cleared" },
-    "dq-scoring-invalid": { key: "calloutEnabledFlagDqScoringInvalid", label: "DQ (scoring)" },
+    "dq-scoring-invalid": {
+      key: "calloutEnabledFlagDqScoringInvalid",
+      label: "DQ (scoring)",
+      description: "When iRacing disqualifies you and stops counting your result, tells you so.",
+    },
   },
 });

@@ -7,6 +7,12 @@ export interface CalloutEntry {
   /** The checkbox label in the PI and the settings window. */
   readonly label: string;
   /**
+   * Present only when the label says neither what the engineer says nor when (#1700): one sentence for the
+   * driver, rendered as a second line under the label. One line, a full stop at the end, at most 120 characters,
+   * in plain words; never an internal name, a quoted voice line, or the label restated as its opening words.
+   */
+  readonly description?: string;
+  /**
    * Present only to ship a callout OFF. Absent means on — new Race Engineer
    * functionality defaults on, so an off default is the visible exception.
    */

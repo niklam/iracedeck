@@ -4,12 +4,14 @@ import * as registry from "./index.js";
 import {
   CALLOUT_FAMILIES,
   CALLOUT_PI_GROUPS,
+  CALLOUT_PI_SECTIONS,
   CALLOUT_SETTING_KEYS,
   calloutDefault,
   calloutEntry,
   type CalloutFamily,
   type CalloutIdOf,
   calloutKey,
+  type CalloutPiGroup,
   type CalloutSettingKey,
   FLAG_CALLOUTS,
   type RegisteredCalloutFamily,
@@ -17,6 +19,18 @@ import {
 } from "./index.js";
 
 const entries = CALLOUT_FAMILIES.flatMap((f) => Object.values(f.callouts));
+
+/** The #1700 text rules a heading or entry description is held to; `cap` is 160 for a heading, 120 for an entry. */
+function expectDriverSentence(text: string, cap: number, where: string, opening: string): void {
+  expect(text, where).toBe(text.trim());
+  expect(text, where).not.toMatch(/[\r\n]/);
+  expect(text.endsWith("."), `${where} ends with a full stop`).toBe(true);
+  expect(text.length, `${where} is at most ${cap} characters`).toBeLessThanOrEqual(cap);
+  expect(text, where).not.toContain("calloutEnabled");
+  expect(text, where).not.toMatch(/telemetry/i);
+  expect(text, where).not.toMatch(/\bsdk\b/i);
+  expect(text.toLowerCase().startsWith(opening.toLowerCase()), `${where} does not open with "${opening}"`).toBe(false);
+}
 
 /**
  * The shape a consumer's generic gate takes. The return annotation is the assertion: constrained on `CalloutFamily`
@@ -61,7 +75,9 @@ describe("callout settings registry", () => {
 
   it("gives every entry only the known fields, so a misspelt one fails", () => {
     for (const e of entries) {
-      for (const field of Object.keys(e)) expect(["key", "label", "default", "requiresFeature"]).toContain(field);
+      for (const field of Object.keys(e)) {
+        expect(["key", "label", "description", "default", "requiresFeature"]).toContain(field);
+      }
     }
   });
 
@@ -83,6 +99,81 @@ describe("callout settings registry", () => {
       keyOf(FLAG_CALLOUTS, "nope");
 
     expect(misspelt).toBeTypeOf("function");
+  });
+});
+
+describe("Callouts card sections (#1700)", () => {
+  it("has unique section ids, unique group ids across all sections, and no section id that is also a group id", () => {
+    const sectionIds = CALLOUT_PI_SECTIONS.map((s) => s.id);
+    const groupIds = CALLOUT_PI_SECTIONS.flatMap((s) => s.groups.map((g) => g.id));
+
+    expect(new Set(sectionIds).size).toBe(sectionIds.length);
+    expect(new Set(groupIds).size).toBe(groupIds.length);
+
+    for (const id of sectionIds) expect(groupIds, id).not.toContain(id);
+  });
+
+  it("has no empty section and no blank section title", () => {
+    for (const s of CALLOUT_PI_SECTIONS) {
+      expect(s.groups.length, s.id).toBeGreaterThan(0);
+      expect(s.title.trim(), s.id).not.toBe("");
+    }
+  });
+
+  it("derives CALLOUT_PI_GROUPS as the sections' groups concatenated, and CALLOUT_FAMILIES as their families in that order", () => {
+    expect(CALLOUT_PI_GROUPS).toEqual(CALLOUT_PI_SECTIONS.flatMap((s): readonly CalloutPiGroup[] => s.groups));
+    expect(CALLOUT_FAMILIES).toEqual(CALLOUT_PI_GROUPS.flatMap((g): readonly CalloutFamily[] => g.families));
+  });
+
+  it("pins every section and the headings it holds, in render order", () => {
+    expect(CALLOUT_PI_SECTIONS.map((s) => [s.id, s.groups.map((g) => g.id)])).toEqual([
+      ["session-and-start", ["telemetry-connect", "session-start", "setup-warning", "start-lights", "rolling-start"]],
+      ["flags-and-incidents", ["flags", "caution", "opponent-flags", "incidents", "qualifying"]],
+      ["racing", ["race", "position", "overtakes", "gaps", "spotter", "traffic", "lap-time"]],
+      [
+        "pit-stops",
+        [
+          "pit-window",
+          "pit-limiter",
+          "no-pit-limiter",
+          "pit-speeding",
+          "pit-box",
+          "pit-service",
+          "pit-service-status",
+          "opponent-pits",
+        ],
+      ],
+      ["car-and-conditions", ["fuel", "damage", "track-conditions"]],
+      ["track-guide", ["corner-names"]],
+      ["key-acknowledgments", ["race-engineer-toggle"]],
+    ]);
+  });
+
+  it("gives every heading a description that follows the text rules", () => {
+    for (const g of CALLOUT_PI_GROUPS) expectDriverSentence(g.description, 160, `heading ${g.id}`, g.title);
+  });
+
+  it("holds every entry description present to the text rules", () => {
+    const described = entries.filter((e) => e.description !== undefined);
+
+    expect(described.length).toBeGreaterThan(0);
+
+    for (const e of described) expectDriverSentence(e.description ?? "", 120, `entry ${e.key}`, e.label);
+  });
+
+  it("refuses a description that breaks a rule, so the checks above can fail", () => {
+    const bad = [
+      " Leading space.",
+      "Two\nlines.",
+      "No full stop",
+      `${"x".repeat(160)}.`,
+      "Names calloutEnabledFlagGreen.",
+      "Reads the Telemetry.",
+      "Uses the SDK.",
+      "Green flag shown.",
+    ];
+
+    for (const text of bad) expect(() => expectDriverSentence(text, 160, "probe", "Green"), text).toThrow();
   });
 });
 
