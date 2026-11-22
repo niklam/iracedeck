@@ -3,6 +3,8 @@ import { renderPartial } from "@iracedeck/pi-components/testing";
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
+import { SETTINGS_WINDOW_PAGE } from "./action-templates.test-support.js";
+
 /**
  * Where the settings window shows the camera catalog (#1653): a Camera Groups
  * card on the General tab, full width below the behaviour cards, since a
@@ -11,7 +13,7 @@ import { describe, expect, it } from "vitest";
  * so the flag must be passed there (`camera-groups-partial.test.ts` in
  * pi-components holds the partial itself).
  */
-const source = readFileSync(new URL("./settings-window.ejs", import.meta.url), "utf-8");
+const source = readFileSync(SETTINGS_WINDOW_PAGE, "utf-8");
 
 const CARD =
   "<%- include('accordion', { title: 'Camera Groups', content: include('camera-groups', { settingsWindow: true }), settingsWindow: true }) %>";
