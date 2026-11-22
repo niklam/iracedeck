@@ -991,7 +991,9 @@ describe("CameraControls", () => {
 
       expect(decoded.match(/custom-artwork/g)).toHaveLength(2);
       expect(decoded).toContain("tv1-artwork");
+      // custom, standard, custom: TV1 sits between the two custom thumbnails.
       expect(decoded.indexOf("custom-artwork")).toBeLessThan(decoded.indexOf("tv1-artwork"));
+      expect(decoded.lastIndexOf("custom-artwork")).toBeGreaterThan(decoded.indexOf("tv1-artwork"));
     });
 
     it("should fall back to static cycle icon for empty group list", () => {
