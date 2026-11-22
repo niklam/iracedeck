@@ -539,18 +539,15 @@ describe("camera-focus PI Cycle Camera grids: the Remembered groups section (#16
       expect(checkbox("camera-groups-grid", "SpeedCam")?.checked).toBe(true);
     });
 
-    it("never overwrites a choice or a push made before the held value is read", async () => {
+    it("applies a push over the held value that resolves after it", async () => {
       let releaseKeypad: (value: string) => void = () => {};
       let releaseGlobal: (value: string) => void = () => {};
       storedPerKey.set(SUBSET_KEY, new Promise<string>((resolve) => (releaseKeypad = resolve)));
       storedGlobals.set(SUBSET_KEY, new Promise<string>((resolve) => (releaseGlobal = resolve)));
       await load();
 
-      toggle("camera-groups-grid", "DynamicTV");
+      pushKeypadSubset({ DynamicTV: true });
       pushGlobal(SUBSET_KEY, subset({ Alpha: true }));
-      const keypadSaves = keypadSave.mock.calls.length;
-      const dialSaves = dialSave.mock.calls.length;
-
       releaseKeypad(subset({ SpeedCam: true }));
       releaseGlobal(subset({ Zulu: true }));
       await new Promise((resolve) => setTimeout(resolve, 0));
@@ -559,27 +556,93 @@ describe("camera-focus PI Cycle Camera grids: the Remembered groups section (#16
       expect(checkbox("camera-groups-grid", "SpeedCam")?.checked).toBe(false);
       expect(checkbox("dial-camera-groups-grid", "Alpha")?.checked).toBe(true);
       expect(checkbox("dial-camera-groups-grid", "Zulu")?.checked).toBe(false);
-      expect(keypadSave.mock.calls.length).toBe(keypadSaves);
-      expect(dialSave.mock.calls.length).toBe(dialSaves);
+      expect(keypadSave).not.toHaveBeenCalled();
+      expect(dialSave).not.toHaveBeenCalled();
     });
 
-    it("never overwrites Select All or Clear made before the held value is read", async () => {
+    it("applies a valid held keypad subset without waiting for global settings, and a toggle saves it", async () => {
+      storedPerKey.set(SUBSET_KEY, subset({ Nose: true, SpeedCam: true }));
+      storedGlobals.set(SUBSET_KEY, new Promise<string>(() => {})); // global settings never arrive
+      await load();
+
+      expect(checkbox("camera-groups-grid", "SpeedCam")?.checked).toBe(true);
+
+      toggle("camera-groups-grid", "Gearbox");
+      expect(lastSaved(keypadSave)).toMatchObject({ Nose: true, SpeedCam: true, Gearbox: true });
+    });
+
+    it("takes no choice until the subset that applies is known", async () => {
       let releaseKeypad: (value: string) => void = () => {};
       let releaseGlobal: (value: string) => void = () => {};
       storedPerKey.set(SUBSET_KEY, new Promise<string>((resolve) => (releaseKeypad = resolve)));
       storedGlobals.set(SUBSET_KEY, new Promise<string>((resolve) => (releaseGlobal = resolve)));
       await load();
 
+      toggle("camera-groups-grid", "Gearbox");
       grid("btn-select-all").click();
       grid("dial-btn-clear").click();
 
-      releaseKeypad(subset({ Zulu: true }));
+      // The key has no subset of its own: it waits for the global fallback.
+      releaseKeypad("");
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      toggle("camera-groups-grid", "Gearbox");
+
+      expect(keypadSave).not.toHaveBeenCalled();
+      expect(dialSave).not.toHaveBeenCalled();
+
       releaseGlobal(subset({ Zulu: true }));
       await new Promise((resolve) => setTimeout(resolve, 0));
 
+      expect(checkbox("camera-groups-grid", "Zulu")?.checked).toBe(true);
+      expect(checkbox("dial-camera-groups-grid", "Zulu")?.checked).toBe(true);
+
+      toggle("camera-groups-grid", "Gearbox");
+      expect(lastSaved(keypadSave)).toMatchObject({ Zulu: true, Gearbox: true });
+    });
+  });
+
+  describe("subsets in the forms the action reads (#1653 review)", () => {
+    const SUBSET_KEY = "cameraGroupSubset";
+    const subset = (groups: unknown): string => JSON.stringify({ groups });
+
+    beforeEach(() => {
+      storedGlobals.set(CAMERA_CATALOG_KEY, JSON.stringify(CATALOG));
+    });
+
+    it("reads a subset stored as an object, as well as one stored as JSON", async () => {
+      storedPerKey.set(SUBSET_KEY, { groups: { DynamicTV: true } });
+      storedGlobals.set(SUBSET_KEY, { groups: { Zulu: true } });
+      await load();
+
+      expect(checkbox("camera-groups-grid", "DynamicTV")?.checked).toBe(true);
+      expect(checkbox("dial-camera-groups-grid", "Zulu")?.checked).toBe(true);
+    });
+
+    it("falls back to the global subset for a key whose groups are no map", async () => {
+      storedPerKey.set(SUBSET_KEY, subset([]));
+      storedGlobals.set(SUBSET_KEY, subset({ SpeedCam: true }));
+      await load();
+
       expect(checkbox("camera-groups-grid", "SpeedCam")?.checked).toBe(true);
-      expect(checkbox("camera-groups-grid", "Zulu")?.checked).toBe(false);
-      expect(checkbox("dial-camera-groups-grid", "Zulu")?.checked).toBe(false);
+    });
+
+    it("shows an explicit empty map as an empty subset, not the defaults or the fallback", async () => {
+      storedPerKey.set(SUBSET_KEY, subset({}));
+      storedGlobals.set(SUBSET_KEY, subset({ SpeedCam: true }));
+      await load();
+
+      expect(read("camera-groups-grid").entries.filter((e) => e.checked)).toEqual([]);
+    });
+
+    it("shows only the groups a stored map turns on", async () => {
+      storedPerKey.set(SUBSET_KEY, subset({ DynamicTV: true }));
+      await load();
+
+      expect(
+        read("camera-groups-grid")
+          .entries.filter((e) => e.checked)
+          .map((e) => e.name),
+      ).toEqual(["DynamicTV"]);
     });
   });
 

@@ -388,6 +388,32 @@
 
 				// Ensure the state has entries for ALL visible groups so saving
 				// doesn't lose groups that weren't explicitly toggled.
+				// A stored subset as the action reads it (parseGroupSubset): a JSON
+				// string or an object whose `groups` is a plain map, or null for anything
+				// else — which the action reads as no subset and falls back from. Only a
+				// name stored true is on, so a standard group the map leaves out shows
+				// off, never as its default: an explicit empty map is an empty subset
+				// (#1653 review).
+				function readGroups(value) {
+					var subset = value;
+					if (typeof value === "string") {
+						if (!value) return null;
+						try {
+							subset = JSON.parse(value);
+						} catch (e) {
+							return null;
+						}
+					}
+					if (typeof subset !== "object" || subset === null) return null;
+					var groups = subset.groups;
+					if (typeof groups !== "object" || groups === null || Array.isArray(groups)) return null;
+					var state = foldLegacyNames(groups);
+					for (var i = 0; i < ALL_GROUPS.length; i++) {
+						if (!own(state, ALL_GROUPS[i])) state[ALL_GROUPS[i]] = false;
+					}
+					return state;
+				}
+
 				function ensureAllGroupsTracked(state) {
 					for (var i = 0; i < ALL_GROUPS.length; i++) {
 						if (!own(state, ALL_GROUPS[i])) {
@@ -491,12 +517,32 @@
 					// defaults, or the keypad's legacy global subset — is not known, so
 					// a stored value or a later fallback can still replace it.
 					var known = false;
+					// Whether the subset that applies to this grid is known (#1653
+					// review): until then the grid shows a provisional state, and a
+					// choice made from it would save that state over the stored one, so
+					// the grid takes no choice.
+					var ready = false;
 
 					function persist() {
 						if (save) save(JSON.stringify({ groups: state }));
 					}
+					function applyReady() {
+						var grid = document.getElementById(gridId);
+						if (grid) {
+							var boxes = grid.querySelectorAll("input");
+							for (var i = 0; i < boxes.length; i++) boxes[i].disabled = !ready;
+						}
+						var a = document.getElementById(selectAllId);
+						if (a) a.disabled = !ready;
+						var c = document.getElementById(clearId);
+						if (c) c.disabled = !ready;
+					}
 					function render() {
 						renderGroupCheckboxes(gridId, state, function (name, checked) {
+							if (!ready) {
+								render();
+								return;
+							}
 							known = true;
 							ensureAllGroupsTracked(state);
 							// A custom group is in the map only while ticked (#1653), so
@@ -508,8 +554,10 @@
 							}
 							persist();
 						});
+						applyReady();
 					}
 					function setAll(value) {
+						if (!ready) return;
 						known = true;
 						ensureAllGroupsTracked(state);
 						for (var i = 0; i < ALL_GROUPS.length; i++) {
@@ -549,6 +597,12 @@
 						showDefault: function (groups) {
 							if (known) return;
 							show(groups);
+						},
+						// The subset that applies is known: the grid takes choices from now on.
+						markReady: function () {
+							if (ready) return;
+							ready = true;
+							applyReady();
 						},
 						setSave: function (fn) { save = fn; },
 						render: render,
@@ -646,65 +700,83 @@
 						// skips it when a push delivered it first.
 						catalogHook[0]().then(applyCatalog);
 
-						// A stored subset's group map, or null for none or an unreadable one.
-						function readGroups(value) {
-							if (!value) return null;
-							try {
-								var parsed = JSON.parse(value);
-								return parsed && parsed.groups ? parsed.groups : null;
-							} catch (e) {
-								return null;
-							}
-						}
-
-						// Keypad selector: per-action setting with a legacy global fallback.
+						// Keypad selector: the per-action subset, falling back — as the action
+						// does — to the legacy global one when the key has no valid subset of
+						// its own. Dial selector: the GLOBAL cameraGroupSubset.
+						//
+						// Each grid takes choices only once the subset that applies to it is
+						// known (#1653 review). Pushes and sdpi's held values arrive in any
+						// order, and sdpi replays no push to these late subscriptions, so each
+						// hook's getter is read too (a local read that sends nothing). A valid
+						// held keypad subset applies as soon as it resolves; only a key without
+						// one waits for the global fallback. A push wins over a held value, and
+						// a stored value or a choice over a fallback.
+						var keypadResolved = false;
 						var legacyGroups = null;
 						var legacyKnown = false;
-						var legacyHook = window.SDPIComponents.useGlobalSettings(SETTING_KEY, function (value) {
-							legacyKnown = true;
-							var groups = readGroups(value);
-							if (!groups) return;
-							legacyGroups = groups;
-							// Global settings usually arrive after the keypad's own (empty)
-							// value: a key with none takes the legacy subset now (#1653
-							// review). A key with a stored value or a choice keeps it.
-							keypadSelector.showDefault(legacyGroups);
-						});
+						var dialKnown = false;
 
-						// The per-action value, or — with none yet — the legacy global one.
-						function keypadGroups(value) {
-							return readGroups(value) || (value ? {} : legacyGroups) || {};
+						function settleKeypad() {
+							if (keypadResolved && legacyKnown) keypadSelector.markReady();
+						}
+						function takeLegacy(value) {
+							legacyKnown = true;
+							legacyGroups = readGroups(value);
+							// Global settings usually arrive after the keypad's own (empty)
+							// value: a key with none takes the legacy subset now.
+							keypadSelector.showDefault(legacyGroups || emptyGroupMap());
+							settleKeypad();
+						}
+						function takeKeypad(value, held) {
+							keypadResolved = true;
+							var groups = readGroups(value);
+							if (groups) {
+								if (held) keypadSelector.seedState(groups);
+								else keypadSelector.setState(groups);
+								keypadSelector.markReady();
+								return;
+							}
+							if (held) keypadSelector.showDefault(legacyGroups || emptyGroupMap());
+							else keypadSelector.setDefault(legacyGroups || emptyGroupMap());
+							settleKeypad();
+						}
+						function takeDial(value, held) {
+							dialKnown = true;
+							var groups = readGroups(value);
+							if (groups) {
+								if (held) dialSelector.seedState(groups);
+								else dialSelector.setState(groups);
+							} else if (held) {
+								dialSelector.showDefault(emptyGroupMap());
+							} else {
+								dialSelector.setDefault(emptyGroupMap());
+							}
+							dialSelector.markReady();
 						}
 
+						var legacyHook = window.SDPIComponents.useGlobalSettings(SETTING_KEY, takeLegacy);
 						var keypadHook = window.SDPIComponents.useSettings(SETTING_KEY, function (value) {
-							if (value) keypadSelector.setState(keypadGroups(value));
-							else keypadSelector.setDefault(keypadGroups(value));
+							takeKeypad(value, false);
 						});
 						keypadSelector.setSave(keypadHook[1]);
-
-						// Dial selector: the GLOBAL cameraGroupSubset (read + save).
 						var dialHook = window.SDPIComponents.useGlobalSettings(SETTING_KEY, function (value) {
-							if (value) dialSelector.setState(readGroups(value) || {});
-							else dialSelector.setDefault({});
+							takeDial(value, false);
 						});
 						dialSelector.setSave(dialHook[1]);
 
-						// Like the catalog, the subsets may have arrived before these
-						// subscriptions, and sdpi replays no push to a late one (#1653
-						// review): read what sdpi holds through each hook's getter (a local
-						// read that sends nothing). A stored value pushed or a choice made
-						// meanwhile wins: seedState applies a held value only while neither
-						// has set the grid, showDefault a held absence the same way, and the
-						// held legacy subset is taken only while no push has set it.
-						Promise.all([keypadHook[0](), legacyHook[0]()]).then(function (held) {
-							if (!legacyKnown) legacyGroups = readGroups(held[1]);
-							if (held[0]) keypadSelector.seedState(keypadGroups(held[0]));
-							else keypadSelector.showDefault(keypadGroups(held[0]));
+						keypadHook[0]().then(function (held) {
+							if (!keypadResolved) takeKeypad(held, true);
 						});
-						dialHook[0]().then(function (value) {
-							if (value) dialSelector.seedState(readGroups(value) || {});
-							else dialSelector.showDefault({});
+						legacyHook[0]().then(function (held) {
+							if (!legacyKnown) takeLegacy(held);
 						});
+						dialHook[0]().then(function (held) {
+							if (!dialKnown) takeDial(held, true);
+						});
+					} else {
+						// No settings to wait for, and none to save to.
+						keypadSelector.markReady();
+						dialSelector.markReady();
 					}
 
 					keypadSelector.wireButtons();
