@@ -145,9 +145,7 @@ function expectedOrder(withExtension: boolean): string[] {
     // 10 registerActions
     "initWindowFocus",
     "initMousePointer",
-    "adapter.onKeyDown",
-    "adapter.onDialDown",
-    "adapter.onDialRotate",
+    // no adapter focus listeners since #1654: withWindowFocus wraps every action instead
     "setReplayBusyIndicatorLogger",
     "initPressSounds", // #269
     "adapter.registerAction*",
@@ -295,13 +293,20 @@ describe("startPlugin (#1349)", () => {
     expect(versions).toEqual(["9.9.9-test"]);
   });
 
-  it("installs the press sound player once, before the first action, and registers every handler wrapped (#269)", () => {
+  it("installs the press sound player once, before the first action, and registers every handler wrapped (#269, #1654)", () => {
     const players: { play: unknown; logger: unknown }[] = [];
     const wrapped: { wraps: unknown }[] = [];
+    const focusWrapped: { focusWraps: unknown }[] = [];
     implement("initPressSounds", (deps) => players.push(deps as (typeof players)[number]));
     implement("withPressSounds", (handler) => {
       const wrapper = { wraps: handler };
       wrapped.push(wrapper);
+
+      return wrapper;
+    });
+    implement("withWindowFocus", (handler) => {
+      const wrapper = { focusWraps: handler };
+      focusWrapped.push(wrapper);
 
       return wrapper;
     });
@@ -324,29 +329,29 @@ describe("startPlugin (#1349)", () => {
     expect(callLog).toEqual(["playPressSound"]);
 
     // Every handler, the shared list's and the host's extras alike, is
-    // registered as the wrapper around the handler its factory created.
+    // registered as the press-sound wrapper around the window-focus wrapper
+    // around the handler its factory created (#1654): the focus inside, so it
+    // still comes before the down sound.
     expect(registered.map((entry) => entry.uuid)).toEqual(["shared.a", "shared.b", "sd.switch-profile"]);
     expect(wrapped).toHaveLength(registered.length);
-    expect(registered.map((entry) => entry.handler)).toEqual(wrapped);
-    registered.forEach((entry, i) => expect(entry.handler).toBe(wrapped[i]));
-    expect(new Set(wrapped.map((wrapper) => wrapper.wraps)).size).toBe(registered.length);
+    expect(focusWrapped).toHaveLength(registered.length);
+    registered.forEach((entry, i) => {
+      expect(entry.handler).toBe(wrapped[i]);
+      expect(wrapped[i].wraps).toBe(focusWrapped[i]);
+    });
+    // Each wraps a handler of its own, the one its factory created.
+    expect(new Set(focusWrapped.map((wrapper) => wrapper.focusWraps)).size).toBe(registered.length);
   });
 
-  it("focuses iRacing ahead of every key press, dial press and dial rotation", () => {
-    const host = createHost();
+  it("registers no focus listener on the adapter: the per-action wrapper focuses instead (#1654)", () => {
+    const host = createHost(createFakeExtension(["sd.switch-profile"]));
 
     startPlugin(host);
-    callLog.length = 0;
 
-    for (const listener of [
-      ...host.adapter.keyDownListeners,
-      ...host.adapter.dialDownListeners,
-      ...host.adapter.dialRotateListeners,
-    ]) {
-      listener();
-    }
-
-    expect(callLog).toEqual(["focusIRacingIfEnabled", "focusIRacingIfEnabled", "focusIRacingIfEnabled"]);
+    expect(callLog.filter((name) => /^adapter\.on(KeyDown|DialDown|DialRotate)$/.test(name))).toEqual([]);
+    expect(host.adapter.keyDownListeners).toEqual([]);
+    expect(host.adapter.dialDownListeners).toEqual([]);
+    expect(host.adapter.dialRotateListeners).toEqual([]);
   });
 
   it("hands the window focus, mouse pointer and elevation check the native input layer", () => {
