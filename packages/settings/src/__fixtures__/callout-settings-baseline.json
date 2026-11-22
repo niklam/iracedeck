@@ -1128,5 +1128,45 @@
     "\"false\"": false,
     "\"x\"": false,
     "numberRejected": true
+  },
+  "calloutEnabledFuelCountdownRace": {
+    "owner": "fuel-countdown-sessions/race",
+    "default": true,
+    "true": true,
+    "\"true\"": true,
+    "false": false,
+    "\"false\"": false,
+    "\"x\"": false,
+    "numberRejected": true
+  },
+  "calloutEnabledFuelCountdownPractice": {
+    "owner": "fuel-countdown-sessions/practice",
+    "default": true,
+    "true": true,
+    "\"true\"": true,
+    "false": false,
+    "\"false\"": false,
+    "\"x\"": false,
+    "numberRejected": true
+  },
+  "calloutEnabledFuelCountdownQualifying": {
+    "owner": "fuel-countdown-sessions/qualifying",
+    "default": true,
+    "true": true,
+    "\"true\"": true,
+    "false": false,
+    "\"false\"": false,
+    "\"x\"": false,
+    "numberRejected": true
+  },
+  "calloutEnabledFuelCountdownTest": {
+    "owner": "fuel-countdown-sessions/test",
+    "default": true,
+    "true": true,
+    "\"true\"": true,
+    "false": false,
+    "\"false\"": false,
+    "\"x\"": false,
+    "numberRejected": true
   }
 }

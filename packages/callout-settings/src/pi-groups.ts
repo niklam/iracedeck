@@ -6,6 +6,7 @@ import { CORNER_NAMES_TOGGLE_CALLOUTS } from "./families/corner-names-toggle.js"
 import { DAMAGE_CALLOUTS } from "./families/damage.js";
 import { FASTEST_LAP_CALLOUTS } from "./families/fastest-lap.js";
 import { FLAG_CALLOUTS } from "./families/flag.js";
+import { FUEL_COUNTDOWN_SESSION_CALLOUTS } from "./families/fuel-countdown-sessions.js";
 import { FUEL_CALLOUTS } from "./families/fuel.js";
 import { GAP_CALLOUTS } from "./families/gaps.js";
 import { INCIDENT_CALLOUTS } from "./families/incident.js";
@@ -271,10 +272,16 @@ export const CALLOUT_PI_SECTIONS = [
     title: "Car & conditions",
     groups: [
       {
+        id: "fuel-countdown-sessions",
+        title: "Speak in",
+        description: "The fuel countdown speaks only in the session types you tick here.",
+        families: [FUEL_COUNTDOWN_SESSION_CALLOUTS],
+      },
+      {
         id: "fuel",
         title: "Fuel",
         description:
-          "In a race, the engineer tells you mid-lap how many full laps your fuel will last, once at each count you switch on, and when to box for fuel.",
+          "In the sessions you tick under Speak in, the engineer tells you mid-lap how many full laps your fuel will last, once at each count you switch on, and when to box for fuel.",
         families: [FUEL_CALLOUTS],
       },
       {

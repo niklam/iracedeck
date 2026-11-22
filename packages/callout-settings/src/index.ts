@@ -10,6 +10,7 @@ export { DAMAGE_CALLOUTS } from "./families/damage.js";
 export { FASTEST_LAP_CALLOUTS } from "./families/fastest-lap.js";
 export { FLAG_CALLOUTS } from "./families/flag.js";
 export { FUEL_CALLOUTS } from "./families/fuel.js";
+export { FUEL_COUNTDOWN_SESSION_CALLOUTS } from "./families/fuel-countdown-sessions.js";
 export { GAP_CALLOUTS } from "./families/gaps.js";
 export { INCIDENT_CALLOUTS } from "./families/incident.js";
 export { LAP_TIME_CALLOUTS } from "./families/lap-time.js";

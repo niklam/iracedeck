@@ -15,3 +15,22 @@ describe("callout settings in GlobalSettingsSchema (#1350)", () => {
     expect(parsed.calloutEnabledFlagOneLapToGreen).toBe(false);
   });
 });
+
+describe("the fuel countdown session-kind opt-ins (#1702)", () => {
+  const KEYS = [
+    "calloutEnabledFuelCountdownRace",
+    "calloutEnabledFuelCountdownPractice",
+    "calloutEnabledFuelCountdownQualifying",
+    "calloutEnabledFuelCountdownTest",
+  ] as const;
+
+  it.each(KEYS)("%s defaults to true and keeps a stored false", (key) => {
+    const empty = GlobalSettingsSchema.parse({}) as Record<string, unknown>;
+    const off = GlobalSettingsSchema.parse({ [key]: false }) as Record<string, unknown>;
+    const offString = GlobalSettingsSchema.parse({ [key]: "false" }) as Record<string, unknown>;
+
+    expect(empty[key]).toBe(true);
+    expect(off[key]).toBe(false);
+    expect(offString[key]).toBe(false);
+  });
+});
