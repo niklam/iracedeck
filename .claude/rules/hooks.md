@@ -37,7 +37,7 @@ A **deny** refuses the call and tells the model why. An **ask** forces the permi
 | a link, unlink or relink, `switch-test-env`, a restart a watch or loop repeats; `dev:voices` in a linked tree; a script by what it runs | ask | nothing relinks a deck host without Niklas's go (#1520); a restart, stop or start waits for his go in chat, not a prompt (#1737) |
 | `gh issue create --milestone/--assignee` | deny | both are set when implementation starts |
 | `updateProjectV2Field` | deny | rewriting the Status options wipes every card's lane |
-| `gh project item-edit`, or any raw write to a Projects v2 item's field or position | deny, naming the `lib.mjs` helpers | lanes move only through the helpers (`roadmap-board.md`, #1574) |
+| `gh project item-edit`, or a raw write to a Projects v2 item's field or position it can read (the gaps: `hook-internals.md`) | deny, naming the `lib.mjs` helpers | lanes move only through the helpers (`roadmap-board.md`, #1574) |
 | `--fix` on a code-review invocation | deny | report only |
 | `pnpm build --force`, a piped `pnpm build/test/…` without `pipefail`, `pnpm exec vitest`, `pnpm --filter <pkg> <script>` the package lacks, `--body @-`, a short sha on `gh run list --commit`, `jq`, a heredoc carrying a doubled-backslash Windows path, `IRACEDECK_MOCK=0`, `git show <ref/with/slash>:<.dot-path>` without `MSYS_NO_PATHCONV`, `git diff master..X` | deny with the correction | the command-shape traps recorded in memory |
 
