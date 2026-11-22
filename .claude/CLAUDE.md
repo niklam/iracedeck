@@ -86,7 +86,7 @@ You can import or reference specific rule files from other markdown using `@.cla
 
 **Always loaded** (no `paths` frontmatter):
 
-- `build-and-commit.md` — worktree workflow, pre-commit checks, build commands, dependency build-script decisions and pinned pnpm versions, conventional commits, issue labels and the Roadmap board's lanes, merging, post-merge cleanup, releasing and the voice-pack publishing rules.
+- `build-and-commit.md` — worktree workflow, pre-commit checks, build commands, the pnpm pin, conventional commits, issue labels and the Roadmap board's lanes, merging (owner of the `--admin` exception), post-merge cleanup, releasing.
 - `changelog.md` — when and how to add a changelog fragment in `changelog.d/`: the format, weight and order, one change per fragment, and how a fragment is checked.
 - `code-review.md` — the effort-level table, targeting the worktree, report-only, and how reviews are staged inside an issue.
 - `code-style.md` — formatting, linting, types, Zod, exact versions, tsconfig inheritance, fenced-code languages.
@@ -109,10 +109,12 @@ You can import or reference specific rule files from other markdown using `@.cla
 - `icons.md` — icon types, SVG structure, colour slots and locks, previews, distinctiveness.
 - `key-icon-types.md` — Default / Black Box / Inverted key icon layouts and labels.
 - `keyboard-shortcuts.md` — SDK-first, binding architecture, atomic sequences, window focus modes, cross-package sync.
+- `lint-and-format-internals.md` — what ESLint, Prettier and the pre-commit step reach per extension, the `build/` ignores, the control-byte guards.
 - `logging.md` — log levels, info vs debug, `createScope()`, the `debugLogging` toggle, file logging and retention.
 - `node-version.md` — the `.nvmrc` pin and the Node 24.15.0 worker crash (exit code 3221226505) it fixes.
 - `pi-templates.md` — PI EJS templates: layout, partials, shared CSS, Rollup config, key-binding JSON.
 - `platform-feature-flags.md` — build-time flags per plugin, `feature-flags.local.json`, and the development voice root (the `IRACEDECK_DEV_VOICES` opt-in, the `dev.local.json` override, the `stage:dev-voices` build task).
+- `pnpm-and-dependencies.md` — the pnpm pin and its settings, `allowBuilds` decisions, the release-age policy.
 - `plugin-structure.md` — plugin naming, Rollup config and log policy, native externals and the runtime `bin/package.json`, licenses, the shell `plugin.ts` and the startup phases.
 - `profiles-and-devices.md` — Stream Deck profiles and devices (Elgato-only), and the automatic profile switch by session kind.
 - `race-engineer-callouts.md` — adding or modifying a Race Engineer callout end to end.
@@ -121,8 +123,10 @@ You can import or reference specific rule files from other markdown using `@.cla
 - `roadmap-board.md` — how Roadmap cards move: the four hook moves, the helpers and what they refuse, `Planned` / `Next` / `Done`.
 - `sdpi-components.md` — `sdpi-components` reference.
 - `settings-window.md` — the dedicated settings window: server, guard, bridges, page, and its rules.
+- `spec-sections.md` — the required spec sections' accepted headings, as the commit check reads them.
 - `stream-deck-actions.md` — action requirements, `ird-*` components, conditional visibility, dial support, per-mode comms.
 - `svg-platform-compatibility.md` — the resvg SVG baseline and the `pngRasterization` caveat.
 - `turbo-cache.md` — what turbo hashes (task inputs, `scripts/turbo-inputs.test.mjs`) and how CI keeps its cache.
+- `voice-pack-releases.md` — publishing voice-pack archives, between-release publishes, the live-catalog deploy check.
 - `website-action-docs.md` — website action page format (canonical example: `tire-service.md`).
 - `website-screenshots.md` — settings-window screenshots, captured by the stable release only.
