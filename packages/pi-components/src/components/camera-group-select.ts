@@ -102,12 +102,24 @@ export class CameraGroupSelect extends HTMLElement {
    */
   private numberKnown = false;
   /**
+   * Whether a push or the held read has reported the key's own number — a
+   * local write does not, since the number it replaced is still unknown.
+   */
+  private numberHeard = false;
+  /**
    * Whether {@link numberBeforeOther} was taken before the key's number was
-   * known (#1653 review): Other… chosen before the held read resolved. The read
+   * heard (#1653 review): Other… chosen before the held read resolved. The read
    * then supplies the baseline a custom name restores, even when typing has
    * already written a number and the read may no longer set the key's own.
    */
   private baselinePending = false;
+  /**
+   * A custom name ended Other… after a typed prefix wrote a number, while the
+   * number to put back was not yet known (#1653 review): the held read puts it
+   * back when it resolves — the default only when it reports none. A standard
+   * choice or a newer push cancels it.
+   */
+  private restorePending = false;
   private saveName: ((value: string) => void) | null = null;
   private saveNumber: ((value: string) => void) | null = null;
 
@@ -179,7 +191,7 @@ export class CameraGroupSelect extends HTMLElement {
         if (!this.otherMode) {
           this.numberBeforeOther = this.storedNumber;
           this.numberWrittenWhileTyping = false;
-          this.baselinePending = !this.numberKnown;
+          this.baselinePending = !this.numberHeard;
         }
 
         this.otherMode = true;
@@ -192,7 +204,9 @@ export class CameraGroupSelect extends HTMLElement {
 
       this.otherMode = false;
       this.showOther(false);
-      this.commit(this.select.value);
+
+      // A listed standard group writes its own number: nothing to put back.
+      if (this.commit(this.select.value)) this.restorePending = false;
 
       // A listed custom group ends Other… like a typed custom name: a number a
       // standard prefix typed on the way wrote is put back (#1653 review). A
@@ -211,7 +225,10 @@ export class CameraGroupSelect extends HTMLElement {
 
       if (name === null) return;
 
-      if (this.commit(name)) this.numberWrittenWhileTyping = true;
+      if (this.commit(name)) {
+        this.numberWrittenWhileTyping = true;
+        this.restorePending = false;
+      }
 
       this.restoreNumberForCustomName(name);
       this.dispatchEvent(new Event("change", { bubbles: true }));
@@ -261,10 +278,20 @@ export class CameraGroupSelect extends HTMLElement {
 
     this.numberWrittenWhileTyping = false;
 
+    // The number to put back is not known yet: the held read puts it back.
+    if (this.baselinePending) {
+      this.restorePending = true;
+
+      return;
+    }
+
+    this.writeNumberBack(this.numberBeforeOther);
+  }
+
+  /** Put `baseline` back as the key's number — the default for none. */
+  private writeNumberBack(baseline: unknown): void {
     const before =
-      this.numberBeforeOther === undefined || this.numberBeforeOther === null || this.numberBeforeOther === ""
-        ? String(this.fallbackNumber())
-        : String(this.numberBeforeOther);
+      baseline === undefined || baseline === null || baseline === "" ? String(this.fallbackNumber()) : String(baseline);
 
     if (String(this.storedNumber) === before) return;
 
@@ -298,7 +325,10 @@ export class CameraGroupSelect extends HTMLElement {
 
     const onNumber = skipUnchanged((value: unknown) => {
       this.numberKnown = true;
+      this.numberHeard = true;
       this.storedNumber = value;
+      // The key's number now: a restore still owed would undo it.
+      this.restorePending = false;
 
       // A push while Other… is open is the key's number now: the one a custom
       // name typed next leaves in place, not a typed prefix's to undo.
@@ -324,15 +354,28 @@ export class CameraGroupSelect extends HTMLElement {
       if (!nameKnown) onName(value);
     });
     void readNumber().then((value) => {
-      if (!this.numberKnown) {
-        onNumber(value);
-      } else if (this.otherMode && this.baselinePending) {
-        // Typing wrote a number before the key's own was known: that write
-        // stays, and the key's number becomes the one a custom name restores.
-        this.numberBeforeOther = value;
-      }
+      const baselinePending = this.baselinePending;
+      const restorePending = this.restorePending;
 
       this.baselinePending = false;
+      this.restorePending = false;
+
+      if (!this.numberKnown) {
+        onNumber(value);
+
+        return;
+      }
+
+      this.numberHeard = true;
+
+      if (!baselinePending) return;
+
+      // Typing wrote a number before the key's own was known: that write
+      // stays, and the key's number becomes the one a custom name restores —
+      // at once, when a custom name already ended Other… meanwhile.
+      this.numberBeforeOther = value;
+
+      if (restorePending) this.writeNumberBack(value);
     });
 
     const onCatalog = skipUnchanged((value: unknown) => {

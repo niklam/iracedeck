@@ -230,6 +230,65 @@ describe("ird-camera-group-select", () => {
 
         expect(saveNumber().mock.calls).toEqual([["12"], ["17"]]);
       });
+
+      describe("a custom name ending Other… before the read resolves", () => {
+        it("puts the key's number back once it is read, after a typed custom name", async () => {
+          type("Chase"); // writes 12
+          type("Chase Cam"); // the number to put back is not known yet
+          expect(saveNumber().mock.calls).toEqual([["12"]]);
+
+          release(17);
+          await settle();
+
+          expect(saveNumber().mock.calls).toEqual([["12"], ["17"]]);
+        });
+
+        it("puts the key's number back once it is read, after a listed custom group", async () => {
+          pushCatalog(CATALOG);
+          type("Chase");
+          chooseName("DynamicTV");
+          expect(saveNumber().mock.calls).toEqual([["12"]]);
+
+          release(17);
+          await settle();
+
+          expect(saveName()).toHaveBeenLastCalledWith("DynamicTV");
+          expect(saveNumber().mock.calls).toEqual([["12"], ["17"]]);
+        });
+
+        it("puts the default back only when the read reports no number", async () => {
+          type("Chase");
+          type("Chase Cam");
+
+          release(undefined);
+          await settle();
+
+          expect(saveNumber().mock.calls).toEqual([["12"], ["9"]]);
+        });
+
+        it("puts nothing back after a standard choice", async () => {
+          type("Chase");
+          type("Chase Cam");
+          type("Nose");
+          const calls = saveNumber().mock.calls.length;
+
+          release(17);
+          await settle();
+
+          expect(saveNumber().mock.calls).toHaveLength(calls);
+        });
+
+        it("puts nothing back after a newer push", async () => {
+          type("Chase");
+          type("Chase Cam");
+          pushNumber(5);
+
+          release(17);
+          await settle();
+
+          expect(saveNumber().mock.calls).toEqual([["12"]]);
+        });
+      });
     });
   });
 
