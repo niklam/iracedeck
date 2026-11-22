@@ -14,6 +14,12 @@
  * caution lap never enters the queue, refused again in the speak-time gate —
  * BEFORE the shared cooldown claim — for an update queued under green, and
  * refused for the `wasCaution` lap that completes after the green.
+ *
+ * And pit road (issue #1722): refused in `where:` and, first, in the
+ * speak-time gate, so an update queued on track and still waiting when the
+ * car reaches pit road is dropped rather than held. The telemetry reaches
+ * the contract through `registerPitCrew`'s `getLatestTelemetry`, so these
+ * tests also prove the wiring.
  */
 import manifestJson from "@iracedeck/audio-assets/manifest.json" with { type: "json" };
 import defaultScript from "@iracedeck/audio-assets/voice/default/callouts.json" with { type: "json" };
@@ -29,6 +35,7 @@ import type {
   SimEventName,
   SimEventOf,
 } from "@iracedeck/event-bus";
+import { type TelemetryData, TrkLoc } from "@iracedeck/iracing-sdk";
 import { classifySession } from "@iracedeck/sim-events-iracing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -160,6 +167,11 @@ let currentLive: Live | null;
 let raceFinished: boolean;
 let raceStatusEnabled: boolean;
 let underCaution: boolean;
+/** The player's live tick the pit-road check reads (issue #1722); on track unless a test moves it. */
+let telemetry: TelemetryData | null;
+
+/** A tick of the player's car, out on track and driving. */
+const ON_TRACK = { IsOnTrack: true, OnPitRoad: false, PlayerTrackSurface: TrkLoc.OnTrack } as TelemetryData;
 
 function voicePaths(): string[] {
   return audio._played.filter((p) => p.channel === AudioChannel.Voice).map((p) => p.path);
@@ -198,6 +210,7 @@ beforeEach(() => {
   raceFinished = false;
   raceStatusEnabled = true;
   underCaution = false;
+  telemetry = ON_TRACK;
   _resetPositionReadoutCooldown();
   bus = createMockBus();
   audio = createFakeAudio();
@@ -210,6 +223,7 @@ beforeEach(() => {
     getRaceFinishedFired: () => raceFinished,
     getLivePosition: () => currentLive,
     getUnderFullCourseCaution: () => underCaution,
+    getLatestTelemetry: () => telemetry,
   });
   // After the registration, as the plugins do: the update's body is looked
   // up in the active voice's compiled script at fire time (issue #1065).
@@ -582,9 +596,164 @@ describe("race-status under a full-course caution (issue #1171)", () => {
 
       expect(c.description).toContain("caution");
       expect(c.speakGate?.description).toBe(
-        "No full-course caution is out and no other position readout has spoken in the last twenty seconds when this one comes to speak; speaking it starts that window.",
+        "The driver is in the car and off pit road, no full-course caution is out and no other position readout has spoken in the last twenty seconds; speaking this one starts that window.",
       );
     });
+  });
+});
+
+describe("race-status on pit road and out of the car (issue #1722)", () => {
+  const STILL_LEADING = `voice/${VOICE}/race-status/still-leading-01.mp3`;
+  const BLOCKER = "test/blocker.mp3";
+
+  /** Each state in which no position readout starts, named for the test titles. */
+  const PIT_ROAD_STATES: ReadonlyArray<readonly [string, TelemetryData]> = [
+    ["OnPitRoad", { ...ON_TRACK, OnPitRoad: true }],
+    ["the pit-stall surface", { ...ON_TRACK, PlayerTrackSurface: TrkLoc.InPitStall }],
+    ["the pit-lane surface (AproachingPits)", { ...ON_TRACK, PlayerTrackSurface: TrkLoc.AproachingPits }],
+    ["out of the car (IsOnTrack: false)", { ...ON_TRACK, IsOnTrack: false }],
+    [
+      "the tow or reset tick (NotInWorld, IsOnTrack still true)",
+      { ...ON_TRACK, PlayerTrackSurface: TrkLoc.NotInWorld },
+    ],
+  ];
+
+  /** A NORMAL line that holds the Voice bus, so a status update has to wait in the queue. */
+  function holdBus(): void {
+    const engine = getScenarioEngine();
+
+    engine.defineScenario({
+      id: "test.blocker",
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      weight: WEIGHT.NORMAL,
+      frame: NO_FRAME,
+      sequence: [BLOCKER],
+    });
+    engine.fire("test.blocker");
+  }
+
+  function lapEvent(data: LapSnap): SimEventOf<"lap.completed"> {
+    return { event: "lap.completed", timestamp: 0, telemetry: {}, data } as SimEventOf<"lap.completed">;
+  }
+
+  /** The fire context the engine hands a speak-time gate. */
+  function gateCtx(data: LapSnap): ScenarioContext {
+    const event = lapEvent(data);
+
+    return { event, telemetry: event.telemetry, data: event.data, now: Date.now(), vars: {} };
+  }
+
+  const cadenceLap = { sessionType: "race", lapsSincePositionChange: 3 } as LapSnap;
+
+  function build() {
+    return buildRaceStatusContract(
+      () => false,
+      () => currentLive,
+      () => underCaution,
+      () => telemetry,
+    );
+  }
+
+  it("speaks on a cadence lap on track — the positive control", () => {
+    fireStatus();
+
+    expect(voicePaths()).toEqual([STILL_LEADING]);
+  });
+
+  it.each(PIT_ROAD_STATES)("is silent on a cadence lap completed on %s and claims nothing", (_name, state) => {
+    telemetry = state;
+    fireStatus();
+
+    expect(voicePaths()).toEqual([]);
+    expect(canAnnouncePosition()).toBe(true);
+  });
+
+  it("a refusal does not burn the window — the next cadence lap on track, inside twenty seconds, speaks", () => {
+    telemetry = { ...ON_TRACK, OnPitRoad: true };
+    fireStatus();
+    expect(voicePaths()).toEqual([]);
+
+    telemetry = ON_TRACK;
+    fireStatus();
+
+    expect(voicePaths()).toEqual([STILL_LEADING]);
+  });
+
+  it("an update queued on track and still waiting when the car reaches pit road is dropped, and never plays after the stop", () => {
+    holdBus();
+    publishStatus();
+
+    telemetry = { ...ON_TRACK, OnPitRoad: true, PlayerTrackSurface: TrkLoc.AproachingPits };
+    flush(audio);
+
+    expect(voicePaths()).toEqual([BLOCKER]);
+    expect(canAnnouncePosition()).toBe(true);
+
+    // Back on track after the stop: nothing replays — dropped, not held.
+    telemetry = ON_TRACK;
+    flush(audio);
+
+    expect(voicePaths()).toEqual([BLOCKER]);
+
+    // The next cadence hit on track speaks the position as it then is.
+    fireStatus();
+
+    expect(voicePaths()).toEqual([BLOCKER, STILL_LEADING]);
+  });
+
+  it("where: refuses on pit road, and takes the lap again on track", () => {
+    const where = build().when!.where! as (ev: SimEventOf<"lap.completed">) => boolean;
+
+    for (const [, state] of PIT_ROAD_STATES) {
+      telemetry = state;
+      expect(where(lapEvent(cadenceLap))).toBe(false);
+    }
+
+    telemetry = ON_TRACK;
+    expect(where(lapEvent(cadenceLap))).toBe(true);
+  });
+
+  it("the gate asks pit road before the caution, and both before the claim", () => {
+    const { admit } = build().speakGate!;
+
+    underCaution = true;
+    telemetry = { ...ON_TRACK, PlayerTrackSurface: TrkLoc.InPitStall };
+    expect(admit(gateCtx(cadenceLap))).toBe(false);
+    expect(canAnnouncePosition()).toBe(true);
+
+    underCaution = false;
+    expect(admit(gateCtx(cadenceLap))).toBe(false);
+    expect(canAnnouncePosition()).toBe(true);
+
+    telemetry = ON_TRACK;
+    expect(admit(gateCtx(cadenceLap))).toBe(true);
+    expect(canAnnouncePosition()).toBe(false);
+  });
+
+  it("is silent on an in lap even when it is published after the car merged — the live tick on track", () => {
+    fireStatus({ isInLap: true });
+
+    expect(voicePaths()).toEqual([]);
+    expect(canAnnouncePosition()).toBe(true);
+
+    const where = build().when!.where! as (ev: SimEventOf<"lap.completed">) => boolean;
+
+    expect(where(lapEvent({ ...cadenceLap, isInLap: true }))).toBe(false);
+    expect(where(lapEvent(cadenceLap))).toBe(true);
+  });
+
+  it("speaks on an out lap that ends on track — the first cadence hit after the stop", () => {
+    fireStatus({ isOutLap: true });
+
+    expect(voicePaths()).toEqual([STILL_LEADING]);
+  });
+
+  it("says the pit-road rule in both published sentences", () => {
+    const c = build();
+
+    expect(c.description).toContain("pit road");
+    expect(c.speakGate?.description).toMatch(/^The driver is in the car and off pit road, /);
   });
 });
 

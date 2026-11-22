@@ -416,6 +416,50 @@ export function atRacingSpeed(shortcut: BusEventShortcut): BusEventShortcut {
   };
 }
 
+/**
+ * The driver in the car on the racing surface (#1722): what every position
+ * readout asks, in `where:` and again at speak time, before it says the
+ * position — no position call starts on pit road or out of the car. The mock
+ * boots out of the car (`IsOnTrack: false`), so on its boot telemetry a
+ * position or race-status button would be silent for the wrong reason. A
+ * step with `tick: true` for the reason {@link AT_RACING_SPEED} gives: the
+ * check reads the translator's latest tick, so the tick must land before the
+ * publish whatever the tick rate or pause state. `OnPitRoad` is left alone,
+ * so a tester who parked the car on pit road hears the real suppression, and
+ * so is `Speed`, which no position readout reads.
+ *
+ * A separate step from {@link AT_RACING_SPEED}, not a reuse of it: the overtake
+ * gate's tests derive their set from that step, and these buttons do not
+ * read that gate.
+ *
+ * @internal Exported for testing
+ */
+export const IN_CAR_ON_TRACK: TelemetryStep = {
+  patch: { IsOnTrack: true, PlayerTrackSurface: TrkLoc.OnTrack },
+  tick: true,
+};
+
+/**
+ * A shortcut whose publish reaches a position readout (the position change or
+ * the race status), put in the car on track before it publishes (see
+ * {@link IN_CAR_ON_TRACK}). The step goes ahead of any sequence the shortcut
+ * already carries. Unlike {@link atRacingSpeed} it declares no `sdk-connected`
+ * precondition: a disconnected translator holds no tick, and with no tick the
+ * check admits, so the button is heard disconnected too — refusing it there
+ * would refuse a button that works.
+ *
+ * @internal Exported for testing
+ */
+export function inCarOnTrack(shortcut: BusEventShortcut): BusEventShortcut {
+  const note = "Puts the car on track first: no position call is made on pit road or out of the car.";
+
+  return {
+    ...shortcut,
+    description: shortcut.description === undefined ? note : `${shortcut.description} ${note}`,
+    telemetrySequence: [IN_CAR_ON_TRACK, ...(shortcut.telemetrySequence ?? [])],
+  };
+}
+
 function pitStatus(
   id: string,
   label: string,
@@ -4017,7 +4061,7 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
   // the time first; these set `isBest: false` so ONLY the position scenario
   // fires (clearer for harness QA). Set `isBest: true` in one of these to
   // audit cross-family ordering.
-  {
+  inCarOnTrack({
     id: "position-improved",
     category: "Position",
     label: "Improved 5 → 3",
@@ -4035,8 +4079,8 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
       previousClassPosition: 5,
       isMultiClass: false,
     },
-  },
-  {
+  }),
+  inCarOnTrack({
     id: "position-worsened",
     category: "Position",
     label: "Worsened 3 → 5",
@@ -4054,8 +4098,8 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
       previousClassPosition: 3,
       isMultiClass: false,
     },
-  },
-  {
+  }),
+  inCarOnTrack({
     id: "position-first-fix",
     category: "Position",
     label: "First Valid Lap P1",
@@ -4072,8 +4116,8 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
       classPosition: 1,
       isMultiClass: false,
     },
-  },
-  {
+  }),
+  inCarOnTrack({
     id: "position-pole-qualifying",
     category: "Position",
     label: "Qualifying P1 (pole)",
@@ -4092,8 +4136,8 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
       previousClassPosition: 2,
       isMultiClass: false,
     },
-  },
-  {
+  }),
+  inCarOnTrack({
     id: "position-holding-pole",
     category: "Position",
     label: "Holding P1 (qualifying, slow lap)",
@@ -4112,8 +4156,8 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
       previousClassPosition: 1,
       isMultiClass: false,
     },
-  },
-  {
+  }),
+  inCarOnTrack({
     id: "position-unchanged-non-pb",
     category: "Position",
     label: "Unchanged P5 (non-PB lap)",
@@ -4132,7 +4176,7 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
       previousClassPosition: 5,
       isMultiClass: false,
     },
-  },
+  }),
   {
     id: "position-unchanged-pb",
     category: "Position",
@@ -4153,7 +4197,7 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
       isMultiClass: false,
     },
   },
-  {
+  inCarOnTrack({
     id: "position-multi-class",
     category: "Position",
     label: "Multi-class P12 (class P3 → P2)",
@@ -4172,8 +4216,8 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
       previousClassPosition: 3,
       isMultiClass: true,
     },
-  },
-  {
+  }),
+  inCarOnTrack({
     id: "position-out-of-scope",
     category: "Position",
     label: "P65 (out of scope)",
@@ -4192,8 +4236,8 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
       previousClassPosition: 70,
       isMultiClass: false,
     },
-  },
-  {
+  }),
+  inCarOnTrack({
     id: "position-race-improved",
     category: "Position",
     label: "Improved in Race",
@@ -4213,7 +4257,7 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
       isMultiClass: false,
       lapsSincePositionChange: 0,
     },
-  },
+  }),
   {
     id: "position-race-hold-silent",
     category: "Position",
@@ -4260,7 +4304,7 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
   // shortcut is the refused `lap.completed` iRacing's translator emits
   // (issue #1582): `lapIsValid: false` and no lap time, so the invalid branch
   // fires regardless of position delta.
-  {
+  inCarOnTrack({
     id: "position-invalid-first-lap",
     category: "Position",
     label: "Invalid first lap, no position",
@@ -4275,8 +4319,8 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
       isMultiClass: false,
       lapIsValid: false,
     },
-  },
-  {
+  }),
+  inCarOnTrack({
     id: "position-invalid-unchanged",
     category: "Position",
     label: "Invalid lap, unchanged P5",
@@ -4295,8 +4339,8 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
       isMultiClass: false,
       lapIsValid: false,
     },
-  },
-  {
+  }),
+  inCarOnTrack({
     id: "position-invalid-worsened",
     category: "Position",
     label: "Invalid lap, worsened 3 → 5",
@@ -4315,8 +4359,8 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
       isMultiClass: false,
       lapIsValid: false,
     },
-  },
-  {
+  }),
+  inCarOnTrack({
     id: "position-invalid-improved-on-paper",
     category: "Position",
     label: "Invalid lap, improved on paper 5 → 3",
@@ -4335,12 +4379,12 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
       isMultiClass: false,
       lapIsValid: false,
     },
-  },
+  }),
   // Race-status (issue #569). Fires when lapsSincePositionChange > 0 && % 3 === 0
   // in a race session. Each shortcut sets the cadence-hit value directly so the
   // scenario reads as if the diff had anchored or reset position several laps
   // back.
-  {
+  inCarOnTrack({
     id: "race-status-cadence-hit",
     category: "Race",
     label: "Status update (P5 on lap 7)",
@@ -4360,8 +4404,8 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
       isMultiClass: false,
       lapsSincePositionChange: 3,
     },
-  },
-  {
+  }),
+  inCarOnTrack({
     id: "race-status-leader",
     category: "Race",
     label: "Leader status (P1 on lap 6)",
@@ -4381,7 +4425,7 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
       isMultiClass: false,
       lapsSincePositionChange: 3,
     },
-  },
+  }),
   {
     id: "race-status-silent-not-cadence",
     category: "Race",
@@ -4402,7 +4446,7 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
       lapsSincePositionChange: 2,
     },
   },
-  {
+  inCarOnTrack({
     id: "race-status-silent-qualifying",
     category: "Race",
     label: "Qualifying (silent)",
@@ -4422,7 +4466,7 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
       isMultiClass: false,
       lapsSincePositionChange: 3,
     },
-  },
+  }),
   // Race-end (issue #569). Fires off race.finished directly — the bus event
   // carries the final positions; the plugin caches it and composes with the
   // PI driver-name pick before the scenario speaks.

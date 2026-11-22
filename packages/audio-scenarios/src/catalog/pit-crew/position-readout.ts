@@ -29,9 +29,33 @@
  *      fire could only be deferred, never dropped; #835 then made a null
  *      REQUIRED var abort the expansion, and the claim outlived the callout.
  *
+ *   3. **Silent on pit road** (spec 2026-11-18, issue #1722). On pit road the
+ *      race order is in flux — places lost to a stop are mostly won back after
+ *      it — and the driver is busy with the limiter, the box and the exit. So
+ *      no position call is heard between pit entry and the end of the exit
+ *      lane. No position readout STARTS while the player is on pit road or
+ *      out of the car ({@link playerOnPitRoadOrOutOfCar}). Every readout asks
+ *      it twice, the #1171 caution pattern: in its `where:`, so a fire on pit
+ *      road never enters the bus's queue, and first in its `speakGate`
+ *      ({@link buildPositionReadoutSpeakGate}), so a readout queued on track
+ *      and still waiting when the car reaches pit road is DROPPED there —
+ *      never held for the exit, where it would announce a position that is
+ *      still settling. And every readout is ENDED at pit entry
+ *      ({@link POSITION_READOUT_ENDS_ON}, `pitLane.entered`): one an
+ *      interrupt cut and stashed after its gate admitted it — whose replay
+ *      the gate is never asked again — is dropped, and one still being
+ *      spoken is cut with the frame's tail. Nothing catches up after the
+ *      stop: the next ordinary readout states the position as it then is. A
+ *      refusal is asked before the cooldown claim, so it never burns the
+ *      shared window.
+ *
+ *      One residual: the end fires on `OnPitRoad`'s edge, and the surface can
+ *      read the pit lane (`AproachingPits`) a little before it. A readout cut
+ *      and stashed on track whose replay lands in that gap still plays.
+ *
  * The two overtake readout contracts live here (the reaction lines stay in
  * overtake.ts); the race position-change and race-status contracts import the
- * cooldown + live helpers and use them in their race branch.
+ * cooldown, pit-road + live helpers and build their gates on the shared one.
  *
  * The code decides WHETHER and WHEN a readout fires; WHAT it says is the
  * active voice's `callouts.json` under the same ids
@@ -68,9 +92,11 @@
  */
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import type { SimEventOf } from "@iracedeck/event-bus";
+import { TrkLoc } from "@iracedeck/iracing-sdk";
+import type { TelemetryData } from "@iracedeck/sim-events-iracing";
 
 import { poolRef, WEIGHT } from "../../dsl.js";
-import type { ScenarioContext, ScenarioContract, SpeakGate } from "../../dsl.js";
+import type { EndsOn, ScenarioContext, ScenarioContract, SpeakGate } from "../../dsl.js";
 import type { IScenarioEngine } from "../../interpreter.js";
 import { overtakeContextAllows, type OvertakeGateResolver } from "./overtake-gate.js";
 
@@ -200,10 +226,24 @@ export function tryClaimPositionAnnouncement(now: number = Date.now()): boolean 
 /**
  * The sentence the pack reference publishes for the shared-cooldown gate.
  * One string for every readout that claims the window, so the four contracts
- * cannot drift into describing the same rule four ways.
+ * cannot drift into describing the same rule four ways. It carries no "when
+ * this one comes to speak", unlike its neighbours: the reference already
+ * renders every gate as re-checked at speak time, and the clause would push
+ * the position call's gate past the 200-character cap once the pit-road rule
+ * opens it (issue #1722).
  */
 export const POSITION_READOUT_SPEAK_GATE_DESCRIPTION =
-  "No other position readout has spoken in the last twenty seconds when this one comes to speak; speaking it starts that window.";
+  "No other position readout has spoken in the last twenty seconds; speaking this one starts that window.";
+
+/**
+ * The pit-road rule's clause (issue #1722), the opening of every position
+ * readout's gate sentence — a clause, not a sentence, because every gate
+ * goes on to the cooldown: "…, and no other position readout…" for the
+ * overtake readouts, "…, no full-course caution is out and …" for the race
+ * status, "…; in a race, …" for the position call. One string, so the four
+ * gates cannot describe the rule four ways.
+ */
+export const POSITION_READOUT_PIT_ROAD_CLAUSE = "The driver is in the car and off pit road";
 
 /**
  * "No other…" → "no other…": how a contract that qualifies the shared gate
@@ -216,6 +256,77 @@ export function lowerFirst(sentence: string): string {
 }
 
 /**
+ * The end every position readout carries (issue #1722): pit entry. A readout
+ * waiting for the bus — one an interrupt cut and stashed after its gate
+ * admitted it included, which is never asked again — is dropped, and one
+ * still being spoken is cut with the frame's tail, so no position call is
+ * heard on pit road. `pitLane.entered` fires on `OnPitRoad`'s off→on edge.
+ * One object, so the five contracts that say the position (the four here and
+ * the caution sequence's position call) cannot describe it five ways.
+ */
+export const POSITION_READOUT_ENDS_ON: EndsOn = {
+  event: "pitLane.entered",
+  description: "You enter pit road while the position call is waiting or still being spoken.",
+};
+
+/** The plugin's latest telemetry tick (`PitCrewDeps.getLatestTelemetry`); `null` with none. */
+export type LatestTelemetryResolver = () => TelemetryData | null;
+
+/**
+ * Whether the player is on pit road or out of the car — the state in which
+ * no position readout starts (spec 2026-11-18, issue #1722): the player is
+ * not in the car (`IsOnTrack: false` — the garage, the menus), the car is out
+ * of the world (`PlayerTrackSurface` `NotInWorld`), `OnPitRoad` reads true,
+ * or the surface reads the pit stall or the pit lane (`AproachingPits`,
+ * iRacing's spelling). The surface is asked beside `OnPitRoad`, so either
+ * read of the pit lane is enough on its own.
+ *
+ * `NotInWorld` is asked on its own because `IsOnTrack` does not cover a tow
+ * or a reset: both keep it true and pass a tick out of the world, with
+ * `OnPitRoad` false, before the car lands in its stall (the captures cited in
+ * `sim-events-iracing`'s `diff/limiter-toggle.ts`).
+ *
+ * Missing telemetry, or a missing field, never refuses: a read the sim did
+ * not give is no evidence the car is in the pits, and refusing on it would
+ * silence every readout wherever telemetry is not wired (the scenario
+ * harness, a test). PURE — no logging, no state — so the `where:` and the
+ * speak-time gate can both ask it.
+ */
+export function playerOnPitRoadOrOutOfCar(telemetry: TelemetryData | null): boolean {
+  if (telemetry === null || telemetry === undefined) return false;
+
+  if (telemetry.IsOnTrack === false) return true;
+
+  if (telemetry.OnPitRoad === true) return true;
+
+  const surface = telemetry.PlayerTrackSurface;
+
+  return surface === TrkLoc.NotInWorld || surface === TrkLoc.InPitStall || surface === TrkLoc.AproachingPits;
+}
+
+/**
+ * Whether a completed lap is an in lap — the car entered pit road during it
+ * (`isInLap`, the translator's pit-lap latch, which counts the crossing tick
+ * itself) — so the two readouts that fire on `lap.completed` stay silent for
+ * it (issue #1722). The live check above is not enough on its own:
+ * `lap.completed` is published up to a few seconds after the line, once the
+ * lap's time has settled, and a lap that crossed on pit road (a stall just
+ * before the line, a drive-through) can be published after the car has
+ * merged, where the latest tick reads on track. A fact about the completed
+ * lap, settled when the event was emitted, so it is a `where:` check only,
+ * like `wasCaution`; the every-lap time call already stays silent on an in
+ * lap for its own reason.
+ *
+ * Accepted consequence: on a track whose pit lane ends before the line, a lap
+ * with the whole stop inside it is an in lap too, and stays silent; the next
+ * lap or the next status states the position. An out lap (`isOutLap`) that
+ * ends on track still announces — the spec's first lap after the stop.
+ */
+export function lapEnteredPitRoad(lap: SimEventOf<"lap.completed">["data"]): boolean {
+  return lap.isInLap === true;
+}
+
+/**
  * The supersede group every position readout shares (issue #1185): the
  * lap-completed position call, the race status and the two overtake
  * readouts. They share one cooldown, so only one of them can be said in a
@@ -224,29 +335,76 @@ export function lowerFirst(sentence: string): string {
  */
 export const POSITION_READOUT_SUPERSEDE_GROUP = "position";
 
-/**
- * The shared position cooldown as a speak-time gate (issue #1137): the claim
- * every position readout commits after its script expanded and before the ops
- * take the bus. Shared by the two overtake readouts and the race-status
- * readout, which reaches it through a gate of its own that asks the caution
- * first (issue #1171); `position.ts` carries its own, because its contract
- * also fires in qualifying, where the cooldown is not consulted at all.
- */
-export const positionReadoutSpeakGate: SpeakGate = {
-  description: POSITION_READOUT_SPEAK_GATE_DESCRIPTION,
-  admit: (ctx) => {
-    // Take this fire's intro decision whatever happens next — a refused fire
-    // must leave nothing behind for the next one to inherit — and commit it
-    // only once the window is ours (issue #1138).
-    const intro = takeIntroDecision(ctx);
-
-    if (!tryClaimPositionAnnouncement()) return false;
-
-    commitIntroDecision(intro);
-
-    return true;
-  },
+/** What a position readout's gate adds to the shared one — see {@link buildPositionReadoutSpeakGate}. */
+export type PositionReadoutSpeakGateOptions = {
+  /**
+   * The gate's published sentence. Defaults to the overtake readouts' — the
+   * pit-road clause, then the shared window — and a contract that asks more
+   * composes its own from the same two strings.
+   */
+  description?: string;
+  /**
+   * A further refusal, asked after the pit-road check and before the window
+   * is claimed — the full-course caution of the race status and the race
+   * position call (issue #1171). Default: refuses nothing.
+   */
+  refuses?: (ctx: ScenarioContext) => boolean;
+  /**
+   * Whether this fire claims the shared window. Default: every fire. The
+   * position call claims it in a race only — its qualifying readout never
+   * consulted the window.
+   */
+  claimsWindow?: (ctx: ScenarioContext) => boolean;
 };
+
+/**
+ * The one speak-time gate every position readout is built on — the two
+ * overtake readouts, the race status and the position call. In order:
+ *
+ *   1. **Take the fire's intro decision** (issue #1138), whatever happens
+ *      next: a refused fire must leave nothing behind for the next one to
+ *      inherit, and it is committed only once the fire is admitted.
+ *   2. **Refuse on pit road or out of the car** (issue #1722,
+ *      {@link playerOnPitRoadOrOutOfCar} on the live tick), so a readout
+ *      queued on track and still waiting when the car reaches pit road is
+ *      dropped, never held for the exit. In every session and for an
+ *      imperative fire too.
+ *   3. **The contract's own refusal**, if any — the caution (issue #1171).
+ *   4. **Claim the shared window** (issue #1137), where the contract claims
+ *      it at all.
+ *
+ * Every refusal comes before the claim, so a refused readout never burns the
+ * twenty seconds of every other position readout.
+ */
+export function buildPositionReadoutSpeakGate(
+  getLatestTelemetry: LatestTelemetryResolver,
+  options: PositionReadoutSpeakGateOptions = {},
+): SpeakGate {
+  const {
+    description = `${POSITION_READOUT_PIT_ROAD_CLAUSE}, and ${lowerFirst(POSITION_READOUT_SPEAK_GATE_DESCRIPTION)}`,
+    refuses = () => false,
+    claimsWindow = () => true,
+  } = options;
+
+  return {
+    description,
+    admit: (ctx) => {
+      // Taken first, dropped on any refusal: nothing was said, so nothing is
+      // committed — and nothing is left pending for the next fire.
+      const intro = takeIntroDecision(ctx);
+
+      if (playerOnPitRoadOrOutOfCar(getLatestTelemetry())) return false;
+
+      if (refuses(ctx)) return false;
+
+      if (claimsWindow(ctx) && !tryClaimPositionAnnouncement()) return false;
+
+      commitIntroDecision(intro);
+
+      return true;
+    },
+  };
+}
 
 /**
  * Whether an overtake gain/loss should speak the reaction catchphrase (issue
@@ -465,11 +623,19 @@ export function registerPositionReadoutVocabulary(
  * The reaction catchphrase is a separate contract and still plays.
  * Suppressed after the race ends and whenever {@link overtakeContextAllows}
  * fails (cars alongside, off-track, crawling, pit road, recent incident).
+ *
+ * `getLatestTelemetry` keeps it silent on pit road and out of the car (spec
+ * 2026-11-18, issue #1722) — in the `where:` and again, first, in the
+ * speak-time gate, so a readout queued on track and still waiting when the
+ * car reaches pit road is dropped rather than held (module header, point 3).
+ * Default `() => null`, which never refuses, for a caller that wires no
+ * telemetry; `registerPitCrew` passes `PitCrewDeps.getLatestTelemetry`.
  */
 export function buildOvertakeGainedPositionContract(
   getLivePosition: LivePositionResolver,
   getRaceFinishedFired: () => boolean = () => false,
   getGate: OvertakeGateResolver = () => null,
+  getLatestTelemetry: LatestTelemetryResolver = () => null,
 ): ScenarioContract {
   return {
     id: "pit-crew.overtake-gained-position",
@@ -497,6 +663,12 @@ export function buildOvertakeGainedPositionContract(
         // recent incident) — applies to both directions.
         if (!overtakeContextAllows(getGate())) return false;
 
+        // On pit road or out of the car, read live (issue #1722) — the
+        // overtake gate's own pit-road read is the swap's, this one the
+        // readout's, and the speak-time gate asks it again for a readout
+        // still queued when the car reaches pit road.
+        if (playerOnPitRoadOrOutOfCar(getLatestTelemetry())) return false;
+
         if (!liveCurrentlyAnnounceable(getLivePosition())) return false;
 
         // Pure cadence check only — the claim is the gate's (issue #1137), so
@@ -508,7 +680,8 @@ export function buildOvertakeGainedPositionContract(
         return canAnnouncePosition();
       },
     },
-    speakGate: positionReadoutSpeakGate,
+    speakGate: buildPositionReadoutSpeakGate(getLatestTelemetry),
+    endsOn: POSITION_READOUT_ENDS_ON,
     channel: AudioChannel.Voice,
     bus: AudioBus.Voice,
     base: "voice/{voice}",
@@ -519,11 +692,16 @@ export function buildOvertakeGainedPositionContract(
   };
 }
 
-/** Build the position readout that follows a LOST-overtake reaction (issue #574). */
+/**
+ * Build the position readout that follows a LOST-overtake reaction (issue
+ * #574). The same gates as the gained readout, pit road and the car (issue
+ * #1722) included.
+ */
 export function buildOvertakeLostPositionContract(
   getLivePosition: LivePositionResolver,
   getRaceFinishedFired: () => boolean = () => false,
   getGate: OvertakeGateResolver = () => null,
+  getLatestTelemetry: LatestTelemetryResolver = () => null,
 ): ScenarioContract {
   return {
     id: "pit-crew.overtake-lost-position",
@@ -538,6 +716,12 @@ export function buildOvertakeLostPositionContract(
 
         if (!overtakeContextAllows(getGate())) return false;
 
+        // On pit road or out of the car, read live (issue #1722) — the
+        // overtake gate's own pit-road read is the swap's, this one the
+        // readout's, and the speak-time gate asks it again for a readout
+        // still queued when the car reaches pit road.
+        if (playerOnPitRoadOrOutOfCar(getLatestTelemetry())) return false;
+
         if (!liveCurrentlyAnnounceable(getLivePosition())) return false;
 
         // Pure cadence check only — the claim is the gate's (issue #1137), so
@@ -547,7 +731,8 @@ export function buildOvertakeLostPositionContract(
         return canAnnouncePosition();
       },
     },
-    speakGate: positionReadoutSpeakGate,
+    speakGate: buildPositionReadoutSpeakGate(getLatestTelemetry),
+    endsOn: POSITION_READOUT_ENDS_ON,
     channel: AudioChannel.Voice,
     bus: AudioBus.Voice,
     base: "voice/{voice}",

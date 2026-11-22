@@ -88,6 +88,11 @@
  *     exist define the speakable range; never a partial readout.
  *   - Position change detected OR (qualifying only) position unchanged on a
  *     non-PB lap (the status-update path; see `positionChangeIsAnnounceable`).
+ *   - Not on pit road, and in the car (spec 2026-11-18, issue #1722), in
+ *     every session — and again, first, at speak time, so a readout queued
+ *     on track and still waiting when the car reaches pit road is dropped,
+ *     never held — and not an in lap, which may be published after the car
+ *     has merged (`lapEnteredPitRoad`). See `buildPositionContract`.
  *
  * Sentinel: when neither overall nor class position is populated (e.g.
  * `PlayerCarPosition === 0` on a session reset), the contract does NOT
@@ -107,16 +112,19 @@ import type { ScenarioContext, ScenarioContract } from "../../dsl.js";
 import type { IScenarioEngine } from "../../interpreter.js";
 import type { UnderCautionResolver } from "./caution.js";
 import {
+  buildPositionReadoutSpeakGate,
   canAnnouncePosition,
-  commitIntroDecision,
+  lapEnteredPitRoad,
+  type LatestTelemetryResolver,
   liveCurrentlyAnnounceable,
   type LivePositionResolver,
   lowerFirst,
+  playerOnPitRoadOrOutOfCar,
+  POSITION_READOUT_ENDS_ON,
+  POSITION_READOUT_PIT_ROAD_CLAUSE,
   POSITION_READOUT_SPEAK_GATE_DESCRIPTION,
   POSITION_READOUT_SUPERSEDE_GROUP,
   selectLivePosition,
-  takeIntroDecision,
-  tryClaimPositionAnnouncement,
 } from "./position-readout.js";
 
 /**
@@ -398,6 +406,15 @@ export function registerPositionVocabulary(
 }
 
 /**
+ * Whether a fire is a race readout, read from its own `lap.completed` payload
+ * — the same field the `where:` reads. An imperative `fire(id)` carries no
+ * event, so it is not one.
+ */
+function isRaceFire(ctx: ScenarioContext): boolean {
+  return (ctx.data as SimEventOf<"lap.completed">["data"] | null)?.sessionType === "race";
+}
+
+/**
  * Build the position-change contract. Takes an optional `getRaceFinishedFired`
  * so the `where:` short-circuits on the final lap of a race (issue #569) and
  * the live-position resolver the race path gates on (issue #574). Without the
@@ -432,20 +449,41 @@ export function registerPositionVocabulary(
  * `where:`-only check: it is a fact about the completed lap, settled when the
  * event was emitted. The residual `race-status.ts` states applies here too:
  * a readout already admitted and then cut by an interrupting call replays
- * whole without being asked again, whenever the caution came out.
+ * whole without being asked again, whenever the caution came out. Pit road
+ * has no such residual for the most part: the contract is ended at pit entry
+ * (`POSITION_READOUT_ENDS_ON`, issue #1722), which drops such a stash. What
+ * is left is a replay landing while the surface already reads the pit lane
+ * and `OnPitRoad`, whose edge the end fires on, has not yet turned true.
  *
  * Default `() => false` preserves legacy behavior for tests / the harness
  * that don't supply a closure.
+ *
+ * `getLatestTelemetry` keeps the readout silent on pit road and out of the
+ * car (spec 2026-11-18, issue #1722) — in qualifying too, and for an
+ * imperative fire. On pit road the order is in flux: places lost to a stop
+ * are mostly won back after it, and the driver is busy with the limiter, the
+ * box and the exit. It is asked in the `where:`, so a fire on pit road
+ * never enters the queue, and first in the speak-time gate, so a readout
+ * queued on track and still waiting when the car reaches pit road is dropped
+ * — never held for the exit, where it would read out a position still
+ * settling. The `where:` also refuses an in lap (`lapEnteredPitRoad`), since
+ * a lap that crossed the line on pit road can be published after the car has
+ * merged. Nothing catches up after the stop: the next lap completed on track
+ * with a change, the out lap included, states the position as it then is.
+ * Default
+ * `() => null`, which never refuses; `registerPitCrew` passes
+ * `PitCrewDeps.getLatestTelemetry`.
  */
 export function buildPositionContract(
   getRaceFinishedFired: () => boolean = () => false,
   getLivePosition: LivePositionResolver = () => null,
   getUnderFullCourseCaution: UnderCautionResolver = () => false,
+  getLatestTelemetry: LatestTelemetryResolver = () => null,
 ): ScenarioContract {
   return {
     id: "pit-crew.position-change",
     description:
-      "You finish a qualifying or race lap in a new position, a non-best qualifying lap, your first timed lap or a qualifying lap that didn't count — not under a caution, and once per 20 s in a race.",
+      "You finish a qualifying or race lap in a new position, a non-best qualifying lap, your first timed lap or an uncounted qualifying lap — off pit road, no in lap or caution, once per 20 s in a race.",
     when: {
       event: "lap.completed",
       where: (ev) => {
@@ -457,7 +495,17 @@ export function buildPositionContract(
         // the last caution lap.
         if (getUnderFullCourseCaution()) return false;
 
+        // On pit road or out of the car (issue #1722), in every session: the
+        // order is in flux there. Refused here so the fire never enters the
+        // queue; the gate asks again for a readout queued on track.
+        if (playerOnPitRoadOrOutOfCar(getLatestTelemetry())) return false;
+
         const data = ev.data as SimEventOf<"lap.completed">["data"];
+
+        // …and an in lap says nothing either, even one published after the
+        // car merged (issue #1722, `lapEnteredPitRoad`): a lap that ends in
+        // the pit lane, a refused qualifying lap included, is silent.
+        if (lapEnteredPitRoad(data)) return false;
 
         // …nor is the lap that ENDS one, completed seconds after the green
         // with the gate above already open (second review, R16): the order is
@@ -494,46 +542,39 @@ export function buildPositionContract(
         return canAnnouncePosition();
       },
     },
-    speakGate: {
-      // The shared sentence, qualified: this contract alone also fires in
+    // The shared position-readout gate (every readout's since issue #1722),
+    // in this contract's shape:
+    //
+    //   - Pit road and the car are asked FIRST, in every session and for an
+    //     imperative fire too (issue #1722): a readout queued on track and
+    //     still waiting when the car reaches pit road is dropped, not held.
+    //   - The caution is asked in the race branch only, and before the claim
+    //     (issue #1171): a readout queued under green that comes to speak
+    //     behind the pace car is refused without burning the window, so the
+    //     first readout after the green still speaks.
+    //   - The race branch alone claims the shared cooldown — the qualifying
+    //     path never consulted it, because the snapshot drives both the
+    //     decision and the readout there. Read from the fire's own event, the
+    //     same field (and the same type) the `where:` reads; an imperative
+    //     `fire(id)` carries no event and so claims nothing, as it never did.
+    //
+    // Whichever branch it takes, an admitted readout commits the intro
+    // decision its expansion stashed, and a refused one leaves nothing behind
+    // (issue #1138). The bundled script speaks through `position.intro`,
+    // which decides from the frozen lap payload and records nothing — but a
+    // pack may name `positionReadout.intro` here instead, and its decision
+    // must then be committed by whichever branch admits, the qualifying one
+    // that consults no window included. The shared gate takes it before
+    // anything can refuse.
+    speakGate: buildPositionReadoutSpeakGate(getLatestTelemetry, {
+      // The shared clauses, qualified: this contract alone also fires in
       // qualifying, where neither the caution nor the window is consulted.
-      description: `In a race, no full-course caution is out and ${lowerFirst(POSITION_READOUT_SPEAK_GATE_DESCRIPTION)}`,
-      // The race branch alone shares the position cooldown — the qualifying
-      // path never consulted it, because the snapshot drives both the decision
-      // and the readout there. Read from the fire's own event, the same field
-      // (and the same type) the `where:` reads; an imperative `fire(id)`
-      // carries no event and so claims nothing, exactly as it never did.
-      //
-      // The race branch also asks the caution, and asks it FIRST (issue
-      // #1171): a readout queued under green that comes to speak behind the
-      // pace car is refused before the window is claimed, so the first
-      // readout after the green still speaks. The qualifying branch and an
-      // imperative fire are untouched — neither asked anything, neither does.
-      //
-      // Whichever branch it takes, an admitted readout commits the intro
-      // decision its expansion stashed, and a refused one leaves nothing
-      // behind (issue #1138). The bundled script speaks through
-      // `position.intro`, which decides from the frozen lap payload and
-      // records nothing — but a pack may name `positionReadout.intro` here
-      // instead, and its decision must then be committed by whichever branch
-      // admits, the qualifying one that consults no window included. It is
-      // taken before anything can refuse, the caution included, so a refusal
-      // on either ground leaves no decision pending.
-      admit: (ctx) => {
-        const intro = takeIntroDecision(ctx);
-        const data = ctx.data as SimEventOf<"lap.completed">["data"] | null;
-
-        if (data?.sessionType === "race") {
-          if (getUnderFullCourseCaution()) return false;
-
-          if (!tryClaimPositionAnnouncement()) return false;
-        }
-
-        commitIntroDecision(intro);
-
-        return true;
-      },
-    },
+      description: `${POSITION_READOUT_PIT_ROAD_CLAUSE}; in a race, no full-course caution is out and ${lowerFirst(POSITION_READOUT_SPEAK_GATE_DESCRIPTION)}`,
+      refuses: (ctx) => isRaceFire(ctx) && getUnderFullCourseCaution(),
+      claimsWindow: isRaceFire,
+    }),
+    // Ended at pit entry (issue #1722): see `POSITION_READOUT_ENDS_ON`.
+    endsOn: POSITION_READOUT_ENDS_ON,
     channel: AudioChannel.Voice,
     bus: AudioBus.Voice,
     base: "voice/{voice}",
