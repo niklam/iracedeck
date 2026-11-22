@@ -384,6 +384,21 @@ describe("createCameraCatalogService over a temp dir (#1653)", () => {
     expect(service.getCatalog()).toEqual(reference.getCatalog());
   });
 
+  it("records a queued observation as it was when observed, not as its array later reads (#1653 review)", async () => {
+    const { store, finish } = deferredStore();
+    const service = fileService({ store });
+    const loading = service.start();
+    const groups = ["Nose"];
+
+    service.observe({ ...spa, groups });
+    groups.push("Drone");
+    finish(undefined);
+    await loading;
+
+    expect(service.getCatalog().tracks["13"].groups).toEqual(["Nose"]);
+    expect(Object.keys(service.getCatalog().groups)).toEqual(["Nose"]);
+  });
+
   it("replays queued observations in capture order, each with its own time", async () => {
     const times = ["2026-11-08T12:00:00.000Z", "2026-11-08T12:00:05.000Z", "2026-11-08T12:00:10.000Z"];
     const clock = (): (() => Date) => {

@@ -354,7 +354,9 @@ export function createCameraCatalogService(options: CameraCatalogServiceOptions)
           droppedFromQueue++;
         }
 
-        queued.push({ observation, at: now() });
+        // A copy, groups included: replay records what the caller supplied
+        // now, not whatever its array holds by the time the load finishes.
+        queued.push({ observation: { ...observation, groups: [...observation.groups] }, at: now() });
 
         return false;
       }
