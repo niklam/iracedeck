@@ -47,9 +47,9 @@ export interface CalloutPiGroup {
   /** The heading's title. */
   readonly title: string;
   /**
-   * One sentence for the driver: when the engineer speaks under this heading and what he tells you. One line, a
-   * full stop at the end, at most 160 characters, in plain words; never an internal name or a quoted voice line
-   * (`registry.test.ts` holds the mechanical rules, the #1700 spec the style).
+   * One sentence for the driver: when the engineer speaks under this heading and what the engineer tells you. One
+   * line, a full stop at the end, at most 160 characters, in plain words; never an internal name or a quoted voice
+   * line (`registry.test.ts` holds the mechanical rules, the #1700 spec the style).
    */
   readonly description: string;
   /** Rendered in this order; each family's entries in their own order. */
@@ -78,7 +78,7 @@ export const CALLOUT_PI_SECTIONS = [
       {
         id: "telemetry-connect",
         title: "Telemetry Connect",
-        description: "When iRacing connects, the engineer does a short radio check so you know he is listening.",
+        description: "When iRacing connects, the engineer does a short radio check so you know the radio is working.",
         families: [TELEMETRY_CONNECT_CALLOUTS],
       },
       {
@@ -247,7 +247,7 @@ export const CALLOUT_PI_SECTIONS = [
         id: "pit-service",
         title: "Pit Service",
         description:
-          "As you head into the pits, the engineer reads back the service you have set; after a stop he confirms it again and reports your tire wear.",
+          "As you head into the pits, the engineer reads back the service you have set, confirms it again after the stop, and reports your tire wear.",
         families: [PIT_READBACK_CALLOUTS, TIRE_WEAR_CALLOUTS, PIT_SERVICE_REQUEST_CALLOUTS, AUTO_FUEL_CALLOUTS],
       },
       {
@@ -312,7 +312,7 @@ export const CALLOUT_PI_SECTIONS = [
         id: "race-engineer-toggle",
         title: "Race Engineer Toggle",
         description:
-          "When you switch the Race Engineer off or on with a key, he confirms that he is going quiet or is back on the radio.",
+          "When you switch the Race Engineer off or on with a key, the engineer confirms that the radio is going quiet or is back on.",
         families: [RACE_ENGINEER_TOGGLE_CALLOUTS],
       },
     ],
