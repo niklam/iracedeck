@@ -1,7 +1,9 @@
 /**
- * The shared `where:` gate (issue #1702) and the four wrappers built on it:
- * the Race Engineer master gate, the pit-action cooldown, the pit-service
- * request opt-in and the fuel countdown's session-kind gate. Each wrapper is
+ * The shared `where:` gate (issue #1702) and the four wrappers built on it
+ * (`where-gate.ts`): the Race Engineer master gate, the pit-action cooldown,
+ * the pit-service request opt-in and the fuel countdown's session-kind gate.
+ * They are not exported from `index.ts`, the package's published `./pit-crew`
+ * entry, so this imports them from their own module. Each wrapper is
  * one call to `wrapWhereGate` with its own debug label, so this pins both the
  * shared behaviour and each wrapper's label. The pit-action and pit-service
  * wrappers answer a declared `settle` as ready while closed since #1702; no
@@ -19,7 +21,7 @@ import {
   wrapPitServiceRequestsScenario,
   wrapRaceEngineerMasterGate,
   wrapWhereGate,
-} from "./index.js";
+} from "./where-gate.js";
 
 type Gate = (s: ScenarioContract, isOpen: () => boolean, logger: { debug: (m: string) => void }) => ScenarioContract;
 
