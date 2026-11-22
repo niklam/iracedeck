@@ -761,7 +761,16 @@
 						function settleKeypad() {
 							if (keypadResolved && legacyKnown) keypadSelector.markReady();
 						}
+						// The legacy subset last taken: every global push re-delivers it, and a
+						// keypad on that fallback would otherwise rebuild its whole grid —
+						// hundreds of remembered rows — for a value it already shows (#1653
+						// review). The first delivery and any change are taken.
+						var lastLegacyRaw;
+
 						function takeLegacy(value) {
+							var raw = rawOf(value);
+							if (legacyKnown && raw === lastLegacyRaw) return;
+							lastLegacyRaw = raw;
 							legacyKnown = true;
 							legacyGroups = readGroups(value);
 							// Global settings usually arrive after the keypad's own (empty)

@@ -765,6 +765,22 @@ describe("camera-focus PI Cycle Camera grids: the Remembered groups section (#16
       await load();
     });
 
+    it("rebuilds the keypad grid only for a legacy subset that changed", () => {
+      perKey.get(SUBSET_KEY)?.("");
+      pushGlobal(SUBSET_KEY, subset({ SpeedCam: true }));
+      const drawn = checkbox("camera-groups-grid", "SpeedCam");
+
+      // Every global push re-delivers the same fallback.
+      pushGlobal(SUBSET_KEY, subset({ SpeedCam: true }));
+      pushGlobal(SUBSET_KEY, subset({ SpeedCam: true }));
+      expect(checkbox("camera-groups-grid", "SpeedCam")).toBe(drawn);
+
+      pushGlobal(SUBSET_KEY, subset({ Zulu: true }));
+      expect(checkbox("camera-groups-grid", "SpeedCam")).not.toBe(drawn);
+      expect(checkbox("camera-groups-grid", "Zulu")?.checked).toBe(true);
+      expect(checkbox("camera-groups-grid", "SpeedCam")?.checked).toBe(false);
+    });
+
     it("shows it on a key that stores none, and a toggle then saves it", () => {
       perKey.get(SUBSET_KEY)?.("");
       pushGlobal(SUBSET_KEY, subset({ SpeedCam: true }));
