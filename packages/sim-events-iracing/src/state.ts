@@ -398,8 +398,11 @@ export type ReplayProgressState = {
   lastProgressConfirmed: boolean[];
   /**
    * Per car, by carIdx: how many consecutive readings, each at a `SessionTime`
-   * other than the one before it and each a different progress, have
-   * continued the car's chain (0 for a reading that continued nothing). A
+   * other than the one before it and each a different progress in the same
+   * direction, have continued the car's chain, signed by that direction (+n
+   * forwards, -n rewinding; 0 for a reading that continued nothing; a reversal
+   * starts it again at ±1, so two frames stepped back and forth never build
+   * it). A
    * repeated reading does not lengthen it, whether the clock repeats too (a
    * paused saved replay) or runs on (an in-session replay paused at its live
    * edge), so a pause on a disagreeing frame cannot confirm that frame.

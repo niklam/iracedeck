@@ -220,6 +220,42 @@ describe("stepReplayProgress — confirmation", () => {
     expect(resumed).toBeCloseTo(7.0001, 10);
   });
 
+  it("does not confirm two disagreeing frames stepped back and forth: a reversal restarts the run", () => {
+    const slice = createReplayProgressState();
+    // Two consecutive frames that both read a lap high, stepped A, B, A, B.
+    const A: readonly [number, number, number] = [7, 0.9998, 100];
+    const B: readonly [number, number, number] = [7, 0.9999, 100 + TICK_S];
+
+    drive(slice, [A, B, A, B], 100);
+
+    expect(Math.abs(slice.continuingRun[0]!)).toBeLessThan(3);
+    expect(slice.lastProgressConfirmed[0]).toBe(false);
+
+    // The next true frame is taken as it stands, not "corrected" onto the wrong lap.
+    const [next] = drive(slice, [[7, 0.0001, 100 + 2 * TICK_S]], 100 + 2 * TICK_S);
+
+    expect(next).toBeCloseTo(7.0001, 10);
+  });
+
+  it("confirms a run that rewinds steadily, its run counted backwards", () => {
+    const slice = createReplayProgressState();
+
+    drive(
+      slice,
+      [
+        [7, 0.004],
+        [7, 0.003],
+        [7, 0.002],
+        [7, 0.001],
+      ],
+      100,
+      REWIND_S,
+    );
+
+    expect(slice.continuingRun[0]).toBe(-3);
+    expect(slice.lastProgressConfirmed[0]).toBe(true);
+  });
+
   it("keeps a confirmed car corrected while the replay pauses on its disagreeing frame", () => {
     const slice = createReplayProgressState();
 

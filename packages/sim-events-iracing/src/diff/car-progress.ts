@@ -199,15 +199,19 @@ export function confirmedLastProgress(slice: CarProgressState, carIdx: number): 
 
 /**
  * How many consecutive continuing readings, each at a distinct `SessionTime`
- * and each a different progress from the one before, confirm a car's progress
- * under a policy with `confirmByRun` (issue #1682). The counter and the
+ * and each a different progress from the one before in the same direction,
+ * confirm a car's progress under a policy with `confirmByRun` (issue #1682).
+ * The counter and the
  * fraction disagree for one tick in every capture, so three readings in a row
  * that each continue the one before cannot all be a lap off. A repeated
  * reading adds nothing, whatever the clock does: a paused saved replay
  * repeats its `SessionTime`, but arrays that stand still while `SessionTime`
  * runs on (an in-session replay paused at its live edge, where the arrays are
  * the replay's and the clock is live) repeat the reading, and either way one
- * frame, the disagreeing one included, must not confirm itself.
+ * frame, the disagreeing one included, must not confirm itself. Nor does a
+ * reversal: stepping back and forth between two frames (a frame-by-frame
+ * step one way, then the other) restarts the run, so three readings are
+ * always three distinct frames in a row.
  */
 export const CAR_PROGRESS_CONFIRM_RUN = 3;
 
@@ -256,7 +260,8 @@ export const LIVE_CAR_PROGRESS_POLICY: CarProgressPolicy = {
  * reading (`continues`: inside the span and within half a lap) AND the last
  * was confirmed, or it was read clear of the line guard band, or — only under
  * a policy with `confirmByRun` — `run` (the consecutive continuing readings
- * at distinct `SessionTime`s that each moved, this one included) has reached
+ * at distinct `SessionTime`s that each moved the same way, this one included,
+ * signed by that direction) has reached in size
  * {@link CAR_PROGRESS_CONFIRM_RUN}. The one confirmation rule; a reader picks
  * only whether the run counts.
  */
@@ -269,7 +274,7 @@ export function confirmsCarProgress(
 ): boolean {
   return (
     continues &&
-    (previousConfirmed || !isNearLine(lapDistPct) || (policy.confirmByRun && run >= CAR_PROGRESS_CONFIRM_RUN))
+    (previousConfirmed || !isNearLine(lapDistPct) || (policy.confirmByRun && Math.abs(run) >= CAR_PROGRESS_CONFIRM_RUN))
   );
 }
 
@@ -279,7 +284,11 @@ export type CarProgressMemory = {
   readonly progress: number | undefined;
   /** Whether it was confirmed ({@link confirmsCarProgress}). */
   readonly confirmed: boolean;
-  /** The continuing run it ended; 0 for a reader that keeps none. */
+  /**
+   * The continuing run it ended, signed by its direction: +n for n readings
+   * that each moved forward, -n for n that each moved back; 0 for a reading
+   * that continued nothing, and for a reader that keeps no run.
+   */
   readonly run: number;
 };
 
@@ -311,8 +320,9 @@ export type CarProgressReading = {
  * span, then judged by {@link confirmsCarProgress}. It continues the last
  * reading when the tick is inside the span and it lies within half a lap of
  * it; the run grows by one only at a distinct `SessionTime` AND a progress
- * other than the last (a repeated reading is the same frame again), and a
- * reading that continues nothing starts it again at 0.
+ * other than the last (a repeated reading is the same frame again) AND in the
+ * direction the run was already going (a reversal starts it again at that one
+ * move), and a reading that continues nothing starts it again at 0.
  */
 export function readCarLineProgress(
   lapCompleted: unknown,
@@ -336,8 +346,17 @@ export function readCarLineProgress(
   // continues nothing, and confirms only on a later one.
   const continues =
     tick.inSpan && last.progress !== undefined && Math.abs(progress - last.progress) <= CAR_PROGRESS_CONTINUOUS_LAPS;
-  const moved = progress !== last.progress;
-  const run = !continues ? 0 : tick.distinctSessionTime && moved ? last.run + 1 : last.run;
+  // The run, signed by its direction (`CarProgressMemory.run`): a repeated
+  // reading leaves it as it is, a move the same way lengthens it, and a move
+  // the other way starts it again at that one move, so stepping back and
+  // forth between two frames never builds a run (CodeRabbit CLI, #1682).
+  const direction = continues ? Math.sign(progress - last.progress!) : 0;
+  let run: number;
+
+  if (!continues) run = 0;
+  else if (!tick.distinctSessionTime || direction === 0) run = last.run;
+  else if (Math.sign(last.run) === -direction) run = direction;
+  else run = last.run + direction;
 
   return { progress, confirmed: confirmsCarProgress(continues, last.confirmed, fraction, run, policy), run };
 }
