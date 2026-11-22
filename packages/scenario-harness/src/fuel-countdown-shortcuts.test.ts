@@ -14,7 +14,7 @@
  */
 import { createFakeAudio } from "@iracedeck/audio-service/testing";
 import { _resetEventBus, getEventBus, initializeEventBus } from "@iracedeck/event-bus";
-import { type SDKController, type SessionInfo, SessionState, type TelemetryData } from "@iracedeck/iracing-sdk";
+import { Flags, type SDKController, type SessionInfo, SessionState, type TelemetryData } from "@iracedeck/iracing-sdk";
 import { silentLogger } from "@iracedeck/logger";
 import {
   _resetSimEventsIracing,
@@ -32,7 +32,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ALL_EVENT_NAMES, EVENT_TEMPLATES, FUEL_SESSION_GATE_NOTE } from "./event-names.js";
 import type { MockPlatformAdapter } from "./mock-platform-adapter.js";
 import { MockSDKController, type TelemetryPatch } from "./mock-sdk-controller.js";
-import { FUEL_RUN_LAPS, SCENARIO_SHORTCUTS, type TelemetryStep } from "./scenario-shortcuts.js";
+import {
+  FUEL_RUN_LAPS,
+  SCENARIO_SHORTCUTS,
+  type ScenarioShortcut,
+  servedShortcut,
+  type TelemetryStep,
+} from "./scenario-shortcuts.js";
 import { createServer } from "./server.js";
 import { checkShortcutPreconditions, type HarnessPreconditionState } from "./shortcut-preconditions.js";
 
@@ -448,6 +454,73 @@ describe("Fuel → Countdown through the translator (issue #1702)", () => {
 
     expect(first[0]).toBe(FUEL_LAPS_LEFT_MAX_COUNT - 1);
     expect(countsOf(events)[0]).toBe(FUEL_LAPS_LEFT_MAX_COUNT);
+  });
+
+  describe("its teardown", () => {
+    const served = servedShortcut(SCENARIO_SHORTCUTS.find((s) => s.id === RUN_ID) as ScenarioShortcut);
+
+    /** As the route applies a step with the tick loop paused: one tick if it asks, then only the clock. */
+    function post(controller: MockSDKController, posted: readonly TelemetryStep[]): void {
+      for (const step of posted) {
+        controller.mutateTelemetry(step.patch as TelemetryPatch);
+
+        if (step.tick === true) controller.tickOnce();
+
+        vi.advanceTimersByTime(step.holdMs ?? 0);
+      }
+    }
+
+    /** The next button's first step: a caution thrown, which a live translator announces. */
+    const CAUTION: TelemetryStep = {
+      patch: { SessionFlags: Flags.Servicible | Flags.StartHidden | Flags.CautionWaving },
+      tick: true,
+    };
+
+    it.each(Array.from({ length: steps.length - 1 }, (_, i) => i + 1))(
+      "hands the next button a live translator after a run that failed after step %i",
+      (prefix) => {
+        // The run's first step opens a replay-mode bracket and its third closes
+        // it; a POST failing in between leaves the mock in replay, where the
+        // translator publishes nothing for any button, unless the UI's failure
+        // path has a teardown to apply — the served copy, as the page reads it.
+        const { controller, events } = startTranslator("practice");
+
+        post(controller, steps.slice(0, prefix));
+        post(controller, served.failedRunTeardownSequence ?? []);
+        events.length = 0;
+        post(controller, [CAUTION]);
+
+        expect(controller.getState().telemetry.IsReplayPlaying).toBe(false);
+        expect(events.map((e) => e.event)).toContain("flag.caution-waving.raised");
+      },
+    );
+
+    it("control: with no teardown, a run that failed inside its bracket leaves the next button silent", () => {
+      const { controller, events } = startTranslator("practice");
+
+      post(controller, steps.slice(0, 1));
+      events.length = 0;
+      post(controller, [CAUTION]);
+
+      expect(controller.getState().telemetry.IsReplayPlaying).toBe(true);
+      expect(events.map((e) => e.event)).not.toContain("flag.caution-waving.raised");
+    });
+
+    it("after a run that went through, publishes nothing, and the next press counts the same", () => {
+      const { controller, events } = startTranslator("testing");
+
+      runSequence(controller, steps);
+
+      const countdown = events.length;
+
+      runSequence(controller, served.teardownSequence ?? []);
+
+      expect(events.slice(countdown)).toEqual([]);
+
+      runSequence(controller, steps);
+
+      expect(countsOf(events)).toEqual([...EXPECTED_COUNTS, ...EXPECTED_COUNTS]);
+    });
   });
 
   it("control: opened on a tick of Racing instead, its first press in practice publishes the session brief's trigger", () => {

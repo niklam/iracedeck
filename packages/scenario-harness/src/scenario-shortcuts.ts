@@ -2779,6 +2779,28 @@ function fuelRunLap(k: number): TelemetryStep[] {
 }
 
 /**
+ * The countdown run's teardown (`TelemetrySequenceShortcut.teardownSequence`):
+ * a replay-mode bracket that leaves the session racing under no flag and the
+ * translator live, re-seeded on its own tick ({@link SEEDED_TICK}) so the next
+ * button's first step is an edge rather than a baseline. A teardown rather than the run's own last steps, so the UI
+ * applies it (its failed-run copy, the exit hold kept) after a POST that
+ * failed part-way too: the run's first step opens replay mode and its third
+ * closes it, so a failure between them would otherwise leave the mock in
+ * replay, where the translator publishes nothing for any button, with the
+ * session winding down. Racing is set inside the bracket, where the
+ * translator announces no session-state change. After a run that went
+ * through it changes nothing but the replay wipe the next press makes anyway.
+ */
+const FUEL_RUN_TEARDOWN: readonly TelemetryStep[] = [
+  {
+    patch: { IsReplayPlaying: true, SessionState: SessionState.Racing, SessionFlags: RACING_NO_FLAG },
+    tick: true,
+  },
+  { patch: { IsReplayPlaying: false }, holdMs: REPLAY_EXIT_SETTLE_MS, tick: true },
+  SEEDED_TICK,
+];
+
+/**
  * "Fuel -> Countdown through the translator" (issue #1702): the laps-of-fuel
  * left countdown as the TRANSLATOR decides it, which the per-count buttons
  * step over by publishing `fuel.lapsLeft.crossed` themselves. It is how the
@@ -2800,18 +2822,20 @@ function fuelRunLap(k: number): TelemetryStep[] {
  * silence the counts it covers, and the run must publish the same counts
  * whatever was there. The run pins them as it pins every field it reads
  * (#1349) and does not put a hand-typed limit back afterwards; the button's
- * description says so. The tank going UP from wherever the last press left it is a refuel to the
- * countdown, which re-arms every count. Then {@link FUEL_RUN_LAPS} laps, each
- * sampled at half distance: the first is the tracker's first clean lap, and
- * its sample is silent (see {@link FUEL_RUN_FIRST_COUNT}); every later sample
- * announces one count lower, 10 down to 0. The run ends on track with the
- * tank nearly dry and leaves it there; the next press re-seeds.
+ * description says so. The tank going UP from wherever the last press left it
+ * is a refuel to the countdown, which re-arms every count. Then
+ * {@link FUEL_RUN_LAPS} laps, each sampled at half distance: the first is the
+ * tracker's first clean lap, and its sample is silent (see
+ * {@link FUEL_RUN_FIRST_COUNT}); every later sample announces one count lower,
+ * 10 down to 0. The run ends on track with the tank nearly dry, and
+ * {@link FUEL_RUN_TEARDOWN} hands the translator back live; the next press
+ * re-seeds.
  */
 const FUEL_COUNTDOWN_RUN: TelemetrySequenceShortcut = {
   id: "fuel-countdown-run",
   category: "Fuel",
   label: "Countdown through the translator",
-  description: `Drives the TRANSLATOR round ${FUEL_RUN_LAPS} laps, about ${Math.round((FUEL_RUN_LAPS * (FUEL_RUN_SAMPLE_LISTEN_MS + 2 * FUEL_RUN_STEP_MS) + REPLAY_EXIT_SETTLE_MS) / 1000)} s, burning ${FUEL_RUN_LAP_FUEL_L} L a lap, so the fuel tracker records real laps and every count is the translator's own decision: each lap after the first publishes one count lower, ${FUEL_LAPS_LEFT_MAX_COUNT} down to 0. With the default per-count toggles expect "Five laps of fuel left", then three, two and one, then "Box this lap" (10, 9, 8, 7, 6 and 4 ship off). Apply the "practice" or "testing" session preset first (any session preset runs it) and connect the mock SDK. Uncheck that session kind's "Fuel countdown: speak in …" box in Global Settings and the same run is silent. A margin other than the default shifts every count. The run clears any lap limit or clock you typed into the telemetry by hand (SessionLapsRemainEx, SessionTimeRemain) and does not put it back, because a limit the tank covers would silence the counts it covers; type it in again afterwards if you need it.`,
+  description: `Drives the TRANSLATOR round ${FUEL_RUN_LAPS} laps, about ${Math.round((FUEL_RUN_LAPS * (FUEL_RUN_SAMPLE_LISTEN_MS + 2 * FUEL_RUN_STEP_MS) + 2 * REPLAY_EXIT_SETTLE_MS) / 1000)} s, burning ${FUEL_RUN_LAP_FUEL_L} L a lap, so the fuel tracker records real laps and every count is the translator's own decision: each lap after the first publishes one count lower, ${FUEL_LAPS_LEFT_MAX_COUNT} down to 0. With the default per-count toggles expect "Five laps of fuel left", then three, two and one, then "Box this lap" (10, 9, 8, 7, 6 and 4 ship off). Apply the "practice" or "testing" session preset first (any session preset runs it) and connect the mock SDK. Uncheck that session kind's "Fuel countdown: speak in …" box in Global Settings and the same run is silent. A margin other than the default shifts every count. The run clears any lap limit or clock you typed into the telemetry by hand (SessionLapsRemainEx, SessionTimeRemain) and does not put it back, because a limit the tank covers would silence the counts it covers; type it in again afterwards if you need it.`,
   requires: FUEL_COUNTDOWN_REQUIRES,
   telemetrySequence: [
     // The bracket's opening tick settles the translator's fresh-connect check
@@ -2847,6 +2871,7 @@ const FUEL_COUNTDOWN_RUN: TelemetrySequenceShortcut = {
     { patch: fuelRunAt(0.01), holdMs: FUEL_RUN_STEP_MS, tick: true },
     ...Array.from({ length: FUEL_RUN_LAPS }, (_, k) => fuelRunLap(k)).flat(),
   ],
+  teardownSequence: FUEL_RUN_TEARDOWN,
 };
 
 export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
