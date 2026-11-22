@@ -34,6 +34,16 @@ describe("resolveSessionType", () => {
     expect(resolveSessionType(WEEKEND, inSession(7))).toBe("");
     expect(resolveSessionType({ SessionInfo: { Sessions: [{ SessionNum: 0 }] } }, inSession(0))).toBe("");
   });
+
+  it.each([42, null, true, { name: "Race" }, ["Race"]])(
+    "answers the empty string for a SessionType that is not a string (%j), which the classifier then reads as unknown",
+    (sessionType) => {
+      const info = { SessionInfo: { Sessions: [{ SessionNum: 0, SessionType: sessionType }] } };
+
+      expect(resolveSessionType(info, inSession(0))).toBe("");
+      expect(classifySession(resolveSessionType(info, inSession(0)))).toBeNull();
+    },
+  );
 });
 
 describe("classifySession", () => {

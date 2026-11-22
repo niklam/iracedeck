@@ -13,8 +13,10 @@ import type { TelemetryData } from "@iracedeck/iracing-sdk";
 /**
  * The raw `SessionType` of the session `telemetry.SessionNum` names
  * ("Practice", "Lone Qualify", "Race", …), or `""` when session info is
- * missing or does not list it. A telemetry read without `SessionNum` is taken
- * as session 0.
+ * missing, does not list it, or lists it with a `SessionType` that is not a
+ * string (a hand-edited session YAML can carry a number there, which every
+ * caller would otherwise hand to {@link classifySession}'s string tests). A
+ * telemetry read without `SessionNum` is taken as session 0.
  */
 export function resolveSessionType(sessionInfo: Record<string, unknown> | null, telemetry: TelemetryData): string {
   if (!sessionInfo) return "";
@@ -24,7 +26,9 @@ export function resolveSessionType(sessionInfo: Record<string, unknown> | null, 
   const sessionNum = telemetry.SessionNum ?? 0;
   const current = sessions?.[sessionNum as number];
 
-  return (current?.SessionType as string) ?? "";
+  const sessionType = current?.SessionType;
+
+  return typeof sessionType === "string" ? sessionType : "";
 }
 
 const PRACTICE: SessionClass = Object.freeze({ category: "practice", soloQualifying: false, testing: false });

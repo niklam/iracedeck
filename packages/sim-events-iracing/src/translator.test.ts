@@ -1688,6 +1688,15 @@ describe("sim-events-iracing translator", () => {
       expect(isPlayerFinalLapStarted()).toBeNull();
     });
 
+    it("reads a SessionType that is not a string as an unreadable session, and the tick does not throw", () => {
+      const controller = createMockController();
+      controller.__setSessionInfo({ SessionInfo: { Sessions: [{ SessionNum: 0, SessionType: 42 }] } });
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
+
+      expect(() => controller.__tick(telemetry({ SessionState: SessionState.Racing }))).not.toThrow();
+      expect(isPlayerFinalLapStarted()).toBeNull();
+    });
+
     it("in a race reads the sticky final-lap marker, not the white flag on the tick", () => {
       const controller = start("Race");
 
