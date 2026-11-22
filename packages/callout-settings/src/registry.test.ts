@@ -247,12 +247,12 @@ describe("Fuel countdown session kinds (#1702)", () => {
     ["test", "calloutEnabledFuelCountdownTest", "Test"],
   ] as const;
 
-  it("renders Race, Practice, Qualifying, Test under a Speak in heading, right after Fuel", () => {
+  it("renders Race, Practice, Qualifying, Test under a Speak in heading, right before Fuel", () => {
     const ids = CALLOUT_PI_GROUPS.map((g) => g.id);
     const group = CALLOUT_PI_GROUPS.find((g) => g.id === "fuel-countdown-sessions");
     const rows = group?.families.flatMap((f: CalloutFamily) => Object.values(f.callouts));
 
-    expect(ids.indexOf("fuel-countdown-sessions")).toBe(ids.indexOf("fuel") + 1);
+    expect(ids.indexOf("fuel-countdown-sessions")).toBe(ids.indexOf("fuel") - 1);
     expect(group?.title).toBe("Speak in");
     expect(group?.families).toEqual([FUEL_COUNTDOWN_SESSION_CALLOUTS]);
     expect(rows?.map((e) => [e.key, e.label])).toEqual(SESSION_ROWS.map(([, key, label]) => [key, label]));
