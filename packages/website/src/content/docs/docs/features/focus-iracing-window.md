@@ -40,7 +40,7 @@ Every key and dial has its own **Focus iRacing window** choice, in the **Common 
 | Global mode | Use global setting | Bring iRacing to the front | Don't bring iRacing to the front |
 |-------------|--------------------|----------------------------|----------------------------------|
 | **Always** | On every press | On every press | Never |
-| **When required** | Only before a keystroke | On every press | Never |
+| **When required** | Only before a keystroke or a chat prompt | On every press | Never |
 | **Never** | Never | On every press | Never |
 
 The choice covers everything the press does, including the repeats of a key you hold down and the keystrokes a touch-strip tap sends on a dial. It changes from the next press, with no restart. A key set to **Bring iRacing to the front** still stops trying while iRaceDeck and iRacing run at different Windows privilege levels, as described in [Why It Matters](#why-it-matters).
