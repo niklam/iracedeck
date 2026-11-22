@@ -255,10 +255,13 @@ export type FocusPressKind = "press" | "touch";
  *
  * When the key's setting changes what happens it logs one debug line for the
  * press, so a support log explains a press that did or did not bring iRacing
- * forward: always for `no-focus`, and for `focus` when the global mode would
- * not have focused (at press time for a press; at the keystrokes for a touch).
- * Best-effort like the rest of the service, though a settings read that throws
- * reaches the caller, which guards it.
+ * forward: for `no-focus` when the global mode would have focused (`always` or
+ * `required`: at press time under `always`, at the keystrokes under either),
+ * and for `focus` when the global mode would not have focused (at press time
+ * for a press; at the keystrokes for a touch). Under `never`, or before the
+ * settings store has loaded, a `no-focus` key changes nothing and logs
+ * nothing. Best-effort like the rest of the service, though a settings read
+ * that throws reaches the caller, which guards it.
  */
 export function focusIRacingForPress(override: WindowFocusOverride, kind: FocusPressKind = "press"): void {
   switch (override) {
@@ -266,10 +269,13 @@ export function focusIRacingForPress(override: WindowFocusOverride, kind: FocusP
       if (kind === "press") focusIRacingIfEnabled();
 
       return;
-    case "no-focus":
-      logger.debug("Focus skipped for this key (per-key setting)");
+    case "no-focus": {
+      const mode = currentMode();
+
+      if (mode === "always" || mode === "required") logger.debug("Focus skipped for this key (per-key setting)");
 
       return;
+    }
     case "focus": {
       const mode = currentMode();
       const globalWouldFocus = kind === "press" ? mode === "always" : mode === "always" || mode === "required";

@@ -834,14 +834,41 @@ describe("per-key window focus (issue #1654)", () => {
 
       const debugLines = (logger: ILogger): unknown[] => vi.mocked(logger.debug).mock.calls.map(([line]) => line);
 
-      it.each(MODES)("logs the skip for a no-focus key under %s", (mode) => {
+      it.each([
+        ["always", true],
+        ["required", true],
+        ["never", false],
+      ] as const)("for a no-focus key under %s, logs the skip: %s", (mode, logged) => {
         state.settings = { focusIRacingWindow: mode };
         const { logger } = arrange(FocusResult.AlreadyFocused);
 
         focusIRacingForPress("no-focus");
 
-        expect(debugLines(logger)).toEqual([SKIPPED]);
+        expect(debugLines(logger)).toEqual(logged ? [SKIPPED] : []);
         expect(logger.info).not.toHaveBeenCalled();
+      });
+
+      it("logs no skip for a no-focus key before the store is ready: the global mode would not have focused", () => {
+        state.settings = { focusIRacingWindow: "always" };
+        state.storeReady = false;
+        const { logger } = arrange(FocusResult.AlreadyFocused);
+
+        focusIRacingForPress("no-focus");
+
+        expect(debugLines(logger)).toEqual([]);
+      });
+
+      it.each([
+        ["always", true],
+        ["required", true],
+        ["never", false],
+      ] as const)("for a no-focus touch under %s, logs the skip (judged at the keystrokes): %s", (mode, logged) => {
+        state.settings = { focusIRacingWindow: mode };
+        const { logger } = arrange(FocusResult.AlreadyFocused);
+
+        focusIRacingForPress("no-focus", "touch");
+
+        expect(debugLines(logger)).toEqual(logged ? [SKIPPED] : []);
       });
 
       it.each([

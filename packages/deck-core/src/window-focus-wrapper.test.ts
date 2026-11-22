@@ -330,19 +330,22 @@ describe("withWindowFocus (issue #1654)", () => {
       expect(log).toEqual(["handler:onKeyDown", "handler:onKeyDown"]);
     });
 
-    it.each(["global", "focus"] as const)("runs the handler when the settings read throws (%s)", async (override) => {
-      arrange();
-      state.throwOnRead = true;
-      const wrapped = withWindowFocus(recordingHandler());
+    it.each(["global", "focus", "no-focus"] as const)(
+      "runs the handler when the settings read throws (%s)",
+      async (override) => {
+        arrange();
+        state.throwOnRead = true;
+        const wrapped = withWindowFocus(recordingHandler());
 
-      await press(wrapped, "onKeyDown", override);
-      await press(wrapped, "onDialRotate", override);
+        await press(wrapped, "onKeyDown", override);
+        await press(wrapped, "onDialRotate", override);
 
-      expect(log.filter((entry) => entry.startsWith("handler:"))).toEqual([
-        "handler:onKeyDown",
-        "handler:onDialRotate",
-      ]);
-    });
+        expect(log.filter((entry) => entry.startsWith("handler:"))).toEqual([
+          "handler:onKeyDown",
+          "handler:onDialRotate",
+        ]);
+      },
+    );
 
     it("runs the handler when the focus service's logger throws", async () => {
       const logger = createLogger();
