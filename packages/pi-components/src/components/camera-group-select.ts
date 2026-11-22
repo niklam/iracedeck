@@ -25,7 +25,9 @@
  * WHAT IT READS, AND WHEN. The two per-key settings and the run-scoped
  * `_cameraCatalog` global, each through sdpi's settings hooks — so it re-renders
  * on every `didReceiveSettings` / `didReceiveGlobalSettings` push (through
- * `skipUnchanged`) and reads nothing in response to a DOM event: in sdpi a read
+ * `skipUnchanged`), takes the catalog sdpi already holds once from its hook's
+ * getter on connect (a local read; sdpi replays no earlier push to a new
+ * subscriber), and reads nothing in response to a DOM event: in sdpi a read
  * is not addressed to the requester, so one fired from a change handler replaces
  * the shared settings snapshot under every other control (the
  * `ird-enable-feature` lesson in `stream-deck-actions.md`). Stream Deck does not
@@ -173,9 +175,17 @@ export class CameraGroupSelect extends HTMLElement {
         return;
       }
 
+      const leavingOther = this.otherMode;
+
       this.otherMode = false;
       this.showOther(false);
       this.commit(this.select.value);
+
+      // A listed custom group ends Other… like a typed custom name: a number a
+      // standard prefix typed on the way wrote is put back (#1653 review). A
+      // listed standard group keeps the number it just wrote.
+      if (leavingOther) this.restoreNumberForCustomName(this.select.value);
+
       this.render();
       this.dispatchEvent(new Event("change", { bubbles: true }));
     });
@@ -282,13 +292,19 @@ export class CameraGroupSelect extends HTMLElement {
     );
     this.saveNumber = saveNumber;
 
-    window.SDPIComponents.useGlobalSettings(
-      catalogKey,
-      skipUnchanged((value: unknown) => {
-        this.catalog = parseCameraCatalog(value);
-        this.render();
-      }),
-    );
+    const onCatalog = skipUnchanged((value: unknown) => {
+      this.catalog = parseCameraCatalog(value);
+      this.render();
+    });
+    const [readCatalog] = window.SDPIComponents.useGlobalSettings(catalogKey, onCatalog);
+
+    // sdpi hands a subscription only the pushes after it: a global push that
+    // came before this element connected is not replayed (#1653 review). The
+    // hook's getter returns the value sdpi already holds — a local read that
+    // sends nothing, so not the read the header rules out, resolving once
+    // global settings first arrive — and skipUnchanged drops it when a push
+    // delivered it first.
+    void readCatalog().then(onCatalog);
   }
 
   private fallbackNumber(): number {

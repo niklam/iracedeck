@@ -13,24 +13,29 @@ interface MockSDPI {
   global: Map<string, SettingsCallback>;
   saves: Map<string, ReturnType<typeof vi.fn>>;
   globalReads: number;
+  /**
+   * The values sdpi already holds, which a hook's getter returns. A key not
+   * here models sdpi before its first delivery: the getter never resolves.
+   */
+  stored: Map<string, unknown>;
 }
 
 function installMockSDPI(): MockSDPI {
-  const state: MockSDPI = { perKey: new Map(), global: new Map(), saves: new Map(), globalReads: 0 };
+  const state: MockSDPI = { perKey: new Map(), global: new Map(), saves: new Map(), globalReads: 0, stored: new Map() };
 
   const hook =
     (into: Map<string, SettingsCallback>) =>
-    (key: string, callback: SettingsCallback): [() => Promise<string>, unknown] => {
+    (key: string, callback: SettingsCallback): [() => Promise<unknown>, unknown] => {
       into.set(key, callback);
 
       const save = vi.fn();
       state.saves.set(key, save);
 
       return [
-        async () => {
+        () => {
           state.globalReads++;
 
-          return "";
+          return state.stored.has(key) ? Promise.resolve(state.stored.get(key)) : new Promise(() => {});
         },
         save,
       ];
@@ -125,21 +130,46 @@ describe("ird-camera-group-select", () => {
     it("re-renders on every catalog push without writing", () => {
       pushName("Drone");
       pushCatalog(CATALOG);
+      expect(selectedText()).toBe("Drone (not on this track: Spa)");
+
       pushCatalog({ ...CATALOG, current: null });
+      expect(selectedText()).toBe("Drone (on Spa)");
+
       pushCatalog("not json");
+      expect(selectedText()).toBe("Drone (not seen yet)");
 
       expect(select().value).toBe("Drone");
       expect(saveName()).not.toHaveBeenCalled();
       expect(saveNumber()).not.toHaveBeenCalled();
     });
 
-    it("reads nothing itself: settings arrive only through the hooks' pushes", () => {
+    it("reads nothing in response to the user: settings arrive through the hooks", () => {
+      const readsAtLoad = mock.globalReads;
+
       pushCatalog(CATALOG);
       chooseName("Drone");
       chooseOther();
       type("Foo");
 
-      expect(mock.globalReads).toBe(0);
+      expect(mock.globalReads).toBe(readsAtLoad);
+    });
+
+    it("shows the catalog sdpi already held when it connected (#1653 review)", async () => {
+      // The push that brought it came before this element subscribed, and sdpi
+      // does not replay one; only the hook's getter still has it.
+      mock.stored.set(CAMERA_CATALOG_KEY, JSON.stringify(CATALOG));
+      const late = document.createElement("ird-camera-group-select");
+      document.body.appendChild(late);
+      await Promise.resolve();
+      await Promise.resolve();
+
+      const lateSelect = late.querySelector("select") as HTMLSelectElement;
+      const headings = Array.from(lateSelect.querySelectorAll("optgroup")).map((g) => g.label);
+
+      expect(headings).toContain(PICKER_HEADINGS.onTrackCustom);
+      expect(headings).toContain(PICKER_HEADINGS.remembered);
+      expect(saveName()).not.toHaveBeenCalled();
+      expect(saveNumber()).not.toHaveBeenCalled();
     });
   });
 
@@ -323,6 +353,26 @@ describe("ird-camera-group-select", () => {
 
       expect(fieldShown()).toBe(false);
       expect(saveName()).toHaveBeenLastCalledWith("Nose");
+    });
+
+    it("puts the number back when a typed prefix gives way to a listed custom group (#1653 review)", () => {
+      chooseOther();
+      type("Chase");
+      chooseName("DynamicTV");
+
+      expect(saveName()).toHaveBeenLastCalledWith("DynamicTV");
+      // `Chase` wrote 12 on the way; the custom choice restores the key's own 9.
+      expect(saveNumber()).toHaveBeenNthCalledWith(1, "12");
+      expect(saveNumber()).toHaveBeenLastCalledWith("9");
+    });
+
+    it("keeps the new number when a typed prefix gives way to a listed standard group", () => {
+      chooseOther();
+      type("Chase");
+      chooseName("TV1");
+
+      expect(saveName()).toHaveBeenLastCalledWith("TV1");
+      expect(saveNumber()).toHaveBeenLastCalledWith("17");
     });
 
     it("offers, shows and writes groups named like Object.prototype members", () => {

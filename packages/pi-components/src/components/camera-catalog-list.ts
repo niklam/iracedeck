@@ -146,10 +146,15 @@ export class CameraCatalogList extends HTMLElement {
 
     const key = this.getAttribute("catalog") ?? CAMERA_CATALOG_KEY;
 
-    window.SDPIComponents.useGlobalSettings(
-      key,
-      skipUnchanged((value: unknown) => this.render(parseCameraCatalog(value))),
-    );
+    const onCatalog = skipUnchanged((value: unknown) => this.render(parseCameraCatalog(value)));
+    const [readCatalog] = window.SDPIComponents.useGlobalSettings(key, onCatalog);
+
+    // sdpi hands a subscription only the pushes after it: one that came before
+    // this element connected is not replayed (#1653 review). The hook's getter
+    // returns the value sdpi already holds — a local read that sends nothing,
+    // resolving once global settings first arrive — and skipUnchanged drops it
+    // when a push delivered it first.
+    void readCatalog().then(onCatalog);
   }
 
   private static dressButton(button: HTMLButtonElement, armed: boolean): void {

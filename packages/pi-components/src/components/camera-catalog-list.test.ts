@@ -58,17 +58,21 @@ describe("ird-camera-catalog-list", () => {
   let el: HTMLElement;
   let callback: SettingsCallback | undefined;
   let send: ReturnType<typeof vi.fn>;
+  /** The catalog sdpi already holds, which the hook's getter returns; undefined: none delivered yet. */
+  let stored: string | undefined;
 
   beforeEach(() => {
     vi.useFakeTimers();
     document.body.replaceChildren();
     callback = undefined;
+    stored = undefined;
     send = vi.fn(() => Promise.resolve());
     (window as unknown as Record<string, unknown>).SDPIComponents = {
       useGlobalSettings: (key: string, cb: SettingsCallback) => {
         if (key === CAMERA_CATALOG_KEY) callback = cb;
 
-        return [async () => "", vi.fn()];
+        // Before sdpi's first delivery the getter never resolves.
+        return [() => (stored === undefined ? new Promise(() => {}) : Promise.resolve(stored)), vi.fn()];
       },
       streamDeckClient: { send },
     };
@@ -84,6 +88,19 @@ describe("ird-camera-catalog-list", () => {
   const rows = (): HTMLElement[] => Array.from(el.querySelectorAll<HTMLElement>(".ird-cc-row"));
   const button = (name: string): HTMLButtonElement =>
     el.querySelector<HTMLButtonElement>(`.ird-cc-row[data-name="${name}"] button`) as HTMLButtonElement;
+
+  it("shows the catalog sdpi already held when it connected (#1653 review)", async () => {
+    // The push that brought it came before this element subscribed, and sdpi
+    // does not replay one; only the hook's getter still has it.
+    stored = JSON.stringify(CATALOG);
+    document.body.replaceChildren();
+    el = document.createElement("ird-camera-catalog-list");
+    document.body.appendChild(el);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(rows().map((r) => r.dataset.name)).toEqual(["CrankItUp", "drone", "TV1"]);
+  });
 
   it("says nothing is remembered before the catalog arrives, and for a bad payload", () => {
     expect(el.querySelector(".ird-cc-empty")).not.toBeNull();
