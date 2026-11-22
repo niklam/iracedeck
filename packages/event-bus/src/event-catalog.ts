@@ -1720,24 +1720,23 @@ export type SimEventMap = {
    * in all of them. In every session no emission at all — including the
    * count-0 box call — after the chequered flag (checkered / cool-down) or on
    * the player's own final lap. The rest differs by session:
-   * - In a race (the exact `"Race"` session type; issues #866, #880, #1405):
-   *   the final lap is the player's crossing under the white, and nothing is
-   *   emitted while the TANK covers what is left of the race (judged without
-   *   the margin, with a small allowance for estimate error; the distance by
-   *   the lap counter or, in a timed race, up to the player's first crossing
-   *   after the leader's predicted chequered flag); an unknown race length
-   *   keeps emitting.
-   * - In any other session (a heat race and a warmup included): the final
-   *   lap is the white flag on the player's own last lap, and nothing is
-   *   emitted while the tank covers a lap-limited session's remaining laps by
-   *   its own lap counter; with no lap limit the tank alone decides.
+   * - In a main race (issues #866, #880, #1405): the final lap is the
+   *   player's crossing under the white, and nothing is emitted while the
+   *   TANK covers what is left of the race (judged without the margin, with a
+   *   small allowance for estimate error; the distance by the lap counter or,
+   *   in a timed race, up to the player's first crossing after the leader's
+   *   predicted chequered flag); an unknown race length keeps emitting.
+   * - In any other session, a heat race or a warmup included: the final lap
+   *   is the white flag on the player's own last lap, and nothing is emitted
+   *   while the tank covers a lap-limited session's remaining laps by its own
+   *   lap counter; with no lap limit the tank alone decides.
    * Replaces the never-consumed `fuel.lapsRemaining.crossed` event.
    */
   "fuel.lapsLeft.crossed": SimEvent<"fuel.lapsLeft.crossed", { count: number; lapsLeft: number }>;
   /**
-   * The tank covers what's left of the race (issue #880). A race event: never
-   * emitted outside the exact `"Race"` session type. Emitted at most
-   * once per stint, in the race ENDGAME — 10 or fewer laps to go by the
+   * The tank covers what's left of the race (issue #880). A main-race event:
+   * never emitted in any other session, a heat race or a warmup included.
+   * Emitted at most once per stint, in the race ENDGAME — 10 or fewer laps to go by the
    * binding limit — when the tank covers the race (the `fuel.lapsLeft.crossed`
    * suppression) and the margin-adjusted count still covers it WITH A FULL
    * LAP IN HAND, against the lap counter (issue #866) or the timed-race
