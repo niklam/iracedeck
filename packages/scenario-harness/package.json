@@ -14,7 +14,7 @@
     "test:watch": "node ../../scripts/test-package.mjs --watch"
   },
   "dependencies": {
-    "@fastify/static": "10.1.11",
+    "@fastify/static": "10.1.12",
     "@fastify/websocket": "11.3.7",
     "@iracedeck/audio-assets": "workspace:*",
     "@iracedeck/audio-native": "workspace:*",
@@ -37,6 +37,6 @@
     "rimraf": "6.1.4",
     "tsx": "4.23.15",
     "typescript": "6.0.3",
-    "vitest": "5.1.0"
+    "vitest": "5.1.1"
   }
 }

@@ -15,7 +15,7 @@
     "test:watch": "node ../../scripts/test-package.mjs --watch"
   },
   "dependencies": {
-    "@elgato/streamdeck": "3.0.4",
+    "@elgato/streamdeck": "3.0.6",
     "@iracedeck/app-constants": "workspace:*",
     "@iracedeck/deck-adapter-elgato": "workspace:*",
     "@iracedeck/deck-core": "workspace:*",
@@ -25,14 +25,14 @@
     "@iracedeck/settings": "workspace:*"
   },
   "devDependencies": {
-    "@elgato/cli": "1.10.4",
+    "@elgato/cli": "1.10.5",
     "@iracedeck/plugin-build": "workspace:*",
     "@tsconfig/node22": "22.0.7",
     "@types/node": "26.6.6",
     "rimraf": "6.1.4",
-    "rollup": "4.68.3",
+    "rollup": "4.68.8",
     "typescript": "6.0.3",
-    "vitest": "5.1.0"
+    "vitest": "5.1.1"
   },
   "engines": {
     "node": ">=24.0.0"
