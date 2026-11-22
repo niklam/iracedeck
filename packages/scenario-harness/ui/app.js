@@ -196,13 +196,30 @@ function renderSettings() {
     },
     // The fuel countdown's Speak in row (#1702), on by default as for users:
     // the session kinds the laps-of-fuel-left lines are heard in. Unchecking
-    // one silences every Fuel button in a session of that kind.
-    ...[
-      ["calloutEnabledFuelCountdownRace", "Race"],
-      ["calloutEnabledFuelCountdownPractice", "Practice"],
-      ["calloutEnabledFuelCountdownQualifying", "Qualifying"],
-      ["calloutEnabledFuelCountdownTest", "Test"],
-    ].map(([key, kind]) => ({ key, label: `Fuel countdown: speak in ${kind}`, type: "checkbox" })),
+    // one silences every Fuel button in a session of that kind. Seeded on by
+    // bootstrap-settings.ts, so the plain "checked when true" rule below reads
+    // them right; one literal line each, which is how the seed's test finds
+    // them on the grid.
+    {
+      key: "calloutEnabledFuelCountdownRace",
+      label: "Fuel countdown: speak in Race",
+      type: "checkbox",
+    },
+    {
+      key: "calloutEnabledFuelCountdownPractice",
+      label: "Fuel countdown: speak in Practice",
+      type: "checkbox",
+    },
+    {
+      key: "calloutEnabledFuelCountdownQualifying",
+      label: "Fuel countdown: speak in Qualifying",
+      type: "checkbox",
+    },
+    {
+      key: "calloutEnabledFuelCountdownTest",
+      label: "Fuel countdown: speak in Test",
+      type: "checkbox",
+    },
     {
       key: "radarVolume",
       label: "Radar Volume",

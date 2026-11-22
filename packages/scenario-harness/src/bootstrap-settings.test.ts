@@ -19,6 +19,18 @@ import { afterEach, describe, expect, it } from "vitest";
 import { getAudioAssetsManifest, seedGlobalSettings } from "./bootstrap-settings.js";
 import { MockPlatformAdapter } from "./mock-platform-adapter.js";
 
+/**
+ * The settings keys the UI's Global Settings grid offers a control for.
+ * `ui/app.js` has no build and no DOM here; its grid is a literal list of
+ * `key: "…"` lines, read as text.
+ */
+function settingsGridKeys(): Set<string> {
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  const appJs = readFileSync(path.join(here, "..", "ui", "app.js"), "utf-8");
+
+  return new Set([...appJs.matchAll(/^\s*key: "([A-Za-z]+)",$/gm)].map((match) => match[1]));
+}
+
 describe("getAudioAssetsManifest", () => {
   it("loads the bundled manifest with the expected shape", () => {
     const manifest = getAudioAssetsManifest();
@@ -66,19 +78,41 @@ describe("seedGlobalSettings", () => {
     // The seeded snapshot is what the UI renders, so a seeded key with no
     // control is a setting nobody can flip from the page — which is how the
     // radio frame's two switches (#1064) reached the endpoint but not the
-    // grid. `ui/app.js` has no build and no DOM here; its grid is a literal
-    // list of `key: "…"` lines, read as text.
+    // grid.
     const adapter = new MockPlatformAdapter(silentLogger);
     seedGlobalSettings(adapter);
     const seeded = Object.keys(adapter.readSettings()).filter((key) => !key.startsWith("_"));
-    const here = path.dirname(fileURLToPath(import.meta.url));
-    const appJs = readFileSync(path.join(here, "..", "ui", "app.js"), "utf-8");
-    const offered = new Set([...appJs.matchAll(/^\s*key: "([A-Za-z]+)",$/gm)].map((match) => match[1]));
+    const offered = settingsGridKeys();
 
     expect(seeded).toContain("raceEngineerRadioBeeps");
     expect(
       seeded.filter((key) => !offered.has(key)),
       "seeded keys with no control on the settings grid",
+    ).toEqual([]);
+  });
+
+  it("seeds every key the grid offers that ships on, so its checkbox shows it on (#1702)", () => {
+    // The grid ticks a checkbox only for a stored `true`, so a key that ships
+    // on and is never seeded renders unchecked while its gate is open, and
+    // the first click writes `true` and changes nothing — how the fuel
+    // countdown's four Speak in toggles first reached the grid.
+    const adapter = new MockPlatformAdapter(silentLogger);
+    seedGlobalSettings(adapter);
+    const settings = adapter.readSettings();
+    const userDefaults: Record<string, unknown> = GlobalSettingsSchema.parse({});
+    const shipsOn = [...settingsGridKeys()].filter((key) => userDefaults[key] === true);
+
+    expect(shipsOn).toEqual(
+      expect.arrayContaining([
+        "calloutEnabledFuelCountdownRace",
+        "calloutEnabledFuelCountdownPractice",
+        "calloutEnabledFuelCountdownQualifying",
+        "calloutEnabledFuelCountdownTest",
+      ]),
+    );
+    expect(
+      shipsOn.filter((key) => settings[key] !== true),
+      "grid keys that ship on but are not seeded, so render unchecked",
     ).toEqual([]);
   });
 
