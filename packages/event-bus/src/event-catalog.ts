@@ -1708,25 +1708,35 @@ export type SimEventMap = {
   /**
    * The estimated whole laps of fuel left crossed down to a new count
    * (issue #838). Emitted at most once per mid-lap sample (the `LapDistPct`
-   * 0.5 crossing) in race sessions, and only on a DESCENDING crossing —
+   * 0.5 crossing) in every live session — race, practice, qualifying and
+   * testing alike (issue #1702) — and only on a DESCENDING crossing —
    * `count` is the number of full laps the driver can complete AFTER
    * finishing the current lap, margin-adjusted
    * (`floor(rawLapsLeft − margin − remaining lap fraction)`, clamped at 0).
    * `count === 0` means "box this lap for fuel". Each count fires once per
    * stint; a refuel re-arms every count. `lapsLeft` carries the
-   * margin-adjusted (fractional) estimate at sample time for logging.
-   * Race-coverage suppression (issues #866, #880, #1405): no emission at
-   * all — including the count-0 box call — when the TANK covers what is left
-   * of the race (judged without the margin, with a small allowance for
-   * estimate error; the distance by the lap counter or, in a timed race, up
-   * to the player's first crossing after the leader's predicted chequered
-   * flag), on the player's own final lap (both race formats), or post-race
-   * (checkered / cool-down); an unknown race length keeps emitting. Replaces
-   * the never-consumed `fuel.lapsRemaining.crossed` event.
+   * margin-adjusted (fractional) estimate at sample time for logging. Whether
+   * a session kind is SPOKEN is the consumer's choice; the translator emits
+   * in all of them. In every session no emission at all — including the
+   * count-0 box call — after the chequered flag (checkered / cool-down) or on
+   * the player's own final lap. The rest differs by session:
+   * - In a race (the exact `"Race"` session type; issues #866, #880, #1405):
+   *   the final lap is the player's crossing under the white, and nothing is
+   *   emitted while the TANK covers what is left of the race (judged without
+   *   the margin, with a small allowance for estimate error; the distance by
+   *   the lap counter or, in a timed race, up to the player's first crossing
+   *   after the leader's predicted chequered flag); an unknown race length
+   *   keeps emitting.
+   * - In any other session (a heat race and a warmup included): the final
+   *   lap is the white flag on the player's own last lap, and nothing is
+   *   emitted while the tank covers a lap-limited session's remaining laps by
+   *   its own lap counter; with no lap limit the tank alone decides.
+   * Replaces the never-consumed `fuel.lapsRemaining.crossed` event.
    */
   "fuel.lapsLeft.crossed": SimEvent<"fuel.lapsLeft.crossed", { count: number; lapsLeft: number }>;
   /**
-   * The tank covers what's left of the race (issue #880). Emitted at most
+   * The tank covers what's left of the race (issue #880). A race event: never
+   * emitted outside the exact `"Race"` session type. Emitted at most
    * once per stint, in the race ENDGAME — 10 or fewer laps to go by the
    * binding limit — when the tank covers the race (the `fuel.lapsLeft.crossed`
    * suppression) and the margin-adjusted count still covers it WITH A FULL
