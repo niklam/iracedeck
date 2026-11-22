@@ -54,6 +54,7 @@ import {
   FUEL_LAPS_LEFT_MAX_COUNT,
   type FuelSessionBranch,
   isFuelCovered,
+  isPlayerFinalLapReached,
   resolveFuelFinalLapStarted,
   resolveFuelLapCounterCoverage,
   resolveFuelLapCounterLapsAfterCurrent,
@@ -792,6 +793,26 @@ describe("resolveFuelFinalLapStarted (issue #1702)", () => {
     expect(resolveFuelFinalLapStarted(false, true, none)).toBe(false);
     expect(resolveFuelFinalLapStarted(false, false, tick({ SessionFlags: Flags.White | Flags.Yellow }))).toBe(true);
     expect(resolveFuelFinalLapStarted(false, false, tick({ SessionFlags: undefined }))).toBe(false);
+  });
+});
+
+describe("isPlayerFinalLapReached (issue #1702)", () => {
+  const running = tick({ SessionState: SessionState.Racing });
+
+  it("is false while the session runs and the player's last lap has not started", () => {
+    expect(isPlayerFinalLapReached(running, false)).toBe(false);
+  });
+
+  it("is true once the player's own last lap has started", () => {
+    expect(isPlayerFinalLapReached(running, true)).toBe(true);
+  });
+
+  it.each([
+    ["Checkered", SessionState.Checkered],
+    ["CoolDown", SessionState.CoolDown],
+  ])("is true once the session is %s, whatever the final-lap answer", (_, state) => {
+    expect(isPlayerFinalLapReached(tick({ SessionState: state }), false)).toBe(true);
+    expect(isPlayerFinalLapReached(tick({ SessionState: state }), true)).toBe(true);
   });
 });
 

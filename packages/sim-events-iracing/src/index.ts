@@ -49,6 +49,7 @@ export {
   getTrackDirection,
   initializeSimEventsIracing,
   isDamageRepairNeeded,
+  isPlayerFinalLapStarted,
   isPitActionsAllowed,
   isRaceFinished,
   isRollingStartFormation,

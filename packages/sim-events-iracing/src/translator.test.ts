@@ -72,6 +72,7 @@ import {
   getStartingGridPosition,
   initializeSimEventsIracing,
   isDamageRepairNeeded,
+  isPlayerFinalLapStarted,
   isRaceFinished,
   isRollingStartFormation,
   isSimEventsIracingInitialized,
@@ -1645,6 +1646,82 @@ describe("sim-events-iracing translator", () => {
       controller.__tick(null, false);
 
       expect(getSessionKind()).toBeNull();
+    });
+  });
+
+  describe("isPlayerFinalLapStarted (issue #1702)", () => {
+    function start(sessionType: string): ReturnType<typeof createMockController> {
+      const controller = createMockController();
+      controller.__setSessionInfo({ SessionInfo: { Sessions: [{ SessionNum: 0, SessionType: sessionType }] } });
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
+
+      return controller;
+    }
+
+    /** The translator's live state, held by reference in the snapshot's raw half. */
+    function liveState(): TranslatorState {
+      const snapshot = readSimState();
+
+      if (!snapshot.initialized) throw new Error("expected an initialized translator");
+
+      return snapshot.raw.state;
+    }
+
+    it("is null with no translator and before the first tick", () => {
+      expect(isPlayerFinalLapStarted()).toBeNull();
+
+      start("Race");
+
+      expect(isPlayerFinalLapStarted()).toBeNull();
+    });
+
+    it("is null while the session cannot be read, and again after a disconnect", () => {
+      const controller = start("Practice");
+      controller.__tick(telemetry({ SessionFlags: Flags.White }));
+      expect(isPlayerFinalLapStarted()).toBe(true);
+
+      controller.__setSessionInfo(null);
+      expect(isPlayerFinalLapStarted()).toBeNull();
+
+      controller.__setSessionInfo({ SessionInfo: { Sessions: [{ SessionNum: 0, SessionType: "Practice" }] } });
+      controller.__tick(null, false);
+      expect(isPlayerFinalLapStarted()).toBeNull();
+    });
+
+    it("in a race reads the sticky final-lap marker, not the white flag on the tick", () => {
+      const controller = start("Race");
+
+      // The leader's white, a lap before the player's own last lap.
+      controller.__tick(telemetry({ SessionFlags: Flags.White, SessionState: SessionState.Racing }));
+      expect(isPlayerFinalLapStarted()).toBe(false);
+
+      // The marker `diffFlags` latches at the player's crossing under the white.
+      liveState().playerFinalLapStarted = true;
+      expect(isPlayerFinalLapStarted()).toBe(true);
+    });
+
+    it.each(["Practice", "Lone Qualify", "Offline Testing"])(
+      "in %s reads the white flag on the tick and ignores the race marker",
+      (sessionType) => {
+        const controller = start(sessionType);
+
+        controller.__tick(telemetry({ SessionState: SessionState.Racing }));
+        liveState().playerFinalLapStarted = true;
+        expect(isPlayerFinalLapStarted()).toBe(false);
+
+        controller.__tick(telemetry({ SessionFlags: Flags.White, SessionState: SessionState.Racing }));
+        expect(isPlayerFinalLapStarted()).toBe(true);
+      },
+    );
+
+    it.each(["Race", "Practice"])("in %s is true once the session's chequered flag is out", (sessionType) => {
+      const controller = start(sessionType);
+
+      controller.__tick(telemetry({ SessionState: SessionState.Racing }));
+      expect(isPlayerFinalLapStarted()).toBe(false);
+
+      controller.__tick(telemetry({ SessionState: SessionState.Checkered }));
+      expect(isPlayerFinalLapStarted()).toBe(true);
     });
   });
 

@@ -671,7 +671,7 @@ export function diffFuelLapsLeft(
   // qualifying chequered flag ends the running as surely as a race's, and
   // `finalLapStarted` is then the White bit on this tick, which practice and
   // qualifying show when the player starts their own last lap.
-  if (isPostRace(telemetry) || finalLapStarted) {
+  if (isPlayerFinalLapReached(telemetry, finalLapStarted)) {
     commitAttempt();
 
     return;
@@ -853,6 +853,22 @@ export function resolveFuelFinalLapStarted(
   telemetry: TelemetryData,
 ): boolean {
   return isRaceSession ? playerFinalLapStarted : hasFlag(telemetry.SessionFlags, Flags.White);
+}
+
+/**
+ * The fuel countdown's final-lap silence (issue #1702): the session's
+ * chequered flag is out ({@link isPostRace}), or the player has started their
+ * own last lap ({@link resolveFuelFinalLapStarted}'s answer). One definition
+ * for the emit-time check in {@link diffFuelLapsLeft} and the translator's
+ * `isPlayerFinalLapStarted` reader, which the Race Engineer's fuel contracts
+ * ask again when a queued count reaches the radio, so speak time applies
+ * exactly the rule the count was emitted under.
+ *
+ * @param telemetry - the tick's telemetry, for its `SessionState`
+ * @param finalLapStarted - {@link resolveFuelFinalLapStarted}'s answer for the same tick
+ */
+export function isPlayerFinalLapReached(telemetry: TelemetryData, finalLapStarted: boolean): boolean {
+  return isPostRace(telemetry) || finalLapStarted;
 }
 
 /**

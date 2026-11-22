@@ -85,6 +85,7 @@ import {
   diffFuelLapsLeft,
   FUEL_CALLOUT_DEFAULT_MARGIN_LAPS,
   FUEL_LAPS_LEFT_WINDOW_LAPS,
+  isPlayerFinalLapReached,
   resolveFuelFinalLapStarted,
   resolveFuelSessionBranch,
 } from "./diff/fuel-laps-left.js";
@@ -814,6 +815,37 @@ export function getSessionType(): string {
  */
 export function getSessionClass(): SessionClass | null {
   return classifySession(getSessionType());
+}
+
+/**
+ * Whether the player has started their own last lap of the session — true
+ * from that lap's start (which the session's chequered flag being out also
+ * implies) until the session changes; null before the first tick, with no
+ * translator, or while the session cannot be read.
+ *
+ * The rule `handleTick` hands `diffFuelLapsLeft` for its final-lap silence,
+ * over the latest tick and the state that tick left (issue #1702): the
+ * session branch from {@link getSessionType} through
+ * `resolveFuelSessionBranch`, the final-lap answer from
+ * `resolveFuelFinalLapStarted` (the sticky race marker in a race, the White
+ * bit elsewhere), joined with the chequered flag by `isPlayerFinalLapReached`.
+ * What the Race Engineer's fuel contracts read through `SimRuntime` when a
+ * queued count reaches the radio, so a count emitted mid-lap is not heard on
+ * the final lap.
+ */
+export function isPlayerFinalLapStarted(): boolean | null {
+  const telemetry = instance?.latestTelemetry ?? null;
+
+  if (!instance || !telemetry) return null;
+
+  const branch = resolveFuelSessionBranch(getSessionType());
+
+  if (branch === "unknown") return null;
+
+  return isPlayerFinalLapReached(
+    telemetry,
+    resolveFuelFinalLapStarted(branch === "race", instance.state.playerFinalLapStarted, telemetry),
+  );
 }
 
 /**
