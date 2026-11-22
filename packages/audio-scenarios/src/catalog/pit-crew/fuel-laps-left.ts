@@ -41,7 +41,7 @@
  * `registerPitCrew` hands that reader. Two known gaps: a count already
  * playing when an `interrupt` cuts it is stashed as admitted and replays
  * within its wait without the gate (`scheduler.ts`, the `admitted` skip in
- * `prepareOps`; a re-gate-on-replay option is proposed as a follow-up), and
+ * `prepareOps`; a re-gate-on-replay option is #1774), and
  * a race's final-lap marker can go unset on a crossing just after the white
  * heads-up (#1773).
  *
@@ -117,7 +117,10 @@ export type FuelCountdownSessionId = CalloutIdOf<typeof FUEL_COUNTDOWN_SESSION_C
  * Race Engineer reads one classifier; `practice` is Test when `testing` is set
  * and Practice otherwise; `qualifying` is Qualifying, solo or not. A session
  * not yet classified (`null`) answers to none, so the countdown stays silent
- * until it is known — it samples once per lap, so nothing is lost.
+ * until it is known. The translator emits nothing while the session cannot
+ * be read and keeps its announcement floor, so it resumes from the estimate
+ * at the next sample once it can; a count the estimate passed in between is
+ * not spoken late.
  */
 export function fuelCountdownSessionKind(session: SessionClass | null): FuelCountdownSessionId | null {
   if (session === null) return null;
