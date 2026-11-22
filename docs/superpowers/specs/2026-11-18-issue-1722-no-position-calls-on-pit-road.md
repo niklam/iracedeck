@@ -12,7 +12,7 @@ In Niklas's in-game test on 2026-11-18, a lap that ended in the pit lane after a
 
 1. **The position family is silent on pit road.** Every Race Engineer line that announces the player's position (the position change after a lap, the periodic position status and the overtake gained/lost lines) gets a `speakGate` that refuses while the player is on pit road. "On pit road" means the player's car is in the pit lane or in its stall: `OnPitRoad`, or the player's track surface reading pit stall or approaching pits. The gate also refuses while the player is out of the car.
 2. **A queued one is dropped, not held.** The gate runs when the line starts, so a position line queued before pit entry and still waiting when the car reaches pit road is dropped there. A line fired on pit road is dropped at once. Nothing is replayed after the stop.
-3. **No catch-up line after the stop.** Once back on track, the next position call is the ordinary one: the position change at the next lap completed on track, or the next periodic status. The stop's lost places are not announced on their own; the next ordinary call states the position as it then is.
+3. **No catch-up line after the stop.** Once back on track, the next position call is the ordinary one: the position change at the next lap completed on track, or the next periodic status. The stop's lost places are not announced on their own; the next ordinary call states the position as it then is. *Amended 2026-11-22:* places lost in the player's own stop get their own line after the stop, decided in [#1756's spec](2026-11-22-issue-1756-pit-stop-losses.md), which supersedes this decision and the second Rejected entry below for that case; this issue's pit-road silence stands.
 
 ## Rejected
 
